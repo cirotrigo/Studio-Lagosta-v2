@@ -12,6 +12,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, diaBRT, resumoEstavel } from '@/lib/aprendizado/chaves'
+import { normalizar } from '@/lib/posts/dia-semana'
 
 const CATALOG_FILE = '_image-catalog.json'
 
@@ -130,25 +131,32 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
       avisos.push('Este catálogo não tem qualidade anotada — o filtro quality foi ignorado.')
     }
   }
+  /**
+   * Todo casamento é SEM ACENTO (`normalizar`: minúsculas + NFD), porque o
+   * catálogo mistura as duas grafias — o Gemini gravou "almoço" numa foto e
+   * "almoco" na vizinha, no MESMO acervo (medido no Wine Vix em 11/08). Com
+   * comparação crua, o mesmo conceito virava dois baldes e a busca por tema
+   * devolvia metade do que existe.
+   */
   if (input.folder) {
-    const f = input.folder.toLowerCase()
-    imagens = imagens.filter((i) => (i.folder ?? '').toLowerCase().startsWith(f))
+    const f = normalizar(input.folder)
+    imagens = imagens.filter((i) => normalizar(i.folder ?? '').startsWith(f))
   }
   if (input.theme) {
-    const t = input.theme.toLowerCase()
+    const t = normalizar(input.theme)
     imagens = imagens.filter(
       (i) =>
-        i.bestFor?.some((b) => b.toLowerCase().includes(t)) ||
-        i.tags?.some((x) => x.toLowerCase().includes(t)) ||
-        i.folder?.toLowerCase().includes(t),
+        i.bestFor?.some((b) => normalizar(b).includes(t)) ||
+        i.tags?.some((x) => normalizar(x).includes(t)) ||
+        (i.folder ? normalizar(i.folder).includes(t) : false),
     )
   }
   if (input.menuCategory) {
     imagens = imagens.filter((i) => i.menuCategory === input.menuCategory)
   }
   if (input.tags?.length) {
-    const alvo = input.tags.map((t) => t.toLowerCase())
-    imagens = imagens.filter((i) => i.tags?.some((t) => alvo.includes(t.toLowerCase())))
+    const alvo = input.tags.map((t) => normalizar(t))
+    imagens = imagens.filter((i) => i.tags?.some((t) => alvo.includes(normalizar(t))))
   }
 
   imagens.sort((a, b) => ultimoUso(a).localeCompare(ultimoUso(b)))
