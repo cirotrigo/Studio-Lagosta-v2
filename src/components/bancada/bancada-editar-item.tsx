@@ -51,6 +51,30 @@ export interface EdicaoDoItem {
   referencias: ReferenciaSelecionada[]
 }
 
+/**
+ * No modal de edição, escolher uma foto TROCA A CENA — nunca acrescenta.
+ *
+ * O seletor compartilhado encaixa a foto nova no primeiro papel LIVRE: com a
+ * cena ocupada (teto de 1), o clique virava uma âncora silenciosa. A pessoa
+ * achava que tinha trocado, o salvar lia a cena — ainda a foto antiga — e
+ * persistia a antiga. Foi exatamente assim que "a equipe não consegue alterar
+ * a foto" em 11/08/2026: o gesto de troca não existia, só o de acréscimo.
+ *
+ * A regra: foto ADICIONADA assume a cena; a cena anterior sai; âncoras e
+ * estilo que já estavam ficam. Remoção e toggle continuam os do seletor.
+ */
+export function trocarCena(
+  anteriores: ReferenciaSelecionada[],
+  novas: ReferenciaSelecionada[],
+): ReferenciaSelecionada[] {
+  const adicionada = novas.find((n) => !anteriores.some((r) => r.key === n.key))
+  if (!adicionada) return novas
+  return [
+    { ...adicionada, papel: 'subject' },
+    ...novas.filter((r) => r.key !== adicionada.key && r.papel !== 'subject'),
+  ]
+}
+
 export function BancadaEditarItem({
   item,
   aberto,
@@ -160,11 +184,11 @@ export function BancadaEditarItem({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Foto</Label>
+            <Label>Foto (escolher outra TROCA a atual)</Label>
             <ArteIaImagePicker
               projectId={item.projectId}
               referencias={referencias}
-              onChange={setReferencias}
+              onChange={(novas) => setReferencias(trocarCena(referencias, novas))}
               alturaDaGrade="38dvh"
             />
           </div>

@@ -22,6 +22,7 @@ import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-
 import { formatarQuandoBR, ordenarPorDataDesc, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
 import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
+import { useToast } from '@/hooks/use-toast'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
 import type { BancadaItem } from '@/stores/bancada-store'
 
@@ -80,6 +81,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
   const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, atualizar, descartar } =
     useBancada(projectId)
   const patchDoPlano = useAtualizarItemDoPlano(projectId)
+  const { toast } = useToast()
 
   /**
    * Salva a edição do card: o store primeiro (a tela responde na hora) e, se o
@@ -98,14 +100,30 @@ export function BancadaFila({ projectId }: { projectId: number }) {
       })
       if (item.itemDePlanoId && item.planoId && itemEditavel(item.situacaoNoPlano ?? 'proposto')) {
         const cena = e.referencias.find((r) => r.papel === 'subject')
-        patchDoPlano.mutate({
-          planoId: item.planoId,
-          itemId: item.itemDePlanoId,
-          copyProposta: e.copy,
-          legenda: e.legenda,
-          fotoDriveId: cena?.driveFileId ?? null,
-          fotoUrl: cena?.url ?? null,
-        })
+        patchDoPlano.mutate(
+          {
+            planoId: item.planoId,
+            itemId: item.itemDePlanoId,
+            copyProposta: e.copy,
+            legenda: e.legenda,
+            fotoDriveId: cena?.driveFileId ?? null,
+            fotoUrl: cena?.url ?? null,
+          },
+          {
+            // Sem isto a falha era MUDA: a tela de quem editou mostrava a
+            // mudança (o store local já tinha gravado) e a equipe continuava
+            // vendo a versão antiga — o pior tipo de divergência, porque cada
+            // um jura que está certo.
+            onError: () => {
+              toast({
+                title: 'A edição não chegou à equipe',
+                description:
+                  'Ficou só neste navegador. Confira a conexão e salve de novo — os outros ainda veem a versão anterior.',
+                variant: 'destructive',
+              })
+            },
+          },
+        )
       }
     },
     [atualizar, patchDoPlano],
