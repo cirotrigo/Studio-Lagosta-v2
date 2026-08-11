@@ -1822,6 +1822,40 @@ assunto por slot → `buscarNoAcervo` → `montarDicasDeCopy` → `criarPlano`. 
   dois sinais com sentidos opostos — o defeito que a F1 já teve de corrigir
   (`e3236624`). O desfecho é CALCULADO pelo diff, nunca declarado pela tela.
 
+### Cache da base: disjuntor no backend do Upstash (11/08/2026)
+
+O cache de resultados da busca na base (`src/lib/knowledge/cache.ts`) estava
+falhando em TODA busca, em silêncio, desde antes da F3. Consumidores atingidos:
+chat, `generate-ai-text`, `find-similar-entries` e a dica de copy da F3.
+
+- 🔴 **O Upstash responde HTTP 200 com `{"error": ...}` no corpo** quando o banco
+  está suspenso, com rate limit da conta ou credencial inválida. O
+  `@upstash/redis` só lança em resposta **não-2xx**, então o envelope de erro
+  passa como sucesso e chega ao auto-pipeline — **ligado por padrão**
+  (`enableAutoPipelining ?? true`), então TODO comando passa por lá —, que faz
+  `res.map(...)` sobre um objeto e estoura `TypeError: res.map is not a function`.
+  Status 2xx não é prova de sucesso nesta API.
+- 🔴 **Erro engolido por `catch` + `console.error` não é conserto, é anestesia.**
+  Dois commits (`5bb8af37`, `2e81caf6`) trataram o sintoma assim, e o defeito
+  sobreviveu meses: nada quebrava, o cache nunca acertava, e cada busca pagava
+  **~600ms em regime (~1,9s a frio)** em ida ao servidor mais duas linhas de erro
+  — medido em 11/08 contra o banco real. Falha que se repete precisa de um
+  estado que a registre, não só de um log.
+- **O disjuntor guarda só o caminho quente.** Depois de 3 falhas seguidas o
+  cache para de ser consultado (custo cai a **0ms**), avisa **uma vez** com
+  diagnóstico acionável, e reabre sozinho após 60s (dobrando até 10 min) — quem
+  consertar o banco não precisa redeployar. A invalidação (`invalidateProjectCache`)
+  fica **fora** do disjuntor de propósito: é rara e sensível a correção, então
+  vale mais pagar a ida do que pular um bump de versão em silêncio.
+- **Desligar o cache é decisão de ops, não de código**: sem
+  `UPSTASH_REDIS_REST_URL`/`_TOKEN` o caminho vira no-op limpo e a busca segue
+  normal (só refazendo o embedding). As duas variáveis agora estão no
+  `.env.example` — antes só o `UPSTASH_VECTOR_*` estava, e o cache era invisível
+  para quem montava o ambiente.
+- **Redis e Vector são bancos SEPARADOS.** Em 11/08 o Redis estava rate-limited
+  e o Vector saudável (136 vetores) — ou seja, a busca funcionava e só o cache
+  estava morto. Ao diagnosticar, teste os dois endpoints antes de concluir.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
