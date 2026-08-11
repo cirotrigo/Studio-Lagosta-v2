@@ -24,7 +24,29 @@
 | F0.4 inventário de modelos | **no ar**; curadoria aplicada (41 → 19 modelos) | #42 |
 | causa-raiz da poluição (`create-page`) | **no ar** | #45 |
 | F1 captura — núcleo | **no ar**, migration aplicada em produção | #47 |
-| F1 captura — superfícies | em implementação (2 tarefas em paralelo) | — |
+| F1 captura — superfícies | **no ar**, testada ponta a ponta em produção | #48, #49 |
+
+**Achados do teste ponta a ponta (10/08), já corrigidos:**
+
+- **Dois sinais de slot para o mesmo post** quando ele nascia de sugestão: um
+  `aceita-como-veio` e um `escolha-propria`. Dobrava o peso do horário na
+  cadência e misturava a linha que vale com DESCONTO (aceite, por causa do
+  auto-reforço) com a que vale cheio. Agora é uma linha só.
+- **Foto sugerida e usada pelo CHAT/template ficava pendente para sempre** —
+  só a bancada devolvia o desfecho. Viraria `expirada`, ou seja "ninguém
+  decidiu" sobre a foto que virou arte, enviesando o corpus justamente na via
+  de maior volume. Fecha por reconciliação (`sinal-de-foto.ts`).
+
+**Achados abertos, para decidir antes da F4:**
+
+- **O QA de logo dá falso negativo**: reprovou uma arte boa alegando que
+  "STEAKHOUSE" está em minúsculas no arquivo oficial — e está em MAIÚSCULAS
+  (conferido baixando o arquivo). O KPI da F4 vai usar esses vereditos.
+- **By Rock está com `logoMode: 'modelo'`** — a IA desenha a marca, contra a
+  regra da casa. Desta vez saiu bom, mas é sorte.
+- **`chapa-agenda-musica.jpg` está 404** e quebra o render do modelo de agenda
+  musical. Sem substituto de mesmo nome; a linha em `Element` aponta para um
+  blob apagado.
 
 **Correções ao que este plano dizia, descobertas na execução:**
 
