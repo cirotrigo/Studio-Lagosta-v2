@@ -50,8 +50,10 @@ import {
   distribuirPilares,
   escolherFotoSemRepetir,
   completarAteOAlvo,
+  diasAteDomingoBRT,
   espalharPorDia,
   gradeSemente,
+  ROTULO_DE_COMPLEMENTO,
   POSTS_POR_DIA_ALVO,
   ROTULO_DE_COLD_START,
   type SlotParaProposta,
@@ -308,7 +310,9 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   if (!Number.isInteger(projectId) || projectId <= 0) {
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto inválido: ${input.projectId}`, 400)
   }
-  const dias = Math.min(Math.max(input.dias ?? 7, 1), 14)
+  // Sem `dias` explícito, a leva vai ATÉ DOMINGO — é como a agência planeja a
+  // semana. Quem pede um recorte (ex.: "só hoje e amanhã") passa `dias`.
+  const dias = Math.min(Math.max(input.dias ?? diasAteDomingoBRT(new Date()), 1), 14)
   const maxItens = Math.min(Math.max(input.maxItens ?? tetoPadrao(dias), 1), MAX_ITENS_POR_PLANO)
   const formato = formatoValido(input.formato)
   const agora = new Date()
@@ -319,9 +323,11 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   // `sugerirPosts` já REGISTRA cada slot emitido como sinal e devolve o
   // `sugestaoId` de cada um — não há nada a registrar aqui.
   let daCadencia: SugestaoSlot[] = []
+  let temRotinaConhecida = false
   try {
     const r = await sugerirPosts({ projectId, dias })
     daCadencia = r.sugestoes
+    temRotinaConhecida = r.cadencia.some((d) => d.horariosTipicos.length > 0)
     avisos.push(...r.avisos)
   } catch (erro) {
     if (erro instanceof CreativeError && erro.code === 'PROJECT_NOT_FOUND') throw erro
@@ -353,12 +359,21 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   }
 
   if (coldStart) {
-    const semente = gradeSemente({ agora, dias, maxItens })
+    /**
+     * Janela sem NENHUM slot da cadência tem duas causas, e o rótulo muda:
+     * cliente que o sistema ainda não conhece (cold start de verdade) e
+     * cliente COM rotina cujos dias típicos só não caem nesta janela — dizer
+     * "não conheço a rotina" para o segundo seria falso.
+     */
+    const rotulo = temRotinaConhecida ? ROTULO_DE_COMPLEMENTO : ROTULO_DE_COLD_START
+    const semente = gradeSemente({ agora, dias, maxItens, rotulo })
     await registrarSemente(projectId, semente)
     slots = semente
     itensSemeados = semente.length
     avisos.push(
-      `${ROTULO_DE_COLD_START}. Os horários abaixo são um começo para ajustar com ele, não uma leitura do que ele já faz.`,
+      temRotinaConhecida
+        ? `A rotina deste cliente não tem horário típico nos dias pedidos — montei a grade no ritmo de ${POSTS_POR_DIA_ALVO} por dia para você ajustar.`
+        : `${ROTULO_DE_COLD_START}. Os horários abaixo são um começo para ajustar com ele, não uma leitura do que ele já faz.`,
     )
   }
 

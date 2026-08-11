@@ -403,7 +403,17 @@ export function fundirComOLocal(
           formato: doServidor.formato,
           copy: doServidor.copy,
           legenda: doServidor.legenda,
-          pedido: doServidor.pedido,
+          /**
+           * Direção adicional e ajuste de foto são parâmetros de GERAÇÃO — não
+           * têm coluna no ItemDePlano, então uma edição local não tem como
+           * fazer a viagem de ida e volta pelo servidor. O que a pessoa
+           * escreveu vence o derivado (que é só o tema); `instrucaoImagem` nem
+           * entra nesta lista pelo mesmo motivo.
+           */
+          pedido:
+            local.pedido && local.pedido !== doServidor.pedido
+              ? local.pedido
+              : doServidor.pedido,
           referencias: doServidor.referencias,
           quando: doServidor.quando,
           escopo: doServidor.escopo,

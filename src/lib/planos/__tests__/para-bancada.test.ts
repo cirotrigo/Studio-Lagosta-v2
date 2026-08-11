@@ -517,3 +517,25 @@ describe('formatarQuandoBR', () => {
     expect(q.completo).toBe('Ter. 11 de ago.')
   })
 })
+
+
+describe('fundirComOLocal — a direção editada sobrevive à hidratação', () => {
+  /**
+   * Direção adicional não tem coluna no ItemDePlano — a edição local não faz a
+   * viagem pelo servidor. Sem esta regra, cada refetch devolvia o `pedido` ao
+   * tema derivado e o que a pessoa escreveu no modal evaporava em segundos.
+   */
+  it('o pedido escrito pela pessoa vence o derivado do tema', () => {
+    const meu = local({ pedido: 'clima de fim de tarde, sem gente na foto' })
+    const doPlano = paraItemDaBancada(doServidor(), plano([]), AGORA)
+    expect(fundirComOLocal(meu, doPlano, AGORA).pedido).toBe(
+      'clima de fim de tarde, sem gente na foto',
+    )
+  })
+
+  it('sem edição local, o derivado do servidor continua valendo', () => {
+    const meu = local({ pedido: '' })
+    const doPlano = paraItemDaBancada(doServidor(), plano([]), AGORA)
+    expect(fundirComOLocal(meu, doPlano, AGORA).pedido).toBe(doPlano.pedido)
+  })
+})

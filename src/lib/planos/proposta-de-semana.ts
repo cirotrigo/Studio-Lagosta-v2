@@ -112,42 +112,75 @@ function diaDaSemanaBRT(dataISO: string): string {
 }
 
 /**
- * A grade-semente: um horário por dia, a partir de AMANHÃ.
+ * A grade-semente: três horários por dia, COMEÇANDO POR HOJE.
  *
- * Começa amanhã de propósito — o dia de hoje costuma estar meio vencido, e
- * propor 11:30 às 15h é a primeira coisa que faz alguém desconfiar da leva
- * inteira. É determinística (mesma entrada, mesma saída), o que faz duas
- * chamadas de `propor-semana` no mesmo dia produzirem as MESMAS chaves de
+ * Do dia de hoje entra só o que ainda dá para publicar (agora + 90 min) — o
+ * resto do dia conta como coberto pelo que passou. É determinística à
+ * granularidade do minuto (mesma entrada, mesma saída), o que faz duas
+ * chamadas de `propor-semana` no mesmo momento produzirem as MESMAS chaves de
  * sugestão e, portanto, nenhum sinal duplicado.
  */
 export function gradeSemente(opcoes: {
   agora: Date
-  /** Quantos dias à frente a leva cobre. */
+  /** Quantos dias a leva cobre, CONTANDO hoje. */
   dias: number
   /** Teto de itens. */
   maxItens: number
+  /**
+   * O motivo que cada slot carrega. O default é o de cold start; quando o
+   * cliente TEM rotina e ela só não alcança a janela pedida, quem chama passa
+   * `ROTULO_DE_COMPLEMENTO` — dizer "não conheço a rotina" seria falso.
+   */
+  rotulo?: string
 }): SlotParaProposta[] {
   const { agora, dias, maxItens } = opcoes
+  const rotulo = opcoes.rotulo ?? ROTULO_DE_COLD_START
   const slots: SlotParaProposta[] = []
 
-  // Dia a dia, e dentro do dia os três horários — assim um teto baixo corta o
-  // FIM da semana, e não o segundo e o terceiro story de cada dia.
-  for (let offset = 1; offset <= dias && slots.length < maxItens; offset++) {
+  // Dia a dia, COMEÇANDO POR HOJE, e dentro do dia os três horários — assim um
+  // teto baixo corta o FIM da semana, não o segundo e o terceiro story de um
+  // dia. Do dia de hoje entra só o horário que ainda dá para publicar
+  // (`horaMinimaHoje`): propor 11:30 às 15h é a primeira coisa que faz alguém
+  // desconfiar da leva inteira.
+  for (let offset = 0; offset < dias && slots.length < maxItens; offset++) {
     const data = diaBRTDe(new Date(agora.getTime() + offset * 24 * 3_600_000))
     for (const hora of HORARIOS_SEMENTE) {
       if (slots.length >= maxItens) break
+      if (offset === 0 && hora < horaMinimaHoje(agora)) continue
       slots.push({
         scheduledDatetime: `${data} ${hora}`,
         data,
         hora,
         diaSemana: diaDaSemanaBRT(data),
-        motivo: `${ROTULO_DE_COLD_START}; escolhi um horário de ${NOME_DO_HORARIO[hora] ?? 'movimento'}`,
+        motivo: `${rotulo}; escolhi um horário de ${NOME_DO_HORARIO[hora] ?? 'movimento'}`,
         semente: true,
       })
     }
   }
 
   return slots
+}
+
+/**
+ * "HH:mm" mínimo para propor algo HOJE: agora em Brasília + 90 minutos de
+ * folga — tempo de alguém revisar a copy e gerar a arte antes do horário.
+ */
+export function horaMinimaHoje(agora: Date): string {
+  const brt = new Date(agora.getTime() - OFFSET_BRT_MS + 90 * 60_000)
+  return `${String(brt.getUTCHours()).padStart(2, '0')}:${String(brt.getUTCMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * Quantos dias faltam até DOMINGO, contando hoje.
+ *
+ * "A semana vai até domingo" é como a agência planeja: a leva de terça cobre
+ * terça a domingo (6 dias), a de segunda cobre a semana inteira (7). Domingo
+ * propõe só o próprio domingo — a leva seguinte já é da próxima semana.
+ */
+export function diasAteDomingoBRT(agora: Date): number {
+  const brt = new Date(agora.getTime() - OFFSET_BRT_MS)
+  const dow = brt.getUTCDay() // 0 = domingo
+  return dow === 0 ? 1 : 8 - dow
 }
 
 /**
@@ -176,7 +209,7 @@ export function completarAteOAlvo(
   }
 
   const saida = [...slots]
-  for (let offset = 1; offset <= opcoes.dias; offset++) {
+  for (let offset = 0; offset < opcoes.dias; offset++) {
     if (saida.length >= opcoes.maxItens) break
     const data = diaBRTDe(new Date(opcoes.agora.getTime() + offset * 24 * 3_600_000))
     const doDia = porDia.get(data) ?? []
@@ -189,6 +222,8 @@ export function completarAteOAlvo(
     for (const hora of HORARIOS_SEMENTE) {
       if (doDia.length >= alvo || saida.length >= opcoes.maxItens) break
       if (ocupadas.has(hora)) continue
+      // Hoje só completa com horário que ainda dá para cumprir.
+      if (offset === 0 && hora < horaMinimaHoje(opcoes.agora)) continue
       const novo: SlotParaProposta = {
         scheduledDatetime: `${data} ${hora}`,
         data,

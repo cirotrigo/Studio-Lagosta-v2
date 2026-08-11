@@ -15,7 +15,9 @@ import {
   escolherFotoSemRepetir,
   espalharPorDia,
   completarAteOAlvo,
+  diasAteDomingoBRT,
   gradeSemente,
+  horaMinimaHoje,
   POSTS_POR_DIA_ALVO,
   ROTULO_DE_COLD_START,
   ROTULO_DE_COMPLEMENTO,
@@ -203,21 +205,34 @@ describe('gradeSemente', () => {
    * assim. O corte por teto pega o FIM da semana, nunca o segundo e o terceiro
    * story de um dia — meio dia proposto seria pior que um dia a menos.
    */
-  it('começa AMANHÃ e dá três horários por dia', () => {
+  it('começa HOJE, com três horários por dia', () => {
+    // 09:00 BRT: os três horários do dia ainda estão à frente.
     const semente = gradeSemente({ agora, dias: 3, maxItens: 99 })
     expect(semente.map((s) => s.data)).toEqual([
+      '2026-08-17', '2026-08-17', '2026-08-17',
       '2026-08-18', '2026-08-18', '2026-08-18',
       '2026-08-19', '2026-08-19', '2026-08-19',
-      '2026-08-20', '2026-08-20', '2026-08-20',
     ])
     expect(semente.slice(0, 3).map((s) => s.hora)).toEqual(['11:30', '15:00', '18:30'])
+  })
+
+  /**
+   * O dia meio vencido entra só com o que ainda dá para publicar: às 16h de
+   * Brasília sobra o jantar — propor 11:30 às 16h é a primeira coisa que faz
+   * alguém desconfiar da leva inteira.
+   */
+  it('do dia de hoje entra só o horário que ainda dá para cumprir', () => {
+    const tarde = new Date('2026-08-17T19:00:00.000Z') // 16:00 BRT
+    const semente = gradeSemente({ agora: tarde, dias: 2, maxItens: 99 })
+    expect(semente.filter((s) => s.data === '2026-08-17').map((s) => s.hora)).toEqual(['18:30'])
+    expect(semente.filter((s) => s.data === '2026-08-18')).toHaveLength(3)
   })
 
   it('o teto corta o fim da semana, não o meio de um dia', () => {
     const semente = gradeSemente({ agora, dias: 7, maxItens: 4 })
     expect(semente).toHaveLength(4)
-    expect(semente.filter((s) => s.data === '2026-08-18')).toHaveLength(3)
-    expect(semente.filter((s) => s.data === '2026-08-19')).toHaveLength(1)
+    expect(semente.filter((s) => s.data === '2026-08-17')).toHaveLength(3)
+    expect(semente.filter((s) => s.data === '2026-08-18')).toHaveLength(1)
   })
 
   it('todo item semeado carrega o rótulo de ponto de partida', () => {
@@ -275,7 +290,7 @@ describe('completarAteOAlvo', () => {
   it('completa o dia que ficou abaixo do ritmo', () => {
     const saida = completarAteOAlvo([real('2026-08-18', '12:00')], {
       agora,
-      dias: 1,
+      dias: 2, // hoje (17) e amanhã (18)
       maxItens: 99,
     })
     expect(saida).toHaveLength(POSTS_POR_DIA_ALVO)
@@ -283,14 +298,14 @@ describe('completarAteOAlvo', () => {
   })
 
   it('o slot real fica intacto, com o motivo estatístico dele', () => {
-    const saida = completarAteOAlvo([real('2026-08-18', '12:00')], { agora, dias: 1, maxItens: 99 })
+    const saida = completarAteOAlvo([real('2026-08-18', '12:00')], { agora, dias: 2, maxItens: 99 })
     const original = saida.find((s) => s.hora === '12:00')!
     expect(original.semente).toBe(false)
     expect(original.motivo).toContain('costuma postar')
   })
 
   it('o completado NÃO inventa estatística — carrega o rótulo próprio', () => {
-    const saida = completarAteOAlvo([real('2026-08-18', '12:00')], { agora, dias: 1, maxItens: 99 })
+    const saida = completarAteOAlvo([real('2026-08-18', '12:00')], { agora, dias: 2, maxItens: 99 })
     for (const s of saida.filter((x) => x.semente)) {
       expect(s.motivo).toContain(ROTULO_DE_COMPLEMENTO)
       expect(s.motivo).not.toContain('costuma postar')
@@ -305,7 +320,7 @@ describe('completarAteOAlvo', () => {
       real('2026-08-18', '13:00'),
       real('2026-08-18', '20:00'),
     ]
-    expect(completarAteOAlvo(cheio, { agora, dias: 1, maxItens: 99 })).toHaveLength(3)
+    expect(completarAteOAlvo(cheio, { agora, dias: 2, maxItens: 99 })).toHaveLength(3)
   })
 
   it('quem publica MAIS que o alvo continua com tudo', () => {
@@ -315,7 +330,7 @@ describe('completarAteOAlvo', () => {
       real('2026-08-18', '17:00'),
       real('2026-08-18', '20:00'),
     ]
-    expect(completarAteOAlvo(quatro, { agora, dias: 1, maxItens: 99 })).toHaveLength(4)
+    expect(completarAteOAlvo(quatro, { agora, dias: 2, maxItens: 99 })).toHaveLength(4)
   })
 
   /**
@@ -334,14 +349,14 @@ describe('completarAteOAlvo', () => {
   it('não repete um horário que o dia já tinha', () => {
     const saida = completarAteOAlvo([real('2026-08-18', '11:30')], {
       agora,
-      dias: 1,
+      dias: 2,
       maxItens: 99,
     })
     expect(saida.filter((s) => s.hora === '11:30')).toHaveLength(1)
   })
 
   it('o teto de itens é respeitado e a saída sai em ordem', () => {
-    const saida = completarAteOAlvo([real('2026-08-18', '12:00')], { agora, dias: 1, maxItens: 2 })
+    const saida = completarAteOAlvo([real('2026-08-18', '12:00')], { agora, dias: 2, maxItens: 2 })
     expect(saida).toHaveLength(2)
     expect(saida.map((s) => s.scheduledDatetime)).toEqual(
       [...saida.map((s) => s.scheduledDatetime)].sort(),
@@ -350,5 +365,27 @@ describe('completarAteOAlvo', () => {
 
   it('lista vazia não vira semana inventada', () => {
     expect(completarAteOAlvo([], { agora, dias: 7, maxItens: 99 })).toEqual([])
+  })
+})
+
+
+describe('horaMinimaHoje e diasAteDomingoBRT', () => {
+  it('a folga de 90 minutos vale em BRT', () => {
+    // 12:00 UTC = 09:00 BRT → mínimo 10:30.
+    expect(horaMinimaHoje(new Date('2026-08-17T12:00:00.000Z'))).toBe('10:30')
+  })
+
+  it('terça cobre terça a domingo; domingo cobre só o domingo', () => {
+    expect(diasAteDomingoBRT(new Date('2026-08-11T15:00:00.000Z'))).toBe(6) // terça
+    expect(diasAteDomingoBRT(new Date('2026-08-10T15:00:00.000Z'))).toBe(7) // segunda
+    expect(diasAteDomingoBRT(new Date('2026-08-16T15:00:00.000Z'))).toBe(1) // domingo
+  })
+
+  /**
+   * 🔴 A meia-noite UTC engana: 02:00 UTC de quarta ainda é TERÇA às 23h em
+   * Brasília — contar pela data UTC daria a janela do dia errado.
+   */
+  it('a virada do dia é a de Brasília, não a UTC', () => {
+    expect(diasAteDomingoBRT(new Date('2026-08-12T02:00:00.000Z'))).toBe(6) // ainda terça em BRT
   })
 })

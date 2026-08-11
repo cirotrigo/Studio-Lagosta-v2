@@ -12,7 +12,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, RefreshCw, ExternalLink, Maximize2, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Calendar, Pencil, RefreshCw, ExternalLink, Maximize2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -20,7 +20,9 @@ import { useBancada } from '@/hooks/use-bancada'
 import { useFilaDoPlano } from '@/hooks/use-planos'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
 import { formatarQuandoBR, situacaoParaExibir } from '@/lib/planos/para-bancada'
-import { progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
+import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
+import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
+import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
 import type { BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
@@ -75,7 +77,39 @@ const COR_DO_PLANO: Record<StatusDoItem, string> = {
  * arquivo (histórico no git: commit que introduziu este comentário).
  */
 export function BancadaFila({ projectId }: { projectId: number }) {
-  const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, descartar } = useBancada(projectId)
+  const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, atualizar, descartar } =
+    useBancada(projectId)
+  const patchDoPlano = useAtualizarItemDoPlano(projectId)
+
+  /**
+   * Salva a edição do card: o store primeiro (a tela responde na hora) e, se o
+   * card veio do plano e o item ainda é editável lá, o servidor junto —
+   * `copyProposta`, `legenda` e a foto têm coluna no ItemDePlano; direção
+   * adicional e ajuste de foto são parâmetros de GERAÇÃO e ficam no navegador.
+   */
+  const salvarEdicao = React.useCallback(
+    (item: BancadaItem, e: EdicaoDoItem) => {
+      atualizar(item.id, {
+        copy: e.copy,
+        legenda: e.legenda ?? undefined,
+        pedido: e.pedido,
+        instrucaoImagem: e.instrucaoImagem,
+        referencias: e.referencias,
+      })
+      if (item.itemDePlanoId && item.planoId && itemEditavel(item.situacaoNoPlano ?? 'proposto')) {
+        const cena = e.referencias.find((r) => r.papel === 'subject')
+        patchDoPlano.mutate({
+          planoId: item.planoId,
+          itemId: item.itemDePlanoId,
+          copyProposta: e.copy,
+          legenda: e.legenda,
+          fotoDriveId: cena?.driveFileId ?? null,
+          fotoUrl: cena?.url ?? null,
+        })
+      }
+    },
+    [atualizar, patchDoPlano],
+  )
   /**
    * A leva combinada no servidor entra na MESMA fila — é o que faz o chat e a
    * bancada enxergarem o mesmo trabalho. A hidratação acontece dentro deste
@@ -124,6 +158,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           onConfirmarEstilo={() => confirmarEstilo(item)}
           onAgendar={(quando, situacao) => agendar(item, quando, situacao)}
           onRemover={() => descartar(item)}
+          onSalvarEdicao={(e) => salvarEdicao(item, e)}
         />
       ))}
     </div>
@@ -137,6 +172,7 @@ function Card({
   onConfirmarEstilo,
   onAgendar,
   onRemover,
+  onSalvarEdicao,
 }: {
   item: BancadaItem
   projectId: number
@@ -144,6 +180,7 @@ function Card({
   onConfirmarEstilo: () => void
   onAgendar: (quando: string, situacao: 'rascunho' | 'agendado') => void
   onRemover: () => void
+  onSalvarEdicao: (e: EdicaoDoItem) => void
 }) {
   const [quando, setQuando] = React.useState(() => paraInputs(item.quando))
   const ehCarrossel = item.tipo === 'carrossel'
@@ -161,6 +198,7 @@ function Card({
   // Prévia: só o que JÁ virou arte. Miniatura de referência não entra — ver a
   // foto crua em tela cheia não ajuda a decidir se a peça está boa.
   const [previewAberta, setPreviewAberta] = React.useState(false)
+  const [editando, setEditando] = React.useState(false)
   const [previewInicial, setPreviewInicial] = React.useState<number | undefined>()
   const slidesDaPreview: PreviewSlide[] = React.useMemo(() => {
     if (ehCarrossel) {
@@ -186,6 +224,15 @@ function Card({
 
   const doPlano = !!item.itemDePlanoId
   const situacaoNoPlano = situacaoParaExibir(item)
+  /**
+   * Peça avulsa em rascunho/erro é editável; carrossel não (a edição por slide
+   * é outro trabalho). Card do plano ainda exige que o ITEM seja editável lá —
+   * um `na-fila` local cai fora, senão o PATCH voltaria recusado.
+   */
+  const podeEditar =
+    !ehCarrossel &&
+    (item.status === 'rascunho' || item.status === 'erro') &&
+    (!doPlano || itemEditavel(situacaoNoPlano))
   const via = VIAS.find((v) => v.valor === (item.via ?? 'template'))
   /**
    * A via `template` monta a arte sobre um modelo já aprovado do cliente e não
@@ -383,6 +430,12 @@ function Card({
         {item.erro && <p className="text-xs text-destructive">{item.erro}</p>}
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
+          {podeEditar && (
+            <Button size="sm" variant="outline" onClick={() => setEditando(true)}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Editar
+            </Button>
+          )}
           {(item.status === 'rascunho' || item.status === 'erro') &&
             (viaTemplate ? (
               <div className="w-full space-y-1.5">
@@ -513,6 +566,17 @@ function Card({
         </div>
       </div>
 
+      {podeEditar && (
+        <BancadaEditarItem
+          item={item}
+          aberto={editando}
+          onOpenChange={setEditando}
+          onSalvar={(e) => {
+            onSalvarEdicao(e)
+            setEditando(false)
+          }}
+        />
+      )}
       <BancadaPreview
         slides={slidesDaPreview}
         inicial={previewInicial}
