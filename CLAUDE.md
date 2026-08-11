@@ -1898,6 +1898,38 @@ chat, `generate-ai-text`, `find-similar-entries` e a dica de copy da F3.
   e o Vector saudável (136 vetores) — ou seja, a busca funcionava e só o cache
   estava morto. Ao diagnosticar, teste os dois endpoints antes de concluir.
 
+### O desfecho da copy fecha em TRÊS superfícies (11/08/2026)
+
+Desde que `propor-semana` passou a **emitir** a copy como sugestão, editar essa
+copy depois tem de FECHAR aquela proposta — nunca abrir uma decisão nova.
+
+- 🔴 **São três os pontos, e o de maior volume é o agendamento**:
+  `ajustarArte` (chat), o PATCH da página (autosave do editor) e
+  `registrarCopyDoPost` (dentro de `agendarPost` — todo post que entra na
+  agenda passa por ele). Os três chamam `fecharDicaDeCopyDaPagina`
+  (`src/lib/aprendizado/fechar-copy-por-pagina.ts`) e só caem em
+  `registrarDecisaoSemSugestao` quando o resultado é `sem-plano`.
+  Abrir a linha paralela faria o mesmo texto virar dois sinais com sentidos
+  opostos **e** deixaria a proposta expirar — inflando o denominador do KPI
+  duas vezes. É o defeito que a F1 já corrigiu uma vez no slot (`e3236624`).
+- **O vínculo é `pageId`/`generationId`, nunca `postId`**: o `ItemDePlano` só
+  recebe `postId` quando transiciona para `agendado`, o que acontece DEPOIS de
+  o post existir — no instante da captura aquele campo ainda está vazio.
+- **A PÁGINA vence a arte na busca do item**, porque `ajustar-arte` cria uma
+  Generation nova a cada ajuste; casar por arte só vale para a via `ia`. E a
+  busca **não olha `sourcePageId`** — editar a página-MODELO não é editar a
+  copy proposta para uma peça.
+- **`erro` NÃO cai na escolha absoluta.** Sem saber se havia dica, abrir a
+  linha paralela pode ser justamente o defeito; perder um sinal é o preço
+  barato.
+- 🔴 **Teste desta captura precisa de copy em `fieldValues.slotValues`.** Sem
+  ela `agendarPost` resolve `copyFinal` como nulo e `registrarCopyDoPost` sai
+  na primeira linha — o teste passa sem exercitar nada. Aconteceu de verdade em
+  11/08; a prova está em `scripts/validar-desfecho-no-agendamento.ts`.
+- **Fechado ANTES de o corpus acumular, de propósito**: o volume era zero
+  porque `propor-semana` tinha nascido no dia anterior. Captura errada não se
+  conserta retroativamente — a mesma razão de registrar a sugestão na EMISSÃO.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

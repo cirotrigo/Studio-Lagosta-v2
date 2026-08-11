@@ -20,6 +20,7 @@
 
 import { registrarDecisaoSemSugestao, registrarDesfecho } from './captura'
 import { desfechoPeloDiff, type DiffDeCopy } from './diff-copy'
+import { caiNaEscolhaPropria, fecharDicaDeCopyDaPagina } from './fechar-copy-por-pagina'
 import type { Superficie } from './vocabulario'
 
 /** Chave de idempotência da decisão de slot de um post. Um post, uma linha. */
@@ -132,11 +133,40 @@ export interface CopyDoPost {
  * de diff, nunca "não mudou": é a regra central de `diff-copy.ts`, e trocá-la
  * por um `mudou: false` ensinaria ao corpus que a sugestão estava perfeita
  * exatamente nas páginas que ninguém conseguiu ler.
+ *
+ * ── A TERCEIRA SUPERFÍCIE ──────────────────────────────────────────────────
+ * Este é o ponto de MAIOR volume dos três: todo post que entra na agenda passa
+ * por aqui. Quando a peça nasceu de um item de plano, a copy dela já foi
+ * registrada como PROPOSTA por `propor-semana` — então o que se grava é o
+ * DESFECHO daquela proposta, não uma decisão nova. Abrir a linha paralela
+ * faria o mesmo texto virar dois sinais com sentidos opostos e deixaria a
+ * proposta original expirar, inflando o denominador do KPI duas vezes.
+ *
+ * O vínculo usado é `pageId`/`generationId`, e não `postId`: o item só recebe
+ * `postId` quando transiciona para `agendado`, o que acontece DEPOIS de o post
+ * existir — no instante desta chamada aquele campo ainda está vazio.
+ *
+ * Peça que não veio de plano continua caindo na decisão absoluta, pelo motivo
+ * de sempre: sem proposta registrada antes, chamar isto de "sugestão recusada"
+ * inventaria um denominador que não existe.
  */
 export async function registrarCopyDoPost(entrada: CopyDoPost): Promise<void> {
   if (!entrada.copyFinal || Object.keys(entrada.copyFinal).length === 0) return
 
   const diff = entrada.diff && !entrada.diff.ilegivel ? entrada.diff : null
+
+  const fechamento = await fecharDicaDeCopyDaPagina({
+    projectId: entrada.projectId,
+    pageId: entrada.pageId ?? null,
+    generationId: entrada.generationId ?? null,
+    copyFinal: entrada.copyFinal,
+    decididoPor: entrada.decididoPor ?? null,
+    superficie: entrada.superficie ?? 'chat',
+    postId: entrada.postId,
+  })
+  // Só `sem-plano` cai na escolha absoluta: em `erro` não dá para saber se
+  // havia dica, e perder um sinal é mais barato que gravar a linha paralela.
+  if (!caiNaEscolhaPropria(fechamento)) return
 
   await registrarDecisaoSemSugestao({
     projectId: entrada.projectId,
