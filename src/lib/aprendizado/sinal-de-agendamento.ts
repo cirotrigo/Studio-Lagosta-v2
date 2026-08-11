@@ -21,51 +21,16 @@
 import { registrarDecisaoSemSugestao, registrarDesfecho } from './captura'
 import { desfechoPeloDiff, type DiffDeCopy } from './diff-copy'
 import { caiNaEscolhaPropria, fecharDicaDeCopyDaPagina } from './fechar-copy-por-pagina'
+import { chaveDaCopy, chaveDoSlot, slotEmBrasilia } from './sinal-de-agendamento-contrato'
 import type { Superficie } from './vocabulario'
 
-/** Chave de idempotência da decisão de slot de um post. Um post, uma linha. */
-export function chaveDoSlot(postId: string): string {
-  return `slot:post:${postId}`
-}
-
-/** Idem para a copy que foi de fato comprometida no post. */
-export function chaveDaCopy(postId: string): string {
-  return `copy:post:${postId}`
-}
-
-const FUSO = 'America/Sao_Paulo'
-
 /**
- * Quando o post vai ao ar, em horário de Brasília e já quebrado nos campos que
- * a cadência precisa.
- *
- * Guardar o `Date` cru obrigaria todo consumidor a repetir a conversão de fuso
- * — e é assim que aparece "story das 21h" que na verdade é meia-noite UTC.
+ * A conversão de fuso e as chaves moram no contrato PURO, e seguem exportadas
+ * daqui: elas são testadas sem banco, e este arquivo arrasta o Prisma por dois
+ * caminhos. Quem importa só essas três deve buscá-las direto no contrato — é o
+ * que quebra o ciclo com `sinal-de-copy-do-plano`.
  */
-export function slotEmBrasilia(quando: Date): {
-  data: string
-  hora: string
-  diaDaSemana: string
-  iso: string
-} {
-  const partes = new Intl.DateTimeFormat('pt-BR', {
-    timeZone: FUSO,
-    weekday: 'long',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(quando)
-  const p = (tipo: string) => partes.find((x) => x.type === tipo)?.value ?? ''
-  return {
-    data: `${p('year')}-${p('month')}-${p('day')}`,
-    hora: `${p('hour')}:${p('minute')}`,
-    diaDaSemana: p('weekday'),
-    iso: quando.toISOString(),
-  }
-}
+export { chaveDaCopy, chaveDoSlot, slotEmBrasilia } from './sinal-de-agendamento-contrato'
 
 export interface SlotDoPost {
   projectId: number

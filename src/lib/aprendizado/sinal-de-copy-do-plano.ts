@@ -33,7 +33,10 @@ import { db } from '@/lib/db'
 import { registrarDesfecho, registrarSugestoes, sugestoesJaEmitidas } from './captura'
 import { chaveDeSugestao } from './chaves'
 import { decidirDesfechoDaCopy } from './fechar-copy-por-pagina-contrato'
-import { slotEmBrasilia } from './sinal-de-agendamento'
+// Do contrato PURO, não do serviço: `sinal-de-agendamento` importa
+// `fechar-copy-por-pagina`, que importa este arquivo — pelo serviço isto seria
+// um ciclo.
+import { slotEmBrasilia } from './sinal-de-agendamento-contrato'
 import type { Superficie } from './vocabulario'
 
 /**
