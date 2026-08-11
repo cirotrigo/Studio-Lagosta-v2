@@ -46,6 +46,9 @@ import {
 } from '@/stores/bancada-store'
 import { ESCOPOS, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { useAprendizado } from '@/hooks/use-aprendizado'
+import { useRevisaoOrtografica } from '@/hooks/use-revisao-ortografica'
+import { aplicarSugestao, type Suspeita } from '@/lib/ai/revisao-ortografica-contrato'
+import { AvisoDeRevisao, ConfirmacaoDeRevisao } from '@/components/bancada/revisao-ortografica'
 
 type Formato = 'story' | 'feed' | 'quadrado'
 
@@ -140,6 +143,55 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   )
 
   /**
+   * REVISÃO ORTOGRÁFICA — segunda camada (a primeira é o corretor nativo do
+   * navegador, ligado explicitamente nos campos abaixo).
+   *
+   * Roda em segundo plano ~800ms depois da última tecla, com o vocabulário da
+   * marca no prompt para não acusar "chopp", "picanha" nem "By Rock". Quando a
+   * pessoa clica em adicionar, o resultado JÁ está na tela — o clique não
+   * espera nada. Falha da revisão é silêncio absoluto.
+   *
+   * Só a copy que vai IMPRESSA na arte (e a legenda que vai no feed) entra:
+   * `pedido` e `instrucao` são direção para o modelo, não texto publicado.
+   */
+  const textosParaRevisao = React.useMemo(
+    () => (ehCarrossel ? slidesDaCopy.flatMap((s) => s.blocos) : blocos),
+    [ehCarrossel, slidesDaCopy, blocos],
+  )
+  const { suspeitas } = useRevisaoOrtografica({
+    projectId,
+    blocos: textosParaRevisao,
+    legenda: ehCarrossel ? legenda : null,
+  })
+  const [dispensadas, setDispensadas] = React.useState<string[]>([])
+  const suspeitasPendentes = React.useMemo(
+    () => suspeitas.filter((s) => !dispensadas.includes(s.trecho.toLowerCase())),
+    [suspeitas, dispensadas],
+  )
+  const [confirmacaoAberta, setConfirmacaoAberta] = React.useState(false)
+
+  /**
+   * A correção é do USUÁRIO: ele clicou na sugestão. Vale para todos os campos
+   * de uma vez porque a revisão confere copy, slides e legenda juntos — e a
+   * mesma palavra costuma aparecer em mais de um deles.
+   */
+  const corrigir = React.useCallback((suspeita: Suspeita) => {
+    setCopyTexto((t) => aplicarSugestao(t, suspeita))
+    setLegenda((t) => aplicarSugestao(t, suspeita))
+    setCopyPorSlide((prev) => {
+      const proximo: Record<number, string> = {}
+      for (const [ordem, texto] of Object.entries(prev)) {
+        proximo[Number(ordem)] = aplicarSugestao(texto, suspeita)
+      }
+      return proximo
+    })
+  }, [])
+
+  const dispensar = React.useCallback((suspeita: Suspeita) => {
+    setDispensadas((atual) => [...atual, suspeita.trecho.toLowerCase()])
+  }, [])
+
+  /**
    * Slots já reservados por itens que estão na fila — sem isso, dois itens da
    * mesma leva nasceriam no mesmo horário e o operador só descobriria ao
    * agendar o segundo.
@@ -191,12 +243,19 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
     setDataManual('')
     setHoraManual('')
     setSlot('')
+    // O que foi ignorado valia para AQUELA copy. O próximo item começa do zero.
+    setDispensadas([])
     // Volta para o padrão da leva, não para "rotina": quem marcou a leva
     // inteira como campanha não deveria remarcar item a item.
     setEscopo(escopoPadrao)
   }
 
-  const adicionarNaFila = () => {
+  /**
+   * O gesto de adicionar, já decidido. Separado de `adicionarNaFila` porque a
+   * confirmação da revisão ortográfica entra ENTRE os dois: com suspeita
+   * pendente o clique abre o aviso, e é o botão do aviso que chama isto.
+   */
+  const executarAdicao = () => {
     if (impedimento) return
     const proposta = disponiveis.find((s) => s.scheduledDatetime === slot)
     const motivo = proposta?.motivo
@@ -282,6 +341,25 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
     limpar()
   }
 
+  /**
+   * O clique do botão. **Nunca bloqueia**: com suspeita pendente ele abre um
+   * aviso curto cujo botão padrão, à direita, segue em frente.
+   *
+   * O portão fica AQUI, e não no "Gerar" do card, porque este é o último
+   * momento em que a copy é editável — depois de montada, ela não muda mais
+   * (`bancada-fila.tsx` só oferece gerar/agendar). Um "voltar e corrigir" no
+   * card não teria para onde voltar. E nada é gerado entre um ponto e outro,
+   * então o aviso continua chegando antes do primeiro crédito gasto.
+   */
+  const adicionarNaFila = () => {
+    if (impedimento) return
+    if (suspeitasPendentes.length > 0) {
+      setConfirmacaoAberta(true)
+      return
+    }
+    executarAdicao()
+  }
+
   return (
     <div className="space-y-5 rounded-xl border border-border/60 bg-card/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -335,13 +413,27 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
             <Label htmlFor="copy-bancada">Copy (um bloco por linha)</Label>
             <span className="text-xs text-muted-foreground">{blocos.length} blocos</span>
           </div>
+          {/* CAMADA 1 da conferência: o corretor do navegador, de graça e
+              instantâneo (sublinhado vermelho + sugestão no clique direito).
+              `spellCheck` e `lang` são DECLARADOS, não herdados: o padrão do
+              `<textarea>` já é conferir, mas ninguém no repo dizia isso, e o
+              dicionário depende do `lang` — que hoje vem do `<html lang="pt-br">`
+              lá em cima. Declarado aqui, o campo não fica à mercê de uma
+              mudança no layout raiz. */}
           <Textarea
             id="copy-bancada"
             value={copyTexto}
             onChange={(e) => setCopyTexto(e.target.value)}
             rows={3}
+            spellCheck
+            lang="pt-BR"
             placeholder={'HOJE TEM\nHAPPY HOUR\nchope em dobro até 20h'}
             className="resize-none font-mono text-sm"
+          />
+          <AvisoDeRevisao
+            suspeitas={suspeitasPendentes}
+            onCorrigir={corrigir}
+            onDispensar={dispensar}
           />
         </div>
       )}
@@ -437,6 +529,8 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
                       setCopyPorSlide((prev) => ({ ...prev, [s.ordem]: e.target.value }))
                     }
                     rows={2}
+                    spellCheck
+                    lang="pt-BR"
                     placeholder={s.ordem === 2 ? 'O QUE ROLA\nna segunda do rock' : 'CHOPE EM DOBRO\naté 20h'}
                     className="resize-none font-mono text-sm"
                   />
@@ -459,8 +553,18 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
             value={legenda}
             onChange={(e) => setLegenda(e.target.value.slice(0, 2200))}
             rows={2}
+            spellCheck
+            lang="pt-BR"
             placeholder="A legenda que vai no feed junto com o carrossel."
             className="resize-none"
+          />
+          {/* No carrossel a copy está espalhada pelos slides — o aviso mora
+              aqui embaixo, depois do último campo de texto, em vez de repetido
+              slide a slide. */}
+          <AvisoDeRevisao
+            suspeitas={suspeitasPendentes}
+            onCorrigir={corrigir}
+            onDispensar={dispensar}
           />
         </div>
       )}
@@ -593,6 +697,17 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
           Adicionar à fila
         </Button>
       </div>
+
+      <ConfirmacaoDeRevisao
+        suspeitas={suspeitasPendentes}
+        aberta={confirmacaoAberta}
+        onOpenChange={setConfirmacaoAberta}
+        onSeguir={() => {
+          setConfirmacaoAberta(false)
+          executarAdicao()
+        }}
+        rotuloSeguir="Adicionar mesmo assim"
+      />
     </div>
   )
 }

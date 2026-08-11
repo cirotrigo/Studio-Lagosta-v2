@@ -283,6 +283,11 @@ export function GalleryItem({
       {/* Main Content Area */}
       <a
         href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
+        // Qual arte é esta, para quem lê o slide ativo do lightbox. O
+        // PhotoSwipe guarda o próprio `<a>` em `slide.data.element`, então o
+        // dataset é o caminho mais curto entre o card e a barra de feedback —
+        // sem índice paralelo, que sairia do lugar a cada filtro da galeria.
+        data-generation-id={id}
         data-pswp-src={resolvedAssetUrl ?? undefined}
         data-pswp-width={pswpLargura}
         data-pswp-height={pswpAltura}

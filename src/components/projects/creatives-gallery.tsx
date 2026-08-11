@@ -29,6 +29,10 @@ import {
   CompareImprovementDialog,
   type CompareTarget,
 } from '@/components/creatives/compare-improvement-dialog'
+import {
+  FeedbackDeArte,
+  FeedbackDeArteFlutuante,
+} from '@/components/creatives/feedback-de-arte'
 
 interface TemplateInfo {
   id: number
@@ -519,11 +523,23 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   const gridDensityConfig = GRID_DENSITY_CONFIG[gridDensity]
 
+  /**
+   * A arte que está aberta no lightbox — é dela que a barra de feedback fala.
+   *
+   * O id vem do `data-generation-id` do próprio card (o PhotoSwipe entrega o
+   * `<a>` do slide ativo), e não de um índice na lista: a lista se refiltra
+   * embaixo do lightbox aberto e um índice apontaria para a arte errada.
+   */
+  const [arteAberta, setArteAberta] = React.useState<string | null>(null)
+
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
     childSelector: 'a[data-pswp-src]',
     dependencies: [filtered.length, isLoading, viewMode, gridDensity],
     enabled: shouldEnablePhotoSwipe,
+    onSlideAtivo: React.useCallback((elemento: HTMLElement | null) => {
+      setArteAberta(elemento?.dataset?.generationId ?? null)
+    }, []),
   })
 
   const getGenerationMeta = React.useCallback(
@@ -1320,6 +1336,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               Nenhum preview disponível para esta geração.
             </div>
           )}
+          {/* Mesmo rodapé do lightbox: esta prévia é a outra porta pela qual a
+              arte abre grande (vídeo, arte ainda sem asset final). */}
+          {preview?.id && preview?.url && (
+            <FeedbackDeArte generationId={preview.id} superficie="galeria" />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1370,6 +1391,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         }}
         onImproveAgain={handleImproveAgain}
       />
+
+      {/* Barra "Gostei / Preciso melhorar" sobre o lightbox. Fica no rodapé
+          porque topo e laterais são do PhotoSwipe (fechar, contador, setas). */}
+      <FeedbackDeArteFlutuante generationId={arteAberta} superficie="galeria" />
     </>
   )
 }

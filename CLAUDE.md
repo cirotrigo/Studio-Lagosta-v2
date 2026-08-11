@@ -1503,6 +1503,56 @@ Quem EMITE proposta agora registra (`sugerirPosts` → `slot`, `buscarNoAcervo` 
   F0.2 dizendo que ninguém preenche está superada — o que a proibia era não
   existir ainda quem definisse "sugestão".
 
+### Feedback de arte: "Gostei" / "Preciso melhorar" (11/08/2026)
+
+O par que faltava do registro atômico. Toda geração já grava
+`{prompt, refs, params}` em `Generation.fieldValues` — COMO a arte nasceu —, e
+este sinal diz se ela prestou, amarrado ao prompt exato que a produziu. Desde
+que os vereditos automáticos foram desligados (crivo por atraso, QA por falso
+negativo), é a única medida de qualidade que não é palpite. Serviço em
+`src/lib/aprendizado/feedback-de-arte.ts`, rota
+`POST|GET /api/generations/[id]/feedback`, UI em
+`src/components/creatives/feedback-de-arte.tsx`, relatório pela tool
+`ver-feedback-das-artes`.
+
+- **Um clique resolve, nada bloqueia, nada atrasa, o texto é opcional.** São as
+  quatro regras do desenho, e todas vieram do crivo: porta no fim do fluxo vira
+  pedágio, e pedágio se paga sem ler. "Gostei" grava e não abre nada; "preciso
+  melhorar" JÁ grava o veredito no clique e só então abre a caixa de texto —
+  quem fechar sem escrever deixou o sinal mais importante.
+- **A revisão mora no SERVIÇO, não no núcleo da captura.**
+  `registrarDecisaoSemSugestao` faz `upsert` com `update: {}` (proposta que
+  existe não é reescrita), o que ignoraria a segunda opinião. Aqui a última
+  ação explícita vence, por compare-and-set no `updatedAt` — uma linha por
+  arte, `chave = arte-feedback:gen:<generationId>`, `revisoes` contando as
+  reescritas.
+- **É decisão SEM sugestão** (`tipo: 'arte'`, `desfecho: 'escolha-propria'`): o
+  sistema não propôs "esta arte está boa". Fica fora do denominador da taxa de
+  aceitação sem precisar de filtro.
+- **O espelho em `Generation.fieldValues.feedback` é MERGE verificado** (padrão
+  do `fieldValues.crivo`) e é conveniência de leitura — a verdade é o
+  `LearningSignal`. Falhar ali é log.
+- **Só existe com `generationId`**: arte sem Generation não tem prompt atrás, e
+  feedback sem prompt não ensina nada.
+- 🔴 **O PhotoSwipe escuta `keydown` no DOCUMENT e não olha quem tem foco.**
+  Seta ← → trocaria de arte no meio da frase digitada (e a troca zera o campo,
+  porque o estado é por arte); Esc fecharia o lightbox junto. A barra flutuante
+  para a propagação do teclado. Vale para qualquer campo de texto sobre o
+  lightbox.
+- **A barra do lightbox é IRMÃ, não filha do `.pswp`**: portal para o
+  `document.body` com `zIndex: 100001` em estilo INLINE (o
+  `--pswp-root-z-index` do pacote é 100000, e classe arbitrária de Tailwind já
+  se provou não gerar CSS aqui). Entrar por `uiRegister` custaria os providers
+  do app e ainda esbarraria na regra `[class*="container"]` do `globals.css`.
+- **`usePhotoSwipe` ganhou `onSlideAtivo(elemento)`**, lido por REF e fora das
+  dependências do efeito: função nova a cada render do chamador destruiria e
+  recriaria o lightbox na cara de quem está olhando. Qual arte está aberta sai
+  do `data-generation-id` do próprio card, nunca de um índice na lista — a
+  lista se refiltra por baixo do lightbox aberto.
+- **A prévia da bancada resolve o `generationId` pela FILA** (a store guarda
+  `generationId` e `projectId` por item e por slide), porque ela recebe URLs e
+  não ids. URL que não é da fila simplesmente não mostra o rodapé.
+
 ### Destilação: pilares, campanhas retroativas e cadência v2 (F2, 11/08/2026)
 
 A F2 transforma o registro bruto da F1 em coisas que a GERAÇÃO pode usar. O

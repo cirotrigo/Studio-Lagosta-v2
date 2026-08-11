@@ -34,8 +34,17 @@ export type TipoDeSinal =
   | 'foto'
   /** A página-modelo que serve de base para a arte. */
   | 'modelo'
+  /**
+   * A ARTE PRONTA, julgada por gente: "gostei" / "preciso melhorar".
+   *
+   * É o par que faltava do registro atômico — toda geração já grava
+   * `{prompt, refs, params}` em `Generation.fieldValues`, e este sinal amarra
+   * a opinião humana ao prompt exato que a produziu. Também é o KPI honesto de
+   * qualidade desde que os vereditos por IA foram desligados (10-11/08/2026).
+   */
+  | 'arte'
 
-export const TIPOS_DE_SINAL: TipoDeSinal[] = ['slot', 'copy', 'foto', 'modelo']
+export const TIPOS_DE_SINAL: TipoDeSinal[] = ['slot', 'copy', 'foto', 'modelo', 'arte']
 
 /**
  * Como a proposta terminou.
@@ -76,8 +85,17 @@ export type Superficie =
   | 'agenda'
   /** Decidido por mecanismo, não por gente (a varredura que expira propostas). */
   | 'sistema'
+  /** A galeria de criativos — onde a arte pronta é aberta em tamanho grande. */
+  | 'galeria'
 
-export const SUPERFICIES: Superficie[] = ['bancada', 'chat', 'editor', 'agenda', 'sistema']
+export const SUPERFICIES: Superficie[] = [
+  'bancada',
+  'chat',
+  'editor',
+  'agenda',
+  'sistema',
+  'galeria',
+]
 
 /**
  * Força do desfecho — a ordem em que uma revisão pode SOBRESCREVER a anterior.

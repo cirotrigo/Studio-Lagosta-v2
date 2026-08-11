@@ -22,6 +22,16 @@ interface UsePhotoSwipeOptions {
   childSelector?: string
   dependencies?: unknown[]
   enabled?: boolean
+  /**
+   * O elemento (o `<a>` do card) do slide que está na tela — e `null` quando o
+   * lightbox fecha. É por aqui que a UI de fora sabe QUAL arte está aberta,
+   * sem precisar entrar no DOM do PhotoSwipe.
+   *
+   * Fica FORA das dependências do efeito de propósito (é lido por ref): uma
+   * função nova a cada render do chamador destruiria e recriaria a instância do
+   * lightbox a cada teclada, fechando-o na cara de quem estava olhando.
+   */
+  onSlideAtivo?: (elemento: HTMLElement | null) => void
 }
 
 export function usePhotoSwipe({
@@ -29,8 +39,13 @@ export function usePhotoSwipe({
   childSelector = 'a',
   dependencies = [],
   enabled = true,
+  onSlideAtivo,
 }: UsePhotoSwipeOptions) {
   const lightboxRef = useRef<PhotoSwipeLightbox | null>(null)
+  const aoTrocarSlide = useRef(onSlideAtivo)
+  useEffect(() => {
+    aoTrocarSlide.current = onSlideAtivo
+  })
 
   useEffect(() => {
     // Clean up previous instance
@@ -107,6 +122,17 @@ export function usePhotoSwipe({
         photoSwipeOpenState = false
         lastClosedAt = Date.now()
       })
+
+      // Qual arte está na tela. `change` cobre a navegação e `afterInit` a
+      // abertura — sem o segundo, a UI de fora só apareceria no segundo slide.
+      const anunciarSlide = () => {
+        const slide = lightboxRef.current?.pswp?.currSlide
+        const elemento = (slide?.data?.element as HTMLElement | undefined) ?? null
+        aoTrocarSlide.current?.(elemento)
+      }
+      lightboxRef.current.on('afterInit', anunciarSlide)
+      lightboxRef.current.on('change', anunciarSlide)
+      lightboxRef.current.on('close', () => aoTrocarSlide.current?.(null))
 
       // Miniatura como fundo enquanto a arte grande carrega.
       //
@@ -192,6 +218,10 @@ export function usePhotoSwipe({
     return () => {
       if (timer) clearTimeout(timer)
       stopActiveVideos()
+      // Instância destruída com o lightbox aberto (troca de aba, filtro da
+      // galeria) não dispara `close` — sem isto a UI de fora ficaria pendurada
+      // apontando para uma arte que já não está na tela.
+      aoTrocarSlide.current?.(null)
       if (lightboxRef.current) {
         lightboxRef.current.destroy()
         lightboxRef.current = null
