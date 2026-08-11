@@ -9,6 +9,10 @@ import {
 } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 import {
+  blocosDaEscolha,
+  fecharDicaDeCopyDoItem,
+} from '@/lib/aprendizado/sinal-de-copy-do-plano'
+import {
   DESFECHOS,
   SUPERFICIES,
   exigeSugestao,
@@ -56,6 +60,17 @@ const bodySchema = z
      * a coluna é única GLOBAL, e um `item.id` cru colidiria entre projetos.
      */
     chave: z.string().min(1).max(120).optional(),
+    /**
+     * O item de plano que este card representa, quando ele veio de uma leva.
+     *
+     * É o que evita a CONTAGEM DUPLA da copy: item que recebeu dica de
+     * `propor-semana` tem uma sugestão de texto em aberto, e registrar o mesmo
+     * texto como escolha absoluta criaria dois sinais com sentidos opostos
+     * sobre a mesma coisa. Com este campo, o servidor fecha a dica comparando
+     * o texto proposto com o final (`fecharDicaDeCopyDoItem`) e só cai na
+     * escolha absoluta quando não havia dica nenhuma.
+     */
+    itemDePlanoId: z.string().min(1).max(64).optional(),
     postId: z.string().min(1).max(64).optional(),
     generationId: z.string().min(1).max(64).optional(),
     pageId: z.string().min(1).max(64).optional(),
@@ -144,6 +159,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
         { error: 'Decisão sem sugestão precisa de "escolhido" — é a metade que dá o corpus.' },
         { status: 400 },
       )
+    }
+
+    /**
+     * Copy de um card que veio de uma leva: se houve DICA, o que se registra é
+     * o desfecho dela — nunca uma decisão nova. O desfecho é calculado aqui,
+     * comparando o texto proposto com o que a pessoa mandou gerar; a tela não
+     * declara nada (mesma regra de `avaliarSlotSugerido`).
+     */
+    if (tipo === 'copy' && corpo.itemDePlanoId) {
+      const fechamento = await fecharDicaDeCopyDoItem({
+        projectId: id,
+        itemDePlanoId: corpo.itemDePlanoId,
+        copyFinal: blocosDaEscolha(corpo.escolhido),
+        decididoPor: dbUser?.id,
+        superficie,
+        generationId: corpo.generationId,
+        postId: corpo.postId,
+      })
+      // `sem-dica` é o caso comum (item montado na bancada, leva anterior à
+      // dica de copy) e cai no registro de sempre, logo abaixo.
+      if (fechamento !== 'sem-dica') {
+        return NextResponse.json({ ok: fechamento !== 'erro', resultado: fechamento })
+      }
     }
 
     const sinalId = await registrarDecisaoSemSugestao({
