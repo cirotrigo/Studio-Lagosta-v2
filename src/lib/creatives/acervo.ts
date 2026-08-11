@@ -243,10 +243,24 @@ async function registrarProposta(
 }
 
 /** Listagem crua da pasta, para projetos sem catálogo. */
-/** Até onde a listagem crua desce. O acervo real usa "07_bebidas/chopp". */
-const PROFUNDIDADE_MAXIMA = 2
-/** Teto de pastas visitadas — cada uma é uma chamada ao Drive. */
-const PASTAS_VISITADAS_MAX = 60
+/**
+ * Até onde a listagem crua desce.
+ *
+ * Eram 2, e não bastava: o Wine Vix guarda o almoço executivo em
+ * `Executivo/Principais/Ancho` — TRÊS níveis —, e as 77 fotos de lá eram
+ * invisíveis no seletor com a pasta configurada certa. Medido nos 8 clientes:
+ * 5 têm pasta de 3º nível (Seu Quinto 17, TERO 11, Quintal 8, Wine Vix 7,
+ * Real Gelateria 5). 4 níveis cobre todos com folga.
+ */
+const PROFUNDIDADE_MAXIMA = 4
+/**
+ * Teto de pastas visitadas — cada uma é uma chamada ao Drive.
+ *
+ * Eram 60, abaixo do acervo real: O Quintal tem 61 pastas e já era cortado, e
+ * By Rock (161) e Seu Quinto (155) seriam truncados pela metade se caíssem no
+ * fallback. 250 cobre o maior de hoje com margem.
+ */
+const PASTAS_VISITADAS_MAX = 250
 
 /**
  * Listagem crua da pasta, para projetos sem catálogo.

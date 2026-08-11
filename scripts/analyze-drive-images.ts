@@ -94,12 +94,22 @@ function fetchBuffer(url: string): Promise<Buffer> {
 }
 
 // ─── Drive Helpers ───────────────────────────────────────────────────
-async function listSubfolders(parentId: string, depth = 2, prefix = ''): Promise<{ id: string; name: string }[]> {
+/**
+ * ⚠️ `depth = 4`, não 2. Com 2, o almoço executivo do Wine Vix
+ * (`Executivo/Principais/Ancho`) ficava fora do catálogo — 77 fotos que o
+ * cliente tem e o sistema não enxergava. Medido nos 8 clientes: 5 usam 3º
+ * nível (Seu Quinto 17 pastas, TERO 11, Quintal 8, Wine Vix 7, Real
+ * Gelateria 5). Catálogo gerado com depth 2 está incompleto e precisa ser
+ * regerado — o script é incremental, então basta rodar de novo.
+ */
+async function listSubfolders(parentId: string, depth = 4, prefix = ''): Promise<{ id: string; name: string }[]> {
   const drive = getDrive()
   const res = await drive.files.list({
     q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: 'files(id, name)',
-    pageSize: 50,
+    // 50 era teto silencioso: pasta com mais de 50 subpastas perdia o resto
+    // sem aviso (By Rock tem 161 pastas no total, Seu Quinto 155).
+    pageSize: 200,
   })
   const folders: { id: string; name: string }[] = []
   for (const f of res.data.files ?? []) {
