@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { updateTemplateSchema } from '@/lib/validations/studio'
 import type { Prisma } from '@/lib/prisma-types'
-import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { PostStatus } from '../../../../../prisma/generated/client'
 
@@ -49,7 +49,7 @@ export async function GET(
   }
 
   // Verificar se o usuário tem acesso ao projeto (dono ou membro de organização)
-  if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
+  if (!hasProjectReadAccess(await withProjectOwner(template.Project), { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
@@ -98,7 +98,7 @@ export async function PUT(
   }
 
   // Verificar se o usuário tem permissão de escrita no projeto
-  if (!hasProjectWriteAccess(existing.Project, { userId, orgId })) {
+  if (!hasProjectWriteAccess(await withProjectOwner(existing.Project), { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
@@ -410,7 +410,7 @@ export async function DELETE(
   }
 
   // Verificar se o usuário tem permissão de escrita no projeto
-  if (!hasProjectWriteAccess(existing.Project, { userId, orgId })) {
+  if (!hasProjectWriteAccess(await withProjectOwner(existing.Project), { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 

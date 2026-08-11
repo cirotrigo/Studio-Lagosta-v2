@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { hasProjectReadAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, withProjectOwner } from '@/lib/projects/access'
 import { PostStatus } from '../../../../../../prisma/generated/client'
 
 export async function GET(
@@ -40,7 +40,7 @@ export async function GET(
     return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
   }
 
-  if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
+  if (!hasProjectReadAccess(await withProjectOwner(template.Project), { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 

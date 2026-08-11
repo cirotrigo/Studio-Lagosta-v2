@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
-import { hasProjectReadAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, withProjectOwner } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -51,7 +51,7 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    if (!hasProjectReadAccess(project, { userId: clerkUserId, orgId })) {
+    if (!hasProjectReadAccess(await withProjectOwner(project), { userId: clerkUserId, orgId })) {
       console.log('[CREATIVES API] User does not have access - returning 403')
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }

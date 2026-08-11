@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import { resolveOwnerClerkId } from '@/lib/projects/access'
 import { validateUserAuthentication } from '@/lib/auth-utils'
 import { validateCreditsForFeature, deductCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
@@ -64,7 +65,11 @@ export async function POST(request: Request) {
       where: { id: validated.projectId },
     })
 
-    if (!project || project.userId !== userId) {
+    // `Project.userId` é o id INTERNO do User e `userId` vem do Clerk — ver o
+    // comentário de espaços de id em src/lib/projects/access.ts. Esta rota não
+    // tem ramo de organização, então a comparação quebrada a deixava inacessível
+    // para todo mundo, dono incluído.
+    if (!project || (await resolveOwnerClerkId(project.userId)) !== userId) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 

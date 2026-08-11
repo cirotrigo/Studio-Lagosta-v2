@@ -1,9 +1,14 @@
 import { db } from '@/lib/db'
+import {
+  isProjectOwner,
+  resolveOwnerClerkId,
+  type ProjectOwnerIdentity,
+} from '@/lib/projects/access'
 
 export type TemplateWithProject = Awaited<ReturnType<typeof fetchTemplateWithProject>>
 
 export async function fetchTemplateWithProject(templateId: number) {
-  return db.template.findUnique({
+  const template = await db.template.findUnique({
     where: { id: templateId },
     include: {
       Project: {
@@ -22,6 +27,17 @@ export async function fetchTemplateWithProject(templateId: number) {
       },
     },
   })
+  if (!template) return null
+  // Mesmo motivo de src/lib/projects/access.ts: `Project.userId` é o id INTERNO
+  // do User e o `userId` dos handlers é o clerkId. Ver o comentário de espaços
+  // de id lá — este módulo tinha a MESMA comparação quebrada.
+  return {
+    ...template,
+    Project: {
+      ...template.Project,
+      ownerClerkId: await resolveOwnerClerkId(template.Project.userId),
+    },
+  }
 }
 
 export function hasTemplateReadAccess(
@@ -42,7 +58,7 @@ export function hasTemplateReadAccess(
   if (template.createdBy === userId) return true
 
   // Acesso através do projeto: dono do projeto
-  if (template.Project.userId === userId) return true
+  if (isProjectOwner(template.Project, userId)) return true
 
   // Acesso através de organização
   if (!orgId) return false
@@ -67,7 +83,7 @@ export function hasTemplateWriteAccess(
   if (template.createdBy === userId) return true
 
   // Acesso através do projeto: dono do projeto
-  if (template.Project.userId === userId) return true
+  if (isProjectOwner(template.Project, userId)) return true
 
   // Acesso através de organização
   if (!orgId) return false

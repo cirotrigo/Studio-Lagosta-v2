@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { processarAprovacao } from '@/lib/posts/agenda-acoes'
 import { CreativeError } from '@/lib/creatives/errors'
 
@@ -46,7 +46,7 @@ export async function POST(
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(project, { userId: clerkUserId, orgId })) {
+    if (!hasProjectWriteAccess(await withProjectOwner(project), { userId: clerkUserId, orgId })) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 

@@ -3,7 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
-import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { LaterNotFoundError } from '@/lib/later/errors'
@@ -57,7 +57,7 @@ export async function GET(
     }
 
     if (
-      !hasProjectReadAccess(project, {
+      !hasProjectReadAccess(await withProjectOwner(project), {
         userId: clerkUserId,
         orgId,
       })
@@ -122,7 +122,7 @@ export async function PUT(
     }
 
     if (
-      !hasProjectWriteAccess(project, {
+      !hasProjectWriteAccess(await withProjectOwner(project), {
         userId: clerkUserId,
         orgId,
       })
@@ -463,7 +463,7 @@ export async function DELETE(
     }
 
     if (
-      !hasProjectWriteAccess(project, {
+      !hasProjectWriteAccess(await withProjectOwner(project), {
         userId: clerkUserId,
         orgId,
       })

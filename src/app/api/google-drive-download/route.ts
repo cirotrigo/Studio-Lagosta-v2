@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
-import { hasProjectReadAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, withProjectOwner } from '@/lib/projects/access'
 import { google } from 'googleapis'
 import { put } from '@vercel/blob'
 import { getImageInfo } from '@/lib/images/auto-crop'
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    if (!hasProjectReadAccess(project, { userId: clerkUserId, orgId })) {
+    if (!hasProjectReadAccess(await withProjectOwner(project), { userId: clerkUserId, orgId })) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
