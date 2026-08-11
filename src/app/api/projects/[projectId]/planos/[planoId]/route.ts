@@ -8,6 +8,7 @@ import {
 } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { atualizarPlano, lerPlano } from '@/lib/planos/plano-service'
+import { reconciliarPlano } from '@/lib/planos/reconciliar'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -58,6 +59,12 @@ export async function GET(
     if (!hasProjectReadAccess(r.project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
+
+    // Confere o que as artes viraram ANTES de responder: nada avisa o plano
+    // quando a fila durável termina uma geração (ela não conhece plano, e é de
+    // propósito), então sem isto a bancada mostraria "na fila" para sempre com
+    // a arte pronta na galeria ao lado. Nunca lança — ver `reconciliar.ts`.
+    await reconciliarPlano(r.id, planoId)
 
     const plano = await lerPlano(r.id, planoId)
     return NextResponse.json({ plano })
