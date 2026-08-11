@@ -292,15 +292,28 @@ REGRAS OBRIGATÓRIAS:
 5. Se for bebida (cerveja, chopp, drink, etc): menuCategory = "BEBIDAS"
 6. Responda APENAS o JSON, sem markdown`
 
-  const result = await model.generateContent([
+  /**
+   * Com o pool de workers, estourar o teto de taxa deixou de ser hipótese.
+   * Backoff exponencial só para 429/503 — erro de conteúdo ou de credencial
+   * não melhora esperando, e retentar seria queimar cota à toa.
+   */
+  const conteudo = [
     prompt,
-    {
-      inlineData: {
-        mimeType: 'image/jpeg',
-        data: imageBuffer.toString('base64'),
-      },
-    },
-  ])
+    { inlineData: { mimeType: 'image/jpeg', data: imageBuffer.toString('base64') } },
+  ]
+  let result
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      result = await model.generateContent(conteudo)
+      break
+    } catch (e: any) {
+      const msg = String(e?.message ?? '')
+      const limitado = /\b(429|503)\b|rate limit|quota|overloaded|unavailable/i.test(msg)
+      if (!limitado || tentativa >= 4) throw e
+      const espera = 2000 * 2 ** tentativa + Math.floor(Math.random() * 500)
+      await sleep(espera)
+    }
+  }
 
   const text = result.response.text().trim()
 
@@ -486,9 +499,20 @@ async function main() {
   let errors = 0
   let renamed = 0
 
-  for (const img of toProcess) {
-    const progress = `[${analyzed + 1}/${toProcess.length}]`
-    process.stdout.write(`  ${progress} ${img.folder}/${img.name}...`)
+  /**
+   * Pool de workers. Antes era um laço sequencial com sleep(1200) fixo, a
+   * ~11,5s por imagem MEDIDOS — 20 horas para as 6.300 fotos dos clientes sem
+   * catálogo. O tempo é quase todo espera de rede (thumbnail do Drive +
+   * Gemini), então concorrência resolve; o teto de taxa é tratado por retry.
+   */
+  const concorrencia = Math.min(Math.max(parseInt(opts.concurrency as string ?? '6', 10), 1), 16)
+  /** De quantas em quantas fotos o catálogo é salvo no meio do caminho. */
+  const SALVAR_A_CADA = 100
+  let proximo = 0
+  let desdeUltimoSalvamento = 0
+
+  const processarUm = async (img: (typeof toProcess)[number]) => {
+    const progress = `[${analyzed + errors + 1}/${toProcess.length}]`
 
     try {
       // Download thumbnail
@@ -531,17 +555,37 @@ async function main() {
 
       const menuLabel = result.menuItem ? ` → ${result.menuItem}` : ''
       const renameLabel = finalName !== img.name ? ` [renamed: ${finalName}]` : ''
-      console.log(` ✓${menuLabel}${renameLabel}`)
+      console.log(`  ${progress} ${img.folder}/${img.name} ✓${menuLabel}${renameLabel}`)
       analyzed++
-
-      // Rate limit: ~15 req/min for free tier
-      await sleep(1200)
     } catch (e: any) {
-      console.log(` ✗ ${e.message?.slice(0, 60)}`)
+      console.log(`  ${progress} ${img.folder}/${img.name} ✗ ${e.message?.slice(0, 60)}`)
       errors++
-      await sleep(2000)
+    }
+
+    /**
+     * Salvamento intermediário: sem ele, uma queda no meio de um acervo de
+     * 2.000 fotos joga fora horas de análise já paga. O catálogo é
+     * incremental por `driveFileId`, então salvar no meio é seguro.
+     */
+    desdeUltimoSalvamento++
+    if (desdeUltimoSalvamento >= SALVAR_A_CADA) {
+      desdeUltimoSalvamento = 0
+      catalog.lastUpdated = new Date().toISOString()
+      await saveCatalogToDrive(catalog, imagesFolderId).catch((e) =>
+        console.log(`  ⚠ salvamento parcial falhou: ${e.message?.slice(0, 60)}`),
+      )
+      console.log(`  … catálogo salvo com ${catalog.images.length} imagens`)
     }
   }
+
+  const worker = async () => {
+    while (proximo < toProcess.length) {
+      const img = toProcess[proximo++]
+      await processarUm(img)
+    }
+  }
+  console.log(`  (${concorrencia} em paralelo)\n`)
+  await Promise.all(Array.from({ length: concorrencia }, () => worker()))
 
   // 6. Save catalog to Drive
   console.log(`\n5. Saving catalog to Drive...`)
