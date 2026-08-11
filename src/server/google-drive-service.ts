@@ -21,6 +21,8 @@ const UPLOAD_TIMEOUT = 60_000
 const CACHE_TTL_MS = 10 * 60 * 1000
 const MAX_RETRIES = 3
 const RETRY_BASE_DELAY_MS = 500
+/** Quantas pastas cabem numa consulta `'a' in parents or 'b' in parents …`. */
+const PARENTS_PER_QUERY = 20
 
 interface ArtesFolderCacheEntry {
   folderId: string
@@ -356,6 +358,106 @@ export class GoogleDriveService {
       ),
     )
     return response.data as T
+  }
+
+  /**
+   * Sobrescreve o CONTEÚDO de um arquivo JSON que já existe (o catálogo de
+   * imagens). Não confundir com `uploadFileToFolder`, que CRIA arquivo novo com
+   * nome carimbado — usá-lo aqui deixaria dois catálogos na pasta.
+   *
+   * O stream nasce dentro do retry de propósito: `withRetry` reexecuta a
+   * closure, e um Readable já consumido subiria VAZIO na segunda tentativa —
+   * catálogo zerado sem erro nenhum.
+   */
+  async writeFileAsJson(fileId: string, data: unknown): Promise<void> {
+    this.ensureEnabled()
+
+    const conteudo = JSON.stringify(data, null, 2)
+
+    await this.withRetry('writeFileAsJson', async () =>
+      this.drive.files.update(
+        {
+          fileId,
+          media: { mimeType: 'application/json', body: Readable.from(Buffer.from(conteudo, 'utf8')) },
+          supportsAllDrives: true,
+          fields: 'id',
+        },
+        { timeout: UPLOAD_TIMEOUT },
+      ),
+    )
+  }
+
+  /**
+   * Lista os filhos de VÁRIAS pastas numa consulta só (`'a' in parents or
+   * 'b' in parents …`), com paginação completa.
+   *
+   * Existe por medição (11/08/2026, acervo real): uma consulta por pasta custa
+   * 324 chamadas e 78s no By Rock; em lotes de 20, 20 chamadas e 6,3s, com
+   * resultado idêntico (1.015 fotos). É o que faz uma varredura recursiva de
+   * acervo inteiro caber num cron.
+   *
+   * `pageSize` 1000 para arquivos e 200 para pastas — os defaults do Drive (e o
+   * 50 fixo de `listFiles`) truncam EM SILÊNCIO, que é como acervo some sem
+   * ninguém perceber.
+   */
+  async listChildrenOfFolders(
+    parentIds: string[],
+    mode: 'images' | 'folders',
+  ): Promise<Array<{ id: string; name: string; mimeType: string; createdTime?: string; parents: string[] }>> {
+    this.ensureEnabled()
+    if (parentIds.length === 0) return []
+
+    const resultados: Array<{
+      id: string
+      name: string
+      mimeType: string
+      createdTime?: string
+      parents: string[]
+    }> = []
+
+    const filtroDeTipo =
+      mode === 'folders'
+        ? `mimeType = '${MIME_TYPE_FOLDER}'`
+        : `mimeType contains '${MIME_TYPE_IMAGE_PREFIX}'`
+    const tamanhoDaPagina = mode === 'folders' ? 200 : 1000
+
+    for (let i = 0; i < parentIds.length; i += PARENTS_PER_QUERY) {
+      const grupo = parentIds.slice(i, i + PARENTS_PER_QUERY)
+      const pais = grupo.map((id) => `'${escapeQueryValue(id)}' in parents`).join(' or ')
+      const q = `(${pais}) and ${filtroDeTipo} and trashed = false`
+
+      let pageToken: string | undefined
+      do {
+        const response = await this.withRetry('listChildrenOfFolders', async () =>
+          this.drive.files.list(
+            {
+              q,
+              fields: 'nextPageToken, files(id, name, mimeType, createdTime, parents)',
+              pageSize: tamanhoDaPagina,
+              pageToken,
+              supportsAllDrives: true,
+              includeItemsFromAllDrives: true,
+            },
+            { timeout: LIST_TIMEOUT },
+          ),
+        )
+
+        for (const file of response.data.files ?? []) {
+          if (!file.id) continue
+          resultados.push({
+            id: file.id,
+            name: file.name ?? 'Sem nome',
+            mimeType: file.mimeType ?? 'application/octet-stream',
+            createdTime: file.createdTime ?? undefined,
+            parents: file.parents ?? [],
+          })
+        }
+
+        pageToken = response.data.nextPageToken ?? undefined
+      } while (pageToken)
+    }
+
+    return resultados
   }
 
   async getFolderBreadcrumbs(folderId: string) {

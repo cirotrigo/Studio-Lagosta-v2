@@ -1553,6 +1553,58 @@ negativo), é a única medida de qualidade que não é palpite. Serviço em
   `generationId` e `projectId` por item e por slide), porque ela recebe URLs e
   não ids. URL que não é da fila simplesmente não mostra o rodapé.
 
+### Reconciliação diária do acervo (11/08/2026)
+
+`/api/cron/reconciliar-catalogos` (05:00 UTC = 02:00 BRT) mantém o
+`_image-catalog.json` de cada cliente igual ao que existe no Drive: tira a
+entrada cuja foto foi apagada na curadoria (sugestão com miniatura quebrada — o
+TERO acumulou 214) e cataloga a foto que o fotógrafo subiu (invisível para a
+busca por tema até então). Serviço em
+`src/lib/creatives/reconciliar-catalogo.ts`; o contrato puro (diff, teto,
+relógio, rotação) em `src/lib/creatives/reconciliacao.ts`.
+
+- **É um DIFF DE IDS, sem janela de `createdTime`.** Foi a janela de meses do
+  `analyze-drive-images.ts` que deixou 501+56 fotos antigas fora do catálogo — e
+  a foto nova encontrada no Bacana em 11/08 tinha 8 meses. Sem janela a operação
+  é idempotente e o acervo atrasado converge em poucas rodadas.
+- **Catálogo inexistente ou VAZIO pula o projeto.** Criar do zero é decisão
+  manual: a primeira análise de um acervo inteiro são milhares de chamadas pagas
+  de visão, e isso não pode ser disparado por um cron da madrugada. Catálogo
+  vazio é o mesmo caso com outra roupa (a análise falhou inteira contra um
+  modelo aposentado em 10/08).
+- 🔴 **Poda grande demais é tratada como varredura quebrada, não como
+  curadoria**: varredura vazia com catálogo cheio, ou mais de 50% das entradas
+  órfãs, e a rodada não grava NADA. O catálogo no Drive é a única cópia e não há
+  quem confira de madrugada — credencial, permissão ou pasta reapontada
+  apagariam o acervo inteiro em silêncio.
+- 🔴 **Varredura recursiva do Drive vai em LOTE de pais** (`'a' in parents or
+  'b' in parents …`, `listChildrenOfFolders`). Medido no acervo real: uma
+  consulta por pasta custa 324 chamadas e 78s no By Rock (1.015 fotos); em lotes
+  de 20, 20 chamadas e 6,3s, resultado idêntico. Os 10 clientes inteiros levam
+  ~64s — é o que faz a rodada caber numa invocação. **`listFiles` tem
+  `pageSize: 50` FIXO**; quem lista acervo por lá sem paginar trunca em silêncio.
+- **Foto que a visão RECUSA analisar entra no catálogo mesmo assim**, com a
+  descrição que dá para fazer sem vê-la (a pasta) e `analiseBloqueada: true`.
+  Aconteceu na primeira rodada real: a foto nova do Bacana estava em
+  "Fotos - Clientes" e o Gemini devolveu `PROHIBITED_CONTENT`. Deixá-la fora
+  faria o diff redescobri-la TODA madrugada — uma chamada paga por dia, para
+  sempre, e um `erros: 1` permanente, que é como se ensina a equipe a ignorar o
+  resumo do cron.
+- **Orçamento de tempo: 240s dos 300s de `maxDuration`.** A rodada para de PEGAR
+  trabalho aos 240s; a folga de 60s existe porque pode haver até 4 análises em
+  voo e ainda falta gravar o catálogo — análise paga descartada é o pior
+  desfecho. Quem ficou de fora sai no JSON e o cron do dia seguinte continua.
+- **A ordem dos projetos ROTACIONA por dia.** Ordem fixa + relógio que corta faz
+  o primeiro projeto ser reconciliado sempre e o último talvez nunca — starvation
+  silenciosa, que é o defeito que este cron existe para resolver. É stateless
+  (não há coluna de "última reconciliação" e a frente não abriu migration).
+- **Teto de 120 fotos novas por projeto por rodada**, concorrência 4. Modelo em
+  `GEMINI_VISION_MODEL ?? 'gemini-2.5-flash'` — `gemini-2.0-flash` foi
+  APOSENTADO e devolve 404 embora siga aparecendo no ListModels.
+- **`writeFileAsJson` cria o stream DENTRO do retry**: `withRetry` reexecuta a
+  closure, e um `Readable` já consumido subiria vazio na segunda tentativa —
+  catálogo zerado sem erro nenhum.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

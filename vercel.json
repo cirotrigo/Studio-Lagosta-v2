@@ -158,6 +158,10 @@
     {
       "path": "/api/cron/sync-zernio",
       "schedule": "*/10 * * * *"
+    },
+    {
+      "path": "/api/cron/reconciliar-catalogos",
+      "schedule": "0 5 * * *"
     }
   ]
 }
