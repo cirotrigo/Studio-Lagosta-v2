@@ -1669,6 +1669,32 @@ portões.** Por isso a saída da destilação é um bloco de prompt
   campanha encerrada indexada voltaria a alimentar copy, que é o defeito que a
   F0.1 veio corrigir. Confirmar marca `learningScope: CAMPANHA` junto com o
   `campaignId`: só o vínculo deixaria o post ensinando rotina.
+- **A distribuição de PILARES também decai por recência** (11/08/2026,
+  `src/lib/aprendizado/distribuicao-de-pilares.ts`, módulo PURO que reusa
+  `pesoPorRecencia` de `cadencia.ts`). Até então o mesmo perfil tinha o *quando*
+  pesado por recência e o *sobre o quê* contado com um `groupBy` chapado de 180
+  dias. Medido no By Rock: **"Datas e Eventos" caía de 30% para 11%** (era o
+  pilar nº 1, sustentado por Restaurant Week, Dia dos Pais e Carnaval — datas
+  que já passaram) e **"Shows e Música ao Vivo" subia de 7% para 22%**, que é o
+  que o cliente faz agora. Sem isso o sistema propõe Carnaval em agosto.
+  ⚠️ O preço do peso é que amostra recente e pequena é amplificada (aqueles 22%
+  vêm de 8 posts): `DistribuicaoDePilar.total` continua sendo a contagem CRUA
+  justamente para quem lê saber quando não confiar.
+- 🔴 **Pesar por recência, NUNCA cortar por idade.** Medido em 11/08: um corte
+  em 40 dias deixaria cada cliente com 15 a 56 posts de texto — o Bacana com 15
+  espalhados por 6 pilares, ele e o Wine Vix de volta ao cold start. Cortar
+  troca dado velho por dado nenhum. E o receio de "treinar com cardápio e preço
+  velhos" não se resolve por idade: preço, horário, data e promoção **já** não
+  têm caminho até um prompt (três portas em `perfil.ts` + o lastro na base da
+  dica de copy). O que a idade contamina é a MISTURA DE ASSUNTOS, e é isso que
+  o decaimento corrige.
+- **A cobertura do corpus é o KPI da migração para a bancada**
+  (`scripts/cobertura-de-aprendizado.ts`, somente leitura). Medido em 11/08:
+  **15% em 180 dias, mas 30% nos últimos 40** — e a fatia de arte feita no
+  Studio sobe de 49% para 70% na mesma janela. A rota `/api/external/posts`
+  aceita só `mediaUrls` e `caption`, então peça montada fora entra sem copy e
+  vira `sem-texto`. O aprendizado vale exatamente o quanto do trabalho acontece
+  aqui dentro.
 - **Cadência v2** (`src/lib/posts/cadencia.ts`, módulo PURO): peso por recência
   (meia-vida 21 dias), histórico só com **POSTED**, campanha encerrada fora, e a
   regra única **"confirma, nunca cria"** para as duas evidências fracas — post

@@ -33,6 +33,10 @@ import {
 } from './causa-do-diff'
 import type { DiffDeCopy } from './diff-copy'
 import { minerarHistorico, type MineracaoDoHistorico } from './mineracao'
+import {
+  distribuicaoPorRecencia,
+  type PostComPilar,
+} from './distribuicao-de-pilares'
 import { nomeDoPilar, PILAR_OUTRO, PILAR_SEM_TEXTO, type Pilar } from './pilares'
 import { taxonomiaAprovada } from './pilares-service'
 
@@ -43,8 +47,16 @@ const MAX_EXEMPLOS_DE_ESTILO = 12
 export interface DistribuicaoDePilar {
   pilar: string
   nome: string
+  /** Quantos posts, CRU — é o que diz se há dado suficiente para confiar. */
   total: number
-  /** Fração sobre os posts que TÊM pilar de verdade (sem `outro`/`sem-texto`). */
+  /**
+   * Participação do pilar entre os posts que TÊM pilar de verdade (sem
+   * `outro`/`sem-texto`), **pesada por recência** (meia-vida de 21 dias,
+   * ancorada na última atividade do cliente).
+   *
+   * ⚠️ Não é `total / soma(total)`: assunto que o cliente abandonou há meses
+   * conta pouco mesmo tendo contagem alta. Ver `distribuicao-de-pilares.ts`.
+   */
   fracao: number
 }
 
@@ -95,13 +107,17 @@ export async function montarPerfil(
 
   const [taxonomia, contagemDePilar, sinais, mineracao] = await Promise.all([
     taxonomiaAprovada(projectId).catch(() => [] as Pilar[]),
+    // Linha a linha, e não `groupBy`, porque a distribuição é PESADA POR
+    // RECÊNCIA e para isso a data de cada post é necessária — ver
+    // `distribuicao-de-pilares.ts`. O teto é folgado: o cliente mais ativo tem
+    // ~700 publicações em 180 dias.
     db.socialPost
-      .groupBy({
-        by: ['pilar'],
+      .findMany({
         where: { projectId, status: 'POSTED', scheduledDatetime: { gte: desde } },
-        _count: { _all: true },
+        select: { pilar: true, scheduledDatetime: true },
+        take: 5000,
       })
-      .catch(() => [] as Array<{ pilar: string | null; _count: { _all: number } }>),
+      .catch(() => [] as Array<{ pilar: string | null; scheduledDatetime: Date | null }>),
     db.learningSignal
       .findMany({
         where: { projectId, tipo: 'copy', createdAt: { gte: desde }, diff: { not: undefined } },
@@ -117,23 +133,19 @@ export async function montarPerfil(
   let outro = 0
   let semTexto = 0
   let naoClassificados = 0
-  const reais: Array<{ pilar: string; total: number }> = []
+  const reais: PostComPilar[] = []
   for (const linha of contagemDePilar) {
-    const total = linha._count._all
-    if (!linha.pilar) naoClassificados += total
-    else if (linha.pilar === PILAR_OUTRO) outro += total
-    else if (linha.pilar === PILAR_SEM_TEXTO) semTexto += total
-    else reais.push({ pilar: linha.pilar, total })
+    if (!linha.pilar) naoClassificados += 1
+    else if (linha.pilar === PILAR_OUTRO) outro += 1
+    else if (linha.pilar === PILAR_SEM_TEXTO) semTexto += 1
+    else reais.push({ pilar: linha.pilar, quando: linha.scheduledDatetime })
   }
-  const totalReal = reais.reduce((a, b) => a + b.total, 0)
-  const pilares: DistribuicaoDePilar[] = reais
-    .map((p) => ({
-      pilar: p.pilar,
-      nome: nomeDoPilar(p.pilar, taxonomia),
-      total: p.total,
-      fracao: totalReal > 0 ? Math.round((p.total / totalReal) * 100) / 100 : 0,
-    }))
-    .sort((a, b) => b.total - a.total)
+  const pilares: DistribuicaoDePilar[] = distribuicaoPorRecencia(reais).map((p) => ({
+    pilar: p.pilar,
+    nome: nomeDoPilar(p.pilar, taxonomia),
+    total: p.total,
+    fracao: p.fracao,
+  }))
 
   // ── Estilo: o que as pessoas reescrevem ──────────────────────────────────
   const exemplos: ExemploDeEstilo[] = []
@@ -215,8 +227,8 @@ export function perfilParaPrompt(perfil: PerfilAprendido): string | null {
 
   if (perfil.pilares.length > 0) {
     blocos.push(
-      `ASSUNTOS DESTE CLIENTE (o que ele publica, do mais para o menos frequente):\n${perfil.pilares
-        .map((p) => `- ${p.nome} (${Math.round(p.fracao * 100)}% das peças com assunto identificado)`)
+      `ASSUNTOS DESTE CLIENTE (o que ele vem publicando, do mais para o menos frequente; o recente pesa mais que o antigo):\n${perfil.pilares
+        .map((p) => `- ${p.nome} (${Math.round(p.fracao * 100)}%)`)
         .join('\n')}`,
     )
   }
