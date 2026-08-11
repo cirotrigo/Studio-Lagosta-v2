@@ -30,8 +30,21 @@ export async function GET(
       return NextResponse.json({ error: 'ID do arquivo obrigatório' }, { status: 400 })
     }
 
-    // Rate limiting mais generoso para thumbnails (usa cache)
-    assertRateLimit({ key: `drive:thumbnail:${userId}` })
+    /**
+     * 🔴 O limite precisa ser EXPLÍCITO. O comentário original dizia "mais
+     * generoso para thumbnails" — e não passava limite nenhum, caindo no
+     * default de 100/hora por usuário. O seletor de fotos pede UMA miniatura
+     * por foto da grade, então navegar o acervo queimava as 100 na primeira
+     * tela e meia e TODA miniatura passava a responder 429 por uma hora —
+     * inclusive as da fila da bancada. Quem tinha testado antes não via nada
+     * (o cache de 1h do navegador respondia); quem chegava com cache frio via
+     * as fotos quebradas sem pista. Foi exatamente assim que a equipe do Ciro
+     * "não via as fotos" em 11/08/2026.
+     *
+     * 2.000/h cobre o acervo inteiro do maior cliente (~1.000 fotos) com folga
+     * de navegação, e continua sendo um teto real contra loop de cliente.
+     */
+    assertRateLimit({ key: `drive:thumbnail:${userId}`, limit: 2_000 })
 
     const { searchParams } = new URL(request.url)
     const size = parseInt(searchParams.get('size') ?? '400', 10)
