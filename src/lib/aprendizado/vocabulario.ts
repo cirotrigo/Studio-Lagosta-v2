@@ -53,6 +53,18 @@ export type TipoDeSinal =
    * empurrariam feedback de verdade para fora da janela.
    */
   | 'troca-de-arte'
+  /**
+   * Um item de um PLANO de conteúdo (F3) foi reprovado com motivo, ANTES de
+   * virar arte.
+   *
+   * Não cabe em `arte` (não há arte para julgar nem prompt a que amarrar o
+   * julgamento) nem em `copy`/`slot`/`modelo`: a recusa é da PROPOSTA inteira
+   * — o tema, o horário, o modelo e o texto juntos —, e espalhá-la pelos três
+   * inventaria três opiniões onde houve uma. Quando o item JÁ tem arte, a
+   * reprovação vira feedback de arte (`tipo: 'arte'`), que é o sinal mais
+   * valioso porque carrega o prompt atrás.
+   */
+  | 'item-de-plano'
 
 export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'slot',
@@ -61,6 +73,7 @@ export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'modelo',
   'arte',
   'troca-de-arte',
+  'item-de-plano',
 ]
 
 /**
