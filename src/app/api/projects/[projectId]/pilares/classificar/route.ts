@@ -3,12 +3,17 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { classificarHistorico } from '@/lib/aprendizado/pilares-service'
+import { LIMITE_DA_UI, ORCAMENTO_DA_RODADA_MS } from '@/lib/aprendizado/rodada-de-pilares'
 
 export const runtime = 'nodejs'
 /**
- * Uma chamada de modelo a cada 25 posts. Um cliente com 180 dias de histórico
- * e texto em 20% deles são ~5 chamadas — cabe folgado, mas o teto é o da
- * plataforma e o `limite` existe para quem quiser fatiar.
+ * 🔴 Uma chamada de modelo a cada 25 posts, ~22s cada (medido no By Rock em
+ * 11/08/2026). Isto NÃO cabia: 509 posts = 21 lotes = 460s contra os 300s
+ * daqui, e como cada lote grava ao terminar, a pessoa via um erro sem saber que
+ * havia progredido — e clicar de novo recomeçava do mesmo lugar.
+ *
+ * Hoje a passada tem teto (`LIMITE_DA_UI`) e relógio (`ORCAMENTO_DA_RODADA_MS`),
+ * e devolve `restantes` para a tela poder dizer "faltam M, clique de novo".
  */
 export const maxDuration = 300
 
@@ -32,6 +37,7 @@ const bodySchema = z
  * classificador.
  */
 export async function POST(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
+  const inicio = Date.now()
   try {
     const { userId, orgId } = await auth()
     if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -57,7 +63,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
 
     const resultado = await classificarHistorico(id, {
       reclassificar: corpo.reclassificar,
-      limite: corpo.limite,
+      // Teto padrão: quem chama de fora pode pedir mais, mas o relógio abaixo
+      // continua valendo — ele é o que garante uma resposta dentro dos 300s.
+      limite: corpo.limite ?? LIMITE_DA_UI,
+      prazoEm: inicio + ORCAMENTO_DA_RODADA_MS,
       ...(corpo.dias ? { desde: new Date(Date.now() - corpo.dias * 24 * 3600_000) } : {}),
     })
     return NextResponse.json(resultado)

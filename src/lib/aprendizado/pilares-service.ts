@@ -28,6 +28,8 @@ import {
   VERSAO_DO_CLASSIFICADOR,
   type PostParaClassificar,
 } from './classificador'
+import { restantesDaPassada } from './rodada-de-pilares'
+import { haTempo } from '@/lib/creatives/reconciliacao'
 
 /** Janela padrão do histórico lido para propor e classificar. */
 const JANELA_PADRAO_DIAS = 180
@@ -171,6 +173,30 @@ interface PostComTexto {
 }
 
 /**
+ * O recorte do histórico que a classificação enxerga — em UM lugar só.
+ *
+ * A contagem de pendentes e a leitura dos posts precisam do MESMO filtro: é a
+ * comparação entre as duas que produz o "faltam M" mostrado na tela, e dois
+ * `where` parecidos escritos em lugares diferentes divergem no primeiro ajuste.
+ *
+ * `pendentesDaVersao` empurra a idempotência para o BANCO. Antes ela era um
+ * `Set` de ids carregado inteiro e aplicado depois do `take`, o que fazia o
+ * `limite` mentir: pedir 100 trazia os 100 posts mais recentes, quase todos já
+ * classificados, e a passada seguinte não avançava um milímetro. Com o filtro no
+ * `where`, `take` e limite falam da mesma coisa — o que ainda falta.
+ */
+function filtroDoHistorico(projectId: number, desde: Date, pendentesDaVersao?: string | null) {
+  return {
+    projectId,
+    status: 'POSTED' as const,
+    scheduledDatetime: { gte: desde },
+    ...(pendentesDaVersao
+      ? { OR: [{ pilarVersao: null }, { pilarVersao: { not: pendentesDaVersao } }] }
+      : {}),
+  }
+}
+
+/**
  * Os posts publicados do cliente com o texto que houver.
  *
  * Traz TODOS (inclusive os sem texto), porque quem classifica precisa marcar
@@ -178,11 +204,17 @@ interface PostComTexto {
  */
 async function historicoComTexto(
   projectId: number,
-  opcoes: { desde?: Date; limite?: number; apenasComTexto?: boolean } = {},
+  opcoes: {
+    desde?: Date
+    limite?: number
+    apenasComTexto?: boolean
+    /** Só o que ainda NÃO foi classificado nesta versão do classificador. */
+    pendentesDaVersao?: string | null
+  } = {},
 ): Promise<PostComTexto[]> {
   const desde = opcoes.desde ?? new Date(Date.now() - JANELA_PADRAO_DIAS * 24 * 3600_000)
   const posts = await db.socialPost.findMany({
-    where: { projectId, status: 'POSTED', scheduledDatetime: { gte: desde } },
+    where: filtroDoHistorico(projectId, desde, opcoes.pendentesDaVersao),
     orderBy: { scheduledDatetime: 'desc' },
     take: opcoes.limite ?? 1500,
     select: {
@@ -247,11 +279,16 @@ export async function proporPilares(
 }
 
 export interface ResultadoDaClassificacaoDoHistorico {
+  /** Posts que entraram nos lotes que realmente rodaram nesta passada. */
   analisados: number
   classificados: number
   semTexto: number
   porPilar: Array<{ pilar: string; total: number }>
   naoClassificados: number
+  /** Quantos estavam esperando classificação quando a passada começou. */
+  pendentes: number
+  /** Quantos continuam esperando — o teto ou o relógio cortaram o resto. */
+  restantes: number
   avisos: string[]
 }
 
@@ -262,48 +299,60 @@ export interface ResultadoDaClassificacaoDoHistorico {
  * versão do classificador. `reclassificar: true` refaz tudo — é o que se usa
  * depois de mudar a lista de pilares.
  *
+ * DUAS TRAVAS DE TAMANHO, e as duas devolvem `restantes` em vez de estourar:
+ *
+ * - `limite` corta quantos posts entram nesta passada (o teto do cron por
+ *   projeto, e o padrão do botão da aba Marca);
+ * - `prazoEm` é o instante em que a passada para de PEGAR lote novo. O lote em
+ *   voo termina — ele é uma chamada paga de modelo, e descartá-la no meio seria
+ *   pagar por nada.
+ *
  * Nunca lança. Lote que falha vira aviso e os outros seguem.
  */
 export async function classificarHistorico(
   projectId: number,
-  opcoes: { desde?: Date; reclassificar?: boolean; limite?: number } = {},
+  opcoes: { desde?: Date; reclassificar?: boolean; limite?: number; prazoEm?: number } = {},
 ): Promise<ResultadoDaClassificacaoDoHistorico> {
+  const vazio = { analisados: 0, classificados: 0, semTexto: 0, porPilar: [], naoClassificados: 0 }
   const taxonomia = await taxonomiaAprovada(projectId)
   if (taxonomia.length === 0) {
     return {
-      analisados: 0,
-      classificados: 0,
-      semTexto: 0,
-      porPilar: [],
-      naoClassificados: 0,
+      ...vazio,
+      pendentes: 0,
+      restantes: 0,
       avisos: ['Este cliente ainda não tem pilares aprovados — aprove a lista na aba Marca antes de classificar.'],
     }
   }
 
   const desde = opcoes.desde ?? new Date(Date.now() - JANELA_PADRAO_DIAS * 24 * 3600_000)
-  const jaFeitos = opcoes.reclassificar
-    ? new Set<string>()
-    : new Set(
-        (
-          await db.socialPost.findMany({
-            where: { projectId, pilarVersao: VERSAO_DO_CLASSIFICADOR },
-            select: { id: true },
-          })
-        ).map((p) => p.id),
-      )
+  const prazoEm = opcoes.prazoEm ?? Number.POSITIVE_INFINITY
+  const pendentesDaVersao = opcoes.reclassificar ? null : VERSAO_DO_CLASSIFICADOR
 
-  const historico = (await historicoComTexto(projectId, { desde, limite: opcoes.limite })).filter(
-    (p) => !jaFeitos.has(p.id),
-  )
+  const pendentes = await db.socialPost.count({
+    where: filtroDoHistorico(projectId, desde, pendentesDaVersao),
+  })
+  const historico = await historicoComTexto(projectId, {
+    desde,
+    limite: opcoes.limite,
+    pendentesDaVersao,
+  })
 
   const avisos: string[] = []
+  let analisados = 0
   let classificados = 0
   let semTexto = 0
   let naoClassificados = 0
   const porPilar = new Map<string, number>()
 
   for (let i = 0; i < historico.length; i += TAMANHO_DO_LOTE) {
+    if (!haTempo(prazoEm)) {
+      // `unshift`: os avisos são cortados em 20 e este explica por que a
+      // passada terminou. Ele não pode ser o primeiro a cair.
+      avisos.unshift('O tempo desta passada acabou — o que ficou continua pendente para a próxima.')
+      break
+    }
     const lote: PostParaClassificar[] = historico.slice(i, i + TAMANHO_DO_LOTE).map((p) => ({ id: p.id, texto: p.texto }))
+    analisados += lote.length
     const r = await classificarLote(taxonomia, lote)
     avisos.push(...r.avisos)
     naoClassificados += r.naoClassificados.length
@@ -329,13 +378,18 @@ export async function classificarHistorico(
   }
 
   return {
-    analisados: historico.length,
+    analisados,
     classificados,
     semTexto,
     porPilar: [...porPilar.entries()]
       .map(([pilar, total]) => ({ pilar, total }))
       .sort((a, b) => b.total - a.total),
     naoClassificados,
+    pendentes,
+    // Contra os CLASSIFICADOS, não contra os analisados: post cujo lote falhou
+    // (modelo fora do ar, eco que não casou) continua sem `pilarVersao` e será
+    // tentado de novo — dizer que ele acabou é o tipo de teto que mente.
+    restantes: restantesDaPassada(pendentes, classificados),
     avisos: avisos.slice(0, 20),
   }
 }

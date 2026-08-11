@@ -10,6 +10,7 @@ import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { MAX_PILARES, MIN_PILARES, PILAR_OUTRO, PILAR_SEM_TEXTO } from '@/lib/aprendizado/pilares'
+import { fraseDoProgresso } from '@/lib/aprendizado/rodada-de-pilares'
 import { toast } from 'sonner'
 
 /**
@@ -69,9 +70,20 @@ function rotuloDoPilar(slug: string | null, pilares: PilarDaApi[]): string {
   return pilares.find((p) => p.slug === slug)?.nome ?? slug
 }
 
+/** O que uma passada de classificação devolve — ver a rota `…/classificar`. */
+interface PassadaDeClassificacao {
+  classificados: number
+  semTexto: number
+  naoClassificados: number
+  pendentes: number
+  restantes: number
+  avisos: string[]
+}
+
 export function ContentPillarsSection({ projectId }: { projectId: number }) {
   const queryClient = useQueryClient()
   const [rascunho, setRascunho] = React.useState<PilarDaApi[] | null>(null)
+  const [ultimaPassada, setUltimaPassada] = React.useState<PassadaDeClassificacao | null>(null)
 
   const { data, isLoading } = useQuery<RespostaDosPilares>({
     queryKey: chaveDosPilares(projectId),
@@ -124,19 +136,23 @@ export function ContentPillarsSection({ projectId }: { projectId: number }) {
     onError: (e: Error) => toast.error(e.message || 'Erro ao salvar os pilares'),
   })
 
+  /**
+   * Uma passada, não o histórico inteiro.
+   *
+   * A rota classifica um TETO de publicações por clique e devolve quantas ainda
+   * faltam — o histórico grande é feito em levas. Sem mostrar o "faltam M", o
+   * clique seguinte parecia repetição inútil (e, antes do teto, a passada nem
+   * chegava ao fim: 460s contra os 300s da plataforma).
+   */
   const classificar = useMutation({
     mutationFn: () =>
-      api.post<{ classificados: number; semTexto: number; naoClassificados: number; avisos: string[] }>(
-        `/api/projects/${projectId}/pilares/classificar`,
-        {},
-      ),
+      api.post<PassadaDeClassificacao>(`/api/projects/${projectId}/pilares/classificar`, {}),
     onSuccess: (r) => {
+      setUltimaPassada(r)
       queryClient.invalidateQueries({ queryKey: chaveDosPilares(projectId) })
       queryClient.invalidateQueries({ queryKey: chaveDasCampanhas(projectId) })
       for (const aviso of (r.avisos ?? []).slice(0, 3)) toast.warning(aviso)
-      toast.success(
-        `${r.classificados} publicação(ões) classificadas (${r.semTexto} sem texto no sistema).`,
-      )
+      toast.success(fraseDoProgresso(r))
     },
     onError: (e: Error) => toast.error(e.message || 'Erro ao classificar o histórico'),
   })
@@ -285,6 +301,14 @@ export function ContentPillarsSection({ projectId }: { projectId: number }) {
               Classificar histórico
             </Button>
           </div>
+
+          {ultimaPassada && (
+            <p className="text-xs text-muted-foreground">
+              {fraseDoProgresso(ultimaPassada)}
+              {ultimaPassada.restantes === 0 &&
+                ' A partir daqui, o que for publicado é classificado sozinho, de madrugada.'}
+            </p>
+          )}
 
           {totalClassificado > 0 && (
             <div className="space-y-1 rounded-md bg-muted/40 p-3 text-sm">
