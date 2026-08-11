@@ -224,14 +224,65 @@ async function registrarProposta(
 }
 
 /** Listagem crua da pasta, para projetos sem catálogo. */
-export async function listarImagensDoDrive(projectId: number, limit = 30) {
-  const folderId = await pastaDeImagens(projectId)
-  const arquivos = await googleDriveService.listFolderFiles(folderId)
+/** Até onde a listagem crua desce. O acervo real usa "07_bebidas/chopp". */
+const PROFUNDIDADE_MAXIMA = 2
+/** Teto de pastas visitadas — cada uma é uma chamada ao Drive. */
+const PASTAS_VISITADAS_MAX = 60
 
-  const imagens = arquivos
-    .filter((f) => (f.mimeType ?? '').startsWith('image/'))
-    .slice(0, limit)
-    .map((f) => ({ driveFileId: f.id, fileName: f.name, mimeType: f.mimeType }))
+/**
+ * Listagem crua da pasta, para projetos sem catálogo.
+ *
+ * ⚠️ DESCE NAS SUBPASTAS. `listFolderFiles` lista só os filhos DIRETOS e exclui
+ * pastas (`mimeType != folder`), então uma varredura de um nível só devolve
+ * zero para todo cliente que organiza o acervo em pastas por assunto — que é
+ * como todos organizam. Era o caso do Bacana (27 subpastas, nenhum arquivo
+ * solto na raiz) e do Quintal: pasta configurada, seletor vazio, e a mensagem
+ * dizendo que "só a listagem da pasta" funcionava — quando ela não funcionava.
+ * Achado em 10/08/2026.
+ *
+ * Devolve também a pasta de cada imagem e a lista de pastas, para o seletor da
+ * bancada mostrar os mesmos chips que mostra em projeto catalogado.
+ */
+export async function listarImagensDoDrive(projectId: number, limit = 30, folder?: string) {
+  const raiz = await pastaDeImagens(projectId)
 
-  return { total: imagens.length, images: imagens }
+  const imagens: Array<{ driveFileId: string; fileName: string; mimeType: string; folder: string }> = []
+  const pastas = new Set<string>()
+  let visitadas = 0
+
+  const varrer = async (folderId: string, caminho: string, profundidade: number): Promise<void> => {
+    if (visitadas >= PASTAS_VISITADAS_MAX) return
+    visitadas++
+
+    const arquivos = await googleDriveService.listFolderFiles(folderId)
+    for (const f of arquivos) {
+      if (!(f.mimeType ?? '').startsWith('image/')) continue
+      if (caminho) pastas.add(caminho)
+      imagens.push({ driveFileId: f.id, fileName: f.name, mimeType: f.mimeType, folder: caminho })
+    }
+
+    if (profundidade >= PROFUNDIDADE_MAXIMA) return
+    const sub = await googleDriveService.listFiles({ folderId, mode: 'folders' })
+    for (const pasta of sub.items ?? []) {
+      if (visitadas >= PASTAS_VISITADAS_MAX) break
+      await varrer(pasta.id, caminho ? `${caminho}/${pasta.name}` : pasta.name, profundidade + 1)
+    }
+  }
+
+  await varrer(raiz, '', 0)
+
+  // Filtro por pasta é PREFIXO, como no catálogo: "07_bebidas" traz
+  // "07_bebidas/chopp" junto. As pastas oferecidas são sempre as do acervo
+  // inteiro — senão, filtrar por uma esconderia todas as outras do seletor.
+  const filtradas = folder
+    ? imagens.filter((i) => i.folder === folder || i.folder.startsWith(`${folder}/`))
+    : imagens
+
+  return {
+    total: filtradas.length,
+    images: filtradas.slice(0, limit),
+    pastasDisponiveis: Array.from(pastas).sort(),
+    /** Verdadeiro quando o teto de pastas cortou a varredura. */
+    parcial: visitadas >= PASTAS_VISITADAS_MAX,
+  }
 }

@@ -42,16 +42,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
   } catch (error) {
     if (error instanceof CreativeError && error.code === 'SEM_CATALOGO') {
       try {
-        const cru = await listarImagensDoDrive(projectIdNum, limit)
+        const cru = await listarImagensDoDrive(projectIdNum, limit, folder)
         return NextResponse.json({
           temCatalogo: false,
-          total: cru.total,
+          total: cru.images.length,
           acervoCompleto: cru.total,
-          pastasDisponiveis: [],
+          // A varredura crua também descobre as pastas — o seletor mostra os
+          // mesmos chips que mostra em projeto catalogado.
+          pastasDisponiveis: cru.pastasDisponiveis,
           images: cru.images.map((i) => ({
             driveFileId: i.driveFileId,
             fileName: i.fileName,
-            folder: '',
+            folder: i.folder,
             menuItem: null,
             menuCategory: null,
             description: null,
@@ -61,7 +63,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
             ultimoUso: 'nunca',
           })),
           aviso:
-            'Este projeto não tem catálogo de imagens — a busca por tema não funciona, só a listagem da pasta.',
+            'Este projeto não tem catálogo de imagens — a busca por tema não funciona; use as pastas.' +
+            (cru.parcial ? ' O acervo é grande e a listagem foi cortada: filtre por pasta.' : ''),
         })
       } catch (fallbackError) {
         if (fallbackError instanceof CreativeError) {
