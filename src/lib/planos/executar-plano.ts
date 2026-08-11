@@ -149,6 +149,21 @@ export async function executarPlano(input: ExecutarPlanoInput): Promise<Resultad
   let emVoo = 0
   for (const item of candidatos) {
     const situacao = statusDoItem(item)
+    /**
+     * Carrossel não passa por aqui: a série exige a confirmação HUMANA do
+     * estilo entre o guia e os irmãos ("gerar seis slides no estilo errado
+     * custa seis vezes mais que perguntar"), e este executor é justamente o
+     * caminho sem gente no meio. Quem gera a série é a bancada — o item fica
+     * na fila da equipe, com o motivo dito.
+     */
+    if ((item as { slides?: unknown }).slides) {
+      ignorados.push({
+        itemId: item.id,
+        tema: item.tema,
+        motivo: 'Carrossel se produz pela bancada — o estilo do guia precisa da confirmação de alguém.',
+      })
+      continue
+    }
     if (itemExecutavel(situacao)) {
       elegiveis.push(item)
       continue

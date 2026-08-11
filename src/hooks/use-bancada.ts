@@ -16,6 +16,7 @@ import { api } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useAprendizado } from '@/hooks/use-aprendizado'
 import { useAvancoDoItem } from '@/hooks/use-planos'
+import { slidesParaServidor } from '@/lib/planos/para-bancada'
 import { useBancadaStore, type BancadaItem, type BancadaSlide } from '@/stores/bancada-store'
 
 const POLL_MS = 5_000
@@ -201,7 +202,25 @@ export function useBancada(projectId: number) {
                     })(),
                   }),
         })
-        if (!emVoo) queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
+        if (!emVoo) {
+          queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
+          /**
+           * O desfecho da série vai ao plano com os slides completos. O passo
+           * "guia pronto" fica de fora de propósito: no vocabulário do plano
+           * ele ainda é `gerando`, e transição para a MESMA situação não anda
+           * (`caminhoDeTransicao` devolve vazio) — os gens do guia já subiram
+           * na largada.
+           */
+          if (falhou || !esperandoConfirmacao) {
+            relatarAvanco(item, {
+              para: falhou ? 'erro' : 'pronto',
+              ...(falhou
+                ? { erro: novos.find((s) => s.erro)?.erro ?? 'Um slide falhou.' }
+                : {}),
+              slides: slidesParaServidor({ slides: novos, carouselGroupId: item.carouselGroupId }),
+            })
+          }
+        }
       }
     }
 
@@ -211,7 +230,7 @@ export function useBancada(projectId: number) {
       vivo = false
       clearInterval(timer)
     }
-  }, [carrosseisGerando, atualizar, queryClient, projectId])
+  }, [carrosseisGerando, atualizar, relatarAvanco, queryClient, projectId])
 
   // ── Ações ─────────────────────────────────────────────────────────────────
 
@@ -351,18 +370,25 @@ export function useBancada(projectId: number) {
           gerarSlide(item, slides[0]),
           gerarSlide(item, slides[1]),
         ])
-        atualizar(item.id, {
-          slides: slides.map((s) =>
-            s.ordem === 1 ? { ...s, generationId: capaId } : s.ordem === 2 ? { ...s, generationId: guiaId } : s,
-          ),
+        const comIds = slides.map((s) =>
+          s.ordem === 1 ? { ...s, generationId: capaId } : s.ordem === 2 ? { ...s, generationId: guiaId } : s,
+        )
+        atualizar(item.id, { slides: comIds })
+        // O plano acompanha: os generationIds da capa e do guia viajam na
+        // transição, e a equipe vê a série em produção de qualquer navegador.
+        relatarAvanco(item, {
+          para: 'gerando',
+          via: 'ia',
+          slides: slidesParaServidor({ slides: comIds, carouselGroupId: item.carouselGroupId }),
         })
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Erro ao iniciar a geração'
         atualizar(item.id, { status: 'erro', erro: msg })
+        relatarAvanco(item, { para: 'erro', erro: msg })
         toast({ title: 'Não deu para gerar', description: msg, variant: 'destructive' })
       }
     },
-    [atualizar, gerarSlide, registrarCopyEscolhida, toast],
+    [atualizar, gerarSlide, registrarCopyEscolhida, relatarAvanco, toast],
   )
 
   /** Etapa 2: confirmado o look, gera os slides 3..N EM PARALELO. */

@@ -72,6 +72,21 @@ export interface ItemDePlanoDoServidor {
   pageId?: string | null
   postId?: string | null
   sugestaoId?: string | null
+  /** Carrossel: `{ groupId, lista: [...] }`. Nulo/ausente = peça única. */
+  slides?: {
+    groupId?: string | null
+    lista?: Array<{
+      ordem?: number | null
+      copy?: string[] | null
+      fotoDriveId?: string | null
+      fotoUrl?: string | null
+      thumbUrl?: string | null
+      generationId?: string | null
+      resultUrl?: string | null
+      erro?: string | null
+      aviso?: string | null
+    }> | null
+  } | null
 }
 
 export interface PlanoDoServidor {
@@ -194,6 +209,79 @@ export function temTrabalhoNoServidor(item: {
 }
 
 /**
+ * Slides do servidor → slides do card. A miniatura segue a mesma regra da
+ * peça única: foto do acervo só tem `driveFileId`, e a rota de thumbnail é a
+ * mesma do seletor de fotos.
+ */
+export function slidesDoServidor(
+  slides: ItemDePlanoDoServidor['slides'],
+): NonNullable<BancadaItem['slides']> {
+  const lista = slides?.lista ?? []
+  return lista.map((s, i) => {
+    const url = s.fotoUrl?.trim() || undefined
+    const driveId = s.fotoDriveId?.trim() || undefined
+    return {
+      ordem: s.ordem ?? i + 1,
+      copy: (s.copy ?? []).filter((b) => typeof b === 'string' && b.trim() !== ''),
+      referencia: {
+        papel: 'subject' as const,
+        ...(driveId ? { driveFileId: driveId } : {}),
+        ...(url ? { url } : {}),
+        thumbUrl: s.thumbUrl?.trim() || url || (driveId ? `/api/drive/thumbnail/${driveId}` : ''),
+      },
+      ...(s.generationId ? { generationId: s.generationId } : {}),
+      resultUrl: s.resultUrl ?? null,
+      erro: s.erro ?? null,
+      aviso: s.aviso ?? null,
+    }
+  })
+}
+
+/** O caminho inverso: os slides do card, prontos para o PATCH do item. */
+export function slidesParaServidor(item: {
+  slides?: BancadaItem['slides']
+  carouselGroupId?: string
+}): unknown {
+  const lista = (item.slides ?? []).map((s) => ({
+    ordem: s.ordem,
+    copy: s.copy,
+    fotoDriveId: s.referencia.driveFileId ?? null,
+    fotoUrl: s.referencia.url ?? null,
+    thumbUrl: s.referencia.thumbUrl || null,
+    generationId: s.generationId ?? null,
+    resultUrl: s.resultUrl ?? null,
+    erro: s.erro ?? null,
+    aviso: s.aviso ?? null,
+  }))
+  return { groupId: item.carouselGroupId ?? null, lista }
+}
+
+/**
+ * Fusão slide a slide, pela ORDEM: o servidor manda no conteúdo (copy, foto);
+ * o TRABALHO local vence quando o servidor ainda não o tem — o polling do
+ * navegador enxerga o resultado segundos antes de a transição sincronizar, e
+ * regredir um slide com generationId é cobrar duas vezes, que é exatamente o
+ * defeito que o guard de reidratação já trava para a peça única.
+ */
+export function mesclarSlides(
+  locais: BancadaItem['slides'],
+  doServidor: BancadaItem['slides'],
+): BancadaItem['slides'] {
+  const daTela = new Map((locais ?? []).map((s) => [s.ordem, s]))
+  return (doServidor ?? []).map((s) => {
+    const local = daTela.get(s.ordem)
+    if (!local) return s
+    return {
+      ...s,
+      generationId: s.generationId ?? local.generationId,
+      resultUrl: s.resultUrl ?? local.resultUrl ?? null,
+      erro: s.erro ?? local.erro ?? null,
+      aviso: s.aviso ?? local.aviso ?? null,
+    }
+  })
+}
+
+/**
  * O servidor manda na foto da CENA (a única com coluna no ItemDePlano); as
  * referências extras — âncoras de ambiente/prato e estilo — só existem no
  * navegador de quem as escolheu e não podem evaporar a cada refetch. Sem esta
@@ -284,6 +372,7 @@ export function paraItemDaBancada(
   const escopo: EscopoAprendizado = normalizarEscopo(doServidor.escopo) ?? 'ROTINA'
   const tema = doServidor.tema?.trim() || null
 
+  const ehCarrossel = (doServidor.slides?.lista?.length ?? 0) > 0
   const foto = doServidor.fotoUrl?.trim() || null
   const driveId = doServidor.fotoDriveId?.trim() || null
 
@@ -315,7 +404,13 @@ export function paraItemDaBancada(
     via,
     tema,
     trilha: 'arte',
-    tipo: 'peca',
+    tipo: ehCarrossel ? 'carrossel' : 'peca',
+    ...(ehCarrossel
+      ? {
+          slides: slidesDoServidor(doServidor.slides),
+          ...(doServidor.slides?.groupId ? { carouselGroupId: doServidor.slides.groupId } : {}),
+        }
+      : {}),
     formato,
     copy: (doServidor.copyProposta ?? []).filter((b) => typeof b === 'string' && b.trim() !== ''),
     legenda: doServidor.legenda?.trim() || undefined,
@@ -432,6 +527,11 @@ export function fundirComOLocal(
               ? local.pedido
               : doServidor.pedido,
           referencias: mesclarReferencias(local.referencias, doServidor.referencias),
+          ...(doServidor.slides || local.slides
+            ? { slides: mesclarSlides(local.slides, doServidor.slides) }
+            : {}),
+          ...(doServidor.carouselGroupId ? { carouselGroupId: doServidor.carouselGroupId } : {}),
+          ...(doServidor.tipo ? { tipo: doServidor.tipo } : {}),
           quando: doServidor.quando,
           escopo: doServidor.escopo,
           motivoDoSlot: doServidor.motivoDoSlot,

@@ -403,6 +403,13 @@ model ItemDePlano {
   /// Falha da geração, em português.
   erro             String?
 
+  /// Carrossel: os slides da série, como Json — `{ groupId, lista: [...] }`,
+  /// cada slide com ordem, copy, foto e (conforme avança) generationId e
+  /// resultUrl. Json e não tabela-filha porque a leva é lida e escrita SEMPRE
+  /// inteira (ninguém consulta "todos os slides 3 do projeto"), e o precedente
+  /// de dado posicional editado em bloco é `Page.layers`. Nulo = peça única.
+  slides Json?
+
   /// Preenchidos conforme o item avança: a arte, a página e o post que ele
   /// virou. Sem FK (ver o cabeçalho).
   generationId String?

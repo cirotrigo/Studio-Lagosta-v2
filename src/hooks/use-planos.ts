@@ -142,6 +142,8 @@ export interface ItemParaAnexar {
   motivoDoSlot?: string | null
   escopo?: string | null
   sugestaoId?: string | null
+  /** Carrossel: `{ groupId, lista }` — ver `slidesParaServidor`. */
+  slides?: unknown
 }
 
 /**
@@ -176,6 +178,8 @@ interface Avanco {
   erro?: string | null
   /** Conteúdo a corrigir junto — vai na PRIMEIRA requisição da sequência. */
   via?: ViaDoItem
+  /** Carrossel: a série com os generationIds/URLs do momento — último passo. */
+  slides?: unknown
 }
 
 /**
@@ -220,6 +224,7 @@ export function useAvancoDoItem(projectId: number) {
                     ...(avanco.generationId ? { generationId: avanco.generationId } : {}),
                     ...(avanco.postId ? { postId: avanco.postId } : {}),
                     ...(avanco.erro ? { erro: avanco.erro.slice(0, 600) } : {}),
+                    ...(avanco.slides !== undefined ? { slides: avanco.slides } : {}),
                   }
                 : {}),
               // A via corrigida vai no primeiro passo, enquanto o item ainda

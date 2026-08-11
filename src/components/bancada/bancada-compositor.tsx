@@ -47,6 +47,7 @@ import {
 import { ESCOPOS, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { useAprendizado } from '@/hooks/use-aprendizado'
 import { useAnexarItensAoPlano } from '@/hooks/use-planos'
+import { slidesParaServidor } from '@/lib/planos/para-bancada'
 import { useToast } from '@/hooks/use-toast'
 import { useRevisaoOrtografica } from '@/hooks/use-revisao-ortografica'
 import { aplicarSugestao, type Suspeita } from '@/lib/ai/revisao-ortografica-contrato'
@@ -296,17 +297,18 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
           thumbUrl: s.ref.thumbUrl,
         } satisfies BancadaReferencia,
       }))
-      adicionar({
+      const carouselGroupId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `cg-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      const itemCarrossel: NovoItem = {
         projectId,
         trilha: 'arte',
         tipo: 'carrossel',
         // Carrossel do Instagram é feed: 4:5.
         formato: 'feed',
         slides,
-        carouselGroupId:
-          typeof crypto !== 'undefined' && 'randomUUID' in crypto
-            ? crypto.randomUUID()
-            : `cg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        carouselGroupId,
         legenda: legenda.trim(),
         copy: [],
         pedido: pedido.trim(),
@@ -316,7 +318,44 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
         motivoDoSlot: quandoManual ? null : (motivo ?? null),
         sugestaoId,
         escopo,
-      })
+      }
+      // A série também é da EQUIPE: mesmo servidor-primeiro da peça única, com
+      // os slides serializados no shape do ItemDePlano.
+      anexar.mutate(
+        [
+          {
+            quando: quando ?? null,
+            tema: pedido.trim() || legenda.trim().slice(0, 120) || null,
+            copyProposta: [],
+            legenda: legenda.trim() || null,
+            formato: 'feed',
+            via: 'ia',
+            motivoDoSlot: quandoManual ? null : (motivo ?? null),
+            escopo: escopo && escopo !== 'ROTINA' ? escopo.toLowerCase() : null,
+            sugestaoId,
+            slides: slidesParaServidor(itemCarrossel),
+          },
+        ],
+        {
+          onSuccess: (r) => {
+            adicionar({
+              ...itemCarrossel,
+              itemDePlanoId: r.criados[0],
+              planoId: r.plano.id,
+              situacaoNoPlano: 'proposto',
+            })
+          },
+          onError: () => {
+            adicionar(itemCarrossel)
+            toast({
+              title: 'O carrossel ficou só neste navegador',
+              description:
+                'Não consegui gravar na fila da equipe agora — os outros não vão vê-lo. Vale tentar de novo mais tarde.',
+              variant: 'destructive',
+            })
+          },
+        },
+      )
       limpar()
       return
     }

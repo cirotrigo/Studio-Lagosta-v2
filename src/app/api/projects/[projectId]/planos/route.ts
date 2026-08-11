@@ -27,6 +27,29 @@ export const maxDuration = 30
  * chat.
  */
 
+
+/**
+ * Um slide da série, como viaja pelo HTTP. `copy` vazia = capa (foto pura).
+ * Os campos de trabalho (generationId/resultUrl) entram conforme a geração
+ * avança — o servidor não os valida além do formato, porque quem os produz é
+ * a própria fila de geração.
+ */
+const slideSchema = z.object({
+  ordem: z.number().int().min(1).max(10),
+  copy: z.array(z.string().max(2000)).max(12).default([]),
+  fotoDriveId: z.string().max(200).nullable().optional(),
+  fotoUrl: z.string().max(2000).nullable().optional(),
+  thumbUrl: z.string().max(2000).nullable().optional(),
+  generationId: z.string().max(64).nullable().optional(),
+  resultUrl: z.string().max(2000).nullable().optional(),
+  erro: z.string().max(600).nullable().optional(),
+  aviso: z.string().max(600).nullable().optional(),
+})
+
+const slidesSchema = z
+  .object({ groupId: z.string().max(64).nullable().optional(), lista: z.array(slideSchema).min(1).max(10) })
+  .nullable()
+
 const itemSchema = z.object({
   ordem: z.number().int().min(0).max(999).optional(),
   /** "YYYY-MM-DD HH:mm" em BRT, ou ISO com fuso. Nulo = ainda a decidir. */
@@ -43,6 +66,7 @@ const itemSchema = z.object({
   escopo: z.string().max(30).nullable().optional(),
   campaignId: z.string().max(64).nullable().optional(),
   sugestaoId: z.string().max(64).nullable().optional(),
+  slides: slidesSchema.optional(),
 })
 
 const postSchema = z.object({

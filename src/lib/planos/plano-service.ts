@@ -77,6 +77,8 @@ export interface ItemDePlanoInput {
   campaignId?: string | null
   /** O `LearningSignal` da sugestão de horário que originou o item. */
   sugestaoId?: string | null
+  /** Carrossel: `{ groupId, lista: [...] }`. Nulo = peça única. */
+  slides?: unknown
 }
 
 export interface CriarPlanoInput {
@@ -106,6 +108,8 @@ export interface PatchDeItem {
   motivoDoSlot?: string | null
   escopo?: string | EscopoAprendizado | null
   campaignId?: string | null
+  /** Carrossel: substitui a série INTEIRA (dado posicional, como Page.layers). */
+  slides?: unknown
 }
 
 // ── Datas ───────────────────────────────────────────────────────────────────
@@ -352,6 +356,7 @@ function normalizarItem(
     escopo,
     campaignId: entrada.campaignId?.trim() || null,
     sugestaoId: entrada.sugestaoId?.trim() || null,
+    ...(entrada.slides !== undefined ? { slides: entrada.slides as Prisma.InputJsonValue } : {}),
   }
 }
 
@@ -589,6 +594,7 @@ export async function atualizarItem(input: {
   if (patch.sourcePageId !== undefined) data.sourcePageId = patch.sourcePageId?.trim() || null
   if (patch.motivoDoSlot !== undefined) data.motivoDoSlot = patch.motivoDoSlot?.trim() || null
   if (patch.campaignId !== undefined) data.campaignId = patch.campaignId?.trim() || null
+  if (patch.slides !== undefined) data.slides = patch.slides as Prisma.InputJsonValue
 
   if (patch.copyProposta !== undefined) {
     data.copyProposta = (patch.copyProposta ?? [])
@@ -678,6 +684,8 @@ export async function transicionarItem(input: {
   para: string
   motivo?: string | null
   erro?: string | null
+  /** Carrossel: a série com os generationIds/URLs do momento da transição. */
+  slides?: unknown
   generationId?: string | null
   pageId?: string | null
   postId?: string | null
@@ -715,6 +723,7 @@ export async function transicionarItem(input: {
   if (input.generationId !== undefined) data.generationId = input.generationId?.trim() || null
   if (input.pageId !== undefined) data.pageId = input.pageId?.trim() || null
   if (input.postId !== undefined) data.postId = input.postId?.trim() || null
+  if (input.slides !== undefined) data.slides = input.slides as Prisma.InputJsonValue
 
   const atualizado = await db.itemDePlano.update({
     where: { id: input.itemId },

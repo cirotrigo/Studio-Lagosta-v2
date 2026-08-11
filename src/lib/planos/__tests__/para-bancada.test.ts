@@ -4,6 +4,9 @@ import {
   formatarQuandoBR,
   fundirComOLocal,
   mesclarReferencias,
+  mesclarSlides,
+  slidesDoServidor,
+  slidesParaServidor,
   hidratarItens,
   paraItemDaBancada,
   paraQuandoBRT,
@@ -590,5 +593,67 @@ describe('mesclarReferencias', () => {
   it('servidor sem foto não apaga a cena local', () => {
     const fila = mesclarReferencias([ref('subject', 'minha')], [])
     expect(fila).toHaveLength(1)
+  })
+})
+
+
+describe('carrossel no plano — tradução e fusão', () => {
+  const slideServ = (ordem: number, extra: Record<string, unknown> = {}) => ({
+    ordem,
+    copy: ordem === 1 ? [] : [`SLIDE ${ordem}`],
+    fotoDriveId: `drive-${ordem}`,
+    ...extra,
+  })
+
+  it('item com slides vira card de carrossel, com miniatura do acervo', () => {
+    const card = paraItemDaBancada(
+      doServidor({ slides: { groupId: 'cg-1', lista: [slideServ(1), slideServ(2)] } }),
+      plano([]),
+      AGORA,
+    )
+    expect(card.tipo).toBe('carrossel')
+    expect(card.carouselGroupId).toBe('cg-1')
+    expect(card.slides).toHaveLength(2)
+    expect(card.slides![0].referencia.thumbUrl).toBe('/api/drive/thumbnail/drive-1')
+    expect(card.slides![0].copy).toEqual([]) // capa é foto pura
+  })
+
+  it('a serialização faz a viagem de ida e volta sem perder o trabalho', () => {
+    const card = paraItemDaBancada(
+      doServidor({
+        slides: { groupId: 'cg-1', lista: [slideServ(1, { generationId: 'g1', resultUrl: 'https://b/1.png' })] },
+      }),
+      plano([]),
+      AGORA,
+    )
+    const volta = slidesParaServidor(card) as { groupId: string; lista: Array<Record<string, unknown>> }
+    expect(volta.groupId).toBe('cg-1')
+    expect(volta.lista[0].generationId).toBe('g1')
+    expect(volta.lista[0].resultUrl).toBe('https://b/1.png')
+  })
+
+  /**
+   * 🔴 A mesma regra da peça única, agora por slide: o polling local enxerga o
+   * resultado segundos antes de a transição sincronizar. Servidor sem o gen de
+   * um slide NÃO pode apagar o gen que o navegador já pagou.
+   */
+  it('a fusão nunca regride um slide com trabalho local', () => {
+    const locais = slidesDoServidor({
+      lista: [slideServ(1, { generationId: 'g-pago', resultUrl: 'https://b/capa.png' })],
+    })
+    const doServ = slidesDoServidor({ lista: [slideServ(1)] }) // servidor atrasado
+    const fila = mesclarSlides(locais, doServ)!
+    expect(fila[0].generationId).toBe('g-pago')
+    expect(fila[0].resultUrl).toBe('https://b/capa.png')
+  })
+
+  it('o servidor conta novidade de outro navegador', () => {
+    const locais = slidesDoServidor({ lista: [slideServ(1)] })
+    const doServ = slidesDoServidor({
+      lista: [slideServ(1, { generationId: 'g-novo', resultUrl: 'https://b/nova.png' })],
+    })
+    const fila = mesclarSlides(locais, doServ)!
+    expect(fila[0].generationId).toBe('g-novo')
+    expect(fila[0].resultUrl).toBe('https://b/nova.png')
   })
 })

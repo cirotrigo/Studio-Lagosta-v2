@@ -22,6 +22,7 @@
  */
 
 import { db } from '@/lib/db'
+import { Prisma } from '../../../prisma/generated/client'
 import { transicionarItem, statusDoItem } from '@/lib/planos/plano-service'
 import { caminhoAte, situacaoPelaArte, type StatusDaArte } from '@/lib/planos/execucao'
 import type { StatusDoItem } from '@/lib/planos/vocabulario'
@@ -60,6 +61,55 @@ function motivoDaFalha(fieldValues: unknown): string {
   return 'A produção desta arte falhou. Dá para tentar de novo.'
 }
 
+
+// ── Carrossel ───────────────────────────────────────────────────────────────
+
+interface SlideDoJson {
+  ordem?: number | null
+  generationId?: string | null
+  resultUrl?: string | null
+  erro?: string | null
+  [k: string]: unknown
+}
+
+/** Lê o Json de slides com desconfiança; qualquer coisa fora do shape é nulo. */
+function lerSlides(bruto: unknown): { groupId?: unknown; lista: SlideDoJson[] } | null {
+  if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) return null
+  const lista = (bruto as { lista?: unknown }).lista
+  if (!Array.isArray(lista) || lista.length === 0) return null
+  return { ...(bruto as object), lista: lista as SlideDoJson[] }
+}
+
+function gensDosSlides(bruto: unknown): string[] {
+  const slides = lerSlides(bruto)
+  return (slides?.lista ?? [])
+    .map((s) => s.generationId)
+    .filter((g): g is string => typeof g === 'string' && g !== '')
+}
+
+/** Escreve nos slides o que as artes já sabem (resultUrl/erro). */
+function atualizarSlidesPelasArtes(
+  slides: { lista: SlideDoJson[] },
+  porId: Map<string, { status: string; resultUrl: string | null; fieldValues: unknown }>,
+): { lista: SlideDoJson[]; mudou: boolean } {
+  let mudou = false
+  const lista = slides.lista.map((s) => {
+    if (!s.generationId) return s
+    const arte = porId.get(s.generationId)
+    if (!arte) return s
+    if (arte.status === 'COMPLETED' && arte.resultUrl && s.resultUrl !== arte.resultUrl) {
+      mudou = true
+      return { ...s, resultUrl: arte.resultUrl, erro: null }
+    }
+    if (arte.status === 'FAILED' && !s.erro) {
+      mudou = true
+      return { ...s, erro: motivoDaFalha(arte.fieldValues) }
+    }
+    return s
+  })
+  return { lista, mudou }
+}
+
 /**
  * Confere as artes dos itens em voo de um plano e move o que já terminou.
  *
@@ -76,23 +126,73 @@ export async function reconciliarPlano(
         planoId,
         projectId,
         status: { in: ['na-fila', 'gerando'] },
-        generationId: { not: null },
+        // Peça única em voo tem generationId; carrossel em voo tem os gens
+        // DENTRO de slides — os dois entram, e quem não tem nada fica.
+        OR: [{ generationId: { not: null } }, { slides: { not: Prisma.DbNull } }],
       },
-      select: { id: true, status: true, generationId: true },
+      select: { id: true, status: true, generationId: true, slides: true },
       take: TETO,
     })
     if (emVoo.length === 0) return VAZIO
 
-    const artes = await db.generation.findMany({
-      where: { id: { in: emVoo.map((i) => i.generationId as string) } },
-      select: { id: true, status: true, fieldValues: true },
-    })
+    const idsDeArte = emVoo.flatMap((i) => [
+      ...(i.generationId ? [i.generationId] : []),
+      ...gensDosSlides(i.slides),
+    ])
+    const artes = idsDeArte.length
+      ? await db.generation.findMany({
+          where: { id: { in: idsDeArte } },
+          select: { id: true, status: true, resultUrl: true, fieldValues: true },
+        })
+      : []
     const porId = new Map(artes.map((a) => [a.id, a]))
 
     const movidos: ItemMovido[] = []
     for (const item of emVoo) {
-      const arte = porId.get(item.generationId as string)
       const de = statusDoItem(item)
+
+      // ── Carrossel: o desfecho é da SÉRIE, não de uma arte ──────────────────
+      const slides = lerSlides(item.slides)
+      if (slides) {
+        const { lista, mudou } = atualizarSlidesPelasArtes(slides, porId)
+        const comGen = lista.filter((s) => s.generationId)
+        const pendentes = comGen.filter((s) => !s.resultUrl && !s.erro)
+        const falhou = comGen.some((s) => s.erro)
+        // Série esperando a confirmação do guia (slides sem gen) NÃO é pronta.
+        const completa =
+          comGen.length === lista.length && lista.length > 0 && pendentes.length === 0 && !falhou
+
+        const para = falhou ? ('erro' as const) : completa ? ('pronto' as const) : null
+        if (!para) {
+          // Nada de terminal — mas o que as artes já contaram fica gravado,
+          // para outro navegador ver a série avançando slide a slide.
+          if (mudou) {
+            await db.itemDePlano
+              .update({
+                where: { id: item.id },
+                data: { slides: { ...slides, lista } as Prisma.InputJsonValue },
+              })
+              .catch(() => {})
+          }
+          continue
+        }
+        const erroDaSerie = falhou
+          ? (lista.find((s) => s.erro)?.erro ?? 'Um slide da série falhou.')
+          : undefined
+        const movido = await mover({
+          projectId,
+          planoId,
+          itemId: item.id,
+          de,
+          para,
+          erro: erroDaSerie,
+          slides: { ...slides, lista },
+        })
+        if (movido) movidos.push(movido)
+        continue
+      }
+
+      const arte = porId.get(item.generationId as string)
       const para = situacaoPelaArte(de, (arte?.status as StatusDaArte | undefined) ?? null)
       if (!para) continue
 
@@ -123,6 +223,8 @@ async function mover(entrada: {
   de: StatusDoItem
   para: StatusDoItem
   erro?: string
+  /** Carrossel: a série atualizada, gravada junto com o desfecho. */
+  slides?: unknown
 }): Promise<ItemMovido | null> {
   const passos = caminhoAte(entrada.de, entrada.para)
   if (!passos || passos.length === 0) return null
@@ -134,9 +236,12 @@ async function mover(entrada: {
         planoId: entrada.planoId,
         itemId: entrada.itemId,
         para: passo,
-        // O motivo só acompanha o passo final; um `gerando` intermediário não
-        // tem erro nenhum para contar.
+        // O motivo (e a série, no carrossel) só acompanham o passo final; um
+        // `gerando` intermediário não tem nada a contar.
         erro: passo === 'erro' ? entrada.erro : undefined,
+        ...(passo === entrada.para && entrada.slides !== undefined
+          ? { slides: entrada.slides }
+          : {}),
       })
     }
     return {

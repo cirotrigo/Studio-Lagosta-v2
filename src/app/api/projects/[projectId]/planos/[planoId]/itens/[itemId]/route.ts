@@ -37,6 +37,7 @@ const patchSchema = z.object({
   motivoDoSlot: z.string().max(400).nullable().optional(),
   escopo: z.string().max(30).nullable().optional(),
   campaignId: z.string().max(64).nullable().optional(),
+  slides: z.unknown().optional(),
 
   /** A nova situação: proposto | editado | aprovado | reprovado | na-fila | … */
   situacao: z.string().max(30).optional(),
@@ -102,6 +103,14 @@ export async function PATCH(
     for (const campo of CAMPOS_DE_CONTEUDO) {
       if (parsed.data[campo] !== undefined) patch[campo] = parsed.data[campo]
     }
+    /**
+     * `slides` anda pelos DOIS trilhos, nunca pelos dois ao mesmo tempo: SEM
+     * `situacao` é edição de conteúdo (passa pela régua de item editável);
+     * COM `situacao` ele pega carona na transição — é como a bancada sincroniza
+     * os generationIds da série durante a geração, quando o item já não é
+     * editável e `atualizarItem` recusaria.
+     */
+    if (parsed.data.slides !== undefined && !parsed.data.situacao) patch.slides = parsed.data.slides
 
     const avisos: string[] = []
     let item
@@ -126,6 +135,7 @@ export async function PATCH(
         para: parsed.data.situacao,
         motivo: parsed.data.motivo,
         erro: parsed.data.erro,
+        slides: parsed.data.slides,
         generationId: parsed.data.generationId,
         pageId: parsed.data.pageId,
         postId: parsed.data.postId,
