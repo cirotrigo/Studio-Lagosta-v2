@@ -18,10 +18,6 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
-import { BancadaCrivo } from '@/components/bancada/bancada-crivo'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api-client'
-import { parseApprovalChecklist, type PecaParaCrivo } from '@/lib/brand/approval-checklist'
 import type { BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
@@ -42,12 +38,22 @@ const COR: Record<BancadaItem['status'], string> = {
   agendado: 'bg-amber-500/15 text-amber-400',
 }
 
+/**
+ * CRIVO DESATIVADO em 11/08/2026, por decisão do Ciro: a conferência (~15-20s
+ * de LLM) + a leitura item a item ATRASAVAM o agendamento a ponto de ninguém
+ * querer usar. O aprendizado de dois dias de crivo: porta no fim do fluxo
+ * vira pedágio, e pedágio se paga sem ler — não importa quão boa a
+ * conferência seja.
+ *
+ * O código inteiro segue vivo e dormente (`bancada-crivo.tsx`,
+ * `crivo-avaliacao.ts`, a rota `/crivo/avaliar`, `useCrivoAvaliacao`): o
+ * plano é as MESMAS perguntas entrarem na F3 como insumo da GERAÇÃO da copy
+ * — regra respeitada no nascimento não precisa de porteiro na saída.
+ * Religar o portão é restaurar o bloco `pendente`/`BancadaCrivo` deste
+ * arquivo (histórico no git: commit que introduziu este comentário).
+ */
 export function BancadaFila({ projectId }: { projectId: number }) {
   const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, descartar } = useBancada(projectId)
-  const perguntasDoCrivo = useCrivoDoProjeto(projectId)
-
-  /** Agendamento segurado pelo crivo, esperando a leitura item a item. */
-  const [pendente, setPendente] = React.useState<{ item: BancadaItem; quando: string } | null>(null)
 
   if (itens.length === 0) {
     return (
@@ -68,80 +74,11 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           projectId={projectId}
           onGerar={() => (item.tipo === 'carrossel' ? gerarCapaEGuia(item) : gerar(item))}
           onConfirmarEstilo={() => confirmarEstilo(item)}
-          onAgendar={(quando, situacao) => {
-            // O crivo guarda só o AGENDAR. Rascunho na agenda é o caminho de
-            // quem ainda não aprovou — pedir o crivo ali viraria pedágio, e
-            // pedágio se paga sem ler.
-            if (situacao === 'agendado' && perguntasDoCrivo.length > 0) {
-              setPendente({ item, quando })
-              return
-            }
-            agendar(item, quando, situacao)
-          }}
+          onAgendar={(quando, situacao) => agendar(item, quando, situacao)}
           onRemover={() => descartar(item)}
         />
       ))}
-
-      <BancadaCrivo
-        projectId={projectId}
-        perguntas={perguntasDoCrivo}
-        peca={pendente ? pecaParaCrivo(pendente.item, pendente.quando) : null}
-        open={pendente !== null}
-        onOpenChange={(aberto) => {
-          if (!aberto) setPendente(null)
-        }}
-        onAprovar={() => {
-          if (pendente) agendar(pendente.item, pendente.quando, 'agendado')
-          setPendente(null)
-        }}
-      />
     </div>
-  )
-}
-
-/**
- * O que o crivo recebe para conferir sozinho: a copy que está NA ARTE, a
- * legenda, o horário e o formato.
- *
- * A imagem de propósito não vai — a conferência automática responde por DADO
- * (dia/hora em BRT contra a base, copy contra as regras), e o que exige ver a
- * peça é devolvido para o olho humano. O `generationId` viaja só para a
- * avaliação ficar registrada em `fieldValues.crivo`.
- *
- * No carrossel a copy é a de TODOS os slides, em ordem: as perguntas do crivo
- * falam da peça inteira ("existe mais de uma oferta na mesma peça?"), e
- * conferir só a capa — que é foto pura, sem texto — não responderia nada.
- */
-function pecaParaCrivo(item: BancadaItem, quando: string): PecaParaCrivo {
-  const ehCarrossel = item.tipo === 'carrossel'
-  const copy = ehCarrossel
-    ? (item.slides ?? [])
-        .slice()
-        .sort((a, b) => a.ordem - b.ordem)
-        .flatMap((s) => s.copy)
-    : item.copy
-  return {
-    copy,
-    legenda: item.legenda ?? null,
-    quando,
-    formato: ehCarrossel ? 'carrossel' : item.formato,
-    generationId: item.generationId ?? null,
-  }
-}
-
-/**
- * As perguntas do crivo desta marca, já quebradas em itens. Sem crivo
- * cadastrado devolve lista vazia — e aí o agendamento segue direto, como antes.
- */
-function useCrivoDoProjeto(projectId: number): string[] {
-  const { data } = useQuery<{ dna?: { approvalChecklist?: string | null } }>({
-    queryKey: ['brand-dna', projectId],
-    queryFn: () => api.get(`/api/projects/${projectId}/brand-dna`),
-    staleTime: 5 * 60_000,
-  })
-  return React.useMemo(
-    () => parseApprovalChecklist(data?.dna?.approvalChecklist ?? null),
-    [data?.dna?.approvalChecklist],
   )
 }
 
