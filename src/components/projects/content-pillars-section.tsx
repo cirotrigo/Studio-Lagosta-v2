@@ -82,6 +82,13 @@ export function ContentPillarsSection({ projectId }: { projectId: number }) {
   const pilares = rascunho ?? data?.pilares ?? []
   const aprovados = (data?.pilares ?? []).filter((p) => p.aprovado)
   const houveMudanca = rascunho !== null
+  /**
+   * Há o que aprovar quando a pessoa editou algo OU quando existe proposta
+   * ainda não aprovada. Sem a segunda metade, o caminho mais comum — pedir a
+   * proposta e concordar com ela — ficava com o botão desligado, e a única
+   * saída era mexer em alguma coisa só para poder salvar.
+   */
+  const podeAprovar = houveMudanca || pilares.some((p) => !p.aprovado)
 
   const propor = useMutation({
     mutationFn: () => api.post<{ pilares: PilarDaApi[]; avisos: string[]; textosAnalisados: number }>(
@@ -249,7 +256,7 @@ export function ContentPillarsSection({ projectId }: { projectId: number }) {
               <Plus className="mr-2 h-3.5 w-3.5" />
               Acrescentar pilar
             </Button>
-            <Button size="sm" onClick={() => salvar.mutate()} disabled={!houveMudanca || salvar.isPending}>
+            <Button size="sm" onClick={() => salvar.mutate()} disabled={!podeAprovar || salvar.isPending}>
               {salvar.isPending && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
               Aprovar lista
             </Button>
