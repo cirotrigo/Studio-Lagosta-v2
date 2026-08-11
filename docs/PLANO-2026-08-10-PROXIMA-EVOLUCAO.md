@@ -25,7 +25,17 @@
 | causa-raiz da poluição (`create-page`) | **no ar** | #45 |
 | F1 captura — núcleo | **no ar**, migration aplicada em produção | #47 |
 | F1 captura — superfícies | **no ar**, testada ponta a ponta em produção | #48, #49 |
-| F2 destilação | **em revisão**; migration validada no branch de dev, falta `db:deploy` | (esta) |
+| F2 destilação | **no ar**, migration aplicada em produção e conferida | #54 |
+| F3 plano semanal | em implementação (trilho A; o B abre com a F2 na main) | — |
+
+**Fora do plano original, entregue em 11/08 por pedido do Ciro:** revisão
+ortográfica da copy na bancada (#52), feedback humano da arte — "Gostei" /
+"Preciso melhorar" amarrado ao prompt que a gerou (#53), cron diário que
+reconcilia os catálogos com o Drive (#55), e os 10 acervos catalogados
+(~10.400 fotos, busca por tema em todos). **Desligados por decisão dele**, com
+o motivo registrado: retry automático de qualidade, revisão visual por IA
+(falso negativo confirmado) e o crivo de aprovação (atrasava o agendamento).
+A lição que orienta o resto: **qualidade entra na geração, não em portões.**
 
 **Achados da F2 (11/08), medidos contra produção:**
 
