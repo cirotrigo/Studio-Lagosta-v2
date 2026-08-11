@@ -477,7 +477,11 @@ async function main() {
   const cutoffISO = cutoff.toISOString()
   console.log(`\n3. Listing images (since ${cutoffISO.split('T')[0]})...`)
 
-  const subfolders = await listSubfolders(imagesFolderId)
+  // A RAIZ entra como primeira "pasta": o laço só iterava as subpastas, então
+  // foto solta na raiz da pasta de imagens nunca era catalogada — defeito
+  // latente achado na varredura do Real Gelateria (lá a raiz tinha 0, mas
+  // qualquer projeto com foto solta perderia essas fotos em silêncio).
+  const subfolders = [{ id: imagesFolderId, name: '' }, ...(await listSubfolders(imagesFolderId))]
   const newImages: { id: string; name: string; createdTime: string; folder: string; folderId: string }[] = []
 
   for (const folder of subfolders) {
