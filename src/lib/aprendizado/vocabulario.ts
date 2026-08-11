@@ -43,8 +43,25 @@ export type TipoDeSinal =
    * qualidade desde que os vereditos por IA foram desligados (10-11/08/2026).
    */
   | 'arte'
+  /**
+   * A arte que estava no post foi SUBSTITUÍDA por outra, com o post ainda em
+   * rascunho — a recusa mais explícita que existe sobre uma peça pronta.
+   *
+   * Não entra em `arte` de propósito: lá o `escolhido` carrega um veredito
+   * (`gostei`/`melhorar`) e o relatório de feedback filtra por `tipo: 'arte'`
+   * com teto de linhas — linhas sem veredito comeriam o orçamento da leitura e
+   * empurrariam feedback de verdade para fora da janela.
+   */
+  | 'troca-de-arte'
 
-export const TIPOS_DE_SINAL: TipoDeSinal[] = ['slot', 'copy', 'foto', 'modelo', 'arte']
+export const TIPOS_DE_SINAL: TipoDeSinal[] = [
+  'slot',
+  'copy',
+  'foto',
+  'modelo',
+  'arte',
+  'troca-de-arte',
+]
 
 /**
  * Como a proposta terminou.
