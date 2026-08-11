@@ -8,7 +8,7 @@ import {
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
-import { criarPlano, listarPlanos, MAX_ITENS_POR_PLANO } from '@/lib/planos/plano-service'
+import { anexarItensAoPlanoAtivo, criarPlano, listarPlanos, MAX_ITENS_POR_PLANO } from '@/lib/planos/plano-service'
 
 export const runtime = 'nodejs'
 /** Só banco: nada aqui chama modelo, gera arte nem fala com o Zernio. */
@@ -48,13 +48,21 @@ const itemSchema = z.object({
 const postSchema = z.object({
   titulo: z.string().max(200).nullable().optional(),
   /** "YYYY-MM-DD" (dia inteiro em BRT) ou data e hora. */
-  inicio: z.string().min(1).max(40),
-  fim: z.string().min(1).max(40),
+  // Opcionais por causa do modo anexar; a criação avulsa valida no handler.
+  inicio: z.string().min(1).max(40).optional(),
+  fim: z.string().min(1).max(40).optional(),
   /** Que superfície montou: 'chat' | 'bancada' | 'propor-semana'. */
   origem: z.string().max(40).nullable().optional(),
   /** Versão da heurística que montou — é o que deixa comparar safras. */
   versao: z.string().max(40).nullable().optional(),
   itens: z.array(itemSchema).max(MAX_ITENS_POR_PLANO).optional(),
+  /**
+   * `true` = anexa os itens ao PLANO ATIVO (criando um de hoje até domingo se
+   * não houver), em vez de criar um plano novo. É o modo do compositor da
+   * bancada — item montado ali precisa aparecer para a equipe inteira, não só
+   * no navegador de quem clicou. Neste modo `inicio`/`fim` são ignorados.
+   */
+  anexarAoAtivo: z.boolean().optional(),
 })
 
 async function resolver(projectIdRaw: string) {
@@ -123,6 +131,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
      * a partir daqui seria o próprio erro que se quer evitar.
      */
     const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+
+    if (parsed.data.anexarAoAtivo) {
+      const { plano, criados } = await anexarItensAoPlanoAtivo({
+        projectId: r.id,
+        itens: parsed.data.itens ?? [],
+        criadoPor: dbUser?.id,
+      })
+      return NextResponse.json({ plano, criados }, { status: 201 })
+    }
+
+    if (!parsed.data.inicio || !parsed.data.fim) {
+      return NextResponse.json(
+        { error: 'Informe início e fim do plano (ou anexarAoAtivo: true).' },
+        { status: 400 },
+      )
+    }
 
     const { plano, avisos } = await criarPlano({
       projectId: r.id,

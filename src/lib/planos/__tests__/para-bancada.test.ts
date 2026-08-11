@@ -3,6 +3,7 @@ import {
   caminhoDeTransicao,
   formatarQuandoBR,
   fundirComOLocal,
+  mesclarReferencias,
   hidratarItens,
   paraItemDaBancada,
   paraQuandoBRT,
@@ -566,5 +567,28 @@ describe('fundirComOLocal — a direção editada sobrevive à hidratação', ()
     const meu = local({ pedido: '' })
     const doPlano = paraItemDaBancada(doServidor(), plano([]), AGORA)
     expect(fundirComOLocal(meu, doPlano, AGORA).pedido).toBe(doPlano.pedido)
+  })
+})
+
+
+describe('mesclarReferencias', () => {
+  const ref = (papel: string, key: string) =>
+    ({ papel, driveFileId: key, thumbUrl: `/t/${key}` }) as never
+
+  it('a foto da cena vem do servidor; âncoras e estilo ficam do navegador', () => {
+    const fila = mesclarReferencias(
+      [ref('subject', 'velha'), ref('anchor-ambient', 'amb'), ref('style', 'sty')],
+      [ref('subject', 'nova')],
+    )
+    expect(fila.map((r) => (r as { driveFileId: string }).driveFileId)).toEqual([
+      'nova',
+      'amb',
+      'sty',
+    ])
+  })
+
+  it('servidor sem foto não apaga a cena local', () => {
+    const fila = mesclarReferencias([ref('subject', 'minha')], [])
+    expect(fila).toHaveLength(1)
   })
 })

@@ -46,6 +46,8 @@ import {
 } from '@/stores/bancada-store'
 import { ESCOPOS, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { useAprendizado } from '@/hooks/use-aprendizado'
+import { useAnexarItensAoPlano } from '@/hooks/use-planos'
+import { useToast } from '@/hooks/use-toast'
 import { useRevisaoOrtografica } from '@/hooks/use-revisao-ortografica'
 import { aplicarSugestao, type Suspeita } from '@/lib/ai/revisao-ortografica-contrato'
 import { AvisoDeRevisao, ConfirmacaoDeRevisao } from '@/components/bancada/revisao-ortografica'
@@ -91,6 +93,8 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const escopoPadrao = useBancadaStore((s) => s.escopoPadrao)
   const setEscopoPadrao = useBancadaStore((s) => s.setEscopoPadrao)
   const { registrarDesfecho } = useAprendizado(projectId)
+  const anexar = useAnexarItensAoPlano(projectId)
+  const { toast } = useToast()
 
   const [tipo, setTipo] = React.useState<'peca' | 'carrossel'>('peca')
   const [formato, setFormato] = React.useState<Formato>('story')
@@ -337,7 +341,55 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
       sugestaoId,
       escopo,
     }
-    adicionar(item)
+
+    /**
+     * SERVIDOR primeiro, navegador depois — a fila é da EQUIPE.
+     *
+     * Antes o item vivia só no localStorage de quem clicou, e a fila de um
+     * nunca aparecia para os outros. Agora ele vira ItemDePlano no plano ativo
+     * (o servidor cria um se não houver) e hidrata em todo navegador com
+     * acesso ao projeto. O card local nasce já com o vínculo, para a próxima
+     * hidratação FUNDIR em vez de duplicar.
+     *
+     * Falha de rede não engole o clique: o item fica local, com o aviso de que
+     * não sincronizou — igual antes, só que dito.
+     */
+    const cena = referencias.find((r) => r.papel === 'subject')
+    anexar.mutate(
+      [
+        {
+          quando: quando ?? null,
+          tema: pedido.trim() || blocos[0] || null,
+          copyProposta: blocos,
+          fotoDriveId: cena?.driveFileId ?? null,
+          fotoUrl: cena?.url ?? null,
+          formato,
+          via: 'ia',
+          motivoDoSlot: quandoManual ? null : (motivo ?? null),
+          escopo: escopo && escopo !== 'ROTINA' ? escopo.toLowerCase() : null,
+          sugestaoId,
+        },
+      ],
+      {
+        onSuccess: (r) => {
+          adicionar({
+            ...item,
+            itemDePlanoId: r.criados[0],
+            planoId: r.plano.id,
+            situacaoNoPlano: 'proposto',
+          })
+        },
+        onError: () => {
+          adicionar(item)
+          toast({
+            title: 'O item ficou só neste navegador',
+            description:
+              'Não consegui gravar na fila da equipe agora — os outros não vão vê-lo. Vale tentar de novo mais tarde.',
+            variant: 'destructive',
+          })
+        },
+      },
+    )
     limpar()
   }
 

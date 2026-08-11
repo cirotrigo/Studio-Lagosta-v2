@@ -129,6 +129,44 @@ export function useAtualizarItemDoPlano(projectId: number) {
   })
 }
 
+/** Um item como o compositor o manda ao servidor (subconjunto do itemSchema). */
+export interface ItemParaAnexar {
+  quando?: string | null
+  tema?: string | null
+  copyProposta?: string[] | null
+  legenda?: string | null
+  fotoUrl?: string | null
+  fotoDriveId?: string | null
+  formato: string
+  via?: string | null
+  motivoDoSlot?: string | null
+  escopo?: string | null
+  sugestaoId?: string | null
+}
+
+/**
+ * Anexa itens ao plano ATIVO (o servidor cria um se não houver).
+ *
+ * É o que faz o "Adicionar à fila" valer para a EQUIPE: sem isto o item vivia
+ * só no localStorage de quem clicou, e a fila de um nunca aparecia para os
+ * outros.
+ */
+export function useAnexarItensAoPlano(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (itens: ItemParaAnexar[]) =>
+      api.post<{ plano: PlanoDoServidor; criados: string[] }>(
+        `/api/projects/${projectId}/planos`,
+        { anexarAoAtivo: true, itens },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['planos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['plano', projectId] })
+    },
+  })
+}
+
 // ── Avanço (fire-and-forget) ────────────────────────────────────────────────
 
 interface Avanco {

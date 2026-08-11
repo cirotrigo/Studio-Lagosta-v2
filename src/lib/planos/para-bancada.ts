@@ -193,6 +193,23 @@ export function temTrabalhoNoServidor(item: {
   return !!item.generationId || (item.slides ?? []).some((s) => !!s.generationId)
 }
 
+/**
+ * O servidor manda na foto da CENA (a única com coluna no ItemDePlano); as
+ * referências extras — âncoras de ambiente/prato e estilo — só existem no
+ * navegador de quem as escolheu e não podem evaporar a cada refetch. Sem esta
+ * fusão, o item montado no compositor com âncoras perdia todas elas na
+ * primeira hidratação.
+ */
+export function mesclarReferencias(
+  locais: BancadaItem['referencias'],
+  doServidor: BancadaItem['referencias'],
+): BancadaItem['referencias'] {
+  const cena =
+    doServidor.find((r) => r.papel === 'subject') ?? locais.find((r) => r.papel === 'subject')
+  const extras = locais.filter((r) => r.papel !== 'subject')
+  return [...(cena ? [cena] : []), ...extras]
+}
+
 // ── Datas ───────────────────────────────────────────────────────────────────
 
 const FUSO = 'America/Sao_Paulo'
@@ -414,7 +431,7 @@ export function fundirComOLocal(
             local.pedido && local.pedido !== doServidor.pedido
               ? local.pedido
               : doServidor.pedido,
-          referencias: doServidor.referencias,
+          referencias: mesclarReferencias(local.referencias, doServidor.referencias),
           quando: doServidor.quando,
           escopo: doServidor.escopo,
           motivoDoSlot: doServidor.motivoDoSlot,

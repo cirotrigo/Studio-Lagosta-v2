@@ -21,6 +21,7 @@
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
+import { diaBRTDe, diasAteDomingoBRT } from './proposta-de-semana'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import {
@@ -410,6 +411,72 @@ export async function criarPlano(input: CriarPlanoInput) {
   })
 
   return { plano: comProgresso(plano), avisos }
+}
+
+/**
+ * Anexa itens ao PLANO ATIVO do projeto — criando um se não houver.
+ *
+ * É o que faz a bancada ser da EQUIPE: o "Adicionar à fila" do compositor
+ * gravava só no navegador de quem clicou, e a fila de um nunca aparecia para
+ * os outros. Item anexado aqui hidrata em todo navegador com acesso ao
+ * projeto, exatamente como os itens montados no chat.
+ *
+ * O plano criado no primeiro anexo cobre de HOJE até domingo (a janela como a
+ * agência planeja); item fora dela continua sendo AVISO, nunca recusa.
+ */
+export async function anexarItensAoPlanoAtivo(input: {
+  projectId: number
+  itens: ItemDePlanoInput[]
+  criadoPor?: string | null
+}): Promise<{ plano: NonNullable<Awaited<ReturnType<typeof planoAtivo>>>; criados: string[] }> {
+  const projectId = Number(input.projectId)
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    throw new CreativeError('PROJECT_NOT_FOUND', `Projeto inválido: ${input.projectId}`, 400)
+  }
+  if (input.itens.length === 0) {
+    throw new CreativeError('SEM_ITENS', 'Não veio nenhum item para anexar.', 400)
+  }
+
+  let alvo = await planoAtivo(projectId)
+  if (!alvo) {
+    const agora = new Date()
+    const inicio = diaBRTDe(agora)
+    const fim = diaBRTDe(new Date(agora.getTime() + (diasAteDomingoBRT(agora) - 1) * 24 * 3_600_000))
+    const criado = await criarPlano({
+      projectId,
+      titulo: `Bancada — semana de ${inicio.slice(8, 10)}/${inicio.slice(5, 7)}`,
+      inicio,
+      fim,
+      origem: 'bancada',
+      criadoPor: input.criadoPor ?? null,
+      itens: [],
+    })
+    alvo = criado.plano
+  }
+
+  if (alvo.itens.length + input.itens.length > MAX_ITENS_POR_PLANO) {
+    throw new CreativeError(
+      'PLANO_GRANDE_DEMAIS',
+      `O plano já tem ${alvo.itens.length} itens; anexar ${input.itens.length} passaria do teto de ${MAX_ITENS_POR_PLANO}.`,
+      400,
+    )
+  }
+
+  const avisos: string[] = []
+  const base = alvo.itens.length
+  const janela = { inicio: alvo.inicio, fim: alvo.fim }
+  const criados: string[] = []
+  for (const [i, entrada] of input.itens.entries()) {
+    const dados = normalizarItem({ ...entrada, ordem: entrada.ordem ?? base + i }, base + i, janela, avisos)
+    const linha = await db.itemDePlano.create({
+      data: { ...dados, planoId: alvo.id, projectId },
+      select: { id: true },
+    })
+    criados.push(linha.id)
+  }
+
+  const plano = await lerPlano(projectId, alvo.id)
+  return { plano: { ...plano, avisos } as never, criados }
 }
 
 // ── Edição do plano ─────────────────────────────────────────────────────────
