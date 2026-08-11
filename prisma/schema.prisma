@@ -297,6 +297,133 @@ enum GenerationJobStatus {
   FAILED
 }
 
+/**
+ * Plano de conteúdo (F3) — a LEVA que o chat e a bancada enxergam juntos.
+ *
+ * A fila da bancada é `localStorage` (`src/stores/bancada-store.ts`, chave
+ * `lagosta.bancada`) e nenhuma rota escreve nela: o chat não consegue montar
+ * uma semana que a bancada veja, nem o contrário. Esta entidade é o chão comum
+ * — a bancada passa a hidratar do servidor e o localStorage vira cache.
+ *
+ * O que o plano NÃO faz: gerar arte e gastar crédito. Ele registra o que se
+ * PRETENDE fazer. Quem executa (e cobra) é `executar-plano`, com gate de
+ * confirmação — o contrato da casa é que sugestão nunca agenda nem gasta
+ * sozinha.
+ *
+ * `status` e `origem` são TEXT e não enum do Postgres, pelo precedente da F1
+ * (`LearningSignal.tipo`) e por uma razão operacional: `migrate deploy` roda
+ * cada migration numa transação, e `ALTER TYPE … ADD VALUE` não pode ser usado
+ * no mesmo bloco em que o tipo é criado. Vocabulário que ainda se move fica em
+ * TEXT; a validação mora em `src/lib/planos/vocabulario.ts`.
+ */
+model PlanoDeConteudo {
+  id        String   @id @default(cuid())
+  /// Sem relação com `Project`, pelo precedente dos dois models mais recentes
+  /// (`LearningSignal`, `GenerationJob`).
+  projectId Int
+  /// "Semana de 17 a 23/08", "Festival Italiano" — o nome que a pessoa lê.
+  titulo    String?
+  /// A janela que o plano cobre. Item fora dela é AVISO, nunca erro: campanha
+  /// prorrogada e prazo velho da base já ensinaram que recusar por metadado é
+  /// pior que aceitar com ressalva.
+  inicio    DateTime
+  fim       DateTime
+  /// 'ativo' | 'arquivado'.
+  status    String   @default("ativo")
+  /// Que superfície montou: 'chat' | 'bancada' | 'propor-semana'.
+  origem    String?
+  /// Versão da heurística que montou o plano — sem ela não dá para comparar
+  /// safras (mesmo motivo de `LearningSignal.versao`).
+  versao    String?
+  /// `User.id` INTERNO (cuid), NUNCA o clerkId.
+  criadoPor String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  itens ItemDePlano[]
+
+  /// A leitura quente é "o plano ativo deste cliente, o mais recente primeiro"
+  /// (`planoAtivo`) e a lista filtrada por situação (`listarPlanos`). O mesmo
+  /// índice serve às duas.
+  @@index([projectId, status, createdAt])
+}
+
+/**
+ * Um post PRETENDIDO dentro de um plano (F3).
+ *
+ * 🔴 A regra de FK aqui tem duas metades, e a distinção importa:
+ *
+ *  - `planoId` **TEM** FK, com `onDelete: Cascade`. É parentesco estrito: item
+ *    sem plano não significa nada. A regra "sem FK" da casa é sobre vínculo
+ *    FROUXO com entidade apagável, não sobre o dono da linha.
+ *  - `postId`, `generationId`, `pageId`, `campaignId`, `sugestaoId` e
+ *    `sourcePageId` **não têm FK nenhuma**, pelo precedente de
+ *    `Generation.sourceGenerationId` e `SocialPost.campaignId`: apagar o post,
+ *    a arte, a página ou a campanha não pode arrastar nem travar o registro do
+ *    que se pretendia fazer.
+ */
+model ItemDePlano {
+  id        String @id @default(cuid())
+  planoId   String
+  /// Redundante com `plano.projectId` de propósito: toda leitura/escrita do
+  /// serviço filtra por projeto (item de outro cliente é 404, nunca 403 com
+  /// vazamento), e sem a coluna isso viraria join em todo caminho.
+  projectId Int
+  ordem     Int    @default(0)
+
+  /// Quando publicar, em UTC. Nulo enquanto o horário não foi decidido.
+  quando       DateTime?
+  tema         String?
+  /// Blocos de texto, como a copy da bancada (headline, apoio, CTA).
+  copyProposta String[]  @default([])
+  legenda      String?
+  fotoUrl      String?
+  fotoDriveId  String?
+  /// 'story' | 'feed' | 'quadrado'.
+  formato      String
+  /// 'template' (padrão — custo de API de imagem ZERO) | 'ia'. A escolha de
+  /// via também é sinal aprendido.
+  via          String    @default("template")
+  /// A página-modelo escolhida na via template.
+  sourcePageId String?
+  /// Por que este horário — a frase que a proposta mostra para quem lê.
+  motivoDoSlot String?
+
+  /// O que o sistema pode aprender com este post, quando ele existir.
+  escopo     LearningScope @default(ROTINA)
+  campaignId String?
+
+  /// 'proposto' | 'editado' | 'aprovado' | 'reprovado' | 'na-fila' |
+  /// 'gerando' | 'pronto' | 'erro' | 'agendado'. Ver
+  /// `src/lib/planos/vocabulario.ts`.
+  status           String  @default("proposto")
+  /// Por que foi reprovado — é o que transforma a recusa em sinal, em vez de
+  /// beco sem saída.
+  motivoReprovacao String?
+  /// Falha da geração, em português.
+  erro             String?
+
+  /// Preenchidos conforme o item avança: a arte, a página e o post que ele
+  /// virou. Sem FK (ver o cabeçalho).
+  generationId String?
+  pageId       String?
+  postId       String?
+  /// O `LearningSignal` da sugestão de horário que originou este item.
+  sugestaoId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  plano PlanoDeConteudo @relation(fields: [planoId], references: [id], onDelete: Cascade)
+
+  /// Os itens deste plano, na ordem em que a leva foi montada — a leitura de
+  /// toda tela e de toda tool que mostra o plano.
+  @@index([planoId, ordem])
+  /// "O que ainda está por fazer neste cliente": a varredura por situação que
+  /// a execução e a hidratação da bancada consultam.
+  @@index([projectId, status])
+}
+
 model Logo {
   id            Int      @id @default(autoincrement())
   name          String
