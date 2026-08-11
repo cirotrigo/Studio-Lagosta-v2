@@ -30,6 +30,7 @@ import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { fecharSugestaoDeModelo, registrarSugestaoDeModelo } from '@/lib/aprendizado/sinal-de-modelo'
+import { fecharSugestaoDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import { vigenteEm } from '@/lib/knowledge/vigencia'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
@@ -651,6 +652,21 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     decididoPor: input.decididoPor ?? null,
     superficie: 'chat',
   })
+  /**
+   * E a foto: `buscarNoAcervo` propôs uma lista, esta arte consumiu uma delas.
+   * Sem isto a proposta ficava pendente até expirar — registrando "ninguém
+   * decidiu" sobre a foto que virou arte. Ver `sinal-de-foto.ts`.
+   */
+  if (driveImageId) {
+    await fecharSugestaoDeFoto({
+      projectId,
+      driveFileIdUsado: driveImageId,
+      generationId: persisted.generationId,
+      pageId: persisted.pageId,
+      decididoPor: input.decididoPor ?? null,
+      superficie: 'chat',
+    })
+  }
 
   return {
     created: true,
