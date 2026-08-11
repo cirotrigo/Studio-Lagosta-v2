@@ -9,6 +9,7 @@ import { createHash } from 'crypto'
 
 // Redis client singleton (lazy loaded)
 let redisClient: Redis | null = null
+let missingCredentialsWarned = false
 
 type CacheKeyOptions = {
   category?: string
@@ -53,6 +54,109 @@ function logCache(event: string, details?: Record<string, unknown>) {
   }
 }
 
+/**
+ * Disjuntor do backend de cache.
+ *
+ * O Upstash responde **HTTP 200 com `{"error": ...}` no corpo** quando o banco
+ * está suspenso, com rate limit da conta ou credencial inválida. O client só
+ * lança em resposta não-2xx, então esse envelope de erro chega inteiro ao
+ * auto-pipeline (ligado por padrão desde o @upstash/redis 1.x), que faz
+ * `res.map(...)` sobre um objeto e estoura `TypeError: res.map is not a function`.
+ *
+ * Como o erro é capturado e logado, nada quebra — mas o cache NUNCA acerta e
+ * toda busca na base paga a ida ao servidor mais duas linhas de erro. Medido em
+ * 11/08/2026 contra o banco rate-limited: ~600ms por busca em regime, ~1,9s a
+ * frio. Cache que nunca acerta é só latência e ruído.
+ *
+ * O disjuntor faz backend derrubado custar ~0: depois de algumas falhas
+ * seguidas o cache para de ser consultado, avisa UMA vez com diagnóstico
+ * acionável, e volta a testar sozinho — quem consertar o banco não precisa
+ * redeployar para o cache voltar.
+ *
+ * Ele guarda só o caminho quente (leitura/escrita a cada busca). A invalidação
+ * é rara e sensível a correção, então segue tentando sempre.
+ */
+const BREAKER_FAILURE_THRESHOLD = 3
+const BREAKER_BASE_COOLDOWN_MS = 60_000
+const BREAKER_MAX_COOLDOWN_MS = 10 * 60_000
+const BREAKER_PROBE_GUARD_MS = 10_000
+
+let consecutiveFailures = 0
+let breakerTripped = false
+let breakerOpenUntil = 0
+let breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS
+
+/** Exposto para teste: devolve o disjuntor ao estado de processo recém-subido. */
+export function __resetCacheBreakerForTests() {
+  consecutiveFailures = 0
+  breakerTripped = false
+  breakerOpenUntil = 0
+  breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS
+}
+
+function breakerIsOpen(): boolean {
+  if (!breakerTripped) return false
+
+  const agora = Date.now()
+  if (agora < breakerOpenUntil) return true
+
+  // Meio-aberto: libera UMA sonda e segura as concorrentes durante ela, para o
+  // fim do cooldown não virar enxurrada de requisições simultâneas.
+  breakerOpenUntil = agora + BREAKER_PROBE_GUARD_MS
+  return false
+}
+
+function describeCacheFailure(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  if (message.includes('res.map is not a function')) {
+    return (
+      'o servidor respondeu HTTP 200 com corpo de erro — banco suspenso, ' +
+      'rate limit da conta ou credencial inválida'
+    )
+  }
+  return message
+}
+
+function recordCacheSuccess() {
+  if (breakerTripped) {
+    console.warn('[cache] backend voltou a responder; cache reativado.')
+  }
+  consecutiveFailures = 0
+  breakerTripped = false
+  breakerOpenUntil = 0
+  breakerCooldownMs = BREAKER_BASE_COOLDOWN_MS
+}
+
+function recordCacheFailure(operacao: string, error: unknown) {
+  consecutiveFailures += 1
+
+  // Falha isolada pode ser soluço de rede: loga e segue tentando.
+  if (consecutiveFailures < BREAKER_FAILURE_THRESHOLD) {
+    console.error(`[cache] falha em ${operacao}:`, error)
+    return
+  }
+
+  const jaEstavaAberto = breakerTripped
+  breakerCooldownMs = jaEstavaAberto
+    ? Math.min(breakerCooldownMs * 2, BREAKER_MAX_COOLDOWN_MS)
+    : BREAKER_BASE_COOLDOWN_MS
+  breakerTripped = true
+  breakerOpenUntil = Date.now() + breakerCooldownMs
+
+  if (jaEstavaAberto) {
+    logCache('BREAKER_REOPEN', { operacao, cooldownMs: breakerCooldownMs })
+    return
+  }
+
+  console.warn(
+    `[cache] desativado por ${Math.round(breakerCooldownMs / 1000)}s após ` +
+      `${consecutiveFailures} falhas seguidas em ${operacao}: ${describeCacheFailure(error)}. ` +
+      'A busca na base segue funcionando, só que sem cache. ' +
+      'Conserte o banco apontado por UPSTASH_REDIS_REST_URL, ou remova as ' +
+      'variáveis UPSTASH_REDIS_* para desligar o cache de vez.'
+  )
+}
+
 function parseTtlSeconds(raw: string | undefined, fallback: number) {
   if (!raw) return fallback
   const n = Number(raw)
@@ -88,7 +192,11 @@ async function getRedisClient() {
   const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN
 
   if (!redisUrl || !redisToken) {
-    console.warn('[cache] Upstash Redis not configured. Caching disabled.')
+    // Uma vez por processo: sem cache configurado, TODA busca passaria por aqui.
+    if (!missingCredentialsWarned) {
+      missingCredentialsWarned = true
+      console.warn('[cache] Upstash Redis não configurado. Cache desligado (a busca na base segue normal).')
+    }
     return null
   }
 
@@ -182,6 +290,8 @@ export async function getCachedResults(
   category?: string,
   options: Omit<CacheKeyOptions, 'category'> = {}
 ): Promise<SearchResult[] | null> {
+  if (breakerIsOpen()) return null
+
   const redis = await getRedisClient()
   if (!redis) return null
 
@@ -190,6 +300,7 @@ export async function getCachedResults(
     const versionKey = getProjectVersionKey(projectId)
     const key = getCacheKey(query, projectId, { ...options, category })
     const [versionRaw, cachedRaw] = (await redis.mget(versionKey, key)) as [unknown, unknown]
+    recordCacheSuccess()
 
     if (cachedRaw == null) {
       logCache('MISS', { key, projectId, ms: Date.now() - startedAt })
@@ -217,7 +328,7 @@ export async function getCachedResults(
     logCache('HIT', { key, projectId, results: payload.results.length, ms: Date.now() - startedAt })
     return payload.results
   } catch (error) {
-    console.error('[cache] Error getting cached results:', error)
+    recordCacheFailure('getCachedResults', error)
     return null
   }
 }
@@ -238,6 +349,8 @@ export async function setCachedResults(
   ttlSeconds?: number,
   options: Omit<CacheKeyOptions, 'category'> = {}
 ): Promise<void> {
+  if (breakerIsOpen()) return
+
   const redis = await getRedisClient()
   if (!redis) return
 
@@ -259,10 +372,11 @@ export async function setCachedResults(
     }
 
     await redis.set(key, JSON.stringify(payload), { ex: finalTtl })
+    recordCacheSuccess()
 
     logCache('SET', { key, projectId, results: results.length, ttl: finalTtl, ms: Date.now() - startedAt })
   } catch (error) {
-    console.error('[cache] Error setting cached results:', error)
+    recordCacheFailure('setCachedResults', error)
   }
 }
 
