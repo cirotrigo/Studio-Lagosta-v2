@@ -526,15 +526,28 @@ export function hidratarItens(
       continue
     }
 
-    // Vinculado a OUTRA leva: não é assunto desta hidratação.
-    if (plano && local.planoId && local.planoId !== plano.id) {
-      mantidos.push(local)
+    /**
+     * 🔴 Card de OUTRA leva NÃO fica intocado — a bancada mostra UMA leva por
+     * vez (a ativa), e o card preso a um plano que não é o ativo é quase
+     * sempre resto de leva apagada ou substituída.
+     *
+     * A primeira versão deste código o mantinha ("não é assunto desta
+     * hidratação"), e o efeito real foi apagar a leva no servidor e ver TODOS
+     * os cards continuarem na tela: três levas do Espeto empilhadas em
+     * 11/08/2026, cada `propor-semana` só ACRESCENTANDO. A regra agora é a
+     * mesma do card que sumiu do plano: com trabalho pago (ou já agendado)
+     * ele sobrevive como card local — trabalho nunca some da tela —; sem
+     * trabalho nenhum, sai.
+     */
+    if (temTrabalhoNoServidor(local) || local.status === 'agendado') {
+      mantidos.push(semVinculo(local))
       continue
     }
-
-    // Sumiu do plano (ou não há plano ativo): vira card local se já houve
-    // trabalho; some se nunca houve.
-    if (!plano || temTrabalhoNoServidor(local) || local.status === 'agendado') {
+    // Sem plano ativo nenhum, o card proposto fica (órfão): `plano: null`
+    // também acontece quando a leva acabou de ser arquivada e a pessoa ainda
+    // está olhando a fila — apagar aqui seria agressivo. Com uma leva ativa na
+    // tela, o proposto de outra leva é lixo e sai.
+    if (!plano) {
       mantidos.push(semVinculo(local))
     }
   }

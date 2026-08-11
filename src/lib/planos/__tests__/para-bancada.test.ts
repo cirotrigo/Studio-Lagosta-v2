@@ -419,12 +419,41 @@ describe('hidratarItens', () => {
     expect(fila[0].itemDePlanoId).toBeUndefined()
   })
 
-  it('card ligado a OUTRA leva não é assunto desta hidratação', () => {
+  /**
+   * 🔴 O defeito real de 11/08/2026: apagar a leva no servidor e criar outra
+   * deixava TODOS os cards antigos na tela — o ramo "não é assunto desta
+   * hidratação" os mantinha para sempre, e cada propor-semana só ACRESCENTAVA
+   * (três levas do Espeto empilhadas). Card de outra leva segue a regra do que
+   * sumiu do plano: sem trabalho, sai; com trabalho, vira card local.
+   */
+  it('card sem trabalho de uma leva substituída SAI da fila', () => {
     const deOutraLeva = local({ id: 'outra', itemDePlanoId: 'item-z', planoId: 'plano-2' })
     const fila = hidratarItens([deOutraLeva], plano([doServidor()]), 7, AGORA)
 
-    expect(fila).toHaveLength(2)
-    expect(fila.find((i) => i.id === 'outra')).toBe(deOutraLeva)
+    expect(fila).toHaveLength(1)
+    expect(fila.find((i) => i.id === 'outra')).toBeUndefined()
+  })
+
+  it('card COM trabalho de uma leva substituída sobrevive como card local', () => {
+    const pago = local({
+      id: 'outra',
+      itemDePlanoId: 'item-z',
+      planoId: 'plano-2',
+      status: 'gerando',
+      generationId: 'gen-pago',
+    })
+    const fila = hidratarItens([pago], plano([doServidor()]), 7, AGORA)
+
+    const sobrevivente = fila.find((i) => i.id === 'outra')!
+    expect(sobrevivente).toBeDefined()
+    expect(sobrevivente.itemDePlanoId).toBeUndefined() // perdeu o vínculo
+    expect(sobrevivente.generationId).toBe('gen-pago') // o trabalho não some
+  })
+
+  it('card agendado de uma leva substituída também fica', () => {
+    const agendado = local({ id: 'outra', itemDePlanoId: 'item-z', planoId: 'plano-2', status: 'agendado', postId: 'post-1' })
+    const fila = hidratarItens([agendado], plano([doServidor()]), 7, AGORA)
+    expect(fila.find((i) => i.id === 'outra')?.postId).toBe('post-1')
   })
 
   it('hidratar duas vezes com a mesma resposta não mexe na fila', () => {
