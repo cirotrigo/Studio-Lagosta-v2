@@ -32,7 +32,7 @@
 import { db } from '@/lib/db'
 import { registrarDesfecho, registrarSugestoes, sugestoesJaEmitidas } from './captura'
 import { chaveDeSugestao } from './chaves'
-import { desfechoPeloDiff, diffDeCopy } from './diff-copy'
+import { decidirDesfechoDaCopy } from './fechar-copy-por-pagina-contrato'
 import { slotEmBrasilia } from './sinal-de-agendamento'
 import type { Superficie } from './vocabulario'
 
@@ -215,15 +215,18 @@ export async function fecharDicaDeCopyDoItem(entrada: {
     const blocos = Array.isArray(propostos)
       ? propostos.filter((b): b is string => typeof b === 'string')
       : null
-    const diff = diffDeCopy(blocos, entrada.copyFinal.length > 0 ? entrada.copyFinal : null)
-    const desfecho = desfechoPeloDiff(diff)
-    if (!desfecho) return 'indecisa'
+    // A comparação mora no contrato PURO (`fechar-copy-por-pagina-contrato`),
+    // que é o mesmo usado pelo resolvedor por página: duas cópias da regra
+    // fariam a mesma edição virar `editada` num caminho e `aceita-como-veio` no
+    // outro, conforme a superfície.
+    const decisao = decidirDesfechoDaCopy(blocos, entrada.copyFinal)
+    if (decisao.acao !== 'fechar') return 'indecisa'
 
     await registrarDesfecho({
       sugestaoId: sinal.id,
-      desfecho,
+      desfecho: decisao.desfecho,
       escolhido: { blocos: entrada.copyFinal },
-      diff,
+      diff: decisao.diff,
       decididoPor: entrada.decididoPor ?? null,
       superficie: entrada.superficie ?? 'bancada',
       generationId: entrada.generationId ?? null,

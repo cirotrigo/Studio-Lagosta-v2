@@ -29,6 +29,10 @@ import {
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import {
+  caiNaEscolhaPropria,
+  fecharDicaDeCopyDaPagina,
+} from '@/lib/aprendizado/fechar-copy-por-pagina'
 import { fecharSugestaoDeModelo, registrarSugestaoDeModelo } from '@/lib/aprendizado/sinal-de-modelo'
 import { fecharSugestaoDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
@@ -875,11 +879,25 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * solto num Json sem índice. O que entra no corpus é o par completo: a copy
    * que estava e a que ficou, com o diff campo a campo.
    *
-   * É `registrarDecisaoSemSugestao` e não `registrarDesfecho` porque a copy
-   * original nunca foi registrada como PROPOSTA: ela foi escrita pelo LLM na
-   * conversa e chegou pronta em `createArteRapida`. Chamar isto de "sugestão
-   * recusada" inventaria um denominador que não existe — e é exatamente para
-   * este caso que a decisão absoluta carrega um `diff`.
+   * ── DOIS CAMINHOS, E O QUE OS SEPARA ────────────────────────────────────
+   * Depende de a copy ter sido PROPOSTA antes:
+   *
+   *  · **veio de um item de plano com dica** (`propor-semana` registrou a copy
+   *    como sugestão emitida) → o que se grava é o DESFECHO daquela proposta.
+   *    Abrir uma linha nova aqui faria o mesmo texto virar dois sinais com
+   *    sentidos opostos, inflando o denominador do KPI — o defeito que a F1 já
+   *    teve de corrigir uma vez no slot (`e3236624`);
+   *
+   *  · **não veio** → segue valendo `registrarDecisaoSemSugestao`, pelo motivo
+   *    de sempre: a copy foi escrita pelo LLM na conversa e chegou pronta em
+   *    `createArteRapida`, sem nunca ter sido registrada como proposta. Chamar
+   *    isto de "sugestão recusada" inventaria um denominador que não existe — e
+   *    é para este caso que a decisão absoluta carrega um `diff`.
+   *
+   * O desfecho é CALCULADO comparando o texto proposto com o final; nada aqui
+   * declara acerto. E só `sem-plano` cai na escolha absoluta
+   * (`caiNaEscolhaPropria`): em `erro` não dá para saber se havia dica, e
+   * perder um sinal é mais barato que gravar a linha paralela.
    *
    * Sem mudança de texto (ajuste só de foto ou de nome) não há sinal de copy:
    * gravar linha vazia só diluiria o corpus.
@@ -887,18 +905,28 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const copyDepois = copyDeCamadas(layers)
   const diffDaCorrecao = diffDeCopy(copyAntes, copyDepois)
   if (!diffDaCorrecao.ilegivel && diffDaCorrecao.mudou) {
-    await registrarDecisaoSemSugestao({
+    const fechamento = await fecharDicaDeCopyDaPagina({
       projectId,
-      tipo: 'copy',
-      escolhido: { copy: copyDepois, trocouFoto: imageApplied },
-      diff: diffDaCorrecao,
       pageId: page.id,
       generationId: persisted.generationId,
+      copyFinal: copyDepois,
       decididoPor: input.decididoPor ?? null,
       superficie: 'chat',
-      // A Generation é criada por ajuste; retry que devolva a mesma não duplica.
-      chave: `copy:ajuste:${persisted.generationId}`,
     })
+    if (caiNaEscolhaPropria(fechamento)) {
+      await registrarDecisaoSemSugestao({
+        projectId,
+        tipo: 'copy',
+        escolhido: { copy: copyDepois, trocouFoto: imageApplied },
+        diff: diffDaCorrecao,
+        pageId: page.id,
+        generationId: persisted.generationId,
+        decididoPor: input.decididoPor ?? null,
+        superficie: 'chat',
+        // A Generation é criada por ajuste; retry que devolva a mesma não duplica.
+        chave: `copy:ajuste:${persisted.generationId}`,
+      })
+    }
   }
 
   const camposAlterados = (layers as any[])
