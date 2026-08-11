@@ -92,8 +92,8 @@ async function main() {
     await db.itemDePlano.update({ where: { id: item.id }, data: { generationId: gen.id } })
 
     await registrarDicasDeCopy({
-      projectId: PROJECT_ID, versao: VERSAO_DA_DICA,
-      dicas: [{ itemId: item.id, ancora: ancoraDaDica(item as never), blocos: item.copyProposta, legenda: null }],
+      projectId: PROJECT_ID, servico: 'propor-semana', versao: VERSAO_DA_DICA,
+      dicas: [{ ancora: ancoraDaDica(item)!, blocos: item.copyProposta, legenda: null }],
     })
     const emitidas = await db.learningSignal.count({
       where: { projectId: PROJECT_ID, tipo: 'copy', sugeridoEm: { not: null }, id: { notIn: [...sinaisAntes] } },

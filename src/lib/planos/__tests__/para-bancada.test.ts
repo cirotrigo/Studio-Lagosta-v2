@@ -100,6 +100,33 @@ describe('paraItemDaBancada', () => {
     expect(card.referencias[0].thumbUrl).toBe('https://blob/foto.jpg')
   })
 
+  /**
+   * 🔴 O caso REAL, e o que o teste acima não cobria: `propor-semana` escolhe a
+   * foto pelo acervo, que devolve `driveFileId` e NUNCA `fotoUrl`. Com os dois
+   * campos preenchidos o `thumbUrl` saía certo por acidente; com só o id do
+   * Drive ele saía VAZIO e o card aparecia sem imagem — uma leva inteira do
+   * Espeto Gaúcho (5 de 5) em 11/08/2026.
+   */
+  it('foto só com id do Drive ainda rende miniatura — é como o acervo devolve', () => {
+    const card = paraItemDaBancada(
+      doServidor({ fotoUrl: null, fotoDriveId: 'drive-1' }),
+      plano([]),
+      AGORA,
+    )
+    expect(card.referencias).toHaveLength(1)
+    expect(card.referencias[0].driveFileId).toBe('drive-1')
+    expect(card.referencias[0].thumbUrl).toBe('/api/drive/thumbnail/drive-1')
+  })
+
+  it('item sem foto nenhuma não inventa referência', () => {
+    const card = paraItemDaBancada(
+      doServidor({ fotoUrl: null, fotoDriveId: null }),
+      plano([]),
+      AGORA,
+    )
+    expect(card.referencias).toEqual([])
+  })
+
   it('via e formato desconhecidos caem no padrão em vez de derrubar a tela', () => {
     const card = paraItemDaBancada(
       doServidor({ via: 'mágica', formato: 'panorâmico', status: 'inventado' }),

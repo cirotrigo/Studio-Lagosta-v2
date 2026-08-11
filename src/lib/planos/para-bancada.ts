@@ -270,6 +270,22 @@ export function paraItemDaBancada(
   const foto = doServidor.fotoUrl?.trim() || null
   const driveId = doServidor.fotoDriveId?.trim() || null
 
+  /**
+   * 🔴 A miniatura precisa de uma URL, e foto do acervo NÃO tem uma.
+   *
+   * `propor-semana` escolhe a foto pelo `buscarNoAcervo`, que devolve
+   * `driveFileId` — nunca `fotoUrl`. Com `thumbUrl: ''` a referência existia (a
+   * geração até funcionaria, porque ela usa o `driveFileId`), mas o card da
+   * bancada não desenhava imagem nenhuma: uma leva inteira aparecia sem foto,
+   * como se a proposta tivesse vindo vazia. Medido no Espeto Gaúcho em
+   * 11/08/2026 — 5 de 5 cards sem imagem.
+   *
+   * `/api/drive/thumbnail/<fileId>` é a mesma rota que o seletor de fotos usa
+   * (`arte-ia-image-picker`), então a miniatura do plano e a do acervo saem do
+   * mesmo lugar.
+   */
+  const thumbUrl = foto ?? (driveId ? `/api/drive/thumbnail/${driveId}` : '')
+
   return {
     // Id estável e derivado: a mesma linha do plano produz sempre o mesmo card,
     // o que mantém a chave de idempotência da captura de copy (`item:<id>`)
@@ -298,7 +314,7 @@ export function paraItemDaBancada(
               ...(driveId ? { driveFileId: driveId } : {}),
               ...(foto ? { url: foto } : {}),
               ...(tema ? { label: tema } : {}),
-              thumbUrl: foto ?? '',
+              thumbUrl,
             },
           ]
         : [],
