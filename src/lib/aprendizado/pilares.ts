@@ -45,8 +45,20 @@ export const CONFIANCA_MINIMA = 0.6
 /** Quantos pilares uma taxonomia útil tem. Menos não separa; mais não deduplica. */
 export const MIN_PILARES = 3
 export const MAX_PILARES = 8
-/** O que o passe de LLM mira. O teto acima ainda aceita edição humana. */
-export const ALVO_PILARES = { minimo: 5, maximo: 8 } as const
+/**
+ * O que o passe de LLM mira. O teto acima ainda aceita edição humana.
+ *
+ * 🔴 O máximo é 6, e não 8, por medição: pedindo "de 5 a 8", o modelo devolveu
+ * **8 em 8 clientes** (11/08/2026) — ele mira o teto e DIVIDE em vez de
+ * consolidar, que é o oposto do que uma taxonomia fechada existe para fazer.
+ * O resultado eram pares redundantes em quase toda marca ("Eventos e
+ * Celebrações" ao lado de "Datas Comemorativas"), e pilar redundante espalha o
+ * mesmo assunto por dois baldes ou empurra o post para `outro`.
+ *
+ * `MAX_PILARES` continua 8 de propósito: o teto do LLM é mais apertado que o
+ * da pessoa, que conhece a marca e pode querer um sétimo assunto.
+ */
+export const ALVO_PILARES = { minimo: 5, maximo: 6 } as const
 
 export interface Pilar {
   /** kebab-case, ESTÁVEL — é o que fica gravado em `SocialPost.pilar`. */

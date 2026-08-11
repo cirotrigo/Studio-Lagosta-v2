@@ -115,7 +115,26 @@ export async function proporPilaresDeTextos(
     const { pilares, avisos } = validarTaxonomia(
       (object.pilares ?? []).map((p) => ({ ...p, origem: 'llm' as const })),
     )
-    return { pilares, avisos, textosAnalisados: amostra.length }
+
+    /**
+     * O teto do LLM é do CÓDIGO, não do prompt.
+     *
+     * `validarTaxonomia` corta em `MAX_PILARES` (8), que é o teto da edição
+     * HUMANA. Pedir "de 5 a 6" no texto não basta: medido em 11/08/2026, o
+     * modelo devolveu o teto que lhe deram em 8 de 8 clientes. Mesma lição do
+     * piso de confiança e do casamento de pilar — regra dura mora no código.
+     *
+     * O corte é pela ORDEM em que ele propôs, que é a ordem de importância que
+     * ele mesmo declarou; a `ordem` é renumerada para não abrir buraco.
+     */
+    const noAlvo = pilares.slice(0, ALVO_PILARES.maximo).map((p, i) => ({ ...p, ordem: i }))
+    if (pilares.length > noAlvo.length) {
+      avisos.push(
+        `A proposta veio com ${pilares.length} assuntos e ficou nos ${noAlvo.length} primeiros — ` +
+          'lista longa demais para de fato separar. Dá para acrescentar outros à mão na aba Marca.',
+      )
+    }
+    return { pilares: noAlvo, avisos, textosAnalisados: amostra.length }
   } catch (erro) {
     const motivo = erro instanceof Error ? erro.message : 'erro desconhecido'
     console.warn('[pilares] proposta indisponível:', motivo)
