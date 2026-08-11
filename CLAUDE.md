@@ -1619,6 +1619,22 @@ portões.** Por isso a saída da destilação é um bloco de prompt
   baldes diferentes. Tabela e não Json no BrandDNA porque o `slug` é chave de
   junção (`SocialPost.pilar`), a lista é editada item a item e a aprovação é
   por linha.
+- 🔴 **`salvarPilares` SUBSTITUI a lista inteira**: pilar que não vier no payload
+  é APAGADO, não preservado. Chamar com uma lista parcial perde os outros em
+  silêncio — e, se algum post já estiver classificado no que sumiu,
+  `SocialPost.pilar` fica apontando para slug inexistente (sem FK, então o banco
+  não reclama). Antes de fundir ou remover pilar, conte os posts classificados
+  nele. Medido em 11/08/2026 ao consolidar o By Rock de 8 para 6.
+- **`proporPilares` ESCREVE** — grava as novidades como `aprovado: false`,
+  `origem: 'llm'`, de propósito, para a proposta sobreviver a um refresh sem
+  nunca virar taxonomia em uso. `taxonomiaAprovada` ignora não-aprovado, então
+  propor não muda comportamento nenhum. Ela lê no máximo
+  `MAX_TEXTOS_NA_PROPOSTA = 140` textos: é amostra, não censo.
+- **Aprovar a taxonomia já basta para a proposta da semana sair COM tema**, sem
+  classificar o histórico: `distribuirPilares` cai em peso uniforme e usa a
+  ordem que o humano aprovou. A classificação é o que enche o
+  `perfilParaPrompt` — e `classificarHistorico` retorna cedo enquanto a
+  taxonomia aprovada estiver vazia.
 - 🔴 **`outro` e `sem-texto` são baldes DIFERENTES, e a distinção não é
   preciosismo.** Medido em produção: só **10% a 26%** das publicações de cada
   cliente têm texto legível no banco (Wine Vix: 26 de 176 em 8 semanas) — o
