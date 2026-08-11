@@ -25,6 +25,23 @@
 | causa-raiz da poluição (`create-page`) | **no ar** | #45 |
 | F1 captura — núcleo | **no ar**, migration aplicada em produção | #47 |
 | F1 captura — superfícies | **no ar**, testada ponta a ponta em produção | #48, #49 |
+| F2 destilação | **em revisão**; migration validada no branch de dev, falta `db:deploy` | (esta) |
+
+**Achados da F2 (11/08), medidos contra produção:**
+
+- **Só 10% a 26% das publicações têm texto legível no banco** (Wine Vix: 26 de
+  176 em 8 semanas). A copy da maioria existe apenas dentro do PNG, montado
+  fora do Studio. Daí o balde `sem-texto`, separado de `outro`: sem a
+  separação, "outro" seria o maior pilar de todo cliente.
+- **O peso por recência SOZINHO teria promovido o Festival Italiano a rotina**
+  do Wine Vix (quinta 11:00 entra na v2 e não existia na v1). É a regra de
+  campanha — "confirma, nunca cria" — que o derruba. As duas mudanças tinham de
+  vir juntas; só a primeira teria piorado o defeito que o plano queria corrigir.
+- **A âncora do decaimento tinha de ser a última atividade do cliente, não o
+  relógio**: com o relógio, Espeto Gaúcho ia de 16 horários típicos para 3 e
+  Bacana de 20 para 3 por terem parado de publicar algumas semanas.
+- **A v1 chamava de hábito o que aconteceu duas vezes em oito semanas** — 20
+  horários típicos para a Bacana, que publica 11 vezes por semana.
 
 **Achados do teste ponta a ponta (10/08), já corrigidos:**
 

@@ -399,6 +399,7 @@ model Project {
   chatUploads                 ChatUpload[]
   brandDNA                    BrandDNA?
   anchorImages                ProjectAnchorImage[]
+  contentPillars              ContentPillar[]
   laterAccountId              String?
   laterProfileId              String?
   postingProvider             PostingProvider?        @default(ZAPIER)
@@ -495,6 +496,47 @@ model ProjectAnchorImage {
   Project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId, sceneTag])
+}
+
+/// Pilar de conteúdo: a taxonomia FECHADA de temas de UM cliente (F2).
+///
+/// Existe porque tema em texto livre não deduplica: "happy hour" e "drinks"
+/// viram baldes diferentes e a semana sai com o mesmo assunto duas vezes. A
+/// lista é proposta por um passe de LLM sobre o histórico do próprio cliente e
+/// **aprovada por gente** na aba Marca; o classificador fica constrangido a
+/// ela mais os dois slugs reservados (`outro`, `sem-texto`).
+///
+/// Por que tabela e não Json no BrandDNA: o slug é chave de junção
+/// (`SocialPost.pilar`), a lista é ordenada e editada item a item, e a
+/// aprovação é por linha. Json obrigaria a reescrever o conjunto inteiro a
+/// cada edição e deixaria a contagem por pilar sem índice — a mesma armadilha
+/// de `fieldValues` que os espelhos colunares da F1 vieram corrigir.
+model ContentPillar {
+  id          String    @id @default(cuid())
+  projectId   Int
+  /// kebab-case, ESTÁVEL: é o que fica gravado em `SocialPost.pilar`. Renomear
+  /// o slug órfã a classificação já feita — mude `nome`, não o slug.
+  slug        String
+  nome        String
+  descricao   String?
+  /// Palavras que aparecem quando o assunto é este. Entram no prompt do
+  /// classificador e ajudam quem lê a lista a entender o balde.
+  exemplos    String[]  @default([])
+  ordem       Int       @default(0)
+  /// Só pilar APROVADO entra na taxonomia do classificador. A proposta do LLM
+  /// nasce `false` e fica visível na aba Marca esperando o olho humano.
+  aprovado    Boolean   @default(false)
+  aprovadoEm  DateTime?
+  /// `User.id` INTERNO (cuid), NUNCA o clerkId.
+  aprovadoPor String?
+  /// 'llm' (proposto pelo passe) | 'humano' (escrito na mão).
+  origem      String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  Project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, slug])
+  @@index([projectId, aprovado])
 }
 
 model ProjectTag {
@@ -1222,6 +1264,17 @@ model SocialPost {
   sugestaoId           String?
   /// Quem decidiu, como User.id INTERNO (cuid) — NUNCA o clerkId.
   decididoPor          String?
+  /// Pilar de conteúdo (slug de `ContentPillar`, ou os reservados `outro` /
+  /// `sem-texto`). TEXT solto e sem FK: a taxonomia é do projeto e pode ser
+  /// reeditada; apagar um pilar não pode arrastar o post que aconteceu.
+  pilar                String?
+  /// 0..1 declarada pelo classificador. Abaixo do piso o pilar vira `outro` —
+  /// baixa confiança NUNCA vira o rótulo mais provável.
+  pilarConfianca       Float?
+  /// Versão da taxonomia+prompt que produziu a classificação. Sem ela não dá
+  /// para saber o que é safra velha quando a lista de pilares muda.
+  pilarVersao          String?
+  pilarClassificadoEm  DateTime?
   logs                 PostLog[]
   retries              PostRetry[]
   Generation           Generation?        @relation(fields: [generationId], references: [id])
@@ -1249,6 +1302,7 @@ model SocialPost {
   @@index([status, scheduleType, scheduledDatetime])
   @@index([laterPostId])
   @@index([projectId, learningScope])
+  @@index([projectId, pilar])
   @@index([laterPostId, status])
   @@index([status, lastSyncAt])
   @@index([status, analyticsFetchedAt])

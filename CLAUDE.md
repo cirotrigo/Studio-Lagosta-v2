@@ -1604,6 +1604,88 @@ relógio, rotação) em `src/lib/creatives/reconciliacao.ts`.
 - **`writeFileAsJson` cria o stream DENTRO do retry**: `withRetry` reexecuta a
   closure, e um `Readable` já consumido subiria vazio na segunda tentativa —
   catálogo zerado sem erro nenhum.
+### Destilação: pilares, campanhas retroativas e cadência v2 (F2, 11/08/2026)
+
+A F2 transforma o registro bruto da F1 em coisas que a GERAÇÃO pode usar. O
+que orienta o desenho é a lição de 10-11/08, quando o Ciro desligou o retry de
+qualidade, a revisão visual e o crivo: **verificação que atrasa, erra ou
+bloqueia treina o usuário a ignorá-la — qualidade entra na geração, não em
+portões.** Por isso a saída da destilação é um bloco de prompt
+(`perfilParaPrompt`), não mais uma tela para aprovar.
+
+- **Taxonomia FECHADA por projeto** (`ContentPillar`, aba Marca): 5–8 pilares
+  propostos por LLM a partir do histórico do PRÓPRIO cliente e aprovados por
+  gente. Tema em texto livre não deduplica — "happy hour" e "drinks" viravam
+  baldes diferentes. Tabela e não Json no BrandDNA porque o `slug` é chave de
+  junção (`SocialPost.pilar`), a lista é editada item a item e a aprovação é
+  por linha.
+- 🔴 **`outro` e `sem-texto` são baldes DIFERENTES, e a distinção não é
+  preciosismo.** Medido em produção: só **10% a 26%** das publicações de cada
+  cliente têm texto legível no banco (Wine Vix: 26 de 176 em 8 semanas) — o
+  resto é story cuja copy existe apenas dentro do PNG, montado fora do Studio.
+  Se "não deu para ler" caísse em `outro`, `outro` seria o maior pilar de todo
+  cliente e a linha de base da detecção de campanha viraria ficção.
+- 🔴 **`SocialPost.slotValues` está preenchido com o JSON `null` em ~3.800
+  linhas.** `where "slotValues" is not null` conta todas elas (444 no Wine Vix)
+  e o Prisma devolve `null` mesmo assim. Para contar de verdade:
+  `"slotValues"::text <> 'null'`. Foi por isso que uma primeira medição de
+  cobertura de texto quase saiu 10× otimista.
+- **A classificação é constrangida no CÓDIGO, não no prompt**: `casarPilar`
+  (rótulo que não existe na taxonomia vira `outro`, sem aproximação por
+  semelhança) e `comPisoDeConfianca` (abaixo de 0,6 vira `outro`). Pedir isso
+  ao modelo não é trava — ele responde com confiança alta para agradar.
+- 🔴 **Empate de ECO entre textos IDÊNTICOS não é ambiguidade.** A reconciliação
+  por eco (herdada do crivo) descartava os DOIS candidatos quando a mesma copy
+  aparecia duas vezes no histórico — e isso custou **8 de 25** classificações
+  num lote real do Wine Vix. Hoje, se os textos completos são iguais, o primeiro
+  livre leva; o descarte continua valendo para textos diferentes que só
+  compartilham o começo. Post não classificado volta a ser tentado na próxima
+  passada (a idempotência olha `pilarVersao`), então rodar duas vezes aumenta a
+  cobertura.
+- 🔴 **Na detecção de campanha, `GAP_MAXIMO_DIAS` precisa ser MENOR que 7.** Com
+  8, a rotina semanal do cliente virava UM aglomerado de 8 peças em 56 dias, sem
+  nada "fora" para servir de linha de base — passava por campanha e teria tirado
+  a rotina verdadeira da cadência. Campanha publica mais junto que uma vez por
+  semana; é isso que a separa do hábito. O piso de densidade (0,4 peça/dia)
+  cobre o caso de linha de base zero.
+- **A campanha retroativa vira entrada CAMPANHAS `ARCHIVED` e SEM indexação** —
+  e por isso NÃO passa por `criarEntradaBase`, que grava ACTIVE e indexa. Uma
+  campanha encerrada indexada voltaria a alimentar copy, que é o defeito que a
+  F0.1 veio corrigir. Confirmar marca `learningScope: CAMPANHA` junto com o
+  `campaignId`: só o vínculo deixaria o post ensinando rotina.
+- **Cadência v2** (`src/lib/posts/cadencia.ts`, módulo PURO): peso por recência
+  (meia-vida 21 dias), histórico só com **POSTED**, campanha encerrada fora, e a
+  regra única **"confirma, nunca cria"** para as duas evidências fracas — post
+  de campanha em curso e post nascido de sugestão aceita sem edição (0,3 cada).
+  Nenhuma das duas CRIA horário típico; as duas CONFIRMAM um que a rotina já
+  sustenta. `postsPorSemana` passou a ser sobre semanas COM atividade.
+- 🔴 **O decaimento é ancorado na ÚLTIMA ATIVIDADE do cliente, não no relógio.**
+  Com a referência no relógio, o Espeto Gaúcho caía de 16 horários típicos para
+  3 e a Bacana de 20 para 3 — não porque a rotina mudou, mas porque pararam de
+  publicar por algumas semanas. O sistema emudeceria justamente com o cliente
+  que precisa voltar a postar. Recência é comparação DENTRO do histórico, não
+  relógio de validade.
+- 🔴 **"Novidade" se mede por OCORRÊNCIA, não por fração de peso.** Com
+  meia-vida de 21 dias os últimos 14 concentram a maior parte do peso até numa
+  rotina de cinco semanas — pela fração, uma rotina consolidada era anunciada
+  ao usuário como "novidade". Hoje `picoRecente` é "não existe nenhuma
+  ocorrência anterior à janela".
+- **`LIMIAR_DE_PESO = 1,75` foi calibrado contra os 9 clientes reais**,
+  comparando horários típicos com o volume semanal de cada um (tabela no
+  módulo). A v1 propunha à Bacana 20 horários para quem publica 11 vezes por
+  semana. Não mexa no número sem repetir a medição — `calcularCadencia` aceita
+  `limiarDePeso` justamente para isso, e `scripts/validar-cadencia-f2.ts` roda a
+  comparação antes/depois contra produção **sem escrever nada** (ele não chama
+  `sugerirPosts`, que REGISTRA cada slot emitido como `LearningSignal`).
+- **Blindagem do perfil, em três portas**: na escrita `sanitizarParaPerfil`
+  recusa qualquer texto com preço/horário/data/promoção (recusa, não mascara);
+  na leitura `perfilParaPrompt` só olha alterações de causa `estilo`; e ainda
+  passa uma conferência final linha a linha. Alteração de causa `fato` vira o
+  alerta "a base pode estar desatualizada" e **não tem caminho até um prompt** —
+  senão o perfil vira fonte clandestina do preço que só pode vir da base.
+- **`api.delete` do cliente da casa não manda corpo** — por isso o "desfazer" da
+  campanha entrou como `acao: 'desfazer'` no POST, em vez de virar uma segunda
+  rota para a mesma decisão.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
