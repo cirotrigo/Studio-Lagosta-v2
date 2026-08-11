@@ -1687,6 +1687,85 @@ portões.** Por isso a saída da destilação é um bloco de prompt
   campanha entrou como `acao: 'desfazer'` no POST, em vez de virar uma segunda
   rota para a mesma decisão.
 
+### Plano de conteúdo: a fila que chat e bancada dividem (F3, 11/08/2026)
+
+`PlanoDeConteudo` + `ItemDePlano` são a leva vista pelas duas superfícies. Antes
+disso a fila da bancada era `localStorage` puro (`lagosta.bancada`) e **nenhuma
+rota escrevia nela** — o chat não conseguia montar uma semana que a bancada
+enxergasse. Serviço em `src/lib/planos/`, rotas
+`/api/projects/[projectId]/planos*`, tools `criar-plano`, `ver-plano`,
+`editar-item-do-plano`, `regenerar-item`, `executar-plano`.
+
+- **O plano registra INTENÇÃO; só `executar-plano` gasta.** Montar, editar e
+  reprovar são de graça por contrato. É a mesma regra que já valia para
+  sugestão: proposta nunca agenda nem cobra sozinha.
+- 🔴 **O gate de crédito é MECÂNICO, não só prosa.** A 1ª chamada de
+  `executar-plano` não escreve nada (tudo antes do `return` é leitura) e devolve
+  a conta; só a 2ª, com `confirmar: true`, produz. O handler usa
+  `args.confirmar === true` — qualquer outro valor NÃO confirma. A descrição
+  proíbe auto-confirmação em palavras, inclusive quando "ela já disse pode fazer
+  tudo" (ela ainda não tinha visto a conta) e quando a conta dá zero.
+- 🔴 **Ler saldo é LEITURA**: `db.creditBalance.findUnique` pelo `User.id`
+  interno. `getUserCredits`/`getUserFromClerkId` **CRIAM User** quando não
+  existe — é assim que nascem os "Users fantasma" que já estão neste banco.
+- **`ia` vai para a fila durável (F0.3); `template` renderiza na invocação.** O
+  MCP **só enfileira, nunca chama `dispararJobAgora`** (lá uma invocação carrega
+  várias tools, e o batch JSON-RPC resolve com `Promise.all`). Não existe
+  `GenerationJobKind` para render de modelo e **não se cria um** — enum do
+  Postgres é migration. O render em sequência tem orçamento de 210s dos 300s, a
+  via template roda DEPOIS da IA (para um corte por tempo atingir só o trabalho
+  barato de retomar), e a resposta **sempre diz quantos ficaram**: teto de
+  cobertura que não aparece no relato é teto que mente.
+- 🔴 **`createArteRapida` JÁ chama `registrarUsoDeModelo`** (`arte-rapida.ts:646`)
+  e já fecha as sugestões de modelo e de foto. Chamar de novo dobra o contador.
+- **Ninguém avisa o plano quando uma geração termina** — a fila durável não
+  conhece plano. Quem reconcilia é `ver-plano` e o GET de `[planoId]`, lendo a
+  `Generation` (`reconciliar.ts`), mesmo padrão de `sinal-de-modelo.ts`.
+  `executar-plano` **não** reconcilia, para manter literal a promessa de que a
+  1ª chamada não escreve.
+- 🔴 **`na-fila → pronto` não é transição válida** (passa por `gerando`) — e é o
+  caso comum quando o cron termina antes de alguém abrir o plano. O caminho é
+  descoberto por **busca em largura sobre a própria `transicaoPermitida`**,
+  nunca por uma cópia da tabela num segundo lugar.
+- **`agendado` é terminal; `reprovado` não.** Depois que o item virou post, a
+  verdade é o post — deixá-lo voltar criaria duas fontes de verdade. Reprovar
+  precisa de saída, porque recusa com motivo é sinal, não beco: vira
+  `registrarFeedbackDeArte` quando há arte, e o tipo `item-de-plano` quando a
+  recusa é da proposta inteira. **Item reprovado é PULADO por `executar-plano`**
+  — reproduzir o que alguém acabou de recusar gasta crédito para repetir o erro.
+- 🔴 **Na hidratação da bancada, o servidor manda no CONTEÚDO e o estado mais
+  AVANÇADO vence na SITUAÇÃO** (`para-bancada.ts`, mesma forma de
+  `desfechoVenceOAnterior`). Sem isso a resposta que chega segundos depois do
+  clique devolve à fila um card cuja geração já está paga, e clicar em Gerar de
+  novo cobra duas vezes. `plano: null` significa "não há leva ativa", **nunca**
+  "a consulta ainda não voltou" — por isso ele só orfaniza, não apaga.
+- **O guard de reidratação do store continua valendo nas duas direções**;
+  `temTrabalhoNoServidor` só mudou de casa para `para-bancada.ts` (puro,
+  testável) porque a hidratação precisa da MESMA resposta, inclusive no
+  carrossel, onde os ids vivem em `slides[]` e não no item.
+- **`ItemDePlano.planoId` TEM FK com `onDelete: Cascade`** — é parentesco
+  estrito. A regra "sem FK" da casa vale para vínculo FROUXO com entidade
+  apagável (`postId`, `generationId`, `pageId`, `campaignId`, `sugestaoId`,
+  `sourcePageId`), não para o dono da linha. `projectId` fica `Int` solto, sem
+  relação com `Project` — precedente de `LearningSignal` e `GenerationJob`.
+- **`trocar-arte-do-post` é o caminho para "usa aquela outra arte"** e só vale em
+  RASCUNHO. Post nascido da bancada é `NOT_NEEDED` e está **fora** do alcance de
+  `invalidateScheduledRenders`, ou seja, `ajustar-arte` não trocava nada nele.
+  Nunca reduz a contagem de `mediaUrls` (troca só o índice pedido, com
+  compare-and-swap); `Page.thumbnail` **nunca** é reusado (pode ser válido e
+  mesmo assim velho); **página em CARROSSEL vira `NOT_NEEDED`**, porque
+  `renderPostArt` grava `mediaUrls: [url]` e um post `RENDERED` de 3 slides
+  perderia 2 no primeiro re-render; e `SocialPost.generationId` só muda quando o
+  índice é 0, senão "melhorar com IA" pega o slide 3 e escreve sobre o slide 1.
+- 🔴 **Com `strict: false`, `z.infer` marca TODA chave como opcional** (sem
+  `strictNullChecks`, `undefined extends T` vale para tudo). Campo obrigatório no
+  zod chega ao serviço tipado como opcional — o tipo de entrada precisa admitir
+  isso, e a garantia fica na validação de runtime.
+- **Mapeamento posicional da copy nos slots do modelo é simplificação
+  conhecida**: `ItemDePlano.copyProposta` é `String[]` e `createArteRapida` quer
+  slots chaveados. Sobra/falta preenche o que couber e **avisa** — nunca derruba
+  a leva.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

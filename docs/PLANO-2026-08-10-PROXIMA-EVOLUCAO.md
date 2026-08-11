@@ -25,6 +25,26 @@
 | causa-raiz da poluição (`create-page`) | **no ar** | #45 |
 | F1 captura — núcleo | **no ar**, migration aplicada em produção | #47 |
 | F1 captura — superfícies | **no ar**, testada ponta a ponta em produção | #48, #49 |
+| F2 destilação | **PR aberta, não mergeada** | #54 |
+| F3 trilho A — `trocar-arte-do-post` | **no ar** | #56 |
+| F3 trilho A — entidade, serviço e rotas | **no ar**, migration aplicada em produção | #57 |
+| F3 trilho A — tools do ciclo no chat | **no ar** | #58 |
+| F3 trilho A — bancada hidrata a leva | **no ar** | #59 |
+| F3 trilho B — `propor-semana` + dica de copy | **não iniciado** — espera a F2 | — |
+
+**Por que o trilho B da F3 não foi feito (11/08/2026):** ele consome o tema por
+slot e o perfil aprendido que a F2 entrega, e as duas fases disputariam
+`sugerir-posts.ts` e `src/lib/aprendizado/*`. Com a #54 aberta, o trilho A foi
+executado inteiro e o B ficou para depois do merge da F2. O trilho A é
+autossuficiente: o chat monta a leva com o que já sabe apurar
+(`sugerir-posts`, `consultar-base`, `buscar-fotos`, `escolher-modelo`) e
+`criar-plano` a persiste.
+
+**Correção ao que este plano dizia:** a lista de tools da F3 não previa uma tool
+para CRIAR o plano — só `propor-semana`, que é trilho B. Sem ela o trilho A não
+cumpriria o próprio título ("a fila que o chat consegue escrever"), então
+`criar-plano` foi acrescentada: persiste a leva que o chat já apurou, custo zero,
+sem heurística nenhuma.
 | F2 destilação | **no ar**, migration aplicada em produção e conferida | #54 |
 | F3 plano semanal | em implementação (trilho A; o B abre com a F2 na main) | — |
 
