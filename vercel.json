@@ -162,6 +162,10 @@
     {
       "path": "/api/cron/reconciliar-catalogos",
       "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/cron/classificar-pilares",
+      "schedule": "0 6 * * *"
     }
   ]
 }
