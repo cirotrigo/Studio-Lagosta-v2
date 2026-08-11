@@ -2,14 +2,31 @@
  * Sugestão de posts pela CADÊNCIA HISTÓRICA do cliente.
  *
  * Nada de configuração nova: o ritmo é lido do que o cliente efetivamente
- * publica (POSTED) ou armou (SCHEDULED) nas últimas semanas — dia da semana ×
- * horário, em fuso de Brasília. Os buracos dos próximos dias viram sugestões,
- * cada uma com o motivo ("você costuma postar domingo ~11:30 — 3 das últimas
- * 4 semanas"), o modelo do cliente tagueado para aquele dia (quando existe) e
- * as campanhas da base que citam o dia ("Quinta do Vinho — toda quinta").
+ * PUBLICOU nas últimas semanas — dia da semana × horário, em fuso de Brasília.
+ * Os buracos dos próximos dias viram sugestões, cada uma com o motivo ("costuma
+ * postar domingo por volta das 11:30"), o modelo do cliente tagueado para
+ * aquele dia (quando existe) e as campanhas da base que citam o dia ("Quinta do
+ * Vinho — toda quinta").
  *
  * Quem escreve a copy é o assistente na conversa; aqui é só o esqueleto de
  * quando/o quê — determinístico e barato.
+ *
+ * ── O QUE MUDOU NA F2 ─────────────────────────────────────────────────────
+ * O cálculo saiu daqui e virou `src/lib/posts/cadencia.ts`, módulo PURO com
+ * peso por recência, desconto de auto-reforço e a regra "campanha confirma,
+ * nunca cria". Sobrou aqui o que é desta camada: buscar no banco, resolver a
+ * vigência das campanhas, achar os buracos e registrar a emissão. A separação
+ * é o que permite comparar antes/depois contra os dados reais de produção sem
+ * escrever nada (`scripts/validar-cadencia-f2.ts`).
+ *
+ * Duas mudanças de consulta valem menção:
+ *
+ *  - **O histórico conta só POSTED.** SCHEDULED continua sendo lido, mas apenas
+ *    para saber que o horário está ocupado — que é outra pergunta e já era
+ *    outra query. No histórico, ele fazia o que ainda não aconteceu virar prova
+ *    de hábito; e como a sugestão aceita vira SCHEDULED, o sistema se citava.
+ *  - **Post de campanha ENCERRADA sai do histórico.** A campanha descrevia um
+ *    período, e o período acabou.
  *
  * Cada slot devolvido é também uma SUGESTÃO REGISTRADA (F1): a linha nasce no
  * momento da emissão, não quando alguém aceita — sem isso a proposta ignorada
@@ -21,6 +38,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
 import { DIAS_SEMANA, casaComDia, normalizar } from '@/lib/posts/dia-semana'
 import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
+import { calcularCadencia, type PostDoHistorico } from '@/lib/posts/cadencia'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 
@@ -28,10 +46,13 @@ const JANELA_HISTORICO_DIAS = 56
 
 /**
  * Versão da heurística de cadência. Entra na chave de idempotência: mudou a
- * regra (peso por recência, corte de campanha — tudo isso é F2), a safra nova
- * não pode herdar o desfecho de uma proposta que era outra.
+ * regra, a safra nova não pode herdar o desfecho de uma proposta que era outra.
+ *
+ * `v2` (F2) = peso por recência com meia-vida de 21 dias, histórico só com
+ * POSTED, campanha encerrada fora, campanha em curso e auto-reforço com
+ * desconto, `postsPorSemana` sobre semanas com atividade.
  */
-const VERSAO_DA_CADENCIA = 'cadencia-v1'
+const VERSAO_DA_CADENCIA = 'cadencia-v2'
 const SERVICO = 'sugerir-posts'
 
 /**
@@ -49,15 +70,6 @@ function chaveDoSlot(projectId: number, scheduledDatetime: string): string {
 }
 /** Slot ocupado se já existe post a menos de 45min dele. */
 const TOLERANCIA_SLOT_MIN = 45
-/** Horários agregados em blocos de 30min para achar o padrão. */
-const BLOCO_MIN = 30
-
-interface SlotTipico {
-  minutosDoDia: number
-  hora: string
-  ocorrencias: number
-  semanasObservadas: number
-}
 
 export interface SugestaoSlot {
   data: string
@@ -87,22 +99,6 @@ export interface SugerirPostsResult {
   avisos: string[]
 }
 
-/** Date → componentes em BRT (UTC-3, sem DST desde 2019). */
-function emBRT(d: Date): { dia: number; minutos: number; dataISO: string } {
-  const brt = new Date(d.getTime() - 3 * 3600_000)
-  return {
-    dia: brt.getUTCDay(),
-    minutos: brt.getUTCHours() * 60 + brt.getUTCMinutes(),
-    dataISO: brt.toISOString().slice(0, 10),
-  }
-}
-
-function horaLabel(minutos: number): string {
-  const h = Math.floor(minutos / 60)
-  const m = minutos % 60
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
 export async function sugerirPosts(params: {
   projectId: number
   /** Quantos dias à frente olhar (default 7, teto 14). */
@@ -125,15 +121,25 @@ export async function sugerirPosts(params: {
     db.socialPost.findMany({
       where: {
         projectId,
-        status: { in: ['POSTED', 'SCHEDULED'] },
+        // Só o que FOI PUBLICADO ensina cadência. SCHEDULED saiu daqui na F2:
+        // ele é intenção, não hábito — e, como a sugestão aceita vira
+        // SCHEDULED, mantê-lo fazia o sistema confirmar a própria proposta. A
+        // checagem de horário ocupado continua vendo SCHEDULED, na query ao
+        // lado, que é outra pergunta.
+        status: 'POSTED',
         scheduledDatetime: { gte: inicioHistorico, lte: agora },
         // Post marcado como PONTUAL não ensina cadência: um aviso de feriado
         // às 9h de uma terça não pode virar "o cliente costuma postar terça
-        // às 9h". CAMPANHA continua contando aqui — separar o sub-perfil da
-        // campanha é da fase de destilação.
+        // às 9h". CAMPANHA continua sendo lido — mas com desconto, e sem poder
+        // criar horário típico sozinho (ver `cadencia.ts`).
         learningScope: { not: 'PONTUAL' },
       },
-      select: { scheduledDatetime: true },
+      select: {
+        scheduledDatetime: true,
+        origem: true,
+        learningScope: true,
+        campaignId: true,
+      },
     }),
     db.socialPost.findMany({
       where: {
@@ -148,48 +154,37 @@ export async function sugerirPosts(params: {
   ])
 
   // ── Cadência por dia da semana ────────────────────────────────────────────
-  const porDia = new Map<number, { blocos: Map<number, number>; datas: Set<string> }>()
-  for (const post of historico) {
-    if (!post.scheduledDatetime) continue
-    const { dia, minutos, dataISO } = emBRT(post.scheduledDatetime)
-    const cur = porDia.get(dia) ?? { blocos: new Map(), datas: new Set() }
-    const bloco = Math.round(minutos / BLOCO_MIN) * BLOCO_MIN
-    cur.blocos.set(bloco, (cur.blocos.get(bloco) ?? 0) + 1)
-    cur.datas.add(dataISO)
-    porDia.set(dia, cur)
-  }
+  //
+  // A campanha ENCERRADA é resolvida aqui, e não dentro do módulo puro: quem
+  // sabe se a campanha acabou é a base de conhecimento, e `cadencia.ts` não
+  // fala com o banco de propósito.
+  const encerradas = await campanhasEncerradas(
+    projectId,
+    historico.map((p) => p.campaignId),
+    agora,
+  )
 
-  const semanasNaJanela = Math.max(1, Math.round(JANELA_HISTORICO_DIAS / 7))
-  const slotsPorDia = new Map<number, SlotTipico[]>()
-  const cadencia: SugerirPostsResult['cadencia'] = []
-  for (let dia = 0; dia < 7; dia++) {
-    const info = porDia.get(dia)
-    if (!info || info.datas.size === 0) continue
-    const postsPorSemana = info.datas.size === 0 ? 0 : Math.round(([...info.blocos.values()].reduce((a, b) => a + b, 0) / semanasNaJanela) * 10) / 10
-    // Slot típico: apareceu em pelo menos 2 semanas distintas (ou metade delas)
-    const minimo = Math.max(2, Math.ceil(info.datas.size / 2))
-    const tipicos = [...info.blocos.entries()]
-      .filter(([, n]) => n >= minimo)
-      .sort((a, b) => a[0] - b[0])
-      .map(([minutos, n]) => ({
-        minutosDoDia: minutos,
-        hora: horaLabel(minutos),
-        ocorrencias: n,
-        semanasObservadas: info.datas.size,
-      }))
-    if (tipicos.length > 0) {
-      slotsPorDia.set(dia, tipicos)
-      cadencia.push({
-        diaSemana: DIAS_SEMANA[dia],
-        horariosTipicos: tipicos.map((t) => t.hora),
-        postsPorSemana,
-      })
-    }
-  }
+  const paraCadencia: PostDoHistorico[] = historico
+    .filter((p) => p.scheduledDatetime)
+    .map((p) => ({
+      quando: p.scheduledDatetime!,
+      origem: p.origem as PostDoHistorico['origem'],
+      escopo: p.learningScope,
+      campaignId: p.campaignId,
+      campanhaEncerrada: !!p.campaignId && encerradas.has(p.campaignId),
+    }))
+
+  const resultado = calcularCadencia(paraCadencia, { agora })
+  const { slotsPorDia, cadencia } = resultado
 
   if (historico.length < 5) {
     avisos.push(
-      `Histórico curto (${historico.length} posts nas últimas ${semanasNaJanela} semanas) — as sugestões ficam melhores conforme o cliente publica.`,
+      `Histórico curto (${historico.length} publicações nas últimas ${Math.round(JANELA_HISTORICO_DIAS / 7)} semanas) — as sugestões ficam melhores conforme o cliente publica.`,
+    )
+  }
+  if (resultado.descartadosPorCampanha > 0) {
+    avisos.push(
+      `${resultado.descartadosPorCampanha} publicação(ões) de campanha já encerrada ficaram fora da conta de cadência.`,
     )
   }
 
@@ -268,7 +263,11 @@ export async function sugerirPosts(params: {
         hora: slot.hora,
         quandoBRT: formatarBRT(new Date(quandoUTC)),
         scheduledDatetime: `${dataISO} ${slot.hora}`,
-        motivo: `costuma postar ${DIAS_SEMANA[dia]} por volta das ${slot.hora} (${slot.ocorrencias}x nas últimas ${slot.semanasObservadas} ${slot.semanasObservadas === 1 ? 'ocasião' : 'ocasiões'})`,
+        // O motivo é escrito por `cadencia.ts`, que é quem sabe se o horário é
+        // rotina antiga ou novidade das últimas duas semanas — a distinção que
+        // a bancada precisa mostrar para a pessoa não confundir uma coisa com a
+        // outra.
+        motivo: slot.motivo,
         ...(modeloDoDia(dia) ? { modeloSugerido: modeloDoDia(dia) } : {}),
         ...(campanhasDoSlot ? { campanhasDoDia: campanhasDoSlot } : {}),
       })
@@ -284,6 +283,34 @@ export async function sugerirPosts(params: {
     jaNaAgenda: futuros.length,
     sugestoes,
     avisos,
+  }
+}
+
+/**
+ * Quais das campanhas citadas já terminaram na data de referência.
+ *
+ * Leitura DEFENSIVA, no mesmo espírito de `campanha-vigencia.ts`: campanha que
+ * não existe mais, campanha sem prazo e erro de consulta produzem o mesmo
+ * resultado — conjunto vazio, ou seja, nenhum post descartado. O pior erro
+ * possível aqui seria jogar fora histórico legítimo por causa de um metadado
+ * ausente.
+ */
+async function campanhasEncerradas(
+  projectId: number,
+  ids: Array<string | null>,
+  referencia: Date,
+): Promise<Set<string>> {
+  const alvos = Array.from(new Set(ids.filter((id): id is string => !!id)))
+  if (alvos.length === 0) return new Set()
+  try {
+    const entradas = await db.knowledgeBaseEntry.findMany({
+      where: { id: { in: alvos }, projectId, expiresAt: { not: null, lt: referencia } },
+      select: { id: true },
+    })
+    return new Set(entradas.map((e) => e.id))
+  } catch (erro) {
+    console.error('[sugerir-posts] não deu para conferir a vigência das campanhas:', erro)
+    return new Set()
   }
 }
 

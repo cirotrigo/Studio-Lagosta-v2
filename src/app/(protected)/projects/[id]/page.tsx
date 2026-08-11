@@ -35,6 +35,7 @@ import { LaterProviderConfig } from '@/components/projects/later-provider-config
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ArtImprovementPromptConfig } from '@/components/projects/art-improvement-prompt-config'
 import { BrandDnaSection } from '@/components/projects/brand-dna-section'
+import { ContentPillarsSection } from '@/components/projects/content-pillars-section'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
 import { ProjectAnalyticsPanel } from '@/components/analytics/project-analytics-panel'
@@ -352,6 +353,10 @@ export default function ProjectDetailPage() {
                 visuais (logos, cores, fontes) vêm em seguida — são a parte da
                 identidade que o sistema injeta sozinho. */}
             <BrandDnaSection projectId={projectId} />
+            {/* Pilares logo abaixo do DNA porque são a outra metade da mesma
+                coisa: o DNA diz COMO a marca fala, os pilares dizem SOBRE O QUÊ
+                ela fala — e é aqui que a lista passa pelo olho humano. */}
+            <ContentPillarsSection projectId={projectId} />
             {projectDetails && (
               <ArtImprovementPromptConfig
                 projectId={projectId}
