@@ -21,7 +21,7 @@ import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-
 import { BancadaCrivo } from '@/components/bancada/bancada-crivo'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
-import { parseApprovalChecklist } from '@/lib/brand/approval-checklist'
+import { parseApprovalChecklist, type PecaParaCrivo } from '@/lib/brand/approval-checklist'
 import type { BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
@@ -83,7 +83,9 @@ export function BancadaFila({ projectId }: { projectId: number }) {
       ))}
 
       <BancadaCrivo
+        projectId={projectId}
         perguntas={perguntasDoCrivo}
+        peca={pendente ? pecaParaCrivo(pendente.item, pendente.quando) : null}
         open={pendente !== null}
         onOpenChange={(aberto) => {
           if (!aberto) setPendente(null)
@@ -95,6 +97,36 @@ export function BancadaFila({ projectId }: { projectId: number }) {
       />
     </div>
   )
+}
+
+/**
+ * O que o crivo recebe para conferir sozinho: a copy que está NA ARTE, a
+ * legenda, o horário e o formato.
+ *
+ * A imagem de propósito não vai — a conferência automática responde por DADO
+ * (dia/hora em BRT contra a base, copy contra as regras), e o que exige ver a
+ * peça é devolvido para o olho humano. O `generationId` viaja só para a
+ * avaliação ficar registrada em `fieldValues.crivo`.
+ *
+ * No carrossel a copy é a de TODOS os slides, em ordem: as perguntas do crivo
+ * falam da peça inteira ("existe mais de uma oferta na mesma peça?"), e
+ * conferir só a capa — que é foto pura, sem texto — não responderia nada.
+ */
+function pecaParaCrivo(item: BancadaItem, quando: string): PecaParaCrivo {
+  const ehCarrossel = item.tipo === 'carrossel'
+  const copy = ehCarrossel
+    ? (item.slides ?? [])
+        .slice()
+        .sort((a, b) => a.ordem - b.ordem)
+        .flatMap((s) => s.copy)
+    : item.copy
+  return {
+    copy,
+    legenda: item.legenda ?? null,
+    quando,
+    formato: ehCarrossel ? 'carrossel' : item.formato,
+    generationId: item.generationId ?? null,
+  }
 }
 
 /**
