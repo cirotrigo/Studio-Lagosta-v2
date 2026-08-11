@@ -1766,6 +1766,62 @@ enxergasse. Serviço em `src/lib/planos/`, rotas
   slots chaveados. Sobra/falta preenche o que couber e **avisa** — nunca derruba
   a leva.
 
+### A proposta da semana: `propor-semana` e a dica de copy (F3 trilho B, 11/08/2026)
+
+`proporSemana` (`src/lib/planos/propor-semana.ts`) encadeia `sugerirPosts` →
+assunto por slot → `buscarNoAcervo` → `montarDicasDeCopy` → `criarPlano`. Ela
+**monta e persiste; nunca gera, nunca cobra, nunca agenda** — quem produz é
+`executar-plano`, com o gate de confirmação.
+
+- 🔴 **A F2 NÃO dá tema por slot.** `SugestaoSlot` não tem campo de pilar, e
+  `modeloSugerido.temas` são as TAGS da página, não assunto. Quem escolhe o
+  assunto é `propor-semana`, cruzando `taxonomiaAprovada` com a distribuição
+  real de `montarPerfil`. **Não mova essa escolha para `sugerir-posts.ts`.**
+- 🔴 **Em produção há ZERO pilares e ZERO posts classificados** (medido em
+  11/08/2026, nos 11 projetos). A destilação da F2 só ganha vida quando alguém
+  aprova a taxonomia por cliente na aba Marca. Até lá o caminho SEM tema é o
+  normal, não a exceção — `taxonomiaAprovada` devolvendo `[]` significa "este
+  cliente ainda não tem taxonomia", nunca erro.
+- **Uma chamada de LLM para a leva INTEIRA**, não uma por slot: além de mais
+  barata, é o que deixa o modelo ver a semana toda e não repetir o mesmo gancho.
+  Molde: o classificador da F2.
+- 🔴 **A vigência da base é conferida contra a DATA DO SLOT** (`vigenteEm(quando)`),
+  nunca contra `new Date()`: campanha que vence antes do slot não pode entrar na
+  copy daquele slot.
+- 🔴 **Preço, horário, data e promoção só passam com LASTRO na base, e a trava é
+  mecânica** (`aplicarGuardaDeDados` + `dadosProibidos`): o termo citado tem de
+  aparecer numa entrada válida para aquela data, senão o **bloco inteiro** cai e
+  vira aviso. Cai o bloco, não o valor — bloco mutilado ("HAPPY HOUR DAS ÀS")
+  parece copy e não é. As entradas que sustentaram o que sobrou saem em `fontes`.
+- **As perguntas do crivo entram como INSUMO do prompt**, não como portão — a
+  copy nasce respeitando as regras. Não religue `crivo-avaliacao.ts` como modal.
+  ⚠️ A polaridade da lista é MISTA: apresente-as como perguntas que alguém fará
+  sobre a peça, nunca como afirmações.
+- **`toneOfVoice` entra na copy** (a proibição vale só para prompt de IMAGEM), e
+  **não se chama `escolherReferenciaDeEstilo`** aqui: aquilo é referência de
+  imagem e marcar uso fora de uma geração quebraria o rodízio. O análogo para
+  texto ("como esta marca reescreve") já vem dentro de `perfilParaPrompt`.
+- 🔴 **A âncora do eco tem de ser LEGÍVEL.** Com `ref` opaca (`slot-1`) o
+  gpt-4o-mini ignorou a instrução e copiou a própria headline no eco — **4 de 4
+  dicas perdidas no By Rock**. Hoje a âncora é "story de quinta-feira, 19:00".
+  E `ref` só desempata quando o eco não casa com NADA; nunca quando casa com
+  várias.
+- 🔴 **O dia da semana precisa de linha PRÓPRIA no prompt.** Enterrado na linha
+  de data, o modelo anunciou no domingo o executivo de segunda a sexta e
+  convidou para uma casa fechada aos domingos.
+- **A dica de copy não cobra créditos** — precedente da revisão ortográfica
+  (mesmo `gpt-4o-mini`, sem cobrança) e contrato da F3: proposta com pedágio é
+  proposta que ninguém itera.
+- **Cold start só quando NÃO há nenhum horário real.** Semear em volta de uma
+  rotina magra inventaria ritmo que o cliente não tem. A grade-semente é
+  registrada como sugestão (`semente-v1`, determinística) — sem isso o KPI
+  mediria só quem já tem rotina — e vem rotulada item a item.
+- 🔴 **A copy agora É sugerida, então a bancada FECHA o desfecho em vez de abrir
+  decisão nova.** Card vindo de item de plano com dica registra `registrarDesfecho`;
+  card montado à mão continua `escolha-propria`. Sem isso o mesmo texto viraria
+  dois sinais com sentidos opostos — o defeito que a F1 já teve de corrigir
+  (`e3236624`). O desfecho é CALCULADO pelo diff, nunca declarado pela tela.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
