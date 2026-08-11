@@ -97,6 +97,25 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
 
   const catalogo = await googleDriveService.readFileAsJson<Catalogo>(catalogId)
   const todas = catalogo.images ?? []
+
+  /**
+   * Catálogo VAZIO é pior que catálogo nenhum: ele desliga o fallback da
+   * listagem crua e o acervo inteiro do cliente some do seletor, sem erro
+   * nenhum. Acontece de verdade — o `analyze-drive-images` salva o arquivo
+   * mesmo quando toda foto falhou na análise, que foi o que ocorreu enquanto
+   * ele apontava para um modelo de visão aposentado (10/08/2026).
+   *
+   * Tratar como "sem catálogo" devolve o cliente à navegação por pasta, que é
+   * degradação honesta em vez de tela vazia.
+   */
+  if (todas.length === 0) {
+    throw new CreativeError(
+      'SEM_CATALOGO',
+      'O catálogo deste projeto está vazio (a análise ainda não rodou ou falhou). Use a listagem da pasta.',
+      404,
+    )
+  }
+
   let imagens = todas
 
   // Catálogos regerados (taxonomia v2) não trazem qualidade/tags/bestFor — só a

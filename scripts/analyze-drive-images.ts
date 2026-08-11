@@ -253,7 +253,14 @@ async function analyzeImage(
   menu: string,
   projectName: string,
 ): Promise<Omit<ImageAnalysis, 'driveFileId' | 'fileName' | 'folder' | 'folderId' | 'createdTime' | 'usageHistory'>> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  // gemini-2.0-flash foi APOSENTADO: `generateContent` devolve 404 ainda que o
+  // nome continue aparecendo no ListModels. Este script ficou quebrado em
+  // silêncio — cada foto virava "erro" e o catálogo era salvo VAZIO. Os irmãos
+  // (bacana-analyze, analyze-rw-images, enrich-catalog-seu-quinto) já tinham
+  // sido corrigidos; este e o analyze-all-projects não. Override por env.
+  const model = genAI.getGenerativeModel({
+    model: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash',
+  })
 
   const menuSection = menu
     ? `CARDÁPIO COMPLETO DO RESTAURANTE (use EXATAMENTE estes nomes):
@@ -474,7 +481,7 @@ async function main() {
   }
 
   // 5. Analyze each image
-  console.log(`\n4. Analyzing ${toProcess.length} images with Gemini 2.0 Flash${shouldRename ? ' + renaming' : ''}...\n`)
+  console.log(`\n4. Analyzing ${toProcess.length} images with Gemini (visão)${shouldRename ? ' + renaming' : ''}...\n`)
   let analyzed = 0
   let errors = 0
   let renamed = 0

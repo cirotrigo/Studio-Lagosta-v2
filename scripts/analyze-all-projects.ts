@@ -195,7 +195,11 @@ async function analyzeImage(
   menu: string,
   projectName: string,
 ): Promise<Omit<ImageAnalysis, 'driveFileId' | 'fileName' | 'folder' | 'folderId' | 'createdTime' | 'usageHistory'>> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+  // gemini-2.0-flash foi APOSENTADO (404 no generateContent, mesmo aparecendo
+  // no ListModels). Ver o comentário em analyze-drive-images.ts.
+  const model = genAI.getGenerativeModel({
+    model: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash',
+  })
 
   const prompt = `Analise esta foto de um restaurante chamado "${projectName}".
 
