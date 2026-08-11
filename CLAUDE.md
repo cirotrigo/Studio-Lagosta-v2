@@ -897,8 +897,10 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
   seção do DNA que não é instrução para o modelo: são perguntas binárias que
   gente lê antes de agendar. Mora em coluna própria, e não dentro de
   `contentRules`, justamente porque `contentRules` vai verbatim para o prompt.
-  A polaridade é MISTA (há pergunta que reprova no "sim" e outra no "não"):
-  não construa veredito automático em cima dela.
+  ~~A polaridade é MISTA: não construa veredito automático em cima dela.~~ —
+  **superado em 11/08/2026**, ver "Crivo conferido pelo sistema" abaixo. O
+  crivo agora É avaliado automaticamente (como PERGUNTA sobre uma peça pronta,
+  nunca como instrução de geração — esta parte da regra continua valendo).
 - **Proporção se confere com assert, nunca com resize.** A finalização usa
   `resize(fit: 'cover')`, que CORTA em silêncio quando a proporção diverge — e
   o corte come a faixa do texto. `checarProporcao` (`creative-qa.ts`) roda antes,
@@ -984,6 +986,69 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
 - **O dev server do painel Browser roda no diretório do projeto original,
   mesmo em sessão de worktree** (confirmado por `lsof -d cwd`). Mudança feita
   em worktree não é verificável por ele.
+
+### Crivo conferido pelo sistema (11/08/2026)
+
+O crivo de aprovação da bancada deixou de ser uma lista de caixas para marcar.
+**O sistema confere o que consegue verificar sozinho, mostrando a evidência, e
+o humano responde só o que exige olho** (decisão do Ciro, 10/08). Serviço em
+`src/lib/brand/crivo-avaliacao.ts`, contrato puro em `approval-checklist.ts`,
+rota `POST /api/projects/[id]/crivo/avaliar`, tela em `bancada-crivo.tsx`.
+
+O que havia antes: o quadradinho significava "eu li", não "conforme"; o único
+caminho para frente era marcar TUDO (14 perguntas no Wine Vix, 35 no Quintal);
+e o aviso de que a polaridade era mista vivia numa frase que ninguém carrega na
+cabeça. Virou pedágio que se paga sem ler — o oposto do que o desenho queria.
+
+Regras que valem para código novo:
+
+- **A avaliação NÃO recebe a imagem.** Ela responde por DADO: dia e hora em
+  BRT, a copy, a base de conhecimento, o DNA, as fontes cadastradas. Quem olha
+  pixel é o QA de visão (`creative-qa.ts`), que responde outra pergunta.
+- **Reprova AVISA, nunca veta** — mesma regra da conferência de arte. A tela
+  oferece "Voltar e ajustar" e "Agendar mesmo assim". A base pode estar velha,
+  e travar publicação por metadado é pior que publicar com aviso.
+- **Falha degrada para o crivo manual, nunca bloqueia.** `crivoManual()` é
+  função pura justamente para a UI montar o piso sozinha quando nem a rota
+  responde.
+- 🔴 **Saída de modelo se valida por RECONCILIAÇÃO, não por parse.** Todo campo
+  do schema é `.optional()`: com eles obrigatórios, o zod recusava a resposta
+  INTEIRA quando o modelo omitia um só — e ele omite. Medido no By Rock: 15
+  vereditos corretos descartados por falta de um campo, três tentativas
+  seguidas caindo no crivo manual. O rigor mora em `reconciliarVeredito`, que
+  trata cada campo como suspeito e devolve ao olho humano o que vier incompleto.
+- 🔴 **O índice que o modelo declara NÃO é confiável.** No By Rock ele devolveu
+  a lista inteira DESLOCADA em uma posição — respondia a pergunta N e carimbava
+  N-1, pondo um ✅ verde em "Existe mais de uma oferta?" com evidência sobre
+  CORES. Por isso cada resposta carrega um ECO (as primeiras palavras da
+  pergunta, copiadas) e é amarrada pelo TEXTO; eco que não casa, ou casa com
+  várias, é descartado. Vale para qualquer lista longa devolvida por LLM.
+- 🔴 **"Você não viu a imagem" não sobrevive como regra de prompt.** Com outras
+  tarefas na mesma chamada, o modelo respondeu "a arte contém emoji, o que é
+  proibido" sobre uma arte que nunca recebeu, com evidência plausível. A trava
+  é do CÓDIGO: o modelo declara `dependeDeVerAImagem` ANTES do veredito, e
+  pergunta visual é forçada a `preciso-de-olho` com a justificativa inventada
+  descartada junto.
+- 🔴 **Inversão de polaridade por NEGAÇÃO é recusada.** Pedida a reescrita para
+  "marcar = conforme", o modelo devolveu "A gramática NÃO está impecável?" e "A
+  foto não acontece dentro do salão real?" — frases que fazem a pessoa marcar o
+  oposto do que quis dizer, e que numa lista de 15 passam batido. Inversão de
+  verdade reescreve em positivo ("Tem emoji?" → "A arte está sem emoji?").
+  `inversaoAceitavel()` derruba junto algumas negativas válidas, e tudo bem: o
+  fallback é a pergunta do DNA, que é segura porque a seção já define que
+  marcar significa "está conforme". **Manter o texto do DNA é o default;
+  inverter é o caso explícito.**
+- **A polaridade oscilou três vezes durante a implementação** (não inverte
+  nada → inverte tudo errado → nega tudo). Antes de mexer no prompt dessa
+  parte, rode contra Wine Vix (11, quase tudo conforme-no-sim) **e** By Rock
+  (7, cheio de reprova-no-sim): um projeto só não mostra a regressão.
+- **`fieldValues.crivo` é gravado por MERGE**, nunca substituição — é o
+  registro atômico da run, e telemetria não derruba fluxo (erro vira log).
+- **Perguntas quebradas na importação se consertam por
+  `scripts/corrigir-crivo-importado.ts`** (dry-run por padrão, `updateBrandDNA`,
+  troca declarada uma a uma pelo texto exato). Escopo estreito de propósito:
+  caminho de pasta vazado do `DNA.md` e frase truncada. Pergunta comprida ou
+  estranha NÃO é defeito — é o crivo daquela marca.
 
 ### Imagem: caixa é janela, não elástico (04/08/2026)
 
