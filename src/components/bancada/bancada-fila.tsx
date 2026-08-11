@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
 import { useFilaDoPlano } from '@/hooks/use-planos'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
-import { formatarQuandoBR, situacaoParaExibir } from '@/lib/planos/para-bancada'
+import { formatarQuandoBR, ordenarPorDataDesc, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
 import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
@@ -129,6 +129,8 @@ export function BancadaFila({ projectId }: { projectId: number }) {
     return progressoDoPlano(doPlano.map((i) => ({ status: situacaoParaExibir(i) })))
   }, [itens, plano])
 
+  const ordenados = React.useMemo(() => ordenarPorDataDesc(itens), [itens])
+
   if (itens.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border/60 py-12 text-center">
@@ -149,7 +151,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           <p className="text-xs text-muted-foreground">{progresso.frase}</p>
         </div>
       )}
-      {itens.map((item) => (
+      {ordenados.map((item) => (
         <Card
           key={item.id}
           item={item}

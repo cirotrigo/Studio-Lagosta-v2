@@ -5,6 +5,7 @@ import {
   fundirComOLocal,
   mesclarReferencias,
   mesclarSlides,
+  ordenarPorDataDesc,
   slidesDoServidor,
   slidesParaServidor,
   hidratarItens,
@@ -655,5 +656,40 @@ describe('carrossel no plano — tradução e fusão', () => {
     const fila = mesclarSlides(locais, doServ)!
     expect(fila[0].generationId).toBe('g-novo')
     expect(fila[0].resultUrl).toBe('https://b/nova.png')
+  })
+})
+
+
+describe('ordenarPorDataDesc', () => {
+  const c = (quando: string | null, criadoEm = 0) => ({ quando, criadoEm })
+
+  it('o horário mais distante abre a fila; o mais próximo fecha', () => {
+    const fila = ordenarPorDataDesc([
+      c('2026-08-11 17:30'),
+      c('2026-08-12 18:30'),
+      c('2026-08-12 11:30'),
+    ])
+    expect(fila.map((i) => i.quando)).toEqual([
+      '2026-08-12 18:30',
+      '2026-08-12 11:30',
+      '2026-08-11 17:30',
+    ])
+  })
+
+  /** Card sem horário está esperando decisão — enterrá-lo no fim é sumir. */
+  it('card sem data vem antes de tudo', () => {
+    const fila = ordenarPorDataDesc([c('2026-08-12 11:30'), c(null), c('2026-08-13 15:00')])
+    expect(fila[0].quando).toBeNull()
+  })
+
+  it('empate de horário desempata pelo mais novo na fila', () => {
+    const fila = ordenarPorDataDesc([c('2026-08-12 11:30', 1), c('2026-08-12 11:30', 2)])
+    expect(fila[0].criadoEm).toBe(2)
+  })
+
+  it('não muda a lista original', () => {
+    const original = [c('2026-08-11 10:00'), c('2026-08-12 10:00')]
+    ordenarPorDataDesc(original)
+    expect(original[0].quando).toBe('2026-08-11 10:00')
   })
 })

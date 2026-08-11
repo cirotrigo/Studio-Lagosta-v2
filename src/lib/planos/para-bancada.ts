@@ -724,6 +724,32 @@ export function caminhoDeTransicao(de: StatusDoItem, para: StatusDoItem): Status
   return []
 }
 
+/**
+ * A ordem da fila: data DECRESCENTE (pedido do Ciro, 11/08/2026) — a leva se
+ * lê como um feed, o horário mais distante no topo e o mais próximo embaixo.
+ *
+ * Card SEM data vem antes de tudo: ele está esperando uma decisão de horário,
+ * e enterrá-lo no fim da lista é como um item some. Empate de horário
+ * desempata pelo mais novo na fila.
+ *
+ * Não reordena o STORE (a ordem de inserção é o histórico de quem montou);
+ * ordena a LEITURA, no render.
+ */
+export function ordenarPorDataDesc<T extends { quando?: string | null; criadoEm: number }>(
+  itens: T[],
+): T[] {
+  return [...itens].sort((a, b) => {
+    const qa = a.quando ?? ''
+    const qb = b.quando ?? ''
+    if (qa !== qb) {
+      if (!qa) return -1
+      if (!qb) return 1
+      return qb.localeCompare(qa)
+    }
+    return b.criadoEm - a.criadoEm
+  })
+}
+
 // ── A data no cartão ────────────────────────────────────────────────────────
 
 const DIAS_ABREV = ['Dom.', 'Seg.', 'Ter.', 'Qua.', 'Qui.', 'Sex.', 'Sáb.'] as const
