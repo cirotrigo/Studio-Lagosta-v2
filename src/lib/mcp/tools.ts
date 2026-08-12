@@ -2079,7 +2079,7 @@ export const MCP_TOOLS: McpTool[] = [
         instrucaoImagem: {
           type: 'string',
           description:
-            'Trilha arte, opcional: ajuste autorizado na FOTO (ex: "escurecer o fundo atrás do texto"). Sem isso a foto é preservada intocada — a regra da casa é "a foto se melhora, nunca se modifica".',
+            'Trilha arte, opcional: ajuste autorizado na FOTO (ex: "escurecer o fundo atrás do texto", "cortar o primeiro pedaço ao meio mostrando o ponto da carne"). Sem isso a foto é preservada intocada — a regra da casa é "a foto se melhora, nunca se modifica". Com ajuste, a peça é gerada no modelo mais caprichoso (leva ~2 min em vez de ~40s, mesmo custo em créditos): editar foto exige detalhe que o modelo rápido não entrega.',
         },
         promptPronto: {
           type: 'string',

@@ -2165,9 +2165,9 @@ chamador é `POST /api/gerar-criativo/quick-generate` — a Arte Rápida.
 
 `runImageEdit` cravava `quality: 'high'` desde que existe — o caminho mais caro
 do sistema, sem ninguém ter escolhido. Hoje o tier é parâmetro
-(`QUALIDADE_ARTE_PADRAO` em `src/lib/ai/qualidade-arte.ts`, módulo PURO porque
-a galeria é client), o padrão é `low`, e trocar é um botão na mão de quem
-aprova.
+(`src/lib/ai/qualidade-arte.ts`, módulo PURO porque a galeria é client), o
+padrão é `low` para compor e `high` quando há ajuste na foto, e trocar é um
+botão na mão de quem aprova.
 
 Medido com `scripts/medir-qualidade-trilha-arte.ts` (mesma peça do Espeto
 Gaúcho, 3 repetições por tier, o juiz sendo o `verifyImageTexts` da produção):
@@ -2207,6 +2207,16 @@ sem artefato, conferido em 1:1. O `low` sai por 1/20 do `high`.
   reconstrói pelo caminho normal — pedido + copy (de `slotValues`) + referências.
 - **Só `source === 'arte-ia'` pode ser refeita**: arte de template ou de upload
   não tem prompt nem referências para reconstituir, e o botão nem aparece.
+- 🔴 **Compor é barato, EDITAR A FOTO é caro** (`qualidadePadraoPara`, decisão do
+  Ciro em 12/08). Os dois testes dizem coisas OPOSTAS: desenhar letra sobre a
+  foto empatou nos três tiers, mas pedir para cortar a picanha ao meio e revelar
+  o ponto separou — o `low` devolveu mancha rosa lisa, sem fibra legível e com
+  transição abrupta da crosta (parecia pintado, não cortado), enquanto `medium`
+  e `high` renderam fibra com direção e gradiente de cocção. A nitidez foi
+  monotônica: 700 / 754 / 870. Faz sentido físico: microtextura é o que o tier
+  barato sacrifica, e ela é irrelevante para uma letra. Por isso
+  `instrucaoImagem` presente ⇒ padrão `high`. **Em créditos não muda nada** (a
+  trilha arte cobra 25 flat); sobe a fatura e o tempo (~43s → ~125s).
 - **Os rótulos falam de TEMPO e CUSTO, nunca de "qualidade baixa"** — os três
   tiers desenharam texto íntegro, então "qualidade baixa" mentiria sobre o que se
   escolhe. E "low/medium" não é vocabulário de quem cuida do Instagram de

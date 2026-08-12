@@ -46,7 +46,7 @@ import { checarProporcao, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
-import { QUALIDADE_ARTE_PADRAO, type QualidadeArte } from '@/lib/ai/qualidade-arte'
+import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -156,8 +156,8 @@ export interface ArtGenerationJobArgs {
    */
   queueJobId?: string
   /**
-   * Tier do gpt-image na trilha `arte`. Padrão `low` — ver
-   * `QUALIDADE_ARTE_PADRAO` em `creative-generation-service.ts`.
+   * Tier do gpt-image na trilha `arte`. Ausente, cai em `qualidadePadraoPara`:
+   * `low` para compor texto, `high` quando há ajuste autorizado NA foto.
    */
   qualidade?: QualidadeArte
 }
@@ -850,7 +850,10 @@ async function generateOnce(
       prompt,
       size: args.openaiSize,
       timeoutMs,
-      quality: args.qualidade ?? QUALIDADE_ARTE_PADRAO,
+      // O serviço sempre define; o fallback usa a MESMA regra para chamador
+      // que monte os args por fora (script, teste).
+      quality:
+        args.qualidade ?? qualidadePadraoPara({ temAjusteDeFoto: Boolean(args.instrucaoImagem?.trim()) }),
     })
   }
 
