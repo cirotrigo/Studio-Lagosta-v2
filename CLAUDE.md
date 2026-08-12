@@ -2225,6 +2225,38 @@ sem artefato, conferido em 1:1. O `low` sai por 1/20 do `high`.
   irmã do anchor) — dentro dele, o clique navegaria. E é menu, não dois botões,
   porque a barra já chega a cinco e no celular o card tem ~120px.
 
+### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
+
+Cinco arestas do conector remoto, levantadas na produção real das peças do By
+Rock e consertadas juntas.
+
+- 🔴 **`finalPrompt` entrou no hash de dedupe.** Faltava, e o buraco era
+  exatamente o formato de uma sessão de direção: mesmo `pedido`, mesmas
+  referências, `promptPronto` reescrito, dentro dos 10 minutos → colidia e
+  devolvia a peça anterior, que é a que acabou de ser recusada. O hash hoje tem
+  `p, c, f, t, r, cg, so, q, fp`.
+- **`ver-melhoria` virou `ver-geracao`**, com o nome antigo em `APELIDOS` e
+  `melhoriaId` ainda aceito ao lado de `geracaoId`. O nome mentia: `gerar-imagem`
+  mandava acompanhar por uma tool cuja descrição dizia servir só para melhorias,
+  e quem gerava arte nova ia procurar uma que não existe. **Apelido em
+  `APELIDOS` NÃO aparece em `tools/list`** — quem só cria o apelido e mantém o
+  nome antigo na lista não resolve nada, porque o modelo escolhe pela lista.
+- 🔴 **Parâmetro desconhecido é RECUSADO, não descartado** (`parametrosDesconhecidos`
+  em `runMcpTool`). Todo `inputSchema` já declarava `additionalProperties: false`
+  e nada enforçava: chamar a listagem do acervo com um filtro inexistente
+  devolvia o acervo inteiro misturado, **com cara de resultado válido**. O erro
+  cita a chave e lista as aceitas. A guarda respeita a declaração — tool que
+  queira aceitar extras é só não fechar a porta.
+- **`buscar-fotos` ganhou `fileName`** (exato ou prefixo) e
+  **`listar-fotos-da-pasta` ganhou `folder`** — o serviço
+  (`listarImagensDoDrive`) já aceitava pasta por nome desde sempre; só a tool
+  não expunha. Quem já sabe qual foto quer não tinha como pedi-la.
+- ⚠️ **O MCP LOCAL (`scripts/mcp-server.ts`) segue descartando em silêncio**:
+  ele usa `server.tool(nome, desc, shapeZod, handler)` e o SDK monta
+  `z.object(shape)`, que STRIPA chave desconhecida antes do handler — não há
+  onde interceptar sem trocar a forma de registro. A guarda acima vale só para
+  o conector remoto.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
