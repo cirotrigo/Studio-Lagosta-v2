@@ -2363,6 +2363,36 @@ Os oito itens que faltavam das seções A e B. Regras que valem para código nov
   tem a pasta: a busca por TEMA não alcança essas fotos e quem buscava não tinha
   como saber — a resposta voltava curta e parecia acervo pequeno.
 
+### 🔴 O conector via MCP era mais restrito que o app web (12/08/2026)
+
+`projetosVisiveis` (`src/lib/mcp/tools.ts`) olhava só
+`organization.ownerClerkId` — o DONO da organização. Mas
+`hasProjectWriteAccess` (`projects/access.ts`) dá acesso a **todos os membros**
+de uma organização com que o projeto é compartilhado, e é assim que o site se
+comporta.
+
+Efeito medido: um `org:admin` abria o site e via os 11 clientes; abria o
+conector e via **ZERO**, com "Sem acesso ao projeto 6" em cada tool. Nada na
+conversa explicava por quê — e a hipótese natural (token de outra conta) estava
+certa em parte e mandava para o conserto errado.
+
+- **Membro conta, não só dono.** A participação vive no CLERK, não no banco: o
+  app web a recebe pronta no `orgId` da sessão, mas o token OAuth do MCP traz só
+  o `userId`. `orgsDoUsuario` consulta o Clerk, com cache de 60s por instância —
+  sem ele seria uma ida à API por tool, já que quase toda uma chama
+  `assertProjetoPermitido`.
+- **Clerk fora do ar degrada para MENOS acesso, nunca para mais**: devolve lista
+  vazia de organizações e sobra o que o banco sabe sozinho (os projetos que a
+  pessoa possui, e o `ownerClerkId`, que por isso foi MANTIDO no OR).
+- 🔴 **Erro de permissão precisa dizer QUEM está conectado.** "Sem acesso ao
+  projeto 6" e uma lista vazia mandavam procurar permissão no lugar errado. Hoje
+  as duas superfícies dizem o e-mail da conta do token e o que fazer. Vale para
+  qualquer negativa de acesso no conector: a identidade do portador é invisível
+  de dentro da conversa.
+- **Diagnóstico de token**: `McpOAuthToken` guarda `userId`, `expiresAt` e
+  `revokedAt`. Foi por ali que a troca de conta apareceu — os tokens do dia
+  passaram a sair para outro `user_…` a partir de certo horário.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

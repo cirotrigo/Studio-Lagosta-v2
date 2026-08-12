@@ -121,9 +121,56 @@ export interface McpTool {
 }
 
 /**
+ * Organizações de que o usuário PARTICIPA, pelo Clerk.
+ *
+ * Cache curto por instância: `projetosVisiveis` roda em praticamente toda tool
+ * (via `assertProjetoPermitido`), e sem isto cada chamada viraria uma ida à API
+ * do Clerk. 60s é bem mais que a duração de uma conversa e bem menos que o
+ * tempo de alguém entrar/sair de uma organização e estranhar.
+ */
+const CACHE_ORGS_MS = 60_000
+const cacheDeOrgs = new Map<string, { orgs: string[]; ate: number }>()
+
+async function orgsDoUsuario(clerkUserId: string): Promise<string[]> {
+  const agora = Date.now()
+  const guardado = cacheDeOrgs.get(clerkUserId)
+  if (guardado && guardado.ate > agora) return guardado.orgs
+
+  try {
+    const { clerkClient } = await import('@clerk/nextjs/server')
+    const client = await clerkClient()
+    const lista = await client.users.getOrganizationMembershipList({
+      userId: clerkUserId,
+      limit: 100,
+    })
+    const orgs = lista.data.map((m) => m.organization.id)
+    cacheDeOrgs.set(clerkUserId, { orgs, ate: agora + CACHE_ORGS_MS })
+    return orgs
+  } catch (erro) {
+    /**
+     * Clerk fora do ar NÃO pode virar "enxerga tudo" nem derrubar a conversa:
+     * degrada para o que dá para saber só com o banco — os projetos que a
+     * pessoa possui. Sem cache, para a próxima chamada tentar de novo.
+     */
+    console.warn('[mcp] não consegui listar as organizações do usuário:', erro)
+    return []
+  }
+}
+
+/**
  * Projetos que o portador pode ver. O segredo de serviço enxerga tudo (é o
  * Claudinho, que já opera em nome do dono); um token OAuth fica restrito aos
  * projetos do usuário que aprovou o conector.
+ *
+ * 🔴 MEMBRO da organização conta, não só o DONO dela.
+ *
+ * A versão anterior olhava apenas `organization.ownerClerkId`, o que deixava o
+ * conector MAIS restrito que o resto do sistema: `hasProjectWriteAccess`
+ * (`projects/access.ts`) dá acesso a todos os membros de uma organização com
+ * que o projeto é compartilhado, e é assim que o app web se comporta. O
+ * resultado era um admin da organização abrir o site e ver os 11 clientes, e
+ * abrir o conector e ver ZERO — com "Sem acesso ao projeto 6" em cada tool,
+ * sem nada que explicasse por quê. Aconteceu de verdade em 12/08/2026.
  */
 async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | null> {
   if (principal.kind === 'service') return null
@@ -131,18 +178,46 @@ async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | nul
   // `principal.userId` é clerkId; `Project.userId` é o id INTERNO do User.
   // Comparar direto nunca casava — ver o comentário de espaços de id em
   // src/lib/projects/access.ts.
-  const donoIds = await projectOwnerIdsFor(principal.userId)
+  const [donoIds, orgs] = await Promise.all([
+    projectOwnerIdsFor(principal.userId),
+    orgsDoUsuario(principal.userId),
+  ])
 
   const projects = await db.project.findMany({
     where: {
       OR: [
         { userId: { in: donoIds } },
+        // Dono da organização — mantido por segurança: se o Clerk falhar, quem
+        // é dono no BANCO continua enxergando.
         { organizationProjects: { some: { organization: { ownerClerkId: principal.userId } } } },
+        ...(orgs.length > 0
+          ? [{ organizationProjects: { some: { organization: { clerkOrgId: { in: orgs } } } } }]
+          : []),
       ],
     },
     select: { id: true },
   })
   return projects.map((p) => p.id)
+}
+
+/**
+ * Diagnóstico de quem está conectado, para o erro parar de ser mudo.
+ *
+ * Lista vazia e "Sem acesso ao projeto 6" não diziam POR QUÊ, e a causa real —
+ * token emitido para outra conta — é invisível de dentro da conversa. Custa uma
+ * consulta que só roda quando algo já deu errado.
+ */
+async function quemEstaConectado(principal: McpPrincipal): Promise<string> {
+  if (principal.kind === 'service') return 'chave de serviço'
+  try {
+    const { clerkClient } = await import('@clerk/nextjs/server')
+    const client = await clerkClient()
+    const u = await client.users.getUser(principal.userId)
+    const email = u.primaryEmailAddress?.emailAddress ?? u.emailAddresses[0]?.emailAddress
+    return email ? `${email} (${principal.userId})` : principal.userId
+  } catch {
+    return principal.userId
+  }
 }
 
 /**
@@ -224,7 +299,19 @@ async function quemDecidiu(
 async function assertProjetoPermitido(projectId: number, principal: McpPrincipal) {
   const permitidos = await projetosVisiveis(principal)
   if (permitidos && !permitidos.includes(projectId)) {
-    throw new CreativeError('PROJETO_SEM_ACESSO', `Sem acesso ao projeto ${projectId}`, 403)
+    /**
+     * A mensagem diz QUEM está conectado. "Sem acesso ao projeto 6" sozinho
+     * mandava procurar permissão no lugar errado: em 12/08/2026 a causa era o
+     * conector autenticado com OUTRA conta, e nada na conversa mostrava isso.
+     */
+    const quem = await quemEstaConectado(principal)
+    throw new CreativeError(
+      'PROJETO_SEM_ACESSO',
+      permitidos.length === 0
+        ? `A conexão está autenticada como ${quem}, e essa conta não enxerga nenhum cliente. Reconecte o Studio Lagosta com a conta dona dos projetos, ou peça para incluírem esta na organização.`
+        : `A conta conectada (${quem}) não tem acesso ao cliente ${projectId}. Ela enxerga: ${permitidos.join(', ')}.`,
+      403,
+    )
   }
 }
 
@@ -309,6 +396,16 @@ export const MCP_TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     handler: async (_args, principal) => {
       const permitidos = await projetosVisiveis(principal)
+      if (permitidos && permitidos.length === 0) {
+        // Lista vazia sem explicação manda procurar no lugar errado — ver a
+        // nota em assertProjetoPermitido.
+        const quem = await quemEstaConectado(principal)
+        return {
+          count: 0,
+          projects: [],
+          aviso: `Nenhum cliente visível: a conexão está autenticada como ${quem}, e essa conta não é dona de nenhum projeto nem participa de uma organização que tenha algum. Reconecte com a conta dona, ou peça para incluírem esta na organização.`,
+        }
+      }
       const projects = await db.project.findMany({
         where: { status: 'ACTIVE', ...(permitidos ? { id: { in: permitidos } } : {}) },
         select: {
