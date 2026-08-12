@@ -284,11 +284,40 @@ const server = new McpServer({
   version: '1.0.0',
 })
 
+/**
+ * Registra uma tool com schema ESTRITO: chave desconhecida vira ERRO, não
+ * descarte silencioso (B4).
+ *
+ * 🔴 `server.tool(nome, desc, shape, handler)` monta `z.object(shape)`, que
+ * ESTRIPA o que não conhece antes do handler. Na prática isso vira resposta
+ * plausível e errada — chamar `list-drive-images` com um filtro inexistente
+ * devolvia o acervo inteiro misturado, com cara de resultado válido. O
+ * conector remoto já recusa desde 12/08 (`parametrosDesconhecidos` em
+ * `runMcpTool`); aqui a trava tinha de vir por outro caminho.
+ *
+ * `registerTool` aceita um schema COMPLETO além do raw shape (SDK ≥ 1.27), e é
+ * por isso que `.strict()` cabe. O erro sai como falha de validação do próprio
+ * SDK, citando a chave — que é o que se quer: falhar alto em vez de responder
+ * bonito sobre a coisa errada.
+ */
+function toolEstrita<S extends z.ZodRawShape>(
+  name: string,
+  description: string,
+  shape: S,
+  handler: (args: z.infer<z.ZodObject<S>>, extra: unknown) => unknown,
+) {
+  return server.registerTool(
+    name,
+    { description, inputSchema: z.object(shape).strict() as never },
+    handler as never,
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // TOOL 1: list-projects
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'list-projects',
   'List active projects with Drive folders and Instagram config',
   {
@@ -326,7 +355,7 @@ server.tool(
 // TOOL 2: list-templates
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'list-templates',
   'List templates for a project with page summaries',
   {
@@ -376,7 +405,7 @@ server.tool(
 // TOOL 3: get-template-pages
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'get-template-pages',
   'Get all pages of a template with optional layer details',
   {
@@ -423,7 +452,7 @@ server.tool(
 // TOOL: create-template
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'create-template',
   'Create a new template with optional inline pages. Use for theme-based templates (abertura, almoco, happy-hour, etc.). This tool AUTHORS MODELS: every inline page is born as a reusable model of the project. For the artwork of a week of posts use create-page instead, which creates ordinary content.',
   {
@@ -498,7 +527,7 @@ server.tool(
 // TOOL 4: create-page
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'create-page',
   'Create a new page in a template. The page is born as ORDINARY CONTENT (one artwork), not as a reusable model — that is what you want for the pieces of a week of posts. Only pass isTemplate: true when the page really is a REUSABLE LAYOUT the project should pick from forever.',
   {
@@ -568,7 +597,7 @@ server.tool(
 // TOOL 5: list-posts
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'list-posts',
   'List posts by project, date range, status, or type. `congelado: true` means the art was already handed to the publisher — editing the page no longer changes what goes out.',
   {
@@ -634,7 +663,7 @@ server.tool(
 // TOOL 6: create-post
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'create-post',
   'Create a scheduled post (template-based with pageId, or legacy with mediaUrls)',
   {
@@ -714,7 +743,7 @@ server.tool(
 // TOOL 7: update-post
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'update-post',
   'Update a post: caption, schedule, status, slotValues, or mediaUrls. Setting status to DRAFT/SCHEDULED/FAILED clears transient fields (processingStartedAt, errorMessage) — safe to unstick posts frozen in POSTING.',
   {
@@ -822,7 +851,7 @@ server.tool(
 // TOOL 7b: recover-stuck-post
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'recover-stuck-post',
   'Recover a post frozen in POSTING (or any broken state) by reconciling with Zernio. Fetches real status from Zernio and updates the local DB. Optionally republishes immediately by rebuilding from local mediaUrls (Vercel Blob) — does NOT reuse Zernio CDN copies, which are wiped when the stale post is deleted. Use this whenever a post is stuck after clicking "Publicar Agora" or the scheduler crashed mid-publish.',
   {
@@ -1108,7 +1137,7 @@ server.tool(
 // TOOL 8: delete-posts
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'delete-posts',
   'Delete posts by IDs or date range. Safety: cannot delete POSTED posts.',
   {
@@ -1173,7 +1202,7 @@ server.tool(
 // TOOL 9: render-story
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'render-story',
   'Force server-side render of a template-based post. Renders PNG, uploads to Vercel Blob, updates post.',
   {
@@ -1325,16 +1354,20 @@ server.tool(
 // TOOL 10: list-drive-images
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'list-drive-images',
-  'List images from a project\'s Google Drive folder',
+  'List images from a project\'s Google Drive folder. The response reports `pastasDisponiveis`, so a first call without filters shows what exists.',
   {
     projectId: z.number().describe('Project ID'),
+    folder: z
+      .string()
+      .optional()
+      .describe('Subfolder by NAME, exact or prefix ("09_ambiente"). Use this when you know the folder but not its id.'),
     folderId: z.string().optional().describe('Specific subfolder ID (default: project imagesFolderId)'),
     includeSubfolders: z.boolean().optional().describe('Include subfolder images (default: true)'),
     limit: z.number().optional().describe('Max results (default: all images)'),
   },
-  async ({ projectId, folderId, includeSubfolders, limit }) => {
+  async ({ projectId, folder, folderId, includeSubfolders, limit }) => {
     try {
       const project = await prisma.project.findUnique({
         where: { id: projectId },
@@ -1395,11 +1428,37 @@ server.tool(
         } while (folderPageToken)
       }
 
+      /**
+       * Filtro por NOME da pasta (B3). O nome é o que a pessoa conhece — o id
+       * só aparece em outra tool —, e antes do schema estrito passá-lo aqui era
+       * descartado em silêncio: voltava o acervo inteiro misturado com cara de
+       * resultado válido. Prefixo, como no catálogo.
+       */
+      const normalizar = (v: string) => v.trim().toLowerCase()
+      const pastasDisponiveis = [...new Set(images.map((i) => i.folder))].sort()
+      const filtradas = folder
+        ? images.filter((i) => normalizar(i.folder ?? '').startsWith(normalizar(folder)))
+        : images
+
       // Apply limit only if explicitly set
-      const finalImages = limit ? images.slice(0, limit) : images
+      const finalImages = limit ? filtradas.slice(0, limit) : filtradas
 
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(finalImages, null, 2) }],
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                total: filtradas.length,
+                acervoCompleto: images.length,
+                pastasDisponiveis,
+                images: finalImages,
+              },
+              null,
+              2,
+            ),
+          },
+        ],
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
@@ -1411,7 +1470,7 @@ server.tool(
 // TOOL 11: search-catalog
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'search-catalog',
   'Search the image catalog (_image-catalog.json) by theme, tags, quality, or menu category',
   {
@@ -1506,7 +1565,7 @@ server.tool(
 // TOOL 12: get-image-thumbnail
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'get-image-thumbnail',
   'Get a Drive image thumbnail (URL or base64 for visual preview)',
   {
@@ -1559,7 +1618,7 @@ server.tool(
 // TOOL: download-drive-image
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'download-drive-image',
   'Download a Google Drive image to a local file path (full resolution)',
   {
@@ -1590,7 +1649,7 @@ server.tool(
 // TOOL 13: get-knowledge
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'get-knowledge',
   'Get knowledge base entries for a project (tone of voice, menu, hours, etc.)',
   {
@@ -1632,7 +1691,7 @@ server.tool(
 // TOOL 14: plan-week
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'plan-week',
   'Plan a week of stories (7 days x 3 stories = 21). dryRun=true previews the plan; false creates DRAFT posts.',
   {
@@ -1825,7 +1884,7 @@ server.tool(
 // TOOL 15: get-brand-assets
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'get-brand-assets',
   'Get all brand assets for a project: colors, custom fonts (with file URLs), logos, graphic elements (icons, shapes, ornaments — name + public fileUrl each) and a summary of the knowledge base. The element fileUrls are public Blob URLs of the project library — reference them directly instead of re-hosting copies, so art picks up edits made in the panel.',
   {
@@ -1921,7 +1980,7 @@ server.tool(
 // TOOL 16: sync-zernio-posts
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'sync-zernio-posts',
   'Import/sync posts from Zernio into local DB for a project. Posts created via Zernio dashboard or MCP will appear locally.',
   {
@@ -2011,7 +2070,7 @@ server.tool(
 // TOOL 17: prepare-creative
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'prepare-creative',
   'Resolve project + best matching template page for a theme/day. Returns the page layers, exact slot fields to fill, brand assets and tone-of-voice context. Use this as the FIRST call in the arte-rapida flow before generating copy.',
   {
@@ -2035,7 +2094,7 @@ server.tool(
 // TOOL 18: upload-to-drive
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'upload-to-drive',
   'Upload an image (base64) to a project\'s Google Drive images folder. Returns the new fileId for use as _driveImageId in slot values. Used when the user attaches an image in chat instead of pasting a Drive link.',
   {
@@ -2103,7 +2162,7 @@ server.tool(
 // TOOL 19: create-arte-rapida
 // ═══════════════════════════════════════════════════════════════════════
 
-server.tool(
+toolEstrita(
   'create-arte-rapida',
   'Generate a one-shot creative from a source template page for the arte-rapida flow. Bakes slot values + image (Google Drive id or direct URL) into the layers, creates a new Page inside the project\'s special "Arte R\u00e1pida" template (auto-created on first use), renders to Vercel Blob, and registers a Generation visible in the Criativos gallery. Replaces create-post + render-story for arte-rapida outputs (the result is NOT a SocialPost, so it never shows up in the Agenda calendar). Filter Criativos by searching "Arte R\u00e1pida" to see all outputs.',
   {
@@ -2177,7 +2236,7 @@ function expandUploadPaths(
   return { files: Array.from(new Set(files)), errors }
 }
 
-server.tool(
+toolEstrita(
   'upload-creative',
   'Upload finished artwork FILES FROM THIS MACHINE into a project\'s Criativos gallery. Takes local file paths (or a folder — every PNG/JPG/WebP inside it) — no base64, the server reads the bytes from disk. Each image is stored on Vercel Blob as-is (no re-render), becomes an editable Page inside the project\'s "Arte Enviada" collector template and is registered as a COMPLETED Generation, so it shows up in Criativos and can be scheduled with the returned generationId or pageId. Use this for art produced outside the Studio (design skills, Photoshop/Canva exports, client-sent files); use create-arte-rapida when the Studio itself should compose the art.',
   {
@@ -2261,7 +2320,7 @@ const ELEMENT_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg'])
 /** Kit de designer chega em leva grande; o teto aqui é generoso de propósito. */
 const ELEMENT_MAX_FILES = 60
 
-server.tool(
+toolEstrita(
   'upload-element',
   'Upload graphic elements (icons, seals, shapes, ornaments, shadows) FROM THIS MACHINE into a project\'s brand element library — the same library the Marca tab manages and get-brand-assets lists. Takes local file paths or folders (PNG/JPG/WebP/SVG); the server reads the bytes from disk and stores them on Vercel Blob under the project\'s official element URL, so art that references them picks up any later redraw done in the panel. Use this for a batch of elements from a designer. NOT for finished artwork (that is upload-creative, which creates schedulable creatives) and NOT for photos (those belong in the Drive archive via upload-to-drive).',
   {
