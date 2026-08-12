@@ -23,8 +23,14 @@
 
 import { db } from '@/lib/db'
 
-/** De onde veio o uso. TEXT no banco — o vocabulário ainda se move. */
-export type OrigemDeUso = 'arte-ia' | 'arte-rapida' | 'externo'
+/**
+ * De onde veio o uso. TEXT no banco — o vocabulário ainda se move.
+ *
+ * `historico` é o que a semeadura grava: uso RECONSTRUÍDO de post já publicado,
+ * não observado ao vivo. Fica separado de propósito, para dar para auditar (e
+ * desfazer) o que veio de reconstituição.
+ */
+export type OrigemDeUso = 'arte-ia' | 'arte-rapida' | 'externo' | 'historico'
 
 export interface RegistroDeUso {
   projectId: number

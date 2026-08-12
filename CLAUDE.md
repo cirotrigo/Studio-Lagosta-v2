@@ -2302,6 +2302,22 @@ como ser cumprida, nem para foto usada dentro do Studio.
 - **`marcar-foto-como-usada`** cobre o buraco central: peça montada FORA do
   Studio. Aceita `quando` (AAAA-MM-DD) para marcar publicação passada com a
   data real — sem isso o rodízio acharia que a foto acabou de sair.
+- 🔴 **Quase não existe histórico para semear, e isso mede outra coisa.**
+  `scripts/semear-uso-de-fotos.ts` reconstrói o uso passado, e o rendimento é
+  de **42 usos a partir de 7.832 posts publicados**: 7.769 deles (99,2%) NÃO
+  têm vínculo recuperável com foto do Drive. A causa é estrutural e já
+  conhecida — a peça foi montada FORA do Studio e `/api/external/posts` aceita
+  só `mediaUrls` e `caption`. É o mesmo número, por outro ângulo, da cobertura
+  do corpus de aprendizado: **o sistema só sabe o que acontece dentro dele**.
+  Semeado em 12/08 (28 no Espeto Gaúcho, 6 no projeto 7, 3+3+2 nos demais); as
+  fotos semeadas foram para as posições 519–530 de 547 na busca do projeto 6.
+- **`origem: 'historico'` é separada de propósito** — uso RECONSTRUÍDO, não
+  observado. Dá para auditar e desfazer (`--desfazer`) sem tocar no que foi
+  capturado ao vivo.
+- **A fonte `backgroundImageUrl` foi RECUSADA**: ela guarda URL do Blob com o
+  nome original do arquivo, e casá-lo com o catálogo por NOME é heurística —
+  nome repete entre pastas, e marcação errada empurra para o fim da fila uma
+  foto que nunca foi usada. Eram 2 linhas; não pagam o risco.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
