@@ -1370,7 +1370,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'buscar-fotos',
     description:
-      'Busca fotos no acervo do cliente. Traz primeiro as menos usadas, para não repetir a mesma foto toda semana. O acervo é organizado em pastas por assunto (cortes, ambiente, bebidas, sobremesas...) — a resposta lista as pastas disponíveis, então se a busca por tema vier vazia, tente de novo pela pasta. Ao montar vários posts de uma vez, use pastas diferentes para variar.',
+      'Busca fotos no acervo do cliente. Traz primeiro as menos usadas, para não repetir a mesma foto toda semana — o rodízio é real: cada uso fica registrado, e `ultimoUso`/`vezesUsada` dizem quando e quantas vezes. O retorno traz `catalogacao`, que mostra quantas fotos do acervo ainda não têm descrição ou tags (elas existem, mas a busca por TEMA não as alcança — peça por pasta). O acervo é organizado em pastas por assunto (cortes, ambiente, bebidas, sobremesas...) — a resposta lista as pastas disponíveis, então se a busca por tema vier vazia, tente de novo pela pasta. Ao montar vários posts de uma vez, use pastas diferentes para variar.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1385,6 +1385,7 @@ export const MCP_TOOLS: McpTool[] = [
           description: 'Nome do arquivo, exato ou início dele ("ambiente-f3a" acha "ambiente-f3a8693.jpg"). Use quando já souber qual foto quer.',
         },
         limit: { type: 'number', description: 'Máximo de resultados (default 20). Pode pedir mais — não há teto.' },
+        offset: { type: 'number', description: 'Quantas pular, para ver o resto da lista. A ordem é estável.' },
       },
       required: ['projectId'],
       additionalProperties: false,
@@ -1401,6 +1402,7 @@ export const MCP_TOOLS: McpTool[] = [
         quality: args.quality,
         fileName: args.fileName,
         limit: args.limit,
+        offset: args.offset,
       })
     },
   },
@@ -2105,7 +2107,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'gerar-imagem',
     description:
-      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-geracao. Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
+      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, até ~4000 chars, zero texto na imagem), passe em `promptPronto` — ele é usado no lugar do redator automático. A validação é AVISO, não bloqueio: prompt fora da régua gera do mesmo jeito e a ressalva fica gravada. Escreva denso, mas NÃO corte as proibições para caber — são elas que seguram a identidade da marca.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-geracao. Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2140,6 +2142,12 @@ export const MCP_TOOLS: McpTool[] = [
               driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos / listar-fotos-da-pasta).' },
               url: { type: 'string', description: 'Alternativa: URL de imagem já no Studio (Blob).' },
               label: { type: 'string', description: 'Rótulo curto (ex: "salão principal", "picanha na tábua").' },
+              excluir: {
+                type: 'array',
+                items: { type: 'string' },
+                description:
+                  'O que NÃO reproduzir desta foto (ex: ["garrafa de molho", "lata de refrigerante"]). Use para marca de terceiro que aparece na foto e não pode ir para a peça — dizer isso dentro do `pedido` não segura: na produção do By Rock a garrafa de Tabasco vazou em 2 de 6 peças mesmo com a instrução explícita.',
+              },
             },
             required: ['role'],
             additionalProperties: false,
@@ -2186,6 +2194,12 @@ export const MCP_TOOLS: McpTool[] = [
               driveFileId: typeof r.driveFileId === 'string' && r.driveFileId ? r.driveFileId : undefined,
               url: typeof r.url === 'string' && r.url ? r.url : undefined,
               label: typeof r.label === 'string' && r.label ? r.label.slice(0, 80) : undefined,
+              excluir: Array.isArray((r as Record<string, unknown>).excluir)
+                ? ((r as unknown as { excluir: unknown[] }).excluir
+                    .filter((e): e is string => typeof e === 'string' && e.trim().length > 0)
+                    .slice(0, 6)
+                    .map((e) => e.slice(0, 60)))
+                : undefined,
             }))
         : []
 
