@@ -37,6 +37,39 @@ export type QualidadeArte = 'low' | 'medium' | 'high'
  */
 export const QUALIDADE_ARTE_PADRAO: QualidadeArte = 'low'
 
+/** Quando o cliente autoriza mexer na FOTO, o padrão sobe. Ver abaixo. */
+export const QUALIDADE_ARTE_COM_AJUSTE_DE_FOTO: QualidadeArte = 'high'
+
+/**
+ * O tier padrão desta geração.
+ *
+ * 🔴 A regra é: **compor é barato, EDITAR A FOTO é caro.**
+ *
+ * Medido em 12/08/2026 nos dois testes, e eles dizem coisas opostas:
+ *
+ * - **desenhar letra sobre a foto**: os três tiers empataram, 3/3 no texto, com
+ *   lettering íntegro. Alto contraste e forma chapada sobrevivem a qualquer
+ *   tier — daí o padrão `low`, a 1/20 do preço.
+ * - **editar a foto** (`instrucaoImagem`): pedindo para cortar a picanha ao
+ *   meio e revelar o ponto, o `low` devolveu uma mancha rosa lisa, sem fibra
+ *   legível e com transição abrupta da crosta — parecia pintado, não cortado.
+ *   `medium` e `high` renderam fibra com direção e gradiente de cocção. A
+ *   nitidez acompanhou, monotônica: 700 / 754 / 870.
+ *
+ * Faz sentido físico: gradiente de cocção em fibra muscular é exatamente a
+ * microtextura que o tier barato sacrifica, e é irrelevante para uma letra.
+ *
+ * A escolha EXPLÍCITA de quem clica em "gerar de novo" sempre vence — este é o
+ * padrão, não um teto.
+ *
+ * ⚠️ Em CRÉDITOS não muda nada: a trilha `arte` cobra 25 flat. O que sobe é a
+ * fatura (US$ 0,008 → 0,165) e o tempo (~43s → ~125s), que ainda cabe folgado
+ * nos 300s da rota.
+ */
+export function qualidadePadraoPara(opcoes: { temAjusteDeFoto: boolean }): QualidadeArte {
+  return opcoes.temAjusteDeFoto ? QUALIDADE_ARTE_COM_AJUSTE_DE_FOTO : QUALIDADE_ARTE_PADRAO
+}
+
 /** As opções oferecidas a quem clica em "gerar de novo". */
 export const QUALIDADES_OFERECIDAS: QualidadeArte[] = ['low', 'medium']
 

@@ -1,0 +1,91 @@
+{
+  "geradoEm": "2026-08-12T06:59:52.606Z",
+  "origem": "cmspn93ax000yif04exeow9hy",
+  "inputSize": "1088x1936",
+  "esperados": [
+    "CAMPEÃO DA CASA",
+    "\"Simplesmente a melhor picanha do Estado.\"",
+    "— Luiz Antonio Amorim, cliente da casa",
+    "Picanha fatiada, do jeito raiz, desde 1984",
+    "Vem viver esse sabor!"
+  ],
+  "cambio": 5.4446,
+  "medicoes": [
+    {
+      "qualidade": "low",
+      "repeticao": 1,
+      "largura": 1088,
+      "altura": 1936,
+      "bytes": 2604333,
+      "segundos": 42.643,
+      "nitidez": 700.1568356814694,
+      "textoPassou": true,
+      "textoFaltando": [],
+      "textoTranscrito": [
+        "CHURRASCARIA",
+        "ESPEITO GAÚCHO",
+        "CAMPEÃO",
+        "DA CASA",
+        "\"Simplesmente a melhor picanha do Estado.\"",
+        "– Luiz Antonio Amorim, cliente da casa",
+        "⭐⭐⭐⭐⭐",
+        "Avaliação no Google",
+        "Picanha fatiada,",
+        "do jeito raiz,",
+        "desde 1984",
+        "Vem viver",
+        "esse sabor!"
+      ],
+      "arquivo": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/.tmp-edicao-foto/low-r1.png"
+    },
+    {
+      "qualidade": "medium",
+      "repeticao": 1,
+      "largura": 1088,
+      "altura": 1936,
+      "bytes": 2912222,
+      "segundos": 63.661,
+      "nitidez": 754.0383715376834,
+      "textoPassou": true,
+      "textoFaltando": [],
+      "textoTranscrito": [
+        "CAMPEÃO",
+        "DA",
+        "CASA",
+        "\"Simplesmente a melhor picanha do Estado.\"",
+        "— Luiz Antonio Amorim, cliente da casa",
+        "Picanha fatiada,",
+        "do jeito raiz,",
+        "desde 1984",
+        "Vem viver esse sabor!",
+        "G",
+        "Avaliação no Google",
+        "5,0"
+      ],
+      "arquivo": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/.tmp-edicao-foto/medium-r1.png"
+    },
+    {
+      "qualidade": "high",
+      "repeticao": 1,
+      "largura": 1088,
+      "altura": 1936,
+      "bytes": 3045219,
+      "segundos": 126.221,
+      "nitidez": 870.3980141709119,
+      "textoPassou": true,
+      "textoFaltando": [],
+      "textoTranscrito": [
+        "CHURRASCARIA",
+        "ESPETO GAÚCHO",
+        "★★★★★",
+        "\"Simplesmente a melhor picanha do Estado.\"",
+        "— Luiz Antonio Amorim,",
+        "cliente da casa",
+        "CAMPEÃO DA CASA",
+        "Picanha fatiada, do jeito raiz, desde 1984",
+        "Vem viver esse sabor!"
+      ],
+      "arquivo": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/.tmp-edicao-foto/high-r1.png"
+    }
+  ]
+}

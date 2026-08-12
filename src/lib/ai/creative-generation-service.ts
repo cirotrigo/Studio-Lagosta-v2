@@ -24,7 +24,7 @@ import { VERCEL_BLOB_HOST_REGEX } from '@/lib/ai/creative-improvement-service'
 import { OPENAI_INPUT_SIZE, FINAL_OUTPUT_SIZE } from '@/lib/ai/creative-improvement-format'
 import { ensureArteTemplate } from '@/lib/creatives/persist'
 import { calculateCreditsForModel, type AIImageModel } from '@/lib/ai/image-models-config'
-import { QUALIDADE_ARTE_PADRAO, type QualidadeArte } from '@/lib/ai/qualidade-arte'
+import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import {
   MAX_SUBJECT_REFS,
   MAX_ANCHOR_REFS,
@@ -95,9 +95,11 @@ export interface StartArtGenerationInput {
    */
   carrossel?: CarouselMeta | null
   /**
-   * Tier do gpt-image na trilha `arte`. Padrão `QUALIDADE_ARTE_PADRAO` (`low`).
-   * Quem escolhe é quem clica em "gerar de novo" na galeria — a conferência de
-   * texto NUNCA muda isto sozinha (ver a nota no runner).
+   * Tier do gpt-image na trilha `arte`. Ausente, o padrão sai de
+   * `qualidadePadraoPara`: `low` para compor texto sobre a foto, `high` quando
+   * há ajuste autorizado NA foto. Quem escolhe explicitamente é quem clica em
+   * "gerar de novo" na galeria — a conferência de texto NUNCA muda isto
+   * sozinha (ver a nota no runner).
    */
   qualidade?: QualidadeArte
 }
@@ -232,7 +234,13 @@ export async function startArtGeneration(
   const modelo =
     input.modelo ?? (input.track === 'arte' ? getCurrentImageModel() : 'nano-banana-2')
   const resolution = input.resolution ?? '2K'
-  const qualidade: QualidadeArte = input.qualidade ?? QUALIDADE_ARTE_PADRAO
+  /**
+   * Compor é barato, EDITAR A FOTO é caro — ver `qualidadePadraoPara`. A
+   * escolha explícita (o botão "gerar de novo") sempre vence o padrão.
+   */
+  const qualidade: QualidadeArte =
+    input.qualidade ??
+    qualidadePadraoPara({ temAjusteDeFoto: Boolean(input.instrucaoImagem?.trim()) })
 
   /**
    * 1K é ESTRITAMENTE DOMINADO, por isso recusado em vez de aceito em silêncio.

@@ -81,6 +81,7 @@ const QUALIDADES_VALIDAS: Qualidade[] = ['low', 'medium', 'high']
 
 interface Opcoes {
   daGeracao: string | null
+  instrucao: string | null
   qualidades: Qualidade[]
   repeticoes: number
   saida: string
@@ -91,6 +92,7 @@ interface Opcoes {
 function lerOpcoes(argv: string[]): Opcoes {
   const o: Opcoes = {
     daGeracao: null,
+    instrucao: null,
     qualidades: ['high', 'medium'],
     repeticoes: 1,
     saida: path.join(process.cwd(), '.tmp-qualidade-arte'),
@@ -107,6 +109,9 @@ function lerOpcoes(argv: string[]): Opcoes {
     switch (a) {
       case '--da-geracao':
         o.daGeracao = proximo()
+        break
+      case '--instrucao':
+        o.instrucao = proximo()
         break
       case '--qualidades':
         o.qualidades = proximo()
@@ -211,11 +216,39 @@ async function main() {
   if (fv.track !== 'arte') {
     throw new Error(`A geração ${o.daGeracao} é da trilha "${fv.track}". Este teste é da trilha arte (peça COM texto).`)
   }
-  const prompt: string = fv.prompt ?? ''
+  const promptOriginal: string = fv.prompt ?? ''
   const inputSize: string = fv.inputSize ?? '1088x1936'
   const esperados = extractExpectedTexts(fv)
-  if (!prompt) throw new Error('A geração de origem não guardou o prompt.')
+  if (!promptOriginal) throw new Error('A geração de origem não guardou o prompt.')
   if (esperados.length === 0) throw new Error('A geração de origem não tem textos esperados — sem eles não há o que julgar.')
+
+  /**
+   * Ajuste AUTORIZADO na foto (`instrucaoImagem`), inserido onde
+   * `buildArtePrompt` o coloca: última linha do bloco [FIDELIDADE À FOTO].
+   *
+   * A linha é copiada verbatim do builder — testar o ajuste com outra redação
+   * mediria outro prompt. Se a âncora não existir no prompt salvo, ABORTA em
+   * vez de inserir no lugar errado: um teste que mede a coisa errada é pior
+   * que um teste que não roda.
+   */
+  let prompt = promptOriginal
+  if (o.instrucao) {
+    const ancora = 'Se o enquadramento exigir completar bordas'
+    const linhas = prompt.split('\n')
+    const i = linhas.findIndex((l) => l.startsWith(ancora))
+    if (i < 0) {
+      throw new Error(
+        'Não achei o bloco [FIDELIDADE À FOTO] no prompt salvo — o builder mudou. ' +
+          'Conferir buildArtePrompt antes de inserir a exceção autorizada.',
+      )
+    }
+    linhas.splice(
+      i + 1,
+      0,
+      `EXCEÇÃO AUTORIZADA PELO CLIENTE — aplique EXATAMENTE este ajuste na imagem, e NADA além dele: ${o.instrucao.trim()}`,
+    )
+    prompt = linhas.join('\n')
+  }
 
   // Referência de estilo: a MESMA que ficou gravada, nunca uma nova do rodízio.
   let styleUrl: string | null = null
@@ -231,7 +264,8 @@ async function main() {
   console.log('\n════ QUALIDADE DO gpt-image NA TRILHA ARTE ════\n')
   console.log(`  origem       ${o.daGeracao} — ${origem.projectName}`)
   console.log(`  tamanho      ${inputSize}`)
-  console.log(`  prompt       ${prompt.length} chars`)
+  console.log(`  prompt       ${prompt.length} chars${o.instrucao ? ' (com ajuste autorizado)' : ''}`)
+  if (o.instrucao) console.log(`  ajuste       "${o.instrucao}"`)
   console.log(`  textos       ${esperados.length} blocos: ${esperados.map((t) => `"${t.slice(0, 28)}"`).join(', ')}`)
   console.log(`  repetições   ${o.repeticoes}`)
   console.log(`  saída        ${o.saida}\n`)
