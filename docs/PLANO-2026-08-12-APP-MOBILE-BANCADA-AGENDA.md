@@ -395,3 +395,63 @@ O caminho nativo (§§ 3–7) não é jogado fora: se a inscrição na Apple
 acontecer um dia, a PWA já terá consolidado as telas mobile e o app Expo
 nasce por cima das mesmas rotas — com a camada OAuth como único trabalho
 extra de backend.
+
+## 12. Além do escopo original: o que mais do site vale levar ao celular
+
+Na PWA, toda funcionalidade do site está disponível por construção — o
+trabalho é escolher o que ganha interface de polegar e lugar no shell. O
+critério: **momentos em que a pessoa está com o celular na mão** (no salão do
+restaurante, recebendo o aviso no WhatsApp, publicando no Instagram — que é
+um app de celular). Sugestões por prioridade:
+
+**Camada 1 — encaixe óbvio, esforço baixo (candidatas à P1–P2)**
+
+- **Publicação manual (lembretes)**: post com `publishType: REMINDER` é
+  publicado À MÃO, por alguém que está NO CELULAR na hora — hoje a pessoa
+  recebe o WhatsApp e se vira. Uma tela "para publicar agora" com: salvar a
+  arte no rolo, **copiar a legenda com um toque**, copiar o primeiro
+  comentário, abrir o Instagram. A agenda já marca esses posts com badge; é
+  só dar a eles um fluxo próprio. Provável feature de maior gratidão da
+  equipe por real de esforço.
+- **Métricas rápidas**: `GET /api/posts/[id]/analytics` e
+  `/api/projects/[id]/analytics` já existem — uma tela somente-leitura de
+  "como foi o post de ontem / a semana do cliente" cabe no detalhe do post e
+  no menu do projeto. Zero backend.
+- **Correção rápida da base de conhecimento**: preço, horário e promoção
+  mudam por telefone/WhatsApp, e é aí que a base fica velha — que é
+  exatamente o que contamina copy (toda a blindagem da F2/F3 existe por
+  causa disso). Editar uma entrada e **arquivar campanha encerrada** pelo
+  celular fecha o ciclo no momento em que a informação chega. Serviços e
+  rotas existem; falta só a tela estreita.
+
+**Camada 2 — alto valor, exige backend pequeno**
+
+- **Foto do celular direto para o acervo do cliente** ⭐: a equipe está nos
+  restaurantes e as fotos nascem no celular; hoje o caminho é fotógrafo →
+  Drive. Câmera/rolo → pasta do cliente no Drive (client googleapis já
+  integrado; falta uma rota de upload multipart + escolha de pasta), e o
+  cron `reconciliar-catalogos` cataloga sozinho na madrugada seguinte — a
+  foto vira buscável por tema sem trabalho manual. É a feature que só faz
+  sentido NO celular, e destrava acervo novo para a geração de arte.
+- **Aprovar a taxonomia de pilares**: em produção há ZERO pilares aprovados
+  (medição de 11/08) e é isso que segura a destilação da F2 inteira. Aprovar
+  5–8 itens por cliente é decisão de um toque, perfeita para uma lista
+  mobile — provavelmente o desbloqueio de maior alavancagem do sistema de
+  aprendizado por minuto investido.
+- **Chat do assistente**: a rota `/api/ai/chat` existe e consome o mesmo
+  DNA/base. "Monta os stories de sexta do By Rock" ditado no celular é o
+  complemento natural da bancada. Esforço médio (UI de conversa + streaming).
+
+**Camada 3 — depois, ou nunca no celular**
+
+- Notificação push da PWA (iOS ≥ 16.4): "sua leva ficou pronta" /
+  "post falhou" — opcional, o grupo de WhatsApp já cobre.
+- Marcar/gerenciar páginas-modelo, referências de estilo, DNA completo da
+  aba Marca: edição longa, é trabalho de desktop.
+- Editor Konva, export de vídeo, admin (créditos, planos, verificação):
+  fora por decisão — ou pesados demais para viewport estreito, ou sem
+  momento mobile.
+
+Regra de bolso para o que vier depois: **decisão de um toque vai para o
+celular; produção longa fica no desktop.** O celular aprova, corrige dado,
+fotografa e publica; o desktop desenha.
