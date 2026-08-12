@@ -11,7 +11,7 @@ import type {
 } from '@/types/google-drive'
 
 const ARTES_FOLDER_NAME = 'ARTES LAGOSTA'
-const AI_IMAGES_FOLDER_NAME = 'IA'
+const AI_IMAGES_FOLDER_NAME = 'IA_LAGOSTA'
 const MIME_TYPE_FOLDER = 'application/vnd.google-apps.folder'
 const MIME_TYPE_IMAGE_PREFIX = 'image/'
 const MIME_TYPE_VIDEO_PREFIX = 'video/'

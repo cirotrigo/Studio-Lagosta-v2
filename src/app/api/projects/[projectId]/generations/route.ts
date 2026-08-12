@@ -79,6 +79,22 @@ export async function GET(
       where.createdBy = createdByFilter
     }
 
+    // A galeria de Criativos mostra PEÇAS, não insumo: a trilha `imagem` gera
+    // fotografia de cena, que vai para o acervo (Fotos/IA_LAGOSTA) e não é
+    // uma arte para agendar. A Generation continua existindo — é o que faz
+    // acompanhar, conferir e melhorar funcionarem —, só não é listada aqui.
+    //
+    // O filtro vai em SQL de propósito. O operador Json do Prisma
+    // (`NOT { path: ['track'], equals: 'imagem' }`) descarta junto TODA linha
+    // que não tem o campo — medido no projeto 7: devolvia 18 de 491, ou seja,
+    // escondia 473 artes legítimas. COALESCE trata "sem track" como visível.
+    const ocultas = await db.$queryRaw<Array<{ id: string }>>`
+      SELECT id FROM "Generation"
+      WHERE "projectId" = ${projectId}
+        AND COALESCE("fieldValues"->>'track', '') = 'imagem'
+    `
+    const idsOcultos = ocultas.map((r) => r.id)
+
     // Filtro por dia da semana usa raw SQL pra calcular DOW em America/Sao_Paulo
     // sobre COALESCE(MAX(SocialPost.sentAt), Generation.createdAt).
     // Quando weekdays é setado, primeiro pegamos os IDs filtrados via raw, depois
@@ -97,6 +113,7 @@ export async function GET(
         ) sp_meta ON TRUE
         WHERE g."projectId" = ${projectId}
           ${createdByFilter ? Prisma.sql`AND g."createdBy" = ${createdByFilter}` : Prisma.empty}
+          AND COALESCE(g."fieldValues"->>'track', '') <> 'imagem'
           AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${TIMEZONE}))::int IN (${Prisma.join(weekdays)})
       `
       weekdayTotal = Number(totalRows[0]?.count ?? 0)
@@ -111,12 +128,19 @@ export async function GET(
         ) sp_meta ON TRUE
         WHERE g."projectId" = ${projectId}
           ${createdByFilter ? Prisma.sql`AND g."createdBy" = ${createdByFilter}` : Prisma.empty}
+          AND COALESCE(g."fieldValues"->>'track', '') <> 'imagem'
           AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${TIMEZONE}))::int IN (${Prisma.join(weekdays)})
         ORDER BY g."createdAt" DESC
         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
       `
       weekdayFilteredIds = idRows.map((r) => r.id)
       where.id = { in: weekdayFilteredIds }
+    } else if (idsOcultos.length > 0) {
+      // Fora do filtro de weekday (que já excluiu no próprio SQL), a exclusão
+      // entra por id. Cresce com o acervo de fotos de IA: quando o `notIn`
+      // ficar grande, o caminho é uma coluna espelho de `track`, no precedente
+      // de `Generation.sourcePageId`.
+      where.id = { notIn: idsOcultos }
     }
 
     // Fetch total count (sem filtro de weekday usa o where padrão)

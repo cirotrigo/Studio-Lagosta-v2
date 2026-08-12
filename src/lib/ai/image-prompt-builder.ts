@@ -167,8 +167,14 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         )
         break
       case 'anchor-ambient':
+        // Referência de LUGAR, nunca de ENQUADRAMENTO. A redação anterior
+        // ("reproduce ... EXACTLY as they appear") foi lida pelo modelo como
+        // ordem de recriar a FOTO: saíam cenas em grande-angular, com o teto
+        // no quadro e a comida da própria referência incorporada à composição,
+        // com o prato novo colado por cima. Os dois limites abaixo (a) e (b)
+        // são o que separa "preservar o salão" de "copiar a fotografia".
         lines.push(
-          `${idx} is a REAL photograph of the restaurant environment${ref.label ? ` (${ref.label})` : ''}. The scene happens in THIS exact place: reproduce the architecture, furniture, materials and light fixtures EXACTLY as they appear — it is a real existing place. Do not invent architecture that is not visible in this photo.`,
+          `${idx} is a REAL photograph of the restaurant environment${ref.label ? ` (${ref.label})` : ''}. Use it to keep the PLACE truthful: architecture, furniture, table-top material (its colour, texture and finish), wall and floor materials, fixtures, and the quality, direction and colour of the light. Two hard limits. (a) It is a reference of PLACE, never of FRAMING — do not copy its camera height, angle, focal length or composition, and never feel obliged to show the ceiling or the whole room. Choose the camera that serves the dish. (b) Any food, plate, glass or tableware visible in it is NOT part of the new scene: ignore it entirely as content. Every dish in the final image comes from the dish reference and belongs to the menu being photographed. Preserve the physical geometry of the room: a table stays at its real height and on the same spatial plane as the other tables, perspective lines stay coherent, and the scale between table, chairs, people and objects stays realistic. Never re-material a surface — a stone, metal or laminate top must not become wood.`,
         )
         break
       case 'style':
@@ -232,7 +238,10 @@ REGRAS DURAS:
 - ZERO texto na imagem: nenhuma letra, número, logo ou watermark.
 - Comida SEMPRE "fully roasted / deeply browned / golden" — nunca ${RISKY_FOOD_TERMS.join(', ')} (filtro de conteúdo bloqueia).
 - Sem rostos reconhecíveis e sem crianças, a menos que o pedido exija.
-- A ÂNCORA MANDA: quando existem fotos reais de ambiente, NÃO descreva a arquitetura — escreva "the scene happens in the exact environment shown in the reference photographs" e gaste as palavras na AÇÃO e na luz.
+- A ÂNCORA MANDA O LUGAR, NÃO O ENQUADRAMENTO: quando existem fotos reais de ambiente, NÃO descreva a arquitetura — escreva "the scene happens in the exact environment shown in the reference photographs" e gaste as palavras na AÇÃO e na luz. Mas a câmera é SUA escolha: a foto de referência não dita altura, ângulo, distância nem focal, e não obriga a mostrar o teto ou o salão inteiro.
+- É FOTOGRAFIA GASTRONÔMICA, não colagem: o prato é o sujeito. Salvo pedido em contrário, câmera a ~45° sobre a mesa, prato preenchendo o quadro, profundidade de campo rasa e o salão atrás como contexto desfocado. Evite grande-angular aberta.
+- FÍSICA DE APOIO (o que mais denuncia montagem): o prato REPOUSA sobre a mesa — base inteira em contato com o tampo, elipse do prato coerente com a perspectiva da câmera, sombra de contato e oclusão sob a borda, reflexo do tampo quando o material pedir. Nada de prato flutuando, inclinado fora do plano da mesa, ou em escala errada em relação a talheres e copos.
+- HUMANIZAR É BEM-VINDO quando couber: outros pratos do mesmo menu sobre a mesa, mãos usando talheres, alguém servindo um acompanhamento, clientes ao fundo em desfoque com ocupação moderada do salão — nunca casa lotada, nunca rosto em foco.
 - O estilo e a luminosidade vêm da direção fotográfica da marca e das referências, nunca do tema do post (refs claras → imagem clara).
 - Saída: SÓ o prompt, sem markdown, sem preâmbulo, sem comentários.`
 

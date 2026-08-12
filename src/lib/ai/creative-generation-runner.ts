@@ -110,6 +110,12 @@ export interface ArtGenerationJobArgs {
   projectId: number
   projectName: string
   projectGoogleDriveFolderId: string | null
+  /**
+   * Pasta de FOTOS do cliente (acervo). Destino do backup da trilha `imagem`:
+   * foto de cena é INSUMO e vai para `Fotos/IA_LAGOSTA`, não para
+   * `ARTES LAGOSTA`, que é onde ficam as peças prontas.
+   */
+  projectGoogleDriveImagesFolderId: string | null
   actorClerkId: string
   orgId?: string
   track: GenerationTrack
@@ -595,15 +601,21 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       { access: 'public', contentType: 'image/jpeg', addRandomSuffix: true },
     )
 
+    // Destino no Drive por TRILHA: a cena da trilha `imagem` é insumo de
+    // fotografia e vai para o acervo (`Fotos/IA_LAGOSTA`, criada na primeira
+    // vez); a peça da trilha `arte` continua indo para `ARTES LAGOSTA`, que é
+    // de onde a equipe tira o que já está pronto para publicar.
     let googleDriveFileId: string | null = null
     let googleDriveBackupUrl: string | null = null
-    if (args.projectGoogleDriveFolderId && googleDriveService.isEnabled()) {
+    const ehTrilhaImagem = args.track === 'imagem'
+    const pastaDoBackup = ehTrilhaImagem
+      ? args.projectGoogleDriveImagesFolderId ?? args.projectGoogleDriveFolderId
+      : args.projectGoogleDriveFolderId
+    if (pastaDoBackup && googleDriveService.isEnabled()) {
       try {
-        const backup = await googleDriveService.uploadCreativeToArtesLagosta(
-          finalBuffer,
-          args.projectGoogleDriveFolderId,
-          args.projectName,
-        )
+        const backup = ehTrilhaImagem
+          ? await googleDriveService.uploadAIGeneratedImage(finalBuffer, pastaDoBackup, args.projectName)
+          : await googleDriveService.uploadCreativeToArtesLagosta(finalBuffer, pastaDoBackup, args.projectName)
         googleDriveFileId = backup.fileId
         googleDriveBackupUrl = backup.publicUrl
       } catch (backupError) {

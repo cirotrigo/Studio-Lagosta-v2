@@ -180,7 +180,13 @@ export async function startArtGeneration(
 
   const project = await db.project.findUnique({
     where: { id: input.projectId },
-    select: { id: true, name: true, userId: true, googleDriveFolderId: true },
+    select: {
+      id: true,
+      name: true,
+      userId: true,
+      googleDriveFolderId: true,
+      googleDriveImagesFolderId: true,
+    },
   })
   if (!project) {
     throw new CreativeError('PROJECT_NOT_FOUND', 'Projeto não encontrado', 404)
@@ -319,6 +325,7 @@ export async function startArtGeneration(
       projectId: project.id,
       projectName: project.name,
       projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
+      projectGoogleDriveImagesFolderId: project.googleDriveImagesFolderId ?? null,
       actorClerkId: input.actorClerkId,
       orgId: input.orgId,
       track: input.track,

@@ -1289,6 +1289,58 @@ enche o pool que `prepareCreative` (`arte-rapida.ts`, escolhe `candidates[0]`),
   `template_page`): conteúdo marcado por engano fica preso até ser despromovido.
 - Curadoria do que já existe é outra frente, com aprovação item a item:
   `scripts/inventario-uso-modelos.ts` — **despromover, nunca excluir**.
+
+### Foto de cena é INSUMO; a galeria mostra PEÇA (11/08/2026)
+
+A trilha `imagem` produz fotografia para virar arte depois; a trilha `arte`
+produz a peça pronta. As duas gravam `Generation`, e por isso as fotos de cena
+poluíam a galeria de Criativos e caíam na mesma pasta das artes no Drive.
+
+- **O destino no Drive é escolhido pela TRILHA**: `imagem` vai para
+  `Fotos/IA_LAGOSTA` (a pasta de acervo do cliente, criada na primeira vez por
+  `ensureAIImagesFolder`); `arte` continua em `ARTES LAGOSTA`. O método
+  `uploadAIGeneratedImage` já existia desde sempre e **nunca havia sido
+  chamado** — nasceu para isso e ficou morto.
+- **A Generation continua existindo para a trilha `imagem`** — é ela que faz
+  acompanhar, conferir e melhorar funcionarem. O que muda é que a galeria não
+  a LISTA. Não tente resolver isso deixando de criar a linha.
+- 🔴 **Filtro Json do Prisma DESCARTA a linha que não tem o campo.**
+  `NOT { fieldValues: { path: ['track'], equals: 'imagem' } }` devolveu **18 de
+  491** no projeto 7 — escondia 473 artes legítimas, porque 473 linhas
+  (template, arte antiga) simplesmente não têm `track`. O filtro correto é SQL
+  com `COALESCE("fieldValues"->>'track', '') <> 'imagem'`, que trata ausente
+  como visível. Vale para qualquer filtro por chave de `fieldValues`: a
+  ausência é o caso COMUM, não a exceção.
+- O `notIn` por id no caminho sem weekday é a solução de hoje porque as fotos
+  de cena são poucas. Quando o acervo crescer, o caminho é **coluna espelho**
+  de `track`, precedente de `Generation.sourcePageId`.
+
+### A âncora de ambiente é referência de LUGAR, nunca de ENQUADRAMENTO (11/08/2026)
+
+O preâmbulo de `anchor-ambient` mandava *"reproduce the architecture, furniture,
+materials and light fixtures EXACTLY as they appear"*. O modelo leu isso como
+ordem de recriar a FOTOGRAFIA: saíam cenas em grande-angular com o teto no
+quadro, a comida da própria referência incorporada à composição, e o prato novo
+encaixado por cima — montagem, não fotografia.
+
+- **Separe as duas coisas explicitamente no preâmbulo.** Preservar o LUGAR
+  (arquitetura, mobília, material do tampo, luz, cores) não é copiar a CÂMERA
+  (altura, ângulo, focal, composição). Sem os dois limites escritos, o modelo
+  funde os conceitos.
+- 🔴 **Diga que a comida da foto de ambiente NÃO é conteúdo.** Ela aparece na
+  referência e o modelo a trata como parte da cena a reproduzir. Todo prato da
+  composição final tem de vir da referência de prato.
+- **Material estrutural não se reinterpreta**: tampo de pedra ou laminado
+  virava madeira. A regra é explícita no preâmbulo porque o modelo tende à
+  madeira em cena de restaurante.
+- **Física de apoio é o que denuncia montagem**: base do prato inteira em
+  contato com o tampo, elipse coerente com a perspectiva, sombra de contato, e
+  a mesa na MESMA altura e plano das outras do salão. Sem isso o prato flutua
+  ou a mesa sobe acima da linha do ambiente.
+- **Humanizar é permitido e ajuda** (outros pratos do menu, mãos com talheres,
+  clientes desfocados ao fundo em ocupação moderada) — nunca casa lotada, nunca
+  rosto em foco.
+
 ### Fila durável de geração de arte (F0.3, 10/08/2026)
 
 A geração e a melhoria de arte por IA **não rodam mais no `after()` da
