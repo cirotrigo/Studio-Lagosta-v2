@@ -9,6 +9,7 @@
  */
 
 import sharp from 'sharp'
+import { randomUUID } from 'crypto'
 import { db } from '@/lib/db'
 import {
   prepareCreative,
@@ -293,6 +294,12 @@ function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
     ...(item.postId ? { postId: item.postId } : {}),
   }
 }
+
+/**
+ * Teto do lote. 12 é o tamanho de uma grade semanal com folga — e o que cabe
+ * numa invocação só criando as Generations (a geração roda na fila durável).
+ */
+const MAX_LOTE = 12
 
 export const MCP_TOOLS: McpTool[] = [
   {
@@ -2240,6 +2247,170 @@ export const MCP_TOOLS: McpTool[] = [
         mensagem: started.reused
           ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-geracao em vez de disparar outra. Nada foi cobrado nesta chamada.'
           : `Geração iniciada (${started.creditosCobrados} créditos). Acompanhe com ver-geracao (geracaoId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
+      }
+    },
+  },
+
+  {
+    name: 'gerar-imagem-lote',
+    description:
+      'Gera VÁRIAS cenas de uma vez, com uma base comum e uma lista de variações — o formato natural de uma grade semanal.\n\nExiste porque doze peças eram doze chamadas repetindo o mesmo prompt de ~1.400 caracteres, mudando só gesto e cenário: caro na conversa e, pior, aberto a divergência entre peças que deveriam ser irmãs. Aqui a base é escrita UMA vez e vale para todas.\n\nCada variação vira uma geração independente, com seu próprio geracaoId — acompanhe com ver-geracao. O `loteId` fica gravado em todas, para reencontrá-las juntas depois.\n\nCUSTO: some o de cada uma. A resposta traz `creditosCobrados` no total e por item; confira ANTES de repetir o lote. Máximo de 12 por chamada.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        trilha: { type: 'string', enum: ['imagem', 'arte'], description: 'Vale para o lote inteiro.' },
+        formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Vale para o lote inteiro.' },
+        modelo: { type: 'string', description: 'Override do modelo (trilha imagem).' },
+        resolution: { type: 'string', enum: ['2K', '4K'], description: 'Trilha imagem, padrão 2K.' },
+        pedidoBase: {
+          type: 'string',
+          description: 'O que TODAS as cenas têm em comum (máx 1200). Cada variação acrescenta o que muda.',
+        },
+        referenciasBase: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'] },
+              driveFileId: { type: 'string' },
+              url: { type: 'string' },
+              label: { type: 'string' },
+              excluir: { type: 'array', items: { type: 'string' } },
+            },
+            required: ['role'],
+            additionalProperties: false,
+          },
+          description: 'Referências que valem para todas. A variação pode ACRESCENTAR as suas.',
+        },
+        variacoes: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              pedido: { type: 'string', description: 'O que muda nesta peça (gesto, cenário, prato).' },
+              promptPronto: { type: 'string', description: 'Modo diretor, só desta peça.' },
+              copy: { type: 'array', items: { type: 'string' }, description: 'Trilha arte: os blocos desta peça.' },
+              referencias: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'] },
+                    driveFileId: { type: 'string' },
+                    url: { type: 'string' },
+                    label: { type: 'string' },
+                    excluir: { type: 'array', items: { type: 'string' } },
+                  },
+                  required: ['role'],
+                  additionalProperties: false,
+                },
+              },
+              instrucaoImagem: { type: 'string', description: 'Ajuste autorizado na foto, só desta peça.' },
+            },
+            additionalProperties: false,
+          },
+          description: 'De 2 a 12 peças. Cada uma herda a base e acrescenta o que é seu.',
+        },
+      },
+      required: ['projectId', 'trilha', 'formato', 'variacoes'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      const variacoes = Array.isArray(args.variacoes) ? args.variacoes : []
+      if (variacoes.length < 2) {
+        throw new Error('Um lote tem pelo menos 2 variações — para uma peça só, use gerar-imagem.')
+      }
+      if (variacoes.length > MAX_LOTE) {
+        throw new Error(`No máximo ${MAX_LOTE} peças por lote (pedidas ${variacoes.length}).`)
+      }
+
+      const trilha = args.trilha === 'arte' ? ('arte' as const) : ('imagem' as const)
+      const formato =
+        args.formato === 'feed' ? ('feed' as const) : args.formato === 'quadrado' ? ('quadrado' as const) : ('story' as const)
+      const dono = await resolverDono(projectId, principal)
+      const loteId = randomUUID()
+      const lerRefs = (v: unknown): ArtGenerationReference[] =>
+        Array.isArray(v)
+          ? v
+              .filter((r): r is Record<string, unknown> => !!r && typeof r === 'object')
+              .map((r) => ({
+                role: r.role as ArtGenerationReference['role'],
+                driveFileId: typeof r.driveFileId === 'string' && r.driveFileId ? r.driveFileId : undefined,
+                url: typeof r.url === 'string' && r.url ? r.url : undefined,
+                label: typeof r.label === 'string' ? r.label.slice(0, 80) : undefined,
+                excluir: Array.isArray(r.excluir)
+                  ? (r.excluir as unknown[])
+                      .filter((e): e is string => typeof e === 'string' && e.trim().length > 0)
+                      .slice(0, 6)
+                      .map((e) => e.slice(0, 60))
+                  : undefined,
+              }))
+          : []
+      const refsBase = lerRefs(args.referenciasBase)
+
+      /**
+       * SEQUENCIAL, não `Promise.all`. Cada item valida créditos e cria a
+       * Generation; disparar doze em paralelo faria doze validações lerem o
+       * mesmo saldo antes de qualquer dedução — e o lote inteiro passaria com
+       * saldo para uma peça só. Em série, o item N já enxerga o consumo dos
+       * anteriores. São escritas rápidas; a GERAÇÃO é que roda na fila.
+       */
+      const itens: Array<Record<string, unknown>> = []
+      let creditosTotais = 0
+      for (const [i, bruta] of variacoes.entries()) {
+        const v = (bruta ?? {}) as Record<string, unknown>
+        const pedidoDaPeca = [
+          typeof args.pedidoBase === 'string' ? args.pedidoBase.trim() : '',
+          typeof v.pedido === 'string' ? v.pedido.trim() : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+        try {
+          const started = await startArtGeneration({
+            projectId,
+            track: trilha,
+            pedido: pedidoDaPeca || undefined,
+            copy: Array.isArray(v.copy) ? v.copy.filter((b): b is string => typeof b === 'string') : undefined,
+            formato,
+            referencias: [...refsBase, ...lerRefs(v.referencias)],
+            instrucaoImagem: typeof v.instrucaoImagem === 'string' ? v.instrucaoImagem : null,
+            modelo: typeof args.modelo === 'string' && args.modelo ? args.modelo : undefined,
+            resolution: args.resolution === '2K' || args.resolution === '4K' ? args.resolution : undefined,
+            finalPrompt: typeof v.promptPronto === 'string' && v.promptPronto ? v.promptPronto : null,
+            loteId,
+            actorClerkId: dono.clerkId,
+            dedupeWindowMinutes: 10,
+          })
+          if (!started.reused && started.runnerArgs) await enfileirarArte(started.runnerArgs)
+          creditosTotais += started.creditosCobrados
+          itens.push({
+            posicao: i + 1,
+            geracaoId: started.jobGenerationId,
+            creditosCobrados: started.creditosCobrados,
+            ...(started.reused ? { jaEstavaEmAndamento: true } : {}),
+          })
+        } catch (erro) {
+          // Uma peça inválida não derruba o lote — o resto segue e o relato diz
+          // o que ficou de fora, como em `upload-creative`.
+          itens.push({ posicao: i + 1, erro: erro instanceof Error ? erro.message : String(erro) })
+        }
+      }
+
+      const geradas = itens.filter((i) => !i.erro).length
+      return {
+        loteId,
+        emAndamento: geradas > 0,
+        creditosCobrados: creditosTotais,
+        itens,
+        tempoEstimado: trilha === 'arte' ? 'de 2 a 4 minutos' : 'de 1 a 3 minutos',
+        mensagem:
+          `${geradas} de ${variacoes.length} peça(s) na fila (${creditosTotais} créditos no total). ` +
+          'Acompanhe cada uma com ver-geracao pelo geracaoId.' +
+          (geradas < variacoes.length ? ' Veja `itens` para o que não entrou.' : ''),
       }
     },
   },

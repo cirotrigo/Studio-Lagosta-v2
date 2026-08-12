@@ -76,6 +76,8 @@ export interface ResultadoReconciliacao {
   restantes: number
   /** Falhas de análise/foto — nunca derrubam a rodada. */
   erros: number
+  /** Entradas antigas que ganharam o hash de conteúdo nesta rodada (B8). */
+  hashesPreenchidos?: number
   /** Preenchido quando a rodada não mexeu no catálogo deste projeto. */
   pulado?: MotivoDePulo
   /** Erro que derrubou a reconciliação DESTE projeto (a rodada segue). */
