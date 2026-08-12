@@ -44,6 +44,14 @@ interface EntradaDoCatalogo {
   folder: string
   folderId?: string
   createdTime?: string
+  /**
+   * Hash do CONTEÚDO, vindo de graça do listing do Drive (B8). Duas entradas
+   * com o mesmo `md5` são o MESMO arquivo — no acervo do By Rock,
+   * `ambiente-05.jpg` e `ambiente-f3a8697.jpg` são iguais byte a byte. Sem
+   * isto a duplicata inflava a contagem do acervo e o rodízio tratava como
+   * duas fotos o que é uma só.
+   */
+  md5?: string
   menuItem: string | null
   menuCategory: string | null
   description: string
@@ -71,6 +79,7 @@ interface FotoViva {
   folder: string
   folderId: string
   createdTime?: string
+  md5?: string
 }
 
 /** O que a análise de visão devolve por foto. */
@@ -109,6 +118,16 @@ export async function reconciliarCatalogo({
     where: { id: projectId },
     select: { name: true, googleDriveImagesFolderId: true, googleDriveFolderId: true },
   })
+
+  /**
+   * Os DEMAIS clientes da carteira, para a guarda de saída da descrição (B7).
+   * Uma consulta por projeto reconciliado — barata, e o cron roda de madrugada.
+   */
+  const outrosClientes = (
+    await db.project.findMany({ where: { id: { not: projectId } }, select: { name: true } })
+  )
+    .map((p) => p.name?.trim())
+    .filter((n): n is string => !!n && n.length >= 4)
 
   const base = {
     projectId,
@@ -167,6 +186,24 @@ export async function reconciliarCatalogo({
   const orfasSet = new Set(orfas)
   const imagens = orfas.length > 0 ? entradas.filter((e) => !orfasSet.has(e.driveFileId)) : entradas
 
+  /**
+   * Backfill do hash nas entradas que já existiam (B8).
+   *
+   * A reconciliação é um DIFF DE IDS e por desenho não toca em entrada
+   * existente — sem isto, o `md5` só chegaria às fotos catalogadas daqui para
+   * frente e a detecção de duplicata ficaria inócua no acervo atual. O dado já
+   * veio na varredura, então é de graça: nem chamada nova, nem download.
+   */
+  let hashesPreenchidos = 0
+  for (const entrada of imagens) {
+    if (entrada.md5) continue
+    const viva = vivas.get(entrada.driveFileId)
+    if (viva?.md5) {
+      entrada.md5 = viva.md5
+      hashesPreenchidos++
+    }
+  }
+
   const { paraAnalisar, restantes } = aplicarTeto(
     novas.map((id) => vivas.get(id)!),
     tetoDeNovas,
@@ -175,13 +212,14 @@ export async function reconciliarCatalogo({
   const { catalogadas, erros, naoAlcancadas } = await analisarNovas({
     projectId,
     projectName: base.projeto,
+    outrosClientes,
     fotos: paraAnalisar,
     prazoEm,
     aoCatalogar: (entrada) => imagens.push(entrada),
   })
 
   // Grava só se mudou: rodada sem drift não deve nem tocar no arquivo.
-  if (orfas.length > 0 || catalogadas > 0) {
+  if (orfas.length > 0 || catalogadas > 0 || hashesPreenchidos > 0) {
     await googleDriveService.writeFileAsJson(catalogoId, {
       ...catalogo,
       images: imagens,
@@ -191,6 +229,7 @@ export async function reconciliarCatalogo({
 
   return encerrar({
     orfasRemovidas: orfas.length,
+    hashesPreenchidos,
     novasCatalogadas: catalogadas,
     restantes: restantes + naoAlcancadas,
     erros,
@@ -224,6 +263,7 @@ async function varrerImagens(raiz: string): Promise<Map<string, FotoViva>> {
         folder: caminho,
         folderId: pai ?? raiz,
         createdTime: arquivo.createdTime,
+        md5: arquivo.md5Checksum,
       })
     }
 
@@ -245,10 +285,12 @@ async function varrerImagens(raiz: string): Promise<Map<string, FotoViva>> {
 async function analisarNovas({
   projectId,
   projectName,
+  outrosClientes,
   fotos,
   prazoEm,
   aoCatalogar,
 }: {
+  outrosClientes: string[]
   projectId: number
   projectName: string
   fotos: FotoViva[]
@@ -286,6 +328,7 @@ async function analisarNovas({
           pasta: foto.folder,
           cardapio,
           projectName,
+          outrosClientes,
         })
         aoCatalogar({
           driveFileId: foto.id,
@@ -293,6 +336,7 @@ async function analisarNovas({
           folder: foto.folder,
           folderId: foto.folderId,
           createdTime: foto.createdTime,
+          md5: foto.md5,
           ...analise,
           usageHistory: [],
         })
@@ -366,12 +410,15 @@ async function analisarImagem({
   pasta,
   cardapio,
   projectName,
+  outrosClientes,
 }: {
   genAI: GoogleGenerativeAI
   imagem: Buffer
   pasta: string
   cardapio: string
   projectName: string
+  /** Nomes dos DEMAIS clientes da carteira — ver `semClienteAlheio`. */
+  outrosClientes: string[]
 }): Promise<Analise> {
   /**
    * ⚠️ `gemini-2.0-flash` foi APOSENTADO: `generateContent` devolve 404 embora
@@ -459,7 +506,11 @@ REGRAS OBRIGATÓRIAS:
     return {
       menuItem: bruto.menuItem ?? null,
       menuCategory: bruto.menuCategory ?? null,
-      description: bruto.description ?? `Foto do restaurante (pasta: ${pasta})`,
+      description: semClienteAlheio(
+        bruto.description ?? `Foto do restaurante (pasta: ${pasta})`,
+        projectName,
+        outrosClientes,
+      ),
       tags: Array.isArray(bruto.tags) ? bruto.tags : [],
       mood: bruto.mood ?? 'casual',
       bestFor: Array.isArray(bruto.bestFor) ? bruto.bestFor : ['generico'],
@@ -470,6 +521,38 @@ REGRAS OBRIGATÓRIAS:
     // invisível para a busca.
     return analisePelaPasta(pasta)
   }
+}
+
+/**
+ * Tira da descrição o nome de OUTRO cliente da carteira (B7).
+ *
+ * O prompt já diz de quem é a foto — `Analise esta foto do restaurante "X"` —,
+ * e ainda assim boa parte das descrições do TERO menciona "By Rock", segundo o
+ * registro da carteira. A causa provável é o próprio conteúdo da imagem
+ * (placa, guardanapo, parede com a marca) ou contaminação do modelo; de
+ * qualquer forma, descrição de catálogo que cita o concorrente deixa de ser
+ * fonte confiável e transforma a pasta na única conferência.
+ *
+ * A guarda é de SAÍDA porque a de entrada já existe e não bastou. Ela troca o
+ * nome alheio por uma marca neutra em vez de apagar a frase: descrição
+ * mutilada some da busca por tema, e o objetivo é o contrário.
+ */
+function semClienteAlheio(descricao: string, projectName: string, outros: string[]): string {
+  const normal = (v: string) => v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const meu = normal(projectName)
+  let saida = descricao
+  for (const alheio of outros) {
+    if (alheio.length < 4) continue // nome curto demais casa por acaso
+    if (normal(alheio) === meu) continue
+    const re = new RegExp(alheio.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi')
+    if (re.test(saida)) {
+      saida = saida.replace(re, 'o restaurante')
+      console.warn(
+        `[reconciliar-catalogo] ${projectName}: descrição citava "${alheio}" — nome de outro cliente, substituído`,
+      )
+    }
+  }
+  return saida
 }
 
 /** O que dá para dizer de uma foto sem conseguir olhá-la: a pasta em que mora. */

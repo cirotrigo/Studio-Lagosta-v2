@@ -34,6 +34,8 @@ export interface ImagemCatalogo {
   bestFor?: string[]
   quality: string
   usageHistory?: { date: string; theme: string }[]
+  /** Hash do conteúdo (B8) — igual em duas entradas significa arquivo idêntico. */
+  md5?: string
 }
 
 interface Catalogo {
@@ -193,6 +195,9 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * a ordem saía como estava no arquivo.
    */
   const usos = await lerUsosDeFoto(input.projectId)
+  /** Primeira entrada de cada hash — as demais são cópias dela. */
+  const canonicaPorHash = new Map<string, string>()
+  for (const i of todas) if (i.md5 && !canonicaPorHash.has(i.md5)) canonicaPorHash.set(i.md5, i.driveFileId)
   const chaveDeUso = (i: ImagemCatalogo) =>
     mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i)) ?? NUNCA_USADA
   imagens.sort((a, b) => chaveDeUso(a).localeCompare(chaveDeUso(b)))
@@ -225,8 +230,20 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
      * pequeno. Expor o número torna a lacuna visível sem custar chamada de
      * visão nenhuma.
      */
+    /**
+     * Fotos que são o MESMO arquivo com nomes diferentes (B8). Sem isto a
+     * duplicata inflava o acervo e o rodízio "variava" entre duas cópias da
+     * mesma imagem. A primeira de cada grupo é a canônica; as demais vêm
+     * marcadas com `duplicataDe` na lista.
+     */
     catalogacao: {
       total: todas.length,
+      duplicadas: (() => {
+        const vistos = new Map<string, number>()
+        for (const i of todas) if (i.md5) vistos.set(i.md5, (vistos.get(i.md5) ?? 0) + 1)
+        return [...vistos.values()].filter((n) => n > 1).reduce((s, n) => s + n - 1, 0)
+      })(),
+      semHash: todas.filter((i) => !i.md5).length,
       semDescricao: todas.filter((i) => !i.description).length,
       semTags: todas.filter((i) => !i.tags?.length).length,
     },
@@ -243,6 +260,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
       quality: i.quality ?? null,
       ultimoUso: mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i))?.slice(0, 10) ?? 'nunca',
       vezesUsada: usos.get(i.driveFileId)?.vezes ?? 0,
+      // A canônica é a PRIMEIRA do catálogo com aquele hash.
+      duplicataDe: i.md5 ? (canonicaPorHash.get(i.md5) === i.driveFileId ? undefined : canonicaPorHash.get(i.md5)) : undefined,
     })),
   }
 }

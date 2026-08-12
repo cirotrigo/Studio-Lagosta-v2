@@ -102,6 +102,12 @@ export interface StartArtGenerationInput {
    * sozinha (ver a nota no runner).
    */
   qualidade?: QualidadeArte
+  /**
+   * Agrupa peças disparadas juntas por `gerar-imagem-lote`. Fica em
+   * `fieldValues` para reencontrá-las depois — sem tabela nova, mesmo
+   * precedente de `carouselGroupId` para carrossel.
+   */
+  loteId?: string
 }
 
 export interface StartArtGenerationResult {
@@ -364,6 +370,7 @@ export async function startArtGeneration(
       fieldValues: {
         source: 'arte-ia',
         track: input.track,
+        ...(input.loteId ? { loteId: input.loteId } : {}),
         pedido,
         slotValues,
         pedidoHash,

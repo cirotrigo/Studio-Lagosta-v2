@@ -403,7 +403,17 @@ export class GoogleDriveService {
   async listChildrenOfFolders(
     parentIds: string[],
     mode: 'images' | 'folders',
-  ): Promise<Array<{ id: string; name: string; mimeType: string; createdTime?: string; parents: string[] }>> {
+  ): Promise<
+    Array<{
+      id: string
+      name: string
+      mimeType: string
+      createdTime?: string
+      parents: string[]
+      /** Hash do CONTEÚDO, dado de graça pelo Drive — ver a nota no `fields`. */
+      md5Checksum?: string
+    }>
+  > {
     this.ensureEnabled()
     if (parentIds.length === 0) return []
 
@@ -413,6 +423,7 @@ export class GoogleDriveService {
       mimeType: string
       createdTime?: string
       parents: string[]
+      md5Checksum?: string
     }> = []
 
     const filtroDeTipo =
@@ -432,7 +443,14 @@ export class GoogleDriveService {
           this.drive.files.list(
             {
               q,
-              fields: 'nextPageToken, files(id, name, mimeType, createdTime, parents)',
+              /**
+               * `md5Checksum` vem de GRAÇA no listing — é metadado, não exige
+               * baixar o arquivo. É o que permite detectar duplicata por
+               * CONTEÚDO (B8): no acervo do By Rock, `ambiente-05.jpg` e
+               * `ambiente-f3a8697.jpg` são o mesmo arquivo byte a byte, e a
+               * duplicata faz o rodízio tratar como duas fotos o que é uma.
+               */
+              fields: 'nextPageToken, files(id, name, mimeType, createdTime, parents, md5Checksum)',
               pageSize: tamanhoDaPagina,
               pageToken,
               supportsAllDrives: true,
