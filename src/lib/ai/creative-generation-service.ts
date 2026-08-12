@@ -281,6 +281,13 @@ export async function startArtGeneration(
         // acabou de recusar. Mesma lição do `finalPrompt`, que também não
         // estava aqui.
         q: qualidade,
+        /**
+         * O prompt do MODO DIRETOR entra na chave. Sem ele, uma sessão de
+         * direção — em que se reescreve o prompt e se dispara de novo mantendo
+         * pedido e referências — colidia dentro da janela e devolvia a peça
+         * anterior, que é justamente a que acabou de ser recusada.
+         */
+        fp: input.finalPrompt?.trim() || null,
       }),
     )
     .digest('hex')

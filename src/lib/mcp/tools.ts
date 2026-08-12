@@ -1379,7 +1379,11 @@ export const MCP_TOOLS: McpTool[] = [
         menuCategory: { type: 'string', description: 'Categoria do cardápio (ex: PRATOS_PRINCIPAIS, BEBIDAS).' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Tags a casar.' },
         quality: { type: 'string', enum: ['alta', 'media', 'baixa'], description: 'Qualidade mínima.' },
-        limit: { type: 'number', description: 'Máximo de resultados (default 20).' },
+        fileName: {
+          type: 'string',
+          description: 'Nome do arquivo, exato ou início dele ("ambiente-f3a" acha "ambiente-f3a8693.jpg"). Use quando já souber qual foto quer.',
+        },
+        limit: { type: 'number', description: 'Máximo de resultados (default 20). Pode pedir mais — não há teto.' },
       },
       required: ['projectId'],
       additionalProperties: false,
@@ -1394,6 +1398,7 @@ export const MCP_TOOLS: McpTool[] = [
         menuCategory: args.menuCategory,
         tags: args.tags,
         quality: args.quality,
+        fileName: args.fileName,
         limit: args.limit,
       })
     },
@@ -1441,11 +1446,15 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'listar-fotos-da-pasta',
     description:
-      'Lista as fotos da pasta do cliente no Drive. Use quando o acervo ainda não foi catalogado (buscar-fotos avisa quando é o caso).',
+      'Lista as fotos da pasta do cliente no Drive. Use quando o acervo ainda não foi catalogado (buscar-fotos avisa quando é o caso). O retorno traz `pastasDisponiveis` e o `total` do filtro — dá para pedir mais com `limit`.',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'number', description: 'ID do projeto.' },
+        folder: {
+          type: 'string',
+          description: 'Pasta pelo NOME, exata ou prefixo ("09_ambiente" traz "09_ambiente/noite" junto). Veja pastasDisponiveis no retorno.',
+        },
         limit: { type: 'number', description: 'Máximo de imagens (default 30).' },
       },
       required: ['projectId'],
@@ -1454,7 +1463,11 @@ export const MCP_TOOLS: McpTool[] = [
     handler: async (args, principal) => {
       const projectId = requireNumber(args, 'projectId')
       await assertProjetoPermitido(projectId, principal)
-      return listarImagensDoDrive(projectId, typeof args.limit === 'number' ? args.limit : undefined)
+      return listarImagensDoDrive(
+        projectId,
+        typeof args.limit === 'number' ? args.limit : undefined,
+        typeof args.folder === 'string' && args.folder ? args.folder : undefined,
+      )
     },
   },
 
@@ -1871,7 +1884,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'melhorar-arte',
     description:
-      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com melhoriaId, acompanhe com ver-melhoria. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
+      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com o id da geração, acompanhe com ver-geracao. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1940,23 +1953,24 @@ export const MCP_TOOLS: McpTool[] = [
         // esperar até um minuto pela varredura antes de começar.
         tempoEstimado: 'de 2 a 3 minutos',
         mensagem: started.reused
-          ? 'Já havia uma melhoria desta arte em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
-          : `Melhoria iniciada. Consulte ver-melhoria com melhoriaId=${started.jobGenerationId} em ~3 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : ''}.`,
+          ? 'Já havia uma melhoria desta arte em andamento — acompanhe ela com ver-geracao em vez de disparar outra.'
+          : `Melhoria iniciada. Consulte ver-geracao com geracaoId=${started.jobGenerationId} em ~3 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : ''}.`,
       }
     },
   },
 
   {
-    name: 'ver-melhoria',
+    name: 'ver-geracao',
     description:
-      'Acompanha uma melhoria de arte disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova e o resultado da conferência de texto; quando falha, a arte original continua valendo. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).',
+      'Acompanha qualquer arte em andamento — a criada por gerar-imagem/criar-arte E a melhoria disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova e o resultado da conferência de texto; quando falha, a arte original continua valendo. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).\n\nChamava-se `ver-melhoria`, e esse nome segue funcionando — mas ele sugeria que só servia para melhorias, o que fazia quem gerava arte nova procurar uma tool que não existe.',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'number', description: 'ID do cliente.' },
-        melhoriaId: { type: 'string', description: 'O melhoriaId devolvido por melhorar-arte.' },
+        geracaoId: { type: 'string', description: 'O geracaoId (ou melhoriaId) devolvido por quem disparou.' },
+        melhoriaId: { type: 'string', description: 'Nome antigo de `geracaoId` — segue aceito.' },
       },
-      required: ['projectId', 'melhoriaId'],
+      required: ['projectId'],
       additionalProperties: false,
     },
     handler: async (args, principal) => {
@@ -2035,7 +2049,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'gerar-imagem',
     description:
-      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-melhoria (mesmo acompanhamento das melhorias). Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
+      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-geracao. Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2154,8 +2168,8 @@ export const MCP_TOOLS: McpTool[] = [
         creditosCobrados: started.creditosCobrados,
         tempoEstimado: trilha === 'arte' ? 'de 2 a 3 minutos' : 'de 1 a 2 minutos',
         mensagem: started.reused
-          ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-melhoria em vez de disparar outra. Nada foi cobrado nesta chamada.'
-          : `Geração iniciada (${started.creditosCobrados} créditos). Acompanhe com ver-melhoria (melhoriaId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
+          ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-geracao em vez de disparar outra. Nada foi cobrado nesta chamada.'
+          : `Geração iniciada (${started.creditosCobrados} créditos). Acompanhe com ver-geracao (geracaoId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
       }
     },
   },
@@ -2847,6 +2861,20 @@ const APELIDOS: Record<string, string> = {
   'search-acervo': 'buscar-fotos',
   'list-drive-images': 'listar-fotos-da-pasta',
   'agendar-post': 'colocar-na-agenda',
+  // A6: a tool virou `ver-geracao`; o nome antigo segue valendo para não
+  // quebrar conversa em andamento nem skill que já o cite.
+  'ver-melhoria': 'ver-geracao',
+}
+
+/**
+ * Chaves que o schema da tool não declara. Vazio quando o schema não fecha a
+ * porta (`additionalProperties` diferente de false) — respeitar a declaração é
+ * o que permite uma tool aceitar extras de propósito.
+ */
+function parametrosDesconhecidos(tool: McpTool, args: Record<string, any> | undefined): string[] {
+  const schema = tool.inputSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown }
+  if (!schema?.properties || schema.additionalProperties !== false) return []
+  return Object.keys(args ?? {}).filter((k) => !(k in schema.properties!))
 }
 
 /** Runs a tool and shapes the MCP `tools/call` result, errors included. */
@@ -2859,6 +2887,32 @@ export async function runMcpTool(
   if (!tool) {
     return {
       content: [{ type: 'text' as const, text: `Ferramenta desconhecida: ${name}` }],
+      isError: true,
+    }
+  }
+
+  /**
+   * B4: parâmetro desconhecido é RECUSADO, não descartado em silêncio.
+   *
+   * Todo `inputSchema` daqui já declara `additionalProperties: false` — mas
+   * nada enforçava, e o handler lia só o que conhecia. Na prática isso vira
+   * resposta plausível e ERRADA: chamar a listagem do acervo com um filtro que
+   * a tool não tem devolvia o acervo inteiro misturado, com cara de resultado
+   * válido. Recusar cedo, dizendo o que existe, custa uma tentativa; o
+   * silêncio custa uma decisão tomada em cima de dado errado.
+   */
+  const desconhecidos = parametrosDesconhecidos(tool, args)
+  if (desconhecidos.length > 0) {
+    const aceitos = Object.keys(tool.inputSchema?.properties ?? {}).join(', ')
+    return {
+      content: [
+        {
+          type: 'text' as const,
+          text:
+            `A ferramenta ${tool.name} não conhece ${desconhecidos.map((d) => `"${d}"`).join(', ')}. ` +
+            `Os parâmetros aceitos são: ${aceitos}.`,
+        },
+      ],
       isError: true,
     }
   }

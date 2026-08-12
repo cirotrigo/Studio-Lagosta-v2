@@ -77,6 +77,13 @@ export interface BuscarAcervoInput {
   tags?: string[]
   /** Qualidade mínima */
   quality?: 'alta' | 'media' | 'baixa'
+  /**
+   * Nome do arquivo, exato ou PREFIXO ("ambiente-f3a" acha
+   * "ambiente-f3a8693.jpg"). Existe porque quem já sabe qual foto quer não
+   * tinha como pedi-la: o catálogo é indexado por tema, tag e pasta, e o nome
+   * — que é o que aparece no Drive — não era filtro.
+   */
+  fileName?: string
   limit?: number
 }
 
@@ -141,6 +148,10 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
   if (input.folder) {
     const f = normalizar(input.folder)
     imagens = imagens.filter((i) => normalizar(i.folder ?? '').startsWith(f))
+  }
+  if (input.fileName) {
+    const f = normalizar(input.fileName)
+    imagens = imagens.filter((i) => normalizar(i.fileName ?? '').startsWith(f))
   }
   if (input.theme) {
     const t = normalizar(input.theme)
