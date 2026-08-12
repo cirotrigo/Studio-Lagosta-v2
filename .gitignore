@@ -62,3 +62,5 @@ scripts/.tmp-parity-out/
 .tmp-medicao-*/
 .tmp-modelo-vs-modelo/
 .tmp-qualidade-arte*/
+.tmp-edicao-foto/
+.tmp-medicao*/
