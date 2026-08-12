@@ -42,10 +42,11 @@ import {
   type LogoMode,
 } from '@/lib/ai/logo-compositor'
 import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
-import { checarProporcao, resumirQA } from '@/lib/ai/creative-qa'
+import { checarProporcao, conferirFidelidadeDaCena, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
@@ -508,10 +509,40 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
 
       if (expectedTexts.length === 0) {
         resultBuffer = candidate
+        /**
+         * A trilha `imagem` não leva texto — mas isso responde a pergunta
+         * errada. O risco dela é o PRATO ter mudado, e até 12/08/2026 nada
+         * conferia. `conferirFidelidadeDaCena` avisa e nunca reprova; o teto
+         * alto de confiança está lá para não repetir o alarme falso que
+         * derrubou a revisão visual em 10/08 (ver a nota da função).
+         */
+        let fidelidade: Record<string, unknown> = {}
+        if (args.track === 'imagem') {
+          const subject = ordered.find((r) => r.role === 'subject')
+          if (subject) {
+            const cena = await conferirFidelidadeDaCena(candidate, subject.buffer)
+            if (cena.pulada) {
+              fidelidade = { cenaCheck: 'skipped', cenaMotivo: cena.motivo }
+            } else if (!cena.ok) {
+              const alerta = `A cena gerada pode ter mudado o prato (${cena.motivo}). Compare com a foto original antes de usar.`
+              console.warn(`[arte-ia.bg] ${alerta}`)
+              fidelidade = {
+                cenaCheck: 'divergente',
+                entregueComAlerta: true,
+                cenaAlerta: alerta,
+                cenaDetalhe: cena.detalhe,
+              }
+            } else {
+              fidelidade = { cenaCheck: 'passed', cenaDetalhe: cena.detalhe }
+            }
+          } else {
+            fidelidade = { cenaCheck: 'skipped', cenaMotivo: 'geração sem foto de referência' }
+          }
+        }
         textCheckInfo =
           args.track === 'arte'
             ? { textCheck: 'skipped', textCheckReason: 'peça sem texto (capa pura)' }
-            : { textCheck: 'skipped', textCheckReason: 'trilha imagem — peça não leva texto' }
+            : { textCheck: 'skipped', textCheckReason: 'trilha imagem — peça não leva texto', ...fidelidade }
         qaInfo = { qa: 'passed', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
         break
       }
@@ -767,6 +798,22 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // Rodízio: a referência só vai para o fim da fila depois de a arte existir.
     // Marcar antes faria uma geração que falhou "gastar" a referência.
     if (styleRefUsada) await registrarUsoDaReferencia(styleRefUsada)
+
+    /**
+     * Rodízio do acervo (B5): as fotos do cliente que entraram nesta arte
+     * ficam marcadas como usadas. DEPOIS do sucesso — contar uso de foto cuja
+     * arte falhou mentiria sobre a preferência do cliente, mesma razão pela
+     * qual o rodízio de referência de estilo só marca uso quando a arte existe.
+     */
+    await registrarUsoDeFoto({
+      projectId: args.projectId,
+      driveFileIds: args.referencias
+        .map((r) => r.driveFileId)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+      origem: 'arte-ia',
+      tema: args.pedido || args.copy[0] || null,
+      generationId: args.jobGenerationId,
+    })
 
     // Dedução DEPOIS do sucesso e não-fatal (regra da casa desde a melhoria).
     try {

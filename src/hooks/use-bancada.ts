@@ -32,6 +32,8 @@ interface StatusResposta {
     textCheckAlert?: string
     /** Número na arte sem lastro na copy — vem COM o texto aprovado. */
     numerosAlerta?: string
+    /** Trilha imagem: o prato da cena divergiu da foto de referência. */
+    cenaAlerta?: string
     qaEntregueComRessalva?: boolean
     qaMotivo?: string
   } | null
@@ -43,6 +45,7 @@ function avisoDe(fv: StatusResposta['fieldValues']): string | null {
   return (
     fv.textCheckAlert ??
     fv.numerosAlerta ??
+    fv.cenaAlerta ??
     (fv.qaEntregueComRessalva && fv.qaMotivo ? fv.qaMotivo : null)
   )
 }
