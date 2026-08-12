@@ -455,3 +455,16 @@ um app de celular). Sugestões por prioridade:
 Regra de bolso para o que vier depois: **decisão de um toque vai para o
 celular; produção longa fica no desktop.** O celular aprova, corrige dado,
 fotografa e publica; o desktop desenha.
+
+> **Decisão do Ciro (12/08/2026): do § 12, só a "publicação manual dos
+> lembretes" entra no escopo.** Ela vira parte da P1 (a tela "para publicar
+> agora": salvar arte no rolo, copiar legenda e primeiro comentário, abrir o
+> Instagram — ~1 dia dentro da fase). Todo o resto fica fora do app.
+>
+> Sobre a taxonomia de pilares: explicada ao Ciro em 12/08 — a aprovação é
+> uma tarefa de UMA VEZ por cliente, feita na aba Marca do site, e não
+> precisa do app para acontecer. O que ela destrava (tema por slot no
+> propor-semana e a classificação diária do histórico pelo cron
+> `classificar-pilares`, que hoje roda e retorna cedo porque há zero pilares
+> aprovados) independe do celular. Fica fora do app por decisão; fazer pelo
+> site quando quiser ativar a F2.
