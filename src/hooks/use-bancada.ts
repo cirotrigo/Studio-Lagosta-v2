@@ -30,6 +30,8 @@ interface StatusResposta {
   fieldValues?: {
     error?: string
     textCheckAlert?: string
+    /** Número na arte sem lastro na copy — vem COM o texto aprovado. */
+    numerosAlerta?: string
     qaEntregueComRessalva?: boolean
     qaMotivo?: string
   } | null
@@ -38,7 +40,11 @@ interface StatusResposta {
 /** O aviso que o card mostra: texto divergente OU ressalva do QA visual/logo. */
 function avisoDe(fv: StatusResposta['fieldValues']): string | null {
   if (!fv) return null
-  return fv.textCheckAlert ?? (fv.qaEntregueComRessalva && fv.qaMotivo ? fv.qaMotivo : null)
+  return (
+    fv.textCheckAlert ??
+    fv.numerosAlerta ??
+    (fv.qaEntregueComRessalva && fv.qaMotivo ? fv.qaMotivo : null)
+  )
 }
 
 /** A copy do item, na forma que vai para o corpus: um bloco por posição. */

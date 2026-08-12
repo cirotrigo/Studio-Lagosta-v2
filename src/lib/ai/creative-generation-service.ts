@@ -17,12 +17,14 @@ import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
+import { getFeatureCost } from '@/lib/credits/settings'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
 import { VERCEL_BLOB_HOST_REGEX } from '@/lib/ai/creative-improvement-service'
 import { OPENAI_INPUT_SIZE, FINAL_OUTPUT_SIZE } from '@/lib/ai/creative-improvement-format'
 import { ensureArteTemplate } from '@/lib/creatives/persist'
 import { calculateCreditsForModel, type AIImageModel } from '@/lib/ai/image-models-config'
+import { QUALIDADE_ARTE_PADRAO, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import {
   MAX_SUBJECT_REFS,
   MAX_ANCHOR_REFS,
@@ -92,12 +94,29 @@ export interface StartArtGenerationInput {
    * referência (`guideGenerationId`).
    */
   carrossel?: CarouselMeta | null
+  /**
+   * Tier do gpt-image na trilha `arte`. Padrão `QUALIDADE_ARTE_PADRAO` (`low`).
+   * Quem escolhe é quem clica em "gerar de novo" na galeria — a conferência de
+   * texto NUNCA muda isto sozinha (ver a nota no runner).
+   */
+  qualidade?: QualidadeArte
 }
 
 export interface StartArtGenerationResult {
   jobGenerationId: string
   reused: boolean
   runnerArgs: ArtGenerationJobArgs | null
+  /**
+   * Créditos DE FATO debitados por esta chamada — 0 quando o pedido caiu no
+   * dedupe e reaproveitou uma geração em andamento. Existe para a superfície
+   * poder dizer o preço: quem pediu `nano-banana-pro` em 4K escolheu pagar o
+   * triplo do padrão sem que nada na conversa mostrasse isso.
+   *
+   * É o mesmo número que a dedução usa, porque ele vai como `creditsTotal` —
+   * o caminho de preço por TABELA. Passá-lo como `quantity` seria multiplicá-lo
+   * pelo custo da feature (ver a nota em `creditosADebitar`).
+   */
+  creditosCobrados: number
 }
 
 export async function startArtGeneration(
@@ -213,6 +232,26 @@ export async function startArtGeneration(
   const modelo =
     input.modelo ?? (input.track === 'arte' ? getCurrentImageModel() : 'nano-banana-2')
   const resolution = input.resolution ?? '2K'
+  const qualidade: QualidadeArte = input.qualidade ?? QUALIDADE_ARTE_PADRAO
+
+  /**
+   * 1K é ESTRITAMENTE DOMINADO, por isso recusado em vez de aceito em silêncio.
+   *
+   * Ele custa o MESMO que 2K nos dois modelos — o `nano-banana-pro` cobra 15
+   * créditos em `resolution1K` e `resolution2K`, e o `nano-banana-2` cobra
+   * flat — e entrega 1/4 dos pixels: medido em 12/08/2026, o pro devolve
+   * 768x1376 em 1K contra 1536x2752 em 2K. Enquanto a finalização normalizava
+   * tudo para 1080x1920, era pior ainda: 768x1376 é MENOR que a saída nos dois
+   * eixos, então 1K virava UPSCALE — o defeito que a trilha `arte` corrigiu em
+   * maio/2026 e que a trilha `imagem` reintroduziu sem que ninguém notasse.
+   */
+  if (input.track === 'imagem' && resolution === '1K') {
+    throw new CreativeError(
+      'RESOLUCAO_DOMINADA',
+      'A resolução 1K custa o mesmo que a 2K e entrega um quarto dos pixels. Use 2K (padrão) ou 4K.',
+      400,
+    )
+  }
 
   // Dedupe ANTES dos créditos (mesma razão do improve): retry do modelo no
   // chat não pode virar segunda cobrança.
@@ -228,6 +267,12 @@ export async function startArtGeneration(
         // dedupe uns dos outros e o carrossel sairia com slides faltando.
         cg: input.carrossel?.groupId ?? null,
         so: input.carrossel?.slideOrder ?? null,
+        // O tier entra na chave: sem ele, "gerar de novo com o mais caro"
+        // logo depois de uma geração em andamento cairia no dedupe e
+        // devolveria a peça barata — exatamente o pedido que a pessoa
+        // acabou de recusar. Mesma lição do `finalPrompt`, que também não
+        // estava aqui.
+        q: qualidade,
       }),
     )
     .digest('hex')
@@ -244,23 +289,31 @@ export async function startArtGeneration(
       select: { id: true },
     })
     if (emAndamento) {
-      return { jobGenerationId: emAndamento.id, reused: true, runnerArgs: null }
+      // Reaproveitou: nada foi cobrado NESTA chamada.
+      return { jobGenerationId: emAndamento.id, reused: true, runnerArgs: null, creditosCobrados: 0 }
     }
   }
 
-  // Custo por trilha: arte = flat (mesma chamada da melhoria); imagem = tabela
-  // do modelo Gemini (1K/2K/4K têm preços diferentes).
+  /**
+   * Custo TOTAL em créditos, por trilha: arte = flat (mesma chamada da
+   * melhoria); imagem = tabela do modelo (1K/2K/4K têm preços diferentes).
+   *
+   * Vai como `creditsTotal`, NUNCA como `quantity` — este é o total, e
+   * `quantity` seria multiplicado pelo custo da feature. Passá-lo ali fazia os
+   * 30 créditos do 4K virarem 150 (ver a nota em `creditosADebitar`).
+   */
   const feature = input.track === 'arte' ? ('ai_art_generation' as const) : ('ai_image_generation' as const)
-  const quantidade =
+  const creditosCobrados =
     input.track === 'arte'
-      ? 1
+      ? await getFeatureCost(feature)
       : calculateCreditsForModel(
           (modelo === 'nano-banana-pro' ? 'nano-banana-pro' : 'nano-banana-2') as AIImageModel,
           resolution,
         )
   try {
-    await validateCreditsForFeature(input.actorClerkId, feature, quantidade, {
+    await validateCreditsForFeature(input.actorClerkId, feature, 1, {
       organizationId: input.orgId,
+      creditsTotal: creditosCobrados,
     })
   } catch (error) {
     if (error instanceof InsufficientCreditsError) {
@@ -303,6 +356,7 @@ export async function startArtGeneration(
         referencias,
         instrucaoImagem: input.instrucaoImagem ?? null,
         model: modelo,
+        qualidade: input.track === 'arte' ? qualidade : null,
         resolution: input.track === 'imagem' ? resolution : null,
         inputSize: input.track === 'arte' ? OPENAI_INPUT_SIZE[fmt.formatKey] : null,
         finalSize: `${FINAL_OUTPUT_SIZE[fmt.formatKey].width}x${FINAL_OUTPUT_SIZE[fmt.formatKey].height}`,
@@ -320,6 +374,8 @@ export async function startArtGeneration(
   return {
     jobGenerationId: job.id,
     reused: false,
+    // O MESMO cálculo que a dedução faz (ver a nota em StartArtGenerationResult).
+    creditosCobrados,
     runnerArgs: {
       jobGenerationId: job.id,
       projectId: project.id,
@@ -339,9 +395,12 @@ export async function startArtGeneration(
       referencias,
       modelo,
       resolution,
+      qualidade,
       finalPrompt: input.finalPrompt?.trim() || null,
       feature,
-      creditQuantity: quantidade,
+      // TOTAL em créditos, não multiplicador — o runner o repassa em
+      // `creditsTotal` na dedução.
+      creditQuantity: creditosCobrados,
       carrossel: input.carrossel ?? null,
       guideResultUrl,
     },

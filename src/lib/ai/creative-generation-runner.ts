@@ -46,6 +46,7 @@ import { checarProporcao, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { QUALIDADE_ARTE_PADRAO, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -56,6 +57,12 @@ const MAX_INPUT_DIM = 4000
 // detalhe e segura o payload (Gemini recebe tudo inline em base64).
 const MAX_REF_DIM = 3000
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024
+/**
+ * Teto de bytes da cena entregue no nativo (trilha `imagem`). O limite de
+ * imagem do Instagram é 8 MB e o 4K medido em 12/08/2026 saiu com 7,69 MB —
+ * 6 MB deixa folga para o post que use a cena direto, sem tocar na dimensão.
+ */
+const MAX_PUBLICAVEL_BYTES = 6 * 1024 * 1024
 
 const MAX_GENERATION_ATTEMPTS = 2
 /**
@@ -148,6 +155,11 @@ export interface ArtGenerationJobArgs {
    * Ausente (teste E2E, script), o comportamento antigo vale: retenta no laço.
    */
   queueJobId?: string
+  /**
+   * Tier do gpt-image na trilha `arte`. Padrão `low` — ver
+   * `QUALIDADE_ARTE_PADRAO` em `creative-generation-service.ts`.
+   */
+  qualidade?: QualidadeArte
 }
 
 interface LoadedRef {
@@ -155,6 +167,22 @@ interface LoadedRef {
   label?: string
   buffer: Buffer
   mimeType: string
+}
+
+/**
+ * Monta o aviso de número sem lastro na copy. Vazio quando não há o que dizer —
+ * espalhar chave nula pelo fieldValues só suja o registro.
+ */
+function avisoDeNumeros(numeros: string[]): Record<string, unknown> {
+  if (numeros.length === 0) return {}
+  const lista = numeros.slice(0, 5).join(', ')
+  return {
+    entregueComAlerta: true,
+    numerosNaoEsperados: numeros.slice(0, 10),
+    numerosAlerta:
+      `A arte mostra número que não está na copy (${lista}). ` +
+      'Pode ser algo real da foto — ou dado inventado pelo modelo, como contagem de avaliação. Confira antes de aprovar.',
+  }
 }
 
 export async function processArtGenerationInBackground(args: ArtGenerationJobArgs): Promise<void> {
@@ -511,27 +539,41 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
            */
           qaInfo = { qa: 'passed', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
           resultBuffer = candidate
-          textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
+          /**
+           * O aviso de número inventado vale JUSTAMENTE aqui, no ramo em que o
+           * texto passou: é assim que ele aparece na prática — a copy toda
+           * presente, mais um dado que ninguém pediu (contagem de avaliação do
+           * Google, medida em 12/08/2026). Se só fosse anexado à reprovação,
+           * nunca seria visto.
+           */
+          textCheckInfo = {
+            textCheck: 'passed',
+            textCheckAttempts: attemptsLog,
+            ...avisoDeNumeros(check.numerosNaoEsperados),
+          }
           break
         }
         lastMissing = check.missing
-        // Texto divergente também ENTREGA, com o alerta — decisão do Ciro em
-        // 10/08/2026, depois de duas reprovações que eram falso negativo do
-        // comparador ("R$ 9,90" vs "R$9,90") e de mais uma chamada paga
-        // queimada na retentativa automática. Quem confere texto no fim é o
-        // olho de quem aprova; o comparador vira aviso, e a correção vira
-        // botão com preço, não reflexo do pipeline.
+        // Texto divergente ENTREGA, com o alerta, e NUNCA regera sozinho —
+        // decisão do Ciro em 10/08/2026, reafirmada em 12/08 ao introduzir a
+        // escolha de tier: o comparador produz falso negativo ("R$ 9,90" vs
+        // "R$9,90"), e regerar por conta própria gasta chamada paga para
+        // corrigir o que muitas vezes não está errado. Quem confere no fim é o
+        // olho de quem aprova; o comparador vira aviso e a correção vira botão
+        // — hoje com escolha de modelo (ver `qualidade` nos args).
         {
           const sample = check.missing.slice(0, 3).map((t) => `"${t}"`).join(', ')
           const alerta = `A conferência automática não encontrou ${sample}${check.missing.length > 3 ? ` (+${check.missing.length - 3})` : ''} na arte. Confira o texto no olho antes de aprovar — pode ser erro real do desenho ou implicância do comparador.`
           console.warn(`[arte-ia.bg] entregando com ALERTA de texto: ${alerta}`)
           resultBuffer = candidate
+          const porNumeros = avisoDeNumeros(check.numerosNaoEsperados)
           textCheckInfo = {
             textCheck: 'failed',
             entregueComAlerta: true,
-            textCheckAlert: alerta,
+            textCheckAlert: [alerta, porNumeros.numerosAlerta].filter(Boolean).join(' '),
             textCheckAttempts: attemptsLog,
             textCheckExtracted: check.extracted.slice(0, 30),
+            ...porNumeros,
           }
           break
         }
@@ -561,10 +603,79 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     }
 
     // ── Finalização: resize → logo → Blob → backup Drive → Generation ────
-    let finalBuffer = await sharp(resultBuffer)
-      .resize(args.finalSize.width, args.finalSize.height, { fit: 'cover', position: 'center' })
-      .jpeg({ quality: 92 })
-      .toBuffer()
+    /**
+     * O resize é da trilha `arte`, e SÓ dela.
+     *
+     * Ele nasceu para normalizar os múltiplos de 16 do gpt-image — 1088 → 1080,
+     * downscale de 0,7% cujo propósito documentado era PARAR DE FAZER UPSCALE
+     * (`creative-improvement-format.ts:9`) — e continua certo lá: a peça pronta
+     * tem de sair no tamanho exato de publicação.
+     *
+     * A trilha `imagem` produz INSUMO: a cena vai para `Fotos/IA_LAGOSTA` para
+     * ser recortada e composta depois (ver o destino por trilha, logo abaixo).
+     * Ela caiu nesta saída por herança, no mesmo commit que expôs `resolution`
+     * (6a15cb62, 09/08/2026), e o efeito era descartar o que acabara de ser
+     * pago: medido em 12/08/2026, o `nano-banana-pro` em 4K devolve 3072x5504
+     * (16,9 MP) e era gravado em 1080x1920 (2,07 MP) — **87,7% dos pixels no
+     * lixo**, na única peça do fluxo que precisa de margem para recorte.
+     *
+     * `scripts/medir-resolucao-trilha-imagem.ts` refaz a medição.
+     */
+    const preservarNativo = args.track === 'imagem'
+    const metaSaida = await sharp(resultBuffer).metadata()
+    let finalBuffer: Buffer
+    if (preservarNativo) {
+      // O Gemini já devolve image/jpeg; reencodar acrescentaria perda de
+      // geração a um arquivo cujo destino é justamente ser editado depois.
+      finalBuffer =
+        metaSaida.format === 'jpeg'
+          ? resultBuffer
+          : await sharp(resultBuffer).jpeg({ quality: 92 }).toBuffer()
+      /**
+       * Teto de BYTES, nunca de pixels.
+       *
+       * A cena nativa pode ser publicada direto — item de plano sem copy nasce
+       * nesta trilha (`execucao.ts:293`) e pode virar post —, e o limite de
+       * imagem do Instagram é 8 MB. O 4K medido em 12/08/2026 saiu com 7,69 MB,
+       * encostado na borda. Reencodar com qualidade menor tira bytes e PRESERVA
+       * os 16,9 MP, que é exatamente o que esta mudança veio entregar; reduzir
+       * a dimensão desfaria o conserto para resolver o problema errado.
+       *
+       * A escada começa ALTA porque o degrau caro é reencodar, não a qualidade
+       * escolhida: medido no mesmo 4K, a variância do laplaciano cai para 80,6%
+       * já no q=95 e só chega a 74,8% no q=80. Ou seja, quem está abaixo do teto
+       * passa intocado (é o caso do 2K), e quem precisa reencodar paga o
+       * pedágio uma vez — desperdiçar qualidade depois disso não compra nada.
+       */
+      for (const qualidade of [95, 88, 80, 72]) {
+        if (finalBuffer.length <= MAX_PUBLICAVEL_BYTES) break
+        finalBuffer = await sharp(resultBuffer).jpeg({ quality: qualidade }).toBuffer()
+        console.log(
+          `[arte-ia.bg] cena nativa acima de ${(MAX_PUBLICAVEL_BYTES / 1024 / 1024).toFixed(0)} MB — ` +
+            `reencodada em qualidade ${qualidade}, agora ${(finalBuffer.length / 1024 / 1024).toFixed(2)} MB (dimensão intacta)`,
+        )
+      }
+    } else {
+      finalBuffer = await sharp(resultBuffer)
+        .resize(args.finalSize.width, args.finalSize.height, { fit: 'cover', position: 'center' })
+        .jpeg({ quality: 92 })
+        .toBuffer()
+    }
+    /**
+     * O tamanho REAL do arquivo gravado. `buildFieldValues` escreve o alvo
+     * (`args.finalSize`), que na trilha `imagem` deixou de ser o que sai —
+     * então ele é sobrescrito no `extra` do caminho de sucesso. Na falha não
+     * há arquivo, e o alvo continua sendo o registro honesto do que se pediu.
+     */
+    const saidaReal = preservarNativo
+      ? { width: metaSaida.width ?? args.finalSize.width, height: metaSaida.height ?? args.finalSize.height }
+      : args.finalSize
+    if (preservarNativo) {
+      console.log(
+        `[arte-ia.bg] trilha imagem: entregue no nativo ${saidaReal.width}x${saidaReal.height} ` +
+          `(${((saidaReal.width * saidaReal.height) / 1e6).toFixed(1)} MP), sem reduzir para ${args.finalSize.width}x${args.finalSize.height}`,
+      )
+    }
 
     // A logo REAL entra aqui, depois do resize — nunca desenhada pelo modelo.
     // Falha ao compor não derruba a arte: ela sai sem marca e o aviso fica
@@ -632,6 +743,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       styleRefId: styleRefUsada,
       brandCardOrigem,
       elapsedSeconds,
+      // Sobrescreve o alvo com o que de fato foi gravado (ver `saidaReal`).
+      finalSize: `${saidaReal.width}x${saidaReal.height}`,
       ...qaInfo,
       ...logoInfo,
       ...textCheckInfo,
@@ -660,13 +773,25 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       await deductCreditsForFeature({
         clerkUserId: args.actorClerkId,
         feature: args.feature,
-        quantity: args.creditQuantity,
+        // TOTAL, não multiplicador (ver `creditosADebitar` em credits/deduct).
+        creditsTotal: args.creditQuantity,
+        /**
+         * `details` é o que `estimateUsdCost` lê para o painel de gastos —
+         * sem `resolution` (trilha imagem) e sem `inputSize`/`quality`
+         * (trilha arte) ele não casava chave nenhuma e TODA geração do arte-ia
+         * caía no fallback de $0,012/crédito. Como as duas features mapeiam
+         * para AI_IMAGE_GENERATION, o maior consumidor do sistema era
+         * justamente o que o painel estimava no chute (12/08/2026).
+         */
         details: {
           generationId: args.jobGenerationId,
           track: args.track,
           model: args.modelo,
           formato: args.formato,
           elapsedSeconds,
+          ...(args.track === 'imagem'
+            ? { resolution: args.resolution, apiProvider: 'gemini-direct' }
+            : { inputSize: args.openaiSize, quality: 'high' }),
         },
         organizationId: args.orgId,
         projectId: args.projectId,
@@ -720,7 +845,13 @@ async function generateOnce(
       mimeType: r.mimeType,
       name: `${i + 1}-${r.role}.${r.mimeType.includes('png') ? 'png' : 'jpg'}`,
     }))
-    return runImageEdit({ images, prompt, size: args.openaiSize, timeoutMs })
+    return runImageEdit({
+      images,
+      prompt,
+      size: args.openaiSize,
+      timeoutMs,
+      quality: args.qualidade ?? QUALIDADE_ARTE_PADRAO,
+    })
   }
 
   const model = args.modelo === 'nano-banana-pro' ? 'nano-banana-pro' : 'nano-banana-2'

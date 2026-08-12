@@ -2001,6 +2001,220 @@ copy depois tem de FECHAR aquela proposta — nunca abrir uma decisão nova.
   porque `propor-semana` tinha nascido no dia anterior. Captura errada não se
   conserta retroativamente — a mesma razão de registrar a sugestão na EMISSÃO.
 
+### Resolução: a trilha `imagem` entrega o NATIVO (12/08/2026)
+
+O resize de finalização (`creative-generation-runner.ts`) passou a valer **só na
+trilha `arte`**. A trilha `imagem` grava a cena no tamanho que o modelo devolveu.
+
+O que havia antes: toda geração era reduzida ao tamanho exato de publicação. Esse
+resize é da trilha `arte` e lá está certo — nasceu para normalizar os múltiplos de
+16 do gpt-image (1088 → 1080, downscale de 0,7%) e seu propósito documentado era
+**parar de fazer upscale**. A trilha `imagem` caiu nele por herança, no mesmo
+commit que expôs `resolution` (`6a15cb62`, 09/08), sem que a interação fosse
+discutida — a mensagem daquele commit é minuciosa sobre prompt, papéis e
+verificação, e não diz uma palavra sobre finalização.
+
+- 🔴 **Medido em 12/08: o 4K É honrado e era jogado fora.** `nano-banana-pro` em
+  9:16 devolve **3072x5504 (16,9 MP)** e era gravado em 1080x1920 (2,07 MP) —
+  **87,7% dos pixels no lixo**, na única peça do fluxo que precisa de margem
+  para recorte. Era isso, e não nitidez, que obrigava a casa a sair para o
+  Higgsfield (que devolve exatamente o mesmo 3072x5504).
+- 🔴 **1K era UPSCALE e foi RECUSADO.** O pro devolve **768x1376** em 1K —
+  menor que 1080x1920 nos dois eixos —, então ele reintroduzia justamente o
+  defeito que a trilha `arte` corrigiu em maio. A recusa (`RESOLUCAO_DOMINADA`,
+  em `startArtGeneration`, espelhada no enum do MCP e no zod da rota) tem
+  motivo que sobrevive ao resize condicional: 1K custa o **mesmo** que 2K nos
+  dois modelos e entrega **1/4** dos pixels. Estritamente dominado.
+- **O teto da cena nativa é de BYTES, nunca de pixels.** Item de plano sem copy
+  nasce na trilha `imagem` (`execucao.ts:293`) e pode virar post; o limite de
+  imagem do Instagram é 8 MB e o 4K saiu com 7,69 MB. Reencodar preserva os
+  16,9 MP; reduzir dimensão desfaria o conserto para resolver o problema errado.
+- **A escada de qualidade começa ALTA (95) porque o degrau caro é reencodar**,
+  não a qualidade: medido no mesmo 4K, a variância do laplaciano cai para 80,6%
+  já no q=95 e só chega a 74,8% no q=80. Quem está abaixo do teto passa
+  **intocado** (é o caso do 2K) — e é essa passagem livre que vale mais que o
+  número escolhido.
+- **`fieldValues.finalSize` agora grava o que o arquivo É**, não o alvo. Na
+  falha continua sendo o alvo, que é o registro honesto do que se pediu.
+- **A logo não é afetada**: o bloco inteiro vive dentro de `if (track ===
+  'arte')`, então `logoParaCompor` é sempre null na trilha `imagem`. E
+  `conferir-arte` já reduz para 640px antes da visão, então arquivo grande não
+  encarece a conferência.
+- **A capa de carrossel NÃO entra nisto**: `carousel-service.ts` usa
+  `track: 'arte'` nos dois pontos, inclusive na capa sem copy. Ela continua
+  saindo no tamanho de publicação, como peça que é.
+- `scripts/medir-resolucao-trilha-imagem.ts` refaz a medição (1K/2K/4K
+  comparados no MESMO 1080 final). Dry-run por padrão, imprime a conta e só
+  `--confirmar` gasta; não toca no banco nem em crédito, só na fatura do Google.
+  ⚠️ O cliente Gemini **não expõe seed**, então as imagens são cenas diferentes
+  — a nitidez do laplaciano mede a CENA quando n=1. A comparação que NÃO serve
+  é "2K reduzida × 2K nativa": arquivos de tamanhos diferentes, o maior sempre
+  ganha.
+
+### Custo de imagem: a tabela existia e nunca era alcançada (12/08/2026)
+
+`estimateUsdCost` (`src/lib/credits/cost-estimates.ts`) alimenta
+`/api/admin/spending`. Medido em 12/08: das **68 linhas** `AI_IMAGE_GENERATION`
+do histórico, **68 caíam no fallback** de $0,012/crédito. Nenhuma precisa.
+
+- 🔴 **A causa era o `details`, não o preço.** A dedução do arte-ia gravava só
+  `{generationId, track, model, formato, elapsedSeconds}` — sem `resolution`
+  (trilha imagem) e sem `inputSize`/`quality` (trilha arte), nada casava chave.
+  E como `ai_art_generation` e `ai_image_generation` mapeiam para o **mesmo**
+  OperationType (`feature-config.ts:23,31`), o maior consumidor do sistema era
+  exatamente o que o painel estimava no chute. Efeito: **o painel lia 4,7× a
+  mais** (US$ 47,70 contra US$ 10,14 reais).
+- **Os preços antigos não eram chute — eram do Replicate.** O que envelheceu foi
+  a arquitetura: `gemini-image-client.ts` chama o SDK do Google direto. Eles
+  ficaram preservados sob o prefixo `replicate.` e são usados quando
+  `details.apiProvider === 'replicate'`, que hoje é só o fallback de
+  `generate-image/route.ts`. **O provider muda o preço do MESMO modelo** — por
+  isso ele entra na chave, e não numa nota de rodapé.
+- **A trilha `arte` cai no ramo `AI_IMAGE_GENERATION`, não no
+  `AI_CREATIVE_IMPROVEMENT`** (mesmo OperationType), e usa gpt-image, cobrado
+  por tamanho e qualidade. O ramo passou a tratar `model.startsWith('gpt-image')`
+  com a chave da melhoria.
+- ⚠️ **As 68 linhas antigas continuam no fallback** — elas não têm os campos
+  novos, e só rodada nova nasce precisa. O painel vai mostrar um degrau. Dá para
+  backfillar a partir de `Generation.fieldValues` (que sempre teve `resolution`
+  e `inputSize`); não foi feito.
+- Preços oficiais do Google levantados em 12/08/2026: `nano-banana-pro` US$
+  0,134 em 1K/2K e **US$ 0,24 em 4K**; `nano-banana-2` US$ 0,101; gpt-image-2
+  high em 1088x1936 US$ 0,165. Em créditos: 10 / 15 / 30 na trilha imagem e 25
+  na arte. A tool `gerar-imagem` devolve `creditosCobrados` e declara o preço —
+  sem isso, quem escolhe modelo e resolução escolhe às cegas, que foi como uma
+  leva de 12 peças custou R$ 15,68 para entregar o mesmo arquivo de R$ 6,60.
+
+### 🔴 `quantity` multiplica; preço de TABELA vai em `creditsTotal` (12/08/2026)
+
+`deductCreditsForFeature`/`validateCreditsForFeature` calculam
+`getFeatureCost(feature) * Math.max(1, quantity)`. Os três caminhos de imagem
+passavam em `quantity` o retorno de `calculateCreditsForModel`, que já é um
+valor **em créditos** — então ele era multiplicado pelo custo da feature
+(`ai_image_generation` = 5). Cobrança real medida na `UsageHistory` antes do
+conserto: **50** onde deveria ser 10, e **150** onde deveria ser 30 (12 linhas
+a 150, 31 a 50). As doze peças do By Rock custaram 1.800 créditos.
+
+- **`creditsTotal` é o caminho para preço de TABELA** (`creditosADebitar`, em
+  `credits/deduct.ts`): quando presente, ele É o total e o custo da feature não
+  entra na conta. Usado por `startArtGeneration`, `generateStoredAiImage` e
+  `POST /api/ai/generate-image`.
+- **`quantity` continua sendo multiplicador, e isso está CERTO** para feature de
+  preço fixo — `POST /api/ai/image` passa `quantity = count` (3 imagens × 5 = 15)
+  e não foi tocada. Não unifique os dois: são semânticas diferentes de propósito.
+- **A trilha `arte` escapava por acidente** (passava `quantity: 1` e o custo de
+  `ai_art_generation` já é 25). É o único ponto onde os dois modelos mentais
+  coincidiam — e é por isso que ninguém tinha percebido.
+- **Os estornos (`refundCreditsForFeature`) seguem só com multiplicador**, e
+  isso basta hoje: nenhum dos três caminhos de imagem estorna. Caminho novo que
+  cobre por `creditsTotal` **e** estorne precisa levar o total para o estorno,
+  senão devolve 5× o cobrado.
+- **Validação e dedução usam o MESMO helper**, então nunca divergem: quem passou
+  na validação debita exatamente aquilo.
+- ⚠️ **As 68 linhas antigas da `UsageHistory` ficam com o valor velho** — o
+  conserto vale daqui para frente. Quem for ler série histórica de créditos
+  precisa saber que há um degrau em 12/08/2026.
+
+### O registro de uso só existe desde 30/07/2026
+
+`UsageHistory` tem **87 linhas no total**, a mais antiga de 30/07/2026 — mas
+`AIGeneratedImage` tem **788**, de out/2025 a ago/2026. O painel de gastos cobre
+duas semanas, não dez meses.
+
+- **O cron de limpeza não explica**: `cleanup-db` (semanal, `0 2 * * 0`) apaga
+  `UsageHistory` com mais de **90 dias**, e maio/junho/julho estão DENTRO da
+  janela. Na janela há **101 imagens e ZERO linhas com `aiImageId`**.
+- **As 68 linhas de `AI_IMAGE_GENERATION` têm todas `generationId`** — são do
+  arte-ia, que nasceu em 09/08. Nenhuma veio de `generateStoredAiImage` nem da
+  rota `/api/ai/generate-image`, embora as duas chamem `deductCreditsForFeature`.
+- **Nem todo criador de `AIGeneratedImage` cobra, e alguns não devem mesmo**:
+  `POST /api/projects/[id]/ai-images` só REGISTRA uma URL pronta e
+  `tools/generate-art` também não deduz. O que falta explicar é por que os dois
+  caminhos que DEDUZEM não deixaram linha na janela de retenção — ficou em
+  aberto.
+
+### A terceira casa do 1K: `quick-generate` e a dimensão fictícia (12/08/2026)
+
+Procurando o mesmo defeito fora do arte-ia, ele apareceu em
+`generateStoredAiImage` (`src/lib/ai/generate-image-service.ts`), cujo único
+chamador é `POST /api/gerar-criativo/quick-generate` — a Arte Rápida.
+
+- **`resolution: '1K'` era estritamente dominado, igual ao caso do arte-ia**:
+  no `nano-banana-pro` 1K e 2K custam os MESMOS 15 créditos. A rota pedia 1K
+  fixo e o serviço tinha `?? '1K'` como padrão; ambos foram para 2K. Agrava:
+  a imagem vira CAMADA de uma página 1080x1920, então o 1K (768x1376) ainda
+  seria **esticado no render**.
+- 🔴 **`calculateDimensions` gravava dimensão FICTÍCIA** — tabela fixa por
+  proporção que não olhava nem a resolução pedida nem o buffer. **788 linhas
+  de `AIGeneratedImage`** (out/2025 a ago/2026) dizem 576x1024 em 9:16, quando
+  o 1K real é 768x1376 e o 2K é 1536x2752. Hoje a dimensão é MEDIDA no buffer
+  (`medirDimensoes`), com a tabela como fallback quando o sharp não lê.
+- **Não era cosmético.** `AIGeneratedImage.width/height` alimentam o
+  `data-pswp-*` do lightbox — a mesma armadilha já registrada na galeria, com o
+  lightbox abrindo a arte menor do que ela é — e o `calculateCanvasPlacement`
+  (`ai-images-panel.tsx:166,650`), que POSICIONA e ESCALA a imagem ao cair no
+  canvas do editor. A área subestimada ia de 1,8× (1K) a 7,2× (2K).
+- ⚠️ **As 788 linhas antigas continuam com a dimensão errada** — só linha nova
+  nasce medida. Backfill é possível relendo o `fileUrl`; não foi feito.
+- **`generateStoredAiImage` NUNCA redimensiona** — o buffer vai direto para o
+  Blob. O upscale desse caminho, quando acontece, é no render da página, não na
+  finalização. São defeitos parecidos em casas diferentes: no arte-ia o resize
+  era explícito; aqui é consequência de pedir pouco pixel para um slot grande.
+
+### O tier do gpt-image virou escolha, e o padrão é `low` (12/08/2026)
+
+`runImageEdit` cravava `quality: 'high'` desde que existe — o caminho mais caro
+do sistema, sem ninguém ter escolhido. Hoje o tier é parâmetro
+(`QUALIDADE_ARTE_PADRAO` em `src/lib/ai/qualidade-arte.ts`, módulo PURO porque
+a galeria é client), o padrão é `low`, e trocar é um botão na mão de quem
+aprova.
+
+Medido com `scripts/medir-qualidade-trilha-arte.ts` (mesma peça do Espeto
+Gaúcho, 3 repetições por tier, o juiz sendo o `verifyImageTexts` da produção):
+
+| tier | texto | tempo | fatura |
+|---|---|---:|---:|
+| low | 3/3 | 38s | US$ 0,008 |
+| medium | 3/3 | 60s | US$ 0,045 |
+| high | 3/3 | 125s | US$ 0,165 |
+
+Os três desenharam o lettering íntegro — til do "Ã" no lugar, traço fechado,
+sem artefato, conferido em 1:1. O `low` sai por 1/20 do `high`.
+
+- 🔴 **Os tiers baratos INVENTAM número, e nenhum verificador pega.** No selo do
+  Google apareceu contagem de avaliação fabricada em **2 de 3** peças no `low` e
+  **1 de 3** no `medium`, contra **0 de 3** no `high` — dado factual e
+  verificável sobre o negócio do cliente, a mesma classe de "nunca invente preço,
+  horário, endereço ou promoção". `verifyImageTexts` confere se o texto esperado
+  ESTÁ presente e **não tem regra contra texto A MAIS**, então as três passaram
+  com veredito verde. **Não leia o ✅ da conferência como "não inventou nada".**
+  Fechar isso é trabalho em aberto: a transcrição já volta do verificador, então
+  a regra caberia ali.
+- **A conferência NUNCA regera sozinha** — regra de 10/08/2026, reafirmada em
+  12/08 ao introduzir a escolha. Uma escada automática (low → medium ao reprovar
+  o texto) chegou a ser escrita e foi DESFEITA pelo Ciro: o comparador produz
+  falso negativo ("R$ 9,90" vs "R$9,90"), e regerar por conta própria gasta
+  chamada paga para corrigir o que muitas vezes não está errado. O verificador
+  avisa; quem decide é o olho.
+- **O tier entra no HASH DE DEDUPE** (`q` em `startArtGeneration`). Sem isso,
+  pedir "o mais caro" logo depois de uma geração em andamento cairia no dedupe e
+  devolveria a peça barata — exatamente o que a pessoa acabou de recusar. Mesma
+  lição do `finalPrompt`, que também não estava no hash.
+- 🔴 **`fieldValues.prompt` NÃO serve como `finalPrompt` ao refazer.** O que está
+  gravado é o prompt FINAL (preâmbulo de referências + corpo); devolvê-lo como
+  `finalPrompt` faz o runner prefixar o preâmbulo DE NOVO e a peça nasce com a
+  descrição das imagens duplicada. `POST …/arte-ia/[generationId]/refazer`
+  reconstrói pelo caminho normal — pedido + copy (de `slotValues`) + referências.
+- **Só `source === 'arte-ia'` pode ser refeita**: arte de template ou de upload
+  não tem prompt nem referências para reconstituir, e o botão nem aparece.
+- **Os rótulos falam de TEMPO e CUSTO, nunca de "qualidade baixa"** — os três
+  tiers desenharam texto íntegro, então "qualidade baixa" mentiria sobre o que se
+  escolhe. E "low/medium" não é vocabulário de quem cuida do Instagram de
+  restaurante (mesma regra que proíbe DRAFT/SCHEDULED na conversa).
+- **O menu vive FORA do `<a>` do card** (`gallery-item.tsx`, barra de ações é
+  irmã do anchor) — dentro dele, o clique navegaria. E é menu, não dois botões,
+  porque a barra já chega a cinco e no celular o card tem ~120px.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

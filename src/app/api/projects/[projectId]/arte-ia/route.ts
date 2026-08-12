@@ -36,7 +36,10 @@ const bodySchema = z.object({
   referencias: z.array(refSchema).max(6).optional().default([]),
   instrucaoImagem: z.string().max(500).optional().nullable(),
   modelo: z.string().max(40).optional(),
-  resolution: z.enum(['1K', '2K', '4K']).optional(),
+  // 1K saiu do enum em 12/08/2026: custava o mesmo que 2K e entregava 1/4 dos
+  // pixels. `startArtGeneration` recusa de novo, para o caminho do MCP e o de
+  // qualquer chamador futuro terem a mesma trava.
+  resolution: z.enum(['2K', '4K']).optional(),
   /**
    * Slide de carrossel. O cliente é quem orquestra a série (capa → guia →
    * confirmar → demais), então cada slide é uma chamada própria — é o que

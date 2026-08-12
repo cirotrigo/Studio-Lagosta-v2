@@ -98,8 +98,10 @@ export async function POST(request: Request) {
     const creditsRequired = calculateCreditsForModel(body.model, body.resolution)
 
     try {
-      await validateCreditsForFeature(userId, 'ai_image_generation', creditsRequired, {
+      // TOTAL da tabela do modelo, não multiplicador (ver `creditosADebitar`).
+      await validateCreditsForFeature(userId, 'ai_image_generation', 1, {
         organizationId: orgId ?? undefined,
+        creditsTotal: creditsRequired,
       })
     } catch (error) {
       // Traduzir erro de créditos insuficientes
@@ -626,7 +628,7 @@ export async function POST(request: Request) {
     await deductCreditsForFeature({
       clerkUserId: userId,
       feature: 'ai_image_generation',
-      quantity: actualCreditsRequired,
+      creditsTotal: actualCreditsRequired,
       details: {
         mode: body.mode,
         model: actualModel,
