@@ -2319,6 +2319,50 @@ como ser cumprida, nem para foto usada dentro do Studio.
   nome repete entre pastas, e marcação errada empurra para o fim da fila uma
   foto que nunca foi usada. Eram 2 linhas; não pagam o risco.
 
+### Fechamento do plano do MCP: prompt, lote, duplicata (12/08/2026)
+
+Os oito itens que faltavam das seções A e B. Regras que valem para código novo:
+
+- **O teto do `promptPronto` é AVISO, não bloqueio — e agora é 4000.** Era 1500
+  e nunca bloqueou nada (`validateImagePrompt` só devolve `issues`, o runner só
+  loga). Produzia o pior dos dois: quem LIA a descrição se limitava e cortava as
+  proibições — que são o que segura o DNA —, quem ignorava passava. Os prompts
+  reais da produção tinham ~2.900. **Nunca corte proibição para caber.**
+- 🔴 **Exclusão de elemento vai COLADA à referência de que fala**
+  (`referencias[].excluir`), nunca num bloco geral de proibições: o modelo
+  precisa saber de QUAL imagem tirar o objeto. Dizer "não copie a garrafa"
+  dentro do `pedido` não segurou — a garrafa de Tabasco vazou em 2 de 6 peças
+  do By Rock, nítida e com rótulo legível.
+- 🔴 **No MCP LOCAL, `server.tool(nome, desc, shape, handler)` ESTRIPA chave
+  desconhecida** antes do handler — resposta plausível e errada. A saída é
+  `registerTool`, que aceita schema completo além de raw shape (SDK ≥ 1.27), e
+  aí `.strict()` cabe. `toolEstrita` embrulha as 24 tools sem mudar a forma de
+  chamada. O conector remoto usa outro caminho (`parametrosDesconhecidos`).
+- 🔴 **Lote de geração é SEQUENCIAL, nunca `Promise.all`.** Cada item valida
+  créditos e cria a Generation; doze em paralelo fariam doze validações lerem o
+  MESMO saldo antes de qualquer dedução, e o lote inteiro passaria com saldo
+  para uma peça só. Em série o item N enxerga o consumo dos anteriores. Item
+  inválido não derruba o lote (`itens[].erro`), teto de 12, `loteId` em
+  `fieldValues` — sem tabela nova, precedente do `carouselGroupId`.
+- **`md5Checksum` vem de GRAÇA no listing do Drive** — é metadado, não exige
+  baixar o arquivo. É o que permite detectar duplicata por CONTEÚDO: no By Rock,
+  `ambiente-05.jpg` e `ambiente-f3a8697.jpg` são iguais byte a byte, e a
+  duplicata fazia o rodízio "variar" entre duas cópias da mesma imagem.
+- 🔴 **A reconciliação é um DIFF DE IDS e não toca em entrada existente** — por
+  desenho. Campo novo no catálogo só chega às fotos NOVAS; sem um backfill
+  explícito, a detecção de duplicata nasceria inócua no acervo atual. Vale para
+  qualquer campo que se acrescente ao `_image-catalog.json`.
+- **A guarda de nome de cliente alheio é de SAÍDA, não de entrada.** O prompt já
+  diz de quem é a foto (`Analise esta foto do restaurante "X"`) e ainda assim
+  boa parte das descrições do TERO menciona "By Rock". Nome de outro cliente da
+  carteira vira "o restaurante" — SUBSTITUI, não apaga a frase: descrição
+  mutilada some da busca por tema, que é o oposto do objetivo.
+- **`buscar-fotos` ganhou `offset`, e `limit` nunca teve teto** — o que faltava
+  era a descrição dizer isso. O retorno traz `catalogacao` (total, sem
+  descrição, sem tags, duplicadas), porque catálogo regerado na taxonomia v2 só
+  tem a pasta: a busca por TEMA não alcança essas fotos e quem buscava não tinha
+  como saber — a resposta voltava curta e parecia acervo pequeno.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
