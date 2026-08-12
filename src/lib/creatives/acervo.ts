@@ -96,6 +96,12 @@ export interface BuscarAcervoInput {
    */
   fileName?: string
   limit?: number
+  /**
+   * Quantas pular antes de montar a página (B2). A ordem é estável — menos
+   * usada primeiro —, então paginar por posição é seguro aqui. `limit` não tem
+   * teto: pedir mais de uma vez costuma ser melhor que paginar.
+   */
+  offset?: number
 }
 
 /**
@@ -210,7 +216,22 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     pastasDisponiveis: pastas,
     ...(avisos.length > 0 ? { avisos } : {}),
     ...(sugestaoId ? { sugestaoId, propostaTopo: imagens[0]?.driveFileId ?? null } : {}),
-    images: imagens.slice(0, input.limit ?? 20).map((i) => ({
+    /**
+     * Quanto do catálogo NÃO foi analisado (B6).
+     *
+     * Catálogo regerado na taxonomia v2 traz só a pasta — sem tags, sem
+     * descrição, sem bestFor. Quem busca por tema não alcança essas fotos e
+     * não tinha como saber disso: a busca voltava curta e parecia acervo
+     * pequeno. Expor o número torna a lacuna visível sem custar chamada de
+     * visão nenhuma.
+     */
+    catalogacao: {
+      total: todas.length,
+      semDescricao: todas.filter((i) => !i.description).length,
+      semTags: todas.filter((i) => !i.tags?.length).length,
+    },
+    offset: input.offset ?? 0,
+    images: imagens.slice(input.offset ?? 0, (input.offset ?? 0) + (input.limit ?? 20)).map((i) => ({
       driveFileId: i.driveFileId,
       fileName: i.fileName,
       folder: i.folder,

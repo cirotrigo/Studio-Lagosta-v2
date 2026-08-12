@@ -45,6 +45,12 @@ export const MAX_ANCHOR_REFS = 3
 export const MAX_STYLE_REFS = 2
 
 export interface ArtReferenceDescriptor {
+  /**
+   * Elementos a NÃO reproduzir desta referência (A3). Ex.: "garrafa de molho",
+   * "lata de refrigerante" — marca de terceiro que aparece na foto e não pode
+   * ir para a peça.
+   */
+  excluir?: string[]
   role: ArtReferenceRole
   label?: string
 }
@@ -81,8 +87,24 @@ export const BANNED_BUZZWORDS = [
  */
 export const RISKY_FOOD_TERMS = ['rare meat', 'raw meat', 'pink center', 'bloody', 'juicy pink'] as const
 
-/** Teto de tamanho do prompt da trilha `imagem` (regra das skills: denso, não longo). */
-export const IMAGE_PROMPT_MAX_CHARS = 1500
+/**
+ * Teto de tamanho do prompt da trilha `imagem`.
+ *
+ * Era 1500, herdado da regra editorial das skills ("denso, não longo"), e
+ * produzia o pior dos dois mundos: quem LIA a descrição da tool se limitava e
+ * cortava as proibições — que são justamente o que segura o DNA —, enquanto
+ * quem ignorava passava, porque isto NUNCA bloqueou nada. `validateImagePrompt`
+ * só devolve `issues`, e o runner apenas loga `console.warn`.
+ *
+ * 4000 é o tamanho em que uma direção de fotografia COMPLETA cabe: câmera,
+ * lente, luz em Kelvin, ação, fundo, tratamento e a lista de proibições. Os
+ * prompts reais da produção do By Rock tinham ~2.900.
+ *
+ * ⚠️ Continua sendo AVISO, não bloqueio — e a descrição da tool agora diz isso.
+ * Prompt longo demais é problema de qualidade, não de segurança: quem escreve
+ * mal desperdiça a própria geração.
+ */
+export const IMAGE_PROMPT_MAX_CHARS = 4000
 
 const REQUIRED_IMAGE_PARAGRAPHS = ['CAMERA:', 'LIGHT:', 'SUBJECT:', 'POST BEHAVIOR:'] as const
 
@@ -155,15 +177,32 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
   let n = 1
   for (const ref of ordered) {
     const idx = `Image ${n++}`
+    /**
+     * Exclusões declaradas nesta referência (A3).
+     *
+     * Existe porque dizer "não copie a garrafa" DENTRO do pedido não funcionou:
+     * na produção do By Rock a garrafa de Tabasco da foto de referência vazou
+     * para a mesa final em 2 de 6 peças, nítida e com rótulo legível, apesar da
+     * instrução explícita. Marca de terceiro em destaque é limite de DNA.
+     *
+     * A linha entra colada à referência de que ela fala — e não num bloco geral
+     * de proibições — porque o modelo precisa saber de QUAL imagem tirar o
+     * objeto. Escrita depois da descrição do papel, para ser a última coisa
+     * lida sobre aquela imagem.
+     */
+    const excluir = (ref.excluir ?? []).map((e) => e.trim()).filter(Boolean)
+    const linhaDeExclusao = excluir.length
+      ? ` DO NOT reproduce these elements from ${idx}, even if they are clearly visible in it: ${excluir.join('; ')}. Remove them from the scene entirely — do not replace them with similar objects.`
+      : ''
     switch (ref.role) {
       case 'subject':
         lines.push(
-          `${idx} is the REAL photo of the dish/product${ref.label ? ` (${ref.label})` : ''}. It is the FINAL SCENE of the piece: do not recreate, replace or "improve" it. The owner must recognize their own dish.`,
+          `${idx} is the REAL photo of the dish/product${ref.label ? ` (${ref.label})` : ''}. It is the FINAL SCENE of the piece: do not recreate, replace or "improve" it. The owner must recognize their own dish.${linhaDeExclusao}`,
         )
         break
       case 'anchor-dish':
         lines.push(
-          `${idx} is a second REAL photo of the same dish${ref.label ? ` (${ref.label})` : ''} — use it only to stay faithful to the dish's true appearance.`,
+          `${idx} is a second REAL photo of the same dish${ref.label ? ` (${ref.label})` : ''} — use it only to stay faithful to the dish's true appearance.${linhaDeExclusao}`,
         )
         break
       case 'anchor-ambient':
@@ -174,12 +213,12 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         // com o prato novo colado por cima. Os dois limites abaixo (a) e (b)
         // são o que separa "preservar o salão" de "copiar a fotografia".
         lines.push(
-          `${idx} is a REAL photograph of the restaurant environment${ref.label ? ` (${ref.label})` : ''}. Use it to keep the PLACE truthful: architecture, furniture, table-top material (its colour, texture and finish), wall and floor materials, fixtures, and the quality, direction and colour of the light. Two hard limits. (a) It is a reference of PLACE, never of FRAMING — do not copy its camera height, angle, focal length or composition, and never feel obliged to show the ceiling or the whole room. Choose the camera that serves the dish. (b) Any food, plate, glass or tableware visible in it is NOT part of the new scene: ignore it entirely as content. Every dish in the final image comes from the dish reference and belongs to the menu being photographed. Preserve the physical geometry of the room: a table stays at its real height and on the same spatial plane as the other tables, perspective lines stay coherent, and the scale between table, chairs, people and objects stays realistic. Never re-material a surface — a stone, metal or laminate top must not become wood.`,
+          `${idx} is a REAL photograph of the restaurant environment${ref.label ? ` (${ref.label})` : ''}. Use it to keep the PLACE truthful: architecture, furniture, table-top material (its colour, texture and finish), wall and floor materials, fixtures, and the quality, direction and colour of the light. Two hard limits. (a) It is a reference of PLACE, never of FRAMING — do not copy its camera height, angle, focal length or composition, and never feel obliged to show the ceiling or the whole room. Choose the camera that serves the dish. (b) Any food, plate, glass or tableware visible in it is NOT part of the new scene: ignore it entirely as content. Every dish in the final image comes from the dish reference and belongs to the menu being photographed. Preserve the physical geometry of the room: a table stays at its real height and on the same spatial plane as the other tables, perspective lines stay coherent, and the scale between table, chairs, people and objects stays realistic. Never re-material a surface — a stone, metal or laminate top must not become wood.${linhaDeExclusao}`,
         )
         break
       case 'style':
         lines.push(
-          `${idx} is a style reference${ref.label ? ` (${ref.label})` : ''} — copy its tonal register, luminosity and level of stylization, NOT its content. If this reference is light, the result is light.`,
+          `${idx} is a style reference${ref.label ? ` (${ref.label})` : ''} — copy its tonal register, luminosity and level of stylization, NOT its content. If this reference is light, the result is light.${linhaDeExclusao}`,
         )
         break
       case 'series-guide':

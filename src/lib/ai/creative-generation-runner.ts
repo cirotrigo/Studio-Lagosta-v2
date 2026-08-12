@@ -103,6 +103,8 @@ export interface ArtGenerationReference {
   url?: string
   driveFileId?: string
   label?: string
+  /** Elementos a NÃO reproduzir desta foto (A3) — ver buildReferencePreamble. */
+  excluir?: string[]
 }
 
 export interface CarouselMeta {
@@ -168,6 +170,7 @@ interface LoadedRef {
   label?: string
   buffer: Buffer
   mimeType: string
+  excluir?: string[]
 }
 
 /**
@@ -206,7 +209,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             : await fetchImageSource(ref.url!)
           const maxDim = ref.role === 'subject' ? MAX_INPUT_DIM : MAX_REF_DIM
           const sane = await sanitizeInput(source.buffer, maxDim)
-          return { role: ref.role, label: ref.label, ...sane }
+          return { role: ref.role, label: ref.label, excluir: ref.excluir, ...sane }
         } catch (error) {
           // Âncora que falhou não derruba a geração; subject sim — sem a foto
           // do prato a trilha `arte` produziria cena inventada.
