@@ -5,6 +5,14 @@ de uso interno da equipe, cobrindo **bancada** (criação e aprovação de artes
 fila), **agenda** (acompanhamento das postagens dos clientes) e **criativos**
 (galeria). Pedido do Ciro em 12/08/2026.
 
+> **Decisão de 12/08/2026 (mesmo dia): o Ciro não quer a inscrição na Apple.**
+> Sem o Developer Program não existe app nativo distribuível para equipe
+> (conta gratuita expira o app em 7 dias e exige reinstalar via Xcode), então
+> **a via principal passa a ser a PWA — ver § 11**, que substitui as fases do
+> § 7. Os §§ 3–7 ficam como estavam: são o mapa do caminho nativo, válido se
+> um dia a inscrição acontecer (o § 11 reaproveita quase tudo deles, menos a
+> camada OAuth/`/api/app`, que a PWA dispensa).
+
 ## 1. O pedido, traduzido em requisitos
 
 - App **mobile**, desenvolvido **no macOS** (Xcode no Mac do Ciro), rodando no
@@ -322,8 +330,68 @@ qualquer forma, e o backend do app (F0) é o mesmo.
 ## 10. Decisões que ficam com o Ciro antes da F0
 
 1. Inscrever a conta Apple no Developer Program (US$ 99/ano) — destrava
-   TestFlight e ad-hoc.
+   TestFlight e ad-hoc. **Decidido em 12/08: NÃO. Ver § 11.**
 2. TestFlight interno (recomendado) ou IPA ad-hoc como via de distribuição.
 3. Alguém da equipe usa Android? (Se sim, o APK sai quase de graça do Expo.)
 4. Rodar o acelerador PWA (§ 8) em paralelo ou ir direto ao nativo.
 5. Confirmar que toda a equipe tem conta no Studio e está na organização.
+
+## 11. Plano revisado (12/08/2026): PWA como via principal, sem Apple
+
+Sem a inscrição, o § 8 deixa de ser acelerador e vira o produto. E a troca
+tem um dividendo que o estudo deixou explícito: **a maior parte do trabalho
+de backend do caminho nativo desaparece**, porque a PWA roda no mesmo domínio
+do site com a sessão Clerk de sempre —
+
+- **B1–B4 e A1–A2 do plano nativo somem inteiros**: nada de porta OAuth para
+  scheme nativo, nada de namespace `/api/app/*`, nada de Keychain/refresh. As
+  telas mobile consomem as MESMAS rotas que o site já usa, com a mesma
+  atribuição de usuário por construção.
+- **Sobram do backend só**: as rotas HTTP de `propor-semana` e
+  `executar-plano` (hoje só no MCP; o gate de 2 chamadas do executar
+  continua), e `superficie` própria nos sinais se quisermos distinguir a
+  decisão vinda do celular.
+- **Distribuição = um link.** A pessoa entra com a conta dela uma vez, toca em
+  "Adicionar à Tela de Início" e ganha um ícone que abre em tela cheia
+  (standalone), sem barra do Safari. Atualização é instantânea para todo
+  mundo — melhor que TestFlight nesse quesito. Revogar acesso = desativar a
+  conta, como no site.
+- **O que o celular precisa já funciona no Safari**: polling de geração,
+  upload/câmera via input de arquivo, compartilhar arte no WhatsApp pela Web
+  Share API, e push para PWA instalada existe no iOS ≥ 16.4 se um dia for
+  desejado (v1 não precisa — o grupo de WhatsApp já avisa).
+- **Limites aceitos**: não há arquivo de instalação (a via é o link), a
+  sensação é um degrau abaixo do nativo, e nada roda em segundo plano — o que
+  não importa aqui, porque quem trabalha é o servidor (fila durável + crons).
+
+Forma: **melhorar as páginas existentes em viewport estreito**, não criar
+rotas paralelas `/m/*` — duas versões da mesma tela viram duas fontes de
+verdade de UI (a agenda já provou o caminho certo: `viewModeEfetivo` cai para
+grade no celular). Acrescenta-se um shell de navegação inferior (abas
+Bancada / Agenda / Criativos) visível só em telas pequenas, `manifest.json` +
+ícones (o middleware já exclui `.webmanifest` da proteção, preparado para um
+arquivo que nunca existiu) e `start_url` numa tela de entrada enxuta.
+
+### Fases revisadas
+
+- **P0 — PWA instalável (1–2 dias)**: manifest, ícones, meta tags iOS, shell
+  de abas mobile, revisão da agenda em tela estreita. Saída: ícone na tela
+  de início do iPhone do Ciro abrindo a agenda em tela cheia, com aprovação
+  de rascunho funcionando.
+- **P1 — Bancada no celular (3–4 dias)**: fila, gerar com polling e avisos,
+  feedback, editar, agendar; compositor mínimo por último. Saída: gerar,
+  aprovar e agendar uma peça real só pelo celular.
+- **P2 — Criativos no celular (1–2 dias)**: galeria e lightbox em viewport
+  estreito (grade e PhotoSwipe já existem — cuidado com as armadilhas
+  registradas de `[class*="container"]` e teclado do lightbox), melhorar com
+  IA, compartilhar via Web Share.
+- **P3 — Propor/executar semana (1–2 dias)**: as duas rotas HTTP novas +
+  botões na bancada mobile, com a tela de conta antes do confirmar.
+
+Total: **~1 a 1,5 semana** de trabalho focado. Custo: zero — nenhuma conta
+nova, nenhuma infraestrutura nova, nenhum arquivo para distribuir.
+
+O caminho nativo (§§ 3–7) não é jogado fora: se a inscrição na Apple
+acontecer um dia, a PWA já terá consolidado as telas mobile e o app Expo
+nasce por cima das mesmas rotas — com a camada OAuth como único trabalho
+extra de backend.
