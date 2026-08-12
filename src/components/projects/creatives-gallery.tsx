@@ -6,6 +6,7 @@ import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-q
 import { Loader2 } from 'lucide-react'
 import { useOrganization } from '@clerk/nextjs'
 import { api } from '@/lib/api-client'
+import { ROTULO_QUALIDADE, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -324,6 +325,38 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       setStyleRefLocal((atual) => ({ ...atual, [id]: contexto?.anterior ?? false }))
       toast({
         title: 'Não deu para marcar',
+        description: 'Tente de novo em instantes.',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  /**
+   * "Gerar de novo", com o modelo escolhido por quem olhou a arte.
+   *
+   * A conferência automática NUNCA regera sozinha (regra de 10/08/2026): ela
+   * põe o selo "conferir texto" e a peça sai. Este é o caminho de quem
+   * conferiu e não gostou — um clique, e a escolha do modelo é dela.
+   */
+  const refazerMutation = useMutation({
+    mutationFn: ({ id, qualidade }: { id: string; qualidade: QualidadeArte }) =>
+      api.post<{ generation: { id: string }; reaproveitada?: boolean; creditosCobrados?: number }>(
+        `/api/projects/${projectId}/arte-ia/${id}/refazer`,
+        { qualidade },
+      ),
+    onSuccess: (data, { qualidade }) => {
+      // A arte nova é OUTRA Generation e entra no topo da lista.
+      queryClient.invalidateQueries({ queryKey: ['creatives', projectId] })
+      toast({
+        title: data.reaproveitada ? 'Já estava gerando' : 'Gerando de novo',
+        description: data.reaproveitada
+          ? 'Havia um pedido idêntico em andamento — este não foi cobrado de novo.'
+          : `${ROTULO_QUALIDADE[qualidade].titulo.toLowerCase()} · ${ROTULO_QUALIDADE[qualidade].detalhe} A arte nova aparece aqui quando ficar pronta.`,
+      })
+    },
+    onError: () => {
+      toast({
+        title: 'Não deu para gerar de novo',
         description: 'Tente de novo em instantes.',
         variant: 'destructive',
       })
@@ -1126,9 +1159,23 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   isStyleRef={styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)}
                   avisoConferencia={
                     getStringField(generation.fieldValues, 'textCheckAlert') ??
+                    // Número sem lastro aparece com o texto APROVADO — se não
+                    // entrasse aqui, o caso mais comum ficaria invisível.
+                    getStringField(generation.fieldValues, 'numerosAlerta') ??
                     (getBooleanField(generation.fieldValues, 'qaEntregueComRessalva')
                       ? getStringField(generation.fieldValues, 'qaMotivo')
                       : undefined)
+                  }
+                  /* Só arte criada por IA pode ser refeita: a rota reconstitui
+                     o pedido a partir do fieldValues, e arte de template ou de
+                     upload não tem prompt nem referências para reconstituir. */
+                  onRefazer={
+                    getStringField(generation.fieldValues, 'source') === 'arte-ia'
+                      ? (qualidade) => refazerMutation.mutate({ id: generation.id, qualidade })
+                      : undefined
+                  }
+                  refazendo={
+                    refazerMutation.isPending && refazerMutation.variables?.id === generation.id
                   }
                   onToggleStyleRef={() =>
                     styleRefMutation.mutate({

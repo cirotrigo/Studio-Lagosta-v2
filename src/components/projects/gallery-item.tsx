@@ -4,7 +4,26 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles, Columns2, Star, AlertTriangle } from 'lucide-react'
+import {
+  Download,
+  Trash2,
+  HardDrive,
+  Loader2,
+  Calendar,
+  Sparkles,
+  Columns2,
+  Star,
+  AlertTriangle,
+  RefreshCw,
+} from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { QUALIDADES_OFERECIDAS, ROTULO_QUALIDADE, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { cn } from '@/lib/utils'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
@@ -42,6 +61,14 @@ interface GalleryItemProps {
   onImprove?: () => void
   /** Abre o antes/depois — só faz sentido quando isImproved. */
   onCompare?: () => void
+  /**
+   * Gera a MESMA arte de novo, com o modelo escolhido. Só aparece em arte
+   * criada por IA — a conferência de texto nunca refaz sozinha, então este
+   * botão é o caminho de quem olhou e não gostou.
+   */
+  onRefazer?: (qualidade: QualidadeArte) => void
+  /** true enquanto a nova geração está sendo disparada. */
+  refazendo?: boolean
   index: number
   pswpWidth: number
   pswpHeight: number
@@ -94,6 +121,8 @@ export function GalleryItem({
   isStyleRef,
   onToggleStyleRef,
   avisoConferencia,
+  onRefazer,
+  refazendo,
   onToggleSelect,
   onDownload,
   onDelete,
@@ -529,6 +558,57 @@ export function GalleryItem({
           >
             <Sparkles className="h-3.5 w-3.5" />
           </Button>
+        )}
+
+        {/* Gerar de novo. Menu em vez de dois botões porque a barra já chega a
+            cinco e no celular o card tem ~120px — ver a nota no topo dela. Os
+            rótulos falam de tempo e custo, nunca de "qualidade baixa": os três
+            tiers desenharam o texto íntegro na medição de 12/08, então o que a
+            pessoa escolhe de fato é quanto quer esperar e gastar. */}
+        {onRefazer && status === 'COMPLETED' && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={refazendo}
+                className="h-8 min-w-0 flex-1 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                }}
+                title="Gerar esta arte de novo"
+              >
+                {refazendo ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-64"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+              }}
+            >
+              <DropdownMenuLabel className="font-normal text-xs text-muted-foreground">
+                Gerar de novo com…
+              </DropdownMenuLabel>
+              {QUALIDADES_OFERECIDAS.map((q) => (
+                <DropdownMenuItem
+                  key={q}
+                  className="flex-col items-start gap-0.5"
+                  onSelect={() => onRefazer(q)}
+                >
+                  <span className="text-sm font-medium">{ROTULO_QUALIDADE[q].titulo}</span>
+                  <span className="text-xs text-muted-foreground">{ROTULO_QUALIDADE[q].detalhe}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
 
         {isImproved && onCompare && status === 'COMPLETED' && (

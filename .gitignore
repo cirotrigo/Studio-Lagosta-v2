@@ -57,3 +57,8 @@ my-replicate-app/
 
 # Saída dos scripts de paridade A/B (PNGs de inspeção)
 scripts/.tmp-parity-out/
+
+# Saída do medidor de resolução (JPEGs pesados, nunca versionados)
+.tmp-medicao-*/
+.tmp-modelo-vs-modelo/
+.tmp-qualidade-arte*/

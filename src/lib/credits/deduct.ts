@@ -15,10 +15,43 @@ interface DeductParams {
   quantity?: number
   organizationId?: string
   projectId?: number
+  /** Ver `creditosADebitar`. */
+  creditsTotal?: number
 }
 
 interface CreditContextOptions {
   organizationId?: string
+  /** Ver `creditosADebitar`. */
+  creditsTotal?: number
+}
+
+/**
+ * Quantos créditos debitar.
+ *
+ * `quantity` é MULTIPLICADOR do custo da feature — a semântica original, certa
+ * para feature de preço fixo (3 downloads = 3 × o custo do download).
+ *
+ * `creditsTotal` é a saída para feature cujo preço vem de TABELA, como geração
+ * de imagem, onde quem manda são o modelo e a resolução
+ * (`calculateCreditsForModel`). Quando presente, ele É o total e o custo da
+ * feature não entra na conta.
+ *
+ * 🔴 Existe porque os três caminhos de imagem passavam o total em `quantity` e
+ * ele era multiplicado pelo custo da feature: `ai_image_generation` custa 5, e
+ * os 30 créditos do 4K viravam **150**. Medido na `UsageHistory` em
+ * 12/08/2026 — 12 linhas a 150 e 31 a 50. A trilha `arte` escapava por
+ * acidente (passa `quantity: 1` e o custo da feature já é 25), que é por que
+ * ninguém tinha percebido.
+ */
+async function creditosADebitar(
+  feature: FeatureKey,
+  quantity: number,
+  creditsTotal?: number,
+): Promise<number> {
+  if (typeof creditsTotal === 'number' && Number.isFinite(creditsTotal) && creditsTotal > 0) {
+    return Math.ceil(creditsTotal)
+  }
+  return (await getFeatureCost(feature)) * Math.max(1, quantity)
 }
 
 async function ensureOrganizationWithBalance(clerkOrgId: string) {
@@ -56,8 +89,9 @@ async function deductOrganizationCredits({
   quantity = 1,
   organizationId,
   projectId,
+  creditsTotal,
 }: DeductParams) {
-  const creditsToUse = (await getFeatureCost(feature)) * Math.max(1, quantity)
+  const creditsToUse = await creditosADebitar(feature, quantity, creditsTotal)
 
   return db.$transaction(async (tx) => {
     const organization = await tx.organization.findUnique({
@@ -181,8 +215,7 @@ export async function validateCreditsForFeature(
   try {
     if (options.organizationId) {
       const { balance } = await ensureOrganizationWithBalance(options.organizationId)
-      const costPerUse = await getFeatureCost(feature)
-      const needed = costPerUse * Math.max(1, quantity)
+      const needed = await creditosADebitar(feature, quantity, options.creditsTotal)
       const available = balance.credits
       if (available < needed) {
         throw new InsufficientCreditsError(needed, available)
@@ -192,8 +225,7 @@ export async function validateCreditsForFeature(
 
     const user = await getUserFromClerkId(clerkUserId)
     const balance = await db.creditBalance.findUnique({ where: { userId: user.id } })
-    const costPerUse = await getFeatureCost(feature)
-    const needed = costPerUse * Math.max(1, quantity)
+    const needed = await creditosADebitar(feature, quantity, options.creditsTotal)
     const available = balance?.creditsRemaining ?? (await getPlanCredits('free'))
     if (available < needed) {
       throw new InsufficientCreditsError(needed, available)
@@ -212,9 +244,10 @@ export async function deductCreditsForFeature({
   quantity = 1,
   organizationId,
   projectId,
+  creditsTotal,
 }: DeductParams): Promise<{ creditsRemaining: number }> {
   try {
-    console.log('[DEDUCT] Starting credit deduction for:', { clerkUserId, feature, quantity })
+    console.log('[DEDUCT] Starting credit deduction for:', { clerkUserId, feature, quantity, creditsTotal })
 
     if (organizationId) {
       return deductOrganizationCredits({
@@ -224,12 +257,13 @@ export async function deductCreditsForFeature({
         quantity,
         organizationId,
         projectId,
+        creditsTotal,
       })
     }
 
     const user = await getUserFromClerkId(clerkUserId)
     console.log('[DEDUCT] User found:', user.id)
-    const creditsToUse = (await getFeatureCost(feature)) * Math.max(1, quantity)
+    const creditsToUse = await creditosADebitar(feature, quantity, creditsTotal)
     console.log('[DEDUCT] Credits to use:', creditsToUse)
     const op = toPrismaOperationType(feature)
     console.log('[DEDUCT] Operation type:', op)

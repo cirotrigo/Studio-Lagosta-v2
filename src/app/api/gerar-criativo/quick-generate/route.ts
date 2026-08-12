@@ -199,7 +199,10 @@ export async function POST(request: Request) {
           prompt: imagePrompt,
           aspectRatio: format === 'SQUARE' ? '1:1' : format === 'FEED_PORTRAIT' ? '4:5' : '9:16',
           model: 'nano-banana-pro',
-          resolution: '1K',
+          // 2K pelo mesmo preço de 1K (15 créditos nas duas) e com 4× os
+          // pixels — e esta imagem vira CAMADA de uma página 1080x1920, onde
+          // o 1K (768x1376) seria esticado no render.
+          resolution: '2K',
           referenceImages: body.photoUrl ? [body.photoUrl] : undefined,
         })
 

@@ -66,11 +66,33 @@ const PROVIDER_PRICING = {
   'gemini-2.5-pro.input': 0.00000125,
   'gemini-2.5-pro.output': 0.0000050,
 
-  // Replicate (nano-banana-pro / Gemini 3.1 Flash Image)
-  'nano-banana-pro.1K': 0.06,
-  'nano-banana-pro.2K': 0.10,
-  'nano-banana-pro.4K': 0.20,
-  'nano-banana-2.default': 0.04,
+  /**
+   * Família Nano Banana, cobrada pelo GOOGLE — é o caminho normal hoje:
+   * `gemini-image-client.ts` chama o SDK oficial direto, e a trilha `imagem`
+   * do arte-ia nunca passou por outro provider.
+   *
+   * Preços oficiais levantados em 12/08/2026. Os valores anteriores (1K 0.06,
+   * 2K 0.10, 4K 0.20, nano-banana-2 0.04) estão preservados abaixo sob o
+   * prefixo `replicate.`: eles não eram um chute, eram a tabela do Replicate —
+   * o que envelheceu foi a arquitetura, não o número. Quem ainda cai no
+   * Replicate é só o fallback de `generate-image/route.ts`.
+   */
+  'nano-banana-pro.1K': 0.134,
+  'nano-banana-pro.2K': 0.134,
+  'nano-banana-pro.4K': 0.24,
+  'nano-banana-2.default': 0.101,
+  'nano-banana-2.1K': 0.101,
+  'nano-banana-2.2K': 0.101,
+  // O modelo não suporta 4K (`supports4K: false`): o parâmetro é descartado e
+  // a cobrança é a mesma — a chave existe para o painel não cair no fallback.
+  'nano-banana-2.4K': 0.101,
+
+  // Replicate — só o fallback de generate-image. Tabela de quando ele era o
+  // caminho principal; sem fonte nova desde então.
+  'replicate.nano-banana-pro.1K': 0.06,
+  'replicate.nano-banana-pro.2K': 0.10,
+  'replicate.nano-banana-pro.4K': 0.20,
+  'replicate.nano-banana-2.default': 0.04,
 } as const
 
 // 1 crédito ≈ $0.012 (usado quando não conseguimos derivar pelo model).
@@ -126,12 +148,33 @@ export function estimateUsdCost(row: UsageRow): CostEstimate {
     case 'AI_IMAGE_GENERATION': {
       const model = pickString(details, 'model')
       const resolution = pickString(details, 'resolution')
+      const preco = (chave: string) => (PROVIDER_PRICING as Record<string, number>)[chave]
+
+      /**
+       * A trilha `arte` do arte-ia cai AQUI, não em AI_CREATIVE_IMPROVEMENT:
+       * `ai_art_generation` e `ai_image_generation` mapeiam para o mesmo
+       * OperationType (`feature-config.ts:23,31`). Ela usa gpt-image, que é
+       * cobrado por tamanho e qualidade — a mesma chave da melhoria.
+       */
+      if (model?.startsWith('gpt-image')) {
+        const inputSize = pickString(details, 'inputSize')
+        const quality = pickString(details, 'quality') ?? 'high'
+        if (inputSize) {
+          const price = preco(`${model}.${quality}.${inputSize}`)
+          if (typeof price === 'number') return { usd: price, basis: 'precise' }
+        }
+        return fallback()
+      }
+
       if (model && resolution) {
-        const key = `${model}.${resolution}`
-        const price = (PROVIDER_PRICING as Record<string, number>)[key]
-        if (typeof price === 'number') return { usd: price, basis: 'precise' }
-        const dflt = (PROVIDER_PRICING as Record<string, number>)[`${model}.default`]
-        if (typeof dflt === 'number') return { usd: dflt, basis: 'precise' }
+        // O provider muda o preço do MESMO modelo, então ele entra na chave
+        // quando é conhecido. Ausente = Google direto, que é o caminho normal.
+        const viaReplicate = pickString(details, 'apiProvider') === 'replicate'
+        const prefixo = viaReplicate ? 'replicate.' : ''
+        for (const chave of [`${prefixo}${model}.${resolution}`, `${prefixo}${model}.default`]) {
+          const price = preco(chave)
+          if (typeof price === 'number') return { usd: price, basis: 'precise' }
+        }
       }
       return fallback()
     }

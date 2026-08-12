@@ -2035,7 +2035,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'gerar-imagem',
     description:
-      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nDemora 1–3 minutos e custa créditos. A resposta volta na hora com geracaoId; acompanhe com ver-melhoria (mesmo acompanhamento das melhorias). Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
+      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-melhoria (mesmo acompanhamento das melhorias). Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2087,9 +2087,15 @@ export const MCP_TOOLS: McpTool[] = [
         },
         modelo: {
           type: 'string',
-          description: 'Override do modelo (trilha imagem: "nano-banana-2" padrão ou "nano-banana-pro" para 4K).',
+          description:
+            'Override do modelo, trilha imagem. "nano-banana-2" (padrão, 10 créditos) ou "nano-banana-pro" (15 créditos em 2K, e o único que entrega 4K). Não troque sem motivo: o padrão resolve a maioria das cenas.',
         },
-        resolution: { type: 'string', enum: ['1K', '2K', '4K'], description: 'Trilha imagem. Padrão 2K.' },
+        resolution: {
+          type: 'string',
+          enum: ['2K', '4K'],
+          description:
+            'Trilha imagem, padrão 2K (~1536x2752 no 9:16). "4K" só existe no nano-banana-pro, entrega ~3072x5504 e custa 30 créditos — o TRIPLO do padrão. Peça 4K quando a foto for virar arte depois e precisar de margem para recorte; para uso direto, 2K basta. (1K foi removido: custava o mesmo que 2K e entregava um quarto dos pixels.)',
+        },
       },
       required: ['projectId', 'trilha', 'formato'],
       additionalProperties: false,
@@ -2143,10 +2149,13 @@ export const MCP_TOOLS: McpTool[] = [
         emAndamento: true,
         geracaoId: started.jobGenerationId,
         ...(started.reused ? { jaEstavaEmAndamento: true } : {}),
+        // O preço DESTA chamada. Sem ele, quem escolhe modelo e resolução
+        // escolhe às cegas — e 4K no pro custa o triplo do padrão.
+        creditosCobrados: started.creditosCobrados,
         tempoEstimado: trilha === 'arte' ? 'de 2 a 3 minutos' : 'de 1 a 2 minutos',
         mensagem: started.reused
-          ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
-          : `Geração iniciada. Acompanhe com ver-melhoria (melhoriaId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
+          ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-melhoria em vez de disparar outra. Nada foi cobrado nesta chamada.'
+          : `Geração iniciada (${started.creditosCobrados} créditos). Acompanhe com ver-melhoria (melhoriaId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
       }
     },
   },

@@ -327,11 +327,21 @@ export async function runImageEdit({
   prompt,
   size,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  quality = 'high',
 }: {
   images: RawEditImage[]
   prompt: string
   size: string
   timeoutMs?: number
+  /**
+   * Tier de qualidade da OpenAI. **O default é `high` e a produção não passa
+   * este parâmetro** — ele existe para medir: `medium` custa US$ 0,045 contra
+   * US$ 0,165 do `high` (−73%), e a pergunta em aberto é se o lettering
+   * sobrevive, já que texto pequeno é o primeiro a borrar. Quem mede é
+   * `scripts/medir-qualidade-trilha-arte.ts`, contra a MESMA verificação de
+   * texto por visão que a produção usa.
+   */
+  quality?: 'low' | 'medium' | 'high'
 }): Promise<Buffer> {
   if (images.length === 0) {
     throw new Error('runImageEdit exige pelo menos uma imagem')
@@ -352,14 +362,14 @@ export async function runImageEdit({
         image: files.length === 1 ? files[0] : files,
         prompt,
         size: size as never,
-        quality: 'high',
+        quality,
         n: 1,
       },
       { signal: controller.signal },
     )
     const elapsed = Date.now() - startedAt
     console.log(
-      `[runImageEdit] ${IMAGE_MODEL} ${size} concluído em ${(elapsed / 1000).toFixed(1)}s (${files.length} imagem/ns)`,
+      `[runImageEdit] ${IMAGE_MODEL} ${size} q=${quality} concluído em ${(elapsed / 1000).toFixed(1)}s (${files.length} imagem/ns)`,
     )
     const b64 = response.data?.[0]?.b64_json
     if (!b64) throw new Error('OpenAI não retornou dados de imagem')

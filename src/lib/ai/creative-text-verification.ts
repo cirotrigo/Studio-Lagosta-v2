@@ -28,6 +28,54 @@ export interface TextCheckResult {
   missing: string[]
   /** Transcrição crua devolvida pelo modelo de visão, para auditoria. */
   extracted: string[]
+  /**
+   * Números que aparecem na arte e NÃO estão em nenhum texto esperado.
+   *
+   * 🔴 Existe porque `passed` respondia a pergunta errada. Ele confere se o
+   * texto esperado ESTÁ presente e nunca teve regra contra texto A MAIS — e o
+   * que o modelo acrescenta por conta própria costuma ser DADO: medido em
+   * 12/08/2026, contagem de avaliação do Google fabricada em 2 de 3 peças no
+   * tier `low` e 1 de 3 no `medium` ("5,0 de 1,2 mil avaliações"), todas com
+   * veredito verde. É afirmação factual e verificável sobre o negócio do
+   * cliente, a mesma classe de "nunca invente preço, horário, endereço ou
+   * promoção".
+   *
+   * ⚠️ É AVISO, nunca reprovação — não entra em `passed`. Número real pode
+   * estar na cena (rótulo de garrafa, placa no fundo, número da casa), e
+   * reprovar por isso ensinaria a ignorar o alerta, que é o defeito que
+   * derrubou a revisão visual em 10/08.
+   */
+  numerosNaoEsperados: string[]
+}
+
+/** Sequências de dígitos de um texto, sem separador — "R$ 1.384,00" → "138400". */
+function digitosDe(texto: string): string[] {
+  return (texto.match(/\d[\d.,\s]*/g) ?? [])
+    .map((t) => t.replace(/\D/g, ''))
+    .filter((d) => d.length > 0)
+}
+
+/**
+ * Números da transcrição que não têm lastro na copy esperada.
+ *
+ * A comparação é por CONTINÊNCIA nos dois sentidos: "1984" casa com "desde
+ * 1984", e "5" casa com "5,0". Ficar mais rígido transformaria formatação
+ * ("R$ 9,90" vs "R$9,90") em alarme falso — o mesmo defeito que já derrubou a
+ * confiança no comparador de texto uma vez.
+ */
+export function numerosSemLastro(extracted: string[], expectedTexts: string[]): string[] {
+  const esperados = expectedTexts.flatMap(digitosDe)
+  const vistos = new Set<string>()
+  const fora: string[] = []
+  for (const bloco of extracted) {
+    for (const d of digitosDe(bloco)) {
+      if (vistos.has(d)) continue
+      vistos.add(d)
+      const temLastro = esperados.some((e) => e.includes(d) || d.includes(e))
+      if (!temLastro) fora.push(d)
+    }
+  }
+  return fora
 }
 
 /**
@@ -166,5 +214,11 @@ export async function verifyImageTexts(
     .map((t) => normalizeForComparison(t))
     .filter((needle) => needle.length > 0 && !haystack.includes(needle))
 
-  return { passed: missing.length === 0, missing, extracted }
+  return {
+    passed: missing.length === 0,
+    missing,
+    extracted,
+    // Fora do `passed` de propósito — ver a nota em TextCheckResult.
+    numerosNaoEsperados: numerosSemLastro(extracted, expectedTexts),
+  }
 }

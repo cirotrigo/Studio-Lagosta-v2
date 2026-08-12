@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { validateCreditsForFeature, deductCreditsForFeature } from '@/lib/credits/deduct'
@@ -32,6 +33,31 @@ export interface GeneratedAiImageRecord {
   provider: string
 }
 
+/**
+ * Dimensão REAL do arquivo gerado, medida no buffer.
+ *
+ * Antes disto o registro vinha de `calculateDimensions`, uma tabela fixa por
+ * proporção que não olhava nem a resolução pedida nem o arquivo — 788 linhas
+ * de `AIGeneratedImage` (out/2025 a ago/2026) gravaram 576x1024 em 9:16 quando
+ * o 1K real é 768x1376 e o 2K é 1536x2752. Não era cosmético: `width`/`height`
+ * alimentam o `data-pswp-*` do lightbox (que abria a imagem menor do que ela é,
+ * a mesma armadilha já documentada na galeria) e o `calculateCanvasPlacement`,
+ * que posiciona e escala a imagem ao cair no canvas do editor.
+ */
+async function medirDimensoes(
+  buffer: Buffer,
+  aspectRatio: string,
+): Promise<{ width: number; height: number }> {
+  try {
+    const meta = await sharp(buffer).metadata()
+    if (meta.width && meta.height) return { width: meta.width, height: meta.height }
+  } catch {
+    // Medição não pode derrubar uma geração já paga — cai na tabela.
+  }
+  return calculateDimensions(aspectRatio)
+}
+
+/** Fallback da medição: só entra quando o sharp não consegue ler o buffer. */
 function calculateDimensions(aspectRatio: string): { width: number; height: number } {
   const ratios: Record<string, { width: number; height: number }> = {
     '1:1': { width: 1024, height: 1024 },
@@ -89,7 +115,15 @@ export async function generateStoredAiImage(
   params: GenerateStoredAiImageParams,
 ): Promise<GeneratedAiImageRecord> {
   const model = params.model ?? 'nano-banana-pro'
-  const resolution = params.resolution ?? '1K'
+  /**
+   * Padrão 2K, não 1K: no `nano-banana-pro` as duas custam os MESMOS 15
+   * créditos (`resolution1K`/`resolution2K` em image-models-config) e o
+   * `nano-banana-2` cobra flat — então 1K nunca foi a opção barata, só a
+   * opção com um quarto dos pixels (768x1376 contra 1536x2752 no 9:16,
+   * medido em 12/08/2026). Mesma razão pela qual `startArtGeneration` recusa
+   * 1K na trilha `imagem`.
+   */
+  const resolution = params.resolution ?? '2K'
   const creditsRequired = calculateCreditsForModel(model, resolution)
   const modelConfig = AI_IMAGE_MODELS[model]
 
@@ -97,8 +131,11 @@ export async function generateStoredAiImage(
     throw new Error('Servico de geracao de imagens via Gemini temporariamente indisponivel.')
   }
 
-  await validateCreditsForFeature(params.clerkUserId, 'ai_image_generation', creditsRequired, {
+  // `creditsRequired` é o TOTAL vindo da tabela do modelo — vai em
+  // `creditsTotal`, não em `quantity` (ver `creditosADebitar`).
+  await validateCreditsForFeature(params.clerkUserId, 'ai_image_generation', 1, {
     organizationId: params.orgId ?? undefined,
+    creditsTotal: creditsRequired,
   })
 
   const referenceSources = (params.referenceImages ?? []).slice(0, 14)
@@ -146,7 +183,7 @@ export async function generateStoredAiImage(
     console.error('[generateStoredAiImage] Drive upload failed:', error)
   }
 
-  const dimensions = calculateDimensions(params.aspectRatio)
+  const dimensions = await medirDimensoes(generated.imageBuffer, params.aspectRatio)
   const aiImage = await db.aIGeneratedImage.create({
     data: {
       projectId: params.projectId,
@@ -167,7 +204,7 @@ export async function generateStoredAiImage(
   await deductCreditsForFeature({
     clerkUserId: params.clerkUserId,
     feature: 'ai_image_generation',
-    quantity: creditsRequired,
+    creditsTotal: creditsRequired,
     details: {
       mode: 'generate',
       model,
