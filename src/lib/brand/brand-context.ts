@@ -40,6 +40,11 @@ export interface BrandContext {
     subtitle: string | null
     body: string | null
   }
+  /**
+   * Curadoria da prancha tipográfica (type-specimen): quando não-vazia, a
+   * prancha mostra exatamente estas famílias, nesta ordem.
+   */
+  specimenFontFamilies: string[]
   colors: Array<{ name: string; hexCode: string }>
   logoUrl: string | null
   /**
@@ -84,6 +89,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       titleFontFamily: true,
       subtitleFontFamily: true,
       bodyFontFamily: true,
+      specimenFontFamilies: true,
       brandDNA: true,
       BrandColor: {
         select: { name: true, hexCode: true },
@@ -124,6 +130,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       subtitle: nonEmpty(project.subtitleFontFamily),
       body: nonEmpty(project.bodyFontFamily),
     },
+    specimenFontFamilies: project.specimenFontFamilies ?? [],
     colors: project.BrandColor,
     logoUrl: nonEmpty(project.logoUrl) ?? nonEmpty(project.Logo[0]?.fileUrl),
     brandManualUrl: nonEmpty(project.brandManualUrl),

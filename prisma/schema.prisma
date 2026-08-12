@@ -530,6 +530,10 @@ model Project {
   /// Autocorreção geométrica de texto pré-render (text-autofix). Desligar
   /// aqui vale para todas as artes do projeto.
   textAutofixEnabled          Boolean                 @default(true)
+  /// Curadoria da prancha tipográfica (type-specimen): quando preenchido, a
+  /// prancha mostra exatamente estas famílias, nesta ordem, em vez da
+  /// heurística — CustomFont existir não significa que a marca a usa.
+  specimenFontFamilies        String[]                @default([])
   chatUploads                 ChatUpload[]
   brandDNA                    BrandDNA?
   anchorImages                ProjectAnchorImage[]

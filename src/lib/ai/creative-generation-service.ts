@@ -147,16 +147,16 @@ export async function startArtGeneration(
   if (byRole('style').length > MAX_STYLE_REFS) {
     throw new CreativeError('REFS_DEMAIS', `No máximo ${MAX_STYLE_REFS} referências de estilo.`, 400)
   }
-  // Papel precisa ser um dos quatro do usuário. brand-card e logo são
-  // injetados pelo SISTEMA (carta renderizada + Project.logoUrl) — aceitar de
-  // fora abriria porta para logo alheia; papel desconhecido quebraria a
-  // ordenação no runner.
+  // Papel precisa ser um dos quatro do usuário. brand-card, type-specimen e
+  // logo são injetados pelo SISTEMA (carta renderizada + prancha tipográfica +
+  // Project.logoUrl) — aceitar de fora abriria porta para logo alheia; papel
+  // desconhecido quebraria a ordenação no runner.
   const ALLOWED_ROLES = new Set(['subject', 'anchor-ambient', 'anchor-dish', 'style'])
   const papelInvalido = referencias.find((r) => !ALLOWED_ROLES.has(r.role as string))
   if (papelInvalido) {
     throw new CreativeError(
       'REF_ROLE_INVALIDO',
-      `Papel de referência inválido: "${papelInvalido.role}". Use subject, anchor-ambient, anchor-dish ou style (brand-card e logo são adicionados pelo sistema).`,
+      `Papel de referência inválido: "${papelInvalido.role}". Use subject, anchor-ambient, anchor-dish ou style (brand-card, type-specimen e logo são adicionados pelo sistema).`,
       400,
     )
   }

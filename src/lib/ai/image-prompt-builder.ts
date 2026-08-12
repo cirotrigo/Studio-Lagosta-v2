@@ -26,7 +26,8 @@ export type GenerationTrack = 'imagem' | 'arte'
 
 /**
  * Papel de cada imagem de referência. A ordem de envio é SEMPRE
- * subject → âncoras → style → brand-card → logo (ver `orderReferences`).
+ * subject → âncoras → style → brand-card → type-specimen → logo
+ * (ver `orderReferences`).
  */
 export type ArtReferenceRole =
   | 'subject' // a foto do prato/produto — é a cena final da arte
@@ -35,6 +36,7 @@ export type ArtReferenceRole =
   | 'style' // referência de estilo/tonalidade (arte já aprovada, grid do feed)
   | 'series-guide' // slide-guia do carrossel: define o look de toda a série
   | 'brand-card' // carta de identidade renderizada (logo + paleta + fontes)
+  | 'type-specimen' // prancha com o alfabeto completo das fontes reais (type-specimen.ts)
   | 'logo' // logo em alta, para a trilha `arte`
 
 /** Tetos por papel — "várias refs competindo causam deriva visual". */
@@ -123,7 +125,7 @@ export function validateImagePrompt(prompt: string): PromptValidationResult {
   return { ok: issues.length === 0, issues }
 }
 
-/** Ordena as referências no contrato fixo: subject → âncoras → style → brand-card → logo. */
+/** Ordena as referências no contrato fixo: subject → âncoras → style → brand-card → type-specimen → logo. */
 export function orderReferences<T extends ArtReferenceDescriptor>(refs: T[]): T[] {
   const rank: Record<ArtReferenceRole, number> = {
     subject: 0,
@@ -132,7 +134,8 @@ export function orderReferences<T extends ArtReferenceDescriptor>(refs: T[]): T[
     style: 3,
     'series-guide': 4,
     'brand-card': 5,
-    logo: 6,
+    'type-specimen': 6,
+    logo: 7,
   }
   return [...refs].sort((a, b) => rank[a.role] - rank[b.role])
 }
@@ -181,6 +184,11 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
       case 'brand-card':
         lines.push(
           `${idx} is the brand identity card: it shows the official logo, color palette and typography samples. It is the ONLY source for fonts and graphic-layer colors. The logo in it is there so you RECOGNIZE the brand — never redraw or reproduce it in the piece.`,
+        )
+        break
+      case 'type-specimen':
+        lines.push(
+          `${idx} is the official TYPE SPECIMEN sheet${ref.label ? ` (${ref.label})` : ''}: the complete alphabet — uppercase, lowercase, accents and numerals — of each official font of this brand, rendered from the real font files. When lettering ANY text in the piece, shape every glyph EXACTLY as it appears here: same skeleton, same contrast, same terminals. Together with the identity card, it is the ONLY source of letterforms. Never copy this sheet's layout, background, colors or sample strings into the piece.`,
         )
         break
       case 'logo':

@@ -22,6 +22,7 @@ import { runImageEdit, type RawEditImage } from '@/lib/ai/openai-image-client'
 import { generateImageWithGemini } from '@/lib/ai/gemini-image-client'
 import { loadBrandContext } from '@/lib/brand/brand-context'
 import { getBrandReferenceCard } from '@/lib/ai/brand-reference-card'
+import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
 import { verifyImageTexts } from '@/lib/ai/creative-text-verification'
 import {
   buildArtePrompt,
@@ -298,6 +299,22 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           // O rótulo entra no preâmbulo: o manual do designer é um documento
           // de marca de verdade, e dizer isso muda o peso que o modelo dá.
           label: card.origem === 'manual-designer' ? 'manual oficial de identidade' : undefined,
+        })
+      }
+      // A prancha tipográfica é imagem PRÓPRIA, não faixa do card: empilhada
+      // no card ela seria reduzida junto com tudo e os glifos virariam borrão
+      // — e o card/manual mostra ~12 glifos por fonte, quase tudo minúscula,
+      // que é a raiz das headlines com serifa inventada (Quintal, 11/08/2026).
+      const prancha = await renderTypeSpecimen(brand).catch((error) => {
+        console.warn('[arte-ia.bg] prancha tipográfica falhou — seguindo sem ela:', error)
+        return null
+      })
+      if (prancha) {
+        loadedRefs.push({
+          role: 'type-specimen',
+          buffer: prancha,
+          mimeType: 'image/png',
+          label: 'alfabetos oficiais da marca',
         })
       }
       if (brand?.logoUrl) {
