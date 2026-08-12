@@ -1162,6 +1162,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                     // Número sem lastro aparece com o texto APROVADO — se não
                     // entrasse aqui, o caso mais comum ficaria invisível.
                     getStringField(generation.fieldValues, 'numerosAlerta') ??
+                    // Trilha imagem: o prato pode ter mudado.
+                    getStringField(generation.fieldValues, 'cenaAlerta') ??
                     (getBooleanField(generation.fieldValues, 'qaEntregueComRessalva')
                       ? getStringField(generation.fieldValues, 'qaMotivo')
                       : undefined)

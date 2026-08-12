@@ -4,8 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   // Migrations NÃO podem passar pelo pooler do Neon. O `prisma migrate` usa um
   // advisory lock de sessão, e o PgBouncer (modo transação) deixa esse lock
   // preso num backend reaproveitado — a migration seguinte pega outra conexão,
@@ -117,7 +117,9 @@ model Generation {
    * nasce no primeiro slide sem uma entidade "carrossel" para apontar.
    */
   carouselGroupId      String?
-  /** Posição do slide (1 = capa). Null em arte avulsa. */
+  /**
+   * Posição do slide (1 = capa). Null em arte avulsa.
+   */
   slideOrder           Int?
   /**
    * Marcada como REFERÊNCIA DE ESTILO da marca ("gostei desta"). Null = não é.
@@ -167,38 +169,46 @@ model Generation {
 
 /**
  * Fila durável da geração de arte por IA (F0.3).
- *
  * A execução deixou de morar no `after()` da invocação que pediu a arte: uma
  * arte chega a ~290s e o teto da rota é 300s, então uma leva de 5-7 peças (ou
  * um batch JSON-RPC do MCP) estourava o teto e deixava a Generation em
  * PROCESSING para sempre, sem ninguém para recuperá-la.
- *
  * Tabela separada da Generation de propósito: aqui mora COMO o trabalho é
  * executado (payload do runner, tentativas, lease), lá mora O QUE o usuário vê.
  * Sem FK, pelo mesmo precedente de `sourceGenerationId` e `campaignId` — apagar
  * a arte não pode explodir por causa de uma linha de fila.
  */
 model GenerationJob {
-  id           String              @id @default(cuid())
-  /** Generation PROCESSING que este job produz. Único = enfileirar é idempotente. */
-  generationId String              @unique
-  kind         GenerationJobKind
-  status       GenerationJobStatus @default(PENDING)
-  /** Argumentos do runner, serializados. É o que permite rodar em OUTRA invocação. */
-  payload      Json
-  projectId    Int
-  attempts     Int                 @default(0)
-  /** Uma tentativa = uma chamada PAGA do modelo. 2 é o teto que os dois runners já prometiam. */
-  maxAttempts  Int                 @default(2)
-  /** Portão da query de quem varre — nunca aplicado dentro da reserva. */
-  nextAttemptAt DateTime           @default(now())
-  /** Fim do arrendamento: RUNNING vencido é invocação que morreu. */
+  id             String              @id @default(cuid())
+  /**
+   * Generation PROCESSING que este job produz. Único = enfileirar é idempotente.
+   */
+  generationId   String              @unique
+  kind           GenerationJobKind
+  status         GenerationJobStatus @default(PENDING)
+  /**
+   * Argumentos do runner, serializados. É o que permite rodar em OUTRA invocação.
+   */
+  payload        Json
+  projectId      Int
+  attempts       Int                 @default(0)
+  /**
+   * Uma tentativa = uma chamada PAGA do modelo. 2 é o teto que os dois runners já prometiam.
+   */
+  maxAttempts    Int                 @default(2)
+  /**
+   * Portão da query de quem varre — nunca aplicado dentro da reserva.
+   */
+  nextAttemptAt  DateTime            @default(now())
+  /**
+   * Fim do arrendamento: RUNNING vencido é invocação que morreu.
+   */
   leaseExpiresAt DateTime?
-  lastError    String?
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-  startedAt    DateTime?
-  finishedAt   DateTime?
+  lastError      String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  startedAt      DateTime?
+  finishedAt     DateTime?
 
   @@index([status, nextAttemptAt])
   @@index([status, leaseExpiresAt])
@@ -208,37 +218,61 @@ model GenerationJob {
 
 /**
  * Sinal de uso (F1) — a unidade do aprendizado por uso.
- *
  * Uma linha = um fato: "isto foi proposto, aquilo foi escolhido". As duas
  * metades convivem na MESMA linha e qualquer uma pode estar vazia:
- *
- *  - `sugeridoEm` preenchido e `desfecho` nulo → proposta em aberto;
- *  - `sugeridoEm` NULO e `desfecho: 'escolha-propria'` → **escolha absoluta**,
- *    a pessoa decidiu sem que nada tivesse sido proposto. Nas primeiras
- *    semanas, antes de a dica de copy existir, é o único corpus que haverá.
- *
+ * - `sugeridoEm` preenchido e `desfecho` nulo → proposta em aberto;
+ * - `sugeridoEm` NULO e `desfecho: 'escolha-propria'` → **escolha absoluta**,
+ * a pessoa decidiu sem que nada tivesse sido proposto. Nas primeiras
+ * semanas, antes de a dica de copy existir, é o único corpus que haverá.
  * UMA tabela, e não duas (sugestão + desfecho), porque:
- *  1. a decisão SEM sugestão é o caso comum no começo — com duas tabelas ela
- *     vira linha de desfecho com FK nula, isto é, o caso especial torto que o
- *     desenho tinha de evitar; aqui é uma linha inteira com a metade de cima
- *     vazia;
- *  2. a relação é 1:1 por construção — uma leva de 5 slots são 5 propostas,
- *     não uma com 5 desfechos;
- *  3. o KPI da F4 (aceitas ÷ emitidas) vira agregação de tabela única, sem
- *     LEFT JOIN e sem o cuidado com o lado nulo;
- *  4. a idempotência do desfecho é compare-and-set na própria linha — com duas
- *     tabelas seria um UNIQUE em `sugestaoId`, a mesma regra com mais peças.
- *
+ * 1. a decisão SEM sugestão é o caso comum no começo — com duas tabelas ela
+ * vira linha de desfecho com FK nula, isto é, o caso especial torto que o
+ * desenho tinha de evitar; aqui é uma linha inteira com a metade de cima
+ * vazia;
+ * 2. a relação é 1:1 por construção — uma leva de 5 slots são 5 propostas,
+ * não uma com 5 desfechos;
+ * 3. o KPI da F4 (aceitas ÷ emitidas) vira agregação de tabela única, sem
+ * LEFT JOIN e sem o cuidado com o lado nulo;
+ * 4. a idempotência do desfecho é compare-and-set na própria linha — com duas
+ * tabelas seria um UNIQUE em `sugestaoId`, a mesma regra com mais peças.
  * O precedente do `GenerationJob` (tabela separada) NÃO se aplica: lá o que se
  * separou foi COMO o trabalho roda (payload, tentativas, lease) de O QUE o
  * usuário vê — ciclos de vida e frequências de escrita diferentes. Aqui as
  * duas metades são o mesmo fato e são sempre lidas juntas.
- *
  * Nenhum vínculo tem FOREIGN KEY, pelo precedente de
  * `Generation.sourceGenerationId` e `SocialPost.campaignId`: apagar o post, a
  * arte, a página ou a campanha não pode arrastar (nem travar) o registro do
  * que aconteceu.
  */
+/// Uso de uma foto do acervo — o que faz a rotação do DNA ("não repetir a mesma
+/// foto na semana") deixar de ser decoração.
+///
+/// Vive no BANCO e não no `usageHistory` do `_image-catalog.json` por duas
+/// razões. A primeira é corrida: o catálogo é um JSON único no Drive, e duas
+/// gerações simultâneas fariam read-modify-write uma por cima da outra. A
+/// segunda é durabilidade — regerar o catálogo zera `usageHistory` (ver
+/// `reconciliar-catalogo.ts`), então o histórico morria a cada recatalogação.
+/// O catálogo segue sendo lido como legado e as duas fontes são fundidas na
+/// ordenação de `buscarNoAcervo`.
+model PhotoUsage {
+  id           String   @id @default(cuid())
+  projectId    Int
+  /// Id do arquivo no Drive — a mesma chave que `buscar-fotos` devolve.
+  driveFileId  String
+  usedAt       DateTime @default(now())
+  /// 'arte-ia' | 'arte-rapida' | 'externo' — de onde veio o uso. TEXT pelo
+  /// mesmo motivo de `LearningSignal.tipo`: o vocabulário ainda se move.
+  origem       String
+  /// Tema/assunto da peça, quando conhecido. Ajuda a explicar a repetição.
+  tema         String?
+  /// Vínculo FROUXO, sem FK: apagar a arte não pode apagar o registro de que a
+  /// foto foi usada — mesmo precedente de `Generation.sourceGenerationId`.
+  generationId String?
+
+  @@index([projectId, driveFileId])
+  @@index([projectId, usedAt])
+}
+
 model LearningSignal {
   id           String    @id @default(cuid())
   projectId    Int
@@ -299,17 +333,14 @@ enum GenerationJobStatus {
 
 /**
  * Plano de conteúdo (F3) — a LEVA que o chat e a bancada enxergam juntos.
- *
  * A fila da bancada é `localStorage` (`src/stores/bancada-store.ts`, chave
  * `lagosta.bancada`) e nenhuma rota escreve nela: o chat não consegue montar
  * uma semana que a bancada veja, nem o contrário. Esta entidade é o chão comum
  * — a bancada passa a hidratar do servidor e o localStorage vira cache.
- *
  * O que o plano NÃO faz: gerar arte e gastar crédito. Ele registra o que se
  * PRETENDE fazer. Quem executa (e cobra) é `executar-plano`, com gate de
  * confirmação — o contrato da casa é que sugestão nunca agenda nem gasta
  * sozinha.
- *
  * `status` e `origem` são TEXT e não enum do Postgres, pelo precedente da F1
  * (`LearningSignal.tipo`) e por uma razão operacional: `migrate deploy` roda
  * cada migration numa transação, e `ALTER TYPE … ADD VALUE` não pode ser usado
@@ -350,17 +381,15 @@ model PlanoDeConteudo {
 
 /**
  * Um post PRETENDIDO dentro de um plano (F3).
- *
  * 🔴 A regra de FK aqui tem duas metades, e a distinção importa:
- *
- *  - `planoId` **TEM** FK, com `onDelete: Cascade`. É parentesco estrito: item
- *    sem plano não significa nada. A regra "sem FK" da casa é sobre vínculo
- *    FROUXO com entidade apagável, não sobre o dono da linha.
- *  - `postId`, `generationId`, `pageId`, `campaignId`, `sugestaoId` e
- *    `sourcePageId` **não têm FK nenhuma**, pelo precedente de
- *    `Generation.sourceGenerationId` e `SocialPost.campaignId`: apagar o post,
- *    a arte, a página ou a campanha não pode arrastar nem travar o registro do
- *    que se pretendia fazer.
+ * - `planoId` **TEM** FK, com `onDelete: Cascade`. É parentesco estrito: item
+ * sem plano não significa nada. A regra "sem FK" da casa é sobre vínculo
+ * FROUXO com entidade apagável, não sobre o dono da linha.
+ * - `postId`, `generationId`, `pageId`, `campaignId`, `sugestaoId` e
+ * `sourcePageId` **não têm FK nenhuma**, pelo precedente de
+ * `Generation.sourceGenerationId` e `SocialPost.campaignId`: apagar o post,
+ * a arte, a página ou a campanha não pode arrastar nem travar o registro do
+ * que se pretendia fazer.
  */
 model ItemDePlano {
   id        String @id @default(cuid())
@@ -592,27 +621,27 @@ model Project {
 /// acontece com Json sem dono — 4 features fazendo merge manual e metade das
 /// chaves nunca lida.
 model BrandDNA {
-  id             Int      @id @default(autoincrement())
-  projectId      Int      @unique
+  id                Int      @id @default(autoincrement())
+  projectId         Int      @unique
   /// Como a marca fala (copy, chat) — não entra no prompt de imagem
-  toneOfVoice    String?
+  toneOfVoice       String?
   /// O que nunca fazer/dizer — entra em copy E arte
-  contentRules   String?
+  contentRules      String?
   /// Layout, hierarquia, respiro — complementa as FontCombinations
-  composition    String?
+  composition       String?
   /// Estética geral; tem prioridade sobre o legado Project.brandStyleDescription
-  visualStyle    String?
+  visualStyle       String?
   /// Luz, enquadramento, tratamento fotográfico
-  photoDirection String?
+  photoDirection    String?
   /// Crivo de aprovação: perguntas binárias, UMA POR LINHA, na redação do DNA
   /// do cliente. É semântica de REVISÃO (checklist antes de agendar), não de
   /// geração — por isso mora fora de `contentRules`, que é injetado verbatim
   /// no prompt de imagem. A polaridade é MISTA (há pergunta que reprova no
   /// "sim" e pergunta que reprova no "não"): quem lê é gente, não o modelo.
   approvalChecklist String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  Project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 /// Anchor sheet do projeto: fotos-âncora canônicas por tipo de cena, usadas
@@ -873,28 +902,28 @@ model SubscriptionEvent {
 }
 
 model Template {
-  id             Int          @id @default(autoincrement())
-  name           String
-  type           TemplateType
-  dimensions     String
-  designData     Json
-  dynamicFields  Json         @default("[]")
-  thumbnailUrl   String?
-  projectId      Int
-  createdBy      String
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-  category       String?
-  isPremium      Boolean      @default(false)
-  isPublic       Boolean      @default(false)
-  tags           String[]     @default([])
-  localId        String? // ID from desktop-app for sync tracking
+  id                 Int          @id @default(autoincrement())
+  name               String
+  type               TemplateType
+  dimensions         String
+  designData         Json
+  dynamicFields      Json         @default("[]")
+  thumbnailUrl       String?
+  projectId          Int
+  createdBy          String
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  category           String?
+  isPremium          Boolean      @default(false)
+  isPublic           Boolean      @default(false)
+  tags               String[]     @default([])
+  localId            String? // ID from desktop-app for sync tracking
   /// Autocorreção geométrica de texto para artes geradas DESTE modelo.
-  textAutofixEnabled Boolean  @default(true)
-  Generation     Generation[]
-  Page           Page[]
-  scheduledPosts SocialPost[] @relation("ScheduledPosts")
-  Project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  textAutofixEnabled Boolean      @default(true)
+  Generation         Generation[]
+  Page               Page[]
+  scheduledPosts     SocialPost[] @relation("ScheduledPosts")
+  Project            Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([createdBy])
   @@index([projectId])

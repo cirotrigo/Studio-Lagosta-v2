@@ -9,6 +9,7 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
+import { lerUsosDeFoto, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, diaBRT, resumoEstavel } from '@/lib/aprendizado/chaves'
@@ -61,11 +62,21 @@ async function pastaDeImagens(projectId: number): Promise<string> {
   return folderId
 }
 
-/** Data do último uso, para rodízio: fotos menos usadas aparecem primeiro. */
-function ultimoUso(img: ImagemCatalogo): string {
+/**
+ * Data do último uso registrada NO CATÁLOGO (legado).
+ *
+ * Ela sozinha não serve mais para ordenar: nenhum caminho do Studio escrevia
+ * `usageHistory`, então isto devolvia `'2000-01-01'` para toda foto e o `sort`
+ * ordenava um campo constante. Hoje o valor que manda vem de `mesclarUsos`,
+ * que funde isto com o registro do banco (`PhotoUsage`).
+ */
+function ultimoUsoDoCatalogo(img: ImagemCatalogo): string | undefined {
   const h = img.usageHistory
-  return h?.length ? h[h.length - 1].date : '2000-01-01'
+  return h?.length ? h[h.length - 1].date : undefined
 }
+
+/** O que ordena o rodízio: nunca usada primeiro, depois a mais antiga. */
+const NUNCA_USADA = '0000-01-01'
 
 export interface BuscarAcervoInput {
   projectId: number
@@ -170,7 +181,15 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     imagens = imagens.filter((i) => i.tags?.some((t) => alvo.includes(normalizar(t))))
   }
 
-  imagens.sort((a, b) => ultimoUso(a).localeCompare(ultimoUso(b)))
+  /**
+   * Rodízio de verdade: o uso vem do banco (`PhotoUsage`) fundido com o
+   * `usageHistory` legado do catálogo. Antes disto o critério era constante e
+   * a ordem saía como estava no arquivo.
+   */
+  const usos = await lerUsosDeFoto(input.projectId)
+  const chaveDeUso = (i: ImagemCatalogo) =>
+    mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i)) ?? NUNCA_USADA
+  imagens.sort((a, b) => chaveDeUso(a).localeCompare(chaveDeUso(b)))
 
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
   // não tem como saber que existe "01_cortes/picanha-bovina" para pedir.
@@ -182,7 +201,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * comparar com a que a pessoa de fato escolheu — sem isso o aprendizado só
    * enxerga o que foi aceito.
    */
-  const sugestaoId = await registrarProposta(input, imagens)
+  const sugestaoId = await registrarProposta(input, imagens, usos)
 
   return {
     total: imagens.length,
@@ -201,7 +220,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
       tags: i.tags ?? [],
       bestFor: i.bestFor ?? [],
       quality: i.quality ?? null,
-      ultimoUso: i.usageHistory?.length ? ultimoUso(i) : 'nunca',
+      ultimoUso: mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i))?.slice(0, 10) ?? 'nunca',
+      vezesUsada: usos.get(i.driveFileId)?.vezes ?? 0,
     })),
   }
 }
@@ -221,6 +241,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
 async function registrarProposta(
   input: BuscarAcervoInput,
   ranqueadas: ImagemCatalogo[],
+  /** O mesmo mapa que ordenou — o sinal precisa gravar o uso REAL, não o do catálogo. */
+  usos: Map<string, UsoDaFoto>,
 ): Promise<string | null> {
   // Busca sem resultado não propõe nada — e contá-la como proposta rejeitada
   // culparia o ranqueamento por um acervo que não tem a foto.
@@ -255,7 +277,7 @@ async function registrarProposta(
         driveFileId: i.driveFileId,
         fileName: i.fileName,
         folder: i.folder,
-        ultimoUso: i.usageHistory?.length ? ultimoUso(i) : null,
+        ultimoUso: mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i)),
       })),
     },
   })

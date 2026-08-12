@@ -36,6 +36,7 @@ import {
 import { fecharSugestaoDeModelo, registrarSugestaoDeModelo } from '@/lib/aprendizado/sinal-de-modelo'
 import { fecharSugestaoDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
+import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { vigenteEm } from '@/lib/knowledge/vigencia'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
@@ -662,6 +663,16 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    * decidiu" sobre a foto que virou arte. Ver `sinal-de-foto.ts`.
    */
   if (driveImageId) {
+    // Rodízio do acervo (B5): esta foto acaba de virar arte.
+    await registrarUsoDeFoto({
+      projectId,
+      driveFileIds: [driveImageId],
+      origem: 'arte-rapida',
+      // `name` é o rótulo da peça — o mais próximo de "assunto" que este
+      // caminho tem; `slotValues` é chaveado por camada, não por papel.
+      tema: input.name ?? null,
+      generationId: persisted.generationId,
+    })
     await fecharSugestaoDeFoto({
       projectId,
       driveFileIdUsado: driveImageId,

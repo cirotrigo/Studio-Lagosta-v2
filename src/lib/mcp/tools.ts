@@ -22,6 +22,7 @@ import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measure
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { createArteLivre, listFontCombinations } from '@/lib/creatives/arte-livre'
 import { CreativeError } from '@/lib/creatives/errors'
+import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
 import { agendarPost, postarAgora } from '@/lib/creatives/agendar'
 import { KnowledgeCategory } from '@prisma/client'
@@ -1401,6 +1402,61 @@ export const MCP_TOOLS: McpTool[] = [
         fileName: args.fileName,
         limit: args.limit,
       })
+    },
+  },
+
+  {
+    name: 'marcar-foto-como-usada',
+    description:
+      'Registra que uma foto do acervo foi PUBLICADA, para ela não voltar no topo das sugestões. Use quando a peça saiu por fora do Studio (arte montada em outro lugar, story postado na mão) — o que nasce aqui dentro já é marcado sozinho.\n\nÉ o que faz "não repetir a mesma foto na semana" funcionar: buscar-fotos ordena por menos usada, e sem esse registro uma foto que foi ao ar ontem aparece como "nunca usada".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        driveFileIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'As fotos usadas (o driveFileId que buscar-fotos devolve). Aceita várias de uma vez.',
+        },
+        tema: { type: 'string', description: 'Assunto da peça, para explicar depois por que a foto foi usada.' },
+        quando: { type: 'string', description: 'Data da publicação "AAAA-MM-DD". Padrão: hoje.' },
+      },
+      required: ['projectId', 'driveFileIds'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const ids = Array.isArray(args.driveFileIds)
+        ? args.driveFileIds.filter((i: unknown): i is string => typeof i === 'string' && i.trim().length > 0)
+        : []
+      if (ids.length === 0) {
+        throw new Error('Informe pelo menos uma foto em driveFileIds.')
+      }
+      // Data opcional: marcar peça já publicada precisa da data REAL, senão o
+      // rodízio acha que a foto acabou de sair.
+      let quandoInformado: Date | null = null
+      if (typeof args.quando === 'string' && args.quando.trim()) {
+        const d = new Date(`${args.quando.trim()}T12:00:00-03:00`)
+        if (Number.isNaN(d.getTime())) {
+          throw new Error(`Data inválida: "${args.quando}". Use o formato AAAA-MM-DD.`)
+        }
+        quandoInformado = d
+      }
+      const marcadas = await registrarUsoDeFoto({
+        projectId,
+        driveFileIds: ids,
+        origem: 'externo',
+        tema: typeof args.tema === 'string' ? args.tema : null,
+        usedAt: quandoInformado,
+      })
+      return {
+        marcadas,
+        mensagem:
+          marcadas > 0
+            ? `Anotado: ${marcadas} foto(s) marcada(s) como usada(s). Elas vão para o fim da fila nas próximas sugestões.`
+            : 'Não consegui anotar agora — o registro de uso falhou, mas nada mais foi afetado.',
+      }
     },
   },
 

@@ -2257,6 +2257,52 @@ Rock e consertadas juntas.
   onde interceptar sem trocar a forma de registro. A guarda acima vale só para
   o conector remoto.
 
+### A trilha `imagem` ganhou conferência, e o acervo ganhou rodízio (12/08/2026)
+
+**A7 — fidelidade da cena.** A trilha `imagem` não tinha conferência nenhuma:
+`textCheck` saía `skipped` com o motivo "peça não leva texto", o que é verdade
+e responde a PERGUNTA ERRADA. O risco dela nunca foi texto — é o prato ter
+mudado (aconteceu: numa cena de bar noturno o prato azul virou branco, sem
+aviso). Ganhou peso quando a trilha passou a entregar o nativo, porque a cena
+virou insumo de arte e o erro se propaga para a peça publicada.
+`conferirFidelidadeDaCena` (`creative-qa.ts`) compara a cena com a foto
+`subject`.
+
+- 🔴 **O teto é deliberadamente ALTO, e o motivo é histórico.** A revisão visual
+  por IA já foi ligada e DESLIGADA nesta casa (10/08/2026) por falso negativo
+  repetido — "alarme falso ensina quem aprova a ignorar o aviso, que é pior do
+  que não ter aviso". Por isso: pergunta estreita (cor, componentes,
+  quantidade), prompt que LISTA o que não é divergência (enquadramento, ângulo,
+  luz, fundo e arranjo mudam de propósito — a cena é nova), e **só
+  `confianca: 'alta'` vira aviso**. Média e baixa passam calado.
+- Avisa, nunca reprova; visão fora do ar devolve `pulada`. O aviso entra em
+  `fieldValues.cenaAlerta` e aparece na galeria e na bancada, no mesmo lugar do
+  alerta de texto.
+
+**B5 — uso de foto.** `PhotoUsage` (tabela nova) passa a registrar que uma foto
+do acervo foi usada. Antes, NENHUM caminho do Studio escrevia o `usageHistory`
+do `_image-catalog.json` — o único `push` vivo é o do gerador CLI antigo —,
+então `ultimoUso()` devolvia `'2000-01-01'` para toda foto, o `sort` de "menos
+usadas primeiro" ordenava um campo CONSTANTE, e toda foto respondia
+`ultimoUso: 'nunca'`. A regra do DNA de não repetir foto na semana nunca teve
+como ser cumprida, nem para foto usada dentro do Studio.
+
+- 🔴 **No BANCO, não no JSON do Drive**, por duas razões: o catálogo é arquivo
+  único e duas gerações simultâneas fariam read-modify-write uma por cima da
+  outra; e **regerar o catálogo zera `usageHistory`** (`reconciliar-catalogo.ts`
+  cria entrada com `[]`), então o histórico morria a cada recatalogação.
+- **O catálogo segue sendo lido como legado**: `mesclarUsos` funde as duas
+  fontes e vence a data mais recente — jogar o legado fora faria foto realmente
+  usada voltar ao topo do rodízio.
+- **Escreve DEPOIS do sucesso** (`arte-ia` runner e `createArteRapida`): contar
+  uso de foto cuja arte falhou mentiria sobre a preferência do cliente — mesma
+  razão pela qual o rodízio de referência de estilo só marca uso quando a arte
+  existe. E `registrarUsoDeFoto` **nunca lança**: telemetria de curadoria não
+  derruba arte que já foi paga.
+- **`marcar-foto-como-usada`** cobre o buraco central: peça montada FORA do
+  Studio. Aceita `quando` (AAAA-MM-DD) para marcar publicação passada com a
+  data real — sem isso o rodízio acharia que a foto acabou de sair.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

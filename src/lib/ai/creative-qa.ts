@@ -231,3 +231,108 @@ export function resumirQA(aspecto: AspectCheck, visual: QAResult | null): string
   else partes.push(`inspeção visual REPROVOU: ${visual.detalhe?.problemas.join('; ') || 'sem detalhe'}`)
   return partes.join(' | ')
 }
+
+// ── Fidelidade da cena (trilha `imagem`) ─────────────────────────────────────
+
+const cenaSchema = z.object({
+  mesmoPrato: z
+    .boolean()
+    .describe('true se o prato/produto principal da cena gerada é o MESMO da foto de referência'),
+  confianca: z
+    .enum(['alta', 'media', 'baixa'])
+    .describe('Quão seguro você está da resposta. Use "baixa" quando a foto não deixar ver bem.'),
+  divergencias: z
+    .array(z.string())
+    .describe('O que mudou no PRATO: cor, componentes, quantidade. Vazio quando é o mesmo prato.'),
+})
+
+export interface CenaCheck {
+  /** false só quando a divergência é CLARA — ver a nota da função. */
+  ok: boolean
+  pulada: boolean
+  motivo?: string
+  detalhe?: z.infer<typeof cenaSchema>
+}
+
+/**
+ * Confere se a cena gerada mantém o PRATO da foto de referência.
+ *
+ * A trilha `imagem` não tinha conferência nenhuma: `textCheck` saía `skipped`
+ * com o motivo "peça não leva texto", o que é verdade e responde a pergunta
+ * errada. O risco dela nunca foi texto — é o prato ter mudado. Aconteceu de
+ * verdade: numa cena de bar noturno o prato azul virou branco, e nada avisou.
+ * Ganhou peso quando a trilha passou a entregar o nativo (12/08/2026), porque
+ * a cena virou insumo de arte: o erro se propaga para a peça publicada.
+ *
+ * ⚠️ AVISA, NUNCA REPROVA — e o teto é deliberadamente alto.
+ *
+ * A revisão visual por IA já foi LIGADA e DESLIGADA nesta casa (10/08/2026),
+ * depois de dois falsos negativos no mesmo dia: "alarme falso repetido ensina
+ * quem aprova a ignorar o aviso, que é pior do que não ter aviso". Por isso:
+ *
+ * - a pergunta é estreita (cor, componentes, quantidade do prato) e o prompt
+ *   lista o que NÃO é divergência — enquadramento, ângulo, luz, fundo e
+ *   arranjo MUDAM de propósito, já que o modelo está compondo cena nova;
+ * - só `confianca: 'alta'` vira aviso. Média e baixa passam calado, porque um
+ *   palpite inseguro é exatamente o que gera o alarme falso;
+ * - visão indisponível devolve `pulada`, jamais derruba a peça.
+ */
+export async function conferirFidelidadeDaCena(
+  cenaGerada: Buffer,
+  fotoReferencia: Buffer,
+): Promise<CenaCheck> {
+  try {
+    const { object } = await generateObject({
+      model: openai(VISION_MODEL),
+      temperature: 0,
+      maxOutputTokens: 500,
+      abortSignal: AbortSignal.timeout(40_000),
+      schema: cenaSchema,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', image: fotoReferencia },
+            { type: 'image', image: cenaGerada },
+            {
+              type: 'text',
+              text: [
+                'A PRIMEIRA imagem é a foto REAL do prato de um restaurante. A SEGUNDA é uma cena nova, gerada, que deveria mostrar ESSE MESMO prato em outro contexto.',
+                '',
+                'Compare SOMENTE o prato/produto principal, em três aspectos:',
+                '- COR dominante do prato e da louça;',
+                '- COMPONENTES visíveis (o que acompanha: guarnições, molhos, utensílios sobre o prato);',
+                '- QUANTIDADE de porções ou peças.',
+                '',
+                'NÃO é divergência, e não deve ser reportado:',
+                '- enquadramento, ângulo, distância e profundidade de campo;',
+                '- iluminação, temperatura de cor e sombras;',
+                '- o AMBIENTE ao redor, a mesa, o fundo e outras pessoas;',
+                '- o arranjo dos elementos no quadro.',
+                'Tudo isso muda de propósito: a cena é NOVA, não é a mesma fotografia.',
+                '',
+                'Se a foto de referência não deixar ver bem o prato, responda confianca "baixa".',
+                'Use confianca "alta" apenas quando a diferença for evidente para qualquer pessoa.',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    })
+
+    // O teto alto é a regra: só divergência CLARA vira aviso.
+    const ok = object.mesmoPrato || object.confianca !== 'alta'
+    return {
+      ok,
+      pulada: false,
+      motivo: ok ? undefined : object.divergencias.slice(0, 3).join('; '),
+      detalhe: object,
+    }
+  } catch (erro) {
+    return {
+      ok: true,
+      pulada: true,
+      motivo: erro instanceof Error ? erro.message.slice(0, 160) : String(erro),
+    }
+  }
+}
