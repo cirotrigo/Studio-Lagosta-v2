@@ -489,4 +489,26 @@ Mockup das telas e do fluxo publicado como artifact "Lagosta de Bolso"
   Ciro em 13/08): editar entrada com "texto atual → novo texto" (substitui a
   entrada inteira, como no fluxo do chat) e arquivar campanha vencida com um
   toque. Rotas prontas (`GET /api/knowledge`, `PUT /api/knowledge/[id]`);
-  ~1 dia de tela. **Segue fora do escopo até o Ciro decidir incluí-la.**
+  ~1 dia de tela. ~~Segue fora do escopo até o Ciro decidir incluí-la.~~
+  **Aprovada em 13/08 — entrou na P2 (ver "Escopo final e execução").**
+
+### Escopo final e execução (13/08/2026)
+
+O Ciro aprovou o mockup e autorizou a execução completa. Três inclusões
+sobre o plano revisado:
+
+1. **Tela de correção rápida da base** → entra na **P2**.
+2. **Foto do celular direto para o acervo do cliente** → entra como **P4**:
+   rota de upload (multipart) para uma pasta dedicada do cliente no Drive,
+   alcançada pela varredura da reconciliação diária (a foto vira buscável
+   por tema na madrugada seguinte, sem trabalho manual). O upload avisa
+   isso a quem envia.
+3. **Criar arte na bancada com foto do acervo OU do celular** — explícito
+   na **P1**: o compositor já tem os dois caminhos no site
+   (`arte-ia-image-picker`, acervo/upload); a entrega é os dois funcionando
+   bem em tela de celular (input de câmera/rolo incluído).
+
+Fases finais: **P0** PWA instalável + agenda · **P1** bancada (fila, gerar,
+compositor com foto do acervo/celular, lembrete "Publicar agora", postar
+agora) · **P2** criativos + tela da base · **P3** rotas e UI de
+propor/executar semana · **P4** foto do celular → acervo.
