@@ -107,7 +107,9 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
               alt={post.caption || 'Prévia do post'}
               fill
               sizes="(max-width: 640px) 32px, 40px" // OPTIMIZED: Responsive sizes
-              className="object-cover"
+              // `contain` como no resto da agenda: mesmo em miniatura a arte
+              // aparece inteira, letterbox no bg-muted do contêiner.
+              className="object-contain"
               loading="lazy"
               quality={50} // OPTIMIZED: Reduced from 60 for small thumbnails
               placeholder="blur"

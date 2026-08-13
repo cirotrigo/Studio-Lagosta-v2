@@ -44,6 +44,8 @@ const ITENS: ItemDeMenu[] = [
   // A chave continua 'assets' de propósito: os links `?tab=assets` espalhados
   // (e o hábito) seguem funcionando — só o rótulo virou Marca.
   { chave: 'assets', rotulo: 'Marca' },
+  // A base de conhecimento do cliente, em tela de correção rápida (mobile).
+  { chave: 'base', rotulo: 'Base', rota: 'base' },
   { chave: 'configuracoes', rotulo: 'Configurações' },
 ]
 

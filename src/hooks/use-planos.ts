@@ -169,6 +169,133 @@ export function useAnexarItensAoPlano(projectId: number) {
   })
 }
 
+// ── Propor a semana e produzir a leva ───────────────────────────────────────
+
+export interface PedidoDeProposta {
+  /** Quantos dias à frente olhar. Sem isto, a leva vai até domingo. */
+  dias?: number
+  maxItens?: number
+  formato?: 'story' | 'feed' | 'quadrado'
+  /** Recado de quem pediu ("é semana de festival"). */
+  observacao?: string
+  titulo?: string
+}
+
+/** O `ResultadoDaProposta` do serviço, como chega pelo HTTP. */
+export interface ResultadoProporSemana {
+  plano: { id: string; titulo: string | null; itens: Array<{ id: string }> }
+  avisos: string[]
+  /** `true` quando NADA veio da cadência — a leva inteira é ponto de partida. */
+  coldStart: boolean
+  taxonomia: { total: number; assuntosUsados: string[] }
+  copy: { comDica: number; semDica: number; indisponivel: boolean }
+  fotos: { comFoto: number; semFoto: number; foraDoAssunto: number }
+  mensagem: string
+}
+
+/**
+ * Monta a semana e a persiste como plano — nada é produzido, nada é cobrado.
+ * A leva nova entra na fila pela invalidação: `useFilaDoPlano` re-hidrata.
+ */
+export function useProporSemana(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation<ResultadoProporSemana, Error, PedidoDeProposta | void>({
+    mutationFn: (corpo) =>
+      api.post<ResultadoProporSemana>(`/api/projects/${projectId}/propor-semana`, corpo ?? {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['planos', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['plano', projectId] })
+    },
+  })
+}
+
+/** A conta que a 1ª chamada de executar-plano devolve (`ContaDaExecucao`). */
+export interface ContaDoPlano {
+  total: number
+  porIA: number
+  porModelo: number
+  custoUnitario: number
+  creditos: number
+  saldo: number | null
+  saldoSuficiente: boolean | null
+  faltam: number
+  resumo: string
+}
+
+export interface ItemForaDaExecucao {
+  itemId: string
+  tema: string | null
+  motivo: string
+}
+
+export interface ResultadoExecutarPlano {
+  planoId: string
+  titulo: string | null
+  conta: ContaDoPlano
+  /** Presente só na 1ª chamada — é o gate. */
+  confirmacaoNecessaria?: true
+  mensagem: string
+  executados: Array<{
+    itemId: string
+    tema: string | null
+    via: string
+    situacao: string
+    generationId?: string
+    pageId?: string
+    arte?: string
+    avisos?: string[]
+  }>
+  falhas: Array<{ itemId: string; tema: string | null; via: string; motivo: string }>
+  ignorados: ItemForaDaExecucao[]
+  faltaram?: number
+  avisos?: string[]
+}
+
+/**
+ * Produção da leva em DUAS etapas, replicando o gate do serviço:
+ *
+ *  - `pedirConta` chama sem `confirmar` — o servidor não escreve nada e devolve
+ *    a conta para alguém ler.
+ *  - `confirmar` chama com `confirmar: true` — só ela produz, e só ela invalida
+ *    as consultas (a 1ª etapa não muda nada que a tela precise recarregar).
+ *
+ * O gate é mecânico dos dois lados: qualquer valor que não seja `true` literal
+ * não confirma.
+ */
+export function useExecutarPlano(projectId: number) {
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation<
+    ResultadoExecutarPlano,
+    Error,
+    { planoId?: string; confirmar?: true }
+  >({
+    mutationFn: ({ planoId, confirmar }) =>
+      api.post<ResultadoExecutarPlano>(`/api/projects/${projectId}/executar-plano`, {
+        ...(planoId ? { planoId } : {}),
+        ...(confirmar === true ? { confirmar: true } : {}),
+      }),
+    onSuccess: (_r, vars) => {
+      if (vars.confirmar === true) {
+        queryClient.invalidateQueries({ queryKey: ['planos', projectId] })
+        queryClient.invalidateQueries({ queryKey: ['plano', projectId] })
+      }
+    },
+  })
+
+  return {
+    /** 1ª etapa: só a conta. Nada é produzido e nada é cobrado. */
+    pedirConta: (planoId?: string) =>
+      mutation.mutateAsync({ ...(planoId ? { planoId } : {}) }),
+    /** 2ª etapa: produz de verdade — só depois do sim de quem viu a conta. */
+    confirmar: (planoId?: string) =>
+      mutation.mutateAsync({ ...(planoId ? { planoId } : {}), confirmar: true }),
+    executando: mutation.isPending,
+    erro: mutation.error ?? null,
+  }
+}
+
 // ── Avanço (fire-and-forget) ────────────────────────────────────────────────
 
 interface Avanco {

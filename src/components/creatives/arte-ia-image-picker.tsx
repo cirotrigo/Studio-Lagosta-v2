@@ -15,6 +15,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 import { Search, Upload, X, Check, ImageIcon, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -365,6 +366,8 @@ export function ArteIaImagePicker({
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Buscar por tema: happy hour, picanha, sobremesa…"
                 className="pl-8"
+                // No celular o teclado mostra "buscar" e o Enter submete o form.
+                enterKeyHint="search"
               />
             </div>
             <Button type="submit" variant="secondary">
@@ -453,7 +456,8 @@ export function ArteIaImagePicker({
           )}
 
           {isLoading ? (
-            <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+            // 3 colunas no celular (alvo de toque maior), 6 no desktop.
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
               {Array.from({ length: 12 }).map((_, i) => (
                 <div key={i} className="aspect-square animate-pulse rounded-md bg-muted" />
               ))}
@@ -478,7 +482,7 @@ export function ArteIaImagePicker({
           ) : (
             <>
               <div
-                className="grid grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6"
+                className="grid grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-6"
                 style={{ maxHeight: alturaDaGrade }}
               >
                 {acervo.images.map((img) => {
@@ -566,6 +570,21 @@ export function ArteIaImagePicker({
             </span>
             <span className="text-xs text-muted-foreground">JPG, PNG ou WebP até 10 MB</span>
           </button>
+          {/* Atalho para o CAMINHO PERMANENTE: o upload acima vale só para
+              esta geração (a foto vira referência e não entra no acervo). O
+              link abre em outra aba para não perder o que já foi montado no
+              compositor. */}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            O envio acima vale só para esta arte.{' '}
+            <Link
+              href={`/projects/${projectId}/acervo/enviar`}
+              target="_blank"
+              className="underline underline-offset-2 hover:text-foreground"
+            >
+              Mandar fotos para o acervo
+            </Link>{' '}
+            guarda no Drive do cliente — elas entram na busca depois da catalogação da madrugada.
+          </p>
         </TabsContent>
       </Tabs>
     </div>

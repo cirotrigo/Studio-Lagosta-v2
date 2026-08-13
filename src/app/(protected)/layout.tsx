@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/app/sidebar";
 import { Topbar } from "@/components/app/topbar";
+import { MobileTabbar } from "@/components/app/mobile-tabbar";
 import { PageHeader } from "@/components/app/page-header";
 import { ContextIndicator } from "@/components/app/context-indicator";
 import { PageMetadataProvider } from "@/contexts/page-metadata";
@@ -105,7 +106,9 @@ export default function ProtectedLayout({
               <Topbar onToggleSidebar={toggleCollapse} sidebarCollapsed={collapsed} />
               <main
                 className={cn(
-                  "container mx-auto w-full max-w-full lg:max-w-[1400px] pb-10 pt-6 overflow-x-hidden"
+                  // pb maior abaixo de `md`: reserva o espaço da MobileTabbar
+                  // (h-16 + safe area), senão ela cobre o fim do conteúdo.
+                  "container mx-auto w-full max-w-full lg:max-w-[1400px] pb-28 md:pb-10 pt-6 overflow-x-hidden"
                 )}
               >
                 {/* layered glow behind the main content for futuristic feel */}
@@ -131,6 +134,8 @@ export default function ProtectedLayout({
             </div>
           </div>
         </div>
+        {/* Navegação inferior do celular — a Sidebar é hidden abaixo de md */}
+        <MobileTabbar />
         <ImproveQueueProvider />
       </PageMetadataProvider>
     </AudioPlayerProvider>

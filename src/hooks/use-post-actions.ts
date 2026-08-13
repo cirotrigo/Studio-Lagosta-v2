@@ -12,9 +12,14 @@ export function usePostActions(projectId: number) {
         scheduleType: 'IMMEDIATE',
         scheduledDatetime: null,
       }),
-    onSuccess: () => {
+    onSuccess: (_data, postId) => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })
       queryClient.invalidateQueries({ queryKey: ['agenda-posts'] })
+      // A tela do post continua aberta depois de publicar — sem invalidar a
+      // chave do post, o "Postando…" só apareceria num recarregamento manual.
+      queryClient.invalidateQueries({ queryKey: ['social-post', postId] })
+      // O post que ia ser o próximo pode ter acabado de sair da fila.
+      queryClient.invalidateQueries({ queryKey: ['next-scheduled-post'] })
     },
   })
 
