@@ -525,3 +525,18 @@ propor/executar semana · **P4** foto do celular → acervo.
    de cliente da bancada, contadores por cliente saem de UMA chamada ao
    calendário global (nada de N chamadas a slots, que emitiriam sinal para
    cliente que ninguém abriu).
+
+### Execução concluída (13/08/2026)
+
+Os seis pacotes foram implementados, verificados (typecheck + lint) e
+commitados neste branch: PWA instalável com seletor de bancada (`48d553a`),
+tela da base + compartilhar (`5c472f8`), agenda com postar agora, tela de
+publicação manual e arte sem corte (`5367a1d`), rotas de propor/executar
+semana com a conta na bancada (`7f288f0`), foto do celular → acervo
+(`fbeb3cf`) e cobertura da semana (`57a7061`). As regras duráveis foram
+registradas no CLAUDE.md (seção "App de bolso"). Pendências conhecidas, por
+desenho: a tela de publicação manual não marca o post como publicado (quem
+confirma é a verificação de sempre); os chips de horário em aberto só fecham
+quando o post é agendado de fato (item de plano não ocupa agenda); projeto
+sem catálogo no Drive fica fora da busca por tema até a análise manual; e a
+cobertura olha só para frente (slot que já passou sem post não reaparece).

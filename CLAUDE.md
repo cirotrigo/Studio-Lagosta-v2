@@ -2393,6 +2393,66 @@ certa em parte e mandava para o conserto errado.
   `revokedAt`. Foi por ali que a troca de conta apareceu — os tokens do dia
   passaram a sair para outro `user_…` a partir de certo horário.
 
+### App de bolso (PWA): bancada, agenda e criativos no celular (13/08/2026)
+
+O site virou PWA instalável ("Lagosta de Bolso") — plano e decisões em
+`docs/PLANO-2026-08-12-APP-MOBILE-BANCADA-AGENDA.md`. Regras que valem para
+código novo:
+
+- **A arte aparece INTEIRA, na proporção em que foi gerada — nunca cortada.**
+  Requisito do Ciro (13/08): `object-contain` sobre `bg-muted`, contêiner na
+  proporção do formato (`aspectClassForPostType`). Os quatro `object-cover`
+  da agenda foram trocados; componente novo que exiba arte segue o mesmo.
+- **Ícones do PWA**: `scripts/gerar-icones-pwa.ts` (sharp sobre SVG inline)
+  gera `public/icons/*`. Maskable é arquivo SEPARADO com quadro cheio — o
+  launcher recorta com a própria máscara; reusar o ícone de cantos
+  transparentes vazaria os cantos. O "L" é path, não `<text>` (fonte no
+  librsvg depende da máquina). O manifest é estático; o ícone dinâmico do
+  admin não o afeta — trocar o ícone do app instalado exige regerar os PNGs.
+- **A tabbar mobile só monta no ramo normal do layout protegido** — o ramo
+  full-bleed é o editor de canvas, e a barra cobriria a área de trabalho.
+- 🔴 **Post de LEMBRETE nunca passa pelo publicar-agora do PUT.** O executor
+  ignora `publishType: REMINDER` de propósito; armar o PUT nesses posts podia
+  até mandar lembrete ao Zernio. O caminho é a tela de publicação manual
+  (`/projects/[id]/agenda/[postId]/publicar`: salvar no rolo, copiar legenda
+  e 1º comentário, abrir Instagram). Ela NÃO marca o post como publicado —
+  quem confirma publicação de story é a verificação de sempre.
+- **Post congelado (`congelado` da API) não mostra Publicar Agora** — antes
+  o botão aparecia; esconder é deliberado, junto com editar/melhorar.
+- **Card da grade da agenda não é mais um `<button>` único**: virou `<div>`
+  com botão interno, porque ação rápida dentro dele criaria botão dentro de
+  botão (HTML inválido). Overlay novo entra como irmão do botão interno.
+- 🔴 **Arquivar entrada da base é `PUT { status: 'ARCHIVED' }`, NUNCA o
+  DELETE** — o DELETE da rota apaga a entrada E os vetores de vez. E o
+  `expiresAt` fica FORA do payload de edição: na rota, ausente = não mexe,
+  `null` = LIMPA o prazo da campanha em silêncio.
+- **`POST /api/projects/[id]/executar-plano`** replica o gate do MCP: sem
+  `confirmar === true` literal nada é escrito e volta a conta. O disparo
+  imediato (F0.3) é da ROTA, em `after()`, limitado a 3 jobs e só quando o
+  handler consumiu < 60s — o resto sai pelo cron em ≤ 1 min. O diálogo da
+  conta fala em PEÇAS, nunca em créditos; saldo curto avisa, não veta.
+- **Upload de foto do celular → acervo** (`acervo-upload.ts`): a pasta
+  "Fotos do Celular" nasce FILHA DIRETA da raiz de imagens do projeto — a
+  mesma que `reconciliarCatalogo` varre, então a foto é catalogada na rodada
+  das 02:00. Bytes ORIGINAIS para o Drive (insumo não se reencoda; sem EXIF
+  rotate). HEIC do iPhone é farejado no cabeçalho e recusado com orientação
+  (sharp 0.33.5 não decodifica HEVC; o Safari costuma transcodificar ao
+  escolher do rolo). 🔴 Garantir pasta exige paginação completa da listagem
+  — `listFiles` tem pageSize 50 fixo e raiz cheia criaria pasta duplicada.
+  Projeto SEM catálogo continua fora da busca por tema (o cron o pula) —
+  a foto aparece só por pasta até a análise manual.
+- 🔴 **Nunca chamar `/slots` para uma LISTA de clientes** — cada chamada
+  emite sugestões como `LearningSignal`; em lista, geraria sinal para
+  cliente que ninguém abriu. O resumo do seletor da bancada agrega UMA
+  chamada ao calendário global. Na bancada do projeto, a cobertura reusa a
+  MESMA queryKey de slots do compositor (uma ida por página).
+- **O calendário global não traz `slotValues`** (o por projeto também não) e
+  "expande" posts recorrentes com `isRecurringPlaceholder: true` no 1º dia
+  da janela — quem agrega descarta os placeholders, senão conta post que
+  não existe.
+- **"A semana está coberta ✓" exige ritmo aprendido**: `sugestoes` vazio com
+  `cadencia` vazia é cold start, não cobertura.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
