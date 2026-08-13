@@ -15,12 +15,17 @@ import { Card } from '@/components/ui/card'
 import { usePageMetadata } from '@/contexts/page-metadata'
 import { BancadaCompositor } from '@/components/bancada/bancada-compositor'
 import { BancadaFila } from '@/components/bancada/bancada-fila'
+import { CoberturaDaSemana } from '@/components/bancada/cobertura-da-semana'
 import { useBancadaStore } from '@/stores/bancada-store'
+import { useProject } from '@/hooks/use-project'
 
 export default function BancadaPage() {
   const params = useParams()
   const projectId = Number(params?.id)
   const valido = Number.isFinite(projectId) && projectId > 0
+
+  // Só para o título do cartão de cobertura ("Esta semana no {cliente}").
+  const { data: projeto } = useProject(valido ? projectId : null)
 
   const hidratou = useBancadaStore((s) => s.hidratou)
   const limparFinalizados = useBancadaStore((s) => s.limparFinalizados)
@@ -61,6 +66,11 @@ export default function BancadaPage() {
     // Sem "Voltar ao projeto": o menu do projeto agora persiste no layout, e
     // um botão de volta ao lado dele só competiria com a própria navegação.
     <div className="flex flex-col gap-6 py-2">
+      {/* WP5: o que saiu e o que falta nesta semana — acima da fila, para a
+          visão do cliente vir antes do trabalho. Erro aqui nunca esconde a
+          fila: o cartão degrada sozinho. */}
+      <CoberturaDaSemana projectId={projectId} nomeDoCliente={projeto?.name} />
+
       <BancadaCompositor projectId={projectId} />
 
       <section className="space-y-3">

@@ -23,6 +23,10 @@ import Image from 'next/image'
 import { ArrowRight, Store } from 'lucide-react'
 import { useProjects, type ProjectWithLogoResponse } from '@/hooks/use-project'
 import { usePageConfig } from '@/hooks/use-page-config'
+import {
+  useResumoSemanaTodosClientes,
+  type ResumoSemanaDoProjeto,
+} from '@/hooks/use-cobertura-semana'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -60,6 +64,24 @@ function guardarUltimoProjeto(projeto: UltimoProjeto) {
 
 function logoDoProjeto(projeto: ProjectWithLogoResponse) {
   return projeto.Logo?.find((logo) => logo.isProjectLogo) ?? projeto.Logo?.[0] ?? null
+}
+
+/**
+ * "2 agendados · 3 publicados esta semana" (WP5), a partir de UMA chamada ao
+ * calendário global — nunca uma consulta por cliente aqui. Sem dados (falha ou
+ * carregando), devolve `null` e a linha volta ao texto padrão em silêncio: o
+ * seletor não pode depender do calendário para funcionar. Zero é informação
+ * (cliente descoberto), então projeto sem post na semana mostra "0".
+ */
+function resumoDaSemana(
+  porProjeto: Map<number, ResumoSemanaDoProjeto> | null,
+  projetoId: number,
+): string | null {
+  if (!porProjeto) return null
+  const r = porProjeto.get(projetoId) ?? { publicados: 0, agendados: 0, rascunhos: 0 }
+  const agendados = `${r.agendados} ${r.agendados === 1 ? 'agendado' : 'agendados'}`
+  const publicados = `${r.publicados} ${r.publicados === 1 ? 'publicado' : 'publicados'}`
+  return `${agendados} · ${publicados} esta semana`
 }
 
 function LogoDoCliente({
@@ -102,6 +124,10 @@ export default function BancadaSelecionarProjetoPage() {
   usePageConfig('Bancada', 'Escolha o cliente para abrir a bancada de criação')
 
   const { data: projetos, isLoading, isError } = useProjects()
+
+  // Contadores da semana por cliente (WP5). Falha ou demora aqui não muda
+  // nada na tela — `porProjeto` fica null e as linhas mostram o texto padrão.
+  const { porProjeto } = useResumoSemanaTodosClientes()
 
   // Lido num efeito (não no primeiro render) para o HTML do servidor e o do
   // cliente baterem — localStorage só existe no navegador.
@@ -200,7 +226,7 @@ export default function BancadaSelecionarProjetoPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-semibold">{projeto.name}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    Abrir bancada
+                    {resumoDaSemana(porProjeto, projeto.id) ?? 'Abrir bancada'}
                   </p>
                 </div>
                 <ArrowRight
