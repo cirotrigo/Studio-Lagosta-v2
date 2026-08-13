@@ -55,7 +55,15 @@ export async function generateMetadata(): Promise<Metadata> {
       },
       icons: {
         icon: faviconUrl,
-        apple: appleIconUrl,
+        // O ícone configurado no admin vence; sem ele, o apple-touch-icon
+        // gerado por scripts/gerar-icones-pwa.ts.
+        apple: appleIconUrl ?? '/icons/apple-touch-icon.png',
+      },
+      // PWA no iOS: instalado pela tela de início, abre sem o chrome do Safari.
+      appleWebApp: {
+        capable: true,
+        title: 'Lagosta',
+        statusBarStyle: 'black-translucent',
       },
       other: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -88,6 +96,12 @@ export async function generateMetadata(): Promise<Metadata> {
       },
       icons: {
         icon: `/favicon.svg?v=${Date.now()}`,
+        apple: '/icons/apple-touch-icon.png',
+      },
+      appleWebApp: {
+        capable: true,
+        title: 'Lagosta',
+        statusBarStyle: 'black-translucent',
       },
       other: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
