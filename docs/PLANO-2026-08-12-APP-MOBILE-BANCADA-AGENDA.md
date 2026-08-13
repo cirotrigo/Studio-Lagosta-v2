@@ -512,3 +512,16 @@ Fases finais: **P0** PWA instalável + agenda · **P1** bancada (fila, gerar,
 compositor com foto do acervo/celular, lembrete "Publicar agora", postar
 agora) · **P2** criativos + tela da base · **P3** rotas e UI de
 propor/executar semana · **P4** foto do celular → acervo.
+
+4. **Cobertura da semana por cliente** (pedido do Ciro em 13/08, durante a
+   execução): visualização rápida do que já saiu e do que falta — ex.: "a
+   Wine Vix postou o almoço executivo e o happy hour; faltam os horários de
+   quinta 19h e domingo 11h". Desenho que reusa o que existe, sem serviço
+   novo: o que saiu/está agendado vem do calendário; os horários em aberto
+   vêm de `/slots` (o `sugerirPosts` já EXCLUI horário ocupado e a emissão
+   é idempotente por chave, então a tela não infla o KPI); e "incluir na
+   bancada o que falta" é o botão **Completar a semana**, que chama o
+   propor-semana — que por construção só preenche os buracos. No seletor
+   de cliente da bancada, contadores por cliente saem de UMA chamada ao
+   calendário global (nada de N chamadas a slots, que emitiriam sinal para
+   cliente que ninguém abriu).
