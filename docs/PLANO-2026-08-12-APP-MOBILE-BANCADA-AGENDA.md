@@ -468,3 +468,25 @@ fotografa e publica; o desktop desenha.
 > `classificar-pilares`, que hoje roda e retorna cedo porque há zero pilares
 > aprovados) independe do celular. Fica fora do app por decisão; fazer pelo
 > site quando quiser ativar a F2.
+
+### Revisão do mockup (13/08/2026, feedback do Ciro sobre as telas)
+
+Mockup das telas e do fluxo publicado como artifact "Lagosta de Bolso"
+(link na conversa da sessão). Três ajustes viraram requisito:
+
+- **"Postar agora" entra nas telas** — no detalhe do post da agenda e na
+  peça pronta da bancada. Semântica da casa: agendado para agora+3min, com
+  gate de confirmação (o serviço `postarAgora` já existe em
+  `src/lib/creatives/agendar.ts`; na agenda o PUT de posts já cobre
+  publicar-agora; na bancada é expor a opção pela rota `/agendar`).
+- **Regra de exibição de arte, válida em TODAS as telas**: a arte aparece
+  inteira e na proporção em que foi gerada (9:16, 4:5, 1:1) — nunca cortada
+  nem esticada. Miniatura da agenda na proporção do formato; detalhe e
+  preview em letterbox quando precisar; galeria com cada card na proporção
+  real (a mesma regra que a galeria do site já segue: grid por linha +
+  `items-start` + `aspect-ratio` por card).
+- **Tela de correção rápida da base desenhada para avaliação** (a pedido do
+  Ciro em 13/08): editar entrada com "texto atual → novo texto" (substitui a
+  entrada inteira, como no fluxo do chat) e arquivar campanha vencida com um
+  toque. Rotas prontas (`GET /api/knowledge`, `PUT /api/knowledge/[id]`);
+  ~1 dia de tela. **Segue fora do escopo até o Ciro decidir incluí-la.**
