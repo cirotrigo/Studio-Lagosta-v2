@@ -2452,6 +2452,18 @@ código novo:
   não existe.
 - **"A semana está coberta ✓" exige ritmo aprendido**: `sugestoes` vazio com
   `cadencia` vazia é cold start, não cobertura.
+- 🔴 **`/api/drive/thumbnail` devolvia o ORIGINAL** — `getThumbnailStream`
+  ignorava o `size` e mandava os bytes inteiros (`alt: 'media'`), contando
+  com o `<Image>` do Next para reduzir; o seletor de fotos renderiza
+  `unoptimized`, então 40 células decodificavam ~48MB de bitmap cada e o
+  Safari do iPhone matava a aba ("Um problema ocorreu repetidamente" na
+  bancada, 13/08). Hoje o serviço honra o tamanho: `thumbnailLink` do
+  Google (lh3, consumido no servidor — o link é assinado e expira, nunca
+  repassar ao cliente) com fallback sharp (`.rotate()` para o EXIF).
+  Consumidor de miniatura passa `?size=` explícito — também é o
+  cache-buster contra os originais que ficaram no cache do navegador.
+  O pipeline de IA não passa por essa rota (extrai o `fileId` e baixa o
+  original direto), então miniatura pequena não afeta geração.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`

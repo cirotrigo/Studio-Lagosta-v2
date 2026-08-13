@@ -49,8 +49,9 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const size = parseInt(searchParams.get('size') ?? '400', 10)
 
-    // Get image stream from Google Drive
-    // Note: getThumbnailStream returns full image, Next.js Image component handles optimization
+    // Miniatura de verdade: o serviço honra o size (lh3 do Google, com
+    // fallback de redução via sharp) — nunca mais o original inteiro, que
+    // estourava a memória do Safari no iPhone (13/08/2026).
     const { stream, mimeType, name } = await googleDriveService.getThumbnailStream(fileId, size)
     const webStream = Readable.toWeb(stream)
 

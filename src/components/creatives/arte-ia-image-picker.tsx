@@ -498,7 +498,7 @@ export function ArteIaImagePicker({
                         adicionar({
                           key: img.driveFileId,
                           driveFileId: img.driveFileId,
-                          thumbUrl: `/api/drive/thumbnail/${img.driveFileId}`,
+                          thumbUrl: `/api/drive/thumbnail/${img.driveFileId}?size=400`,
                           label: img.menuItem ?? img.fileName,
                         })
                       }
@@ -508,7 +508,7 @@ export function ArteIaImagePicker({
                       )}
                     >
                       <Image
-                        src={`/api/drive/thumbnail/${img.driveFileId}`}
+                        src={`/api/drive/thumbnail/${img.driveFileId}?size=400`}
                         alt={img.fileName}
                         fill
                         sizes="100px"
