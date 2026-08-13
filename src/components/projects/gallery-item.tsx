@@ -15,7 +15,9 @@ import {
   Star,
   AlertTriangle,
   RefreshCw,
+  Share2,
 } from 'lucide-react'
+import { toast } from 'sonner'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -228,6 +230,65 @@ export function GalleryItem({
     // card usa) e ainda grava os data-pswp-*.
     setImageLoaded(false)
   }, [effectiveDisplayUrl])
+
+  /**
+   * Compartilhar a arte pelo menu nativo do aparelho (Web Share API), em
+   * escada de três degraus:
+   *
+   * 1. Com o ARQUIVO (fetch da arte → File): é o que abre o WhatsApp/Instagram
+   *    já com a imagem anexada — o caso que importa no celular.
+   * 2. Sem suporte a arquivo (ou fetch barrado por CORS), compartilha o LINK.
+   * 3. Sem Web Share nenhum (desktop), copia o link e avisa por toast.
+   *
+   * Cancelar o menu nativo (AbortError) não é falha: sai calado, sem cair no
+   * degrau seguinte — senão fechar o menu "compartilharia" de novo.
+   */
+  const [compartilhando, setCompartilhando] = React.useState(false)
+
+  const handleShare = React.useCallback(async () => {
+    if (!resolvedAssetUrl || compartilhando) return
+    setCompartilhando(true)
+    try {
+      const nav = navigator as Navigator & {
+        canShare?: (data?: ShareData) => boolean
+      }
+      if (typeof nav.share === 'function') {
+        try {
+          const resposta = await fetch(resolvedAssetUrl)
+          if (resposta.ok) {
+            const blob = await resposta.blob()
+            const tipo = blob.type || (isVideoAsset ? 'video/mp4' : 'image/png')
+            const extensao = tipo.split('/')[1]?.split(';')[0] || 'png'
+            const nomeBase =
+              title.replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 60) || 'arte'
+            const arquivo = new File([blob], `${nomeBase}.${extensao}`, { type: tipo })
+            if (!nav.canShare || nav.canShare({ files: [arquivo] })) {
+              await nav.share({ files: [arquivo], title })
+              return
+            }
+          }
+        } catch (erro) {
+          if (erro instanceof Error && erro.name === 'AbortError') return
+          // Qualquer outro tropeço (CORS, arquivo grande demais para o
+          // aparelho) cai no degrau do link.
+        }
+        try {
+          await nav.share({ title, url: resolvedAssetUrl })
+          return
+        } catch (erro) {
+          if (erro instanceof Error && erro.name === 'AbortError') return
+        }
+      }
+      await navigator.clipboard.writeText(resolvedAssetUrl)
+      toast.success('Link da arte copiado', {
+        description: 'Cole onde quiser enviar.',
+      })
+    } catch {
+      toast.error('Não foi possível compartilhar esta arte')
+    } finally {
+      setCompartilhando(false)
+    }
+  }, [resolvedAssetUrl, compartilhando, isVideoAsset, title])
 
   const aspectRatio = proporcaoMedida ?? pswpWidth / pswpHeight
   // Dimensões que o PhotoSwipe lê. Derivadas — nada de escrita imperativa no
@@ -624,6 +685,30 @@ export function GalleryItem({
             title="Antes e depois"
           >
             <Columns2 className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {/* Compartilhar: manda a arte para o WhatsApp/Instagram pelo menu
+            nativo do celular. Vive na barra (fora do <a>, regra da casa) e não
+            toca no lightbox nem na barra de feedback. */}
+        {status === 'COMPLETED' && resolvedAssetUrl && (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={compartilhando}
+            className="h-8 min-w-0 flex-1 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              void handleShare()
+            }}
+            title="Compartilhar"
+          >
+            {compartilhando ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Share2 className="h-3.5 w-3.5" />
+            )}
           </Button>
         )}
 
