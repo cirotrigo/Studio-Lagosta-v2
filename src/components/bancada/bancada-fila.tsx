@@ -12,12 +12,26 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, Pencil, RefreshCw, ExternalLink, Maximize2, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
-import { useFilaDoPlano } from '@/hooks/use-planos'
+import {
+  useExecutarPlano,
+  useFilaDoPlano,
+  useProporSemana,
+  type ResultadoExecutarPlano,
+} from '@/hooks/use-planos'
+import { itemExecutavel } from '@/lib/planos/execucao'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
 import { formatarQuandoBR, ordenarPorDataDesc, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
@@ -149,26 +163,141 @@ export function BancadaFila({ projectId }: { projectId: number }) {
 
   const ordenados = React.useMemo(() => ordenarPorDataDesc(itens), [itens])
 
+  // ── Propor a semana / produzir a leva ─────────────────────────────────────
+  const propor = useProporSemana(projectId)
+  const executar = useExecutarPlano(projectId)
+  const [conta, setConta] = React.useState<ResultadoExecutarPlano | null>(null)
+  const [contaAberta, setContaAberta] = React.useState(false)
+
+  /**
+   * Quantos itens da leva o servidor aceitaria produzir agora. A mesma régua do
+   * serviço (`itemExecutavel`, módulo puro), aplicada aos itens DA TELA —
+   * carrossel fica de fora porque `executar-plano` o pula (o estilo do guia
+   * exige confirmação humana).
+   */
+  const executaveis = React.useMemo(() => {
+    if (!plano) return 0
+    return itens.filter(
+      (i) =>
+        i.itemDePlanoId &&
+        i.planoId === plano.id &&
+        i.tipo !== 'carrossel' &&
+        itemExecutavel(situacaoParaExibir(i)),
+    ).length
+  }, [itens, plano])
+
+  const proporAgora = React.useCallback(() => {
+    propor.mutate(undefined, {
+      onSuccess: (r) => {
+        toast({
+          title: r.coldStart ? 'Semana montada como ponto de partida' : 'Semana proposta',
+          description: [r.mensagem, r.avisos[0]].filter(Boolean).join(' '),
+        })
+      },
+      onError: (erro) => {
+        toast({
+          title: 'Não deu para montar a semana',
+          description: erro instanceof Error ? erro.message : 'Tente de novo em instantes.',
+          variant: 'destructive',
+        })
+      },
+    })
+  }, [propor, toast])
+
+  /** 1ª chamada: só a conta — nada é produzido nem cobrado. Abre o diálogo. */
+  const abrirConta = React.useCallback(async () => {
+    try {
+      const r = await executar.pedirConta(plano?.id)
+      setConta(r)
+      setContaAberta(true)
+    } catch (erro) {
+      toast({
+        title: 'Não deu para calcular a produção',
+        description: erro instanceof Error ? erro.message : 'Tente de novo em instantes.',
+        variant: 'destructive',
+      })
+    }
+  }, [executar, plano?.id, toast])
+
+  /** 2ª chamada, só do botão Confirmar do diálogo: produz de verdade. */
+  const confirmarProducao = React.useCallback(async () => {
+    try {
+      const r = await executar.confirmar(plano?.id)
+      setContaAberta(false)
+      setConta(null)
+      toast({ title: 'Produção iniciada', description: r.mensagem })
+    } catch (erro) {
+      toast({
+        title: 'A produção não começou',
+        description: erro instanceof Error ? erro.message : 'Tente de novo em instantes.',
+        variant: 'destructive',
+      })
+    }
+  }, [executar, plano?.id, toast])
+
+  const botaoPropor = (
+    <Button size="sm" variant="outline" onClick={proporAgora} disabled={propor.isPending}>
+      {propor.isPending ? (
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      ) : (
+        <CalendarRange className="mr-2 h-4 w-4" />
+      )}
+      {propor.isPending ? 'Montando a semana…' : 'Propor a semana'}
+    </Button>
+  )
+
   if (itens.length === 0) {
     return (
-      <div className="rounded-xl border border-dashed border-border/60 py-12 text-center">
+      <div className="space-y-3 rounded-xl border border-dashed border-border/60 py-12 text-center">
         <p className="text-sm text-muted-foreground">
           {carregando
             ? 'Procurando a leva combinada…'
-            : 'A fila está vazia. Monte um item acima para começar.'}
+            : 'A fila está vazia. Monte um item acima, ou deixe o Studio propor a semana inteira.'}
         </p>
+        {!carregando && (
+          <>
+            <div className="flex justify-center">{botaoPropor}</div>
+            <p className="mx-auto max-w-md text-xs text-muted-foreground">
+              O Studio monta horários, assuntos, fotos e textos a partir da rotina do cliente.
+              Nada é produzido nem cobrado — a leva chega aqui como proposta, para ajustar antes.
+            </p>
+          </>
+        )}
       </div>
     )
   }
 
   return (
     <div className="space-y-3">
-      {progresso && (
-        <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2">
-          <p className="text-sm font-medium">{plano?.titulo || 'Leva combinada'}</p>
-          <p className="text-xs text-muted-foreground">{progresso.frase}</p>
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">{plano?.titulo || 'Fila de produção'}</p>
+          {progresso && <p className="text-xs text-muted-foreground">{progresso.frase}</p>}
         </div>
-      )}
+        <div className="flex flex-wrap items-center gap-2">
+          {botaoPropor}
+          {executaveis > 0 && (
+            <Button size="sm" onClick={abrirConta} disabled={executar.executando}>
+              {executar.executando ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Executar o plano · {executaveis} {executaveis === 1 ? 'item' : 'itens'}
+            </Button>
+          )}
+        </div>
+      </div>
+      <DialogoDaConta
+        aberta={contaAberta}
+        onOpenChange={(aberta) => {
+          setContaAberta(aberta)
+          if (!aberta) setConta(null)
+        }}
+        resultado={conta}
+        confirmando={executar.executando}
+        onConfirmar={confirmarProducao}
+      />
       {ordenados.map((item) => (
         <Card
           key={item.id}
@@ -609,6 +738,112 @@ function Card({
         }
       />
     </div>
+  )
+}
+
+/**
+ * A conta da 1ª chamada de executar-plano, para alguém ler antes de dizer sim.
+ *
+ * A conversa aqui é em PEÇAS, não em jargão de cobrança: quantas saem pela IA,
+ * quantas montadas em modelo do cliente, quantas ficam de fora e por quê. Só o
+ * botão Confirmar dispara a 2ª chamada — fechar o diálogo não produz nada.
+ */
+function DialogoDaConta({
+  aberta,
+  onOpenChange,
+  resultado,
+  confirmando,
+  onConfirmar,
+}: {
+  aberta: boolean
+  onOpenChange: (aberta: boolean) => void
+  resultado: ResultadoExecutarPlano | null
+  confirmando: boolean
+  onConfirmar: () => void
+}) {
+  if (!resultado) return null
+
+  const c = resultado.conta
+  // Os motivos vêm de `motivoDeNaoExecutar` (frases estáveis do serviço):
+  // separa o que foi reprovado (tem saída própria) do que já anda sozinho.
+  const reprovados = resultado.ignorados.filter((i) => i.motivo.includes('reprovado')).length
+  const foraPorEstado = resultado.ignorados.length - reprovados
+
+  const pecas = (n: number) => `${n} ${n === 1 ? 'peça' : 'peças'}`
+
+  return (
+    <Dialog open={aberta} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Produzir a leva</DialogTitle>
+          <DialogDescription>{resultado.titulo || 'Leva combinada'}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-2 text-sm">
+          {c.total === 0 ? (
+            <p className="text-muted-foreground">
+              Não há peça para produzir agora — o que está na fila já está pronto, em produção ou
+              precisa de ajuste antes.
+            </p>
+          ) : (
+            <ul className="space-y-1.5">
+              {c.porIA > 0 && (
+                <li>
+                  <span className="font-medium">{pecas(c.porIA)}</span>{' '}
+                  {c.porIA === 1 ? 'sai' : 'saem'} pela IA e{' '}
+                  {c.porIA === 1 ? 'fica pronta sozinha' : 'ficam prontas sozinhas'} em alguns
+                  minutos.
+                </li>
+              )}
+              {c.porModelo > 0 && (
+                <li>
+                  <span className="font-medium">{pecas(c.porModelo)}</span>{' '}
+                  {c.porModelo === 1 ? 'é montada' : 'são montadas'} na hora, sobre{' '}
+                  {c.porModelo === 1 ? 'um modelo' : 'modelos'} do cliente.
+                </li>
+              )}
+              {foraPorEstado > 0 && (
+                <li className="text-muted-foreground">
+                  {foraPorEstado} {foraPorEstado === 1 ? 'item fica' : 'itens ficam'} de fora:{' '}
+                  {foraPorEstado === 1 ? 'já está pronto' : 'já estão prontos'}, em produção ou na
+                  agenda.
+                </li>
+              )}
+              {reprovados > 0 && (
+                <li className="text-muted-foreground">
+                  {reprovados} {reprovados === 1 ? 'reprovado fica' : 'reprovados ficam'} de fora —
+                  ajuste e devolva à fila para {reprovados === 1 ? 'produzi-lo' : 'produzi-los'}.
+                </li>
+              )}
+            </ul>
+          )}
+
+          {c.saldoSuficiente === false && (
+            <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              O saldo de hoje pode não cobrir a leva inteira — parte das peças pode falhar. Dá para
+              continuar mesmo assim; o que falhar fica na fila com o motivo.
+            </p>
+          )}
+
+          {c.total > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Pode fechar o app depois de confirmar — a produção continua no servidor.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={confirmando}>
+            Voltar
+          </Button>
+          <Button onClick={onConfirmar} disabled={confirmando || c.total === 0}>
+            {confirmando && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Confirmar e produzir
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
