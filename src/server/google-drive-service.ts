@@ -765,26 +765,61 @@ export class GoogleDriveService {
     }
   }
 
-  async getThumbnailStream(fileId: string, _size = 400) {
+  /**
+   * 🔴 Miniatura tem de ser MINIATURA. Até 13/08/2026 este método ignorava o
+   * `size` e devolvia os bytes ORIGINAIS (`alt: 'media'`), contando com o
+   * <Image> do Next para reduzir — mas o seletor de fotos renderiza
+   * `unoptimized`, então cada célula da grade baixava e DECODIFICAVA uma foto
+   * de 12MP (~48MB de bitmap). 40 células mataram a aba no iPhone
+   * ("Um problema ocorreu repetidamente" na bancada) — a mesma armadilha da
+   * galeria registrada no CLAUDE.md, agora do lado do servidor.
+   *
+   * Ordem de serviço: (1) thumbnail pronto do Google (`thumbnailLink`, lh3 —
+   * pequeno, já orientado pelo EXIF, cobre vídeo também); (2) fallback:
+   * baixa o original e reduz com sharp; (3) se nada disso der, devolve o
+   * original como antes — melhor pesado do que quebrado.
+   */
+  async getThumbnailStream(fileId: string, size = 400) {
     this.ensureEnabled()
 
-    // Note: size parameter is kept for API compatibility but not used
-    // Google Drive API doesn't provide a reliable thumbnail endpoint via SDK
-    // We return the full image and let Next.js Image optimization handle resizing
+    const tamanho = Math.min(Math.max(Math.trunc(size) || 400, 64), 1600)
 
-    // Get file metadata
     const metadata = await this.withRetry('getThumbnailMetadata', async () =>
       this.drive.files.get(
         {
           fileId,
-          fields: 'name, mimeType',
+          fields: 'name, mimeType, thumbnailLink',
           supportsAllDrives: true,
         },
         { timeout: 15_000 },
       ),
     )
+    const name = metadata.data.name ?? fileId
+    const mimeType = metadata.data.mimeType ?? 'application/octet-stream'
 
-    // Get the full image stream
+    // (1) O thumbnail que o próprio Drive já gerou. O sufixo `=sNNN` do lh3
+    // controla o tamanho; o link é assinado e expira em horas, por isso ele é
+    // consumido AQUI e nunca repassado ao cliente (regra da casa).
+    const link = metadata.data.thumbnailLink
+    if (link) {
+      try {
+        const url = link.replace(/=s\d+(-c)?$/, `=s${tamanho}`)
+        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+        if (res.ok) {
+          const buffer = Buffer.from(await res.arrayBuffer())
+          if (buffer.byteLength > 0) {
+            return {
+              stream: Readable.from(buffer),
+              mimeType: res.headers.get('content-type') ?? 'image/jpeg',
+              name,
+            }
+          }
+        }
+      } catch {
+        // lh3 indisponível — cai para a redução local
+      }
+    }
+
     const mediaResponse = await this.withRetry('getThumbnailStream', async () =>
       this.drive.files.get(
         {
@@ -796,13 +831,32 @@ export class GoogleDriveService {
         { responseType: 'stream', timeout: LIST_TIMEOUT },
       ),
     )
+    const original = mediaResponse.data as unknown as Readable
 
-    const stream = mediaResponse.data as unknown as Readable
+    // Só imagem passa pelo sharp; outros tipos seguem como sempre foram.
+    if (!mimeType.startsWith(MIME_TYPE_IMAGE_PREFIX)) {
+      return { stream: original, mimeType, name }
+    }
 
-    return {
-      stream,
-      mimeType: metadata.data.mimeType ?? 'application/octet-stream',
-      name: metadata.data.name ?? fileId,
+    const chunks: Buffer[] = []
+    for await (const chunk of original) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const originalBuffer = Buffer.concat(chunks)
+
+    try {
+      const { default: sharp } = await import('sharp')
+      // .rotate() aplica a orientação do EXIF — foto de celular deitada
+      // apareceria de lado na miniatura sem isso.
+      const reduzida = await sharp(originalBuffer)
+        .rotate()
+        .resize(tamanho, tamanho, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 78 })
+        .toBuffer()
+      return { stream: Readable.from(reduzida), mimeType: 'image/jpeg', name }
+    } catch {
+      // (3) formato que o sharp não lê — devolve o original (comportamento antigo)
+      return { stream: Readable.from(originalBuffer), mimeType, name }
     }
   }
 
