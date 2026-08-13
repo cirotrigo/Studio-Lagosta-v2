@@ -559,7 +559,9 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
                 <button
                   type="button"
                   onClick={() => setReferencias(referencias.filter((r) => r.key !== ref.key))}
-                  className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  // Sempre visível no celular: hover não existe em tela de
+                  // toque, e o botão invisível deixava a foto sem como sair.
+                  className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                   title="Tirar esta foto"
                 >
                   <X className="h-3 w-3" />
