@@ -33,3 +33,14 @@ export function novoPostHref(projectId: number | string, quando?: Date): string 
 export function editarPostHref(projectId: number | string, postId: string): string {
   return `/projects/${projectId}/agenda/${postId}/editar`
 }
+
+/**
+ * Publicar um lembrete na mão: as artes para salvar no rolo, a legenda e o
+ * primeiro comentário para copiar, e o atalho que abre o Instagram. É para
+ * onde apontam o "Publicar agora" da tela do post e o do card da agenda
+ * quando o post é lembrete (`publishType: REMINDER`) — o sistema não publica
+ * esses posts, alguém publica pelo celular.
+ */
+export function publicarLembreteHref(projectId: number | string, postId: string): string {
+  return `/projects/${projectId}/agenda/${postId}/publicar`
+}

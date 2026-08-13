@@ -37,6 +37,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { usePostActions } from '@/hooks/use-post-actions'
 import { usePostApproval } from '@/hooks/use-post-approval'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
@@ -49,6 +59,7 @@ import { ImproveCreativeModal } from '@/components/creatives/improve-creative-mo
 import { toast } from 'sonner'
 import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
 import { descreverJanela } from '@/lib/posts/freeze-window'
+import { publicarLembreteHref } from '@/lib/agenda-routes'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import Image from 'next/image'
 import { cn, isExternalImage } from '@/lib/utils'
@@ -88,6 +99,7 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [approveOpen, setApproveOpen] = useState(false)
   const [improveOpen, setImproveOpen] = useState(false)
+  const [publicarAgoraOpen, setPublicarAgoraOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
   const { publishNow, deletePost } = usePostActions(post.projectId)
@@ -97,6 +109,14 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
 
   const isRascunho = post.status === 'DRAFT'
   const contaLabel = project?.instagramUsername || project?.name || 'do cliente'
+
+  /*
+    Lembrete: o sistema não publica — alguém publica na mão, pelo celular.
+    "Publicar agora" aqui não pode armar a publicação automática (o executor
+    ignora lembretes de propósito); ele leva para a tela de publicação manual,
+    que entrega arte, legenda e primeiro comentário prontos para o Instagram.
+  */
+  const ehLembrete = post.publishType === 'REMINDER'
 
   /**
    * As mutações compartilhadas invalidam as LISTAS. Numa tela que continua
@@ -232,16 +252,17 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
     !isCurrentMediaVideo &&
     !janela.congelado
 
-  const handlePublishNow = async () => {
-    // Rascunho nunca foi aprovado, então publicar agora pula a revisão E o
-    // horário combinado de uma vez. Vale um aviso que diga as duas coisas.
-    if (isRascunho) {
-      const confirmado = confirm(
-        `Este rascunho ainda não foi aprovado.\n\nPublicar agora manda o post para o Instagram de ${contaLabel} imediatamente, sem esperar ${formatPostDateTimeBR(post)}.\n\nQuer publicar agora mesmo assim?`,
-      )
-      if (!confirmado) return
-    }
+  /**
+   * "Publicar agora" abre o diálogo de confirmação — a ação manda o post para
+   * o Instagram do cliente na hora, fora do horário combinado, e isso não
+   * pode acontecer num toque acidental (no celular o botão fica no rodapé,
+   * bem onde o polegar descansa).
+   */
+  const handlePublishNow = () => {
+    setPublicarAgoraOpen(true)
+  }
 
+  const confirmarPublicarAgora = async () => {
     try {
       await publishNow.mutateAsync(post.id)
       const message =
@@ -426,7 +447,9 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
                       <video
                         key={currentImageIndex}
                         src={currentMediaUrl}
-                        className="absolute inset-0 h-full w-full object-cover"
+                        // `contain`: vídeo fora da proporção do formato aparece
+                        // inteiro, com faixa neutra — nunca cortado.
+                        className="absolute inset-0 h-full w-full object-contain"
                         controls
                         loop
                         playsInline
@@ -446,7 +469,14 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
                       alt={post.caption || 'Prévia do post'}
                       fill
                       sizes="(max-width: 1024px) 90vw, 380px"
-                      className="object-cover transition-opacity duration-300"
+                      /*
+                        `contain`, nunca `cover`: quem aprova precisa ver a arte
+                        INTEIRA. Arte fora da proporção do formato ganha faixa
+                        neutra (o bg-muted do contêiner) em vez de perder borda
+                        — cortar o pé de um feed esconde exatamente o texto e a
+                        logo que se quer conferir.
+                      */
+                      className="object-contain transition-opacity duration-300"
                       priority={currentImageIndex === 0}
                       loading={currentImageIndex === 0 ? undefined : 'lazy'}
                       quality={80}
@@ -820,7 +850,24 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
                   <CalendarCheck className="mr-2 h-4 w-4" />
                   Aprovar
                 </Button>
-              ) : (
+              ) : ehLembrete ? (
+                /* Lembrete: publicar é manual. O botão leva à tela que entrega
+                   arte, legenda e comentário prontos — nunca ao publicador. */
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="w-full flex-1 sm:w-auto sm:min-w-[9rem]"
+                  asChild
+                >
+                  <Link href={publicarLembreteHref(post.projectId, post.id)}>
+                    <Send className="mr-2 h-4 w-4" />
+                    Publicar agora
+                  </Link>
+                </Button>
+              ) : post.status === 'SCHEDULED' && janela.congelado ? null : (
+                /* Post congelado (já entregue ao publicador) não ganha
+                   "Publicar agora": o aviso acima explica o caminho certo.
+                   FAILED continua com "Tentar novamente" — é o retry. */
                 <Button
                   variant="default"
                   size="sm"
@@ -965,12 +1012,21 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
 
               <DropdownMenuSeparator className="sm:hidden" />
 
-              {isRascunho && (
-                <DropdownMenuItem onClick={handlePublishNow} disabled={publishNow.isPending}>
-                  <Send className="mr-2 h-4 w-4" />
-                  Publicar agora
-                </DropdownMenuItem>
-              )}
+              {isRascunho &&
+                (ehLembrete ? (
+                  /* Rascunho de lembrete: publicar é manual mesmo assim. */
+                  <DropdownMenuItem asChild>
+                    <Link href={publicarLembreteHref(post.projectId, post.id)}>
+                      <Send className="mr-2 h-4 w-4" />
+                      Publicar agora
+                    </Link>
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={handlePublishNow} disabled={publishNow.isPending}>
+                    <Send className="mr-2 h-4 w-4" />
+                    Publicar agora
+                  </DropdownMenuItem>
+                ))}
 
               {post.status === 'SCHEDULED' && (
                 <DropdownMenuItem
@@ -1026,6 +1082,43 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
           }}
         />
       )}
+
+      {/*
+        Confirmação de "Publicar agora". O texto diz o que de fato acontece:
+        a publicação é ARMADA e sai nos próximos minutos — não é instantânea
+        (o publicador tem a fila dele), e não espera o horário combinado.
+      */}
+      <AlertDialog open={publicarAgoraOpen} onOpenChange={setPublicarAgoraOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {post.status === 'FAILED' ? 'Tentar publicar de novo?' : 'Publicar agora?'}
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              {isRascunho && (
+                <span className="block font-medium text-foreground">
+                  Este rascunho ainda não foi aprovado.
+                </span>
+              )}
+              <span className="block">
+                Confirmando, a publicação é armada na hora e o post sai no Instagram de{' '}
+                <strong>{contaLabel}</strong> nos próximos minutos
+                {post.status !== 'FAILED' && getPostDate(post)
+                  ? ` — sem esperar ${formatPostDateTimeBR(post)}`
+                  : ''}
+                .
+              </span>
+              <span className="block">Depois de armada, não dá para desfazer por aqui.</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmarPublicarAgora}>
+              {post.status === 'FAILED' ? 'Tentar novamente' : 'Publicar agora'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <RescheduleDialog
         post={post}
