@@ -104,6 +104,8 @@ export interface PatchDeItemDoPlano {
   fotoDriveId?: string | null
   formato?: string
   via?: ViaDoItem
+  /** O modelo a seguir na via template. `null` volta para a rotação. */
+  sourcePageId?: string | null
   motivoDoSlot?: string | null
   escopo?: string
   /** A nova situação, quando o gesto também move o item. */

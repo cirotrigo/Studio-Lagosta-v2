@@ -73,6 +73,13 @@ export interface BancadaItem {
   situacaoNoPlano?: StatusDoItem
   /** Por onde a arte deve nascer: modelo do cliente (sem custo) ou IA. */
   via?: ViaDoItem
+  /**
+   * O modelo do cliente a seguir na via template. Nulo/ausente = ninguém
+   * escolheu, e aí quem decide é a ROTAÇÃO (o modelo menos usado do formato)
+   * na hora de montar. A escolha também é persistida no ItemDePlano
+   * (`sourcePageId`), para o chat e os outros navegadores verem a mesma.
+   */
+  sourcePageId?: string | null
   /** Do que a peça trata — o assunto combinado no plano. */
   tema?: string | null
   /** Por que o item foi reprovado no plano. Recusa com motivo não é beco. */

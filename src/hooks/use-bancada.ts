@@ -326,6 +326,64 @@ export function useBancada(projectId: number) {
     [atualizar, registrarCopyEscolhida, relatarAvanco, toast],
   )
 
+  /**
+   * Monta a arte sobre um modelo do cliente — a via SEM custo de imagem.
+   *
+   * Diferente do `gerar` (fire-and-forget + polling), aqui a resposta já vem
+   * com a arte pronta: o render de template é síncrono na rota. Quem escolhe o
+   * modelo é `item.sourcePageId`; sem ele, a ROTAÇÃO decide no servidor (o
+   * menos usado do formato). O `sourcePageId` também vai no corpo porque a
+   * escolha pode ter acabado de ser feita e o PATCH dela ainda estar em voo.
+   *
+   * Sem `relatarAvanco`: a rota transiciona o item no servidor ela mesma
+   * (inclusive marcando erro) — relatar daqui dobraria a escrita.
+   */
+  const gerarPorModelo = React.useCallback(
+    async (item: BancadaItem) => {
+      if (!item.itemDePlanoId || !item.planoId) {
+        toast({
+          title: 'Este card não está na leva da equipe',
+          description:
+            'Sem o vínculo com a leva não dá para montar no modelo — gere por IA ou monte o item de novo.',
+          variant: 'destructive',
+        })
+        return
+      }
+      registrarCopyEscolhida(item)
+      atualizar(item.id, { status: 'gerando', erro: null, criadoEm: Date.now() })
+      try {
+        const r = await api.post<{
+          executado: {
+            generationId?: string
+            pageId?: string
+            arte?: string
+            situacao: string
+            avisos?: string[]
+          }
+        }>(
+          `/api/projects/${item.projectId}/planos/${item.planoId}/itens/${item.itemDePlanoId}/gerar-modelo`,
+          { ...(item.sourcePageId ? { sourcePageId: item.sourcePageId } : {}) },
+        )
+        const e = r.executado
+        atualizar(item.id, {
+          status: 'pronto',
+          resultUrl: e.arte ?? null,
+          ...(e.generationId ? { generationId: e.generationId } : {}),
+          via: 'template',
+          situacaoNoPlano: 'pronto',
+          aviso: e.avisos && e.avisos.length > 0 ? e.avisos.join(' ') : null,
+        })
+        queryClient.invalidateQueries({ queryKey: ['generations', item.projectId] })
+        queryClient.invalidateQueries({ queryKey: ['plano', item.projectId] })
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : 'Erro ao montar a arte no modelo'
+        atualizar(item.id, { status: 'erro', erro: msg })
+        toast({ title: 'Não deu para montar no modelo', description: msg, variant: 'destructive' })
+      }
+    },
+    [atualizar, registrarCopyEscolhida, queryClient, toast],
+  )
+
   /** Dispara UM slide e devolve o generationId. */
   const gerarSlide = React.useCallback(
     async (
@@ -509,6 +567,7 @@ export function useBancada(projectId: number) {
   return {
     itens: doProjeto,
     gerar,
+    gerarPorModelo,
     gerarCapaEGuia,
     confirmarEstilo,
     agendar,

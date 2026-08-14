@@ -402,6 +402,7 @@ export function paraItemDaBancada(
     planoId: plano.id,
     situacaoNoPlano: status,
     via,
+    sourcePageId: doServidor.sourcePageId?.trim() || null,
     tema,
     trilha: 'arte',
     tipo: ehCarrossel ? 'carrossel' : 'peca',
@@ -453,6 +454,7 @@ const CAMPOS_FUNDIDOS = [
   'planoId',
   'situacaoNoPlano',
   'via',
+  'sourcePageId',
   'tema',
   'formato',
   'copy',
@@ -511,6 +513,7 @@ export function fundirComOLocal(
       ? {}
       : {
           via: doServidor.via,
+          sourcePageId: doServidor.sourcePageId,
           tema: doServidor.tema,
           formato: doServidor.formato,
           copy: doServidor.copy,

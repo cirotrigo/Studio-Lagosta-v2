@@ -8,6 +8,7 @@ import {
   hasProjectReadAccess,
 } from '@/lib/projects/access'
 import { createBlankDesign } from '@/lib/studio/defaults'
+import { MENOS_USADO_PRIMEIRO } from '@/lib/aprendizado/uso-de-modelo'
 import type { Prisma } from '@/lib/prisma-types'
 
 export const runtime = 'nodejs'
@@ -26,6 +27,67 @@ function normalizeTag(raw: string): string {
     .replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9-]/g, '')
+}
+
+/**
+ * Os modelos do projeto (páginas `isTemplate: true`), na ordem da ROTAÇÃO —
+ * menos usado primeiro, o mesmo `MENOS_USADO_PRIMEIRO` que decide quando
+ * ninguém escolhe. É a lista que a bancada mostra ao escolher o modelo a
+ * seguir; sem `layers`, de propósito: escolher não precisa das camadas, e
+ * elas dominariam o payload.
+ */
+export async function GET(
+  _req: Request,
+  { params }: { params: Promise<{ projectId: string }> },
+) {
+  const { projectId } = await params
+  const { userId, orgId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  const projectIdNum = Number(projectId)
+  if (!projectIdNum) {
+    return NextResponse.json({ error: 'Invalid project' }, { status: 400 })
+  }
+
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!hasProjectReadAccess(project, { userId, orgId })) {
+    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  }
+
+  const pages = await db.page.findMany({
+    where: { isTemplate: true, Template: { projectId: projectIdNum } },
+    orderBy: MENOS_USADO_PRIMEIRO,
+    select: {
+      id: true,
+      name: true,
+      thumbnail: true,
+      width: true,
+      height: true,
+      tags: true,
+      templateId: true,
+      usedCount: true,
+      lastUsedAt: true,
+      Template: { select: { name: true, type: true } },
+    },
+  })
+
+  return NextResponse.json({
+    modelos: pages.map((p) => ({
+      id: p.id,
+      name: p.name,
+      thumbnail: p.thumbnail,
+      width: p.width,
+      height: p.height,
+      tags: p.tags ?? [],
+      templateId: p.templateId,
+      templateName: p.Template.name,
+      tipo: p.Template.type,
+      usedCount: p.usedCount,
+      lastUsedAt: p.lastUsedAt,
+    })),
+  })
 }
 
 export async function POST(

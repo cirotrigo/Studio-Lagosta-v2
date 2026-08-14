@@ -30,7 +30,8 @@ import { createArteRapida } from '@/lib/creatives/arte-rapida'
 import { startArtGeneration } from '@/lib/ai/creative-generation-service'
 import { enfileirarArte } from '@/lib/ai/generation-queue'
 import { lerCamadas } from '@/lib/posts/page-layers'
-import { lerPlano, transicionarItem, statusDoItem } from '@/lib/planos/plano-service'
+import { MENOS_USADO_PRIMEIRO } from '@/lib/aprendizado/uso-de-modelo'
+import { lerPlano, transicionarItem, atualizarItem, statusDoItem } from '@/lib/planos/plano-service'
 import { progressoDoPlano, type StatusDoItem, type ViaDoItem } from '@/lib/planos/vocabulario'
 import {
   ORCAMENTO_DE_RENDER_MS,
@@ -111,6 +112,17 @@ export interface ResultadoDaExecucao {
 }
 
 type ItemDoPlano = Awaited<ReturnType<typeof lerPlano>>['itens'][number]
+
+/**
+ * O que a produção de UM item precisa saber do chamador — subconjunto de
+ * `ExecutarPlanoInput`, para a rota da bancada (que produz um item por vez)
+ * não ter de inventar campos que não usa.
+ */
+interface ContextoDeProducao {
+  projectId: number
+  planoId: string
+  decididoPor?: string | null
+}
 
 /** Saldo de créditos por LEITURA — `null` quando não há linha ou não deu. */
 async function lerSaldo(donoUserId: string | null | undefined): Promise<number | null> {
@@ -299,7 +311,7 @@ function mensagemDoErro(erro: unknown): string {
  * acabou de nascer não pode sumir porque a coluna não pôde ser escrita.
  */
 async function mover(
-  input: ExecutarPlanoInput,
+  input: ContextoDeProducao,
   item: ItemDoPlano,
   para: StatusDoItem,
   extras: { erro?: string; generationId?: string; pageId?: string } = {},
@@ -333,7 +345,7 @@ async function mover(
   }
 }
 
-async function marcarErro(input: ExecutarPlanoInput, item: ItemDoPlano, motivo: string): Promise<void> {
+async function marcarErro(input: ContextoDeProducao, item: ItemDoPlano, motivo: string): Promise<void> {
   await mover(input, item, 'erro', { erro: motivo })
 }
 
@@ -393,8 +405,38 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
   }
 }
 
+/** O `Template.type` que corresponde a cada formato de item. */
+const TIPO_POR_FORMATO: Record<string, 'STORY' | 'FEED' | 'SQUARE'> = {
+  story: 'STORY',
+  feed: 'FEED',
+  quadrado: 'SQUARE',
+}
+
+/**
+ * O modelo pela ROTAÇÃO da casa: o menos usado primeiro (`MENOS_USADO_PRIMEIRO`,
+ * com `nulls: 'first'` — em Postgres `ASC` é NULLS LAST e o nunca-usado tem de
+ * vir antes), restrito ao formato do item. `null` quando o cliente não tem
+ * modelo nenhum nesse formato.
+ */
+export async function modeloPorRotacao(
+  projectId: number,
+  formato: string | null | undefined,
+): Promise<{ id: string; name: string } | null> {
+  const tipo = TIPO_POR_FORMATO[(formato ?? 'story').trim().toLowerCase()] ?? 'STORY'
+  return db.page.findFirst({
+    where: { isTemplate: true, Template: { projectId, type: tipo } },
+    orderBy: MENOS_USADO_PRIMEIRO,
+    select: { id: true, name: true },
+  })
+}
+
 /**
  * Item de modelo: monta a arte agora, em cima da página-modelo do cliente.
+ *
+ * Sem `sourcePageId` no item, quem escolhe é a ROTAÇÃO (o modelo menos usado
+ * do formato) — a escolha explícita é da pessoa, na bancada ou no chat; a
+ * ausência dela nunca mais é beco (era SEM_MODELO seco até 13/08/2026). O
+ * modelo rotacionado sai em `avisos`, para quem pediu saber o que foi usado.
  *
  * `createArteRapida` já conta o uso do modelo (`registrarUsoDeModelo`) e fecha
  * a sugestão de modelo e de foto, DEPOIS de a arte existir — contar aqui de
@@ -402,15 +444,21 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
  */
 async function renderizarItemDeModelo(
   item: ItemDoPlano,
-  input: ExecutarPlanoInput,
+  input: ContextoDeProducao,
 ): Promise<ItemExecutado> {
-  const sourcePageId = item.sourcePageId?.trim()
+  let sourcePageId = item.sourcePageId?.trim()
+  let avisoDeRotacao: string | null = null
   if (!sourcePageId) {
-    throw new CreativeError(
-      'SEM_MODELO',
-      'Este item não tem modelo escolhido — escolha o modelo do cliente ou mude a via para IA.',
-      400,
-    )
+    const rotacao = await modeloPorRotacao(input.projectId, item.formato)
+    if (!rotacao) {
+      throw new CreativeError(
+        'SEM_MODELO',
+        'Este item não tem modelo escolhido e o cliente não tem modelo cadastrado neste formato — escolha um modelo ou mude a via para IA.',
+        400,
+      )
+    }
+    sourcePageId = rotacao.id
+    avisoDeRotacao = `Modelo escolhido pela rotação (o menos usado do formato): "${rotacao.name}".`
   }
 
   const campos = await camposDeTextoDoModelo(sourcePageId)
@@ -433,7 +481,12 @@ async function renderizarItemDeModelo(
     pageId: arte.pageId,
   })
 
-  const todos = [...avisos, ...(arte.imageWarning ? [arte.imageWarning] : []), ...(arte.avisos ?? [])]
+  const todos = [
+    ...(avisoDeRotacao ? [avisoDeRotacao] : []),
+    ...avisos,
+    ...(arte.imageWarning ? [arte.imageWarning] : []),
+    ...(arte.avisos ?? []),
+  ]
   return {
     itemId: item.id,
     tema: item.tema,
@@ -443,6 +496,89 @@ async function renderizarItemDeModelo(
     pageId: arte.pageId,
     arte: arte.url,
     ...(todos.length > 0 ? { avisos: todos } : {}),
+  }
+}
+
+// ── Um item por vez: o caminho da bancada ───────────────────────────────────
+
+export interface GerarItemPorModeloInput {
+  projectId: number
+  planoId: string
+  itemId: string
+  /**
+   * A escolha feita na tela — vence o que está gravado no item e fica
+   * PERSISTIDA nele, para o chat e os outros navegadores verem a mesma
+   * decisão. Ausente/nula = o que o item já tem, e sem nada a rotação decide.
+   */
+  sourcePageId?: string | null
+  /** `User.id` INTERNO de quem decidiu — auditoria, nunca o clerkId. */
+  decididoPor?: string | null
+}
+
+/**
+ * Monta UM item do plano sobre um modelo do cliente — o "Gerar" da via
+ * template na bancada, que até 13/08/2026 não existia (o card mandava gerar
+ * por IA "mesmo assim", com preço, ou esperar o executar-plano do chat).
+ *
+ * Render síncrono na invocação, como no executar-plano: zero chamada paga de
+ * imagem. A falha MARCA o item como erro antes de propagar — a equipe vê o
+ * motivo em qualquer navegador, não só no card de quem clicou.
+ */
+export async function gerarItemPorModelo(input: GerarItemPorModeloInput): Promise<ItemExecutado> {
+  const plano = await lerPlano(input.projectId, input.planoId)
+  const item = plano.itens.find((i) => i.id === input.itemId)
+  if (!item) {
+    throw new CreativeError('ITEM_NAO_ENCONTRADO', 'Este item não existe neste plano.', 404)
+  }
+  if ((item as { slides?: unknown }).slides) {
+    throw new CreativeError(
+      'CARROSSEL_SEM_MODELO',
+      'Carrossel não é montado sobre modelo — a série nasce por IA, slide a slide.',
+      400,
+    )
+  }
+  const situacao = statusDoItem(item)
+  if (!itemExecutavel(situacao)) {
+    throw new CreativeError(
+      'ITEM_NAO_EXECUTAVEL',
+      `Não dá para produzir agora: ${motivoDeNaoExecutar(situacao)}.`,
+      409,
+    )
+  }
+
+  /**
+   * A escolha da tela e a via corrigida ficam no ITEM antes do render: é o que
+   * faz o plano contar qual caminho as pessoas realmente usam (mesma razão do
+   * `via: 'ia'` que o Gerar por IA relata) — e o que deixa a escolha visível
+   * aos outros navegadores mesmo se o render logo abaixo falhar.
+   */
+  const escolhido = input.sourcePageId?.trim() || null
+  const patch: { sourcePageId?: string; via?: 'template' } = {}
+  if (escolhido && escolhido !== item.sourcePageId?.trim()) patch.sourcePageId = escolhido
+  if ((item.via ?? 'template') !== 'template') patch.via = 'template'
+
+  let atual: ItemDoPlano = item
+  if (Object.keys(patch).length > 0) {
+    const r = await atualizarItem({
+      projectId: input.projectId,
+      planoId: input.planoId,
+      itemId: input.itemId,
+      patch,
+      decididoPor: input.decididoPor ?? undefined,
+    })
+    atual = { ...item, ...r.item }
+  }
+
+  const ctx: ContextoDeProducao = {
+    projectId: input.projectId,
+    planoId: input.planoId,
+    decididoPor: input.decididoPor ?? null,
+  }
+  try {
+    return await renderizarItemDeModelo(atual, ctx)
+  } catch (erro) {
+    await marcarErro(ctx, atual, mensagemDoErro(erro))
+    throw erro
   }
 }
 

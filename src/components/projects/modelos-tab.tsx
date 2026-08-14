@@ -303,6 +303,7 @@ function ModeloCard({
   tagSuggestions: string[]
 }) {
   const deleteMutation = useDeleteTemplatePage(projectId)
+  const [previewAberta, setPreviewAberta] = React.useState(false)
 
   const handleDelete = async () => {
     const ok = window.confirm(
@@ -322,15 +323,29 @@ function ModeloCard({
     }
   }
 
+  /**
+   * A arte INTEIRA, na proporção real da página: a caixa fixa `aspect-[9/16]`
+   * + `object-cover` recortava o modelo (feed 4:5 e quadrado perdiam as
+   * bordas — justamente onde ficam rodapé e logo). A proporção vai em estilo
+   * INLINE porque classe arbitrária de Tailwind com valor dinâmico não gera
+   * CSS neste repo.
+   */
   return (
     <Card className="flex flex-col overflow-hidden">
-      <div className="relative w-full aspect-[9/16] bg-muted">
+      <button
+        type="button"
+        onClick={() => page.thumbnail && setPreviewAberta(true)}
+        disabled={!page.thumbnail}
+        title={page.thumbnail ? 'Ver o modelo em tamanho grande' : undefined}
+        className="relative w-full bg-muted cursor-zoom-in disabled:cursor-default"
+        style={{ aspectRatio: `${page.width} / ${page.height}` }}
+      >
         {page.thumbnail ? (
           <Image
             src={page.thumbnail}
             alt={page.name}
             fill
-            className="object-cover"
+            className="object-contain"
             sizes="(max-width: 640px) 50vw, 200px"
           />
         ) : (
@@ -338,7 +353,27 @@ function ModeloCard({
             <Wand2 className="h-6 w-6" />
           </div>
         )}
-      </div>
+      </button>
+
+      <Dialog open={previewAberta} onOpenChange={setPreviewAberta}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="truncate pr-6">{page.name}</DialogTitle>
+          </DialogHeader>
+          {page.thumbnail && (
+            <img
+              src={page.thumbnail}
+              alt={page.name}
+              className="mx-auto h-auto w-auto max-w-full rounded-md"
+              style={{ maxHeight: '75dvh' }}
+            />
+          )}
+          <p className="text-center text-xs text-muted-foreground">
+            {page.width} × {page.height}
+            {page.templateName ? ` • ${page.templateName}` : ''}
+          </p>
+        </DialogContent>
+      </Dialog>
       <div className="flex-1 p-3 space-y-3">
         <div className="space-y-0.5">
           <p className="font-medium text-sm truncate" title={page.name}>

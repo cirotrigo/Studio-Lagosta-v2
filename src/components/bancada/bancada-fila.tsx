@@ -12,7 +12,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -35,6 +35,7 @@ import { itemExecutavel } from '@/lib/planos/execucao'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
 import { formatarQuandoBR, ordenarPorDataDesc, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
+import { BancadaEscolhaDeModelo } from '@/components/bancada/bancada-escolha-de-modelo'
 import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
 import { useToast } from '@/hooks/use-toast'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
@@ -92,10 +93,46 @@ const COR_DO_PLANO: Record<StatusDoItem, string> = {
  * arquivo (histórico no git: commit que introduziu este comentário).
  */
 export function BancadaFila({ projectId }: { projectId: number }) {
-  const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, atualizar, descartar } =
-    useBancada(projectId)
+  const {
+    itens,
+    gerar,
+    gerarPorModelo,
+    gerarCapaEGuia,
+    confirmarEstilo,
+    agendar,
+    atualizar,
+    descartar,
+  } = useBancada(projectId)
   const patchDoPlano = useAtualizarItemDoPlano(projectId)
   const { toast } = useToast()
+
+  /**
+   * A escolha do modelo a seguir: o store primeiro (a tela responde na hora)
+   * e o servidor junto — `sourcePageId` tem coluna no ItemDePlano, e é lá que
+   * o chat e os outros navegadores leem a mesma decisão. `null` volta o item
+   * para a rotação automática.
+   */
+  const escolherModelo = React.useCallback(
+    (item: BancadaItem, pageId: string | null) => {
+      atualizar(item.id, { sourcePageId: pageId })
+      if (item.itemDePlanoId && item.planoId && itemEditavel(situacaoParaExibir(item))) {
+        patchDoPlano.mutate(
+          { planoId: item.planoId, itemId: item.itemDePlanoId, sourcePageId: pageId },
+          {
+            onError: () => {
+              toast({
+                title: 'A escolha do modelo não chegou à equipe',
+                description:
+                  'Ficou só neste navegador — o Gerar ainda vai usá-la, mas vale escolher de novo quando a conexão voltar.',
+                variant: 'destructive',
+              })
+            },
+          },
+        )
+      }
+    },
+    [atualizar, patchDoPlano, toast],
+  )
 
   /**
    * Salva a edição do card: o store primeiro (a tela responde na hora) e, se o
@@ -304,6 +341,8 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           item={item}
           projectId={projectId}
           onGerar={() => (item.tipo === 'carrossel' ? gerarCapaEGuia(item) : gerar(item))}
+          onGerarPorModelo={() => gerarPorModelo(item)}
+          onEscolherModelo={(pageId) => escolherModelo(item, pageId)}
           onConfirmarEstilo={() => confirmarEstilo(item)}
           onAgendar={(quando, situacao) => agendar(item, quando, situacao)}
           onRemover={() => descartar(item)}
@@ -318,6 +357,8 @@ function Card({
   item,
   projectId,
   onGerar,
+  onGerarPorModelo,
+  onEscolherModelo,
   onConfirmarEstilo,
   onAgendar,
   onRemover,
@@ -326,6 +367,8 @@ function Card({
   item: BancadaItem
   projectId: number
   onGerar: () => void
+  onGerarPorModelo: () => void
+  onEscolherModelo: (pageId: string | null) => void
   onConfirmarEstilo: () => void
   onAgendar: (quando: string, situacao: 'rascunho' | 'agendado') => void
   onRemover: () => void
@@ -385,12 +428,19 @@ function Card({
   const via = VIAS.find((v) => v.valor === (item.via ?? 'template'))
   /**
    * A via `template` monta a arte sobre um modelo já aprovado do cliente e não
-   * gasta crédito de imagem — é o padrão do plano justamente por isso. A
-   * bancada, porém, só tem o motor de geração: aqui o item sairia por IA, com
-   * preço. Em vez de esconder a diferença atrás do mesmo botão azul, a peça
-   * cara vira uma escolha explícita.
+   * gasta crédito de imagem — é o padrão do plano justamente por isso. Desde
+   * 13/08/2026 a bancada TEM esse motor (`gerar-modelo`): o botão principal do
+   * item de template monta no modelo, e a IA vira a escolha explícita com
+   * preço — antes era o contrário, com a via barata em beco.
    */
   const viaTemplate = doPlano && (item.via ?? 'template') === 'template'
+  /**
+   * Montar no modelo só existe para peça única DA LEVA em estado editável: o
+   * render acontece no item do plano (é lá que a escolha e o resultado ficam
+   * para a equipe), e um `na-fila` local seria recusado pelo servidor.
+   */
+  const podeMontarNoModelo =
+    !ehCarrossel && doPlano && itemEditavel(situacaoNoPlano)
 
   return (
     <div className="flex gap-3 rounded-xl border border-border/60 bg-card/40 p-3">
@@ -586,23 +636,51 @@ function Card({
             </Button>
           )}
           {(item.status === 'rascunho' || item.status === 'erro') &&
-            (viaTemplate ? (
-              <div className="w-full space-y-1.5">
-                <p className="text-xs text-muted-foreground">
-                  O plano previa montar esta arte sobre um modelo do cliente, sem gastar crédito
-                  de imagem. A bancada só cria por IA — gerar aqui tem preço e troca a via do
-                  item.
-                </p>
-                <Button size="sm" variant="outline" onClick={onGerar}>
-                  {item.status === 'erro' ? (
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  {item.status === 'erro'
-                    ? 'Tentar de novo por IA (25 créditos)'
-                    : 'Gerar por IA mesmo assim (25 créditos)'}
-                </Button>
+            (podeMontarNoModelo ? (
+              /**
+               * As duas vias, com o preço dito em cada uma: montar no modelo
+               * do cliente (sem custo de imagem) e gerar por IA. Qual é o
+               * botão principal segue a via do item no plano. A escolha do
+               * MODELO fica na linha colapsada logo abaixo — sem escolher,
+               * a rotação usa o menos usado do formato.
+               */
+              <div className="w-full space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={viaTemplate ? 'default' : 'outline'}
+                    onClick={onGerarPorModelo}
+                  >
+                    {item.status === 'erro' && viaTemplate ? (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    ) : (
+                      <LayoutTemplate className="mr-2 h-4 w-4" />
+                    )}
+                    {item.status === 'erro' && viaTemplate
+                      ? 'Tentar de novo no modelo (sem custo)'
+                      : 'Montar no modelo (sem custo de imagem)'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={viaTemplate ? 'outline' : 'default'}
+                    onClick={onGerar}
+                  >
+                    {item.status === 'erro' && !viaTemplate ? (
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Sparkles className="mr-2 h-4 w-4" />
+                    )}
+                    {item.status === 'erro' && !viaTemplate
+                      ? 'Tentar de novo por IA (25 créditos)'
+                      : 'Gerar por IA (25 créditos)'}
+                  </Button>
+                </div>
+                <BancadaEscolhaDeModelo
+                  projectId={projectId}
+                  formato={item.formato}
+                  escolhido={item.sourcePageId ?? null}
+                  onEscolher={onEscolherModelo}
+                />
               </div>
             ) : (
               <Button size="sm" onClick={onGerar}>
