@@ -36,7 +36,10 @@ import { itemExecutavel } from '@/lib/planos/execucao'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
 import { formatarQuandoBR, ordenarPorDataDesc, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
-import { BancadaEscolhaDeModelo } from '@/components/bancada/bancada-escolha-de-modelo'
+import {
+  BancadaEscolhaDeModelo,
+  type BaseDaArte,
+} from '@/components/bancada/bancada-escolha-de-modelo'
 import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
 import { useToast } from '@/hooks/use-toast'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
@@ -108,21 +111,49 @@ export function BancadaFila({ projectId }: { projectId: number }) {
   const { toast } = useToast()
 
   /**
-   * A escolha do modelo a seguir: o store primeiro (a tela responde na hora)
-   * e o servidor junto — `sourcePageId` tem coluna no ItemDePlano, e é lá que
-   * o chat e os outros navegadores leem a mesma decisão. `null` volta o item
-   * para a rotação automática.
+   * A escolha da BASE da arte: o store primeiro (a tela responde na hora) e o
+   * servidor junto, no que tem coluna — `via` e `sourcePageId` vivem no
+   * ItemDePlano, e é lá que o chat e os outros navegadores leem a mesma
+   * decisão. A ARTE DE REFERÊNCIA escolhida fica no navegador por decisão
+   * (13/08/2026, sem migration): ela viaja como referência `style` do card,
+   * mesma regra das âncoras extras, e o runner pula o rodízio ao vê-la.
    */
-  const escolherModelo = React.useCallback(
-    (item: BancadaItem, pageId: string | null) => {
-      atualizar(item.id, { sourcePageId: pageId })
+  const escolherBase = React.useCallback(
+    (item: BancadaItem, base: BaseDaArte) => {
+      if (base.via === 'template') {
+        atualizar(item.id, { via: 'template', sourcePageId: base.sourcePageId })
+      } else {
+        // Troca SÓ a escolha anterior de referência (a entrada `style` com
+        // generationId) — foto de estilo do acervo, âncoras e a cena ficam.
+        const extras = item.referencias.filter((r) => !(r.papel === 'style' && r.generationId))
+        atualizar(item.id, {
+          via: 'ia',
+          referencias: base.referencia
+            ? [
+                ...extras,
+                {
+                  papel: 'style' as const,
+                  url: base.referencia.url,
+                  thumbUrl: base.referencia.url,
+                  generationId: base.referencia.generationId,
+                  label: 'arte de referência',
+                },
+              ]
+            : extras,
+        })
+      }
       if (item.itemDePlanoId && item.planoId && itemEditavel(situacaoParaExibir(item))) {
         patchDoPlano.mutate(
-          { planoId: item.planoId, itemId: item.itemDePlanoId, sourcePageId: pageId },
+          {
+            planoId: item.planoId,
+            itemId: item.itemDePlanoId,
+            via: base.via,
+            ...(base.via === 'template' ? { sourcePageId: base.sourcePageId } : {}),
+          },
           {
             onError: () => {
               toast({
-                title: 'A escolha do modelo não chegou à equipe',
+                title: 'A escolha não chegou à equipe',
                 description:
                   'Ficou só neste navegador — o Gerar ainda vai usá-la, mas vale escolher de novo quando a conexão voltar.',
                 variant: 'destructive',
@@ -343,7 +374,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           projectId={projectId}
           onGerar={() => (item.tipo === 'carrossel' ? gerarCapaEGuia(item) : gerar(item))}
           onGerarPorModelo={() => gerarPorModelo(item)}
-          onEscolherModelo={(pageId) => escolherModelo(item, pageId)}
+          onEscolherBase={(base) => escolherBase(item, base)}
           onConfirmarEstilo={() => confirmarEstilo(item)}
           onAgendar={(quando, situacao, opcoes) => agendar(item, quando, situacao, opcoes)}
           onRemover={() => descartar(item)}
@@ -359,7 +390,7 @@ function Card({
   projectId,
   onGerar,
   onGerarPorModelo,
-  onEscolherModelo,
+  onEscolherBase,
   onConfirmarEstilo,
   onAgendar,
   onRemover,
@@ -369,7 +400,7 @@ function Card({
   projectId: number
   onGerar: () => void
   onGerarPorModelo: () => void
-  onEscolherModelo: (pageId: string | null) => void
+  onEscolherBase: (base: BaseDaArte) => void
   onConfirmarEstilo: () => void
   onAgendar: (
     quando: string,
@@ -689,8 +720,13 @@ function Card({
                 <BancadaEscolhaDeModelo
                   projectId={projectId}
                   formato={item.formato}
-                  escolhido={item.sourcePageId ?? null}
-                  onEscolher={onEscolherModelo}
+                  via={item.via ?? 'template'}
+                  sourcePageId={item.sourcePageId ?? null}
+                  refGenerationId={
+                    item.referencias.find((r) => r.papel === 'style' && r.generationId)
+                      ?.generationId ?? null
+                  }
+                  onEscolher={onEscolherBase}
                 />
               </div>
             ) : (

@@ -52,6 +52,15 @@ export interface BancadaReferencia {
   url?: string
   label?: string
   thumbUrl: string
+  /**
+   * Presente só quando a referência é uma ARTE DE REFERÊNCIA estrelada
+   * (Generation), escolhida no seletor "Base da arte" do card — é o que
+   * distingue essa escolha de uma foto de estilo do acervo e permite trocá-la
+   * sem mexer nas demais. Escolha do NAVEGADOR por decisão (13/08/2026, sem
+   * migration): o item do plano guarda só a via; a referência exata fica no
+   * card local, mesma regra das âncoras extras.
+   */
+  generationId?: string
 }
 
 export interface BancadaItem {

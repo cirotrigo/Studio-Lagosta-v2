@@ -263,24 +263,51 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // Uma por vez, sempre a MENOS USADA — referência fixa faz toda peça sair
     // igual, que é o problema que este mecanismo existe para não criar.
     let styleRefUsada: string | null = null
-    if (
-      args.track === 'arte' &&
-      !args.carrossel &&
-      !loadedRefs.some((r) => r.role === 'style')
-    ) {
-      const escolhida = await escolherReferenciaDeEstilo(args.projectId).catch(() => null)
-      if (escolhida) {
-        try {
-          const source = await fetchImageSource(escolhida.resultUrl)
-          const sane = await sanitizeInput(source.buffer, MAX_REF_DIM)
-          loadedRefs.push({ role: 'style', label: 'arte aprovada desta marca', ...sane })
-          styleRefUsada = escolhida.generationId
-          console.log(
-            `[arte-ia.bg] referência de estilo do rodízio: ${escolhida.generationId}` +
-              (escolhida.inedita ? ' (inédita)' : ''),
-          )
-        } catch (error) {
-          console.warn('[arte-ia.bg] referência de estilo não baixou — seguindo sem ela:', error)
+    if (args.track === 'arte' && !args.carrossel) {
+      if (!loadedRefs.some((r) => r.role === 'style')) {
+        const escolhida = await escolherReferenciaDeEstilo(args.projectId).catch(() => null)
+        if (escolhida) {
+          try {
+            const source = await fetchImageSource(escolhida.resultUrl)
+            const sane = await sanitizeInput(source.buffer, MAX_REF_DIM)
+            loadedRefs.push({ role: 'style', label: 'arte aprovada desta marca', ...sane })
+            styleRefUsada = escolhida.generationId
+            console.log(
+              `[arte-ia.bg] referência de estilo do rodízio: ${escolhida.generationId}` +
+                (escolhida.inedita ? ' (inédita)' : ''),
+            )
+          } catch (error) {
+            console.warn('[arte-ia.bg] referência de estilo não baixou — seguindo sem ela:', error)
+          }
+        }
+      } else {
+        /**
+         * A referência de estilo veio escolhida À MÃO (a bancada deixa apontar
+         * uma arte estrelada específica). Quando ela é uma das ESTRELADAS do
+         * projeto, o uso conta no rodízio do mesmo jeito — sem isto a
+         * escolhida ficava com cara de nunca usada e o rodízio a devolveria
+         * no topo da fila. O match é por `resultUrl`, que é o que viaja no
+         * pedido; URL que não é de estrelada (foto de estilo do acervo)
+         * simplesmente não marca nada.
+         */
+        const urls = args.referencias
+          .filter((r) => r.role === 'style' && r.url)
+          .map((r) => r.url as string)
+        if (urls.length > 0) {
+          const estrelada = await db.generation
+            .findFirst({
+              where: {
+                projectId: args.projectId,
+                styleRefAt: { not: null },
+                resultUrl: { in: urls },
+              },
+              select: { id: true },
+            })
+            .catch(() => null)
+          if (estrelada) {
+            styleRefUsada = estrelada.id
+            console.log(`[arte-ia.bg] referência de estilo escolhida à mão: ${estrelada.id}`)
+          }
         }
       }
     }

@@ -16,7 +16,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Star, StarOff, Info } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { Card } from '@/components/ui/card'
@@ -25,14 +25,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
-
-interface ReferenciaDeEstilo {
-  generationId: string
-  url: string | null
-  marcadaEm: string | null
-  ultimoUso: string | null
-  proximaDaFila: boolean
-}
+import { useArtesDeReferencia, type ArteDeReferencia } from '@/hooks/use-artes-de-referencia'
 
 function quando(iso: string | null): string {
   if (!iso) return 'nunca usada'
@@ -45,11 +38,7 @@ export function ArtesReferenciaTab({ projectId }: { projectId: number }) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
 
-  const { data, isLoading } = useQuery<{ referencias: ReferenciaDeEstilo[] }>({
-    queryKey: ['style-references', projectId],
-    queryFn: () => api.get(`/api/projects/${projectId}/style-references`),
-    staleTime: 30_000,
-  })
+  const { data, isLoading } = useArtesDeReferencia(projectId)
 
   const desmarcar = useMutation({
     mutationFn: (generationId: string) =>
@@ -123,7 +112,7 @@ function CardDeReferencia({
   desmarcando,
   onDesmarcar,
 }: {
-  referencia: ReferenciaDeEstilo
+  referencia: ArteDeReferencia
   desmarcando: boolean
   onDesmarcar: () => void
 }) {
