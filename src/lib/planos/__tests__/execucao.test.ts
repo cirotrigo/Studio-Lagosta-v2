@@ -106,11 +106,18 @@ describe('mapearCopyParaSlots', () => {
     expect(avisos[0]).toContain('"d"')
   })
 
-  it('campo sobrando fica com o texto do modelo, e isso é dito', () => {
-    const { slotValues, avisos } = mapearCopyParaSlots(campos, ['só a headline'])
+  it('campo sobrando é OCULTADO — placeholder do modelo não vira conteúdo', () => {
+    const { slotValues, ocultar, avisos } = mapearCopyParaSlots(campos, ['só a headline'])
     expect(slotValues).toEqual({ l1: 'só a headline' })
+    expect(ocultar).toEqual(['l2', 'l3'])
     expect(avisos[0]).toContain('"Apoio"')
     expect(avisos[0]).toContain('"Rodapé"')
+    expect(avisos[0]).toContain('ocultos')
+  })
+
+  it('item sem texto nenhum NÃO oculta nada — o texto do modelo é o único conteúdo', () => {
+    const { ocultar } = mapearCopyParaSlots(campos, [])
+    expect(ocultar).toEqual([])
   })
 
   it('bloco vazio ou em branco não ocupa campo', () => {

@@ -369,6 +369,9 @@ export function useBancada(projectId: number) {
           status: 'pronto',
           resultUrl: e.arte ?? null,
           ...(e.generationId ? { generationId: e.generationId } : {}),
+          // A página da arte: com ela no agendamento o post nasce RENDERED e
+          // editar a arte na agenda re-renderiza, em vez de congelar o PNG.
+          ...(e.pageId ? { pageId: e.pageId } : {}),
           via: 'template',
           situacaoNoPlano: 'pronto',
           aviso: e.avisos && e.avisos.length > 0 ? e.avisos.join(' ') : null,
@@ -511,6 +514,10 @@ export function useBancada(projectId: number) {
               ? { mediaUrls: midias, postType: 'CAROUSEL' as const, caption: item.legenda ?? '' }
               : {
                   generationId: item.generationId,
+                  // Arte nascida pelo EDITOR leva a página junto: o post nasce
+                  // RENDERED e editar a arte depois re-renderiza — sem a
+                  // página ele congela no PNG do momento (NOT_NEEDED).
+                  ...(item.pageId ? { pageId: item.pageId } : {}),
                   postType: item.formato === 'story' ? ('STORY' as const) : ('POST' as const),
                 }),
             quando,

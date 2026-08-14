@@ -96,6 +96,10 @@ export function textosDaPagina(layers: unknown): Record<string, string> {
   const out: Record<string, string> = {}
   for (const layer of parsePageLayers(layers)) {
     if (layer?.type !== 'text') continue
+    // Camada OCULTA não é copy da peça: desde 13/08/2026 o campo que a copy
+    // não cobre sai invisível (placeholder do modelo), e contá-lo aqui poria
+    // no corpus — e no diff — um texto que não está na arte.
+    if (layer.visible === false) continue
     const conteudo = typeof layer.content === 'string' ? layer.content.trim() : ''
     if (!conteudo) continue
     const base = layer.name ?? layer.id ?? 'texto'

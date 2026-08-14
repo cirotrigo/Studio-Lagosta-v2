@@ -131,6 +131,13 @@ export interface BancadaItem {
   criadoEm: number
   /** Generation no servidor, a partir do "Gerar". */
   generationId?: string
+  /**
+   * Página da arte, quando ela nasceu pelo EDITOR (via template). Vai junto no
+   * agendamento: com a página vinculada, o post nasce RENDERED e editar a arte
+   * depois re-renderiza (`invalidateScheduledRenders` o alcança) — sem ela o
+   * post congela no PNG do momento.
+   */
+  pageId?: string
   resultUrl?: string | null
   erro?: string | null
   /**

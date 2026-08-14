@@ -462,9 +462,14 @@ async function renderizarItemDeModelo(
   }
 
   const campos = await camposDeTextoDoModelo(sourcePageId)
-  const { slotValues, avisos } = mapearCopyParaSlots(campos, item.copyProposta ?? [])
+  const { slotValues, ocultar, avisos } = mapearCopyParaSlots(campos, item.copyProposta ?? [])
 
   const valores: Record<string, unknown> = { ...slotValues }
+  // Campo de texto que a copy não cobriu sai OCULTO: o texto do modelo é
+  // placeholder, e publicá-lo mentia na peça ("TERÇA A SEXTA…" numa arte que
+  // nem fala de horário). A camada continua na página, invisível — quem abrir
+  // no editor consegue religar.
+  for (const layerId of ocultar) valores[layerId] = { hidden: true }
   if (item.fotoDriveId?.trim()) valores._driveImageId = item.fotoDriveId.trim()
 
   const arte = await createArteRapida({

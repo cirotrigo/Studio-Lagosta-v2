@@ -699,8 +699,8 @@ function Card({
                       <LayoutTemplate className="mr-2 h-4 w-4" />
                     )}
                     {item.status === 'erro' && viaTemplate
-                      ? 'Tentar de novo no modelo (sem custo)'
-                      : 'Montar no modelo (sem custo de imagem)'}
+                      ? 'Tentar de novo pelo editor'
+                      : 'Gerar pelo editor'}
                   </Button>
                   <Button
                     size="sm"

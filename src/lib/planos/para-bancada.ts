@@ -439,6 +439,7 @@ export function paraItemDaBancada(
     status: situacaoDoPlanoNaBancada(status),
     criadoEm: agora,
     ...(doServidor.generationId ? { generationId: doServidor.generationId } : {}),
+    ...(doServidor.pageId ? { pageId: doServidor.pageId } : {}),
     ...(doServidor.postId ? { postId: doServidor.postId } : {}),
     resultUrl: null,
     erro: doServidor.erro?.trim() || null,
@@ -469,6 +470,7 @@ const CAMPOS_FUNDIDOS = [
   'status',
   'criadoEm',
   'generationId',
+  'pageId',
   'postId',
   'resultUrl',
   'erro',
@@ -544,6 +546,7 @@ export function fundirComOLocal(
     // Resultado do trabalho: o que o navegador já tem nunca é apagado; o que
     // falta é preenchido pelo servidor.
     generationId: local.generationId ?? doServidor.generationId,
+    pageId: local.pageId ?? doServidor.pageId,
     postId: local.postId ?? doServidor.postId,
     resultUrl: local.resultUrl ?? doServidor.resultUrl,
     erro: status === 'erro' ? (local.erro ?? doServidor.erro) : null,

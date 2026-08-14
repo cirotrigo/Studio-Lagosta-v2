@@ -452,8 +452,10 @@ export interface CreateArteRapidaInput {
   sourcePageId: string
   /**
    * Values keyed by layer id or layer name. A string sets text content;
-   * an object may carry `content` and/or `fileUrl`. Two reserved keys:
-   * `_driveImageId` (Google Drive file) and `_imageUrl` (direct URL).
+   * an object may carry `content`, `fileUrl` and/or `hidden: true` (a camada
+   * sai invisível — é como o plano esconde campo de texto que a copy não
+   * cobriu). Two reserved keys: `_driveImageId` (Google Drive file) and
+   * `_imageUrl` (direct URL).
    */
   slotValues: Record<string, unknown>
   /** Name for the generated page (default: "<source name> — <timestamp>"). */
@@ -523,6 +525,9 @@ function bakeLayers(
         updated.fileUrl = slotObj.fileUrl
         explicitFileUrl.add(layer.id)
       }
+      // O render pula `visible === false` — e o editor mostra a camada como
+      // oculta, então quem abrir a arte consegue religá-la.
+      if (slotObj.hidden === true) updated.visible = false
     }
     return updated
   })

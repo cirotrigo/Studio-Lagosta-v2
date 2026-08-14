@@ -161,6 +161,13 @@ export interface CampoDeTexto {
 export interface MapaDeCopy {
   /** Pronto para o `slotValues` de `createArteRapida` (chave = id da camada). */
   slotValues: Record<string, string>
+  /**
+   * Camadas de texto do modelo que a copy NÃO cobriu — para OCULTAR na arte.
+   * Deixá-las com o texto do modelo publicava placeholder como se fosse
+   * conteúdo ("TERÇA A SEXTA…" numa peça que nem fala de horário — relatado
+   * pelo Ciro em 13/08/2026).
+   */
+  ocultar: string[]
   /** O que quem chamou precisa repassar — nunca derruba a leva. */
   avisos: string[]
 }
@@ -177,8 +184,10 @@ export interface MapaDeCopy {
  * contrato do item (F3/B).
  *
  * Contagem diferente NUNCA derruba o item: preenche o que couber e avisa. Um
- * bloco a mais é copy que não aparece; um campo a mais fica com o texto do
- * modelo, que é conteúdo válido de template.
+ * bloco a mais é copy que não aparece; um campo a mais é OCULTADO — o texto
+ * do modelo é placeholder, e publicá-lo mentia na peça. A exceção é o item
+ * SEM texto nenhum: aí a arte sai inteira com os textos do modelo, que é o
+ * único conteúdo que existe.
  *
  * A chave é o `layerId` e não o nome: nome se repete entre camadas (o próprio
  * `textosDaPagina` desempata com `#2`), e `createArteRapida` casa por id ou
@@ -192,13 +201,14 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
   const alvos = (campos ?? []).filter((c) => c && typeof c.layerId === 'string' && c.layerId)
 
   const slotValues: Record<string, string> = {}
+  const ocultar: string[] = []
   const avisos: string[] = []
 
   if (blocos.length === 0) {
     if (alvos.length > 0) {
       avisos.push('Este item não tem texto próprio — a arte sai com os textos que já estão no modelo.')
     }
-    return { slotValues, avisos }
+    return { slotValues, ocultar, avisos }
   }
 
   if (alvos.length === 0) {
@@ -206,7 +216,7 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
       `O modelo escolhido não tem campo de texto para receber a copy — ${plural(blocos.length, 'bloco', 'blocos')} ` +
         'não ficaram na arte.',
     )
-    return { slotValues, avisos }
+    return { slotValues, ocultar, avisos }
   }
 
   const usados = Math.min(blocos.length, alvos.length)
@@ -221,15 +231,16 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
         `${sobrando.map((b) => `"${b.slice(0, 40)}"`).join(', ')}.`,
     )
   } else if (alvos.length > blocos.length) {
-    const restantes = alvos.slice(blocos.length).map((c) => c.name || c.layerId)
+    const restantes = alvos.slice(blocos.length)
+    ocultar.push(...restantes.map((c) => c.layerId))
     avisos.push(
       `O modelo tem mais campos de texto que a copy do item — ${restantes
-        .map((n) => `"${n}"`)
-        .join(', ')} ${restantes.length === 1 ? 'ficou' : 'ficaram'} com o texto do modelo.`,
+        .map((c) => `"${c.name || c.layerId}"`)
+        .join(', ')} ${restantes.length === 1 ? 'ficou oculto' : 'ficaram ocultos'} na arte.`,
     )
   }
 
-  return { slotValues, avisos }
+  return { slotValues, ocultar, avisos }
 }
 
 // ── A trilha de geração de um item de IA ────────────────────────────────────
