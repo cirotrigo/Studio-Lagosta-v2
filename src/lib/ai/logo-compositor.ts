@@ -272,6 +272,13 @@ export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
         // cravado no prompt produziria a mesma assinatura em todas.
         'Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem —, ocupando NO MÁXIMO 12% da largura do quadro — bem menor do que a tendência: é assinatura de canto, do tamanho de um selo, nunca um elemento da composição. Não a ponha sobre o assunto nem sobre a copy.',
     '⛔ Não redesenhe, não estilize, não simplifique e não "melhore" a marca. Não invente símbolo, monograma, contorno ou selo que não esteja no arquivo. Não escreva o nome da marca com outra fonte.',
+    // Soletração e ligadura, explícitas. O caso real que exigiu as duas linhas:
+    // a logo do TERO tem o R EMENDADO no E (ligadura), e o modelo a "desdobrou"
+    // em letras separadas — a arte saiu "TERRO", com o tagline "BRASAL E
+    // VINHO" no lugar de "BRASA E VINHO" (pego pelo Ciro em 14/08/2026; a
+    // conferência visual está desligada desde 10/08, então nada avisou).
+    'SOLETRAÇÃO: a marca é uma FORMA a copiar, não um texto a recompor. Reproduza EXATAMENTE as letras do arquivo, no nome e no tagline — nunca acrescente, duplique, troque ou omita uma letra sequer. Antes de finalizar, confira letra por letra contra o arquivo.',
+    'LIGADURA: quando duas letras do arquivo dividem um traço (letras emendadas), desenhe-as como UMA forma fundida, igual ao arquivo — NUNCA desdobre a ligadura em letras separadas nem em letra repetida.',
     'Se não conseguir reproduzir a marca fielmente, deixe o canto VAZIO — arte sem marca é aproveitável, marca errada não é.',
   ].join('\n')
 }

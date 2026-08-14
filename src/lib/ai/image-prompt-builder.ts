@@ -248,8 +248,13 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         // `compor` a logo nem chega ao modelo. Por isso aqui o texto MANDA
         // reproduzir: um preâmbulo que proibisse desenhar, junto de um bloco de
         // prompt que manda desenhar, é ordem contraditória.
+        //
+        // Soletração e ligadura explícitas desde 14/08/2026: a ligadura E+R do
+        // TERO foi "desdobrada" pelo modelo e a arte saiu "TERRO" com tagline
+        // "BRASAL E VINHO" — copiar a FORMA não basta como instrução quando a
+        // marca é um wordmark com letras emendadas.
         lines.push(
-          `${idx} is the OFFICIAL LOGO file${ref.label ? ` (${ref.label})` : ''}. Reproduce it in the piece EXACTLY as it appears here — same shape, same proportions, same letterforms, same colors. Never redraw, restyle or simplify it, and never letter the brand name in a different typeface.`,
+          `${idx} is the OFFICIAL LOGO file${ref.label ? ` (${ref.label})` : ''}. Reproduce it in the piece EXACTLY as it appears here — same shape, same proportions, same letterforms, same colors. Never redraw, restyle or simplify it, and never letter the brand name in a different typeface. SPELLING IS SACRED: copy the wordmark and its tagline letter-for-letter as they appear in this file — never add, double, swap or drop a single letter; check your lettering against the file before finishing. Where two letters share a stroke (a ligature), draw them as ONE fused shape exactly like the file — never expand a ligature into separate or repeated letters.`,
         )
         break
     }
