@@ -12,9 +12,10 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate, BellRing } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
 import {
   Dialog,
   DialogContent,
@@ -344,7 +345,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           onGerarPorModelo={() => gerarPorModelo(item)}
           onEscolherModelo={(pageId) => escolherModelo(item, pageId)}
           onConfirmarEstilo={() => confirmarEstilo(item)}
-          onAgendar={(quando, situacao) => agendar(item, quando, situacao)}
+          onAgendar={(quando, situacao, opcoes) => agendar(item, quando, situacao, opcoes)}
           onRemover={() => descartar(item)}
           onSalvarEdicao={(e) => salvarEdicao(item, e)}
         />
@@ -370,11 +371,21 @@ function Card({
   onGerarPorModelo: () => void
   onEscolherModelo: (pageId: string | null) => void
   onConfirmarEstilo: () => void
-  onAgendar: (quando: string, situacao: 'rascunho' | 'agendado') => void
+  onAgendar: (
+    quando: string,
+    situacao: 'rascunho' | 'agendado',
+    opcoes?: { lembrete?: boolean },
+  ) => void
   onRemover: () => void
   onSalvarEdicao: (e: EdicaoDoItem) => void
 }) {
   const [quando, setQuando] = React.useState(() => paraInputs(item.quando))
+  /**
+   * Publicação manual com lembrete — POR CARD e desligado por padrão, de
+   * propósito: um padrão persistido seria o interruptor esquecido ligado
+   * (mesma razão de `escopoPadrao` ficar fora do partialize do store).
+   */
+  const [lembrete, setLembrete] = React.useState(false)
   const ehCarrossel = item.tipo === 'carrossel'
   const slides = React.useMemo(
     () => (item.slides ?? []).slice().sort((a, b) => a.ordem - b.ordem),
@@ -759,14 +770,38 @@ function Card({
                 size="sm"
                 variant="outline"
                 disabled={!quandoTexto}
-                onClick={() => onAgendar(quandoTexto, 'rascunho')}
+                onClick={() => onAgendar(quandoTexto, 'rascunho', { lembrete })}
               >
                 <Calendar className="mr-2 h-4 w-4" />
                 Rascunho na agenda
               </Button>
-              <Button size="sm" disabled={!quandoTexto} onClick={() => onAgendar(quandoTexto, 'agendado')}>
-                Agendar
+              <Button
+                size="sm"
+                disabled={!quandoTexto}
+                onClick={() => onAgendar(quandoTexto, 'agendado', { lembrete })}
+              >
+                {lembrete && <BellRing className="mr-2 h-4 w-4" />}
+                {lembrete ? 'Agendar lembrete' : 'Agendar'}
               </Button>
+              {/* Publicação manual com lembrete. DESLIGADO por padrão: o
+                  caminho comum agenda direto e o sistema publica. Ligado, o
+                  post nasce REMINDER — ninguém publica por ele; na data e
+                  hora, o grupo do WhatsApp recebe a arte, a legenda e as
+                  observações para alguém postar à mão. */}
+              <label className="flex w-full cursor-pointer items-start gap-2 pt-1">
+                <Switch
+                  checked={lembrete}
+                  onCheckedChange={setLembrete}
+                  aria-label="Publicar à mão com lembrete no WhatsApp"
+                />
+                <span className="text-xs text-muted-foreground">
+                  <span className="font-medium text-foreground">Publicar à mão, com lembrete</span>
+                  {' — '}
+                  {lembrete
+                    ? 'nada publica sozinho: na data e hora agendadas, o grupo do WhatsApp recebe a arte e a legenda para alguém postar.'
+                    : 'desligado: o post agendado publica sozinho no horário.'}
+                </span>
+              </label>
             </>
           )}
 

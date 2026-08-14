@@ -486,7 +486,12 @@ export function useBancada(projectId: number) {
   )
 
   const agendar = React.useCallback(
-    async (item: BancadaItem, quando: string, situacao: 'rascunho' | 'agendado') => {
+    async (
+      item: BancadaItem,
+      quando: string,
+      situacao: 'rascunho' | 'agendado',
+      opcoes: { lembrete?: boolean } = {},
+    ) => {
       const ehCarrossel = item.tipo === 'carrossel'
       // Carrossel vai como CAROUSEL com as mídias NA ORDEM dos slides; peça
       // única vai pelo generationId (o vínculo que habilita melhorar depois).
@@ -510,6 +515,10 @@ export function useBancada(projectId: number) {
                 }),
             quando,
             situacao,
+            // Lembrete de publicação manual: nada publica sozinho, o grupo do
+            // WhatsApp recebe a arte no horário. Só viaja quando ligado — o
+            // caminho comum continua agendando direto.
+            ...(opcoes.lembrete ? { lembrete: true } : {}),
             // Escopo de aprendizado do item. "rotina" é o padrão do servidor:
             // não mandar nada quando é rotina mantém o corpo do pedido igual
             // ao de antes para o caminho comum.
@@ -530,7 +539,12 @@ export function useBancada(projectId: number) {
         relatarAvanco(item, { para: 'agendado', postId: r.postId })
         queryClient.invalidateQueries({ queryKey: ['social-posts', item.projectId] })
         toast({
-          title: situacao === 'agendado' ? 'Agendado' : 'Salvo como rascunho na agenda',
+          title:
+            situacao === 'agendado'
+              ? opcoes.lembrete
+                ? 'Lembrete agendado'
+                : 'Agendado'
+              : 'Salvo como rascunho na agenda',
           description: r.mensagem,
         })
       } catch (error) {

@@ -115,6 +115,15 @@ export interface AgendarPostInput {
    */
   situacao?: 'rascunho' | 'agendado'
   /**
+   * `true` = o post nasce como LEMBRETE (`publishType: REMINDER`): o sistema
+   * NÃO publica — na data e hora agendadas o cron de lembretes manda ao grupo
+   * do WhatsApp a arte, a legenda e as observações, e alguém publica à mão.
+   * O padrão (`false`/ausente) agenda direto, como sempre foi. Todo o funil
+   * já isola REMINDER (executor, stuck-posts e retry excluem; só o cron de
+   * lembretes o enxerga) — este campo é a porta de entrada que faltava.
+   */
+  lembrete?: boolean
+  /**
    * O que o sistema pode aprender com este post: ROTINA (padrão) sempre,
    * CAMPANHA com escopo temporal, PONTUAL nunca. Ver `learning-scope.ts` —
    * a captura é sempre; isto é o filtro da AGREGAÇÃO.
@@ -329,7 +338,10 @@ export async function agendarPost(input: AgendarPostInput) {
       400,
     )
   }
-  if (vaiPublicar && !project.instagramAccountId) {
+  // Lembrete dispensa a conta conectada: quem publica é gente, não o sistema —
+  // exigir Instagram aqui inviabilizaria justamente o cliente que ainda publica
+  // à mão, que é para quem o lembrete existe.
+  if (vaiPublicar && !input.lembrete && !project.instagramAccountId) {
     throw new CreativeError(
       'SEM_CONTA_INSTAGRAM',
       `O projeto "${project.name}" ainda não tem conta do Instagram conectada, então não dá para publicar. Dá para deixar como rascunho na agenda.`,
@@ -371,6 +383,9 @@ export async function agendarPost(input: AgendarPostInput) {
       scheduleType: 'SCHEDULED',
       scheduledDatetime: quando,
       status,
+      // REMINDER tira o post do alcance do executor e o entrega ao cron de
+      // lembretes; DIRECT é o default do schema e fica implícito.
+      ...(input.lembrete ? { publishType: 'REMINDER' as const } : {}),
       pageId: input.pageId ?? null,
       templateId,
       generationId,
@@ -476,12 +491,17 @@ export async function agendarPost(input: AgendarPostInput) {
     ...(post.learningScope !== ESCOPO_PADRAO
       ? { escopo: escopoEmPortugues(post.learningScope as EscopoAprendizado) }
       : {}),
+    ...(input.lembrete ? { lembrete: true } : {}),
     ...(avisos.length > 0 ? { aviso: avisos.join(' ') } : {}),
     agendaUrl: `${getPublicAppUrl()}/projects/${project.id}/agenda`,
     // Frase pronta para o modelo repetir: evita que ele traduza "DRAFT" sozinho
-    mensagem: vaiPublicar
-      ? `Agendado: este ${tipo} vai ser publicado no Instagram de ${project.name} em ${quandoBRT}.`
-      : `Deixei como rascunho na agenda de ${project.name}, para ${quandoBRT}. Rascunho não publica — é só avisar quando quiser que eu agende de verdade.`,
+    mensagem: input.lembrete
+      ? vaiPublicar
+        ? `Lembrete agendado: em ${quandoBRT} o grupo do WhatsApp recebe este ${tipo} de ${project.name} com a arte e a legenda, para alguém publicar à mão. Nada é publicado automaticamente.`
+        : `Deixei como rascunho na agenda de ${project.name}, para ${quandoBRT}, marcado como lembrete. Quando for aprovado, o grupo do WhatsApp recebe a arte no horário para publicar à mão.`
+      : vaiPublicar
+        ? `Agendado: este ${tipo} vai ser publicado no Instagram de ${project.name} em ${quandoBRT}.`
+        : `Deixei como rascunho na agenda de ${project.name}, para ${quandoBRT}. Rascunho não publica — é só avisar quando quiser que eu agende de verdade.`,
   }
 }
 

@@ -23,6 +23,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 
 interface ReferenciaDeEstilo {
@@ -105,40 +106,93 @@ export function ArtesReferenciaTab({ projectId }: { projectId: number }) {
 
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         {referencias.map((ref) => (
-          <Card key={ref.generationId} className="overflow-hidden">
-            <div className="relative aspect-[4/5] bg-muted">
-              {ref.url && (
-                <Image
-                  src={ref.url}
-                  alt=""
-                  fill
-                  sizes="(max-width: 768px) 50vw, 25vw"
-                  className="object-cover"
-                />
-              )}
-              {ref.proximaDaFila && (
-                <Badge className="absolute left-2 top-2 bg-amber-500/90 text-black hover:bg-amber-500/90">
-                  <Star className="mr-1 h-3 w-3 fill-current" />
-                  próxima
-                </Badge>
-              )}
-            </div>
-            <div className="space-y-2 p-3">
-              <p className="text-xs text-muted-foreground">Último uso: {quando(ref.ultimoUso)}</p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="w-full"
-                disabled={desmarcar.isPending}
-                onClick={() => desmarcar.mutate(ref.generationId)}
-              >
-                <StarOff className="mr-2 h-3.5 w-3.5" />
-                Tirar
-              </Button>
-            </div>
-          </Card>
+          <CardDeReferencia
+            key={ref.generationId}
+            referencia={ref}
+            desmarcando={desmarcar.isPending}
+            onDesmarcar={() => desmarcar.mutate(ref.generationId)}
+          />
         ))}
       </div>
     </div>
+  )
+}
+
+function CardDeReferencia({
+  referencia: ref,
+  desmarcando,
+  onDesmarcar,
+}: {
+  referencia: ReferenciaDeEstilo
+  desmarcando: boolean
+  onDesmarcar: () => void
+}) {
+  const [previewAberta, setPreviewAberta] = React.useState(false)
+
+  /**
+   * A arte INTEIRA (`object-contain`): a caixa 4:5 com `object-cover` cortava
+   * o topo e o rodapé de todo story 9:16 — justamente onde ficam título e
+   * logo, que é o que se olha para decidir se a referência ainda serve. A
+   * caixa continua 4:5 para a grade não pular; o clique abre em tamanho
+   * grande.
+   */
+  return (
+    <Card className="overflow-hidden">
+      <button
+        type="button"
+        onClick={() => ref.url && setPreviewAberta(true)}
+        disabled={!ref.url}
+        title={ref.url ? 'Ver a arte em tamanho grande' : undefined}
+        className="relative block aspect-[4/5] w-full bg-muted cursor-zoom-in disabled:cursor-default"
+      >
+        {ref.url && (
+          <Image
+            src={ref.url}
+            alt=""
+            fill
+            sizes="(max-width: 768px) 50vw, 25vw"
+            className="object-contain"
+          />
+        )}
+        {ref.proximaDaFila && (
+          <Badge className="absolute left-2 top-2 bg-amber-500/90 text-black hover:bg-amber-500/90">
+            <Star className="mr-1 h-3 w-3 fill-current" />
+            próxima
+          </Badge>
+        )}
+      </button>
+      <div className="space-y-2 p-3">
+        <p className="text-xs text-muted-foreground">Último uso: {quando(ref.ultimoUso)}</p>
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full"
+          disabled={desmarcando}
+          onClick={onDesmarcar}
+        >
+          <StarOff className="mr-2 h-3.5 w-3.5" />
+          Tirar
+        </Button>
+      </div>
+
+      <Dialog open={previewAberta} onOpenChange={setPreviewAberta}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Arte de referência</DialogTitle>
+          </DialogHeader>
+          {ref.url && (
+            <img
+              src={ref.url}
+              alt=""
+              className="mx-auto h-auto w-auto max-w-full rounded-md"
+              style={{ maxHeight: '75dvh' }}
+            />
+          )}
+          <p className="text-center text-xs text-muted-foreground">
+            Último uso: {quando(ref.ultimoUso)}
+          </p>
+        </DialogContent>
+      </Dialog>
+    </Card>
   )
 }

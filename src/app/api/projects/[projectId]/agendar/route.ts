@@ -31,6 +31,12 @@ const bodySchema = z.object({
   postType: z.enum(['STORY', 'POST', 'REEL', 'CAROUSEL']).optional(),
   caption: z.string().max(2200).optional(),
   /**
+   * `true` = publicação MANUAL com lembrete: nada publica sozinho; na data e
+   * hora agendadas o grupo do WhatsApp recebe a arte para alguém postar à
+   * mão. Ausente/`false` agenda direto (o padrão de sempre).
+   */
+  lembrete: z.boolean().optional(),
+  /**
    * Escopo de aprendizado, no vocabulário da tela. Ausente = rotina, que é o
    * caminho comum — a bancada só manda quando a pessoa marcou outra coisa.
    */
@@ -95,6 +101,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       mediaUrls: parsed.data.mediaUrls,
       scheduledDatetime: parsed.data.quando,
       situacao: parsed.data.situacao,
+      lembrete: parsed.data.lembrete,
       postType: parsed.data.postType,
       caption: parsed.data.caption,
       learningScope: normalizarEscopo(parsed.data.escopo),
