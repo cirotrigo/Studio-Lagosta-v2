@@ -10,8 +10,10 @@
 
 import * as React from 'react'
 import { useParams } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
+import { api } from '@/lib/api-client'
 import { usePageMetadata } from '@/contexts/page-metadata'
 import { BancadaCompositor } from '@/components/bancada/bancada-compositor'
 import { BancadaFila } from '@/components/bancada/bancada-fila'
@@ -36,6 +38,36 @@ export default function BancadaPage() {
         (i) => i.projectId === projectId && (i.status === 'agendado' || i.status === 'erro'),
       ).length,
   )
+  const queryClient = useQueryClient()
+
+  /**
+   * Limpar TAMBÉM no servidor: a fila é hidratada do plano, então card
+   * finalizado apagado só do localStorage voltava no refresh (mesmo defeito da
+   * lixeira, relatado em 13/08/2026). O que aponta para o item fica — post,
+   * arte e sinais têm vínculo frouxo de propósito. `allSettled`: um item que
+   * falhar não impede os outros de sair, e a invalidação no fim traz a
+   * verdade do servidor de qualquer jeito.
+   */
+  const limpar = React.useCallback(() => {
+    const doPlano = useBancadaStore
+      .getState()
+      .itens.filter(
+        (i) =>
+          i.projectId === projectId &&
+          (i.status === 'agendado' || i.status === 'erro') &&
+          i.itemDePlanoId &&
+          i.planoId,
+      )
+    limparFinalizados(projectId)
+    void Promise.allSettled(
+      doPlano.map((i) =>
+        api.delete(`/api/projects/${projectId}/planos/${i.planoId}/itens/${i.itemDePlanoId}`),
+      ),
+    ).then(() => {
+      queryClient.invalidateQueries({ queryKey: ['plano', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['planos', projectId] })
+    })
+  }, [projectId, limparFinalizados, queryClient])
 
   /*
     Sem título, sem descrição e sem trilha: o mesmo que a página do projeto e a
@@ -83,7 +115,7 @@ export default function BancadaPage() {
               variant="ghost"
               size="sm"
               className="text-xs text-muted-foreground"
-              onClick={() => limparFinalizados(projectId)}
+              onClick={limpar}
             >
               Limpar finalizados ({finalizados})
             </Button>

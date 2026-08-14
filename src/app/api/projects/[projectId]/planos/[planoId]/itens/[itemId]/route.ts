@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
-import { atualizarItem, transicionarItem } from '@/lib/planos/plano-service'
+import { atualizarItem, removerItem, transicionarItem } from '@/lib/planos/plano-service'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -157,5 +157,43 @@ export async function PATCH(
     }
     console.error('[planos] PATCH de item falhou', error)
     return NextResponse.json({ error: 'Erro ao mudar o item do plano' }, { status: 500 })
+  }
+}
+
+/**
+ * Tira o item da leva — a lixeira da bancada.
+ *
+ * Sem isto o descarte era só do localStorage de quem clicou, e o card voltava
+ * no refresh: a hidratação recria a fila a partir do plano, então remover de
+ * verdade é remover AQUI. Arte, post e sinais apontados pelo item ficam — os
+ * vínculos são frouxos de propósito.
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ projectId: string; planoId: string; itemId: string }> },
+) {
+  try {
+    const { userId, orgId } = await auth()
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+
+    const { projectId, planoId, itemId } = await params
+    const id = Number(projectId)
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
+    }
+    const project = await fetchProjectWithShares(id)
+    if (!project) return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
+    }
+
+    const removido = await removerItem({ projectId: id, planoId, itemId })
+    return NextResponse.json({ removido: true, ...removido })
+  } catch (error) {
+    if (error instanceof CreativeError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+    console.error('[planos] DELETE de item falhou', error)
+    return NextResponse.json({ error: 'Erro ao tirar o item do plano' }, { status: 500 })
   }
 }

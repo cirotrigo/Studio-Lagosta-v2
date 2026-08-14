@@ -670,6 +670,30 @@ export async function atualizarItem(input: {
 }
 
 /**
+ * Remove um item da leva — o "tirar da fila" da bancada.
+ *
+ * DELETE de verdade, não transição: o item retirado deixa de existir para
+ * TODAS as superfícies. É o que faz a lixeira sobreviver ao refresh — antes o
+ * card sumia só do localStorage de quem clicou, e a hidratação seguinte o
+ * recriava do plano (medido pelo Ciro em 13/08/2026).
+ *
+ * O que o item APONTAVA fica: Generation, post e sinais não têm FK com ele de
+ * propósito, então tirar a linha da leva não apaga arte nem publicação. O
+ * sinal de descarte (`descartada`) é de quem removeu — a bancada já o registra
+ * antes de chamar aqui. Funciona com o plano arquivado, como `transicionarItem`:
+ * recusar deixaria o card órfão de uma leva encerrada sem como sair da tela.
+ */
+export async function removerItem(input: {
+  projectId: number
+  planoId: string
+  itemId: string
+}) {
+  const item = await buscarItem(input.projectId, input.planoId, input.itemId)
+  await db.itemDePlano.delete({ where: { id: item.id } })
+  return { itemId: item.id, status: statusDoItem(item) }
+}
+
+/**
  * O ÚNICO ponto que muda a situação de um item.
  *
  * Diferente de `atualizarItem`, funciona com o plano arquivado: uma geração já

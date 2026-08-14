@@ -558,13 +558,16 @@ export function useBancada(projectId: number) {
   /**
    * Tirar da fila — e é aqui que estava o buraco maior do aprendizado.
    *
-   * O descarte é um `delete` no localStorage: a proposta de horário que a
-   * pessoa jogou fora nunca chegava ao servidor, então o corpus só via o que
-   * foi aceito. Item agendado NÃO conta como descarte (ele já cumpriu o
-   * caminho; sumir do card é limpeza de tela).
+   * O descarte registra o sinal (`descartada` — item agendado NÃO conta: ele
+   * já cumpriu o caminho, sumir do card é limpeza de tela), tira do
+   * localStorage e, para card da leva, REMOVE O ITEM NO SERVIDOR. Sem o
+   * terceiro passo o card voltava no refresh: a fila é hidratada do plano, e
+   * apagar só a cópia local era enxugar gelo (relatado pelo Ciro em 13/08).
+   * Falha do DELETE avisa — melhor um aviso que um card-fantasma ressuscitando
+   * sem explicação.
    */
   const descartar = React.useCallback(
-    (item: BancadaItem) => {
+    async (item: BancadaItem) => {
       if (item.sugestaoId && item.status !== 'agendado') {
         registrarDesfecho({
           sugestaoId: item.sugestaoId,
@@ -574,8 +577,24 @@ export function useBancada(projectId: number) {
         })
       }
       removerDaFila(item.id)
+      if (item.itemDePlanoId && item.planoId) {
+        try {
+          await api.delete(
+            `/api/projects/${item.projectId}/planos/${item.planoId}/itens/${item.itemDePlanoId}`,
+          )
+          queryClient.invalidateQueries({ queryKey: ['plano', item.projectId] })
+          queryClient.invalidateQueries({ queryKey: ['planos', item.projectId] })
+        } catch {
+          toast({
+            title: 'O item não saiu da leva da equipe',
+            description:
+              'Tirei da sua tela, mas não consegui remover do plano — ele pode voltar quando a página atualizar. Tente de novo.',
+            variant: 'destructive',
+          })
+        }
+      }
     },
-    [registrarDesfecho, removerDaFila],
+    [registrarDesfecho, removerDaFila, queryClient, toast],
   )
 
   return {
