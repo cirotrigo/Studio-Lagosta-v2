@@ -217,8 +217,15 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         )
         break
       case 'style':
+        // Limites DUROS no molde da âncora de ambiente. "NOT its content"
+        // sozinho não segurava: a referência de estilo é uma PEÇA PRONTA cheia
+        // de texto, e o modelo copiava headline/serviço dela para a arte nova
+        // em vez de seguir só a copy verbatim (relatado pelo Ciro em
+        // 13/08/2026, na fila da bancada com arte de referência escolhida).
+        // A regra vai COLADA à imagem — dizer "nada a mais" no bloco de copy
+        // não bastou, mesma lição da garrafa de Tabasco.
         lines.push(
-          `${idx} is a style reference${ref.label ? ` (${ref.label})` : ''} — copy its tonal register, luminosity and level of stylization, NOT its content. If this reference is light, the result is light.${linhaDeExclusao}`,
+          `${idx} is a STYLE reference${ref.label ? ` (${ref.label})` : ''} — an earlier piece from this brand's feed. Match its tonal register, luminosity, level of stylization and graphic mood; if this reference is light, the result is light. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt, and if none is listed, no text at all. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Whenever this reference conflicts with the copy list or with the real photo provided, the copy list and the real photo win.${linhaDeExclusao}`,
         )
         break
       case 'series-guide':
@@ -541,6 +548,7 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
         'O conteúdo textual da peça é SOMENTE o que está listado abaixo — nada a mais, nada a menos. Reproduza cada bloco letra por letra, com a mesma grafia, números e pontuação:',
         ...args.copy.map((b) => `- "${b.replace(/\s+/g, ' ').trim()}"`),
         'Não corrija, não traduza, não abrevie, não acrescente palavras, não invente horário, preço ou endereço.',
+        'Texto visto em qualquer IMAGEM DE REFERÊNCIA não é conteúdo desta peça: pertence a um post antigo e NUNCA entra aqui.',
       ].join('\n'),
     )
   } else {
