@@ -168,11 +168,21 @@ async function renderCard(brand: BrandContext): Promise<Buffer> {
   ctx.fillStyle = '#FFFFFF'
 
   if (brand.fonts.title) {
+    // A amostra e a legenda seguem a caixa do projeto: o modelo copia o que VÊ
+    // aqui, então um card com "TÍTULO DA MARCA" em caps ensinaria caixa alta
+    // até para marca configurada em Title Case — o card e o TYPOGRAPHY LOCK
+    // precisam dizer a mesma coisa.
+    const caixaAlta = brand.fonts.titleCase === 'caixa-alta'
+    const legendaCaixa = caixaAlta
+      ? 'caixa alta'
+      : brand.fonts.titleCase === 'title-case'
+        ? 'Title Case, nunca caixa alta'
+        : 'caixa como na copy, nunca forçar caixa alta'
     ctx.font = `700 84px ${quote(brand.fonts.title)}`
-    ctx.fillText('TÍTULO DA MARCA', 48, ty)
+    ctx.fillText(caixaAlta ? 'TÍTULO DA MARCA' : 'Título da Marca', 48, ty)
     ctx.fillStyle = '#9C958A'
     ctx.font = '400 20px sans-serif'
-    ctx.fillText(`${brand.fonts.title} — títulos, caixa alta`, 48, ty + 96)
+    ctx.fillText(`${brand.fonts.title} — títulos, ${legendaCaixa}`, 48, ty + 96)
     ty += 150
     ctx.fillStyle = '#FFFFFF'
   }

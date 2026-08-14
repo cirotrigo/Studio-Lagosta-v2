@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { TITLE_TEXT_CASES } from '@/lib/brand/title-text-case'
 import { z } from 'zod'
 
 export const runtime = 'nodejs'
@@ -29,6 +30,8 @@ interface BrandAssetsResponse {
   titleFontFamily: string | null
   subtitleFontFamily: string | null
   bodyFontFamily: string | null
+  /** Caixa dos títulos nas artes com IA. Nulo = caixa alta (padrão). */
+  titleTextCase: string | null
   textColorPreferences: TextColorPreferences | null
   overlayStyle: 'gradient' | 'solid' | null
 }
@@ -79,6 +82,7 @@ export async function GET(
     titleFontFamily?: string | null
     subtitleFontFamily?: string | null
     bodyFontFamily?: string | null
+    titleTextCase?: string | null
   }
 
   // Extract textColorPreferences and overlayStyle from brandVisualElements JSON
@@ -103,6 +107,7 @@ export async function GET(
     titleFontFamily: projectData.titleFontFamily ?? null,
     subtitleFontFamily: projectData.subtitleFontFamily ?? null,
     bodyFontFamily: projectData.bodyFontFamily ?? null,
+    titleTextCase: projectData.titleTextCase ?? null,
     textColorPreferences: textColorPreferences ?? null,
     overlayStyle: overlayStyle ?? null,
   }
@@ -122,6 +127,8 @@ const updatePreferencesSchema = z.object({
   titleFontFamily: z.string().nullable().optional(),
   subtitleFontFamily: z.string().nullable().optional(),
   bodyFontFamily: z.string().nullable().optional(),
+  // Nulo volta ao padrão (caixa alta) — mesma semântica do banco.
+  titleTextCase: z.enum(TITLE_TEXT_CASES).nullable().optional(),
   textColorPreferences: textColorPreferencesSchema.nullable().optional(),
   overlayStyle: z.enum(['gradient', 'solid']).nullable().optional(),
 })
@@ -169,6 +176,9 @@ export async function PATCH(
   }
   if (body.bodyFontFamily !== undefined) {
     updateData.bodyFontFamily = body.bodyFontFamily
+  }
+  if (body.titleTextCase !== undefined) {
+    updateData.titleTextCase = body.titleTextCase
   }
 
   // Handle textColorPreferences and overlayStyle — merge into brandVisualElements JSON

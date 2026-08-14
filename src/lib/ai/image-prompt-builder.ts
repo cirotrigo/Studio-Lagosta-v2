@@ -474,7 +474,24 @@ export function buildTypographyLock(brand: BrandContext | null): string {
   if (!brand) return ''
   const linhas: string[] = ['[TIPOGRAFIA TRAVADA — IDÊNTICA EM TODOS OS SLIDES]']
   if (brand.fonts.title) {
-    linhas.push(`- Títulos: ${brand.fonts.title}, caixa alta, peso máximo, entrelinha curta.`)
+    // A caixa é do PROJETO (Project.titleTextCase), não uma constante: o lock
+    // vence até a copy verbatim — a conferência de texto compara em uppercase
+    // e não enxerga a troca de caixa — então "caixa alta" cravada aqui punha
+    // TODO título em caps mesmo em marca cujo DNA pede Title Case.
+    switch (brand.fonts.titleCase) {
+      case 'title-case':
+        linhas.push(
+          `- Títulos: ${brand.fonts.title}, em Title Case (inicial maiúscula nas palavras principais, o resto minúsculo), peso máximo, entrelinha curta. NUNCA componha o título todo em caixa alta.`,
+        )
+        break
+      case 'como-escrito':
+        linhas.push(
+          `- Títulos: ${brand.fonts.title}, peso máximo, entrelinha curta, na caixa EXATA em que a copy foi escrita — NUNCA converta o título para caixa alta nem para minúsculas.`,
+        )
+        break
+      default:
+        linhas.push(`- Títulos: ${brand.fonts.title}, caixa alta, peso máximo, entrelinha curta.`)
+    }
   }
   const apoio = brand.fonts.subtitle ?? brand.fonts.body
   if (apoio) linhas.push(`- Subtítulos e apoio: ${apoio}.`)

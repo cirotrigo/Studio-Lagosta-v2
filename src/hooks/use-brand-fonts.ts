@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import type { TitleTextCase } from '@/lib/brand/title-text-case'
 
 export interface BrandAssetsResponse {
   titleFontFamily: string | null
   subtitleFontFamily: string | null
   bodyFontFamily: string | null
+  /** Caixa dos títulos nas artes com IA. Nulo = caixa alta (padrão). */
+  titleTextCase: string | null
   fonts: Array<{ name: string; fontFamily: string; fileUrl: string }>
 }
 
@@ -24,6 +27,8 @@ export interface UpdateBrandFontsInput {
   /** Nulo = usa a fonte de corpo também no subtítulo */
   subtitleFontFamily?: string | null
   bodyFontFamily?: string | null
+  /** Nulo = volta ao padrão (caixa alta) */
+  titleTextCase?: TitleTextCase | null
 }
 
 export function useUpdateBrandFonts(projectId: number | string | undefined) {

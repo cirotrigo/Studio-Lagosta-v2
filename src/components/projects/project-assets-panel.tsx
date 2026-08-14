@@ -19,6 +19,14 @@ import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
 import { useBrandFonts, useUpdateBrandFonts } from '@/hooks/use-brand-fonts'
 import { FONT_CONFIG } from '@/lib/font-config'
+import {
+  DEFAULT_TITLE_TEXT_CASE,
+  normalizeTitleTextCase,
+  TITLE_TEXT_CASES,
+  TITLE_TEXT_CASE_DESCRIPTIONS,
+  TITLE_TEXT_CASE_LABELS,
+  type TitleTextCase,
+} from '@/lib/brand/title-text-case'
 
 type DriveStatus = 'loading' | 'available' | 'unavailable'
 
@@ -861,6 +869,29 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
 
   const completo = Boolean(brand?.titleFontFamily && brand?.bodyFontFamily)
 
+  const caixaDoTitulo = normalizeTitleTextCase(brand?.titleTextCase)
+
+  const salvarCaixa = (valor: string) => {
+    const caixa = valor as TitleTextCase
+    atualizar.mutate(
+      // O padrão fica NULL no banco — mesma semântica de "sem definição".
+      { titleTextCase: caixa === DEFAULT_TITLE_TEXT_CASE ? null : caixa },
+      {
+        onSuccess: () =>
+          toast({
+            title: 'Fontes da marca atualizadas',
+            description: `Caixa do título: ${TITLE_TEXT_CASE_LABELS[caixa]}.`,
+          }),
+        onError: (error) =>
+          toast({
+            title: 'Não foi possível salvar',
+            description: error instanceof Error ? error.message : 'Tente novamente.',
+            variant: 'destructive',
+          }),
+      },
+    )
+  }
+
   const seletor = (
     campo: 'titleFontFamily' | 'subtitleFontFamily' | 'bodyFontFamily',
     rotulo: string,
@@ -931,9 +962,38 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
       ) : (
         <>
           <div className="grid gap-4 md:grid-cols-3">
-            {seletor('titleFontFamily', 'Fonte de título', 'HAPPY HOUR', 'text-2xl font-semibold')}
+            {seletor(
+              'titleFontFamily',
+              'Fonte de título',
+              caixaDoTitulo === 'caixa-alta' ? 'HAPPY HOUR' : 'Happy Hour',
+              'text-2xl font-semibold',
+            )}
             {seletor('subtitleFontFamily', 'Fonte de subtítulo', 'Toda quarta, a partir das 17h', 'text-base')}
             {seletor('bodyFontFamily', 'Fonte de corpo', 'Chope gelado e petiscos até as 20h', 'text-sm')}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Caixa do título nas artes com IA</Label>
+            <Select
+              value={caixaDoTitulo}
+              onValueChange={salvarCaixa}
+              disabled={isLoading || atualizar.isPending}
+            >
+              <SelectTrigger className="md:max-w-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TITLE_TEXT_CASES.map((caixa) => (
+                  <SelectItem key={caixa} value={caixa}>
+                    {TITLE_TEXT_CASE_LABELS[caixa]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {TITLE_TEXT_CASE_DESCRIPTIONS[caixaDoTitulo]} Vale para as artes geradas por IA
+              (bancada, chat e carrossel); os templates já montados não mudam.
+            </p>
           </div>
 
           {!completo && (

@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { criarEntradaBase } from '@/lib/knowledge/entries'
 import { formatarValidade } from '@/lib/knowledge/vigencia'
+import { normalizeTitleTextCase, type TitleTextCase } from '@/lib/brand/title-text-case'
 
 /**
  * Fonte única da identidade da marca para TODO prompt de geração.
@@ -39,6 +40,12 @@ export interface BrandContext {
     title: string | null
     subtitle: string | null
     body: string | null
+    /**
+     * Caixa dos títulos nas artes com IA — já resolvida (nulo no banco vira
+     * 'caixa-alta'). Consumida pelo TYPOGRAPHY LOCK e pelo Brand Reference
+     * Card, que precisam dizer a MESMA coisa.
+     */
+    titleCase: TitleTextCase
   }
   /**
    * Curadoria da prancha tipográfica (type-specimen): quando não-vazia, a
@@ -89,6 +96,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       titleFontFamily: true,
       subtitleFontFamily: true,
       bodyFontFamily: true,
+      titleTextCase: true,
       specimenFontFamilies: true,
       brandDNA: true,
       BrandColor: {
@@ -129,6 +137,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       title: nonEmpty(project.titleFontFamily),
       subtitle: nonEmpty(project.subtitleFontFamily),
       body: nonEmpty(project.bodyFontFamily),
+      titleCase: normalizeTitleTextCase(project.titleTextCase),
     },
     specimenFontFamilies: project.specimenFontFamilies ?? [],
     colors: project.BrandColor,

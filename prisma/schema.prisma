@@ -578,6 +578,10 @@ model Project {
   bodyFontFamily              String?
   /// Fonte de subtítulo. Nulo = a marca usa a do corpo também no subtítulo.
   subtitleFontFamily          String?
+  /// Caixa dos títulos nas artes geradas por IA ('caixa-alta' | 'title-case' |
+  /// 'como-escrito'). Nulo = caixa alta, o comportamento histórico. TEXT e não
+  /// enum; o vocabulário mora em src/lib/brand/title-text-case.ts.
+  titleTextCase               String?
   AIGeneratedImage            AIGeneratedImage[]
   BrandColor                  BrandColor[]
   chatConversations           ChatConversation[]

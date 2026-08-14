@@ -2465,7 +2465,25 @@ código novo:
   O pipeline de IA não passa por essa rota (extrai o `fileId` e baixa o
   original direto), então miniatura pequena não afeta geração.
 
-### Important Patterns
+### A caixa do título nas artes com IA é escolha por projeto (14/08/2026)
+
+`Project.titleTextCase` (`'caixa-alta'` default via NULL | `'title-case'` |
+`'como-escrito'`; vocabulário em `src/lib/brand/title-text-case.ts`, módulo puro
+porque o painel da aba Marca é client). Controle na aba Marca, card "Fontes da
+marca". Nasceu do pedido da Real Gelateria: o DNA dela pede Title Case, mas o
+TYPOGRAPHY LOCK cravava "caixa alta" para todo projeto.
+
+- 🔴 **O lock vence a copy verbatim na CAIXA, e a conferência não enxerga**:
+  `verifyImageTexts` compara em uppercase, então título convertido para caps
+  passa com veredito verde. Instrução de caixa no prompt é decisão de marca,
+  não detalhe de redação.
+- **O TYPOGRAPHY LOCK e o Brand Reference Card precisam dizer a MESMA coisa.**
+  O modelo copia o que VÊ: um card com "TÍTULO DA MARCA" em caps ensina caixa
+  alta mesmo com o lock pedindo Title Case. Os dois leem
+  `brand.fonts.titleCase` (já resolvido pelo `loadBrandContext`). O cache do
+  card se invalida sozinho — `cacheKey` serializa `brand.fonts`.
+- **Projeto com `brandManualUrl` não passa pelo card gerado** — lá a caixa que
+  o modelo vê é a do manual do designer; o lock continua valendo por texto.
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
 - Protected routes use client-side redirect in layout component
