@@ -2246,6 +2246,11 @@ export const MCP_TOOLS: McpTool[] = [
               driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos / listar-fotos-da-pasta).' },
               url: { type: 'string', description: 'Alternativa: URL de imagem já no Studio (Blob).' },
               label: { type: 'string', description: 'Rótulo curto (ex: "salão principal", "picanha na tábua").' },
+              generationId: {
+                type: 'string',
+                description:
+                  'Só em role "style": o id da arte deste projeto que serve de MODELO. Com ele a peça nova copia a DIAGRAMAÇÃO daquela arte — posição do texto, alinhamento, caixa das letras, cor por nível e ornamentos —, mudando só a foto e a copy. Sem ele, a referência combina apenas clima e luz, e o layout continua livre. Use quando alguém disser "faz parecida com aquela".',
+              },
               excluir: {
                 type: 'array',
                 items: { type: 'string' },
@@ -2298,6 +2303,10 @@ export const MCP_TOOLS: McpTool[] = [
               driveFileId: typeof r.driveFileId === 'string' && r.driveFileId ? r.driveFileId : undefined,
               url: typeof r.url === 'string' && r.url ? r.url : undefined,
               label: typeof r.label === 'string' && r.label ? r.label.slice(0, 80) : undefined,
+              // Procedência conferida no serviço: id que não é deste projeto é
+              // descartado e a referência segue valendo como clima.
+              generationId:
+                typeof r.generationId === 'string' && r.generationId ? r.generationId : undefined,
               excluir: Array.isArray((r as Record<string, unknown>).excluir)
                 ? ((r as unknown as { excluir: unknown[] }).excluir
                     .filter((e): e is string => typeof e === 'string' && e.trim().length > 0)

@@ -34,6 +34,7 @@ export type ArtReferenceRole =
   | 'anchor-ambient' // foto real do ambiente: a cena acontece NESTE lugar
   | 'anchor-dish' // segunda foto real do prato (outro ângulo/detalhe)
   | 'style' // referência de estilo/tonalidade (arte já aprovada, grid do feed)
+  | 'style-guide' // MODELO escolhido à mão: manda no look E na diagramação
   | 'series-guide' // slide-guia do carrossel: define o look de toda a série
   | 'brand-card' // carta de identidade renderizada (logo + paleta + fontes)
   | 'type-specimen' // prancha com o alfabeto completo das fontes reais (type-specimen.ts)
@@ -154,10 +155,11 @@ export function orderReferences<T extends ArtReferenceDescriptor>(refs: T[]): T[
     'anchor-dish': 1,
     'anchor-ambient': 2,
     style: 3,
-    'series-guide': 4,
-    'brand-card': 5,
-    'type-specimen': 6,
-    logo: 7,
+    'style-guide': 4,
+    'series-guide': 5,
+    'brand-card': 6,
+    'type-specimen': 7,
+    logo: 8,
   }
   return [...refs].sort((a, b) => rank[a.role] - rank[b.role])
 }
@@ -226,6 +228,19 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         // não bastou, mesma lição da garrafa de Tabasco.
         lines.push(
           `${idx} is a STYLE reference${ref.label ? ` (${ref.label})` : ''} — an earlier piece from this brand's feed. Match its tonal register, luminosity, level of stylization and graphic mood; if this reference is light, the result is light. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt, and if none is listed, no text at all. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Whenever this reference conflicts with the copy list or with the real photo provided, the copy list and the real photo win.${linhaDeExclusao}`,
+        )
+        break
+      // A referência ESCOLHIDA À MÃO na bancada. Papel próprio, e não `style`,
+      // porque as duas coisas são pedidos diferentes: `style` combina clima e
+      // deixa a diagramação livre; aqui a pessoa apontou uma peça e disse
+      // "faça parecida com esta" — e o preâmbulo de `style`, que fala só em
+      // "tonal register, luminosity and graphic mood", nunca prometeu layout.
+      // Relatado pelo Ciro em 16/08/2026 na Real Gelateria: modelo escolhido,
+      // arte saindo com outra diagramação e a headline em caixa alta contra o
+      // Title Case do modelo.
+      case 'style-guide':
+        lines.push(
+          `${idx} is the MODEL to follow${ref.label ? ` (${ref.label})` : ''} — an approved piece from this brand, hand-picked for this job. Side by side with it, the new piece must look laid out by the SAME designer, in the same minute: same placement of the text block, same alignment, same typographic case per level, same colour per level, same ornaments, same reading veil. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Copy its LAYOUT, never its content.${linhaDeExclusao}`,
         )
         break
       case 'series-guide':
@@ -392,6 +407,14 @@ export interface BuildArtePromptArgs {
    */
   blocoLogo?: string | null
   /** Papel deste slide no carrossel. Ausente = arte avulsa. */
+  /**
+   * Leitura por visão do MODELO escolhido à mão (peça avulsa). Só é usada
+   * quando existe uma referência de papel `style-guide` — ver buildModeloSpine.
+   */
+  modelo?: {
+    descricao?: string | null
+    elementos?: string[] | null
+  } | null
   carrossel?: {
     slideOrder: number
     totalSlides: number
@@ -419,6 +442,9 @@ export interface BuildArtePromptArgs {
  * bloco de texto) e deixar variar só o sujeito e os textos.
  */
 export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?: string[] | null): string {
+  // `null`/`undefined` = a visão não respondeu; `[]` = respondeu que não há
+  // nenhum. Só o segundo autoriza a ordem "não acrescente elemento gráfico".
+  const declarados = Array.isArray(elementosDoGuia)
   const elementos = (elementosDoGuia ?? []).map((e) => e.trim()).filter(Boolean)
 
   const linhas = [
@@ -438,7 +464,7 @@ export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?
       ...elementos.map((e) => `- ${e}`),
       'Não são opcionais, não são enfeite do guia e não podem ser substituídos por outro elemento.',
     )
-  } else if (elementos.length === 0 && descricaoDoGuia) {
+  } else if (declarados && descricaoDoGuia) {
     linhas.push(
       '',
       '⚠️ O guia NÃO tem elemento gráfico além do texto: não acrescente filete, onda, barra, moldura nem ícone.',
@@ -475,18 +501,94 @@ export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?
 }
 
 /**
+ * MODELO SPINE — o parágrafo que faz a peça avulsa sair parecida com o MODELO
+ * que a pessoa escolheu à mão na bancada.
+ *
+ * Irmão do LOOK SPINE, com uma diferença que não é cosmética: no slide irmão
+ * de carrossel a copy tem mais ou menos a mesma forma do guia, então "copie a
+ * hierarquia" é literal. Aqui não — o modelo escolhido pode ter 3 níveis de
+ * texto e a peça nova ter 5 blocos (foi o caso na Real Gelateria: manchete +
+ * apoio + corpo no modelo, contra manchete + apoio + rótulo + duas linhas de
+ * serviço na peça nova). Por isso o item 3 manda ESTENDER o nível mais baixo
+ * em vez de exigir a mesma contagem: exigir contagem igual faria o modelo
+ * inventar hierarquia ou, pior, omitir bloco de copy.
+ */
+export function buildModeloSpine(descricao?: string | null, elementos?: string[] | null): string {
+  // Mesma distinção do LOOK SPINE: `[]` afirma que não há elemento gráfico;
+  // ausente não afirma nada.
+  const declarados = Array.isArray(elementos)
+  const graficos = (elementos ?? []).map((e) => e.trim()).filter(Boolean)
+
+  const linhas = [
+    '[MODELO A SEGUIR — A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA]',
+    'Uma das referências é o MODELO escolhido para esta peça. A diagramação dela não é sua escolha: é a do modelo, com outra foto e outros textos.',
+  ]
+
+  if (graficos.length > 0) {
+    linhas.push(
+      '',
+      '⚠️ DESENHE ESTES ELEMENTOS GRÁFICOS, obrigatoriamente — são a assinatura do modelo:',
+      ...graficos.map((e) => `- ${e}`),
+      'Não são enfeite do modelo e não podem ser trocados por outro elemento.',
+    )
+  } else if (declarados && descricao) {
+    linhas.push(
+      '',
+      '⚠️ O modelo NÃO tem elemento gráfico além do texto: não acrescente filete, onda, barra, moldura nem ícone.',
+    )
+  }
+
+  linhas.push(
+    '',
+    'REPLIQUE, item a item:',
+    '1. POSIÇÃO do bloco de texto: o mesmo canto, a mesma altura, a mesma margem. Se no modelo o texto está embaixo, aqui está embaixo.',
+    '2. ALINHAMENTO do texto (à esquerda, centro ou direita): idêntico ao do modelo.',
+    '3. CAIXA de cada nível (ALTA, baixa ou Title Case): igual à do nível correspondente no modelo. Esta regra vence qualquer outro palpite sobre caixa.',
+    '4. HIERARQUIA: mesma proporção de tamanho e peso entre manchete, apoio e corpo. Se esta peça tem MAIS blocos de copy do que o modelo, repita o nível mais baixo do modelo para os blocos extras — nunca invente um nível novo e NUNCA omita um bloco da copy.',
+    '5. COR DE CADA NÍVEL: se no modelo a manchete é clara, aqui também é. A cor de destaque entra no MESMO nível hierárquico, nunca em outro.',
+    '6. ELEMENTOS GRÁFICOS (filete, losango, selo, ícone): os mesmos, na mesma posição e no mesmo tamanho relativo.',
+    '7. VÉU DE LEITURA: mesma direção e mesma densidade do gradiente.',
+    '8. GRAU DE ESTILIZAÇÃO E LUMINOSIDADE: se o modelo é claro e arejado, esta peça é clara e arejada.',
+    '',
+    'MUDE apenas: a fotografia (que é a fornecida como cena) e as palavras da copy desta peça.',
+    '⛔ Não "melhore" a diagramação do modelo, não reequilibre a composição e não varie para dar ritmo. Aqui variação é DEFEITO — a pessoa escolheu esta peça de propósito.',
+  )
+
+  // Mesma razão do LOOK SPINE: a imagem sozinha deixa o modelo decidir o que é
+  // essencial; a leitura por visão vira lista de decisões verificáveis.
+  if (descricao?.trim()) {
+    linhas.push('', 'O QUE O MODELO FAZ (leia e repita exatamente):', descricao.trim())
+  }
+
+  return linhas.join('\n')
+}
+
+/**
  * TYPOGRAPHY LOCK — descrição travada da tipografia, copiada igual em todo
  * slide.
  *
  * Sem isto o modelo escolhe uma fonte "parecida" diferente a cada slide, e o
  * carrossel sai com três tipografias. A regra veio das skills: descrição vaga
  * é reinterpretada; descrição travada e repetida verbatim, não.
+ *
+ * 🔴 O lock trava a FAMÍLIA, nunca a CAIXA. Até 16/08/2026 a linha do título
+ * dizia "caixa alta" para TODA marca — instrução curta e imperativa aos 36% do
+ * prompt, contra a regra da própria marca enterrada aos 62%, no meio de 9.180
+ * caracteres de DNA (54% do prompt). O hardcode ganhava: a Real Gelateria pede
+ * "caixa alta moderada ou Title Case" e recebia TERÇA MERECE em caixa alta
+ * cheia, contra o modelo Title Case que a pessoa tinha escolhido.
+ *
+ * Medido nos 11 clientes em 16/08/2026: 10 declaram a própria caixa no DNA, e
+ * em 4 deles o hardcode contradizia o que estava escrito (Real Gelateria e
+ * Wine Vix pedem Title Case; O Quintal proíbe caixa alta contínua fora de uma
+ * fonte específica; Empório Fonseca pede caixa mista na promessa). Ou seja: a
+ * linha era redundante onde acertava e mandava onde errava.
  */
 export function buildTypographyLock(brand: BrandContext | null): string {
   if (!brand) return ''
   const linhas: string[] = ['[TIPOGRAFIA TRAVADA — IDÊNTICA EM TODOS OS SLIDES]']
   if (brand.fonts.title) {
-    linhas.push(`- Títulos: ${brand.fonts.title}, caixa alta, peso máximo, entrelinha curta.`)
+    linhas.push(`- Títulos: ${brand.fonts.title}, peso máximo, entrelinha curta.`)
   }
   const apoio = brand.fonts.subtitle ?? brand.fonts.body
   if (apoio) linhas.push(`- Subtítulos e apoio: ${apoio}.`)
@@ -494,6 +596,10 @@ export function buildTypographyLock(brand: BrandContext | null): string {
   if (linhas.length === 1) return ''
   linhas.push(
     'Use EXATAMENTE estas famílias, com o mesmo peso e a mesma escala relativa em todos os slides. Nunca substitua por fonte parecida e nunca varie de um slide para o outro.',
+    // Sem esta linha o gpt-image cai sozinho em caixa alta na manchete, que é
+    // o default dele — tirar o hardcode não basta, é preciso dizer de onde a
+    // caixa vem.
+    'CAIXA das letras (ALTA, baixa ou Title Case): NÃO é livre e NÃO tem padrão. Ela vem da identidade desta marca descrita abaixo e, quando houver um modelo a seguir, do modelo. Nunca escolha caixa alta por ser manchete.',
   )
   return linhas.join('\n')
 }
@@ -620,6 +726,20 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     if (lock) sections.push(lock)
   }
 
+  /**
+   * Modelo escolhido à mão na peça avulsa (16/08/2026).
+   *
+   * Entra AQUI, colado ao lock de tipografia e bem antes do DNA, pela mesma
+   * medição que reordenou o slide irmão em 10/08: neste ponto o bloco cai por
+   * volta dos 38% do prompt; no fim, cairia atrás do paredão de identidade e
+   * seria lido como sugestão. A caixa das letras depende dele, e a linha do
+   * lock acima acabou de dizer que a caixa vem do modelo quando houver um.
+   */
+  const temModelo = !carrossel && args.refs.some((r) => r.role === 'style-guide')
+  if (temModelo) {
+    sections.push(buildModeloSpine(args.modelo?.descricao, args.modelo?.elementos))
+  }
+
   // Depois das regras e antes do pedido: a proibição de desenhar logo precisa
   // estar acima do que o cliente pede, porque "coloque a marca" é pedido comum.
   if (args.blocoLogo) sections.push(args.blocoLogo)
@@ -648,7 +768,19 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
 
   if (args.brand) {
     const identidade: string[] = [`[IDENTIDADE — ${args.brand.projectName}]`]
-    if (!ehIrmao) {
+    /**
+     * O MODELO escolhido tem o mesmo efeito que o guia tem no slide irmão: ele
+     * JÁ É a marca aplicada e aprovada, então `visualStyle` e `composition`
+     * viram concorrência descrevendo em prosa o que a imagem mostra — e, pior,
+     * concorrência que VENCE por volume (9.180 contra ~2.000 caracteres).
+     *
+     * Foi o que aconteceu na Real Gelateria: a regra aprendida "título na
+     * parte superior, serviço no rodapé" jogou a manchete para o topo, contra
+     * um modelo que a põe embaixo. Fora as duas seções, o resto do DNA fica:
+     * `contentRules` é proibição, não estilo, e o modelo escolhido não a
+     * contém.
+     */
+    if (!ehIrmao && !temModelo) {
       if (args.brand.dna.visualStyle) identidade.push(`Estilo visual: ${args.brand.dna.visualStyle}`)
       if (args.brand.dna.composition) identidade.push(`Composição da marca: ${args.brand.dna.composition}`)
     }

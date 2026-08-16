@@ -99,12 +99,21 @@ const FINALIZE_RESERVE_MS = 35_000
 const MIN_RETRY_BUDGET_MS = 45_000
 
 export interface ArtGenerationReference {
-  role: Exclude<ArtReferenceRole, 'brand-card' | 'logo' | 'series-guide'>
+  role: Exclude<ArtReferenceRole, 'brand-card' | 'logo' | 'series-guide' | 'style-guide'>
   url?: string
   driveFileId?: string
   label?: string
   /** Elementos a NÃO reproduzir desta foto (A3) — ver buildReferencePreamble. */
   excluir?: string[]
+  /**
+   * Presente numa referência `style`, marca a ESCOLHA À MÃO de uma arte
+   * aprovada deste projeto (a bancada aponta uma Generation estrelada). É o
+   * que separa "combine o clima desta foto de estilo" de "faça parecida com
+   * esta peça": só a segunda vira o papel `style-guide`, que manda também na
+   * diagramação. Sem este campo as duas chegavam iguais ao runner, e escolher
+   * um modelo não mudava o layout da arte (Real Gelateria, 16/08/2026).
+   */
+  generationId?: string
 }
 
 export interface CarouselMeta {
@@ -209,7 +218,20 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             : await fetchImageSource(ref.url!)
           const maxDim = ref.role === 'subject' ? MAX_INPUT_DIM : MAX_REF_DIM
           const sane = await sanitizeInput(source.buffer, maxDim)
-          return { role: ref.role, label: ref.label, excluir: ref.excluir, ...sane }
+          /**
+           * A arte apontada à mão vira MODELO (manda no layout), não simples
+           * referência de clima. A promoção acontece aqui, no runner, e não na
+           * borda: a validação de papéis do serviço só conhece os quatro
+           * papéis do usuário, e `style-guide` é decisão nossa a partir de um
+           * fato — a referência é uma Generation deste projeto.
+           */
+          const ehModeloEscolhido = ref.role === 'style' && !!ref.generationId
+          return {
+            role: ehModeloEscolhido ? ('style-guide' as const) : ref.role,
+            label: ref.label,
+            excluir: ref.excluir,
+            ...sane,
+          }
         } catch (error) {
           // Âncora que falhou não derruba a geração; subject sim — sem a foto
           // do prato a trilha `arte` produziria cena inventada.
@@ -264,7 +286,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // igual, que é o problema que este mecanismo existe para não criar.
     let styleRefUsada: string | null = null
     if (args.track === 'arte' && !args.carrossel) {
-      if (!loadedRefs.some((r) => r.role === 'style')) {
+      // `style-guide` conta como escolha à mão: é a MESMA referência, promovida
+      // logo acima. Esquecê-la aqui faria o rodízio injetar uma segunda arte
+      // de estilo para competir com o modelo que a pessoa acabou de escolher.
+      if (!loadedRefs.some((r) => r.role === 'style' || r.role === 'style-guide')) {
         const escolhida = await escolherReferenciaDeEstilo(args.projectId).catch(() => null)
         if (escolhida) {
           try {
@@ -312,6 +337,34 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    /**
+     * ── Modelo escolhido à mão: mesma leitura por visão que o slide-guia ──
+     *
+     * O decodificador é o do carrossel de propósito: a pergunta é idêntica
+     * ("o que esta peça faz na camada gráfica?"), e um segundo decodificador
+     * seria a mesma prompt em dois lugares, divergindo com o tempo.
+     *
+     * Falhar aqui não derruba nada — o MODELO SPINE textual e a imagem do
+     * modelo seguem no prompt, só sem a lista de decisões explícitas.
+     */
+    let modeloLido: GuiaLido | null = null
+    const refModelo = loadedRefs.find((r) => r.role === 'style-guide')
+    if (refModelo) {
+      modeloLido = await decodificarGuia(refModelo.buffer).catch(() => null)
+      console.log(
+        modeloLido
+          ? `[arte-ia.bg] modelo escolhido decodificado para o MODELO SPINE` +
+              // `null` = a visão não respondeu isto; `[]` = respondeu que não
+              // há nenhum. Com `strict: false` o tsc não protege este acesso.
+              (modeloLido.elementosGraficos === null
+                ? ' | elementos gráficos não declarados'
+                : modeloLido.elementosGraficos.length > 0
+                  ? ` | elementos gráficos a replicar: ${modeloLido.elementosGraficos.join('; ')}`
+                  : ' | modelo sem elemento gráfico')
+          : '[arte-ia.bg] modelo escolhido não decodificou — segue só com a imagem e o MODELO SPINE',
+      )
+    }
+
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
@@ -328,9 +381,11 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         if (guiaLido) {
           console.log(
             `[arte-ia.bg] guia decodificado para o LOOK SPINE` +
-              (guiaLido.elementosGraficos.length > 0
-                ? ` | elementos gráficos a replicar: ${guiaLido.elementosGraficos.join('; ')}`
-                : ' | guia sem elemento gráfico'),
+              (guiaLido.elementosGraficos === null
+                ? ' | elementos gráficos não declarados'
+                : guiaLido.elementosGraficos.length > 0
+                  ? ` | elementos gráficos a replicar: ${guiaLido.elementosGraficos.join('; ')}`
+                  : ' | guia sem elemento gráfico'),
           )
         }
       } catch (error) {
@@ -447,6 +502,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         brand,
         refs: ordered.map((r) => ({ role: r.role, label: r.label })),
         instrucaoImagem: args.instrucaoImagem,
+        modelo: modeloLido
+          ? { descricao: modeloLido.descricao, elementos: modeloLido.elementosGraficos }
+          : null,
         // Três estados: colar depois (reserva o canto), o modelo desenhar
         // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
         blocoLogo: logoParaCompor
@@ -802,6 +860,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       refsUsadas: ordered.map((r) => ({ role: r.role, label: r.label ?? null })),
       autoAnchorId: autoAnchorUsada,
       styleRefId: styleRefUsada,
+      // Registro atômico da run: houve modelo a seguir, e a visão conseguiu
+      // lê-lo? Sem isto, "a arte não ficou parecida com o modelo" volta a ser
+      // impossível de diagnosticar sem reproduzir o pedido inteiro.
+      ...(refModelo ? { modeloSeguido: true, modeloDecodificado: !!modeloLido } : {}),
       brandCardOrigem,
       elapsedSeconds,
       // Sobrescreve o alvo com o que de fato foi gravado (ver `saidaReal`).

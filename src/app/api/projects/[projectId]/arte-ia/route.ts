@@ -26,6 +26,14 @@ const refSchema = z.object({
   url: z.string().url().optional(),
   driveFileId: z.string().min(1).max(120).optional(),
   label: z.string().max(80).optional(),
+  /**
+   * Numa referência `style`, marca que ela é o MODELO escolhido à mão — uma
+   * arte deste projeto. O serviço confere a procedência e o runner a promove a
+   * `style-guide`, que manda também na diagramação. Até 16/08/2026 o campo
+   * existia na bancada e MORRIA aqui, no schema: escolher um modelo mudava só
+   * qual imagem entrava como referência de clima, nunca o layout da arte.
+   */
+  generationId: z.string().min(1).max(60).optional(),
 })
 
 const bodySchema = z.object({

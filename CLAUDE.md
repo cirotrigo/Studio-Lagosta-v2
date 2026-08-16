@@ -2225,6 +2225,85 @@ sem artefato, conferido em 1:1. O `low` sai por 1/20 do `high`.
   irmã do anchor) — dentro dele, o clique navegaria. E é menu, não dois botões,
   porque a barra já chega a cinco e no celular o card tem ~120px.
 
+### Escolher um modelo passou a mandar na diagramação (16/08/2026)
+
+Relatado pelo Ciro na Real Gelateria: escolheu um modelo na bancada, a arte saiu
+com outra diagramação e a headline em CAIXA ALTA — contra o Title Case do modelo
+e contra o próprio DNA da marca. Eram **três causas somadas**, e nenhuma delas
+era o modelo de imagem desobedecendo.
+
+- 🔴 **`buildTypographyLock` mandava "caixa alta" para TODA marca.** Linha curta
+  e imperativa aos 36% do prompt, contra a regra da marca aos 62%, enterrada em
+  9.180 caracteres de DNA (54% do prompt inteiro). Medido nos 11 clientes: **10
+  declaram a própria caixa no DNA**, e em 4 o hardcode contradizia o que estava
+  escrito (Real Gelateria e Wine Vix pedem Title Case; O Quintal proíbe caixa
+  alta contínua fora de uma fonte; Empório Fonseca pede caixa mista). Era
+  redundante onde acertava e mandava onde errava. **Tirar não basta**: o
+  gpt-image cai sozinho em caixa alta na manchete, então o lock agora DIZ de
+  onde a caixa vem (identidade, ou o modelo quando houver).
+- 🔴 **O papel `style` nunca prometeu layout** — o preâmbulo dele fala em
+  "tonal register, luminosity and graphic mood", de propósito. Escolher um
+  modelo na bancada usava esse papel, então mudava só qual imagem entrava como
+  referência de clima. O papel novo é **`style-guide`**: molde do `series-guide`
+  do carrossel, com os limites duros do `style` (o texto e a foto dele não são
+  conteúdo). O que o distingue no runner é o **`generationId`** da referência —
+  que existia na bancada e **morria no schema da rota**.
+- **Com modelo escolhido, `visualStyle` e `composition` do DNA SAEM do prompt**,
+  mesmo precedente do slide irmão: o modelo JÁ É a marca aplicada e aprovada, e
+  descrevê-la em prosa é concorrência que vence por volume. Era a regra
+  aprendida "título na parte superior, serviço no rodapé" que jogava a manchete
+  para o topo contra um modelo que a põe embaixo. `contentRules` FICA —
+  proibição não é estilo.
+- **Procedência é conferida, e id que não confere é DESCARTADO, nunca recusado**:
+  o pior desfecho seria derrubar uma geração paga por causa de um vínculo. Sem o
+  marcador, a referência segue valendo como clima.
+- Medido com `scripts/medir-modelo-a-seguir.ts` (não toca no banco, não gasta
+  crédito; só a fatura da OpenAI, e só com `--confirmar`): mesma foto, mesma
+  copy, mesmas 5 imagens, só o papel mudando. **Antes**: "TERÇA MERECE" em caixa
+  alta, bloco no topo, 6 de 10 textos em caixa alta, conferência de texto
+  REPROVADA. **Depois**: "Terça / merece" em duas caixas como o modelo, bloco no
+  terço inferior esquerdo, filete com ponto central, 1 de 6 em caixa alta,
+  conferência aprovada.
+- ⚠️ **O canto da logo NÃO segue o modelo** — na peça avulsa ele continua sendo
+  escolha do gerador (`instrucaoLogoPeloModelo(null)`), e no teste o selo foi
+  para o canto superior direito enquanto o modelo o tem no inferior direito.
+  Está de acordo com o DNA da Real, então ficou como está; se um dia o modelo
+  tiver de mandar nisso também, o lugar é esse argumento.
+
+### 🔴 O decodificador de guia descartava resposta boa, em silêncio (16/08/2026)
+
+`carousel-guide-decoder.ts` é o que transforma "copie o estilo" em lista de
+decisões. Ele vinha falhando muito mais do que ninguém sabia — e falha em
+silêncio (`catch` → null → segue só com o SPINE textual), então o CARROSSEL
+também rodava degradado sem sinal nenhum.
+
+- 🔴 **Schema rígido recusava a resposta INTEIRA por um campo omitido** — a
+  mesma lição que o crivo aprendeu em 11/08 e que não tinha sido aplicada aqui.
+  Medido: o modelo devolveu os três níveis de texto, alinhamento e posição do
+  bloco, e omitiu `veuDeLeitura` e `tratamentoDaFoto`; tudo foi descartado. Hoje
+  todo campo é `.optional()` e campo ausente simplesmente NÃO VIRA LINHA.
+- 🔴 **`elementosGraficos: []` é uma AFIRMAÇÃO; ausente não afirma nada.** A
+  lista vazia vira "não acrescente nenhum" no prompt. Colapsar os dois faz a
+  peça nova perder a assinatura da marca, ou ganhar a ordem de não ter o que
+  ninguém verificou. `GuiaLido.elementosGraficos` é `string[] | null`, e os dois
+  spines só fazem a afirmação quando `Array.isArray`.
+- 🔴 **Elemento gráfico volta como STRING ou como OBJETO** (`{tipo, posicao}`) —
+  as duas formas são aceitas e normalizadas. Pedir "descreva cada um com a
+  posição" fez o modelo passar a responder em objeto, e `z.array(z.string())`
+  perdeu duas rodadas seguidas logo depois de a enumeração fazer ele enfim
+  ENXERGAR o filete que vinha ignorando.
+- 🔴 **A CAIXA é calculada no CÓDIGO a partir do texto transcrito, nunca
+  perguntada** (`caixaDoTexto`). Em 3 rodadas a temperatura 0, o gpt-4o-mini
+  classificou "Feliz" como ALTA em 2 e Title Case em 1 — enquanto a
+  TRANSCRIÇÃO saiu idêntica nas três. Ele lê as letras com fidelidade e erra o
+  rótulo; e como a caixa vira instrução na peça nova, o rótulo errado
+  reintroduzia a caixa alta que o conserto acabara de remover. Mesma trava do
+  crivo: o modelo declara o fato, o código tira a conclusão.
+- **Ornamento fino perto do texto exige enumeração no prompt.** Sem listar
+  "filete, linha fina, losango, ponto entre linhas, selo, moldura, barra, faixa,
+  ícone", ele devolvia lista vazia para uma arte que tem filete com losango
+  central logo abaixo da manchete.
+
 ### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
 
 Cinco arestas do conector remoto, levantadas na produção real das peças do By

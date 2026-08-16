@@ -61,6 +61,7 @@ scripts/.tmp-parity-out/
 # Saída do medidor de resolução (JPEGs pesados, nunca versionados)
 .tmp-medicao-*/
 .tmp-modelo-vs-modelo/
+.tmp-modelo-a-seguir/
 .tmp-qualidade-arte*/
 .tmp-edicao-foto/
 .tmp-medicao*/

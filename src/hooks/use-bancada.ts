@@ -300,6 +300,11 @@ export function useBancada(projectId: number) {
               role: r.papel,
               ...(r.driveFileId ? { driveFileId: r.driveFileId } : { url: r.url }),
               ...(r.label ? { label: r.label.slice(0, 80) } : {}),
+              // O `generationId` é o que distingue o MODELO escolhido em "Base
+              // da arte" de uma foto de estilo do acervo: com ele o servidor
+              // promove a referência a modelo e a diagramação passa a ser a
+              // dele. Ficava só no navegador até 16/08/2026.
+              ...(r.generationId ? { generationId: r.generationId } : {}),
             })),
           },
         )

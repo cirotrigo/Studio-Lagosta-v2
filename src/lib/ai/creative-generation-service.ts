@@ -132,7 +132,9 @@ export async function startArtGeneration(
 ): Promise<StartArtGenerationResult> {
   const pedido = input.pedido?.trim() ?? ''
   const copy = (input.copy ?? []).map((b) => b.trim()).filter(Boolean)
-  const referencias = input.referencias ?? []
+  // Cópia rasa: a conferência do `generationId` abaixo descarta o marcador que
+  // não confere, e não é papel deste serviço mexer no objeto de quem chamou.
+  const referencias = (input.referencias ?? []).map((r) => ({ ...r }))
 
   if (pedido.length > 1200) {
     throw new CreativeError('PEDIDO_LONGO', 'O pedido passou de 1200 caracteres.', 400)
@@ -217,6 +219,36 @@ export async function startArtGeneration(
   })
   if (!project) {
     throw new CreativeError('PROJECT_NOT_FOUND', 'Projeto não encontrado', 404)
+  }
+
+  /**
+   * MODELO escolhido à mão: o `generationId` numa referência `style` é o que
+   * promove a referência a `style-guide` no runner, e com isso ela passa a
+   * mandar na diagramação da peça. Por ser uma alegação de quem chama, é
+   * conferida aqui — a arte precisa ser deste projeto.
+   *
+   * Id que não confere é DESCARTADO, nunca recusado: o pior desfecho aqui é
+   * derrubar uma geração paga por causa de um vínculo de procedência. Sem o
+   * marcador a referência continua valendo como referência de clima, que é
+   * exatamente o comportamento anterior a 16/08/2026.
+   */
+  const idsDeModelo = referencias
+    .map((r) => (r.role === 'style' ? r.generationId : undefined))
+    .filter((id): id is string => typeof id === 'string' && id.length > 0)
+  if (idsDeModelo.length > 0) {
+    const doProjeto = await db.generation.findMany({
+      where: { id: { in: idsDeModelo }, projectId: input.projectId },
+      select: { id: true },
+    })
+    const validos = new Set(doProjeto.map((g) => g.id))
+    for (const ref of referencias) {
+      if (ref.generationId && !validos.has(ref.generationId)) {
+        console.warn(
+          `[arte-ia] referência aponta a arte ${ref.generationId}, que não é do projeto ${input.projectId} — segue como referência de clima`,
+        )
+        delete ref.generationId
+      }
+    }
   }
 
   // Guia do carrossel: a arte dele precisa existir para virar referência.
