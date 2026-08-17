@@ -39,6 +39,37 @@
  */
 
 /**
+ * A caixa que a MANCHETE desta marca pede, quando a marca pede alguma.
+ *
+ * As duas direções existem pela MESMA razão, e é a razão medida acima: a caixa
+ * da arte é a caixa da string, e nenhuma instrução de prompt reverte isso.
+ * Cliente ausente deste mapa recebe a copy como ela foi escrita.
+ *
+ * 🔴 `alta` nasceu do TERO em 17/08/2026, e o caso prova a lei uma terceira
+ * vez. A peça tinha um MODELO escolhido à mão, e o MODELO SPINE dizia, com
+ * todas as letras, `1. título · caixa ALTA` mais a regra "esta regra vence
+ * qualquer outro palpite sobre caixa". O DNA dizia caixa alta em dois pontos
+ * ("Didot em caixa alta e tracking largo"; "nível 1 em serif âmbar, caixa alta
+ * espaçada"). Contra `- "Almoço executivo"` no bloco de copy, os três
+ * perderam: as duas peças da leva saíram em caixa natural e o cliente reprovou
+ * as duas ("A headline deve ser em caixa alta").
+ *
+ * O que mudou para o TERO precisar disto agora: até 16/08 a copy chegava
+ * gritando por acidente, e era esse acidente que o protegia. As descrições das
+ * tools passaram a pedir caixa natural a TODOS os clientes — o que resolveu a
+ * Real Gelateria e desprotegeu quem pede caixa alta.
+ */
+export type CaixaDaManchete = 'natural' | 'alta'
+
+export const CAIXA_DA_MANCHETE = new Map<number, CaixaDaManchete>([
+  [1, 'natural'], // Real Gelateria — "caixa alta moderada ou Title Case"
+  [2, 'natural'], // O Quintal Parrilla — proíbe caixa alta contínua fora de uma fonte
+  [3, 'alta'], // TERO — "Didot em caixa alta e tracking largo" (pedido do Ciro, 17/08/2026)
+  [11, 'natural'], // Wine Vix — "Title Case, com uma palavra em dourado"
+  [12, 'natural'], // Empório Fonseca — "Trajan caixa mista" na promessa
+])
+
+/**
  * Clientes em que a copy gritada é DESFEITA antes de virar prompt.
  *
  * 🔴 Lista explícita, e não uma regra derivada do DNA em prosa, porque a
@@ -60,12 +91,9 @@
  * geração real dele: o que se olha é se a manchete sai na caixa que a marca
  * quer.
  */
-export const PROJETOS_COM_CAIXA_NATURAL = new Set<number>([
-  1, // Real Gelateria — "caixa alta moderada ou Title Case"
-  2, // O Quintal Parrilla — proíbe caixa alta contínua fora de uma fonte
-  11, // Wine Vix — "Title Case, com uma palavra em dourado"
-  12, // Empório Fonseca — "Trajan caixa mista" na promessa
-])
+export const PROJETOS_COM_CAIXA_NATURAL = new Set<number>(
+  [...CAIXA_DA_MANCHETE].filter(([, caixa]) => caixa === 'natural').map(([id]) => id),
+)
 
 /**
  * Palavras que ficam em minúscula no meio de um título em português. A primeira
@@ -141,6 +169,20 @@ function palavraEmTitleCase(
 
   if (!ehExtremo && PALAVRAS_MENORES.has(nua)) return minuscula
   return capitalizar(minuscula)
+}
+
+/**
+ * Sobe a MANCHETE para caixa alta. Bloco que já está em caixa alta passa
+ * intacto, e a função é idempotente por construção.
+ *
+ * Vale só para a manchete — o primeiro bloco —, e não para a copy inteira, por
+ * duas razões medidas nas peças do TERO: o apoio é Montserrat 300/400 em caixa
+ * natural nas artes aprovadas da marca, e o CTA ("Vem provar") sai em caixa
+ * natural nas peças que o cliente elogiou. Gritar tudo trocaria um defeito por
+ * outro.
+ */
+export function paraCaixaAlta(bloco: string): string {
+  return bloco.toLocaleUpperCase('pt-BR')
 }
 
 /**

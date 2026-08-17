@@ -45,6 +45,9 @@
  *
  *   # executar antes × depois:
  *   npx tsx scripts/medir-modelo-a-seguir.ts --da-geracao <id> --confirmar
+ *
+ *   # só o "depois", quando o controle já foi feito (metade da conta):
+ *   npx tsx scripts/medir-modelo-a-seguir.ts --da-geracao <id> --confirmar --so-depois
  */
 import 'dotenv/config'
 import { promises as fs } from 'node:fs'
@@ -85,6 +88,15 @@ interface Opcoes {
   saida: string
   cambio: number
   confirmar: boolean
+  /**
+   * Só o braço "depois" — metade da conta.
+   *
+   * Existe para a segunda volta: uma vez que o "antes" já foi gerado e provou o
+   * defeito, repetir o controle a cada ajuste do prompt é pagar de novo por uma
+   * resposta que já se tem. ⚠️ Sem o controle, o que sai daqui é AMOSTRA, não
+   * comparação — para provar que uma mudança causou o efeito, rode os dois.
+   */
+  soDepois: boolean
 }
 
 function lerOpcoes(argv: string[]): Opcoes {
@@ -95,6 +107,7 @@ function lerOpcoes(argv: string[]): Opcoes {
     saida: path.join(process.cwd(), '.tmp-modelo-a-seguir'),
     cambio: CAMBIO_PADRAO,
     confirmar: false,
+    soDepois: false,
   }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
@@ -124,6 +137,9 @@ function lerOpcoes(argv: string[]): Opcoes {
         break
       case '--confirmar':
         o.confirmar = true
+        break
+      case '--so-depois':
+        o.soDepois = true
         break
       default:
         throw new Error(`Argumento desconhecido: ${a}`)
@@ -240,7 +256,8 @@ async function main() {
   const brand = await loadBrandContext(origem.projectId!)
   await db.$disconnect()
 
-  const custoUsd = PRECO_USD[o.qualidade] * o.repeticoes * 2
+  const bracosPorRodada = o.soDepois ? 1 : 2
+  const custoUsd = PRECO_USD[o.qualidade] * o.repeticoes * bracosPorRodada
 
   console.log('\n════ O MODELO ESCOLHIDO MANDA NA DIAGRAMAÇÃO? ════\n')
   console.log(`  origem       ${o.daGeracao} — ${origem.projectName}`)
@@ -256,7 +273,7 @@ async function main() {
           '  depois  prompt do builder atual, mesmo papel "style"\n',
   )
   console.log(
-    `  ${o.repeticoes * 2} gerações · US$ ${custoUsd.toFixed(3)} · R$ ${(custoUsd * o.cambio).toFixed(2)}` +
+    `  ${o.repeticoes * bracosPorRodada} gerações · US$ ${custoUsd.toFixed(3)} · R$ ${(custoUsd * o.cambio).toFixed(2)}` +
       `  (fatura da OpenAI; ZERO créditos do Studio)`,
   )
 
@@ -303,6 +320,10 @@ async function main() {
     brand,
     refs: papeisDepois,
     instrucaoImagem: fv.instrucaoImagem ?? null,
+    // Espelha o runner: sem isto a safe area sai em fração e a medição deixa de
+    // medir o que a produção manda.
+    formato: fv.formato,
+    alturaPx: Number(inputSize.split('x')[1]) || undefined,
     modelo: modeloLido
       ? { descricao: modeloLido.descricao, elementos: modeloLido.elementosGraficos }
       : null,
@@ -365,10 +386,12 @@ async function main() {
   console.log('  (o papel "style" da origem é o "modelo" aqui — mesma imagem, mesma posição)')
 
   const medicoes: Medicao[] = []
-  const bracos: Array<[Braco, string]> = [
-    ['antes', promptAntes],
-    ['depois', promptDepois],
-  ]
+  const bracos: Array<[Braco, string]> = o.soDepois
+    ? [['depois', promptDepois]]
+    : [
+        ['antes', promptAntes],
+        ['depois', promptDepois],
+      ]
 
   for (let rep = 1; rep <= o.repeticoes; rep++) {
     for (const [braco, prompt] of bracos) {

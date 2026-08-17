@@ -2524,6 +2524,200 @@ modelo pelo conector bastava enxergar; pela web, exige curador desde sempre
   ocorrências são leitura e filtro. Tool nova que faça curadoria (promover,
   taguear modelo) usa `assertCuradorDoProjeto`, não `assertProjetoPermitido`.
 
+### 🔴 O modelo a seguir estava DITANDO o texto da peça nova (17/08/2026)
+
+Cinco artes seguidas do O Quintal Parrilla reprovadas — o placar do cliente no
+dia foi **0 "gostei" contra 5 "preciso melhorar"** —, com cinco queixas que são
+quatro defeitos somados, todos nascidos do papel `style-guide` (a "arte de
+referência" escolhida na bancada):
+
+- *"Você está incluindo endereço e funcionamento sem que seja solicitado"* e
+  *"misturou a cópia da arte de referência com a copy solicitada"*;
+- *"o título foi deslocado para o meio e na cópia estava alinhado no canto
+  superior esquerdo"*;
+- *"a foto está ficando muito escura"*;
+- *"é preciso respeitar as margens do Instagram de topo e rodapé"*.
+
+🔴 **A causa nº 1 é a mesma lei já registrada para a caixa das letras: a STRING
+literal no prompt vence QUALQUER regra escrita sobre ela.** `descricaoDoGuia`
+transcrevia os níveis do modelo *com as palavras* — `3. apoio — "Funcionamento -
+11h às 00h"`, `4. apoio — "R. Aleixo Netto, 1158…"` — logo abaixo do cabeçalho
+"repita a MESMA estrutura, trocando só as palavras". Contra isso, o preâmbulo do
+papel `style-guide` mandava, em inglês e duas vezes, *nunca* copiar texto da
+referência. Perdeu. Reproduzido em 17/08 com o prompt de produção: a peça de
+controle saiu com o horário e o endereço do post antigo, verbatim.
+
+Regras que ficam:
+
+- **As palavras do modelo NÃO entram no prompt. Não as reintroduza.** A
+  transcrição continua sendo pedida à visão, mas só como INSUMO INTERNO: dela
+  saem a caixa medida (`caixaDoTexto`) e a régua da conferência
+  (`GuiaLido.textos`). O que vai ao prompt é a FORMA — onde, em que cor, em que
+  caixa, em que tamanho.
+- 🔴 **A última porta do vazamento é o ELEMENTO GRÁFICO**: a visão situa o
+  ornamento citando a vizinhança entre aspas ("ícone de relógio antes de
+  'Funcionamento - 11h às 00h'"), e essa linha entra DUAS vezes no prompt, uma
+  delas como ordem imperativa no topo do MODELO SPINE. A instrução pede posição
+  pelo PAPEL do texto; `semPalavrasDoModelo` é a trava mecânica.
+- 🔴 **`gpt-4o-mini` NÃO enxerga ONDE o texto está — ele numera as zonas pela
+  ORDEM em que as lê.** Medido nas duas artes de referência do Quintal, 2
+  rodadas cada, temperatura 0: na peça cuja manchete está na banda 6 de 8 (66%
+  da altura), o mini respondeu 3 e 4, e disse "centro" para um bloco alinhado à
+  esquerda nas duas artes; o `gpt-4o` acertou banda e lado em 4 de 4. O
+  decodificador é `gpt-4o` desde então — "barato" não se sustenta quando é UMA
+  chamada por geração contra os US$ 0,165 da geração que ela dirige.
+- 🔴 **A posição é lida como BANDA numerada (1 a 8) e o rótulo é conclusão do
+  CÓDIGO** (`faixaDaBanda`), mesma trava de `caixaDoTexto` e do crivo. Pedindo
+  o rótulo direto, saía `"canto inferior esquerdo, começando a ~30% da altura"`
+  — a média contraditória entre a manchete do alto e o serviço do rodapé, que o
+  gpt-image resolveu empilhando tudo no meio do quadro. O que faz a leitura
+  funcionar é mandar medir a DISTÂNCIA ATÉ A BORDA DE CIMA com dois exemplos de
+  calibração, e proibir explicitamente decidir pela ordem de leitura.
+- **Uma arte tem ZONAS de texto, não um bloco só.** Manchete no alto e serviço
+  no rodapé são duas, e juntá-las é erro — tanto na leitura (`zonas[]`) quanto
+  no SPINE, que agora manda replicar a posição *de cada zona*.
+- **Safe area em PIXEL DA PEÇA REAL** (`regraDeSafeArea`), com a fração como
+  fallback. O caminho foi: "~250px" escrito para 1080x1920 numa peça que sai
+  1088x1936 → fração (~1/8 e ~7/8) → e a fração ainda deixou logo e CTA
+  terminando entre 93% e 95% da altura nas cinco peças. Contra a IMAGEM do
+  modelo — que tem a marca quase colada na borda — só um número confere: "nada
+  abaixo de 1694px" é verificável, "o último oitavo" é interpretável. Mesmo
+  princípio de física-não-adjetivo do prompt da trilha `imagem`.
+  A regra vive em TRÊS lugares de propósito: nas regras de composição, colada ao
+  bloco da logo (onde "canto calmo" era lido como "o canto do quadro") e no
+  bloco de serviço (onde "rodapé" puxa para a borda). E ela **vence a margem do
+  modelo**: a arte de referência foi feita sem esta regra.
+  🔴 **Feed e quadrado NÃO têm faixa reservada** — o Instagram não desenha por
+  cima deles, e reservar 1/8 ali é margem inventada que come a peça. Por isso a
+  regra recebe o `formato`, e o chamador que não informa tamanho continua com a
+  versão em fração.
+  ⚠️ Este último passo (o número em pixel) foi escrito mas **não medido em arte
+  gerada** — a rodada de 17/08 terminou antes.
+- **O véu de leitura é LOCAL** (a faixa onde o texto pousa, no máximo ~1/3 do
+  quadro): "sutil" não bastava porque não dizia ONDE, e o modelo escurecia a
+  cena inteira. Não cabendo o texto sem apagar a foto, o texto é que muda de
+  lugar.
+- 🔴 **SERVIÇO (horário e endereço) tem lugar fixo no RODAPÉ, e esse lugar NÃO
+  vem do modelo** (`blocos-de-servico.ts`, pedido do Ciro em 17/08/2026). O
+  parágrafo do modelo manda copiar as zonas dele — mas ele é uma peça ANTIGA e
+  pode não ter linha de serviço nenhuma; quando a copy tem e ele não, o
+  gpt-image pendura o horário junto da manchete. É a ÚNICA zona que o prompt
+  manda CRIAR contra o modelo, e a exceção está escrita nos dois lugares (colada
+  à copy e no item 1 do MODELO SPINE).
+  ⚠️ **O classificador é conservador de propósito**: frase que só MENCIONA uma
+  hora ("Almoço com a família e amigos, a partir das 11h") é APOIO, não serviço
+  — mandá-la ao rodapé rebaixaria a promessa da peça a letra miúda. O corte é o
+  que SOBRA da frase depois de tirar o dado (≤ 20 caracteres), calibrado contra
+  as cinco copies reais da leva.
+- 🔴 **Zona do modelo sem conteúdo na copy fica VAZIA — e isso precisa ser dito
+  de duas formas.** Copiar a diagramação de uma peça mais completa que a atual
+  cria pressão para preencher, e o gpt-image preenche do jeito dele. As duas
+  formas foram medidas na mesma leva de 17/08:
+  - **ícone ÓRFÃO**: o modelo tem relógio e pin ao lado do horário e do
+    endereço, o MODELO SPINE manda desenhar os elementos "obrigatoriamente", e a
+    peça de sobremesas saiu com os dois ícones sozinhos no canto, apontando para
+    nada. `elementosQueFazemSentido` tira o ícone de serviço da ordem quando a
+    copy não tem serviço — e ainda o proíbe POR NOME, porque a descrição do
+    modelo continua dizendo que ele existe.
+  - **texto DUPLICADO**: sem nada para pôr na zona de rodapé, a peça de almoço
+    repetiu a linha de apoio — o mesmo texto duas vezes na mesma arte. A regra
+    ("cada bloco aparece UMA ÚNICA VEZ") mora colada à lista de copy.
+- 🔴 **Mandar o serviço para o rodapé exige dizer de onde ele SAI.** A regra
+  genérica de não repetir NÃO segurou o caso mais óbvio, e isso foi medido duas
+  vezes na peça de funcionamento: a copy lista o horário como 2º bloco (logo
+  abaixo da manchete) e o modelo escolhido tem zona de manchete com DOIS níveis,
+  então o gpt-image punha o horário no subtítulo **e** no rodapé, atendendo às
+  duas forças — e ainda perdia o CTA por falta de lugar. Com a linha "eles saem
+  da sequência de cima… se sobrar um nível lá sem conteúdo, ele não existe nesta
+  peça", a mesma peça saiu com a copy completa e sem repetição. Regra de POSIÇÃO
+  precisa fechar a porta de saída, não só abrir a de entrada.
+- **Vazamento agora AVISA, nunca reprova** (`vazamentoAlerta`, irmão de
+  `numerosAlerta`): a transcrição da arte pronta é comparada com os textos do
+  modelo. Frase abaixo de 12 caracteres normalizados não conta, e **o NOME DA
+  MARCA é descontado antes da medida** — toda peça leva a assinatura, a visão
+  transcreve o wordmark da logo como texto e o decodificador lê o nome como um
+  nível do modelo, então sem o desconto o alarme tocaria em quase toda geração.
+  Os números já vinham acusando o defeito em 3 das 5 peças ("11, 00, 1158") sem
+  que ninguém lesse aquilo como "copiou o post antigo".
+
+**Medido** com `scripts/medir-modelo-a-seguir.ts --da-geracao <id> --confirmar`
+(mesma foto, mesma copy, mesmas 5 referências; só o prompt muda). Antes: **10
+blocos de texto** na peça — manchete inventada a partir do tema, a copy pedida
+rebaixada a texto de apoio, mais `Funcionamento - 11h às 00h` e
+`R. Aleixo Netto, 1158 - Praia do Canto, Vitória` copiados do post antigo, com o
+salão inteiro escurecido e a marca colada nas duas bordas. Depois: **4 blocos**
+— exatamente a copy pedida, manchete no alto como no modelo, serviço no rodapé,
+foto clara. ⚠️ Sobrou uma linha com o nome da marca no bloco de serviço (o
+modelo preenche o slot que a copy não usou) e o rodapé ainda encosta na faixa
+reservada: as duas coisas são visíveis na peça e valem uma segunda medição.
+
+### 🔴 A caixa da manchete e o tratamento da foto (TERO, 17/08/2026)
+
+A semana do TERO foi refeita por IA depois de 30 reprovações na via de modelo, e
+as duas primeiras peças voltaram reprovadas por três coisas: *"a headline deve
+ser em caixa alta"* (nas duas), *"a foto ficou muito contrastada você não
+precisa alterar a imagem"* e *"o horário e o CTA podem ficar no rodapé"*.
+
+- 🔴 **A lei da caixa perdeu pela TERCEIRA vez, agora contra o MODELO SPINE.**
+  O prompt do almoço trazia `1. título · caixa ALTA` mais a regra "esta regra
+  vence qualquer outro palpite sobre caixa", e o DNA pedia caixa alta em dois
+  pontos. Contra a linha `- "Almoço executivo"` no bloco de copy, os três
+  perderam. **Nenhuma instrução sobre a caixa funciona — nem a identidade, nem o
+  lock de tipografia, nem o modelo escolhido à mão.** Só mudar a string funciona.
+- **Por isso `PROJETOS_COM_CAIXA_NATURAL` virou `CAIXA_DA_MANCHETE`**, um mapa
+  com as duas direções (`natural` | `alta`). `natural` vale para a copy inteira;
+  `alta` vale **só para o primeiro bloco** — o apoio é Montserrat 300/400 e o
+  CTA sai em caixa natural nas artes aprovadas da marca, então gritar tudo
+  trocaria um defeito por outro. Cliente fora do mapa recebe a copy como ela foi
+  escrita, que continua sendo o default.
+- 🔴 **O que quebrou o TERO foi o conserto da Real Gelateria.** Até 16/08 a copy
+  chegava GRITANDO por acidente (85% das copies do chat), e era esse acidente
+  que protegia quem pede caixa alta. As descrições das tools passaram a pedir
+  caixa natural a TODOS — acertando quem pede Title Case e desprotegendo o
+  resto. Mexeu na caixa de um lado, confira o outro.
+- 🔴 **O `tratamentoDaFoto` do modelo virava ordem de RELUMIAR a foto nova** —
+  mesma forma do vazamento de palavras consertado no mesmo dia. O spine dizia
+  "Tratamento da foto: temperatura neutra, **contraste alto**", que é a descrição
+  da foto ANTIGA, e a regra 8 mandava igualar a luminosidade. Contra isso, o
+  "NÃO RELUMIE" ficava seis parágrafos acima e perdeu: instrução colada à
+  referência vence instrução geral. Hoje a linha é **opt-in** e só o carrossel a
+  recebe (`decodificarGuia(buffer, { paraSerie: true })`) — lá o guia estabelece
+  o look de uma série que precisa parecer a mesma sessão de fotos.
+- **A licença de "ajuste global MUITO sutil de contraste, exposição e nitidez"
+  foi RETIRADA do bloco de fidelidade.** Ela nunca foi necessária para peça
+  nenhuma e era a brecha que o modelo esticava; quem quer mexer na foto pede, e
+  o pedido já vira a EXCEÇÃO logo abaixo (`instrucaoImagem`). O preâmbulo do
+  papel `style` também deixou de mandar casar a *luminosity* — o que se casa com
+  a referência é a camada gráfica.
+- **Medido** com `scripts/medir-modelo-a-seguir.ts --da-geracao <id> --confirmar
+  --so-depois` (US$ 0,165, zero créditos): a manchete saiu "ALMOÇO / EXECUTIVO"
+  no lockup de dois níveis, a foto voltou à luz original e o typo que o modelo
+  tinha desenhado ("acompahamentos") saiu correto.
+- 🔴 **A conferência de texto aprovou a arte com o typo.** `verifyImageTexts`
+  compara por `includes` depois de normalizar, então "acompahamentos" jamais
+  conteria "acompanhamentos": o `passed` só é possível se a TRANSCRIÇÃO por
+  visão tiver lido a palavra certa — o modelo corrigiu o erro em silêncio ao ler.
+  **O ✅ da conferência não é prova de grafia correta**, e some-se isto ao que já
+  estava registrado (ela também não pega texto A MAIS).
+- **No DNA ficaram duas escritas** (aprovadas pelo Ciro): a regra aprendida que
+  manda horário **e CTA** para o rodapé mesmo sem endereço na peça — a anterior
+  condicionava tudo à presença do endereço, e era por isso que a peça de happy
+  hour saiu com tudo empilhado no topo —, e a remoção do parágrafo que
+  autorizava "a foto melhorada em luz, cor, textura e nitidez", herdado do
+  pipeline do Higgsfield. ⚠️ A mesma autorização **continua** em
+  `photoDirection` ("a foto se melhora, nunca se modifica"), que hoje não entra
+  na trilha `arte` — se um dia entrar, ela volta a conflitar.
+
+**Na via de MODELO, o defeito é outro e continua aberto.** As 30 reprovações das
+12h vieram dos templates gerados na madrugada de 17/08 (317 Happy Hour, 318
+Rolha free, 319 Sobremesas) e de um modelo de dez/2025 sem camada de imagem
+("Pag.08", template 86). O autofix RODOU e gravou `aplicada: true` nas quatro
+peças conferidas — mas só encolhendo o `titulo-n1`, porque as duas caixas do
+lockup **já nascem colidindo em 19 a 38px** no template. As colisões que o Ciro
+reprovou (pré-título sobre a manchete no layout Rodapé; apoio de duas linhas
+sobre a linha de serviço) não foram sequer detectadas. Refazer por IA é
+contorno, não conserto.
+
 ### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
 
 Cinco arestas do conector remoto, levantadas na produção real das peças do By

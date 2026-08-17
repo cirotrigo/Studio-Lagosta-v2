@@ -21,7 +21,8 @@
 import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import type { BrandContext } from '@/lib/brand/brand-context'
-import { paraCaixaNatural, PROJETOS_COM_CAIXA_NATURAL } from '@/lib/ai/caixa-da-copy'
+import { CAIXA_DA_MANCHETE, paraCaixaAlta, paraCaixaNatural } from '@/lib/ai/caixa-da-copy'
+import { elementosQueFazemSentido, instrucaoDeServico } from '@/lib/ai/blocos-de-servico'
 
 export type GenerationTrack = 'imagem' | 'arte'
 
@@ -228,7 +229,7 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         // A regra vai COLADA à imagem — dizer "nada a mais" no bloco de copy
         // não bastou, mesma lição da garrafa de Tabasco.
         lines.push(
-          `${idx} is a STYLE reference${ref.label ? ` (${ref.label})` : ''} — an earlier piece from this brand's feed. Match its tonal register, luminosity, level of stylization and graphic mood; if this reference is light, the result is light. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt, and if none is listed, no text at all. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Whenever this reference conflicts with the copy list or with the real photo provided, the copy list and the real photo win.${linhaDeExclusao}`,
+          `${idx} is a STYLE reference${ref.label ? ` (${ref.label})` : ''} — an earlier piece from this brand's feed. Match the GRAPHIC LAYER: same tonal register, same level of stylization, same graphic mood. This never licenses regrading the photo you were given — its exposure, contrast and colour stay exactly as they are, even if this reference is lighter or darker. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt, and if none is listed, no text at all. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Whenever this reference conflicts with the copy list or with the real photo provided, the copy list and the real photo win.${linhaDeExclusao}`,
         )
         break
       // A referência ESCOLHIDA À MÃO na bancada. Papel próprio, e não `style`,
@@ -397,6 +398,15 @@ export interface BuildArtePromptArgs {
   brand: BrandContext | null
   refs: ArtReferenceDescriptor[]
   /**
+   * Formato e altura da peça, para a regra de safe area.
+   *
+   * A safe area é do STORY: no feed o Instagram não desenha por cima, e mandar
+   * reservar 1/8 do quadro ali seria margem inventada. Com a altura em mãos, a
+   * regra sai em PIXEL da peça REAL — ver `regraDeSafeArea`.
+   */
+  formato?: 'story' | 'feed' | 'quadrado'
+  alturaPx?: number
+  /**
    * Instrução de ajuste da FOTO (opt-in). Sem ela vale a regra da casa: a
    * foto se melhora, nunca se modifica.
    */
@@ -474,10 +484,14 @@ export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?
 
   linhas.push(
     '',
+    // Mesma razão do MODELO SPINE: é este parágrafo que manda copiar o guia,
+    // então é aqui que a dúvida "copiar até onde?" nasce.
+    'AS PALAVRAS NÃO SE COPIAM. Do guia vem a FORMA; as palavras vêm SÓ da copy listada acima. Linha de horário, endereço, preço ou selo escrito que exista no guia e não esteja na copy desta peça simplesmente NÃO EXISTE aqui.',
+    '',
     'REPLIQUE, item a item:',
   )
   linhas.push(...[
-    '1. POSIÇÃO do bloco de texto: o mesmo canto, a mesma altura, a mesma margem.',
+    '1. POSIÇÃO de cada zona de texto: a mesma faixa do quadro, o mesmo lado, a mesma margem. Zonas separadas no guia continuam separadas aqui — não empilhe tudo num bloco só.',
     '2. ALINHAMENTO do texto (à esquerda, centro ou direita): idêntico ao do guia.',
     '3. HIERARQUIA: o mesmo número de níveis de texto, com a mesma proporção de tamanho entre eles.',
     '4. CAIXA de cada nível (ALTA ou baixa): igual à do nível correspondente no guia.',
@@ -514,11 +528,20 @@ export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?
  * em vez de exigir a mesma contagem: exigir contagem igual faria o modelo
  * inventar hierarquia ou, pior, omitir bloco de copy.
  */
-export function buildModeloSpine(descricao?: string | null, elementos?: string[] | null): string {
+export function buildModeloSpine(
+  descricao?: string | null,
+  elementos?: string[] | null,
+  /**
+   * A copy desta peça. Serve para não mandar desenhar ícone de serviço numa
+   * peça sem serviço — ver `elementosQueFazemSentido`.
+   */
+  copy: string[] = [],
+): string {
   // Mesma distinção do LOOK SPINE: `[]` afirma que não há elemento gráfico;
   // ausente não afirma nada.
   const declarados = Array.isArray(elementos)
-  const graficos = (elementos ?? []).map((e) => e.trim()).filter(Boolean)
+  const { manter, descartados } = elementosQueFazemSentido(elementos ?? null, copy)
+  const graficos = (manter ?? []).map((e) => e.trim()).filter(Boolean)
 
   const linhas = [
     '[MODELO A SEGUIR — A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA]',
@@ -532,24 +555,50 @@ export function buildModeloSpine(descricao?: string | null, elementos?: string[]
       ...graficos.map((e) => `- ${e}`),
       'Não são enfeite do modelo e não podem ser trocados por outro elemento.',
     )
-  } else if (declarados && descricao) {
+  } else if (declarados && descricao && descartados.length === 0) {
     linhas.push(
       '',
       '⚠️ O modelo NÃO tem elemento gráfico além do texto: não acrescente filete, onda, barra, moldura nem ícone.',
     )
   }
 
+  /**
+   * O ícone órfão precisa ser proibido POR NOME, não só omitido da lista.
+   *
+   * A descrição do modelo, mais abaixo, continua dizendo que ele tem relógio e
+   * pin — e a peça de sobremesas de 17/08/2026 desenhou os dois sozinhos no
+   * canto, apontando para nada. Tirar da ordem imperativa não basta: é preciso
+   * dizer que aqui eles NÃO existem.
+   */
+  if (descartados.length > 0) {
+    linhas.push(
+      '',
+      '⛔ O modelo tem ícone acompanhando linha de horário/endereço, e esta peça NÃO TEM essas linhas: não desenhe esses ícones. Ícone sem o texto ao lado é sujeira, não assinatura.',
+    )
+  }
+
   linhas.push(
     '',
+    // A copy é a ÚNICA fonte de palavras, dito aqui e não só no bloco de copy:
+    // este parágrafo é o que manda copiar o modelo, então é aqui que a dúvida
+    // "copiar até onde?" nasce. Ver a nota em `descricaoDoGuia` sobre as cinco
+    // peças do O Quintal que saíram com o endereço da arte de referência.
+    'AS PALAVRAS NÃO SE COPIAM. Do modelo vem a FORMA (onde, em que cor, em que caixa, em que tamanho, com que ornamento); as palavras vêm SÓ da copy listada acima. Se o modelo tem uma linha de horário, de endereço, de preço ou um selo escrito e a copy desta peça não tem, essa linha simplesmente NÃO EXISTE aqui — não a reproduza, não a adapte e não a substitua por outra parecida.',
+    '',
     'REPLIQUE, item a item:',
-    '1. POSIÇÃO do bloco de texto: o mesmo canto, a mesma altura, a mesma margem. Se no modelo o texto está embaixo, aqui está embaixo.',
+    '1. POSIÇÃO de cada zona de texto: a mesma faixa do quadro, o mesmo lado, a mesma margem. Se no modelo a manchete está no alto e o serviço no rodapé, aqui também — são zonas SEPARADAS, e juntá-las num bloco só é erro. Duas exceções, e só estas: (a) a safe area do story vence a margem do modelo, então o que nele estiver colado na borda entra aqui um pouco mais para dentro; (b) horário e endereço da copy vão no RODAPÉ mesmo que o modelo não tenha zona de serviço — nesse caso você CRIA a zona, no estilo dele.',
     '2. ALINHAMENTO do texto (à esquerda, centro ou direita): idêntico ao do modelo.',
     '3. CAIXA de cada nível (ALTA, baixa ou Title Case): igual à do nível correspondente no modelo. Esta regra vence qualquer outro palpite sobre caixa.',
     '4. HIERARQUIA: mesma proporção de tamanho e peso entre manchete, apoio e corpo. Se esta peça tem MAIS blocos de copy do que o modelo, repita o nível mais baixo do modelo para os blocos extras — nunca invente um nível novo e NUNCA omita um bloco da copy.',
     '5. COR DE CADA NÍVEL: se no modelo a manchete é clara, aqui também é. A cor de destaque entra no MESMO nível hierárquico, nunca em outro.',
     '6. ELEMENTOS GRÁFICOS (filete, losango, selo, ícone): os mesmos, na mesma posição e no mesmo tamanho relativo.',
     '7. VÉU DE LEITURA: mesma direção e mesma densidade do gradiente.',
-    '8. GRAU DE ESTILIZAÇÃO E LUMINOSIDADE: se o modelo é claro e arejado, esta peça é clara e arejada.',
+    // Era "GRAU DE ESTILIZAÇÃO E LUMINOSIDADE: se o modelo é claro e arejado,
+    // esta peça é clara e arejada" — lida como ordem de igualar a LUZ DA FOTO à
+    // do modelo, ao lado de uma linha que descrevia o "contraste alto" dele. As
+    // duas juntas produziram a peça do TERO que o cliente reprovou por foto
+    // estourada (17/08/2026). O que se copia do modelo é a camada gráfica.
+    '8. GRAU DE ESTILIZAÇÃO da CAMADA GRÁFICA: mesma densidade de texto, mesma discrição ou ousadia dos ornamentos. ⛔ Isto NÃO vale para a fotografia: a foto desta peça é a fornecida, com a luz e o contraste que ela já tem — não a retoque para parecer com a do modelo.',
     '',
     'MUDE apenas: a fotografia (que é a fornecida como cena) e as palavras da copy desta peça.',
     '⛔ Não "melhore" a diagramação do modelo, não reequilibre a composição e não varie para dar ritmo. Aqui variação é DEFEITO — a pessoa escolheu esta peça de propósito.',
@@ -606,6 +655,52 @@ export function buildTypographyLock(brand: BrandContext | null): string {
 }
 
 /**
+ * Fração da altura reservada em cima e embaixo no story.
+ *
+ * 12,5% (1/8) de 1920 dá 240px, que é a ordem de grandeza da faixa que o
+ * Instagram cobre com o nome do perfil em cima e os controles de resposta
+ * embaixo.
+ */
+const FAIXA_RESERVADA = 0.125
+
+/**
+ * A regra 9, escrita para a peça que está sendo gerada.
+ *
+ * 🔴 Em PIXEL da peça REAL, e não só em fração. A versão só-fração ainda deixou
+ * logo e CTA terminando entre 93% e 95% da altura nas cinco peças do O Quintal
+ * (17/08/2026) — a arte de referência do cliente tem a marca quase colada na
+ * borda de baixo, e a IMAGEM vence a prosa. Contra imagem, o que resta é um
+ * número que dá para conferir: "nada abaixo de 1694px" é verificável, "o último
+ * oitavo" é interpretável. É o mesmo princípio de física-não-adjetivo que
+ * governa o prompt da trilha `imagem`.
+ *
+ * Sem `alturaPx` a regra sai em fração, como antes — o chamador que não informa
+ * o tamanho não perde a regra.
+ */
+export function regraDeSafeArea(formato?: 'story' | 'feed' | 'quadrado', alturaPx?: number): string {
+  // Feed e quadrado não têm safe area: o Instagram não desenha por cima deles.
+  // Reservar 1/8 ali seria margem inventada, e margem inventada come a peça.
+  if (formato && formato !== 'story') {
+    return '9. MARGENS DO FEED: nada de texto, filete ou logo encostado na borda — margem mínima de ~6% da largura em todos os lados. O Instagram não desenha por cima da peça de feed, então não há faixa reservada: use o quadro inteiro dentro dessa margem.'
+  }
+
+  const emPixel = (() => {
+    if (!alturaPx || !Number.isFinite(alturaPx)) return null
+    const topo = Math.round(alturaPx * FAIXA_RESERVADA)
+    const base = Math.round(alturaPx * (1 - FAIXA_RESERVADA))
+    return { topo, base }
+  })()
+
+  return [
+    '9. SAFE AREA DO STORY — o Instagram DESENHA POR CIMA da peça: o nome do perfil e o avatar no topo, os controles de resposta no rodapé.',
+    emPixel
+      ? `Esta peça tem ${alturaPx}px de altura. NADA acima de ${emPixel.topo}px e NADA abaixo de ${emPixel.base}px: nenhuma letra, nenhum filete, nenhum ícone e NENHUMA LOGO — nem de raspão. O elemento mais baixo da arte (seja o CTA, a linha de endereço ou a marca) termina ANTES de ${emPixel.base}px; sobrando espaço, ele sobe, nunca desce.`
+      : 'A faixa de cima (da borda até ~1/8 da ALTURA) e a de baixo (dos ~7/8 até a borda) ficam VAZIAS: nenhuma letra, nenhum filete, nenhum ícone e NENHUMA LOGO entram ali, nem de raspão. O elemento mais baixo da arte termina ANTES dos ~7/8.',
+    'Isso vale mesmo quando o pedido falar em "topo" ou "rodapé" — que são as zonas LOGO ABAIXO e LOGO ACIMA dessas faixas — e vale mesmo quando o MODELO a seguir tiver algo colado na borda: a arte de referência foi feita sem esta regra, e aqui a safe area VENCE a margem dela. Nas laterais, margem mínima de ~6% da largura.',
+  ].join(' ')
+}
+
+/**
  * Prompt da trilha `arte`: foto real + copy verbatim → peça diagramada.
  *
  * Portado do prompt "normal" do insta-automatico (produção desde abril/2026
@@ -642,7 +737,12 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   const fidelidade = [
     '[FIDELIDADE À FOTO]',
     'A foto do prato/cena é a CENA FINAL da arte. NÃO recrie a cena, NÃO troque nem "melhore" o fundo, NÃO invente ambiente novo, NÃO adicione nem remova objetos, pessoas ou arquitetura. O dono do restaurante precisa RECONHECER o próprio prato e o próprio salão — se a arte parecer OUTRO lugar, está reprovada.',
-    'NÃO RELUMIE: direção da luz, temperatura de cor e aparência real do ambiente ficam como estão. Permitido apenas ajuste global MUITO sutil de contraste, exposição e nitidez.',
+    // "Permitido apenas ajuste global MUITO sutil de contraste, exposição e
+    // nitidez" era a licença que o modelo esticava: a peça do almoço do TERO
+    // saiu com a foto estourada e o cliente respondeu "você não precisa alterar
+    // a imagem" (17/08/2026). Ajuste sutil não é necessário para peça nenhuma —
+    // quem quer mexer na foto pede, e o pedido vira a EXCEÇÃO logo abaixo.
+    'NÃO RELUMIE E NÃO TRATE A FOTO: direção da luz, temperatura de cor, exposição, contraste, saturação e nitidez saem exatamente como entraram. Não "puxe" contraste nem vibração para a foto ficar mais bonita — a fotografia não precisa de tratamento nenhum aqui, e a única camada que você acrescenta é a gráfica.',
     'As descrições de fotografia que aparecerem no DNA desta marca (luz dramática, golden hour, bokeh quente, alto contraste) definem o PADRÃO DE ESCOLHA da foto e a atmosfera da camada gráfica — NUNCA autorizam relumiar ou recriar esta foto.',
     'Se o enquadramento exigir completar bordas, ESTENDA a própria cena com continuidade perfeita (mesma parede, mesma mesa, mesma luz) — nunca um cenário diferente.',
   ]
@@ -654,24 +754,37 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   sections.push(fidelidade.join('\n'))
 
   /**
-   * Desfazer a caixa alta da copy vale só nos clientes cujo DNA pede caixa
-   * natural — ver `PROJETOS_COM_CAIXA_NATURAL`, que explica por que a lista é
-   * explícita. Nos demais a copy chega ao modelo como foi escrita.
+   * A caixa da copy é decidida aqui, na STRING, porque é o único lugar onde ela
+   * é decidível — ver `caixa-da-copy.ts`. Cliente fora do mapa recebe a copy
+   * como foi escrita.
    *
-   * Os nomes da marca voltam com a grafia oficial na conversão: é o que faz
-   * "SABORES REAL" virar "Sabores Real" e não "Sabores real".
+   * `natural` vale para a copy INTEIRA (o bloco gritado pode ser qualquer um);
+   * `alta` vale só para a MANCHETE, que é o que a marca pede em caixa alta.
+   *
+   * Os nomes da marca voltam com a grafia oficial na conversão para natural: é
+   * o que faz "SABORES REAL" virar "Sabores Real" e não "Sabores real".
    */
-  const corrigeCaixa = !!args.brand && PROJETOS_COM_CAIXA_NATURAL.has(args.brand.projectId)
+  const caixaDaMarca = args.brand ? CAIXA_DA_MANCHETE.get(args.brand.projectId) : undefined
   const nomesDaMarca = args.brand?.projectName ? [args.brand.projectName] : []
-  const comCaixaDaMarca = (b: string) => (corrigeCaixa ? paraCaixaNatural(b, nomesDaMarca) : b)
+  const comCaixaDaMarca = (b: string, ehManchete: boolean) => {
+    if (caixaDaMarca === 'natural') return paraCaixaNatural(b, nomesDaMarca)
+    if (caixaDaMarca === 'alta' && ehManchete) return paraCaixaAlta(b)
+    return b
+  }
 
   if (args.copy.length > 0) {
     sections.push(
       [
         '[COPY — REPRODUZIR VERBATIM, NA ORDEM]',
         'O conteúdo textual da peça é SOMENTE o que está listado abaixo — nada a mais, nada a menos. Reproduza cada bloco com as MESMAS PALAVRAS, a mesma grafia, os mesmos números e a mesma pontuação:',
-        ...args.copy.map((b) => `- "${comCaixaDaMarca(b).replace(/\s+/g, ' ').trim()}"`),
+        ...args.copy.map((b, i) => `- "${comCaixaDaMarca(b, i === 0).replace(/\s+/g, ' ').trim()}"`),
         'Não corrija, não traduza, não abrevie, não acrescente palavras, não invente horário, preço ou endereço.',
+        // Medido em 17/08/2026 na peça de almoço do O Quintal: o modelo
+        // escolhido tem uma zona de serviço no rodapé, a copy não tinha nada
+        // para pôr nela, e o gpt-image a preencheu REPETINDO a linha de apoio
+        // — o mesmo texto duas vezes na mesma arte. Zona do modelo sem
+        // conteúdo correspondente fica VAZIA.
+        'Cada bloco aparece UMA ÚNICA VEZ na peça. Nunca repita o mesmo texto em dois lugares para preencher espaço: se uma zona do modelo ficar sem conteúdo nesta peça, ela simplesmente NÃO EXISTE aqui.',
         /**
          * 🔴 NÃO adicione aqui uma regra mandando ignorar a caixa da copy.
          *
@@ -686,8 +799,15 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
          * saíram em caixa natural, com a conferência de texto passando (ela
          * termina em `.toUpperCase()`, então é indiferente à caixa).
          *
+         * Nem uma instrução de caixa VINDA DO MODELO escolhido segura. Medido
+         * de novo em 17/08/2026, no TERO: o MODELO SPINE trazia `1. título ·
+         * caixa ALTA` e a regra "esta regra vence qualquer outro palpite sobre
+         * caixa", e a peça saiu "Almoço executivo" em caixa natural do mesmo
+         * jeito. Três medições, três derrotas — a instrução nunca ganha.
+         *
          * Conserto, portanto, é a montante: quem escreve a copy. As descrições
-         * das tools de plano e de geração já pedem caixa natural.
+         * das tools de plano e de geração pedem caixa natural, e `caixaDaMarca`
+         * acima devolve a caixa que a marca pede antes de a string virar prompt.
          */
         'Texto visto em qualquer IMAGEM DE REFERÊNCIA não é conteúdo desta peça: pertence a um post antigo e NUNCA entra aqui.',
       ].join('\n'),
@@ -697,6 +817,23 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
       '[SEM TEXTO]\n⛔ ZERO TEXTO nesta peça: nenhuma letra, número ou palavra desenhada. Apenas a foto com tratamento sutil e, se fornecida, a logo discreta.',
     )
   }
+
+  /**
+   * SERVIÇO tem lugar fixo, e ele NÃO vem do modelo (17/08/2026, pedido do
+   * Ciro).
+   *
+   * O parágrafo do modelo manda copiar as zonas dele — mas o modelo é uma peça
+   * ANTIGA e pode não ter linha de serviço nenhuma. Quando a copy tem horário
+   * ou endereço e o modelo não tem onde pendurá-los, o gpt-image os gruda na
+   * manchete, no meio do quadro. Vai colado à copy, logo abaixo dos blocos de
+   * que fala, e só existe quando há serviço — ver `instrucaoDeServico`.
+   */
+  // A caixa é aplicada com o MESMO critério da lista de copy (`i === 0` é a
+  // manchete): citar aqui um bloco com caixa diferente da que ele tem três
+  // linhas acima daria ao modelo duas versões da mesma frase para desenhar.
+  const servico =
+    args.copy.length > 0 ? instrucaoDeServico(args.copy.map((b, i) => comCaixaDaMarca(b, i === 0))) : null
+  if (servico) sections.push(servico)
 
   const regras = [
     '[REGRAS DE COMPOSIÇÃO]',
@@ -712,7 +849,12 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // sem ele o modelo estica uma palavra sozinha até preencher a largura, e a
     // peça vira cartaz de varejo mesmo respeitando o teto de altura.
     '3. Nenhuma palavra isolada passa de ~35% da largura útil — nunca amplie uma palavra sozinha para preencher a linha.',
+    // O véu virou ESCURECIMENTO GLOBAL nas peças do O Quintal (17/08/2026): a
+    // arte do almoço de domingo saiu com o salão inteiro apagado, e o cliente
+    // reprovou com "a foto está ficando muito escura". "Sutil" não bastava
+    // porque não dizia ONDE — a segunda frase é o limite que faltava.
     '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
+    '4b. O véu de leitura é LOCAL: ele cobre só a faixa onde o texto pousa (no máximo ~1/3 do quadro) e some antes de chegar ao assunto. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível sem escurecer tudo, MUDE O TEXTO DE LUGAR.',
     // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
     // defeito aparecia toda semana.
     '5. Quebras de linha equilibradas: NUNCA deixe uma palavra sozinha na última linha de um bloco. Em manchete, 2 a 3 palavras por linha; em apoio, 4 a 6.',
@@ -723,7 +865,12 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // "título no topo" venceu a safe area e o título começou a ~70px da borda
     // — exatamente sob o nome do perfil que o Instagram sobrepõe ali. O Ciro
     // pegou no olho (10/08/2026).
-    '9. SAFE AREA DO STORY — o Instagram DESENHA POR CIMA da peça: o nome do perfil e o avatar no topo, e os controles de resposta no rodapé. Os primeiros ~250px do topo e os últimos ~250px do rodapé ficam LIVRES de texto e de logo, mesmo quando o pedido do cliente falar em "topo" ou "rodapé" — topo e rodapé são as zonas LOGO ABAIXO/ACIMA dessas faixas. No feed: margens generosas, nada encostado na borda.',
+    // Em FRAÇÃO do quadro, não em pixel: a peça sai 1088x1936, o "~250px" foi
+    // escrito para 1080x1920 e o modelo não conta pixel nenhum — ele compõe em
+    // proporção. As cinco peças do O Quintal (17/08/2026) puseram a logo colada
+    // na borda de cima e o CTA colado na de baixo, com a regra escrita: "é
+    // preciso respeitar as margens do Instagram de topo e rodapé".
+    regraDeSafeArea(args.formato, args.alturaPx),
     // A regra que faltava, e a mais importante para o resultado parecer feito
     // por gente: ONDE o texto pousa é decisão de quem OLHA a foto. As regras
     // acima são limites; dentro delas, quem diagrama é o modelo. Sem isto o
@@ -767,7 +914,7 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
    */
   const temModelo = !carrossel && args.refs.some((r) => r.role === 'style-guide')
   if (temModelo) {
-    sections.push(buildModeloSpine(args.modelo?.descricao, args.modelo?.elementos))
+    sections.push(buildModeloSpine(args.modelo?.descricao, args.modelo?.elementos, args.copy))
   }
 
   // Depois das regras e antes do pedido: a proibição de desenhar logo precisa

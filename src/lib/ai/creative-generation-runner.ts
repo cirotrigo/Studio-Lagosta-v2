@@ -198,6 +198,24 @@ function avisoDeNumeros(numeros: string[]): Record<string, unknown> {
   }
 }
 
+/**
+ * Aviso de frase copiada da arte de REFERÊNCIA — o irmão do de números, para
+ * palavra. Ver `textosVazadosDoModelo`: o defeito que ele vigia derrubou as
+ * cinco peças do O Quintal em 17/08/2026, com endereço e horário do post
+ * antigo letrados numa peça que não os pedia.
+ */
+function avisoDeVazamento(textos: string[]): Record<string, unknown> {
+  if (textos.length === 0) return {}
+  const lista = textos.slice(0, 3).map((t) => `"${t.slice(0, 40)}"`).join(', ')
+  return {
+    entregueComAlerta: true,
+    textosVazados: textos.slice(0, 5),
+    vazamentoAlerta:
+      `A arte repete texto da arte de referência que não está na copy pedida (${lista}). ` +
+      'Confira antes de aprovar: costuma ser horário ou endereço do post antigo.',
+  }
+}
+
 export async function processArtGenerationInBackground(args: ArtGenerationJobArgs): Promise<void> {
   const startedAt = Date.now()
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
@@ -377,7 +395,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         // A imagem sozinha deixa o modelo decidir o que é essencial; a
         // descrição por visão transforma "copie o estilo" em lista de
         // decisões explícitas. Indisponível, o LOOK SPINE textual segue.
-        guiaLido = await decodificarGuia(sane.buffer)
+        guiaLido = await decodificarGuia(sane.buffer, { paraSerie: true })
         if (guiaLido) {
           console.log(
             `[arte-ia.bg] guia decodificado para o LOOK SPINE` +
@@ -502,6 +520,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         brand,
         refs: ordered.map((r) => ({ role: r.role, label: r.label })),
         instrucaoImagem: args.instrucaoImagem,
+        // A safe area sai em PIXEL da peça real, e só no story — ver
+        // `regraDeSafeArea`.
+        formato: args.formato,
+        alturaPx: args.finalSize.height,
         modelo: modeloLido
           ? { descricao: modeloLido.descricao, elementos: modeloLido.elementosGraficos }
           : null,
@@ -637,7 +659,14 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
 
       try {
         const checkStartedAt = Date.now()
-        const check = await verifyImageTexts(candidate, expectedTexts)
+        // Os textos do modelo entram só como RÉGUA da conferência — eles nunca
+        // chegaram ao prompt (ver `descricaoDoGuia`).
+        const check = await verifyImageTexts(
+          candidate,
+          expectedTexts,
+          modeloLido?.textos ?? [],
+          brand?.projectName ?? null,
+        )
         const checkMs = Date.now() - checkStartedAt
         attemptsLog.push({ attempt, generationMs, checkMs, passed: check.passed, missing: check.missing })
         console.log(
@@ -669,6 +698,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             textCheck: 'passed',
             textCheckAttempts: attemptsLog,
             ...avisoDeNumeros(check.numerosNaoEsperados),
+            ...avisoDeVazamento(check.textosVazados),
           }
           break
         }
@@ -686,13 +716,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           console.warn(`[arte-ia.bg] entregando com ALERTA de texto: ${alerta}`)
           resultBuffer = candidate
           const porNumeros = avisoDeNumeros(check.numerosNaoEsperados)
+          const porVazamento = avisoDeVazamento(check.textosVazados)
           textCheckInfo = {
             textCheck: 'failed',
             entregueComAlerta: true,
-            textCheckAlert: [alerta, porNumeros.numerosAlerta].filter(Boolean).join(' '),
+            textCheckAlert: [alerta, porNumeros.numerosAlerta, porVazamento.vazamentoAlerta]
+              .filter(Boolean)
+              .join(' '),
             textCheckAttempts: attemptsLog,
             textCheckExtracted: check.extracted.slice(0, 30),
             ...porNumeros,
+            ...porVazamento,
           }
           break
         }

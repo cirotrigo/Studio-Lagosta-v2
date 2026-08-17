@@ -30,6 +30,8 @@ interface StatusResposta {
   fieldValues?: {
     error?: string
     textCheckAlert?: string
+    /** Frase copiada da arte de referência — também vem COM o texto aprovado. */
+    vazamentoAlerta?: string
     /** Número na arte sem lastro na copy — vem COM o texto aprovado. */
     numerosAlerta?: string
     /** Trilha imagem: o prato da cena divergiu da foto de referência. */
@@ -44,6 +46,10 @@ function avisoDe(fv: StatusResposta['fieldValues']): string | null {
   if (!fv) return null
   return (
     fv.textCheckAlert ??
+    // Antes do de números de propósito: quando a frase do post antigo vaza, os
+    // números dela vazam junto, e "o endereço da arte de referência" diz o que
+    // fazer — "1158" não diz.
+    fv.vazamentoAlerta ??
     fv.numerosAlerta ??
     fv.cenaAlerta ??
     (fv.qaEntregueComRessalva && fv.qaMotivo ? fv.qaMotivo : null)

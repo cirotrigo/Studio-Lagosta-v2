@@ -1159,6 +1159,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   isStyleRef={styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)}
                   avisoConferencia={
                     getStringField(generation.fieldValues, 'textCheckAlert') ??
+                    // Frase copiada da arte de referência: vem com o texto
+                    // APROVADO e explica o número, então passa na frente dele.
+                    getStringField(generation.fieldValues, 'vazamentoAlerta') ??
                     // Número sem lastro aparece com o texto APROVADO — se não
                     // entrasse aqui, o caso mais comum ficaria invisível.
                     getStringField(generation.fieldValues, 'numerosAlerta') ??

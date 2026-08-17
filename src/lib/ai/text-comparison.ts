@@ -49,3 +49,67 @@ export function normalizeForComparison(value: string): string {
     .trim()
     .toUpperCase()
 }
+
+/**
+ * Comprimento mínimo (já normalizado) de uma frase do modelo para valer alarme.
+ *
+ * "O QUINTAL" tem 9 e é a assinatura da marca — aparece em toda peça, por
+ * desenho. "CHEGA MAIS" tem 10 e é CTA de casa. Abaixo de 12 o casamento é
+ * coincidência, e alarme por coincidência é o caminho mais curto para ninguém
+ * mais ler o alerta — a lição que derrubou a revisão visual em 10/08/2026.
+ */
+const MINIMO_PARA_ALARME = 12
+
+/**
+ * Frases da arte de REFERÊNCIA que reapareceram na peça nova sem estar na copy.
+ *
+ * 🔴 O irmão de `numerosSemLastro`, para PALAVRA. Os números foram o sintoma
+ * pelo qual o defeito de 17/08/2026 ficou registrado ("11, 00, 1158" em 3 das
+ * 5 peças do O Quintal), mas o que o cliente viu foi a frase inteira: o
+ * "Funcionamento - 11h às 00h" e o "R. Aleixo Netto, 1158" da arte de
+ * referência, letrados numa peça que não os pedia. A causa foi consertada em
+ * `descricaoDoGuia` (as palavras do modelo não vão mais ao prompt); isto aqui é
+ * a rede embaixo — o modelo ENXERGA a arte de referência, e enxergar já bastou
+ * uma vez para ele copiar.
+ *
+ * ⚠️ AVISO, nunca reprovação — mesma regra do alerta de números. Repetição
+ * legítima existe: a copy desta peça pode pedir o mesmo horário do post antigo,
+ * e aí há lastro e nada é dito.
+ *
+ * O casamento é por FRASE inteira, nunca por palavra solta: "hoje" e "das"
+ * aparecem em toda copy.
+ */
+export function textosVazadosDoModelo(
+  extracted: string[],
+  expectedTexts: string[],
+  textosDoModelo: string[],
+  /**
+   * Nome da marca, para NÃO acusar a assinatura.
+   *
+   * 🔴 Sem isto o alerta viraria ruído de rodapé: toda peça leva a marca, a
+   * visão transcreve o wordmark da logo como texto, e o decodificador lê o nome
+   * como um nível do modelo — então "O Quintal Parrilla Bar" casaria em quase
+   * toda geração. Alarme que toca sempre é alarme que ninguém lê, que é como
+   * a revisão visual morreu em 10/08/2026.
+   */
+  nomeDaMarca?: string | null,
+): string[] {
+  const copy = normalizeForComparison(expectedTexts.join('\n'))
+  const arte = normalizeForComparison(extracted.join('\n'))
+  const marca = nomeDaMarca ? normalizeForComparison(nomeDaMarca) : ''
+  /** Sobra da frase depois de tirar o nome da marca: só isso é conteúdo. */
+  const semAMarca = (frase: string) => (marca ? frase.replace(marca, ' ').replace(/\s+/g, ' ').trim() : frase)
+  const vazados: string[] = []
+  for (const bruto of textosDoModelo) {
+    const alvo = normalizeForComparison(bruto)
+    if (alvo.length < MINIMO_PARA_ALARME) continue
+    // "O QUINTAL PARRILLA BAR" menos "O QUINTAL PARRILLA" sobra "BAR": é a
+    // assinatura, não um dado do post antigo.
+    if (semAMarca(alvo).length < MINIMO_PARA_ALARME) continue
+    if (!arte.includes(alvo)) continue
+    if (copy.includes(alvo)) continue
+    const limpo = bruto.trim()
+    if (!vazados.includes(limpo)) vazados.push(limpo)
+  }
+  return vazados
+}

@@ -271,6 +271,12 @@ export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
         // topo-direita, base-esquerda) conforme o enquadramento, e um canto
         // cravado no prompt produziria a mesma assinatura em todas.
         'Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem —, ocupando NO MÁXIMO 12% da largura do quadro — bem menor do que a tendência: é assinatura de canto, do tamanho de um selo, nunca um elemento da composição. Não a ponha sobre o assunto nem sobre a copy.',
+    // A safe area também está nas regras de composição, mas ali é o item 9 de
+    // uma lista de dez e fala de TEXTO em primeiro lugar. "Canto calmo" é lido
+    // como "o canto", e o canto do quadro é justamente onde o Instagram desenha
+    // por cima: nas peças do O Quintal (17/08/2026) a marca saiu grudada na
+    // borda de cima e na de baixo. A regra tem de estar COLADA à decisão.
+    'CANTO NÃO É BORDA: a marca fica DENTRO da área segura — abaixo de ~1/8 da altura no alto, acima dos ~7/8 embaixo, e a pelo menos ~6% da largura das laterais. Nada de logo encostada na borda, nem quando o modelo a seguir tiver a dele encostada.',
     '⛔ Não redesenhe, não estilize, não simplifique e não "melhore" a marca. Não invente símbolo, monograma, contorno ou selo que não esteja no arquivo. Não escreva o nome da marca com outra fonte.',
     // Soletração e ligadura, explícitas. O caso real que exigiu as duas linhas:
     // a logo do TERO tem o R EMENDADO no E (ligadura), e o modelo a "desdobrou"

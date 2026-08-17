@@ -46,6 +46,12 @@ export interface TextCheckResult {
    * derrubou a revisão visual em 10/08.
    */
   numerosNaoEsperados: string[]
+  /**
+   * Frases da arte de REFERÊNCIA que reapareceram nesta peça sem estar na copy.
+   * Vazio quando não havia modelo decodificado para comparar — ver
+   * `textosVazadosDoModelo`. Também é aviso, nunca reprovação.
+   */
+  textosVazados: string[]
 }
 
 /** Sequências de dígitos de um texto, sem separador — "R$ 1.384,00" → "138400". */
@@ -79,13 +85,15 @@ export function numerosSemLastro(extracted: string[], expectedTexts: string[]): 
 }
 
 /**
- * `normalizeForComparison` mudou de casa para `text-comparison.ts` — módulo
- * puro, para que o diff de copy do aprendizado use as MESMAS regras de "o que
- * conta como o mesmo texto" sem arrastar Prisma e o SDK de IA para dentro de
- * um teste unitário. Segue exportada daqui.
+ * `normalizeForComparison` e `textosVazadosDoModelo` moram em
+ * `text-comparison.ts` — módulo puro, para que o diff de copy do aprendizado e
+ * a conferência de vazamento usem as MESMAS regras de "o que conta como o mesmo
+ * texto" sem arrastar Prisma e o SDK de IA para dentro de um teste unitário
+ * (`@/lib/db` lança no import quando falta `DATABASE_URL`). Seguem exportadas
+ * daqui.
  */
-export { normalizeForComparison } from './text-comparison'
-import { normalizeForComparison } from './text-comparison'
+export { normalizeForComparison, textosVazadosDoModelo } from './text-comparison'
+import { normalizeForComparison, textosVazadosDoModelo } from './text-comparison'
 
 function isTextValue(value: string): boolean {
   const trimmed = value.trim()
@@ -182,6 +190,14 @@ const transcriptionSchema = z.object({
 export async function verifyImageTexts(
   imageBuffer: Buffer,
   expectedTexts: string[],
+  /**
+   * Textos lidos na arte de referência (`GuiaLido.textos`), quando houve uma.
+   * Opcional de propósito: quem não tem modelo — melhoria, MCP, medição —
+   * chama como sempre chamou e recebe `textosVazados: []`.
+   */
+  textosDoModelo: string[] = [],
+  /** Nome da marca — a assinatura não conta como vazamento. */
+  nomeDaMarca?: string | null,
 ): Promise<TextCheckResult> {
   const { object } = await generateObject({
     model: openai(VISION_MODEL),
@@ -220,5 +236,6 @@ export async function verifyImageTexts(
     extracted,
     // Fora do `passed` de propósito — ver a nota em TextCheckResult.
     numerosNaoEsperados: numerosSemLastro(extracted, expectedTexts),
+    textosVazados: textosVazadosDoModelo(extracted, expectedTexts, textosDoModelo, nomeDaMarca),
   }
 }
