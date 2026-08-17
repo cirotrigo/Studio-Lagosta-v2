@@ -17,6 +17,41 @@ import type { KitDeMarca, CopyDoTema } from './gerador-de-templates'
 const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
 
 export const KITS: Record<number, KitDeMarca> = {
+  // ── Seu Quinto ──────────────────────────────────────────────────────────
+  // Paleta ESTRITA de cinco cores com papel definido, e o kit precisa das
+  // três que aparecem: vermelho na palavra-chave da manchete, amarelo no
+  // pré-título e no CTA (87 das 224 páginas), branco no texto.
+  4: {
+    projectId: 4,
+    cliente: 'Seu Quinto',
+    corFundo: '#0E0B08',
+    corTexto: '#FFFFFF',
+    corAcento: '#ED1C24',
+    corAcento2: '#FAA61A',
+    fonteTitulo: 'Bonoco2023',
+    pesoTitulo: 400,
+    fonteApoio: 'Bonoco2023',
+    caixaTitulo: 'uppercase',
+    caixaServico: 'none',
+    caixaCta: 'none',
+    // Métricas por papel, do visualStyle — sem elas a peça usa a fonte certa
+    // e mesmo assim não fica com a cara da marca.
+    tituloLetterSpacing: -1,
+    tituloLineHeight: 0.95,
+    preTituloLetterSpacing: 6,
+    apoioLetterSpacing: 1,
+    // Assinatura visual da marca: extrude de 5px para baixo-direita, SEM blur.
+    // Branco sobre foto com sombra amarela é uma das combinações oficiais.
+    sombraTitulo: { offsetX: 5, offsetY: 5, cor: '#FAA61A' },
+    logoUrl: `${BLOB}/projects/4/logos/1759948024025-Ativo_1branco.png`,
+    logoRatio: 0.698,
+    // O filete existe (2511x87) mas NUNCA foi usado em 224 páginas, e o DNA
+    // evita ornamento "exceto em peça de festa ou evento". Fica no kit e é
+    // ligado por copy, só onde cabe.
+    filete: `${BLOB}/projects/4/elements/1759948106328-Ativo_5icones.png`,
+    fotoPlaceholder: `${BLOB}/uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI/drive-1784504310101-AMBIENTE-_f3a7082.jpg`,
+  },
+
   // ── By Rock ─────────────────────────────────────────────────────────────
   // Só a MANCHETE vai em caixa alta: o crivo da marca pergunta "A caixa alta
   // está em todos os campos, em vez de só na manchete?" e o tom de voz lista
@@ -169,6 +204,81 @@ export const KITS: Record<number, KitDeMarca> = {
  *  - R$ 79,90 do executivo é o único preço autorizado em copy.
  */
 export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
+  /**
+   * Seu Quinto — correções da conferência:
+   *  - os SEIS `tituloAcento` repetiam palavra do título;
+   *  - duas descrições empilhavam benefícios, contra a construção proibida
+   *    nº 10 do tom de voz ("uma ideia concreta por peça");
+   *  - "mesa cheia até a noite" trocado por "até 23h30": "até tarde" está na
+   *    lista EVITAR do vocabulário e o horário concreto está na lista USAR;
+   *  - ornamento só na peça de evento.
+   * Os seis pré-títulos são cópia literal da lista aprovada da base.
+   */
+  4: {
+    'happy-hour': {
+      preTitulo: 'Happy hour',
+      titulo: 'O CHOPP VEM',
+      tituloAcento: 'EM DOBRO',
+      descricao: 'Peça um, leve dois: chopp e drinks selecionados enquanto o happy tá rolando.',
+      servico: 'Seg a sex · Happy hour das 16h às 19h',
+      icone: null,
+      usarFilete: false,
+      cta: 'Venha pro boteco',
+    },
+    'feijoada-e-samba': {
+      preTitulo: 'Samba do Canto',
+      titulo: 'O SAMBA COMEÇA',
+      tituloAcento: 'AO MEIO-DIA',
+      // Uma ideia concreta, e o horário concreto que a base entrega.
+      descricao: 'Sábado tem samba ao vivo a partir do meio-dia, com mesa cheia até 23h30.',
+      servico: 'Sábado · 11h às 23h30',
+      icone: null,
+      usarFilete: false,
+      cta: 'Seu boteco favorito',
+    },
+    'almoco-de-domingo': {
+      preTitulo: 'Almoço no Seu Quinto',
+      titulo: 'DOMINGO DE',
+      tituloAcento: 'MESA CHEIA',
+      descricao: 'Música ao vivo e a família toda na mesa, até 16h.',
+      servico: 'Domingo · 11h às 16h',
+      icone: null,
+      usarFilete: false,
+      cta: 'Domingou no boteco favorito',
+    },
+    'tira-gostos': {
+      preTitulo: 'Pra beliscar',
+      titulo: 'SAI TORRESMO',
+      tituloAcento: 'CROCANTE',
+      descricao: 'Torresmo Barra, Kieber e croquete de costela: tira-gosto pra dividir na mesa.',
+      servico: 'Rua Celson Calmon, 80 · Praia do Canto, Vitória/ES',
+      icone: 'local',
+      usarFilete: false,
+      cta: 'Vem pro Seu Quinto',
+    },
+    'eventos-especiais': {
+      preTitulo: 'A programação do dia',
+      titulo: 'A TURMA SE',
+      tituloAcento: 'ENCONTRA AQUI',
+      descricao: 'Mesa na calçada, papo furado e todo mundo junto. É pra isso que o boteco existe.',
+      servico: 'Rua Celson Calmon, 80 · Praia do Canto, Vitória/ES',
+      icone: 'local',
+      // A ÚNICA peça com ornamento: o DNA o permite em festa ou evento.
+      usarFilete: true,
+      cta: 'A mesa tá reservada pra você',
+    },
+    'ambiente-e-clima': {
+      preTitulo: 'O boteco da hora',
+      titulo: 'AQUI O PAPO',
+      tituloAcento: 'CORRE SOLTO',
+      descricao: 'Azulejo branco, luz quente da estufa acesa e chopp trincando na caneca.',
+      servico: 'Rua Celson Calmon, 80 · Praia do Canto, Vitória/ES',
+      icone: 'local',
+      usarFilete: false,
+      cta: 'Chega no Seu Quinto',
+    },
+  },
+
   /**
    * By Rock — `tituloAcento` era "JOGO", palavra que já estava no título, e a
    * peça saía com ela DUAS vezes (terceira linha órfã em vermelho). Virou a

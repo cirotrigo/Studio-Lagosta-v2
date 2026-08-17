@@ -68,6 +68,26 @@ export interface KitDeMarca {
   caixaServico?: 'uppercase' | 'none'
   caixaCta?: 'uppercase' | 'none'
   /**
+   * Segunda cor de acento — algumas marcas dão papéis diferentes a cores
+   * diferentes. No Seu Quinto o amarelo (#FAA61A) é do pré-título e do CTA e
+   * aparece em 87 das 224 páginas, enquanto o vermelho é da palavra-chave da
+   * manchete. Reduzir a paleta a uma cor descaracteriza a marca.
+   */
+  corAcento2?: string
+  /**
+   * Sombra EXTRUDE da manchete — assinatura visual, não enfeite. O Seu Quinto
+   * a define como deslocamento de 4–6px para baixo-direita SEM blur, em
+   * combinações oficiais (branco sobre foto com sombra amarela, vermelho com
+   * sombra amarela…). Vai em `effects.shadow`, que é onde o editor grava e o
+   * render lê — `style.shadow` só existe por compatibilidade.
+   */
+  sombraTitulo?: { offsetX: number; offsetY: number; cor: string }
+  /** Métricas por papel, quando o DNA as especifica. */
+  tituloLetterSpacing?: number
+  tituloLineHeight?: number
+  preTituloLetterSpacing?: number
+  apoioLetterSpacing?: number
+  /**
    * A logo fica sempre no topo? Algumas marcas fixam o canto — a Real
    * Gelateria registra "NÃO VARIA DE CANTO", sempre superior direito.
    */
@@ -108,6 +128,8 @@ export interface CopyDoTema {
   descricao: string
   /** Linha de serviço (horário, dias). Só entra com lastro na base. */
   servico?: string
+  /** Ornamento nesta peça? Default: usa o do kit, se houver. */
+  usarFilete?: boolean
   /**
    * Qual ícone acompanha o serviço. 🔴 O gerador colava RELÓGIO sempre que
    * havia `servico` — e saía relógio ao lado de endereço e de "retirada no
@@ -243,18 +265,21 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
     fontFamily: kit.fonteTitulo,
     fontWeight: kit.pesoTitulo,
     textAlign: 'left',
-    lineHeight: 1.05,
-    letterSpacing: kit.caixaTitulo === 'uppercase' ? 2 : -0.5,
+    lineHeight: kit.tituloLineHeight ?? 1.05,
+    letterSpacing: kit.tituloLetterSpacing ?? (kit.caixaTitulo === 'uppercase' ? 2 : -0.5),
     textTransform: kit.caixaTitulo,
     ...(kit.tituloItalico ? { fontStyle: 'italic' } : {}),
   }
-  const estiloApoio = { color: kit.corTexto, fontSize: 40, fontFamily: kit.fonteApoio, fontWeight: 400, lineHeight: 1.15 }
+  const estiloApoio = {
+    color: kit.corTexto, fontSize: 40, fontFamily: kit.fonteApoio, fontWeight: 400, lineHeight: 1.15,
+    ...(kit.apoioLetterSpacing ? { letterSpacing: kit.apoioLetterSpacing } : {}),
+  }
   const estiloServico = {
     color: kit.corTexto, fontSize: 30, fontFamily: kit.fonteApoioForte ?? kit.fonteApoio, fontWeight: 600,
     letterSpacing: 1.4, textTransform: kit.caixaServico ?? 'uppercase', lineHeight: 1.2,
   }
   const estiloCta = {
-    color: kit.corAcento,
+    color: kit.corAcento2 ?? kit.corAcento,
     fontSize: kit.fonteAcento ? 42 : 30,
     fontFamily: kit.fonteAcento ?? kit.fonteApoio,
     fontWeight: kit.pesoAcento ?? 400,
@@ -284,20 +309,44 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
 
   if (copy.preTitulo) {
     empilhar(texto('pre-titulo', 'Pre-titulo', 0, copy.preTitulo, M, 0, L, 40, {
-      color: kit.corAcento, fontSize: 28, fontFamily: kit.fonteApoioForte ?? kit.fonteApoio, fontWeight: 600,
-      letterSpacing: 3.2, textTransform: 'uppercase', lineHeight: 1.2,
+      color: kit.corAcento2 ?? kit.corAcento, fontSize: 28, fontFamily: kit.fonteApoioForte ?? kit.fonteApoio, fontWeight: 600,
+      letterSpacing: kit.preTituloLetterSpacing ?? 3.2, textTransform: 'uppercase', lineHeight: 1.2,
     }))
   }
 
-  empilhar(texto('titulo-n1', 'Titulo', 0, copy.titulo, M, 0, L, 100, estiloTitulo))
+  /**
+   * `effects.shadow` e não `style.shadow`: é onde o editor grava e o que o
+   * painel de efeitos edita — o caminho por `style` só existe por
+   * compatibilidade (ver applyShadow no render-engine).
+   */
+  const sombra = kit.sombraTitulo
+    ? {
+        effects: {
+          shadow: {
+            enabled: true,
+            shadowColor: kit.sombraTitulo.cor,
+            shadowOffsetX: kit.sombraTitulo.offsetX,
+            shadowOffsetY: kit.sombraTitulo.offsetY,
+            // Extrude é sombra DURA: blur descaracteriza.
+            shadowBlur: 0,
+            shadowOpacity: 1,
+          },
+        },
+      }
+    : {}
+
+  empilhar(texto('titulo-n1', 'Titulo', 0, copy.titulo, M, 0, L, 100, estiloTitulo, sombra))
 
   if (copy.tituloAcento) {
     empilhar(texto('titulo-acento', 'Titulo - palavra em destaque', 0, copy.tituloAcento, M, 0, L, 100, {
       ...estiloTitulo, color: kit.corAcento,
-    }))
+    }, sombra))
   }
 
-  if (kit.filete) {
+  // Ornamento pode ser condicional: o Seu Quinto "evita ornamentos, exceto
+  // em peça de festa ou evento", e o filete dele nunca foi usado em 224
+  // páginas — promovê-lo a fixo inventaria um traço que a marca não tem.
+  if (kit.filete && copy.usarFilete !== false) {
     const f = imagem('filete', 'Filete da marca', 0, kit.filete, M, y, 330, 26)
     bloco.push(f)
     y += 26 + GAP
