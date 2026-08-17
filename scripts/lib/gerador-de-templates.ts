@@ -219,10 +219,17 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
     fileUrl: kit.fotoPlaceholder,
   })
 
-  // Véus: onde o texto vai, a foto precisa escurecer.
-  if (layout === 'rodape') {
-    camadas.push(veu('rodape', ordem++, kit.corFundo, 0, 0.92, 0.52))
-  } else if (layout === 'topo') {
+  /**
+   * Véus: onde o texto vai, a foto precisa escurecer.
+   *
+   * 🔴 No layout `rodape` o véu é criado DEPOIS de medir o bloco, porque a
+   * altura dele varia com a copy. Com o stop fixo em 0.52 o degradê acabava
+   * antes do começo do bloco, e o pré-título na cor de acento ficava ilegível
+   * sobre a parte clara da foto — visto na Bacana, laranja sobre madeira
+   * clara. O véu tem de alcançar o conteúdo, não uma altura suposta.
+   */
+  const veuDoRodapeDepois = layout === 'rodape'
+  if (layout === 'topo') {
     camadas.push(veu('topo', ordem++, kit.corFundo, 180, 0.92, 0.42))
     camadas.push(veu('rodape', ordem++, kit.corFundo, 0, 0.8, 0.24))
   } else {
@@ -313,6 +320,16 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   const yInicio = layout === 'rodape'
     ? Math.max(200, yServico - 80 - alturaBloco)
     : layout === 'topo' ? 150 : 170
+
+  if (veuDoRodapeDepois) {
+    // O degradê sobe 140px acima do começo do bloco: o pré-título é a linha
+    // mais alta e a menos contrastada (cor de acento, corpo pequeno).
+    const alcance = Math.min(0.9, Math.max(0.4, (CANVAS.height - yInicio + 140) / CANVAS.height))
+    const v = veu('rodape', 1, kit.corFundo, 0, 0.92, alcance)
+    // Entra logo depois da foto, antes de qualquer texto.
+    camadas.splice(1, 0, v)
+    ordem = camadas.length
+  }
 
   for (const c of bloco) {
     ;(c.position as { y: number }).y += yInicio

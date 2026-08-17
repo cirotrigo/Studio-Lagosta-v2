@@ -17,6 +17,31 @@ import type { KitDeMarca, CopyDoTema } from './gerador-de-templates'
 const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
 
 export const KITS: Record<number, KitDeMarca> = {
+  // ── Bacana ──────────────────────────────────────────────────────────────
+  // Sem filete e sem ícone de relógio cadastrados: o DNA pede "um fio fino"
+  // que não existe como asset, e os 7 Elements do projeto são 4 ícones de
+  // LOCALIZAÇÃO e 3 sombras. Como todas as seis linhas de serviço carregam
+  // unidade ou endereço, o ícone certo aqui é o pino — não o relógio.
+  5: {
+    projectId: 5,
+    cliente: 'Bacana',
+    corFundo: '#1A1410',
+    corTexto: '#FFFFFF',
+    corAcento: '#EF6A00',
+    fonteTitulo: 'Cannon extrabold',
+    pesoTitulo: 400,
+    fonteApoio: 'Cannon light',
+    fonteApoioForte: 'Cannon medium',
+    // O DNA se contradiz sobre o laranja na manchete (`contentRules` manda
+    // headline sempre branca; `visualStyle` autoriza uma palavra em laranja).
+    // Vale a mais restritiva: manchete branca, laranja reservado ao CTA.
+    caixaTitulo: 'none',
+    logoUrl: `${BLOB}/projects/5/logos/1765457389127-bacana.png`,
+    logoRatio: 0.3883,
+    iconeLocal: `${BLOB}/projects/5/elements/1762353516445-icone-local-branci.png`,
+    fotoPlaceholder: `${BLOB}/uploads/user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1786904065748-Ambiente_Vila_Velha-00_019.jpg`,
+  },
+
   // ── Espeto Gaúcho ───────────────────────────────────────────────────────
   // Kit tipográfico OBRIGATÓRIO de três fontes (entrada ACTIVE "Kit
   // Tipográfico Oficial"): Bevan no título, Barlow Condensed no apoio e
@@ -86,6 +111,84 @@ export const KITS: Record<number, KitDeMarca> = {
  *  - R$ 79,90 do executivo é o único preço autorizado em copy.
  */
 export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
+  /**
+   * Bacana — o que a conferência corrigiu:
+   *  - `espaco-kids` convidava para ALMOÇO citando as duas unidades, e a base
+   *    marca isso como o erro MAIS COMUM: em dia útil o Bairro de Fátima abre
+   *    só às 17h. Virou domingo, quando as duas abrem às 11h;
+   *  - `drinks-e-cerveja` prometia "só existem aqui" sem lastro — a base diz
+   *    "autoral, INCOMUM EM CHURRASCARIA", e a própria carta tem Negroni e
+   *    Mojito, que existem em qualquer bar;
+   *  - a frase da casa estava mutilada: o "mas" tinha sumido de "aqui o
+   *    tempero é do Chef, MAS quem monta o menu é você", deixando duas orações
+   *    ligadas só por vírgula;
+   *  - "nas duas unidades" na encomenda não tem lastro em entrada nenhuma;
+   *  - o almoço perdia a ressalva "exceto feriados", que as DUAS entradas que
+   *    o sustentam repetem — peça no ar num feriado manda o cliente para um
+   *    almoço que não existe;
+   *  - a contagem de drinks: "mais de vinte criações DA CASA" fica falso
+   *    (os exclusivos são exatamente 20); a carta inteira tem mais de trinta;
+   *  - churrasco misturava escalas (título de 800g, descrição de 1kg).
+   */
+  5: {
+    'almoco-e-jantar': {
+      preTitulo: 'Almoço do jeito Bacana',
+      // Verbatim da base — o "mas" faz parte da frase da casa.
+      titulo: 'Aqui o tempero\né do Chef, mas quem\nmonta o menu é você',
+      descricao: 'Uma proteína de 200g, uma guarnição e um molho, escolhidos por você.',
+      servico: 'Praia da Costa · Segunda a sexta, das 11h30 às 16h (exceto feriados)',
+      icone: 'local',
+      cta: 'Monte seu prato',
+    },
+    churrasco: {
+      preTitulo: 'Churrasco sempre Bacana',
+      titulo: 'Carne no kilo,\ndo casal à mesa\nde família',
+      // Mesma escala do título: a base liga "do casal à mesa de família" a
+      // 300g–800g, não a 1kg.
+      descricao: 'Cortes na brasa de 300g a 800g, com farofa e vinagrete.',
+      servico: 'Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra',
+      icone: 'local',
+      cta: 'Peça mal passado ou ao ponto',
+    },
+    'espaco-kids': {
+      // Domingo: as DUAS unidades abrem às 11h. Em dia útil a Serra não serve
+      // almoço, e convidar para isso é o erro que a base mais reclama.
+      preTitulo: 'Domingo em família tem que ser Bacana',
+      titulo: 'Tem menu próprio\npara os bacaninhas',
+      descricao: 'O Bacaninha vem com a proteína à escolha: carne, frango, linguiça ou ovo.',
+      servico: 'Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra',
+      icone: 'local',
+      cta: 'Reserve sua mesa',
+    },
+    'eventos-especiais': {
+      preTitulo: 'Comemoração tem que ser Bacana',
+      titulo: 'Mesa grande pede\nporção grande',
+      descricao: 'Chapas e pratos família de 800g, com arroz, feijão tropeiro e batatas fritas.',
+      // Unidade é obrigatória junto do canal (contentRules).
+      servico: 'Nas duas unidades · Reservas pelo WhatsApp (27) 3535-4575',
+      icone: 'local',
+      cta: 'Faça sua reserva pelo WhatsApp',
+    },
+    'drinks-e-cerveja': {
+      preTitulo: 'Jantar com sabores Bacana',
+      // Formulação da própria base: "autoral, incomum em churrascaria".
+      titulo: 'Carta de drinks\nautoral, incomum\nem churrascaria',
+      descricao: 'Penicillin, Caipixaba, Red Carpet, Jack Sparrow e mais de trinta drinks na carta.',
+      servico: 'Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra',
+      icone: 'local',
+      cta: 'Esperamos você',
+    },
+    'promocoes-e-programacoes': {
+      preTitulo: 'Churrasco do jeito Bacana',
+      titulo: 'Encomende e sirva\num churrasco\nsuper profissa',
+      descricao: 'De feijão tropeiro, farofa e vinagrete a pratos completos, prontos para servir em casa.',
+      // Texto da base, sem a inferência de cobertura.
+      servico: 'O pedido é feito com o garçom ou o gerente da casa.',
+      icone: null,
+      cta: 'Fale com o gerente para encomendar',
+    },
+  },
+
   /**
    * Espeto Gaúcho — o que a conferência corrigiu na copy proposta:
    *  - os CINCO `tituloAcento` repetiam palavra do título e sairiam
