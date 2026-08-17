@@ -277,6 +277,11 @@ export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
     // por cima: nas peças do O Quintal (17/08/2026) a marca saiu grudada na
     // borda de cima e na de baixo. A regra tem de estar COLADA à decisão.
     'CANTO NÃO É BORDA: a marca fica DENTRO da área segura — abaixo de ~1/8 da altura no alto, acima dos ~7/8 embaixo, e a pelo menos ~6% da largura das laterais. Nada de logo encostada na borda, nem quando o modelo a seguir tiver a dele encostada.',
+    // O modelo desenhou o lockup no topo E o símbolo sozinho no rodapé (almoço
+    // executivo do O Quintal, 17/08/2026) — porque o símbolo tinha chegado por
+    // outra porta, como "elemento gráfico" do modelo a seguir. Aquela porta foi
+    // fechada no decodificador; esta linha fecha o lado da logo.
+    '⛔ UMA MARCA POR PEÇA, e ela é o ARQUIVO INTEIRO: não desenhe o símbolo (ícone, selo, emblema circular) separado do nome em outro canto, não repita a marca em tamanho menor e não use o símbolo como ornamento. Se a arte de referência parecer ter dois, é a MESMA marca vista uma vez — aqui ela aparece uma vez só.',
     '⛔ Não redesenhe, não estilize, não simplifique e não "melhore" a marca. Não invente símbolo, monograma, contorno ou selo que não esteja no arquivo. Não escreva o nome da marca com outra fonte.',
     // Soletração e ligadura, explícitas. O caso real que exigiu as duas linhas:
     // a logo do TERO tem o R EMENDADO no E (ligadura), e o modelo a "desdobrou"

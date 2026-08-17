@@ -2622,6 +2622,23 @@ Regras que ficam:
   - **texto DUPLICADO**: sem nada para pôr na zona de rodapé, a peça de almoço
     repetiu a linha de apoio — o mesmo texto duas vezes na mesma arte. A regra
     ("cada bloco aparece UMA ÚNICA VEZ") mora colada à lista de copy.
+- 🔴 **A MARCA não é ornamento nem nível de texto — ela tem bloco próprio, e as
+  outras duas portas precisam ser FECHADAS.** Medido em 17/08/2026 no almoço
+  executivo: o decodificador devolveu `"selo à direita do serviço"` como
+  elemento gráfico e uma `Zona 3 (assinatura)` como zona de texto; o MODELO
+  SPINE promoveu o selo a "DESENHE ESTES ELEMENTOS GRÁFICOS, obrigatoriamente";
+  e o bloco da logo, em paralelo, mandou reproduzir o arquivo oficial. A peça
+  saiu com o lockup completo no topo **mais o símbolo sozinho no rodapé** —
+  "está colocando o ícone da logo mais a logo, não precisa disso". Hoje
+  `DA_MARCA` (selo|logo|logotipo|logomarca|marca|emblema|símbolo|brasão|
+  monograma|assinatura) tira a marca da lista de ornamentos, a zona de
+  assinatura vira UMA linha dizendo onde ela mora (nunca níveis para letrar) e
+  não conta como zona de texto, e o bloco da logo passou a dizer "UMA MARCA POR
+  PEÇA, e ela é o ARQUIVO INTEIRO".
+  ⚠️ `\bmarca\b` não casa com "marcador": o marcador entre linhas continua
+  sendo ornamento legítimo. E selo DECORATIVO de verdade (um "10 anos") seria
+  descartado junto — risco aceito, porque desenhar a marca duas vezes é defeito
+  que o cliente reprova e perder um ornamento não é.
 - 🔴 **Mandar o serviço para o rodapé exige dizer de onde ele SAI.** A regra
   genérica de não repetir NÃO segurou o caso mais óbvio, e isso foi medido duas
   vezes na peça de funcionamento: a copy lista o horário como 2º bloco (logo

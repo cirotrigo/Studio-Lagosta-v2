@@ -259,10 +259,31 @@ export function semPalavrasDoModelo(descricao: string): string {
   )
 }
 
+/**
+ * 🔴 Como a visão chama a MARCA quando a encontra na arte.
+ *
+ * A marca NÃO é ornamento e NÃO é nível de texto: ela tem bloco próprio no
+ * prompt (`instrucaoLogoPeloModelo`), que manda reproduzir o arquivo oficial.
+ * Deixá-la entrar por estas duas outras portas faz a peça sair com DUAS
+ * marcas — medido em 17/08/2026 no almoço executivo do O Quintal: o
+ * decodificador devolveu "selo à direita do serviço" como elemento gráfico e
+ * uma "Zona 3 (assinatura)" como zona de texto, o SPINE promoveu o selo a
+ * "DESENHE ESTES ELEMENTOS GRÁFICOS, obrigatoriamente", e a arte saiu com o
+ * lockup completo no topo mais o símbolo sozinho no rodapé. O cliente reprovou:
+ * "está colocando o ícone da logo mais a logo, não precisa disso".
+ *
+ * "marcador" não casa com `\bmarca\b` (a fronteira protege), então o marcador
+ * entre linhas continua sendo ornamento legítimo.
+ */
+const DA_MARCA = /\b(selo|logo|logotipo|logomarca|marca|emblema|s[íi]mbolo|bras[ãa]o|monograma|assinatura)\b/i
+
 /** Elementos gráficos normalizados, ou `null` quando a visão não respondeu. */
 export function elementosDoGuia(g: GuiaDecodificado): string[] | null {
   if (!g.elementosGraficos) return null
-  return g.elementosGraficos.map(textoDoElemento).filter(Boolean)
+  // A marca sai da lista de ornamentos: quem a desenha é o bloco da logo, uma
+  // vez só. Sobrando lista vazia, a afirmação "o modelo não tem ornamento" é
+  // verdadeira — o selo dele era a marca.
+  return g.elementosGraficos.map(textoDoElemento).filter((e) => e && !DA_MARCA.test(e))
 }
 
 /**
@@ -280,6 +301,12 @@ export function zonasDoGuia(g: GuiaDecodificado): Array<z.infer<typeof zonaSchem
     return [{ papel: g.posicaoDoBloco, alinhamento: g.alinhamento, niveis: g.niveis }]
   }
   return []
+}
+
+/** A zona é só a assinatura da marca (nenhum nível dela é texto de copy)? */
+function soAAssinatura(zona: z.infer<typeof zonaSchema>): boolean {
+  const niveis = zona.niveis ?? []
+  return niveis.length > 0 && niveis.every((n) => !!n.papel && DA_MARCA.test(n.papel))
 }
 
 /** Todo texto transcrito do guia, em ordem — insumo interno, nunca prompt. */
@@ -321,9 +348,12 @@ export function descricaoDoGuia(
   const linhas: string[] = []
 
   const zonas = zonasDoGuia(g)
-  if (zonas.length > 1) {
+  // A zona da MARCA não conta como zona de TEXTO: contá-la faria o modelo
+  // procurar um terceiro bloco de copy que não existe.
+  const zonasDeTexto = zonas.filter((z) => !soAAssinatura(z)).length
+  if (zonasDeTexto > 1) {
     linhas.push(
-      `- ZONAS DE TEXTO: ${zonas.length}, SEPARADAS. Mantenha cada uma na sua faixa — não junte tudo num bloco só.`,
+      `- ZONAS DE TEXTO: ${zonasDeTexto}, SEPARADAS. Mantenha cada uma na sua faixa — não junte tudo num bloco só.`,
     )
   }
   zonas.forEach((zona, iz) => {
@@ -338,7 +368,21 @@ export function descricaoDoGuia(
     const nome = zonas.length > 1 ? `Zona ${iz + 1}${zona.papel ? ` (${zona.papel})` : ''}` : 'Bloco de texto'
     linhas.push(`- ${nome}${lugar ? `: ${lugar}` : zona.papel && zonas.length === 1 ? `: ${zona.papel}` : ''}.`)
 
-    const niveis = (zona.niveis ?? []).map((n, i) => {
+    /**
+     * A zona da MARCA não vira lista de níveis para letrar — vira uma linha
+     * dizendo onde ela mora. Ver `DA_MARCA`: a peça saía com duas marcas, e o
+     * pedido do cliente é "usar somente a logomarca como na arte de referência".
+     * Dizer o lugar ajuda; listar como texto faz o modelo DESENHAR de novo.
+     */
+    const niveisDaZona = zona.niveis ?? []
+    if (soAAssinatura(zona)) {
+      linhas.push(
+        `  ↳ é a ASSINATURA DA MARCA${lugar ? ` (${lugar})` : ''}: a marca aparece UMA única vez na peça, aqui, desenhada conforme o bloco da logo. Não a repita em outro canto e não a trate como texto.`,
+      )
+      return
+    }
+
+    const niveis = niveisDaZona.map((n, i) => {
       // Medida no texto quando há texto; o rótulo do modelo é só o fallback.
       const caixa = (n.texto ? caixaDoTexto(n.texto) : null) ?? n.caixa
       const partes = [

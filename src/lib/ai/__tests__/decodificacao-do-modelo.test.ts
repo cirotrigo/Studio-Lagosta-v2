@@ -8,7 +8,13 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { descricaoDoGuia, faixaDaBanda, textosDoGuia, zonasDoGuia } from '../carousel-guide-decoder'
+import {
+  descricaoDoGuia,
+  elementosDoGuia,
+  faixaDaBanda,
+  textosDoGuia,
+  zonasDoGuia,
+} from '../carousel-guide-decoder'
 
 /** A referência tem manchete no ALTO e serviço no RODAPÉ: duas zonas. */
 const MODELO_EM_ZONAS = {
@@ -37,7 +43,8 @@ const MODELO_EM_ZONAS = {
   elementosGraficos: [
     'ícone de relógio à esquerda do horário',
     // A visão cita a vizinhança entre aspas: a última porta do vazamento.
-    "selo circular antes de 'O Quintal Parrilla Bar'",
+    // (Ornamento de verdade — "selo" seria a MARCA, e a marca é filtrada.)
+    "filete fino acima de 'O Quintal Parrilla Bar'",
     { tipo: 'ícone de localização', posicao: "antes de 'R. Aleixo Netto, 1158'" },
   ],
 }
@@ -55,7 +62,7 @@ describe('descricaoDoGuia', () => {
   it('tira as palavras citadas na descrição do elemento gráfico, sem perder a posição', () => {
     const texto = descricaoDoGuia(MODELO_EM_ZONAS)
 
-    expect(texto).toContain('selo circular antes do texto')
+    expect(texto).toContain('filete fino acima do texto')
     expect(texto).toContain('ícone de localização — antes do texto')
     // A vizinhança continua dita; as palavras dela, não.
     expect(texto).toContain('ícone de relógio à esquerda do horário')
@@ -142,5 +149,57 @@ describe('faixaDaBanda', () => {
     expect(faixaDaBanda(0)).toBeNull()
     expect(faixaDaBanda(9)).toBeNull()
     expect(faixaDaBanda(Number.NaN)).toBeNull()
+  })
+})
+
+/**
+ * A marca NÃO é ornamento nem nível de texto — ela tem bloco próprio.
+ *
+ * Caso real do almoço executivo do O Quintal (17/08/2026): a visão devolveu
+ * "selo à direita do serviço" como elemento gráfico e uma zona de assinatura
+ * como zona de texto; o SPINE promoveu o selo a "DESENHE OBRIGATORIAMENTE" e a
+ * arte saiu com o lockup completo no topo MAIS o símbolo sozinho no rodapé.
+ */
+describe('a marca do modelo', () => {
+  const COM_ASSINATURA = {
+    zonas: [
+      {
+        papel: 'manchete',
+        banda: 2,
+        niveis: [{ texto: 'Almoço Executivo', papel: 'título', cor: 'branco' }],
+      },
+      {
+        papel: 'assinatura',
+        banda: 8,
+        lado: 'direita' as const,
+        niveis: [{ texto: 'O Quintal Parrilla Bar', papel: 'selo', cor: 'branco' }],
+      },
+    ],
+    elementosGraficos: ['selo à direita do serviço', 'filete acima da manchete'],
+  }
+
+  it('não entra na lista de ornamentos obrigatórios', () => {
+    expect(elementosDoGuia(COM_ASSINATURA)).toEqual(['filete acima da manchete'])
+  })
+
+  it('vira UMA linha dizendo onde a marca mora, não um nível para letrar', () => {
+    const texto = descricaoDoGuia(COM_ASSINATURA)
+
+    expect(texto).toContain('ASSINATURA DA MARCA')
+    expect(texto).toContain('UMA única vez')
+    expect(texto).toContain('lado direita')
+    // Não pode virar item de "níveis de texto": é assim que ela é desenhada 2x.
+    expect(texto).not.toContain('1. selo')
+  })
+
+  it('não conta como zona de TEXTO — senão o modelo procura copy que não existe', () => {
+    // Duas zonas, mas só UMA de texto: a linha de contagem não aparece.
+    expect(descricaoDoGuia(COM_ASSINATURA)).not.toContain('ZONAS DE TEXTO')
+  })
+
+  it('"marcador" continua sendo ornamento legítimo', () => {
+    expect(elementosDoGuia({ elementosGraficos: ['marcador entre as linhas do serviço'] })).toEqual([
+      'marcador entre as linhas do serviço',
+    ])
   })
 })
