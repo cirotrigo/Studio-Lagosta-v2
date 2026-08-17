@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { regraDeSafeArea } from '../image-prompt-builder'
+import { cantoDaAssinatura } from '../logo-compositor'
 
 describe('regraDeSafeArea', () => {
   it('dá o limite em PIXEL da peça real quando sabe a altura', () => {
@@ -40,5 +41,25 @@ describe('regraDeSafeArea', () => {
 
   it('vence a margem do modelo, e diz por quê', () => {
     expect(regraDeSafeArea('story', 1936)).toContain('a safe area VENCE a margem dela')
+  })
+})
+
+/**
+ * A marca no canto da REFERÊNCIA, e não onde o gerador achar melhor —
+ * "a logomarca ficou posicionada no topo e não posicionou como na referência".
+ */
+describe('cantoDaAssinatura', () => {
+  it('traduz banda e lado no canto da peça', () => {
+    expect(cantoDaAssinatura({ banda: 8, lado: 'esquerda' })).toBe('bottom-left')
+    expect(cantoDaAssinatura({ banda: 6, lado: 'direita' })).toBe('bottom-right')
+    expect(cantoDaAssinatura({ banda: 1, lado: 'direita' })).toBe('top-right')
+    expect(cantoDaAssinatura({ banda: 4, lado: 'esquerda' })).toBe('top-left')
+  })
+
+  it('🔴 marca centralizada NÃO vira canto — chutar lado seria inventar', () => {
+    expect(cantoDaAssinatura({ banda: 8, lado: 'centro' })).toBeNull()
+    expect(cantoDaAssinatura({ lado: 'esquerda' })).toBeNull()
+    expect(cantoDaAssinatura(null)).toBeNull()
+    expect(cantoDaAssinatura(undefined)).toBeNull()
   })
 })

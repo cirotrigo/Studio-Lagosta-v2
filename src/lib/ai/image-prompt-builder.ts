@@ -554,6 +554,12 @@ export function buildModeloSpine(
       '⚠️ DESENHE ESTES ELEMENTOS GRÁFICOS, obrigatoriamente — são a assinatura do modelo:',
       ...graficos.map((e) => `- ${e}`),
       'Não são enfeite do modelo e não podem ser trocados por outro elemento.',
+      // Rede final: a visão chama a marca do cliente de "selo", de "assinatura",
+      // de "título" e de "ícone circular", conforme a arte (medido nas três
+      // referências do O Quintal em 17/08/2026). O filtro por nome e por papel
+      // pega a maioria; esta linha cobre o resto sem depender de acertar o
+      // apelido — a marca só existe pelo bloco da logo, uma vez.
+      '⚠️ EXCEÇÃO: se algum item acima descrever a MARCA da casa (o nome dela, um selo, um emblema, um ícone circular no rodapé), ele NÃO é ornamento e NÃO entra aqui — a marca vem exclusivamente do bloco da logo, uma única vez.',
     )
   } else if (declarados && descricao && descartados.length === 0) {
     linhas.push(

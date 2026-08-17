@@ -18,6 +18,8 @@ import { generateObject } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 
+import { normalizeForComparison } from '@/lib/ai/text-comparison'
+
 /**
  * 🔴 `gpt-4o`, e não o `gpt-4o-mini` — o mini NÃO enxerga ONDE o texto está.
  *
@@ -303,10 +305,54 @@ export function zonasDoGuia(g: GuiaDecodificado): Array<z.infer<typeof zonaSchem
   return []
 }
 
-/** A zona é só a assinatura da marca (nenhum nível dela é texto de copy)? */
-function soAAssinatura(zona: z.infer<typeof zonaSchema>): boolean {
+/**
+ * Separa os níveis da zona entre a MARCA e o texto de verdade.
+ *
+ * 🔴 Nível a nível, nunca zona inteira. A primeira versão só reconhecia a
+ * assinatura quando ela era a zona TODA, e o caso real é misto: no modelo do
+ * "Puxadinho" a zona de rodapé é [assinatura, serviço, serviço]. Como a zona
+ * não era "só a marca", a assinatura seguiu como nível de texto — e a marca foi
+ * parar no topo, longe de onde a referência a põe ("a logomarca ficou
+ * posicionada no topo e não posicionou como na referência", 17/08/2026).
+ */
+function separarAMarca(zona: z.infer<typeof zonaSchema>, nomeDaMarca?: string | null) {
   const niveis = zona.niveis ?? []
-  return niveis.length > 0 && niveis.every((n) => !!n.papel && DA_MARCA.test(n.papel))
+  const daMarca = niveis.filter((n) => ehAMarca(n, nomeDaMarca))
+  return { daMarca, deTexto: niveis.filter((n) => !daMarca.includes(n)) }
+}
+
+/**
+ * 🔴 O NOME DA MARCA é o sinal confiável; o rótulo do papel, não.
+ *
+ * A visão chama a mesma marca de "selo" numa arte, de "assinatura" em outra e
+ * de "título" numa terceira — medido nas três referências do O Quintal em
+ * 17/08/2026. Confiar no rótulo deixou a marca passar como nível de texto na
+ * referência do "Puxadinho", e a logo foi para o topo. O texto transcrito,
+ * esse, é fiel: a arte tem a marca escrita nela, e nós sabemos o nome dela.
+ *
+ * Casa nos dois sentidos porque a arte pode trazer o lockup completo
+ * ("O Quintal Parrilla Bar") ou só o nome ("O Quintal").
+ */
+function ehAMarca(
+  nivel: { texto?: string; papel?: string },
+  nomeDaMarca?: string | null,
+): boolean {
+  if (nivel.papel && DA_MARCA.test(nivel.papel)) return true
+  const nome = nomeDaMarca ? normalizeForComparison(nomeDaMarca) : ''
+  if (!nome || nome.length < 4 || !nivel.texto) return false
+  const texto = normalizeForComparison(nivel.texto)
+  if (!texto) return false
+  return texto.includes(nome) || nome.includes(texto)
+}
+
+/** A posição da assinatura da marca no guia, ou null se não houver. */
+export function assinaturaDoGuia(g: GuiaDecodificado, nomeDaMarca?: string | null) {
+  for (const zona of zonasDoGuia(g)) {
+    if (separarAMarca(zona, nomeDaMarca).daMarca.length > 0) {
+      return { banda: zona.banda, lado: zona.lado }
+    }
+  }
+  return null
 }
 
 /** Todo texto transcrito do guia, em ordem — insumo interno, nunca prompt. */
@@ -343,14 +389,18 @@ export function textosDoGuia(g: GuiaDecodificado): string[] {
  */
 export function descricaoDoGuia(
   g: GuiaDecodificado,
-  opcoes: { tratamentoDaFoto?: boolean } = {},
+  opcoes: { tratamentoDaFoto?: boolean; nomeDaMarca?: string | null } = {},
 ): string {
   const linhas: string[] = []
 
   const zonas = zonasDoGuia(g)
   // A zona da MARCA não conta como zona de TEXTO: contá-la faria o modelo
   // procurar um terceiro bloco de copy que não existe.
-  const zonasDeTexto = zonas.filter((z) => !soAAssinatura(z)).length
+  const zonasDeTexto = zonas.filter((z) => {
+    const { daMarca, deTexto } = separarAMarca(z, opcoes.nomeDaMarca)
+    // Zona sem nível nenhum ainda é zona de texto (a visão só não detalhou).
+    return deTexto.length > 0 || daMarca.length === 0
+  }).length
   if (zonasDeTexto > 1) {
     linhas.push(
       `- ZONAS DE TEXTO: ${zonasDeTexto}, SEPARADAS. Mantenha cada uma na sua faixa — não junte tudo num bloco só.`,
@@ -374,15 +424,14 @@ export function descricaoDoGuia(
      * pedido do cliente é "usar somente a logomarca como na arte de referência".
      * Dizer o lugar ajuda; listar como texto faz o modelo DESENHAR de novo.
      */
-    const niveisDaZona = zona.niveis ?? []
-    if (soAAssinatura(zona)) {
+    const { daMarca, deTexto } = separarAMarca(zona, opcoes.nomeDaMarca)
+    if (daMarca.length > 0) {
       linhas.push(
-        `  ↳ é a ASSINATURA DA MARCA${lugar ? ` (${lugar})` : ''}: a marca aparece UMA única vez na peça, aqui, desenhada conforme o bloco da logo. Não a repita em outro canto e não a trate como texto.`,
+        `  ↳ A MARCA fica AQUI${lugar ? ` (${lugar})` : ''}, como na referência: ela aparece UMA única vez na peça, desenhada conforme o bloco da logo. Não a repita em outro canto e não a trate como texto.`,
       )
-      return
     }
 
-    const niveis = niveisDaZona.map((n, i) => {
+    const niveis = deTexto.map((n, i) => {
       // Medida no texto quando há texto; o rótulo do modelo é só o fallback.
       const caixa = (n.texto ? caixaDoTexto(n.texto) : null) ?? n.caixa
       const partes = [
@@ -469,6 +518,15 @@ export interface GuiaLido {
    * extenso passava calado.
    */
   textos: string[]
+  /**
+   * Onde o modelo põe a MARCA, quando dá para ler. Vira o canto reservado no
+   * bloco da logo — sem isto o gerador escolhe o canto sozinho, e a marca sai
+   * no topo contra uma referência que a tem no rodapé (17/08/2026).
+   *
+   * `null` = a visão não identificou assinatura; aí o canto continua livre,
+   * que é o comportamento antigo.
+   */
+  assinatura: { banda?: number; lado?: 'esquerda' | 'centro' | 'direita' } | null
 }
 
 /**
@@ -482,7 +540,11 @@ export interface GuiaLido {
  */
 export async function decodificarGuia(
   imagem: Buffer,
-  opcoes: { paraSerie?: boolean } = {},
+  opcoes: {
+    paraSerie?: boolean
+    /** Nome da marca — é como a marca é distinguida do texto. Ver `ehAMarca`. */
+    nomeDaMarca?: string | null
+  } = {},
 ): Promise<GuiaLido | null> {
   try {
     const { object } = await generateObject({
@@ -534,7 +596,10 @@ export async function decodificarGuia(
         },
       ],
     })
-    const descricao = descricaoDoGuia(object, { tratamentoDaFoto: opcoes.paraSerie })
+    const descricao = descricaoDoGuia(object, {
+      tratamentoDaFoto: opcoes.paraSerie,
+      nomeDaMarca: opcoes.nomeDaMarca,
+    })
     /**
      * Reconciliação: resposta que não descreveu NEM os níveis de texto nem a
      * posição do bloco não sobrou nada de aproveitável — devolver uma descrição
@@ -545,7 +610,12 @@ export async function decodificarGuia(
       console.warn('[guia] a visão respondeu, mas sem nível de texto nem posição — seguindo sem a leitura')
       return null
     }
-    return { descricao, elementosGraficos: elementosDoGuia(object), textos: textosDoGuia(object) }
+    return {
+      descricao,
+      elementosGraficos: elementosDoGuia(object),
+      textos: textosDoGuia(object),
+      assinatura: assinaturaDoGuia(object, opcoes.nomeDaMarca),
+    }
   } catch (error) {
     console.warn('[guia] decodificação indisponível — seguindo só com o SPINE textual:', error)
     return null

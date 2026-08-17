@@ -18,9 +18,29 @@
  * o bloco É o dado.
  */
 
-/** Janela de horário: "11h às 17h", "das 17h às 19h", "11h-00h", "a partir das 11h". */
-const HORARIO =
-  /\b(?:das\s+|a\s+partir\s+d[ae]s?\s+)?\d{1,2}\s*(?:h|:\d{2}|hs|horas)?\s*(?:às|as|a|até|-|–|—)\s*\d{1,2}\s*(?:h|:\d{2}|hs|horas)?\b|\ba\s+partir\s+d[ae]s?\s+\d{1,2}\s*(?:h|:\d{2}|hs|horas)\b/i
+/**
+ * Uma hora: em número ("11h", "17:30", "19 horas") ou por EXTENSO.
+ *
+ * 🔴 O extenso não é firula. "das 11h à meia-noite" passou batido pelo
+ * classificador em 17/08/2026 — o padrão exigia dígito dos DOIS lados —, então
+ * o bloco não virou serviço, ficou na sequência de cima E foi parar no rodapé
+ * pela zona do modelo: o mesmo horário duas vezes na arte, reprovado pelo
+ * cliente. É como a casa escreve horário de bar.
+ */
+const HORA = String.raw`(?:\d{1,2}\s*(?:h|:\d{2}|hs|horas)?|meia[-\s]?noite|meio[-\s]?dia)`
+
+/** Janela de horário: "11h às 17h", "das 11h à meia-noite", "até meia-noite", "a partir das 11h". */
+const HORARIO = new RegExp(
+  [
+    // "das 11h às 17h", "11h-00h", "das 11h à meia-noite"
+    String.raw`\b(?:das?\s+|a\s+partir\s+d[ae]s?\s+)?${HORA}\s*(?:às|as|à|a|até|ate|-|–|—)\s*${HORA}\b`,
+    // "a partir das 11h" / "a partir do meio-dia"
+    String.raw`\ba\s+partir\s+d[aeo]s?\s+${HORA}\b`,
+    // "até meia-noite" — sem hora de abertura à esquerda
+    String.raw`\b(?:até|ate)\s+${HORA}\b`,
+  ].join('|'),
+  'i',
+)
 
 /** Logradouro no começo do bloco, ou CEP em qualquer lugar. */
 const ENDERECO = /^\s*(?:rua|r\.|av\.?|avenida|travessa|trav\.|praç?a|estrada|rod\.|rodovia|alameda|al\.)\s+/i

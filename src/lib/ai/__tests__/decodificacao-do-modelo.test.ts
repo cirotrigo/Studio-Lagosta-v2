@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  assinaturaDoGuia,
   descricaoDoGuia,
   elementosDoGuia,
   faixaDaBanda,
@@ -185,7 +186,7 @@ describe('a marca do modelo', () => {
   it('vira UMA linha dizendo onde a marca mora, não um nível para letrar', () => {
     const texto = descricaoDoGuia(COM_ASSINATURA)
 
-    expect(texto).toContain('ASSINATURA DA MARCA')
+    expect(texto).toContain('A MARCA fica AQUI')
     expect(texto).toContain('UMA única vez')
     expect(texto).toContain('lado direita')
     // Não pode virar item de "níveis de texto": é assim que ela é desenhada 2x.
@@ -195,6 +196,33 @@ describe('a marca do modelo', () => {
   it('não conta como zona de TEXTO — senão o modelo procura copy que não existe', () => {
     // Duas zonas, mas só UMA de texto: a linha de contagem não aparece.
     expect(descricaoDoGuia(COM_ASSINATURA)).not.toContain('ZONAS DE TEXTO')
+  })
+
+  it('🔴 acha a marca numa zona MISTA — foi o caso que mandou a logo para o topo', () => {
+    // Modelo do "Puxadinho": a zona de rodapé é [assinatura, serviço, serviço].
+    // Exigindo que a zona INTEIRA fosse marca, a assinatura seguia como nível
+    // de texto e o canto da logo ficava livre.
+    const misto = {
+      zonas: [
+        {
+          papel: 'serviço/rodapé',
+          banda: 8,
+          lado: 'esquerda' as const,
+          niveis: [
+            { texto: 'O Quintal Parrilla Bar', papel: 'assinatura', cor: 'branco' },
+            { texto: 'das 11h à meia-noite', papel: 'serviço', cor: 'verde' },
+          ],
+        },
+      ],
+    }
+    const texto = descricaoDoGuia(misto)
+
+    expect(texto).toContain('A MARCA fica AQUI')
+    expect(texto).toContain('lado esquerda')
+    // A linha de serviço, que é texto de verdade, continua descrita.
+    expect(texto).toContain('1. serviço')
+    expect(texto).not.toContain('assinatura ·')
+    expect(assinaturaDoGuia(misto)).toEqual({ banda: 8, lado: 'esquerda' })
   })
 
   it('"marcador" continua sendo ornamento legítimo', () => {

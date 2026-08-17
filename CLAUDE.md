@@ -2639,6 +2639,28 @@ Regras que ficam:
   sendo ornamento legítimo. E selo DECORATIVO de verdade (um "10 anos") seria
   descartado junto — risco aceito, porque desenhar a marca duas vezes é defeito
   que o cliente reprova e perder um ornamento não é.
+- 🔴 **Quem identifica a marca é o NOME DELA, não o rótulo que a visão deu.** O
+  filtro por papel foi só o primeiro passo e não bastou: medido nas TRÊS
+  referências do O Quintal, a mesma marca voltou como `"selo"`, como
+  `"assinatura"` e como `"título"` — e o emblema, como `"ícone circular"`. Pelo
+  rótulo, a marca do modelo do "Puxadinho" passou como nível de texto e a logo
+  foi para o topo ("a logomarca ficou posicionada no topo e não posicionou como
+  na referência"). `ehAMarca` casa o TEXTO transcrito contra
+  `brand.projectName` nos dois sentidos (a arte traz o lockup completo ou só o
+  nome), a separação é NÍVEL A NÍVEL (a zona real é mista: assinatura + duas
+  linhas de serviço) e ainda há uma linha no SPINE cobrindo o que escapar do
+  apelido.
+- **O canto da logo passou a seguir o modelo** (`cantoDaAssinatura`): a posição
+  lida da assinatura vira o canto reservado no bloco da logo. Isto REVOGA a
+  decisão de 16/08 de deixar o canto livre na peça avulsa — ela valia enquanto
+  ninguém sabia onde a referência põe a marca. Marca CENTRALIZADA não vira
+  canto (chutar lado seria inventar), e aí o canto volta a ser livre.
+- 🔴 **Horário por EXTENSO conta como horário.** "das 11h à meia-noite" não
+  casava com o padrão (que exigia dígito dos dois lados), então o bloco não
+  virou serviço, ficou na sequência de cima E foi parar no rodapé pela zona do
+  modelo — o mesmo horário duas vezes na arte. `HORA` aceita "meia-noite" e
+  "meio-dia", e o padrão aceita "à", "até" e "a partir do". É como a casa
+  escreve horário de bar.
 - 🔴 **Mandar o serviço para o rodapé exige dizer de onde ele SAI.** A regra
   genérica de não repetir NÃO segurou o caso mais óbvio, e isso foi medido duas
   vezes na peça de funcionamento: a copy lista o horário como 2º bloco (logo

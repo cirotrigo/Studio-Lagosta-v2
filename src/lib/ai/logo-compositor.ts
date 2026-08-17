@@ -33,6 +33,31 @@ import sharp from 'sharp'
 /** Cantos candidatos, na ordem de preferência quando houver empate. */
 export type LogoCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 
+/**
+ * O canto em que o MODELO escolhido põe a marca, traduzido da leitura por
+ * visão (banda 1-8 e lado).
+ *
+ * 🔴 Até 17/08/2026 a peça avulsa deixava o canto livre de propósito — "quem vê
+ * a foto sabe onde ela está vazia" —, e isso valia enquanto ninguém sabia onde
+ * a referência põe a marca. Agora o decodificador lê, e o cliente pediu
+ * explicitamente que siga: "a logomarca ficou posicionada no topo e não
+ * posicionou como na referência".
+ *
+ * Devolve `null` quando a leitura não permite concluir um CANTO — marca
+ * centralizada não é canto, e chutar esquerda ou direita seria inventar. Aí o
+ * canto volta a ser escolha do gerador, como antes.
+ */
+export function cantoDaAssinatura(
+  assinatura?: { banda?: number; lado?: 'esquerda' | 'centro' | 'direita' } | null,
+): LogoCorner | null {
+  if (!assinatura) return null
+  const { banda, lado } = assinatura
+  if (typeof banda !== 'number' || !Number.isFinite(banda)) return null
+  if (lado !== 'esquerda' && lado !== 'direita') return null
+  const vertical = Math.round(banda) >= 5 ? 'bottom' : 'top'
+  return `${vertical}-${lado === 'esquerda' ? 'left' : 'right'}` as LogoCorner
+}
+
 const CORNER_ORDER: LogoCorner[] = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
 
 /** Fração da largura da arte que a logo ocupa. Discreta, como manda a regra. */

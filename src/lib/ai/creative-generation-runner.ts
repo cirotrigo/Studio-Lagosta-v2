@@ -35,6 +35,7 @@ import {
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
+  cantoDaAssinatura,
   comporLogo,
   instrucaoAreaReservada,
   instrucaoLogoPeloModelo,
@@ -368,7 +369,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     let modeloLido: GuiaLido | null = null
     const refModelo = loadedRefs.find((r) => r.role === 'style-guide')
     if (refModelo) {
-      modeloLido = await decodificarGuia(refModelo.buffer).catch(() => null)
+      modeloLido = await decodificarGuia(refModelo.buffer, { nomeDaMarca: brand?.projectName }).catch(() => null)
       console.log(
         modeloLido
           ? `[arte-ia.bg] modelo escolhido decodificado para o MODELO SPINE` +
@@ -395,7 +396,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         // A imagem sozinha deixa o modelo decidir o que é essencial; a
         // descrição por visão transforma "copie o estilo" em lista de
         // decisões explícitas. Indisponível, o LOOK SPINE textual segue.
-        guiaLido = await decodificarGuia(sane.buffer, { paraSerie: true })
+        guiaLido = await decodificarGuia(sane.buffer, { paraSerie: true, nomeDaMarca: brand?.projectName })
         if (guiaLido) {
           console.log(
             `[arte-ia.bg] guia decodificado para o LOOK SPINE` +
@@ -532,11 +533,16 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         blocoLogo: logoParaCompor
           ? instrucaoAreaReservada(LOGO_CORNER)
           : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
-            ? // Canto FIXO só no slide irmão de carrossel: ali o LOOK SPINE
-              // manda repetir o guia, e marca pulando de canto entre slides é
-              // o defeito que ele existe para evitar. Na peça avulsa o canto é
-              // escolha do modelo, que é quem enxerga onde a foto está calma.
-              instrucaoLogoPeloModelo(args.carrossel ? LOGO_CORNER : null)
+            ? // Canto FIXO no slide irmão de carrossel (o LOOK SPINE manda
+              // repetir o guia, e marca pulando de canto entre slides é o
+              // defeito que ele existe para evitar) e, desde 17/08/2026,
+              // também na peça avulsa QUANDO o modelo escolhido diz onde a
+              // marca fica — `cantoDaAssinatura`. Sem modelo, ou com a marca
+              // centralizada, o canto volta a ser escolha do gerador, que é
+              // quem enxerga onde a foto está calma.
+              instrucaoLogoPeloModelo(
+                args.carrossel ? LOGO_CORNER : cantoDaAssinatura(modeloLido?.assinatura),
+              )
             : null,
         carrossel: args.carrossel
           ? {
