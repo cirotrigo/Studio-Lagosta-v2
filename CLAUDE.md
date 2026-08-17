@@ -2397,11 +2397,27 @@ primeiro, curinga como reserva.
   resolver ("happy hour" e "drinks" em baldes diferentes).
 - **`ProjectTag` é só autocomplete** — semear não muda busca de ninguém. Quem
   casa modelo com tema é `Page.tags` + `Template.tags`.
-- ⚠️ **Duas dívidas ficaram abertas**: `ProjectTag` está cheio de lixo herdado
-  (dia da semana, `Template`, `Página 1`, `Quarta-feira (Cópia)`) — limpar é
-  destrutivo e não foi feito; e as tags que os modelos receberam da copy
-  (`almoco`, `ribs`, `prato-do-dia`) NÃO usam os slugs dos pilares, então os
-  dois vocabulários ainda divergem.
+- **Os dois vocabulários foram alinhados** (`scripts/alinhar-tags-aos-pilares.ts`,
+  16/08): 7 modelos ganharam o slug do pilar ao lado da tag própria.
+  ACRESCENTA, nunca substitui — `ribs` e `barbecue` continuam, porque alguém
+  vai pedir "o story de ribs" e `prepareCreative` casa por `includes`; as duas
+  portas levam à mesma arte. O script confere que o slug é pilar APROVADO
+  daquele cliente antes de gravar: sem isso, um erro de digitação vira tag
+  órfã que busca nenhuma alcança.
+- 🔴 **Os 6 "Story base" ficam FORA do alinhamento, de propósito.** São
+  CURINGA da semana; dar tema a eles os prenderia a um assunto — o mesmo erro
+  da tag `quinta`, desfeito no mesmo dia.
+- 🔴 **O gargalo não são as tags, são os MODELOS**: medido depois do
+  alinhamento, só **9 dos 30 pilares aprovados têm algum modelo**
+  (Wine Vix: 0 de 6; TERO: 1 de 7; O Quintal: 1 de 6; By Rock: 5 de 6). Pedir
+  "story de harmonização" no Wine Vix não acha modelo e cai na geração por IA
+  — o que funciona, mas custa crédito e não usa a diagramação aprovada da
+  marca. Tag nova não resolve isso; modelo novo resolve.
+- ⚠️ **Fica aberto**: `ProjectTag` tem lixo herdado (dia da semana, `Template`,
+  `Página 1`, `Quarta-feira (Cópia)`) — limpar é destrutivo e não foi feito. E
+  dois modelos não têm pilar correspondente (By Rock "Delivery", sem pilar de
+  delivery; Wine Vix "Página 1", copy genérica) — inventar encaixe seria pior
+  que a divergência, já que a taxonomia é fechada por decisão da F2.
 
 ### Promover página a modelo voltou ao editor (16/08/2026)
 
