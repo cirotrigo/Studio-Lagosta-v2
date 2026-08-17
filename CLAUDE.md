@@ -2797,6 +2797,20 @@ o gpt-image compõe melhor lendo a foto do que seguindo coordenadas.**
 - O dry-run de `medir-modelo-a-seguir.ts` passou a GRAVAR os prompts
   (`prompt-antes/depois.txt`) — inspecionar o que seria mandado é o objetivo
   dele, e sem os arquivos a única saída era gastar para ler.
+- **O card da galeria tem o PAR de botões de iteração**: "Gerar de novo"
+  (refazer — mesmos insumos, outra rodada; útil no modo livre porque sem seed
+  cada rodada é uma diagramação nova) e "Duplicar na bancada" (`CopyPlus` ao
+  lado da lixeira — mesmo briefing, referência NOVA). O duplicar
+  (`duplicar-para-bancada.ts`, puro) carrega copy/foto/pedido/formato e **deixa
+  a referência de estilo para trás de propósito**: carregá-la pré-selecionada
+  faria o clique mais fácil ser regenerar o que a pessoa acabou de rejeitar. O
+  card nasce local na fila da bancada (sem `itemDePlanoId`, protegido da
+  hidratação). Mesmo gate do refazer: só `source: 'arte-ia'`.
+- **A regra 5 (quebras de linha) cobre TODAS as linhas, não só a última**: a
+  manchete do Espeto saiu com o artigo sozinho na primeira linha ("As" /
+  "promoções!") e a regra só proibia palavra sozinha na última. Sem exemplo
+  entre aspas na regra, de propósito — string literal no prompt vira texto
+  desenhado.
 
 ### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
 

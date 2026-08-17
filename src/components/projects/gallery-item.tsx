@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import {
   Download,
   Trash2,
+  CopyPlus,
   HardDrive,
   Loader2,
   Calendar,
@@ -57,6 +58,13 @@ interface GalleryItemProps {
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
+  /**
+   * Duplicar na bancada: o mesmo briefing (copy, foto, pedido), aberto para
+   * uma referência NOVA — o par do "Gerar de novo", que repete tudo igual.
+   * Ausente quando a arte não tem briefing para reconstituir (template,
+   * upload) — mesmo gate do refazer.
+   */
+  onDuplicar?: () => void
   onDriveOpen?: () => void
   onPreview?: () => void
   onSchedule?: () => void
@@ -128,6 +136,7 @@ export function GalleryItem({
   onToggleSelect,
   onDownload,
   onDelete,
+  onDuplicar,
   onDriveOpen,
   onPreview,
   onSchedule,
@@ -744,6 +753,25 @@ export function GalleryItem({
             title="Drive"
           >
             <HardDrive className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {/* Duplicar na bancada — pedido do Ciro (17/08/2026): "bem discreto,
+            ao lado da lixeira e somente o ícone". Largura fixa como a lixeira,
+            no ghost neutro da barra. */}
+        {onDuplicar && status === 'COMPLETED' && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 w-8 shrink-0 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onDuplicar()
+            }}
+            title="Duplicar na bancada — mesma copy e foto, escolhendo outra referência"
+          >
+            <CopyPlus className="h-3.5 w-3.5" />
           </Button>
         )}
 

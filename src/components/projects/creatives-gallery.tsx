@@ -5,6 +5,7 @@ import Image from 'next/image'
 import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
 import { useOrganization } from '@clerk/nextjs'
+import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api-client'
 import { ROTULO_QUALIDADE, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { Button } from '@/components/ui/button'
@@ -24,6 +25,8 @@ import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Cal
 import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
+import { duplicarParaBancada } from '@/lib/creatives/duplicar-para-bancada'
+import { useBancadaStore } from '@/stores/bancada-store'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { GerarArteIaModal } from '@/components/creatives/gerar-arte-ia-modal'
 import {
@@ -330,6 +333,53 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       })
     },
   })
+
+  const router = useRouter()
+  const adicionarNaBancada = useBancadaStore((s) => s.adicionar)
+
+  /**
+   * Duplicar na bancada — o par do "Gerar de novo": o MESMO briefing (copy,
+   * foto, pedido), aberto para a pessoa escolher OUTRA referência antes de
+   * pagar de novo. A referência antiga fica para trás de propósito — ver
+   * `duplicarParaBancada`.
+   */
+  const handleDuplicar = React.useCallback(
+    (generation: GenerationRecord) => {
+      const item = duplicarParaBancada(generation.fieldValues)
+      if (!item) {
+        toast({
+          title: 'Esta arte não tem como ser duplicada',
+          description: 'Só arte criada por IA carrega o briefing completo.',
+          variant: 'destructive',
+        })
+        return
+      }
+      adicionarNaBancada({
+        projectId,
+        // Card local, sem `itemDePlanoId` — é o que o protege da hidratação
+        // do plano, como todo card montado na própria bancada.
+        tipo: 'peca',
+        trilha: item.trilha,
+        formato: item.formato,
+        copy: item.copy,
+        pedido: item.pedido,
+        instrucaoImagem: item.instrucaoImagem,
+        referencias: item.referencias.map((r) => ({
+          papel: r.papel,
+          driveFileId: r.driveFileId,
+          url: r.url,
+          label: r.label,
+          thumbUrl: r.thumbUrl,
+        })),
+      })
+      toast({
+        title: 'Copiado para a bancada',
+        description: 'Mesma copy e foto — escolha a nova referência e gere.',
+      })
+      router.push(`/projects/${projectId}/bancada`)
+    },
+    [adicionarNaBancada, projectId, router, toast],
+  )
 
   /**
    * "Gerar de novo", com o modelo escolhido por quem olhou a arte.
@@ -1177,6 +1227,13 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   onRefazer={
                     getStringField(generation.fieldValues, 'source') === 'arte-ia'
                       ? (qualidade) => refazerMutation.mutate({ id: generation.id, qualidade })
+                      : undefined
+                  }
+                  /* O par do refazer: mesmo briefing, referência nova — abre a
+                     bancada preenchida. Mesmo gate: só arte-ia tem briefing. */
+                  onDuplicar={
+                    getStringField(generation.fieldValues, 'source') === 'arte-ia'
+                      ? () => handleDuplicar(generation)
                       : undefined
                   }
                   refazendo={

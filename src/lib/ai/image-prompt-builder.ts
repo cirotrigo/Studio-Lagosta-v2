@@ -946,7 +946,12 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     '4b. O véu de leitura é LOCAL: ele cobre só a faixa onde o texto pousa (no máximo ~1/3 do quadro) e some antes de chegar ao assunto. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível sem escurecer tudo, MUDE O TEXTO DE LUGAR.',
     // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
     // defeito aparecia toda semana.
-    '5. Quebras de linha equilibradas: NUNCA deixe uma palavra sozinha na última linha de um bloco. Em manchete, 2 a 3 palavras por linha; em apoio, 4 a 6.',
+    // "na última linha" deixava escapar o artigo órfão na PRIMEIRA: a manchete
+    // do Espeto Gaúcho saiu com o "As" sozinho numa linha e "promoções!" na
+    // seguinte, e o cliente reprovou ("não gosto de deixar palavras pequenas
+    // sozinhas — poderiam ter ficado na mesma linha", 17/08/2026). Sem exemplo
+    // entre aspas de propósito: string literal no prompt vira texto desenhado.
+    '5. Quebras de linha equilibradas: NENHUMA linha de um bloco fica com uma palavra sozinha — nem a primeira, nem a última. Artigo, preposição ou palavra curta nunca abre linha sozinha: ela pousa na MESMA linha da palavra que acompanha. Em manchete, 2 a 3 palavras por linha; em apoio, 4 a 6. Cabendo o bloco em menos linhas sem apertar, use menos linhas.',
     '6. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
     '7. Paleta da marca apenas na camada gráfica (textos, destaques, filetes, selos); a fotografia mantém as cores reais — não dessature nem recolora madeira, tons de pele, verdes e dourados que já existem na foto.',
     '8. Uma cor de destaque por peça.',
