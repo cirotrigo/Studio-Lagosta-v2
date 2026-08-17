@@ -2407,8 +2407,47 @@ arte existente só dava pelo MCP.
 - **Fora do `agendaMode` nos dois layouts**: ali o editor é o ajuste rápido de
   UM post vindo da agenda. O ramo mobile não tem esse if, então expor sem
   guardar divergia celular × desktop.
-- ⚠️ **A tool `marcar-como-modelo` do MCP continua com gate de MEMBRO**, não de
-  curador — a mesma promoção por outra porta, ainda desalinhada.
+- **A tool `marcar-como-modelo` do MCP recebeu o MESMO gate** (16/08/2026):
+  `assertCuradorDoProjeto`, ao lado de `assertProjetoPermitido`. Ver o bloco
+  abaixo — ENXERGAR um cliente e mandar na curadoria dele são portas
+  diferentes, e só a primeira existia no conector.
+
+### Curadoria no conector MCP: ver ≠ mandar (16/08/2026)
+
+`assertProjetoPermitido` responde "esta conta enxerga o cliente?" — e era o
+único gate de toda tool, inclusive das que fazem CURADORIA. Promover página a
+modelo pelo conector bastava enxergar; pela web, exige curador desde sempre
+(`/modelos`, `.../tags`) e agora também no editor.
+
+- **`assertCuradorDoProjeto` compõe, não substitui**: chama o gate de acesso
+  primeiro e só então checa curadoria. Os dois 403 são distintos de propósito
+  (`PROJETO_SEM_ACESSO` × `PROJETO_SEM_CURADORIA`) — a causa e a saída são
+  diferentes, e a mensagem diz QUAL conta está conectada, pela mesma razão de
+  12/08: a identidade do portador é invisível de dentro da conversa.
+- 🔴 **No MCP não existe "organização ativa".** O token OAuth traz só o
+  `userId`, então `hasProjectOwnership` (que decide pelo `orgId` da SESSÃO) não
+  tem tradução direta. A regra aqui é ser admin de ALGUMA org com que o projeto
+  é compartilhado — o mesmo critério que `projetosVisiveis` já usa para
+  enxergar. Não tente reusar o helper da web achando que é equivalente.
+- **O papel vem do Clerk, não do banco.** `orgsDoUsuario` devolvia só os ids;
+  virou `participacoesDoUsuario`, com `role` por organização (mesmo cache de
+  60s). `orgsDoUsuario` continua existindo como projeção, para
+  `projetosVisiveis` não mudar.
+- **Clerk fora do ar degrada para MENOS poder, nunca para mais**: sem
+  participações sobra o dono no banco, e o ramo `ownerClerkId` continua no OR
+  justamente para isso.
+- **O segredo de serviço (Claudinho) passa** — mesma decisão que faz
+  `projetosVisiveis` devolver `null` para ele: já opera em nome do dono.
+- 🔴 **O caso que prova a mudança é o MEMBRO COMUM**, e só ele: dono, estranho
+  e admin já eram decididos pelo gate ANTIGO, então um teste com esses três
+  passa sem exercitar nada. Como forjar papel no Clerk não é possível,
+  `ehCuradorDoProjeto(projectId, clerkUserId, participacoes)` é exportada e
+  recebe as participações por PARÂMETRO — é o que torna a matriz (dono / admin
+  / membro / papel custom "co-admin" / admin de outra org / Clerk mudo)
+  verificável contra o banco real.
+- Só `marcar-como-modelo` escreve `isTemplate` no conector remoto; as demais
+  ocorrências são leitura e filtro. Tool nova que faça curadoria (promover,
+  taguear modelo) usa `assertCuradorDoProjeto`, não `assertProjetoPermitido`.
 
 ### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
 

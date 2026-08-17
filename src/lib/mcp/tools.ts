@@ -129,9 +129,13 @@ export interface McpTool {
  * tempo de alguém entrar/sair de uma organização e estranhar.
  */
 const CACHE_ORGS_MS = 60_000
-const cacheDeOrgs = new Map<string, { orgs: string[]; ate: number }>()
 
-async function orgsDoUsuario(clerkUserId: string): Promise<string[]> {
+/** Uma participação: a organização e o papel do portador nela. */
+type ParticipacaoEmOrg = { orgId: string; role: string | null }
+
+const cacheDeOrgs = new Map<string, { orgs: ParticipacaoEmOrg[]; ate: number }>()
+
+async function participacoesDoUsuario(clerkUserId: string): Promise<ParticipacaoEmOrg[]> {
   const agora = Date.now()
   const guardado = cacheDeOrgs.get(clerkUserId)
   if (guardado && guardado.ate > agora) return guardado.orgs
@@ -143,7 +147,10 @@ async function orgsDoUsuario(clerkUserId: string): Promise<string[]> {
       userId: clerkUserId,
       limit: 100,
     })
-    const orgs = lista.data.map((m) => m.organization.id)
+    const orgs: ParticipacaoEmOrg[] = lista.data.map((m) => ({
+      orgId: m.organization.id,
+      role: m.role ?? null,
+    }))
     cacheDeOrgs.set(clerkUserId, { orgs, ate: agora + CACHE_ORGS_MS })
     return orgs
   } catch (erro) {
@@ -151,10 +158,17 @@ async function orgsDoUsuario(clerkUserId: string): Promise<string[]> {
      * Clerk fora do ar NÃO pode virar "enxerga tudo" nem derrubar a conversa:
      * degrada para o que dá para saber só com o banco — os projetos que a
      * pessoa possui. Sem cache, para a próxima chamada tentar de novo.
+     *
+     * Vale para a CURADORIA também: sem participações, sobra o dono no banco.
+     * O erro derruba para MENOS poder, nunca para mais.
      */
     console.warn('[mcp] não consegui listar as organizações do usuário:', erro)
     return []
   }
+}
+
+async function orgsDoUsuario(clerkUserId: string): Promise<string[]> {
+  return (await participacoesDoUsuario(clerkUserId)).map((p) => p.orgId)
 }
 
 /**
@@ -310,6 +324,85 @@ async function assertProjetoPermitido(projectId: number, principal: McpPrincipal
       permitidos.length === 0
         ? `A conexão está autenticada como ${quem}, e essa conta não enxerga nenhum cliente. Reconecte o Studio Lagosta com a conta dona dos projetos, ou peça para incluírem esta na organização.`
         : `A conta conectada (${quem}) não tem acesso ao cliente ${projectId}. Ela enxerga: ${permitidos.join(', ')}.`,
+      403,
+    )
+  }
+}
+
+/**
+ * Barra quem não é CURADOR do projeto — dono, ou admin de uma organização com
+ * que ele é compartilhado.
+ *
+ * Existe porque ver um cliente e mandar na CURADORIA dele são coisas
+ * diferentes. Promover página a modelo vale para todos que criam arte daquele
+ * cliente e entra no pool que `prepareCreative`, `sugerirPosts` e a bancada
+ * consultam — por isso a web protege as três portas
+ * (`POST /api/projects/[id]/modelos`, `.../template-pages/[pageId]/tags` e,
+ * desde 16/08/2026, `toggle-template`) com `hasProjectOwnership`. O conector
+ * fazia a MESMA promoção com gate de membro: bastava enxergar o cliente.
+ *
+ * A tradução para cá tem uma diferença inevitável: no MCP não existe
+ * "organização ativa" (o token OAuth traz só o `userId`), então a regra é ser
+ * admin de ALGUMA organização com que o projeto é compartilhado, em vez da org
+ * da sessão. É o mesmo critério que `projetosVisiveis` já usa para enxergar.
+ */
+/**
+ * A decisão em si, separada da busca das participações no Clerk — é o que
+ * permite provar a matriz (dono / admin de org / MEMBRO comum) sem depender de
+ * contas reais com papéis diferentes cadastradas lá.
+ */
+export async function ehCuradorDoProjeto(
+  projectId: number,
+  clerkUserId: string,
+  participacoes: ParticipacaoEmOrg[],
+): Promise<boolean> {
+  const donoIds = await projectOwnerIdsFor(clerkUserId)
+
+  // Mesma tolerância de nome de papel do `hasProjectOwnership`: qualquer papel
+  // que contenha "admin" conta, para custom roles não caírem fora em silêncio.
+  const orgsOndeEhAdmin = participacoes
+    .filter((p) => !!p.role && p.role.toLowerCase().includes('admin'))
+    .map((p) => p.orgId)
+
+  const curador = await db.project.findFirst({
+    where: {
+      id: projectId,
+      OR: [
+        { userId: { in: donoIds } },
+        // Dono da organização no BANCO: sobrevive ao Clerk fora do ar, mesmo
+        // motivo pelo qual `projetosVisiveis` mantém este ramo.
+        { organizationProjects: { some: { organization: { ownerClerkId: clerkUserId } } } },
+        ...(orgsOndeEhAdmin.length > 0
+          ? [
+              {
+                organizationProjects: {
+                  some: { organization: { clerkOrgId: { in: orgsOndeEhAdmin } } },
+                },
+              },
+            ]
+          : []),
+      ],
+    },
+    select: { id: true },
+  })
+  return !!curador
+}
+
+async function assertCuradorDoProjeto(projectId: number, principal: McpPrincipal) {
+  await assertProjetoPermitido(projectId, principal)
+
+  // O segredo de serviço é o Claudinho, que já opera em nome do dono — mesma
+  // decisão que faz `projetosVisiveis` devolver null para ele.
+  if (principal.kind !== 'user' || !principal.userId) return
+
+  const clerkUserId = principal.userId
+  const participacoes = await participacoesDoUsuario(clerkUserId)
+
+  if (!(await ehCuradorDoProjeto(projectId, clerkUserId, participacoes))) {
+    const quem = await quemEstaConectado(principal)
+    throw new CreativeError(
+      'PROJETO_SEM_CURADORIA',
+      `A conta conectada (${quem}) enxerga o cliente ${projectId}, mas não pode mexer na curadoria dele — isso vale para todos que criam arte deste cliente. Peça ao dono do projeto (ou a um admin da organização) para fazer a mudança, ou para promoverem esta conta a admin.`,
       403,
     )
   }
@@ -2758,7 +2851,9 @@ export const MCP_TOOLS: McpTool[] = [
     },
     handler: async (args, principal) => {
       const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
+      // Curadoria, não edição: o modelo passa a valer para todos que criam arte
+      // deste cliente. Mesmo gate das três portas equivalentes na web.
+      await assertCuradorDoProjeto(projectId, principal)
       const pageId = requireString(args, 'pageId')
       const marcar = args.marcar !== false
 
