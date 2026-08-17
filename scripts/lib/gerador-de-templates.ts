@@ -35,8 +35,24 @@ export interface KitDeMarca {
   /** Display da manchete. */
   fonteTitulo: string
   pesoTitulo: number
-  /** Sans de apoio (descrição, serviço). */
+  /** Sans de apoio (descrição). */
   fonteApoio: string
+  /**
+   * Peso forte do apoio — pré-título e serviço.
+   *
+   * 🔴 Peso NÃO se pede com `fontWeight`: faux-bold só existe no navegador, e
+   * a arte agendada renderiza com o peso REAL do arquivo. Pedir 600 a um
+   * arquivo Regular sai Regular. Quando a família tem um arquivo próprio para
+   * o peso (Barlow Condensed SemiBold), é ele que precisa ser nomeado.
+   */
+  fonteApoioForte?: string
+  /**
+   * Manuscrita de assinatura, quando a marca tem uma. O Espeto declara um kit
+   * de TRÊS fontes obrigatório em story, e o CTA é o "fechamento humano em
+   * manuscrito" — sem este campo ele cairia no sans de apoio.
+   */
+  fonteAcento?: string
+  pesoAcento?: number
   /** Caixa da manchete — o DNA de cada marca manda aqui. */
   caixaTitulo: 'uppercase' | 'none'
   /**
@@ -227,13 +243,16 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   }
   const estiloApoio = { color: kit.corTexto, fontSize: 40, fontFamily: kit.fonteApoio, fontWeight: 400, lineHeight: 1.15 }
   const estiloServico = {
-    color: kit.corTexto, fontSize: 30, fontFamily: kit.fonteApoio, fontWeight: 600,
+    color: kit.corTexto, fontSize: 30, fontFamily: kit.fonteApoioForte ?? kit.fonteApoio, fontWeight: 600,
     letterSpacing: 1.4, textTransform: kit.caixaServico ?? 'uppercase', lineHeight: 1.2,
   }
   const estiloCta = {
-    color: kit.corAcento, fontSize: 30, fontFamily: kit.fonteApoio, fontWeight: 400,
+    color: kit.corAcento,
+    fontSize: kit.fonteAcento ? 42 : 30,
+    fontFamily: kit.fonteAcento ?? kit.fonteApoio,
+    fontWeight: kit.pesoAcento ?? 400,
     // NUNCA herda a caixa da manchete — ver `caixaCta` em KitDeMarca.
-    letterSpacing: 2.6, textTransform: kit.caixaCta ?? 'none',
+    letterSpacing: kit.fonteAcento ? 0 : 2.6, textTransform: kit.caixaCta ?? 'none',
     lineHeight: 1.2,
     ...(kit.tituloItalico ? { fontStyle: 'italic' } : {}),
   }
@@ -258,7 +277,7 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
 
   if (copy.preTitulo) {
     empilhar(texto('pre-titulo', 'Pre-titulo', 0, copy.preTitulo, M, 0, L, 40, {
-      color: kit.corAcento, fontSize: 28, fontFamily: kit.fonteApoio, fontWeight: 600,
+      color: kit.corAcento, fontSize: 28, fontFamily: kit.fonteApoioForte ?? kit.fonteApoio, fontWeight: 600,
       letterSpacing: 3.2, textTransform: 'uppercase', lineHeight: 1.2,
     }))
   }
