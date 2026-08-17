@@ -20,6 +20,38 @@ const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
 const U = `${BLOB}/uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI`
 
 export const KITS: Record<number, KitDeMarca> = {
+  // ── O Quintal Parrilla ──────────────────────────────────────────────────
+  // A manchete alterna DUAS vozes: primeira linha em DomaniCP, segunda inteira
+  // em Amithen, maior, "encostando quase na linha de cima" (composition).
+  2: {
+    projectId: 2,
+    cliente: 'O Quintal Parrilla',
+    corFundo: '#1F1B16',
+    corTexto: '#F5F0E8',
+    // ⚠️ #7A9A5C aparece UMA vez no DNA, e no approvalChecklist — a seção que
+    // por regra da casa NÃO é instrução. Não está em BrandColor (que tem o
+    // verde-sage #547737) nem na tabela de paleta. É a única com contraste
+    // sobre fundo escuro: o DNA proíbe o verde-sage como texto pequeno ali.
+    // Cadastrar #7A9A5C como "verde-folha-clara" resolve a pendência.
+    corAcento: '#7A9A5C',
+    fonteTitulo: 'DomaniCP',
+    pesoTitulo: 400,
+    fonteTituloAcento: 'Amithen',
+    escalaTituloAcento: 1.25,
+    fonteApoio: 'Acumin Pro Book',
+    fonteApoioForte: 'Acumin Pro Semibold',
+    caixaTitulo: 'none',
+    caixaServico: 'none',
+    caixaCta: 'none',
+    logoUrl: `${BLOB}/projects/2/logos/1759895328790-Ativo_1logo.png`,
+    logoRatio: 0.2654,
+    // Ambiente, não prato: a foto anterior era de SOBREMESA (da única
+    // página-modelo do cliente, do almoço executivo) e ficava embaixo de
+    // "Cortes na Brasa" e de "Chope e Drinks". Esta é a fachada do quintal —
+    // neutra, e a cara da marca. A foto de cada peça se escolhe no uso.
+    fotoPlaceholder: 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1776642812221-8F3A8553.jpg',
+  },
+
   // ── Empório Fonseca ─────────────────────────────────────────────────────
   // 🔴 ZERO elementos gráficos utilizáveis: o único Element cadastrado é o
   // selo do Espírito Santo Restaurant Week (26/03 a 26/04), de campanha
@@ -236,6 +268,61 @@ export const KITS: Record<number, KitDeMarca> = {
  *  - R$ 79,90 do executivo é o único preço autorizado em copy.
  */
 export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
+  /**
+   * O Quintal — os CINCO tituloAcento repetiam palavra do título. Aqui a
+   * correção tem regra própria: a composition manda a SEGUNDA LINHA INTEIRA
+   * em Amithen, então o acento é a linha, não uma palavra dela. Era o caso do
+   * happy-hour, em que "em Dobro" viraria "em" órfão na fonte errada.
+   * Sem ícone: o projeto não tem relógio nem pino cadastrados.
+   */
+  2: {
+    parrilla: {
+      preTitulo: 'Na parrilla',
+      titulo: 'Cortes na',
+      tituloAcento: 'Brasa',
+      descricao: 'Ancho, fraldinha Red, picanha e flat iron. Acompanham farofa, vinagrete e um item à escolha.',
+      servico: 'Praia do Canto, Vitória-ES',
+      icone: null,
+      cta: 'A brasa tá acesa',
+    },
+    'happy-hour': {
+      preTitulo: 'Happy hour',
+      titulo: 'Chope e Drinks',
+      tituloAcento: 'em Dobro',
+      descricao: 'Chope e drinks selecionados em dobro, de terça a sexta. Não vale em feriado.',
+      servico: 'Ter a Sex, das 17h às 19h',
+      icone: null,
+      cta: 'Junta a galera',
+    },
+    petiscos: {
+      preTitulo: 'Pra petiscar',
+      titulo: 'Pra Começar',
+      tituloAcento: 'a Resenha',
+      descricao: 'Pão na brasa, coxinha de costela, queijo coalho com melaço e tulipa de frango.',
+      servico: 'Praia do Canto, Vitória-ES',
+      icone: null,
+      cta: 'Chega mais',
+    },
+    resenha: {
+      preTitulo: 'Bora pro Quintal',
+      titulo: 'Mesa Cheia',
+      tituloAcento: 'no Quintal',
+      descricao: 'Ambiente de quintal ao ar livre, feito pra grupo e pra demora.',
+      servico: 'Seg das 11h às 16h · Ter a Sáb das 11h à meia-noite · Dom das 11h às 17h',
+      icone: null,
+      cta: 'Bora pro quintal?',
+    },
+    celebracoes: {
+      preTitulo: 'Tábua pra galera',
+      titulo: 'Data Boa',
+      tituloAcento: 'Pede Tábua',
+      descricao: 'Aniversário ou confraternização: a Tábua Puxadinho serve 4 pessoas e a Tábua O Quintal serve 6.',
+      servico: 'Praia do Canto, Vitória-ES',
+      icone: null,
+      cta: 'Te esperamos aqui',
+    },
+  },
+
   /**
    * Empório Fonseca — correções da conferência:
    *  - a foto era UMA só, de brunch, para os seis pilares: ficava atrás de

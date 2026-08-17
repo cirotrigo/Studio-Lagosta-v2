@@ -47,6 +47,14 @@ export interface KitDeMarca {
    */
   fonteApoioForte?: string
   /**
+   * Fonte da SEGUNDA linha da manchete (o acento), quando a marca alterna
+   * duas vozes na headline. No Quintal a composition manda a linha inteira em
+   * Amithen, maior, "encostando quase na linha de cima".
+   */
+  fonteTituloAcento?: string
+  /** Escala da linha de acento em relação à manchete. */
+  escalaTituloAcento?: number
+  /**
    * Manuscrita de assinatura, quando a marca tem uma. O Espeto declara um kit
    * de TRÊS fontes obrigatório em story, e o CTA é o "fechamento humano em
    * manuscrito" — sem este campo ele cairia no sans de apoio.
@@ -346,8 +354,13 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   empilhar(texto('titulo-n1', 'Titulo', 0, copy.titulo, M, 0, L, 100, estiloTitulo, sombra))
 
   if (copy.tituloAcento) {
-    empilhar(texto('titulo-acento', 'Titulo - palavra em destaque', 0, copy.tituloAcento, M, 0, L, 100, {
-      ...estiloTitulo, color: kit.corAcento,
+    empilhar(texto('titulo-acento', 'Titulo - segunda linha', 0, copy.tituloAcento, M, 0, L, 100, {
+      ...estiloTitulo,
+      color: kit.corAcento,
+      ...(kit.fonteTituloAcento ? { fontFamily: kit.fonteTituloAcento } : {}),
+      ...(kit.escalaTituloAcento
+        ? { fontSize: Math.round((estiloTitulo.fontSize as number) * kit.escalaTituloAcento) }
+        : {}),
     }, sombra))
   }
 
