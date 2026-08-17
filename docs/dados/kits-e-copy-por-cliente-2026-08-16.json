@@ -1,0 +1,1025 @@
+{
+  "geradoEm": "2026-08-16",
+  "kits": {
+    "6": {
+      "projectId": 6,
+      "kit": {
+        "corFundo": "#2B1A12",
+        "corTexto": "#FFFFFF",
+        "corAcento": "#F4301A",
+        "fonteTitulo": "Bevan",
+        "fonteApoio": "Barlow Condensed",
+        "caixaTitulo": "uppercase",
+        "tituloItalico": false,
+        "pesoTitulo": 400,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/logos/1760564487128-logo-espeto-g.png",
+        "logoRatio": 1.0991,
+        "filete": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/elements/1785772535478-separador-branco.png",
+        "iconeRelogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/6/elements/1785772547298-relogio-branco.png",
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/drive-cache/1WObSQG8Wqw9o9rGUSf6nwYzPNsjPI-X--s1920.jpg"
+      },
+      "copyPorPilar": [
+        {
+          "slug": "churrasco-em-familia",
+          "preTitulo": "CHURRASCO EM FAMÍLIA",
+          "titulo": "A MESA FARTA\nE A FAMÍLIA\nREUNIDA",
+          "tituloAcento": "FAMÍLIA",
+          "descricao": "Porções generosas que servem até 3 pessoas, tempero caseiro e churrasco gaúcho de raiz. Aqui cabe todo mundo, tchê. ❤️",
+          "servico": "Seg a Qui das 16h à meia-noite · Sex a Dom e feriados das 10h à meia-noite",
+          "cta": "Chama a piazada!",
+          "lastro": "Descrição: entrada DIFERENCIAIS \"Diferenciais e posicionamento — Espeto Gaúcho\" (porções generosas que servem até 3 pessoas; tempero caseiro; ambiente familiar). Serviço: entrada HORARIOS \"Horário de funcionamento e endereço — Espeto Gaúcho\", campo \"Linha pronta para rodapé de arte\", copiada literalmente. Vocabulário (tchê, raiz, família, churrasco gaúcho): TOM_DE_VOZ \"Tom de voz — Espeto Gaúcho\". Pré-título e CTA: TOM_DE_VOZ \"Pré-títulos e CTAs aprovados — Espeto Gaúcho\" (CHURRASCO EM FAMÍLIA, em Experiência; \"Chama a piazada!\" da lista literal). Sem preço, por ser tema fora das três linhas que podem exibir valor."
+        },
+        {
+          "slug": "promocoes-e-happy-hour",
+          "preTitulo": "PROMOÇÃO DO DIA",
+          "titulo": "PICANHA 500G\nCOM PREÇO\nPARCEIRO",
+          "tituloAcento": "PICANHA",
+          "descricao": "Picanha 500g com farofa e vinagrete por R$ 89,90, a partir das 17h. Baita corte, servido do jeito gaúcho. 🔥",
+          "servico": "R$ 89,90 · a partir das 17h",
+          "cta": "Vem aproveitar!",
+          "lastro": "Preço e prato: entrada CAMPANHAS \"Promoções do dia — Espeto Gaúcho (a partir das 17h)\" — linha \"Picanha 500g com farofa e vinagrete — R$ 89,90\"; é a única entrada da base que guarda preço de promoção. Marcação \"a partir das 17h\": mesma entrada + TOM_DE_VOZ \"Regras de copy\" regra 6 (obrigatória em toda arte com preço de promoção) + HORARIOS (promoções valem todos os dias a partir das 17h). Preço final sem ancoragem \"de/por\", conforme regra 7. Pré-título e CTA: \"Pré-títulos e CTAs aprovados\" (PROMOÇÃO DO DIA; \"Vem aproveitar!\" literal)."
+        },
+        {
+          "slug": "cortes-e-pratos-especiais",
+          "preTitulo": "DESTAQUE DA CASA",
+          "titulo": "COSTELA NO BAFO\nQUE DESMANCHA\nNA BOCA",
+          "tituloAcento": "COSTELA",
+          "descricao": "Costela no Bafo 1kg com creme de aipim, cozida devagar no bafo até ficar macia. Cortes selecionados e tempero caseiro, como é desde 84.",
+          "servico": "Todo o cardápio também para retirada no balcão",
+          "cta": "Sente esse sabor!",
+          "lastro": "Prato: entrada CARDAPIO \"Cardápio Espeto Gaúcho\" — \"Costela no Bafo com creme de aipim 1kg\". Serviço: mesma entrada — \"Todo o cardápio está disponível para RETIRADA no balcão, não só o marmitex. A casa não faz delivery.\" Cocção no bafo, cortes selecionados, tempero caseiro e \"desde 1984\": DIFERENCIAIS \"Diferenciais e posicionamento\". \"Desmancha na boca\" (e nunca \"no garfo\"): TOM_DE_VOZ \"Regras de copy\" regra 3 e contentRules do DNA. SEM preço porque cardápio nunca exibe valor em arte (regra 5). Pré-título e CTA: \"Pré-títulos e CTAs aprovados\" (DESTAQUE DA CASA; \"Sente esse sabor!\" literal)."
+        },
+        {
+          "slug": "area-kids-e-familia",
+          "preTitulo": "CLIMA DE FAMÍLIA",
+          "titulo": "ÁREA KIDS EM\nDOIS ANDARES\nPRA CRIANÇADA",
+          "tituloAcento": "KIDS",
+          "descricao": "Enquanto a criançada se diverte no térreo e no andar de cima, a mesa segue farta e o papo corre solto. Churrasco de família, do jeito que a casa faz.",
+          "servico": "Área Kids no térreo e no andar superior",
+          "cta": "Chama a gurizada!",
+          "lastro": "Descrição e serviço: entrada DIFERENCIAIS \"Diferenciais e posicionamento — Espeto Gaúcho\" — \"Área Kids em DOIS andares, no térreo e no andar superior. É o diferencial mais forte para família e o mais subaproveitado em copy.\" Tema previsto na grade: TOM_DE_VOZ \"Padrões de Postagem — Espeto Gaúcho\" (\"área kids nos dois andares, convidando a família\"). Pré-título e CTA: \"Pré-títulos e CTAs aprovados\" (CLIMA DE FAMÍLIA, em Experiência; \"Chama a gurizada!\" literal). Sem preço — tema fora das três linhas que podem exibir valor."
+        },
+        {
+          "slug": "tradicao-e-historia",
+          "preTitulo": "DESDE 1984",
+          "titulo": "MAIS DE 40 ANOS\nDE CHURRASCO\nGAÚCHO DE RAIZ",
+          "tituloAcento": "RAIZ",
+          "descricao": "Desde 1984 em Jardim Camburi, com cortes selecionados, tempero caseiro e a mesma essência de quando começou. Churrasco de respeito, bah.",
+          "servico": "Jardim Camburi, Vitória/ES · desde 1984",
+          "cta": "Vem viver esse sabor!",
+          "lastro": "\"Desde 1984\", Jardim Camburi/Vitória-ES e \"mesma essência e sabor de quando começou\": entrada ESTABELECIMENTO_INFO \"Ficha Institucional — Espeto Gaúcho\". \"Mais de 40 anos de tradição\", cortes selecionados e tempero caseiro: DIFERENCIAIS \"Diferenciais e posicionamento\" (que também traz \"o churrasco é raiz\"). Vocabulário (raiz, bah, tradição, churrasco de respeito): TOM_DE_VOZ \"Tom de voz — Espeto Gaúcho\". Pré-título e CTA: \"Pré-títulos e CTAs aprovados\" (DESDE 1984, em Tradição; \"Vem viver esse sabor!\" literal). Localidade sem CEP e sem estacionamento, conforme regra 10; o endereço completo (Av. Ranulpho Barbosa dos Santos, 111) existe na entrada HORARIOS e foi deixado de fora de propósito — ver avisos."
+        }
+      ],
+      "avisos": [
+        "NENHUM pilar tem modelo cadastrado, então há copy para os 5 pilares aprovados. Medido: 0 Pages com isTemplate=true no projeto 6 (66 páginas no total, todas conteúdo) e os 3 Templates do projeto (218 \"Arte IA\", 152 \"Arte Rápida\", 104 \"Marmita\") só têm a tag \"arte-rapida\" — nenhum slug de pilar aparece em tags de Page ou de Template.",
+        "Project.logoUrl é NULL (como nos demais projetos). A logo veio da tabela Logo, registro isProjectLogo=true (\"logo-espeto-g.png\", 555x610 px, ratio altura/largura 1,0991).",
+        "Ícone de relógio e filete EXISTEM e foram escolhidos na variante BRANCA, para casar com o texto branco sobre foto que o DNA determina: \"relogio-branco.png\" (200x200) e \"separador-branco.png\" (300x8, filete fino horizontal, exatamente o que a composition descreve). Há também as variantes vermelha e amarela, e separadores com o boi da marca (separador-boi-branco / -vermelho / -amarelo). Não existe relógio amarelo — só branco e vermelho.",
+        "O pilar \"Promoções e Happy Hour\" junta dois assuntos, mas a base NÃO tem entrada própria de happy hour: as bebidas (Chopp Caneca R$ 12,00 e Amstel 600ml R$ 15,00) estão dentro da entrada \"Promoções do dia\". A copy ficou na promoção de corte com preço porque contentRules proíbe misturar linhas (promoção, cardápio e rodízio) na mesma peça. Para uma peça de petisco+chopp, o valor tem de sair da mesma entrada, e a casa não trabalha com cerveja artesanal — nunca citar outro rótulo.",
+        "Regra do DNA de 16/08/2026: endereço e horário entram APENAS na primeira arte do dia, no rodapé; nas demais peças o rodapé leva só a informação da própria oferta. Os campos servico dos pilares \"churrasco-em-familia\" (linha de horário) e \"tradicao-e-historia\" (localidade) só devem ser usados na PRIMEIRA peça do dia — nas outras, deixe o rodapé livre ou troque pela informação da oferta.",
+        "Teto de preço é regra de GRADE, não da peça: no máximo 2 stories com preço por dia, e só promoção do dia, marmitex e rodízio de sexta podem exibir valor. Só a copy do pilar \"promocoes-e-happy-hour\" traz preço; quem montar a semana precisa respeitar o teto.",
+        "Rodízio de sexta (R$ 89,00, 10h às 15h, só às sextas) e Marmitex (R$ 50/65/70/85, somente retirada) NÃO viraram copy porque não há pilar aprovado que os cubra — os 5 pilares são churrasco-em-familia, promocoes-e-happy-hour, cortes-e-pratos-especiais, area-kids-e-familia e tradicao-e-historia. Se forem virar tema, precisam de pilar próprio ou entram sob \"promocoes-e-happy-hour\", sempre com a exclusividade de sexta explícita na copy do rodízio.",
+        "Caldos (Feijão Amigo, Caldo Verde, Bobó de Camarão) estão vetados como tema enquanto não houver foto do prato no acervo (Regras de copy, regra 4) — vale a regra geral: tema sem imagem própria não vai para a agenda.",
+        "A fonte de apoio tem DUAS famílias cadastradas separadamente: \"Barlow Condensed\" (peso 400, texto corrido) e \"Barlow Condensed SemiBold\" (peso 600, ênfase e preço). Para ênfase, TROQUE de família — nunca aumente o fontWeight, porque faux-bold só existe no navegador e a arte agendada renderiza o peso real do arquivo. O acento manuscrito é \"Caveat SemiBold\", sempre em caixa baixa. Nenhuma fonte do kit tem itálico. Coolvetica e Typo Upright BT são LEGADO: não usar em arte nova.",
+        "caixaTitulo=uppercase vem do DNA (composition: \"headline é empilhada em 2 ou 3 linhas curtas, sempre em caixa alta\") e tituloAcento é legítimo aqui (\"palavra-chave destacada em vermelho... apenas uma cor de destaque por título\"). O amarelo #FDC700 é o SEGUNDO destaque, reservado a badge e número de preço de promoção — nunca na mesma palavra ou linha do vermelho.",
+        "fotoPlaceholder é a camada \"Fundo\" (1080x1920) da página \"DOM 11h — Domingo em família\" (pageId cmsdr163h000xsw65gkt9pvi8), servida do drive-cache — cópia permanente, como manda a regra de nunca usar thumbnailLink do Drive. É cena de casa cheia; para peça de corte, troque por foto de produto do acervo."
+      ]
+    },
+    "2": {
+      "avisos": [
+        "ÍCONE DE RELÓGIO: não existe. A tabela Element do projeto 2 tem só 'selo 1.png' e 'Guarda Chuva.png'; nenhum elemento com nome de relógio/hora. `iconeRelogio` fica vazio.",
+        "FILETE/SEPARADOR: não existe cadastrado por nome. Há três PNGs 'Ativo 18icones.png' (600x120), 'Ativo 24icones.png' (600x157) e 'Ativo 42icones.png' (600x673) — mas estão na tabela Logo, não em Element, e o nome não diz o que são. O 42 é usado numa página como camada do tipo `logo`. As proporções do 18 e do 24 são compatíveis com filete, mas isso é palpite visual, não lastro: `filete` fica vazio.",
+        "corFundo (#1F1B16, dark warm) e corTexto (#F5F0E8, creme quente) NÃO estão na tabela BrandColor — vieram do BrandDNA.visualStyle, que é quem declara o papel de cada uma ('Dark warm: fundo dominante quando a foto não cobre tudo' / 'Creme quente: texto principal sobre fundo escuro, nunca substituído por branco puro'). A BrandColor do projeto só tem duas linhas: verde #547737 e marrom #6C370F.",
+        "corAcento é #7A9A5C, e NÃO o verde da BrandColor. O crivo do próprio DNA manda: 'Verde sobre fundo escuro é o #7A9A5C, não o #557737', e o visualStyle reforça que o verde-sage 'nunca' vai como texto pequeno sobre fundo escuro. Como o kit é de fundo escuro, o acento tem de ser o verde-folha-clara. Se a peça for de fundo creme, o acento vira #557737 (ou #547737, da BrandColor).",
+        "DIVERGÊNCIA DE HEX no verde: BrandColor grava #547737, o BrandDNA escreve #557737 em três lugares. Diferem num dígito. Não resolvi — em fundo escuro nenhum dos dois é usado (ver aviso acima). Vale conferir qual é o oficial antes de aplicar o verde em peça clara.",
+        "A HEADLINE DESTA MARCA É BICAMERAL e o kit só carrega uma fonte de título. O DNA (composition) manda: linha 1 de contexto em DomaniCP ou Acumin Pro Thin/Light, linha 2 de acento SEMPRE em Amithen, maior e encostando na de cima (~14px de sobreposição em peça de 1080px). Coloquei DomaniCP em `fonteTitulo` porque é a display de peso editorial; a segunda linha de cada `titulo` (depois do \\n) deveria sair em Amithen.",
+        "caixaTitulo é 'none' (Title Case) por regra aprendida do DNA em 12/08/2026: 'Domani e Amithen nunca são compostas em CAIXA ALTA contínua na arte. Caixa alta contínua só na Acumin Pro.' Isso contradiz uma linha mais antiga do crivo ('Caixa alta só na linha de contexto') — segui a regra aprendida, que é a mais recente e explicitamente uma correção do Ciro. Os `preTitulo` seguem em caixa alta porque são a etiqueta em Acumin Pro Semibold, onde caps é o papel da fonte.",
+        "CONFLITO DE HORÁRIO DO HAPPY HOUR: o approvalChecklist do BrandDNA diz 'das 16h às 19h'; DUAS entradas da base (CAMPANHAS 'Happy Hour — Quintal' e ESTABELECIMENTO_INFO) dizem 'das 17h às 19h'. Usei 17h, que é o que a base sustenta em dobro. O crivo precisa ser corrigido.",
+        "PILAR JÁ COM MODELO — 'almoco-executivo': a única Page isTemplate:true do projeto (cmj3mmwv00001jo04em8k2muy, 'Pag.01') tem tags ['Segunda-feira','almoco-executivo','sobremesa']. Não escrevi copy para ele. Os outros 5 pilares aprovados ficaram sem modelo e receberam copy. Nenhum Template do projeto tem tag de pilar (só os coletores #199 e #225 têm tag, 'arte-rapida').",
+        "'celebracoes' e 'resenha' NÃO TÊM PRÉ-TÍTULO PRÓPRIO na lista fechada da base (que cobre happy hour, almoço, parrilla, petiscos, drinks, ambiente e tábua). Emprestei da lista de Tábua ('TÁBUA PRA GALERA') e da de Ambiente ('BORA PRO QUINTAL'), ambos literais da lista aprovada. Se a marca quiser pré-título próprio para esses dois temas, precisa aprovar e cadastrar.",
+        "CTA NO PLURAL: o crivo pede 'O convite é no plural', mas dos sete CTAs aprovados vários são imperativo singular ('Chega mais', 'Vem que tem', 'Reserva sua mesa'). A regra que manda mais é a de cópia literal ('todo CTA precisa ser cópia literal de um destes sete'), então usei os sete tal e qual. Evitei 'Reserva sua mesa' — além de singular, a base não documenta reserva em lugar nenhum.",
+        "Project.logoUrl está NULL, como em todos os projetos. A logo veio da tabela Logo (id 6, 'Ativo 1logo.png', isProjectLogo:true), medida em 2913x773 → logoRatio 0.2654.",
+        "fotoPlaceholder é a foto da ÚNICA página-modelo do cliente (camada 'Imagem - 8F3A2696.jpg', 1080x1920). URL conferida: HTTP 200.",
+        "As peças foram escritas SEM preço, sem percentual, sem travessão, sem emoji, sem exclamação, sem delivery/WhatsApp/site/CEP e sem nenhuma palavra da lista de proibidas — conforme a entrada DIFERENCIAIS 'Regras de copy — Quintal'. 'Brasa' só aparece ancorada em corte ('Cortes na Brasa', 'Pão na brasa') ou como pré-título/CTA já aprovado."
+      ],
+      "copyPorPilar": [
+        {
+          "slug": "parrilla",
+          "preTitulo": "NA PARRILLA",
+          "titulo": "Cortes na\nBrasa",
+          "tituloAcento": "Brasa",
+          "descricao": "Ancho, fraldinha Red, picanha e flat iron. Acompanham farofa, vinagrete e um item à escolha.",
+          "cta": "A brasa tá acesa",
+          "servico": "Praia do Canto, Vitória-ES",
+          "lastro": "Pré-título 'NA PARRILLA': TOM_DE_VOZ 'Pré-títulos e CTAs aprovados — Quintal', linha 'Parrilla: NA PARRILLA · BRASA ACESA · CORTES DO QUINTAL'. Cortes e acompanhamentos: CARDAPIO 'Cardápio Quintal — cozinha', bloco 'Parrilla do Quintal — Ancho · Fraldinha Red · Picanha · Flat Iron · Sobrecoxas desossadas. Acompanham farofa, vinagrete e um item básico de 200g à escolha'. CTA 'A brasa tá acesa': cópia literal do 2º dos sete CTAs aprovados na mesma entrada TOM_DE_VOZ. Serviço: ESTABELECIMENTO_INFO / HORARIOS, 'Forma curta para arte: Praia do Canto, Vitória-ES'. 'Brasa' ancorada em 'Cortes', como exige a regra 7 de DIFERENCIAIS 'Regras de copy'."
+        },
+        {
+          "slug": "happy-hour",
+          "preTitulo": "HAPPY HOUR",
+          "titulo": "Chope e Drinks\nem Dobro",
+          "tituloAcento": "Dobro",
+          "descricao": "Chope e drinks selecionados em dobro, de terça a sexta. Não vale em feriado.",
+          "cta": "Junta a galera",
+          "servico": "Ter a Sex, das 17h às 19h",
+          "lastro": "Pré-título 'HAPPY HOUR': TOM_DE_VOZ 'Pré-títulos e CTAs aprovados — Quintal', linha 'Happy hour: HAPPY HOUR · CHOPE EM DOBRO · HH DO QUINTAL'. Mecânica, dias, horário e a ressalva de feriado: CAMPANHAS 'Happy Hour — Quintal (terça a sexta)' — 'Chope e drinks selecionados em dobro. Terça a sexta, das 17h às 19h. NÃO é válido em feriados'; confirmado por ESTABELECIMENTO_INFO. 'drinks selecionados' em vez de citar rótulos é ordem da mesma entrada ('Não citar quais drinks entram: a seleção varia'). Sem preço, também por ordem dela ('Sem preço na arte, inclusive no happy hour. A mecânica é em dobro'). CTA 'Junta a galera': cópia literal do 6º dos sete aprovados."
+        },
+        {
+          "slug": "petiscos",
+          "preTitulo": "PRA PETISCAR",
+          "titulo": "Pra Começar\na Resenha",
+          "tituloAcento": "Resenha",
+          "descricao": "Pão na brasa, coxinha de costela, queijo coalho com melaço e tulipa de frango, pra abrir o apetite da mesa.",
+          "cta": "Chega mais",
+          "servico": "Praia do Canto, Vitória-ES",
+          "lastro": "Pré-título 'PRA PETISCAR': TOM_DE_VOZ 'Pré-títulos e CTAs aprovados — Quintal', linha 'Petiscos: PRA PETISCAR · ABRE O APETITE · TEM PETISCO PRA TODO MUNDO'. Itens: CARDAPIO 'Cardápio Quintal — cozinha', bloco 'Para petiscar — Pão na brasa, recheado com gorgonzola, requeijão, muçarela e linguiça · Coxinha de costela bovina · Queijo coalho com melaço · Tulipa de frango'. 'Resenha' é palavra da casa (TOM_DE_VOZ, 'resenha garantida'). CTA 'Chega mais': cópia literal do 3º dos sete aprovados. Serviço: ESTABELECIMENTO_INFO, forma curta do endereço."
+        },
+        {
+          "slug": "resenha",
+          "preTitulo": "BORA PRO QUINTAL",
+          "titulo": "Mesa Cheia\nno Quintal",
+          "tituloAcento": "Quintal",
+          "descricao": "Ambiente de quintal ao ar livre, feito pra grupo e pra demora. O ponto de encontro da Praia do Canto.",
+          "cta": "Bora pro quintal?",
+          "servico": "Seg das 11h às 16h · Ter a Sáb das 11h à meia-noite · Dom das 11h às 17h",
+          "lastro": "Pré-título 'BORA PRO QUINTAL': TOM_DE_VOZ 'Pré-títulos e CTAs aprovados — Quintal', linha 'Ambiente: BORA PRO QUINTAL · A BRASA TÁ ACESA · CHEGA MAIS' (o pilar 'resenha' não tem lista própria). Descrição: DIFERENCIAIS 'Diferenciais e posicionamento — Quintal' — 'Ambiente de quintal ao ar livre, feito para grupo e para demora'; e TOM_DE_VOZ, história da casa — 'virou ponto de encontro da Praia do Canto'. Serviço: HORARIOS 'Horário de funcionamento e endereço — Quintal', 'Linha pronta para rodapé de arte: Seg das 11h às 16h · Ter–Sáb das 11h à meia-noite · Dom das 11h às 17h' (reescrevi 'Ter–Sáb' como 'Ter a Sáb' para não usar travessão). CTA 'Bora pro quintal?': cópia literal do 1º dos sete aprovados."
+        },
+        {
+          "slug": "celebracoes",
+          "preTitulo": "TÁBUA PRA GALERA",
+          "titulo": "Data Boa\nPede Tábua",
+          "tituloAcento": "Tábua",
+          "descricao": "Aniversário ou confraternização: a Tábua Puxadinho serve 4 pessoas e a Tábua O Quintal serve 6.",
+          "cta": "Te esperamos aqui",
+          "servico": "Praia do Canto, Vitória-ES",
+          "lastro": "Pré-título 'TÁBUA PRA GALERA': TOM_DE_VOZ 'Pré-títulos e CTAs aprovados — Quintal', linha 'Tábua: TÁBUA PRA GALERA · CHEGA PRA DIVIDIR · PRA TODO MUNDO' (o pilar 'celebracoes' não tem lista própria). Ocasiões: DIFERENCIAIS 'Diferenciais e posicionamento — Quintal', 'Ocasiões: encontro da turma, happy hour, almoço no meio da semana, domingo de resenha, aniversário e confraternização' e 'Tábuas para 4 e para 6 pessoas, que resolvem a mesa grande'. Tábuas: CARDAPIO 'Cardápio Quintal — cozinha' — 'Tábua Puxadinho, serve 4 pessoas' / 'Tábua O Quintal, serve 6 pessoas'. CTA 'Te esperamos aqui': cópia literal do 7º dos sete aprovados. Copy sem data específica de propósito, para o modelo servir a qualquer comemoração."
+        }
+      ],
+      "kit": {
+        "corFundo": "#1F1B16",
+        "corTexto": "#F5F0E8",
+        "corAcento": "#7A9A5C",
+        "fonteTitulo": "DomaniCP",
+        "fonteApoio": "Acumin Pro Book",
+        "caixaTitulo": "none",
+        "pesoTitulo": 400,
+        "tituloItalico": false,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/2/logos/1759895328790-Ativo_1logo.png",
+        "logoRatio": 0.2654,
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1769958991941-8F3A2696.jpg"
+      },
+      "projectId": 2
+    },
+    "7": {
+      "projectId": 7,
+      "kit": {
+        "corFundo": "#111111",
+        "corTexto": "#FFFFFF",
+        "corAcento": "#dc0909",
+        "fonteTitulo": "MortellaDisplay ExtraBold",
+        "fonteApoio": "Metrisch Bold",
+        "caixaTitulo": "uppercase",
+        "pesoTitulo": 800,
+        "tituloItalico": false,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/logos/1760576188203-By_Rock_-_logo.png",
+        "logoRatio": 0.8787,
+        "iconeRelogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/elements/1785779593017-relogio-vermelho.png",
+        "filete": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/elements/1785779608222-filete-onda-borda-vermelho.png",
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/drive-cache/1u8e-UfIL98qgOaQsn_1k3JJjC2hwgXqk-s1920.jpg"
+      },
+      "copyPorPilar": [
+        {
+          "slug": "promocoes-especiais",
+          "titulo": "O JOGO PASSA AQUI\nCOM CHOPP NA MÃO",
+          "tituloAcento": "JOGO",
+          "descricao": "TVs em todo o salão para acompanhar os principais jogos, com petiscos para dividir e o chopp sempre gelado.",
+          "servico": "Todos os dias das 11h à meia-noite · Rua Eugênio Netto, 82, Praia do Canto, Vitória",
+          "cta": "Chama a galera",
+          "lastro": "TVs para jogo + chopp: DIFERENCIAIS 'Diferenciais — By Rock' (\"TVs em todo o restaurante para assistir aos principais jogos com chopp na mão\") e ESTABELECIMENTO_INFO 'Ficha do estabelecimento — By Rock' (\"TVs para transmissão de jogos\"). Petiscos para dividir: CARDAPIO 'Cardápio By Rock — petiscos, chapas, burgers e saladas' (seção OPENING ACT / TO SHARE). Chopp: CARDAPIO 'Main Stage e executivos' (metadata bebidas.alcoolicas.chopp 300ml/500ml). Linha de serviço copiada verbatim da HORARIOS 'Horário de funcionamento, delivery e endereço — By Rock' (campo \"Linha pronta para rodapé de arte\"). CTA cópia literal da lista de CTAs aprovados em TOM_DE_VOZ 'Tom de voz — By Rock' e no DNA (toneOfVoice). Sem preço, sem percentual, sem data — nada inventado."
+        }
+      ],
+      "avisos": [
+        "COBERTURA DE PILARES: 6 pilares aprovados, 5 JÁ TÊM modelo e por isso ficaram sem copy — happy-hour (Template 140 'By Rock - Happy Hour' + páginas 'Happy Hour - Layout 1/2' e 'Pag.06'), almoco-executivo ('Pag.01', template 21), almoco-em-familia ('Pag.02' tpl 16 e 'Pag.09' tpl 50), cardapio-rock ('Página 8', tpl 16), shows-e-musica-ao-vivo ('Modelo reutilizável — agenda musical', tpl 212). Só 'promocoes-especiais' (Datas e Eventos) está descoberto — daí a única copy entregue.",
+        "DIVERGÊNCIA DE VERMELHO NÃO RESOLVIDA: o BrandDNA especifica #C82020 (repetido em visualStyle e composition, inclusive para o filete divisor), mas o único vermelho cadastrado em BrandColor é #dc0909. Segui o cadastro (#dc0909) por instrução; se o manual da marca mandar, troque para #C82020 antes de gerar.",
+        "corFundo #111111 NÃO está em BrandColor — a tabela só tem Vermelho e Branco. O preto veio do DNA (visualStyle: 'preto #111111 serve como fundo padrão'). O DNA também reserva #CCCCCC para texto secundário (rodapé/legenda), que não cabe no schema do kit.",
+        "O pilar 'Datas e Eventos' é por natureza datado (Restaurant Week, Dia dos Pais, Carnaval) e copy de template não pode ter data nem prazo. Por isso a copy usa o recorte reusável do pilar: evento recorrente da casa (jogo nas TVs), que é diferencial permanente e lastreado. Peça de data comemorativa continua sendo arte avulsa, não modelo.",
+        "preTitulo ficou VAZIO de propósito: o DNA trata 'Preâmbulos Aprovados' como LISTA FECHADA (HAPPY HOUR TODO DIA · ALMOÇO COM 25% OFF · A CHAPA CHEGOU · QUINTA É DIA DE VINHO · AS RIBS VÃO ATÉ VOCÊ) e nenhum deles cobre Datas e Eventos. Inventar preâmbulo violaria a lista.",
+        "MODELO DE SHOWS QUEBRADO: a página-modelo 'Modelo reutilizável — agenda musical' (cmsg9o2e20007swsumyp3bpkj) aponta a camada 'Foto de fundo - salão com música' para .../projects/7/elements/1785941607278-chapa-agenda-musica.jpg, que responde HTTP 404. Por isso essa foto não virou fotoPlaceholder.",
+        "fotoPlaceholder é a cópia permanente drive-cache do arquivo 8F3A2858.jpg (1280x1920), a mesma camada usada nas páginas de Happy Hour deste cliente. Evitei os originais em uploads/ (2667x4000, ~3,8 MB) e o legado lh3.",
+        "Ícone de relógio EXISTE nos dois tons (relogio-branco/relogio-vermelho, 200x200). Filete/separador: escolhi 'filete-onda-borda-vermelho' (1080x40, largura cheia) — o DNA diz que a onda sonora é o divisor padrão e que o vermelho é usado em filetes divisores e ícones de linha. Alternativas cadastradas: separador-fio-branco/vermelho, onda-senoide, onda-dupla, onda-equalizador, onda-batida, onda-crescente, onda-forma, onda-palheta (todas em branco e vermelho).",
+        "TIPOGRAFIA: 'MortellaDisplay ExtraBold' e 'Metrisch Bold' são os fontFamily EXATOS cadastrados (o projeto tem 15 CustomFont: 12 variações de Metrisch, Ralliesta, Ralliesta Italic e a Mortella). pesoTitulo 800 porque a face cadastrada já é ExtraBold e o repo exige múltiplo de 100. Ralliesta (manuscrita, caixa MISTA obrigatória) é reservada a nome de artista — não entra em manchete.",
+        "CAIXA: o crivo do By Rock REPROVA 'caixa alta em todos os campos'. Só a manchete vai em caixa alta (por isso caixaTitulo=uppercase); descrição, serviço e CTA ficam em caixa mista.",
+        "REGRAS DURAS QUE A ARTE PRECISA RESPEITAR: nunca mostrar preço (oferta se comunica por percentual ou mecânica, sem 'de/por'); nunca citar brasa, chapa, forno ou defumação como preparo (a casa NÃO trabalha com brasa — diz 'grelhado' e para); nada de emoji dentro da arte; no máximo UMA oferta por peça; nenhuma cor gráfica fora de vermelho, preto e branco; vermelho só como acento (uma linha da manchete ou uma palavra).",
+        "O rodapé com horário e endereço só aparece na PRIMEIRA peça do dia (contentRules). Numa leva, repetir o campo `servico` em todas as artes viola a regra.",
+        "Se a peça algum dia nomear um jogo específico, a base exige tabela confirmada antes de publicar (mesma lógica de show: 'arte de show usa a foto real e o show tem de estar confirmado')."
+      ]
+    },
+    "3": {
+      "avisos": [
+        "FONTE DE TÍTULO — o DNA (visualStyle) descreve a headline em \"Didot HTF M06-Medium\", mas essa família NÃO existe em CustomFont do projeto 3. O que está cadastrado é \"Didot HTF B06 Bold\" (arquivo Didot-HTF-B06-Bold.ttf) e é o que as três páginas-modelo do template #208 usam, com fontWeight 700. Usei o fontFamily EXATO cadastrado; escrever o nome do DNA cairia em fallback.",
+        "MONTSERRAT PESO 600 — a camada \"Info - horario\" dos modelos usa fontFamily \"Montserrat\" com fontWeight 600, mas a família \"Montserrat\" cadastrada aponta para Montserrat-Regular.ttf. Para 600 a família correta é \"Montserrat SemiBold\" (id 125). Risco de faux-bold no navegador e fallback no render server-side. O DNA, aliás, pede Montserrat 300/400 para apoio.",
+        "ROLHA FREE SEM LASTRO — o pilar \"rolha-free\" está aprovado, mas NÃO existe nenhuma entrada ACTIVE na base sobre ele. A condição (\"de segunda a quinta, a primeira rolha do seu vinho favorito é por nossa conta\") só existe na descrição do ContentPillar. Por ser promoção sem lastro na base, ela NÃO entrou na copy nem no serviço: a peça fala da carta de vinhos, que é base-backed. Alguém precisa registrar o rolha free como entrada CAMPANHAS antes de a oferta ir para arte.",
+        "ALMOÇO EXECUTIVO, FIM DA FAIXA — \"até 16h\" aparece na descrição do ContentPillar e na página-modelo \"1 · Dividido\" (\"TERÇA A SEXTA, DAS 11H30 ÁS 16H\"), mas NÃO está em nenhuma entrada da base: a entrada CARDAPIO diz apenas \"de terça a sexta, no almoço\" e HORARIOS dá a abertura às 11h30. Escrevi \"Terça a sexta, a partir das 11h30\" e deixei o fim da faixa de fora.",
+        "CONFLITO NO PRÉ-TÍTULO DO HAPPY HOUR — a entrada TOM_DE_VOZ (\"Pré-títulos e CTAs aprovados\") lista \"HH DO TERO\", mas o DNA (contentRules e toneOfVoice) proíbe a sigla: \"'Happy hour' sempre por extenso, sem a sigla 'HH'\". Segui o DNA e usei \"HAPPY HOUR\". Vale corrigir a entrada da base para as duas fontes não brigarem.",
+        "CONFLITO NA DESCRIÇÃO DO PILAR HAPPY HOUR — o ContentPillar diz \"dose dupla de chopp e drinks selecionados\"; a base (CAMPANHAS) diz \"50% de desconto em chopps e drinks selecionados\". Segui a base, que é a fonte com lastro.",
+        "PILARES QUE JÁ TÊM MODELO (sem copy nova) — \"experiencias-gastronomicas\" (página-modelo \"Pag.08\", template #86, tags incluem o slug) e \"happy-wine\" (Templates #148 e #149 \"TERO — Semana Temática\", tags incluem o slug). Os outros cinco pilares aprovados não têm nenhum modelo e receberam copy.",
+        "TAG PROIBIDA NOS TEMPLATES #148 e #149 — as tags incluem \"parrilla\", palavra banida em copy desde julho/2026. É tag, não copy, então não vaza sozinha para a peça, mas convida ao erro; vale limpar.",
+        "ACENTUAÇÃO QUEBRADA NOS MODELOS ATUAIS — as páginas do template #208 têm \"TERçA A SEXTA, DAS 11H30 áS 16H\", \"TERCA A SEXTA\" e \"R. EUGENIO NETTO\". O DNA reprova a peça por erro de português inclusive em caixa alta. Minha copy vai acentuada; os modelos existentes precisam de conserto.",
+        "ÍCONE E FILETE ENCONTRADOS — relógio (relogio-ambar/creme) e filete (filete-losango-ambar/creme, filete-reto-ambar/creme) existem na tabela Element, categoria \"icones\" e \"graficos\". Escolhi as versões âmbar, que são as usadas nas páginas-modelo. Não faltou nenhum elemento pedido.",
+        "Project.logoUrl está NULL (como nos demais projetos). A logo saiu da tabela Logo, do registro com isProjectLogo: true (TERO_brasaevinho-branco.png, 2729x1172).",
+        "A linha de horário completa usa \"Ter–Sáb\" com travessão. Isso é permitido: a regra 5 da base proíbe travessão no texto do post, mas abre exceção para dado operacional como endereço ou faixa de horário. É cópia literal da \"linha pronta para rodapé\" da entrada HORARIOS."
+      ],
+      "copyPorPilar": [
+        {
+          "slug": "almoco-executivo",
+          "preTitulo": "ALMOÇO EXECUTIVO",
+          "titulo": "SABOR\nNO MEIO DA SEMANA",
+          "tituloAcento": "SABOR",
+          "descricao": "Prato principal, dois acompanhamentos à escolha e a opção de somar entrada do dia e sobremesa do dia.",
+          "servico": "Terça a sexta, a partir das 11h30",
+          "cta": "Reserve sua mesa",
+          "lastro": "CARDAPIO \"Almoço executivo — TERO (terça a sexta)\": servido de terça a sexta no almoço; \"Acompanhamentos, escolher 2\"; \"Acréscimo opcional: entrada do dia ou salada da casa, mais uma sobremesa\" — e a REGRA DO DONO de escrever sempre \"entrada do dia\" e \"sobremesa do dia\", nunca nomear prato. Abertura às 11h30 vem de HORARIOS \"Horário de funcionamento e endereço — TERO\" (terça a sábado das 11h30). Nenhum preço entrou (regra 2 de DIFERENCIAIS \"Regras de copy\"). Pré-título e CTA são cópia literal de TOM_DE_VOZ \"Pré-títulos e CTAs aprovados\"."
+        },
+        {
+          "slug": "happy-hour",
+          "preTitulo": "HAPPY HOUR",
+          "titulo": "DESACELERAR\nNO FIM DA TARDE",
+          "tituloAcento": "DESACELERAR",
+          "descricao": "50% em chopps e drinks selecionados, para encontrar quem você gosta antes do jantar.",
+          "servico": "Terça a sexta das 16h às 20h · Sábado das 12h às 16h",
+          "cta": "Venha para o Tero",
+          "lastro": "CAMPANHAS \"Happy Wine e Happy Hour — TERO\": \"50% de desconto em chopps e drinks selecionados. Terça a sexta das 16h às 20h · Sábado das 12h às 16h\" e a instrução de escrever \"drinks selecionados\" sem citar quais. O desconto é permitido porque o DNA abre a exceção de preço/desconto justamente para happy hour e Happy Wine. \"Happy hour\" por extenso, sem a sigla, conforme contentRules do DNA. CTA literal de TOM_DE_VOZ \"Pré-títulos e CTAs aprovados\"."
+        },
+        {
+          "slug": "sobremesas",
+          "preTitulo": "DOCE ENCERRAMENTO",
+          "titulo": "SOBREMESAS\nDA CASA",
+          "tituloAcento": "SOBREMESAS",
+          "descricao": "Torta gelada de pistache, desejo de cacau e siciliano brûlée para ficar mais um tempo à mesa.",
+          "servico": "Ter–Sáb das 11h30 às 23h30 · Dom das 11h30 às 16h · Seg a partir das 18h30",
+          "cta": "Vem provar",
+          "lastro": "CARDAPIO \"Cardápio TERO — cozinha\", bloco Sobremesas: \"Torta gelada de pistache · Desejo de cacau, bolo úmido de chocolate com mousse · Siciliano brûlée, mousse de limão siciliano na casca\" — os nomes entram, os preços não (a mesma entrada determina que preço de cardápio não vai para arte nem legenda). O serviço é a \"linha pronta para rodapé de arte\" copiada de HORARIOS. Pré-título e CTA literais de TOM_DE_VOZ \"Pré-títulos e CTAs aprovados\"."
+        },
+        {
+          "slug": "eventos-especiais",
+          "preTitulo": "O LUGAR DO ENCONTRO",
+          "titulo": "CELEBRAR\nNO TERO",
+          "tituloAcento": "CELEBRAR",
+          "descricao": "Comemorações à mesa, com cozinha autoral, cortes grelhados e uma carta de vinhos com curadoria.",
+          "servico": "Ter–Sáb das 11h30 às 23h30 · Dom das 11h30 às 16h · Seg a partir das 18h30",
+          "cta": "Fale com a gente",
+          "lastro": "DIFERENCIAIS \"Diferenciais e posicionamento — TERO\": \"Ocasiões: ... comemorações\" e \"Alta gastronomia com cozinha autoral: cortes nobres grelhados, frutos do mar e uma carta de vinhos com curadoria\". \"Grelhados\" substitui \"brasa\"/\"parrilla\", proibidas em copy (DIFERENCIAIS \"Regras de copy\", regra 1). O serviço é a linha pronta de HORARIOS. NÃO afirmei menu personalizado, privatização nem espaço reservado: a descrição do ContentPillar fala nisso, mas não há entrada na base que sustente. Pré-título e CTA literais de TOM_DE_VOZ \"Pré-títulos e CTAs aprovados\"."
+        },
+        {
+          "slug": "rolha-free",
+          "preTitulo": "CARTA DE VINHOS",
+          "titulo": "VINHO\nCOM CURADORIA DA CASA",
+          "tituloAcento": "VINHO",
+          "descricao": "Uma carta com curadoria e harmonização orientada, para escolher com calma o que vai à mesa.",
+          "servico": "",
+          "cta": "Escolha seu vinho",
+          "lastro": "DIFERENCIAIS \"Diferenciais e posicionamento — TERO\": \"Carta de vinhos com curadoria e harmonização orientada\". CARDAPIO \"Cardápio TERO — bebidas\": \"A carta de vinhos é o coração da casa e muda com frequência. Nunca citar rótulo, safra ou preço específico de vinho\" — por isso a copy fala da carta e da harmonização, sem rótulo. SERVIÇO VAZIO DE PROPÓSITO: a promoção do rolha free (segunda a quinta, primeira rolha por conta da casa) só existe na descrição do ContentPillar e não tem entrada na base, então nem os dias nem a oferta foram escritos. CTA literal de TOM_DE_VOZ \"Pré-títulos e CTAs aprovados\"."
+        }
+      ],
+      "kit": {
+        "corFundo": "#130D0A",
+        "corTexto": "#F8F2F0",
+        "corAcento": "#EF7B4F",
+        "fonteTitulo": "Didot HTF B06 Bold",
+        "fonteApoio": "Montserrat",
+        "caixaTitulo": "uppercase",
+        "tituloItalico": false,
+        "pesoTitulo": 700,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/logos/1759897315226-TERO_brasaevinho-branco.png",
+        "logoRatio": 0.4295,
+        "iconeRelogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/elements/1785788523760-relogio-ambar.png",
+        "filete": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/elements/1785788543066-filete-losango-ambar.png",
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_3348L5utqkVPHDPW0cTFzGzsLnD/drive-1786670984150-ancho-cmt03464.jpg"
+      },
+      "projectId": 3
+    },
+    "5": {
+      "projectId": 5,
+      "kit": {
+        "corFundo": "#1A1410",
+        "corTexto": "#FFFFFF",
+        "corAcento": "#EF6A00",
+        "fonteTitulo": "Cannon extrabold",
+        "fonteApoio": "Cannon light",
+        "caixaTitulo": "none",
+        "pesoTitulo": 400,
+        "tituloItalico": false,
+        "filete": "",
+        "iconeRelogio": "",
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/logos/1765457389127-bacana.png",
+        "logoRatio": 0.3883,
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1786904065748-Ambiente_Vila_Velha-00_019.jpg"
+      },
+      "copyPorPilar": [
+        {
+          "slug": "almoco-e-jantar",
+          "preTitulo": "Almoço do jeito Bacana",
+          "titulo": "Aqui o tempero é do chef,\nquem monta o menu é você",
+          "descricao": "Uma proteína de 200g, uma guarnição e um molho, escolhidos por você.",
+          "servico": "Praia da Costa · Segunda a sexta, das 11h30 às 16h",
+          "cta": "Monte seu prato",
+          "lastro": "CAMPANHAS 'Almoço Bacana e encomenda de churrasco' — formato monte seu prato (1 proteína de 200g, 1 guarnição e 1 molho), APENAS na Praia da Costa, de segunda a sexta das 11h30 às 16h, e a frase da casa 'aqui o tempero é do Chef, mas quem monta o menu é você'. Horário confirmado em HORARIOS 'Horário por unidade e endereços — Bacana'. Pré-título do modelo aprovado '[REFEIÇÃO] DO JEITO BACANA' e CTA copiado da lista fechada do BrandDNA.toneOfVoice."
+        },
+        {
+          "slug": "churrasco",
+          "preTitulo": "Churrasco sempre Bacana",
+          "titulo": "Carne no kilo,\ndo casal à mesa\nde família",
+          "descricao": "Cortes na brasa de 300g a 1kg, com farofa e vinagrete.",
+          "servico": "Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra",
+          "cta": "Peça mal passado ou ao ponto",
+          "lastro": "CARDAPIO 'Cardápio Bacana — carnes no kilo e pratos completos' — seção 'CARNES NO KILO, com farofa e vinagrete', com escala de 300g a 1kg. Escala de porção 'do casal à mesa de família' vem de DIFERENCIAIS 'Diferenciais — Bacana' ('escala de porção que vai de 300g a 800g, resolvendo desde o casal até a mesa de família'). Endereços das duas unidades em HORARIOS / ESTABELECIMENTO_INFO. Pré-título do modelo '[REFEIÇÃO] SEMPRE BACANA' e CTA da lista fechada."
+        },
+        {
+          "slug": "espaco-kids",
+          "preTitulo": "Almoço em família tem que ser Bacana",
+          "titulo": "Tem menu próprio\npara os bacaninhas",
+          "descricao": "O Bacaninha vem com a proteína à escolha: carne, frango, linguiça ou ovo.",
+          "servico": "Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra",
+          "cta": "Reserve sua mesa",
+          "lastro": "CARDAPIO 'Cardápio Bacana — entradas, porções, guarnições e executivos' — seção KIDS: 'Bacaninha com proteína à escolha, entre carne, frango, linguiça ou ovo'. DIFERENCIAIS 'Diferenciais — Bacana': 'Menu kids próprio, o Bacaninha'. Endereços em ESTABELECIMENTO_INFO. Pré-título do modelo '[OCASIÃO] TEM QUE SER BACANA' e CTA da lista fechada."
+        },
+        {
+          "slug": "eventos-especiais",
+          "preTitulo": "Comemoração tem que ser Bacana",
+          "titulo": "Mesa grande pede\nporção grande",
+          "descricao": "Chapas e pratos família de 800g, com arroz, feijão tropeiro e batatas fritas.",
+          "servico": "Reservas pelo WhatsApp (27) 3535-4575",
+          "cta": "Faça sua reserva pelo WhatsApp",
+          "lastro": "CARDAPIO 'Cardápio Bacana — carnes no kilo e pratos completos' — seções 'FAMÍLIA, 800g, com arroz, feijão tropeiro e batatas fritas' e 'CHAPAS'. Ocasião com lastro em DIFERENCIAIS 'Diferenciais — Bacana' ('Ocasiões: almoço de domingo em família, jantar em grupo, comemoração'). WhatsApp (27) 3535-4575 em ESTABELECIMENTO_INFO e HORARIOS ('Reservas por WhatsApp'). Pré-título do modelo '[OCASIÃO] TEM QUE SER BACANA' e CTA da lista fechada."
+        },
+        {
+          "slug": "drinks-e-cerveja",
+          "preTitulo": "Jantar com sabores Bacana",
+          "titulo": "Drinks autorais\nque só existem\naqui",
+          "descricao": "Penicillin, Caipixaba, Red Carpet, Jack Sparrow e mais de vinte criações da casa.",
+          "servico": "Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra",
+          "cta": "Esperamos você",
+          "lastro": "DIFERENCIAIS 'Diferenciais — Bacana': 'Carta de drinks autorais própria, incomum em churrascaria: Penicillin, Caipixaba, Red Carpet, Jack Sparrow e mais de vinte criações.' Os quatro nomes e o volume da carta conferem com CARDAPIO 'Cardápio Bacana — carta de drinks'. Endereços em ESTABELECIMENTO_INFO. Pré-título do modelo '[REFEIÇÃO] COM SABORES BACANA' e CTA da lista fechada."
+        },
+        {
+          "slug": "promocoes-e-programacoes",
+          "preTitulo": "Churrasco do jeito Bacana",
+          "titulo": "Encomende e sirva\num churrasco\nsuper profissa",
+          "descricao": "De feijão tropeiro, farofa e vinagrete a pratos completos, prontos para servir em casa.",
+          "servico": "O pedido é feito com o garçom ou o gerente, nas duas unidades.",
+          "cta": "Fale com o gerente para encomendar",
+          "lastro": "CAMPANHAS 'Almoço Bacana e encomenda de churrasco' — 'A casa prepara encomenda para churrasco em casa, de porções como feijão tropeiro, farofa e vinagrete até pratos completos'; 'Como pedir: procurar o garçom ou o gerente da casa. Não há canal online de encomenda'; frase da casa 'sirva um churrasco super profissa'. Reforçado por DIFERENCIAIS 'Regras de copy — Bacana' (item 4). Pré-título do modelo '[REFEIÇÃO] DO JEITO BACANA' e CTA da lista fechada."
+        }
+      ],
+      "avisos": [
+        "COBERTURA DE MODELOS: nenhum pilar tem modelo. O projeto 5 tem 65 Pages e ZERO com isTemplate=true (há 38 no banco inteiro, nenhuma da Bacana); os 9 Templates não têm tag de pilar (tags vazias, exceto #220 'Arte IA' com 'arte-rapida' — os demais são por dia da semana: Domingo, Segunda… e 'Temático'). Por isso há copy para os 6 pilares aprovados.",
+        "SEM ÍCONE DE RELÓGIO: os 7 Elements do projeto são 4 ícones de LOCALIZAÇÃO (icone-local-branci / -laranja / -circulo / -circulo-laranja) e 3 sombras (SOMBRAS LF DESGN 16, 21, 55). `iconeRelogio` ficou vazio.",
+        "SEM FILETE/SEPARADOR cadastrado como Element. O DNA pede 'um fio fino' laranja e define `border: #FFFFFF a 12%` — precisa ser desenhado por código, não existe asset. `filete` ficou vazio.",
+        "CONTRADIÇÃO NO DNA sobre o laranja na manchete: `contentRules` diz 'A headline é sempre branca, com ênfase por peso, não tamanho', enquanto `visualStyle` autoriza o laranja '✅ Em uma única palavra da copy'. Segui a regra mais restritiva — manchete toda branca e `tituloAcento` vazio nas seis peças. O laranja fica no ponto do logotipo, o que já cumpre 'aparece uma vez por peça'. Se o Ciro preferir a palavra em laranja, é só preencher o campo.",
+        "A LISTA FECHADA DE PRÉ-TÍTULOS CONTÉM UMA PALAVRA PROIBIDA: o modelo '[PRATO] NO PONTO PERFEITO' usa 'perfeito', que está na lista de palavras proibidas do mesmo DNA. Não usei esse modelo; no pilar Churrasco usei '[REFEIÇÃO] SEMPRE BACANA'.",
+        "PILAR 'PROMOÇÕES E PROGRAMAÇÃO' SEM PROMOÇÃO NA BASE: a entrada CAMPANHAS diz literalmente 'Estas são as únicas duas ofertas fixas da casa. Não existe happy hour nem promoção semanal cadastrada', e `contentRules` proíbe inventar campanha. Os exemplos do próprio pilar ('Sextou do Jeito Bacana', 'happy hour', 'Experiência Copa') NÃO têm lastro. A copy foi escrita sobre a encomenda de churrasco, que é oferta fixa com lastro.",
+        "PILAR 'DRINKS E CERVEJA' SEM CERVEJA NA BASE: a carta cadastrada tem só drinks autorais, gin tônica e tradicionais — não há chopp nem cerveja em nenhuma entrada ACTIVE. A copy ficou só nos drinks.",
+        "PILAR 'EVENTOS ESPECIAIS' SEM LASTRO PARA EVENTO CORPORATIVO: 'eventos corporativos', 'pacotes exclusivos' e 'atendimento personalizado' (exemplos do pilar) não aparecem em nenhuma entrada. Há lastro só para 'jantar em grupo' e 'comemoração' (DIFERENCIAIS) e para as porções família/chapas do cardápio. A copy ficou limitada a isso.",
+        "PILAR 'ESPAÇO KIDS' COM LASTRO PARCIAL: o menu Bacaninha está no cardápio e em DIFERENCIAIS, mas a 'área infantil' aparece só como tema recorrente no TOM_DE_VOZ, sem descrição da estrutura nem indicação de em qual unidade existe. Não afirmei brinquedos, estrutura nem unidade — a copy fica no menu.",
+        "PREÇOS FICARAM DE FORA DE PROPÓSITO: o cardápio oficial de 30/04/2026 está na base e tem lastro (ex.: Bacaninha R$ 39, Picanha Bacana 300g R$ 130), mas copy de template é reutilizável e preço envelhece. Se quiser preço na peça, ele existe e confere.",
+        "HORÁRIO SÓ NA PEÇA DE ALMOÇO, com a unidade nomeada, como manda o DNA ('Toda peça com horário deve nomear a unidade'). As outras cinco trazem só as unidades, sem horário, para servirem em qualquer dia — o Bairro de Fátima abre só às 17h de segunda a sexta e não tem almoço.",
+        "pesoTitulo = 400: o banco grava fontWeight 380 nas camadas com 'Cannon extrabold', que não é múltiplo de 100; `cssFontWeight` do render-engine arredonda para 400. O peso já vem do próprio arquivo da fonte, então 400 é o valor seguro (evita o defeito de texto gigante no macOS / invisível na Vercel).",
+        "FONTES FORA DO SISTEMA DO DNA aparecem nas páginas do cliente: 'United Italic SemiCond Black', 'United Italic Cond Medium' e 'Montserrat' — esta última nem é CustomFont do projeto (cairia em fallback no render). O DNA define display e body como Cannon; o kit segue o DNA.",
+        "Project.logoUrl é NULL — a logo veio da tabela Logo (id 43, isProjectLogo=true), medida em 922x358 px (ratio 0,3883). Há ainda 6 logos secundárias cadastradas (ícones e versões em branco), não usadas aqui.",
+        "A foto placeholder é a camada de imagem 1080x1920 'Ambiente Vila Velha-00_019.jpg' da página cmjglc6lj000zl404opmyb43g (unidade Praia da Costa). URL verificada: HTTP 200, 1,78 MB. O DNA exige que a foto seja do ambiente da unidade certa — trocar a foto ao usar peça do Bairro de Fátima."
+      ]
+    },
+    "12": {
+      "projectId": 12,
+      "kit": {
+        "corFundo": "#2C3445",
+        "corTexto": "#FFFFFF",
+        "corAcento": "#CAB371",
+        "fonteTitulo": "FRZQUADN",
+        "fonteApoio": "TrajanPro Regular",
+        "caixaTitulo": "uppercase",
+        "pesoTitulo": 400,
+        "tituloItalico": false,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/12/logos/1771683215986-Ativo_2icones.png",
+        "logoRatio": 0.325,
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI/drive-1785944678532-CMT06181.jpg"
+      },
+      "copyPorPilar": [
+        {
+          "slug": "gastronomia",
+          "titulo": "Cozinha de\ntécnica francesa",
+          "descricao": "Massa fresca, molho roti e o ponto certo de cada prato.",
+          "servico": "Bistrô · almoço das 11h às 15h · Jardim Camburi, Vitória/ES",
+          "cta": "Reserve sua mesa.",
+          "lastro": "Horário do bistrô no almoço (11h às 15h): entradas HORARIOS «Horário de funcionamento e endereço — Empório Fonseca» e ESTABELECIMENTO_INFO «Ficha do estabelecimento». Endereço em forma curta para arte («Jardim Camburi, Vitória/ES»): ESTABELECIMENTO_INFO. Técnica francesa, molho roti e massa fresca: CARDAPIO «Cardápio Empório — bistrô» e DIFERENCIAIS «Diferenciais e posicionamento». CTA copiado literalmente da lista fechada do BrandDNA (toneOfVoice)."
+        },
+        {
+          "slug": "cafes-e-brunch",
+          "titulo": "Pão fresco e\ncafé de método",
+          "descricao": "Brioche de fermentação natural e o café coado no Hario V60.",
+          "servico": "Café da manhã · terça a domingo, das 9h às 11h · Jardim Camburi, Vitória/ES",
+          "cta": "Aguardamos você.",
+          "lastro": "Café da manhã de terça a domingo, das 9h às 11h: ESTABELECIMENTO_INFO «Ficha do estabelecimento» (programação semanal) e HORARIOS «Horário de funcionamento e endereço». Brioche de fermentação natural e Hario V60 (dripping em filtro de 60 graus): CARDAPIO «Cardápio Empório — cafeteria e café da manhã». Endereço curto: ESTABELECIMENTO_INFO. CTA da lista fechada do BrandDNA."
+        },
+        {
+          "slug": "vinhos-e-drinks",
+          "titulo": "Happy Wine",
+          "descricao": "Vinhos selecionados à vontade, com a entrada exclusiva da semana.",
+          "servico": "Terça a sexta, das 16h às 19h · R$ 89 por pessoa · Jardim Camburi, Vitória/ES",
+          "cta": "Faça sua reserva.",
+          "lastro": "Tudo da entrada CAMPANHAS «Happy Wine — Empório Fonseca (terça a sexta)»: dias, 16h às 19h, R$ 89 por pessoa e a fórmula «entrada exclusiva da semana» (a entrada nunca é nomeada sem confirmação). O valor é uma das duas exceções de preço autorizadas em DIFERENCIAIS «Regras de copy». Endereço curto: ESTABELECIMENTO_INFO. CTA da lista fechada do BrandDNA."
+        },
+        {
+          "slug": "eventos-especiais",
+          "titulo": "Para as datas\nque merecem",
+          "descricao": "A cozinha de técnica francesa e a curadoria de vinhos à mesa.",
+          "servico": "Terça a domingo, a partir das 9h · Jardim Camburi, Vitória/ES",
+          "cta": "Venha viver a experiência.",
+          "lastro": "«Terça a domingo, a partir das 9h» é a interseção verdadeira dos horários de HORARIOS «Horário de funcionamento e endereço» (ter-qui 9h-22h, sex-sáb 9h-23h, dom 9h-16h, segunda fechado). Técnica francesa e curadoria de vinhos: DIFERENCIAIS «Diferenciais e posicionamento». Endereço curto: ESTABELECIMENTO_INFO. «merece» é vocabulário próprio do BrandDNA; CTA da lista fechada."
+        },
+        {
+          "slug": "ambiente-e-experiencia",
+          "titulo": "Uma casa para\ndesacelerar",
+          "descricao": "Mármore, nogueira e a parede de vinhos ao fundo.",
+          "servico": "Terça a domingo, a partir das 9h · Jardim Camburi, Vitória/ES",
+          "cta": "Venha conhecer.",
+          "lastro": "Horário e endereço: HORARIOS «Horário de funcionamento e endereço» e ESTABELECIMENTO_INFO «Ficha do estabelecimento». Mármore creme, nogueira e a parede de vinhos são as superfícies e o fundo canônicos declarados em BrandDNA.photoDirection — nenhum elemento de cenário foi inventado. CTA da lista fechada do BrandDNA."
+        },
+        {
+          "slug": "promocoes-da-semana",
+          "titulo": "Programação\nda semana",
+          "descricao": "Almoço executivo, Happy Wine, Quarta da Pizza e Sábado para Harmonizar.",
+          "servico": "Almoço executivo · terça a sexta, das 11h às 15h · Jardim Camburi, Vitória/ES",
+          "cta": "Venha conhecer.",
+          "lastro": "A lista das quatro programações fixas: ESTABELECIMENTO_INFO «Ficha do estabelecimento» e CAMPANHAS «Quarta da Pizza e Sábado para Harmonizar» (que declara serem essas, mais o Happy Wine, a programação semanal completa). Almoço executivo terça a sexta, 11h às 15h: CARDAPIO «Almoço executivo — Empório Fonseca». O preço do executivo NÃO entra, por DIFERENCIAIS «Regras de copy» (não cadastrado). Endereço curto: ESTABELECIMENTO_INFO. CTA da lista fechada."
+        }
+      ],
+      "avisos": [
+        "NENHUM pilar tem modelo, então há copy para os 6 aprovados: o projeto 12 tem ZERO Page com isTemplate=true, e os 17 Templates estão todos com tags vazias — o casamento por slug não encontrou nada. Os nomes dos Templates (Café da manhã, Almoço, Jantar, Happy Wine, Pizza, Harmonizações, Brunch, Dia dos pais) cobrem quase todos os temas, mas por NOME, não por tag: se a intenção era pular quem já tem modelo, é preciso primeiro etiquetar esses Templates com os slugs dos pilares.",
+        "SEM ícone de relógio e SEM filete/separador cadastrados. O projeto tem um único Element, «Ativo 1icones.png» (600x585, monograma — não é relógio nem filete), então iconeRelogio e filete ficaram fora do kit. A cartela de rodapé descrita no BrandDNA.composition (borda dourada de 1px, ícone de relógio antes do horário, alfinete de mapa antes do endereço) não é montável com o acervo atual.",
+        "corFundo #2C3445 veio do BrandDNA.visualStyle, NÃO da tabela BrandColor — ela só tem três cores (#CAB371 «Sépia», #4D5D75 «Azul Escuro», #FFFFFF «Branco»). Cuidado: a BrandColor chama #4D5D75 de «Azul Escuro», mas o DNA o define como ACENTO principal; o fundo dominante e base de gradiente é #2C3445. O creme #F2ECE3 e o cinza-azulado #A8B0BD (texto secundário) também só existem no DNA.",
+        "caixaTitulo «uppercase» vale SÓ para a manchete (o nível «assunto»). O DNA manda caixa MISTA no pré-título (contexto) e na descrição (promessa) — aplicar caixa alta neles quebra a marca. Em Trajan Pro, caixa mista é justamente o que produz o efeito de versalete que a marca usa.",
+        "tituloAcento ficou vazio de propósito: o DNA aplica o dourado #CAB371 numa LINHA inteira (a «promessa», que aqui é o campo descricao), não numa palavra dentro da manchete — o assunto é explicitamente BRANCO. Se o consumidor do kit só sabe colorir por palavra, o correto é colorir a descricao inteira, não recortar uma palavra do título.",
+        "preTitulo vazio nos 6: a lista fechada do DNA tem apenas quatro opções («A semana começa com», «Fim de semana com», «Domingo merece», «Sábado para»), todas presas a um dia da semana. Como copy de template é reutilizável, nenhuma entra sem fixar o dia da peça — e a marca só admite pré-título dessa lista.",
+        "Só existem 2 slots de fonte para os 3 níveis do DNA. fonteTitulo = «FRZQUADN» (Friz Quadrata BT, autorizada para o assunto em caixa alta) e fonteApoio = «TrajanPro Regular» (Trajan caixa mista, que é o que o DNA manda no contexto e na promessa). O nome cadastrado é FRZQUADN/FRZQUADB — não escreva «Friz Quadrata BT», que cai em fallback. FRZQUADB (bold) existe se a manchete precisar de mais peso; pesoTitulo foi para 400 porque o peso do FRZQUADN é o do arquivo, e peso fora de múltiplo de 100 quebra o parser do render.",
+        "Os `exemplos` do pilar «Vinhos e Drinks» citam «quinta do espumante» e «dose dupla de caipirinha» — as duas são EXPRESSAMENTE PROIBIDAS pela base (a Quinta do Espumante foi substituída pelo Happy Wine em 05/07/2026, e «dose dupla» está na lista de termos banidos do BrandDNA.contentRules). O cadastro do pilar está desatualizado e induz ao erro: vale corrigir os exemplos.",
+        "Preço aparece uma única vez, no Happy Wine (R$ 89), que é uma das duas exceções autorizadas. A outra exceção — o almoço executivo — NÃO tem valor cadastrado, então o serviço do pilar «Promoções da Semana» cita só formato e horário, sem preço.",
+        "Conflito real na base, contornado: HORARIOS diz «bistrô a partir das 19h», mas domingo fecha às 16h — não existe jantar no domingo. Por isso o serviço de Gastronomia cita apenas o almoço (11h às 15h), que é verdadeiro em todos os dias abertos. Peça de jantar precisa restringir a terça a sábado.",
+        "Nenhuma peça menciona ou convida para segunda-feira (casa fechada) — é a regra crítica da base e o segundo item do crivo de aprovação da marca.",
+        "fotoPlaceholder é a camada de imagem 1080x1920 da página «Página 1» (a mais recente do projeto); o arquivo original é 2672x4000, então o encaixe no story é recorte, não upscale. Mostra mármore creme + couro azul com mãos e sem rosto identificável, dentro da regra de privacidade e da fotografia-âncora («objeto quente sobre superfície fria»). Por ser cena de brunch em luz de janela (Regime A do DNA), NÃO serve de base para peça de jantar — o DNA trata luz incompatível com o horário do convite como erro que quebra a marca.",
+        "logoUrl é a marcada com isProjectLogo=true («Ativo 2icones.png», 600x195, logoRatio 0,325). Fica o registro de que as páginas reais do cliente usam majoritariamente «Ativo 4icones.png» (mesmas dimensões e proporção) — as quatro logos são variações do mesmo wordmark. O DNA lembra que a moldura de linha fina faz parte da logo e que o wordmark nunca pode ser desenhado por IA: gere a peça sem logo e aplique o arquivo depois."
+      ]
+    },
+    "1": {
+      "projectId": 1,
+      "kit": {
+        "corFundo": "#283D36",
+        "corTexto": "#F6F0E4",
+        "corAcento": "#D9B98A",
+        "fonteTitulo": "Branley GC",
+        "fonteApoio": "StageGrotesk Medium",
+        "caixaTitulo": "none",
+        "pesoTitulo": 400,
+        "tituloItalico": false,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/logos/1759887429010-Ativo_3real.png",
+        "logoRatio": 0.995,
+        "iconeRelogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/elements/1760912667040-horario-1.png",
+        "filete": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/elements/1759887476842-linhas.png",
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_3348L5utqkVPHDPW0cTFzGzsLnD/drive-1759935970815-CMT08173.jpg"
+      },
+      "copyPorPilar": [
+        {
+          "slug": "sabores-real",
+          "preTitulo": "IL VERO GELATO",
+          "titulo": "O Sabor do Dia\nEstá na Vitrine",
+          "tituloAcento": "Sabor",
+          "descricao": "Gelato artesanal de método italiano, com fior di latte, pistacchio siciliano e chocolate belga.",
+          "cta": "Experimente o sabor do dia",
+          "servico": "Shopping Vitória · Todos os dias, das 11h às 22h",
+          "lastro": "Manchete: tema recorrente \"Sabor especial do dia na vitrine\" da entrada TOM_DE_VOZ (\"Tom de voz — Real Gelateria\"). Pré-título: italianismo obrigatório \"il vero gelato\", mesma entrada. Descrição: \"Gelato artesanal de método italiano, não sorvete industrial\" + matéria-prima com origem \"pistache siciliano, chocolate belga\", da entrada DIFERENCIAIS (\"Diferenciais e unidades — Real Gelateria\"); \"fior di latte\" é vocabulário obrigatório da mesma entrada e do TOM_DE_VOZ. CTA: cópia literal do banco de CTAs aprovados no BrandDNA.toneOfVoice. Serviço: entrada HORARIOS (\"Horário por unidade e endereços\") — Shopping Vitória das 11h às 22h TODOS os dias, confirmado pela equipe em 16/08/2026. Nenhum preço citado: o CARDAPIO marca os valores como referência interna e o DNA proíbe preço em destaque."
+        },
+        {
+          "slug": "experiencias-gastronomicas",
+          "preTitulo": "PAUSA PARA UM CAFÉ ESPECIAL",
+          "titulo": "Para Elevar\nSua Tarde",
+          "tituloAcento": "Elevar",
+          "descricao": "Espresso de café Alto Caparaó, croissant folhado e chocolate quente para acompanhar.",
+          "cta": "Desacelere e desfrute",
+          "servico": "Shopping Vitória · Todos os dias, das 11h às 22h",
+          "lastro": "Pré-título e manchete: frases-assinatura \"Pausa para um Café Especial\" e \"Para elevar sua tarde\", ambas do banco de 20 frases do BrandDNA.toneOfVoice (a manchete só passou para Title Case, conforme a regra de caixa do DNA); reforçadas pelo tema recorrente \"Tarde com aquele Croissant Delicioso\" da entrada TOM_DE_VOZ. Descrição: Espresso, croissants e chocolate quente estão na entrada CARDAPIO (\"Cardápio Real — cafés, crepes e croissants\"); \"café Alto Caparaó\" vem da entrada DIFERENCIAIS (\"Diferenciais e unidades\"). CTA: cópia literal do banco de CTAs aprovados no BrandDNA.toneOfVoice. Serviço: entrada HORARIOS — Shopping Vitória das 11h às 22h todos os dias, confirmado em 16/08/2026. Sem preço, sem produto fora do cardápio (o \"panini de pistache\" citado nos exemplos do pilar NÃO existe em nenhuma entrada de cardápio e por isso ficou de fora)."
+        }
+      ],
+      "avisos": [
+        "PILARES QUE JÁ TÊM MODELO (não receberam copy, como pedido): `pausas-e-aconchego`, coberto pela página-modelo cmhtfdnka0003sw4vw6vqfx44 (tags [\"produtos\",\"pausas-e-aconchego\"]); e `promocoes-e-eventos`, coberto pela página-modelo cmgi4drbk0001jp04jdk5t30p (tags [\"crepe\",\"promocoes-e-eventos\"]). São as ÚNICAS duas páginas com isTemplate:true no projeto.",
+        "PILAR SEM COPY POSSÍVEL: `momentos-especiais` (\"Datas Especiais\") ficou sem copy de propósito. Todos os seus exemplos são data com prazo (Páscoa, Dia das Mães, Dia dos Pais, Dia dos Namorados, Dia da Mulher), e copy de template tem de ser reutilizável — sem data específica e sem campanha com prazo. Além disso o DNA proíbe anunciar o que não está confirmado, e a data e a mecânica de cada celebração só existem na campanha, não na base. Para esse pilar, a copy precisa nascer por peça.",
+        "O VÍNCULO PILAR↔MODELO SÓ EXISTE VIA `Page.tags`. Os 10 Templates do projeto têm `tags` VAZIAS (as duas únicas com tag são os coletores `arte-rapida`, #223 e #229), então não há como cruzar pilar por Template. E das 92 páginas do projeto, apenas 2 estão marcadas como modelo — os outros 3 pilares podem estar sendo atendidos por páginas que ninguém promoveu a modelo.",
+        "A COR DE ACENTO NÃO ESTÁ CADASTRADA EM `BrandColor`. As 5 cores cadastradas são Verde Real #283D36, Menta #D7E2D2, Crema #F6F0E4, Cioccolato #B78566 e Spritz #EA5328 — nenhuma é o dourado. O DNA define o destaque de headline como \"Dourado Real\", que é um GRADIENTE (#8C6A3F → #D9B98A); `corAcento` traz a ponta CLARA (#D9B98A), a única com contraste sobre o Verde Real. Spritz foi descartado de propósito: o DNA o restringe a pontuação gráfica (spiral, gotas, sublinhas) e proíbe texto corrido.",
+        "STAGE GROTESK ESTÁ CADASTRADA COMO 7 FAMÍLIAS SEPARADAS, uma por peso (Thin, Light, Regular, Medium, Bold, ExtraBold, Black). `fonteApoio` usa \"StageGrotesk Medium\" exatamente como está no CustomFont — trocar de peso significa trocar o `fontFamily` inteiro, NÃO mexer no fontWeight. Verificado que `register-project-fonts.ts:101` registra a fonte sob o `fontFamily` cadastrado, e não sob o nome interno do arquivo (que é \"Stage Grotesk\" e \"Branley\", sem o \"GC\").",
+        "`pesoTitulo: 400` é o peso REAL do arquivo Branley_GC.otf (usWeightClass lido no OS/2 = 400, fsSelection sem itálico). É o único peso existente no arquivo: não há faux-bold no render server-side, então pedir 600/700 na Branley cai em fallback.",
+        "CAIXA DO TÍTULO = `none` (Title Case), não caixa alta. O DNA é enfático em três lugares: \"O TÍTULO NÃO SAI TODO EM CAIXA ALTA... caixa alta descaracteriza o traço da Branley\", e registra que essa é a queixa mais repetida do cliente — quatro vezes entre 11 e 13/08/2026, sempre relatada como \"essa não é a fonte da marca\". Caixa alta vale SÓ para o pré-título pequeno, e é assim que os dois pré-títulos foram escritos.",
+        "HÁ TRÊS ÍCONES DE RELÓGIO e eles não são intercambiáveis: `horario-1.png` (Crema), `horario-2.png` (Spritz) e `tempo.png` (verde vivo). Escolhido o horario-1 por ser o único que casa com a `corTexto` sobre o Verde Real. Atenção: o verde do `tempo.png` NÃO é o Verde Real da marca — é um verde saturado que não está na paleta.",
+        "O `servico` CITA SÓ O SHOPPING VITÓRIA, de propósito. É o único horário invariável da rede (11h às 22h todos os dias). A Praia do Canto muda de horário por dia (terça a quinta 13h-22h, sexta e sábado 13h à meia-noite, domingo 13h-22h) e FECHA às segundas — num modelo reutilizável, nomeá-la arriscaria convidar para loja fechada, que a base marca como \"REGRA CRÍTICA\". Quem usar o template numa peça de terça a domingo pode acrescentar a Praia do Canto no rodapé.",
+        "CONFLITO REGISTRADO PARA DECISÃO HUMANA: a regra do DNA de 16/08/2026 diz que \"São TRÊS artes por dia, e elas comunicam para AMBAS as unidades\", e que a arte de funcionamento leva as duas lojas no rodapé. Isso é incompatível com um `servico` de template sem data, pelo motivo do aviso anterior. A copy entregue satisfaz o crivo (\"Diz de qual unidade se trata?\") nomeando uma unidade com horário confirmado; se a casa quiser as duas no modelo, o rodapé precisa virar campo variável por dia da semana.",
+        "`Project.logoUrl` está NULL — a logo veio da tabela `Logo` (id 1, o único com `isProjectLogo: true`): o selo R dourado com \"IL VERO GELATO\" em volta, 400x398 (logoRatio 0.995). Confere com o que o DNA chama de \"selo R presente e pequeno\". Há 4 outras linhas de Logo, três delas duplicatas do mesmo arquivo.",
+        "NÃO HÁ NENHUMA `FontCombination` cadastrada no projeto (lista vazia), então a hierarquia tipográfica (Branley na headline / Stage Grotesk no corpo, subtítulo nunca em corpo miúdo) saiu do BrandDNA.visualStyle e .composition, não de combinação cadastrada.",
+        "`fotoPlaceholder` é a camada \"Imagem - CMT08173.jpg\", 1080x1920, da página-modelo cmgi4drbk0001jp04jdk5t30p do próprio cliente — crepe no porta-cone da Real com a marca legível e área escura no alto para a headline em Crema. É foto real da casa, não banco de imagem (que o DNA proíbe).",
+        "PREÇO FICOU FORA DAS DUAS COPIES, embora o CARDAPIO tenha os valores: as próprias entradas dizem que são \"referência interna\" e que \"a copy da Real fala de sabor e momento, não de preço\", e o `contentRules` proíbe preço em destaque, com exceção nomeada apenas para as exclusividades da Praia do Canto. As exclusividades (Semifreddo de Pistache e Suco de Frutas Vermelhas) também ficaram fora, porque só podem aparecer em peça daquela unidade — o que um modelo reutilizável não garante."
+      ]
+    },
+    "4": {
+      "projectId": 4,
+      "kit": {
+        "corFundo": "#0E0B08",
+        "corTexto": "#FFFFFF",
+        "corAcento": "#ED1C24",
+        "fonteTitulo": "Bonoco2023",
+        "fonteApoio": "Bonoco2023",
+        "caixaTitulo": "uppercase",
+        "pesoTitulo": 400,
+        "tituloItalico": false,
+        "logoUrl": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/4/logos/1759948024025-Ativo_1branco.png",
+        "logoRatio": 0.698,
+        "filete": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/4/elements/1759948106328-Ativo_5icones.png",
+        "iconeRelogio": "",
+        "fotoPlaceholder": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI/drive-1784504310101-AMBIENTE-_f3a7082.jpg"
+      },
+      "copyPorPilar": [
+        {
+          "slug": "happy-hour",
+          "preTitulo": "HAPPY HOUR",
+          "titulo": "O CHOPP\nVEM EM DOBRO",
+          "tituloAcento": "DOBRO",
+          "descricao": "Peça um, leve dois: chopp e drinks selecionados enquanto o happy tá rolando. Chama a turma e cola aqui.",
+          "servico": "Seg a sex · Happy hour das 16h às 19h",
+          "cta": "Venha pro boteco",
+          "lastro": "Mecânica 'em dobro' e janela 16h–19h: KnowledgeBaseEntry CAMPANHAS 'Happy Hour — Seu Quinto (segunda a sexta)' (id cms5igv1q000fswr76yvzuqpp), que traz 'Chopp e drinks selecionados em dobro. Peça um, leve dois. Segunda a sexta, das 16h às 19h' e o texto pronto 'Happy hour hoje: 16h às 19h'. Restrição seg–sex confirmada em HORARIOS (id cms5ighyy0001swr75tn51yda). Sem preço, conforme regra 2 de DIFERENCIAIS 'Regras de copy' (id cms5ih5ny000tswr79eregi91). CTA literal da lista fechada em TOM_DE_VOZ (id cms5ih3ez000pswr7p4ivms9i)."
+        },
+        {
+          "slug": "feijoada-e-samba",
+          "preTitulo": "SAMBA DO CANTO",
+          "titulo": "O SAMBA\nCOMEÇA AO MEIO-DIA",
+          "tituloAcento": "SAMBA",
+          "descricao": "Sábado tem samba ao vivo, tira-gosto saindo da estufa e mesa cheia até a noite.",
+          "servico": "Sábado · 11h às 23h30 · Samba do Canto a partir das 12h",
+          "cta": "Seu boteco favorito",
+          "lastro": "Programação e horário: KnowledgeBaseEntry CAMPANHAS 'Samba do Canto e almoço de domingo' (id cms5igx51000jswr7csoofda1), com o texto pronto 'Hoje: 11h às 23h30 · Samba do Canto a partir das 12h'. Sábado abrindo às 11h confirmado em HORARIOS (id cms5ighyy0001swr75tn51yda). A palavra 'feijoada' do nome do pilar NÃO tem lastro em nenhuma entrada ACTIVE e ficou fora da copy — ver avisos."
+        },
+        {
+          "slug": "almoco-de-domingo",
+          "preTitulo": "ALMOÇO NO SEU QUINTO",
+          "titulo": "DOMINGO DE\nMESA CHEIA",
+          "tituloAcento": "CHEIA",
+          "descricao": "Música ao vivo, prato saindo e a família toda na mesa. O almoço vai até às 16h — dá tempo de comer com calma e ainda pedir mais uma.",
+          "servico": "Domingo · 11h às 16h · Almoço ao vivo até 16h",
+          "cta": "Domingou no boteco favorito",
+          "lastro": "Programação e janela: KnowledgeBaseEntry CAMPANHAS 'Samba do Canto e almoço de domingo' (id cms5igx51000jswr7csoofda1), com o texto pronto 'Hoje: 11h às 16h · Almoço ao vivo até 16h'. Fechamento às 16h e proibição de sugerir jantar: HORARIOS (id cms5ighyy0001swr75tn51yda) e regra 7 de DIFERENCIAIS 'Regras de copy' (id cms5ih5ny000tswr79eregi91) — o aviso de horário entrou como convite, não como explicação. CTA literal da lista fechada em TOM_DE_VOZ (id cms5ih3ez000pswr7p4ivms9i)."
+        },
+        {
+          "slug": "tira-gostos",
+          "preTitulo": "PRA BELISCAR",
+          "titulo": "SAI TORRESMO\nCROCANTE",
+          "tituloAcento": "CROCANTE",
+          "descricao": "Torresmo Barra, Kieber e croquete de costela: tira-gosto pra dividir na mesa e segurar a resenha.",
+          "servico": "Rua Celson Calmon, 80 · Praia do Canto, Vitória/ES",
+          "cta": "Vem pro Seu Quinto",
+          "lastro": "Itens citados: KnowledgeBaseEntry CARDAPIO 'tira-gostos e pratos pra dividir' (id cmj0gsqhv003jsw5iucxpco12) — Torresmo Barra e Kieber estão entre os sete destaques da casa e o croquete de costela consta em tira-gostos. Nenhum preço citado, conforme a própria entrada ('NUNCA mostra preço em copy'). Endereço: ESTABELECIMENTO_INFO (id cms5ih9x80011swr7gshlkcnx) e HORARIOS (id cms5ighyy0001swr75tn51yda), sem CEP. Servico ficou só com endereço de propósito: o modelo é reusável em qualquer dia e o horário muda por dia."
+        },
+        {
+          "slug": "eventos-especiais",
+          "preTitulo": "A PROGRAMAÇÃO DO DIA",
+          "titulo": "A TURMA\nSE ENCONTRA AQUI",
+          "tituloAcento": "TURMA",
+          "descricao": "Mesa na calçada, papo furado e todo mundo junto. É pra isso que o boteco existe.",
+          "servico": "Rua Celson Calmon, 80 · Praia do Canto, Vitória/ES",
+          "cta": "A mesa tá reservada pra você",
+          "lastro": "Ocasião 'encontro da turma' e perfil de público: KnowledgeBaseEntry DIFERENCIAIS 'Diferenciais e destaques' (id cms5ih7r6000xswr779hky3yp) — 'Vai em turma, fica pela conversa e volta'. Vocabulário 'mesa na calçada' e 'papo furado' vem do BrandDNA.toneOfVoice. Endereço: ESTABELECIMENTO_INFO (id cms5ih9x80011swr7gshlkcnx). NENHUM evento é nomeado: só existem duas programações fixas na base (regra 9 de DIFERENCIAIS 'Regras de copy', id cms5ih5ny000tswr79eregi91) e ambas já têm pilar próprio — ver avisos."
+        },
+        {
+          "slug": "ambiente-e-clima",
+          "preTitulo": "O BOTECO DA HORA",
+          "titulo": "AQUI O PAPO\nCORRE SOLTO",
+          "tituloAcento": "SOLTO",
+          "descricao": "Azulejo branco, luz quente da estufa acesa e chopp trincando na caneca. Boteco de bairro do jeito que tem que ser.",
+          "servico": "Rua Celson Calmon, 80 · Praia do Canto, Vitória/ES",
+          "cta": "Chega no Seu Quinto",
+          "lastro": "Clima e público: KnowledgeBaseEntry DIFERENCIAIS 'Diferenciais e destaques' (id cms5ih7r6000xswr779hky3yp) — 'clima de boteco de bairro bem feito', 'quem gosta de boteco de verdade, sem formalidade'. Azulejo branco, luz quente da estufa e 'chopp trincando' vêm do BrandDNA (visualStyle, contentRules e vocabulário de toneOfVoice). Endereço: ESTABELECIMENTO_INFO (id cms5ih9x80011swr7gshlkcnx), sem CEP. Sem horário no servico porque o modelo é reusável e o horário muda por dia."
+        }
+      ],
+      "avisos": [
+        "NENHUM pilar tem modelo — por isso escrevi copy para os 6. O projeto 4 tem 224 páginas e ZERO com isTemplate:true; a única tag em Template do projeto inteiro é 'arte-rapida' (template 204). As 26 tags que existem em Page são nomes de template ('Segunda-feira', 'Programação', 'Músico'…), não slugs de pilar, e estão em páginas de conteúdo (isTemplate:false).",
+        "SEM ícone de relógio. Conferi visualmente os 128 Elements num contact sheet: são praticamente todos setas desenhadas à mão, mais 1 padrão floral tricolor, 2 filetes e 1 sombra. Nenhum relógio. iconeRelogio ficou vazio.",
+        "O filete NÃO foi achado pelo nome (todos os elementos se chamam 'Ativo Nicones.png'), e sim por geometria + inspeção visual: 'Ativo 5icones.png' (2511x87, id 234→10) é uma faixa fina de contas tricolores (amarelo/vermelho/verde). O irmão 'Ativo 6icones.png' (2511x96) é o mesmo motivo, um pouco mais alto. ATENÇÃO: o DNA manda evitar ornamento fora de peça de evento, e aí no máximo 1 — o filete existe, mas não é para entrar em toda peça.",
+        "A fonte 'Bintang', que o DNA exige como script decorativo (≥60px, em amarelo/branco/vermelho), NÃO está cadastrada em CustomFont. Só existem 'Bonoco2023' e 'The Kathy'. Qualquer script pedido cai em fallback e a arte sai errada. fonteApoio ficou 'Bonoco2023' porque o próprio DNA define info de apoio como Bonoco em escala reduzida.",
+        "Bonoco2023.otf declara usWeightClass 400, macStyle 0 e fsSelection REGULAR — o visual brush bold itálico está nos contornos, não em flags de estilo. Por isso pesoTitulo=400 e tituloItalico=false: pedir 700 ou itálico produz faux-bold/faux-italic, que só existe no navegador e diverge do render server-side (armadilha já registrada no CLAUDE.md).",
+        "CONFLITO na caixa/abreviação: o DNA proíbe abreviar 'Seu Quinto' para 'Quinto' (regra 1 de contentRules), mas a lista FECHADA de pré-títulos da base (TOM_DE_VOZ id cms5ih3ez000pswr7p4ivms9i) traz vários com o 'QUINTO' solto — SEGUNDA NO QUINTO, HOJE NO QUINTO, PETISCO DO QUINTO, HH DO QUINTO, SÁBADOU NO QUINTO, DOMINGOU NO QUINTO. Escolhi só pré-títulos aprovados que não contêm a abreviação. Alguém precisa decidir qual das duas fontes vence.",
+        "CONFLITO de vocabulário: o DNA (toneOfVoice) manda EVITAR 'copo gelado', 'petisco da casa', 'ambiente aconchegante'; a entrada TOM_DE_VOZ da base (id cmn1uybbl000hky04n5rj9m9w) lista 'copo gelado' como vocabulário PREFERIDO. Segui o DNA e não usei nenhum dos termos evitados.",
+        "Pilar 'feijoada-e-samba': FEIJOADA não tem lastro nenhum na base. Não aparece em nenhuma das 3 entradas de CARDAPIO nem em CAMPANHAS, e a regra 9 proíbe inventar programação além do Samba do Canto (sábado, a partir das 12h) e do almoço ao vivo (domingo). A copy cobre só o samba. Existem indícios de que a feijoada é real — templates 'Feijoada' (214) e 'Feed - Feijoada' (34) e fotos 'FEIJOADA COM SAMBA' no acervo —, mas sem entrada na base não dá para escrever sobre ela.",
+        "Pilar 'eventos-especiais': não há lastro para evento nenhum (os exemplos cadastrados no pilar — Dia das Mães, Carnaval, feriado — não existem em nenhuma entrada ACTIVE). Como copy de template não pode carregar data nem campanha com prazo, a peça ficou genérica (o encontro da turma) e sem nomear evento. O evento concreto tem de ser preenchido peça a peça, com lastro na base.",
+        "Project.logoUrl é NULL (armadilha já conhecida). A logo veio da tabela Logo, a marcada isProjectLogo=true: 'Ativo 1branco.png', 1059x739, ratio 0,698. Ela é BRANCA — pela regra de contraste, o canto que a receber precisa ser escuro; canto claro e liso a engole.",
+        "corFundo (#0E0B08) e corTexto (#FFFFFF) NÃO vêm da tabela BrandColor, que só tem os três hexes do tricolor (#FAA61A, #008C44, #ED1C24). Os dois saíram do BrandDNA.visualStyle, que define dark #0E0B08 como fundo/degradê e branco #FFFFFF como texto sobre fundo escuro. corAcento ficou o vermelho #ED1C24 porque o DNA atribui a ele as 'palavras-chave da headline' — o amarelo #FAA61A é do pré-título e do CTA cursivo.",
+        "fotoPlaceholder é uma camada de imagem full-bleed 1080x1920 (position 0,0) da página 'Pag.24' (id cmsq0ktof0003gs04yvvae5o0, template 160 'Funcionamento/horário do dia'), a mesma foto de ambiente usada em 3 páginas do cliente. URL verificada como viva (HTTP 206, image/jpeg). Preferi foto real de ambiente a arte gerada por IA.",
+        "Observação de ambiente, não do kit: a working tree do repo mudou durante a sessão por fora do meu trabalho — os arquivos modificados e os untracked que apareciam no git status inicial (scripts/medir-modelo-a-seguir.ts, src/lib/ai/image-prompt-builder.ts, src/lib/mcp/tools.ts, scripts/.tmp-copy*.ts etc.) já não estão lá. Eu só criei e apaguei scripts/.tmp-kit-seuquinto{,2..8}.ts e não escrevi nada no banco."
+      ]
+    }
+  },
+  "conferencias": [
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "avisos → \"PILARES QUE JÁ TÊM MODELO\" / pilar happy-wine (copyPorPilar)",
+          "problema": "FALSO, e custa uma peça. O kit alega que \"happy-wine\" já tem modelo nos Templates #148 e #149 e por isso NÃO recebeu copy. A tag \"happy-wine\" está no registro do TEMPLATE (Template.tags = [restaurant-week, executivo, happy-wine, classicos, parrilla, domingo, semana-tematica]), não em nenhuma Page — e NENHUMA das páginas de #148/#149 tem isTemplate=true. O projeto 3 inteiro tem só 4 páginas-modelo: Pag.08 (tpl#86, tags incluem experiencias-gastronomicas) e as três do tpl#208 (tags dividido/topo/rodape). Confirmado no código: listar-modelos (src/lib/mcp/tools.ts:2921) e getStoryTemplatePages (src/lib/creatives/arte-rapida.ts:247) filtram por Page.isTemplate=true, e Template.tags só entra em `temas` (tools.ts:2942) para página que JÁ é modelo. Logo happy-wine é invisível para prepareCreative, sugerirPosts e listar-modelos: ficou sem modelo E sem copy.",
+          "correcao": "Corrigir o aviso para \"apenas experiencias-gastronomicas tem modelo (Pag.08, pageId cmlpbexrv003nl8040zd0kyuj)\" e ESCREVER a copy de happy-wine, que é a mais fácil de lastrear: entrada ACTIVE CAMPANHAS \"Happy Wine e Happy Hour — TERO\" (\"Vinhos e espumantes à vontade por R$ 79,90 por pessoa. Terça a sexta das 16h às 20h · Sábado das 12h às 16h\" — e é o ÚNICO preço autorizado em arte). Pré-título: HAPPY WINE, VINHOS À VONTADE ou HORA DO VINHO. CTA: \"Escolha seu vinho\". Nunca citar rótulo nem safra. Se a intenção era mesmo pular pilar com modelo, o único a pular era experiencias-gastronomicas."
+        },
+        {
+          "campo": "copyPorPilar → happy-hour → descricao",
+          "problema": "ERRO DE REGÊNCIA, que pelo crivo da própria marca REPROVA a peça. \"…para encontrar quem você gosta antes do jantar\": o verbo gostar é transitivo indireto (gostar DE alguém), então \"quem você gosta\" está incorreto. DIFERENCIAIS \"Regras de copy\" regra 9 nomeia explicitamente regência e diz \"Erro de português reprova a peça\"; o approvalChecklist do BrandDNA repete (\"A gramática está impecável?\") e a contentRules fecha com \"qualquer 'não' reprova a peça\". Some-se o tom pedido no DNA: \"linguagem refinada\", \"sem gíria\" — a construção é de registro falado.",
+          "correcao": "Trocar por \"50% em chopps e drinks selecionados, para reencontrar quem você ama antes do jantar.\" (mesmo comprimento, sem regência problemática). Alternativa fiel ao sentido original: \"…, para encontrar as pessoas de quem você gosta antes do jantar.\" O resto da linha está certo e com lastro literal em CAMPANHAS."
+        },
+        {
+          "campo": "avisos → \"ACENTUAÇÃO QUEBRADA NOS MODELOS ATUAIS\"",
+          "problema": "INCOMPLETO, e a correção implícita ainda deixaria erro. (a) O aviso transcreve \"DAS 11H30 ÁS 16H\"; o banco tem \"áS\", e a forma correta é ÀS (crase), não ÁS — trocar só a caixa mantém o erro que a regra 9 nomeia (\"crase\"). (b) Faltaram três ocorrências, uma delas no texto mais visível da peça: \"ALMOCO EXECUTIVO\" sem cedilha no Titulo N1 da página 1; \"AS 20H\" na página 2; \"TERCA A SABADO, DAS 11H30 AS 23H30\" na página 3.",
+          "correcao": "Corrigir no tpl#208, por página. cmsdtum6n0001sw903cpmtugl (\"1 · Dividido\"): \"ALMOCO EXECUTIVO\" → \"ALMOÇO EXECUTIVO\"; \"TERçA A SEXTA, DAS 11H30 áS 16H\" → \"TERÇA A SEXTA, DAS 11H30 ÀS 16H\". cmsdtumet0003sw90eoyebhg5 (\"2 · Topo\"): \"TERCA A SEXTA, DAS 16H AS 20H\" → \"TERÇA A SEXTA, DAS 16H ÀS 20H\". cmsdtumiy0005sw90ajngxhbj (\"3 · Rodape\"): \"TERCA A SABADO, DAS 11H30 AS 23H30\" → \"TERÇA A SÁBADO, DAS 11H30 ÀS 23H30\" e \"R. EUGENIO NETTO, 326 · PRAIA DO CANTO\" → \"R. EUGÊNIO NETTO, 326 · PRAIA DO CANTO\"."
+        },
+        {
+          "campo": "avisos → \"TAG PROIBIDA NOS TEMPLATES #148 e #149\"",
+          "problema": "A premissa tranquilizadora é FALSA. O aviso diz \"É tag, não copy, então não vaza sozinha para a peça\". A tag existe mesmo em #148 e #149 (verificado), mas \"parrilla\" também está como COPY VIVA dentro de páginas: tpl#86 página cmlpbb8y0003hl8049bpr384r (\"Pag.07\") tem o título âmbar \"com parrilla tero\"; tpl#148 página cmniyokkw0005sww0sa8ubzsa (\"Sex 03.2 Executivo Sobrecoxa\") tem \"melhor da parrilla\"; e a página cmnifps8p000xswnvftl5ff7g chama-se \"Sab 17. Parrilla Ancho\" e tem tag [\"parrilla\"]. É a proibição nº 1 de DIFERENCIAIS \"Regras de copy\" (regra de julho/2026). Atenua: as três são isTemplate=false, então não entram no pool de modelos.",
+          "correcao": "Reescrever o aviso como \"palavra proibida em TAG e em COPY\", listando os três pageIds acima. Limpar a tag \"parrilla\" de Template #148 e #149 e da página cmnifps8p000xswnvftl5ff7g; e, se essas páginas forem reaproveitadas, trocar o texto por \"grelhado\"/\"na grelha\" (é o substituto que a própria regra 1 manda usar). Na mesma página cmniyokkw0005sww0sa8ubzsa há ainda o erro de digitação \"ALMOÇO EXECUTICO\" → \"ALMOÇO EXECUTIVO\"."
+        },
+        {
+          "campo": "avisos → \"ÍCONE E FILETE ENCONTRADOS\"",
+          "problema": "Meia verdade. Os três elementos existem e pertencem ao projeto 3 (relogio-ambar id=351 cat \"icones\"; filete-losango-ambar id=357 e filete-reto-ambar id=359 cat \"graficos\"; as três URLs respondem HTTP 200). Mas a justificativa \"escolhi as versões âmbar, que são as usadas nas páginas-modelo\" não se sustenta para dois dos três: filete-reto-ambar NÃO aparece em nenhuma das 3 páginas-modelo do tpl#208, e a página 2 usa talheres-creme (id=356), ou seja, os modelos não são exclusivamente âmbar.",
+          "correcao": "Reduzir a afirmação ao que foi medido: \"relogio-ambar (351) e filete-losango-ambar (357) são os efetivamente usados nas páginas-modelo do tpl#208; filete-reto-ambar (359) existe no acervo mas não é usado em modelo nenhum — a escolha dele é decisão nova, não continuidade\". Vale como argumento de coerência a regra do visualStyle (\"ícones de linha em âmbar, traço fino, nunca preenchido\")."
+        },
+        {
+          "campo": "copyPorPilar → almoco-executivo → lastro (campo servico)",
+          "problema": "Sub-citado, e isso enfraquece um dado que na verdade está seguro. O kit justifica \"a partir das 11h30\" só pela abertura da casa (HORARIOS, terça a sábado das 11h30), o que seria inferência. Mas a MESMA entrada ACTIVE HORARIOS traz lastro direto: \"almoço executivo que abre 11h30 é postado entre 08h30 e 09h30\". Do jeito que está citado, um revisor cético cortaria o horário por achar que é dedução — como o kit fez, corretamente, com o \"até 16h\".",
+          "correcao": "Trocar a frase do lastro para citar a linha literal: HORARIOS \"Horário de funcionamento e endereço — TERO\" → \"almoço executivo que abre 11h30 é postado entre 08h30 e 09h30\". A copy \"Terça a sexta, a partir das 11h30\" fica como está. Aproveitar para registrar o corolário da mesma entrada: o post desse executivo deve ser agendado entre 08h30 e 09h30."
+        },
+        {
+          "campo": "avisos → \"CONFLITO NO PRÉ-TÍTULO DO HAPPY HOUR\"",
+          "problema": "Correto mas incompleto. O conflito existe mesmo (a entrada TOM_DE_VOZ \"Pré-títulos e CTAs aprovados\" lista \"Happy hour: HAPPY HOUR · HH DO TERO · 50% OFF\", enquanto contentRules e toneOfVoice do BrandDNA proíbem a sigla — e a lista do DNA já vem corrigida, só \"HAPPY HOUR · 50% OFF\"). O que passou batido é que a MESMA entrada da base repete a sigla nas hashtags: \"happy hour (#happyhour #hh #drinks #descontos)\". Hashtag vai para a legenda, ou seja, a sigla proibida continuaria saindo mesmo depois de consertar o pré-título.",
+          "correcao": "Na entrada TOM_DE_VOZ \"Pré-títulos e CTAs aprovados — TERO\", fazer as duas trocas de uma vez: remover \"· HH DO TERO\" da linha de pré-títulos de happy hour (deixando \"HAPPY HOUR · 50% OFF\", idêntica ao DNA) e substituir a hashtag \"#hh\" por uma sem sigla (ex.: #happyhourvitoria). Lembrar que a entrada é SUBSTITUÍDA por inteiro ao gravar, não acrescentada."
+        },
+        {
+          "campo": "payload do kit (entrada desta conferência)",
+          "problema": "O JSON chegou TRUNCADO — corta no meio do lastro de sobremesas (\"…preço de cardápio não vai para arte nem leg\"). Não vieram: (a) nenhum campo fontFamily do kit, (b) nenhuma URL (logo, ícone, filete, fotoPlaceholder), (c) a copy de eventos-especiais e rolha-free. Consequência: as perguntas 1 e 2 do pedido só puderam ser conferidas contra o que os AVISOS afirmam, não contra os valores que o kit realmente emite — se o kit gravar \"Didot HTF M06-Medium\" ou \"Montserrat\" com weight 600 em algum campo que eu não vi, o fallback silencioso acontece e esta conferência não o pegou.",
+          "correcao": "Reenviar o kit completo para fechar 1 e 2. O que já está verificado e serve de gabarito: as ÚNICAS fontes cadastradas no projeto 3 são \"Didot HTF B06 Bold\" (id 21), \"Montserrat\" (id 124, arquivo Montserrat-Regular.ttf) e \"Montserrat SemiBold\" (id 125) — qualquer outro fontFamily cai em fallback; a logo isProjectLogo=true é a id 16 (TERO_brasaevinho-branco.png, medida agora em 2729x1172, HTTP 200, caminho /projects/3/logos/) e Project.logoUrl é NULL, como o aviso diz; os três elementos citados existem em /projects/3/elements/ e respondem 200. Nada de fotoPlaceholder pôde ser conferido."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "fotoPlaceholder (dimensões)",
+          "problema": "ERRO FACTUAL CONFIRMADO. O aviso declara a foto como '1080x1920'. Isso é o `size` da CAMADA na página, não o arquivo. O arquivo real (https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1769958991941-8F3A2696.jpg) mede 2667x4000 = proporção 2:3 (0.6667), 8556 KB. A camada só parece 9:16 porque tem `style.objectFit: 'cover'`, ou seja, a página RECORTA. Consequências: (a) 2:3 contra 9:16 é 18,5% de divergência — muito além da tolerância de 2% de `checarProporcao`, então quem usar como referência/fundo leva corte silencioso, e consumidor sem cover/crop ESTICA a foto (regra da casa: sem objectFit cover e sem style.crop o KonvaImage estica); (b) 8,5 MB estoura o limite de 8 MB de imagem do Instagram se o arquivo for publicado cru.",
+          "correcao": "Trocar a dimensão declarada para `2667x4000` e a proporção para `2:3` (não 9:16). Se o kit promete um placeholder 9:16 de publicação, não use este arquivo: aponte para um render 1080x1920 de verdade, ou declare explicitamente que a foto exige recorte `cover` para 9:16 e reencode abaixo de 8 MB antes de qualquer uso como mídia de post."
+        },
+        {
+          "campo": "copyPorPilar[happy-hour].tituloAcento",
+          "problema": "INCONSISTÊNCIA INTERNA. `titulo` é \"Chope e Drinks\\nem Dobro\" (2ª linha = \"em Dobro\") mas `tituloAcento` é \"Dobro\". Pelo BrandDNA.composition, a 2ª linha INTEIRA vai em Amithen ('A linha de Amithen é maior e encosta quase na linha de cima'). Com o acento declarado como \"Dobro\", o \"em\" fica órfão: ou sai na fonte errada, ou o casamento acento↔linha falha. O pilar `parrilla` está correto (2ª linha \"Brasa\" == acento \"Brasa\"), o que prova que a regra pretendida é linha-inteira e o happy-hour é o desvio.",
+          "correcao": "`tituloAcento: \"em Dobro\"` (a 2ª linha inteira). Alternativa, se quiser acento de uma palavra só como no parrilla: `titulo: \"Chope e Drinks\\nDobrados\"` com `tituloAcento: \"Dobrados\"`. Aplicar a mesma conferência linha2 === tituloAcento nos pilares que não pude ler (celebracoes, resenha, petiscos)."
+        },
+        {
+          "campo": "avisos (divergência de hex) / qualquer token de marrom",
+          "problema": "DIVERGÊNCIA NÃO FLAGRADA, do mesmo tipo que a do verde. `BrandColor` grava o marrom como `#6C370F` (nome cadastrado com erro: \"marom\"); o `BrandDNA.visualStyle` escreve `Marrom-terroso #6D350E`. Medido: `#6C370F` aparece 0x no DNA e `#6D350E` 0x na BrandColor. O kit levantou só a divergência do verde e deu a impressão de que era a única.",
+          "correcao": "Acrescentar o aviso: 'DIVERGÊNCIA DE HEX no marrom: BrandColor #6C370F vs BrandDNA #6D350E'. Se o kit contiver qualquer token de marrom (não deu para ver na parte truncada), ele está sem lastro decidido — não aplicar marrom até o oficial ser confirmado. O DNA proíbe marrom sobre fundo escuro, então neste kit (fundo escuro) o marrom não deve aparecer de todo modo."
+        },
+        {
+          "campo": "corAcento (#7A9A5C)",
+          "problema": "LASTRO FINO E EM SEÇÃO ERRADA. `#7A9A5C` aparece EXATAMENTE 1x em todo o BrandDNA, e essa única ocorrência está no `approvalChecklist` — a seção que, por regra da casa, é a única que NÃO é instrução para o modelo (é pergunta para gente ler antes de agendar). A cor não existe em `BrandColor` (que só tem verde #547737 e marom #6C370F) nem na tabela de paleta do `visualStyle`, que cita 'verde-folha-clara' no percentual de uso mas nunca dá o hex. E o `contentRules` exige 'A camada gráfica usa apenas cores da tabela 3.1' — tabela que não existe em lugar nenhum do DNA. A escolha do kit está CERTA no mérito (a regra é explícita: 'Verde sobre fundo escuro é o #7A9A5C, não o #557737'), mas está apoiada num fio.",
+          "correcao": "Cadastrar `#7A9A5C` em `BrandColor` como 'verde-folha-clara' e acrescentá-lo à tabela de paleta do `visualStyle`, junto do papel ('acento sobre fundo escuro'). Enquanto isso não for feito, manter o aviso dizendo que a cor vem de UMA linha do crivo e não da paleta cadastrada."
+        },
+        {
+          "campo": "copyPorPilar[*].servico (posição na arte)",
+          "problema": "REGRA APRENDIDA NÃO DECLARADA. Os dois `servico` que consegui ler carregam endereço ('Praia do Canto, Vitória-ES') e horário ('Ter a Sex, das 17h às 19h'). O `BrandDNA.composition` tem regra aprendida explícita do Ciro (11/08/2026): 'Sempre que o endereço (e o horário de funcionamento) entrar na arte, ele fica no RODAPÉ da peça — em qualquer modelo ou layout e em qualquer tipo de arte', com o complemento de que o TÍTULO fica na parte superior e só o serviço no rodapé. O kit não diz onde `servico` renderiza, então nada impede a peça sair com o serviço no topo ou colado no título.",
+          "correcao": "Declarar a âncora no kit, por exemplo `servicoPosicao: 'rodape'`, e citar a regra aprendida de 11/08/2026 no lastro do campo `servico`. Se o kit não tiver como carregar posição, acrescentar aviso: 'endereço e horário DEVEM ir no rodapé, com o título na parte superior — regra aprendida do DNA, 11/08/2026'."
+        },
+        {
+          "campo": "avisos (CTA no plural) — contradição do crivo incompleta",
+          "problema": "O kit flagrou que o crivo pede 'O convite é no plural' enquanto vários dos sete CTAs são imperativo singular, e resolveu certo (a regra de cópia literal manda mais). Mas deixou passar uma SEGUNDA contradição do mesmo crivo, maior: 'O convite tem de 4 a 9 palavras'. Contei os sete CTAs aprovados: Bora pro quintal? (3), A brasa tá acesa (4), Chega mais (2), Reserva sua mesa (3), Vem que tem (3), Junta a galera (3), Te esperamos aqui (3). Apenas 1 dos 7 cumpre o piso de 4 palavras. `Junta a galera`, usado no happy-hour, tem 3 — reprova no crivo. Ou seja: o crivo, como está escrito, reprova 6 dos 7 CTAs que ele próprio obriga a copiar literalmente.",
+          "correcao": "Estender o aviso existente: além do plural, registrar que a regra '4 a 9 palavras' do approvalChecklist é incompatível com 6 dos 7 CTAs aprovados, e que a lista literal prevaleceu. No DNA, corrigir a linha do crivo para deixar claro que '4 a 9 palavras' se refere ao convite da LEGENDA e não ao CTA da arte (ou remover o piso), junto com a correção do horário do happy hour (16h→17h) que o kit já apontou."
+        },
+        {
+          "campo": "fotoPlaceholder (adequação semântica)",
+          "problema": "A foto é a da ÚNICA página-modelo do cliente, que é de SOBREMESA do almoço executivo: a página tem tags ['Segunda-feira','almoco-executivo','sobremesa'] e a headline do modelo é 'Pasteis Doces'. Usá-la como placeholder genérico faz o kit propor uma imagem de sobremesa embaixo de copy de parrilla ('Cortes na Brasa') e de happy hour ('Chope e Drinks em Dobro') — contradição visível entre foto e texto. Some-se que o `contentRules` exige 'Se é foto de comida ou bebida: há mão, gente ou chope na cena', o que não dá para confirmar sem olhar a imagem.",
+          "correcao": "Ou declarar `fotoPlaceholder` como placeholder NEUTRO e avisar explicitamente que ela é de sobremesa/almoço executivo e não deve sair em peça de parrilla ou happy hour, ou escolher uma foto por pilar no acervo (buscar-fotos / listar-fotos-da-pasta do projeto 2) para que a imagem case com a copy."
+        },
+        {
+          "campo": "(kit inteiro) — payload truncado",
+          "problema": "O JSON recebido corta no meio do `lastro` do pilar `happy-hour` ('CAMPANHAS Happy Hour — Quinta...'). Portanto NÃO foram verificados, por não terem chegado: os valores literais de `fonteTitulo`/`fonteCorpo`/`fonteDetalhe` (inferidos apenas do texto dos avisos), a string de `logoUrl`, a string de `fotoPlaceholder`, os campos de cor propriamente ditos, e a copy inteira de `celebracoes`, `resenha` e `petiscos` — 3 dos 5 pilares com copy. A verificação de palavras proibidas, CTA e lastro cobriu só `parrilla` e `happy-hour`.",
+          "correcao": "Reenviar o kit completo para conferir os 3 pilares restantes. Ao reenviar, os valores esperados de fonte (para casar exatamente com CustomFont do projeto 2) são: 'DomaniCP', 'Amithen', 'Acumin Pro Thin', 'Acumin Pro Semibold', 'Acumin Pro Book' — qualquer outra string, inclusive 'Domani', 'Acumin Pro' ou 'Montserrat', cai em fallback silencioso (nota: 'Montserrat' é a fonte mais usada nas páginas do projeto, com 134 camadas, e NÃO está cadastrada em CustomFont)."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "kit.caixaTitulo (efeito colateral no CTA)",
+          "problema": "Em scripts/lib/gerador-de-templates.ts:184 o CTA herda a caixa do título: `textTransform: kit.caixaTitulo === 'uppercase' ? 'uppercase' : 'none'`. Como o Espeto é a PRIMEIRA marca com caixaTitulo='uppercase' (o Wine Vix usa 'none', por isso nunca apareceu), os cinco CTAs sairão em CAIXA ALTA — \"CHAMA A PIAZADA!\". O DNA visualStyle diz que a Caveat é usada em frases humanizadas \"sempre em caixa baixa\", e o DNA composition define o CTA como \"fechamento humano em manuscrito, como 'Chama a piazada'\". A arte sairá contra a regra escrita da marca.",
+          "correcao": "Acrescentar um campo próprio de caixa do CTA em KitDeMarca (ex.: `caixaCta?: 'uppercase' | 'none'`) e usá-lo em estiloCta no lugar de kit.caixaTitulo; no kit do Espeto declarar `caixaCta: 'none'`. Enquanto isso não existir, o CTA deste kit não deve ser gerado por esse caminho."
+        },
+        {
+          "campo": "kit — fonte de acento ausente (Caveat SemiBold)",
+          "problema": "A entrada ACTIVE \"Kit Tipográfico Oficial — Espeto Gaúcho (stories)\" declara um kit de TRÊS fontes OBRIGATÓRIO em story: Bevan (título), Barlow Condensed 400/600 (apoio) e Caveat SemiBold (acento manuscrito, \"frase humanizada, assinatura\"). O kit proposto só traz duas. A Caveat SemiBold está cadastrada em CustomFont do projeto 6 (id 121) e o crivo de aprovação do DNA pergunta literalmente \"Fontes do kit tipográfico, nenhuma fora? (Bevan, Barlow Condensed, Caveat)\". Sem campo para ela, o CTA cai em Barlow Condensed (estiloCta usa kit.fonteApoio).",
+          "correcao": "Acrescentar `fonteAcento: 'Caveat SemiBold'` e `pesoAcento: 600` a KitDeMarca, aplicá-los em estiloCta, e declarar no kit do Espeto: fonteAcento: 'Caveat SemiBold'. O nome tem de ser exatamente esse — é o fontFamily gravado em CustomFont id 121."
+        },
+        {
+          "campo": "copyPorPilar[].servico + kit.iconeRelogio",
+          "problema": "O gerador cola o ícone de RELÓGIO sempre que `copy.servico` existe (gerador-de-templates.ts, bloco `if (copy.servico) { if (kit.iconeRelogio) ... }`). Em 3 das 5 copies o campo servico não é horário: \"Todo o cardápio também para retirada no balcão\" (cortes-e-pratos-especiais), \"Área Kids no térreo e no andar superior\" (area-kids-e-familia) e \"Jardim Camburi, Vitória/ES · desde 1984\" (tradicao-e-historia). O DNA composition é explícito: \"ícones pequenos à esquerda, como relógio para horário e pino para endereço\". Sai um relógio ao lado de um endereço e ao lado de uma informação de retirada.",
+          "correcao": "Tornar o ícone escolha da COPY, não do kit: acrescentar `icone?: 'relogio' | 'local' | 'sacola' | null` em CopyDoTema e usar `kit[copy.icone]` no lugar do kit.iconeRelogio fixo. Para o Espeto: tradicao-e-historia → pino (Element 259 `pino-branco.png`); cortes-e-pratos-especiais e area-kids-e-familia → sem ícone (ou sacola, Element 265, na retirada); churrasco-em-familia e promocoes-e-happy-hour → relógio."
+        },
+        {
+          "campo": "copyPorPilar[churrasco-em-familia].servico e [tradicao-e-historia].servico",
+          "problema": "O DNA composition traz uma regra aprendida DATADA DE 16/08/2026 (hoje), registrada como correção do próprio Ciro: \"O horário de funcionamento e o endereço entram APENAS na primeira arte do dia, no rodapé. Nas demais peças do dia o rodapé fica livre — só entra a informação da própria oferta\". O motivo está escrito: \"endereço em toda peça rouba espaço da fotografia (que deve ocupar 85 a 90% da arte) e compete com a headline em peça cuja função é gerar desejo\". Mesmo assim churrasco-em-familia carrega a linha inteira de funcionamento e tradicao-e-historia carrega a localidade — as duas são peças de desejo, não a arte de funcionamento do dia.",
+          "correcao": "Tirar o horário e o endereço dessas duas copies. Em churrasco-em-familia, trocar servico por informação da própria oferta (ex.: \"Porções que servem até 3 pessoas\", com lastro em DIFERENCIAIS) ou deixar sem servico. Em tradicao-e-historia, deixar só \"Desde 1984\", sem a localidade. A linha completa de funcionamento fica reservada ao modelo da primeira arte do dia."
+        },
+        {
+          "campo": "kit — amarelo #FDC700 e barra de preço ausentes",
+          "problema": "O kit declara um único acento (#F4301A). O BrandColor do projeto 6 tem três cores (#F4301A, #FDC700, #2B1A12) e o DNA visualStyle reserva o amarelo justamente para preço: \"Amarelo pode ser usado em número de preço em promoção\"; o composition completa: \"Dados importantes, como horário e valor, são destacados em amarelo dentro do texto corrido, com preços precedidos por uma barra vertical vermelha\". A única copy com preço (promocoes-e-happy-hour, R$ 89,90) sairá sem o amarelo e sem a barra. Os dois elementos existem cadastrados: `barra-preco-vermelha.png` (Element 236/398) e `barra-preco-amarela.png` (235/397).",
+          "correcao": "Acrescentar `corDestaqueDado: '#FDC700'` e `barraPreco: <url do Element 398 barra-preco-vermelha>` a KitDeMarca, aplicando-os na linha de serviço quando a copy for de preço. Atenção à restrição do DNA ao fazer isso: \"nunca junto do vermelho na mesma linha\" e \"proibido vermelho sobre amarelo e amarelo sobre vermelho\" — a barra é vermelha e o número amarelo, ambos sobre o degradê marrom, nunca um sobre o outro."
+        },
+        {
+          "campo": "kit.fonteApoio (peso 600 pedido a um arquivo Regular)",
+          "problema": "O gerador emite `fontWeight: 600` com `fontFamily: kit.fonteApoio` no pré-título e na linha de serviço (estiloServico e o bloco do pre-titulo). O CustomFont id 119 do projeto 6 chamado \"Barlow Condensed\" aponta para o arquivo BarlowCondensed-Regular. A entrada ACTIVE do Kit Tipográfico proíbe isso em letra: \"Negrito: NUNCA usar fontWeight maior que o da família (faux-bold só existe no navegador; a arte agendada renderiza com o peso real do arquivo). Para ênfase no apoio, trocar para 'Barlow Condensed SemiBold'\". O pré-título e o serviço sairão em peso regular na arte renderizada, divergindo do editor.",
+          "correcao": "Separar os dois papéis no kit: `fonteApoio: 'Barlow Condensed'` (peso 400, descrição) e um novo `fonteApoioForte: 'Barlow Condensed SemiBold'` (peso 600), usado em estiloServico e no pré-título — os dois nomes existem exatamente assim em CustomFont (ids 119 e 120). É limitação do gerador, que hoje tem um só fonteApoio, e atinge também o Wine Vix; mas aqui é regra escrita da marca e as duas famílias já estão cadastradas."
+        },
+        {
+          "campo": "copyPorPilar[area-kids-e-familia].cta",
+          "problema": "\"Chama a gurizada!\" É VÁLIDO — está na entrada ACTIVE \"Pré-títulos e CTAs aprovados — Espeto Gaúcho\", que manda usar cópia literal. Mas a lista de CTAs replicada dentro de BrandDNA.toneOfVoice está DESATUALIZADA: faltam \"Chama a gurizada!\" e \"Chama os amigos!\", que existem na base. Quem conferir esse CTA lendo só o DNA (que é o que entra incondicionalmente em todo prompt) vai reprová-lo como inventado.",
+          "correcao": "Nenhuma correção na copy — o CTA fica. Corrigir a FONTE: atualizar a lista \"CTAs Aprovados\" em BrandDNA.toneOfVoice para espelhar os 23 da entrada da base, acrescentando \"Chama a gurizada!\" e \"Chama os amigos!\". Enquanto as duas listas divergirem, a base é a autoridade (é ela que diz \"usar cópia literal\")."
+        },
+        {
+          "campo": "copyPorPilar[tradicao-e-historia].servico",
+          "problema": "\"Jardim Camburi, Vitória/ES\" não é nenhuma das duas formas de endereço registradas. A entrada ACTIVE de HORARIOS fixa: \"Endereço para as artes: Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi, Vitória/ES\" e \"Forma curta: Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi\". O que a copy usa é uma terceira forma, truncada. Não viola a regra 10 (não tem CEP nem estacionamento) e o lastro do bairro/cidade existe na Ficha Institucional, mas não é o endereço canônico das artes.",
+          "correcao": "Se a linha ficar (ver o item da regra de 16/08, que pede tirá-la), usar uma das duas formas cadastradas — de preferência a curta, \"Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi\" — ou reduzir a servico a \"Desde 1984\", que tem lastro direto na ESTABELECIMENTO_INFO e não é endereço."
+        },
+        {
+          "campo": "kit.filete e kit.iconeRelogio (escolha entre duplicatas)",
+          "problema": "Os dois arquivos existem DUAS vezes em Element do projeto 6: separador-branco nos ids 244 (category=null, upload de 1785772535478) e 406 (category='graficos', upload de 1785792150386); relogio-branco nos ids 262 (category=null) e 389 (category='icones'). O kit aponta para a leva ANTIGA, sem categoria. Não quebra nada — os dois pertencem ao projeto 6 e as URLs respondem 200 —, mas a leva categorizada é a curada.",
+          "correcao": "Trocar para os elementos categorizados: filete → o fileUrl do Element 406 (.../1785792150386-separador-branco.png) e iconeRelogio → o do Element 389 (.../1785792110158-relogio-branco.png). Se a intenção era usar a leva antiga, registre o porquê, porque a próxima leitura vai reabrir a dúvida."
+        },
+        {
+          "campo": "avisos[]",
+          "problema": "O aviso diz que \"os 3 Templates do projeto (218 'Arte IA', 152 'Arte Rápida', 104 'Marmita') só têm a tag 'arte-rapida'\". Medido: 218 e 152 têm tags=['arte-rapida'] e category='arte-rapida'; o 104 'Marmita' tem tags=[] e category=null — nenhuma tag. O núcleo do aviso está certo e foi confirmado (66 Pages, 0 com isTemplate=true, nenhum pilar com modelo), só essa frase é imprecisa.",
+          "correcao": "Reescrever para: \"os 3 Templates do projeto — 218 'Arte IA' e 152 'Arte Rápida', ambos com tag 'arte-rapida', e 104 'Marmita', sem tag nenhuma — não cobrem pilar algum\". As 22 tags que existem no projeto vivem nas Pages (promocao, kids, rodizio, familia…), não nos Templates."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "copyPorPilar[espaco-kids].preTitulo + .servico",
+          "problema": "ALTO — Convida para ALMOÇO listando as DUAS unidades. É exatamente o erro que a base declara ser o mais comum: HORARIOS 'Horário por unidade e endereços — Bacana' diz 'A diferença que mais gera erro: em dia útil, o Bairro de Fátima abre só às 17h. Nunca convidar para almoçar lá de segunda a sexta.' Reforçado por DIFERENCIAIS 'Regras de copy — Bacana' item 1, por BrandDNA.contentRules ('Toda peça com horário deve nomear a unidade, pois a Serra não serve almoço em dia útil') e pela pergunta do crivo 'Se a peça fala de almoço em dia útil, ela é da Praia da Costa?'. Como a peça não carrega dia, ela vai ao ar em dia útil mandando família para uma porta fechada na Serra.",
+          "correcao": "Trocar o preTitulo para 'Domingo em família tem que ser Bacana' — segue o mesmo molde aprovado '[OCASIÃO] TEM QUE SER BACANA' e tem lastro em HORARIOS (domingo: as DUAS unidades abrem, 11h às 22h), então o servico com as duas unidades passa a ser verdadeiro. Alternativa, se o almoço for indispensável: manter 'Almoço em família tem que ser Bacana' e reduzir o servico a 'Praia da Costa · Vila Velha'."
+        },
+        {
+          "campo": "copyPorPilar[drinks-e-cerveja].titulo",
+          "problema": "ALTO — 'Drinks autorais / que só existem / aqui' é uma promessa de exclusividade SEM lastro. O lastro citado (DIFERENCIAIS 'Diferenciais — Bacana') diz outra coisa: 'Carta de drinks autorais própria, INCOMUM EM CHURRASCARIA' — própria e rara no segmento, nunca 'só existe aqui'. A própria base derruba a frase: CARDAPIO 'Cardápio Bacana — carta de drinks' tem uma seção inteira 'Drinks Tradicionais' com Negroni, Mojito, Margarita, Moscow Mule, Boulevardier e Aperol Spritz, que por definição existem em qualquer bar. Cai em contentRules 'Não prometa o que não fazemos' e na pergunta do crivo 'A peça promete algo que a operação não faz?'.",
+          "correcao": "Usar a formulação da própria base: 'Carta de drinks\\nautoral, incomum\\nem churrascaria' (3 linhas, mantém a quebra atual). Se preferir manter o sujeito 'Drinks': 'Drinks autorais,\\nraros numa\\nchurrascaria'."
+        },
+        {
+          "campo": "copyPorPilar[almoco-e-jantar].titulo",
+          "problema": "MÉDIO — A frase da casa foi mutilada. CAMPANHAS 'Almoço Bacana e encomenda de churrasco' e BrandDNA.toneOfVoice registram, as duas, 'aqui o tempero é do Chef, MAS quem monta o menu é você'. O kit apagou o 'mas' e virou 'Aqui o tempero é do chef, quem monta o menu é você' — duas orações coordenadas ligadas só por vírgula, ou seja, vírgula indevida. Isso reprova em DIFERENCIAIS 'Regras de copy — Bacana' item 7 ('GRAMÁTICA: impecável em todas as peças') e na pergunta do crivo 'A gramática e a acentuação estão corretas, inclusive dentro da arte?'. Também rebaixou 'Chef' para minúscula, contra as duas entradas.",
+          "correcao": "Restaurar verbatim, quebrando em 3 linhas para caber: 'Aqui o tempero\\né do Chef, mas quem\\nmonta o menu é você'."
+        },
+        {
+          "campo": "copyPorPilar[promocoes-e-programacoes].servico",
+          "problema": "MÉDIO — 'nas duas unidades' não tem lastro em entrada nenhuma. CAMPANHAS 'Almoço Bacana e encomenda de churrasco' diz apenas 'Como pedir: procurar o garçom ou o gerente da casa. Não há canal online de encomenda' e DIFERENCIAIS diz só 'Encomenda de churrasco para servir em casa' — nenhuma das duas afirma cobertura nas duas unidades. Afirmar abrangência que a base não confirma é o mesmo risco do Almoço Bacana, que a base restringe explicitamente a uma unidade; cai em contentRules 'Não prometa o que não fazemos'.",
+          "correcao": "Cortar a inferência e ficar no texto da base: 'O pedido é feito com o garçom ou o gerente da casa.' Só reintroduzir 'nas duas unidades' depois de gravar isso numa entrada da base."
+        },
+        {
+          "campo": "copyPorPilar[eventos-especiais].servico",
+          "problema": "MÉDIO-BAIXO — É o único dos 6 pilares cuja linha de serviço não nomeia unidade nenhuma: traz só 'Reservas pelo WhatsApp (27) 3535-4575'. Contraria BrandDNA.contentRules 'A informação vem antes da criatividade: unidade e horário são obrigatórios'. O telefone em si está correto — bate com ESTABELECIMENTO_INFO ('Telefone e reservas por WhatsApp: (27) 3535-4575') e com HORARIOS ('Reservas por WhatsApp: (27) 3535-4575') — e reserva por WhatsApp é permitida (a proibição de WhatsApp em contentRules é só para ENCOMENDA).",
+          "correcao": "Nomear as unidades junto do canal: 'Praia da Costa · Vila Velha  |  Bairro de Fátima · Serra  ·  Reservas: (27) 3535-4575'. Se não couber na linha, use 'Nas duas unidades · Reservas pelo WhatsApp (27) 3535-4575'."
+        },
+        {
+          "campo": "copyPorPilar[drinks-e-cerveja].descricao",
+          "problema": "BAIXO — O kit acrescentou 'da casa' ao texto da base e com isso tornou o número errado. DIFERENCIAIS diz verbatim 'Penicillin, Caipixaba, Red Carpet, Jack Sparrow e mais de vinte criações'; ao escrever 'mais de vinte criações DA CASA', a contagem passa a valer só para os exclusivos, e em CARDAPIO 'Cardápio Bacana — carta de drinks' eles são exatamente 20 (5 em 'Exclusivos Bacana' + 15 em 'Outros Drinks Exclusivos') — 20 não é 'mais de vinte'. A carta inteira tem 32 itens (20 exclusivos + 9 tradicionais + 3 gin-tônicas).",
+          "correcao": "Ou voltar ao verbatim da base, tirando as duas palavras: '...Jack Sparrow e mais de vinte criações.' Ou usar o número da carta inteira, que é verdadeiro e verificável: '...Jack Sparrow e mais de trinta drinks na carta.'"
+        },
+        {
+          "campo": "copyPorPilar[almoco-e-jantar].servico",
+          "problema": "BAIXO — A restrição de calendário sumiu. As DUAS entradas que sustentam o Almoço Bacana a repetem: CAMPANHAS diz 'Não vale em feriados nem em datas emendadas' e HORARIOS diz 'exceto feriados e datas emendadas'. A linha 'Praia da Costa · Segunda a sexta, das 11h30 às 16h' está certa mas incompleta, e uma peça no ar num feriado emendado manda o cliente para um almoço que não existe.",
+          "correcao": "'Praia da Costa · Segunda a sexta, das 11h30 às 16h (exceto feriados)'. Se a linha ficar longa demais para o rodapé, leve a ressalva para a legenda do post — mas não a deixe fora das duas."
+        },
+        {
+          "campo": "copyPorPilar[churrasco].titulo + .descricao",
+          "problema": "BAIXO — A peça costura duas entradas com escalas diferentes. A descricao ('de 300g a 1kg, com farofa e vinagrete') vem de CARDAPIO, seção 'CARNES NO KILO, com farofa e vinagrete' — correta. Já a frase do titulo 'do casal à mesa de família' vem de DIFERENCIAIS, onde ela está colada a OUTRA escala: 'escala de porção que vai de 300g a 800g, resolvendo desde o casal até a mesa de família'. Não é dado falso — cada metade tem lastro — mas a peça sugere que o 1kg é o teto da 'mesa de família', quando o 800g da base é o corte FAMÍLIA (que vem com arroz, feijão tropeiro e batatas fritas, não com farofa e vinagrete).",
+          "correcao": "Manter as duas metades na mesma escala. Opção A (fica em CARNES NO KILO): titulo 'Carne no kilo,\\ndo casal à mesa\\nde família' + descricao 'Cortes na brasa de 300g a 800g, com farofa e vinagrete.' Opção B (mantém o 1kg): trocar o titulo por 'Carne no kilo,\\ndo casal ao\\nquilo cheio'."
+        },
+        {
+          "campo": "kit.iconeRelogio (e a linha `servico` de todos os pilares)",
+          "problema": "BAIXO / oportunidade — O aviso está correto: não há ícone de relógio entre os 7 Elements do projeto 5. Mas ficou de fora o ícone que a peça de fato usa: existem 4 ícones de LOCALIZAÇÃO cadastrados (Elements #20 icone-local-branci, #23 icone-local-laranja, #21 icone-local-circulo-laranja, #22 icone-local-circulo) e TODAS as seis linhas `servico` carregam unidade ou endereço. O kit deixou o campo de ícone sem nenhuma alternativa, e a composição do DNA manda o endereço para o rodapé — que é justamente onde esse ícone serve.",
+          "correcao": "Acrescentar ao kit um campo `iconeLocal` com https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/5/elements/1762353516445-icone-local-branci.png (branco, para o fundo #1A1410). Reservar a versão laranja (…1762353520186-icone-local-laranja.png) para as peças em que o acento laranja ainda não foi gasto — o DNA permite o laranja UMA vez por peça, e o filete previsto em `composition` disputa essa mesma cota."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "kit.fotoPlaceholder",
+          "problema": "É uma foto de BRUNCH usada como placeholder único dos 6 pilares. Verificado no banco: essa URL existe em UM só lugar em toda a produção — Page \"Página 1\" (cmsg9c3n0000djl04d4dwcfc0) do Template 172 \"Brunch\" do projeto 12. A imagem (2672x4000, HTTP 200) mostra ovos mexidos, bacon, torrada e tábua de frutas. Isso contradiz o CONTEÚDO de 4 das 6 copies: \"gastronomia\" promete \"Massa fresca, molho roti\" (não está na foto); \"ambiente-e-experiencia\" promete \"Mármore, nogueira e a parede de vinhos ao fundo\" (a foto tem mármore e uma parede AZUL lisa — sem nogueira e sem parede de vinhos, que o photoDirection declara como \"fundo canônico\"); \"vinhos-e-drinks\" é o Happy Wine das 16h às 19h, que o photoDirection põe no \"Regime B: fim de tarde\" — usar foto de café da manhã ali é literalmente o que o DNA chama de \"Erro de luz que quebra a marca: usar foto do Regime A numa peça de jantar, ou foto do Regime C numa peça de café da manhã\".",
+          "correcao": "Tirar fotoPlaceholder do nível do kit e passar a um campo por pilar. Manter esta foto SÓ em \"cafes-e-brunch\" (é Regime A, café da manhã — bate). Para \"vinhos-e-drinks\" buscar foto Regime B (fim de tarde, luz baixa e dourada); para \"gastronomia\" uma foto de prato do bistrô com massa fresca/molho roti; para \"ambiente-e-experiencia\" uma foto com a parede de vinhos (nogueira, latão, garrafas enfileiradas, desfocada) — é o fundo canônico nomeado em BrandDNA.photoDirection."
+        },
+        {
+          "campo": "kit.fotoPlaceholder (2º defeito, independente)",
+          "problema": "A mesma foto REPROVA na lista FECHADA de anti-fotografia do BrandDNA.photoDirection, item 6: \"Prato, taça ou tábua cortados pela borda do quadro\". Na imagem o PRATO é cortado pela borda inferior E a TÁBUA de madeira com as frutas é cortada pela borda direita — dois cortes, não um. O DNA declara uma única exceção (\"macro de prato\", e só \"a peça de Jantar Empório\"), que não cobre uma peça de brunch. O mesmo DNA repete a proibição em contentRules e no approvalChecklist.",
+          "correcao": "Trocar a foto por uma em que prato e tábua caibam inteiros com folga (o próprio DNA pede: \"longe o suficiente para o prato caber inteiro com folga\"), ou recortar a foto atual de modo a excluir a tábua e fechar o prato inteiro. Não usar como está: é reprovação por regra escrita, não por gosto."
+        },
+        {
+          "campo": "avisos[1] — descrição do Element «Ativo 1icones.png»",
+          "problema": "O aviso diz que o único Element do projeto é um \"monograma — não é relógio nem filete\". FALSO. Baixei o arquivo (projects/12/elements/1773589409422-Ativo_1icones.png, 600x585 — a dimensão do aviso está certa, a descrição não): é o selo do ESPÍRITO SANTO RESTAURANT WEEK, com a tarja \"DE 26/03 A 26/04\". É marca de evento de terceiro, com data vencida, e a entrada correspondente na base — CARDAPIO «Restaurant Week Março/2026» — está ARCHIVED. Chamar isso de \"monograma\" convida alguém a usá-lo como elemento de marca, e o DNA proíbe em dois lugares: visualStyle (\"selo de desconto, carimbo ou confete\", \"logo duplicada na mesma peça\") e contentRules (idem).",
+          "correcao": "Reescrever o aviso para: \"O projeto tem ZERO elementos gráficos utilizáveis. O único Element cadastrado é o selo do Espírito Santo Restaurant Week (26/03 a 26/04), campanha ARQUIVADA na base — não usar em peça nova.\" A conclusão prática do aviso (sem ícone de relógio, sem alfinete, sem filete; a cartela de rodapé do BrandDNA.composition não é montável) continua correta."
+        },
+        {
+          "campo": "kit.corFundo",
+          "problema": "#2C3445 tem procedência correta (BrandDNA.visualStyle), e o aviso é honesto ao dizer que não veio da BrandColor. O problema é o NOME do campo: o DNA diz desse hex exato \"Nunca deve ser usado como retângulo sólido atrás de texto sobre foto\", e contentRules proíbe \"bloco escuro chapado atrás do texto\". Um campo chamado corFundo entregue ao lado de um fotoPlaceholder é exatamente a forma que vira painel sólido na renderização. O DNA.composition manda o oposto: dois gradientes escuros, topo e rodapé, de borda a borda, ~1/3 da altura em cada ponta, \"sem borda e sem cartão\", e avisa que \"se a borda do escurecimento for visível como uma linha, está errado\".",
+          "correcao": "Renomear para corBaseDoGradiente e acompanhar a regra de uso: \"#2C3445 é base dos DOIS gradientes de leitura (topo e rodapé, borda a borda, ~1/3 da altura cada). Nunca como retângulo sólido, cartão ou bloco atrás de texto sobre foto.\""
+        },
+        {
+          "campo": "copyPorPilar[promocoes-da-semana].descricao + lastro",
+          "problema": "A descrição lista QUATRO programações (Almoço executivo, Happy Wine, Quarta da Pizza, Sábado para Harmonizar) e o lastro afirma que CAMPANHAS «Quarta da Pizza e Sábado para Harmonizar» \"declara serem essas, mais o Happy Wine, a programação semanal completa\". Li a entrada: ela declara um conjunto FECHADO DE TRÊS — \"Estas duas, mais o Happy Wine de terça a sexta, são a programação semanal completa da casa. Não existe programação fixa em outro dia\" — e NÃO inclui o almoço executivo. Já ESTABELECIMENTO_INFO «Ficha do estabelecimento» lista CINCO sob \"Programação semanal:\" (Café da manhã, Almoço executivo, Happy Wine, Quarta da Pizza, Sábado para Harmonizar). A base se contradiz, e o kit escolheu em silêncio uma quarta composição que não bate com nenhuma das duas entradas.",
+          "correcao": "Duas saídas: (a) seguir CAMPANHAS e escrever só as três — \"Happy Wine, Quarta da Pizza e Sábado para Harmonizar\"; ou (b) seguir ESTABELECIMENTO_INFO e escrever as cinco. Recomendo (a), porque é a entrada que fala especificamente de programação e usa formulação fechada. Em qualquer caso, levantar a divergência com o cliente e corrigir uma das duas entradas — deixar as duas no ar mantém o erro voltando em toda copy futura."
+        },
+        {
+          "campo": "copyPorPilar[promocoes-da-semana].servico",
+          "problema": "O card mistura escopos: a descrição fala de quatro programações e o serviço dá o horário de UMA — \"Almoço executivo · terça a sexta, das 11h às 15h\". Na arte pronta isso lê como se 11h-15h valesse para as quatro. É o alvo direto da regra 5 de DIFERENCIAIS «Regras de copy» (\"NÃO CONFUNDIR OS DOIS MENUS\") e do approvalChecklist (\"Qualquer peça que mencione horário, dia ou preço. É o ponto de erro mais provável da marca\"). Os horários reais divergem: Happy Wine 16h-19h, Quarta da Pizza a partir das 19h, Sábado para Harmonizar o dia inteiro.",
+          "correcao": "Ou tirar o horário do serviço e deixar só \"Terça a domingo · Jardim Camburi, Vitória/ES\", ou dedicar o card a uma programação só (com o horário dela). Não manter descrição plural com horário singular."
+        },
+        {
+          "campo": "kit.pesoTitulo",
+          "problema": "pesoTitulo: 400 combinado com fonteTitulo FRZQUADN entrega a MANCHETE no corte leve — mas BrandDNA.visualStyle define o nível \"assunto\" como \"caixa alta, maior E MAIS PESADO\". Pior, o campo é uma armadilha: no projeto 12 o negrito do Friz é uma CustomFont SEPARADA (id=110, fontFamily \"FRZQUADB\"), não o peso 700 de FRZQUADN (id=111). Subir pesoTitulo para 700 produz faux-bold só no navegador; o render server-side (napi-rs) não tem esse arquivo e cai em fallback — editor e arte publicada divergem sem avisar.",
+          "correcao": "fonteTitulo: \"FRZQUADB\" (ou \"TrajanPro Bold\", id=112 — as duas existem no projeto) e manter pesoTitulo: 400 SEMPRE. Trocar peso neste projeto se faz trocando de família, nunca mexendo no número."
+        },
+        {
+          "campo": "kit.fonteTitulo / kit.fonteApoio",
+          "problema": "As duas famílias existem EXATAMENTE assim em CustomFont do projeto 12 (\"FRZQUADN\" id=111, \"TrajanPro Regular\" id=113) — sem risco de fallback, e ambas em uso real (70 e 77 páginas). O problema é de nomenclatura: BrandDNA.visualStyle rotula \"Headline: Trajan Pro\" e \"Apoio: Friz Quadrata BT\", ou seja, os papéis do kit estão INVERTIDOS em relação ao vocabulário do DNA. O mapeamento até se defende se fonteTitulo significa apenas a linha \"assunto\" (o DNA permite \"Trajan ou Friz Quadrata caixa alta\" ali), mas quem ler o DNA e o kit lado a lado aplica as fontes nos papéis trocados.",
+          "correcao": "Renomear os campos para os papéis do próprio DNA: fonteAssunto: \"FRZQUADB\" e fonteContextoEPromessa: \"TrajanPro Regular\". Nunca gravar os nomes de prosa do DNA (\"Trajan Pro\", \"Friz Quadrata BT\") — verifiquei: eles aparecem em ZERO páginas do projeto e cairiam em fallback."
+        },
+        {
+          "campo": "kit (campo ausente: preTitulo)",
+          "problema": "O DNA.composition exige manchete empilhada em TRÊS níveis (contexto, assunto, promessa) e o toneOfVoice traz uma LISTA FECHADA de pré-títulos aprovados — \"A semana começa com\", \"Fim de semana com\", \"Domingo merece\", \"Sábado para\". O kit não tem campo para o contexto, então a lista fechada fica inutilizável e a manchete de três níveis colapsa em dois. Junto com isso: corAcento #CAB371 está certo, mas nada no kit diz QUAL nível recebe o dourado — o DNA manda que seja a promessa (\"promessa em Trajan caixa mista, dourado #CAB371, menor que os dois\"), e do jeito que está corTexto #FFFFFF se aplicaria também à descrição.",
+          "correcao": "Acrescentar preTitulo por pilar, restrito à lista fechada, e declarar o mapeamento de níveis: preTitulo = contexto (TrajanPro Regular, caixa mista, branco, menor); titulo = assunto (FRZQUADB, caixa alta, branco, maior); descricao = promessa (TrajanPro Regular, caixa mista, #CAB371, menor). Sem isso o dourado não tem onde pousar."
+        },
+        {
+          "campo": "avisos[0] — recomendação de etiquetar os Templates",
+          "problema": "A parte factual do aviso está CONFIRMADA: o projeto 12 tem 0 Pages com isTemplate=true e os 17 Templates estão todos com tags=[]; os 8 nomes citados existem mesmo. O problema é a recomendação: etiquetar \"esses Templates com os slugs dos pilares\" varreria junto Templates que contrariam a base — existe um Template chamado \"Segunda\" (id=112), e HORARIOS «Horário de funcionamento e endereço» abre com \"REGRA CRÍTICA: a casa FECHA às segundas-feiras\", com o approvalChecklist dizendo \"Qualquer peça de segunda-feira. Não deveria existir\"; e \"Sexta da Caipirinha\" (id=209), que CAMPANHAS contradiz com \"Não existe programação fixa em outro dia\". Há ainda \"Dia dos pais\" (datado) e \"Testes - Bianca\".",
+          "correcao": "Etiquetar só os 8 temáticos e, antes disso, auditar/arquivar \"Segunda\" e \"Sexta da Caipirinha\" — ou confirmar com o cliente se a Sexta da Caipirinha voltou (nesse caso a entrada CAMPANHAS é que está desatualizada). Deixar \"Dia dos pais\" e \"Testes - Bianca\" fora do casamento por slug."
+        },
+        {
+          "campo": "kit.fotoPlaceholder (procedência da URL)",
+          "problema": "A URL está sob uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI/ — namespace de USUÁRIO (biancaptrcs@gmail.com, User cmrkwlevf0000lb04k733dxzv), não de projeto. Esse usuário é dono de ZERO projetos no banco. Ou seja, o caminho não carrega nenhuma prova de pertencimento ao projeto 12; o único vínculo é a referência em uma Page. Contrasta com logoUrl, que é projects/12/logos/... e portanto auto-verificável. (Já a logo passou em tudo: Logo id=52, projectId=12, isProjectLogo=true, HTTP 200, e o arquivo é mesmo o wordmark com a moldura de linha fina que o DNA manda preservar; logoRatio 0,325 confere exatamente — 195/600.)",
+          "correcao": "Documentar no kit que a fotoPlaceholder não é asset de projeto e pode sumir sem aviso, ou — melhor — apontar para uma foto do acervo do Drive do projeto 12 / um asset sob projects/12/. Se ficar como está, registrar o pageId de origem (cmsg9c3n0000djl04d4dwcfc0, Template 172 \"Brunch\") como a única prova de vínculo."
+        },
+        {
+          "campo": "copyPorPilar[gastronomia].servico",
+          "problema": "É o único dos seis cards que NÃO declara os dias: \"Bistrô · almoço das 11h às 15h\". Todos os outros trazem \"terça a sexta\", \"terça a domingo\" etc. Numa marca cuja REGRA CRÍTICA é que a casa fecha na segunda, a linha sem dia é justamente o elo fraco — e o approvalChecklist manda conferir \"qualquer peça que mencione horário, dia ou preço\". Não é violação (segunda não é mencionada), é omissão em série.",
+          "correcao": "\"Bistrô · terça a domingo, almoço das 11h às 15h · Jardim Camburi, Vitória/ES\" — o almoço do bistrô existe de terça a domingo (casa aberta ter-dom, bistrô 11h-15h por HORARIOS e ESTABELECIMENTO_INFO)."
+        },
+        {
+          "campo": "payload recebido (integridade)",
+          "problema": "O JSON que recebi está TRUNCADO: o array avisos corta no meio da frase \"tituloAcento ficou vazio de propósito: o DNA aplica o\" e o objeto nunca fecha. Não pude conferir os avisos restantes nem saber se o kit tem outros campos (por exemplo um tituloAcento, ou fotos por pilar) que mudariam parte deste veredito.",
+          "correcao": "Reenviar o kit completo. O que segue APROVADO e não precisa refazer: as duas fontes existem exatamente assim em CustomFont/12; a logo confere em registro, arquivo e proporção; os 6 CTAs estão todos na lista fechada do toneOfVoice, sem exceção; nenhuma palavra proibida apareceu (sem \"Quinta do Espumante\", sem \"dose dupla\", sem emoji, sem segunda-feira, sem urgência de varejo); o preço do executivo foi corretamente omitido e os R$ 89 do Happy Wine estão autorizados por DIFERENCIAIS «Regras de copy» regra 3; \"terça a sexta, 16h às 19h, R$ 89 por pessoa\" e \"entrada exclusiva da semana\" batem palavra por palavra com CAMPANHAS «Happy Wine»; \"terça a domingo, a partir das 9h\" é interseção verdadeira dos horários de HORARIOS; e os 6 slugs existem como ContentPillar aprovado=true, origem=humano, com 0 Pages isTemplate=true confirmadas."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "copyPorPilar[0].tituloAcento",
+          "problema": "DEFEITO NA ARTE — a palavra JOGO sai DUPLICADA. `tituloAcento` nao pinta uma palavra DENTRO da manchete: `montarCamadas` (scripts/lib/gerador-de-templates.ts:213-217) o empilha como uma LINHA A MAIS logo abaixo do titulo. Medido rodando o gerador com as fontes do projeto 7 registradas, a peca sai com TRES linhas: 'O JOGO PASSA AQUI' (branco, y=170..337) / 'COM CHOPP NA MAO' (branco) / 'JOGO' (vermelho #dc0909, y=351..451) — linha orfa. O precedente Wine Vix confirma a semantica: titulo 'O rotulo certo\\npara cada' + tituloAcento 'prato' formam a frase, o acento COMPLETA a manchete, nao repete um pedaco dela.",
+          "correcao": "Trocar por: \"titulo\": \"O JOGO PASSA AQUI\", \"tituloAcento\": \"COM CHOPP NA MAO\" (remover o \\n do titulo). E exatamente o que o BrandDNA.composition prescreve: 'A manchete e composta em duas linhas, uma em branco e outra em vermelho #C82020'. E o visualStyle autoriza linha inteira em vermelho ('A regra de no maximo duas palavras em vermelho foi corrigida para permitir uma linha inteira em vermelho na manchete'). VERIFICADO por medicao: sai em 2 linhas, sem duplicata."
+        },
+        {
+          "campo": "copyPorPilar[0].servico",
+          "problema": "DEFEITO NA ARTE — colisao de -22px com o CTA, nos TRES layouts. A string tem 83 caracteres. A camada `info-1` e empurrada direto com altura FIXA de 44px (gerador linha 249) e NAO passa por `empilhar()`, ou seja, nunca e medida; o CTA fica cravado em `yServico + 62` = y=1722 (linha 251). Medido com Metrisch Bold registrada: o servico quebra em 2 linhas, ocupa 84px reais (1660..1744) e invade o CTA em 22px — nos layouts dividido, topo e rodape. O gerador assume linha unica: o unico precedente (Wine Vix, 'Segunda a sabado, das 10h as 22h', 32 chars) mede 48px e cabe nos 62px de folga. Nao existe segundo slot de servico: `iconeLocal` esta declarado no tipo KitDeMarca (linha 48) mas NUNCA e desenhado por montarCamadas.",
+          "correcao": "Trocar por: \"servico\": \"Todos os dias, das 11h a meia-noite\". Lastro na MESMA entrada ACTIVE HORARIOS 'Horario de funcionamento, delivery e endereco — By Rock' ('Aberto todos os dias, das 11h a meia-noite.'). VERIFICADO por medicao: 1 linha, 48px, folga +14px. O endereco nao se perde: o proprio BrandDNA.contentRules manda 'O rodape com horario e endereco so aparece na primeira peca do dia' — a linha completa com endereco fica para essa peca, nao para o modelo reutilizavel."
+        },
+        {
+          "campo": "avisos (item que comeca com 'CAIXA:')",
+          "problema": "AFIRMACAO FALSA, e a peca REPROVA no proprio crivo do By Rock. O aviso diz 'So a manchete vai em caixa alta (por isso caixaTitulo=uppercase); descricao, servico e CTA ficam em caixa mista.' Medido: 4 de 5 campos de texto saem em CAIXA ALTA. `estiloServico` tem textTransform: 'uppercase' CRAVADO (gerador linha 179, sem knob de kit) e `estiloCta` herda uppercase JUSTAMENTE porque caixaTitulo === 'uppercase' (linha 183). So `descricao` fica mista. Isso dispara duas regras da marca: crivo de aprovacao nº 9 ('A caixa alta esta em todos os campos, em vez de so na manchete?') e BrandDNA.toneOfVoice > Construcoes Proibidas > 'Caixa alta em todos os campos'. O By Rock e a PRIMEIRA marca com caixaTitulo: 'uppercase' (Wine Vix, unico kit existente, e 'none'), entao esse caminho do gerador nunca tinha rodado.",
+          "correcao": "Duas partes. (a) CODIGO, em scripts/lib/gerador-de-templates.ts: tirar o uppercase de `estiloServico` (linha 179, remover `textTransform: 'uppercase' as const`) e de `estiloCta` (linha 183, fixar em `'none'`), deixando `caixaTitulo` mandar SO na manchete — que e o que o aviso promete e o que o DNA pede. (b) Enquanto (a) nao for feito, reescrever o aviso para a verdade: 'manchete, acento, servico e CTA saem em caixa alta; so a descricao fica em caixa mista — a peca reprova no crivo nº 9 e precisa de ajuste no gerador antes de publicar.'"
+        },
+        {
+          "campo": "base de conhecimento (fora do kit) — entrada ACTIVE CARDAPIO 'Cardapio By Rock — Main Stage e executivos', campo metadata",
+          "problema": "ARMADILHA PARA A PROXIMA COPY (nao afeta esta, que nao nomeia prato). O `metadata` dessa entrada CONTRADIZ o `content` da mesma entrada e a entrada 'Regras de copy — By Rock'. O metadata.pratos_principais guarda as atribuicoes ANTERIORES a julho/2026, exatamente as que a regra nº 2 manda evitar: diz Kiss=salmao (hoje e ancho), Aerosmith=meia costela (hoje e picanha), Beatles=picanha (hoje e tilapia), Pink Floyd=tilapia (hoje e chorizo), Satisfaction=ancho (hoje e costela). E ainda lista Crispy Chicks, Guns N' Roses e Pork N'Roll — pratos que a regra nº 3 declara que SAIRAM do cardapio. Quem montar kit lendo o metadata (em vez do content) vai nomear prato errado com aparencia de lastro.",
+          "correcao": "Atualizar `metadata.pratos_principais` da entrada para o menu de julho/2026, usando o `content` da propria entrada como fonte (ele esta correto), e remover Crispy Chicks, Guns N' Roses, Pork N'Roll, Ultraje a Rigor, Parmeggiana Dreams, Wild Strogonoff e Deep Purple Shrimp. Ate la, tratar o `content` como unica fonte de nome de prato e nunca o `metadata`."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "kit.corAcento (paleta)",
+          "problema": "A paleta do DNA é ESTRITA e tem CINCO cores com papel definido (visualStyle): vermelho #ED1C24 = principal/palavra-chave da headline; verde #008C44 = selos, almoço, badges; amarelo #FAA61A = pré-títulos, CTA cursivo, HAPPY HOUR e SAMBA; dark #0E0B08 = fundo/degradê; branco #FFFFFF = texto. O kit reduziu para três e jogou fora #FAA61A e #008C44. Não é detalhe estético: medi as 224 páginas do projeto 4 e o amarelo aparece 87 vezes e o verde 63, contra 135 do vermelho — o amarelo é quase tão usado quanto a cor 'principal'. Pior: os dois pilares que o DNA nomeia explicitamente como amarelos (happy-hour e feijoada-e-samba) são justamente dois dos seis que o kit escreveu, e sairão sem a cor que a marca reserva para eles. O DNA ainda diz 'Proibido usar cores fora da paleta tricolor + dark + branco' — com um acento só, o pré-título cai em branco ou vermelho, e visualStyle manda 'Pré-título: Bonoco em caixa alta, com tracking de +6px, em amarelo ou vermelho'.",
+          "correcao": "Acrescentar os dois campos que faltam, mantendo #ED1C24 como está: \"corAcento2\": \"#FAA61A\" (pré-título, CTA cursivo, happy hour e samba) e \"corAcento3\": \"#008C44\" (selos, almoço, badges). No mínimo indispensável, usar #FAA61A como cor do preTitulo nos pilares happy-hour e feijoada-e-samba. Lastro: BrandDNA.visualStyle e BrandDNA.composition do projeto 4 (ambos listam as cinco cores com hex literal)."
+        },
+        {
+          "campo": "kit (campo de sombra ausente)",
+          "problema": "Falta a sombra extrude, que o DNA trata como assinatura da marca, não como enfeite. BrandDNA.visualStyle: 'A sombra extrude é uma assinatura visual importante, com deslocamento de 4–6px para baixo-direita, sem blur. As combinações oficiais incluem vermelho com sombra amarela, amarelo com sombra vermelha ou verde, e branco sobre foto com sombra amarela ou vermelha.' BrandDNA.contentRules repete: '...com headline em Bonoco e sombra extrude'. O kit não tem nenhum slot para isso, então toda headline sai chapada e as seis peças perdem o traço mais reconhecível do Seu Quinto. Isso interage com o problema da paleta: sem #FAA61A no kit, mesmo quem quisesse aplicar a sombra não teria a cor oficial dela.",
+          "correcao": "Acrescentar \"sombraTitulo\": { \"offsetX\": 5, \"offsetY\": 5, \"blur\": 0, \"cor\": \"#FAA61A\" } como padrão (branco/vermelho sobre foto com sombra amarela). Para headline em amarelo, trocar a cor da sombra para #ED1C24 ou #008C44. Nunca usar blur > 0 — o DNA diz 'sem blur'."
+        },
+        {
+          "campo": "kit.filete",
+          "problema": "A URL existe e é do projeto 4 (Element id=10, 2511x87 px, proporção 28,9:1 — é mesmo um filete, apesar do nome 'Ativo 5icones.png'), mas ela NUNCA foi usada: varri as 224 páginas do projeto e o filete aparece em ZERO delas. E o DNA restringe o uso: visualStyle e composition dizem 'Ornamentos são geralmente evitados, exceto em peças de festa ou evento, onde no máximo um elemento discreto pode ser utilizado'. Promover a slot fixo do kit um ornamento que a marca nunca aplicou, num sistema que proíbe ornamento fora de peça de evento, vai fazer as seis peças saírem com um elemento estranho à casa. (Comparação: a logo branca do kit aparece em 12 páginas e a Bonoco2023 em 200 — esses sim são ativos vivos.)",
+          "correcao": "Manter a URL no kit (ela é válida), mas marcar o uso como condicional: aplicar o filete SOMENTE no pilar eventos-especiais, no máximo uma ocorrência por peça, e não aplicar nos outros cinco. Se o kit não tiver como expressar condição, o mais seguro é \"filete\": \"\" e reintroduzi-lo só na peça de evento."
+        },
+        {
+          "campo": "avisos (contagem de tags)",
+          "problema": "O aviso afirma: 'As 26 tags que existem em Page são nomes de template (Segunda-feira, Programação, Músico…)'. O número 26 está trocado de tabela. O projeto 4 tem 26 TEMPLATES; as tags distintas em Page são 12: Programação (18), Domingo (10), Quarta-feira (9), Segunda-feira (9), Sexta-feira (8), Quinta-feira (8), Sábado (6), Terça-feira (6), arte-rapida (5), Músico (5), Feed - Feijoada (2) e Template (2). A conclusão do aviso (nenhuma tag é slug de pilar) está CORRETA — conferi com interseção direta contra os seis slugs e deu zero —, mas o número que a sustenta está errado.",
+          "correcao": "Trocar por: 'As 12 tags distintas em Page são nomes de template (Programação, Domingo, Segunda-feira…), não slugs de pilar; nenhuma das 224 páginas tem tag igual a um dos seis slugs.'"
+        },
+        {
+          "campo": "avisos (feijoada sem lastro)",
+          "problema": "O aviso diz que 'a palavra feijoada do nome do pilar NÃO tem lastro em nenhuma entrada ACTIVE'. A parte literal está certa e eu confirmei: busquei 'feijoada' nas 11 entradas do projeto 4 e não há nenhuma ocorrência. Mas a conclusão implícita — de que feijoada é invenção do nome do pilar — é falsa. O projeto tem o template 214 'Feijoada' e o template 34 'Feed - Feijoada', tem a tag de página 'Feed - Feijoada' em 2 páginas, tem o pilar 'Feijoada e Samba' APROVADO por humano (origem: 'humano'), e tem 14 posts já classificados em feijoada-e-samba. Ou seja: a feijoada existe na rotina do cliente; o que falta é a entrada na base. Deixar registrado como 'sem lastro' e seguir adiante faz o buraco atravessar as próximas levas sem ninguém consertar.",
+          "correcao": "Reescrever o aviso: 'A feijoada não está em NENHUMA das 11 entradas ACTIVE da base, mas existe no projeto (templates 214 Feijoada e 34 Feed - Feijoada, tag de página Feed - Feijoada, e 14 posts já classificados em feijoada-e-samba). A copy saiu só com samba por precaução. Antes da próxima leva, confirmar dia/horário da feijoada com o cliente e cadastrar em CAMPANHAS.' A copy atual do pilar pode ficar como está — ela é segura."
+        },
+        {
+          "campo": "avisos (nenhum pilar tem modelo)",
+          "problema": "A afirmação central é VERDADEIRA e eu confirmei: o projeto 4 tem 224 páginas e ZERO com isTemplate=true (para comparar: projeto 11 tem 22, projeto 7 tem 9, projeto 3 tem 4). Só o template 204 tem tag, e é 'arte-rapida'. Mas o aviso, do jeito que está, dá a entender que o cliente não tem layout — e tem, e casa quase 1:1 com os pilares: template 161 'Happy Hour', 170 'Samba do Canto', 171 'Almoço de domingo', 214 'Feijoada', 160 'Funcionamento/horário do dia', 54 'Programação', 159 'Depoimentos/avaliações'. O que falta é PROMOÇÃO: nenhuma página foi marcada como modelo, então o pool que prepareCreative/sugerir-posts/listar-modelos consultam está vazio.",
+          "correcao": "Acrescentar ao aviso a saída prática: 'O projeto tem 26 templates temáticos que cobrem os pilares (161 Happy Hour, 170 Samba do Canto, 171 Almoço de domingo, 214 Feijoada, 160 Funcionamento/horário). O pool de modelos está vazio porque ninguém promoveu página nenhuma — o conserto é escolher uma página boa de cada tema e rodar marcar-como-modelo, não escrever copy do zero toda vez.'"
+        },
+        {
+          "campo": "copyPorPilar[feijoada-e-samba].descricao",
+          "problema": "Diz 'mesa cheia até a noite'. Não é erro de fato (sábado fecha 23h30 mesmo), mas 'até tarde' está na lista EVITAR do vocabulário do BrandDNA.toneOfVoice, e 'até 23h30' está na lista USAR, na mesma linha. 'Até a noite' é a mesma vaguidão que a marca decidiu não usar, e ainda perde a informação concreta que a base entrega de graça.",
+          "correcao": "Trocar 'mesa cheia até a noite' por 'mesa cheia até 23h30'. Lastro do horário: HORARIOS id=cms5ighyy0001swr75tn51yda ('Sábado: das 11h às 23h30')."
+        },
+        {
+          "campo": "copyPorPilar[feijoada-e-samba].descricao e [almoco-de-domingo].descricao",
+          "problema": "BrandDNA.toneOfVoice, construção proibida nº 10: 'Uma ideia concreta por peça — não empilhar benefícios.' As duas descrições empilham. Samba junta três: samba ao vivo + tira-gosto saindo da estufa + mesa cheia até a noite. Almoço junta quatro: música ao vivo + prato saindo + família na mesa + a janela até 16h com justificativa. As outras quatro descrições respeitam bem melhor a regra.",
+          "correcao": "Samba: 'Sábado tem samba ao vivo a partir do meio-dia.' (a estufa e a mesa cheia saem — a foto já mostra). Almoço: 'Música ao vivo e a família toda na mesa, até 16h.' A urgência de horário é obrigatória (regra 7 de DIFERENCIAIS id=cms5ih5ny000tswr79eregi91) e cabe como convite curto, sem a explicação 'dá tempo de comer com calma e ainda pedir mais uma'."
+        },
+        {
+          "campo": "kit.fotoPlaceholder",
+          "problema": "A URL existe (HTTP 200) e É deste projeto — a URL EXATA está nas camadas de 3 páginas do projeto 4, todas no template 160 'Funcionamento/horário do dia'. Duas ressalvas que o kit não registra. Primeira: o arquivo mede 2667x4000, proporção 2:3 (0,667), e o DNA declara os formatos 1080x1920 (0,5625) e 1080x1080 (1,0) — nenhum dos dois; a foto será cortada nos dois casos, e a finalização corta em silêncio. Segunda: o blob está sob 'uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI/', que é a pasta de OUTRO usuário (biancaptrcs@gmail.com), não a pasta do projeto — o vínculo com o projeto 4 é só o uso nas camadas, então quem olhar a URL sozinha não consegue provar a procedência. O arquivo também tem 3,5 MB.",
+          "correcao": "Manter a URL, mas registrar no kit qual é o recorte pretendido em vez de deixar o corte para a finalização: para story, recortar a faixa central 9:16; para quadrado, o centro 1:1. E anotar a procedência ('em uso nas páginas do template 160'), porque o caminho do blob aponta para outro usuário e sozinho não comprova nada."
+        },
+        {
+          "campo": "kit.fonteApoio (falta o script decorativo)",
+          "problema": "fonteTitulo e fonteApoio estão CORRETOS — 'Bonoco2023' existe exatamente assim em CustomFont id=22 do projeto 4 (arquivo OTF estático, HTTP 200, usWeightClass 400, macStyle 0000, e a família aparece em 200 das 224 páginas, ou seja, sem fallback silencioso) e o DNA confirma 'Info de apoio: Bonoco em escala reduzida'. O que falta é o terceiro papel. O projeto tem uma segunda fonte cadastrada e VIVA, 'The Kathy' (CustomFont id=123), usada em 65 das 224 páginas — quase um terço —, e o kit não tem slot para ela. Agrava: o BrandDNA chama o script decorativo de 'Bintang' ('Script decorativo: Bintang, usada em tamanhos 60px ou maiores, em amarelo, branco ou vermelho'), e não existe NENHUMA fonte com esse nome em CustomFont, em projeto NENHUM do banco. O DNA aponta para uma fonte que não está instalada; a real é The Kathy.",
+          "correcao": "Acrescentar \"fonteScript\": \"The Kathy\" ao kit (é a string exata de CustomFont.fontFamily id=123), com a regra do DNA: só em 60px ou mais, em amarelo/branco/vermelho, nunca em caixa alta e nunca em informação prática. E corrigir o BrandDNA.visualStyle, trocando 'Bintang' por 'The Kathy' — do jeito que está, o DNA manda usar uma fonte inexistente e qualquer gerador cai em fallback."
+        },
+        {
+          "campo": "kit (métricas tipográficas ausentes)",
+          "problema": "O DNA especifica métricas por papel que o kit não carrega, e sem elas a peça não fica com a cara da marca mesmo usando a fonte certa. BrandDNA.visualStyle: headline com 'letter-spacing de -1px e line-height de 0.95'; 'Pré-título: Bonoco em caixa alta, com tracking de +6px'; 'Info de apoio: Bonoco em escala reduzida com letter-spacing de +1px'. O kit tem só caixaTitulo, pesoTitulo e tituloItalico. Vale lembrar que o render server-side lê a entrelinha em dois campos e prefere textboxConfig.autoWrap.lineHeight sobre style.lineHeight.",
+          "correcao": "Acrescentar \"tituloLetterSpacing\": -1, \"tituloLineHeight\": 0.95, \"preTituloLetterSpacing\": 6, \"apoioLetterSpacing\": 1. Ao aplicar a entrelinha, gravar nos DOIS campos (style.lineHeight e textboxConfig.autoWrap.lineHeight), senão o editor e a arte agendada divergem."
+        },
+        {
+          "campo": "copyPorPilar[*].preTitulo (conflito entre as duas fontes)",
+          "problema": "Nenhum pré-título do kit está errado — os seis têm lastro literal na entrada ACTIVE TOM_DE_VOZ id=cms5ih3ez000pswr7p4ivms9i, seção 'Pré-títulos por tipo de post' (HAPPY HOUR, SAMBA DO CANTO, ALMOÇO NO SEU QUINTO, PRA BELISCAR, A PROGRAMAÇÃO DO DIA, O BOTECO DA HORA). Mas as duas fontes de verdade divergem em ESCOPO, e isso é uma armadilha para a próxima leva: o BrandDNA.toneOfVoice declara 'LISTAS FECHADAS de pré-título' e a lista dele tem SÓ os de dia da semana — cinco dos seis pré-títulos usados não estão nela. Lida ao pé da letra, a lista fechada do DNA reprova a copy; lida junto com a base, aprova. Pior ainda: a lista da BASE contém itens que violam a regra 1 do próprio DNA ('Nunca abreviar Seu Quinto para Quinto') — SEGUNDA NO QUINTO, QUARTA NO QUINTO, SÁBADOU NO QUINTO, DOMINGOU NO QUINTO, HOJE NO QUINTO, CHEGA NO QUINTO. Este kit não usou nenhum deles, mas o próximo pode.",
+          "correcao": "Não mexer na copy — os seis estão lastreados. Consertar a fonte: atualizar BrandDNA.toneOfVoice para dizer que a lista fechada de pré-títulos é a da entrada TOM_DE_VOZ id=cms5ih3ez000pswr7p4ivms9i (dia da semana + tipo de post), em vez de repetir uma lista parcial que contradiz a base. E resolver a contradição do 'QUINTO': ou tirar os seis pré-títulos abreviados da entrada da base, ou abrir a exceção explícita no DNA de que a abreviação vale em pré-título."
+        }
+      ]
+    },
+    {
+      "ok": false,
+      "problemas": [
+        {
+          "campo": "kit.fotoPlaceholder",
+          "problema": "A URL existe e pertence ao projeto 1, mas o CONTEÚDO não foi conferido: baixei a imagem (2672x4000) e é um CREPE SALGADO (queijo, presunto, maionese) num porta-crepe Real, sobre fundo azul-marinho escuro. Sua ÚNICA ocorrência no banco inteiro é como camada herói da página-modelo cmgi4drbk0001jp04jdk5t30p, tags ['crepe','promocoes-e-eventos'] — ou seja, é a foto da Quarta do Crepe, o pilar que o próprio kit declarou já coberto por modelo. As duas copies vendem gelato (fior di latte, pistacchio, chocolate belga) e café/croissant/chocolate quente. Isso colide com a regra mais dura do BrandDNA.contentRules: 'Nunca alterar o conteúdo da cena; o produto fotografado é o produto entregue' e 'Nome de sabor, combinação ou produto que não esteja no cardápio da base NUNCA entra na arte'. Agravante registrado no próprio DNA em 16/08: 'A conferência automática só verifica se o texto PEDIDO está presente; texto A MAIS passa batido' — a conferência é de TEXTO, então uma peça de gelato com foto de crepe sai com veredito verde. Segundo problema na mesma foto: é um quadro escuro e frio, e o photoDirection define como padrão a família 1 'Dia claro (a Real clara, padrão preferencial)', admitindo a família 2 só como 'noite dourada... âmbar, bokeh das luzes globo' — este fundo é azul-marinho, não âmbar.",
+          "correcao": "Trocar o `fotoPlaceholder` por uma foto de gelato de dia claro do acervo do projeto 1. ATENÇÃO ao conserto óbvio e errado: NÃO usar `https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_3348L5utqkVPHDPW0cTFzGzsLnD/drive-1764802253647-gelato-dobro.jpg` (camada order=0 da Pag.05) — ampliei o papel do cone e lê-se '…albea … DE GELA[TO]' em verde claro, que NÃO é a marca Real; o DNA proíbe 'props de outra marca' e 'banco de imagem identificável ou produto que não é da casa'. Uma opção verificada e válida para a copy de café é `.../user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1780833801375-CMT00400.jpg` (frapê em taça com logo Real + pão de queijo, mesa de madeira, luz quente da loja). Como o `KitDeMarca` tem UM só `fotoPlaceholder` para vários pilares, garanta que o preenchimento SEMPRE troque a foto por uma do produto daquele pilar — o comentário do tipo já diz 'trocada no preenchimento', e é isso que precisa ser garantido, porque nenhuma conferência automática pega foto errada."
+        },
+        {
+          "campo": "copyPorPilar[].servico",
+          "problema": "Os dois `servico` carregam rodapé de horário de funcionamento ('Shopping Vitória · Todos os dias, das 11h às 22h') em peças que NÃO são a peça de funcionamento. O BrandDNA.contentRules diz literalmente: 'O texto da peça é EXATAMENTE o da copy: nada a mais, nada a menos. Bloco que não está na copy não entra na arte — principalmente rodapé de horário de funcionamento, QUE SÓ EXISTE NA PEÇA DE FUNCIONAMENTO DAS 10H.' E a regra aprendida de 16/08/2026 (correção do Ciro) reforça: 'A arte de FUNCIONAMENTO leva as DUAS lojas na mesma peça... É a primeira peça do dia, às 10h.' Uma copy de 'sabor do dia na vitrine' e outra de 'pausa para café' não são a peça das 10h. O dado em si está correto e lastreado (ver abaixo) — o defeito é o horário estar NESTA peça. Consequência prática: como o kit também traz `iconeRelogio`, toda peça gerada ganha o bloco de relógio + horário que o DNA reserva para uma peça só do dia.",
+          "correcao": "Remover o horário do `servico` das duas copies. `servico` é opcional em `CopyDoTema` (`scripts/lib/gerador-de-templates.ts:61`), então o mais limpo é omitir o campo nessas duas e reservar o par `servico` + `iconeRelogio` para o kit da peça de funcionamento das 10h. Se a equipe quiser manter uma linha de rodapé nessas peças, ela não pode ser horário de funcionamento."
+        },
+        {
+          "campo": "copyPorPilar[].servico",
+          "problema": "Independente do horário, o `servico` nomeia UMA loja só ('Shopping Vitória'). O BrandDNA.contentRules traz, entre as 'Regras aprendidas na prática', a correção do Ciro de 16/08/2026: 'São TRÊS artes por dia, e elas comunicam para AMBAS as unidades. NÃO INDIVIDUALIZAR PEÇA POR LOJA. A exceção é o assunto exclusivo da Praia do Canto (Semifreddo de Pistache e Suco de Frutas Vermelhas), que exige peça nomeando essa unidade.' Nenhuma das duas copies trata de exclusividade da Praia do Canto — a #1 é gelato genérico da vitrine, a #2 é espresso/croissant/chocolate quente, todos itens de cardápio comuns às lojas. Escolher só o Shopping é entendível (a Praia do Canto fecha às segundas, e copy de template precisa ser reutilizável), mas é exatamente a individualização que a correção mais recente proíbe.",
+          "correcao": "Tirar o nome da loja do `servico` junto com o horário (mesma correção do item anterior), deixando a peça falar para as duas unidades como manda a regra de 16/08. Se por algum motivo a linha de unidade tiver de ficar, ela precisa nomear as DUAS — e aí a peça vira a de funcionamento das 10h, com Praia do Canto e Shopping Vitória em linhas separadas do rodapé, e passa a esbarrar na segunda-feira (Praia do Canto FECHADO, entrada HORARIOS)."
+        },
+        {
+          "campo": "copyPorPilar[1] (experiencias-gastronomicas) — preTitulo e cta",
+          "problema": "A copy escrita para `experiencias-gastronomicas` é montada com o vocabulário do pilar `pausas-e-aconchego` — justamente o pilar que o kit declarou PULAR por já ter modelo. Conferido em ContentPillar do projeto 1: `pausas-e-aconchego`.exemplos = ['a pausa que você merece','desacelere e desfrute','momento de pausa','sábado merece doçura','domingo pede pausa especial']. O `cta: \"Desacelere e desfrute\"` é exemplo LITERAL desse pilar, e o `preTitulo: \"PAUSA PARA UM CAFÉ ESPECIAL\"` é do mesmo campo semântico. Já `experiencias-gastronomicas` (nome no banco: 'Cafés e Doces') tem exemplos = ['crepes real','panini de pistache','chocolate quente','café especial','waffle real'] — só a `descricao` ancora nele. Efeito: o classificador de pilares da F2 tende a jogar essa peça em `pausas-e-aconchego`, dobrando a cobertura do pilar que já tem modelo e deixando `experiencias-gastronomicas` sem peça de verdade. (Isto NÃO é violação da lista de CTAs: 'Desacelere e desfrute' está aprovada.)",
+          "correcao": "Ancorar pré-título e CTA no pilar certo. CTA: trocar por 'Sua próxima parada do Passaporte Real' — está na lista de CTAs aprovados do BrandDNA.toneOfVoice e o 'Passaporte Real' é o conceito de jornada gastronômica citado na entrada DIFERENCIAIS, ou seja, é o CTA que pertence a este pilar. Pré-título: trocar 'PAUSA PARA UM CAFÉ ESPECIAL' por algo dos exemplos do próprio pilar, ex. 'CAFÉ ESPECIAL' ou 'PASSAPORTE REAL'. A `descricao` pode ficar como está."
+        },
+        {
+          "campo": "copyPorPilar[0].descricao (sabores-real)",
+          "problema": "'fior di latte' aparece em lista de sabores ao lado de dois itens que TÊM lastro de cardápio ('pistacchio siciliano' → CARDAPIO 'Pistacchio Sicília R$ 36,90'; 'chocolate belga' → CARDAPIO 'Chocolate Belga R$ 26' e DIFERENCIAIS), e por isso lê-se como um terceiro sabor da vitrine. Mas 'fior di latte' não é item de cardápio nenhum: varri as 9 entradas do projeto 1 e ele só aparece (a) como REGRA DE VOCABULÁRIO — 'fior di latte, nunca creme de leite' — em TOM_DE_VOZ, DIFERENCIAIS e nas duas entradas CARDAPIO, e (b) como ingrediente da Torta Floresta Negra, cuja entrada está ARCHIVED. O lastro que o kit declara ('vocabulário obrigatório da mesma entrada') é verdadeiro como vocabulário e não serve como lastro de PRODUTO. O contentRules é explícito: 'Nome de sabor, combinação ou produto que não esteja no cardápio da base NUNCA entra na arte, mesmo que soe plausível.'",
+          "correcao": "Ou tirar 'fior di latte' da lista, ou reposicioná-lo como BASE e não como sabor. Sugestão com lastro integral: 'Gelato artesanal de método italiano, com Pistacchio Sicília e Chocolate Belga na vitrine.' Se a equipe quiser manter o italianismo (ele é assinatura verbal da marca), a forma segura é 'na base de fior di latte' — que é literalmente o que a regra de vocabulário diz que a palavra significa —, nunca enfileirado com dois nomes de sabor."
+        },
+        {
+          "campo": "avisos — 'PILARES QUE JÁ TÊM MODELO'",
+          "problema": "O aviso está factualmente CORRETO (conferi: o projeto 1 tem exatamente 2 páginas com isTemplate=true, com as tags exatas que o kit cita, e os 10 Templates têm tags vazias salvo os dois coletores arte-rapida #223 e #229). Mas a conclusão operacional — 'não receberam copy porque já têm modelo' — apoia-se num modelo que não está utilizável. Li as camadas de cmhtfdnka0003sw4vw6vqfx44 ('pausas-e-aconchego'): os textos visíveis são 'Pão de Quiejo' (Branley GC 99px) / 'Quentinho' (StageGrotesk Thin 78px) / 'Aquele café delicioso para sua tarde de domingo!'. Dois defeitos duros: 'Quentinho' está na lista de vocabulário VETADO do BrandDNA.contentRules, e 'Quiejo' é erro de grafia contra a regra 8 da entrada DIFERENCIAIS ('GRAMÁTICA: Impecável em todas as peças') e contra o approvalChecklist. Terceiro ponto, mais brando: 'pão de queijo' não consta de nenhuma das duas entradas CARDAPIO — a foto no topo da página (CMT00400.jpg) mostra que o produto EXISTE na casa (taça com logo Real + pão de queijo), então aqui a base é que está incompleta, não o modelo.",
+          "correcao": "Não tratar `pausas-e-aconchego` como coberto até o modelo ser corrigido: substituir 'Quentinho' (palavra vetada) e corrigir 'Pão de Quiejo' → 'Pão de Queijo' na página cmhtfdnka0003sw4vw6vqfx44. E acrescentar pão de queijo à entrada CARDAPIO 'Cardápio Real — cafés, crepes e croissants' (via atualizar-entrada-base, com confirmação da equipe sobre o valor), senão qualquer copy que o nomeie fica sem lastro."
+        },
+        {
+          "campo": "kit.logoUrl (posição no gerador)",
+          "problema": "O kit está correto em si — a URL é a Logo #1 do projeto 1, isProjectLogo=true, HTTP 200, 400x398, e `logoRatio: 0.995` bate com a convenção do repo, que é ALTURA/LARGURA (`gerador-de-templates.ts:255`: `alturaLogo = larguraLogo * logoRatio`; 398/400 = 0.995). O problema é o destino: o gerador que consome este kit posiciona a logo em `y: 1700` (canto INFERIOR direito) nos layouts `dividido` e `topo`, e só em `y: 120` (superior direito) no layout `rodape` (`gerador-de-templates.ts:257-261`). O BrandDNA.composition traz, entre as regras aprendidas: 'A LOGO fica alinhada no canto superior DIREITO da peça, pequena. NÃO VARIA DE CANTO. (2026-08-16 — definido pelo Ciro em 11/08/2026)'. Dois dos três layouts, portanto, produzem peça fora da regra.",
+          "correcao": "Gerar os modelos da Real Gelateria apenas no layout `rodape`, ou — melhor, porque a regra é da marca e não do layout — fixar a logo no topo direito para este projeto em `scripts/lib/gerador-de-templates.ts:257-261`, deixando `posLogo` sempre `{ x: CANVAS.width - M - larguraLogo, y: 120 }`."
+        },
+        {
+          "campo": "copyPorPilar[].servico e .cta (safezone no gerador)",
+          "problema": "O BrandDNA.composition fixa: 'A safezone de story deve ter 250px no topo e 350px na base livres de informação crítica' — ou seja, nada crítico abaixo de y=1570 num canvas 1080x1920. O gerador que consome este kit põe o `servico` em y=1660 (altura 44), o `cta` em y=1722 (altura 48) e a logo em y=1700 com altura 167 (=1700..1867). Os três blocos ficam inteiramente dentro da faixa proibida, e o approvalChecklist pergunta explicitamente 'Só a copy na arte, com respiro generoso e safezone respeitada?'. Isso vale para toda peça gerada por este kit, não só para estas duas copies.",
+          "correcao": "Subir o rodapé para caber acima de y=1570 em `scripts/lib/gerador-de-templates.ts`: `yServico` de 1660 para ~1400 (o CTA passa a ~1462, terminando em 1510) e a logo do layout não-`rodape` de y=1700 para o topo (y=120), o que resolve este item e o anterior de uma vez. Conferir depois com uma peça de prova, porque mexer no rodapé desloca a pilha inteira."
+        }
+      ]
+    }
+  ]
+}

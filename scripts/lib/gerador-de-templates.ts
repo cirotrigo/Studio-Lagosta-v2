@@ -39,6 +39,28 @@ export interface KitDeMarca {
   fonteApoio: string
   /** Caixa da manchete — o DNA de cada marca manda aqui. */
   caixaTitulo: 'uppercase' | 'none'
+  /**
+   * Caixa do bloco de serviço e do CTA, SEPARADA da manchete.
+   *
+   * 🔴 Antes o serviço tinha `uppercase` cravado e o CTA herdava a caixa do
+   * título. Na primeira marca com manchete em caixa alta (By Rock) isso pôs 4
+   * dos 5 campos em caixa alta — reprovando o item 9 do crivo da própria marca
+   * ("A caixa alta está em todos os campos, em vez de só na manchete?") e a
+   * construção proibida do tom de voz. Não passou antes porque o Wine Vix, o
+   * único precedente, usa manchete em Title Case.
+   */
+  caixaServico?: 'uppercase' | 'none'
+  caixaCta?: 'uppercase' | 'none'
+  /**
+   * A logo fica sempre no topo? Algumas marcas fixam o canto — a Real
+   * Gelateria registra "NÃO VARIA DE CANTO", sempre superior direito.
+   */
+  logoSempreNoTopo?: boolean
+  /**
+   * Quanto da base é safezone (nada crítico ali). O DNA da Real Gelateria pede
+   * 350px; o padrão de 220 é o que os modelos aprovados praticam.
+   */
+  safezoneBase?: number
   /** Itálico obrigatório? (Wine Vix: "sempre itálico"). */
   tituloItalico?: boolean
   logoUrl: string | null
@@ -56,11 +78,26 @@ export interface CopyDoTema {
   preTitulo?: string
   /** Manchete. Quebre em duas linhas com `\n`. */
   titulo: string
-  /** Palavra-chave em destaque, quando a marca pede uma palavra no acento. */
+  /**
+   * A CONTINUAÇÃO da manchete, na cor de acento — nunca uma palavra que já
+   * esteja em `titulo`.
+   *
+   * 🔴 O acento é uma LINHA A MAIS, não pintura de palavra dentro do texto.
+   * Repetir um pedaço do título faz a palavra sair duas vezes na arte: medido
+   * no By Rock, "O JOGO PASSA AQUI / COM CHOPP NA MÃO / JOGO" — a terceira
+   * linha órfã, em vermelho. O precedente correto é o Wine Vix: título "O
+   * rótulo certo / para cada" + acento "prato" formam UMA frase.
+   */
   tituloAcento?: string
   descricao: string
   /** Linha de serviço (horário, dias). Só entra com lastro na base. */
   servico?: string
+  /**
+   * Qual ícone acompanha o serviço. 🔴 O gerador colava RELÓGIO sempre que
+   * havia `servico` — e saía relógio ao lado de endereço e de "retirada no
+   * balcão". O ícone é do conteúdo, não do kit.
+   */
+  icone?: 'relogio' | 'local' | null
   cta: string
 }
 
@@ -138,6 +175,21 @@ export type MedirAltura = (camada: Camada) => number
  * glifos e não pelas caixas gravadas.
  */
 export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout, medir: MedirAltura): Camada[] {
+  /**
+   * Guarda contra o defeito da palavra duplicada: se o acento já aparece no
+   * título, a arte sai com a palavra duas vezes. Falha alto em vez de gerar
+   * peça torta — copy é revisada uma vez, arte torta é publicada muitas.
+   */
+  if (copy.tituloAcento) {
+    const norm = (t: string) => t.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim()
+    if (norm(copy.titulo).includes(norm(copy.tituloAcento))) {
+      throw new Error(
+        `tituloAcento "${copy.tituloAcento}" já aparece em titulo "${copy.titulo.replace(/\n/g, ' / ')}" — ` +
+        'o acento é a CONTINUAÇÃO da manchete, não uma palavra dela; do contrário sai duplicada na arte.',
+      )
+    }
+  }
+
   const M = 84 // margem lateral, igual à dos modelos aprovados
   const L = CANVAS.width - M * 2
   const camadas: Camada[] = []
@@ -176,11 +228,12 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   const estiloApoio = { color: kit.corTexto, fontSize: 40, fontFamily: kit.fonteApoio, fontWeight: 400, lineHeight: 1.15 }
   const estiloServico = {
     color: kit.corTexto, fontSize: 30, fontFamily: kit.fonteApoio, fontWeight: 600,
-    letterSpacing: 1.4, textTransform: 'uppercase' as const, lineHeight: 1.2,
+    letterSpacing: 1.4, textTransform: kit.caixaServico ?? 'uppercase', lineHeight: 1.2,
   }
   const estiloCta = {
     color: kit.corAcento, fontSize: 30, fontFamily: kit.fonteApoio, fontWeight: 400,
-    letterSpacing: 2.6, textTransform: kit.caixaTitulo === 'uppercase' ? ('uppercase' as const) : ('none' as const),
+    // NUNCA herda a caixa da manchete — ver `caixaCta` em KitDeMarca.
+    letterSpacing: 2.6, textTransform: kit.caixaCta ?? 'none',
     lineHeight: 1.2,
     ...(kit.tituloItalico ? { fontStyle: 'italic' } : {}),
   }
@@ -229,7 +282,13 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   empilhar(texto('descricao', 'Descricao', 0, copy.descricao, M, 0, Math.min(L, 705), 120, estiloApoio), Math.min(L, 705))
 
   const alturaBloco = y - GAP
-  const yServico = 1660
+  /**
+   * O rodapé começa acima da safezone da base. Estava cravado em 1660, com o
+   * CTA em 1722 e a logo até 1867 — tudo dentro dos 350px que o DNA da Real
+   * Gelateria reserva ("nada de informação crítica"). O padrão de 220 é o que
+   * os modelos aprovados praticam; marca com regra própria declara a sua.
+   */
+  const yServico = CANVAS.height - (kit.safezoneBase ?? 220) - 40
   // `rodape` ancora de BAIXO para cima, terminando 80px acima do serviço; os
   // outros ancoram no topo. Sem isso, título de 3 linhas invadia o rodapé.
   const yInicio = layout === 'rodape'
@@ -242,19 +301,39 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   }
   camadas.push(...bloco)
 
+  /**
+   * 🔴 O rodapé também é MEDIDO. Ele usava altura fixa (44 no serviço, 48 no
+   * CTA) e nunca passava pelo medidor: um serviço de 83 caracteres quebra em
+   * duas linhas, ocupa 84px reais e invade o CTA em 22px — nos três layouts.
+   * Não apareceu antes porque o único precedente (Wine Vix, 32 caracteres)
+   * cabe numa linha. Agora o CTA é empurrado pela altura real do serviço.
+   */
+  const icone = copy.icone === undefined ? 'relogio' : copy.icone
+  const urlIcone = icone === 'local' ? kit.iconeLocal : icone === 'relogio' ? kit.iconeRelogio : null
+  let yRodape = yServico
+
   if (copy.servico) {
-    if (kit.iconeRelogio) {
-      camadas.push(imagem('icone-relogio', 'Icone - relogio', ordem++, kit.iconeRelogio, M, yServico + 4, 34, 34))
+    const recuo = urlIcone ? 50 : 0
+    const cServico = texto('info-1', 'Info - servico', 0, copy.servico, M + recuo, yRodape, L - recuo, 44, estiloServico)
+    const altoServico = Math.max(medir(cServico), 44)
+    ;(cServico.size as { height: number }).height = altoServico
+    if (urlIcone) {
+      camadas.push(imagem('icone-servico', `Icone - ${icone}`, ordem++, urlIcone, M, yRodape + 4, 34, 34))
     }
-    camadas.push(texto('info-1', 'Info - servico', ordem++, copy.servico, kit.iconeRelogio ? M + 50 : M, yServico, L - (kit.iconeRelogio ? 50 : 0), 44, estiloServico))
+    ;(cServico as { order: number }).order = ordem++
+    camadas.push(cServico)
+    yRodape += altoServico + 14
   }
-  camadas.push(texto('cta', 'CTA', ordem++, copy.cta, M, yServico + 62, 640, 48, estiloCta))
+
+  const cCta = texto('cta', 'CTA', ordem++, copy.cta, M, yRodape, 640, 48, estiloCta)
+  ;(cCta.size as { height: number }).height = Math.max(medir(cCta), 48)
+  camadas.push(cCta)
 
   if (kit.logoUrl) {
     const larguraLogo = 168
     const alturaLogo = Math.round(larguraLogo * (kit.logoRatio ?? 0.45))
-    // No layout `rodape` a logo sobe para o topo: o rodapé já está ocupado.
-    const posLogo = layout === 'rodape'
+    // Marca que fixa o canto manda; senão, a logo foge do bloco de texto.
+    const posLogo = kit.logoSempreNoTopo || layout === 'rodape'
       ? { x: CANVAS.width - M - larguraLogo, y: 120 }
       : { x: CANVAS.width - M - larguraLogo, y: 1700 }
     camadas.push({
