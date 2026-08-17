@@ -418,9 +418,20 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   const urlIcone = icone === 'local' ? kit.iconeLocal : icone === 'relogio' ? kit.iconeRelogio : null
   let yRodape = yServico
 
+  /**
+   * 🔴 O rodapé reserva a largura da LOGO quando ela fica ali.
+   *
+   * O serviço usava a largura cheia e passava por baixo do logotipo: visto no
+   * TERO, cuja linha de horário quebra em duas e a segunda cruzava a marca.
+   * Só aparece com serviço longo o bastante para quebrar — o mesmo motivo
+   * pelo qual a colisão com o CTA demorou a aparecer.
+   */
+  const logoNoRodape = !!kit.logoUrl && !kit.logoSempreNoTopo && layout !== 'rodape'
+  const larguraRodape = logoNoRodape ? L - 210 : L
+
   if (copy.servico) {
     const recuo = urlIcone ? 50 : 0
-    const cServico = texto('info-1', 'Info - servico', 0, copy.servico, M + recuo, yRodape, L - recuo, 44, estiloServico)
+    const cServico = texto('info-1', 'Info - servico', 0, copy.servico, M + recuo, yRodape, larguraRodape - recuo, 44, estiloServico)
     const altoServico = Math.max(medir(cServico), 44)
     ;(cServico.size as { height: number }).height = altoServico
     if (urlIcone) {

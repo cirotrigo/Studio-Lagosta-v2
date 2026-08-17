@@ -20,6 +20,31 @@ const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
 const U = `${BLOB}/uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI`
 
 export const KITS: Record<number, KitDeMarca> = {
+  // ── TERO ────────────────────────────────────────────────────────────────
+  // O TERO é a marca de onde o padrão de 3 layouts saiu — os "Story base"
+  // dele e do Wine Vix foram a referência do gerador inteiro.
+  3: {
+    projectId: 3,
+    cliente: 'TERO',
+    corFundo: '#130D0A',
+    corTexto: '#F8F2F0',
+    corAcento: '#EF7B4F',
+    fonteTitulo: 'Didot HTF B06 Bold',
+    // 700 é o que os modelos aprovados do próprio cliente usam.
+    pesoTitulo: 700,
+    fonteApoio: 'Montserrat',
+    fonteApoioForte: 'Montserrat SemiBold',
+    caixaTitulo: 'uppercase',
+    caixaServico: 'uppercase',
+    caixaCta: 'uppercase',
+    logoUrl: `${BLOB}/projects/3/logos/1759897315226-TERO_brasaevinho-branco.png`,
+    logoRatio: 0.4295,
+    iconeRelogio: `${BLOB}/projects/3/elements/1785788523760-relogio-ambar.png`,
+    iconeLocal: `${BLOB}/projects/3/elements/1785788516731-localizacao-ambar.png`,
+    filete: `${BLOB}/projects/3/elements/1785788543066-filete-losango-ambar.png`,
+    fotoPlaceholder: `${BLOB}/uploads/user_3348L5utqkVPHDPW0cTFzGzsLnD/drive-1786670984150-ancho-cmt03464.jpg`,
+  },
+
   // ── O Quintal Parrilla ──────────────────────────────────────────────────
   // A manchete alterna DUAS vozes: primeira linha em DomaniCP, segunda inteira
   // em Amithen, maior, "encostando quase na linha de cima" (composition).
@@ -268,6 +293,60 @@ export const KITS: Record<number, KitDeMarca> = {
  *  - R$ 79,90 do executivo é o único preço autorizado em copy.
  */
 export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
+  /**
+   * TERO — os CINCO tituloAcento repetiam a primeira palavra do título e
+   * sairiam duplicados. Viraram a continuação da manchete.
+   * Corrigida também a regência de `happy-hour`: "encontrar quem você gosta"
+   * → "de quem você gosta" (gostar é transitivo indireto), o que a própria
+   * marca reprova no crivo de gramática.
+   */
+  3: {
+    'almoco-executivo': {
+      preTitulo: 'Almoço executivo',
+      titulo: 'SABOR',
+      tituloAcento: 'NO MEIO DA SEMANA',
+      descricao: 'Prato principal, dois acompanhamentos à escolha e a opção de somar entrada e sobremesa do dia.',
+      servico: 'Terça a sexta, a partir das 11h30',
+      icone: 'relogio',
+      cta: 'Reserve sua mesa',
+    },
+    'happy-hour': {
+      preTitulo: 'Happy hour',
+      titulo: 'DESACELERAR',
+      tituloAcento: 'NO FIM DA TARDE',
+      descricao: '50% em chopps e drinks selecionados, para encontrar de quem você gosta antes do jantar.',
+      servico: 'Terça a sexta das 16h às 20h · Sábado das 12h às 16h',
+      icone: 'relogio',
+      cta: 'Venha para o Tero',
+    },
+    sobremesas: {
+      preTitulo: 'Doce encerramento',
+      titulo: 'SOBREMESAS',
+      tituloAcento: 'DA CASA',
+      descricao: 'Torta gelada de pistache, desejo de cacau e siciliano brûlée para ficar mais um tempo à mesa.',
+      servico: 'Ter a sáb das 11h30 às 23h30 · Dom das 11h30 às 16h',
+      icone: 'relogio',
+      cta: 'Vem provar',
+    },
+    'eventos-especiais': {
+      preTitulo: 'O lugar do encontro',
+      titulo: 'CELEBRAR',
+      tituloAcento: 'NO TERO',
+      descricao: 'Comemorações à mesa, com cozinha autoral, cortes grelhados e uma carta de vinhos com curadoria.',
+      servico: 'Ter a sáb das 11h30 às 23h30 · Dom das 11h30 às 16h',
+      icone: 'relogio',
+      cta: 'Fale com a gente',
+    },
+    'rolha-free': {
+      preTitulo: 'Carta de vinhos',
+      titulo: 'VINHO',
+      tituloAcento: 'COM CURADORIA DA CASA',
+      descricao: 'Uma carta com curadoria e harmonização orientada, para escolher com calma o que vai à mesa.',
+      icone: null,
+      cta: 'Escolha seu vinho',
+    },
+  },
+
   /**
    * O Quintal — os CINCO tituloAcento repetiam palavra do título. Aqui a
    * correção tem regra própria: a composition manda a SEGUNDA LINHA INTEIRA
