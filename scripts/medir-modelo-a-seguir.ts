@@ -205,11 +205,36 @@ async function main() {
   if (esperados.length === 0) throw new Error('A geração de origem não tem textos esperados.')
 
   const refsOrigem = (fv.referencias ?? []) as Array<Record<string, string>>
-  const refModeloOrigem = refsOrigem.find((r) => r.role === 'style')
+
+  /**
+   * A referência de estilo chega por dois caminhos, e os dois se medem aqui:
+   *
+   * - ESCOLHIDA À MÃO: vem em `fv.referencias` com role `style`. Vira o papel
+   *   `style-guide` no braço "depois" — manda na diagramação.
+   * - RODÍZIO: não está em `referencias`; só ficou o `styleRefId`. Segue como
+   *   `style` nos dois braços, e o que se compara então é o resto do prompt
+   *   (a caixa das letras, por exemplo).
+   *
+   * ⚠️ O `styleRefId` é LIDO, nunca pedido de novo: chamar
+   * `escolherReferenciaDeEstilo` marcaria uso e mudaria qual arte a próxima
+   * geração de verdade receberia.
+   */
+  let refModeloOrigem = refsOrigem.find((r) => r.role === 'style')
+  const escolhidaAMao = !!refModeloOrigem
+  if (!refModeloOrigem && typeof fv.styleRefId === 'string' && fv.styleRefId) {
+    const { PrismaClient: PC } = await import('../prisma/generated/client')
+    const db2 = new PC()
+    const ref = await db2.generation.findUnique({
+      where: { id: fv.styleRefId },
+      select: { resultUrl: true },
+    })
+    await db2.$disconnect()
+    if (ref?.resultUrl) {
+      refModeloOrigem = { role: 'style', url: ref.resultUrl, label: 'arte aprovada desta marca' }
+    }
+  }
   if (!refModeloOrigem) {
-    throw new Error(
-      'A geração de origem não tem referência de estilo escolhida. Sem um modelo apontado não há o que medir aqui.',
-    )
+    throw new Error('A geração de origem não teve referência de estilo — nem escolhida, nem do rodízio.')
   }
 
   const brand = await loadBrandContext(origem.projectId!)
@@ -223,8 +248,13 @@ async function main() {
   console.log(`  tamanho      ${inputSize} · tier ${o.qualidade}`)
   console.log(`  textos       ${esperados.map((t) => `"${t.slice(0, 26)}"`).join(', ')}`)
   console.log(`  saída        ${o.saida}\n`)
-  console.log(`  antes   papel "style"       — combina clima, layout livre`)
-  console.log(`  depois  papel "style-guide" — copia a diagramação, lido por visão\n`)
+  console.log(
+    escolhidaAMao
+      ? '  antes   papel "style"       — combina clima, layout livre\n' +
+          '  depois  papel "style-guide" — copia a diagramação, lido por visão\n'
+      : '  antes   prompt gravado na geração\n' +
+          '  depois  prompt do builder atual, mesmo papel "style"\n',
+  )
   console.log(
     `  ${o.repeticoes * 2} gerações · US$ ${custoUsd.toFixed(3)} · R$ ${(custoUsd * o.cambio).toFixed(2)}` +
       `  (fatura da OpenAI; ZERO créditos do Studio)`,
@@ -238,8 +268,11 @@ async function main() {
     ? await baixarDoDrive(refModeloOrigem.driveFileId)
     : (await fetchImageSource(refModeloOrigem.url!)).buffer
   const modeloSaneado = await sanear(bytesModelo, MAX_REF_DIM)
-  const modeloLido = await decodificarGuia(modeloSaneado.buffer).catch(() => null)
-  console.log(
+  // Decodificar só faz sentido quando a referência VAI mandar na diagramação.
+  const modeloLido = escolhidaAMao ? await decodificarGuia(modeloSaneado.buffer).catch(() => null) : null
+  if (!escolhidaAMao) {
+    console.log('\n  referência do RODÍZIO (não escolhida à mão): segue como "style" nos dois braços.')
+  } else console.log(
     modeloLido
       ? `\n  modelo decodificado: ${
           modeloLido.elementosGraficos === null
@@ -253,7 +286,10 @@ async function main() {
     ...refsOrigem
       .filter((r) => r.role !== 'style')
       .map((r) => ({ role: r.role as ArtReferenceRole, label: r.label })),
-    { role: 'style-guide' as const, label: refModeloOrigem.label ?? 'arte de referência' },
+    {
+      role: (escolhidaAMao ? 'style-guide' : 'style') as ArtReferenceRole,
+      label: refModeloOrigem.label ?? 'arte de referência',
+    },
     { role: 'brand-card' as const },
     { role: 'type-specimen' as const, label: 'alfabetos oficiais da marca' },
     ...(fv.logoMode === 'modelo'

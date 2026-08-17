@@ -2270,6 +2270,46 @@ era o modelo de imagem desobedecendo.
   Está de acordo com o DNA da Real, então ficou como está; se um dia o modelo
   tiver de mandar nisso também, o lugar é esse argumento.
 
+### 🔴 A caixa da arte é a caixa da STRING, não do prompt (16/08/2026)
+
+Segundo round do mesmo relato: com o conserto acima no ar, a headline voltou em
+caixa alta. Causa DIFERENTE — a copy chegou gritada (`"DESACELERE E DESFRUTE"`),
+e o prompt reproduz verbatim.
+
+- 🔴 **Instrução no prompt NÃO vence a string literal. Não tente de novo.**
+  Medido com 2 repetições: a linha "se um bloco vier todo em maiúsculas, isso
+  NÃO é ordem de desenhá-lo em caixa alta — trate a caixa como decisão sua"
+  produziu 2 de 2 peças em CAIXA ALTA. O `- "DESACELERE E DESFRUTE"` três linhas
+  acima vence qualquer regra sobre ele. A mesma copy apresentada como
+  "Desacelere e desfrute" saiu em caixa natural, 2 de 2. Há um comentário
+  guardando esse lugar no `buildArtePrompt`.
+- **Mudar a caixa NUNCA reprova arte**: `normalizeForComparison` termina em
+  `.toUpperCase()`. Trocar palavra continua reprovando.
+- 🔴 **Quem grita é o CHAT, não o gerador da casa**: 85% das copies de planos
+  com `origem: 'chat'` têm o 1º bloco todo em maiúsculas (55 de 65), contra
+  **0 de 31** em `propor-semana` e 0 de 3 na bancada. É como se escreve manchete
+  num briefing. As descrições de `criar-plano`, `editar-item-do-plano` e
+  `gerar-imagem` agora pedem caixa natural — mas isso só alcança copy NOVA.
+- 🔴 **Title Case, nunca caixa de frase.** Os blocos reais em caixa alta estão
+  cheios de nome próprio ("PRAIA DO CANTO", "RUA ELESBÃO LINHARES, 52", "ESPETO
+  GAÚCHO"); caixa de frase produz "Praia do canto", que é erro visível. Title
+  Case acerta nome próprio por construção, e o preço — capitalizar substantivo
+  comum — lê como estilo editorial. Validado contra os 63 blocos distintos do
+  banco.
+- 🔴 **Proteção de sigla por TAMANHO não funciona**: proteger todo token de até
+  3 letras (para salvar "OFF" e "DJ") salvou "EM", "NO", "DO", "OS" e "RUA", e
+  saía "Adega E Bistrô NA Praia DO Canto". Palavra curta comum é a MAIORIA das
+  palavras curtas — sigla é exceção, e exceção se enumera (`SIGLAS`).
+- 🔴 **A correção NÃO é neutra, e por isso é opt-in por cliente**
+  (`PROJETOS_COM_CAIXA_NATURAL`, hoje 1, 2, 11 e 12). Medido no By Rock, cujo
+  DNA pede "caixa alta para manchetes que precisam de impacto visual": com a
+  correção ligada a manchete saiu em Title Case nas 2 rodadas — a regra da marca
+  vive a ~68% de um DNA longo e não segurou sozinha. Lista explícita, não
+  derivada da prosa do DNA. Mudou o DNA de alguém? Meça antes de mexer na lista.
+- `scripts/medir-modelo-a-seguir.ts` serve aos dois casos (referência escolhida
+  à mão ou vinda do rodízio): compara o prompt GRAVADO na geração com o do
+  builder atual, sem tocar no banco nem em crédito.
+
 ### 🔴 O decodificador de guia descartava resposta boa, em silêncio (16/08/2026)
 
 `carousel-guide-decoder.ts` é o que transforma "copie o estilo" em lista de

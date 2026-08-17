@@ -703,7 +703,8 @@ export const MCP_TOOLS: McpTool[] = [
               texto: {
                 type: 'array',
                 items: { type: 'string' },
-                description: 'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada).',
+                description:
+                  'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca.',
               },
               legenda: { type: 'string', description: 'A legenda do Instagram, quando houver.' },
               fotoDriveId: { type: 'string', description: 'A foto do acervo (de buscar-fotos).' },
@@ -847,7 +848,8 @@ export const MCP_TOOLS: McpTool[] = [
         texto: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Novos blocos de texto da arte (substituem todos).',
+          description:
+            'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui.',
         },
         legenda: { type: 'string', description: 'Nova legenda.' },
         fotoDriveId: { type: 'string', description: 'Outra foto do acervo.' },
@@ -2230,7 +2232,7 @@ export const MCP_TOOLS: McpTool[] = [
           type: 'array',
           items: { type: 'string' },
           description:
-            'Trilha arte: os blocos de texto EXATOS da peça, na ordem de leitura (máx 12 blocos de 200 chars). São reproduzidos verbatim e conferidos por visão.',
+            'Trilha arte: os blocos de texto EXATOS da peça, na ordem de leitura (máx 12 blocos de 200 chars). As PALAVRAS são reproduzidas verbatim e conferidas por visão; a CAIXA das letras, não — quem decide se a manchete sai em caixa alta é a identidade da marca. Escreva em caixa natural ("Desacelere e desfrute"), deixando em maiúsculas só sigla, unidade, valor e o nome da marca.',
         },
         formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'story 9:16, feed 4:5, quadrado 1:1.' },
         referencias: {

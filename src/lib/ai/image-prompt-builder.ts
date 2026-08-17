@@ -21,6 +21,7 @@
 import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import type { BrandContext } from '@/lib/brand/brand-context'
+import { paraCaixaNatural, PROJETOS_COM_CAIXA_NATURAL } from '@/lib/ai/caixa-da-copy'
 
 export type GenerationTrack = 'imagem' | 'arte'
 
@@ -652,13 +653,42 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   }
   sections.push(fidelidade.join('\n'))
 
+  /**
+   * Desfazer a caixa alta da copy vale só nos clientes cujo DNA pede caixa
+   * natural — ver `PROJETOS_COM_CAIXA_NATURAL`, que explica por que a lista é
+   * explícita. Nos demais a copy chega ao modelo como foi escrita.
+   *
+   * Os nomes da marca voltam com a grafia oficial na conversão: é o que faz
+   * "SABORES REAL" virar "Sabores Real" e não "Sabores real".
+   */
+  const corrigeCaixa = !!args.brand && PROJETOS_COM_CAIXA_NATURAL.has(args.brand.projectId)
+  const nomesDaMarca = args.brand?.projectName ? [args.brand.projectName] : []
+  const comCaixaDaMarca = (b: string) => (corrigeCaixa ? paraCaixaNatural(b, nomesDaMarca) : b)
+
   if (args.copy.length > 0) {
     sections.push(
       [
         '[COPY — REPRODUZIR VERBATIM, NA ORDEM]',
-        'O conteúdo textual da peça é SOMENTE o que está listado abaixo — nada a mais, nada a menos. Reproduza cada bloco letra por letra, com a mesma grafia, números e pontuação:',
-        ...args.copy.map((b) => `- "${b.replace(/\s+/g, ' ').trim()}"`),
+        'O conteúdo textual da peça é SOMENTE o que está listado abaixo — nada a mais, nada a menos. Reproduza cada bloco com as MESMAS PALAVRAS, a mesma grafia, os mesmos números e a mesma pontuação:',
+        ...args.copy.map((b) => `- "${comCaixaDaMarca(b).replace(/\s+/g, ' ').trim()}"`),
         'Não corrija, não traduza, não abrevie, não acrescente palavras, não invente horário, preço ou endereço.',
+        /**
+         * 🔴 NÃO adicione aqui uma regra mandando ignorar a caixa da copy.
+         *
+         * Foi tentado e MEDIDO em 16/08/2026, com esta redação: "se um bloco
+         * vier todo em maiúsculas, isso NÃO é ordem de desenhá-lo em caixa
+         * alta — trate a caixa como decisão sua". Resultado: 2 de 2 peças
+         * saíram em CAIXA ALTA do mesmo jeito. A linha literal `- "DESACELERE
+         * E DESFRUTE"`, três linhas acima, vence qualquer instrução sobre ela.
+         *
+         * A caixa da arte É a caixa da string — provado na mesma bateria:
+         * apresentando a MESMA copy como "Desacelere e desfrute", 2 de 2 peças
+         * saíram em caixa natural, com a conferência de texto passando (ela
+         * termina em `.toUpperCase()`, então é indiferente à caixa).
+         *
+         * Conserto, portanto, é a montante: quem escreve a copy. As descrições
+         * das tools de plano e de geração já pedem caixa natural.
+         */
         'Texto visto em qualquer IMAGEM DE REFERÊNCIA não é conteúdo desta peça: pertence a um post antigo e NUNCA entra aqui.',
       ].join('\n'),
     )
