@@ -128,6 +128,14 @@ export interface CopyDoTema {
   descricao: string
   /** Linha de serviço (horário, dias). Só entra com lastro na base. */
   servico?: string
+  /**
+   * Foto DESTE tema, quando uma só não serve para todos.
+   *
+   * 🔴 Placeholder único por marca contradiz a copy: no Empório, uma foto de
+   * brunch ficava atrás de "massa fresca e molho roti" e de "parede de vinhos
+   * ao fundo". Foto que nega o texto é pior que foto genérica.
+   */
+  foto?: string
   /** Ornamento nesta peça? Default: usa o do kit, se houver. */
   usarFilete?: boolean
   /**
@@ -238,7 +246,7 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
     visible: true, locked: false, isDynamic: true,
     position: { x: 0, y: 0 }, size: CANVAS,
     style: { objectFit: 'cover', border: { width: 0, color: '#000000', radius: 0 }, blur: 0, brightness: 0, contrast: 0 },
-    fileUrl: kit.fotoPlaceholder,
+    fileUrl: copy.foto ?? kit.fotoPlaceholder,
   })
 
   /**

@@ -15,8 +15,40 @@
 import type { KitDeMarca, CopyDoTema } from './gerador-de-templates'
 
 const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
+/** Namespace de upload das fotos do Empório — não é asset de projeto, então
+ *  não se auto-verifica; a prova de pertencimento é a referência nas páginas. */
+const U = `${BLOB}/uploads/user_3GVFL7SwqXDxP2CpwdgxlNqvGtI`
 
 export const KITS: Record<number, KitDeMarca> = {
+  // ── Empório Fonseca ─────────────────────────────────────────────────────
+  // 🔴 ZERO elementos gráficos utilizáveis: o único Element cadastrado é o
+  // selo do Espírito Santo Restaurant Week (26/03 a 26/04), de campanha
+  // ARQUIVADA — marca de evento de terceiro, com data vencida. As peças saem
+  // só com tipografia e véu, sem filete e sem ícone.
+  12: {
+    projectId: 12,
+    cliente: 'Empório Fonseca',
+    // Base dos DOIS gradientes de leitura. O DNA é explícito: este hex "nunca
+    // deve ser usado como retângulo sólido atrás de texto sobre foto".
+    corFundo: '#2C3445',
+    corTexto: '#FFFFFF',
+    corAcento: '#CAB371',
+    // 🔴 O negrito do Friz é uma FAMÍLIA separada (FRZQUADB), não o peso 700
+    // de FRZQUADN. Subir pesoTitulo produziria faux-bold só no navegador — o
+    // render server-side usa o peso real do arquivo. Neste projeto se troca de
+    // peso trocando de família, nunca mexendo no número.
+    fonteTitulo: 'FRZQUADB',
+    pesoTitulo: 400,
+    fonteApoio: 'TrajanPro Regular',
+    caixaTitulo: 'uppercase',
+    caixaServico: 'none',
+    caixaCta: 'none',
+    logoUrl: `${BLOB}/projects/12/logos/1771683215986-Ativo_2icones.png`,
+    logoRatio: 0.325,
+    // Sem ícone e sem filete — ver o comentário acima.
+    fotoPlaceholder: `${U}/drive-1786711121286-Restaurante-dsc05125.jpg`,
+  },
+
   // ── Seu Quinto ──────────────────────────────────────────────────────────
   // Paleta ESTRITA de cinco cores com papel definido, e o kit precisa das
   // três que aparecem: vermelho na palavra-chave da manchete, amarelo no
@@ -204,6 +236,79 @@ export const KITS: Record<number, KitDeMarca> = {
  *  - R$ 79,90 do executivo é o único preço autorizado em copy.
  */
 export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
+  /**
+   * Empório Fonseca — correções da conferência:
+   *  - a foto era UMA só, de brunch, para os seis pilares: ficava atrás de
+   *    "massa fresca e molho roti" e de "parede de vinhos ao fundo",
+   *    contradizendo 4 das 6 copies. E reprovava na lista FECHADA de
+   *    anti-fotografia do DNA (item 6: "prato, taça ou tábua cortados pela
+   *    borda") — na imagem o prato é cortado embaixo e a tábua à direita.
+   *    Cada tema recebeu a foto do template temático correspondente;
+   *  - `promocoes-da-semana` listava QUATRO programações, e a entrada
+   *    CAMPANHAS declara um conjunto FECHADO DE TRÊS. E o serviço dava o
+   *    horário de UMA delas, o que na arte lê como se valesse para todas —
+   *    alvo direto da regra "não confundir os dois menus";
+   *  - `gastronomia` era o único serviço sem dias, numa marca cuja REGRA
+   *    CRÍTICA é que a casa fecha na segunda.
+   * Sem `preTitulo`: a lista fechada do tom de voz é toda de contexto de DIA
+   * ("A semana começa com", "Domingo merece"), que não cabe em modelo
+   * atemporal — e "A semana começa com" apontaria para a segunda, o dia em
+   * que a casa fecha. Os seis CTAs são da lista fechada.
+   */
+  12: {
+    gastronomia: {
+      titulo: 'COZINHA DE\nTÉCNICA FRANCESA',
+      descricao: 'Massa fresca, molho roti e o ponto certo de cada prato.',
+      servico: 'Bistrô · terça a domingo, almoço das 11h às 15h · Jardim Camburi, Vitória/ES',
+      icone: null,
+      foto: `${U}/drive-1786543841312-CMT00743.jpg`,
+      cta: 'Reserve sua mesa.',
+    },
+    'cafes-e-brunch': {
+      titulo: 'PÃO FRESCO E\nCAFÉ DE MÉTODO',
+      descricao: 'Brioche de fermentação natural e o café coado no Hario V60.',
+      servico: 'Café da manhã · terça a domingo, das 9h às 11h · Jardim Camburi, Vitória/ES',
+      icone: null,
+      foto: `${U}/drive-1785845138266-CMT05187.jpg`,
+      cta: 'Aguardamos você.',
+    },
+    'vinhos-e-drinks': {
+      titulo: 'HAPPY WINE',
+      descricao: 'Vinhos selecionados à vontade, com a entrada exclusiva da semana.',
+      servico: 'Terça a sexta, das 16h às 19h · R$ 89 por pessoa · Jardim Camburi, Vitória/ES',
+      icone: null,
+      foto: `${U}/drive-1785237160241-Vinhos-dsc03182.jpg`,
+      cta: 'Faça sua reserva.',
+    },
+    'eventos-especiais': {
+      titulo: 'PARA AS DATAS\nQUE MERECEM',
+      descricao: 'A cozinha de técnica francesa e a curadoria de vinhos à mesa.',
+      servico: 'Terça a domingo, a partir das 9h · Jardim Camburi, Vitória/ES',
+      icone: null,
+      foto: `${U}/drive-1786563759896-Organizar-cmt08179.jpg`,
+      cta: 'Venha viver a experiência.',
+    },
+    'ambiente-e-experiencia': {
+      titulo: 'UMA CASA PARA\nDESACELERAR',
+      descricao: 'Mármore, nogueira e a parede de vinhos ao fundo.',
+      servico: 'Terça a domingo, a partir das 9h · Jardim Camburi, Vitória/ES',
+      icone: null,
+      foto: `${U}/drive-1786711121286-Restaurante-dsc05125.jpg`,
+      cta: 'Venha conhecer.',
+    },
+    'promocoes-da-semana': {
+      titulo: 'PROGRAMAÇÃO\nDA SEMANA',
+      // O conjunto FECHADO de três que a entrada CAMPANHAS declara.
+      descricao: 'Happy Wine, Quarta da Pizza e Sábado para Harmonizar.',
+      // Sem horário: a descrição é plural e um horário singular leria como se
+      // valesse para as três.
+      servico: 'Terça a domingo · Jardim Camburi, Vitória/ES',
+      icone: null,
+      foto: `${U}/drive-1786562519028-CMT06215.jpg`,
+      cta: 'Venha conhecer.',
+    },
+  },
+
   /**
    * Seu Quinto — correções da conferência:
    *  - os SEIS `tituloAcento` repetiam palavra do título;
