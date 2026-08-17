@@ -67,7 +67,7 @@
  */
 import * as fs from 'fs'
 import { PrismaClient } from '../prisma/generated/client'
-import { DIAS_SEMANA, diasDoModelo, normalizar } from '../src/lib/posts/dia-semana'
+import { DIAS_SEMANA, chavesDeDia, normalizar } from '../src/lib/posts/dia-semana'
 import { lerUsosDeModelo } from '../src/lib/aprendizado/historico-de-artes'
 
 const db = new PrismaClient()
@@ -254,7 +254,11 @@ async function coletar(): Promise<Modelo[]> {
     const temas = [...(p.tags ?? []), ...(p.Template.tags ?? [])]
       .map(normalizar)
       .filter((t) => t.length > 0 && !DIAS_SEMANA.some((d) => t.includes(normalizar(d))))
-    const chaves = Array.from(new Set([...diasDoModelo(textos).map((d) => `dia:${d}`), ...temas.map((t) => `tema:${t}`)]))
+    // `chavesDeDia` (e não `diasDoModelo`) porque o modelo SEM dia declarado é
+    // curinga: ele cobre `dia:*`, a reserva usada onde não há específico.
+    // A regra é a MESMA de `sugerirPosts` — divergir aqui despromove um
+    // modelo que a sugestão ainda enxerga, e o dia some em silêncio.
+    const chaves = Array.from(new Set([...chavesDeDia(textos), ...temas.map((t) => `tema:${t}`)]))
 
     return {
       pageId: p.id,

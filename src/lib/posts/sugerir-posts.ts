@@ -36,7 +36,7 @@
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
-import { DIAS_SEMANA, casaComDia, normalizar } from '@/lib/posts/dia-semana'
+import { DIAS_SEMANA, escolherModeloDoDia, normalizar } from '@/lib/posts/dia-semana'
 import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
 import { calcularCadencia, type PostDoHistorico } from '@/lib/posts/cadencia'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
@@ -79,7 +79,14 @@ export interface SugestaoSlot {
   /** "YYYY-MM-DD HH:mm" pronto para colocar-na-agenda. */
   scheduledDatetime: string
   motivo: string
-  modeloSugerido?: { pageId: string; nome: string; template: string; temas: string[] }
+  /** `curinga` = veio da reserva genérica (modelo sem dia declarado), não é do dia. */
+  modeloSugerido?: {
+    pageId: string
+    nome: string
+    template: string
+    temas: string[]
+    curinga: boolean
+  }
   campanhasDoDia?: string[]
   /**
    * Id do sinal desta proposta. Devolva-o em `colocar-na-agenda` / `POST
@@ -193,6 +200,19 @@ export async function sugerirPosts(params: {
     db.page.findMany({
       where: { isTemplate: true, Template: { projectId } },
       select: { id: true, name: true, tags: true, Template: { select: { name: true, tags: true } } },
+      /**
+       * Ordem determinística com RODÍZIO — o menos usado primeiro, `name` só
+       * para desempatar. A consulta não tinha `orderBy`, então "o primeiro que
+       * casa" dependia da ordem que o Postgres devolvesse: com dois modelos do
+       * mesmo dia (o By Rock tem dois de sábado e dois de terça) a escolha era
+       * arbitrária e podia mudar entre chamadas. O curinga amplia o alcance
+       * disso de um dia para todos os que não têm específico, então o desempate
+       * deixou de ser detalhe.
+       *
+       * `usedCount` é `Int @default(0)`, não-nulo — a armadilha do `ASC` ser
+       * NULLS LAST em Postgres não se aplica aqui (ela vale para `lastUsedAt`).
+       */
+      orderBy: [{ usedCount: 'asc' }, { name: 'asc' }],
     }),
     db.knowledgeBaseEntry.findMany({
       // Campanha já vencida nunca é tema de post novo. O corte fino é por
@@ -203,17 +223,25 @@ export async function sugerirPosts(params: {
   ])
 
   const modeloDoDia = (dia: number) => {
-    const achado = modelos.find((m) =>
-      casaComDia([m.name, m.Template.name, ...(m.tags ?? []), ...(m.Template.tags ?? [])], dia),
+    const achado = escolherModeloDoDia(
+      modelos,
+      (m) => [m.name, m.Template.name, ...(m.tags ?? []), ...(m.Template.tags ?? [])],
+      dia,
     )
-    return achado
-      ? {
-          pageId: achado.id,
-          nome: achado.name,
-          template: achado.Template.name,
-          temas: Array.from(new Set([...(achado.tags ?? []), ...(achado.Template.tags ?? [])])),
-        }
-      : undefined
+    if (!achado) return undefined
+    const { modelo, curinga } = achado
+    return {
+      pageId: modelo.id,
+      nome: modelo.name,
+      template: modelo.Template.name,
+      temas: Array.from(new Set([...(modelo.tags ?? []), ...(modelo.Template.tags ?? [])])),
+      /**
+       * O modelo veio da reserva genérica, não é do dia. Quem monta a proposta
+       * precisa saber: dizer "o modelo de sábado" sobre um layout de base é
+       * mentira, e a escolha de assunto não pode se apoiar nele.
+       */
+      curinga,
+    }
   }
 
   /**
