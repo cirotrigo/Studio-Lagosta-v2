@@ -1871,11 +1871,14 @@ assunto por slot → `buscarNoAcervo` → `montarDicasDeCopy` → `criarPlano`. 
   `modeloSugerido.temas` são as TAGS da página, não assunto. Quem escolhe o
   assunto é `propor-semana`, cruzando `taxonomiaAprovada` com a distribuição
   real de `montarPerfil`. **Não mova essa escolha para `sugerir-posts.ts`.**
-- 🔴 **Em produção há ZERO pilares e ZERO posts classificados** (medido em
-  11/08/2026, nos 11 projetos). A destilação da F2 só ganha vida quando alguém
-  aprova a taxonomia por cliente na aba Marca. Até lá o caminho SEM tema é o
-  normal, não a exceção — `taxonomiaAprovada` devolvendo `[]` significa "este
-  cliente ainda não tem taxonomia", nunca erro.
+- ~~Em produção há ZERO pilares e ZERO posts classificados (11/08/2026)~~ —
+  **SUPERADO em 16/08/2026: a taxonomia foi aprovada e o histórico
+  classificado.** Medido: **9 dos 11 projetos** têm 5 a 7 pilares aprovados
+  (todos com `origem: 'humano'`) e entre **533 e 720 posts classificados** cada.
+  Ficam de fora só Lagosta Criativa e Ciro Trigo, que não são cliente de
+  restaurante. O caminho SEM tema deixou de ser o normal — mas
+  `taxonomiaAprovada` devolvendo `[]` continua significando "este cliente ainda
+  não tem taxonomia", nunca erro, e é o que vale para projeto novo.
 - **Uma chamada de LLM para a leva INTEIRA**, não uma por slot: além de mais
   barata, é o que deixa o modelo ver a semana toda e não repetir o mesmo gancho.
   Molde: o classificador da F2.
@@ -2343,6 +2346,62 @@ também rodava degradado sem sinal nenhum.
   "filete, linha fina, losango, ponto entre linhas, selo, moldura, barra, faixa,
   ícone", ele devolvia lista vazia para uma arte que tem filete com losango
   central logo abaixo da manchete.
+
+### Modelo sem dia declarado é CURINGA da semana (16/08/2026)
+
+`casaComDia` só dá match quando o texto CONTÉM o nome do dia, e não havia
+curinga: modelo genérico só aparecia na sugestão se declarasse um dia.
+`escolherModeloDoDia` (`src/lib/posts/dia-semana.ts`) resolve — ESPECÍFICO
+primeiro, curinga como reserva.
+
+- 🔴 **Tirar a tag do dia NÃO libera o modelo — REMOVE ele da sugestão.** Foi
+  o que quase se fez com os "Story base (3 layouts)" de TERO e Wine Vix, que
+  tinham `quinta` carimbada justamente porque era a única forma de aparecer.
+  Medido antes de gravar: sem `quinta` e sem curinga, os dois clientes caíam de
+  2 dias cobertos para 1 e não ganhavam nenhum outro. A saída é CÓDIGO, e o
+  script de dado (`liberar-modelo-base-de-dia-fixo.ts`) só é seguro DEPOIS
+  dele. Cobertura real depois dos dois: TERO 1→7, Wine Vix 1→7, By Rock 3→7.
+- **A prioridade mora no módulo puro, não em quem chama**: `sugerirPosts` e o
+  inventário de curadoria (`scripts/inventario-uso-modelos.ts`) PRECISAM casar
+  do mesmo jeito — divergir despromove um modelo que a sugestão ainda enxerga,
+  e o dia some em silêncio. É a mesma razão pela qual `casaComDia` já morava
+  lá.
+- 🔴 **O curinga recebe UMA chave de cobertura (`dia:*`), nunca as sete.** Com
+  sete ele viraria "único cobridor" de todo dia e a proteção contra chave órfã
+  nunca o deixaria ser despromovido. `dia:*` é o que ele é — a reserva — e
+  perder o último curinga do cliente tira a reserva de todos os dias.
+- **A query de modelos ganhou `orderBy` (`usedCount asc, name asc`).** Ela não
+  tinha nenhum, então "o primeiro que casa" dependia da ordem do Postgres — com
+  dois modelos do mesmo dia (o By Rock tem dois de sábado e dois de terça) a
+  escolha era arbitrária. O curinga amplia isso de um dia para todos os sem
+  específico. `usedCount` é `Int` não-nulo: a armadilha do `ASC` ser NULLS LAST
+  vale para `lastUsedAt`, não aqui.
+- `modeloSugerido` carrega `curinga: boolean` — quem monta a proposta não pode
+  dizer "o modelo de sábado" sobre um layout de base.
+
+### Tag de tema de modelo: o vocabulário vem dos PILARES (16/08/2026)
+
+- 🔴 **Tag de DIA não serve para busca por tema, e era o que 8 dos 20 modelos
+  tinham de único.** `prepareCreative` casa o tema pedido contra
+  `Page.tags` + `Template.tags` e FALHA quando nada bate; o dia já é resolvido
+  por outro caminho (`casaComDia`, que lê o NOME da página e do template). Ou
+  seja: a tag de dia era redundante E deixava o modelo inalcançável por
+  assunto. Corrigido por `scripts/taguear-modelos-sem-tema.ts`, com as tags
+  lidas da copy real de cada arte, declaradas uma a uma. "Só dia" caiu de 8
+  para 0; alcançáveis por tema subiram de 6 para 14.
+- **O vocabulário de tema NÃO se inventa: são os pilares.** `ContentPillar` já
+  é "a taxonomia fechada de temas de UM cliente", com slug normalizado e
+  aprovada por gente. `scripts/semear-tags-de-tema.ts` leva os slugs aprovados
+  para `ProjectTag` (a sugestão do TagInput) — 53 tags em 9 clientes. Um
+  segundo vocabulário de temas recriaria o problema que os pilares vieram
+  resolver ("happy hour" e "drinks" em baldes diferentes).
+- **`ProjectTag` é só autocomplete** — semear não muda busca de ninguém. Quem
+  casa modelo com tema é `Page.tags` + `Template.tags`.
+- ⚠️ **Duas dívidas ficaram abertas**: `ProjectTag` está cheio de lixo herdado
+  (dia da semana, `Template`, `Página 1`, `Quarta-feira (Cópia)`) — limpar é
+  destrutivo e não foi feito; e as tags que os modelos receberam da copy
+  (`almoco`, `ribs`, `prato-do-dia`) NÃO usam os slugs dos pilares, então os
+  dois vocabulários ainda divergem.
 
 ### Promover página a modelo voltou ao editor (16/08/2026)
 
