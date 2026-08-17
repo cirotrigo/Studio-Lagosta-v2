@@ -49,6 +49,7 @@ import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/s
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
+import { modeloLivre } from '@/lib/ai/modelo-livre'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -181,6 +182,8 @@ interface LoadedRef {
   buffer: Buffer
   mimeType: string
   excluir?: string[]
+  /** Modo modelo-livre no papel `style-guide` — ver `ArtReferenceDescriptor`. */
+  estiloLivre?: boolean
 }
 
 /**
@@ -249,6 +252,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             role: ehModeloEscolhido ? ('style-guide' as const) : ref.role,
             label: ref.label,
             excluir: ref.excluir,
+            // Nos clientes de `modelo-livre.ts` o modelo passa o ESTILO e o
+            // layout fica livre — muda o preâmbulo do papel.
+            estiloLivre: ehModeloEscolhido && modeloLivre(args.projectId) ? true : undefined,
             ...sane,
           }
         } catch (error) {
@@ -369,7 +375,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     let modeloLido: GuiaLido | null = null
     const refModelo = loadedRefs.find((r) => r.role === 'style-guide')
     if (refModelo) {
-      modeloLido = await decodificarGuia(refModelo.buffer, { nomeDaMarca: brand?.projectName }).catch(() => null)
+      modeloLido = await decodificarGuia(refModelo.buffer, {
+        nomeDaMarca: brand?.projectName,
+        // Modo livre: a leitura sai sem bandas/faixas/lados, senão a descrição
+        // vira instrução de lugar por outra porta (`modelo-livre.ts`).
+        semPosicoes: modeloLivre(args.projectId),
+      }).catch(() => null)
       console.log(
         modeloLido
           ? `[arte-ia.bg] modelo escolhido decodificado para o MODELO SPINE` +

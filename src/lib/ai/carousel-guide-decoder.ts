@@ -389,7 +389,16 @@ export function textosDoGuia(g: GuiaDecodificado): string[] {
  */
 export function descricaoDoGuia(
   g: GuiaDecodificado,
-  opcoes: { tratamentoDaFoto?: boolean; nomeDaMarca?: string | null } = {},
+  opcoes: {
+    tratamentoDaFoto?: boolean
+    nomeDaMarca?: string | null
+    /**
+     * Omite bandas, faixas, lados e alinhamento — o modo `modelo-livre.ts`.
+     * Descrição de posição vira instrução de lugar por osmose; quando a
+     * posição é do gerador, ela não pode nem constar.
+     */
+    semPosicoes?: boolean
+  } = {},
 ): string {
   const linhas: string[] = []
 
@@ -401,18 +410,21 @@ export function descricaoDoGuia(
     // Zona sem nível nenhum ainda é zona de texto (a visão só não detalhou).
     return deTexto.length > 0 || daMarca.length === 0
   }).length
-  if (zonasDeTexto > 1) {
+  if (zonasDeTexto > 1 && !opcoes.semPosicoes) {
     linhas.push(
       `- ZONAS DE TEXTO: ${zonasDeTexto}, SEPARADAS. Mantenha cada uma na sua faixa — não junte tudo num bloco só.`,
     )
   }
   zonas.forEach((zona, iz) => {
     const faixa = faixaDaBanda(zona.banda)
-    const lugar = [
-      faixa ? `faixa ${faixa}` : null,
-      zona.lado ? `lado ${zona.lado}` : null,
-      zona.alinhamento ? `alinhado à ${zona.alinhamento}` : null,
-    ]
+    const lugar = (opcoes.semPosicoes
+      ? []
+      : [
+          faixa ? `faixa ${faixa}` : null,
+          zona.lado ? `lado ${zona.lado}` : null,
+          zona.alinhamento ? `alinhado à ${zona.alinhamento}` : null,
+        ]
+    )
       .filter(Boolean)
       .join(', ')
     const nome = zonas.length > 1 ? `Zona ${iz + 1}${zona.papel ? ` (${zona.papel})` : ''}` : 'Bloco de texto'
@@ -427,7 +439,11 @@ export function descricaoDoGuia(
     const { daMarca, deTexto } = separarAMarca(zona, opcoes.nomeDaMarca)
     if (daMarca.length > 0) {
       linhas.push(
-        `  ↳ A MARCA fica AQUI${lugar ? ` (${lugar})` : ''}, como na referência: ela aparece UMA única vez na peça, desenhada conforme o bloco da logo. Não a repita em outro canto e não a trate como texto.`,
+        opcoes.semPosicoes
+          ? // Modo livre: sem posição, "fica AQUI" perderia o referente. O
+            // canto continua vindo do bloco da logo (`cantoDaAssinatura`).
+            '  ↳ A MARCA da casa também aparece nesta zona da referência: na peça nova ela existe UMA única vez, desenhada conforme o bloco da logo. Não a repita e não a trate como texto.'
+          : `  ↳ A MARCA fica AQUI${lugar ? ` (${lugar})` : ''}, como na referência: ela aparece UMA única vez na peça, desenhada conforme o bloco da logo. Não a repita em outro canto e não a trate como texto.`,
       )
     }
 
@@ -448,7 +464,9 @@ export function descricaoDoGuia(
   })
   if (zonas.some((z) => (z.niveis ?? []).length > 0)) {
     linhas.push(
-      '- ⛔ As PALAVRAS do modelo foram omitidas de propósito: o que se copia dele é a FORMA (onde, em que cor, em que caixa, em que tamanho). As palavras desta peça são só as da COPY listada acima — nenhuma outra.',
+      opcoes.semPosicoes
+        ? '- ⛔ As PALAVRAS do modelo foram omitidas de propósito: o que se copia dele é o ESTILO (em que fonte, em que cor, em que caixa, em que proporção). As palavras desta peça são só as da COPY listada acima — nenhuma outra.'
+        : '- ⛔ As PALAVRAS do modelo foram omitidas de propósito: o que se copia dele é a FORMA (onde, em que cor, em que caixa, em que tamanho). As palavras desta peça são só as da COPY listada acima — nenhuma outra.',
     )
   }
 
@@ -544,6 +562,8 @@ export async function decodificarGuia(
     paraSerie?: boolean
     /** Nome da marca — é como a marca é distinguida do texto. Ver `ehAMarca`. */
     nomeDaMarca?: string | null
+    /** Modo modelo-livre: a descrição sai sem posições. Ver `descricaoDoGuia`. */
+    semPosicoes?: boolean
   } = {},
 ): Promise<GuiaLido | null> {
   try {
@@ -599,6 +619,7 @@ export async function decodificarGuia(
     const descricao = descricaoDoGuia(object, {
       tratamentoDaFoto: opcoes.paraSerie,
       nomeDaMarca: opcoes.nomeDaMarca,
+      semPosicoes: opcoes.semPosicoes,
     })
     /**
      * Reconciliação: resposta que não descreveu NEM os níveis de texto nem a

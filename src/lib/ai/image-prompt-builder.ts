@@ -23,6 +23,7 @@ import { openai } from '@ai-sdk/openai'
 import type { BrandContext } from '@/lib/brand/brand-context'
 import { CAIXA_DA_MANCHETE, paraCaixaAlta, paraCaixaNatural } from '@/lib/ai/caixa-da-copy'
 import { elementosQueFazemSentido, instrucaoDeServico } from '@/lib/ai/blocos-de-servico'
+import { modeloLivre } from '@/lib/ai/modelo-livre'
 
 export type GenerationTrack = 'imagem' | 'arte'
 
@@ -56,6 +57,13 @@ export interface ArtReferenceDescriptor {
   excluir?: string[]
   role: ArtReferenceRole
   label?: string
+  /**
+   * Só em `style-guide`: o modelo passa o ESTILO e deixa o layout livre
+   * (`modelo-livre.ts`). Muda o preâmbulo — o texto estrito promete "same
+   * placement... in the same minute", que é exatamente o que o modo livre
+   * revoga; prometer as duas coisas seria ordem contraditória.
+   */
+  estiloLivre?: boolean
 }
 
 /**
@@ -242,7 +250,11 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
       // Title Case do modelo.
       case 'style-guide':
         lines.push(
-          `${idx} is the MODEL to follow${ref.label ? ` (${ref.label})` : ''} — an approved piece from this brand, hand-picked for this job. Side by side with it, the new piece must look laid out by the SAME designer, in the same minute: same placement of the text block, same alignment, same typographic case per level, same colour per level, same ornaments, same reading veil. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Copy its LAYOUT, never its content.${linhaDeExclusao}`,
+          ref.estiloLivre
+            ? // Modo livre (`modelo-livre.ts`): o modelo veste o texto; o
+              // layout é do gerador, lendo a foto. Mesmos dois limites duros.
+              `${idx} is the STYLE MODEL${ref.label ? ` (${ref.label})` : ''} — an approved piece from this brand. Match how its text is DRESSED: the same typefaces per level, the same case per level, the same colour per level, the same size proportions between levels, the same ornaments and overall restraint. Do NOT copy its layout: WHERE each block sits in the new piece is your decision, made by reading the new photo — the subject of the photo is never covered by text. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene.${linhaDeExclusao}`
+            : `${idx} is the MODEL to follow${ref.label ? ` (${ref.label})` : ''} — an approved piece from this brand, hand-picked for this job. Side by side with it, the new piece must look laid out by the SAME designer, in the same minute: same placement of the text block, same alignment, same typographic case per level, same colour per level, same ornaments, same reading veil. Two hard limits. (a) Its TEXT is not content: every word, number, price, date or headline lettered in it belongs to that OLD post. Never copy, adapt or echo any text from this image — the new piece letters EXCLUSIVELY the copy blocks listed in this prompt. (b) Its photo, dish, people and objects are not content: nothing from this image appears in the new scene. Copy its LAYOUT, never its content.${linhaDeExclusao}`,
         )
         break
       case 'series-guide':
@@ -620,6 +632,77 @@ export function buildModeloSpine(
 }
 
 /**
+ * MODELO SPINE LIVRE — o modelo passa o ESTILO; o LUGAR é do gerador.
+ *
+ * A alternativa ao `buildModeloSpine` para os clientes de `modelo-livre.ts`.
+ * Nasceu de medição ao contrário: uma noite inteira de peças geradas com o
+ * spine estrito ("same placement, same alignment, in the same minute", zonas
+ * com percentuais, "variação é DEFEITO") saiu PIOR do que o fluxo antigo que
+ * deixava o gpt-image compor — "o modelo já manda bem e é bem criativo, agora
+ * está engessando muito" (Ciro, 17/08/2026). O gpt-image compõe melhor quando
+ * lê a foto do que quando segue coordenadas.
+ *
+ * O que se copia continua sendo tudo o que identifica a marca: as fontes (o
+ * lock cuida das famílias; aqui vai o USO delas), a caixa de cada nível, a cor
+ * de cada nível, a proporção entre eles e os ornamentos. O que volta a ser do
+ * gerador é ONDE cada bloco pousa — com as regras de composição (texto
+ * contido, nunca sobre o assunto, safe area) como únicos limites.
+ *
+ * As redes de segurança do spine estrito ficam TODAS: palavras do modelo não
+ * são conteúdo, cada bloco aparece uma vez, marca é só a do bloco da logo,
+ * ícone de serviço sem serviço não existe.
+ */
+export function buildModeloSpineLivre(
+  descricao?: string | null,
+  elementos?: string[] | null,
+  copy: string[] = [],
+): string {
+  const declarados = Array.isArray(elementos)
+  const { manter, descartados } = elementosQueFazemSentido(elementos ?? null, copy)
+  const graficos = (manter ?? []).map((e) => e.trim()).filter(Boolean)
+
+  const linhas = [
+    '[MODELO — REFERÊNCIA DE ESTILO, NÃO DE LAYOUT]',
+    'Uma das referências é uma arte APROVADA desta marca, escolhida como modelo de estilo. Dela você copia COMO o texto se veste; ONDE ele pousa é decisão SUA, lendo a foto desta peça.',
+    '',
+    'COPIE do modelo:',
+    '1. A TIPOGRAFIA em uso: quais famílias fazem manchete, apoio e serviço, com que peso.',
+    '2. A CAIXA de cada nível (ALTA, baixa ou Title Case), igual à do nível correspondente.',
+    '3. A COR de cada nível — a cor de destaque entra no MESMO nível hierárquico, nunca em outro.',
+    '4. A PROPORÇÃO de tamanhos entre manchete, apoio e serviço. Blocos a mais na copy repetem o menor nível; nunca invente um nível novo e NUNCA omita um bloco.',
+    '5. O grau de estilização: se o modelo é limpo e arejado, esta peça é limpa e arejada.',
+    '',
+    'NÃO COPIE do modelo:',
+    '- A POSIÇÃO dos blocos. Leia ESTA foto e ponha cada bloco onde ela é calma — o canto vazio, a parede desfocada, a faixa escura. O assunto da foto NUNCA fica coberto por texto, e a foto é a protagonista: na dúvida entre um layout que mostra mais foto e um que mostra mais texto, escolha a foto.',
+    '- AS PALAVRAS. Cada palavra letrada no modelo pertence àquele post antigo: o texto desta peça é SÓ a copy listada acima, cada bloco UMA única vez.',
+  ]
+
+  if (graficos.length > 0) {
+    linhas.push(
+      '',
+      'Os ORNAMENTOS do modelo (são a assinatura dele — desenhe-os acompanhando o texto, onde quer que ele pouse):',
+      ...graficos.map((e) => `- ${e}`),
+      '⚠️ Se algum descrever a MARCA da casa (nome, selo, emblema), ele NÃO é ornamento: a marca vem exclusivamente do bloco da logo, uma única vez.',
+    )
+  } else if (declarados && descricao && descartados.length === 0) {
+    linhas.push('', 'O modelo NÃO tem ornamento além do texto: não acrescente filete, barra, moldura nem ícone.')
+  }
+  if (descartados.length > 0) {
+    linhas.push(
+      '',
+      '⛔ O modelo tem ícone acompanhando linha de horário/endereço, e esta peça NÃO TEM essas linhas: não desenhe esses ícones.',
+    )
+  }
+
+  // A leitura por visão chega SEM posições (`semPosicoes`) — só estilo.
+  if (descricao?.trim()) {
+    linhas.push('', 'O ESTILO do modelo, lido nível a nível:', descricao.trim())
+  }
+
+  return linhas.join('\n')
+}
+
+/**
  * TYPOGRAPHY LOCK — descrição travada da tipografia, copiada igual em todo
  * slide.
  *
@@ -920,7 +1003,13 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
    */
   const temModelo = !carrossel && args.refs.some((r) => r.role === 'style-guide')
   if (temModelo) {
-    sections.push(buildModeloSpine(args.modelo?.descricao, args.modelo?.elementos, args.copy))
+    // Nos clientes de `modelo-livre.ts` o modelo passa o ESTILO e o lugar
+    // volta a ser do gerador — ver buildModeloSpineLivre. Nos demais, o spine
+    // estrito segue intacto.
+    const spine = modeloLivre(args.brand?.projectId)
+      ? buildModeloSpineLivre(args.modelo?.descricao, args.modelo?.elementos, args.copy)
+      : buildModeloSpine(args.modelo?.descricao, args.modelo?.elementos, args.copy)
+    sections.push(spine)
   }
 
   // Depois das regras e antes do pedido: a proibição de desenhar logo precisa

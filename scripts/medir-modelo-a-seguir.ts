@@ -63,6 +63,7 @@ import { renderTypeSpecimen } from '../src/lib/ai/type-specimen'
 import { fetchImageSource } from '../src/lib/ai/fetch-image-source'
 import { decodificarGuia } from '../src/lib/ai/carousel-guide-decoder'
 import { instrucaoLogoPeloModelo } from '../src/lib/ai/logo-compositor'
+import { modeloLivre } from '../src/lib/ai/modelo-livre'
 import {
   buildArtePrompt,
   buildReferencePreamble,
@@ -286,7 +287,12 @@ async function main() {
     : (await fetchImageSource(refModeloOrigem.url!)).buffer
   const modeloSaneado = await sanear(bytesModelo, MAX_REF_DIM)
   // Decodificar só faz sentido quando a referência VAI mandar na diagramação.
-  const modeloLido = escolhidaAMao ? await decodificarGuia(modeloSaneado.buffer).catch(() => null) : null
+  const modeloLido = escolhidaAMao
+    ? await decodificarGuia(modeloSaneado.buffer, {
+        nomeDaMarca: brand?.projectName,
+        semPosicoes: modeloLivre(origem.projectId),
+      }).catch(() => null)
+    : null
   if (!escolhidaAMao) {
     console.log('\n  referência do RODÍZIO (não escolhida à mão): segue como "style" nos dois braços.')
   } else console.log(
@@ -299,13 +305,14 @@ async function main() {
       : '\n  ⚠️  modelo NÃO decodificou — o teste segue só com a imagem e o MODELO SPINE',
   )
 
-  const papeisDepois: Array<{ role: ArtReferenceRole; label?: string }> = [
+  const papeisDepois: Array<{ role: ArtReferenceRole; label?: string; estiloLivre?: boolean }> = [
     ...refsOrigem
       .filter((r) => r.role !== 'style')
       .map((r) => ({ role: r.role as ArtReferenceRole, label: r.label })),
     {
       role: (escolhidaAMao ? 'style-guide' : 'style') as ArtReferenceRole,
       label: refModeloOrigem.label ?? 'arte de referência',
+      estiloLivre: escolhidaAMao && modeloLivre(origem.projectId) ? true : undefined,
     },
     { role: 'brand-card' as const },
     { role: 'type-specimen' as const, label: 'alfabetos oficiais da marca' },
@@ -340,14 +347,16 @@ async function main() {
   console.log(`  "caixa alta" antes : ${caixaAntes.join(' | ') || '(nenhuma)'}`)
   console.log(`  "caixa alta" depois: ${caixaDepois.join(' | ') || '(nenhuma)'}`)
 
-  if (!o.confirmar) {
-    console.log('\n  Nada foi gerado. Repita com --confirmar para executar.\n')
-    return
-  }
-
+  // Os prompts saem também no dry-run: inspecionar o que SERIA mandado é o
+  // objetivo dele, e sem os arquivos a única saída era gastar para ler.
   await fs.mkdir(o.saida, { recursive: true })
   await fs.writeFile(path.join(o.saida, 'prompt-antes.txt'), promptAntes)
   await fs.writeFile(path.join(o.saida, 'prompt-depois.txt'), promptDepois)
+
+  if (!o.confirmar) {
+    console.log(`\n  Nada foi gerado; os prompts estão em ${o.saida}. Repita com --confirmar para executar.\n`)
+    return
+  }
 
   // ── Referências, na ORDEM que cada prompt descreve ("Image 1 is…") ────────
   //

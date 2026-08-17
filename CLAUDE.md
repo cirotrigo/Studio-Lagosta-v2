@@ -2757,6 +2757,41 @@ reprovou (pré-título sobre a manchete no layout Rodapé; apoio de duas linhas
 sobre a linha de serviço) não foram sequer detectadas. Refazer por IA é
 contorno, não conserto.
 
+### Modelo-livre: o pêndulo voltou — estilo sim, layout não (17/08/2026)
+
+Depois de uma noite inteira consertando o `style-guide` para obedecer MAIS, o
+Ciro avaliou o resultado e inverteu a direção: **"o Claudinho estava fazendo
+artes melhores quando não travava muito o modelo — o modelo já manda bem e é
+bem criativo, agora está engessando muito"**. O spine estrito ("same placement,
+same alignment, in the same minute", zonas com percentuais, "variação é
+DEFEITO") produzia peças tecnicamente obedientes e esteticamente piores. A
+lição de arquitetura: **prescrição de POSIÇÃO compete com a leitura da foto, e
+o gpt-image compõe melhor lendo a foto do que seguindo coordenadas.**
+
+- **O papel do modelo escolhido foi REDEFINIDO**: ele passa as FONTES em uso, a
+  caixa/cor/proporção de cada nível e os ornamentos — e a POSIÇÃO volta a ser
+  do gerador (a regra 10, autonomia, volta a valer com modelo presente).
+  `buildModeloSpineLivre` + preâmbulo `STYLE MODEL` + leitura por visão
+  `semPosicoes` (descrição de posição vira instrução de lugar por osmose; no
+  modo livre ela não pode nem constar).
+- 🔴 **EXPERIMENTO de UM cliente**: `PROJETOS_COM_MODELO_LIVRE = {2}` em
+  `modelo-livre.ts` (puro, precedente de `caixa-da-copy.ts`). Decisão explícita
+  — "modifique apenas o Quintal para testarmos e depois analisamos se é melhor
+  fazer da mesma forma nos outros clientes". Os demais seguem com o spine
+  estrito, provado por teste de controle. **Não adicione projeto sem medir.**
+- **O que NÃO afrouxou**, porque veio de feedback do MESMO cliente no MESMO
+  dia: palavras do modelo fora do prompt, UMA marca por peça no canto da
+  referência, serviço no rodapé (é conteúdo, não layout), safe area, véu
+  local, texto contido/foto protagonista (regras 1, 2 e 4 — "o assunto da foto
+  nunca deve ser coberto" é a regra 4, integral nos dois modos).
+- **Liberdade ≠ menos regra: é regra sobre a coisa CERTA.** O modo livre
+  continua cheio de ordens — sobre tipografia, caixa, cor, quantidade. O que
+  saiu foi só a coordenada. Se o experimento aprovar, a migração dos outros
+  clientes é adicionar o id ao Set.
+- O dry-run de `medir-modelo-a-seguir.ts` passou a GRAVAR os prompts
+  (`prompt-antes/depois.txt`) — inspecionar o que seria mandado é o objetivo
+  dele, e sem os arquivos a única saída era gastar para ler.
+
 ### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
 
 Cinco arestas do conector remoto, levantadas na produção real das peças do By
