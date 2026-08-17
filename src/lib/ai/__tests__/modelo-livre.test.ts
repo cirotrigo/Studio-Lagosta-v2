@@ -4,13 +4,14 @@
  * organização de texto, deixando ele livre para identificar o melhor lugar de
  * acordo com a imagem."
  *
- * O experimento vale SÓ para o O Quintal Parrilla (projeto 2). O teste mais
- * importante daqui é o de controle: os outros clientes têm de continuar
- * recebendo o prompt estrito, byte a byte.
+ * Nasceu como experimento no O Quintal Parrilla, foi aprovado no mesmo dia
+ * ("funcionou melhor") e virou o PADRÃO de todos os clientes. O teste mais
+ * importante daqui é o do opt-out: um cliente que regredir tem de poder voltar
+ * ao spine estrito, intocado, só entrando no Set.
  */
 import { describe, expect, it } from 'vitest'
 
-import { PROJETOS_COM_MODELO_LIVRE, modeloLivre } from '../modelo-livre'
+import { PROJETOS_COM_MODELO_ESTRITO, modeloLivre } from '../modelo-livre'
 import {
   buildArtePrompt,
   buildModeloSpineLivre,
@@ -50,12 +51,22 @@ function argsPara(projectId: number): BuildArtePromptArgs {
 }
 
 describe('modeloLivre', () => {
-  it('é experimento de UM cliente — não adicione projeto sem medir', () => {
-    expect([...PROJETOS_COM_MODELO_LIVRE]).toEqual([2])
+  it('é o PADRÃO para todo cliente — aprovado no Quintal em 17/08/2026', () => {
     expect(modeloLivre(2)).toBe(true)
-    expect(modeloLivre(3)).toBe(false)
-    expect(modeloLivre(undefined)).toBe(false)
-    expect(modeloLivre(null)).toBe(false)
+    expect(modeloLivre(3)).toBe(true)
+    expect(modeloLivre(undefined)).toBe(true)
+    expect(modeloLivre(null)).toBe(true)
+    // O caminho de volta de uma marca que regredir é o opt-out, não o prompt.
+    expect([...PROJETOS_COM_MODELO_ESTRITO]).toEqual([])
+  })
+
+  it('o opt-out devolve o cliente ao spine estrito', () => {
+    PROJETOS_COM_MODELO_ESTRITO.add(99)
+    try {
+      expect(modeloLivre(99)).toBe(false)
+    } finally {
+      PROJETOS_COM_MODELO_ESTRITO.delete(99)
+    }
   })
 })
 
@@ -106,11 +117,22 @@ describe('o gate por projeto', () => {
     expect(prompt).not.toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
   })
 
-  it('🔴 qualquer outro projeto continua com o spine ESTRITO, intocado', () => {
+  it('outro projeto também recebe o spine livre — é o padrão', () => {
     const prompt = buildArtePrompt(argsPara(3))
-    expect(prompt).toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
-    expect(prompt).toContain('REPLIQUE, item a item')
-    expect(prompt).not.toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
+    expect(prompt).toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
+    expect(prompt).not.toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
+  })
+
+  it('🔴 o cliente em opt-out volta ao spine ESTRITO, intocado', () => {
+    PROJETOS_COM_MODELO_ESTRITO.add(3)
+    try {
+      const prompt = buildArtePrompt(argsPara(3))
+      expect(prompt).toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
+      expect(prompt).toContain('REPLIQUE, item a item')
+      expect(prompt).not.toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
+    } finally {
+      PROJETOS_COM_MODELO_ESTRITO.delete(3)
+    }
   })
 
   it('o preâmbulo do papel muda junto, pela flag da referência', () => {

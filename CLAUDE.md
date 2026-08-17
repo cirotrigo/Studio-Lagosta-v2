@@ -2774,11 +2774,17 @@ o gpt-image compõe melhor lendo a foto do que seguindo coordenadas.**
   `buildModeloSpineLivre` + preâmbulo `STYLE MODEL` + leitura por visão
   `semPosicoes` (descrição de posição vira instrução de lugar por osmose; no
   modo livre ela não pode nem constar).
-- 🔴 **EXPERIMENTO de UM cliente**: `PROJETOS_COM_MODELO_LIVRE = {2}` em
-  `modelo-livre.ts` (puro, precedente de `caixa-da-copy.ts`). Decisão explícita
-  — "modifique apenas o Quintal para testarmos e depois analisamos se é melhor
-  fazer da mesma forma nos outros clientes". Os demais seguem com o spine
-  estrito, provado por teste de controle. **Não adicione projeto sem medir.**
+- **É o PADRÃO de todos os clientes desde 17/08/2026** — nasceu como
+  experimento só no Quintal, o Ciro aprovou no mesmo dia ("funcionou melhor") e
+  a promoção foi imediata: quem opera todos os clientes é a mesma equipe, e
+  dois comportamentos para o mesmo gesto da bancada seria pior que qualquer uma
+  das duas semânticas. O caminho de volta de uma marca que regredir é
+  `PROJETOS_COM_MODELO_ESTRITO` (opt-out, vazio hoje) em `modelo-livre.ts` —
+  nunca reescrever o prompt. O spine estrito continua no código, coberto por
+  teste, exatamente para esse retorno.
+- **O CARROSSEL não passa pelo modo livre, de propósito**: o LOOK SPINE do
+  slide irmão segue estrito, porque a série é uma peça só e slides com layouts
+  diferentes é o defeito que ele existe para evitar.
 - **O que NÃO afrouxou**, porque veio de feedback do MESMO cliente no MESMO
   dia: palavras do modelo fora do prompt, UMA marca por peça no canto da
   referência, serviço no rodapé (é conteúdo, não layout), safe area, véu
