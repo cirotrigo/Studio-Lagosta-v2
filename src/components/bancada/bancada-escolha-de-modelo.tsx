@@ -260,7 +260,11 @@ export function BancadaEscolhaDeModelo({
                       })
                     }
                     disabled={desabilitado}
-                    title="Gerar seguindo esta arte de referência"
+                    /* `aria-label` no lugar de `title`: o botão não tem texto
+                       visível e precisa de nome acessível, mas a dica NATIVA
+                       do navegador brigava com a prévia ampliada — duas caixas
+                       sobre a mesma miniatura, uma delas tapando a arte. */
+                    aria-label="Gerar seguindo esta arte de referência"
                     onMouseEnter={
                       podeAmpliar
                         ? (e) =>
