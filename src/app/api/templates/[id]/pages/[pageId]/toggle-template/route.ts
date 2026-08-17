@@ -6,6 +6,7 @@ import {
   fetchTemplateWithProject,
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
+import { hasProjectOwnership } from '@/lib/projects/access'
 
 const toggleTemplateSchema = z.object({
   isTemplate: z.boolean(),
@@ -17,7 +18,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; pageId: string }> }
 ) {
   try {
-    const { userId, orgId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -30,6 +31,29 @@ export async function PATCH(
 
     if (!hasTemplateWriteAccess(template, { userId, orgId })) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+    }
+
+    /**
+     * Promover é CURADORIA, não edição: o modelo passa a valer para todos que
+     * criam arte deste cliente e entra no pool que `prepareCreative`,
+     * `sugerirPosts` e a bancada consultam. Por isso o gate é o mesmo das
+     * outras portas de curadoria — `POST /api/projects/[id]/modelos` e
+     * `PATCH .../template-pages/[pageId]/tags` —, e não o write access do
+     * template, que qualquer membro da organização tem.
+     *
+     * A diferença importa desde 16/08/2026, quando o editor voltou a expor o
+     * botão: sem isto, um membro comum promoveria o modelo pelo editor e
+     * esbarraria no 403 da rota de tags logo em seguida, deixando no pool
+     * exatamente o modelo sem tag que ninguém acha por tema.
+     */
+    if (!hasProjectOwnership(template!.Project, { userId, orgId, orgRole })) {
+      return NextResponse.json(
+        {
+          error:
+            'Apenas o curador (dono do projeto ou admin da org compartilhada) pode definir modelos.',
+        },
+        { status: 403 },
+      )
     }
 
     // Verificar se a página existe e pertence ao template

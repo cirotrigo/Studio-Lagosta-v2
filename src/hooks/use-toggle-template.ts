@@ -51,8 +51,13 @@ export function useToggleTemplate(templateId: number) {
         )
       })
 
-      // Invalidar template-pages para atualizar seletor de modelos
-      queryClient.invalidateQueries({ queryKey: ['template-pages', templateId] })
+      // Invalidação por PREFIXO, não por templateId. A aba Modelos do projeto
+      // consulta /api/templates/[seed]/template-pages — endpoint que devolve as
+      // páginas de TODOS os templates do projeto, mas fica cacheado sob o id do
+      // PRIMEIRO template ('seedTemplateId' em modelos-tab.tsx). Promover uma
+      // página de qualquer outro template não invalidava essa entrada, e o
+      // modelo recém-marcado não aparecia na aba até um refresh.
+      queryClient.invalidateQueries({ queryKey: ['template-pages'] })
 
       // Mostrar mensagem de sucesso
       const message = variables.isTemplate

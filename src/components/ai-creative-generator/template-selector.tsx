@@ -51,7 +51,7 @@ export function TemplateSelector({
             Nenhum modelo disponível
           </p>
           <p className="mt-1 text-xs text-amber-700">
-            Para criar um modelo, abra uma página no editor e clique em "Marcar como Modelo".
+            Para criar um modelo, abra a página no editor e clique em "Marcar modelo".
           </p>
         </div>
       </div>

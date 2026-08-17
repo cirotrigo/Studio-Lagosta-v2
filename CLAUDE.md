@@ -2344,6 +2344,72 @@ também rodava degradado sem sinal nenhum.
   ícone", ele devolvia lista vazia para uma arte que tem filete com losango
   central logo abaixo da manchete.
 
+### Promover página a modelo voltou ao editor (16/08/2026)
+
+O editor ganhou o botão **Marcar modelo** (header no desktop; dentro do menu
+"O que você quer fazer?" no celular) — um popover com o switch de
+`Page.isTemplate` **e** as tags de tema no MESMO lugar. Componente em
+`src/components/templates/page-model-control.tsx`.
+
+O que havia antes: a única porta WEB para `isTemplate: true` era
+`POST /api/projects/[id]/modelos`, que CRIA um modelo em branco. Página já
+desenhada não tinha como ser promovida — a aba Modelos lista só
+`isTemplate: true` (`/api/templates/[id]/template-pages`), então a página comum
+nunca aparecia lá nem para virar modelo, nem para receber tag. Promover uma
+arte existente só dava pelo MCP.
+
+- 🔴 **O botão não estava faltando: foi REMOVIDO de propósito** no commit
+  `10fd26f0` (09/05/2026), com a justificativa "Modelos created via the new
+  flow are born with isTemplate=true; the toggle was confusing". A premissa
+  valia para modelo criado do zero e deixou órfã a PROMOÇÃO. Ficaram três
+  órfãos vivos: `ToggleTemplateButton`, `useToggleTemplate` e a rota PATCH —
+  hoje os dois últimos voltaram a ter dono. O componente antigo em
+  `src/components/template/` (SINGULAR) segue morto; o editor vivo é
+  `src/components/templates/` (PLURAL), e a semelhança já produziu
+  diagnóstico errado.
+- **Switch e tags moram JUNTOS porque modelo sem tag não é achado por tema**:
+  `prepareCreative` casa o tema contra `Page.tags` + `Template.tags` e FALHA
+  quando nada bate. Separar os controles produz o "modelo mudo" que forçou a
+  despromoção em massa de 10/08. A ordem é imposta pelo código — a rota de
+  tags exige `isTemplate: true`, então o campo só destrava depois de marcar.
+- **Promover é CURADORIA, não edição.** A rota `toggle-template` usava
+  `hasTemplateWriteAccess` (qualquer membro da org) enquanto as outras portas
+  (`/modelos`, `.../tags`) exigem `hasProjectOwnership`. Com o botão escondido
+  era latente; exposto, vira porta lateral — o membro promove pelo editor e
+  toma 403 ao taguear, deixando no pool exatamente o modelo sem tag. Gate
+  alinhado; a UI lê o mesmo `canCurate` de `GET /api/projects/[id]`.
+- **Estado de UI derivado de `Page` depende do CONTEÚDO do campo, não da
+  REFERÊNCIA — e quem segura isso hoje é a biblioteca, não o nosso código.**
+  O autosave chama `useUpdatePage({ skipInvalidation: true })`, que SUBSTITUI o
+  objeto inteiro da página no cache `['pages', templateId]` (`use-pages.ts:145`)
+  pela resposta do PATCH, a cada pausa da digitação no canvas. Um efeito com a
+  referência do array na dependência remontaria o rascunho a cada autosave —
+  apagando as tags sendo escritas e o botão "Salvar tags" junto. **Medido: isso
+  NÃO acontece hoje**, porque o `replaceEqualDeep` do `@tanstack/query-core`
+  (structural sharing, `query.js:61`) preserva a referência quando o conteúdo é
+  igual. A proteção é frágil por depender de a rota nunca parar de mandar
+  `tags`: sem o campo, `?? []` cria array novo a cada render e o wipe volta.
+  Por isso a dependência é `JSON.stringify` do conteúdo.
+- 🔴 **`['pages', templateId]` e `['template-pages']` são caches DIFERENTES da
+  mesma verdade.** O hook de tags invalida o segundo (aba Modelos); o editor lê
+  o primeiro. Sem escrita cirúrgica no `['pages']`, reabrir o popover sem
+  recarregar mostrava as tags ANTIGAS — o popover desmonta ao fechar e
+  reconstrói o rascunho desse cache. Invalidar sairia caro: refetch de
+  `['pages']` traz todas as páginas COM layers só por causa de uma lista.
+- **A invalidação de `['template-pages']` passou a ser por PREFIXO.** A aba
+  Modelos consulta um endpoint que devolve as páginas de TODOS os templates do
+  projeto, mas cacheia sob o id do PRIMEIRO (`seedTemplateId`); promover página
+  de outro template não invalidava essa entrada.
+- 🔴 **`side="bottom"` do `SheetContent` é `h-auto` SEM teto nem rolagem**
+  (`ui/sheet.tsx:69`). Conteúdo novo em sheet de baixo empurra opções para fora
+  da tela em aparelho baixo. Teto e scroll vão no USO, nunca no componente
+  compartilhado.
+- **Fora do `agendaMode` nos dois layouts**: ali o editor é o ajuste rápido de
+  UM post vindo da agenda. O ramo mobile não tem esse if, então expor sem
+  guardar divergia celular × desktop.
+- ⚠️ **A tool `marcar-como-modelo` do MCP continua com gate de MEMBRO**, não de
+  curador — a mesma promoção por outra porta, ainda desalinhada.
+
 ### O conector MCP: apelido, filtro por nome e parâmetro recusado (12/08/2026)
 
 Cinco arestas do conector remoto, levantadas na produção real das peças do By

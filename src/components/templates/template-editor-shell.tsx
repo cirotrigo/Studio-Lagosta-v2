@@ -31,6 +31,7 @@ import { VideosPanel } from './sidebar/videos-panel'
 import { MusicPanel } from './sidebar/music-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportButton } from './video-export-button'
+import { PageModelButton, PageModelMobileSection } from './page-model-control'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
 import { AgendaPanel } from './panels/agenda-panel'
@@ -720,6 +721,7 @@ function TemplateEditorContent({
                   Agendar
                 </Button>
               )}
+              <PageModelButton projectId={projectId} />
               <VideoExportButton />
               <Button size="sm" variant="outline" onClick={toggleFullscreen}>
                 <Maximize2 className="mr-2 h-4 w-4" />
@@ -1121,11 +1123,15 @@ function TemplateEditorContent({
 
         {/* Menu Concluir — ações de salvamento explicadas */}
         <Sheet open={mobileFinishOpen} onOpenChange={setMobileFinishOpen}>
-          <SheetContent side="bottom" className="z-[10001] rounded-t-2xl p-0 gap-0">
+          {/* `side="bottom"` do SheetContent é `h-auto` SEM teto nem rolagem
+              (ui/sheet.tsx:69). Com a seção de modelo o conteúdo passa da tela
+              em aparelho baixo e as opções saem do alcance — o teto e o scroll
+              ficam aqui, e não no componente compartilhado. */}
+          <SheetContent side="bottom" className="z-[10001] max-h-[85vh] rounded-t-2xl p-0 gap-0">
             <SheetTitle className="px-4 pt-4 pb-2 text-sm font-semibold text-muted-foreground">
               O que você quer fazer?
             </SheetTitle>
-            <div className="flex flex-col p-2">
+            <div className="flex flex-col overflow-y-auto p-2">
               <button
                 type="button"
                 className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
@@ -1183,6 +1189,15 @@ function TemplateEditorContent({
               <div className="px-3 py-1 [&>button]:w-full">
                 <VideoExportButton />
               </div>
+              {/* Fora do agendaMode, como no desktop: ali o editor é o ajuste
+                  rápido de UM post vindo da agenda, e o header enxuto só tem
+                  Salvar e Cancelar. Curadoria de modelo não pertence a esse
+                  contexto — e divergir entre celular e desktop seria pior. */}
+              {!agendaMode && (
+                <div className="mt-1 border-t border-border/60 pt-1">
+                  <PageModelMobileSection projectId={projectId} />
+                </div>
+              )}
             </div>
           </SheetContent>
         </Sheet>

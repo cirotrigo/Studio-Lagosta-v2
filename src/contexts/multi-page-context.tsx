@@ -76,6 +76,7 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
       thumbnail: p.thumbnail ?? undefined,
       isTemplate: p.isTemplate,
       templateName: p.templateName ?? undefined,
+      tags: p.tags ?? [],
       createdAt: new Date(p.createdAt),
       updatedAt: new Date(p.updatedAt),
     }))

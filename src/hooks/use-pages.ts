@@ -36,6 +36,9 @@ interface PageResponse {
   templateId: number
   isTemplate: boolean
   templateName: string | null
+  /** Temas do modelo. É por elas que `prepareCreative` acha a página a partir
+   *  de uma frase — ver src/lib/creatives/arte-rapida.ts. */
+  tags?: string[]
   createdAt: string
   updatedAt: string
 }
