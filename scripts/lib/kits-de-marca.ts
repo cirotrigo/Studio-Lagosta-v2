@@ -17,6 +17,64 @@ import type { KitDeMarca, CopyDoTema } from './gerador-de-templates'
 const BLOB = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com'
 
 export const KITS: Record<number, KitDeMarca> = {
+  // ── By Rock ─────────────────────────────────────────────────────────────
+  // Só a MANCHETE vai em caixa alta: o crivo da marca pergunta "A caixa alta
+  // está em todos os campos, em vez de só na manchete?" e o tom de voz lista
+  // "caixa alta em todos os campos" entre as construções proibidas.
+  7: {
+    projectId: 7,
+    cliente: 'By Rock',
+    corFundo: '#111111',
+    corTexto: '#FFFFFF',
+    corAcento: '#dc0909',
+    fonteTitulo: 'MortellaDisplay ExtraBold',
+    pesoTitulo: 800,
+    fonteApoio: 'Metrisch Book',
+    fonteApoioForte: 'Metrisch Bold',
+    caixaTitulo: 'uppercase',
+    caixaServico: 'none',
+    caixaCta: 'none',
+    logoUrl: `${BLOB}/projects/7/logos/1760576188203-By_Rock_-_logo.png`,
+    logoRatio: 0.8787,
+    iconeRelogio: `${BLOB}/projects/7/elements/1785779593017-relogio-vermelho.png`,
+    filete: `${BLOB}/projects/7/elements/1785779608222-filete-onda-borda-vermelho.png`,
+    fotoPlaceholder: 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/drive-cache/1u8e-UfIL98qgOaQsn_1k3JJjC2hwgXqk-s1920.jpg',
+  },
+
+  // ── Real Gelateria ──────────────────────────────────────────────────────
+  // 🔴 Manchete em Title Case, NUNCA caixa alta: o DNA registra que essa é a
+  // queixa mais repetida do cliente — quatro vezes entre 11 e 13/08/2026,
+  // sempre relatada como "essa não é a fonte da marca". Caixa alta
+  // descaracteriza o traço da Branley, e vale só para o pré-título.
+  1: {
+    projectId: 1,
+    cliente: 'Real Gelateria',
+    corFundo: '#283D36',
+    corTexto: '#F6F0E4',
+    // O "Dourado Real" do DNA é um GRADIENTE (#8C6A3F → #D9B98A); usada a
+    // ponta clara, a única com contraste sobre o Verde Real. O Spritz
+    // (#EA5328) fica de fora: o DNA o restringe a pontuação gráfica.
+    corAcento: '#D9B98A',
+    fonteTitulo: 'Branley GC',
+    // Peso REAL do arquivo (usWeightClass 400) e o único que ele tem — pedir
+    // 700 cai em fallback, porque não há faux-bold no render server-side.
+    pesoTitulo: 400,
+    fonteApoio: 'StageGrotesk Medium',
+    caixaTitulo: 'none',
+    logoUrl: `${BLOB}/projects/1/logos/1759887429010-Ativo_3real.png`,
+    logoRatio: 0.995,
+    // "A LOGO fica alinhada no canto superior DIREITO. NÃO VARIA DE CANTO."
+    // (regra aprendida, definida pelo Ciro em 11/08/2026)
+    logoSempreNoTopo: true,
+    // O DNA pede 350px livres na base, acima do padrão da casa.
+    safezoneBase: 350,
+    iconeRelogio: `${BLOB}/projects/1/elements/1760912667040-horario-1.png`,
+    filete: `${BLOB}/projects/1/elements/1759887476842-linhas.png`,
+    // Gelato, não crepe salgado: a primeira escolha mostrava um crepe numa
+    // peça cuja copy fala de gelato artesanal — a foto contradizia o texto.
+    fotoPlaceholder: `${BLOB}/uploads/user_33lV8r06XupgO7K0lyLgoj1JJF3/drive-1786668608555-Gelato_em_dobro-dobro.jpg`,
+  },
+
   // ── Bacana ──────────────────────────────────────────────────────────────
   // Sem filete e sem ícone de relógio cadastrados: o DNA pede "um fio fino"
   // que não existe como asset, e os 7 Elements do projeto são 4 ícones de
@@ -111,6 +169,59 @@ export const KITS: Record<number, KitDeMarca> = {
  *  - R$ 79,90 do executivo é o único preço autorizado em copy.
  */
 export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
+  /**
+   * By Rock — `tituloAcento` era "JOGO", palavra que já estava no título, e a
+   * peça saía com ela DUAS vezes (terceira linha órfã em vermelho). Virou a
+   * segunda linha inteira, que é o que o DNA prescreve: "manchete em duas
+   * linhas, uma em branco e outra em vermelho".
+   * O `servico` tinha 83 caracteres, quebrava em duas linhas e invadia o CTA
+   * em 22px. Ficou só o horário — o `contentRules` reserva o rodapé com
+   * endereço à primeira peça do dia.
+   */
+  7: {
+    'promocoes-especiais': {
+      titulo: 'O JOGO PASSA AQUI',
+      tituloAcento: 'COM CHOPP NA MÃO',
+      descricao: 'TVs em todo o salão para acompanhar os principais jogos, com petiscos para dividir e o chopp sempre gelado.',
+      servico: 'Todos os dias, das 11h à meia-noite',
+      icone: 'relogio',
+      cta: 'Chama a galera',
+    },
+  },
+
+  /**
+   * Real Gelateria — três correções da conferência:
+   *  - os dois `tituloAcento` ("Sabor" e "Elevar") repetiam palavra do título
+   *    e sairiam duplicados; viraram a continuação da manchete;
+   *  - o `servico` levava rodapé de funcionamento em peça que não é a das
+   *    10h. O `contentRules` é literal: "rodapé de horário de funcionamento
+   *    SÓ EXISTE NA PEÇA DE FUNCIONAMENTO DAS 10H". Saiu das duas — e com ele
+   *    sai o risco de nomear uma unidade só, num modelo que vale para as três;
+   *  - `experiencias-gastronomicas` estava escrita com o vocabulário de
+   *    `pausas-e-aconchego`, que é outro pilar e JÁ tem modelo. Reescrita em
+   *    cima do que é próprio dela: o Passaporte Real, a jornada que vai além
+   *    do gelato.
+   * Os CTAs são cópia literal da lista aprovada no tom de voz.
+   */
+  1: {
+    'sabores-real': {
+      preTitulo: 'Il vero gelato',
+      titulo: 'O Sabor do Dia\nEstá na',
+      tituloAcento: 'Vitrine',
+      descricao: 'Gelato artesanal de método italiano, com fior di latte, pistacchio siciliano e chocolate belga.',
+      icone: null,
+      cta: 'Experimente o sabor do dia',
+    },
+    'experiencias-gastronomicas': {
+      preTitulo: 'Passaporte Real',
+      titulo: 'Uma Jornada\nItaliana Que Vai',
+      tituloAcento: 'Além do Gelato',
+      descricao: 'Crepes doces e salgados, croissants, waffles e cafés — do espresso ao cappuccino especial.',
+      icone: null,
+      cta: 'Sua próxima parada do Passaporte Real',
+    },
+  },
+
   /**
    * Bacana — o que a conferência corrigiu:
    *  - `espaco-kids` convidava para ALMOÇO citando as duas unidades, e a base
