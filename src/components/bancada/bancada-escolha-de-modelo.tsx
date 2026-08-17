@@ -17,9 +17,15 @@
  * COLAPSADO por padrão: a linha resume a escolha atual E o custo dela. Trocar
  * de grupo troca a VIA do item — é o que faz o botão principal do card seguir
  * a escolha.
+ *
+ * As miniaturas da grade têm 80px: cabem muitas de uma vez, mas dois modelos
+ * parecidos ficam indistinguíveis nesse tamanho. Por isso o mouse parado sobre
+ * uma delas abre a PRÉVIA AMPLIADA (2,5×) ao lado — ver o layout de perto é o
+ * que permite escolher, e a grade continua inteira à vista (17/08/2026).
  */
 
 import * as React from 'react'
+import { createPortal } from 'react-dom'
 import Image from 'next/image'
 import { ChevronDown, RefreshCw, Star, Wand2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -44,6 +50,27 @@ const ROTULO_DO_FORMATO: Record<'story' | 'feed' | 'quadrado', string> = {
   feed: 'feed',
   quadrado: 'quadrado',
 }
+
+/** A proporção (largura/altura) da arte de cada formato. */
+const PROPORCAO_DO_FORMATO: Record<'story' | 'feed' | 'quadrado', number> = {
+  story: 1080 / 1920,
+  feed: 1080 / 1350,
+  quadrado: 1,
+}
+
+/** Quanto a prévia amplia a miniatura da grade (80px → 200px). */
+const FATOR_DE_AMPLIACAO = 2.5
+
+/**
+ * O atraso antes de abrir. Sem ele, varrer a grade com o mouse pisca uma
+ * prévia por miniatura; fechar é imediato, porque prévia que insiste em ficar
+ * é prévia que atrapalha.
+ */
+const ATRASO_PARA_ABRIR_MS = 120
+
+/** Folga da borda da janela, e a altura reservada para a legenda da prévia. */
+const MARGEM_DA_JANELA = 8
+const ALTURA_DA_LEGENDA = 38
 
 export function BancadaEscolhaDeModelo({
   projectId,
@@ -87,6 +114,14 @@ export function BancadaEscolhaDeModelo({
   const modeloEscolhido = sourcePageId
     ? (modelos ?? []).find((m) => m.id === sourcePageId)
     : undefined
+
+  const podeAmpliar = useSuportaHover()
+  const { previa, abrir, fechar } = usePreviaAmpliada()
+  // Fechar quando o painel colapsa: a prévia mora no `body` e sobreviveria à
+  // grade que a originou.
+  React.useEffect(() => {
+    if (!aberto) fechar()
+  }, [aberto, fechar])
 
   const resumo =
     via === 'template'
@@ -171,6 +206,18 @@ export function BancadaEscolhaDeModelo({
                     selecionada={sourcePageId === m.id}
                     onClick={() => onEscolher({ via: 'template', sourcePageId: m.id })}
                     desabilitado={desabilitado}
+                    onPrevia={
+                      podeAmpliar && m.thumbnail
+                        ? (alvo) =>
+                            abrir(alvo, {
+                              src: m.thumbnail!,
+                              legenda: m.name,
+                              nota: `${m.templateName} · ${usoEmPalavras(m.usedCount)}`,
+                              proporcao: m.width / m.height,
+                            })
+                        : undefined
+                    }
+                    onFecharPrevia={fechar}
                   />
                 ))}
               </div>
@@ -214,6 +261,33 @@ export function BancadaEscolhaDeModelo({
                     }
                     disabled={desabilitado}
                     title="Gerar seguindo esta arte de referência"
+                    onMouseEnter={
+                      podeAmpliar
+                        ? (e) =>
+                            abrir(e.currentTarget, {
+                              src: r.url!,
+                              legenda: 'Arte de referência',
+                              nota: r.proximaDaFila
+                                ? 'a próxima do rodízio'
+                                : r.ultimoUso
+                                  ? `usada por último em ${r.ultimoUso.slice(0, 10)}`
+                                  : 'nunca usada',
+                              proporcao: PROPORCAO_DO_FORMATO[formato],
+                            })
+                        : undefined
+                    }
+                    onMouseLeave={podeAmpliar ? fechar : undefined}
+                    onFocus={
+                      podeAmpliar
+                        ? (e) =>
+                            abrir(e.currentTarget, {
+                              src: r.url!,
+                              legenda: 'Arte de referência',
+                              proporcao: PROPORCAO_DO_FORMATO[formato],
+                            })
+                        : undefined
+                    }
+                    onBlur={podeAmpliar ? fechar : undefined}
                     className={cn(
                       'relative h-28 w-20 overflow-hidden rounded-md border bg-muted/60 transition-colors',
                       refGenerationId === r.generationId
@@ -249,8 +323,177 @@ export function BancadaEscolhaDeModelo({
           )}
         </div>
       )}
+
+      {previa && <PreviaFlutuante dados={previa.dados} caixa={previa.caixa} />}
     </div>
   )
+}
+
+/** O que a prévia ampliada mostra. */
+interface DadosDaPrevia {
+  src: string
+  legenda: string
+  nota?: string
+  /** largura/altura da ARTE — é o que faz a moldura abraçar o layout. */
+  proporcao: number
+}
+
+/** Onde a prévia é desenhada, em coordenadas de viewport (`position: fixed`). */
+interface CaixaDaPrevia {
+  left: number
+  top: number
+  largura: number
+  altura: number
+}
+
+/**
+ * A prévia vai AO LADO da miniatura, do lado em que couber — sobre ela taparia
+ * justamente a peça que a pessoa está comparando. Medida no momento de
+ * mostrar, contra a janela.
+ */
+function medirCaixa(alvo: HTMLElement, proporcao: number): CaixaDaPrevia {
+  const r = alvo.getBoundingClientRect()
+  const largura = Math.round(r.width * FATOR_DE_AMPLIACAO)
+  const altura = Math.round(largura / (proporcao > 0 ? proporcao : r.width / r.height))
+  const total = altura + ALTURA_DA_LEGENDA
+
+  const cabeADireita = r.right + MARGEM_DA_JANELA + largura <= window.innerWidth - MARGEM_DA_JANELA
+  const left = cabeADireita
+    ? r.right + MARGEM_DA_JANELA
+    : Math.max(MARGEM_DA_JANELA, r.left - MARGEM_DA_JANELA - largura)
+
+  const centralizada = r.top + r.height / 2 - total / 2
+  const tetoInferior = Math.max(MARGEM_DA_JANELA, window.innerHeight - total - MARGEM_DA_JANELA)
+  const top = Math.min(Math.max(MARGEM_DA_JANELA, centralizada), tetoInferior)
+
+  return { left, top, largura, altura }
+}
+
+/**
+ * Só em aparelho com mouse de verdade. Em tela de toque o `mouseenter` dispara
+ * no TAP — a prévia abriria junto com a escolha e ficaria pendurada, tapando a
+ * grade sem nada para fechá-la.
+ */
+function useSuportaHover() {
+  const [suporta, setSuporta] = React.useState(false)
+  React.useEffect(() => {
+    const mq = window.matchMedia('(hover: hover) and (pointer: fine)')
+    const aplicar = () => setSuporta(mq.matches)
+    aplicar()
+    mq.addEventListener('change', aplicar)
+    return () => mq.removeEventListener('change', aplicar)
+  }, [])
+  return suporta
+}
+
+function usePreviaAmpliada() {
+  const [previa, setPrevia] = React.useState<{
+    dados: DadosDaPrevia
+    caixa: CaixaDaPrevia
+  } | null>(null)
+  const agendada = React.useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const cancelar = React.useCallback(() => {
+    if (agendada.current) {
+      clearTimeout(agendada.current)
+      agendada.current = null
+    }
+  }, [])
+
+  const fechar = React.useCallback(() => {
+    cancelar()
+    setPrevia(null)
+  }, [cancelar])
+
+  const abrir = React.useCallback(
+    (alvo: HTMLElement, dados: DadosDaPrevia) => {
+      cancelar()
+      agendada.current = setTimeout(
+        () => setPrevia({ dados, caixa: medirCaixa(alvo, dados.proporcao) }),
+        ATRASO_PARA_ABRIR_MS,
+      )
+    },
+    [cancelar],
+  )
+
+  React.useEffect(() => {
+    if (!previa) return
+    // A caixa foi medida contra a janela: rolar ou redimensionar a invalida, e
+    // o `mouseleave` não é garantido quando a página se move por baixo do
+    // cursor. Fechar é mais honesto que reposicionar uma prévia que a pessoa
+    // já deixou para trás.
+    const sair = () => setPrevia(null)
+    window.addEventListener('scroll', sair, true)
+    window.addEventListener('resize', sair)
+    return () => {
+      window.removeEventListener('scroll', sair, true)
+      window.removeEventListener('resize', sair)
+    }
+  }, [previa])
+
+  React.useEffect(() => cancelar, [cancelar])
+
+  return { previa, abrir, fechar }
+}
+
+/**
+ * A prévia é IRMÃ do app no `body`, não filha do painel: a regra
+ * `[class*="container"]` do `globals.css` e o `overflow-x-hidden` do layout
+ * protegido recortariam uma caixa ampliada dentro do fluxo. Posição e z-index
+ * em estilo INLINE — valor dinâmico em classe arbitrária não gera CSS aqui.
+ *
+ * `pointerEvents: 'none'` é o que a mantém inofensiva: mesmo cobrindo as
+ * miniaturas vizinhas, o mouse continua chegando nelas.
+ */
+function PreviaFlutuante({
+  dados,
+  caixa,
+}: {
+  dados: DadosDaPrevia
+  caixa: CaixaDaPrevia
+}) {
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div
+      aria-hidden
+      style={{
+        position: 'fixed',
+        left: caixa.left,
+        top: caixa.top,
+        width: caixa.largura,
+        zIndex: 60,
+        pointerEvents: 'none',
+      }}
+      className="overflow-hidden rounded-lg border border-primary/50 bg-popover shadow-2xl"
+    >
+      <span
+        className="relative block w-full bg-muted/60"
+        style={{ height: caixa.altura }}
+      >
+        <Image
+          src={dados.src}
+          alt=""
+          fill
+          sizes={`${caixa.largura}px`}
+          className="object-contain"
+          unoptimized
+        />
+      </span>
+      <span className="block px-2 py-1">
+        <span className="block truncate text-xs font-medium text-foreground">{dados.legenda}</span>
+        {dados.nota && (
+          <span className="block truncate text-[10px] text-muted-foreground">{dados.nota}</span>
+        )}
+      </span>
+    </div>,
+    document.body,
+  )
+}
+
+/** Quantas vezes o modelo já foi usado, em palavras. */
+function usoEmPalavras(usedCount: number) {
+  if (usedCount <= 0) return 'nunca usado'
+  return usedCount === 1 ? 'usado 1 vez' : `usado ${usedCount} vezes`
 }
 
 /** A referência atualmente escolhida, no shape que `onEscolher` espera. */
@@ -306,11 +549,16 @@ function OpcaoModelo({
   selecionada,
   onClick,
   desabilitado,
+  onPrevia,
+  onFecharPrevia,
 }: {
   modelo: ModeloDoProjeto
   selecionada: boolean
   onClick: () => void
   desabilitado?: boolean
+  /** Ausente quando não há como ampliar (sem mouse, ou modelo sem miniatura). */
+  onPrevia?: (alvo: HTMLElement) => void
+  onFecharPrevia?: () => void
 }) {
   return (
     <button
@@ -318,6 +566,10 @@ function OpcaoModelo({
       onClick={onClick}
       disabled={desabilitado}
       title={`${modelo.name} — ${modelo.templateName}`}
+      onMouseEnter={onPrevia ? (e) => onPrevia(e.currentTarget) : undefined}
+      onMouseLeave={onFecharPrevia}
+      onFocus={onPrevia ? (e) => onPrevia(e.currentTarget) : undefined}
+      onBlur={onFecharPrevia}
       className={cn(
         'w-20 overflow-hidden rounded-md border text-left transition-colors',
         selecionada
