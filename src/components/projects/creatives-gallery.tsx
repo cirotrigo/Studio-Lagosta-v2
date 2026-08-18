@@ -27,6 +27,7 @@ import { PostComposer, type PostFormData } from '@/components/posts/post-compose
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
 import { duplicarParaBancada } from '@/lib/creatives/duplicar-para-bancada'
 import { useBancadaStore } from '@/stores/bancada-store'
+import { useAnexarItensAoPlano } from '@/hooks/use-planos'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { GerarArteIaModal } from '@/components/creatives/gerar-arte-ia-modal'
 import {
@@ -336,12 +337,16 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   const router = useRouter()
   const adicionarNaBancada = useBancadaStore((s) => s.adicionar)
+  const anexarAoPlano = useAnexarItensAoPlano(projectId)
 
   /**
    * Duplicar na bancada — o par do "Gerar de novo": o MESMO briefing (copy,
    * foto, pedido), aberto para a pessoa escolher OUTRA referência antes de
    * pagar de novo. A referência antiga fica para trás de propósito — ver
    * `duplicarParaBancada`.
+   *
+   * Vai para o PLANO, como o duplicar da fila: o seletor de modelos do editor
+   * só existe em card do plano. Falha de rede degrada para card local, dita.
    */
   const handleDuplicar = React.useCallback(
     (generation: GenerationRecord) => {
@@ -354,11 +359,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         })
         return
       }
-      adicionarNaBancada({
+      const base = {
         projectId,
-        // Card local, sem `itemDePlanoId` — é o que o protege da hidratação
-        // do plano, como todo card montado na própria bancada.
-        tipo: 'peca',
+        tipo: 'peca' as const,
         trilha: item.trilha,
         formato: item.formato,
         copy: item.copy,
@@ -371,14 +374,48 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           label: r.label,
           thumbUrl: r.thumbUrl,
         })),
-      })
-      toast({
-        title: 'Copiado para a bancada',
-        description: 'Mesma copy e foto — escolha a nova referência e gere.',
-      })
-      router.push(`/projects/${projectId}/bancada`)
+      }
+      const cena = base.referencias.find((r) => r.papel === 'subject')
+      anexarAoPlano.mutate(
+        [
+          {
+            quando: null,
+            tema: item.pedido.trim() || item.copy[0] || null,
+            copyProposta: item.copy,
+            fotoDriveId: cena?.driveFileId ?? null,
+            fotoUrl: cena?.url ?? null,
+            formato: item.formato,
+            via: 'ia',
+          },
+        ],
+        {
+          onSuccess: (r) => {
+            adicionarNaBancada({
+              ...base,
+              itemDePlanoId: r.criados[0],
+              planoId: r.plano.id,
+              situacaoNoPlano: 'proposto',
+            })
+            toast({
+              title: 'Copiado para a bancada',
+              description: 'Mesma copy e foto — escolha a nova referência e gere.',
+            })
+            router.push(`/projects/${projectId}/bancada`)
+          },
+          onError: () => {
+            adicionarNaBancada(base)
+            toast({
+              title: 'Copiado só neste navegador',
+              description:
+                'Não consegui gravar na fila da equipe — a via pelo editor fica indisponível até sincronizar.',
+              variant: 'destructive',
+            })
+            router.push(`/projects/${projectId}/bancada`)
+          },
+        },
+      )
     },
-    [adicionarNaBancada, projectId, router, toast],
+    [adicionarNaBancada, anexarAoPlano, projectId, router, toast],
   )
 
   /**

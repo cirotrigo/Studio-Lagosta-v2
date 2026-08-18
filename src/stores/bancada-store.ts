@@ -166,7 +166,12 @@ interface BancadaState {
    */
   escopoPadrao: EscopoAprendizado
 
-  adicionar: (input: NovoItem) => string
+  /**
+   * `depoisDe`: insere o card logo ABAIXO do card com esse id — é o caso do
+   * duplicar, que nasce colado ao original. Sem a opção (ou id não achado), o
+   * card entra no topo, que é onde rascunho novo sempre entrou.
+   */
+  adicionar: (input: NovoItem, opcoes?: { depoisDe?: string }) => string
   atualizar: (id: string, patch: Partial<BancadaItem>) => void
   remover: (id: string) => void
   limparFinalizados: (projectId: number) => void
@@ -198,11 +203,18 @@ export const useBancadaStore = create(
       hidratou: false,
       escopoPadrao: ESCOPO_PADRAO,
 
-      adicionar: (input) => {
+      adicionar: (input, opcoes) => {
         const id = novoId()
-        set((state) => ({
-          itens: [{ ...input, id, status: 'rascunho', criadoEm: Date.now() }, ...state.itens],
-        }))
+        set((state) => {
+          const novo: BancadaItem = { ...input, id, status: 'rascunho', criadoEm: Date.now() }
+          const apos = opcoes?.depoisDe
+            ? state.itens.findIndex((i) => i.id === opcoes.depoisDe)
+            : -1
+          if (apos < 0) return { itens: [novo, ...state.itens] }
+          const itens = [...state.itens]
+          itens.splice(apos + 1, 0, novo)
+          return { itens }
+        })
         return id
       },
 

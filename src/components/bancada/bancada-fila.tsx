@@ -40,10 +40,10 @@ import {
   BancadaEscolhaDeModelo,
   type BaseDaArte,
 } from '@/components/bancada/bancada-escolha-de-modelo'
-import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
+import { useAnexarItensAoPlano, useAtualizarItemDoPlano } from '@/hooks/use-planos'
 import { useToast } from '@/hooks/use-toast'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
-import { useBancadaStore, type BancadaItem } from '@/stores/bancada-store'
+import { useBancadaStore, type BancadaItem, type NovoItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
   rascunho: 'na fila',
@@ -110,17 +110,26 @@ export function BancadaFila({ projectId }: { projectId: number }) {
   const patchDoPlano = useAtualizarItemDoPlano(projectId)
   const { toast } = useToast()
   const adicionarNaFila = useBancadaStore((s) => s.adicionar)
+  const anexarAoPlano = useAnexarItensAoPlano(projectId)
 
   /**
    * Duplicar o card: o MESMO briefing (copy, foto, pedido), com a BASE da
    * arte em aberto — a arte de referência estrelada e o modelo do editor
    * ficam para trás de propósito, porque duplicar existe para escolhê-los de
-   * novo (pedido do Ciro, 17/08/2026). Card local, sem `itemDePlanoId`:
-   * protegido da hidratação do plano, como todo card montado aqui.
+   * novo (pedido do Ciro, 17/08/2026).
+   *
+   * O duplicado vai para o PLANO, como o "Adicionar à fila" do compositor —
+   * não é cosmética: o seletor de modelos do editor só existe em card do
+   * plano (`podeMontarNoModelo`), porque o render pelo editor acontece no
+   * ItemDePlano. Card local só na falha de rede, dita no toast — e aí a via
+   * template fica indisponível até sincronizar, mesma regra do compositor.
+   *
+   * `depoisDe` põe o card novo COLADO ao original — quem duplica está
+   * comparando, e um card no topo de uma fila longa some da vista.
    */
   const duplicar = React.useCallback(
     (item: BancadaItem) => {
-      adicionarNaFila({
+      const duplicado: NovoItem = {
         projectId,
         tipo: 'peca',
         trilha: item.trilha,
@@ -133,16 +142,54 @@ export function BancadaFila({ projectId }: { projectId: number }) {
         // template, e a rotação assume até alguém escolher outro.
         sourcePageId: null,
         escopo: item.escopo,
+        tema: item.tema ?? null,
         // Sem `quando`: o card original pode continuar na fila, e dois cards
         // disputando o mesmo horário agendariam em cima um do outro.
         referencias: item.referencias.filter((r) => !(r.papel === 'style' && r.generationId)),
-      })
-      toast({
-        title: 'Duplicado',
-        description: 'O card novo está no topo da fila — escolha a base da arte e gere.',
-      })
+      }
+      const cena = duplicado.referencias.find((r) => r.papel === 'subject')
+      anexarAoPlano.mutate(
+        [
+          {
+            quando: null,
+            tema: item.tema ?? (item.pedido.trim() || item.copy[0] || null),
+            copyProposta: [...item.copy],
+            fotoDriveId: cena?.driveFileId ?? null,
+            fotoUrl: cena?.url ?? null,
+            formato: item.formato,
+            via: item.via ?? null,
+            escopo: item.escopo && item.escopo !== 'ROTINA' ? item.escopo.toLowerCase() : null,
+          },
+        ],
+        {
+          onSuccess: (r) => {
+            adicionarNaFila(
+              {
+                ...duplicado,
+                itemDePlanoId: r.criados[0],
+                planoId: r.plano.id,
+                situacaoNoPlano: 'proposto',
+              },
+              { depoisDe: item.id },
+            )
+            toast({
+              title: 'Duplicado',
+              description: 'O card novo está logo abaixo — escolha a base da arte e gere.',
+            })
+          },
+          onError: () => {
+            adicionarNaFila(duplicado, { depoisDe: item.id })
+            toast({
+              title: 'Duplicado só neste navegador',
+              description:
+                'Não consegui gravar na fila da equipe — a via pelo editor fica indisponível até sincronizar.',
+              variant: 'destructive',
+            })
+          },
+        },
+      )
     },
-    [adicionarNaFila, projectId, toast],
+    [adicionarNaFila, anexarAoPlano, projectId, toast],
   )
 
   /**
