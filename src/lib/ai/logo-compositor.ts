@@ -34,6 +34,29 @@ import sharp from 'sharp'
 export type LogoCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
 
 /**
+ * Projetos cuja logo o gpt-image NÃO consegue desenhar com fidelidade — o
+ * default `modelo` vira `compor` (o arquivo oficial é colado por sharp).
+ *
+ * TERO (3): o wordmark tem a ligadura E+R, e o modelo a desdobra de um jeito
+ * diferente a cada rodada — "TERRO" (14/08/2026), "TLRO" e a tagline "BRASA X
+ * E VINHO" com letra inventada (17/08, duas artes seguidas reprovadas pela
+ * Roberta: "a logomarca está totalmente errada"). A soletração e a ligadura
+ * explícitas no preâmbulo perderam quatro vezes; wordmark com ligadura é o
+ * caso documentado do `compor`.
+ *
+ * ⚠️ O efeito colateral do `compor` (10/08: o modelo desenhava a logo DELE
+ * mesmo com o DO NOT DRAW, e a peça saía com duas) é mitigado pela linha
+ * "contains NO brand mark at all" em `instrucaoAreaReservada` — se a segunda
+ * marca voltar, o caminho é reforçar lá, nunca voltar o TERO para `modelo`.
+ */
+const LOGO_MODE_POR_PROJETO = new Map<number, LogoMode>([[3, 'compor']])
+
+/** O modo de logo default deste projeto, quando o chamador não escolhe. */
+export function logoModePadraoPara(projectId?: number | null): LogoMode {
+  return (typeof projectId === 'number' && LOGO_MODE_POR_PROJETO.get(projectId)) || 'modelo'
+}
+
+/**
  * O canto em que o MODELO escolhido põe a marca, traduzido da leitura por
  * visão (banda 1-8 e lado).
  *
@@ -331,5 +354,9 @@ export function instrucaoAreaReservada(corner: LogoCorner = 'bottom-right'): str
     `⛔ Do NOT draw, letter or reproduce any logo, wordmark, brand symbol, monogram or signature anywhere in the image. The real logo is composited by the system after generation.`,
     `Reserve the ${onde} for it: a clean, calm area of about 30% of the width and 18% of the height, with no text, no key subject and no busy detail.`,
     `Every line of copy must END before that reserved area — keep the whole text block clear of it, shortening the text lines or moving the block if needed. Text running under the reserved corner ruins the piece.`,
+    // A linha que faltava em 10/08, quando o modo compor produzia DUAS marcas:
+    // o modelo desenhava a logo DELE apesar do DO NOT DRAW, porque a via nas
+    // referências. Dizer de onde ela veio é o que fecha a porta.
+    `If a brand mark, wordmark or logo appears in ANY reference image, it belongs to that old piece — this image contains NO brand mark at all, not even small, not even in a corner. The official file is placed by the system afterwards.`,
   ].join('\n')
 }

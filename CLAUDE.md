@@ -2757,6 +2757,35 @@ reprovou (pré-título sobre a manchete no layout Rodapé; apoio de duas linhas
 sobre a linha de serviço) não foram sequer detectadas. Refazer por IA é
 contorno, não conserto.
 
+### TERO: a logo voltou ao `compor`, e "11h30" é hora (17/08/2026, noite)
+
+Três reprovações da Roberta no TERO, já com todos os consertos do dia no ar.
+As causas e o que ficou:
+
+- 🔴 **A logo do TERO não é desenhável pelo gpt-image.** A ligadura E+R saiu
+  "TERRO" (14/08), "TLRO" e "BRASA X E VINHO" (17/08, duas artes seguidas) —
+  soletração e ligadura explícitas no preâmbulo perderam quatro vezes.
+  `LOGO_MODE_POR_PROJETO` em `logo-compositor.ts` devolve o TERO ao `compor`
+  (o arquivo oficial colado por sharp) como DEFAULT do projeto. O efeito
+  colateral documentado do compor (duas marcas, 10/08) ganhou a linha que
+  faltava no `instrucaoAreaReservada`: a marca vista nas referências pertence
+  ao post antigo — "this image contains NO brand mark at all". Se a segunda
+  marca voltar, reforça-se ali; não se volta o TERO para `modelo`.
+- 🔴 **"11h30" quebrava o classificador de serviço**: a HORA só aceitava "11h"
+  e o "30" virava número solto — a janela casava "30 às 16h", a sobra estourava
+  o teto e o funcionamento ficava pendurado na manchete. Minutos após o "h"
+  fazem parte da hora, e o INTERVALO DE DIAS ("de terça a sexta") é descontado
+  da sobra como o horário — mas dia SOZINHO segue sendo assunto ("Sexta é dia
+  de churrasco" não é serviço).
+- **O véu ganhou a palavra que faltava: SUAVE** ("um sussurro de sombra… a foto
+  continua nítida POR BAIXO do véu"). "Local" resolveu o escurecimento global;
+  a densidade dentro da faixa ainda saía tarja.
+- ⚠️ **Tensão em aberto do modelo-livre**: a Roberta reprovou "a arte não é
+  semelhante ao template escolhido" — expectativa de layout igual, que o modo
+  livre (decisão do Ciro no mesmo dia) deliberadamente não entrega. Se a
+  equipe preferir semelhança no TERO, o caminho é
+  `PROJETOS_COM_MODELO_ESTRITO.add(3)` — decisão de produto, não de código.
+
 ### Modelo-livre: o pêndulo voltou — estilo sim, layout não (17/08/2026)
 
 Depois de uma noite inteira consertando o `style-guide` para obedecer MAIS, o

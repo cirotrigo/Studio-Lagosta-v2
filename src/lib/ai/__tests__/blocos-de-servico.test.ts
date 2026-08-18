@@ -109,3 +109,21 @@ describe('elementosQueFazemSentido', () => {
     expect(elementosQueFazemSentido([], ['Brownie com sorvete']).manter).toEqual([])
   })
 })
+
+describe('as copies reais do TERO (17/08/2026)', () => {
+  it('🔴 "11h30" é uma hora — foi o que deixou o funcionamento fora do rodapé', () => {
+    // A janela casava "30 às 16h" e a sobra estourava o teto; o horário ficou
+    // pendurado na manchete e a Roberta reprovou.
+    expect(blocosDeServico(['De terça a sexta, das 11h30 às 16h'])).toHaveLength(1)
+    expect(blocosDeServico(['Aberto das 11h30 às 23h30'])).toHaveLength(1)
+  })
+
+  it('o intervalo de dias faz parte da linha de serviço', () => {
+    expect(blocosDeServico(['De segunda a sábado, das 18h às 23h'])).toHaveLength(1)
+  })
+
+  it('mas um dia sozinho é ASSUNTO, não serviço', () => {
+    expect(blocosDeServico(['Sexta é dia de churrasco em família!'])).toEqual([])
+    expect(blocosDeServico(['Domingo de parrilla e resenha'])).toEqual([])
+  })
+})

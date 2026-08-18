@@ -27,7 +27,10 @@
  * pela zona do modelo: o mesmo horário duas vezes na arte, reprovado pelo
  * cliente. É como a casa escreve horário de bar.
  */
-const HORA = String.raw`(?:\d{1,2}\s*(?:h|:\d{2}|hs|horas)?|meia[-\s]?noite|meio[-\s]?dia)`
+// "11h30" quebrou a classificação em 17/08/2026 (TERO): a HORA só aceitava
+// "11h" e o "30" sobrava como número solto — a janela casava "30 às 16h" e a
+// sobra estourava o teto. Minutos depois do "h" fazem parte da hora.
+const HORA = String.raw`(?:\d{1,2}\s*(?:h\s*\d{2}|h|:\d{2}|hs|horas)?|meia[-\s]?noite|meio[-\s]?dia)`
 
 /** Janela de horário: "11h às 17h", "das 11h à meia-noite", "até meia-noite", "a partir das 11h". */
 const HORARIO = new RegExp(
@@ -60,6 +63,16 @@ const ROTULO_DE_SERVICO = /\b(?:funcionamento|horário\s+de\s+funcionamento|aber
  */
 const SOBRA_MAXIMA = 20
 
+/**
+ * Intervalo de DIAS da semana ("de terça a sexta", "seg a sáb"): faz parte da
+ * linha de serviço tanto quanto a hora — "De terça a sexta, das 11h30 às 16h"
+ * é funcionamento, não promessa. Descontado da sobra junto com o horário; um
+ * dia citado SOZINHO ("Sexta é dia de churrasco") continua contando como
+ * conteúdo, porque aí ele é o assunto.
+ */
+const DIA = String.raw`(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|seg|ter|qua|qui|sex|s[áa]b|dom)(?:s|[-\s]feiras?)?`
+const INTERVALO_DE_DIAS = new RegExp(String.raw`\b(?:de\s+)?${DIA}\s+(?:a|à|até|e)\s+${DIA}\b`, 'i')
+
 export type PapelDoBloco = 'horário' | 'endereço'
 
 export interface BlocoDeServico {
@@ -73,7 +86,11 @@ export interface BlocoDeServico {
 function ehHorario(bloco: string): boolean {
   const achado = bloco.match(HORARIO)
   if (!achado) return ROTULO_DE_SERVICO.test(bloco) && bloco.trim().length <= SOBRA_MAXIMA * 2
-  const sobra = bloco.replace(achado[0], ' ').replace(/\s+/g, ' ').trim()
+  const sobra = bloco
+    .replace(achado[0], ' ')
+    .replace(INTERVALO_DE_DIAS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
   return sobra.length <= SOBRA_MAXIMA
 }
 

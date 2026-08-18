@@ -39,6 +39,7 @@ import {
   comporLogo,
   instrucaoAreaReservada,
   instrucaoLogoPeloModelo,
+  logoModePadraoPara,
   type LogoCorner,
   type LogoMode,
 } from '@/lib/ai/logo-compositor'
@@ -433,7 +434,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // real: a marca desenhada a partir do arquivo oficial saiu fiel e integrou
     // melhor que a colagem — e o modo `compor` produzia DUAS logos, porque o
     // modelo desenha a dele mesmo com o "DO NOT DRAW".
-    const logoMode: LogoMode = args.logoMode ?? 'modelo'
+    // O default é por PROJETO: marca com ligadura que o gpt-image não
+    // reproduz (TERO) cai em `compor` — ver `logoModePadraoPara`.
+    const logoMode: LogoMode = args.logoMode ?? logoModePadraoPara(args.projectId)
     let logoParaCompor: Buffer | null = null
     if (args.track === 'arte') {
       const card = await getBrandReferenceCard(brand).catch((error) => {

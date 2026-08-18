@@ -943,7 +943,7 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // reprovou com "a foto está ficando muito escura". "Sutil" não bastava
     // porque não dizia ONDE — a segunda frase é o limite que faltava.
     '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
-    '4b. O véu de leitura é LOCAL: ele cobre só a faixa onde o texto pousa (no máximo ~1/3 do quadro) e some antes de chegar ao assunto. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível sem escurecer tudo, MUDE O TEXTO DE LUGAR.',
+    '4b. O véu de leitura é LOCAL e SUAVE: um sussurro de sombra só na faixa onde o texto pousa (no máximo ~1/3 do quadro), sumindo antes de chegar ao assunto — a foto continua NÍTIDA e reconhecível POR BAIXO do véu, nunca coberta por uma tarja. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível com um véu leve, MUDE O TEXTO DE LUGAR em vez de adensar o véu.',
     // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
     // defeito aparecia toda semana.
     // "na última linha" deixava escapar o artigo órfão na PRIMEIRA: a manchete
