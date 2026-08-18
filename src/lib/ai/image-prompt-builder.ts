@@ -24,6 +24,7 @@ import type { BrandContext } from '@/lib/brand/brand-context'
 import { CAIXA_DA_MANCHETE, paraCaixaAlta, paraCaixaNatural } from '@/lib/ai/caixa-da-copy'
 import { elementosQueFazemSentido, instrucaoDeServico } from '@/lib/ai/blocos-de-servico'
 import { modeloLivre } from '@/lib/ai/modelo-livre'
+import { assinaturaTipografica } from '@/lib/ai/assinatura-tipografica'
 
 export type GenerationTrack = 'imagem' | 'arte'
 
@@ -995,6 +996,16 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   if (args.copy.length > 0 && !carrossel) {
     const lock = buildTypographyLock(args.brand)
     if (lock) sections.push(lock)
+    /**
+     * A assinatura tipográfica da marca (quando cadastrada) entra COLADA ao
+     * lock, nos mesmos pontos dele: é a continuação natural — o lock diz as
+     * FAMÍLIAS, a assinatura diz o USO delas (tamanho contido, tracking,
+     * duas vozes, separador). Vale COM e SEM modelo escolhido: no modo livre
+     * ela é justamente a "semelhança ao template" que o Ciro e a Roberta
+     * pediram sem voltar ao layout travado (17/08/2026).
+     */
+    const assinatura = assinaturaTipografica(args.brand?.projectId)
+    if (assinatura) sections.push(assinatura)
   }
 
   /**
@@ -1080,6 +1091,10 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   if (carrossel && !ehIrmao) {
     const lock = buildTypographyLock(args.brand)
     if (lock) sections.push(lock)
+    // O guia estabelece o padrão da série — a assinatura entra nele; o slide
+    // irmão copia o guia, e um segundo bloco lá seria concorrência.
+    const assinatura = assinaturaTipografica(args.brand?.projectId)
+    if (assinatura) sections.push(assinatura)
   }
 
   if (args.pedido?.trim()) {

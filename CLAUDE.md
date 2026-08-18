@@ -2786,6 +2786,35 @@ As causas e o que ficou:
   equipe preferir semelhança no TERO, o caminho é
   `PROJETOS_COM_MODELO_ESTRITO.add(3)` — decisão de produto, não de código.
 
+### Assinatura tipográfica por projeto: TERO (17/08/2026, noite)
+
+Depois de conversar com a Roberta, o Ciro manteve o modelo-livre no TERO mas
+pediu "um pouco mais de semelhança ao template escolhido… as artes precisam ser
+mais delicadas e sofisticadas; a queixa é o título muito grande". A resposta
+não foi voltar ao layout travado: foi dar ao gerador a ASSINATURA da marca —
+`assinatura-tipografica.ts` (puro, mapa por projeto, TERO = 3), um bloco que
+entra COLADO ao typography lock em toda peça avulsa e no guia de carrossel
+(nunca no slide irmão, onde o LOOK SPINE manda).
+
+- **A fonte da verdade são as 24 artes PUBLICADAS do TERO na galeria do
+  Claudinho** (`insta.lagostacriativa.com.br/galeria`, filtro Publicada),
+  analisadas uma a uma em 17/08: manchete serifada PEQUENA (~4-6% da altura por
+  linha, lockup ≤ ~12%) em caixa alta com tracking largo; lockup de DUAS VOZES
+  (uma linha cobre, outra branca); palavra-chave do apoio em cobre; losango
+  pequeno como separador da casa; serviço miúdo e espaçado. 23 das 24 seguem o
+  sistema à risca. A sofisticação vem do ESPAÇO, nunca do tamanho — que é
+  exatamente o inverso do que o gerador fazia.
+- **O bloco fala do TEXTO, nunca de POSIÇÃO** — posição é do modo livre, e um
+  bloco que dissesse "rodapé" ou "terço inferior" competiria com ele. E não tem
+  NENHUMA palavra de exemplo entre aspas: string literal vira texto desenhado
+  (lei medida três vezes nesta semana). Há teste para as duas restrições.
+- **A logomarca ficou de fora DE PROPÓSITO** — o Ciro não gosta do
+  posicionamento dela nas artes do Claudinho ("é melhor pegar a análise do
+  texto"). A logo do TERO segue o `compor` decidido mais cedo.
+- Projeto novo ganha assinatura repetindo o método: filtrar as PUBLICADAS do
+  cliente na galeria do Claudinho, ler o padrão (caixa, tamanho relativo,
+  destaque, separadores) e escrever o bloco — nunca copiar o do TERO.
+
 ### Modelo-livre: o pêndulo voltou — estilo sim, layout não (17/08/2026)
 
 Depois de uma noite inteira consertando o `style-guide` para obedecer MAIS, o
