@@ -12,7 +12,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate, BellRing } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, CopyPlus, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate, BellRing } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -43,7 +43,7 @@ import {
 import { useAtualizarItemDoPlano } from '@/hooks/use-planos'
 import { useToast } from '@/hooks/use-toast'
 import { itemEditavel, progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
-import type { BancadaItem } from '@/stores/bancada-store'
+import { useBancadaStore, type BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
   rascunho: 'na fila',
@@ -109,6 +109,41 @@ export function BancadaFila({ projectId }: { projectId: number }) {
   } = useBancada(projectId)
   const patchDoPlano = useAtualizarItemDoPlano(projectId)
   const { toast } = useToast()
+  const adicionarNaFila = useBancadaStore((s) => s.adicionar)
+
+  /**
+   * Duplicar o card: o MESMO briefing (copy, foto, pedido), com a BASE da
+   * arte em aberto — a arte de referência estrelada e o modelo do editor
+   * ficam para trás de propósito, porque duplicar existe para escolhê-los de
+   * novo (pedido do Ciro, 17/08/2026). Card local, sem `itemDePlanoId`:
+   * protegido da hidratação do plano, como todo card montado aqui.
+   */
+  const duplicar = React.useCallback(
+    (item: BancadaItem) => {
+      adicionarNaFila({
+        projectId,
+        tipo: 'peca',
+        trilha: item.trilha,
+        formato: item.formato,
+        copy: [...item.copy],
+        pedido: item.pedido,
+        instrucaoImagem: item.instrucaoImagem ?? null,
+        via: item.via,
+        // O modelo do editor escolhido não viaja — é a "referência" da via
+        // template, e a rotação assume até alguém escolher outro.
+        sourcePageId: null,
+        escopo: item.escopo,
+        // Sem `quando`: o card original pode continuar na fila, e dois cards
+        // disputando o mesmo horário agendariam em cima um do outro.
+        referencias: item.referencias.filter((r) => !(r.papel === 'style' && r.generationId)),
+      })
+      toast({
+        title: 'Duplicado',
+        description: 'O card novo está no topo da fila — escolha a base da arte e gere.',
+      })
+    },
+    [adicionarNaFila, projectId, toast],
+  )
 
   /**
    * A escolha da BASE da arte: o store primeiro (a tela responde na hora) e o
@@ -378,6 +413,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           onConfirmarEstilo={() => confirmarEstilo(item)}
           onAgendar={(quando, situacao, opcoes) => agendar(item, quando, situacao, opcoes)}
           onRemover={() => descartar(item)}
+          onDuplicar={item.tipo === 'carrossel' ? undefined : () => duplicar(item)}
           onSalvarEdicao={(e) => salvarEdicao(item, e)}
         />
       ))}
@@ -394,6 +430,7 @@ function Card({
   onConfirmarEstilo,
   onAgendar,
   onRemover,
+  onDuplicar,
   onSalvarEdicao,
 }: {
   item: BancadaItem
@@ -408,6 +445,11 @@ function Card({
     opcoes?: { lembrete?: boolean },
   ) => void
   onRemover: () => void
+  /**
+   * Duplicar: mesmo briefing, base da arte em aberto. Ausente no carrossel —
+   * os insumos de série vivem nos slides, e duplicar só a capa mentiria.
+   */
+  onDuplicar?: () => void
   onSalvarEdicao: (e: EdicaoDoItem) => void
 }) {
   const [quando, setQuando] = React.useState(() => paraInputs(item.quando))
@@ -850,6 +892,19 @@ function Card({
             </Link>
           )}
 
+          {/* Duplicar — pedido do Ciro (17/08/2026): "bem discreto, ao lado
+              da lixeira e somente o ícone". Mesmo briefing, base em aberto. */}
+          {onDuplicar && item.status !== 'gerando' && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8"
+              title="Duplicar — mesma copy e foto, escolhendo outra base"
+              onClick={onDuplicar}
+            >
+              <CopyPlus className="h-4 w-4" />
+            </Button>
+          )}
           {item.status !== 'gerando' && (
             <Button
               size="icon"
