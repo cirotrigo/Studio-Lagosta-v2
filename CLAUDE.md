@@ -2814,6 +2814,13 @@ entra COLADO ao typography lock em toda peça avulsa e no guia de carrossel
 - Projeto novo ganha assinatura repetindo o método: filtrar as PUBLICADAS do
   cliente na galeria do Claudinho, ler o padrão (caixa, tamanho relativo,
   destaque, separadores) e escrever o bloco — nunca copiar o do TERO.
+- **Calibragem da 1ª rodada real (22:17-22:21)**: "tracking largo/generoso" sem
+  número foi lido ao EXTREMO (as letras da manchete quase desmontaram a
+  palavra) — virou "~1/5 do corpo da letra, NUNCA mais". E o losango, que
+  existe nas artes publicadas, saiu da assinatura por decisão do Ciro: o
+  gpt-image o soltava ÓRFÃO no quadro — o separador é LINHA FINA, só. Adjetivo
+  de intensidade em assinatura precisa de número e teto; ornamento pequeno e
+  solto é o que o gpt-image mais perde.
 
 ### Modelo-livre: o pêndulo voltou — estilo sim, layout não (17/08/2026)
 
