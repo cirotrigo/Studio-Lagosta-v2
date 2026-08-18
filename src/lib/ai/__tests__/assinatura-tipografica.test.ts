@@ -34,12 +34,15 @@ describe('assinaturaTipografica', () => {
 
   it('fala do TEXTO (tamanho, tracking, cores), nunca de POSIÇÃO', () => {
     const a = assinaturaTipografica(3)!
-    expect(a).toContain('~4 a 6% da altura')
     expect(a).toContain('DUAS VOZES')
-    // Calibragem da 1ª rodada real (17/08): o tracking ganhou número e teto, e
-    // o losango saiu — o gpt-image o soltava órfão no quadro.
-    expect(a).toContain('~1/5 do corpo da letra')
-    expect(a).toContain('LINHA FINA')
+    // Calibragem das duas rodadas reais (17/08): tracking por instrução é
+    // loteria — só o natural da fonte sai igual em toda rodada. E o separador
+    // é UMA linha fina, sem losango (o gpt-image o soltava órfão).
+    expect(a).toContain('espaçamento NATURAL da própria fonte')
+    expect(a).toContain('não aumente o espaço entre letras')
+    expect(a).not.toContain('tracking largo')
+    expect(a).toContain('~3,5 a 5% da altura')
+    expect(a).toContain('NO MÁXIMO UMA por peça')
     expect(a).toContain('Nenhum losango')
     // Posição é do modo livre — a assinatura não pode competir com ele.
     expect(a).not.toMatch(/rodapé da peça|canto|topo do quadro|terço inferior/)
