@@ -154,9 +154,12 @@ function cornerBox(
   canvas: { width: number; height: number },
   box: { width: number; height: number },
   margin: number,
+  marginVertical: number = margin,
 ): { left: number; top: number } {
   const left = corner.endsWith('right') ? canvas.width - box.width - margin : margin
-  const top = corner.startsWith('bottom') ? canvas.height - box.height - margin : margin
+  const top = corner.startsWith('bottom')
+    ? canvas.height - box.height - marginVertical
+    : marginVertical
   return { left: Math.max(0, Math.round(left)), top: Math.max(0, Math.round(top)) }
 }
 
@@ -168,7 +171,22 @@ function cornerBox(
 export async function comporLogo(
   arteBuffer: Buffer,
   logoBuffer: Buffer,
-  { cornerReservado }: { cornerReservado?: LogoCorner } = {},
+  {
+    cornerReservado,
+    formato,
+  }: {
+    cornerReservado?: LogoCorner
+    /**
+     * 🔴 Em STORY o Instagram desenha por cima dos DOIS cantos de topo (avatar
+     * e nome à esquerda, fechar e menu à direita) e da faixa de resposta no
+     * rodapé. Informado o formato story: só os cantos INFERIORES concorrem, e
+     * a margem VERTICAL sobe para a mesma safe area do texto (1/8 da altura).
+     * A colisão foi real — a logo composta do TERO saiu no topo esquerdo, sob
+     * o avatar, em duas artes seguidas (17/08/2026): a margem era 5,5% da
+     * LARGURA nos dois eixos, ~3% da altura num 9:16.
+     */
+    formato?: 'story' | 'feed' | 'quadrado'
+  } = {},
 ): Promise<LogoCompositionResult> {
   const arte = sharp(arteBuffer)
   const meta = await arte.metadata()
@@ -177,6 +195,13 @@ export async function comporLogo(
 
   const alvoLargura = Math.round(width * LOGO_WIDTH_RATIO)
   const margem = Math.round(width * MARGIN_RATIO)
+  const ehStory = formato === 'story'
+  // A mesma fração da regra 9 do prompt (FAIXA_RESERVADA = 1/8): texto e logo
+  // terminam ANTES da faixa que o Instagram cobre.
+  const margemVertical = ehStory ? Math.max(margem, Math.round(height * 0.125)) : margem
+  const cantosCandidatos = ehStory
+    ? CORNER_ORDER.filter((c) => c.startsWith('bottom'))
+    : CORNER_ORDER
 
   // Redimensiona preservando o alpha (converter PNG sem alpha vira retângulo
   // sólido — erro documentado no padrão de produção da casa).
@@ -205,8 +230,8 @@ export async function comporLogo(
   }
   const candidatos: Candidato[] = []
 
-  for (const corner of CORNER_ORDER) {
-    const pos = cornerBox(corner, { width, height }, box, margem)
+  for (const corner of cantosCandidatos) {
+    const pos = cornerBox(corner, { width, height }, box, margem, margemVertical)
     const regiao = {
       left: Math.max(0, pos.left - 8),
       top: Math.max(0, pos.top - 8),

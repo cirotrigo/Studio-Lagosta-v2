@@ -858,6 +858,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       try {
         const comLogo = await comporLogo(finalBuffer, logoParaCompor, {
           cornerReservado: LOGO_CORNER,
+          // Em story os cantos de topo são do Instagram — ver comporLogo.
+          formato: args.formato,
         })
         finalBuffer = comLogo.buffer
         logoInfo = {

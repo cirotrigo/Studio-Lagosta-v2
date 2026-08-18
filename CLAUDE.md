@@ -2786,6 +2786,21 @@ As causas e o que ficou:
   equipe preferir semelhança no TERO, o caminho é
   `PROJETOS_COM_MODELO_ESTRITO.add(3)` — decisão de produto, não de código.
 
+### A logo composta respeita o STORY, e o duplicar carrega o horário (17/08/2026, noite)
+
+- 🔴 **`comporLogo` agora recebe o `formato`**: em story, só os cantos
+  INFERIORES concorrem e a margem VERTICAL sobe para a mesma safe area do
+  texto (1/8 da altura). A colisão foi real — a logo composta do TERO saiu
+  duas vezes no topo esquerdo, sob o avatar que o Instagram desenha: a margem
+  era 5,5% da LARGURA nos dois eixos (~3% da altura no 9:16), e o prompt nunca
+  teve chance de impedir, porque a composição é pós-geração, por código. Quem
+  chamar `comporLogo` sem formato mantém o comportamento antigo (feed/legado).
+- **O duplicar da bancada passou a CARREGAR `quando`** (data e horário do card
+  original) — pedido do Ciro, revertendo a decisão do mesmo dia: quem duplica
+  está refazendo a arte daquele slot, e o card antigo costuma ser removido em
+  seguida. Dois cards no mesmo horário continuam possíveis; agendar é ação
+  explícita e a tela mostra o horário.
+
 ### Assinatura tipográfica por projeto: TERO (17/08/2026, noite)
 
 Depois de conversar com a Roberta, o Ciro manteve o modelo-livre no TERO mas

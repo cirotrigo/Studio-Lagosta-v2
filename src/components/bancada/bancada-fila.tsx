@@ -143,15 +143,19 @@ export function BancadaFila({ projectId }: { projectId: number }) {
         sourcePageId: null,
         escopo: item.escopo,
         tema: item.tema ?? null,
-        // Sem `quando`: o card original pode continuar na fila, e dois cards
-        // disputando o mesmo horário agendariam em cima um do outro.
+        // O horário VIAJA junto (pedido do Ciro, 17/08/2026): quem duplica está
+        // refazendo a arte daquele slot, e o card antigo costuma ser removido em
+        // seguida. O risco de dois cards no mesmo horário existe, mas agendar é
+        // ação explícita — quem agendar os dois foi avisado pela própria tela.
+        quando: item.quando ?? null,
+        motivoDoSlot: item.motivoDoSlot ?? null,
         referencias: item.referencias.filter((r) => !(r.papel === 'style' && r.generationId)),
       }
       const cena = duplicado.referencias.find((r) => r.papel === 'subject')
       anexarAoPlano.mutate(
         [
           {
-            quando: null,
+            quando: item.quando ?? null,
             tema: item.tema ?? (item.pedido.trim() || item.copy[0] || null),
             copyProposta: [...item.copy],
             fotoDriveId: cena?.driveFileId ?? null,
