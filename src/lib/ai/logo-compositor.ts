@@ -177,13 +177,14 @@ export async function comporLogo(
   }: {
     cornerReservado?: LogoCorner
     /**
-     * 🔴 Em STORY o Instagram desenha por cima dos DOIS cantos de topo (avatar
-     * e nome à esquerda, fechar e menu à direita) e da faixa de resposta no
-     * rodapé. Informado o formato story: só os cantos INFERIORES concorrem, e
-     * a margem VERTICAL sobe para a mesma safe area do texto (1/8 da altura).
-     * A colisão foi real — a logo composta do TERO saiu no topo esquerdo, sob
-     * o avatar, em duas artes seguidas (17/08/2026): a margem era 5,5% da
-     * LARGURA nos dois eixos, ~3% da altura num 9:16.
+     * 🔴 Em STORY o canto superior ESQUERDO não concorre — é onde o Instagram
+     * desenha o avatar e o nome do perfil, e a colisão foi real: a logo
+     * composta do TERO saiu ali, sob o avatar, em duas artes seguidas
+     * (17/08/2026), porque a margem era 5,5% da LARGURA nos dois eixos (~3% da
+     * altura num 9:16). A margem VERTICAL sobe para a mesma safe area do texto
+     * (1/8 da altura), o que também deixa o canto superior DIREITO abaixo dos
+     * controles de fechar/menu — por isso ele PODE (decisão do Ciro em
+     * 20/08/2026, afrouxando a primeira versão, que filtrava os dois de cima).
      */
     formato?: 'story' | 'feed' | 'quadrado'
   } = {},
@@ -199,9 +200,7 @@ export async function comporLogo(
   // A mesma fração da regra 9 do prompt (FAIXA_RESERVADA = 1/8): texto e logo
   // terminam ANTES da faixa que o Instagram cobre.
   const margemVertical = ehStory ? Math.max(margem, Math.round(height * 0.125)) : margem
-  const cantosCandidatos = ehStory
-    ? CORNER_ORDER.filter((c) => c.startsWith('bottom'))
-    : CORNER_ORDER
+  const cantosCandidatos = ehStory ? CORNER_ORDER.filter((c) => c !== 'top-left') : CORNER_ORDER
 
   // Redimensiona preservando o alpha (converter PNG sem alpha vira retângulo
   // sólido — erro documentado no padrão de produção da casa).
@@ -324,14 +323,30 @@ export type LogoMode = 'compor' | 'modelo'
  * O risco é o de sempre — modelo de imagem distorce logotipo. Por isso o modo
  * é OPT-IN e a peça é conferida por visão depois.
  */
-export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
-  const onde = corner
+export function instrucaoLogoPeloModelo(
+  corner?: LogoCorner | null,
+  formato?: 'story' | 'feed' | 'quadrado',
+): string {
+  const ehStory = formato === 'story'
+  /**
+   * 🔴 Em STORY o canto superior ESQUERDO não existe para a marca: é onde o
+   * Instagram desenha o avatar e o nome do perfil, e a logo ali "briga com a
+   * logomarca que o próprio Instagram tem nos stories" (reprovação real do
+   * O Quintal, 20/08/2026). O superior DIREITO pode — decisão do Ciro no mesmo
+   * dia, corrigindo a primeira versão desta regra, que derrubava os dois
+   * cantos de cima: os controles do topo direito ficam dentro da faixa de 1/8
+   * que a safe area já reserva. Canto vindo do modelo escolhido desce para o
+   * mesmo lado: seguir o modelo não vale brigar com a interface.
+   */
+  const cantoEfetivo = ehStory && corner === 'top-left' ? ('bottom-left' as LogoCorner) : corner
+
+  const onde = cantoEfetivo
     ? {
         'bottom-right': 'lower-right corner',
         'bottom-left': 'lower-left corner',
         'top-right': 'upper-right corner',
         'top-left': 'upper-left corner',
-      }[corner]
+      }[cantoEfetivo]
     : null
 
   return [
@@ -343,7 +358,19 @@ export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
         // referência do Espeto movem a marca de peça para peça (topo-esquerda,
         // topo-direita, base-esquerda) conforme o enquadramento, e um canto
         // cravado no prompt produziria a mesma assinatura em todas.
-        'Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem —, ocupando NO MÁXIMO 12% da largura do quadro — bem menor do que a tendência: é assinatura de canto, do tamanho de um selo, nunca um elemento da composição. Não a ponha sobre o assunto nem sobre a copy.',
+        // No story a escolha livre exclui o canto superior ESQUERDO — ver o
+        // comentário de `cantoEfetivo`.
+        `Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem${ehStory ? ', NUNCA o canto superior esquerdo' : ''} —, ocupando NO MÁXIMO 12% da largura do quadro — bem menor do que a tendência: é assinatura de canto, do tamanho de um selo, nunca um elemento da composição. Não a ponha sobre o assunto nem sobre a copy.`,
+    // O DNA de marca entra no MESMO prompt, mais abaixo, e pode descrever a
+    // logo com outros números — o do O Quintal diz "logotipo mono branco deve
+    // ocupar de 25% a 32% da largura ... alternando entre topo à esquerda,
+    // rodapé à direita", e em 20/08/2026 o modelo obedeceu ao DNA: marca
+    // grande no topo esquerdo do story, reprovada. Sem esta linha, o bloco
+    // perde por volume para a identidade.
+    'Esta seção VENCE qualquer descrição de logo que apareça na identidade/DNA mais abaixo (percentual de largura maior, rodízio de cantos, "topo à esquerda"): quando divergirem, valem os 12% e o canto definidos AQUI.' +
+      (ehStory
+        ? ' Em STORY o canto superior ESQUERDO é proibido para a marca: ali o Instagram desenha o avatar e o nome do perfil por cima da peça. Os outros três cantos podem.'
+        : ''),
     // A safe area também está nas regras de composição, mas ali é o item 9 de
     // uma lista de dez e fala de TEXTO em primeiro lugar. "Canto calmo" é lido
     // como "o canto", e o canto do quadro é justamente onde o Instagram desenha

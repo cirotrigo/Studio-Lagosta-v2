@@ -1,8 +1,10 @@
 /**
- * Em STORY os cantos de topo são do Instagram — avatar e nome à esquerda,
- * fechar e menu à direita. A logo composta do TERO saiu DUAS vezes no topo
- * esquerdo, sob o avatar (17/08/2026), porque o compositor media os quatro
- * cantos com margem de 5,5% da LARGURA nos dois eixos (~3% da altura no 9:16).
+ * Em STORY o canto superior ESQUERDO é do Instagram — avatar e nome do perfil.
+ * A logo composta do TERO saiu DUAS vezes ali, sob o avatar (17/08/2026),
+ * porque o compositor media os quatro cantos com margem de 5,5% da LARGURA nos
+ * dois eixos (~3% da altura no 9:16). O superior DIREITO pode (decisão do Ciro
+ * em 20/08/2026): com a margem vertical de 1/8, a logo fica abaixo dos
+ * controles de fechar/menu.
  */
 import { describe, expect, it } from 'vitest'
 import sharp from 'sharp'
@@ -26,12 +28,15 @@ function logo(): Promise<Buffer> {
 }
 
 describe('comporLogo em story', () => {
-  it('🔴 nunca escolhe canto de TOPO, nem quando ele é o mais calmo', async () => {
+  it('🔴 nunca escolhe o topo ESQUERDO, nem quando ele é o mais calmo — o topo direito pode', async () => {
     const r = await comporLogo(await arteComTopoCalmo(), await logo(), {
       cornerReservado: 'bottom-right',
       formato: 'story',
     })
-    expect(r.corner.startsWith('bottom')).toBe(true)
+    expect(r.corner).not.toBe('top-left')
+    // O topo inteiro é o mais calmo desta arte; com o esquerdo fora da
+    // disputa, o direito vence — é a prova de que ele segue concorrendo.
+    expect(r.corner).toBe('top-right')
   })
 
   it('sem o formato (feed, legado), os quatro cantos seguem concorrendo', async () => {

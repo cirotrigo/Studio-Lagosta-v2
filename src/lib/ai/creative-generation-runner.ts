@@ -556,6 +556,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               // quem enxerga onde a foto está calma.
               instrucaoLogoPeloModelo(
                 args.carrossel ? LOGO_CORNER : cantoDaAssinatura(modeloLido?.assinatura),
+                // Em story o bloco derruba a marca para os cantos inferiores —
+                // o avatar do Instagram mora no topo esquerdo (O Quintal, 20/08).
+                args.formato,
               )
             : null,
         carrossel: args.carrossel

@@ -934,7 +934,17 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // ~35% da largura). O teto de altura vale para a HEADLINE, que é onde o
     // exagero realmente aparece.
     '1. A fotografia é a protagonista: TODO o conjunto de texto (título + apoio + serviço + CTA) junto ocupa no máximo ~1/5 do QUADRO. Pode ser uma coluna alta e estreita ou uma faixa baixa e larga — o que a foto permitir.',
-    '2. A headline tem presença MODERADA e editorial: não passa de ~15% da altura do quadro. Hierarquia por PESO, COR e POSIÇÃO — nunca por tamanho. Nunca cartaz de varejo.',
+    // O teto por LINHA entrou em 20/08/2026, depois de três peças do O Quintal
+    // reprovadas no mesmo dia por texto grande ("muito grande, deve chamar
+    // menos atenção" / "mais discreto" ×2) — o teto do lockup sozinho era
+    // interpretável, e adjetivo sem número já perdeu antes (assinatura do
+    // TERO). ~7% × 2-3 linhas ainda respeita os ~15% do conjunto.
+    '2. A headline tem presença MODERADA e editorial: o LOCKUP inteiro (todas as linhas da manchete juntas, com o respiro entre elas) não passa de ~15% da altura do quadro, e NENHUMA linha sozinha passa de ~7%. Hierarquia por PESO, COR e POSIÇÃO — nunca por tamanho; na dúvida entre dois corpos, use o MENOR. Nunca cartaz de varejo.',
+    // Compacidade vertical: a peça de sobremesa do O Quintal (20/08/2026) saiu
+    // com as linhas do topo grandes E afastadas — "a altura de um para o outro
+    // muito grande também, deve ficar mais discretos e juntos". Tamanho e
+    // espalhamento são defeitos independentes; este cobre o segundo.
+    '2b. O conjunto de texto é COMPACTO na vertical: dentro de um bloco a entrelinha é curta (as linhas quase se tocam), e o respiro entre blocos vizinhos da mesma zona é MENOR que a altura de uma linha de manchete. Os blocos de uma zona formam UM grupo coeso — nunca textos espalhados pela altura do quadro com vãos grandes entre eles.',
     // O teto por PALAVRA é do insta-automatico e resolve um vício específico:
     // sem ele o modelo estica uma palavra sozinha até preencher a largura, e a
     // peça vira cartaz de varejo mesmo respeitando o teto de altura.
@@ -945,6 +955,13 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // porque não dizia ONDE — a segunda frase é o limite que faltava.
     '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
     '4b. O véu de leitura é LOCAL e SUAVE: um sussurro de sombra só na faixa onde o texto pousa (no máximo ~1/3 do quadro), sumindo antes de chegar ao assunto — a foto continua NÍTIDA e reconhecível POR BAIXO do véu, nunca coberta por uma tarja. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível com um véu leve, MUDE O TEXTO DE LUGAR em vez de adensar o véu.',
+    // A porta que o 4b não fechava: em vez de adensar o VÉU, o modelo pinta um
+    // ELEMENTO (ingrediente, folha, tábua) atrás do texto e esconde a foto do
+    // mesmo jeito. Reprovação real do O Quintal em 20/08/2026: "o ingrediente
+    // por trás do texto está muito forte escondendo a foto, ele deve ter mais
+    // transparência" — e o DNA da marca, falando em "madeira e folha como
+    // textura dominante", era lido como convite.
+    '4c. Atrás do texto existem SÓ a foto e o véu: não pinte textura, ingrediente, folha, tábua, mancha nem ilustração para servir de fundo ao texto. Quando a identidade da marca fala em textura dominante (madeira, folha), ela descreve a FOTOGRAFIA e o clima — nunca autoriza desenhar elementos por cima da foto. Se um ornamento desse tipo vier do modelo a seguir, ele entra QUASE transparente, como marca-d\'água: a foto permanece inteiramente visível através dele.',
     // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
     // defeito aparecia toda semana.
     // "na última linha" deixava escapar o artigo órfão na PRIMEIRA: a manchete
@@ -1071,6 +1088,23 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     if (!ehIrmao && !temModelo) {
       if (args.brand.dna.visualStyle) identidade.push(`Estilo visual: ${args.brand.dna.visualStyle}`)
       if (args.brand.dna.composition) identidade.push(`Composição da marca: ${args.brand.dna.composition}`)
+      /**
+       * Escopo dos NÚMEROS do DNA — irmão do ESCOPO de `contentRules` abaixo.
+       *
+       * Medido no O Quintal em 20/08/2026: a "Composição da marca" diz
+       * "logotipo ... de 25% a 32% da largura, alternando entre topo à
+       * esquerda, rodapé à direita" e "texto ... no máximo um quarto do quadro
+       * vertical". O modelo obedeceu ao DNA (que vence por volume: ~9 mil
+       * caracteres contra as regras curtas lá de cima) e as três peças do dia
+       * voltaram reprovadas: marca grande no topo esquerdo do story e manchete
+       * dominando o quadro. O DNA descreve o gosto da marca; os tetos são das
+       * REGRAS DE COMPOSIÇÃO e do bloco da logo.
+       */
+      if (args.brand.dna.visualStyle || args.brand.dna.composition) {
+        identidade.push(
+          'ESCOPO do estilo e da composição acima: descrevem o GOSTO da marca DENTRO dos limites das REGRAS DE COMPOSIÇÃO e do bloco da logo. Nenhum número citado neles (fração do quadro para texto, percentual de largura ou canto da logo, opacidade de véu) afrouxa aqueles tetos: quando divergirem, vale sempre o limite MAIS RESTRITO.',
+        )
+      }
     }
     if (args.brand.dna.contentRules) {
       identidade.push(`Regras da marca (respeite sempre): ${args.brand.dna.contentRules}`)
