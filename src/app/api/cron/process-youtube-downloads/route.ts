@@ -17,7 +17,13 @@ export async function GET(req: NextRequest) {
 
     console.log('[CRON] Processing YouTube download queue...')
 
-    // Limpar jobs stuck que estão downloading há mais de 2 horas
+    // Descarta o que passou de 2 horas em "downloading".
+    //
+    // Esse estado só avança pelo NAVEGADOR (o CDN recusa IP de datacenter), e o
+    // link que o CDN assina vale ~2h — então, passado esse prazo, não há mais o
+    // que recuperar nem daqui nem da página. A mensagem precisa dizer isso: a
+    // anterior ("job stuck for more than 2 hours") aparecia para o usuário sem
+    // explicar a causa nem o que fazer.
     const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
     const stuckJobs = await db.youtubeDownloadJob.updateMany({
       where: {
@@ -26,7 +32,8 @@ export async function GET(req: NextRequest) {
       },
       data: {
         status: 'failed',
-        error: 'Download timeout - job stuck for more than 2 hours',
+        error:
+          'O arquivo não chegou a ser baixado e o link expirou. O download acontece pela página da biblioteca de músicas, que precisa ficar aberta até o fim — envie o link do YouTube de novo.',
       },
     })
 

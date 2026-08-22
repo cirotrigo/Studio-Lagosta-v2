@@ -3179,6 +3179,41 @@ salvava o instrumental e jogava a voz fora. Colunas `hasVocalsStem` /
   de export, `process-video-job`). Enum de áudio novo precisa passar por todas —
   o `tsc` pega as de tipo, mas não os textos de rótulo.
 
+### 🔴 O download do YouTube trava quando a aba fecha (22/08/2026)
+
+A última etapa de um download — baixar o MP3 do CDN e subir para o Blob — roda
+**no NAVEGADOR**, não no servidor: o CDN do RapidAPI (123tokyo.xyz) responde 404
+para IPs de datacenter e só serve IPs residenciais (com CORS aberto). Isso está
+documentado em `video-download-client.ts` e foi confirmado em 22/08 — daqui, de
+IP residencial, o mesmo link responde 206.
+
+A consequência não estava documentada e derrubou **3 downloads num dia**:
+
+- 🔴 **Nenhum ramo do cron cobre `downloading` COM link.** Os três ramos de
+  `process-youtube-downloads` pegam `downloading + startedAt < 2h` (limpeza),
+  `pending + videoApiStatus=processing` (refresh) e `downloading + SEM link`
+  (check). Um job com link e sem música não é visto por nenhum — medido: 0, 0 e
+  0 contra dois jobs parados. Só o navegador o resolve, e só com a página
+  aberta. Fechada a aba, ele fica parado até o expurgo de 2h marcá-lo como
+  falho — e o link assinado (`s=` na URL) expira mais ou menos junto.
+- 🔴 **A tela mostrava progresso falso.** Nesse estado a copy era
+  "Preparando download... 50%" com spinner e barra, sem botão nenhum —
+  indistinguível de trabalho em andamento. Hoje há um ramo próprio ("Falta
+  baixar o arquivo") com **Baixar agora**, e ele exige o orçamento automático
+  esgotado para não piscar ao abrir a página.
+- 🔴 **O retry automático era um laço.** No erro o guard por link era zerado, e
+  como `job` é repolado a cada 5s o efeito reentrava para sempre, martelando o
+  CDN e piscando o erro. Agora são no máximo `MAX_TENTATIVAS_AUTO = 2` por
+  link; esgotado, só no botão.
+- **`scripts/destravar-downloads-do-youtube.ts`** faz o papel do navegador e
+  completa o que ficou para trás (dry-run por padrão). **Só funciona de máquina
+  com IP residencial** — de dentro da Vercel o CDN recusa. Ele confere a
+  expiração do link antes de tentar.
+- ⚠️ **`startYoutubeDownloadJob` é código morto** (nenhum chamador) e cria o job
+  com `videoApiStatus` NULO — estado que o ramo de refresh não enxerga. Se
+  alguém voltar a usá-la, precisa gravar `videoApiStatus`, senão nasce um job
+  invisível para o cron e para o expurgo.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

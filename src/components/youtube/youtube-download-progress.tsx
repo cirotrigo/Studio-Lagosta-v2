@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Loader2, CheckCircle2, XCircle, Download } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import {
@@ -22,8 +22,14 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
   const cancelJob = useCancelarYoutubeJob()
   const uploadMp3 = useUploadYoutubeMp3()
   const hasInvalidated = useRef(false)
-  // Controle do download automático no navegador (uma vez por link)
-  const downloadedLinkRef = useRef<string | null>(null)
+  // Controle do download feito no navegador.
+  // `linkTentadoRef` guarda QUAL link já teve tentativa automática; `tentativasRef`
+  // conta quantas foram. As duas coisas juntas são o que impede o laço: o `job` é
+  // repolado a cada 5s, então zerar o guard no erro fazia o efeito reentrar para
+  // sempre, martelando o CDN e piscando a mensagem de erro na tela.
+  const MAX_TENTATIVAS_AUTO = 2
+  const linkTentadoRef = useRef<string | null>(null)
+  const tentativasRef = useRef(0)
   const [clientDownloading, setClientDownloading] = useState(false)
   const [clientError, setClientError] = useState<string | null>(null)
 
@@ -34,39 +40,57 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
     hasInvalidated.current = true
   }, [job, queryClient])
 
-  // Download automático no NAVEGADOR: o CDN da RapidAPI bloqueia IPs de
-  // datacenter (Vercel → 404) mas serve IPs residenciais e tem CORS aberto.
-  // Quando o link fica pronto, baixamos via fetch e subimos para o servidor.
-  useEffect(() => {
-    if (!job || job.status !== 'downloading' || !job.downloadLink || job.music) return
-    if (downloadedLinkRef.current === job.downloadLink) return
-
-    downloadedLinkRef.current = job.downloadLink
-    const link = job.downloadLink
-    const fileName = `${job.title ?? job.jobId}.mp3`
-
-    setClientDownloading(true)
-    setClientError(null)
-    ;(async () => {
+  // A transferência: baixa o MP3 do CDN e sobe para o servidor.
+  //
+  // Isso roda NO NAVEGADOR porque o CDN do RapidAPI responde 404 para IPs de
+  // datacenter (Vercel) e só serve IPs residenciais — com CORS aberto. A
+  // consequência é que ela só acontece enquanto ESTA página estiver aberta:
+  // nenhum cron cobre o estado "downloading com link", e em ~2h o link expira.
+  const transferir = useCallback(
+    async (link: string, jobIdAlvo: number, titulo: string | null) => {
+      setClientDownloading(true)
+      setClientError(null)
       try {
         const res = await fetch(link)
         if (!res.ok) throw new Error(`Falha ao baixar o áudio (HTTP ${res.status})`)
         const blob = await res.blob()
         if (blob.size < 10000) throw new Error('Arquivo muito pequeno — download falhou')
-        const file = new File([blob], fileName, { type: 'audio/mpeg' })
-        await uploadMp3.mutateAsync({ jobId: job.jobId, file })
-        queryClient.invalidateQueries({ queryKey: ['youtube-job-status', job.jobId] })
+        const file = new File([blob], `${titulo ?? jobIdAlvo}.mp3`, { type: 'audio/mpeg' })
+        await uploadMp3.mutateAsync({ jobId: jobIdAlvo, file })
+        queryClient.invalidateQueries({ queryKey: ['youtube-job-status', jobIdAlvo] })
         queryClient.invalidateQueries({ queryKey: chavesMusica.listas() })
       } catch (error) {
         console.error('[YOUTUBE] Download no navegador falhou:', error)
         setClientError(error instanceof Error ? error.message : 'Falha ao baixar o áudio')
-        // Permite nova tentativa (botão) sem recarregar
-        downloadedLinkRef.current = null
       } finally {
         setClientDownloading(false)
       }
-    })()
-  }, [job, uploadMp3, queryClient])
+    },
+    [uploadMp3, queryClient]
+  )
+
+  /** Retomar na mão: zera o orçamento de tentativas e transfere de novo. */
+  const baixarAgora = useCallback(() => {
+    if (!job?.downloadLink) return
+    tentativasRef.current = 0
+    linkTentadoRef.current = job.downloadLink
+    void transferir(job.downloadLink, job.jobId, job.title)
+  }, [job, transferir])
+
+  // Tentativa automática, com teto. Sem teto isto vira laço a cada repolagem.
+  useEffect(() => {
+    if (!job || job.status !== 'downloading' || !job.downloadLink || job.music) return
+    if (clientDownloading || uploadMp3.isPending) return
+
+    if (linkTentadoRef.current !== job.downloadLink) {
+      linkTentadoRef.current = job.downloadLink
+      tentativasRef.current = 0
+    }
+    if (tentativasRef.current >= MAX_TENTATIVAS_AUTO) return
+
+    tentativasRef.current += 1
+    void transferir(job.downloadLink, job.jobId, job.title)
+  }, [job, transferir, clientDownloading, uploadMp3.isPending])
 
   if (isLoading || !job) {
     return (
@@ -133,11 +157,7 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
                 type="button"
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  setClientError(null)
-                  // Reabre o link atual para o efeito de download tentar de novo
-                  queryClient.invalidateQueries({ queryKey: ['youtube-job-status', job.jobId] })
-                }}
+                onClick={baixarAgora}
               >
                 Tentar novamente
               </Button>
@@ -157,15 +177,65 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
     )
   }
 
+  const transferindo = clientDownloading || uploadMp3.isPending
+
+  // O arquivo está pronto no CDN e as tentativas automáticas se esgotaram.
+  //
+  // A condição exige o orçamento zerado para o aviso não piscar: ao abrir a
+  // página sobre um download parado, a tentativa automática dispara sozinha, e
+  // sem esse teto o âmbar apareceria por um quadro antes de virar "Baixando".
+  //
+  // Antes isto caía no spinner genérico com "Preparando download... 50%", que
+  // é indistinguível de progresso real: o usuário via a barra girar por 2
+  // horas até o job ser descartado. Como só o navegador consegue baixar (o CDN
+  // recusa IP de datacenter), o estado precisa ser explícito e ter um botão.
+  const tentativasAutoEsgotadas = tentativasRef.current >= MAX_TENTATIVAS_AUTO
+
+  if (
+    job.status === 'downloading' &&
+    job.downloadLink &&
+    !transferindo &&
+    !clientError &&
+    tentativasAutoEsgotadas
+  ) {
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+        <div className="flex items-start gap-3">
+          <Download className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-900">Falta baixar o arquivo</p>
+            <p className="text-sm text-amber-800">
+              O download acontece por esta página e precisa que ela fique aberta até o fim.
+            </p>
+            {job.title && <p className="mt-1 text-xs text-amber-800">{job.title}</p>}
+            <div className="mt-2 flex gap-2">
+              <Button type="button" size="sm" variant="outline" onClick={baixarAgora}>
+                Baixar agora
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => cancelJob.mutate(job.jobId)}
+                disabled={cancelJob.isPending}
+                className="text-amber-900 hover:bg-amber-100 hover:text-amber-900"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   // Estados intermediários: pending (RapidAPI convertendo / na fila) e
-  // downloading (o navegador baixa e sobe o arquivo automaticamente).
+  // downloading (a transferência está rodando nesta aba).
   const statusCopy: Record<string, string> = {
     pending: job.videoApiStatus === 'processing'
       ? 'Convertendo o áudio...'
       : 'Na fila...',
-    downloading: clientDownloading || uploadMp3.isPending
-      ? 'Baixando e adicionando...'
-      : 'Preparando download...',
+    downloading: 'Baixando e adicionando...',
     uploading: 'Adicionando à biblioteca...',
   }
 
