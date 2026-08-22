@@ -20,7 +20,7 @@ import { Prisma } from '../../../../../../../prisma/generated/client'
 const pageAudioSchema = z.object({
   source: z.enum(['original', 'library', 'mute', 'mix']),
   musicId: z.number().int().optional(),
-  audioVersion: z.enum(['original', 'instrumental']).optional(),
+  audioVersion: z.enum(['original', 'instrumental', 'vocals']).optional(),
   musicName: z.string().optional(),
   musicThumbnailUrl: z.string().nullable().optional(),
   startTime: z.number().min(0),

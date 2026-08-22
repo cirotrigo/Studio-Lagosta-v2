@@ -700,7 +700,13 @@ export function VideoExportButton() {
                   <p className="truncate text-xs text-muted-foreground">
                     {audioConfig.source === 'library'
                       ? audioConfig.musicName
-                        ? `${audioConfig.musicName}${audioConfig.audioVersion === 'instrumental' ? ' • Instrumental' : ''}`
+                        ? `${audioConfig.musicName}${
+                            audioConfig.audioVersion === 'instrumental'
+                              ? ' • Instrumental'
+                              : audioConfig.audioVersion === 'vocals'
+                                ? ' • Só a voz'
+                                : ''
+                          }`
                         : 'Música da biblioteca'
                       : audioConfig.source === 'mix'
                         ? audioConfig.musicName

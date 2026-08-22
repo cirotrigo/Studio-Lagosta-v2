@@ -7,6 +7,7 @@
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import type { MusicStemJob } from '@prisma/client'
+import { classificarStems, getFileName, getFileUrl } from './classificar-stems'
 
 const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
@@ -195,8 +196,8 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
           },
         })
       } else {
-        console.log(`[MVSEP] Found ${data.data.files.length} files, downloading stem...`)
-        await downloadAndSaveStem(job, data)
+        console.log(`[MVSEP] Found ${data.data.files.length} files, downloading stems...`)
+        await downloadAndSaveStems(job, data)
       }
     }
 
@@ -218,215 +219,142 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
 }
 
 /**
- * Helper: Extract file name from MVSEP file object (tries multiple field names)
+ * Baixa os stems da separação e salva os dois no Vercel Blob.
  */
-function getFileName(file: any): string {
-  return (
-    file.name ||
-    file.filename ||
-    file.file_name ||
-    file.fileName ||
-    file.title ||
-    'unknown.mp3'
-  )
-}
-
-/**
- * Helper: Extract download URL from MVSEP file object (tries multiple field names)
- */
-function getFileUrl(file: any): string | null {
-  return (
-    file.url ||
-    file.link ||
-    file.download_url ||
-    file.downloadUrl ||
-    file.download ||
-    null
-  )
-}
-
-/**
- * Baixa o stem de percussão e salva no Vercel Blob
- */
-async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusResponse) {
+async function downloadAndSaveStems(job: MusicStemJob, mvsepResult: MvsepStatusResponse) {
   try {
     console.log(`[MVSEP] ⬇️  Starting download for job ${job.id}`)
-    console.log(`[MVSEP] Files array:`, JSON.stringify(mvsepResult.data?.files, null, 2))
 
     await db.musicStemJob.update({
       where: { id: job.id },
-      data: { progress: 70 },
+      data: { progress: 60 },
     })
-    console.log(`[MVSEP] Updated progress to 70%`)
 
     if (!mvsepResult.data?.files || mvsepResult.data.files.length === 0) {
       throw new Error('No stems found in result')
     }
 
     const files = mvsepResult.data.files
+    console.log(`[MVSEP] 🔍 Analisando ${files.length} arquivos:`, files.map((f) => getFileName(f)))
 
-    // MVSEP retorna array de stems
-    // Para MelBand Roformer (Type 48), procuramos o stem instrumental (sem vocais)
-    console.log(`[MVSEP] Looking for instrumental stem in ${files.length} files...`)
-    console.log(`[MVSEP] Files structure:`, JSON.stringify(files, null, 2))
-    console.log(`[MVSEP] File names:`, files.map(f => getFileName(f)))
-    console.log(`[MVSEP] File URLs:`, files.map(f => getFileUrl(f) || 'NO_URL'))
-    console.log(`[MVSEP] All file keys:`, files.map(f => Object.keys(f)))
+    const { instrumental, vocals, criterio } = classificarStems(files)
 
-    // Try to find instrumental stem
-    // MVSEP retorna 2 arquivos: vocals e instrumental
-    // Ordem típica: [0]=vocals, [1]=instrumental
-    // IMPORTANTE: Pegar o ÚLTIMO arquivo quando não conseguir identificar
+    console.log(`[MVSEP] Critério da classificação: ${criterio}`)
+    console.log(`[MVSEP] 🎸 Instrumental:`, instrumental ? getFileName(instrumental) : 'NÃO IDENTIFICADO')
+    console.log(`[MVSEP] 🎤 Voz:`, vocals ? getFileName(vocals) : 'NÃO IDENTIFICADA')
 
-    console.log(`[MVSEP] 🔍 Analisando ${files.length} arquivos...`)
-
-    // Procurar por palavras que indicam INSTRUMENTAL
-    const instrumentalStems = files.filter((file) => {
-      const name = getFileName(file).toLowerCase()
-      const isInstrumental = (
-        name.includes('instrumental') ||
-        name.includes('instrum') ||
-        name.includes('no_vocal') ||
-        name.includes('no vocal') ||
-        name.includes('music') ||
-        name.includes('backing') ||
-        name.includes('karaoke')
-      )
-      if (isInstrumental) {
-        console.log(`[MVSEP] ✅ Encontrado arquivo instrumental pelo nome:`, name)
-      }
-      return isInstrumental
-    })
-
-    // Procurar por palavras que indicam VOCALS (para EXCLUIR)
-    const vocalStems = files.filter((file) => {
-      const name = getFileName(file).toLowerCase()
-      const isVocals = (
-        name.includes('vocal') ||
-        name.includes('voice') ||
-        name.includes('voz') ||
-        name.includes('singer') ||
-        name.includes('acapella')
-      )
-      if (isVocals) {
-        console.log(`[MVSEP] ❌ Encontrado arquivo vocal (vai ignorar):`, name)
-      }
-      return isVocals
-    })
-
-    // Escolher qual usar
-    let stemToUse: any
-    let stemName: string
-
-    if (instrumentalStems.length > 0) {
-      // Caso 1: Encontrou arquivo com nome "instrumental"
-      stemToUse = instrumentalStems[0]
-      stemName = getFileName(stemToUse)
-      console.log(`[MVSEP] ✅ Usando arquivo identificado como instrumental:`, stemName)
-    } else if (vocalStems.length > 0 && files.length > vocalStems.length) {
-      // Caso 2: Encontrou vocals, pegar qualquer arquivo que NÃO seja vocal
-      const nonVocals = files.filter(f => !vocalStems.includes(f))
-      stemToUse = nonVocals[0]
-      stemName = getFileName(stemToUse)
-      console.log(`[MVSEP] ✅ Usando arquivo não-vocal (excluindo ${vocalStems.length} vocal):`, stemName)
-    } else {
-      // Caso 3: Não conseguiu identificar - PEGAR O ÚLTIMO ARQUIVO
-      // Na maioria dos casos MVSEP retorna [vocals, instrumental] nessa ordem
-      // Então o último é o instrumental
-      stemToUse = files[files.length - 1]
-      stemName = getFileName(stemToUse)
-      console.warn(`[MVSEP] ⚠️  Não identificado - usando ÚLTIMO arquivo (índice ${files.length - 1}):`, stemName)
-      console.warn(`[MVSEP] Todos os arquivos:`, files.map((f, i) => `[${i}] ${getFileName(f)}`))
+    if (!instrumental) {
+      throw new Error(`Não foi possível identificar o instrumental entre ${files.length} arquivos`)
     }
 
-    await processStem(job, stemToUse)
+    // O instrumental é o que decide o sucesso do job — é o contrato que já existia.
+    const instrumentalSalvo = await enviarStemParaBlob(job, instrumental, 'instrumental')
+
+    await db.musicStemJob.update({
+      where: { id: job.id },
+      data: { progress: 85 },
+    })
+
+    // A voz é ADITIVA: se falhar, o job continua completo com o instrumental.
+    // Regredir a separação que já funcionava por causa do arquivo novo seria
+    // trocar um problema por outro pior.
+    let vocalSalvo: { url: string; tamanho: number } | null = null
+    if (vocals) {
+      try {
+        vocalSalvo = await enviarStemParaBlob(job, vocals, 'vocals')
+      } catch (error) {
+        console.error('[MVSEP] ⚠️  Falha ao salvar a voz (o instrumental segue válido):', error)
+      }
+    } else {
+      console.warn('[MVSEP] ⚠️  Nenhum arquivo de voz identificado nesta separação')
+    }
+
+    await db.musicStemJob.update({
+      where: { id: job.id },
+      data: { progress: 95 },
+    })
+
+    console.log(`[MVSEP] Updating MusicLibrary ${job.musicId}...`)
+    await db.musicLibrary.update({
+      where: { id: job.musicId },
+      data: {
+        instrumentalUrl: instrumentalSalvo.url,
+        instrumentalSize: instrumentalSalvo.tamanho,
+        hasInstrumentalStem: true,
+        ...(vocalSalvo
+          ? {
+              vocalsUrl: vocalSalvo.url,
+              vocalsSize: vocalSalvo.tamanho,
+              hasVocalsStem: true,
+            }
+          : {}),
+        stemsProcessedAt: new Date(),
+      },
+    })
+
+    await db.musicStemJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'completed',
+        progress: 100,
+        completedAt: new Date(),
+      },
+    })
+
+    console.log(
+      `[MVSEP] 🎉 Job ${job.id} completed! instrumental=sim voz=${vocalSalvo ? 'sim' : 'não'}`
+    )
   } catch (error) {
-    console.error('[MVSEP] ❌ Failed to download/save stem:', error)
+    console.error('[MVSEP] ❌ Failed to download/save stems:', error)
     console.error('[MVSEP] Error stack:', error instanceof Error ? error.stack : 'No stack')
 
     await db.musicStemJob.update({
       where: { id: job.id },
       data: {
         status: 'failed',
-        error: error instanceof Error ? error.message : 'Failed to save stem',
+        error: error instanceof Error ? error.message : 'Failed to save stems',
       },
     })
   }
 }
 
 /**
- * Processa um stem: baixa, faz upload para Blob e atualiza o banco
+ * Baixa um stem do MVSEP e sobe para o Vercel Blob.
  */
-async function processStem(job: MusicStemJob, stem: any) {
+async function enviarStemParaBlob(
+  job: MusicStemJob,
+  stem: any,
+  tipo: 'instrumental' | 'vocals'
+): Promise<{ url: string; tamanho: number }> {
   const stemName = getFileName(stem)
   const stemUrl = getFileUrl(stem)
 
-  console.log(`[MVSEP] 🎵 Processing stem: ${stemName}`)
-  console.log(`[MVSEP] Stem URL: ${stemUrl}`)
-  console.log(`[MVSEP] Stem object keys:`, Object.keys(stem))
-  console.log(`[MVSEP] Full stem object:`, JSON.stringify(stem, null, 2))
+  console.log(`[MVSEP] 🎵 Processing ${tipo}: ${stemName}`)
 
   if (!stemUrl) {
-    throw new Error(`No download URL found in stem object. Available keys: ${Object.keys(stem).join(', ')}`)
+    throw new Error(
+      `No download URL found in ${tipo} stem. Available keys: ${Object.keys(stem).join(', ')}`
+    )
   }
 
-  // Download do arquivo
-  console.log(`[MVSEP] Downloading stem from MVSEP...`)
   const audioResponse = await fetch(stemUrl)
   if (!audioResponse.ok) {
-    throw new Error(`Failed to download stem from MVSEP: ${audioResponse.status} ${audioResponse.statusText}`)
+    throw new Error(
+      `Failed to download ${tipo} from MVSEP: ${audioResponse.status} ${audioResponse.statusText}`
+    )
   }
 
-  const audioBuffer = await audioResponse.arrayBuffer()
-  const buffer = Buffer.from(audioBuffer)
-  console.log(`[MVSEP] Downloaded ${buffer.length} bytes`)
+  const buffer = Buffer.from(await audioResponse.arrayBuffer())
+  console.log(`[MVSEP] Downloaded ${tipo}: ${buffer.length} bytes`)
 
-  await db.musicStemJob.update({
-    where: { id: job.id },
-    data: { progress: 85 },
-  })
-  console.log(`[MVSEP] Updated progress to 85%`)
-
-  // Upload para Vercel Blob
-  const fileName = `music/stems/${job.musicId}_instrumental.mp3`
-  console.log(`[MVSEP] Uploading to Vercel Blob: ${fileName}`)
+  const fileName = `music/stems/${job.musicId}_${tipo}.mp3`
   const blob = await put(fileName, buffer, {
     access: 'public',
     contentType: 'audio/mpeg',
     addRandomSuffix: true,
   })
 
-  console.log(`[MVSEP] ✅ Uploaded to Vercel Blob: ${blob.url}`)
+  console.log(`[MVSEP] ✅ ${tipo} no Blob: ${blob.url}`)
 
-  await db.musicStemJob.update({
-    where: { id: job.id },
-    data: { progress: 95 },
-  })
-  console.log(`[MVSEP] Updated progress to 95%`)
-
-  // Atualizar MusicLibrary com o stem instrumental
-  console.log(`[MVSEP] Updating MusicLibrary ${job.musicId}...`)
-  await db.musicLibrary.update({
-    where: { id: job.musicId },
-    data: {
-      instrumentalUrl: blob.url,
-      instrumentalSize: buffer.length,
-      hasInstrumentalStem: true,
-      stemsProcessedAt: new Date(),
-    },
-  })
-  console.log(`[MVSEP] Updated MusicLibrary`)
-
-  // Marcar job como completo
-  console.log(`[MVSEP] Marking job ${job.id} as completed...`)
-  await db.musicStemJob.update({
-    where: { id: job.id },
-    data: {
-      status: 'completed',
-      progress: 100,
-      completedAt: new Date(),
-    },
-  })
-
-  console.log(`[MVSEP] 🎉 Job ${job.id} completed successfully!`)
+  return { url: blob.url, tamanho: buffer.length }
 }

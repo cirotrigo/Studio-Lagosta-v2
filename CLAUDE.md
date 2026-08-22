@@ -3132,6 +3132,53 @@ código novo:
   O pipeline de IA não passa por essa rota (extrai o `fileId` e baixa o
   original direto), então miniatura pequena não afeta geração.
 
+### A voz isolada: o stem que a separação sempre produziu e ninguém guardava (22/08/2026)
+
+A biblioteca de músicas passou a guardar **três** arquivos por faixa — original,
+instrumental e **voz isolada**. Não há separação nova: o MVSEP (`sep_type: 48`,
+MelBand Roformer) **sempre** devolveu os dois stems, o cliente baixava os dois,
+salvava o instrumental e jogava a voz fora. Colunas `hasVocalsStem` /
+`vocalsUrl` / `vocalsSize` em `MusicLibrary`, espelhando o instrumental.
+
+- 🔴 **`getFileName` nunca casou com a resposta REAL da API.** Ele procurava
+  `name`/`filename`/`file_name`/`title`, e o MVSEP não manda nenhum desses — o
+  nome vem em **`download`** e o tipo em **`type`**. Medido em 22/08 contra o
+  job real: os dois arquivos liam `'unknown.mp3'`, então TODA a classificação
+  por nome era morta e o código caía sempre no palpite final ("pega o último
+  arquivo"). Acertava por sorte, porque a ordem do MVSEP é `[Vocals, Other]`.
+  Log que imprime `unknown` para tudo é sinal de leitor quebrado, não de API
+  pobre.
+- 🔴 **O instrumental se chama "Other", não "instrumental".** É `type: "Other"`
+  no modelo de DOIS stems — e só ali: num modelo de quatro (bateria, baixo,
+  outros, voz) "other" é uma faixa própria. Por isso a inferência
+  `other → instrumental` é aplicada **apenas com exatamente 2 arquivos**.
+- 🔴 **A ordem da classificação importa: "no_vocals" CONTÉM "vocal".** O
+  instrumental é decidido PRIMEIRO e a voz é procurada só no que sobrou.
+  Invertido, os dois arquivos trocam de lugar — e esse defeito sai CALADO: o
+  vídeo publica a faixa cantada achando que é o playback.
+- **"music" ficou de fora das marcas de instrumental**, de propósito: o título
+  da faixa vem embutido no nome do arquivo e "Music Box" cairia lá. O
+  complemento (com 2 arquivos, o que não é voz é instrumental) resolve o mesmo
+  caso sem depender do título.
+- **A classificação mora em módulo PURO** (`src/lib/mvsep/classificar-stems.ts`),
+  sem Prisma — `@/lib/db` lança no import sem `DATABASE_URL`, e esta é a decisão
+  que mais precisa ser conferida sozinha. `scripts/validar-classificacao-de-stems.ts`
+  roda 12 casos (inclusive a forma real da API) sem banco, sem rede e sem custo.
+- **A voz é ADITIVA e nunca derruba o instrumental.** Se o download dela falhar,
+  o job termina `completed` com o instrumental — regredir a separação que já
+  funcionava por causa do arquivo novo seria trocar um problema por outro pior.
+  Mesma razão pela qual o ZIP segue sem o stem que não baixou, e o export de
+  vídeo cai no original quando o stem pedido ainda não existe (nunca vídeo mudo).
+- 🔴 **O resultado do MVSEP EXPIRA em poucos dias.** Medido em 22/08: jobs de 2
+  dias antes ainda respondiam `done`; o de 3 dias já era `not_found`. Por isso
+  `scripts/recuperar-voz-das-musicas.ts` tenta primeiro o `mvsepJobHash` guardado
+  (de graça) e só depois oferece `--reprocessar`, que custa uma separação nova
+  por faixa — e o cron processa **UMA a cada 2 minutos**. Dry-run por padrão.
+- **`audioVersion` virou `original | instrumental | vocals`** nas 8 casas onde
+  o enum vive (tipo da página, dois zods de rota, modal, painel do editor, botão
+  de export, `process-video-job`). Enum de áudio novo precisa passar por todas —
+  o `tsc` pega as de tipo, mas não os textos de rótulo.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

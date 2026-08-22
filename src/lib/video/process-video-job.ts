@@ -28,7 +28,7 @@ export type ProcessVideoJobResult =
 interface ExportAudioConfig {
   source: 'original' | 'library' | 'mute' | 'mix'
   musicId?: number
-  audioVersion?: 'original' | 'instrumental'
+  audioVersion?: 'original' | 'instrumental' | 'vocals'
   startTime?: number
   endTime?: number
   volume?: number
@@ -121,10 +121,14 @@ async function prepareAudioMix(
     if (!music) {
       throw new Error(`Música ${cfg.musicId} não encontrada na biblioteca`)
     }
+    // O original é o fallback: stem pedido que ainda não existe toca a faixa
+    // inteira, nunca um vídeo mudo.
     const musicUrl =
       cfg.audioVersion === 'instrumental' && music.instrumentalUrl
         ? music.instrumentalUrl
-        : music.blobUrl
+        : cfg.audioVersion === 'vocals' && music.vocalsUrl
+          ? music.vocalsUrl
+          : music.blobUrl
     mix.musicPath = await downloadToTmp(musicUrl, `música ${music.name}`, tempFiles)
     mix.musicStart = cfg.startTime ?? 0
     mix.musicVolume =

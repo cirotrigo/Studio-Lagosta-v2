@@ -138,6 +138,7 @@ export function MusicPanel() {
               <p className="text-[11px] text-muted-foreground">
                 Trilha desta página
                 {audio.audioVersion === 'instrumental' ? ' • Instrumental' : ''}
+                {audio.audioVersion === 'vocals' ? ' • Só a voz' : ''}
               </p>
             </div>
             <Button
@@ -158,7 +159,9 @@ export function MusicPanel() {
             </Label>
             <Select
               value={audio.audioVersion ?? 'original'}
-              onValueChange={(v: 'original' | 'instrumental') => patchAudio({ audioVersion: v })}
+              onValueChange={(v: 'original' | 'instrumental' | 'vocals') =>
+                patchAudio({ audioVersion: v })
+              }
             >
               <SelectTrigger className="h-8 text-xs">
                 <SelectValue />
@@ -167,6 +170,9 @@ export function MusicPanel() {
                 <SelectItem value="original">Completa</SelectItem>
                 <SelectItem value="instrumental" disabled={!stemStatus?.hasInstrumentalStem}>
                   Instrumental{!stemStatus?.hasInstrumentalStem ? ' (processando…)' : ''}
+                </SelectItem>
+                <SelectItem value="vocals" disabled={!stemStatus?.hasVocalsStem}>
+                  Só a voz{!stemStatus?.hasVocalsStem ? ' (processando…)' : ''}
                 </SelectItem>
               </SelectContent>
             </Select>

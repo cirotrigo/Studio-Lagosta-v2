@@ -60,7 +60,7 @@ function MusicStemBadge({ musicId }: { musicId: number }) {
     return (
       <Badge variant="secondary" className="text-xs">
         <MicOff className="h-3 w-3 mr-1" />
-        Instrumental
+        {stemStatus.hasVocalsStem ? 'Instrumental + Voz' : 'Instrumental'}
       </Badge>
     );
   }
@@ -121,6 +121,7 @@ function MusicItem({ faixa, onDownload, onEdit, onDelete, isDownloading }: Music
     <MusicWaveformPlayer
       originalUrl={faixa.blobUrl}
       instrumentalUrl={stemStatus?.instrumentalUrl}
+      vocalsUrl={stemStatus?.vocalsUrl}
       musicName={faixa.name}
       artist={faixa.artist}
       duration={faixa.duration}

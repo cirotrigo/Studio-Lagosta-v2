@@ -14,7 +14,7 @@ export interface DesignData {
 export interface PageAudioConfig {
   source: 'original' | 'library' | 'mute' | 'mix'
   musicId?: number
-  audioVersion?: 'original' | 'instrumental'
+  audioVersion?: 'original' | 'instrumental' | 'vocals'
   /** Apenas para exibição no resumo (não afeta a renderização) */
   musicName?: string
   musicThumbnailUrl?: string | null

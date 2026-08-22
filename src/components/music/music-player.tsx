@@ -2,24 +2,31 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Music, MicOff } from 'lucide-react';
+import { Play, Pause, Music, Mic, MicOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MusicPlayerProps {
   originalUrl: string;
   instrumentalUrl?: string | null;
+  vocalsUrl?: string | null;
   musicName: string;
 }
 
-type AudioVersion = 'original' | 'instrumental';
+type AudioVersion = 'original' | 'instrumental' | 'vocals';
 
-export function MusicPlayer({ originalUrl, instrumentalUrl, musicName }: MusicPlayerProps) {
+export function MusicPlayer({ originalUrl, instrumentalUrl, vocalsUrl, musicName }: MusicPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<AudioVersion>('original');
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // URL atual baseada na versão selecionada
-  const currentUrl = currentVersion === 'instrumental' && instrumentalUrl ? instrumentalUrl : originalUrl;
+  // URL atual baseada na versão selecionada.
+  // O original é o fallback: a voz e o instrumental podem ainda não existir.
+  const urlPorVersao: Record<AudioVersion, string | null | undefined> = {
+    original: originalUrl,
+    instrumental: instrumentalUrl,
+    vocals: vocalsUrl,
+  };
+  const currentUrl = urlPorVersao[currentVersion] || originalUrl;
 
   // Atualizar source quando trocar de versão
   useEffect(() => {
@@ -106,6 +113,7 @@ export function MusicPlayer({ originalUrl, instrumentalUrl, musicName }: MusicPl
             onClick={() => switchVersion('instrumental')}
             className={cn(
               'h-7 px-2 rounded-none text-xs',
+              vocalsUrl && 'border-r',
               currentVersion === 'instrumental'
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                 : 'hover:bg-muted'
@@ -114,6 +122,24 @@ export function MusicPlayer({ originalUrl, instrumentalUrl, musicName }: MusicPl
           >
             <MicOff className="h-3 w-3 mr-1" />
             Instrumental
+          </Button>
+        )}
+
+        {vocalsUrl && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => switchVersion('vocals')}
+            className={cn(
+              'h-7 px-2 rounded-none text-xs',
+              currentVersion === 'vocals'
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
+                : 'hover:bg-muted'
+            )}
+            title="Voz isolada (sem instrumental)"
+          >
+            <Mic className="h-3 w-3 mr-1" />
+            Voz
           </Button>
         )}
       </div>

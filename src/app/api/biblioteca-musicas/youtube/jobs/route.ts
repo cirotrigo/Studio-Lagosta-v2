@@ -18,6 +18,7 @@ export async function GET() {
             name: true,
             blobUrl: true,
             hasInstrumentalStem: true,
+            hasVocalsStem: true,
           },
         },
       },

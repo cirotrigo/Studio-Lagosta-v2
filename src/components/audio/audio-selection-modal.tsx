@@ -25,14 +25,14 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useBuscaMusicas } from '@/hooks/use-music-library';
 import { useProjects } from '@/hooks/use-project';
 import { useMusicStemStatus } from '@/hooks/use-music-stem';
-import { Search, Volume2, X, Music, MicOff } from 'lucide-react';
+import { Search, Volume2, X, Music, Mic, MicOff } from 'lucide-react';
 import { AudioWaveformTimeline } from './audio-waveform-timeline';
 import { MusicCard } from './music-card';
 import { MusicStemProgress } from './music-stem-progress';
 
 import type { PageAudioConfig } from '@/types/template';
 
-export type AudioVersion = 'original' | 'instrumental';
+export type AudioVersion = 'original' | 'instrumental' | 'vocals';
 
 /**
  * Alias do tipo persistido em Page.audio — a config escolhida aqui é a MESMA
@@ -384,11 +384,29 @@ export function AudioSelectionModal({
                               )}
                             </div>
                           </SelectItem>
+                          <SelectItem value="vocals" disabled={!stemStatus?.hasVocalsStem}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="flex items-center gap-2">
+                                <Mic className="h-4 w-4" />
+                                Só a voz
+                              </span>
+                              {stemStatus?.hasVocalsStem ? (
+                                <span className="text-xs text-green-600">✓ Pronta</span>
+                              ) : stemStatus?.job?.status === 'processing' ? (
+                                <span className="text-xs text-amber-600">
+                                  Processando ({stemStatus.job.progress}%)
+                                </span>
+                              ) : (
+                                <span className="text-xs text-gray-500">Gerando...</span>
+                              )}
+                            </div>
+                          </SelectItem>
                         </SelectContent>
                       </Select>
                       {!stemStatus?.hasInstrumentalStem && (
                         <p className="rounded-lg bg-blue-50 p-2 text-xs text-blue-800">
-                          💡 A versão instrumental estará disponível em alguns minutos.
+                          💡 O instrumental e a voz isolada saem da mesma separação e
+                          estarão disponíveis em alguns minutos.
                         </p>
                       )}
                     </div>

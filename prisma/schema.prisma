@@ -1713,6 +1713,11 @@ model MusicLibrary {
   hasInstrumentalStem Boolean              @default(false)
   instrumentalSize    Int?
   instrumentalUrl     String?
+  /// A voz isolada, o par do instrumental: a mesma separação do MVSEP devolve os
+  /// dois arquivos, e até 08/2026 o vocal era baixado e descartado.
+  hasVocalsStem       Boolean              @default(false)
+  vocalsSize          Int?
+  vocalsUrl           String?
   project             Project?             @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
   stemJob             MusicStemJob?
   usedInVideos        VideoProcessingJob[]

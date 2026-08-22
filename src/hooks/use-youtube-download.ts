@@ -50,6 +50,7 @@ export interface YoutubeJobSummary {
     name: string
     blobUrl: string
     hasInstrumentalStem: boolean
+    hasVocalsStem: boolean
   } | null
 }
 
@@ -71,6 +72,8 @@ export interface YoutubeJobStatusResponse {
     blobUrl: string
     hasInstrumentalStem: boolean
     instrumentalUrl: string | null
+    hasVocalsStem: boolean
+    vocalsUrl: string | null
     stemJob: {
       status: string
       progress: number

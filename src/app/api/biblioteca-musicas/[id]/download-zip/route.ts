@@ -1,6 +1,7 @@
 /**
  * GET /api/biblioteca-musicas/:id/download-zip
- * Baixa um ZIP contendo a versão original e instrumental (se disponível)
+ * Baixa um ZIP com as três versões: original, instrumental e voz isolada
+ * (os stems entram quando já tiverem sido separados)
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -48,41 +49,42 @@ export async function GET(
     const artistName = music.artist ? sanitizeName(music.artist) : 'Unknown'
     const baseFileName = `${musicName}_${artistName}`
 
-    // Baixar arquivo original
-    console.log('[DOWNLOAD_ZIP] Downloading original from:', music.blobUrl)
-    const originalResponse = await fetch(music.blobUrl)
-    if (!originalResponse.ok) {
-      throw new Error('Failed to download original audio')
-    }
-    const originalBlob = await originalResponse.blob()
-    const originalBuffer = Buffer.from(await originalBlob.arrayBuffer())
+    // As três versões: a original e os dois stems que a separação devolve.
+    // Cada uma é opcional a partir da segunda — faixa ainda não separada baixa
+    // só o original, e stem que falhou no download não derruba o ZIP inteiro.
+    const versoes: Array<{ sufixo: string; url: string }> = [
+      { sufixo: 'original', url: music.blobUrl },
+    ]
 
-    // Detectar extensão do arquivo original
-    const originalExt = music.blobUrl.includes('.mp3') ? 'mp3' :
-                        music.blobUrl.includes('.wav') ? 'wav' :
-                        music.blobUrl.includes('.m4a') ? 'm4a' : 'mp3'
-
-    zip.file(`${baseFileName}_original.${originalExt}`, originalBuffer)
-    console.log('[DOWNLOAD_ZIP] Added original to ZIP')
-
-    // Baixar arquivo instrumental (se disponível)
     if (music.hasInstrumentalStem && music.instrumentalUrl) {
-      console.log('[DOWNLOAD_ZIP] Downloading instrumental from:', music.instrumentalUrl)
-      const instrumentalResponse = await fetch(music.instrumentalUrl)
-      if (instrumentalResponse.ok) {
-        const instrumentalBlob = await instrumentalResponse.blob()
-        const instrumentalBuffer = Buffer.from(await instrumentalBlob.arrayBuffer())
+      versoes.push({ sufixo: 'instrumental', url: music.instrumentalUrl })
+    }
 
-        // Detectar extensão do arquivo instrumental
-        const instrumentalExt = music.instrumentalUrl.includes('.mp3') ? 'mp3' :
-                               music.instrumentalUrl.includes('.wav') ? 'wav' :
-                               music.instrumentalUrl.includes('.m4a') ? 'm4a' : 'mp3'
+    if (music.hasVocalsStem && music.vocalsUrl) {
+      versoes.push({ sufixo: 'voz', url: music.vocalsUrl })
+    }
 
-        zip.file(`${baseFileName}_instrumental.${instrumentalExt}`, instrumentalBuffer)
-        console.log('[DOWNLOAD_ZIP] Added instrumental to ZIP')
-      } else {
-        console.warn('[DOWNLOAD_ZIP] Failed to download instrumental, continuing without it')
+    // A extensão sai da URL; o que a separação devolve é sempre mp3 320kbps.
+    const extensaoDe = (url: string) =>
+      url.includes('.wav') ? 'wav' : url.includes('.m4a') ? 'm4a' : 'mp3'
+
+    for (const versao of versoes) {
+      console.log(`[DOWNLOAD_ZIP] Baixando ${versao.sufixo} de:`, versao.url)
+
+      const resposta = await fetch(versao.url)
+
+      if (!resposta.ok) {
+        // O original é obrigatório: sem ele não há ZIP que faça sentido.
+        if (versao.sufixo === 'original') {
+          throw new Error('Failed to download original audio')
+        }
+        console.warn(`[DOWNLOAD_ZIP] Falha ao baixar ${versao.sufixo}, seguindo sem ele`)
+        continue
       }
+
+      const buffer = Buffer.from(await resposta.arrayBuffer())
+      zip.file(`${baseFileName}_${versao.sufixo}.${extensaoDe(versao.url)}`, buffer)
+      console.log(`[DOWNLOAD_ZIP] ${versao.sufixo} adicionado ao ZIP (${buffer.length} bytes)`)
     }
 
     // Gerar ZIP

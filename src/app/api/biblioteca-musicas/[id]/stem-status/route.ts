@@ -31,6 +31,8 @@ export async function GET(
       musicId: music.id,
       hasInstrumentalStem: music.hasInstrumentalStem,
       instrumentalUrl: music.instrumentalUrl,
+      hasVocalsStem: music.hasVocalsStem,
+      vocalsUrl: music.vocalsUrl,
       stemsProcessedAt: music.stemsProcessedAt,
       job: music.stemJob
         ? {

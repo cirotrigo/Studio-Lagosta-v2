@@ -77,6 +77,8 @@ function formatJobResponse(job: NonNullable<JobWithRelations>) {
           blobUrl: job.music.blobUrl,
           hasInstrumentalStem: job.music.hasInstrumentalStem,
           instrumentalUrl: job.music.instrumentalUrl,
+          hasVocalsStem: job.music.hasVocalsStem,
+          vocalsUrl: job.music.vocalsUrl,
           stemJob: job.music.stemJob
             ? {
                 status: job.music.stemJob.status,

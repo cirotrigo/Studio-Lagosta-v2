@@ -21,6 +21,8 @@ interface MusicStemStatusResponse {
   musicId: number
   hasInstrumentalStem: boolean
   instrumentalUrl: string | null
+  hasVocalsStem: boolean
+  vocalsUrl: string | null
   stemsProcessedAt: string | null
   job: StemJobStatus | null
 }
