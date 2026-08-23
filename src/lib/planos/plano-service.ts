@@ -223,6 +223,20 @@ function comProgresso<T extends { itens: Array<{ status: string }> }>(
  * outro cliente ser 404 em vez de 403 — negar depois de confirmar a existência
  * já entrega informação.
  */
+/**
+ * Nome dos clientes CITADOS nos itens (co-branding), para a bancada mostrar
+ * "marca do cliente: X" sem precisar de outra ida ao servidor. Uma consulta
+ * pelos ids distintos; item sem citação não paga nada.
+ */
+async function nomesDosClientesCitados(
+  itens: Array<{ clienteProjectId: number | null }>,
+): Promise<Map<number, string>> {
+  const ids = [...new Set(itens.map((i) => i.clienteProjectId).filter((v): v is number => typeof v === 'number'))]
+  if (ids.length === 0) return new Map()
+  const projetos = await db.project.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })
+  return new Map(projetos.map((p) => [p.id, p.name]))
+}
+
 export async function lerPlano(projectId: number, planoId: string) {
   const plano = await db.planoDeConteudo.findFirst({
     where: { id: planoId, projectId },
@@ -231,7 +245,15 @@ export async function lerPlano(projectId: number, planoId: string) {
   if (!plano) {
     throw new CreativeError('PLANO_NAO_ENCONTRADO', 'Este plano não existe neste cliente.', 404)
   }
-  return comProgresso(plano)
+  const nomes = await nomesDosClientesCitados(plano.itens)
+  return comProgresso({
+    ...plano,
+    itens: plano.itens.map((item) => ({
+      ...item,
+      /** Derivado, não coluna: o nome do cliente citado, para a revisão na bancada. */
+      clienteCitadoNome: item.clienteProjectId ? (nomes.get(item.clienteProjectId) ?? null) : null,
+    })),
+  })
 }
 
 /**

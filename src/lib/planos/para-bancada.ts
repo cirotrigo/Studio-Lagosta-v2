@@ -68,6 +68,8 @@ export interface ItemDePlanoDoServidor {
   ajusteDaFoto?: string | null
   /** Cliente citado na peça — a logo dele é composta na arte. */
   clienteProjectId?: number | null
+  /** Nome do cliente citado, derivado por `lerPlano` (não é coluna). */
+  clienteCitadoNome?: string | null
   motivoDoSlot?: string | null
   escopo?: string | null
   campaignId?: string | null
@@ -425,6 +427,10 @@ export function paraItemDaBancada(
     // dizer — mandá-lo como pedido é melhor do que gerar com a direção vazia.
     pedido: doServidor.direcao?.trim() || tema || '',
     instrucaoImagem: doServidor.ajusteDaFoto?.trim() || null,
+    clienteCitado:
+      typeof doServidor.clienteProjectId === 'number' && doServidor.clienteProjectId > 0
+        ? { projectId: doServidor.clienteProjectId, nome: doServidor.clienteCitadoNome?.trim() || null }
+        : null,
     referencias:
       foto || driveId
         ? [
@@ -468,6 +474,7 @@ const CAMPOS_FUNDIDOS = [
   'legenda',
   'pedido',
   'instrucaoImagem',
+  'clienteCitado',
   'referencias',
   'quando',
   'escopo',
@@ -549,6 +556,7 @@ export function fundirComOLocal(
           instrucaoImagem: doServidor.instrucaoImagem
             ? doServidor.instrucaoImagem
             : (local.instrucaoImagem ?? null),
+          clienteCitado: doServidor.clienteCitado ?? null,
           referencias: mesclarReferencias(local.referencias, doServidor.referencias),
           ...(doServidor.slides || local.slides
             ? { slides: mesclarSlides(local.slides, doServidor.slides) }

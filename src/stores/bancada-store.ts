@@ -106,6 +106,8 @@ export interface BancadaItem {
   copy: string[]
   pedido: string
   instrucaoImagem?: string | null
+  /** Co-branding: o cliente CITADO na peça, cuja logomarca é composta na arte. */
+  clienteCitado?: { projectId: number; nome: string | null } | null
   referencias: BancadaReferencia[]
   /** Horário planejado (slot da cadência ou escolha manual), "YYYY-MM-DD HH:mm". */
   quando?: string | null

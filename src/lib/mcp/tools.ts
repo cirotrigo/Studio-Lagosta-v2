@@ -444,7 +444,15 @@ async function resolverPlano(projectId: number, planoId: unknown): Promise<strin
   return ativo.id
 }
 
-type ItemDePlanoParaChat = Awaited<ReturnType<typeof lerPlano>>['itens'][number]
+/**
+ * O item como `lerPlano` o devolve — com `clienteCitadoNome` OPCIONAL, porque
+ * dois chamadores (criar-plano e propor-semana) passam o item recém-criado,
+ * que ainda não fez a viagem pelo `lerPlano` e não carrega o derivado.
+ */
+type ItemDePlanoParaChat = Omit<
+  Awaited<ReturnType<typeof lerPlano>>['itens'][number],
+  'clienteCitadoNome'
+> & { clienteCitadoNome?: string | null }
 
 /**
  * Um item do plano na língua de quem lê.
@@ -465,6 +473,13 @@ function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
     formato: item.formato,
     via: rotuloDaVia((item.via as ViaDoItem) ?? 'template'),
     situacao: ROTULO_DO_STATUS[situacao],
+    ...(item.direcao ? { direcao: item.direcao } : {}),
+    ...(item.ajusteDaFoto ? { ajusteDaFoto: item.ajusteDaFoto } : {}),
+    // Co-branding: qual marca de cliente entra na peça — quem revisa pelo chat
+    // precisa enxergar, igual ao selo do card da bancada.
+    ...(item.clienteProjectId
+      ? { marcaDoCliente: item.clienteCitadoNome ?? `cliente ${item.clienteProjectId}` }
+      : {}),
     ...(item.motivoDoSlot ? { motivoDoHorario: item.motivoDoSlot } : {}),
     ...(item.motivoReprovacao ? { reprovadoPorque: item.motivoReprovacao } : {}),
     ...(item.erro ? { falhou: item.erro } : {}),

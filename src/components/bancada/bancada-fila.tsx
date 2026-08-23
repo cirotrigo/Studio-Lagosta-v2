@@ -682,6 +682,17 @@ function Card({
           {item.quando && (
             <span className="text-[11px] text-muted-foreground">· {item.quando}</span>
           )}
+          {/* Co-branding: qual marca de cliente entra na peça precisa estar
+              visível na revisão — não há campo no modal, a escolha vem do
+              plano (chat/MCP). */}
+          {item.clienteCitado && (
+            <span
+              className="rounded-full border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-[10px] text-orange-600 dark:text-orange-400"
+              title="A logomarca oficial deste cliente é composta na arte, no canto oposto ao da marca da casa."
+            >
+              marca: {item.clienteCitado.nome ?? `cliente ${item.clienteCitado.projectId}`}
+            </span>
+          )}
           {/* Só fora da rotina: a marca precisa estar visível na revisão da
               leva, mas repetir "rotina" em todo card seria só ruído. */}
           {item.escopo && item.escopo !== 'ROTINA' && (
