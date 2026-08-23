@@ -555,11 +555,14 @@ describe('formatarQuandoBR', () => {
 
 describe('fundirComOLocal — a direção editada sobrevive à hidratação', () => {
   /**
-   * Direção adicional não tem coluna no ItemDePlano — a edição local não faz a
-   * viagem pelo servidor. Sem esta regra, cada refetch devolvia o `pedido` ao
-   * tema derivado e o que a pessoa escreveu no modal evaporava em segundos.
+   * Até 23/08/2026 a direção não tinha coluna: a edição local não fazia a
+   * viagem pelo servidor, e o local vencia sempre. Com a coluna `direcao` (que
+   * o modal persiste), o SERVIDOR vence quando tem uma direção de verdade — o
+   * valor local pode ser a hidratação ANTIGA (o tema), gravada no navegador
+   * antes de a coluna existir. O local só continua vencendo quando o servidor
+   * não tem nada além do tema derivado.
    */
-  it('o pedido escrito pela pessoa vence o derivado do tema', () => {
+  it('sem direção no servidor, o pedido escrito pela pessoa vence o derivado do tema', () => {
     const meu = local({ pedido: 'clima de fim de tarde, sem gente na foto' })
     const doPlano = paraItemDaBancada(doServidor(), plano([]), AGORA)
     expect(fundirComOLocal(meu, doPlano, AGORA).pedido).toBe(
@@ -571,6 +574,30 @@ describe('fundirComOLocal — a direção editada sobrevive à hidratação', ()
     const meu = local({ pedido: '' })
     const doPlano = paraItemDaBancada(doServidor(), plano([]), AGORA)
     expect(fundirComOLocal(meu, doPlano, AGORA).pedido).toBe(doPlano.pedido)
+  })
+
+  it('a direção gravada no servidor vence o pedido local antigo (o tema hidratado)', () => {
+    const meu = local({ pedido: 'Atendimento com IA e CRM' })
+    const doPlano = paraItemDaBancada(
+      doServidor({ direcao: 'o print entra como mockup de celular, fiel e legível' } as never),
+      plano([]),
+      AGORA,
+    )
+    expect(fundirComOLocal(meu, doPlano, AGORA).pedido).toBe(
+      'o print entra como mockup de celular, fiel e legível',
+    )
+  })
+
+  it('o ajuste da foto do servidor vence o local; sem ele, o local fica', () => {
+    const meu = local({ instrucaoImagem: 'clarear' } as never)
+    const comAjuste = paraItemDaBancada(
+      doServidor({ ajusteDaFoto: 'escurecer o fundo' } as never),
+      plano([]),
+      AGORA,
+    )
+    expect(fundirComOLocal(meu, comAjuste, AGORA).instrucaoImagem).toBe('escurecer o fundo')
+    const semAjuste = paraItemDaBancada(doServidor(), plano([]), AGORA)
+    expect(fundirComOLocal(meu, semAjuste, AGORA).instrucaoImagem).toBe('clarear')
   })
 })
 

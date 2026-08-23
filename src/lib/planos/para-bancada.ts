@@ -529,19 +529,26 @@ export function fundirComOLocal(
           legenda: doServidor.legenda,
           /**
            * Direção adicional e ajuste de foto TÊM coluna desde 23/08/2026
-           * (`direcao`, `ajusteDaFoto`) e fazem a viagem de ida e volta. A regra
-           * de mescla continua a mesma: o que a pessoa escreveu neste navegador
-           * vence o que veio do servidor quando os dois divergem (é a edição em
-           * curso), e o servidor preenche o que estiver vazio aqui.
+           * (`direcao`, `ajusteDaFoto`) e o modal os PERSISTE junto com a copy.
+           * A regra de mescla mudou com isso: quando o SERVIDOR tem uma direção
+           * de verdade (o pedido mapeado difere do tema derivado), ele vence —
+           * o que está lá é a última edição que chegou à equipe, e o valor
+           * local pode ser justamente a hidratação ANTIGA (o tema), gravada no
+           * navegador antes de a coluna existir. O local só vence quando o
+           * servidor não tem nada além do derivado: é a proteção de sempre
+           * para a edição que não conseguiu fazer a viagem (PATCH falhou).
            */
-          pedido:
-            local.pedido && local.pedido !== doServidor.pedido
+          pedido: (() => {
+            const servidorTemDirecao =
+              !!doServidor.pedido && doServidor.pedido !== (doServidor.tema ?? '')
+            if (servidorTemDirecao) return doServidor.pedido
+            return local.pedido && local.pedido !== doServidor.pedido
               ? local.pedido
-              : doServidor.pedido,
-          instrucaoImagem:
-            local.instrucaoImagem && local.instrucaoImagem !== doServidor.instrucaoImagem
-              ? local.instrucaoImagem
-              : doServidor.instrucaoImagem,
+              : doServidor.pedido
+          })(),
+          instrucaoImagem: doServidor.instrucaoImagem
+            ? doServidor.instrucaoImagem
+            : (local.instrucaoImagem ?? null),
           referencias: mesclarReferencias(local.referencias, doServidor.referencias),
           ...(doServidor.slides || local.slides
             ? { slides: mesclarSlides(local.slides, doServidor.slides) }
