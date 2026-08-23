@@ -7,6 +7,21 @@ import { ArrowRight, MessagesSquare, Timer, CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
 import { motion, useMotionValue, useMotionTemplate } from 'framer-motion';
 
+// Ordem de exibição da faixa "Confirmado por gigantes do ES". Empório Fonseca
+// e Ilha do Caranguejo entraram em 23/08 a pedido do Ciro.
+const clientLogos = [
+    { src: '/clients/client-1.png', alt: 'Bacana' },
+    { src: '/clients/client-2.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-9.png', alt: 'Empório Fonseca' },
+    { src: '/clients/client-3.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-4.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-10.png', alt: 'Ilha do Caranguejo' },
+    { src: '/clients/client-5.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-6.png', alt: 'Seu Quinto' },
+    { src: '/clients/client-7.png', alt: 'Tero' },
+    { src: '/clients/client-8.png', alt: 'Coronel Picanha' },
+];
+
 export function HeroSection() {
     const mouseX = useMotionValue(0);
     const mouseY = useMotionValue(0);
@@ -125,20 +140,54 @@ export function HeroSection() {
                 </div>
                 <p className="mt-4 text-xs text-muted-foreground/70">Números de agosto/2026, lidos nos painéis de atendimento dos clientes.</p>
 
-                {/* Simple Logo Strip Visual */}
-                <div className="mt-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-                    <p className="items-center text-sm font-semibold text-muted-foreground mb-4">CONFIRMADO POR GIGANTES DO ES</p>
-                    {/* Mobile: Horizontal scroll | Desktop: Wrap */}
-                    <div className="flex flex-nowrap md:flex-wrap justify-start md:justify-center gap-6 md:gap-8 items-center overflow-x-auto md:overflow-visible pb-4 md:pb-0 scrollbar-thin scrollbar-thumb-orange-500/20 scrollbar-track-transparent">
-                        {/* Client Logos - 48px height */}
-                        <img src="/clients/client-1.png" alt="Bacana" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-2.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-3.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-4.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-5.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-6.png" alt="Seu Quinto" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-7.png" alt="Tero" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-8.png" alt="Coronel Picanha" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                {/* Faixa de clientes — carrossel automático girando para a
+                    DIREITA (pedido do Ciro, 23/08). CSS próprio em vez de
+                    classe arbitrária de Tailwind: neste repo classe arbitrária
+                    já deixou de gerar CSS em silêncio. O truque do loop: duas
+                    cópias idênticas lado a lado e translateX de -50% a 0 —
+                    quando a animação reinicia, a segunda cópia está exatamente
+                    onde a primeira começou. */}
+                <div className="mt-12 w-full max-w-4xl">
+                    <p className="text-sm font-semibold text-muted-foreground mb-4 text-center">CONFIRMADO POR GIGANTES DO ES</p>
+                    {/* Largura e shrink ficam no CSS próprio (não em w-max /
+                        shrink-0 do Tailwind): sem width máx. o track encolhe e
+                        as duas cópias se sobrepõem — visto na 1ª rodada. */}
+                    <style>{`
+                        @keyframes lagosta-marquee-direita {
+                            from { transform: translateX(-50%); }
+                            to { transform: translateX(0); }
+                        }
+                        .lagosta-marquee-track {
+                            width: max-content;
+                            /* o globals.css põe max-width em tudo (armadura
+                               anti-overflow) e capava o track no contêiner —
+                               aí o translateX(-50%) deixava de ser uma cópia
+                               exata e o loop pulava */
+                            max-width: none;
+                            animation: lagosta-marquee-direita 35s linear infinite;
+                        }
+                        .lagosta-marquee-copy { flex-shrink: 0; max-width: none; }
+                        .lagosta-marquee:hover .lagosta-marquee-track { animation-play-state: paused; }
+                        @media (prefers-reduced-motion: reduce) {
+                            .lagosta-marquee-track { animation: none; }
+                            .lagosta-marquee { overflow-x: auto; }
+                        }
+                    `}</style>
+                    <div className="lagosta-marquee overflow-hidden opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                        <div className="lagosta-marquee-track flex">
+                            {[0, 1].map((copia) => (
+                                <div key={copia} aria-hidden={copia === 1 || undefined} className="lagosta-marquee-copy flex items-center gap-6 md:gap-8 pr-6 md:pr-8">
+                                    {clientLogos.map((logo) => (
+                                        <img
+                                            key={logo.src}
+                                            src={logo.src}
+                                            alt={copia === 0 ? logo.alt : ''}
+                                            className="h-12 max-h-12 w-auto object-contain flex-shrink-0"
+                                        />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
