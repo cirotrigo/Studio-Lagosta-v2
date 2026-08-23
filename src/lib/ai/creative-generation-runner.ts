@@ -204,6 +204,26 @@ interface LoadedRef {
  * Monta o aviso de número sem lastro na copy. Vazio quando não há o que dizer —
  * espalhar chave nula pelo fieldValues só suja o registro.
  */
+/**
+ * O fieldValues final é gravado por MERGE com o que está no banco — nunca por
+ * substituição. O runner reconstruía o objeto inteiro de `args` e SOBRESCREVIA
+ * a linha, apagando o que outros escreveram entre a criação e a conclusão: a
+ * `carrosselSpec` que `iniciarCarrossel` grava na CAPA (toda série morria com
+ * SPEC_PERDIDA ao confirmar o estilo — pego ao vivo em 23/08/2026), o `loteId`
+ * e o `pedidoHash` da criação. As chaves do runner vencem as antigas; as
+ * alheias sobrevivem. Mesmo contrato do `fieldValues.crivo` e do `feedback`.
+ */
+async function fieldValuesPreservando(
+  generationId: string,
+  doRunner: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const atual = await db.generation
+    .findUnique({ where: { id: generationId }, select: { fieldValues: true } })
+    .catch(() => null)
+  const existentes = (atual?.fieldValues ?? {}) as Record<string, unknown>
+  return { ...existentes, ...doRunner }
+}
+
 /** Os blocos de logo do prompt (marca da casa + marca do cliente citado), só os que existem. */
 function juntarBlocosDeLogo(...blocos: Array<string | null | undefined>): string | null {
   const vivos = blocos.filter((b): b is string => typeof b === 'string' && b.trim() !== '')
@@ -1037,7 +1057,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         googleDriveFileId,
         googleDriveBackupUrl,
         completedAt: new Date(),
-        fieldValues: baseFieldValues as any,
+        fieldValues: (await fieldValuesPreservando(args.jobGenerationId, baseFieldValues)) as any,
       },
     })
     console.log(`[arte-ia.bg] concluído em ${elapsedSeconds}s → ${blob.url}`)
@@ -1099,7 +1119,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       await db.generation
         .update({
           where: { id: args.jobGenerationId },
-          data: { fieldValues: { ...baseFieldValues, creditDeductionError: msg.slice(0, 400) } as any },
+          data: {
+            fieldValues: (await fieldValuesPreservando(args.jobGenerationId, {
+              ...baseFieldValues,
+              creditDeductionError: msg.slice(0, 400),
+            })) as any,
+          },
         })
         .catch(() => null)
     }
@@ -1112,12 +1137,15 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         data: {
           status: 'FAILED',
           completedAt: new Date(),
-          fieldValues: buildFieldValues(args, {
-            prompt: promptUsado,
-            error: message,
-            failedAt: new Date().toISOString(),
-            ...textCheckInfo,
-          }) as any,
+          fieldValues: (await fieldValuesPreservando(
+            args.jobGenerationId,
+            buildFieldValues(args, {
+              prompt: promptUsado,
+              error: message,
+              failedAt: new Date().toISOString(),
+              ...textCheckInfo,
+            }),
+          )) as any,
         },
       })
       .catch((updateError) => {
