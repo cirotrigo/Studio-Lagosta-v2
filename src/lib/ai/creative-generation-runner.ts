@@ -911,13 +911,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           cornerReservado: LOGO_CORNER,
           // Em story os cantos de topo são do Instagram — ver comporLogo.
           formato: args.formato,
-          // Com a marca do cliente na peça, a da casa NÃO disputa canto: na
-          // primeira rodada real (23/08/2026) a disputa por calma levou a marca
-          // da Lagosta para o canto inferior esquerdo — exatamente o canto fixo
-          // do cliente — e as duas saíram uma por cima da outra nas duas peças
-          // de teste. Os dois cantos foram reservados no prompt; aqui cada marca
-          // vai para o seu.
-          ...(logoDoClienteParaCompor ? { cantoFixo: LOGO_CORNER } : {}),
+          // O canto vira FIXO em dois casos, pelos dois defeitos reais de
+          // 23/08/2026: (a) com a marca do CLIENTE na peça, a disputa por calma
+          // levou a marca da casa para o canto fixo do cliente e as duas saíram
+          // sobrepostas; (b) em CARROSSEL, a disputa escolheu topo-esquerdo no
+          // guia — e marca pulando de canto entre slides é justamente o que o
+          // LOOK SPINE existe para evitar.
+          ...(logoDoClienteParaCompor || args.carrossel ? { cantoFixo: LOGO_CORNER } : {}),
         })
         finalBuffer = comLogo.buffer
         logoInfo = {
