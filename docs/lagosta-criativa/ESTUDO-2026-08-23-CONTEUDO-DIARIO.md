@@ -7,7 +7,14 @@
 >
 > Tudo que está marcado **[FEITO]** já foi executado hoje contra a produção; o que
 > está marcado **[CIRO]** depende de decisão ou ação sua. O que mudou no código
-> foi commitado e enviado à `main` em 23/08 (`a7ca194d`).
+> foi commitado e enviado à `main` em 23/08 — `a7ca194d` de manhã (metadata da
+> Home) e a série `f671fba0`…`a13718db` à noite (briefing por item, co-branding
+> e os consertos da rodada de produção).
+>
+> **Atualizado na noite de 23/08**, depois de o Ciro produzir a Semana 1
+> inteira pela bancada (§ 6.5) — o estado descrito aqui foi conferido no banco
+> de produção antes de escrito. A reestruturação da Home está PREPARADA no
+> branch local `home-solucao-completa` (§ 10.3), sem push, aguardando revisão.
 
 ---
 
@@ -27,14 +34,16 @@ Hoje:
 | Pilares | 0 | 6 aprovados (origem humano) — o 7º, "Studio Lagosta", saiu à tarde: ferramenta interna não é produto **[FEITO]** |
 | Base de conhecimento | 1 entrada (pacotes) | +7 entradas: ficha, solução completa, agente + CRM, provas e números, sites, tráfego pago + IA, FAQ (a do Studio foi arquivada à tarde) **[FEITO]** |
 | Acervo (Drive "Fotos Lagosta") | 44 fotos de making-of de out/2025 | 116 catalogadas: +61 fotos recentes dos clientes (curadoria manual, sem rosto de cliente final) em `Portfólio dos clientes/<Cliente>` + 11 prints de sites; tudo etiquetado com o nome do pilar **[FEITO]** |
-| Programação | nenhuma | plano "Semana 1 — 24 a 30/08" com 14 stories + 4 posts de feed, cada item com direção, foto e cliente citado; 2 artes de teste geradas à tarde (co-branding + print) **[FEITO]** |
-| Home do site | twitter:description = "Template Next.js… AI Coders Academy"; og-image = SVG do template; typo "entreues" | metadata da Home reescrita (OG/Twitter completos, nova `og-lagosta.png`), SiteSettings do admin corrigido em produção, typo e alts corrigidos — **commitado e enviado (`a7ca194d`)**; avaliação e plano de reestruturação na § 10 **[FEITO / CIRO decide a reestruturação]** |
+| Programação | nenhuma | plano "Semana 1 — 24 a 30/08" **PRODUZIDO na noite de 23/08**: 17 peças prontas na bancada (14 stories + 3 feed, todas com arte gerada) e o primeiro carrossel real (6 slides) **já agendado** para seg 24/08 19:30 **[FEITO — falta agendar as 16 restantes]** |
+| Co-branding | regra escrita no DNA à tarde, sem código | funcionando de ponta a ponta: o item do plano carrega direção/ajuste da foto/cliente citado, e o runner compõe a marca do cliente (canto inferior esquerdo) + a da Lagosta (inferior direito); 10 peças da noite saíram com a marca do cliente composta **[FEITO]** |
+| Home do site | twitter:description = "Template Next.js… AI Coders Academy"; og-image = SVG do template; typo "entreues" | metadata da Home reescrita (OG/Twitter completos, nova `og-lagosta.png`), SiteSettings do admin corrigido em produção, typo e alts corrigidos — **commitado e enviado (`a7ca194d`)**; reestruturação PREPARADA no branch local `home-solucao-completa` (§ 10.3) **[FEITO / CIRO revisa e publica]** |
 | Prints do CRM e conversas | — | 7 prints capturados pelo seu Chrome logado (painéis Ilha e Empório, conversa com o agente, funil, base de conhecimento, lista de conversas), **nomes e telefones borrados**, em `Fotos Lagosta/Prints de sites e CRM/CRM e atendimento`, catalogados e etiquetados com o pilar **[FEITO]** |
 
-O que falta para a máquina rodar sozinha: (1) você confirmar/ajustar o plano da
-semana na bancada e disparar `executar-plano`; (2) adotar a rotina de
-fotografar bastidores pelo celular (a pasta "Fotos do Celular" já cai no
-acervo); (3) decidir sobre a reestruturação da Home (§ 10) — as correções já
+O que falta para a máquina rodar sozinha: (1) **colocar na agenda as 16 peças
+prontas** da Semana 1 (o carrossel de segunda já está agendado) e aprovar; (2)
+adotar a rotina de fotografar bastidores pelo celular (a pasta "Fotos do
+Celular" já cai no acervo); (3) revisar a reestruturação da Home no branch
+`home-solucao-completa` (§ 10.3) e decidir o push — as correções de metadata já
 estão no ar via `main`.
 
 ---
@@ -151,7 +160,12 @@ hoje — é a frente com menos evidência na base **[CIRO: números/prints de ca
   resultado; (2) **tráfego pago anda sempre com o atendimento por IA** — a
   campanha começa treinando o agente para responder e converter os leads; (3)
   **quando a peça fala de um cliente, a logomarca dele entra na arte**
-  (co-branding, composta pelo sistema no canto oposto ao da Lagosta).
+  (co-branding, composta pelo sistema no canto oposto ao da Lagosta) —
+  implementado e exercitado na produção da Semana 1 (§ 6.5).
+- **À noite entrou a regra 16, também dele**: post de feed é **carrossel por
+  padrão** — capa de foto pura + 3 a 6 slides contando UMA história, com o
+  slide 2 como guia do visual. Peça única no feed é exceção deliberada; story
+  continua peça única.
 
 ---
 
@@ -195,21 +209,26 @@ Regra de mistura: nunca dois dias seguidos do mesmo pilar no feed; cada semana
 toca os 6 pilares pelo menos uma vez; a cada 2 semanas um carrossel de pacotes
 (o único lugar com preço/badge).
 
-### 6.2 O plano criado hoje **[FEITO]** — `Semana 1 — Lagosta Criativa (24 a 30/08)` (planoId `cmt5znoxq0006sw7h624vuk2j`)
+### 6.2 O plano da semana **[FEITO e PRODUZIDO]** — `Semana 1 — Lagosta Criativa (24 a 30/08)` (planoId `cmt5znoxq0006sw7h624vuk2j`)
 
-- 14 stories (grade-semente do cold start: 11:30 / 15:00 / 18:30, 24 a 29/08)
-  + 4 posts de feed anexados à mão (seg 24 19:30 Método · qua 26 19:00 Vitrine
-  TERO · sex 28 12:00 Atendimento IA · dom 30 11:00 Bastidores), com copy,
-  legenda e foto do acervo.
+Montado à tarde (14 stories da grade-semente 11:30 / 15:00 / 18:30 + 4 posts
+de feed anexados à mão) e **produzido pelo Ciro na noite de 23/08, pelo card
+da bancada** — a rodada inteira está na § 6.5. Estado conferido no banco:
+
+- **17 itens, todos `pronto`, todos com arte gerada** (14 stories + 3 feed; 15
+  pela via de IA). O feed "Vitrine TERO" de quarta saiu do plano na revisão, e
+  o feed de segunda virou o **carrossel** "Post bonito não enche mesa" — 6
+  slides, **já agendado** como post para seg 24/08 19:30 (o primeiro post de
+  feed da Lagosta sob a regra 16).
+- 8 itens citam cliente (`clienteProjectId`): Empório Fonseca ×4, Wine Vix ×3,
+  O Quintal ×1 — todos com a marca do cliente composta na arte. Todos os 17
+  têm `direcao` preenchida (o briefing por item da § 11.1 foi usado de verdade).
 - Dois itens de atendimento IA tiveram a copy corrigida (o modelo atribuiu o
   96,4% da Ilha ao Empório — o guard de dados só confere se o número existe na
-  base, não a quem pertence). **Releia toda copy com esse olho**.
-- 8 stories ficaram com foto "do acervo geral" porque o assunto não tem foto
-  (IA/CRM, tráfego, método, Studio): esses são os casos de **arte tipográfica
-  sobre preto** ou de **print** — troque no card.
-- Nada foi gerado nem cobrado. Para produzir: bancada → revisar → `executar-plano`
-  (1ª chamada mostra a conta; 2ª com `confirmar: true` produz). Depois,
-  `colocar-na-agenda`/aprovar.
+  base, não a quem pertence). **Releia toda copy com esse olho** nas próximas
+  levas.
+- O que falta: **colocar as 16 peças restantes na agenda** (`colocar-na-agenda`
+  ou pelo card) e aprovar. Nada além do carrossel está agendado.
 - Nas próximas semanas: `propor-semana` (chat) ou "Propor semana" na bancada.
   Enquanto não houver histórico publicado, continua cold start; com 3–4
   semanas publicadas a cadência v2 passa a ler a rotina real.
@@ -248,6 +267,50 @@ Ainda vale tirar à mão: **um aviso de reserva no Telegram com os botões**
 celular), Clericot (home, menu praia, experiências, eventos, celular), Cypra
 (home, celular), Lagosta (home). Cópia local em
 `human-output/lagosta-criativa-2026-08-23/prints-sites/`.
+
+### 6.5 A rodada de produção **[FEITO, 23/08 à noite]** — a Semana 1 saiu do papel
+
+O Ciro produziu a leva inteira **pelo botão do card da bancada** (não pelo
+`executar-plano`): 30 gerações no projeto 8 entre 16:41 e 18:48 BRT, 29
+completas. O que a rodada revelou e o que ficou consertado (tudo na `main`):
+
+- **6 peças com cliente citado saíram SEM a logo do cliente** — o botão do
+  card não enviava `marcaDoClienteProjectId` (o campo existia no fluxo do
+  `executar-plano`, não no do card). Consertado em `d1ede9f8`; as 5 peças
+  foram corrigidas por **composição pós-geração, sem gastar crédito**, e a 6ª
+  (sobremesa do Empório) passou por `melhorar-arte` (a fonte da headline saiu
+  fora do estilo brush da marca) e recebeu a logo na sequência — é a arte que
+  está no item de sábado.
+- **As duas primeiras saíram com as marcas sobrepostas** no canto inferior
+  esquerdo (Lagosta e cliente disputando o mesmo canto "calmo"). `4d9fceb5`
+  fixou os cantos: **cliente no inferior esquerdo, Lagosta no inferior
+  direito**; em carrossel a marca da casa também vai para canto fixo
+  (`ea9451e5` — no guia real ela tinha saído no topo esquerdo).
+- **A logo escura do Wine Vix não tinha canto com contraste** — `comporLogo`
+  ganhou versão negativa automática quando nenhum canto contrasta (< 45), e
+  `01d98c50` refinou: **selo com fundo próprio** (o disco preto de anel
+  amarelo do Wine Vix) **nunca vira knockout nem é reprovado por contraste** —
+  o fundo do selo é o contraste dele.
+- **O runner passou a gravar `fieldValues` por MERGE** (`a13718db`): a
+  substituição apagava a `carrosselSpec` da capa quando a logo era composta, e
+  confirmar o carrossel quebrava com `SPEC_PERDIDA`.
+- **Feedback registrado em cada arte** (9 sinais: 3 "gostei", 6 "preciso
+  melhorar") — as queixas foram exatamente as acima: marcas sobrepostas ×2,
+  logo do Wine Vix faltando ×2, logo do Empório faltando, fonte da headline.
+  As edições de copy dele viraram **5 regras aprendidas no DNA** (§ 9).
+- **O primeiro carrossel real**: "Post bonito não enche mesa"
+  (`carouselGroupId b93c5861-fd79-4202-bfb3-9fd5048099a6`), capa de foto pura
+  + guia + 4 irmãos. Os slides 4 e 5 saíram **reutilizando a foto do guia** em
+  vez do print que a direção pedia e foram regerados com a direção reforçada
+  (os dois defeituosos foram desligados do grupo). **Limite conhecido do
+  prompt do slide irmão: a referência `subject` (o print) perde para o look do
+  guia** — se um dia for endurecer isso em código, o lugar é o LOOK SPINE em
+  `src/lib/ai/image-prompt-builder.ts`, e só com medição via
+  `scripts/medir-modelo-a-seguir.ts` antes.
+- **Sobrou uma geração presa em "processando"** (`cmt69pynq0…`, 17:37 BRT):
+  o job dela falhou na 1ª tentativa e não foi retomado, e a varredura de
+  órfãs ignora Generation que TEM job — vai ficar eterna na galeria até
+  alguém limpar **[pendência]**.
 
 ---
 
@@ -322,6 +385,20 @@ preços do site — confira se ainda valem **[CIRO]**.
   peça" (toneOfVoice + regra 14); tráfego só com atendimento por IA (regra 15 +
   frente reescrita); cliente citado = logo na peça (regra 13); print vira arte
   pela IA como mockup, mas o conteúdo da tela fica fiel (photoDirection).
+- **Revisão da noite (23/08)**, saída da produção real da Semana 1:
+  - **Regra 16 — feed é CARROSSEL por padrão**: capa de foto pura + 3 a 6
+    slides contando UMA história, slide 2 como guia do visual; peça única no
+    feed é exceção deliberada; story continua peça única.
+  - **5 regras aprendidas** (cabeçalho "Regras aprendidas na prática:", cada
+    uma com data e motivo): CTA de peça é **imperativo direto com o dono**
+    ("Conheça a metodologia") — primeira pessoa fica para botão de site e
+    anúncio; **"a Wine Vix"** é feminino; a frase do atendimento é **"O melhor
+    atendimento não tira férias"** ("garçonete" saiu de linha); nome de prato
+    como manchete pode sair em Title Case ("O Risoto de Camarão"); **recorte
+    de número é decisão do Ciro** (ele trocou "em agosto" por "em 5 dias" nas
+    peças da Ilha — conferir antes de repetir um recorte de período).
+  - Conferido no banco: contentRules com 5.494 chars e as regras 13–16
+    numeradas; toneOfVoice 6.711; crivo 1.786.
 
 ---
 
@@ -379,15 +456,65 @@ breve") → FAQ → CTA → rodapé.
 Os itens 1–4 são meio dia de trabalho em `src/components/sales/` reaproveitando
 os prints já no Drive; sugiro fazer depois de você confirmar os números.
 
+### 10.3 A reestruturação está PREPARADA — branch local `home-solucao-completa` **[FEITO, aguarda sua revisão]**
+
+Os itens 1, 2, 3 e 7 da § 10.2 (e parte do 4) foram implementados no branch
+local **`home-solucao-completa`** (commits `0acb2a0e` e `2c634dfd`, **sem
+push** — nada foi publicado). Verificado no dev server: typecheck e lint
+limpos, as 5 abas funcionam, os prints carregam, o carrossel de logos gira.
+Para ver:
+
+```bash
+git checkout home-solucao-completa && npm run dev
+```
+
+O que o branch contém:
+
+- **Hero**: saem +40% / +2,5k / +15 e entram os três números reais com dono e
+  data ("950+ mensagens respondidas pela IA em agosto na Ilha do Caranguejo —
+  96,4% das conversas" · "< 1 min para a primeira resposta no Empório Fonseca"
+  · "9 restaurantes do ES com conteúdo profissional toda semana — e 7 com
+  agente de IA"), mais a nota "Números de agosto/2026, lidos nos painéis de
+  atendimento dos clientes". O "Entrar no Studio" saiu do topo.
+- **A faixa "Confirmado por gigantes do ES" virou carrossel automático girando
+  para a direita** (pedido seu, 23/08 à noite), com **Empório Fonseca** e
+  **Ilha do Caranguejo** adicionados (`public/clients/client-9/10.png` — a do
+  Empório veio do Blob do projeto 12, a da Ilha do arquivo que você mandou).
+  Hover pausa; quem pede menos movimento (prefers-reduced-motion) vê a faixa
+  parada e rolável. Detalhe de implementação que fica de lição: o
+  `globals.css` põe `max-width` em tudo e capava o trilho do carrossel — o
+  CSS do loop é próprio, dentro do componente.
+- **Planos em 5 abas**: Foto e Vídeo · Gestão de Redes · **Atendimento com IA
+  + CRM** (features reais: WhatsApp+Instagram 24h, CRM com funil, base de
+  conhecimento, aviso no Telegram, relatório diário — com 2 prints reais
+  borrados do painel e da conversa da Ilha) · **Sites e Cardápio Digital**
+  ("Sob consulta" — nenhum preço inventado) · **Tráfego Pago** ("Incluso na
+  Gestão Completa", campanha nasce com o agente treinado).
+- **"Acesso ao Studio Lagosta" virou "Planejamento semanal aprovado por
+  você"** na Gestão Participativa (regra 14: ferramenta interna não se vende).
+- **Seção nova "Sites que Fecham Pedido"** (`#sites`): prints de Clericot,
+  Empório e Cypra otimizados em `public/sites/*.webp` (10–52 KB), com os três
+  benefícios e CTA "Quero meu site". **Sem link externo de propósito** — o
+  domínio do Clericot ainda aponta para o WordPress antigo.
+- **Seção Solução** passou de 4 diferenciais genéricos para as 5 frentes.
+- **"Entrar no Studio" agora é link do rodapé** (coluna Empresa).
+
+O que ficou de fora, de propósito (precisa de você — ver checklist na § 12):
+preços das abas novas se um dia existirem tabelas; consolidar os CTAs do hero
+e instalar GA/GTM/Pixel + UTM (item 6); gravar/remover os depoimentos "em
+breve" (item 5); número ou depoimento nos cards de case (item 2, parte); o
+print do aviso do Telegram (item 4, parte — a captura ainda não existe).
+
 ---
 
 ## 11. Como operar a partir de amanhã
 
-1. **Segunda de manhã (15 min)** — abrir a bancada da Lagosta Criativa (plano
-   ativo hidratado), ler copy de cada card com o crivo, trocar foto nos cards de
-   IA/tráfego/método por print ou deixar tipográfico, disparar "Gerar" (ou
-   `executar-plano` no chat). Marcar **Gostei / Preciso melhorar** em cada arte:
-   é a única medida de qualidade que alimenta o aprendizado.
+1. **Segunda de manhã (15 min)** — a Semana 1 já está GERADA (§ 6.5): falta só
+   **colocar as 16 peças prontas na agenda e aprovar** (o carrossel de segunda
+   19:30 já está agendado). Nas semanas seguintes o ciclo é: abrir a bancada,
+   ler copy com o crivo, ajustar direção/foto no card, Gerar, agendar. Marcar
+   **Gostei / Preciso melhorar** em cada arte segue obrigatório: foi esse
+   feedback que virou os consertos e as regras da noite de 23/08.
 2. **Durante a semana** — cada sessão de foto rende 5–10 fotos de bastidores
    pelo celular, subidas pelo app; cada conversa boa do agente rende um print
    borrado na pasta de prints.
@@ -410,14 +537,21 @@ os prints já no Drive; sugiro fazer depois de você confirmar os números.
   e `editar-item-do-plano`; o `executar-plano` manda `direcao || tema` como
   pedido e `ajusteDaFoto` como `instrucaoImagem`. Antes o modelo recebia só o
   NOME DO TEMA.
-- **Co-branding**: `clienteCitadoId` no item (ou em `gerar-imagem`) faz o
-  runner compor a logo oficial do cliente no canto inferior esquerdo (a da
-  Lagosta fica no inferior direito; a Lagosta passou a `compor` em
-  `LOGO_MODE_POR_PROJETO`). Só funciona para cliente que é PROJETO no Studio
-  (tem logo na aba Marca): Ilha do Caranguejo, Coronel Picanha, Clericot Café e
-  Cypra Brasil **não têm projeto** — peça sobre eles sai só com a marca da
-  Lagosta até alguém cadastrar a logo deles (criar o projeto ou mandar o
-  arquivo) **[CIRO]**.
+- **Co-branding — funcionando, exercitado na Semana 1** (10 peças da noite com
+  a marca do cliente composta): `clienteCitadoId` no item (ou em
+  `gerar-imagem`, ou pelo card da bancada desde `d1ede9f8`) faz o runner
+  compor a logo oficial do cliente no **canto inferior esquerdo, fixo** (a da
+  Lagosta no inferior direito; a Lagosta passou a `compor` em
+  `LOGO_MODE_POR_PROJETO`). Limites conhecidos, todos medidos na rodada real:
+  - cantos são FIXOS quando há duas marcas ou carrossel (senão elas disputam o
+    mesmo canto "calmo" — aconteceu nas 2 primeiras peças);
+  - logo escura sem canto com contraste sai na **versão negativa** automática —
+    mas **selo com fundo próprio** (Wine Vix: disco preto de anel amarelo)
+    **nunca** vira knockout nem é reprovado por contraste;
+  - só funciona para cliente que é PROJETO no Studio (tem logo na aba Marca):
+    Ilha do Caranguejo, Coronel Picanha, Clericot Café e Cypra Brasil **não
+    têm projeto** — peça sobre eles sai só com a marca da Lagosta até alguém
+    cadastrar a logo deles (criar o projeto ou mandar o arquivo) **[CIRO]**.
 - **Como pedir ajuste numa arte gerada**: (a) `conferir-arte` lê a peça e
   diagnostica; (b) `melhorar-arte` com `pedido` (até 1.200 caracteres) refaz a
   composição seguindo a instrução, mantendo os textos exatos e conferindo por
@@ -428,42 +562,105 @@ os prints já no Drive; sugiro fazer depois de você confirmar os números.
 
 ## 12. Pendências e decisões **[CIRO]**
 
-- [ ] Confirmar por escrito os números do site (+40% / +2,5k / +15 e os 4
-      cards de case) ou deixá-los fora (hoje estão proibidos na base).
-- [x] Prints do CRM — feitos (§ 6.3). Falta só o print do aviso no Telegram (celular).
-- [ ] Revisar e disparar o plano da Semana 1 na bancada.
-- [ ] Rotina de bastidores pelo celular com a equipe.
-- [x] Correções da Home commitadas e enviadas em 23/08 (`a7ca194d`, junto com o
-      commit local `a03ea665` das músicas que ainda não tinha subido) — a Vercel
-      deploya a `main`. Falta decidir a reestruturação (§ 10.2).
-- [ ] `BrandColor` do projeto 8 (vermelho/amarelo) × paleta do DNA.
-- [ ] Conferir preços da entrada "Pacotes" e da aba Planos.
-- [ ] Upstash Redis do cache da base (conta) — ops.
-- [ ] **Logos dos clientes que só têm CRM** (Ilha do Caranguejo, Coronel Picanha,
-      Clericot Café, Cypra Brasil): sem projeto no Studio não há logo para o
-      co-branding — criar o projeto com a logo ou me mandar os arquivos.
-- [ ] **A aba Planos do site lista "Acesso ao Studio Lagosta" na Gestão
-      Participativa** (e a entrada "Pacotes" da base repete) — contradiz "não
-      vendo acesso à ferramenta". Tirar o bullet ou trocar por "planejamento
-      semanal aprovado por você" — decisão de oferta, não mexi.
-- [ ] Tráfego pago: trazer 1–2 resultados com fonte para a base.
-- [ ] `clericot.cafe` ainda aponta para o WordPress antigo — o site novo está
-      em `clericot.vercel.app`; vale apontar o domínio antes de anunciar.
+Estado em 23/08 à noite — o que dava para adiantar sem você foi adiantado
+(branch da Home, § 10.3; consertos do co-branding, § 6.5) e está marcado.
 
-### Arquivos tocados no repo (commit `a7ca194d`, 23/08)
+- [x] ~~Revisar e disparar o plano da Semana 1 na bancada~~ — **produzido por
+      você na noite de 23/08** (§ 6.5). O que sobrou: **colocar as 16 peças
+      prontas na agenda e aprovar** (só o carrossel de segunda está agendado).
+- [x] Correções da Home commitadas e enviadas em 23/08 (`a7ca194d`) — no ar.
+- [x] ~~Decidir como reestruturar a Home~~ — **preparada no branch local
+      `home-solucao-completa`** (§ 10.3), sem push. Falta você revisar
+      (`git checkout home-solucao-completa && npm run dev`) e mandar publicar.
+- [x] Prints do CRM — feitos (§ 6.3). Falta só o print do aviso no Telegram
+      (celular, borrar dados) — é a imagem mais vendedora do atendimento e
+      entraria na seção de IA da Home nova.
+- [ ] **Logos dos clientes que só têm CRM** (Ilha do Caranguejo, Coronel
+      Picanha, Clericot Café, Cypra Brasil): sem projeto no Studio não há logo
+      para o co-branding — que agora **funciona** (§ 11.1) e fica capenga
+      justamente nos clientes com os melhores números. Criar o projeto com a
+      logo ou me mandar os arquivos.
+- [ ] Rotina de bastidores pelo celular com a equipe (sem isso o pilar
+      Bastidores repete as mesmas 44 fotos de out/2025 em duas semanas).
+- [ ] Confirmar por escrito os números antigos do site (+40% / +2,5k / +15 e
+      os 4 cards de case) **ou** aposentá-los de vez — o branch da Home já os
+      substitui pelos números reais de agosto com fonte.
+- [ ] Conferir preços da entrada "Pacotes" da base e da aba Planos (são de
+      22/07) — a entrada "Pacotes" ainda menciona "Acesso ao Studio Lagosta"
+      na Gestão Participativa; no site o branch já trocou por "planejamento
+      semanal aprovado por você", e a base deve acompanhar a decisão.
+- [ ] `BrandColor` do projeto 8 (vermelho/amarelo) × paleta do DNA.
+- [ ] Tráfego pago: trazer 1–2 resultados com fonte para a base (é a frente
+      sem prova — e a aba nova de Tráfego na Home ficaria mais forte com um
+      número real).
+- [ ] `clericot.cafe` ainda aponta para o WordPress antigo — o site novo está
+      em `clericot.vercel.app`; por isso a seção de sites da Home nova mostra
+      o print SEM link. Apontar o domínio destrava o link e o anúncio.
+- [ ] Upstash Redis do cache da base (conta rate-limited/suspensa) — ops. O
+      disjuntor protege o caminho quente, mas toda busca paga a ida ao banco.
+- [ ] Limpar a geração presa em "processando" na galeria (`cmt69pynq0…`,
+      § 6.5) — o job falhou sem retomar e a varredura de órfãs não a alcança.
+
+### O que preciso de você — perguntas objetivas
+
+1. **Agenda da Semana 1**: coloco as 16 peças prontas na agenda nos horários do
+   plano (§ 6.2) e deixo como rascunho para você aprovar — pode?
+2. **Home nova**: revisou o branch `home-solucao-completa`? Publico (push) como
+   está, ou quer mudar algo antes (os três números do hero, os textos das abas
+   novas, a ordem das seções)?
+3. **Números antigos do site**: +40% de receita, +2,5k mesas/mês, +15 marcas —
+   existe fonte para algum deles? Se não, confirmo a aposentadoria (o branch já
+   os tirou; a base continua a proibi-los).
+4. **Logos dos 4 clientes só-CRM**: me manda os arquivos (PNG com fundo
+   transparente serve) ou prefere que eu crie os projetos no Studio e você
+   sobe a logo na aba Marca?
+5. **Preços**: os valores de 22/07 (R$ 890 / 1.490 / 1.990 / 1.990 / 3.290 /
+   1.590) ainda valem? "Sites" tem preço de tabela ou segue sob consulta?
+6. **Bastidores**: quem da equipe fica dono da rotina "5–10 fotos de celular
+   por sessão, subidas pelo app"? A partir de que sessão começa?
+7. **Telegram**: consegue tirar o print do aviso de reserva com os botões
+   (✅ Confirmar · 🙋 Assumir · 🔗 Abrir no CRM) no seu celular, borrando os
+   dados? Entra na Home e no pilar de atendimento.
+8. **Tráfego**: qual campanha recente tem número que você toparia publicar
+   (investimento → conversas/reservas)? Uma já basta para a base e para a aba.
+9. **Upstash**: você resolve a conta (billing/limite) ou quer que eu monte um
+   Redis novo e troque as variáveis?
+10. **`clericot.cafe`**: quem tem acesso ao DNS? Aponto eu, ou o registro está
+    com o cliente?
+
+### Arquivos tocados no repo
+
+**Manhã, commit `a7ca194d` (na main, no ar)**:
 `scripts/preparar-lagosta-criativa.ts` (novo) · `src/app/page.tsx` ·
 `src/app/layout.tsx` · `src/lib/brand-config.ts` · `src/lib/site-settings.ts` ·
 `src/components/app/public-footer.tsx` · `src/components/sales/HeroSection.tsx` ·
 `src/components/sales/OfferSection.tsx` · `public/og-lagosta.png` (novo) ·
 `docs/lagosta-criativa/*` (este estudo, DNA anterior, manifesto do Drive).
 
-### Escritas feitas à tarde
-Drive: 7 prints do CRM em `Prints de sites e CRM/CRM e atendimento` (+7 no catálogo, tag do pilar).
+**Tarde/noite, série `f671fba0`…`a13718db` (na main, no ar)**: briefing por
+item (`ItemDePlano.direcao/ajusteDaFoto/clienteProjectId`, migration
+`20260823210000` aplicada em dev e produção), co-branding no runner e no card
+da bancada, `comporLogo` com canto fixo/cantos proibidos/versão negativa/selo
+com fundo próprio, `fieldValues` por MERGE.
 
-### Escritas em produção feitas hoje (todas reversíveis)
-BrandDNA do projeto 8 (4 seções; backup em `DNA-ANTERIOR-2026-08-23.md`) ·
-7 `ContentPillar` + 7 `ProjectTag` · 7 `KnowledgeBaseEntry` · Drive: pasta
-`Portfólio dos clientes` (61 cópias) + `Prints de sites e CRM` (11 prints) +
-`_image-catalog.json` (+72 entradas, tags de pilar) · `PlanoDeConteudo`
-`cmt5znoxq0006sw7h624vuk2j` (18 itens; um plano anterior de teste arquivado) ·
+**Branch local `home-solucao-completa` (commits `0acb2a0e` + `2c634dfd`, SEM
+push)**: a reestruturação da Home (§ 10.3) — `HeroSection` (provas reais +
+carrossel de logos) · `OfferSection` · `SolutionSection` · `SalesPage` ·
+`SalesFooter` · `SitesShowcaseSection` (novo) · `public/sites/*.webp` (3) ·
+`public/crm/*.webp` (2) · `public/clients/client-9/10.png` (Empório Fonseca e
+Ilha do Caranguejo).
+
+### Escritas em produção feitas em 23/08 (todas reversíveis)
+
+**Pela preparação (manhã/tarde)**: BrandDNA do projeto 8 (4 seções; backup em
+`DNA-ANTERIOR-2026-08-23.md`) · `ContentPillar` (6 aprovados hoje) + `ProjectTag` ·
+`KnowledgeBaseEntry` (8 ativas + 1 arquivada) · Drive: pasta `Portfólio dos
+clientes` (61 cópias) + `Prints de sites e CRM` (11 prints de site + 7 do CRM) +
+`_image-catalog.json` (tags de pilar) · `PlanoDeConteudo`
+`cmt5znoxq0006sw7h624vuk2j` (um plano anterior de teste arquivado) ·
 `SiteSettings` (metadata) · Blob `site/og-lagosta.png`.
+
+**Pela produção da noite (§ 6.5)**: 30 `Generation` no projeto 8 (29
+completas, 1 presa em processando) · 17 itens do plano em `pronto` com arte ·
+1 `SocialPost` agendado (o carrossel de segunda) · 9 `LearningSignal` de
+feedback de arte · regra 16 + 5 regras aprendidas no `contentRules` do DNA.
