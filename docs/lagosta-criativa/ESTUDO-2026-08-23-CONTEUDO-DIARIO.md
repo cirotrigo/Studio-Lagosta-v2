@@ -24,10 +24,10 @@ Hoje:
 | Frente | Antes | Depois |
 |---|---|---|
 | DNA (aba Marca) | portfólio em 3 categorias; crivo VAZIO; sem regra para print/cliente/número | portfólio nas 5 frentes; 3 regras novas (cliente real × dado de cliente final; print é documento; a entrega tem dono); crivo de 14 perguntas **[FEITO]** |
-| Pilares | 0 | 7 aprovados (origem humano) **[FEITO]** |
-| Base de conhecimento | 1 entrada (pacotes) | +7 entradas: ficha, solução completa, agente + CRM, provas e números, sites, Studio, FAQ **[FEITO]** |
+| Pilares | 0 | 6 aprovados (origem humano) — o 7º, "Studio Lagosta", saiu à tarde: ferramenta interna não é produto **[FEITO]** |
+| Base de conhecimento | 1 entrada (pacotes) | +7 entradas: ficha, solução completa, agente + CRM, provas e números, sites, tráfego pago + IA, FAQ (a do Studio foi arquivada à tarde) **[FEITO]** |
 | Acervo (Drive "Fotos Lagosta") | 44 fotos de making-of de out/2025 | 116 catalogadas: +61 fotos recentes dos clientes (curadoria manual, sem rosto de cliente final) em `Portfólio dos clientes/<Cliente>` + 11 prints de sites; tudo etiquetado com o nome do pilar **[FEITO]** |
-| Programação | nenhuma | plano "Semana 1 — 24 a 30/08" com 14 stories + 4 posts de feed, propostos (nada gerado, nada cobrado) **[FEITO]** |
+| Programação | nenhuma | plano "Semana 1 — 24 a 30/08" com 14 stories + 4 posts de feed, cada item com direção, foto e cliente citado; 2 artes de teste geradas à tarde (co-branding + print) **[FEITO]** |
 | Home do site | twitter:description = "Template Next.js… AI Coders Academy"; og-image = SVG do template; typo "entreues" | metadata da Home reescrita (OG/Twitter completos, nova `og-lagosta.png`), SiteSettings do admin corrigido em produção, typo e alts corrigidos — **commitado e enviado (`a7ca194d`)**; avaliação e plano de reestruturação na § 10 **[FEITO / CIRO decide a reestruturação]** |
 | Prints do CRM e conversas | — | 7 prints capturados pelo seu Chrome logado (painéis Ilha e Empório, conversa com o agente, funil, base de conhecimento, lista de conversas), **nomes e telefones borrados**, em `Fotos Lagosta/Prints de sites e CRM/CRM e atendimento`, catalogados e etiquetados com o pilar **[FEITO]** |
 
@@ -145,10 +145,17 @@ hoje — é a frente com menos evidência na base **[CIRO: números/prints de ca
   confirmar por escrito.
 - **A Lagosta não é restaurante**: toda peça de vitrine diz de quem é a comida
   e o que a Lagosta fez ali (regra 12 do DNA) — senão vira conteúdo do cliente.
+- **Três correções do Ciro (23/08, tarde)**, já no DNA, nos pilares e na base:
+  (1) o **Studio Lagosta é ferramenta interna** — não se vende acesso, não se
+  mostra tela, não é argumento; o que se vende é constância, identidade e
+  resultado; (2) **tráfego pago anda sempre com o atendimento por IA** — a
+  campanha começa treinando o agente para responder e converter os leads; (3)
+  **quando a peça fala de um cliente, a logomarca dele entra na arte**
+  (co-branding, composta pelo sistema no canto oposto ao da Lagosta).
 
 ---
 
-## 5. Pilares aprovados (taxonomia fechada, 7) **[FEITO]**
+## 5. Pilares aprovados (taxonomia fechada, 6) **[FEITO]**
 
 | slug | Pilar | O que entra |
 |---|---|---|
@@ -156,9 +163,8 @@ hoje — é a frente com menos evidência na base **[CIRO: números/prints de ca
 | `vitrine-dos-clientes` | Vitrine dos Clientes | a entrega real (foto/vídeo/arte/feed) dizendo o que a Lagosta fez |
 | `atendimento-ia-e-crm` | Atendimento com IA e CRM | prints de conversa, painel, reserva no Telegram, números |
 | `sites-e-cardapio-digital` | Sites e Cardápio Digital | Clericot, Empório, Cypra; cardápio em um clique; pedido no WhatsApp |
-| `trafego-e-resultados` | Tráfego Pago e Resultados | anúncios e resultados com fonte |
-| `metodo-e-autoridade` | Método e Autoridade | educativo/opinião: por que falha, constância, IA sem medo, Sistema Lagosta |
-| `studio-lagosta` | Studio Lagosta e Tecnologia Própria | a plataforma: bancada, agenda, aprovação pelo celular |
+| `trafego-e-resultados` | Tráfego Pago e Resultados | campanha SEMPRE com o agente treinado para converter; números com fonte |
+| `metodo-e-autoridade` | Método e Autoridade | educativo/opinião: por que falha, constância, IA sem medo, Sistema Lagosta — sem expor ferramenta interna |
 
 Os slugs também foram semeados em `ProjectTag` (autocomplete das tags de
 modelo), e o catálogo do acervo recebeu o **nome do pilar como tag** em cada
@@ -186,7 +192,7 @@ depois do fechamento. Horários em BRT.
 | Dom | 18:00 Agenda/bastidores da semana | — | **11:00 Bastidores** (reel ou "a semana em 30s") |
 
 Regra de mistura: nunca dois dias seguidos do mesmo pilar no feed; cada semana
-toca as 7 frentes pelo menos uma vez; a cada 2 semanas um carrossel de pacotes
+toca os 6 pilares pelo menos uma vez; a cada 2 semanas um carrossel de pacotes
 (o único lugar com preço/badge).
 
 ### 6.2 O plano criado hoje **[FEITO]** — `Semana 1 — Lagosta Criativa (24 a 30/08)` (planoId `cmt5znoxq0006sw7h624vuk2j`)
@@ -309,8 +315,13 @@ preços do site — confira se ainda valem **[CIRO]**.
   + CRM e site.
 - `photoDirection`: print de tela fiel como herói legítimo; bastidores; pessoas
   (equipe sim, rosto de cliente final não).
-- `approvalChecklist`: 14 perguntas, polaridade "marcar = conforme".
+- `approvalChecklist`: 14 perguntas, polaridade "marcar = conforme" (+3 à
+  tarde: logo do cliente citado, nada de Studio, tráfego com IA).
 - `composition` e `visualStyle`: intocados (já estavam certos).
+- **Revisão da tarde (23/08)**: Studio vira "ferramenta interna, nunca em
+  peça" (toneOfVoice + regra 14); tráfego só com atendimento por IA (regra 15 +
+  frente reescrita); cliente citado = logo na peça (regra 13); print vira arte
+  pela IA como mockup, mas o conteúdo da tela fica fiel (photoDirection).
 
 ---
 
@@ -390,6 +401,31 @@ os prints já no Drive; sugiro fazer depois de você confirmar os números.
 
 ---
 
+### 11.1 Briefing por item e ajuste das artes (23/08, tarde)
+
+- **Direção adicional e ajuste da foto agora viajam com o item** (colunas
+  `direcao` e `ajusteDaFoto` do ItemDePlano; migration aplicada em dev e
+  produção). O que a equipe escreve no card "Editar a peça" vai ao servidor e
+  volta na hidratação; o chat propõe/edita pelos mesmos nomes em `criar-plano`
+  e `editar-item-do-plano`; o `executar-plano` manda `direcao || tema` como
+  pedido e `ajusteDaFoto` como `instrucaoImagem`. Antes o modelo recebia só o
+  NOME DO TEMA.
+- **Co-branding**: `clienteCitadoId` no item (ou em `gerar-imagem`) faz o
+  runner compor a logo oficial do cliente no canto inferior esquerdo (a da
+  Lagosta fica no inferior direito; a Lagosta passou a `compor` em
+  `LOGO_MODE_POR_PROJETO`). Só funciona para cliente que é PROJETO no Studio
+  (tem logo na aba Marca): Ilha do Caranguejo, Coronel Picanha, Clericot Café e
+  Cypra Brasil **não têm projeto** — peça sobre eles sai só com a marca da
+  Lagosta até alguém cadastrar a logo deles (criar o projeto ou mandar o
+  arquivo) **[CIRO]**.
+- **Como pedir ajuste numa arte gerada**: (a) `conferir-arte` lê a peça e
+  diagnostica; (b) `melhorar-arte` com `pedido` (até 1.200 caracteres) refaz a
+  composição seguindo a instrução, mantendo os textos exatos e conferindo por
+  visão — é o ajuste fino; (c) `regenerar-item` + editar direção/foto/copy +
+  `executar-plano` de novo — é o "outra rodada" (25 créditos); (d) "Gerar de
+  novo" no card (mesmos insumos, outra diagramação). Nada é automático: o
+  verificador avisa, quem decide é o olho.
+
 ## 12. Pendências e decisões **[CIRO]**
 
 - [ ] Confirmar por escrito os números do site (+40% / +2,5k / +15 e os 4
@@ -403,6 +439,13 @@ os prints já no Drive; sugiro fazer depois de você confirmar os números.
 - [ ] `BrandColor` do projeto 8 (vermelho/amarelo) × paleta do DNA.
 - [ ] Conferir preços da entrada "Pacotes" e da aba Planos.
 - [ ] Upstash Redis do cache da base (conta) — ops.
+- [ ] **Logos dos clientes que só têm CRM** (Ilha do Caranguejo, Coronel Picanha,
+      Clericot Café, Cypra Brasil): sem projeto no Studio não há logo para o
+      co-branding — criar o projeto com a logo ou me mandar os arquivos.
+- [ ] **A aba Planos do site lista "Acesso ao Studio Lagosta" na Gestão
+      Participativa** (e a entrada "Pacotes" da base repete) — contradiz "não
+      vendo acesso à ferramenta". Tirar o bullet ou trocar por "planejamento
+      semanal aprovado por você" — decisão de oferta, não mexi.
 - [ ] Tráfego pago: trazer 1–2 resultados com fonte para a base.
 - [ ] `clericot.cafe` ainda aponta para o WordPress antigo — o site novo está
       em `clericot.vercel.app`; vale apontar o domínio antes de anunciar.

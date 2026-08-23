@@ -10,6 +10,13 @@
  *      atendimento com IA + CRM, sites, Studio, provas e números, FAQ).
  *
  * Levantado em 23/08/2026 (docs/lagosta-criativa/ESTUDO-2026-08-23-CONTEUDO-DIARIO.md).
+ * Revisto no mesmo dia, à tarde, com três correções do Ciro: o Studio Lagosta é
+ * ferramenta INTERNA (sai do portfólio, dos pilares e da base — não se vende
+ * acesso); o tráfego pago anda SEMPRE com o atendimento por IA (a campanha
+ * começa treinando o agente para converter os leads); e quando a peça fala de
+ * um cliente, a LOGOMARCA dele entra na arte (co-branding — `clienteCitadoId`
+ * no item do plano e em gerar-imagem). Entrada que já existe com outro texto é
+ * ATUALIZADA (reindexada); a do Studio é ARQUIVADA.
  *
  * DRY-RUN por padrão: imprime o que mudaria. `--confirmar` grava.
  * Idempotente nas entradas da base (não duplica título já existente) e no DNA
@@ -22,6 +29,8 @@ import { db } from '../src/lib/db'
 import { updateBrandDNA, loadBrandContext } from '../src/lib/brand/brand-context'
 import { salvarPilares } from '../src/lib/aprendizado/pilares-service'
 import { criarEntradaBase } from '../src/lib/knowledge/entries'
+import { reindexEntry } from '../src/lib/knowledge/indexer'
+import { invalidateProjectCache } from '../src/lib/knowledge/cache'
 
 const PROJECT_ID = 8
 /** User.id INTERNO do Ciro (dono do projeto) — nunca o clerkId. */
@@ -50,13 +59,15 @@ ESTRUTURA DE LEGENDA, 3 MOVIMENTOS: (1) ABERTURA — frase curta com autoridade 
 
 O PORTFÓLIO — A SOLUÇÃO COMPLETA EM CINCO FRENTES, contratáveis separadas ou combinadas. A história que a Lagosta conta é a do restaurante inteiro: a foto gera desejo, a rede gera constância, o atendimento converte a mensagem em reserva, o site fecha o pedido e o tráfego amplia tudo. Frentes:
 - PRODUÇÃO AUDIOVISUAL (fotos e vídeos): Só Fotos (100 fotos editadas, 2h de sessão) · Só Vídeos (badge MAIS POPULAR) · Vídeos Pluss (4h, acervo bruto completo — o diferencial é a entrega sem filtro).
-- GESTÃO DE REDES: Gestão Participativa (3 posts semanais, acesso ao Studio Lagosta e ao banco de imagem) · Gestão Completa (badge RECOMENDADO — gestor de tráfego incluso, 4 posts semanais, 2 stories diários, treinamento de equipe).
+- GESTÃO DE REDES: Gestão Participativa (3 posts semanais, consultoria para stories, banco de imagem) · Gestão Completa (badge RECOMENDADO — gestor de tráfego incluso, 4 posts semanais, 2 stories diários, treinamento de equipe).
 - ATENDIMENTO COM IA + CRM: AI Assistant (badge INOVAÇÃO) — agente treinado no cardápio e nas regras da casa responde Instagram e WhatsApp 24h, coleta a reserva, passa o que importa para a equipe (aviso no Telegram com botão de confirmar) e tudo fica organizado num CRM com funil, conversas, base de conhecimento e relatório diário. É o funcionário digital que atende de madrugada e não inventa resposta.
 - SITES E CARDÁPIO DIGITAL: site do restaurante com cardápio digital que o cliente atualiza em um clique, pedido montado e enviado pelo WhatsApp, reserva que cai direto no atendimento. Complementa o agente: o site mostra, o agente responde.
-- TRÁFEGO PAGO: anúncios para a região e o público certos, incluso na Gestão Completa; amplia o que o conteúdo e o atendimento já fazem.
-O STUDIO LAGOSTA é a plataforma proprietária que sustenta tudo isso (criação de arte com a identidade da marca, agenda, aprovação pelo celular) — diferencial exclusivo, citar como tal.
+- TRÁFEGO PAGO — SEMPRE JUNTO COM O ATENDIMENTO POR IA: a campanha começa ANTES do anúncio, treinando o agente para responder e converter os leads que o anúncio vai trazer; anúncio para a região e o público certos, resposta em menos de um minuto, reserva que chega à equipe. Nunca vender tráfego solto: tráfego sem quem responda é dinheiro jogado fora, e é isso que a Lagosta diz. Incluso na Gestão Completa.
+FERRAMENTA INTERNA: o Studio Lagosta (a plataforma que a equipe usa para criar e agendar) é de uso INTERNO e NÃO é produto — nunca aparece em peça, copy, legenda ou argumento de venda, e nunca se mostra tela dele. O que se vende é o resultado (constância, identidade, agenda cumprida), não a ferramenta.
 
-TOM POR FRENTE: foto — qualidade, constância, editorial, apetitoso · vídeo — movimento, alcance, viralidade, tendência · Vídeos Pluss — abundância, controle, liberdade, acervo · Gestão Participativa — parceria, suporte, estratégia, "junto" · Gestão Completa — autoridade, resultado, 360°, crescimento · AI Assistant e CRM — inovação, eficiência, 24h, reserva confirmada, organização · Sites — clareza, pedido fácil, cardápio sempre atualizado · Tráfego — alcance certo, público certo, casa cheia nos dias fracos.
+TOM POR FRENTE: foto — qualidade, constância, editorial, apetitoso · vídeo — movimento, alcance, viralidade, tendência · Vídeos Pluss — abundância, controle, liberdade, acervo · Gestão Participativa — parceria, suporte, estratégia, "junto" · Gestão Completa — autoridade, resultado, 360°, crescimento · AI Assistant e CRM — inovação, eficiência, 24h, reserva confirmada, organização · Sites — clareza, pedido fácil, cardápio sempre atualizado · Tráfego + IA — alcance certo, público certo, resposta na hora, casa cheia nos dias fracos.
+
+QUANDO A PEÇA FALA DE UM CLIENTE, A LOGOMARCA DELE ENTRA NA ARTE (co-branding): o sistema compõe a logo oficial do cliente citado no canto oposto ao da marca da Lagosta. Toda peça da vitrine, de atendimento ou de site cita o cliente pelo nome E leva a marca dele — quem monta o item informa o cliente citado.
 
 COMO FALAR DE IA SEM ASSUSTAR: o dono de restaurante costuma ter receio. Humanizar — "é como treinar um novo funcionário, só que ele nunca esquece o que aprendeu" · "você continua no controle: a IA responde o básico e passa pra você o que é importante" · "ele não inventa preço nem promoção: o que não sabe, passa para a equipe". VENDER COMO FUNCIONÁRIO DIGITAL QUE ATENDE 24H, NÃO COMO TECNOLOGIA.
 
@@ -88,7 +99,13 @@ const CONTENT_RULES = `1. A LAGOSTA NÃO É RESTAURANTE. Nunca escrever "nosso c
 
 12. A ENTREGA TEM DONO. Toda peça da vitrine de clientes diz, na copy ou na info de rodapé, o que a Lagosta fez ali: foto, vídeo, arte, gestão, atendimento com IA, site ou tráfego. Mostrar um prato bonito sem dizer que foi a Lagosta que fotografou é conteúdo do restaurante, não da agência.
 
-DIFERENCIAIS QUE VALEM SER DITOS: o STUDIO LAGOSTA é a plataforma proprietária da agência — é diferencial exclusivo, mencionar como tal · o GESTOR DE TRÁFEGO INCLUSO na Gestão Completa equivale a R$ 800–1.200 de serviço embutido · a ENTREGA DE ACERVO BRUTO no Vídeos Pluss é o que nenhum concorrente dá · o ATENDIMENTO COM IA vem com CRM, base de conhecimento e aviso no Telegram, não é só um robô de resposta · o SITE com cardápio digital atualiza pelo mesmo painel do atendimento.`
+13. CLIENTE CITADO = LOGOMARCA DO CLIENTE NA PEÇA. Além do nome na copy, a logo oficial do cliente entra na arte (composta pelo sistema, canto oposto ao da Lagosta). Peça que fala de um cliente sem a marca dele está incompleta.
+
+14. O STUDIO LAGOSTA É FERRAMENTA INTERNA. Nunca citar a plataforma, a bancada, a agenda, "tecnologia própria" ou "plataforma exclusiva" em peça, copy, legenda ou CTA; nunca mostrar print dela. Não se vende acesso à ferramenta — vende-se constância, identidade e resultado. O que pode ser dito é o método de trabalho em linguagem de cliente ("planejamento semanal aprovado por você", "conteúdo com a identidade da sua marca").
+
+15. TRÁFEGO PAGO SÓ APARECE JUNTO COM O ATENDIMENTO POR IA. Toda peça de tráfego diz que a campanha começa treinando o agente para responder e converter os leads — anúncio + resposta em menos de um minuto + reserva na mão da equipe. Nunca prometer resultado de campanha sem número na base.
+
+DIFERENCIAIS QUE VALEM SER DITOS: o GESTOR DE TRÁFEGO INCLUSO na Gestão Completa equivale a R$ 800–1.200 de serviço embutido · a ENTREGA DE ACERVO BRUTO no Vídeos Pluss é o que nenhum concorrente dá · o ATENDIMENTO COM IA vem com CRM, base de conhecimento e aviso no Telegram, não é só um robô de resposta · o SITE com cardápio digital atualiza pelo mesmo painel do atendimento · a CAMPANHA DE TRÁFEGO nasce com o agente treinado para converter, não com um anúncio solto.`
 
 const PHOTO_DIRECTION = `IMAGEM CINEMATOGRÁFICA COMO PROTAGONISTA — lembrando que, sendo agência, ela nem sempre é um prato.
 
@@ -96,7 +113,7 @@ LUZ: quente e dramática, de alta gastronomia. Contraste cinematográfico, profu
 
 O QUE PODE SER O HERÓI VISUAL: foto de comida ou ambiente de um cliente · bastidores de sessão (fotógrafo, softbox, câmera, o set montado, mãos ajustando o prato) · mockup (celular com o feed, tela de resultado) · PRINT FIEL de tela (conversa do agente, painel do CRM, cardápio digital, site) emoldurado em celular ou laptop ou recortado com cantos arredondados sobre o preto · textura premium (mármore, madeira nobre, latão, vidro fumê) · close conceitual · composição gráfica abstrata · OU NENHUMA IMAGEM, quando a peça for puramente tipográfica sobre preto.
 
-PRINT DE TELA É DOCUMENTO: entra como está (texto legível, interface real), nunca reconstruído pela IA, nunca com número ou mensagem inventada. Nomes, fotos e telefones de clientes finais borrados. O print ocupa o meio do quadro, o preto respira em volta, a headline fala sobre ele.
+PRINT DE TELA VIRA ARTE PELA IA, MAS CONTINUA DOCUMENTO: a peça é gerada por IA tendo o print como cena — emoldurado num celular (story) ou laptop (feed) sobre o preto da marca, com luz e perspectiva de produto premium — e o CONTEÚDO do print fica fiel e legível: nenhum texto, número ou nome da tela é reescrito, inventado ou "melhorado". Nomes, fotos e telefones de clientes finais chegam borrados. O print ocupa o meio do quadro, o preto respira em volta, a headline fala sobre ele, fora da tela. Prints de ferramenta interna (Studio Lagosta) NÃO entram em peça.
 
 FIDELIDADE AO QUE FOR ENVIADO: não distorcer, não recolorir, não inventar cenário novo.
 
@@ -119,6 +136,9 @@ Print de tela, quando há, é fiel e legível, sem reconstrução por IA e sem t
 A paleta é preto + laranja + branco/cinza, com o laranja só na headline, no logo e em acento pontual?
 A logo está pequena (2 a 3% da largura), com o gradiente original, fora do centro e longe das bordas?
 O CTA é um dos oficiais (Quero escalar meu restaurante, Ver resultados reais, Falar com especialista, Quero crescer, Agendar conversa, Conhecer a metodologia, Vamos conversar, Posicionar minha marca)?
+Se a peça fala de um cliente, a logomarca dele está na arte, no canto oposto ao da Lagosta?
+A peça está sem qualquer menção ou tela do Studio Lagosta (ferramenta interna)?
+Se a peça é de tráfego pago, ela diz que a campanha anda com o atendimento por IA treinado para converter?
 A gramática e a ortografia estão impecáveis?`
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -158,22 +178,15 @@ const PILARES = [
     slug: 'trafego-e-resultados',
     nome: 'Tráfego Pago e Resultados',
     descricao:
-      'Anúncios para a região e o público certos e os resultados reais da carteira, sempre com fonte, cliente e período. Casa cheia nos dias fracos, reservas, pedidos.',
-    exemplos: ['anúncio que encheu a terça', 'campanha de feijoada do Seu Quinto', 'resultado do mês com autorização', 'público certo na região certa', 'case de reservas'],
+      'Campanhas de anúncio que andam SEMPRE com o atendimento por IA: antes do anúncio, o agente é treinado para responder e converter os leads; o resultado é resposta em menos de um minuto e reserva na mão da equipe. Números só com fonte, cliente e período.',
+    exemplos: ['anúncio que encheu a terça com o agente respondendo', 'campanha começa treinando o agente', 'lead respondido em menos de um minuto', 'campanha de feijoada do Seu Quinto', 'resultado do mês com autorização'],
   },
   {
     slug: 'metodo-e-autoridade',
     nome: 'Método e Autoridade',
     descricao:
-      'Conteúdo educativo e de opinião para o dono de restaurante: por que a maioria fracassa no digital, constância, engenharia de cardápio, IA sem medo, o Sistema Lagosta.',
+      'Conteúdo educativo e de opinião para o dono de restaurante: por que a maioria fracassa no digital, constância, engenharia de cardápio, IA sem medo, o Sistema Lagosta — sempre em linguagem de cliente, sem expor ferramenta interna.',
     exemplos: ['marketing sem estratégia só deixa o restaurante mais bonito', 'três erros do Instagram de restaurante', 'por que foto de celular custa caro', 'o ciclo da falência digital', 'como a IA atende sem inventar'],
-  },
-  {
-    slug: 'studio-lagosta',
-    nome: 'Studio Lagosta e Tecnologia Própria',
-    descricao:
-      'A plataforma proprietária da agência: arte criada com a identidade da marca, agenda da semana, aprovação pelo celular, conferência automática. O que sustenta a constância.',
-    exemplos: ['arte pronta em minutos com a identidade da marca', 'a semana aprovada pelo celular', 'plataforma própria da Lagosta', 'bancada de criação', 'agenda que não falha'],
   },
 ]
 
@@ -198,7 +211,7 @@ Instagram: @lagostacriativa · Site: lagostacriativa.com.br · E-mail: contato@l
 Posicionamento: "Não vendemos posts. Vendemos mesas ocupadas." A única empresa do ES que une produção audiovisual, marketing estratégico, atendimento com IA e automação para restaurantes. Assinatura: "Você faz a comida. A gente faz a fama."
 
 CLIENTES ATENDIDOS (registros de agosto/2026 — confirmar autorização antes de citar numa peça):
-- Conteúdo e gestão de redes (no Studio Lagosta): Real Gelateria, O Quintal Parrilla, TERO, Seu Quinto, Bacana, Espeto Gaúcho, By Rock, Wine Vix, Empório Fonseca.
+- Conteúdo e gestão de redes: Real Gelateria, O Quintal Parrilla, TERO, Seu Quinto, Bacana, Espeto Gaúcho, By Rock, Wine Vix, Empório Fonseca.
 - Atendimento com IA + CRM: Empório Fonseca (agente Sofia), Ilha do Caranguejo (agente Papitito), Coronel Picanha, Wine Vix, Bacana, Clericot Café, Cypra Brasil.
 - Sites e cardápio digital: Clericot Café, Empório Fonseca, Cypra Brasil.
 - Sessões de foto e vídeo registradas no acervo: Farofa, Coronel Picanha, Raiz Brasil, Ilha do Caranguejo, além dos clientes de conteúdo.
@@ -213,12 +226,12 @@ COMO CONTRATAR: conversa pelo WhatsApp ou DM; proposta por frente (fotos, vídeo
     content: `A Lagosta vende o restaurante inteiro funcionando, não peças soltas. A história que a copy conta é uma cadeia:
 
 1. PRODUÇÃO DE FOTO E VÍDEO gera desejo: sessões presenciais, fotos editadas, vídeos para stories e reels, acervo bruto no Vídeos Pluss. Comida de verdade, nunca banco de imagem nem IA fake.
-2. GESTÃO DE REDES gera constância: posts no feed, stories diários, planejamento semanal, tudo criado no Studio Lagosta com a identidade da marca do cliente.
+2. GESTÃO DE REDES gera constância: posts no feed, stories diários, planejamento semanal aprovado pelo cliente, tudo com a identidade da marca.
 3. ATENDIMENTO COM IA + CRM converte a mensagem em reserva: o agente responde Instagram e WhatsApp 24h com o cardápio e as regras da casa, coleta a reserva, avisa a equipe no Telegram e organiza as conversas num CRM com funil e relatório diário.
 4. SITE E CARDÁPIO DIGITAL fecham o pedido: cardápio que atualiza em um clique no mesmo painel, pedido montado e enviado pelo WhatsApp, reserva que cai no atendimento.
-5. TRÁFEGO PAGO amplia tudo: anúncios para a região e o público certos, incluso na Gestão Completa.
+5. TRÁFEGO PAGO amplia tudo — e anda SEMPRE com o atendimento por IA: antes do anúncio, o agente é treinado para responder e converter os leads da campanha; anúncio para a região e o público certos, resposta em menos de um minuto, reserva na mão da equipe. Incluso na Gestão Completa.
 
-O que sustenta a cadeia é tecnologia própria: o Studio Lagosta (criação, agenda, aprovação pelo celular) e o CRM com agente. Por isso a Lagosta se chama de "backend completo de crescimento para negócios gastronômicos", e não de agência.
+O que sustenta a cadeia é método e equipe: quem entra na cozinha, entende de salão e de número, e opera as cinco frentes juntas. Por isso a Lagosta se chama de "backend completo de crescimento para negócios gastronômicos", e não de agência. (As ferramentas que a equipe usa por dentro são internas e não entram na comunicação.)
 
 Como usar na copy: cada peça puxa UMA frente, e a legenda pode lembrar que ela faz parte de um todo ("a foto chama, o agente responde, a mesa enche"). Combinações vendidas: Só Vídeos + Gestão Participativa (Combo Crescimento); Gestão Completa + AI Assistant (Combo Completo); Só Fotos + AI Assistant (Combo Entrada).`,
   },
@@ -254,7 +267,7 @@ ATENDIMENTO COM IA (mês de agosto/2026, até 23/08):
 
 PRODUÇÃO DE CONTEÚDO:
 - Cerca de 1.000 fotos novas entraram nos acervos dos clientes nos últimos 30 dias (contagem dos catálogos em 23/08/2026) — usar como ordem de grandeza ("mais de mil fotos por mês"), não como manchete exata sem confirmar.
-- 9 restaurantes com conteúdo e agenda cuidados pelo Studio Lagosta.
+- 9 restaurantes com conteúdo e agenda cuidados pela Lagosta.
 
 SITES ENTREGUES: Clericot Café (site completo com cardápios, experiências e eventos), Empório Fonseca (site com cardápio digital e pedido pelo WhatsApp), Cypra Brasil.
 
@@ -277,19 +290,18 @@ O QUE DIZER NA COPY: cardápio digital que o dono atualiza em um clique · pedid
   },
   {
     category: 'DIFERENCIAIS',
-    title: 'Studio Lagosta — a plataforma própria (como explicar)',
-    tags: ['studio lagosta', 'plataforma', 'tecnologia', 'agenda', 'bancada'],
-    content: `O STUDIO LAGOSTA é a plataforma proprietária da agência. É o que permite prometer constância sem perder identidade — e é diferencial exclusivo: cliente de Gestão Participativa tem acesso a ela.
+    title: 'Tráfego pago com atendimento por IA — como a campanha funciona',
+    tags: ['tráfego pago', 'anúncios', 'campanha', 'ia', 'agente', 'leads'],
+    content: `Na Lagosta, tráfego pago NUNCA é vendido nem comunicado sozinho: toda campanha de anúncio anda com o atendimento por IA. O raciocínio que a copy repete: anúncio bom gera mensagem; mensagem sem resposta é dinheiro jogado fora.
 
-O QUE FAZ, em linguagem de benefício:
-- Guarda o DNA de cada marca (tom de voz, regras, tipografia, paleta, direção de foto) e cria as artes com essa identidade, não com um modelo genérico.
-- Bancada de criação: escolhe a foto do acervo do cliente, escreve a copy e gera a arte; carrossel com visual coerente entre os slides.
-- Agenda semanal: propõe os horários com base no histórico real de cada restaurante, monta a leva da semana e publica nos stories e no feed; a equipe aprova pelo celular.
-- Conferência automática: confere o texto da arte antes de agendar e verifica se o story foi publicado de fato.
-- Acervo organizado: as fotos das sessões ficam catalogadas por tema, e a busca acha "foto de happy hour" sem abrir pasta.
-- Base de conhecimento por cliente: horários, cardápio e campanhas entram na copy sem inventar preço nem promoção.
+COMO FUNCIONA, NA ORDEM:
+1. ANTES DO ANÚNCIO, a equipe treina o agente de atendimento para a campanha: o que está sendo anunciado (prato, evento, promoção, horário), as perguntas que vão chegar, como coletar a reserva ou o pedido e quando passar para a equipe. O agente aprende a responder e a CONVERTER o lead em cliente.
+2. O ANÚNCIO vai para a região e o público certos (Instagram e Facebook), com a foto e o vídeo produzidos pela Lagosta.
+3. A MENSAGEM CHEGA e o agente responde em menos de um minuto, 24h, no Instagram e no WhatsApp — com o cardápio e as regras da casa, sem inventar preço nem promoção.
+4. A RESERVA OU O PEDIDO vai para a equipe no Telegram com botão de confirmar; tudo fica no CRM, com o funil da campanha e o relatório diário.
+5. O RESULTADO é medido: mensagens, novos contatos, taxa de resposta, reservas — e a próxima campanha parte do que funcionou.
 
-COMO FALAR: "plataforma própria", "tecnologia da casa", "a agenda da semana aprovada pelo celular", "arte com a identidade da marca em minutos". NÃO falar em IA generativa como argumento principal — a promessa é constância com identidade; a tecnologia é o meio.`,
+COMO FALAR NA COPY: "a campanha começa treinando o agente" · "anúncio que enche a terça, agente que responde na hora" · "lead respondido em menos de um minuto" · "tráfego sem quem responda é dinheiro jogado fora". Número de campanha só com fonte, cliente e período (entrada "Provas e números reais"). O gestor de tráfego está incluso na Gestão Completa.`,
   },
   {
     category: 'FAQ',
@@ -312,6 +324,9 @@ COMO FALAR: "plataforma própria", "tecnologia da casa", "a agenda da semana apr
 "NÃO TENHO TEMPO DE ACOMPANHAR." Na Gestão Completa a Lagosta opera tudo, e a aprovação é pelo celular, em minutos. O relatório do atendimento chega no Telegram todo dia.`,
   },
 ]
+
+/** Entradas que deixaram de valer (ferramenta interna não é produto). */
+const ARQUIVAR = ['Studio Lagosta — a plataforma própria (como explicar)']
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -346,11 +361,30 @@ async function main() {
   }
 
   // 3. BASE
-  const titulos = new Set(
-    (await db.knowledgeBaseEntry.findMany({ where: { projectId: PROJECT_ID }, select: { title: true } })).map((e) => e.title),
-  )
+  const existentes = await db.knowledgeBaseEntry.findMany({
+    where: { projectId: PROJECT_ID },
+    select: { id: true, title: true, content: true, status: true },
+  })
+  const porTitulo = new Map(existentes.map((e) => [e.title, e]))
   for (const e of ENTRADAS) {
-    if (titulos.has(e.title)) { console.log(`Base: "${e.title}" já existe — pulada`); continue }
+    const atual = porTitulo.get(e.title)
+    if (atual && atual.content === e.content && atual.status === 'ACTIVE') {
+      console.log(`Base: "${e.title}" já está igual — pulada`)
+      continue
+    }
+    if (atual) {
+      console.log(`Base: ~ [${e.category}] "${e.title}" mudou (${atual.content.length} → ${e.content.length} chars) — atualizar e reindexar`)
+      if (CONFIRMAR) {
+        await db.knowledgeBaseEntry.update({
+          where: { id: atual.id },
+          data: { content: e.content, tags: e.tags, status: 'ACTIVE', category: e.category },
+        })
+        await reindexEntry(atual.id, { projectId: PROJECT_ID, userId: AUTOR })
+        await invalidateProjectCache(PROJECT_ID).catch(() => {})
+        console.log(`  atualizada ${atual.id}`)
+      }
+      continue
+    }
     console.log(`Base: + [${e.category}] "${e.title}" (${e.content.length} chars)`)
     if (CONFIRMAR) {
       const r = await criarEntradaBase({
@@ -363,6 +397,21 @@ async function main() {
         autor: AUTOR,
       })
       console.log(`  gravada ${r.id}`)
+    }
+  }
+  // O Studio é ferramenta interna: a entrada que o descrevia como produto sai
+  // de cena (arquivada, não apagada — o PUT/arquivar é a regra da casa).
+  for (const titulo of ARQUIVAR) {
+    const atual = porTitulo.get(titulo)
+    if (!atual || atual.status !== 'ACTIVE') continue
+    console.log(`Base: arquivar "${titulo}"`)
+    if (CONFIRMAR) {
+      await db.knowledgeBaseEntry.update({ where: { id: atual.id }, data: { status: 'ARCHIVED' } })
+      await reindexEntry(atual.id, { projectId: PROJECT_ID, userId: AUTOR }).catch((err) =>
+        console.warn('  reindex ao arquivar falhou (vetores antigos podem sobrar):', err),
+      )
+      await invalidateProjectCache(PROJECT_ID).catch(() => {})
+      console.log(`  arquivada ${atual.id}`)
     }
   }
 
