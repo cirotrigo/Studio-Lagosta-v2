@@ -3,7 +3,7 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { ArrowRight, TrendingUp, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowRight, MessagesSquare, Timer, CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
 import { motion, useMotionValue, useMotionTemplate } from 'framer-motion';
 
@@ -36,14 +36,10 @@ export function HeroSection() {
                 }}
             />
 
-            {/* Top Navigation - Login Button */}
+            {/* Top Navigation — o "Entrar no Studio" mudou para o rodapé: no
+                topo do site de vendas, ele confundia o dono de restaurante. */}
             <div className="absolute top-0 right-0 p-4 md:p-8 z-50 flex items-center gap-4">
                 <ThemeToggle />
-                <Button variant="ghost" className="text-sm font-medium text-muted-foreground hover:text-orange-500 hover:bg-orange-500/10 transition-colors" asChild>
-                    <Link href="/sign-in">
-                        Entrar no Studio
-                    </Link>
-                </Button>
             </div>
 
             {/* Background Gradients/Effects */}
@@ -100,30 +96,34 @@ export function HeroSection() {
                     </Button>
                 </div>
 
-                {/* Social Proof Numbers */}
+                {/* Social Proof Numbers — números REAIS, com dono e data.
+                    Fonte: painéis de atendimento lidos em 23/08/2026 (entrada
+                    "Provas e números reais" da base do projeto 8). Os antigos
+                    +40% / +2,5k / +15 não tinham fonte e saíram. */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-16 border-t border-border/50 pt-12 w-full max-w-4xl">
                     <div className="flex flex-col items-center">
                         <div className="flex items-center text-3xl font-bold text-foreground mb-1">
-                            <TrendingUp className="mr-2 h-6 w-6 text-green-500" />
-                            +40%
+                            <MessagesSquare className="mr-2 h-6 w-6 text-orange-500" />
+                            950+
                         </div>
-                        <p className="text-sm text-muted-foreground">Crescimento médio de receita</p>
+                        <p className="text-sm text-muted-foreground">mensagens respondidas pela IA em agosto na Ilha do Caranguejo — 96,4% das conversas</p>
                     </div>
                     <div className="flex flex-col items-center">
                         <div className="flex items-center text-3xl font-bold text-foreground mb-1">
-                            <UtensilsCrossed className="mr-2 h-6 w-6 text-orange-500" />
-                            +2.5k
+                            <Timer className="mr-2 h-6 w-6 text-green-500" />
+                            &lt; 1 min
                         </div>
-                        <p className="text-sm text-muted-foreground">Mesas reservadas/mês</p>
+                        <p className="text-sm text-muted-foreground">para a primeira resposta no Empório Fonseca — 95,5% das conversas respondidas</p>
                     </div>
                     <div className="flex flex-col items-center">
                         <div className="flex items-center text-3xl font-bold text-foreground mb-1">
-                            <Users className="mr-2 h-6 w-6 text-blue-500" />
-                            +15
+                            <CalendarCheck className="mr-2 h-6 w-6 text-blue-500" />
+                            9
                         </div>
-                        <p className="text-sm text-muted-foreground">Marcas transformadas</p>
+                        <p className="text-sm text-muted-foreground">restaurantes do ES com conteúdo profissional toda semana — e 7 com agente de IA no atendimento</p>
                     </div>
                 </div>
+                <p className="mt-4 text-xs text-muted-foreground/70">Números de agosto/2026, lidos nos painéis de atendimento dos clientes.</p>
 
                 {/* Simple Logo Strip Visual */}
                 <div className="mt-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">

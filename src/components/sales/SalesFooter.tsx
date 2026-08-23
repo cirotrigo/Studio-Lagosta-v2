@@ -34,8 +34,9 @@ export function SalesFooter() {
                                 <h4 className="font-bold mb-4">Empresa</h4>
                                 <ul className="space-y-2 text-sm text-muted-foreground">
                                     <li><Link href="#cases" className="hover:text-foreground">Casos de Sucesso</Link></li>
+                                    <li><Link href="#sites" className="hover:text-foreground">Sites</Link></li>
                                     <li><Link href="#pricing" className="hover:text-foreground">Planos</Link></li>
-                                    <li><Link href="#" className="hover:text-foreground">Sobre nós</Link></li>
+                                    <li><Link href="/sign-in" className="hover:text-foreground">Entrar no Studio</Link></li>
                                 </ul>
                             </div>
                         </div>

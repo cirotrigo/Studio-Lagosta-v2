@@ -7,6 +7,7 @@ import { SolutionSection } from './SolutionSection';
 import { ValuePropSection } from './ValuePropSection';
 import { MethodologySection } from './MethodologySection';
 import { CaseStudiesSection } from './CaseStudiesSection';
+import { SitesShowcaseSection } from './SitesShowcaseSection';
 import { OfferSection } from './OfferSection';
 import { SocialProofSection } from './SocialProofSection';
 import { ObjectionsSection } from './ObjectionsSection';
@@ -22,6 +23,7 @@ export function SalesPage() {
             <ValuePropSection />
             <MethodologySection />
             <CaseStudiesSection />
+            <SitesShowcaseSection />
             <OfferSection />
             <SocialProofSection />
             <ObjectionsSection />
