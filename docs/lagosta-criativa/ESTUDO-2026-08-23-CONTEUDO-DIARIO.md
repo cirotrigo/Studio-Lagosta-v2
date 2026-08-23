@@ -7,7 +7,7 @@
 >
 > Tudo que está marcado **[FEITO]** já foi executado hoje contra a produção; o que
 > está marcado **[CIRO]** depende de decisão ou ação sua. O que mudou no código
-> está no working tree (não commitado, não deployado).
+> foi commitado e enviado à `main` em 23/08 (`a7ca194d`).
 
 ---
 
@@ -28,15 +28,14 @@ Hoje:
 | Base de conhecimento | 1 entrada (pacotes) | +7 entradas: ficha, solução completa, agente + CRM, provas e números, sites, Studio, FAQ **[FEITO]** |
 | Acervo (Drive "Fotos Lagosta") | 44 fotos de making-of de out/2025 | 116 catalogadas: +61 fotos recentes dos clientes (curadoria manual, sem rosto de cliente final) em `Portfólio dos clientes/<Cliente>` + 11 prints de sites; tudo etiquetado com o nome do pilar **[FEITO]** |
 | Programação | nenhuma | plano "Semana 1 — 24 a 30/08" com 14 stories + 4 posts de feed, propostos (nada gerado, nada cobrado) **[FEITO]** |
-| Home do site | twitter:description = "Template Next.js… AI Coders Academy"; og-image = SVG do template; typo "entreues" | metadata da Home reescrita (OG/Twitter completos, nova `og-lagosta.png`), SiteSettings do admin corrigido em produção, typo e alts corrigidos; avaliação e plano de reestruturação na § 10 **[FEITO no código / CIRO para deploy]** |
-| Prints do CRM e conversas | — | lidos e medidos (números na base); **os arquivos de imagem ficam com você** — roteiro de 6 prints na § 6.3 **[CIRO]** |
+| Home do site | twitter:description = "Template Next.js… AI Coders Academy"; og-image = SVG do template; typo "entreues" | metadata da Home reescrita (OG/Twitter completos, nova `og-lagosta.png`), SiteSettings do admin corrigido em produção, typo e alts corrigidos — **commitado e enviado (`a7ca194d`)**; avaliação e plano de reestruturação na § 10 **[FEITO / CIRO decide a reestruturação]** |
+| Prints do CRM e conversas | — | 7 prints capturados pelo seu Chrome logado (painéis Ilha e Empório, conversa com o agente, funil, base de conhecimento, lista de conversas), **nomes e telefones borrados**, em `Fotos Lagosta/Prints de sites e CRM/CRM e atendimento`, catalogados e etiquetados com o pilar **[FEITO]** |
 
 O que falta para a máquina rodar sozinha: (1) você confirmar/ajustar o plano da
-semana na bancada e disparar `executar-plano`; (2) tirar os 6 prints do CRM e
-soltar na pasta `Fotos Lagosta/Prints de sites e CRM/CRM e atendimento`; (3)
-adotar a rotina de fotografar bastidores pelo celular (a pasta "Fotos do
-Celular" já cai no acervo); (4) decidir sobre a reestruturação da Home (§ 10) e
-dar deploy das correções já feitas.
+semana na bancada e disparar `executar-plano`; (2) adotar a rotina de
+fotografar bastidores pelo celular (a pasta "Fotos do Celular" já cai no
+acervo); (3) decidir sobre a reestruturação da Home (§ 10) — as correções já
+estão no ar via `main`.
 
 ---
 
@@ -209,26 +208,32 @@ toca as 7 frentes pelo menos uma vez; a cada 2 semanas um carrossel de pacotes
   Enquanto não houver histórico publicado, continua cold start; com 3–4
   semanas publicadas a cadência v2 passa a ler a rotina real.
 
-### 6.3 Prints do CRM e das conversas — roteiro **[CIRO, ~10 min]**
+### 6.3 Prints do CRM e das conversas **[FEITO, 23/08 à tarde]**
 
-Não consegui salvar os prints em arquivo a partir daqui (o navegador que está
-logado é o seu Chrome; o que eu capturo dele fica só na conversa). Tire com
-⌘⇧4 e solte em `Fotos Lagosta / Prints de sites e CRM / CRM e atendimento`
-(pasta já criada; a reconciliação das 02:00 cataloga, ou rode
-`reconciliarCatalogo({projectId: 8})`). **Borre nome, foto e telefone de
-cliente final antes de usar** (regra 10 do DNA).
+Capturados abrindo uma aba nova no seu Chrome (já logado) por AppleScript e
+recortando a janela; a aba é fechada e a sua aba ativa restaurada em seguida.
+Onde estão: `Fotos Lagosta / Prints de sites e CRM / CRM e atendimento`
+(pasta `1HBzbulwWqtkH2DM6L-YqXm8xm0PEDp6W`), já catalogados e com a tag
+"atendimento com ia e crm". Cópia local (com as versões brutas, sem borrar, em
+`brutos/`) em `human-output/lagosta-criativa-2026-08-23/prints-crm/`.
 
-| # | Onde | O que mostrar |
+| Arquivo no Drive | O que mostra | PII |
 |---|---|---|
-| 1 | `agente-ilhacaranguejo.vercel.app/dashboard` (Este Mês) | "Performance de Mensagens": 950 enviadas · 308 novos contatos · 96,4% · barra Humanos × IA |
-| 2 | `emporiofonseca.vercel.app/dashboard` | 558 enviadas · First Response Time < 1min · 95,5% |
-| 3 | `agente-ilhacaranguejo.vercel.app/messaging?id=a7cd8e3c-4097-4092-b708-a10a8afebb3e` | conversa real: "Tem promoção de caranguejo amanhã?" → resposta do Papitito com link de promoções e a Terça do Caranguejo em Dobro (borrar o nome) |
-| 4 | `agente-ilhacaranguejo.vercel.app/boards` | kanban: Novo Contato 161 · Reserva Solicitada 8 (cards com nome — borrar ou recortar só o cabeçalho das colunas) |
-| 5 | `agente-ilhacaranguejo.vercel.app/knowledge` | "Base ativa — 11 fontes", lista Ilha das Carpas / Terça do Caranguejo / Campanhas ativas 📌 |
-| 6 | Telegram (celular) | um aviso de reserva com os botões ✅ Confirmar reserva · 🙋 Assumir · 🔗 Abrir no CRM (borrar dados) |
+| `crm-ilha-do-caranguejo-visao-geral-agosto-2026.png` | Visão Geral da Ilha: 962 mensagens (841 IA), 312 novos contatos, 96,5% de resposta, 1.000 conversas na semana | não |
+| `crm-emporio-fonseca-visao-geral-agosto-2026.png` | Visão Geral do Empório: 558 mensagens (532 IA), 66 contatos, 1ª resposta < 1 min, 95,5% | não |
+| `crm-ilha-do-caranguejo-conversa-com-o-agente-borrado.png` | conversa real ("Tem promoção de caranguejo amanhã?" → resposta do Papitito) com painel "IA Ativa / Desativar IA para este contato" | nomes borrados |
+| `crm-ilha-do-caranguejo-conversa-so-o-chat-borrado.png` | só o painel do chat, vertical (bom para story) | nomes borrados |
+| `crm-ilha-do-caranguejo-funil-de-reservas-borrado.png` | kanban: Novo Contato 298 · Reserva Solicitada 13 | nomes dos cards borrados |
+| `crm-ilha-do-caranguejo-base-de-conhecimento.png` | Base ativa (11 fontes): Ilha das Carpas, Terça do Caranguejo em Dobro, Campanhas ativas 📌 | não |
+| `crm-emporio-fonseca-lista-de-conversas-borrado.png` | lista de conversas com "Sua reserva está confirmada…" | nomes e telefone borrados |
 
-Bônus: print do toggle "IA Ativa / Desativar IA para este contato" no painel da
-conversa (a prova do "você continua no controle").
+Os números dos painéis são ao vivo — já subiram desde a leitura da manhã
+(950 → 962 mensagens na Ilha). A entrada "Provas e números reais" da base
+mantém os da manhã; atualize quando fechar o mês.
+
+Ainda vale tirar à mão: **um aviso de reserva no Telegram com os botões**
+✅ Confirmar reserva · 🙋 Assumir · 🔗 Abrir no CRM (celular; borrar dados) —
+é a imagem mais vendedora do atendimento e não está numa tela web.
 
 ### 6.4 Prints de sites **[FEITO]**
 
@@ -389,11 +394,12 @@ os prints já no Drive; sugiro fazer depois de você confirmar os números.
 
 - [ ] Confirmar por escrito os números do site (+40% / +2,5k / +15 e os 4
       cards de case) ou deixá-los fora (hoje estão proibidos na base).
-- [ ] Tirar os 6 prints do CRM (§ 6.3) e soltar na pasta do Drive.
+- [x] Prints do CRM — feitos (§ 6.3). Falta só o print do aviso no Telegram (celular).
 - [ ] Revisar e disparar o plano da Semana 1 na bancada.
 - [ ] Rotina de bastidores pelo celular com a equipe.
-- [ ] Decidir a reestruturação da Home (§ 10.2) e dar deploy das correções já
-      feitas (`git add` dos arquivos listados abaixo + push).
+- [x] Correções da Home commitadas e enviadas em 23/08 (`a7ca194d`, junto com o
+      commit local `a03ea665` das músicas que ainda não tinha subido) — a Vercel
+      deploya a `main`. Falta decidir a reestruturação (§ 10.2).
 - [ ] `BrandColor` do projeto 8 (vermelho/amarelo) × paleta do DNA.
 - [ ] Conferir preços da entrada "Pacotes" e da aba Planos.
 - [ ] Upstash Redis do cache da base (conta) — ops.
@@ -401,12 +407,15 @@ os prints já no Drive; sugiro fazer depois de você confirmar os números.
 - [ ] `clericot.cafe` ainda aponta para o WordPress antigo — o site novo está
       em `clericot.vercel.app`; vale apontar o domínio antes de anunciar.
 
-### Arquivos tocados no repo (não commitados)
+### Arquivos tocados no repo (commit `a7ca194d`, 23/08)
 `scripts/preparar-lagosta-criativa.ts` (novo) · `src/app/page.tsx` ·
 `src/app/layout.tsx` · `src/lib/brand-config.ts` · `src/lib/site-settings.ts` ·
 `src/components/app/public-footer.tsx` · `src/components/sales/HeroSection.tsx` ·
 `src/components/sales/OfferSection.tsx` · `public/og-lagosta.png` (novo) ·
 `docs/lagosta-criativa/*` (este estudo, DNA anterior, manifesto do Drive).
+
+### Escritas feitas à tarde
+Drive: 7 prints do CRM em `Prints de sites e CRM/CRM e atendimento` (+7 no catálogo, tag do pilar).
 
 ### Escritas em produção feitas hoje (todas reversíveis)
 BrandDNA do projeto 8 (4 seções; backup em `DNA-ANTERIOR-2026-08-23.md`) ·
