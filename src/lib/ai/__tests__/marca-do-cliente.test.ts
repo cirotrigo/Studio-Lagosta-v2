@@ -47,11 +47,14 @@ describe('marca do cliente citado', () => {
 })
 
 describe('versão negativa por falta de contraste', () => {
-  it('logo escura em peça escura sai em branco (knockout), preservando o desenho', async () => {
+  it('WORDMARK escuro (recorte, maioria transparente) em peça escura sai em branco', async () => {
     const w = 400, h = 400
     const arte = await sharp({ create: { width: w, height: h, channels: 3, background: { r: 12, g: 10, b: 14 } } }).png().toBuffer()
-    // logo escura (luminância ~40)
-    const logo = await sharp({ create: { width: 100, height: 40, channels: 4, background: { r: 40, g: 38, b: 42, alpha: 1 } } }).png().toBuffer()
+    // wordmark: traços escuros finos sobre fundo TRANSPARENTE (cobertura ~15%)
+    const svg = Buffer.from(
+      '<svg width="200" height="60"><rect x="0" y="24" width="200" height="12" fill="#28262a"/><rect x="30" y="4" width="12" height="52" fill="#28262a"/></svg>',
+    )
+    const logo = await sharp(svg).png().toBuffer()
     const r = await comporLogo(arte, logo, { cantoFixo: 'bottom-left', formato: 'feed' })
     expect(r.versao).toBe('negativa')
     // o canto agora tem pixels claros (a marca ficou visível)
@@ -64,5 +67,23 @@ describe('versão negativa por falta de contraste', () => {
     const logo = await sharp({ create: { width: 100, height: 40, channels: 4, background: { r: 255, g: 120, b: 0, alpha: 1 } } }).png().toBuffer()
     const r = await comporLogo(arte, logo, { cantoFixo: 'bottom-left', formato: 'feed' })
     expect(r.versao).toBe('original')
+  })
+})
+
+describe('selo com fundo próprio (cobertura de alpha alta)', () => {
+  it('nunca vira knockout, mesmo sem contraste de média', async () => {
+    const arte = await sharp({ create: { width: 400, height: 400, channels: 3, background: { r: 12, g: 10, b: 14 } } }).png().toBuffer()
+    // disco escuro sólido ocupando quase todo o quadro do arquivo (selo)
+    const svg = Buffer.from('<svg width="120" height="120"><circle cx="60" cy="60" r="58" fill="#111" stroke="#e8c34a" stroke-width="6"/></svg>')
+    const selo = await sharp(svg).png().toBuffer()
+    const r = await comporLogo(arte, selo, { cantoFixo: 'bottom-left', formato: 'feed' })
+    expect(r.versao).toBe('original')
+  })
+
+  it('cantosProibidos tira o canto da disputa', async () => {
+    const arte = await sharp({ create: { width: 400, height: 400, channels: 3, background: { r: 240, g: 240, b: 240 } } }).png().toBuffer()
+    const logo = await sharp({ create: { width: 80, height: 40, channels: 4, background: { r: 20, g: 20, b: 20, alpha: 1 } } }).png().toBuffer()
+    const r = await comporLogo(arte, logo, { formato: 'feed', cornerReservado: 'bottom-right', cantosProibidos: ['bottom-right'] })
+    expect(r.corner).not.toBe('bottom-right')
   })
 })

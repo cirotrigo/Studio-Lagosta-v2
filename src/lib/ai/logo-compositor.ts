@@ -193,6 +193,7 @@ export async function comporLogo(
     cornerReservado,
     formato,
     cantoFixo,
+    cantosProibidos,
     larguraRatio,
   }: {
     cornerReservado?: LogoCorner
@@ -203,6 +204,11 @@ export async function comporLogo(
      * disputa pode mandá-la justamente para cima da primeira.
      */
     cantoFixo?: LogoCorner
+    /**
+     * Cantos fora da disputa (ex.: onde a marca da casa já está composta).
+     * Ignorado quando `cantoFixo` é passado.
+     */
+    cantosProibidos?: LogoCorner[]
     /** Fração da largura que a logo ocupa; default `LOGO_WIDTH_RATIO`. */
     larguraRatio?: number
     /**
@@ -229,11 +235,13 @@ export async function comporLogo(
   // A mesma fração da regra 9 do prompt (FAIXA_RESERVADA = 1/8): texto e logo
   // terminam ANTES da faixa que o Instagram cobre.
   const margemVertical = ehStory ? Math.max(margem, Math.round(height * 0.125)) : margem
-  const cantosCandidatos = cantoFixo
-    ? [cantoFixo]
-    : ehStory
-      ? CORNER_ORDER.filter((c) => c !== 'top-left')
-      : CORNER_ORDER
+  const cantosCandidatos = (
+    cantoFixo
+      ? [cantoFixo]
+      : ehStory
+        ? CORNER_ORDER.filter((c) => c !== 'top-left')
+        : CORNER_ORDER
+  ).filter((c) => cantoFixo === c || !(cantosProibidos ?? []).includes(c))
 
   // Redimensiona preservando o alpha (converter PNG sem alpha vira retângulo
   // sólido — erro documentado no padrão de produção da casa).
@@ -252,6 +260,16 @@ export async function comporLogo(
    * logo cobriu o "20h").
    */
   const lumLogo = await luminanciaDaLogo(logoRedim)
+  /**
+   * Selo/badge (disco, emblema): maioria dos pixels é VISÍVEL — o arquivo
+   * carrega o próprio fundo e lê em qualquer canto. Para ele, o filtro de
+   * contraste não vale (a média de luminância mede o miolo do disco, não a
+   * borda que o destaca — o selo do Wine Vix, preto de anel amarelo, media 54
+   * e era dado como invisível) e o knockout é PROIBIDO: recolorir um disco
+   * sólido produz um borrão chapado, não uma versão negativa (aconteceu em
+   * 23/08/2026, três peças com um círculo branco sobre a copy).
+   */
+  const seloAutocontido = (await coberturaDoAlpha(logoRedim)) >= 0.5
 
   type Candidato = {
     corner: LogoCorner
@@ -315,7 +333,9 @@ export async function comporLogo(
   // uma parede branca lisa é o canto mais calmo do quadro e o pior lugar
   // possível para uma logo branca. Se todos engolirem, a penalidade do score
   // ainda escolhe o menos ruim.
-  const legiveis = candidatos.filter((c) => !Number.isFinite(c.contraste) || c.contraste >= CONTRASTE_MINIMO)
+  const legiveis = seloAutocontido
+    ? candidatos
+    : candidatos.filter((c) => !Number.isFinite(c.contraste) || c.contraste >= CONTRASTE_MINIMO)
   const disputa = legiveis.length > 0 ? legiveis : candidatos
   if (legiveis.length === 0 && lumLogo !== null) {
     console.warn(
@@ -336,6 +356,7 @@ export async function comporLogo(
   let logoFinal = logoRedim
   let versao: 'original' | 'negativa' = 'original'
   if (
+    !seloAutocontido &&
     Number.isFinite(melhor.contraste) &&
     melhor.contraste < CONTRASTE_MINIMO &&
     melhor.lumCanto !== null
@@ -360,6 +381,21 @@ export async function comporLogo(
     contraste: Number.isFinite(melhor.contraste) ? melhor.contraste : null,
     moveu: !!cornerReservado && melhor.corner !== cornerReservado,
     versao,
+  }
+}
+
+/** Fração dos pixels do PNG que são visíveis (alpha ≥ 128). */
+async function coberturaDoAlpha(logoPng: Buffer): Promise<number> {
+  try {
+    const { data, info } = await sharp(logoPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    let visiveis = 0
+    const total = data.length / info.channels
+    for (let p = 3; p < data.length; p += info.channels) if (data[p] >= 128) visiveis++
+    return total > 0 ? visiveis / total : 0
+  } catch {
+    // Sem a medida, o caminho conservador: tratar como recorte (knockout
+    // continua possível) — era o comportamento anterior.
+    return 0
   }
 }
 
