@@ -77,13 +77,13 @@ export async function generateMetadata(): Promise<Metadata> {
 
     return {
       title: 'Studio Lagosta',
-      description: 'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
-      keywords: ['SaaS', 'Next.js', 'TypeScript', 'Clerk', 'Prisma', 'Tailwind CSS'],
+      description: 'Studio Lagosta: a plataforma da Lagosta Criativa para criar, agendar e publicar o conteúdo de restaurantes.',
+      keywords: ['marketing gastronômico', 'restaurantes', 'Instagram', 'Studio Lagosta'],
       authors: [{ name: 'Lagosta Criativa (Ciro Trigo)' }],
       metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
       openGraph: {
         title: 'Studio Lagosta',
-        description: 'Template Next.js pronto para produção pela AI Coders Academy',
+        description: 'A plataforma da Lagosta Criativa para o conteúdo de restaurantes.',
         url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
         siteName: 'Studio Lagosta',
         images: [{ url: '/og-image.png' }],
@@ -92,7 +92,7 @@ export async function generateMetadata(): Promise<Metadata> {
       twitter: {
         card: 'summary_large_image',
         title: 'Studio Lagosta',
-        description: 'Template Next.js pronto para produção pela AI Coders Academy',
+        description: 'A plataforma da Lagosta Criativa para o conteúdo de restaurantes.',
       },
       icons: {
         icon: `/favicon.svg?v=${Date.now()}`,

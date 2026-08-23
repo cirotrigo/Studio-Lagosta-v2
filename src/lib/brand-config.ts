@@ -21,10 +21,10 @@ export const site = {
   name: 'Lagosta Criativa - Studio',
   shortName: 'Studio Lagosta',
   description:
-    'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
+    'Studio Lagosta: a plataforma da Lagosta Criativa para criar, agendar e publicar o conteúdo de restaurantes.',
   url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
   author: 'Lagosta Criativa (Ciro Trigo)',
-  keywords: ['SaaS', 'Next.js', 'TypeScript', 'Clerk', 'Prisma', 'Tailwind CSS', 'AI Coders Academy', 'Template', 'Microsaas'],
+  keywords: ['marketing gastronômico', 'restaurantes', 'Instagram', 'Studio Lagosta', 'Lagosta Criativa'],
   ogImage: '/og-image.png',
   logo: {
     light: '/logo-light.svg',
@@ -36,10 +36,10 @@ export const site = {
     shortcut: undefined,
   } as IconPaths,
   socials: {
-    twitter: '@aicodersacademy',
+    twitter: '@lagostacriativa',
   },
   support: {
-    email: 'suporte@aicoders.academy',
+    email: 'contato@lagostacriativa.com.br',
   },
   analytics: {
     gtmId: process.env.NEXT_PUBLIC_GTM_ID,

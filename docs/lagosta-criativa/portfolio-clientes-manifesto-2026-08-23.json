@@ -1,0 +1,1239 @@
+{
+ "geradoEm": "2026-08-23T15:39:14.528Z",
+ "raizAcervoLC": "1fwSzzAmVzxbBCSWU4lclMOXb6QVW6ReI",
+ "pastaPai": "Portfólio dos clientes",
+ "pastaPaiId": "1xTCPLfuzrlJk2cxwbpJ3gvCuDKaTENqR",
+ "subpastas": {
+  "Real Gelateria": "1ZXz4sAZsYdENZoDZL9SL1KR2FDaTgri4",
+  "O Quintal Parrilla": "1NL3HzGI4BVnrgxCrfACpPfSi6E-GVEYG",
+  "TERO": "1_VCzGzu6JFB5TnN7o20-Eh4iiN04BiSP",
+  "Seu Quinto": "16hQIRa_XKKV_CjH2jxWKE5psmhfbFRwY",
+  "Bacana": "1q9VYxq7HO0fA3-lVGiw_N1oAfpnwgym_",
+  "Espeto Gaúcho": "1k7KwNaf5Kx_1-GLW76HtK4WHBZK8azax",
+  "By Rock": "1WxLYuoeTdQiS_ZqkJ8O6Vo3wxThZTjO0",
+  "Wine Vix": "1QI536TB7soz2tHp5ig9QT66Z4r-c2ixx",
+  "Empório Fonseca": "16E_Wy5F8LIDMZMRjOv1GuW5emkR7b94T"
+ },
+ "itens": [
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "1lQagBQcwDm-_PE3buhox7G2hD9Kl7cxQ",
+   "nome": "20260820T221103_ambiente-varanda-amigos-img-8322_a511eb76.jpeg",
+   "pasta": "Ambiente",
+   "criada": "2026-08-20",
+   "desc": "Vista externa da Real Gelateria, mostrando sua charmosa área de convivência ao ar livre com clientes desfrutando de um momento de lazer. A fachada, decorada com bandeirinhas, convida a experimentar o ",
+   "tags": [
+    "exterior",
+    "fachada",
+    "ambiente",
+    "clientes",
+    "mesas",
+    "ar livre"
+   ],
+   "copiaId": "1iYOhBLz4yH-bPWiCMa01XGjFG8oUpyr4",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "10dEwrVHARonCquP2jO_rxsZNOhb_xhRi",
+   "nome": "03-macro-pudim.jpg",
+   "pasta": "Especiais do Chefe/Especial dia dos Pais - Pudim",
+   "criada": "2026-08-07",
+   "desc": "Um pudim cremoso com calda de caramelo brilhante, exibido em uma bandeja ao lado de outros sabores de gelato.",
+   "tags": [
+    "pudim",
+    "doce",
+    "caramelo",
+    "sobremesa",
+    "gelateria",
+    "especial"
+   ],
+   "copiaId": "16xlMQE4qNrh4QoSLGIoTqlKfM74XGvi8",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "1DAG-hAyAbAWI2pbR5Xnl3t9CksVlAqk1",
+   "nome": "01-topo-cuba-cheia.jpg",
+   "pasta": "Especiais do Chefe/Especial dia dos Pais - Pudim",
+   "criada": "2026-08-07",
+   "desc": "Um grande recipiente exibe um cremoso gelato ou sobremesa de pudim, coberto por uma generosa calda de caramelo e decorado com três mini pudins individuais.",
+   "tags": [
+    "pudim",
+    "gelato",
+    "doce",
+    "caramelo",
+    "sobremesa",
+    "cremoso"
+   ],
+   "copiaId": "1xQ8SZZJJfiXy-4DxsprBHY48-0rAU9j0",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "1ugPd03hyWSAaMwWuuiaFwdzlBIMpym4C",
+   "nome": "CMT03354.jpg",
+   "pasta": "Especiais do Chefe/Gelato de pipoca",
+   "criada": "2026-07-11",
+   "desc": "Uma mão segura um copo verde escuro da Real Gelateria, contendo um cremoso gelato de cor clara coberto com pipoca caramelizada.",
+   "tags": [
+    "gelato",
+    "pipoca",
+    "caramelo",
+    "doce",
+    "sobremesa",
+    "lanche"
+   ],
+   "copiaId": "15cAmSks-kSLz3UGbfxRsiSAj--LmP7ZS",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "10UC-4kntyoZzAWkv7gUccersVx2V2Mrp",
+   "nome": "CMT03349.jpg",
+   "pasta": "Especiais do Chefe/Gelato de pipoca",
+   "criada": "2026-07-11",
+   "desc": "Um scoop generoso de gelato de cor clara, coberto com pedaços crocantes e caramelizados, exibindo a etiqueta 'Especial Junino'.",
+   "tags": [
+    "gelato",
+    "especial junino",
+    "pipoca",
+    "doce",
+    "cremoso",
+    "crocante"
+   ],
+   "copiaId": "1eIEmYHFhlTWqoyBoAAXPoR7tAXApcg6j",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "1gqgk2qWzp4LV8k4eZt_bqijQKOw5TXd3",
+   "nome": "CMT00996.jpg",
+   "pasta": "Especiais do Chefe/Especial dos Namorados",
+   "criada": "2026-05-29",
+   "desc": "Uma mão apresenta um copo de gelato de chocolate, coberto com panna e uma cereja marrasquino, sobre o balcão de gelatos da casa. Um aviso ao lado destaca que é um \"Especial Dia dos Namorados\".",
+   "tags": [
+    "gelato",
+    "chocolate",
+    "panna",
+    "cereja marrasquino",
+    "dia dos namorados",
+    "especial"
+   ],
+   "copiaId": "1HQBDz-sFMLTXngiFOojm2ZeSyrCKBf0D",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 1,
+   "cliente": "Real Gelateria",
+   "id": "1kLh43TaOv52WfObw9A-IpkNvLA7PcPa1",
+   "nome": "CMT00419.jpg",
+   "pasta": "Cafeteria",
+   "criada": "2026-05-23",
+   "desc": "Um delicioso brownie coberto com calda de chocolate, acompanhado de uma porção de panna ou gelato e um cappuccino cremoso, servido em uma mesa de madeira.",
+   "tags": [
+    "brownie",
+    "chocolate",
+    "cappuccino",
+    "panna",
+    "gelato",
+    "cafe"
+   ],
+   "copiaId": "11fUkA-A7s_qt6IWSslIpSMxOKnjfHZSQ",
+   "pasta_lc": "Portfólio dos clientes/Real Gelateria",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "1ZqnkLFQpedjlMDHErR3yaFZkj_oAfGCV",
+   "nome": "IMG_8296.jpg",
+   "pasta": "Ambiente e Pessoas/Novas",
+   "criada": "2026-08-05",
+   "desc": "Uma vista ampla do interior do restaurante 'O Quintal Parrilla', mostrando um ambiente vibrante e cheio de clientes. A decoração inclui guarda-chuvas coloridos e plantas suspensas no teto, criando uma",
+   "tags": [
+    "ambiente",
+    "restaurante",
+    "pessoas",
+    "decoração",
+    "guarda-chuvas",
+    "colorido"
+   ],
+   "copiaId": "1xTvoDSZN8BT1Nhs5Dw10lBhbxHkAYTBZ",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "1fF7UhaPEiODUOPCRZtE31MEcGfIc0s4h",
+   "nome": "IMG_20260802_141344_00_013.jpg",
+   "pasta": "Drinks e bebidas",
+   "criada": "2026-08-05",
+   "desc": "Um bartender prepara um coquetel vibrante de cor avermelhada, despejando o líquido de uma coqueteleira para um copo no balcão de um bar iluminado e decorado com plantas suspensas.",
+   "tags": [
+    "bartender",
+    "drinks",
+    "coquetel",
+    "preparação",
+    "bar",
+    "bebidas"
+   ],
+   "copiaId": "1eNaS8x2M8YPI1BDdN0fJ-nKtyjz14Q_J",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "1KJG4-NR62PNEpPQUBEsCpgl4mpdaK7Kx",
+   "nome": "CMT06496.jpg",
+   "pasta": "Pratos/Picanha",
+   "criada": "2026-08-04",
+   "desc": "Carne picanha grelhada e fatiada servida em tábua de madeira com farofa em caneca esmaltada, enquanto acompanhamentos são servidos ao fundo.",
+   "tags": [
+    "Picanha",
+    "churrasco",
+    "carne",
+    "grelhados",
+    "parrilla",
+    "farofa"
+   ],
+   "copiaId": "1LMRKwFY0yJ3EBWUDtl5_tZ90aLLftyE7",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "14t_lfhf85mI3ODzvg3avxA5yvUTJQR57",
+   "nome": "CMT06460.jpg",
+   "pasta": "Drinks e bebidas",
+   "criada": "2026-08-04",
+   "desc": "Um drink refrescante sem álcool com camadas de maracujá e amora, guarnecido com hortelã fresca e uma fatia de limão.",
+   "tags": [
+    "drink",
+    "sem álcool",
+    "refrescante",
+    "hortelã",
+    "maracujá",
+    "amora"
+   ],
+   "copiaId": "1e1_NG8mwF5IG6g7vrC4P5pytGzF9HRjd",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "1Zw9xnEzmDqZW_PUJO9Qgbb8XvymgkZT-",
+   "nome": "CMT06377.jpg",
+   "pasta": "Entradas/Coxinha de costela bovina",
+   "criada": "2026-08-04",
+   "desc": "Uma porção de coxinhas crocantes de costela bovina, servidas em uma tábua de madeira com um cremoso molho verde. Uma coxinha está aberta, revelando o recheio desfiado.",
+   "tags": [
+    "coxinha",
+    "costela",
+    "frito",
+    "petisco",
+    "entrada",
+    "carne"
+   ],
+   "copiaId": "1hiB981iFQXpzuzewykXuAl68MMEE4cvY",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "1G3PbDxJODVyT5ZlxZ1OtkRY0K4DLiSSa",
+   "nome": "CMT06346.jpg",
+   "pasta": "Pratos/Sobrecoxas",
+   "criada": "2026-08-04",
+   "desc": "Duas tábuas de madeira exibem um banquete, com sobrecoxas desossadas grelhadas e um corte de carne bovina, ambos acompanhados por generosas porções de batatas rústicas e molhos em potes coloridos.",
+   "tags": [
+    "Parrilla",
+    "Frango",
+    "Sobrecoxa",
+    "Carne",
+    "Batata rústica",
+    "Farofa"
+   ],
+   "copiaId": "1KPLpa7RAL6VfEKK815bq2uwMoIOwxPPV",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "1unWZgb4Iulx3eECEyaaaK_lHQc9jeDff",
+   "nome": "CMT06379.jpg",
+   "pasta": "Entradas/Torresmo",
+   "criada": "2026-08-04",
+   "desc": "Uma porção generosa de torresmo crocante, servida em uma tábua de madeira rústica com vinagrete em um potinho vermelho e um molho amarelo em um potinho escuro, em um ambiente animado e com pessoas ao ",
+   "tags": [
+    "torresmo",
+    "petisco",
+    "entrada",
+    "carne de porco",
+    "crocante",
+    "aperitivo"
+   ],
+   "copiaId": "1z6bkUhZyJf0ZUtec1HkzazJ4GqVuIapy",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 2,
+   "cliente": "O Quintal Parrilla",
+   "id": "13ri8TAmqu28I4gx7n9Q5OYUhvzy0OSXl",
+   "nome": "CMT05640.jpg",
+   "pasta": "Almoço/2026",
+   "criada": "2026-07-27",
+   "desc": "Um prato principal com kaftas grelhadas, arroz biro biro, batatas rústicas e acompanhamentos em mini canecas, sendo um vinagrete e um molho de queijo. Uma pessoa leva um pedaço de batata rústica com q",
+   "tags": [
+    "kaftas",
+    "carne",
+    "parrilla",
+    "almoço executivo",
+    "arroz biro biro",
+    "batatas rústicas"
+   ],
+   "copiaId": "1z8dU10Gk7FqIQf9KfL4ed_VerqnIjth2",
+   "pasta_lc": "Portfólio dos clientes/O Quintal Parrilla",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "1Dk2RvfreVsWPCiVSSkX6IKb0wAdXvY0n",
+   "nome": "_F3A9944.jpg",
+   "pasta": "10_eventos",
+   "criada": "2026-08-20",
+   "desc": "Mesa farta com diversos antepastos, frios e frutas em um evento noturno, com convidados ao fundo e a cozinha visível.",
+   "tags": [
+    "evento",
+    "buffet",
+    "antepastos",
+    "frios",
+    "queijos",
+    "celebração"
+   ],
+   "copiaId": "15kOG1upR3Y0JIeGAOdHCdWPrt0IWK3-z",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "1lyqwtcJLBz-quTFj0HK_Uv3OdHplBPOx",
+   "nome": "10-arcos-ancho-polvo-luz-janela.png",
+   "pasta": "01_parrilla/grelhados-ambiente-9x16/06-mesa-para-dois",
+   "criada": "2026-08-06",
+   "desc": "Mesa para dois com um prato de ancho angus fatiado, acompanhamentos de legumes grelhados e salada, em um ambiente aconchegante com iluminação natural.",
+   "tags": [
+    "jantar",
+    "almoco",
+    "casal",
+    "carne",
+    "grelhado",
+    "ambiente"
+   ],
+   "copiaId": "1-Yzs4emK9PYyRAHxIeafEZmFs1Upux59",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "1Jk9l7U6ePn8apquxCE4O7EG-PHC_IogH",
+   "nome": "01-ancho-couveflor-macro.png",
+   "pasta": "01_parrilla/grelhados-ambiente-9x16/05-arcos-pedra",
+   "criada": "2026-08-06",
+   "desc": "Um suculento corte de carne grelhada, revelando um interior perfeitamente malpassado e sucos escorrendo, com acompanhamentos desfocados ao fundo.",
+   "tags": [
+    "carne",
+    "grelhado",
+    "malpassado",
+    "suculento",
+    "filé mignon",
+    "prato principal"
+   ],
+   "copiaId": "1EI514APJSMpGstK2MGODIt2Cn4H3j16J",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "18sEvgeK3rA_I0AzW1BWVZB20wMqnIwBa",
+   "nome": "03-tbone-batatas-ponto-de-vista.png",
+   "pasta": "01_parrilla/grelhados-ambiente-9x16/03-salao-noite",
+   "criada": "2026-08-06",
+   "desc": "Um suculento T-bone angus fatiado e grelhado, servido com um molho verde e um acompanhamento em tigela, visto da perspectiva de um cliente em um ambiente de restaurante à noite.",
+   "tags": [
+    "T-bone",
+    "carne",
+    "grelhado",
+    "angus",
+    "molho",
+    "acompanhamento"
+   ],
+   "copiaId": "1wLX_rTIxAuX389pWEWNaXuSoSq_nKSda",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "1QDMZpTcuBVv8YQeOeINcMbcxyJnxm2ii",
+   "nome": "02-atum-couveflor-45graus.png",
+   "pasta": "01_parrilla/grelhados-ambiente-9x16/04-bar",
+   "criada": "2026-08-06",
+   "desc": "Um prato de lombo de atum selado com gergelim e molho agridoce, acompanhado de couve-flor roxa e legumes. O ambiente elegante do restaurante TERO, com iluminação quente, compõe o fundo.",
+   "tags": [
+    "lombo de atum",
+    "atum",
+    "peixe",
+    "frutos do mar",
+    "grelhados",
+    "couve-flor"
+   ],
+   "copiaId": "1aTdxlKEyVV2mS5MYVt6DXiA1ikc7eI40",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "15TDbKtERz1boW2XAambOPFT6c4Ya1lW2",
+   "nome": "02-polvo-salada-45graus.png",
+   "pasta": "01_parrilla/grelhados-ambiente-9x16/02-terraco-tero",
+   "criada": "2026-08-06",
+   "desc": "Um prato de polvo grelhado suculento e uma salada fresca em primeiro plano, com clientes desfrutando do ambiente verde e natural do terraço ao fundo.",
+   "tags": [
+    "polvo",
+    "grelhado",
+    "frutos-do-mar",
+    "terraço",
+    "ambiente-externo",
+    "salada"
+   ],
+   "copiaId": "1Kzc2xEAa08nNjFGqZu0h9lBlwWHq5715",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 3,
+   "cliente": "TERO",
+   "id": "1Oi9wz7zjddOASfmaCFufFfzv8mhtIomz",
+   "nome": "01-polvo-salada-macro.png",
+   "pasta": "01_parrilla/grelhados-ambiente-9x16/02-terraco-tero",
+   "criada": "2026-08-06",
+   "desc": "Tentáculo de polvo grelhado com marcas de churrasco, servido sobre um creme claro e decorado com um pequeno ramo de erva.",
+   "tags": [
+    "polvo",
+    "grelhado",
+    "frutos do mar",
+    "gastronomia",
+    "prato principal",
+    "gourmet"
+   ],
+   "copiaId": "17FFXq4AQoUvSACBvJKbgAZmfh3lifJ9e",
+   "pasta_lc": "Portfólio dos clientes/TERO",
+   "status": "copiada"
+  },
+  {
+   "projectId": 4,
+   "cliente": "Seu Quinto",
+   "id": "14P8kQ_2btm95wpRjGlpm2dZ6FvzrOMUn",
+   "nome": "_F3A0001.jpg",
+   "pasta": "12_ambiente/varanda",
+   "criada": "2026-08-20",
+   "desc": "Vista noturna da varanda do restaurante Seu Quinto, com mesas ocupadas por clientes, iluminação de gambiarras e um jogo sendo exibido na televisão.",
+   "tags": [
+    "varanda",
+    "noite",
+    "clientes",
+    "mesas",
+    "iluminação",
+    "ambiente"
+   ],
+   "copiaId": "1oJfo4ePp-ShYruvDNvMxMu8ouInHZskS",
+   "pasta_lc": "Portfólio dos clientes/Seu Quinto",
+   "status": "copiada"
+  },
+  {
+   "projectId": 4,
+   "cliente": "Seu Quinto",
+   "id": "1RV_DFqE6R2boPMZewjZW8UMcwVS4X5Xx",
+   "nome": "_F3A9988.jpg",
+   "pasta": "12_ambiente/varanda/sequencia abrindo toldo",
+   "criada": "2026-08-20",
+   "desc": "Vista noturna da varanda do restaurante Seu Quinto, com o toldo aberto, mostrando o ambiente animado com clientes nas mesas, luzes decorativas e uma TV exibindo um jogo de futebol.",
+   "tags": [
+    "noite",
+    "ambiente externo",
+    "varanda",
+    "clientes",
+    "iluminacao",
+    "boteco"
+   ],
+   "copiaId": "1A5wG1CKKkIDjtVFOMcr-Ik4t97Cack1b",
+   "pasta_lc": "Portfólio dos clientes/Seu Quinto",
+   "status": "copiada"
+  },
+  {
+   "projectId": 4,
+   "cliente": "Seu Quinto",
+   "id": "1Iz3OD18cbxnQ_VATQTtQdrp2XGWshtUw",
+   "nome": "CMT05698.jpg",
+   "pasta": "14_programacao/almoco-domingo/file-do-edd",
+   "criada": "2026-07-30",
+   "desc": "Um prato farto com filé mignon coberto por alho crocante, servido sobre arroz com brócolis e acompanhado por brócolis cozido, em uma travessa oval de inox. Ao fundo, outras travessas de inox com acomp",
+   "tags": [
+    "travessa-inox",
+    "copo-americano",
+    "chopp",
+    "cerveja",
+    "prato-dividir",
+    "mesa-cheia"
+   ],
+   "copiaId": "1ksNJ4YHKNAcs2O32EuauqPOWmTD_dQhK",
+   "pasta_lc": "Portfólio dos clientes/Seu Quinto",
+   "status": "copiada"
+  },
+  {
+   "projectId": 4,
+   "cliente": "Seu Quinto",
+   "id": "1pfI9bny4jppwJvo_nl7LO6KKI6z587OX",
+   "nome": "CMT05476.jpg",
+   "pasta": "11_bebidas/longneck",
+   "criada": "2026-07-27",
+   "desc": "Duas mãos brindam com uma garrafa long neck de Heineken e um pequeno copo, em um ambiente de boteco com luz âmbar quente e pessoas ao fundo, sugerindo um momento de celebração.",
+   "tags": [
+    "cerveja",
+    "longneck",
+    "heineken",
+    "brinde",
+    "turma",
+    "noite"
+   ],
+   "copiaId": "13FGURFuzx9dkakZQPESxLpC2gZ6Rr_Vg",
+   "pasta_lc": "Portfólio dos clientes/Seu Quinto",
+   "status": "copiada"
+  },
+  {
+   "projectId": 4,
+   "cliente": "Seu Quinto",
+   "id": "19u5VhEYEA2gRmK6SCQlKe80dL69IURj1",
+   "nome": "CMT04715.jpg",
+   "pasta": "04_pra-dividir/Sol do Sertão",
+   "criada": "2026-07-12",
+   "desc": "Close-up do prato Sol do Sertão, com tiras de carne de sol, aipim frito e queijo coalho, enquanto uma mão pega um pedaço de queijo. Ao fundo, um copo de chopp e as string-lights âmbar da casa desfocad",
+   "tags": [
+    "varanda",
+    "prato-dividir",
+    "sol-do-sertao",
+    "carne-de-sol",
+    "aipim",
+    "queijo-coalho"
+   ],
+   "copiaId": "1rxEGz0JQC6iHK5l1vYFNOym51_00APx2",
+   "pasta_lc": "Portfólio dos clientes/Seu Quinto",
+   "status": "copiada"
+  },
+  {
+   "projectId": 4,
+   "cliente": "Seu Quinto",
+   "id": "1Abf9Uv9E7LcA83BvYvspjeSXxMpmjAoj",
+   "nome": "CMT04682.jpg",
+   "pasta": "04_pra-dividir/Eu quero é Carne",
+   "criada": "2026-07-12",
+   "desc": "O prato \"Eu Quero é Carne\" é apresentado em um prato decorado, com filé mignon acebolado e batata frita. Acompanham três canecas de esmalte vermelhas pequenas com farofa, vinagrete e um molho branco. ",
+   "tags": [
+    "prato-dividir",
+    "eu-quero-e-carne",
+    "file-mignon",
+    "batata-frita",
+    "farofa",
+    "vinagrete"
+   ],
+   "copiaId": "1X94Z30GWG0R-FA6VFQKcXEiw_AF6W4wV",
+   "pasta_lc": "Portfólio dos clientes/Seu Quinto",
+   "status": "copiada"
+  },
+  {
+   "projectId": 5,
+   "cliente": "Bacana",
+   "id": "1VKprMrPeSM9hWYHlcshsiSjdXeWpd9nV",
+   "nome": "_F3A9845.jpg",
+   "pasta": "COPA BACANA/Jogo 2",
+   "criada": "2026-06-21",
+   "desc": "O interior do restaurante Bacana, decorado nas cores verde e amarela, com clientes assistindo a uma partida de futebol em grandes telas, criando um ambiente animado.",
+   "tags": [
+    "restaurante",
+    "ambiente",
+    "futebol",
+    "copa do mundo",
+    "decoracao",
+    "festivo"
+   ],
+   "copiaId": "1zSZ-2O21tKw9ncrTlyuqqnZtyO_bEcPs",
+   "pasta_lc": "Portfólio dos clientes/Bacana",
+   "status": "copiada"
+  },
+  {
+   "projectId": 5,
+   "cliente": "Bacana",
+   "id": "18e0qHfjoZGd08zsyMt1CEfgTv9vrWl2D",
+   "nome": "abacaxi -cmt09831.jpg",
+   "pasta": "Sobremesas/abacaxi ",
+   "criada": "2026-04-29",
+   "desc": "Uma fatia de abacaxi grelhado sendo servida de um espeto, com outras fatias já cortadas em uma chapa preta.",
+   "tags": [
+    "abacaxi",
+    "fruta",
+    "grelhado",
+    "espeto",
+    "sobremesa",
+    "doce"
+   ],
+   "copiaId": "11damgkYcgCzw57rmCcINjqym-PeAlm-E",
+   "pasta_lc": "Portfólio dos clientes/Bacana",
+   "status": "copiada"
+  },
+  {
+   "projectId": 5,
+   "cliente": "Bacana",
+   "id": "1u867KCEa4UJVvleJMPgz8N52_m2jH-kS",
+   "nome": "abacaxi -cmt09792.jpg",
+   "pasta": "Sobremesas/abacaxi ",
+   "criada": "2026-04-29",
+   "desc": "Um abacaxi grelhado sendo fatiado de um espeto por uma mão com uma faca, com pedaços já servidos em uma bandeja escura.",
+   "tags": [
+    "abacaxi",
+    "grelhado",
+    "sobremesa",
+    "fruta",
+    "doce",
+    "espeto"
+   ],
+   "copiaId": "1l5XPf72aLLU3-ajb6e20GYgNBK8zFXEg",
+   "pasta_lc": "Portfólio dos clientes/Bacana",
+   "status": "copiada"
+  },
+  {
+   "projectId": 5,
+   "cliente": "Bacana",
+   "id": "18J3I_k0CMMSJ3MkyAo5hTQmdYs_k6_VR",
+   "nome": "Eventos-_f3a9431.jpg",
+   "pasta": "Eventos",
+   "criada": "2026-04-23",
+   "desc": "Vista panorâmica do salão do restaurante Bacana, mostrando mesas ocupadas por diversos clientes durante um evento ou refeição movimentada. O letreiro do restaurante é visível ao fundo, com um jardim v",
+   "tags": [
+    "restaurante",
+    "ambiente",
+    "evento",
+    "clientes",
+    "mesas",
+    "confraternização"
+   ],
+   "copiaId": "1CVoYL_EIwmoRtYnYsDSFjctm_SryBbxt",
+   "pasta_lc": "Portfólio dos clientes/Bacana",
+   "status": "copiada"
+  },
+  {
+   "projectId": 5,
+   "cliente": "Bacana",
+   "id": "1_8Cw4tJ1uWXbaQ5I0QhYV1Vzj3ruYqL3",
+   "nome": "Eventos-_f3a9412.jpg",
+   "pasta": "Eventos",
+   "criada": "2026-04-23",
+   "desc": "Um membro da equipe fatia habilmente porções de carne grelhada em uma tábua preta para os convidados, em um ambiente de evento festivo com mesas e pessoas ao fundo.",
+   "tags": [
+    "churrasco",
+    "carne",
+    "picanha",
+    "evento",
+    "festa",
+    "serviço"
+   ],
+   "copiaId": "1P3JeMGvNDUpfXJnWM10zQyVLrGf2Jxhz",
+   "pasta_lc": "Portfólio dos clientes/Bacana",
+   "status": "copiada"
+  },
+  {
+   "projectId": 5,
+   "cliente": "Bacana",
+   "id": "1_T_zKW1p4X7g9yMQeGAZU65wfcrOv4fZ",
+   "nome": "Area Kids-_f3a8845.jpg",
+   "pasta": "Area Kids",
+   "criada": "2026-03-23",
+   "desc": "Uma área de recreação infantil vibrante com estruturas de escalada em rede coloridas, um jogo de arcade de dança e uma mesa de air hockey iluminada.",
+   "tags": [
+    "area kids",
+    "parque infantil",
+    "entretenimento infantil",
+    "arcade",
+    "air hockey",
+    "brinquedos"
+   ],
+   "copiaId": "1euqqdLlIvTY4V28Zpv--afein5MeiBwv",
+   "pasta_lc": "Portfólio dos clientes/Bacana",
+   "status": "copiada"
+  },
+  {
+   "projectId": 6,
+   "cliente": "Espeto Gaúcho",
+   "id": "1jrmSo89ErA3AO0AHLRBd1VeGLIGS684a",
+   "nome": "CMT05133.jpg",
+   "pasta": "03_bebidas/chopp",
+   "criada": "2026-07-25",
+   "desc": "Um garçom serve um chopp gelado em uma caneca em um ambiente de restaurante. Outra caneca vazia está no mesmo tabuleiro.",
+   "tags": [
+    "chopp",
+    "bebida",
+    "garcom",
+    "servico",
+    "happy-hour",
+    "restaurante"
+   ],
+   "copiaId": "13I-2LA3f1tgthjEHCpXqnZVKhhmdDOBN",
+   "pasta_lc": "Portfólio dos clientes/Espeto Gaúcho",
+   "status": "copiada"
+  },
+  {
+   "projectId": 6,
+   "cliente": "Espeto Gaúcho",
+   "id": "1nBq0WVVQNX7A7ZUxsVTpbf7iMpOyb_-C",
+   "nome": "CMT05118.jpg",
+   "pasta": "03_bebidas/chopp",
+   "criada": "2026-07-25",
+   "desc": "Um copo de chopp gelado e espumante em primeiro plano, sobre um balcão. Em segundo plano, espetos com linguiças grelhadas aparecem desfocados, sugerindo o ambiente do restaurante.",
+   "tags": [
+    "chopp",
+    "bebida",
+    "gelado",
+    "espumante",
+    "churrasco",
+    "balcão"
+   ],
+   "copiaId": "10UW3MHV3Z7BMNqLaENdVJn_pqJLOqP44",
+   "pasta_lc": "Portfólio dos clientes/Espeto Gaúcho",
+   "status": "copiada"
+  },
+  {
+   "projectId": 6,
+   "cliente": "Espeto Gaúcho",
+   "id": "1pTwjcypw13GPW5pn1X_lkdCkRTEdnOCE",
+   "nome": "IMG_6702.jpg",
+   "pasta": "02_ambiente/salao-interno",
+   "criada": "2026-06-06",
+   "desc": "Salão interno amplo do restaurante Espeto Gaúcho, com diversas mesas ocupadas por clientes desfrutando de suas refeições em um ambiente movimentado.",
+   "tags": [
+    "restaurante",
+    "ambiente interno",
+    "salão",
+    "clientes",
+    "mesas",
+    "churrascaria"
+   ],
+   "copiaId": "1LdM_8OnWNiXQbcPIiG2fCn35Hs33Wj9D",
+   "pasta_lc": "Portfólio dos clientes/Espeto Gaúcho",
+   "status": "copiada"
+  },
+  {
+   "projectId": 6,
+   "cliente": "Espeto Gaúcho",
+   "id": "1jU12g6mtqQXos4p3IWQg-UkH3sI7c0br",
+   "nome": "IMG_6708.jpg",
+   "pasta": "02_ambiente/fachada",
+   "criada": "2026-06-06",
+   "desc": "Vista noturna da fachada do restaurante Espeto Gaúcho, com o letreiro luminoso em destaque e clientes desfrutando das áreas interna e externa. O ambiente externo possui mesas dispostas na calçada.",
+   "tags": [
+    "fachada",
+    "noite",
+    "exterior",
+    "restaurante",
+    "churrascaria",
+    "iluminação"
+   ],
+   "copiaId": "1nRM_xCiKlRw5yEotfeAEHjR6SRkkL0c5",
+   "pasta_lc": "Portfólio dos clientes/Espeto Gaúcho",
+   "status": "copiada"
+  },
+  {
+   "projectId": 6,
+   "cliente": "Espeto Gaúcho",
+   "id": "1BAOUrnJuKbERga4bwVFVgppKcGRG6tY3",
+   "nome": "CMT01340.jpg",
+   "pasta": "03_bebidas/drinks",
+   "criada": "2026-06-05",
+   "desc": "Um drink vibrante de cor vermelha é servido em uma taça elegante com um topo espumoso branco, guarnecido com fatia de laranja desidratada, folhas de hortelã e pimenta rosa. Uma fumaça sutil emana do c",
+   "tags": [
+    "drink",
+    "bebida",
+    "coquetel",
+    "taça",
+    "vermelho",
+    "refrescante"
+   ],
+   "copiaId": "1wqhCrUXbpDi4Ap5RLwBUZr-Hs_fL3pTC",
+   "pasta_lc": "Portfólio dos clientes/Espeto Gaúcho",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1CP4jD1clS7g_v2x8G2tjhIrR3uSp7gHS",
+   "nome": "CMT04443-humanizado.jpg",
+   "pasta": "14_executivos/Rita Lee",
+   "criada": "2026-08-12",
+   "desc": "Strogonoff de frango cremoso com cogumelos, servido com arroz branco e finalizado com batata palha, em um ambiente temático de rock.",
+   "tags": [
+    "strogonoff",
+    "frango",
+    "cogumelos",
+    "arroz",
+    "batata palha",
+    "prato executivo"
+   ],
+   "copiaId": "12oOTK7hn4pZURRbuCt4NzPa-gWKtcjCa",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1x9TOrdZf9SQrePnbaBkt-ugXIsVncomJ",
+   "nome": "charlie-brown-jr--deck-rua.jpg",
+   "pasta": "14_executivos/Charlie Brown Jr.",
+   "criada": "2026-08-12",
+   "desc": "Sobrecoxa desossada grelhada com espaguete ao molho, servido em um prato azul em um ambiente externo.",
+   "tags": [
+    "frango",
+    "espaguete",
+    "massa",
+    "grelhado",
+    "almoco",
+    "executivo"
+   ],
+   "copiaId": "1kdvOFOeylFSixkb5LKjsQJYYSsEjd4Rw",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1mBZVsJ54YZIPi6B6JUVH9wNOkiimOqDq",
+   "nome": "roberto-carlos--guitarras.jpg",
+   "pasta": "14_executivos/Roberto Carlos",
+   "criada": "2026-08-12",
+   "desc": "Um prato individual com baby beef grelhado, arroz branco, batatas fritas, feijão e vinagrete, sendo cortado por uma pessoa. Ao fundo, a decoração temática de rock do restaurante.",
+   "tags": [
+    "comida",
+    "prato executivo",
+    "baby beef",
+    "carne grelhada",
+    "arroz",
+    "batata frita"
+   ],
+   "copiaId": "1hmy2ECmgSCX1akNvdVuaaXq-ujGZZx_m",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1jM-pEYccdR3Bp7vBWGwffwJLE3qwBX7A",
+   "nome": "dia-dos-pais-02.png",
+   "pasta": "03_chapas/Rock Family 1,2kg+",
+   "criada": "2026-08-07",
+   "desc": "Uma chapa quente com picanha, fraldinha, ancho, chorizo, linguiça e legumes, sendo servida com um pedaço de carne em um prato, com o ambiente temático do restaurante ao fundo.",
+   "tags": [
+    "chapa",
+    "carnes",
+    "legumes",
+    "picanha",
+    "fraldinha",
+    "ancho"
+   ],
+   "copiaId": "1U-I3WYOuvl5_4iDBlkqfkYSkBftEHGp0",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1j0Z1wLraVaJWCuwx3AwJN2Qv3CnLqdgg",
+   "nome": "CMT06334.jpg",
+   "pasta": "10_musica",
+   "criada": "2026-08-04",
+   "desc": "Interior do restaurante com decoração temática de rock, incluindo instrumentos musicais nas paredes, mesas dispostas e um músico se apresentando com violão.",
+   "tags": [
+    "música ao vivo",
+    "ambiente",
+    "decoração rock",
+    "entretenimento",
+    "show",
+    "guitarras"
+   ],
+   "copiaId": "1mWyCMbyx7qrsp3nqyACsm5fi5-91i74b",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1cYtAUQU6I87s59duvussiwf_AyzJdA5F",
+   "nome": "CMT06336.jpg",
+   "pasta": "02_main-stage/Presley",
+   "criada": "2026-08-04",
+   "desc": "Duas porções de filé mignon ao molho madeira sobre arroz piamontese, finalizadas com cebola crispy, sendo servidas por um garçom em ambiente de restaurante.",
+   "tags": [
+    "filé mignon",
+    "arroz piamontese",
+    "cebola crispy",
+    "molho madeira",
+    "prato principal",
+    "carne"
+   ],
+   "copiaId": "16d9hnuqGmzkrFlEkpyd_GcQeARZaSwRi",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1jOeFYb351LbtxfRrJ2dH3sAG1DO5mDZQ",
+   "nome": "CMT06325.jpg",
+   "pasta": "10_musica",
+   "criada": "2026-08-04",
+   "desc": "Um músico com óculos de sol tocando violão e cantando em um palco, com guitarras e pratos de bateria decorando a parede ao fundo, indicando uma apresentação de música ao vivo.",
+   "tags": [
+    "música ao vivo",
+    "show",
+    "violão",
+    "cantor",
+    "palco",
+    "entretenimento"
+   ],
+   "copiaId": "13DDfavBhpV9nGYHQm8BGXgdTB9T2oC4k",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 7,
+   "cliente": "By Rock",
+   "id": "1lu-JfaVVY4_V9ntNLYdFaKBgHPhedvj7",
+   "nome": "CMT05936.jpg",
+   "pasta": "15_quinta-do-vinho",
+   "criada": "2026-08-03",
+   "desc": "Um prato de carpaccio de carne, com lâminas finas de filé, coberto com temperos, folhas verdes e pontos de molho, acompanhado de torradas em uma frigideira pequena e uma taça de vinho ao fundo.",
+   "tags": [
+    "carpaccio",
+    "entrada",
+    "petisco",
+    "carne",
+    "frias",
+    "torradas"
+   ],
+   "copiaId": "1trxj2HIwxs2uRmEyxNf3fLv67Vyn9xIf",
+   "pasta_lc": "Portfólio dos clientes/By Rock",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "1hYB_VHJ2alD_AliYnt00wwauJUIZmfn-",
+   "nome": "CMT08718.jpg",
+   "pasta": "Principais/Camarão",
+   "criada": "2026-08-19",
+   "desc": "Um prato de risoto de camarão vibrante, com a textura cremosa do risoto e camarões suculentos sendo levantados por um garfo.",
+   "tags": [
+    "camarão",
+    "risoto",
+    "frutos-do-mar",
+    "cremoso",
+    "saboroso",
+    "prato-principal"
+   ],
+   "copiaId": "1GrBbt_rmH7N5sHyuNs9-PIMug-YfrISK",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "18yRKgfI4d1iW-LNlhxwFC8eD_bB_-U8M",
+   "nome": "CMT08673.jpg",
+   "pasta": "Executivo/Principais/Brasileirinho",
+   "criada": "2026-08-19",
+   "desc": "Um prato do almoço executivo 'Brasileirinho', composto por arroz, feijão, farofa, filé mignon, um ovo frito e vinagrete. Um copo de vinho branco acompanha a refeição.",
+   "tags": [
+    "comida brasileira",
+    "almoço",
+    "executivo",
+    "filé mignon",
+    "arroz",
+    "feijão"
+   ],
+   "copiaId": "13FbUHgIryHyL5OpaL4CJR-8-Q7T6Q7al",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "1GZt3XrWfEwXmDw7LgTWJ2RzTGduBOlFg",
+   "nome": "CMT08662.jpg",
+   "pasta": "Executivo/Entradas",
+   "criada": "2026-08-19",
+   "desc": "Uma salada fresca com mix de folhas, tomate cereja e queijo ralado, recebendo um fio de azeite generoso de um dosador metálico.",
+   "tags": [
+    "salada",
+    "fresca",
+    "azeite",
+    "vegetais",
+    "almoco",
+    "leve"
+   ],
+   "copiaId": "1i4QQ4vJc05IM-WJ--mmZc0H9oUffV4rp",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "11dB2pgEq8_pHtbTudwdUTBp-jb5zmyFt",
+   "nome": "CMT07741.jpg",
+   "pasta": "Sábado Musica ao Vivo",
+   "criada": "2026-08-11",
+   "desc": "Um duo musical se apresentando ao vivo no Wine Vix, com uma cantora e um guitarrista, enquanto clientes desfrutam do ambiente e da música.",
+   "tags": [
+    "música ao vivo",
+    "show",
+    "entretenimento",
+    "ambiente",
+    "restaurante",
+    "noite"
+   ],
+   "copiaId": "1CzHVDLjzvCfQ7FIdUJDwW4QTCOhqGxPK",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "1T32MxYRWF4B7db246MJBOnblVUulsn8p",
+   "nome": "CMT06320.jpg",
+   "pasta": "Menu temáticos/Festival Italiano",
+   "criada": "2026-08-04",
+   "desc": "Um prato com fatias de frios, cubos de carne temperada, palitos fritos e um molho cremoso ao centro, acompanhado por uma garrafa de vinho e taça.",
+   "tags": [
+    "petiscos",
+    "entradas",
+    "carne",
+    "frios",
+    "vinho",
+    "harmonização"
+   ],
+   "copiaId": "1CEqIHSK_O6Zl-34U3hannvS2FA-MDEm8",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "1eqw3OpfqiqnXUv1YaGgTdF59T-sCx_kf",
+   "nome": "CMT06319.jpg",
+   "pasta": "Menu temáticos/Festival Italiano",
+   "criada": "2026-08-04",
+   "desc": "Um prato de massa, possivelmente nhoque, em um molho cremoso esverdeado, guarnecido com pedaços crocantes de carne e folhas frescas. Outros pratos estão desfocados ao fundo.",
+   "tags": [
+    "massa",
+    "gnocchi",
+    "molho cremoso",
+    "carne crocante",
+    "erva",
+    "italiano"
+   ],
+   "copiaId": "1zB7GLHEeziKD_5ygoxAIHxB0ZQxmApDD",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 11,
+   "cliente": "Wine Vix",
+   "id": "16uGDgfuAiTkV0e4QAZSsvbAhDjwmbgta",
+   "nome": "CMT05805.jpg",
+   "pasta": "Eventos/Noite Italiana - 29-07-2026",
+   "criada": "2026-07-30",
+   "desc": "Um prato com três porções de massa recheada, possivelmente ravióli, servido em um molho saboroso e guarnecido com uma folha de erva. Ao fundo, uma taça de vinho tinto completa a cena.",
+   "tags": [
+    "massa",
+    "pasta",
+    "ravioli",
+    "vinho tinto",
+    "gastronomia",
+    "culinária autoral"
+   ],
+   "copiaId": "1WaOXmBVVRAZPuwD291-GgkLQBVHE-qSA",
+   "pasta_lc": "Portfólio dos clientes/Wine Vix",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "1TzYIahVdsiNb22zhdz9-Adi1n0J7HpPU",
+   "nome": "CMT09252.jpg",
+   "pasta": "Executivos/agosto",
+   "criada": "2026-08-20",
+   "desc": "Uma xícara de café Espresso em louça de cerâmica rústica, ao lado de uma fatia de bolo com cobertura brilhante, ambos dispostos sobre um jogo americano azul marinho.",
+   "tags": [
+    "café",
+    "espresso",
+    "bolo",
+    "sobremesa",
+    "lanche",
+    "cafeteria"
+   ],
+   "copiaId": "1csCOeFsEgEG3CfEKtZjjrJVjdtCexTGg",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "1WgXUcu_WvgWKIzIc6Qfi3z8YpQgWvfyL",
+   "nome": "CMT05414.jpg",
+   "pasta": "Cafeteria",
+   "criada": "2026-07-27",
+   "desc": "Um pedaço de bolo quadrado com cobertura de farofa amarela e um chocolate quente em camadas, servidos em uma mesa próxima à janela, com luz natural.",
+   "tags": [
+    "chocolate",
+    "bolo",
+    "doce",
+    "cafeteria",
+    "lanche",
+    "sobremesa"
+   ],
+   "copiaId": "17jQitrk0-QbF3aUza-zX5jLqs-0602Bd",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "1TGRRl_PbViZB4l3d0a0RZNXwLgKg6Dvi",
+   "nome": "CMT05400.jpg",
+   "pasta": "Espaço Eventos/Evento de Almoço",
+   "criada": "2026-07-27",
+   "desc": "Uma fatia de pudim de leite com generosa calda de caramelo dourada, servida em um prato rústico.",
+   "tags": [
+    "pudim",
+    "leite",
+    "caramelo",
+    "doce",
+    "sobremesa",
+    "tradicional"
+   ],
+   "copiaId": "1yPfhq-M3l7FXpv2XZu8gKgKa_ZMUrRuG",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "17gu0sa-LBbKjdjPnFAFJtzzV9j3OcQ66",
+   "nome": "CMT05392.jpg",
+   "pasta": "Espaço Eventos/Evento de Almoço",
+   "criada": "2026-07-27",
+   "desc": "Um prato de risoto cremoso com pedaços de carne e uma cobertura crocante, servido em um prato azul rústico. Ao fundo, saleiros e um azeiteiro.",
+   "tags": [
+    "risoto",
+    "filé",
+    "cogumelo",
+    "pangratatto",
+    "bacon",
+    "almoço"
+   ],
+   "copiaId": "1mpTwp_p81B4qcKA7K9fuNJjiFODL92mo",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "1PxqLsO0mL_mP682RukdoIRcMguopb5ez",
+   "nome": "CMT01987.jpg",
+   "pasta": "Entradas",
+   "criada": "2026-06-12",
+   "desc": "Uma mão segura um pedaço de queijo em um garfo, pingando mel sobre ele, parte de uma tábua de queijos variados, presuntos crus e molhos em pequenas tigelas.",
+   "tags": [
+    "tábua",
+    "queijos",
+    "frios",
+    "mel",
+    "presunto",
+    "petisco"
+   ],
+   "copiaId": "17Nj8IuCWjcUg2IJ1cJINdHIlSYyG1OYs",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "1Nn_b-23vx4Y-fg19wJFreVLnn7Yd8pAP",
+   "nome": "CMT01983.jpg",
+   "pasta": "Entradas",
+   "criada": "2026-06-12",
+   "desc": "Uma tábua de madeira com queijos variados, presunto cru, tomates e molhos, sendo servida com uma garrafa e taça de vinho tinto em um ambiente elegante.",
+   "tags": [
+    "tábua de queijos",
+    "queijos",
+    "presunto cru",
+    "vinho tinto",
+    "entradas",
+    "degustação"
+   ],
+   "copiaId": "1UUNnzDa-qPuYyDtmbgmT6dxTPcHKF3Y0",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  },
+  {
+   "projectId": 12,
+   "cliente": "Empório Fonseca",
+   "id": "1dvhG3M9NtOMmwTCJL8vkdgc5Wfvmwmck",
+   "nome": "CMT00888.jpg",
+   "pasta": "Menu Dia dos Namorados",
+   "criada": "2026-05-27",
+   "desc": "Uma sobremesa com cobertura vermelha aveludada, recheio de chocolate e creme, decorada com chantilly e uma cereja. Uma parte está cortada, revelando as camadas internas.",
+   "tags": [
+    "sobremesa",
+    "chocolate",
+    "cereja",
+    "chantilly",
+    "doce",
+    "vermelho"
+   ],
+   "copiaId": "1WEhW8lG_2FeKmBQ4PiJrjI5frzDGkuBA",
+   "pasta_lc": "Portfólio dos clientes/Empório Fonseca",
+   "status": "copiada"
+  }
+ ]
+}

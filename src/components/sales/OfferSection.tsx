@@ -97,7 +97,7 @@ export function OfferSection() {
                         "2 posts diários nos Stories",
                         "Gestor de Tráfego Incluso",
                         "Consultoria e treinamento de equipe",
-                        "Todos os vídeos brutos entreues"
+                        "Todos os vídeos brutos entregues"
                     ],
                     icon: Share2,
                     highlight: true,
