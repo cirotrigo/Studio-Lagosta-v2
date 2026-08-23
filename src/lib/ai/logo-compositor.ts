@@ -115,6 +115,13 @@ export interface LogoCompositionResult {
   contraste: number | null
   /** true quando o canto reservado no prompt estava ocupado e a logo mudou de lugar. */
   moveu: boolean
+  /**
+   * 'original' na maioria; 'negativa' quando o arquivo foi recolorido (branco
+   * sobre canto escuro, preto sobre canto claro) porque NENHUM canto dava o
+   * contraste mínimo — é a versão de knockout que todo manual de marca prevê.
+   * O desenho (alpha) é preservado; só a tinta muda.
+   */
+  versao: 'original' | 'negativa'
 }
 
 /**
@@ -250,6 +257,7 @@ export async function comporLogo(
     corner: LogoCorner
     calmness: number
     contraste: number
+    lumCanto: number | null
     score: number
     pos: { left: number; top: number }
   }
@@ -265,6 +273,7 @@ export async function comporLogo(
     }
     let calmness = Number.POSITIVE_INFINITY
     let contraste = Number.POSITIVE_INFINITY
+    let lumCanto: number | null = null
     try {
       // ⚠️ O `.toBuffer()` no meio NÃO é desperdício: `stats()` do sharp
       // IGNORA o `extract()` do mesmo pipeline e devolve as estatísticas da
@@ -280,8 +289,8 @@ export async function comporLogo(
       const recorte = await sharp(arteBuffer).extract(regiao).toBuffer()
       const stats = await sharp(recorte).greyscale().stats()
       calmness = stats.channels[0]?.stdev ?? Number.POSITIVE_INFINITY
-      const lumCanto = stats.channels[0]?.mean
-      if (lumLogo !== null && typeof lumCanto === 'number') {
+      lumCanto = typeof stats.channels[0]?.mean === 'number' ? stats.channels[0].mean : null
+      if (lumLogo !== null && lumCanto !== null) {
         contraste = Math.abs(lumLogo - lumCanto)
       }
     } catch {
@@ -295,7 +304,7 @@ export async function comporLogo(
     const deficit = Number.isFinite(contraste) ? Math.max(0, CONTRASTE_MINIMO - contraste) : 0
     let score = calmness + deficit * PESO_CONTRASTE
     if (corner === cornerReservado) score *= RESERVED_BONUS
-    candidatos.push({ corner, calmness, contraste, score, pos })
+    candidatos.push({ corner, calmness, contraste, lumCanto, score, pos })
   }
 
   if (candidatos.length === 0) {
@@ -316,8 +325,31 @@ export async function comporLogo(
 
   const melhor = disputa.reduce((a, b) => (b.score < a.score ? b : a))
 
+  /**
+   * Último recurso quando NENHUM canto contrasta (logo escura em peça escura —
+   * o caso real: a marca do Wine Vix, luminância 54, sumia nas peças de story
+   * da Lagosta, 23/08/2026): a VERSÃO NEGATIVA, que todo manual de marca prevê.
+   * O desenho é o do arquivo (alpha preservado); só a tinta vira branca sobre
+   * canto escuro, preta sobre canto claro. Melhor uma marca legível na versão
+   * de knockout do que "faltou a logo" — que foi o feedback.
+   */
+  let logoFinal = logoRedim
+  let versao: 'original' | 'negativa' = 'original'
+  if (
+    Number.isFinite(melhor.contraste) &&
+    melhor.contraste < CONTRASTE_MINIMO &&
+    melhor.lumCanto !== null
+  ) {
+    const tinta = melhor.lumCanto < 128 ? 255 : 0
+    logoFinal = await versaoNegativa(logoRedim, tinta)
+    versao = 'negativa'
+    console.warn(
+      `[logo] contraste ${melhor.contraste.toFixed(0)} abaixo do mínimo em todos os cantos — aplicada a versão negativa (${tinta === 255 ? 'branca' : 'preta'})`,
+    )
+  }
+
   const buffer = await sharp(arteBuffer)
-    .composite([{ input: logoRedim, left: melhor.pos.left, top: melhor.pos.top }])
+    .composite([{ input: logoFinal, left: melhor.pos.left, top: melhor.pos.top }])
     .jpeg({ quality: 92 })
     .toBuffer()
 
@@ -327,7 +359,22 @@ export async function comporLogo(
     calmness: melhor.calmness,
     contraste: Number.isFinite(melhor.contraste) ? melhor.contraste : null,
     moveu: !!cornerReservado && melhor.corner !== cornerReservado,
+    versao,
   }
+}
+
+/** Recolore os pixels VISÍVEIS do PNG com uma tinta única, preservando o alpha. */
+async function versaoNegativa(logoPng: Buffer, tinta: number): Promise<Buffer> {
+  const { data, info } = await sharp(logoPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+  for (let p = 0; p < data.length; p += info.channels) {
+    if (data[p + 3] === 0) continue
+    data[p] = tinta
+    data[p + 1] = tinta
+    data[p + 2] = tinta
+  }
+  return sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels as 4 } })
+    .png()
+    .toBuffer()
 }
 
 /**

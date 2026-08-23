@@ -926,6 +926,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           logoCanto: comLogo.corner,
           logoMudouDeCanto: comLogo.moveu,
           logoContraste: comLogo.contraste,
+          ...(comLogo.versao === 'negativa' ? { logoVersaoNegativa: true } : {}),
         }
         console.log(
           `[arte-ia.bg] logo oficial composta no canto ${comLogo.corner}` +
@@ -958,6 +959,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             composta: true,
             canto: comMarca.corner,
             contraste: comMarca.contraste,
+            ...(comMarca.versao === 'negativa' ? { versaoNegativa: true } : {}),
           },
         }
         console.log(

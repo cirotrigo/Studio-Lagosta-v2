@@ -45,3 +45,24 @@ describe('marca do cliente citado', () => {
     expect(meta.width).toBe(w)
   })
 })
+
+describe('versão negativa por falta de contraste', () => {
+  it('logo escura em peça escura sai em branco (knockout), preservando o desenho', async () => {
+    const w = 400, h = 400
+    const arte = await sharp({ create: { width: w, height: h, channels: 3, background: { r: 12, g: 10, b: 14 } } }).png().toBuffer()
+    // logo escura (luminância ~40)
+    const logo = await sharp({ create: { width: 100, height: 40, channels: 4, background: { r: 40, g: 38, b: 42, alpha: 1 } } }).png().toBuffer()
+    const r = await comporLogo(arte, logo, { cantoFixo: 'bottom-left', formato: 'feed' })
+    expect(r.versao).toBe('negativa')
+    // o canto agora tem pixels claros (a marca ficou visível)
+    const stats = await sharp(r.buffer).extract({ left: 10, top: h - 60, width: 120, height: 50 }).toBuffer().then((b) => sharp(b).greyscale().stats())
+    expect(stats.channels[0].max).toBeGreaterThan(200)
+  })
+
+  it('com contraste bom, o arquivo sai na cor original', async () => {
+    const arte = await sharp({ create: { width: 400, height: 400, channels: 3, background: { r: 12, g: 10, b: 14 } } }).png().toBuffer()
+    const logo = await sharp({ create: { width: 100, height: 40, channels: 4, background: { r: 255, g: 120, b: 0, alpha: 1 } } }).png().toBuffer()
+    const r = await comporLogo(arte, logo, { cantoFixo: 'bottom-left', formato: 'feed' })
+    expect(r.versao).toBe('original')
+  })
+})

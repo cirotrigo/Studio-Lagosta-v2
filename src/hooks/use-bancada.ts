@@ -302,6 +302,14 @@ export function useBancada(projectId: number) {
             pedido: item.pedido.trim() || undefined,
             copy: item.trilha === 'arte' ? item.copy : undefined,
             instrucaoImagem: item.instrucaoImagem?.trim() || null,
+            // Co-branding: sem isto, gerar pelo CARD perdia a marca do cliente
+            // citado — só o "Executar o plano" a mandava. Foi exatamente o que
+            // aconteceu na primeira leva real (23/08/2026): 6 peças com
+            // cliente saíram sem a logo dele e voltaram no feedback.
+            marcaDoClienteProjectId:
+              item.trilha === 'arte' && item.clienteCitado?.projectId
+                ? item.clienteCitado.projectId
+                : null,
             referencias: item.referencias.map((r) => ({
               role: r.papel,
               ...(r.driveFileId ? { driveFileId: r.driveFileId } : { url: r.url }),

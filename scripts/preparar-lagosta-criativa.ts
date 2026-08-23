@@ -51,11 +51,11 @@ RÉGUAS: 3/10 descontraído (sóbrio e autoritativo, o registro mais business da
 
 VOCABULÁRIO: escalar, performar, posicionar, autoridade, demanda, fila, desejo, movimento, presença, premium, estratégia, resultado real, conversão, branding, conteúdo performático, marketing gastronômico, exclusividade, sofisticação, alto padrão, metodologia, case, diferencial, posicionamento de marca, atendimento 24h, reserva confirmada, cardápio digital, mesa ocupada.
 
-CTAs: Quero escalar meu restaurante · Ver resultados reais · Falar com especialista · Quero crescer · Agendar conversa · Conhecer a metodologia · Vamos conversar · Posicionar minha marca.
+CTAs — SEMPRE IMPERATIVOS, falando COM o dono (padrão fixado pelo Ciro ao editar a Semana 1, 23/08/2026): Conheça a metodologia · Conheça nossos pacotes · Fale com a gente no direct · Agendar conversa · Ver resultados reais · Quer saber mais? Fale no direct. NUNCA na primeira pessoa do cliente em peça ("Quero escalar meu restaurante", "Quero crescer" ficam só para botão de site e anúncio). Quando couber, o canal fecha a peça: "Fale com a gente no direct" ou www.lagostacriativa.com.br.
 
-FRASES DE APOIO DA CASA: "Você faz a comida. A gente faz a fama." (assinatura geral) · "Seu restaurante merece aparecer do jeito que a comida sabe." (foto e vídeo) · "Marketing que não para, resultado que não cai." (Gestão Completa) · "A melhor garçonete não tira férias." (AI Assistant) · "Não vendemos posts. Vendemos mesas ocupadas." (posicionamento) · "Quem não é visto, não é lembrado." (constância).
+FRASES DE APOIO DA CASA: "Você faz a comida. A gente faz a fama." (assinatura geral) · "Seu restaurante merece aparecer do jeito que a comida sabe." (foto e vídeo) · "Marketing que não para, resultado que não cai." (Gestão Completa) · "O melhor atendimento não tira férias." (AI Assistant — reescrita pelo Ciro em 23/08/2026; a versão com "garçonete" saiu de linha e não volta) · "Fotos reais vendem mais." (produção) · "Não vendemos posts. Vendemos mesas ocupadas." (posicionamento) · "Quem não é visto, não é lembrado." (constância).
 
-ESTRUTURA DE LEGENDA, 3 MOVIMENTOS: (1) ABERTURA — frase curta com autoridade ou observação estratégica sobre o mercado, sem floreio · (2) ARGUMENTO — resultado, posicionamento ou diferencial; pode citar dado, case ou metodologia, direto ao ponto · (3) CONVITE — chamada direta para DM, link ou agendamento. Curto. Story: 120–240 caracteres. Carrossel: 350–600.
+ESTRUTURA DA COPY DA ARTE, 3 A 4 BLOCOS (calibrada pelas edições do Ciro em 23/08/2026): (1) ABERTURA — frase curta com autoridade · (2) ARGUMENTO — resultado, posicionamento ou diferencial, com dado quando houver · (3) FECHAMENTO VENDEDOR — uma linha que traduz a frente em resultado concreto ("Fotos reais vendem mais", "Campanha + resposta rápida = reservas de mesa"); exclamação pontual pode, urgência de varejo não · (4) CONVITE/CANAL — CTA imperativo e, quando couber, o canal ("Fale com a gente no direct", www.lagostacriativa.com.br). LEGENDA em 3 movimentos (abertura, argumento, convite). Story: 120–240 caracteres. Carrossel: 350–600.
 
 O PORTFÓLIO — A SOLUÇÃO COMPLETA EM CINCO FRENTES, contratáveis separadas ou combinadas. A história que a Lagosta conta é a do restaurante inteiro: a foto gera desejo, a rede gera constância, o atendimento converte a mensagem em reserva, o site fecha o pedido e o tráfego amplia tudo. Frentes:
 - PRODUÇÃO AUDIOVISUAL (fotos e vídeos): Só Fotos (100 fotos editadas, 2h de sessão) · Só Vídeos (badge MAIS POPULAR) · Vídeos Pluss (4h, acervo bruto completo — o diferencial é a entrega sem filtro).
@@ -105,6 +105,15 @@ const CONTENT_RULES = `1. A LAGOSTA NÃO É RESTAURANTE. Nunca escrever "nosso c
 
 15. TRÁFEGO PAGO SÓ APARECE JUNTO COM O ATENDIMENTO POR IA. Toda peça de tráfego diz que a campanha começa treinando o agente para responder e converter os leads — anúncio + resposta em menos de um minuto + reserva na mão da equipe. Nunca prometer resultado de campanha sem número na base.
 
+16. POST DE FEED É CARROSSEL POR PADRÃO: capa de foto pura (sem texto) + 3 a 6 slides contando UMA história, com o slide 2 como guia do visual. Peça única no feed é exceção deliberada, nunca o caminho natural. Story continua peça única.
+
+Regras aprendidas na prática:
+- CTA de peça é imperativo direto com o dono ("Conheça a metodologia", "Fale com a gente no direct"); a primeira pessoa do cliente ("Quero escalar meu restaurante") fica para botão de site e anúncio. (2026-08-23 — padrão do Ciro ao revisar a Semana 1: ele trocou todos os CTAs em primeira pessoa por imperativos.)
+- Wine Vix é substantivo feminino: "a Wine Vix", "da Wine Vix". (2026-08-23 — correção do Ciro na peça do risoto.)
+- A frase do atendimento é "O melhor atendimento não tira férias" — "garçonete" saiu de linha. (2026-08-23 — o Ciro reescreveu nas duas peças da Ilha.)
+- Nome de prato como manchete pode sair em Title Case: "O Risoto de Camarão". (2026-08-23.)
+- Recorte de número é decisão do Ciro: nas peças da Ilha ele trocou "em agosto" por "em 5 dias" — antes de repetir um recorte de período, conferir com ele qual vale. (2026-08-23.)
+
 DIFERENCIAIS QUE VALEM SER DITOS: o GESTOR DE TRÁFEGO INCLUSO na Gestão Completa equivale a R$ 800–1.200 de serviço embutido · a ENTREGA DE ACERVO BRUTO no Vídeos Pluss é o que nenhum concorrente dá · o ATENDIMENTO COM IA vem com CRM, base de conhecimento e aviso no Telegram, não é só um robô de resposta · o SITE com cardápio digital atualiza pelo mesmo painel do atendimento · a CAMPANHA DE TRÁFEGO nasce com o agente treinado para converter, não com um anúncio solto.`
 
 const PHOTO_DIRECTION = `IMAGEM CINEMATOGRÁFICA COMO PROTAGONISTA — lembrando que, sendo agência, ela nem sempre é um prato.
@@ -135,7 +144,7 @@ A peça está sem urgência de varejo (selo de OFF, carimbo de desconto, confete
 Print de tela, quando há, é fiel e legível, sem reconstrução por IA e sem texto inventado?
 A paleta é preto + laranja + branco/cinza, com o laranja só na headline, no logo e em acento pontual?
 A logo está pequena (2 a 3% da largura), com o gradiente original, fora do centro e longe das bordas?
-O CTA é um dos oficiais (Quero escalar meu restaurante, Ver resultados reais, Falar com especialista, Quero crescer, Agendar conversa, Conhecer a metodologia, Vamos conversar, Posicionar minha marca)?
+O CTA está no imperativo, falando com o dono (Conheça a metodologia, Conheça nossos pacotes, Fale com a gente no direct, Agendar conversa, Ver resultados reais), sem primeira pessoa do cliente?
 Se a peça fala de um cliente, a logomarca dele está na arte, no canto oposto ao da Lagosta?
 A peça está sem qualquer menção ou tela do Studio Lagosta (ferramenta interna)?
 Se a peça é de tráfego pago, ela diz que a campanha anda com o atendimento por IA treinado para converter?
