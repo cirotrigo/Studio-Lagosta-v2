@@ -911,6 +911,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           cornerReservado: LOGO_CORNER,
           // Em story os cantos de topo são do Instagram — ver comporLogo.
           formato: args.formato,
+          // Com a marca do cliente na peça, a da casa NÃO disputa canto: na
+          // primeira rodada real (23/08/2026) a disputa por calma levou a marca
+          // da Lagosta para o canto inferior esquerdo — exatamente o canto fixo
+          // do cliente — e as duas saíram uma por cima da outra nas duas peças
+          // de teste. Os dois cantos foram reservados no prompt; aqui cada marca
+          // vai para o seu.
+          ...(logoDoClienteParaCompor ? { cantoFixo: LOGO_CORNER } : {}),
         })
         finalBuffer = comLogo.buffer
         logoInfo = {
@@ -940,7 +947,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       try {
         const comMarca = await comporLogo(finalBuffer, logoDoClienteParaCompor, {
           cantoFixo: CLIENT_LOGO_CORNER,
-          larguraRatio: 0.13,
+          larguraRatio: 0.12,
           formato: args.formato,
         })
         finalBuffer = comMarca.buffer
