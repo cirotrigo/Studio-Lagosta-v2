@@ -249,11 +249,15 @@ export type TrilhaDeGeracao = 'arte' | 'imagem'
 
 export interface PedidoDeGeracao {
   trilha: TrilhaDeGeracao
-  /** Instrução em português — o `pedido` do serviço de geração. */
+  /** Instrução em português — o `pedido` do serviço de geração: a direção gravada no item ou, sem ela, o tema. */
   pedido: string
   copy: string[]
   /** Papel da foto do item, quando ela existe. */
   papelDaFoto: 'subject' | 'anchor-ambient'
+  /** Ajuste autorizado na foto (`instrucaoImagem`); nulo = foto intocada. */
+  instrucaoImagem: string | null
+  /** Cliente citado na peça — a logo dele é composta na arte (co-branding). */
+  marcaDoClienteProjectId: number | null
 }
 
 export interface RecusaDeGeracao {
@@ -277,12 +281,26 @@ export function decidirGeracao(item: {
   copyProposta?: string[] | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
+  direcao?: string | null
+  ajusteDaFoto?: string | null
+  clienteProjectId?: number | null
 }): PedidoDeGeracao | RecusaDeGeracao {
   const copy = (item.copyProposta ?? [])
     .filter((b): b is string => typeof b === 'string')
     .map((b) => b.trim())
     .filter(Boolean)
   const tema = item.tema?.trim() ?? ''
+  // A direção adicional é o briefing que a pessoa escreveu; o tema é só o
+  // assunto. Até 23/08/2026 o tema ia como pedido e a direção morria no
+  // navegador — ver a coluna `direcao` do ItemDePlano.
+  const pedido = item.direcao?.trim() || tema
+  const instrucaoImagem = item.ajusteDaFoto?.trim() || null
+  const marcaDoClienteProjectId =
+    typeof item.clienteProjectId === 'number' &&
+    Number.isInteger(item.clienteProjectId) &&
+    item.clienteProjectId > 0
+      ? item.clienteProjectId
+      : null
   const temFoto = !!(item.fotoUrl?.trim() || item.fotoDriveId?.trim())
 
   if (copy.length > 0) {
@@ -292,16 +310,25 @@ export function decidirGeracao(item: {
           'A arte por IA com texto precisa de uma foto real do cliente como cena — escolha a foto do item antes de produzir.',
       }
     }
-    return { trilha: 'arte', pedido: tema, copy, papelDaFoto: 'subject' }
+    return { trilha: 'arte', pedido, copy, papelDaFoto: 'subject', instrucaoImagem, marcaDoClienteProjectId }
   }
 
-  if (!tema) {
+  if (!pedido) {
     return {
       motivo:
         'Este item não tem texto nem tema — sem um dos dois não dá para dizer à IA o que produzir.',
     }
   }
-  return { trilha: 'imagem', pedido: tema, copy: [], papelDaFoto: 'anchor-ambient' }
+  // A trilha `imagem` produz cena sem texto: não leva ajuste de foto nem
+  // logomarca — ela É a fotografia.
+  return {
+    trilha: 'imagem',
+    pedido,
+    copy: [],
+    papelDaFoto: 'anchor-ambient',
+    instrucaoImagem: null,
+    marcaDoClienteProjectId: null,
+  }
 }
 
 export function ehRecusa(r: PedidoDeGeracao | RecusaDeGeracao): r is RecusaDeGeracao {

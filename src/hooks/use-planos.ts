@@ -106,6 +106,12 @@ export interface PatchDeItemDoPlano {
   via?: ViaDoItem
   /** O modelo a seguir na via template. `null` volta para a rotação. */
   sourcePageId?: string | null
+  /** Direção adicional da geração por IA (o `pedido`). Tem coluna desde 23/08/2026. */
+  direcao?: string | null
+  /** Ajuste autorizado na foto (`instrucaoImagem`). */
+  ajusteDaFoto?: string | null
+  /** Cliente citado na peça (co-branding). */
+  clienteProjectId?: number | null
   motivoDoSlot?: string | null
   escopo?: string
   /** A nova situação, quando o gesto também move o item. */
@@ -141,6 +147,9 @@ export interface ItemParaAnexar {
   fotoDriveId?: string | null
   formato: string
   via?: string | null
+  direcao?: string | null
+  ajusteDaFoto?: string | null
+  clienteProjectId?: number | null
   motivoDoSlot?: string | null
   escopo?: string | null
   sugestaoId?: string | null

@@ -74,6 +74,14 @@ export interface StartArtGenerationInput {
   referencias?: ArtGenerationReference[]
   /** Ajuste da foto autorizado pelo cliente (opt-in). Sem ele, foto intocada. */
   instrucaoImagem?: string | null
+  /**
+   * Co-branding (trilha `arte`): o projeto do CLIENTE CITADO na peça. A logo
+   * oficial dele é composta na arte depois da geração, no canto oposto ao da
+   * marca do projeto dono — é como a Lagosta Criativa mostra o trabalho feito
+   * para um restaurante sem esconder de quem é. Precisa existir no banco;
+   * id inválido é recusado, não ignorado.
+   */
+  marcaDoClienteProjectId?: number | null
   /** Override do modelo. Default: gpt-image-2 (arte) / nano-banana-2 (imagem). */
   modelo?: string
   /** Resolução da trilha `imagem` (Gemini). Default 2K. */
@@ -299,6 +307,32 @@ export async function startArtGeneration(
     )
   }
 
+  // Co-branding: só na trilha `arte`, e o cliente citado tem de EXISTIR — a
+  // logo vem da tabela Logo dele, lida pelo runner. Id que não existe é erro
+  // de quem chamou, e vale mais recusar agora do que descobrir na fila.
+  let marcaDoCliente: { projectId: number; nome: string } | null = null
+  if (input.marcaDoClienteProjectId != null) {
+    if (input.track !== 'arte') {
+      throw new CreativeError(
+        'MARCA_DO_CLIENTE_SO_NA_ARTE',
+        'A logomarca do cliente citado só entra em peça com texto (trilha arte) — a trilha imagem é a fotografia em si.',
+        400,
+      )
+    }
+    const cliente = await db.project.findUnique({
+      where: { id: input.marcaDoClienteProjectId },
+      select: { id: true, name: true },
+    })
+    if (!cliente) {
+      throw new CreativeError(
+        'CLIENTE_CITADO_NAO_ENCONTRADO',
+        `O cliente citado (projeto ${input.marcaDoClienteProjectId}) não existe no Studio.`,
+        404,
+      )
+    }
+    marcaDoCliente = { projectId: cliente.id, nome: cliente.name }
+  }
+
   // Dedupe ANTES dos créditos (mesma razão do improve): retry do modelo no
   // chat não pode virar segunda cobrança.
   const pedidoHash = createHash('sha1')
@@ -326,6 +360,8 @@ export async function startArtGeneration(
          * anterior, que é justamente a que acabou de ser recusada.
          */
         fp: input.finalPrompt?.trim() || null,
+        // A mesma copy e a mesma foto com OUTRO cliente citado é outra peça.
+        mc: marcaDoCliente?.projectId ?? null,
       }),
     )
     .digest('hex')
@@ -409,6 +445,7 @@ export async function startArtGeneration(
         formato: input.formato,
         referencias,
         instrucaoImagem: input.instrucaoImagem ?? null,
+        marcaDoCliente: marcaDoCliente ? { ...marcaDoCliente } : null,
         model: modelo,
         qualidade: input.track === 'arte' ? qualidade : null,
         resolution: input.track === 'imagem' ? resolution : null,
@@ -442,6 +479,7 @@ export async function startArtGeneration(
       pedido,
       copy,
       instrucaoImagem: input.instrucaoImagem?.trim() || null,
+      marcaDoCliente,
       formato: input.formato,
       aspectRatio: fmt.aspectRatio,
       openaiSize: OPENAI_INPUT_SIZE[fmt.formatKey],

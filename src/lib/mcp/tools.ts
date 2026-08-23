@@ -812,6 +812,20 @@ export const MCP_TOOLS: McpTool[] = [
                 type: 'string',
                 description: 'O modelo do cliente que vira a arte — o mesmo id que criar-arte-de-modelo recebe em sourcePageId, vindo de escolher-modelo.',
               },
+              direcao: {
+                type: 'string',
+                description:
+                  'Via "ia": direção adicional para o modelo de imagem, além do tema — onde a foto é a cena, como tratar um print (ex.: "o print entra como mockup de celular sobre fundo preto, fiel e legível"), o clima da peça. Máx 1200.',
+              },
+              ajusteDaFoto: {
+                type: 'string',
+                description: 'Via "ia": ajuste autorizado na FOTO desta peça (ex.: "escurecer o fundo atrás do texto"). Sem isto a foto vai intocada, que é o padrão.',
+              },
+              clienteCitadoId: {
+                type: 'number',
+                description:
+                  'Co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte, no canto oposto ao da marca da casa. Use sempre que a peça falar do trabalho feito para um cliente.',
+              },
               motivoDoSlot: { type: 'string', description: 'Por que este horário — a frase que a pessoa lê ao revisar.' },
               escopo: {
                 type: 'string',
@@ -855,6 +869,9 @@ export const MCP_TOOLS: McpTool[] = [
             formato: typeof i.formato === 'string' ? i.formato : null,
             via: typeof i.via === 'string' ? i.via : null,
             sourcePageId: typeof i.modeloId === 'string' ? i.modeloId : null,
+            direcao: typeof i.direcao === 'string' ? i.direcao : null,
+            ajusteDaFoto: typeof i.ajusteDaFoto === 'string' ? i.ajusteDaFoto : null,
+            clienteProjectId: typeof i.clienteCitadoId === 'number' ? i.clienteCitadoId : null,
             motivoDoSlot: typeof i.motivoDoSlot === 'string' ? i.motivoDoSlot : null,
             escopo: typeof i.escopo === 'string' ? i.escopo : null,
             campaignId: typeof i.campanhaId === 'string' ? i.campanhaId : null,
@@ -950,6 +967,15 @@ export const MCP_TOOLS: McpTool[] = [
         formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Novo formato.' },
         via: { type: 'string', enum: ['template', 'ia'], description: 'Troca a via de criação da arte.' },
         modeloId: { type: 'string', description: 'Outro modelo do cliente (de escolher-modelo).' },
+        direcao: {
+          type: 'string',
+          description: 'Via "ia": nova direção adicional para o modelo de imagem (como tratar a foto ou o print, o clima da peça). String vazia limpa.',
+        },
+        ajusteDaFoto: { type: 'string', description: 'Via "ia": novo ajuste autorizado na foto. String vazia limpa (foto intocada).' },
+        clienteCitadoId: {
+          type: 'number',
+          description: 'Co-branding: ID do cliente citado na peça, cuja logomarca é composta na arte. 0 remove.',
+        },
         motivoDoSlot: { type: 'string', description: 'Nova explicação do horário.' },
         escopo: { type: 'string', enum: ['rotina', 'campanha', 'pontual'], description: 'Novo escopo de aprendizado.' },
         campanhaId: { type: 'string', description: 'Campanha a que o item passa a pertencer.' },
@@ -979,6 +1005,11 @@ export const MCP_TOOLS: McpTool[] = [
           ...(typeof args.formato === 'string' ? { formato: args.formato } : {}),
           ...(typeof args.via === 'string' ? { via: args.via } : {}),
           ...(typeof args.modeloId === 'string' ? { sourcePageId: args.modeloId } : {}),
+          ...(typeof args.direcao === 'string' ? { direcao: args.direcao } : {}),
+          ...(typeof args.ajusteDaFoto === 'string' ? { ajusteDaFoto: args.ajusteDaFoto } : {}),
+          ...(typeof args.clienteCitadoId === 'number'
+            ? { clienteProjectId: args.clienteCitadoId > 0 ? args.clienteCitadoId : null }
+            : {}),
           ...(typeof args.motivoDoSlot === 'string' ? { motivoDoSlot: args.motivoDoSlot } : {}),
           ...(typeof args.escopo === 'string' ? { escopo: args.escopo } : {}),
           ...(typeof args.campanhaId === 'string' ? { campaignId: args.campanhaId } : {}),
@@ -2363,6 +2394,11 @@ export const MCP_TOOLS: McpTool[] = [
           description:
             'Trilha arte, opcional: ajuste autorizado na FOTO (ex: "escurecer o fundo atrás do texto", "cortar o primeiro pedaço ao meio mostrando o ponto da carne"). Sem isso a foto é preservada intocada — a regra da casa é "a foto se melhora, nunca se modifica". Com ajuste, a peça é gerada no modelo mais caprichoso (leva ~2 min em vez de ~40s, mesmo custo em créditos): editar foto exige detalhe que o modelo rápido não entrega.',
         },
+        clienteCitadoId: {
+          type: 'number',
+          description:
+            'Trilha arte, opcional — co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte no canto oposto ao da marca da casa. É como uma agência mostra o trabalho feito para um cliente.',
+        },
         promptPronto: {
           type: 'string',
           description: 'Modo diretor (trilha imagem): prompt final em inglês, anatomia CAMERA:/LIGHT:/…; validado antes de usar.',
@@ -2422,6 +2458,8 @@ export const MCP_TOOLS: McpTool[] = [
         formato,
         referencias,
         instrucaoImagem: typeof args.instrucaoImagem === 'string' ? args.instrucaoImagem : null,
+        marcaDoClienteProjectId:
+          typeof args.clienteCitadoId === 'number' && args.clienteCitadoId > 0 ? args.clienteCitadoId : null,
         modelo: typeof args.modelo === 'string' && args.modelo ? args.modelo : undefined,
         resolution:
           args.resolution === '1K' || args.resolution === '2K' || args.resolution === '4K'

@@ -43,6 +43,8 @@ const bodySchema = z.object({
   formato: z.enum(['story', 'feed', 'quadrado']),
   referencias: z.array(refSchema).max(6).optional().default([]),
   instrucaoImagem: z.string().max(500).optional().nullable(),
+  /** Co-branding: o cliente citado na peça (logo composta na arte). */
+  marcaDoClienteProjectId: z.number().int().positive().optional().nullable(),
   modelo: z.string().max(40).optional(),
   // 1K saiu do enum em 12/08/2026: custava o mesmo que 2K e entregava 1/4 dos
   // pixels. `startArtGeneration` recusa de novo, para o caminho do MCP e o de
@@ -103,6 +105,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       // inferência do z.object cria sobre o enum obrigatório.
       referencias: parsed.data.referencias as ArtGenerationReference[],
       instrucaoImagem: parsed.data.instrucaoImagem ?? null,
+      marcaDoClienteProjectId: parsed.data.marcaDoClienteProjectId ?? null,
       modelo: parsed.data.modelo,
       resolution: parsed.data.resolution,
       // Cast pelo mesmo motivo das referências: o zod infere os campos do

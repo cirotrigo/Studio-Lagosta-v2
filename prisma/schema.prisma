@@ -415,6 +415,19 @@ model ItemDePlano {
   via          String    @default("template")
   /// A página-modelo escolhida na via template.
   sourcePageId String?
+  /// Direção adicional para a geração por IA (o `pedido` do serviço de arte):
+  /// o que dizer ao modelo além do tema — "trate o print como mockup de
+  /// celular", "a foto é a cena, o texto fica na coluna livre". Nasceu em
+  /// 23/08/2026: até então o campo da bancada ficava só no navegador e o
+  /// executar-plano mandava o NOME DO TEMA como pedido.
+  direcao      String?
+  /// Ajuste autorizado na FOTO, só desta peça (`instrucaoImagem`): sem ele a
+  /// foto vai intocada, que é o padrão da casa.
+  ajusteDaFoto String?
+  /// Co-branding: o cliente CITADO na peça (projeto do Studio), cuja logomarca
+  /// oficial é composta na arte. É como a Lagosta Criativa mostra o trabalho
+  /// feito para um cliente sem esconder de quem é. Sem FK, como `campaignId`.
+  clienteProjectId Int?
   /// Por que este horário — a frase que a proposta mostra para quem lê.
   motivoDoSlot String?
 

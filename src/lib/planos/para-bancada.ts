@@ -62,6 +62,12 @@ export interface ItemDePlanoDoServidor {
   formato?: string | null
   via?: string | null
   sourcePageId?: string | null
+  /** Direção adicional da geração (coluna desde 23/08/2026). */
+  direcao?: string | null
+  /** Ajuste autorizado na foto (coluna desde 23/08/2026). */
+  ajusteDaFoto?: string | null
+  /** Cliente citado na peça — a logo dele é composta na arte. */
+  clienteProjectId?: number | null
   motivoDoSlot?: string | null
   escopo?: string | null
   campaignId?: string | null
@@ -415,10 +421,10 @@ export function paraItemDaBancada(
     formato,
     copy: (doServidor.copyProposta ?? []).filter((b) => typeof b === 'string' && b.trim() !== ''),
     legenda: doServidor.legenda?.trim() || undefined,
-    // O tema é o que a peça precisa dizer — mandá-lo como pedido é melhor do
-    // que gerar com a direção vazia.
-    pedido: tema ?? '',
-    instrucaoImagem: null,
+    // A direção gravada no item vence; sem ela, o tema é o que a peça precisa
+    // dizer — mandá-lo como pedido é melhor do que gerar com a direção vazia.
+    pedido: doServidor.direcao?.trim() || tema || '',
+    instrucaoImagem: doServidor.ajusteDaFoto?.trim() || null,
     referencias:
       foto || driveId
         ? [
@@ -461,6 +467,7 @@ const CAMPOS_FUNDIDOS = [
   'copy',
   'legenda',
   'pedido',
+  'instrucaoImagem',
   'referencias',
   'quando',
   'escopo',
@@ -521,16 +528,20 @@ export function fundirComOLocal(
           copy: doServidor.copy,
           legenda: doServidor.legenda,
           /**
-           * Direção adicional e ajuste de foto são parâmetros de GERAÇÃO — não
-           * têm coluna no ItemDePlano, então uma edição local não tem como
-           * fazer a viagem de ida e volta pelo servidor. O que a pessoa
-           * escreveu vence o derivado (que é só o tema); `instrucaoImagem` nem
-           * entra nesta lista pelo mesmo motivo.
+           * Direção adicional e ajuste de foto TÊM coluna desde 23/08/2026
+           * (`direcao`, `ajusteDaFoto`) e fazem a viagem de ida e volta. A regra
+           * de mescla continua a mesma: o que a pessoa escreveu neste navegador
+           * vence o que veio do servidor quando os dois divergem (é a edição em
+           * curso), e o servidor preenche o que estiver vazio aqui.
            */
           pedido:
             local.pedido && local.pedido !== doServidor.pedido
               ? local.pedido
               : doServidor.pedido,
+          instrucaoImagem:
+            local.instrucaoImagem && local.instrucaoImagem !== doServidor.instrucaoImagem
+              ? local.instrucaoImagem
+              : doServidor.instrucaoImagem,
           referencias: mesclarReferencias(local.referencias, doServidor.referencias),
           ...(doServidor.slides || local.slides
             ? { slides: mesclarSlides(local.slides, doServidor.slides) }

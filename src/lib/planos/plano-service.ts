@@ -72,6 +72,15 @@ export interface ItemDePlanoInput {
   formato?: string | null
   via?: string | null
   sourcePageId?: string | null
+  /**
+   * Direção adicional para a geração por IA — o `pedido` do serviço de arte.
+   * Sem ela o pedido é o TEMA, que é só o assunto ("Atendimento com IA e CRM").
+   */
+  direcao?: string | null
+  /** Ajuste autorizado na FOTO desta peça (`instrucaoImagem`). Nulo = foto intocada. */
+  ajusteDaFoto?: string | null
+  /** Co-branding: projeto do cliente CITADO, cuja logo oficial é composta na arte. */
+  clienteProjectId?: number | null
   motivoDoSlot?: string | null
   escopo?: string | EscopoAprendizado | null
   campaignId?: string | null
@@ -105,6 +114,9 @@ export interface PatchDeItem {
   formato?: string
   via?: string | null
   sourcePageId?: string | null
+  direcao?: string | null
+  ajusteDaFoto?: string | null
+  clienteProjectId?: number | null
   motivoDoSlot?: string | null
   escopo?: string | EscopoAprendizado | null
   campaignId?: string | null
@@ -280,6 +292,12 @@ export async function listarPlanos(
 
 // ── Criação ─────────────────────────────────────────────────────────────────
 
+/** Id de projeto citado: inteiro positivo ou nada — string, zero e negativo viram null. */
+function clienteProjectIdValido(valor: unknown): number | null {
+  const n = typeof valor === 'string' ? Number(valor) : valor
+  return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null
+}
+
 function normalizarItem(
   entrada: ItemDePlanoInput,
   indice: number,
@@ -352,6 +370,9 @@ function normalizarItem(
     formato: formato as FormatoDoItem,
     via,
     sourcePageId: entrada.sourcePageId?.trim() || null,
+    direcao: entrada.direcao?.trim() || null,
+    ajusteDaFoto: entrada.ajusteDaFoto?.trim() || null,
+    clienteProjectId: clienteProjectIdValido(entrada.clienteProjectId),
     motivoDoSlot: entrada.motivoDoSlot?.trim() || null,
     escopo,
     campaignId: entrada.campaignId?.trim() || null,
@@ -592,6 +613,9 @@ export async function atualizarItem(input: {
   if (patch.fotoUrl !== undefined) data.fotoUrl = patch.fotoUrl?.trim() || null
   if (patch.fotoDriveId !== undefined) data.fotoDriveId = patch.fotoDriveId?.trim() || null
   if (patch.sourcePageId !== undefined) data.sourcePageId = patch.sourcePageId?.trim() || null
+  if (patch.direcao !== undefined) data.direcao = patch.direcao?.trim() || null
+  if (patch.ajusteDaFoto !== undefined) data.ajusteDaFoto = patch.ajusteDaFoto?.trim() || null
+  if (patch.clienteProjectId !== undefined) data.clienteProjectId = clienteProjectIdValido(patch.clienteProjectId)
   if (patch.motivoDoSlot !== undefined) data.motivoDoSlot = patch.motivoDoSlot?.trim() || null
   if (patch.campaignId !== undefined) data.campaignId = patch.campaignId?.trim() || null
   if (patch.slides !== undefined) data.slides = patch.slides as Prisma.InputJsonValue

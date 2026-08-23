@@ -49,7 +49,18 @@ export type LogoCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-lef
  * "contains NO brand mark at all" em `instrucaoAreaReservada` — se a segunda
  * marca voltar, o caminho é reforçar lá, nunca voltar o TERO para `modelo`.
  */
-const LOGO_MODE_POR_PROJETO = new Map<number, LogoMode>([[3, 'compor']])
+const LOGO_MODE_POR_PROJETO = new Map<number, LogoMode>([
+  [3, 'compor'],
+  /**
+   * Lagosta Criativa (8): o wordmark é brush com gradiente laranja e garras nas
+   * pontas — letra desenhada à mão que o gpt-image "reinterpreta" a cada
+   * rodada. E é a peça com DUAS marcas (a da agência e a do cliente citado,
+   * ver `instrucaoMarcaDoCliente`): com as duas compostas por sharp, os cantos
+   * são decididos aqui e não no prompt, e nenhuma das duas vira loteria.
+   * Decisão de 23/08/2026, junto com o co-branding.
+   */
+  [8, 'compor'],
+])
 
 /** O modo de logo default deste projeto, quando o chamador não escolhe. */
 export function logoModePadraoPara(projectId?: number | null): LogoMode {
@@ -174,8 +185,19 @@ export async function comporLogo(
   {
     cornerReservado,
     formato,
+    cantoFixo,
+    larguraRatio,
   }: {
     cornerReservado?: LogoCorner
+    /**
+     * Canto OBRIGATÓRIO, sem disputa por calma/contraste. É o que o co-branding
+     * usa para a segunda marca: a da agência já ocupa o canto reservado e a do
+     * cliente citado precisa ir para o canto combinado no prompt, senão a
+     * disputa pode mandá-la justamente para cima da primeira.
+     */
+    cantoFixo?: LogoCorner
+    /** Fração da largura que a logo ocupa; default `LOGO_WIDTH_RATIO`. */
+    larguraRatio?: number
     /**
      * 🔴 Em STORY o canto superior ESQUERDO não concorre — é onde o Instagram
      * desenha o avatar e o nome do perfil, e a colisão foi real: a logo
@@ -194,13 +216,17 @@ export async function comporLogo(
   const width = meta.width ?? 1080
   const height = meta.height ?? 1920
 
-  const alvoLargura = Math.round(width * LOGO_WIDTH_RATIO)
+  const alvoLargura = Math.round(width * (larguraRatio ?? LOGO_WIDTH_RATIO))
   const margem = Math.round(width * MARGIN_RATIO)
   const ehStory = formato === 'story'
   // A mesma fração da regra 9 do prompt (FAIXA_RESERVADA = 1/8): texto e logo
   // terminam ANTES da faixa que o Instagram cobre.
   const margemVertical = ehStory ? Math.max(margem, Math.round(height * 0.125)) : margem
-  const cantosCandidatos = ehStory ? CORNER_ORDER.filter((c) => c !== 'top-left') : CORNER_ORDER
+  const cantosCandidatos = cantoFixo
+    ? [cantoFixo]
+    : ehStory
+      ? CORNER_ORDER.filter((c) => c !== 'top-left')
+      : CORNER_ORDER
 
   // Redimensiona preservando o alpha (converter PNG sem alpha vira retângulo
   // sólido — erro documentado no padrão de produção da casa).
@@ -410,5 +436,33 @@ export function instrucaoAreaReservada(corner: LogoCorner = 'bottom-right'): str
     // o modelo desenhava a logo DELE apesar do DO NOT DRAW, porque a via nas
     // referências. Dizer de onde ela veio é o que fecha a porta.
     `If a brand mark, wordmark or logo appears in ANY reference image, it belongs to that old piece — this image contains NO brand mark at all, not even small, not even in a corner. The official file is placed by the system afterwards.`,
+  ].join('\n')
+}
+
+/**
+ * Co-branding: a peça leva DUAS marcas — a do projeto dono (a agência) e a do
+ * CLIENTE CITADO na copy. As duas são compostas por sharp depois da geração
+ * (fidelidade garantida, canto decidido em código), então o prompt só precisa
+ * reservar o segundo canto e deixar claro que NENHUMA marca é desenhada pelo
+ * modelo. É o par de `instrucaoAreaReservada`, que cuida do canto da marca
+ * principal.
+ *
+ * Por que não mandar o modelo desenhar a marca do cliente: são nove marcas
+ * diferentes (wordmark com ligadura, brush, serifa fina) e a fidelidade de
+ * cada uma seria uma loteria por peça — a conferência de logo já reprova a
+ * marca da casa quando diverge; duas marcas desenhadas dobram o risco.
+ */
+export function instrucaoMarcaDoCliente(corner: LogoCorner, nomeDoCliente: string): string {
+  const onde = {
+    'bottom-right': 'lower-right corner',
+    'bottom-left': 'lower-left corner',
+    'top-right': 'upper-right corner',
+    'top-left': 'upper-left corner',
+  }[corner]
+  return [
+    '[CLIENT LOGO — DO NOT DRAW]',
+    `This piece is about the agency's client "${nomeDoCliente}". The client's official logo is ALSO composited by the system after generation — do NOT draw, letter or reproduce it anywhere in the image.`,
+    `Reserve the ${onde} for it: a second clean, calm area of about 28% of the width and 14% of the height, with no text, no key subject and no busy detail. Keep every line of copy clear of this area too.`,
+    `The client's NAME may appear in the copy as plain text, exactly as written — that is text, not a logo.`,
   ].join('\n')
 }

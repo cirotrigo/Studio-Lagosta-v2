@@ -39,6 +39,7 @@ import {
   comporLogo,
   instrucaoAreaReservada,
   instrucaoLogoPeloModelo,
+  instrucaoMarcaDoCliente,
   logoModePadraoPara,
   type LogoCorner,
   type LogoMode,
@@ -96,6 +97,12 @@ const MARGEM_POS_GERACAO_MS = 20_000
  * depois só serviria para achar um canto que o modelo não preparou.
  */
 const LOGO_CORNER: LogoCorner = 'bottom-right'
+/**
+ * Co-branding: o canto da marca do CLIENTE CITADO, oposto ao da marca do
+ * projeto dono. Os dois cantos de baixo porque em story o topo é do Instagram
+ * (avatar à esquerda, controles à direita) — ver `comporLogo`.
+ */
+const CLIENT_LOGO_CORNER: LogoCorner = 'bottom-left'
 const BACKGROUND_BUDGET_MS = 290_000
 const FINALIZE_RESERVE_MS = 35_000
 /** Piso: abaixo disto nem a geração mais rápida cabe. */
@@ -144,6 +151,12 @@ export interface ArtGenerationJobArgs {
   pedido: string
   copy: string[]
   instrucaoImagem: string | null
+  /**
+   * Co-branding: o cliente CITADO na peça. A logo oficial dele (tabela Logo do
+   * projeto dele) é composta por sharp no canto `CLIENT_LOGO_CORNER` depois
+   * da geração; o prompt só reserva o canto. Nulo = peça sem segunda marca.
+   */
+  marcaDoCliente?: { projectId: number; nome: string } | null
   formato: 'story' | 'feed' | 'quadrado'
   aspectRatio: string
   openaiSize: string
@@ -191,6 +204,12 @@ interface LoadedRef {
  * Monta o aviso de número sem lastro na copy. Vazio quando não há o que dizer —
  * espalhar chave nula pelo fieldValues só suja o registro.
  */
+/** Os blocos de logo do prompt (marca da casa + marca do cliente citado), só os que existem. */
+function juntarBlocosDeLogo(...blocos: Array<string | null | undefined>): string | null {
+  const vivos = blocos.filter((b): b is string => typeof b === 'string' && b.trim() !== '')
+  return vivos.length > 0 ? vivos.join('\n\n') : null
+}
+
 function avisoDeNumeros(numeros: string[]): Record<string, unknown> {
   if (numeros.length === 0) return {}
   const lista = numeros.slice(0, 5).join(', ')
@@ -495,6 +514,27 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    // ── Co-branding: a logo do cliente citado (só trilha `arte`) ──────────
+    // Lida pelo loader único de identidade (a logo mora na tabela Logo, não em
+    // Project.logoUrl). Falha aqui não derruba a arte: ela sai só com a marca
+    // do projeto dono e o aviso fica gravado.
+    let logoDoClienteParaCompor: Buffer | null = null
+    if (args.track === 'arte' && args.marcaDoCliente) {
+      try {
+        const brandDoCliente = await loadBrandContext(args.marcaDoCliente.projectId)
+        if (brandDoCliente?.logoUrl) {
+          const logoCliente = await fetchImageSource(brandDoCliente.logoUrl)
+          logoDoClienteParaCompor = logoCliente.buffer
+        } else {
+          console.warn(
+            `[arte-ia.bg] cliente citado ${args.marcaDoCliente.projectId} (${args.marcaDoCliente.nome}) sem logo cadastrada — a peça sai sem a marca dele`,
+          )
+        }
+      } catch (error) {
+        console.warn('[arte-ia.bg] logo do cliente citado não baixou — a peça sai sem a marca dele:', error)
+      }
+    }
+
     const ordered = orderReferences(loadedRefs)
     const downloadMs = Date.now() - startedAt
     console.log(
@@ -544,7 +584,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           : null,
         // Três estados: colar depois (reserva o canto), o modelo desenhar
         // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
-        blocoLogo: logoParaCompor
+        blocoLogo: juntarBlocosDeLogo(
+          logoParaCompor
           ? instrucaoAreaReservada(LOGO_CORNER)
           : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
             ? // Canto FIXO no slide irmão de carrossel (o LOOK SPINE manda
@@ -561,6 +602,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
                 args.formato,
               )
             : null,
+          // A segunda marca: reserva o canto do cliente citado. Só existe
+          // quando a logo dele baixou — reservar canto para marca que não
+          // vem seria buraco na peça.
+          logoDoClienteParaCompor && args.marcaDoCliente
+            ? instrucaoMarcaDoCliente(CLIENT_LOGO_CORNER, args.marcaDoCliente.nome)
+            : null,
+        ),
         carrossel: args.carrossel
           ? {
               slideOrder: args.carrossel.slideOrder,
@@ -884,6 +932,44 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    // A marca do CLIENTE CITADO entra depois da marca do dono, em canto FIXO
+    // (o oposto), um pouco menor — é assinatura secundária. Falha não derruba a
+    // arte, pela mesma razão da logo principal.
+    let marcaDoClienteInfo: Record<string, unknown> = {}
+    if (logoDoClienteParaCompor && args.marcaDoCliente) {
+      try {
+        const comMarca = await comporLogo(finalBuffer, logoDoClienteParaCompor, {
+          cantoFixo: CLIENT_LOGO_CORNER,
+          larguraRatio: 0.13,
+          formato: args.formato,
+        })
+        finalBuffer = comMarca.buffer
+        marcaDoClienteInfo = {
+          marcaDoCliente: {
+            projectId: args.marcaDoCliente.projectId,
+            nome: args.marcaDoCliente.nome,
+            composta: true,
+            canto: comMarca.corner,
+            contraste: comMarca.contraste,
+          },
+        }
+        console.log(
+          `[arte-ia.bg] marca do cliente citado (${args.marcaDoCliente.nome}) composta no canto ${comMarca.corner}` +
+            (comMarca.contraste !== null ? ` | contraste ${comMarca.contraste.toFixed(0)}` : ''),
+        )
+      } catch (erro) {
+        const msg = erro instanceof Error ? erro.message : String(erro)
+        console.warn('[arte-ia.bg] composição da marca do cliente falhou — peça sai só com a marca da casa:', msg)
+        marcaDoClienteInfo = {
+          marcaDoCliente: { projectId: args.marcaDoCliente.projectId, nome: args.marcaDoCliente.nome, composta: false, erro: msg.slice(0, 200) },
+        }
+      }
+    } else if (args.marcaDoCliente) {
+      marcaDoClienteInfo = {
+        marcaDoCliente: { projectId: args.marcaDoCliente.projectId, nome: args.marcaDoCliente.nome, composta: false, erro: 'logo do cliente não disponível' },
+      }
+    }
+
     const blob = await put(
       `arte-ia/${args.projectId}/${sanitizeName(args.pedido || args.copy[0] || 'arte')}_${Date.now()}.jpg`,
       finalBuffer,
@@ -929,6 +1015,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       finalSize: `${saidaReal.width}x${saidaReal.height}`,
       ...qaInfo,
       ...logoInfo,
+      ...marcaDoClienteInfo,
       ...textCheckInfo,
     })
 

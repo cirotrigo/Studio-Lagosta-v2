@@ -183,6 +183,49 @@ describe('decidirGeracao', () => {
     if (ehRecusa(r)) return
     expect(r.trilha).toBe('imagem')
   })
+
+  // 23/08/2026: a direção gravada no item é o pedido; o tema é só o assunto.
+  // Até então o NOME DO TEMA ia ao modelo ("Atendimento com IA e CRM") e a
+  // direção escrita na bancada morria no navegador.
+  it('a direção adicional vence o tema como pedido, e leva o ajuste da foto e o cliente citado', () => {
+    const r = decidirGeracao({
+      tema: 'Atendimento com IA e CRM',
+      copyProposta: ['Empório responde em menos de um minuto'],
+      fotoDriveId: 'print',
+      direcao: 'o print entra como mockup de celular sobre fundo preto, fiel e legível',
+      ajusteDaFoto: '  escurecer o fundo atrás do texto ',
+      clienteProjectId: 12,
+    })
+    expect(ehRecusa(r)).toBe(false)
+    if (ehRecusa(r)) return
+    expect(r.pedido).toBe('o print entra como mockup de celular sobre fundo preto, fiel e legível')
+    expect(r.instrucaoImagem).toBe('escurecer o fundo atrás do texto')
+    expect(r.marcaDoClienteProjectId).toBe(12)
+  })
+
+  it('sem direção o pedido continua sendo o tema, e cliente inválido vira nulo', () => {
+    const r = decidirGeracao({
+      tema: 'happy hour',
+      copyProposta: ['HAPPY HOUR'],
+      fotoDriveId: 'abc',
+      direcao: '   ',
+      clienteProjectId: 0,
+    })
+    expect(ehRecusa(r)).toBe(false)
+    if (ehRecusa(r)) return
+    expect(r.pedido).toBe('happy hour')
+    expect(r.instrucaoImagem).toBeNull()
+    expect(r.marcaDoClienteProjectId).toBeNull()
+  })
+
+  it('a trilha imagem nunca leva ajuste de foto nem marca do cliente — ela É a fotografia', () => {
+    const r = decidirGeracao({ tema: 'salão', copyProposta: [], ajusteDaFoto: 'x', clienteProjectId: 3 })
+    expect(ehRecusa(r)).toBe(false)
+    if (ehRecusa(r)) return
+    expect(r.trilha).toBe('imagem')
+    expect(r.instrucaoImagem).toBeNull()
+    expect(r.marcaDoClienteProjectId).toBeNull()
+  })
 })
 
 describe('situacaoPelaArte', () => {

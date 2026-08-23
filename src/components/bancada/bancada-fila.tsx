@@ -255,8 +255,10 @@ export function BancadaFila({ projectId }: { projectId: number }) {
   /**
    * Salva a edição do card: o store primeiro (a tela responde na hora) e, se o
    * card veio do plano e o item ainda é editável lá, o servidor junto —
-   * `copyProposta`, `legenda` e a foto têm coluna no ItemDePlano; direção
-   * adicional e ajuste de foto são parâmetros de GERAÇÃO e ficam no navegador.
+   * `copyProposta`, `legenda`, a foto e, desde 23/08/2026, a direção adicional
+   * (`direcao`) e o ajuste da foto (`ajusteDaFoto`) têm coluna no ItemDePlano.
+   * Antes os dois últimos ficavam só no navegador, e o `executar-plano` mandava
+   * o NOME DO TEMA como pedido ao modelo.
    */
   const salvarEdicao = React.useCallback(
     (item: BancadaItem, e: EdicaoDoItem) => {
@@ -277,6 +279,8 @@ export function BancadaFila({ projectId }: { projectId: number }) {
             legenda: e.legenda,
             fotoDriveId: cena?.driveFileId ?? null,
             fotoUrl: cena?.url ?? null,
+            direcao: e.pedido?.trim() || null,
+            ajusteDaFoto: e.instrucaoImagem?.trim() || null,
           },
           {
             // Sem isto a falha era MUDA: a tela de quem editou mostrava a

@@ -363,6 +363,9 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
     copyProposta: item.copyProposta,
     fotoUrl: item.fotoUrl,
     fotoDriveId: item.fotoDriveId,
+    direcao: item.direcao,
+    ajusteDaFoto: item.ajusteDaFoto,
+    clienteProjectId: item.clienteProjectId,
   })
   if (ehRecusa(pedido)) {
     throw new CreativeError('ITEM_INCOMPLETO', pedido.motivo, 400)
@@ -383,6 +386,8 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
     copy: pedido.copy.length > 0 ? pedido.copy : undefined,
     formato: (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story',
     referencias: foto ? [{ role: pedido.papelDaFoto, ...foto }] : [],
+    instrucaoImagem: pedido.instrucaoImagem,
+    marcaDoClienteProjectId: pedido.marcaDoClienteProjectId,
     actorClerkId: input.actorClerkId,
     // Mesma janela de `gerar-imagem`: o modelo repetindo a tool no chat não
     // pode virar segunda cobrança.
