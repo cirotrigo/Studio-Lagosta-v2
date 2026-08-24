@@ -287,6 +287,13 @@ export async function comporDocumento(
     plano.altura = altura
     plano.left = Math.max(0, Math.min(Math.round(centroX - largura / 2), meta.width - largura))
     plano.top = Math.max(0, Math.min(Math.round(centroY - altura / 2), meta.height - altura))
+    // Cartão nunca maior que a peça, em nenhum eixo.
+    if (plano.altura > meta.height) {
+      plano.altura = meta.height
+      plano.largura = Math.min(meta.width, Math.round(plano.altura * aspecto))
+      plano.top = 0
+      plano.left = Math.max(0, Math.round((meta.width - plano.largura) / 2))
+    }
   }
 
   const raio = Math.max(12, Math.round(plano.largura * 0.028))
@@ -307,22 +314,41 @@ export async function comporDocumento(
   // A sombra: o mesmo retângulo em preto meio-transparente, borrado e
   // deslocado um pouco para baixo — o que faz o cartão "flutuar".
   const margem = raio * 3
+  const sombraW = plano.largura + margem * 2
+  const sombraH = plano.altura + margem * 2
   const sombraSvg = Buffer.from(
-    `<svg width="${plano.largura + margem * 2}" height="${plano.altura + margem * 2}"><rect x="${margem}" y="${margem}" width="${plano.largura}" height="${plano.altura}" rx="${raio}" ry="${raio}" fill="rgba(0,0,0,0.45)"/></svg>`,
+    `<svg width="${sombraW}" height="${sombraH}"><rect x="${margem}" y="${margem}" width="${plano.largura}" height="${plano.altura}" rx="${raio}" ry="${raio}" fill="rgba(0,0,0,0.45)"/></svg>`,
   )
-  const sombra = await sharp(sombraSvg).png().blur(Math.max(8, Math.round(raio * 0.9))).toBuffer()
+  const sombraCheia = await sharp(sombraSvg).png().blur(Math.max(8, Math.round(raio * 0.9))).toBuffer()
 
-  const buffer = await sharp(arte)
-    .composite([
-      {
-        input: sombra,
-        left: plano.left - margem,
-        top: plano.top - margem + Math.round(raio * 0.7),
-      },
-      { input: cartao, left: plano.left, top: plano.top },
-    ])
-    .jpeg({ quality: 92 })
-    .toBuffer()
+  /**
+   * 🔴 A sombra é MAIOR que o cartão (margem para o desfoque) e o sharp
+   * recusa overlay maior que a base — foi o "Image to composite must have
+   * same dimensions or smaller" que matou três gerações PAGAS em 24/08/2026,
+   * quando o modelo desenhou o cartão largo e a caixa detectada cresceu.
+   * A sombra é recortada ao que fica DENTRO da peça antes de compor.
+   */
+  const sombraLeft = plano.left - margem
+  const sombraTop = plano.top - margem + Math.round(raio * 0.7)
+  const corteX = Math.max(0, -sombraLeft)
+  const corteY = Math.max(0, -sombraTop)
+  const visivelW = Math.min(sombraW - corteX, meta.width - Math.max(0, sombraLeft))
+  const visivelH = Math.min(sombraH - corteY, meta.height - Math.max(0, sombraTop))
+
+  const camadas: sharp.OverlayOptions[] = []
+  if (visivelW > 0 && visivelH > 0) {
+    const precisaCortar = corteX > 0 || corteY > 0 || visivelW < sombraW || visivelH < sombraH
+    camadas.push({
+      input: precisaCortar
+        ? await sharp(sombraCheia).extract({ left: corteX, top: corteY, width: visivelW, height: visivelH }).toBuffer()
+        : sombraCheia,
+      left: Math.max(0, sombraLeft),
+      top: Math.max(0, sombraTop),
+    })
+  }
+  camadas.push({ input: cartao, left: plano.left, top: plano.top })
+
+  const buffer = await sharp(arte).composite(camadas).jpeg({ quality: 92 }).toBuffer()
 
   return { buffer, plano }
 }

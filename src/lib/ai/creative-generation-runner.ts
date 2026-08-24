@@ -1049,12 +1049,23 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               top: documentoTopo ?? documentoPlano.top,
             }).catch(() => null)
           : null
+      // Recolagem pela caixa detectada que falhe NÃO mata uma arte paga:
+      // cai na faixa planejada — pior caso, o cartão do modelo fica visível
+      // atrás, que ainda é melhor do que perder a peça (24/08: três gerações
+      // pagas morreram numa falha de composição).
       const comDoc = await comporDocumento(finalBuffer, documentoParaCompor, {
         formato: args.formato,
         // A faixa prometida no prompt — recalcular aqui poria o cartão onde a
         // copy não desviou.
         ...(documentoTopo !== null ? { top: documentoTopo } : {}),
         ...(caixaDesenhada ? { caixa: caixaDesenhada } : {}),
+      }).catch(async (erro) => {
+        if (!caixaDesenhada) throw erro
+        console.warn('[arte-ia.bg] recolagem pela caixa detectada falhou — caindo na faixa planejada:', erro)
+        return comporDocumento(finalBuffer, documentoParaCompor, {
+          formato: args.formato,
+          ...(documentoTopo !== null ? { top: documentoTopo } : {}),
+        })
       })
       finalBuffer = comDoc.buffer
       documentoInfo = {
