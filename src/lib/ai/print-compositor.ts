@@ -159,6 +159,93 @@ export async function escolherTopoDoCartao(
   return { top: vencedora.top, candidatas }
 }
 
+export interface CaixaDetectada {
+  left: number
+  top: number
+  largura: number
+  altura: number
+}
+
+/**
+ * Encontra onde o MODELO desenhou o cartão na arte gerada.
+ *
+ * A lição da rodada v3 (24/08/2026): mandamos o cartão embutido na cena com a
+ * ordem "mantenha EXATAMENTE onde está" — e o modelo o redesenhou ~110px
+ * acima. A recolagem caiu ao lado e a peça saiu com DOIS cartões. Instrução
+ * não segura posição; a trava é do código: detectar o retângulo branco que o
+ * modelo desenhou e recolar o original POR CIMA dele, onde quer que esteja.
+ *
+ * A busca é por densidade de branco numa janela em volta da posição
+ * planejada: o cartão é um bloco branco de centenas de pixels — linhas com
+ * quase toda a largura branca, colunas idem. Prato branco e camisa clara não
+ * enganam a medida: nenhum ocupa 45% de uma linha inteira da janela.
+ */
+export async function encontrarCartaoDesenhado(
+  arte: Buffer,
+  plano: PlanoDoCartao,
+): Promise<CaixaDetectada | null> {
+  const meta = await sharp(arte).metadata()
+  if (!meta.width || !meta.height) return null
+
+  const x0 = Math.max(0, plano.left - 80)
+  const y0 = Math.max(0, plano.top - 300)
+  const x1 = Math.min(meta.width, plano.left + plano.largura + 80)
+  const y1 = Math.min(meta.height, plano.top + plano.altura + 300)
+  const w = x1 - x0
+  const h = y1 - y0
+  if (w < plano.largura / 2 || h < plano.altura / 2) return null
+
+  const raw = await sharp(arte)
+    .extract({ left: x0, top: y0, width: w, height: h })
+    .greyscale()
+    .raw()
+    .toBuffer()
+
+  const BRANCO = 225
+  const linhas = new Array<number>(h).fill(0)
+  for (let y = 0; y < h; y++) {
+    let n = 0
+    const base = y * w
+    for (let x = 0; x < w; x++) if (raw[base + x] >= BRANCO) n++
+    linhas[y] = n / w
+  }
+
+  /**
+   * 🔴 O bloco NÃO é contíguo: as linhas de TEXTO do cartão (o parágrafo da
+   * avaliação) derrubam a densidade abaixo do corte e quebravam a corrida —
+   * medido na primeira rodada da prova, o cartão saía pela metade. O cartão é
+   * o ENVELOPE das linhas densas: da primeira à última, exigindo cobertura
+   * mínima dentro dele (uma coisa branca aqui, outra ali, não formam cartão).
+   */
+  const densas: number[] = []
+  for (let y = 0; y < h; y++) if (linhas[y] >= 0.4) densas.push(y)
+  if (densas.length === 0) return null
+  const yIni = densas[0]
+  const yFim = densas[densas.length - 1] + 1
+  const alturaBloco = yFim - yIni
+  const cobertura = densas.length / alturaBloco
+  if (alturaBloco < plano.altura * 0.5) return null
+  if (alturaBloco > plano.altura * 2.2) return null
+  if (cobertura < 0.55) return null
+
+  const colunas = new Array<number>(w).fill(0)
+  for (let y = yIni; y < yFim; y++) {
+    const base = y * w
+    for (let x = 0; x < w; x++) if (raw[base + x] >= BRANCO) colunas[x]++
+  }
+  let cx0 = -1
+  let cx1 = -1
+  for (let x = 0; x < w; x++) {
+    if (colunas[x] / alturaBloco >= 0.5) {
+      if (cx0 < 0) cx0 = x
+      cx1 = x
+    }
+  }
+  if (cx0 < 0 || cx1 - cx0 < plano.largura * 0.5) return null
+
+  return { left: x0 + cx0, top: y0 + yIni, largura: cx1 - cx0 + 1, altura: alturaBloco }
+}
+
 /**
  * Cola o documento na arte, tal e qual — cantos arredondados + sombra.
  * Devolve JPEG (o formato de publicação da trilha `arte`).
@@ -166,17 +253,40 @@ export async function escolherTopoDoCartao(
  * `top` explícito é o contrato com o prompt: quando a faixa foi escolhida
  * pela foto (`escolherTopoDoCartao`) e prometida ao modelo, a colagem tem de
  * honrá-la — recalcular aqui poria o cartão num lugar que a copy não desviou.
+ *
+ * `caixa` vence o `top`: é a posição DETECTADA do cartão que o modelo
+ * desenhou (`encontrarCartaoDesenhado`) — o original é escalado para COBRIR o
+ * desenho por inteiro, com folga para as bordas suavizadas, mantendo a
+ * própria proporção.
  */
 export async function comporDocumento(
   arte: Buffer,
   documento: Buffer,
-  { formato, top }: { formato: FormatoDoCartao; top?: number },
+  { formato, top, caixa }: { formato: FormatoDoCartao; top?: number; caixa?: CaixaDetectada | null },
 ): Promise<{ buffer: Buffer; plano: PlanoDoCartao }> {
   const meta = await sharp(arte).metadata()
   if (!meta.width || !meta.height) throw new Error('A arte não tem dimensões legíveis.')
   const plano = await planejarCartao(documento, meta.width, meta.height, formato)
   if (typeof top === 'number' && Number.isFinite(top)) {
     plano.top = Math.max(0, Math.min(Math.round(top), meta.height - plano.altura))
+  }
+  if (caixa) {
+    const FOLGA = 8
+    const aspecto = plano.largura / plano.altura
+    let largura = Math.max(plano.largura, caixa.largura + FOLGA * 2)
+    let altura = Math.round(largura / aspecto)
+    if (altura < caixa.altura + FOLGA * 2) {
+      altura = caixa.altura + FOLGA * 2
+      largura = Math.round(altura * aspecto)
+    }
+    largura = Math.min(largura, meta.width)
+    altura = Math.round(largura / aspecto)
+    const centroX = caixa.left + caixa.largura / 2
+    const centroY = caixa.top + caixa.altura / 2
+    plano.largura = largura
+    plano.altura = altura
+    plano.left = Math.max(0, Math.min(Math.round(centroX - largura / 2), meta.width - largura))
+    plano.top = Math.max(0, Math.min(Math.round(centroY - altura / 2), meta.height - altura))
   }
 
   const raio = Math.max(12, Math.round(plano.largura * 0.028))

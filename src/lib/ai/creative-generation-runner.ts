@@ -46,6 +46,7 @@ import {
 } from '@/lib/ai/logo-compositor'
 import {
   comporDocumento,
+  encontrarCartaoDesenhado,
   escolherTopoDoCartao,
   planejarCartao,
   type FaixaCandidata,
@@ -1034,18 +1035,40 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // bytes antes da chamada paga, então a falha aqui é rara.
     let documentoInfo: Record<string, unknown> = {}
     if (documentoParaCompor && args.track === 'arte') {
+      /**
+       * Com o cartão EMBUTIDO na cena, a recolagem persegue o DESENHO: o
+       * modelo pode deslocá-lo (fez isso na v3, ~110px — e a peça saiu com
+       * dois cartões), então o original cobre onde o desenho de fato está.
+       * Detecção falhou? Cai na faixa planejada, que é onde o embutido
+       * estava — o modelo que não moveu nada continua coberto.
+       */
+      const caixaDesenhada =
+        documentoNaCena && documentoPlano
+          ? await encontrarCartaoDesenhado(finalBuffer, {
+              ...documentoPlano,
+              top: documentoTopo ?? documentoPlano.top,
+            }).catch(() => null)
+          : null
       const comDoc = await comporDocumento(finalBuffer, documentoParaCompor, {
         formato: args.formato,
         // A faixa prometida no prompt — recalcular aqui poria o cartão onde a
         // copy não desviou.
         ...(documentoTopo !== null ? { top: documentoTopo } : {}),
+        ...(caixaDesenhada ? { caixa: caixaDesenhada } : {}),
       })
       finalBuffer = comDoc.buffer
       documentoInfo = {
         documentoComposto: true,
         documentoFaixa: comDoc.plano,
         documentoNaCena,
+        ...(caixaDesenhada ? { documentoDetectado: caixaDesenhada } : {}),
         ...(documentoBandas ? { documentoBandas } : {}),
+      }
+      if (caixaDesenhada) {
+        console.log(
+          `[arte-ia.bg] cartão desenhado detectado em (${caixaDesenhada.left},${caixaDesenhada.top}) ` +
+            `${caixaDesenhada.largura}x${caixaDesenhada.altura} — recolagem por cima dele`,
+        )
       }
       console.log(
         `[arte-ia.bg] documento composto: ${comDoc.plano.largura}x${comDoc.plano.altura} em (${comDoc.plano.left},${comDoc.plano.top})`,
