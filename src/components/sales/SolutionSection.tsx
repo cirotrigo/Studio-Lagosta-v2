@@ -1,29 +1,35 @@
 "use client";
 
 import React from 'react';
-import { Camera, BrainCircuit, BarChart3, ChefHat } from 'lucide-react';
+import { Camera, Share2, Bot, Globe, Megaphone } from 'lucide-react';
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 
+// As cinco frentes da solução completa — a mesma lista das abas de planos.
 const features = [
     {
         icon: Camera,
-        title: "Produção Audiovisual Gastronômica",
-        description: "Execução profissional real e apetitosa. Nada de IA fake ou banco de imagens genérico."
+        title: "Foto e Vídeo que Dão Fome",
+        description: "Sessões mensais no seu restaurante: comida real, apetitosa, sem banco de imagens genérico."
     },
     {
-        icon: BrainCircuit,
-        title: "Marketing Estratégico",
-        description: "Não fazemos apenas posts. Criamos campanhas desenhadas para atrair o público certo."
+        icon: Share2,
+        title: "Gestão de Redes com Método",
+        description: "Stories diários e feed com a identidade da sua marca — planejamento semanal aprovado por você."
     },
     {
-        icon: BarChart3,
-        title: "Integração de Dados & Otimização",
-        description: "Automações avançadas (Reservas, WhatsApp) e domínio profundo dos seus números."
+        icon: Bot,
+        title: "Atendimento com IA + CRM",
+        description: "Um agente que responde em segundos no WhatsApp e no Instagram, um funil de reservas e a sua equipe assumindo na hora certa."
     },
     {
-        icon: ChefHat,
-        title: "Visão Operacional de Dono",
-        description: "Entendemos de fluxo, CMV, engenharia de cardápio e vendas no salão."
+        icon: Globe,
+        title: "Sites e Cardápio Digital",
+        description: "Site próprio com cardápio que atualiza em um clique e pedido fechado no WhatsApp."
+    },
+    {
+        icon: Megaphone,
+        title: "Tráfego Pago que Converte",
+        description: "A campanha nasce com o agente treinado para responder os leads — anúncio sem atendimento é dinheiro parado."
     }
 ];
 
@@ -37,11 +43,11 @@ export function SolutionSection() {
                 <div className="text-center max-w-3xl mx-auto mb-16">
                     <h2 className="text-3xl md:text-5xl font-bold mb-6">A Solução Lagosta Criativa</h2>
                     <p className="text-xl text-muted-foreground">
-                        A única empresa do Espírito Santo que une produção audiovisual de cinema com inteligência de vendas.
+                        Cinco frentes, uma só empresa: a foto gera desejo, a rede gera constância, o atendimento converte a mensagem em reserva, o site fecha o pedido e o tráfego amplia tudo.
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-16">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-16">
                     {features.map((feature, idx) => (
                         <div key={idx} className="group relative p-8 rounded-2xl border border-border bg-card hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/10 transition-all duration-300">
                             <GlowingEffect variant="orange" spread={40} glow={true} disabled={false} proximity={64} inactiveZone={0.01} />

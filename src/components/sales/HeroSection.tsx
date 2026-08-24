@@ -3,9 +3,24 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { ArrowRight, TrendingUp, Users, UtensilsCrossed } from 'lucide-react';
+import { ArrowRight, MessagesSquare, Timer, CalendarCheck } from 'lucide-react';
 import Link from 'next/link';
 import { motion, useMotionValue, useMotionTemplate } from 'framer-motion';
+
+// Ordem de exibição da faixa "Confirmado por gigantes do ES". Empório Fonseca
+// e Ilha do Caranguejo entraram em 23/08 a pedido do Ciro.
+const clientLogos = [
+    { src: '/clients/client-1.png', alt: 'Bacana' },
+    { src: '/clients/client-2.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-9.png', alt: 'Empório Fonseca' },
+    { src: '/clients/client-3.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-4.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-10.png', alt: 'Ilha do Caranguejo' },
+    { src: '/clients/client-5.png', alt: 'Cliente Lagosta Criativa' },
+    { src: '/clients/client-6.png', alt: 'Seu Quinto' },
+    { src: '/clients/client-7.png', alt: 'Tero' },
+    { src: '/clients/client-8.png', alt: 'Coronel Picanha' },
+];
 
 export function HeroSection() {
     const mouseX = useMotionValue(0);
@@ -36,14 +51,10 @@ export function HeroSection() {
                 }}
             />
 
-            {/* Top Navigation - Login Button */}
+            {/* Top Navigation — o "Entrar no Studio" mudou para o rodapé: no
+                topo do site de vendas, ele confundia o dono de restaurante. */}
             <div className="absolute top-0 right-0 p-4 md:p-8 z-50 flex items-center gap-4">
                 <ThemeToggle />
-                <Button variant="ghost" className="text-sm font-medium text-muted-foreground hover:text-orange-500 hover:bg-orange-500/10 transition-colors" asChild>
-                    <Link href="/sign-in">
-                        Entrar no Studio
-                    </Link>
-                </Button>
             </div>
 
             {/* Background Gradients/Effects */}
@@ -100,45 +111,83 @@ export function HeroSection() {
                     </Button>
                 </div>
 
-                {/* Social Proof Numbers */}
+                {/* Social Proof Numbers — números REAIS, com dono e data.
+                    Fonte: painéis de atendimento lidos em 23/08/2026 (entrada
+                    "Provas e números reais" da base do projeto 8). Os antigos
+                    +40% / +2,5k / +15 não tinham fonte e saíram. */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-16 border-t border-border/50 pt-12 w-full max-w-4xl">
                     <div className="flex flex-col items-center">
                         <div className="flex items-center text-3xl font-bold text-foreground mb-1">
-                            <TrendingUp className="mr-2 h-6 w-6 text-green-500" />
-                            +40%
+                            <MessagesSquare className="mr-2 h-6 w-6 text-orange-500" />
+                            950+
                         </div>
-                        <p className="text-sm text-muted-foreground">Crescimento médio de receita</p>
+                        <p className="text-sm text-muted-foreground">mensagens respondidas pela IA em agosto na Ilha do Caranguejo — 96,4% das conversas</p>
                     </div>
                     <div className="flex flex-col items-center">
                         <div className="flex items-center text-3xl font-bold text-foreground mb-1">
-                            <UtensilsCrossed className="mr-2 h-6 w-6 text-orange-500" />
-                            +2.5k
+                            <Timer className="mr-2 h-6 w-6 text-green-500" />
+                            &lt; 1 min
                         </div>
-                        <p className="text-sm text-muted-foreground">Mesas reservadas/mês</p>
+                        <p className="text-sm text-muted-foreground">para a primeira resposta no Empório Fonseca — 95,5% das conversas respondidas</p>
                     </div>
                     <div className="flex flex-col items-center">
                         <div className="flex items-center text-3xl font-bold text-foreground mb-1">
-                            <Users className="mr-2 h-6 w-6 text-blue-500" />
-                            +15
+                            <CalendarCheck className="mr-2 h-6 w-6 text-blue-500" />
+                            9
                         </div>
-                        <p className="text-sm text-muted-foreground">Marcas transformadas</p>
+                        <p className="text-sm text-muted-foreground">restaurantes do ES com conteúdo profissional toda semana — e 7 com agente de IA no atendimento</p>
                     </div>
                 </div>
+                <p className="mt-4 text-xs text-muted-foreground/70">Números de agosto/2026, lidos nos painéis de atendimento dos clientes.</p>
 
-                {/* Simple Logo Strip Visual */}
-                <div className="mt-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
-                    <p className="items-center text-sm font-semibold text-muted-foreground mb-4">CONFIRMADO POR GIGANTES DO ES</p>
-                    {/* Mobile: Horizontal scroll | Desktop: Wrap */}
-                    <div className="flex flex-nowrap md:flex-wrap justify-start md:justify-center gap-6 md:gap-8 items-center overflow-x-auto md:overflow-visible pb-4 md:pb-0 scrollbar-thin scrollbar-thumb-orange-500/20 scrollbar-track-transparent">
-                        {/* Client Logos - 48px height */}
-                        <img src="/clients/client-1.png" alt="Bacana" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-2.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-3.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-4.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-5.png" alt="Cliente Lagosta Criativa" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-6.png" alt="Seu Quinto" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-7.png" alt="Tero" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
-                        <img src="/clients/client-8.png" alt="Coronel Picanha" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                {/* Faixa de clientes — carrossel automático girando para a
+                    DIREITA (pedido do Ciro, 23/08). CSS próprio em vez de
+                    classe arbitrária de Tailwind: neste repo classe arbitrária
+                    já deixou de gerar CSS em silêncio. O truque do loop: duas
+                    cópias idênticas lado a lado e translateX de -50% a 0 —
+                    quando a animação reinicia, a segunda cópia está exatamente
+                    onde a primeira começou. */}
+                <div className="mt-12 w-full max-w-4xl">
+                    <p className="text-sm font-semibold text-muted-foreground mb-4 text-center">CONFIRMADO POR GIGANTES DO ES</p>
+                    {/* Largura e shrink ficam no CSS próprio (não em w-max /
+                        shrink-0 do Tailwind): sem width máx. o track encolhe e
+                        as duas cópias se sobrepõem — visto na 1ª rodada. */}
+                    <style>{`
+                        @keyframes lagosta-marquee-direita {
+                            from { transform: translateX(-50%); }
+                            to { transform: translateX(0); }
+                        }
+                        .lagosta-marquee-track {
+                            width: max-content;
+                            /* o globals.css põe max-width em tudo (armadura
+                               anti-overflow) e capava o track no contêiner —
+                               aí o translateX(-50%) deixava de ser uma cópia
+                               exata e o loop pulava */
+                            max-width: none;
+                            animation: lagosta-marquee-direita 35s linear infinite;
+                        }
+                        .lagosta-marquee-copy { flex-shrink: 0; max-width: none; }
+                        .lagosta-marquee:hover .lagosta-marquee-track { animation-play-state: paused; }
+                        @media (prefers-reduced-motion: reduce) {
+                            .lagosta-marquee-track { animation: none; }
+                            .lagosta-marquee { overflow-x: auto; }
+                        }
+                    `}</style>
+                    <div className="lagosta-marquee overflow-hidden opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
+                        <div className="lagosta-marquee-track flex">
+                            {[0, 1].map((copia) => (
+                                <div key={copia} aria-hidden={copia === 1 || undefined} className="lagosta-marquee-copy flex items-center gap-6 md:gap-8 pr-6 md:pr-8">
+                                    {clientLogos.map((logo) => (
+                                        <img
+                                            key={logo.src}
+                                            src={logo.src}
+                                            alt={copia === 0 ? logo.alt : ''}
+                                            className="h-12 max-h-12 w-auto object-contain flex-shrink-0"
+                                        />
+                                    ))}
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>

@@ -2,17 +2,21 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowRight, Check, Camera, Video, Film, Share2, Users, Bot, Zap } from 'lucide-react';
+import { ArrowRight, Check, Camera, Video, Film, Share2, Users, Bot, Zap, Globe, Megaphone } from 'lucide-react';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 
 export function OfferSection() {
+    // As cinco frentes da solução completa. Preço só onde já existe tabela
+    // (audiovisual e gestão, do site de 22/07; IA, do plano vigente) — sites e
+    // tráfego não têm preço público e NÃO se inventa valor aqui: sites saem
+    // sob consulta e o tráfego é incluso na Gestão Completa.
     const categories = [
         {
             id: "audiovisual",
-            label: "Produção Audiovisual",
+            label: "Foto e Vídeo",
             description: "Conteúdo visual de alta qualidade para despertar desejo.",
             plans: [
                 {
@@ -79,7 +83,7 @@ export function OfferSection() {
                         "3 posts semanais no Feed",
                         "Sessão mensal de até 2 horas",
                         "Consultoria para Stories",
-                        "Acesso ao Studio Lagosta",
+                        "Planejamento semanal aprovado por você",
                         "Acesso ao banco de imagem"
                     ],
                     icon: Users,
@@ -107,26 +111,86 @@ export function OfferSection() {
             ]
         },
         {
-            id: "ai",
-            label: "Inteligência Artificial",
-            description: "Automação que atende e vende enquanto você dorme.",
+            id: "ai-crm",
+            label: "Atendimento com IA + CRM",
+            description: "O agente responde em segundos, o CRM organiza o funil e a sua equipe assume na hora certa.",
             plans: [
                 {
                     name: "AI Assistant",
                     price: "R$ 1.590",
                     period: "/mês",
-                    description: "Atendimento 24/7 treinado especificamente para seu negócio.",
+                    description: "Atendimento 24/7 treinado para o seu restaurante — com CRM e funil de reservas.",
                     features: [
+                        "Atendimento no WhatsApp e no Instagram, 24 horas",
                         "500 respostas por mês",
-                        "Atendimento via WhatsApp e Instagram",
-                        "Treinamento específico do seu cardápio",
-                        "Integração com Google Agenda",
-                        "Automações personalizadas"
+                        "CRM completo com funil de reservas — o pedido vira card sozinho",
+                        "Base de conhecimento própria: cardápio, horários e campanhas",
+                        "Aviso no Telegram para a equipe assumir a conversa na hora certa",
+                        "Relatório diário do movimento e alerta de conversa parada"
                     ],
                     icon: Bot,
                     highlight: true,
-                    popularLabel: "Inovação",
+                    popularLabel: "7 restaurantes no ar",
                     cta: "Contratar AI"
+                }
+            ],
+            // Prova de produto: painel e conversa REAIS (agosto/2026, dados de
+            // clientes finais borrados). É o que nenhum concorrente local mostra.
+            proof: [
+                {
+                    src: "/crm/crm-painel-ilha.webp",
+                    alt: "Painel de atendimento da Ilha do Caranguejo em agosto de 2026",
+                    caption: "Painel real — Ilha do Caranguejo, agosto/2026: 950+ mensagens, 96,4% das conversas respondidas."
+                },
+                {
+                    src: "/crm/crm-conversa-ilha.webp",
+                    alt: "Conversa real de cliente com o agente de IA, com dados borrados",
+                    caption: "Conversa real com o agente — a equipe pode assumir a qualquer momento."
+                }
+            ]
+        },
+        {
+            id: "sites",
+            label: "Sites e Cardápio Digital",
+            description: "Seu site, seu cardápio e seu canal de pedidos — integrados ao atendimento.",
+            plans: [
+                {
+                    name: "Site + Cardápio Digital",
+                    price: "Sob consulta",
+                    period: "",
+                    description: "Projeto sob medida, como os que já estão no ar para Empório Fonseca, Clericot Café e Cypra Brasil.",
+                    features: [
+                        "Cardápio digital que você atualiza em um clique",
+                        "Pedido fechado direto no WhatsApp",
+                        "Reserva que cai no agente de atendimento",
+                        "Design próprio da sua marca, não template pronto"
+                    ],
+                    icon: Globe,
+                    highlight: true,
+                    popularLabel: "Novidade",
+                    cta: "Quero meu site"
+                }
+            ]
+        },
+        {
+            id: "trafego",
+            label: "Tráfego Pago",
+            description: "Anúncio sem atendimento é dinheiro parado: a campanha começa treinando o agente que vai converter.",
+            plans: [
+                {
+                    name: "Tráfego Gerenciado",
+                    price: "Incluso",
+                    period: "na Gestão Completa",
+                    description: "Gestor de tráfego dedicado, trabalhando junto com o atendimento por IA.",
+                    features: [
+                        "Gestor de tráfego incluso, sem custo extra",
+                        "O agente de IA é treinado antes de a campanha ir ao ar",
+                        "Quem clica cai direto no atendimento, a qualquer hora",
+                        "Resultado medido em conversas e reservas no CRM, não só em cliques"
+                    ],
+                    icon: Megaphone,
+                    highlight: false,
+                    cta: "Falar sobre tráfego"
                 }
             ]
         }
@@ -234,6 +298,22 @@ export function OfferSection() {
                                     </div >
                                 ))}
                             </div >
+
+                            {'proof' in cat && Array.isArray(cat.proof) && (
+                                <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl mx-auto">
+                                    {cat.proof.map((shot, sIdx) => (
+                                        <figure key={sIdx} className="rounded-2xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+                                            <img
+                                                src={shot.src}
+                                                alt={shot.alt}
+                                                loading="lazy"
+                                                className="w-full h-auto object-cover"
+                                            />
+                                            <figcaption className="p-4 text-sm text-zinc-400">{shot.caption}</figcaption>
+                                        </figure>
+                                    ))}
+                                </div>
+                            )}
                         </TabsContent >
                     ))}
                 </Tabs >
