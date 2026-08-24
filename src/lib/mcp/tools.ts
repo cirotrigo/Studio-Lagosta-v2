@@ -839,11 +839,11 @@ export const MCP_TOOLS: McpTool[] = [
               referencias: {
                 type: 'array',
                 description:
-                  'Via "ia": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato e até 2 de estilo. Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo.',
+                  'Via "ia": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato, até 2 de estilo e até 1 "documento" (print colado TAL E QUAL depois da geração — avaliação do Google, cartaz, QR). Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo.',
                 items: {
                   type: 'object',
                   properties: {
-                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'], description: 'Papel da foto na geração.' },
+                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'], description: 'Papel da foto na geração.' },
                     driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
                     url: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
                     label: { type: 'string', description: 'Rótulo curto ("salão principal", "picanha na tábua").' },
@@ -999,11 +999,11 @@ export const MCP_TOOLS: McpTool[] = [
         referencias: {
           type: 'array',
           description:
-            'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
+            'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo + o print "documento", colado tal e qual). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
           items: {
             type: 'object',
             properties: {
-              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'] },
+              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
               driveFileId: { type: 'string' },
               url: { type: 'string' },
               label: { type: 'string' },
@@ -2386,7 +2386,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'gerar-imagem',
     description:
-      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, até ~4000 chars, zero texto na imagem), passe em `promptPronto` — ele é usado no lugar do redator automático. A validação é AVISO, não bloqueio: prompt fora da régua gera do mesmo jeito e a ressalva fica gravada. Escreva denso, mas NÃO corte as proibições para caber — são elas que seguram a identidade da marca.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-geracao. Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
+      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Há ainda "documento" (máx 1, só na trilha arte): um print/cartaz que entra na peça TAL E QUAL — colado por código DEPOIS da geração, com sombra de cartão, numa faixa central que o prompt reserva; use para print de avaliação do Google, cartaz ou QR, porque a IA redesenharia o texto se o recebesse. Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, até ~4000 chars, zero texto na imagem), passe em `promptPronto` — ele é usado no lugar do redator automático. A validação é AVISO, não bloqueio: prompt fora da régua gera do mesmo jeito e a ressalva fica gravada. Escreva denso, mas NÃO corte as proibições para caber — são elas que seguram a identidade da marca.\n\nCUSTO (a resposta traz `creditosCobrados`, sempre confira antes de repetir): trilha arte 25 créditos; trilha imagem 10 no modelo padrão, 15 no `nano-banana-pro` em 2K e 30 nele em 4K. Só peça 4K quando a margem para recorte for usada — ela custa o TRIPLO do padrão.\n\nDemora 1–3 minutos. A resposta volta na hora com geracaoId; acompanhe com ver-geracao. Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nA trilha imagem entrega a foto na resolução NATIVA do modelo (2K ≈ 1536x2752 no 9:16; 4K ≈ 3072x5504), porque ela é insumo e vai ser recortada depois. Só a trilha arte sai no tamanho exato de publicação.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2415,7 +2415,7 @@ export const MCP_TOOLS: McpTool[] = [
             properties: {
               role: {
                 type: 'string',
-                enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'],
+                enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'],
                 description: 'Papel da foto na geração.',
               },
               driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos / listar-fotos-da-pasta).' },
@@ -2560,7 +2560,7 @@ export const MCP_TOOLS: McpTool[] = [
           items: {
             type: 'object',
             properties: {
-              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'] },
+              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
               driveFileId: { type: 'string' },
               url: { type: 'string' },
               label: { type: 'string' },
@@ -2584,7 +2584,7 @@ export const MCP_TOOLS: McpTool[] = [
                 items: {
                   type: 'object',
                   properties: {
-                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'] },
+                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
                     driveFileId: { type: 'string' },
                     url: { type: 'string' },
                     label: { type: 'string' },

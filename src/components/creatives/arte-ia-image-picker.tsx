@@ -28,7 +28,7 @@ import { useAcervo } from '@/hooks/use-acervo'
 import { MiniaturaDeReferencia } from '@/components/creatives/miniatura-de-referencia'
 import { cn } from '@/lib/utils'
 
-export type PapelReferencia = 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'
+export type PapelReferencia = 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style' | 'documento'
 
 export interface ReferenciaSelecionada {
   /** Chave estável na lista: driveFileId ou a URL do upload. */
@@ -72,6 +72,13 @@ export const PAPEIS: PapelInfo[] = [
     titulo: 'Estilo',
     ajuda: 'Arte aprovada como referência de tom e luminosidade — o estilo vem daqui, não do tema do post.',
     max: 2,
+  },
+  {
+    valor: 'documento',
+    titulo: 'Print (tal e qual)',
+    ajuda:
+      'Entra na arte EXATAMENTE como está — colado por código depois da geração, com sombra de cartão. Para print de avaliação do Google, cartaz, QR. A IA nunca o redesenha (redesenhado, o texto sai reescrito).',
+    max: 1,
   },
 ]
 
@@ -163,9 +170,12 @@ export function ArteIaImagePicker({
   /** Escolhe o papel que ainda cabe, começando pelo sugerido. */
   const papelDisponivel = React.useCallback(
     (refs: ReferenciaSelecionada[]): PapelReferencia | null => {
+      // `documento` NUNCA é atribuído sozinho: é papel de intenção explícita
+      // (a pessoa clica no chip). No rodízio automático, a 7ª foto cairia
+      // nele em silêncio — e viraria um print colado que ninguém pediu.
       const ordem: PapelReferencia[] = [
         papelPadrao,
-        ...PAPEIS.map((p) => p.valor).filter((v) => v !== papelPadrao),
+        ...PAPEIS.map((p) => p.valor).filter((v) => v !== papelPadrao && v !== 'documento'),
       ]
       return ordem.find((p) => !bloqueioDoPapel(refs, p)) ?? null
     },

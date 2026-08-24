@@ -51,7 +51,7 @@ const slidesSchema = z
   .nullable()
 
 const referenciaSchema = z.object({
-  role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style']),
+  role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento']),
   driveFileId: z.string().max(200).optional(),
   url: z.string().max(2000).optional(),
   label: z.string().max(200).optional(),
@@ -67,7 +67,7 @@ const itemSchema = z.object({
   fotoUrl: z.string().max(2000).nullable().optional(),
   fotoDriveId: z.string().max(200).nullable().optional(),
   /** Lista com papel; os tetos (1 cena + 3 âncoras + 2 estilo) são do serviço. */
-  referencias: z.array(referenciaSchema).max(6).nullable().optional(),
+  referencias: z.array(referenciaSchema).max(7).nullable().optional(),
   formato: z.string().min(1).max(30),
   via: z.string().max(30).nullable().optional(),
   sourcePageId: z.string().max(64).nullable().optional(),

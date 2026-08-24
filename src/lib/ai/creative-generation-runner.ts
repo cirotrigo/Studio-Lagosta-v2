@@ -44,6 +44,7 @@ import {
   type LogoCorner,
   type LogoMode,
 } from '@/lib/ai/logo-compositor'
+import { comporDocumento, planejarCartao } from '@/lib/ai/print-compositor'
 import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
 import { checarProporcao, conferirFidelidadeDaCena, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
@@ -109,7 +110,12 @@ const FINALIZE_RESERVE_MS = 35_000
 const MIN_RETRY_BUDGET_MS = 45_000
 
 export interface ArtGenerationReference {
-  role: Exclude<ArtReferenceRole, 'brand-card' | 'logo' | 'series-guide' | 'style-guide'>
+  /**
+   * `documento` (23/08/2026) é o único papel que NUNCA chega ao modelo: o
+   * arquivo é colado por código depois da geração (`print-compositor.ts`) —
+   * print de avaliação, cartaz, QR. Só na trilha `arte`.
+   */
+  role: Exclude<ArtReferenceRole, 'brand-card' | 'logo' | 'series-guide' | 'style-guide'> | 'documento'
   url?: string
   driveFileId?: string
   label?: string
@@ -270,10 +276,35 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   try {
     const brand = await loadBrandContext(args.projectId)
 
+    // ── Documento a compor (nunca vai ao modelo) ──────────────────────────
+    //
+    // Baixado ANTES da chamada paga e fatal como o subject: uma peça de prova
+    // social sem o print sairia inútil em silêncio — melhor falhar aqui, de
+    // graça. Os bytes ficam CRUS (sem sanitize): o cartão é colado tal e qual,
+    // e reencodar um print só borraria o texto que ele existe para preservar.
+    const refDeDocumento = args.referencias.find((r) => r.role === 'documento') ?? null
+    let documentoParaCompor: Buffer | null = null
+    if (refDeDocumento && args.track === 'arte') {
+      try {
+        const source = refDeDocumento.driveFileId
+          ? await fetchImageSource(`/api/google-drive/image/${refDeDocumento.driveFileId}`)
+          : await fetchImageSource(refDeDocumento.url!)
+        documentoParaCompor = source.buffer
+      } catch (error) {
+        throw new Error(
+          `Falha ao baixar o documento a compor: ${error instanceof Error ? error.message : String(error)}`,
+        )
+      }
+    }
+
     // ── Referências do usuário (acervo/upload) ────────────────────────────
+    const refsParaOModelo = args.referencias.filter(
+      (r): r is ArtGenerationReference & { role: Exclude<ArtGenerationReference['role'], 'documento'> } =>
+        r.role !== 'documento',
+    )
     const loadedRefs: LoadedRef[] = []
     const downloads = await Promise.all(
-      args.referencias.map(async (ref): Promise<LoadedRef | null> => {
+      refsParaOModelo.map(async (ref): Promise<LoadedRef | null> => {
         try {
           const source = ref.driveFileId
             ? await fetchImageSource(`/api/google-drive/image/${ref.driveFileId}`)
@@ -595,6 +626,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         brand,
         refs: ordered.map((r) => ({ role: r.role, label: r.label })),
         instrucaoImagem: args.instrucaoImagem,
+        // A faixa é calculada com o MESMO planejador da composição — o pixel
+        // prometido ao modelo é o pixel onde o cartão vai pousar.
+        documentoFaixa: documentoParaCompor
+          ? await planejarCartao(documentoParaCompor, args.finalSize.width, args.finalSize.height, args.formato).then(
+              (p) => ({ topoPx: p.top, basePx: p.top + p.altura }),
+            )
+          : null,
         // A safe area sai em PIXEL da peça real, e só no story — ver
         // `regraDeSafeArea`.
         formato: args.formato,
@@ -921,6 +959,22 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       )
     }
 
+    // O DOCUMENTO real entra aqui — depois do resize e ANTES da logo, de
+    // propósito: o compositor da logo mede calma/contraste do quadro e,
+    // medindo já com o cartão colado, desvia dele sozinho. Falha aqui
+    // DERRUBA a arte (como o subject): uma peça de prova social sem o print
+    // entregue em silêncio é o pior desfecho — e o download já provou os
+    // bytes antes da chamada paga, então a falha aqui é rara.
+    let documentoInfo: Record<string, unknown> = {}
+    if (documentoParaCompor && args.track === 'arte') {
+      const comDoc = await comporDocumento(finalBuffer, documentoParaCompor, { formato: args.formato })
+      finalBuffer = comDoc.buffer
+      documentoInfo = { documentoComposto: true, documentoFaixa: comDoc.plano }
+      console.log(
+        `[arte-ia.bg] documento composto: ${comDoc.plano.largura}x${comDoc.plano.altura} em (${comDoc.plano.left},${comDoc.plano.top})`,
+      )
+    }
+
     // A logo REAL entra aqui, depois do resize — nunca desenhada pelo modelo.
     // Falha ao compor não derruba a arte: ela sai sem marca e o aviso fica
     // gravado, porque arte sem logo ainda é editável e uma logo inventada não.
@@ -1043,6 +1097,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       // Sobrescreve o alvo com o que de fato foi gravado (ver `saidaReal`).
       finalSize: `${saidaReal.width}x${saidaReal.height}`,
       ...qaInfo,
+      ...documentoInfo,
       ...logoInfo,
       ...marcaDoClienteInfo,
       ...textCheckInfo,
@@ -1074,7 +1129,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
      */
     await registrarUsoDeFoto({
       projectId: args.projectId,
+      // O documento não é foto do acervo em uso — marcar o print como "usada"
+      // o empurraria no rodízio de fotos, onde ele nem deveria concorrer.
       driveFileIds: args.referencias
+        .filter((r) => r.role !== 'documento')
         .map((r) => r.driveFileId)
         .filter((id): id is string => typeof id === 'string' && id.length > 0),
       origem: 'arte-ia',

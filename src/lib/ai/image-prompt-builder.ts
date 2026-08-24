@@ -425,6 +425,14 @@ export interface BuildArtePromptArgs {
    */
   instrucaoImagem?: string | null
   /**
+   * Faixa reservada para o CARTÃO DE DOCUMENTO (papel `documento`): o print
+   * que o sistema COLA por código depois da geração (`print-compositor.ts`).
+   * Em PIXEL da peça real — número confere, fração se interpreta (17/08).
+   * O arquivo nunca vai ao modelo: mandá-lo seria convidar o redesenho, que é
+   * o defeito que a composição por código existe para evitar.
+   */
+  documentoFaixa?: { topoPx: number; basePx: number } | null
+  /**
    * Bloco que proíbe desenhar a logo e reserva a área onde o sistema vai
    * compor o arquivo oficial (logo-compositor). Sem ele o modelo INVENTA a
    * logomarca — aconteceu com o By Rock em 09/08/2026.
@@ -842,6 +850,24 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     )
   }
   sections.push(fidelidade.join('\n'))
+
+  /**
+   * A faixa do cartão de documento vem logo depois da fidelidade, ANTES da
+   * copy: instrução de área precisa chegar antes de o modelo decidir onde
+   * pousar o texto. A proibição de desenhar o próprio cartão é a lição do
+   * `compor` da logo (10/08): sem ela o modelo desenha a versão dele da coisa
+   * que o sistema vai colar, e a peça sai com DUAS.
+   */
+  if (args.documentoFaixa) {
+    sections.push(
+      [
+        '[CARTÃO REAL — FAIXA RESERVADA]',
+        `Depois da geração, o sistema vai COLAR um cartão real (um documento fotografado, reproduzido tal e qual) sobre esta peça, centrado horizontalmente, ocupando a faixa entre ${args.documentoFaixa.topoPx}px e ${args.documentoFaixa.basePx}px da altura.`,
+        'Essa faixa fica CALMA: nenhum texto, nenhum ornamento e nenhum elemento gráfico dentro dela — só a fotografia de fundo. Toda a copy listada neste prompt se acomoda FORA da faixa, acima e/ou abaixo dela.',
+        'NÃO desenhe você mesmo nenhum cartão, print, captura de tela, balão de comentário, estrelas de avaliação ou moldura de depoimento: o cartão real entra depois, por código — um desenhado a mais duplicaria o elemento.',
+      ].join('\n'),
+    )
+  }
 
   /**
    * A caixa da copy é decidida aqui, na STRING, porque é o único lugar onde ela

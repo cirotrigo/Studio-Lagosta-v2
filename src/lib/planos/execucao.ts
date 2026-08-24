@@ -245,8 +245,12 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
 
 // ── Referências de imagem de um item ────────────────────────────────────────
 
-/** Os papéis que o USUÁRIO pode dar (brand-card, logo etc. são do sistema). */
-export const PAPEIS_DE_REFERENCIA = ['subject', 'anchor-ambient', 'anchor-dish', 'style'] as const
+/**
+ * Os papéis que o USUÁRIO pode dar (brand-card, logo etc. são do sistema).
+ * `documento` (23/08/2026): print colado TAL E QUAL depois da geração — nunca
+ * enviado ao modelo. Ver `print-compositor.ts`.
+ */
+export const PAPEIS_DE_REFERENCIA = ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] as const
 export type PapelDeReferencia = (typeof PAPEIS_DE_REFERENCIA)[number]
 
 /** A mesma forma que `startArtGeneration` recebe em `referencias[]`. */
@@ -263,9 +267,12 @@ export interface ReferenciaDoItem {
  * item, é o que faz a recusa acontecer de graça, e não dias depois na
  * execução paga.
  */
-export const TETOS_DE_REFERENCIA = { subject: 1, anchors: 3, style: 2 } as const
+export const TETOS_DE_REFERENCIA = { subject: 1, anchors: 3, style: 2, documento: 1 } as const
 export const MAX_REFERENCIAS_POR_ITEM =
-  TETOS_DE_REFERENCIA.subject + TETOS_DE_REFERENCIA.anchors + TETOS_DE_REFERENCIA.style
+  TETOS_DE_REFERENCIA.subject +
+  TETOS_DE_REFERENCIA.anchors +
+  TETOS_DE_REFERENCIA.style +
+  TETOS_DE_REFERENCIA.documento
 
 /**
  * Valida uma lista vinda de fora (tool, rota, UI). Devolve a lista normalizada
@@ -325,6 +332,9 @@ export function validarReferencias(bruto: unknown): ReferenciasValidadas {
   }
   if (porPapel('style') > TETOS_DE_REFERENCIA.style) {
     return { ok: false, referencias: [], motivo: `No máximo ${TETOS_DE_REFERENCIA.style} referências de estilo por item.` }
+  }
+  if (porPapel('documento') > TETOS_DE_REFERENCIA.documento) {
+    return { ok: false, referencias: [], motivo: 'Só 1 documento (print) por item.' }
   }
 
   return { ok: true, referencias }
@@ -443,6 +453,14 @@ export function decidirGeracao(item: {
     return {
       motivo:
         'Este item não tem texto nem tema — sem um dos dois não dá para dizer à IA o que produzir.',
+    }
+  }
+  // Print sem copy não tem trilha: a `imagem` é insumo e não recebe colagem
+  // (mesma recusa do serviço de geração, só que aqui ela é de graça).
+  if (referencias?.some((r) => r.role === 'documento')) {
+    return {
+      motivo:
+        'O print/documento só entra em peça com texto — escreva a copy do item, ou tire o print.',
     }
   }
   // A trilha `imagem` produz cena sem texto: não leva ajuste de foto nem

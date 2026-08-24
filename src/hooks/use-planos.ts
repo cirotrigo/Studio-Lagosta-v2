@@ -95,7 +95,7 @@ export function usePlanoAtivo(projectId: number) {
 
 /** Uma referência como o servidor a aceita (subconjunto do zod da rota). */
 export interface ReferenciaParaServidor {
-  role: 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'
+  role: 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style' | 'documento'
   driveFileId?: string
   url?: string
   label?: string

@@ -52,7 +52,7 @@ console.log('\nvalidarReferencias')
   ]).ok)
   ok('url E driveFileId juntos recusa', !validarReferencias([{ role: 'subject', driveFileId: 'a', url: 'https://x/b.jpg' }]).ok)
   ok('sem endereço nenhum recusa', !validarReferencias([{ role: 'subject' }]).ok)
-  ok('papel desconhecido recusa', !validarReferencias([{ role: 'documento', driveFileId: 'a' }]).ok)
+  ok('papel desconhecido recusa', !validarReferencias([{ role: 'logo-gigante', driveFileId: 'a' }]).ok)
   ok('ausente = lista vazia ok', validarReferencias(undefined).ok && validarReferencias(undefined).referencias.length === 0)
 }
 
@@ -112,6 +112,52 @@ console.log('\ndecidirGeracao com a lista')
 
   const antigo = decidirGeracao({ tema: 'promoção', copyProposta: ['H'], fotoDriveId: 'foto' })
   ok('item antigo sem lista mantém o caminho do espelho', !ehRecusa(antigo) && antigo.referencias === null)
+}
+
+console.log('\npapel documento (print colado tal e qual)')
+{
+  ok('2 documentos recusa', !validarReferencias([
+    { role: 'documento', driveFileId: 'a' },
+    { role: 'documento', driveFileId: 'b' },
+  ]).ok)
+  const comPrint = decidirGeracao({
+    tema: 'prova social',
+    copyProposta: ['Headline'],
+    referencias: [
+      { role: 'subject', driveFileId: 'salao' },
+      { role: 'documento', driveFileId: 'print-avaliacao' },
+    ],
+  })
+  ok(
+    'copy + cena + documento → trilha arte com o documento na lista',
+    !ehRecusa(comPrint) && comPrint.trilha === 'arte' && comPrint.referencias?.some((r) => r.role === 'documento') === true,
+  )
+  const semCopy = decidirGeracao({
+    tema: 'salão',
+    referencias: [
+      { role: 'subject', driveFileId: 'salao' },
+      { role: 'documento', driveFileId: 'print' },
+    ],
+  })
+  ok('documento SEM copy recusa (a trilha imagem é insumo)', ehRecusa(semCopy))
+}
+
+console.log('\nfaixa reservada no prompt')
+{
+  // Import tardio: o builder é pesado e só este bloco precisa dele.
+  const { buildArtePrompt } = require('../src/lib/ai/image-prompt-builder') as typeof import('../src/lib/ai/image-prompt-builder')
+  const prompt = buildArtePrompt({
+    copy: ['Headline'],
+    brand: null,
+    refs: [{ role: 'subject' }],
+    formato: 'story',
+    alturaPx: 1936,
+    documentoFaixa: { topoPx: 970, basePx: 1180 },
+  })
+  ok('o prompt reserva a faixa em pixel', prompt.includes('entre 970px e 1180px'))
+  ok('o prompt proíbe desenhar o cartão', prompt.includes('NÃO desenhe você mesmo nenhum cartão'))
+  const sem = buildArtePrompt({ copy: ['Headline'], brand: null, refs: [{ role: 'subject' }], formato: 'story', alturaPx: 1936 })
+  ok('sem documento o prompt não gasta a seção', !sem.includes('CARTÃO REAL'))
 }
 
 console.log(falhas === 0 ? '\nTudo certo.' : `\n${falhas} falha(s).`)

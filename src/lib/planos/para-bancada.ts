@@ -417,7 +417,12 @@ function referenciasDoServidor(
  */
 export function referenciasParaServidor(
   refs: BancadaItem['referencias'],
-): Array<{ role: 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'; driveFileId?: string; url?: string; label?: string }> {
+): Array<{
+  role: 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style' | 'documento'
+  driveFileId?: string
+  url?: string
+  label?: string
+}> {
   return (refs ?? [])
     .filter((r) => !(r.papel === 'style' && r.generationId))
     .filter((r) => r.driveFileId || r.url)

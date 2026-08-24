@@ -35,13 +35,13 @@ const patchSchema = z.object({
   referencias: z
     .array(
       z.object({
-        role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style']),
+        role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento']),
         driveFileId: z.string().max(200).optional(),
         url: z.string().max(2000).optional(),
         label: z.string().max(200).optional(),
       }),
     )
-    .max(6)
+    .max(7)
     .nullable()
     .optional(),
   formato: z.string().max(30).optional(),

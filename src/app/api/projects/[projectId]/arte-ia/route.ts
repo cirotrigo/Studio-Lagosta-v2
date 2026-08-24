@@ -22,7 +22,7 @@ export const maxDuration = 300
  */
 
 const refSchema = z.object({
-  role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style']),
+  role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento']),
   url: z.string().url().optional(),
   driveFileId: z.string().min(1).max(120).optional(),
   label: z.string().max(80).optional(),
@@ -41,7 +41,7 @@ const bodySchema = z.object({
   pedido: z.string().max(1200).optional(),
   copy: z.array(z.string().max(200)).max(12).optional(),
   formato: z.enum(['story', 'feed', 'quadrado']),
-  referencias: z.array(refSchema).max(6).optional().default([]),
+  referencias: z.array(refSchema).max(7).optional().default([]),
   instrucaoImagem: z.string().max(500).optional().nullable(),
   /** Co-branding: o cliente citado na peça (logo composta na arte). */
   marcaDoClienteProjectId: z.number().int().positive().optional().nullable(),
