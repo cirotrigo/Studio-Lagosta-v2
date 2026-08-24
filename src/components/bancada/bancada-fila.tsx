@@ -12,7 +12,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, CopyPlus, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate, BellRing } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, CopyPlus, Calendar, CalendarRange, Pencil, Play, RefreshCw, ExternalLink, Maximize2, AlertTriangle, LayoutTemplate, BellRing, Images } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -34,7 +34,7 @@ import {
 } from '@/hooks/use-planos'
 import { itemExecutavel } from '@/lib/planos/execucao'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
-import { formatarQuandoBR, ordenarPorDataDesc, situacaoParaExibir } from '@/lib/planos/para-bancada'
+import { formatarQuandoBR, ordenarPorDataDesc, referenciasParaServidor, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
 import {
   BancadaEscolhaDeModelo,
@@ -152,6 +152,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
         referencias: item.referencias.filter((r) => !(r.papel === 'style' && r.generationId)),
       }
       const cena = duplicado.referencias.find((r) => r.papel === 'subject')
+      const referencias = referenciasParaServidor(duplicado.referencias)
       anexarAoPlano.mutate(
         [
           {
@@ -160,6 +161,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
             copyProposta: [...item.copy],
             fotoDriveId: cena?.driveFileId ?? null,
             fotoUrl: cena?.url ?? null,
+            ...(referencias.length > 0 ? { referencias } : {}),
             formato: item.formato,
             via: item.via ?? null,
             escopo: item.escopo && item.escopo !== 'ROTINA' ? item.escopo.toLowerCase() : null,
@@ -271,6 +273,9 @@ export function BancadaFila({ projectId }: { projectId: number }) {
       })
       if (item.itemDePlanoId && item.planoId && itemEditavel(item.situacaoNoPlano ?? 'proposto')) {
         const cena = e.referencias.find((r) => r.papel === 'subject')
+        // A lista inteira viaja; o espelho fotoDriveId/fotoUrl vai junto para o
+        // caso de lista vazia (o serviço deriva o espelho da lista quando ela
+        // existe, então mandar os dois nunca diverge).
         patchDoPlano.mutate(
           {
             planoId: item.planoId,
@@ -279,6 +284,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
             legenda: e.legenda,
             fotoDriveId: cena?.driveFileId ?? null,
             fotoUrl: cena?.url ?? null,
+            referencias: referenciasParaServidor(e.referencias),
             direcao: e.pedido?.trim() || null,
             ajusteDaFoto: e.instrucaoImagem?.trim() || null,
           },
@@ -629,6 +635,18 @@ function Card({
         {!podeVer && item.status !== 'gerando' && capa && (
           <span className="absolute bottom-1 left-1 rounded bg-background/80 px-1.5 py-0.5 text-[10px]">
             📷 referência
+          </span>
+        )}
+        {/* O ícone minimalista de "tem mais de uma foto" (pedido de 23/08):
+            a capa só mostra a cena, e sem a marca ninguém sabia que o item
+            carregava âncoras/estilo junto. */}
+        {!ehCarrossel && item.referencias.length > 1 && (
+          <span
+            className="absolute right-1 top-1 flex items-center gap-0.5 rounded bg-background/80 px-1 py-0.5 text-[10px] font-medium"
+            title={`${item.referencias.length} fotos de referência nesta peça`}
+          >
+            <Images className="h-3 w-3" />
+            {item.referencias.length}
           </span>
         )}
         {podeVer && (

@@ -363,6 +363,7 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
     copyProposta: item.copyProposta,
     fotoUrl: item.fotoUrl,
     fotoDriveId: item.fotoDriveId,
+    referencias: item.referencias,
     direcao: item.direcao,
     ajusteDaFoto: item.ajusteDaFoto,
     clienteProjectId: item.clienteProjectId,
@@ -385,7 +386,9 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
     pedido: pedido.pedido || undefined,
     copy: pedido.copy.length > 0 ? pedido.copy : undefined,
     formato: (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story',
-    referencias: foto ? [{ role: pedido.papelDaFoto, ...foto }] : [],
+    // A lista do item (23/08+) vence o espelho de foto única — é ela que
+    // carrega âncoras e estilo além da cena.
+    referencias: pedido.referencias ?? (foto ? [{ role: pedido.papelDaFoto, ...foto }] : []),
     instrucaoImagem: pedido.instrucaoImagem,
     marcaDoClienteProjectId: pedido.marcaDoClienteProjectId,
     actorClerkId: input.actorClerkId,

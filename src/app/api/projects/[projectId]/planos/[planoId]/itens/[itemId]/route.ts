@@ -31,6 +31,19 @@ const patchSchema = z.object({
   legenda: z.string().max(2200).nullable().optional(),
   fotoUrl: z.string().max(2000).nullable().optional(),
   fotoDriveId: z.string().max(200).nullable().optional(),
+  /** Substitui a lista inteira; `[]` limpa lista e espelho. Tetos no serviço. */
+  referencias: z
+    .array(
+      z.object({
+        role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style']),
+        driveFileId: z.string().max(200).optional(),
+        url: z.string().max(2000).optional(),
+        label: z.string().max(200).optional(),
+      }),
+    )
+    .max(6)
+    .nullable()
+    .optional(),
   formato: z.string().max(30).optional(),
   via: z.string().max(30).nullable().optional(),
   sourcePageId: z.string().max(64).nullable().optional(),
@@ -60,6 +73,7 @@ const CAMPOS_DE_CONTEUDO = [
   'legenda',
   'fotoUrl',
   'fotoDriveId',
+  'referencias',
   'formato',
   'via',
   'sourcePageId',

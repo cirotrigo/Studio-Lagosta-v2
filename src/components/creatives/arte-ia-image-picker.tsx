@@ -25,6 +25,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useAprendizado } from '@/hooks/use-aprendizado'
 import { useAcervo } from '@/hooks/use-acervo'
+import { MiniaturaDeReferencia } from '@/components/creatives/miniatura-de-referencia'
 import { cn } from '@/lib/utils'
 
 export type PapelReferencia = 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'
@@ -231,6 +232,26 @@ export function ArteIaImagePicker({
   }
 
   const trocarPapel = (key: string, papel: PapelReferencia) => {
+    // Promover outra foto a CENA não esbarra no teto de 1: as duas TROCAM de
+    // papel — a cena atual é rebaixada para o papel que a promovida tinha. É o
+    // gesto de "trocar a cena" desde 23/08/2026; antes, o teto bloqueava o
+    // chip e a única saída era remover a cena e readicionar.
+    if (papel === 'subject') {
+      const cenaAtual = referencias.find((r) => r.papel === 'subject' && r.key !== key)
+      const promovida = referencias.find((r) => r.key === key)
+      if (cenaAtual && promovida) {
+        onChange(
+          referencias.map((r) =>
+            r.key === key
+              ? { ...r, papel: 'subject' }
+              : r.key === cenaAtual.key
+                ? { ...r, papel: promovida.papel }
+                : r,
+          ),
+        )
+        return
+      }
+    }
     const bloqueio = bloqueioDoPapel(referencias, papel, key)
     if (bloqueio) {
       toast({ title: 'Não dá para usar esse papel', description: bloqueio })
@@ -282,14 +303,7 @@ export function ArteIaImagePicker({
                   </span>
                 )}
                 <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-background">
-                  <Image
-                    src={ref.thumbUrl}
-                    alt={ref.label ?? 'Referência'}
-                    fill
-                    sizes="56px"
-                    className="object-cover"
-                    unoptimized
-                  />
+                  <MiniaturaDeReferencia thumbUrl={ref.thumbUrl} label={ref.label} sizes="56px" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
                   <p className="truncate text-xs text-muted-foreground">
@@ -299,7 +313,11 @@ export function ArteIaImagePicker({
                   <div className={cn('flex flex-wrap gap-1', modoSequencia && 'hidden')}>
                     {PAPEIS.map((p) => {
                       const ativo = ref.papel === p.valor
-                      const bloqueado = !ativo && !!bloqueioDoPapel(referencias, p.valor, ref.key)
+                      // O chip "cena" de outra foto nunca fica bloqueado: o
+                      // clique faz o SWAP de papéis (trocarPapel), que é o
+                      // gesto de trocar a cena desde 23/08/2026.
+                      const bloqueado =
+                        !ativo && p.valor !== 'subject' && !!bloqueioDoPapel(referencias, p.valor, ref.key)
                       return (
                         <button
                           key={p.valor}

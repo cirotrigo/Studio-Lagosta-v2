@@ -18,12 +18,17 @@
  * confirmaria a existência da linha.
  */
 
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { diaBRTDe, diasAteDomingoBRT } from './proposta-de-semana'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
+import {
+  cenaDasReferencias,
+  validarReferencias,
+  type ReferenciaDoItem,
+} from '@/lib/planos/execucao'
 import {
   itemEditavel,
   motivoDeNaoEditavel,
@@ -79,6 +84,12 @@ export interface ItemDePlanoInput {
   direcao?: string | null
   /** Ajuste autorizado na FOTO desta peça (`instrucaoImagem`). Nulo = foto intocada. */
   ajusteDaFoto?: string | null
+  /**
+   * Referências de imagem com papel (`[{ role, driveFileId?|url?, label? }]`).
+   * Validadas em runtime (`validarReferencias`); presentes, VENCEM
+   * `fotoUrl`/`fotoDriveId` — o espelho passa a ser derivado da cena da lista.
+   */
+  referencias?: unknown
   /** Co-branding: projeto do cliente CITADO, cuja logo oficial é composta na arte. */
   clienteProjectId?: number | null
   motivoDoSlot?: string | null
@@ -116,6 +127,8 @@ export interface PatchDeItem {
   sourcePageId?: string | null
   direcao?: string | null
   ajusteDaFoto?: string | null
+  /** Substitui a lista INTEIRA; `[]` limpa lista E espelho ("tirei as fotos"). */
+  referencias?: unknown
   clienteProjectId?: number | null
   motivoDoSlot?: string | null
   escopo?: string | EscopoAprendizado | null
@@ -320,6 +333,19 @@ function clienteProjectIdValido(valor: unknown): number | null {
   return typeof n === 'number' && Number.isInteger(n) && n > 0 ? n : null
 }
 
+/**
+ * Valida a lista de referências vinda de fora. `undefined` = campo ausente
+ * (nada a fazer); lista vazia devolve `[]` (quem chama decide se limpa).
+ */
+function normalizarReferencias(bruto: unknown, onde: string): ReferenciaDoItem[] | null {
+  if (bruto === undefined || bruto === null) return null
+  const resultado = validarReferencias(bruto)
+  if (!resultado.ok) {
+    throw new CreativeError('REFERENCIAS_INVALIDAS', `Referências do ${onde}: ${resultado.motivo}`, 400)
+  }
+  return resultado.referencias
+}
+
 function normalizarItem(
   entrada: ItemDePlanoInput,
   indice: number,
@@ -381,14 +407,21 @@ function normalizarItem(
     .map((bloco) => bloco.trim())
     .filter(Boolean)
 
+  // Referências com papel: presentes, elas VENCEM os campos soltos — o espelho
+  // fotoUrl/fotoDriveId passa a ser a CENA da lista, e é dele que a capa do
+  // card e os itens de leitura antigos continuam vivendo.
+  const referencias = normalizarReferencias(entrada.referencias, `item ${posicao}`)
+  const cena = referencias ? cenaDasReferencias(referencias) : null
+
   return {
     ordem: Number.isInteger(entrada.ordem) ? (entrada.ordem as number) : indice,
     quando,
     tema: entrada.tema?.trim() || null,
     copyProposta: copy,
     legenda: entrada.legenda?.trim() || null,
-    fotoUrl: entrada.fotoUrl?.trim() || null,
-    fotoDriveId: entrada.fotoDriveId?.trim() || null,
+    fotoUrl: referencias ? (cena?.url ?? null) : entrada.fotoUrl?.trim() || null,
+    fotoDriveId: referencias ? (cena?.driveFileId ?? null) : entrada.fotoDriveId?.trim() || null,
+    ...(referencias ? { referencias: referencias as unknown as Prisma.InputJsonValue } : {}),
     formato: formato as FormatoDoItem,
     via,
     sourcePageId: entrada.sourcePageId?.trim() || null,
@@ -634,6 +667,22 @@ export async function atualizarItem(input: {
   if (patch.legenda !== undefined) data.legenda = patch.legenda?.trim() || null
   if (patch.fotoUrl !== undefined) data.fotoUrl = patch.fotoUrl?.trim() || null
   if (patch.fotoDriveId !== undefined) data.fotoDriveId = patch.fotoDriveId?.trim() || null
+  if (patch.referencias !== undefined) {
+    // Substituição da lista INTEIRA, como slides. O espelho acompanha: a capa
+    // do card e todo leitor antigo continuam lendo fotoUrl/fotoDriveId, então
+    // deixá-los para trás mostraria a foto que a pessoa acabou de trocar.
+    const lista = normalizarReferencias(patch.referencias, 'item') ?? []
+    if (lista.length === 0) {
+      data.referencias = Prisma.DbNull
+      data.fotoUrl = null
+      data.fotoDriveId = null
+    } else {
+      const cena = cenaDasReferencias(lista)
+      data.referencias = lista as unknown as Prisma.InputJsonValue
+      data.fotoUrl = cena?.url ?? null
+      data.fotoDriveId = cena?.driveFileId ?? null
+    }
+  }
   if (patch.sourcePageId !== undefined) data.sourcePageId = patch.sourcePageId?.trim() || null
   if (patch.direcao !== undefined) data.direcao = patch.direcao?.trim() || null
   if (patch.ajusteDaFoto !== undefined) data.ajusteDaFoto = patch.ajusteDaFoto?.trim() || null

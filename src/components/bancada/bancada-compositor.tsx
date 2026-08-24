@@ -33,6 +33,7 @@ import {
   type PapelReferencia,
   type ReferenciaSelecionada,
 } from '@/components/creatives/arte-ia-image-picker'
+import { MiniaturaDeReferencia } from '@/components/creatives/miniatura-de-referencia'
 
 /** Rótulo curto do papel para a etiqueta da miniatura ("Prato", "Ambiente"…). */
 function rotuloDoPapel(papel: PapelReferencia): string {
@@ -47,7 +48,7 @@ import {
 import { ESCOPOS, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { useAprendizado } from '@/hooks/use-aprendizado'
 import { useAnexarItensAoPlano } from '@/hooks/use-planos'
-import { slidesParaServidor } from '@/lib/planos/para-bancada'
+import { referenciasParaServidor, slidesParaServidor } from '@/lib/planos/para-bancada'
 import { useToast } from '@/hooks/use-toast'
 import { useRevisaoOrtografica } from '@/hooks/use-revisao-ortografica'
 import { aplicarSugestao, type Suspeita } from '@/lib/ai/revisao-ortografica-contrato'
@@ -394,6 +395,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
      * não sincronizou — igual antes, só que dito.
      */
     const cena = referencias.find((r) => r.papel === 'subject')
+    const referenciasDoItem = referenciasParaServidor(referencias)
     anexar.mutate(
       [
         {
@@ -402,6 +404,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
           copyProposta: blocos,
           fotoDriveId: cena?.driveFileId ?? null,
           fotoUrl: cena?.url ?? null,
+          ...(referenciasDoItem.length > 0 ? { referencias: referenciasDoItem } : {}),
           formato,
           via: 'ia',
           motivoDoSlot: quandoManual ? null : (motivo ?? null),
@@ -545,14 +548,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
                 className="group relative h-16 w-16 overflow-hidden rounded-md border border-border/60 bg-muted/30"
                 title={ref.label ?? 'Foto escolhida'}
               >
-                <Image
-                  src={ref.thumbUrl}
-                  alt={ref.label ?? 'Foto escolhida'}
-                  fill
-                  sizes="64px"
-                  className="object-cover"
-                  unoptimized
-                />
+                <MiniaturaDeReferencia thumbUrl={ref.thumbUrl} label={ref.label} sizes="64px" />
                 <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-center text-[9px] leading-4 text-white">
                   {ehCarrossel ? (indice === 0 ? 'capa' : `slide ${indice + 1}`) : rotuloDoPapel(ref.papel)}
                 </span>

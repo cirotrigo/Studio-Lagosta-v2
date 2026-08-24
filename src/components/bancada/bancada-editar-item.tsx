@@ -52,28 +52,17 @@ export interface EdicaoDoItem {
 }
 
 /**
- * No modal de edição, escolher uma foto TROCA A CENA — nunca acrescenta.
+ * Desde 23/08/2026 o modal ACEITA VÁRIAS fotos, como o compositor — o Ciro
+ * pediu a peça com cena + âncoras + estilo, e o `trocarCena` que vivia aqui
+ * (cada foto nova substituía a anterior, conserto de 11/08 para a "âncora
+ * silenciosa") impedia exatamente isso.
  *
- * O seletor compartilhado encaixa a foto nova no primeiro papel LIVRE: com a
- * cena ocupada (teto de 1), o clique virava uma âncora silenciosa. A pessoa
- * achava que tinha trocado, o salvar lia a cena — ainda a foto antiga — e
- * persistia a antiga. Foi exatamente assim que "a equipe não consegue alterar
- * a foto" em 11/08/2026: o gesto de troca não existia, só o de acréscimo.
- *
- * A regra: foto ADICIONADA assume a cena; a cena anterior sai; âncoras e
- * estilo que já estavam ficam. Remoção e toggle continuam os do seletor.
+ * O gesto de TROCAR a cena não se perdeu — mudou de lugar: o chip "cena" da
+ * foto nova faz o swap de papéis no próprio seletor (a promovida vira cena, a
+ * antiga assume o papel dela). E o acréscimo deixou de ser silencioso porque a
+ * lista de selecionadas mostra cada foto com o papel, a prévia no hover e o
+ * clique que amplia.
  */
-export function trocarCena(
-  anteriores: ReferenciaSelecionada[],
-  novas: ReferenciaSelecionada[],
-): ReferenciaSelecionada[] {
-  const adicionada = novas.find((n) => !anteriores.some((r) => r.key === n.key))
-  if (!adicionada) return novas
-  return [
-    { ...adicionada, papel: 'subject' },
-    ...novas.filter((r) => r.key !== adicionada.key && r.papel !== 'subject'),
-  ]
-}
 
 export function BancadaEditarItem({
   item,
@@ -184,11 +173,11 @@ export function BancadaEditarItem({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Foto (escolher outra TROCA a atual)</Label>
+            <Label>Fotos da peça (a 1ª é a cena; para trocar a cena, toque no chip &quot;cena&quot; de outra foto)</Label>
             <ArteIaImagePicker
               projectId={item.projectId}
               referencias={referencias}
-              onChange={(novas) => setReferencias(trocarCena(referencias, novas))}
+              onChange={setReferencias}
               alturaDaGrade="38dvh"
             />
           </div>

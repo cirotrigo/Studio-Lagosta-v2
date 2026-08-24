@@ -93,6 +93,14 @@ export function usePlanoAtivo(projectId: number) {
 
 // ── Edição ──────────────────────────────────────────────────────────────────
 
+/** Uma referência como o servidor a aceita (subconjunto do zod da rota). */
+export interface ReferenciaParaServidor {
+  role: 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'
+  driveFileId?: string
+  url?: string
+  label?: string
+}
+
 export interface PatchDeItemDoPlano {
   planoId: string
   itemId: string
@@ -102,6 +110,8 @@ export interface PatchDeItemDoPlano {
   legenda?: string | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
+  /** Substitui a lista inteira de fotos da peça; `[]` limpa lista e espelho. */
+  referencias?: ReferenciaParaServidor[] | null
   formato?: string
   via?: ViaDoItem
   /** O modelo a seguir na via template. `null` volta para a rotação. */
@@ -145,6 +155,8 @@ export interface ItemParaAnexar {
   legenda?: string | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
+  /** As fotos da peça com papel — presentes, vencem fotoUrl/fotoDriveId. */
+  referencias?: ReferenciaParaServidor[] | null
   formato: string
   via?: string | null
   direcao?: string | null

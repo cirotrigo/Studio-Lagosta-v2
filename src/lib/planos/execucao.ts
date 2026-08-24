@@ -243,6 +243,117 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
   return { slotValues, ocultar, avisos }
 }
 
+// ── Referências de imagem de um item ────────────────────────────────────────
+
+/** Os papéis que o USUÁRIO pode dar (brand-card, logo etc. são do sistema). */
+export const PAPEIS_DE_REFERENCIA = ['subject', 'anchor-ambient', 'anchor-dish', 'style'] as const
+export type PapelDeReferencia = (typeof PAPEIS_DE_REFERENCIA)[number]
+
+/** A mesma forma que `startArtGeneration` recebe em `referencias[]`. */
+export interface ReferenciaDoItem {
+  role: PapelDeReferencia
+  driveFileId?: string
+  url?: string
+  label?: string
+}
+
+/**
+ * Tetos por papel — os MESMOS de `startArtGeneration` (1 prato, 3 âncoras,
+ * 2 estilo; "refs demais causam deriva visual"). Validar aqui, na criação do
+ * item, é o que faz a recusa acontecer de graça, e não dias depois na
+ * execução paga.
+ */
+export const TETOS_DE_REFERENCIA = { subject: 1, anchors: 3, style: 2 } as const
+export const MAX_REFERENCIAS_POR_ITEM =
+  TETOS_DE_REFERENCIA.subject + TETOS_DE_REFERENCIA.anchors + TETOS_DE_REFERENCIA.style
+
+/**
+ * Valida uma lista vinda de fora (tool, rota, UI). Devolve a lista normalizada
+ * ou o motivo da recusa — quem chama decide o formato do erro (o serviço
+ * embrulha em CreativeError; este módulo é puro e não conhece HTTP).
+ */
+export interface ReferenciasValidadas {
+  ok: boolean
+  referencias: ReferenciaDoItem[]
+  /** Presente quando `ok` é false — sem união discriminada, que este tsconfig (`strict: false`) não estreita. */
+  motivo?: string
+}
+
+export function validarReferencias(bruto: unknown): ReferenciasValidadas {
+  if (bruto === null || bruto === undefined) return { ok: true, referencias: [] }
+  if (!Array.isArray(bruto)) return { ok: false, referencias: [], motivo: 'As referências precisam ser uma lista.' }
+  if (bruto.length > MAX_REFERENCIAS_POR_ITEM) {
+    return { ok: false, referencias: [], motivo: `No máximo ${MAX_REFERENCIAS_POR_ITEM} referências por item (1 cena + 3 âncoras + 2 estilo).` }
+  }
+
+  const referencias: ReferenciaDoItem[] = []
+  for (const [i, item] of bruto.entries()) {
+    if (typeof item !== 'object' || item === null) {
+      return { ok: false, referencias: [], motivo: `A referência ${i + 1} não tem forma de referência.` }
+    }
+    const r = item as Record<string, unknown>
+    const role = typeof r.role === 'string' ? (r.role.trim() as PapelDeReferencia) : null
+    if (!role || !PAPEIS_DE_REFERENCIA.includes(role)) {
+      return {
+        ok: false,
+        referencias: [],
+        motivo: `Papel desconhecido na referência ${i + 1}: "${String(r.role ?? '')}". Use subject, anchor-ambient, anchor-dish ou style.`,
+      }
+    }
+    const driveFileId = typeof r.driveFileId === 'string' ? r.driveFileId.trim() : ''
+    const url = typeof r.url === 'string' ? r.url.trim() : ''
+    // OU/OU, como no serviço de geração: as duas juntas seriam ambíguas e
+    // nenhuma das duas é referência de nada.
+    if ((driveFileId.length > 0) === (url.length > 0)) {
+      return { ok: false, referencias: [], motivo: `A referência ${i + 1} leva OU driveFileId OU url — exatamente um dos dois.` }
+    }
+    const label = typeof r.label === 'string' && r.label.trim() ? r.label.trim().slice(0, 200) : undefined
+    referencias.push({
+      role,
+      ...(driveFileId ? { driveFileId } : {}),
+      ...(url ? { url } : {}),
+      ...(label ? { label } : {}),
+    })
+  }
+
+  const porPapel = (p: PapelDeReferencia) => referencias.filter((r) => r.role === p).length
+  if (porPapel('subject') > TETOS_DE_REFERENCIA.subject) {
+    return { ok: false, referencias: [], motivo: 'Só 1 foto de cena (subject) por item.' }
+  }
+  if (porPapel('anchor-ambient') + porPapel('anchor-dish') > TETOS_DE_REFERENCIA.anchors) {
+    return { ok: false, referencias: [], motivo: `No máximo ${TETOS_DE_REFERENCIA.anchors} fotos-âncora por item.` }
+  }
+  if (porPapel('style') > TETOS_DE_REFERENCIA.style) {
+    return { ok: false, referencias: [], motivo: `No máximo ${TETOS_DE_REFERENCIA.style} referências de estilo por item.` }
+  }
+
+  return { ok: true, referencias }
+}
+
+/**
+ * Lê a coluna Json do banco. DEFENSIVO por contrato (padrão `page-layers`):
+ * linha antiga sem coluna, lixo gravado por caminho futuro — tudo vira lista
+ * vazia, nunca erro, porque quem chama está no meio de uma execução paga.
+ * A entrada que ainda não existia é filtrada item a item, não descartada em
+ * bloco: uma referência estragada não pode sumir com as outras.
+ */
+export function lerReferenciasDoItem(json: unknown): ReferenciaDoItem[] {
+  if (!Array.isArray(json)) return []
+  const resultado = validarReferencias(json)
+  if (resultado.ok) return resultado.referencias
+  const umaAUma: ReferenciaDoItem[] = []
+  for (const item of json) {
+    const r = validarReferencias([item])
+    if (r.ok && r.referencias.length > 0) umaAUma.push(r.referencias[0])
+  }
+  return umaAUma
+}
+
+/** A CENA da lista — é ela que vira o espelho `fotoUrl`/`fotoDriveId`. */
+export function cenaDasReferencias(referencias: ReferenciaDoItem[]): ReferenciaDoItem | null {
+  return referencias.find((r) => r.role === 'subject') ?? referencias[0] ?? null
+}
+
 // ── A trilha de geração de um item de IA ────────────────────────────────────
 
 export type TrilhaDeGeracao = 'arte' | 'imagem'
@@ -254,6 +365,13 @@ export interface PedidoDeGeracao {
   copy: string[]
   /** Papel da foto do item, quando ela existe. */
   papelDaFoto: 'subject' | 'anchor-ambient'
+  /**
+   * A lista completa de referências do item, quando ele tem uma. Presente,
+   * ela VENCE o par espelho (`papelDaFoto` + foto única) — o executor manda a
+   * lista inteira para a geração. `null` = item anterior à coluna, caminho
+   * antigo.
+   */
+  referencias: ReferenciaDoItem[] | null
   /** Ajuste autorizado na foto (`instrucaoImagem`); nulo = foto intocada. */
   instrucaoImagem: string | null
   /** Cliente citado na peça — a logo dele é composta na arte (co-branding). */
@@ -281,6 +399,8 @@ export function decidirGeracao(item: {
   copyProposta?: string[] | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
+  /** A coluna Json do item, crua — é lida aqui com `lerReferenciasDoItem`. */
+  referencias?: unknown
   direcao?: string | null
   ajusteDaFoto?: string | null
   clienteProjectId?: number | null
@@ -301,16 +421,22 @@ export function decidirGeracao(item: {
     item.clienteProjectId > 0
       ? item.clienteProjectId
       : null
+  const lista = lerReferenciasDoItem(item.referencias)
+  const referencias = lista.length > 0 ? lista : null
   const temFoto = !!(item.fotoUrl?.trim() || item.fotoDriveId?.trim())
+  // Com lista, a cena tem de estar NELA — o espelho é derivado dela e não
+  // pode salvá-la de si mesma (lista só de âncoras + espelho antigo criaria
+  // uma cena que a pessoa acabou de tirar).
+  const temCena = referencias ? referencias.some((r) => r.role === 'subject') : temFoto
 
   if (copy.length > 0) {
-    if (!temFoto) {
+    if (!temCena) {
       return {
         motivo:
           'A arte por IA com texto precisa de uma foto real do cliente como cena — escolha a foto do item antes de produzir.',
       }
     }
-    return { trilha: 'arte', pedido, copy, papelDaFoto: 'subject', instrucaoImagem, marcaDoClienteProjectId }
+    return { trilha: 'arte', pedido, copy, papelDaFoto: 'subject', referencias, instrucaoImagem, marcaDoClienteProjectId }
   }
 
   if (!pedido) {
@@ -320,12 +446,16 @@ export function decidirGeracao(item: {
     }
   }
   // A trilha `imagem` produz cena sem texto: não leva ajuste de foto nem
-  // logomarca — ela É a fotografia.
+  // logomarca — ela É a fotografia. A cena escolhida vira âncora de ambiente
+  // (o papel que a trilha aceita como "reproduza este LUGAR").
   return {
     trilha: 'imagem',
     pedido,
     copy: [],
     papelDaFoto: 'anchor-ambient',
+    referencias: referencias
+      ? referencias.map((r) => (r.role === 'subject' ? { ...r, role: 'anchor-ambient' as const } : r))
+      : null,
     instrucaoImagem: null,
     marcaDoClienteProjectId: null,
   }

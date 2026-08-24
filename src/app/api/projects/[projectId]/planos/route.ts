@@ -50,6 +50,13 @@ const slidesSchema = z
   .object({ groupId: z.string().max(64).nullable().optional(), lista: z.array(slideSchema).min(1).max(10) })
   .nullable()
 
+const referenciaSchema = z.object({
+  role: z.enum(['subject', 'anchor-ambient', 'anchor-dish', 'style']),
+  driveFileId: z.string().max(200).optional(),
+  url: z.string().max(2000).optional(),
+  label: z.string().max(200).optional(),
+})
+
 const itemSchema = z.object({
   ordem: z.number().int().min(0).max(999).optional(),
   /** "YYYY-MM-DD HH:mm" em BRT, ou ISO com fuso. Nulo = ainda a decidir. */
@@ -59,6 +66,8 @@ const itemSchema = z.object({
   legenda: z.string().max(2200).nullable().optional(),
   fotoUrl: z.string().max(2000).nullable().optional(),
   fotoDriveId: z.string().max(200).nullable().optional(),
+  /** Lista com papel; os tetos (1 cena + 3 âncoras + 2 estilo) são do serviço. */
+  referencias: z.array(referenciaSchema).max(6).nullable().optional(),
   formato: z.string().min(1).max(30),
   via: z.string().max(30).nullable().optional(),
   sourcePageId: z.string().max(64).nullable().optional(),

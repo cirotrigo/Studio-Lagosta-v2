@@ -424,6 +424,12 @@ model ItemDePlano {
   /// Ajuste autorizado na FOTO, só desta peça (`instrucaoImagem`): sem ele a
   /// foto vai intocada, que é o padrão da casa.
   ajusteDaFoto String?
+  /// Referências de imagem com papel (`[{ role, driveFileId?, url?, label? }]`),
+  /// as mesmas que `startArtGeneration` recebe. Nulo = só a foto espelho
+  /// (`fotoUrl`/`fotoDriveId`), que continua existindo como capa do card e
+  /// como compatibilidade com itens anteriores a 23/08/2026. Quando a lista
+  /// existe, ela VENCE e o espelho é derivado dela (a cena).
+  referencias Json?
   /// Co-branding: o cliente CITADO na peça (projeto do Studio), cuja logomarca
   /// oficial é composta na arte. É como a Lagosta Criativa mostra o trabalho
   /// feito para um cliente sem esconder de quem é. Sem FK, como `campaignId`.

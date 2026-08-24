@@ -25,6 +25,7 @@
  */
 
 import type { BancadaItem, BancadaStatus } from '@/stores/bancada-store'
+import { lerReferenciasDoItem } from '@/lib/planos/execucao'
 import { normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import {
   normalizarFormato,
@@ -66,6 +67,8 @@ export interface ItemDePlanoDoServidor {
   direcao?: string | null
   /** Ajuste autorizado na foto (coluna desde 23/08/2026). */
   ajusteDaFoto?: string | null
+  /** Referências com papel (coluna Json desde 23/08/2026). Lida defensivamente. */
+  referencias?: unknown
   /** Cliente citado na peça — a logo dele é composta na arte. */
   clienteProjectId?: number | null
   /** Nome do cliente citado, derivado por `lerPlano` (não é coluna). */
@@ -369,6 +372,62 @@ function situacaoDoPlanoNaBancada(status: StatusDoItem): BancadaStatus {
  * duas situações de verdade — adiantar o acerto de `pronto` sem arte faria a
  * régua comparar `gerando` onde o servidor disse `pronto`.
  */
+/**
+ * As referências do card, vindas do servidor.
+ *
+ * A lista completa (coluna de 23/08/2026) vence; sem ela, a foto espelho vira
+ * a cena — que é o comportamento que os itens antigos sempre tiveram. A
+ * miniatura segue a regra da capa: foto do acervo não tem URL própria, então
+ * `driveFileId` passa por `/api/drive/thumbnail/` (a lição dos 5 cards sem
+ * imagem de 11/08).
+ */
+function referenciasDoServidor(
+  bruto: unknown,
+  espelho: { foto: string | null; driveId: string | null; tema: string | null; thumbUrl: string },
+): BancadaItem['referencias'] {
+  const lista = lerReferenciasDoItem(bruto)
+  if (lista.length > 0) {
+    return lista.map((r) => ({
+      papel: r.role,
+      ...(r.driveFileId ? { driveFileId: r.driveFileId } : {}),
+      ...(r.url ? { url: r.url } : {}),
+      ...(r.label ? { label: r.label } : {}),
+      thumbUrl: r.url ?? (r.driveFileId ? `/api/drive/thumbnail/${r.driveFileId}` : ''),
+    }))
+  }
+  if (!espelho.foto && !espelho.driveId) return []
+  return [
+    {
+      papel: 'subject',
+      ...(espelho.driveId ? { driveFileId: espelho.driveId } : {}),
+      ...(espelho.foto ? { url: espelho.foto } : {}),
+      ...(espelho.tema ? { label: espelho.tema } : {}),
+      thumbUrl: espelho.thumbUrl,
+    },
+  ]
+}
+
+/**
+ * O caminho DE VOLTA: as referências do card no formato que a rota do plano
+ * aceita. A arte de referência estrelada (`style` + `generationId`) fica de
+ * fora de propósito — ela é escolha do NAVEGADOR (13/08) e a coluna do plano
+ * só guarda foto de acervo/upload. Quando a mesma foto carrega os dois
+ * endereços, o `driveFileId` vence (é o que sobrevive à troca de host do
+ * Blob) — a rota exige exatamente um.
+ */
+export function referenciasParaServidor(
+  refs: BancadaItem['referencias'],
+): Array<{ role: 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'; driveFileId?: string; url?: string; label?: string }> {
+  return (refs ?? [])
+    .filter((r) => !(r.papel === 'style' && r.generationId))
+    .filter((r) => r.driveFileId || r.url)
+    .map((r) => ({
+      role: r.papel,
+      ...(r.driveFileId ? { driveFileId: r.driveFileId } : r.url ? { url: r.url } : {}),
+      ...(r.label ? { label: r.label } : {}),
+    }))
+}
+
 export function paraItemDaBancada(
   doServidor: ItemDePlanoDoServidor,
   plano: PlanoDoServidor,
@@ -431,18 +490,7 @@ export function paraItemDaBancada(
       typeof doServidor.clienteProjectId === 'number' && doServidor.clienteProjectId > 0
         ? { projectId: doServidor.clienteProjectId, nome: doServidor.clienteCitadoNome?.trim() || null }
         : null,
-    referencias:
-      foto || driveId
-        ? [
-            {
-              papel: 'subject',
-              ...(driveId ? { driveFileId: driveId } : {}),
-              ...(foto ? { url: foto } : {}),
-              ...(tema ? { label: tema } : {}),
-              thumbUrl,
-            },
-          ]
-        : [],
+    referencias: referenciasDoServidor(doServidor.referencias, { foto, driveId, tema, thumbUrl }),
     quando: paraQuandoBRT(doServidor.quando),
     escopo,
     motivoDoSlot: doServidor.motivoDoSlot?.trim() || null,

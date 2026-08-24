@@ -834,7 +834,23 @@ export const MCP_TOOLS: McpTool[] = [
               },
               ajusteDaFoto: {
                 type: 'string',
-                description: 'Via "ia": ajuste autorizado na FOTO desta peça (ex.: "escurecer o fundo atrás do texto"). Sem isto a foto vai intocada, que é o padrão.',
+                description: 'Via "ia": ajuste autorizado na FOTO desta peça (ex.: "escurecer o fundo atrás do texto"). Sem isto a foto vai intocada, que é o padrão. ⚠️ Presente, a geração sai no tier caro e lento — dirigir a composição é papel da direção, não deste campo.',
+              },
+              referencias: {
+                type: 'array',
+                description:
+                  'Via "ia": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato e até 2 de estilo. Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo.',
+                items: {
+                  type: 'object',
+                  properties: {
+                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'], description: 'Papel da foto na geração.' },
+                    driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
+                    url: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
+                    label: { type: 'string', description: 'Rótulo curto ("salão principal", "picanha na tábua").' },
+                  },
+                  required: ['role'],
+                  additionalProperties: false,
+                },
               },
               clienteCitadoId: {
                 type: 'number',
@@ -886,6 +902,7 @@ export const MCP_TOOLS: McpTool[] = [
             sourcePageId: typeof i.modeloId === 'string' ? i.modeloId : null,
             direcao: typeof i.direcao === 'string' ? i.direcao : null,
             ajusteDaFoto: typeof i.ajusteDaFoto === 'string' ? i.ajusteDaFoto : null,
+            ...(Array.isArray(i.referencias) ? { referencias: i.referencias } : {}),
             clienteProjectId: typeof i.clienteCitadoId === 'number' ? i.clienteCitadoId : null,
             motivoDoSlot: typeof i.motivoDoSlot === 'string' ? i.motivoDoSlot : null,
             escopo: typeof i.escopo === 'string' ? i.escopo : null,
@@ -979,6 +996,22 @@ export const MCP_TOOLS: McpTool[] = [
         legenda: { type: 'string', description: 'Nova legenda.' },
         fotoDriveId: { type: 'string', description: 'Outra foto do acervo.' },
         fotoUrl: { type: 'string', description: 'Outra imagem já no Studio.' },
+        referencias: {
+          type: 'array',
+          description:
+            'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
+          items: {
+            type: 'object',
+            properties: {
+              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'] },
+              driveFileId: { type: 'string' },
+              url: { type: 'string' },
+              label: { type: 'string' },
+            },
+            required: ['role'],
+            additionalProperties: false,
+          },
+        },
         formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Novo formato.' },
         via: { type: 'string', enum: ['template', 'ia'], description: 'Troca a via de criação da arte.' },
         modeloId: { type: 'string', description: 'Outro modelo do cliente (de escolher-modelo).' },
@@ -1017,6 +1050,7 @@ export const MCP_TOOLS: McpTool[] = [
           ...(typeof args.legenda === 'string' ? { legenda: args.legenda } : {}),
           ...(typeof args.fotoDriveId === 'string' ? { fotoDriveId: args.fotoDriveId } : {}),
           ...(typeof args.fotoUrl === 'string' ? { fotoUrl: args.fotoUrl } : {}),
+          ...(Array.isArray(args.referencias) ? { referencias: args.referencias } : {}),
           ...(typeof args.formato === 'string' ? { formato: args.formato } : {}),
           ...(typeof args.via === 'string' ? { via: args.via } : {}),
           ...(typeof args.modeloId === 'string' ? { sourcePageId: args.modeloId } : {}),
