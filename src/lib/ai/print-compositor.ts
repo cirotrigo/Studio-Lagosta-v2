@@ -88,18 +88,96 @@ export async function planejarCartao(
   return { largura, altura, left: Math.round((arteW - largura) / 2), top }
 }
 
+export interface FaixaCandidata {
+  top: number
+  /** Densidade de bordas na faixa (desvio do laplaciano) — quanto menor, mais livre. */
+  movimento: number
+}
+
+/**
+ * Escolhe o TOPO do cartão pela FOTO: a faixa candidata com menos "movimento"
+ * (densidade de bordas, o laplaciano dos scripts de medição da casa) é a área
+ * livre — teto, toldo, parede — e é onde o cartão pousa sem tapar o assunto.
+ *
+ * Nasceu do primeiro uso real (23/08/2026): a posição fixa no centro caiu em
+ * cima do salão CHEIO, que era exatamente o assunto da peça de prova social.
+ * A medição é feita na CENA (subject) reenquadrada para o quadro final — a
+ * trilha `arte` mantém a foto como cena, então a geografia é a mesma — e
+ * acontece ANTES do prompt: o pixel prometido ao modelo continua sendo o
+ * pixel colado.
+ *
+ * Em story, o primeiro 1/8 fica de fora da disputa: é onde o Instagram
+ * desenha avatar e nome (o espelho da safe area de rodapé, mesma lição da
+ * logo do TERO em 17/08).
+ *
+ * 🔴 O recorte de cada faixa é MATERIALIZADO com `.toBuffer()` antes de
+ * medir — `extract().stats()` sem isso mede a imagem inteira e os quatro
+ * candidatos empatam (o defeito que cegou a escolha de canto da logo).
+ */
+export async function escolherTopoDoCartao(
+  cena: Buffer,
+  arteW: number,
+  arteH: number,
+  formato: FormatoDoCartao,
+  plano: PlanoDoCartao,
+): Promise<{ top: number; candidatas: FaixaCandidata[] }> {
+  const topoMin = formato === 'story' ? Math.round(arteH / 8) : Math.round(arteH * 0.06)
+  const baseMax = formato === 'story' ? Math.round((arteH * 7) / 8) : Math.round(arteH * 0.96)
+
+  const CENTROS = [0.3, 0.38, 0.46, 0.56, 0.66]
+  const tops = [
+    ...new Set(
+      CENTROS.map((c) => {
+        let t = Math.round(arteH * c - plano.altura / 2)
+        if (t < topoMin) t = topoMin
+        if (t + plano.altura > baseMax) t = baseMax - plano.altura
+        return t
+      }),
+    ),
+  ]
+
+  const base = await sharp(cena)
+    .resize(arteW, arteH, { fit: 'cover', position: 'center' })
+    .greyscale()
+    .toBuffer()
+
+  const candidatas: FaixaCandidata[] = []
+  for (const top of tops) {
+    const recorte = await sharp(base)
+      .extract({ left: plano.left, top, width: plano.largura, height: plano.altura })
+      .toBuffer()
+    const bordas = await sharp(recorte)
+      .convolve({ width: 3, height: 3, kernel: [0, -1, 0, -1, 4, -1, 0, -1, 0] })
+      .toBuffer()
+    const stats = await sharp(bordas).stats()
+    candidatas.push({ top, movimento: Math.round((stats.channels[0]?.stdev ?? 0) * 100) / 100 })
+  }
+
+  // Menor movimento vence; empate → a mais ALTA, que deixa o pé da peça para
+  // o CTA e a assinatura.
+  const vencedora = [...candidatas].sort((a, b) => a.movimento - b.movimento || a.top - b.top)[0]
+  return { top: vencedora.top, candidatas }
+}
+
 /**
  * Cola o documento na arte, tal e qual — cantos arredondados + sombra.
  * Devolve JPEG (o formato de publicação da trilha `arte`).
+ *
+ * `top` explícito é o contrato com o prompt: quando a faixa foi escolhida
+ * pela foto (`escolherTopoDoCartao`) e prometida ao modelo, a colagem tem de
+ * honrá-la — recalcular aqui poria o cartão num lugar que a copy não desviou.
  */
 export async function comporDocumento(
   arte: Buffer,
   documento: Buffer,
-  { formato }: { formato: FormatoDoCartao },
+  { formato, top }: { formato: FormatoDoCartao; top?: number },
 ): Promise<{ buffer: Buffer; plano: PlanoDoCartao }> {
   const meta = await sharp(arte).metadata()
   if (!meta.width || !meta.height) throw new Error('A arte não tem dimensões legíveis.')
   const plano = await planejarCartao(documento, meta.width, meta.height, formato)
+  if (typeof top === 'number' && Number.isFinite(top)) {
+    plano.top = Math.max(0, Math.min(Math.round(top), meta.height - plano.altura))
+  }
 
   const raio = Math.max(12, Math.round(plano.largura * 0.028))
 

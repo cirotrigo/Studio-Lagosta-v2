@@ -44,7 +44,13 @@ import {
   type LogoCorner,
   type LogoMode,
 } from '@/lib/ai/logo-compositor'
-import { comporDocumento, planejarCartao } from '@/lib/ai/print-compositor'
+import {
+  comporDocumento,
+  escolherTopoDoCartao,
+  planejarCartao,
+  type FaixaCandidata,
+  type PlanoDoCartao,
+} from '@/lib/ai/print-compositor'
 import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
 import { checarProporcao, conferirFidelidadeDaCena, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
@@ -586,6 +592,42 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    // ── Faixa do documento: escolhida pela FOTO, antes do prompt ──────────
+    //
+    // A posição fixa no centro caiu sobre o salão cheio — o assunto da peça —
+    // no primeiro uso real (23/08/2026). A faixa agora é a área mais LIVRE da
+    // cena (`escolherTopoDoCartao`), decidida aqui para o prompt e a colagem
+    // falarem do mesmo pixel.
+    let documentoPlano: PlanoDoCartao | null = null
+    let documentoTopo: number | null = null
+    let documentoBandas: FaixaCandidata[] | null = null
+    if (documentoParaCompor && args.track === 'arte') {
+      documentoPlano = await planejarCartao(
+        documentoParaCompor,
+        args.finalSize.width,
+        args.finalSize.height,
+        args.formato,
+      )
+      const cenaRef = loadedRefs.find((r) => r.role === 'subject')
+      if (cenaRef) {
+        const escolha = await escolherTopoDoCartao(
+          cenaRef.buffer,
+          args.finalSize.width,
+          args.finalSize.height,
+          args.formato,
+          documentoPlano,
+        )
+        documentoTopo = escolha.top
+        documentoBandas = escolha.candidatas
+        console.log(
+          `[arte-ia.bg] faixa do documento pela foto: topo ${escolha.top} | ` +
+            escolha.candidatas.map((c) => `${c.top}:${c.movimento}`).join(' '),
+        )
+      } else {
+        documentoTopo = documentoPlano.top
+      }
+    }
+
     const ordered = orderReferences(loadedRefs)
     const downloadMs = Date.now() - startedAt
     console.log(
@@ -628,11 +670,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         instrucaoImagem: args.instrucaoImagem,
         // A faixa é calculada com o MESMO planejador da composição — o pixel
         // prometido ao modelo é o pixel onde o cartão vai pousar.
-        documentoFaixa: documentoParaCompor
-          ? await planejarCartao(documentoParaCompor, args.finalSize.width, args.finalSize.height, args.formato).then(
-              (p) => ({ topoPx: p.top, basePx: p.top + p.altura }),
-            )
-          : null,
+        documentoFaixa:
+          documentoTopo !== null && documentoPlano
+            ? { topoPx: documentoTopo, basePx: documentoTopo + documentoPlano.altura }
+            : null,
         // A safe area sai em PIXEL da peça real, e só no story — ver
         // `regraDeSafeArea`.
         formato: args.formato,
@@ -967,9 +1008,18 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // bytes antes da chamada paga, então a falha aqui é rara.
     let documentoInfo: Record<string, unknown> = {}
     if (documentoParaCompor && args.track === 'arte') {
-      const comDoc = await comporDocumento(finalBuffer, documentoParaCompor, { formato: args.formato })
+      const comDoc = await comporDocumento(finalBuffer, documentoParaCompor, {
+        formato: args.formato,
+        // A faixa prometida no prompt — recalcular aqui poria o cartão onde a
+        // copy não desviou.
+        ...(documentoTopo !== null ? { top: documentoTopo } : {}),
+      })
       finalBuffer = comDoc.buffer
-      documentoInfo = { documentoComposto: true, documentoFaixa: comDoc.plano }
+      documentoInfo = {
+        documentoComposto: true,
+        documentoFaixa: comDoc.plano,
+        ...(documentoBandas ? { documentoBandas } : {}),
+      }
       console.log(
         `[arte-ia.bg] documento composto: ${comDoc.plano.largura}x${comDoc.plano.altura} em (${comDoc.plano.left},${comDoc.plano.top})`,
       )
