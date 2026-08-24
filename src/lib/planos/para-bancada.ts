@@ -303,10 +303,26 @@ export function mesclarReferencias(
   locais: BancadaItem['referencias'],
   doServidor: BancadaItem['referencias'],
 ): BancadaItem['referencias'] {
-  const cena =
-    doServidor.find((r) => r.papel === 'subject') ?? locais.find((r) => r.papel === 'subject')
-  const extras = locais.filter((r) => r.papel !== 'subject')
-  return [...(cena ? [cena] : []), ...extras]
+  /**
+   * Desde 23/08/2026 o servidor carrega a LISTA INTEIRA (coluna
+   * `referencias`), então ele manda no CONTEÚDO — a regra geral da
+   * hidratação. A versão anterior era do mundo de uma-foto-só (cena do
+   * servidor + extras do navegador) e fazia o contrário: descartava âncoras
+   * e o `documento` vindos do servidor, e o print sumia do card com cara de
+   * item sem print.
+   *
+   * O que sobrevive do navegador é só o que o servidor NUNCA recebe por
+   * desenho: a arte de referência estrelada (`style` + `generationId`),
+   * escolha do navegador desde 13/08.
+   */
+  if (doServidor.length === 0) return locais
+  // `BancadaReferencia` não tem `key` — a identidade é o endereço da imagem.
+  const idDe = (r: BancadaItem['referencias'][number]) => r.driveFileId ?? r.url ?? ''
+  const doServidorIds = new Set(doServidor.map(idDe))
+  const soDoNavegador = locais.filter(
+    (r) => r.papel === 'style' && r.generationId && !doServidorIds.has(idDe(r)),
+  )
+  return [...doServidor, ...soDoNavegador]
 }
 
 // ── Datas ───────────────────────────────────────────────────────────────────
