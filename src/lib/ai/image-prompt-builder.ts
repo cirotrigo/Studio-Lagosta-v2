@@ -428,10 +428,17 @@ export interface BuildArtePromptArgs {
    * Faixa reservada para o CARTÃO DE DOCUMENTO (papel `documento`): o print
    * que o sistema COLA por código depois da geração (`print-compositor.ts`).
    * Em PIXEL da peça real — número confere, fração se interpreta (17/08).
-   * O arquivo nunca vai ao modelo: mandá-lo seria convidar o redesenho, que é
-   * o defeito que a composição por código existe para evitar.
    */
   documentoFaixa?: { topoPx: number; basePx: number } | null
+  /**
+   * O cartão foi EMBUTIDO na foto enviada ao modelo (sugestão do Ciro,
+   * 24/08/2026): ele enxerga o cartão e diagrama a copy em volta — acabou a
+   * briga por faixa invisível, que fez o apoio encostar na borda e ser
+   * coberto. A fidelidade não vem do modelo: o sistema RECOLA o arquivo
+   * original por cima no final, no mesmo pixel, então o redesenho dele é
+   * descartado.
+   */
+  documentoNaCena?: boolean
   /**
    * Bloco que proíbe desenhar a logo e reserva a área onde o sistema vai
    * compor o arquivo oficial (logo-compositor). Sem ele o modelo INVENTA a
@@ -859,13 +866,33 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
    * que o sistema vai colar, e a peça sai com DUAS.
    */
   if (args.documentoFaixa) {
+    // Faixa no terço superior: o espaço acima dela é pequeno demais para a
+    // copy, e o modelo ESPREME — a última linha do apoio encostou na borda e
+    // o cartão a cobriu (medido na 1ª rodada com faixa alta, 24/08/2026).
+    // A saída não é margem maior: é tirar a copy da disputa pelo alto.
+    const faixaNoAlto = typeof args.alturaPx === 'number' && args.alturaPx > 0
+      ? args.documentoFaixa.topoPx < args.alturaPx * 0.35
+      : false
     sections.push(
-      [
-        '[CARTÃO REAL — FAIXA RESERVADA]',
-        `Depois da geração, o sistema vai COLAR um cartão real (um documento fotografado, reproduzido tal e qual) sobre esta peça, centrado horizontalmente, ocupando a faixa entre ${args.documentoFaixa.topoPx}px e ${args.documentoFaixa.basePx}px da altura.`,
-        'Essa faixa fica CALMA: nenhum texto, nenhum ornamento e nenhum elemento gráfico dentro dela — só a fotografia de fundo. Toda a copy listada neste prompt se acomoda FORA da faixa, acima e/ou abaixo dela.',
-        'NÃO desenhe você mesmo nenhum cartão, print, captura de tela, balão de comentário, estrelas de avaliação ou moldura de depoimento: o cartão real entra depois, por código — um desenhado a mais duplicaria o elemento.',
-      ].join('\n'),
+      args.documentoNaCena
+        ? [
+            '[CARTÃO REAL NA FOTO]',
+            `O cartão branco de avaliação que aparece na foto é um elemento REAL, já colado na posição definitiva (entre ${args.documentoFaixa.topoPx}px e ${args.documentoFaixa.basePx}px da altura). Mantenha-o EXATAMENTE como está — mesma posição, mesmo tamanho, sem inclinar, sem estilizar e sem reescrever o conteúdo dele (o sistema recola o arquivo original por cima no final; qualquer mudança sua nele é descartada).`,
+            'Nenhum texto, véu, ornamento ou elemento gráfico pode cobrir o cartão nem ENCOSTAR nele: o que ficar a menos de uma linha de distância acaba por baixo da recolagem.',
+            faixaNoAlto
+              ? 'O cartão ocupa a parte ALTA do quadro: TODA a copy listada neste prompt pousa ABAIXO dele — nenhum bloco acima, nem manchete.'
+              : 'Toda a copy listada neste prompt se acomoda LONGE do cartão, acima e/ou abaixo dele.',
+            'NÃO desenhe um segundo cartão, balão de comentário, estrelas de avaliação ou moldura de depoimento em lugar nenhum da peça.',
+          ].join('\n')
+        : [
+            '[CARTÃO REAL — FAIXA RESERVADA]',
+            `Depois da geração, o sistema vai COLAR um cartão real (um documento fotografado, reproduzido tal e qual) sobre esta peça, centrado horizontalmente, ocupando a faixa entre ${args.documentoFaixa.topoPx}px e ${args.documentoFaixa.basePx}px da altura.`,
+            'Essa faixa fica CALMA: nenhum texto, nenhum ornamento e nenhum elemento gráfico dentro dela — só a fotografia de fundo. Texto ENCOSTADO na borda da faixa também não pode: o que estiver a menos de uma linha de distância dela acaba coberto pelo cartão.',
+            faixaNoAlto
+              ? 'A faixa ocupa a parte ALTA do quadro: TODA a copy listada neste prompt pousa ABAIXO da base dela — nenhum bloco acima, nem manchete.'
+              : 'Toda a copy listada neste prompt se acomoda FORA da faixa, acima e/ou abaixo dela.',
+            'NÃO desenhe você mesmo nenhum cartão, print, captura de tela, balão de comentário, estrelas de avaliação ou moldura de depoimento: o cartão real entra depois, por código — um desenhado a mais duplicaria o elemento.',
+          ].join('\n'),
     )
   }
 

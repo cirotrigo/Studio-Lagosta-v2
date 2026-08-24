@@ -158,6 +158,29 @@ console.log('\nfaixa reservada no prompt')
   ok('o prompt proíbe desenhar o cartão', prompt.includes('NÃO desenhe você mesmo nenhum cartão'))
   const sem = buildArtePrompt({ copy: ['Headline'], brand: null, refs: [{ role: 'subject' }], formato: 'story', alturaPx: 1936 })
   ok('sem documento o prompt não gasta a seção', !sem.includes('CARTÃO REAL'))
+
+  // O caminho EMBUTIDO (24/08): cartão dentro da foto + recolagem por cima.
+  const naCena = buildArtePrompt({
+    copy: ['Headline'],
+    brand: null,
+    refs: [{ role: 'subject' }],
+    formato: 'story',
+    alturaPx: 1936,
+    documentoFaixa: { topoPx: 471, basePx: 681 },
+    documentoNaCena: true,
+  })
+  ok('cartão na cena: o prompt manda MANTER, não criar', naCena.includes('CARTÃO REAL NA FOTO') && naCena.includes('recola o arquivo original'))
+  ok('faixa no alto: TODA a copy vai para baixo', naCena.includes('TODA a copy listada neste prompt pousa ABAIXO'))
+  const naCenaBaixa = buildArtePrompt({
+    copy: ['Headline'],
+    brand: null,
+    refs: [{ role: 'subject' }],
+    formato: 'story',
+    alturaPx: 1936,
+    documentoFaixa: { topoPx: 970, basePx: 1180 },
+    documentoNaCena: true,
+  })
+  ok('faixa no meio: copy acima e/ou abaixo', naCenaBaixa.includes('acima e/ou abaixo dele'))
 }
 
 console.log(falhas === 0 ? '\nTudo certo.' : `\n${falhas} falha(s).`)

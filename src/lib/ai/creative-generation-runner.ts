@@ -601,6 +601,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     let documentoPlano: PlanoDoCartao | null = null
     let documentoTopo: number | null = null
     let documentoBandas: FaixaCandidata[] | null = null
+    let documentoNaCena = false
     if (documentoParaCompor && args.track === 'arte') {
       documentoPlano = await planejarCartao(
         documentoParaCompor,
@@ -619,8 +620,32 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         )
         documentoTopo = escolha.top
         documentoBandas = escolha.candidatas
+        /**
+         * O cartão vai EMBUTIDO na cena (sugestão do Ciro, 24/08/2026): o
+         * modelo enxerga o cartão de verdade e diagrama a copy em volta —
+         * na v2 a faixa era invisível e o apoio encostou na borda, coberto
+         * pela colagem. A fidelidade continua NÃO vindo do modelo: o
+         * arquivo original é recolado por cima no final, no mesmo pixel,
+         * então o redesenho dele fica por baixo, invisível.
+         *
+         * A cena é PRÉ-ENQUADRADA no quadro final (cover) antes de embutir:
+         * é o que faz a posição do cartão na entrada e na saída ser a MESMA
+         * fração — deixar o reenquadramento com o modelo deslocaria o
+         * cartão redesenhado para longe da recolagem.
+         */
+        const cenaQuadro = await sharp(cenaRef.buffer)
+          .resize(args.finalSize.width, args.finalSize.height, { fit: 'cover', position: 'center' })
+          .jpeg({ quality: 92 })
+          .toBuffer()
+        const embutida = await comporDocumento(cenaQuadro, documentoParaCompor, {
+          formato: args.formato,
+          top: documentoTopo,
+        })
+        cenaRef.buffer = embutida.buffer
+        cenaRef.mimeType = 'image/jpeg'
+        documentoNaCena = true
         console.log(
-          `[arte-ia.bg] faixa do documento pela foto: topo ${escolha.top} | ` +
+          `[arte-ia.bg] cartão embutido na cena: topo ${escolha.top} | bandas: ` +
             escolha.candidatas.map((c) => `${c.top}:${c.movimento}`).join(' '),
         )
       } else {
@@ -674,6 +699,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           documentoTopo !== null && documentoPlano
             ? { topoPx: documentoTopo, basePx: documentoTopo + documentoPlano.altura }
             : null,
+        documentoNaCena,
         // A safe area sai em PIXEL da peça real, e só no story — ver
         // `regraDeSafeArea`.
         formato: args.formato,
@@ -1018,6 +1044,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       documentoInfo = {
         documentoComposto: true,
         documentoFaixa: comDoc.plano,
+        documentoNaCena,
         ...(documentoBandas ? { documentoBandas } : {}),
       }
       console.log(
