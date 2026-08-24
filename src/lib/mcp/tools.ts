@@ -3408,6 +3408,45 @@ function parametrosDesconhecidos(tool: McpTool, args: Record<string, any> | unde
   return Object.keys(args ?? {}).filter((k) => !(k in schema.properties!))
 }
 
+/**
+ * Coerção de STRING JSON para o tipo que o schema declara — na PORTA, uma vez,
+ * para todas as tools.
+ *
+ * O cliente MCP às vezes serializa um argumento composto como string
+ * (aconteceu em 23/08/2026: `editar-item-do-plano` recebeu `referencias` como
+ * `"[{...}]"`). Os handlers leem com `Array.isArray(...)` — 16 pontos — e uma
+ * string cai no ramo do descarte EM SILÊNCIO: a tool responde sucesso e o
+ * campo simplesmente não é gravado, que é a mesma classe de defeito que a
+ * guarda acima existe para impedir. Consertar aqui vale para todos os
+ * handlers de uma vez; consertar handler a handler deixaria a próxima tool
+ * nova com o mesmo buraco.
+ *
+ * String que declara array/objeto mas NÃO parseia é recusada pelo chamador
+ * natural: o valor coagido fica como veio e o handler/serviço rejeita com a
+ * mensagem própria — aqui só se converte o que converte limpo.
+ */
+export function coagirPeloSchema(tool: McpTool, args: Record<string, any>): Record<string, any> {
+  const props = (tool.inputSchema as { properties?: Record<string, { type?: unknown }> })?.properties
+  if (!props) return args
+  const saida: Record<string, any> = { ...args }
+  for (const [chave, valor] of Object.entries(saida)) {
+    const tipo = props[chave]?.type
+    if (typeof valor !== 'string') continue
+    if (tipo !== 'array' && tipo !== 'object') continue
+    const texto = valor.trim()
+    if (!(tipo === 'array' ? texto.startsWith('[') : texto.startsWith('{'))) continue
+    try {
+      const parsed = JSON.parse(texto)
+      if (tipo === 'array' ? Array.isArray(parsed) : typeof parsed === 'object' && parsed !== null) {
+        saida[chave] = parsed
+      }
+    } catch {
+      // Fica como veio — o handler recusa com a mensagem dele.
+    }
+  }
+  return saida
+}
+
 /** Runs a tool and shapes the MCP `tools/call` result, errors included. */
 export async function runMcpTool(
   name: string,
@@ -3449,7 +3488,7 @@ export async function runMcpTool(
   }
 
   try {
-    const result = await tool.handler(args ?? {}, principal)
+    const result = await tool.handler(coagirPeloSchema(tool, args ?? {}), principal)
     // Tools visuais (conferir-arte) devolvem blocos de conteúdo prontos —
     // texto + imagem — em vez de um JSON para serializar.
     if (
