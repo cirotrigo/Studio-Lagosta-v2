@@ -110,6 +110,20 @@ export async function POST(req: NextRequest) {
 
   // Notificações e respostas não têm id e não esperam resposta.
   const requests = messages.filter((m: any) => m && typeof m === 'object' && 'method' in m && m.id !== undefined)
+
+  // Telemetria de batch: batching saiu da spec MCP em 2025-06-18, e é esta
+  // linha que vai dizer quando dá para recusar arrays — zero ocorrências nos
+  // logs por um tempo, e o passo seguinte destrava.
+  if (Array.isArray(body)) {
+    console.log(
+      '[mcp] batch',
+      JSON.stringify({
+        tamanho: body.length,
+        pedidos: requests.length,
+        metodos: requests.map((m: any) => (typeof m.method === 'string' ? m.method : '?')),
+      }),
+    )
+  }
   if (requests.length === 0) {
     return new NextResponse(null, { status: 202 })
   }
