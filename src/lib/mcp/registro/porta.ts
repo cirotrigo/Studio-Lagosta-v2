@@ -1,5 +1,5 @@
 /**
- * A porta única: todo `tools/call` que resolve no catálogo passa por aqui, na
+ * A porta única: todo `tools/call` das duas superfícies passa por aqui, na
  * ordem apelido → superfície → coerção → validação → gate → handler → moldagem.
  *
  * Os comportamentos calibrados por incidente são preservados VERBATIM:
@@ -28,16 +28,6 @@ export interface GatesDaPorta {
 
 export interface DependenciasDaPorta {
   gates: GatesDaPorta
-  /**
-   * Fallback de convivência: nome que não está no catálogo cai no dispatcher
-   * legado (`runMcpTool`) até a migração terminar. Sem ele, desconhecido é
-   * desconhecido.
-   */
-  legado?: (
-    nome: string,
-    args: Record<string, unknown>,
-    principal: McpPrincipal,
-  ) => Promise<ResultadoMcp>
 }
 
 export async function executarTool(
@@ -51,13 +41,12 @@ export async function executarTool(
   const tool = indice.get(nome)
 
   if (!tool) {
-    if (deps.legado) return deps.legado(nome, argsBrutos ?? {}, principal)
     return erroDeTexto(`Ferramenta desconhecida: ${nome}`)
   }
 
-  // Tool do catálogo fora desta superfície NÃO cai no legado: o nome já é do
-  // registro, e responder pelo dispatcher velho seria colisão disfarçada.
-  // Para quem chama, ela simplesmente não existe aqui.
+  // Tool do catálogo fora desta superfície: para quem chama, ela simplesmente
+  // não existe aqui — mesma resposta do nome inexistente, para não vazar o
+  // catálogo da outra superfície.
   if (!tool.superficies.includes(superficie)) {
     return erroDeTexto(`Ferramenta desconhecida: ${nome}`)
   }

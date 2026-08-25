@@ -1,20 +1,11 @@
 /**
- * A costura entre o catálogo novo e o mundo de hoje — o ÚNICO módulo desta
- * pasta que pode importar `tools.ts` estaticamente (ele puxa db e ~40
- * serviços; por isso o validar-registro-mcp.ts não passa por aqui).
- *
- * Convivência da migração: a porta consulta o catálogo primeiro e cai no
- * dispatcher legado; o tools/list funde os dois, com o catálogo vencendo por
- * nome. Tool migrada é REMOVIDA do array legado no mesmo PR — deixá-la lá
- * seria uma segunda fonte de verdade esperando divergir.
+ * A costura entre o catálogo e as superfícies — o ÚNICO módulo desta pasta
+ * que pode importar `tools.ts` (e outros módulos pesados) estaticamente; por
+ * isso o validar-registro-mcp.ts não passa por aqui, e é aqui que moram as
+ * SENTINELAS dos vocabulários cravados no catálogo.
  */
 
-import {
-  MCP_TOOLS,
-  runMcpTool,
-  assertProjetoPermitido,
-  assertCuradorDoProjeto,
-} from '../tools'
+import { assertProjetoPermitido, assertCuradorDoProjeto } from '../tools'
 import { MAX_ITENS_POR_PLANO } from '../../planos/plano-service'
 import { KnowledgeCategory } from '@prisma/client'
 import { BRAND_DNA_FIELDS } from '../../brand/brand-context'
@@ -74,7 +65,6 @@ export async function executarToolRemota(
 ): Promise<ResultadoMcp> {
   return executarTool(INDICE_DO_CATALOGO, 'remoto', nome, args, principal, {
     gates: { projeto: assertProjetoPermitido, curador: assertCuradorDoProjeto },
-    legado: (n, a, p) => runMcpTool(n, a as Record<string, any>, p),
   })
 }
 
@@ -94,12 +84,7 @@ export async function executarToolLocal(
   })
 }
 
-/** Catálogo novo + tools ainda não migradas, sem duplicar nome. */
+/** O tools/list do conector remoto — o catálogo inteiro, com annotations. */
 export function listarToolsRemotas(): ToolParaLista[] {
-  const doCatalogo = catalogoParaLista(CATALOGO, 'remoto')
-  const nomesNovos = new Set(doCatalogo.map((t) => t.name))
-  const legadas = MCP_TOOLS.filter((t) => !nomesNovos.has(t.name)).map(
-    ({ name, description, inputSchema }) => ({ name, description, inputSchema }),
-  )
-  return [...doCatalogo, ...legadas]
+  return catalogoParaLista(CATALOGO, 'remoto')
 }

@@ -1,124 +1,32 @@
 /**
- * Tool definitions exposed by the remote MCP endpoint (/api/mcp).
+ * Helpers de acesso e identidade das superfícies MCP.
  *
- * These mirror the most useful tools of the local stdio server
- * (scripts/mcp-server.ts) but run inside the deployed app, so any MCP client
- * — a second machine, the CLI, a phone — can ask for a creative without this
- * repo checked out. Both surfaces call the same libs under src/lib, so the
- * behaviour cannot drift.
+ * As TOOLS moram em src/lib/mcp/catalogo/ (declaração única, servida pelo
+ * conector remoto e pelo stdio local); a porta que as executa mora em
+ * src/lib/mcp/registro/porta.ts. O que fica aqui é o que toda tool consome:
+ * quem enxerga o quê (projetosVisiveis, assertProjetoPermitido,
+ * assertCuradorDoProjeto), quem assina o quê (resolverDono, resolverAutor,
+ * quemDecidiu) e os tradutores do plano para a conversa (resolverPlano,
+ * itemParaChat).
+ *
+ * Os handlers do catálogo alcançam este módulo por `await import()` — ele
+ * puxa db e Clerk, e o catálogo precisa carregar sem env (ver o cabeçalho de
+ * catalogo/clientes.ts).
  */
 
-import sharp from 'sharp'
-import { randomUUID } from 'crypto'
 import { db } from '@/lib/db'
-import {
-  prepareCreative,
-  createArteRapida,
-  ajustarArte,
-  getPublicAppUrl,
-  parseLayers,
-} from '@/lib/creatives/arte-rapida'
-import { checkTextGeometry } from '@/lib/creatives/text-geometry'
-import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
-import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
-import { createArteLivre, listFontCombinations } from '@/lib/creatives/arte-livre'
 import { CreativeError } from '@/lib/creatives/errors'
-import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
-import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
-import { agendarPost, postarAgora } from '@/lib/creatives/agendar'
-import { KnowledgeCategory } from '@prisma/client'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
-import {
-  processarAprovacao,
-  reagendarPost,
-  cancelarPost,
-  editarPost,
-  formatarBRT,
-} from '@/lib/posts/agenda-acoes'
-import { trocarArteDoPost } from '@/lib/posts/trocar-arte-do-post'
-import { sugerirPosts } from '@/lib/posts/sugerir-posts'
-import {
-  atualizarItem,
-  criarPlano,
-  lerPlano,
-  planoAtivo,
-  MAX_ITENS_POR_PLANO,
-} from '@/lib/planos/plano-service'
-import { proporSemana } from '@/lib/planos/propor-semana'
-import { reconciliarPlano } from '@/lib/planos/reconciliar'
-import { executarPlano } from '@/lib/planos/executar-plano'
-import { regenerarItem } from '@/lib/planos/regenerar'
+import { formatarBRT } from '@/lib/posts/agenda-acoes'
+import { lerPlano, planoAtivo } from '@/lib/planos/plano-service'
 import {
   ROTULO_DO_STATUS,
   normalizarStatusDoItem,
   rotuloDaVia,
   type ViaDoItem,
 } from '@/lib/planos/vocabulario'
-import { avaliarSlotSugerido, fecharDesfechoDoSlot } from '@/lib/aprendizado/desfecho-de-slot'
-import { listarFeedbacks, normalizarVeredito } from '@/lib/aprendizado/feedback-de-arte'
-import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
-import {
-  escopoEmPortugues,
-  normalizarEscopo,
-  type EscopoAprendizado,
-} from '@/lib/posts/learning-scope'
-import { descreverJanela } from '@/lib/posts/freeze-window'
-import { pedirFoto, verFoto } from '@/lib/creatives/chat-upload'
-import { reindexEntry } from '@/lib/knowledge/indexer'
-import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
-import { invalidateProjectCache } from '@/lib/knowledge/cache'
-import { criarEntradaBase } from '@/lib/knowledge/entries'
-import {
-  vigenteEm,
-  parseValidade,
-  avisoValidadeAusente,
-  formatarValidade,
-} from '@/lib/knowledge/vigencia'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { projectOwnerIdsFor } from '@/lib/projects/access'
-import {
-  startImprovement,
-  VERCEL_BLOB_HOST_REGEX,
-} from '@/lib/ai/creative-improvement-service'
-import { startArtGeneration } from '@/lib/ai/creative-generation-service'
-import type { ArtGenerationReference } from '@/lib/ai/creative-generation-runner'
-import { enfileirarArte, enfileirarMelhoria } from '@/lib/ai/generation-queue'
-import {
-  listarAncoras,
-  definirAncora,
-  removerAncora,
-  AMBIENT_SCENE_TAG,
-} from '@/lib/ai/anchor-images'
-import {
-  definirReferenciaDeEstilo,
-  listarReferenciasDeEstilo,
-} from '@/lib/ai/style-references'
-import {
-  iniciarCarrossel,
-  confirmarEstiloCarrossel,
-  verCarrossel,
-  type SlideSpec,
-} from '@/lib/ai/carousel-service'
-import {
-  loadExpectedTextsForGeneration,
-  verifyImageTexts,
-} from '@/lib/ai/creative-text-verification'
-import { fetchImageSource } from '@/lib/ai/fetch-image-source'
-import {
-  loadBrandContext,
-  updateBrandDNA,
-  virarRegra,
-  BRAND_DNA_FIELDS,
-  BRAND_DNA_MAX_CHARS,
-  type BrandDNAField,
-} from '@/lib/brand/brand-context'
-
-export interface McpTool {
-  name: string
-  description: string
-  inputSchema: Record<string, unknown>
-  handler: (args: Record<string, any>, principal: McpPrincipal) => Promise<unknown>
-}
 
 /**
  * Organizações de que o usuário PARTICIPA, pelo Clerk.
@@ -407,24 +315,6 @@ export async function assertCuradorDoProjeto(projectId: number, principal: McpPr
     )
   }
 }
-
-function requireString(args: Record<string, any>, key: string): string {
-  const value = args?.[key]
-  if (typeof value !== 'string' || !value.trim()) {
-    throw new Error(`"${key}" é obrigatório`)
-  }
-  return value
-}
-
-function requireNumber(args: Record<string, any>, key: string): number {
-  const value = args?.[key]
-  const parsed = typeof value === 'string' ? Number(value) : value
-  if (typeof parsed !== 'number' || !Number.isFinite(parsed)) {
-    throw new Error(`"${key}" é obrigatório e deve ser numérico`)
-  }
-  return parsed
-}
-
 // ── Plano de conteúdo (F3) ──────────────────────────────────────────────────
 
 /**
@@ -490,152 +380,3 @@ export function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
   }
 }
 
-/**
- * Tools AINDA NÃO migradas para o registro (src/lib/mcp/registro + catalogo/).
- *
- * Tool migrada SAI deste array no mesmo PR — o catálogo vence por nome na
- * porta (catalogo/integracao.ts), e deixar a cópia aqui seria uma segunda
- * fonte de verdade esperando divergir.
- *
- * VAZIO desde o PR 5: as 48 tools moram em src/lib/mcp/catalogo/. O array, o
- * dispatcher legado (runMcpTool) e os APELIDOS saem no PR de limpeza — este
- * arquivo fica sendo a casa dos helpers de acesso e identidade.
- */
-export const MCP_TOOLS: McpTool[] = []
-
-export const MCP_TOOL_MAP = new Map(MCP_TOOLS.map((tool) => [tool.name, tool]))
-
-/**
- * Nomes antigos, de antes da tradução para português.
- *
- * O cliente MCP guarda a lista de ferramentas de quando o conector foi
- * instalado: sem estes apelidos, renomear derruba todas as conversas já
- * existentes com "Tool desconhecida" até alguém reconectar.
- */
-const APELIDOS: Record<string, string> = {
-  'list-projects': 'listar-clientes',
-  'prepare-creative': 'escolher-modelo',
-  'create-arte-rapida': 'criar-arte-de-modelo',
-  'list-posts': 'ver-agenda',
-  'get-knowledge': 'consultar-base',
-  'list-font-combinations': 'listar-combinacoes-de-texto',
-  'create-arte-livre': 'criar-arte',
-  'search-acervo': 'buscar-fotos',
-  'list-drive-images': 'listar-fotos-da-pasta',
-  'agendar-post': 'colocar-na-agenda',
-  // A6: a tool virou `ver-geracao`; o nome antigo segue valendo para não
-  // quebrar conversa em andamento nem skill que já o cite.
-  'ver-melhoria': 'ver-geracao',
-}
-
-/**
- * Chaves que o schema da tool não declara. Vazio quando o schema não fecha a
- * porta (`additionalProperties` diferente de false) — respeitar a declaração é
- * o que permite uma tool aceitar extras de propósito.
- */
-function parametrosDesconhecidos(tool: McpTool, args: Record<string, any> | undefined): string[] {
-  const schema = tool.inputSchema as { properties?: Record<string, unknown>; additionalProperties?: unknown }
-  if (!schema?.properties || schema.additionalProperties !== false) return []
-  return Object.keys(args ?? {}).filter((k) => !(k in schema.properties!))
-}
-
-/**
- * Coerção de STRING JSON para o tipo que o schema declara — na PORTA, uma vez,
- * para todas as tools.
- *
- * O cliente MCP às vezes serializa um argumento composto como string
- * (aconteceu em 23/08/2026: `editar-item-do-plano` recebeu `referencias` como
- * `"[{...}]"`). Os handlers leem com `Array.isArray(...)` — 16 pontos — e uma
- * string cai no ramo do descarte EM SILÊNCIO: a tool responde sucesso e o
- * campo simplesmente não é gravado, que é a mesma classe de defeito que a
- * guarda acima existe para impedir. Consertar aqui vale para todos os
- * handlers de uma vez; consertar handler a handler deixaria a próxima tool
- * nova com o mesmo buraco.
- *
- * String que declara array/objeto mas NÃO parseia é recusada pelo chamador
- * natural: o valor coagido fica como veio e o handler/serviço rejeita com a
- * mensagem própria — aqui só se converte o que converte limpo.
- */
-export function coagirPeloSchema(tool: McpTool, args: Record<string, any>): Record<string, any> {
-  const props = (tool.inputSchema as { properties?: Record<string, { type?: unknown }> })?.properties
-  if (!props) return args
-  const saida: Record<string, any> = { ...args }
-  for (const [chave, valor] of Object.entries(saida)) {
-    const tipo = props[chave]?.type
-    if (typeof valor !== 'string') continue
-    if (tipo !== 'array' && tipo !== 'object') continue
-    const texto = valor.trim()
-    if (!(tipo === 'array' ? texto.startsWith('[') : texto.startsWith('{'))) continue
-    try {
-      const parsed = JSON.parse(texto)
-      if (tipo === 'array' ? Array.isArray(parsed) : typeof parsed === 'object' && parsed !== null) {
-        saida[chave] = parsed
-      }
-    } catch {
-      // Fica como veio — o handler recusa com a mensagem dele.
-    }
-  }
-  return saida
-}
-
-/** Runs a tool and shapes the MCP `tools/call` result, errors included. */
-export async function runMcpTool(
-  name: string,
-  args: Record<string, any>,
-  principal: McpPrincipal = { kind: 'service' },
-) {
-  const tool = MCP_TOOL_MAP.get(name) ?? MCP_TOOL_MAP.get(APELIDOS[name] ?? '')
-  if (!tool) {
-    return {
-      content: [{ type: 'text' as const, text: `Ferramenta desconhecida: ${name}` }],
-      isError: true,
-    }
-  }
-
-  /**
-   * B4: parâmetro desconhecido é RECUSADO, não descartado em silêncio.
-   *
-   * Todo `inputSchema` daqui já declara `additionalProperties: false` — mas
-   * nada enforçava, e o handler lia só o que conhecia. Na prática isso vira
-   * resposta plausível e ERRADA: chamar a listagem do acervo com um filtro que
-   * a tool não tem devolvia o acervo inteiro misturado, com cara de resultado
-   * válido. Recusar cedo, dizendo o que existe, custa uma tentativa; o
-   * silêncio custa uma decisão tomada em cima de dado errado.
-   */
-  const desconhecidos = parametrosDesconhecidos(tool, args)
-  if (desconhecidos.length > 0) {
-    const aceitos = Object.keys(tool.inputSchema?.properties ?? {}).join(', ')
-    return {
-      content: [
-        {
-          type: 'text' as const,
-          text:
-            `A ferramenta ${tool.name} não conhece ${desconhecidos.map((d) => `"${d}"`).join(', ')}. ` +
-            `Os parâmetros aceitos são: ${aceitos}.`,
-        },
-      ],
-      isError: true,
-    }
-  }
-
-  try {
-    const result = await tool.handler(coagirPeloSchema(tool, args ?? {}), principal)
-    // Tools visuais (conferir-arte) devolvem blocos de conteúdo prontos —
-    // texto + imagem — em vez de um JSON para serializar.
-    if (
-      result &&
-      typeof result === 'object' &&
-      Array.isArray((result as Record<string, unknown>)._mcpContent)
-    ) {
-      return { content: (result as { _mcpContent: Array<Record<string, unknown>> })._mcpContent }
-    }
-    return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
-  } catch (error) {
-    const text =
-      error instanceof CreativeError
-        ? JSON.stringify(error.toJSON(), null, 2)
-        : `Erro: ${error instanceof Error ? error.message : String(error)}`
-    console.error(`[mcp] tool ${name} falhou:`, error)
-    return { content: [{ type: 'text' as const, text }], isError: true }
-  }
-}

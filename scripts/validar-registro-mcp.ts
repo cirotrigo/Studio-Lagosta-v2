@@ -20,6 +20,7 @@
 
 import { z } from 'zod'
 import { CATALOGO, INDICE_DO_CATALOGO } from '../src/lib/mcp/catalogo/index'
+import { INSTRUCOES } from '../src/lib/mcp/instrucoes'
 import { definirTool } from '../src/lib/mcp/registro/definir'
 import { executarTool } from '../src/lib/mcp/registro/porta'
 import { ErroDeTool, type ToolPronta } from '../src/lib/mcp/registro/tipos'
@@ -1195,13 +1196,8 @@ function indiceDe(tools: ToolPronta[]): Map<string, ToolPronta> {
 
 const indiceFalso = indiceDe([eco, comAninhado, soLocal, comGate, visual, queLanca])
 
-async function porta(nome: string, args: Record<string, unknown> | undefined, extras?: {
-  legado?: Parameters<typeof executarTool>[5]['legado']
-}) {
-  return executarTool(indiceFalso, 'remoto', nome, args, PRINCIPAL, {
-    gates,
-    legado: extras?.legado,
-  })
+async function porta(nome: string, args: Record<string, unknown> | undefined) {
+  return executarTool(indiceFalso, 'remoto', nome, args, PRINCIPAL, { gates })
 }
 
 function textoDe(resultado: { content: Array<Record<string, unknown>> }): string {
@@ -1209,26 +1205,14 @@ function textoDe(resultado: { content: Array<Record<string, unknown>> }): string
 }
 
 async function secaoC() {
-  // 1. desconhecida sem legado
+  // 1. desconhecida → mensagem estável
   {
     const r = await porta('nao-existe', {})
     confere(
-      'desconhecida sem legado → "Ferramenta desconhecida"',
+      'desconhecida → "Ferramenta desconhecida"',
       r.isError === true && textoDe(r) === 'Ferramenta desconhecida: nao-existe',
       textoDe(r),
     )
-  }
-
-  // 2. desconhecida com legado → repassa
-  {
-    let chamado: string | null = null
-    const r = await porta('nao-existe', { x: 1 }, {
-      legado: async (nome) => {
-        chamado = nome
-        return { content: [{ type: 'text', text: 'do legado' }] }
-      },
-    })
-    confere('desconhecida com legado → fallback chamado', chamado === 'nao-existe' && textoDe(r) === 'do legado')
   }
 
   // 3. apelido resolve
@@ -1237,18 +1221,12 @@ async function secaoC() {
     confere('apelido resolve na chamada', !r.isError && textoDe(r).includes('"texto": "oi"'), textoDe(r))
   }
 
-  // 4. superfície errada NÃO cai no legado
+  // 4. superfície errada → não existe aqui
   {
-    let legadoChamado = false
-    const r = await porta('so-local-de-teste', {}, {
-      legado: async () => {
-        legadoChamado = true
-        return { content: [{ type: 'text', text: 'não devia' }] }
-      },
-    })
+    const r = await porta('so-local-de-teste', {})
     confere(
-      'tool de outra superfície → desconhecida, sem fallback',
-      r.isError === true && !legadoChamado && textoDe(r).startsWith('Ferramenta desconhecida'),
+      'tool de outra superfície → desconhecida',
+      r.isError === true && textoDe(r).startsWith('Ferramenta desconhecida'),
       textoDe(r),
     )
   }
@@ -1363,6 +1341,34 @@ async function secaoC() {
       textoDe(r),
     )
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// D. As INSTRUCTIONS do handshake só citam tools que existem
+// ─────────────────────────────────────────────────────────────────────────
+
+console.log('\nD. Referências de tools nas INSTRUCTIONS')
+
+/**
+ * Palavras hifenizadas do texto que NÃO são nome de tool. Toda entrada nova
+ * aqui é uma decisão explícita — o caso que este teste existe para impedir é
+ * o `ver-melhoria`: a tool virou `ver-geracao` e o prompt recomendou o nome
+ * morto por 12 dias, vivo só por apelido.
+ */
+const PALAVRAS_PERMITIDAS = new Set<string>([
+  'grave-a', // ênclise em "…grave-a na base" — português, não tool
+])
+
+{
+  const tokens = INSTRUCOES.match(/\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b/g) ?? []
+  const desconhecidos = Array.from(new Set(tokens)).filter(
+    (t) => !INDICE_DO_CATALOGO.has(t) && !PALAVRAS_PERMITIDAS.has(t),
+  )
+  confere(
+    'todo nome hifenizado das INSTRUCTIONS é tool do catálogo (ou permitido)',
+    desconhecidos.length === 0,
+    `desconhecidos: ${desconhecidos.join(', ')}`,
+  )
 }
 
 secaoC()

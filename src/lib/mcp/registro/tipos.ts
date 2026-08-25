@@ -86,7 +86,7 @@ export interface ToolPronta {
   ) => Promise<unknown>
 }
 
-/** A forma que `tools/call` devolve — a mesma do `runMcpTool` de hoje. */
+/** A forma que `tools/call` devolve (blocos de conteúdo + isError). */
 export interface ResultadoMcp {
   content: Array<Record<string, unknown>>
   isError?: boolean
