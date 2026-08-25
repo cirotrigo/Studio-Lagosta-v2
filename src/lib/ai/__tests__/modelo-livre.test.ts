@@ -51,13 +51,18 @@ function argsPara(projectId: number): BuildArtePromptArgs {
 }
 
 describe('modeloLivre', () => {
-  it('é o PADRÃO para todo cliente — aprovado no Quintal em 17/08/2026', () => {
-    expect(modeloLivre(2)).toBe(true)
+  it('é o PADRÃO para todo cliente', () => {
     expect(modeloLivre(3)).toBe(true)
     expect(modeloLivre(undefined)).toBe(true)
     expect(modeloLivre(null)).toBe(true)
-    // O caminho de volta de uma marca que regredir é o opt-out, não o prompt.
-    expect([...PROJETOS_COM_MODELO_ESTRITO]).toEqual([])
+  })
+
+  it('o Quintal — piloto do modo livre — voltou ao estrito em 24/08/2026', () => {
+    // "Precisa seguir melhor as artes de referência" (Ciro, 24/08), com o
+    // placar do cliente em 0 gostei × 14 melhorar. O caminho de volta de uma
+    // marca que regride é o opt-out, não o prompt.
+    expect(modeloLivre(2)).toBe(false)
+    expect([...PROJETOS_COM_MODELO_ESTRITO]).toEqual([2])
   })
 
   it('o opt-out devolve o cliente ao spine estrito', () => {
@@ -111,10 +116,10 @@ describe('buildModeloSpineLivre', () => {
 })
 
 describe('o gate por projeto', () => {
-  it('projeto 2 recebe o spine LIVRE', () => {
+  it('projeto 2 (opt-out de 24/08) recebe o spine ESTRITO', () => {
     const prompt = buildArtePrompt(argsPara(2))
-    expect(prompt).toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
-    expect(prompt).not.toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
+    expect(prompt).toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
+    expect(prompt).not.toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
   })
 
   it('outro projeto também recebe o spine livre — é o padrão', () => {
