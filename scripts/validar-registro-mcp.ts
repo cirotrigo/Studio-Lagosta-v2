@@ -336,7 +336,217 @@ comparaSchemas(
   CATALOGO.get('criar-arte-de-modelo')?.schemaJson,
   LITERAL_CRIAR_ARTE_DE_MODELO,
 )
+/** PR 3 — os literais do ciclo do plano, verbatim (Máximo 60 = MAX_ITENS_POR_PLANO resolvido). */
+const LITERAIS_PLANOS: Record<string, unknown> = {
+  'propor-semana': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      dias: { type: 'number', description: 'Quantos dias à frente olhar (default 7, máx 14).' },
+      maxItens: { type: 'number', description: 'Quantos posts no máximo (default 7).' },
+      formato: {
+        type: 'string',
+        enum: ['story', 'feed', 'quadrado'],
+        description: 'Formato das peças (default story).',
+      },
+      observacao: {
+        type: 'string',
+        description: 'Recado de quem pediu ("é semana de festival", "foca no delivery").',
+      },
+      titulo: { type: 'string', description: 'Como a pessoa chama esta leva.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'criar-plano': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      titulo: { type: 'string', description: 'Como a pessoa chama esta leva ("Semana de 17 a 23/08").' },
+      inicio: { type: 'string', description: 'Primeiro dia da leva ("AAAA-MM-DD").' },
+      fim: { type: 'string', description: 'Último dia da leva ("AAAA-MM-DD"), incluído por inteiro.' },
+      itens: {
+        type: 'array',
+        description: 'Os posts pretendidos, na ordem. Máximo 60.',
+        items: {
+          type: 'object',
+          properties: {
+            quando: { type: 'string', description: 'Dia e hora de Brasília ("AAAA-MM-DD HH:mm"). Pode ficar vazio se ainda não foi decidido.' },
+            tema: { type: 'string', description: 'Do que é o post ("almoço executivo", "happy hour").' },
+            texto: {
+              type: 'array',
+              items: { type: 'string' },
+              description:
+                'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca.',
+            },
+            legenda: { type: 'string', description: 'A legenda do Instagram, quando houver.' },
+            fotoDriveId: { type: 'string', description: 'A foto do acervo (de buscar-fotos).' },
+            fotoUrl: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
+            formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Obrigatório.' },
+            via: {
+              type: 'string',
+              enum: ['template', 'ia'],
+              description: 'Por onde a arte nasce: "template" (modelo do cliente, sem custo — o padrão) ou "ia" (gasta crédito).',
+            },
+            modeloId: {
+              type: 'string',
+              description: 'O modelo do cliente que vira a arte — o mesmo id que criar-arte-de-modelo recebe em sourcePageId, vindo de escolher-modelo.',
+            },
+            direcao: {
+              type: 'string',
+              description:
+                'Via "ia": direção adicional para o modelo de imagem, além do tema — onde a foto é a cena, como tratar um print (ex.: "o print entra como mockup de celular sobre fundo preto, fiel e legível"), o clima da peça. Máx 1200.',
+            },
+            ajusteDaFoto: {
+              type: 'string',
+              description: 'Via "ia": ajuste autorizado na FOTO desta peça (ex.: "escurecer o fundo atrás do texto"). Sem isto a foto vai intocada, que é o padrão. ⚠️ Presente, a geração sai no tier caro e lento — dirigir a composição é papel da direção, não deste campo.',
+            },
+            referencias: {
+              type: 'array',
+              description:
+                'Via "ia": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato, até 2 de estilo e até 1 "documento" (print colado TAL E QUAL depois da geração — avaliação do Google, cartaz, QR). Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo.',
+              items: {
+                type: 'object',
+                properties: {
+                  role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'], description: 'Papel da foto na geração.' },
+                  driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
+                  url: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
+                  label: { type: 'string', description: 'Rótulo curto ("salão principal", "picanha na tábua").' },
+                },
+                required: ['role'],
+                additionalProperties: false,
+              },
+            },
+            clienteCitadoId: {
+              type: 'number',
+              description:
+                'Co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte, no canto oposto ao da marca da casa. Use sempre que a peça falar do trabalho feito para um cliente.',
+            },
+            motivoDoSlot: { type: 'string', description: 'Por que este horário — a frase que a pessoa lê ao revisar.' },
+            escopo: {
+              type: 'string',
+              enum: ['rotina', 'campanha', 'pontual'],
+              description: 'O que o sistema pode aprender com este post. Mesma escolha de colocar-na-agenda.',
+            },
+            campanhaId: { type: 'string', description: 'Entrada de CAMPANHAS da base a que este item pertence.' },
+            sugestaoId: { type: 'string', description: 'Se o horário veio de sugerir-posts, devolva o sugestaoId dele aqui.' },
+          },
+          required: ['formato'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['projectId', 'inicio', 'fim'],
+    additionalProperties: false,
+  },
+  'ver-plano': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      planoId: { type: 'string', description: 'A leva (de criar-plano). Sem isto, a que está em aberto.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'editar-item-do-plano': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
+      itemId: { type: 'string', description: 'O item (de ver-plano).' },
+      quando: { type: 'string', description: 'Novo dia e hora de Brasília ("AAAA-MM-DD HH:mm").' },
+      tema: { type: 'string', description: 'Novo tema.' },
+      texto: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui.',
+      },
+      legenda: { type: 'string', description: 'Nova legenda.' },
+      fotoDriveId: { type: 'string', description: 'Outra foto do acervo.' },
+      fotoUrl: { type: 'string', description: 'Outra imagem já no Studio.' },
+      referencias: {
+        type: 'array',
+        description:
+          'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo + o print "documento", colado tal e qual). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
+        items: {
+          type: 'object',
+          properties: {
+            role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
+            driveFileId: { type: 'string' },
+            url: { type: 'string' },
+            label: { type: 'string' },
+          },
+          required: ['role'],
+          additionalProperties: false,
+        },
+      },
+      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Novo formato.' },
+      via: { type: 'string', enum: ['template', 'ia'], description: 'Troca a via de criação da arte.' },
+      modeloId: { type: 'string', description: 'Outro modelo do cliente (de escolher-modelo).' },
+      direcao: {
+        type: 'string',
+        description: 'Via "ia": nova direção adicional para o modelo de imagem (como tratar a foto ou o print, o clima da peça). String vazia limpa.',
+      },
+      ajusteDaFoto: { type: 'string', description: 'Via "ia": novo ajuste autorizado na foto. String vazia limpa (foto intocada).' },
+      clienteCitadoId: {
+        type: 'number',
+        description: 'Co-branding: ID do cliente citado na peça, cuja logomarca é composta na arte. 0 remove.',
+      },
+      motivoDoSlot: { type: 'string', description: 'Nova explicação do horário.' },
+      escopo: { type: 'string', enum: ['rotina', 'campanha', 'pontual'], description: 'Novo escopo de aprendizado.' },
+      campanhaId: { type: 'string', description: 'Campanha a que o item passa a pertencer.' },
+    },
+    required: ['projectId', 'itemId'],
+    additionalProperties: false,
+  },
+  'regenerar-item': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
+      itemId: { type: 'string', description: 'O item (de ver-plano).' },
+      motivo: { type: 'string', description: 'Por que não serve. Obrigatório — é o que ensina o sistema.' },
+      voltarPara: {
+        type: 'string',
+        enum: ['editado', 'aprovado'],
+        description: '"editado" (padrão, para você ajustar) ou "aprovado" (produzir de novo como está).',
+      },
+    },
+    required: ['projectId', 'itemId', 'motivo'],
+    additionalProperties: false,
+  },
+  'executar-plano': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
+      itemIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Só estes itens (de ver-plano). Sem isto, todos os que estiverem prontos para produzir.',
+      },
+      confirmar: {
+        type: 'boolean',
+        description:
+          'Só depois de a pessoa ver a conta e dizer sim. Sem isto a ferramenta apenas calcula e não produz nada.',
+      },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'listar-combinacoes-de-texto': {
+    type: 'object',
+    properties: { projectId: { type: 'number', description: 'ID do projeto.' } },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+}
+
 for (const [nome, literal] of Object.entries(LITERAIS_AGENDA)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+for (const [nome, literal] of Object.entries(LITERAIS_PLANOS)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 
@@ -374,6 +584,18 @@ const eco = definirTool({
   acesso: { tipo: 'autenticado' },
   superficies: ['remoto'],
   handler: async (args) => ({ eco: args }),
+})
+
+const comAninhado = definirTool({
+  nome: 'aninhado-de-teste',
+  descricao: 'Objeto estrito dentro de lista.',
+  schema: z.object({
+    itens: z.array(z.object({ formato: z.string() }).strict()).optional(),
+  }),
+  annotations: { readOnlyHint: true, destructiveHint: false },
+  acesso: { tipo: 'autenticado' },
+  superficies: ['remoto'],
+  handler: async (args) => ({ ok: true, itens: args.itens ?? [] }),
 })
 
 const soLocal = definirTool({
@@ -430,7 +652,7 @@ function indiceDe(tools: ToolPronta[]): Map<string, ToolPronta> {
   return indice
 }
 
-const indiceFalso = indiceDe([eco, soLocal, comGate, visual, queLanca])
+const indiceFalso = indiceDe([eco, comAninhado, soLocal, comGate, visual, queLanca])
 
 async function porta(nome: string, args: Record<string, unknown> | undefined, extras?: {
   legado?: Parameters<typeof executarTool>[5]['legado']
@@ -587,6 +809,18 @@ async function secaoC() {
   {
     const r = await porta('visual-de-teste', undefined)
     confere('args ausentes viram objeto vazio', !r.isError)
+  }
+
+  // 15. chave desconhecida ANINHADA aponta o caminho, não os params da raiz
+  {
+    const r = await porta('aninhado-de-teste', { itens: [{ formato: 'story', extra: 1 }] })
+    confere(
+      'chave extra aninhada → mensagem com o caminho do item',
+      r.isError === true &&
+        textoDe(r).includes('"itens.0" não aceita "extra"') &&
+        !textoDe(r).includes('A ferramenta aninhado-de-teste não conhece'),
+      textoDe(r),
+    )
   }
 }
 

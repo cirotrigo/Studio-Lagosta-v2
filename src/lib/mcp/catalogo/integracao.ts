@@ -15,11 +15,31 @@ import {
   assertProjetoPermitido,
   assertCuradorDoProjeto,
 } from '../tools'
+import { MAX_ITENS_POR_PLANO } from '../../planos/plano-service'
 import type { McpPrincipal } from '../oauth'
 import { executarTool } from '../registro/porta'
 import { catalogoParaLista } from '../registro/derivar'
 import type { ResultadoMcp, ToolParaLista } from '../registro/tipos'
 import { CATALOGO, INDICE_DO_CATALOGO } from './index'
+
+/**
+ * Vigia da constante cravada: a descrição de criar-plano.itens diz "Máximo
+ * 60" à mão, porque plano-service (dono de MAX_ITENS_POR_PLANO) importa o
+ * Prisma e não pode entrar estático no catálogo. Se a constante mudar, o boot
+ * quebra aqui — em dev, no smoke e na Vercel — em vez de a descrição mentir.
+ */
+{
+  const criarPlano = CATALOGO.get('criar-plano')
+  const descricaoDeItens = (
+    (criarPlano?.schemaJson.properties as Record<string, { description?: string }> | undefined)?.itens
+      ?.description ?? ''
+  )
+  if (criarPlano && !descricaoDeItens.includes(`Máximo ${MAX_ITENS_POR_PLANO}.`)) {
+    throw new TypeError(
+      `criar-plano: a descrição de itens diz outro teto que não MAX_ITENS_POR_PLANO (${MAX_ITENS_POR_PLANO}).`,
+    )
+  }
+}
 
 export async function executarToolRemota(
   nome: string,

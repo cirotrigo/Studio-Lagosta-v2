@@ -12,8 +12,9 @@ import type { ToolPronta } from '../registro/tipos'
 import { toolsDeAgenda } from './agenda'
 import { toolsDeClientes } from './clientes'
 import { toolsDeModelos } from './modelos'
+import { toolsDePlanos } from './planos'
 
-const TODAS: ToolPronta[] = [...toolsDeClientes, ...toolsDeModelos, ...toolsDeAgenda]
+const TODAS: ToolPronta[] = [...toolsDeClientes, ...toolsDeModelos, ...toolsDeAgenda, ...toolsDePlanos]
 
 const catalogo = new Map<string, ToolPronta>()
 const indice = new Map<string, ToolPronta>()

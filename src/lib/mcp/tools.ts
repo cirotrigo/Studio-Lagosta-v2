@@ -247,7 +247,7 @@ export async function quemEstaConectado(principal: McpPrincipal): Promise<string
  *   fantasma com clerkId=cuid a cada projeto tocado pelo Claudinho. Dois
  *   fantasmas já existem no banco por isso (cmgw866yc…, cms5fv2c5…).
  */
-async function resolverDono(
+export async function resolverDono(
   projectId: number,
   principal: McpPrincipal,
 ): Promise<{ id: string; clerkId: string }> {
@@ -431,7 +431,7 @@ function requireNumber(args: Record<string, any>, key: string): number {
  * Resolve QUAL plano a tool vai mexer: o pedido explícito, ou o plano ativo do
  * cliente. Sem plano nenhum, um erro que diz o que fazer em vez de um 404 seco.
  */
-async function resolverPlano(projectId: number, planoId: unknown): Promise<string> {
+export async function resolverPlano(projectId: number, planoId: unknown): Promise<string> {
   if (typeof planoId === 'string' && planoId.trim()) return planoId.trim()
   const ativo = await planoAtivo(projectId)
   if (!ativo) {
@@ -449,7 +449,7 @@ async function resolverPlano(projectId: number, planoId: unknown): Promise<strin
  * dois chamadores (criar-plano e propor-semana) passam o item recém-criado,
  * que ainda não fez a viagem pelo `lerPlano` e não carrega o derivado.
  */
-type ItemDePlanoParaChat = Omit<
+export type ItemDePlanoParaChat = Omit<
   Awaited<ReturnType<typeof lerPlano>>['itens'][number],
   'clienteCitadoNome'
 > & { clienteCitadoNome?: string | null }
@@ -462,7 +462,7 @@ type ItemDePlanoParaChat = Omit<
  * este item às outras tools (conferir-arte, colocar-na-agenda) — o modelo usa,
  * não fala.
  */
-function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
+export function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
   const situacao = normalizarStatusDoItem(item.status) ?? 'proposto'
   return {
     itemId: item.id,
@@ -502,9 +502,11 @@ const MAX_LOTE = 12
  * Tool migrada SAI deste array no mesmo PR — o catálogo vence por nome na
  * porta (catalogo/integracao.ts), e deixar a cópia aqui seria uma segunda
  * fonte de verdade esperando divergir. Já migradas: listar-clientes,
- * criar-arte-de-modelo, e a agenda inteira (ver-agenda, sugerir-posts,
+ * criar-arte-de-modelo, a agenda inteira (ver-agenda, sugerir-posts,
  * colocar-na-agenda, postar-agora, aprovar-rascunhos, voltar-para-rascunho,
- * editar-post, trocar-arte-do-post, reagendar-post, cancelar-post).
+ * editar-post, trocar-arte-do-post, reagendar-post, cancelar-post) e o ciclo
+ * do plano (propor-semana, criar-plano, ver-plano, editar-item-do-plano,
+ * regenerar-item, executar-plano, listar-combinacoes-de-texto).
  */
 export const MCP_TOOLS: McpTool[] = [
   {
@@ -530,449 +532,6 @@ export const MCP_TOOLS: McpTool[] = [
         theme: requireString(args, 'theme'),
         day: typeof args.day === 'string' ? args.day : undefined,
       })
-    },
-  },
-
-  // ── O ciclo do plano de conteúdo: montar → conferir → ajustar → produzir ──
-
-  {
-    name: 'propor-semana',
-    description:
-      'Monta a semana inteira do cliente e a GUARDA no Studio: pega os horários da rotina dele, dá um assunto diferente a cada post, escolhe uma foto do acervo para cada um e escreve o texto — tudo de uma vez. É por onde começar quando a pessoa disser "monta minha semana", "o que eu posto essa semana?" ou "prepara os posts do By Rock".\n\nNÃO produz arte nenhuma e NÃO gasta crédito: o que sai daqui é a proposta, e a pessoa pode mexer no que quiser antes. Para mudar um item use editar-item-do-plano; para PRODUZIR as artes use executar-plano, que mostra a conta e pede confirmação antes de tocar.\n\nApresente a leva em português, item a item (dia, hora, assunto e o texto proposto), e diga que nada foi produzido ainda. Quando o cliente ainda não tem rotina, a resposta vem marcada como ponto de partida — conte isso com todas as letras em vez de apresentar os horários como se fossem o hábito dele.\n\nUse criar-plano quando VOCÊ já apurou tudo na conversa e só quer guardar; use esta aqui para o Studio montar.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do cliente.' },
-        dias: { type: 'number', description: 'Quantos dias à frente olhar (default 7, máx 14).' },
-        maxItens: { type: 'number', description: 'Quantos posts no máximo (default 7).' },
-        formato: {
-          type: 'string',
-          enum: ['story', 'feed', 'quadrado'],
-          description: 'Formato das peças (default story).',
-        },
-        observacao: {
-          type: 'string',
-          description: 'Recado de quem pediu ("é semana de festival", "foca no delivery").',
-        },
-        titulo: { type: 'string', description: 'Como a pessoa chama esta leva.' },
-      },
-      required: ['projectId'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-
-      const r = await proporSemana({
-        projectId,
-        dias: typeof args.dias === 'number' ? args.dias : undefined,
-        maxItens: typeof args.maxItens === 'number' ? args.maxItens : undefined,
-        formato: typeof args.formato === 'string' ? args.formato : null,
-        observacao: typeof args.observacao === 'string' ? args.observacao : null,
-        titulo: typeof args.titulo === 'string' ? args.titulo : null,
-        criadoPor: await quemDecidiu(projectId, principal),
-      })
-
-      return {
-        planoId: r.plano.id,
-        titulo: r.plano.titulo,
-        pontoDePartida: r.coldStart,
-        itens: r.plano.itens.map((item) => itemParaChat(item)),
-        progresso: r.plano.progresso.frase,
-        assuntos: r.taxonomia.assuntosUsados,
-        ...(r.copy.indisponivel ? { textoIndisponivel: true } : {}),
-        ...(r.fotos.semFoto > 0 ? { itensSemFoto: r.fotos.semFoto } : {}),
-        ...(r.avisos.length > 0 ? { avisos: r.avisos } : {}),
-        mensagem: `${r.mensagem} Para mexer em algum item use editar-item-do-plano; para produzir as artes, executar-plano (ele mostra a conta antes).`,
-      }
-    },
-  },
-
-  {
-    name: 'criar-plano',
-    description:
-      'Guarda no Studio a LEVA que você acabou de montar com a pessoa — a semana de posts, com o horário, o tema, o texto e a foto de cada um. A partir daí a leva existe fora da conversa: some do chat e continua lá, e a bancada do Studio mostra a mesma fila.\n\nNÃO produz arte nenhuma e NÃO gasta crédito: aqui só fica registrado o que se pretende fazer. Quem produz é executar-plano, e só depois de a pessoa ver a conta e dizer sim.\n\nMonte os itens com o que você já apurou: sugerir-posts dá os horários e o motivo de cada um, consultar-base e consultar-dna dão o que pode ser dito, buscar-fotos dá as fotos e escolher-modelo dá o modelo do cliente para o tema. Cada item nasce pela via "template" (montado num modelo do cliente, sem custo de imagem) — só marque "ia" quando nenhum modelo servir.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do cliente.' },
-        titulo: { type: 'string', description: 'Como a pessoa chama esta leva ("Semana de 17 a 23/08").' },
-        inicio: { type: 'string', description: 'Primeiro dia da leva ("AAAA-MM-DD").' },
-        fim: { type: 'string', description: 'Último dia da leva ("AAAA-MM-DD"), incluído por inteiro.' },
-        itens: {
-          type: 'array',
-          description: `Os posts pretendidos, na ordem. Máximo ${MAX_ITENS_POR_PLANO}.`,
-          items: {
-            type: 'object',
-            properties: {
-              quando: { type: 'string', description: 'Dia e hora de Brasília ("AAAA-MM-DD HH:mm"). Pode ficar vazio se ainda não foi decidido.' },
-              tema: { type: 'string', description: 'Do que é o post ("almoço executivo", "happy hour").' },
-              texto: {
-                type: 'array',
-                items: { type: 'string' },
-                description:
-                  'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca.',
-              },
-              legenda: { type: 'string', description: 'A legenda do Instagram, quando houver.' },
-              fotoDriveId: { type: 'string', description: 'A foto do acervo (de buscar-fotos).' },
-              fotoUrl: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
-              formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Obrigatório.' },
-              via: {
-                type: 'string',
-                enum: ['template', 'ia'],
-                description: 'Por onde a arte nasce: "template" (modelo do cliente, sem custo — o padrão) ou "ia" (gasta crédito).',
-              },
-              modeloId: {
-                type: 'string',
-                description: 'O modelo do cliente que vira a arte — o mesmo id que criar-arte-de-modelo recebe em sourcePageId, vindo de escolher-modelo.',
-              },
-              direcao: {
-                type: 'string',
-                description:
-                  'Via "ia": direção adicional para o modelo de imagem, além do tema — onde a foto é a cena, como tratar um print (ex.: "o print entra como mockup de celular sobre fundo preto, fiel e legível"), o clima da peça. Máx 1200.',
-              },
-              ajusteDaFoto: {
-                type: 'string',
-                description: 'Via "ia": ajuste autorizado na FOTO desta peça (ex.: "escurecer o fundo atrás do texto"). Sem isto a foto vai intocada, que é o padrão. ⚠️ Presente, a geração sai no tier caro e lento — dirigir a composição é papel da direção, não deste campo.',
-              },
-              referencias: {
-                type: 'array',
-                description:
-                  'Via "ia": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato, até 2 de estilo e até 1 "documento" (print colado TAL E QUAL depois da geração — avaliação do Google, cartaz, QR). Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo.',
-                items: {
-                  type: 'object',
-                  properties: {
-                    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'], description: 'Papel da foto na geração.' },
-                    driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
-                    url: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
-                    label: { type: 'string', description: 'Rótulo curto ("salão principal", "picanha na tábua").' },
-                  },
-                  required: ['role'],
-                  additionalProperties: false,
-                },
-              },
-              clienteCitadoId: {
-                type: 'number',
-                description:
-                  'Co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte, no canto oposto ao da marca da casa. Use sempre que a peça falar do trabalho feito para um cliente.',
-              },
-              motivoDoSlot: { type: 'string', description: 'Por que este horário — a frase que a pessoa lê ao revisar.' },
-              escopo: {
-                type: 'string',
-                enum: ['rotina', 'campanha', 'pontual'],
-                description: 'O que o sistema pode aprender com este post. Mesma escolha de colocar-na-agenda.',
-              },
-              campanhaId: { type: 'string', description: 'Entrada de CAMPANHAS da base a que este item pertence.' },
-              sugestaoId: { type: 'string', description: 'Se o horário veio de sugerir-posts, devolva o sugestaoId dele aqui.' },
-            },
-            required: ['formato'],
-            additionalProperties: false,
-          },
-        },
-      },
-      required: ['projectId', 'inicio', 'fim'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-
-      const entradas = Array.isArray(args.itens) ? args.itens : []
-      const { plano, avisos } = await criarPlano({
-        projectId,
-        titulo: typeof args.titulo === 'string' ? args.titulo : null,
-        inicio: requireString(args, 'inicio'),
-        fim: requireString(args, 'fim'),
-        origem: 'chat',
-        criadoPor: await quemDecidiu(projectId, principal),
-        itens: entradas
-          .filter((i: unknown): i is Record<string, any> => !!i && typeof i === 'object')
-          .map((i) => ({
-            quando: typeof i.quando === 'string' ? i.quando : null,
-            tema: typeof i.tema === 'string' ? i.tema : null,
-            copyProposta: Array.isArray(i.texto)
-              ? i.texto.filter((b: unknown): b is string => typeof b === 'string')
-              : null,
-            legenda: typeof i.legenda === 'string' ? i.legenda : null,
-            fotoDriveId: typeof i.fotoDriveId === 'string' ? i.fotoDriveId : null,
-            fotoUrl: typeof i.fotoUrl === 'string' ? i.fotoUrl : null,
-            formato: typeof i.formato === 'string' ? i.formato : null,
-            via: typeof i.via === 'string' ? i.via : null,
-            sourcePageId: typeof i.modeloId === 'string' ? i.modeloId : null,
-            direcao: typeof i.direcao === 'string' ? i.direcao : null,
-            ajusteDaFoto: typeof i.ajusteDaFoto === 'string' ? i.ajusteDaFoto : null,
-            ...(Array.isArray(i.referencias) ? { referencias: i.referencias } : {}),
-            clienteProjectId: typeof i.clienteCitadoId === 'number' ? i.clienteCitadoId : null,
-            motivoDoSlot: typeof i.motivoDoSlot === 'string' ? i.motivoDoSlot : null,
-            escopo: typeof i.escopo === 'string' ? i.escopo : null,
-            campaignId: typeof i.campanhaId === 'string' ? i.campanhaId : null,
-            sugestaoId: typeof i.sugestaoId === 'string' ? i.sugestaoId : null,
-          })),
-      })
-
-      return {
-        planoId: plano.id,
-        titulo: plano.titulo,
-        itens: plano.itens.map((item) => itemParaChat(item)),
-        progresso: plano.progresso.frase,
-        ...(avisos.length > 0 ? { avisos } : {}),
-        mensagem:
-          'A leva está guardada. Nada foi produzido e nada foi cobrado — quando estiver combinada, use executar-plano.',
-      }
-    },
-  },
-
-  {
-    name: 'ver-plano',
-    description:
-      'Mostra a leva do cliente como ela está agora: cada item com horário de Brasília, tema, texto, situação em português e a capa da arte quando ela já existe, mais o resumo do todo ("3 prontas, 2 gerando, 1 falhou"). Sem informar a leva, mostra a que está em aberto.\n\nCONSULTE antes e depois de produzir: é aqui que a situação dos itens é atualizada — as artes terminam em segundo plano, e nada avisa o plano quando ficam prontas. Item que aparece como "falhou" traz o motivo e pode ser produzido de novo.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do cliente.' },
-        planoId: { type: 'string', description: 'A leva (de criar-plano). Sem isto, a que está em aberto.' },
-      },
-      required: ['projectId'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-      const planoId = await resolverPlano(projectId, args.planoId)
-
-      // Antes de mostrar: conferir o que as artes viraram. Ninguém avisa o
-      // plano quando a fila termina uma geração — sem isto o item ficaria
-      // "na fila" para sempre, com a arte pronta na galeria ao lado.
-      const reconciliado = await reconciliarPlano(projectId, planoId)
-      const plano = await lerPlano(projectId, planoId)
-
-      const idsDeArte = plano.itens
-        .map((i) => i.generationId)
-        .filter((id): id is string => !!id)
-      const capas = idsDeArte.length
-        ? await db.generation.findMany({
-            where: { id: { in: idsDeArte } },
-            select: { id: true, resultUrl: true },
-          })
-        : []
-      const porArte = new Map(capas.map((c) => [c.id, c.resultUrl]))
-
-      return {
-        planoId: plano.id,
-        titulo: plano.titulo,
-        periodo: `${formatarBRT(plano.inicio)} a ${formatarBRT(plano.fim)}`,
-        situacaoDaLeva: plano.status === 'ativo' ? 'em aberto' : 'encerrada',
-        progresso: plano.progresso.frase,
-        concluido: plano.progresso.concluido,
-        itens: plano.itens.map((item) =>
-          itemParaChat(item, item.generationId ? porArte.get(item.generationId) : null),
-        ),
-        ...(reconciliado.movidos.length > 0
-          ? { atualizados: reconciliado.movidos.length }
-          : {}),
-      }
-    },
-  },
-
-  {
-    name: 'editar-item-do-plano',
-    description:
-      'Muda um item da leva antes de a arte existir: o horário, o tema, o texto, a legenda, a foto, o formato, o modelo ou a via. Use quando a pessoa pedir ajuste ao revisar a leva ("antecipa o de quinta", "troca o texto do happy hour").\n\nItem cuja arte já está sendo produzida, já ficou pronta ou já virou post na agenda não aceita edição — a ferramenta recusa dizendo por quê. Para pedir OUTRA arte de um item já produzido, use regenerar-item. Toda edição devolve o item para "editado": a aprovação anterior era do que estava lá antes.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do cliente.' },
-        planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
-        itemId: { type: 'string', description: 'O item (de ver-plano).' },
-        quando: { type: 'string', description: 'Novo dia e hora de Brasília ("AAAA-MM-DD HH:mm").' },
-        tema: { type: 'string', description: 'Novo tema.' },
-        texto: {
-          type: 'array',
-          items: { type: 'string' },
-          description:
-            'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui.',
-        },
-        legenda: { type: 'string', description: 'Nova legenda.' },
-        fotoDriveId: { type: 'string', description: 'Outra foto do acervo.' },
-        fotoUrl: { type: 'string', description: 'Outra imagem já no Studio.' },
-        referencias: {
-          type: 'array',
-          description:
-            'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo + o print "documento", colado tal e qual). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
-          items: {
-            type: 'object',
-            properties: {
-              role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
-              driveFileId: { type: 'string' },
-              url: { type: 'string' },
-              label: { type: 'string' },
-            },
-            required: ['role'],
-            additionalProperties: false,
-          },
-        },
-        formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Novo formato.' },
-        via: { type: 'string', enum: ['template', 'ia'], description: 'Troca a via de criação da arte.' },
-        modeloId: { type: 'string', description: 'Outro modelo do cliente (de escolher-modelo).' },
-        direcao: {
-          type: 'string',
-          description: 'Via "ia": nova direção adicional para o modelo de imagem (como tratar a foto ou o print, o clima da peça). String vazia limpa.',
-        },
-        ajusteDaFoto: { type: 'string', description: 'Via "ia": novo ajuste autorizado na foto. String vazia limpa (foto intocada).' },
-        clienteCitadoId: {
-          type: 'number',
-          description: 'Co-branding: ID do cliente citado na peça, cuja logomarca é composta na arte. 0 remove.',
-        },
-        motivoDoSlot: { type: 'string', description: 'Nova explicação do horário.' },
-        escopo: { type: 'string', enum: ['rotina', 'campanha', 'pontual'], description: 'Novo escopo de aprendizado.' },
-        campanhaId: { type: 'string', description: 'Campanha a que o item passa a pertencer.' },
-      },
-      required: ['projectId', 'itemId'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-      const planoId = await resolverPlano(projectId, args.planoId)
-
-      const { item, avisos } = await atualizarItem({
-        projectId,
-        planoId,
-        itemId: requireString(args, 'itemId'),
-        decididoPor: await quemDecidiu(projectId, principal),
-        patch: {
-          ...(args.quando !== undefined ? { quando: args.quando } : {}),
-          ...(typeof args.tema === 'string' ? { tema: args.tema } : {}),
-          ...(Array.isArray(args.texto)
-            ? { copyProposta: args.texto.filter((b: unknown): b is string => typeof b === 'string') }
-            : {}),
-          ...(typeof args.legenda === 'string' ? { legenda: args.legenda } : {}),
-          ...(typeof args.fotoDriveId === 'string' ? { fotoDriveId: args.fotoDriveId } : {}),
-          ...(typeof args.fotoUrl === 'string' ? { fotoUrl: args.fotoUrl } : {}),
-          ...(Array.isArray(args.referencias) ? { referencias: args.referencias } : {}),
-          ...(typeof args.formato === 'string' ? { formato: args.formato } : {}),
-          ...(typeof args.via === 'string' ? { via: args.via } : {}),
-          ...(typeof args.modeloId === 'string' ? { sourcePageId: args.modeloId } : {}),
-          ...(typeof args.direcao === 'string' ? { direcao: args.direcao } : {}),
-          ...(typeof args.ajusteDaFoto === 'string' ? { ajusteDaFoto: args.ajusteDaFoto } : {}),
-          ...(typeof args.clienteCitadoId === 'number'
-            ? { clienteProjectId: args.clienteCitadoId > 0 ? args.clienteCitadoId : null }
-            : {}),
-          ...(typeof args.motivoDoSlot === 'string' ? { motivoDoSlot: args.motivoDoSlot } : {}),
-          ...(typeof args.escopo === 'string' ? { escopo: args.escopo } : {}),
-          ...(typeof args.campanhaId === 'string' ? { campaignId: args.campanhaId } : {}),
-        },
-      })
-
-      return {
-        item: itemParaChat(item as ItemDePlanoParaChat),
-        ...(avisos.length > 0 ? { avisos } : {}),
-      }
-    },
-  },
-
-  {
-    name: 'regenerar-item',
-    description:
-      'Reprova um item da leva com um MOTIVO e o devolve para nova tentativa. É o caminho para "essa não ficou boa": o motivo fica registrado e alimenta o aprendizado do cliente — sem ele, a mesma arte volta na próxima leva.\n\nEscreva o motivo em palavras concretas ("o texto ficou grande demais e cobriu o prato", "essa foto já saiu semana passada"). Se o item já tinha arte, o motivo vira o feedback dela.\n\nPor padrão o item volta para edição, para você ajustar antes de produzir de novo; com voltarPara: "aprovado" ele volta pronto para ser produzido como está. Item cuja arte está sendo produzida neste momento não pode ser reprovado — espere terminar.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do cliente.' },
-        planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
-        itemId: { type: 'string', description: 'O item (de ver-plano).' },
-        motivo: { type: 'string', description: 'Por que não serve. Obrigatório — é o que ensina o sistema.' },
-        voltarPara: {
-          type: 'string',
-          enum: ['editado', 'aprovado'],
-          description: '"editado" (padrão, para você ajustar) ou "aprovado" (produzir de novo como está).',
-        },
-      },
-      required: ['projectId', 'itemId', 'motivo'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-      const planoId = await resolverPlano(projectId, args.planoId)
-
-      const r = await regenerarItem({
-        projectId,
-        planoId,
-        itemId: requireString(args, 'itemId'),
-        motivo: requireString(args, 'motivo'),
-        voltarPara: typeof args.voltarPara === 'string' ? args.voltarPara : null,
-        decididoPor: await quemDecidiu(projectId, principal),
-      })
-
-      return {
-        itemId: r.itemId,
-        situacao: ROTULO_DO_STATUS[r.situacao],
-        motivoRegistrado: r.motivo,
-        mensagem: r.mensagem,
-      }
-    },
-  },
-
-  {
-    name: 'executar-plano',
-    description:
-      'Manda o Studio PRODUZIR as artes dos itens da leva. É o ÚNICO ponto de todo o plano que gasta crédito.\n\nFunciona em DUAS chamadas, e a do meio é a pessoa:\n\n1. Chame SEM `confirmar`. Nada é produzido e nada é cobrado — a resposta é a conta: quantas artes saem por IA (com o custo em créditos), quantas saem de modelo do cliente (sem custo nenhum) e qual é o saldo hoje.\n2. Mostre essa conta a quem está falando com você, com todas as letras, e pergunte se pode tocar. Só chame de novo, com `confirmar: true`, DEPOIS do sim explícito dessa pessoa.\n\nNunca confirme por conta própria. Nem quando ela já tiver dito antes "pode fazer tudo" (ela ainda não tinha visto a conta), nem quando a conta der zero crédito, nem para "adiantar". Se houver qualquer hesitação, não chame.\n\nNa segunda chamada, as artes por IA entram na fila e ficam prontas sozinhas em alguns minutos (acompanhe com ver-plano, que é onde a situação é atualizada); as de modelo são montadas na hora, uma a uma. Leva grande pode não caber de uma vez: a resposta diz quantos itens ficaram para depois, e basta chamar de novo com `confirmar: true` para continuar de onde parou. Item que falha não derruba os outros — cada falha vem com o motivo.\n\nUse `itemIds` para produzir só uma parte da leva. Item reprovado é pulado de propósito: passe antes por regenerar-item.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do cliente.' },
-        planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
-        itemIds: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Só estes itens (de ver-plano). Sem isto, todos os que estiverem prontos para produzir.',
-        },
-        confirmar: {
-          type: 'boolean',
-          description:
-            'Só depois de a pessoa ver a conta e dizer sim. Sem isto a ferramenta apenas calcula e não produz nada.',
-        },
-      },
-      required: ['projectId'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-      const planoId = await resolverPlano(projectId, args.planoId)
-
-      const dono = await resolverDono(projectId, principal)
-      const r = await executarPlano({
-        projectId,
-        planoId,
-        itemIds: Array.isArray(args.itemIds)
-          ? args.itemIds.filter((id: unknown): id is string => typeof id === 'string')
-          : undefined,
-        confirmar: args.confirmar === true,
-        actorClerkId: dono.clerkId,
-        donoUserId: dono.id,
-        decididoPor: dono.id,
-      })
-
-      return {
-        planoId: r.planoId,
-        conta: {
-          artesPorIA: r.conta.porIA,
-          artesPorModelo: r.conta.porModelo,
-          creditos: r.conta.creditos,
-          saldo: r.conta.saldo,
-          resumo: r.conta.resumo,
-        },
-        ...(r.confirmacaoNecessaria ? { confirmacaoNecessaria: true } : {}),
-        mensagem: r.mensagem,
-        ...(r.executados.length > 0 ? { produzindo: r.executados } : {}),
-        ...(r.falhas.length > 0 ? { falhas: r.falhas } : {}),
-        ...(r.ignorados.length > 0 ? { pulados: r.ignorados } : {}),
-        ...(r.faltaram ? { faltaram: r.faltaram } : {}),
-        ...(r.progresso ? { progresso: r.progresso.frase } : {}),
-        ...(r.avisos ? { avisos: r.avisos } : {}),
-      }
     },
   },
 
@@ -1254,23 +813,6 @@ export const MCP_TOOLS: McpTool[] = [
           ? `Regra registrada em ${resultado.secao}. Vale a partir da próxima geração, do chat e do site.`
           : `Proposta montada, NADA foi gravado ainda. Mostre a linha à pessoa e confirme para valer.`,
       }
-    },
-  },
-
-  {
-    name: 'listar-combinacoes-de-texto',
-    description:
-      'Composições de texto prontas do cliente, com posição, tamanho e cor já ajustados à marca. Escolher uma e só trocar as palavras costuma dar resultado melhor do que posicionar tudo na mão. Repare em quantos campos cada uma tem: texto longo demais para os campos disponíveis fica sobreposto na arte.',
-    inputSchema: {
-      type: 'object',
-      properties: { projectId: { type: 'number', description: 'ID do projeto.' } },
-      required: ['projectId'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-      return listFontCombinations(projectId)
     },
   },
 

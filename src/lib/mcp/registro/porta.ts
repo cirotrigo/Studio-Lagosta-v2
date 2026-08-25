@@ -164,18 +164,25 @@ export function mensagemDeEntradaInvalida(tool: ToolPronta, erro: z.ZodError): s
     (tool.schemaJson.properties as Record<string, unknown> | undefined) ?? {},
   ).join(', ')
 
-  const desconhecidas = erro.issues
-    .filter((i) => i.code === 'unrecognized_keys')
-    .flatMap((i) => (i as { keys: string[] }).keys)
-  if (desconhecidas.length > 0) {
+  // Só a RAIZ usa a mensagem calibrada — chave desconhecida dentro de um
+  // objeto aninhado (itens[0] de criar-plano, referencias[2]) apontando os
+  // parâmetros da raiz mandaria o modelo consertar o lugar errado.
+  const desconhecidasNaRaiz = erro.issues
+    .filter((i) => i.code === 'unrecognized_keys' && i.path.length === 0)
+    .flatMap((i) => (i as unknown as { keys: string[] }).keys)
+  if (desconhecidasNaRaiz.length > 0) {
     return (
-      `A ferramenta ${tool.nome} não conhece ${desconhecidas.map((d) => `"${d}"`).join(', ')}. ` +
+      `A ferramenta ${tool.nome} não conhece ${desconhecidasNaRaiz.map((d) => `"${d}"`).join(', ')}. ` +
       `Os parâmetros aceitos são: ${aceitos}.`
     )
   }
 
   const problemas = erro.issues.map((issue) => {
     const campo = issue.path.join('.') || 'entrada'
+    if (issue.code === 'unrecognized_keys') {
+      const chaves = (issue as unknown as { keys: string[] }).keys
+      return `"${campo}" não aceita ${chaves.map((k) => `"${k}"`).join(', ')}`
+    }
     if (issue.code === 'invalid_type') {
       const it = issue as { expected: unknown; received: unknown }
       if (String(it.received) === 'undefined') return `falta "${campo}"`
