@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isExternalApiAuthorized } from '@/lib/external-api/auth'
-import { MCP_TOOLS, runMcpTool } from '@/lib/mcp/tools'
+import { executarToolRemota, listarToolsRemotas } from '@/lib/mcp/catalogo/integracao'
 import { oauthIssuer, resolveAccessToken, type McpPrincipal } from '@/lib/mcp/oauth'
 
 // Renders happen inside create-arte-rapida / create-arte-livre; a melhoria
@@ -139,16 +139,16 @@ async function handleMessage(message: any, principal: McpPrincipal) {
       return result(id, {})
 
     case 'tools/list':
-      return result(id, {
-        tools: MCP_TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })),
-      })
+      // Catálogo novo (com annotations) + tools ainda não migradas — ver
+      // src/lib/mcp/catalogo/integracao.ts.
+      return result(id, { tools: listarToolsRemotas() })
 
     case 'tools/call': {
       const name = params?.name
       if (typeof name !== 'string') {
         return failure(id, -32602, 'params.name é obrigatório')
       }
-      return result(id, await runMcpTool(name, params?.arguments ?? {}, principal))
+      return result(id, await executarToolRemota(name, params?.arguments ?? {}, principal))
     }
 
     default:

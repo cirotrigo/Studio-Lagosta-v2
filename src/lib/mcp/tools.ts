@@ -186,7 +186,7 @@ async function orgsDoUsuario(clerkUserId: string): Promise<string[]> {
  * abrir o conector e ver ZERO — com "Sem acesso ao projeto 6" em cada tool,
  * sem nada que explicasse por quê. Aconteceu de verdade em 12/08/2026.
  */
-async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | null> {
+export async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | null> {
   if (principal.kind === 'service') return null
 
   // `principal.userId` é clerkId; `Project.userId` é o id INTERNO do User.
@@ -221,7 +221,7 @@ async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | nul
  * token emitido para outra conta — é invisível de dentro da conversa. Custa uma
  * consulta que só roda quando algo já deu errado.
  */
-async function quemEstaConectado(principal: McpPrincipal): Promise<string> {
+export async function quemEstaConectado(principal: McpPrincipal): Promise<string> {
   if (principal.kind === 'service') return 'chave de serviço'
   try {
     const { clerkClient } = await import('@clerk/nextjs/server')
@@ -297,7 +297,7 @@ async function resolverAutor(projectId: number, principal: McpPrincipal): Promis
  * pendurado (`resolverDono` levanta 500) não pode deixar de ser agendado por
  * causa de um campo de registro.
  */
-async function quemDecidiu(
+export async function quemDecidiu(
   projectId: number,
   principal: McpPrincipal,
 ): Promise<string | undefined> {
@@ -310,7 +310,7 @@ async function quemDecidiu(
 }
 
 /** Barra o acesso a um projeto fora do alcance do portador. */
-async function assertProjetoPermitido(projectId: number, principal: McpPrincipal) {
+export async function assertProjetoPermitido(projectId: number, principal: McpPrincipal) {
   const permitidos = await projetosVisiveis(principal)
   if (permitidos && !permitidos.includes(projectId)) {
     /**
@@ -388,7 +388,7 @@ export async function ehCuradorDoProjeto(
   return !!curador
 }
 
-async function assertCuradorDoProjeto(projectId: number, principal: McpPrincipal) {
+export async function assertCuradorDoProjeto(projectId: number, principal: McpPrincipal) {
   await assertProjetoPermitido(projectId, principal)
 
   // O segredo de serviço é o Claudinho, que já opera em nome do dono — mesma
@@ -496,39 +496,15 @@ function itemParaChat(item: ItemDePlanoParaChat, capa?: string | null) {
  */
 const MAX_LOTE = 12
 
+/**
+ * Tools AINDA NÃO migradas para o registro (src/lib/mcp/registro + catalogo/).
+ *
+ * Tool migrada SAI deste array no mesmo PR — o catálogo vence por nome na
+ * porta (catalogo/integracao.ts), e deixar a cópia aqui seria uma segunda
+ * fonte de verdade esperando divergir. Já migradas: listar-clientes,
+ * criar-arte-de-modelo.
+ */
 export const MCP_TOOLS: McpTool[] = [
-  {
-    name: 'listar-clientes',
-    description:
-      'Lista os clientes (projetos) do Studio Lagosta. Comece por aqui quando a pessoa citar um cliente pelo nome — é onde você descobre o id que as outras ferramentas pedem.',
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
-    handler: async (_args, principal) => {
-      const permitidos = await projetosVisiveis(principal)
-      if (permitidos && permitidos.length === 0) {
-        // Lista vazia sem explicação manda procurar no lugar errado — ver a
-        // nota em assertProjetoPermitido.
-        const quem = await quemEstaConectado(principal)
-        return {
-          count: 0,
-          projects: [],
-          aviso: `Nenhum cliente visível: a conexão está autenticada como ${quem}, e essa conta não é dona de nenhum projeto nem participa de uma organização que tenha algum. Reconecte com a conta dona, ou peça para incluírem esta na organização.`,
-        }
-      }
-      const projects = await db.project.findMany({
-        where: { status: 'ACTIVE', ...(permitidos ? { id: { in: permitidos } } : {}) },
-        select: {
-          id: true,
-          name: true,
-          instagramUsername: true,
-          googleDriveFolderId: true,
-          googleDriveImagesFolderId: true,
-        },
-        orderBy: { name: 'asc' },
-      })
-      return { count: projects.length, projects }
-    },
-  },
-
   {
     name: 'escolher-modelo',
     description:
@@ -551,41 +527,6 @@ export const MCP_TOOLS: McpTool[] = [
         projectHint: typeof args.projectHint === 'string' ? args.projectHint : undefined,
         theme: requireString(args, 'theme'),
         day: typeof args.day === 'string' ? args.day : undefined,
-      })
-    },
-  },
-
-  {
-    name: 'criar-arte-de-modelo',
-    description:
-      'Monta a arte em cima de um modelo pronto do cliente (o que veio de escolher-modelo). Devolve a imagem e um link para abrir e ajustar no editor.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        projectId: { type: 'number', description: 'ID do projeto.' },
-        sourcePageId: { type: 'string', description: 'ID da página de template (prepare-creative.page.id).' },
-        slotValues: {
-          type: 'object',
-          description:
-            'Valores por slot, com as chaves do template (layerId ou nome da camada). String define texto; objeto aceita {content, fileUrl}. Chaves reservadas: _driveImageId, _imageUrl.',
-          additionalProperties: true,
-        },
-        name: { type: 'string', description: 'Nome da página gerada (opcional).' },
-        imageUrl: { type: 'string', description: 'URL pública da imagem de fundo. Tem prioridade sobre _driveImageId.' },
-      },
-      required: ['projectId', 'sourcePageId'],
-      additionalProperties: false,
-    },
-    handler: async (args, principal) => {
-      const projectId = requireNumber(args, 'projectId')
-      await assertProjetoPermitido(projectId, principal)
-      return createArteRapida({
-        projectId,
-        sourcePageId: requireString(args, 'sourcePageId'),
-        slotValues: (args.slotValues && typeof args.slotValues === 'object' ? args.slotValues : {}) as Record<string, unknown>,
-        name: typeof args.name === 'string' ? args.name : undefined,
-        imageUrl: typeof args.imageUrl === 'string' ? args.imageUrl : undefined,
-        decididoPor: await quemDecidiu(projectId, principal),
       })
     },
   },

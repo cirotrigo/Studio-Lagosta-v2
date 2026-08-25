@@ -31,3 +31,8 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      # Roda SEM env de propósito: o catálogo tem de carregar sem DATABASE_URL
+      # (handlers só alcançam db por import dinâmico) — ver o cabeçalho do script.
+      - name: Registro MCP (invariantes, snapshots, porta)
+        run: npx tsx scripts/validar-registro-mcp.ts
