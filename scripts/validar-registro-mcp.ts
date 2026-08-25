@@ -159,6 +159,173 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
   additionalProperties: false,
 }
 
+/** PR 2 — os literais que o array legado servia para a agenda, verbatim. */
+const LITERAIS_AGENDA: Record<string, unknown> = {
+  'ver-agenda': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      from: { type: 'string', description: 'Data inicial ("AAAA-MM-DD" ou ISO). Default: ontem.' },
+      to: { type: 'string', description: 'Data final (opcional).' },
+      situacao: {
+        type: 'string',
+        enum: ['rascunho', 'agendado', 'publicado', 'falhou'],
+        description: 'Filtra por situação (opcional).',
+      },
+      limit: { type: 'number', description: 'Máximo de posts (default 50).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'sugerir-posts': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      dias: { type: 'number', description: 'Quantos dias à frente (default 7, máx 14).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'colocar-na-agenda': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Tipo de publicação (padrão STORY).' },
+      caption: { type: 'string', description: 'Legenda. Story costuma ir sem.' },
+      scheduledDatetime: { type: 'string', description: 'Quando: "AAAA-MM-DD HH:mm" no horário de Brasília.' },
+      pageId: { type: 'string', description: 'A arte criada aqui (veio de criar-arte ou criar-arte-de-modelo).' },
+      mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
+      generationId: { type: 'string', description: 'O generationId da arte. Para arte MELHORADA, basta ele — a imagem é resolvida sozinha (sem copiar URL). Vincula o criativo ao post e habilita melhorar depois. Passe sempre que tiver.' },
+      situacao: {
+        type: 'string',
+        enum: ['rascunho', 'agendado'],
+        description: 'rascunho (padrão) só aparece na agenda; agendado publica de verdade no Instagram do cliente. Use "agendado" apenas após confirmação explícita da pessoa.',
+      },
+      escopo: {
+        type: 'string',
+        enum: ['rotina', 'campanha', 'pontual'],
+        description:
+          'O que o sistema pode aprender com este post. "rotina" (padrão) é o post normal, que forma a cadência e o repertório do cliente. "campanha" é post de ação com começo e fim (festival, semana temática, promoção datada) — aprende para a próxima edição dela, não para a rotina. "pontual" é caso isolado (aviso de feriado, mudança de horário, recado de emergência) e não deve virar padrão nenhum.\n\nMarque quando souber: uma leva costuma misturar os três, e post pontual contado como rotina faz o sistema sugerir aviso de feriado toda semana. Não pergunte à pessoa com esse vocabulário — deduza do que ela pediu.',
+      },
+      campanhaId: {
+        type: 'string',
+        description:
+          'Id da entrada de CAMPANHAS da base (de consultar-base) a que este post pertence. Informar isso já marca o post como campanha, e é o que permite avisar quando um post está marcado para depois do fim dela.',
+      },
+      sugestaoId: {
+        type: 'string',
+        description:
+          'Se este post veio de um horário proposto por sugerir-posts, devolva aqui o sugestaoId daquele slot — inclusive quando você mudou o horário. É assim que o sistema aprende quais sugestões são boas: sem isso ele só enxerga o que foi aceito. Não invente nem reaproveite id de outra proposta; sem sugestão, omita.',
+      },
+    },
+    required: ['projectId', 'scheduledDatetime'],
+    additionalProperties: false,
+  },
+  'postar-agora': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Tipo (padrão STORY).' },
+      caption: { type: 'string', description: 'Legenda. Story costuma ir sem.' },
+      pageId: { type: 'string', description: 'A arte criada aqui (de criar-arte ou criar-arte-de-modelo).' },
+      mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
+      generationId: { type: 'string', description: 'O generationId da arte, se houver (habilita melhorar depois).' },
+      escopo: {
+        type: 'string',
+        enum: ['rotina', 'campanha', 'pontual'],
+        description:
+          'O que o sistema pode aprender com este post — mesma escolha de colocar-na-agenda. Publicação imediata costuma ser "pontual" (recado, aviso, algo que aconteceu agora): marcar assim evita que vire cadência.',
+      },
+      campanhaId: {
+        type: 'string',
+        description: 'Id da entrada de CAMPANHAS da base a que este post pertence (de consultar-base).',
+      },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'aprovar-rascunhos': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ids dos posts a aprovar (de ver-agenda ou do retorno de colocar-na-agenda).',
+      },
+    },
+    required: ['projectId', 'postIds'],
+    additionalProperties: false,
+  },
+  'voltar-para-rascunho': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Ids dos posts a devolver para rascunho.',
+      },
+    },
+    required: ['projectId', 'postIds'],
+    additionalProperties: false,
+  },
+  'editar-post': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postId: { type: 'string', description: 'Id do rascunho (de ver-agenda).' },
+      caption: { type: 'string', description: 'Nova legenda (substitui a inteira).' },
+      postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Novo tipo (opcional).' },
+    },
+    required: ['projectId', 'postId'],
+    additionalProperties: false,
+  },
+  'trocar-arte-do-post': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postId: { type: 'string', description: 'Id do rascunho (de ver-agenda).' },
+      generationId: {
+        type: 'string',
+        description: 'A arte pronta que vai entrar (id de criar-arte/gerar-imagem/melhorar-arte).',
+      },
+      pageId: {
+        type: 'string',
+        description: 'A arte criada aqui que vai entrar — é renderizada na hora, como a página está agora.',
+      },
+      indice: {
+        type: 'number',
+        description: 'Qual imagem trocar num carrossel: 0 é a primeira, 1 a segunda. Padrão 0.',
+      },
+    },
+    required: ['projectId', 'postId'],
+    additionalProperties: false,
+  },
+  'reagendar-post': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postId: { type: 'string', description: 'Id do post (de ver-agenda).' },
+      novaDataHora: {
+        type: 'string',
+        description: 'Novo horário: "AAAA-MM-DD HH:mm" no horário de Brasília.',
+      },
+    },
+    required: ['projectId', 'postId', 'novaDataHora'],
+    additionalProperties: false,
+  },
+  'cancelar-post': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      postId: { type: 'string', description: 'Id do post a cancelar.' },
+    },
+    required: ['projectId', 'postId'],
+    additionalProperties: false,
+  },
+}
+
 comparaSchemas(
   'listar-clientes',
   CATALOGO.get('listar-clientes')?.schemaJson,
@@ -169,6 +336,9 @@ comparaSchemas(
   CATALOGO.get('criar-arte-de-modelo')?.schemaJson,
   LITERAL_CRIAR_ARTE_DE_MODELO,
 )
+for (const [nome, literal] of Object.entries(LITERAIS_AGENDA)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // C. A porta, com catálogo e gates de mentira
