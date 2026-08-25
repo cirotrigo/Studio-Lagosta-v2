@@ -16,6 +16,9 @@ import {
   assertCuradorDoProjeto,
 } from '../tools'
 import { MAX_ITENS_POR_PLANO } from '../../planos/plano-service'
+import { KnowledgeCategory } from '@prisma/client'
+import { BRAND_DNA_FIELDS } from '../../brand/brand-context'
+import { CATEGORIAS_DA_BASE, SECOES_DO_DNA } from './base-e-dna'
 import type { McpPrincipal } from '../oauth'
 import { executarTool } from '../registro/porta'
 import { catalogoParaLista } from '../registro/derivar'
@@ -37,6 +40,29 @@ import { CATALOGO, INDICE_DO_CATALOGO } from './index'
   if (criarPlano && !descricaoDeItens.includes(`Máximo ${MAX_ITENS_POR_PLANO}.`)) {
     throw new TypeError(
       `criar-plano: a descrição de itens diz outro teto que não MAX_ITENS_POR_PLANO (${MAX_ITENS_POR_PLANO}).`,
+    )
+  }
+}
+
+/**
+ * Vigias dos vocabulários cravados em catalogo/base-e-dna.ts — os donos
+ * (enum do Prisma, BRAND_DNA_FIELDS) não podem entrar estáticos num módulo
+ * que carrega sem env, então o espelho é conferido aqui, onde o peso é
+ * permitido. Divergiu, o boot quebra em vez de o schema mentir.
+ */
+{
+  const reais = Object.values(KnowledgeCategory).sort().join(',')
+  const espelho = [...CATEGORIAS_DA_BASE].sort().join(',')
+  if (reais !== espelho) {
+    throw new TypeError(
+      `CATEGORIAS_DA_BASE divergiu do enum KnowledgeCategory. Enum: ${reais}. Espelho: ${espelho}.`,
+    )
+  }
+  const secoesReais = [...BRAND_DNA_FIELDS].sort().join(',')
+  const secoesEspelho = [...SECOES_DO_DNA].sort().join(',')
+  if (secoesReais !== secoesEspelho) {
+    throw new TypeError(
+      `SECOES_DO_DNA divergiu de BRAND_DNA_FIELDS. Real: ${secoesReais}. Espelho: ${secoesEspelho}.`,
     )
   }
 }

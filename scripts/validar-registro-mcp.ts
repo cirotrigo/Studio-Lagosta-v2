@@ -845,7 +845,249 @@ for (const [nome, literal] of Object.entries(LITERAIS_AGENDA)) {
 for (const [nome, literal] of Object.entries(LITERAIS_PLANOS)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
+/**
+ * PR 5 — os literais do restante, verbatim. Os enums que o array montava por
+ * import (Object.values(KnowledgeCategory), BRAND_DNA_FIELDS) aparecem aqui
+ * RESOLVIDOS — e é o espelho de base-e-dna.ts + as sentinelas de integracao.ts
+ * que garantem que continuam iguais aos donos.
+ */
+const CATEGORIAS = ['ESTABELECIMENTO_INFO', 'HORARIOS', 'CARDAPIO', 'DELIVERY', 'POLITICAS', 'TOM_DE_VOZ', 'CAMPANHAS', 'DIFERENCIAIS', 'FAQ']
+const SECOES = ['toneOfVoice', 'contentRules', 'composition', 'visualStyle', 'photoDirection', 'approvalChecklist']
+
+const LITERAIS_RESTANTE: Record<string, unknown> = {
+  'consultar-base': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do projeto.' },
+      category: { type: 'string', enum: CATEGORIAS, description: 'Filtra por categoria. Omita para trazer tudo.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'consultar-dna': {
+    type: 'object',
+    properties: { projectId: { type: 'number', description: 'ID do cliente.' } },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'atualizar-dna': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      toneOfVoice: { type: ['string', 'null'], description: 'Como a marca fala (usado em copies e chat). null limpa.' },
+      contentRules: { type: ['string', 'null'], description: 'O que nunca fazer ou dizer (usado em copies, chat e artes). null limpa.' },
+      composition: { type: ['string', 'null'], description: 'Como os elementos se organizam nas artes. null limpa.' },
+      visualStyle: { type: ['string', 'null'], description: 'A estética geral da marca (usado nas artes). null limpa.' },
+      photoDirection: { type: ['string', 'null'], description: 'Luz e tratamento fotográfico (usado nas artes). null limpa.' },
+      approvalChecklist: {
+        type: ['string', 'null'],
+        description: 'Crivo de aprovação: perguntas binárias, UMA POR LINHA, conferidas por gente antes de agendar. NÃO entra em prompt de geração. null limpa.',
+      },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'virar-regra': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      secao: {
+        type: 'string',
+        enum: SECOES,
+        description: 'Onde a regra mora no DNA: contentRules (proibições), composition (layout), visualStyle (estética), photoDirection (foto), toneOfVoice (texto), approvalChecklist (crivo). Obrigatória para regra PERMANENTE; dispensável quando você manda validade.',
+      },
+      regra: { type: 'string', description: 'A regra na forma imperativa, como deve valer daqui para a frente.' },
+      motivo: { type: 'string', description: 'O caso concreto que gerou a regra. Sem motivo a regra não se explica daqui a três meses.' },
+      validade: {
+        type: 'string',
+        description: 'Último dia em que a regra vale (AAAA-MM-DD). Manda a regra para a base de conhecimento, categoria CAMPANHAS, em vez do DNA — ela deixa de valer sozinha depois dessa data.',
+      },
+      titulo: { type: 'string', description: 'Título da entrada na base, quando a regra tem validade (ex: "Festival Italiano — agosto"). Opcional.' },
+      confirmado: { type: 'boolean', description: 'Só grava com true. Sem isto devolve a proposta para você mostrar à pessoa.' },
+    },
+    required: ['projectId', 'regra', 'motivo'],
+    additionalProperties: false,
+  },
+  'criar-entrada-base': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      category: { type: 'string', enum: CATEGORIAS, description: 'Categoria da entrada (TOM_DE_VOZ, HORARIOS, CARDAPIO, CAMPANHAS...).' },
+      title: { type: 'string', description: 'Título curto e específico (ex: "Promoção Costela no Bafo — agosto").' },
+      content: { type: 'string', description: 'O conteúdo, em texto corrido, do jeito que deve alimentar as copies.' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Etiquetas opcionais para busca.' },
+      validade: {
+        type: 'string',
+        description: 'Último dia em que a informação vale (AAAA-MM-DD, no fuso de Brasília — o dia inteiro conta). Depois disso a entrada sai sozinha dos textos e das sugestões. Obrigatório na prática para CAMPANHAS com data de fim; omita só para informação permanente (horário, cardápio fixo, política).',
+      },
+    },
+    required: ['projectId', 'category', 'title', 'content'],
+    additionalProperties: false,
+  },
+  'atualizar-entrada-base': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      entradaId: { type: 'string', description: 'Id da entrada (de consultar-base).' },
+      title: { type: 'string', description: 'Novo título (opcional).' },
+      content: { type: 'string', description: 'Novo conteúdo completo (opcional — substitui o texto inteiro, não é acréscimo).' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Novas etiquetas (opcional, substitui as atuais).' },
+      category: { type: 'string', enum: CATEGORIAS, description: 'Nova categoria (opcional).' },
+      validade: {
+        type: ['string', 'null'],
+        description: 'Último dia em que a informação vale (AAAA-MM-DD, fuso de Brasília — o dia inteiro conta). null tira o prazo e a entrada volta a valer para sempre.',
+      },
+    },
+    required: ['projectId', 'entradaId'],
+    additionalProperties: false,
+  },
+  'arquivar-entrada-base': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      entradaId: { type: 'string', description: 'Id da entrada (de consultar-base).' },
+    },
+    required: ['projectId', 'entradaId'],
+    additionalProperties: false,
+  },
+  'buscar-fotos': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do projeto.' },
+      theme: { type: 'string', description: 'Tema — casa com tags, bestFor e o caminho da pasta (ex: "ambiente", "picanha", "chopp").' },
+      folder: { type: 'string', description: 'Pasta exata ou prefixo (ex: "01_cortes/picanha-bovina", "02_ambiente"). Veja pastasDisponiveis no retorno.' },
+      menuCategory: { type: 'string', description: 'Categoria do cardápio (ex: PRATOS_PRINCIPAIS, BEBIDAS).' },
+      tags: { type: 'array', items: { type: 'string' }, description: 'Tags a casar.' },
+      quality: { type: 'string', enum: ['alta', 'media', 'baixa'], description: 'Qualidade mínima.' },
+      fileName: {
+        type: 'string',
+        description: 'Nome do arquivo, exato ou início dele ("ambiente-f3a" acha "ambiente-f3a8693.jpg"). Use quando já souber qual foto quer.',
+      },
+      limit: { type: 'number', description: 'Máximo de resultados (default 20). Pode pedir mais — não há teto.' },
+      offset: { type: 'number', description: 'Quantas pular, para ver o resto da lista. A ordem é estável.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'marcar-foto-como-usada': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      driveFileIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'As fotos usadas (o driveFileId que buscar-fotos devolve). Aceita várias de uma vez.',
+      },
+      tema: { type: 'string', description: 'Assunto da peça, para explicar depois por que a foto foi usada.' },
+      quando: { type: 'string', description: 'Data da publicação "AAAA-MM-DD". Padrão: hoje.' },
+    },
+    required: ['projectId', 'driveFileIds'],
+    additionalProperties: false,
+  },
+  'pedir-foto': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente (a foto fica no acervo de envio dele).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'ver-foto-enviada': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      uploadId: { type: 'string', description: 'O uploadId devolvido por pedir-foto.' },
+    },
+    required: ['projectId', 'uploadId'],
+    additionalProperties: false,
+  },
+  'listar-fotos-da-pasta': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do projeto.' },
+      folder: {
+        type: 'string',
+        description: 'Pasta pelo NOME, exata ou prefixo ("09_ambiente" traz "09_ambiente/noite" junto). Veja pastasDisponiveis no retorno.',
+      },
+      limit: { type: 'number', description: 'Máximo de imagens (default 30).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'definir-ancora': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      sceneTag: {
+        type: 'string',
+        description: 'Tipo de cena em kebab-case (ex: "ambiente", "mesa", "chopp"). "ambiente" é a tag da injeção automática.',
+      },
+      driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
+      url: { type: 'string', description: 'Alternativa: URL de imagem já no Studio.' },
+      label: { type: 'string', description: 'Rótulo curto (ex: "salão com teto real").' },
+      removerAncoraId: {
+        type: 'string',
+        description: 'Para REMOVER: id da âncora (de listar-ancoras). Ignora os outros campos.',
+      },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'listar-ancoras': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'marcar-como-modelo': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      pageId: { type: 'string', description: 'A página a marcar (de criar-arte, ajustar-arte ou listar-modelos).' },
+      tags: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Temas do modelo, normalizados com hífen (ex: ["happy-hour", "sexta"]). Substituem as tags atuais.',
+      },
+      marcar: { type: 'boolean', description: 'true (default) marca como modelo; false despromove.' },
+    },
+    required: ['projectId', 'pageId'],
+    additionalProperties: false,
+  },
+  'listar-modelos': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      incluirNaoMarcadas: { type: 'boolean', description: 'Inclui páginas que ainda não são modelo (candidatas a promoção).' },
+      limit: { type: 'number', description: 'Máximo de páginas (default 50, teto 200).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'ver-feedback-das-artes': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      de: { type: 'string', description: 'Data inicial ("AAAA-MM-DD" ou ISO). Opcional.' },
+      ate: { type: 'string', description: 'Data final ("AAAA-MM-DD" ou ISO). Opcional.' },
+      veredito: {
+        type: 'string',
+        enum: ['gostei', 'melhorar'],
+        description: 'Filtra só os elogios ou só os pedidos de melhoria (opcional).',
+      },
+      limit: { type: 'number', description: 'Máximo de itens (default 50, teto 200).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+}
+
 for (const [nome, literal] of Object.entries(LITERAIS_ARTE_IA)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+for (const [nome, literal] of Object.entries(LITERAIS_RESTANTE)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 

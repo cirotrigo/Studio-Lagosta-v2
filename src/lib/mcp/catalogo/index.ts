@@ -11,8 +11,11 @@
 import type { ToolPronta } from '../registro/tipos'
 import { toolsDeAgenda } from './agenda'
 import { toolsDeArteIA } from './arte-ia'
+import { toolsDeBaseEDna } from './base-e-dna'
 import { toolsDeCarrossel } from './carrossel'
 import { toolsDeClientes } from './clientes'
+import { toolsDeFeedback } from './feedback'
+import { toolsDeFotos } from './fotos'
 import { toolsDeModelos } from './modelos'
 import { toolsDePlanos } from './planos'
 
@@ -23,6 +26,9 @@ const TODAS: ToolPronta[] = [
   ...toolsDePlanos,
   ...toolsDeArteIA,
   ...toolsDeCarrossel,
+  ...toolsDeBaseEDna,
+  ...toolsDeFotos,
+  ...toolsDeFeedback,
 ]
 
 const catalogo = new Map<string, ToolPronta>()
