@@ -78,6 +78,22 @@ export async function executarToolRemota(
   })
 }
 
+/**
+ * A porta do servidor LOCAL (stdio). Sem fallback legado: o que não está no
+ * catálogo com superfície "local" não existe por aqui — as tools inglesas
+ * próprias do stdio (upload, render, Zernio) são registradas direto no SDK
+ * pelo scripts/mcp-server.ts, fora desta porta.
+ */
+export async function executarToolLocal(
+  nome: string,
+  args: Record<string, unknown>,
+  principal: McpPrincipal,
+): Promise<ResultadoMcp> {
+  return executarTool(INDICE_DO_CATALOGO, 'local', nome, args, principal, {
+    gates: { projeto: assertProjetoPermitido, curador: assertCuradorDoProjeto },
+  })
+}
+
 /** Catálogo novo + tools ainda não migradas, sem duplicar nome. */
 export function listarToolsRemotas(): ToolParaLista[] {
   const doCatalogo = catalogoParaLista(CATALOGO, 'remoto')

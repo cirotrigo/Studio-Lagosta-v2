@@ -16,6 +16,12 @@ import { PrismaClient } from '../prisma/generated/client'
 // Caminho relativo de propósito: este servidor roda fora do bundle do Next,
 // onde o alias `@/` pode não resolver. O módulo não tem dependência nenhuma.
 import { vigenteEm } from '../src/lib/knowledge/vigencia'
+// O catálogo compartilhado (PR 6): a cadeia passa por tools.ts, que usa o
+// alias `@/` — o tsx resolve pelo tsconfig (provado pelos .tmp-test-* que
+// importam '@/lib/mcp/tools'). O dotenv/config acima avalia primeiro, então
+// o `@/lib/db` da cadeia já enxerga o DATABASE_URL.
+import { CATALOGO } from '../src/lib/mcp/catalogo'
+import { executarToolLocal } from '../src/lib/mcp/catalogo/integracao'
 import { put } from '@vercel/blob'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -2411,6 +2417,40 @@ toolEstrita(
     }
   },
 )
+
+// ─── Catálogo compartilhado (PR 6 do registro único) ─────────────────
+//
+// As 48 tools PT do conector remoto passam a existir AQUI também, vindas do
+// MESMO catálogo (src/lib/mcp/catalogo) — declaração única, validação única
+// (a porta executarToolLocal), gates com principal de serviço (a máquina do
+// dono tem o mesmo poder de sempre).
+//
+// ⚠️ As 6 tools inglesas acima que PARECEM duplicatas (list-projects,
+// list-posts, list-drive-images, get-knowledge, prepare-creative,
+// create-arte-rapida) NÃO são: os contratos divergem do catálogo — list-posts
+// usa dateFrom/status em inglês e devolve a lista crua; list-projects filtra
+// por status e expõe campos que o listar-clientes não expõe; list-drive-images
+// tem folderId/includeSubfolders — e as skills (create-template-pages,
+// schedule-content, plan-week) consomem ESSAS formas. Elas ficam como camada
+// de compatibilidade explícita; os nomes PT do catálogo são os canônicos.
+// Migrar as skills para os nomes PT aposenta a camada — decisão futura.
+
+{
+  const PRINCIPAL_LOCAL = { kind: 'service' } as const
+
+  for (const tool of CATALOGO.values()) {
+    if (!tool.superficies.includes('local')) continue
+    server.registerTool(
+      tool.nome,
+      // O SDK valida com o MESMO zod estrito e deriva o schema da listagem
+      // dele; a porta revalida por dentro (redundância barata) e é quem
+      // aplica gate, coerção e a moldagem de erro em PT.
+      { description: tool.descricao, inputSchema: tool.schema as never },
+      (async (args: Record<string, unknown>) =>
+        executarToolLocal(tool.nome, args ?? {}, PRINCIPAL_LOCAL)) as never,
+    )
+  }
+}
 
 // ─── Start Server ────────────────────────────────────────────────────
 
