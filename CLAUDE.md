@@ -3214,6 +3214,64 @@ A consequência não estava documentada e derrubou **3 downloads num dia**:
   alguém voltar a usá-la, precisa gravar `videoApiStatus`, senão nasce um job
   invisível para o cron e para o expurgo.
 
+### O registro único de tools MCP (25/08/2026)
+
+As 48 tools do conector vivem em **`src/lib/mcp/catalogo/`** (um arquivo por
+domínio), declaradas UMA vez com `definirTool` — schema zod (`.strict()`
+aplicado pelo construtor), `annotations` obrigatórias, `acesso` declarado,
+`superficies` — e executadas pela porta única
+(`src/lib/mcp/registro/porta.ts`): apelido → superfície → coerção → validação →
+gate → handler. O desenho nasceu da análise do framework Invokta (24/08);
+7 commits `a20b8b94..626f69ef`. Regras que valem para código novo:
+
+- **Tool nova = uma declaração no catálogo.** `tools/list` (com annotations),
+  validação real de `required`/`type`/`enum` na porta, o registro no servidor
+  local e a verificação das INSTRUCTIONS derivam dela. `tools.ts` virou só os
+  helpers de acesso/identidade (`projetosVisiveis`, asserts, `resolver*`,
+  `itemParaChat`) — os handlers os alcançam por `await import()`.
+- 🔴 **Arquivo de domínio do catálogo carrega SEM env**: import estático só de
+  módulo puro (zod, `registro/`); db e serviços entram por `await import()`
+  RELATIVO dentro do handler (o tsx do servidor local resolve `@/`, mas a
+  regra é relativo). É o que deixa `scripts/validar-registro-mcp.ts` rodar no
+  CI sem `DATABASE_URL` — e o próprio import do catálogo é metade do teste.
+- **Comportamentos calibrados por incidente são preservados verbatim**: a
+  mensagem de parâmetro desconhecido (12/08) e a coerção de string JSON ANTES
+  do parse (23/08 — estritar sem coerção recusaria chamada que funciona).
+  Chave desconhecida ANINHADA aponta o caminho (`"itens.0" não aceita…`),
+  nunca os parâmetros da raiz.
+- **Vocabulário que não pode entrar estático vira espelho + sentinela**:
+  `CATEGORIAS_DA_BASE`/`SECOES_DO_DNA` (base-e-dna.ts) e o "Máximo 60" de
+  criar-plano são cravados no catálogo e conferidos no load de
+  `catalogo/integracao.ts` contra os donos (enum do Prisma,
+  `BRAND_DNA_FIELDS`, `MAX_ITENS_POR_PLANO`) — divergiu, o boot quebra.
+- 🔴 **As 6 tools inglesas do servidor local (list-posts, list-projects,
+  get-knowledge, prepare-creative, create-arte-rapida, list-drive-images) NÃO
+  são duplicatas**: os contratos divergem (list-posts usa dateFrom/status EN e
+  devolve lista crua) e as skills consomem ESSAS formas. São camada de
+  compatibilidade explícita; os nomes PT do catálogo são os canônicos, e o
+  stdio serve os dois (72 tools). Migrar as skills aposenta a camada.
+- **Snapshot é a rede da migração e o padrão para MUDAR schema**: os literais
+  antigos vivem como fixtures em `validar-registro-mcp.ts` (48 snapshots).
+  Mudança deliberada de schema atualiza o fixture no mesmo commit — o teste
+  existe para pegar mudança INVOLUNTÁRIA no que o modelo vê.
+- **INSTRUCTIONS moram em `src/lib/mcp/instrucoes.ts`** (módulo puro) e a
+  seção D do script recusa nome de tool hifenizado que não exista no catálogo
+  (allowlist explícita para ênclise: "grave-a"). Foi o que aposentou de vez o
+  caso `ver-melhoria` recomendado 13 dias depois de morrer.
+- **O batch JSON-RPC do route.ts é SEQUENCIAL** — `Promise.all` deixava 12
+  `gerar-imagem` num array lerem o mesmo saldo antes de qualquer dedução.
+  Batching saiu da spec MCP em 2025-06-18; recusar arrays fica para quando a
+  telemetria mostrar zero chegando.
+- **Bug consertado na travessia**: `ver-geracao` exigia `melhoriaId`
+  (`requireString`) — quem seguia a instrução do próprio `gerar-imagem` e
+  chamava com `geracaoId` tomava erro. Hoje qualquer um dos dois vale.
+- **Gate mecânico de `executar-plano` intocado** (1ª chamada devolve a conta;
+  só `confirmar: true` literal produz): é gate de COBRANÇA, e converter o
+  envelope para erro da taxonomia seria mudança de comportamento — fica como
+  decisão futura deliberada, nunca efeito colateral de migração.
+- `scripts/gerar-catalogo-tools.ts` emite o catálogo em markdown para as
+  skills pararem de descrever tools à mão.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
