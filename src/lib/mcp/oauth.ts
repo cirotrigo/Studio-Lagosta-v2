@@ -25,6 +25,8 @@ import {
   audienciaEsperada,
   normalizarResource,
   oauthIssuer,
+  prazoDoRefresh,
+  refreshVencido,
   resourceAceito,
   sha256,
   verifyPkce,
@@ -102,6 +104,7 @@ async function issueTokens(
       scope,
       audience,
       expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_MS),
+      refreshExpiresAt: prazoDoRefresh(),
     },
   })
 
@@ -190,6 +193,11 @@ export async function refreshAccessToken(
 
   if (!registro || registro.revokedAt) throw new OAuthError('invalid_grant', 'Refresh token inválido')
   if (registro.clientId !== clientId) throw new OAuthError('invalid_grant', 'Refresh token de outro cliente')
+  if (refreshVencido(registro.refreshExpiresAt)) {
+    // 401 deliberado (a spec usaria 400): é o sinal de "refaça o login" — o
+    // cliente abandona o refresh e volta ao fluxo de autorização normal.
+    throw new OAuthError('invalid_grant', 'Refresh token vencido — reconecte o aplicativo', 401)
+  }
 
   await db.mcpOAuthToken.update({ where: { id: registro.id }, data: { revokedAt: new Date() } })
 

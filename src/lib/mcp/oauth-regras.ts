@@ -16,6 +16,28 @@ export const MCP_SCOPE = 'mcp'
 export const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000
 export const CODE_TTL_MS = 10 * 60 * 1000
 
+/**
+ * Prazo do refresh token: 30 dias, RENOVADOS a cada rotação — conector em uso
+ * nunca esbarra nele (o claude.ai rotaciona a cada refresh, ~1h de uso), e
+ * conector abandonado morre sozinho em vez de valer para sempre.
+ */
+export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000
+
+/** O vencimento que um refresh token emitido agora recebe. */
+export function prazoDoRefresh(agora: Date = new Date()): Date {
+  return new Date(agora.getTime() + REFRESH_TOKEN_TTL_MS)
+}
+
+/**
+ * Prazo NULO passa: token anterior à migração continua valendo (migração
+ * suave) e ganha prazo na próxima rotação, porque o token novo sempre nasce
+ * com a coluna preenchida.
+ */
+export function refreshVencido(refreshExpiresAt: Date | null | undefined, agora: Date = new Date()): boolean {
+  if (!refreshExpiresAt) return false
+  return refreshExpiresAt.getTime() <= agora.getTime()
+}
+
 export function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }

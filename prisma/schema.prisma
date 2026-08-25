@@ -2037,6 +2037,9 @@ model McpOAuthToken {
   /// divergente.
   audience    String?
   expiresAt   DateTime
+  /// Vencimento do REFRESH token (30 dias, renovados a cada rotação). NULO em
+  /// token anterior à migração — vale até a próxima rotação, que carimba.
+  refreshExpiresAt DateTime?
   revokedAt   DateTime?
   createdAt   DateTime       @default(now())
   client      McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)

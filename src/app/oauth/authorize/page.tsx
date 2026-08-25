@@ -98,7 +98,7 @@ export default async function AuthorizePage({
 
       <p className="text-xs text-muted-foreground">
         Você pode revogar o acesso a qualquer momento removendo o conector no aplicativo de origem —
-        a remoção revoga os tokens também aqui no servidor.
+        a remoção revoga os tokens também aqui no servidor. Sem uso, o acesso expira sozinho em 30 dias.
       </p>
     </main>
   )
