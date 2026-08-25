@@ -36,11 +36,17 @@
 
 /**
  * Opt-out: clientes que devem VOLTAR ao spine estrito (o modelo manda também
- * na posição). Vazia hoje. Se uma marca regredir com a liberdade — layouts
- * ruins recorrentes com modelo escolhido —, o caminho de volta é adicionar o
- * id aqui, não reescrever o prompt.
+ * na posição). Se uma marca regredir com a liberdade — layouts ruins
+ * recorrentes com modelo escolhido —, o caminho de volta é adicionar o id
+ * aqui, não reescrever o prompt.
+ *
+ * 2 — O Quintal Parrilla (24/08/2026). O piloto do modo livre foi o primeiro
+ * a regredir: com o placar em 0 "gostei" × 14 "preciso melhorar", o Ciro
+ * mandou "seguir melhor as artes de referência". O feedback da noite dizia
+ * "título e subtítulo muito grandes e fora do padrão da arte de referência"
+ * — nem a PROPORÇÃO, que o modo livre promete manter, estava segurando.
  */
-export const PROJETOS_COM_MODELO_ESTRITO = new Set<number>([])
+export const PROJETOS_COM_MODELO_ESTRITO = new Set<number>([2])
 
 /** O modelo escolhido deste projeto manda só no estilo (não no layout)? */
 export function modeloLivre(projectId?: number | null): boolean {
