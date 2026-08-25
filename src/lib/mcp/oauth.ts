@@ -160,6 +160,7 @@ export async function exchangeAuthorizationCode(params: {
       where: { clientId: registro.clientId, userId: registro.userId, revokedAt: null },
       data: { revokedAt: new Date() },
     })
+    limparCacheDeTokens()
     throw new OAuthError('invalid_grant', 'Código já utilizado')
   }
   if (registro.expiresAt < new Date()) throw new OAuthError('invalid_grant', 'Código expirado')
@@ -200,6 +201,7 @@ export async function refreshAccessToken(
   }
 
   await db.mcpOAuthToken.update({ where: { id: registro.id }, data: { revokedAt: new Date() } })
+  limparCacheDeTokens()
 
   // A audiência é herdada na rotação — é assim que token anterior à migração
   // (coluna nula) ganha carimbo sem ninguém reconectar.
@@ -230,6 +232,7 @@ export async function revokeTokenLineage(token: string): Promise<boolean> {
     where: { clientId: registro.clientId, userId: registro.userId, revokedAt: null },
     data: { revokedAt: new Date() },
   })
+  limparCacheDeTokens()
   return true
 }
 
@@ -240,13 +243,48 @@ export interface McpPrincipal {
   clientId?: string
 }
 
+/**
+ * Cache curto por hash de token — mesmo padrão do cacheDeOrgs de tools.ts:
+ * Map de instância, TTL de 60s. Elimina a query ao banco em TODA requisição
+ * MCP (cada tool call passa por aqui).
+ *
+ * Trade-off aceito: revogação passa a valer em até 60s nas OUTRAS instâncias.
+ * Na instância que a processou (rota /revoke, replay de código, rotação de
+ * refresh) o cache é limpo na hora. Só o caminho VÁLIDO entra no cache —
+ * negativa não é guardada, então token recém-emitido nunca espera.
+ */
+const cacheDeTokens = new Map<string, { principal: McpPrincipal; ate: number; tokenExpiraEm: number }>()
+const CACHE_TOKENS_MS = 60_000
+const CACHE_TOKENS_MAX = 1000
+
+export function limparCacheDeTokens(): void {
+  cacheDeTokens.clear()
+}
+
 /** Resolve o portador de um access token OAuth, se válido. */
 export async function resolveAccessToken(token: string): Promise<McpPrincipal | null> {
-  const registro = await db.mcpOAuthToken.findUnique({ where: { tokenHash: sha256(token) } })
+  const hash = sha256(token)
+  const agora = Date.now()
+
+  const guardado = cacheDeTokens.get(hash)
+  if (guardado && guardado.ate > agora && guardado.tokenExpiraEm > agora) {
+    return { ...guardado.principal }
+  }
+
+  const registro = await db.mcpOAuthToken.findUnique({ where: { tokenHash: hash } })
   if (!registro || registro.revokedAt) return null
   if (registro.expiresAt < new Date()) return null
   // RFC 8707: token carimbado para outro endpoint não vale aqui. Coluna nula
   // passa (token antigo — migração suave).
   if (!audienciaConfere(registro.audience, oauthIssuer())) return null
-  return { kind: 'user', userId: registro.userId, clientId: registro.clientId }
+
+  const principal: McpPrincipal = { kind: 'user', userId: registro.userId, clientId: registro.clientId }
+  // Backstop de memória — na prática são poucos tokens vivos por instância.
+  if (cacheDeTokens.size >= CACHE_TOKENS_MAX) cacheDeTokens.clear()
+  cacheDeTokens.set(hash, {
+    principal,
+    ate: agora + CACHE_TOKENS_MS,
+    tokenExpiraEm: registro.expiresAt.getTime(),
+  })
+  return { ...principal }
 }
