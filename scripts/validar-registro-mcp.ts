@@ -46,9 +46,11 @@ function confere(nome: string, condicao: boolean, detalhe?: string) {
 
 /**
  * Normaliza um JSON Schema para comparação de EQUIVALÊNCIA, não de bytes:
- * `$schema` some, `additionalProperties: {}` equivale a `true` (z.record
- * deriva o primeiro; o literal antigo escrevia o segundo — mesmo significado)
- * e objeto sem `properties` equivale a `properties: {}`. Chaves ordenadas.
+ * `$schema` some; `additionalProperties: {}`, `true` e AUSENTE são o mesmo
+ * significado em JSON Schema (permite tudo) e colapsam em ausente — é o que
+ * deixa `.passthrough()` do zod casar com literal antigo que não fechava o
+ * objeto; objeto sem `properties` equivale a `properties: {}`. Só o `false`
+ * (porta fechada) é significativo e preservado. Chaves ordenadas.
  */
 function canonizar(valor: unknown): unknown {
   if (Array.isArray(valor)) return valor.map(canonizar)
@@ -66,6 +68,7 @@ function canonizar(valor: unknown): unknown {
       ) {
         v = true
       }
+      if (chave === 'additionalProperties' && v === true) continue
       saida[chave] = canonizar(v)
     }
     if (saida.type === 'object' && !('properties' in saida)) saida.properties = {}
@@ -543,10 +546,306 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
   },
 }
 
+/** PR 4 — os literais da arte por IA, verbatim. */
+const REF_LITERAL_GERAR_IMAGEM = {
+  type: 'object',
+  properties: {
+    role: {
+      type: 'string',
+      enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'],
+      description: 'Papel da foto na geração.',
+    },
+    driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos / listar-fotos-da-pasta).' },
+    url: { type: 'string', description: 'Alternativa: URL de imagem já no Studio (Blob).' },
+    label: { type: 'string', description: 'Rótulo curto (ex: "salão principal", "picanha na tábua").' },
+    generationId: {
+      type: 'string',
+      description:
+        'Só em role "style": o id da arte deste projeto que serve de MODELO. Com ele a peça nova copia a DIAGRAMAÇÃO daquela arte — posição do texto, alinhamento, caixa das letras, cor por nível e ornamentos —, mudando só a foto e a copy. Sem ele, a referência combina apenas clima e luz, e o layout continua livre. Use quando alguém disser "faz parecida com aquela".',
+    },
+    excluir: {
+      type: 'array',
+      items: { type: 'string' },
+      description:
+        'O que NÃO reproduzir desta foto (ex: ["garrafa de molho", "lata de refrigerante"]). Use para marca de terceiro que aparece na foto e não pode ir para a peça — dizer isso dentro do `pedido` não segura: na produção do By Rock a garrafa de Tabasco vazou em 2 de 6 peças mesmo com a instrução explícita.',
+    },
+  },
+  required: ['role'],
+  additionalProperties: false,
+}
+
+const REF_LITERAL_LOTE = {
+  type: 'object',
+  properties: {
+    role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
+    driveFileId: { type: 'string' },
+    url: { type: 'string' },
+    label: { type: 'string' },
+    excluir: { type: 'array', items: { type: 'string' } },
+  },
+  required: ['role'],
+  additionalProperties: false,
+}
+
+const LITERAIS_ARTE_IA: Record<string, unknown> = {
+  'escolher-modelo': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do projeto (preferido). Veja list-projects.' },
+      projectHint: { type: 'string', description: 'Nome ou parte do nome do projeto, se não souber o id.' },
+      theme: { type: 'string', description: 'Tema do criativo (ex: "happy hour", "almoço executivo", "delivery").' },
+      day: { type: 'string', description: 'Dia da semana em PT para desempatar (ex: "sexta", "sabado").' },
+    },
+    required: ['theme'],
+    additionalProperties: false,
+  },
+  'criar-arte': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do projeto.' },
+      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'story 1080x1920 (default), feed 1080x1350, quadrado 1080x1080.' },
+      imageUrl: { type: 'string', description: 'URL pública da foto de fundo.' },
+      driveImageId: { type: 'string', description: 'ID do arquivo no Google Drive, alternativa ao imageUrl.' },
+      backgroundColor: { type: 'string', description: 'Cor de fundo quando não houver foto (ex: "#111111").' },
+      overlay: { type: 'string', enum: ['nenhum', 'inferior', 'superior', 'completo'], description: 'Escurecimento sobre a foto. Default "inferior".' },
+      combinationId: { type: 'string', description: 'ID da combinação tipográfica (ver list-font-combinations).' },
+      textos: { type: 'object', description: 'Textos da combinação, por id ou label do elemento. Ex: {"titulo":"HAPPY HOUR","detalhes":"Todo dia até as 20h"}.', additionalProperties: { type: 'string' } },
+      textosLivres: {
+        type: 'array',
+        description: 'Blocos posicionados por você. Alternativa à combinação.',
+        items: {
+          type: 'object',
+          properties: {
+            texto: { type: 'string', description: 'Conteúdo. \n quebra linha.' },
+            x: { type: 'number', description: 'Canto esquerdo, fração da largura (0..1).' },
+            y: { type: 'number', description: 'Topo, fração da altura (0..1).' },
+            width: { type: 'number', description: 'Largura da caixa, fração da largura (0..1).' },
+            fontSize: { type: 'number', description: 'Corpo em px na base de 1080 de largura.' },
+            role: { type: 'string', enum: ['title', 'subtitle', 'body'], description: 'De qual fonte da marca herda. subtitle cai na fonte de corpo quando a marca não define uma própria.' },
+            fontFamily: { type: 'string' },
+            fontWeight: { type: 'string' },
+            textTransform: { type: 'string', enum: ['none', 'uppercase'] },
+            textAlign: { type: 'string', enum: ['left', 'center', 'right'] },
+            lineHeight: { type: 'number' },
+            letterSpacing: { type: 'number' },
+            color: { type: 'string' },
+          },
+          required: ['texto', 'x', 'y', 'width', 'fontSize'],
+        },
+      },
+      logo: { type: 'boolean', description: 'Inclui o logo da marca (default true).' },
+      name: { type: 'string', description: 'Nome da página gerada.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'ajustar-arte': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      pageId: { type: 'string', description: 'A arte a ajustar (pageId devolvido por criar-arte ou criar-arte-de-modelo).' },
+      slotValues: {
+        type: 'object',
+        description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}.',
+        additionalProperties: true,
+      },
+      imageUrl: { type: 'string', description: 'Nova foto de fundo (URL pública).' },
+      driveImageId: { type: 'string', description: 'Nova foto de fundo pelo id do Drive (de buscar-fotos).' },
+      name: { type: 'string', description: 'Novo nome da página (opcional).' },
+    },
+    required: ['projectId', 'pageId'],
+    additionalProperties: false,
+  },
+  'conferir-arte': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      generationId: { type: 'string', description: 'A arte (vem de criar-arte, criar-arte-de-modelo ou ajustar-arte).' },
+      postId: { type: 'string', description: 'Alternativa: confere a arte ATUAL de um post da agenda.' },
+      verificarTextos: { type: 'boolean', description: 'Roda a conferência de texto por visão (default true; só quando há textos de referência).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'melhorar-arte': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).' },
+      pedido: { type: 'string', description: 'Instruções de melhoria vindas da sua análise da arte (máx 1200 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
+      postId: { type: 'string', description: 'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
+    },
+    required: ['projectId', 'generationId'],
+    additionalProperties: false,
+  },
+  'ver-geracao': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      geracaoId: { type: 'string', description: 'O geracaoId (ou melhoriaId) devolvido por quem disparou.' },
+      melhoriaId: { type: 'string', description: 'Nome antigo de `geracaoId` — segue aceito.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'gerar-imagem': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      trilha: {
+        type: 'string',
+        enum: ['imagem', 'arte'],
+        description: '"imagem" = cena sem texto; "arte" = peça com os textos desenhados.',
+      },
+      pedido: {
+        type: 'string',
+        description:
+          'O que gerar, em português (máx 1200). Obrigatório na trilha imagem; na trilha arte é instrução adicional opcional.',
+      },
+      copy: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Trilha arte: os blocos de texto EXATOS da peça, na ordem de leitura (máx 12 blocos de 200 chars). As PALAVRAS são reproduzidas verbatim e conferidas por visão; a CAIXA das letras, não — quem decide se a manchete sai em caixa alta é a identidade da marca. Escreva em caixa natural ("Desacelere e desfrute"), deixando em maiúsculas só sigla, unidade, valor e o nome da marca.',
+      },
+      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'story 9:16, feed 4:5, quadrado 1:1.' },
+      referencias: {
+        type: 'array',
+        items: REF_LITERAL_GERAR_IMAGEM,
+        description: '1 a 3 fotos reais com papel declarado. Máx: 1 subject + 3 âncoras + 2 style.',
+      },
+      instrucaoImagem: {
+        type: 'string',
+        description:
+          'Trilha arte, opcional: ajuste autorizado na FOTO (ex: "escurecer o fundo atrás do texto", "cortar o primeiro pedaço ao meio mostrando o ponto da carne"). Sem isso a foto é preservada intocada — a regra da casa é "a foto se melhora, nunca se modifica". Com ajuste, a peça é gerada no modelo mais caprichoso (leva ~2 min em vez de ~40s, mesmo custo em créditos): editar foto exige detalhe que o modelo rápido não entrega.',
+      },
+      clienteCitadoId: {
+        type: 'number',
+        description:
+          'Trilha arte, opcional — co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte no canto oposto ao da marca da casa. É como uma agência mostra o trabalho feito para um cliente.',
+      },
+      promptPronto: {
+        type: 'string',
+        description: 'Modo diretor (trilha imagem): prompt final em inglês, anatomia CAMERA:/LIGHT:/…; validado antes de usar.',
+      },
+      modelo: {
+        type: 'string',
+        description:
+          'Override do modelo, trilha imagem. "nano-banana-2" (padrão, 10 créditos) ou "nano-banana-pro" (15 créditos em 2K, e o único que entrega 4K). Não troque sem motivo: o padrão resolve a maioria das cenas.',
+      },
+      resolution: {
+        type: 'string',
+        enum: ['2K', '4K'],
+        description:
+          'Trilha imagem, padrão 2K (~1536x2752 no 9:16). "4K" só existe no nano-banana-pro, entrega ~3072x5504 e custa 30 créditos — o TRIPLO do padrão. Peça 4K quando a foto for virar arte depois e precisar de margem para recorte; para uso direto, 2K basta. (1K foi removido: custava o mesmo que 2K e entregava um quarto dos pixels.)',
+      },
+    },
+    required: ['projectId', 'trilha', 'formato'],
+    additionalProperties: false,
+  },
+  'gerar-imagem-lote': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      trilha: { type: 'string', enum: ['imagem', 'arte'], description: 'Vale para o lote inteiro.' },
+      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Vale para o lote inteiro.' },
+      modelo: { type: 'string', description: 'Override do modelo (trilha imagem).' },
+      resolution: { type: 'string', enum: ['2K', '4K'], description: 'Trilha imagem, padrão 2K.' },
+      pedidoBase: {
+        type: 'string',
+        description: 'O que TODAS as cenas têm em comum (máx 1200). Cada variação acrescenta o que muda.',
+      },
+      referenciasBase: {
+        type: 'array',
+        items: REF_LITERAL_LOTE,
+        description: 'Referências que valem para todas. A variação pode ACRESCENTAR as suas.',
+      },
+      variacoes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            pedido: { type: 'string', description: 'O que muda nesta peça (gesto, cenário, prato).' },
+            promptPronto: { type: 'string', description: 'Modo diretor, só desta peça.' },
+            copy: { type: 'array', items: { type: 'string' }, description: 'Trilha arte: os blocos desta peça.' },
+            referencias: { type: 'array', items: REF_LITERAL_LOTE },
+            instrucaoImagem: { type: 'string', description: 'Ajuste autorizado na foto, só desta peça.' },
+          },
+          additionalProperties: false,
+        },
+        description: 'De 2 a 12 peças. Cada uma herda a base e acrescenta o que é seu.',
+      },
+    },
+    required: ['projectId', 'trilha', 'formato', 'variacoes'],
+    additionalProperties: false,
+  },
+  'marcar-referencia-de-estilo': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      generationId: { type: 'string', description: 'A arte. Omita para apenas listar as referências atuais.' },
+      marcada: { type: 'boolean', description: 'true marca (default), false tira das referências.' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+  'criar-carrossel': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      slides: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            ordem: { type: 'number', description: 'Posição no carrossel, de 1 a N. 1 = capa.' },
+            copy: {
+              type: 'array',
+              items: { type: 'string' },
+              description: 'Blocos de texto do slide, na ordem de leitura. VAZIO na capa.',
+            },
+            driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
+            url: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
+            label: { type: 'string', description: 'Rótulo curto da foto.' },
+          },
+          required: ['ordem', 'copy'],
+          additionalProperties: false,
+        },
+        description: 'Os slides, de 1 a N. Varie as fotos: repetir a mesma foto entre slides deixa o carrossel monótono.',
+      },
+      legenda: { type: 'string', description: 'Legenda do post no feed (guardada para o agendamento).' },
+      pedido: { type: 'string', description: 'Direção de arte adicional para toda a série (opcional).' },
+    },
+    required: ['projectId', 'slides'],
+    additionalProperties: false,
+  },
+  'confirmar-estilo-carrossel': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      carrosselId: { type: 'string', description: 'O carrosselId devolvido por criar-carrossel.' },
+    },
+    required: ['projectId', 'carrosselId'],
+    additionalProperties: false,
+  },
+  'ver-carrossel': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      carrosselId: { type: 'string', description: 'O carrosselId devolvido por criar-carrossel.' },
+    },
+    required: ['projectId', 'carrosselId'],
+    additionalProperties: false,
+  },
+}
+
 for (const [nome, literal] of Object.entries(LITERAIS_AGENDA)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 for (const [nome, literal] of Object.entries(LITERAIS_PLANOS)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+for (const [nome, literal] of Object.entries(LITERAIS_ARTE_IA)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 

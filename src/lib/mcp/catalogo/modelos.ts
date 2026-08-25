@@ -10,6 +10,33 @@ import { definirTool } from '../registro/definir'
 
 export const toolsDeModelos = [
   definirTool({
+    nome: 'escolher-modelo',
+    apelidos: ['prepare-creative'],
+    descricao:
+      'Acha o modelo pronto do cliente que combina com um tema (e dia), devolvendo os campos de texto a preencher e a identidade da marca. Use quando o cliente tem modelo cadastrado para aquele tema; depois use criar-arte-de-modelo. Se não houver modelo, prefira criar-arte, que monta do zero.',
+    schema: z.object({
+      projectId: z.number().optional().describe('ID do projeto (preferido). Veja list-projects.'),
+      projectHint: z.string().optional().describe('Nome ou parte do nome do projeto, se não souber o id.'),
+      theme: z.string().describe('Tema do criativo (ex: "happy hour", "almoço executivo", "delivery").'),
+      day: z.string().optional().describe('Dia da semana em PT para desempatar (ex: "sexta", "sabado").'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // O gate declarado dispara quando projectId vem como número; sem ele o
+    // serviço resolve por projectHint — mesmo contrato de sempre.
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, _principal) => {
+      const { prepareCreative } = await import('../../creatives/arte-rapida')
+      return prepareCreative({
+        projectId: typeof args.projectId === 'number' ? args.projectId : undefined,
+        projectHint: typeof args.projectHint === 'string' ? args.projectHint : undefined,
+        theme: args.theme as string,
+        day: typeof args.day === 'string' ? args.day : undefined,
+      })
+    },
+  }),
+
+  definirTool({
     nome: 'criar-arte-de-modelo',
     apelidos: ['create-arte-rapida'],
     descricao:
