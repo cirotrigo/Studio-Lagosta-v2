@@ -14,6 +14,10 @@ export async function GET() {
       authorization_endpoint: `${issuer}/oauth/authorize`,
       token_endpoint: `${issuer}/api/oauth/token`,
       registration_endpoint: `${issuer}/api/oauth/register`,
+      // RFC 7009 — é por este anúncio que o claude.ai descobre onde revogar
+      // ao remover o conector.
+      revocation_endpoint: `${issuer}/api/oauth/revoke`,
+      revocation_endpoint_auth_methods_supported: ['none'],
       response_types_supported: ['code'],
       grant_types_supported: ['authorization_code', 'refresh_token'],
       code_challenge_methods_supported: ['S256'],

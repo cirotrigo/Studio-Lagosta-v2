@@ -97,7 +97,8 @@ export default async function AuthorizePage({
       />
 
       <p className="text-xs text-muted-foreground">
-        Você pode revogar o acesso a qualquer momento removendo o conector no aplicativo de origem.
+        Você pode revogar o acesso a qualquer momento removendo o conector no aplicativo de origem —
+        a remoção revoga os tokens também aqui no servidor.
       </p>
     </main>
   )

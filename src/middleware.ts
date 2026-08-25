@@ -20,6 +20,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/oauth/metadata(.*)',
   '/api/oauth/register',
   '/api/oauth/token',
+  // Revogação (RFC 7009): o cliente chama com o token no corpo, sem sessão
+  '/api/oauth/revoke',
   // Faz a própria checagem de sessão e responde 401 em JSON — redirecionar uma
   // chamada de API para o sign-in devolveria HTML para um fetch
   '/api/oauth/authorize/approve',

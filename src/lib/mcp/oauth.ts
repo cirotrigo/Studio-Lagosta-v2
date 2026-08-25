@@ -203,6 +203,28 @@ export async function refreshAccessToken(
   )
 }
 
+/**
+ * Revogação (RFC 7009): derruba a LINHAGEM inteira do par cliente/usuário —
+ * o mesmo alcance do replay de código. Vale para access ou refresh token;
+ * possuir o token é a credencial (clientes são públicos, sem secret).
+ *
+ * Devolve false quando o token não existe — a rota responde 200 do mesmo
+ * jeito, como a spec manda: revogação não vaza existência de token.
+ */
+export async function revokeTokenLineage(token: string): Promise<boolean> {
+  const hash = sha256(token)
+  const registro = await db.mcpOAuthToken.findFirst({
+    where: { OR: [{ tokenHash: hash }, { refreshHash: hash }] },
+  })
+  if (!registro) return false
+
+  await db.mcpOAuthToken.updateMany({
+    where: { clientId: registro.clientId, userId: registro.userId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  })
+  return true
+}
+
 export interface McpPrincipal {
   /** 'service' = segredo compartilhado (Claudinho); 'user' = token OAuth */
   kind: 'service' | 'user'
