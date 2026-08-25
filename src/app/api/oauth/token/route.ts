@@ -31,7 +31,14 @@ export async function POST(req: NextRequest) {
           'code, client_id, redirect_uri e code_verifier são obrigatórios',
         )
       }
-      const tokens = await exchangeAuthorizationCode({ code, clientId, redirectUri, codeVerifier })
+      const tokens = await exchangeAuthorizationCode({
+        code,
+        clientId,
+        redirectUri,
+        codeVerifier,
+        // RFC 8707 — opcional: sem ele vale o resource gravado no código.
+        resource: params.resource,
+      })
       return NextResponse.json(tokens, { headers: { 'Cache-Control': 'no-store' } })
     }
 
@@ -40,7 +47,7 @@ export async function POST(req: NextRequest) {
       if (!refreshToken || !clientId) {
         throw new OAuthError('invalid_request', 'refresh_token e client_id são obrigatórios')
       }
-      const tokens = await refreshAccessToken(refreshToken, clientId)
+      const tokens = await refreshAccessToken(refreshToken, clientId, params.resource)
       return NextResponse.json(tokens, { headers: { 'Cache-Control': 'no-store' } })
     }
 

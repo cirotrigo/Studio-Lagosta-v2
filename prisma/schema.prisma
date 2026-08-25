@@ -2010,6 +2010,9 @@ model McpOAuthCode {
   redirectUri   String
   codeChallenge String
   scope         String?
+  /// Resource (RFC 8707) pedido na autorização, já normalizado — vira a
+  /// audiência do token emitido na troca.
+  resource      String?
   expiresAt     DateTime
   usedAt        DateTime?
   createdAt     DateTime       @default(now())
@@ -2028,6 +2031,11 @@ model McpOAuthToken {
   clientId    String
   userId      String
   scope       String?
+  /// Audiência (RFC 8707): o endpoint /api/mcp para o qual o token foi
+  /// emitido. NULA em token anterior à migração — ele continua valendo e
+  /// ganha audiência na rotação; a recusa só vale quando preenchida e
+  /// divergente.
+  audience    String?
   expiresAt   DateTime
   revokedAt   DateTime?
   createdAt   DateTime       @default(now())

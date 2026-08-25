@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
-import { findClient, issueAuthorizationCode } from '@/lib/mcp/oauth'
+import { findClient, issueAuthorizationCode, oauthIssuer } from '@/lib/mcp/oauth'
+import { audienciaEsperada, normalizarResource, resourceAceito } from '@/lib/mcp/oauth-regras'
 
 /**
  * Emite o código de autorização depois do usuário aprovar na tela de consentimento.
  *
- * Revalida tudo do lado do servidor — cliente, redirect_uri e PKCE — porque os
- * valores chegam do formulário e não dá para confiar neles.
+ * Revalida tudo do lado do servidor — cliente, redirect_uri, PKCE e resource —
+ * porque os valores chegam do formulário e não dá para confiar neles.
  */
 const approveSchema = z.object({
   clientId: z.string().min(1),
   redirectUri: z.string().url(),
   state: z.string().optional(),
   codeChallenge: z.string().min(20),
+  resource: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -38,12 +40,22 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
+    if (body.resource && !resourceAceito(body.resource, oauthIssuer())) {
+      return NextResponse.json(
+        {
+          error: 'invalid_target',
+          error_description: `resource não aceito — o endpoint deste servidor é ${audienciaEsperada(oauthIssuer())}`,
+        },
+        { status: 400 },
+      )
+    }
 
     const code = await issueAuthorizationCode({
       clientId: client.id,
       userId,
       redirectUri: body.redirectUri,
       codeChallenge: body.codeChallenge,
+      resource: body.resource ? normalizarResource(body.resource) : null,
     })
 
     const destino = new URL(body.redirectUri)

@@ -12,11 +12,14 @@ export function ConsentForm({
   redirectUri,
   state,
   codeChallenge,
+  resource,
 }: {
   clientId: string
   redirectUri: string
   state?: string
   codeChallenge: string
+  /** Resource (RFC 8707) vindo da query de autorização — segue para o approve. */
+  resource?: string
 }) {
   const [enviando, setEnviando] = React.useState(false)
   const [erro, setErro] = React.useState<string | null>(null)
@@ -28,7 +31,7 @@ export function ConsentForm({
       const res = await fetch('/api/oauth/authorize/approve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, redirectUri, state, codeChallenge }),
+        body: JSON.stringify({ clientId, redirectUri, state, codeChallenge, resource }),
       })
       const dados = await res.json()
       if (!res.ok) {

@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
-import { findClient } from '@/lib/mcp/oauth'
+import { findClient, oauthIssuer } from '@/lib/mcp/oauth'
+import { audienciaEsperada, resourceAceito } from '@/lib/mcp/oauth-regras'
 import { ConsentForm } from './consent-form'
 
 /**
@@ -38,12 +39,19 @@ export default async function AuthorizePage({
   const codeChallenge = texto('code_challenge')
   const codeChallengeMethod = texto('code_challenge_method')
   const responseType = texto('response_type')
+  const resource = texto('resource')
 
   const erro = await (async () => {
     if (!clientId || !redirectUri) return 'Faltam client_id ou redirect_uri na requisição.'
     if (responseType !== 'code') return 'Só o fluxo de authorization code é aceito (response_type=code).'
     if (!codeChallenge || codeChallengeMethod !== 'S256') {
       return 'Este servidor exige PKCE com S256 (code_challenge e code_challenge_method).'
+    }
+    // RFC 8707: o único recurso deste servidor é o endpoint MCP. Um resource
+    // diferente é URL errada no aplicativo — melhor parar aqui, com o endereço
+    // certo na tela, do que emitir um token que a porta vai recusar.
+    if (resource && !resourceAceito(resource, oauthIssuer())) {
+      return `Este conector pediu acesso para outro endereço (${resource}). O endpoint deste servidor é ${audienciaEsperada(oauthIssuer())} — confira a URL configurada no aplicativo.`
     }
     const client = await findClient(clientId)
     if (!client) return 'Cliente não registrado. Refaça a conexão pelo aplicativo.'
@@ -85,6 +93,7 @@ export default async function AuthorizePage({
         redirectUri={redirectUri!}
         state={state}
         codeChallenge={codeChallenge!}
+        resource={resource}
       />
 
       <p className="text-xs text-muted-foreground">

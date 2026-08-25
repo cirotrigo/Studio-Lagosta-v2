@@ -9,41 +9,31 @@
  *
  * Tokens são guardados só como hash — o valor em claro existe apenas na
  * resposta ao cliente.
+ *
+ * As regras PURAS (audiência RFC 8707, PKCE, prazos) moram em
+ * ./oauth-regras.ts e são re-exportadas daqui — é o que deixa
+ * scripts/validar-oauth-mcp.ts conferi-las no CI sem DATABASE_URL.
  */
 
-import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
+import { randomBytes } from 'node:crypto'
 import { db } from '@/lib/db'
+import {
+  ACCESS_TOKEN_TTL_MS,
+  CODE_TTL_MS,
+  MCP_SCOPE,
+  audienciaConfere,
+  audienciaEsperada,
+  normalizarResource,
+  oauthIssuer,
+  resourceAceito,
+  sha256,
+  verifyPkce,
+} from './oauth-regras'
 
-/** Uma hora de validade para o access token; refresh token não expira sozinho. */
-const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000
-const CODE_TTL_MS = 10 * 60 * 1000
-
-export const MCP_SCOPE = 'mcp'
-
-export function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex')
-}
+export { MCP_SCOPE, oauthIssuer, sha256, verifyPkce }
 
 function randomToken(): string {
   return randomBytes(32).toString('base64url')
-}
-
-/**
- * Origem pública usada nos metadados. Precisa bater exatamente com a URL que o
- * usuário informa no claude.ai, senão a validação do issuer falha.
- */
-export function oauthIssuer(): string {
-  const url =
-    process.env.STUDIO_LAGOSTA_PUBLIC_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
-  return url.replace(/\/$/, '')
-}
-
-/** Verifica o desafio PKCE (só S256 — plain não é aceito no OAuth 2.1). */
-export function verifyPkce(codeVerifier: string, codeChallenge: string): boolean {
-  const computed = createHash('sha256').update(codeVerifier).digest('base64url')
-  const a = Buffer.from(computed)
-  const b = Buffer.from(codeChallenge)
-  return a.length === b.length && timingSafeEqual(a, b)
 }
 
 /**
@@ -67,6 +57,8 @@ export async function issueAuthorizationCode(params: {
   redirectUri: string
   codeChallenge: string
   scope?: string
+  /** Resource (RFC 8707) já validado e NORMALIZADO por quem chama. */
+  resource?: string | null
 }): Promise<string> {
   const code = randomToken()
   await db.mcpOAuthCode.create({
@@ -77,6 +69,7 @@ export async function issueAuthorizationCode(params: {
       redirectUri: params.redirectUri,
       codeChallenge: params.codeChallenge,
       scope: params.scope ?? MCP_SCOPE,
+      resource: params.resource ?? null,
       expiresAt: new Date(Date.now() + CODE_TTL_MS),
     },
   })
@@ -91,7 +84,12 @@ export interface IssuedTokens {
   scope: string
 }
 
-async function issueTokens(clientId: string, userId: string, scope: string): Promise<IssuedTokens> {
+async function issueTokens(
+  clientId: string,
+  userId: string,
+  scope: string,
+  audience: string | null,
+): Promise<IssuedTokens> {
   const accessToken = randomToken()
   const refreshToken = randomToken()
 
@@ -102,6 +100,7 @@ async function issueTokens(clientId: string, userId: string, scope: string): Pro
       clientId,
       userId,
       scope,
+      audience,
       expiresAt: new Date(Date.now() + ACCESS_TOKEN_TTL_MS),
     },
   })
@@ -126,13 +125,29 @@ export class OAuthError extends Error {
   }
 }
 
+/** `invalid_target` é o erro que a RFC 8707 manda para resource não aceito. */
+function exigirResourceAceito(resource: string | undefined): string | null {
+  if (!resource) return null
+  if (!resourceAceito(resource, oauthIssuer())) {
+    throw new OAuthError(
+      'invalid_target',
+      `resource não aceito — o endpoint deste servidor é ${audienciaEsperada(oauthIssuer())}`,
+    )
+  }
+  return normalizarResource(resource)
+}
+
 /** Troca o código pelo token, validando PKCE, cliente, redirect e uso único. */
 export async function exchangeAuthorizationCode(params: {
   code: string
   clientId: string
   redirectUri: string
   codeVerifier: string
+  /** Resource (RFC 8707) repetido na troca; opcional — o do código vale sem ele. */
+  resource?: string
 }): Promise<IssuedTokens> {
+  const audienciaPedida = exigirResourceAceito(params.resource)
+
   const registro = await db.mcpOAuthCode.findUnique({ where: { code: sha256(params.code) } })
 
   if (!registro) throw new OAuthError('invalid_grant', 'Código inválido')
@@ -155,11 +170,22 @@ export async function exchangeAuthorizationCode(params: {
 
   await db.mcpOAuthCode.update({ where: { code: registro.code }, data: { usedAt: new Date() } })
 
-  return issueTokens(registro.clientId, registro.userId, registro.scope ?? MCP_SCOPE)
+  return issueTokens(
+    registro.clientId,
+    registro.userId,
+    registro.scope ?? MCP_SCOPE,
+    audienciaPedida ?? registro.resource,
+  )
 }
 
 /** Rotaciona o refresh token, revogando o anterior. */
-export async function refreshAccessToken(refreshToken: string, clientId: string): Promise<IssuedTokens> {
+export async function refreshAccessToken(
+  refreshToken: string,
+  clientId: string,
+  resource?: string,
+): Promise<IssuedTokens> {
+  const audienciaPedida = exigirResourceAceito(resource)
+
   const registro = await db.mcpOAuthToken.findUnique({ where: { refreshHash: sha256(refreshToken) } })
 
   if (!registro || registro.revokedAt) throw new OAuthError('invalid_grant', 'Refresh token inválido')
@@ -167,7 +193,14 @@ export async function refreshAccessToken(refreshToken: string, clientId: string)
 
   await db.mcpOAuthToken.update({ where: { id: registro.id }, data: { revokedAt: new Date() } })
 
-  return issueTokens(registro.clientId, registro.userId, registro.scope ?? MCP_SCOPE)
+  // A audiência é herdada na rotação — é assim que token anterior à migração
+  // (coluna nula) ganha carimbo sem ninguém reconectar.
+  return issueTokens(
+    registro.clientId,
+    registro.userId,
+    registro.scope ?? MCP_SCOPE,
+    audienciaPedida ?? registro.audience ?? audienciaEsperada(oauthIssuer()),
+  )
 }
 
 export interface McpPrincipal {
@@ -182,5 +215,8 @@ export async function resolveAccessToken(token: string): Promise<McpPrincipal | 
   const registro = await db.mcpOAuthToken.findUnique({ where: { tokenHash: sha256(token) } })
   if (!registro || registro.revokedAt) return null
   if (registro.expiresAt < new Date()) return null
+  // RFC 8707: token carimbado para outro endpoint não vale aqui. Coluna nula
+  // passa (token antigo — migração suave).
+  if (!audienciaConfere(registro.audience, oauthIssuer())) return null
   return { kind: 'user', userId: registro.userId, clientId: registro.clientId }
 }
