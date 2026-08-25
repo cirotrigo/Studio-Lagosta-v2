@@ -36,3 +36,7 @@ jobs:
       # (handlers só alcançam db por import dinâmico) — ver o cabeçalho do script.
       - name: Registro MCP (invariantes, snapshots, porta)
         run: npx tsx scripts/validar-registro-mcp.ts
+
+      # Mesma regra: oauth-regras.ts é puro e carrega sem env.
+      - name: OAuth MCP (audiência, PKCE, prazos)
+        run: npx tsx scripts/validar-oauth-mcp.ts
