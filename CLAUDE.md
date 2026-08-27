@@ -3272,6 +3272,41 @@ gate → handler. O desenho nasceu da análise do framework Invokta (24/08);
 - `scripts/gerar-catalogo-tools.ts` emite o catálogo em markdown para as
   skills pararem de descrever tools à mão.
 
+### Canvas de design: arte em HTML, sem crédito (25-26/08/2026)
+
+Caminho alternativo à geração por IA: a peça é escrita em HTML (`.dc.html`),
+editada num canvas publicado (skill `/design`), renderizada com Chrome
+headless no tamanho de publicação e ingerida por `upload-creative`. **Zero
+crédito de imagem.** Nasceu do placar do O Quintal Parrilla na via de IA —
+0 "gostei" contra 14 "preciso melhorar" — e já rodou num segundo cliente
+(carrossel de domingo do By Rock, 4 slides de feed).
+
+**O manual é `docs/SESSAO-2026-08-25-CANVAS-DE-DESIGN.md`** — a seção 3 é o
+passo a passo para outro cliente e a **seção 4 tem as armadilhas medidas**.
+Leia antes de escrever qualquer artboard; as três que mais custaram:
+
+- 🔴 **Imagem entra por `<img src="...">`; `url()` no CSS NÃO resolve** (4.7).
+  A substituição só alcança o atributo `src`. Sintoma: na mesma peça, a logo
+  aparece e a foto de fundo some — quatro slides publicados com fundo preto,
+  sem erro nenhum. As imagens estavam certas no estado e o `--check` passou:
+  o defeito é só a forma de citar. A doc da própria ferramenta afirma que
+  `url()` funciona em qualquer aspa — **não funciona**, não gaste rodada
+  variando aspas ou caminho. Fundo é `<img>` absoluto atrás, véu como camada
+  irmã, texto em fluxo por cima.
+- 🔴 **O editor faz layout por FLUXO, não posicionamento livre** (4.1): cada
+  linha como item direto do flex é o que funciona; não há arrastar para
+  coordenada arbitrária — posição exata se ajusta no gerador.
+- 🔴 **Nenhum bloco pode herdar do pai** (4.2): tamanho em `em` sobre `--base`
+  do raiz faz a fonte encolher e o item pular para o topo ao ser movido.
+  px absoluto em cada bloco.
+
+**Arquivos de trabalho por leva** em `design-canvas/<cliente>-<assunto>/`,
+com o `render.py` da leva ao lado — o renderizador NÃO é compartilhado: cada
+série tem formato, véu e fontes próprios (o do Quintal é 1080x1920 e resolve
+holes; o do By Rock é 1080x1350 e é estático). **A foto do render vem de
+`fotos/` (original), nunca da versão comprimida que o canvas embute** — no
+canvas ela cabe em ~50 KB, que serve para revisar layout e não para publicar.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
