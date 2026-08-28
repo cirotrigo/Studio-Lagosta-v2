@@ -96,17 +96,27 @@ máx 1×/mês; mecânica com dia/horário; prato nomeado; domingo só no slot de
 domingo; felicitação pura não entra). Stories: 3/dia, mesma voz — cadência à
 parte.
 
-## 5. Fica para o Ciro decidir (não gravado no DNA)
+## 5. As duas decisões — respondidas pelo Ciro no mesmo dia (gravadas)
 
-Duas observações medidas que mexeriam no DNA — e DNA não se altera sem
-confirmação:
+O plano foi **aprovado** e as duas perguntas voltaram decididas, nos dois
+casos contra a sugestão da análise — e a direção que ele deu é melhor que a
+pergunta que fiz:
 
-1. **Valor de menu fechado de evento**: o DNA diz "sem preço de cardápio,
-   exceto Happy Wine". O melhor post do ano trazia data E valor do jantar de
-   Namorados (R$ 190). Vale uma regra aprendida autorizando preço em MENU
-   FECHADO de evento?
-2. **CTA de deslize**: "Deslize e conheça" (post Clássicos, 337 de engajamento)
-   funcionou e não está na lista fechada de CTAs. Entra?
+1. **Valor de menu fechado de evento NÃO entra na peça.** O cliente prefere
+   não expor; o caminho é **solicitar pelo Direct** — e o Direct é canal a
+   INCENTIVAR, porque há IA de atendimento e todo cliente é respondido
+   rapidamente. A conversão vai para a conversa, não para o preço na arte.
+2. **CTA de deslizar está VETADO** ("ultrapassado"): deslizar só existe em
+   anúncio, e no stories orgânico a opção nem aparece. Onde a peça pedir
+   interação, o convite é mandar mensagem no Direct.
+
+Gravado como **regras aprendidas no toneOfVoice do DNA** (append com data e
+motivo, padrão do virar-regra — confirmação dada em conversa) + ajuste na
+entrada da cadência para não contradizer ("Solicite pelo Direct" aprovado
+para peça de evento/orçamento; "Fale com a gente" segue como genérico). A
+lição de método: **o post campeão trazia o valor, mas replicar o que rendeu
+não é automático** — o dado diz o que a audiência respondeu; o que a marca
+aceita expor é decisão do cliente.
 
 ## Armadilhas registradas
 
