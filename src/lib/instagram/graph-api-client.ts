@@ -21,6 +21,20 @@ export interface InstagramStoryInsights {
   navigation?: number
 }
 
+/** Item do listing de mídias da conta (`/media`) — feed e reels; stories não aparecem aqui */
+export interface InstagramMediaItem {
+  id: string
+  caption?: string
+  media_type: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM'
+  media_product_type?: string
+  media_url?: string
+  thumbnail_url?: string
+  permalink?: string
+  timestamp: string
+  like_count?: number
+  comments_count?: number
+}
+
 /** Métricas de post de feed (carrossel, imagem, reel) — não expiram como stories */
 export interface InstagramMediaInsights {
   likes: number
@@ -292,16 +306,60 @@ export class InstagramGraphApiClient {
   }
 
   /**
+   * Lista as mídias de FEED da conta (carrossel, imagem, reel), da mais
+   * recente para a mais antiga, parando ao sair da janela pedida. Curtidas e
+   * comentários já vêm no listing; alcance e afins exigem getMediaInsights.
+   */
+  async getAccountMedia(
+    igUserId: string,
+    opts?: { sinceDays?: number; max?: number },
+  ): Promise<InstagramMediaItem[]> {
+    const sinceDays = opts?.sinceDays ?? 60
+    const max = opts?.max ?? 200
+    const corte = Date.now() - sinceDays * 24 * 60 * 60 * 1000
+    const itens: InstagramMediaItem[] = []
+    let after: string | undefined
+
+    // Teto duro de páginas para nunca varrer uma conta inteira por engano
+    for (let pagina = 0; pagina < 20 && itens.length < max; pagina++) {
+      const params: Record<string, string> = {
+        fields:
+          'id,caption,media_type,media_product_type,media_url,thumbnail_url,permalink,timestamp,like_count,comments_count',
+        limit: '50',
+      }
+      if (after) params.after = after
+      const body = await this.get(`${this.accountPath(igUserId)}/media`, params)
+      const data = (body?.data ?? []) as InstagramMediaItem[]
+      for (const m of data) {
+        if (m.timestamp && new Date(m.timestamp).getTime() < corte) return itens
+        itens.push(m)
+        if (itens.length >= max) return itens
+      }
+      after = body?.paging?.cursors?.after
+      if (!body?.paging?.next || !after) break
+    }
+    return itens
+  }
+
+  /**
    * Métricas de um post de feed (carrossel, imagem, reel).
    *
    * Diferente de stories, não expiram — dá para buscar a qualquer momento.
    * Curtidas e comentários vêm como campos da mídia; o resto, de /insights.
+   *
+   * @param conhecido curtidas/comentários já obtidos (ex.: do listing de
+   *   getAccountMedia) — poupa a chamada extra de campos da mídia.
    */
-  async getMediaInsights(mediaId: string): Promise<InstagramMediaInsights> {
-    const media = await this.get(mediaId, { fields: 'id,media_type,like_count,comments_count' })
+  async getMediaInsights(
+    mediaId: string,
+    conhecido?: { likes: number; comments: number },
+  ): Promise<InstagramMediaInsights> {
+    const media = conhecido
+      ? null
+      : await this.get(mediaId, { fields: 'id,media_type,like_count,comments_count' })
 
-    const likes = Number(media?.like_count ?? 0)
-    const comments = Number(media?.comments_count ?? 0)
+    const likes = conhecido?.likes ?? Number(media?.like_count ?? 0)
+    const comments = conhecido?.comments ?? Number(media?.comments_count ?? 0)
 
     // Insights podem falhar por permissão sem invalidar curtidas/comentários
     let values: Record<string, number> = {}

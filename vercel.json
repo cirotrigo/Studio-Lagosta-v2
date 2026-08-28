@@ -100,6 +100,10 @@
       "schedule": "0 * * * *"
     },
     {
+      "path": "/api/cron/fetch-feed-insights",
+      "schedule": "30 7 * * *"
+    },
+    {
       "path": "/api/cron/verify-stories",
       "schedule": "*/5 * * * *"
     },
