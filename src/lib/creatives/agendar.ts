@@ -22,6 +22,7 @@ import {
   registrarCopyDoPost,
   registrarSlotDoPost,
 } from '@/lib/aprendizado/sinal-de-agendamento'
+import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus } from '@prisma/client'
 
@@ -449,6 +450,18 @@ export async function agendarPost(input: AgendarPostInput) {
     postId: post.id,
     copyFinal,
     diff: diffDaCopy,
+    pageId: input.pageId ?? null,
+    generationId,
+    campaignId: input.campaignId ?? null,
+    decididoPor: input.decididoPor ?? null,
+    superficie,
+  })
+  // A LEGENDA tem sinal próprio: o post do fluxo de canvas nasce sem
+  // slotValues e escapava do corpus inteiro (ver sinal-de-legenda.ts).
+  await registrarLegendaDoPost({
+    projectId: project.id,
+    postId: post.id,
+    legenda: input.caption,
     pageId: input.pageId ?? null,
     generationId,
     campaignId: input.campaignId ?? null,

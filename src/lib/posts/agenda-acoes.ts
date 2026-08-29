@@ -16,6 +16,7 @@ import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 import { fecharSugestaoDeSlot, registrarSlotDoPost } from '@/lib/aprendizado/sinal-de-agendamento'
+import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
 export type AcaoAprovacao = 'APPROVE' | 'REVERT'
@@ -573,7 +574,7 @@ export async function editarPost(params: {
 
   const post = await db.socialPost.findUnique({
     where: { id: postId },
-    select: { id: true, projectId: true, status: true, scheduledDatetime: true, postType: true },
+    select: { id: true, projectId: true, status: true, scheduledDatetime: true, postType: true, caption: true },
   })
   if (!post || post.projectId !== projectId) {
     throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto.', 404)
@@ -608,6 +609,18 @@ export async function editarPost(params: {
     },
     select: { id: true, caption: true, postType: true, scheduledDatetime: true },
   })
+
+  // A edição da legenda é o par mais valioso do corpus (antes = proposta,
+  // depois = o que o humano deixou). Nunca lança — contrato da captura.
+  if (params.caption !== undefined) {
+    await registrarEdicaoDeLegenda({
+      projectId,
+      postId: post.id,
+      antes: post.caption,
+      depois: params.caption,
+      superficie: 'chat',
+    })
+  }
 
   const quandoBRT = atualizado.scheduledDatetime ? formatarBRT(atualizado.scheduledDatetime) : null
   return {

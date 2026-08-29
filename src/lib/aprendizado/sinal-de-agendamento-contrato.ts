@@ -32,6 +32,11 @@ export function chaveDaCopy(postId: string): string {
   return `copy:post:${postId}`
 }
 
+/** Idem para a LEGENDA do post (a caption). Um post, uma linha — as edições revisam a mesma. */
+export function chaveDaLegenda(postId: string): string {
+  return `legenda:post:${postId}`
+}
+
 const FUSO = 'America/Sao_Paulo'
 
 /**

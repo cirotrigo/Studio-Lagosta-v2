@@ -7,6 +7,7 @@ import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { LaterNotFoundError } from '@/lib/later/errors'
+import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -241,6 +242,23 @@ export async function PUT(
         },
       },
     })
+
+    // A edição da legenda entra no corpus de aprendizado (antes = proposta,
+    // depois = o que ficou). Nunca lança; User é buscado só para LEITURA —
+    // criar aqui é como nascem os Users fantasma.
+    if (caption !== undefined && caption !== existingPost.caption) {
+      const editor = await db.user
+        .findUnique({ where: { clerkId: clerkUserId }, select: { id: true } })
+        .catch(() => null)
+      await registrarEdicaoDeLegenda({
+        projectId,
+        postId: existingPost.id,
+        antes: existingPost.caption,
+        depois: caption,
+        decididoPor: editor?.id ?? null,
+        superficie: 'agenda',
+      })
+    }
 
     // Debug: Check if post has laterPostId
     console.error(`[PUT /posts] 🔍 Checking laterPostId:`, {

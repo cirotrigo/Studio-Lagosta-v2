@@ -65,6 +65,18 @@ export type TipoDeSinal =
    * valioso porque carrega o prompt atrás.
    */
   | 'item-de-plano'
+  /**
+   * A LEGENDA do post (a caption do Instagram), registrada quando o post entra
+   * na agenda e revisada quando alguém a edita depois.
+   *
+   * Não cabe em `copy` de propósito: `copy` são os textos DA ARTE, com diff
+   * contra a dica de copy do plano — o consumidor (perfil, mineração) trata
+   * aquele shape como slots chaveados. O post do fluxo de canvas nasce só com
+   * legenda e SEM `slotValues`, então sem este tipo ele ficava fora do corpus
+   * inteiro (o caso descoberto em 29/08/2026: o caminho que mais cresce era o
+   * único que não ensinava nada).
+   */
+  | 'legenda'
 
 export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'slot',
@@ -74,6 +86,7 @@ export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'arte',
   'troca-de-arte',
   'item-de-plano',
+  'legenda',
 ]
 
 /**
