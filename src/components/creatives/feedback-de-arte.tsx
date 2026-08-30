@@ -60,10 +60,22 @@ interface Props {
    * mão, o pedido segue valendo por texto.
    */
   projectId?: number | null
+  /**
+   * `centro` é o lightbox/bancada (barra flutuante); `esquerda` é o card da
+   * agenda. Prop explícito em vez de variante arbitrária de Tailwind — classe
+   * arbitrária já se provou não gerar CSS nesta build.
+   */
+  alinhamento?: 'centro' | 'esquerda'
   className?: string
 }
 
-export function FeedbackDeArte({ generationId, superficie = 'galeria', projectId, className }: Props) {
+export function FeedbackDeArte({
+  generationId,
+  superficie = 'galeria',
+  projectId,
+  alinhamento = 'centro',
+  className,
+}: Props) {
   const { data } = useFeedbackDeArte(generationId)
   const registrar = useRegistrarFeedbackDeArte(generationId, superficie)
 
@@ -153,7 +165,12 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', projectId
 
   return (
     <div className={cn('flex w-full flex-col gap-2', className)}>
-      <div className="flex flex-wrap items-center justify-center gap-2">
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2',
+          alinhamento === 'centro' ? 'justify-center' : 'justify-start',
+        )}
+      >
         <Button
           type="button"
           size="sm"

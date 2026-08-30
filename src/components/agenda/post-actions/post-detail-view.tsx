@@ -597,23 +597,6 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
               </div>
             )}
 
-            {/*
-              Revisão pela agenda (29/08/2026): a MESMA barra da galeria e da
-              bancada, logo abaixo da arte — "Gostei" aprova em um clique;
-              "Preciso melhorar" vira o pedido de correção estruturado (chips
-              foto/copy/horário + foto do acervo apontada) que a sessão
-              corretora lê depois com ver-feedback-das-artes. Só existe com
-              generationId — feedback sem arte por trás não ensina nada.
-            */}
-            {post.generationId && (
-              <div className="mx-auto w-full max-w-[300px] rounded-lg border bg-card p-3 lg:max-w-none">
-                <FeedbackDeArte
-                  generationId={post.generationId}
-                  superficie="agenda"
-                  projectId={post.projectId}
-                />
-              </div>
-            )}
           </div>
 
           {/* Informações */}
@@ -737,6 +720,29 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
                 </Badge>
               )}
             </div>
+
+            {/*
+              Revisão pela agenda (29-30/08/2026): a MESMA barra da galeria e
+              da bancada, na coluna da direita — a arte fica inteira à esquerda
+              e o pedido nasce ao lado dela, não embaixo (pedido do Ciro).
+              "Gostei" aprova em um clique; "Preciso melhorar" vira o pedido
+              estruturado (chips Foto/Copy/Design/Horário + foto do acervo
+              apontada) que a sessão corretora lê com ver-feedback-das-artes.
+              Só existe com generationId — feedback sem arte não ensina nada.
+            */}
+            {post.generationId && (
+              <div className="rounded-lg border bg-card p-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Revisão da arte
+                </p>
+                <FeedbackDeArte
+                  generationId={post.generationId}
+                  superficie="agenda"
+                  projectId={post.projectId}
+                  alinhamento="esquerda"
+                />
+              </div>
+            )}
 
             {/* Legenda */}
             {post.caption && (
