@@ -3307,6 +3307,74 @@ holes; o do By Rock é 1080x1350 e é estático). **A foto do render vem de
 `fotos/` (original), nunca da versão comprimida que o canvas embute** — no
 canvas ela cabe em ~50 KB, que serve para revisar layout e não para publicar.
 
+### A sugestão de fotos aprende: score, prata da casa e a semana como conjunto (30/08/2026)
+
+O acervo deixou de ser ordenado só por "menos usada primeiro" (medido: 12% de
+aceitação, 53% das trocas fora do top-10 — a foto ruim nunca escolhida morava
+no topo para sempre). Plano completo e placar em
+`docs/PLANO-2026-08-29-SUGESTAO-DE-FOTOS.md`. Regras que valem para código novo:
+
+- **A ordem do acervo é o score de `ranquearAcervo`**
+  (`src/lib/creatives/ranquear-acervo.ts`, PURO): destaque > escolha (correção
+  > busca; no tema > global) > rejeição desce; o rodízio virou DESEMPATE, e
+  entre nunca-avaliadas vale a semente diária (hash por `driveFileId+dia` —
+  estável dentro do dia, porque a paginação por offset exige). Score ORDENA,
+  nunca esconde. A safra é `acervo-v2` — mudou a heurística, suba a versão.
+- 🔴 **Script/validação NUNCA chama `buscarNoAcervo`** — ela registra um
+  `LearningSignal` por busca. Os insumos saem por `lerCatalogoDoProjeto` +
+  `montarInsumosDeRanking` (exports de `acervo.ts` sem registro) +
+  `filtrarAcervo`/`ranquearAcervo` puros. O backtest
+  (`scripts/validar-ranking-do-acervo.ts`) existe assim.
+- 🔴 **`QUALIDADE_ALTA = 0` é MEDIÇÃO, não esquecimento**: 93–99% de cada
+  acervo está marcado 'alta' — era um muro sem informação que enterrava a foto
+  certa (backtest 30/08). `BAIXA` −6 fica ('baixa' é raro e informativo). Não
+  restaurar sem re-medir.
+- **O que o backtest ensinou**: com qualquer sinal aprendido da foto, top-3 em
+  91,7% (mediana 1,5); sem sinal, não há o que aprender — **corpus é a
+  alavanca, não peso**. `ranquearAcervo(entrada, pesos?)` aceita pesos para
+  calibração offline.
+- **`PhotoDestaque` mora no BANCO** (corrida + regeração do catálogo, as duas
+  razões do `PhotoUsage`); despromover é `revogadoEm`, NUNCA delete; a semente
+  (`scripts/semear-destaques.ts`) jamais ressemeia revogado. Curadoria exige
+  curador nas três portas (rota web espelha `/modelos`; MCP
+  `marcar-foto-destaque` usa acesso `curador`; o picker mostra a estrela e
+  trata o 403). Semeada em produção em 30/08: 105 destaques.
+- **`catalogadaEm` só existe nas entradas NOVAS do catálogo** (reconciliação
+  carimba; o diff não retoca as antigas — aqui isso é o comportamento certo:
+  ausência = sem boost de novidade). Teto da reconciliação: 200 fotos
+  novas/cliente/noite; quem corta primeiro numa leva gigante é o orçamento de
+  240s, e o excedente rola.
+- 🔴 **Fechamento fiel ao card**: `fecharSugestaoDeFoto` aceita `fotoDoCard`, e
+  quando a foto usada é a que o card mostrou o desfecho é `aceita-como-veio`
+  mesmo fora do topo — a descida na lista foi do SISTEMA (dedupe de
+  pasta/arquivo), não da pessoa. Caminho novo que crie arte de item de plano
+  precisa passar `fotoDoCard` (hoje: `executar-plano.ts` → `createArteRapida`).
+- **`ItemDePlano.fotoCandidatas`** = `[{ driveFileId, fileName, vaga:
+  'score'|'exploracao', sugestaoId }]`; a `[0]` é a escolhida; o `sugestaoId`
+  é o do sinal da BUSCA (o do item é o do SLOT — não confundir). Uma das 3
+  vagas é exploração quando existir — é a cota que impede a ossificação da
+  prata da casa.
+- **`marcar-foto-como-usada` aceita `geracaoId`**, e ele importa: a colheita
+  da correção pós-produção junta `troca-de-arte.generationId` ×
+  `PhotoUsage.generationId` — sem o id, a foto escolhida ao refazer via
+  canvas/upload fica invisível para o aprendizado.
+- **`tipoDaPasta` casa por PREFIXO DE TOKEN, nunca substring** ("05_sobremesas"
+  não é ambiente por conter "mesa"). Na escolha da semana, pasta vence tipo, e
+  tipo só desempata entre livres.
+- **`propor-semana` não emite carrossel (slides) hoje** — a regra "slides
+  irmãos da mesma pasta" está documentada no ponto certo
+  (`proposta-de-semana.ts`) para quando emitir.
+- **O motivo da troca** (`escura`/`prato-antigo`/`nao-e-o-assunto`/`repetida`/
+  `outro`, `MOTIVOS_DE_TROCA_DE_FOTO`) é opcional e pós-fato: o desfecho posta
+  na troca, o chip anota depois (`anotarMotivoDaTroca`, merge cirúrgico com
+  compare-and-set). Motivo inválido é DESCARTADO em silêncio — a rota de
+  desfecho é fire-and-forget e continua 200.
+- **KPI vivo**: `scripts/medir-sugestao-de-fotos.ts` (largada do `acervo-v2`:
+  12,2% aceitação, 53,5% trocas fora do top-10);
+  `scripts/relatorio-lacunas-do-acervo.ts` é o insumo do brief de fotógrafo
+  (lacunas reais em 30/08: ambiente/Espeto, Happy Hour/By Rock, Almoço
+  Executivo/TERO).
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
