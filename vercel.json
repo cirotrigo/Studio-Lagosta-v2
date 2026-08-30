@@ -108,6 +108,10 @@
       "schedule": "0 23 * * 0"
     },
     {
+      "path": "/api/cron/pauta-fotografos",
+      "schedule": "0 12 * * 1"
+    },
+    {
       "path": "/api/cron/verify-stories",
       "schedule": "*/5 * * * *"
     },

@@ -123,6 +123,30 @@ function isVideoUrl(url: string): boolean {
 }
 
 /**
+ * Envia um DOCUMENTO (PDF por padrão) pelo WhatsApp. Mesmo transporte do
+ * sendMedia, com `mediatype: 'document'` — o sendWhatsAppMedia decide entre
+ * imagem e vídeo pela extensão e mandaria um PDF com mimetype de JPEG.
+ * A URL precisa ser pública (as nossas ficam no Vercel Blob).
+ */
+export async function sendWhatsAppDocument(
+  mediaUrl: string,
+  options?: { caption?: string; recipient?: string; fileName?: string; mimetype?: string }
+): Promise<boolean> {
+  return post(
+    'message/sendMedia',
+    {
+      mediatype: 'document',
+      mimetype: options?.mimetype ?? 'application/pdf',
+      media: mediaUrl,
+      fileName: options?.fileName ?? 'documento.pdf',
+      ...(options?.caption ? { caption: options.caption } : {}),
+    },
+    SEND_MEDIA_TIMEOUT_MS,
+    options?.recipient
+  )
+}
+
+/**
  * Envia uma imagem ou vídeo pelo WhatsApp. A Evolution baixa a mídia da URL,
  * que por isso precisa ser pública — as nossas ficam no Vercel Blob.
  *
