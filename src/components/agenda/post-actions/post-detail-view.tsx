@@ -52,6 +52,7 @@ import { usePostActions } from '@/hooks/use-post-actions'
 import { usePostApproval } from '@/hooks/use-post-approval'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
 import { useProject } from '@/hooks/use-project'
+import { arteDoSlide, useArtesDoPost } from '@/hooks/use-artes-do-post'
 import { useImproveJobForPost } from '@/stores/improve-queue-store'
 import { RescheduleDialog } from './reschedule-dialog'
 import { DuplicateDialog } from './duplicate-dialog'
@@ -199,6 +200,19 @@ export function PostDetailView({
 
   const currentMediaUrl = mediaUrls[currentImageIndex]
   const isCurrentMediaVideo = currentMediaUrl ? isVideoUrl(currentMediaUrl) : false
+
+  /*
+    A arte do SLIDE que está na tela (30/08/2026).
+
+    `post.generationId` é um id só e um carrossel tem N artes: lendo a coluna, a
+    barra de revisão perguntava sempre pela arte do primeiro slide — quem
+    andasse com as setas até o slide 5 e clicasse em "Gostei" elogiava a capa,
+    em silêncio. `arteDoSlide` casa cada mídia com a Generation dela e só usa a
+    coluna como fallback do índice 0. É o mesmo cuidado que a melhoria já tinha
+    com `applyToPostMediaIndex`.
+  */
+  const { data: artesDoPost } = useArtesDoPost(post.id)
+  const generationIdDoSlide = arteDoSlide(artesDoPost?.artes, currentImageIndex, post.generationId)
 
   const handlePrevImage = useCallback(() => {
     setCurrentImageIndex((prev) => (prev === 0 ? mediaUrls.length - 1 : prev - 1))
@@ -785,20 +799,43 @@ export function PostDetailView({
               "Gostei" aprova em um clique; "Preciso melhorar" vira o pedido
               estruturado (chips Foto/Copy/Design/Horário + foto do acervo
               apontada) que a sessão corretora lê com ver-feedback-das-artes.
-              Só existe com generationId — feedback sem arte não ensina nada.
+
+              A pergunta é sobre a arte que está NA TELA: em carrossel o
+              feedback é por SLIDE, e o título diz qual — a coluna do post
+              responde só pelo primeiro, e usá-la nos demais gravava o "Gostei"
+              do slide 5 na capa, sem ninguém perceber (30/08/2026).
             */}
-            {post.generationId && (
+            {generationIdDoSlide ? (
               <div className="rounded-lg border bg-card p-3">
                 <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Revisão da arte
+                  {isCarousel
+                    ? `Revisão do slide ${currentImageIndex + 1}/${mediaUrls.length}`
+                    : 'Revisão da arte'}
                 </p>
                 <FeedbackDeArte
-                  generationId={post.generationId}
+                  generationId={generationIdDoSlide}
                   superficie="agenda"
                   projectId={post.projectId}
                   alinhamento="esquerda"
                 />
               </div>
+            ) : (
+              mediaUrls.length > 0 &&
+              !gerandoArte && (
+                /*
+                  Sem Generation a barra some — e sumir CALADO foi o que gerou o
+                  relato de 30/08 ("a revisão não aparece neste carrossel"): não
+                  havia como saber se era defeito da tela ou da arte. Uma linha
+                  explica e some do caminho. Só isso: pedir opinião sobre arte
+                  que o Studio não registrou não deixaria nada para a sessão
+                  corretora ler.
+                */
+                <p className="rounded-lg border border-dashed bg-muted/20 p-3 text-xs text-muted-foreground">
+                  {isCurrentMediaVideo
+                    ? 'Vídeo não passa pela revisão de arte.'
+                    : 'Esta arte não está registrada nos Criativos do cliente, então não dá para revisar por aqui. Artes feitas ou enviadas pelo Studio entram sozinhas.'}
+                </p>
+              )
             )}
 
             {/* Legenda */}
