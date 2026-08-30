@@ -23,6 +23,7 @@ import {
   registrarSlotDoPost,
 } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
+import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus } from '@prisma/client'
 
@@ -419,6 +420,25 @@ export async function agendarPost(input: AgendarPostInput) {
   })
 
   /**
+   * A arte que chegou PRONTA vira Generation aqui.
+   *
+   * O casamento por `resultUrl` acima só acha o que o Studio já registrou —
+   * e arte renderizada fora dele (canvas de design subido ao Drive, export de
+   * outra ferramenta) nunca passou por `upload-creative`, então não existe
+   * Generation nenhuma para casar. Medido em 30/08/2026 no carrossel de
+   * domingo do Bacana: 7 slides no Drive, ZERO Generations — sem barra de
+   * revisão, fora da galeria de Criativos e invisível para
+   * `ver-feedback-das-artes`, que é como a sessão corretora lê os pedidos.
+   *
+   * Registrar NÃO renderiza nada e NÃO cobra crédito: só cataloga o arquivo que
+   * o post já tem. Depois da ingestão, de propósito — o `resultUrl` gravado
+   * precisa ser a URL FINAL, senão o resolvedor por índice não casaria depois.
+   * Nunca lança (contrato de `artes-do-post.ts`).
+   */
+  const registroDeArtes = await registrarArtesDoPost(post.id)
+  const generationDoPost = generationId ?? registroDeArtes.artes[0]?.generationId ?? null
+
+  /**
    * Sinais do agendamento. Depois do create, de propósito: a chave de
    * idempotência é o id do post, e registrar antes deixaria linha órfã se a
    * criação falhasse. Nenhuma destas chamadas lança — captura que quebra o
@@ -438,7 +458,7 @@ export async function agendarPost(input: AgendarPostInput) {
       postType: post.postType,
       situacao: vaiPublicar ? 'agendado' : 'rascunho',
       pageId: input.pageId ?? null,
-      generationId,
+      generationId: generationDoPost,
       campaignId: input.campaignId ?? null,
       sourcePageId,
       decididoPor: input.decididoPor ?? null,
@@ -451,7 +471,7 @@ export async function agendarPost(input: AgendarPostInput) {
     copyFinal,
     diff: diffDaCopy,
     pageId: input.pageId ?? null,
-    generationId,
+    generationId: generationDoPost,
     campaignId: input.campaignId ?? null,
     decididoPor: input.decididoPor ?? null,
     superficie,
@@ -463,7 +483,7 @@ export async function agendarPost(input: AgendarPostInput) {
     postId: post.id,
     legenda: input.caption,
     pageId: input.pageId ?? null,
-    generationId,
+    generationId: generationDoPost,
     campaignId: input.campaignId ?? null,
     decididoPor: input.decididoPor ?? null,
     superficie,
@@ -483,7 +503,7 @@ export async function agendarPost(input: AgendarPostInput) {
         sourcePageId,
       },
       pageId: input.pageId ?? null,
-      generationId,
+      generationId: generationDoPost,
       campaignId: input.campaignId ?? null,
       decididoPor: input.decididoPor ?? null,
       superficie,
