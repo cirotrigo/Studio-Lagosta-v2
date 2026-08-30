@@ -26,6 +26,10 @@ export interface ComentarioPendente {
   linkDoPost: string | null
   /** Legenda do post onde o comentário vive — contexto do rascunho. */
   legendaDoPost: string | null
+  /** Primeira imagem do post (thumbnail no vídeo/reel; media_url na imagem
+   * e no carrossel). URL assinada do CDN do Instagram — EXPIRA em dias;
+   * quem renderiza precisa de fallback para imagem quebrada. */
+  fotoDoPost: string | null
   /** true = o app consegue ENVIAR a resposta (token do projeto). */
   enviaDaqui: boolean
   quente: boolean
@@ -60,6 +64,8 @@ const FIELDS_COMENTARIOS = [
   'comment_reply_count',
   'media_permalink',
   'media_caption',
+  'media_thumbnail_url',
+  'media_url',
 ]
 
 /** Comentários sem resposta dos últimos 14 dias, só dos projetos visíveis. */
@@ -110,6 +116,7 @@ async function comentariosPendentes(
       quando,
       linkDoPost: texto(l.media_permalink),
       legendaDoPost: texto(l.media_caption),
+      fotoDoPost: texto(l.media_thumbnail_url) ?? texto(l.media_url),
       enviaDaqui: projeto.temToken,
       quente: PALAVRAS_QUENTES.test(corpo),
     })

@@ -41,6 +41,8 @@ function ItemDaCaixa({
   const [salvaEm, setSalvaEm] = React.useState<string | null>(
     item.tipo === 'avaliacao' ? item.respostaAprovadaEm : null,
   )
+  const [legendaAberta, setLegendaAberta] = React.useState(false)
+  const [fotoQuebrada, setFotoQuebrada] = React.useState(false)
   const propor = useProporRascunho()
   const responder = useResponderComentario()
   const ignorar = useIgnorarItem()
@@ -139,6 +141,34 @@ function ItemDaCaixa({
             </a>
           )}
         </div>
+
+        {comentario && ((item as ComentarioPendente).fotoDoPost || (item as ComentarioPendente).legendaDoPost) && (
+          <button
+            type="button"
+            onClick={() => setLegendaAberta((v) => !v)}
+            className="flex w-full items-center gap-2.5 rounded-lg border bg-muted/40 px-2.5 py-2 text-left"
+            title={legendaAberta ? 'Recolher a legenda' : 'Ver a legenda inteira'}
+          >
+            {(item as ComentarioPendente).fotoDoPost && !fotoQuebrada && (
+              /* CDN assinado do Instagram (domínio variável, URL expira) — <img>
+                 cru de propósito; quebrou, some. */
+              <img
+                src={(item as ComentarioPendente).fotoDoPost as string}
+                alt=""
+                className="h-10 w-10 flex-none rounded-md object-cover"
+                loading="lazy"
+                onError={() => setFotoQuebrada(true)}
+              />
+            )}
+            <span
+              className={`min-w-0 flex-1 whitespace-pre-line text-xs text-muted-foreground ${legendaAberta ? '' : 'truncate'}`}
+            >
+              {legendaAberta
+                ? ((item as ComentarioPendente).legendaDoPost ?? '(post sem legenda)')
+                : (((item as ComentarioPendente).legendaDoPost ?? '(post sem legenda)').split('\n')[0])}
+            </span>
+          </button>
+        )}
 
         <p className="text-sm">{item.texto ?? '(sem texto — só a nota)'}</p>
 
