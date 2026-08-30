@@ -1,49 +1,64 @@
-# Pendência — a revisão não aparece em carrossel (30/08/2026)
+# RESOLVIDO — a revisão em carrossel (30/08/2026)
 
 Relatado pelo Ciro depois de validar a revisão pela agenda: criou um carrossel
-no Bacana e **o card "Revisão da arte" não apareceu**. Uma sessão foi lançada
-para investigar e corrigir; este documento guarda o diagnóstico já medido, para
-o trabalho não recomeçar do zero se a sessão se perder.
+no Bacana e o card "Revisão da arte" não apareceu. Corrigido nos commits
+`67d5f3f6` (revisão por slide), `78855020` (fix na origem) e `2b565f63`
+(backfill).
 
-## O que já está medido (sonda em produção, 30/08)
+## A causa raiz: não havia o que vincular
 
-- A barra é montada em `post-detail-view.tsx` guardada por
-  `{post.generationId && (…)}` — **só existe com `generationId`**.
-- O carrossel do Bacana (DRAFT, 7 mídias, agendado 30/08 14:30) tem
-  **`generationId = NULL`** e `pageId` nulo.
-- No projeto 5 (Bacana): **326 posts COM** generationId e **580 SEM**
-  (CAROUSEL 54 · STORY 509 · POST 10 · REEL 7).
-- Conclusão: some por falta de VÍNCULO, não por bug de UI.
+O carrossel do Bacana (7 slides) foi para a agenda por
+`upload-to-drive` + `colocar-na-agenda(mediaUrls)` — as 7 mídias são links do
+Drive e **nenhuma tinha Generation**. `agendarPost` tentou derivar o vínculo
+por `resultUrl === mediaUrls[0]`, como sempre fez, e não achou nada porque não
+havia nada. O vínculo não se perdeu: nunca existiu.
 
-## As duas perguntas que a sessão responde
+## O defeito MAIOR, achado no caminho
 
-1. **Por que o post nasceu sem vínculo?** `agendarPost`
-   (`src/lib/creatives/agendar.ts`) deriva o `generationId` por
-   `resultUrl === mediaUrls[0]`; outros caminhos (composer web,
-   `colocar-na-agenda`, `upload-creative` do canvas) podem não gravar. As
-   Generations das 7 artes provavelmente existem — falta o post apontar.
-2. **Como a revisão funciona em carrossel**, onde cada slide é uma arte
-   diferente e `SocialPost.generationId` é um só? O caminho natural é a
-   revisão seguir o SLIDE visível (o `currentImageIndex` já existe no
-   componente, e o `ImproveCreativeModal` no mesmo arquivo já melhora o slide
-   atual via `applyToPostMediaIndex`). Assim "Gostei" e os pedidos passam a
-   ser por slide, que é como a revisão acontece na prática.
+Mesmo com vínculo, `SocialPost.generationId` é **um** id e o carrossel tem N
+artes: a barra respondia sempre pelo PRIMEIRO slide. Andar até o slide 5 e
+clicar em "Gostei" **elogiava a capa, em silêncio** — e a sessão corretora
+leria o pedido amarrado à arte errada. Havia carrosséis vivos de 7, 6 e 5
+slides colapsados num veredito só. A melhoria com IA já tinha esse cuidado
+desde 29/07 (`applyToPostMediaIndex`); a revisão, não.
 
-## Balizas dadas à sessão
+## O que passou a acontecer
 
-- Corrigir na ORIGEM quando o caminho de criação puder gravar o vínculo.
-- Post sem Generation nenhuma: decidir entre aviso de uma linha ou seguir
-  sem barra — nunca inventar feedback sem arte por trás (regra da casa:
-  "feedback sem prompt não ensina nada").
-- Backfill opcional (`scripts/backfill-generation-id-dos-posts.ts`), dry-run
-  por padrão, religando por `resultUrl`.
-- Working tree COMPARTILHADA com a frente de sugestão de fotos: conjunto
-  disjunto de arquivos, `git pull` antes, commits separados por assunto.
+- **Criação** (`agendarPost`): arte que chega pronta vira Generation, uma por
+  mídia — não renderiza, não cobra crédito. A coluna do post continua
+  apontando para a CAPA (contrato que `trocar-arte-do-post` e a melhoria
+  assumem). Vídeo e `data:` ficam de fora; nunca lança.
+- **Leitura** (`lerArtesDoPost`): casa cada `mediaUrls[i]` por `resultUrl`, uma
+  consulta por post; a coluna é fallback só do índice 0. 🔴 A URL vence a
+  coluna porque **a ordem de `mediaUrls` não é a de criação** (medido num
+  carrossel do Quintal: o slide 1 não é a Generation mais antiga) — índice não
+  adivinha.
+- **Revisão slide a slide**: o título vira "Revisão do slide 3/7", e o estado
+  já zerava ao trocar de `generationId`, então nada vaza entre slides.
+- **Post sem Generation nenhuma**: mostra uma linha discreta ("não está
+  registrada nos Criativos"), não some calado — sumir foi o que gerou o
+  relato. Sem arte atrás não há botão: feedback sem prompt não ensina nada.
 
-## Contexto do que já está no ar (para quem retomar)
+## O backfill (aplicado)
 
-Revisão pela agenda: `docs/SESSAO-2026-08-30-REVISAO-PELA-AGENDA.md`.
-Desde 30/08 à tarde o pedido tem ABAS (Geral/Foto/Copy/Design/Horário), cada
-uma com o próprio texto, gravadas juntas em `escolhido.pedidos[]`
-(`src/lib/aprendizado/feedback-de-arte.ts`), e o seletor de foto confirma em
-dois tempos. Testado pelo Ciro: funcionando.
+Relinkar por `resultUrl` era quase vazio (9 posts em 5.714); o que resolve é
+REGISTRAR a arte faltante. Escopado duas vezes por medição: só DRAFT/SCHEDULED
+(publicado não se revisa, e o histórico sem vínculo é quase todo import do
+Zernio) e só a agenda viva (`--desde`, 7 dias) — sem a janela, 20 dos 28 posts
+eram **zumbis SCHEDULED de dez/2025–jan/2026**, que entrariam na galeria de
+seis clientes datados de hoje. Aplicado: 16 artes registradas e 6 capas
+vinculadas (Bacana 7, Empório 4, Seu Quinto 3, TERO 1, Quintal 1). O carrossel
+do Bacana devolve 7 artes distintas para 7 slides.
+
+## Fica para o Ciro
+
+1. **Conferência visual** — abrir o carrossel do Bacana e andar com as setas
+   (a tela exige sessão Clerk, fora do alcance das sessões automáticas).
+2. 🔴 **A skill do canvas ainda ensina o caminho que causou isto.** O conserto
+   cobre quem agenda, mas `upload-to-drive` + `colocar-na-agenda(mediaUrls)`
+   continua sendo o que a leva de 30/08 fez — e por ali a arte não ganha
+   PÁGINA, só Generation. Sem página não há `ajustar-arte` nem `conferir-arte`.
+   O caminho com página é `upload-creative`. Alinhar a skill é decisão de
+   produto, e vale antes das levas da semana 1.
+3. Os **20 zumbis SCHEDULED** de dez/2025–jan/2026 seguem no banco (caso (c)
+   do `checkStuckPosts` nunca varrido) — limpeza é frente à parte.
