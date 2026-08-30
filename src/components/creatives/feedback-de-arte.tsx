@@ -39,6 +39,7 @@ const PLACEHOLDER = 'o que precisa melhorar? ex.: texto muito grande, foto escur
 const PLACEHOLDER_POR_ALVO: Record<AlvoDeCorrecao, string> = {
   foto: 'o que a foto tem? ex.: escura, prato antigo, não é o assunto…',
   copy: 'o que mudar no texto? ex.: título comprido, tirar o preço…',
+  design: 'o que mudar na arte? ex.: texto menor, véu mais suave, sobe o bloco…',
   horario: 'para quando? ex.: mover para 19h, trocar para sábado…',
 }
 
@@ -46,6 +47,7 @@ const PLACEHOLDER_POR_ALVO: Record<AlvoDeCorrecao, string> = {
 const CHIPS: Array<{ alvo: AlvoDeCorrecao; rotulo: string }> = [
   { alvo: 'foto', rotulo: 'Foto' },
   { alvo: 'copy', rotulo: 'Copy' },
+  { alvo: 'design', rotulo: 'Design' },
   { alvo: 'horario', rotulo: 'Horário' },
 ]
 

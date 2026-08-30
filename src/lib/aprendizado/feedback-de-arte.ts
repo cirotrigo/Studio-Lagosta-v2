@@ -43,8 +43,13 @@ export type VereditoDeArte = (typeof VEREDITOS_DE_ARTE)[number]
  * valendo sozinho. Vocabulário próprio do feedback (não vai para
  * `vocabulario.ts` porque não é tipo nem desfecho de sinal — é conteúdo do
  * `escolhido` deste sinal específico).
+ *
+ * `design` é a peça em si — layout, véu, tipografia, tamanho do texto
+ * (pedido do Ciro em 30/08: foto/copy/horário não cobriam "melhorar a
+ * arte"). `foto` é trocar a imagem; `copy` é o que o texto DIZ; `design` é
+ * como a peça está desenhada.
  */
-export const ALVOS_DE_CORRECAO = ['foto', 'copy', 'horario'] as const
+export const ALVOS_DE_CORRECAO = ['foto', 'copy', 'design', 'horario'] as const
 export type AlvoDeCorrecao = (typeof ALVOS_DE_CORRECAO)[number]
 
 export function normalizarAlvo(valor: unknown): AlvoDeCorrecao | undefined {
