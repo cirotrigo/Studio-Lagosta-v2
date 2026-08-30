@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { FeedbackDeArte } from '@/components/creatives/feedback-de-arte'
 import {
   Send,
   Edit,
@@ -593,6 +594,24 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
                 <span className="px-6 text-center text-xs">
                   O template mudou. A arte nova aparece aqui em até 2 minutos.
                 </span>
+              </div>
+            )}
+
+            {/*
+              Revisão pela agenda (29/08/2026): a MESMA barra da galeria e da
+              bancada, logo abaixo da arte — "Gostei" aprova em um clique;
+              "Preciso melhorar" vira o pedido de correção estruturado (chips
+              foto/copy/horário + foto do acervo apontada) que a sessão
+              corretora lê depois com ver-feedback-das-artes. Só existe com
+              generationId — feedback sem arte por trás não ensina nada.
+            */}
+            {post.generationId && (
+              <div className="mx-auto w-full max-w-[300px] rounded-lg border bg-card p-3 lg:max-w-none">
+                <FeedbackDeArte
+                  generationId={post.generationId}
+                  superficie="agenda"
+                  projectId={post.projectId}
+                />
               </div>
             )}
           </div>

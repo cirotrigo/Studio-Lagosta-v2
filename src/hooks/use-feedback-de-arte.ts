@@ -18,7 +18,12 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
-import type { FeedbackDeArte, VereditoDeArte } from '@/lib/aprendizado/feedback-de-arte'
+import type {
+  AlvoDeCorrecao,
+  FeedbackDeArte,
+  FotoSugerida,
+  VereditoDeArte,
+} from '@/lib/aprendizado/feedback-de-arte'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
 interface RespostaDeLeitura {
@@ -55,11 +60,24 @@ export function useRegistrarFeedbackDeArte(
 ) {
   const queryClient = useQueryClient()
 
-  return useMutation<RespostaDeEscrita, Error, { veredito: VereditoDeArte; comentario?: string | null }>({
+  return useMutation<
+    RespostaDeEscrita,
+    Error,
+    {
+      veredito: VereditoDeArte
+      comentario?: string | null
+      /** Chip do pedido de correção — só faz sentido em "melhorar". */
+      alvo?: AlvoDeCorrecao | null
+      /** Foto do acervo apontada no lugar da atual. */
+      fotoSugerida?: FotoSugerida | null
+    }
+  >({
     mutationFn: (entrada) =>
       api.post<RespostaDeEscrita>(`/api/generations/${generationId}/feedback`, {
         veredito: entrada.veredito,
         comentario: entrada.comentario ?? null,
+        alvo: entrada.alvo ?? null,
+        fotoSugerida: entrada.fotoSugerida ?? null,
         superficie,
       }),
     onSuccess: (resposta) => {

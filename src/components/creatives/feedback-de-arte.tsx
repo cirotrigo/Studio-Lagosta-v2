@@ -24,23 +24,44 @@
 
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Loader2, MessageSquarePlus, Send, ThumbsUp } from 'lucide-react'
+import { ImagePlus, Loader2, MessageSquarePlus, Send, ThumbsUp, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useFeedbackDeArte, useRegistrarFeedbackDeArte } from '@/hooks/use-feedback-de-arte'
-import type { VereditoDeArte } from '@/lib/aprendizado/feedback-de-arte'
+import { SugerirFotoDialog } from '@/components/creatives/sugerir-foto-dialog'
+import type { AlvoDeCorrecao, FotoSugerida, VereditoDeArte } from '@/lib/aprendizado/feedback-de-arte'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
 const PLACEHOLDER = 'o que precisa melhorar? ex.: texto muito grande, foto escura…'
 
+/** O placeholder acompanha o chip: pergunta certa rende pedido melhor. */
+const PLACEHOLDER_POR_ALVO: Record<AlvoDeCorrecao, string> = {
+  foto: 'o que a foto tem? ex.: escura, prato antigo, não é o assunto…',
+  copy: 'o que mudar no texto? ex.: título comprido, tirar o preço…',
+  horario: 'para quando? ex.: mover para 19h, trocar para sábado…',
+}
+
+/** Rótulos dos chips — vocabulário de gente, não de banco. */
+const CHIPS: Array<{ alvo: AlvoDeCorrecao; rotulo: string }> = [
+  { alvo: 'foto', rotulo: 'Foto' },
+  { alvo: 'copy', rotulo: 'Copy' },
+  { alvo: 'horario', rotulo: 'Horário' },
+]
+
 interface Props {
   generationId: string | null | undefined
   superficie?: Superficie
+  /**
+   * Habilita "apontar foto do acervo" no pedido de correção. Opcional porque a
+   * galeria global abre artes de vários projetos numa lista só — sem o id na
+   * mão, o pedido segue valendo por texto.
+   */
+  projectId?: number | null
   className?: string
 }
 
-export function FeedbackDeArte({ generationId, superficie = 'galeria', className }: Props) {
+export function FeedbackDeArte({ generationId, superficie = 'galeria', projectId, className }: Props) {
   const { data } = useFeedbackDeArte(generationId)
   const registrar = useRegistrarFeedbackDeArte(generationId, superficie)
 
@@ -52,6 +73,9 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', className
   const [otimista, setOtimista] = React.useState<VereditoDeArte | null>(null)
   const [aberto, setAberto] = React.useState(false)
   const [texto, setTexto] = React.useState('')
+  const [alvo, setAlvo] = React.useState<AlvoDeCorrecao | null>(null)
+  const [fotoSugerida, setFotoSugerida] = React.useState<FotoSugerida | null>(null)
+  const [pickerAberto, setPickerAberto] = React.useState(false)
   const [enviado, setEnviado] = React.useState(false)
 
   const veredito = otimista ?? salvo?.veredito ?? null
@@ -62,16 +86,21 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', className
     setOtimista(null)
     setAberto(false)
     setTexto('')
+    setAlvo(null)
+    setFotoSugerida(null)
+    setPickerAberto(false)
     setEnviado(false)
   }, [generationId])
 
-  // Reabrir a arte mostra o que já foi dito — inclusive o comentário, que fica
-  // no campo para ser corrigido em vez de reescrito do zero.
+  // Reabrir a arte mostra o que já foi dito — inclusive o comentário, o chip e
+  // a foto apontada, que ficam no lugar para serem corrigidos, não reescritos.
   React.useEffect(() => {
     if (!salvo) return
     if (salvo.veredito === 'melhorar') {
       setAberto(true)
       setTexto((atual) => (atual ? atual : (salvo.comentario ?? '')))
+      setAlvo((atual) => atual ?? salvo.alvo ?? null)
+      setFotoSugerida((atual) => atual ?? salvo.fotoSugerida ?? null)
     }
   }, [salvo])
 
@@ -80,15 +109,44 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', className
   const marcar = (novo: VereditoDeArte) => {
     setOtimista(novo)
     setEnviado(false)
-    if (novo === 'melhorar') setAberto(true)
-    else setAberto(false)
-    registrar.mutate({ veredito: novo, comentario: novo === 'melhorar' ? texto : null })
+    if (novo === 'melhorar') {
+      setAberto(true)
+      registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo, fotoSugerida })
+    } else {
+      // Elogiar é retirar o pedido — o serviço limpa alvo/foto no "gostei".
+      setAberto(false)
+      setAlvo(null)
+      setFotoSugerida(null)
+      registrar.mutate({ veredito: 'gostei', comentario: null })
+    }
   }
 
   const enviarComentario = () => {
     setOtimista('melhorar')
     setEnviado(true)
-    registrar.mutate({ veredito: 'melhorar', comentario: texto })
+    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo, fotoSugerida })
+  }
+
+  /** Chip é ação completa: escolher (ou desmarcar) já grava, sem Enviar. */
+  const escolherAlvo = (novo: AlvoDeCorrecao) => {
+    const proximo = alvo === novo ? null : novo
+    setAlvo(proximo)
+    setOtimista('melhorar')
+    setEnviado(false)
+    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo: proximo, fotoSugerida })
+  }
+
+  /** Apontar a foto também é ação completa — o clique no acervo já grava. */
+  const aoEscolherFoto = (foto: FotoSugerida) => {
+    setFotoSugerida(foto)
+    setAlvo('foto')
+    setOtimista('melhorar')
+    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo: 'foto', fotoSugerida: foto })
+  }
+
+  const tirarFoto = () => {
+    setFotoSugerida(null)
+    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo, fotoSugerida: null })
   }
 
   return (
@@ -124,6 +182,54 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', className
 
       {aberto && (
         <div className="flex w-full flex-col gap-2">
+          {/* O alvo estrutura o pedido: a sessão corretora não adivinha. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {CHIPS.map((chip) => (
+              <button
+                key={chip.alvo}
+                type="button"
+                onClick={() => escolherAlvo(chip.alvo)}
+                aria-pressed={alvo === chip.alvo}
+                className={cn(
+                  'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                  alvo === chip.alvo
+                    ? 'border-primary bg-primary text-primary-foreground'
+                    : 'border-border bg-background text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {chip.rotulo}
+              </button>
+            ))}
+
+            {alvo === 'foto' && projectId != null && !fotoSugerida && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="h-6 px-2 text-xs"
+                onClick={() => setPickerAberto(true)}
+              >
+                <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                Apontar foto do acervo
+              </Button>
+            )}
+
+            {fotoSugerida && (
+              <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs">
+                <ImagePlus className="h-3 w-3 shrink-0" />
+                <span className="truncate">{fotoSugerida.nome ?? 'foto do acervo'}</span>
+                <button
+                  type="button"
+                  onClick={tirarFoto}
+                  aria-label="Tirar a foto sugerida"
+                  className="ml-0.5 rounded-full p-0.5 hover:bg-background"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+          </div>
+
           <Textarea
             value={texto}
             onChange={(e) => {
@@ -137,7 +243,7 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', className
                 enviarComentario()
               }
             }}
-            placeholder={PLACEHOLDER}
+            placeholder={alvo ? PLACEHOLDER_POR_ALVO[alvo] : PLACEHOLDER}
             rows={2}
             // O teto real é do serviço (`TETO_COMENTARIO`), que não pode ser
             // importado aqui: aquele módulo puxa o Prisma, e isto é client.
@@ -155,6 +261,15 @@ export function FeedbackDeArte({ generationId, superficie = 'galeria', className
             </Button>
           </div>
         </div>
+      )}
+
+      {projectId != null && (
+        <SugerirFotoDialog
+          projectId={projectId}
+          open={pickerAberto}
+          onOpenChange={setPickerAberto}
+          onEscolher={aoEscolherFoto}
+        />
       )}
     </div>
   )
