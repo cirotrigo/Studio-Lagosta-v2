@@ -71,6 +71,16 @@ interface PostDetailViewProps {
   onBack: () => void
   /** Abre o composer. Ausente = post que não se edita por aqui. */
   onEdit?: (post: SocialPost) => void
+  /**
+   * Navegação anterior/próximo na linha do tempo da agenda (revisão sem voltar
+   * para a grade). `undefined` = quem montou não navega (o modal do editor);
+   * `null` = navega, mas este é o extremo da trilha (a seta aparece apagada).
+   */
+  onAnterior?: (() => void) | null
+  onProximo?: (() => void) | null
+  /** Tooltips das setas — "seg 31/08 16:00", para saber para onde vai. */
+  rotuloAnterior?: string | null
+  rotuloProximo?: string | null
 }
 
 const isVideoUrl = (url: string) => {
@@ -95,7 +105,15 @@ const isVideoUrl = (url: string) => {
  * - **A arte aparece no formato real do post** (4:5 no feed, 9:16 no story).
  *   O modal desenhava feed em quadrado e cortava a prévia por conta própria.
  */
-export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
+export function PostDetailView({
+  post,
+  onBack,
+  onEdit,
+  onAnterior,
+  onProximo,
+  rotuloAnterior,
+  rotuloProximo,
+}: PostDetailViewProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [approveOpen, setApproveOpen] = useState(false)
@@ -205,18 +223,30 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
     }
   }, [currentImageIndex, mediaUrls, isCarousel])
 
-  // Navegação por teclado no carrossel
+  // Navegação por teclado: no carrossel as setas trocam de SLIDE (como
+  // sempre); em post de imagem única, trocam de POST quando a tela sabe
+  // navegar. Um listener só — dois separados disparariam os dois de uma vez.
   useEffect(() => {
-    if (!isCarousel) return
-
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') handlePrevImage()
-      else if (e.key === 'ArrowRight') handleNextImage()
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      // Digitação e diálogos ficam com o teclado deles: a seta dentro do campo
+      // do pedido de correção move o CURSOR — antes ela trocava o slide.
+      const alvo = e.target as HTMLElement | null
+      if (alvo?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (document.querySelector('[role="dialog"][data-state="open"]')) return
+
+      if (e.key === 'ArrowLeft') {
+        if (isCarousel) handlePrevImage()
+        else onAnterior?.()
+      } else {
+        if (isCarousel) handleNextImage()
+        else onProximo?.()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isCarousel, handlePrevImage, handleNextImage])
+  }, [isCarousel, handlePrevImage, handleNextImage, onAnterior, onProximo])
 
   // Swipe no carrossel
   const [touchStart, setTouchStart] = useState(0)
@@ -406,6 +436,33 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
             <p className="truncate text-xs text-muted-foreground">{scheduledTimeLabel}</p>
           </div>
         </div>
+
+        {/* Anterior/próximo na linha do tempo — a revisão anda daqui, sem
+            voltar para a grade. Seta apagada = extremo da trilha. */}
+        {(onAnterior !== undefined || onProximo !== undefined) && (
+          <div className="flex shrink-0 items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onAnterior ?? undefined}
+              disabled={!onAnterior}
+              aria-label="Post anterior"
+              title={rotuloAnterior ?? 'Post anterior'}
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onProximo ?? undefined}
+              disabled={!onProximo}
+              aria-label="Próximo post"
+              title={rotuloProximo ?? 'Próximo post'}
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+        )}
 
         <div className="shrink-0">{getPostTypeBadge()}</div>
       </header>

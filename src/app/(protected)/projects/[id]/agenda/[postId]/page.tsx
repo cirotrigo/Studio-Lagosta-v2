@@ -7,9 +7,23 @@ import Link from 'next/link'
 import { ArrowLeft, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { usePost } from '@/hooks/use-post'
+import { useVizinhosDoPost, type VizinhoDePost } from '@/hooks/use-vizinhos-do-post'
 import { PostDetailView } from '@/components/agenda/post-actions/post-detail-view'
-import { agendaHref, editarPostHref } from '@/lib/agenda-routes'
+import { agendaHref, editarPostHref, postHref } from '@/lib/agenda-routes'
 import type { SocialPost } from '../../../../../../../prisma/generated/client'
+
+/** "seg 31/08 16:00" — o tooltip da seta diz para onde ela leva. */
+function rotuloDoVizinho(v: VizinhoDePost | null): string | null {
+  if (!v?.quando) return null
+  return new Date(v.quando).toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
 
 /**
  * A tela de um post — `/projects/[id]/agenda/[postId]`.
@@ -32,6 +46,23 @@ export default function PostDetailPage({
   const router = useRouter()
 
   const { data: post, isLoading, isError } = usePost(projectId, postId)
+
+  /*
+    Vizinhos na linha do tempo: é o que deixa a revisão andar de post em post
+    sem voltar para a grade. `replace` em vez de `push` de propósito — depois
+    de vinte "próximos", o botão voltar do navegador tem que cair na AGENDA,
+    não desfazer a caminhada post a post.
+  */
+  const { data: vizinhos } = useVizinhosDoPost(projectId, postId)
+  const irPara = useCallback(
+    (vizinho: VizinhoDePost | null | undefined) => {
+      if (!vizinho) return
+      router.replace(postHref(projectId, vizinho.id))
+    },
+    [router, projectId],
+  )
+  const onAnterior = vizinhos?.anterior ? () => irPara(vizinhos.anterior) : null
+  const onProximo = vizinhos?.proximo ? () => irPara(vizinhos.proximo) : null
 
   /*
     Fora a trilha automática do layout. Ela monta os rótulos a partir do
@@ -113,6 +144,10 @@ export default function PostDetailPage({
         onBack={handleBack}
         // Editar tem tela própria desde 08/08/2026, com prévia viva ao lado.
         onEdit={() => router.push(editarPostHref(projectId, postId))}
+        onAnterior={onAnterior}
+        onProximo={onProximo}
+        rotuloAnterior={rotuloDoVizinho(vizinhos?.anterior ?? null)}
+        rotuloProximo={rotuloDoVizinho(vizinhos?.proximo ?? null)}
       />
     </div>
   )
