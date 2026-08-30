@@ -182,6 +182,16 @@ python3 medir.py *.dc.html              # contraste do fundo
 Depois `upload-creative` (MCP local, lê do disco) e `colocar-na-agenda` com o
 `generationId` devolvido. **Sempre como rascunho.**
 
+🔴 **É `upload-creative` — NUNCA `upload-to-drive` + `colocar-na-agenda` com
+`mediaUrls`.** A leva do By Rock de 30/08/2026 foi pelo atalho do Drive e as
+sete artes chegaram à agenda **sem existir nos Criativos**: sem Generation não
+há revisão da arte, e sem PÁGINA não há `ajustar-arte` nem `conferir-arte` —
+some o ciclo inteiro de correção. `upload-creative` cria os dois (Generation +
+página editável) lendo o PNG do disco; o Drive é destino de FOTO de acervo,
+não de peça pronta. Desde 30/08 `agendarPost` registra uma Generation por
+mídia como rede de segurança, mas ela nasce **sem página** — a rede evita o
+buraco, não substitui o caminho certo.
+
 ⚠️ Antes de renderizar para valer, **leia o canvas de volta**: WebFetch da URL
 do artifact → `seed-canvas.mjs --extract <arquivo salvo> --to <pasta nova>`.
 As edições feitas no navegador vivem no artifact, não nos arquivos locais.
