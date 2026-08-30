@@ -248,6 +248,15 @@ export function PostComposerForm({
         url,
         thumbnailUrl: url,
         name: isVideo ? `Video ${index + 1}` : `Imagem ${index + 1}`,
+        /*
+          Marca o que JÁ ESTAVA no post: sem ela, o slide 2..N de um carrossel
+          agendado herdava a regra do arquivo recém-subido (que já passou pelo
+          enquadramento no uploader) e ficava sem o botão de enquadrar. O
+          `type` continua 'upload' de propósito — ele governa outras quatro
+          regras aqui e no sistema de mídia, e mexer nele mudaria comportamento
+          que ninguém pediu.
+        */
+        preexistente: true,
       } as MediaItem)
     })
 

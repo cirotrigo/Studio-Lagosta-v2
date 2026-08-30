@@ -50,6 +50,16 @@ interface MediaItem {
   mimeType?: string
   /** Já passou pelo enquadramento — a URL é a da imagem recortada */
   cropped?: boolean
+  /**
+   * Mídia que JÁ ESTAVA no post ao abrir a edição (não foi escolhida agora).
+   *
+   * Ela chega como `type: 'upload'` porque não se sabe de onde veio, mas
+   * "upload" ali significa duas coisas diferentes: arquivo que a pessoa acabou
+   * de subir (e já passou pelo enquadramento do uploader) e slide que está no
+   * post há dias, que nunca passou por enquadramento nenhum. Sem esta marca,
+   * os slides 2..N de um carrossel agendado ficavam sem o botão de enquadrar.
+   */
+  preexistente?: boolean
 }
 
 /** Imagem escolhida que ainda espera a decisão de enquadramento */
@@ -346,7 +356,18 @@ export function MediaUploadSystem({
       size: f.size,
     }))
 
-    onSelectionChange((prev) => [...prev.filter(m => m.type !== 'upload'), ...newMedia])
+    /*
+      O uploader manda a lista COMPLETA do que ele gerencia, então a fatia de
+      upload é trocada de uma vez. Mas o que já ESTAVA no post também chega
+      como 'upload' (não se sabe de onde veio), e sem a ressalva do
+      `preexistente` subir uma foto nova no editar APAGAVA os slides
+      existentes — num carrossel de 7, adicionar 1 imagem deixava 1. O
+      uploader não gerencia essas mídias; quem as remove é o botão do card.
+    */
+    onSelectionChange((prev) => [
+      ...prev.filter((m) => m.type !== 'upload' || m.preexistente),
+      ...newMedia,
+    ])
   }, [onSelectionChange])
 
   /**
@@ -668,7 +689,9 @@ export function MediaUploadSystem({
                     index={index}
                     onRemove={handleRemoveItem}
                     onCrop={
-                      cropPostType && item.type !== 'upload'
+                      // Arquivo recém-subido já foi enquadrado no uploader; o
+                      // que estava no post, não — daí o `preexistente`.
+                      cropPostType && (item.type !== 'upload' || item.preexistente)
                         ? handleAbrirEnquadramento
                         : undefined
                     }
