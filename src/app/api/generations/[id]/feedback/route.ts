@@ -35,9 +35,29 @@ const bodySchema = z
     veredito: z.enum(VEREDITOS_DE_ARTE),
     /** Sempre opcional — o veredito vale sozinho. */
     comentario: z.string().max(TETO_COMENTARIO).optional().nullable(),
-    /** Alvo do pedido de correção (chip). Só faz sentido em "melhorar". */
+    /** Pedidos por alvo — vários na mesma arte, um texto para cada. */
+    pedidos: z
+      .array(
+        z
+          .object({
+            alvo: z.enum(ALVOS_DE_CORRECAO),
+            texto: z.string().max(TETO_COMENTARIO).optional().nullable(),
+            fotoSugerida: z
+              .object({
+                driveFileId: z.string().min(1).max(128),
+                nome: z.string().max(200).optional().nullable(),
+              })
+              .strict()
+              .optional()
+              .nullable(),
+          })
+          .strict(),
+      )
+      .max(8)
+      .optional()
+      .nullable(),
+    /** Forma antiga (um alvo só) — aceita e dobrada para `pedidos`. */
     alvo: z.enum(ALVOS_DE_CORRECAO).optional().nullable(),
-    /** Foto do acervo sugerida no lugar da atual. */
     fotoSugerida: z
       .object({
         driveFileId: z.string().min(1).max(128),
@@ -111,6 +131,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       projectId: arte.projectId,
       veredito: parsed.data.veredito,
       comentario: parsed.data.comentario ?? null,
+      pedidos: parsed.data.pedidos ?? null,
       alvo: parsed.data.alvo ?? null,
       fotoSugerida: parsed.data.fotoSugerida ?? null,
       decididoPor: dbUser?.id ?? null,

@@ -52,13 +52,11 @@ export const toolsDeFeedback = [
       const itens = feedbacks.map((f) => ({
         opiniao: f.veredito === 'gostei' ? 'gostei' : 'preciso melhorar',
         comentario: f.comentario,
-        // O pedido estruturado da revisão pela agenda (29/08/2026): o alvo da
-        // correção e, quando apontada, a foto do acervo que a pessoa quer no
-        // lugar — é o que deixa a sessão corretora refazer sem adivinhar.
-        ...(f.alvo ? { alvo: f.alvo } : {}),
-        ...(f.fotoSugerida
-          ? { fotoSugerida: { driveFileId: f.fotoSugerida.driveFileId, nome: f.fotoSugerida.nome } }
-          : {}),
+        // Os pedidos estruturados da revisão pela agenda (29-30/08/2026): um
+        // por alvo (foto/copy/design/horario), cada um com o próprio texto e,
+        // no de foto, o arquivo do acervo apontado — é o que deixa a sessão
+        // corretora refazer sem adivinhar.
+        ...(f.pedidos.length ? { pedidos: f.pedidos } : {}),
         quando: formatarBRT(new Date(f.quando)),
         quem: f.quem,
         arte: f.arte?.resultUrl ?? null,

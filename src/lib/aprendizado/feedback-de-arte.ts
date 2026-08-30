@@ -82,6 +82,36 @@ function lerFotoSugerida(valor: unknown): FotoSugerida | null {
 }
 
 /**
+ * UM pedido de correção — a revisão pode deixar VÁRIOS na mesma arte, um por
+ * alvo ("foto escura" E "título comprido" E "sobe o bloco"), cada um com o seu
+ * texto (pedido do Ciro em 30/08: os chips são ABAS, não um seletor de
+ * assunto do mesmo texto).
+ */
+export interface PedidoDeCorrecao {
+  alvo: AlvoDeCorrecao
+  texto: string | null
+  /** Só faz sentido no alvo `foto`. */
+  fotoSugerida: FotoSugerida | null
+}
+
+/** Normaliza a lista: um por alvo (o último vence), sem entradas vazias. */
+function lerPedidos(valor: unknown): PedidoDeCorrecao[] {
+  if (!Array.isArray(valor)) return []
+  const porAlvo = new Map<AlvoDeCorrecao, PedidoDeCorrecao>()
+  for (const item of valor) {
+    const bruto = (item ?? {}) as Record<string, unknown>
+    const alvo = normalizarAlvo(bruto.alvo)
+    if (!alvo) continue
+    const texto = limparComentario(bruto.texto)
+    const fotoSugerida = alvo === 'foto' ? lerFotoSugerida(bruto.fotoSugerida) : null
+    if (!texto && !fotoSugerida) continue
+    porAlvo.set(alvo, { alvo, texto, fotoSugerida })
+  }
+  // Ordem fixa do vocabulário: a serialização vira comparação de idempotência.
+  return ALVOS_DE_CORRECAO.filter((a) => porAlvo.has(a)).map((a) => porAlvo.get(a)!)
+}
+
+/**
  * Teto do comentário. Generoso porque quem escreve está fazendo o trabalho
  * caro do aprendizado; acima disso é outro canal (o chat).
  */
@@ -102,11 +132,10 @@ export type ResultadoDeFeedback =
 /** O estado atual, que a UI mostra ao reabrir a arte. */
 export interface FeedbackDeArte {
   veredito: VereditoDeArte
+  /** A observação GERAL (a aba sem alvo). */
   comentario: string | null
-  /** O chip do pedido de correção — só existe em "melhorar". */
-  alvo: AlvoDeCorrecao | null
-  /** A foto sugerida no lugar — só existe em "melhorar". */
-  fotoSugerida: FotoSugerida | null
+  /** Os pedidos por alvo — vários na mesma arte, um texto para cada. */
+  pedidos: PedidoDeCorrecao[]
   /** ISO. */
   em: string
   superficie: Superficie | null
@@ -118,16 +147,22 @@ export interface EntradaDeFeedback {
   generationId: string
   projectId: number
   veredito: VereditoDeArte
-  /** Opcional SEMPRE — o veredito já vale sozinho. */
+  /** Opcional SEMPRE — o veredito já vale sozinho. Observação GERAL. */
   comentario?: string | null
-  /** Alvo do pedido (foto/copy/horario). Ignorado em "gostei". */
-  alvo?: AlvoDeCorrecao | string | null
   /**
-   * Foto do acervo sugerida no lugar. Ignorada em "gostei".
-   * `driveFileId` opcional NO TIPO por causa do `z.infer` com `strict: false`
-   * (toda chave vira opcional) — a garantia é do runtime: sem id válido,
-   * `lerFotoSugerida` devolve null.
+   * Pedidos por alvo (vários na mesma arte). Campos opcionais NO TIPO por
+   * causa do `z.infer` com `strict: false` (toda chave vira opcional) — a
+   * garantia é do runtime: `lerPedidos` descarta o que não se sustenta.
+   * Ignorados em "gostei".
    */
+  pedidos?: Array<{
+    alvo?: AlvoDeCorrecao | string | null
+    texto?: string | null
+    fotoSugerida?: { driveFileId?: string; nome?: string | null } | null
+  }> | null
+  /** Forma antiga (um alvo só) — aceita e dobrada para `pedidos`. */
+  alvo?: AlvoDeCorrecao | string | null
+  /** Forma antiga — idem. */
   fotoSugerida?: { driveFileId?: string; nome?: string | null } | null
   /** `User.id` INTERNO (cuid), NUNCA o clerkId. */
   decididoPor?: string | null
@@ -169,16 +204,22 @@ function limparComentario(valor: unknown): string | null {
 function lerEscolhido(valor: unknown): {
   veredito: VereditoDeArte | undefined
   comentario: string | null
-  alvo: AlvoDeCorrecao | null
-  fotoSugerida: FotoSugerida | null
+  pedidos: PedidoDeCorrecao[]
   revisoes: number
 } {
   const bruto = (valor ?? {}) as Record<string, unknown>
+  let pedidos = lerPedidos(bruto.pedidos)
+  // Linha da forma antiga (um alvo só, gravada em 29-30/08): dobra para a
+  // lista, para todo leitor enxergar um shape só.
+  if (pedidos.length === 0) {
+    pedidos = lerPedidos([
+      { alvo: bruto.alvo, texto: null, fotoSugerida: bruto.fotoSugerida },
+    ])
+  }
   return {
     veredito: normalizarVeredito(bruto.veredito),
     comentario: limparComentario(bruto.comentario),
-    alvo: normalizarAlvo(bruto.alvo) ?? null,
-    fotoSugerida: lerFotoSugerida(bruto.fotoSugerida),
+    pedidos,
     revisoes: typeof bruto.revisoes === 'number' && bruto.revisoes >= 0 ? Math.floor(bruto.revisoes) : 0,
   }
 }
@@ -200,13 +241,12 @@ async function lerLinha(chave: string): Promise<LinhaDeFeedback | null> {
 }
 
 function paraFeedback(linha: LinhaDeFeedback): FeedbackDeArte | null {
-  const { veredito, comentario, alvo, fotoSugerida, revisoes } = lerEscolhido(linha.escolhido)
+  const { veredito, comentario, pedidos, revisoes } = lerEscolhido(linha.escolhido)
   if (!veredito) return null
   return {
     veredito,
     comentario,
-    alvo,
-    fotoSugerida,
+    pedidos,
     em: (linha.decididoEm ?? linha.updatedAt).toISOString(),
     superficie: normalizarSuperficie(linha.superficie) ?? null,
     revisoes,
@@ -232,18 +272,24 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
     if (!entrada.generationId || !Number.isInteger(entrada.projectId)) return neutro
 
     const comentario = limparComentario(entrada.comentario)
-    // Pedido de correção só existe em "melhorar": um "gostei" posterior LIMPA
-    // o pedido — a última ação explícita vence, e elogiar é retirar o pedido.
-    const alvo = veredito === 'melhorar' ? (normalizarAlvo(entrada.alvo) ?? null) : null
-    const fotoSugerida = veredito === 'melhorar' ? lerFotoSugerida(entrada.fotoSugerida) : null
+    // Pedidos só existem em "melhorar": um "gostei" posterior LIMPA todos —
+    // a última ação explícita vence, e elogiar é retirar o pedido.
+    const pedidos =
+      veredito === 'melhorar'
+        ? lerPedidos([
+            ...(entrada.pedidos ?? []),
+            // Forma antiga (um alvo só): dobrada para a lista.
+            ...(entrada.alvo || entrada.fotoSugerida
+              ? [{ alvo: entrada.alvo, texto: null, fotoSugerida: entrada.fotoSugerida }]
+              : []),
+          ])
+        : []
     const superficie = normalizarSuperficie(entrada.superficie) ?? SUPERFICIE_PADRAO
     const chave = chaveDoFeedbackDeArte(entrada.generationId)
 
+    const assinatura = (c: string | null, p: PedidoDeCorrecao[]) => JSON.stringify({ c, p })
     const mesmaCoisa = (g: ReturnType<typeof lerEscolhido>) =>
-      g.veredito === veredito &&
-      g.comentario === comentario &&
-      g.alvo === alvo &&
-      (g.fotoSugerida?.driveFileId ?? null) === (fotoSugerida?.driveFileId ?? null)
+      g.veredito === veredito && assinatura(g.comentario, g.pedidos) === assinatura(comentario, pedidos)
 
     let linha = await lerLinha(chave)
 
@@ -253,7 +299,7 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
       await registrarDecisaoSemSugestao({
         projectId: entrada.projectId,
         tipo: 'arte',
-        escolhido: { veredito, comentario, alvo, fotoSugerida, revisoes: 0 },
+        escolhido: { veredito, comentario, pedidos, revisoes: 0 },
         decididoPor: entrada.decididoPor ?? null,
         superficie,
         chave,
@@ -277,7 +323,7 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
     }
 
     const agora = new Date()
-    const proximo = { veredito, comentario, alvo, fotoSugerida, revisoes: anterior.revisoes + 1 }
+    const proximo = { veredito, comentario, pedidos, revisoes: anterior.revisoes + 1 }
     const r = await db.learningSignal.updateMany({
       where: { id: linha.id, updatedAt: linha.updatedAt },
       data: {
@@ -303,8 +349,7 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
     const feedback: FeedbackDeArte = {
       veredito,
       comentario,
-      alvo,
-      fotoSugerida,
+      pedidos,
       em: agora.toISOString(),
       superficie,
       revisoes: proximo.revisoes,
@@ -358,8 +403,7 @@ async function mesclarNaGeneration(generationId: string, feedback: FeedbackDeArt
           feedback: {
             veredito: feedback.veredito,
             comentario: feedback.comentario,
-            alvo: feedback.alvo,
-            fotoSugerida: feedback.fotoSugerida,
+            pedidos: feedback.pedidos,
             em: feedback.em,
             superficie: feedback.superficie,
             revisoes: feedback.revisoes,
@@ -388,10 +432,8 @@ export interface FeedbackListado {
   projectId: number
   veredito: VereditoDeArte
   comentario: string | null
-  /** Alvo do pedido de correção (foto/copy/horario), quando estruturado. */
-  alvo: AlvoDeCorrecao | null
-  /** Foto do acervo sugerida no lugar, quando a pessoa apontou uma. */
-  fotoSugerida: FotoSugerida | null
+  /** Os pedidos por alvo (vários na mesma arte), quando estruturados. */
+  pedidos: PedidoDeCorrecao[]
   /** ISO. */
   quando: string
   /** Nome de quem julgou, quando dá para resolver. */
@@ -501,8 +543,7 @@ export async function listarFeedbacks(filtro: FiltroDeFeedbacks = {}): Promise<F
         projectId: sinal.projectId,
         veredito: valor.veredito as VereditoDeArte,
         comentario: valor.comentario,
-        alvo: valor.alvo,
-        fotoSugerida: valor.fotoSugerida,
+        pedidos: valor.pedidos,
         quando: (sinal.decididoEm ?? sinal.updatedAt).toISOString(),
         quem: sinal.decididoPor ? (porGente.get(sinal.decididoPor) ?? null) : null,
         superficie: normalizarSuperficie(sinal.superficie) ?? null,
