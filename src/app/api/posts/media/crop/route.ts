@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import sharp from 'sharp'
 import { put } from '@vercel/blob'
+import { HOSTS_PROPRIOS } from '@/lib/creatives/ingerir-midia'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -27,11 +28,27 @@ const DIMENSIONS = {
 /**
  * Só hosts nossos: sem isso a rota vira um proxy que busca qualquer URL da
  * internet a partir do servidor (SSRF).
+ *
+ * 🔴 A LISTA é a canônica da casa (`HOSTS_PROPRIOS`), não uma cópia. Esta rota
+ * mantinha a terceira lista paralela de "o que é nosso" — só o Blob — enquanto
+ * a ingestão já considerava próprios também o CDN do Drive e o Supabase, e por
+ * isso NÃO os converte para Blob. O resultado, medido em 30/08/2026 no
+ * carrossel do Bacana: as mídias ficam em `lh3` na criação e o enquadramento
+ * as recusa depois — o diálogo abre, a pessoa ajusta e nada acontece. O
+ * comentário de `ingerir-midia.ts` já avisava que as listas precisam casar.
+ *
+ * O que NÃO se reusa é o `ehHostProprio`: ele casa por `includes` na URL
+ * inteira, e aqui a URL vira `fetch` do servidor — `https://evil.com/?x=lh3.
+ * googleusercontent.com` passaria. A checagem é por HOSTNAME.
  */
-const HOSTS_PERMITIDOS = [
-  /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com$/i,
-  /^https:\/\/[a-z0-9-]+\.blob\.vercel-storage\.com$/i,
-]
+function hostPermitido(origem: URL): boolean {
+  if (origem.protocol !== 'https:') return false
+  const host = origem.hostname.toLowerCase()
+  return HOSTS_PROPRIOS.some((alvo) => {
+    const limpo = alvo.startsWith('.') ? alvo.slice(1) : alvo
+    return host === limpo || host.endsWith(`.${limpo}`)
+  })
+}
 
 const bodySchema = z.object({
   sourceUrl: z.string().url(),
@@ -62,7 +79,7 @@ export async function POST(req: Request) {
     const { sourceUrl, postType, crop } = parsed.data
 
     const origem = new URL(sourceUrl)
-    if (!HOSTS_PERMITIDOS.some((regex) => regex.test(origem.origin))) {
+    if (!hostPermitido(origem)) {
       return NextResponse.json({ error: 'Origem não permitida' }, { status: 400 })
     }
 
