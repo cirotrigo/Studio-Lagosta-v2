@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useCaixaDeRespostas, useIgnorarItem, useProporRascunho, useResponderComentario } from '@/hooks/use-caixa-de-respostas'
+import { useCaixaDeRespostas, useIgnorarItem, useProporRascunho, useResponderComentario, useSalvarResposta } from '@/hooks/use-caixa-de-respostas'
 import type { AvaliacaoPendente, ComentarioPendente } from '@/lib/caixa/itens'
-import { AlertCircle, Check, Copy, ExternalLink, EyeOff, Sparkles, Star } from 'lucide-react'
+import { AlertCircle, Check, ChevronDown, ChevronRight, Clock, Copy, ExternalLink, EyeOff, Sparkles, Star } from 'lucide-react'
 
 const dtBRT = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo',
@@ -31,15 +31,32 @@ function ItemDaCaixa({
   item: ComentarioPendente | AvaliacaoPendente
 }) {
   const comentario = item.tipo === 'comentario'
-  const rascunhoInicial = item.tipo === 'avaliacao' ? (item.respostaSugerida ?? '') : ''
+  const rascunhoInicial =
+    item.tipo === 'avaliacao' ? (item.respostaAprovada ?? item.respostaSugerida ?? '') : ''
   const [texto, setTexto] = React.useState(rascunhoInicial)
   const [aviso, setAviso] = React.useState<string | null>(null)
   const [enviado, setEnviado] = React.useState(false)
   const [ignorado, setIgnorado] = React.useState(false)
   const [copiado, setCopiado] = React.useState(false)
+  const [salvaEm, setSalvaEm] = React.useState<string | null>(
+    item.tipo === 'avaliacao' ? item.respostaAprovadaEm : null,
+  )
   const propor = useProporRascunho()
   const responder = useResponderComentario()
   const ignorar = useIgnorarItem()
+  const salvar = useSalvarResposta()
+
+  const salvarResposta = () => {
+    if (item.tipo !== 'avaliacao' || !texto.trim()) return
+    setAviso(null)
+    salvar.mutate(
+      { projectId: item.projectId, reviewId: item.reviewId, mensagem: texto.trim() },
+      {
+        onSuccess: () => setSalvaEm(new Date().toISOString()),
+        onError: (e) => setAviso(e instanceof Error ? e.message : 'Não deu para salvar.'),
+      },
+    )
+  }
 
   const ignorarItem = () => {
     setAviso(null)
@@ -147,9 +164,13 @@ function ItemDaCaixa({
                 <Button size="sm" onClick={enviar} disabled={responder.isPending || !texto.trim()}>
                   {responder.isPending ? 'Publicando…' : 'Publicar resposta'}
                 </Button>
-              ) : (
+              ) : comentario ? (
                 <Button size="sm" variant="secondary" onClick={copiar} disabled={!texto.trim()}>
                   <Copy className="mr-1.5 h-3.5 w-3.5" /> {copiado ? 'Copiado ✓' : 'Copiar resposta'}
+                </Button>
+              ) : (
+                <Button size="sm" onClick={salvarResposta} disabled={salvar.isPending || !texto.trim()}>
+                  {salvar.isPending ? 'Salvando…' : salvaEm ? 'Salvar de novo' : 'Salvar resposta'}
                 </Button>
               )}
               <Button size="sm" variant="ghost" onClick={ignorarItem} disabled={ignorar.isPending}>
@@ -160,9 +181,15 @@ function ItemDaCaixa({
                   ? (item as ComentarioPendente).enviaDaqui
                     ? 'Sai público, em nome do cliente.'
                     : 'Sem token — copie e publique pelo Instagram.'
-                  : 'Avaliação se responde pelo Farol ou no Google — copie o texto revisado.'}
+                  : 'Salva aqui; a publicação no Google sai na próxima rodada do Claude.'}
               </span>
             </div>
+            {salvaEm && !comentario && (
+              <p className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-500">
+                <Clock className="h-3.5 w-3.5" /> Resposta salva {dtBRT.format(new Date(salvaEm))} BRT — na fila de
+                publicação.
+              </p>
+            )}
             {aviso && (
               <p className="inline-flex items-center gap-1.5 text-xs text-destructive">
                 <AlertCircle className="h-3.5 w-3.5" /> {aviso}
@@ -172,6 +199,58 @@ function ItemDaCaixa({
         )}
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Seção colapsável — a equipe expande só a frente em que vai trabalhar
+ * (pedido do Ciro, 30/08/2026). O estado é conveniência POR PESSOA
+ * (localStorage, com try/catch: navegador sem storage rende o default).
+ */
+function Secao({
+  chave,
+  titulo,
+  total,
+  abertaPorPadrao,
+  children,
+}: {
+  chave: string
+  titulo: string
+  total: number
+  abertaPorPadrao: boolean
+  children: React.ReactNode
+}) {
+  const [aberta, setAberta] = React.useState(() => {
+    try {
+      const salvo = localStorage.getItem(`caixa.secao.${chave}`)
+      return salvo === null ? abertaPorPadrao : salvo === '1'
+    } catch {
+      return abertaPorPadrao
+    }
+  })
+  const alternar = () => {
+    setAberta((v) => {
+      try {
+        localStorage.setItem(`caixa.secao.${chave}`, v ? '0' : '1')
+      } catch {
+        /* sem storage, sem memória — só o estado da tela */
+      }
+      return !v
+    })
+  }
+  return (
+    <section className="space-y-3">
+      <button
+        type="button"
+        onClick={alternar}
+        className="flex w-full items-center gap-2 text-left text-sm font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        aria-expanded={aberta}
+      >
+        {aberta ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+        {titulo} · {total}
+      </button>
+      {aberta && children}
+    </section>
   )
 }
 
@@ -219,37 +298,28 @@ export function CaixaDeRespostasPainel() {
         </div>
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Comentários no Instagram · {comentarios.length}
-        </h2>
+      <Secao chave="comentarios" titulo="Comentários no Instagram" total={comentarios.length} abertaPorPadrao>
         {comentarios.length ? (
           comentarios.map((c) => <ItemDaCaixa key={c.comentarioId} item={c} />)
         ) : (
           <p className="text-sm text-muted-foreground">Nenhum comentário aguardando. 🎉</p>
         )}
-      </section>
+      </Secao>
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Avaliações negativas no Google · {negativas.length}
-        </h2>
+      <Secao chave="negativas" titulo="Avaliações negativas no Google" total={negativas.length} abertaPorPadrao>
         {negativas.length ? (
           negativas.map((a) => <ItemDaCaixa key={a.reviewId} item={a} />)
         ) : (
           <p className="text-sm text-muted-foreground">Nenhuma negativa sem resposta. 👌</p>
         )}
-      </section>
+      </Secao>
 
       {positivas.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Avaliações a agradecer · {positivas.length}
-          </h2>
-          {positivas.slice(0, 30).map((a) => (
+        <Secao chave="positivas" titulo="Avaliações a agradecer" total={positivas.length} abertaPorPadrao={false}>
+          <>{positivas.slice(0, 30).map((a) => (
             <ItemDaCaixa key={a.reviewId} item={a} />
-          ))}
-        </section>
+          ))}</>
+        </Secao>
       )}
     </div>
   )

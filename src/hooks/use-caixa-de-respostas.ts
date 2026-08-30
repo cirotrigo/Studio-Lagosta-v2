@@ -18,6 +18,17 @@ export function useProporRascunho() {
   })
 }
 
+export function useSalvarResposta() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (dados: { projectId: number; reviewId: string; mensagem: string }) =>
+      api.post<{ ok: boolean }>('/api/caixa-de-respostas/salvar-resposta', dados),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['caixa-de-respostas'] })
+    },
+  })
+}
+
 export function useIgnorarItem() {
   const queryClient = useQueryClient()
   return useMutation({

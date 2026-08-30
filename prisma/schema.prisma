@@ -1749,6 +1749,13 @@ model AvaliacaoGoogle {
   /// nunca bloqueia o gesto.
   ignoradaEm       DateTime?
   ignoradaPor      String?
+  /// Resposta APROVADA pela equipe na Caixa, aguardando publicação por uma
+  /// sessão do Claude via conector Windsor (não há caminho server-side para
+  /// a ação do Google — medido em 30/08/2026). Fila lida por
+  /// scripts/respostas-salvas.ts. `respostaAprovadaPor` = User.id INTERNO.
+  respostaAprovada    String?
+  respostaAprovadaEm  DateTime?
+  respostaAprovadaPor String?
   capturedAt       DateTime
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt

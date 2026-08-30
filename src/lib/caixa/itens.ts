@@ -39,6 +39,9 @@ export interface AvaliacaoPendente {
   texto: string | null
   quando: string
   respostaSugerida: string | null
+  /** Resposta aprovada pela equipe, aguardando publicação pela sessão do Claude. */
+  respostaAprovada: string | null
+  respostaAprovadaEm: string | null
   enviaDaqui: false
 }
 
@@ -135,6 +138,8 @@ async function avaliacoesPendentes(projectIds: number[]): Promise<AvaliacaoPende
     texto: a.texto,
     quando: a.criadaEm.toISOString(),
     respostaSugerida: a.respostaSugerida,
+    respostaAprovada: a.respostaAprovada,
+    respostaAprovadaEm: a.respostaAprovadaEm?.toISOString() ?? null,
     enviaDaqui: false as const,
   }))
 }
