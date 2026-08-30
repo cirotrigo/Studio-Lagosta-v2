@@ -1108,7 +1108,34 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
 for (const [nome, literal] of Object.entries(LITERAIS_ARTE_IA)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
+// Tool NOVA (30/08/2026, Fase 4a do Windsor) — o fixture nasce com ela, como
+// manda a regra do registro: mudança de schema daqui para a frente é
+// deliberada ou o snapshot acusa.
+const LITERAIS_AVALIACOES: Record<string, unknown> = {
+  'propor-resposta': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      reviewId: {
+        type: 'string',
+        description:
+          'Avaliação do Google: o id da avaliação (da coleta diária ou do Farol). Devolve o rascunho guardado, ou gera e guarda.',
+      },
+      texto: {
+        type: 'string',
+        description: 'Comentário de Instagram: o texto do comentário a responder. Ignorado quando reviewId vier.',
+      },
+      autor: { type: 'string', description: 'Nome de quem comentou/avaliou (opcional, deixa o rascunho pessoal).' },
+    },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
+}
+
 for (const [nome, literal] of Object.entries(LITERAIS_RESTANTE)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+for (const [nome, literal] of Object.entries(LITERAIS_AVALIACOES)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 

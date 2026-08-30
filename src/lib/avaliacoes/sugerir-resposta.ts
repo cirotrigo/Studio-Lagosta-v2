@@ -72,3 +72,59 @@ export async function sugerirRespostaDeAvaliacao(pedido: PedidoDeRascunho): Prom
     return null
   }
 }
+
+export interface PedidoDeRascunhoDeComentario {
+  projectId: number
+  nomeCliente: string
+  autor: string | null
+  texto: string
+}
+
+/**
+ * Rascunho de resposta a COMENTÁRIO de Instagram — registro mais leve que o
+ * do Google (emoji cabe, resposta curta), e com uma diferença que importa:
+ * comentário costuma trazer PERGUNTA FACTUAL (preço, horário, opção vegana).
+ * O fato só entra se estiver na BASE de conhecimento; sem lastro, o rascunho
+ * acolhe e convida para o Direct — nunca inventa (lei da casa).
+ */
+export async function sugerirRespostaDeComentario(pedido: PedidoDeRascunhoDeComentario): Promise<string | null> {
+  try {
+    const [brand, fatos] = await Promise.all([
+      loadBrandContext(pedido.projectId).catch(() => null),
+      import('@/lib/knowledge/search')
+        .then(({ searchKnowledgeBase }) =>
+          searchKnowledgeBase(pedido.texto, { projectId: pedido.projectId }, { topK: 4, minScore: 0.55 }),
+        )
+        .catch(() => []),
+    ])
+    const tom = brand?.dna?.toneOfVoice ?? null
+    const primeiroNome = (pedido.autor ?? '').trim().split(/\s+/)[0] || null
+    const baseDeFatos = fatos.map((f) => `- ${f.content.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')
+
+    const { object } = await generateObject({
+      model: openai(MODELO),
+      schema,
+      temperature: 0.5,
+      prompt: [
+        `Escreva a resposta do restaurante "${pedido.nomeCliente}" a um comentário no Instagram.`,
+        '',
+        `Comentário${pedido.autor ? ` de ${pedido.autor}` : ''}: "${pedido.texto}"`,
+        '',
+        'Regras inegociáveis:',
+        '- Português do Brasil, caloroso e curto (no máximo 250 caracteres). Até 2 emojis.',
+        '- Se o comentário faz pergunta FACTUAL (preço, horário, cardápio, reserva, opção do menu): só afirme o que estiver nos FATOS abaixo. Sem o fato lá, acolha a pergunta e convide a chamar no Direct — NUNCA invente ou deduza o dado.',
+        '- Elogio se agradece citando algo específico; marcação de amigo se responde com convite leve para virem juntos.',
+        primeiroNome ? `- Pode se dirigir a ${primeiroNome}.` : '- Não invente nome.',
+        '- Sem assinatura (comentário de Instagram não se assina).',
+        baseDeFatos ? `\nFATOS confirmados da casa (única fonte permitida para dado factual):\n${baseDeFatos}` : '\nFATOS confirmados da casa: (nenhum encontrado — não afirme nenhum dado factual)',
+        tom ? `\nTom de voz da marca (siga-o):\n${tom.slice(0, 1200)}` : '',
+      ].join('\n'),
+    })
+
+    const resposta = object.resposta?.trim()
+    return resposta && resposta.length >= 5 ? resposta.slice(0, 800) : null
+  } catch (erro) {
+    console.error('[avaliacoes] rascunho de comentário falhou (seguindo sem ele):', erro)
+    return null
+  }
+}
