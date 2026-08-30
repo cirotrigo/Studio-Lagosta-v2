@@ -76,7 +76,11 @@ function ItemDaCaixa({
     propor.mutate(
       item.tipo === 'avaliacao'
         ? { projectId: item.projectId, reviewId: item.reviewId, ...(item.autor ? { autor: item.autor } : {}) }
-        : { projectId: item.projectId, texto: item.texto },
+        : {
+            projectId: item.projectId,
+            texto: item.texto,
+            ...(item.legendaDoPost ? { legendaDoPost: item.legendaDoPost } : {}),
+          },
       {
         onSuccess: (r) => setTexto(r.rascunho),
         onError: (e) => setAviso(e instanceof Error ? e.message : 'Não deu para gerar o rascunho.'),

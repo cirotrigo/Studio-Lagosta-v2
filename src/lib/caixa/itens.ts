@@ -24,6 +24,8 @@ export interface ComentarioPendente {
   texto: string
   quando: string
   linkDoPost: string | null
+  /** Legenda do post onde o comentário vive — contexto do rascunho. */
+  legendaDoPost: string | null
   /** true = o app consegue ENVIAR a resposta (token do projeto). */
   enviaDaqui: boolean
   quente: boolean
@@ -57,6 +59,7 @@ const FIELDS_COMENTARIOS = [
   'comment_timestamp',
   'comment_reply_count',
   'media_permalink',
+  'media_caption',
 ]
 
 /** Comentários sem resposta dos últimos 14 dias, só dos projetos visíveis. */
@@ -106,6 +109,7 @@ async function comentariosPendentes(
       texto: corpo,
       quando,
       linkDoPost: texto(l.media_permalink),
+      legendaDoPost: texto(l.media_caption),
       enviaDaqui: projeto.temToken,
       quente: PALAVRAS_QUENTES.test(corpo),
     })

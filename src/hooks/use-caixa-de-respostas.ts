@@ -13,7 +13,7 @@ export function useCaixaDeRespostas() {
 
 export function useProporRascunho() {
   return useMutation({
-    mutationFn: (dados: { projectId: number; reviewId?: string; texto?: string; autor?: string }) =>
+    mutationFn: (dados: { projectId: number; reviewId?: string; texto?: string; autor?: string; legendaDoPost?: string }) =>
       api.post<{ rascunho: string; origem: string }>('/api/caixa-de-respostas/rascunho', dados),
   })
 }

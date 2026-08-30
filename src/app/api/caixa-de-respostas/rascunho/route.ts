@@ -19,6 +19,7 @@ const schema = z.object({
   reviewId: z.string().optional(),
   texto: z.string().optional(),
   autor: z.string().optional(),
+  legendaDoPost: z.string().optional(),
 })
 
 export async function POST(req: NextRequest) {
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   const parsed = schema.safeParse(await req.json().catch(() => null))
   if (!parsed.success) return NextResponse.json({ error: 'Pedido malformado' }, { status: 400 })
-  const { projectId, reviewId, texto, autor } = parsed.data
+  const { projectId, reviewId, texto, autor, legendaDoPost } = parsed.data
   if (!reviewId && !texto?.trim())
     return NextResponse.json({ error: 'Mande reviewId ou o texto do comentário.' }, { status: 400 })
 
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
       nomeCliente: projeto.name,
       autor: autor ?? null,
       texto: texto!.trim(),
+      legendaDoPost: legendaDoPost ?? null,
     })
     if (!rascunho)
       return NextResponse.json({ error: 'Não consegui montar o rascunho agora — tente de novo.' }, { status: 502 })

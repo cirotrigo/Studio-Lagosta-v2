@@ -78,6 +78,9 @@ export interface PedidoDeRascunhoDeComentario {
   nomeCliente: string
   autor: string | null
   texto: string
+  /** Legenda do post comentado — ancora a resposta no assunto certo
+   * ("Valor" num post de picanha é pergunta sobre a picanha). */
+  legendaDoPost?: string | null
 }
 
 /**
@@ -109,6 +112,9 @@ export async function sugerirRespostaDeComentario(pedido: PedidoDeRascunhoDeCome
         `Escreva a resposta do restaurante "${pedido.nomeCliente}" a um comentário no Instagram.`,
         '',
         `Comentário${pedido.autor ? ` de ${pedido.autor}` : ''}: "${pedido.texto}"`,
+        ...(pedido.legendaDoPost
+          ? ['', `O comentário foi feito NESTE post do restaurante — é o assunto da conversa; responda nesse contexto:`, `"${pedido.legendaDoPost.replace(/\s+/g, ' ').slice(0, 600)}"`]
+          : []),
         '',
         'Regras inegociáveis:',
         '- Português do Brasil, caloroso e curto (no máximo 250 caracteres). Até 2 emojis.',

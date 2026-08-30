@@ -31,6 +31,10 @@ export const toolsDeAvaliacoes = [
         .optional()
         .describe('Comentário de Instagram: o texto do comentário a responder. Ignorado quando reviewId vier.'),
       autor: z.string().optional().describe('Nome de quem comentou/avaliou (opcional, deixa o rascunho pessoal).'),
+      legendaDoPost: z
+        .string()
+        .optional()
+        .describe('Legenda do post onde o comentário foi feito — ancora o rascunho no assunto certo ("Valor" num post de picanha é pergunta sobre a picanha). Mande sempre que tiver.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
     acesso: { tipo: 'projeto' },
@@ -82,6 +86,7 @@ export const toolsDeAvaliacoes = [
         nomeCliente: projeto.name,
         autor,
         texto: textoComentario,
+        legendaDoPost: typeof args.legendaDoPost === 'string' ? args.legendaDoPost : null,
       })
       if (!rascunho) return { erro: 'Não consegui montar o rascunho agora — tente de novo em instantes.' }
       return { rascunho, origem: 'gerado', aviso }

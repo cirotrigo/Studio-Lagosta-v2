@@ -1126,6 +1126,13 @@ const LITERAIS_AVALIACOES: Record<string, unknown> = {
         description: 'Comentário de Instagram: o texto do comentário a responder. Ignorado quando reviewId vier.',
       },
       autor: { type: 'string', description: 'Nome de quem comentou/avaliou (opcional, deixa o rascunho pessoal).' },
+      // Mudança DELIBERADA de 30/08/2026 (contexto de legenda no rascunho) —
+      // fixture atualizado no mesmo commit, como manda a regra do registro.
+      legendaDoPost: {
+        type: 'string',
+        description:
+          'Legenda do post onde o comentário foi feito — ancora o rascunho no assunto certo ("Valor" num post de picanha é pergunta sobre a picanha). Mande sempre que tiver.',
+      },
     },
     required: ['projectId'],
     additionalProperties: false,
