@@ -24,6 +24,12 @@ import type {
   FotoSugerida,
   VereditoDeArte,
 } from '@/lib/aprendizado/feedback-de-arte'
+
+export interface PedidoParaEnvio {
+  alvo: AlvoDeCorrecao
+  texto?: string | null
+  fotoSugerida?: FotoSugerida | null
+}
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
 interface RespostaDeLeitura {
@@ -65,19 +71,17 @@ export function useRegistrarFeedbackDeArte(
     Error,
     {
       veredito: VereditoDeArte
+      /** Observação GERAL (a aba sem alvo). */
       comentario?: string | null
-      /** Chip do pedido de correção — só faz sentido em "melhorar". */
-      alvo?: AlvoDeCorrecao | null
-      /** Foto do acervo apontada no lugar da atual. */
-      fotoSugerida?: FotoSugerida | null
+      /** Pedidos por alvo — vários na mesma arte, um texto para cada. */
+      pedidos?: PedidoParaEnvio[]
     }
   >({
     mutationFn: (entrada) =>
       api.post<RespostaDeEscrita>(`/api/generations/${generationId}/feedback`, {
         veredito: entrada.veredito,
         comentario: entrada.comentario ?? null,
-        alvo: entrada.alvo ?? null,
-        fotoSugerida: entrada.fotoSugerida ?? null,
+        pedidos: entrada.pedidos ?? [],
         superficie,
       }),
     onSuccess: (resposta) => {

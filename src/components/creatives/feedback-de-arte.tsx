@@ -3,9 +3,10 @@
 /**
  * "Gostei" / "Preciso melhorar" — o rodapé da arte aberta.
  *
- * Mesmo componente nas duas superfícies onde a peça abre em tamanho grande (a
- * galeria de criativos e a prévia da bancada), porque a pergunta é a mesma e
- * duas versões divergiriam na primeira semana.
+ * Mesmo componente nas três superfícies onde a peça abre em tamanho grande (a
+ * galeria de criativos, a prévia da bancada e a tela do post na agenda),
+ * porque a pergunta é a mesma e versões separadas divergiriam na primeira
+ * semana.
  *
  * O desenho tem quatro regras, e todas vieram do que já falhou nesta casa:
  *
@@ -15,9 +16,15 @@
  *    muda na hora e o POST vai atrás. Ninguém espera telemetria.
  * 3. **O texto é opcional e só aparece quando pedido.** "Preciso melhorar" já
  *    grava o veredito no clique — quem fechar a arte sem escrever nada deixou
- *    o sinal mais importante. O comentário, se vier, é uma revisão.
+ *    o sinal mais importante.
  * 4. **Só existe com `generationId`.** Arte sem Generation não tem prompt
  *    atrás, e feedback sem prompt não ensina nada.
+ *
+ * O pedido de correção tem ABAS (30/08/2026, revisão do Ciro): Geral + um
+ * alvo por aba (Foto/Copy/Design/Horário), CADA UMA com o próprio texto — a
+ * mesma arte recebe "foto escura" E "título comprido" E "sobe o bloco".
+ * Enviar grava tudo junto numa linha só; o ponto no chip mostra qual aba já
+ * tem conteúdo.
  *
  * Responsividade é CSS (`flex-wrap`, largura fluida), nunca `useIsMobile`.
  */
@@ -33,23 +40,28 @@ import { SugerirFotoDialog } from '@/components/creatives/sugerir-foto-dialog'
 import type { AlvoDeCorrecao, FotoSugerida, VereditoDeArte } from '@/lib/aprendizado/feedback-de-arte'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
-const PLACEHOLDER = 'o que precisa melhorar? ex.: texto muito grande, foto escura…'
+type Aba = 'geral' | AlvoDeCorrecao
 
-/** O placeholder acompanha o chip: pergunta certa rende pedido melhor. */
-const PLACEHOLDER_POR_ALVO: Record<AlvoDeCorrecao, string> = {
+const ABAS: Array<{ id: Aba; rotulo: string }> = [
+  { id: 'geral', rotulo: 'Geral' },
+  { id: 'foto', rotulo: 'Foto' },
+  { id: 'copy', rotulo: 'Copy' },
+  { id: 'design', rotulo: 'Design' },
+  { id: 'horario', rotulo: 'Horário' },
+]
+
+const ALVOS: AlvoDeCorrecao[] = ['foto', 'copy', 'design', 'horario']
+
+/** O placeholder acompanha a aba: pergunta certa rende pedido melhor. */
+const PLACEHOLDER_POR_ABA: Record<Aba, string> = {
+  geral: 'o que precisa melhorar? ex.: texto muito grande, foto escura…',
   foto: 'o que a foto tem? ex.: escura, prato antigo, não é o assunto…',
   copy: 'o que mudar no texto? ex.: título comprido, tirar o preço…',
   design: 'o que mudar na arte? ex.: texto menor, véu mais suave, sobe o bloco…',
   horario: 'para quando? ex.: mover para 19h, trocar para sábado…',
 }
 
-/** Rótulos dos chips — vocabulário de gente, não de banco. */
-const CHIPS: Array<{ alvo: AlvoDeCorrecao; rotulo: string }> = [
-  { alvo: 'foto', rotulo: 'Foto' },
-  { alvo: 'copy', rotulo: 'Copy' },
-  { alvo: 'design', rotulo: 'Design' },
-  { alvo: 'horario', rotulo: 'Horário' },
-]
+const TEXTOS_VAZIOS: Record<Aba, string> = { geral: '', foto: '', copy: '', design: '', horario: '' }
 
 interface Props {
   generationId: string | null | undefined
@@ -86,8 +98,8 @@ export function FeedbackDeArte({
    */
   const [otimista, setOtimista] = React.useState<VereditoDeArte | null>(null)
   const [aberto, setAberto] = React.useState(false)
-  const [texto, setTexto] = React.useState('')
-  const [alvo, setAlvo] = React.useState<AlvoDeCorrecao | null>(null)
+  const [abaAtiva, setAbaAtiva] = React.useState<Aba>('geral')
+  const [textos, setTextos] = React.useState<Record<Aba, string>>(TEXTOS_VAZIOS)
   const [fotoSugerida, setFotoSugerida] = React.useState<FotoSugerida | null>(null)
   const [pickerAberto, setPickerAberto] = React.useState(false)
   const [enviado, setEnviado] = React.useState(false)
@@ -99,69 +111,83 @@ export function FeedbackDeArte({
   React.useEffect(() => {
     setOtimista(null)
     setAberto(false)
-    setTexto('')
-    setAlvo(null)
+    setAbaAtiva('geral')
+    setTextos(TEXTOS_VAZIOS)
     setFotoSugerida(null)
     setPickerAberto(false)
     setEnviado(false)
   }, [generationId])
 
-  // Reabrir a arte mostra o que já foi dito — inclusive o comentário, o chip e
-  // a foto apontada, que ficam no lugar para serem corrigidos, não reescritos.
+  // Reabrir a arte mostra o que já foi dito — cada pedido volta para a SUA
+  // aba, para ser corrigido em vez de reescrito do zero. Só preenche o que
+  // ainda está vazio: o que a pessoa está digitando agora vence o salvo.
   React.useEffect(() => {
-    if (!salvo) return
-    if (salvo.veredito === 'melhorar') {
-      setAberto(true)
-      setTexto((atual) => (atual ? atual : (salvo.comentario ?? '')))
-      setAlvo((atual) => atual ?? salvo.alvo ?? null)
-      setFotoSugerida((atual) => atual ?? salvo.fotoSugerida ?? null)
-    }
+    if (!salvo || salvo.veredito !== 'melhorar') return
+    setAberto(true)
+    setTextos((atuais) => {
+      const proximos = { ...atuais }
+      if (!proximos.geral && salvo.comentario) proximos.geral = salvo.comentario
+      for (const pedido of salvo.pedidos) {
+        if (!proximos[pedido.alvo] && pedido.texto) proximos[pedido.alvo] = pedido.texto
+      }
+      return proximos
+    })
+    setFotoSugerida(
+      (atual) => atual ?? salvo.pedidos.find((p) => p.alvo === 'foto')?.fotoSugerida ?? null,
+    )
   }, [salvo])
 
   if (!generationId) return null
+
+  /** Tudo que está nas abas, no shape que o serviço grava. */
+  const montarPayload = (foto: FotoSugerida | null = fotoSugerida) => ({
+    veredito: 'melhorar' as const,
+    comentario: textos.geral.trim() || null,
+    pedidos: ALVOS.map((alvo) => ({
+      alvo,
+      texto: textos[alvo].trim() || null,
+      fotoSugerida: alvo === 'foto' ? foto : null,
+    })).filter((p) => p.texto || p.fotoSugerida),
+  })
 
   const marcar = (novo: VereditoDeArte) => {
     setOtimista(novo)
     setEnviado(false)
     if (novo === 'melhorar') {
       setAberto(true)
-      registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo, fotoSugerida })
+      registrar.mutate(montarPayload())
     } else {
-      // Elogiar é retirar o pedido — o serviço limpa alvo/foto no "gostei".
+      // Elogiar é retirar os pedidos — o serviço limpa tudo no "gostei".
       setAberto(false)
-      setAlvo(null)
+      setTextos(TEXTOS_VAZIOS)
       setFotoSugerida(null)
-      registrar.mutate({ veredito: 'gostei', comentario: null })
+      registrar.mutate({ veredito: 'gostei', comentario: null, pedidos: [] })
     }
   }
 
-  const enviarComentario = () => {
+  const enviar = () => {
     setOtimista('melhorar')
     setEnviado(true)
-    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo, fotoSugerida })
+    registrar.mutate(montarPayload())
   }
 
-  /** Chip é ação completa: escolher (ou desmarcar) já grava, sem Enviar. */
-  const escolherAlvo = (novo: AlvoDeCorrecao) => {
-    const proximo = alvo === novo ? null : novo
-    setAlvo(proximo)
-    setOtimista('melhorar')
-    setEnviado(false)
-    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo: proximo, fotoSugerida })
-  }
-
-  /** Apontar a foto também é ação completa — o clique no acervo já grava. */
+  /** Apontar a foto é ação completa: grava na hora, com o resto das abas. */
   const aoEscolherFoto = (foto: FotoSugerida) => {
     setFotoSugerida(foto)
-    setAlvo('foto')
+    setAbaAtiva('foto')
     setOtimista('melhorar')
-    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo: 'foto', fotoSugerida: foto })
+    setEnviado(true)
+    registrar.mutate(montarPayload(foto))
   }
 
   const tirarFoto = () => {
     setFotoSugerida(null)
-    registrar.mutate({ veredito: 'melhorar', comentario: texto, alvo, fotoSugerida: null })
+    setEnviado(true)
+    registrar.mutate(montarPayload(null))
   }
+
+  const temConteudo = (aba: Aba) =>
+    aba === 'foto' ? !!textos.foto.trim() || !!fotoSugerida : !!textos[aba].trim()
 
   return (
     <div className={cn('flex w-full flex-col gap-2', className)}>
@@ -201,68 +227,82 @@ export function FeedbackDeArte({
 
       {aberto && (
         <div className="flex w-full flex-col gap-2">
-          {/* O alvo estrutura o pedido: a sessão corretora não adivinha. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {CHIPS.map((chip) => (
+          {/* As ABAS do pedido: cada uma guarda o próprio texto, e o ponto
+              mostra qual já tem conteúdo. Tudo vai junto no Enviar. */}
+          <div className="flex flex-wrap items-center gap-1.5" role="tablist">
+            {ABAS.map((aba) => (
               <button
-                key={chip.alvo}
+                key={aba.id}
                 type="button"
-                onClick={() => escolherAlvo(chip.alvo)}
-                aria-pressed={alvo === chip.alvo}
+                role="tab"
+                aria-selected={abaAtiva === aba.id}
+                onClick={() => setAbaAtiva(aba.id)}
                 className={cn(
-                  'rounded-full border px-2.5 py-0.5 text-xs transition-colors',
-                  alvo === chip.alvo
+                  'inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors',
+                  abaAtiva === aba.id
                     ? 'border-primary bg-primary text-primary-foreground'
                     : 'border-border bg-background text-muted-foreground hover:bg-muted',
                 )}
               >
-                {chip.rotulo}
+                {aba.rotulo}
+                {temConteudo(aba.id) && (
+                  <span
+                    className={cn(
+                      'h-1.5 w-1.5 rounded-full',
+                      abaAtiva === aba.id ? 'bg-primary-foreground' : 'bg-primary',
+                    )}
+                    aria-label="tem conteúdo"
+                  />
+                )}
               </button>
             ))}
-
-            {alvo === 'foto' && projectId != null && !fotoSugerida && (
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="h-6 px-2 text-xs"
-                onClick={() => setPickerAberto(true)}
-              >
-                <ImagePlus className="mr-1 h-3.5 w-3.5" />
-                Apontar foto do acervo
-              </Button>
-            )}
-
-            {fotoSugerida && (
-              <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs">
-                <ImagePlus className="h-3 w-3 shrink-0" />
-                <span className="truncate">{fotoSugerida.nome ?? 'foto do acervo'}</span>
-                <button
-                  type="button"
-                  onClick={tirarFoto}
-                  aria-label="Tirar a foto sugerida"
-                  className="ml-0.5 rounded-full p-0.5 hover:bg-background"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            )}
           </div>
 
+          {abaAtiva === 'foto' && projectId != null && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {fotoSugerida ? (
+                <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted px-2.5 py-0.5 text-xs">
+                  <ImagePlus className="h-3 w-3 shrink-0" />
+                  <span className="truncate">{fotoSugerida.nome ?? 'foto do acervo'}</span>
+                  <button
+                    type="button"
+                    onClick={tirarFoto}
+                    aria-label="Tirar a foto sugerida"
+                    className="ml-0.5 rounded-full p-0.5 hover:bg-background"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => setPickerAberto(true)}
+                >
+                  <ImagePlus className="mr-1 h-3.5 w-3.5" />
+                  Apontar foto do acervo
+                </Button>
+              )}
+            </div>
+          )}
+
           <Textarea
-            value={texto}
+            value={textos[abaAtiva]}
             onChange={(e) => {
-              setTexto(e.target.value)
+              const valor = e.target.value
+              setTextos((atuais) => ({ ...atuais, [abaAtiva]: valor }))
               setEnviado(false)
             }}
             onKeyDown={(e) => {
               // Ctrl/Cmd+Enter envia: quem escreve rápido não larga o teclado.
               if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                 e.preventDefault()
-                enviarComentario()
+                enviar()
               }
             }}
-            placeholder={alvo ? PLACEHOLDER_POR_ALVO[alvo] : PLACEHOLDER}
+            placeholder={PLACEHOLDER_POR_ABA[abaAtiva]}
             rows={2}
             // O teto real é do serviço (`TETO_COMENTARIO`), que não pode ser
             // importado aqui: aquele módulo puxa o Prisma, e isto é client.
@@ -272,11 +312,11 @@ export function FeedbackDeArte({
           />
           <div className="flex items-center justify-end gap-2">
             {enviado && !registrar.isPending && (
-              <span className="text-xs text-muted-foreground">anotado</span>
+              <span className="text-xs text-muted-foreground">anotado — todas as abas juntas</span>
             )}
-            <Button type="button" size="sm" variant="outline" onClick={enviarComentario}>
+            <Button type="button" size="sm" variant="outline" onClick={enviar}>
               <Send className="mr-1.5 h-4 w-4" />
-              Enviar
+              Enviar tudo
             </Button>
           </div>
         </div>
