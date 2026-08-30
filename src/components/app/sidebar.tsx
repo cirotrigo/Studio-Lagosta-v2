@@ -18,6 +18,7 @@ import {
   Sparkles,
   Layers,
   Wallet,
+  MessagesSquare,
 } from "lucide-react";
 import { useIsAdmin } from "@/hooks/use-is-admin";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ export const navigationItems = [
   { name: "Criativos", href: "/criativos", icon: Layers },
   { name: "Projetos", href: "/projects", icon: FolderOpen },
   { name: "Agenda", href: "/agenda", icon: Calendar },
+  { name: "Caixa de Respostas", href: "/caixa-de-respostas", icon: MessagesSquare },
   { name: "Biblioteca de Músicas", href: "/biblioteca-musicas", icon: Music },
   { name: "Organização", href: "/organization", icon: Building2 },
   { name: "Prompts", href: "/prompts", icon: MessageSquare },

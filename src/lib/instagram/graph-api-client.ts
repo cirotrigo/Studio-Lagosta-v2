@@ -153,6 +153,40 @@ export class InstagramGraphApiClient {
     return token
   }
 
+  /** POST no endpoint — params vão na query, como a Graph API aceita. */
+  private async post(path: string, params: Record<string, string>): Promise<any> {
+    const url = new URL(`${this.baseUrl}/${this.version}/${path}`)
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value)
+    }
+    url.searchParams.set('access_token', this.accessToken)
+
+    const response = await fetch(url, { method: 'POST', headers: { Accept: 'application/json' }, cache: 'no-store' })
+    const rawBody = await response.text()
+    let body: any
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {}
+    } catch (_error) {
+      throw new InstagramApiException('Invalid JSON response from Instagram API', response.status)
+    }
+    if (!response.ok) {
+      const apiError = body?.error as InstagramApiError | undefined
+      const message = sanitizeErrorMessage(apiError?.message || 'Instagram API error')
+      throw new InstagramApiException(message, response.status, apiError)
+    }
+    return body
+  }
+
+  /**
+   * Responde um comentário da própria conta (POST /{comment-id}/replies).
+   * Exige o escopo instagram_business_manage_comments no token — token
+   * gerado só para publicação/insights devolve erro de permissão, que sobe
+   * como InstagramApiException com a mensagem da API (sanitizada).
+   */
+  async replyToComment(commentId: string, message: string): Promise<{ id: string }> {
+    return this.post(`${commentId}/replies`, { message })
+  }
+
   /** GET no endpoint, com parse, sanitização de erro e log de rate limit */
   private async get(path: string, params: Record<string, string>): Promise<any> {
     const url = new URL(`${this.baseUrl}/${this.version}/${path}`)
