@@ -636,6 +636,7 @@ model Project {
   instagramGoalSettings       InstagramGoalSettings?
   instagramStories            InstagramStory[]
   instagramWeeklyReports      InstagramWeeklyReport[]
+  avaliacoesGoogle            AvaliacaoGoogle[]
   Logo                        Logo[]
   musicLibrary                MusicLibrary[]          @relation("ProjectMusicLibrary")
   organizationProjects        OrganizationProject[]
@@ -1720,6 +1721,37 @@ model InstagramWeeklyReport {
   @@index([weekStart])
   @@index([score])
   @@index([overallCompletionRate])
+}
+
+/// Avaliações do Google Meu Negócio, coletadas via Windsor.ai (30/08/2026).
+/// Segue o precedente da InstagramFeed: relação com Project (dono estrito),
+/// chave natural única (`reviewId`), coleta que só atualiza — nunca zera.
+/// `respostaSugerida` é o rascunho gerado por IA para a EQUIPE editar e
+/// enviar; `avisadaEm` é a trava do aviso de negativa no WhatsApp (uma vez).
+model AvaliacaoGoogle {
+  id               String    @id @default(cuid())
+  projectId        Int
+  locationId       String
+  reviewId         String    @unique
+  autor            String?
+  estrelas         Int
+  texto            String?
+  criadaEm         DateTime
+  atualizadaEm     DateTime?
+  textoResposta    String?
+  respondidaEm     DateTime?
+  respostaSugerida String?
+  sugestaoGeradaEm DateTime?
+  avisadaEm        DateTime?
+  capturedAt       DateTime
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([criadaEm])
+  @@index([estrelas])
+  @@index([projectId, respondidaEm])
 }
 
 model InstagramGoalSettings {
