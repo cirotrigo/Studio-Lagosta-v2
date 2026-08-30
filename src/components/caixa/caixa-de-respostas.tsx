@@ -13,9 +13,9 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
-import { useCaixaDeRespostas, useProporRascunho, useResponderComentario } from '@/hooks/use-caixa-de-respostas'
+import { useCaixaDeRespostas, useIgnorarItem, useProporRascunho, useResponderComentario } from '@/hooks/use-caixa-de-respostas'
 import type { AvaliacaoPendente, ComentarioPendente } from '@/lib/caixa/itens'
-import { AlertCircle, Check, Copy, ExternalLink, Sparkles, Star } from 'lucide-react'
+import { AlertCircle, Check, Copy, ExternalLink, EyeOff, Sparkles, Star } from 'lucide-react'
 
 const dtBRT = new Intl.DateTimeFormat('pt-BR', {
   timeZone: 'America/Sao_Paulo',
@@ -35,9 +35,24 @@ function ItemDaCaixa({
   const [texto, setTexto] = React.useState(rascunhoInicial)
   const [aviso, setAviso] = React.useState<string | null>(null)
   const [enviado, setEnviado] = React.useState(false)
+  const [ignorado, setIgnorado] = React.useState(false)
   const [copiado, setCopiado] = React.useState(false)
   const propor = useProporRascunho()
   const responder = useResponderComentario()
+  const ignorar = useIgnorarItem()
+
+  const ignorarItem = () => {
+    setAviso(null)
+    ignorar.mutate(
+      item.tipo === 'comentario'
+        ? { projectId: item.projectId, comentarioId: item.comentarioId }
+        : { projectId: item.projectId, reviewId: item.reviewId },
+      {
+        onSuccess: () => setIgnorado(true),
+        onError: (e) => setAviso(e instanceof Error ? e.message : 'Não deu para ignorar.'),
+      },
+    )
+  }
 
   const pedirRascunho = () => {
     setAviso(null)
@@ -106,7 +121,11 @@ function ItemDaCaixa({
 
         <p className="text-sm">{item.texto ?? '(sem texto — só a nota)'}</p>
 
-        {enviado ? (
+        {ignorado ? (
+          <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+            <EyeOff className="h-4 w-4" /> Ignorado — não aparece mais na fila de ninguém.
+          </p>
+        ) : enviado ? (
           <p className="inline-flex items-center gap-1.5 text-sm font-medium text-green-600 dark:text-green-500">
             <Check className="h-4 w-4" /> Resposta publicada
           </p>
@@ -133,6 +152,9 @@ function ItemDaCaixa({
                   <Copy className="mr-1.5 h-3.5 w-3.5" /> {copiado ? 'Copiado ✓' : 'Copiar resposta'}
                 </Button>
               )}
+              <Button size="sm" variant="ghost" onClick={ignorarItem} disabled={ignorar.isPending}>
+                <EyeOff className="mr-1.5 h-3.5 w-3.5" /> {ignorar.isPending ? 'Ignorando…' : 'Ignorar'}
+              </Button>
               <span className="text-xs text-muted-foreground">
                 {comentario
                   ? (item as ComentarioPendente).enviaDaqui

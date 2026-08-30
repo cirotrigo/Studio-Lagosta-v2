@@ -73,6 +73,16 @@ async function comentariosPendentes(
     return []
   }
 
+  // Decisão de não responder é da EQUIPE e vale para todos — mora no banco.
+  const ignorados = new Set(
+    (
+      await db.comentarioIgnorado.findMany({
+        where: { projectId: { in: projetos.map((p) => p.id) } },
+        select: { comentarioId: true },
+      })
+    ).map((i) => i.comentarioId),
+  )
+
   const itens: ComentarioPendente[] = []
   for (const l of linhas) {
     const id = texto(l.comment_id)
@@ -80,6 +90,7 @@ async function comentariosPendentes(
     const quando = texto(l.comment_timestamp)
     const projeto = porUsername.get(texto(l.account_name) ?? '')
     if (!id || !corpo || !quando || !projeto) continue
+    if (ignorados.has(id)) continue
     if (texto(l.comment_parent_id)) continue // resposta de alguém, não pendência
     if (typeof l.comment_reply_count === 'number' && l.comment_reply_count > 0) continue
     itens.push({
@@ -110,7 +121,7 @@ async function avaliacoesPendentes(projectIds: number[]): Promise<AvaliacaoPende
     ]),
   )
   const linhas = await db.avaliacaoGoogle.findMany({
-    where: { projectId: { in: projectIds }, respondidaEm: null },
+    where: { projectId: { in: projectIds }, respondidaEm: null, ignoradaEm: null },
     orderBy: [{ estrelas: 'asc' }, { criadaEm: 'desc' }],
     take: 200,
   })

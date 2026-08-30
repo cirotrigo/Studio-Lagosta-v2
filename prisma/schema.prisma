@@ -1743,6 +1743,12 @@ model AvaliacaoGoogle {
   respostaSugerida String?
   sugestaoGeradaEm DateTime?
   avisadaEm        DateTime?
+  /// Decisão da equipe de NÃO responder (Caixa de Respostas): sai da fila,
+  /// do rascunho automático e do aviso de negativa. `ignoradaPor` é o
+  /// User.id INTERNO (nunca clerkId), nulo quando não resolvido — auditoria
+  /// nunca bloqueia o gesto.
+  ignoradaEm       DateTime?
+  ignoradaPor      String?
   capturedAt       DateTime
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -1752,6 +1758,21 @@ model AvaliacaoGoogle {
   @@index([criadaEm])
   @@index([estrelas])
   @@index([projectId, respondidaEm])
+}
+
+/// Comentário de Instagram que a equipe decidiu NÃO responder (Caixa de
+/// Respostas). Comentários não são persistidos (vêm ao vivo do Windsor);
+/// esta tabela guarda só a decisão. `projectId` é Int solto, sem FK —
+/// precedente LearningSignal: apagar o projeto não apaga o registro do que
+/// foi decidido.
+model ComentarioIgnorado {
+  id           String   @id @default(cuid())
+  projectId    Int
+  comentarioId String   @unique
+  ignoradoEm   DateTime @default(now())
+  ignoradoPor  String?
+
+  @@index([projectId])
 }
 
 model InstagramGoalSettings {

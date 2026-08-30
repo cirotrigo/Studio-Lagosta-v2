@@ -18,6 +18,17 @@ export function useProporRascunho() {
   })
 }
 
+export function useIgnorarItem() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (dados: { projectId: number; comentarioId?: string; reviewId?: string }) =>
+      api.post<{ ok: boolean }>('/api/caixa-de-respostas/ignorar', dados),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['caixa-de-respostas'] })
+    },
+  })
+}
+
 export function useResponderComentario() {
   const queryClient = useQueryClient()
   return useMutation({

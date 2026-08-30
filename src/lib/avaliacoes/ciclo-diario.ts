@@ -58,6 +58,7 @@ export async function cicloDiarioDeAvaliacoes(opts?: {
   const candidatas = await db.avaliacaoGoogle.findMany({
     where: {
       respondidaEm: null,
+      ignoradaEm: null, // decisão da equipe de não responder — nem rascunho
       sugestaoGeradaEm: null,
       OR: [
         { estrelas: { lte: 3 } },
@@ -90,7 +91,9 @@ export async function cicloDiarioDeAvaliacoes(opts?: {
 
   // ---- Aviso de negativas: sem resposta, nunca avisadas.
   const negativas = await db.avaliacaoGoogle.findMany({
-    where: { estrelas: { lte: 3 }, respondidaEm: null, avisadaEm: null },
+    // ignoradaEm: a equipe decidiu não responder — avisar seria cobrar de
+    // volta uma decisão já tomada.
+    where: { estrelas: { lte: 3 }, respondidaEm: null, avisadaEm: null, ignoradaEm: null },
     orderBy: { criadaEm: 'desc' },
   })
   if (!negativas.length) return resumo
