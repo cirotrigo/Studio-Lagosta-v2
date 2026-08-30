@@ -41,10 +41,10 @@ describe('diffDeIds', () => {
 
 describe('aplicarTeto', () => {
   it('corta a leva no teto e conta o que fica para amanhã', () => {
-    const novas = Array.from({ length: 150 }, (_, i) => i)
+    const novas = Array.from({ length: 250 }, (_, i) => i)
     const { paraAnalisar, restantes } = aplicarTeto(novas, MAX_NOVAS_POR_PROJETO_POR_DIA)
-    expect(paraAnalisar).toHaveLength(120)
-    expect(restantes).toBe(30)
+    expect(paraAnalisar).toHaveLength(200)
+    expect(restantes).toBe(50)
     expect(paraAnalisar[0]).toBe(0)
   })
 

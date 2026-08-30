@@ -27,8 +27,12 @@ export const PROFUNDIDADE_MAXIMA = 4
  * em que um fotógrafo despeja uma sessão inteira — o resto entra nas rodadas
  * seguintes, porque a reconciliação é idempotente (diff de ids, sem janela de
  * data).
+ *
+ * 200 desde 29/08/2026 (era 120): sessão típica de fotógrafo cabe numa noite.
+ * Acima disso quem corta primeiro costuma ser o ORCAMENTO_DA_RODADA_MS, e o
+ * excedente rola para a madrugada seguinte do mesmo jeito.
  */
-export const MAX_NOVAS_POR_PROJETO_POR_DIA = 120
+export const MAX_NOVAS_POR_PROJETO_POR_DIA = 200
 
 /** Análises simultâneas por projeto. O tempo é quase todo espera de rede. */
 export const CONCORRENCIA_ANALISE = 4
