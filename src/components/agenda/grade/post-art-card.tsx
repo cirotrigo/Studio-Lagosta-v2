@@ -4,8 +4,21 @@ import { memo } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { Badge } from '@/components/ui/badge'
-import { Layers, Video, Loader2, ImageIcon, FileEdit, Bell, Lock, Sparkles, Send } from 'lucide-react'
+import {
+  Layers,
+  Video,
+  Loader2,
+  ImageIcon,
+  FileEdit,
+  Bell,
+  Lock,
+  Sparkles,
+  Send,
+  ThumbsUp,
+  MessageSquarePlus,
+} from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
+import type { VereditoDeArte } from '@/lib/aprendizado/feedback-de-arte'
 import { formatPostTime, isVideoUrl, aspectClassForPostType } from '../calendar/calendar-utils'
 import { publicarLembreteHref } from '@/lib/agenda-routes'
 import { useImproveJobForPost } from '@/stores/improve-queue-store'
@@ -28,6 +41,12 @@ interface PostArtCardProps {
   onClick: () => void
   /** Mostra de quem é o post. Ligado na agenda global, que mistura clientes. */
   showProject?: boolean
+  /**
+   * O que a revisão já disse desta arte — `null` = ninguém opinou. É o que
+   * deixa varrer a grade sabendo o que falta revisar e o que está esperando
+   * correção.
+   */
+  veredito?: VereditoDeArte | null
 }
 
 /**
@@ -47,6 +66,7 @@ export const PostArtCard = memo(function PostArtCard({
   post,
   onClick,
   showProject = false,
+  veredito = null,
 }: PostArtCardProps) {
   const hora = formatPostTime(post)
   const midias = (post.mediaUrls ?? []) as string[]
@@ -230,6 +250,29 @@ export const PostArtCard = memo(function PostArtCard({
           >
             <Bell className="h-2.5 w-2.5" />
             Lembrete
+          </Badge>
+        )}
+
+        {/* O que a revisão já disse — verde aprovou, âmbar pediu correção.
+            Sem selo = ainda não revisada: é o que se varre na grade. */}
+        {veredito === 'gostei' && (
+          <Badge
+            variant="outline"
+            className="flex items-center gap-0.5 border-emerald-500/60 px-1.5 py-0 text-[10px] text-emerald-600 dark:text-emerald-400"
+            title="Revisada: gostei"
+          >
+            <ThumbsUp className="h-2.5 w-2.5" />
+            Gostei
+          </Badge>
+        )}
+        {veredito === 'melhorar' && (
+          <Badge
+            variant="outline"
+            className="flex items-center gap-0.5 border-amber-500/70 px-1.5 py-0 text-[10px] text-amber-600 dark:text-amber-400"
+            title="Revisada: tem pedido de correção aberto"
+          >
+            <MessageSquarePlus className="h-2.5 w-2.5" />
+            Corrigir
           </Badge>
         )}
       </div>

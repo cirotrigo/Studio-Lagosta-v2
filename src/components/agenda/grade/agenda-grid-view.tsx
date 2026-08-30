@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { groupPostsByDay } from '../calendar/calendar-utils'
+import { useVereditosDasArtes } from '@/hooks/use-vereditos-das-artes'
 import { PostArtCard, type PostComProjeto } from './post-art-card'
 
 interface AgendaGridViewProps {
@@ -51,6 +52,20 @@ export function AgendaGridView({
   showProject = false,
 }: AgendaGridViewProps) {
   const porDia = useMemo(() => groupPostsByDay(posts), [posts])
+
+  /*
+    O selo "já revisada": UMA consulta com os generationIds da tela. Na agenda
+    global (vários clientes) o hook desliga sozinho — o projectId não é um só,
+    e o selo é da revisão POR cliente, que acontece na agenda do projeto.
+  */
+  const projectIdUnico = useMemo(() => {
+    const ids = Array.from(new Set(posts.map((p) => p.projectId)))
+    return ids.length === 1 ? ids[0] : null
+  }, [posts])
+  const { data: vereditos } = useVereditosDasArtes(
+    projectIdUnico,
+    useMemo(() => posts.map((p) => p.generationId), [posts]),
+  )
 
   if (isLoading) {
     return (
@@ -106,6 +121,9 @@ export function AgendaGridView({
                 post={post}
                 onClick={() => onPostClick(post)}
                 showProject={showProject}
+                veredito={
+                  post.generationId ? (vereditos?.vereditos[post.generationId] ?? null) : null
+                }
               />
             ))}
           </div>

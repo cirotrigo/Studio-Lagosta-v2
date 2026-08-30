@@ -85,6 +85,11 @@ export function useRegistrarFeedbackDeArte(
       queryClient.setQueryData<RespostaDeLeitura>(chaveDaConsulta(generationId), {
         feedback: resposta.feedback,
       })
+      // O selo "já revisada" da grade lê outro cache — invalidar por prefixo
+      // faz o card refletir o veredito quando a pessoa volta para a agenda.
+      // Literal proposital (o mesmo de CHAVE_VEREDITOS): importar o hook da
+      // grade aqui só para a string criaria acoplamento sem ganho.
+      queryClient.invalidateQueries({ queryKey: ['vereditos-das-artes'] })
     },
     onError: (erro) => {
       console.warn('[aprendizado] feedback não registrado (seguindo sem ele):', erro)
