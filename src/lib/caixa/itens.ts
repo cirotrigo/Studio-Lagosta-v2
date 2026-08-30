@@ -77,14 +77,15 @@ async function comentariosPendentes(
   }
 
   // Decisão de não responder é da EQUIPE e vale para todos — mora no banco.
-  const ignorados = new Set(
-    (
-      await db.comentarioIgnorado.findMany({
-        where: { projectId: { in: projetos.map((p) => p.id) } },
-        select: { comentarioId: true },
-      })
-    ).map((i) => i.comentarioId),
-  )
+  // E o que o app JÁ respondeu também: o reply_count do Windsor é cache e
+  // demora a virar; sem a memória própria, a pergunta respondida voltava.
+  const ids = projetos.map((p) => p.id)
+  const [ignoradosRows, respondidosRows] = await Promise.all([
+    db.comentarioIgnorado.findMany({ where: { projectId: { in: ids } }, select: { comentarioId: true } }),
+    db.comentarioRespondido.findMany({ where: { projectId: { in: ids } }, select: { comentarioId: true } }),
+  ])
+  const ignorados = new Set(ignoradosRows.map((i) => i.comentarioId))
+  const respondidos = new Set(respondidosRows.map((i) => i.comentarioId))
 
   const itens: ComentarioPendente[] = []
   for (const l of linhas) {
@@ -93,7 +94,7 @@ async function comentariosPendentes(
     const quando = texto(l.comment_timestamp)
     const projeto = porUsername.get(texto(l.account_name) ?? '')
     if (!id || !corpo || !quando || !projeto) continue
-    if (ignorados.has(id)) continue
+    if (ignorados.has(id) || respondidos.has(id)) continue
     if (texto(l.comment_parent_id)) continue // resposta de alguém, não pendência
     if (typeof l.comment_reply_count === 'number' && l.comment_reply_count > 0) continue
     itens.push({

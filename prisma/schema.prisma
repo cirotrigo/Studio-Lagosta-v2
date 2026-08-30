@@ -1782,6 +1782,22 @@ model ComentarioIgnorado {
   @@index([projectId])
 }
 
+/// Comentário que JÁ FOI respondido — gravado pelo próprio app ao publicar
+/// (e pelo reconciliador contra a Graph API). Existe porque o Windsor serve
+/// CACHE: por minutos a horas depois de uma resposta, o reply_count deles
+/// ainda é o antigo e a pergunta voltava para a fila como não respondida
+/// (visto em produção em 30/08/2026). A fila confia no que o app sabe.
+model ComentarioRespondido {
+  id           String   @id @default(cuid())
+  projectId    Int
+  comentarioId String   @unique
+  respostaId   String?
+  respondidoEm DateTime @default(now())
+  respondidoPor String?
+
+  @@index([projectId])
+}
+
 model InstagramGoalSettings {
   id             String        @id @default(cuid())
   projectId      Int           @unique

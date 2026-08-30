@@ -177,6 +177,13 @@ export class InstagramGraphApiClient {
     return body
   }
 
+  /** Respostas de um comentário (GET /{comment-id}/replies) — a verdade da
+   * fonte quando o cache do Windsor está defasado. */
+  async getCommentReplies(commentId: string): Promise<Array<{ id: string; text?: string; timestamp?: string }>> {
+    const body = await this.get(`${commentId}/replies`, { fields: 'id,text,timestamp' })
+    return Array.isArray(body?.data) ? body.data : []
+  }
+
   /**
    * Responde um comentário da própria conta (POST /{comment-id}/replies).
    * Exige o escopo instagram_business_manage_comments no token — token

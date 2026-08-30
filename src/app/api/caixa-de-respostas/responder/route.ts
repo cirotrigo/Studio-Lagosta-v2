@@ -51,6 +51,22 @@ export async function POST(req: NextRequest) {
   try {
     const cliente = new InstagramGraphApiClient(projeto.instagramAccessToken)
     const resultado = await cliente.replyToComment(comentarioId, mensagem)
+
+    // Memória do que o app publicou: o Windsor serve cache e o reply_count
+    // demora a virar — sem esta linha, a pergunta respondida voltava para a
+    // fila no refresh. Falha aqui NUNCA desfaz a publicação que já saiu.
+    try {
+      const quemRespondeu =
+        (await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } }))?.id ?? null
+      await db.comentarioRespondido.upsert({
+        where: { comentarioId },
+        create: { projectId, comentarioId, respostaId: resultado.id ?? null, respondidoPor: quemRespondeu },
+        update: { respostaId: resultado.id ?? null },
+      })
+    } catch (erro) {
+      console.error('[caixa] resposta publicada, mas falhou ao registrar a memória:', erro)
+    }
+
     return NextResponse.json({ ok: true, respostaId: resultado.id })
   } catch (erro) {
     if (erro instanceof InstagramApiException) {
