@@ -167,8 +167,8 @@ export const toolsDeModelos = [
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     // Curadoria, não edição: o modelo passa a valer para todos que criam arte
-    // deste cliente. Mesmo gate das três portas equivalentes na web — e o
-    // ÚNICO acesso "curador" do catálogo.
+    // deste cliente. Mesmo gate das três portas equivalentes na web — acesso
+    // "curador", como marcar-foto-destaque em fotos.ts.
     acesso: { tipo: 'curador' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {

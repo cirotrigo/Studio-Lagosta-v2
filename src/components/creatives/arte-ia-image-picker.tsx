@@ -16,7 +16,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Search, Upload, X, Check, ImageIcon, Info } from 'lucide-react'
+import { Search, Upload, X, Check, ImageIcon, Info, Star } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,7 +24,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useAprendizado } from '@/hooks/use-aprendizado'
-import { useAcervo } from '@/hooks/use-acervo'
+import { useAcervo, type ImagemDoAcervo } from '@/hooks/use-acervo'
+import { useDestaqueDeFoto } from '@/hooks/use-destaque-de-foto'
 import { MiniaturaDeReferencia } from '@/components/creatives/miniatura-de-referencia'
 import { cn } from '@/lib/utils'
 
@@ -85,6 +86,18 @@ export const PAPEIS: PapelInfo[] = [
 const MAX_ANCORAS = 3
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
+/**
+ * `destaque` é a curadoria "prata da casa" (F1.4): a API do acervo passa a
+ * devolvê-lo por foto. Opcional de propósito — ausente = false, então o
+ * picker funciona igual enquanto o campo não chega, e a atualização otimista
+ * da mutation o escreve no cache do mesmo jeito.
+ */
+type ImagemDoPicker = ImagemDoAcervo & { destaque?: boolean }
+
+/** Dourado da estrela: cor fora do conjunto de classes já usadas no repo →
+ *  estilo INLINE (a armadilha do `bg-zinc-400` que compila transparente). */
+const ESTRELA_ATIVA: React.CSSProperties = { color: '#fbbf24', fill: '#fbbf24' }
 
 export function contarPorPapel(refs: ReferenciaSelecionada[], papel: PapelReferencia) {
   return refs.filter((r) => r.papel === papel).length
@@ -152,6 +165,8 @@ export function ArteIaImagePicker({
    * outra, o apetite recomeça.
    */
   const [limite, setLimite] = React.useState(40)
+  /** Filtro client-side: mostrar só as fotos marcadas como destaque. */
+  const [soDestaques, setSoDestaques] = React.useState(false)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
   const { data: acervo, isLoading, isFetching } = useAcervo(projectId, {
@@ -161,6 +176,14 @@ export function ArteIaImagePicker({
   })
 
   const { registrarDesfecho } = useAprendizado(projectId)
+  // Sem gate na UI: quem não é curador vê a estrela e o 403 vira toast no
+  // hook — arrastar o canCurate do projeto até aqui seria plumbing novo.
+  const { mutate: alternarDestaque } = useDestaqueDeFoto(projectId)
+
+  const imagens = React.useMemo(() => {
+    const todas = (acervo?.images ?? []) as ImagemDoPicker[]
+    return soDestaques ? todas.filter((img) => img.destaque === true) : todas
+  }, [acervo?.images, soDestaques])
 
   const { upload, isUploading, progress } = useBlobUpload({
     onError: (err) =>
@@ -403,6 +426,27 @@ export function ArteIaImagePicker({
             </Button>
           </form>
 
+          {/* Curadoria "prata da casa": filtra client-side pelas fotos
+              destacadas na estrela. Chip próprio (fora dos chips de pasta)
+              porque pasta é navegação e destaque é curadoria — e o bloco de
+              pastas nem sempre renderiza. */}
+          {acervo && (
+            <div className="flex flex-wrap gap-1">
+              <button
+                type="button"
+                onClick={() => setSoDestaques((v) => !v)}
+                title="Mostrar só as fotos marcadas com a estrela"
+                className={cn(
+                  'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px]',
+                  soDestaques ? 'border-primary bg-primary/10' : 'border-border/60',
+                )}
+              >
+                <Star className="h-3 w-3" style={soDestaques ? ESTRELA_ATIVA : undefined} />
+                Destaques
+              </button>
+            </div>
+          )}
+
           {/* Navegação em DOIS NÍVEIS (pedido do Ciro, 10/08): primeiro as
               pastas da RAIZ, e as subpastas só depois de entrar numa raiz.
               A lista chapada anterior cortava em 12 chips — no By Rock são 67
@@ -509,52 +553,89 @@ export function ArteIaImagePicker({
             </div>
           ) : (
             <>
-              <div
-                className="grid grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-6"
-                style={{ maxHeight: alturaDaGrade }}
-              >
-                {acervo.images.map((img) => {
-                  const selecionada = referencias.some((r) => r.key === img.driveFileId)
-                  return (
-                    <button
-                      key={img.driveFileId}
-                      type="button"
-                      title={`${img.fileName}${img.folder ? ` · ${img.folder}` : ''}${
-                        img.ultimoUso === 'nunca' ? ' · nunca usada' : ` · usada em ${img.ultimoUso}`
-                      }`}
-                      onClick={() =>
-                        adicionar({
-                          key: img.driveFileId,
-                          driveFileId: img.driveFileId,
-                          thumbUrl: `/api/drive/thumbnail/${img.driveFileId}?size=400`,
-                          label: img.menuItem ?? img.fileName,
-                        })
-                      }
-                      className={cn(
-                        'relative aspect-square overflow-hidden rounded-md border-2 bg-muted/30 transition-all hover:border-primary/60',
-                        selecionada ? 'border-primary ring-2 ring-primary/30' : 'border-border/40',
-                      )}
-                    >
-                      <Image
-                        src={`/api/drive/thumbnail/${img.driveFileId}?size=400`}
-                        alt={img.fileName}
-                        fill
-                        sizes="100px"
-                        className="object-cover"
-                        unoptimized
-                      />
-                      {selecionada && (
-                        <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
-                          <Check className="h-3 w-3" />
-                        </span>
-                      )}
-                    </button>
-                  )
-                })}
-              </div>
+              {soDestaques && imagens.length === 0 ? (
+                <div className="flex flex-col items-center gap-1 rounded-lg border border-dashed border-border/60 py-8 text-center">
+                  <Star className="h-5 w-5 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">Nenhuma foto destacada por aqui.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Toque na estrela de uma foto para marcá-la como destaque.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="grid grid-cols-3 gap-2 overflow-y-auto pr-1 sm:grid-cols-6"
+                  style={{ maxHeight: alturaDaGrade }}
+                >
+                  {imagens.map((img) => {
+                    const selecionada = referencias.some((r) => r.key === img.driveFileId)
+                    const destacada = img.destaque === true
+                    return (
+                      // Célula é <div> com o botão de seleção DENTRO e a
+                      // estrela como IRMÃ — botão dentro de botão é HTML
+                      // inválido (mesmo precedente do card da agenda).
+                      <div key={img.driveFileId} className="relative aspect-square">
+                        <button
+                          type="button"
+                          title={`${img.fileName}${img.folder ? ` · ${img.folder}` : ''}${
+                            img.ultimoUso === 'nunca' ? ' · nunca usada' : ` · usada em ${img.ultimoUso}`
+                          }`}
+                          onClick={() =>
+                            adicionar({
+                              key: img.driveFileId,
+                              driveFileId: img.driveFileId,
+                              thumbUrl: `/api/drive/thumbnail/${img.driveFileId}?size=400`,
+                              label: img.menuItem ?? img.fileName,
+                            })
+                          }
+                          className={cn(
+                            'absolute inset-0 overflow-hidden rounded-md border-2 bg-muted/30 transition-all hover:border-primary/60',
+                            selecionada ? 'border-primary ring-2 ring-primary/30' : 'border-border/40',
+                          )}
+                        >
+                          <Image
+                            src={`/api/drive/thumbnail/${img.driveFileId}?size=400`}
+                            alt={img.fileName}
+                            fill
+                            sizes="100px"
+                            className="object-cover"
+                            unoptimized
+                          />
+                          {selecionada && (
+                            <span className="absolute right-1 top-1 rounded-full bg-primary p-0.5 text-primary-foreground">
+                              <Check className="h-3 w-3" />
+                            </span>
+                          )}
+                        </button>
+                        {/* Estrela de destaque: alvo de toque de 32px (h-8),
+                            no canto oposto ao check de seleção. */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            alternarDestaque({ driveFileId: img.driveFileId, destaque: !destacada })
+                          }}
+                          title={destacada ? 'Tirar dos destaques' : 'Marcar como destaque'}
+                          aria-label={destacada ? 'Tirar dos destaques' : 'Marcar como destaque'}
+                          aria-pressed={destacada}
+                          className="absolute left-0 top-0 z-10 flex h-8 w-8 items-center justify-center"
+                        >
+                          <span className="rounded-full bg-black/40 p-1">
+                            <Star
+                              className="h-4 w-4"
+                              style={destacada ? ESTRELA_ATIVA : { color: '#ffffff' }}
+                            />
+                          </span>
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] text-muted-foreground">
-                  {acervo.images.length} de {acervo.total} fotos · as menos usadas aparecem primeiro
+                  {soDestaques
+                    ? `${imagens.length} em destaque · ${acervo.images.length} de ${acervo.total} carregadas`
+                    : `${acervo.images.length} de ${acervo.total} fotos · as menos usadas aparecem primeiro`}
                 </p>
                 {/* Como no Claudinho: a grade cresce sob demanda. Sem o botão,
                     as 40 primeiras pareciam ser o acervo inteiro. */}

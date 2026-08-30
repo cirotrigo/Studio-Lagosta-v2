@@ -981,8 +981,28 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
       },
       tema: { type: 'string', description: 'Assunto da peça, para explicar depois por que a foto foi usada.' },
       quando: { type: 'string', description: 'Data da publicação "AAAA-MM-DD". Padrão: hoje.' },
+      // Mudança DELIBERADA de 30/08 (plano da sugestão de fotos): o id da arte
+      // liga a foto à correção pós-produção na colheita do aprendizado.
+      geracaoId: {
+        type: 'string',
+        description:
+          'A arte que nasceu com essa foto (o id que gerar-imagem/ver-geracao usam). Preencha sempre que a foto virou uma arte identificável — em especial ao REFAZER uma peça na correção: é o que liga a foto escolhida ao aprendizado.',
+      },
     },
     required: ['projectId', 'driveFileIds'],
+    additionalProperties: false,
+  },
+  // Tool NOVA (29/08, F1.4 da sugestão de fotos) — o fixture nasce com ela,
+  // como manda a regra do registro: mudança de schema daqui para a frente é
+  // deliberada ou o snapshot acusa.
+  'marcar-foto-destaque': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      driveFileId: { type: 'string', description: 'A foto (o driveFileId que buscar-fotos devolve).' },
+      destaque: { type: 'boolean', description: 'true (default) marca como destaque; false tira o destaque.' },
+    },
+    required: ['projectId', 'driveFileId'],
     additionalProperties: false,
   },
   'pedir-foto': {

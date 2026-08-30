@@ -13,7 +13,7 @@ export const toolsDeFotos = [
     nome: 'buscar-fotos',
     apelidos: ['search-acervo'],
     descricao:
-      'Busca fotos no acervo do cliente. Traz primeiro as menos usadas, para não repetir a mesma foto toda semana — o rodízio é real: cada uso fica registrado, e `ultimoUso`/`vezesUsada` dizem quando e quantas vezes. O retorno traz `catalogacao`, que mostra quantas fotos do acervo ainda não têm descrição ou tags (elas existem, mas a busca por TEMA não as alcança — peça por pasta). O acervo é organizado em pastas por assunto (cortes, ambiente, bebidas, sobremesas...) — a resposta lista as pastas disponíveis, então se a busca por tema vier vazia, tente de novo pela pasta. Ao montar vários posts de uma vez, use pastas diferentes para variar.',
+      'Busca fotos no acervo do cliente. A ordem é aprendida: primeiro os DESTAQUES (a prata da casa) e as fotos que a equipe costuma escolher para o tema; foto proposta e rejeitada desce; entre iguais vale o rodízio (menos usada primeiro, para não repetir na semana) — `ultimoUso`/`vezesUsada` dizem quando e quantas vezes, e cada item traz `destaque` e `vagaDeExploracao` (foto nova/nunca avaliada que vale experimentar). O retorno traz `catalogacao`, que mostra quantas fotos do acervo ainda não têm descrição ou tags (elas existem, mas a busca por TEMA não as alcança — peça por pasta). O acervo é organizado em pastas por assunto (cortes, ambiente, bebidas, sobremesas...) — a resposta lista as pastas disponíveis, então se a busca por tema vier vazia, tente de novo pela pasta. Ao montar vários posts de uma vez, use pastas diferentes para variar.',
     schema: z.object({
       projectId: z.number().describe('ID do projeto.'),
       theme: z
@@ -66,6 +66,12 @@ export const toolsDeFotos = [
         .describe('As fotos usadas (o driveFileId que buscar-fotos devolve). Aceita várias de uma vez.'),
       tema: z.string().optional().describe('Assunto da peça, para explicar depois por que a foto foi usada.'),
       quando: z.string().optional().describe('Data da publicação "AAAA-MM-DD". Padrão: hoje.'),
+      geracaoId: z
+        .string()
+        .optional()
+        .describe(
+          'A arte que nasceu com essa foto (o id que gerar-imagem/ver-geracao usam). Preencha sempre que a foto virou uma arte identificável — em especial ao REFAZER uma peça na correção: é o que liga a foto escolhida ao aprendizado.',
+        ),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -92,6 +98,10 @@ export const toolsDeFotos = [
         driveFileIds: ids,
         origem: 'externo',
         tema: typeof args.tema === 'string' ? args.tema : null,
+        // É o que liga a foto à arte na colheita da correção pós-produção:
+        // troca-de-arte guarda o generationId da arte nova, e o join com
+        // PhotoUsage só enxerga linhas que o carregam.
+        generationId: typeof args.geracaoId === 'string' && args.geracaoId.trim() ? args.geracaoId.trim() : null,
         usedAt: quandoInformado,
       })
       return {
@@ -100,6 +110,80 @@ export const toolsDeFotos = [
           marcadas > 0
             ? `Anotado: ${marcadas} foto(s) marcada(s) como usada(s). Elas vão para o fim da fila nas próximas sugestões.`
             : 'Não consegui anotar agora — o registro de uso falhou, mas nada mais foi afetado.',
+      }
+    },
+  }),
+
+  definirTool({
+    nome: 'marcar-foto-destaque',
+    descricao:
+      'Marca uma foto do acervo como DESTAQUE — a prata da casa: as fotos que o sistema deve PREFERIR ao sugerir (buscar-fotos e a proposta da semana passam a trazê-las primeiro). Use quando a pessoa disser que uma foto é das melhores ("essa foto é linda, usa mais ela") ou quando uma arte feita com ela for elogiada.\n\nCom destaque=false, tira o destaque — a foto continua no acervo e no rodízio normal, nada é apagado. Confirme com a pessoa antes de marcar: o destaque vale para todas as sugestões deste cliente.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      driveFileId: z.string().describe('A foto (o driveFileId que buscar-fotos devolve).'),
+      destaque: z
+        .boolean()
+        .optional()
+        .describe('true (default) marca como destaque; false tira o destaque.'),
+    }),
+    // Marcar duas vezes é no-op (upsert converge); tirar duas vezes idem.
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // Curadoria, não edição: o destaque muda a ordem das sugestões para todos
+    // que produzem para este cliente — mesmo gate de marcar-como-modelo
+    // (ver ≠ mandar: enxergar o cliente não basta).
+    acesso: { tipo: 'curador' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const { db } = await import('../../db')
+      const projectId = args.projectId as number
+      const driveFileId = typeof args.driveFileId === 'string' ? args.driveFileId.trim() : ''
+      if (!driveFileId) {
+        throw new Error('Informe a foto em driveFileId (o id que buscar-fotos devolve).')
+      }
+      const destaque = args.destaque !== false
+
+      // Auditoria, não gate: o User INTERNO do portador, SÓ por leitura —
+      // não achou, fica null. Criar User a partir daqui é como nascem os
+      // fantasmas (regra da casa); e falhar na resolução não pode derrubar
+      // a marcação.
+      let decididoPor: string | null = null
+      if (principal.kind === 'user' && principal.userId) {
+        try {
+          const usuario = await db.user.findUnique({
+            where: { clerkId: principal.userId },
+            select: { id: true },
+          })
+          decididoPor = usuario?.id ?? null
+        } catch (error) {
+          console.error('[mcp] não deu para resolver quem decidiu o destaque:', error)
+        }
+      }
+
+      if (destaque) {
+        await db.photoDestaque.upsert({
+          where: { projectId_driveFileId: { projectId, driveFileId } },
+          create: { projectId, driveFileId, origem: 'humano', decididoPor },
+          // Remarcar reafirma a decisão: revogadoEm limpo (a foto volta a
+          // valer) e a última decisão humana assina o registro.
+          update: { revogadoEm: null, origem: 'humano', decididoPor },
+        })
+        return {
+          ok: true,
+          destaque: true,
+          mensagem: 'A foto agora é destaque do acervo — o sistema vai preferi-la nas sugestões.',
+        }
+      }
+
+      // Despromover, nunca excluir — mesmo princípio da curadoria de modelos:
+      // revogadoEm marca a saída e o histórico da decisão fica.
+      const { count } = await db.photoDestaque.updateMany({
+        where: { projectId, driveFileId, revogadoEm: null },
+        data: { revogadoEm: new Date() },
+      })
+      return {
+        ok: true,
+        destaque: false,
+        mensagem: count > 0 ? 'Tirei o destaque da foto.' : 'Essa foto já não era destaque — nada mudou.',
       }
     },
   }),
