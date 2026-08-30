@@ -8,6 +8,7 @@ import {
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
 import {
+  ALVOS_DE_CORRECAO,
   lerFeedbackDeArte,
   registrarFeedbackDeArte,
   TETO_COMENTARIO,
@@ -34,6 +35,17 @@ const bodySchema = z
     veredito: z.enum(VEREDITOS_DE_ARTE),
     /** Sempre opcional — o veredito vale sozinho. */
     comentario: z.string().max(TETO_COMENTARIO).optional().nullable(),
+    /** Alvo do pedido de correção (chip). Só faz sentido em "melhorar". */
+    alvo: z.enum(ALVOS_DE_CORRECAO).optional().nullable(),
+    /** Foto do acervo sugerida no lugar da atual. */
+    fotoSugerida: z
+      .object({
+        driveFileId: z.string().min(1).max(128),
+        nome: z.string().max(200).optional().nullable(),
+      })
+      .strict()
+      .optional()
+      .nullable(),
     superficie: z.string().max(32).optional(),
   })
   .strict()
@@ -99,6 +111,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       projectId: arte.projectId,
       veredito: parsed.data.veredito,
       comentario: parsed.data.comentario ?? null,
+      alvo: parsed.data.alvo ?? null,
+      fotoSugerida: parsed.data.fotoSugerida ?? null,
       decididoPor: dbUser?.id ?? null,
       superficie: normalizarSuperficie(parsed.data.superficie) ?? 'galeria',
     })

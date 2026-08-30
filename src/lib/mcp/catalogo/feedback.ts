@@ -52,6 +52,13 @@ export const toolsDeFeedback = [
       const itens = feedbacks.map((f) => ({
         opiniao: f.veredito === 'gostei' ? 'gostei' : 'preciso melhorar',
         comentario: f.comentario,
+        // O pedido estruturado da revisão pela agenda (29/08/2026): o alvo da
+        // correção e, quando apontada, a foto do acervo que a pessoa quer no
+        // lugar — é o que deixa a sessão corretora refazer sem adivinhar.
+        ...(f.alvo ? { alvo: f.alvo } : {}),
+        ...(f.fotoSugerida
+          ? { fotoSugerida: { driveFileId: f.fotoSugerida.driveFileId, nome: f.fotoSugerida.nome } }
+          : {}),
         quando: formatarBRT(new Date(f.quando)),
         quem: f.quem,
         arte: f.arte?.resultUrl ?? null,

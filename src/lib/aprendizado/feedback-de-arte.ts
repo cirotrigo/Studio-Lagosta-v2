@@ -38,6 +38,45 @@ export const VEREDITOS_DE_ARTE = ['gostei', 'melhorar'] as const
 export type VereditoDeArte = (typeof VEREDITOS_DE_ARTE)[number]
 
 /**
+ * O ALVO do pedido de correção — o chip que estrutura o "preciso melhorar"
+ * (29/08/2026, revisão pela agenda). Opcional SEMPRE: o texto livre continua
+ * valendo sozinho. Vocabulário próprio do feedback (não vai para
+ * `vocabulario.ts` porque não é tipo nem desfecho de sinal — é conteúdo do
+ * `escolhido` deste sinal específico).
+ */
+export const ALVOS_DE_CORRECAO = ['foto', 'copy', 'horario'] as const
+export type AlvoDeCorrecao = (typeof ALVOS_DE_CORRECAO)[number]
+
+export function normalizarAlvo(valor: unknown): AlvoDeCorrecao | undefined {
+  if (typeof valor !== 'string') return undefined
+  const limpo = valor
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+  return ALVOS_DE_CORRECAO.find((a) => a === limpo)
+}
+
+/**
+ * A foto que a pessoa sugere NO LUGAR da atual — estruturada (id do Drive),
+ * não descrita em prosa. É o que deixa a sessão corretora refazer a peça sem
+ * adivinhar, e o aprendizado de fotos colher a preferência exata.
+ */
+export interface FotoSugerida {
+  driveFileId: string
+  nome: string | null
+}
+
+function lerFotoSugerida(valor: unknown): FotoSugerida | null {
+  const bruto = (valor ?? null) as Record<string, unknown> | null
+  if (!bruto || typeof bruto.driveFileId !== 'string' || !bruto.driveFileId.trim()) return null
+  return {
+    driveFileId: bruto.driveFileId.trim().slice(0, 128),
+    nome: typeof bruto.nome === 'string' && bruto.nome.trim() ? bruto.nome.trim().slice(0, 200) : null,
+  }
+}
+
+/**
  * Teto do comentário. Generoso porque quem escreve está fazendo o trabalho
  * caro do aprendizado; acima disso é outro canal (o chat).
  */
@@ -59,6 +98,10 @@ export type ResultadoDeFeedback =
 export interface FeedbackDeArte {
   veredito: VereditoDeArte
   comentario: string | null
+  /** O chip do pedido de correção — só existe em "melhorar". */
+  alvo: AlvoDeCorrecao | null
+  /** A foto sugerida no lugar — só existe em "melhorar". */
+  fotoSugerida: FotoSugerida | null
   /** ISO. */
   em: string
   superficie: Superficie | null
@@ -72,6 +115,15 @@ export interface EntradaDeFeedback {
   veredito: VereditoDeArte
   /** Opcional SEMPRE — o veredito já vale sozinho. */
   comentario?: string | null
+  /** Alvo do pedido (foto/copy/horario). Ignorado em "gostei". */
+  alvo?: AlvoDeCorrecao | string | null
+  /**
+   * Foto do acervo sugerida no lugar. Ignorada em "gostei".
+   * `driveFileId` opcional NO TIPO por causa do `z.infer` com `strict: false`
+   * (toda chave vira opcional) — a garantia é do runtime: sem id válido,
+   * `lerFotoSugerida` devolve null.
+   */
+  fotoSugerida?: { driveFileId?: string; nome?: string | null } | null
   /** `User.id` INTERNO (cuid), NUNCA o clerkId. */
   decididoPor?: string | null
   superficie?: Superficie
@@ -109,11 +161,19 @@ function limparComentario(valor: unknown): string | null {
 }
 
 /** O que ficou gravado em `escolhido`, defensivamente. */
-function lerEscolhido(valor: unknown): { veredito: VereditoDeArte | undefined; comentario: string | null; revisoes: number } {
+function lerEscolhido(valor: unknown): {
+  veredito: VereditoDeArte | undefined
+  comentario: string | null
+  alvo: AlvoDeCorrecao | null
+  fotoSugerida: FotoSugerida | null
+  revisoes: number
+} {
   const bruto = (valor ?? {}) as Record<string, unknown>
   return {
     veredito: normalizarVeredito(bruto.veredito),
     comentario: limparComentario(bruto.comentario),
+    alvo: normalizarAlvo(bruto.alvo) ?? null,
+    fotoSugerida: lerFotoSugerida(bruto.fotoSugerida),
     revisoes: typeof bruto.revisoes === 'number' && bruto.revisoes >= 0 ? Math.floor(bruto.revisoes) : 0,
   }
 }
@@ -135,11 +195,13 @@ async function lerLinha(chave: string): Promise<LinhaDeFeedback | null> {
 }
 
 function paraFeedback(linha: LinhaDeFeedback): FeedbackDeArte | null {
-  const { veredito, comentario, revisoes } = lerEscolhido(linha.escolhido)
+  const { veredito, comentario, alvo, fotoSugerida, revisoes } = lerEscolhido(linha.escolhido)
   if (!veredito) return null
   return {
     veredito,
     comentario,
+    alvo,
+    fotoSugerida,
     em: (linha.decididoEm ?? linha.updatedAt).toISOString(),
     superficie: normalizarSuperficie(linha.superficie) ?? null,
     revisoes,
@@ -165,8 +227,18 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
     if (!entrada.generationId || !Number.isInteger(entrada.projectId)) return neutro
 
     const comentario = limparComentario(entrada.comentario)
+    // Pedido de correção só existe em "melhorar": um "gostei" posterior LIMPA
+    // o pedido — a última ação explícita vence, e elogiar é retirar o pedido.
+    const alvo = veredito === 'melhorar' ? (normalizarAlvo(entrada.alvo) ?? null) : null
+    const fotoSugerida = veredito === 'melhorar' ? lerFotoSugerida(entrada.fotoSugerida) : null
     const superficie = normalizarSuperficie(entrada.superficie) ?? SUPERFICIE_PADRAO
     const chave = chaveDoFeedbackDeArte(entrada.generationId)
+
+    const mesmaCoisa = (g: ReturnType<typeof lerEscolhido>) =>
+      g.veredito === veredito &&
+      g.comentario === comentario &&
+      g.alvo === alvo &&
+      (g.fotoSugerida?.driveFileId ?? null) === (fotoSugerida?.driveFileId ?? null)
 
     let linha = await lerLinha(chave)
 
@@ -176,7 +248,7 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
       await registrarDecisaoSemSugestao({
         projectId: entrada.projectId,
         tipo: 'arte',
-        escolhido: { veredito, comentario, revisoes: 0 },
+        escolhido: { veredito, comentario, alvo, fotoSugerida, revisoes: 0 },
         decididoPor: entrada.decididoPor ?? null,
         superficie,
         chave,
@@ -186,7 +258,7 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
       if (!linha) return neutro
 
       const gravado = lerEscolhido(linha.escolhido)
-      if (gravado.veredito === veredito && gravado.comentario === comentario) {
+      if (mesmaCoisa(gravado)) {
         await mesclarNaGeneration(entrada.generationId, paraFeedback(linha))
         return { ok: true, resultado: 'gravado', feedback: paraFeedback(linha) }
       }
@@ -195,12 +267,12 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
     }
 
     const anterior = lerEscolhido(linha.escolhido)
-    if (anterior.veredito === veredito && anterior.comentario === comentario) {
+    if (mesmaCoisa(anterior)) {
       return { ok: true, resultado: 'ja-registrado', feedback: paraFeedback(linha) }
     }
 
     const agora = new Date()
-    const proximo = { veredito, comentario, revisoes: anterior.revisoes + 1 }
+    const proximo = { veredito, comentario, alvo, fotoSugerida, revisoes: anterior.revisoes + 1 }
     const r = await db.learningSignal.updateMany({
       where: { id: linha.id, updatedAt: linha.updatedAt },
       data: {
@@ -226,6 +298,8 @@ export async function registrarFeedbackDeArte(entrada: EntradaDeFeedback): Promi
     const feedback: FeedbackDeArte = {
       veredito,
       comentario,
+      alvo,
+      fotoSugerida,
       em: agora.toISOString(),
       superficie,
       revisoes: proximo.revisoes,
@@ -279,6 +353,8 @@ async function mesclarNaGeneration(generationId: string, feedback: FeedbackDeArt
           feedback: {
             veredito: feedback.veredito,
             comentario: feedback.comentario,
+            alvo: feedback.alvo,
+            fotoSugerida: feedback.fotoSugerida,
             em: feedback.em,
             superficie: feedback.superficie,
             revisoes: feedback.revisoes,
@@ -307,6 +383,10 @@ export interface FeedbackListado {
   projectId: number
   veredito: VereditoDeArte
   comentario: string | null
+  /** Alvo do pedido de correção (foto/copy/horario), quando estruturado. */
+  alvo: AlvoDeCorrecao | null
+  /** Foto do acervo sugerida no lugar, quando a pessoa apontou uma. */
+  fotoSugerida: FotoSugerida | null
   /** ISO. */
   quando: string
   /** Nome de quem julgou, quando dá para resolver. */
@@ -416,6 +496,8 @@ export async function listarFeedbacks(filtro: FiltroDeFeedbacks = {}): Promise<F
         projectId: sinal.projectId,
         veredito: valor.veredito as VereditoDeArte,
         comentario: valor.comentario,
+        alvo: valor.alvo,
+        fotoSugerida: valor.fotoSugerida,
         quando: (sinal.decididoEm ?? sinal.updatedAt).toISOString(),
         quem: sinal.decididoPor ? (porGente.get(sinal.decididoPor) ?? null) : null,
         superficie: normalizarSuperficie(sinal.superficie) ?? null,
