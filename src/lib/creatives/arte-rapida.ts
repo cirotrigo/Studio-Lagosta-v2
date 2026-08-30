@@ -467,6 +467,13 @@ export interface CreateArteRapidaInput {
    * Sem ele o desfecho é atribuído por reconciliação — ver `sinal-de-modelo.ts`.
    */
   sugestaoId?: string | null
+  /**
+   * A foto que o CARD do item de plano mostrava quando a pessoa mandou
+   * produzir (F3.4). Igual à foto usada, o sinal de foto fecha como
+   * `aceita-como-veio` mesmo fora do topo da busca — quem desceu na lista foi
+   * o sistema (não repetir foto na leva), não quem decidiu.
+   */
+  fotoDoCard?: string | null
   /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. É auditoria. */
   decididoPor?: string | null
 }
@@ -681,6 +688,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     await fecharSugestaoDeFoto({
       projectId,
       driveFileIdUsado: driveImageId,
+      fotoDoCard: input.fotoDoCard ?? null,
       generationId: persisted.generationId,
       pageId: persisted.pageId,
       decididoPor: input.decididoPor ?? null,

@@ -52,6 +52,15 @@ interface EntradaDoCatalogo {
    * duas fotos o que é uma só.
    */
   md5?: string
+  /**
+   * Quando a foto entrou no catálogo (ISO date-time) — o que dá o boost de
+   * NOVIDADE ao ranking do acervo (plano de 29/08/2026, § Manutenção).
+   *
+   * Só a entrada NOVA carrega o campo, e isso é deliberado: a reconciliação é
+   * um diff que não retoca entrada existente, então foto antiga nunca ganha o
+   * carimbo — ausência = não é novidade, sem boost. Não backfillar.
+   */
+  catalogadaEm?: string
   menuItem: string | null
   menuCategory: string | null
   description: string
@@ -337,6 +346,8 @@ async function analisarNovas({
           folderId: foto.folderId,
           createdTime: foto.createdTime,
           md5: foto.md5,
+          // Carimbo de novidade — só a entrada NOVA o recebe (ver o campo).
+          catalogadaEm: new Date().toISOString(),
           ...analise,
           usageHistory: [],
         })

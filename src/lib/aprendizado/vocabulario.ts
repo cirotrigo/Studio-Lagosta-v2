@@ -203,3 +203,30 @@ export function normalizarSuperficie(valor: unknown): Superficie | undefined {
   const limpo = normalizarTexto(valor)
   return SUPERFICIES.find((s) => s === limpo)
 }
+
+/**
+ * Por que a pessoa TROCOU a foto proposta (F4) — o chip opcional pós-troca.
+ *
+ * Vai em `escolhido.motivo` do sinal de foto (Json — a coluna segue TEXT
+ * livre, pela mesma razão dos tipos acima). **Nunca obrigatório, nunca
+ * bloqueia**: pedágio se paga sem ler. O vocabulário é fechado porque o motivo
+ * refina o score (`prato-antigo` rebaixa global; `nao-e-o-assunto` rebaixa só
+ * no tema) — texto livre não agrega.
+ */
+export const MOTIVOS_DE_TROCA_DE_FOTO = [
+  'escura',
+  'prato-antigo',
+  'nao-e-o-assunto',
+  'repetida',
+  'outro',
+] as const
+
+export type MotivoDeTrocaDeFoto = (typeof MOTIVOS_DE_TROCA_DE_FOTO)[number]
+
+/** Valor fora do vocabulário é DESCARTADO em silêncio por quem grava. */
+export function motivoDeTrocaValido(valor: unknown): valor is MotivoDeTrocaDeFoto {
+  return (
+    typeof valor === 'string' &&
+    (MOTIVOS_DE_TROCA_DE_FOTO as readonly string[]).includes(valor)
+  )
+}

@@ -12,10 +12,12 @@ import {
   blocosDaEscolha,
   fecharDicaDeCopyDoItem,
 } from '@/lib/aprendizado/sinal-de-copy-do-plano'
+import { anotarMotivoDaTroca } from '@/lib/aprendizado/sinal-de-foto'
 import {
   DESFECHOS,
   SUPERFICIES,
   exigeSugestao,
+  motivoDeTrocaValido,
   normalizarDesfecho,
   normalizarSuperficie,
   normalizarTipo,
@@ -71,6 +73,12 @@ const bodySchema = z
      * escolha absoluta quando não havia dica nenhuma.
      */
     itemDePlanoId: z.string().min(1).max(64).optional(),
+    /**
+     * F4: o chip de motivo tocado DEPOIS de o desfecho já ter sido postado.
+     * Sozinho com `sugestaoId` (sem `desfecho`), só ANOTA o motivo no
+     * `escolhido` já gravado do sinal de foto — nunca cria nem revisa desfecho.
+     */
+    motivoDaTroca: z.string().min(1).max(40).optional(),
     postId: z.string().min(1).max(64).optional(),
     generationId: z.string().min(1).max(64).optional(),
     pageId: z.string().min(1).max(64).optional(),
@@ -80,6 +88,24 @@ const bodySchema = z
 
 /** Teto do payload — acima disso o núcleo já trunca; aqui recusamos antes. */
 const TETO_ESCOLHIDO = 32 * 1024
+
+/**
+ * O `escolhido` de um sinal de FOTO (reconhecido pelo `driveFileId`) aceita
+ * `{ driveFileId, posicao?, motivo? }`. O `motivo` é o chip pós-troca da F4 e
+ * tem vocabulário fechado (`MOTIVOS_DE_TROCA_DE_FOTO`): valor fora dele é
+ * DESCARTADO em silêncio — a rota é fire-and-forget, e um chip desconhecido
+ * não pode virar 4xx nem lixo no corpus. Os demais campos passam intactos;
+ * `escolhido` de outros tipos de sinal não é tocado.
+ */
+function sanearEscolhidoDeFoto(escolhido: unknown): unknown {
+  if (!escolhido || typeof escolhido !== 'object' || Array.isArray(escolhido)) return escolhido
+  const bruto = escolhido as Record<string, unknown>
+  if (typeof bruto.driveFileId !== 'string') return escolhido
+  if (!('motivo' in bruto) || motivoDeTrocaValido(bruto.motivo)) return escolhido
+  const semMotivo = { ...bruto }
+  delete semMotivo.motivo
+  return semMotivo
+}
 
 export async function POST(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
   try {
@@ -124,6 +150,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       campaignId: corpo.campaignId,
     }
 
+    /**
+     * O chip de motivo tocado DEPOIS do desfecho: `{ sugestaoId, motivoDaTroca }`
+     * sem `desfecho` só anota. Motivo inválido é descartado dentro do serviço
+     * (a resposta diz o resultado, mas continua 200 — fire-and-forget).
+     */
+    if (corpo.sugestaoId && corpo.motivoDaTroca && corpo.desfecho === undefined) {
+      const resultado = await anotarMotivoDaTroca({
+        sugestaoId: corpo.sugestaoId,
+        motivo: corpo.motivoDaTroca,
+      })
+      return NextResponse.json({ ok: resultado === 'anotado', resultado })
+    }
+
     if (corpo.sugestaoId) {
       const desfecho = normalizarDesfecho(corpo.desfecho)
       if (!desfecho || !exigeSugestao(desfecho)) {
@@ -138,7 +177,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       const resultado = await registrarDesfecho({
         sugestaoId: corpo.sugestaoId,
         desfecho,
-        escolhido: corpo.escolhido,
+        escolhido: sanearEscolhidoDeFoto(corpo.escolhido),
         diff: corpo.diff,
         decididoPor: dbUser?.id,
         superficie,
@@ -187,7 +226,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
     const sinalId = await registrarDecisaoSemSugestao({
       projectId: id,
       tipo,
-      escolhido: corpo.escolhido,
+      escolhido: sanearEscolhidoDeFoto(corpo.escolhido),
       diff: corpo.diff,
       decididoPor: dbUser?.id,
       superficie,

@@ -486,6 +486,9 @@ async function renderizarItemDeModelo(
     slotValues: valores,
     ...(item.fotoUrl?.trim() ? { imageUrl: item.fotoUrl.trim() } : {}),
     ...(item.tema ? { name: `${item.tema} — plano` } : {}),
+    // F3.4: a foto que a pessoa VIU no card — aceitar o que o card mostrou
+    // fecha o sinal de foto como aceitação, mesmo fora do topo da busca.
+    fotoDoCard: item.fotoDriveId?.trim() || null,
     decididoPor: input.decididoPor ?? null,
   })
 

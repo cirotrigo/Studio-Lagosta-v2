@@ -273,6 +273,28 @@ model PhotoUsage {
   @@index([projectId, usedAt])
 }
 
+/// Curadoria explícita do acervo — a "prata da casa" (30/08/2026).
+///
+/// Espelho do padrão dos modelos: foto nasce acervo, destaque é promoção
+/// deliberada. No BANCO e não no `_image-catalog.json` pelas duas razões do
+/// `PhotoUsage`: corrida de read-modify-write no arquivo único, e regerar o
+/// catálogo apagaria a curadoria. Sem FK: apagar a foto do Drive não arrasta
+/// o registro. Despromover é `revogadoEm`, nunca DELETE.
+model PhotoDestaque {
+  id          String    @id @default(cuid())
+  projectId   Int
+  driveFileId String
+  /// 'semente' (script, dos sinais já capturados) | 'humano' (picker/MCP).
+  /// TEXT — o vocabulário ainda se move.
+  origem      String
+  /// User.id INTERNO (nunca clerkId), nullable — auditoria, não gate.
+  decididoPor String?
+  criadoEm    DateTime  @default(now())
+  revogadoEm  DateTime?
+
+  @@unique([projectId, driveFileId])
+}
+
 model LearningSignal {
   id           String    @id @default(cuid())
   projectId    Int
@@ -430,6 +452,10 @@ model ItemDePlano {
   /// como compatibilidade com itens anteriores a 23/08/2026. Quando a lista
   /// existe, ela VENCE e o espelho é derivado dela (a cena).
   referencias Json?
+  /// Top-3 candidatas de foto da emissão (plano de fotos, 30/08/2026):
+  /// `[{ driveFileId, fileName?, vaga: 'score' | 'exploracao', sugestaoId? }]`.
+  /// Payload do card — a verdade do que foi OFERECIDO mora no LearningSignal.
+  fotoCandidatas Json?
   /// Co-branding: o cliente CITADO na peça (projeto do Studio), cuja logomarca
   /// oficial é composta na arte. É como a Lagosta Criativa mostra o trabalho
   /// feito para um cliente sem esconder de quem é. Sem FK, como `campaignId`.

@@ -17,7 +17,10 @@ describe('normalização do vocabulário', () => {
   })
 
   it('nunca inventa: valor desconhecido é undefined', () => {
-    expect(normalizarTipo('legenda')).toBeUndefined()
+    // 'legenda' era o exemplo de desconhecido até virar tipo de verdade em
+    // d3d6295b (a LEGENDA entrou no corpus) — a fixture ficou para trás.
+    expect(normalizarTipo('legenda')).toBe('legenda')
+    expect(normalizarTipo('rodape-magico')).toBeUndefined()
     expect(normalizarDesfecho('mais ou menos')).toBeUndefined()
     expect(normalizarSuperficie(42)).toBeUndefined()
     expect(normalizarTipo(null)).toBeUndefined()
