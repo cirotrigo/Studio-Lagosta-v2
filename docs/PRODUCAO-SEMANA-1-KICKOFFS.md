@@ -6,7 +6,9 @@ tudo como RASCUNHO para aprovação do Ciro.
 
 ## Regras comuns (valem em todos — a sessão deve reler as entradas citadas)
 
-- Semana 1 = **seg 31/08 a dom 06/09**. O feriado de 07/09 é semana 2.
+- Semana 1 = **seg 31/08 a dom 06/09, EXATAMENTE** (decisão do Ciro em
+  29/08). Nada se produz para antes de segunda: o domingo 30/08 fica como já
+  está na agenda. O feriado de 07/09 é semana 2.
 - Fontes da verdade: as DUAS entradas de cadência da base do cliente
   ("Cadência e rodízio de temas do FEED — X" e a grade de stories), o DNA e o
   padrão de canvas em `design-canvas/`.
@@ -126,9 +128,10 @@ tudo como RASCUNHO para aprovação do Ciro.
 > FECHADA, nunca "venha agora", nunca prometer entrega) e feed pela "Cadência
 > e rodízio de temas do FEED — Wine Vix" (3/semana pelo rodízio de temas
 > dela: evento com data tem prioridade; convite genérico não conta como
-> tema). ⚠️ ANTES do primeiro domingo com 3 stories: o cliente confirmou a
-> grade antiga em 23/08 e precisa ser AVISADO da padronização — confirmar com
-> o Ciro se o domingo novo estreia 30/08 ou 06/09. Padrão de design: pastas
+> tema). O domingo de 3 stories ESTREIA em 06/09 (decisão do Ciro em 29/08 —
+> o dom 30/08 fica no formato antigo, com o story das 9h já agendado); a
+> semana dá tempo de AVISAR o cliente da padronização antes, porque a grade
+> antiga foi confirmada por ele em 23/08. Padrão de design: pastas
 > `design-canvas/winevix-*`. Tudo como rascunho.
 
 ## 8. Empório Fonseca (projeto 12)

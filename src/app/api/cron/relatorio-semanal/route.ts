@@ -1,9 +1,11 @@
 /**
- * Cron: relatório semanal da carteira — toda segunda 08:00 BRT (11:00 UTC).
+ * Cron: relatório semanal da carteira — todo DOMINGO 20:00 BRT (23:00 UTC).
  *
- * Cobre a semana seg–dom que fechou ontem: métricas por cliente, aderência à
- * cadência padrão e sinais de aprendizado. Grava em InstagramWeeklyReport e
- * manda UM resumo no grupo do WhatsApp. Ver src/lib/relatorios/semanal.ts.
+ * Cobre a semana seg–dom que está fechando (o serviço coleta as métricas da
+ * semana na hora, porque o feed de domingo ainda não passou pela coleta
+ * diária): métricas por cliente, aderência à cadência padrão e sinais de
+ * aprendizado. Grava em InstagramWeeklyReport e manda UM resumo no grupo do
+ * WhatsApp. Ver src/lib/relatorios/semanal.ts.
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { gerarRelatorioSemanal } from '@/lib/relatorios/semanal'
@@ -22,8 +24,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const url = new URL(req.url)
+  // Sonda sem efeito: confirma qual versão está no ar antes de um disparo manual.
+  if (url.searchParams.has('probe')) {
+    return NextResponse.json({ versao: 'domingo-20h' })
+  }
+  // ?teste=1 marca a mensagem como envio de teste (disparo manual autorizado).
+  const teste = url.searchParams.has('teste')
+
   try {
-    const resultado = await gerarRelatorioSemanal({ enviarWhatsApp: true })
+    const resultado = await gerarRelatorioSemanal({ enviarWhatsApp: true, teste })
     console.log(
       `[Relatorio Semanal] semana ${resultado.semana}: ${resultado.clientes} clientes, ${resultado.gravados} gravados, WhatsApp ${resultado.enviado ? 'enviado' : 'NÃO enviado'}`,
     )

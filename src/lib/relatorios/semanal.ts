@@ -18,6 +18,7 @@
 
 import { db } from '@/lib/db'
 import { isEvolutionConfigured, sendWhatsAppText } from '@/lib/notifications/evolution'
+import { coletarFeedDeTodos } from '@/lib/instagram/feed-insights'
 
 const FUSO_OFFSET_MS = 3 * 3600_000 // BRT = UTC-3, fixo (sem horário de verão desde 2019)
 const SEMANA_MS = 7 * 24 * 3600_000
@@ -35,20 +36,21 @@ export interface JanelaDaSemana {
   numeroDaSemana: number
 }
 
-/** A última semana COMPLETA (seg–dom, em BRT) antes da referência. */
-export function janelaDaSemanaAnterior(referencia: Date): JanelaDaSemana {
+/** Segunda 00:00 BRT da semana que contém a referência (instante UTC). */
+function inicioDaSemanaBrt(referencia: Date): number {
   const brt = new Date(referencia.getTime() - FUSO_OFFSET_MS)
   // Dia da semana em BRT, com segunda = 0
   const diaDaSemana = (brt.getUTCDay() + 6) % 7
   const meiaNoiteBrt = Date.UTC(brt.getUTCFullYear(), brt.getUTCMonth(), brt.getUTCDate())
-  const segundaDestaSemanaUtc = meiaNoiteBrt - diaDaSemana * 24 * 3600_000 + FUSO_OFFSET_MS
-  const inicio = new Date(segundaDestaSemanaUtc - SEMANA_MS)
-  const fim = new Date(segundaDestaSemanaUtc)
+  return meiaNoiteBrt - diaDaSemana * 24 * 3600_000 + FUSO_OFFSET_MS
+}
 
+function montarJanela(inicioMs: number): JanelaDaSemana {
+  const inicio = new Date(inicioMs)
+  const fim = new Date(inicioMs + SEMANA_MS)
   const fmt = (d: Date) =>
     new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit' }).format(d)
   const ultimoDia = new Date(fim.getTime() - 24 * 3600_000)
-
   return {
     inicio,
     fim,
@@ -56,6 +58,24 @@ export function janelaDaSemanaAnterior(referencia: Date): JanelaDaSemana {
     ano: numeroIso(inicio).ano,
     numeroDaSemana: numeroIso(inicio).semana,
   }
+}
+
+/** A última semana COMPLETA (seg–dom, em BRT) antes da referência. */
+export function janelaDaSemanaAnterior(referencia: Date): JanelaDaSemana {
+  return montarJanela(inicioDaSemanaBrt(referencia) - SEMANA_MS)
+}
+
+/**
+ * A semana que CONTÉM a referência (seg–dom, em BRT).
+ *
+ * É a janela do cron desde que ele passou a rodar DOMINGO 20h (pedido do Ciro
+ * em 29/08/2026): o relatório fecha a semana que está terminando, com o
+ * domingo ainda em curso — por isso o serviço coleta as métricas da semana na
+ * hora antes de calcular, e a mensagem avisa que os números mais recentes
+ * ainda crescem.
+ */
+export function janelaDaSemanaCorrente(referencia: Date): JanelaDaSemana {
+  return montarJanela(inicioDaSemanaBrt(referencia))
 }
 
 /** Número ISO da semana (para as colunas year/weekNumber do relatório). */
@@ -240,7 +260,7 @@ function mensagemDaCarteira(janela: JanelaDaSemana, linhas: LinhaDoCliente[]): s
 
   const semToken = linhas.filter((l) => !l.temMetricas).map((l) => l.nome)
   if (semToken.length) partes.push(`\n⚠️ Sem métricas da conta: ${semToken.join(', ')} — cadastrar o token do Instagram.`)
-  partes.push('\n_Números coletados na segunda de manhã; posts do fim de semana ainda acumulam alcance._')
+  partes.push('\n_Colhido no fecho da semana — os posts mais recentes ainda acumulam alcance._')
 
   return partes.join('\n')
 }
@@ -253,12 +273,23 @@ export interface ResultadoRelatorio {
   mensagem: string
 }
 
-/** Gera o relatório da última semana completa, grava e (opcionalmente) avisa. */
+/** Gera o relatório da semana que está fechando, grava e (opcionalmente) avisa. */
 export async function gerarRelatorioSemanal(opts?: {
   referencia?: Date
   enviarWhatsApp?: boolean
+  /** Marca a mensagem como envio de teste (não substitui o relatório oficial). */
+  teste?: boolean
 }): Promise<ResultadoRelatorio> {
-  const janela = janelaDaSemanaAnterior(opts?.referencia ?? new Date())
+  const janela = janelaDaSemanaCorrente(opts?.referencia ?? new Date())
+
+  // Coleta as métricas da semana NA HORA: rodando domingo à noite, o feed de
+  // domingo ainda não passou pela coleta diária (04:30 BRT) e ficaria de fora.
+  // Falha de coleta não derruba o relatório — ele sai com o que houver.
+  try {
+    await coletarFeedDeTodos({ sinceDays: 8, prazoMs: Date.now() + 180_000 })
+  } catch (erro) {
+    console.error('[relatorio-semanal] coleta pré-relatório falhou (seguindo com o que há):', erro)
+  }
 
   const projetos = await db.project.findMany({
     where: { status: 'ACTIVE' },
@@ -327,7 +358,9 @@ export async function gerarRelatorioSemanal(opts?: {
     }
   }
 
-  const mensagem = mensagemDaCarteira(janela, linhas)
+  const mensagem =
+    (opts?.teste ? '🧪 *Envio de teste* — o relatório oficial sai todo domingo às 20h.\n\n' : '') +
+    mensagemDaCarteira(janela, linhas)
   let enviado = false
   if (opts?.enviarWhatsApp && linhas.length > 0) {
     if (isEvolutionConfigured()) {

@@ -105,7 +105,7 @@
     },
     {
       "path": "/api/cron/relatorio-semanal",
-      "schedule": "0 11 * * 1"
+      "schedule": "0 23 * * 0"
     },
     {
       "path": "/api/cron/verify-stories",
