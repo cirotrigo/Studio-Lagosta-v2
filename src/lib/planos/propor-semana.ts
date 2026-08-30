@@ -49,6 +49,8 @@ import type { FormatoDoItem } from '@/lib/planos/vocabulario'
 import {
   distribuirPilares,
   escolherFotoSemRepetir,
+  montarCandidatasDeFoto,
+  tipoDaPasta,
   completarAteOAlvo,
   diasAteDomingoBRT,
   espalharPorDia,
@@ -57,6 +59,7 @@ import {
   POSTS_POR_DIA_ALVO,
   ROTULO_DE_COLD_START,
   type SlotParaProposta,
+  type TipoDeFoto,
 } from '@/lib/planos/proposta-de-semana'
 
 /**
@@ -83,8 +86,16 @@ function tetoPadrao(dias: number): number {
   return dias * POSTS_POR_DIA_ALVO
 }
 
-/** Fotos pedidas por assunto além do necessário, para haver de onde desviar. */
-const FOLGA_DE_FOTOS = 4
+/**
+ * Fotos pedidas por assunto além do necessário, para haver de onde desviar.
+ *
+ * Era 4; subiu com a semana como conjunto (F3) e as candidatas do card (F4): a
+ * escolha agora desvia também de PASTA repetida e alterna o TIPO, e cada item
+ * ainda oferece até 2 alternativas livres — com 4 de folga a lista esgotava e
+ * as vagas saíam vazias. Custa só o tamanho da página (a busca lê o catálogo
+ * inteiro de qualquer jeito).
+ */
+const FOLGA_DE_FOTOS = 8
 
 export interface ProporSemanaInput {
   projectId: number
@@ -193,10 +204,30 @@ async function registrarSemente(projectId: number, semente: SlotParaProposta[]):
   })
 }
 
-interface FotoEscolhida {
+/** Uma foto como a escolha da leva precisa dela (F3): com pasta e as marcas do ranking. */
+interface FotoDoAcervo {
   driveFileId: string
   fileName?: string
+  folder?: string | null
+  /** Curadoria explícita (F1) — vai no card para a estrela aparecer. */
+  destaque?: boolean
+  /** Sem nenhum sinal e sem uso — candidata à cota de exploração (F4). */
+  vagaDeExploracao?: boolean
+  /** Cópia byte a byte de outra entrada — identidade para "não repetir arquivo". */
+  duplicataDe?: string | null
 }
+
+/**
+ * Uma LISTA do acervo: as fotos ranqueadas + o `LearningSignal` da busca que
+ * as propôs. O id viaja até as candidatas do card — é por ele que a troca
+ * feita lá fecha o desfecho da proposta CERTA (cada busca é uma proposta).
+ */
+interface ListaDeFotos {
+  sugestaoId: string | null
+  fotos: FotoDoAcervo[]
+}
+
+const LISTA_VAZIA: ListaDeFotos = { sugestaoId: null, fotos: [] }
 
 /**
  * Uma busca no acervo POR ASSUNTO, com as listas guardadas por pilar.
@@ -210,19 +241,29 @@ async function buscarFotosPorAssunto(
   projectId: number,
   assuntos: Array<{ chave: string; tema: string | null; quantos: number }>,
   avisos: string[],
-): Promise<{ porAssunto: Map<string, FotoEscolhida[]>; geral: FotoEscolhida[] }> {
-  const porAssunto = new Map<string, FotoEscolhida[]>()
+): Promise<{ porAssunto: Map<string, ListaDeFotos>; geral: ListaDeFotos }> {
+  const porAssunto = new Map<string, ListaDeFotos>()
   let jaAvisou = false
   let acervoIndisponivel = false
 
-  const buscar = async (tema: string | null, quantos: number): Promise<FotoEscolhida[]> => {
+  const buscar = async (tema: string | null, quantos: number): Promise<ListaDeFotos> => {
     try {
       const r = await buscarNoAcervo({
         projectId,
         ...(tema ? { theme: tema } : {}),
         limit: quantos + FOLGA_DE_FOTOS,
       })
-      return r.images.map((i) => ({ driveFileId: i.driveFileId, fileName: i.fileName }))
+      return {
+        sugestaoId: r.sugestaoId ?? null,
+        fotos: r.images.map((i) => ({
+          driveFileId: i.driveFileId,
+          fileName: i.fileName,
+          folder: i.folder ?? null,
+          destaque: i.destaque,
+          vagaDeExploracao: i.vagaDeExploracao,
+          duplicataDe: i.duplicataDe ?? null,
+        })),
+      }
     } catch (erro) {
       // Tema sem foto nenhuma é comum e não merece aviso por assunto; o que
       // merece é o acervo INTEIRO indisponível, e uma vez só.
@@ -238,7 +279,7 @@ async function buscarFotosPorAssunto(
       } else {
         console.warn('[propor-semana] busca no acervo falhou:', erro)
       }
-      return []
+      return LISTA_VAZIA
     }
   }
 
@@ -248,8 +289,7 @@ async function buscarFotosPorAssunto(
   /**
    * O acervo INTEIRO, ranqueado, como rede de segurança.
    *
-   * O casamento por tema é por substring (`bestFor`, tags, caminho da pasta), e
-   * um assunto legítimo do cliente pode não casar com nada — medido no By Rock:
+   * Um assunto legítimo do cliente pode não casar com nada — medido no By Rock:
    * "Cortes e churrasco" devolveu zero num acervo de mil fotos. Item sem
    * imagem é item que não vira arte pela via de IA, então é melhor oferecer a
    * próxima do rodízio e deixar a pessoa trocar no card (a leva avisa quando
@@ -257,11 +297,13 @@ async function buscarFotosPorAssunto(
    *
    * Só é buscado quando falta alguém — e nunca quando o acervo está fora do ar.
    */
-  const faltaAlguem = assuntos.some((a) => (porAssunto.get(a.chave) ?? []).length === 0)
+  const faltaAlguem = assuntos.some(
+    (a) => (porAssunto.get(a.chave) ?? LISTA_VAZIA).fotos.length === 0,
+  )
   const geral =
     faltaAlguem && !acervoIndisponivel
       ? await buscar(null, assuntos.reduce((t, a) => t + a.quantos, 0))
-      : []
+      : LISTA_VAZIA
 
   return { porAssunto, geral }
 }
@@ -425,22 +467,49 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
     avisos,
   )
 
+  /**
+   * A semana como CONJUNTO (F3): além de não repetir o arquivo, a escolha
+   * desvia de PASTA já usada (duas picanhas da mesma sessão em dias seguidos
+   * são repetição) e alterna o TIPO — prato/ambiente/pessoas — em relação ao
+   * slot anterior, como desempate suave entre as livres. E cada item guarda as
+   * candidatas do card (F4): a escolhida + até 2 alternativas da MESMA lista,
+   * com uma vaga reservada à exploração.
+   *
+   * A leva de hoje é sempre de PEÇA ÚNICA — `propor-semana` não emite
+   * carrossel (nenhum item nasce com `slides`), então "slides irmãos da mesma
+   * pasta" (F3.3) não tem onde valer ainda.
+   */
   const fotosUsadas = new Set<string>()
+  const pastasUsadas = new Set<string>()
+  let tipoAnterior: TipoDeFoto | null = null
   let fotosForaDoAssunto = 0
   const fotoDoItem = slots.map((_, i) => {
     const chave = assuntos[i]?.slug ?? ''
-    const doAssunto = fotosPorAssunto.get(chave) ?? []
-    let escolhida = escolherFotoSemRepetir(doAssunto, fotosUsadas)
+    let lista = fotosPorAssunto.get(chave) ?? LISTA_VAZIA
+    let escolhida = escolherFotoSemRepetir(lista.fotos, fotosUsadas, { pastasUsadas, tipoAnterior })
     if (!escolhida) {
-      escolhida = escolherFotoSemRepetir(fotosGerais, fotosUsadas)
+      lista = fotosGerais
+      escolhida = escolherFotoSemRepetir(lista.fotos, fotosUsadas, { pastasUsadas, tipoAnterior })
       if (escolhida) fotosForaDoAssunto += 1
     }
-    if (escolhida) fotosUsadas.add(escolhida.driveFileId)
-    return escolhida
+    if (!escolhida) return null
+    // As candidatas saem ANTES de marcar a escolhida como usada — o `jaUsadas`
+    // aqui é o estado da leva no momento da escolha, e a escolhida é excluída
+    // das alternativas pelo próprio montador.
+    const candidatas = montarCandidatasDeFoto(lista.fotos, escolhida, {
+      jaUsadas: fotosUsadas,
+      sugestaoId: lista.sugestaoId,
+    })
+    fotosUsadas.add(escolhida.driveFileId)
+    if (escolhida.folder) pastasUsadas.add(escolhida.folder)
+    // Estritamente o slot ANTERIOR: pasta sem tipo inferível zera a
+    // preferência (null nunca vira trava nem palpite).
+    tipoAnterior = tipoDaPasta(escolhida.folder ?? null)
+    return { escolhida, candidatas }
   })
   if (fotosForaDoAssunto > 0) {
     avisos.push(
-      `${fotosForaDoAssunto} post(s) ficaram com uma foto do acervo geral porque não achei foto do assunto — vale conferir e trocar no card.`,
+      `${fotosForaDoAssunto} post(s) ficaram com uma foto do acervo geral porque não achei foto do assunto — vale conferir e trocar no card — ou gerar a cena por IA na bancada.`,
     )
   }
 
@@ -486,13 +555,18 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
     const dica = dicaPorRef.get(s.scheduledDatetime)
     const assunto = assuntos[i]
     const modelo = modeloDoItem[i]
+    const foto = fotoDoItem[i]
     return {
       ordem: i,
       quando: s.scheduledDatetime,
       tema: assunto?.nome ?? null,
       copyProposta: dica?.blocos ?? null,
       legenda: dica?.legenda ?? null,
-      fotoDriveId: fotoDoItem[i]?.driveFileId ?? null,
+      fotoDriveId: foto?.escolhida.driveFileId ?? null,
+      // As candidatas do card (F4): a escolhida é a primeira. O `sugestaoId`
+      // DELAS é o da BUSCA no acervo (sinal de foto) — não confundir com o
+      // `sugestaoId` do item, que é o do SLOT (ver o 🔴 abaixo).
+      ...(foto && foto.candidatas.length > 0 ? { fotoCandidatas: foto.candidatas } : {}),
       formato,
       // A via é consequência do que existe: com modelo do cliente, a arte nasce
       // sem gastar crédito de imagem; sem ele, só a IA resolve. É a escolha que

@@ -15,6 +15,7 @@ import {
   situacaoQueVence,
   statusMaisAvancado,
   temTrabalhoNoServidor,
+  type BancadaItemComCandidatas,
   type ItemDePlanoDoServidor,
   type PlanoDoServidor,
 } from '../para-bancada'
@@ -603,19 +604,39 @@ describe('fundirComOLocal — a direção editada sobrevive à hidratação', ()
 
 
 describe('mesclarReferencias', () => {
-  const ref = (papel: string, key: string) =>
-    ({ papel, driveFileId: key, thumbUrl: `/t/${key}` }) as never
+  const ref = (papel: string, key: string, extra: Record<string, unknown> = {}) =>
+    ({ papel, driveFileId: key, thumbUrl: `/t/${key}`, ...extra }) as never
 
-  it('a foto da cena vem do servidor; âncoras e estilo ficam do navegador', () => {
+  /**
+   * Desde 23/08/2026 o servidor carrega a LISTA INTEIRA (coluna `referencias`)
+   * e manda no CONTEÚDO — âncora local sem estrela NÃO sobrevive mais (a
+   * expectativa antiga era do mundo de uma-foto-só e escondia o print vindo do
+   * servidor). Só fica do navegador o que o servidor nunca recebe por desenho:
+   * a arte de referência estrelada (`style` + `generationId`). Este teste
+   * estava desatualizado e foi realinhado em 30/08/2026 — a suíte inteira do
+   * diretório voltou a rodar junto com a F3/F4 das fotos.
+   */
+  it('a lista do servidor vence; do navegador só sobrevive a arte estrelada', () => {
     const fila = mesclarReferencias(
-      [ref('subject', 'velha'), ref('anchor-ambient', 'amb'), ref('style', 'sty')],
+      [
+        ref('subject', 'velha'),
+        ref('anchor-ambient', 'amb'),
+        ref('style', 'sty', { generationId: 'gen-estrela' }),
+      ],
       [ref('subject', 'nova')],
     )
     expect(fila.map((r) => (r as { driveFileId: string }).driveFileId)).toEqual([
       'nova',
-      'amb',
       'sty',
     ])
+  })
+
+  it('estilo sem generationId é foto de acervo — o servidor manda nele também', () => {
+    const fila = mesclarReferencias(
+      [ref('subject', 'velha'), ref('style', 'sty')],
+      [ref('subject', 'nova')],
+    )
+    expect(fila.map((r) => (r as { driveFileId: string }).driveFileId)).toEqual(['nova'])
   })
 
   it('servidor sem foto não apaga a cena local', () => {
@@ -683,6 +704,65 @@ describe('carrossel no plano — tradução e fusão', () => {
     const fila = mesclarSlides(locais, doServ)!
     expect(fila[0].generationId).toBe('g-novo')
     expect(fila[0].resultUrl).toBe('https://b/nova.png')
+  })
+})
+
+
+describe('fotoCandidatas — as candidatas de foto chegam ao card (F4)', () => {
+  const candidatas = [
+    { driveFileId: 'd1', fileName: 'picanha.jpg', vaga: 'score', sugestaoId: 'sig-foto' },
+    { driveFileId: 'd2', fileName: 'salao.jpg', vaga: 'exploracao', sugestaoId: 'sig-foto' },
+  ]
+
+  it('o item do plano entrega as candidatas ao card, na ordem da emissão', () => {
+    const card = paraItemDaBancada(doServidor({ fotoCandidatas: candidatas }), plano([]), AGORA)
+    expect(card.fotoCandidatas).toEqual([
+      { driveFileId: 'd1', fileName: 'picanha.jpg', vaga: 'score', sugestaoId: 'sig-foto' },
+      { driveFileId: 'd2', fileName: 'salao.jpg', vaga: 'exploracao', sugestaoId: 'sig-foto' },
+    ])
+  })
+
+  it('campo ausente ou lixo não inventa candidata', () => {
+    expect(paraItemDaBancada(doServidor(), plano([]), AGORA).fotoCandidatas).toBeUndefined()
+    expect(
+      paraItemDaBancada(doServidor({ fotoCandidatas: 'lixo' }), plano([]), AGORA).fotoCandidatas,
+    ).toBeUndefined()
+  })
+
+  it('na fusão o servidor manda — a lista da emissão vence a cópia local', () => {
+    const meu: BancadaItemComCandidatas = {
+      ...local({ status: 'rascunho' }),
+      fotoCandidatas: [{ driveFileId: 'velha', fileName: null, vaga: 'score', sugestaoId: null }],
+    }
+    const fundido = fundirComOLocal(
+      meu,
+      paraItemDaBancada(doServidor({ fotoCandidatas: candidatas }), plano([]), AGORA),
+      AGORA,
+    )
+    expect(fundido.fotoCandidatas?.map((c) => c.driveFileId)).toEqual(['d1', 'd2'])
+  })
+
+  it('candidatas atualizadas no servidor chegam sem recriar a fila inteira', () => {
+    const primeira = hidratarItens([], plano([doServidor({ fotoCandidatas: candidatas })]), 7, AGORA)
+    const segunda = hidratarItens(
+      primeira,
+      plano([doServidor({ fotoCandidatas: [candidatas[0]] })]),
+      7,
+      AGORA,
+    )
+    expect(segunda).not.toBe(primeira)
+    expect((segunda[0] as BancadaItemComCandidatas).fotoCandidatas).toHaveLength(1)
+  })
+
+  it('hidratar de novo com as mesmas candidatas preserva a referência', () => {
+    const primeira = hidratarItens([], plano([doServidor({ fotoCandidatas: candidatas })]), 7, AGORA)
+    const segunda = hidratarItens(
+      primeira,
+      plano([doServidor({ fotoCandidatas: candidatas.map((c) => ({ ...c })) })]),
+      7,
+      AGORA,
+    )
+    expect(segunda).toBe(primeira)
   })
 })
 

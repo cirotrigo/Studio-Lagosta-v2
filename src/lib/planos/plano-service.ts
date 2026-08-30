@@ -21,7 +21,7 @@
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
-import { diaBRTDe, diasAteDomingoBRT } from './proposta-de-semana'
+import { diaBRTDe, diasAteDomingoBRT, lerFotoCandidatas } from './proposta-de-semana'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import {
@@ -92,6 +92,14 @@ export interface ItemDePlanoInput {
   referencias?: unknown
   /** Co-branding: projeto do cliente CITADO, cuja logo oficial é composta na arte. */
   clienteProjectId?: number | null
+  /**
+   * Top-3 candidatas de foto da emissão (F4): a escolhida primeiro + até 2
+   * alternativas, `[{ driveFileId, fileName?, vaga: 'score' | 'exploracao',
+   * sugestaoId? }]`. Payload do card, lido DEFENSIVAMENTE
+   * (`lerFotoCandidatas`) — entrada inválida é descartada, nunca derruba a
+   * leva: a verdade do que foi OFERECIDO mora no `LearningSignal`.
+   */
+  fotoCandidatas?: unknown
   motivoDoSlot?: string | null
   escopo?: string | EscopoAprendizado | null
   campaignId?: string | null
@@ -413,6 +421,10 @@ function normalizarItem(
   const referencias = normalizarReferencias(entrada.referencias, `item ${posicao}`)
   const cena = referencias ? cenaDasReferencias(referencias) : null
 
+  // Candidatas do card (F4): leitura defensiva, nunca recusa — candidata é
+  // conveniência de UI, e derrubar uma leva por causa dela inverteria o peso.
+  const fotoCandidatas = lerFotoCandidatas(entrada.fotoCandidatas)
+
   return {
     ordem: Number.isInteger(entrada.ordem) ? (entrada.ordem as number) : indice,
     quando,
@@ -422,6 +434,9 @@ function normalizarItem(
     fotoUrl: referencias ? (cena?.url ?? null) : entrada.fotoUrl?.trim() || null,
     fotoDriveId: referencias ? (cena?.driveFileId ?? null) : entrada.fotoDriveId?.trim() || null,
     ...(referencias ? { referencias: referencias as unknown as Prisma.InputJsonValue } : {}),
+    ...(fotoCandidatas.length > 0
+      ? { fotoCandidatas: fotoCandidatas as unknown as Prisma.InputJsonValue }
+      : {}),
     formato: formato as FormatoDoItem,
     via,
     sourcePageId: entrada.sourcePageId?.trim() || null,

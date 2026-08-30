@@ -378,27 +378,223 @@ export function distribuirPilares(
 
 // ── Foto de cada slot ───────────────────────────────────────────────────────
 
+/** Os três tipos de foto que a semana alterna (F3.2). */
+export type TipoDeFoto = 'prato' | 'ambiente' | 'pessoas'
+
+/**
+ * A ordem importa: prato primeiro, porque "cardápio de mesa" é comida, não
+ * salão. O casamento é por PREFIXO de token ("cortes" casa "corte"), nunca por
+ * substring da pasta inteira — substring faria "05_sobremesas" virar ambiente
+ * por conter "mesa".
+ */
+const TIPO_POR_PALAVRA: Array<[TipoDeFoto, string[]]> = [
+  ['prato', ['corte', 'prato', 'comida', 'menu', 'gastronomia', 'cardapio']],
+  ['ambiente', ['ambiente', 'salao', 'fachada', 'espaco', 'area', 'mesa']],
+  ['pessoas', ['pessoa', 'equipe', 'cliente', 'time']],
+]
+
+/**
+ * O tipo de uma foto pela heurística mais barata que existe: o PRIMEIRO NÍVEL
+ * da pasta, que é como todos os acervos se organizam ("01_cortes",
+ * "02_ambiente"…). Quando não dá para inferir, devolve `null` — e null nunca
+ * bloqueia nada: a alternância de tipo é preferência, não trava.
+ */
+export function tipoDaPasta(folder: string | null | undefined): TipoDeFoto | null {
+  const primeiroNivel = (folder ?? '').split('/')[0] ?? ''
+  const tokens = primeiroNivel
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // "salão"/"cardápio" casam sem acento
+    .toLowerCase()
+    .split(/[^a-z]+/) // dígito, "_", "-" e espaço separam ("01_cortes" → "cortes")
+    .filter(Boolean)
+  for (const [tipo, palavras] of TIPO_POR_PALAVRA) {
+    if (tokens.some((t) => palavras.some((p) => t.startsWith(p)))) return tipo
+  }
+  return null
+}
+
+export interface OpcoesDeEscolhaDeFoto {
+  /** Pastas já usadas na leva (F3.1) — duas picanhas da MESMA SESSÃO em dias seguidos também são repetição. */
+  pastasUsadas?: Set<string>
+  /** O tipo da foto do slot ANTERIOR (F3.2) — a semana alterna prato/ambiente/pessoas quando dá. */
+  tipoAnterior?: TipoDeFoto | null
+}
+
 /**
  * A foto do item: a MELHOR RANQUEADA que ainda não entrou na leva.
  *
- * O acervo já devolve as fotos em rodízio (menos usada recentemente primeiro),
- * então o topo de cada lista é a recomendação do sistema. Descer na lista é
- * exceção, e existe por um motivo só: a mesma foto duas vezes na mesma semana
- * é o defeito que mais salta aos olhos de quem revisa.
+ * O acervo devolve as fotos ranqueadas, então o topo de cada lista é a
+ * recomendação do sistema. Descer na lista é exceção, em camadas de força
+ * decrescente:
  *
- * 🔴 Descer tem um custo que vale registrar: quando a arte é criada,
- * `fecharSugestaoDeFoto` fecha a proposta como `trocada` sempre que a foto
- * usada não é o topo — e aqui quem trocou foi o SISTEMA, não a pessoa. Por
- * isso a regra é conservadora (só desce quando repetiria), e por isso cada
- * pilar tem a SUA busca: listas diferentes já dão variedade sem descer.
+ *  1. foto livre em PASTA livre — arquivo e sessão inéditos na leva;
+ *  2. foto livre em pasta repetida — repetir a sessão é menos ruim que repetir
+ *     o arquivo;
+ *  3. repetir a primeira — item sem imagem não vira arte, e repetir é um
+ *     defeito visível e corrigível.
+ *
+ * Dentro da camada escolhida, o TIPO desempata (soft): entre as livres, a
+ * primeira de tipo diferente do slot anterior vence o topo — é o que faz a
+ * semana alternar prato/ambiente/pessoas em vez de sair toda de close de
+ * prato. Tipo não inferível (`null`) nunca bloqueia nem vence: sem alternativa
+ * de tipo diferente, vale o topo da camada.
+ *
+ * 🔴 Descer na lista JÁ NÃO polui o sinal (consertado em 30/08/2026): a arte
+ * nascida de item de plano fecha a sugestão de foto comparando com a foto DO
+ * CARD (`fotoDoCard` em `createArteRapida`, que `executar-plano` preenche com
+ * `item.fotoDriveId`) — aceitar o que o card mostrou é `aceita-como-veio`
+ * mesmo quando quem desceu na lista foi o sistema. `trocada` voltou a
+ * significar o que diz: uma troca que a PESSOA fez.
  */
-export function escolherFotoSemRepetir<T extends { driveFileId: string }>(
+export function escolherFotoSemRepetir<T extends { driveFileId: string; folder?: string | null }>(
   candidatas: T[],
   jaUsadas: Set<string>,
+  opcoes: OpcoesDeEscolhaDeFoto = {},
 ): T | null {
   if (candidatas.length === 0) return null
-  const livre = candidatas.find((c) => !jaUsadas.has(c.driveFileId))
-  // Todas já usadas: repete a primeira em vez de deixar o item sem foto — item
-  // sem imagem não vira arte, e repetir é um defeito visível e corrigível.
-  return livre ?? candidatas[0]
+  const livres = candidatas.filter((c) => !jaUsadas.has(c.driveFileId))
+  if (livres.length === 0) return candidatas[0]
+
+  const pastas = opcoes.pastasUsadas
+  // Foto sem pasta não tem sessão para repetir — conta como pasta livre.
+  const emPastaLivre = pastas ? livres.filter((c) => !c.folder || !pastas.has(c.folder)) : livres
+  const camada = emPastaLivre.length > 0 ? emPastaLivre : livres
+
+  const anterior = opcoes.tipoAnterior ?? null
+  if (anterior) {
+    const alterna = camada.find((c) => {
+      const tipo = tipoDaPasta(c.folder ?? null)
+      return tipo !== null && tipo !== anterior
+    })
+    if (alterna) return alterna
+  }
+  return camada[0]
+}
+
+// ── Candidatas do card (F4, lado dado) ──────────────────────────────────────
+
+/** Quantas fotos um card oferece: a escolhida + até 2 alternativas. */
+export const MAX_CANDIDATAS_DO_CARD = 3
+
+/**
+ * Por que a foto ocupa a vaga: `score` veio do ranqueamento; `exploracao` é a
+ * cota da foto nova/nunca-proposta — o que impede o ranking aprendido de
+ * ossificar em cima das mesmas provadas.
+ */
+export type VagaDeCandidata = 'score' | 'exploracao'
+
+/**
+ * Uma candidata como o `ItemDePlano.fotoCandidatas` guarda. A escolhida é a
+ * PRIMEIRA da lista; o card troca com um toque entre elas. `sugestaoId` é o
+ * `LearningSignal` da BUSCA que propôs a lista (tipo `foto`) — é por ele que a
+ * troca no card fecha o desfecho da proposta certa.
+ */
+export interface CandidataDeFoto {
+  driveFileId: string
+  fileName?: string | null
+  vaga: VagaDeCandidata
+  sugestaoId?: string | null
+}
+
+/** O que a montagem das candidatas precisa saber de cada foto da lista. */
+export interface FotoParaCandidatura {
+  driveFileId: string
+  fileName?: string | null
+  folder?: string | null
+  /** Sem nenhum sinal e sem uso registrado — candidata à cota de exploração. */
+  vagaDeExploracao?: boolean
+  /** Cópia byte a byte de outra entrada — a identidade para "não repetir arquivo". */
+  duplicataDe?: string | null
+}
+
+/** Duplicata byte a byte É o mesmo arquivo para efeito de repetição. */
+function identidadeDoArquivo(f: FotoParaCandidatura): string {
+  return f.duplicataDe ?? f.driveFileId
+}
+
+/**
+ * As candidatas do card: a escolhida + até 2 alternativas da MESMA lista.
+ *
+ * As alternativas são LIVRES (não usadas na leva, não repetidas entre si — a
+ * duplicata byte a byte conta como o mesmo arquivo) e, quando possível, de
+ * pastas que ainda não apareceram entre as candidatas; faltando pasta nova, a
+ * repetida entra — vaga vazia seria pior.
+ *
+ * **Uma das 3 vagas é reservada à exploração**: se nenhuma candidata é
+ * `vagaDeExploracao`, a primeira foto livre marcada assim na lista toma a
+ * última vaga (nunca a da escolhida). Se a escolhida — ou uma alternativa que
+ * o score já trouxe — é exploração, a cota está paga e ninguém força outra.
+ *
+ * A `vaga` de cada candidata descreve a natureza dela (`exploracao` quando a
+ * foto é nova/nunca-proposta), inclusive na escolhida — "conforme o caso".
+ */
+export function montarCandidatasDeFoto(
+  lista: FotoParaCandidatura[],
+  escolhida: FotoParaCandidatura,
+  opcoes: { jaUsadas: Set<string>; sugestaoId?: string | null },
+): CandidataDeFoto[] {
+  const sugestaoId = opcoes.sugestaoId ?? null
+  const escolhidas: FotoParaCandidatura[] = [escolhida]
+  const arquivos = new Set([identidadeDoArquivo(escolhida), escolhida.driveFileId])
+  const pastas = new Set(escolhida.folder ? [escolhida.folder] : [])
+
+  const livre = (f: FotoParaCandidatura) =>
+    !arquivos.has(identidadeDoArquivo(f)) &&
+    !arquivos.has(f.driveFileId) &&
+    !opcoes.jaUsadas.has(f.driveFileId)
+
+  // Duas passadas: primeiro só pasta inédita; depois o que faltar — "sem
+  // repetir pasta SE POSSÍVEL" nunca pode custar uma vaga vazia.
+  for (const exigePastaNova of [true, false]) {
+    for (const f of lista) {
+      if (escolhidas.length >= MAX_CANDIDATAS_DO_CARD) break
+      if (!livre(f)) continue
+      if (exigePastaNova && f.folder && pastas.has(f.folder)) continue
+      escolhidas.push(f)
+      arquivos.add(identidadeDoArquivo(f))
+      arquivos.add(f.driveFileId)
+      if (f.folder) pastas.add(f.folder)
+    }
+  }
+
+  if (!escolhidas.some((f) => f.vagaDeExploracao)) {
+    const exploracao = lista.find((f) => f.vagaDeExploracao && livre(f))
+    if (exploracao) {
+      // Sai a última alternativa do score — nunca a escolhida, que é a 1ª.
+      if (escolhidas.length >= MAX_CANDIDATAS_DO_CARD) escolhidas.pop()
+      escolhidas.push(exploracao)
+    }
+  }
+
+  return escolhidas.map((f) => ({
+    driveFileId: f.driveFileId,
+    fileName: f.fileName ?? null,
+    vaga: f.vagaDeExploracao ? 'exploracao' : 'score',
+    sugestaoId,
+  }))
+}
+
+/**
+ * O `fotoCandidatas` gravado no item, lido DEFENSIVAMENTE: o campo é Json e o
+ * leitor pode encontrar qualquer coisa. Entrada sem `driveFileId` some, `vaga`
+ * desconhecida vira `score` — inválido nunca derruba a tela nem a leva, porque
+ * a verdade do que foi proposto mora no `LearningSignal`, não aqui.
+ */
+export function lerFotoCandidatas(bruto: unknown): CandidataDeFoto[] {
+  if (!Array.isArray(bruto)) return []
+  const saida: CandidataDeFoto[] = []
+  for (const item of bruto) {
+    if (!item || typeof item !== 'object') continue
+    const c = item as Record<string, unknown>
+    const driveFileId = typeof c.driveFileId === 'string' ? c.driveFileId.trim() : ''
+    if (!driveFileId) continue
+    saida.push({
+      driveFileId,
+      fileName: typeof c.fileName === 'string' && c.fileName.trim() ? c.fileName.trim() : null,
+      vaga: c.vaga === 'exploracao' ? 'exploracao' : 'score',
+      sugestaoId:
+        typeof c.sugestaoId === 'string' && c.sugestaoId.trim() ? c.sugestaoId.trim() : null,
+    })
+  }
+  return saida
 }

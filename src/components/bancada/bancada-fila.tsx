@@ -34,7 +34,15 @@ import {
 } from '@/hooks/use-planos'
 import { itemExecutavel } from '@/lib/planos/execucao'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
-import { formatarQuandoBR, ordenarPorDataDesc, referenciasParaServidor, situacaoParaExibir } from '@/lib/planos/para-bancada'
+import {
+  formatarQuandoBR,
+  ordenarPorDataDesc,
+  referenciasParaServidor,
+  situacaoParaExibir,
+  type BancadaItemComCandidatas,
+} from '@/lib/planos/para-bancada'
+import type { CandidataDeFoto } from '@/lib/planos/proposta-de-semana'
+import { FotoCandidatas } from '@/components/bancada/foto-candidatas'
 import { BancadaEditarItem, type EdicaoDoItem } from '@/components/bancada/bancada-editar-item'
 import {
   BancadaEscolhaDeModelo,
@@ -308,6 +316,54 @@ export function BancadaFila({ projectId }: { projectId: number }) {
     [atualizar, patchDoPlano],
   )
   /**
+   * A troca de foto em 1 toque (F4): AÇÃO do usuário, pela MESMA via da edição
+   * do card — o store primeiro (a tela responde na hora) e o PATCH do item
+   * junto, porque a hidratação reescreve as referências com o que o servidor
+   * tem ("o servidor manda no CONTEÚDO"): uma troca só-local seria desfeita no
+   * refetch seguinte. A cena é substituída NO LUGAR; âncoras e a arte de
+   * referência estrelada ficam como estão. O sinal de aprendizado é postado
+   * pelo próprio `FotoCandidatas` — aqui é só a foto.
+   */
+  const trocarFoto = React.useCallback(
+    (item: BancadaItem, candidata: CandidataDeFoto) => {
+      const nova = {
+        papel: 'subject' as const,
+        driveFileId: candidata.driveFileId,
+        ...(candidata.fileName ? { label: candidata.fileName } : {}),
+        // Mesma derivação do seletor completo: foto do acervo não tem URL
+        // própria, a miniatura sai da rota de thumbnail com `size` explícito.
+        thumbUrl: `/api/drive/thumbnail/${candidata.driveFileId}?size=400`,
+      }
+      const referencias = item.referencias.some((r) => r.papel === 'subject')
+        ? item.referencias.map((r) => (r.papel === 'subject' ? nova : r))
+        : [nova, ...item.referencias]
+      atualizar(item.id, { referencias })
+      if (item.itemDePlanoId && item.planoId && itemEditavel(situacaoParaExibir(item))) {
+        patchDoPlano.mutate(
+          {
+            planoId: item.planoId,
+            itemId: item.itemDePlanoId,
+            fotoDriveId: candidata.driveFileId,
+            fotoUrl: null,
+            referencias: referenciasParaServidor(referencias),
+          },
+          {
+            onError: () => {
+              toast({
+                title: 'A troca não chegou à equipe',
+                description:
+                  'A foto mudou só neste navegador — os outros ainda veem a anterior. Confira a conexão e troque de novo.',
+                variant: 'destructive',
+              })
+            },
+          },
+        )
+      }
+    },
+    [atualizar, patchDoPlano, toast],
+  )
+
+  /**
    * A leva combinada no servidor entra na MESMA fila — é o que faz o chat e a
    * bancada enxergarem o mesmo trabalho. A hidratação acontece dentro deste
    * hook; o que volta aqui serve só ao cabeçalho.
@@ -476,6 +532,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           onRemover={() => descartar(item)}
           onDuplicar={item.tipo === 'carrossel' ? undefined : () => duplicar(item)}
           onSalvarEdicao={(e) => salvarEdicao(item, e)}
+          onTrocarFoto={(candidata) => trocarFoto(item, candidata)}
         />
       ))}
     </div>
@@ -493,6 +550,7 @@ function Card({
   onRemover,
   onDuplicar,
   onSalvarEdicao,
+  onTrocarFoto,
 }: {
   item: BancadaItem
   projectId: number
@@ -512,6 +570,8 @@ function Card({
    */
   onDuplicar?: () => void
   onSalvarEdicao: (e: EdicaoDoItem) => void
+  /** F4: trocar a foto do item por uma candidata da emissão, em 1 toque. */
+  onTrocarFoto: (candidata: CandidataDeFoto) => void
 }) {
   const [quando, setQuando] = React.useState(() => paraInputs(item.quando))
   /**
@@ -525,6 +585,13 @@ function Card({
     () => (item.slides ?? []).slice().sort((a, b) => a.ordem - b.ordem),
     [item.slides],
   )
+  /**
+   * As candidatas de foto da emissão (F4). O tipo do store não declara o campo
+   * de propósito — ele atravessa a hidratação pelo transporte
+   * `BancadaItemComCandidatas` (ver `para-bancada.ts`). Item sem candidatas
+   * (plano antigo, item montado à mão): nada muda no card.
+   */
+  const fotoCandidatas = (item as BancadaItemComCandidatas).fotoCandidatas ?? []
   const capa = ehCarrossel
     ? (slides[0]?.resultUrl ?? slides[0]?.referencia.thumbUrl)
     : (item.resultUrl ?? item.referencias.find((r) => r.papel === 'subject')?.thumbUrl)
@@ -734,6 +801,23 @@ function Card({
         </p>
         {!ehCarrossel && item.copy.length > 1 && (
           <p className="truncate text-xs text-muted-foreground">{item.copy.slice(1).join(' · ')}</p>
+        )}
+
+        {/* A fileira de candidatas (F4): trocar a foto custa 1 toque; o
+            seletor completo fica atrás do "ver mais" (o modal de edição).
+            Só em card ainda editável — depois que a arte existe, trocar a
+            foto aqui não mudaria nada (e o PATCH seria recusado). Com 1
+            candidata só não houve alternativa: a fileira não aparece. */}
+        {podeEditar && fotoCandidatas.length >= 2 && (
+          <FotoCandidatas
+            projectId={projectId}
+            candidatas={fotoCandidatas}
+            ativaDriveFileId={
+              item.referencias.find((r) => r.papel === 'subject')?.driveFileId ?? null
+            }
+            onTrocar={onTrocarFoto}
+            onVerMais={() => setEditando(true)}
+          />
         )}
 
         {ehCarrossel && slides.length > 0 && (

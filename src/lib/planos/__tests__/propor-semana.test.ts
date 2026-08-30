@@ -13,6 +13,9 @@ import { describe, expect, it } from 'vitest'
 import {
   distribuirPilares,
   escolherFotoSemRepetir,
+  lerFotoCandidatas,
+  montarCandidatasDeFoto,
+  tipoDaPasta,
   espalharPorDia,
   completarAteOAlvo,
   diasAteDomingoBRT,
@@ -21,6 +24,7 @@ import {
   POSTS_POR_DIA_ALVO,
   ROTULO_DE_COLD_START,
   ROTULO_DE_COMPLEMENTO,
+  type FotoParaCandidatura,
 } from '@/lib/planos/proposta-de-semana'
 
 const PILARES = [
@@ -144,6 +148,231 @@ describe('escolherFotoSemRepetir', () => {
 
   it('acervo vazio devolve null', () => {
     expect(escolherFotoSemRepetir([], new Set())).toBeNull()
+  })
+})
+
+describe('tipoDaPasta', () => {
+  it('lê o tipo pelo PRIMEIRO nível da pasta', () => {
+    expect(tipoDaPasta('01_cortes/picanha-bovina')).toBe('prato')
+    expect(tipoDaPasta('02_ambiente/salao')).toBe('ambiente')
+    expect(tipoDaPasta('equipe')).toBe('pessoas')
+  })
+
+  it('normaliza acento e caixa', () => {
+    expect(tipoDaPasta('Cardápio')).toBe('prato')
+    expect(tipoDaPasta('Salão')).toBe('ambiente')
+    expect(tipoDaPasta('Área Externa')).toBe('ambiente')
+  })
+
+  it('cliente e time também são pessoas', () => {
+    expect(tipoDaPasta('Fotos - Clientes')).toBe('pessoas')
+    expect(tipoDaPasta('03_time')).toBe('pessoas')
+  })
+
+  /**
+   * 🔴 O casamento é por PREFIXO de token, nunca substring da pasta inteira:
+   * substring faria a pasta de sobremesas virar "ambiente" por conter "mesa".
+   */
+  it('"sobremesas" não vira ambiente por conter "mesa"', () => {
+    expect(tipoDaPasta('05_sobremesas')).toBeNull()
+    expect(tipoDaPasta('04_mesas')).toBe('ambiente')
+  })
+
+  it('quando não dá para inferir, devolve null — nunca chuta', () => {
+    expect(tipoDaPasta('99_promocoes')).toBeNull()
+    expect(tipoDaPasta('')).toBeNull()
+    expect(tipoDaPasta(null)).toBeNull()
+    expect(tipoDaPasta(undefined)).toBeNull()
+  })
+
+  it('só o primeiro nível decide — subpasta não muda o tipo', () => {
+    expect(tipoDaPasta('eventos/mesa-posta')).toBeNull()
+  })
+})
+
+describe('escolherFotoSemRepetir — a semana como conjunto (F3)', () => {
+  const foto = (driveFileId: string, folder?: string) => ({ driveFileId, folder })
+
+  it('prefere pasta que a leva ainda não usou', () => {
+    const lista = [foto('a', '01_cortes'), foto('b', '01_cortes'), foto('c', '02_ambiente')]
+    const escolhida = escolherFotoSemRepetir(lista, new Set(), {
+      pastasUsadas: new Set(['01_cortes']),
+    })
+    expect(escolhida?.driveFileId).toBe('c')
+  })
+
+  it('faltando pasta nova, foto livre em pasta repetida vence repetir arquivo', () => {
+    const lista = [foto('a', '01_cortes'), foto('b', '01_cortes')]
+    const escolhida = escolherFotoSemRepetir(lista, new Set(['a']), {
+      pastasUsadas: new Set(['01_cortes']),
+    })
+    expect(escolhida?.driveFileId).toBe('b')
+  })
+
+  it('tudo usado repete a primeira — item sem imagem não vira arte', () => {
+    const lista = [foto('a', '01_cortes'), foto('b', '02_ambiente')]
+    const escolhida = escolherFotoSemRepetir(lista, new Set(['a', 'b']), {
+      pastasUsadas: new Set(['01_cortes', '02_ambiente']),
+    })
+    expect(escolhida?.driveFileId).toBe('a')
+  })
+
+  it('foto sem pasta conta como pasta livre', () => {
+    const lista = [foto('a', '01_cortes'), foto('b')]
+    const escolhida = escolherFotoSemRepetir(lista, new Set(), {
+      pastasUsadas: new Set(['01_cortes']),
+    })
+    expect(escolhida?.driveFileId).toBe('b')
+  })
+
+  it('alterna o tipo em relação ao slot anterior', () => {
+    const lista = [foto('a', '01_cortes'), foto('b', '02_ambiente')]
+    expect(
+      escolherFotoSemRepetir(lista, new Set(), { tipoAnterior: 'prato' })?.driveFileId,
+    ).toBe('b')
+    expect(
+      escolherFotoSemRepetir(lista, new Set(), { tipoAnterior: 'ambiente' })?.driveFileId,
+    ).toBe('a')
+  })
+
+  it('sem alternativa de tipo diferente, vale o topo — tipo nunca trava', () => {
+    const lista = [foto('a', '01_cortes'), foto('b', '01_cortes')]
+    expect(
+      escolherFotoSemRepetir(lista, new Set(), { tipoAnterior: 'prato' })?.driveFileId,
+    ).toBe('a')
+  })
+
+  it('tipo não inferível (null) não vence nem bloqueia', () => {
+    // "b" não é "tipo diferente" — é tipo desconhecido; o topo fica.
+    const lista = [foto('a', '01_cortes'), foto('b', '99_promocoes')]
+    expect(
+      escolherFotoSemRepetir(lista, new Set(), { tipoAnterior: 'prato' })?.driveFileId,
+    ).toBe('a')
+  })
+
+  it('a pasta vence o tipo: alternar não justifica repetir a sessão', () => {
+    // "a" alternaria o tipo, mas repete a pasta; "b" repete o tipo em pasta nova.
+    const lista = [foto('a', '02_ambiente'), foto('b', '03_menu')]
+    const escolhida = escolherFotoSemRepetir(lista, new Set(), {
+      pastasUsadas: new Set(['02_ambiente']),
+      tipoAnterior: 'prato',
+    })
+    expect(escolhida?.driveFileId).toBe('b')
+  })
+})
+
+describe('montarCandidatasDeFoto (F4, lado dado)', () => {
+  const f = (driveFileId: string, extra: Partial<FotoParaCandidatura> = {}): FotoParaCandidatura => ({
+    driveFileId,
+    fileName: `${driveFileId}.jpg`,
+    ...extra,
+  })
+
+  it('a escolhida é a primeira, com vaga de score e o sinal da busca', () => {
+    const lista = [f('a', { folder: '01' }), f('b', { folder: '02' }), f('c', { folder: '03' })]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set(), sugestaoId: 'sig-1' })
+    expect(cands[0]).toEqual({ driveFileId: 'a', fileName: 'a.jpg', vaga: 'score', sugestaoId: 'sig-1' })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'b', 'c'])
+    expect(cands.every((c) => c.sugestaoId === 'sig-1')).toBe(true)
+  })
+
+  it('escolhida de exploração leva a vaga dela — "conforme o caso"', () => {
+    const lista = [f('a', { vagaDeExploracao: true }), f('b'), f('c')]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands[0].vaga).toBe('exploracao')
+  })
+
+  /**
+   * A cota que impede a ossificação: com o ranking aprendido no topo para
+   * sempre, a foto nova nunca apareceria. Uma das 3 vagas é da primeira
+   * candidata nunca-proposta da lista — tomando a última vaga do score, nunca
+   * a da escolhida.
+   */
+  it('reserva uma das 3 vagas à primeira exploração da lista', () => {
+    const lista = [
+      f('a', { folder: '01' }),
+      f('b', { folder: '02' }),
+      f('c', { folder: '03' }),
+      f('d', { folder: '04', vagaDeExploracao: true }),
+    ]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'b', 'd'])
+    expect(cands[2].vaga).toBe('exploracao')
+  })
+
+  it('escolhida já é exploração — não força outra', () => {
+    const lista = [f('a', { vagaDeExploracao: true }), f('b'), f('c'), f('d', { vagaDeExploracao: true })]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('alternativa que o score já trouxe como exploração paga a cota', () => {
+    const lista = [f('a'), f('b', { vagaDeExploracao: true }), f('c'), f('d', { vagaDeExploracao: true })]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'b', 'c'])
+    expect(cands[1].vaga).toBe('exploracao')
+  })
+
+  it('sem exploração na lista, as 3 vagas são do score', () => {
+    const lista = [f('a'), f('b'), f('c'), f('d')]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.vaga)).toEqual(['score', 'score', 'score'])
+  })
+
+  it('as alternativas evitam a pasta das candidatas quando dá', () => {
+    const lista = [f('a', { folder: '01' }), f('b', { folder: '01' }), f('c', { folder: '02' }), f('d', { folder: '03' })]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'c', 'd'])
+  })
+
+  it('faltando pasta nova, a repetida entra — vaga vazia seria pior', () => {
+    const lista = [f('a', { folder: '01' }), f('b', { folder: '01' }), f('c', { folder: '01' })]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('foto já usada na leva não vira alternativa', () => {
+    const lista = [f('a'), f('b'), f('c'), f('d')]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set(['b']) })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'c', 'd'])
+  })
+
+  it('duplicata byte a byte da escolhida não vira alternativa', () => {
+    const lista = [f('a'), f('b', { duplicataDe: 'a' }), f('c'), f('d')]
+    const cands = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })
+    expect(cands.map((c) => c.driveFileId)).toEqual(['a', 'c', 'd'])
+  })
+
+  it('lista curta rende menos de 3 — nunca inventa candidata', () => {
+    const lista = [f('a')]
+    expect(montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set() })).toHaveLength(1)
+  })
+})
+
+describe('lerFotoCandidatas', () => {
+  it('faz a ida e volta do que a montagem produz', () => {
+    const lista: FotoParaCandidatura[] = [
+      { driveFileId: 'a', fileName: 'a.jpg', folder: '01' },
+      { driveFileId: 'b', fileName: 'b.jpg', folder: '02', vagaDeExploracao: true },
+    ]
+    const gravado = montarCandidatasDeFoto(lista, lista[0], { jaUsadas: new Set(), sugestaoId: 'sig' })
+    expect(lerFotoCandidatas(JSON.parse(JSON.stringify(gravado)))).toEqual(gravado)
+  })
+
+  it('lixo não derruba nada — vira lista vazia', () => {
+    expect(lerFotoCandidatas(null)).toEqual([])
+    expect(lerFotoCandidatas(undefined)).toEqual([])
+    expect(lerFotoCandidatas('lixo')).toEqual([])
+    expect(lerFotoCandidatas({ driveFileId: 'a' })).toEqual([])
+    expect(lerFotoCandidatas([null, 42, 'x'])).toEqual([])
+  })
+
+  it('entrada sem driveFileId some; vaga desconhecida vira score', () => {
+    const lidas = lerFotoCandidatas([
+      { fileName: 'orfa.jpg', vaga: 'score' },
+      { driveFileId: 'b', vaga: 'inventada', sugestaoId: '' },
+    ])
+    expect(lidas).toEqual([{ driveFileId: 'b', fileName: null, vaga: 'score', sugestaoId: null }])
   })
 })
 

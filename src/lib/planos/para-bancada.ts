@@ -26,6 +26,7 @@
 
 import type { BancadaItem, BancadaStatus } from '@/stores/bancada-store'
 import { lerReferenciasDoItem } from '@/lib/planos/execucao'
+import { lerFotoCandidatas, type CandidataDeFoto } from '@/lib/planos/proposta-de-semana'
 import { normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import {
   normalizarFormato,
@@ -73,6 +74,11 @@ export interface ItemDePlanoDoServidor {
   clienteProjectId?: number | null
   /** Nome do cliente citado, derivado por `lerPlano` (não é coluna). */
   clienteCitadoNome?: string | null
+  /**
+   * Top-3 candidatas de foto da emissão (coluna Json desde 30/08/2026):
+   * `[{ driveFileId, fileName?, vaga, sugestaoId? }]`. Lida defensivamente.
+   */
+  fotoCandidatas?: unknown
   motivoDoSlot?: string | null
   escopo?: string | null
   campaignId?: string | null
@@ -109,6 +115,19 @@ export interface PlanoDoServidor {
   status?: string | null
   itens: ItemDePlanoDoServidor[]
 }
+
+/**
+ * O card da bancada COM as candidatas de foto (F4, lado dado).
+ *
+ * O tipo do store (`BancadaItem`) ainda não declara o campo — a UI da troca em
+ * 1 toque é etapa própria, depois de uma semana de KPI da F1+F2 — então o
+ * transporte vive aqui: a interseção é atribuível nos dois sentidos (o campo é
+ * opcional), o dado atravessa a hidratação e o `localStorage` sem o store
+ * saber dele, e a UI que nascer lê `fotoCandidatas` já no card. O servidor
+ * manda no CONTEÚDO, e as candidatas são conteúdo: a fusão as reescreve a cada
+ * hidratação (fora do card terminal), como copy e tema.
+ */
+export type BancadaItemComCandidatas = BancadaItem & { fotoCandidatas?: CandidataDeFoto[] }
 
 // ── Avanço: a régua única ───────────────────────────────────────────────────
 
@@ -453,7 +472,7 @@ export function paraItemDaBancada(
   doServidor: ItemDePlanoDoServidor,
   plano: PlanoDoServidor,
   agora: number = Date.now(),
-): BancadaItem {
+): BancadaItemComCandidatas {
   const status = normalizarStatusDoItem(doServidor.status) ?? STATUS_INICIAL
   const formato: FormatoDoItem = normalizarFormato(doServidor.formato) ?? 'story'
   const via: ViaDoItem = normalizarVia(doServidor.via) ?? VIA_PADRAO
@@ -463,6 +482,7 @@ export function paraItemDaBancada(
   const ehCarrossel = (doServidor.slides?.lista?.length ?? 0) > 0
   const foto = doServidor.fotoUrl?.trim() || null
   const driveId = doServidor.fotoDriveId?.trim() || null
+  const fotoCandidatas = lerFotoCandidatas(doServidor.fotoCandidatas)
 
   /**
    * 🔴 A miniatura precisa de uma URL, e foto do acervo NÃO tem uma.
@@ -512,6 +532,9 @@ export function paraItemDaBancada(
         ? { projectId: doServidor.clienteProjectId, nome: doServidor.clienteCitadoNome?.trim() || null }
         : null,
     referencias: referenciasDoServidor(doServidor.referencias, { foto, driveId, tema, thumbUrl }),
+    // As candidatas de foto do card (F4): a escolhida primeiro. Só entram
+    // quando existem — item antigo (ou montado à mão) segue sem o campo.
+    ...(fotoCandidatas.length > 0 ? { fotoCandidatas } : {}),
     quando: paraQuandoBRT(doServidor.quando),
     escopo,
     motivoDoSlot: doServidor.motivoDoSlot?.trim() || null,
@@ -545,6 +568,7 @@ const CAMPOS_FUNDIDOS = [
   'instrucaoImagem',
   'clienteCitado',
   'referencias',
+  'fotoCandidatas',
   'quando',
   'escopo',
   'motivoDoSlot',
@@ -576,16 +600,16 @@ const CAMPOS_FUNDIDOS = [
  *    card ser dado como perdido no mesmo instante em que passou a acompanhar.
  */
 export function fundirComOLocal(
-  local: BancadaItem | undefined,
-  doServidor: BancadaItem,
+  local: BancadaItemComCandidatas | undefined,
+  doServidor: BancadaItemComCandidatas,
   agora: number = Date.now(),
-): BancadaItem {
+): BancadaItemComCandidatas {
   if (!local) return ajustar(doServidor, undefined, agora)
 
   const terminal = local.status === 'agendado'
   const status = situacaoQueVence(local.status, doServidor.status)
 
-  const candidato: BancadaItem = {
+  const candidato: BancadaItemComCandidatas = {
     ...local,
     // Vínculos e situação do plano: sempre acompanham o servidor (a situação
     // pela régua, para não regredir o que já andou por aqui).
@@ -627,6 +651,9 @@ export function fundirComOLocal(
             : (local.instrucaoImagem ?? null),
           clienteCitado: doServidor.clienteCitado ?? null,
           referencias: mesclarReferencias(local.referencias, doServidor.referencias),
+          // Candidatas são conteúdo: a lista da emissão (e a que uma reemissão
+          // atualizar) é a do servidor, nunca uma cópia velha do navegador.
+          fotoCandidatas: doServidor.fotoCandidatas,
           ...(doServidor.slides || local.slides
             ? { slides: mesclarSlides(local.slides, doServidor.slides) }
             : {}),
@@ -653,10 +680,10 @@ export function fundirComOLocal(
 
 /** Os acertos finais, e a preservação da referência quando nada mudou. */
 function ajustar(
-  item: BancadaItem,
-  local: BancadaItem | undefined,
+  item: BancadaItemComCandidatas,
+  local: BancadaItemComCandidatas | undefined,
   agora: number,
-): BancadaItem {
+): BancadaItemComCandidatas {
   let final = item
 
   if (final.status === 'pronto' && !final.resultUrl) {
