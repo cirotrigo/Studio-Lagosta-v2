@@ -19,6 +19,8 @@
 import { db } from '@/lib/db'
 import { isEvolutionConfigured, sendWhatsAppText } from '@/lib/notifications/evolution'
 import { coletarFeedDeTodos } from '@/lib/instagram/feed-insights'
+import { coletarFeedViaWindsor } from '@/lib/windsor/coleta-feed'
+import { blocoAnunciosDaSemana, blocoAvaliacoesDaSemana } from '@/lib/windsor/relatorio-extras'
 
 const FUSO_OFFSET_MS = 3 * 3600_000 // BRT = UTC-3, fixo (sem horário de verão desde 2019)
 const SEMANA_MS = 7 * 24 * 3600_000
@@ -161,7 +163,11 @@ async function montarLinhaDoCliente(
     }),
   ])
 
-  const temMetricas = !!projeto.instagramAccessToken
+  // Métrica existe quando ALGUÉM enxerga a conta — token próprio OU a coleta
+  // via Windsor (30/08/2026), que preenche a mesma InstagramFeed para os
+  // clientes sem token. Derivar do DADO, não do token: é o que faz o
+  // relatório acompanhar sozinho quando uma conta nova entra no Windsor.
+  const temMetricas = !!projeto.instagramAccessToken || feeds.length > 0 || feedsBase.length > 0
   const feedsPublicados = temMetricas ? feeds.length : feedsStudioSemMetrica.length
   const storiesPublicados = stories.length
 
@@ -250,7 +256,7 @@ function mensagemDaCarteira(janela: JanelaDaSemana, linhas: LinhaDoCliente[]): s
           }`
         : l.temMetricas
           ? 'sem alcance medido'
-          : 'sem métricas (sem token)'
+          : 'sem métricas da conta'
     partes.push(
       `*${l.nome}* [${l.score}] — ${l.storiesPublicados}/${META_STORIES} stories · ${l.feedsPublicados}/${META_FEEDS} feed · ${alcance}`,
     )
@@ -259,7 +265,8 @@ function mensagemDaCarteira(janela: JanelaDaSemana, linhas: LinhaDoCliente[]): s
   }
 
   const semToken = linhas.filter((l) => !l.temMetricas).map((l) => l.nome)
-  if (semToken.length) partes.push(`\n⚠️ Sem métricas da conta: ${semToken.join(', ')} — cadastrar o token do Instagram.`)
+  if (semToken.length)
+    partes.push(`\n⚠️ Sem métricas da conta: ${semToken.join(', ')} — cadastrar token do Instagram ou conectar a conta no Windsor.`)
   partes.push('\n_Colhido no fecho da semana — os posts mais recentes ainda acumulam alcance._')
 
   return partes.join('\n')
@@ -289,6 +296,13 @@ export async function gerarRelatorioSemanal(opts?: {
     await coletarFeedDeTodos({ sinceDays: 8, prazoMs: Date.now() + 180_000 })
   } catch (erro) {
     console.error('[relatorio-semanal] coleta pré-relatório falhou (seguindo com o que há):', erro)
+  }
+  // O mesmo, pela segunda fonte: clientes sem token entram via Windsor.
+  try {
+    const windsor = await coletarFeedViaWindsor({ sinceDays: 8 })
+    if (windsor.erro) console.error('[relatorio-semanal] coleta Windsor falhou (seguindo):', windsor.erro)
+  } catch (erro) {
+    console.error('[relatorio-semanal] coleta Windsor falhou (seguindo):', erro)
   }
 
   const projetos = await db.project.findMany({
@@ -358,9 +372,15 @@ export async function gerarRelatorioSemanal(opts?: {
     }
   }
 
+  // Blocos que só o Windsor enxerga (anúncios e Google) — cada um degrada
+  // para ausência sozinho; nenhum atrasa nem derruba o relatório.
+  const [blocoAds, blocoGoogle] = await Promise.all([blocoAnunciosDaSemana(), blocoAvaliacoesDaSemana()])
+
   const mensagem =
     (opts?.teste ? '🧪 *Envio de teste* — o relatório oficial sai todo domingo às 20h.\n\n' : '') +
-    mensagemDaCarteira(janela, linhas)
+    mensagemDaCarteira(janela, linhas) +
+    (blocoAds ? `\n${blocoAds}` : '') +
+    (blocoGoogle ? `\n${blocoGoogle}` : '')
   let enviado = false
   if (opts?.enviarWhatsApp && linhas.length > 0) {
     if (isEvolutionConfigured()) {

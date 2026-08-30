@@ -13,6 +13,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server'
 import { coletarFeedDeTodos } from '@/lib/instagram/feed-insights'
+import { coletarFeedViaWindsor } from '@/lib/windsor/coleta-feed'
 
 export const runtime = 'nodejs'
 // Inline de propósito: o glob do vercel.json é app/api/** e o projeto é
@@ -37,6 +38,16 @@ export async function GET(req: NextRequest) {
   try {
     const resumos = await coletarFeedDeTodos({ sinceDays: 60, prazoMs: inicio + ORCAMENTO_MS })
 
+    // Segunda fonte: clientes SEM token entram pelo Windsor (uma requisição
+    // cobre todas as contas). Falha aqui não derruba a coleta por token.
+    let windsor: Awaited<ReturnType<typeof coletarFeedViaWindsor>> | { erro: string } | null = null
+    try {
+      windsor = await coletarFeedViaWindsor({ sinceDays: 60 })
+    } catch (erro) {
+      windsor = { erro: erro instanceof Error ? erro.message : String(erro) }
+      console.error('[Feed Insights Cron] coleta via Windsor falhou:', erro)
+    }
+
     const totais = resumos.reduce(
       (t, r) => ({
         midias: t.midias + r.midias,
@@ -56,6 +67,7 @@ export async function GET(req: NextRequest) {
       elapsedMs: Date.now() - inicio,
       totais,
       porProjeto: resumos,
+      windsor,
     })
   } catch (error) {
     console.error('[Feed Insights Cron] Error:', error)
