@@ -69,6 +69,9 @@ export const toolsDePlanos = [
         assuntos: r.taxonomia.assuntosUsados,
         ...(r.copy.indisponivel ? { textoIndisponivel: true } : {}),
         ...(r.fotos.semFoto > 0 ? { itensSemFoto: r.fotos.semFoto } : {}),
+        // A análise do que funcionou — apresente junto da leva: é o porquê da
+        // inclinação de formato e de gancho que a copy recebeu.
+        ...(r.desempenho.length > 0 ? { desempenho: r.desempenho } : {}),
         ...(r.avisos.length > 0 ? { avisos: r.avisos } : {}),
         mensagem: `${r.mensagem} Para mexer em algum item use editar-item-do-plano; para produzir as artes, executar-plano (ele mostra a conta antes).`,
       }

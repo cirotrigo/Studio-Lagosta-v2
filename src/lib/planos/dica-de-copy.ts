@@ -306,13 +306,16 @@ export async function prepararDica(
 
   const refMinima = new Date(Math.min(...pedidos.map((p) => p.quando.getTime())))
 
-  const [perfil, base] = await Promise.all([
+  const [perfil, desempenho, base] = await Promise.all([
     montarPerfil(projectId)
       .then((p) => perfilParaPrompt(p))
       .catch((erro) => {
         console.warn('[dica-de-copy] perfil aprendido indisponível:', erro)
         return null
       }),
+    // A metade do PÚBLICO (30/08/2026): o que rendeu na conta inclina a copy.
+    // O leitor nunca lança; conta sem amostra volta null e o prompt segue.
+    import('@/lib/aprendizado/desempenho').then(({ desempenhoDoProjeto }) => desempenhoDoProjeto(projectId)),
     reunirBase(projectId, consultaDaLeva(contexto.projectName, pedidos), refMinima),
   ])
 
@@ -323,6 +326,7 @@ export async function prepararDica(
       regrasDeConteudo: contexto.dna.contentRules,
       perguntasDoCrivo: parseApprovalChecklist(contexto.dna.approvalChecklist),
       perfil,
+      desempenho: desempenho?.bloco ?? null,
     },
     entradas: base.entradas,
     avisos: base.avisos,

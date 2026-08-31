@@ -112,6 +112,13 @@ export interface InsumosDaDica {
   perguntasDoCrivo: string[]
   /** `perfilParaPrompt(...)` — já sanitizado, pronto para concatenar. */
   perfil: string | null
+  /**
+   * `desempenhoParaPrompt(...)` — o que o público premiou nesta conta
+   * (30/08/2026). Já vem com o cabeçalho e as ressalvas; entra como
+   * INCLINAÇÃO, e a guarda mecânica de dados continua sendo a última porta.
+   * Opcional: chamador antigo e conta sem amostra seguem sem o bloco.
+   */
+  desempenho?: string | null
 }
 
 /** Um item da resposta do modelo. Tudo opcional: é saída de LLM. */
@@ -484,6 +491,10 @@ export function montarPromptDeDica(
 
   if (insumos.perfil) {
     partes.push('', `=== ${insumos.perfil}`)
+  }
+
+  if (insumos.desempenho) {
+    partes.push('', insumos.desempenho)
   }
 
   partes.push('', '=== BASE DE CONHECIMENTO DESTA MARCA ===')

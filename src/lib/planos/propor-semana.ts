@@ -124,6 +124,12 @@ export interface ResultadoDaProposta {
   taxonomia: { total: number; assuntosUsados: string[] }
   copy: { comDica: number; semDica: number; indisponivel: boolean }
   fotos: { comFoto: number; semFoto: number; foraDoAssunto: number }
+  /**
+   * A análise do que funcionou (30/08/2026): linhas legíveis do desempenho
+   * recente da conta, para quem aprova ver o PORQUÊ da inclinação. Vazio =
+   * amostra pequena demais para afirmar qualquer coisa.
+   */
+  desempenho: string[]
   mensagem: string
 }
 
@@ -359,6 +365,15 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   const formato = formatoValido(input.formato)
   const agora = new Date()
   const avisos: string[] = []
+
+  // ── 0. O que funcionou ────────────────────────────────────────────────────
+  //
+  // A metade do PÚBLICO: lida antes de tudo para as linhas saírem junto da
+  // proposta (quem aprova vê o porquê da inclinação). O bloco de prompt em si
+  // entra pela dica de copy (`prepararDica`), que lê a mesma fonte.
+  const desempenho = await import('@/lib/aprendizado/desempenho')
+    .then(({ desempenhoDoProjeto }) => desempenhoDoProjeto(projectId))
+    .catch(() => null)
 
   // ── 1. Os horários ────────────────────────────────────────────────────────
   //
@@ -647,6 +662,7 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
     },
     copy: { comDica, semDica: slots.length - comDica, indisponivel: copyIndisponivel },
     fotos: { comFoto, semFoto: slots.length - comFoto, foraDoAssunto: fotosForaDoAssunto },
+    desempenho: desempenho?.linhas ?? [],
     mensagem: coldStart
       ? `Montei ${plano.itens.length} post(s) como PONTO DE PARTIDA — ainda não conheço a rotina deste cliente. Nada foi produzido e nada foi cobrado.`
       : `Montei ${plano.itens.length} post(s) a partir da rotina deste cliente. Nada foi produzido e nada foi cobrado.`,
