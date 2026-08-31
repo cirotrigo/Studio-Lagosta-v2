@@ -182,6 +182,12 @@ python3 medir.py *.dc.html              # contraste do fundo
 Depois `upload-creative` (MCP local, lê do disco) e `colocar-na-agenda` com o
 `generationId` devolvido. **Sempre como rascunho.**
 
+🔴 **FOTO de carrossel não passa por aqui** (decisão do Ciro em 30/08/2026):
+o canvas renderiza ARTE (peça com texto diagramado no quadro, que sai fechada
+em 1080x1350 no feed e 1080x1920 no story). Carrossel de curadoria — que é o
+padrão do feed — leva a foto **ORIGINAL**, sem pré-corte: o enquadramento é
+escolhido no editor da agenda, slide a slide. Cortar antes tira essa escolha.
+
 🔴 **É `upload-creative` — NUNCA `upload-to-drive` + `colocar-na-agenda` com
 `mediaUrls`.** A leva do By Rock de 30/08/2026 foi pelo atalho do Drive e as
 sete artes chegaram à agenda **sem existir nos Criativos**: sem Generation não

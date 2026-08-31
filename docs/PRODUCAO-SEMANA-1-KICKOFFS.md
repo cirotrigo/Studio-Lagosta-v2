@@ -15,6 +15,14 @@ tudo como RASCUNHO para aprovação do Ciro.
 - Feed = carrossel de FOTOS REAIS (5–7; capa com arte só onde o padrão
   manda); arte com texto para aviso/data. Stories = artes do gerador do
   padrão. Interação → Direct; CTA de deslizar VETADO.
+- 🔴 **Foto de carrossel entra ORIGINAL, nunca pré-cortada** (decisão do Ciro
+  em 30/08/2026). O post de feed é 1080x1350, mas **quem escolhe o
+  enquadramento é ele**, no editor da agenda — cada slide tem o botão
+  "Enquadrar" desde 30/08. Cortar antes tira essa escolha e costuma comer
+  justamente o que importa na foto. Vale para foto do acervo, do Drive e de
+  upload. **Arte com TEXTO é o contrário**: aí o gerador entrega 1080x1350
+  fechado, porque o texto foi diagramado naquele quadro — recortar depois
+  quebraria a composição.
 - Fotos: curadoria pelo rodízio (menos usadas primeiro) e **marcar como
   usadas** ao agendar. Se faltar foto do tema, gerar cena pela trilha
   `imagem` (gerar-imagem — custa crédito, avisar antes).
