@@ -53,6 +53,24 @@ export interface ImportarArteInput {
   name?: string
   /** Procedência livre — o caminho local, a skill que gerou, o que ajudar depois */
   origem?: string
+  /**
+   * Os textos que a arte contém, quando quem envia os conhece.
+   *
+   * 🔴 É o que faz a melhoria com IA ter RÉGUA. Sem eles,
+   * `loadExpectedTextsForGeneration` devolve `[]`, a seção `[TEXTO EXATO —
+   * VERBATIM]` some do prompt e o modelo passa a LER o serviço da própria
+   * imagem — completando o que não entende. Medido em 01/09/2026 no By Rock:
+   * melhorias sucessivas inventaram endereço em Foz do Iguaçu, São José dos
+   * Pinhais, Jaraguá do Sul e Porto Alegre, para um cliente de Vitória.
+   *
+   * Quem gera a arte por canvas SABE a copy exata — ela está no gerador da
+   * leva. Passá-la aqui é mais forte que qualquer transcrição por visão, que
+   * é o que a melhoria faz quando este campo falta.
+   *
+   * `extractExpectedTexts` já lê `fieldValues.textos`, então não é preciso
+   * mudar nada do outro lado.
+   */
+  textos?: string[]
 }
 
 export interface ImportarArteResult {
@@ -219,6 +237,7 @@ export async function importarArte(input: ImportarArteInput): Promise<ImportarAr
         thumbnailUrl: blob.url,
         fileName: input.fileName,
         ...(input.origem ? { origem: input.origem } : {}),
+        ...(input.textos?.length ? { textos: input.textos } : {}),
       } as never,
       resultUrl: blob.url,
       projectId: project.id,

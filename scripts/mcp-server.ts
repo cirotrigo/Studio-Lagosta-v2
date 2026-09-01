@@ -2259,8 +2259,18 @@ toolEstrita(
       .string()
       .optional()
       .describe('Free-form provenance kept in the gallery record (e.g. "skill human-image", "export do Figma")'),
+    textos: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'The exact texts this artwork contains (headline, support, service line, CTA), one per block. ' +
+        'Pass them whenever you KNOW the copy — a canvas generator does. They become the verbatim ruler for "melhorar com IA": ' +
+        'without them the model reads the service line off the image and fills in what it cannot make out, ' +
+        'which produced invented addresses in four different cities for a client in Vitória (01/09/2026). ' +
+        'With several files the same list applies to all — send one call per artwork when the copy differs.',
+      ),
   },
-  async ({ projectId, filePaths, name, origem }) => {
+  async ({ projectId, filePaths, name, origem, textos }) => {
     try {
       const { files, errors } = expandUploadPaths(filePaths)
 
@@ -2292,6 +2302,7 @@ toolEstrita(
             fileName,
             name: name ? (files.length > 1 ? `${name} ${i + 1}` : name) : undefined,
             origem: origem ?? file,
+            textos,
           })
           enviadas.push(result)
         } catch (error: any) {
