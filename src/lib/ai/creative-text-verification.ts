@@ -132,7 +132,21 @@ export function extractExpectedTexts(fieldValues: unknown): string[] {
 
   for (const key of ['slotValues', 'texts', 'textos'] as const) {
     const value = fv[key]
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
+    /**
+     * 🔴 ARRAY DE STRINGS também conta. Até 01/09/2026 só o formato RECORD
+     * era lido (`!Array.isArray` excluía o resto), e a lista simples — que é
+     * a forma natural de "os textos desta arte" e a que `importarArte` grava
+     * — era ignorada EM SILÊNCIO. O backfill da copy do canvas gravou 54
+     * artes em array e nenhuma virou régua; o defeito só apareceu porque a
+     * conferência foi feita depois de gravar.
+     */
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string' && isTextValue(item)) texts.push(item.trim())
+      }
+      continue
+    }
+    if (value && typeof value === 'object') {
       texts.push(...collectFromRecord(value as Record<string, unknown>))
     }
   }
@@ -152,6 +166,52 @@ export function extractExpectedTexts(fieldValues: unknown): string[] {
  * melhorias (`fieldValues.originalGenerationId`) quando a própria Generation
  * é uma melhoria — o texto "de verdade" mora na Generation raiz.
  */
+/**
+ * Sobe a linhagem até achar a copy VERDADEIRA — a da arte original.
+ *
+ * 🔴 Melhorar uma melhoria é o caso comum (o Ciro encadeou quatro em
+ * 01/09/2026), e cada elo da cadeia é uma Generation nova cuja origem é a
+ * anterior. Perguntar os textos só à origem IMEDIATA falha de duas formas:
+ *
+ * 1. A origem imediata pode não ter texto gravado (toda melhoria anterior ao
+ *    conserto de hoje nasceu assim), e aí a régua some.
+ * 2. Pior: a origem imediata pode ter texto ERRADO. Medido nesta cadeia — a
+ *    arte do canvas dizia "Rua Eugênio Netto, 82, Praia do Canto, Vitória" e
+ *    o quarto elo já dizia "Rua Gomes de Carvalho, 1640 · Vila Olímpia · São
+ *    Paulo". Transcrever esse elo por visão CONGELARIA o endereço inventado.
+ *
+ * A copy verdadeira está na RAIZ (a arte que veio do canvas ou do upload, com
+ * `textos` gravados por `importarArte`). Subir até ela é o que faz a régua
+ * corrigir a cadeia em vez de perpetuá-la.
+ *
+ * Teto de 8 saltos: linhagem é curta na prática e o teto protege de ciclo,
+ * que `sourceGenerationId` não impede (não tem FK, por decisão da casa).
+ */
+export async function loadExpectedTextsDaLinhagem(generationId: string): Promise<{
+  textos: string[]
+  /** Quantos saltos até achar. 0 = a própria origem tinha. */
+  saltos: number
+  /** A raiz declarou não ter texto (capa de carrossel). */
+  semTexto: boolean
+}> {
+  const { db } = await import('@/lib/db')
+  let id: string | null = generationId
+  for (let saltos = 0; saltos < 8 && id; saltos++) {
+    const g: { fieldValues: unknown; sourceGenerationId: string | null } | null =
+      await db.generation.findUnique({
+        where: { id },
+        select: { fieldValues: true, sourceGenerationId: true },
+      })
+    if (!g) break
+    const fv = (g.fieldValues ?? {}) as Record<string, unknown>
+    if (fv.semTexto === true) return { textos: [], saltos, semTexto: true }
+    const textos = extractExpectedTexts(g.fieldValues)
+    if (textos.length > 0) return { textos, saltos, semTexto: false }
+    id = g.sourceGenerationId
+  }
+  return { textos: [], saltos: 0, semTexto: false }
+}
+
 export async function loadExpectedTextsForGeneration(generationId: string): Promise<string[]> {
   let currentId: string | null = generationId
   for (let depth = 0; depth < MAX_LINEAGE_DEPTH && currentId; depth++) {

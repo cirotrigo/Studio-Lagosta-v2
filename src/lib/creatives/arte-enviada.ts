@@ -238,6 +238,14 @@ export async function importarArte(input: ImportarArteInput): Promise<ImportarAr
         fileName: input.fileName,
         ...(input.origem ? { origem: input.origem } : {}),
         ...(input.textos?.length ? { textos: input.textos } : {}),
+        /**
+         * Lista VAZIA é uma afirmação, não omissão: "esta arte não tem texto"
+         * (capa de carrossel, foto pura). Sem o marcador, quem sobe a linhagem
+         * não distingue "foto pura" de "ninguém gravou a copy" — e é essa
+         * distinção que impede a capa de virar peça na 2ª melhoria da cadeia,
+         * quando a entrada já carrega o texto inventado na 1ª.
+         */
+        ...(input.textos && input.textos.length === 0 ? { semTexto: true } : {}),
       } as never,
       resultUrl: blob.url,
       projectId: project.id,

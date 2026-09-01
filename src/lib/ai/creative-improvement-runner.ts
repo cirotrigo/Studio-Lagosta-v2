@@ -30,6 +30,7 @@ import {
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import {
+  loadExpectedTextsDaLinhagem,
   loadExpectedTextsForGeneration,
   transcreverTextosDaArte,
   verifyImageTexts,
@@ -272,6 +273,32 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      */
     let textosDaRegua = expectedTexts
     let reguaPorVisao = false
+    let reguaDaLinhagem = 0
+    let raizSemTexto = false
+    /**
+     * A copy VERDADEIRA vem da raiz da linhagem — a arte do canvas. Só quando
+     * nem ela tem é que a visão entra, e aí ela transcreve a imagem de
+     * entrada, que numa cadeia longa já pode carregar dado inventado.
+     * Ver `loadExpectedTextsDaLinhagem`.
+     */
+    if (textosDaRegua.length === 0 && !args.skipTextVerification) {
+      const daLinhagem = await loadExpectedTextsDaLinhagem(args.originalGenerationId)
+      // 🔴 A RAIZ manda. Numa cadeia de melhorias a entrada do 2º elo já tem
+      // o texto que o 1º inventou — perguntar à visão só confirmaria a
+      // invenção. Se a arte original é foto pura, a peça continua foto pura
+      // por mais elos que a cadeia tenha.
+      if (daLinhagem.semTexto) {
+        raizSemTexto = true
+        console.log('[improve.bg] a arte ORIGINAL desta linhagem é foto pura — a peça não leva texto')
+      }
+      if (daLinhagem.textos.length > 0) {
+        textosDaRegua = daLinhagem.textos
+        reguaDaLinhagem = daLinhagem.saltos
+        console.log(
+          `[improve.bg] régua da linhagem: ${daLinhagem.textos.length} bloco(s) da arte original (${daLinhagem.saltos} salto(s))`,
+        )
+      }
+    }
     // A visão RODOU e não achou texto: é foto pura (capa de carrossel), não
     // apenas "ninguém transcreveu". A distinção decide a regra da capa.
     let arteSemTexto = false
@@ -321,7 +348,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         brand: assets.brand,
         expectedTexts: textosDaRegua,
         instrucaoImagem: args.instrucaoImagem ?? null,
-        arteSemTexto,
+        arteSemTexto: arteSemTexto || raizSemTexto,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
       })
@@ -459,6 +486,21 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           selectedElementIds: args.selectedElementIds,
           model: getCurrentImageModel(),
           quality: tier,
+          /**
+           * 🔴 A régua PROPAGA pela cadeia. Melhorar uma melhoria é o caso
+           * comum (o Ciro encadeou quatro em 01/09/2026), e a Generation nova
+           * vira a ORIGEM da próxima: sem gravar os textos aqui, a régua
+           * existe no primeiro elo e se perde em todos os seguintes —
+           * `loadExpectedTextsForGeneration` devolve `[]` e o modelo volta a
+           * ler o serviço da imagem e a completar o que não entende.
+           *
+           * Foi exatamente o que aconteceu: o backfill da copy alcançou as
+           * artes `arte-enviada` do canvas, e as melhorias em cima delas
+           * continuaram sem régua nenhuma.
+           */
+          ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
+          ...(reguaDaLinhagem > 0 ? { reguaDaLinhagem } : {}),
+          ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
           format,
