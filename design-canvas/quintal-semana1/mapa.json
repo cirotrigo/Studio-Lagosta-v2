@@ -1,0 +1,2616 @@
+[
+  {
+    "nome": "ter0800",
+    "dow": "ter",
+    "dia": "01/09",
+    "hora": "08:00",
+    "layout": "L1",
+    "tema": "Funcionamento e endereço",
+    "driveFileId": "1XroMqpxnpIvEfaiUDyWY2NPJ3ijDI0Er",
+    "copy": [
+      "Terça no Quintal",
+      "Terça, das 11h às 00h",
+      "Rua Aleixo Netto, 1158, Praia do Canto"
+    ],
+    "artboard": "Ter0800.dc.html",
+    "arquivoFoto": "ter0800.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          -90,
+          6,
+          725,
+          589
+        ],
+        "raio": 130,
+        "luz": 250,
+        "alvo": 69,
+        "alpha": 0.870586186260383,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          94,
+          265,
+          285,
+          148
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              188,
+              361,
+              118
+            ],
+            "alvo": 139,
+            "luz": 244
+          },
+          {
+            "caixa": [
+              94,
+              265,
+              285,
+              148
+            ],
+            "alvo": 69,
+            "luz": 250
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 53.6,
+        "estimado": 0.95,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1482,
+          1246,
+          448
+        ],
+        "raio": 130,
+        "luz": 206,
+        "alvo": 69,
+        "alpha": 0.9280127717551625,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          419,
+          1669,
+          27,
+          27
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1671,
+              262,
+              69
+            ],
+            "alvo": 139,
+            "luz": 207
+          },
+          {
+            "caixa": [
+              419,
+              1669,
+              27,
+              27
+            ],
+            "alvo": 69,
+            "luz": 206
+          },
+          {
+            "caixa": [
+              459,
+              1667,
+              284,
+              30
+            ],
+            "alvo": 139,
+            "luz": 207
+          },
+          {
+            "caixa": [
+              419,
+              1717,
+              27,
+              27
+            ],
+            "alvo": 69,
+            "luz": 195
+          },
+          {
+            "caixa": [
+              459,
+              1715,
+              515,
+              30
+            ],
+            "alvo": 139,
+            "luz": 195
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              386,
+              1664,
+              1,
+              84
+            ]
+          }
+        ],
+        "aferido": 52.8,
+        "estimado": 0.949640598083346,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "ter0930",
+    "dow": "ter",
+    "dia": "01/09",
+    "hora": "09:30",
+    "layout": "L2",
+    "tema": "Almoço executivo",
+    "driveFileId": "1HobBIGav0bYejs8V0s_2J5JifdKqJpbR",
+    "copy": [
+      "Almoço Executivo",
+      "Prato principal na parrilla e até três acompanhamentos.",
+      "Segunda a sexta, das 11h às 16h"
+    ],
+    "fotoTrocada": {
+      "de": "1uNVr1XNdA87HDpfZTUDOryPsU3TGucrU",
+      "motivo": "preço legível na carta manuscrita da mesa"
+    },
+    "artboard": "Ter0930.dc.html",
+    "arquivoFoto": "ter0930.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          570,
+          18,
+          600,
+          427
+        ],
+        "raio": 130,
+        "luz": 168,
+        "alvo": 139,
+        "alpha": 0.23698162617105872,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          752,
+          200,
+          236,
+          63
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              752,
+              200,
+              236,
+              63
+            ],
+            "alvo": 139,
+            "luz": 168
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 136.8,
+        "estimado": 0.25464411192299424,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1130,
+          1260,
+          797
+        ],
+        "raio": 130,
+        "luz": 161,
+        "alvo": 69,
+        "alpha": 0.8251082560859522,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          95,
+          1379,
+          397,
+          166
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1312,
+              312,
+              113
+            ],
+            "alvo": 139,
+            "luz": 197
+          },
+          {
+            "caixa": [
+              95,
+              1379,
+              397,
+              166
+            ],
+            "alvo": 69,
+            "luz": 161
+          },
+          {
+            "caixa": [
+              92,
+              1556,
+              612,
+              40
+            ],
+            "alvo": 139,
+            "luz": 134
+          },
+          {
+            "caixa": [
+              92,
+              1608,
+              347,
+              40
+            ],
+            "alvo": 139,
+            "luz": 125
+          },
+          {
+            "caixa": [
+              92,
+              1715,
+              29,
+              29
+            ],
+            "alvo": 69,
+            "luz": 106
+          },
+          {
+            "caixa": [
+              134,
+              1713,
+              458,
+              32
+            ],
+            "alvo": 139,
+            "luz": 128
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1683,
+              896,
+              1
+            ]
+          }
+        ],
+        "aferido": 61.2,
+        "estimado": 0.8574703727993233,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "ter1400",
+    "dow": "ter",
+    "dia": "01/09",
+    "hora": "14:00",
+    "layout": "L3",
+    "tema": "Happy hour",
+    "driveFileId": "1DVOGKmVSkkV8akvmL6uQldQQDS6bSnjQ",
+    "copy": [
+      "Happy Hour do Quintal",
+      "Chope e drinks selecionados em dobro",
+      "Terça a sexta, das 16h às 19h"
+    ],
+    "artboard": "Ter1400.dc.html",
+    "arquivoFoto": "ter1400.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          142,
+          0,
+          796,
+          595
+        ],
+        "raio": 130,
+        "luz": 233,
+        "alvo": 69,
+        "alpha": 0.8328513384939751,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          362,
+          278,
+          356,
+          135
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              324,
+              182,
+              432,
+              135
+            ],
+            "alvo": 139,
+            "luz": 227
+          },
+          {
+            "caixa": [
+              362,
+              278,
+              356,
+              135
+            ],
+            "alvo": 69,
+            "luz": 233
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 54.2,
+        "estimado": 0.907987732966864,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1462,
+          1260,
+          468
+        ],
+        "raio": 130,
+        "luz": 103,
+        "alvo": 139,
+        "alpha": 0.0,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          122,
+          1649,
+          568,
+          32
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              122,
+              1649,
+              568,
+              32
+            ],
+            "alvo": 139,
+            "luz": 103
+          },
+          {
+            "caixa": [
+              122,
+              1710,
+              414,
+              32
+            ],
+            "alvo": 139,
+            "luz": 94
+          },
+          {
+            "caixa": [
+              756,
+              1686,
+              232,
+              62
+            ],
+            "alvo": 139,
+            "luz": 76
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1644,
+              4,
+              104
+            ]
+          }
+        ],
+        "aferido": 102.6
+      }
+    ]
+  },
+  {
+    "nome": "qua0800",
+    "dow": "qua",
+    "dia": "02/09",
+    "hora": "08:00",
+    "layout": "L4",
+    "tema": "Funcionamento e endereço",
+    "driveFileId": "1w0ugegZ8SlwKl3tAWTjBs_k-qe2sq86M",
+    "copy": [
+      "Quarta no Quintal",
+      "Quarta, das 11h às 00h",
+      "Rua Aleixo Netto, 1158, Praia do Canto"
+    ],
+    "artboard": "Qua0800.dc.html",
+    "arquivoFoto": "qua0800.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          50,
+          0,
+          979,
+          497
+        ],
+        "raio": 130,
+        "luz": 202,
+        "alvo": 139,
+        "alpha": 0.3889028817011348,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          232,
+          182,
+          615,
+          133
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              232,
+              182,
+              615,
+              133
+            ],
+            "alvo": 139,
+            "luz": 202
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 132.6,
+        "estimado": 0.42837714149996137,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1481,
+          1260,
+          444
+        ],
+        "raio": 130,
+        "luz": 241,
+        "alvo": 139,
+        "alpha": 0.6305264810526173,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          92,
+          1712,
+          532,
+          31
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1663,
+              315,
+              31
+            ],
+            "alvo": 139,
+            "luz": 225
+          },
+          {
+            "caixa": [
+              92,
+              1712,
+              532,
+              31
+            ],
+            "alvo": 139,
+            "luz": 241
+          },
+          {
+            "caixa": [
+              744,
+              1671,
+              244,
+              65
+            ],
+            "alvo": 139,
+            "luz": 211
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 123.8,
+        "estimado": 0.6469618955771137,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "qua1000",
+    "dow": "qua",
+    "dia": "02/09",
+    "hora": "10:00",
+    "layout": "L2",
+    "tema": "Almoço executivo",
+    "driveFileId": "1mD7nWQ5VjeOLwavpms-a-Xk4hUnIY5kU",
+    "copy": [
+      "Almoço na Brasa",
+      "Escolha o corte, escolha os acompanhamentos e sente à mesa.",
+      "Segunda a sexta, das 11h às 16h"
+    ],
+    "fotoTrocada": {
+      "de": "1c6qSgHFArYEBEoByvuM6XUrRoTlPNfXN",
+      "motivo": "preço legível na carta manuscrita da mesa"
+    },
+    "artboard": "Qua1000.dc.html",
+    "arquivoFoto": "qua1000.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          570,
+          18,
+          600,
+          427
+        ],
+        "raio": 130,
+        "luz": 249,
+        "alvo": 139,
+        "alpha": 0.5838387026604539,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          752,
+          200,
+          236,
+          63
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              752,
+              200,
+              236,
+              63
+            ],
+            "alvo": 139,
+            "luz": 249
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 134.5,
+        "estimado": 0.6077092133999551,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1130,
+          1260,
+          797
+        ],
+        "raio": 130,
+        "luz": 236,
+        "alvo": 69,
+        "alpha": 0.95,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          95,
+          1379,
+          253,
+          166
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1312,
+              432,
+              113
+            ],
+            "alvo": 139,
+            "luz": 237
+          },
+          {
+            "caixa": [
+              95,
+              1379,
+              253,
+              166
+            ],
+            "alvo": 69,
+            "luz": 236
+          },
+          {
+            "caixa": [
+              92,
+              1556,
+              858,
+              40
+            ],
+            "alvo": 139,
+            "luz": 234
+          },
+          {
+            "caixa": [
+              92,
+              1608,
+              241,
+              40
+            ],
+            "alvo": 139,
+            "luz": 197
+          },
+          {
+            "caixa": [
+              92,
+              1715,
+              29,
+              29
+            ],
+            "alvo": 69,
+            "luz": 198
+          },
+          {
+            "caixa": [
+              134,
+              1713,
+              458,
+              32
+            ],
+            "alvo": 139,
+            "luz": 199
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1683,
+              896,
+              1
+            ]
+          }
+        ],
+        "aferido": 58.8,
+        "estimado": 0.95,
+        "no_teto": true
+      }
+    ]
+  },
+  {
+    "nome": "qua1400",
+    "dow": "qua",
+    "dia": "02/09",
+    "hora": "14:00",
+    "layout": "L3",
+    "tema": "Happy hour",
+    "driveFileId": "1n-HKEwCR89VNtY2ePuiPQeZYIvtMax0T",
+    "copy": [
+      "Chope em Dobro",
+      "Chope e drinks selecionados, os dois em dobro",
+      "Terça a sexta, das 16h às 19h"
+    ],
+    "fotoTrocada": {
+      "de": "1rb6zFLxxiSNBoQylfjIjvHmoQLsutL_v",
+      "motivo": "marca de terceiro (Patagonia) em destaque no copo"
+    },
+    "artboard": "Qua1400.dc.html",
+    "arquivoFoto": "qua1400.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          93,
+          0,
+          894,
+          499
+        ],
+        "raio": 130,
+        "luz": 234,
+        "alvo": 139,
+        "alpha": 0.481759091026326,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          275,
+          182,
+          530,
+          135
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              275,
+              182,
+              530,
+              135
+            ],
+            "alvo": 139,
+            "luz": 234
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 125.8,
+        "estimado": 0.5486739074253847,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1419,
+          1260,
+          511
+        ],
+        "raio": 130,
+        "luz": 217,
+        "alvo": 139,
+        "alpha": 0.48503457056990906,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          122,
+          1606,
+          593,
+          32
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              122,
+              1606,
+              593,
+              32
+            ],
+            "alvo": 139,
+            "luz": 217
+          },
+          {
+            "caixa": [
+              122,
+              1649,
+              86,
+              32
+            ],
+            "alvo": 139,
+            "luz": 211
+          },
+          {
+            "caixa": [
+              122,
+              1710,
+              414,
+              32
+            ],
+            "alvo": 139,
+            "luz": 170
+          },
+          {
+            "caixa": [
+              756,
+              1686,
+              232,
+              62
+            ],
+            "alvo": 139,
+            "luz": 176
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1601,
+              4,
+              147
+            ]
+          }
+        ],
+        "aferido": 121.5,
+        "estimado": 0.5304788008825775,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "qui0800",
+    "dow": "qui",
+    "dia": "03/09",
+    "hora": "08:00",
+    "layout": "L1",
+    "tema": "Funcionamento e endereço",
+    "driveFileId": "1swEI5eOzH-XWWls-yJ8nzIKwzBdDqrfm",
+    "copy": [
+      "Quinta no Quintal",
+      "Quinta, das 11h às 00h",
+      "Rua Aleixo Netto, 1158, Praia do Canto"
+    ],
+    "artboard": "Qui0800.dc.html",
+    "arquivoFoto": "qui0800.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          -90,
+          6,
+          783,
+          589
+        ],
+        "raio": 130,
+        "luz": 67,
+        "alvo": 69,
+        "alpha": 0.0,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          94,
+          265,
+          285,
+          148
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              188,
+              419,
+              118
+            ],
+            "alvo": 139,
+            "luz": 50
+          },
+          {
+            "caixa": [
+              94,
+              265,
+              285,
+              148
+            ],
+            "alvo": 69,
+            "luz": 67
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 65.8
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1482,
+          1246,
+          448
+        ],
+        "raio": 130,
+        "luz": 119,
+        "alvo": 69,
+        "alpha": 0.6621300399883832,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          419,
+          1669,
+          27,
+          27
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1671,
+              262,
+              69
+            ],
+            "alvo": 139,
+            "luz": 44
+          },
+          {
+            "caixa": [
+              419,
+              1669,
+              27,
+              27
+            ],
+            "alvo": 69,
+            "luz": 119
+          },
+          {
+            "caixa": [
+              459,
+              1667,
+              301,
+              30
+            ],
+            "alvo": 139,
+            "luz": 115
+          },
+          {
+            "caixa": [
+              419,
+              1717,
+              27,
+              27
+            ],
+            "alvo": 69,
+            "luz": 61
+          },
+          {
+            "caixa": [
+              459,
+              1715,
+              515,
+              30
+            ],
+            "alvo": 139,
+            "luz": 84
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              386,
+              1664,
+              1,
+              84
+            ]
+          }
+        ],
+        "aferido": 62.2,
+        "estimado": 0.6718467983252127,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "qui0930",
+    "dow": "qui",
+    "dia": "03/09",
+    "hora": "09:30",
+    "layout": "L2",
+    "tema": "Almoço executivo",
+    "driveFileId": "1DqGxOPK3z566azCMWdEJtcaqCInpkM3I",
+    "copy": [
+      "Tem Peixe no Executivo",
+      "Tilápia com crosta de ervas é uma das opções de prato principal.",
+      "Segunda a sexta, das 11h às 16h"
+    ],
+    "artboard": "Qui0930.dc.html",
+    "arquivoFoto": "qui0930.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          570,
+          18,
+          600,
+          427
+        ],
+        "raio": 130,
+        "luz": 203,
+        "alvo": 139,
+        "alpha": 0.4160086640224587,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          752,
+          200,
+          236,
+          63
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              752,
+              200,
+              236,
+              63
+            ],
+            "alvo": 139,
+            "luz": 203
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 134.2,
+        "estimado": 0.4470494104939094,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1130,
+          1260,
+          797
+        ],
+        "raio": 130,
+        "luz": 194,
+        "alvo": 69,
+        "alpha": 0.8598866168698732,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          95,
+          1379,
+          397,
+          166
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1312,
+              535,
+              113
+            ],
+            "alvo": 139,
+            "luz": 211
+          },
+          {
+            "caixa": [
+              95,
+              1379,
+              397,
+              166
+            ],
+            "alvo": 69,
+            "luz": 194
+          },
+          {
+            "caixa": [
+              92,
+              1556,
+              863,
+              40
+            ],
+            "alvo": 139,
+            "luz": 229
+          },
+          {
+            "caixa": [
+              92,
+              1608,
+              262,
+              40
+            ],
+            "alvo": 139,
+            "luz": 224
+          },
+          {
+            "caixa": [
+              92,
+              1715,
+              29,
+              29
+            ],
+            "alvo": 69,
+            "luz": 107
+          },
+          {
+            "caixa": [
+              134,
+              1713,
+              458,
+              32
+            ],
+            "alvo": 139,
+            "luz": 120
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1683,
+              896,
+              1
+            ]
+          }
+        ],
+        "aferido": 48.6,
+        "estimado": 0.934970687845498,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "qui1430",
+    "dow": "qui",
+    "dia": "03/09",
+    "hora": "14:30",
+    "layout": "L3",
+    "tema": "Happy hour",
+    "driveFileId": "1jE1U_MUoM0iW_lhMX1HdUIsAKny5R5rj",
+    "copy": [
+      "A Tarde Pede Chope",
+      "Chope e drinks selecionados em dobro",
+      "Terça a sexta, das 16h às 19h"
+    ],
+    "fotoTrocada": {
+      "de": "1VY4g08nQDm2onKAdTJzKUaFprZ0WiWO3",
+      "motivo": "placa de marca de terceiro no fundo"
+    },
+    "artboard": "Qui1430.dc.html",
+    "arquivoFoto": "qui1430.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          160,
+          0,
+          760,
+          595
+        ],
+        "raio": 130,
+        "luz": 204,
+        "alvo": 69,
+        "alpha": 0.8507255563712312,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          342,
+          278,
+          396,
+          135
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              407,
+              182,
+              267,
+              135
+            ],
+            "alvo": 139,
+            "luz": 202
+          },
+          {
+            "caixa": [
+              342,
+              278,
+              396,
+              135
+            ],
+            "alvo": 69,
+            "luz": 204
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 60.5,
+        "estimado": 0.9040351705688465,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1462,
+          1260,
+          468
+        ],
+        "raio": 130,
+        "luz": 253,
+        "alvo": 139,
+        "alpha": 0.6643512822989784,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          756,
+          1686,
+          232,
+          62
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              122,
+              1649,
+              568,
+              32
+            ],
+            "alvo": 139,
+            "luz": 253
+          },
+          {
+            "caixa": [
+              122,
+              1710,
+              414,
+              32
+            ],
+            "alvo": 139,
+            "luz": 254
+          },
+          {
+            "caixa": [
+              756,
+              1686,
+              232,
+              62
+            ],
+            "alvo": 139,
+            "luz": 253
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1644,
+              4,
+              104
+            ]
+          }
+        ],
+        "aferido": 122.3,
+        "estimado": 0.679810145548589,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "sex0800",
+    "dow": "sex",
+    "dia": "04/09",
+    "hora": "08:00",
+    "layout": "L4",
+    "tema": "Funcionamento e endereço",
+    "driveFileId": "1B3uCzv_4S0mMsZlq7S-NieUw8Dijv707",
+    "copy": [
+      "Sexta no Quintal",
+      "Sexta, das 11h às 00h",
+      "Rua Aleixo Netto, 1158, Praia do Canto"
+    ],
+    "fotoTrocada": {
+      "de": "1DMC1cnmYmlcU5BHri9kYb7sBLLwhFKli",
+      "motivo": "quase idêntica à de terça (mesma sequência img_3746/3747)",
+      "nota": "mesma sala da peça de quarta, em enquadramento diferente; as outras opções tinham marca de terceiro (RIVIERA, garrafa rotulada) ou rosto de criança em primeiro plano"
+    },
+    "artboard": "Sex0800.dc.html",
+    "arquivoFoto": "sex0800.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          81,
+          0,
+          919,
+          497
+        ],
+        "raio": 130,
+        "luz": 222,
+        "alvo": 139,
+        "alpha": 0.4432419152485588,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          263,
+          182,
+          555,
+          133
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              263,
+              182,
+              555,
+              133
+            ],
+            "alvo": 139,
+            "luz": 222
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 126.8,
+        "estimado": 0.5084144975822145,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1481,
+          1260,
+          444
+        ],
+        "raio": 130,
+        "luz": 235,
+        "alvo": 139,
+        "alpha": 0.5591628769858312,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          92,
+          1663,
+          296,
+          31
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1663,
+              296,
+              31
+            ],
+            "alvo": 139,
+            "luz": 235
+          },
+          {
+            "caixa": [
+              92,
+              1712,
+              532,
+              31
+            ],
+            "alvo": 139,
+            "luz": 230
+          },
+          {
+            "caixa": [
+              744,
+              1671,
+              244,
+              65
+            ],
+            "alvo": 139,
+            "luz": 141
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 114.4,
+        "estimado": 0.6274096630227085,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "sex0900",
+    "dow": "sex",
+    "dia": "04/09",
+    "hora": "09:00",
+    "layout": "L2",
+    "tema": "Almoço executivo",
+    "driveFileId": "1tktF-gaciuBiseBGsUFo2g6ZilTgcMjp",
+    "copy": [
+      "Sexta Começa no Almoço",
+      "Sobrecoxa desossada na parrilla, com os acompanhamentos que você escolher.",
+      "Segunda a sexta, das 11h às 16h"
+    ],
+    "artboard": "Sex0900.dc.html",
+    "arquivoFoto": "sex0900.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          570,
+          18,
+          600,
+          427
+        ],
+        "raio": 130,
+        "luz": 33,
+        "alvo": 139,
+        "alpha": 0.0,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          752,
+          200,
+          236,
+          63
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              752,
+              200,
+              236,
+              63
+            ],
+            "alvo": 139,
+            "luz": 33
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 30.1
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1130,
+          1260,
+          797
+        ],
+        "raio": 130,
+        "luz": 206,
+        "alvo": 69,
+        "alpha": 0.8949806229155512,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          95,
+          1379,
+          309,
+          166
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1312,
+              683,
+              113
+            ],
+            "alvo": 139,
+            "luz": 203
+          },
+          {
+            "caixa": [
+              95,
+              1379,
+              309,
+              166
+            ],
+            "alvo": 69,
+            "luz": 206
+          },
+          {
+            "caixa": [
+              92,
+              1556,
+              715,
+              40
+            ],
+            "alvo": 139,
+            "luz": 164
+          },
+          {
+            "caixa": [
+              92,
+              1608,
+              673,
+              40
+            ],
+            "alvo": 139,
+            "luz": 163
+          },
+          {
+            "caixa": [
+              92,
+              1715,
+              29,
+              29
+            ],
+            "alvo": 69,
+            "luz": 99
+          },
+          {
+            "caixa": [
+              134,
+              1713,
+              458,
+              32
+            ],
+            "alvo": 139,
+            "luz": 104
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1683,
+              896,
+              1
+            ]
+          }
+        ],
+        "aferido": 44.6,
+        "estimado": 0.95,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "sex1400",
+    "dow": "sex",
+    "dia": "04/09",
+    "hora": "14:00",
+    "layout": "L3",
+    "tema": "Happy hour",
+    "driveFileId": "10zwAEo_5v5sBlHaThe63hOmfSv3071Bo",
+    "copy": [
+      "Sextou no Quintal",
+      "Chope e drinks selecionados em dobro",
+      "Terça a sexta, das 16h às 19h"
+    ],
+    "artboard": "Sex1400.dc.html",
+    "arquivoFoto": "sex1400.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          57,
+          0,
+          966,
+          499
+        ],
+        "raio": 130,
+        "luz": 182,
+        "alvo": 139,
+        "alpha": 0.29315252599265684,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          239,
+          182,
+          602,
+          135
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              239,
+              182,
+              602,
+              135
+            ],
+            "alvo": 139,
+            "luz": 182
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 133.2,
+        "estimado": 0.33287401151460144,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1462,
+          1260,
+          468
+        ],
+        "raio": 130,
+        "luz": 157,
+        "alvo": 139,
+        "alpha": 0.15623308620878662,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          122,
+          1649,
+          568,
+          32
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              122,
+              1649,
+              568,
+              32
+            ],
+            "alvo": 139,
+            "luz": 157
+          },
+          {
+            "caixa": [
+              122,
+              1710,
+              414,
+              32
+            ],
+            "alvo": 139,
+            "luz": 154
+          },
+          {
+            "caixa": [
+              756,
+              1686,
+              232,
+              62
+            ],
+            "alvo": 139,
+            "luz": 94
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1644,
+              4,
+              104
+            ]
+          }
+        ],
+        "aferido": 134.3,
+        "estimado": 0.17610630675808286,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "sab0800",
+    "dow": "sáb",
+    "dia": "05/09",
+    "hora": "08:00",
+    "layout": "L1",
+    "tema": "Funcionamento e endereço",
+    "driveFileId": "1bb6WyAztEBCtrRrwmCSwXbUelhrJxk1-",
+    "copy": [
+      "Sábado no Quintal",
+      "Sábado, das 11h às 00h",
+      "Rua Aleixo Netto, 1158, Praia do Canto"
+    ],
+    "artboard": "Sab0800.dc.html",
+    "arquivoFoto": "sab0800.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          -90,
+          6,
+          794,
+          589
+        ],
+        "raio": 130,
+        "luz": 233,
+        "alvo": 69,
+        "alpha": 0.833191771789966,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          94,
+          265,
+          285,
+          148
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              188,
+              430,
+              118
+            ],
+            "alvo": 139,
+            "luz": 232
+          },
+          {
+            "caixa": [
+              94,
+              265,
+              285,
+              148
+            ],
+            "alvo": 69,
+            "luz": 233
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 58.2,
+        "estimado": 0.941374610744207,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1482,
+          1246,
+          448
+        ],
+        "raio": 130,
+        "luz": 169,
+        "alvo": 69,
+        "alpha": 0.8610623983553842,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          419,
+          1717,
+          27,
+          27
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1671,
+              262,
+              69
+            ],
+            "alvo": 139,
+            "luz": 187
+          },
+          {
+            "caixa": [
+              419,
+              1669,
+              27,
+              27
+            ],
+            "alvo": 69,
+            "luz": 169
+          },
+          {
+            "caixa": [
+              459,
+              1667,
+              314,
+              30
+            ],
+            "alvo": 139,
+            "luz": 177
+          },
+          {
+            "caixa": [
+              419,
+              1717,
+              27,
+              27
+            ],
+            "alvo": 69,
+            "luz": 169
+          },
+          {
+            "caixa": [
+              459,
+              1715,
+              515,
+              30
+            ],
+            "alvo": 139,
+            "luz": 165
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              386,
+              1664,
+              1,
+              84
+            ]
+          }
+        ],
+        "aferido": 64.8,
+        "estimado": 0.8760863995952598,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "sab1100",
+    "dow": "sáb",
+    "dia": "05/09",
+    "hora": "11:00",
+    "layout": "L2",
+    "tema": "Corte na parrilla",
+    "driveFileId": "1UUKafdtGAkF_0ul3DX0pEzhLhjrLygS3",
+    "copy": [
+      "Picanha na Parrilla",
+      "Corte de 300g, com farofa, vinagrete e o acompanhamento que você escolher.",
+      "Sábado, das 11h às 00h"
+    ],
+    "artboard": "Sab1100.dc.html",
+    "arquivoFoto": "sab1100.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          570,
+          18,
+          600,
+          427
+        ],
+        "raio": 130,
+        "luz": 165,
+        "alvo": 139,
+        "alpha": 0.2051973514054272,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          752,
+          200,
+          236,
+          63
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              752,
+              200,
+              236,
+              63
+            ],
+            "alvo": 139,
+            "luz": 165
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 135.5,
+        "estimado": 0.23249333446584292,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1130,
+          1260,
+          797
+        ],
+        "raio": 130,
+        "luz": 189,
+        "alvo": 69,
+        "alpha": 0.95,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          92,
+          1715,
+          29,
+          29
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1312,
+              449,
+              113
+            ],
+            "alvo": 139,
+            "luz": 207
+          },
+          {
+            "caixa": [
+              95,
+              1379,
+              350,
+              166
+            ],
+            "alvo": 69,
+            "luz": 202
+          },
+          {
+            "caixa": [
+              92,
+              1556,
+              702,
+              40
+            ],
+            "alvo": 139,
+            "luz": 203
+          },
+          {
+            "caixa": [
+              92,
+              1608,
+              654,
+              40
+            ],
+            "alvo": 139,
+            "luz": 193
+          },
+          {
+            "caixa": [
+              92,
+              1715,
+              29,
+              29
+            ],
+            "alvo": 69,
+            "luz": 189
+          },
+          {
+            "caixa": [
+              134,
+              1713,
+              334,
+              32
+            ],
+            "alvo": 139,
+            "luz": 180
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1683,
+              896,
+              1
+            ]
+          }
+        ],
+        "aferido": 58.4,
+        "estimado": 0.95,
+        "no_teto": true
+      }
+    ]
+  },
+  {
+    "nome": "sab1200",
+    "dow": "sáb",
+    "dia": "05/09",
+    "hora": "12:00",
+    "layout": "L3",
+    "tema": "Tábua para dividir",
+    "driveFileId": "1I6jZx0lzwHrojDrSiLp6251WxWMi6xr7",
+    "copy": [
+      "Tábua pra Galera",
+      "Costela, ancho, sobrecoxas, mini kaftas e batatas rústicas",
+      "Tábua O Quintal, serve 6 pessoas"
+    ],
+    "artboard": "Sab1200.dc.html",
+    "arquivoFoto": "sab1200.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          63,
+          0,
+          954,
+          499
+        ],
+        "raio": 130,
+        "luz": 241,
+        "alvo": 139,
+        "alpha": 0.5392678045760169,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          245,
+          182,
+          590,
+          135
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              245,
+              182,
+              590,
+              135
+            ],
+            "alvo": 139,
+            "luz": 241
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 133.1,
+        "estimado": 0.5705865753676581,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1419,
+          1260,
+          511
+        ],
+        "raio": 130,
+        "luz": 213,
+        "alvo": 139,
+        "alpha": 0.4695951818719243,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          122,
+          1710,
+          485,
+          32
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              122,
+              1606,
+              574,
+              32
+            ],
+            "alvo": 139,
+            "luz": 153
+          },
+          {
+            "caixa": [
+              122,
+              1649,
+              257,
+              32
+            ],
+            "alvo": 139,
+            "luz": 158
+          },
+          {
+            "caixa": [
+              122,
+              1710,
+              485,
+              32
+            ],
+            "alvo": 139,
+            "luz": 213
+          },
+          {
+            "caixa": [
+              756,
+              1686,
+              232,
+              62
+            ],
+            "alvo": 139,
+            "luz": 71
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1601,
+              4,
+              147
+            ]
+          }
+        ],
+        "aferido": 122.8,
+        "estimado": 0.5110439824687616,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "dom0800",
+    "dow": "dom",
+    "dia": "06/09",
+    "hora": "08:00",
+    "layout": "L4",
+    "tema": "Funcionamento e endereço",
+    "driveFileId": "1uTCPoyLWYl5Ia1RsI6yrM7-32dXOdQEo",
+    "copy": [
+      "Domingo no Quintal",
+      "Domingo, das 11h às 17h",
+      "Rua Aleixo Netto, 1158, Praia do Canto"
+    ],
+    "artboard": "Dom0800.dc.html",
+    "arquivoFoto": "dom0800.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          28,
+          0,
+          1024,
+          497
+        ],
+        "raio": 130,
+        "luz": 146,
+        "alvo": 139,
+        "alpha": 0.0,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          210,
+          182,
+          660,
+          133
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              210,
+              182,
+              660,
+              133
+            ],
+            "alvo": 139,
+            "luz": 146
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 137.9,
+        "estimado": 0.06686065204942614,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1481,
+          1260,
+          444
+        ],
+        "raio": 130,
+        "luz": 87,
+        "alvo": 139,
+        "alpha": 0.0,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          744,
+          1671,
+          244,
+          65
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1663,
+              337,
+              31
+            ],
+            "alvo": 139,
+            "luz": 36
+          },
+          {
+            "caixa": [
+              92,
+              1712,
+              532,
+              31
+            ],
+            "alvo": 139,
+            "luz": 39
+          },
+          {
+            "caixa": [
+              744,
+              1671,
+              244,
+              65
+            ],
+            "alvo": 139,
+            "luz": 87
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 86.2
+      }
+    ]
+  },
+  {
+    "nome": "dom1100",
+    "dow": "dom",
+    "dia": "06/09",
+    "hora": "11:00",
+    "layout": "L3",
+    "tema": "Resenha de domingo",
+    "driveFileId": "1mfzU42Ts5iTjkuOaJBxBG7qBUuDRkGbI",
+    "copy": [
+      "Domingo de Resenha",
+      "A mesa cheia, a sombra da árvore e o dia inteiro pela frente",
+      "Domingo, das 11h às 17h"
+    ],
+    "fotoTrocada": {
+      "de": "1L2HY2MSh7SHXtwW3YPkIRB-ZWVyZF_lu",
+      "motivo": "guarda-sóis de marca de terceiro no quadro"
+    },
+    "artboard": "Dom1100.dc.html",
+    "arquivoFoto": "dom1100.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          8,
+          0,
+          1063,
+          499
+        ],
+        "raio": 130,
+        "luz": 212,
+        "alvo": 139,
+        "alpha": 0.4116703101316226,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          190,
+          182,
+          699,
+          135
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              190,
+              182,
+              699,
+              135
+            ],
+            "alvo": 139,
+            "luz": 212
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 128.1,
+        "estimado": 0.4729855012001036,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1419,
+          1260,
+          511
+        ],
+        "raio": 130,
+        "luz": 247,
+        "alvo": 139,
+        "alpha": 0.6134793326884687,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          756,
+          1686,
+          232,
+          62
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              122,
+              1606,
+              544,
+              32
+            ],
+            "alvo": 139,
+            "luz": 217
+          },
+          {
+            "caixa": [
+              122,
+              1649,
+              310,
+              32
+            ],
+            "alvo": 139,
+            "luz": 223
+          },
+          {
+            "caixa": [
+              122,
+              1710,
+              348,
+              32
+            ],
+            "alvo": 139,
+            "luz": 214
+          },
+          {
+            "caixa": [
+              756,
+              1686,
+              232,
+              62
+            ],
+            "alvo": 139,
+            "luz": 247
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1601,
+              4,
+              147
+            ]
+          }
+        ],
+        "aferido": 117.4,
+        "estimado": 0.6571917638440191,
+        "no_teto": false
+      }
+    ]
+  },
+  {
+    "nome": "dom1200",
+    "dow": "dom",
+    "dia": "06/09",
+    "hora": "12:00",
+    "layout": "L2",
+    "tema": "Petiscos e entradas",
+    "driveFileId": "1TeJR4giYa6kgFWByBFfewIWLrmGo18fT",
+    "copy": [
+      "Pra Petiscar no Domingo",
+      "Pão na brasa recheado com gorgonzola, requeijão, muçarela e linguiça.",
+      "Domingo, das 11h às 17h"
+    ],
+    "artboard": "Dom1200.dc.html",
+    "arquivoFoto": "dom1200.jpg",
+    "modo": "halo",
+    "halo": [
+      {
+        "papel": "topo",
+        "caixa": [
+          570,
+          18,
+          600,
+          427
+        ],
+        "raio": 130,
+        "luz": 224,
+        "alvo": 139,
+        "alpha": 0.4948159147845999,
+        "cor": [
+          245,
+          240,
+          232
+        ],
+        "tinta_caixa": [
+          752,
+          200,
+          236,
+          63
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              752,
+              200,
+              236,
+              63
+            ],
+            "alvo": 139,
+            "luz": 224
+          }
+        ],
+        "ornamentos": [],
+        "aferido": 133.4,
+        "estimado": 0.5273992517049806,
+        "no_teto": false
+      },
+      {
+        "papel": "rodape",
+        "caixa": [
+          -90,
+          1130,
+          1260,
+          797
+        ],
+        "raio": 130,
+        "luz": 197,
+        "alvo": 69,
+        "alpha": 0.8656768729055567,
+        "cor": [
+          122,
+          154,
+          92
+        ],
+        "tinta_caixa": [
+          95,
+          1379,
+          363,
+          166
+        ],
+        "linhas": [
+          {
+            "caixa": [
+              92,
+              1312,
+              603,
+              113
+            ],
+            "alvo": 139,
+            "luz": 220
+          },
+          {
+            "caixa": [
+              95,
+              1379,
+              363,
+              166
+            ],
+            "alvo": 69,
+            "luz": 197
+          },
+          {
+            "caixa": [
+              92,
+              1556,
+              885,
+              40
+            ],
+            "alvo": 139,
+            "luz": 132
+          },
+          {
+            "caixa": [
+              92,
+              1608,
+              349,
+              40
+            ],
+            "alvo": 139,
+            "luz": 139
+          },
+          {
+            "caixa": [
+              92,
+              1715,
+              29,
+              29
+            ],
+            "alvo": 69,
+            "luz": 130
+          },
+          {
+            "caixa": [
+              134,
+              1713,
+              348,
+              32
+            ],
+            "alvo": 139,
+            "luz": 137
+          }
+        ],
+        "ornamentos": [
+          {
+            "caixa": [
+              92,
+              1683,
+              896,
+              1
+            ]
+          }
+        ],
+        "aferido": 48.5,
+        "estimado": 0.9408233741092431,
+        "no_teto": false
+      }
+    ]
+  }
+]

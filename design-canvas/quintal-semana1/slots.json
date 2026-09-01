@@ -1,0 +1,279 @@
+[
+ {
+  "nome": "ter0800",
+  "dow": "ter",
+  "dia": "01/09",
+  "hora": "08:00",
+  "layout": "L1",
+  "tema": "Funcionamento e endereço",
+  "driveFileId": "1XroMqpxnpIvEfaiUDyWY2NPJ3ijDI0Er",
+  "copy": [
+   "Terça no Quintal",
+   "Terça, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ]
+ },
+ {
+  "nome": "ter0930",
+  "dow": "ter",
+  "dia": "01/09",
+  "hora": "09:30",
+  "layout": "L2",
+  "tema": "Almoço executivo",
+  "driveFileId": "1HobBIGav0bYejs8V0s_2J5JifdKqJpbR",
+  "copy": [
+   "Almoço Executivo",
+   "Prato principal na parrilla e até três acompanhamentos.",
+   "Segunda a sexta, das 11h às 16h"
+  ],
+  "fotoTrocada": {
+   "de": "1uNVr1XNdA87HDpfZTUDOryPsU3TGucrU",
+   "motivo": "preço legível na carta manuscrita da mesa"
+  }
+ },
+ {
+  "nome": "ter1400",
+  "dow": "ter",
+  "dia": "01/09",
+  "hora": "14:00",
+  "layout": "L3",
+  "tema": "Happy hour",
+  "driveFileId": "1DVOGKmVSkkV8akvmL6uQldQQDS6bSnjQ",
+  "copy": [
+   "Happy Hour do Quintal",
+   "Chope e drinks selecionados em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ]
+ },
+ {
+  "nome": "qua0800",
+  "dow": "qua",
+  "dia": "02/09",
+  "hora": "08:00",
+  "layout": "L4",
+  "tema": "Funcionamento e endereço",
+  "driveFileId": "1w0ugegZ8SlwKl3tAWTjBs_k-qe2sq86M",
+  "copy": [
+   "Quarta no Quintal",
+   "Quarta, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ]
+ },
+ {
+  "nome": "qua1000",
+  "dow": "qua",
+  "dia": "02/09",
+  "hora": "10:00",
+  "layout": "L2",
+  "tema": "Almoço executivo",
+  "driveFileId": "1mD7nWQ5VjeOLwavpms-a-Xk4hUnIY5kU",
+  "copy": [
+   "Almoço na Brasa",
+   "Escolha o corte, escolha os acompanhamentos e sente à mesa.",
+   "Segunda a sexta, das 11h às 16h"
+  ],
+  "fotoTrocada": {
+   "de": "1c6qSgHFArYEBEoByvuM6XUrRoTlPNfXN",
+   "motivo": "preço legível na carta manuscrita da mesa"
+  }
+ },
+ {
+  "nome": "qua1400",
+  "dow": "qua",
+  "dia": "02/09",
+  "hora": "14:00",
+  "layout": "L3",
+  "tema": "Happy hour",
+  "driveFileId": "1n-HKEwCR89VNtY2ePuiPQeZYIvtMax0T",
+  "copy": [
+   "Chope em Dobro",
+   "Chope e drinks selecionados, os dois em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ],
+  "fotoTrocada": {
+   "de": "1rb6zFLxxiSNBoQylfjIjvHmoQLsutL_v",
+   "motivo": "marca de terceiro (Patagonia) em destaque no copo"
+  }
+ },
+ {
+  "nome": "qui0800",
+  "dow": "qui",
+  "dia": "03/09",
+  "hora": "08:00",
+  "layout": "L1",
+  "tema": "Funcionamento e endereço",
+  "driveFileId": "1swEI5eOzH-XWWls-yJ8nzIKwzBdDqrfm",
+  "copy": [
+   "Quinta no Quintal",
+   "Quinta, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ]
+ },
+ {
+  "nome": "qui0930",
+  "dow": "qui",
+  "dia": "03/09",
+  "hora": "09:30",
+  "layout": "L2",
+  "tema": "Almoço executivo",
+  "driveFileId": "1DqGxOPK3z566azCMWdEJtcaqCInpkM3I",
+  "copy": [
+   "Tem Peixe no Executivo",
+   "Tilápia com crosta de ervas é uma das opções de prato principal.",
+   "Segunda a sexta, das 11h às 16h"
+  ]
+ },
+ {
+  "nome": "qui1430",
+  "dow": "qui",
+  "dia": "03/09",
+  "hora": "14:30",
+  "layout": "L3",
+  "tema": "Happy hour",
+  "driveFileId": "1jE1U_MUoM0iW_lhMX1HdUIsAKny5R5rj",
+  "copy": [
+   "A Tarde Pede Chope",
+   "Chope e drinks selecionados em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ],
+  "fotoTrocada": {
+   "de": "1VY4g08nQDm2onKAdTJzKUaFprZ0WiWO3",
+   "motivo": "placa de marca de terceiro no fundo"
+  }
+ },
+ {
+  "nome": "sex0800",
+  "dow": "sex",
+  "dia": "04/09",
+  "hora": "08:00",
+  "layout": "L4",
+  "tema": "Funcionamento e endereço",
+  "driveFileId": "1B3uCzv_4S0mMsZlq7S-NieUw8Dijv707",
+  "copy": [
+   "Sexta no Quintal",
+   "Sexta, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "fotoTrocada": {
+   "de": "1DMC1cnmYmlcU5BHri9kYb7sBLLwhFKli",
+   "motivo": "quase idêntica à de terça (mesma sequência img_3746/3747)",
+   "nota": "mesma sala da peça de quarta, em enquadramento diferente; as outras opções tinham marca de terceiro (RIVIERA, garrafa rotulada) ou rosto de criança em primeiro plano"
+  }
+ },
+ {
+  "nome": "sex0900",
+  "dow": "sex",
+  "dia": "04/09",
+  "hora": "09:00",
+  "layout": "L2",
+  "tema": "Almoço executivo",
+  "driveFileId": "1tktF-gaciuBiseBGsUFo2g6ZilTgcMjp",
+  "copy": [
+   "Sexta Começa no Almoço",
+   "Sobrecoxa desossada na parrilla, com os acompanhamentos que você escolher.",
+   "Segunda a sexta, das 11h às 16h"
+  ]
+ },
+ {
+  "nome": "sex1400",
+  "dow": "sex",
+  "dia": "04/09",
+  "hora": "14:00",
+  "layout": "L3",
+  "tema": "Happy hour",
+  "driveFileId": "10zwAEo_5v5sBlHaThe63hOmfSv3071Bo",
+  "copy": [
+   "Sextou no Quintal",
+   "Chope e drinks selecionados em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ]
+ },
+ {
+  "nome": "sab0800",
+  "dow": "sáb",
+  "dia": "05/09",
+  "hora": "08:00",
+  "layout": "L1",
+  "tema": "Funcionamento e endereço",
+  "driveFileId": "1bb6WyAztEBCtrRrwmCSwXbUelhrJxk1-",
+  "copy": [
+   "Sábado no Quintal",
+   "Sábado, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ]
+ },
+ {
+  "nome": "sab1100",
+  "dow": "sáb",
+  "dia": "05/09",
+  "hora": "11:00",
+  "layout": "L2",
+  "tema": "Corte na parrilla",
+  "driveFileId": "1UUKafdtGAkF_0ul3DX0pEzhLhjrLygS3",
+  "copy": [
+   "Picanha na Parrilla",
+   "Corte de 300g, com farofa, vinagrete e o acompanhamento que você escolher.",
+   "Sábado, das 11h às 00h"
+  ]
+ },
+ {
+  "nome": "sab1200",
+  "dow": "sáb",
+  "dia": "05/09",
+  "hora": "12:00",
+  "layout": "L3",
+  "tema": "Tábua para dividir",
+  "driveFileId": "1I6jZx0lzwHrojDrSiLp6251WxWMi6xr7",
+  "copy": [
+   "Tábua pra Galera",
+   "Costela, ancho, sobrecoxas, mini kaftas e batatas rústicas",
+   "Tábua O Quintal, serve 6 pessoas"
+  ]
+ },
+ {
+  "nome": "dom0800",
+  "dow": "dom",
+  "dia": "06/09",
+  "hora": "08:00",
+  "layout": "L4",
+  "tema": "Funcionamento e endereço",
+  "driveFileId": "1uTCPoyLWYl5Ia1RsI6yrM7-32dXOdQEo",
+  "copy": [
+   "Domingo no Quintal",
+   "Domingo, das 11h às 17h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ]
+ },
+ {
+  "nome": "dom1100",
+  "dow": "dom",
+  "dia": "06/09",
+  "hora": "11:00",
+  "layout": "L3",
+  "tema": "Resenha de domingo",
+  "driveFileId": "1mfzU42Ts5iTjkuOaJBxBG7qBUuDRkGbI",
+  "copy": [
+   "Domingo de Resenha",
+   "A mesa cheia, a sombra da árvore e o dia inteiro pela frente",
+   "Domingo, das 11h às 17h"
+  ],
+  "fotoTrocada": {
+   "de": "1L2HY2MSh7SHXtwW3YPkIRB-ZWVyZF_lu",
+   "motivo": "guarda-sóis de marca de terceiro no quadro"
+  }
+ },
+ {
+  "nome": "dom1200",
+  "dow": "dom",
+  "dia": "06/09",
+  "hora": "12:00",
+  "layout": "L2",
+  "tema": "Petiscos e entradas",
+  "driveFileId": "1TeJR4giYa6kgFWByBFfewIWLrmGo18fT",
+  "copy": [
+   "Pra Petiscar no Domingo",
+   "Pão na brasa recheado com gorgonzola, requeijão, muçarela e linguiça.",
+   "Domingo, das 11h às 17h"
+  ]
+ }
+]
