@@ -1,0 +1,23 @@
+{
+ "artboards": [
+  {
+   "file": "Main.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "Story 9h · café da manhã"
+  },
+  {
+   "file": "FeedQuartaPizza.dc.html",
+   "x": 1240,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "Feed qua 10h30 · capa Quarta da Pizza"
+  }
+ ],
+ "launch": {
+  "view": "canvas"
+ }
+}
