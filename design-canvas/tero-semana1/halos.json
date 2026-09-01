@@ -1,0 +1,600 @@
+{
+ "Main.dc.html": {
+  "logo": 16.0,
+  "logoMedia": 14.1,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 189.3,
+  "blocoMedia": 168.6,
+  "_bloco": [
+   96,
+   100,
+   646,
+   162
+  ],
+  "pe": 81.2,
+  "peMedia": 78.5,
+  "_pe": [
+   96,
+   1780,
+   320,
+   50
+  ]
+ },
+ "SegFuncionamento.dc.html": {
+  "bloco": 20.6,
+  "blocoMedia": 19.3,
+  "_bloco": [
+   120,
+   100,
+   840,
+   217
+  ],
+  "pe": 52.0,
+  "peMedia": 47.1,
+  "_pe": [
+   173,
+   1584,
+   735,
+   133
+  ],
+  "logo": 38.1,
+  "logoMedia": 35.3,
+  "_logo": [
+   445,
+   1748,
+   190,
+   82
+  ]
+ },
+ "SegRolhaFree.dc.html": {
+  "bloco": 98.6,
+  "blocoMedia": 93.3,
+  "_bloco": [
+   224,
+   100,
+   760,
+   195
+  ],
+  "logo": 115.2,
+  "logoMedia": 110.5,
+  "_logo": [
+   794,
+   1631,
+   190,
+   82
+  ],
+  "pe": 176.3,
+  "peMedia": 129.6,
+  "_pe": [
+   294,
+   1737,
+   690,
+   93
+  ]
+ },
+ "TerFuncionamento.dc.html": {
+  "logo": 102.3,
+  "logoMedia": 82.5,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 111.1,
+  "blocoMedia": 81.2,
+  "_bloco": [
+   96,
+   100,
+   321,
+   142
+  ],
+  "pe": 88.8,
+  "peMedia": 76.6,
+  "_pe": [
+   96,
+   1697,
+   635,
+   133
+  ]
+ },
+ "TerExecutivo.dc.html": {
+  "logo": 40.9,
+  "logoMedia": 37.8,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 65.7,
+  "blocoMedia": 56.3,
+  "_bloco": [
+   96,
+   100,
+   681,
+   129
+  ],
+  "pe": 41.5,
+  "peMedia": 41.0,
+  "_pe": [
+   96,
+   1737,
+   642,
+   93
+  ]
+ },
+ "TerHappyHour.dc.html": {
+  "logo": 24.6,
+  "logoMedia": 19.1,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 221.1,
+  "blocoMedia": 194.2,
+  "_bloco": [
+   96,
+   100,
+   661,
+   195
+  ],
+  "pe": 93.6,
+  "peMedia": 78.2,
+  "_pe": [
+   96,
+   1737,
+   402,
+   93
+  ]
+ },
+ "QuaFuncionamento.dc.html": {
+  "logo": 18.2,
+  "logoMedia": 14.3,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 232.3,
+  "blocoMedia": 221.5,
+  "_bloco": [
+   96,
+   100,
+   585,
+   116
+  ],
+  "pe": 62.1,
+  "peMedia": 54.2,
+  "_pe": [
+   96,
+   1697,
+   635,
+   133
+  ]
+ },
+ "QuaExecutivo.dc.html": {
+  "logo": 45.4,
+  "logoMedia": 38.7,
+  "_logo": [
+   436,
+   108,
+   208,
+   89
+  ],
+  "bloco": 127.4,
+  "blocoMedia": 101.8,
+  "_bloco": [
+   220,
+   1558,
+   640,
+   142
+  ],
+  "pe": 92.5,
+  "peMedia": 79.0,
+  "_pe": [
+   274,
+   1706,
+   533,
+   125
+  ]
+ },
+ "QuaHappyWine.dc.html": {
+  "logo": 86.4,
+  "logoMedia": 67.8,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 87.6,
+  "blocoMedia": 64.3,
+  "_bloco": [
+   96,
+   100,
+   840,
+   234
+  ],
+  "pe": 3.4,
+  "peMedia": 2.8,
+  "_pe": [
+   96,
+   1737,
+   402,
+   93
+  ]
+ },
+ "QuiFuncionamento.dc.html": {
+  "logo": 47.8,
+  "logoMedia": 41.5,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 63.5,
+  "blocoMedia": 47.0,
+  "_bloco": [
+   96,
+   100,
+   466,
+   123
+  ],
+  "pe": 28.0,
+  "peMedia": 22.0,
+  "_pe": [
+   96,
+   1697,
+   635,
+   133
+  ]
+ },
+ "QuiExecutivo.dc.html": {
+  "logo": 103.3,
+  "logoMedia": 84.7,
+  "_logo": [
+   88,
+   108,
+   198,
+   85
+  ],
+  "bloco": 120.3,
+  "blocoMedia": 90.7,
+  "_bloco": [
+   96,
+   1497,
+   840,
+   234
+  ],
+  "pe": 52.8,
+  "peMedia": 39.5,
+  "_pe": [
+   96,
+   1737,
+   578,
+   93
+  ]
+ },
+ "QuiRolhaFree.dc.html": {
+  "logo": 40.1,
+  "logoMedia": 37.2,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 139.7,
+  "blocoMedia": 131.3,
+  "_bloco": [
+   96,
+   100,
+   840,
+   234
+  ],
+  "pe": 49.6,
+  "peMedia": 46.2,
+  "_pe": [
+   96,
+   1737,
+   594,
+   93
+  ]
+ },
+ "SexFuncionamento.dc.html": {
+  "logo": 60.6,
+  "logoMedia": 53.3,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 194.4,
+  "blocoMedia": 153.8,
+  "_bloco": [
+   96,
+   100,
+   520,
+   123
+  ],
+  "pe": 62.0,
+  "peMedia": 50.1,
+  "_pe": [
+   96,
+   1697,
+   635,
+   133
+  ]
+ },
+ "SexExecutivo.dc.html": {
+  "logo": 111.8,
+  "logoMedia": 106.6,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 147.7,
+  "blocoMedia": 130.4,
+  "_bloco": [
+   96,
+   100,
+   840,
+   234
+  ],
+  "pe": 115.6,
+  "peMedia": 92.2,
+  "_pe": [
+   96,
+   1737,
+   429,
+   93
+  ]
+ },
+ "SexBaiao.dc.html": {
+  "logo": 60.9,
+  "logoMedia": 56.7,
+  "_logo": [
+   436,
+   108,
+   208,
+   89
+  ],
+  "bloco": 53.2,
+  "blocoMedia": 44.4,
+  "_bloco": [
+   261,
+   316,
+   558,
+   139
+  ],
+  "pe": 6.6,
+  "peMedia": 5.1,
+  "_pe": [
+   215,
+   1712,
+   650,
+   118
+  ]
+ },
+ "SabFuncionamento.dc.html": {
+  "logo": 80.9,
+  "logoMedia": 73.8,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 127.8,
+  "blocoMedia": 119.5,
+  "_bloco": [
+   96,
+   100,
+   321,
+   142
+  ],
+  "pe": 82.2,
+  "peMedia": 71.4,
+  "_pe": [
+   96,
+   1697,
+   635,
+   133
+  ]
+ },
+ "SabHappyWine.dc.html": {
+  "logo": 41.0,
+  "logoMedia": 38.9,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 150.9,
+  "blocoMedia": 133.7,
+  "_bloco": [
+   96,
+   100,
+   840,
+   234
+  ],
+  "pe": 121.6,
+  "peMedia": 95.2,
+  "_pe": [
+   96,
+   1737,
+   393,
+   93
+  ]
+ },
+ "SabCompartilhar.dc.html": {
+  "logo": 54.0,
+  "logoMedia": 51.0,
+  "_logo": [
+   794,
+   108,
+   198,
+   85
+  ],
+  "bloco": 121.4,
+  "blocoMedia": 102.8,
+  "_bloco": [
+   120,
+   1497,
+   840,
+   234
+  ],
+  "pe": 114.8,
+  "peMedia": 97.6,
+  "_pe": [
+   356,
+   1737,
+   368,
+   93
+  ]
+ },
+ "DomFuncionamento.dc.html": {
+  "logo": 139.5,
+  "logoMedia": 125.9,
+  "_logo": [
+   436,
+   108,
+   208,
+   89
+  ],
+  "bloco": 126.3,
+  "blocoMedia": 110.5,
+  "_bloco": [
+   221,
+   1528,
+   638,
+   178
+  ],
+  "pe": 156.0,
+  "peMedia": 136.1,
+  "_pe": [
+   175,
+   1711,
+   730,
+   119
+  ]
+ },
+ "DomFamilia.dc.html": {
+  "logo": 85.9,
+  "logoMedia": 72.8,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 87.2,
+  "blocoMedia": 83.5,
+  "_bloco": [
+   96,
+   100,
+   809,
+   195
+  ],
+  "pe": 110.2,
+  "peMedia": 99.4,
+  "_pe": [
+   96,
+   1737,
+   429,
+   93
+  ]
+ },
+ "DomAvaliacao.dc.html": {
+  "logo": 25.7,
+  "logoMedia": 24.3,
+  "_logo": [
+   794,
+   1737,
+   198,
+   85
+  ],
+  "bloco": 42.7,
+  "blocoMedia": 33.3,
+  "_bloco": [
+   96,
+   100,
+   703,
+   162
+  ],
+  "pe": 54.9,
+  "peMedia": 41.8,
+  "_pe": [
+   96,
+   1780,
+   320,
+   50
+  ]
+ },
+ "FeedRolhaFree.dc.html": {
+  "logo": 116.6,
+  "logoMedia": 78.2,
+  "_logo": [
+   794,
+   1149,
+   198,
+   85
+  ],
+  "bloco": 19.7,
+  "blocoMedia": 17.4,
+  "_bloco": [
+   96,
+   120,
+   840,
+   193
+  ],
+  "pe": 10.2,
+  "peMedia": 9.4,
+  "_pe": [
+   96,
+   1147,
+   390,
+   93
+  ]
+ },
+ "FeedHappyHour.dc.html": {
+  "logo": 33.7,
+  "logoMedia": 25.4,
+  "_logo": [
+   794,
+   1149,
+   198,
+   85
+  ],
+  "bloco": 80.1,
+  "blocoMedia": 75.2,
+  "_bloco": [
+   96,
+   120,
+   661,
+   169
+  ],
+  "pe": 42.2,
+  "peMedia": 33.5,
+  "_pe": [
+   96,
+   1147,
+   476,
+   93
+  ]
+ }
+}

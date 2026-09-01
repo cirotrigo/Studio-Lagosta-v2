@@ -1,0 +1,191 @@
+[
+ {
+  "artboard": "Main.dc.html",
+  "dia": "segunda 31/08",
+  "hora": "09:00",
+  "tema": "avaliacao do TripAdvisor",
+  "foto": "seg-0900-avaliacao.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SegFuncionamento.dc.html",
+  "dia": "segunda 31/08",
+  "hora": "15:30",
+  "tema": "funcionamento de segunda (so jantar)",
+  "foto": "seg-1530-funcionamento.jpg",
+  "pos": "topo",
+  "alinha": "center"
+ },
+ {
+  "artboard": "SegRolhaFree.dc.html",
+  "dia": "segunda 31/08",
+  "hora": "17:00",
+  "tema": "rolha free no jantar",
+  "foto": "seg-1700-rolhafree-v2.jpg",
+  "pos": "topo",
+  "alinha": "right"
+ },
+ {
+  "artboard": "TerFuncionamento.dc.html",
+  "dia": "terca 01/09",
+  "hora": "09:00",
+  "tema": "funcionamento e endereco",
+  "foto": "ter-0900-funcionamento.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "TerExecutivo.dc.html",
+  "dia": "terca 01/09",
+  "hora": "09:30",
+  "tema": "almoco executivo",
+  "foto": "ter-0930-executivo-v2.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "TerHappyHour.dc.html",
+  "dia": "terca 01/09",
+  "hora": "13:30",
+  "tema": "happy hour",
+  "foto": "ter-1330-happyhour.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "QuaFuncionamento.dc.html",
+  "dia": "quarta 02/09",
+  "hora": "09:00",
+  "tema": "funcionamento e endereco",
+  "foto": "qua-0900-funcionamento.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "QuaExecutivo.dc.html",
+  "dia": "quarta 02/09",
+  "hora": "09:30",
+  "tema": "almoco executivo",
+  "foto": "qua-0930-executivo-v2.jpg",
+  "pos": "rodape",
+  "alinha": "left"
+ },
+ {
+  "artboard": "QuaHappyWine.dc.html",
+  "dia": "quarta 02/09",
+  "hora": "13:30",
+  "tema": "happy wine",
+  "foto": "qua-1330-happywine.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "QuiFuncionamento.dc.html",
+  "dia": "quinta 03/09",
+  "hora": "09:00",
+  "tema": "funcionamento e endereco",
+  "foto": "qui-0900-funcionamento.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "QuiExecutivo.dc.html",
+  "dia": "quinta 03/09",
+  "hora": "09:30",
+  "tema": "almoco executivo",
+  "foto": "qui-0930-executivo.jpg",
+  "pos": "rodape",
+  "alinha": "left"
+ },
+ {
+  "artboard": "QuiRolhaFree.dc.html",
+  "dia": "quinta 03/09",
+  "hora": "17:30",
+  "tema": "rolha free no jantar (deslizou 30min pelo feed das 17h)",
+  "foto": "qui-1730-rolhafree.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SexFuncionamento.dc.html",
+  "dia": "sexta 04/09",
+  "hora": "09:00",
+  "tema": "funcionamento e endereco",
+  "foto": "sex-0900-funcionamento.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SexExecutivo.dc.html",
+  "dia": "sexta 04/09",
+  "hora": "09:30",
+  "tema": "almoco executivo",
+  "foto": "sex-0930-executivo.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SexBaiao.dc.html",
+  "dia": "sexta 04/09",
+  "hora": "17:00",
+  "tema": "jantar de sexta: baiao de dois cremoso",
+  "foto": "sex-1700-baiao.png",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SabFuncionamento.dc.html",
+  "dia": "sabado 05/09",
+  "hora": "09:00",
+  "tema": "funcionamento e endereco",
+  "foto": "sab-0900-funcionamento.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SabHappyWine.dc.html",
+  "dia": "sabado 05/09",
+  "hora": "09:30",
+  "tema": "happy wine de sabado",
+  "foto": "sab-0930-happywine.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "SabCompartilhar.dc.html",
+  "dia": "sabado 05/09",
+  "hora": "17:00",
+  "tema": "jantar de sabado: cortes para compartilhar",
+  "foto": "sab-1700-compartilhar.jpg",
+  "pos": "rodape",
+  "alinha": "center"
+ },
+ {
+  "artboard": "DomFuncionamento.dc.html",
+  "dia": "domingo 06/09",
+  "hora": "09:00",
+  "tema": "funcionamento de domingo (so almoco)",
+  "foto": "dom-0900-funcionamento.jpg",
+  "pos": "rodape",
+  "alinha": "left"
+ },
+ {
+  "artboard": "DomFamilia.dc.html",
+  "dia": "domingo 06/09",
+  "hora": "09:30",
+  "tema": "almoco de domingo em familia",
+  "foto": "dom-0930-familia.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ },
+ {
+  "artboard": "DomAvaliacao.dc.html",
+  "dia": "domingo 06/09",
+  "hora": "12:00",
+  "tema": "avaliacao de clientes no Google",
+  "foto": "dom-1200-avaliacao.jpg",
+  "pos": "topo",
+  "alinha": "left"
+ }
+]

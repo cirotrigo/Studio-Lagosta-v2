@@ -1,0 +1,175 @@
+{
+ "artboards": [
+  {
+   "file": "Main.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "segunda 31/08 · 09:00 · avaliacao do TripAdvisor"
+  },
+  {
+   "file": "SegFuncionamento.dc.html",
+   "x": 1220,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "segunda 31/08 · 15:30 · funcionamento de segunda (so jantar)"
+  },
+  {
+   "file": "SegRolhaFree.dc.html",
+   "x": 2440,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "segunda 31/08 · 17:00 · rolha free no jantar"
+  },
+  {
+   "file": "TerFuncionamento.dc.html",
+   "x": 3660,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "terca 01/09 · 09:00 · funcionamento e endereco"
+  },
+  {
+   "file": "TerExecutivo.dc.html",
+   "x": 4880,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "terca 01/09 · 09:30 · almoco executivo"
+  },
+  {
+   "file": "TerHappyHour.dc.html",
+   "x": 0,
+   "y": 2140,
+   "w": 1080,
+   "h": 1920,
+   "title": "terca 01/09 · 13:30 · happy hour"
+  },
+  {
+   "file": "QuaFuncionamento.dc.html",
+   "x": 1220,
+   "y": 2140,
+   "w": 1080,
+   "h": 1920,
+   "title": "quarta 02/09 · 09:00 · funcionamento e endereco"
+  },
+  {
+   "file": "QuaExecutivo.dc.html",
+   "x": 2440,
+   "y": 2140,
+   "w": 1080,
+   "h": 1920,
+   "title": "quarta 02/09 · 09:30 · almoco executivo"
+  },
+  {
+   "file": "QuaHappyWine.dc.html",
+   "x": 3660,
+   "y": 2140,
+   "w": 1080,
+   "h": 1920,
+   "title": "quarta 02/09 · 13:30 · happy wine"
+  },
+  {
+   "file": "QuiFuncionamento.dc.html",
+   "x": 4880,
+   "y": 2140,
+   "w": 1080,
+   "h": 1920,
+   "title": "quinta 03/09 · 09:00 · funcionamento e endereco"
+  },
+  {
+   "file": "QuiExecutivo.dc.html",
+   "x": 0,
+   "y": 4280,
+   "w": 1080,
+   "h": 1920,
+   "title": "quinta 03/09 · 09:30 · almoco executivo"
+  },
+  {
+   "file": "QuiRolhaFree.dc.html",
+   "x": 1220,
+   "y": 4280,
+   "w": 1080,
+   "h": 1920,
+   "title": "quinta 03/09 · 17:30 · rolha free no jantar (deslizou 30min pelo feed das 17h)"
+  },
+  {
+   "file": "SexFuncionamento.dc.html",
+   "x": 2440,
+   "y": 4280,
+   "w": 1080,
+   "h": 1920,
+   "title": "sexta 04/09 · 09:00 · funcionamento e endereco"
+  },
+  {
+   "file": "SexExecutivo.dc.html",
+   "x": 3660,
+   "y": 4280,
+   "w": 1080,
+   "h": 1920,
+   "title": "sexta 04/09 · 09:30 · almoco executivo"
+  },
+  {
+   "file": "SexBaiao.dc.html",
+   "x": 4880,
+   "y": 4280,
+   "w": 1080,
+   "h": 1920,
+   "title": "sexta 04/09 · 17:00 · jantar de sexta: baiao de dois cremoso"
+  },
+  {
+   "file": "SabFuncionamento.dc.html",
+   "x": 0,
+   "y": 6420,
+   "w": 1080,
+   "h": 1920,
+   "title": "sabado 05/09 · 09:00 · funcionamento e endereco"
+  },
+  {
+   "file": "SabHappyWine.dc.html",
+   "x": 1220,
+   "y": 6420,
+   "w": 1080,
+   "h": 1920,
+   "title": "sabado 05/09 · 09:30 · happy wine de sabado"
+  },
+  {
+   "file": "SabCompartilhar.dc.html",
+   "x": 2440,
+   "y": 6420,
+   "w": 1080,
+   "h": 1920,
+   "title": "sabado 05/09 · 17:00 · jantar de sabado: cortes para compartilhar"
+  },
+  {
+   "file": "DomFuncionamento.dc.html",
+   "x": 3660,
+   "y": 6420,
+   "w": 1080,
+   "h": 1920,
+   "title": "domingo 06/09 · 09:00 · funcionamento de domingo (so almoco)"
+  },
+  {
+   "file": "DomFamilia.dc.html",
+   "x": 4880,
+   "y": 6420,
+   "w": 1080,
+   "h": 1920,
+   "title": "domingo 06/09 · 09:30 · almoco de domingo em familia"
+  },
+  {
+   "file": "DomAvaliacao.dc.html",
+   "x": 0,
+   "y": 8560,
+   "w": 1080,
+   "h": 1920,
+   "title": "domingo 06/09 · 12:00 · avaliacao de clientes no Google"
+  }
+ ],
+ "launch": {
+  "view": "canvas"
+ }
+}
