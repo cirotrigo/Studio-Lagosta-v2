@@ -43,6 +43,11 @@ export interface RegrasDaMelhoriaArgs {
   expectedTexts: string[]
   /** O pedido do cliente — só para detectar autorização de encurtar texto. */
   userRequest: string
+  /**
+   * Ajuste autorizado NA FOTO (o campo avançado do modal). Ausente ou vazio,
+   * a fotografia é declarada INTOCÁVEL — ver `regraDeFidelidadeDaFoto`.
+   */
+  instrucaoImagem?: string | null
 }
 
 /**
@@ -159,6 +164,41 @@ function regrasDeComposicao(): string[] {
 }
 
 /**
+ * O PAR da licença do ajuste de foto: quando ninguém pediu para mexer na
+ * fotografia, ela é INTOCÁVEL — e isso precisa ser dito revogando as licenças
+ * pelo nome.
+ *
+ * 🔴 O defeito que originou esta regra (relatado pelo Ciro em 01/09/2026): ele
+ * pediu a melhoria SEM escrever nada e o modelo trocou o tratamento da imagem
+ * de fundo. Não foi acaso — está escrito no prompt. Com o pedido vazio, a
+ * seção `[PEDIDO DO CLIENTE]` deixa de existir e as instruções mais
+ * específicas sobre a foto passam a ser duas da direção de arte:
+ *
+ *   [TRATAMENTO DA FOTOGRAFIA] "Priorize texturas bem definidas, contraste
+ *   elegante, iluminação quente, profundidade de campo, fundo suavemente
+ *   desfocado e acabamento cinematográfico."
+ *   [ILUMINAÇÃO] "Priorize iluminação quente, natural e cinematográfica."
+ *
+ * São ordens de REPROCESSAR a imagem, e o modelo as cumpre. É a mesma brecha
+ * que a trilha `arte` fechou em 17/08/2026, quando a licença de "ajuste global
+ * MUITO sutil de contraste, exposição e nitidez" foi retirada do bloco de
+ * fidelidade por ser justamente o que o modelo esticava. A melhoria nunca
+ * recebeu aquele conserto.
+ *
+ * A trava é o par exato da regra 7: uma revoga a proibição de encurtar quando
+ * o cliente pede; esta revoga a licença de retocar quando ele NÃO pede.
+ */
+function regraDeFidelidadeDaFoto(args: RegrasDaMelhoriaArgs): string | null {
+  if (args.instrucaoImagem?.trim()) return null
+  return [
+    '8. A FOTOGRAFIA É INTOCÁVEL NESTA PEÇA, E ESTA REGRA REVOGA AS LICENÇAS DE TRATAMENTO ACIMA.',
+    'Ninguém pediu para mexer na imagem. Onde as diretrizes falam em buscar aparência profissional, priorizar textura, contraste, profundidade de campo, fundo desfocado, acabamento cinematográfico ou iluminação quente — nada disso vale aqui: são descrições do que a foto JÁ é, nunca ordens de refazê-la.',
+    '⛔ Não relumie, não recolora, não mude o contraste, a saturação ou a nitidez, não desfoque o fundo, não troque o enquadramento e não substitua a imagem. A foto sai do jeito que entrou, pixel por pixel, e o seu trabalho é APENAS a camada gráfica por cima dela.',
+    'Se para a sua composição ficar melhor a foto precisasse mudar, a resposta é mudar a composição.',
+  ].join('\n')
+}
+
+/**
  * A licença de encurtar — só quando ninguém aprovou aquela copy no Studio E o
  * pedido pede. Ver `PEDE_MENOS_TEXTO`.
  *
@@ -191,5 +231,9 @@ export function regrasDaCasaNaMelhoria(args: RegrasDaMelhoriaArgs): string {
   ]
   const enxugar = regraDeEnxugar(args)
   if (enxugar) linhas.push(enxugar)
+  // Por ÚLTIMO de propósito: é a palavra final sobre a fotografia, e a lei da
+  // casa é que a instrução mais próxima do fim tem mais peso.
+  const fidelidade = regraDeFidelidadeDaFoto(args)
+  if (fidelidade) linhas.push(fidelidade)
   return linhas.join('\n\n')
 }

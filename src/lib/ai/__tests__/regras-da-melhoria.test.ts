@@ -123,6 +123,40 @@ describe('regrasDaCasaNaMelhoria', () => {
   })
 
   /**
+   * 🔴 O DEFEITO QUE ORIGINOU A REGRA 8, relatado pelo Ciro em 01/09/2026:
+   * ele pediu a melhoria sem escrever nada e o modelo trocou o tratamento da
+   * imagem de fundo. Com o pedido vazio, as instruções mais específicas sobre
+   * a foto viram duas da direção de arte ("priorize contraste, profundidade de
+   * campo, fundo suavemente desfocado" e "priorize iluminação quente"), que
+   * são ordens de reprocessar a imagem.
+   */
+  it('sem pedido de ajuste na foto, declara a fotografia INTOCÁVEL', () => {
+    const texto = regrasDaCasaNaMelhoria({ expectedTexts: [], userRequest: '' })
+    expect(texto).toContain('A FOTOGRAFIA É INTOCÁVEL')
+    expect(texto).toContain('REVOGA AS LICENÇAS DE TRATAMENTO')
+    // as licenças precisam ser revogadas PELO NOME, senão a mais enfática vence
+    expect(texto).toMatch(/fundo desfocado/i)
+    expect(texto).toMatch(/ilumina/i)
+  })
+
+  it('com ajuste na foto pedido, a trava sai e vale a exceção autorizada', () => {
+    const texto = regrasDaCasaNaMelhoria({
+      expectedTexts: [],
+      userRequest: 'melhore a diagramação',
+      instrucaoImagem: 'corte a picanha ao meio para revelar o ponto',
+    })
+    expect(texto).not.toContain('A FOTOGRAFIA É INTOCÁVEL')
+  })
+
+  it('a trava vale mesmo quando há pedido sobre a ARTE — são campos diferentes', () => {
+    const texto = regrasDaCasaNaMelhoria({
+      expectedTexts: [],
+      userRequest: 'passe o CTA para o rodapé e destaque as palavras-chave',
+    })
+    expect(texto).toContain('A FOTOGRAFIA É INTOCÁVEL')
+  })
+
+  /**
    * 🔴 ESTE TESTE PROTEGE UMA OMISSÃO DELIBERADA, não um esquecimento.
    *
    * `regraDeSafeArea` (geração) manda reservar ~1/8 da altura no topo e no

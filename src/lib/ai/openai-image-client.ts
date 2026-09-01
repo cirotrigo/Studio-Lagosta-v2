@@ -317,7 +317,7 @@ export function buildPromptSections({
     id: 'regras-da-casa',
     title: 'Regras da casa',
     origin: 'system',
-    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest }),
+    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest, instrucaoImagem }),
   })
 
   if (hasBackground) {
