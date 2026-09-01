@@ -238,3 +238,109 @@ os 330 itens têm copy.
   feedback de um clique nos dois lugares.
 - **A bancada de medição (F4) roda as 18 peças pelas DUAS portas**, e o
   resultado tem de ser o mesmo — é o teste de que a melhoria é uma só.
+
+## 7. A rodada do Quintal (01/09, noite) — o que as duas portas mostraram
+
+Teste real pedido pelo Ciro: quinta 03/09 pelo caminho padrão das ferramentas
+(modelo do cliente → rascunho na agenda) e sexta 04/09 pela fila da bancada
+(`criar-plano` → ele executou). Depois ele mandou melhorar as três de quinta.
+
+### 7.1 A melhoria inventou endereço COM a régua no ar e a conferência verde
+
+A arte de happy hour de quinta voltou com `Rua Fernandes Tourinho, 133 ·
+Savassi, Belo Horizonte` no rodapé, com ícone de pino — o Quintal fica em
+Vitória. `textCheck: passed`, régua do banco (6 blocos), tier `low`.
+
+Por quê: a régua confere se o esperado ESTÁ; não tem regra contra bloco A
+MAIS. E a regra 1 das regras da casa ("horário de funcionamento OU de
+endereço… agrupado no rodapé") + a identidade da marca ("endereço sempre no
+rodapé") descrevem um rodapé com endereço que a copy desta peça NÃO tinha —
+o modelo completou o slot. É o mesmo mecanismo do 01/09 de manhã, agora com
+a régua funcionando: **a régua protege o que existe; o buraco é o que não
+existe e o prompt sugere**.
+
+O que muda no plano:
+
+- **F2 sobe de prioridade e ganha um segundo braço**: além do alerta de texto
+  a mais (decisão: só avisa), o prompt passa a declarar a CONTAGEM e o
+  conteúdo dos blocos ("esta peça tem exatamente 6 blocos; não acrescente
+  bloco, linha, ícone de serviço nem dado que não esteja na lista"), e as
+  regras da casa deixam de citar "endereço" quando a régua não tem endereço
+  (a regra 1 vira condicional aos blocos de serviço detectados, que é o que
+  `blocosDeServico` já sabe).
+- **Os FATOS do cliente entram no prompt como dado, não como licença**: a
+  ficha da base (endereço oficial, horário) numa seção `[FATOS DO CLIENTE —
+  só para conferir, nunca para acrescentar]`. Sem ela, quando o modelo decide
+  escrever um endereço, o único que ele tem é o que inventa.
+- A primeira tentativa dessa mesma peça REPROVOU (perdeu o CTA e a
+  descrição) e a segunda passou com o endereço inventado: a conferência
+  pegou o que faltava e deixou passar o que sobrava. É exatamente a metade
+  que falta.
+
+### 7.2 O caminho padrão de "crie os stories de quinta" erra em 3 de 3 peças
+
+| passo | o que a ferramenta fez por padrão | efeito |
+|---|---|---|
+| `sugerir-posts` | 10h e 13h pelo histórico; a grade da base diz 08h, 9h30, 14h | quem segue a sugestão publica fora da grade que o próprio cliente aprovou |
+| `escolher-modelo("funcionamento")` | não há modelo; devolveu "Celebrações Especiais" | peça institucional montada num layout de data comemorativa |
+| `escolher-modelo("almoço executivo")` | página legada de dez/2025 (`Pag.01`, campos não dinâmicos) | a foto pedida (ancho) NÃO foi aplicada — o render mostra os pastéis doces da página, com `imageApplied: true`; horário sai em CAIXA ALTA por ser camada fixa |
+| `escolher-modelo("happy hour")` | modelo certo, mas com "17h às 19h" de fábrica no slot de serviço | quem não preencher publica horário errado (a base diz 16h) |
+| `buscar-fotos("ambiente")` | 1ª sugestão é foto de drink; a panorâmica tem guarda-sol Brahma em destaque | marca de terceiro, que o DNA proíbe |
+| `buscar-fotos("almoço executivo")` | 1ª sugestão é `2026-cmt07071`, que tem a carta de vinhos com preço legível | o catálogo não sabe do preço; a régua de texto também não |
+| rodízio | fotos dos rascunhos APAGADOS às 22h seguem "usadas em 04 e 05/09" | descem na fila sem ter ido ao ar |
+| CTA verde | `#557737` sobre foto escura no rodapé | quase ilegível; o DNA manda `#7A9A5C` sobre escuro |
+
+E cada consulta de foto ou de horário gravou um `LearningSignal` — 7 sinais
+numa exploração que não virou decisão.
+
+### 7.3 A fila da bancada trocou a via sem avisar
+
+Os 3 itens de sexta nasceram `via: template` (modelo do cliente, custo
+zero). O Ciro apertou "Gerar" na bancada e as três saíram por IA: o hook da
+bancada só tem o motor de geração e reescreve a via para `ia` ao gerar
+(`use-bancada.ts`, comentário de 23/08). O resultado ficou bom — é a arte
+que ele quer —, mas a fila prometeu uma coisa e entregou outra, com
+crédito. As duas portas não produzem a mesma arte hoje: a agenda monta no
+modelo (véu), a bancada gera por IA (halo).
+
+### 7.4 O que o Ciro quer: a arte de modelo tem de parecer a arte de IA
+
+Lado a lado, quinta (modelo) × sexta (IA), mesma copy e fotos equivalentes:
+a de IA lê a foto, põe o texto na área calma, usa véu LOCAL (halo), varia a
+diagramação e o rodapé de serviço; a de modelo tem gradiente de faixa
+(véu), texto em posição fixa e colisões que a autocorreção só encolhe. Ele
+pediu que a arte que sai do design/modelo se aproxime da de IA. Entra como
+fase:
+
+### F6 — O halo e a leitura da foto chegam ao render de modelo (3 dias)
+
+- **Camada `halo` no `render-engine` e no editor Konva**: um retângulo
+  desfocado atrás do GRUPO de texto (`filter: blur` no próprio nó, nunca no
+  fundo), com tinta e raio calibrados pela luz da foto no retângulo do texto
+  — é o `_halo.py` portado para TypeScript (`alvo_por_contraste`,
+  `tinta_para_alvo`, `luz_de_leitura`, `ajustar_por_geometria`). O véu de
+  gradiente dos templates vira opcional.
+- **Posição pela foto, não pelo modelo**: os 3 layouts de cada tema já
+  existem (dividido/topo/rodapé); `createArteRapida` passa a escolher entre
+  eles pela energia e luz das faixas da foto (o `escolher_banda` do By Rock),
+  em vez de `candidates[0]`.
+- **Saneamento do pool de modelos do Quintal**: despromover `Pag.01`
+  (legado, campos fixos), criar o modelo de FUNCIONAMENTO (não existe),
+  corrigir o "17h" de fábrica, e tag de dia/tema nos 16.
+- **`escolher-modelo` sem match devolve "não há modelo para este tema"**, nunca
+  o primeiro da lista: um modelo errado montado com copy certa é pior que
+  cair na IA.
+- **`sugerir-posts` lê a grade da base quando ela existe** (entrada "Padrões
+  de Postagem") e só cai no histórico quando não há grade.
+- **Rodízio de fotos**: apagar rascunho desfaz o `PhotoUsage` daquele post; e
+  `buscar-fotos` em modo exploração (sem decisão) não emite sinal — ou o
+  sinal expira em 1h se ninguém escolher.
+- **Foto com preço ou marca de terceiro**: a catalogação por visão ganha as
+  duas perguntas ("há preço legível?", "há marca de terceiro em destaque?")
+  e a busca rebaixa as positivas. São as duas armadilhas do README da leva
+  do Quintal, agora vistas de novo no caminho padrão.
+
+Ordem revisada: **F0 → F1 → F2 (com 7.1) → F3 → F6 → F4 → F5**. A F6 entra
+antes da bancada de medição porque é ela que decide o que a melhoria vai
+receber como entrada: com o modelo já lendo a foto e usando halo, a melhoria
+volta a ser o acabamento que o Ciro descreveu, e não o conserto do layout.
