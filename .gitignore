@@ -65,3 +65,36 @@ scripts/.tmp-parity-out/
 .tmp-qualidade-arte*/
 .tmp-edicao-foto/
 .tmp-medicao*/
+
+# Canvas de design (design-canvas/): só código, artboards, json e relatórios
+# vão para o git. Fotos originais, previews, renders e amostras ficam fora —
+# eram 3,5 GB em 01/09/2026. O render se refaz a partir do artboard.
+design-canvas/**/fotos/
+design-canvas/**/fotos-story/
+design-canvas/**/img/
+design-canvas/**/img-story/
+design-canvas/**/render/
+design-canvas/**/render-*/
+design-canvas/**/amostra/
+design-canvas/**/originais/
+design-canvas/**/orig/
+design-canvas/**/saida/
+design-canvas/**/refs/
+design-canvas/**/entrega/
+design-canvas/**/entrega-stories/
+design-canvas/**/agendar/
+design-canvas/**/prints/
+design-canvas/**/prev/
+design-canvas/**/pool/
+design-canvas/**/packshots/
+design-canvas/**/upload/
+design-canvas/**/curadoria/
+design-canvas/**/extraido-*/
+design-canvas/**/*.png
+design-canvas/**/*.jpg
+design-canvas/**/*.jpeg
+design-canvas/**/*.bak
+# O bundle do canvas publicado (<leva>.html, 3-10 MB, imagens em base64) se
+# resemeia pelo /design a partir dos artboards; só os .dc.html são fonte.
+design-canvas/**/*.html
+!design-canvas/**/*.dc.html

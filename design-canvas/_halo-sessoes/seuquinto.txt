@@ -1,0 +1,52 @@
+Trocar o VÉU pelo HALO no canvas de design da **Seu Quinto** (projeto 4).
+
+Esta sessão roda com Remote Control ligado — o Ciro acompanha pelo celular. Relate os passos de forma legível e mande as imagens com SendUserFile, que é como ele vai ver o resultado.
+
+## O que é isso
+
+O véu é o mecanismo atual de dar leitura ao texto sobre a foto: um gradiente que cobre a faixa inteira do topo ou do rodapé (classes `.veu-t` / `.veu-b` no CSS do artboard). Para dar contraste onde a letra cai, ele escurece centenas de pixels de fotografia.
+
+O halo é a alternativa, ideia do Ciro em 01/09/2026 depois de reprovar o véu duas vezes ("o véu ficou muito marcado"): uma caixa escura ATRÁS do bloco de texto, com `filter: blur()` nela mesma, que desmancha nas bordas. Escurece só onde o texto está.
+
+Medido no By Rock, mesma peça e mesmo texto: o halo devolve +16% de luminância e +8% de saturação à fotografia — que é a protagonista pelo DNA de todos os clientes.
+
+🔴 É `filter: blur()` na PRÓPRIA caixa, nunca `backdrop-filter: blur()`. A distinção é do Ciro e é o coração da ideia: `backdrop-filter` desfocaria a FOTO atrás (lente fora de foco, que descaracteriza a fotografia); `filter` desmancha só a mancha escura e deixa a foto nítida por baixo.
+
+## Leia primeiro
+
+1. `design-canvas/_halo.py` — o módulo com a função já medida e calibrada, mais o roteiro de portabilidade com os quatro defeitos que apareceram no By Rock, na ordem em que apareceram.
+2. `design-canvas/byrock-semana1/gerar.py` — o caso que funciona de ponta a ponta. Veja `halo()`, `bloco_texto`, `bloco_rodape`, `bloco_logo`, `lados_do_rodape`, `medir_faixa` e `conferir_divs`.
+3. `docs/SESSAO-2026-08-25-CANVAS-DE-DESIGN.md` — o manual do canvas. A seção 4 tem as armadilhas medidas; leia antes de escrever qualquer artboard.
+
+## A pasta deste cliente
+
+`design-canvas/seuquinto-padrao/` — 2 artboards, criado em 29/08. É o MOLDE reutilizável.
+
+Não há leva publicada em cima deste gerador — dá para experimentar sem risco.
+
+## Contexto que ajuda
+
+Boteco raiz: chopp, torresmo, estufa, mesa na calçada. Fotografia com muito brilho especular (vidro, chopp gelado, gordura) e fundo cheio — o oposto de uma foto calma. A regra de "calibrar pela luz da região onde o texto pousa" pode ser mais decisiva aqui do que no By Rock, porque a variação dentro da mesma faixa é maior. O DNA proíbe qualquer coisa que soe sofisticada: a solução precisa continuar parecendo boteco.
+
+## O que NÃO está resolvido, e é seu para propor
+
+A troca NÃO é mecânica, e é por isso que existe uma sessão por cliente em vez de uma varredura: o véu é uma camada de FAIXA e o halo é filho do BLOCO DE TEXTO. No By Rock foi preciso reestruturar três funções. O raio, a opacidade e o inset que ficaram bons lá são um ponto de partida, não a resposta.
+
+Se, ao olhar as peças, você concluir que para este cliente o halo deve ter outra forma — outro raio, outra ancoragem, halo só em alguns blocos, ou até que o véu está melhor em algum caso —, essa conclusão é bem-vinda. Diga o porquê com a peça na mão.
+
+## Como verificar (não pule)
+
+Os quatro defeitos do By Rock passaram por typecheck, por lint e pelo conferidor da marca. Quem os pegou foi renderizar e olhar.
+
+1. `python3 gerar.py` e depois `python3 render.py <artboard>.dc.html`.
+2. ABRA O PNG E OLHE. Confira em especial: a logo não sumiu sobre fundo claro; o texto continua legível; a foto ficou mais viva, não mais escura.
+3. Meça, não afirme: compare luminância e saturação médias antes/depois (PIL está disponível; numpy NÃO está). Isole uma variável por vez — comparar duas peças que diferem em duas coisas não prova nada.
+4. Se algo parecer fora do lugar no layout, meça a geometria real no Chrome (`--dump-dom` com uma sonda de `getBoundingClientRect`) em vez de raciocinar sobre o CSS. Foi assim que se descobriu que um `</div>` faltando punha a logo dentro do slot do serviço — com o CSS correto.
+
+## Antes de gerar a leva inteira
+
+Regra do Ciro: mostre UMA peça (ou variantes lado a lado) e espere o aval antes de gerar o resto. Envie o PNG com SendUserFile.
+
+## Ao terminar
+
+Relate o que mudou, o que mediu (com números), o que decidiu diferente do By Rock e por quê, e o que deixou de fora. Se encontrar defeito que valha para os outros clientes, diga — o `_halo.py` é compartilhado e deve receber a lição.
