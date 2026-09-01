@@ -48,6 +48,12 @@ export interface RegrasDaMelhoriaArgs {
    * a fotografia é declarada INTOCÁVEL — ver `regraDeFidelidadeDaFoto`.
    */
   instrucaoImagem?: string | null
+  /**
+   * A arte de origem foi lida por visão e NÃO tem texto (capa de carrossel,
+   * foto pura). Diferente de `expectedTexts: []`, que só diz que ninguém
+   * transcreveu — ver `regraDaArteSemTexto`.
+   */
+  arteSemTexto?: boolean
 }
 
 /**
@@ -177,6 +183,34 @@ function regrasDeComposicao(): string[] {
 }
 
 /**
+ * Arte SEM texto continua sem texto — a regra da capa de carrossel.
+ *
+ * 🔴 O caso real, medido em 01/09/2026: o Ciro mandou melhorar a CAPA do
+ * carrossel de quinta (slide 1, duas taças de vinho) e recebeu uma peça
+ * completa — manchete "Garanta sua mesa", horário e endereço, todos
+ * inventados, porque a arte de origem não tinha texto NENHUM para copiar.
+ *
+ * A régua por visão não cobre isto: não há o que transcrever. E a regra de
+ * omissão também não, porque ela fala do dado que existe e está ilegível —
+ * aqui o modelo não estava lendo mal, estava PREENCHENDO um vazio.
+ *
+ * Capa de carrossel é foto pura por contrato da casa (o serviço recusa copy
+ * no slide 1). Melhorar uma capa é ajustar a FOTOGRAFIA e o enquadramento —
+ * nunca transformá-la em peça com texto.
+ */
+function regraDaArteSemTexto(args: RegrasDaMelhoriaArgs): string | null {
+  // Só quando a régua rodou e não achou nada: `expectedTexts` vazio sozinho
+  // é ambíguo (pode ser arte com texto que ninguém transcreveu ainda).
+  if (!args.arteSemTexto) return null
+  return [
+    'ARTE SEM TEXTO: esta peça NÃO LEVA TEXTO NENHUM, e isso é deliberado.',
+    'A arte original não tem uma única palavra — é uma fotografia pura, provavelmente a capa de um carrossel, onde o texto é proibido por contrato desta marca.',
+    '⛔ NÃO escreva manchete, apoio, CTA, horário, endereço, telefone nem preço. NÃO acrescente selo, etiqueta, faixa ou qualquer elemento que contenha letra. A logomarca também não entra se ela já não estiver na arte.',
+    'O seu trabalho aqui é APENAS a fotografia: enquadramento, e só o que o pedido do cliente autorizar. Uma peça sem texto que volta com texto está errada, por mais bonita que fique.',
+  ].join('\n')
+}
+
+/**
  * O PAR da licença do ajuste de foto: quando ninguém pediu para mexer na
  * fotografia, ela é INTOCÁVEL — e isso precisa ser dito revogando as licenças
  * pelo nome.
@@ -244,6 +278,10 @@ export function regrasDaCasaNaMelhoria(args: RegrasDaMelhoriaArgs): string {
   ]
   const enxugar = regraDeEnxugar(args)
   if (enxugar) linhas.push(enxugar)
+  // Antes da fidelidade da foto: as duas falam do fim do prompt, e "não
+  // escreva nada" precisa ser lida junto com "não mexa na foto".
+  const semTexto = regraDaArteSemTexto(args)
+  if (semTexto) linhas.push(semTexto)
   // Por ÚLTIMO de propósito: é a palavra final sobre a fotografia, e a lei da
   // casa é que a instrução mais próxima do fim tem mais peso.
   const fidelidade = regraDeFidelidadeDaFoto(args)

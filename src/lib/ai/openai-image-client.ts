@@ -59,6 +59,8 @@ interface BuildPromptArgs {
   expectedTexts?: string[]
   /** Ajuste autorizado na foto — vira a seção [AJUSTE NA FOTO]. */
   instrucaoImagem?: string | null
+  /** A arte de origem foi transcrita e não tem texto — ver as regras da casa. */
+  arteSemTexto?: boolean
   /**
    * Prompt ENXUTO: só o que a peça precisa (imagens, texto exato, pedido e as
    * regras da casa), sem a identidade da marca nem a direção de arte.
@@ -305,6 +307,7 @@ export function buildPromptSections({
   brand,
   expectedTexts = [],
   instrucaoImagem = null,
+  arteSemTexto = false,
   enxuto = false,
 }: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
@@ -360,7 +363,7 @@ export function buildPromptSections({
     id: 'regras-da-casa',
     title: 'Regras da casa',
     origin: 'system',
-    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest, instrucaoImagem }),
+    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest, instrucaoImagem, arteSemTexto }),
   })
 
   if (hasBackground) {
@@ -517,6 +520,8 @@ interface ImproveCreativeOptions {
   instrucaoImagem?: string | null
   /** Tier do gpt-image. Ver `qualidade-arte.ts`. */
   quality?: 'low' | 'medium' | 'high'
+  /** A arte de origem foi transcrita e não tem texto. */
+  arteSemTexto?: boolean
   /** Prompt enxuto — hipótese em medição, ver `BuildPromptArgs.enxuto`. */
   enxuto?: boolean
   timeoutMs?: number
@@ -551,6 +556,7 @@ export async function improveCreative({
   expectedTexts = [],
   instrucaoImagem = null,
   quality,
+  arteSemTexto = false,
   enxuto = false,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
@@ -558,7 +564,7 @@ export async function improveCreative({
 
   const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
   const prompt = buildPrompt({
-    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, enxuto,
+    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto,
   })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {

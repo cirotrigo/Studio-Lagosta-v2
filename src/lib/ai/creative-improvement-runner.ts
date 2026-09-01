@@ -272,9 +272,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      */
     let textosDaRegua = expectedTexts
     let reguaPorVisao = false
+    // A visão RODOU e não achou texto: é foto pura (capa de carrossel), não
+    // apenas "ninguém transcreveu". A distinção decide a regra da capa.
+    let arteSemTexto = false
     if (textosDaRegua.length === 0 && !args.skipTextVerification) {
       textosDaRegua = await transcreverTextosDaArte(primaryBuffer)
       reguaPorVisao = textosDaRegua.length > 0
+      arteSemTexto = textosDaRegua.length === 0
       if (reguaPorVisao) {
         console.log(`[improve.bg] régua por visão: ${textosDaRegua.length} bloco(s) lidos da arte original`)
       }
@@ -317,6 +321,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         brand: assets.brand,
         expectedTexts: textosDaRegua,
         instrucaoImagem: args.instrucaoImagem ?? null,
+        arteSemTexto,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
       })

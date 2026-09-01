@@ -103,28 +103,44 @@ async function main() {
   const pedido = process.env.PEDIDO ?? ''
   if (pedido) console.log(`\npedido: "${pedido}"`)
 
-  for (const enxuto of [false, true]) {
-    const nome = enxuto ? 'enxuto' : 'completo'
+  // Três variantes, da mais completa à mais crua:
+  //   completo   — o prompt de produção
+  //   enxuto     — sem identidade nem direção de arte (ainda ~15k chars)
+  //   so-pedido  — SÓ a frase do cliente, que é o que ele mandou no ChatGPT
+  for (const modo of ['completo', 'enxuto', 'so-pedido'] as const) {
     for (let i = 1; i <= rodadas; i++) {
       const t0 = Date.now()
-      const buf = await improveCreative({
-        imageBuffer: src.buffer,
-        mimeType: src.contentType,
-        userRequest: pedido,
-        size: '1088x1360',
-        brandColors: brand?.colors ?? [],
-        artDirection: brand?.artDirection ?? null,
-        brand,
-        expectedTexts: regua,
-        instrucaoImagem: null,
-        quality: 'low',
-        enxuto,
-      })
-      const arq = path.join(SAIDA, `${nome}-${i}.jpg`)
+      let buf: Buffer
+      if (modo === 'so-pedido') {
+        const { runImageEdit } = await import('../src/lib/ai/openai-image-client')
+        buf = await runImageEdit({
+          images: [{ buffer: src.buffer, mimeType: src.contentType, name: 'original.png' }],
+          prompt: pedido || 'Melhore esta arte.',
+          size: '1088x1360',
+          quality: 'low',
+        })
+      } else {
+        buf = await improveCreative({
+          imageBuffer: src.buffer,
+          mimeType: src.contentType,
+          userRequest: pedido,
+          size: '1088x1360',
+          brandColors: brand?.colors ?? [],
+          artDirection: brand?.artDirection ?? null,
+          brand,
+          expectedTexts: regua,
+          instrucaoImagem: null,
+          arteSemTexto: regua.length === 0,
+          quality: 'low',
+          enxuto: modo === 'enxuto',
+        })
+      }
+      const arq = path.join(SAIDA, `${modo}-${i}.jpg`)
       writeFileSync(arq, await sharp(buf).jpeg({ quality: 92 }).toBuffer())
-      console.log(`  ${nome} ${i}/${rodadas} → ${path.basename(arq)} (${Math.round((Date.now() - t0) / 1000)}s)`)
+      console.log(`  ${modo} ${i}/${rodadas} → ${path.basename(arq)} (${Math.round((Date.now() - t0) / 1000)}s)`)
     }
   }
+
   console.log(`\nImagens em ${SAIDA}/`)
 }
 
