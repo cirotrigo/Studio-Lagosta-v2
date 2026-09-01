@@ -1,0 +1,31 @@
+{
+ "artboards": [
+  {
+   "file": "Main.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "ter · 09h30 · o dia na Bacana (slot 1 da grade)"
+  },
+  {
+   "file": "Story1200.dc.html",
+   "x": 1220,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "sáb · 12h · almoço em grupo (slot 2 no sábado)"
+  },
+  {
+   "file": "FeedFeriado.dc.html",
+   "x": 2440,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "seg 07/09 · 10h30 · aviso de feriado (exceção com texto no feed)"
+  }
+ ],
+ "launch": {
+  "view": "canvas"
+ }
+}

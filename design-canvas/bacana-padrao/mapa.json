@@ -1,0 +1,26 @@
+[
+ {
+  "artboard": "Main.dc.html",
+  "formato": "story",
+  "dia": "ter",
+  "hora": "09h30",
+  "tema": "o dia na Bacana (slot 1 da grade)",
+  "foto": "amb-salao.jpg"
+ },
+ {
+  "artboard": "Story1200.dc.html",
+  "formato": "story",
+  "dia": "sáb",
+  "hora": "12h",
+  "tema": "almoço em grupo (slot 2 no sábado)",
+  "foto": "tabua-kilo.jpg"
+ },
+ {
+  "artboard": "FeedFeriado.dc.html",
+  "formato": "feed",
+  "dia": "seg 07/09",
+  "hora": "10h30",
+  "tema": "aviso de feriado (exceção com texto no feed)",
+  "foto": "brasa-cortes.jpg"
+ }
+]
