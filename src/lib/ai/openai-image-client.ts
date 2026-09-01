@@ -273,6 +273,7 @@ export interface PromptSection {
     | 'contexto'
     | 'identidade'
     | 'cores'
+    | 'tarefa'
     | 'direcao'
     | 'regras-da-casa'
     | 'ajuste-foto'
@@ -340,14 +341,61 @@ export function buildPromptSections({
     sections.push({ id: 'cores', title: 'Cores da marca', origin: 'system', content: colorsSection })
   }
 
-  const custom = !!artDirection?.trim()
+  /**
+   * A TAREFA — curta de propósito, e no lugar da direção de arte.
+   *
+   * 🔴 Medido em 01/09/2026, com o prompt de produção contra a formulação de
+   * 491 chars ditada pelo Ciro, mesma peça e mesmo pedido, 2 rodadas cada:
+   *
+   * | variante          | resultado                                        |
+   * |-------------------|--------------------------------------------------|
+   * | completo (19,8k)  | uma quase idêntica à origem, outra ALTEROU a foto |
+   * | só o pedido (100) | criativa, mas inventou selo e botão de interface  |
+   * | simples (491)     | foto e copy intactas, composição variada, na marca|
+   *
+   * O prompt grande não protegia melhor: oscilava entre não fazer nada e
+   * fazer o que não devia. É a mesma lição que a trilha `arte` registrou em
+   * 17/08 — "prescrição de POSIÇÃO compete com a leitura da foto; o gpt-image
+   * compõe melhor lendo a foto do que seguindo coordenadas" —, que fez nascer
+   * o modo livre lá e que a melhoria nunca tinha recebido.
+   *
+   * O que ficou do prompt antigo é só o que veio de defeito medido: a
+   * identidade (é o que segura a marca — sem ela uma rodada inventou "VINHO
+   * SONS" no lugar do By Rock) e as regras da casa (cada uma nasceu de uma
+   * reprovação). Os ~5 mil chars da direção de arte saíram.
+   */
   sections.push({
-    id: 'direcao',
-    title: custom ? 'Direção de arte (deste projeto)' : 'Direção de arte (padrão do Studio)',
-    origin: 'editable',
-    customized: custom,
-    content: artDirection?.trim() || DEFAULT_ART_DIRECTION,
+    id: 'tarefa',
+    title: 'A tarefa',
+    origin: 'system',
+    content: [
+      '[A TAREFA]',
+      'Esta é uma arte PRONTA desta marca. Crie uma versão melhor dela: ajuste o',
+      'posicionamento, a hierarquia e o respiro dos textos para dar mais leitura.',
+      'Use a MESMA copy da arte original, palavra por palavra.',
+      'A composição é SUA: leia a fotografia, veja onde ela é calma, e decida onde',
+      'cada bloco fica melhor. Variar a diagramação em relação à original é bom —',
+      'o que não pode mudar é o conteúdo, a fotografia e a identidade da marca.',
+    ].join('\n'),
   })
+
+  /**
+   * A direção de arte do PROJETO, quando ele tem uma. O padrão do Studio saiu
+   * (ver o bloco acima) — mas quem escreveu uma direção própria na aba
+   * Configurações a escreveu de propósito, e ela continua valendo.
+   *
+   * Em 01/09/2026 nenhum dos 11 projetos tinha: todos caíam no padrão.
+   */
+  const custom = !!artDirection?.trim()
+  if (custom) {
+    sections.push({
+      id: 'direcao',
+      title: 'Direção de arte (deste projeto)',
+      origin: 'editable',
+      customized: true,
+      content: artDirection!.trim(),
+    })
+  }
 
   /**
    * As regras da casa vêm DEPOIS da direção de arte e ANTES do pedido, de

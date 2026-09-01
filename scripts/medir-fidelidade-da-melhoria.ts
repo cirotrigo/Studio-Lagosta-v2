@@ -96,6 +96,17 @@ async function main() {
   writeFileSync(path.join(SAIDA, 'origem.jpg'), await sharp(src.buffer).jpeg({ quality: 92 }).toBuffer())
 
   // A régua sai da própria arte, como o runner faz agora.
+  /**
+   * 🔴 O tamanho sai da arte, nunca cravado. Rodar um story (0,56) pedindo
+   * feed (0,80) força o modelo a RECOMPOR para outra proporção — e aí a
+   * comparação mede a mudança de formato, não o efeito do prompt. Aconteceu
+   * na primeira rodada de 01/09/2026 e invalidou as 6 gerações.
+   */
+  const meta = await (await import('sharp')).default(src.buffer).metadata()
+  const ehStory = (meta.height ?? 0) / (meta.width ?? 1) > 1.5
+  const size = ehStory ? '1088x1936' : '1088x1360'
+  console.log(`formato da origem: ${meta.width}x${meta.height} → gerando em ${size}`)
+
   const regua = await transcreverTextosDaArte(src.buffer)
   console.log(`\nrégua por visão — ${regua.length} bloco(s) lidos da arte original:`)
   regua.forEach((t) => console.log(`   • ${t}`))
@@ -107,16 +118,52 @@ async function main() {
   //   completo   — o prompt de produção
   //   enxuto     — sem identidade nem direção de arte (ainda ~15k chars)
   //   so-pedido  — SÓ a frase do cliente, que é o que ele mandou no ChatGPT
-  for (const modo of ['completo', 'enxuto', 'so-pedido'] as const) {
+  /**
+   * O prompt SIMPLES, ditado pelo Ciro em 01/09/2026.
+   *
+   * A hipótese: o `so-pedido` (imagem + uma frase, o que ele fez no ChatGPT)
+   * compõe muito melhor mas perde a marca — tipografia serifada dourada, sem
+   * logo, contra o Anton + #C82020 do By Rock. Este é o meio: a identidade
+   * fica (fontes, cores, nome) e TODA a prescrição de composição sai.
+   *
+   * É a mesma lição que a trilha `arte` aprendeu em 17/08 ("prescrição de
+   * posição compete com a leitura da foto") e que a melhoria nunca recebeu.
+   */
+  function promptSimples(): string {
+    const f = brand?.fonts
+    const fontes = [f?.title && `títulos em ${f.title}`, f?.body && `corpo em ${f.body}`]
+      .filter(Boolean).join(', ')
+    const cores = (brand?.colors ?? []).map((c) => `${c.name} ${c.hexCode}`).join(', ')
+    return [
+      `Esta é uma arte de ${brand?.projectName ?? 'um restaurante'}.`,
+      fontes && `Tipografia da marca: ${fontes}.`,
+      cores && `Cores da marca: ${cores}.`,
+      '',
+      'Crie uma arte baseada nesta referência, ajustando o posicionamento e a hierarquia dos textos para dar mais leitura.',
+      'Use a MESMA copy da arte original, palavra por palavra — não reescreva, não acrescente e não invente horário, endereço ou preço.',
+      'NÃO altere a fotografia de fundo.',
+      'Use ondas sonoras sutis como elemento gráfico do estilo.',
+    ].filter(Boolean).join('\n')
+  }
+
+  for (const modo of ['completo', 'so-pedido', 'simples'] as const) {
     for (let i = 1; i <= rodadas; i++) {
       const t0 = Date.now()
       let buf: Buffer
-      if (modo === 'so-pedido') {
+      if (modo === 'simples') {
+        const { runImageEdit } = await import('../src/lib/ai/openai-image-client')
+        const p = promptSimples()
+        if (i === 1) { writeFileSync(path.join(SAIDA, 'prompt-simples.txt'), p); console.log(`\n  [simples: ${p.length} chars]`) }
+        buf = await runImageEdit({
+          images: [{ buffer: src.buffer, mimeType: src.contentType, name: 'original.png' }],
+          prompt: p, size, quality: 'low',
+        })
+      } else if (modo === 'so-pedido') {
         const { runImageEdit } = await import('../src/lib/ai/openai-image-client')
         buf = await runImageEdit({
           images: [{ buffer: src.buffer, mimeType: src.contentType, name: 'original.png' }],
           prompt: pedido || 'Melhore esta arte.',
-          size: '1088x1360',
+          size,
           quality: 'low',
         })
       } else {
@@ -124,7 +171,7 @@ async function main() {
           imageBuffer: src.buffer,
           mimeType: src.contentType,
           userRequest: pedido,
-          size: '1088x1360',
+          size,
           brandColors: brand?.colors ?? [],
           artDirection: brand?.artDirection ?? null,
           brand,
@@ -132,7 +179,6 @@ async function main() {
           instrucaoImagem: null,
           arteSemTexto: regua.length === 0,
           quality: 'low',
-          enxuto: modo === 'enxuto',
         })
       }
       const arq = path.join(SAIDA, `${modo}-${i}.jpg`)
