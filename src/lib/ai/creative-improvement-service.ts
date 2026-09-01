@@ -28,6 +28,7 @@ import {
   MAX_SELECTED_LOGOS,
   MAX_SELECTED_ELEMENTS,
 } from '@/lib/ai/improvement-assets-constants'
+import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 
 /** Só imagens no nosso Blob entram no pipeline — URL de fora seria SSRF. */
 export const VERCEL_BLOB_HOST_REGEX = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//
@@ -35,8 +36,16 @@ export const VERCEL_BLOB_HOST_REGEX = /^https:\/\/[a-z0-9-]+\.public\.blob\.verc
 export interface StartImprovementInput {
   /** Generation de origem (a arte a melhorar). */
   generationId: string
-  /** Pedido do cliente. Vazio = só as diretrizes do Diretor de Arte. */
+  /** Pedido do cliente sobre a ARTE. Vazio = só as diretrizes do Diretor. */
   userRequest?: string
+  /**
+   * Ajuste autorizado NA FOTO (o campo avançado). Presente, o tier sobe para
+   * `high`: compor letra é barato nos três tiers, mas editar a fotografia
+   * separa — medido em 12/08/2026 (o `low` devolveu mancha lisa sem fibra).
+   */
+  instrucaoImagem?: string | null
+  /** Tier explícito, quando quem pede escolhe. Ausente, vale o padrão. */
+  quality?: QualidadeArte
   backgroundImageUrl?: string | null
   selectedLogoIds?: number[]
   selectedElementIds?: number[]
@@ -72,12 +81,18 @@ export async function startImprovement(
   input: StartImprovementInput,
 ): Promise<StartImprovementResult> {
   const userRequest = input.userRequest ?? ''
+  const instrucaoImagem = input.instrucaoImagem?.trim() || null
+  const tier =
+    input.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem })
   const selectedLogoIds = input.selectedLogoIds ?? []
   const selectedElementIds = input.selectedElementIds ?? []
 
   // 1200 e não 500: as instruções agora costumam vir da ANÁLISE VISUAL do
   // assistente (conferir-arte → diretor de arte), que é mais rica que um
   // pedido digitado.
+  if (instrucaoImagem && instrucaoImagem.length > 1200) {
+    throw new CreativeError('PEDIDO_LONGO', 'O ajuste na foto passou de 1200 caracteres.', 400)
+  }
   if (userRequest.length > 1200) {
     throw new CreativeError('PEDIDO_LONGO', 'O pedido de melhoria passou de 1200 caracteres.', 400)
   }
@@ -242,13 +257,14 @@ export async function startImprovement(
         source: 'ai_improvement',
         originalGenerationId: original.id,
         userRequest,
+        instrucaoImagem,
         backgroundImageUrl: input.backgroundImageUrl ?? null,
         selectedLogoIds,
         selectedElementIds,
         applyToPostId: input.applyToPostId ?? null,
         applyToPostMediaIndex: mediaIndex,
         model: getCurrentImageModel(),
-        quality: 'high',
+        quality: tier,
         inputSize: openaiSize,
         finalSize: `${finalSize.width}x${finalSize.height}`,
         format,
@@ -277,6 +293,8 @@ export async function startImprovement(
       projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
       templateName: original.templateName,
       userRequest,
+      instrucaoImagem,
+      quality: tier,
       backgroundImageUrl: input.backgroundImageUrl ?? null,
       selectedLogoIds,
       selectedElementIds,

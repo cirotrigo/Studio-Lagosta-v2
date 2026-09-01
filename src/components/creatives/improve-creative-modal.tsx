@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { useQuery } from '@tanstack/react-query'
-import { Sparkles, Upload, X, Check } from 'lucide-react'
+import { Sparkles, Upload, X, Check, ChevronDown, Image as ImageIcon } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -83,6 +83,17 @@ export function ImproveCreativeModal({
   const addJob = useImproveQueueStore((s) => s.addJob)
 
   const [userRequest, setUserRequest] = React.useState('')
+  /**
+   * Ajuste NA FOTO — o segundo campo, colapsado (desenho do Ciro, 01/09/2026).
+   *
+   * Está separado porque as duas coisas custam diferente: compor letra sobre a
+   * foto empatou nos três tiers do gpt-image, mas EDITAR a fotografia separou
+   * (medido em 12/08/2026 — o tier barato devolveu mancha lisa, sem fibra).
+   * Preenchido, o servidor sobe o tier sozinho; vazio, a melhoria sai pelo
+   * caminho barato, que é o caso comum.
+   */
+  const [instrucaoImagem, setInstrucaoImagem] = React.useState('')
+  const [avancadoAberto, setAvancadoAberto] = React.useState(false)
   const [backgroundUrl, setBackgroundUrl] = React.useState<string | null>(null)
   const [backgroundPreview, setBackgroundPreview] = React.useState<string | null>(null)
   const [backgroundFileName, setBackgroundFileName] = React.useState<string | null>(null)
@@ -132,6 +143,11 @@ export function ImproveCreativeModal({
 
   const resetAll = React.useCallback(() => {
     setUserRequest('')
+    // 🔴 O ajuste na foto PRECISA ser limpo aqui: ele é o que sobe o tier, e
+    // sobreviver ao fechamento faria a próxima arte pagar o caminho caro sem
+    // ninguém ter pedido — com o campo colapsado, sem nem aparecer na tela.
+    setInstrucaoImagem('')
+    setAvancadoAberto(false)
     setSelectedLogoIds([])
     setSelectedElementIds([])
     setBackgroundUrl(null)
@@ -249,6 +265,7 @@ export function ImproveCreativeModal({
       generationThumbnailUrl: generation.resultUrl,
       generationLabel: generation.templateName ?? 'Criativo',
       userRequest: trimmed,
+      instrucaoImagem: instrucaoImagem.trim() || null,
       backgroundImageUrl: backgroundUrl,
       selectedLogoIds,
       selectedElementIds,
@@ -270,6 +287,8 @@ export function ImproveCreativeModal({
   const isDisabled = isUploading
 
   const ctaLabel = (() => {
+    // O tempo muda com o tier; o preço em créditos, não (25 flat).
+    if (instrucaoImagem.trim().length > 0) return 'Aprimorar com ajuste na foto (25 créditos)'
     if (backgroundUrl) return 'Aprimorar com novo fundo (25 créditos)'
     if (selectedLogoIds.length > 0 || selectedElementIds.length > 0) {
       return 'Aprimorar com assets (25 créditos)'
@@ -316,7 +335,7 @@ export function ImproveCreativeModal({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="user-request">Seu pedido (opcional)</Label>
+              <Label htmlFor="user-request">O que ajustar na arte (opcional)</Label>
               <span className="text-xs text-muted-foreground">
                 {userRequest.length}/{MAX_CHARS}
               </span>
@@ -330,9 +349,61 @@ export function ImproveCreativeModal({
               className="resize-none"
             />
             <p className="text-xs text-muted-foreground">
-              Sem pedido específico, a IA mantém todo o conteúdo da arte original e aplica apenas
-              as diretrizes do Diretor de Arte.
+              Texto, diagramação, cores e posição dos blocos. Sem pedido específico, a IA mantém o
+              conteúdo da arte original e aplica apenas as diretrizes do Diretor de Arte.
             </p>
+          </div>
+
+          {/*
+            O ajuste NA FOTO fica colapsado de propósito: é o caso raro e o
+            caro. Medido em 01/09/2026 numa rodada real de 5 melhorias, 3 não
+            tocavam na fotografia — deixar os dois campos abertos convidaria a
+            pagar o caminho caro por peça que não precisa dele.
+          */}
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setAvancadoAberto((v) => !v)}
+              className="flex w-full items-center justify-between rounded-md border border-border/40 px-3 py-2 text-left text-sm hover:bg-muted/40"
+            >
+              <span className="flex items-center gap-2">
+                <ImageIcon className="h-4 w-4 text-muted-foreground" />
+                Precisa mexer na foto?
+                {instrucaoImagem.trim().length > 0 && (
+                  <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] text-primary">
+                    ativo
+                  </span>
+                )}
+              </span>
+              <ChevronDown
+                className={cn('h-4 w-4 text-muted-foreground transition-transform',
+                  avancadoAberto && 'rotate-180')}
+              />
+            </button>
+
+            {avancadoAberto && (
+              <div className="space-y-2 rounded-md border border-border/40 p-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="instrucao-imagem">O que mudar na fotografia</Label>
+                  <span className="text-xs text-muted-foreground">
+                    {instrucaoImagem.length}/{MAX_CHARS}
+                  </span>
+                </div>
+                <Textarea
+                  id="instrucao-imagem"
+                  placeholder="Ex.: corte a picanha ao meio para revelar o ponto; organize os legumes da chapa"
+                  value={instrucaoImagem}
+                  onChange={(e) => setInstrucaoImagem(e.target.value.slice(0, MAX_CHARS))}
+                  rows={3}
+                  className="resize-none"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Só preencha se a própria imagem precisar mudar. Isso usa o modo mais caprichado,
+                  que leva cerca de 2 minutos em vez de 40 segundos. Deixe vazio e a foto vai
+                  intocada.
+                </p>
+              </div>
+            )}
           </div>
 
           <section className="space-y-2">

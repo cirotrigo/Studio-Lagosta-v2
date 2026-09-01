@@ -24,6 +24,13 @@ export const maxDuration = 300
 // substituindo a seção [PEDIDO DO CLIENTE] por uma instrução padrão.
 const bodySchema = z.object({
   userRequest: z.string().max(1200).default(''),
+  /**
+   * Ajuste autorizado NA FOTO — o campo avançado do modal. Presente, o tier
+   * do gpt-image sobe para `high` (ver `qualidade-arte.ts`).
+   */
+  instrucaoImagem: z.string().max(1200).optional().nullable(),
+  /** Tier explícito, quando quem pede escolhe. */
+  quality: z.enum(['low', 'medium', 'high']).optional(),
   backgroundImageUrl: z.string().url().optional().nullable(),
   selectedLogoIds: z
     .array(z.number().int().positive())
@@ -89,6 +96,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const started = await startImprovement({
       generationId: id,
       userRequest: parsed.data.userRequest,
+      instrucaoImagem: parsed.data.instrucaoImagem,
+      quality: parsed.data.quality,
       backgroundImageUrl: parsed.data.backgroundImageUrl,
       selectedLogoIds: parsed.data.selectedLogoIds,
       selectedElementIds: parsed.data.selectedElementIds,

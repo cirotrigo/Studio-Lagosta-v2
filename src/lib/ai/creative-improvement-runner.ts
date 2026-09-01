@@ -35,6 +35,7 @@ import {
 } from '@/lib/ai/creative-text-verification'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
 
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB
 
@@ -81,6 +82,10 @@ export interface ImprovementJobArgs {
   projectGoogleDriveFolderId: string | null
   templateName: string | null | undefined
   userRequest: string
+  /** Ajuste autorizado NA FOTO — o campo avançado do modal (01/09/2026). */
+  instrucaoImagem?: string | null
+  /** Tier do gpt-image. Ausente, o runner deriva de `instrucaoImagem`. */
+  quality?: 'low' | 'medium' | 'high'
   backgroundImageUrl: string | null
   selectedLogoIds: number[]
   selectedElementIds: number[]
@@ -109,6 +114,11 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
   // Resultado da verificação de texto — declarado fora do try para o caminho
   // de FAILED também gravar o que foi conferido (auditoria).
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
+
+  // O tier vale para as duas tentativas — trocar no meio compararia peras com
+  // maçãs quando o texto divergir.
+  const tier =
+    args.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!args.instrucaoImagem?.trim() })
 
   try {
     const [assets, expectedTexts] = await Promise.all([
@@ -286,6 +296,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         artDirection: assets.artDirection,
         brand: assets.brand,
         expectedTexts,
+        instrucaoImagem: args.instrucaoImagem ?? null,
+        quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
       })
       const generationMs = Date.now() - genStartedAt
@@ -417,7 +429,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           selectedLogoIds: args.selectedLogoIds,
           selectedElementIds: args.selectedElementIds,
           model: getCurrentImageModel(),
-          quality: 'high',
+          quality: tier,
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
           format,
@@ -469,7 +481,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               selectedLogoIds: args.selectedLogoIds,
               selectedElementIds: args.selectedElementIds,
               model: getCurrentImageModel(),
-              quality: 'high',
+              quality: tier,
               inputSize: openaiSize,
               finalSize: `${finalSize.width}x${finalSize.height}`,
               format,
@@ -567,7 +579,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             selectedLogoIds: args.selectedLogoIds,
             selectedElementIds: args.selectedElementIds,
             model: getCurrentImageModel(),
-            quality: 'high',
+            quality: tier,
             inputSize: openaiSize,
             finalSize: `${finalSize.width}x${finalSize.height}`,
             format,

@@ -1,6 +1,8 @@
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
 import { DEFAULT_ART_DIRECTION } from './art-direction'
+import { regrasDaCasaNaMelhoria } from './regras-da-melhoria'
+import { qualidadePadraoPara } from './qualidade-arte'
 import type { BrandContext } from '@/lib/brand/brand-context'
 
 let cachedClient: OpenAI | null = null
@@ -55,6 +57,8 @@ interface BuildPromptArgs {
    * do cliente — e são conferidos pós-geração pela verificação de visão.
    */
   expectedTexts?: string[]
+  /** Ajuste autorizado na foto — vira a seção [AJUSTE NA FOTO]. */
+  instrucaoImagem?: string | null
 }
 
 function buildContextSection(references: ReferenceImage[]): string {
@@ -166,6 +170,27 @@ Este pedido tem prioridade sobre as diretrizes de diagramação acima, mas nunca
 sobre os limites (palavras, família tipográfica, paleta e logo).`
 }
 
+/**
+ * O ajuste NA FOTO — a exceção explícita à fidelidade fotográfica.
+ *
+ * Precisa se declarar exceção, nominalmente: as diretrizes acima proíbem
+ * substituir, adicionar ou remover objetos da fotografia, e a lei da casa
+ * (medida três vezes em 16-17/08 na caixa das letras) é que a instrução que
+ * não se declara vencedora perde para a mais enfática.
+ */
+function buildAjusteDaFotoSection(instrucao: string): string {
+  const limpo = instrucao.trim()
+  if (!limpo) return ''
+  return `[AJUSTE NA FOTO — EXCEÇÃO AUTORIZADA]
+O cliente autorizou mexer na fotografia desta peça, e SÓ no que ele pediu:
+${limpo}
+
+Onde as diretrizes acima proíbem alterar, substituir, acrescentar ou remover
+elementos da fotografia, este pedido é a exceção — vale para o que está escrito
+aqui e para mais nada. Todo o resto da foto continua intocado: não relumie, não
+recolora e não mude o enquadramento. O resultado continua sendo fotografia real.`
+}
+
 function buildAssetsUsageSection(references: ReferenceImage[]): string {
   const hasLogo = references.some((r) => r.role === 'logo')
   const hasElement = references.some((r) => r.role === 'element')
@@ -203,7 +228,17 @@ imagem, não sobre a original.`
  * - `runtime`: depende do que a pessoa faz na hora (anexos, pedido digitado).
  */
 export interface PromptSection {
-  id: 'contexto' | 'identidade' | 'cores' | 'direcao' | 'novo-fundo' | 'assets' | 'pedido' | 'texto-exato'
+  id:
+    | 'contexto'
+    | 'identidade'
+    | 'cores'
+    | 'direcao'
+    | 'regras-da-casa'
+    | 'ajuste-foto'
+    | 'novo-fundo'
+    | 'assets'
+    | 'pedido'
+    | 'texto-exato'
   title: string
   origin: 'system' | 'editable' | 'runtime'
   content: string
@@ -230,6 +265,7 @@ export function buildPromptSections({
   artDirection,
   brand,
   expectedTexts = [],
+  instrucaoImagem = null,
 }: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
   const sections: PromptSection[] = []
@@ -267,6 +303,23 @@ export function buildPromptSections({
     content: artDirection?.trim() || DEFAULT_ART_DIRECTION,
   })
 
+  /**
+   * As regras da casa vêm DEPOIS da direção de arte e ANTES do pedido, de
+   * propósito: são diagramação, e a hierarquia declarada em `[PEDIDO DO
+   * CLIENTE]` é que o pedido vence diagramação. O que o pedido continua NÃO
+   * podendo vencer é `[TEXTO EXATO]`, que segue por último.
+   *
+   * Origem `system` porque `Project.artImprovementPrompt` substitui só o
+   * bloco editável — regra conquistada em produção não pode ser apagada por
+   * um prompt de projeto mal escrito (precedente da identidade da marca).
+   */
+  sections.push({
+    id: 'regras-da-casa',
+    title: 'Regras da casa',
+    origin: 'system',
+    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest }),
+  })
+
   if (hasBackground) {
     sections.push({
       id: 'novo-fundo',
@@ -284,6 +337,16 @@ export function buildPromptSections({
   const pedido = buildPedidoSection(userRequest)
   if (pedido) {
     sections.push({ id: 'pedido', title: 'Pedido do cliente', origin: 'runtime', content: pedido })
+  }
+
+  const ajusteFoto = buildAjusteDaFotoSection(instrucaoImagem ?? '')
+  if (ajusteFoto) {
+    sections.push({
+      id: 'ajuste-foto',
+      title: 'Ajuste na foto',
+      origin: 'runtime',
+      content: ajusteFoto,
+    })
   }
 
   // Por último DE PROPÓSITO: é a palavra final do prompt, acima inclusive do
@@ -397,6 +460,18 @@ interface ImproveCreativeOptions {
   brand?: BrandContext | null
   /** Textos que a arte deve reproduzir verbatim (seção [TEXTO EXATO]). */
   expectedTexts?: string[]
+  /**
+   * Ajuste autorizado NA FOTO — o segundo campo do modal (01/09/2026).
+   *
+   * Separado do `userRequest` de propósito. Antes, pedir "humaniza essa foto
+   * com uma mão dando uma colherada" ia no mesmo bloco da diagramação e
+   * brigava contra o bloco de fidelidade da foto, sem nenhuma marca de que
+   * era exceção autorizada. Aqui ele entra como exceção explícita — e é o que
+   * decide o tier, porque compor é barato e editar a foto é caro.
+   */
+  instrucaoImagem?: string | null
+  /** Tier do gpt-image. Ver `qualidade-arte.ts`. */
+  quality?: 'low' | 'medium' | 'high'
   timeoutMs?: number
 }
 
@@ -427,11 +502,16 @@ export async function improveCreative({
   artDirection = null,
   brand = null,
   expectedTexts = [],
+  instrucaoImagem = null,
+  quality,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
-  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection, brand, expectedTexts })
+  const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
+  const prompt = buildPrompt({
+    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem,
+  })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,
@@ -467,7 +547,7 @@ export async function improveCreative({
         image: imageParam,
         prompt,
         size: size as never,
-        quality: 'high',
+        quality: tier,
         n: 1,
       },
       { signal: controller.signal },
@@ -480,7 +560,7 @@ export async function improveCreative({
         : ''
     const directionSuffix = artDirection?.trim() ? ' [direção do projeto]' : ''
     console.log(
-      `[improveCreative] ${IMAGE_MODEL} ${size} concluído em ${(elapsed / 1000).toFixed(1)}s${refSuffix}${directionSuffix}`,
+      `[improveCreative] ${IMAGE_MODEL} ${size} q=${tier} concluído em ${(elapsed / 1000).toFixed(1)}s${refSuffix}${directionSuffix}`,
     )
 
     const b64 = response.data?.[0]?.b64_json

@@ -12,6 +12,11 @@ export interface ImproveJob {
   generationThumbnailUrl: string | null
   generationLabel: string
   userRequest: string
+  /**
+   * Ajuste autorizado NA FOTO — o campo avançado do modal (01/09/2026).
+   * Preenchido, o servidor sobe o tier do gpt-image para `high`.
+   */
+  instrucaoImagem?: string | null
   backgroundImageUrl?: string | null
   selectedLogoIds?: number[]
   selectedElementIds?: number[]
@@ -39,6 +44,11 @@ interface AddJobInput {
   generationThumbnailUrl: string | null
   generationLabel: string
   userRequest: string
+  /**
+   * Ajuste autorizado NA FOTO — o campo avançado do modal (01/09/2026).
+   * Preenchido, o servidor sobe o tier do gpt-image para `high`.
+   */
+  instrucaoImagem?: string | null
   backgroundImageUrl?: string | null
   selectedLogoIds?: number[]
   selectedElementIds?: number[]

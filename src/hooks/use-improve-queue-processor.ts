@@ -43,6 +43,7 @@ export function useImproveQueueProcessor() {
         `/api/generations/${next.generationId}/improve`,
         {
           userRequest: next.userRequest,
+          ...(next.instrucaoImagem ? { instrucaoImagem: next.instrucaoImagem } : {}),
           ...(next.backgroundImageUrl ? { backgroundImageUrl: next.backgroundImageUrl } : {}),
           ...(next.selectedLogoIds && next.selectedLogoIds.length > 0
             ? { selectedLogoIds: next.selectedLogoIds }
