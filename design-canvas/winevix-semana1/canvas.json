@@ -1,0 +1,205 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1080,
+      "h": 1920,
+      "title": "Segunda 31/08 · 9h · funcionamento"
+    },
+    {
+      "file": "SegExecutivo.dc.html",
+      "x": 1240,
+      "y": 0,
+      "w": 1080,
+      "h": 1920,
+      "title": "Segunda 31/08 · 10h · executivo"
+    },
+    {
+      "file": "SegFestival.dc.html",
+      "x": 2480,
+      "y": 0,
+      "w": 1080,
+      "h": 1920,
+      "title": "Segunda 31/08 · 12h · Festival Italiano (último dia)"
+    },
+    {
+      "file": "TerFuncionamento.dc.html",
+      "x": 0,
+      "y": 2160,
+      "w": 1080,
+      "h": 1920,
+      "title": "Terça 01/09 · 9h · funcionamento"
+    },
+    {
+      "file": "TerExecutivo.dc.html",
+      "x": 1240,
+      "y": 2160,
+      "w": 1080,
+      "h": 1920,
+      "title": "Terça 01/09 · 10h · executivo"
+    },
+    {
+      "file": "TerAdega.dc.html",
+      "x": 2480,
+      "y": 2160,
+      "w": 1080,
+      "h": 1920,
+      "title": "Terça 01/09 · 13h · da adega para você"
+    },
+    {
+      "file": "QuaFuncionamento.dc.html",
+      "x": 0,
+      "y": 4320,
+      "w": 1080,
+      "h": 1920,
+      "title": "Quarta 02/09 · 9h · funcionamento"
+    },
+    {
+      "file": "QuaExecutivo.dc.html",
+      "x": 1240,
+      "y": 4320,
+      "w": 1080,
+      "h": 1920,
+      "title": "Quarta 02/09 · 10h · executivo"
+    },
+    {
+      "file": "QuaEntradas.dc.html",
+      "x": 2480,
+      "y": 4320,
+      "w": 1080,
+      "h": 1920,
+      "title": "Quarta 02/09 · 12h · tábua"
+    },
+    {
+      "file": "QuiFuncionamento.dc.html",
+      "x": 0,
+      "y": 6480,
+      "w": 1080,
+      "h": 1920,
+      "title": "Quinta 03/09 · 9h · funcionamento"
+    },
+    {
+      "file": "QuiExecutivo.dc.html",
+      "x": 1240,
+      "y": 6480,
+      "w": 1080,
+      "h": 1920,
+      "title": "Quinta 03/09 · 10h · executivo"
+    },
+    {
+      "file": "QuiHappyHour.dc.html",
+      "x": 2480,
+      "y": 6480,
+      "w": 1080,
+      "h": 1920,
+      "title": "Quinta 03/09 · 12h · happy hour"
+    },
+    {
+      "file": "SexFuncionamento.dc.html",
+      "x": 0,
+      "y": 8640,
+      "w": 1080,
+      "h": 1920,
+      "title": "Sexta 04/09 · 9h · funcionamento"
+    },
+    {
+      "file": "SexExecutivo.dc.html",
+      "x": 1240,
+      "y": 8640,
+      "w": 1080,
+      "h": 1920,
+      "title": "Sexta 04/09 · 10h · executivo"
+    },
+    {
+      "file": "SexPolvo.dc.html",
+      "x": 2480,
+      "y": 8640,
+      "w": 1080,
+      "h": 1920,
+      "title": "Sexta 04/09 · 12h · polvo"
+    },
+    {
+      "file": "SabFuncionamento.dc.html",
+      "x": 0,
+      "y": 10800,
+      "w": 1080,
+      "h": 1920,
+      "title": "Sábado 05/09 · 9h · funcionamento"
+    },
+    {
+      "file": "SabCortesia.dc.html",
+      "x": 1240,
+      "y": 10800,
+      "w": 1080,
+      "h": 1920,
+      "title": "Sábado 05/09 · 10h · taça de cortesia"
+    },
+    {
+      "file": "SabLevaPraCasa.dc.html",
+      "x": 2480,
+      "y": 10800,
+      "w": 1080,
+      "h": 1920,
+      "title": "Sábado 05/09 · 12h · leva pra casa"
+    },
+    {
+      "file": "DomFechamento.dc.html",
+      "x": 0,
+      "y": 12960,
+      "w": 1080,
+      "h": 1920,
+      "title": "Domingo 06/09 · 9h · fechamento"
+    },
+    {
+      "file": "DomDesejo.dc.html",
+      "x": 1240,
+      "y": 12960,
+      "w": 1080,
+      "h": 1920,
+      "title": "Domingo 06/09 · 12h · desejo"
+    },
+    {
+      "file": "DomReabertura.dc.html",
+      "x": 2480,
+      "y": 12960,
+      "w": 1080,
+      "h": 1920,
+      "title": "Domingo 06/09 · 17h · reabertura"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "brief",
+      "x": -1500,
+      "y": 0,
+      "w": 1300,
+      "text": "WINE VIX · SEMANA 1 (31/08 a 06/09/2026)\n\nOs 21 stories, 1080x1920. O FEED da semana não está aqui: são três carrosséis de CURADORIA DE FOTOS, sem arte e sem texto — a mecânica vai na legenda.\n\nGrade pela entrada \"Cadência e grade de publicação\": 9h funcionamento (seg–sáb), 10h executivo (seg–sex) ou taça de cortesia (sáb), 3º story ~12h — terça às 13h, quinta é happy hour.\n\nDOMINGO ESTREIA com 3 stories (decisão do Ciro em 29/08). A casa FECHA: nenhuma das três convida a visitar hoje, e nenhuma promete entrega.\n\nAVISAR O CLIENTE antes de domingo: a grade anterior (1 story no domingo) foi confirmada por ele em 23/08."
+    },
+    {
+      "id": "espacamento",
+      "x": -1500,
+      "y": 2160,
+      "w": 1300,
+      "text": "O ESPAÇAMENTO É O DO TERO\n\nMargens 200 no topo, 150 no rodapé, 96 nas laterais — as que o Ciro calibrou em 27/08, mais apertadas que a faixa de 240 do Instagram.\n\nEntrelinha justa na manchete (0.95) e um espaçador flexível entre o bloco e o pé: o texto fica agrupado e a foto respira, em vez dos dois blocos empurrados contra as bordas da primeira rodada."
+    },
+    {
+      "id": "variacao",
+      "x": -1500,
+      "y": 4320,
+      "w": 1300,
+      "text": "A POSIÇÃO VARIA PEÇA A PEÇA\n\nBloco no topo ou no rodapé, alinhado à esquerda, ao centro ou à direita — 10 peças com o bloco no topo e 11 no rodapé; 6 à esquerda, 7 centradas, 8 à direita.\n\nA escolha cruza duas coisas: onde a foto está mais lisa (medido: desvio de borda na faixa do topo contra a do rodapé) e a distribuição, para nenhum arranjo se repetir dia após dia.\n\nO endereço e o horário ficam SEMPRE no rodapé, mesmo com a manchete no topo: é a regra de 11/08, e é o que impede toda peça de convergir para o mesmo layout."
+    },
+    {
+      "id": "texto",
+      "x": -1500,
+      "y": 6480,
+      "w": 1300,
+      "text": "TEXTO ENXUTO\n\nA peça NÃO descreve o prato. Manchete, a condição quando existe (horário, o preço do executivo) e o CTA. Ingrediente, acompanhamento e ficha de cardápio ficaram de fora.\n\nPreço: só o R$ 79,90 do executivo, e uma peça com valor por dia. As condições do happy hour são referência interna e não vão em número.\n\nCTA é cópia literal de um dos seis aprovados no DNA."
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}

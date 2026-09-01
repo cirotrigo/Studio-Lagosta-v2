@@ -1,0 +1,75 @@
+{
+ "DomDesejo": {
+  "bloco": 0.519
+ },
+ "DomFechamento": {
+  "bloco": 0.3,
+  "pe": 0.3
+ },
+ "DomReabertura": {
+  "bloco": 0.455
+ },
+ "Main": {
+  "bloco": 0.3,
+  "pe": 0.83
+ },
+ "QuaEntradas": {
+  "bloco": 0.56,
+  "pe": 0.3
+ },
+ "QuaExecutivo": {
+  "bloco": 0.3
+ },
+ "QuaFuncionamento": {
+  "bloco": 0.727,
+  "pe": 0.648
+ },
+ "QuiExecutivo": {
+  "bloco": 0.586,
+  "pe": 0.3
+ },
+ "QuiFuncionamento": {
+  "bloco": 0.495
+ },
+ "QuiHappyHour": {
+  "bloco": 0.467
+ },
+ "SabCortesia": {
+  "bloco": 0.704
+ },
+ "SabFuncionamento": {
+  "bloco": 0.334
+ },
+ "SabLevaPraCasa": {
+  "bloco": 0.819,
+  "pe": 0.3
+ },
+ "SegExecutivo": {
+  "bloco": 0.523,
+  "pe": 0.3
+ },
+ "SegFestival": {
+  "bloco": 0.3
+ },
+ "SexExecutivo": {
+  "bloco": 0.93,
+  "pe": 0.338
+ },
+ "SexFuncionamento": {
+  "bloco": 0.3,
+  "pe": 0.635
+ },
+ "SexPolvo": {
+  "bloco": 0.3
+ },
+ "TerAdega": {
+  "bloco": 0.3
+ },
+ "TerExecutivo": {
+  "bloco": 0.406,
+  "pe": 0.55
+ },
+ "TerFuncionamento": {
+  "bloco": 0.373
+ }
+}

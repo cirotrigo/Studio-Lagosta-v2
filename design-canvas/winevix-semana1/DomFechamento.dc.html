@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400;1,500;1,600;1,700&family=Lato:ital,wght@0,300;0,400;0,700&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #FCE77B; } a:hover { color: #F9F7F2; }
+    .halo {
+      position: absolute; z-index: 0; pointer-events: none;
+      background: rgb(36 0 0 / var(--a));
+      filter: blur(var(--r));
+      border-radius: calc(var(--r) + 60px);
+    }
+    .veu-b {
+      background: linear-gradient(to top,
+        rgb(36 0 0 / var(--veu)) 0%,
+        rgb(36 0 0 / var(--veu)) 40%,
+        rgb(36 0 0 / calc(var(--veu) * 0.52)) 68%,
+        rgb(36 0 0 / 0) 100%);
+    }
+    .veu-t {
+      background: linear-gradient(to bottom,
+        rgb(36 0 0 / var(--veu)) 0%,
+        rgb(36 0 0 / var(--veu)) 40%,
+        rgb(36 0 0 / calc(var(--veu) * 0.52)) 68%,
+        rgb(36 0 0 / 0) 100%);
+    }
+  </style>
+</helmet>
+<div style="width: 1080px; height: 1920px; position: relative; overflow: hidden; background-color: #241A16;">
+  <img src="dom-09.jpg" alt="" style="position: absolute; top: 0; left: 0; width: 1080px; height: 1920px; object-fit: cover; display: block;">
+  <img src="logo-winevix.png" alt="Wine Vix" style="position: absolute; bottom: 158px; left: 96px; width: 148px; height: 148px; opacity: 0.96; filter: drop-shadow(0 2px 12px rgba(20, 0, 0, 0.5));">
+  <div style="position: absolute; left: 0; top: 0; width: 1080px; height: 1920px; box-sizing: border-box; padding: 200px 96px 150px; display: flex; flex-direction: column; align-items: flex-end;">
+    <div data-halo="bloco" style="position: relative; width: fit-content; max-width: 100%; display: flex; flex-direction: column; align-items: flex-end;">
+      <div class="halo" style="--a: 0.3; --r: 124px; left: -62px; right: -62px; top: -50px; bottom: -50px;"></div>
+    <div style="position: relative; z-index: 1; font-family: 'Lato', 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 30px; font-weight: 700; letter-spacing: 4.2px; text-transform: uppercase; color: #F9F7F2; opacity: 0.74; text-align: right; text-shadow: 5px 5px 20px rgba(20, 0, 0, 0.30), 0 1px 12px rgba(20, 0, 0, 0.62);">Hoje fechado</div>
+    <div style="position: relative; z-index: 1; margin-top: 22px; font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif; font-size: 84px; font-style: italic; font-weight: 600; line-height: 0.95; letter-spacing: -0.5px; color: #F9F7F2; max-width: 700px; text-align: right; text-wrap: pretty; text-shadow: 5px 5px 20px rgba(20, 0, 0, 0.30), 0 1px 12px rgba(20, 0, 0, 0.62);"><span style="color: #F9F7F2;">Hoje a Adega </span><span style="color: #FCE77B;">Descansa</span></div>
+    </div>
+    <div style="flex: 1 1 auto; min-height: 40px;"></div>
+    <div data-halo="pe" style="position: relative; width: fit-content; max-width: 100%; display: flex; flex-direction: column; align-items: flex-end;">
+      <div class="halo" style="--a: 0.3; --r: 124px; left: -62px; right: -62px; top: -50px; bottom: -50px;"></div>
+    <div style="position: relative; z-index: 1; width: 132px; height: 1px; background-color: #FCE77B; opacity: 0.85; flex: none; margin-left: auto;"></div>
+    <div style="height: 20px;"></div>
+    <div style="position: relative; z-index: 1; font-family: 'Lato', 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 32px; font-weight: 700; letter-spacing: 3.2px; text-transform: uppercase; color: #F9F7F2; text-align: right; text-shadow: 5px 5px 20px rgba(20, 0, 0, 0.30), 0 1px 12px rgba(20, 0, 0, 0.62);">Segunda a sábado - 10h às 22h</div>
+    <div style="position: relative; z-index: 1; margin-top: 10px; font-family: 'Lato', 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 29px; font-weight: 400; letter-spacing: 2px; text-transform: uppercase; color: #F9F7F2; opacity: 0.72; text-align: right; text-shadow: 5px 5px 20px rgba(20, 0, 0, 0.30), 0 1px 12px rgba(20, 0, 0, 0.62);">Rua Elesbão Linhares, 52, Praia do Canto</div>
+    <div style="position: relative; z-index: 1; margin-top: 16px; font-family: 'Playfair Display', 'Iowan Old Style', Georgia, serif; font-size: 36px; font-style: italic; font-weight: 500; color: #F9F7F2; text-align: right; text-shadow: 5px 5px 20px rgba(20, 0, 0, 0.30), 0 1px 12px rgba(20, 0, 0, 0.62);">Sua mesa já sente sua falta</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>
