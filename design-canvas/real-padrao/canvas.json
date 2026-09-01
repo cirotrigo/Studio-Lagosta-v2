@@ -1,0 +1,23 @@
+{
+ "artboards": [
+  {
+   "file": "Main.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "STORY · segunda · funcionamento (só Shopping)"
+  },
+  {
+   "file": "CapaQuartaDoCrepe.dc.html",
+   "x": 1220,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "FEED · quarta 17h · capa Quarta do Crepe"
+  }
+ ],
+ "launch": {
+  "view": "canvas"
+ }
+}

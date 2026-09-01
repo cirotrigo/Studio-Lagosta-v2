@@ -1,0 +1,48 @@
+{
+  "pecas": [
+    {
+      "arq": "Main",
+      "layout": "funcionamento-story",
+      "titulo_canvas": "STORY · segunda · funcionamento (só Shopping)",
+      "foto": "segunda.jpg",
+      "pretitulo": "Il Vero Gelato",
+      "titulo": [
+        "Sua Semana",
+        "Começa #Aqui!"
+      ],
+      "tamTitulo": 96,
+      "servico": [
+        {
+          "icone": "sacola",
+          "txt": "Shopping Vitória - 11h às 22h"
+        },
+        {
+          "icone": "pino",
+          "txt": "Praia do Canto - #Fechado"
+        }
+      ],
+      "veuTopo": 0.34,
+      "veuRodape": 0.72
+    },
+    {
+      "arq": "CapaQuartaDoCrepe",
+      "layout": "capa-feed",
+      "titulo_canvas": "FEED · quarta 17h · capa Quarta do Crepe",
+      "foto": "quarta-crepe.jpg",
+      "titulo": [
+        "Quarta",
+        "do Crepe"
+      ],
+      "tamTitulo": 88,
+      "apoio": [
+        "Na compra do primeiro crepe,",
+        "o segundo sai com #50% #OFF."
+      ],
+      "apoioSpritz": true,
+      "miudo": "O desconto vale para o crepe de menor valor.",
+      "seloQuarta": true,
+      "veuTopo": 0.24,
+      "veuRodape": 0.74
+    }
+  ]
+}
