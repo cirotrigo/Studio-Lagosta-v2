@@ -102,14 +102,12 @@ a régua deixa de depender da visão — que é onde "Rua Gomes de Carvalho" nas
 regra sobre bloco que não existe na régua:
 
 - **Texto a mais com DADO** (número, hora, "Rua/Av.", nome de cidade, R$):
-  reprova, regenera **uma** vez e, se persistir, entrega com alerta vermelho
-  na galeria e na agenda. É o caso "endereço de outro estado".
-- **Texto a mais sem dado** (uma palavra decorativa, um CTA extra): só avisa.
+  **alerta vermelho** na galeria, na agenda e na bancada, citando o bloco
+  inventado. É o caso "endereço de outro estado". **Não regenera** — decisão
+  do Ciro em 01/09, coerente com o desfazimento da escada automática de 12/08.
+- **Texto a mais sem dado** (uma palavra decorativa, um CTA extra): aviso
+  discreto.
 - O nome da marca e o que veio da régua por visão não contam.
-
-⚠️ Decisão do Ciro: ele desfez uma escada automática em 12/08 porque o
-comparador dava falso negativo. Aqui a regeneração é estreita (só dado
-inventado) e limitada a uma rodada — mas é ele quem diz se aceita.
 
 ### F3 — Feedback que dá para medir (meio dia)
 
@@ -162,7 +160,7 @@ arte do canvas) sai da folha de contato, não de argumento.
 ## 3. Ordem e o que depende de quê
 
 ```
-F0 (hoje) → F1 (régua) → F3 (feedback) → F2 (texto a mais) → F4 (bancada) → F5 (spike)
+F0 (hoje) → F1 (régua + entrada na bancada) → F3 (feedback + melhorar na bancada) → F2 (texto a mais) → F4 (bancada de medição, pelas duas portas) → F5 (spike)
 ```
 
 F1 antes de tudo: sem régua, F2 não tem contra o que comparar e F4 mede a
@@ -180,11 +178,63 @@ calibrar o olho. F5 por último, com números.
   delas contradizem o feedback do Ciro (`regras-da-melhoria.ts`, cabeçalho).
 - Não confiar em `textCheckReason`; ler o `GenerationJob.payload`.
 
-## 5. Decisões que são do Ciro
+## 5. Decisões
+
+**Decididas pelo Ciro em 01/09/2026 (noite):**
+
+- **Texto a mais com dado inventado: SÓ AVISA.** Nada de regeneração
+  automática — a F2 vira alerta vermelho na galeria, na agenda e na bancada,
+  com o bloco inventado citado. Coerente com "verificador avisa, nunca veta".
+- **Margem: PRESERVAR os 90px da arte.** A regra 2 de
+  `regras-da-melhoria.ts` fica como está; a safe area continua sendo assunto
+  de quem CRIA a peça. A tensão com o avatar do Instagram está aceita.
+- **As duas portas de entrada têm a mesma melhoria** (§ 6).
+
+**Ainda com ele:**
 
 1. Conserto nº 7: as 9 de ontem à noite estão boas na FOTO?
-2. Texto a mais com dado inventado: regenera uma vez ou só avisa?
-3. Margem: preservar os 90px da arte (regra 2) ou a safe area de 1/8 do
-   story? Hoje a melhoria preserva o que a arte já tem.
-4. Trocar a arte de quarta 15h do By Rock.
-5. F5: vale um dia de spike antes de a bancada da F4 existir, ou depois?
+2. Trocar a arte de quarta 15h do By Rock.
+3. F5: vale um dia de spike antes de a bancada da F4 existir, ou depois?
+
+## 6. As duas portas de entrada — a melhoria é UMA só
+
+Arte criada fora do Studio (canvas, export, arquivo do cliente) entra por dois
+caminhos, e o Ciro exige que "melhorar com IA" se comporte igual nos dois:
+
+1. **Fila da bancada** — a arte fica como card `pronto`, ele revisa, e dali
+   agenda.
+2. **Rascunho direto na agenda** — `upload-creative` → `colocar-na-agenda`.
+
+**O que existe hoje (medido em 01/09):** só a porta 2 funciona. Dos 330 itens
+de plano criados desde 15/08, **nenhum** aponta para arte do canvas
+(`arte-enviada`): `criar-plano` e `editar-item-do-plano` não aceitam
+`generationId`, só `executar-plano` grava um. A bancada **não tem botão de
+melhorar** — a melhoria só é chamada da galeria e do detalhe do post na
+agenda. E o runner da melhoria **não conhece `ItemDePlano`**: uma melhoria
+feita pela galeria numa arte que está na fila cria outra Generation e o card
+continua apontando para a antiga. O que já existe a favor: **todo item da
+bancada carrega `copyProposta`** — é a régua por construção desta porta, e
+os 330 itens têm copy.
+
+**O desenho, para as duas portas convergirem:**
+
+- **Uma Generation, uma régua.** A copy mora na Generation
+  (`fieldValues.textos`, F1). Quem entra pela bancada grava a mesma coisa:
+  o item com arte pronta recebe `generationId` e a Generation recebe
+  `textos = copyProposta`. O resolvedor de régua é um só
+  (`banco → linhagem → visão`), sem saber por qual porta a arte veio.
+- **Entrada na bancada** (F1, junto com o `entrega.json`): `upload-creative`
+  ganha `planoId`/`itemId` opcional — subiu a arte, o item vira `pronto` com
+  o `generationId`; sem item, cria um item `pronto` no plano em aberto.
+  `editar-item-do-plano` passa a aceitar `generationId` ("usa esta arte").
+- **"Melhorar com IA" na bancada** (F3, meio dia a mais): o mesmo
+  `ImproveCreativeModal` na prévia do card, com `applyToItemId` no lugar de
+  `applyToPostId`. O runner, ao terminar, **reaponta o item** (ou o slide,
+  em carrossel) para a Generation melhorada — o equivalente do
+  compare-and-swap que ele já faz em `mediaUrls` do post. Sem isso o card
+  mente, que é o defeito que a hidratação da bancada já teve de corrigir.
+- **Mesmas travas nas duas portas**: só `pronto`/`editado` na bancada (como
+  só `DRAFT`/`SCHEDULED` na agenda); em carrossel, o slide NA TELA; o
+  feedback de um clique nos dois lugares.
+- **A bancada de medição (F4) roda as 18 peças pelas DUAS portas**, e o
+  resultado tem de ser o mesmo — é o teste de que a melhoria é uma só.
