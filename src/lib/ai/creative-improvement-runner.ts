@@ -271,7 +271,21 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      * Só quando a Generation não trouxe nada: texto aprovado no Studio é a
      * régua melhor e não se substitui por transcrição.
      */
-    let textosDaRegua = expectedTexts
+    /**
+     * 🔴 `skipTextVerification` significa "os `expectedTexts` do banco são de
+     * OUTRA arte" (slide 3 do carrossel contra os textos do slide 1) — e por
+     * isso eles são DESCARTADOS aqui. O que ele NÃO significa é "esta peça
+     * não precisa de régua".
+     *
+     * Medido em 01/09/2026: as duas buscas de régua estavam condicionadas a
+     * `!skipTextVerification`, então melhorar um slide de carrossel pela
+     * agenda — que é o caminho que o Ciro usa — pulava as duas e a peça saía
+     * sem régua nenhuma. O endereço voltou a ser inventado a cada rodada, com
+     * o conserto no ar e sem deixar rastro: o ramo de `textosDaRegua.length
+     * === 0` capturava o caso primeiro e gravava "sem texto esperado",
+     * escondendo que o motivo real era o skip.
+     */
+    let textosDaRegua = args.skipTextVerification ? [] : expectedTexts
     let reguaPorVisao = false
     let reguaDaLinhagem = 0
     let raizSemTexto = false
@@ -302,7 +316,10 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     // A visão RODOU e não achou texto: é foto pura (capa de carrossel), não
     // apenas "ninguém transcreveu". A distinção decide a regra da capa.
     let arteSemTexto = false
-    if (textosDaRegua.length === 0 && !args.skipTextVerification) {
+    // Sem condição de skip: a visão lê o buffer da arte que está SENDO
+    // melhorada, então a régua que ela produz é sempre da peça certa — é
+    // justamente o que resolve o caso do slide de carrossel.
+    if (textosDaRegua.length === 0) {
       textosDaRegua = await transcreverTextosDaArte(primaryBuffer)
       reguaPorVisao = textosDaRegua.length > 0
       arteSemTexto = textosDaRegua.length === 0
@@ -361,7 +378,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         break
       }
 
-      if (args.skipTextVerification) {
+      /**
+       * Só pula a conferência quando a régua veio dos `expectedTexts` do
+       * banco (que são de outra arte). Se ela veio da VISÃO da própria peça,
+       * conferir é correto e desejável — era esta a única proteção que
+       * sobrava no carrossel.
+       */
+      if (args.skipTextVerification && !reguaPorVisao) {
         improvedBuffer = candidate
         textCheckInfo = {
           textCheck: 'skipped',
