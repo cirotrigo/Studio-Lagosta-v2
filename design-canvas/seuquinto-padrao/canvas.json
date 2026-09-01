@@ -1,0 +1,10 @@
+{
+ "artboards": [
+  { "file": "Main.dc.html", "x": 0, "y": 0, "w": 1080, "h": 1920, "title": "Story · Funcionamento · seg 9h" },
+  { "file": "Capa.dc.html", "x": 1220, "y": 0, "w": 1080, "h": 1350, "title": "Feed · Capa · Feijoada + Samba · sáb" }
+ ],
+ "annotations": [
+  { "id": "padrao-v1", "x": 2440, "y": 0, "w": 360, "text": "PADRÃO SEU QUINTO - v1 (29/08)\n\nManchete: Bonoco caps 72-76px, extrude 5px baixo-direita SEM blur. Pares: branco+vermelho, branco+verde, branco+amarelo, amarelo+vermelho.\n\nScript: The Kathy, caixa natural, nunca dado prático.\n\nServiço: Bonoco 52/40 (story) - horário maior que endereço, extrude escuro 3px.\n\nÍcone Q: 120-140px, topo centro OU canto oposto ao bloco. Nunca junto do wordmark.\n\nVéu: local, platô até 38% da faixa - sliders em cada artboard.\n\nMargens story: 200 topo / 180 rodapé / 88 lados. Feed: ~90 em volta.\n\nNunca: caixa alta no script, preço, botão de CTA, cor fora do tricolor+dark+branco, faixa preta chapada.\n\nPADRAO.md completo em design-canvas/seuquinto-padrao/." }
+ ],
+ "launch": { "view": "canvas" }
+}
