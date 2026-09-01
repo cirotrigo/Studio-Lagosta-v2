@@ -1,0 +1,328 @@
+{
+ "artboards": [
+  {
+   "file": "Main.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "1/20 · Seg12Funcionamento",
+   "page": "page-1"
+  },
+  {
+   "file": "Seg15Costela.dc.html",
+   "x": 1210,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "2/20 · Seg15Costela",
+   "page": "page-1"
+  },
+  {
+   "file": "Seg18Kids.dc.html",
+   "x": 2420,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "3/20 · Seg18Kids",
+   "page": "page-1"
+  },
+  {
+   "file": "Ter12Funcionamento.dc.html",
+   "x": 3630,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "4/20 · Ter12Funcionamento",
+   "page": "page-1"
+  },
+  {
+   "file": "Ter15Maminha.dc.html",
+   "x": 4840,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "5/20 · Ter15Maminha",
+   "page": "page-1"
+  },
+  {
+   "file": "Ter18Marmitex.dc.html",
+   "x": 6050,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "6/20 · Ter18Marmitex",
+   "page": "page-1"
+  },
+  {
+   "file": "Qua12Funcionamento.dc.html",
+   "x": 7260,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "7/20 · Qua12Funcionamento",
+   "page": "page-1"
+  },
+  {
+   "file": "Qua15Coracao.dc.html",
+   "x": 8470,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "8/20 · Qua15Coracao",
+   "page": "page-1"
+  },
+  {
+   "file": "Qua18RodizioAviso.dc.html",
+   "x": 9680,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "9/20 · Qua18RodizioAviso",
+   "page": "page-1"
+  },
+  {
+   "file": "Qui12Funcionamento.dc.html",
+   "x": 10890,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "10/20 · Qui12Funcionamento",
+   "page": "page-1"
+  },
+  {
+   "file": "Qui15Alcatra.dc.html",
+   "x": 12100,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "11/20 · Qui15Alcatra",
+   "page": "page-1"
+  },
+  {
+   "file": "Qui18RodizioVespera.dc.html",
+   "x": 13310,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "12/20 · Qui18RodizioVespera",
+   "page": "page-1"
+  },
+  {
+   "file": "Sex07Funcionamento.dc.html",
+   "x": 14520,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "13/20 · Sex07Funcionamento",
+   "page": "page-1"
+  },
+  {
+   "file": "Sex11Rodizio.dc.html",
+   "x": 15730,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "14/20 · Sex11Rodizio",
+   "page": "page-1"
+  },
+  {
+   "file": "Sex20Resenha.dc.html",
+   "x": 16940,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "15/20 · Sex20Resenha",
+   "page": "page-1"
+  },
+  {
+   "file": "Sab07Funcionamento.dc.html",
+   "x": 18150,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "16/20 · Sab07Funcionamento",
+   "page": "page-1"
+  },
+  {
+   "file": "Sab11Familia.dc.html",
+   "x": 19360,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "17/20 · Sab11Familia",
+   "page": "page-1"
+  },
+  {
+   "file": "Sab15Picanha.dc.html",
+   "x": 20570,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "18/20 · Sab15Picanha",
+   "page": "page-1"
+  },
+  {
+   "file": "Dom11Familia.dc.html",
+   "x": 21780,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "19/20 · Dom11Familia",
+   "page": "page-1"
+  },
+  {
+   "file": "Dom15Misto.dc.html",
+   "x": 22990,
+   "y": 0,
+   "w": 1080,
+   "h": 1920,
+   "title": "20/20 · Dom15Misto",
+   "page": "page-1"
+  },
+  {
+   "file": "RodCapa.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "1/7 · RodCapa",
+   "page": "page-2"
+  },
+  {
+   "file": "RodServico.dc.html",
+   "x": 1210,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "2/7 · RodServico",
+   "page": "page-2"
+  },
+  {
+   "file": "RodCarnes.dc.html",
+   "x": 2420,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "3/7 · RodCarnes",
+   "page": "page-2"
+  },
+  {
+   "file": "RodEntradas.dc.html",
+   "x": 3630,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "4/7 · RodEntradas",
+   "page": "page-2"
+  },
+  {
+   "file": "RodGuarnicoes.dc.html",
+   "x": 4840,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "5/7 · RodGuarnicoes",
+   "page": "page-2"
+  },
+  {
+   "file": "RodChopp.dc.html",
+   "x": 6050,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "6/7 · RodChopp",
+   "page": "page-2"
+  },
+  {
+   "file": "RodFecho.dc.html",
+   "x": 7260,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "7/7 · RodFecho",
+   "page": "page-2"
+  },
+  {
+   "file": "FamCapa.dc.html",
+   "x": 0,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "1/7 · FamCapa",
+   "page": "page-3"
+  },
+  {
+   "file": "FamCasaCheia.dc.html",
+   "x": 1210,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "2/7 · FamCasaCheia",
+   "page": "page-3"
+  },
+  {
+   "file": "FamEspeto.dc.html",
+   "x": 2420,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "3/7 · FamEspeto",
+   "page": "page-3"
+  },
+  {
+   "file": "FamKids.dc.html",
+   "x": 3630,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "4/7 · FamKids",
+   "page": "page-3"
+  },
+  {
+   "file": "FamKidsDois.dc.html",
+   "x": 4840,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "5/7 · FamKidsDois",
+   "page": "page-3"
+  },
+  {
+   "file": "FamCorte.dc.html",
+   "x": 6050,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "6/7 · FamCorte",
+   "page": "page-3"
+  },
+  {
+   "file": "FamFecho.dc.html",
+   "x": 7260,
+   "y": 0,
+   "w": 1080,
+   "h": 1350,
+   "title": "7/7 · FamFecho",
+   "page": "page-3"
+  }
+ ],
+ "pages": [
+  {
+   "id": "page-1",
+   "name": "Stories · 31/08 a 06/09"
+  },
+  {
+   "id": "page-2",
+   "name": "Feed · Sexta 04/09 · Rodízio"
+  },
+  {
+   "id": "page-3",
+   "name": "Feed · Sábado 05/09 · Família"
+  }
+ ],
+ "launch": {
+  "view": "canvas",
+  "page": "page-1"
+ }
+}

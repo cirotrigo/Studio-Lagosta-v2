@@ -1,0 +1,688 @@
+{
+  "_nota": "Semana 1 do Espeto Gaucho: 31/08 a 06/09/2026. Precos vem SEMPRE da entrada dona deles na base: promocao de 'Promocoes do dia' (com 'a partir das 17h'), rodizio de 'Rodizio de Sexta' (R$ 89, so sexta, 10h-15h), marmitex de 'Marmitex e Sobremesas'. Teto de 2 pecas com preco por dia. Endereco e horario completo SO na primeira arte do dia.",
+  "blocos": [
+    {
+      "chave": "stories",
+      "nome": "Stories · 31/08 a 06/09",
+      "slides": [
+        {
+          "arq": "Seg12Funcionamento",
+          "foto": "seg12",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.52,
+          "veuRodape": 0.9,
+          "tamTitulo": 72,
+          "badge": "SEGUNDOU COM CHURRASCO",
+          "titulo": [
+            "A SEMANA",
+            "COMEÇA NO",
+            "#ESPETO"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Seg a Qui das 16h à meia-noite"
+            },
+            {
+              "icone": "relogio",
+              "txt": "Sex a Dom e feriados das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Vem pro Espeto!"
+        },
+        {
+          "arq": "Seg15Costela",
+          "foto": "seg15",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 84,
+          "badge": "PROMOÇÃO DO DIA",
+          "titulo": [
+            "COSTELA",
+            "NO #BAFO"
+          ],
+          "desc": "1kg com creme de aipim, farofa e vinagrete",
+          "preco": "R$ 104,90",
+          "precoNota": "a partir das 17h",
+          "assinatura": "Vem se servir!"
+        },
+        {
+          "arq": "Seg18Kids",
+          "foto": "seg18",
+          "layout": "story",
+          "arranjo": "topo",
+          "veuTopo": 0.88,
+          "veuRodape": 0.5,
+          "tamTitulo": 72,
+          "badge": "CLIMA DE FAMÍLIA",
+          "titulo": [
+            "ÁREA KIDS",
+            "NOS #DOIS",
+            "ANDARES"
+          ],
+          "apoio": "no térreo e no andar de cima",
+          "assinatura": "Chama a piazada!"
+        },
+        {
+          "arq": "Ter12Funcionamento",
+          "foto": "ter12",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.7,
+          "veuRodape": 0.9,
+          "tamTitulo": 76,
+          "badge": "TERÇA DE ESPETO",
+          "titulo": [
+            "CASA CHEIA",
+            "TODO #DIA"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Seg a Qui das 16h à meia-noite"
+            },
+            {
+              "icone": "relogio",
+              "txt": "Sex a Dom e feriados das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Bora pro Espeto!"
+        },
+        {
+          "arq": "Ter15Maminha",
+          "foto": "ter15",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 88,
+          "badge": "PROMOÇÃO DO DIA",
+          "titulo": [
+            "MAMINHA",
+            "#500G"
+          ],
+          "desc": "com farofa e vinagrete",
+          "preco": "R$ 64,90",
+          "precoNota": "a partir das 17h",
+          "assinatura": "Sente esse sabor!"
+        },
+        {
+          "arq": "Ter18Marmitex",
+          "foto": "ter18",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.84,
+          "veuRodape": 0.9,
+          "tamTitulo": 80,
+          "badge": "MARMITEX PRA LEVAR",
+          "titulo": [
+            "MARMITEX",
+            "DO #ESPETO"
+          ],
+          "desc": [
+            "Mista ou picanha, pequena ou grande",
+            "Somente retirada no balcão"
+          ],
+          "assinatura": "Vem matar a fome!"
+        },
+        {
+          "arq": "Qua12Funcionamento",
+          "foto": "qua12",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.68,
+          "veuRodape": 0.9,
+          "tamTitulo": 70,
+          "badge": "QUARTA DE CHURRASCO",
+          "titulo": [
+            "MEIO DA",
+            "SEMANA COM",
+            "#CHURRASCO"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Seg a Qui das 16h à meia-noite"
+            },
+            {
+              "icone": "relogio",
+              "txt": "Sex a Dom e feriados das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Vem pro fogo!"
+        },
+        {
+          "arq": "Qua15Coracao",
+          "foto": "qua15",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 84,
+          "badge": "PROMOÇÃO DO DIA",
+          "titulo": [
+            "ESPETO DE",
+            "#CORAÇÃO"
+          ],
+          "preco": "R$ 32,90",
+          "precoNota": "a partir das 17h",
+          "assinatura": "Vem petiscar!"
+        },
+        {
+          "arq": "Qua18RodizioAviso",
+          "foto": "qua18",
+          "layout": "story",
+          "arranjo": "topo",
+          "veuTopo": 0.88,
+          "veuRodape": 0.28,
+          "tamTitulo": 76,
+          "badge": "ANOTA O HORÁRIO",
+          "titulo": [
+            "SEXTA É DIA",
+            "DE #RODÍZIO"
+          ],
+          "desc": "Exclusivo de sexta, no almoço, das 10h às 15h",
+          "preco": "R$ 89,00",
+          "precoNota": "por pessoa",
+          "assinatura": "Garanta seu lugar!"
+        },
+        {
+          "arq": "Qui12Funcionamento",
+          "foto": "qui12",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.7,
+          "veuRodape": 0.9,
+          "tamTitulo": 70,
+          "badge": "QUINTA QUASE SEXTA",
+          "titulo": [
+            "A MESA TÁ",
+            "#POSTA"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Seg a Qui das 16h à meia-noite"
+            },
+            {
+              "icone": "relogio",
+              "txt": "Sex a Dom e feriados das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Vem pra resenha!"
+        },
+        {
+          "arq": "Qui15Alcatra",
+          "foto": "qui15",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 88,
+          "badge": "PROMOÇÃO DO DIA",
+          "titulo": [
+            "ALCATRA",
+            "#500G"
+          ],
+          "desc": "com farofa e vinagrete",
+          "preco": "R$ 64,90",
+          "precoNota": "a partir das 17h",
+          "assinatura": "Vem provar!"
+        },
+        {
+          "arq": "Qui18RodizioVespera",
+          "foto": "qui18",
+          "layout": "story",
+          "arranjo": "topo",
+          "veuTopo": 0.88,
+          "veuRodape": 0.28,
+          "tamTitulo": 72,
+          "badge": "PRÉ-SEXTOU COM CHURRASCO",
+          "titulo": [
+            "SEXTA TEM",
+            "#RODÍZIO",
+            "NO ALMOÇO"
+          ],
+          "desc": "Exclusivo de sexta, das 10h às 15h",
+          "preco": "R$ 89,00",
+          "precoNota": "por pessoa",
+          "assinatura": "Chama os amigos!"
+        },
+        {
+          "arq": "Sex07Funcionamento",
+          "foto": "sex07",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.68,
+          "veuRodape": 0.9,
+          "tamTitulo": 74,
+          "badge": "SEXTOU!",
+          "titulo": [
+            "HOJE TEM",
+            "#RODÍZIO",
+            "NO ALMOÇO"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Rodízio das 10h às 15h, só às sextas"
+            },
+            {
+              "icone": "relogio",
+              "txt": "Sex a Dom e feriados das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Partiu Espeto!"
+        },
+        {
+          "arq": "Sex11Rodizio",
+          "foto": "sex11b",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 88,
+          "badge": "SEXTOU COM ESPETO",
+          "titulo": [
+            "RODÍZIO",
+            "NO #ALMOÇO"
+          ],
+          "desc": "Exclusivo de sexta, das 10h às 15h",
+          "preco": "R$ 89,00",
+          "precoNota": "por pessoa",
+          "assinatura": "Vem aproveitar!"
+        },
+        {
+          "arq": "Sex20Resenha",
+          "foto": "sex20",
+          "layout": "story",
+          "arranjo": "topo",
+          "veuTopo": 0.88,
+          "veuRodape": 0.46,
+          "tamTitulo": 68,
+          "badge": "RESENHA NO ESPETO",
+          "titulo": [
+            "CHOPP",
+            "GELADO E",
+            "PAPO #SOLTO"
+          ],
+          "apoio": "sexta à noite pede resenha",
+          "assinatura": "Chama a galera!"
+        },
+        {
+          "arq": "Sab07Funcionamento",
+          "foto": "sab07",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.7,
+          "veuRodape": 0.9,
+          "tamTitulo": 72,
+          "badge": "SÁBADO DE CHURRASCO",
+          "titulo": [
+            "ALMOÇO E",
+            "JANTAR NO",
+            "#SÁBADO"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Sex a Dom e feriados das 10h à meia-noite"
+            },
+            {
+              "icone": "relogio",
+              "txt": "Seg a Qui das 16h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Vem pro almoço!"
+        },
+        {
+          "arq": "Sab11Familia",
+          "foto": "sab11",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 80,
+          "badge": "CHURRASCO EM FAMÍLIA",
+          "titulo": [
+            "SÁBADO",
+            "DE MESA",
+            "#GRANDE"
+          ],
+          "apoio": "e a piazada na área kids dos dois andares",
+          "assinatura": "Chama a gurizada!"
+        },
+        {
+          "arq": "Sab15Picanha",
+          "foto": "sab15b",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 88,
+          "badge": "PROMOÇÃO DO DIA",
+          "titulo": [
+            "PICANHA",
+            "#500G"
+          ],
+          "desc": "com farofa e vinagrete",
+          "preco": "R$ 89,90",
+          "precoNota": "a partir das 17h",
+          "assinatura": "Vem viver esse sabor!"
+        },
+        {
+          "arq": "Dom11Familia",
+          "foto": "dom11",
+          "layout": "story",
+          "arranjo": "split",
+          "veuTopo": 0.7,
+          "veuRodape": 0.9,
+          "tamTitulo": 76,
+          "badge": "DOMINGO EM FAMÍLIA",
+          "titulo": [
+            "TEM LUGAR",
+            "PRA TODO",
+            "#MUNDO"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Domingo das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Vem curtir o sabor!"
+        },
+        {
+          "arq": "Dom15Misto",
+          "foto": "dom15",
+          "layout": "story",
+          "arranjo": "rodape",
+          "veuTopo": 0.26,
+          "veuRodape": 0.92,
+          "tamTitulo": 88,
+          "badge": "PROMOÇÃO DO DIA",
+          "titulo": [
+            "ESPETO",
+            "#MISTO"
+          ],
+          "desc": [
+            "picanha 300g, picanha suína 300g,",
+            "2 linguiças e 2 coxinhas de frango"
+          ],
+          "preco": "R$ 104,90",
+          "precoNota": "a partir das 17h",
+          "assinatura": "Experimente esse sabor!"
+        }
+      ]
+    },
+    {
+      "chave": "rodizio",
+      "nome": "Feed · Sexta 04/09 · Rodízio",
+      "slides": [
+        {
+          "arq": "RodCapa",
+          "foto": "rod1c",
+          "layout": "capa",
+          "veuTopo": 0.82,
+          "veuRodape": 0.55,
+          "tamTitulo": 84,
+          "badge": "SEXTOU COM ESPETO",
+          "titulo": [
+            "SEXTA É DIA",
+            "DE #RODÍZIO"
+          ],
+          "apoio": "no almoço, das 10h às 15h",
+          "preco": "R$ 89,00",
+          "precoNota": "por pessoa"
+        },
+        {
+          "arq": "RodServico",
+          "foto": "rod2b",
+          "layout": "item",
+          "veuTopo": 0.3,
+          "veuRodape": 0.88,
+          "tamTitulo": 82,
+          "titulo": [
+            "O ESPETO",
+            "VEM ATÉ",
+            "A #MESA"
+          ],
+          "desc": "O passador passa, você diz quanto quer. À vontade."
+        },
+        {
+          "arq": "RodCarnes",
+          "foto": "rod3c",
+          "layout": "lista",
+          "veuTopo": 0.9,
+          "veuRodape": 0.3,
+          "tamTitulo": 78,
+          "titulo": [
+            "AS #CARNES"
+          ],
+          "itens": [
+            "Alcatra",
+            "Picanha suína",
+            "Costela no bafo"
+          ]
+        },
+        {
+          "arq": "RodEntradas",
+          "foto": "rod4b",
+          "layout": "lista",
+          "veuTopo": 0.88,
+          "veuRodape": 0.32,
+          "tamTitulo": 74,
+          "titulo": [
+            "AS #ENTRADAS"
+          ],
+          "itens": [
+            "Linguiça",
+            "Pão de alho",
+            "Queijo cabacinha ou coalho",
+            "Coração de frango"
+          ]
+        },
+        {
+          "arq": "RodGuarnicoes",
+          "foto": "rod5b",
+          "layout": "lista",
+          "veuTopo": 0.9,
+          "veuRodape": 0.3,
+          "tamTitulo": 66,
+          "titulo": [
+            "AS #GUARNIÇÕES"
+          ],
+          "itens": [
+            "Feijão tropeiro",
+            "Feijão em caldo",
+            "Batata frita",
+            "Salpicão"
+          ]
+        },
+        {
+          "arq": "RodChopp",
+          "foto": "rod6",
+          "layout": "item",
+          "veuTopo": 0.86,
+          "veuRodape": 0.3,
+          "tamTitulo": 82,
+          "titulo": [
+            "E O CHOPP",
+            "BEM #GELADO"
+          ],
+          "desc": "Na caneca congelada, do jeito que tem que ser",
+          "pos": "topo"
+        },
+        {
+          "arq": "RodFecho",
+          "foto": "rod7b",
+          "layout": "fecho",
+          "veuTopo": 0.8,
+          "veuRodape": 0.9,
+          "tamTitulo": 76,
+          "titulo": [
+            "TE ESPERAMOS",
+            "NA #SEXTA"
+          ],
+          "preco": "R$ 89,00",
+          "precoNota": "por pessoa",
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Rodízio das 10h às 15h, só às sextas"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Garanta seu lugar!"
+        }
+      ]
+    },
+    {
+      "chave": "familia",
+      "nome": "Feed · Sábado 05/09 · Família",
+      "slides": [
+        {
+          "arq": "FamCapa",
+          "foto": "fam1",
+          "layout": "foto",
+          "veuTopo": 0.82,
+          "veuRodape": 0.5,
+          "tamTitulo": 88,
+          "badge": "SÁBADO DE CHURRASCO",
+          "titulo": [
+            "SÁBADO",
+            "DE MESA",
+            "#FARTA"
+          ],
+          "apoio": "a casa abre às 10h",
+          "servico": "Almoço e jantar, sábado inteiro"
+        },
+        {
+          "arq": "FamCasaCheia",
+          "foto": "fam2",
+          "layout": "item",
+          "veuTopo": 0.3,
+          "veuRodape": 0.88,
+          "tamTitulo": 80,
+          "titulo": [
+            "A CASA ENCHE",
+            "E O PAPO",
+            "#CORRE SOLTO"
+          ]
+        },
+        {
+          "arq": "FamEspeto",
+          "foto": "fam3",
+          "layout": "item",
+          "veuTopo": 0.3,
+          "veuRodape": 0.88,
+          "tamTitulo": 82,
+          "titulo": [
+            "ESPETO",
+            "FAMÍLIA",
+            "DE #1KG"
+          ],
+          "desc": "Picanha, alcatra ou o misto, servidos com arroz, tropeiro, fritas, farofa e vinagrete"
+        },
+        {
+          "arq": "FamKids",
+          "foto": "fam4",
+          "layout": "item",
+          "veuTopo": 0.84,
+          "veuRodape": 0.5,
+          "pos": "topo",
+          "tamTitulo": 78,
+          "titulo": [
+            "E A PIAZADA",
+            "TEM #LUGAR"
+          ],
+          "desc": "Área kids nos dois andares"
+        },
+        {
+          "arq": "FamKidsDois",
+          "foto": "fam5",
+          "layout": "item",
+          "veuTopo": 0.42,
+          "veuRodape": 0.88,
+          "tamTitulo": 78,
+          "titulo": [
+            "NO TÉRREO",
+            "E NO ANDAR",
+            "DE #CIMA"
+          ],
+          "desc": "Dá pra almoçar com calma enquanto eles brincam"
+        },
+        {
+          "arq": "FamCorte",
+          "foto": "fam6",
+          "layout": "item",
+          "veuTopo": 0.46,
+          "veuRodape": 0.88,
+          "tamTitulo": 84,
+          "titulo": [
+            "O CORTE SAI",
+            "NA #MESA"
+          ],
+          "desc": "Do espeto direto pro prato, na hora"
+        },
+        {
+          "arq": "FamFecho",
+          "foto": "fam7",
+          "layout": "fecho",
+          "veuTopo": 0.8,
+          "veuRodape": 0.9,
+          "tamTitulo": 74,
+          "titulo": [
+            "TE ESPERAMOS",
+            "NO #SÁBADO"
+          ],
+          "linhas": [
+            {
+              "icone": "relogio",
+              "txt": "Sábado das 10h à meia-noite"
+            },
+            {
+              "icone": "pino",
+              "txt": "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi"
+            }
+          ],
+          "assinatura": "Vem pro almoço!"
+        }
+      ]
+    }
+  ]
+}
