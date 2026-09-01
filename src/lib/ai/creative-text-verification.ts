@@ -187,6 +187,57 @@ const transcriptionSchema = z.object({
  * registra `textCheck: 'skipped'` e segue, porque indisponibilidade do
  * verificador não pode derrubar a melhoria inteira).
  */
+/**
+ * Lê os textos de uma arte por visão — a régua, quando o banco não tem uma.
+ *
+ * 🔴 Existe por um defeito medido em 01/09/2026: arte vinda do canvas ou de
+ * upload (`source: 'arte-enviada'`) não tem `slotValues`, então
+ * `loadExpectedTextsForGeneration` devolve `[]`, a seção `[TEXTO EXATO —
+ * VERBATIM]` some do prompt e a conferência sai `skipped`. Sem régua, o
+ * modelo LÊ o horário e o endereço da própria imagem e completa o que não
+ * entende: três rodadas seguidas inventaram endereço em Foz do Iguaçu, São
+ * José dos Pinhais e Jaraguá do Sul, para um cliente de Vitória.
+ *
+ * Transcrever a arte de ORIGEM resolve os dois lados: o texto verdadeiro vira
+ * instrução verbatim no prompt E passa a existir régua para a conferência.
+ * Custa uma chamada de visão (gpt-4o-mini) por melhoria.
+ *
+ * Falhar aqui NUNCA derruba a melhoria — devolve `[]`, que é o comportamento
+ * de antes desta função existir.
+ */
+export async function transcreverTextosDaArte(imageBuffer: Buffer): Promise<string[]> {
+  try {
+    const { object } = await generateObject({
+      model: openai(VISION_MODEL),
+      temperature: 0,
+      maxOutputTokens: 1000,
+      abortSignal: AbortSignal.timeout(60_000),
+      schema: transcriptionSchema,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', image: imageBuffer },
+            {
+              type: 'text',
+              text: [
+                'Transcreva TODOS os textos visíveis nesta arte de Instagram, letra por letra.',
+                'Inclua números, horários, endereços e pontuação exatamente como aparecem.',
+                'Um item do array por bloco de texto. Não corrija erros de grafia.',
+                'Se um trecho estiver ilegível, NÃO o inclua — é melhor faltar do que adivinhar.',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    })
+    return object.texts.map((t) => t.trim()).filter(Boolean)
+  } catch (erro) {
+    console.warn('[transcrever] visão indisponível — seguindo sem régua de texto:', erro)
+    return []
+  }
+}
+
 export async function verifyImageTexts(
   imageBuffer: Buffer,
   expectedTexts: string[],

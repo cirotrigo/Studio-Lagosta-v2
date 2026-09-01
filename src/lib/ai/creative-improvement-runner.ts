@@ -31,6 +31,7 @@ import {
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import {
   loadExpectedTextsForGeneration,
+  transcreverTextosDaArte,
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
 import { googleDriveService } from '@/server/google-drive-service'
@@ -260,6 +261,25 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       })
     }
 
+    /**
+     * Sem texto esperado no banco (arte do canvas ou de upload), a régua sai
+     * da PRÓPRIA arte de origem, por visão. Ver `transcreverTextosDaArte`:
+     * sem isso o modelo lê o serviço da imagem e completa o que não entende —
+     * três rodadas seguidas inventaram endereço de outra cidade em 01/09/2026.
+     *
+     * Só quando a Generation não trouxe nada: texto aprovado no Studio é a
+     * régua melhor e não se substitui por transcrição.
+     */
+    let textosDaRegua = expectedTexts
+    let reguaPorVisao = false
+    if (textosDaRegua.length === 0 && !args.skipTextVerification) {
+      textosDaRegua = await transcreverTextosDaArte(primaryBuffer)
+      reguaPorVisao = textosDaRegua.length > 0
+      if (reguaPorVisao) {
+        console.log(`[improve.bg] régua por visão: ${textosDaRegua.length} bloco(s) lidos da arte original`)
+      }
+    }
+
     const downloadMs = Date.now() - startedAt
     console.log(
       `[improve.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | textos esperados: ${expectedTexts.length}`,
@@ -295,7 +315,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         brandColors: assets.colors,
         artDirection: assets.artDirection,
         brand: assets.brand,
-        expectedTexts,
+        expectedTexts: textosDaRegua,
         instrucaoImagem: args.instrucaoImagem ?? null,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
@@ -303,7 +323,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
 
-      if (expectedTexts.length === 0) {
+      if (textosDaRegua.length === 0) {
         improvedBuffer = candidate
         textCheckInfo = { textCheck: 'skipped', textCheckReason: 'sem texto esperado na Generation original' }
         break
@@ -320,7 +340,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
       try {
         const checkStartedAt = Date.now()
-        const check = await verifyImageTexts(candidate, expectedTexts)
+        const check = await verifyImageTexts(candidate, textosDaRegua)
         const checkMs = Date.now() - checkStartedAt
         attemptsLog.push({
           attempt,
@@ -335,7 +355,11 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
         if (check.passed) {
           improvedBuffer = candidate
-          textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
+            textCheckInfo = {
+          textCheck: 'passed',
+          textCheckAttempts: attemptsLog,
+          ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
+        }
           break
         }
         lastMissing = check.missing

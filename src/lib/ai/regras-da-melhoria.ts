@@ -159,7 +159,20 @@ function regrasDeComposicao(): string[] {
      */
     '5. DESTAQUE AS PALAVRAS-CHAVE. Em todo bloco de texto com mais de três palavras, as palavras que carregam a informação (o prato, o dia, o preço, o benefício) recebem destaque por PESO da fonte ou pela cor de acento da marca — o resto fica no peso normal. Bloco inteiro no mesmo peso e na mesma cor é defeito: é o que transforma a peça num parágrafo. O destaque é de peso e cor, não de tamanho: a diferença de escala entre a palavra destacada e as vizinhas não passa de cerca de 20%.',
 
-    '6. TEXTO EM BLOCOS, NUNCA EM PARÁGRAFO. Quebre a informação em linhas curtas com hierarquia visível (manchete, apoio, serviço, CTA). Um bloco corrido de texto longo é defeito de leitura, mesmo quando cada palavra está correta. Nenhuma linha termina com palavra solta e sem sentido, e nenhuma palavra fica órfã numa linha só.',
+    /**
+     * 🔴 Medido em 01/09/2026, com o prompt já consertado da foto: as TRÊS
+     * rodadas inventaram horário E endereço — "Foz do Iguaçu, PR", "São José
+     * dos Pinhais", "Jaraguá do Sul, SC" — para um cliente de Vitória. O
+     * modelo lê o serviço da imagem, não entende um pedaço, e COMPLETA com o
+     * que parece plausível. Nada no prompt dizia o que fazer nesse caso.
+     *
+     * É a mesma classe já registrada sobre os tiers baratos ("inventam
+     * número, e a conferência não tem regra contra texto A MAIS") — só que
+     * aqui sai endereço de outro estado, sobre o negócio do cliente.
+     */
+    '6. NÃO INVENTE DADO QUE VOCÊ NÃO CONSEGUE LER. Horário, endereço, telefone, preço e nome de prato são fatos do cliente: ou você os reproduz exatamente como estão na arte, ou os DEIXA DE FORA. Se um trecho estiver ilegível, cortado ou você tiver qualquer dúvida sobre o que está escrito, OMITA o bloco inteiro — nunca preencha com um valor parecido, plausível ou de outro estabelecimento. Faltar um dado é defeito pequeno; publicar o endereço errado do cliente é o maior de todos.',
+
+    '7. TEXTO EM BLOCOS, NUNCA EM PARÁGRAFO. Quebre a informação em linhas curtas com hierarquia visível (manchete, apoio, serviço, CTA). Um bloco corrido de texto longo é defeito de leitura, mesmo quando cada palavra está correta. Nenhuma linha termina com palavra solta e sem sentido, e nenhuma palavra fica órfã numa linha só.',
   ]
 }
 
@@ -185,13 +198,13 @@ function regrasDeComposicao(): string[] {
  * fidelidade por ser justamente o que o modelo esticava. A melhoria nunca
  * recebeu aquele conserto.
  *
- * A trava é o par exato da regra 7: uma revoga a proibição de encurtar quando
+ * A trava é o par exato da regra 8: uma revoga a proibição de encurtar quando
  * o cliente pede; esta revoga a licença de retocar quando ele NÃO pede.
  */
 function regraDeFidelidadeDaFoto(args: RegrasDaMelhoriaArgs): string | null {
   if (args.instrucaoImagem?.trim()) return null
   return [
-    '8. A FOTOGRAFIA É INTOCÁVEL NESTA PEÇA, E ESTA REGRA REVOGA AS LICENÇAS DE TRATAMENTO ACIMA.',
+    '9. A FOTOGRAFIA É INTOCÁVEL NESTA PEÇA, E ESTA REGRA REVOGA AS LICENÇAS DE TRATAMENTO ACIMA.',
     'Ninguém pediu para mexer na imagem. Onde as diretrizes falam em buscar aparência profissional, priorizar textura, contraste, profundidade de campo, fundo desfocado, acabamento cinematográfico ou iluminação quente — nada disso vale aqui: são descrições do que a foto JÁ é, nunca ordens de refazê-la.',
     '⛔ Não relumie, não recolora, não mude o contraste, a saturação ou a nitidez, não desfoque o fundo, não troque o enquadramento e não substitua a imagem. A foto sai do jeito que entrou, pixel por pixel, e o seu trabalho é APENAS a camada gráfica por cima dela.',
     'Se para a sua composição ficar melhor a foto precisasse mudar, a resposta é mudar a composição.',
@@ -213,7 +226,7 @@ function regraDeEnxugar(args: RegrasDaMelhoriaArgs): string | null {
   if (args.expectedTexts.length > 0) return null
   if (!pedeMenosTexto(args.userRequest)) return null
   return [
-    '7. ENXUGAR O TEXTO ESTÁ AUTORIZADO NESTA PEÇA, E ESTA REGRA REVOGA A PROIBIÇÃO DE ENCURTAR.',
+    '8. ENXUGAR O TEXTO ESTÁ AUTORIZADO NESTA PEÇA, E ESTA REGRA REVOGA A PROIBIÇÃO DE ENCURTAR.',
     'Onde as diretrizes acima dizem que nenhuma palavra pode ser encurtada e que o pedido do cliente nunca vence os limites de palavras, esta peça é a exceção: o cliente pediu menos texto e esta arte não tem copy aprovada a preservar.',
     'Corte o que for descrição desnecessária e mantenha o que gera desejo, a informação de serviço e o CTA. Não invente informação nova, não altere preço, horário, endereço nem nome de prato, e não traduza nada — CORTAR é permitido, CRIAR não.',
   ].join('\n')

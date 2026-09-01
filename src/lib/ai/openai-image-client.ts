@@ -59,6 +59,18 @@ interface BuildPromptArgs {
   expectedTexts?: string[]
   /** Ajuste autorizado na foto — vira a seção [AJUSTE NA FOTO]. */
   instrucaoImagem?: string | null
+  /**
+   * Prompt ENXUTO: só o que a peça precisa (imagens, texto exato, pedido e as
+   * regras da casa), sem a identidade da marca nem a direção de arte.
+   *
+   * Existe como hipótese a MEDIR, levantada pelo Ciro em 01/09/2026 ao ver o
+   * prompt em ~20 mil caracteres: "testei com um prompt bem simples e
+   * funcionou melhor". A melhoria recebe uma arte que JÁ é a marca aplicada —
+   * descrever a marca em prosa pode ser concorrência, e é a mesma razão pela
+   * qual o slide irmão de carrossel tira `visualStyle` e `composition` quando
+   * há um guia. Não promova a default sem a medição.
+   */
+  enxuto?: boolean
 }
 
 function buildContextSection(references: ReferenceImage[]): string {
@@ -104,7 +116,10 @@ function buildBrandColorsSection(colors: BrandColor[]): string {
  * preenchidos, porque hoje quase todos estão vazios e uma linha "Estilo da
  * marca: null" só confundiria o modelo.
  */
-function buildBrandIdentitySection(brand: BrandContext | null): string {
+function buildBrandIdentitySection(
+  brand: BrandContext | null,
+  temAjusteDeFoto: boolean,
+): string {
   if (!brand) return ''
 
   const lines: string[] = [`[IDENTIDADE DA MARCA — ${brand.projectName}]`]
@@ -115,7 +130,31 @@ function buildBrandIdentitySection(brand: BrandContext | null): string {
   if (brand.dna.visualStyle) {
     lines.push(`Estilo visual da marca: ${brand.dna.visualStyle}`)
   }
-  if (brand.dna.photoDirection) {
+  /**
+   * 🔴 `photoDirection` SÓ entra quando alguém autorizou mexer na foto.
+   *
+   * Ela é direção para quem VAI FOTOGRAFAR ou gerar uma cena — descreve a
+   * fotografia que a marca quer ter. Na melhoria a foto JÁ EXISTE e o trabalho
+   * é a camada gráfica por cima dela; ali a mesma prosa vira ordem de refazer
+   * a imagem, e é a instrução mais longa do prompt inteiro.
+   *
+   * Medido em 01/09/2026, no defeito que originou esta linha: pedido vazio, e
+   * o modelo trocou duas taças de vinho por um bife sobre mesa de madeira com
+   * a parede de guitarras desfocada ao fundo — que é, palavra por palavra, o
+   * que o `photoDirection` do By Rock manda fotografar ("fotografado sobre a
+   * mesa de madeira, com a parede de guitarras desfocada ao fundo… o prato é
+   * o músico"). Ele não desobedeceu regra nenhuma: obedeceu a esta seção.
+   *
+   * A conta explica por que a regra de fidelidade perdia: dos 27.887 chars do
+   * prompt, a identidade era 18.333 (66%) e só `photoDirection` levava 8.065
+   * (29%) — contra 4 linhas mandando não mexer na foto. O CLAUDE.md já
+   * registrava o risco ("hoje não entra na trilha arte — se um dia entrar,
+   * ela volta a conflitar"); na melhoria ela sempre entrou.
+   *
+   * Com ajuste de foto pedido ela VOLTA, e aí está no lugar certo: a foto vai
+   * mudar mesmo, e deve mudar no estilo da marca.
+   */
+  if (brand.dna.photoDirection && temAjusteDeFoto) {
     lines.push(`Direção fotográfica da marca: ${brand.dna.photoDirection}`)
   }
   if (brand.dna.composition) {
@@ -266,6 +305,7 @@ export function buildPromptSections({
   brand,
   expectedTexts = [],
   instrucaoImagem = null,
+  enxuto = false,
 }: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
   const sections: PromptSection[] = []
@@ -279,7 +319,10 @@ export function buildPromptSections({
     })
   }
 
-  const identitySection = buildBrandIdentitySection(brand ?? null)
+  const identitySection = buildBrandIdentitySection(
+    brand ?? null,
+    !!instrucaoImagem?.trim(),
+  )
   if (identitySection) {
     sections.push({
       id: 'identidade',
@@ -361,7 +404,9 @@ export function buildPromptSections({
     })
   }
 
-  return sections
+  // No enxuto sobra o que descreve ESTA peça; o que descreve a marca em
+  // prosa sai. As regras da casa FICAM: elas vieram de defeito medido.
+  return enxuto ? sections.filter((s) => s.id !== 'identidade' && s.id !== 'direcao') : sections
 }
 
 function buildPrompt(args: BuildPromptArgs): string {
@@ -472,6 +517,8 @@ interface ImproveCreativeOptions {
   instrucaoImagem?: string | null
   /** Tier do gpt-image. Ver `qualidade-arte.ts`. */
   quality?: 'low' | 'medium' | 'high'
+  /** Prompt enxuto — hipótese em medição, ver `BuildPromptArgs.enxuto`. */
+  enxuto?: boolean
   timeoutMs?: number
 }
 
@@ -504,13 +551,14 @@ export async function improveCreative({
   expectedTexts = [],
   instrucaoImagem = null,
   quality,
+  enxuto = false,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
   const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
   const prompt = buildPrompt({
-    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem,
+    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, enxuto,
   })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
