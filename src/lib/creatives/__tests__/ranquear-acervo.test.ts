@@ -561,3 +561,38 @@ describe('ranquearAcervo — relevância do tema no score', () => {
     expect(porId(r, 'picanha').componentes.relevancia).toBeGreaterThan(0)
   })
 })
+
+describe('ranquearAcervo — o que o catálogo sabe que fere o DNA', () => {
+  it('preço legível rebaixa −8, marca de terceiro −5, e os dois somam; campo ausente é neutro', () => {
+    const r = ranquearAcervo(
+      entrada([
+        foto('limpa'),
+        foto('com-preco', { precoLegivel: true }),
+        foto('com-marca', { marcaDeTerceiro: 'Brahma' }),
+        foto('com-os-dois', { precoLegivel: true, marcaDeTerceiro: 'Coca-Cola' }),
+        foto('sem-preco-declarado', { precoLegivel: false, marcaDeTerceiro: null }),
+      ]),
+    )
+    expect(porId(r, 'com-preco').componentes.dna).toBe(PESOS.PRECO_LEGIVEL)
+    expect(porId(r, 'com-marca').componentes.dna).toBe(PESOS.MARCA_DE_TERCEIRO)
+    expect(porId(r, 'com-os-dois').componentes.dna).toBe(PESOS.PRECO_LEGIVEL + PESOS.MARCA_DE_TERCEIRO)
+    expect(porId(r, 'limpa').componentes.dna).toBe(0)
+    expect(porId(r, 'sem-preco-declarado').componentes.dna).toBe(0)
+    // Ordena, nunca esconde: as cinco continuam na lista, e as feridas descem.
+    expect(r).toHaveLength(5)
+    expect(ordem(r).slice(-3)).toEqual(['com-marca', 'com-preco', 'com-os-dois'])
+  })
+
+  it('a foto com preço legível fica abaixo de uma escolha global, mas o destaque ainda a segura', () => {
+    const r = ranquearAcervo(
+      entrada([foto('escolhida'), foto('com-preco', { precoLegivel: true }), foto('destaque-com-preco', { precoLegivel: true })], {
+        destaques: new Set(['destaque-com-preco']),
+        preferencias: semSinais({
+          escolhas: [{ driveFileId: 'escolhida', tema: null, quando: '2026-08-01' }],
+          ultimaAtividade: '2026-08-01',
+        }),
+      }),
+    )
+    expect(ordem(r)).toEqual(['destaque-com-preco', 'escolhida', 'com-preco'])
+  })
+})

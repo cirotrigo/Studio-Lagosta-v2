@@ -35,9 +35,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
   // morria na segunda página. O custo é só o slice de um catálogo que já está
   // inteiro em memória; as miniaturas quem pagina é o navegador, por lazy load.
   const limit = Math.min(Math.max(Number(url.searchParams.get('limite')) || 40, 1), 500)
+  // `?explorando=1`: só olhando o acervo — não registra proposta (a busca do
+  // picker que pode virar escolha continua registrando, como sempre).
+  const explorando = ['1', 'true'].includes(url.searchParams.get('explorando') ?? '')
 
   try {
-    const resultado = await buscarNoAcervo({ projectId: projectIdNum, theme, folder, limit })
+    const resultado = await buscarNoAcervo({
+      projectId: projectIdNum,
+      theme,
+      folder,
+      limit,
+      ...(explorando ? { registrarSugestao: false } : {}),
+    })
     return NextResponse.json({ ...resultado, temCatalogo: true })
   } catch (error) {
     if (error instanceof CreativeError && error.code === 'SEM_CATALOGO') {

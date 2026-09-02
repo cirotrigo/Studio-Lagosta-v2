@@ -59,6 +59,14 @@ export interface ImagemCatalogo {
    * existente" trabalha a favor aqui).
    */
   catalogadaEm?: string
+  /**
+   * A visão viu PREÇO legível no quadro (carta de vinhos com "R$239") — viola
+   * o DNA. Só fotos analisadas depois de 01/09/2026 têm o campo; ausente =
+   * neutro no ranking.
+   */
+  precoLegivel?: boolean
+  /** Marca de terceiro em DESTAQUE (guarda-sol Brahma, geladeira de refrigerante). Ausente/null = neutro. */
+  marcaDeTerceiro?: string | null
 }
 
 export interface Catalogo {
@@ -130,6 +138,16 @@ export interface BuscarAcervoInput {
    * ser melhor que paginar.
    */
   offset?: number
+  /**
+   * Registrar a lista ranqueada como PROPOSTA (LearningSignal `foto`)? Default
+   * `true` — é o que fecha o ciclo de aprendizado quando alguém decide. `false`
+   * para EXPLORAÇÃO: quem só está olhando o acervo ("o que tem de ambiente?")
+   * não recebeu proposta nenhuma, e registrar mesmo assim inflava o
+   * denominador do KPI — 7 sinais numa conversa que não decidiu nada
+   * (01/09/2026). Os chamadores que decidem (propor-semana, arte-rapida) não
+   * passam nada e seguem registrando.
+   */
+  registrarSugestao?: boolean
 }
 
 /**
@@ -313,7 +331,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * Registrar a emissão é o que permite, depois, comparar com a que a pessoa
    * de fato escolheu — sem isso o aprendizado só enxerga o que foi aceito.
    */
-  const sugestaoId = await registrarProposta(input, ranqueadas, ultimoUso, destaques)
+  const sugestaoId =
+    input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques)
 
   return {
     total: imagens.length,
@@ -371,6 +390,10 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
           destaque: destaques.has(i.driveFileId),
           /** Sem NENHUM sinal e sem uso registrado — candidata à cota de exploração. */
           vagaDeExploracao: r.vagaDeExploracao,
+          // O que o catálogo sabe que fere o DNA — só quando a foto foi
+          // analisada com as perguntas (01/09/2026); ausente é ausente.
+          ...(i.precoLegivel !== undefined ? { precoLegivel: i.precoLegivel } : {}),
+          ...(i.marcaDeTerceiro !== undefined ? { marcaDeTerceiro: i.marcaDeTerceiro } : {}),
         }
       }),
   }

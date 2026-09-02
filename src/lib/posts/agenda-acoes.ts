@@ -9,6 +9,7 @@
  */
 
 import { db } from '@/lib/db'
+import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
 import { PostStatus, RenderStatus } from '../../../prisma/generated/client'
 import { getLaterClient, LaterNotFoundError } from '@/lib/later'
 import { parseBRT } from '@/lib/creatives/agendar'
@@ -542,6 +543,11 @@ export async function cancelarPost(params: { projectId: number; postId: string }
       // Já não existia por lá — seguir com a exclusão local é seguro.
     }
   }
+
+  // ANTES do delete: depois dele não há post para ler. Rascunho apagado não
+  // publicou nada — a foto dele volta ao rodízio (nunca lança; POSTED já foi
+  // barrado acima, e a função guarda de novo por conta própria).
+  await desfazerUsoDeFotoDoPost({ projectId, postId: post.id })
 
   await db.socialPost.delete({ where: { id: post.id } })
 

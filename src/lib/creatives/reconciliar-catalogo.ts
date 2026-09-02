@@ -71,6 +71,14 @@ interface EntradaDoCatalogo {
   usageHistory: { date: string; theme: string }[]
   /** A visão recusou olhar esta foto — a descrição saiu só da pasta. */
   analiseBloqueada?: true
+  /**
+   * Preço, valor em R$ ou cardápio com preços LEGÍVEIS no quadro — o DNA
+   * proíbe preço na peça, e o ranking rebaixa (01/09/2026). Só a entrada
+   * analisada com a pergunta tem o campo; ausente = neutro.
+   */
+  precoLegivel?: boolean
+  /** Marca de terceiro em DESTAQUE (cerveja, refrigerante, loja vizinha), ou null. */
+  marcaDeTerceiro?: string | null
 }
 
 interface Catalogo {
@@ -102,6 +110,8 @@ type Analise = Pick<
   | 'bestFor'
   | 'quality'
   | 'analiseBloqueada'
+  | 'precoLegivel'
+  | 'marcaDeTerceiro'
 >
 
 export interface ReconciliarCatalogoInput {
@@ -459,7 +469,9 @@ Retorne um JSON com:
   "tags": ["lista", "de", "tags", "relevantes"],
   "mood": "Uma palavra: casual, aconchegante, animado, dramatico, elegante, familiar, festivo",
   "bestFor": ["lista de temas de post ideais para esta foto: almoco, happy-hour, abertura, area-kids, churrasco, etc"],
-  "quality": "alta, media, ou baixa (baseado em foco, iluminação, composição)"
+  "quality": "alta, media, ou baixa (baseado em foco, iluminação, composição)",
+  "precoLegivel": "true se há preço, valor em R$ ou cardápio com preços LEGÍVEIS no quadro (placa, carta, etiqueta, tela); false se não há",
+  "marcaDeTerceiro": "nome da marca de TERCEIRO em destaque no quadro (cerveja, refrigerante, loja vizinha — guarda-sol, geladeira, letreiro), ou null se não há"
 }
 
 REGRAS OBRIGATÓRIAS:
@@ -526,6 +538,14 @@ REGRAS OBRIGATÓRIAS:
       mood: bruto.mood ?? 'casual',
       bestFor: Array.isArray(bruto.bestFor) ? bruto.bestFor : ['generico'],
       quality: bruto.quality ?? 'media',
+      // Só grava o que o modelo AFIRMOU: campo omitido fica ausente (neutro),
+      // nunca vira `false` por padrão.
+      ...(typeof bruto.precoLegivel === 'boolean' ? { precoLegivel: bruto.precoLegivel } : {}),
+      ...(typeof bruto.marcaDeTerceiro === 'string' && bruto.marcaDeTerceiro.trim()
+        ? { marcaDeTerceiro: bruto.marcaDeTerceiro.trim().slice(0, 60) }
+        : bruto.marcaDeTerceiro === null
+          ? { marcaDeTerceiro: null }
+          : {}),
     }
   } catch {
     // Fallback do script: entrada pobre porém navegável é melhor que foto

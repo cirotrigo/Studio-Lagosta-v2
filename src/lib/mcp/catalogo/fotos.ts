@@ -33,6 +33,10 @@ export const toolsDeFotos = [
         .describe('Nome do arquivo, exato ou início dele ("ambiente-f3a" acha "ambiente-f3a8693.jpg"). Use quando já souber qual foto quer.'),
       limit: z.number().optional().describe('Máximo de resultados (default 20). Pode pedir mais — não há teto.'),
       offset: z.number().optional().describe('Quantas pular, para ver o resto da lista. A ordem é estável.'),
+      explorando: z
+        .boolean()
+        .optional()
+        .describe('Só olhando — não conta como proposta. Use quando estiver conhecendo o acervo ou conferindo o que existe, sem escolher foto para uma peça. Sem isso, cada busca vira uma sugestão registrada, e explorar sem decidir infla a conta.'),
     }),
     // NÃO é readOnly: a lista ranqueada é registrada como sugestão de foto
     // (LearningSignal, F1) — idempotente pela chave (projeto, critérios, dia).
@@ -51,6 +55,8 @@ export const toolsDeFotos = [
         fileName: args.fileName,
         limit: args.limit,
         offset: args.offset,
+        // Exploração não é decisão: só a busca que pode virar escolha registra.
+        registrarSugestao: args.explorando !== true,
       })
     },
   }),

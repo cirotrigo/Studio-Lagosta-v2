@@ -44,6 +44,14 @@ export interface FotoRanqueavel {
   /** ISO; ausente = foto antiga (sem novidade). */
   catalogadaEm?: string | null
   md5?: string
+  /**
+   * Preço, valor em R$ ou cardápio com preços LEGÍVEIS no quadro — o DNA
+   * proíbe preço na peça. Só as fotos analisadas depois de 01/09/2026 têm o
+   * campo; ausente = neutro.
+   */
+  precoLegivel?: boolean | null
+  /** Marca de terceiro em DESTAQUE (cerveja, refrigerante, loja vizinha). Ausente/null = neutro. */
+  marcaDeTerceiro?: string | null
 }
 
 /** Sinal fechado: a pessoa levou esta foto (para o tema da busca, se houve). */
@@ -148,6 +156,13 @@ export interface PesosDoAcervo {
   FEEDBACK_NEGATIVO: number
   QUALIDADE_ALTA: number
   QUALIDADE_BAIXA: number
+  /**
+   * O catálogo viu PREÇO legível no quadro (carta de vinhos com "R$239") —
+   * viola o DNA de todo cliente. Rebaixa, nunca esconde.
+   */
+  PRECO_LEGIVEL: number
+  /** Marca de terceiro em destaque (guarda-sol Brahma). Menos grave que preço: dá para recortar. */
+  MARCA_DE_TERCEIRO: number
   /** Boost no dia 0, decaindo linearmente até 0 em NOVIDADE_DIAS. */
   NOVIDADE_MAX: number
   NOVIDADE_DIAS: number
@@ -199,6 +214,14 @@ export const PESOS: PesosDoAcervo = {
    */
   QUALIDADE_ALTA: 0,
   QUALIDADE_BAIXA: -6,
+  /**
+   * Teste real de 01/09/2026 (O Quintal): a foto 2026-cmt07071 — carta de
+   * vinhos com "R$239" legível — e o guarda-sol Brahma subiam na sugestão sem
+   * que o catálogo soubesse de nada. −8 e −5 põem as duas abaixo de uma
+   * escolha global (10) mas não as somem: score ORDENA, nunca esconde.
+   */
+  PRECO_LEGIVEL: -8,
+  MARCA_DE_TERCEIRO: -5,
   NOVIDADE_MAX: 15,
   NOVIDADE_DIAS: 21,
   RELEVANCIA_POR_PONTO: 2,
@@ -407,6 +430,17 @@ function bonusDeNovidade(catalogadaEm: string | null | undefined, hojeBRT: strin
   return pesos.NOVIDADE_MAX * (1 - dias / pesos.NOVIDADE_DIAS)
 }
 
+/**
+ * O que o catálogo sabe que fere o DNA: preço legível e marca de terceiro.
+ * Campo ausente (foto analisada antes de 01/09/2026) é neutro.
+ */
+function pesoDeDna(img: FotoRanqueavel, pesos: PesosDoAcervo): number {
+  let peso = 0
+  if (img.precoLegivel === true) peso += pesos.PRECO_LEGIVEL
+  if (typeof img.marcaDeTerceiro === 'string' && img.marcaDeTerceiro.trim()) peso += pesos.MARCA_DE_TERCEIRO
+  return peso
+}
+
 function pesoDeQualidade(quality: string | null | undefined, pesos: PesosDoAcervo): number {
   if (!quality) return 0
   const q = normalizar(quality)
@@ -530,6 +564,7 @@ export function ranquearAcervo<T extends FotoRanqueavel>(
       rejeicaoGlobal: 0,
       feedback: 0,
       qualidade: 0,
+      dna: 0,
       novidade: 0,
       relevancia: 0,
     }
@@ -576,6 +611,7 @@ export function ranquearAcervo<T extends FotoRanqueavel>(
     }
 
     componentes.qualidade = pesoDeQualidade(imagem.quality, pesos)
+    componentes.dna = pesoDeDna(imagem, pesos)
     componentes.novidade = bonusDeNovidade(imagem.catalogadaEm, hojeBRT, pesos)
 
     if (palavrasDaBusca.length > 0) {

@@ -98,3 +98,8 @@ design-canvas/**/*.bak
 # resemeia pelo /design a partir dos artboards; só os .dc.html são fonte.
 design-canvas/**/*.html
 !design-canvas/**/*.dc.html
+
+# Bancada de medição da melhoria e spike da máscara (imagens pagas, nunca versionadas)
+.tmp-medicao-carteira/
+.tmp-spike-mascara/
+.tmp-fidelidade/

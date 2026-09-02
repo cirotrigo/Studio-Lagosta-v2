@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
 import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
@@ -509,6 +510,11 @@ export async function DELETE(
         console.error(`[Delete Post] Failed to delete from Zernio (${existingPost.laterPostId}):`, error)
       }
     }
+
+    // Antes do delete (depois não há post para ler): a foto de um rascunho
+    // apagado volta ao rodízio. Post PUBLICADO fica intocado — a própria
+    // função recusa POSTED, porque este DELETE não barra. Nunca lança.
+    await desfazerUsoDeFotoDoPost({ projectId, postId })
 
     // Delete post locally
     await db.socialPost.delete({

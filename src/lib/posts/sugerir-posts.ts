@@ -41,6 +41,7 @@ import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
 import { calcularCadencia, type PostDoHistorico } from '@/lib/posts/cadencia'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
+import { fundirGradeComCadencia, lerGradeDasEntradas, VERSAO_DA_GRADE } from '@/lib/posts/grade-da-base'
 
 const JANELA_HISTORICO_DIAS = 56
 
@@ -65,8 +66,17 @@ const SERVICO = 'sugerir-posts'
  * Com ela, recarregar a tela não cria nada: o mesmo slot devolve o mesmo id, e
  * o desfecho continua sendo um só.
  */
-function chaveDoSlot(projectId: number, scheduledDatetime: string): string {
-  return chaveDeSugestao('slot', VERSAO_DA_CADENCIA, projectId, scheduledDatetime)
+function chaveDoSlot(projectId: number, scheduledDatetime: string, versao = VERSAO_DA_CADENCIA): string {
+  return chaveDeSugestao('slot', versao, projectId, scheduledDatetime)
+}
+
+/**
+ * Slot vindo da GRADE da base é outra heurística — outra versão, outra chave.
+ * O mesmo horário proposto pela cadência semana passada e pela grade hoje são
+ * propostas diferentes; herdar o desfecho de uma na outra mediria a errada.
+ */
+function versaoDoSlot(s: Pick<SugestaoSlot, 'origem'>): string {
+  return s.origem === 'grade' ? VERSAO_DA_GRADE : VERSAO_DA_CADENCIA
 }
 /** Slot ocupado se já existe post a menos de 45min dele. */
 const TOLERANCIA_SLOT_MIN = 45
@@ -79,6 +89,14 @@ export interface SugestaoSlot {
   /** "YYYY-MM-DD HH:mm" pronto para colocar-na-agenda. */
   scheduledDatetime: string
   motivo: string
+  /**
+   * De onde veio o horário: `grade` = slot fixo da entrada "Padrões de
+   * Postagem" da base (o COMBINADO com o cliente); `cadencia` = o que o
+   * histórico mostra que ele FAZ. Onde há grade, ela substitui a cadência.
+   */
+  origem?: 'grade' | 'cadencia'
+  /** O tema que a grade declara para este horário, quando declara. */
+  temaDaGrade?: string
   /** `curinga` = veio da reserva genérica (modelo sem dia declarado), não é do dia. */
   modeloSugerido?: {
     pageId: string
@@ -196,7 +214,7 @@ export async function sugerirPosts(params: {
   }
 
   // ── Modelos por dia e campanhas que citam o dia ──────────────────────────
-  const [modelos, campanhas] = await Promise.all([
+  const [modelos, campanhas, entradasDaGrade] = await Promise.all([
     db.page.findMany({
       where: { isTemplate: true, Template: { projectId } },
       select: { id: true, name: true, tags: true, Template: { select: { name: true, tags: true } } },
@@ -220,7 +238,45 @@ export async function sugerirPosts(params: {
       where: { projectId, status: 'ACTIVE', category: 'CAMPANHAS', ...vigenteEm(agora) },
       select: { title: true, content: true, expiresAt: true },
     }),
+    /**
+     * A GRADE APROVADA do cliente (01/09/2026): a entrada "Padrões de
+     * Postagem" (ou qualquer POLITICAS/HORARIOS com tag `grade`/`cadencia`).
+     * Até aqui ninguém a lia — a sugestão propunha o hábito do histórico por
+     * cima do combinado. Falha nesta leitura degrada para a cadência, nunca
+     * derruba a sugestão.
+     */
+    db.knowledgeBaseEntry
+      .findMany({
+        where: {
+          projectId,
+          status: 'ACTIVE',
+          category: { in: ['POLITICAS', 'HORARIOS'] },
+          OR: [
+            { title: { contains: 'Padrões de Postagem', mode: 'insensitive' } },
+            { tags: { hasSome: ['grade', 'cadencia'] } },
+          ],
+        },
+        select: { title: true, content: true },
+      })
+      .catch((erro: unknown) => {
+        console.error('[sugerir-posts] não deu para ler a grade da base (seguindo pela cadência):', erro)
+        return [] as Array<{ title: string; content: string }>
+      }),
   ])
+
+  /**
+   * Onde a grade cobre o dia, os slots fixos SUBSTITUEM os horários típicos
+   * do histórico; onde não cobre, a cadência continua. `fundirGradeComCadencia`
+   * é puro e com grade vazia é a identidade — um caminho só.
+   */
+  const grade = lerGradeDasEntradas(entradasDaGrade)
+  const slotsFinais = fundirGradeComCadencia(slotsPorDia, grade)
+  if (grade.length > 0) {
+    const diasCobertos = new Set(grade.flatMap((s) => s.dias)).size
+    avisos.push(
+      `Grade aprovada do cliente encontrada na base (${grade.length} horário(s) fixo(s), ${diasCobertos} dia(s) da semana) — ela substitui a cadência do histórico nos dias que cobre.`,
+    )
+  }
 
   const modeloDoDia = (dia: number) => {
     const achado = escolherModeloDoDia(
@@ -272,7 +328,7 @@ export async function sugerirPosts(params: {
     const brtBase = new Date(base.getTime() - 3 * 3600_000)
     const dataISO = brtBase.toISOString().slice(0, 10)
     const dia = brtBase.getUTCDay()
-    const tipicos = slotsPorDia.get(dia)
+    const tipicos = slotsFinais.get(dia)
     if (!tipicos) continue
 
     for (const slot of tipicos) {
@@ -296,6 +352,8 @@ export async function sugerirPosts(params: {
         // a bancada precisa mostrar para a pessoa não confundir uma coisa com a
         // outra.
         motivo: slot.motivo,
+        origem: slot.origem,
+        ...(slot.tema ? { temaDaGrade: slot.tema } : {}),
         ...(modeloDoDia(dia) ? { modeloSugerido: modeloDoDia(dia) } : {}),
         ...(campanhasDoSlot ? { campanhasDoDia: campanhasDoSlot } : {}),
       })
@@ -355,7 +413,7 @@ async function campanhasEncerradas(
 async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): Promise<void> {
   if (sugestoes.length === 0) return
 
-  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime))
+  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime, versaoDoSlot(s)))
   const jaEmitidas = await sugestoesJaEmitidas(chaves)
 
   const novas: number[] = []
@@ -373,7 +431,7 @@ async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): P
         projectId,
         tipo: 'slot' as const,
         servico: SERVICO,
-        versao: VERSAO_DA_CADENCIA,
+        versao: versaoDoSlot(s),
         chave: chaves[i],
         // O modelo do dia é parte da proposta: quem aceita o slot costuma
         // aceitar o modelo junto, e é isso que a F2 vai querer separar.
@@ -384,6 +442,8 @@ async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): P
           hora: s.hora,
           diaSemana: s.diaSemana,
           motivo: s.motivo,
+          ...(s.origem ? { origem: s.origem } : {}),
+          ...(s.temaDaGrade ? { temaDaGrade: s.temaDaGrade } : {}),
           ...(s.modeloSugerido ? { modeloSugerido: s.modeloSugerido } : {}),
           ...(s.campanhasDoDia ? { campanhasDoDia: s.campanhasDoDia } : {}),
         },

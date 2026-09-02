@@ -978,6 +978,10 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
       },
       limit: { type: 'number', description: 'Máximo de resultados (default 20). Pode pedir mais — não há teto.' },
       offset: { type: 'number', description: 'Quantas pular, para ver o resto da lista. A ordem é estável.' },
+      explorando: {
+        type: 'boolean',
+        description: 'Só olhando — não conta como proposta. Use quando estiver conhecendo o acervo ou conferindo o que existe, sem escolher foto para uma peça. Sem isso, cada busca vira uma sugestão registrada, e explorar sem decidir infla a conta.',
+      },
     },
     required: ['projectId'],
     additionalProperties: false,

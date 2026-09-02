@@ -321,6 +321,21 @@ export async function registrarDecisaoSemSugestao(entrada: DecisaoAbsoluta): Pro
   }
 }
 
+const JANELA_PADRAO_DE_EXPIRACAO_MS = 14 * 24 * 3600_000
+
+/**
+ * Janela de expiração POR TIPO, quando o padrão de 14 dias não faz sentido.
+ *
+ * `foto`: a proposta de `buscar-fotos` é uma lista ranqueada que vale para a
+ * peça que está sendo montada AGORA — ninguém volta três dias depois para
+ * "aceitar" a busca de terça. Deixá-la pendente por 14 dias só segura no
+ * denominador propostas que já morreram. 24h; o cron é diário, então na
+ * prática fecha entre 24h e 48h.
+ */
+const JANELA_DE_EXPIRACAO_POR_TIPO_MS: Record<string, number> = {
+  foto: 24 * 3600_000,
+}
+
 /**
  * Fecha como `expirada` a proposta que ninguém decidiu dentro da janela.
  *
@@ -338,16 +353,32 @@ export async function expirarSugestoesPendentes(opts?: {
   projectId?: number
 }): Promise<number> {
   try {
-    const limite = opts?.antesDe ?? new Date(Date.now() - 14 * 24 * 3600_000)
+    const agora = Date.now()
+    const limite = opts?.antesDe ?? new Date(agora - JANELA_PADRAO_DE_EXPIRACAO_MS)
+    const tiposComJanelaPropria = Object.keys(JANELA_DE_EXPIRACAO_POR_TIPO_MS)
     const r = await db.learningSignal.updateMany({
       where: {
         desfecho: null,
         sugeridoEm: { not: null, lt: limite },
+        tipo: { notIn: tiposComJanelaPropria },
         ...(opts?.projectId ? { projectId: opts.projectId } : {}),
       },
       data: { desfecho: 'expirada', decididoEm: new Date(), superficie: 'sistema' },
     })
-    return r.count
+    let total = r.count
+    for (const [tipo, janelaMs] of Object.entries(JANELA_DE_EXPIRACAO_POR_TIPO_MS)) {
+      const proprio = await db.learningSignal.updateMany({
+        where: {
+          desfecho: null,
+          tipo,
+          sugeridoEm: { not: null, lt: new Date(agora - janelaMs) },
+          ...(opts?.projectId ? { projectId: opts.projectId } : {}),
+        },
+        data: { desfecho: 'expirada', decididoEm: new Date(), superficie: 'sistema' },
+      })
+      total += proprio.count
+    }
+    return total
   } catch (erro) {
     console.error('[aprendizado] falha ao expirar sugestões pendentes:', erro)
     return 0

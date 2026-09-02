@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
 import { isExternalApiAuthorized } from '@/lib/external-api/auth'
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
@@ -217,7 +218,7 @@ export async function DELETE(
 
     const existingPost = await db.socialPost.findUnique({
       where: { id: postId },
-      select: { id: true, status: true, laterPostId: true },
+      select: { id: true, projectId: true, status: true, laterPostId: true },
     })
 
     if (!existingPost) {
@@ -244,6 +245,11 @@ export async function DELETE(
         )
       }
     }
+
+    // Antes do delete: a foto de um rascunho apagado volta ao rodízio. Com
+    // ?force=true num post PUBLICADO a função recusa sozinha (guarda por
+    // status), e nunca lança.
+    await desfazerUsoDeFotoDoPost({ projectId: existingPost.projectId, postId })
 
     await db.socialPost.delete({ where: { id: postId } })
 

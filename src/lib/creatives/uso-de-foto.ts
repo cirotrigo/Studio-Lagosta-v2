@@ -22,6 +22,7 @@
  */
 
 import { db } from '@/lib/db'
+import { resolverGeracoesSoDestePost } from '@/lib/creatives/geracoes-do-post'
 
 /**
  * De onde veio o uso. TEXT no banco — o vocabulário ainda se move.
@@ -72,6 +73,128 @@ export async function registrarUsoDeFoto(registro: RegistroDeUso): Promise<numbe
   } catch (erro) {
     console.warn('[uso-de-foto] não consegui registrar o uso:', erro)
     return 0
+  }
+}
+
+// ── Desfazer o uso quando o post é apagado ─────────────────────────────────
+
+export type MotivoDeNaoDesfazer = 'post-nao-encontrado' | 'publicado' | 'sem-arte' | 'erro'
+
+export interface GeracoesParaDesfazer {
+  /** As artes cujo uso de foto pode ser desfeito — só as que NENHUM outro post usa. */
+  geracoes: string[]
+  motivo?: MotivoDeNaoDesfazer
+}
+
+/**
+ * Quais artes deste post terão o uso de foto desfeito — a LEITURA de
+ * `desfazerUsoDeFotoDoPost`, separada para o dry-run
+ * (`scripts/validar-desfazer-uso-de-foto.ts`) mostrar a conta sem apagar nada.
+ *
+ * Só post que NÃO foi publicado: o rascunho apagado nunca chegou ao Instagram,
+ * então a foto dele não "saiu" — mantê-la como usada a empurrava para o fim do
+ * rodízio por uma peça que não existiu (defeito real, 01/09/2026). Post
+ * PUBLICADO é história: apagar o registro dele não desfaz a publicação, e o
+ * uso continua verdadeiro. A guarda mora AQUI, e não em quem chama, porque o
+ * DELETE web não barra POSTED.
+ *
+ * ⚠️ Nunca lança.
+ */
+export async function geracoesParaDesfazerUso(entrada: {
+  projectId: number
+  postId: string
+}): Promise<GeracoesParaDesfazer> {
+  try {
+    const post = await db.socialPost.findUnique({
+      where: { id: entrada.postId },
+      select: { projectId: true, status: true, generationId: true, mediaUrls: true },
+    })
+    if (!post || post.projectId !== entrada.projectId) return { geracoes: [], motivo: 'post-nao-encontrado' }
+    if (post.status === 'POSTED') return { geracoes: [], motivo: 'publicado' }
+
+    const urls = (post.mediaUrls ?? []).filter((u) => typeof u === 'string' && u.length > 0)
+    const filtros: Array<Record<string, unknown>> = []
+    if (post.generationId) filtros.push({ id: post.generationId })
+    if (urls.length > 0) filtros.push({ resultUrl: { in: urls } })
+    if (filtros.length === 0) return { geracoes: [], motivo: 'sem-arte' }
+
+    const selecao = { id: true, resultUrl: true, sourceGenerationId: true } as const
+
+    // Carrossel: cada slide tem a sua Generation e o post só guarda a URL.
+    const pool = await db.generation.findMany({
+      where: { projectId: entrada.projectId, OR: filtros },
+      select: selecao,
+    })
+    const noPool = new Set(pool.map((g) => g.id))
+
+    // 🔴 Sobe a LINHAGEM: o post aponta para a melhoria e o uso da foto está
+    // na original (medido em 01/09/2026 — sem isto, zero desfeitos).
+    let pendentes = pool.map((g) => g.sourceGenerationId).filter((s): s is string => !!s && !noPool.has(s))
+    for (let nivel = 0; pendentes.length > 0 && nivel < 10; nivel++) {
+      const ancestrais = await db.generation.findMany({
+        where: { projectId: entrada.projectId, id: { in: pendentes } },
+        select: selecao,
+      })
+      for (const g of ancestrais) { pool.push(g); noPool.add(g.id) }
+      pendentes = ancestrais.map((g) => g.sourceGenerationId).filter((s): s is string => !!s && !noPool.has(s))
+    }
+
+    const candidatas = resolverGeracoesSoDestePost(post, pool)
+    if (candidatas.length === 0) return { geracoes: [], motivo: 'sem-arte' }
+
+    // Para a PROTEÇÃO, o pool ganha as irmãs/descendentes das candidatas
+    // (outra melhoria da mesma original): se outro post usa uma delas, a
+    // original continua em uso.
+    const descendentes = await db.generation.findMany({
+      where: { projectId: entrada.projectId, sourceGenerationId: { in: candidatas }, id: { notIn: [...noPool] } },
+      select: selecao,
+    })
+    for (const g of descendentes) { pool.push(g); noPool.add(g.id) }
+
+    // Arte compartilhada com OUTRO post (duplicar na bancada, trocar-arte,
+    // melhoria-irmã) continua em uso — desfazer mentiria sobre a peça que
+    // ficou na agenda.
+    const urlsDoPool = pool.map((g) => g.resultUrl).filter((u): u is string => !!u)
+    const outros = await db.socialPost.findMany({
+      where: {
+        projectId: entrada.projectId,
+        id: { not: entrada.postId },
+        OR: [
+          { generationId: { in: [...noPool] } },
+          ...(urlsDoPool.length > 0 ? [{ mediaUrls: { hasSome: urlsDoPool } }] : []),
+        ],
+      },
+      select: { generationId: true, mediaUrls: true },
+    })
+    const geracoesSoDeste = resolverGeracoesSoDestePost(post, pool, outros)
+    return geracoesSoDeste.length > 0 ? { geracoes: geracoesSoDeste } : { geracoes: [], motivo: 'sem-arte' }
+  } catch (erro) {
+    console.warn('[uso-de-foto] não consegui resolver as artes do post:', erro)
+    return { geracoes: [], motivo: 'erro' }
+  }
+}
+
+/**
+ * Apaga o `PhotoUsage` das artes de um post que está sendo EXCLUÍDO.
+ *
+ * Chame ANTES do `db.socialPost.delete` — depois dele não há mais post para
+ * ler. Mesmo contrato de `registrarUsoDeFoto`: **nunca lança**; telemetria de
+ * curadoria não pode impedir alguém de apagar um rascunho.
+ */
+export async function desfazerUsoDeFotoDoPost(entrada: {
+  projectId: number
+  postId: string
+}): Promise<{ removidos: number; motivo?: MotivoDeNaoDesfazer }> {
+  const { geracoes, motivo } = await geracoesParaDesfazerUso(entrada)
+  if (geracoes.length === 0) return { removidos: 0, ...(motivo ? { motivo } : {}) }
+  try {
+    const r = await db.photoUsage.deleteMany({
+      where: { projectId: entrada.projectId, generationId: { in: geracoes } },
+    })
+    return { removidos: r.count }
+  } catch (erro) {
+    console.warn('[uso-de-foto] não consegui desfazer o uso:', erro)
+    return { removidos: 0, motivo: 'erro' }
   }
 }
 
