@@ -1162,6 +1162,325 @@ for (const [nome, literal] of Object.entries(LITERAIS_AVALIACOES)) {
   comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
 }
 
+// Tools NOVAS (02/09/2026, F1/F3 do editor-como-usina — o compositor). O
+// fixture nasce com elas, como manda a regra do registro: mudança de schema
+// daqui para a frente é deliberada ou o snapshot acusa.
+const LITERAIS_COMPOSITOR: Record<string, unknown> = {
+  "ver-assinatura": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "formato": {
+        "type": "string",
+        "enum": [
+          "story",
+          "feed",
+          "quadrado"
+        ],
+        "description": "Formato a conferir (default story)."
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
+  },
+  "compor-arte": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "formato": {
+        "type": "string",
+        "enum": [
+          "story",
+          "feed",
+          "quadrado"
+        ],
+        "description": "story (1080x1920), feed (1080x1350) ou quadrado (1080x1080)."
+      },
+      "fotoDriveId": {
+        "type": "string",
+        "description": "A foto do acervo (driveFileId de buscar-fotos). Preferido: liga a peça ao rodízio de fotos."
+      },
+      "fotoUrl": {
+        "type": "string",
+        "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
+      },
+      "blocos": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "papel": {
+              "type": "string",
+              "enum": [
+                "pre",
+                "headline",
+                "apoio",
+                "cta",
+                "servico"
+              ],
+              "description": "O papel do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé)."
+            },
+            "linhas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "maxItems": 6,
+              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas."
+            }
+          },
+          "required": [
+            "papel",
+            "linhas"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 5,
+        "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura."
+      },
+      "preferencias": {
+        "type": "object",
+        "properties": {
+          "ancora": {
+            "type": "string",
+            "enum": [
+              "topo",
+              "meio",
+              "rodape",
+              "auto"
+            ],
+            "description": "Onde o bloco de texto pousa. \"auto\" (default) deixa a foto decidir — a área mais calma ganha."
+          },
+          "alinha": {
+            "type": "string",
+            "enum": [
+              "esquerda",
+              "centro",
+              "direita",
+              "auto"
+            ],
+            "description": "Alinhamento do bloco. \"auto\" (default) segue a área livre da foto."
+          },
+          "cantoDaMarca": {
+            "type": "string",
+            "enum": [
+              "inferior-esquerdo",
+              "inferior-direito",
+              "superior-esquerdo",
+              "superior-direito",
+              "auto",
+              "nenhum"
+            ],
+            "description": "Canto da logo. \"auto\" (default) escolhe o canto mais calmo e escuro que não encosta no texto; \"nenhum\" tira a logo."
+          },
+          "enquadramento": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "fixo"
+            ],
+            "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
+          }
+        },
+        "additionalProperties": false
+      },
+      "nome": {
+        "type": "string",
+        "description": "Nome da peça na galeria (opcional)."
+      },
+      "tema": {
+        "type": "string",
+        "description": "Tema/assunto, para o registro e o rodízio de layout."
+      },
+      "itemDePlanoId": {
+        "type": "string",
+        "description": "Quando a peça é de um item de plano: o id do item (ver-plano)."
+      },
+      "planoId": {
+        "type": "string"
+      },
+      "quando": {
+        "type": "string",
+        "description": "Data/hora prevista (ISO), só para registro."
+      },
+      "provar": {
+        "type": "boolean",
+        "description": "true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável."
+      }
+    },
+    "required": [
+      "projectId",
+      "formato",
+      "blocos"
+    ],
+    "additionalProperties": false
+  },
+  "compor-leva": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "itens": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "formato": {
+              "type": "string",
+              "enum": [
+                "story",
+                "feed",
+                "quadrado"
+              ],
+              "description": "story (1080x1920), feed (1080x1350) ou quadrado (1080x1080)."
+            },
+            "fotoDriveId": {
+              "type": "string",
+              "description": "A foto do acervo (driveFileId de buscar-fotos). Preferido: liga a peça ao rodízio de fotos."
+            },
+            "fotoUrl": {
+              "type": "string",
+              "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
+            },
+            "blocos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "papel": {
+                    "type": "string",
+                    "enum": [
+                      "pre",
+                      "headline",
+                      "apoio",
+                      "cta",
+                      "servico"
+                    ],
+                    "description": "O papel do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé)."
+                  },
+                  "linhas": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas."
+                  }
+                },
+                "required": [
+                  "papel",
+                  "linhas"
+                ],
+                "additionalProperties": false
+              },
+              "minItems": 1,
+              "maxItems": 5,
+              "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura."
+            },
+            "preferencias": {
+              "type": "object",
+              "properties": {
+                "ancora": {
+                  "type": "string",
+                  "enum": [
+                    "topo",
+                    "meio",
+                    "rodape",
+                    "auto"
+                  ],
+                  "description": "Onde o bloco de texto pousa. \"auto\" (default) deixa a foto decidir — a área mais calma ganha."
+                },
+                "alinha": {
+                  "type": "string",
+                  "enum": [
+                    "esquerda",
+                    "centro",
+                    "direita",
+                    "auto"
+                  ],
+                  "description": "Alinhamento do bloco. \"auto\" (default) segue a área livre da foto."
+                },
+                "cantoDaMarca": {
+                  "type": "string",
+                  "enum": [
+                    "inferior-esquerdo",
+                    "inferior-direito",
+                    "superior-esquerdo",
+                    "superior-direito",
+                    "auto",
+                    "nenhum"
+                  ],
+                  "description": "Canto da logo. \"auto\" (default) escolhe o canto mais calmo e escuro que não encosta no texto; \"nenhum\" tira a logo."
+                },
+                "enquadramento": {
+                  "type": "string",
+                  "enum": [
+                    "auto",
+                    "fixo"
+                  ],
+                  "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
+                }
+              },
+              "additionalProperties": false
+            },
+            "nome": {
+              "type": "string",
+              "description": "Nome da peça na galeria (opcional)."
+            },
+            "tema": {
+              "type": "string",
+              "description": "Tema/assunto, para o registro e o rodízio de layout."
+            },
+            "itemDePlanoId": {
+              "type": "string",
+              "description": "Quando a peça é de um item de plano: o id do item (ver-plano)."
+            },
+            "planoId": {
+              "type": "string"
+            },
+            "quando": {
+              "type": "string",
+              "description": "Data/hora prevista (ISO), só para registro."
+            }
+          },
+          "required": [
+            "formato",
+            "blocos"
+          ],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 60,
+        "description": "As peças da leva, uma por item."
+      }
+    },
+    "required": [
+      "projectId",
+      "itens"
+    ],
+    "additionalProperties": false
+  }
+}
+
+for (const [nome, literal] of Object.entries(LITERAIS_COMPOSITOR)) {
+  comparaSchemas(nome, CATALOGO.get(nome)?.schemaJson, literal)
+}
+
 // ─────────────────────────────────────────────────────────────────────────
 // C. A porta, com catálogo e gates de mentira
 // ─────────────────────────────────────────────────────────────────────────

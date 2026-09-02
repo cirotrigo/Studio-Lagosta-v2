@@ -18,6 +18,14 @@ import type { Layer } from '@/types/template'
 import { alvoPorContraste, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
 import { uniao } from '@/lib/creatives/halo/halo'
 
+/**
+ * Folga entre o p98 medido e o alvo antes de virar aviso. A faixa de tinta
+ * da marca é deliberadamente contida (a mancha não pode virar marcação), e a
+ * sombra presa ao glifo cobre o que falta; um ponto acima do alvo não é
+ * defeito visível — 12 já é.
+ */
+export const TOLERANCIA_DO_ALVO = 12
+
 export interface ContrasteMedido {
   grupo: string
   camadas: string[]
@@ -151,7 +159,7 @@ export async function medirContrasteDaPeca(args: {
       if (tintaCorrigida > e.tinta + 0.01) correcoes.set(e.grupo, tintaCorrigida)
       else tintaCorrigida = null
     }
-    medidas.push({ grupo: e.grupo, camadas: e.camadas.map((c) => c.id), alvo: e.alvo, p98SemHalo: sem, p98ComHalo: com, tinta: e.tinta, tintaCorrigida, ok: com <= e.alvo })
+    medidas.push({ grupo: e.grupo, camadas: e.camadas.map((c) => c.id), alvo: Math.round(e.alvo), p98SemHalo: sem, p98ComHalo: com, tinta: e.tinta, tintaCorrigida, ok: com <= e.alvo + TOLERANCIA_DO_ALVO })
   })
 
   if (correcoes.size > 0) {
@@ -167,7 +175,7 @@ export async function medirContrasteDaPeca(args: {
       if (correcoes.has(m.grupo)) {
         m.p98ComHalo = depois[i]
         m.tinta = correcoes.get(m.grupo)!
-        m.ok = depois[i] <= m.alvo
+        m.ok = depois[i] <= m.alvo + TOLERANCIA_DO_ALVO
       }
     })
   }

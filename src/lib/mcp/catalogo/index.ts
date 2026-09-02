@@ -15,6 +15,7 @@ import { toolsDeAvaliacoes } from './avaliacoes'
 import { toolsDeBaseEDna } from './base-e-dna'
 import { toolsDeCarrossel } from './carrossel'
 import { toolsDeClientes } from './clientes'
+import { toolsDoCompositor } from './compositor'
 import { toolsDeFeedback } from './feedback'
 import { toolsDeFotos } from './fotos'
 import { toolsDeModelos } from './modelos'
@@ -31,6 +32,7 @@ const TODAS: ToolPronta[] = [
   ...toolsDeFotos,
   ...toolsDeFeedback,
   ...toolsDeAvaliacoes,
+  ...toolsDoCompositor,
 ]
 
 const catalogo = new Map<string, ToolPronta>()

@@ -83,8 +83,11 @@ export const NUMEROS_PADRAO: NumerosDaAssinatura = {
   geometria: {
     // Safe area do story: onde o Instagram desenha avatar e barra de resposta.
     story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-    feed: { margemH: 92, safeTopo: 96, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 0.875 },
-    quadrado: { margemH: 92, safeTopo: 96, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
+    // Feed e quadrado não têm faixa do Instagram, mas o autofix confere a
+    // margem de segurança do editor (CANVAS_MARGIN: 120 no topo, 100 na
+    // base) — o compositor não pode pousar texto onde o editor o acusa.
+    feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 0.875 },
+    quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
   },
 }
 

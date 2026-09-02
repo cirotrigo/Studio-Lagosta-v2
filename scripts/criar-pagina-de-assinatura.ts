@@ -77,8 +77,8 @@ const KITS_DE_ASSINATURA: Record<number, KitDeAssinatura> = {
       logo: { largura: 236 },
       geometria: {
         story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-        feed: { margemH: 92, safeTopo: 96, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 84 / 96 },
-        quadrado: { margemH: 92, safeTopo: 96, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
+        feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 84 / 96 },
+        quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
       },
     },
   },
