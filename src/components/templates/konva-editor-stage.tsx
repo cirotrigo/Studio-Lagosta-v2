@@ -24,6 +24,7 @@ import {
   DEFAULT_SNAP_CONFIG,
 } from '@/lib/konva-smart-guides'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
+import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
 import { useIsMobile } from '@/hooks/use-device-detection'
 
 /**
@@ -59,7 +60,6 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     projectId,
     design,
     selectedLayerIds,
-    selectLayer,
     selectLayers,
     clearLayerSelection,
     updateLayer,
@@ -435,10 +435,28 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         }
       })
 
-      // Apply selection
+      // Grupo estilo Canva entra inteiro: pegar um membro no retângulo puxa
+      // os irmãos (mesmo groupId)
+      const groupIds = new Set(
+        selectedIds
+          .map((id) => design.layers.find((layer) => layer.id === id)?.metadata?.groupId)
+          .filter((groupId): groupId is string => typeof groupId === 'string' && groupId.length > 0),
+      )
+      if (groupIds.size > 0) {
+        for (const layer of design.layers) {
+          const groupId = layer.metadata?.groupId
+          if (typeof groupId === 'string' && groupIds.has(groupId) && !selectedIds.includes(layer.id)) {
+            selectedIds.push(layer.id)
+          }
+        }
+      }
+
+      // Com Shift/Cmd/Ctrl o retângulo ACRESCENTA à seleção (mesma regra do
+      // clique); sem nada dentro dele, a seleção atual fica como está
+      const additive = !!(event.evt && (event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey))
       if (selectedIds.length > 0) {
-        selectLayers(selectedIds)
-      } else {
+        selectLayers(additive ? [...selectedLayerIds, ...selectedIds] : selectedIds)
+      } else if (!additive) {
         clearLayerSelection()
       }
 
@@ -446,7 +464,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       selectionStartRef.current = null
       setSelectionRect({ visible: false, x: 0, y: 0, width: 0, height: 0 })
     },
-    [selectionRect, design.layers, selectLayers, clearLayerSelection],
+    [selectionRect, design.layers, selectedLayerIds, selectLayers, clearLayerSelection],
   )
 
   // Scroll do mouse DESABILITADO - apenas scroll vertical nativo
@@ -523,75 +541,67 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     [setZoom, canvasWidth, isMobile, embedded],
   )
 
+  // Chave de coalescência do arraste em grupo: a camada arrastada persiste a
+  // própria posição pelo factory (onChange), as demais pelo handleLayerDragEnd
+  // e as que o Transformer "puxa" (startDrag proxy) persistem cada uma pelo
+  // seu factory — sem uma chave comum, UM arraste virava três passos de undo
+  const groupDragKeyRef = React.useRef<string | null>(null)
+
   const handleLayerChange = React.useCallback(
     (layerId: string, updates: Partial<Layer>) => {
-      updateLayer(layerId, (current) => ({
-        ...current,
-        ...updates,
-        position: updates.position ? { ...current.position, ...updates.position } : current.position,
-        size: updates.size ? { ...current.size, ...updates.size } : current.size,
-        style: updates.style ? { ...current.style, ...updates.style } : current.style,
-      }))
+      updateLayer(
+        layerId,
+        (current) => ({
+          ...current,
+          ...updates,
+          position: updates.position ? { ...current.position, ...updates.position } : current.position,
+          size: updates.size ? { ...current.size, ...updates.size } : current.size,
+          style: updates.style ? { ...current.style, ...updates.style } : current.style,
+        }),
+        { coalesceKey: groupDragKeyRef.current ?? undefined },
+      )
     },
     [updateLayer],
   )
 
-  // Rastreia o gesto atual para o comportamento de grupo estilo Canva:
-  // 1º clique seleciona o grupo inteiro; clique seguinte entra no elemento.
-  // (mousedown e click do mesmo gesto disparam onSelect duas vezes)
-  const selectGestureRef = React.useRef<{ layerId: string; groupWasSelected: boolean } | null>(null)
+  // Um gesto do ponteiro chama onSelect mais de uma vez (mousedown/touchstart
+  // e depois dragstart OU click/tap). Quem decide a seleção — uma única vez,
+  // na descida — é a máquina de estados pura de `selecao-por-gesto.ts`; aqui
+  // só se traduz o evento Konva e se aplica o resultado. O gesto em andamento
+  // fica neste ref entre as fases.
+  const selectGestureRef = React.useRef<GestoDeSelecao | null>(null)
 
   const handleLayerSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>, layer: Layer) => {
       event.cancelBubble = true
+      // event.type é o nome do evento Konva ('click', 'mousedown', 'dragstart');
+      // event.evt.type seria o nativo (o 'click' do Konva chega com evt 'mouseup')
+      const evtType = event.type ?? event.evt?.type ?? ''
+      const phase: FaseDoGesto =
+        evtType === 'click' || evtType === 'tap' ? 'click' : evtType === 'dragstart' ? 'drag' : 'down'
       const additive = !!(event.evt && (event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey))
-      if (additive) {
-        selectLayer(layer.id, { additive: true, toggle: true })
-        return
+
+      if (phase === 'drag' && selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id) && !groupDragKeyRef.current) {
+        groupDragKeyRef.current = `group-drag:${Date.now()}`
       }
 
       const groupId = typeof layer.metadata?.groupId === 'string' ? layer.metadata.groupId : null
       const groupIds = groupId
         ? design.layers.filter((item) => item.metadata?.groupId === groupId).map((item) => item.id)
         : []
-      const isGrouped = groupIds.length > 1
-      // event.type é o nome do evento Konva ('click', 'mousedown', 'dragstart');
-      // event.evt.type seria o nativo (o 'click' do Konva chega com evt 'mouseup')
-      const evtType = event.type ?? event.evt?.type ?? ''
-      const isClickPhase = evtType === 'click' || evtType === 'tap'
 
-      if (!isGrouped) {
-        selectLayer(layer.id)
-        return
-      }
-
-      if (!isClickPhase) {
-        // Fase mousedown/dragstart do gesto
-        const groupFullySelected = groupIds.every((id) => selectedLayerIds.includes(id))
-        const anySelected = groupIds.some((id) => selectedLayerIds.includes(id))
-        selectGestureRef.current = { layerId: layer.id, groupWasSelected: groupFullySelected }
-        if (groupFullySelected) {
-          // Mantém o grupo selecionado — permite arrastar em conjunto;
-          // o drill-in acontece na fase de click (se não houver drag)
-          return
-        }
-        if (anySelected) {
-          // Já "dentro" do grupo: seleção direta do elemento clicado
-          selectLayer(layer.id)
-          return
-        }
-        selectLayers(groupIds)
-        return
-      }
-
-      // Fase click (só dispara se não houve drag): entra no elemento
-      // individual quando o grupo já estava selecionado antes do gesto
-      if (selectGestureRef.current?.layerId === layer.id && selectGestureRef.current.groupWasSelected) {
-        selectLayer(layer.id)
-      }
-      selectGestureRef.current = null
+      const resultado = decidirSelecaoPorGesto({
+        phase,
+        additive,
+        layerId: layer.id,
+        groupIds,
+        selection: selectedLayerIds,
+        gesture: selectGestureRef.current,
+      })
+      selectGestureRef.current = resultado.gesture
+      if (resultado.selection) selectLayers(resultado.selection)
     },
-    [selectLayer, selectLayers, selectedLayerIds, design.layers],
+    [selectLayers, selectedLayerIds, design.layers],
   )
 
   const handleLayerDragMove = React.useCallback(
@@ -684,8 +694,15 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     if (selectedLayerIds.length > 1) {
       const stage = stageRef.current
       if (!stage) return
-      // Um gesto = um passo de undo, mesmo persistindo N camadas
-      const coalesceKey = `group-drag:${Date.now()}`
+      // Um gesto = um passo de undo, mesmo persistindo N camadas. A mesma
+      // chave já foi usada pelo onChange da camada arrastada; as camadas que
+      // o Transformer puxou ainda vão disparar o próprio dragend (síncrono,
+      // logo depois deste), por isso a chave só é solta no próximo tick.
+      const coalesceKey = groupDragKeyRef.current ?? `group-drag:${Date.now()}`
+      groupDragKeyRef.current = coalesceKey
+      setTimeout(() => {
+        if (groupDragKeyRef.current === coalesceKey) groupDragKeyRef.current = null
+      }, 0)
       for (const id of selectedLayerIds) {
         const layer = design.layers.find((item) => item.id === id)
         const node = stage.findOne(`#${id}`)
