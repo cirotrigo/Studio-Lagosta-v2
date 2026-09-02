@@ -107,7 +107,7 @@ export function FundoDoTexto({ layer, textRef, assinaturaRender, opacidadeDaCama
     const rect = rectRef.current
     if (!rect) return
     rect.clearCache()
-    if (rect.visible() && escala.raioNoBuffer > 0) {
+    if (rect.visible() && rect.width() > 0 && rect.height() > 0 && escala.raioNoBuffer > 0) {
       rect.cache({
         pixelRatio: 1 / escala.k,
         offset: folgaDoBlur(fundo?.blur ?? 0),
@@ -117,6 +117,23 @@ export function FundoDoTexto({ layer, textRef, assinaturaRender, opacidadeDaCama
     rect.getLayer()?.batchDraw()
   }, [escala, fundo?.blur])
 
+  // 🔴 O Konva.Text é IRMÃO POSTERIOR deste componente: no primeiro commit,
+  // os efeitos daqui rodam ANTES de o ref do texto ser ligado (React liga
+  // refs e roda layout effects na ordem da árvore). Sem isto, página aberta
+  // com halo salvo ficava com o Rect em 0×0 — invisível e com "Can not cache
+  // the node" no console — até a próxima mudança da camada. Um frame depois
+  // o ref existe; `pronto` reexecuta geometria, cache e assinatura de eventos.
+  const [pronto, setPronto] = React.useState(false)
+  React.useLayoutEffect(() => {
+    if (pronto) return
+    if (textRef.current) {
+      setPronto(true)
+      return
+    }
+    const id = requestAnimationFrame(() => setPronto(true))
+    return () => cancelAnimationFrame(id)
+  }, [pronto, textRef])
+
   // Geometria + cache a cada mudança do texto (a assinatura já inclui o tick
   // das fontes), da posição gravada e do próprio fundo. Layout effect: o
   // Konva já aplicou os atributos do Text neste commit, então o textArr é o
@@ -125,14 +142,14 @@ export function FundoDoTexto({ layer, textRef, assinaturaRender, opacidadeDaCama
     if (!fundo) return
     aplicarGeometria()
     refazerCache()
-  }, [assinaturaRender, assinaturaFundo, layer.position?.x, layer.position?.y, layer.rotation, aplicarGeometria, refazerCache])
+  }, [pronto, assinaturaRender, assinaturaFundo, layer.position?.x, layer.position?.y, layer.rotation, aplicarGeometria, refazerCache])
 
   // No meio do gesto: só posição/rotação/escala — o cache (que é local ao nó)
   // continua válido. A tinta nova de um resize chega no transformend, quando o
   // estado muda e o efeito de cima roda.
   React.useEffect(() => {
     const node = textRef.current
-    if (!node || !fundo) return
+    if (!node || !fundo || !pronto) return
     const seguir = () => {
       const rect = rectRef.current
       if (!rect) return
@@ -148,7 +165,7 @@ export function FundoDoTexto({ layer, textRef, assinaturaRender, opacidadeDaCama
     return () => {
       node.off('dragmove.fundo transform.fundo')
     }
-  }, [textRef, fundo])
+  }, [textRef, fundo, pronto])
 
   if (!fundo) return null
 
