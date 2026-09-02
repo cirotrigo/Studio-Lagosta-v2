@@ -3381,6 +3381,12 @@ novo:
   DESFOCADA só atrás do bloco de texto, sem borda, no máximo ~1/3 do quadro;
   proibido gradiente de faixa de borda a borda, tarja, topo ou rodapé inteiros
   escurecidos. O LOOK SPINE do carrossel repete "halo de leitura".
+  🔴 **A regra geral não segurou o rodapé**: medido em produção na Wine Vix
+  (02/09), a manchete pousou num halo local e o gpt-image ainda escureceu o
+  quinto inferior INTEIRO, de borda a borda, para as duas linhas de serviço —
+  "rodapé" puxa para faixa tanto quanto para a borda. O halo do serviço é dito
+  DENTRO de `[SERVIÇO — LUGAR FIXO NO RODAPÉ]` (`blocos-de-servico.ts`):
+  instrução colada ao bloco vence a regra geral, lição de 17/08.
 - 🔴 **A caixa da arte de origem manda no prompt da melhoria** (Bacana,
   02/09/2026: "as letras devem ser em caixa alta"). `aplicarCaixaDaOrigem`
   transcreve a origem e põe cada bloco em [TEXTO EXATO] na caixa em que a
