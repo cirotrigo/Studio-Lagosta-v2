@@ -617,6 +617,15 @@ model Project {
   postingProvider             PostingProvider?        @default(ZAPIER)
   brandStyleDescription       String?
   brandVisualElements         Json?
+  /**
+   * Os NÚMEROS da assinatura de composição (F1 do editor-como-usina,
+   * 02/09/2026): margens, safe area por formato, faixa de tinta e raio do
+   * halo, largura da logo. O ESTILO por papel (fonte, tamanho, cor, caixa)
+   * mora na página de assinatura (`Page.isTemplate` com tag `assinatura`),
+   * porque a equipe edita página no editor, não JSON. Contrato em
+   * `src/lib/compositor/assinatura.ts`. Null = defaults da casa.
+   */
+  assinatura                  Json?
   brandReferenceUrls          String[]                @default([])
   cuisineType                 String?
   titleFontFamily             String?

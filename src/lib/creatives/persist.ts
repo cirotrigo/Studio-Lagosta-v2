@@ -149,6 +149,8 @@ export interface PersistCreativeInput {
    * não herdar essa ambiguidade — por isso o ajuste NÃO a preenche.
    */
   sourcePageId?: string | null
+  /** Tags da Page criada. Default `['arte-rapida']` — o compositor grava as suas. */
+  pageTags?: string[]
 }
 
 export interface PersistCreativeResult {
@@ -180,7 +182,7 @@ export async function persistAndRenderCreative(
       order: 0,
       templateId,
       isTemplate: false, // arte renderizada, não um modelo reutilizável
-      tags: ['arte-rapida'],
+      tags: input.pageTags ?? ['arte-rapida'],
     },
   })
 

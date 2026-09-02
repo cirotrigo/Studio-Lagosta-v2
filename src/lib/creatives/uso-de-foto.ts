@@ -31,7 +31,7 @@ import { resolverGeracoesSoDestePost } from '@/lib/creatives/geracoes-do-post'
  * não observado ao vivo. Fica separado de propósito, para dar para auditar (e
  * desfazer) o que veio de reconstituição.
  */
-export type OrigemDeUso = 'arte-ia' | 'arte-rapida' | 'externo' | 'historico'
+export type OrigemDeUso = 'arte-ia' | 'arte-rapida' | 'compositor' | 'externo' | 'historico'
 
 export interface RegistroDeUso {
   projectId: number
