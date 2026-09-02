@@ -170,7 +170,19 @@ export function contagemDeBlocos(expectedTexts: string[]): string {
 export function fatosDoClienteNaMelhoria(args: RegrasDaMelhoriaArgs): string | null {
   const fatos = (args.fatosDoCliente ?? []).map((f) => f.trim()).filter(Boolean)
   if (fatos.length === 0) return null
-  if (blocosDeServico(args.expectedTexts).length === 0) return null
+  /**
+   * 🔴 Só quando a régua tem ENDEREÇO — não basta ter horário.
+   *
+   * Medido em 02/09/2026, no happy hour do Quintal: a régua tinha "Ter a Sex,
+   * das 16h às 19h" (serviço de horário), os fatos entraram "só para
+   * conferir", e o modelo usou o endereço oficial que estava neles para
+   * preencher o rodapé — "Rua Aleixo Netto, 1158, Praia do Canto, Vitória/ES"
+   * numa peça cuja copy não tem endereço. Certo desta vez, mas a mais, e é o
+   * mesmo mecanismo do endereço inventado: dado disponível vira dado
+   * desenhado. Os fatos só servem para conferir um endereço que a copy JÁ
+   * tem; o horário da copy é a própria régua.
+   */
+  if (!blocosDeServico(args.expectedTexts).some((b) => b.papel === 'endereço')) return null
   return [
     '[FATOS DO CLIENTE — só para conferir, nunca para acrescentar]',
     ...fatos.slice(0, 8).map((f) => `- ${f}`),

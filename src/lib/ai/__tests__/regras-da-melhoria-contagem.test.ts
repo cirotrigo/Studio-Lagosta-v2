@@ -58,8 +58,10 @@ describe('contagemDeBlocos', () => {
 })
 
 describe('fatos do cliente', () => {
-  it('só entram quando a régua tem bloco de serviço', () => {
+  it('só entram quando a régua tem ENDEREÇO — horário sozinho não basta', () => {
     expect(fatosDoClienteNaMelhoria({ expectedTexts: REGUA_SEM_SERVICO, userRequest: '', fatosDoCliente: FATOS })).toBeNull()
+    // O happy hour real de 02/09: régua com horário, sem endereço → sem fatos.
+    expect(fatosDoClienteNaMelhoria({ expectedTexts: ['Happy hour', 'Chope e Drinks', 'em Dobro', 'Ter a Sex, das 16h às 19h', 'Junta a galera'], userRequest: '', fatosDoCliente: FATOS })).toBeNull()
     const r = fatosDoClienteNaMelhoria({ expectedTexts: REGUA_COM_SERVICO, userRequest: '', fatosDoCliente: FATOS })
     expect(r).toMatch(/só para conferir, nunca para acrescentar/)
     expect(r).toMatch(/Aleixo Netto/)
