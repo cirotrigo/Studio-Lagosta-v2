@@ -17,8 +17,20 @@
  * aprovados quando a marca tem uma (o Wine Vix tem seis literais).
  *
  *   npx tsx scripts/criar-templates-por-tema.ts 11              # dry-run
+ *   npx tsx scripts/criar-templates-por-tema.ts --projeto 11    # o mesmo, por flag
  *   npx tsx scripts/criar-templates-por-tema.ts 11 --confirmar
- *   npx tsx scripts/criar-templates-por-tema.ts 11 --desfazer   # apaga o que criou
+ *   npx tsx scripts/criar-templates-por-tema.ts 11 --desfazer --confirmar   # apaga o que criou
+ *
+ * O projeto é OBRIGATÓRIO (posicional ou `--projeto <id>`): o script nunca
+ * varre a carteira inteira, e `--desfazer` só alcança templates com a
+ * `MARCA_DO_SCRIPT` DAQUELE projeto.
+ *
+ * Desde 01/09/2026 o gerador desenha HALO (caixa desfocada atrás do texto),
+ * não mais véu. Os modelos gravados antes disso carregam o véu antigo; para
+ * regenerá-los com halo é `--desfazer --confirmar` e depois `--confirmar` de
+ * novo — decisão de quem roda, porque apaga e recria as 3 páginas de cada
+ * tema (ids novos; post que aponte para a página antiga perde o vínculo).
+ * Temas que já tenham modelo de OUTRA origem continuam sendo pulados.
  */
 import { db } from '@/lib/db'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
@@ -29,16 +41,24 @@ import {
   CANVAS, LAYOUTS, NOME_DO_LAYOUT, montarCamadas,
   type KitDeMarca, type CopyDoTema,
 } from './lib/gerador-de-templates'
-import { KITS, COPY_POR_TEMA } from './lib/kits-de-marca'
+import { KITS, COPY_POR_TEMA, TEMAS_EXTRAS } from './lib/kits-de-marca'
 
 /** Marca as páginas criadas por este script, para o --desfazer ser cirúrgico. */
 export const MARCA_DO_SCRIPT = 'lote-tema-2026-08'
 
+/** `--projeto <id>` tem prioridade; senão o primeiro argumento numérico. */
+function lerProjeto(argv: string[]): number {
+  const i = argv.indexOf('--projeto')
+  if (i >= 0) return Number(argv[i + 1])
+  const posicional = argv.slice(2).find((a) => /^\d+$/.test(a))
+  return Number(posicional)
+}
+
 async function main() {
-  const projectId = Number(process.argv[2])
+  const projectId = lerProjeto(process.argv)
   const confirmar = process.argv.includes('--confirmar')
   const desfazer = process.argv.includes('--desfazer')
-  if (!projectId) throw new Error('uso: npx tsx scripts/criar-templates-por-tema.ts <projectId> [--confirmar|--desfazer]')
+  if (!projectId) throw new Error('uso: npx tsx scripts/criar-templates-por-tema.ts <projectId> | --projeto <id> [--confirmar|--desfazer]')
 
   const projeto = await db.project.findUnique({ where: { id: projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new Error(`projeto ${projectId} não encontrado`)
@@ -48,14 +68,15 @@ async function main() {
   console.log(`cliente: ${projeto.name} (${projectId})\n`)
 
   if (desfazer) {
+    // SÓ deste projeto e SÓ com a marca: o filtro é duplo de propósito.
     const alvo = await db.template.findMany({
       where: { projectId, tags: { has: MARCA_DO_SCRIPT } },
       select: { id: true, name: true, _count: { select: { Page: true } } },
     })
     for (const t of alvo) console.log(`   apagar "${t.name}" (${t._count.Page} página(s))`)
-    if (confirmarFlag()) {
+    if (confirmarFlag() && alvo.length > 0) {
       // Page tem onDelete: Cascade em templateId — apagar o template leva as páginas.
-      await db.template.deleteMany({ where: { id: { in: alvo.map((t) => t.id) } } })
+      await db.template.deleteMany({ where: { id: { in: alvo.map((t) => t.id) }, projectId, tags: { has: MARCA_DO_SCRIPT } } })
     }
     console.log(`\n${confirmarFlag() ? `${alvo.length} template(s) apagado(s).` : 'Nada foi apagado (rode com --confirmar junto).'}`)
     return
@@ -86,7 +107,20 @@ async function main() {
   const copySet = COPY_POR_TEMA[projectId] ?? {}
   let criados = 0
 
-  for (const pilar of pilares) {
+  /**
+   * Pilares aprovados + temas EXTRAS declarados no kit (ver `TEMAS_EXTRAS`):
+   * assunto que merece modelo sem ser pilar. Um extra com o slug de um pilar
+   * é ignorado — o pilar manda.
+   */
+  const slugsDePilar = new Set(pilares.map((p) => p.slug))
+  const temas: Array<{ slug: string; nome: string; tags: string[] }> = [
+    ...pilares.map((p) => ({ slug: p.slug, nome: p.nome, tags: [] as string[] })),
+    ...(TEMAS_EXTRAS[projectId] ?? [])
+      .filter((t) => !slugsDePilar.has(t.slug))
+      .map((t) => ({ slug: t.slug, nome: t.nome, tags: t.tags ?? [] })),
+  ]
+
+  for (const pilar of temas) {
     if (jaCoberto.has(pilar.slug)) {
       console.log(`·  ${pilar.slug} — já tem modelo; pulando`)
       continue
@@ -102,7 +136,7 @@ async function main() {
     console.log(`   pré: "${copy.preTitulo ?? '—'}"  título: "${copy.titulo.replace(/\n/g, ' / ')}"${copy.tituloAcento ? ` + acento "${copy.tituloAcento}"` : ''}`)
     console.log(`   desc: "${copy.descricao}"`)
     console.log(`   serviço: "${copy.servico ?? '—'}"   CTA: "${copy.cta}"`)
-    console.log(`   layouts: ${LAYOUTS.join(', ')}`)
+    console.log(`   layouts: ${LAYOUTS.join(', ')}   tags: ${[pilar.slug, ...pilar.tags].join(', ')}`)
 
     if (!confirmar) continue
 
@@ -118,7 +152,7 @@ async function main() {
           designData: blank as unknown as Prisma.JsonValue,
           dynamicFields: [] as unknown as Prisma.JsonValue,
           // A tag do pilar é o que faz prepareCreative achar o modelo por tema.
-          tags: [pilar.slug, MARCA_DO_SCRIPT],
+          tags: [pilar.slug, ...pilar.tags, MARCA_DO_SCRIPT],
         },
       })
       for (const [i, layout] of LAYOUTS.entries()) {
@@ -134,7 +168,7 @@ async function main() {
             order: i,
             templateId: template.id,
             isTemplate: true,
-            tags: [pilar.slug],
+            tags: [pilar.slug, ...pilar.tags],
           },
         })
       }

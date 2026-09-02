@@ -2,10 +2,19 @@
  * Gerador de páginas-modelo a partir de um KIT DE MARCA (16/08/2026).
  *
  * O padrão não foi inventado: é o dos "Story base (3 layouts)" que o TERO e o
- * Wine Vix já usavam e que a equipe aprovou — foto em tela cheia, véu de
- * leitura na cor escura da marca, hierarquia tipográfica fixa e um bloco de
+ * Wine Vix já usavam e que a equipe aprovou — foto em tela cheia, leitura
+ * garantida na cor escura da marca, hierarquia tipográfica fixa e um bloco de
  * serviço no rodapé. Aqui ele virou função para poder ser aplicado a qualquer
  * marca e a qualquer tema, sempre igual.
+ *
+ * A leitura sobre a foto é por HALO desde 01/09/2026, não mais por véu: uma
+ * caixa escura DESFOCADA atrás de cada bloco de texto (`halo()`), em vez do
+ * degradê que escurecia a faixa inteira do topo ou do rodapé. Medido no
+ * canvas (`design-canvas/_halo.py`): o véu perdia 30% da cor da foto; o halo
+ * entrega a foto a 5% do original. A opacidade gravada aqui (0,55) é só o
+ * PONTO DE PARTIDA — a calibração real pela luz da foto acontece em
+ * `createArteRapida` (`src/lib/creatives/halo/aplicar-halo.ts`), que troca a
+ * tinta e o raio pelo que a foto escolhida pede.
  *
  * Três layouts, os mesmos três que o DNA do Wine Vix descreve ("rodapé, topo e
  * dividido"):
@@ -196,8 +205,69 @@ function imagem(id: string, nome: string, order: number, url: string, x: number,
   }
 }
 
-/** Véu de leitura: o degradê que garante contraste do texto sobre a foto. */
-function veu(id: string, order: number, cor: string, angulo: number, opacidade: number, ate: number): Camada {
+/** Raio de partida do blur do halo — o mesmo `raioBase` de `calibrarHalo`. */
+export const HALO_RAIO = 110
+/** Margem em volta do texto: ~1,4 × raio, para o texto ficar no PLATÔ da gaussiana. */
+export const HALO_MARGEM = 150
+/** Tinta de partida; a calibração pela foto substitui. */
+export const HALO_OPACIDADE = 0.55
+
+type Rect = { x: number; y: number; width: number; height: number }
+
+function retanguloDe(c: Camada): Rect {
+  const p = c.position as { x: number; y: number }
+  const s = c.size as { width: number; height: number }
+  return { x: p.x, y: p.y, width: s.width, height: s.height }
+}
+
+function uniao(rects: Rect[]): Rect {
+  const x0 = Math.min(...rects.map((r) => r.x))
+  const y0 = Math.min(...rects.map((r) => r.y))
+  const x1 = Math.max(...rects.map((r) => r.x + r.width))
+  const y1 = Math.max(...rects.map((r) => r.y + r.height))
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
+}
+
+/**
+ * Halo de leitura: caixa retangular na cor escura da marca, DESFOCADA, atrás
+ * de um bloco de texto. A caixa é a união das caixas de texto do bloco
+ * crescida de `HALO_MARGEM` em cada lado.
+ *
+ * Forma da camada: `type: 'shape'` retangular, como o `renderShape` do
+ * render-engine e o `ShapeNode` do editor leem — `style.fill` é a cor,
+ * `style.fillOpacity` a tinta (canal separado, não `opacity` da camada),
+ * `border.radius` o canto. O desfoque vai em `effects.blur`, a mesma forma
+ * que a camada de texto já usa (`{ enabled, blurRadius }`).
+ *
+ * O id começa com `halo-` de propósito: é o prefixo que `aplicar-halo.ts`
+ * reconhece ao recalibrar pela foto (e `veu` é o prefixo que ele REMOVE).
+ */
+function halo(id: 'halo-topo' | 'halo-rodape', order: number, cor: string, blocos: Camada[]): Camada {
+  const r = uniao(blocos.map(retanguloDe))
+  return {
+    id, name: 'Halo', type: 'shape', order, visible: true, locked: false,
+    position: { x: Math.round(r.x - HALO_MARGEM), y: Math.round(r.y - HALO_MARGEM) },
+    size: { width: Math.round(r.width + 2 * HALO_MARGEM), height: Math.round(r.height + 2 * HALO_MARGEM) },
+    rotation: 0,
+    style: {
+      shapeType: 'rectangle',
+      fill: cor,
+      fillOpacity: HALO_OPACIDADE,
+      strokeWidth: 0,
+      border: { width: 0, color: '#000000', radius: 0 },
+    },
+    effects: { blur: { enabled: true, blurRadius: HALO_RAIO } },
+  }
+}
+
+/**
+ * LEGADO — o véu de leitura que o gerador usava até 01/09/2026. Não é mais
+ * chamado por `montarCamadas`; fica exportado como referência do que os
+ * modelos antigos (lote-tema-2026-08) carregam, e para quem precisar
+ * reconhecer a forma ao migrar. `aplicar-halo.ts` remove camadas cujo id
+ * começa com `veu`.
+ */
+export function veu(id: string, order: number, cor: string, angulo: number, opacidade: number, ate: number): Camada {
   return {
     id, name: `Veu ${id}`, type: 'gradient', order, visible: true,
     position: { x: 0, y: 0 }, size: CANVAS,
@@ -218,8 +288,10 @@ export type MedirAltura = (camada: Camada) => number
 /**
  * Monta as camadas de UMA página.
  *
- * A ordem das camadas é a ordem de desenho: foto, véus, texto, elementos,
- * logo. O `order` é explícito porque o render server-side ordena por ele.
+ * A ordem das camadas é a ordem de desenho: foto, halos, texto, elementos,
+ * logo. O `order` é explícito porque o render server-side ordena por ele —
+ * e é reatribuído no FIM, porque o halo só pode ser criado depois de medir
+ * onde o texto ficou.
  *
  * 🔴 `medir` não é opcional por acaso. A primeira versão estimava a altura do
  * título por `fontSize × linhas do \n` e o resultado colidia: o texto quebra
@@ -258,22 +330,14 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   })
 
   /**
-   * Véus: onde o texto vai, a foto precisa escurecer.
+   * Halos: onde o texto vai, a foto precisa escurecer — e SÓ ali.
    *
-   * 🔴 No layout `rodape` o véu é criado DEPOIS de medir o bloco, porque a
-   * altura dele varia com a copy. Com o stop fixo em 0.52 o degradê acabava
-   * antes do começo do bloco, e o pré-título na cor de acento ficava ilegível
-   * sobre a parte clara da foto — visto na Bacana, laranja sobre madeira
-   * clara. O véu tem de alcançar o conteúdo, não uma altura suposta.
+   * Os halos são criados no FIM (`halo()`), depois de medir cada bloco,
+   * porque a caixa deles é a união das caixas de texto reais. Era a lição
+   * do véu do rodapé (alcance fixo acabava antes do bloco e o pré-título
+   * ficava ilegível sobre foto clara — Bacana), agora valendo para todos:
+   * o halo tem de alcançar o conteúdo medido, não uma altura suposta.
    */
-  const veuDoRodapeDepois = layout === 'rodape'
-  if (layout === 'topo') {
-    camadas.push(veu('topo', ordem++, kit.corFundo, 180, 0.92, 0.42))
-    camadas.push(veu('rodape', ordem++, kit.corFundo, 0, 0.8, 0.24))
-  } else {
-    camadas.push(veu('topo', ordem++, kit.corFundo, 180, 0.9, 0.36))
-    camadas.push(veu('rodape', ordem++, kit.corFundo, 0, 0.9, 0.3))
-  }
 
   const estiloTitulo = {
     color: kit.corTexto,
@@ -391,16 +455,6 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
     ? Math.max(200, yServico - 80 - alturaBloco)
     : layout === 'topo' ? 150 : 170
 
-  if (veuDoRodapeDepois) {
-    // O degradê sobe 140px acima do começo do bloco: o pré-título é a linha
-    // mais alta e a menos contrastada (cor de acento, corpo pequeno).
-    const alcance = Math.min(0.9, Math.max(0.4, (CANVAS.height - yInicio + 140) / CANVAS.height))
-    const v = veu('rodape', 1, kit.corFundo, 0, 0.92, alcance)
-    // Entra logo depois da foto, antes de qualquer texto.
-    camadas.splice(1, 0, v)
-    ordem = camadas.length
-  }
-
   for (const c of bloco) {
     ;(c.position as { y: number }).y += yInicio
     ;(c as { order: number }).order = ordem++
@@ -417,6 +471,8 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
   const icone = copy.icone === undefined ? 'relogio' : copy.icone
   const urlIcone = icone === 'local' ? kit.iconeLocal : icone === 'relogio' ? kit.iconeRelogio : null
   let yRodape = yServico
+  /** Camadas de TEXTO do rodapé (serviço e CTA) — o que o halo do rodapé cobre. */
+  const textosDoRodape: Camada[] = []
 
   /**
    * 🔴 O rodapé reserva a largura da LOGO quando ela fica ali.
@@ -439,12 +495,34 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
     }
     ;(cServico as { order: number }).order = ordem++
     camadas.push(cServico)
+    textosDoRodape.push(cServico)
     yRodape += altoServico + 14
   }
 
   const cCta = texto('cta', 'CTA', ordem++, copy.cta, M, yRodape, 640, 48, estiloCta)
   ;(cCta.size as { height: number }).height = Math.max(medir(cCta), 48)
   camadas.push(cCta)
+  textosDoRodape.push(cCta)
+
+  /**
+   * Os halos entram AGORA, com as caixas de texto já medidas e posicionadas.
+   *
+   * `topo` e `dividido`: um halo no bloco principal (`halo-topo`) e outro no
+   * serviço + CTA (`halo-rodape`). `rodape`: o bloco termina 80px acima do
+   * serviço — menos que a folga de 120px com que `agruparEmBlocos` parte a
+   * peça —, então é UM halo só (`halo-rodape`) sobre tudo. Só as camadas de
+   * texto votam na caixa: filete e ícone são finos e não entram (a regra do
+   * `_halo.py`: ornamento < 8px não vota).
+   */
+  const textosDoBloco = bloco.filter((c) => c.type === 'text')
+  const halos: Camada[] = layout === 'rodape'
+    ? [halo('halo-rodape', 0, kit.corFundo, [...textosDoBloco, ...textosDoRodape])]
+    : [
+        halo('halo-topo', 0, kit.corFundo, textosDoBloco),
+        halo('halo-rodape', 0, kit.corFundo, textosDoRodape),
+      ]
+  // Logo depois da foto, antes de qualquer texto.
+  camadas.splice(1, 0, ...halos)
 
   if (kit.logoUrl) {
     const larguraLogo = 168
@@ -460,6 +538,12 @@ export function montarCamadas(kit: KitDeMarca, copy: CopyDoTema, layout: Layout,
       fileUrl: kit.logoUrl, rotation: 0,
     })
   }
+
+  // O `order` final é a posição no array: os halos entraram por `splice`
+  // depois de todo mundo já ter número, e o render ordena por este campo.
+  camadas.forEach((c, i) => {
+    ;(c as { order: number }).order = i
+  })
 
   return camadas
 }

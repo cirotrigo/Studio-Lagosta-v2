@@ -39,8 +39,15 @@ import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { vigenteEm } from '@/lib/knowledge/vigencia'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
+import { casaDiaComNome, casaTemaComTags } from '@/lib/creatives/casar-tema'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar, type AutofixReport } from '@/lib/creatives/text-autofix'
+import {
+  aplicarHaloNaArte,
+  escolherPaginaPelaFoto,
+  lerFotoParaMedicao,
+} from '@/lib/creatives/halo/integracao-arte-rapida'
+import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 
@@ -109,8 +116,14 @@ export interface PrepareCreativeInput {
   projectHint?: string
   /** Exact project id — skips name matching. Preferred by service callers. */
   projectId?: number
-  /** Theme of the creative (e.g., "almoço executivo", "happy hour"). */
-  theme: string
+  /**
+   * Theme of the creative (e.g., "almoço executivo", "happy hour").
+   *
+   * Com tema, o casamento é SÓ por tag (`casaTemaComTags`) — tema que não
+   * casa com nada é `NO_TEMPLATE_MATCH`, nunca "qualquer página do dia".
+   * Sem tema, vale o casamento só por dia (modelos legados sem tag).
+   */
+  theme?: string
   /** Optional day of week in PT (e.g., "sexta", "sabado"). */
   day?: string
 }
@@ -277,31 +290,38 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     )
   }
 
-  // Theme matching: full normalized form, then main word, then each word
-  const themeNorm = normalize(input.theme)
-  const themeWords = themeNorm.split('-').filter((w) => w.length > 2)
-  const themeVariants = Array.from(new Set([themeNorm, themeWords[0], ...themeWords].filter(Boolean)))
+  /**
+   * Casamento por TEMA, só por tag — ver `casar-tema.ts` para as regras.
+   *
+   * 🔴 Não existe mais fallback "só-dia" quando o tema foi informado. Havia
+   * um, e foi ele que fez `escolher-modelo("funcionamento")` devolver
+   * "Celebrações Especiais" no O Quintal Parrilla (01/09/2026): sem modelo
+   * de funcionamento, o dia "quinta" casava por substring com "QUINTAl" no
+   * nome de TODO template do cliente, e a primeira página vencia. Tema que
+   * não casa é erro com sugestão — a saída certa é criar a arte por IA ou
+   * cadastrar um modelo, nunca entregar um modelo de outro assunto.
+   *
+   * O casamento só por dia continua valendo APENAS quando o chamador não
+   * passou tema (modelos legados que codificam o dia no nome).
+   */
+  const theme = input.theme?.trim() ?? ''
+  const dayMatch = (p: any) => casaDiaComNome(p.name, input.day!) || casaDiaComNome(p.templateName, input.day!)
 
-  const themeMatches = allPages.filter((p: any) => {
-    const tags = [...(p.tags ?? []), ...(p.templateTags ?? [])].map(normalize)
-    return themeVariants.some((v) => tags.some((t) => t === v || t.includes(v) || v.includes(t)))
-  })
-
-  // Optional day filter (legacy templates encode the day in the name)
-  const dayNorm = input.day ? normalize(input.day).replace(/-feira$/, '') : null
-  let candidates = themeMatches
-  if (dayNorm) {
-    const dayMatches = themeMatches.filter(
-      (p: any) => normalize(p.name).includes(dayNorm) || normalize(p.templateName).includes(dayNorm),
+  let candidates: any[]
+  if (theme) {
+    const themeMatches = allPages.filter((p: any) =>
+      casaTemaComTags(theme, [...(p.tags ?? []), ...(p.templateTags ?? [])]),
     )
-    if (dayMatches.length > 0) candidates = dayMatches
-  }
-
-  // Fallback: day alone, for legacy templates without theme tags
-  if (candidates.length === 0 && dayNorm) {
-    candidates = allPages.filter(
-      (p: any) => normalize(p.name).includes(dayNorm) || normalize(p.templateName).includes(dayNorm),
-    )
+    candidates = themeMatches
+    // O dia só DESEMPATA entre os modelos do tema; nunca amplia a lista.
+    if (input.day) {
+      const dayMatches = themeMatches.filter(dayMatch)
+      if (dayMatches.length > 0) candidates = dayMatches
+    }
+  } else if (input.day) {
+    candidates = allPages.filter(dayMatch)
+  } else {
+    candidates = []
   }
 
   if (candidates.length === 0) {
@@ -309,16 +329,22 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       new Set(allPages.flatMap((p: any) => [...(p.tags ?? []), ...(p.templateTags ?? [])])),
     ).slice(0, 30)
     const availableTemplates = Array.from(new Set(allPages.map((p: any) => p.templateName)))
+    const criterio = theme
+      ? `theme "${theme}"${input.day ? ` and day "${input.day}"` : ''}`
+      : input.day
+        ? `day "${input.day}" (no theme given)`
+        : 'no theme and no day'
     throw new CreativeError(
       'NO_TEMPLATE_MATCH',
-      `No template page found for theme "${input.theme}"${input.day ? ` and day "${input.day}"` : ''} in project "${project.name}".`,
+      `No template page found for ${criterio} in project "${project.name}".`,
       404,
       {
         project: { id: project.id, name: project.name },
         availableTags,
         availableTemplates,
-        suggestion:
-          'Tag a template page with the theme (e.g., "almoco-executivo") via the admin, or pick from availableTemplates and re-run.',
+        suggestion: theme
+          ? `Não há modelo para o tema "${theme}" neste cliente. Crie a arte por IA (criar-arte) ou cadastre um modelo com a tag do tema (marcar-como-modelo / --projeto no gerador). Não use um modelo de outro tema — as tags disponíveis estão em availableTags.`
+          : 'Informe um tema (theme) para casar por tag, ou um dia que exista no nome de um modelo legado — as tags disponíveis estão em availableTags.',
       },
     )
   }
@@ -374,7 +400,7 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
    */
   const sugestaoId = await registrarSugestaoDeModelo({
     projectId: project.id,
-    tema: input.theme,
+    tema: theme || (input.day ?? ''),
     dia: input.day ?? null,
     candidatos: [bestRef.id, ...altRefs.map((p: any) => p.id)],
     escolhido: bestRef.id,
@@ -476,6 +502,12 @@ export interface CreateArteRapidaInput {
   fotoDoCard?: string | null
   /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. É auditoria. */
   decididoPor?: string | null
+  /**
+   * Não trocar o layout pela foto. Por padrão, num template "(3 layouts)" a
+   * foto escolhe entre os irmãos (Topo/Rodapé/Dividido) pela faixa mais calma
+   * — ver `halo/layout-pela-foto.ts`. Com `true`, a página pedida é a usada.
+   */
+  layoutFixo?: boolean
 }
 
 export interface CreateArteRapidaResult {
@@ -497,6 +529,13 @@ export interface CreateArteRapidaResult {
   autocorrecao: AutofixReport
   /** Problemas geométricos não corrigidos (flag desligada ou área segura). */
   avisos?: string[]
+  /**
+   * O halo no lugar do véu (família de modelos gerados). `aplicado: false`
+   * significa que a arte saiu com o véu — o motivo está em `avisos`.
+   */
+  halo?: { aplicado: boolean; blocos: number; avisos: string[] }
+  /** Quando a foto escolheu outro irmão do template "(3 layouts)". */
+  layoutEscolhido?: { layout: LayoutPelaFoto; motivo: string; pageId: string; pageName: string }
 }
 
 /**
@@ -596,7 +635,32 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
   const resolved = await resolveImageUrl(directUrl, driveImageId)
 
-  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(parseLayers(sourcePage.layers), slotValues, resolved.url)
+  /**
+   * A foto decide o layout (família "(3 layouts)"): entre os irmãos do
+   * template, o texto pousa na faixa mais calma da foto. A foto é lida UMA
+   * vez aqui e reaproveitada pelo halo, mais abaixo. Sem foto, sem irmãos ou
+   * com `layoutFixo`, a página pedida é a usada — e nada disto lança.
+   */
+  const canvasDaPeca = { width: sourcePage.width, height: sourcePage.height }
+  const fotoLida = await lerFotoParaMedicao(resolved.url, canvasDaPeca)
+  const escolha = input.layoutFixo
+    ? null
+    : await escolherPaginaPelaFoto({
+        templateId: sourcePage.Template.id,
+        templateNome: sourcePage.Template.name,
+        paginaAtual: { id: sourcePage.id, name: sourcePage.name },
+        foto: fotoLida,
+      })
+  const paginaModelo = escolha?.pagina
+    ? await db.page.findUnique({ where: { id: escolha.pagina.id }, include: { Template: true } })
+    : null
+  const modelo = paginaModelo ?? sourcePage
+  const layoutEscolhido =
+    escolha && paginaModelo
+      ? { layout: escolha.layout, motivo: escolha.motivo, pageId: paginaModelo.id, pageName: paginaModelo.name }
+      : undefined
+
+  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(parseLayers(modelo.layers), slotValues, resolved.url)
 
   // Texto novo maior (ou menor) que o do template: medir a quebra real e
   // reacomodar as pilhas de combinação; texto solto cresce a própria caixa
@@ -610,11 +674,25 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   const fix = await aplicarAutofixOuFalhar({
     projectId,
     layers: reflowed,
-    canvas: { width: sourcePage.width, height: sourcePage.height },
+    canvas: canvasDaPeca,
     changedLayerIds: changedTextIds,
-    sourceTemplateId: sourcePage.Template.id,
+    sourceTemplateId: modelo.Template.id,
   })
-  const layers = fix.layers
+
+  /**
+   * Halo em vez de véu, DEPOIS do autofix (as caixas de texto já são as
+   * finais) e ANTES de persistir (as camadas gravadas são as renderizadas).
+   * Só na família de modelos gerados / página com véu; falha na foto cai no
+   * véu como está e vira aviso — nunca derruba a criação.
+   */
+  const halo = await aplicarHaloNaArte({
+    projectId,
+    layers: fix.layers as Layer[],
+    canvas: canvasDaPeca,
+    templateTags: modelo.Template.tags,
+    fotoLida,
+  })
+  const layers = halo.layers
 
   const imageWarning =
     resolved.warning ??
@@ -622,33 +700,51 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       ? 'A imagem foi resolvida mas o template não tem camada de imagem dinâmica para recebê-la'
       : undefined)
 
-  const pageName = input.name ?? `${sourcePage.name} — ${new Date().toLocaleString('pt-BR')}`
+  const pageName = input.name ?? `${modelo.name} — ${new Date().toLocaleString('pt-BR')}`
 
   const persisted = await persistAndRenderCreative({
     project,
     templateId: arteTemplate.id,
     templateName: arteTemplate.name,
     pageName,
-    width: sourcePage.width,
-    height: sourcePage.height,
+    width: modelo.width,
+    height: modelo.height,
     layers,
-    background: sourcePage.background,
+    background: modelo.background,
     authorName: 'arte-rapida',
     // Espelho colunar do `fieldValues.sourcePageId`: aqui ele aponta para um
     // MODELO de verdade, e é a coluna indexada que tira "qual modelo este
     // cliente mais usa" da varredura de Json.
-    sourcePageId: sourcePage.id,
+    sourcePageId: modelo.id,
     fieldValues: {
       source: 'arte-rapida',
-      sourceTemplateId: sourcePage.Template.id,
-      sourceTemplateName: sourcePage.Template.name,
-      sourcePageId: sourcePage.id,
-      sourcePageName: sourcePage.name,
-      sourceTags: sourcePage.tags ?? [],
+      sourceTemplateId: modelo.Template.id,
+      sourceTemplateName: modelo.Template.name,
+      sourcePageId: modelo.id,
+      sourcePageName: modelo.name,
+      sourceTags: modelo.tags ?? [],
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
       slotValues,
       autocorrecao: fix.autocorrecao,
+      halo: {
+        aplicado: halo.aplicado,
+        blocos: halo.blocos,
+        corDaMancha: halo.corDaMancha,
+        avisos: halo.avisos,
+        halos: halo.halos.map((h) => ({
+          camadaId: h.camadaId,
+          camadas: h.camadas,
+          tinta: h.tinta,
+          raio: h.raio,
+          alvo: Math.round(h.alvo),
+          luzMedida: Math.round(h.luzMedida),
+          noTeto: h.noTeto,
+        })),
+      },
+      ...(layoutEscolhido
+        ? { layoutEscolhido: { ...layoutEscolhido, pedido: { pageId: sourcePage.id, pageName: sourcePage.name } } }
+        : {}),
     },
   })
 
@@ -660,10 +756,10 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    * chamadas lança — se o registro falhar, a arte já está pronta e é dela que
    * alguém precisa.
    */
-  await registrarUsoDeModelo(sourcePage.id)
+  await registrarUsoDeModelo(modelo.id)
   await fecharSugestaoDeModelo({
     projectId,
-    pageIdUsado: sourcePage.id,
+    pageIdUsado: modelo.id,
     generationId: persisted.generationId,
     sugestaoId: input.sugestaoId ?? null,
     decididoPor: input.decididoPor ?? null,
@@ -704,6 +800,8 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     ...(imageWarning ? { imageWarning } : {}),
     autocorrecao: fix.autocorrecao,
     ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    halo: { aplicado: halo.aplicado, blocos: halo.blocos, avisos: halo.avisos },
+    ...(layoutEscolhido ? { layoutEscolhido } : {}),
   }
 }
 

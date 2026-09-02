@@ -1342,11 +1342,28 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const width = Math.max(10, layer.size?.width ?? 0)
   const height = Math.max(10, layer.size?.height ?? 0)
 
+  // Blur da PRÓPRIA forma (o halo do canvas de design): o Konva só filtra
+  // node CACHEADO, e o cache sem folga cortaria o desfoque na borda da caixa
+  // — `offset` de 3× o raio é a mesma folga do render server-side
+  // (renderShapeBlurred), para editor e arte concordarem. O cache é refeito
+  // quando o que está desenhado muda (tamanho, cor, raio), não na posição.
+  const blurRadius = layer.effects?.blur?.enabled ? (layer.effects.blur.blurRadius ?? 0) : 0
+  const filters = React.useMemo(() => (blurRadius > 0 ? [Konva.Filters.Blur] : undefined), [blurRadius])
+  React.useEffect(() => {
+    const node = shapeRef.current
+    if (!node) return
+    node.clearCache()
+    if (blurRadius > 0) node.cache({ offset: Math.ceil(blurRadius * 3) })
+    node.getLayer()?.batchDraw()
+  }, [shapeRef, blurRadius, shapeType, fill, stroke, strokeWidth, width, height, borderRadius])
+  const blurProps = { filters, blurRadius }
+
   switch (shapeType) {
     case 'circle':
       return (
         <Circle
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.Circle>}
           radius={Math.min(width, height) / 2}
           fill={fill}
@@ -1358,6 +1375,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return (
         <RegularPolygon
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.RegularPolygon>}
           sides={3}
           radius={Math.min(width, height) / 2}
@@ -1370,6 +1388,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return (
         <Star
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.Star>}
           numPoints={5}
           innerRadius={Math.min(width, height) / 4}
@@ -1383,6 +1402,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return (
         <Line
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.Line>}
           points={[0, height / 2, width * 0.7, height / 2, width * 0.7, height * 0.2, width, height / 2, width * 0.7, height * 0.8, width * 0.7, height / 2]}
           tension={0}
@@ -1403,6 +1423,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         return (
           <Rect
             {...commonProps}
+            {...blurProps}
             ref={shapeRef as React.RefObject<Konva.Rect>}
             width={width}
             height={height}
@@ -1414,6 +1435,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return (
         <Shape
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.Shape>}
           width={width}
           height={height}
@@ -1481,6 +1503,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return (
         <Rect
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.Rect>}
           width={width}
           height={height}
@@ -1495,6 +1518,7 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       return (
         <Rect
           {...commonProps}
+          {...blurProps}
           ref={shapeRef as React.RefObject<Konva.Rect>}
           width={width}
           height={height}

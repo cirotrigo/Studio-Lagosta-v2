@@ -235,7 +235,10 @@ export function calibrarHalo(input: CalibrarHaloInput): HaloCalibrado {
     tinta: Number(tinta.toFixed(3)),
     alvo,
     luzMedida: luz,
-    noTeto: tinta >= 0.95 && bruta > 0.95,
+    // `tintaParaAlvo` já devolve no máximo 0,95, então "bruta > 0,95" nunca
+    // acontecia e o sinal era morto. No teto de verdade: nem com a tinta
+    // cheia o fundo chega ao alvo (é o vermelho do Espeto sobre foto clara).
+    noTeto: tinta >= 0.95 && 0.05 * luz + 0.95 * luzTinta > alvo,
   }
 }
 

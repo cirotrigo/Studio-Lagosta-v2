@@ -282,6 +282,31 @@ export const KITS: Record<number, KitDeMarca> = {
 }
 
 /**
+ * Um tema que merece modelo mas NÃO é pilar de conteúdo.
+ *
+ * `criar-templates-por-tema.ts` itera os pilares APROVADOS do banco
+ * (`ContentPillar`) — a taxonomia é fechada por decisão da F2, e não se
+ * inventa pilar para ganhar modelo. Mas há assunto que todo cliente pede e
+ * que nenhum pilar cobre: "funcionamento" (dias, horário, endereço). Sem
+ * modelo, `escolher-modelo("funcionamento")` caía em modelo de outro tema
+ * (O Quintal, 01/09/2026). Declarar aqui dá ao tema um modelo SEM mexer na
+ * taxonomia. A copy de fábrica mora em `COPY_POR_TEMA`, sob o mesmo slug.
+ */
+export interface TemaExtra {
+  /** Slug do tema — vira tag do template e da página (é o que `prepareCreative` casa). */
+  slug: string
+  /** Nome legível, para o nome do template. */
+  nome: string
+  /** Tags ADICIONAIS do template (ex.: `ambiente`), além do slug. */
+  tags?: string[]
+}
+
+export const TEMAS_EXTRAS: Record<number, TemaExtra[]> = {
+  // O Quintal Parrilla: funcionamento, também alcançável por "ambiente".
+  2: [{ slug: 'funcionamento', nome: 'Funcionamento', tags: ['ambiente'] }],
+}
+
+/**
  * A copy de cada tema. Escrita a partir do DNA + base do cliente.
  *
  * Wine Vix — restrições que a base impõe e que esta copy respeita:
@@ -368,10 +393,26 @@ export const COPY_POR_TEMA: Record<number, Record<string, CopyDoTema>> = {
       preTitulo: 'Happy hour',
       titulo: 'Chope e Drinks',
       tituloAcento: 'em Dobro',
-      descricao: 'Chope e drinks selecionados em dobro, de terça a sexta. Não vale em feriado.',
-      servico: 'Ter a Sex, das 17h às 19h',
+      // 🔴 Sem "Não vale em feriado": a base diz isso, mas é ressalva de dia
+      // específico, não afirmação de fábrica para toda peça de happy hour.
+      descricao: 'Chope e drinks selecionados em dobro, de terça a sexta.',
+      // 16h, não 17h — a base do cliente diz 16h (corrigido em 01/09/2026;
+      // os 3 layouts já gravados são consertados por sanear-modelos-quintal).
+      servico: 'Ter a Sex, das 16h às 19h',
       icone: null,
       cta: 'Junta a galera',
+    },
+    // Tema EXTRA (não é pilar — ver TEMAS_EXTRAS): o "funcionamento" é o
+    // pedido mais comum sem modelo, e caía em modelo de outro assunto.
+    funcionamento: {
+      // Pré-título de fábrica; quem usa troca pelo dia da peça.
+      preTitulo: 'Quinta de parrilla',
+      titulo: 'Quinta no',
+      tituloAcento: 'Quintal',
+      descricao: 'Almoço, happy hour e jantar no mesmo quintal.',
+      servico: 'Ter–Sáb das 11h às 00h · Praia do Canto, Vitória-ES',
+      icone: null,
+      cta: 'Chega mais',
     },
     petiscos: {
       preTitulo: 'Pra petiscar',

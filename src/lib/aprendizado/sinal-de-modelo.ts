@@ -31,7 +31,10 @@ const SERVICO = 'prepare-creative'
  * `prepareCreative`). Mudou a regra de ordenação? Suba isto, senão as safras
  * antiga e nova ficam indistinguíveis na agregação.
  */
-export const VERSAO_ESCOLHA_DE_MODELO = '1'
+export const VERSAO_ESCOLHA_DE_MODELO = '2'
+// '2' (01/09/2026): casamento por tag apertado (`casar-tema.ts`) e fim do
+// fallback só-dia com tema informado — a safra '1' propunha modelo de outro
+// assunto quando o tema não casava.
 
 /**
  * Janela em que a criação ainda pode ser atribuída a uma proposta.

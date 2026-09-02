@@ -1546,6 +1546,16 @@ export class RenderEngine {
     const strokeWidth = style.strokeWidth ?? style.border?.width ?? 0
     const cornerRadius = style.border?.radius ?? 0
 
+    // Blur da PRÓPRIA forma (o halo do canvas de design, `_halo.py`): a forma
+    // é desenhada num offscreen com folga, os pixels DELA são borrados e o
+    // bitmap volta ao ctx. É `filter: blur()` no retângulo — nunca
+    // `backdrop-filter`: a foto por baixo fica intacta e nítida.
+    const blurFx = layer.effects?.blur
+    const blurRadius = blurFx?.enabled ? Math.round(blurFx.blurRadius ?? 0) : 0
+    if (blurRadius > 0 && this.renderShapeBlurred(ctx, layer, width, height, blurRadius, options)) {
+      return
+    }
+
     // Forma vetorial genérica: path normalizado escalado para a caixa da
     // camada — espelha o <Path> dentro de Group do editor. Stroke compensado
     // pela escala média (editor usa strokeScaleEnabled=false).
@@ -1689,6 +1699,68 @@ export class RenderEngine {
       ctx.lineWidth = strokeWidth
       ctx.stroke()
     }
+  }
+
+  /**
+   * effects.blur em shape — réplica do cache do editor (ShapeNode): o Konva
+   * cacheia o node com `offset` de 3× o raio (senão o desfoque é cortado na
+   * borda da caixa) e aplica o stack blur nos pixels do buffer. O shape é
+   * cacheado em pixelRatio 1 (diferente do texto, que usa 2), então o raio
+   * vale 1:1 — multiplicado só pelo `scaleFactor` do render.
+   *
+   * A folga de 3× o raio é o que deixa a mancha DESMANCHAR para fora do
+   * retângulo — é a geometria do halo. Sombra desenhada dentro do offscreen
+   * (e borrada junto), como no editor; no blit ela é desligada para não dobrar.
+   */
+  private static renderShapeBlurred(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    width: number,
+    height: number,
+    blurRadius: number,
+    options?: RenderOptions,
+  ): boolean {
+    const scaleFactor = options?.scaleFactor ?? 1
+    const raio = Math.max(1, Math.round(blurRadius * scaleFactor))
+    const pad = raio * 3
+    const shapeType = layer.style?.shapeType ?? 'rectangle'
+    // Circle/RegularPolygon/Star são desenhados CENTRADOS em (0,0)
+    const centrada = shapeType === 'circle' || shapeType === 'triangle' || shapeType === 'star'
+    const bx = (centrada ? -width / 2 : 0) - pad
+    const by = (centrada ? -height / 2 : 0) - pad
+    const bw = Math.ceil(width + pad * 2)
+    const bh = Math.ceil(height + pad * 2)
+    if (bw <= 0 || bh <= 0) return false
+
+    const off = this.getOffscreen(bw, bh, options)
+    if (!off) return false
+
+    const octx = off.ctx
+    octx.translate(-bx, -by)
+    this.applyShadow(octx, layer, scaleFactor)
+    const semBlur: Layer = {
+      ...layer,
+      effects: { ...(layer.effects ?? {}), blur: { enabled: false, blurRadius: 0 } },
+    }
+    this.renderShape(octx, semBlur, width, height, options)
+
+    try {
+      const imageData = octx.getImageData(0, 0, off.width, off.height)
+      applyStackBlur(imageData.data, off.width, off.height, raio)
+      octx.putImageData(imageData, 0, 0)
+    } catch (error) {
+      console.warn('[RenderEngine] Falha ao borrar shape:', error)
+      return false
+    }
+
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0)'
+    ctx.shadowBlur = 0
+    ctx.shadowOffsetX = 0
+    ctx.shadowOffsetY = 0
+    ctx.drawImage(off.canvas as unknown as CanvasImageSource, bx, by, bw, bh)
+    ctx.restore()
+    return true
   }
 
   /**

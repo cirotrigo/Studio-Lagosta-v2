@@ -90,6 +90,9 @@ export function EffectsPanel() {
 
   const isImageLayer = selectedLayer && ['image', 'logo', 'element'].includes(selectedLayer.type)
   const isTextLayer = selectedLayer?.type === 'text'
+  // Shape ganhou blur (o halo do canvas de design): ShapeNode e o render
+  // server-side leem o mesmo `effects.blur` do texto.
+  const isShapeLayer = selectedLayer?.type === 'shape'
 
   // Debug
   React.useEffect(() => {
@@ -110,9 +113,9 @@ export function EffectsPanel() {
             </div>
           )}
 
-          {selectedLayer && !isImageLayer && !isTextLayer && (
+          {selectedLayer && !isImageLayer && !isTextLayer && !isShapeLayer && (
             <div className="rounded-md border border-dashed border-border/40 p-4 text-center text-xs text-muted-foreground">
-              Efeitos disponíveis para texto e imagens.
+              Efeitos disponíveis para texto, formas e imagens.
             </div>
           )}
 
@@ -121,6 +124,10 @@ export function EffectsPanel() {
               layer={selectedLayer}
               setStyleValue={setStyleValue}
             />
+          )}
+
+          {selectedLayer && isShapeLayer && (
+            <ShapeEffectsOnly layer={selectedLayer} />
           )}
 
           {selectedLayer && isImageLayer && (
@@ -1041,6 +1048,63 @@ function TextEffectsOnly({ layer }: TextEffectsOnlyProps) {
                 })}
               />
             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Efeitos de forma: só o blur, por enquanto. É o que faz o HALO (a mancha
+ * desfocada atrás do bloco de texto) ser editável no editor — o retângulo é
+ * borrado nos PRÓPRIOS pixels, a foto atrás fica intacta. O teto do controle
+ * é maior que o do texto porque o raio do halo é da ordem de 100px.
+ */
+function ShapeEffectsOnly({ layer }: { layer: Layer }) {
+  const editor = useTemplateEditor()
+  const effects = layer.effects || {}
+
+  const updateBlur = React.useCallback((config: { enabled: boolean; blurRadius: number }) => {
+    editor.updateLayer(layer.id, (l) => ({
+      ...l,
+      effects: { ...l.effects, blur: config },
+    }))
+  }, [editor, layer.id])
+
+  return (
+    <div className="space-y-2">
+      <div className="space-y-2 rounded-md border border-border/30 bg-muted/30 p-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-[10px] font-semibold uppercase">Blur</Label>
+          <input
+            type="checkbox"
+            className="h-4 w-4"
+            checked={effects.blur?.enabled || false}
+            onChange={(e) => updateBlur({
+              enabled: e.target.checked,
+              blurRadius: effects.blur?.blurRadius || 20,
+            })}
+          />
+        </div>
+        {effects.blur?.enabled && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <Label className="text-[9px]">Intensidade</Label>
+              <span className="text-[9px] text-muted-foreground">{effects.blur.blurRadius}</span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={200}
+              step={1}
+              className="w-full h-1"
+              value={effects.blur.blurRadius}
+              onChange={(e) => updateBlur({
+                enabled: true,
+                blurRadius: Number(e.target.value),
+              })}
+            />
           </div>
         )}
       </div>
