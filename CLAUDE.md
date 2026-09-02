@@ -3550,6 +3550,60 @@ no topo para sempre). Plano completo e placar em
   (lacunas reais em 30/08: ambiente/Espeto, Happy Hour/By Rock, Almoço
   Executivo/TERO).
 
+### O halo como efeito do editor: fundo justo à tinta (02/09/2026)
+
+O halo do canvas de design entrou no editor Konva como extensão do efeito
+`background` do texto (`fit: 'texto'` cobre só as linhas escritas; `blur`
+borra a mancha nos próprios pixels). Plano e placar em
+`docs/PLANO-2026-09-02-HALO-NO-EDITOR.md`; contrato puro em
+`src/lib/creatives/halo/fundo-de-texto.ts`, editor em
+`konva-text-background.tsx`, controles em `fundo-de-texto-controls.tsx`
+(painel Efeitos e painel Gradientes, o MESMO componente).
+
+- **A tinta é medida pela MESMA função nos dois motores** (`retanguloDasLinhas`,
+  a conta do `_sceneFunc` do Konva.Text): o editor passa o `textArr` do nó, o
+  servidor as linhas de `layoutTextLines` — extraído dos três renderers de
+  `textMode` para a mancha medir a MESMA quebra do desenho. Paridade medida por
+  perfil de luminância: ≤ 15 níveis de diferença dentro da mancha.
+- 🔴 **O teto do stack blur é ~180, por OVERFLOW de int32 — não 255 pela
+  tabela.** `(sum * mul[r]) >> shg[r]` com shift com sinal estoura 2³¹ entre o
+  raio 180 e 190; raio 200 devolve faixas verticais e a mancha SOME, no Konva e
+  no port. `escalaDoBlur` borra em buffer reduzido (`k = ceil(raio/160)`,
+  `pixelRatio: 1/k` no cache do editor, offscreen a `1/k` no servidor) — a
+  mancha é lisa, a redução é invisível e o custo fica limitado. O port satura
+  em 180 para quem não passar pela escala. Vale para `ShapeNode` e
+  `renderShapeBlurred` também (os halos que o servidor cria por bloco).
+- 🔴 **O cache do `ShapeNode` sem `pixelRatio` nascia no devicePixelRatio**: em
+  retina o borrão do editor saía com METADE do raio da arte publicada. Sempre
+  declarar o pixelRatio de um cache que vai receber filtro.
+- **Tinta em `opacity` do NÓ, nunca misturada na cor**: mudar a opacidade não
+  refaz o cache do blur; o raio refaz (por isso o desfoque grava ao soltar).
+- 🔴 **`Rect` irmão ANTERIOR do `Konva.Text` não vê o ref do texto no primeiro
+  commit** (React liga refs e roda layout effects na ordem da árvore). Halo
+  salvo abria em 0×0 até a próxima mudança; `pronto` reexecuta um frame
+  depois. Todo componente-irmão que dependa do nó de outro precisa disso.
+- **O fundo agora acompanha a ROTAÇÃO e SEGUE o arraste** (desenhado dentro do
+  transform no servidor; reposicionado no `dragmove`/`transform` no editor). O
+  Rect antigo lia `layer.position` do estado e ficava parado até o dragend.
+- 🔴 **`api.get` devolve TEXTO quando a resposta não é JSON**: um redirect para
+  `/sign-in` na chamada de cores virou `colors.map is not a function` e derrubou
+  o editor. `useBrandColors` garante array; consumidor novo de lista faz o mesmo.
+- **Textos AGRUPADOS dividem UMA mancha** (`bloco-de-fundo.ts`, F4): os textos
+  de um grupo estilo Canva (`metadata.groupId`, Cmd+G) com fundo ligado viram
+  um bloco — a união das tintas, desenhada pelo LÍDER (menor `order`) com a
+  configuração dele; os membros não desenham. Sem grupo, cada texto tem a sua,
+  e manchas vizinhas se sobrepõem (tinta 0,6 vira 0,84). O bloco é pelo GRUPO,
+  não por proximidade, de propósito: mancha que se funde sozinha ao aproximar
+  textos é surpresa; agrupar é gesto. O servidor enxerga os irmãos por
+  `options.camadasDoDesign` (renderDesign preenche; renderLayer avulso cai no
+  fundo por texto). Texto girado ou curvo fica fora do bloco.
+- 🔴 **Follow por eventos de ATRIBUTO (`xChange`…), nunca por `dragmove`**: o
+  arraste em grupo move os irmãos com `position()` por código, sem evento de
+  drag neles. `Node._setAttr` dispara `<attr>Change` em qualquer escrita.
+- **Reflow em grupos manuais foi MANTIDO** (decisão de 02/09): editor e
+  servidor leem o mesmo `groupId`; refluir só de um lado divergiria a arte.
+- Rich-text e texto curvo continuam sem fundo, como já eram.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

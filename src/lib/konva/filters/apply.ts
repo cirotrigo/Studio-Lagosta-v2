@@ -308,9 +308,13 @@ export function applyStackBlur(
 ): void {
   radius = Math.round(radius)
   if (radius <= 0) return
-  // mul/shg têm 255 entradas — acima disso o Konva quebraria com NaN; aqui
-  // saturamos no máximo representável
-  if (radius > 254) radius = 254
+  // 🔴 O teto real é o OVERFLOW, não a tabela: `(sum * mul) >> shg` usa shift
+  // com sinal, e 255·(r+1)(r+2)/2·mul[r] passa de 2³¹ entre o raio 180 e
+  // 190 — medido em 02/09/2026 (raio 200: faixas verticais, mancha some). O
+  // Konva do editor tem o mesmo limite. Raio maior que isso se resolve
+  // borrando em escala reduzida (escalaDoBlur em fundo-de-texto.ts), nunca
+  // aqui; a saturação existe só para o chamador que não passou por lá.
+  if (radius > 180) radius = 180
 
   const pixels = data
   let p: number,

@@ -34,6 +34,7 @@ import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
 import { BrandColorSwatches } from './brand-color-swatches'
+import { FundoDeTextoControls } from './fundo-de-texto-controls'
 import { VideoProperties } from './video-properties'
 import {
   applyOpacityToEditableColor,
@@ -855,74 +856,8 @@ function TextEffectsOnly({ layer }: TextEffectsOnlyProps) {
         )}
       </div>
 
-      {/* Background Effect */}
-      <div className="space-y-2 rounded-md border border-border/30 bg-muted/30 p-2">
-        <div className="flex items-center justify-between">
-          <Label className="text-[10px] font-semibold uppercase">Background</Label>
-          <input
-            type="checkbox"
-            className="h-4 w-4"
-            checked={effects.background?.enabled || false}
-            onChange={(e) => updateEffect('background', {
-              enabled: e.target.checked,
-              backgroundColor: effects.background?.backgroundColor || '#ffffff',
-              padding: effects.background?.padding || 10
-            })}
-          />
-        </div>
-        {effects.background?.enabled && (
-          <div className="space-y-2">
-            <div className="space-y-1">
-              <Label className="text-[9px]">Cor</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="text"
-                  className="h-7 text-xs flex-1"
-                  value={effects.background.backgroundColor}
-                  onChange={(e) => updateEffect('background', {
-                    ...effects.background,
-                    backgroundColor: e.target.value
-                  })}
-                />
-                <input
-                  type="color"
-                  className="h-7 w-7 rounded border border-border/30"
-                  value={effects.background.backgroundColor}
-                  onChange={(e) => updateEffect('background', {
-                    ...effects.background,
-                    backgroundColor: e.target.value
-                  })}
-                />
-              </div>
-              <BrandColorSwatches
-                value={effects.background.backgroundColor}
-                onSelect={(hex) => updateEffect('background', {
-                  ...effects.background,
-                  backgroundColor: hex
-                })}
-              />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center justify-between">
-                <Label className="text-[9px]">Padding</Label>
-                <span className="text-[9px] text-muted-foreground">{effects.background.padding}px</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={20}
-                step={1}
-                className="w-full h-1"
-                value={effects.background.padding}
-                onChange={(e) => updateEffect('background', {
-                  ...effects.background,
-                  padding: Number(e.target.value)
-                })}
-              />
-            </div>
-          </div>
-        )}
-      </div>
+      {/* Fundo / halo (effects.background) — o mesmo componente do painel Gradientes */}
+      <FundoDeTextoControls layer={layer} />
 
       {/* Shadow Effect */}
       <div className="space-y-2 rounded-md border border-border/30 bg-muted/30 p-2">
@@ -1096,7 +1031,7 @@ function ShapeEffectsOnly({ layer }: { layer: Layer }) {
             <input
               type="range"
               min={0}
-              max={200}
+              max={600}
               step={1}
               className="w-full h-1"
               value={effects.blur.blurRadius}

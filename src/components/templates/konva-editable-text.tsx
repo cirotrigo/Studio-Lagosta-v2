@@ -6,6 +6,7 @@ import { Text, Rect, Path, Group } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer } from '@/types/template'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { FundoDoTexto } from './konva-text-background'
 
 /**
  * KonvaEditableText - Componente de texto editável para Konva.js
@@ -1251,9 +1252,6 @@ export function KonvaEditableText({
     }
   }, [assinaturaRender, shapeRef])
 
-  // Calculate background dimensions if background effect is enabled
-  const backgroundPadding = layer.effects?.background?.enabled ? (layer.effects.background.padding || 10) : 0
-
   // Curved text effect - render each character along an arc
   const isCurvedText = layer.effects?.curved?.enabled && layer.effects.curved.curvature !== 0
   const curvedTextElements = React.useMemo(() => {
@@ -1319,15 +1317,14 @@ export function KonvaEditableText({
 
   return (
     <>
-      {/* Background Effect */}
-      {layer.effects?.background?.enabled && !isCurvedText && (
-        <Rect
-          x={(layer.position?.x ?? 0) - backgroundPadding}
-          y={(layer.position?.y ?? 0) - backgroundPadding}
-          width={(layer.size?.width ?? 240) + (backgroundPadding * 2)}
-          height={(layer.size?.height ?? 120) + (backgroundPadding * 2)}
-          fill={layer.effects.background.backgroundColor}
-          listening={false}
+      {/* Fundo/halo (effects.background): Rect irmão que mede a tinta pelo
+          textArr e segue o texto no arraste — ver konva-text-background */}
+      {!isCurvedText && (
+        <FundoDoTexto
+          layer={layer}
+          textRef={shapeRef}
+          assinaturaRender={assinaturaRender}
+          opacidadeDaCamada={commonProps.opacity}
         />
       )}
 
