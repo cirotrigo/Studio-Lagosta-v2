@@ -27,6 +27,7 @@ import * as fs from 'fs'
 import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
+import { prepararCamadasParaGravar } from '../src/lib/creatives/layer-contract'
 
 // ─── Clients ─────────────────────────────────────────────────────────
 
@@ -464,7 +465,7 @@ toolEstrita(
   {
     projectId: z.number().describe('Project ID'),
     name: z.string().describe('Template name (e.g., "By Rock - Happy Hour")'),
-    type: z.enum(['STORY', 'FEED_PORTRAIT', 'SQUARE']).optional().describe('Template type (default: STORY)'),
+    type: z.enum(['STORY', 'FEED', 'SQUARE']).optional().describe('Template type (default: STORY). FEED is 1080x1350.'),
     dimensions: z.string().optional().describe('Dimensions string (default: "1080x1920")'),
     category: z.string().optional().describe('Category for grouping'),
     tags: z.array(z.string()).optional().describe('Tags for theme-based selection (e.g., ["happy-hour", "promo"])'),
@@ -476,6 +477,18 @@ toolEstrita(
       if (!project) return { content: [{ type: 'text' as const, text: 'Error: Project not found' }], isError: true }
 
       const parsedPages = pages ? JSON.parse(pages) : []
+      // O tamanho das páginas inline vem de `dimensions` — até 02/09/2026 era
+      // 1080x1920 cravado, e um template FEED nascia com páginas de story.
+      const [larguraStr, alturaStr] = (dimensions ?? '1080x1920').toLowerCase().split('x')
+      const largura = Number(larguraStr) || 1080
+      const altura = Number(alturaStr) || 1920
+      // Contrato do Layer (F0, 02/09/2026): validar e normalizar ANTES de
+      // gravar. Camada inválida recusa a chamada inteira, com o motivo.
+      const paginasPreparadas = parsedPages.map((p: any, i: number) => {
+        const r = prepararCamadasParaGravar(p.layers ?? [])
+        return { ...p, camadas: r.camadas, avisos: r.avisos.map((a: string) => `página ${i + 1}: ${a}`) }
+      })
+      const avisosDoContrato: string[] = paginasPreparadas.flatMap((p: any) => p.avisos)
 
       const template = await prisma.template.create({
         data: {
@@ -491,14 +504,14 @@ toolEstrita(
       })
 
       const pageIds: string[] = []
-      for (let i = 0; i < parsedPages.length; i++) {
-        const p = parsedPages[i]
-        const pageLayers = typeof p.layers === 'string' ? p.layers : JSON.stringify(p.layers ?? [])
+      for (let i = 0; i < paginasPreparadas.length; i++) {
+        const p = paginasPreparadas[i]
+        const pageLayers = JSON.stringify(p.camadas)
         const page = await prisma.page.create({
           data: {
             name: p.name ?? `Página ${i + 1}`,
-            width: 1080,
-            height: 1920,
+            width: largura,
+            height: altura,
             layers: pageLayers,
             background: p.background ?? '#000000',
             order: i,
@@ -521,6 +534,7 @@ toolEstrita(
           tags: template.tags,
           pageCount: pageIds.length,
           pageIds,
+          ...(avisosDoContrato.length > 0 ? { avisosDoContrato } : {}),
         }, null, 2) }],
       }
     } catch (error: any) {
@@ -559,8 +573,13 @@ toolEstrita(
         _max: { order: true },
       })
 
+      // Contrato do Layer (F0, 02/09/2026): a página nasce validada e
+      // normalizada (fontWeight múltiplo de 100, entrelinha nos dois campos,
+      // order renumerado, autoExpand, objectFit). Camada inválida recusa a
+      // chamada inteira — antes qualquer JSON entrava e só a arte torta avisava.
+      const contrato = prepararCamadasParaGravar(layers ?? '[]')
       // Store layers as JSON string (matching editor format)
-      const layersStr = layers ?? '[]'
+      const layersStr = JSON.stringify(contrato.camadas)
 
       const page = await prisma.page.create({
         data: {
@@ -588,6 +607,7 @@ toolEstrita(
           pageId: page.id,
           name: page.name,
           isTemplate: page.isTemplate,
+          ...(contrato.avisos.length > 0 ? { avisosDoContrato: contrato.avisos } : {}),
           nota: page.isTemplate
             ? 'Página criada como MODELO do projeto — ela vai concorrer em toda escolha futura de layout.'
             : 'Página criada como conteúdo comum. Para virar modelo reutilizável, use marcar-como-modelo (com tags de tema).',
