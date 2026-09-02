@@ -1,0 +1,182 @@
+[
+ {
+  "arquivo": "render/Ter0800.png",
+  "textos": [
+   "Terça no Quintal",
+   "Terça, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "quando": "2026-09-01 08:00",
+  "tema": "Funcionamento e endereço"
+ },
+ {
+  "arquivo": "render/Ter0930.png",
+  "textos": [
+   "Almoço Executivo",
+   "Prato principal na parrilla e até três acompanhamentos.",
+   "Segunda a sexta, das 11h às 16h"
+  ],
+  "quando": "2026-09-01 09:30",
+  "tema": "Almoço executivo"
+ },
+ {
+  "arquivo": "render/Ter1400.png",
+  "textos": [
+   "Happy Hour do Quintal",
+   "Chope e drinks selecionados em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ],
+  "quando": "2026-09-01 14:00",
+  "tema": "Happy hour"
+ },
+ {
+  "arquivo": "render/Qua0800.png",
+  "textos": [
+   "Quarta no Quintal",
+   "Quarta, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "quando": "2026-09-02 08:00",
+  "tema": "Funcionamento e endereço"
+ },
+ {
+  "arquivo": "render/Qua1000.png",
+  "textos": [
+   "Almoço na Brasa",
+   "Escolha o corte, escolha os acompanhamentos e sente à mesa.",
+   "Segunda a sexta, das 11h às 16h"
+  ],
+  "quando": "2026-09-02 10:00",
+  "tema": "Almoço executivo"
+ },
+ {
+  "arquivo": "render/Qua1400.png",
+  "textos": [
+   "Chope em Dobro",
+   "Chope e drinks selecionados, os dois em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ],
+  "quando": "2026-09-02 14:00",
+  "tema": "Happy hour"
+ },
+ {
+  "arquivo": "render/Qui0800.png",
+  "textos": [
+   "Quinta no Quintal",
+   "Quinta, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "quando": "2026-09-03 08:00",
+  "tema": "Funcionamento e endereço"
+ },
+ {
+  "arquivo": "render/Qui0930.png",
+  "textos": [
+   "Tem Peixe no Executivo",
+   "Tilápia com crosta de ervas é uma das opções de prato principal.",
+   "Segunda a sexta, das 11h às 16h"
+  ],
+  "quando": "2026-09-03 09:30",
+  "tema": "Almoço executivo"
+ },
+ {
+  "arquivo": "render/Qui1430.png",
+  "textos": [
+   "A Tarde Pede Chope",
+   "Chope e drinks selecionados em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ],
+  "quando": "2026-09-03 14:30",
+  "tema": "Happy hour"
+ },
+ {
+  "arquivo": "render/Sex0800.png",
+  "textos": [
+   "Sexta no Quintal",
+   "Sexta, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "quando": "2026-09-04 08:00",
+  "tema": "Funcionamento e endereço"
+ },
+ {
+  "arquivo": "render/Sex0900.png",
+  "textos": [
+   "Sexta Começa no Almoço",
+   "Sobrecoxa desossada na parrilla, com os acompanhamentos que você escolher.",
+   "Segunda a sexta, das 11h às 16h"
+  ],
+  "quando": "2026-09-04 09:00",
+  "tema": "Almoço executivo"
+ },
+ {
+  "arquivo": "render/Sex1400.png",
+  "textos": [
+   "Sextou no Quintal",
+   "Chope e drinks selecionados em dobro",
+   "Terça a sexta, das 16h às 19h"
+  ],
+  "quando": "2026-09-04 14:00",
+  "tema": "Happy hour"
+ },
+ {
+  "arquivo": "render/Sab0800.png",
+  "textos": [
+   "Sábado no Quintal",
+   "Sábado, das 11h às 00h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "quando": "2026-09-05 08:00",
+  "tema": "Funcionamento e endereço"
+ },
+ {
+  "arquivo": "render/Sab1100.png",
+  "textos": [
+   "Picanha na Parrilla",
+   "Corte de 300g, com farofa, vinagrete e o acompanhamento que você escolher.",
+   "Sábado, das 11h às 00h"
+  ],
+  "quando": "2026-09-05 11:00",
+  "tema": "Corte na parrilla"
+ },
+ {
+  "arquivo": "render/Sab1200.png",
+  "textos": [
+   "Tábua pra Galera",
+   "Costela, ancho, sobrecoxas, mini kaftas e batatas rústicas",
+   "Tábua O Quintal, serve 6 pessoas"
+  ],
+  "quando": "2026-09-05 12:00",
+  "tema": "Tábua para dividir"
+ },
+ {
+  "arquivo": "render/Dom0800.png",
+  "textos": [
+   "Domingo no Quintal",
+   "Domingo, das 11h às 17h",
+   "Rua Aleixo Netto, 1158, Praia do Canto"
+  ],
+  "quando": "2026-09-06 08:00",
+  "tema": "Funcionamento e endereço"
+ },
+ {
+  "arquivo": "render/Dom1100.png",
+  "textos": [
+   "Domingo de Resenha",
+   "A mesa cheia, a sombra da árvore e o dia inteiro pela frente",
+   "Domingo, das 11h às 17h"
+  ],
+  "quando": "2026-09-06 11:00",
+  "tema": "Resenha de domingo"
+ },
+ {
+  "arquivo": "render/Dom1200.png",
+  "textos": [
+   "Pra Petiscar no Domingo",
+   "Pão na brasa recheado com gorgonzola, requeijão, muçarela e linguiça.",
+   "Domingo, das 11h às 17h"
+  ],
+  "quando": "2026-09-06 12:00",
+  "tema": "Petiscos e entradas"
+ }
+]

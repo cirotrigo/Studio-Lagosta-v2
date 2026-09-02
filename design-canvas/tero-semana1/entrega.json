@@ -1,0 +1,205 @@
+[
+ {
+  "arquivo": "render/Main.png",
+  "textos": [
+   "4,9 no TripAdvisor",
+   "O que dizem do Tero",
+   "Venha para o Tero"
+  ],
+  "tema": "avaliacao do TripAdvisor"
+ },
+ {
+  "arquivo": "render/SegFuncionamento.png",
+  "textos": [
+   "Segunda no Tero",
+   "DO PRIMEIRO PRATO AO ÚLTIMO BRINDE, DESFRUTE ESSA EXPERIÊNCIA",
+   "FUNCIONAMENTO DAS 18h30 ÀS 23h30",
+   "R. EUGÊNIO NETTO, 326 · PRAIA DO CANTO",
+   "Reserve sua mesa"
+  ],
+  "tema": "funcionamento de segunda (so jantar)"
+ },
+ {
+  "arquivo": "render/SegRolhaFree.png",
+  "textos": [
+   "Rolha free no jantar",
+   "O RITUAL QUE ABRE A SUA SEMANA À MESA",
+   "DE SEGUNDA A QUINTA, NO JANTAR",
+   "Fale com a gente"
+  ],
+  "tema": "rolha free no jantar"
+ },
+ {
+  "arquivo": "render/TerFuncionamento.png",
+  "textos": [
+   "Terça no Tero",
+   "Hoje, das 11h30 às 23h30",
+   "R. Eugênio Netto, 326 · Praia do Canto",
+   "Venha para o Tero"
+  ],
+  "tema": "funcionamento e endereco"
+ },
+ {
+  "arquivo": "render/TerExecutivo.png",
+  "textos": [
+   "Almoço Tero",
+   "SUA PAUSA COM SABOR E ACONCHEGO",
+   "TERÇA A SEXTA, DAS 11h30 ÀS 16h",
+   "Vem provar"
+  ],
+  "tema": "almoco executivo"
+ },
+ {
+  "arquivo": "render/TerHappyHour.png",
+  "textos": [
+   "Happy hour no Tero",
+   "Chopp e drinks selecionados em dobro",
+   "Hoje, das 16h às 20h",
+   "Fale com a gente"
+  ],
+  "tema": "happy hour"
+ },
+ {
+  "arquivo": "render/QuaFuncionamento.png",
+  "textos": [
+   "A semana merece uma pausa",
+   "Hoje, das 11h30 às 23h30",
+   "R. Eugênio Netto, 326 · Praia do Canto",
+   "Reserve sua mesa"
+  ],
+  "tema": "funcionamento e endereco"
+ },
+ {
+  "arquivo": "render/QuaExecutivo.png",
+  "textos": [
+   "ALMOÇO EXECUTIVO",
+   "TERÇA A SEXTA · 11h30 ÀS 16h"
+  ],
+  "tema": "almoco executivo"
+ },
+ {
+  "arquivo": "render/QuaHappyWine.png",
+  "textos": [
+   "Quarta com vinho",
+   "Happy Wine: vinhos selecionados à vontade por R$ 79 por pessoa",
+   "Hoje, das 16h às 20h",
+   "Escolha seu vinho"
+  ],
+  "tema": "happy wine"
+ },
+ {
+  "arquivo": "render/QuiFuncionamento.png",
+  "textos": [
+   "Quase no fim de semana",
+   "Hoje, das 11h30 às 23h30",
+   "R. Eugênio Netto, 326 · Praia do Canto",
+   "Venha para o Tero"
+  ],
+  "tema": "funcionamento e endereco"
+ },
+ {
+  "arquivo": "render/QuiExecutivo.png",
+  "textos": [
+   "Cardápio de almoço",
+   "Sobrecoxa desossada, isca de filé mignon ou ancho com dois acompanhamentos",
+   "Terça a sexta, das 11h30 às 16h",
+   "Vem provar"
+  ],
+  "tema": "almoco executivo"
+ },
+ {
+  "arquivo": "render/QuiRolhaFree.png",
+  "textos": [
+   "Jantar de quinta",
+   "Rolha free de segunda a quinta: o seu vinho na nossa mesa",
+   "De segunda a quinta, no jantar",
+   "Peça sua reserva"
+  ],
+  "tema": "rolha free no jantar (deslizou 30min pelo feed das 17h)"
+ },
+ {
+  "arquivo": "render/SexFuncionamento.png",
+  "textos": [
+   "Sexta é dia de comemorar",
+   "Hoje, das 11h30 às 23h30",
+   "R. Eugênio Netto, 326 · Praia do Canto",
+   "Reserve sua mesa"
+  ],
+  "tema": "funcionamento e endereco"
+ },
+ {
+  "arquivo": "render/SexExecutivo.png",
+  "textos": [
+   "Almoço executivo",
+   "Cinco pratos principais e dois acompanhamentos à escolha",
+   "Hoje, das 11h30 às 16h",
+   "Vem provar"
+  ],
+  "tema": "almoco executivo"
+ },
+ {
+  "arquivo": "render/SexBaiao.png",
+  "textos": [
+   "SEXTA | 11h30 ÀS 23h30",
+   "R. EUGÊNIO NETTO, 326 · PRAIA DO CANTO"
+  ],
+  "tema": "jantar de sexta: baiao de dois cremoso"
+ },
+ {
+  "arquivo": "render/SabFuncionamento.png",
+  "textos": [
+   "Sábado no Tero",
+   "Hoje, das 11h30 às 23h30",
+   "R. Eugênio Netto, 326 · Praia do Canto",
+   "Reserve sua mesa"
+  ],
+  "tema": "funcionamento e endereco"
+ },
+ {
+  "arquivo": "render/SabHappyWine.png",
+  "textos": [
+   "Vinhos à vontade",
+   "Happy Wine de sábado: vinhos selecionados por R$ 79 por pessoa",
+   "Hoje, das 12h às 16h",
+   "Escolha seu vinho"
+  ],
+  "tema": "happy wine de sabado"
+ },
+ {
+  "arquivo": "render/SabCompartilhar.png",
+  "textos": [
+   "Para compartilhar",
+   "Cortes da casa servidos para dividir, com a carta de vinhos ao lado",
+   "Hoje, até as 23h30",
+   "Reserve sua mesa"
+  ],
+  "tema": "jantar de sabado: cortes para compartilhar"
+ },
+ {
+  "arquivo": "render/DomFuncionamento.png",
+  "textos": [
+   "11h30 ÀS 16h",
+   "R. EUGÊNIO NETTO, 326 · PRAIA DO CANTO"
+  ],
+  "tema": "funcionamento de domingo (so almoco)"
+ },
+ {
+  "arquivo": "render/DomFamilia.png",
+  "textos": [
+   "Domingo em família",
+   "Clássicos e grelhados para compartilhar à mesa",
+   "Hoje, das 11h30 às 16h",
+   "Reserve sua mesa"
+  ],
+  "tema": "almoco de domingo em familia"
+ },
+ {
+  "arquivo": "render/DomAvaliacao.png",
+  "textos": [
+   "avaliação no Google",
+   "Quem já veio, voltou",
+   "Venha para o Tero"
+  ],
+  "tema": "avaliacao de clientes no Google"
+ }
+]

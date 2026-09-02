@@ -41,7 +41,9 @@ def realce(texto):
                   f'<span style="color: {BRANCO}; font-weight: 500;">\\1</span>',
                   texto)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from dados import STORIES, FEED, HORARIO, ENDERECO
+from _entrega import escrever_entrega  # noqa: E402
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 VERMELHO, BRANCO, CINZA, PRETO = "#C82020", "#FFFFFF", "#CCCCCC", "#111111"
@@ -621,7 +623,7 @@ def main():
             linhas += [sl[4], sl[5]]
     larguras = medir([l for l in dict.fromkeys(linhas) if l.strip()])
 
-    plano, n, encolhidas = {}, 0, []
+    plano, n, encolhidas, entrega = {}, 0, [], []
     for i, (pid, _d, _h, variante, _logo, foto, m1, m2, apoio, fecho, rodape) in enumerate(STORIES):
         corpo = corpo_da_manchete(m1, m2, ESC_STORY["manchete"], DISPONIVEL, larguras)
         if corpo < ESC_STORY["manchete"]:
@@ -630,6 +632,9 @@ def main():
         conferir_divs(html, pid)
         open(os.path.join(BASE, f"{pid}.dc.html"), "w", encoding="utf-8").write(html)
         plano[pid] = dict(variante=variante, foto=foto, rodape=rodape, **esc)
+        entrega.append({'arquivo': f"render/{pid}.png",
+                        'textos': [m1, m2, apoio, fecho] + ([HORARIO, ENDERECO] if rodape else []),
+                        'quando': f"{_d} {_h}"})
         n += 1
     for c in FEED.values():
         for i, (sid, variante, _logo, foto, m1, m2, apoio) in enumerate(c["slides"]):
@@ -640,10 +645,13 @@ def main():
             conferir_divs(html, sid)
             open(os.path.join(BASE, f"{sid}.dc.html"), "w", encoding="utf-8").write(html)
             plano[sid] = dict(variante=variante, foto=foto, rodape=False, **esc)
+            # capa foto-pura tem manchete vazia: a lista limpa vira [] (afirmacao).
+            entrega.append({'arquivo': f"render/{sid}.png", 'textos': [m1, m2, apoio]})
             n += 1
 
     json.dump(plano, open(os.path.join(BASE, "plano.json"), "w", encoding="utf-8"),
               indent=1, ensure_ascii=False)
+    escrever_entrega(entrega, BASE)
     print(f"{n} artboards escritos em {BASE}")
     print("manchetes reduzidas: " + (", ".join(encolhidas) if encolhidas else "nenhuma"))
     topo = sum(1 for v in plano.values() if v["banda"] == "topo")

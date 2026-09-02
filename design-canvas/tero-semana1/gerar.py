@@ -23,6 +23,7 @@ import base64, json, os, sys
 from PIL import ImageFont
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _entrega import escrever_entrega, textos_de  # noqa: E402
 from _halo import (halo as halo_bruto, conferir_divs, op,
                    ajustar_por_geometria, tinta_para_alvo)
 
@@ -545,6 +546,7 @@ if __name__ == '__main__':
     dados = json.load(open('slots.json', encoding='utf-8'))
     canvas = {'artboards': [], 'launch': {'view': 'canvas'}}
     mapa = []
+    entrega = []
     i = -1
     for s in dados['pecas']:
         arq = f"{s['arq']}.dc.html"
@@ -577,8 +579,13 @@ if __name__ == '__main__':
         mapa.append({'artboard': arq, 'dia': s['dia'], 'hora': s['hora'],
                      'tema': s['tema'], 'foto': s['foto'],
                      'pos': s.get('pos', 'topo'), 'alinha': s.get('alinha', 'left')})
+        # Capa de carrossel é foto pura: `textos: []` e afirmacao, nao omissao.
+        entrega.append({'arquivo': f"render/{s['arq']}.png",
+                        'textos': [] if s['layout'] == 'capa' else textos_de(s, ['selo', 'titulo', 'apoio', 'servico', 'cta']),
+                        'tema': s['tema']})
     json.dump(canvas, open('canvas.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
     json.dump(mapa, open('mapa.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    escrever_entrega(entrega)
     print(f"{len(mapa)} artboards  ({MODO})")
     if SEM_MEDIDA:
         print('\n🔴 SEM MEDICAO DE HALO (sairam sem mecanismo de leitura): '

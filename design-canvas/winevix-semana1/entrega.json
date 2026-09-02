@@ -1,0 +1,198 @@
+[
+ {
+  "arquivo": "render/Main.png",
+  "textos": [
+   "Segunda na Wine Vix",
+   "A Adega Abre a Semana",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/SegExecutivo.png",
+  "textos": [
+   "Almoço executivo",
+   "O Brasileirinho",
+   "Entrada, principal e sobremesa · R$ 79,90",
+   "Segunda a sexta · 11h às 15h",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/SegFestival.png",
+  "textos": [
+   "Hoje no bistrô",
+   "O Festival Italiano Se Despede Hoje",
+   "Hoje · 10h às 22h",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/TerFuncionamento.png",
+  "textos": [
+   "Terça com boas histórias",
+   "A Casa Está Aberta",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/TerExecutivo.png",
+  "textos": [
+   "Hora do almoço",
+   "Arroz de Polvo",
+   "Entrada, principal e sobremesa · R$ 79,90",
+   "Segunda a sexta · 11h às 15h",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/TerAdega.png",
+  "textos": [
+   "Da adega para você",
+   "Mais de 15 Países na Mesma Parede",
+   "A adega tem o rótulo certo para você"
+  ]
+ },
+ {
+  "arquivo": "render/QuaFuncionamento.png",
+  "textos": [
+   "Quarta na adega",
+   "Abertos Para o Seu Dia",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/QuaExecutivo.png",
+  "textos": [
+   "Pausa para almoçar bem",
+   "Ancho com Legumes",
+   "Entrada, principal e sobremesa · R$ 79,90",
+   "Segunda a sexta · 11h às 15h",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/QuaEntradas.png",
+  "textos": [
+   "Cozinha autoral",
+   "Uma Tábua Para Dividir",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/QuiFuncionamento.png",
+  "textos": [
+   "Quinta é quase sexta",
+   "A Porta Está Aberta",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/QuiExecutivo.png",
+  "textos": [
+   "Almoço executivo",
+   "Penne ao Pomodoro",
+   "Entrada, principal e sobremesa · R$ 79,90",
+   "Segunda a sexta · 11h às 15h",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/QuiHappyHour.png",
+  "textos": [
+   "Happy hour",
+   "O Tempo Passa Mais Devagar Aqui",
+   "Segunda a sábado · 16h às 19h",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/SexFuncionamento.png",
+  "textos": [
+   "Sexta na Wine Vix",
+   "A Sexta Começa na Taça",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/SexExecutivo.png",
+  "textos": [
+   "Almoço executivo",
+   "Três Tempos no Almoço",
+   "Entrada, principal e sobremesa · R$ 79,90",
+   "Segunda a sexta · 11h às 15h",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/SexPolvo.png",
+  "textos": [
+   "Hoje no bistrô",
+   "Polvo ao Mediterrâneo",
+   "Reserve no direct"
+  ]
+ },
+ {
+  "arquivo": "render/SabFuncionamento.png",
+  "textos": [
+   "Sábado especial",
+   "Sábado de Portas Abertas",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/SabCortesia.png",
+  "textos": [
+   "Sábado para celebrar",
+   "Uma Taça de Cortesia",
+   "Todo sábado · 10h às 22h",
+   "Venha nos visitar"
+  ]
+ },
+ {
+  "arquivo": "render/SabLevaPraCasa.png",
+  "textos": [
+   "Leva pra casa",
+   "A Adega Vai Com Você",
+   "winevix.com.br"
+  ]
+ },
+ {
+  "arquivo": "render/DomFechamento.png",
+  "textos": [
+   "Hoje fechado",
+   "Hoje a Adega Descansa",
+   "Segunda a sábado - 10h às 22h",
+   "Rua Elesbão Linhares, 52, Praia do Canto",
+   "Sua mesa já sente sua falta"
+  ]
+ },
+ {
+  "arquivo": "render/DomDesejo.png",
+  "textos": [
+   "Descoberta da semana",
+   "Escolha o Rótulo da Sua Semana",
+   "winevix.com.br"
+  ]
+ },
+ {
+  "arquivo": "render/DomReabertura.png",
+  "textos": [
+   "Segunda na Wine Vix",
+   "Amanhã a Casa Abre às 10h",
+   "Executivo 11h–15h · Happy hour 16h–19h",
+   "Sua mesa já sente sua falta"
+  ]
+ }
+]

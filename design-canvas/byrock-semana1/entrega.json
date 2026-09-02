@@ -1,0 +1,334 @@
+[
+ {
+  "arquivo": "render/s01.png",
+  "textos": [
+   "OS CORTES GRELHADOS",
+   "SAEM COM 25% OFF",
+   "De segunda a sexta, das 11h às 16h. Os Rock Steaks vêm com molho e dois acompanhamentos.",
+   "Vem almoçar",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-08-31 09:00"
+ },
+ {
+  "arquivo": "render/s02.png",
+  "textos": [
+   "HAPPY HOUR TODO DIA",
+   "ATÉ 50% OFF",
+   "Todo dia, das 16h às 20h, nos itens com o selo HH.",
+   "Chama a galera"
+  ],
+  "quando": "2026-08-31 15:00"
+ },
+ {
+  "arquivo": "render/s03.png",
+  "textos": [
+   "COSTELA AO BARBECUE",
+   "VAI ATÉ VOCÊ",
+   "Delivery próprio, todo dia, no almoço e no jantar. É a Ribs Barbecue.",
+   "Peça no delivery"
+  ],
+  "quando": "2026-08-31 19:00"
+ },
+ {
+  "arquivo": "render/s04.png",
+  "textos": [
+   "ALMOÇO RESOLVIDO",
+   "SEM PRESSA",
+   "Baby beef grelhado com arroz, feijão, batata e farofa. É o Roberto Carlos.",
+   "Vem almoçar",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-09-01 09:00"
+ },
+ {
+  "arquivo": "render/s05.png",
+  "textos": [
+   "O TORRESMO CROCANTE",
+   "COM LIMÃO SICILIANO",
+   "O Torresmo Rock está no selo HH. Happy hour todo dia, das 16h às 20h.",
+   "Bora!"
+  ],
+  "quando": "2026-09-01 15:00"
+ },
+ {
+  "arquivo": "render/s06.png",
+  "textos": [
+   "QUINTA É DIA",
+   "DE VINHO",
+   "Cardápio especial e rolha free no primeiro vinho.",
+   "Garanta sua mesa"
+  ],
+  "quando": "2026-09-01 18:00"
+ },
+ {
+  "arquivo": "render/s07.png",
+  "textos": [
+   "PEDIU O PRINCIPAL",
+   "A ENTRADA VEM JUNTO",
+   "De segunda a sexta, das 11h às 16h: todo Main Stage vem com entrada.",
+   "Vem almoçar",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-09-02 09:00"
+ },
+ {
+  "arquivo": "render/s08.png",
+  "textos": [
+   "O CHOPP GELADO",
+   "ENTRA NO HAPPY HOUR",
+   "Todo dia, das 16h às 20h, com até 50% OFF nos itens do selo HH.",
+   "Vem pro By Rock"
+  ],
+  "quando": "2026-09-02 15:00"
+ },
+ {
+  "arquivo": "render/s09.png",
+  "textos": [
+   "NA QUINTA,",
+   "A ROLHA É FREE",
+   "No primeiro vinho. E a noite tem cardápio especial.",
+   "Reserve já"
+  ],
+  "quando": "2026-09-02 18:00"
+ },
+ {
+  "arquivo": "render/s10.png",
+  "textos": [
+   "FILÉ À PARMEGIANA",
+   "COM MOLHO ARTESANAL",
+   "De frango ou carne, com arroz e purê. É o Capital Inicial.",
+   "Vem almoçar",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-09-03 09:00"
+ },
+ {
+  "arquivo": "render/s11.png",
+  "textos": [
+   "QUATRO PASTÉIS",
+   "VOCÊ ESCOLHE O SABOR",
+   "O Pastel Backstage está no selo HH. Todo dia, das 16h às 20h.",
+   "Chama a galera"
+  ],
+  "quando": "2026-09-03 15:00"
+ },
+ {
+  "arquivo": "render/s12.png",
+  "textos": [
+   "HOJE A CASA",
+   "É DO VINHO",
+   "A Quinta do Vinho tem cardápio próprio e rolha free no primeiro.",
+   "Vem pro By Rock"
+  ],
+  "quando": "2026-09-03 18:00"
+ },
+ {
+  "arquivo": "render/s13.png",
+  "textos": [
+   "SEXTA É O ÚLTIMO DIA",
+   "COM 25% OFF",
+   "Os Rock Steaks com 25% OFF até as 16h. Volta só na segunda.",
+   "Vem almoçar",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-09-04 09:00"
+ },
+ {
+  "arquivo": "render/s14.png",
+  "textos": [
+   "BATATA COM COSTELA",
+   "DESFIADA E BARBECUE",
+   "A Fries & Ribs está no selo HH. Todo dia, das 16h às 20h.",
+   "Bora!"
+  ],
+  "quando": "2026-09-04 15:00"
+ },
+ {
+  "arquivo": "render/s15.png",
+  "textos": [
+   "SEXTA PEDE",
+   "MESA GRANDE",
+   "Seis cortes numa travessa só, a partir de 1,5kg. É o Rock Mix.",
+   "Chama a galera"
+  ],
+  "quando": "2026-09-04 18:00"
+ },
+ {
+  "arquivo": "render/s16.png",
+  "textos": [
+   "SÁBADO EM FAMÍLIA",
+   "COM ÁREA KIDS",
+   "Área kids para as crianças e mesa à vontade. A casa abre às 11h.",
+   "Chama a família e vem",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-09-05 11:00"
+ },
+ {
+  "arquivo": "render/s17.png",
+  "textos": [
+   "O FIM DE SEMANA",
+   "COMEÇA ÀS 16H",
+   "Happy hour todo dia, das 16h às 20h, com até 50% OFF no selo HH.",
+   "Vem pro By Rock"
+  ],
+  "quando": "2026-09-05 15:00"
+ },
+ {
+  "arquivo": "render/s18.png",
+  "textos": [
+   "BIFE ANCHO",
+   "NO PONTO QUE PEDIR",
+   "Grelhado, com um molho e dois acompanhamentos. É um dos Rock Steaks.",
+   "Reserve já"
+  ],
+  "quando": "2026-09-05 18:00"
+ },
+ {
+  "arquivo": "render/s19.png",
+  "textos": [
+   "O ALMOÇO DE DOMINGO",
+   "COMEÇA ÀS 11H",
+   "Área kids para as crianças e o salão inteiro pra ninguém ter pressa.",
+   "Chama a família e vem",
+   "Todos os dias das 11h à meia-noite",
+   "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+  ],
+  "quando": "2026-09-06 09:00"
+ },
+ {
+  "arquivo": "render/s20.png",
+  "textos": [
+   "DOMINGO TAMBÉM",
+   "TEM HAPPY HOUR",
+   "Todo dia, das 16h às 20h, com até 50% OFF nos itens do selo HH.",
+   "Bora!"
+  ],
+  "quando": "2026-09-06 15:00"
+ },
+ {
+  "arquivo": "render/s21.png",
+  "textos": [
+   "BROWNIE QUENTE",
+   "COM SORVETE E CALDA",
+   "Chocolate belga derretido na hora de servir. É o Rock'n Brownie.",
+   "Vem pro By Rock"
+  ],
+  "quando": "2026-09-06 18:00"
+ },
+ {
+  "arquivo": "render/f1-01.png",
+  "textos": []
+ },
+ {
+  "arquivo": "render/f1-02.png",
+  "textos": [
+   "ALMOÇO COM",
+   "25% OFF",
+   "Nos cortes grelhados, de segunda a sexta, das 11h às 16h."
+  ]
+ },
+ {
+  "arquivo": "render/f1-03.png",
+  "textos": [
+   "UM MOLHO",
+   "DOIS ACOMPANHAMENTOS",
+   "Ou um acompanhamento especial, se preferir. A escolha é sua."
+  ]
+ },
+ {
+  "arquivo": "render/f1-04.png",
+  "textos": [
+   "BIFE ANCHO",
+   "OU BIFE CHORIZO",
+   "Dois dos cortes que entram na seção — e não são os únicos. No cardápio, eles são os Rock Steaks."
+  ]
+ },
+ {
+  "arquivo": "render/f1-05.png",
+  "textos": [
+   "VEM ALMOÇAR",
+   "NA PRAIA DO CANTO",
+   "Rua Eugênio Netto, 82. Todos os dias, das 11h à meia-noite."
+  ]
+ },
+ {
+  "arquivo": "render/f2-01.png",
+  "textos": []
+ },
+ {
+  "arquivo": "render/f2-02.png",
+  "textos": [
+   "QUINTA É DIA",
+   "DE VINHO",
+   "Toda quinta, com cardápio próprio na casa."
+  ]
+ },
+ {
+  "arquivo": "render/f2-03.png",
+  "textos": [
+   "O PRIMEIRO VINHO",
+   "VAI SEM ROLHA",
+   "Rolha free na primeira garrafa. E a noite tem cardápio próprio, com entradas, pratos do dia e sobremesas temáticas."
+  ]
+ },
+ {
+  "arquivo": "render/f2-04.png",
+  "textos": [
+   "A CASA FICA ABERTA",
+   "ATÉ MEIA-NOITE",
+   "Dá tempo de jantar sem pressa."
+  ]
+ },
+ {
+  "arquivo": "render/f2-05.png",
+  "textos": [
+   "GARANTA",
+   "SUA MESA",
+   "Rua Eugênio Netto, 82 — Praia do Canto, Vitória."
+  ]
+ },
+ {
+  "arquivo": "render/f3-01.png",
+  "textos": []
+ },
+ {
+  "arquivo": "render/f3-02.png",
+  "textos": [
+   "DOMINGO PEDE",
+   "TRAVESSA GRANDE",
+   "Picanha, fraldinha, ancho, chorizo, linguiça e legumes, a partir de 1,2kg."
+  ]
+ },
+ {
+  "arquivo": "render/f3-03.png",
+  "textos": [
+   "DÁ PRA DIVIDIR",
+   "COM TODO MUNDO",
+   "Uma travessa no meio da mesa e ninguém fica esperando a vez. No cardápio, ela atende por Rock Family."
+  ]
+ },
+ {
+  "arquivo": "render/f3-04.png",
+  "textos": [
+   "DOMINGO SEM PRESSA",
+   "A MESA É SUA",
+   "E as crianças se divertem na área kids enquanto os adultos ficam à mesa."
+  ]
+ },
+ {
+  "arquivo": "render/f3-05.png",
+  "textos": [
+   "CHAMA A FAMÍLIA",
+   "E VEM",
+   "Domingo a casa abre às 11h. Rua Eugênio Netto, 82 — Praia do Canto."
+  ]
+ }
+]

@@ -6,6 +6,7 @@ import halo_quintal as hq
 from sonda import medir_grupos
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from _halo import conferir_divs
+from _entrega import escrever_entrega  # noqa: E402
 
 # MODO=halo (padrão) ou MODO=veu, que mantém o mecanismo antigo para
 # comparação lado a lado. Foi assim que o By Rock foi aprovado.
@@ -326,6 +327,10 @@ def escrever(slots, medidas, props, logica):
         mapa.append({**s, 'artboard': f'{nome}.dc.html', 'layout': s['layout'],
                      'arquivoFoto': foto, 'modo': MODO, 'halo': medidas.get(nome, [])})
     json.dump(mapa, open('mapa.json', 'w'), ensure_ascii=False, indent=2)
+    # A régua da melhoria nasce aqui: o render de cada arte COM a copy exata.
+    escrever_entrega([{'arquivo': f"render/{slug(s['nome'])}.png", 'textos': s['copy'],
+                       'quando': f"2026-{s['dia'][3:5]}-{s['dia'][0:2]} {s['hora']}" if s.get('dia') and s.get('hora') else None,
+                       'tema': s.get('tema')} for s in slots])
     return mapa
 
 

@@ -2249,8 +2249,24 @@ toolEstrita(
     projectId: z.number().describe('Project ID (see list-projects)'),
     filePaths: z
       .array(z.string())
-      .min(1)
-      .describe('Absolute or ~/ paths of image files, or folders whose images should all go up (max 20 files per call)'),
+      .optional()
+      .describe('Absolute or ~/ paths of image files, or folders whose images should all go up (max 20 files per call). Optional when entregaPath is given.'),
+    entregaPath: z
+      .string()
+      .optional()
+      .describe(
+        'Path of the leva\'s `entrega.json` (written by the canvas generators via design-canvas/_entrega.py): ' +
+        '[{ arquivo, textos[], quando?, tema?, itemId? }]. Each file goes up WITH ITS OWN texts (the verbatim ruler for "melhorar com IA") in one call — ' +
+        'this is the by-construction ruler; prefer it over `textos` whenever the leva came from a canvas generator. `arquivo` is relative to the JSON\'s folder; `textos: []` marks a pure photo (carousel cover).',
+      ),
+    planoId: z
+      .string()
+      .optional()
+      .describe('Bancada destination: the plan (leva) whose items receive these artworks. With it, each uploaded file whose entrega item has `itemId` (or the tool-level `itemId`) makes that plan item "pronto" pointing at the new artwork.'),
+    itemId: z
+      .string()
+      .optional()
+      .describe('Bancada destination for a SINGLE file: the plan item that receives it (needs planoId).'),
     name: z
       .string()
       .optional()
@@ -2270,9 +2286,48 @@ toolEstrita(
         'With several files the same list applies to all — send one call per artwork when the copy differs.',
       ),
   },
-  async ({ projectId, filePaths, name, origem, textos }) => {
+  async ({ projectId, filePaths, entregaPath, planoId, itemId, name, origem, textos }) => {
     try {
-      const { files, errors } = expandUploadPaths(filePaths)
+      /**
+       * A régua POR CONSTRUÇÃO (F1, 02/09/2026): o `entrega.json` da leva diz
+       * quais textos cada render contém. Sem ele a arte subia sem `textos`, a
+       * melhoria lia o serviço da própria imagem e completava o que não
+       * entendia — endereço de outro estado, com a conferência verde (01/09).
+       */
+      const porArquivo = new Map<string, { textos?: string[]; itemId?: string; quando?: string; tema?: string }>()
+      const daEntrega: string[] = []
+      if (entregaPath) {
+        const abs = resolveLocalPath(entregaPath)
+        if (!fs.existsSync(abs)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ENTREGA_NAO_ENCONTRADA', message: `${entregaPath}: arquivo não encontrado` }) }], isError: true }
+        }
+        const base = path.dirname(abs)
+        let itens: Array<{ arquivo?: string; textos?: string[]; itemId?: string; quando?: string; tema?: string }>
+        try {
+          itens = JSON.parse(fs.readFileSync(abs, 'utf-8'))
+        } catch (e: any) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ENTREGA_INVALIDA', message: `entrega.json ilegível: ${e?.message ?? e}` }) }], isError: true }
+        }
+        if (!Array.isArray(itens)) {
+          return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ENTREGA_INVALIDA', message: 'entrega.json precisa ser uma lista de { arquivo, textos }' }) }], isError: true }
+        }
+        for (const it of itens) {
+          if (!it?.arquivo) continue
+          const caminho = path.resolve(base, it.arquivo)
+          porArquivo.set(caminho, { textos: Array.isArray(it.textos) ? it.textos : undefined, itemId: it.itemId, quando: it.quando, tema: it.tema })
+          daEntrega.push(caminho)
+        }
+      }
+      const { files, errors } = expandUploadPaths([...(filePaths ?? []), ...daEntrega])
+      if (!entregaPath && (!filePaths || filePaths.length === 0)) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'NENHUM_ARQUIVO', message: 'Informe filePaths ou entregaPath.' }) }], isError: true }
+      }
+      if (itemId && !planoId) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ENTRADA_INVALIDA', message: 'itemId precisa de planoId.' }) }], isError: true }
+      }
+      if (itemId && files.length > 1) {
+        return { content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ENTRADA_INVALIDA', message: 'itemId vale para UM arquivo; com vários, ponha o itemId em cada item do entrega.json.' }) }], isError: true }
+      }
 
       if (files.length === 0) {
         return {
@@ -2288,6 +2343,7 @@ toolEstrita(
       }
 
       const { importarArte } = await import('../src/lib/creatives/arte-enviada')
+      const { transicionarItem } = planoId ? await import('../src/lib/planos/plano-service') : { transicionarItem: null }
 
       const enviadas: unknown[] = []
       const falhas: { arquivo: string; motivo: string }[] = errors.map((motivo) => ({ arquivo: motivo.split(':')[0], motivo }))
@@ -2296,15 +2352,28 @@ toolEstrita(
       for (const [i, file] of files.entries()) {
         const fileName = path.basename(file)
         try {
+          const meta = porArquivo.get(file)
           const result = await importarArte({
             projectId,
             bytes: fs.readFileSync(file),
             fileName,
             name: name ? (files.length > 1 ? `${name} ${i + 1}` : name) : undefined,
-            origem: origem ?? file,
-            textos,
+            origem: origem ?? (entregaPath ? `canvas: ${path.basename(path.dirname(resolveLocalPath(entregaPath)))}` : file),
+            // O entrega.json vence a lista global: é a copy DAQUELA arte.
+            textos: meta?.textos ?? textos,
           })
-          enviadas.push(result)
+          // A porta da BANCADA: o item da leva passa a apontar para a arte.
+          const alvo = meta?.itemId ?? itemId
+          let naBancada: { itemId: string; situacao: string } | { erro: string } | undefined
+          if (alvo && planoId && transicionarItem) {
+            try {
+              const item = await transicionarItem({ projectId, planoId, itemId: alvo, para: 'pronto', generationId: result.generationId })
+              naBancada = { itemId: item.id, situacao: item.status }
+            } catch (e: any) {
+              naBancada = { erro: e?.message ?? String(e) }
+            }
+          }
+          enviadas.push({ ...result, ...(meta?.textos ? { textos: meta.textos.length } : {}), ...(naBancada ? { naBancada } : {}) })
         } catch (error: any) {
           falhas.push({ arquivo: fileName, motivo: error?.message ?? String(error) })
         }

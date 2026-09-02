@@ -56,6 +56,9 @@ Armadilhas da casa que este arquivo respeita (docs/SESSAO-2026-08-25):
 import json
 import os
 import re
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _entrega import escrever_entrega, textos_de  # noqa: E402
 
 CREME = '#F9F7F2'
 DOURADO = '#FCE77B'
@@ -706,3 +709,8 @@ if __name__ == '__main__':
     with open('canvas.json', 'w', encoding='utf-8') as f:
         json.dump(CANVAS, f, ensure_ascii=False, indent=2)
     print(f'  canvas.json  ({len(artboards)} no canvas)')
+    # A manchete e o `ouro` sao UM bloco desenhado ("A Adega Abre a Semana").
+    escrever_entrega([{'arquivo': f"render/{s['arq']}.png",
+                       'textos': textos_de(dict(s, lockup=[(s.get('manchete') or '') + (s.get('ouro') or '')]),
+                                           ['fio', 'lockup', 'apoio', 'condicao', 'servico', 'endereco', 'cta'])}
+                      for s in STORIES])

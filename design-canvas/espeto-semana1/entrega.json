@@ -1,0 +1,325 @@
+[
+ {
+  "arquivo": "render/Main.png",
+  "textos": [
+   "SEGUNDOU COM CHURRASCO",
+   "A SEMANA COMEÇA NO ESPETO",
+   "Seg a Qui das 16h à meia-noite",
+   "Sex a Dom e feriados das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Vem pro Espeto!"
+  ]
+ },
+ {
+  "arquivo": "render/Seg15Costela.png",
+  "textos": [
+   "PROMOÇÃO DO DIA",
+   "COSTELA NO BAFO",
+   "1kg com creme de aipim, farofa e vinagrete",
+   "R$ 104,90",
+   "a partir das 17h",
+   "Vem se servir!"
+  ]
+ },
+ {
+  "arquivo": "render/Seg18Kids.png",
+  "textos": [
+   "CLIMA DE FAMÍLIA",
+   "ÁREA KIDS NOS DOIS ANDARES",
+   "no térreo e no andar de cima",
+   "Chama a piazada!"
+  ]
+ },
+ {
+  "arquivo": "render/Ter12Funcionamento.png",
+  "textos": [
+   "TERÇA DE ESPETO",
+   "CASA CHEIA TODO DIA",
+   "Seg a Qui das 16h à meia-noite",
+   "Sex a Dom e feriados das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Bora pro Espeto!"
+  ]
+ },
+ {
+  "arquivo": "render/Ter15Maminha.png",
+  "textos": [
+   "PROMOÇÃO DO DIA",
+   "MAMINHA 500G",
+   "com farofa e vinagrete",
+   "R$ 64,90",
+   "a partir das 17h",
+   "Sente esse sabor!"
+  ]
+ },
+ {
+  "arquivo": "render/Ter18Marmitex.png",
+  "textos": [
+   "MARMITEX PRA LEVAR",
+   "MARMITEX DO ESPETO",
+   "Mista ou picanha, pequena ou grande",
+   "Somente retirada no balcão",
+   "Vem matar a fome!"
+  ]
+ },
+ {
+  "arquivo": "render/Qua12Funcionamento.png",
+  "textos": [
+   "QUARTA DE CHURRASCO",
+   "MEIO DA SEMANA COM CHURRASCO",
+   "Seg a Qui das 16h à meia-noite",
+   "Sex a Dom e feriados das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Vem pro fogo!"
+  ]
+ },
+ {
+  "arquivo": "render/Qua15Coracao.png",
+  "textos": [
+   "PROMOÇÃO DO DIA",
+   "ESPETO DE CORAÇÃO",
+   "R$ 32,90",
+   "a partir das 17h",
+   "Vem petiscar!"
+  ]
+ },
+ {
+  "arquivo": "render/Qua18RodizioAviso.png",
+  "textos": [
+   "ANOTA O HORÁRIO",
+   "SEXTA É DIA DE RODÍZIO",
+   "Exclusivo de sexta, no almoço, das 10h às 15h",
+   "R$ 89,00",
+   "por pessoa",
+   "Garanta seu lugar!"
+  ]
+ },
+ {
+  "arquivo": "render/Qui12Funcionamento.png",
+  "textos": [
+   "QUINTA QUASE SEXTA",
+   "A MESA TÁ POSTA",
+   "Seg a Qui das 16h à meia-noite",
+   "Sex a Dom e feriados das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Vem pra resenha!"
+  ]
+ },
+ {
+  "arquivo": "render/Qui15Alcatra.png",
+  "textos": [
+   "PROMOÇÃO DO DIA",
+   "ALCATRA 500G",
+   "com farofa e vinagrete",
+   "R$ 64,90",
+   "a partir das 17h",
+   "Vem provar!"
+  ]
+ },
+ {
+  "arquivo": "render/Qui18RodizioVespera.png",
+  "textos": [
+   "PRÉ-SEXTOU COM CHURRASCO",
+   "SEXTA TEM RODÍZIO NO ALMOÇO",
+   "Exclusivo de sexta, das 10h às 15h",
+   "R$ 89,00",
+   "por pessoa",
+   "Chama os amigos!"
+  ]
+ },
+ {
+  "arquivo": "render/Sex07Funcionamento.png",
+  "textos": [
+   "SEXTOU!",
+   "HOJE TEM RODÍZIO NO ALMOÇO",
+   "Rodízio das 10h às 15h, só às sextas",
+   "Sex a Dom e feriados das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Partiu Espeto!"
+  ]
+ },
+ {
+  "arquivo": "render/Sex11Rodizio.png",
+  "textos": [
+   "SEXTOU COM ESPETO",
+   "RODÍZIO NO ALMOÇO",
+   "Exclusivo de sexta, das 10h às 15h",
+   "R$ 89,00",
+   "por pessoa",
+   "Vem aproveitar!"
+  ]
+ },
+ {
+  "arquivo": "render/Sex20Resenha.png",
+  "textos": [
+   "RESENHA NO ESPETO",
+   "CHOPP GELADO E PAPO SOLTO",
+   "sexta à noite pede resenha",
+   "Chama a galera!"
+  ]
+ },
+ {
+  "arquivo": "render/Sab07Funcionamento.png",
+  "textos": [
+   "SÁBADO DE CHURRASCO",
+   "ALMOÇO E JANTAR NO SÁBADO",
+   "Sex a Dom e feriados das 10h à meia-noite",
+   "Seg a Qui das 16h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Vem pro almoço!"
+  ]
+ },
+ {
+  "arquivo": "render/Sab11Familia.png",
+  "textos": [
+   "CHURRASCO EM FAMÍLIA",
+   "SÁBADO DE MESA GRANDE",
+   "e a piazada na área kids dos dois andares",
+   "Chama a gurizada!"
+  ]
+ },
+ {
+  "arquivo": "render/Sab15Picanha.png",
+  "textos": [
+   "PROMOÇÃO DO DIA",
+   "PICANHA 500G",
+   "com farofa e vinagrete",
+   "R$ 89,90",
+   "a partir das 17h",
+   "Vem viver esse sabor!"
+  ]
+ },
+ {
+  "arquivo": "render/Dom11Familia.png",
+  "textos": [
+   "DOMINGO EM FAMÍLIA",
+   "TEM LUGAR PRA TODO MUNDO",
+   "Domingo das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Vem curtir o sabor!"
+  ]
+ },
+ {
+  "arquivo": "render/Dom15Misto.png",
+  "textos": [
+   "PROMOÇÃO DO DIA",
+   "ESPETO MISTO",
+   "picanha 300g, picanha suína 300g,",
+   "2 linguiças e 2 coxinhas de frango",
+   "R$ 104,90",
+   "a partir das 17h",
+   "Experimente esse sabor!"
+  ]
+ },
+ {
+  "arquivo": "render/RodCapa.png",
+  "textos": [
+   "SEXTOU COM ESPETO",
+   "SEXTA É DIA DE RODÍZIO",
+   "no almoço, das 10h às 15h",
+   "R$ 89,00",
+   "por pessoa"
+  ]
+ },
+ {
+  "arquivo": "render/RodServico.png",
+  "textos": [
+   "O ESPETO VEM ATÉ A MESA",
+   "O passador passa, você diz quanto quer. À vontade."
+  ]
+ },
+ {
+  "arquivo": "render/RodCarnes.png",
+  "textos": [
+   "AS CARNES",
+   "Alcatra",
+   "Picanha suína",
+   "Costela no bafo"
+  ]
+ },
+ {
+  "arquivo": "render/RodEntradas.png",
+  "textos": [
+   "AS ENTRADAS",
+   "Linguiça",
+   "Pão de alho",
+   "Queijo cabacinha ou coalho",
+   "Coração de frango"
+  ]
+ },
+ {
+  "arquivo": "render/RodGuarnicoes.png",
+  "textos": [
+   "AS GUARNIÇÕES",
+   "Feijão tropeiro",
+   "Feijão em caldo",
+   "Batata frita",
+   "Salpicão"
+  ]
+ },
+ {
+  "arquivo": "render/RodChopp.png",
+  "textos": [
+   "E O CHOPP BEM GELADO",
+   "Na caneca congelada, do jeito que tem que ser"
+  ]
+ },
+ {
+  "arquivo": "render/RodFecho.png",
+  "textos": [
+   "TE ESPERAMOS NA SEXTA",
+   "Rodízio das 10h às 15h, só às sextas",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "R$ 89,00",
+   "por pessoa",
+   "Garanta seu lugar!"
+  ]
+ },
+ {
+  "arquivo": "render/FamCapa.png",
+  "textos": []
+ },
+ {
+  "arquivo": "render/FamCasaCheia.png",
+  "textos": [
+   "A CASA ENCHE E O PAPO CORRE SOLTO"
+  ]
+ },
+ {
+  "arquivo": "render/FamEspeto.png",
+  "textos": [
+   "ESPETO FAMÍLIA DE 1KG",
+   "Picanha, alcatra ou o misto, servidos com arroz, tropeiro, fritas, farofa e vinagrete"
+  ]
+ },
+ {
+  "arquivo": "render/FamKids.png",
+  "textos": [
+   "E A PIAZADA TEM LUGAR",
+   "Área kids nos dois andares"
+  ]
+ },
+ {
+  "arquivo": "render/FamKidsDois.png",
+  "textos": [
+   "NO TÉRREO E NO ANDAR DE CIMA",
+   "Dá pra almoçar com calma enquanto eles brincam"
+  ]
+ },
+ {
+  "arquivo": "render/FamCorte.png",
+  "textos": [
+   "O CORTE SAI NA MESA",
+   "Do espeto direto pro prato, na hora"
+  ]
+ },
+ {
+  "arquivo": "render/FamFecho.png",
+  "textos": [
+   "TE ESPERAMOS NO SÁBADO",
+   "Sábado das 10h à meia-noite",
+   "Av. Ranulpho Barbosa dos Santos, 111, Jardim Camburi",
+   "Vem pro almoço!"
+  ]
+ }
+]

@@ -25,6 +25,9 @@ O QUE E NOVO AQUI (e por que):
     fica desalinhado do badge e da assinatura.
 """
 import base64, json, os
+import os as _os, sys as _sys
+_sys.path.insert(0, _os.path.dirname(_os.path.dirname(_os.path.abspath(__file__))))
+from _entrega import escrever_entrega, textos_de  # noqa: E402
 from PIL import ImageFont
 import halo_espeto as HL
 
@@ -560,6 +563,7 @@ if __name__ == '__main__':
     PAG = [(b['chave'], f"page-{i+1}", b['nome']) for i, b in enumerate(dados['blocos'])]
     SO = [x for x in os.environ.get('SO', '').split(',') if x]
     primeiro, DIAG = True, []
+    entrega = []
     for (chave, pid, nome), bloco in zip(PAG, dados['blocos']):
         canvas['pages'].append({'id': pid, 'name': nome})
         for i, s in enumerate(bloco['slides']):
@@ -599,9 +603,14 @@ if __name__ == '__main__':
             })
             mapa.append({'artboard': arq, 'pagina': nome, 'slide': i + 1, 'nome': s['arq'],
                          'layout': s['layout'], 'foto': s['foto'], 'alt': alt})
+            entrega.append({'arquivo': f"render/{arq.replace('.dc.html', '')}.png",
+                            'textos': [] if s['layout'] == 'foto'
+                            else textos_de(s, ['badge', 'titulo', 'apoio', 'desc', 'linhas', 'itens',
+                                                'preco', 'precoNota', 'servico', 'assinatura'])})
     if not SO:
         json.dump(canvas, open('canvas.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         json.dump(mapa, open('mapa.json', 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+        escrever_entrega(entrega)
     print(f"{len(mapa)} artboards ({MODO})")
     if DIAG and os.environ.get('DIAG'):
         print(f"\n{'peca':22} {'grupo':8} {'LxA':>11} {'media':>6} {'p88':>5} "
