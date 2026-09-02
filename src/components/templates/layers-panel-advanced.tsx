@@ -37,6 +37,8 @@ export function LayersPanelAdvanced() {
     duplicateLayer,
     reorderLayers,
     updateLayer,
+    groupSelectedLayers,
+    ungroupLayers,
   } = useTemplateEditor()
 
   const [searchQuery, setSearchQuery] = React.useState('')
@@ -225,6 +227,16 @@ export function LayersPanelAdvanced() {
                   onRename={(name) => handleRename(layer.id, name)}
                   onBringToFront={() => handleBringToFront(layer.id)}
                   onSendToBack={() => handleSendToBack(layer.id)}
+                  onGroup={
+                    selectedLayerIds.length >= 2 && selectedLayerIds.includes(layer.id)
+                      ? groupSelectedLayers
+                      : undefined
+                  }
+                  onUngroup={
+                    typeof layer.metadata?.groupId === 'string' && layer.metadata.groupId
+                      ? () => ungroupLayers([layer.id])
+                      : undefined
+                  }
                 />
               ))}
               {filteredLayers.length === 0 && !searchQuery && (

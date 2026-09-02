@@ -73,6 +73,8 @@ export function EditorCanvas() {
     duplicateLayer,
     removeLayer,
     moveLayer,
+    groupSelectedLayers,
+    ungroupLayers,
     alignSelectedLeft,
     alignSelectedCenterH,
     alignSelectedRight,
@@ -107,6 +109,24 @@ export function EditorCanvas() {
     }
     return null
   }, [selectedLayerIds, design.layers])
+
+  // Agrupar pede 2+ camadas que ainda não sejam, juntas, exatamente um grupo
+  // (agrupar de novo só trocaria o id); desagrupar vale para qualquer seleção
+  // que pertença a um grupo — inclusive um elemento só, depois do drill-in
+  const { canGroup, canUngroup } = React.useMemo(() => {
+    const selecionadas = design.layers.filter((layer) => selectedLayerIds.includes(layer.id))
+    const grupos = selecionadas.map((layer) =>
+      typeof layer.metadata?.groupId === 'string' && layer.metadata.groupId ? layer.metadata.groupId : null,
+    )
+    const podeDesagrupar = grupos.some(Boolean)
+    const grupoUnico = grupos[0]
+    const jaEhUmGrupo =
+      selecionadas.length >= 2 &&
+      !!grupoUnico &&
+      grupos.every((id) => id === grupoUnico) &&
+      design.layers.filter((layer) => layer.metadata?.groupId === grupoUnico).length === selecionadas.length
+    return { canGroup: selecionadas.length >= 2 && !jaEhUmGrupo, canUngroup: podeDesagrupar }
+  }, [design.layers, selectedLayerIds])
 
   const isTextSelected = selectedLayer?.type === 'text'
   const isRichTextSelected = selectedLayer?.type === 'rich-text'
@@ -193,6 +213,18 @@ export function EditorCanvas() {
       // Modo de recorte: Enter/Esc são do overlay; nada de deletar/mover aqui
       if (croppingLayerId) return
 
+      // Cmd+G agrupa a seleção; Cmd+Shift+G desagrupa. O navegador usaria os
+      // dois para "localizar próximo/anterior" — o preventDefault segura.
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'g') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          if (canUngroup) ungroupLayers()
+        } else if (canGroup) {
+          groupSelectedLayers()
+        }
+        return
+      }
+
       // Cmd+J (Mac) ou Ctrl+J (Windows) - Duplicar layer
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault()
@@ -228,7 +260,18 @@ export function EditorCanvas() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, design.layers, duplicateLayer, removeLayer, moveLayer, croppingLayerId])
+  }, [
+    selectedLayerIds,
+    design.layers,
+    duplicateLayer,
+    removeLayer,
+    moveLayer,
+    croppingLayerId,
+    canGroup,
+    canUngroup,
+    groupSelectedLayers,
+    ungroupLayers,
+  ])
 
   const handleEffectsClick = () => {
     console.log('[EditorCanvas] Effects button clicked. Current state:', isEffectsPanelOpen)
@@ -353,6 +396,10 @@ export function EditorCanvas() {
             onMoveBackward={moveSelectedBackward}
             onAlignToCanvasCenterH={alignSelectedToCanvasCenterH}
             onAlignToCanvasCenterV={alignSelectedToCanvasCenterV}
+            canGroup={canGroup}
+            canUngroup={canUngroup}
+            onGroup={groupSelectedLayers}
+            onUngroup={() => ungroupLayers()}
             selectedLayerType={selectedLayer?.type}
             onConvertToRichText={
               selectedLayer?.type === 'text'
