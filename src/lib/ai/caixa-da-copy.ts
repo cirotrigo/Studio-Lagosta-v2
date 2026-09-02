@@ -250,6 +250,11 @@ export function aplicarCaixaDaOrigem(
   return expectedTexts.map((bloco, i) => {
     const chave = normal(bloco)
     if (!chave) return bloco
+    // O mapa da marca é decisão do Ciro e VENCE a transcrição no primeiro
+    // bloco: a visão devolve a manchete em caixa natural mesmo quando a arte
+    // está em caixa alta (Bacana, 02/09/2026 — duas rodadas em natural com o
+    // mapa dizendo `alta`), e aí a origem não serve de testemunha.
+    if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(bloco)
     // O bloco esperado casa com a transcrição que o CONTÉM ou está CONTIDA
     // nele (a visão quebra o lockup em linhas).
     const casados = origem.filter((o) => o.chave.length >= 3 && (o.chave.includes(chave) || chave.includes(o.chave)))
@@ -259,7 +264,12 @@ export function aplicarCaixaDaOrigem(
       // resolvido pelo pedaço que casa por inteiro.
       const inteiro = casados.find((o) => o.chave === chave)
       const amostra = inteiro ? [inteiro] : casados
-      const todoAlto = amostra.every((o) => estaTodoEmCaixaAlta(o.bruto, 3))
+      // Pela MAIORIA das letras, não por unanimidade: a visão também
+      // transcreve o wordmark da logo ("bacana", minúsculo), que casa com o
+      // "BACANA" da manchete e derrubava o `every` (02/09/2026).
+      const letras = amostra.map((o) => o.bruto.replace(/[^\p{L}]/gu, '')).join('')
+      const altas = (letras.match(/\p{Lu}/gu) ?? []).length
+      const todoAlto = letras.length >= 3 && altas / letras.length >= 0.8
       return todoAlto ? paraCaixaAlta(bloco) : bloco
     }
     if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(bloco)

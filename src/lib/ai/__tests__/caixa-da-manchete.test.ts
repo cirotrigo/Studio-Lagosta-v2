@@ -126,6 +126,10 @@ describe('aplicarCaixaDaOrigem (melhoria)', () => {
     const { aplicarCaixaDaOrigem } = await import('../caixa-da-copy')
     expect(aplicarCaixaDaOrigem(['Almoço na brasa', 'Chega mais'], [], 'alta')).toEqual(['ALMOÇO NA BRASA', 'Chega mais'])
     expect(aplicarCaixaDaOrigem(['Almoço na brasa', 'Chega mais'], [], 'natural')).toEqual(['Almoço na brasa', 'Chega mais'])
-    expect(aplicarCaixaDaOrigem(['Almoço na brasa'], ['Almoço na brasa'], 'alta')).toEqual(['Almoço na brasa'])
+    // O mapa VENCE a transcrição no primeiro bloco (a visão devolve a manchete
+    // em natural mesmo quando a arte está em caixa alta).
+    expect(aplicarCaixaDaOrigem(['Almoço na brasa'], ['Almoço na brasa'], 'alta')).toEqual(['ALMOÇO NA BRASA'])
+    // A logo transcrita em minúsculo não derruba a manchete em caixa alta.
+    expect(aplicarCaixaDaOrigem(['Domingo pede aquele churrasco Bacana'], ['bacana', 'churrascaria', 'DOMINGO', 'PEDE AQUELE', 'CHURRASCO', 'BACANA'])).toEqual(['DOMINGO PEDE AQUELE CHURRASCO BACANA'])
   })
 })
