@@ -389,8 +389,8 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
             formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Obrigatório.' },
             via: {
               type: 'string',
-              enum: ['template', 'ia'],
-              description: 'Por onde a arte nasce: "template" (modelo do cliente, sem custo — o padrão) ou "ia" (gasta crédito).',
+              enum: ['template', 'ia', 'compor'],
+              description: 'Por onde a arte nasce: "compor" (pelo editor, sem custo — o padrão para cliente com página de assinatura: texto na área livre da foto, peça editável), "template" (modelo do cliente, sem custo) ou "ia" (gasta crédito).',
             },
             modeloId: {
               type: 'string',
@@ -491,7 +491,7 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
         },
       },
       formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Novo formato.' },
-      via: { type: 'string', enum: ['template', 'ia'], description: 'Troca a via de criação da arte.' },
+      via: { type: 'string', enum: ['template', 'ia', 'compor'], description: 'Troca a via de criação da arte.' },
       modeloId: { type: 'string', description: 'Outro modelo do cliente (de escolher-modelo).' },
       direcao: {
         type: 'string',
@@ -1166,6 +1166,43 @@ for (const [nome, literal] of Object.entries(LITERAIS_AVALIACOES)) {
 // fixture nasce com elas, como manda a regra do registro: mudança de schema
 // daqui para a frente é deliberada ou o snapshot acusa.
 const LITERAIS_COMPOSITOR: Record<string, unknown> = {
+  "reverter-arte": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "generationId": {
+        "type": "string",
+        "description": "A arte (id de compor-arte / ver-geracao)."
+      }
+    },
+    "required": [
+      "projectId",
+      "generationId"
+    ],
+    "additionalProperties": false
+  },
+  "ver-ajustes-da-assinatura": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
+      },
+      "dias": {
+        "type": "integer",
+        "minimum": 7,
+        "maximum": 365,
+        "description": "Janela em dias (default 60)."
+      }
+    },
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
+  },
   "ver-assinatura": {
     "type": "object",
     "properties": {

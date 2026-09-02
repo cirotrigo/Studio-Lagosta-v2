@@ -62,6 +62,47 @@ function specDe(args: Record<string, unknown>) {
 
 export const toolsDoCompositor = [
   definirTool({
+    nome: 'reverter-arte',
+    descricao:
+      'Volta uma peça do compositor para como ela nasceu — desfaz o que foi ajustado no editor depois. Só peça composta (compor-arte/compor-leva) tem esse histórico. Os posts agendados que usam a página voltam à fila de render. Use quando a pessoa disser "voltou pior, desfaz" ou "quero a versão original".',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      generationId: z.string().describe('A arte (id de compor-arte / ver-geracao).'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const { reverterCamadasDaArte } = await import('../../compositor/reverter')
+      return reverterCamadasDaArte(args.generationId as string, { projectId: args.projectId as number })
+    },
+  }),
+
+  definirTool({
+    nome: 'ver-ajustes-da-assinatura',
+    descricao:
+      'O que a equipe muda SISTEMATICAMENTE nas peças do compositor deste cliente (fonte encolhida, bloco deslocado, logo movida, alinhamento trocado) e o placar gostei/melhorar por posição do texto — destilado em PROPOSTAS de ajuste da assinatura, para a pessoa aprovar. Nunca aplica nada sozinho: quem muda a página de assinatura ou os números é gente. Use quando a pessoa perguntar "o que a equipe mais corrige?" ou antes de mexer na assinatura.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      dias: z.number().int().min(7).max(365).optional().describe('Janela em dias (default 60).'),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const { destilarGeometria } = await import('../../aprendizado/destilar-geometria')
+      const r = await destilarGeometria(args.projectId as number, typeof args.dias === 'number' ? args.dias : 60)
+      return {
+        ...r,
+        nota:
+          r.sinais === 0
+            ? 'Ainda não há edição registrada em peça do compositor deste cliente — o sinal nasce quando a equipe ajusta uma peça composta no editor.'
+            : 'Propostas são para aprovação humana: ajustar é abrir a página de assinatura no editor (estilo) ou Project.assinatura (números).',
+      }
+    },
+  }),
+
+  definirTool({
     nome: 'ver-assinatura',
     descricao:
       'Mostra a assinatura de composição do cliente: quais papéis de texto (pre, headline, apoio, cta, servico) a página de assinatura define, com fonte, tamanho e cor, a logo e os números (margens, safe area, faixa do halo). Use ANTES de compor-arte para saber o que o cliente tem — sem assinatura o compositor não compõe. Também diz o link para a equipe ajustar a assinatura no editor.',

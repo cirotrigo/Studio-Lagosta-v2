@@ -77,6 +77,15 @@ export type TipoDeSinal =
    * único que não ensinava nada).
    */
   | 'legenda'
+  /**
+   * A GEOMETRIA que a equipe mudou no editor depois de o compositor pousar a
+   * peça: deslocamento, tamanho de caixa, corpo de fonte, alinhamento,
+   * visibilidade, por camada (`diff-geometria.ts`). É o sinal que só o editor
+   * produz — a copy já era capturada, a posição virava autosave e sumia.
+   * Destilado por marca em `destilar-geometria.ts`: delta sistemático vira
+   * proposta de ajuste da assinatura, aprovada por gente.
+   */
+  | 'geometria'
 
 export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'slot',
@@ -87,6 +96,7 @@ export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'troca-de-arte',
   'item-de-plano',
   'legenda',
+  'geometria',
 ]
 
 /**

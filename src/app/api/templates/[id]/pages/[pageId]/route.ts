@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { descreverDiff, diffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import {
   caiNaEscolhaPropria,
   fecharDicaDeCopyDaPagina,
@@ -268,6 +269,33 @@ export async function PATCH(
              * balde; a edição que continua depois de 10 minutos entra inteira.
              */
             chave: `copy:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+          })
+        })
+      }
+    }
+
+    /**
+     * F4 (editor-como-usina): a GEOMETRIA que a equipe muda numa peça do
+     * compositor — mover, encolher, realinhar, esconder. É o sinal que só o
+     * editor produz; destilado por marca vira proposta de ajuste da
+     * assinatura. Só em página do compositor (tag), fora da resposta, balde
+     * de 10 minutos por página como a copy. Ilegível nunca vira "não mudou".
+     */
+    if (layersChanged && Array.isArray(existingPage.tags) && existingPage.tags.includes('compositor')) {
+      const geometria = diffDeGeometria(existingPage.layers, updateData.layers)
+      if (!geometria.ilegivel && geometria.mudou) {
+        const projectId = template!.Project.id
+        after(async () => {
+          const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+          await registrarDecisaoSemSugestao({
+            projectId,
+            tipo: 'geometria',
+            escolhido: { resumo: descreverDiff(geometria).slice(0, 20) },
+            diff: geometria,
+            pageId,
+            decididoPor: dbUser?.id ?? null,
+            superficie: 'editor',
+            chave: `geometria:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
           })
         })
       }
