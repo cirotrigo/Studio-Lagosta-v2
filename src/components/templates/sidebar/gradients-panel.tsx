@@ -3,16 +3,50 @@
 import * as React from 'react'
 import { GRADIENTS_LIBRARY } from '@/lib/assets/gradients-library'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
+import { useBrandColors } from '@/hooks/use-brand-colors'
+import { corEscuraDaMarca, presetHalo } from '@/lib/creatives/halo/fundo-de-texto'
 import { GradientEditor } from '@/components/templates/gradient-editor'
+import { FundoDeTextoControls } from '@/components/templates/fundo-de-texto-controls'
+import { Button } from '@/components/ui/button'
 
 export function GradientsPanel() {
-  const { addLayer, design, selectedLayerId } = useTemplateEditor()
+  const { addLayer, design, selectedLayerId, selectedLayerIds, updateLayer, projectId } = useTemplateEditor()
+  const { data: cores = [] } = useBrandColors(projectId ?? null)
 
   // Verifica se há uma layer de gradiente selecionada
   const selectedLayer = React.useMemo(
     () => design.layers.find((layer) => layer.id === selectedLayerId && (layer.type === 'gradient' || layer.type === 'gradient2')),
     [design.layers, selectedLayerId]
   )
+
+  // O halo é efeito de TEXTO: com um texto selecionado, os controles dele
+  // aparecem aqui (o mesmo componente do painel Efeitos); sem seleção, o
+  // botão aplica o preset a todos os textos visíveis — uma seleção de vários
+  // textos limita a eles.
+  const textosSelecionados = React.useMemo(
+    () => design.layers.filter((layer) => layer.type === 'text' && selectedLayerIds.includes(layer.id)),
+    [design.layers, selectedLayerIds],
+  )
+  const textosVisiveis = React.useMemo(
+    () => design.layers.filter((layer) => layer.type === 'text' && layer.visible !== false),
+    [design.layers],
+  )
+  const alvosDoHalo = textosSelecionados.length > 0 ? textosSelecionados : textosVisiveis
+  const textoSelecionado = textosSelecionados.length === 1 ? textosSelecionados[0] : null
+
+  const aplicarHaloEmLote = React.useCallback(() => {
+    if (alvosDoHalo.length === 0) return
+    const cor = corEscuraDaMarca(cores, design.layers)
+    // Um gesto = um passo de undo, mesmo tocando N camadas
+    const coalesceKey = `halo-em-lote:${Date.now()}`
+    for (const layer of alvosDoHalo) {
+      updateLayer(
+        layer.id,
+        (l) => ({ ...l, effects: { ...l.effects, background: presetHalo(cor, l.effects?.background) } }),
+        { coalesceKey },
+      )
+    }
+  }, [alvosDoHalo, cores, design.layers, updateLayer])
 
   const handleAddGradient = React.useCallback(
     (gradientId: string) => {
@@ -38,6 +72,27 @@ export function GradientsPanel() {
 
   return (
     <div className="space-y-4">
+      {/* Halo nos textos: a mancha desfocada atrás da tinta, sem véu */}
+      <div className="space-y-3 rounded-lg border border-border/40 bg-muted/20 p-4">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold">Halo nos textos</h3>
+          <p className="text-xs text-muted-foreground">
+            Uma mancha escura e desfocada só atrás das letras — a foto continua nítida por baixo.
+            {textosSelecionados.length > 1
+              ? ` Aplica aos ${textosSelecionados.length} textos selecionados.`
+              : textoSelecionado
+                ? ' Aplica ao texto selecionado.'
+                : textosVisiveis.length > 0
+                  ? ` Aplica aos ${textosVisiveis.length} textos da página.`
+                  : ' A página ainda não tem texto.'}
+          </p>
+        </div>
+        <Button type="button" size="sm" onClick={aplicarHaloEmLote} disabled={alvosDoHalo.length === 0}>
+          Aplicar halo
+        </Button>
+        {textoSelecionado && <FundoDeTextoControls layer={textoSelecionado} />}
+      </div>
+
       {/* Controles de edição (se houver gradiente selecionado) */}
       {selectedLayer && (
         <div className="space-y-3 rounded-lg border border-primary/40 bg-primary/5 p-4">
