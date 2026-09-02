@@ -76,7 +76,32 @@ export interface Layer {
     blur?: { enabled: boolean; blurRadius: number }
     stroke?: { enabled: boolean; strokeColor: string; strokeWidth: number }
     shadow?: { enabled: boolean; shadowColor: string; shadowBlur: number; shadowOffsetX: number; shadowOffsetY: number; shadowOpacity: number }
-    background?: { enabled: boolean; backgroundColor: string; padding: number }
+    /**
+     * Fundo atrás do texto. `fit: 'texto'` cobre só a TINTA das linhas (o
+     * `width: fit-content` do halo do canvas de design); `blur` > 0 borra a
+     * mancha nos próprios pixels (nunca a foto atrás) — ver
+     * `src/lib/creatives/halo/fundo-de-texto.ts`. Campos novos são opcionais
+     * para o fundo antigo (caixa inteira, nítido, opaco) continuar igual.
+     */
+    background?: {
+      enabled: boolean
+      backgroundColor: string
+      padding: number
+      fit?: 'caixa' | 'texto'
+      /** 0..1 — a "tinta" do halo. Vai na opacidade do nó, não na cor. */
+      opacity?: number
+      borderRadius?: number
+      /** Raio VISUAL do desfoque em px (0 = nítido). Borrado em escala reduzida acima de 200. */
+      blur?: number
+      offsetX?: number
+      offsetY?: number
+      /** Quando presentes vencem `padding` no eixo correspondente. */
+      paddingX?: number
+      paddingY?: number
+      /** Só a UI lê: a cor escolhida e a posição do slider de tom. */
+      baseColor?: string
+      tone?: number
+    }
     curved?: { enabled: boolean; curvature: number }
   }
   videoMetadata?: {
