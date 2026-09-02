@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
 import { DEFAULT_ART_DIRECTION } from './art-direction'
+import { instrucaoLogoNaMelhoria } from './logo-na-melhoria'
 import { regrasDaCasaNaMelhoria } from './regras-da-melhoria'
 import { qualidadePadraoPara } from './qualidade-arte'
 import type { BrandContext } from '@/lib/brand/brand-context'
@@ -63,6 +64,11 @@ interface BuildPromptArgs {
   arteSemTexto?: boolean
   /** Endereço e horário oficiais, só para conferir — ver `fatosDoClienteNaMelhoria`. */
   fatosDoCliente?: string[]
+  /**
+   * A marca é COMPOSTA por código depois (`logo-na-melhoria.ts`): o prompt
+   * manda não desenhar e reserva o canto. Projetos em `compor`.
+   */
+  logoCompor?: boolean
   /**
    * Prompt ENXUTO: só o que a peça precisa (imagens, texto exato, pedido e as
    * regras da casa), sem a identidade da marca nem a direção de arte.
@@ -283,6 +289,7 @@ export interface PromptSection {
     | 'assets'
     | 'pedido'
     | 'texto-exato'
+    | 'logo-compor'
   title: string
   origin: 'system' | 'editable' | 'runtime'
   content: string
@@ -313,6 +320,7 @@ export function buildPromptSections({
   arteSemTexto = false,
   enxuto = false,
   fatosDoCliente = [],
+  logoCompor = false,
 }: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
   const sections: PromptSection[] = []
@@ -429,6 +437,15 @@ export function buildPromptSections({
   const assetsUsage = buildAssetsUsageSection(references)
   if (assetsUsage) {
     sections.push({ id: 'assets', title: 'Uso dos assets', origin: 'runtime', content: assetsUsage })
+  }
+
+  if (logoCompor) {
+    sections.push({
+      id: 'logo-compor',
+      title: 'Logo (composta pelo sistema)',
+      origin: 'system',
+      content: instrucaoLogoNaMelhoria(),
+    })
   }
 
   const pedido = buildPedidoSection(userRequest)
@@ -587,6 +604,8 @@ interface ImproveCreativeOptions {
   arteSemTexto?: boolean
   /** Endereço e horário oficiais, só para conferir. */
   fatosDoCliente?: string[]
+  /** A marca é composta por código depois — o prompt manda não desenhar. */
+  logoCompor?: boolean
   /** Prompt enxuto — hipótese em medição, ver `BuildPromptArgs.enxuto`. */
   enxuto?: boolean
   timeoutMs?: number
@@ -624,13 +643,14 @@ export async function improveCreative({
   arteSemTexto = false,
   enxuto = false,
   fatosDoCliente = [],
+  logoCompor = false,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
   const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
   const prompt = buildPrompt({
-    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, fatosDoCliente,
+    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, fatosDoCliente, logoCompor,
   })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {

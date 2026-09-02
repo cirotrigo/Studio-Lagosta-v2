@@ -100,6 +100,7 @@ async function main() {
   const { improveCreative } = await import('../src/lib/ai/openai-image-client')
   const { verifyImageTexts, transcreverTextosDaArte } = await import('../src/lib/ai/creative-text-verification')
   const { aplicarCaixaDaOrigem, CAIXA_DA_MANCHETE } = await import('../src/lib/ai/caixa-da-copy')
+  const { melhoriaCompoeLogo, finalizarLogoDaMelhoria } = await import('../src/lib/ai/logo-na-melhoria')
   const { loadImprovementAssets } = await import('../src/lib/ai/improvement-assets-loader')
   const { fetchImageSource } = await import('../src/lib/ai/fetch-image-source')
   const sharp = (await import('sharp')).default
@@ -107,6 +108,8 @@ async function main() {
   const resumo: Array<Record<string, unknown>> = []
   for (const p of plano) {
     const assets = await loadImprovementAssets(p.projectId, { selectedLogoIds: [], selectedElementIds: [] })
+    const compoe = melhoriaCompoeLogo(p.projectId) && assets.logos.length > 0
+    const logoBuffer = compoe ? (await fetchImageSource(assets.logos[0].fileUrl)).buffer : null
     const pasta = path.join(SAIDA, `${p.projectId}-${p.nome.replace(/[^\w]+/g, '-').toLowerCase()}`)
     mkdirSync(pasta, { recursive: true })
     for (const peca of p.pecas) {
@@ -124,12 +127,16 @@ async function main() {
       for (let r = 1; r <= rodadas; r++) {
         const t0 = Date.now()
         try {
-          const buf = await improveCreative({
+          let buf = await improveCreative({
             imageBuffer: src.buffer, mimeType: src.contentType, userRequest: '', size,
             brandColors: assets.colors, artDirection: assets.artDirection, brand: assets.brand,
             expectedTexts: textosParaPrompt, instrucaoImagem: null, arteSemTexto: false,
-            fatosDoCliente: assets.fatos, quality: tier,
+            fatosDoCliente: assets.fatos, quality: tier, logoCompor: compoe,
           })
+          if (compoe && logoBuffer) {
+            const ehStory2 = (meta.height ?? 0) / (meta.width ?? 1) > 1.5
+            buf = (await finalizarLogoDaMelhoria(buf, logoBuffer, ehStory2 ? 'STORY' : 'FEED_PORTRAIT')).buffer
+          }
           const check = await verifyImageTexts(buf, peca.textos, [], assets.brand?.projectName ?? null, transcricaoDaOrigem.length ? transcricaoDaOrigem : src.buffer)
           const jpg = await sharp(buf).jpeg({ quality: 90 }).toBuffer()
           writeFileSync(path.join(pasta, `${peca.formato}-r${r}.jpg`), jpg)

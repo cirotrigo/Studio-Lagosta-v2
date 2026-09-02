@@ -3375,6 +3375,24 @@ novo:
   o escrevem; `upload-creative` lê por `entregaPath` e sobe cada render COM a
   sua copy numa chamada, com destino opcional na bancada (`planoId`). Skill
   `agendar-artes` atualizada.
+- 🔴 **A caixa da arte de origem manda no prompt da melhoria** (Bacana,
+  02/09/2026: "as letras devem ser em caixa alta"). `aplicarCaixaDaOrigem`
+  transcreve a origem e põe cada bloco em [TEXTO EXATO] na caixa em que a
+  arte já o mostra, decidido pela MAIORIA das letras (a visão transcreve o
+  wordmark da logo em minúsculo e derrubava a unanimidade); no primeiro bloco
+  o mapa `CAIXA_DA_MANCHETE` vence (Bacana = `alta`). A régua da conferência
+  segue a copy como veio.
+- 🔴 **Texto a mais desconta o que JÁ ESTAVA na origem**: o print de cardápio
+  dentro do mockup (Lagosta Criativa) disparava o alerta em toda rodada. Quando
+  sobra texto a mais, a origem é transcrita e o que está nela sai do alarme.
+- 🔴 **A logo na melhoria segue o `compor` da geração** (`logo-na-melhoria.ts`):
+  com o arquivo oficial como referência o gpt-image ainda redesenhou o selo da
+  Wine Vix com letras aproximadas, e casar o selo desenhado por correlação de
+  bordas NÃO achou (0,12 no lugar certo — polaridade e proporções mudam). Para
+  projeto em `compor` (TERO, Lagosta, Wine Vix) o prompt reserva o canto, a
+  logo não vai como referência e o PNG oficial é colado por `comporLogo` no
+  canto mais calmo com contraste. Sem logo escolhida, a oficial do projeto
+  entra por padrão (`loadImprovementAssets`).
 - **Medir antes de mexer no prompt**: `scripts/medir-melhoria.ts` (KPI
   semanal, também no relatório de domingo), `medir-melhoria-da-carteira.ts`
   (1 story + 1 feed por cliente, n rodadas, folha de contato) e

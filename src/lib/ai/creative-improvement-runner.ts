@@ -30,6 +30,7 @@ import {
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
+import { finalizarLogoDaMelhoria, melhoriaCompoeLogo, type LogoNaMelhoriaInfo } from '@/lib/ai/logo-na-melhoria'
 import {
   loadExpectedTextsDaLinhagem,
   loadExpectedTextsForGeneration,
@@ -358,7 +359,15 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       })
     }
 
-    for (const logo of downloads.filter((d) => d.role === 'logo')) {
+    /**
+     * Projeto em `compor`: a marca NÃO vai como referência (o modelo a
+     * desenharia) — fica guardada para o código colar depois. Ver
+     * `logo-na-melhoria.ts` (Wine Vix, 02/09/2026).
+     */
+    const logoParaCompor = melhoriaCompoeLogo(args.projectId)
+      ? (downloads.find((d) => d.role === 'logo') ?? null)
+      : null
+    for (const logo of logoParaCompor ? [] : downloads.filter((d) => d.role === 'logo')) {
       const constrained = await ensureUnderLimit(logo.buffer, logo.mimeType)
       references.push({
         buffer: constrained.buffer,
@@ -516,6 +525,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         instrucaoImagem: args.instrucaoImagem ?? null,
         arteSemTexto: arteSemTexto || raizSemTexto,
         fatosDoCliente: assets.fatos,
+        logoCompor: !!logoParaCompor,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
       })
@@ -625,6 +635,17 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       )
     }
 
+    let logoInfo: LogoNaMelhoriaInfo | null = null
+    if (logoParaCompor) {
+      try {
+        const r = await finalizarLogoDaMelhoria(improvedBuffer, logoParaCompor.buffer, format)
+        improvedBuffer = r.buffer
+        logoInfo = r.info
+      } catch (erro) {
+        console.warn('[improve.bg] falha ao compor a logo — a arte segue sem ela:', erro)
+      }
+    }
+
     const finalBuffer = await sharp(improvedBuffer)
       .resize(finalSize.width, finalSize.height, { fit: 'cover', position: 'center' })
       .jpeg({ quality: 92 })
@@ -687,6 +708,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
            */
           ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
           regua: origemDaRegua,
+          ...(logoInfo ? { logo: JSON.parse(JSON.stringify(logoInfo)) } : {}),
           ...(reguaDaLinhagem > 0 ? { reguaDaLinhagem } : {}),
           ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
           inputSize: openaiSize,

@@ -60,6 +60,13 @@ const LOGO_MODE_POR_PROJETO = new Map<number, LogoMode>([
    * Decisão de 23/08/2026, junto com o co-branding.
    */
   [8, 'compor'],
+  /**
+   * Wine Vix (11): selo redondo de traço fino, com o "I" em amarelo. Na
+   * bancada da carteira de 02/09/2026 a MELHORIA redesenhou as letras
+   * ("W|NE", "V|X") mesmo com o arquivo oficial como referência, e o Ciro
+   * reprovou. Vale para geração e melhoria.
+   */
+  [11, 'compor'],
 ])
 
 /** O modo de logo default deste projeto, quando o chamador não escolhe. */
