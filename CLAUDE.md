@@ -3307,6 +3307,86 @@ holes; o do By Rock é 1080x1350 e é estático). **A foto do render vem de
 `fotos/` (original), nunca da versão comprimida que o canvas embute** — no
 canvas ela cabe em ~50 KB, que serve para revisar layout e não para publicar.
 
+### A melhoria de artes na carteira inteira (02/09/2026)
+
+Plano em `docs/PLANO-2026-09-01-MELHORIA-DE-ARTES.md` (F0–F6), executado em
+02/09 depois do teste real de 01/09 no Quintal. Regras que valem para código
+novo:
+
+- 🔴 **A régua protege o que EXISTE; o buraco é o que o prompt sugere e a copy
+  não tem.** O happy hour do Quintal voltou com "Rua Fernandes Tourinho, 133 ·
+  Savassi, Belo Horizonte" e `textCheck: passed` (01/09). `passed` confere o que
+  falta; `blocosAMais` (`text-comparison.ts`, puro) confere o que sobra, e
+  separa bloco com DADO (endereço, hora, preço, cidade — `pareceDado`) de
+  decoração. **Só avisa** (`textoAMaisAlerta`, decisão do Ciro) — a galeria e o
+  `ver-geracao` mostram, o runner nunca regera por isso.
+- **Régua sem bloco de serviço vira PROIBIÇÃO de criar rodapé** (regra 1 de
+  `regras-da-melhoria.ts`), toda régua ganha CONTAGEM DE BLOCOS ("exatamente N,
+  nem um a mais"), e os fatos oficiais da base (endereço, horário —
+  `loadFatosDoCliente`) entram SÓ quando a régua tem serviço, como conferência.
+  Sem serviço eles seriam justamente o dado que o modelo usaria para preencher.
+- **`blocosDeServico` reconhece a linha dos modelos do Studio**: "Quinta, das
+  11h às 00h · Praia do Canto, Vitória-ES" sobrava 31 chars e não era serviço.
+  Dia no COMEÇO da linha é descontado; localidade (bairro/cidade/UF) junto de um
+  horário é serviço.
+- **`fieldValues.regua`** (`banco | linhagem | visao | nenhuma`) é gravado por
+  extenso — `textCheckReason` mentia por omissão. E os `textos` propagam também
+  pelo ramo de falha de cobrança, que os apagava.
+- 🔴 **"quinta" está dentro de "Quintal".** `casaComDia` casava por substring e
+  TODO template de "O Quintal Parrilla — …" era de quinta: foi assim que
+  `escolher-modelo("funcionamento")` devolveu "Celebrações Especiais" pelo
+  fallback só-dia. Hoje casa por TOKEN (`dia-semana.ts`), tema sem match é
+  `NO_TEMPLATE_MATCH` com sugestão explícita (nunca o primeiro da lista), e
+  `casaTemaComTags` exige ≥ 4 letras e início de token. Modelo errado com copy
+  certa é pior que cair na IA.
+- **A arte de MODELO passou a parecer a de IA** (`src/lib/creatives/halo/`):
+  `renderShape` desenha `effects.blur` num offscreen com stack blur nos pixels
+  da PRÓPRIA forma (folga 3× o raio); o `ShapeNode` do editor usa
+  `Konva.Filters.Blur` + cache com offset; `aplicar-halo.ts` agrupa os textos
+  em blocos, mede a luz da foto COMO ELA APARECE (cover, sem
+  `extract().stats()`), calibra pelo alvo da cor (tinta ZERO em foto escura) e
+  troca as camadas `veu*` por halos entre a foto e o texto. `createArteRapida`
+  faz isso na família `lote-tema-2026-08` (ou página com véu), best-effort.
+  ⚠️ O stack blur do Konva alcança ~R px; o `blur(R)` do canvas é gaussiano e
+  desmancha mais longe — se a peça sair "dura", o lugar é o `blurRadius` em
+  `montarCamadaDeHalo`, não o `_halo.py`.
+- **Layout pela foto** (`layout-pela-foto.ts`, puro): nos templates "(3
+  layouts)" o irmão é escolhido pela energia e luz das faixas (calma em cima →
+  Topo; embaixo → Rodapé; < 12% → Dividido), salvo `layoutFixo`. Medido em
+  02/09: funcionamento e happy hour foram ao rodapé, o executivo ao topo.
+- **A grade da base manda no horário** (`grade-da-base.ts`, puro, desconfiado
+  de propósito: só linha que DECLARA slot; linha de funcionamento e de feed
+  ficam fora). `sugerirPosts` substitui a cadência nos dias que a grade cobre
+  (`origem: 'grade'`, safra `grade-v1`). Quinta do Quintal: 08h/09h/14h.
+- **Apagar rascunho devolve a foto ao rodízio**: `desfazerUsoDeFotoDoPost`
+  roda ANTES do delete nos TRÊS caminhos, subindo a linhagem — o post aponta
+  para a MELHORIA e o `PhotoUsage` está na original. **Explorar não é decidir**:
+  `buscar-fotos` tem `explorando`, e sinal de foto expira em 24h.
+- **As duas portas têm a MESMA melhoria**: `applyToItemDePlanoId`/`applyToPlanoId`/
+  `applyToSlideOrdem` atravessam modal → fila local → rota → serviço → runner,
+  que reaponta o item (ou slide) por `transicionarItem` ao terminar. A prévia da
+  bancada tem "Melhorar com IA" só em card vindo do plano. No MCP,
+  `melhorar-arte` aceita `itemId` (OU `postId`) e `editar-item-do-plano` aceita
+  `generationId` ("usa esta arte"). A bancada ainda troca a via de `template`
+  para `ia` ao apertar Gerar — registrado, não mudado.
+- **A régua por construção do canvas é o `entrega.json`** (`design-canvas/
+  _entrega.py`): `[{arquivo, textos[], quando?, tema?, itemId?}]`, com
+  `textos: []` como AFIRMAÇÃO de foto pura. Os 5 geradores das levas com halo
+  o escrevem; `upload-creative` lê por `entregaPath` e sobe cada render COM a
+  sua copy numa chamada, com destino opcional na bancada (`planoId`). Skill
+  `agendar-artes` atualizada.
+- **Medir antes de mexer no prompt**: `scripts/medir-melhoria.ts` (KPI
+  semanal, também no relatório de domingo), `medir-melhoria-da-carteira.ts`
+  (1 story + 1 feed por cliente, n rodadas, folha de contato) e
+  `spike-melhoria-com-mascara.ts` (F5: máscara do `images.edit` a partir das
+  caixas de texto da página; a medida é a diferença de pixels FORA da máscara,
+  que tem de ser zero). Dry-run por padrão nos três.
+- **Modelos do Quintal saneados em 02/09**: página legada `Pag.01` despromovida,
+  "17h" de fábrica → 16h, e o lote regenerado com halo + tema `funcionamento`
+  (`sanear-modelos-quintal.ts`, `criar-templates-por-tema.ts --projeto 2`). Não
+  há modelo de ALMOÇO EXECUTIVO no pool — o teste caiu no de parrilla; cadastrar
+  é curadoria, não código.
+
 ### Halo: a leitura do texto sobre a foto sem véu (01/09/2026)
 
 O véu — gradiente que escurecia a faixa INTEIRA do topo ou do rodapé — foi
