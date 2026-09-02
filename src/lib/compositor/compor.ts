@@ -143,6 +143,14 @@ export async function carregarAssinatura(projectId: number, formato: Formato): P
   })
 }
 
+/** O projeto tem página de assinatura? É o que decide a via `compor` na proposta da semana. */
+export async function projetoTemAssinatura(projectId: number): Promise<boolean> {
+  const template = await db.template.findFirst({ where: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
+  if (!template) return false
+  const n = await db.page.count({ where: { templateId: template.id, isTemplate: true, tags: { has: TAG_DA_ASSINATURA } } })
+  return n > 0
+}
+
 // ─── Foto ──────────────────────────────────────────────────────────────────
 
 interface FotoDaPeca {

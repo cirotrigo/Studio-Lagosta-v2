@@ -645,7 +645,9 @@ function Card({
    * item de template monta no modelo, e a IA vira a escolha explícita com
    * preço — antes era o contrário, com a via barata em beco.
    */
-  const viaTemplate = doPlano && (item.via ?? 'template') === 'template'
+  // "template" E "compor" usam o mesmo Gerar sem custo (a rota decide pela
+  // via do item); só a IA tem o botão com preço.
+  const viaTemplate = doPlano && (item.via ?? 'template') !== 'ia'
   /**
    * Montar no modelo só existe para peça única DA LEVA em estado editável: o
    * render acontece no item do plano (é lá que a escolha e o resultado ficam

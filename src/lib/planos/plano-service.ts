@@ -377,7 +377,7 @@ function normalizarItem(
   if (entrada.via && !normalizarVia(entrada.via)) {
     throw new CreativeError(
       'VIA_INVALIDA',
-      `Via desconhecida no item ${posicao}: "${entrada.via}". Use "template" (modelo do cliente) ou "ia".`,
+      `Via desconhecida no item ${posicao}: "${entrada.via}". Use "template" (modelo do cliente), "compor" (pelo editor) ou "ia".`,
       400,
     )
   }
@@ -730,7 +730,7 @@ export async function atualizarItem(input: {
     if (!via) {
       throw new CreativeError(
         'VIA_INVALIDA',
-        `Via desconhecida: "${patch.via}". Use "template" (modelo do cliente) ou "ia".`,
+        `Via desconhecida: "${patch.via}". Use "template" (modelo do cliente), "compor" (pelo editor) ou "ia".`,
         400,
       )
     }

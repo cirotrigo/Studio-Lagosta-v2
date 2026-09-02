@@ -107,9 +107,9 @@ export const toolsDePlanos = [
               fotoUrl: z.string().optional().describe('Alternativa: imagem já no Studio.'),
               formato: z.enum(FORMATOS).describe('Obrigatório.'),
               via: z
-                .enum(['template', 'ia'])
+                .enum(['template', 'ia', 'compor'])
                 .optional()
-                .describe('Por onde a arte nasce: "template" (modelo do cliente, sem custo — o padrão) ou "ia" (gasta crédito).'),
+                .describe('Por onde a arte nasce: "compor" (pelo editor, sem custo — o padrão para cliente com página de assinatura: texto na área livre da foto, peça editável), "template" (modelo do cliente, sem custo) ou "ia" (gasta crédito).'),
               modeloId: z
                 .string()
                 .optional()
@@ -320,7 +320,7 @@ export const toolsDePlanos = [
           'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo + o print "documento", colado tal e qual). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
         ),
       formato: z.enum(FORMATOS).optional().describe('Novo formato.'),
-      via: z.enum(['template', 'ia']).optional().describe('Troca a via de criação da arte.'),
+      via: z.enum(['template', 'ia', 'compor']).optional().describe('Troca a via de criação da arte.'),
       modeloId: z.string().optional().describe('Outro modelo do cliente (de escolher-modelo).'),
       direcao: z
         .string()
