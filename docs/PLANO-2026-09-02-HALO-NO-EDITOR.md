@@ -149,7 +149,28 @@ reposiciona o retângulo imperativamente.
 | F2a | **feito** (`24af7f48`) |
 | F2b | **feito** (`1ff17973`) |
 | F3 | **feito** — typecheck + lint + 56 testes; no navegador (template 199 do Quintal, dev server local): "Aplicar halo" em lote, halo salvo aparecendo no carregamento, arraste com o halo junto, Caixa/Texto, desfoque nítido→418 px (k=3), opacidade, swatches da marca; paridade editor × servidor medida por perfil de luminância (diferença ≤ 15 níveis na mancha) |
-| F4 | não iniciada (opcional) |
+| F4 | **feito** — bloco-de-fundo pelo grupo (`metadata.groupId`, o Agrupar do PR #77): uma mancha para manchete + apoio, desenhada pelo líder; 8 testes; verificado no navegador (Shift+clique, Cmd+G, "Aplicar halo" → 1 Rect de halo cobrindo os dois) e no servidor (perfil de luminância ≤ 11 níveis). "Calibrar pela foto" continua em aberto |
+
+### O bloco pelo grupo (F4, depois do PR #77)
+
+- **Por que grupo e não proximidade**: o PR #77 deu ao usuário Agrupar/
+  Desagrupar (Cmd+G / Cmd+Shift+G) e o arraste em grupo. Unir manchas por
+  proximidade (`agruparEmBlocos`, folga 120 — o que o servidor faz em
+  `aplicar-halo.ts`) faria a mancha mudar sozinha ao aproximar/afastar textos;
+  o grupo é explícito e previsível. Proximidade fica como opção futura.
+- **Quem desenha é o LÍDER** (menor `order`, o que fica por baixo), com a
+  configuração dele; membros não desenham. Texto girado ou curvo não entra.
+- **O servidor precisa enxergar os irmãos**: `renderDesign` passa
+  `camadasDoDesign` (já com fieldValues) nas options; `renderLayer` avulso
+  sem isso cai no fundo por texto.
+- **O follow por eventos de atributo é pré-requisito**: o arraste em grupo
+  move os irmãos com `position()` por código, sem dragmove — e o líder ouve
+  TODOS os membros, re-medindo a união e re-cacheando só quando o tamanho
+  muda.
+- **Decisão sobre o reflow em grupos manuais** (o PR deixou para decidir):
+  mantido. Editor e servidor (`reflowLayersAfterFill`) leem o mesmo
+  `groupId`; se só o editor deixasse de refluir, a arte publicada divergiria
+  do editor justamente no texto que cresce.
 
 ### O que o teste no navegador ensinou
 

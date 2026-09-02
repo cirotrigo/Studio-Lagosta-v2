@@ -3588,9 +3588,20 @@ borra a mancha nos próprios pixels). Plano e placar em
 - 🔴 **`api.get` devolve TEXTO quando a resposta não é JSON**: um redirect para
   `/sign-in` na chamada de cores virou `colors.map is not a function` e derrubou
   o editor. `useBrandColors` garante array; consumidor novo de lista faz o mesmo.
-- **Halo por TEXTO, não por bloco** (manchete + apoio em camadas separadas
-  sobrepõem duas manchas: tinta 0,6 vira 0,84 na interseção). O fundo
-  compartilhado pelo grupo (`metadata.groupId`) é a F4 do plano, não feita.
+- **Textos AGRUPADOS dividem UMA mancha** (`bloco-de-fundo.ts`, F4): os textos
+  de um grupo estilo Canva (`metadata.groupId`, Cmd+G) com fundo ligado viram
+  um bloco — a união das tintas, desenhada pelo LÍDER (menor `order`) com a
+  configuração dele; os membros não desenham. Sem grupo, cada texto tem a sua,
+  e manchas vizinhas se sobrepõem (tinta 0,6 vira 0,84). O bloco é pelo GRUPO,
+  não por proximidade, de propósito: mancha que se funde sozinha ao aproximar
+  textos é surpresa; agrupar é gesto. O servidor enxerga os irmãos por
+  `options.camadasDoDesign` (renderDesign preenche; renderLayer avulso cai no
+  fundo por texto). Texto girado ou curvo fica fora do bloco.
+- 🔴 **Follow por eventos de ATRIBUTO (`xChange`…), nunca por `dragmove`**: o
+  arraste em grupo move os irmãos com `position()` por código, sem evento de
+  drag neles. `Node._setAttr` dispara `<attr>Change` em qualquer escrita.
+- **Reflow em grupos manuais foi MANTIDO** (decisão de 02/09): editor e
+  servidor leem o mesmo `groupId`; refluir só de um lado divergiria a arte.
 - Rich-text e texto curvo continuam sem fundo, como já eram.
 
 ### Important Patterns
