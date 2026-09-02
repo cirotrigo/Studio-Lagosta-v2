@@ -221,7 +221,7 @@ function regrasDeComposicao(): string[] {
     // Portado da regra 4b do image-prompt-builder (17/08/2026), que nasceu do
     // véu virando escurecimento GLOBAL nas peças do O Quintal. O Ciro reprovou
     // o mesmo defeito na melhoria em 01/09: "aqui o véu ficou muito marcado".
-    '3. VÉU DE LEITURA LOCAL E SUAVE: quando o texto precisar de contraste, use um sussurro de sombra APENAS na faixa onde ele pousa (no máximo cerca de um terço do quadro), sumindo antes de chegar ao assunto da foto. A foto continua nítida e tão clara quanto a original POR BAIXO do véu — nunca uma tarja. ⛔ Nunca escureça a foto inteira nem baixe o brilho geral da cena para destacar texto. Se o texto não ficar legível com um véu leve, MUDE O TEXTO DE LUGAR em vez de adensar o véu.',
+    '3. HALO DE LEITURA, NÃO VÉU: quando o texto precisar de contraste, use uma mancha escura DESFOCADA só atrás do bloco de texto, sem borda visível, que desmancha para a foto em volta (a mancha inteira ocupa no máximo cerca de um terço do quadro) — nunca um gradiente de faixa de borda a borda, nunca uma tarja, nunca o topo ou o rodapé inteiros escurecidos. A foto continua nítida e tão clara quanto a original POR BAIXO do halo. ⛔ Nunca escureça a foto inteira nem baixe o brilho geral da cena para destacar texto. Se o texto não ficar legível com um halo leve, MUDE O TEXTO DE LUGAR em vez de adensar a mancha.',
 
     /**
      * O feedback que originou esta regra é de diagnóstico, não de gosto:

@@ -80,7 +80,7 @@ describe('regrasDaCasaNaMelhoria', () => {
     const texto = regrasDaCasaNaMelhoria({ expectedTexts: [], userRequest: '' })
     expect(texto).toContain('SERVIÇO VAI PARA O RODAPÉ')
     expect(texto).toContain('MARGEM')
-    expect(texto).toContain('VÉU DE LEITURA LOCAL E SUAVE')
+    expect(texto).toContain('HALO DE LEITURA, NÃO VÉU')
     expect(texto).toContain('LEIA A FOTO ANTES DE POSICIONAR O TEXTO')
     expect(texto).toContain('DESTAQUE AS PALAVRAS-CHAVE')
   })

@@ -525,7 +525,7 @@ export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?
     '4. CAIXA de cada nível (ALTA ou baixa): igual à do nível correspondente no guia.',
     '5. COR DE CADA NÍVEL: se no guia o título é branco, aqui também é branco. Se o guia usa cor de destaque, use-a no MESMO nível hierárquico — nunca em outro, nunca numa palavra a mais, nunca numa a menos.',
     '6. ELEMENTOS GRÁFICOS (filete, onda, barra, ícone): os MESMOS, na mesma posição e no mesmo tamanho. Se o guia tem, este tem. Se o guia não tem, este não tem.',
-    '7. VÉU DE LEITURA: mesma direção e mesma densidade do gradiente.',
+    '7. HALO DE LEITURA: a mesma mancha desfocada atrás do bloco de texto, com a mesma densidade — nunca faixa de gradiente de borda a borda.',
     '8. LUZ E COR DA FOTO: mesma temperatura, mesma direção, mesmo tratamento e mesmo contraste.',
     '',
     'MUDE apenas: o sujeito da fotografia e as palavras da copy desta peça.',
@@ -626,7 +626,7 @@ export function buildModeloSpine(
     '4. HIERARQUIA: mesma proporção de tamanho e peso entre manchete, apoio e corpo. Se esta peça tem MAIS blocos de copy do que o modelo, repita o nível mais baixo do modelo para os blocos extras — nunca invente um nível novo e NUNCA omita um bloco da copy.',
     '5. COR DE CADA NÍVEL: se no modelo a manchete é clara, aqui também é. A cor de destaque entra no MESMO nível hierárquico, nunca em outro.',
     '6. ELEMENTOS GRÁFICOS (filete, losango, selo, ícone): os mesmos, na mesma posição e no mesmo tamanho relativo.',
-    '7. VÉU DE LEITURA: mesma direção e mesma densidade do gradiente.',
+    '7. HALO DE LEITURA: a mesma mancha desfocada atrás do bloco de texto, com a mesma densidade — nunca faixa de gradiente de borda a borda.',
     // Era "GRAU DE ESTILIZAÇÃO E LUMINOSIDADE: se o modelo é claro e arejado,
     // esta peça é clara e arejada" — lida como ordem de igualar a LUZ DA FOTO à
     // do modelo, ao lado de uma linha que descrevia o "contraste alto" dele. As
@@ -1006,15 +1006,21 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // arte do almoço de domingo saiu com o salão inteiro apagado, e o cliente
     // reprovou com "a foto está ficando muito escura". "Sutil" não bastava
     // porque não dizia ONDE — a segunda frase é o limite que faltava.
-    '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
-    '4b. O véu de leitura é LOCAL e SUAVE: um sussurro de sombra só na faixa onde o texto pousa (no máximo ~1/3 do quadro), sumindo antes de chegar ao assunto — a foto continua NÍTIDA e reconhecível POR BAIXO do véu, nunca coberta por uma tarja. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível com um véu leve, MUDE O TEXTO DE LUGAR em vez de adensar o véu.',
+    // HALO, não véu (decisão do Ciro, 01-02/09/2026, depois de reprovar o véu
+    // duas vezes no canvas e pedir o mesmo na geração): o véu é uma FAIXA de
+    // gradiente de borda a borda, que escurece centenas de pixels de foto para
+    // dar contraste a um bloco de 270px; o halo é uma MANCHA desfocada só
+    // atrás do bloco de texto, que desmancha nas bordas. Medido no canvas:
+    // +16% a +42% de luz na foto pelo mesmo contraste no texto.
+    '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. A leitura vem de um HALO: uma mancha escura DESFOCADA só atrás do bloco de texto, sem borda visível, que desmancha para a foto ao redor — NUNCA um gradiente de faixa que vai de borda a borda do quadro, nunca um retângulo chapado, nunca uma tarja.',
+    '4b. O halo é LOCAL e SUAVE: cobre o bloco de texto e uma margem curta em volta dele (a mancha inteira ocupa no máximo ~1/3 do quadro) e some antes de chegar ao assunto — a foto continua NÍTIDA e reconhecível POR BAIXO do halo. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena, nunca escureça o topo ou o rodapé inteiros do quadro e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível com um halo leve, MUDE O TEXTO DE LUGAR em vez de adensar a mancha.',
     // A porta que o 4b não fechava: em vez de adensar o VÉU, o modelo pinta um
     // ELEMENTO (ingrediente, folha, tábua) atrás do texto e esconde a foto do
     // mesmo jeito. Reprovação real do O Quintal em 20/08/2026: "o ingrediente
     // por trás do texto está muito forte escondendo a foto, ele deve ter mais
     // transparência" — e o DNA da marca, falando em "madeira e folha como
     // textura dominante", era lido como convite.
-    '4c. Atrás do texto existem SÓ a foto e o véu: não pinte textura, ingrediente, folha, tábua, mancha nem ilustração para servir de fundo ao texto. Quando a identidade da marca fala em textura dominante (madeira, folha), ela descreve a FOTOGRAFIA e o clima — nunca autoriza desenhar elementos por cima da foto. Se um ornamento desse tipo vier do modelo a seguir, ele entra QUASE transparente, como marca-d\'água: a foto permanece inteiramente visível através dele.',
+    '4c. Atrás do texto existem SÓ a foto e o halo: não pinte textura, ingrediente, folha, tábua, mancha nem ilustração para servir de fundo ao texto. Quando a identidade da marca fala em textura dominante (madeira, folha), ela descreve a FOTOGRAFIA e o clima — nunca autoriza desenhar elementos por cima da foto. Se um ornamento desse tipo vier do modelo a seguir, ele entra QUASE transparente, como marca-d\'água: a foto permanece inteiramente visível através dele.',
     // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
     // defeito aparecia toda semana.
     // "na última linha" deixava escapar o artigo órfão na PRIMEIRA: a manchete

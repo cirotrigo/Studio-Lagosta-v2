@@ -3375,6 +3375,12 @@ novo:
   o escrevem; `upload-creative` lê por `entregaPath` e sobe cada render COM a
   sua copy numa chamada, com destino opcional na bancada (`planoId`). Skill
   `agendar-artes` atualizada.
+- **O prompt da GERAÇÃO e o da melhoria falam em HALO, não em véu** (Ciro,
+  02/09/2026: "a geração precisa usar o halo no lugar do véu"). Regras 4/4b/4c
+  do `image-prompt-builder` e regra 3 das regras da casa: mancha escura
+  DESFOCADA só atrás do bloco de texto, sem borda, no máximo ~1/3 do quadro;
+  proibido gradiente de faixa de borda a borda, tarja, topo ou rodapé inteiros
+  escurecidos. O LOOK SPINE do carrossel repete "halo de leitura".
 - 🔴 **A caixa da arte de origem manda no prompt da melhoria** (Bacana,
   02/09/2026: "as letras devem ser em caixa alta"). `aplicarCaixaDaOrigem`
   transcreve a origem e põe cada bloco em [TEXTO EXATO] na caixa em que a
