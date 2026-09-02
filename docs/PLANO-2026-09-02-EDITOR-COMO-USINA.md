@@ -6,7 +6,8 @@ pelo canvas de design). A pergunta: **o que muda no backend do editor para que o
 modelo gere a programação semanal por ele, em lote, com a equipe ajustando na
 tela, e aprendendo com o uso?**
 
-Este documento é análise e proposta. Nada aqui foi implementado.
+Escrito como análise e proposta; executado no mesmo dia (F0–F5) — o placar está
+na §10 e as regras que ficaram, no CLAUDE.md § "O editor como usina".
 
 ## 1. Onde estamos, em número (medido em 02/09/2026, produção, só leitura)
 
