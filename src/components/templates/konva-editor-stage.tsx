@@ -107,7 +107,11 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const [showInstagramMask, setShowInstagramMask] = React.useState(true)
   const [_fontsReady, setFontsReady] = React.useState(false)
 
-  // Drag-to-select state
+  // Retângulo de seleção (marquee). Vive em coordenadas do CANVAS, as mesmas
+  // das camadas — nunca em pixels do contêiner: o stage é escalado pelo zoom,
+  // e um Rect desenhado com a posição bruta do ponteiro aparecia a 60% do
+  // caminho em zoom 60% (medido: mouse em 60,60 → retângulo em 36,36). O
+  // retângulo não acompanhava o mouse e o gesto parecia não existir.
   const [selectionRect, setSelectionRect] = React.useState<{
     visible: boolean
     x: number
@@ -116,6 +120,14 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     height: number
   }>({ visible: false, x: 0, y: 0, width: 0, height: 0 })
   const selectionStartRef = React.useRef<{ x: number; y: number } | null>(null)
+  // Espelho do estado para os handlers de window (sem closure velha)
+  const selectionRectRef = React.useRef(selectionRect)
+  selectionRectRef.current = selectionRect
+  // O Konva só entrega mouseup/mousemove enquanto o ponteiro está SOBRE o
+  // stage — e no workspace contínuo o stage tem o tamanho exato da página.
+  // Soltar o mouse fora dela deixava o retângulo pendurado e a seleção nunca
+  // era aplicada. Os listeners de window fecham o gesto onde quer que solte.
+  const marqueeWindowRef = React.useRef<{ move: (e: MouseEvent) => void; up: (e: MouseEvent) => void } | null>(null)
 
   // Multi-touch pinch-to-zoom state
   const lastCenterRef = React.useRef<{ x: number; y: number } | null>(null)
@@ -352,88 +364,49 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
     }
   }, [zoom, canvasWidth, canvasHeight, isMobile, embedded])
 
-  const handleStagePointerDown = React.useCallback(
-    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
-      // Modo de recorte: o overlay é dono de todos os gestos (nada de marquee)
-      if (croppingLayerId) return
-      const stage = event.target.getStage()
-      if (!stage) return
+  /** Estende o retângulo até o ponto (em coordenadas do canvas) */
+  const atualizarMarquee = React.useCallback((ponto: { x: number; y: number }) => {
+    const start = selectionStartRef.current
+    if (!start) return
+    setSelectionRect({
+      visible: true,
+      x: Math.min(start.x, ponto.x),
+      y: Math.min(start.y, ponto.y),
+      width: Math.abs(ponto.x - start.x),
+      height: Math.abs(ponto.y - start.y),
+    })
+  }, [])
 
-      const target = event.target as Konva.Node
-      const clickedOnEmpty = target === stage || target.hasName?.('canvas-background')
+  const soltarListenersDeMarquee = React.useCallback(() => {
+    const listeners = marqueeWindowRef.current
+    if (!listeners) return
+    window.removeEventListener('mousemove', listeners.move)
+    window.removeEventListener('mouseup', listeners.up)
+    marqueeWindowRef.current = null
+  }, [])
 
-      if (clickedOnEmpty) {
-        // Start drag-to-select
-        const pointerPos = stage.getPointerPosition()
-        if (!pointerPos) return
-
-        selectionStartRef.current = { x: pointerPos.x, y: pointerPos.y }
-        setSelectionRect({
-          visible: true,
-          x: pointerPos.x,
-          y: pointerPos.y,
-          width: 0,
-          height: 0,
-        })
-      }
-    },
-    [croppingLayerId],
-  )
-
-  const handleStagePointerMove = React.useCallback(
-    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+  /** Fecha o gesto: aplica a seleção do que o retângulo pegou e o esconde */
+  const finalizarMarquee = React.useCallback(
+    (stage: Konva.Stage, evt: { shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } | null | undefined) => {
       if (!selectionStartRef.current) return
+      selectionStartRef.current = null
+      soltarListenersDeMarquee()
 
-      const stage = event.target.getStage()
-      if (!stage) return
+      const box = selectionRectRef.current
+      // Sem arrasto é um clique no vazio: não pega nada (um retângulo 0×0
+      // "intersecta" a caixa de quem estiver embaixo do ponteiro)
+      const ehClique = box.width < 2 && box.height < 2
 
-      const pointerPos = stage.getPointerPosition()
-      if (!pointerPos) return
-
-      const x1 = selectionStartRef.current.x
-      const y1 = selectionStartRef.current.y
-      const x2 = pointerPos.x
-      const y2 = pointerPos.y
-
-      setSelectionRect({
-        visible: true,
-        x: Math.min(x1, x2),
-        y: Math.min(y1, y2),
-        width: Math.abs(x2 - x1),
-        height: Math.abs(y2 - y1),
-      })
-    },
-    [],
-  )
-
-  const handleStagePointerUp = React.useCallback(
-    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
-      if (!selectionStartRef.current) return
-
-      const stage = event.target.getStage()
-      if (!stage) return
-
-      // Get final selection rectangle
-      const box = {
-        x: selectionRect.x,
-        y: selectionRect.y,
-        width: selectionRect.width,
-        height: selectionRect.height,
-      }
-
-      // Find all shapes that intersect with selection rectangle
       const selectedIds: string[] = []
-
-      design.layers.forEach((layer) => {
-        const node = stage.findOne(`#${layer.id}`)
-        if (node) {
-          const nodeBox = node.getClientRect()
-          const hasIntersection = Konva.Util.haveIntersection(box, nodeBox)
-          if (hasIntersection) {
-            selectedIds.push(layer.id)
-          }
+      if (!ehClique) {
+        for (const layer of design.layers) {
+          const node = stage.findOne(`#${layer.id}`)
+          if (!node) continue
+          // relativeTo: stage → caixa do nó no espaço do canvas, o mesmo do retângulo
+          const nodeBox = node.getClientRect({ relativeTo: stage })
+          if (Konva.Util.haveIntersection(box, nodeBox)) selectedIds.push(layer.id)
         }
-      })
+      }
 
       // Grupo estilo Canva entra inteiro: pegar um membro no retângulo puxa
       // os irmãos (mesmo groupId)
@@ -453,18 +426,77 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       // Com Shift/Cmd/Ctrl o retângulo ACRESCENTA à seleção (mesma regra do
       // clique); sem nada dentro dele, a seleção atual fica como está
-      const additive = !!(event.evt && (event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey))
+      const additive = !!(evt && (evt.shiftKey || evt.metaKey || evt.ctrlKey))
       if (selectedIds.length > 0) {
         selectLayers(additive ? [...selectedLayerIds, ...selectedIds] : selectedIds)
       } else if (!additive) {
         clearLayerSelection()
       }
 
-      // Reset selection rectangle
-      selectionStartRef.current = null
       setSelectionRect({ visible: false, x: 0, y: 0, width: 0, height: 0 })
     },
-    [selectionRect, design.layers, selectedLayerIds, selectLayers, clearLayerSelection],
+    [design.layers, selectedLayerIds, selectLayers, clearLayerSelection, soltarListenersDeMarquee],
+  )
+  // Os listeners de window são registrados na descida e viveriam com a versão
+  // de então; o ref garante que a finalização use as camadas/seleção atuais
+  const finalizarMarqueeRef = React.useRef(finalizarMarquee)
+  finalizarMarqueeRef.current = finalizarMarquee
+
+  React.useEffect(() => soltarListenersDeMarquee, [soltarListenersDeMarquee])
+
+  const handleStagePointerDown = React.useCallback(
+    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      // Modo de recorte: o overlay é dono de todos os gestos (nada de marquee)
+      if (croppingLayerId) return
+      const stage = event.target.getStage()
+      if (!stage) return
+
+      const target = event.target as Konva.Node
+      const clickedOnEmpty = target === stage || target.hasName?.('canvas-background')
+      if (!clickedOnEmpty) return
+
+      // Posição no espaço do canvas (inverso da transformação do stage)
+      const ponto = stage.getRelativePointerPosition()
+      if (!ponto) return
+
+      soltarListenersDeMarquee()
+      selectionStartRef.current = { x: ponto.x, y: ponto.y }
+      setSelectionRect({ visible: true, x: ponto.x, y: ponto.y, width: 0, height: 0 })
+
+      // Mouse: acompanha e fecha pelo window, para o gesto sobreviver a sair
+      // do stage. Toque fica com os handlers do próprio stage.
+      if (typeof MouseEvent !== 'undefined' && event.evt instanceof MouseEvent) {
+        const move = (e: MouseEvent) => {
+          stage.setPointersPositions(e)
+          const p = stage.getRelativePointerPosition()
+          if (p) atualizarMarquee(p)
+        }
+        const up = (e: MouseEvent) => finalizarMarqueeRef.current(stage, e)
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', up)
+        marqueeWindowRef.current = { move, up }
+      }
+    },
+    [croppingLayerId, atualizarMarquee, soltarListenersDeMarquee],
+  )
+
+  const handleStagePointerMove = React.useCallback(
+    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (!selectionStartRef.current) return
+      const stage = event.target.getStage()
+      const ponto = stage?.getRelativePointerPosition()
+      if (ponto) atualizarMarquee(ponto)
+    },
+    [atualizarMarquee],
+  )
+
+  const handleStagePointerUp = React.useCallback(
+    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      const stage = event.target.getStage()
+      if (!stage) return
+      finalizarMarquee(stage, event.evt)
+    },
+    [finalizarMarquee],
   )
 
   // Scroll do mouse DESABILITADO - apenas scroll vertical nativo
