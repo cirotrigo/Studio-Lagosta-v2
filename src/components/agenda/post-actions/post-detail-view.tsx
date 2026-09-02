@@ -53,7 +53,7 @@ import { usePostApproval } from '@/hooks/use-post-approval'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
 import { useProject } from '@/hooks/use-project'
 import { arteDoSlide, useArtesDoPost } from '@/hooks/use-artes-do-post'
-import { useImproveJobForPost } from '@/stores/improve-queue-store'
+import { useImproveJobForPost, useMelhoriaRecemConcluida } from '@/stores/improve-queue-store'
 import { RescheduleDialog } from './reschedule-dialog'
 import { DuplicateDialog } from './duplicate-dialog'
 import { ApprovePostsDialog } from './approve-posts-dialog'
@@ -194,6 +194,8 @@ export function PostDetailView({
     certo: `applyToPostMediaIndex` ausente significa o primeiro.
   */
   const melhoriaEmAndamento = useImproveJobForPost(post.id)
+  // A melhoria acabou de chegar: é a hora do "como ficou?" (F3, 02/09/2026).
+  const melhoriaRecente = useMelhoriaRecemConcluida(post.id)
   const slideEmMelhoria = melhoriaEmAndamento?.applyToPostMediaIndex ?? 0
   const melhorandoEsteSlide =
     !!melhoriaEmAndamento && slideEmMelhoria === currentImageIndex
@@ -812,6 +814,12 @@ export function PostDetailView({
                     ? `Revisão do slide ${currentImageIndex + 1}/${mediaUrls.length}`
                     : 'Revisão da arte'}
                 </p>
+                {melhoriaRecente &&
+                  melhoriaRecente.resultGenerationId === generationIdDoSlide && (
+                    <p className="mb-2 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-xs text-emerald-600 dark:text-emerald-400">
+                      A melhoria com IA acabou de chegar — como ficou?
+                    </p>
+                  )}
                 <FeedbackDeArte
                   generationId={generationIdDoSlide}
                   superficie="agenda"

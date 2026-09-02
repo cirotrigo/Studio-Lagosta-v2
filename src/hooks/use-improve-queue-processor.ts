@@ -56,6 +56,9 @@ export function useImproveQueueProcessor() {
           ...(typeof next.applyToPostMediaIndex === 'number'
             ? { applyToPostMediaIndex: next.applyToPostMediaIndex }
             : {}),
+          ...(next.applyToItemDePlanoId ? { applyToItemDePlanoId: next.applyToItemDePlanoId } : {}),
+          ...(next.applyToPlanoId ? { applyToPlanoId: next.applyToPlanoId } : {}),
+          ...(typeof next.applyToSlideOrdem === 'number' ? { applyToSlideOrdem: next.applyToSlideOrdem } : {}),
         }
       )
 
@@ -76,6 +79,11 @@ export function useImproveQueueProcessor() {
         // que a fila não conhece) atinge o painel aberto sem depender do
         // polling — que o navegador pausa quando a aba está em segundo plano.
         queryClient.invalidateQueries({ queryKey: ['template-creatives'] })
+        if (next.applyToItemDePlanoId) {
+          // O servidor reapontou o item da fila — a bancada re-hidrata do plano.
+          queryClient.invalidateQueries({ queryKey: ['plano', next.projectId] })
+          queryClient.invalidateQueries({ queryKey: ['planos', next.projectId] })
+        }
         if (next.applyToPostId) {
           // O servidor já aplicou a arte no post — aqui só refresca a agenda.
           queryClient.invalidateQueries({ queryKey: ['social-posts', next.projectId] })
@@ -86,7 +94,9 @@ export function useImproveQueueProcessor() {
           title: 'Criativo melhorado',
           description: next.applyToPostId
             ? `"${next.generationLabel}" — a arte do post agendado foi atualizada.`
-            : `"${next.generationLabel}" disponível na galeria.`,
+            : next.applyToItemDePlanoId
+              ? `"${next.generationLabel}" — o card da bancada já mostra a arte nova.`
+              : `"${next.generationLabel}" disponível na galeria.`,
         })
       } else {
         const errorMessage = finalStatus.fieldValues?.error || 'Falha desconhecida no servidor'

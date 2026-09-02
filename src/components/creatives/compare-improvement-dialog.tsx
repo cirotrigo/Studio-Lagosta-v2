@@ -4,6 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { useQuery } from '@tanstack/react-query'
 import { Sparkles } from 'lucide-react'
+import { FeedbackDeArte } from '@/components/creatives/feedback-de-arte'
 import {
   Dialog,
   DialogContent,
@@ -127,6 +128,10 @@ export function CompareImprovementDialog({
             <span className="font-medium text-foreground">Pedido usado:</span> {target.userRequest}
           </p>
         ) : null}
+
+        {/* O "como ficou?" logo depois de ver antes/depois — um clique, e é a
+            única medida de qualidade da melhoria que não é palpite. */}
+        {target ? <FeedbackDeArte generationId={target.id} superficie="galeria" /> : null}
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>

@@ -406,12 +406,23 @@ export const toolsDeArteIA = [
         .describe(
           'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).',
         ),
+      itemId: z
+        .string()
+        .optional()
+        .describe(
+          'A outra porta: item da leva (de ver-plano) que recebe a arte melhorada ao final — o card da bancada passa a mostrar a arte nova. Use itemId OU postId, nunca os dois.',
+        ),
+      planoId: z.string().optional().describe('A leva do itemId. Sem isto, a que está em aberto.'),
+      slide: z
+        .number()
+        .optional()
+        .describe('Carrossel na bancada: a ordem do slide que recebe a arte (1 = primeiro). Só com itemId.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ db }, { CreativeError }, { startImprovement, VERCEL_BLOB_HOST_REGEX }, { enfileirarMelhoria }, { resolverDono }] =
+      const [{ db }, { CreativeError }, { startImprovement, VERCEL_BLOB_HOST_REGEX }, { enfileirarMelhoria }, { resolverDono, resolverPlano }] =
         await Promise.all([
           import('../../db'),
           import('../../creatives/errors'),
@@ -447,12 +458,21 @@ export const toolsDeArteIA = [
         }
       }
 
+      const itemId = typeof args.itemId === 'string' && args.itemId ? args.itemId : undefined
+      if (itemId && postId) {
+        throw new CreativeError('ENTRADA_INVALIDA', 'Informe itemId OU postId — a arte melhorada vai para um lugar só.', 400)
+      }
+      const planoId = itemId ? await resolverPlano(projectId, args.planoId) : undefined
+
       const dono = await resolverDono(projectId, principal)
       const started = await startImprovement({
         generationId,
         userRequest: typeof args.pedido === 'string' ? args.pedido : '',
         applyToPostId: postId ?? null,
         sourceImageUrl: sourceImageUrl ?? null,
+        applyToItemDePlanoId: itemId ?? null,
+        applyToPlanoId: planoId ?? null,
+        applyToSlideOrdem: itemId && typeof args.slide === 'number' ? args.slide : null,
         actorClerkId: dono.clerkId,
         dedupeWindowMinutes: 10,
       })
@@ -475,7 +495,7 @@ export const toolsDeArteIA = [
         tempoEstimado: 'de 2 a 3 minutos',
         mensagem: started.reused
           ? 'Já havia uma melhoria desta arte em andamento — acompanhe ela com ver-geracao em vez de disparar outra.'
-          : `Melhoria iniciada. Consulte ver-geracao com geracaoId=${started.jobGenerationId} em ~3 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : ''}.`,
+          : `Melhoria iniciada. Consulte ver-geracao com geracaoId=${started.jobGenerationId} em ~3 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : itemId ? '; ao terminar, o item da leva passa a mostrar a arte nova' : ''}.`,
       }
     },
   }),

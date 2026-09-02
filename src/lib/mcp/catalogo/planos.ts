@@ -287,6 +287,12 @@ export const toolsDePlanos = [
       projectId: z.number().describe('ID do cliente.'),
       planoId: z.string().optional().describe('A leva. Sem isto, a que está em aberto.'),
       itemId: z.string().describe('O item (de ver-plano).'),
+      generationId: z
+        .string()
+        .optional()
+        .describe(
+          '"Usa esta arte": uma arte que já existe na galeria (de upload-creative, criar-arte ou melhorar-arte) passa a ser a arte deste item, que vai para "pronto" na bancada. É a porta da bancada para arte pronta feita fora do Studio. Pode vir sozinho.',
+        ),
       quando: z.string().optional().describe('Novo dia e hora de Brasília ("AAAA-MM-DD HH:mm").'),
       tema: z.string().optional().describe('Novo tema.'),
       texto: z
@@ -338,12 +344,42 @@ export const toolsDePlanos = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ atualizarItem }, { quemDecidiu, resolverPlano, itemParaChat }] = await Promise.all([
+      const [{ atualizarItem, transicionarItem }, { quemDecidiu, resolverPlano, itemParaChat }, { db }, { CreativeError }] = await Promise.all([
         import('../../planos/plano-service'),
         import('../tools'),
+        import('../../db'),
+        import('../../creatives/errors'),
       ])
       const projectId = args.projectId as number
       const planoId = await resolverPlano(projectId, args.planoId)
+
+      /**
+       * "Usa esta arte" — a porta da bancada para arte pronta. A Generation
+       * precisa ser deste cliente; o item vai a `pronto` com ela. Sem outros
+       * campos, é só isso; com outros, o conteúdo é atualizado antes.
+       */
+      const generationId = typeof args.generationId === 'string' && args.generationId ? args.generationId : null
+      const soArte =
+        generationId &&
+        !['quando', 'tema', 'texto', 'legenda', 'fotoDriveId', 'fotoUrl', 'referencias', 'formato', 'via', 'modeloId', 'direcao', 'ajusteDaFoto', 'clienteCitadoId', 'motivoDoSlot', 'escopo', 'campanhaId'].some(
+          (k) => args[k] !== undefined,
+        )
+      if (generationId) {
+        const arte = await db.generation.findFirst({ where: { id: generationId, projectId }, select: { id: true, status: true } })
+        if (!arte) throw new CreativeError('ARTE_NAO_ENCONTRADA', 'Arte não encontrada neste cliente.', 404)
+        if (arte.status !== 'COMPLETED') throw new CreativeError('ARTE_NAO_PRONTA', 'Esta arte ainda não está pronta.', 409)
+      }
+      if (soArte) {
+        const item = await transicionarItem({
+          projectId,
+          planoId,
+          itemId: args.itemId as string,
+          para: 'pronto',
+          generationId,
+          decididoPor: await quemDecidiu(projectId, principal),
+        })
+        return { item: itemParaChat(item as Parameters<typeof itemParaChat>[0]), mensagem: 'O item passou a usar esta arte e está pronto na bancada.' }
+      }
 
       const { item, avisos } = await atualizarItem({
         projectId,
@@ -373,6 +409,11 @@ export const toolsDePlanos = [
           ...(typeof args.campanhaId === 'string' ? { campaignId: args.campanhaId } : {}),
         },
       })
+
+      if (generationId) {
+        const comArte = await transicionarItem({ projectId, planoId, itemId: args.itemId as string, para: 'pronto', generationId })
+        return { item: itemParaChat(comArte as Parameters<typeof itemParaChat>[0]), ...(avisos.length > 0 ? { avisos } : {}) }
+      }
 
       return {
         item: itemParaChat(item as Parameters<typeof itemParaChat>[0]),

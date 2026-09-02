@@ -18,7 +18,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { FeedbackDeArte } from '@/components/creatives/feedback-de-arte'
+import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { useBancadaStore } from '@/stores/bancada-store'
+import { useMelhoriaDoItemDaBancada } from '@/stores/improve-queue-store'
+import { Sparkles } from 'lucide-react'
 
 export interface PreviewSlide {
   ordem: number
@@ -43,11 +46,25 @@ function useArteDaFila(url: string | undefined) {
     if (!url) return null
     for (const item of itens) {
       if (item.resultUrl === url && item.generationId) {
-        return { generationId: item.generationId, projectId: item.projectId }
+        return {
+          generationId: item.generationId,
+          projectId: item.projectId,
+          itemDePlanoId: item.itemDePlanoId ?? null,
+          planoId: item.planoId ?? null,
+          slideOrdem: null as number | null,
+          titulo: item.tema ?? null,
+        }
       }
       for (const slide of item.slides ?? []) {
         if (slide.resultUrl === url && slide.generationId) {
-          return { generationId: slide.generationId, projectId: item.projectId }
+          return {
+            generationId: slide.generationId,
+            projectId: item.projectId,
+            itemDePlanoId: item.itemDePlanoId ?? null,
+            planoId: item.planoId ?? null,
+            slideOrdem: slide.ordem ?? null,
+            titulo: item.tema ?? null,
+          }
         }
       }
     }
@@ -105,6 +122,8 @@ export function BancadaPreview({ slides, inicial, open, onOpenChange, titulo }: 
   const atual = ordenados[indice]
   // Hook antes de qualquer saída antecipada — a prévia sem slides ainda monta.
   const arte = useArteDaFila(atual?.url)
+  const [melhorarAberto, setMelhorarAberto] = React.useState(false)
+  const melhoriaEmAndamento = useMelhoriaDoItemDaBancada(arte?.itemDePlanoId)
   if (!atual) return null
   const varios = ordenados.length > 1
 
@@ -197,9 +216,46 @@ export function BancadaPreview({ slides, inicial, open, onOpenChange, titulo }: 
             verdade antes de ir para a agenda. Um clique resolve; o texto só
             aparece em "preciso melhorar". */}
         {arte && (
-          <FeedbackDeArte generationId={arte.generationId} superficie="bancada" />
+          <div className="flex flex-col gap-3">
+            <FeedbackDeArte generationId={arte.generationId} superficie="bancada" projectId={arte.projectId} />
+            {/*
+              A porta da BANCADA para a melhoria (F3, 02/09/2026): a mesma
+              melhoria da agenda, com a mesma régua. Só existe quando o card
+              veio do plano — item local nunca esteve no servidor, e não há
+              como o runner reapontar o que não existe lá.
+            */}
+            {arte.itemDePlanoId && arte.planoId && (
+              <div className="flex items-center justify-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!!melhoriaEmAndamento}
+                  onClick={() => setMelhorarAberto(true)}
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  {melhoriaEmAndamento ? 'Melhorando…' : 'Melhorar com IA'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
       </DialogContent>
+      {arte && arte.itemDePlanoId && arte.planoId && (
+        <ImproveCreativeModal
+          generation={{
+            id: arte.generationId,
+            projectId: arte.projectId,
+            resultUrl: atual.url,
+            templateName: arte.titulo ?? titulo ?? 'Arte da bancada',
+            applyToItemDePlanoId: arte.itemDePlanoId,
+            applyToPlanoId: arte.planoId,
+            applyToSlideOrdem: arte.slideOrdem,
+          }}
+          open={melhorarAberto}
+          onOpenChange={setMelhorarAberto}
+        />
+      )}
     </Dialog>
   )
 }

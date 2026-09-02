@@ -58,6 +58,13 @@ export interface StartImprovementInput {
    * substituído no post; os demais ficam como estão.
    */
   applyToPostMediaIndex?: number | null
+  /**
+   * A outra porta: item da fila da BANCADA (e o slide, em carrossel) que
+   * recebe a arte melhorada ao final. Mesma melhoria, mesma régua.
+   */
+  applyToItemDePlanoId?: string | null
+  applyToPlanoId?: string | null
+  applyToSlideOrdem?: number | null
   /** Quem paga os créditos e assina a Generation — id do CLERK (user_…). */
   actorClerkId: string
   orgId?: string
@@ -136,6 +143,39 @@ export async function startImprovement(
   // valem para ele (ver o bloco do post logo abaixo)
   let mediaIndex: number | null = null
   let skipTextVerification = false
+
+  let itemDaBancada: { itemId: string; planoId: string; slideOrdem: number | null } | null = null
+  if (input.applyToItemDePlanoId) {
+    const item = await db.itemDePlano.findFirst({
+      where: { id: input.applyToItemDePlanoId, projectId: original.projectId },
+      select: { id: true, planoId: true, status: true, generationId: true, slides: true },
+    })
+    if (!item) {
+      throw new CreativeError('ITEM_NAO_ENCONTRADO', 'Item da bancada não encontrado neste cliente.', 404)
+    }
+    if (input.applyToPlanoId && item.planoId !== input.applyToPlanoId) {
+      throw new CreativeError('ITEM_NAO_ENCONTRADO', 'Este item não pertence a essa leva.', 404)
+    }
+    if (item.status === 'agendado') {
+      throw new CreativeError(
+        'ITEM_JA_AGENDADO',
+        'Este item já virou post: melhore pela agenda, que é onde a arte dele vive agora.',
+        409,
+      )
+    }
+    const slideOrdem = input.applyToSlideOrdem ?? null
+    if (slideOrdem != null) {
+      const bruto = item.slides as { lista?: Array<{ ordem?: number; generationId?: string }> } | null
+      const slide = bruto?.lista?.find((s) => Number(s.ordem) === slideOrdem)
+      if (!slide) {
+        throw new CreativeError('SLIDE_INVALIDO', `Este item não tem o slide ${slideOrdem}.`, 400)
+      }
+      // A régua do banco é da Generation de ORIGEM; num carrossel a arte
+      // melhorada é a do slide, e o slide tem a própria Generation.
+      skipTextVerification = !!slide.generationId && slide.generationId !== original.id
+    }
+    itemDaBancada = { itemId: item.id, planoId: item.planoId, slideOrdem }
+  }
 
   if (input.applyToPostId) {
     const post = await db.socialPost.findFirst({
@@ -263,6 +303,7 @@ export async function startImprovement(
         selectedElementIds,
         applyToPostId: input.applyToPostId ?? null,
         applyToPostMediaIndex: mediaIndex,
+        ...(itemDaBancada ? { applyToItemDePlanoId: itemDaBancada.itemId, applyToPlanoId: itemDaBancada.planoId, applyToSlideOrdem: itemDaBancada.slideOrdem } : {}),
         model: getCurrentImageModel(),
         quality: tier,
         inputSize: openaiSize,
@@ -285,6 +326,9 @@ export async function startImprovement(
       originalResultUrl: input.sourceImageUrl ?? original.resultUrl,
       applyToPostId: input.applyToPostId ?? null,
       applyToPostMediaIndex: mediaIndex,
+      applyToItemDePlanoId: itemDaBancada?.itemId ?? null,
+      applyToPlanoId: itemDaBancada?.planoId ?? null,
+      applyToSlideOrdem: itemDaBancada?.slideOrdem ?? null,
       skipTextVerification,
       userId: input.actorClerkId,
       orgId: input.orgId,

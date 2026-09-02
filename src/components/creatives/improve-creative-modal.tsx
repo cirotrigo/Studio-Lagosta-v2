@@ -41,6 +41,13 @@ interface ImproveTarget {
    */
   applyToPostMediaIndex?: number | null
   /**
+   * A porta da BANCADA: item da fila (e slide, em carrossel) que recebe a
+   * arte melhorada. Mesma melhoria da agenda, mesma régua.
+   */
+  applyToItemDePlanoId?: string | null
+  applyToPlanoId?: string | null
+  applyToSlideOrdem?: number | null
+  /**
    * "Melhorar de novo": pré-preenche o pedido com o userRequest gravado na
    * melhoria anterior (fieldValues.userRequest).
    */
@@ -274,6 +281,9 @@ export function ImproveCreativeModal({
       // da Generation se o cron re-renderizou a página depois.
       sourceImageUrl: generation.applyToPostId ? generation.resultUrl : null,
       applyToPostMediaIndex: generation.applyToPostMediaIndex ?? null,
+      applyToItemDePlanoId: generation.applyToItemDePlanoId ?? null,
+      applyToPlanoId: generation.applyToPlanoId ?? null,
+      applyToSlideOrdem: generation.applyToSlideOrdem ?? null,
     })
 
     toast({

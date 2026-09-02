@@ -77,6 +77,17 @@ export interface ImprovementJobArgs {
    * reprovaria uma arte correta.
    */
   skipTextVerification?: boolean
+  /**
+   * Item da fila da BANCADA que recebe a arte melhorada (F3, 02/09/2026). As
+   * duas portas de entrada da arte pronta — fila da bancada e rascunho na
+   * agenda — têm a MESMA melhoria: aqui o runner reaponta o item (ou o slide
+   * do carrossel) para a Generation nova, como já faz com `mediaUrls` do post.
+   * Sem isto o card da bancada continuava mostrando a arte antiga.
+   */
+  applyToItemDePlanoId?: string | null
+  applyToPlanoId?: string | null
+  /** Carrossel na bancada: a ordem do slide (1 = primeiro) que recebe a arte. */
+  applyToSlideOrdem?: number | null
   userId: string
   orgId?: string
   projectId: number
@@ -144,6 +155,70 @@ function avisoDeNumerosNaMelhoria(numeros: string[]): Record<string, unknown> {
     numerosAlerta:
       `A arte mostra número que não está na copy (${numeros.slice(0, 5).join(', ')}). ` +
       'Pode ser algo real da foto — ou dado inventado pelo modelo. Confira antes de aprovar.',
+  }
+}
+
+/**
+ * A porta da BANCADA: o item (ou o slide) passa a apontar para a arte melhorada.
+ *
+ * Só mexe em item que ainda está na fila (`pronto`/`editado`/`proposto`): item
+ * já `agendado` é do post, e o post tem o próprio caminho (`applyToPostId`).
+ * Nunca lança — a arte já existe e está paga; um item que sumiu não pode
+ * transformar isso em FAILED.
+ */
+async function reapontarItemDaBancada(input: {
+  projectId: number
+  planoId: string
+  itemId: string
+  slideOrdem: number | null
+  generationId: string
+  resultUrl: string
+}): Promise<void> {
+  try {
+    const { transicionarItem } = await import('@/lib/planos/plano-service')
+    const item = await db.itemDePlano.findFirst({
+      where: { id: input.itemId, planoId: input.planoId, projectId: input.projectId },
+      select: { id: true, status: true, slides: true, generationId: true },
+    })
+    if (!item) {
+      console.warn(`[improve.bg] item da bancada ${input.itemId} não encontrado — arte fica só na galeria`)
+      return
+    }
+    if (!['pronto', 'editado', 'proposto'].includes(item.status)) {
+      console.warn(`[improve.bg] item ${input.itemId} está em "${item.status}" — não reaponto (a arte fica na galeria)`)
+      return
+    }
+    if (input.slideOrdem != null) {
+      const bruto = item.slides as { groupId?: string; lista?: Array<Record<string, unknown>> } | null
+      const lista = Array.isArray(bruto?.lista) ? bruto!.lista : null
+      if (!lista) {
+        console.warn(`[improve.bg] item ${input.itemId} não tem slides — pedido de slide ${input.slideOrdem} ignorado`)
+        return
+      }
+      const novaLista = lista.map((s) =>
+        Number(s.ordem) === input.slideOrdem
+          ? { ...s, generationId: input.generationId, resultUrl: input.resultUrl, erro: null }
+          : s,
+      )
+      await transicionarItem({
+        projectId: input.projectId,
+        planoId: input.planoId,
+        itemId: input.itemId,
+        para: 'pronto',
+        slides: { ...bruto, lista: novaLista },
+      })
+    } else {
+      await transicionarItem({
+        projectId: input.projectId,
+        planoId: input.planoId,
+        itemId: input.itemId,
+        para: 'pronto',
+        generationId: input.generationId,
+      })
+    }
+    console.log(`[improve.bg] item da bancada ${input.itemId} reapontado para ${input.generationId}`)
+  } catch (erro) {
+    console.warn('[improve.bg] falha ao reapontar o item da bancada (arte segue na galeria):', erro)
   }
 }
 
@@ -659,6 +734,17 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           },
         })
         .catch(() => null)
+    }
+
+    if (args.applyToItemDePlanoId && args.applyToPlanoId) {
+      await reapontarItemDaBancada({
+        projectId: args.projectId,
+        planoId: args.applyToPlanoId,
+        itemId: args.applyToItemDePlanoId,
+        slideOrdem: args.applyToSlideOrdem ?? null,
+        generationId: args.jobGenerationId,
+        resultUrl: blob.url,
+      })
     }
 
     if (args.applyToPostId) {

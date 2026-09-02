@@ -458,6 +458,11 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
       projectId: { type: 'number', description: 'ID do cliente.' },
       planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
       itemId: { type: 'string', description: 'O item (de ver-plano).' },
+      generationId: {
+        type: 'string',
+        description:
+          '"Usa esta arte": uma arte que já existe na galeria (de upload-creative, criar-arte ou melhorar-arte) passa a ser a arte deste item, que vai para "pronto" na bancada. É a porta da bancada para arte pronta feita fora do Studio. Pode vir sozinho.',
+      },
       quando: { type: 'string', description: 'Novo dia e hora de Brasília ("AAAA-MM-DD HH:mm").' },
       tema: { type: 'string', description: 'Novo tema.' },
       texto: {
@@ -675,6 +680,13 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).' },
       pedido: { type: 'string', description: 'Instruções de melhoria vindas da sua análise da arte (máx 1200 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
       postId: { type: 'string', description: 'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
+      itemId: {
+        type: 'string',
+        description:
+          'A outra porta: item da leva (de ver-plano) que recebe a arte melhorada ao final — o card da bancada passa a mostrar a arte nova. Use itemId OU postId, nunca os dois.',
+      },
+      planoId: { type: 'string', description: 'A leva do itemId. Sem isto, a que está em aberto.' },
+      slide: { type: 'number', description: 'Carrossel na bancada: a ordem do slide que recebe a arte (1 = primeiro). Só com itemId.' },
     },
     required: ['projectId', 'generationId'],
     additionalProperties: false,

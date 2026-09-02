@@ -26,6 +26,10 @@ export interface ImproveJob {
   sourceImageUrl?: string | null
   /** Slide do carrossel que recebe a arte melhorada (0 = primeiro). */
   applyToPostMediaIndex?: number | null
+  /** A porta da bancada: item da fila (e slide) que recebe a arte. */
+  applyToItemDePlanoId?: string | null
+  applyToPlanoId?: string | null
+  applyToSlideOrdem?: number | null
   status: ImproveJobStatus
   createdAt: number
   startedAt?: number
@@ -55,6 +59,9 @@ interface AddJobInput {
   applyToPostId?: string | null
   sourceImageUrl?: string | null
   applyToPostMediaIndex?: number | null
+  applyToItemDePlanoId?: string | null
+  applyToPlanoId?: string | null
+  applyToSlideOrdem?: number | null
 }
 
 interface ImproveQueueState {
@@ -217,6 +224,43 @@ export const selectActiveJobs = (state: ImproveQueueState) =>
  * Devolve o próprio item do array, então a referência só muda quando o job
  * muda — não provoca re-render a cada tick.
  */
+/**
+ * A última melhoria CONCLUÍDA para um post, recente — é o gatilho do "como
+ * ficou?" na agenda: a arte acabou de chegar e o feedback de um clique vale
+ * mais agora do que depois (3 sinais em 141 melhorias, medido em 01/09/2026).
+ */
+export function useMelhoriaRecemConcluida(
+  postId?: string | null,
+  janelaMs = 30 * 60_000,
+): ImproveJob | undefined {
+  return useImproveQueueStore((state) =>
+    postId
+      ? state.jobs.find(
+          (job) =>
+            job.applyToPostId === postId &&
+            job.status === 'completed' &&
+            typeof job.completedAt === 'number' &&
+            Date.now() - job.completedAt < janelaMs,
+        )
+      : undefined,
+  )
+}
+
+/** O mesmo, para um item da fila da bancada. */
+export function useMelhoriaDoItemDaBancada(
+  itemDePlanoId?: string | null,
+): ImproveJob | undefined {
+  return useImproveQueueStore((state) =>
+    itemDePlanoId
+      ? state.jobs.find(
+          (job) =>
+            job.applyToItemDePlanoId === itemDePlanoId &&
+            (job.status === 'pending' || job.status === 'processing'),
+        )
+      : undefined,
+  )
+}
+
 export function useImproveJobForPost(postId?: string | null): ImproveJob | undefined {
   return useImproveQueueStore((state) =>
     postId

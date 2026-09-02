@@ -59,6 +59,13 @@ const bodySchema = z.object({
    * vale o primeiro — e os outros slides ficam intactos de qualquer forma.
    */
   applyToPostMediaIndex: z.number().int().min(0).optional().nullable(),
+  /**
+   * A porta da BANCADA (F3, 02/09/2026): item da fila (e o slide, em
+   * carrossel) que recebe a arte melhorada. Mesma melhoria da agenda.
+   */
+  applyToItemDePlanoId: z.string().min(1).optional().nullable(),
+  applyToPlanoId: z.string().min(1).optional().nullable(),
+  applyToSlideOrdem: z.number().int().min(1).optional().nullable(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -104,6 +111,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       applyToPostId: parsed.data.applyToPostId,
       sourceImageUrl: parsed.data.sourceImageUrl,
       applyToPostMediaIndex: parsed.data.applyToPostMediaIndex,
+      applyToItemDePlanoId: parsed.data.applyToItemDePlanoId,
+      applyToPlanoId: parsed.data.applyToPlanoId,
+      applyToSlideOrdem: parsed.data.applyToSlideOrdem,
       actorClerkId: userId,
       orgId: orgId ?? undefined,
     })
