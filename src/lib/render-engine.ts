@@ -26,6 +26,7 @@ import {
   retanguloDoFundo,
   type FundoResolvido,
 } from './creatives/halo/fundo-de-texto'
+import { papelNoBloco, retanguloDoBloco } from './creatives/halo/bloco-de-fundo'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -39,6 +40,13 @@ export interface FontValidationResult {
 
 export interface RenderOptions {
   scaleFactor?: number
+  /**
+   * Todas as camadas do design, JÁ com fieldValues aplicados. O fundo de um
+   * texto AGRUPADO (bloco-de-fundo) é uma mancha só, medida sobre os irmãos —
+   * renderDesign preenche; quem chama renderLayer avulso pode omitir (aí cada
+   * texto desenha o próprio fundo).
+   */
+  camadasDoDesign?: Layer[]
   imageLoader?: ImageLoader
   imageCache?: Map<string, CanvasImageSource>
   fontChecker?: FontChecker
@@ -83,8 +91,9 @@ export class RenderEngine {
     }
 
     const sortedLayers = [...design.layers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    const camadasDoDesign = sortedLayers.map((layer) => this.applyFieldValues(layer, fieldValues))
     for (const layer of sortedLayers) {
-      await this.renderLayer(ctx, layer, fieldValues, options)
+      await this.renderLayer(ctx, layer, fieldValues, { ...options, camadasDoDesign })
     }
 
     ctx.restore()
@@ -372,24 +381,10 @@ export class RenderEngine {
     height: number,
     options: RenderOptions,
   ): Promise<void> {
-    const style = layer.style ?? {}
-    let fontFamily = style.fontFamily ?? 'sans-serif'
-
-    if (options.fontChecker) {
-      try {
-        const result = await options.fontChecker(fontFamily)
-        if (!result.isValid && result.fallbackFont) {
-          fontFamily = result.fallbackFont
-        }
-      } catch {
-        // ignore font checker failures
-      }
-    }
-
     // O fallback de fonte precisa valer também nos sub-renderers, que remontam
     // ctx.font a partir do style — sem isso o fallback só existia na primeira
     // atribuição e o measureText dos caminhos com config media outra fonte
-    const resolvedStyle = { ...style, fontFamily }
+    const resolvedStyle = await this.resolveFontFamily(layer, options)
 
     // Texto curvo: caminho próprio, caractere a caractere no arco — a mesma
     // geometria do editor. Não passa por padding, quebra nem alinhamento.
@@ -401,7 +396,7 @@ export class RenderEngine {
     // Fundo/halo atrás do texto — antes do conteúdo e FORA do offscreen do
     // blur de texto (no editor é um Rect irmão, não entra no cache do Text).
     // Texto curvo não tem fundo no editor; curvature 0 cai aqui, com fundo.
-    this.renderTextBackground(ctx, layer, resolvedStyle, width, height, options)
+    await this.renderTextBackground(ctx, layer, resolvedStyle, width, height, options)
 
     // Blur de texto: desenhar o conteúdo num offscreen (o cache do editor),
     // borrar os pixels com o stack blur do Konva e blitar o resultado
@@ -1075,65 +1070,26 @@ export class RenderEngine {
    * conta que o editor faz com o `textArr` do Konva. `blur` > 0 borra a
    * mancha nos próprios pixels (blurRoundedRect), nunca a foto atrás.
    */
-  private static renderTextBackground(
+  private static async renderTextBackground(
     ctx: CanvasRenderingContext2D,
     layer: Layer,
     resolvedStyle: LayerStyle,
     width: number,
     height: number,
     options: RenderOptions,
-  ): void {
+  ): Promise<void> {
     if (layer.type !== 'text') return
     const fundo = resolverFundo(layer.effects?.background)
     if (!fundo) return
 
+    // Texto AGRUPADO (bloco-de-fundo): uma mancha só para o grupo, desenhada
+    // pelo líder sobre a união dos irmãos; os membros não desenham nada.
+    const { papel, membros } = options.camadasDoDesign
+      ? papelNoBloco(options.camadasDoDesign, layer)
+      : { papel: 'sozinho' as const, membros: [layer] }
+    if (papel === 'membro') return
+
     const scaleFactor = options.scaleFactor ?? 1
-    const pad = PADDING_DE_DESENHO * scaleFactor
-
-    let tinta: Rect | null = null
-    if (fundo.fit === 'texto') {
-      const style = layer.style ?? {}
-      const content = this.applyTextTransform(layer.content ?? '', style)
-      if (!content.trim()) return
-      const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
-      const spacingCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
-
-      ctx.save()
-      this.applyLetterSpacing(ctx, resolvedStyle, scaleFactor)
-      const boxWidth = Math.max(0, width - pad * 2)
-      const boxHeight = Math.max(0, height - pad * 2)
-      const layout = this.layoutTextLines(ctx, resolvedStyle, config, content, boxWidth, boxHeight)
-      const desenhadas =
-        layout.mode === 'auto-resize-single'
-          ? layout.lines
-          : this.linhasDesenhadas(
-              layout.lines,
-              layout.fontSize * layout.lineHeight,
-              boxHeight,
-              config.autoWrap?.autoExpand === true,
-            )
-      // Largura medida com a MESMA fonte/letterSpacing da quebra — antes do
-      // restore (o letterSpacing não é estado salvo em todo canvas)
-      const linhas = desenhadas.map((line) => ({
-        largura: line ? ctx.measureText(line).width : 0,
-        ultimaDoParagrafo: true,
-      }))
-      ctx.restore()
-      spacingCtx.letterSpacing = '0px'
-
-      // ('justify' não existe no tipo nem no canvas: renderLines desenha à
-      // esquerda, e retanguloDasLinhas trata qualquer outro valor como left)
-      tinta = retanguloDasLinhas({
-        linhas,
-        caixa: { width, height },
-        align: style.textAlign ?? 'left',
-        anchor: config.anchor ?? 'top',
-        fontSize: layout.fontSize,
-        lineHeight: layout.lineHeight,
-        padding: pad,
-      })
-    }
-
     const escalado: FundoResolvido = {
       ...fundo,
       paddingX: fundo.paddingX * scaleFactor,
@@ -1143,7 +1099,38 @@ export class RenderEngine {
       offsetX: fundo.offsetX * scaleFactor,
       offsetY: fundo.offsetY * scaleFactor,
     }
-    const rect = retanguloDoFundo(escalado, { width, height }, tinta)
+
+    let rect: Rect | null
+    if (papel === 'lider') {
+      // Bases em coordenadas da PÁGINA (escaladas), união, e de volta ao
+      // local do líder — o ctx já está transladado para a posição dele (sem
+      // rotação: texto girado não entra em bloco)
+      const bases: Rect[] = []
+      for (const membro of membros) {
+        const mw = Math.max(0, (membro.size?.width ?? 0) * scaleFactor)
+        const mh = Math.max(0, (membro.size?.height ?? 0) * scaleFactor)
+        const estilo = membro.id === layer.id ? resolvedStyle : await this.resolveFontFamily(membro, options)
+        const base =
+          fundo.fit === 'texto'
+            ? this.tintaDoTexto(ctx, membro, estilo, mw, mh, scaleFactor)
+            : { x: 0, y: 0, width: mw, height: mh }
+        if (!base) continue
+        bases.push({
+          x: base.x + (membro.position?.x ?? 0) * scaleFactor,
+          y: base.y + (membro.position?.y ?? 0) * scaleFactor,
+          width: base.width,
+          height: base.height,
+        })
+      }
+      const bloco = retanguloDoBloco(escalado, bases)
+      rect = bloco
+        ? { ...bloco, x: bloco.x - layer.position.x * scaleFactor, y: bloco.y - layer.position.y * scaleFactor }
+        : null
+    } else {
+      const tinta = fundo.fit === 'texto' ? this.tintaDoTexto(ctx, layer, resolvedStyle, width, height, scaleFactor) : null
+      if (fundo.fit === 'texto' && !tinta) return
+      rect = retanguloDoFundo(escalado, { width, height }, tinta)
+    }
     if (!rect || rect.width <= 0 || rect.height <= 0) return
     const cantos = raioDosCantos(escalado, rect)
 
@@ -1163,6 +1150,73 @@ export class RenderEngine {
     this.tracarRetanguloArredondado(ctx, rect.x, rect.y, rect.width, rect.height, cantos)
     ctx.fill()
     ctx.restore()
+  }
+
+  /** O style da camada com a família de fonte já passada pelo fontChecker (fallback quando falta). */
+  private static async resolveFontFamily(layer: Layer, options: RenderOptions): Promise<LayerStyle> {
+    const style = layer.style ?? {}
+    let fontFamily = style.fontFamily ?? 'sans-serif'
+    if (options.fontChecker) {
+      try {
+        const result = await options.fontChecker(fontFamily)
+        if (!result.isValid && result.fallbackFont) {
+          fontFamily = result.fallbackFont
+        }
+      } catch {
+        // ignore font checker failures
+      }
+    }
+    return { ...style, fontFamily }
+  }
+
+  /**
+   * Retângulo da TINTA de um texto em coordenadas locais da camada: as linhas
+   * resolvidas com a MESMA quebra do desenho (layoutTextLines +
+   * linhasDesenhadas), medidas com a mesma fonte/letterSpacing, e passadas por
+   * `retanguloDasLinhas` — a conta que o editor faz com o `textArr` do Konva.
+   * Null quando não há texto. Não desenha nada; deixa o ctx como encontrou.
+   */
+  private static tintaDoTexto(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    resolvedStyle: LayerStyle,
+    width: number,
+    height: number,
+    scaleFactor: number,
+  ): Rect | null {
+    const style = layer.style ?? {}
+    const content = this.applyTextTransform(layer.content ?? '', style)
+    if (!content.trim()) return null
+    const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
+    const pad = PADDING_DE_DESENHO * scaleFactor
+    const spacingCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+
+    ctx.save()
+    this.applyLetterSpacing(ctx, resolvedStyle, scaleFactor)
+    const boxWidth = Math.max(0, width - pad * 2)
+    const boxHeight = Math.max(0, height - pad * 2)
+    const layout = this.layoutTextLines(ctx, resolvedStyle, config, content, boxWidth, boxHeight)
+    const desenhadas =
+      layout.mode === 'auto-resize-single'
+        ? layout.lines
+        : this.linhasDesenhadas(layout.lines, layout.fontSize * layout.lineHeight, boxHeight, config.autoWrap?.autoExpand === true)
+    // Largura medida com a MESMA fonte/letterSpacing da quebra — antes do
+    // restore (o letterSpacing não é estado salvo em todo canvas)
+    const linhas = desenhadas.map((line) => ({ largura: line ? ctx.measureText(line).width : 0, ultimaDoParagrafo: true }))
+    ctx.restore()
+    spacingCtx.letterSpacing = '0px'
+
+    // ('justify' não existe no tipo nem no canvas: renderLines desenha à
+    // esquerda, e retanguloDasLinhas trata qualquer outro valor como left)
+    return retanguloDasLinhas({
+      linhas,
+      caixa: { width, height },
+      align: style.textAlign ?? 'left',
+      anchor: config.anchor ?? 'top',
+      fontSize: layout.fontSize,
+      lineHeight: layout.lineHeight,
+      padding: pad,
+    })
   }
 
   /**

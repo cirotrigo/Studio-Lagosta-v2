@@ -33,6 +33,12 @@ export function GradientsPanel() {
   )
   const alvosDoHalo = textosSelecionados.length > 0 ? textosSelecionados : textosVisiveis
   const textoSelecionado = textosSelecionados.length === 1 ? textosSelecionados[0] : null
+  // Vários textos selecionados sem um grupo em comum: cada um ganharia a
+  // própria mancha, e manchas vizinhas se sobrepõem. Agrupar (Cmd+G) faz o
+  // bloco-de-fundo desenhar uma só.
+  const semGrupoComum =
+    textosSelecionados.length > 1 &&
+    new Set(textosSelecionados.map((l) => (typeof l.metadata?.groupId === 'string' ? l.metadata.groupId : ''))).size !== 1
 
   const aplicarHaloEmLote = React.useCallback(() => {
     if (alvosDoHalo.length === 0) return
@@ -90,6 +96,11 @@ export function GradientsPanel() {
         <Button type="button" size="sm" onClick={aplicarHaloEmLote} disabled={alvosDoHalo.length === 0}>
           Aplicar halo
         </Button>
+        {semGrupoComum && (
+          <p className="text-[10px] leading-snug text-muted-foreground">
+            Textos agrupados (Cmd+G) dividem uma mancha só — sem grupo, cada um ganha a sua, e manchas vizinhas se sobrepõem.
+          </p>
+        )}
         {textoSelecionado && <FundoDeTextoControls layer={textoSelecionado} />}
       </div>
 

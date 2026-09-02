@@ -22,6 +22,7 @@ import {
   raioDoControle,
   type FundoDeTexto,
 } from '@/lib/creatives/halo/fundo-de-texto'
+import { papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
 import { BrandColorSwatches } from './brand-color-swatches'
 
 const FUNDO_PADRAO: FundoDeTexto = { enabled: true, backgroundColor: '#ffffff', padding: 10 }
@@ -92,6 +93,11 @@ export function FundoDeTextoControls({ layer }: FundoDeTextoControlsProps) {
   const paddingX = fundo?.paddingX ?? padding
   const paddingY = fundo?.paddingY ?? padding
 
+  // Texto agrupado: a mancha é uma só para o grupo (bloco-de-fundo). O líder
+  // manda na configuração; num membro os controles não teriam efeito.
+  const bloco = React.useMemo(() => papelNoBloco(editor.design.layers, layer), [editor.design.layers, layer])
+  const lider = bloco.papel === 'membro' ? bloco.membros[0] : null
+
   return (
     <div className="space-y-2 rounded-md border border-border/30 bg-muted/30 p-2">
       <div className="flex items-center justify-between gap-2">
@@ -117,7 +123,21 @@ export function FundoDeTextoControls({ layer }: FundoDeTextoControlsProps) {
         </div>
       </div>
 
-      {ligado && fundo && (
+      {ligado && lider && (
+        <p className="rounded border border-border/40 bg-muted/40 px-2 py-1.5 text-[10px] leading-snug text-muted-foreground">
+          Este texto está agrupado: a mancha é uma só para o grupo e segue a configuração de{' '}
+          <span className="font-medium text-foreground">{lider.name}</span>. Desligue o fundo aqui para
+          tirar este texto da mancha, ou desagrupe (Cmd+Shift+G) para ajustá-lo à parte.
+        </p>
+      )}
+
+      {ligado && fundo && bloco.papel === 'lider' && (
+        <p className="text-[10px] leading-snug text-muted-foreground">
+          Mancha compartilhada com {bloco.membros.length - 1 === 1 ? 'mais um texto' : `mais ${bloco.membros.length - 1} textos`} do grupo.
+        </p>
+      )}
+
+      {ligado && fundo && !lider && (
         <div className="space-y-2">
           {/* Ajuste */}
           <div className="space-y-1">
