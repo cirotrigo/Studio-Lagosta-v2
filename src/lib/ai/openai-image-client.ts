@@ -490,11 +490,20 @@ export async function runImageEdit({
   size,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   quality = 'high',
+  mask,
 }: {
   images: RawEditImage[]
   prompt: string
   size: string
   timeoutMs?: number
+  /**
+   * Máscara do `images.edit`: PNG do MESMO tamanho da primeira imagem, em que
+   * a área TRANSPARENTE é a única que o modelo pode redesenhar — o resto sai
+   * pixel por pixel. É o caminho da F5 (spike de 02/09/2026): rediagramar o
+   * texto sem regenerar a fotografia. Só medição por enquanto
+   * (`scripts/spike-melhoria-com-mascara.ts`); a produção não passa.
+   */
+  mask?: RawEditImage
   /**
    * Tier de qualidade da OpenAI. **O default é `high` e a produção não passa
    * este parâmetro** — ele existe para medir: `medium` custa US$ 0,045 contra
@@ -514,6 +523,8 @@ export async function runImageEdit({
     images.map((img) => toFile(img.buffer, img.name, { type: img.mimeType })),
   )
 
+  const maskFile = mask ? await toFile(mask.buffer, mask.name, { type: mask.mimeType }) : undefined
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const startedAt = Date.now()
@@ -522,6 +533,7 @@ export async function runImageEdit({
       {
         model: IMAGE_MODEL,
         image: files.length === 1 ? files[0] : files,
+        ...(maskFile ? { mask: maskFile } : {}),
         prompt,
         size: size as never,
         quality,
@@ -531,7 +543,7 @@ export async function runImageEdit({
     )
     const elapsed = Date.now() - startedAt
     console.log(
-      `[runImageEdit] ${IMAGE_MODEL} ${size} q=${quality} concluído em ${(elapsed / 1000).toFixed(1)}s (${files.length} imagem/ns)`,
+      `[runImageEdit] ${IMAGE_MODEL} ${size} q=${quality} concluído em ${(elapsed / 1000).toFixed(1)}s (${files.length} imagem/ns${maskFile ? ', com máscara' : ''})`,
     )
     const b64 = response.data?.[0]?.b64_json
     if (!b64) throw new Error('OpenAI não retornou dados de imagem')

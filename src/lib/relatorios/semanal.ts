@@ -126,6 +126,12 @@ interface LinhaDoCliente {
   piorFeed: { trecho: string; engagement: number } | null
   diasSemPost: number
   sinais: { emitidos: number; aceitos: number; editados: number; recusados: number }
+  /**
+   * A melhoria com IA na semana (F3, 02/09/2026): quantas, quantas com régua
+   * de texto, quantas entregues com aviso, e o veredito de um clique. Sem
+   * isto "a melhoria melhora?" era palpite — 3 sinais em 141 melhorias.
+   */
+  melhorias: { total: number; comRegua: number; comAviso: number; gostei: number; melhorar: number }
   alertas: string[]
 }
 
@@ -213,6 +219,27 @@ async function montarLinhaDoCliente(
 
   const completude = (Math.min(storiesPublicados / META_STORIES, 1) + Math.min(feedsPublicados / META_FEEDS, 1)) / 2
 
+  // Melhorias com IA da semana — lidas do registro atômico da Generation.
+  const melhoriasDaSemana = await db.generation.findMany({
+    where: {
+      projectId: projeto.id,
+      createdAt: { gte: inicio, lt: fim },
+      fieldValues: { path: ['source'], equals: 'ai_improvement' },
+    },
+    select: { fieldValues: true },
+  })
+  const melhorias = { total: 0, comRegua: 0, comAviso: 0, gostei: 0, melhorar: 0 }
+  for (const g of melhoriasDaSemana) {
+    const fv = (g.fieldValues ?? {}) as Record<string, unknown>
+    melhorias.total++
+    if (fv.regua && fv.regua !== 'nenhuma') melhorias.comRegua++
+    else if (Array.isArray(fv.textos) && fv.textos.length > 0) melhorias.comRegua++
+    if (fv.entregueComAlerta || fv.textoAMaisAlerta || fv.numerosAlerta || fv.textCheck === 'failed') melhorias.comAviso++
+    const veredito = (fv.feedback as { veredito?: string } | undefined)?.veredito
+    if (veredito === 'gostei') melhorias.gostei++
+    else if (veredito) melhorias.melhorar++
+  }
+
   const alertas: string[] = []
   if (!temMetricas) alertas.push('sem token do Instagram — números da conta invisíveis')
   if (variacaoVsBase !== null && variacaoVsBase <= -0.3)
@@ -239,6 +266,7 @@ async function montarLinhaDoCliente(
     piorFeed: pior ? { trecho: trecho(pior.caption), engagement: pior.engagement } : null,
     diasSemPost,
     sinais,
+    melhorias,
     alertas,
   }
 }
@@ -261,6 +289,12 @@ function mensagemDaCarteira(janela: JanelaDaSemana, linhas: LinhaDoCliente[]): s
       `*${l.nome}* [${l.score}] — ${l.storiesPublicados}/${META_STORIES} stories · ${l.feedsPublicados}/${META_FEEDS} feed · ${alcance}`,
     )
     if (l.melhorFeed) partes.push(`  melhor: "${l.melhorFeed.trecho}" (${l.melhorFeed.engagement})`)
+    if (l.melhorias.total > 0) {
+      const m = l.melhorias
+      partes.push(
+        `  melhoria IA: ${m.total} (régua ${Math.round((m.comRegua / m.total) * 100)}%, ${m.comAviso} com aviso, 👍${m.gostei} 👎${m.melhorar})`,
+      )
+    }
     for (const a of l.alertas.filter((x) => !x.startsWith('sem token'))) partes.push(`  ⚠️ ${a}`)
   }
 
@@ -402,6 +436,7 @@ function linhaParaJson(l: LinhaDoCliente) {
     melhorFeed: l.melhorFeed,
     piorFeed: l.piorFeed,
     sinais: l.sinais,
+    melhorias: l.melhorias,
     // Honestidade da medição: colhido na segunda de manhã, o fim de semana
     // ainda acumula alcance — comparar sempre com a mesma defasagem.
     colhidoEm: new Date().toISOString(),

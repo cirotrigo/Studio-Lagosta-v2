@@ -42,7 +42,19 @@ export function normalizar(s: string): string {
  */
 export function casaComDia(textos: Array<string | null | undefined>, dia: number): boolean {
   const alvo = normalizar(DIAS_SEMANA[dia])
-  return textos.some((t) => (t ? normalizar(t).includes(alvo) : false))
+  /**
+   * 🔴 Por TOKEN, nunca por substring. "quinta" está dentro de "Quintal", e
+   * com `includes` TODO template de "O Quintal Parrilla — …" era "de quinta":
+   * foi assim que `escolher-modelo("funcionamento")` devolveu "Celebrações
+   * Especiais" em 01/09/2026 — o primeiro da lista vencia o desempate por dia.
+   * "Quinta-feira" e "By Rock — Quinta" continuam casando: o hífen e o espaço
+   * separam tokens.
+   */
+  return textos.some((t) => (t ? tokens(normalizar(t)).includes(alvo) : false))
+}
+
+function tokens(texto: string): string[] {
+  return texto.split(/[^a-z0-9]+/).filter(Boolean)
 }
 
 /** Todos os dias que o modelo atende — normalmente zero ou um. */
