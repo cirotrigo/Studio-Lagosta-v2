@@ -17,6 +17,8 @@ import {
   ArrowDown,
   Palette,
   LayoutGrid,
+  Group,
+  Ungroup,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -54,6 +56,11 @@ interface AlignmentToolbarProps {
   // Rich Text conversion
   selectedLayerType?: 'text' | 'rich-text' | 'image' | 'logo' | 'element' | string
   onConvertToRichText?: () => void
+  // Grupo estilo Canva (2+ camadas viram um conjunto que se move junto)
+  canGroup?: boolean
+  canUngroup?: boolean
+  onGroup?: () => void
+  onUngroup?: () => void
 }
 
 /**
@@ -84,6 +91,10 @@ export function AlignmentToolbar({
   className,
   selectedLayerType,
   onConvertToRichText,
+  canGroup = false,
+  canUngroup = false,
+  onGroup,
+  onUngroup,
 }: AlignmentToolbarProps) {
   // Com um elemento o alvo é a página; com dois ou mais, o conjunto. Mesma
   // regra do painel de propriedades — aqui tinha ficado para trás, e os botões
@@ -277,6 +288,55 @@ export function AlignmentToolbar({
             </div>
           </PopoverContent>
         </Popover>
+
+        {/* Agrupar / Desagrupar */}
+        {(onGroup || onUngroup) && (
+          <>
+            <Separator orientation="vertical" className="h-6" />
+            <div className="flex items-center gap-0.5">
+              {onGroup && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={disabled || !canGroup}
+                      onClick={onGroup}
+                      className="h-8 w-8 p-0"
+                      aria-label="Agrupar"
+                    >
+                      <Group className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Agrupar</p>
+                    <p className="text-xs text-muted-foreground">Ctrl+G — selecione 2 ou mais camadas</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+              {onUngroup && (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={disabled || !canUngroup}
+                      onClick={onUngroup}
+                      className="h-8 w-8 p-0"
+                      aria-label="Desagrupar"
+                    >
+                      <Ungroup className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>Desagrupar</p>
+                    <p className="text-xs text-muted-foreground">Ctrl+Shift+G</p>
+                  </TooltipContent>
+                </Tooltip>
+              )}
+            </div>
+          </>
+        )}
 
         {/* Rich Text Conversion - só aparece para texto simples */}
         {showRichTextButton && onConvertToRichText && (

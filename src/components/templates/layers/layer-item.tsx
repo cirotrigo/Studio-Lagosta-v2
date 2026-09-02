@@ -18,6 +18,8 @@ import {
   MoveUp,
   MoveDown,
   Sparkles,
+  Group,
+  Ungroup,
 } from 'lucide-react'
 import type { Layer } from '@/types/template'
 import { getLayerIcon } from './layer-icons'
@@ -47,6 +49,10 @@ interface LayerItemProps {
   onRename: (name: string) => void
   onBringToFront: () => void
   onSendToBack: () => void
+  /** Presente quando a camada está numa seleção de 2+ (agrupa a seleção inteira) */
+  onGroup?: () => void
+  /** Presente quando a camada pertence a um grupo */
+  onUngroup?: () => void
 }
 
 export function LayerItem({
@@ -61,8 +67,11 @@ export function LayerItem({
   onRename,
   onBringToFront,
   onSendToBack,
+  onGroup,
+  onUngroup,
 }: LayerItemProps) {
   const [isRenaming, setIsRenaming] = React.useState(false)
+  const pertenceAGrupo = typeof layer.metadata?.groupId === 'string' && layer.metadata.groupId.length > 0
   const [editName, setEditName] = React.useState(layer.name)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
@@ -170,6 +179,12 @@ export function LayerItem({
                       <Badge variant="secondary" className="h-3.5 px-1 text-[9px] font-medium">
                         <Sparkles className="mr-0.5 h-2 w-2" />
                         Dinâmica
+                      </Badge>
+                    )}
+                    {pertenceAGrupo && (
+                      <Badge variant="outline" className="h-3.5 px-1 text-[9px] font-medium" title="Faz parte de um grupo">
+                        <Group className="mr-0.5 h-2 w-2" />
+                        Grupo
                       </Badge>
                     )}
                   </div>
@@ -312,6 +327,19 @@ export function LayerItem({
               </svg>
               Renomear
             </DropdownMenuItem>
+            {(onGroup || onUngroup) && <DropdownMenuSeparator />}
+            {onGroup && (
+              <DropdownMenuItem onClick={onGroup}>
+                <Group className="mr-2 h-4 w-4" />
+                Agrupar seleção
+              </DropdownMenuItem>
+            )}
+            {onUngroup && (
+              <DropdownMenuItem onClick={onUngroup}>
+                <Ungroup className="mr-2 h-4 w-4" />
+                Desagrupar
+              </DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={onDelete}

@@ -35,6 +35,10 @@ export interface TemplateEditorContextValue {
   selectLayers: (ids: string[]) => void
   toggleLayerSelection: (id: string) => void
   clearLayerSelection: () => void
+  /** Agrupa a seleção (2+ camadas) num grupo estilo Canva: `metadata.groupId` comum */
+  groupSelectedLayers: () => void
+  /** Desfaz o(s) grupo(s) a que as camadas pertencem (sem `ids`, a seleção) — nada é desselecionado */
+  ungroupLayers: (ids?: string[]) => void
   updateLayer: (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => void
   updateLayerPartial: (id: string, partial: Partial<Layer>) => void
   updateLayerStyle: (id: string, style: Layer['style']) => void
@@ -321,6 +325,46 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const clearLayerSelection = React.useCallback(() => {
     setSelectedLayerIds([])
   }, [])
+
+  // Grupo estilo Canva é só metadado nas layers da página (`metadata.groupId`),
+  // o mesmo vínculo que as combinações de fontes já usam — persiste pelo
+  // autosave sem mudança de schema, e o comportamento (1º clique seleciona o
+  // grupo, 2º entra no elemento, arraste em conjunto) vive no stage. Agrupar
+  // uma seleção que já contém membros de outro grupo ABSORVE esses membros:
+  // não há grupo aninhado, e o que ficou de fora mantém o vínculo antigo.
+  const groupSelectedLayers = React.useCallback(() => {
+    const ids = selectedLayerIdsRef.current
+    if (ids.length < 2) return
+    const groupId = `grupo-${createId()}`
+    applyDesign((prev) => ({
+      ...prev,
+      layers: prev.layers.map((layer) =>
+        ids.includes(layer.id) ? { ...layer, metadata: { ...(layer.metadata ?? {}), groupId } } : layer,
+      ),
+    }))
+  }, [applyDesign])
+
+  const ungroupLayers = React.useCallback((ids: string[] = selectedLayerIdsRef.current) => {
+    if (ids.length === 0) return
+    applyDesign((prev) => {
+      const groupIds = new Set<string>()
+      for (const layer of prev.layers) {
+        const groupId = layer.metadata?.groupId
+        if (ids.includes(layer.id) && typeof groupId === 'string' && groupId) groupIds.add(groupId)
+      }
+      if (groupIds.size === 0) return prev
+      return {
+        ...prev,
+        layers: prev.layers.map((layer) => {
+          const groupId = layer.metadata?.groupId
+          if (typeof groupId !== 'string' || !groupIds.has(groupId)) return layer
+          const { groupId: _removed, ...metadata } = layer.metadata ?? {}
+          void _removed
+          return { ...layer, metadata }
+        }),
+      }
+    })
+  }, [applyDesign])
 
   const updateLayer = React.useCallback(
     (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => {
@@ -1272,6 +1316,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       selectLayers,
       toggleLayerSelection,
       clearLayerSelection,
+      groupSelectedLayers,
+      ungroupLayers,
       updateLayer,
       updateLayerPartial,
       updateLayerStyle,
@@ -1348,6 +1394,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       selectLayers,
       toggleLayerSelection,
       clearLayerSelection,
+      groupSelectedLayers,
+      ungroupLayers,
       updateLayer,
       updateLayerPartial,
       updateLayerStyle,

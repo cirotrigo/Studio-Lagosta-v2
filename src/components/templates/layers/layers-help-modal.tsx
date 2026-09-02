@@ -58,6 +58,14 @@ export function LayersHelpModal({ open, onOpenChange }: LayersHelpModalProps) {
                   description="Duplicar camadas selecionadas"
                 />
                 <ShortcutItem
+                  keys={['Ctrl', 'G']}
+                  description="Agrupar camadas selecionadas (2 ou mais)"
+                />
+                <ShortcutItem
+                  keys={['Ctrl', 'Shift', 'G']}
+                  description="Desagrupar"
+                />
+                <ShortcutItem
                   keys={['Ctrl', 'F']}
                   description="Focar no campo de busca"
                 />
@@ -92,7 +100,12 @@ export function LayersHelpModal({ open, onOpenChange }: LayersHelpModalProps) {
                 <ActionItem
                   icon={<Mouse className="h-4 w-4" />}
                   action="Ctrl/Shift + Click"
-                  description="Seleção múltipla (adiciona à seleção)"
+                  description="Seleção múltipla (adiciona à seleção) — no painel ou direto no canvas"
+                />
+                <ActionItem
+                  icon={<Mouse className="h-4 w-4" />}
+                  action="Click num grupo"
+                  description="O 1º clique seleciona o grupo inteiro; o 2º entra no elemento"
                 />
                 <ActionItem
                   icon={<GripVertical className="h-4 w-4" />}
