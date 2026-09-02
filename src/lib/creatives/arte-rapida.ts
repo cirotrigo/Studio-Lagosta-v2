@@ -29,6 +29,7 @@ import {
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { lerCamadas, parsePageLayers } from '@/lib/posts/page-layers'
 import {
   caiNaEscolhaPropria,
   fecharDicaDeCopyDaPagina,
@@ -83,17 +84,35 @@ function normalize(value: string): string {
     .replace(/\s+/g, '-')
 }
 
+/**
+ * `Page.layers` → camadas, pelo leitor único (`page-layers.ts`), que aceita
+ * as três codificações do banco — inclusive a string DUPLA-codificada.
+ *
+ * Até 02/09/2026 isto decodificava UM nível e devolvia `[]` em silêncio na
+ * dupla. Continua devolvendo `[]` no ilegível (é o que `slotFieldsFromLayers`
+ * e o diagnóstico de geometria esperam); quem vai PRODUZIR arte a partir das
+ * camadas usa `camadasParaBake`, que lança.
+ */
 export function parseLayers(raw: unknown): any[] {
-  if (Array.isArray(raw)) return raw as any[]
-  if (typeof raw === 'string') {
-    try {
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
+  return parsePageLayers(raw) as any[]
+}
+
+/**
+ * As camadas de uma página que vai virar arte. Ilegível LANÇA: assar a copy
+ * sobre `[]` produziria uma peça vazia com cara de sucesso.
+ */
+function camadasParaBake(raw: unknown, page: { id: string; name?: string | null }): any[] {
+  const { camadas, legivel } = lerCamadas(raw)
+  if (!legivel) {
+    throw new CreativeError(
+      'PAGE_LAYERS_ILEGIVEIS',
+      `A página ${page.name ? `"${page.name}" (${page.id})` : page.id} tem camadas ilegíveis e não pode virar arte. ` +
+        'Abra a página no editor e salve de novo para regravar as camadas.',
+      422,
+      { pageId: page.id },
+    )
   }
-  return []
+  return camadas as any[]
 }
 
 /** Campos preenchíveis de uma página: textos e imagens dinâmicas. */
@@ -660,7 +679,11 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       ? { layout: escolha.layout, motivo: escolha.motivo, pageId: paginaModelo.id, pageName: paginaModelo.name }
       : undefined
 
-  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(parseLayers(modelo.layers), slotValues, resolved.url)
+  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(
+    camadasParaBake(modelo.layers, modelo),
+    slotValues,
+    resolved.url,
+  )
 
   // Texto novo maior (ou menor) que o do template: medir a quebra real e
   // reacomodar as pilhas de combinação; texto solto cresce a própria caixa
@@ -907,16 +930,15 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const resolved = await resolveImageUrl(directUrl, driveImageId)
 
   /**
-   * A copy ANTES do ajuste, lida do jeito profundo (`page-layers.ts`), não
-   * pelo `parseLayers` daqui: ele decodifica um nível só e devolve `[]` em
-   * silêncio na string dupla-codificada. Num diff de aprendizado isso viraria
-   * "não havia texto antes", e toda linha da arte apareceria como
-   * ACRESCENTADA pela pessoa — o diff falsamente vazio, ao contrário.
-   * `null` = ilegível, e ilegível não vira sinal.
+   * A copy ANTES do ajuste, lida do jeito profundo (`page-layers.ts`). Num
+   * diff de aprendizado, camadas lidas como `[]` virariam "não havia texto
+   * antes", e toda linha da arte apareceria como ACRESCENTADA pela pessoa —
+   * o diff falsamente vazio, ao contrário. `null` = ilegível, e ilegível não
+   * vira sinal.
    */
   const copyAntes = copyDeCamadas(page.layers)
 
-  const sourceLayers = parseLayers(page.layers)
+  const sourceLayers = camadasParaBake(page.layers, page)
   const baked = bakeLayers(sourceLayers, slotValues, resolved.url)
   const { layers: bakedLayers, changedTextIds } = baked
   let imageApplied = baked.imageApplied

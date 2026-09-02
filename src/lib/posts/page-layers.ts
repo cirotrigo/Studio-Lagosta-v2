@@ -7,11 +7,15 @@
  *   - string DUPLA-CODIFICADA (`"\"[{...}]\""`), o legado registrado no
  *     CLAUDE.md (§ Editor PageSync autosave).
  *
- * O `parseLayers` de `src/lib/creatives/arte-rapida.ts` decodifica UM nível e
- * devolve `[]` **em silêncio** na dupla. Para escolher slots isso só degrada;
- * para o diff de copy do aprendizado é o pior defeito possível: as camadas
- * ilegíveis viram "nenhum texto", o diff sai vazio e o corpus registra "o
- * usuário não editou nada" — exatamente o contrário do que aconteceu.
+ * O `parseLayers` de `src/lib/creatives/arte-rapida.ts` decodificava UM nível
+ * e devolvia `[]` **em silêncio** na dupla (desde 02/09/2026 ele delega para
+ * cá). Para escolher slots isso só degrada; para o diff de copy do
+ * aprendizado é o pior defeito possível: as camadas ilegíveis viram "nenhum
+ * texto", o diff sai vazio e o corpus registra "o usuário não editou nada" —
+ * exatamente o contrário do que aconteceu. E `page-to-design-data.ts`, o
+ * conversor do RENDER, fazia um `JSON.parse` de um nível sem `Array.isArray`
+ * — na dupla entregava a string interna tipada como `Layer[]` ao renderizador
+ * de publicação. Hoje os dois passam por aqui.
  *
  * Por isso a decodificação profunda vive aqui, num módulo SEM Prisma e sem
  * nenhuma dependência: `diff-copy.ts` precisa ser testável sem banco, e

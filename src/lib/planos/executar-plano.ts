@@ -602,8 +602,8 @@ export async function gerarItemPorModelo(input: GerarItemPorModeloInput): Promis
  * Os campos de texto de uma página-modelo, na ordem em que estão nas camadas.
  *
  * 🔴 A leitura passa por `lerCamadas` (`page-layers.ts`), nunca pelo
- * `parseLayers` de `arte-rapida.ts`: aquele decodifica UM nível e devolve `[]`
- * em silêncio na string dupla-codificada que existe no legado do PageSync —
+ * `parseLayers` de `arte-rapida.ts`: aquele devolve `[]` em silêncio no
+ * ilegível (e até 02/09/2026 também na string dupla-codificada do PageSync) —
  * aqui isso viraria "o modelo não tem campo de texto" e a copy inteira do item
  * sumiria da arte sem que ninguém soubesse.
  */

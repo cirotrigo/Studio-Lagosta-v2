@@ -13,6 +13,7 @@
  */
 
 import type { DesignData, Layer } from '@/types/template'
+import { lerCamadas } from './page-layers'
 
 interface PageRecord {
   id: string
@@ -27,7 +28,7 @@ interface PageRecord {
  * Convert a Page database record to DesignData for rendering.
  */
 export function convertPageToDesignData(page: PageRecord): DesignData {
-  const layers = parseLayers(page.layers)
+  const layers = camadasDaPagina(page.layers, page)
 
   return {
     canvas: {
@@ -124,20 +125,37 @@ export function findUnmatchedSlotKeys(
  * na criação de post template-based e no story-renderer.
  */
 export function pageContainsVideoLayer(layers: unknown): boolean {
-  return parseLayers(layers).some((layer) => layer?.type === 'video')
+  return camadasDaPagina(layers).some((layer) => layer?.type === 'video')
 }
 
-function parseLayers(layers: unknown): Layer[] {
-  if (typeof layers === 'string') {
-    try {
-      return JSON.parse(layers) as Layer[]
-    } catch {
-      console.error('Failed to parse layers JSON string')
-      return []
-    }
+/**
+ * `Page.layers` → `Layer[]`, pelo leitor único da casa (`page-layers.ts`),
+ * que aceita as três codificações do banco — array, string JSON e a string
+ * DUPLA-codificada do legado do PageSync.
+ *
+ * 🔴 Até 02/09/2026 isto era um `JSON.parse` de UM nível, sem `Array.isArray`:
+ * na forma dupla devolvia a string interna tipada como `Layer[]`, e ela
+ * seguia para `designData.layers.some(...)` e `applySlotValues` no render de
+ * publicação (cron `render-stories`, executor, `renderPageAndRegister`).
+ *
+ * Ilegível LANÇA, nunca devolve `[]`: este é o caminho que produz a arte que
+ * vai ao ar, e uma página "sem camadas" renderizaria um quadro em branco com
+ * status RENDERED — pior do que falhar com o motivo escrito.
+ */
+function camadasDaPagina(raw: unknown, page?: { id: string; name: string }): Layer[] {
+  const { camadas, legivel } = lerCamadas(raw)
+  if (!legivel) {
+    const quem = page ? `Página ${page.id} ("${page.name}")` : 'Página'
+    throw new Error(
+      `${quem} tem camadas ilegíveis (${descreverCamadas(raw)}) — ` +
+        'não dá para renderizar. Abra a página no editor e salve de novo para regravar as camadas.',
+    )
   }
-  if (Array.isArray(layers)) {
-    return layers as Layer[]
-  }
-  return []
+  return camadas as unknown as Layer[]
+}
+
+function descreverCamadas(raw: unknown): string {
+  if (raw === null) return 'null'
+  if (typeof raw === 'string') return `string de ${raw.length} chars começando com ${JSON.stringify(raw.slice(0, 20))}`
+  return typeof raw
 }

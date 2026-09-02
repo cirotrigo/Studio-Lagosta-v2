@@ -7,7 +7,7 @@
  *
  * ⚠️ O DEFEITO A EVITAR É O DIFF FALSAMENTE VAZIO. `Page.layers` tem
  * codificação inconsistente no banco (array, string JSON, às vezes
- * dupla-codificada) e o `parseLayers` da arte-rápida devolve `[]` em silêncio
+ * dupla-codificada) e o `parseLayers` da arte-rápida devolvia `[]` em silêncio
  * na dupla. Um diff que aceitasse isso registraria "o usuário não editou
  * nada" justamente nas páginas que ninguém consegue ler — e o corpus
  * aprenderia que a sugestão estava perfeita. Por isso:
@@ -252,7 +252,8 @@ export function diffDeCopy(sugerida: LadoDaCopy, final: LadoDaCopy): DiffDeCopy 
  *
  * Devolve `null` quando as camadas são ILEGÍVEIS — e é essa distinção entre
  * "página sem texto" (`{}`) e "não consegui ler" (`null`) que impede o diff
- * falsamente vazio. Use sempre isto, nunca `parseLayers` da arte-rápida.
+ * falsamente vazio. Use sempre isto, nunca `parseLayers` da arte-rápida (que
+ * hoje decodifica fundo, mas continua devolvendo `[]` no ilegível).
  */
 export function copyDeCamadas(layers: unknown): Record<string, string> | null {
   const { legivel } = lerCamadas(layers)
