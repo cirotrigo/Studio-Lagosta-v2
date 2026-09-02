@@ -15,6 +15,17 @@ import {
   hasImageFilters,
 } from './konva/filters/apply'
 import { flattenRichTextStyles } from './rich-text-styles'
+import type { Rect } from './creatives/halo/halo'
+import {
+  escalaDoBlur,
+  folgaDoBlur,
+  PADDING_DE_DESENHO,
+  raioDosCantos,
+  resolverFundo,
+  retanguloDasLinhas,
+  retanguloDoFundo,
+  type FundoResolvido,
+} from './creatives/halo/fundo-de-texto'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -91,26 +102,10 @@ export class RenderEngine {
 
     ctx.save()
 
-    // Fundo/pílula de texto: no editor é um Rect IRMÃO do Text (sem rotação e
-    // sem a opacidade da camada), desenhado logo abaixo dele — replicar antes
-    // do transform. Texto curvo não tem fundo no editor (mas curved com
-    // curvature 0 desenha como texto normal, fundo incluso — igual ao editor).
+    // O fundo/halo do texto (effects.background) é desenhado em renderText,
+    // DENTRO do transform e sem a sombra do texto — ver renderTextBackground.
     // (rich-text fica de fora: como na sombra, o konva-multi-styled-text lê
     // efeitos por segmento e ignora layer.effects)
-    const backgroundFx = finalLayer.effects?.background
-    if (
-      finalLayer.type === 'text' &&
-      backgroundFx?.enabled &&
-      !this.isCurvedTextLayer(finalLayer)
-    ) {
-      const pad = (backgroundFx.padding ?? 0) * scaleFactor
-      const bgX = finalLayer.position.x * scaleFactor - pad
-      const bgY = finalLayer.position.y * scaleFactor - pad
-      const bgW = finalLayer.size.width * scaleFactor + pad * 2
-      const bgH = finalLayer.size.height * scaleFactor + pad * 2
-      ctx.fillStyle = backgroundFx.backgroundColor ?? '#000000'
-      ctx.fillRect(bgX, bgY, bgW, bgH)
-    }
 
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
     this.applyShadow(ctx, finalLayer, scaleFactor)
@@ -402,6 +397,11 @@ export class RenderEngine {
       this.renderCurvedText(ctx, layer, resolvedStyle, options)
       return
     }
+
+    // Fundo/halo atrás do texto — antes do conteúdo e FORA do offscreen do
+    // blur de texto (no editor é um Rect irmão, não entra no cache do Text).
+    // Texto curvo não tem fundo no editor; curvature 0 cai aqui, com fundo.
+    this.renderTextBackground(ctx, layer, resolvedStyle, width, height, options)
 
     // Blur de texto: desenhar o conteúdo num offscreen (o cache do editor),
     // borrar os pixels com o stack blur do Konva e blitar o resultado
@@ -947,95 +947,22 @@ export class RenderEngine {
     height: number,
     textStroke?: { color: string; width: number },
   ): Promise<void> {
-    const mode = config.textMode ?? 'auto-wrap-fixed'
+    const layout = this.layoutTextLines(ctx, style, config, content, width, height)
 
-    switch (mode) {
-      case 'auto-resize-single':
-        this.renderAutoResizeSingle(ctx, content, width, style)
-        break
-      case 'auto-resize-multi':
-        this.renderAutoResizeMulti(ctx, content, width, height, style, config, textStroke)
-        break
-      case 'auto-wrap-fixed':
-      default:
-        this.renderAutoWrapFixed(ctx, content, width, height, style, config, textStroke)
-        break
-    }
-  }
-
-  private static renderAutoResizeSingle(
-    ctx: CanvasRenderingContext2D,
-    content: string,
-    width: number,
-    style: LayerStyle,
-  ): void {
-    const minFontSize = Math.max(1, style.fontSize ?? 12)
-    const maxFontSize = Math.max(minFontSize, style.fontSize ?? 48)
-    let low = minFontSize
-    let high = maxFontSize
-    let best = minFontSize
-
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2)
-      ctx.font = this.buildFontString(mid, style)
-      const metrics = ctx.measureText(content)
-      if (metrics.width <= width) {
-        best = mid
-        low = mid + 1
-      } else {
-        high = mid - 1
-      }
+    if (layout.mode === 'auto-resize-single') {
+      // Linha única com a fonte que coube: desenhada no topo, sem contorno —
+      // como sempre foi
+      const x = this.getTextX(width, ctx.textAlign)
+      ctx.fillText(content, x, 0)
+      return
     }
 
-    ctx.font = this.buildFontString(best, style)
-    const x = this.getTextX(width, ctx.textAlign)
-    ctx.fillText(content, x, 0)
-  }
-
-  private static renderAutoResizeMulti(
-    ctx: CanvasRenderingContext2D,
-    content: string,
-    width: number,
-    height: number,
-    style: LayerStyle,
-    config: TextboxConfig,
-    textStroke?: { color: string; width: number },
-  ): void {
-    const minFontSize = Math.max(1, config.autoResize?.minFontSize ?? 12)
-    const maxFontSize = Math.max(minFontSize, config.autoResize?.maxFontSize ?? style.fontSize ?? 48)
-    let low = minFontSize
-    let high = maxFontSize
-    let bestFont = minFontSize
-    let bestLines: string[] = []
-
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2)
-      ctx.font = this.buildFontString(mid, style)
-      const lines = this.breakTextIntoLines(
-        ctx,
-        content,
-        width,
-        config.autoWrap?.breakMode ?? 'word',
-        config.wordBreak ?? false,
-      )
-      const totalHeight = lines.length * mid * (config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2)
-
-      if (totalHeight <= height) {
-        bestFont = mid
-        bestLines = lines
-        low = mid + 1
-      } else {
-        high = mid - 1
-      }
-    }
-
-    ctx.font = this.buildFontString(bestFont, style)
     this.renderLines(
       ctx,
-      bestLines,
+      layout.lines,
       width,
-      bestFont,
-      config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2,
+      layout.fontSize,
+      layout.lineHeight,
       config.anchor,
       height,
       config.autoWrap?.autoExpand === true,
@@ -1043,36 +970,279 @@ export class RenderEngine {
     )
   }
 
-  private static renderAutoWrapFixed(
+  /**
+   * Resolve fonte e linhas de um texto pelo `textMode` — a parte da conta que
+   * o desenho e o fundo justo ao texto (`fit: 'texto'`) precisam COMPARTILHAR,
+   * senão a mancha mede uma quebra e o texto sai com outra. Deixa `ctx.font`
+   * na fonte final, como os renderers sempre deixaram.
+   *
+   * - auto-wrap-fixed: fonte do style, quebra na largura;
+   * - auto-resize-multi: busca binária da maior fonte cujas linhas cabem na
+   *   altura;
+   * - auto-resize-single: busca binária da maior fonte em que a linha inteira
+   *   cabe na largura (sem quebra; `lineHeight` 1 porque é desenhada no topo).
+   */
+  private static layoutTextLines(
     ctx: CanvasRenderingContext2D,
+    style: LayerStyle,
+    config: TextboxConfig,
     content: string,
     width: number,
     height: number,
-    style: LayerStyle,
-    config: TextboxConfig,
-    textStroke?: { color: string; width: number },
-  ): void {
+  ): { mode: 'auto-wrap-fixed' | 'auto-resize-multi' | 'auto-resize-single'; fontSize: number; lines: string[]; lineHeight: number } {
+    const mode = config.textMode ?? 'auto-wrap-fixed'
+    const lineHeight = config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2
+    const breakMode = config.autoWrap?.breakMode ?? 'word'
+    const wordBreak = config.wordBreak ?? false
+
+    if (mode === 'auto-resize-single') {
+      const minFontSize = Math.max(1, style.fontSize ?? 12)
+      const maxFontSize = Math.max(minFontSize, style.fontSize ?? 48)
+      let low = minFontSize
+      let high = maxFontSize
+      let best = minFontSize
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2)
+        ctx.font = this.buildFontString(mid, style)
+        if (ctx.measureText(content).width <= width) {
+          best = mid
+          low = mid + 1
+        } else {
+          high = mid - 1
+        }
+      }
+      ctx.font = this.buildFontString(best, style)
+      return { mode, fontSize: best, lines: [content], lineHeight: 1 }
+    }
+
+    if (mode === 'auto-resize-multi') {
+      const minFontSize = Math.max(1, config.autoResize?.minFontSize ?? 12)
+      const maxFontSize = Math.max(minFontSize, config.autoResize?.maxFontSize ?? style.fontSize ?? 48)
+      let low = minFontSize
+      let high = maxFontSize
+      let bestFont = minFontSize
+      let bestLines: string[] = []
+      while (low <= high) {
+        const mid = Math.floor((low + high) / 2)
+        ctx.font = this.buildFontString(mid, style)
+        const lines = this.breakTextIntoLines(ctx, content, width, breakMode, wordBreak)
+        const totalHeight = lines.length * mid * lineHeight
+        if (totalHeight <= height) {
+          bestFont = mid
+          bestLines = lines
+          low = mid + 1
+        } else {
+          high = mid - 1
+        }
+      }
+      ctx.font = this.buildFontString(bestFont, style)
+      return { mode, fontSize: bestFont, lines: bestLines, lineHeight }
+    }
+
     const fontSize = Math.max(1, style.fontSize ?? 16)
     ctx.font = this.buildFontString(fontSize, style)
-    const lines = this.breakTextIntoLines(
-      ctx,
-      content,
-      width,
-      config.autoWrap?.breakMode ?? 'word',
-      config.wordBreak ?? false,
-    )
+    const lines = this.breakTextIntoLines(ctx, content, width, breakMode, wordBreak)
+    return { mode: 'auto-wrap-fixed', fontSize, lines, lineHeight }
+  }
 
-    this.renderLines(
-      ctx,
-      lines,
-      width,
-      fontSize,
-      config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2,
-      config.anchor,
-      height,
-      config.autoWrap?.autoExpand === true,
-      textStroke,
-    )
+  /**
+   * As linhas que o desenho de fato mostra. Paridade com o Konva.Text em
+   * altura fixa: ele TRUNCA por linhas inteiras (para de acumular quando a
+   * próxima não cabe); com autoExpand o editor cresce a caixa, então nada é
+   * cortado. Compartilhada por renderLines e pelo fundo justo ao texto — o
+   * halo tem de cobrir as linhas VISÍVEIS, não as que foram cortadas.
+   */
+  private static linhasDesenhadas(
+    lines: string[],
+    lineHeightPx: number,
+    maxHeight: number | undefined,
+    autoExpand: boolean,
+  ): string[] {
+    if (autoExpand || maxHeight === undefined || lineHeightPx <= 0) return lines
+    const maxLines = Math.max(1, Math.floor((maxHeight + 0.001) / lineHeightPx))
+    return lines.length > maxLines ? lines.slice(0, maxLines) : lines
+  }
+
+  /**
+   * effects.background — o fundo (ou HALO) atrás do texto. Desenhado DENTRO do
+   * transform da camada (acompanha rotação) e ANTES do texto; a sombra do
+   * texto fica desligada aqui (senão contornaria a mancha) e a opacidade da
+   * camada, já no ctx, é multiplicada pela do fundo — no editor o Rect irmão
+   * faz a mesma conta.
+   *
+   * `fit: 'texto'` mede as linhas com a MESMA quebra do desenho
+   * (layoutTextLines + linhasDesenhadas) e passa por `retanguloDasLinhas`, a
+   * conta que o editor faz com o `textArr` do Konva. `blur` > 0 borra a
+   * mancha nos próprios pixels (blurRoundedRect), nunca a foto atrás.
+   */
+  private static renderTextBackground(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    resolvedStyle: LayerStyle,
+    width: number,
+    height: number,
+    options: RenderOptions,
+  ): void {
+    if (layer.type !== 'text') return
+    const fundo = resolverFundo(layer.effects?.background)
+    if (!fundo) return
+
+    const scaleFactor = options.scaleFactor ?? 1
+    const pad = PADDING_DE_DESENHO * scaleFactor
+
+    let tinta: Rect | null = null
+    if (fundo.fit === 'texto') {
+      const style = layer.style ?? {}
+      const content = this.applyTextTransform(layer.content ?? '', style)
+      if (!content.trim()) return
+      const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
+      const spacingCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+
+      ctx.save()
+      this.applyLetterSpacing(ctx, resolvedStyle, scaleFactor)
+      const boxWidth = Math.max(0, width - pad * 2)
+      const boxHeight = Math.max(0, height - pad * 2)
+      const layout = this.layoutTextLines(ctx, resolvedStyle, config, content, boxWidth, boxHeight)
+      const desenhadas =
+        layout.mode === 'auto-resize-single'
+          ? layout.lines
+          : this.linhasDesenhadas(
+              layout.lines,
+              layout.fontSize * layout.lineHeight,
+              boxHeight,
+              config.autoWrap?.autoExpand === true,
+            )
+      // Largura medida com a MESMA fonte/letterSpacing da quebra — antes do
+      // restore (o letterSpacing não é estado salvo em todo canvas)
+      const linhas = desenhadas.map((line) => ({
+        largura: line ? ctx.measureText(line).width : 0,
+        ultimaDoParagrafo: true,
+      }))
+      ctx.restore()
+      spacingCtx.letterSpacing = '0px'
+
+      // ('justify' não existe no tipo nem no canvas: renderLines desenha à
+      // esquerda, e retanguloDasLinhas trata qualquer outro valor como left)
+      tinta = retanguloDasLinhas({
+        linhas,
+        caixa: { width, height },
+        align: style.textAlign ?? 'left',
+        anchor: config.anchor ?? 'top',
+        fontSize: layout.fontSize,
+        lineHeight: layout.lineHeight,
+        padding: pad,
+      })
+    }
+
+    const escalado: FundoResolvido = {
+      ...fundo,
+      paddingX: fundo.paddingX * scaleFactor,
+      paddingY: fundo.paddingY * scaleFactor,
+      borderRadius: fundo.borderRadius * scaleFactor,
+      blur: fundo.blur * scaleFactor,
+      offsetX: fundo.offsetX * scaleFactor,
+      offsetY: fundo.offsetY * scaleFactor,
+    }
+    const rect = retanguloDoFundo(escalado, { width, height }, tinta)
+    if (!rect || rect.width <= 0 || rect.height <= 0) return
+    const cantos = raioDosCantos(escalado, rect)
+
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0)'
+    ctx.shadowBlur = 0
+    ctx.shadowOffsetX = 0
+    ctx.shadowOffsetY = 0
+    ctx.globalAlpha = ctx.globalAlpha * fundo.opacity
+
+    const blur = Math.round(escalado.blur)
+    if (blur > 0 && this.blurRoundedRect(ctx, rect, fundo.color, cantos, blur, options)) {
+      ctx.restore()
+      return
+    }
+    ctx.fillStyle = fundo.color
+    this.tracarRetanguloArredondado(ctx, rect.x, rect.y, rect.width, rect.height, cantos)
+    ctx.fill()
+    ctx.restore()
+  }
+
+  /**
+   * Mancha borrada nos PRÓPRIOS pixels (`filter: blur()` no retângulo, nunca
+   * `backdrop-filter`): o retângulo arredondado é desenhado num offscreen com
+   * folga de 3× o raio, os pixels DELE são borrados e o bitmap volta ao ctx
+   * com o globalAlpha corrente (a opacidade do fundo).
+   *
+   * Acima de 200 px o buffer é reduzido por `k` (escalaDoBlur): o stack blur
+   * satura em 254, e a mancha é lisa por natureza, então a redução não custa
+   * nada visual — e o custo fica limitado. O editor cacheia o Rect com
+   * `pixelRatio: 1/k` pela mesma conta.
+   */
+  private static blurRoundedRect(
+    ctx: CanvasRenderingContext2D,
+    rect: Rect,
+    color: string,
+    cantos: number,
+    blur: number,
+    options?: RenderOptions,
+  ): boolean {
+    const { k, raioNoBuffer } = escalaDoBlur(blur)
+    const pad = folgaDoBlur(blur)
+    const bx = rect.x - pad
+    const by = rect.y - pad
+    const bw = rect.width + pad * 2
+    const bh = rect.height + pad * 2
+    if (bw <= 0 || bh <= 0) return false
+
+    const off = this.getOffscreen(bw / k, bh / k, options)
+    if (!off) return false
+
+    const octx = off.ctx
+    octx.scale(1 / k, 1 / k)
+    octx.translate(-bx, -by)
+    octx.fillStyle = color
+    this.tracarRetanguloArredondado(octx, rect.x, rect.y, rect.width, rect.height, cantos)
+    octx.fill()
+
+    try {
+      const imageData = octx.getImageData(0, 0, off.width, off.height)
+      applyStackBlur(imageData.data, off.width, off.height, raioNoBuffer)
+      octx.putImageData(imageData, 0, 0)
+    } catch (error) {
+      console.warn('[RenderEngine] Falha ao borrar o fundo do texto:', error)
+      return false
+    }
+
+    // O offscreen foi arredondado para cima em pixels do buffer: blitar no
+    // tamanho dele × k mantém o mapeamento 1:k exato
+    ctx.drawImage(off.canvas as unknown as CanvasImageSource, bx, by, off.width * k, off.height * k)
+    return true
+  }
+
+  /** Path de retângulo com cantos arredondados (o napi-rs não garante `roundRect`). */
+  private static tracarRetanguloArredondado(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ): void {
+    ctx.beginPath()
+    if (r <= 0) {
+      ctx.rect(x, y, w, h)
+      ctx.closePath()
+      return
+    }
+    const raio = Math.min(r, w / 2, h / 2)
+    ctx.moveTo(x + raio, y)
+    ctx.lineTo(x + w - raio, y)
+    ctx.arcTo(x + w, y, x + w, y + raio, raio)
+    ctx.lineTo(x + w, y + h - raio)
+    ctx.arcTo(x + w, y + h, x + w - raio, y + h, raio)
+    ctx.lineTo(x + raio, y + h)
+    ctx.arcTo(x, y + h, x, y + h - raio, raio)
+    ctx.lineTo(x, y + raio)
+    ctx.arcTo(x, y, x + raio, y, raio)
+    ctx.closePath()
   }
 
   private static renderLines(
@@ -1096,11 +1266,7 @@ export class RenderEngine {
     // Com autoExpand, o editor cresce a caixa na direção da âncora — aqui isso
     // vira desenhar além da altura gravada (startY pode ficar negativo: base
     // sobe, meio abre para os dois lados, topo desce).
-    let drawLines = lines
-    if (!autoExpand && maxHeight !== undefined) {
-      const maxLines = Math.max(1, Math.floor((maxHeight + 0.001) / lineHeight))
-      if (drawLines.length > maxLines) drawLines = drawLines.slice(0, maxLines)
-    }
+    const drawLines = this.linhasDesenhadas(lines, lineHeight, maxHeight, autoExpand)
 
     const totalHeight = drawLines.length * lineHeight
 

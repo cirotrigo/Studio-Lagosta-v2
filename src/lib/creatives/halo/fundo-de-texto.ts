@@ -16,10 +16,11 @@
  *    `_sceneFunc` do Konva.Text usa para posicionar as linhas (e que o
  *    `renderLines` do servidor já reproduz);
  *  - `escalaDoBlur`: em que escala a mancha é borrada. 🔴 O stack blur do
- *    Konva tem tabelas de 256 entradas — raio ≥ 256 quebra a imagem (NaN) no
- *    editor e satura em 254 no port do servidor. Acima de 200 o blur roda
- *    num buffer reduzido por `k` e é ampliado de volta: a mancha é lisa por
- *    natureza, então a redução não custa nada visual, e o custo fica LIMITADO.
+ *    Konva estoura int32 acima do raio ~180 (faixas verticais, mancha some —
+ *    ver RAIO_MAXIMO_DO_STACK_BLUR) e a tabela dele acaba em 255. Acima de
+ *    160 o blur roda num buffer reduzido por `k` e é ampliado de volta: a
+ *    mancha é lisa por natureza, então a redução não custa nada visual, e o
+ *    custo fica LIMITADO.
  */
 
 import type { Layer } from '@/types/template'
@@ -53,10 +54,16 @@ export const PADDING_DE_DESENHO = 6
 export const RAIO_MAXIMO_DO_FUNDO = 600
 
 /**
- * Teto do raio POR BUFFER. A tabela do stack blur vai a 255; 200 deixa folga
- * e faz `k` subir em degraus redondos (201..400 → 2, 401..600 → 3).
+ * Teto do raio POR BUFFER.
+ *
+ * 🔴 O teto real do stack blur NÃO é a tabela de 256 entradas: é o overflow
+ * de int32. Konva e o port usam `(sum * mul_table[r]) >> shg_table[r]` com
+ * shift COM SINAL, e `255 · (r+1)(r+2)/2 · mul[r]` passa de 2³¹ entre o raio
+ * 180 e 190 — medido em 02/09/2026: raio 150 borra certo, raio 200 devolve
+ * faixas verticais e a mancha some. 160 deixa folga sobre o 180 e faz `k`
+ * subir cedo (161..320 → 2, 321..480 → 3, 481..600 → 4).
  */
-export const RAIO_MAXIMO_DO_STACK_BLUR = 200
+export const RAIO_MAXIMO_DO_STACK_BLUR = 160
 
 export const BORDA_MAXIMA = 200
 export const DESLOCAMENTO_MAXIMO = 200
@@ -221,9 +228,9 @@ export interface EscalaDoBlur {
 }
 
 /**
- * Em que escala borrar um raio visual `raio`. `k = ceil(raio / 200)`; o raio
- * no buffer é `raio / k` (nunca acima de 200, então a tabela do stack blur
- * sempre alcança). `k · raioNoBuffer` recompõe o raio visual a ±k/2.
+ * Em que escala borrar um raio visual `raio`. `k = ceil(raio / 160)`; o raio
+ * no buffer é `raio / k` (nunca acima de 160, abaixo do overflow do stack
+ * blur). `k · raioNoBuffer` recompõe o raio visual a ±k/2.
  */
 export function escalaDoBlur(raio: number): EscalaDoBlur {
   const r = Math.max(0, Math.round(raio))

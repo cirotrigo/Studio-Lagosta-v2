@@ -160,17 +160,18 @@ describe('retanguloDoFundo', () => {
   })
 })
 
-describe('escalaDoBlur — o teto de 255 do stack blur nunca é alcançado', () => {
-  it('até 200 é escala cheia', () => {
+describe('escalaDoBlur — o overflow do stack blur (raio ~180) nunca é alcançado', () => {
+  it('até 160 é escala cheia', () => {
     expect(escalaDoBlur(0)).toEqual({ k: 1, raioNoBuffer: 0 })
     expect(escalaDoBlur(1)).toEqual({ k: 1, raioNoBuffer: 1 })
-    expect(escalaDoBlur(200)).toEqual({ k: 1, raioNoBuffer: 200 })
+    expect(escalaDoBlur(160)).toEqual({ k: 1, raioNoBuffer: 160 })
   })
 
-  it('acima, reduz por k = ceil(raio/200) e o raio no buffer fica ≤ 200', () => {
-    expect(escalaDoBlur(201)).toEqual({ k: 2, raioNoBuffer: 101 })
-    expect(escalaDoBlur(400)).toEqual({ k: 2, raioNoBuffer: 200 })
-    expect(escalaDoBlur(600)).toEqual({ k: 3, raioNoBuffer: 200 })
+  it('acima, reduz por k = ceil(raio/160) e o raio no buffer fica ≤ 160', () => {
+    expect(escalaDoBlur(161)).toEqual({ k: 2, raioNoBuffer: 81 })
+    expect(escalaDoBlur(200)).toEqual({ k: 2, raioNoBuffer: 100 })
+    expect(escalaDoBlur(400)).toEqual({ k: 3, raioNoBuffer: 133 })
+    expect(escalaDoBlur(600)).toEqual({ k: 4, raioNoBuffer: 150 })
     for (let r = 0; r <= 1200; r += 7) {
       const e = escalaDoBlur(r)
       expect(e.raioNoBuffer).toBeLessThanOrEqual(RAIO_MAXIMO_DO_STACK_BLUR)

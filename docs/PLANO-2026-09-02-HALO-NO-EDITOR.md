@@ -82,16 +82,20 @@ usa isso), o servidor passa as linhas de `breakTextIntoLines` medidas com
 ### 2.3 O desfoque é borrado em ESCALA REDUZIDA
 
 🔴 O stack blur do Konva tem tabelas de 256 entradas (`mul_table`/`shg_table`
-em `konva/lib/filters/Blur.js`): raio ≥ 256 indexa `undefined` e a mancha sai
-QUEBRADA (NaN nos pixels). O port do servidor (`src/lib/konva/filters/apply.ts`)
-satura em 254 — o slider subiria e nada mudaria, em silêncio. O `ShapeNode` só
-ia até 200, então nunca bateu.
+em `konva/lib/filters/Blur.js`) — mas o teto real chega ANTES: o algoritmo
+faz `(sum * mul_table[r]) >> shg_table[r]` com shift COM SINAL, e
+`255 · (r+1)(r+2)/2 · mul[r]` passa de 2³¹ entre o raio 180 e 190. Medido em
+02/09/2026 no render server-side (mesmo código): raio 150 borra certo; raio
+200 devolve faixas verticais e a mancha SOME. O port (`src/lib/konva/filters/
+apply.ts`) saturava em 254 — dentro da zona quebrada — e o `ShapeNode` só ia
+até 200, então quase nunca bateu (190–200 já quebrava).
 
-`escalaDoBlur(raio)` devolve `{ k, raioNoBuffer }` com `k = ceil(raio/200)`:
+`escalaDoBlur(raio)` devolve `{ k, raioNoBuffer }` com `k = ceil(raio/160)`:
 o editor cacheia o `Rect` com `pixelRatio: 1/k` e `blurRadius = raio/k`; o
 servidor desenha o offscreen a `1/k`, borra `raio/k` e blita escalado de volta.
 A mancha é lisa por natureza — a redução não custa nada visual — e o custo fica
-LIMITADO: raio 600 num bloco de 800×300 seria 16 MP em escala 1; a 1/3, 1,8 MP.
+LIMITADO: raio 600 num bloco de 800×300 seria 16 MP em escala 1; a 1/4, 1 MP.
+O port passou a saturar em 180, para quem não passar pela escala.
 
 `renderShapeBlurred` e o `ShapeNode` (os halos que o servidor cria por bloco)
 adotam a mesma função, e o teto de 200 deles some.
