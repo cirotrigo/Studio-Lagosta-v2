@@ -52,6 +52,12 @@ export interface TextCheckResult {
    * `textosVazadosDoModelo`. Também é aviso, nunca reprovação.
    */
   textosVazados: string[]
+  /**
+   * Blocos da arte gerada que NÃO estão na régua — a metade que faltava.
+   * `comDado` é o caso "endereço de outro estado"; `semDado` é decoração.
+   * Aviso, nunca reprovação (Ciro, 01/09/2026). Ver `blocosAMais`.
+   */
+  blocosAMais: { comDado: string[]; semDado: string[] }
 }
 
 /** Sequências de dígitos de um texto, sem separador — "R$ 1.384,00" → "138400". */
@@ -92,8 +98,8 @@ export function numerosSemLastro(extracted: string[], expectedTexts: string[]): 
  * (`@/lib/db` lança no import quando falta `DATABASE_URL`). Seguem exportadas
  * daqui.
  */
-export { normalizeForComparison, textosVazadosDoModelo } from './text-comparison'
-import { normalizeForComparison, textosVazadosDoModelo } from './text-comparison'
+export { normalizeForComparison, textosVazadosDoModelo, blocosAMais } from './text-comparison'
+import { normalizeForComparison, textosVazadosDoModelo, blocosAMais } from './text-comparison'
 
 function isTextValue(value: string): boolean {
   const trimmed = value.trim()
@@ -348,5 +354,6 @@ export async function verifyImageTexts(
     // Fora do `passed` de propósito — ver a nota em TextCheckResult.
     numerosNaoEsperados: numerosSemLastro(extracted, expectedTexts),
     textosVazados: textosVazadosDoModelo(extracted, expectedTexts, textosDoModelo, nomeDaMarca),
+    blocosAMais: blocosAMais(extracted, expectedTexts, nomeDaMarca),
   }
 }

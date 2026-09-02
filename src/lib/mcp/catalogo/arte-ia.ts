@@ -565,10 +565,16 @@ export const toolsDeArteIA = [
               'A melhoria ficou pronta, mas o post não estava mais aprovado quando ela terminou — a arte nova está só na galeria.'
           }
         }
+        const avisos = [fv.textoAMaisAlerta, fv.textCheckAlert, fv.numerosAlerta, fv.vazamentoAlerta, fv.textoAMaisAviso]
+          .filter((a): a is string => typeof a === 'string' && a.length > 0)
         return {
           situacao: 'pronta',
           url: gen.resultUrl,
           verificacaoTexto: fv.textCheck ?? 'skipped',
+          ...(typeof fv.regua === 'string' ? { regua: fv.regua } : {}),
+          // Aviso vermelho primeiro: texto a mais com dado (endereço, horário)
+          // chega com a conferência verde e é o que o cliente reprova.
+          ...(avisos.length > 0 ? { avisos, atencao: 'Há aviso da conferência: mostre à pessoa antes de aprovar.' } : {}),
           ...(aplicadaAoPost !== undefined ? { aplicadaAoPost } : {}),
           ...(avisoPost ? { avisoPost } : {}),
           galleryUrl,

@@ -107,6 +107,46 @@ interface DownloadResult {
   label?: string
 }
 
+/**
+ * O aviso de bloco A MAIS — a metade que faltava da conferência.
+ *
+ * Com dado (endereço, hora, preço, cidade) é o alerta vermelho: foi assim que
+ * "Rua Fernandes Tourinho, 133 · Savassi, Belo Horizonte" chegou a um rascunho
+ * do Quintal com a conferência verde (01/09/2026). Sem dado é aviso discreto.
+ * Nunca reprova nem regera — decisão do Ciro na mesma data.
+ */
+function avisoDeTextoAMais(blocos: { comDado: string[]; semDado: string[] }): Record<string, unknown> {
+  if (blocos.comDado.length === 0 && blocos.semDado.length === 0) return {}
+  const info: Record<string, unknown> = { entregueComAlerta: true }
+  if (blocos.comDado.length > 0) {
+    const lista = blocos.comDado.slice(0, 3).map((t) => `"${t.slice(0, 60)}"`).join(', ')
+    info.blocosAMaisComDado = blocos.comDado.slice(0, 5)
+    info.textoAMaisAlerta =
+      `A melhoria acrescentou texto que NÃO está na copy: ${lista}. ` +
+      'É dado sobre o negócio do cliente (endereço, horário, preço) e pode ser inventado — confira antes de aprovar, e troque a arte se estiver errado.'
+  }
+  if (blocos.semDado.length > 0) {
+    info.blocosAMaisSemDado = blocos.semDado.slice(0, 5)
+    if (!info.textoAMaisAlerta) {
+      const lista = blocos.semDado.slice(0, 3).map((t) => `"${t.slice(0, 40)}"`).join(', ')
+      info.textoAMaisAviso = `A melhoria acrescentou texto que não está na copy (${lista}). Sem dado, mas confira se combina com a peça.`
+    }
+  }
+  return info
+}
+
+/** Número sem lastro na copy — o mesmo aviso da geração, agora também aqui. */
+function avisoDeNumerosNaMelhoria(numeros: string[]): Record<string, unknown> {
+  if (numeros.length === 0) return {}
+  return {
+    entregueComAlerta: true,
+    numerosNaoEsperados: numeros.slice(0, 10),
+    numerosAlerta:
+      `A arte mostra número que não está na copy (${numeros.slice(0, 5).join(', ')}). ` +
+      'Pode ser algo real da foto — ou dado inventado pelo modelo. Confira antes de aprovar.',
+  }
+}
+
 export async function processImprovementInBackground(args: ImprovementJobArgs): Promise<void> {
   const startedAt = Date.now()
   let format = args.format
@@ -328,6 +368,19 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       }
     }
 
+    /**
+     * De onde veio a régua — gravado por extenso porque `textCheckReason`
+     * mentia por omissão (01/09/2026: o ramo "sem texto esperado" escondia que
+     * o motivo real era o skip do carrossel). Uma coluna de leitura.
+     */
+    const origemDaRegua: 'banco' | 'linhagem' | 'visao' | 'nenhuma' = reguaPorVisao
+      ? 'visao'
+      : reguaDaLinhagem > 0
+        ? 'linhagem'
+        : textosDaRegua.length > 0
+          ? 'banco'
+          : 'nenhuma'
+
     const downloadMs = Date.now() - startedAt
     console.log(
       `[improve.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | textos esperados: ${expectedTexts.length}`,
@@ -366,6 +419,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         expectedTexts: textosDaRegua,
         instrucaoImagem: args.instrucaoImagem ?? null,
         arteSemTexto: arteSemTexto || raizSemTexto,
+        fatosDoCliente: assets.fatos,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
       })
@@ -395,7 +449,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
       try {
         const checkStartedAt = Date.now()
-        const check = await verifyImageTexts(candidate, textosDaRegua)
+        const check = await verifyImageTexts(candidate, textosDaRegua, [], assets.brand?.projectName ?? null)
         const checkMs = Date.now() - checkStartedAt
         attemptsLog.push({
           attempt,
@@ -410,11 +464,18 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
         if (check.passed) {
           improvedBuffer = candidate
-            textCheckInfo = {
-          textCheck: 'passed',
-          textCheckAttempts: attemptsLog,
-          ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
-        }
+          /**
+           * O aviso de texto A MAIS vale JUSTAMENTE aqui, no ramo verde: é
+           * assim que ele aparece — a copy inteira presente, mais um endereço
+           * de outro estado (Quintal, 01/09/2026). Aviso, nunca reprovação.
+           */
+          textCheckInfo = {
+            textCheck: 'passed',
+            textCheckAttempts: attemptsLog,
+            ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
+            ...avisoDeTextoAMais(check.blocosAMais),
+            ...avisoDeNumerosNaMelhoria(check.numerosNaoEsperados),
+          }
           break
         }
         lastMissing = check.missing
@@ -422,6 +483,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           textCheck: 'failed',
           textCheckAttempts: attemptsLog,
           textCheckExtracted: check.extracted.slice(0, 30),
+          ...avisoDeTextoAMais(check.blocosAMais),
         }
         /**
          * A segunda geração é item NOVO da fila, nunca a continuação desta
@@ -522,6 +584,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
            * continuaram sem régua nenhuma.
            */
           ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
+          regua: origemDaRegua,
           ...(reguaDaLinhagem > 0 ? { reguaDaLinhagem } : {}),
           ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
           inputSize: openaiSize,
@@ -576,6 +639,11 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               selectedElementIds: args.selectedElementIds,
               model: getCurrentImageModel(),
               quality: tier,
+              // A régua propaga também por este ramo — sem isto, uma falha
+              // de cobrança apagava os `textos` e a próxima melhoria da
+              // cadeia nascia sem régua.
+              ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
+              regua: origemDaRegua,
               inputSize: openaiSize,
               finalSize: `${finalSize.width}x${finalSize.height}`,
               format,

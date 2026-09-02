@@ -73,6 +73,25 @@ const SOBRA_MAXIMA = 20
 const DIA = String.raw`(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|seg|ter|qua|qui|sex|s[áa]b|dom)(?:s|[-\s]feiras?)?`
 const INTERVALO_DE_DIAS = new RegExp(String.raw`\b(?:de\s+)?${DIA}\s+(?:a|à|até|e)\s+${DIA}\b`, 'i')
 
+/**
+ * Dia SOZINHO no começo da linha de serviço ("Quinta, das 11h às 00h"): é
+ * como os modelos do Studio escrevem o funcionamento do dia. Descontado da
+ * sobra só nessa posição — no meio da frase o dia continua sendo assunto.
+ */
+const DIA_INICIAL = new RegExp(String.raw`^\s*${DIA}\s*[,:·-]?\s*`, 'i')
+
+/**
+ * Localidade colada ao horário na MESMA linha ("· Praia do Canto, Vitória-ES").
+ *
+ * 🔴 Os modelos do Studio (`info-1`) juntam dia, horário e endereço curto num
+ * bloco só. Medido em 01/09/2026: "Quinta, das 11h às 00h · Praia do Canto,
+ * Vitória-ES" sobrava 31 caracteres depois de tirar o horário e NÃO virava
+ * serviço — então a régua "não tinha serviço", a regra de rodapé sumia e os
+ * fatos do cliente não entravam. Bairro/cidade/UF junto de um horário é
+ * serviço, e a sobra não conta.
+ */
+const LOCALIDADE = /\b(?:praia|centro|bairro|jardim|shopping|vila|setor)\b|,\s*[^,·|]+?[-\/ ]\s?(?:ES|MG|RJ|SP|PR|SC|RS|BA|PE|CE|DF|GO|MT|MS|PA|AM|MA|PB|RN|AL|SE|PI|TO|RO|RR|AC|AP)\b/i
+
 export type PapelDoBloco = 'horário' | 'endereço'
 
 export interface BlocoDeServico {
@@ -86,9 +105,11 @@ export interface BlocoDeServico {
 function ehHorario(bloco: string): boolean {
   const achado = bloco.match(HORARIO)
   if (!achado) return ROTULO_DE_SERVICO.test(bloco) && bloco.trim().length <= SOBRA_MAXIMA * 2
+  if (LOCALIDADE.test(bloco)) return true
   const sobra = bloco
     .replace(achado[0], ' ')
     .replace(INTERVALO_DE_DIAS, ' ')
+    .replace(DIA_INICIAL, ' ')
     .replace(/\s+/g, ' ')
     .trim()
   return sobra.length <= SOBRA_MAXIMA

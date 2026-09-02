@@ -1245,6 +1245,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   isImproved={Boolean(generation.sourceGenerationId)}
                   isStyleRef={styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)}
                   avisoConferencia={
+                    // Texto A MAIS com dado (endereço de outro estado) vem
+                    // com a conferência VERDE — por isso passa na frente.
+                    getStringField(generation.fieldValues, 'textoAMaisAlerta') ??
                     getStringField(generation.fieldValues, 'textCheckAlert') ??
                     // Frase copiada da arte de referência: vem com o texto
                     // APROVADO e explica o número, então passa na frente dele.

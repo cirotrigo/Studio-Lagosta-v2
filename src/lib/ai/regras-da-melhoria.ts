@@ -54,6 +54,12 @@ export interface RegrasDaMelhoriaArgs {
    * transcreveu — ver `regraDaArteSemTexto`.
    */
   arteSemTexto?: boolean
+  /**
+   * Fatos do cliente (endereço e horário oficiais, da base de conhecimento),
+   * só para CONFERIR. Entram apenas quando a régua já tem bloco de serviço —
+   * ver `fatosDoClienteNaMelhoria`.
+   */
+  fatosDoCliente?: string[]
 }
 
 /**
@@ -95,6 +101,27 @@ export function pedeMenosTexto(userRequest: string): boolean {
 export function instrucaoDeServicoNaMelhoria(expectedTexts: string[]): string {
   const servico = blocosDeServico(expectedTexts)
 
+  /**
+   * 🔴 Régua SEM serviço: a regra vira proibição, não instrução de rodapé.
+   *
+   * Medido em 01/09/2026 no happy hour do Quintal: régua de 6 blocos, nenhum
+   * de serviço, e esta mesma regra (na forma condicional "se a arte tiver
+   * linha de horário ou endereço…") mais a identidade ("endereço sempre no
+   * rodapé") descreviam um rodapé de serviço que a copy não tinha. O modelo
+   * preencheu o slot: "Rua Fernandes Tourinho, 133 · Savassi, Belo Horizonte",
+   * com ícone de pino, para um cliente de Vitória — e a conferência deu verde,
+   * porque os 6 esperados estavam lá. A régua protege o que existe; o buraco
+   * é o que o prompt sugere e a copy não tem.
+   */
+  if (expectedTexts.length > 0 && servico.length === 0) {
+    return [
+      '1. ESTA PEÇA NÃO TEM LINHA DE SERVIÇO.',
+      'Nenhum dos blocos de [TEXTO EXATO] é horário de funcionamento ou endereço. Logo a arte NÃO tem rodapé de serviço, e você NÃO deve criar um: não escreva horário, endereço, rua, número, bairro, cidade, telefone nem "reservas", e não desenhe ícone de relógio, pino de localização ou calendário.',
+      'Se a arte original mostrar algo assim que não está na lista, é ruído: deixe de fora. Onde a identidade da marca fala em "endereço no rodapé", isso vale para peças que TÊM endereço na copy — esta não tem.',
+      contagemDeBlocos(expectedTexts),
+    ].join('\n')
+  }
+
   const alvo =
     servico.length > 0
       ? [
@@ -111,6 +138,43 @@ export function instrucaoDeServicoNaMelhoria(expectedTexts: string[]): string {
     'TAMANHO: o serviço é o menor nível de texto da peça, mas precisa ser CONFORTAVELMENTE LEGÍVEL num celular — nunca letra miúda, nunca menor que cerca de metade do corpo do texto de apoio. Havendo conflito entre "ser o menor" e "ser legível", a legibilidade vence.',
     'ESTILO: destaque o horário do resto (peso ou cor da marca) e, se a identidade da arte já usa ícones, um ícone pequeno pode separar horário de endereço. Ícone só existe se houver a linha que ele acompanha.',
     'O rodapé é a faixa logo ACIMA da borda, não a borda: o serviço não encosta no limite inferior da arte.',
+    ...(expectedTexts.length > 0 ? [contagemDeBlocos(expectedTexts)] : []),
+  ].join('\n')
+}
+
+/**
+ * A contagem de blocos — o fecho da régua.
+ *
+ * [TEXTO EXATO] diz o que a arte TEM; isto diz que ela não tem MAIS nada. Sem
+ * a segunda metade o modelo completa a peça com o que a identidade da marca
+ * sugere (rodapé de serviço, selo, contagem de avaliação), e a conferência de
+ * texto — que só olha o que falta — aprova.
+ */
+export function contagemDeBlocos(expectedTexts: string[]): string {
+  const n = expectedTexts.length
+  return (
+    `CONTAGEM DE BLOCOS: a arte tem exatamente ${n} bloco${n === 1 ? '' : 's'} de texto, os ${n === 1 ? 'listado' : 'listados'} em [TEXTO EXATO]. ` +
+    `A arte nova tem os mesmos ${n} — nem um a mais. Não acrescente linha, rodapé, selo, etiqueta, legenda de ícone, hashtag, arroba nem qualquer texto que não esteja na lista. A única exceção é a logomarca, que não conta como bloco.`
+  )
+}
+
+/**
+ * Os fatos do cliente, SÓ para conferir.
+ *
+ * Entram apenas quando a régua tem bloco de serviço: aí o modelo pode conferir
+ * se o endereço que vai desenhar é o do cliente (em 01/09 ele reescreveu "Rua
+ * Aleixo Netto" como "Rua Gomes de Carvalho, São Paulo" numa cadeia longa).
+ * Sem serviço na régua eles NÃO entram — seriam justamente o dado que o
+ * modelo usaria para preencher um rodapé que a peça não tem.
+ */
+export function fatosDoClienteNaMelhoria(args: RegrasDaMelhoriaArgs): string | null {
+  const fatos = (args.fatosDoCliente ?? []).map((f) => f.trim()).filter(Boolean)
+  if (fatos.length === 0) return null
+  if (blocosDeServico(args.expectedTexts).length === 0) return null
+  return [
+    '[FATOS DO CLIENTE — só para conferir, nunca para acrescentar]',
+    ...fatos.slice(0, 8).map((f) => `- ${f}`),
+    'Estes são o endereço e o horário oficiais. O bloco de serviço da arte é o de [TEXTO EXATO], letra por letra — se ele divergir destes fatos, a copy aprovada vence e você NÃO corrige. Jamais escreva um endereço, bairro, cidade ou horário que não esteja em [TEXTO EXATO].',
   ].join('\n')
 }
 
@@ -276,6 +340,8 @@ export function regrasDaCasaNaMelhoria(args: RegrasDaMelhoriaArgs): string {
     instrucaoDeServicoNaMelhoria(args.expectedTexts),
     ...regrasDeComposicao(),
   ]
+  const fatos = fatosDoClienteNaMelhoria(args)
+  if (fatos) linhas.push(fatos)
   const enxugar = regraDeEnxugar(args)
   if (enxugar) linhas.push(enxugar)
   // Antes da fidelidade da foto: as duas falam do fim do prompt, e "não

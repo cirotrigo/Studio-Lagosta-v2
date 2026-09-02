@@ -113,3 +113,84 @@ export function textosVazadosDoModelo(
   }
   return vazados
 }
+
+/**
+ * Um bloco de texto "parece DADO" — horário, endereço, preço, telefone, cidade.
+ *
+ * É o que separa o texto a mais que o cliente reprova (endereço de outro
+ * estado, contagem de avaliação) do texto a mais decorativo (um "Vem" solto,
+ * um CTA repetido). Regex e não modelo, de propósito: o alerta precisa ser
+ * previsível e barato, e falso positivo aqui só custa uma leitura a mais.
+ */
+export function pareceDado(bloco: string): boolean {
+  const t = bloco.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  if (/\d/.test(t)) return true
+  if (/\b(rua|r\.|av\.|avenida|alameda|travessa|rodovia|estrada|praca|praça|shopping)\b/.test(t)) return true
+  if (/\b(telefone|whatsapp|zap|reservas?)\b/.test(t)) return true
+  if (/[-,]\s*(es|mg|rj|sp|pr|sc|rs|ba|pe|ce|df|go|mt|ms|pa|am|ma|pb|rn|al|se|pi|to|ro|rr|ac|ap)\b/.test(t)) return true
+  if (/\b(belo horizonte|sao paulo|são paulo|rio de janeiro|curitiba|porto alegre|salvador|recife|fortaleza|brasilia|brasília|savassi|vitoria|vitória)\b/.test(t)) return true
+  return false
+}
+
+export interface BlocosAMais {
+  /** Bloco a mais que carrega dado (endereço, hora, preço, cidade). O alerta vermelho. */
+  comDado: string[]
+  /** Bloco a mais sem dado (palavra decorativa, CTA extra). Aviso discreto. */
+  semDado: string[]
+}
+
+/**
+ * Blocos transcritos da arte GERADA que não estão na régua.
+ *
+ * 🔴 A metade que faltava da conferência. `passed` confere se o esperado
+ * ESTÁ; isto confere o que SOBRA. Medido em 01/09/2026 no happy hour do
+ * Quintal: régua de 6 blocos, `textCheck: passed`, e a arte saiu com "Rua
+ * Fernandes Tourinho, 133 · Savassi, Belo Horizonte" — para um cliente de
+ * Vitória. A conferência pegou o que faltava (na 1ª tentativa) e deixou passar
+ * o que sobrava (na 2ª).
+ *
+ * ⚠️ AVISO, nunca reprovação — decisão do Ciro em 01/09/2026 ("texto a mais
+ * com dado inventado só avisa"), coerente com o desfazimento da escada
+ * automática de 12/08. O que muda é a cor do aviso: com dado é vermelho.
+ *
+ * Um bloco só é "a mais" quando não está contido em NENHUM esperado nem
+ * contém um deles (a visão quebra e junta blocos à vontade: "Ter a Sex, das
+ * 16h às 19h" pode voltar como duas linhas). O nome da marca é descontado
+ * (a visão transcreve o wordmark da logo) e fragmentos curtos são ignorados —
+ * abaixo de 4 caracteres é ruído de transcrição.
+ */
+export function blocosAMais(
+  extracted: string[],
+  expectedTexts: string[],
+  nomeDaMarca?: string | null,
+): BlocosAMais {
+  const esperados = expectedTexts.map(normalizeForComparison).filter((e) => e.length > 0)
+  const marca = nomeDaMarca ? normalizeForComparison(nomeDaMarca) : ''
+  const comDado: string[] = []
+  const semDado: string[] = []
+  for (const bruto of extracted) {
+    let alvo = normalizeForComparison(bruto)
+    if (marca) alvo = alvo.replace(marca, ' ').replace(/\s+/g, ' ').trim()
+    // Sobrou só "PARRILLA BAR" da assinatura, ou um fragmento: não é bloco.
+    if (alvo.length < 4) continue
+    // A assinatura vem quebrada ("O QUINTAL" / "PARRILLA BAR"): um bloco cujas
+    // palavras são todas da marca (ou genérico de casa, como BAR) é a logo
+    // transcrita, não texto a mais.
+    if (marca) {
+      const daMarca = new Set([...marca.split(' '), 'BAR', 'RESTAURANTE', 'BISTRO', 'GELATERIA', 'STEAKHOUSE', 'BOTEQUIM', 'PIZZARIA', 'CAFE', 'GRILL'])
+      const palavras = alvo.split(' ').filter((p) => p.length >= 3)
+      if (palavras.length > 0 && palavras.every((p) => daMarca.has(p))) continue
+    }
+    const coberto = esperados.some((e) => e.includes(alvo) || alvo.includes(e))
+    if (coberto) continue
+    // Pedaco de um esperado que a visao quebrou em duas linhas: cada metade
+    // esta contida no esperado e nao e "a mais".
+    const pedaco = esperados.some((e) => alvo.split(' ').every((palavra) => palavra.length < 3 || e.includes(palavra)))
+    if (pedaco) continue
+    const limpo = bruto.replace(/\s+/g, ' ').trim()
+    if (pareceDado(limpo)) {
+      if (!comDado.includes(limpo)) comDado.push(limpo)
+    } else if (!semDado.includes(limpo)) semDado.push(limpo)
+  }
+  return { comDado, semDado }
+}
