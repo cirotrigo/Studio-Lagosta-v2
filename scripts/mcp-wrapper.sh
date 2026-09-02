@@ -6,8 +6,10 @@
 # do caminho de UMA máquina: o .mcp.json aponta para este script por caminho
 # relativo, e o script se localiza sozinho pelo próprio dirname.
 
-# Homebrew do Apple Silicon, Homebrew do Intel, e o que já vier no PATH.
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+# Homebrew do Intel, Homebrew do Apple Silicon, e o que já vier no PATH.
+# A ordem é a original de propósito: nas máquinas onde isto já funcionava,
+# trocá-la poderia mudar qual node roda, sem ganho nenhum.
+export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
 
 # O nvm não exporta nada para processo não interativo (o cliente MCP não abre
 # um shell de login), então quem usa nvm chega aqui sem `node`. Nesse caso,
