@@ -2,7 +2,7 @@
   "mcpServers": {
     "studio-lagosta": {
       "type": "stdio",
-      "command": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/scripts/mcp-wrapper.sh"
+      "command": "./scripts/mcp-wrapper.sh"
     }
   }
 }
