@@ -1161,7 +1161,7 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
        */
       if (args.brand.dna.visualStyle || args.brand.dna.composition) {
         identidade.push(
-          'ESCOPO do estilo e da composição acima: descrevem o GOSTO da marca DENTRO dos limites das REGRAS DE COMPOSIÇÃO e do bloco da logo. Nenhum número citado neles (fração do quadro para texto, percentual de largura ou canto da logo, opacidade de véu) afrouxa aqueles tetos: quando divergirem, vale sempre o limite MAIS RESTRITO.',
+          'ESCOPO do estilo e da composição acima: descrevem o GOSTO da marca DENTRO dos limites das REGRAS DE COMPOSIÇÃO e do bloco da logo. Nenhum número citado neles (fração do quadro para texto, percentual de largura ou canto da logo, opacidade de halo) afrouxa aqueles tetos: quando divergirem, vale sempre o limite MAIS RESTRITO.',
         )
       }
     }

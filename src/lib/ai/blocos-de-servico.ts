@@ -204,5 +204,11 @@ export function instrucaoDeServico(copy: string[]): string | null {
     // repetido aqui porque a regra 9 fala de safe area em geral, enquanto quem
     // decide onde o serviço pousa é este parágrafo.
     'O rodapé é a faixa LOGO ACIMA da área reservada do story, não a borda: o serviço termina antes dos ~7/8 da altura. Sobrando espaço embaixo, o bloco SOBE — nunca desce para preencher.',
+    // 🔴 Medido em 02/09/2026 (Wine Vix, story): com o halo já nas regras 4/4b,
+    // o gpt-image ainda escureceu o QUINTO inferior inteiro do quadro, de borda
+    // a borda, para assentar duas linhas de serviço — "rodapé" puxa para faixa
+    // tanto quanto puxa para a borda. Instrução colada ao bloco vence a regra
+    // geral (lição de 17/08), então o halo do serviço é dito AQUI também.
+    'A leitura do serviço vem do MESMO halo local das outras zonas: uma mancha desfocada só atrás dessas linhas, da largura delas, que desmancha para a foto ao lado. NUNCA escureça a largura inteira do rodapé nem o quinto inferior do quadro — o chão, a mesa e o ambiente continuam visíveis e claros ao lado e abaixo do serviço.',
   ].join('\n')
 }
