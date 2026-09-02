@@ -30,7 +30,7 @@
  * Marca é client e importar o SDK da OpenAI arrastaria tudo para o bundle.
  */
 
-import { blocosDeServico } from './blocos-de-servico'
+import { blocosDeServico, temEndereco } from './blocos-de-servico'
 
 export interface RegrasDaMelhoriaArgs {
   /**
@@ -182,7 +182,7 @@ export function fatosDoClienteNaMelhoria(args: RegrasDaMelhoriaArgs): string | n
    * desenhado. Os fatos só servem para conferir um endereço que a copy JÁ
    * tem; o horário da copy é a própria régua.
    */
-  if (!blocosDeServico(args.expectedTexts).some((b) => b.papel === 'endereço')) return null
+  if (!temEndereco(args.expectedTexts)) return null
   return [
     '[FATOS DO CLIENTE — só para conferir, nunca para acrescentar]',
     ...fatos.slice(0, 8).map((f) => `- ${f}`),

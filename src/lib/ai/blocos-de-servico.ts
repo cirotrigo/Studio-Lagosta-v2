@@ -115,6 +115,20 @@ function ehHorario(bloco: string): boolean {
   return sobra.length <= SOBRA_MAXIMA
 }
 
+/**
+ * A copy tem ENDEREÇO? Logradouro, CEP ou localidade (bairro/cidade/UF) —
+ * inclusive na linha mista dos modelos do Studio ("Quinta, das 11h às 00h ·
+ * Praia do Canto, Vitória-ES"), que `blocosDeServico` classifica como horário.
+ * É o gate dos fatos do cliente na melhoria: o endereço oficial só entra no
+ * prompt para conferir um endereço que a copy JÁ tem.
+ */
+export function temEndereco(copy: string[]): boolean {
+  return copy.some((bruto) => {
+    const t = bruto.replace(/\s+/g, ' ').trim()
+    return ENDERECO.test(t) || CEP.test(t) || LOCALIDADE.test(t)
+  })
+}
+
 /** Os blocos de serviço da copy, na ordem em que aparecem. */
 export function blocosDeServico(copy: string[]): BlocoDeServico[] {
   const achados: BlocoDeServico[] = []
