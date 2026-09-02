@@ -126,7 +126,7 @@ async function main() {
             expectedTexts: peca.textos, instrucaoImagem: null, arteSemTexto: false,
             fatosDoCliente: assets.fatos, quality: tier,
           })
-          const check = await verifyImageTexts(buf, peca.textos, [], assets.brand?.projectName ?? null)
+          const check = await verifyImageTexts(buf, peca.textos, [], assets.brand?.projectName ?? null, src.buffer)
           const jpg = await sharp(buf).jpeg({ quality: 90 }).toBuffer()
           writeFileSync(path.join(pasta, `${peca.formato}-r${r}.jpg`), jpg)
           quadros.push(jpg)

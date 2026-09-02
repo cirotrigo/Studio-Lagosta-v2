@@ -524,7 +524,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
       try {
         const checkStartedAt = Date.now()
-        const check = await verifyImageTexts(candidate, textosDaRegua, [], assets.brand?.projectName ?? null)
+        const check = await verifyImageTexts(candidate, textosDaRegua, [], assets.brand?.projectName ?? null, primaryBuffer)
         const checkMs = Date.now() - checkStartedAt
         attemptsLog.push({
           attempt,

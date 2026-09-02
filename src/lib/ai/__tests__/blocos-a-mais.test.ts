@@ -70,3 +70,14 @@ describe('pareceDado', () => {
     expect(pareceDado('Bora pro quintal?')).toBe(false)
   })
 })
+
+describe('descontarTextosDaOrigem', () => {
+  it('o print do cardápio que já estava na origem não é texto a mais', async () => {
+    const { descontarTextosDaOrigem } = await import('../text-comparison')
+    const aMais = { comDado: ['R$ 39,00', 'R$ 43,00', 'Escolha seus itens e envie o pedido pelo WhatsApp.', 'Rua Inventada, 10'], semDado: ['9 itens'] }
+    const origem = ['Nosso Cardápio', 'Escolha seus itens e envie o pedido pelo WhatsApp para retirada.', 'Cafeteria — Toasts e Sanduíches 9 itens', 'Toast Caprese R$ 39,00', 'Toast Atum R$ 43,00']
+    const r = descontarTextosDaOrigem(aMais, origem)
+    expect(r.comDado).toEqual(['Rua Inventada, 10'])
+    expect(r.semDado).toEqual([])
+  })
+})

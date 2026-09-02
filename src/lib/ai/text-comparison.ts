@@ -194,3 +194,34 @@ export function blocosAMais(
   }
   return { comDado, semDado }
 }
+
+/**
+ * Desconta dos blocos "a mais" o que JÁ ESTAVA na arte de origem.
+ *
+ * 🔴 Medido na bancada da carteira (02/09/2026): a peça do Lagosta Criativa
+ * traz um print de cardápio dentro de um mockup de celular, e a régua tem só
+ * os 2 blocos da copy — "R$ 39,00 | R$ 43,00 | R$ 46,00" saíram como texto a
+ * mais com dado nas 2 rodadas. Não era invenção: o print está na origem. O
+ * que a melhoria acrescentou é o que não está na régua NEM na origem; o que
+ * está na origem e não na régua é régua incompleta, que é outro assunto.
+ */
+export function descontarTextosDaOrigem(blocos: BlocosAMais, textosDaOrigem: string[]): BlocosAMais {
+  if (textosDaOrigem.length === 0) return blocos
+  const origem = normalizeForComparison(textosDaOrigem.join('\n'))
+  // Sem a pontuação colada ("WHATSAPP." ≠ "WHATSAPP"): a normalização cola o
+  // ponto na palavra vizinha, e a origem pode continuar a frase.
+  const palavrasDe = (t: string) => t.split(' ').map((p) => p.replace(/[.,;:!?]+$/, '')).filter((p) => p.length >= 3)
+  const palavrasDaOrigem = new Set(palavrasDe(origem))
+  const jaEstava = (bloco: string) => {
+    const alvo = normalizeForComparison(bloco)
+    if (origem.includes(alvo)) return true
+    // A visão quebra e junta blocos à vontade ("9 itens" pode voltar colado
+    // ao título): vale se TODAS as palavras do bloco estão na origem.
+    const palavras = palavrasDe(alvo)
+    return palavras.length > 0 && palavras.every((p) => palavrasDaOrigem.has(p))
+  }
+  return {
+    comDado: blocos.comDado.filter((b) => !jaEstava(b)),
+    semDado: blocos.semDado.filter((b) => !jaEstava(b)),
+  }
+}

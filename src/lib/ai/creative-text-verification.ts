@@ -98,8 +98,8 @@ export function numerosSemLastro(extracted: string[], expectedTexts: string[]): 
  * (`@/lib/db` lança no import quando falta `DATABASE_URL`). Seguem exportadas
  * daqui.
  */
-export { normalizeForComparison, textosVazadosDoModelo, blocosAMais } from './text-comparison'
-import { normalizeForComparison, textosVazadosDoModelo, blocosAMais } from './text-comparison'
+export { normalizeForComparison, textosVazadosDoModelo, blocosAMais, descontarTextosDaOrigem } from './text-comparison'
+import { normalizeForComparison, textosVazadosDoModelo, blocosAMais, descontarTextosDaOrigem } from './text-comparison'
 
 function isTextValue(value: string): boolean {
   const trimmed = value.trim()
@@ -315,6 +315,12 @@ export async function verifyImageTexts(
   textosDoModelo: string[] = [],
   /** Nome da marca — a assinatura não conta como vazamento. */
   nomeDaMarca?: string | null,
+  /**
+   * A arte de ORIGEM da melhoria: é transcrita só quando sobrou texto a mais,
+   * para descontar o que já estava nela (print, mockup, cardápio na foto).
+   * Ausente (geração do zero), nada é descontado.
+   */
+  origemBuffer?: Buffer | null,
 ): Promise<TextCheckResult> {
   const { object } = await generateObject({
     model: openai(VISION_MODEL),
@@ -347,13 +353,24 @@ export async function verifyImageTexts(
     .map((t) => normalizeForComparison(t))
     .filter((needle) => needle.length > 0 && !haystack.includes(needle))
 
+  let aMais = blocosAMais(extracted, expectedTexts, nomeDaMarca)
+  let numerosForaDaCopy = numerosSemLastro(extracted, expectedTexts)
+  if (origemBuffer && (aMais.comDado.length > 0 || aMais.semDado.length > 0 || numerosForaDaCopy.length > 0)) {
+    // Uma chamada de visão a mais, só quando há o que descontar.
+    const daOrigem = await transcreverTextosDaArte(origemBuffer)
+    if (daOrigem.length > 0) {
+      aMais = descontarTextosDaOrigem(aMais, daOrigem)
+      numerosForaDaCopy = numerosSemLastro(extracted, [...expectedTexts, ...daOrigem])
+    }
+  }
+
   return {
     passed: missing.length === 0,
     missing,
     extracted,
     // Fora do `passed` de propósito — ver a nota em TextCheckResult.
-    numerosNaoEsperados: numerosSemLastro(extracted, expectedTexts),
+    numerosNaoEsperados: numerosForaDaCopy,
     textosVazados: textosVazadosDoModelo(extracted, expectedTexts, textosDoModelo, nomeDaMarca),
-    blocosAMais: blocosAMais(extracted, expectedTexts, nomeDaMarca),
+    blocosAMais: aMais,
   }
 }
