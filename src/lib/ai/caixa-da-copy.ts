@@ -65,6 +65,7 @@ export const CAIXA_DA_MANCHETE = new Map<number, CaixaDaManchete>([
   [1, 'natural'], // Real Gelateria — "caixa alta moderada ou Title Case"
   [2, 'natural'], // O Quintal Parrilla — proíbe caixa alta contínua fora de uma fonte
   [3, 'alta'], // TERO — "Didot em caixa alta e tracking largo" (pedido do Ciro, 17/08/2026)
+  [5, 'alta'], // Bacana — manchete em CAIXA ALTA (Ciro, 02/09/2026, ao ver a bancada da carteira: "as letras devem ser em caixa alta")
   [11, 'natural'], // Wine Vix — "Title Case, com uma palavra em dourado"
   [12, 'natural'], // Empório Fonseca — "Trajan caixa mista" na promessa
 ])
@@ -220,4 +221,48 @@ export function paraCaixaNatural(bloco: string, nomesDaMarca: string[] = []): st
         .join('')
     })
     .join('')
+}
+
+/**
+ * A caixa que a ARTE DE ORIGEM já tem, bloco a bloco — para a melhoria.
+ *
+ * 🔴 A caixa da arte é a caixa da STRING (lei medida três vezes em 16-17/08):
+ * a melhoria recebe a copy do banco em caixa natural ("Domingo pede aquele
+ * churrasco Bacana"), põe em [TEXTO EXATO] e o modelo redesenha em natural —
+ * enquanto a arte de origem estava em CAIXA ALTA. Foi a única reprovação do
+ * Ciro na bancada da carteira de 02/09/2026 ("só o Bacana não ficou bom pois
+ * as letras devem ser em caixa alta").
+ *
+ * Fonte da verdade é a ORIGEM: para cada bloco esperado, se a transcrição da
+ * arte original o mostra todo em maiúsculas, o bloco vai ao prompt em
+ * maiúsculas. Sem transcrição casando, vale o mapa da marca (`alta` → só o
+ * primeiro bloco). A régua da conferência continua a copy como veio — a
+ * comparação ignora caixa.
+ */
+export function aplicarCaixaDaOrigem(
+  expectedTexts: string[],
+  transcricaoDaOrigem: string[],
+  caixaDaMarca?: CaixaDaManchete,
+): string[] {
+  const normal = (t: string) =>
+    t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim().toUpperCase()
+  const origem = transcricaoDaOrigem.map((t) => ({ bruto: t, chave: normal(t) }))
+  return expectedTexts.map((bloco, i) => {
+    const chave = normal(bloco)
+    if (!chave) return bloco
+    // O bloco esperado casa com a transcrição que o CONTÉM ou está CONTIDA
+    // nele (a visão quebra o lockup em linhas).
+    const casados = origem.filter((o) => o.chave.length >= 3 && (o.chave.includes(chave) || chave.includes(o.chave)))
+    if (casados.length > 0) {
+      // Só as letras do bloco esperado importam: um pedaço em caixa alta e
+      // outro não (lockup "Domingo pede aquele churrasco" + "Bacana") é
+      // resolvido pelo pedaço que casa por inteiro.
+      const inteiro = casados.find((o) => o.chave === chave)
+      const amostra = inteiro ? [inteiro] : casados
+      const todoAlto = amostra.every((o) => estaTodoEmCaixaAlta(o.bruto, 3))
+      return todoAlto ? paraCaixaAlta(bloco) : bloco
+    }
+    if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(bloco)
+    return bloco
+  })
 }

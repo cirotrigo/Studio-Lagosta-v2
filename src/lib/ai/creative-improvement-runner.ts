@@ -29,6 +29,7 @@ import {
   type ImprovementFormat,
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
+import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
 import {
   loadExpectedTextsDaLinhagem,
   loadExpectedTextsForGeneration,
@@ -456,6 +457,26 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           ? 'banco'
           : 'nenhuma'
 
+    /**
+     * A caixa da arte de ORIGEM manda no prompt (Bacana, 02/09/2026): a copy
+     * do banco vem em caixa natural e o modelo redesenha em natural o que a
+     * arte tinha em CAIXA ALTA. Uma transcrição da origem (barata) resolve os
+     * dois usos — a caixa por bloco e o desconto do texto a mais.
+     */
+    let transcricaoDaOrigem: string[] = reguaPorVisao ? textosDaRegua : []
+    if (!reguaPorVisao && textosDaRegua.length > 0) {
+      try {
+        transcricaoDaOrigem = await transcreverTextosDaArte(primaryBuffer)
+      } catch {
+        transcricaoDaOrigem = []
+      }
+    }
+    const textosParaPrompt = aplicarCaixaDaOrigem(
+      textosDaRegua,
+      transcricaoDaOrigem,
+      CAIXA_DA_MANCHETE.get(args.projectId),
+    )
+
     const downloadMs = Date.now() - startedAt
     console.log(
       `[improve.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | textos esperados: ${expectedTexts.length}`,
@@ -491,7 +512,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         brandColors: assets.colors,
         artDirection: assets.artDirection,
         brand: assets.brand,
-        expectedTexts: textosDaRegua,
+        expectedTexts: textosParaPrompt,
         instrucaoImagem: args.instrucaoImagem ?? null,
         arteSemTexto: arteSemTexto || raizSemTexto,
         fatosDoCliente: assets.fatos,
@@ -524,7 +545,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
       try {
         const checkStartedAt = Date.now()
-        const check = await verifyImageTexts(candidate, textosDaRegua, [], assets.brand?.projectName ?? null, primaryBuffer)
+        const check = await verifyImageTexts(
+          candidate,
+          textosDaRegua,
+          [],
+          assets.brand?.projectName ?? null,
+          transcricaoDaOrigem.length > 0 ? transcricaoDaOrigem : primaryBuffer,
+        )
         const checkMs = Date.now() - checkStartedAt
         attemptsLog.push({
           attempt,

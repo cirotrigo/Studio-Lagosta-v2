@@ -241,7 +241,7 @@ function buildAssetsUsageSection(references: ReferenceImage[]): string {
   const lines: string[] = ['[USO DOS ASSETS DO PROJETO]']
   if (hasLogo) {
     lines.push(
-      '- Logo: foi fornecida como referência. Use essa versão exata no resultado. Se a IMAGEM 1 já tem essa logo, mantenha. Se a logo na IMAGEM 1 está em qualidade ruim ou em variação diferente, prefira a versão da referência.',
+      '- Logo: foi fornecida como referência, e é a ÚNICA forma correta da marca. Reproduza-a exatamente como está no arquivo — mesmo desenho das letras, mesmas proporções, mesmo espaçamento entre letras, mesmo símbolo — no lugar e no tamanho em que a IMAGEM 1 a mostra. Nunca redesenhe, reescreva com outra fonte, aproxime ou "melhore" a logo: se a versão que você desenhar não for idêntica à referência, é defeito. Se a IMAGEM 1 já tem essa logo, mantenha-a igual à referência.',
     )
   }
   if (hasElement) {

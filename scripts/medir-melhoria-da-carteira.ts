@@ -98,7 +98,8 @@ async function main() {
   }
 
   const { improveCreative } = await import('../src/lib/ai/openai-image-client')
-  const { verifyImageTexts } = await import('../src/lib/ai/creative-text-verification')
+  const { verifyImageTexts, transcreverTextosDaArte } = await import('../src/lib/ai/creative-text-verification')
+  const { aplicarCaixaDaOrigem, CAIXA_DA_MANCHETE } = await import('../src/lib/ai/caixa-da-copy')
   const { loadImprovementAssets } = await import('../src/lib/ai/improvement-assets-loader')
   const { fetchImageSource } = await import('../src/lib/ai/fetch-image-source')
   const sharp = (await import('sharp')).default
@@ -114,6 +115,9 @@ async function main() {
       const ehStory = (meta.height ?? 0) / (meta.width ?? 1) > 1.5
       const size = ehStory ? '1088x1936' : '1088x1360'
       const origemJpg = await sharp(src.buffer).jpeg({ quality: 90 }).toBuffer()
+      // Como a produção: a caixa da origem manda no prompt.
+      const transcricaoDaOrigem = await transcreverTextosDaArte(src.buffer).catch(() => [] as string[])
+      const textosParaPrompt = aplicarCaixaDaOrigem(peca.textos, transcricaoDaOrigem, CAIXA_DA_MANCHETE.get(p.projectId))
       writeFileSync(path.join(pasta, `${peca.formato}-origem.jpg`), origemJpg)
       const quadros: Buffer[] = [origemJpg]
       const linhas: string[] = ['origem']
@@ -123,10 +127,10 @@ async function main() {
           const buf = await improveCreative({
             imageBuffer: src.buffer, mimeType: src.contentType, userRequest: '', size,
             brandColors: assets.colors, artDirection: assets.artDirection, brand: assets.brand,
-            expectedTexts: peca.textos, instrucaoImagem: null, arteSemTexto: false,
+            expectedTexts: textosParaPrompt, instrucaoImagem: null, arteSemTexto: false,
             fatosDoCliente: assets.fatos, quality: tier,
           })
-          const check = await verifyImageTexts(buf, peca.textos, [], assets.brand?.projectName ?? null, src.buffer)
+          const check = await verifyImageTexts(buf, peca.textos, [], assets.brand?.projectName ?? null, transcricaoDaOrigem.length ? transcricaoDaOrigem : src.buffer)
           const jpg = await sharp(buf).jpeg({ quality: 90 }).toBuffer()
           writeFileSync(path.join(pasta, `${peca.formato}-r${r}.jpg`), jpg)
           quadros.push(jpg)

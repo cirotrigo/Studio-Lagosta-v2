@@ -111,3 +111,21 @@ describe('a foto não se trata', () => {
     expect(comPedido).toMatch(/EXCEÇÃO AUTORIZADA PELO CLIENTE.*corte a picanha ao meio/)
   })
 })
+
+describe('aplicarCaixaDaOrigem (melhoria)', () => {
+  it('a caixa da arte de origem manda: o Bacana em caixa alta', async () => {
+    const { aplicarCaixaDaOrigem } = await import('../caixa-da-copy')
+    const r = aplicarCaixaDaOrigem(
+      ['Domingo pede aquele churrasco Bacana', 'Fartura na brasa para a família.'],
+      ['DOMINGO', 'PEDE AQUELE', 'CHURRASCO', 'BACANA', 'Fartura na brasa', 'para a família.', 'bacana churrascaria'],
+    )
+    expect(r[0]).toBe('DOMINGO PEDE AQUELE CHURRASCO BACANA')
+    expect(r[1]).toBe('Fartura na brasa para a família.')
+  })
+  it('sem transcrição casando, o mapa da marca decide só o primeiro bloco', async () => {
+    const { aplicarCaixaDaOrigem } = await import('../caixa-da-copy')
+    expect(aplicarCaixaDaOrigem(['Almoço na brasa', 'Chega mais'], [], 'alta')).toEqual(['ALMOÇO NA BRASA', 'Chega mais'])
+    expect(aplicarCaixaDaOrigem(['Almoço na brasa', 'Chega mais'], [], 'natural')).toEqual(['Almoço na brasa', 'Chega mais'])
+    expect(aplicarCaixaDaOrigem(['Almoço na brasa'], ['Almoço na brasa'], 'alta')).toEqual(['Almoço na brasa'])
+  })
+})

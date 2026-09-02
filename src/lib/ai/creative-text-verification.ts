@@ -320,7 +320,7 @@ export async function verifyImageTexts(
    * para descontar o que já estava nela (print, mockup, cardápio na foto).
    * Ausente (geração do zero), nada é descontado.
    */
-  origemBuffer?: Buffer | null,
+  origem?: Buffer | string[] | null,
 ): Promise<TextCheckResult> {
   const { object } = await generateObject({
     model: openai(VISION_MODEL),
@@ -355,9 +355,10 @@ export async function verifyImageTexts(
 
   let aMais = blocosAMais(extracted, expectedTexts, nomeDaMarca)
   let numerosForaDaCopy = numerosSemLastro(extracted, expectedTexts)
-  if (origemBuffer && (aMais.comDado.length > 0 || aMais.semDado.length > 0 || numerosForaDaCopy.length > 0)) {
-    // Uma chamada de visão a mais, só quando há o que descontar.
-    const daOrigem = await transcreverTextosDaArte(origemBuffer)
+  if (origem && (aMais.comDado.length > 0 || aMais.semDado.length > 0 || numerosForaDaCopy.length > 0)) {
+    // Uma chamada de visão a mais, só quando há o que descontar — ou a
+    // transcrição que o chamador já tem.
+    const daOrigem = Array.isArray(origem) ? origem : await transcreverTextosDaArte(origem)
     if (daOrigem.length > 0) {
       aMais = descontarTextosDaOrigem(aMais, daOrigem)
       numerosForaDaCopy = numerosSemLastro(extracted, [...expectedTexts, ...daOrigem])

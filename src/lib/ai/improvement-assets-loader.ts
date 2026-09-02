@@ -91,7 +91,21 @@ export async function loadImprovementAssets(
           where: { id: { in: cappedLogoIds }, projectId },
           select: { fileUrl: true, name: true },
         })
-      : Promise.resolve([]),
+      : /**
+         * 🔴 Sem logo escolhida, a OFICIAL do projeto entra por padrão.
+         *
+         * Medido na bancada da carteira (02/09/2026): a melhoria da Wine Vix
+         * redesenhou o selo "WINE VIX" com outras letras — o modelo só tinha
+         * a marca como pixels da IMAGEM 1 e a reinventou ao redesenhar. Com o
+         * arquivo oficial como referência ele reproduz. Quem escolhe outra
+         * logo no modal continua mandando; o padrão deixa de ser "nenhuma".
+         */
+        db.logo.findMany({
+          where: { projectId, isProjectLogo: true },
+          select: { fileUrl: true, name: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        }),
     cappedElementIds.length > 0
       ? db.element.findMany({
           where: { id: { in: cappedElementIds }, projectId },
