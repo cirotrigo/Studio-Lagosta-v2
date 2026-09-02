@@ -141,13 +141,39 @@ reposiciona o retângulo imperativamente.
 
 ## 4. Placar da execução
 
-_(preenchido conforme cada fase entra)_
-
 | Fase | Estado |
 |---|---|
-| F0 | — |
-| F1 | — |
-| F2a | — |
-| F2b | — |
-| F3 | — |
+| F0 | **feito** (`07935f4d`) — 23 testes; o teto do blur foi re-medido durante o F1 e caiu para 160 |
+| F1 | **feito** (`dd01693d`) — smoke server-side com 6 casos (caixa, texto+cantos, halo 110, raio 400 com offset, girado, caixa esfumada) |
+| blur de forma em escala (ShapeNode + renderShapeBlurred) | **feito** (`806729e2`) — o cache do editor passou a declarar pixelRatio |
+| F2a | **feito** (`24af7f48`) |
+| F2b | **feito** (`1ff17973`) |
+| F3 | **feito** — typecheck + lint + 56 testes; no navegador (template 199 do Quintal, dev server local): "Aplicar halo" em lote, halo salvo aparecendo no carregamento, arraste com o halo junto, Caixa/Texto, desfoque nítido→418 px (k=3), opacidade, swatches da marca; paridade editor × servidor medida por perfil de luminância (diferença ≤ 15 níveis na mancha) |
 | F4 | não iniciada (opcional) |
+
+### O que o teste no navegador ensinou
+
+- 🔴 **O `Rect` do fundo é irmão ANTERIOR do `Konva.Text`, e o React liga refs
+  e roda layout effects na ordem da árvore**: no primeiro commit o ref do
+  texto ainda é null quando o efeito do fundo roda. Página aberta com halo
+  salvo ficava com o Rect em 0×0 (invisível, `Can not cache the node` no
+  console) até a próxima mudança da camada. `pronto` (um frame depois)
+  reexecuta geometria, cache e assinatura de eventos.
+- 🔴 **`api.get` devolve TEXTO quando a resposta não é JSON.** Um redirect
+  para `/sign-in` (HTML, 200) na chamada de cores virou
+  `colors.map is not a function` e derrubou o editor inteiro. `useBrandColors`
+  passou a garantir array — qualquer consumidor novo de lista via `api.get`
+  precisa do mesmo cuidado.
+- O desfoque grava ao soltar; clicar no TRILHO (16 px abaixo do rótulo) já
+  comita — o thumb anda na escala quadrática (50% do curso = 150 px).
+
+### O que a medição do F1 ensinou
+
+- 🔴 **O teto do stack blur é 180, por overflow — não 255, pela tabela.** Raio
+  150 borra certo; raio 200 devolve faixas verticais e a mancha SOME (medido no
+  render server-side, mesmo algoritmo do Konva). O port saturava em 254, dentro
+  da zona quebrada. `escalaDoBlur` usa 160 por buffer.
+- **Raio muito maior que a caixa dilui a mancha** (kernel de desvio `raio`
+  sobre uma caixa de 150 px de altura): raio 400/600 sai como um brilho largo
+  e tênue — é o comportamento esperado (e o do Photoshop); a opacidade
+  compensa.
