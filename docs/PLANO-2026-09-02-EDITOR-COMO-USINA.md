@@ -390,3 +390,42 @@ custam só o risco de `escolher-modelo` devolvê-las a quem ainda pedir.
 DESENHO da F1: sem a página de assinatura, o compositor nasceria com o kit em
 código, repetindo o erro do `KITS`. A página de assinatura é F1, junto com o
 contrato de nomes de papel da F0.
+
+
+## 10. Placar da execução (02/09/2026, mesmo dia)
+
+Tudo implementado no branch `editor-como-usina`, um commit por fase, sem push:
+
+| fase | commit | estado |
+|---|---|---|
+| F0 contrato do Layer | `c255efc2` | ✅ 8 testes; create-page/create-template passam pelo contrato |
+| F1 compositor + F2 régua | `a1653195` | ✅ spec → Layer[] pela área livre; régua em processo |
+| F3 fila COMPOR | `7d9f57eb` | ✅ migration em dev e produção; cron pega 12 por varredura |
+| MCP (5 tools) | `da764625` + F4 | ✅ 467 verificações no registro, 0 falhas |
+| F4 memória | `ab881d06` | ✅ snapshot/reverter, sinal `geometria`, destilação em propostas |
+| F5 via `compor` | `8e97003a` | ✅ propor-semana, executar-plano, bancada, tools de plano |
+
+**Teste na Lagosta** (§6): a assinatura foi criada em produção (template 381,
+páginas story e feed, `Project.assinatura` do PADRAO.md) e a leva de setembro
+inteira — 63 peças, mesma copy e mesmas fotos do `dados.py` do canvas — foi
+composta e GRAVADA na galeria da Lagosta pelo compositor:
+
+| | |
+|---|---|
+| peças | 63 compostas, 0 falhas, 902s (14,3s por peça, incluindo régua com 3 renders) |
+| posições escolhidas pelo mapa | topo/direita 25 · topo/esquerda 19 · topo/centro 5 · rodapé/esquerda 5 · rodapé/direita 4 · rodapé/centro 4 · meio/direita 1 |
+| contraste dentro do alvo + tolerância | 28 de 63 — as outras 35 ficaram no teto da faixa (0,58) e ainda acima do alvo 76 da headline laranja; a leitura vem da sombra no glifo, por decisão da marca |
+| custo | zero crédito |
+
+O que a comparação com o canvas ainda não diz: o "gostei / preciso melhorar"
+do Ciro nas 63. É esse placar, e não a régua, que decide se os outros nove
+clientes entram (cada um precisa do kit lido do próprio PADRAO.md em
+`criar-pagina-de-assinatura.ts`).
+
+Ficou de fora, por decisão ou por tempo:
+- o `assunto` no catálogo pela análise de visão (o compositor usa a estimativa
+  por energia; o contrato do campo está em `compor.ts`);
+- curadoria dos 147 modelos antigos (próximo planejamento, despromover);
+- gradiente em texto e sombra em três camadas (perdas aceitas na §5);
+- a régua como painel visível no editor (o número está em
+  `fieldValues.composicao.contraste`; a UI fica para depois).

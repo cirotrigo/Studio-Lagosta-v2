@@ -625,6 +625,10 @@ Arco completo em `docs/SESSAO-2026-08-10-GALERIA-LIGHTBOX-E-RESPONSIVIDADE.md`
 
 ### Registro de mudanças recentes
 
+`docs/PLANO-2026-09-02-EDITOR-COMO-USINA.md` (02/09/2026) é o mais recente:
+o editor como usina — compositor, assinatura, fila `COMPOR`, via `compor` e o
+sinal de geometria; regras na seção homônima acima.
+
 `docs/SESSAO-2026-08-10-FASES-4-A-6.md` é o mais recente: crivo de aprovação,
 QA por visão, referências de estilo em rodízio, a logo desenhada pelo modelo,
 o menu do projeto com seletor de cliente e a bancada com acervo em modal. O
@@ -3603,6 +3607,83 @@ borra a mancha nos próprios pixels). Plano e placar em
 - **Reflow em grupos manuais foi MANTIDO** (decisão de 02/09): editor e
   servidor leem o mesmo `groupId`; refluir só de um lado divergiria a arte.
 - Rich-text e texto curvo continuam sem fundo, como já eram.
+
+### O editor como usina: compositor, assinatura e via `compor` (02/09/2026)
+
+Plano em `docs/PLANO-2026-09-02-EDITOR-COMO-USINA.md` (F0–F5 + §8 templates +
+§9 área livre), executado no mesmo dia e testado na leva de setembro da
+Lagosta Criativa (63 peças). O que nasceu: `src/lib/compositor/` (a usina),
+`src/lib/creatives/layer-contract.ts` (o contrato do Layer), a fila `COMPOR`,
+a via `compor` dos planos, cinco tools no conector (`ver-assinatura`,
+`compor-arte`, `compor-leva`, `reverter-arte`, `ver-ajustes-da-assinatura`)
+e o sinal `geometria`. Regras que valem para código novo:
+
+- **A copy chega por PAPEL e por LINHA** (`pre`, `headline`, `apoio`, `cta`,
+  `servico`), e o compositor RESPEITA a quebra: ele mede cada linha com a
+  fonte real, encolhe até 80% e, se não couber, recusa com ORÇAMENTO
+  (`TEXTO_NAO_CABE_NA_COLUNA`, caracteres que cabem). Quebrar por conta
+  própria mudaria o ritmo da frase — `copyParaBlocos` só o faz para item de
+  plano, que não carrega papel.
+- **A assinatura mora em DUAS casas de propósito** (§8 do plano): o ESTILO por
+  papel numa PÁGINA do projeto (template `Assinatura`, página `isTemplate`
+  com a tag `assinatura`, camadas de texto chamadas pelo papel) — porque a
+  equipe edita página, não JSON; e os NÚMEROS (margens, safe area, faixa de
+  tinta, raio, largura da logo) em `Project.assinatura`. Sem página o
+  compositor RECUSA (`ASSINATURA_INCOMPLETA`): compor sem assinatura seria
+  inventar a marca. Cadastro por `scripts/criar-pagina-de-assinatura.ts`, que
+  só aceita kit LIDO do `PADRAO.md` do cliente (hoje só a Lagosta).
+- 🔴 **A posição vem da FOTO, nunca do template** (§9). `mapa-de-calma.ts`:
+  grade 6×10 sobre a foto COMO APARECE (cover, no corte candidato), pontuação
+  por calma (energia de borda), tinta necessária (p98 vs alvo da cor) e
+  preferência; cobrir o ASSUNTO **descarta** (fração maior entre "do assunto"
+  e "do bloco" — uma só deixava o texto pousar no prato quando o prato ocupa
+  meio quadro). O ENQUADRAMENTO é candidato também: foto que sobra no eixo
+  ganha três cortes (`cropPosition`), e o render já o lê.
+- **O halo é `effects.background` no grupo de texto**, não shape solta — é o
+  que faz a mancha SEGUIR o texto quando a equipe o move. A tinta anda numa
+  FAIXA (`faixaTexto`, 0,26–0,58 na Lagosta), decidida pela necessidade,
+  nunca perseguindo alvo (decisão do Ciro, PADRAO.md §5.0). Só a logo leva
+  shape (`halo-marca`), porque o efeito é de texto.
+- **A régua (`regua.ts`) mede a peça RENDERIZADA sem os textos** (cor
+  transparente, halo mantido) e compara o p98 com o alvo da cor; corrige a
+  tinta UMA vez dentro da faixa e AVISA — nunca reprova. `TOLERANCIA_DO_ALVO
+  = 12`: um ponto acima não é defeito visível; sem ela toda peça de headline
+  laranja (alvo 76) saía "fora" e o aviso virava ruído. Medido na leva: a
+  maioria das peças com fundo claro fica no teto da faixa e ainda acima do
+  alvo — é o preço da mancha invisível, e quem segura a leitura é a sombra
+  presa ao glifo.
+- 🔴 **Feed e quadrado usam `safeTopo` 120**, não 96: o autofix confere a
+  margem de segurança do EDITOR (`CANVAS_MARGIN.top`), e a primeira prova
+  acusou "pre invade a margem" em toda peça de feed. O compositor não pode
+  pousar texto onde o editor o acusa.
+- **`provar: true` renderiza em memória e não grava nada** — é o dry-run que
+  fez o canvas ser iterável. Toda leva grande começa por UMA prova.
+- **Fila: o MCP só enfileira** (`compor-leva`, `executar-plano`); a bancada
+  compõe na hora (`gerarItemPorModelo` com via `compor`). O cron pega até 12
+  composições em série DEPOIS do lote de IA, dentro de 200s. `maxAttempts`
+  3, porque não há chamada paga.
+- **`persistAndRenderCreative` aceita `generationId`** e FECHA a Generation
+  PROCESSING da fila em vez de criar outra — a bancada segue o id que tem.
+- **Snapshot em `fieldValues.layersSnapshot`** e `reverter-arte`: o "git" de
+  uma peça. Página promovida a modelo não reverte (mataria curadoria).
+- **`LearningSignal tipo 'geometria'`** nasce no PATCH da página, só em
+  página com a tag `compositor`, balde de 10 min — mover, encolher, realinhar,
+  esconder, com tolerância de 3px/2% para ruído de arraste. Destilado por
+  `destilar-geometria.ts` em PROPOSTAS (n ≥ 5), nunca aplicado sozinho.
+- **Contrato do Layer (F0)**: `fontWeight` múltiplo de 100, entrelinha nos
+  DOIS campos, `order` renumerado, `autoExpand` ligado, `objectFit` em
+  imagem — `prepararCamadasParaGravar` em toda porta de escrita de
+  `Page.layers` vinda de fora do editor (`create-page`/`create-template` do
+  MCP local já passam). `FEED_PORTRAIT` não existe em `TemplateType`.
+- **Templates** (§8): o contêiner fica; a página-modelo como layout a
+  preencher NÃO se cadastra mais (14 usos em 128, 0/33 no placar); o kit vira
+  a página de assinatura. A curadoria das 147 existentes é do próximo
+  planejamento — despromover, nunca excluir.
+- **O que o editor perde em relação ao canvas, aceito**: gradiente em texto
+  (a headline da Lagosta sai sólida), sombra de três camadas presa ao glifo
+  (o editor tem uma), e o assunto do catálogo ainda não é preenchido pela
+  análise de visão (o compositor usa a estimativa por energia; `assunto`
+  em frações na entrada do catálogo é o contrato, quando existir).
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
