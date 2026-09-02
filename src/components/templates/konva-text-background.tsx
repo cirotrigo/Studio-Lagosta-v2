@@ -14,6 +14,9 @@ import {
   retanguloDoFundo,
 } from '@/lib/creatives/halo/fundo-de-texto'
 
+/** Tudo que muda ONDE o texto está, com o namespace `.fundo` para o off() só tirar os nossos. */
+const EVENTOS_DE_POSICAO = 'xChange.fundo yChange.fundo rotationChange.fundo scaleXChange.fundo scaleYChange.fundo'
+
 interface FundoDoTextoProps {
   layer: Layer
   /** O Konva.Text da camada — é dele que saem as linhas (`textArr`) e a posição ao vivo. */
@@ -147,6 +150,13 @@ export function FundoDoTexto({ layer, textRef, assinaturaRender, opacidadeDaCama
   // No meio do gesto: só posição/rotação/escala — o cache (que é local ao nó)
   // continua válido. A tinta nova de um resize chega no transformend, quando o
   // estado muda e o efeito de cima roda.
+  //
+  // 🔴 Eventos de ATRIBUTO (`xChange`…), não `dragmove`/`transform`: o arraste
+  // em grupo do stage move os outros membros com `otherNode.position(...)`,
+  // imperativo, sem evento de drag nesses nós — só o texto agarrado disparava
+  // dragmove e o halo dos irmãos ficava parado até soltar. `Node._setAttr`
+  // dispara `<attr>Change` em qualquer escrita (drag, transform, alinhamento,
+  // position() por código), então isto cobre todos os caminhos de uma vez.
   React.useEffect(() => {
     const node = textRef.current
     if (!node || !fundo || !pronto) return
@@ -161,9 +171,9 @@ export function FundoDoTexto({ layer, textRef, assinaturaRender, opacidadeDaCama
         scaleY: node.scaleY(),
       })
     }
-    node.on('dragmove.fundo transform.fundo', seguir)
+    node.on(EVENTOS_DE_POSICAO, seguir)
     return () => {
-      node.off('dragmove.fundo transform.fundo')
+      node.off(EVENTOS_DE_POSICAO)
     }
   }, [textRef, fundo, pronto])
 
