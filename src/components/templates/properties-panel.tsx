@@ -1096,7 +1096,7 @@ function ShapeEffectsOnly({ layer }: { layer: Layer }) {
             <input
               type="range"
               min={0}
-              max={200}
+              max={600}
               step={1}
               className="w-full h-1"
               value={effects.blur.blurRadius}

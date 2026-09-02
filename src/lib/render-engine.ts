@@ -1870,9 +1870,11 @@ export class RenderEngine {
   /**
    * effects.blur em shape — réplica do cache do editor (ShapeNode): o Konva
    * cacheia o node com `offset` de 3× o raio (senão o desfoque é cortado na
-   * borda da caixa) e aplica o stack blur nos pixels do buffer. O shape é
-   * cacheado em pixelRatio 1 (diferente do texto, que usa 2), então o raio
-   * vale 1:1 — multiplicado só pelo `scaleFactor` do render.
+   * borda da caixa) e aplica o stack blur nos pixels do buffer. O editor
+   * cacheia o shape com `pixelRatio: 1/k` (escalaDoBlur) e o raio no buffer
+   * é `raio/k`; aqui o offscreen é reduzido por `k` pela mesma conta — o
+   * stack blur estoura int32 acima do raio ~180. Com k = 1 o raio vale 1:1,
+   * multiplicado só pelo `scaleFactor` do render.
    *
    * A folga de 3× o raio é o que deixa a mancha DESMANCHAR para fora do
    * retângulo — é a geometria do halo. Sombra desenhada dentro do offscreen
@@ -1888,7 +1890,8 @@ export class RenderEngine {
   ): boolean {
     const scaleFactor = options?.scaleFactor ?? 1
     const raio = Math.max(1, Math.round(blurRadius * scaleFactor))
-    const pad = raio * 3
+    const { k, raioNoBuffer } = escalaDoBlur(raio)
+    const pad = folgaDoBlur(raio)
     const shapeType = layer.style?.shapeType ?? 'rectangle'
     // Circle/RegularPolygon/Star são desenhados CENTRADOS em (0,0)
     const centrada = shapeType === 'circle' || shapeType === 'triangle' || shapeType === 'star'
@@ -1898,10 +1901,11 @@ export class RenderEngine {
     const bh = Math.ceil(height + pad * 2)
     if (bw <= 0 || bh <= 0) return false
 
-    const off = this.getOffscreen(bw, bh, options)
+    const off = this.getOffscreen(bw / k, bh / k, options)
     if (!off) return false
 
     const octx = off.ctx
+    octx.scale(1 / k, 1 / k)
     octx.translate(-bx, -by)
     this.applyShadow(octx, layer, scaleFactor)
     const semBlur: Layer = {
@@ -1912,7 +1916,7 @@ export class RenderEngine {
 
     try {
       const imageData = octx.getImageData(0, 0, off.width, off.height)
-      applyStackBlur(imageData.data, off.width, off.height, raio)
+      applyStackBlur(imageData.data, off.width, off.height, raioNoBuffer)
       octx.putImageData(imageData, 0, 0)
     } catch (error) {
       console.warn('[RenderEngine] Falha ao borrar shape:', error)
@@ -1924,7 +1928,9 @@ export class RenderEngine {
     ctx.shadowBlur = 0
     ctx.shadowOffsetX = 0
     ctx.shadowOffsetY = 0
-    ctx.drawImage(off.canvas as unknown as CanvasImageSource, bx, by, bw, bh)
+    // O offscreen foi arredondado para cima em pixels do buffer: blitar no
+    // tamanho dele × k mantém o mapeamento 1:k exato
+    ctx.drawImage(off.canvas as unknown as CanvasImageSource, bx, by, off.width * k, off.height * k)
     ctx.restore()
     return true
   }

@@ -11,6 +11,7 @@ import { KonvaEditableText } from './konva-editable-text'
 import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { cropForResizedBox, resolveImageSourceRect } from '@/lib/image-fit'
+import { escalaDoBlur, folgaDoBlur } from '@/lib/creatives/halo/fundo-de-texto'
 
 /**
  * Alças do MEIO. O `keepRatio` do Konva só vale nos cantos, então são estas que
@@ -1347,16 +1348,25 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // — `offset` de 3× o raio é a mesma folga do render server-side
   // (renderShapeBlurred), para editor e arte concordarem. O cache é refeito
   // quando o que está desenhado muda (tamanho, cor, raio), não na posição.
+  //
+  // O cache leva `pixelRatio: 1/k` (escalaDoBlur) e o filtro recebe o raio
+  // NO BUFFER: o stack blur estoura int32 acima do raio ~180, e a mancha é
+  // lisa, então borrar em escala reduzida não custa nada visual. Explícito
+  // também para k = 1: sem pixelRatio o cache nascia no devicePixelRatio e,
+  // em retina, o borrão do editor saía com METADE do raio da arte publicada.
   const blurRadius = layer.effects?.blur?.enabled ? (layer.effects.blur.blurRadius ?? 0) : 0
-  const filters = React.useMemo(() => (blurRadius > 0 ? [Konva.Filters.Blur] : undefined), [blurRadius])
+  const escalaBlur = React.useMemo(() => escalaDoBlur(blurRadius), [blurRadius])
+  const filters = React.useMemo(() => (escalaBlur.raioNoBuffer > 0 ? [Konva.Filters.Blur] : undefined), [escalaBlur.raioNoBuffer])
   React.useEffect(() => {
     const node = shapeRef.current
     if (!node) return
     node.clearCache()
-    if (blurRadius > 0) node.cache({ offset: Math.ceil(blurRadius * 3) })
+    if (escalaBlur.raioNoBuffer > 0) {
+      node.cache({ offset: folgaDoBlur(blurRadius), pixelRatio: 1 / escalaBlur.k })
+    }
     node.getLayer()?.batchDraw()
-  }, [shapeRef, blurRadius, shapeType, fill, stroke, strokeWidth, width, height, borderRadius])
-  const blurProps = { filters, blurRadius }
+  }, [shapeRef, blurRadius, escalaBlur, shapeType, fill, stroke, strokeWidth, width, height, borderRadius])
+  const blurProps = { filters, blurRadius: escalaBlur.raioNoBuffer }
 
   switch (shapeType) {
     case 'circle':
