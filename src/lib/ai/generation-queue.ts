@@ -44,7 +44,7 @@ export const ORFA_SEM_JOB_MS = 10 * 60_000
 /** Espera antes de reexecutar um job cuja invocação morreu. */
 const BACKOFF_APOS_MORTE_MS = 60_000
 
-export type GenerationJobKind = 'ARTE' | 'MELHORIA'
+export type GenerationJobKind = 'ARTE' | 'MELHORIA' | 'COMPOR'
 
 export interface JobParaExecutar {
   id: string
@@ -67,6 +67,32 @@ export async function enfileirarArte(args: ArtGenerationJobArgs): Promise<string
 /** Irmão do acima para a melhoria de criativo. */
 export async function enfileirarMelhoria(args: ImprovementJobArgs): Promise<string> {
   return enfileirar('MELHORIA', args.jobGenerationId, args.projectId, args)
+}
+
+/**
+ * Composição pelo editor (F3 do editor-como-usina). Sem chamada paga: é
+ * render de ~3-5s, e por isso a varredura pega um LOTE dela depois dos jobs
+ * de IA (ver `processarLoteDaFila`). `maxAttempts` 3: tentar de novo custa
+ * só CPU.
+ */
+export async function enfileirarComposicao(args: ComposicaoJobArgs): Promise<string> {
+  const limpo = JSON.parse(JSON.stringify(args)) as Record<string, unknown>
+  const job = await db.generationJob.upsert({
+    where: { generationId: args.generationId },
+    create: { generationId: args.generationId, kind: 'COMPOR', projectId: args.projectId, payload: limpo as never, maxAttempts: 3 },
+    update: {},
+    select: { id: true },
+  })
+  return job.id
+}
+
+/** O payload de um job COMPOR — o que `processarComposicaoEmBackground` recebe. */
+export interface ComposicaoJobArgs {
+  generationId: string
+  projectId: number
+  /** A spec validada (`src/lib/compositor/spec.ts`). */
+  spec: unknown
+  decididoPor?: string | null
 }
 
 async function enfileirar(
@@ -95,12 +121,13 @@ async function enfileirar(
  * Os próximos jobs elegíveis, com os DOIS portões na query (ver o aviso no
  * topo do arquivo). Ordem de chegada — quem pediu primeiro é atendido primeiro.
  */
-export async function proximosJobs(limite: number): Promise<JobParaExecutar[]> {
+export async function proximosJobs(limite: number, kinds?: GenerationJobKind[]): Promise<JobParaExecutar[]> {
   const agora = new Date()
   const jobs = await db.generationJob.findMany({
     where: {
       status: 'PENDING',
       nextAttemptAt: { lte: agora },
+      ...(kinds && kinds.length > 0 ? { kind: { in: kinds } } : {}),
       // Portão de tentativa. Sem ele, um job que sempre falha volta à fila
       // para sempre — cada volta é uma chamada paga do modelo.
       attempts: { lt: db.generationJob.fields.maxAttempts },

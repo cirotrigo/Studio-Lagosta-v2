@@ -151,6 +151,12 @@ export interface PersistCreativeInput {
   sourcePageId?: string | null
   /** Tags da Page criada. Default `['arte-rapida']` — o compositor grava as suas. */
   pageTags?: string[]
+  /**
+   * F3: a Generation PROCESSING que a fila criou ao enfileirar. Quando vem,
+   * o registro FECHA essa linha (COMPLETED + resultUrl) em vez de criar outra
+   * — é o que deixa a bancada acompanhar pelo id que já tem.
+   */
+  generationId?: string | null
 }
 
 export interface PersistCreativeResult {
@@ -194,6 +200,7 @@ export async function persistAndRenderCreative(
     fieldValues: input.fieldValues,
     authorName: input.authorName,
     sourcePageId: input.sourcePageId ?? null,
+    generationId: input.generationId ?? null,
   })
 }
 
@@ -213,6 +220,8 @@ export interface RenderPageInput {
   authorName: string
   /** Ver `PersistCreativeInput.sourcePageId` — só página-MODELO entra aqui. */
   sourcePageId?: string | null
+  /** Ver `PersistCreativeInput.generationId`. */
+  generationId?: string | null
 }
 
 /**
@@ -243,24 +252,42 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
 
   await db.page.update({ where: { id: page.id }, data: { thumbnail: blob.url } })
 
-  const generation = await db.generation.create({
-    data: {
-      status: 'COMPLETED' as any,
-      templateId,
-      // pageId entra sempre: é como conferir-arte localiza as camadas da arte
-      // para o diagnóstico geométrico (sobreposição vs texto faltando).
-      fieldValues: { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url } as any,
-      sourcePageId: input.sourcePageId ?? null,
-      resultUrl: blob.url,
-      projectId: project.id,
-      createdBy: project.userId,
-      authorName: input.authorName,
-      templateName,
-      projectName: project.name,
-      completedAt: new Date(),
-      fileName: `${page.name}.png`,
-    },
-  })
+  // pageId entra sempre: é como conferir-arte localiza as camadas da arte
+  // para o diagnóstico geométrico (sobreposição vs texto faltando).
+  const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url }
+  const generation = input.generationId
+    ? await db.generation.update({
+        where: { id: input.generationId },
+        data: {
+          status: 'COMPLETED' as any,
+          templateId,
+          fieldValues: fieldValues as any,
+          sourcePageId: input.sourcePageId ?? null,
+          resultUrl: blob.url,
+          authorName: input.authorName,
+          templateName,
+          completedAt: new Date(),
+          fileName: `${page.name}.png`,
+        },
+        select: { id: true },
+      })
+    : await db.generation.create({
+        data: {
+          status: 'COMPLETED' as any,
+          templateId,
+          fieldValues: fieldValues as any,
+          sourcePageId: input.sourcePageId ?? null,
+          resultUrl: blob.url,
+          projectId: project.id,
+          createdBy: project.userId,
+          authorName: input.authorName,
+          templateName,
+          projectName: project.name,
+          completedAt: new Date(),
+          fileName: `${page.name}.png`,
+        },
+        select: { id: true },
+      })
 
   const appUrl = getPublicAppUrl()
 

@@ -344,6 +344,8 @@ model LearningSignal {
 enum GenerationJobKind {
   ARTE
   MELHORIA
+  /// Composição pelo editor (F3 do editor-como-usina): sem chamada paga, só render.
+  COMPOR
 }
 
 enum GenerationJobStatus {
