@@ -4,6 +4,7 @@
  *
  *   npx tsx scripts/criar-pagina-de-assinatura.ts --projeto 8            # dry-run
  *   npx tsx scripts/criar-pagina-de-assinatura.ts --projeto 8 --confirmar
+ *   npx tsx scripts/criar-pagina-de-assinatura.ts --todos --confirmar      # todo projeto com kit
  *
  * Template "Assinatura" com uma página por formato (story e feed), tag
  * `assinatura`, camadas de texto chamadas pelo PAPEL (pre, headline, apoio,
@@ -12,7 +13,7 @@
  * posição pela foto. Os NÚMEROS (margens, safe area, faixa do halo) vão em
  * `Project.assinatura`.
  *
- * O kit de cada projeto está em `KITS_DE_ASSINATURA` abaixo — LIDO do
+ * O kit de cada projeto está em `scripts/lib/kits-de-assinatura.ts` — LIDO do
  * PADRAO.md do canvas de design de cada cliente, nunca inventado. Projeto
  * sem kit aqui não é criado: a assinatura de uma marca nova é uma leitura das
  * peças aprovadas dela, não um default.
@@ -24,65 +25,9 @@ import 'dotenv/config'
 import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
-import { NOME_DO_TEMPLATE_DE_ASSINATURA, TAG_DA_ASSINATURA, type NumerosDaAssinatura } from '@/lib/compositor/assinatura'
+import { NOME_DO_TEMPLATE_DE_ASSINATURA, TAG_DA_ASSINATURA } from '@/lib/compositor/assinatura'
+import { KITS_DE_ASSINATURA, type KitDeAssinatura, type PapelDoKit } from './lib/kits-de-assinatura'
 import { DIMENSOES, type Formato } from '@/lib/compositor/spec'
-
-interface PapelDoKit {
-  fontFamily: string
-  fontSize: number
-  lineHeight: number
-  /** em → px é feito aqui, no tamanho do papel. */
-  trackingEm?: number
-  textTransform?: 'uppercase'
-  color: string
-  exemplo: string
-}
-
-interface KitDeAssinatura {
-  formatos: Partial<Record<Formato, Record<'pre' | 'headline' | 'apoio' | 'cta' | 'servico', PapelDoKit | null>>>
-  logo: { largura: number } | null
-  fundo: string
-  numeros: Partial<NumerosDaAssinatura> & { geometria?: Partial<Record<Formato, Partial<NumerosDaAssinatura['geometria']['story']>>> }
-}
-
-const LARANJA = '#FF6B00'
-const BRANCO = '#FFFFFF'
-const CINZA = '#CFCFCF'
-
-/**
- * Lagosta Criativa — `design-canvas/lagosta-padrao/PADRAO.md` §3 e §5.
- * Pré-título Yanone Bold caixa alta tracking 0,22em · headline Lobster Title
- * Case laranja · apoio Coolvetica Rg branca · CTA Yanone Bold caixa alta com
- * "→" · logo a 236px (22% do quadro, MEDIDO nas três artes aprovadas).
- * A faixa de tinta (0,26–0,58 texto, 0,12–0,30 marca) é a decisão do Ciro de
- * 02/09/2026 (§5.0): a mancha nunca vira marcação.
- */
-const lagosta = (escala: number) => ({
-  pre: { fontFamily: 'YanoneKaffeesatz Bold', fontSize: Math.round(30 * escala), lineHeight: 1.05, trackingEm: 0.22, textTransform: 'uppercase' as const, color: LARANJA, exemplo: 'Produção de conteúdo' },
-  headline: { fontFamily: 'Lobster', fontSize: Math.round(96 * escala), lineHeight: 0.94, color: LARANJA, exemplo: 'Foto Nova a Cada\nQuinze Dias' },
-  apoio: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(42 * escala), lineHeight: 1.14, color: BRANCO, exemplo: 'O executivo muda de cardápio,\na produção acompanha.' },
-  cta: { fontFamily: 'YanoneKaffeesatz Bold', fontSize: Math.round(32 * escala), lineHeight: 1.05, trackingEm: 0.1, textTransform: 'uppercase' as const, color: LARANJA, exemplo: '→ Conheça nossos pacotes' },
-  servico: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(30 * escala), lineHeight: 1.1, trackingEm: 0.04, color: CINZA, exemplo: 'lagostacriativa.com.br · @lagostacriativa' },
-})
-
-const KITS_DE_ASSINATURA: Record<number, KitDeAssinatura> = {
-  8: {
-    formatos: { story: lagosta(1), feed: lagosta(84 / 96) },
-    logo: { largura: 236 },
-    fundo: '#0B0B0B',
-    numeros: {
-      mancha: '#0B0B0B',
-      fundo: '#0B0B0B',
-      halo: { faixaTexto: [0.26, 0.58], faixaMarca: [0.12, 0.3], raioTexto: 190, raioMarca: 96 },
-      logo: { largura: 236 },
-      geometria: {
-        story: { margemH: 92, safeTopo: 188, safeRodape: 224, gapEntreBlocos: 14, escalaDeFonte: 1 },
-        feed: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 14, escalaDeFonte: 84 / 96 },
-        quadrado: { margemH: 92, safeTopo: 120, safeRodape: 104, gapEntreBlocos: 12, escalaDeFonte: 0.85 },
-      },
-    },
-  },
-}
 
 function camadaDePapel(papel: string, k: PapelDoKit, y: number, ordem: number, mancha: string): Layer {
   return {
@@ -115,8 +60,17 @@ async function main() {
   const args = process.argv.slice(2)
   const confirmar = args.includes('--confirmar')
   const i = args.indexOf('--projeto')
-  const projectId = i >= 0 ? Number(args[i + 1]) : NaN
-  if (!Number.isFinite(projectId)) throw new Error('use --projeto <id>')
+  const ids = args.includes('--todos')
+    ? Object.keys(KITS_DE_ASSINATURA).map(Number)
+    : [i >= 0 ? Number(args[i + 1]) : NaN]
+  if (ids.some((id) => !Number.isFinite(id))) throw new Error('use --projeto <id> ou --todos')
+  for (const projectId of ids) {
+    await criarAssinatura(projectId, confirmar)
+    console.log('')
+  }
+}
+
+async function criarAssinatura(projectId: number, confirmar: boolean) {
   const kit = KITS_DE_ASSINATURA[projectId]
   if (!kit) throw new Error(`Projeto ${projectId} não tem kit de assinatura neste script — leia o PADRAO.md dele e cadastre.`)
 

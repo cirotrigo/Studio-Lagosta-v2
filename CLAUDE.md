@@ -3630,8 +3630,19 @@ e o sinal `geometria`. Regras que valem para código novo:
   equipe edita página, não JSON; e os NÚMEROS (margens, safe area, faixa de
   tinta, raio, largura da logo) em `Project.assinatura`. Sem página o
   compositor RECUSA (`ASSINATURA_INCOMPLETA`): compor sem assinatura seria
-  inventar a marca. Cadastro por `scripts/criar-pagina-de-assinatura.ts`, que
-  só aceita kit LIDO do `PADRAO.md` do cliente (hoje só a Lagosta).
+  inventar a marca. Cadastro por `scripts/criar-pagina-de-assinatura.ts`
+  (`--projeto <id>` ou `--todos`), com os kits em
+  `scripts/lib/kits-de-assinatura.ts` — LIDOS do `PADRAO.md`/`gerar.py` do
+  canvas de cada cliente. **Os 10 projetos de restaurante têm assinatura em
+  produção desde 02/09/2026** (Ciro: "ajuste em todos os clientes").
+  O que cada kit NÃO reproduz e fica como ajuste no editor: a segunda voz da
+  headline (Quintal DomaniCP→Amithen, TERO âmbar+creme, By Rock 2ª linha
+  vermelha, Wine Vix palavra dourada, Espeto palavra vermelha, Real palavra
+  menta), o extrude sólido do Seu Quinto (sombra deslocada sem blur no lugar),
+  ícones de serviço e filetes. 🔴 By Rock: o canvas rodava em Anton + Barlow
+  (Google Fonts, não cadastradas) — o kit segue o DNA (Mortella na manchete,
+  Metrisch no resto), e a manchete pode pedir corpo menor. TERO: `Montserrat
+  Light` não está cadastrada; o apoio cai na regular.
 - 🔴 **A posição vem da FOTO, nunca do template** (§9). `mapa-de-calma.ts`:
   grade 6×10 sobre a foto COMO APARECE (cover, no corte candidato), pontuação
   por calma (energia de borda), tinta necessária (p98 vs alvo da cor) e
