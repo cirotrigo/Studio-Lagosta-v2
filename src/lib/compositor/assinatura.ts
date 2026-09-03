@@ -13,6 +13,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
 import type { Formato, Papel } from './spec'
 
 export const TAG_DA_ASSINATURA = 'assinatura'
@@ -148,9 +149,25 @@ export function papelDoNome(nome: string | null | undefined): Papel | null {
 
 const PREFIXO = /^([^\p{L}\p{N}\s]{1,3})\s+/u
 
-/** O fundo de texto da camada, como o editor o gravou (null quando desligado). */
-export function fundoDaCamada(camada: Layer): FundoDePapel | null {
-  const b = camada.effects?.background
+/**
+ * O fundo de texto da camada, como o editor o DESENHA (null quando desligado).
+ *
+ * 🔴 Camada em GRUPO (`metadata.groupId`, Cmd+G no editor) divide UMA mancha,
+ * desenhada pelo LÍDER (menor `order`) com a configuração DELE; os membros
+ * não desenham a própria. Ler o fundo de cada camada isoladamente mostrava
+ * a caixa branca default que a headline da Real carregava por baixo — e que
+ * no editor nunca aparece. Com `todas`, a leitura segue a regra do editor.
+ */
+export function fundoDaCamada(camada: Layer, todas: Layer[] = []): FundoDePapel | null {
+  let fonte = camada
+  if (todas.length > 0 && grupoDaCamada(camada)) {
+    const papel = papelNoBloco(todas, camada)
+    if (papel.papel === 'membro') {
+      const lider = membrosDoBloco(todas, camada).sort((a, b) => (a.order ?? 0) - (b.order ?? 0))[0]
+      if (lider) fonte = lider
+    }
+  }
+  const b = fonte.effects?.background
   if (!b?.enabled) return null
   const n = (v: unknown, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? v : padrao)
   return {
@@ -168,7 +185,7 @@ export function fundoDaCamada(camada: Layer): FundoDePapel | null {
 }
 
 /** Lê o estilo de um papel a partir da camada de texto da página de assinatura. */
-export function estiloDaCamada(camada: Layer): EstiloDePapel | null {
+export function estiloDaCamada(camada: Layer, todas: Layer[] = []): EstiloDePapel | null {
   const s = (camada.style ?? {}) as Record<string, unknown>
   const fontFamily = typeof s.fontFamily === 'string' ? s.fontFamily : null
   const fontSize = typeof s.fontSize === 'number' && s.fontSize > 0 ? s.fontSize : null
@@ -192,7 +209,7 @@ export function estiloDaCamada(camada: Layer): EstiloDePapel | null {
       : {}),
     color: typeof s.color === 'string' ? s.color : '#FFFFFF',
     ...(prefixo ? { prefixo: `${prefixo} ` } : {}),
-    fundo: fundoDaCamada(camada),
+    fundo: fundoDaCamada(camada, todas),
     sombra: shadow?.enabled
       ? {
           color: shadow.shadowColor,
@@ -273,7 +290,7 @@ export function montarAssinatura(args: {
       if (camada.type === 'text') {
         const papel = papelDoNome(camada.name) ?? papelDoNome(camada.id)
         if (!papel || papeis[papel]) continue
-        const estilo = estiloDaCamada(camada)
+        const estilo = estiloDaCamada(camada, args.pagina.layers)
         if (estilo) papeis[papel] = estilo
         if (papel === 'headline') {
           const a = camada.style?.textAlign
