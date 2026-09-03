@@ -315,6 +315,30 @@ export function montarAssinatura(args: {
     // a equipe define por camada (`EstiloDePapel.fundo`).
   }
 
+  // As MARGENS vêm da página, não dos números do projeto (Ciro, 03/09/2026:
+  // "compare com a margem superior e inferior do template, está dando muito
+  // espaço"). Onde o primeiro texto começa é o topo útil; onde o último
+  // texto ou a logo termina é o rodapé útil; a menor distância à lateral é a
+  // margem horizontal. Só vale para o formato da própria página.
+  if (args.pagina && args.formatoDaPagina) {
+    const uteis = args.pagina.layers.filter((c) => c.visible !== false && (c.type === 'text' || c.type === 'logo'))
+    const textos = uteis.filter((c) => c.type === 'text')
+    if (textos.length >= 2) {
+      const H = args.pagina.height
+      const W = args.pagina.width
+      const topo = Math.min(...uteis.map((c) => c.position.y))
+      const rodape = H - Math.max(...uteis.map((c) => c.position.y + c.size.height))
+      const lateral = Math.min(...textos.map((c) => Math.min(c.position.x, W - (c.position.x + c.size.width))))
+      const base = numeros.geometria[args.formatoDaPagina]
+      numeros.geometria[args.formatoDaPagina] = {
+        ...base,
+        safeTopo: Math.max(60, Math.round(topo)),
+        safeRodape: Math.max(60, Math.round(rodape)),
+        margemH: Math.max(40, Math.min(200, Math.round(lateral))),
+      }
+    }
+  }
+
   if (!logo && args.logoDoProjeto?.url) {
     logo = { url: args.logoDoProjeto.url, largura: numeros.logo.largura, razao: args.logoDoProjeto.razao ?? 0.41 }
   }
