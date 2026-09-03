@@ -37,7 +37,6 @@ import {
   montarAssinatura,
   papeisQueFaltam,
   NOME_DO_TEMPLATE_DE_ASSINATURA,
-  TAG_DA_ASSINATURA,
   type AssinaturaDaMarca,
 } from './assinatura'
 import { montarBloco, empilhar, type BlocoMontado } from './blocos'
@@ -108,8 +107,11 @@ export interface OpcoesDeAssinatura {
 export async function paginasDeAssinatura(projectId: number) {
   const template = await db.template.findFirst({ where: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
   if (!template) return { templateId: null as number | null, paginas: [] as Array<{ id: string; name: string; tags: string[]; width: number; height: number; formato: Formato | null }> }
+  // TODA página do template "Assinatura" é variante — duplicar uma página no
+  // editor já cria a variante, sem precisar marcar como modelo nem taguear
+  // (a segunda story da Real nasceu assim, sem tag, e ficava invisível).
   const paginas = await db.page.findMany({
-    where: { templateId: template.id, isTemplate: true, tags: { has: TAG_DA_ASSINATURA } },
+    where: { templateId: template.id },
     select: { id: true, name: true, tags: true, width: true, height: true },
     orderBy: { order: 'asc' },
   })
@@ -134,8 +136,9 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
 
   const paginas = template
     ? await db.page.findMany({
-        where: { templateId: template.id, isTemplate: true, tags: { has: TAG_DA_ASSINATURA } },
+        where: { templateId: template.id },
         select: { id: true, name: true, width: true, height: true, layers: true, background: true, tags: true },
+        orderBy: { order: 'asc' },
       })
     : []
 
@@ -169,7 +172,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
 export async function projetoTemAssinatura(projectId: number): Promise<boolean> {
   const template = await db.template.findFirst({ where: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
   if (!template) return false
-  const n = await db.page.count({ where: { templateId: template.id, isTemplate: true, tags: { has: TAG_DA_ASSINATURA } } })
+  const n = await db.page.count({ where: { templateId: template.id } })
   return n > 0
 }
 

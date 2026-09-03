@@ -379,7 +379,12 @@ export function escolherVariante<T extends { name?: string; tags?: string[]; wid
 
   if (args.variante) {
     const alvo = args.variante.toLowerCase().trim()
-    const achada = base.find((p) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo))
+    const achada = base.find(
+      (p) =>
+        `${p.name ?? ''}`.toLowerCase().includes(alvo) ||
+        (p.tags ?? []).some((t) => t.toLowerCase() === alvo) ||
+        `${(p as { id?: string }).id ?? ''}`.toLowerCase() === alvo,
+    )
     if (achada) return { pagina: achada, formatoDaPagina: fmt(achada) }
   }
 
