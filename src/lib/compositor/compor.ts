@@ -270,11 +270,16 @@ function candidatosDePosicao(
   spec: SpecDePeca,
   bloco: { width: number; height: number },
   crop: CropPosition,
-  extra: { reservaNoRodape?: number; reservaNoTopo?: number; alinhaDaAssinatura?: Alinhamento | null } = {},
+  extra: { reservaNoRodape?: number; reservaNoTopo?: number; alinhaDaAssinatura?: Alinhamento | null; ancoraDaPagina?: Ancora | null } = {},
 ): CandidatoDePosicao<RotuloDePosicao>[] {
   const pref = spec.preferencias ?? {}
   const rodizio = { ...preferenciaDoRodizio(spec), ...(extra.alinhaDaAssinatura ? { alinha: extra.alinhaDaAssinatura } : {}) }
-  const ancoras: Ancora[] = pref.ancora && pref.ancora !== 'auto' ? [pref.ancora] : ['topo', 'meio', 'rodape']
+  // Ciro (03/09/2026): "o agrupamento que está no topo deve permanecer no
+  // topo… o que está no rodapé a mesma coisa" — o VERTICAL é da página; o
+  // mapa da foto só escolhe o HORIZONTAL (esquerda/centro/direita). A spec
+  // ainda pode pedir outra âncora de propósito.
+  const ancoras: Ancora[] =
+    pref.ancora && pref.ancora !== 'auto' ? [pref.ancora] : extra.ancoraDaPagina ? [extra.ancoraDaPagina] : ['topo', 'meio', 'rodape']
   const alinhas: Alinhamento[] = pref.alinha && pref.alinha !== 'auto' ? [pref.alinha] : ['esquerda', 'centro', 'direita']
   const saida: CandidatoDePosicao<RotuloDePosicao>[] = []
   for (const ancora of ancoras) {
@@ -471,6 +476,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     pilha: ReturnType<typeof empilhar>
     principal: boolean
     ancora: Ancora
+    /** A âncora veio de uma caixa REAL da página (e não do default do papel). */
+    temCaixa: boolean
     alinha: Alinhamento | null
   }
   const porGrupo = new Map<string, BlocoMontado[]>()
@@ -490,6 +497,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       pilha: empilhar(blocos, g.gap),
       principal: papeis.includes('headline'),
       ancora,
+      temCaixa: caixas.length > 0,
       alinha: assinatura.papeis[papeis[0]]?.alinhamento ?? null,
     }
   })
@@ -511,7 +519,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
     const mapa = raster ? mapaDeCalma(raster) : null
     const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, canvas) : mapa ? estimarAssunto(mapa) : null
-    const candidatos = candidatosDePosicao(g, spec, pilha, crop, { reservaNoRodape, reservaNoTopo, alinhaDaAssinatura: principal.alinha ?? assinatura.alinhamento })
+    const candidatos = candidatosDePosicao(g, spec, pilha, crop, {
+      reservaNoRodape,
+      reservaNoTopo,
+      alinhaDaAssinatura: principal.alinha ?? assinatura.alinhamento,
+      ancoraDaPagina: principal.temCaixa ? principal.ancora : null,
+    })
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: mancha, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
