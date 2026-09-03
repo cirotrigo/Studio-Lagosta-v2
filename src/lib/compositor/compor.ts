@@ -17,7 +17,7 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
-import { ensureArteTemplate, persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
+import { persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
 import { registerProjectFonts, fetchBuffer } from '@/lib/posts/register-project-fonts'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
@@ -26,6 +26,9 @@ import { lerFotoComoCover, luzNoRect, type FotoCinza } from '@/lib/creatives/hal
 import { calibrarHalo, type Rect } from '@/lib/creatives/halo/halo'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
+
+import { garantirPasta } from './pastas'
+import { nomeDaPagina } from './pasta-da-semana'
 
 import {
   escolherVariante,
@@ -50,12 +53,6 @@ import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type
 import { medirContrasteDaPeca, type ContrasteMedido } from './regua'
 
 export const TAG_DA_PECA_COMPOSTA = 'compositor'
-export const NOME_DO_COLETOR: Record<Formato, string> = {
-  story: 'Arte Composta',
-  feed: 'Arte Composta — Feed',
-  quadrado: 'Arte Composta — Quadrado',
-}
-const TIPO_DO_FORMATO = { story: 'STORY', feed: 'FEED', quadrado: 'SQUARE' } as const
 
 export interface RotuloDePosicao {
   ancora: Ancora
@@ -618,12 +615,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     return { persistido: null, prova: png, layers, diagnostico }
   }
 
-  const coletor = await ensureArteTemplate(spec.projectId, projeto.userId, TIPO_DO_FORMATO[spec.formato], `${canvas.width}x${canvas.height}`, NOME_DO_COLETOR[spec.formato])
-  const nome = spec.nome ?? `${spec.tema ?? spec.blocos[0]?.linhas[0] ?? 'Peça'} — ${new Date().toLocaleString('pt-BR')}`
+  // A pasta é a SEMANA da data prevista (ou as avulsas do mês) — regra de
+  // 03/09/2026: a aba organiza por quando publica, não por quem criou.
+  const pasta = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null)
+  const nome = nomeDaPagina({ quando: spec.quando ?? null, formato: spec.formato, tema: spec.tema ?? null, nome: spec.nome ?? spec.blocos[0]?.linhas[0] ?? null })
   const persistido = await persistAndRenderCreative({
     project: projeto,
-    templateId: coletor.id,
-    templateName: coletor.name,
+    templateId: pasta.id,
+    templateName: pasta.name,
     pageName: nome,
     width: canvas.width,
     height: canvas.height,
@@ -631,7 +630,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     background: assinatura.numeros.fundo,
     authorName: 'compositor',
     canal: opcoes.canal ?? null,
-    pageTags: [TAG_DA_PECA_COMPOSTA],
+    pageTags: [TAG_DA_PECA_COMPOSTA, spec.formato],
     fieldValues: {
       source: 'compositor',
       spec,

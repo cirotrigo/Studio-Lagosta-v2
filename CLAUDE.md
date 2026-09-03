@@ -3761,6 +3761,21 @@ e o sinal `geometria`. Regras que valem para código novo:
   imagem — `prepararCamadasParaGravar` em toda porta de escrita de
   `Page.layers` vinda de fora do editor (`create-page`/`create-template` do
   MCP local já passam). `FEED_PORTRAIT` não existe em `TemplateType`.
+- **A aba de Templates tem QUATRO seções** (03/09/2026, `src/lib/templates/
+  classificar.ts`, puro): assinatura · modelos da equipe · programação ·
+  arquivo (recolhido; coletor VAZIO não tem card). A seção diz quem criou e
+  para quê. **A peça composta vai para a pasta da SEMANA da data prevista**
+  (`pasta-da-semana.ts`: segunda a domingo em BRT, template com tag
+  `semana:AAAA-MM-DD`, categoria `programacao`), pedido de uma arte, de uma
+  sexta ou da semana inteira caindo no mesmo lugar; sem data vai para
+  `Avulsas · <mês>` e é MOVIDA para a semana quando o post é agendado
+  (`moverPaginaParaSemana`, chamado de `agendarPost`, nunca derruba o
+  agendamento). Página se chama "Ter 09:00 · story · tema". Os coletores
+  "Arte Composta" não são mais alimentados; `scripts/organizar-programacao.ts`
+  moveu as 63 peças da Lagosta. A API de templates devolve `situacao`
+  (peças, na agenda, publicadas, rascunhos, falhas) para as pastas.
+  🔴 `Template` tem FK com cascade a partir de `Generation`: NUNCA apagar
+  coletor "vazio" sem antes reapontar as Generations — o script reaponta.
 - **Templates** (§8): o contêiner fica; a página-modelo como layout a
   preencher NÃO se cadastra mais (14 usos em 128, 0/33 no placar); o kit vira
   a página de assinatura. A curadoria das 147 existentes é do próximo

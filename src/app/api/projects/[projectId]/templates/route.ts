@@ -80,7 +80,33 @@ export async function GET(
     return NextResponse.json(templatesWithDesign)
   }
 
-  return NextResponse.json(templates)
+  /**
+   * Situação das PASTAS de programação (aba de templates, 03/09/2026): quantas
+   * peças, quantas já na agenda, publicadas, rascunhos. Uma consulta por
+   * resposta, só para as pastas que têm categoria de programação.
+   */
+  const pastas = templates.filter((t) => t.category === 'programacao' || t.category === 'avulsas')
+  const situacao = new Map<number, { pecas: number; agendadas: number; publicadas: number; rascunhos: number; falhas: number }>()
+  if (pastas.length > 0) {
+    const paginas = await db.page.findMany({ where: { templateId: { in: pastas.map((t) => t.id) } }, select: { id: true, templateId: true } })
+    const porPagina = new Map(paginas.map((p) => [p.id, p.templateId]))
+    const posts = await db.socialPost.findMany({
+      where: { pageId: { in: paginas.map((p) => p.id) } },
+      select: { pageId: true, status: true },
+    })
+    for (const t of pastas) situacao.set(t.id, { pecas: t._count.Page, agendadas: 0, publicadas: 0, rascunhos: 0, falhas: 0 })
+    for (const post of posts) {
+      const tid = post.pageId ? porPagina.get(post.pageId) : undefined
+      const s = tid !== undefined ? situacao.get(tid) : undefined
+      if (!s) continue
+      if (post.status === 'POSTED') s.publicadas++
+      else if (post.status === 'DRAFT') s.rascunhos++
+      else if (post.status === 'FAILED') s.falhas++
+      else s.agendadas++
+    }
+  }
+
+  return NextResponse.json(templates.map((t) => ({ ...t, ...(situacao.has(t.id) ? { situacao: situacao.get(t.id) } : {}) })))
 }
 
 export async function POST(

@@ -16,13 +16,11 @@
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { CanalDaArte } from '@/lib/creatives/canal'
-import { ensureArteTemplate } from '@/lib/creatives/persist'
 import { enfileirarComposicao, pedirNovaTentativa, type ComposicaoJobArgs } from '@/lib/ai/generation-queue'
 
-import { comporPeca, NOME_DO_COLETOR } from './compor'
-import { DIMENSOES, validarSpec, type SpecDePeca } from './spec'
-
-const TIPO_DO_FORMATO = { story: 'STORY', feed: 'FEED', quadrado: 'SQUARE' } as const
+import { comporPeca } from './compor'
+import { garantirPasta } from './pastas'
+import { validarSpec, type SpecDePeca } from './spec'
 
 export interface PecaEnfileirada {
   generationId: string
@@ -39,8 +37,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
-  const canvas = DIMENSOES[spec.formato]
-  const coletor = await ensureArteTemplate(spec.projectId, projeto.userId, TIPO_DO_FORMATO[spec.formato], `${canvas.width}x${canvas.height}`, NOME_DO_COLETOR[spec.formato])
+  const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null)
 
   const generation = await db.generation.create({
     data: {
