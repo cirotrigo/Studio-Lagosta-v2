@@ -18,6 +18,7 @@
  * agendar por generationId.
  */
 
+import type { CanalDaArte } from './canal'
 import sharp from 'sharp'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
@@ -53,6 +54,8 @@ export interface ImportarArteInput {
   name?: string
   /** Procedência livre — o caminho local, a skill que gerou, o que ajudar depois */
   origem?: string
+  /** Por qual canal a arte entrou. Ver `canal.ts`. */
+  canal?: CanalDaArte | null
   /**
    * Os textos que a arte contém, quando quem envia os conhece.
    *
@@ -251,6 +254,7 @@ export async function importarArte(input: ImportarArteInput): Promise<ImportarAr
       projectId: project.id,
       createdBy: project.userId,
       authorName: 'arte-enviada',
+      canal: input.canal ?? null,
       templateName: template.name,
       projectName: project.name,
       completedAt: new Date(),

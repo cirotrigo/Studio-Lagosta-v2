@@ -21,7 +21,8 @@ import { useToast } from '@/hooks/use-toast'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { GalleryItem } from './gallery-item'
 import { MemberFilter } from '../filters/member-filter'
-import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar, Sparkles, SlidersHorizontal } from 'lucide-react'
+import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar, Sparkles, SlidersHorizontal, CheckSquare } from 'lucide-react'
+import { ORIGENS_DO_FILTRO, ROTULO_DA_ORIGEM, type CanalDaArte, type OrigemDoFiltro } from '@/lib/creatives/canal'
 import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
@@ -61,6 +62,8 @@ interface GenerationRecord {
   templateName?: string | null
   projectName?: string | null
   authorName?: string | null
+  /** Por qual canal a arte entrou — ver `creatives/canal.ts`. Nulo no histórico. */
+  canal?: CanalDaArte | null
   createdBy: string
   createdAt: string
   completedAt?: string | null
@@ -203,6 +206,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
   const [memberFilter, setMemberFilter] = React.useState<string | null>(null)
+  /** Origem da arte: canal por onde entrou, ou melhorada com IA. Filtra no servidor. */
+  const [origemFilter, setOrigemFilter] = React.useState<'all' | OrigemDoFiltro>('all')
   const [weekdayFilter, setWeekdayFilter] = React.useState<Set<number>>(new Set())
   const [viewMode, setViewMode] = React.useState<ViewMode>('grid')
   const [gridDensity, setGridDensity] = React.useState<GridDensity>('cozy')
@@ -226,6 +231,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const filtrosAtivos =
     (statusFilter === 'all' ? 0 : 1) +
     (memberFilter ? 1 : 0) +
+    (origemFilter === 'all' ? 0 : 1) +
     weekdayFilter.size +
     (onlyWithResult ? 0 : 1)
 
@@ -244,7 +250,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<GenerationsResponse>({
-    queryKey: ['generations', projectId, memberFilter, weekdaysParam],
+    queryKey: ['generations', projectId, memberFilter, weekdaysParam, origemFilter],
     enabled: !!projectId,
     initialPageParam: 1,
     queryFn: ({ pageParam = 1 }) => {
@@ -257,6 +263,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       }
       if (weekdaysParam) {
         params.set('weekdays', weekdaysParam)
+      }
+      if (origemFilter !== 'all') {
+        params.set('origem', origemFilter)
       }
       return api.get(`/api/projects/${projectId}/generations?${params.toString()}`)
     },
@@ -838,6 +847,14 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     bulkDeleteMutation.mutate(Array.from(selectedIds))
   }, [selectedIds, bulkDeleteMutation])
 
+  const todasSelecionadas = filtered.length > 0 && filtered.every((g) => selectedIds.has(g.id))
+  const toggleSelectAll = React.useCallback(() => {
+    setSelectedIds((prev) => {
+      if (filtered.length > 0 && filtered.every((g) => prev.has(g.id))) return new Set()
+      return new Set(filtered.map((g) => g.id))
+    })
+  }, [filtered])
+
   const handleSchedule = React.useCallback((generation: GenerationRecord) => {
     setSchedulingGeneration(generation)
     setIsComposerOpen(true)
@@ -990,6 +1007,19 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 ))}
               </SelectContent>
             </Select>
+            <Select value={origemFilter} onValueChange={(value) => setOrigemFilter(value as typeof origemFilter)}>
+              <SelectTrigger className="w-full sm:w-[190px]" title="Por onde a arte entrou">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas as origens</SelectItem>
+                {ORIGENS_DO_FILTRO.map((origem) => (
+                  <SelectItem key={origem} value={origem}>
+                    {ROTULO_DA_ORIGEM[origem]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             {organization && (
               <MemberFilter
                 organizationId={organization.id}
@@ -1086,6 +1116,28 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             os cinco botões com texto não cabiam na linha e transbordavam. */}
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap items-center gap-2">
+            {/* Selecionar TODAS as artes filtradas — o que a barra oferece
+                (baixar/excluir em lote) já existia, mas exigia marcar uma a
+                uma. A seleção alcança o que está carregado na tela; com mais
+                páginas por vir, o rótulo diz quantas e o botão "carregar
+                mais" continua sendo o caminho para alcançar o resto. */}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={filtered.length === 0}
+              onClick={toggleSelectAll}
+              title={
+                todasSelecionadas
+                  ? 'Desmarcar todas'
+                  : hasNextPage
+                    ? `Selecionar as ${filtered.length} carregadas (há mais para carregar)`
+                    : `Selecionar todas (${filtered.length})`
+              }
+            >
+              <CheckSquare className="h-4 w-4" />
+              <span className="ml-2 hidden xl:inline">{todasSelecionadas ? 'Desmarcar' : 'Selecionar todas'}</span>
+              {!todasSelecionadas && filtered.length > 0 && <span className="ml-1">({filtered.length})</span>}
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1237,6 +1289,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   errorMessage={meta.errorMessage ?? undefined}
                   isVideo={meta.isVideo}
                   authorClerkId={generation.createdBy}
+                  canal={generation.canal ?? null}
                   onToggleSelect={() => toggleSelection(generation.id)}
                   onDownload={() => handleDownload(generation)}
                   onDelete={() => handleDelete(generation)}

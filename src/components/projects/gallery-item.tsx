@@ -17,7 +17,9 @@ import {
   AlertTriangle,
   RefreshCw,
   Share2,
+  Bot,
 } from 'lucide-react'
+import { ehClerkId, ROTULO_DO_CANAL, type CanalDaArte } from '@/lib/creatives/canal'
 import { toast } from 'sonner'
 import {
   DropdownMenu,
@@ -45,6 +47,8 @@ interface GalleryItemProps {
   errorMessage?: string | null
   isVideo?: boolean
   authorClerkId?: string
+  /** Por qual canal a arte entrou — quando o autor não é uma pessoa do Clerk, é isto que o card mostra. */
+  canal?: CanalDaArte | null
   /** true quando a Generation tem sourceGenerationId — arte melhorada por IA. */
   isImproved?: boolean
   /** Marcada como referência de estilo — as próximas artes se inspiram nela. */
@@ -127,6 +131,7 @@ export function GalleryItem({
   errorMessage,
   isVideo,
   authorClerkId,
+  canal,
   isImproved,
   isStyleRef,
   onToggleStyleRef,
@@ -372,9 +377,20 @@ export function GalleryItem({
         <div className="whitespace-nowrap rounded-lg border border-white/10 bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white shadow-lg backdrop-blur-md sm:px-2.5 sm:py-1 sm:text-xs">
           {date}
         </div>
-        {authorClerkId && (
+        {/* Autor: pessoa do Clerk ganha o avatar; arte assinada por automação
+            (Claudinho, Claude.ai, Claude Code — `createdBy` é o id interno do
+            dono, não um clerkId) ganha o rótulo do canal. Antes era um "?". */}
+        {authorClerkId && ehClerkId(authorClerkId) ? (
           <div className="rounded-full ring-2 ring-white/20 shadow-lg overflow-hidden">
             <MemberAvatar clerkId={authorClerkId} size="sm" showTooltip />
+          </div>
+        ) : (
+          <div
+            className="flex items-center gap-1 whitespace-nowrap rounded-full border border-white/10 bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white shadow-lg backdrop-blur-md"
+            title={canal ? `Veio do ${ROTULO_DO_CANAL[canal]}` : 'Automação (origem não registrada)'}
+          >
+            <Bot className="h-3 w-3" />
+            {canal ? ROTULO_DO_CANAL[canal] : 'Automação'}
           </div>
         )}
       </div>

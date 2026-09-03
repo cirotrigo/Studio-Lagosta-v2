@@ -37,6 +37,8 @@ export async function POST(req: NextRequest) {
       slotValues: input.slotValues ?? {},
       name: input.name,
       imageUrl: input.imageUrl,
+      // A API externa é o Claudinho: é aqui que a arte ganha o canal.
+      canal: 'claudinho',
     })
     return NextResponse.json(result, { status: 201 })
   } catch (error) {

@@ -146,6 +146,13 @@ model Generation {
   templateName         String?
   projectName          String?
   createdBy            String
+  /**
+   * Por qual CANAL a arte entrou: `claudinho` (API externa), `claude-ai`
+   * (conector remoto /api/mcp), `claude-code` (MCP local / scripts) ou
+   * `studio` (feita no app). Nulo no histórico que não deu para atribuir.
+   * TEXT, não enum — precedente de `SocialPost.origem` (03/09/2026).
+   */
+  canal                String?
   createdAt            DateTime            @default(now())
   completedAt          DateTime?
   googleDriveFileId    String?
@@ -158,6 +165,7 @@ model Generation {
 
   @@index([createdAt])
   @@index([createdBy])
+  @@index([canal])
   @@index([projectId])
   @@index([sourceGenerationId])
   @@index([sourcePageId])

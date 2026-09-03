@@ -1,3 +1,4 @@
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
@@ -27,6 +28,8 @@ export interface GenerationRecord {
   templateName?: string | null
   projectName?: string | null
   authorName?: string | null
+  /** Por qual canal a arte entrou — ver `creatives/canal.ts`. Nulo no histórico. */
+  canal?: CanalDaArte | null
   createdBy: string
   createdAt: string
   completedAt?: string | null

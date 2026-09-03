@@ -7,6 +7,7 @@
  * Criativos. Só o miolo das camadas muda.
  */
 
+import type { CanalDaArte } from './canal'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
@@ -139,6 +140,8 @@ export interface PersistCreativeInput {
   /** Procedência guardada na Generation (o que gerou a arte) */
   fieldValues: Record<string, unknown>
   authorName: string
+  /** Por qual canal a arte entrou — decidido na porta de entrada. Ver `canal.ts`. */
+  canal?: CanalDaArte | null
   /**
    * Espelho colunar de `fieldValues.sourcePageId` — **só quando aponta para
    * uma página-MODELO de verdade**.
@@ -218,6 +221,8 @@ export interface RenderPageInput {
   }
   fieldValues: Record<string, unknown>
   authorName: string
+  /** Ver `PersistCreativeInput.canal`. */
+  canal?: CanalDaArte | null
   /** Ver `PersistCreativeInput.sourcePageId` — só página-MODELO entra aqui. */
   sourcePageId?: string | null
   /** Ver `PersistCreativeInput.generationId`. */
@@ -265,6 +270,8 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
           sourcePageId: input.sourcePageId ?? null,
           resultUrl: blob.url,
           authorName: input.authorName,
+          // A Generation da fila já nasceu com canal; só sobrescreve se vier.
+          ...(input.canal ? { canal: input.canal } : {}),
           templateName,
           completedAt: new Date(),
           fileName: `${page.name}.png`,
@@ -281,6 +288,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
           projectId: project.id,
           createdBy: project.userId,
           authorName: input.authorName,
+          canal: input.canal ?? null,
           templateName,
           projectName: project.name,
           completedAt: new Date(),

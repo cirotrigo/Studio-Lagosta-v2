@@ -13,6 +13,7 @@
  * - `arte`: peça com lettering (copy verbatim) → gpt-image-2 `images.edit`.
  */
 
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -94,6 +95,8 @@ export interface StartArtGenerationInput {
   /** Quem paga os créditos e assina a Generation — id do CLERK (user_…). */
   actorClerkId: string
   orgId?: string
+  /** Por qual canal a arte entrou. Ver `creatives/canal.ts`. */
+  canal?: CanalDaArte | null
   /** Reusa job PROCESSING recente idêntico (retry de modelo no MCP). */
   dedupeWindowMinutes?: number
   /**
@@ -470,6 +473,7 @@ export async function startArtGeneration(
       templateName: ARTE_IA_TEMPLATE_NAMES[fmt.type],
       projectName: project.name,
       createdBy: input.actorClerkId,
+      canal: input.canal ?? null,
       authorName: input.carrossel
         ? `Slide ${input.carrossel.slideOrder}/${input.carrossel.totalSlides}`
         : 'Arte IA',

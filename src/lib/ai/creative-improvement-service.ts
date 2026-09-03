@@ -12,6 +12,7 @@
  * teste E2E. Erros saem como CreativeError (código estável + status HTTP).
  */
 
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { descreverJanela } from '@/lib/posts/freeze-window'
@@ -68,6 +69,8 @@ export interface StartImprovementInput {
   /** Quem paga os créditos e assina a Generation — id do CLERK (user_…). */
   actorClerkId: string
   orgId?: string
+  /** Por qual canal a melhoria foi pedida. Ver `creatives/canal.ts`. */
+  canal?: CanalDaArte | null
   /**
    * Reaproveita melhoria PROCESSING recente da mesma origem em vez de criar
    * outra. Protege o fluxo MCP de retries do modelo — cada geração custa
@@ -314,6 +317,7 @@ export async function startImprovement(
       templateName: `${original.templateName ?? 'Criativo'} (melhorado)`,
       projectName: project.name,
       createdBy: input.actorClerkId,
+      canal: input.canal ?? null,
     },
   })
 

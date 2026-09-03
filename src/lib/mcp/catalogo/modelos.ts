@@ -63,7 +63,7 @@ export const toolsDeModelos = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ createArteRapida }, { quemDecidiu }] = await Promise.all([
+      const [{ createArteRapida }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([
         import('../../creatives/arte-rapida'),
         import('../tools'),
       ])
@@ -75,6 +75,7 @@ export const toolsDeModelos = [
         name: args.name as string | undefined,
         imageUrl: args.imageUrl as string | undefined,
         decididoPor: await quemDecidiu(projectId, principal),
+        canal: canalDoPrincipal(principal),
       })
     },
   }),

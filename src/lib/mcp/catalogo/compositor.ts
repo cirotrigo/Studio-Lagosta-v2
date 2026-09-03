@@ -152,11 +152,11 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ comporPeca }, { quemDecidiu }] = await Promise.all([import('../../compositor/compor'), import('../tools')])
+      const [{ comporPeca }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([import('../../compositor/compor'), import('../tools')])
       const projectId = args.projectId as number
       const s = specDe(args)
       const decididoPor = await quemDecidiu(projectId, principal)
-      const r = await comporPeca(s, { provar: args.provar === true, decididoPor })
+      const r = await comporPeca(s, { provar: args.provar === true, decididoPor, canal: canalDoPrincipal(principal) })
       const d = r.diagnostico
       const resumo = {
         posicao: `${d.posicao.ancora}/${d.posicao.alinha}`,
@@ -213,7 +213,7 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ enfileirarPeca }, { quemDecidiu }] = await Promise.all([import('../../compositor/fila'), import('../tools')])
+      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([import('../../compositor/fila'), import('../tools')])
       const projectId = args.projectId as number
       const decididoPor = await quemDecidiu(projectId, principal)
       const itens = args.itens as Array<Record<string, unknown>>
@@ -222,7 +222,7 @@ export const toolsDoCompositor = [
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
         try {
-          const r = await enfileirarPeca(specDe({ ...item, projectId }), { decididoPor })
+          const r = await enfileirarPeca(specDe({ ...item, projectId }), { decididoPor, canal: canalDoPrincipal(principal) })
           enfileiradas.push({ indice, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null })
         } catch (erro) {
           falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro) })

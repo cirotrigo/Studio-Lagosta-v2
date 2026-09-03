@@ -2202,7 +2202,7 @@ toolEstrita(
     try {
       const parsedSlots = JSON.parse(slotValues) as Record<string, unknown>
       const { createArteRapida } = await import('../src/lib/creatives/arte-rapida')
-      const result = await createArteRapida({ projectId, sourcePageId, slotValues: parsedSlots, name, imageUrl })
+      const result = await createArteRapida({ projectId, sourcePageId, slotValues: parsedSlots, name, imageUrl, canal: 'claude-code' })
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
@@ -2374,6 +2374,7 @@ toolEstrita(
         try {
           const meta = porArquivo.get(file)
           const result = await importarArte({
+            canal: 'claude-code',
             projectId,
             bytes: fs.readFileSync(file),
             fileName,
@@ -2536,7 +2537,9 @@ toolEstrita(
 // Migrar as skills para os nomes PT aposenta a camada — decisão futura.
 
 {
-  const PRINCIPAL_LOCAL = { kind: 'service' } as const
+  // `clientId` diz ao catálogo que a chamada vem do MCP local — é o que
+  // grava `canal: 'claude-code'` na arte (ver `canalDoPrincipal`).
+  const PRINCIPAL_LOCAL = { kind: 'service', clientId: 'claude-code-local' } as const
 
   for (const tool of CATALOGO.values()) {
     if (!tool.superficies.includes('local')) continue

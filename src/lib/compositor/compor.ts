@@ -13,6 +13,7 @@
  * que sai é `Layer[]` em vez de HTML — a peça nasce onde a equipe ajusta.
  */
 
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -79,6 +80,8 @@ export interface OpcoesDeComposicao {
   provar?: boolean
   /** `User.id` INTERNO (cuid), nunca o clerkId. */
   decididoPor?: string | null
+  /** Por qual canal a peça foi pedida. Ver `creatives/canal.ts`. */
+  canal?: CanalDaArte | null
   /** F3: a Generation PROCESSING que a fila criou — o persist a fecha em vez de criar outra. */
   generationId?: string | null
 }
@@ -596,6 +599,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     layers,
     background: assinatura.numeros.fundo,
     authorName: 'compositor',
+    canal: opcoes.canal ?? null,
     pageTags: [TAG_DA_PECA_COMPOSTA],
     fieldValues: {
       source: 'compositor',

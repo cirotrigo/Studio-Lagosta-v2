@@ -15,6 +15,7 @@
  *      render to PNG and register it in the Criativos gallery.
  */
 
+import type { CanalDaArte } from './canal'
 import { db } from '@/lib/db'
 import { KnowledgeCategory } from '@prisma/client'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -521,6 +522,8 @@ export interface CreateArteRapidaInput {
   fotoDoCard?: string | null
   /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. É auditoria. */
   decididoPor?: string | null
+  /** Por qual canal a arte entrou (Claudinho, Claude.ai, Claude Code, Studio). Ver `canal.ts`. */
+  canal?: CanalDaArte | null
   /**
    * Não trocar o layout pela foto. Por padrão, num template "(3 layouts)" a
    * foto escolhe entre os irmãos (Topo/Rodapé/Dividido) pela faixa mais calma
@@ -735,6 +738,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     layers,
     background: modelo.background,
     authorName: 'arte-rapida',
+    canal: input.canal ?? null,
     // Espelho colunar do `fieldValues.sourcePageId`: aqui ele aponta para um
     // MODELO de verdade, e é a coluna indexada que tira "qual modelo este
     // cliente mais usa" da varredura de Json.
@@ -843,6 +847,8 @@ export interface AjustarArteInput {
   name?: string
   /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. É auditoria. */
   decididoPor?: string | null
+  /** Ver `CreateArteRapidaInput.canal`. */
+  canal?: CanalDaArte | null
 }
 
 export interface AjustarArteResult {
@@ -1000,6 +1006,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       background: page.background,
     },
     authorName: 'ajuste-arte',
+    canal: input.canal ?? null,
     fieldValues: {
       source: 'ajuste-arte',
       sourcePageId: page.id,

@@ -3421,6 +3421,45 @@ novo:
   há modelo de ALMOÇO EXECUTIVO no pool — o teste caiu no de parrilla; cadastrar
   é curadoria, não código.
 
+### Canal da arte: quem assina e por onde entrou (03/09/2026)
+
+A Roberta filtrava a galeria por ela e via "artes que não fez". Medido: o
+filtro é exato por `createdBy = clerkId`, e as dela eram dela — o que estava
+quebrado era o OUTRO lado: **1.289 das 3.013 artes da carteira em 60 dias
+estavam assinadas com `Project.userId`** (o id INTERNO do dono, cuid), que
+não é membro do Clerk. Elas caíam num avatar "Usuário" sem nome e o card
+mostrava "?". Três produtores faziam isso: a API externa do Claudinho
+(`/api/external/creatives` → `createArteRapida`), o MCP local
+(`upload-creative`, `create-arte-rapida`) e a mídia de post.
+
+- **`Generation.canal`** (TEXT, indexado; precedente de `SocialPost.origem`):
+  `claudinho` | `claude-ai` | `claude-code` | `studio`. É ORTOGONAL ao autor —
+  `createdBy` continua sendo quem assina — e é decidido na **porta de
+  entrada**, nunca no serviço: o mesmo `createArteRapida` serve ao Claudinho
+  (rota externa) e ao conector. Módulo puro em `src/lib/creatives/canal.ts`.
+- **No catálogo MCP o canal sai do principal** (`canalDoPrincipal`, tools.ts):
+  token OAuth → `claude-ai`; principal de serviço com `clientId:
+  'claude-code-local'` (o que o servidor stdio se declara) → `claude-code`;
+  serviço sem marcador → `claudinho`. O handler não recebe a superfície, só
+  o principal — por isso o marcador mora no `clientId`.
+- **O filtro "Origem" da galeria** (`?origem=`) aceita os 4 canais mais
+  `melhoria` (= `sourceGenerationId IS NOT NULL`, venha de onde vier).
+  `studio` inclui canal NULO. Valor desconhecido é ignorado, nunca erro.
+- **Id que não é clerkId é AUTOMAÇÃO** na UI (`ehClerkId`): o seletor de
+  membros o rotula "Automações (Claudinho / Claude)" com ícone de robô, e o
+  card mostra o canal em vez do avatar. Quem separa os canais é o filtro de
+  origem, não o de membro.
+- 🔴 **O histórico não separa Claudinho de Claude Code**, nem `claude-ai` de
+  `studio`: as duas duplas gravavam assinatura idêntica. O backfill
+  (`scripts/backfill-canal-das-artes.ts`, dry-run por padrão) marca id
+  interno + `arte-enviada|arte-rapida|compositor|ajuste-arte` como
+  `claude-code` (65 linhas de `arte-rapida` em toda a base, quase todas de
+  ago-set/2026) e clerkId como `studio`. O rótulo só é EXATO daqui para
+  frente.
+- **Selecionar todas** entrou na barra da galeria: alcança o que está
+  CARREGADO (páginas de 60); com mais por vir, o rótulo diz "as N carregadas".
+  Baixar e excluir em lote já existiam e agora têm como ser usados de verdade.
+
 ### 🔴 A régua por visão exigia a LOGO como texto (TERO, 03/09/2026)
 
 A Roberta não conseguia melhorar nenhuma arte do TERO: as duas tentativas

@@ -1,3 +1,4 @@
+import { ehOrigemDoFiltro } from '@/lib/creatives/canal'
 import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '../../../../../../prisma/generated/client'
 import { auth } from '@clerk/nextjs/server'
@@ -72,12 +73,35 @@ export async function GET(
     const pageSize = parseInt(url.searchParams.get('pageSize') || '100', 10)
     const createdByFilter = url.searchParams.get('createdBy')
     const weekdays = parseWeekdays(url.searchParams.get('weekdays'))
+    /**
+     * Origem da arte (03/09/2026): por qual CANAL ela entrou, ou "melhorada
+     * com IA". Valor desconhecido é ignorado, nunca erro — filtro é
+     * conveniência. `studio` inclui o histórico sem canal (nulo), porque a
+     * arte feita no app nunca gravou canal antes desta coluna existir.
+     */
+    const origemBruta = url.searchParams.get('origem')
+    const origem = ehOrigemDoFiltro(origemBruta) ? origemBruta : null
 
     // Build where clause
     const where: Prisma.GenerationWhereInput = { projectId }
     if (createdByFilter) {
       where.createdBy = createdByFilter
     }
+    if (origem === 'melhoria') {
+      where.sourceGenerationId = { not: null }
+    } else if (origem === 'studio') {
+      where.OR = [{ canal: 'studio' }, { canal: null }]
+    } else if (origem) {
+      where.canal = origem
+    }
+    const origemSql =
+      origem === 'melhoria'
+        ? Prisma.sql`AND g."sourceGenerationId" IS NOT NULL`
+        : origem === 'studio'
+          ? Prisma.sql`AND (g.canal = 'studio' OR g.canal IS NULL)`
+          : origem
+            ? Prisma.sql`AND g.canal = ${origem}`
+            : Prisma.empty
 
     // A galeria de Criativos mostra PEÇAS, não insumo: a trilha `imagem` gera
     // fotografia de cena, que vai para o acervo (Fotos/IA_LAGOSTA) e não é
@@ -113,6 +137,7 @@ export async function GET(
         ) sp_meta ON TRUE
         WHERE g."projectId" = ${projectId}
           ${createdByFilter ? Prisma.sql`AND g."createdBy" = ${createdByFilter}` : Prisma.empty}
+          ${origemSql}
           AND COALESCE(g."fieldValues"->>'track', '') <> 'imagem'
           AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${TIMEZONE}))::int IN (${Prisma.join(weekdays)})
       `
@@ -128,6 +153,7 @@ export async function GET(
         ) sp_meta ON TRUE
         WHERE g."projectId" = ${projectId}
           ${createdByFilter ? Prisma.sql`AND g."createdBy" = ${createdByFilter}` : Prisma.empty}
+          ${origemSql}
           AND COALESCE(g."fieldValues"->>'track', '') <> 'imagem'
           AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${TIMEZONE}))::int IN (${Prisma.join(weekdays)})
         ORDER BY g."createdAt" DESC
@@ -166,6 +192,8 @@ export async function GET(
         templateName: true,
         projectName: true,
         createdBy: true,
+        canal: true,
+        authorName: true,
         createdAt: true,
         completedAt: true,
         fileName: true,

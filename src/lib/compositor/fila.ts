@@ -15,6 +15,7 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { ensureArteTemplate } from '@/lib/creatives/persist'
 import { enfileirarComposicao, pedirNovaTentativa, type ComposicaoJobArgs } from '@/lib/ai/generation-queue'
 
@@ -30,7 +31,7 @@ export interface PecaEnfileirada {
 }
 
 /** Cria a Generation PROCESSING e o job. Idempotente por Generation. */
-export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null } = {}): Promise<PecaEnfileirada> {
+export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null } = {}): Promise<PecaEnfileirada> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   const spec = v.spec
@@ -48,6 +49,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
       projectId: spec.projectId,
       createdBy: projeto.userId,
       authorName: 'compositor',
+      canal: opcoes.canal ?? null,
       templateName: coletor.name,
       projectName: projeto.name,
       fieldValues: { source: 'compositor', spec, fila: 'aguardando' } as never,
