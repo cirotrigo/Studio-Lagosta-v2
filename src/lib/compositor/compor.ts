@@ -313,7 +313,16 @@ function escolherCanto(args: {
   formato: Formato
 }): { canto: Canto; rect: Rect; luz: number } | null {
   if (args.pedido === 'nenhum') return null
-  const todos: Canto[] = ['inferior-esquerdo', 'inferior-direito', 'superior-direito', 'superior-esquerdo']
+  // Em STORY a logo mora no rodapé (o topo tem avatar e barra do Instagram, e
+  // é onde o bloco de texto costuma pousar): os cantos de cima só entram
+  // quando o texto está no rodapé. Medido em 03/09 no TERO — a penalidade de
+  // 0,25 não segurava a logo longe do pré-título quando o prato embaixo era
+  // agitado.
+  const textoNoRodape = args.blocos.some((b) => b.y + b.height > args.g.H * 0.6)
+  const todos: Canto[] =
+    args.formato === 'story' && !textoNoRodape
+      ? ['inferior-esquerdo', 'inferior-direito']
+      : ['inferior-esquerdo', 'inferior-direito', 'superior-direito', 'superior-esquerdo']
   const candidatos: Canto[] = args.pedido && args.pedido !== 'auto' ? [args.pedido] : todos
   const livres = candidatos
     .map((canto) => ({ canto, rect: retanguloDoCanto(args.g, canto, args.logo.w, args.logo.h) }))
