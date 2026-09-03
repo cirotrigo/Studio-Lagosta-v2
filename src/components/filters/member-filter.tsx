@@ -7,7 +7,8 @@ import { Card } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { Users } from 'lucide-react'
+import { Users, Bot } from 'lucide-react'
+import { ehClerkId } from '@/lib/creatives/canal'
 
 interface Generation {
   createdBy: string
@@ -125,12 +126,18 @@ export function MemberFilter({
           const itemCount = itemCountsByMember[clerkId] || 0
 
           if (itemCount > 0) {
+            // Id que não é do Clerk é AUTOMAÇÃO (Claudinho, Claude.ai, Claude
+            // Code assinam com o id interno do dono). Aparecia como "Usuário"
+            // sem foto; quem separa os canais é o filtro de origem.
+            const automacao = !ehClerkId(clerkId)
             additionalMembers.push({
               clerkId,
               imageUrl: clerkMember?.publicUserData.imageUrl,
-              name: clerkMember?.publicUserData.firstName
-                ? `${clerkMember.publicUserData.firstName} ${clerkMember.publicUserData.lastName || ''}`.trim()
-                : clerkMember?.publicUserData.identifier || 'Usuário',
+              name: automacao
+                ? 'Automações (Claudinho / Claude)'
+                : clerkMember?.publicUserData.firstName
+                  ? `${clerkMember.publicUserData.firstName} ${clerkMember.publicUserData.lastName || ''}`.trim()
+                  : clerkMember?.publicUserData.identifier || 'Usuário',
               totalItems: itemCount,
               totalItemsFromAnalytics: itemCount, // Usar contagem dos items como fallback
             })
@@ -216,7 +223,7 @@ export function MemberFilter({
                 <AvatarImage src={member.imageUrl} alt={member.name} />
               )}
               <AvatarFallback className="bg-primary/10 text-primary font-semibold text-xs">
-                {initials(member.name)}
+                {ehClerkId(member.clerkId) ? initials(member.name) : <Bot className="h-4 w-4" />}
               </AvatarFallback>
             </Avatar>
 

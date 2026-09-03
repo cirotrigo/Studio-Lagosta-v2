@@ -14,6 +14,7 @@
  * catalogo/clientes.ts).
  */
 
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
@@ -193,6 +194,23 @@ export async function resolverDono(
   }
   return user
 }
+
+/**
+ * Por qual CANAL a tool está sendo chamada — vira `Generation.canal`.
+ *
+ * O handler recebe só o principal (não a superfície), então o servidor local
+ * se declara no `clientId` do principal de serviço (`claude-code-local`).
+ * Token OAuth é uma pessoa conversando no claude.ai; segredo de serviço sem
+ * esse marcador é o Claudinho.
+ */
+export function canalDoPrincipal(principal: McpPrincipal): CanalDaArte {
+  if (principal.kind === 'user') return 'claude-ai'
+  if (principal.clientId === CLIENT_ID_LOCAL) return 'claude-code'
+  return 'claudinho'
+}
+
+/** O marcador que o servidor stdio põe no principal de serviço. */
+export const CLIENT_ID_LOCAL = 'claude-code-local'
 
 /** Autor das escritas na base, como User.id do banco. */
 export async function resolverAutor(projectId: number, principal: McpPrincipal): Promise<string> {

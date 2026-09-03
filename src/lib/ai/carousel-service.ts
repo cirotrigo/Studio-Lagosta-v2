@@ -12,6 +12,7 @@
  * no estilo errado — e o motivo de isto não ser uma tool só.
  */
 
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { randomUUID } from 'crypto'
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -80,6 +81,7 @@ export async function iniciarCarrossel(input: {
   pedido?: string
   actorClerkId: string
   orgId?: string
+  canal?: CanalDaArte | null
 }): Promise<CarouselStartResult> {
   const slides = validarSlides(input.slides)
   const carrosselId = randomUUID()
@@ -105,6 +107,7 @@ export async function iniciarCarrossel(input: {
         totalSlides: slides.length,
       },
       actorClerkId: input.actorClerkId,
+        canal: input.canal ?? null,
       orgId: input.orgId,
     })
 
@@ -147,6 +150,7 @@ export async function confirmarEstiloCarrossel(input: {
   carrosselId: string
   actorClerkId: string
   orgId?: string
+  canal?: CanalDaArte | null
 }): Promise<CarouselConfirmResult> {
   const doGrupo = await db.generation.findMany({
     where: { carouselGroupId: input.carrosselId, projectId: input.projectId },
@@ -206,6 +210,7 @@ export async function confirmarEstiloCarrossel(input: {
           guideGenerationId: guia.id,
         },
         actorClerkId: input.actorClerkId,
+        canal: input.canal ?? null,
         orgId: input.orgId,
       }).then((r) => ({ ordem: slide.ordem, ...r })),
     ),

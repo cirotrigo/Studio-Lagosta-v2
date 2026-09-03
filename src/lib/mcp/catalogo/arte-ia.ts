@@ -181,7 +181,7 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ ajustarArte }, { quemDecidiu }] = await Promise.all([
+      const [{ ajustarArte }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([
         import('../../creatives/arte-rapida'),
         import('../tools'),
       ])
@@ -194,6 +194,7 @@ export const toolsDeArteIA = [
         driveImageId: typeof args.driveImageId === 'string' ? args.driveImageId : undefined,
         name: typeof args.name === 'string' ? args.name : undefined,
         decididoPor: await quemDecidiu(projectId, principal),
+        canal: canalDoPrincipal(principal),
       })
 
       /**
@@ -422,7 +423,7 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ db }, { CreativeError }, { startImprovement, VERCEL_BLOB_HOST_REGEX }, { enfileirarMelhoria }, { resolverDono, resolverPlano }] =
+      const [{ db }, { CreativeError }, { startImprovement, VERCEL_BLOB_HOST_REGEX }, { enfileirarMelhoria }, { resolverDono, resolverPlano, canalDoPrincipal }] =
         await Promise.all([
           import('../../db'),
           import('../../creatives/errors'),
@@ -474,6 +475,7 @@ export const toolsDeArteIA = [
         applyToPlanoId: planoId ?? null,
         applyToSlideOrdem: itemId && typeof args.slide === 'number' ? args.slide : null,
         actorClerkId: dono.clerkId,
+        canal: canalDoPrincipal(principal),
         dedupeWindowMinutes: 10,
       })
 
@@ -672,7 +674,7 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ startArtGeneration }, { enfileirarArte }, { resolverDono }] = await Promise.all([
+      const [{ startArtGeneration }, { enfileirarArte }, { resolverDono, canalDoPrincipal }] = await Promise.all([
         import('../../ai/creative-generation-service'),
         import('../../ai/generation-queue'),
         import('../tools'),
@@ -700,6 +702,7 @@ export const toolsDeArteIA = [
         resolution: args.resolution === '2K' || args.resolution === '4K' ? args.resolution : undefined,
         finalPrompt: typeof args.promptPronto === 'string' && args.promptPronto ? args.promptPronto : null,
         actorClerkId: dono.clerkId,
+        canal: canalDoPrincipal(principal),
         dedupeWindowMinutes: 10,
       })
 
@@ -759,7 +762,7 @@ export const toolsDeArteIA = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ startArtGeneration }, { enfileirarArte }, { resolverDono }, { randomUUID }] = await Promise.all([
+      const [{ startArtGeneration }, { enfileirarArte }, { resolverDono, canalDoPrincipal }, { randomUUID }] = await Promise.all([
         import('../../ai/creative-generation-service'),
         import('../../ai/generation-queue'),
         import('../tools'),
@@ -813,6 +816,7 @@ export const toolsDeArteIA = [
             finalPrompt: typeof v.promptPronto === 'string' && v.promptPronto ? v.promptPronto : null,
             loteId,
             actorClerkId: dono.clerkId,
+            canal: canalDoPrincipal(principal),
             dedupeWindowMinutes: 10,
           })
           if (!started.reused && started.runnerArgs) await enfileirarArte(started.runnerArgs)

@@ -38,7 +38,7 @@ export const toolsDeCarrossel = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ iniciarCarrossel }, { enfileirarArte }, { resolverDono }] = await Promise.all([
+      const [{ iniciarCarrossel }, { enfileirarArte }, { resolverDono, canalDoPrincipal }] = await Promise.all([
         import('../../ai/carousel-service'),
         import('../../ai/generation-queue'),
         import('../tools'),
@@ -60,6 +60,7 @@ export const toolsDeCarrossel = [
         legenda: typeof args.legenda === 'string' ? args.legenda : undefined,
         pedido: typeof args.pedido === 'string' ? args.pedido : undefined,
         actorClerkId: dono.clerkId,
+        canal: canalDoPrincipal(principal),
       })
       // Duas gerações numa invocação era metade do problema que a fila resolve.
       for (const runnerArgs of r.runnerArgs) {
@@ -90,7 +91,7 @@ export const toolsDeCarrossel = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ confirmarEstiloCarrossel }, { enfileirarArte }, { resolverDono }] = await Promise.all([
+      const [{ confirmarEstiloCarrossel }, { enfileirarArte }, { resolverDono, canalDoPrincipal }] = await Promise.all([
         import('../../ai/carousel-service'),
         import('../../ai/generation-queue'),
         import('../tools'),
@@ -99,7 +100,7 @@ export const toolsDeCarrossel = [
       const carrosselId = args.carrosselId as string
       const dono = await resolverDono(projectId, principal)
 
-      const r = await confirmarEstiloCarrossel({ projectId, carrosselId, actorClerkId: dono.clerkId })
+      const r = await confirmarEstiloCarrossel({ projectId, carrosselId, actorClerkId: dono.clerkId, canal: canalDoPrincipal(principal) })
       // Até 6 slides. Era o pior caso do teto compartilhado: seis `after()`
       // dividindo os mesmos 300s. Agora todos entram na fila e saem de lá.
       for (const runnerArgs of r.runnerArgs) {
