@@ -126,7 +126,7 @@ export const toolsDoCompositor = [
       return {
         temAssinatura: Boolean(a.origem.pageId),
         formatoDaPagina: a.origem.formatoDaPagina,
-        variantes: paginas.map((p) => ({ nome: p.name, formato: p.formato, tags: p.tags.filter((t) => t !== 'assinatura') })),
+        variantes: paginas.map((p) => ({ id: p.id, nome: p.name, formato: p.formato, papeis: p.papeis, aceitaServico: p.papeis.includes('servico'), tags: p.tags.filter((t) => t !== 'assinatura') })),
         papeis: Object.fromEntries(
           Object.entries(a.papeis).map(([papel, e]) => [
             papel,

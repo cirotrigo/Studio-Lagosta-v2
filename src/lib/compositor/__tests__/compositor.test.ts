@@ -177,7 +177,21 @@ describe('mapa de calma', () => {
 import { escolherVariante } from '../assinatura'
 
 describe('escolherVariante', () => {
-  const pag = (name: string, tags: string[] = [], width = 1080, height = 1920) => ({ name, tags, width, height })
+  const pag = (name: string, tags: string[] = [], width = 1080, height = 1920, papeis?: string[]) => ({ name, tags, width, height, ...(papeis ? { papeis: papeis as any } : {}) })
+
+  it('a variante que TEM os papéis pedidos vence; sem serviço perde a peça de funcionamento', () => {
+    const paginas = [pag('Story completa', [], 1080, 1920, ['pre', 'headline', 'apoio', 'servico']), pag('Story enxuta', [], 1080, 1920, ['headline', 'apoio'])]
+    const r = escolherVariante(paginas, { formato: 'story', papeis: ['pre', 'headline', 'apoio', 'servico'] as any })
+    expect(r.pagina?.name).toBe('Story completa')
+    const r2 = escolherVariante(paginas, { formato: 'story', papeis: ['headline', 'apoio'] as any })
+    expect(r2.pagina?.name).toBe('Story enxuta')
+  })
+
+  it('o tema casa com o nome ou a tag da página', () => {
+    const paginas = [pag('Story — funcionamento', ['funcionamento']), pag('Story — sabor')]
+    expect(escolherVariante(paginas, { formato: 'story', tema: 'Funcionamento de sexta' }).pagina?.name).toBe('Story — funcionamento')
+    expect(escolherVariante(paginas, { formato: 'story', tema: 'Sabor do dia' }).pagina?.name).toBe('Story — sabor')
+  })
   const paginas = [pag('Assinatura — story'), pag('Story clara', ['clara']), pag('Story escura', ['escura']), pag('Assinatura — feed', [], 1080, 1350)]
 
   it('variante pedida vence, pelo nome ou pela tag', () => {

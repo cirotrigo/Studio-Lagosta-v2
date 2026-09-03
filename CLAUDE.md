@@ -3735,10 +3735,18 @@ e o sinal `geometria`. Regras que valem para código novo:
   pergunta inverte (p2 do fundo ≥ alvo claro) e ela só confere, nunca corrige
   — mancha clara é desenho da equipe (Real: apoio verde sobre creme).
 - **Mais de uma página por formato = VARIANTES** (`escolherVariante`, 03/09/2026,
-  pergunta do Ciro "posso criar mais variações?"): a spec pede pelo nome/tag
-  (`preferencias.variante`); páginas com tag `clara`/`escura` são escolhidas
-  pela luz média da foto (limiar 128); entre as demais vale o rodízio
-  determinístico pela chave da peça. O compositor NÃO varia cor de fonte nem
+  pergunta do Ciro "posso criar mais variações?"): TODA página do template
+  "Assinatura" conta (duplicar no editor basta). A escolha é pela MENSAGEM
+  (`avaliarVariantes`, Ciro: "escolher o template de acordo com a mensagem, e
+  saber quais aceitam o horário de funcionamento"): +10 por ter todos os
+  papéis que a peça pede e −4 por papel que falta (a story sem `servico` não
+  serve para a peça de funcionamento — aconteceu na sexta da Real), −1 por
+  papel que sobra, +3 por palavra do tema no nome/tags da página, ±2 pela tag
+  `clara`/`escura` contra a luz da foto; empate → rodízio pela chave da peça.
+  Papel pedido que a variante escolhida não tem sai da peça com aviso (só a
+  manchete é obrigatória). `ver-assinatura` lista as variantes com os papéis
+  e `aceitaServico`. Nome/tag da página é o que faz o tema casar: vale nomear
+  as variantes pelo que elas servem. O compositor NÃO varia cor de fonte nem
   cor do halo por conta própria — variação de estilo é página nova; o que ele
   varia sozinho é posição, enquadramento, canto da logo e a TINTA do halo
   (dentro da faixa). A variante usada fica em `composicao.assinatura.variante`.

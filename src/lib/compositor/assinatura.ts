@@ -132,7 +132,7 @@ export interface AssinaturaDaMarca {
   /** O alinhamento da headline na página — vira preferência do rodízio (a foto ainda manda). */
   alinhamento: 'esquerda' | 'centro' | 'direita' | null
   /** De onde veio — para o registro atômico da geração. */
-  origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; versao: string }
+  origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; motivoDaVariante?: string; versao: string }
 }
 
 /** Nome de camada → papel. Aceita o que a equipe tende a escrever. */
@@ -401,14 +401,119 @@ export const LUZ_DE_FOTO_CLARA = 128
  *    que faz uma leva variar sem repetir a mesma variante em peças seguidas.
  * Sem página do formato cai na de story (escala de fonte), e sem nenhuma, null.
  */
-export function escolherVariante<T extends { name?: string; tags?: string[]; width: number; height: number }>(
+export interface CandidataAVariante {
+  id?: string
+  name?: string
+  tags?: string[]
+  width: number
+  height: number
+  /** Os papéis que a página tem (calculados por quem carrega as camadas). */
+  papeis?: Papel[]
+}
+
+export interface CriteriosDeVariante {
+  formato: Formato
+  /** Variante pedida pelo nome, tag ou id — vence tudo. */
+  variante?: string | null
+  /** Os papéis que a PEÇA pede. Variante que os tem vence a que não os tem. */
+  papeis?: Papel[]
+  /** O assunto da peça: casa com o nome e as tags da página ("funcionamento", "cafés"). */
+  tema?: string | null
+  /** Luz média da foto (0..255) — escolhe entre variantes `clara`/`escura`. */
+  luzDaFoto?: number | null
+  /** Chave da peça para o rodízio entre empatadas. */
+  chave?: string
+}
+
+function tokens(texto: string): string[] {
+  return texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 4)
+}
+
+export interface VarianteAvaliada<T> {
+  pagina: T
+  pontos: number
+  motivo: string
+}
+
+/**
+ * Pontua cada variante do formato para a PEÇA (Ciro, 03/09/2026: "o correto
+ * seria escolher o template de acordo com a mensagem que quer passar, e
+ * saber quais aceitam o horário de funcionamento"):
+ *
+ *  +10 por ter TODOS os papéis que a peça pede (a story sem serviço não
+ *      serve para a peça de funcionamento) — e −4 por cada papel que falta;
+ *  −1  por papel que a página tem e a peça não usa (slot vazio);
+ *  +3  por palavra do tema que casa com o nome ou as tags da página
+ *      ("funcionamento", "cafés", "vitrine");
+ *  +2  quando a tag `clara`/`escura` casa com a luz da foto, −2 quando bate
+ *      de frente;
+ *  empate → rodízio determinístico pela chave da peça.
+ */
+export function avaliarVariantes<T extends CandidataAVariante>(paginas: T[], c: CriteriosDeVariante): VarianteAvaliada<T>[] {
+  const pedidos = (c.papeis ?? []).filter((p) => p !== 'headline2')
+  const temaTokens = tokens(c.tema ?? '')
+  const clara = typeof c.luzDaFoto === 'number' ? c.luzDaFoto > LUZ_DE_FOTO_CLARA : null
+  return paginas
+    .map((p) => {
+      const motivos: string[] = []
+      let pontos = 0
+      const tem = new Set(p.papeis ?? [])
+      if (p.papeis) {
+        const faltam = pedidos.filter((x) => !tem.has(x))
+        if (faltam.length === 0 && pedidos.length > 0) {
+          pontos += 10
+          motivos.push('tem todos os papéis')
+        } else if (faltam.length > 0) {
+          pontos -= 4 * faltam.length
+          motivos.push(`falta ${faltam.join(', ')}`)
+        }
+        const sobram = [...tem].filter((x) => x !== 'headline2' && !pedidos.includes(x))
+        if (sobram.length > 0 && pedidos.length > 0) {
+          pontos -= sobram.length
+          motivos.push(`sobra ${sobram.join(', ')}`)
+        }
+      }
+      const textoDaPagina = tokens(`${p.name ?? ''} ${(p.tags ?? []).join(' ')}`)
+      const casam = temaTokens.filter((t) => textoDaPagina.some((x) => x.startsWith(t) || t.startsWith(x)))
+      if (casam.length > 0) {
+        pontos += 3 * casam.length
+        motivos.push(`tema "${casam.join(' ')}"`)
+      }
+      const tagsMin = (p.tags ?? []).map((t) => t.toLowerCase())
+      if (clara !== null) {
+        if (tagsMin.includes(clara ? 'clara' : 'escura')) {
+          pontos += 2
+          motivos.push(clara ? 'foto clara' : 'foto escura')
+        } else if (tagsMin.includes(clara ? 'escura' : 'clara')) {
+          pontos -= 2
+          motivos.push('luz oposta')
+        }
+      }
+      return { pagina: p, pontos, motivo: motivos.join(', ') || 'neutra' }
+    })
+    .sort((a, b) => b.pontos - a.pontos || `${a.pagina.name}`.localeCompare(`${b.pagina.name}`))
+}
+
+/**
+ * Escolhe a página de assinatura entre as VARIANTES do formato:
+ * 1. `variante` pedida (nome, tag ou id) vence;
+ * 2. senão, a melhor pontuação de `avaliarVariantes`; entre empatadas, o
+ *    RODÍZIO determinístico pela chave da peça — uma leva varia sem repetir.
+ * Sem página do formato cai na de story (escala de fonte), e sem nenhuma, null.
+ */
+export function escolherVariante<T extends CandidataAVariante>(
   paginas: T[],
-  args: { formato: Formato; variante?: string | null; luzDaFoto?: number | null; chave?: string },
-): { pagina: T | null; formatoDaPagina: Formato | null } {
+  args: CriteriosDeVariante,
+): { pagina: T | null; formatoDaPagina: Formato | null; motivo: string } {
   const doFormato = paginas.filter((p) => formatoDaPagina(p) === args.formato)
   const candidatas = doFormato.length > 0 ? doFormato : paginas.filter((p) => formatoDaPagina(p) === 'story')
   const base = candidatas.length > 0 ? candidatas : paginas
-  if (base.length === 0) return { pagina: null, formatoDaPagina: null }
+  if (base.length === 0) return { pagina: null, formatoDaPagina: null, motivo: 'sem página' }
   const fmt = (p: T) => formatoDaPagina(p)
 
   if (args.variante) {
@@ -417,22 +522,14 @@ export function escolherVariante<T extends { name?: string; tags?: string[]; wid
       (p) =>
         `${p.name ?? ''}`.toLowerCase().includes(alvo) ||
         (p.tags ?? []).some((t) => t.toLowerCase() === alvo) ||
-        `${(p as { id?: string }).id ?? ''}`.toLowerCase() === alvo,
+        `${p.id ?? ''}`.toLowerCase() === alvo,
     )
-    if (achada) return { pagina: achada, formatoDaPagina: fmt(achada) }
+    if (achada) return { pagina: achada, formatoDaPagina: fmt(achada), motivo: 'pedida' }
   }
 
-  let filtradas = base
-  if (typeof args.luzDaFoto === 'number') {
-    const clara = args.luzDaFoto > LUZ_DE_FOTO_CLARA
-    const tem = (p: T, tag: string) => (p.tags ?? []).some((t) => t.toLowerCase() === tag)
-    const compativeis = base.filter((p) => (clara ? !tem(p, 'escura') : !tem(p, 'clara')))
-    if (compativeis.length > 0) filtradas = compativeis
-    const especificas = filtradas.filter((p) => tem(p, clara ? 'clara' : 'escura'))
-    if (especificas.length > 0) filtradas = especificas
-  }
-
-  const ordenadas = [...filtradas].sort((a, b) => `${a.name}`.localeCompare(`${b.name}`))
-  const escolhida = ordenadas[hashDe(args.chave ?? '') % ordenadas.length]
-  return { pagina: escolhida, formatoDaPagina: fmt(escolhida) }
+  const avaliadas = avaliarVariantes(base, args)
+  const melhor = avaliadas[0].pontos
+  const empatadas = avaliadas.filter((a) => a.pontos === melhor)
+  const escolhida = empatadas[hashDe(args.chave ?? '') % empatadas.length]
+  return { pagina: escolhida.pagina, formatoDaPagina: fmt(escolhida.pagina), motivo: `${escolhida.motivo}${empatadas.length > 1 ? ` (rodízio entre ${empatadas.length})` : ''}` }
 }

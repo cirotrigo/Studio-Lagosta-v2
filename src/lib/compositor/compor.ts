@@ -100,6 +100,8 @@ export interface OpcoesDeAssinatura {
   variante?: string | null
   /** Os papéis que a peça pede: variante que os tem vence a que não os tem. */
   papeis?: Papel[]
+  /** O assunto da peça — casa com nome/tags da página ("funcionamento", "cafés"). */
+  tema?: string | null
   /** Luz média da foto (0..255) — escolhe entre variantes `clara`/`escura`. */
   luzDaFoto?: number | null
   /** Chave da peça para o rodízio entre variantes. */
@@ -109,16 +111,24 @@ export interface OpcoesDeAssinatura {
 /** Todas as páginas de assinatura do projeto, com o formato que cada uma declara. */
 export async function paginasDeAssinatura(projectId: number) {
   const template = await db.template.findFirst({ where: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
-  if (!template) return { templateId: null as number | null, paginas: [] as Array<{ id: string; name: string; tags: string[]; width: number; height: number; formato: Formato | null }> }
+  if (!template) return { templateId: null as number | null, paginas: [] as Array<{ id: string; name: string; tags: string[]; width: number; height: number; formato: Formato | null; papeis: Papel[] }> }
   // TODA página do template "Assinatura" é variante — duplicar uma página no
   // editor já cria a variante, sem precisar marcar como modelo nem taguear
   // (a segunda story da Real nasceu assim, sem tag, e ficava invisível).
   const paginas = await db.page.findMany({
     where: { templateId: template.id },
-    select: { id: true, name: true, tags: true, width: true, height: true },
+    select: { id: true, name: true, tags: true, width: true, height: true, layers: true },
     orderBy: { order: 'asc' },
   })
-  return { templateId: template.id, paginas: paginas.map((p) => ({ ...p, formato: formatoDaPagina(p) })) }
+  const { parsePageLayers } = await import('@/lib/posts/page-layers')
+  return {
+    templateId: template.id,
+    paginas: paginas.map(({ layers, ...p }) => ({
+      ...p,
+      formato: formatoDaPagina(p),
+      papeis: [...new Set((parsePageLayers(layers) as unknown as Layer[]).filter((c) => c.type === 'text' && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))],
+    })),
+  }
 }
 
 export async function carregarAssinatura(projectId: number, formato: Formato, opcoes: OpcoesDeAssinatura = {}): Promise<AssinaturaDaMarca> {
@@ -146,21 +156,17 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
     : []
 
   const { parsePageLayers } = await import('@/lib/posts/page-layers')
-  // Entre as variantes do formato, as que TÊM todos os papéis pedidos vêm
-  // primeiro (a story sem serviço não serve para a peça de funcionamento);
-  // sem nenhuma completa, valem todas.
-  const pedidos = (opcoes.papeis ?? []).filter((p) => p !== 'headline2')
-  const cobre = (p: (typeof paginas)[number]) => {
-    if (pedidos.length === 0) return true
-    const papeisDaPagina = new Set((parsePageLayers(p.layers) as unknown as Layer[]).filter((c) => c.type === 'text' && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)))
-    return pedidos.every((papel) => papeisDaPagina.has(papel))
-  }
-  const doFormato = paginas.filter((p) => formatoDaPagina(p) === formato)
-  const completas = doFormato.filter(cobre)
-  const candidatas = completas.length > 0 ? [...completas, ...paginas.filter((p) => formatoDaPagina(p) !== formato)] : paginas
-  const { pagina: escolhida, formatoDaPagina: fmt } = escolherVariante(candidatas, {
+  // Cada página com os papéis que TEM: é o que deixa a escolha ser pela
+  // mensagem (a peça de funcionamento precisa de serviço; a de sabor, não).
+  const comPapeis = paginas.map((p) => ({
+    ...p,
+    papeis: [...new Set((parsePageLayers(p.layers) as unknown as Layer[]).filter((c) => c.type === 'text' && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))],
+  }))
+  const { pagina: escolhida, formatoDaPagina: fmt, motivo } = escolherVariante(comPapeis, {
     formato,
     variante: opcoes.variante ?? null,
+    papeis: opcoes.papeis,
+    tema: opcoes.tema ?? null,
     luzDaFoto: opcoes.luzDaFoto ?? null,
     chave: opcoes.chave ?? '',
   })
@@ -173,6 +179,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
       logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
     })
   const assinatura = montar(escolhida, fmt)
+  assinatura.origem.motivoDaVariante = motivo
   // Feed/quadrado montado só com o que muda: o que falta vem da página de story.
   if (fmt && fmt !== 'story' && fmt === formato) {
     const story = escolherVariante(paginas, { formato: 'story', chave: opcoes.chave ?? '' }).pagina
@@ -412,6 +419,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const assinatura = await carregarAssinatura(spec.projectId, spec.formato, {
     variante: spec.preferencias?.variante ?? null,
     papeis: spec.blocos.map((b) => b.papel),
+    tema: spec.tema ?? spec.nome ?? null,
     luzDaFoto,
     chave: `${spec.nome ?? ''}|${spec.tema ?? ''}|${spec.foto?.driveFileId ?? spec.foto?.url ?? ''}|${spec.blocos[0]?.linhas.join(' ') ?? ''}`,
   })
