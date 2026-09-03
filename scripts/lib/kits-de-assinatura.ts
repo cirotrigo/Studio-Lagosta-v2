@@ -71,11 +71,14 @@ const geo = (margemH: number, safeTopo: number, safeRodape: number, escalaDeFont
 // `headline2` é a SEGUNDA VOZ da manchete: a última linha sai nela.
 
 const real: Papeis = {
-  pre: P('StageGrotesk Medium', 28, 1.2, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP, sombra: false, fundo: { cor: '#1e2e28', fit: 'texto', opacidade: 0.78, padding: 106, blur: 175 } }),
-  headline: P('Branley GC', 84, 0.9, '#F3EADC', 'A Vitrine Vende\nPelos Olhos', { sombra: false, fundo: { cor: '#ffffff', fit: 'caixa', opacidade: 1, padding: 10, blur: 0 } }),
+  // Na página as cinco camadas estão em GRUPO: a mancha desenhada é a do
+  // líder de cada grupo (pré-título escuro para a headline; apoio creme para
+  // o serviço). O kit registra o fundo EFETIVO, não o que a camada carrega.
+  pre: P('StageGrotesk Medium', 28, 1.2, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP, sombra: false, fundo: { cor: '#1e2e28', fit: 'texto', opacidade: 1, padding: 122, blur: 365 } }),
+  headline: P('Branley GC', 84, 0.9, '#F3EADC', 'A Vitrine Vende\nPelos Olhos', { sombra: false, fundo: { cor: '#1e2e28', fit: 'texto', opacidade: 1, padding: 122, blur: 365 } }),
   apoio: P('StageGrotesk Thin', 34, 1.0, '#283D36', 'Sabor por sabor, com a luz que\na cuba tem no balcão', { trackingEm: 0.015, sombra: false, fundo: { cor: '#f6f0e4', fit: 'texto', opacidade: 1, padding: 200, blur: 246 } }),
   cta: null,
-  servico: P('StageGrotesk Regular', 32, 1.25, '#283D36', 'Todos os dias, das 12h às 22h', { trackingEm: 0.02, sombra: false, fundo: { cor: '#ffffff', fit: 'caixa', opacidade: 1, padding: 10, blur: 0 } }),
+  servico: P('StageGrotesk Regular', 32, 1.25, '#283D36', 'Todos os dias, das 12h às 22h', { trackingEm: 0.02, sombra: false, fundo: { cor: '#f6f0e4', fit: 'texto', opacidade: 1, padding: 200, blur: 246 } }),
 }
 const realFeed: Papeis = {
   pre: P('StageGrotesk Medium', 28, 1.0, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP, fundo: { cor: '#1c2b26', fit: 'texto', opacidade: 0.7, padding: 95, blur: 110 } }),
