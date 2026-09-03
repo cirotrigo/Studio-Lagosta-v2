@@ -459,7 +459,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   }
 
   // 5. A logo, no canto mais calmo e escuro que não encosta no texto.
-  const camadasDaMarca: Layer[] = []
+  //
+  // 🔴 A logo vai no TOPO da pilha, depois dos textos (ajuste do Ciro na
+  // leva de setembro, 02/09/2026): o halo é desenhado pela camada de TEXTO,
+  // com margem de ~170px além da tinta, e com a logo abaixo do texto na ordem
+  // a mancha cobria a marca sempre que os dois ficavam perto. Só o halo da
+  // marca (shape) fica embaixo de tudo.
+  const haloDaMarca: Layer[] = []
+  const camadasDaLogo: Layer[] = []
   let logoDiag: DiagnosticoDaComposicao['logo'] = null
   if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum') {
     const largura = Math.round(assinatura.logo.largura * (spec.formato === 'story' ? 1 : escalaDoFormato))
@@ -479,7 +486,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       const raio = assinatura.numeros.halo.raioMarca
       if (tinta > 0) {
         const margem = Math.round(raio * 1.4)
-        camadasDaMarca.push({
+        haloDaMarca.push({
           id: 'halo-marca',
           name: 'Halo da marca',
           type: 'shape',
@@ -494,7 +501,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           metadata: { halo: { tinta, raio, alvo: calibrado.alvo, luzMedida: calibrado.luzMedida, papel: 'marca' } },
         })
       }
-      camadasDaMarca.push({
+      camadasDaLogo.push({
         id: 'logo',
         name: 'Logo',
         type: 'logo',
@@ -533,7 +540,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     : []
 
   // 7. Contrato + autofix geométrico (colisão, transbordo, safe area).
-  const normalizado = normalizarCamadas([...fundo, ...camadasDaMarca, ...camadasDeTexto])
+  const normalizado = normalizarCamadas([...fundo, ...haloDaMarca, ...camadasDeTexto, ...camadasDaLogo])
   const fix = await aplicarAutofixOuFalhar({
     projectId: spec.projectId,
     layers: normalizado.camadas,
