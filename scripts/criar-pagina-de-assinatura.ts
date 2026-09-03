@@ -49,10 +49,15 @@ function camadaDePapel(papel: string, k: PapelDoKit, y: number, ordem: number, m
       letterSpacing: Math.round((k.trackingEm ?? 0) * k.fontSize * 100) / 100,
       ...(k.textTransform ? { textTransform: k.textTransform } : {}),
       color: k.color,
-      textAlign: 'left',
+      textAlign: k.align ?? 'left',
     },
     textboxConfig: { textMode: 'auto-wrap-fixed', anchor: 'top', autoWrap: { breakMode: 'word', autoExpand: true, lineHeight: k.lineHeight } },
-    effects: { shadow: { enabled: true, shadowColor: mancha, shadowBlur: 10, shadowOffsetX: 0, shadowOffsetY: 1, shadowOpacity: 0.65 } },
+    effects: {
+      shadow: { enabled: k.sombra !== false, shadowColor: mancha, shadowBlur: 10, shadowOffsetX: 0, shadowOffsetY: 1, shadowOpacity: 0.65 },
+      ...(k.fundo
+        ? { background: { enabled: true, backgroundColor: k.fundo.cor, baseColor: k.fundo.cor, tone: 0, fit: k.fundo.fit, opacity: k.fundo.opacidade, padding: k.fundo.padding, blur: k.fundo.blur, borderRadius: k.fundo.raio ?? (k.fundo.fit === 'texto' ? 60 : 0), offsetX: 0, offsetY: 0 } }
+        : {}),
+    },
   }
 }
 

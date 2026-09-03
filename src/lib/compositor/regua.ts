@@ -15,7 +15,22 @@
  */
 
 import type { Layer } from '@/types/template'
-import { alvoPorContraste, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
+import { alvoPorContraste, luminanciaRelativa, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
+
+/**
+ * Para TEXTO ESCURO a pergunta se inverte: o fundo precisa ser CLARO o
+ * bastante. Luminância mínima do fundo (0..255) para 3:1 com a cor dada.
+ */
+export function alvoClaroPorContraste(corHex: string, ratio = 3): number {
+  const lt = luminanciaRelativa(corHex)
+  const lbg = Math.min(1, ratio * (lt + 0.05) - 0.05)
+  const srgb = lbg <= 0.0031308 ? lbg * 12.92 : 1.055 * Math.pow(lbg, 1 / 2.4) - 0.055
+  return Math.round(Math.max(0, Math.min(1, srgb)) * 255)
+}
+
+export function textoEscuro(corHex: string): boolean {
+  return luzDaCor(corHex) < 128
+}
 import { uniao } from '@/lib/creatives/halo/halo'
 
 /**
@@ -29,6 +44,8 @@ export const TOLERANCIA_DO_ALVO = 12
 export interface ContrasteMedido {
   grupo: string
   camadas: string[]
+  /** `claro` = texto claro sobre mancha escura (p98 ≤ alvo); `escuro` = texto escuro, o fundo tem de ser claro (p02 ≥ alvo). */
+  sentido: 'claro' | 'escuro'
   alvo: number
   p98SemHalo: number
   p98ComHalo: number
@@ -63,8 +80,8 @@ async function renderizar(layers: Layer[], canvas: Canvas, background: string): 
   return renderer.renderDesign({ canvas: { ...canvas, backgroundColor: background }, layers }, {})
 }
 
-/** p98 da luminância de cada retângulo, lido de um PNG renderizado. */
-async function p98Sob(png: Buffer, canvas: Canvas, rects: Rect[]): Promise<number[]> {
+/** Percentil da luminância de cada retângulo, lido de um PNG renderizado. */
+async function percentilSob(png: Buffer, canvas: Canvas, rects: Rect[], q = 0.98): Promise<number[]> {
   const sharp = (await import('sharp')).default
   const largura = Math.min(540, canvas.width)
   const escala = largura / canvas.width
@@ -87,7 +104,7 @@ async function p98Sob(png: Buffer, canvas: Canvas, rects: Rect[]): Promise<numbe
     let acc = 0
     for (let v = 0; v < 256; v++) {
       acc += hist[v]
-      if (acc >= 0.98 * n) return v
+      if (acc >= q * n) return v
     }
     return 255
   })
@@ -130,7 +147,10 @@ export async function medirContrasteDaPeca(args: {
     grupo,
     camadas,
     rect: uniao(camadas.map(rectDe))!,
-    alvo: Math.min(...camadas.map((c) => alvoPorContraste(String(c.style?.color ?? '#FFFFFF'), 3))),
+    escuro: camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF'))),
+    alvo: camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF')))
+      ? Math.max(...camadas.map((c) => alvoClaroPorContraste(String(c.style?.color ?? '#000000'), 3)))
+      : Math.min(...camadas.map((c) => alvoPorContraste(String(c.style?.color ?? '#FFFFFF'), 3))),
     tinta: Number(camadas[0].effects?.background?.opacity ?? 0),
     mancha: String(camadas[0].effects?.background?.backgroundColor ?? '#111111'),
   }))
@@ -140,7 +160,13 @@ export async function medirContrasteDaPeca(args: {
     renderizar(semHalo(args.layers), args.canvas, args.background),
     renderizar(semTinta(args.layers), args.canvas, args.background),
   ])
-  const [semHaloP98, comHaloP98] = await Promise.all([p98Sob(pngSem, args.canvas, rects), p98Sob(pngCom, args.canvas, rects)])
+  const qs = entradas.map((e) => (e.escuro ? 0.02 : 0.98))
+  const medirTodos = async (png: Buffer) => {
+    const claros = await percentilSob(png, args.canvas, rects, 0.98)
+    const escuros = await percentilSob(png, args.canvas, rects, 0.02)
+    return rects.map((_, i) => (qs[i] === 0.02 ? escuros[i] : claros[i]))
+  }
+  const [semHaloP98, comHaloP98] = await Promise.all([medirTodos(pngSem), medirTodos(pngCom)])
 
   let layers = args.layers
   const medidas: ContrasteMedido[] = []
@@ -149,7 +175,8 @@ export async function medirContrasteDaPeca(args: {
     const sem = semHaloP98[i]
     const com = comHaloP98[i]
     let tintaCorrigida: number | null = null
-    if (com > e.alvo && e.tinta > 0 && e.tinta < args.faixa[1]) {
+    // Texto escuro: a régua só CONFERE (a mancha clara já é desenho da equipe).
+    if (!e.escuro && com > e.alvo && e.tinta > 0 && e.tinta < args.faixa[1]) {
       // cob = quanto da tinta chegou ao ponto da letra; a tinta que atinge o
       // alvo é a bruta dividida por ele — presa à faixa da marca.
       const luzTinta = luzDaCor(e.mancha)
@@ -159,7 +186,8 @@ export async function medirContrasteDaPeca(args: {
       if (tintaCorrigida > e.tinta + 0.01) correcoes.set(e.grupo, tintaCorrigida)
       else tintaCorrigida = null
     }
-    medidas.push({ grupo: e.grupo, camadas: e.camadas.map((c) => c.id), alvo: Math.round(e.alvo), p98SemHalo: sem, p98ComHalo: com, tinta: e.tinta, tintaCorrigida, ok: com <= e.alvo + TOLERANCIA_DO_ALVO })
+    const ok = e.escuro ? com >= e.alvo - TOLERANCIA_DO_ALVO : com <= e.alvo + TOLERANCIA_DO_ALVO
+    medidas.push({ grupo: e.grupo, camadas: e.camadas.map((c) => c.id), sentido: e.escuro ? 'escuro' : 'claro', alvo: Math.round(e.alvo), p98SemHalo: sem, p98ComHalo: com, tinta: e.tinta, tintaCorrigida, ok })
   })
 
   if (correcoes.size > 0) {
@@ -170,7 +198,7 @@ export async function medirContrasteDaPeca(args: {
         : l
     })
     const pngCorrigido = await renderizar(semTinta(layers), args.canvas, args.background)
-    const depois = await p98Sob(pngCorrigido, args.canvas, rects)
+    const depois = await medirTodos(pngCorrigido)
     medidas.forEach((m, i) => {
       if (correcoes.has(m.grupo)) {
         m.p98ComHalo = depois[i]
@@ -183,7 +211,9 @@ export async function medirContrasteDaPeca(args: {
   for (const m of medidas) {
     if (!m.ok) {
       avisos.push(
-        `${m.grupo}: a foto está clara demais sob o texto (p98 ${m.p98ComHalo} contra alvo ${m.alvo}, tinta ${m.tinta}) — confira a leitura ou troque a posição/foto.`,
+        m.sentido === 'escuro'
+          ? `${m.grupo}: o fundo está escuro demais para o texto escuro (p2 ${m.p98ComHalo} contra alvo ${m.alvo}) — a mancha clara não cobriu, confira a leitura.`
+          : `${m.grupo}: a foto está clara demais sob o texto (p98 ${m.p98ComHalo} contra alvo ${m.alvo}, tinta ${m.tinta}) — confira a leitura ou troque a posição/foto.`,
       )
     }
   }

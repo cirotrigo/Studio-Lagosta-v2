@@ -23,7 +23,7 @@ import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measure
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
 import { lerFotoComoCover, luzNoRect, type FotoCinza } from '@/lib/creatives/halo/halo-medicao'
-import { calibrarHalo, type Rect } from '@/lib/creatives/halo/halo'
+import { calibrarHalo, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
@@ -31,6 +31,7 @@ import { garantirPasta } from './pastas'
 import { nomeDaPagina } from './pasta-da-semana'
 
 import {
+  completarComStory,
   escolherVariante,
   formatoDaPagina,
   montarAssinatura,
@@ -146,14 +147,22 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
     chave: opcoes.chave ?? '',
   })
 
-  return montarAssinatura({
-    pagina: escolhida
-      ? { id: escolhida.id, name: escolhida.name, tags: escolhida.tags, width: escolhida.width, height: escolhida.height, background: escolhida.background, layers: parsePageLayers(escolhida.layers) as unknown as Layer[] }
-      : null,
-    formatoDaPagina: fmt,
-    numerosDoProjeto: projeto.assinatura,
-    logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
-  })
+  const montar = (p: (typeof paginas)[number] | null, f: Formato | null) =>
+    montarAssinatura({
+      pagina: p ? { id: p.id, name: p.name, tags: p.tags, width: p.width, height: p.height, background: p.background, layers: parsePageLayers(p.layers) as unknown as Layer[] } : null,
+      formatoDaPagina: f,
+      numerosDoProjeto: projeto.assinatura,
+      logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
+    })
+  const assinatura = montar(escolhida, fmt)
+  // Feed/quadrado montado só com o que muda: o que falta vem da página de story.
+  if (fmt && fmt !== 'story' && fmt === formato) {
+    const story = escolherVariante(paginas, { formato: 'story', chave: opcoes.chave ?? '' }).pagina
+    if (story && story.id !== escolhida?.id) {
+      return completarComStory(assinatura, montar(story, 'story'), assinatura.numeros.geometria[formato].escalaDeFonte)
+    }
+  }
+  return assinatura
 }
 
 /** O projeto tem página de assinatura? É o que decide a via `compor` na proposta da semana. */
@@ -258,9 +267,10 @@ function candidatosDePosicao(
   spec: SpecDePeca,
   bloco: { width: number; height: number },
   crop: CropPosition,
+  extra: { reservaNoRodape?: number; alinhaDaAssinatura?: Alinhamento | null } = {},
 ): CandidatoDePosicao<RotuloDePosicao>[] {
   const pref = spec.preferencias ?? {}
-  const rodizio = preferenciaDoRodizio(spec)
+  const rodizio = { ...preferenciaDoRodizio(spec), ...(extra.alinhaDaAssinatura ? { alinha: extra.alinhaDaAssinatura } : {}) }
   const ancoras: Ancora[] = pref.ancora && pref.ancora !== 'auto' ? [pref.ancora] : ['topo', 'meio', 'rodape']
   const alinhas: Alinhamento[] = pref.alinha && pref.alinha !== 'auto' ? [pref.alinha] : ['esquerda', 'centro', 'direita']
   const saida: CandidatoDePosicao<RotuloDePosicao>[] = []
@@ -274,7 +284,9 @@ function candidatosDePosicao(
           : ancora === 'meio'
             ? 0.1
             : 0.3
-      saida.push({ rect: retanguloDoBloco(g, ancora, alinha, bloco.width, bloco.height), preferencia, rotulo: { ancora, alinha, crop } })
+      const reserva = ancora === 'rodape' ? extra.reservaNoRodape ?? 0 : 0
+      const rect = retanguloDoBloco(g, ancora, alinha, bloco.width, bloco.height + reserva)
+      saida.push({ rect: { ...rect, height: bloco.height }, preferencia, rotulo: { ancora, alinha, crop } })
     }
   }
   return saida
@@ -421,6 +433,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (principais.length === 0 && !servico) throw new CreativeError('SPEC_INVALIDA', 'Nenhum bloco de texto', 400)
 
   const pilha = empilhar(principais, g.gap)
+  // O serviço vive no rodapé: quando o bloco principal também vai para lá, o
+  // candidato precisa da altura dos dois, senão um pousa em cima do outro.
+  const reservaNoRodape = servico ? servico.height + Math.round(g.gap * 1.6) : 0
 
   // 2. O mapa e o assunto — por corte candidato.
   const cortes = cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
@@ -432,7 +447,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
     const mapa = raster ? mapaDeCalma(raster) : null
     const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, canvas) : mapa ? estimarAssunto(mapa) : null
-    const candidatos = candidatosDePosicao(g, spec, pilha, crop)
+    const candidatos = candidatosDePosicao(g, spec, pilha, crop, { reservaNoRodape, alinhaDaAssinatura: assinatura.alinhamento })
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: mancha, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
@@ -458,35 +473,71 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     }
   })
   const rectsDeGrupo: Array<{ grupo: string; rect: Rect; cores: string[]; camadas: Layer[] }> = [
-    { grupo: 'bloco-principal', rect: rectPrincipal, cores: principais.map((b) => b.cor), camadas: camadasDeTexto },
+    { grupo: 'bloco-principal', rect: rectPrincipal, cores: principais.map((b) => b.cor), camadas: [...camadasDeTexto] },
   ]
   if (servico) {
-    const rectServico = ancora === 'rodape'
-      ? { ...retanguloDoBloco(g, 'rodape', alinha, servico.width, servico.height), y: Math.round(rectPrincipal.y + rectPrincipal.height + g.gap * 1.6) }
-      : retanguloDoBloco(g, 'rodape', alinha, servico.width, servico.height)
+    // Serviço sempre no rodapé. Com o bloco principal também no rodapé, o
+    // candidato já reservou a altura do serviço (ver `reservaNoRodape`): o
+    // serviço pousa no fim do retângulo e o principal fica acima dele.
+    const rectServico = retanguloDoBloco(g, 'rodape', alinha, servico.width, servico.height)
     const camada: Layer = { ...servico.layer, position: { x: rectServico.x, y: rectServico.y }, style: { ...servico.layer.style, textAlign } }
     camadasDeTexto.push(camada)
     rectsDeGrupo.push({ grupo: 'bloco-servico', rect: rectServico, cores: [servico.cor], camadas: [camada] })
   }
 
-  // 4. O halo de cada grupo, na FAIXA da marca (nunca perseguindo um alvo).
+  // 4. O halo. Se a equipe ligou o fundo de texto em ALGUM papel da página de
+  //    assinatura, a página é a verdade papel a papel (cor, ajuste, margem,
+  //    desfoque; a opacidade dela é o teto e a foto modula dentro, quando a
+  //    mancha é escura e o ajuste é `texto`). Papéis com fundo IGUAL dividem
+  //    uma mancha (mesmo grupo); diferentes desenham a sua. Sem fundo em
+  //    papel nenhum, vale a calibragem da casa na FAIXA da marca.
   const halos: DiagnosticoDaComposicao['halos'] = []
-  for (const grupo of rectsDeGrupo) {
-    const luz = melhor.raster ? luzNoRect(melhor.raster, grupo.rect) : null
-    const calibrado = calibrarHalo({
-      texto: grupo.rect,
-      luz: luz ?? { media: 0, p75: 0 },
-      coresDoTexto: grupo.cores,
-      corDaMancha: mancha,
-      raioBase: assinatura.numeros.halo.raioTexto,
-    })
-    const necessidade = luz ? calibrado.tinta / 0.95 : 0
-    const tinta = luz ? tintaNaFaixa(necessidade, assinatura.numeros.halo.faixaTexto) : 0
-    const raio = assinatura.numeros.halo.raioTexto
-    for (const camada of grupo.camadas) {
-      camada.effects = { ...(camada.effects ?? {}), ...(tinta > 0 ? { background: fundoDeHalo(mancha, tinta, raio) } : {}) }
+  const paginaDefineHalo = Object.values(assinatura.papeis).some((e) => e?.fundo)
+  if (paginaDefineHalo) {
+    for (const grupo of rectsDeGrupo) {
+      const luz = melhor.raster ? luzNoRect(melhor.raster, grupo.rect) : null
+      const calibrado = calibrarHalo({ texto: grupo.rect, luz: luz ?? { media: 0, p75: 0 }, coresDoTexto: grupo.cores, corDaMancha: mancha, raioBase: assinatura.numeros.halo.raioTexto })
+      const necessidade = luz ? calibrado.tinta / 0.95 : 0
+      for (const camada of grupo.camadas) {
+        const papel = (camada.metadata as { compositor?: { papel?: Papel } })?.compositor?.papel
+        const fundo = papel ? assinatura.papeis[papel]?.fundo : null
+        if (!fundo) {
+          camada.effects = { ...(camada.effects ?? {}), background: undefined }
+          camada.metadata = { ...(camada.metadata ?? {}), groupId: `sem-halo-${camada.id}` }
+          continue
+        }
+        const escura = luzDaCor(fundo.backgroundColor) < 128
+        const modula = escura && fundo.fit === 'texto' && luz !== null
+        const piso = Math.min(fundo.opacity, assinatura.numeros.halo.faixaTexto[0])
+        const opacity = modula ? Number((piso + necessidade * (fundo.opacity - piso)).toFixed(3)) : fundo.opacity
+        camada.effects = {
+          ...(camada.effects ?? {}),
+          background: { enabled: true, ...fundo, baseColor: fundo.backgroundColor, tone: 0, opacity },
+        }
+        // Grupo = mesma configuração de fundo (a mancha do grupo é a do líder).
+        const assinaturaDoFundo = `${fundo.backgroundColor}|${fundo.fit}|${fundo.padding}|${fundo.blur}|${fundo.borderRadius}|${modula ? 'm' : fundo.opacity}`
+        camada.metadata = { ...(camada.metadata ?? {}), groupId: `${grupo.grupo}-${hashDe(assinaturaDoFundo) % 9973}` }
+        halos.push({ grupo: `${grupo.grupo}/${papel}`, tinta: opacity, raio: fundo.blur, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
+      }
     }
-    halos.push({ grupo: grupo.grupo, tinta, raio, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
+  } else {
+    for (const grupo of rectsDeGrupo) {
+      const luz = melhor.raster ? luzNoRect(melhor.raster, grupo.rect) : null
+      const calibrado = calibrarHalo({
+        texto: grupo.rect,
+        luz: luz ?? { media: 0, p75: 0 },
+        coresDoTexto: grupo.cores,
+        corDaMancha: mancha,
+        raioBase: assinatura.numeros.halo.raioTexto,
+      })
+      const necessidade = luz ? calibrado.tinta / 0.95 : 0
+      const tinta = luz ? tintaNaFaixa(necessidade, assinatura.numeros.halo.faixaTexto) : 0
+      const raio = assinatura.numeros.halo.raioTexto
+      for (const camada of grupo.camadas) {
+        camada.effects = { ...(camada.effects ?? {}), ...(tinta > 0 ? { background: fundoDeHalo(mancha, tinta, raio) } : {}) }
+      }
+      halos.push({ grupo: grupo.grupo, tinta, raio, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
+    }
   }
 
   // 5. A logo, no canto mais calmo e escuro que não encosta no texto.

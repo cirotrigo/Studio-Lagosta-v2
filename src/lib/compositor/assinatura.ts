@@ -32,8 +32,36 @@ export interface EstiloDePapel {
   prefixo?: string
   /** Largura máxima do bloco como fração da coluna útil (0..1). */
   larguraMaxima?: number
-  /** Sombra presa ao glifo — o que segura a cor onde a mancha já caiu. */
-  sombra?: { color: string; blur: number; offsetY: number; opacity: number }
+  /**
+   * Sombra presa ao glifo — o que segura a cor onde a mancha já caiu.
+   * `null` = a página de assinatura NÃO tem sombra nessa camada, e a peça
+   * nasce sem (a página é a verdade; o default só vale quando ela não diz).
+   */
+  sombra?: { color: string; blur: number; offsetY: number; opacity: number } | null
+  /**
+   * O FUNDO DE TEXTO que a equipe deixou ligado nessa camada da página de
+   * assinatura — a configuração literal do editor (cor, ajuste caixa/texto,
+   * margem, desfoque, cantos, opacidade). Quando algum papel da página tem
+   * fundo, a página é a verdade: cada papel recebe o SEU; papel sem fundo sai
+   * sem mancha. Só quando nenhum papel tem é que o compositor calibra o halo
+   * sozinho pela foto. A opacidade da página é o TETO: em mancha escura e
+   * ajuste `texto` a foto modula dentro dela; caixa sólida ou mancha clara
+   * saem como a equipe desenhou.
+   */
+  fundo?: FundoDePapel | null
+}
+
+export interface FundoDePapel {
+  backgroundColor: string
+  fit: 'caixa' | 'texto'
+  opacity: number
+  padding: number
+  paddingX?: number
+  paddingY?: number
+  blur: number
+  borderRadius: number
+  offsetX: number
+  offsetY: number
 }
 
 export interface LogoDaAssinatura {
@@ -95,6 +123,8 @@ export interface AssinaturaDaMarca {
   papeis: Partial<Record<Papel, EstiloDePapel>>
   logo: LogoDaAssinatura | null
   numeros: NumerosDaAssinatura
+  /** O alinhamento da headline na página — vira preferência do rodízio (a foto ainda manda). */
+  alinhamento: 'esquerda' | 'centro' | 'direita' | null
   /** De onde veio — para o registro atômico da geração. */
   origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; versao: string }
 }
@@ -116,6 +146,25 @@ export function papelDoNome(nome: string | null | undefined): Papel | null {
 }
 
 const PREFIXO = /^([^\p{L}\p{N}\s]{1,3})\s+/u
+
+/** O fundo de texto da camada, como o editor o gravou (null quando desligado). */
+export function fundoDaCamada(camada: Layer): FundoDePapel | null {
+  const b = camada.effects?.background
+  if (!b?.enabled) return null
+  const n = (v: unknown, padrao: number) => (typeof v === 'number' && Number.isFinite(v) ? v : padrao)
+  return {
+    backgroundColor: typeof b.backgroundColor === 'string' ? b.backgroundColor : '#111111',
+    fit: b.fit === 'texto' ? 'texto' : 'caixa',
+    opacity: Math.max(0, Math.min(1, n(b.opacity, 1))),
+    padding: n(b.padding, 10),
+    ...(typeof b.paddingX === 'number' ? { paddingX: b.paddingX } : {}),
+    ...(typeof b.paddingY === 'number' ? { paddingY: b.paddingY } : {}),
+    blur: n(b.blur, 0),
+    borderRadius: n(b.borderRadius, 0),
+    offsetX: n(b.offsetX, 0),
+    offsetY: n(b.offsetY, 0),
+  }
+}
 
 /** Lê o estilo de um papel a partir da camada de texto da página de assinatura. */
 export function estiloDaCamada(camada: Layer): EstiloDePapel | null {
@@ -142,16 +191,15 @@ export function estiloDaCamada(camada: Layer): EstiloDePapel | null {
       : {}),
     color: typeof s.color === 'string' ? s.color : '#FFFFFF',
     ...(prefixo ? { prefixo: `${prefixo} ` } : {}),
-    ...(shadow?.enabled
+    fundo: fundoDaCamada(camada),
+    sombra: shadow?.enabled
       ? {
-          sombra: {
-            color: shadow.shadowColor,
-            blur: shadow.shadowBlur,
-            offsetY: shadow.shadowOffsetY,
-            opacity: shadow.shadowOpacity,
-          },
+          color: shadow.shadowColor,
+          blur: shadow.shadowBlur,
+          offsetY: shadow.shadowOffsetY,
+          opacity: shadow.shadowOpacity,
         }
-      : {}),
+      : null,
   }
 }
 
@@ -169,6 +217,26 @@ function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAss
     logo: { ...base.logo, ...(e.logo ?? {}) },
     geometria,
   }
+}
+
+/**
+ * Papéis que a página do formato NÃO tem caem na página de story, com a
+ * escala de fonte do formato — a equipe monta o feed só com o que muda.
+ */
+export function completarComStory(assinatura: AssinaturaDaMarca, story: AssinaturaDaMarca | null, escala: number): AssinaturaDaMarca {
+  if (!story) return assinatura
+  const papeis = { ...assinatura.papeis }
+  for (const papel of Object.keys(story.papeis) as Papel[]) {
+    if (papeis[papel]) continue
+    const e = story.papeis[papel]!
+    papeis[papel] = { ...e, fontSize: Math.round(e.fontSize * escala), letterSpacing: Math.round(e.letterSpacing * escala * 100) / 100 }
+    // Sem fundo próprio no formato: o do story serve, escalado.
+    if (papeis[papel]!.fundo) {
+      const f = papeis[papel]!.fundo!
+      papeis[papel] = { ...papeis[papel]!, fundo: { ...f, padding: Math.round(f.padding * escala), blur: Math.round(f.blur * escala) } }
+    }
+  }
+  return { ...assinatura, papeis, logo: assinatura.logo ?? story.logo }
 }
 
 export interface PaginaDeAssinatura {
@@ -196,6 +264,7 @@ export function montarAssinatura(args: {
   const numeros = mesclarNumeros(NUMEROS_PADRAO, args.numerosDoProjeto)
   const papeis: AssinaturaDaMarca['papeis'] = {}
   let logo: LogoDaAssinatura | null = null
+  let alinhamento: AssinaturaDaMarca['alinhamento'] = null
 
   if (args.pagina) {
     for (const camada of args.pagina.layers) {
@@ -205,6 +274,10 @@ export function montarAssinatura(args: {
         if (!papel || papeis[papel]) continue
         const estilo = estiloDaCamada(camada)
         if (estilo) papeis[papel] = estilo
+        if (papel === 'headline') {
+          const a = camada.style?.textAlign
+          alinhamento = a === 'center' ? 'centro' : a === 'right' ? 'direita' : a === 'left' ? 'esquerda' : null
+        }
         continue
       }
       if ((camada.type === 'logo' || camada.type === 'image') && /logo|marca/i.test(`${camada.name} ${camada.id}`)) {
@@ -218,9 +291,10 @@ export function montarAssinatura(args: {
         }
       }
     }
-    if (typeof args.pagina.background === 'string' && /^#/.test(args.pagina.background)) {
-      numeros.fundo = args.pagina.background
-    }
+    // O fundo liso e a mancha da logo vêm só de Project.assinatura: o editor
+    // grava `#ffffff` na página assim que a equipe põe uma foto de referência
+    // nela, e o fundo da marca não pode virar branco por isso. O halo do TEXTO
+    // a equipe define por camada (`EstiloDePapel.fundo`).
   }
 
   if (!logo && args.logoDoProjeto?.url) {
@@ -231,6 +305,7 @@ export function montarAssinatura(args: {
     papeis,
     logo,
     numeros,
+    alinhamento,
     origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, variante: args.pagina?.name ?? null, versao: 'assinatura-v2' },
   }
 }

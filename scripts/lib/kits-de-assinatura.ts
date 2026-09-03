@@ -20,6 +20,11 @@ export interface PapelDoKit {
   textTransform?: 'uppercase'
   color: string
   exemplo: string
+  /** `false` = a camada nasce SEM sombra (a página é a verdade; o compositor respeita). */
+  sombra?: false
+  /** Fundo de texto que a equipe deixou na página — vira o halo daquele papel. */
+  fundo?: { cor: string; fit: 'caixa' | 'texto'; opacidade: number; padding: number; blur: number; raio?: number }
+  align?: 'left' | 'center' | 'right'
 }
 
 export interface KitDeAssinatura {
@@ -42,11 +47,11 @@ const CINZA = '#CFCFCF'
  * 02/09/2026 (§5.0): a mancha nunca vira marcação.
  */
 const lagosta = (escala: number) => ({
-  pre: { fontFamily: 'YanoneKaffeesatz Bold', fontSize: Math.round(30 * escala), lineHeight: 1.05, trackingEm: 0.22, textTransform: 'uppercase' as const, color: LARANJA, exemplo: 'Produção de conteúdo' },
-  headline: { fontFamily: 'Lobster', fontSize: Math.round(96 * escala), lineHeight: 0.94, color: LARANJA, exemplo: 'Foto Nova a Cada\nQuinze Dias' },
-  apoio: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(42 * escala), lineHeight: 1.14, color: BRANCO, exemplo: 'O executivo muda de cardápio,\na produção acompanha.' },
-  cta: { fontFamily: 'YanoneKaffeesatz Bold', fontSize: Math.round(32 * escala), lineHeight: 1.05, trackingEm: 0.1, textTransform: 'uppercase' as const, color: LARANJA, exemplo: '→ Conheça nossos pacotes' },
-  servico: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(30 * escala), lineHeight: 1.1, trackingEm: 0.04, color: CINZA, exemplo: 'lagostacriativa.com.br · @lagostacriativa' },
+  pre: { fontFamily: 'YanoneKaffeesatz Bold', fontSize: Math.round(30 * escala), lineHeight: 1.05, trackingEm: 0.22, textTransform: 'uppercase' as const, color: LARANJA, exemplo: 'Produção de conteúdo', sombra: false as const, fundo: { cor: '#000000', fit: 'texto' as const, opacidade: 1, padding: Math.round(113 * escala), blur: Math.round(374 * escala) } },
+  headline: { fontFamily: 'Lobster', fontSize: Math.round(96 * escala), lineHeight: 0.94, color: LARANJA, exemplo: 'Foto Nova a Cada\nQuinze Dias', sombra: false as const, fundo: { cor: '#111111', fit: 'texto' as const, opacidade: 0.7, padding: 60, blur: 110 } },
+  apoio: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(42 * escala), lineHeight: 1.14, color: BRANCO, exemplo: 'O executivo muda de cardápio,\na produção acompanha.', sombra: false as const, fundo: { cor: '#111111', fit: 'texto' as const, opacidade: 0.7, padding: 60, blur: 110 } },
+  cta: { fontFamily: 'YanoneKaffeesatz Bold', fontSize: Math.round(32 * escala), lineHeight: 1.05, trackingEm: 0.1, textTransform: 'uppercase' as const, color: LARANJA, exemplo: '→ Conheça nossos pacotes', sombra: false as const, fundo: { cor: '#111111', fit: 'texto' as const, opacidade: 0.92, padding: 60, blur: 223 } },
+  servico: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(30 * escala), lineHeight: 1.1, trackingEm: 0.04, color: CINZA, exemplo: 'lagostacriativa.com.br · @lagostacriativa', sombra: false as const, fundo: { cor: '#111111', fit: 'texto' as const, opacidade: 0.7, padding: 60, blur: 110 } },
 })
 
 type Papeis = Record<'pre' | 'headline' | 'apoio' | 'cta' | 'servico', PapelDoKit | null>
@@ -68,13 +73,19 @@ const geo = (margemH: number, safeTopo: number, safeRodape: number, escalaDeFont
  * voz creme. Sem CTA no gerador. Mancha = Verde Real.
  */
 const real: Papeis = {
-  pre: P('StageGrotesk Medium', 28, 1.2, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP }),
-  headline: P('Branley GC', 96, 1.04, '#F3EADC', 'A Vitrine Vende\nPelos Olhos'),
-  apoio: P('StageGrotesk Regular', 34, 1.32, '#F3EADC', 'Sabor por sabor, com a luz que\na cuba tem no balcão.', { trackingEm: 0.015 }),
+  pre: P('StageGrotesk Medium', 28, 1.2, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP, sombra: false, fundo: { cor: '#1e2e28', fit: 'texto', opacidade: 0.78, padding: 106, blur: 175 } }),
+  headline: P('Branley GC', 84, 0.9, '#F3EADC', 'A Vitrine Vende\nPelos Olhos', { sombra: false, fundo: { cor: '#ffffff', fit: 'caixa', opacidade: 1, padding: 10, blur: 0 } }),
+  apoio: P('StageGrotesk Thin', 34, 1.0, '#283D36', 'Sabor por sabor, com a luz que\na cuba tem no balcão', { trackingEm: 0.015, sombra: false, fundo: { cor: '#f6f0e4', fit: 'texto', opacidade: 1, padding: 200, blur: 246 } }),
   cta: null,
-  servico: P('StageGrotesk Regular', 31, 1.25, '#F3EADC', 'Todos os dias, das 12h às 22h', { trackingEm: 0.02 }),
+  servico: P('StageGrotesk Regular', 32, 1.25, '#283D36', 'Todos os dias, das 12h às 22h', { trackingEm: 0.02, sombra: false, fundo: { cor: '#ffffff', fit: 'caixa', opacidade: 1, padding: 10, blur: 0 } }),
 }
-const realFeed: Papeis = { ...real, headline: P('Branley GC', 88, 1.04, '#F3EADC', 'A Vitrine Vende\nPelos Olhos') }
+const realFeed: Papeis = {
+  pre: P('StageGrotesk Medium', 28, 1.0, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP, fundo: { cor: '#1c2b26', fit: 'texto', opacidade: 0.7, padding: 95, blur: 110 } }),
+  headline: P('Branley GC', 88, 1.0, '#F3EADC', 'A Vitrine Vende\nPelos Olhos', { fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('StageGrotesk Thin', 34, 1.0, '#F3EADC', 'Sabor por sabor, com a luz que\na cuba tem no balcão.', { trackingEm: 0.015, fundo: { cor: '#1c2b26', fit: 'texto', opacidade: 0.7, padding: 148, blur: 110 } }),
+  cta: null,
+  servico: P('StageGrotesk Regular', 31, 1.25, '#F3EADC', 'Todos os dias, das 12h às 22h', { trackingEm: 0.02, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+}
 
 /**
  * O Quintal Parrilla — `design-canvas/quintal-semana1/gerar.py:215-216` (L2).
@@ -98,11 +109,18 @@ const quintal: Papeis = {
  * aqui recebe a faixa contida da casa.
  */
 const tero: Papeis = {
-  pre: P('Montserrat', 38, 1.25, '#F8F2F0', 'Happy hour', { trackingEm: 0.18, ...UP }),
-  headline: P('Didot HTF B06 Bold', 80, 0.91, '#EF7B4F', 'BRASA\nE VINHO', UP),
-  apoio: P('Montserrat', 30, 1.3, '#F8F2F0', 'Cortes na brasa e taças em dobro,\nde terça a sexta.', { trackingEm: 0.07 }),
-  cta: P('Montserrat', 30, 1.2, '#EF7B4F', 'Reserve pelo direct', { trackingEm: 0.1 }),
-  servico: P('Montserrat SemiBold', 31, 1.2, '#F8F2F0', 'Terça a sexta, das 17h às 20h', { trackingEm: 0.06 }),
+  pre: P('Montserrat', 60, 1.25, '#F8F2F0', 'Happy hour', { trackingEm: 0.114, ...UP, align: 'center', fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 95, blur: 365 } }),
+  headline: P('Didot HTF B06 Bold', 80, 0.91, '#EF7B4F', 'BRASA E VINHO', { ...UP, align: 'center', fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Montserrat', 30, 1.3, '#F8F2F0', 'Cortes na brasa e taças em dobro,\nde terça a sexta', { trackingEm: 0.07, ...UP, align: 'center', fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  cta: P('Didot HTF B06 Bold', 30, 1.2, '#EF7B4F', 'Reserve pelo direct', { trackingEm: 0.1, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 75, blur: 238 } }),
+  servico: P('Montserrat', 36, 1.2, '#F8F2F0', 'Terça a sexta, das 17h às 20h', { trackingEm: 0.052, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+}
+const teroFeed: Papeis = {
+  pre: P('Montserrat', 47, 1.25, '#F8F2F0', 'Happy hour', { trackingEm: 0.146, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 81, blur: 365 } }),
+  headline: P('Didot HTF B06 Bold', 80, 0.91, '#EF7B4F', 'BRASA\nE VINHO', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Montserrat', 30, 1.0, '#F8F2F0', 'Cortes na brasa e taças em dobro,\nde terça a sexta.', { trackingEm: 0.07, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 60, blur: 238 } }),
+  cta: null,
+  servico: null,
 }
 
 /**
@@ -170,11 +188,11 @@ const byRockFeed: Papeis = { ...byRock, headline: P('MortellaDisplay ExtraBold',
  * opaco: sem halo próprio.
  */
 const wineVix: Papeis = {
-  pre: P('Lato Bold', 30, 1.2, '#F9F7F2', 'Harmonização', { trackingEm: 0.14, ...UP }),
-  headline: P('PlayfairDisplay SemiBoldItalic', 84, 0.95, '#F9F7F2', 'A Adega Abre\na Semana', { trackingEm: -0.006 }),
-  apoio: P('Lato Regular', 30, 1.18, '#F9F7F2', 'TAÇA EM DOBRO NOS RÓTULOS\nSELECIONADOS DA SEMANA', { trackingEm: 0.053, ...UP }),
-  cta: P('PlayfairDisplay MediumItalic', 36, 1.2, '#F9F7F2', 'Reserve sua mesa'),
-  servico: P('Lato Bold', 32, 1.2, '#F9F7F2', 'TERÇA A SÁBADO, DAS 18H ÀS 23H', { trackingEm: 0.1, ...UP }),
+  pre: P('Lato Bold', 30, 1.2, '#F9F7F2', 'Harmonização', { trackingEm: 0.14, ...UP, fundo: { cor: '#3c191d', fit: 'texto', opacidade: 1, padding: 183, blur: 347 } }),
+  headline: P('PlayfairDisplay SemiBoldItalic', 84, 0.9, '#FCE77B', 'A Adega Abre\na Semana', { fundo: { cor: '#722f37', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Lato Thin', 30, 1.18, '#F9F7F2', 'TAÇA EM DOBRO NOS RÓTULOS\nSELECIONADOS DA SEMANA', { trackingEm: 0.053, ...UP, fundo: { cor: '#722f37', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  cta: P('PlayfairDisplay MediumItalic', 36, 1.2, '#FCE77B', 'Reserve sua mesa', { align: 'right', fundo: { cor: '#4e2026', fit: 'texto', opacidade: 1, padding: 200, blur: 486 } }),
+  servico: P('Lato Light', 32, 1.2, '#F9F7F2', 'TERÇA A SÁBADO, DAS 18H ÀS 23H', { trackingEm: 0.1, ...UP, align: 'right', fundo: { cor: '#722f37', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
 }
 
 /**
@@ -211,7 +229,7 @@ export const KITS_DE_ASSINATURA: Record<number, KitDeAssinatura> = {
     numeros: { mancha: '#1F1B16', fundo: '#1F1B16', halo: { faixaTexto: [0.3, 0.9], faixaMarca: [0.2, 0.5], raioTexto: 130, raioMarca: 130 }, logo: { largura: 236 }, geometria: { story: geo(92, 200, 172, 1), feed: geo(92, 120, 104, 0.875), quadrado: geo(92, 120, 104, 0.85, 12) } },
   },
   3: {
-    formatos: { story: tero, feed: tero },
+    formatos: { story: tero, feed: teroFeed },
     logo: { largura: 198 },
     fundo: '#130D0A',
     numeros: { mancha: '#130D0A', fundo: '#130D0A', halo: { faixaTexto: [0.3, 0.85], faixaMarca: [0.2, 0.6], raioTexto: 96, raioMarca: 96 }, logo: { largura: 198 }, geometria: { story: geo(96, 120, 100, 1), feed: geo(96, 120, 110, 1), quadrado: geo(96, 120, 110, 0.9, 12) } },

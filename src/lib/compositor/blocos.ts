@@ -70,7 +70,9 @@ export function camadaDoPapel(args: {
 }): Layer {
   const { estilo } = args
   const fontSize = Math.max(8, Math.round(estilo.fontSize * args.escala))
-  const sombra = estilo.sombra ?? { color: args.corDaMancha, blur: 10, offsetY: 1, opacity: 0.65 }
+  // `undefined` = a assinatura não disse nada (default da casa); `null` = a
+  // página de assinatura está SEM sombra, e a peça respeita.
+  const sombra = estilo.sombra === undefined ? { color: args.corDaMancha, blur: 10, offsetY: 1, opacity: 0.65 } : estilo.sombra
   return {
     id: `${args.papel}`,
     name: args.papel,
@@ -98,16 +100,18 @@ export function camadaDoPapel(args: {
       anchor: 'top',
       autoWrap: { breakMode: 'word', autoExpand: true, lineHeight: estilo.lineHeight },
     },
-    effects: {
-      shadow: {
-        enabled: true,
-        shadowColor: sombra.color,
-        shadowBlur: sombra.blur,
-        shadowOffsetX: 0,
-        shadowOffsetY: sombra.offsetY,
-        shadowOpacity: sombra.opacity,
-      },
-    },
+    effects: sombra
+      ? {
+          shadow: {
+            enabled: true,
+            shadowColor: sombra.color,
+            shadowBlur: sombra.blur,
+            shadowOffsetX: 0,
+            shadowOffsetY: sombra.offsetY,
+            shadowOpacity: sombra.opacity,
+          },
+        }
+      : {},
     metadata: { groupId: args.groupId, compositor: { papel: args.papel } },
   }
 }

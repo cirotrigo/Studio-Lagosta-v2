@@ -3710,6 +3710,24 @@ e o sinal `geometria`. Regras que valem para código novo:
   (Google Fonts, não cadastradas) — o kit segue o DNA (Mortella na manchete,
   Metrisch no resto), e a manchete pode pedir corpo menor. TERO: `Montserrat
   Light` não está cadastrada; o apoio cai na regular.
+- **O halo é definido VISUALMENTE na página de assinatura** (03/09/2026, ao
+  ler as quatro primeiras assinaturas ajustadas pelo Ciro): se ALGUM papel da
+  página tem `effects.background` ligado, a página é a verdade papel a papel
+  — cor, ajuste caixa/texto, margem, desfoque, cantos vêm dela; a opacidade da
+  página é o TETO e a foto modula dentro (só mancha escura + ajuste `texto`);
+  caixa sólida ou mancha CLARA saem como desenhadas. Papel sem fundo sai sem
+  mancha. Papéis com fundo IGUAL dividem um grupo; diferentes desenham o seu.
+  Só quando nenhum papel tem fundo o compositor calibra sozinho pela faixa.
+  A sombra segue a mesma lei: camada sem sombra na página = peça sem sombra.
+  `Page.background` NÃO é mais lido (o editor grava `#ffffff` ao pôr foto de
+  referência na página); fundo liso e mancha da logo vêm de `Project.assinatura`.
+- **Feed montado só com o que muda**: papel que falta na página de feed vem
+  da de story, escalado (`completarComStory`). O alinhamento da headline na
+  página vira PREFERÊNCIA do rodízio (a foto ainda manda). O serviço reserva a
+  própria altura quando o bloco principal também vai ao rodapé.
+- **A régua entende texto ESCURO**: para cor de texto com luz < 128 a
+  pergunta inverte (p2 do fundo ≥ alvo claro) e ela só confere, nunca corrige
+  — mancha clara é desenho da equipe (Real: apoio verde sobre creme).
 - **Mais de uma página por formato = VARIANTES** (`escolherVariante`, 03/09/2026,
   pergunta do Ciro "posso criar mais variações?"): a spec pede pelo nome/tag
   (`preferencias.variante`); páginas com tag `clara`/`escura` são escolhidas
