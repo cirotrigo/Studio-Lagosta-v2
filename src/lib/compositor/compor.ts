@@ -50,7 +50,7 @@ import {
   type PontuacaoDePosicao,
 } from './mapa-de-calma'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
-import { medirContrasteDaPeca, type ContrasteMedido } from './regua'
+import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido } from './regua'
 
 export const TAG_DA_PECA_COMPOSTA = 'compositor'
 
@@ -534,16 +534,30 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           camada.metadata = { ...(camada.metadata ?? {}), groupId: `sem-halo-${camada.id}` }
           continue
         }
-        const escura = luzDaCor(fundo.backgroundColor) < 128
-        const modula = escura && fundo.fit === 'texto' && luz !== null
+        const luzDaMancha = luzDaCor(fundo.backgroundColor)
+        const escura = luzDaMancha < 128
         const piso = Math.min(fundo.opacity, assinatura.numeros.halo.faixaTexto[0])
-        const opacity = modula ? Number((piso + necessidade * (fundo.opacity - piso)).toFixed(3)) : fundo.opacity
+        let opacity = fundo.opacity
+        if (fundo.fit === 'texto' && luz !== null) {
+          if (escura) {
+            opacity = Number((piso + necessidade * (fundo.opacity - piso)).toFixed(3))
+          } else {
+            // Mancha CLARA (texto escuro): a necessidade é o inverso — foto
+            // escura pede a mancha inteira, foto já clara pede quase nada.
+            // Sem isto a página a 100% virava uma névoa creme sobre foto
+            // clara (Real, 03/09), e o texto perdia contraste no meio dela.
+            const luzMedia = 0.5 * luz.media + 0.5 * luz.p75
+            const alvoClaro = Math.max(...grupo.cores.map((c) => alvoClaroPorContraste(c, 3)))
+            const necessaria = luzDaMancha > luzMedia ? (alvoClaro - luzMedia) / (luzDaMancha - luzMedia) : 0
+            opacity = Number(Math.max(piso, Math.min(fundo.opacity, necessaria)).toFixed(3))
+          }
+        }
         camada.effects = {
           ...(camada.effects ?? {}),
           background: { enabled: true, ...fundo, baseColor: fundo.backgroundColor, tone: 0, opacity },
         }
         // Grupo = mesma configuração de fundo (a mancha do grupo é a do líder).
-        const assinaturaDoFundo = `${fundo.backgroundColor}|${fundo.fit}|${fundo.padding}|${fundo.blur}|${fundo.borderRadius}|${modula ? 'm' : fundo.opacity}`
+        const assinaturaDoFundo = `${fundo.backgroundColor}|${fundo.fit}|${fundo.padding}|${fundo.blur}|${fundo.borderRadius}|${fundo.fit === 'texto' && luz !== null ? 'm' : fundo.opacity}`
         camada.metadata = { ...(camada.metadata ?? {}), groupId: `${grupo.grupo}-${hashDe(assinaturaDoFundo) % 9973}` }
         halos.push({ grupo: `${grupo.grupo}/${papel}`, tinta: opacity, raio: fundo.blur, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
       }
