@@ -133,6 +133,8 @@ export async function medirContrasteDaPeca(args: {
   background: string
   /** A faixa de tinta da marca — a correção nunca sai dela. */
   faixa: [number, number]
+  /** `false` = só medir e avisar (halo definido na página de assinatura: a tinta é da equipe). */
+  corrigir?: boolean
 }): Promise<ReguaResultado> {
   const avisos: string[] = []
   const textos = args.layers.filter((l) => l.type === 'text' && l.visible !== false)
@@ -182,7 +184,7 @@ export async function medirContrasteDaPeca(args: {
     const com = comHaloP98[i]
     let tintaCorrigida: number | null = null
     // Texto escuro: a régua só CONFERE (a mancha clara já é desenho da equipe).
-    if (!e.escuro && com > e.alvo && e.tinta > 0 && e.tinta < args.faixa[1]) {
+    if (args.corrigir !== false && !e.escuro && com > e.alvo && e.tinta > 0 && e.tinta < args.faixa[1]) {
       // cob = quanto da tinta chegou ao ponto da letra; a tinta que atinge o
       // alvo é a bruta dividida por ele — presa à faixa da marca.
       const luzTinta = luzDaCor(e.mancha)

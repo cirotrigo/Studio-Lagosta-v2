@@ -588,22 +588,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           camada.effects = { ...(camada.effects ?? {}), background: undefined }
           continue
         }
-        const luzDaMancha = luzDaCor(fundo.backgroundColor)
-        const escura = luzDaMancha < 128
-        const piso = Math.min(fundo.opacity, assinatura.numeros.halo.faixaTexto[0])
-        let opacity = fundo.opacity
-        if (fundo.fit === 'texto' && luz !== null) {
-          if (escura) {
-            opacity = Number((piso + necessidade * (fundo.opacity - piso)).toFixed(3))
-          } else {
-            // Mancha CLARA (texto escuro): a necessidade é o inverso — foto
-            // escura pede a mancha inteira, foto já clara pede quase nada.
-            const luzMedia = 0.5 * luz.media + 0.5 * luz.p75
-            const alvoClaro = Math.max(...grupo.cores.map((c) => alvoClaroPorContraste(c, 3)))
-            const necessaria = luzDaMancha > luzMedia ? (alvoClaro - luzMedia) / (luzDaMancha - luzMedia) : 0
-            opacity = Number(Math.max(piso, Math.min(fundo.opacity, necessaria)).toFixed(3))
-          }
-        }
+        // Ciro (03/09/2026): "pode manter a mesma configuração que a minha do
+        // halo, não precisa ajustar de acordo com a luminosidade". A mancha
+        // sai EXATAMENTE como está na página — cor, ajuste, margem, desfoque
+        // e opacidade. A foto não modula nada; a régua só mede e avisa.
+        const opacity = fundo.opacity
         camada.effects = {
           ...(camada.effects ?? {}),
           background: { enabled: true, ...fundo, baseColor: fundo.backgroundColor, tone: 0, opacity },
@@ -728,7 +717,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //    tinta uma vez dentro da faixa e AVISA quando a foto não carrega o texto.
   let contraste: ContrasteMedido[] | null = null
   try {
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto })
+    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto, corrigir: !paginaDefineHalo })
     layers = regua.layers
     contraste = regua.medidas
     avisos.push(...regua.avisos)

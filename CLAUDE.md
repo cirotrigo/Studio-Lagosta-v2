@@ -3713,11 +3713,17 @@ e o sinal `geometria`. Regras que valem para código novo:
 - **O halo é definido VISUALMENTE na página de assinatura** (03/09/2026, ao
   ler as quatro primeiras assinaturas ajustadas pelo Ciro): se ALGUM papel da
   página tem `effects.background` ligado, a página é a verdade papel a papel
-  — cor, ajuste caixa/texto, margem, desfoque, cantos vêm dela; a opacidade da
-  página é o TETO e a foto modula dentro (só mancha escura + ajuste `texto`);
-  caixa sólida ou mancha CLARA saem como desenhadas. Papel sem fundo sai sem
-  mancha. Papéis com fundo IGUAL dividem um grupo; diferentes desenham o seu.
-  Só quando nenhum papel tem fundo o compositor calibra sozinho pela faixa.
+  — cor, ajuste caixa/texto, margem, desfoque, cantos E opacidade vêm dela,
+  EXATAMENTE (Ciro, 03/09: "não precisa ajustar de acordo com a luminosidade";
+  a modulação pela foto e a correção da régua só valem no modo calibrado pela
+  casa, quando nenhum papel tem fundo). Papel sem fundo sai sem mancha. **O
+  GRUPO da peça é o grupo da página** (Cmd+G): a mancha é a do líder, como o
+  editor desenha — nunca juntar nem separar agrupamentos ("o halo ficava por
+  cima de algumas fontes porque juntou o de cima com o de baixo"). O
+  agrupamento é o ESQUELETO: o bloco com a manchete é o principal e o mapa só
+  escolhe o HORIZONTAL (a âncora vertical é a da página); os outros ficam na
+  âncora e no alinhamento que têm na página. As MARGENS também vêm da página
+  (onde o primeiro texto começa e o último termina). Logo sem sombra e sem halo.
   A sombra segue a mesma lei: camada sem sombra na página = peça sem sombra.
   `Page.background` NÃO é mais lido (o editor grava `#ffffff` ao pôr foto de
   referência na página); fundo liso e mancha da logo vêm de `Project.assinatura`.
