@@ -35,6 +35,7 @@ import {
   escolherVariante,
   formatoDaPagina,
   montarAssinatura,
+  papelDoNome,
   papeisQueFaltam,
   NOME_DO_TEMPLATE_DE_ASSINATURA,
   type AssinaturaDaMarca,
@@ -97,6 +98,8 @@ export interface ResultadoDaComposicao {
 export interface OpcoesDeAssinatura {
   /** Nome/tag da variante pedida na spec. */
   variante?: string | null
+  /** Os papéis que a peça pede: variante que os tem vence a que não os tem. */
+  papeis?: Papel[]
   /** Luz média da foto (0..255) — escolhe entre variantes `clara`/`escura`. */
   luzDaFoto?: number | null
   /** Chave da peça para o rodízio entre variantes. */
@@ -143,7 +146,19 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
     : []
 
   const { parsePageLayers } = await import('@/lib/posts/page-layers')
-  const { pagina: escolhida, formatoDaPagina: fmt } = escolherVariante(paginas, {
+  // Entre as variantes do formato, as que TÊM todos os papéis pedidos vêm
+  // primeiro (a story sem serviço não serve para a peça de funcionamento);
+  // sem nenhuma completa, valem todas.
+  const pedidos = (opcoes.papeis ?? []).filter((p) => p !== 'headline2')
+  const cobre = (p: (typeof paginas)[number]) => {
+    if (pedidos.length === 0) return true
+    const papeisDaPagina = new Set((parsePageLayers(p.layers) as unknown as Layer[]).filter((c) => c.type === 'text' && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)))
+    return pedidos.every((papel) => papeisDaPagina.has(papel))
+  }
+  const doFormato = paginas.filter((p) => formatoDaPagina(p) === formato)
+  const completas = doFormato.filter(cobre)
+  const candidatas = completas.length > 0 ? [...completas, ...paginas.filter((p) => formatoDaPagina(p) !== formato)] : paginas
+  const { pagina: escolhida, formatoDaPagina: fmt } = escolherVariante(candidatas, {
     formato,
     variante: opcoes.variante ?? null,
     luzDaFoto: opcoes.luzDaFoto ?? null,
@@ -396,6 +411,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, canvas) : null
   const assinatura = await carregarAssinatura(spec.projectId, spec.formato, {
     variante: spec.preferencias?.variante ?? null,
+    papeis: spec.blocos.map((b) => b.papel),
     luzDaFoto,
     chave: `${spec.nome ?? ''}|${spec.tema ?? ''}|${spec.foto?.driveFileId ?? spec.foto?.url ?? ''}|${spec.blocos[0]?.linhas.join(' ') ?? ''}`,
   })
