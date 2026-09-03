@@ -30,6 +30,7 @@ import {
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
+import { semTextosDaMarca } from '@/lib/ai/text-comparison'
 import { finalizarLogoDaMelhoria, melhoriaCompoeLogo, type LogoNaMelhoriaInfo } from '@/lib/ai/logo-na-melhoria'
 import {
   loadExpectedTextsDaLinhagem,
@@ -444,12 +445,39 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     // Sem condição de skip: a visão lê o buffer da arte que está SENDO
     // melhorada, então a régua que ela produz é sempre da peça certa — é
     // justamente o que resolve o caso do slide de carrossel.
+    /** A transcrição INTEIRA da origem (com a logo) — serve à caixa e ao desconto do texto a mais. */
+    let transcricaoCompletaDaOrigem: string[] = []
+    /** Blocos da logo que a visão leu na origem e que a régua NÃO pode exigir. */
+    let textosDaMarcaDescontados: string[] = []
     if (textosDaRegua.length === 0) {
-      textosDaRegua = await transcreverTextosDaArte(primaryBuffer)
+      transcricaoCompletaDaOrigem = await transcreverTextosDaArte(primaryBuffer)
+      /**
+       * 🔴 A visão lê a LOGO como texto ("TERO", "BRASA E VINHO", "TRO" pela
+       * ligadura), e a peça gerada nunca a traz: em `compor` o PNG oficial só
+       * é colado DEPOIS desta conferência. Medido no TERO em 03/09/2026: toda
+       * melhoria de arte do canvas reprovava por "texto divergente". A logo
+       * oficial é transcrita à parte para saber o que descontar. Ver
+       * `semTextosDaMarca`.
+       */
+      const logoOficial = downloads.find((d) => d.role === 'logo')
+      const textosDaLogo = logoOficial ? await transcreverTextosDaArte(logoOficial.buffer) : []
+      const semMarca = semTextosDaMarca(transcricaoCompletaDaOrigem, {
+        nomeDaMarca: assets.brand?.projectName ?? args.projectName,
+        textosDaLogo,
+      })
+      textosDaRegua = semMarca.regua
+      textosDaMarcaDescontados = semMarca.descontados
       reguaPorVisao = textosDaRegua.length > 0
-      arteSemTexto = textosDaRegua.length === 0
-      if (reguaPorVisao) {
-        console.log(`[improve.bg] régua por visão: ${textosDaRegua.length} bloco(s) lidos da arte original`)
+      // Origem que só tem a logo é foto pura para a copy: a marca vem por
+      // outro caminho (colada, ou como referência).
+      arteSemTexto = transcricaoCompletaDaOrigem.length === 0 || textosDaRegua.length === 0
+      if (reguaPorVisao || textosDaMarcaDescontados.length > 0) {
+        console.log(
+          `[improve.bg] régua por visão: ${textosDaRegua.length} bloco(s) lidos da arte original` +
+            (textosDaMarcaDescontados.length > 0
+              ? ` (marca descontada: ${textosDaMarcaDescontados.map((t) => `"${t}"`).join(', ')})`
+              : ''),
+        )
       }
     }
 
@@ -472,8 +500,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      * arte tinha em CAIXA ALTA. Uma transcrição da origem (barata) resolve os
      * dois usos — a caixa por bloco e o desconto do texto a mais.
      */
-    let transcricaoDaOrigem: string[] = reguaPorVisao ? textosDaRegua : []
-    if (!reguaPorVisao && textosDaRegua.length > 0) {
+    let transcricaoDaOrigem: string[] = transcricaoCompletaDaOrigem
+    if (transcricaoDaOrigem.length === 0 && textosDaRegua.length > 0) {
       try {
         transcricaoDaOrigem = await transcreverTextosDaArte(primaryBuffer)
       } catch {
@@ -711,6 +739,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           ...(logoInfo ? { logo: JSON.parse(JSON.stringify(logoInfo)) } : {}),
           ...(reguaDaLinhagem > 0 ? { reguaDaLinhagem } : {}),
           ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
+          ...(textosDaMarcaDescontados.length > 0 ? { textosDaMarcaDescontados } : {}),
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
           format,
