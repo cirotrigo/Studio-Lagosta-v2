@@ -50,6 +50,11 @@ export interface EstiloDePapel {
    * saem como a equipe desenhou.
    */
   fundo?: FundoDePapel | null
+  /** O grupo da camada na página (Cmd+G do editor) — papéis no mesmo grupo formam UM bloco na peça. */
+  grupo?: string | null
+  /** A caixa da camada na página — de onde sai a âncora (topo/rodapé) dos blocos secundários. */
+  caixa?: { x: number; y: number; width: number; height: number }
+  alinhamento?: 'esquerda' | 'centro' | 'direita' | null
 }
 
 export interface FundoDePapel {
@@ -210,6 +215,9 @@ export function estiloDaCamada(camada: Layer, todas: Layer[] = []): EstiloDePape
     color: typeof s.color === 'string' ? s.color : '#FFFFFF',
     ...(prefixo ? { prefixo: `${prefixo} ` } : {}),
     fundo: fundoDaCamada(camada, todas),
+    grupo: grupoDaCamada(camada),
+    caixa: { x: camada.position.x, y: camada.position.y, width: camada.size.width, height: camada.size.height },
+    alinhamento: s.textAlign === 'center' ? 'centro' : s.textAlign === 'right' ? 'direita' : s.textAlign === 'left' ? 'esquerda' : null,
     sombra: shadow?.enabled
       ? {
           color: shadow.shadowColor,
@@ -247,7 +255,9 @@ export function completarComStory(assinatura: AssinaturaDaMarca, story: Assinatu
   for (const papel of Object.keys(story.papeis) as Papel[]) {
     if (papeis[papel]) continue
     const e = story.papeis[papel]!
-    papeis[papel] = { ...e, fontSize: Math.round(e.fontSize * escala), letterSpacing: Math.round(e.letterSpacing * escala * 100) / 100 }
+    // Herdado de outro formato: a caixa e o grupo da página de story não
+    // valem aqui (a âncora sai da regra do papel).
+    papeis[papel] = { ...e, fontSize: Math.round(e.fontSize * escala), letterSpacing: Math.round(e.letterSpacing * escala * 100) / 100, caixa: undefined, grupo: null }
     // Sem fundo próprio no formato: o do story serve, escalado.
     if (papeis[papel]!.fundo) {
       const f = papeis[papel]!.fundo!

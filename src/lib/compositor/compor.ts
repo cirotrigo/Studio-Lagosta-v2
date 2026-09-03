@@ -270,7 +270,7 @@ function candidatosDePosicao(
   spec: SpecDePeca,
   bloco: { width: number; height: number },
   crop: CropPosition,
-  extra: { reservaNoRodape?: number; alinhaDaAssinatura?: Alinhamento | null } = {},
+  extra: { reservaNoRodape?: number; reservaNoTopo?: number; alinhaDaAssinatura?: Alinhamento | null } = {},
 ): CandidatoDePosicao<RotuloDePosicao>[] {
   const pref = spec.preferencias ?? {}
   const rodizio = { ...preferenciaDoRodizio(spec), ...(extra.alinhaDaAssinatura ? { alinha: extra.alinhaDaAssinatura } : {}) }
@@ -287,9 +287,10 @@ function candidatosDePosicao(
           : ancora === 'meio'
             ? 0.1
             : 0.3
-      const reserva = ancora === 'rodape' ? extra.reservaNoRodape ?? 0 : 0
-      const rect = retanguloDoBloco(g, ancora, alinha, bloco.width, bloco.height + reserva)
-      saida.push({ rect: { ...rect, height: bloco.height }, preferencia, rotulo: { ancora, alinha, crop } })
+      const reservaBaixo = ancora === 'rodape' ? extra.reservaNoRodape ?? 0 : 0
+      const reservaCima = ancora === 'topo' ? extra.reservaNoTopo ?? 0 : 0
+      const rect = retanguloDoBloco(g, ancora, alinha, bloco.width, bloco.height + reservaBaixo + reservaCima)
+      saida.push({ rect: { ...rect, y: rect.y + reservaCima, height: bloco.height }, preferencia, rotulo: { ancora, alinha, crop } })
     }
   }
   return saida
@@ -413,12 +414,15 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   await registerProjectFonts(spec.projectId)
   const medir = await createServerTextBoxMeasurer()
 
-  // 1. Os blocos, medidos. Serviço vive no rodapé (regra da casa) — em grupo próprio.
+  // 1. Os blocos seguem o AGRUPAMENTO da página de assinatura (Ciro,
+  //    03/09/2026: "não junte os agrupamentos"): papéis no mesmo grupo do
+  //    editor formam UM bloco; o bloco que tem a manchete é o principal e o
+  //    mapa da foto o posiciona; os outros ficam onde estão na página (topo
+  //    ou rodapé) com o alinhamento de lá. Papel sem grupo é bloco sozinho;
+  //    serviço sozinho vai ao rodapé (regra da casa).
   const colunaUtil = g.W - 2 * g.margemH
-  const principais: BlocoMontado[] = []
-  let servico: BlocoMontado | null = null
   const recusas: Array<{ papel: Papel; orcamento: unknown }> = []
-  // A manchete com segunda voz vira DOIS blocos no mesmo grupo: as linhas de
+  // A manchete com segunda voz vira DOIS papéis no mesmo grupo: as linhas de
   // cima na voz 1 e a última na voz 2 (o que o Quintal, o TERO e o By Rock
   // fazem à mão). Sem `headline2` na assinatura, nada muda.
   const blocosDaSpec = spec.blocos.flatMap((b) =>
@@ -429,6 +433,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         ]
       : [b as { papel: Papel; linhas: string[] }],
   )
+  const chaveDoGrupo = (papel: Papel) => assinatura.papeis[papel]?.grupo ?? (papel === 'headline2' ? assinatura.papeis.headline?.grupo ?? 'solo:headline' : `solo:${papel}`)
+  const montados: BlocoMontado[] = []
   for (const b of blocosDaSpec) {
     const estilo = assinatura.papeis[b.papel]!
     const r = montarBloco({
@@ -438,7 +444,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       escalaDoFormato,
       colunaUtil,
       textAlign: 'left',
-      groupId: b.papel === 'servico' ? 'bloco-servico' : 'bloco-principal',
+      groupId: `grupo-${hashDe(chaveDoGrupo(b.papel)) % 99991}`,
       corDaMancha: mancha,
       medir,
     })
@@ -447,8 +453,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       continue
     }
     if (r.bloco.escala < 1) avisos.push(`${b.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
-    if (b.papel === 'servico') servico = r.bloco
-    else principais.push(r.bloco)
+    montados.push(r.bloco)
   }
   if (recusas.length > 0) {
     throw new CreativeError(
@@ -458,24 +463,55 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       { orcamento: recusas },
     )
   }
-  if (principais.length === 0 && !servico) throw new CreativeError('SPEC_INVALIDA', 'Nenhum bloco de texto', 400)
+  if (montados.length === 0) throw new CreativeError('SPEC_INVALIDA', 'Nenhum bloco de texto', 400)
 
-  const pilha = empilhar(principais, g.gap)
-  // O serviço vive no rodapé: quando o bloco principal também vai para lá, o
-  // candidato precisa da altura dos dois, senão um pousa em cima do outro.
-  const reservaNoRodape = servico ? servico.height + Math.round(g.gap * 1.6) : 0
+  interface BlocoComposto {
+    chave: string
+    blocos: BlocoMontado[]
+    pilha: ReturnType<typeof empilhar>
+    principal: boolean
+    ancora: Ancora
+    alinha: Alinhamento | null
+  }
+  const porGrupo = new Map<string, BlocoMontado[]>()
+  for (const b of montados) {
+    const chave = chaveDoGrupo(b.papel)
+    porGrupo.set(chave, [...(porGrupo.get(chave) ?? []), b])
+  }
+  const compostos: BlocoComposto[] = [...porGrupo.entries()].map(([chave, blocos]) => {
+    const papeis = blocos.map((b) => b.papel)
+    const caixas = papeis.map((p) => assinatura.papeis[p]?.caixa).filter((c): c is NonNullable<typeof c> => !!c)
+    const centro = caixas.length > 0 ? caixas.reduce((acc, c) => acc + (c.y + c.height / 2), 0) / caixas.length / canvas.height : null
+    const soServico = papeis.every((p) => p === 'servico')
+    const ancora: Ancora = soServico || centro === null ? (soServico ? 'rodape' : 'topo') : centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
+    return {
+      chave,
+      blocos,
+      pilha: empilhar(blocos, g.gap),
+      principal: papeis.includes('headline'),
+      ancora,
+      alinha: assinatura.papeis[papeis[0]]?.alinhamento ?? null,
+    }
+  })
+  const principal = compostos.find((c) => c.principal) ?? compostos[0]
+  const secundarios = compostos.filter((c) => c !== principal)
+  const pilha = principal.pilha
+  // Os blocos secundários reservam a própria altura na âncora deles, para o
+  // principal não pousar em cima.
+  const reservaNoRodape = secundarios.filter((c) => c.ancora === 'rodape').reduce((acc, c) => acc + c.pilha.height + Math.round(g.gap * 1.6), 0)
+  const reservaNoTopo = secundarios.filter((c) => c.ancora === 'topo').reduce((acc, c) => acc + c.pilha.height + Math.round(g.gap * 1.6), 0)
 
   // 2. O mapa e o assunto — por corte candidato.
   const cortes = cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
   const assuntoDoCatalogo = foto && spec.foto?.driveFileId ? await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId) : null
 
   let melhor: { crop: CropPosition; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
-  const cores = [...principais.map((b) => b.cor), ...(servico ? [servico.cor] : [])]
+  const cores = montados.map((b) => b.cor)
   for (const crop of cortes) {
     const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
     const mapa = raster ? mapaDeCalma(raster) : null
     const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, canvas) : mapa ? estimarAssunto(mapa) : null
-    const candidatos = candidatosDePosicao(g, spec, pilha, crop, { reservaNoRodape, alinhaDaAssinatura: assinatura.alinhamento })
+    const candidatos = candidatosDePosicao(g, spec, pilha, crop, { reservaNoRodape, reservaNoTopo, alinhaDaAssinatura: principal.alinha ?? assinatura.alinhamento })
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: mancha, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
@@ -488,37 +524,43 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (melhor.escolhido.descartado) avisos.push(`Toda posição cobre o assunto da foto; ficou a melhor delas (${melhor.escolhido.motivo}).`)
 
   const { ancora, alinha, crop } = melhor.escolhido.rotulo
-  const textAlign = alinhamentoParaTextAlign(alinha)
   const rectPrincipal = melhor.escolhido.rect
 
-  // 3. Posicionar as camadas de texto dentro da caixa escolhida.
-  const camadasDeTexto: Layer[] = principais.map((b, i) => {
-    const x = alinha === 'esquerda' ? rectPrincipal.x : alinha === 'direita' ? rectPrincipal.x + rectPrincipal.width - b.width : rectPrincipal.x + (rectPrincipal.width - b.width) / 2
-    return {
-      ...b.layer,
-      position: { x: Math.round(x), y: Math.round(rectPrincipal.y + pilha.offsets[i]) },
-      style: { ...b.layer.style, textAlign },
+  // 3. Posicionar cada bloco: o principal na caixa que o mapa escolheu; os
+  //    secundários na âncora e no alinhamento que têm na página.
+  const camadasDeTexto: Layer[] = []
+  const rectsDeGrupo: Array<{ grupo: string; rect: Rect; cores: string[]; camadas: Layer[] }> = []
+  const posicionar = (c: BlocoComposto, rect: Rect, alinhaDoBloco: Alinhamento) => {
+    const textAlign = alinhamentoParaTextAlign(alinhaDoBloco)
+    const camadas = c.blocos.map((b, i) => {
+      const x = alinhaDoBloco === 'esquerda' ? rect.x : alinhaDoBloco === 'direita' ? rect.x + rect.width - b.width : rect.x + (rect.width - b.width) / 2
+      const camada: Layer = { ...b.layer, position: { x: Math.round(x), y: Math.round(rect.y + c.pilha.offsets[i]) }, style: { ...b.layer.style, textAlign } }
+      camadasDeTexto.push(camada)
+      return camada
+    })
+    rectsDeGrupo.push({ grupo: c.chave, rect, cores: c.blocos.map((b) => b.cor), camadas })
+  }
+  posicionar(principal, rectPrincipal, alinha)
+  let ocupadoNoRodape = 0
+  let ocupadoNoTopo = 0
+  for (const c of secundarios) {
+    const al = c.alinha ?? alinha
+    let rect = retanguloDoBloco(g, c.ancora, al, c.pilha.width, c.pilha.height)
+    if (c.ancora === 'rodape') {
+      rect = { ...rect, y: g.H - g.safeRodape - c.pilha.height - ocupadoNoRodape }
+      ocupadoNoRodape += c.pilha.height + Math.round(g.gap * 1.6)
+    } else if (c.ancora === 'topo') {
+      rect = { ...rect, y: g.safeTopo + ocupadoNoTopo }
+      ocupadoNoTopo += c.pilha.height + Math.round(g.gap * 1.6)
     }
-  })
-  const rectsDeGrupo: Array<{ grupo: string; rect: Rect; cores: string[]; camadas: Layer[] }> = [
-    { grupo: 'bloco-principal', rect: rectPrincipal, cores: principais.map((b) => b.cor), camadas: [...camadasDeTexto] },
-  ]
-  if (servico) {
-    // Serviço sempre no rodapé. Com o bloco principal também no rodapé, o
-    // candidato já reservou a altura do serviço (ver `reservaNoRodape`): o
-    // serviço pousa no fim do retângulo e o principal fica acima dele.
-    const rectServico = retanguloDoBloco(g, 'rodape', alinha, servico.width, servico.height)
-    const camada: Layer = { ...servico.layer, position: { x: rectServico.x, y: rectServico.y }, style: { ...servico.layer.style, textAlign } }
-    camadasDeTexto.push(camada)
-    rectsDeGrupo.push({ grupo: 'bloco-servico', rect: rectServico, cores: [servico.cor], camadas: [camada] })
+    posicionar(c, rect, al)
   }
 
   // 4. O halo. Se a equipe ligou o fundo de texto em ALGUM papel da página de
   //    assinatura, a página é a verdade papel a papel (cor, ajuste, margem,
-  //    desfoque; a opacidade dela é o teto e a foto modula dentro, quando a
-  //    mancha é escura e o ajuste é `texto`). Papéis com fundo IGUAL dividem
-  //    uma mancha (mesmo grupo); diferentes desenham a sua. Sem fundo em
-  //    papel nenhum, vale a calibragem da casa na FAIXA da marca.
+  //    desfoque; a opacidade dela é o teto e a foto modula dentro). O GRUPO
+  //    da peça é o grupo da página — a mancha é a do líder, como no editor.
+  //    Sem fundo em papel nenhum, vale a calibragem da casa na FAIXA da marca.
   const halos: DiagnosticoDaComposicao['halos'] = []
   const paginaDefineHalo = Object.values(assinatura.papeis).some((e) => e?.fundo)
   if (paginaDefineHalo) {
@@ -531,7 +573,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         const fundo = papel ? assinatura.papeis[papel]?.fundo : null
         if (!fundo) {
           camada.effects = { ...(camada.effects ?? {}), background: undefined }
-          camada.metadata = { ...(camada.metadata ?? {}), groupId: `sem-halo-${camada.id}` }
           continue
         }
         const luzDaMancha = luzDaCor(fundo.backgroundColor)
@@ -544,8 +585,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           } else {
             // Mancha CLARA (texto escuro): a necessidade é o inverso — foto
             // escura pede a mancha inteira, foto já clara pede quase nada.
-            // Sem isto a página a 100% virava uma névoa creme sobre foto
-            // clara (Real, 03/09), e o texto perdia contraste no meio dela.
             const luzMedia = 0.5 * luz.media + 0.5 * luz.p75
             const alvoClaro = Math.max(...grupo.cores.map((c) => alvoClaroPorContraste(c, 3)))
             const necessaria = luzDaMancha > luzMedia ? (alvoClaro - luzMedia) / (luzDaMancha - luzMedia) : 0
@@ -556,9 +595,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           ...(camada.effects ?? {}),
           background: { enabled: true, ...fundo, baseColor: fundo.backgroundColor, tone: 0, opacity },
         }
-        // Grupo = mesma configuração de fundo (a mancha do grupo é a do líder).
-        const assinaturaDoFundo = `${fundo.backgroundColor}|${fundo.fit}|${fundo.padding}|${fundo.blur}|${fundo.borderRadius}|${fundo.fit === 'texto' && luz !== null ? 'm' : fundo.opacity}`
-        camada.metadata = { ...(camada.metadata ?? {}), groupId: `${grupo.grupo}-${hashDe(assinaturaDoFundo) % 9973}` }
         halos.push({ grupo: `${grupo.grupo}/${papel}`, tinta: opacity, raio: fundo.blur, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
       }
     }
@@ -608,7 +644,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       const calibrado = calibrarHalo({ texto: canto.rect, luz: luz ?? { media: 0, p75: 0 }, coresDoTexto: ['#FFFFFF'], corDaMancha: mancha, raioBase: assinatura.numeros.halo.raioMarca })
       const tinta = luz ? tintaNaFaixa(calibrado.tinta / 0.95, assinatura.numeros.halo.faixaMarca) : 0
       const raio = assinatura.numeros.halo.raioMarca
-      if (tinta > 0) {
+      // A página não desenha halo na logo; só o modo calibrado pela casa põe um.
+      if (tinta > 0 && !paginaDefineHalo) {
         const margem = Math.round(raio * 1.4)
         haloDaMarca.push({
           id: 'halo-marca',
@@ -636,7 +673,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         size: { width: largura, height: altura },
         rotation: 0,
         fileUrl: assinatura.logo.url,
-        style: { objectFit: 'contain', shadow: { color: mancha, blur: 12, offsetX: 0, offsetY: 2 } },
+        style: { objectFit: 'contain' },
         metadata: { compositor: { canto: canto.canto } },
       })
       logoDiag = { canto: canto.canto, tinta }
@@ -694,7 +731,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
     halos,
     logo: logoDiag,
-    blocos: [...principais, ...(servico ? [servico] : [])].map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height })),
+    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height })),
     contraste,
     assinatura: assinatura.origem,
     avisos,
