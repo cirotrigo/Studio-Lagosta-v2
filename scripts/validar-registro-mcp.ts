@@ -1328,6 +1328,10 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "fixo"
             ],
             "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
+          },
+          "variante": {
+            "type": "string",
+            "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
           }
         },
         "additionalProperties": false
@@ -1471,6 +1475,10 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "fixo"
                   ],
                   "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
+                },
+                "variante": {
+                  "type": "string",
+                  "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
                 }
               },
               "additionalProperties": false

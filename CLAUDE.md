@@ -3710,6 +3710,14 @@ e o sinal `geometria`. Regras que valem para código novo:
   (Google Fonts, não cadastradas) — o kit segue o DNA (Mortella na manchete,
   Metrisch no resto), e a manchete pode pedir corpo menor. TERO: `Montserrat
   Light` não está cadastrada; o apoio cai na regular.
+- **Mais de uma página por formato = VARIANTES** (`escolherVariante`, 03/09/2026,
+  pergunta do Ciro "posso criar mais variações?"): a spec pede pelo nome/tag
+  (`preferencias.variante`); páginas com tag `clara`/`escura` são escolhidas
+  pela luz média da foto (limiar 128); entre as demais vale o rodízio
+  determinístico pela chave da peça. O compositor NÃO varia cor de fonte nem
+  cor do halo por conta própria — variação de estilo é página nova; o que ele
+  varia sozinho é posição, enquadramento, canto da logo e a TINTA do halo
+  (dentro da faixa). A variante usada fica em `composicao.assinatura.variante`.
 - 🔴 **A posição vem da FOTO, nunca do template** (§9). `mapa-de-calma.ts`:
   grade 6×10 sobre a foto COMO APARECE (cover, no corte candidato), pontuação
   por calma (energia de borda), tinta necessária (p98 vs alvo da cor) e

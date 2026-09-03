@@ -37,6 +37,8 @@ export const preferenciasSchema = z.object({
   cantoDaMarca: z.enum([...CANTOS, 'auto', 'nenhum']).optional(),
   /** `fixo` mantém o enquadramento central; `auto` deixa o compositor escolher o corte que abre área livre. */
   enquadramento: z.enum(['auto', 'fixo']).optional(),
+  /** Nome (ou tag) da página de assinatura a usar, quando o cliente tem mais de uma no formato. */
+  variante: z.string().max(80).optional(),
 })
 export type Preferencias = z.infer<typeof preferenciasSchema>
 

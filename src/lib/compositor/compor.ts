@@ -28,6 +28,8 @@ import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
 import {
+  escolherVariante,
+  formatoDaPagina,
   montarAssinatura,
   papeisQueFaltam,
   NOME_DO_TEMPLATE_DE_ASSINATURA,
@@ -95,7 +97,28 @@ export interface ResultadoDaComposicao {
 
 // ─── Assinatura ────────────────────────────────────────────────────────────
 
-export async function carregarAssinatura(projectId: number, formato: Formato): Promise<AssinaturaDaMarca> {
+export interface OpcoesDeAssinatura {
+  /** Nome/tag da variante pedida na spec. */
+  variante?: string | null
+  /** Luz média da foto (0..255) — escolhe entre variantes `clara`/`escura`. */
+  luzDaFoto?: number | null
+  /** Chave da peça para o rodízio entre variantes. */
+  chave?: string
+}
+
+/** Todas as páginas de assinatura do projeto, com o formato que cada uma declara. */
+export async function paginasDeAssinatura(projectId: number) {
+  const template = await db.template.findFirst({ where: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
+  if (!template) return { templateId: null as number | null, paginas: [] as Array<{ id: string; name: string; tags: string[]; width: number; height: number; formato: Formato | null }> }
+  const paginas = await db.page.findMany({
+    where: { templateId: template.id, isTemplate: true, tags: { has: TAG_DA_ASSINATURA } },
+    select: { id: true, name: true, tags: true, width: true, height: true },
+    orderBy: { order: 'asc' },
+  })
+  return { templateId: template.id, paginas: paginas.map((p) => ({ ...p, formato: formatoDaPagina(p) })) }
+}
+
+export async function carregarAssinatura(projectId: number, formato: Formato, opcoes: OpcoesDeAssinatura = {}): Promise<AssinaturaDaMarca> {
   const [projeto, template] = await Promise.all([
     db.project.findUnique({
       where: { id: projectId },
@@ -119,28 +142,18 @@ export async function carregarAssinatura(projectId: number, formato: Formato): P
     : []
 
   const { parsePageLayers } = await import('@/lib/posts/page-layers')
-  const daPagina = (p: (typeof paginas)[number]) => ({
-    id: p.id,
-    width: p.width,
-    height: p.height,
-    background: p.background,
-    layers: parsePageLayers(p.layers) as unknown as Layer[],
+  const { pagina: escolhida, formatoDaPagina: fmt } = escolherVariante(paginas, {
+    formato,
+    variante: opcoes.variante ?? null,
+    luzDaFoto: opcoes.luzDaFoto ?? null,
+    chave: opcoes.chave ?? '',
   })
-  const formatoDe = (p: (typeof paginas)[number]): Formato | null => {
-    const texto = `${p.name} ${p.tags.join(' ')}`.toLowerCase()
-    if (/quadrad/.test(texto) || (p.width === p.height && p.width > 0)) return 'quadrado'
-    if (/feed/.test(texto) || (p.height < p.width * 1.4 && p.height > p.width)) return 'feed'
-    if (/story|stories/.test(texto) || p.height >= p.width * 1.6) return 'story'
-    return null
-  }
-
-  const exata = paginas.find((p) => formatoDe(p) === formato)
-  const story = paginas.find((p) => formatoDe(p) === 'story')
-  const escolhida = exata ?? story ?? paginas[0] ?? null
 
   return montarAssinatura({
-    pagina: escolhida ? daPagina(escolhida) : null,
-    formatoDaPagina: escolhida ? formatoDe(escolhida) : null,
+    pagina: escolhida
+      ? { id: escolhida.id, name: escolhida.name, tags: escolhida.tags, width: escolhida.width, height: escolhida.height, background: escolhida.background, layers: parsePageLayers(escolhida.layers) as unknown as Layer[] }
+      : null,
+    formatoDaPagina: fmt,
     numerosDoProjeto: projeto.assinatura,
     logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
   })
@@ -173,6 +186,17 @@ async function carregarFoto(spec: SpecDePeca): Promise<{ foto: FotoDaPeca | null
   return {
     foto: { url: r.url, bytes, largura: meta.width ?? 0, altura: meta.height ?? 0 },
     aviso: r.warning ?? null,
+  }
+}
+
+/** Luz média da foto como ela aparece na peça (0..255) — para a variante clara/escura. */
+async function luzMediaDaFoto(bytes: Buffer, canvas: { width: number; height: number }): Promise<number | null> {
+  try {
+    const raster = await lerFotoComoCover(bytes, canvas)
+    const luz = luzNoRect(raster, { x: 0, y: 0, width: canvas.width, height: canvas.height })
+    return luz ? Math.round(luz.media) : null
+  } catch {
+    return null
   }
 }
 
@@ -332,7 +356,17 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
-  const assinatura = await carregarAssinatura(spec.projectId, spec.formato)
+  // A foto vem ANTES da assinatura: a luz média dela escolhe entre variantes
+  // `clara`/`escura`, e a chave da peça faz o rodízio entre as demais.
+  const { foto, aviso: avisoDaFoto } = await carregarFoto(spec)
+  if (avisoDaFoto) avisos.push(avisoDaFoto)
+  const canvas = DIMENSOES[spec.formato]
+  const luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, canvas) : null
+  const assinatura = await carregarAssinatura(spec.projectId, spec.formato, {
+    variante: spec.preferencias?.variante ?? null,
+    luzDaFoto,
+    chave: `${spec.nome ?? ''}|${spec.tema ?? ''}|${spec.foto?.driveFileId ?? spec.foto?.url ?? ''}|${spec.blocos[0]?.linhas.join(' ') ?? ''}`,
+  })
   const faltam = papeisQueFaltam(assinatura, spec.blocos.map((b) => b.papel))
   if (!assinatura.origem.pageId || faltam.length > 0) {
     throw new CreativeError(
@@ -345,7 +379,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     )
   }
 
-  const canvas = DIMENSOES[spec.formato]
   const geo = assinatura.numeros.geometria[spec.formato]
   const g: GeometriaDaPeca = { W: canvas.width, H: canvas.height, margemH: geo.margemH, safeTopo: geo.safeTopo, safeRodape: geo.safeRodape, gap: geo.gapEntreBlocos }
   const escalaDoFormato = assinatura.origem.formatoDaPagina === spec.formato ? 1 : geo.escalaDeFonte
@@ -392,9 +425,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
   const pilha = empilhar(principais, g.gap)
 
-  // 2. A foto, o mapa e o assunto — por corte candidato.
-  const { foto, aviso: avisoDaFoto } = await carregarFoto(spec)
-  if (avisoDaFoto) avisos.push(avisoDaFoto)
+  // 2. O mapa e o assunto — por corte candidato.
   const cortes = cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
   const assuntoDoCatalogo = foto && spec.foto?.driveFileId ? await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId) : null
 

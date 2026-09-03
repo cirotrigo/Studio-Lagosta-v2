@@ -28,6 +28,7 @@ const preferencias = z
       .optional()
       .describe('Canto da logo. "auto" (default) escolhe o canto mais calmo e escuro que não encosta no texto; "nenhum" tira a logo.'),
     enquadramento: z.enum(['auto', 'fixo']).optional().describe('"auto" (default) deixa o compositor deslocar o corte da foto para abrir área livre; "fixo" mantém o centro.'),
+    variante: z.string().optional().describe('Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais.'),
   })
   .optional()
 
@@ -116,14 +117,16 @@ export const toolsDoCompositor = [
     handler: async (args) => {
       const { carregarAssinatura } = await import('../../compositor/compor')
       const { getPublicAppUrl } = await import('../../creatives/persist')
-      const { db } = await import('../../db')
       const projectId = args.projectId as number
       const formato = (args.formato as 'story' | 'feed' | 'quadrado' | undefined) ?? 'story'
       const a = await carregarAssinatura(projectId, formato)
-      const template = await db.template.findFirst({ where: { projectId, name: 'Assinatura' }, select: { id: true } })
+      const { paginasDeAssinatura } = await import('../../compositor/compor')
+      const { templateId, paginas } = await paginasDeAssinatura(projectId)
+      const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),
         formatoDaPagina: a.origem.formatoDaPagina,
+        variantes: paginas.map((p) => ({ nome: p.name, formato: p.formato, tags: p.tags.filter((t) => t !== 'assinatura') })),
         papeis: Object.fromEntries(
           Object.entries(a.papeis).map(([papel, e]) => [
             papel,

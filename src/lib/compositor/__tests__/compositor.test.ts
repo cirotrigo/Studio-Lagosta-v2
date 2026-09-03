@@ -171,3 +171,35 @@ describe('mapa de calma', () => {
     expect(pontuados[1].descartado).toBe(true)
   })
 })
+
+import { escolherVariante } from '../assinatura'
+
+describe('escolherVariante', () => {
+  const pag = (name: string, tags: string[] = [], width = 1080, height = 1920) => ({ name, tags, width, height })
+  const paginas = [pag('Assinatura — story'), pag('Story clara', ['clara']), pag('Story escura', ['escura']), pag('Assinatura — feed', [], 1080, 1350)]
+
+  it('variante pedida vence, pelo nome ou pela tag', () => {
+    expect(escolherVariante(paginas, { formato: 'story', variante: 'escura' }).pagina?.name).toBe('Story escura')
+    expect(escolherVariante(paginas, { formato: 'story', variante: 'story clara' }).pagina?.name).toBe('Story clara')
+  })
+
+  it('foto clara escolhe a variante clara; escura, a escura', () => {
+    expect(escolherVariante(paginas, { formato: 'story', luzDaFoto: 200, chave: 'x' }).pagina?.name).toBe('Story clara')
+    expect(escolherVariante(paginas, { formato: 'story', luzDaFoto: 40, chave: 'x' }).pagina?.name).toBe('Story escura')
+  })
+
+  it('sem tag nem pedido, o rodízio pela chave varia e é determinístico', () => {
+    const neutras = [pag('A'), pag('B'), pag('C')]
+    const a = escolherVariante(neutras, { formato: 'story', chave: 'peça-1' }).pagina?.name
+    const b = escolherVariante(neutras, { formato: 'story', chave: 'peça-1' }).pagina?.name
+    expect(a).toBe(b)
+    const nomes = new Set(['peça-1', 'peça-2', 'peça-3', 'peça-4', 'peça-5', 'peça-6'].map((c) => escolherVariante(neutras, { formato: 'story', chave: c }).pagina?.name))
+    expect(nomes.size).toBeGreaterThan(1)
+  })
+
+  it('feed sem página cai na de story; formato é lido do nome ou do tamanho', () => {
+    const r = escolherVariante([pag('Assinatura — story')], { formato: 'feed' })
+    expect(r.formatoDaPagina).toBe('story')
+    expect(escolherVariante(paginas, { formato: 'feed' }).pagina?.name).toBe('Assinatura — feed')
+  })
+})

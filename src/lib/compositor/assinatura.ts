@@ -96,7 +96,7 @@ export interface AssinaturaDaMarca {
   logo: LogoDaAssinatura | null
   numeros: NumerosDaAssinatura
   /** De onde veio — para o registro atômico da geração. */
-  origem: { pageId: string | null; formatoDaPagina: Formato | null; versao: string }
+  origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; versao: string }
 }
 
 /** Nome de camada → papel. Aceita o que a equipe tende a escrever. */
@@ -173,6 +173,8 @@ function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAss
 
 export interface PaginaDeAssinatura {
   id: string
+  name?: string
+  tags?: string[]
   width: number
   height: number
   layers: Layer[]
@@ -229,11 +231,76 @@ export function montarAssinatura(args: {
     papeis,
     logo,
     numeros,
-    origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, versao: 'assinatura-v1' },
+    origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, variante: args.pagina?.name ?? null, versao: 'assinatura-v2' },
   }
 }
 
 /** Os papéis que a spec pede e a assinatura não tem — a recusa é explícita. */
 export function papeisQueFaltam(assinatura: AssinaturaDaMarca, pedidos: Papel[]): Papel[] {
   return pedidos.filter((p) => !assinatura.papeis[p])
+}
+
+// ─── Variantes ─────────────────────────────────────────────────────────────
+
+/** Formato que uma página de assinatura declara (pelo nome, pelas tags ou pelo tamanho). */
+export function formatoDaPagina(p: { name?: string; tags?: string[]; width: number; height: number }): Formato | null {
+  const texto = `${p.name ?? ''} ${(p.tags ?? []).join(' ')}`.toLowerCase()
+  if (/quadrad/.test(texto) || (p.width === p.height && p.width > 0)) return 'quadrado'
+  if (/feed/.test(texto) || (p.height < p.width * 1.4 && p.height > p.width)) return 'feed'
+  if (/story|stories/.test(texto) || p.height >= p.width * 1.6) return 'story'
+  return null
+}
+
+function hashDe(texto: string): number {
+  let h = 2166136261
+  for (let i = 0; i < texto.length; i++) {
+    h ^= texto.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return Math.abs(h)
+}
+
+/** Acima disto a foto é "clara" para a escolha de variante (luz média 0..255). */
+export const LUZ_DE_FOTO_CLARA = 128
+
+/**
+ * Escolhe a página de assinatura entre as VARIANTES do formato (§8 do plano,
+ * pedido do Ciro em 03/09/2026: "posso criar mais variações?").
+ *
+ * 1. `variante` pedida na spec: casa pelo nome ou pela tag da página;
+ * 2. tags `clara`/`escura`: a luz média da foto escolhe (página sem tag
+ *    continua candidata — é a neutra);
+ * 3. RODÍZIO determinístico pela chave da peça entre as que sobraram — é o
+ *    que faz uma leva variar sem repetir a mesma variante em peças seguidas.
+ * Sem página do formato cai na de story (escala de fonte), e sem nenhuma, null.
+ */
+export function escolherVariante<T extends { name?: string; tags?: string[]; width: number; height: number }>(
+  paginas: T[],
+  args: { formato: Formato; variante?: string | null; luzDaFoto?: number | null; chave?: string },
+): { pagina: T | null; formatoDaPagina: Formato | null } {
+  const doFormato = paginas.filter((p) => formatoDaPagina(p) === args.formato)
+  const candidatas = doFormato.length > 0 ? doFormato : paginas.filter((p) => formatoDaPagina(p) === 'story')
+  const base = candidatas.length > 0 ? candidatas : paginas
+  if (base.length === 0) return { pagina: null, formatoDaPagina: null }
+  const fmt = (p: T) => formatoDaPagina(p)
+
+  if (args.variante) {
+    const alvo = args.variante.toLowerCase().trim()
+    const achada = base.find((p) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo))
+    if (achada) return { pagina: achada, formatoDaPagina: fmt(achada) }
+  }
+
+  let filtradas = base
+  if (typeof args.luzDaFoto === 'number') {
+    const clara = args.luzDaFoto > LUZ_DE_FOTO_CLARA
+    const tem = (p: T, tag: string) => (p.tags ?? []).some((t) => t.toLowerCase() === tag)
+    const compativeis = base.filter((p) => (clara ? !tem(p, 'escura') : !tem(p, 'clara')))
+    if (compativeis.length > 0) filtradas = compativeis
+    const especificas = filtradas.filter((p) => tem(p, clara ? 'clara' : 'escura'))
+    if (especificas.length > 0) filtradas = especificas
+  }
+
+  const ordenadas = [...filtradas].sort((a, b) => `${a.name}`.localeCompare(`${b.name}`))
+  const escolhida = ordenadas[hashDe(args.chave ?? '') % ordenadas.length]
+  return { pagina: escolhida, formatoDaPagina: fmt(escolhida) }
 }
