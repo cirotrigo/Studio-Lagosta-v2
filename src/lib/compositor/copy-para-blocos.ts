@@ -13,7 +13,9 @@
  * ~18 caracteres; apoio em 2 quando passa de ~40. Módulo puro.
  */
 
-import type { Bloco, Papel } from './spec'
+import type { Bloco } from './spec'
+
+type PapelDaSpec = Bloco['papel']
 
 const TETO_DA_HEADLINE = 18
 const TETO_DO_APOIO = 40
@@ -53,7 +55,7 @@ export function copyParaBlocos(copy: string[]): Bloco[] {
   const servico = servicoIdx >= 0 ? limpa[servicoIdx] : null
   const resto = servicoIdx >= 0 ? limpa.filter((_, i) => i !== servicoIdx) : limpa
 
-  const papeis: Papel[] =
+  const papeis: PapelDaSpec[] =
     resto.length >= 4 ? ['pre', 'headline', 'apoio', 'cta'] : resto.length === 3 ? ['headline', 'apoio', 'cta'] : resto.length === 2 ? ['headline', 'apoio'] : ['headline']
 
   const blocos: Bloco[] = resto.slice(0, papeis.length).map((texto, i) => {

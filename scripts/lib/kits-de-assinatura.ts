@@ -54,7 +54,7 @@ const lagosta = (escala: number) => ({
   servico: { fontFamily: 'Coolvetica Rg', fontSize: Math.round(30 * escala), lineHeight: 1.1, trackingEm: 0.04, color: CINZA, exemplo: 'lagostacriativa.com.br · @lagostacriativa', sombra: false as const, fundo: { cor: '#111111', fit: 'texto' as const, opacidade: 0.7, padding: 60, blur: 110 } },
 })
 
-type Papeis = Record<'pre' | 'headline' | 'apoio' | 'cta' | 'servico', PapelDoKit | null>
+type Papeis = Record<'pre' | 'headline' | 'apoio' | 'cta' | 'servico', PapelDoKit | null> & { headline2?: PapelDoKit }
 const P = (fontFamily: string, fontSize: number, lineHeight: number, color: string, exemplo: string, extra: Partial<PapelDoKit> = {}): PapelDoKit => ({ fontFamily, fontSize, lineHeight, color, exemplo, ...extra })
 const UP = { textTransform: 'uppercase' as const }
 /** Safe area do editor (CANVAS_MARGIN): abaixo disso o autofix acusa "fora da área segura". */
@@ -66,12 +66,10 @@ const geo = (margemH: number, safeTopo: number, safeRodape: number, escalaDeFont
   escalaDeFonte,
 })
 
-/**
- * Real Gelateria — `design-canvas/real-padrao/PADRAO.md` + gerar.py:311.
- * Headline Branley GC Title Case (caixa alta é EXCLUSIVA do pré-título);
- * duas vozes por COR (palavra menta dentro do creme) — o compositor grava a
- * voz creme. Sem CTA no gerador. Mancha = Verde Real.
- */
+// Tudo abaixo foi LIDO das páginas de assinatura ajustadas pelo Ciro em
+// 03/09/2026 (fonte, tamanho, cor, caixa, sombra e fundo de texto por papel).
+// `headline2` é a SEGUNDA VOZ da manchete: a última linha sai nela.
+
 const real: Papeis = {
   pre: P('StageGrotesk Medium', 28, 1.2, '#CFE5D6', 'Quarta do crepe', { trackingEm: 0.24, ...UP, sombra: false, fundo: { cor: '#1e2e28', fit: 'texto', opacidade: 0.78, padding: 106, blur: 175 } }),
   headline: P('Branley GC', 84, 0.9, '#F3EADC', 'A Vitrine Vende\nPelos Olhos', { sombra: false, fundo: { cor: '#ffffff', fit: 'caixa', opacidade: 1, padding: 10, blur: 0 } }),
@@ -87,27 +85,15 @@ const realFeed: Papeis = {
   servico: P('StageGrotesk Regular', 31, 1.25, '#F3EADC', 'Todos os dias, das 12h às 22h', { trackingEm: 0.02, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
 }
 
-/**
- * O Quintal Parrilla — `design-canvas/quintal-semana1/gerar.py:215-216` (L2).
- * Headline de duas vozes: DomaniCP creme + ÚLTIMA palavra em Amithen verde
- * 127px — o compositor grava a voz DomaniCP; a segunda voz é ajuste no
- * editor. Sem pré-título e sem CTA; verde #7A9A5C é a cor do serviço/ícones.
- */
 const quintal: Papeis = {
   pre: null,
-  headline: P('DomaniCP', 87, 1.02, '#F5F0E8', 'Terça no\nQuintal'),
-  apoio: P('Acumin Pro Book', 40, 1.3, '#F5F0E8', 'Parrilla de verdade, no fogo\nde chão, a semana inteira.'),
+  headline: P('DomaniCP', 87, 1.02, '#F5F0E8', 'Terça no', { align: 'center', fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 98, blur: 497 } }),
+  headline2: P('Amithen', 124, 1.02, '#F5F0E8', 'Quintal', { align: 'center', fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Acumin Pro Thin', 40, 1.3, '#F5F0E8', 'Parrilla de verdade, no fogo\nde chão, a semana inteira.', { align: 'center', fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
   cta: null,
-  servico: P('Acumin Pro Semibold', 32, 1.0, '#F5F0E8', 'Terça a domingo, das 11h às 00h'),
+  servico: P('Acumin Pro Semibold', 30, 1.0, '#F5F0E8', 'Terça a domingo, das 11h às 00h', { ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 10, blur: 169 } }),
 }
 
-/**
- * TERO — padrão v5 (`design-canvas/tero-semana1/gerar.py:205-233`, doc de
- * 31/08). Lockup Didot em duas vozes (âmbar 80 + creme 76, padding zero);
- * o compositor grava a voz 1. `Montserrat Light` (300) NÃO está cadastrada:
- * o apoio cai na Montserrat regular. O halo do TERO é por alvo, sem faixa —
- * aqui recebe a faixa contida da casa.
- */
 const tero: Papeis = {
   pre: P('Montserrat', 60, 1.25, '#F8F2F0', 'Happy hour', { trackingEm: 0.114, ...UP, align: 'center', fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 95, blur: 365 } }),
   headline: P('Didot HTF B06 Bold', 80, 0.91, '#EF7B4F', 'BRASA E VINHO', { ...UP, align: 'center', fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
@@ -123,27 +109,29 @@ const teroFeed: Papeis = {
   servico: null,
 }
 
-/**
- * Seu Quinto — `design-canvas/seuquinto-padrao/gerar.py:233-242`. A
- * assinatura é o EXTRUDE (text-shadow 5px 5px 0 sólido) na manchete Bonoco
- * caixa alta; o editor tem uma sombra por camada — a página nasce com sombra
- * deslocada sem blur. Script The Kathy no pré e no CTA. A marca NÃO leva halo.
- */
 const seuQuinto: Papeis = {
+  pre: P('The Kathy', 60, 1.0, '#FFFFFF', 'Seu Quinto', { align: 'center', fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 96, blur: 465 } }),
+  headline: P('Bonoco2023', 76, 1.0, '#FFFFFF', 'SEG COMEÇA\nCOM GOSTO', { trackingEm: -0.013, ...UP, align: 'center', fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Bonoco2023', 42, 1.16, '#ffffff', 'PORÇÃO PRA DIVIDIR\nE CHOPE GELADO', { ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 82, blur: 311 } }),
+  cta: null,
+  servico: P('Bonoco2023', 35, 1.16, '#FAA61A', 'TERÇA A DOMINGO, A PARTIR DAS 17H', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+}
+const seuQuintoFeed: Papeis = {
   pre: P('The Kathy', 60, 1.1, '#FFFFFF', 'Seu Quinto'),
-  headline: P('Bonoco2023', 76, 0.97, '#FFFFFF', 'SEG COMEÇA\nCOM GOSTO', { trackingEm: -0.013, ...UP }),
+  headline: P('Bonoco2023', 72, 0.97, '#FFFFFF', 'SEG COMEÇA\nCOM GOSTO', { trackingEm: -0.014, ...UP }),
   apoio: P('Bonoco2023', 42, 1.16, '#FAA61A', 'PORÇÃO PRA DIVIDIR\nE CHOPE GELADO', UP),
   cta: P('The Kathy', 54, 1.1, '#FFFFFF', 'Vem pra cá'),
-  servico: P('Bonoco2023', 52, 1.16, '#FFFFFF', 'TERÇA A DOMINGO, A PARTIR DAS 17H', UP),
+  servico: P('Bonoco2023', 46, 1.16, '#FFFFFF', 'TERÇA A DOMINGO, A PARTIR DAS 17H', UP),
 }
-const seuQuintoFeed: Papeis = { ...seuQuinto, headline: P('Bonoco2023', 72, 0.97, '#FFFFFF', 'SEG COMEÇA\nCOM GOSTO', { trackingEm: -0.014, ...UP }), servico: P('Bonoco2023', 46, 1.16, '#FFFFFF', 'TERÇA A DOMINGO, A PARTIR DAS 17H', UP) }
 
-/**
- * Bacana — `design-canvas/bacana-padrao/gerar.py:223-228`. Lockup Cannon
- * book 64 → Cannon extrabold 72, ênfase de PESO nunca de tamanho; laranja
- * marca UMA palavra (ajuste no editor). Sem CTA. Feed = mesma tipografia.
- */
 const bacana: Papeis = {
+  pre: P('Montserrat', 64, 1.0, '#FFFFFF', 'ALMOÇO DE', { ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 102, blur: 329 } }),
+  headline: P('Cannon medium', 72, 1.0, '#FFFFFF', 'SÁBADO', { trackingEm: 0.014, ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Cannon book', 30, 1.35, '#FFFFFF', 'Churrasco na brasa, espaço kids\ne chope gelado o dia todo.', { ...UP, align: 'center', fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 17, blur: 223 } }),
+  cta: null,
+  servico: P('Cannon bold', 32, 1.15, '#FFFFFF', 'SÁBADO, DAS 12H ÀS 17H', { trackingEm: 0.06, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 78, blur: 311 } }),
+}
+const bacanaFeed: Papeis = {
   pre: P('Cannon book', 64, 1.0, '#FFFFFF', 'ALMOÇO DE', { trackingEm: 0.04, ...UP }),
   headline: P('Cannon extrabold', 72, 1.04, '#FFFFFF', 'SÁBADO', { trackingEm: 0.01, ...UP }),
   apoio: P('Cannon book', 34, 1.35, '#FFFFFF', 'Churrasco na brasa, espaço kids\ne chope gelado o dia todo.'),
@@ -151,42 +139,36 @@ const bacana: Papeis = {
   servico: P('Cannon bold', 32, 1.15, '#FFFFFF', 'SÁBADO, DAS 12H ÀS 17H', { trackingEm: 0.06, ...UP }),
 }
 
-/**
- * Espeto Gaúcho — `design-canvas/espeto-semana1/gerar.py:204-206`. Bevan
- * caixa alta (palavra-chave vermelha é ajuste no editor), apoio manuscrito
- * Caveat, CTA Caveat vermelho — o vermelho #F4301A não é servido pelo halo,
- * quem o segura é a sombra. Fonte 1:1 com o cadastro.
- */
 const espeto: Papeis = {
-  pre: P('Barlow Condensed SemiBold', 30, 1.2, '#FFFFFF', 'Churrasco em família', { trackingEm: 0.15, ...UP }),
-  headline: P('Bevan', 76, 0.95, '#FFFFFF', 'RODÍZIO\nCOMPLETO', UP),
-  apoio: P('Caveat SemiBold', 54, 1.02, '#FFFFFF', 'Espeto a espeto, do jeito\nque o gaúcho faz.'),
-  cta: P('Caveat SemiBold', 60, 1.02, '#F4301A', 'Vem pro Espeto!'),
-  servico: P('Barlow Condensed SemiBold', 34, 1.05, '#FFFFFF', 'Todos os dias, das 11h30 às 23h'),
+  pre: P('Barlow Condensed SemiBold', 30, 1.2, '#F4301A', 'Churrasco em família', { trackingEm: 0.15, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 116, blur: 423 } }),
+  headline: P('Bevan', 76, 0.95, '#FFFFFF', 'RODÍZIO\nCOMPLETO', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Caveat SemiBold', 54, 1.02, '#FDC700', 'Espeto a espeto, do jeito\nque o gaúcho faz.', { fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  cta: P('Caveat SemiBold', 60, 1.02, '#F4301A', 'Vem pro Espeto!', { fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 95, blur: 365 } }),
+  servico: P('Barlow Condensed SemiBold', 34, 1.05, '#FFFFFF', 'Todos os dias, das 11h30 às 23h', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
 }
-const espetoFeed: Papeis = { ...espeto, headline: P('Bevan', 88, 0.95, '#FFFFFF', 'RODÍZIO\nCOMPLETO', UP), cta: P('Caveat SemiBold', 58, 1.02, '#F4301A', 'Vem pro Espeto!') }
+const espetoFeed: Papeis = {
+  pre: P('Barlow Condensed SemiBold', 30, 1.2, '#F4301A', 'Churrasco em família', { trackingEm: 0.15, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 108, blur: 356 } }),
+  headline: P('Bevan', 88, 0.95, '#FFFFFF', 'RODÍZIO\nCOMPLETO', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('Caveat SemiBold', 50, 1.02, '#FDC700', 'Espeto a espeto, do jeito\nque o gaúcho faz.', { fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 97, blur: 356 } }),
+  cta: P('Caveat SemiBold', 58, 1.02, '#F4301A', 'Vem pro Espeto!', { fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  servico: P('Barlow Condensed SemiBold', 34, 1.05, '#FFFFFF', 'Todos os dias, das 11h30 às 23h', { fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+}
 
-/**
- * By Rock — `design-canvas/byrock-semana1/gerar.py:401-404, 608`. O canvas
- * rodava em Anton + Barlow (Google Fonts, NÃO cadastradas); o mapeamento
- * segue o DNA da marca: Mortella Display na manchete, Metrisch no resto.
- * Manchete em duas linhas, a 2ª vermelha #C82020 (ajuste no editor).
- */
 const byRock: Papeis = {
   pre: null,
-  headline: P('MortellaDisplay ExtraBold', 92, 0.94, '#FFFFFF', 'SÁBADO\nTEM SAMBA', { trackingEm: 0.005, ...UP }),
-  apoio: P('Metrisch Light', 36, 1.34, '#CCCCCC', 'RODA DE SAMBA AO VIVO\nE CHOPE EM DOBRO ATÉ AS 20H', { trackingEm: 0.006, ...UP }),
-  cta: P('Metrisch BookItalic', 30, 1.3, '#FFFFFF', 'Chama a galera'),
-  servico: P('Metrisch Medium', 35, 1.3, '#FFFFFF', 'Sábado, a partir das 16h', { trackingEm: 0.009 }),
+  headline: P('MortellaDisplay ExtraBold', 92, 0.8, '#FFFFFF', 'SÁBADO\nTEM SAMBA', { trackingEm: 0.011, ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 98, blur: 365 } }),
+  apoio: P('Metrisch Light', 36, 1.0, '#CCCCCC', 'RODA DE SAMBA AO VIVO\nE CHOPE EM DOBRO ATÉ AS 20H', { trackingEm: 0.028, ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  cta: P('Metrisch BookItalic', 30, 1.0, '#FFFFFF', 'Chama a galera', { ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 94, blur: 238 } }),
+  servico: P('Metrisch ExtraBoldItalic', 35, 1.0, '#dc0909', 'Sábado, a partir das 16h', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
 }
-const byRockFeed: Papeis = { ...byRock, headline: P('MortellaDisplay ExtraBold', 86, 0.94, '#FFFFFF', 'SÁBADO\nTEM SAMBA', { trackingEm: 0.006, ...UP }), apoio: P('Metrisch Light', 33, 1.34, '#CCCCCC', 'RODA DE SAMBA AO VIVO\nE CHOPE EM DOBRO ATÉ AS 20H', { trackingEm: 0.006, ...UP }) }
+const byRockFeed: Papeis = {
+  pre: null,
+  headline: P('MortellaDisplay ExtraBold', 86, 0.8, '#FFFFFF', 'SÁBADO\nTEM SAMBA', { ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 95, blur: 365 } }),
+  apoio: P('Metrisch Light', 33, 1.0, '#CCCCCC', 'RODA DE SAMBA AO VIVO\nE CHOPE EM DOBRO ATÉ AS 20H', { trackingEm: 0.006, ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  cta: P('Metrisch BookItalic', 30, 1.0, '#FFFFFF', 'Chama a galera', { ...UP, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 86, blur: 294 } }),
+  servico: P('Metrisch Medium', 35, 1.0, '#dc0909', 'Sábado, a partir das 16h', { ...UP, fundo: { cor: '#111111', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+}
 
-/**
- * Wine Vix — `design-canvas/winevix-semana1/gerar.py:237-245, 378`. Playfair
- * itálica Title Case com UMA palavra dourada #FCE77B (ajuste no editor);
- * Lato caixa alta no resto. Mancha merlot #240000 ≠ fundo. A logo é disco
- * opaco: sem halo próprio.
- */
 const wineVix: Papeis = {
   pre: P('Lato Bold', 30, 1.2, '#F9F7F2', 'Harmonização', { trackingEm: 0.14, ...UP, fundo: { cor: '#3c191d', fit: 'texto', opacidade: 1, padding: 183, blur: 347 } }),
   headline: P('PlayfairDisplay SemiBoldItalic', 84, 0.9, '#FCE77B', 'A Adega Abre\na Semana', { fundo: { cor: '#722f37', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
@@ -195,69 +177,29 @@ const wineVix: Papeis = {
   servico: P('Lato Light', 32, 1.2, '#F9F7F2', 'TERÇA A SÁBADO, DAS 18H ÀS 23H', { trackingEm: 0.1, ...UP, align: 'right', fundo: { cor: '#722f37', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
 }
 
-/**
- * Empório Fonseca — `design-canvas/emporio-padrao/gerar.py:103-110, 214-227`.
- * Trajan sem text-transform (a fonte resolve o versalete; a caixa alta vem
- * do CONTEÚDO); apoio dourado é a única voz dourada; serviço Friz. Sem CTA.
- */
 const emporio: Papeis = {
-  pre: P('TrajanPro Regular', 52, 1.12, '#FFFFFF', 'Quarta da pizza', { trackingEm: 0.02 }),
-  headline: P('TrajanPro Bold', 96, 1.06, '#FFFFFF', 'CAFÉ DE\nMÉTODO', { trackingEm: 0.03 }),
-  apoio: P('TrajanPro Regular', 44, 1.3, '#CAB371', 'Grãos selecionados, passados\nna hora, do jeito da casa.', { trackingEm: 0.02 }),
+  pre: P('TrajanPro Regular', 43, 1.0, '#FFFFFF', 'Quarta da pizza', { trackingEm: 0.023, align: 'center', fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 150, blur: 444 } }),
+  headline: P('TrajanPro Bold', 58, 1.0, '#CAB371', 'CAFÉ DE MÉTODO', { align: 'center', fundo: { cor: '#4d5d75', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('TrajanPro Regular', 38, 1.0, '#CAB371', 'Grãos selecionados, passados\nna hora, do jeito da casa.', { fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 108, blur: 374 } }),
   cta: null,
-  servico: P('FRZQUADB', 38, 1.25, '#FFFFFF', 'Segunda a sábado, das 8h às 20h', { trackingEm: 0.06 }),
+  servico: P('FRZQUADB', 36, 1.0, '#FFFFFF', 'Segunda a sábado, das 8h às 20h', { fundo: { cor: '#4d5d75', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
 }
 const emporioFeed: Papeis = {
-  pre: P('TrajanPro Regular', 46, 1.12, '#FFFFFF', 'Quarta da pizza', { trackingEm: 0.02 }),
-  headline: P('TrajanPro Bold', 84, 1.06, '#FFFFFF', 'CAFÉ DE\nMÉTODO', { trackingEm: 0.03 }),
-  apoio: P('TrajanPro Regular', 40, 1.3, '#CAB371', 'Grãos selecionados, passados\nna hora, do jeito da casa.', { trackingEm: 0.02 }),
+  pre: P('TrajanPro Regular', 37, 1.0, '#CAB371', 'Quarta da pizza', { fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 116, blur: 444 } }),
+  headline: P('TrajanPro Bold', 62, 1.0, '#FFFFFF', 'CAFÉ DE MÉTODO', { fundo: { cor: '#4d5d75', fit: 'texto', opacidade: 0.7, padding: 60, blur: 110 } }),
+  apoio: P('TrajanPro Regular', 30, 1.3, '#CAB371', 'Grãos selecionados, passados\nna hora, do jeito da casa.', { trackingEm: 0.027, fundo: { cor: '#000000', fit: 'texto', opacidade: 1, padding: 81, blur: 384 } }),
   cta: null,
-  servico: P('FRZQUADB', 34, 1.25, '#FFFFFF', 'Segunda a sábado, das 8h às 20h', { trackingEm: 0.06 }),
+  servico: null,
 }
 
 export const KITS_DE_ASSINATURA: Record<number, KitDeAssinatura> = {
-  1: {
-    formatos: { story: real, feed: realFeed },
-    logo: { largura: 170 },
-    fundo: '#283D36',
-    numeros: { mancha: '#283D36', fundo: '#283D36', halo: { faixaTexto: [0.4, 0.8], faixaMarca: [0.3, 0.6], raioTexto: 150, raioMarca: 150 }, logo: { largura: 170 }, geometria: { story: geo(96, 250, 350, 1), feed: geo(96, 120, 100, 88 / 96), quadrado: geo(96, 120, 100, 0.85, 12) } },
-  },
-  2: {
-    formatos: { story: quintal },
-    logo: { largura: 236 },
-    fundo: '#1F1B16',
-    numeros: { mancha: '#1F1B16', fundo: '#1F1B16', halo: { faixaTexto: [0.3, 0.9], faixaMarca: [0.2, 0.5], raioTexto: 130, raioMarca: 130 }, logo: { largura: 236 }, geometria: { story: geo(92, 200, 172, 1), feed: geo(92, 120, 104, 0.875), quadrado: geo(92, 120, 104, 0.85, 12) } },
-  },
-  3: {
-    formatos: { story: tero, feed: teroFeed },
-    logo: { largura: 198 },
-    fundo: '#130D0A',
-    numeros: { mancha: '#130D0A', fundo: '#130D0A', halo: { faixaTexto: [0.3, 0.85], faixaMarca: [0.2, 0.6], raioTexto: 96, raioMarca: 96 }, logo: { largura: 198 }, geometria: { story: geo(96, 120, 100, 1), feed: geo(96, 120, 110, 1), quadrado: geo(96, 120, 110, 0.9, 12) } },
-  },
-  4: {
-    formatos: { story: seuQuinto, feed: seuQuintoFeed },
-    logo: { largura: 120 },
-    fundo: '#0E0B08',
-    numeros: { mancha: '#0E0B08', fundo: '#0E0B08', halo: { faixaTexto: [0.5, 0.9], faixaMarca: [0, 0], raioTexto: 103, raioMarca: 60 }, logo: { largura: 120 }, geometria: { story: geo(88, 200, 180, 1), feed: geo(88, 120, 100, 1), quadrado: geo(88, 120, 100, 0.9, 12) } },
-  },
-  5: {
-    formatos: { story: bacana, feed: bacana },
-    logo: { largura: 170 },
-    fundo: '#1A1410',
-    numeros: { mancha: '#1A1410', fundo: '#1A1410', halo: { faixaTexto: [0.4, 0.85], faixaMarca: [0.3, 0.6], raioTexto: 112, raioMarca: 132 }, logo: { largura: 170 }, geometria: { story: geo(84, 200, 150, 1), feed: geo(84, 120, 100, 1), quadrado: geo(84, 120, 100, 0.9, 12) } },
-  },
-  6: {
-    formatos: { story: espeto, feed: espetoFeed },
-    logo: { largura: 172 },
-    fundo: '#2B1A12',
-    numeros: { mancha: '#170E09', fundo: '#2B1A12', halo: { faixaTexto: [0.42, 0.86], faixaMarca: [0.14, 0.3], raioTexto: 152, raioMarca: 120 }, logo: { largura: 172 }, geometria: { story: geo(90, 120, 100, 1), feed: geo(90, 120, 104, 1), quadrado: geo(90, 120, 104, 0.9, 12) } },
-  },
-  7: {
-    formatos: { story: byRock, feed: byRockFeed },
-    logo: { largura: 136 },
-    fundo: '#111111',
-    numeros: { mancha: '#111111', fundo: '#111111', halo: { faixaTexto: [0.4, 0.85], faixaMarca: [0.3, 0.6], raioTexto: 158, raioMarca: 158 }, logo: { largura: 136 }, geometria: { story: geo(72, 140, 100, 1), feed: geo(72, 120, 100, 1), quadrado: geo(72, 120, 100, 0.9, 12) } },
-  },
+  1: { formatos: { story: real, feed: realFeed }, logo: { largura: 151 }, fundo: '#283D36', numeros: { mancha: '#283D36', fundo: '#283D36', halo: { faixaTexto: [0.4, 0.8], faixaMarca: [0.3, 0.6], raioTexto: 150, raioMarca: 150 }, logo: { largura: 151 }, geometria: { story: geo(96, 250, 350, 1), feed: geo(96, 120, 100, 88 / 96), quadrado: geo(96, 120, 100, 0.85, 12) } } },
+  2: { formatos: { story: quintal }, logo: { largura: 238 }, fundo: '#1F1B16', numeros: { mancha: '#1F1B16', fundo: '#1F1B16', halo: { faixaTexto: [0.3, 0.9], faixaMarca: [0.2, 0.5], raioTexto: 130, raioMarca: 130 }, logo: { largura: 238 }, geometria: { story: geo(92, 200, 172, 1), feed: geo(92, 120, 104, 0.875), quadrado: geo(92, 120, 104, 0.85, 12) } } },
+  3: { formatos: { story: tero, feed: teroFeed }, logo: { largura: 198 }, fundo: '#130D0A', numeros: { mancha: '#130D0A', fundo: '#130D0A', halo: { faixaTexto: [0.3, 0.85], faixaMarca: [0.2, 0.6], raioTexto: 96, raioMarca: 96 }, logo: { largura: 198 }, geometria: { story: geo(96, 120, 100, 1), feed: geo(96, 120, 110, 1), quadrado: geo(96, 120, 110, 0.9, 12) } } },
+  4: { formatos: { story: seuQuinto, feed: seuQuintoFeed }, logo: { largura: 118 }, fundo: '#0E0B08', numeros: { mancha: '#0E0B08', fundo: '#0E0B08', halo: { faixaTexto: [0.5, 0.9], faixaMarca: [0, 0], raioTexto: 103, raioMarca: 60 }, logo: { largura: 118 }, geometria: { story: geo(88, 200, 180, 1), feed: geo(88, 120, 100, 1), quadrado: geo(88, 120, 100, 0.9, 12) } } },
+  5: { formatos: { story: bacana, feed: bacanaFeed }, logo: { largura: 200 }, fundo: '#1A1410', numeros: { mancha: '#1A1410', fundo: '#1A1410', halo: { faixaTexto: [0.4, 0.85], faixaMarca: [0.3, 0.6], raioTexto: 112, raioMarca: 132 }, logo: { largura: 200 }, geometria: { story: geo(84, 200, 150, 1), feed: geo(84, 120, 100, 1), quadrado: geo(84, 120, 100, 0.9, 12) } } },
+  6: { formatos: { story: espeto, feed: espetoFeed }, logo: { largura: 145 }, fundo: '#2B1A12', numeros: { mancha: '#170E09', fundo: '#2B1A12', halo: { faixaTexto: [0.42, 0.86], faixaMarca: [0.14, 0.3], raioTexto: 152, raioMarca: 120 }, logo: { largura: 145 }, geometria: { story: geo(90, 120, 100, 1), feed: geo(90, 120, 104, 1), quadrado: geo(90, 120, 104, 0.9, 12) } } },
+  7: { formatos: { story: byRock, feed: byRockFeed }, logo: { largura: 136 }, fundo: '#111111', numeros: { mancha: '#111111', fundo: '#111111', halo: { faixaTexto: [0.4, 0.85], faixaMarca: [0.3, 0.6], raioTexto: 158, raioMarca: 158 }, logo: { largura: 136 }, geometria: { story: geo(72, 140, 100, 1), feed: geo(72, 120, 100, 1), quadrado: geo(72, 120, 100, 0.9, 12) } } },
   8: {
     formatos: { story: lagosta(1), feed: lagosta(84 / 96) },
     logo: { largura: 236 },
@@ -274,16 +216,6 @@ export const KITS_DE_ASSINATURA: Record<number, KitDeAssinatura> = {
       },
     },
   },
-  11: {
-    formatos: { story: wineVix },
-    logo: { largura: 148 },
-    fundo: '#241A16',
-    numeros: { mancha: '#240000', fundo: '#241A16', halo: { faixaTexto: [0.3, 0.85], faixaMarca: [0, 0], raioTexto: 150, raioMarca: 60 }, logo: { largura: 148 }, geometria: { story: geo(96, 200, 150, 1), feed: geo(96, 120, 100, 0.875), quadrado: geo(96, 120, 100, 0.85, 12) } },
-  },
-  12: {
-    formatos: { story: emporio, feed: emporioFeed },
-    logo: { largura: 200 },
-    fundo: '#2C3445',
-    numeros: { mancha: '#2C3445', fundo: '#2C3445', halo: { faixaTexto: [0.46, 0.76], faixaMarca: [0.4, 0.8], raioTexto: 96, raioMarca: 96 }, logo: { largura: 200 }, geometria: { story: geo(88, 184, 184, 1), feed: geo(88, 120, 100, 84 / 96), quadrado: geo(88, 120, 100, 0.85, 12) } },
-  },
+  11: { formatos: { story: wineVix }, logo: { largura: 148 }, fundo: '#241A16', numeros: { mancha: '#240000', fundo: '#241A16', halo: { faixaTexto: [0.3, 0.85], faixaMarca: [0, 0], raioTexto: 150, raioMarca: 60 }, logo: { largura: 148 }, geometria: { story: geo(96, 200, 150, 1), feed: geo(96, 120, 100, 0.875), quadrado: geo(96, 120, 100, 0.85, 12) } } },
+  12: { formatos: { story: emporio, feed: emporioFeed }, logo: { largura: 200 }, fundo: '#2C3445', numeros: { mancha: '#2C3445', fundo: '#2C3445', halo: { faixaTexto: [0.46, 0.76], faixaMarca: [0.4, 0.8], raioTexto: 96, raioMarca: 96 }, logo: { largura: 200 }, geometria: { story: geo(88, 184, 184, 1), feed: geo(88, 120, 100, 84 / 96), quadrado: geo(88, 120, 100, 0.85, 12) } } },
 }

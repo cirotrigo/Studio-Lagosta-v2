@@ -42,6 +42,8 @@ describe('assinatura', () => {
     expect(papelDoNome('Descrição')).toBe('apoio')
     expect(papelDoNome('CTA')).toBe('cta')
     expect(papelDoNome('Serviço')).toBe('servico')
+    expect(papelDoNome('headline Copy')).toBe('headline2')
+    expect(papelDoNome('Título 2')).toBe('headline2')
     expect(papelDoNome('Foto de fundo')).toBeNull()
   })
 

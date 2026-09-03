@@ -138,6 +138,7 @@ export function papelDoNome(nome: string | null | undefined): Papel | null {
     .trim()
   if (!n) return null
   if (/^(pre|pre-?titulo|pretitulo|kicker|sobretitulo)$/.test(n)) return 'pre'
+  if (/^(headline|titulo|manchete|title)[\s-]*(copy|2|b|dois|segunda)$/.test(n)) return 'headline2'
   if (/^(headline|titulo|manchete|title)$/.test(n)) return 'headline'
   if (/^(apoio|descricao|subtitulo|corpo|body)$/.test(n)) return 'apoio'
   if (/^(cta|chamada)$/.test(n)) return 'cta'

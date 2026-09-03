@@ -95,7 +95,8 @@ async function criarAssinatura(projectId: number, confirmar: boolean) {
     let ordem = 0
     for (const [papel, k] of Object.entries(papeis)) {
       if (!k) continue
-      if (!fontes.has(k.fontFamily)) throw new Error(`fonte "${k.fontFamily}" não está cadastrada no projeto ${projectId}`)
+      // Montserrat vem embutida no render (CanvasRenderer registra 8 pesos).
+      if (!fontes.has(k.fontFamily) && !/^Montserrat/.test(k.fontFamily)) throw new Error(`fonte "${k.fontFamily}" não está cadastrada no projeto ${projectId}`)
       const camada = camadaDePapel(papel, k, y, ordem++, kit.numeros.mancha ?? '#111111')
       camadas.push(camada)
       y += camada.size.height + 24

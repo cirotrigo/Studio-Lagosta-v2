@@ -11,7 +11,13 @@
 import { z } from 'zod'
 
 export const PAPEIS = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
-export type Papel = (typeof PAPEIS)[number]
+/**
+ * Os papéis da SPEC mais o interno `headline2`: a SEGUNDA VOZ da manchete
+ * (Quintal DomaniCP→Amithen, TERO âmbar→creme, By Rock 2ª linha vermelha).
+ * Ninguém pede `headline2` na spec — quando a assinatura o tem e a manchete
+ * vem com 2+ linhas, a ÚLTIMA linha sai nessa voz.
+ */
+export type Papel = (typeof PAPEIS)[number] | 'headline2'
 
 export const FORMATOS = ['story', 'feed', 'quadrado'] as const
 export type Formato = (typeof FORMATOS)[number]

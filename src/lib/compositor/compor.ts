@@ -410,7 +410,18 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const principais: BlocoMontado[] = []
   let servico: BlocoMontado | null = null
   const recusas: Array<{ papel: Papel; orcamento: unknown }> = []
-  for (const b of spec.blocos) {
+  // A manchete com segunda voz vira DOIS blocos no mesmo grupo: as linhas de
+  // cima na voz 1 e a última na voz 2 (o que o Quintal, o TERO e o By Rock
+  // fazem à mão). Sem `headline2` na assinatura, nada muda.
+  const blocosDaSpec = spec.blocos.flatMap((b) =>
+    b.papel === 'headline' && assinatura.papeis.headline2 && b.linhas.length >= 2
+      ? [
+          { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1) },
+          { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1) },
+        ]
+      : [b as { papel: Papel; linhas: string[] }],
+  )
+  for (const b of blocosDaSpec) {
     const estilo = assinatura.papeis[b.papel]!
     const r = montarBloco({
       papel: b.papel,
