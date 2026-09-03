@@ -3421,6 +3421,34 @@ novo:
   há modelo de ALMOÇO EXECUTIVO no pool — o teste caiu no de parrilla; cadastrar
   é curadoria, não código.
 
+### 🔴 A régua por visão exigia a LOGO como texto (TERO, 03/09/2026)
+
+A Roberta não conseguia melhorar nenhuma arte do TERO: as duas tentativas
+falhavam por "texto divergente" com blocos que NÃO são copy — `"TRO"` e
+`"BRASA E VINHO"`. Medido com o transcritor de produção nas artes de origem:
+`transcreverTextosDaArte` lê a logo como texto (`TERO`, `BRASA E VINHO` e,
+pela ligadura E+R, `TRO`), e a peça gerada nunca a traz — no projeto em
+`compor` o prompt reserva o canto e o PNG oficial é colado DEPOIS da
+conferência (`finalizarLogoDaMelhoria` vem depois de `verifyImageTexts`).
+Defeito determinístico: 100% das melhorias de arte do canvas/upload do TERO
+reprovavam, nas duas tentativas do job. A logo do Quintal fez o mesmo em 02/09
+(`"PARRILLA BAR"`).
+
+- **A régua por visão passa por `semTextosDaMarca`** (`text-comparison.ts`,
+  puro): a logo oficial é transcrita à parte (uma chamada de visão a mais) e
+  saem da régua o bloco contido num texto da logo, o bloco cujas palavras são
+  todas da marca/genérico de casa, e a palavra curta a UMA edição de uma
+  palavra da marca (a ligadura mal lida: `TRO`, `TLRO`, `TERRO`). A régua do
+  BANCO e da LINHAGEM não passam por ali — copy aprovada não traz logo.
+- **Copy que CITA a marca fica** ("SABORES TERO", "VEM PRO TERO"): tem palavra
+  que não é da marca. E a distância de uma edição vale só para marca e logo,
+  nunca para os genéricos — senão "MAR" cai por parecer "BAR".
+- A transcrição COMPLETA da origem (com a logo) continua servindo à caixa
+  (`aplicarCaixaDaOrigem`) e ao desconto do texto a mais; o que muda é só o
+  que a conferência EXIGE. Os blocos descontados ficam em
+  `fieldValues.textosDaMarcaDescontados`.
+- Casos reais em `scripts/validar-regua-sem-marca.ts` (sem banco, sem API).
+
 ### Halo: a leitura do texto sobre a foto sem véu (01/09/2026)
 
 O véu — gradiente que escurecia a faixa INTEIRA do topo ou do rodapé — foi

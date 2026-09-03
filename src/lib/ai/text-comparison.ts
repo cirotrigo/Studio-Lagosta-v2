@@ -225,3 +225,82 @@ export function descontarTextosDaOrigem(blocos: BlocosAMais, textosDaOrigem: str
     semDado: blocos.semDado.filter((b) => !jaEstava(b)),
   }
 }
+
+/** Palavras genéricas de casa que aparecem coladas à marca na assinatura. */
+const GENERICOS_DE_CASA = ['BAR', 'RESTAURANTE', 'BISTRO', 'GELATERIA', 'STEAKHOUSE', 'BOTEQUIM', 'PIZZARIA', 'CAFE', 'GRILL']
+
+function distanciaDeEdicao(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
+  for (let i = 1; i <= a.length; i++) {
+    let diag = prev[0]
+    prev[0] = i
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = prev[j]
+      prev[j] = Math.min(prev[j] + 1, prev[j - 1] + 1, diag + (a[i - 1] === b[j - 1] ? 0 : 1))
+      diag = tmp
+    }
+  }
+  return prev[b.length]
+}
+
+export interface ReguaSemMarca {
+  regua: string[]
+  descontados: string[]
+}
+
+/**
+ * Tira da régua por VISÃO os blocos que são a MARCA, não a copy.
+ *
+ * 🔴 Medido no TERO em 03/09/2026: `transcreverTextosDaArte` lê a arte de
+ * origem inteira, e a logo está nela — "TERO", "BRASA E VINHO" e, por causa
+ * da ligadura E+R, "TRO". Esses blocos viravam texto esperado, e a peça
+ * gerada NUNCA os traz: no projeto em `compor` o prompt reserva o canto e o
+ * PNG oficial só é colado DEPOIS da conferência; no `modelo` a leitura da
+ * ligadura oscila entre rodadas. Resultado: toda melhoria de arte do canvas
+ * do TERO reprovava por "texto divergente", duas vezes, e a Roberta não
+ * conseguia melhorar nada. A logo do Quintal fez o mesmo em 02/09
+ * ("PARRILLA BAR").
+ *
+ * A régua do BANCO e da LINHAGEM nunca passam por aqui — copy aprovada não
+ * traz a logo. Só a transcrição da origem.
+ *
+ * O que sai:
+ *  - bloco contido num texto da logo oficial (a logo é transcrita à parte);
+ *  - bloco cujas palavras são todas da marca ou genérico de casa ("O QUINTAL",
+ *    "PARRILLA BAR");
+ *  - palavra curta (≤ 6 letras, sem espaço) a UMA edição de uma palavra da
+ *    marca ou da logo — é a ligadura mal lida ("TRO", "TLRO", "TERRO").
+ *
+ * "SABORES TERO" FICA: tem palavra que não é da marca. A manchete que cita a
+ * casa é copy e precisa ser reproduzida.
+ */
+export function semTextosDaMarca(
+  blocos: string[],
+  opts: { nomeDaMarca?: string | null; textosDaLogo?: string[] } = {},
+): ReguaSemMarca {
+  const marca = opts.nomeDaMarca ? normalizeForComparison(opts.nomeDaMarca) : ''
+  const logo = (opts.textosDaLogo ?? []).map(normalizeForComparison).filter((t) => t.length > 0)
+  const palavrasDaMarca = new Set(
+    [...marca.split(' '), ...logo.flatMap((t) => t.split(' ')), ...GENERICOS_DE_CASA].filter((p) => p.length >= 2),
+  )
+  // A distância de UMA edição vale só para a marca e a logo — nunca para os
+  // genéricos de casa, senão "MAR" cai por parecer "BAR".
+  const palavrasCurtasDaMarca = [...marca.split(' '), ...logo.flatMap((t) => t.split(' '))].filter(
+    (p) => /^[A-Z]+$/.test(p) && p.length >= 3,
+  )
+
+  const regua: string[] = []
+  const descontados: string[] = []
+  for (const bruto of blocos) {
+    const alvo = normalizeForComparison(bruto)
+    if (alvo.length === 0) continue
+    const contidoNaLogo = logo.some((t) => t.includes(alvo))
+    const palavras = alvo.split(' ').filter((p) => p.length >= 2)
+    const soMarca = palavras.length > 0 && palavras.every((p) => palavrasDaMarca.has(p))
+    const ligadura =
+      /^[A-Z]{2,6}$/.test(alvo) && palavrasCurtasDaMarca.some((p) => distanciaDeEdicao(alvo, p) <= 1)
+    if (contidoNaLogo || soMarca || ligadura) descontados.push(bruto)
+    else regua.push(bruto)
+  }
+  return { regua, descontados }
+}
