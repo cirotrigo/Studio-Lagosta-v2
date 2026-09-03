@@ -324,11 +324,16 @@ function escolherCanto(args: {
       ? ['inferior-esquerdo', 'inferior-direito']
       : ['inferior-esquerdo', 'inferior-direito', 'superior-direito', 'superior-esquerdo']
   const candidatos: Canto[] = args.pedido && args.pedido !== 'auto' ? [args.pedido] : todos
-  const livres = candidatos
-    .map((canto) => ({ canto, rect: retanguloDoCanto(args.g, canto, args.logo.w, args.logo.h) }))
-    .filter((c) => !args.blocos.some((b) => intersecta(b, c.rect)))
-  const lista = livres.length > 0 ? livres : candidatos.map((canto) => ({ canto, rect: retanguloDoCanto(args.g, canto, args.logo.w, args.logo.h) }))
-  const pontuados = lista.map((c) => {
+  const comRect = (lista: Canto[]) => lista.map((canto) => ({ canto, rect: retanguloDoCanto(args.g, canto, args.logo.w, args.logo.h) }))
+  const semColisao = (lista: ReturnType<typeof comRect>) => lista.filter((c) => !args.blocos.some((b) => intersecta(b, c.rect)))
+  // 1º os cantos preferidos livres; 2º qualquer canto livre (serviço
+  // centralizado no rodapé toma os dois de baixo — medido no Empório, a logo
+  // pousava em cima do horário); 3º o menos ruim.
+  const todosOsCantos: Canto[] = ['inferior-esquerdo', 'inferior-direito', 'superior-direito', 'superior-esquerdo']
+  const livres = semColisao(comRect(candidatos))
+  const lista = livres.length > 0 ? livres : semColisao(comRect(args.pedido && args.pedido !== 'auto' ? candidatos : todosOsCantos))
+  const finais = lista.length > 0 ? lista : comRect(candidatos)
+  const pontuados = finais.map((c) => {
     const leitura = args.mapa ? lerMapaSob(args.mapa, c.rect) : { p98: 0, energia: 0, media: 0, cobertura: 1 }
     const emax = Math.max(1, args.mapa?.energiaMaxima ?? 1)
     // No story a logo prefere o RODAPÉ (o topo tem avatar e barra do Instagram).

@@ -147,8 +147,14 @@ export async function medirContrasteDaPeca(args: {
     grupo,
     camadas,
     rect: uniao(camadas.map(rectDe))!,
-    escuro: camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF'))),
-    alvo: camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF')))
+    // "Escuro" é texto escuro SOBRE MANCHA CLARA (Real: verde sobre creme).
+    // Vermelho ou amarelo saturado sobre mancha escura (Espeto, By Rock) têm
+    // luz baixa mas leem pelo contraste de cor — medi-los como escuros
+    // acusava 'fundo escuro demais' em toda peça.
+    escuro:
+      camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF'))) &&
+      luzDaCor(String(camadas[0].effects?.background?.backgroundColor ?? '#111111')) >= 128,
+    alvo: camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF'))) && luzDaCor(String(camadas[0].effects?.background?.backgroundColor ?? '#111111')) >= 128
       ? Math.max(...camadas.map((c) => alvoClaroPorContraste(String(c.style?.color ?? '#000000'), 3)))
       : Math.min(...camadas.map((c) => alvoPorContraste(String(c.style?.color ?? '#FFFFFF'), 3))),
     tinta: Number(camadas[0].effects?.background?.opacity ?? 0),
