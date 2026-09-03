@@ -123,10 +123,12 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
         )
     }
 
+    // Grid, não `columns`: com um card só (a assinatura) o contêiner de
+    // colunas não media a altura e o título da seção seguinte subia por cima.
     const grade = (lista: Template[], comSituacao = false) => (
-        <div className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6 gap-4 space-y-4">
+        <div className="grid grid-cols-2 gap-4 items-start sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {lista.map((template, index) => (
-                <div key={template.id} className="break-inside-avoid mb-4">
+                <div key={template.id}>
                     <TemplateItem index={index} template={template} onDuplicate={handleDuplicate} onDelete={handleDelete} />
                     {comSituacao && template.situacao && <SituacaoDaPasta s={template.situacao} />}
                 </div>
@@ -149,15 +151,7 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
             <Secao
                 icone={<PenTool className="h-4 w-4" />}
                 titulo="Modelos da equipe"
-                descricao="Layouts que vocês desenharam para reusar, sem pedir para criar."
-                acao={
-                    onCreateClick ? (
-                        <Button size="sm" variant="outline" onClick={onCreateClick}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Novo modelo
-                        </Button>
-                    ) : null
-                }
+                descricao="Layouts que vocês desenharam para reusar, sem pedir para criar. O botão Novo Template cria aqui."
             >
                 {grupos.equipe.length > 0 ? (
                     grade(grupos.equipe)
