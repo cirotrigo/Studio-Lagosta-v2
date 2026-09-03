@@ -400,15 +400,21 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     chave: `${spec.nome ?? ''}|${spec.tema ?? ''}|${spec.foto?.driveFileId ?? spec.foto?.url ?? ''}|${spec.blocos[0]?.linhas.join(' ') ?? ''}`,
   })
   const faltam = papeisQueFaltam(assinatura, spec.blocos.map((b) => b.papel))
-  if (!assinatura.origem.pageId || faltam.length > 0) {
+  if (!assinatura.origem.pageId || faltam.includes('headline')) {
     throw new CreativeError(
       'ASSINATURA_INCOMPLETA',
       assinatura.origem.pageId
-        ? `A página de assinatura do projeto não tem os papéis: ${faltam.join(', ')}. Adicione camadas de texto com esses nomes e o estilo da marca.`
+        ? 'A página de assinatura escolhida não tem a camada "headline" — sem a manchete não há peça.'
         : 'O projeto não tem página de assinatura (template "Assinatura", página com a tag "assinatura"). Sem ela o compositor não sabe a fonte, o tamanho nem a cor de cada papel.',
       422,
       { faltam },
     )
+  }
+  // Papel pedido que ESTA variante não tem (uma story sem pré-título, por
+  // exemplo) sai da peça com aviso — a variante é um desenho, não um defeito.
+  if (faltam.length > 0) {
+    avisos.push(`A variante "${assinatura.origem.variante ?? ''}" não tem ${faltam.join(', ')}: esse texto ficou de fora.`)
+    spec.blocos = spec.blocos.filter((b) => !faltam.includes(b.papel))
   }
 
   const geo = assinatura.numeros.geometria[spec.formato]
