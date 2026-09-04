@@ -237,10 +237,21 @@ export async function fecharJob(id: string, generationId: string): Promise<'DONE
     select: { status: true, fieldValues: true },
   })
   const ok = gen?.status === 'COMPLETED'
-  const erro =
+  const registrado =
     !ok && gen?.fieldValues && typeof gen.fieldValues === 'object'
       ? String((gen.fieldValues as Record<string, unknown>).error ?? '').slice(0, 500)
-      : null
+      : ''
+  // Generation que o runner NÃO fechou (ainda PROCESSING, ou sumiu) é defeito
+  // do runner, não da arte — e precisa ficar escrito. Em 04/09/2026 vinte jobs
+  // COMPOR do Espeto Gaúcho viraram FAILED sem `lastError` nenhum porque o
+  // compositor gravava a peça numa Generation NOVA e deixava a da fila em
+  // PROCESSING; sem o motivo, o sintoma parecia falha de render.
+  const erro = ok
+    ? null
+    : registrado ||
+      (!gen
+        ? 'a Generation deste job não existe mais'
+        : `o runner terminou sem fechar a Generation (ficou ${gen.status}) — defeito do runner, não da arte`)
 
   await db.generationJob.updateMany({
     where: { id, status: 'RUNNING' },
