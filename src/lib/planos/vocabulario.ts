@@ -170,7 +170,7 @@ export function motivoDeNaoEditavel(status: StatusDoItem): string {
  * `template` é o padrão porque é a via MAIS usada e não gasta API de imagem —
  * IA é a exceção, pedida quando nenhum modelo serve.
  */
-export type ViaDoItem = 'template' | 'ia'
+export type ViaDoItem = 'template' | 'ia' | 'compor'
 
 export const VIAS: Array<{ valor: ViaDoItem; rotulo: string; custo: string }> = [
   {
@@ -182,6 +182,11 @@ export const VIAS: Array<{ valor: ViaDoItem; rotulo: string; custo: string }> = 
     valor: 'ia',
     rotulo: 'gerada por IA',
     custo: 'Gasta crédito de imagem a cada arte.',
+  },
+  {
+    valor: 'compor',
+    rotulo: 'composta pelo editor',
+    custo: 'Não gasta crédito — o texto pousa na área livre da foto com a assinatura da marca, e a peça nasce editável.',
   },
 ]
 
@@ -229,7 +234,7 @@ export function normalizarStatusDoItem(valor: unknown): StatusDoItem | undefined
 
 export function normalizarVia(valor: unknown): ViaDoItem | undefined {
   const limpo = normalizarTexto(valor)
-  return limpo === 'template' || limpo === 'ia' ? limpo : undefined
+  return limpo === 'template' || limpo === 'ia' || limpo === 'compor' ? limpo : undefined
 }
 
 export function normalizarFormato(valor: unknown): FormatoDoItem | undefined {

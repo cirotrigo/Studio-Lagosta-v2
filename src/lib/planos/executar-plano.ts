@@ -46,6 +46,7 @@ import {
   type CampoDeTexto,
   type ContaDaExecucao,
 } from '@/lib/planos/execucao'
+import { copyParaBlocos } from '@/lib/compositor/copy-para-blocos'
 
 export interface ExecutarPlanoInput {
   projectId: number
@@ -229,7 +230,8 @@ export async function executarPlano(input: ExecutarPlanoInput): Promise<Resultad
   // A IA primeiro: enfileirar custa milissegundos, e assim um corte por tempo
   // só atinge o render de modelo — que é o trabalho barato de retomar.
   const porIA = elegiveis.filter((i) => i.via === 'ia')
-  const porModelo = elegiveis.filter((i) => i.via !== 'ia')
+  const porCompor = elegiveis.filter((i) => i.via === 'compor')
+  const porModelo = elegiveis.filter((i) => i.via !== 'ia' && i.via !== 'compor')
 
   let semCredito = false
   for (const item of porIA) {
@@ -249,6 +251,18 @@ export async function executarPlano(input: ExecutarPlanoInput): Promise<Resultad
       const motivo = mensagemDoErro(erro)
       if (erro instanceof CreativeError && erro.code === 'CREDITOS_INSUFICIENTES') semCredito = true
       falhas.push({ itemId: item.id, tema: item.tema, via: 'ia', motivo })
+      await marcarErro(input, item, motivo)
+    }
+  }
+
+  // Composição pelo editor: só ENFILEIRA (custa milissegundos, zero crédito)
+  // — a fila durável compõe em série, fora desta invocação.
+  for (const item of porCompor) {
+    try {
+      executados.push(await enfileirarItemDeComposicao(item, input))
+    } catch (erro) {
+      const motivo = mensagemDoErro(erro)
+      falhas.push({ itemId: item.id, tema: item.tema, via: 'compor', motivo })
       await marcarErro(input, item, motivo)
     }
   }
@@ -347,6 +361,63 @@ async function mover(
 
 async function marcarErro(input: ContextoDeProducao, item: ItemDoPlano, motivo: string): Promise<void> {
   await mover(input, item, 'erro', { erro: motivo })
+}
+
+/** A spec do compositor a partir do item — copy por ordem de leitura, foto e formato. */
+function specDoItem(item: ItemDoPlano, projectId: number) {
+  const blocos = copyParaBlocos(item.copyProposta ?? [])
+  if (blocos.length === 0) {
+    throw new CreativeError('ITEM_INCOMPLETO', 'Este item não tem texto — o compositor precisa de pelo menos a manchete.', 400)
+  }
+  const foto = item.fotoDriveId?.trim()
+    ? { driveFileId: item.fotoDriveId.trim() }
+    : item.fotoUrl?.trim()
+      ? { url: item.fotoUrl.trim() }
+      : undefined
+  return {
+    projectId,
+    formato: (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story',
+    ...(foto ? { foto } : {}),
+    blocos,
+    ...(item.tema ? { tema: item.tema, nome: `${item.tema} — plano` } : {}),
+    itemDePlanoId: item.id,
+    planoId: item.planoId,
+    ...(item.quando ? { quando: typeof item.quando === 'string' ? item.quando : new Date(item.quando as unknown as string).toISOString() } : {}),
+  }
+}
+
+/**
+ * Item pelo COMPOSITOR (editor-como-usina): Generation PROCESSING + job na
+ * fila durável; o item fica "na fila" e `ver-plano` reconcila quando a peça
+ * existir. Sem `dispararJobAgora` — mesma regra do item de IA.
+ */
+async function enfileirarItemDeComposicao(item: ItemDoPlano, input: ContextoDeProducao): Promise<ItemExecutado> {
+  const { enfileirarPeca } = await import('@/lib/compositor/fila')
+  const r = await enfileirarPeca(specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
+  const situacao = await mover(input, item, 'na-fila', { generationId: r.generationId })
+  return { itemId: item.id, tema: item.tema, via: 'compor', situacao, generationId: r.generationId }
+}
+
+/**
+ * Item pelo compositor, AGORA, nesta invocação — o "Gerar" da bancada, que
+ * espera a arte na resposta (render em processo, ~5-10s). A falha marca o
+ * item como erro antes de propagar, como no modelo.
+ */
+async function comporItemAgora(item: ItemDoPlano, input: ContextoDeProducao): Promise<ItemExecutado> {
+  const { comporPeca } = await import('@/lib/compositor/compor')
+  const r = await comporPeca(specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
+  const p = r.persistido!
+  const situacao = await mover(input, item, 'pronto', { generationId: p.generationId, pageId: p.pageId })
+  return {
+    itemId: item.id,
+    tema: item.tema,
+    via: 'compor',
+    situacao,
+    generationId: p.generationId,
+    pageId: p.pageId,
+    arte: p.url,
+    ...(r.diagnostico.avisos.length > 0 ? { avisos: r.diagnostico.avisos } : {}),
+  }
 }
 
 /**
@@ -569,6 +640,19 @@ export async function gerarItemPorModelo(input: GerarItemPorModeloInput): Promis
    * aos outros navegadores mesmo se o render logo abaixo falhar.
    */
   const escolhido = input.sourcePageId?.trim() || null
+
+  // Item pelo COMPOSITOR: sem modelo escolhido na tela, compõe agora — a
+  // rota da bancada é a mesma do modelo, e a via do item decide.
+  if (item.via === 'compor' && !escolhido) {
+    const ctxCompor: ContextoDeProducao = { projectId: input.projectId, planoId: input.planoId, decididoPor: input.decididoPor ?? null }
+    try {
+      return await comporItemAgora(item, ctxCompor)
+    } catch (erro) {
+      await marcarErro(ctxCompor, item, mensagemDoErro(erro))
+      throw erro
+    }
+  }
+
   const patch: { sourcePageId?: string; via?: 'template' } = {}
   if (escolhido && escolhido !== item.sourcePageId?.trim()) patch.sourcePageId = escolhido
   if ((item.via ?? 'template') !== 'template') patch.via = 'template'
@@ -602,8 +686,8 @@ export async function gerarItemPorModelo(input: GerarItemPorModeloInput): Promis
  * Os campos de texto de uma página-modelo, na ordem em que estão nas camadas.
  *
  * 🔴 A leitura passa por `lerCamadas` (`page-layers.ts`), nunca pelo
- * `parseLayers` de `arte-rapida.ts`: aquele decodifica UM nível e devolve `[]`
- * em silêncio na string dupla-codificada que existe no legado do PageSync —
+ * `parseLayers` de `arte-rapida.ts`: aquele devolve `[]` em silêncio no
+ * ilegível (e até 02/09/2026 também na string dupla-codificada do PageSync) —
  * aqui isso viraria "o modelo não tem campo de texto" e a copy inteira do item
  * sumiria da arte sem que ninguém soubesse.
  */

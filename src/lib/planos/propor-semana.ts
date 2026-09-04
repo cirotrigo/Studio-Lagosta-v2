@@ -566,6 +566,20 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   const dicaPorRef = new Map(dicas.map((d) => [d.ref, d]))
 
   // ── 5. Persistir ──────────────────────────────────────────────────────────
+  //
+  // A via segue o que o cliente TEM (editor-como-usina, 02/09/2026): com
+  // página de assinatura a peça nasce pelo COMPOSITOR — sem crédito, editável,
+  // texto na área livre da foto; sem assinatura vale a regra antiga (modelo do
+  // cliente, senão IA). A pessoa troca item a item antes de produzir.
+  const temAssinatura = await (async () => {
+    try {
+      const { projetoTemAssinatura } = await import('@/lib/compositor/compor')
+      return await projetoTemAssinatura(projectId)
+    } catch (erro) {
+      console.warn('[propor-semana] não deu para conferir a assinatura do projeto:', (erro as Error).message)
+      return false
+    }
+  })()
   const itens: ItemDePlanoInput[] = slots.map((s, i) => {
     const dica = dicaPorRef.get(s.scheduledDatetime)
     const assunto = assuntos[i]
@@ -587,7 +601,7 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
       // sem gastar crédito de imagem; sem ele, só a IA resolve. É a escolha que
       // `executar-plano` vai cobrar (ou não) — e a pessoa pode trocar item a
       // item antes de mandar produzir.
-      via: modelo ? 'template' : 'ia',
+      via: temAssinatura ? 'compor' : modelo ? 'template' : 'ia',
       sourcePageId: modelo,
       motivoDoSlot: s.motivo,
       // 🔴 O `sugestaoId` do ITEM é o do SLOT, sempre. É ele que

@@ -30,6 +30,7 @@ import {
   proximosJobs,
   recuperarJobsPerdidos,
   reservarJob,
+  type ComposicaoJobArgs,
   type JobParaExecutar,
 } from '@/lib/ai/generation-queue'
 
@@ -39,6 +40,14 @@ import {
  * uma leva de 7 artes sai bem dentro dos 8 minutos que a bancada espera.
  */
 export const LOTE_POR_VARREDURA = 3
+
+/**
+ * Jobs de COMPOSIÇÃO por varredura, DEPOIS do lote de IA. Cada um é render
+ * em processo (~3-5s, zero API), em série, dentro de um orçamento de tempo —
+ * uma leva de 63 peças sai em poucas varreduras em vez de 21.
+ */
+export const LOTE_DE_COMPOSICAO = 12
+export const ORCAMENTO_DE_COMPOSICAO_MS = 200_000
 
 export interface ResultadoDaVarredura {
   reservados: number
@@ -53,11 +62,17 @@ export async function processarLoteDaFila(limite = LOTE_POR_VARREDURA): Promise<
   const recuperados = await recuperarJobsPerdidos()
 
   const candidatos = await proximosJobs(limite)
-  if (candidatos.length === 0) {
-    return { reservados: 0, concluidos: 0, falhados: 0, reenfileirados: 0, recuperados }
-  }
 
   const desfechos = await Promise.all(candidatos.map((job) => executarJob(job)))
+
+  // A segunda passada: composições, em série, enquanto o orçamento deixa.
+  const comecou = Date.now()
+  const composicoes = await proximosJobs(LOTE_DE_COMPOSICAO, ['COMPOR'])
+  for (const job of composicoes) {
+    if (candidatos.some((c) => c.id === job.id)) continue
+    if (Date.now() - comecou > ORCAMENTO_DE_COMPOSICAO_MS) break
+    desfechos.push(await executarJob(job))
+  }
 
   return {
     reservados: desfechos.filter((d) => d !== 'ocupado').length,
@@ -101,6 +116,11 @@ async function executarJob(job: JobParaExecutar): Promise<Desfecho> {
 
 /** Dispatch por tipo. O `queueJobId` é o que deixa o runner pedir outra tentativa. */
 async function rodarRunner(job: JobParaExecutar): Promise<void> {
+  if (job.kind === 'COMPOR') {
+    const { processarComposicaoEmBackground } = await import('@/lib/compositor/fila')
+    await processarComposicaoEmBackground({ ...(job.payload as ComposicaoJobArgs), queueJobId: job.id })
+    return
+  }
   if (job.kind === 'ARTE') {
     const args = job.payload as ArtGenerationJobArgs
     await processArtGenerationInBackground({ ...args, queueJobId: job.id })

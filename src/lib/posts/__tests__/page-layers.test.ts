@@ -15,8 +15,8 @@ describe('lerCamadas', () => {
     expect(lerCamadas(JSON.stringify(CAMADAS)).camadas).toEqual(CAMADAS)
   })
 
-  // A armadilha central: `parseLayers` da arte-rápida devolve [] aqui, e o
-  // diff de copy passaria a dizer "o usuário não editou nada".
+  // A armadilha central: o `parseLayers` da arte-rápida devolvia [] aqui (hoje
+  // delega para cá), e o diff de copy passaria a dizer "o usuário não editou nada".
   it('lê a string DUPLA-CODIFICADA (o legado do PageSync)', () => {
     const duplo = JSON.stringify(JSON.stringify(CAMADAS))
     const r = lerCamadas(duplo)

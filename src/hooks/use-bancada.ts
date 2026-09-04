@@ -333,7 +333,7 @@ export function useBancada(projectId: number) {
         relatarAvanco(item, {
           para: 'gerando',
           generationId: resposta.generation.id,
-          ...(item.via === 'template' ? { via: 'ia' as const } : {}),
+          ...(item.via !== 'ia' ? { via: 'ia' as const } : {}),
         })
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Erro ao iniciar a geração'
@@ -391,7 +391,9 @@ export function useBancada(projectId: number) {
           // A página da arte: com ela no agendamento o post nasce RENDERED e
           // editar a arte na agenda re-renderiza, em vez de congelar o PNG.
           ...(e.pageId ? { pageId: e.pageId } : {}),
-          via: 'template',
+          // A via do item manda: "compor" continua compor (a rota compôs pelo
+          // editor); só o que era IA é que virou modelo.
+          via: item.via === 'compor' ? 'compor' : 'template',
           situacaoNoPlano: 'pronto',
           aviso: e.avisos && e.avisos.length > 0 ? e.avisos.join(' ') : null,
         })

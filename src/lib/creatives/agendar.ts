@@ -510,6 +510,13 @@ export async function agendarPost(input: AgendarPostInput) {
     })
   }
 
+  // Peça composta que estava nas AVULSAS (sem data) ganhou data: vai para a
+  // pasta da semana na aba de templates. Nunca derruba o agendamento.
+  if (input.pageId) {
+    const { moverPaginaParaSemana } = await import('@/lib/compositor/pastas')
+    await moverPaginaParaSemana(input.pageId, quando, project.userId)
+  }
+
   const quandoBRT = formatarBRT(post.scheduledDatetime!)
   const tipo = post.postType === 'STORY' ? 'story' : post.postType.toLowerCase()
 

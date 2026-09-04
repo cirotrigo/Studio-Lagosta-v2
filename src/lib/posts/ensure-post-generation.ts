@@ -27,8 +27,8 @@
 import { db } from '@/lib/db'
 /**
  * `textosDaPagina` era uma cópia local que lia as camadas com o `parseLayers`
- * da arte-rápida — o decodificador de UM nível, que devolve `[]` em silêncio
- * quando `Page.layers` está dupla-codificada. Nessas páginas a Generation
+ * da arte-rápida — então um decodificador de UM nível, que devolvia `[]` em
+ * silêncio quando `Page.layers` estava dupla-codificada. Nessas páginas a Generation
  * nascia sem textos esperados e a melhoria rodava com `textCheck: 'skipped'`,
  * sem ninguém conferir a headline. A versão compartilhada decodifica fundo.
  */
