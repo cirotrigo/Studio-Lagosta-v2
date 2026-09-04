@@ -3781,6 +3781,18 @@ e o sinal `geometria`. Regras que valem para código novo:
   cor do halo por conta própria — variação de estilo é página nova; o que ele
   varia sozinho é posição, enquadramento, canto da logo e a TINTA do halo
   (dentro da faixa). A variante usada fica em `composicao.assinatura.variante`.
+- **Variantes como DESIGNS de uma leva (Espeto, 04/09/2026)**: o Ciro achou os
+  designs da semana 1 (canvas: 3 arranjos + promoção com preço) melhores que
+  os da semana 2 (compositor, 20 peças no mesmo arranjo). A resposta foi
+  `scripts/criar-variantes-assinatura-espeto.ts`: três PÁGINAS novas no
+  template Assinatura, clonadas da página que ele ajustou — "Promoção"
+  (headline2 vermelha; `apoio` = descrição Barlow branco, `servico` = PREÇO
+  Bevan amarelo; tags promocao/preco/rodizio/marmitex), "Rodapé" e "Topo".
+  🔴 Numa variante os PAPÉIS podem mudar de sentido — a copy é escrita
+  contra a variante (`ver-assinatura` mostra fonte/cor por papel): na
+  Promoção o preço vai no `servico`, nunca "a partir das 17h". A 2ª linha da
+  manchete vira `headline2` quando a página o tem: deixe a palavra-chave na
+  2ª linha. Rodar o script de novo SOBRESCREVE as páginas pelo nome.
 - 🔴 **A posição vem da FOTO, nunca do template** (§9). `mapa-de-calma.ts`:
   grade 6×10 sobre a foto COMO APARECE (cover, no corte candidato), pontuação
   por calma (energia de borda), tinta necessária (p98 vs alvo da cor) e
@@ -3807,12 +3819,41 @@ e o sinal `geometria`. Regras que valem para código novo:
   pousar texto onde o editor o acusa.
 - **`provar: true` renderiza em memória e não grava nada** — é o dry-run que
   fez o canvas ser iterável. Toda leva grande começa por UMA prova.
+- 🔴 **O destino padrão de uma leva é a AGENDA, como rascunho — a bancada só
+  com pedido explícito** (Ciro, 04/09/2026: "eu não pedi para colocar na fila
+  da bancada, os posts devem ser colocados lá somente se solicitado; o padrão
+  deveria ser colocar na agenda"). Semana pedida pelo chat: compor a peça
+  (`compor-arte`/`compor-leva`) e `colocar-na-agenda` **com o `pageId` da
+  peça, nunca com o `generationId`** (Ciro, 04/09: "não é preciso gerar o
+  criativo para agendar, você pode agendar a página diretamente para eu
+  conseguir editar depois") — são `pageId` + `templateId` no post que dão o
+  botão "Editar Template" na agenda e fazem a edição refluir para a arte;
+  por `generationId` o post nasce sem página e o botão some. Carrossel de
+  fotos vai com as URLs do acervo. `criar-plano`
+  só quando a pessoa disser "bancada". A semana 2 do Espeto (07–13/09) foi
+  parar no plano e teve de ser movida; as instruções do conector
+  (`src/lib/mcp/instrucoes.ts`, etapas 2-4) já dizem isso.
 - **Fila: o MCP só enfileira** (`compor-leva`, `executar-plano`); a bancada
   compõe na hora (`gerarItemPorModelo` com via `compor`). O cron pega até 12
   composições em série DEPOIS do lote de IA, dentro de 200s. `maxAttempts`
   3, porque não há chamada paga.
 - **`persistAndRenderCreative` aceita `generationId`** e FECHA a Generation
   PROCESSING da fila em vez de criar outra — a bancada segue o id que tem.
+  🔴 **O `comporPeca` só cumpria isso na promessa** (medido em 04/09/2026,
+  Espeto Gaúcho, `compor-leva` com 20 itens): ele anotava o id da fila em
+  `fieldValues.generationIdDaFila` e NÃO o entregava ao persist — nasciam 20
+  Generations COMPLETED duplicadas, as 20 da fila ficavam PROCESSING para
+  sempre (a varredura de órfãs PULA Generation que tem job, então nem FAILED
+  viravam), `fecharJob` marcava o job FAILED sem `lastError`, e os itens do
+  plano ficavam `proposto` com a arte pronta na galeria. Hoje a entrada do
+  persist é montada em `persistencia.ts` (puro, testado) com o `generationId`;
+  **quem reaponta o item do plano é a FILA** (`reapontarItemDoPlano` em
+  `fila.ts`: `na-fila` ao enfileirar, `pronto` com generationId/pageId ao
+  terminar, `erro` na falha definitiva — caminhando por `caminhoAte`, nunca
+  derrubando a peça); e `fecharJob` escreve por que falhou quando o runner
+  deixa a Generation aberta. Teste em `__tests__/fila.test.ts`. A limpeza das
+  40 linhas do incidente é `scripts/limpar-compor-duplicado-2026-09-04.ts`
+  (dry-run por padrão; preserva o que item ou post referenciam).
 - **Snapshot em `fieldValues.layersSnapshot`** e `reverter-arte`: o "git" de
   uma peça. Página promovida a modelo não reverte (mataria curadoria).
 - **`LearningSignal tipo 'geometria'`** nasce no PATCH da página, só em

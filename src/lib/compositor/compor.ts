@@ -28,6 +28,7 @@ import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
 import { garantirPasta } from './pastas'
+import { entradaDePersistencia } from './persistencia'
 import { nomeDaPagina } from './pasta-da-semana'
 
 import {
@@ -52,7 +53,7 @@ import {
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
 import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido } from './regua'
 
-export const TAG_DA_PECA_COMPOSTA = 'compositor'
+export { TAG_DA_PECA_COMPOSTA } from './persistencia'
 
 export interface RotuloDePosicao {
   ancora: Ancora
@@ -784,32 +785,23 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // 03/09/2026: a aba organiza por quando publica, não por quem criou.
   const pasta = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null)
   const nome = nomeDaPagina({ quando: spec.quando ?? null, formato: spec.formato, tema: spec.tema ?? null, nome: spec.nome ?? spec.blocos[0]?.linhas[0] ?? null })
-  const persistido = await persistAndRenderCreative({
-    project: projeto,
-    templateId: pasta.id,
-    templateName: pasta.name,
-    pageName: nome,
-    width: canvas.width,
-    height: canvas.height,
-    layers,
-    background: assinatura.numeros.fundo,
-    authorName: 'compositor',
-    createdBy: opcoes.autor ?? null,
-    canal: opcoes.canal ?? null,
-    pageTags: [TAG_DA_PECA_COMPOSTA, spec.formato],
-    fieldValues: {
-      source: 'compositor',
+  // A entrada do persist é montada num módulo PURO (`persistencia.ts`): é lá
+  // que mora a regra de que a Generation da FILA (`opcoes.generationId`) é
+  // FECHADA em vez de nascer outra — o defeito de 04/09/2026 (Espeto).
+  const persistido = await persistAndRenderCreative(
+    entradaDePersistencia({
       spec,
-      composicao: diagnostico,
-      // F4: o snapshot das camadas como nasceram — é o "git" de uma peça.
-      layersSnapshot: layers,
-      ...(spec.foto?.driveFileId ? { driveImageId: spec.foto.driveFileId } : {}),
-      imageUrl: foto?.url ?? null,
-      ...(spec.itemDePlanoId ? { itemDePlanoId: spec.itemDePlanoId } : {}),
-      ...(spec.planoId ? { planoId: spec.planoId } : {}),
-      ...(opcoes.generationId ? { generationIdDaFila: opcoes.generationId } : {}),
-    },
-  })
+      opcoes,
+      projeto,
+      pasta,
+      nome,
+      canvas,
+      layers,
+      fundo: assinatura.numeros.fundo,
+      diagnostico,
+      fotoUrl: foto?.url ?? null,
+    }),
+  )
 
   if (spec.foto?.driveFileId) {
     await registrarUsoDeFoto({
