@@ -84,12 +84,22 @@ describe('nomeDaPagina', () => {
     expect(nomes[0]).not.toBe(nomes[1])
   })
 
-  it('sem slide declarado, irmão do mesmo minuto ganha "peça N" — nunca nome repetido', () => {
+  it('sem slide declarado, irmão do mesmo minuto ganha "peça N" — TODOS, o primeiro inclusive', () => {
+    // Quem conhece o grupo inteiro (a migração) numera todo mundo: um nome sem
+    // sufixo ao lado de "peça 2" lê como se o primeiro fosse outra coisa.
     const base = { quando: '2026-09-10T19:30:00-03:00', tema: 'Empório Fonseca' }
     const nomes = [1, 2, 3, 4].map((peca) => nomeDaPagina({ ...base, peca }))
-    expect(nomes[0]).toBe('Qui 10/09 · 19:30 · Empório Fonseca')
-    expect(nomes[1]).toBe('Qui 10/09 · 19:30 · Empório Fonseca · peça 2')
+    expect(nomes[0]).toBe('Qui 10/09 · 19:30 · Empório Fonseca · peça 1')
+    expect(nomes[3]).toBe('Qui 10/09 · 19:30 · Empório Fonseca · peça 4')
     expect(new Set(nomes).size).toBe(4)
+  })
+
+  it('quem NÃO conhece o grupo (o compositor, peça a peça) não numera a primeira', () => {
+    // Ao compor, ninguém sabe quantos irmãos virão — a primeira peça do minuto
+    // sai sem sufixo e só as seguintes ganham número.
+    const base = { quando: '2026-09-10T19:30:00-03:00', tema: 'Empório Fonseca' }
+    expect(nomeDaPagina({ ...base, peca: null })).toBe('Qui 10/09 · 19:30 · Empório Fonseca')
+    expect(nomeDaPagina({ ...base, peca: 2 })).toBe('Qui 10/09 · 19:30 · Empório Fonseca · peça 2')
   })
 
   it('o slide declarado VENCE o "peça N" — é a posição de verdade', () => {

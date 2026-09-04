@@ -183,6 +183,7 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
   console.log(`\n══ ${projeto.name} (${projectId}) — ${pastas.length} pasta(s), ${enriquecidas.length} página(s)`)
 
   // Quem já tem a chave com formato manda: nunca duas pastas com a mesma tag.
+  // Quem já tem a chave com formato manda: nunca duas pastas com a mesma tag.
   const donoDaChave = new Map<string, number>()
   for (const pasta of pastas) {
     for (const tag of pasta.tags) if (/:(story|feed|quadrado)$/.test(tag)) donoDaChave.set(tag, pasta.id)
@@ -192,10 +193,12 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
   let paginasMovidas = 0
   let postsReapontados = 0
 
-  // 🔴 As ordens já usadas são por DESTINO e vivem o PROJETO inteiro, não a
-  // pasta de origem. Duas pastas de origem podem despejar no MESMO destino —
-  // e despejaram: em 04/09/2026 os slides da Ilha (vindos da 395) colidiram em
-  // 549002/549003 com as quatro peças do Empório que já estavam na 408.
+  /**
+   * 🔴 As ordens já usadas são por DESTINO e vivem o PROJETO inteiro, não a
+   * pasta de origem. Duas pastas de origem podem despejar no MESMO destino —
+   * e despejaram: em 04/09/2026 os slides da Ilha (vindos da 395) colidiram em
+   * 549002/549003 com as quatro peças do Empório que já estavam na 408.
+   */
   const usadasPorPasta = new Map<number, Set<number>>()
   const usadas = (id: number) => {
     const s = usadasPorPasta.get(id) ?? new Set<number>()
@@ -203,6 +206,13 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
     return s
   }
 
+  /**
+   * PASSO 1 — a IDENTIDADE das pastas que já existem.
+   *
+   * Cada pasta assume o formato que mais tem, renomeada em pé. Isso não decide
+   * para onde as páginas vão (é o passo 2 que decide); serve para as pastas
+   * existentes serem REUSADAS em vez de ficarem órfãs ao lado de novas.
+   */
   for (const pasta of pastas) {
     const minhas = enriquecidas.filter((p) => p.templateId === pasta.id)
     if (minhas.length === 0) {
@@ -212,9 +222,7 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
     const porFormato = new Map<Formato, Pagina[]>()
     for (const p of minhas) porFormato.set(p.formato, [...(porFormato.get(p.formato) ?? []), p])
     const formatos = [...porFormato.keys()].sort((a, b) => (porFormato.get(b)!.length - porFormato.get(a)!.length) || (PRIORIDADE.indexOf(a) - PRIORIDADE.indexOf(b)))
-
-    const resumo = formatos.map((f) => `${f}:${porFormato.get(f)!.length}`).join(' ')
-    console.log(`  · "${pasta.name}" (${pasta.id}) — ${minhas.length} página(s) [${resumo}]`)
+    console.log(`  · "${pasta.name}" (${pasta.id}) — ${minhas.length} página(s) [${formatos.map((f) => `${f}:${porFormato.get(f)!.length}`).join(' ')}]`)
 
     const periodo = periodoDaPasta(pasta.tags)
     if (!periodo) {
@@ -222,107 +230,122 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
       continue
     }
     const dono = formatos[0]
+    const modelo = pastaDaPeca(periodo.quando, dono, periodo.agora)
+    const jaExiste = donoDaChave.get(modelo.chave)
+    if (jaExiste !== undefined && jaExiste !== pasta.id) {
+      console.log(`      "${modelo.nome}" já é a pasta ${jaExiste}; esta se esvazia.`)
+      continue
+    }
+    donoDaChave.set(modelo.chave, pasta.id)
+    console.log(`      vira "${modelo.nome}" (${modelo.tipo} ${modelo.dimensoes})`)
+    if (confirmar) {
+      await db.template.update({
+        where: { id: pasta.id },
+        data: { name: modelo.nome, type: modelo.tipo, dimensions: modelo.dimensoes, category: modelo.categoria, tags: modelo.tags },
+      })
+    }
+  }
 
-    // A pasta é a caixa da SEMANA; peça remarcada para outra semana continua
-    // aqui (refilar é decisão do Ciro, não efeito colateral desta migração).
-    const foraDaSemana = minhas.filter((p) => {
-      if (!p.quando || !periodo.quando) return false
-      return pastaDaPeca(p.quando, p.formato).chaveDoPeriodo !== pastaDaPeca(periodo.quando, p.formato).chaveDoPeriodo
+  /**
+   * PASSO 2 — cada página vai para a pasta da SUA data.
+   *
+   * 🔴 Agrupar pela pasta de ORIGEM era o defeito: o NOME já saía da data do
+   * post, então uma peça remarcada ficava com "Qui 10/09" dentro da pasta da
+   * semana 14-20/09 — nome e pasta dizendo coisas diferentes sobre a mesma
+   * peça, que é exatamente a confusão que a separação veio resolver. Medido em
+   * 04/09/2026: 14 páginas assim na Lagosta, de uma troca de dia entre o
+   * Empório e a Ilha. A pasta e o nome saem AGORA da mesma data.
+   *
+   * Sem data (avulsas), a peça fica no período da pasta de origem — é o único
+   * caso em que a origem ainda manda, porque não há data para consultar.
+   */
+  const periodoDaOrigem = new Map<number, ReturnType<typeof periodoDaPasta>>()
+  for (const pasta of pastas) periodoDaOrigem.set(pasta.id, periodoDaPasta(pasta.tags))
+
+  const porDestino = new Map<string, { chave: string; quando: string | Date | null; agora: Date; formato: Formato; paginas: Pagina[] }>()
+  for (const p of enriquecidas) {
+    const origem = periodoDaOrigem.get(p.templateId)
+    if (!origem) continue
+    const quando = p.quando ?? origem.quando
+    const modelo = pastaDaPeca(quando, p.formato, origem.agora)
+    const atual = porDestino.get(modelo.chave) ?? { chave: modelo.chave, quando, agora: origem.agora, formato: p.formato, paginas: [] }
+    atual.paginas.push(p)
+    porDestino.set(modelo.chave, atual)
+  }
+
+  for (const grupo of porDestino.values()) {
+    const modelo = pastaDaPeca(grupo.quando, grupo.formato, grupo.agora)
+    let destinoId = donoDaChave.get(modelo.chave) ?? -1
+    let destinoNome = modelo.nome
+    if (confirmar) {
+      const destino = await garantirPasta(projectId, projeto.userId, grupo.quando, grupo.formato, grupo.agora)
+      destinoId = destino.id
+      destinoNome = destino.name
+      donoDaChave.set(modelo.chave, destino.id)
+    }
+    const vindoDeFora = grupo.paginas.filter((p) => p.templateId !== destinoId).length
+    console.log(`      → "${modelo.nome}" (${destinoId > 0 ? destinoId : 'pasta nova'}): ${grupo.paginas.length} página(s)${vindoDeFora ? `, ${vindoDeFora} mudando de pasta` : ''}`)
+
+    // Ordenar antes de gravar deixa o dry-run mostrar a ordem final, e dá o
+    // desempate por chegada às peças sem data (avulsas).
+    const ordenadas = [...grupo.paginas].sort((a, b) => {
+      const oa = ordemDaPagina(a.quando, a.slide)
+      const ob = ordemDaPagina(b.quando, b.slide)
+      if (oa !== null && ob !== null && oa !== ob) return oa - ob
+      if (oa !== null && ob === null) return -1
+      if (ob !== null && oa === null) return 1
+      // Empate real (irmãos do mesmo minuto sem slide declarado): a ordem
+      // atual e depois a de criação — num carrossel, é a ordem dos slides.
+      return a.order - b.order || a.createdAt.getTime() - b.createdAt.getTime()
     })
-    if (foraDaSemana.length > 0) {
-      console.log(`      ⚠ ${foraDaSemana.length} página(s) desta pasta estão agendadas para OUTRA semana (ficam aqui; a data entra só na ordem):`)
-      for (const p of foraDaSemana.slice(0, 5)) console.log(`          ${p.name} → ${p.quando?.slice(0, 16)}`)
-      if (foraDaSemana.length > 5) console.log(`          … e mais ${foraDaSemana.length - 5}`)
+
+    // Peça sem slide recuperável (composta sem declarar o carrossel) precisa
+    // de nome próprio: irmãos do mesmo minuto sairiam IDÊNTICOS. "peça" e não
+    // "slide" porque é a ordem de composição, não a do Instagram.
+    const semSlideNoMinuto = new Map<number, Pagina[]>()
+    for (const p of ordenadas) {
+      if (p.slide) continue
+      const base = ordemDaPagina(p.quando, null)
+      if (base === null) continue
+      semSlideNoMinuto.set(base, [...(semSlideNoMinuto.get(base) ?? []), p])
     }
 
-    for (const formato of formatos) {
-      const desteFormato = porFormato.get(formato)!
-      const modelo = pastaDaPeca(periodo.quando, formato, periodo.agora)
-      const jaExiste = donoDaChave.get(modelo.chave)
-      // O formato dominante FICA na pasta atual (renomeada), salvo se outra
-      // pasta já reivindicou essa chave — aí as páginas é que vão para lá.
-      const ficaAqui = formato === dono && (jaExiste === undefined || jaExiste === pasta.id)
-
-      let destinoId = pasta.id
-      let destinoNome = modelo.nome
-      if (ficaAqui) {
-        if (confirmar) {
-          await db.template.update({
-            where: { id: pasta.id },
-            data: { name: modelo.nome, type: modelo.tipo, dimensions: modelo.dimensoes, category: modelo.categoria, tags: modelo.tags },
-          })
-        }
-        donoDaChave.set(modelo.chave, pasta.id)
-        console.log(`      ${ROTULO_DA_PASTA[formato]}: fica em ${pasta.id}, renomeada para "${modelo.nome}" (${modelo.tipo} ${modelo.dimensoes})`)
-      } else if (confirmar) {
-        const destino = await garantirPasta(projectId, projeto.userId, periodo.quando, formato, periodo.agora)
-        destinoId = destino.id
-        destinoNome = destino.name
-        donoDaChave.set(modelo.chave, destino.id)
-        console.log(`      ${ROTULO_DA_PASTA[formato]}: ${desteFormato.length} página(s) → "${destino.name}" (${destino.id})`)
-      } else {
-        destinoId = jaExiste ?? -1
-        console.log(`      ${ROTULO_DA_PASTA[formato]}: ${desteFormato.length} página(s) → "${modelo.nome}" (${jaExiste ? `pasta ${jaExiste}` : 'pasta nova'})`)
-      }
-
-      // Ordenar antes de gravar deixa o dry-run mostrar a ordem final, e dá o
-      // desempate por chegada às peças sem data (avulsas).
-      const ordenadas = [...desteFormato].sort((a, b) => {
-        const oa = ordemDaPagina(a.quando, a.slide)
-        const ob = ordemDaPagina(b.quando, b.slide)
-        if (oa !== null && ob !== null && oa !== ob) return oa - ob
-        if (oa !== null && ob === null) return -1
-        if (ob !== null && oa === null) return 1
-        // Empate real (irmãos do mesmo minuto sem slide declarado): a ordem
-        // atual e depois a de criação — num carrossel, é a ordem dos slides.
-        return a.order - b.order || a.createdAt.getTime() - b.createdAt.getTime()
+    const jaUsadas = usadas(destinoId)
+    let semData = 0
+    for (const p of ordenadas) {
+      let ordem = ordemDaPagina(p.quando, p.slide) ?? semData++
+      while (jaUsadas.has(ordem)) ordem++
+      jaUsadas.add(ordem)
+      const base = p.slide ? null : ordemDaPagina(p.quando, null)
+      const irmas = base === null ? [] : semSlideNoMinuto.get(base) ?? []
+      const nome = nomeDaPagina({
+        quando: p.quando,
+        tema: p.tema,
+        nome: p.tema ? null : assuntoDoNome(p.name),
+        carrossel: p.slide ? { slide: p.slide, de: p.de } : null,
+        // Todos os irmãos são numerados, o primeiro inclusive: "peça 2" ao
+        // lado de um nome sem sufixo lê como se o primeiro fosse outra coisa.
+        ...(irmas.length > 1 ? { peca: irmas.indexOf(p) + 1 } : {}),
       })
-      // Peça sem slide recuperável (composta sem declarar o carrossel) precisa
-      // de nome próprio: irmãos do mesmo minuto sairiam IDÊNTICOS. "peça" e
-      // não "slide" porque é a ordem de composição, não a do Instagram.
-      const semSlideNoMinuto = new Map<number, Pagina[]>()
-      for (const p of ordenadas) {
-        if (p.slide) continue
-        const base = ordemDaPagina(p.quando, null)
-        if (base === null) continue
-        semSlideNoMinuto.set(base, [...(semSlideNoMinuto.get(base) ?? []), p])
+      const mudou = p.templateId !== destinoId || p.name !== nome || p.order !== ordem
+      if (mudou) paginasMexidas++
+      if (p.templateId !== destinoId) paginasMovidas++
+      if (!confirmar) {
+        if (mudou) console.log(`          ${String(ordem).padStart(6)}  ${nome}${p.templateId !== destinoId ? '   (muda de pasta)' : ''}`)
+        continue
       }
-
-      const jaUsadas = usadas(destinoId)
-      let semData = 0
-      for (const p of ordenadas) {
-        let ordem = ordemDaPagina(p.quando, p.slide) ?? semData++
-        while (jaUsadas.has(ordem)) ordem++
-        jaUsadas.add(ordem)
-        const base = p.slide ? null : ordemDaPagina(p.quando, null)
-        const irmas = base === null ? [] : semSlideNoMinuto.get(base) ?? []
-        const nome = nomeDaPagina({
-          quando: p.quando,
-          tema: p.tema,
-          nome: p.tema ? null : assuntoDoNome(p.name),
-          carrossel: p.slide ? { slide: p.slide, de: p.de } : null,
-          ...(irmas.length > 1 ? { peca: irmas.indexOf(p) + 1 } : {}),
+      await db.page.update({ where: { id: p.id }, data: { templateId: destinoId, name: nome, order: ordem, tags: ['compositor', p.formato] } })
+      const gensDaPagina = gensPorPagina.get(p.id) ?? []
+      if (gensDaPagina.length > 0) {
+        await db.generation.updateMany({
+          where: { id: { in: gensDaPagina.map((g) => g.id) } },
+          data: { templateId: destinoId, templateName: destinoNome, ...(p.slide ? { slideOrder: p.slide } : {}) },
         })
-        const mudou = p.templateId !== destinoId || p.name !== nome || p.order !== ordem
-        if (mudou) paginasMexidas++
-        if (p.templateId !== destinoId) paginasMovidas++
-        if (!confirmar) {
-          if (mudou) console.log(`          ${String(ordem).padStart(6)}  ${nome}${p.templateId !== destinoId ? '   (muda de pasta)' : ''}`)
-          continue
-        }
-        await db.page.update({ where: { id: p.id }, data: { templateId: destinoId, name: nome, order: ordem, tags: ['compositor', p.formato] } })
-        const gensDaPagina = gensPorPagina.get(p.id) ?? []
-        if (gensDaPagina.length > 0) {
-          await db.generation.updateMany({
-            where: { id: { in: gensDaPagina.map((g) => g.id) } },
-            data: { templateId: destinoId, templateName: destinoNome, ...(p.slide ? { slideOrder: p.slide } : {}) },
-          })
-        }
-        if (p.templateId !== destinoId) {
-          // Sem isso o "Editar Template" da agenda abriria a pasta antiga.
-          const r = await db.socialPost.updateMany({ where: { pageId: p.id, templateId: p.templateId }, data: { templateId: destinoId } })
-          postsReapontados += r.count
-        }
+      }
+      if (p.templateId !== destinoId) {
+        // Sem isso o "Editar Template" da agenda abriria a pasta antiga.
+        const r = await db.socialPost.updateMany({ where: { pageId: p.id, templateId: p.templateId }, data: { templateId: destinoId } })
+        postsReapontados += r.count
       }
     }
   }

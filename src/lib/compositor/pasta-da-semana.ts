@@ -204,6 +204,6 @@ export function nomeDaPagina(args: {
   if (assunto) partes.push(assunto.slice(0, 60))
   const c = args.carrossel
   if (c && typeof c.slide === 'number' && Number.isFinite(c.slide)) partes.push(c.de ? `slide ${c.slide}/${c.de}` : `slide ${c.slide}`)
-  else if (typeof args.peca === 'number' && args.peca > 1) partes.push(`peça ${args.peca}`)
+  else if (typeof args.peca === 'number' && args.peca > 0) partes.push(`peça ${args.peca}`)
   return partes.join(' · ')
 }
