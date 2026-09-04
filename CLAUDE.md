@@ -3807,6 +3807,20 @@ e o sinal `geometria`. Regras que valem para código novo:
   pousar texto onde o editor o acusa.
 - **`provar: true` renderiza em memória e não grava nada** — é o dry-run que
   fez o canvas ser iterável. Toda leva grande começa por UMA prova.
+- 🔴 **O destino padrão de uma leva é a AGENDA, como rascunho — a bancada só
+  com pedido explícito** (Ciro, 04/09/2026: "eu não pedi para colocar na fila
+  da bancada, os posts devem ser colocados lá somente se solicitado; o padrão
+  deveria ser colocar na agenda"). Semana pedida pelo chat: compor a peça
+  (`compor-arte`/`compor-leva`) e `colocar-na-agenda` **com o `pageId` da
+  peça, nunca com o `generationId`** (Ciro, 04/09: "não é preciso gerar o
+  criativo para agendar, você pode agendar a página diretamente para eu
+  conseguir editar depois") — são `pageId` + `templateId` no post que dão o
+  botão "Editar Template" na agenda e fazem a edição refluir para a arte;
+  por `generationId` o post nasce sem página e o botão some. Carrossel de
+  fotos vai com as URLs do acervo. `criar-plano`
+  só quando a pessoa disser "bancada". A semana 2 do Espeto (07–13/09) foi
+  parar no plano e teve de ser movida; as instruções do conector
+  (`src/lib/mcp/instrucoes.ts`, etapas 2-4) já dizem isso.
 - **Fila: o MCP só enfileira** (`compor-leva`, `executar-plano`); a bancada
   compõe na hora (`gerarItemPorModelo` com via `compor`). O cron pega até 12
   composições em série DEPOIS do lote de IA, dentro de 200s. `maxAttempts`
