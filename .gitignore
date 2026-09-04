@@ -103,3 +103,6 @@ design-canvas/**/*.html
 .tmp-medicao-carteira/
 .tmp-spike-mascara/
 .tmp-fidelidade/
+
+# quem está sentado neste Mac (ver scripts/mcp-wrapper.sh) — um por máquina
+.studio-autor

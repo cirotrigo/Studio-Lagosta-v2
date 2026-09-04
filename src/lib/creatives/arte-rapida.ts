@@ -524,6 +524,8 @@ export interface CreateArteRapidaInput {
   decididoPor?: string | null
   /** Por qual canal a arte entrou (Claudinho, Claude.ai, Claude Code, Studio). Ver `canal.ts`. */
   canal?: CanalDaArte | null
+  /** Quem assina a Generation (User.id interno); sem isso, o dono do projeto. */
+  createdBy?: string | null
   /**
    * Não trocar o layout pela foto. Por padrão, num template "(3 layouts)" a
    * foto escolhe entre os irmãos (Topo/Rodapé/Dividido) pela faixa mais calma
@@ -739,6 +741,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     background: modelo.background,
     authorName: 'arte-rapida',
     canal: input.canal ?? null,
+    createdBy: input.createdBy ?? null,
     // Espelho colunar do `fieldValues.sourcePageId`: aqui ele aponta para um
     // MODELO de verdade, e é a coluna indexada que tira "qual modelo este
     // cliente mais usa" da varredura de Json.

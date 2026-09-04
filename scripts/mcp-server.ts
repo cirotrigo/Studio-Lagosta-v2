@@ -22,6 +22,7 @@ import { vigenteEm } from '../src/lib/knowledge/vigencia'
 // o `@/lib/db` da cadeia já enxerga o DATABASE_URL.
 import { CATALOGO } from '../src/lib/mcp/catalogo'
 import { executarToolLocal } from '../src/lib/mcp/catalogo/integracao'
+import { principalLocal, resolverAutorLocal, type AutorLocal } from '../src/lib/mcp/autor-local'
 import { put } from '@vercel/blob'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -2202,7 +2203,7 @@ toolEstrita(
     try {
       const parsedSlots = JSON.parse(slotValues) as Record<string, unknown>
       const { createArteRapida } = await import('../src/lib/creatives/arte-rapida')
-      const result = await createArteRapida({ projectId, sourcePageId, slotValues: parsedSlots, name, imageUrl, canal: 'claude-code' })
+      const result = await createArteRapida({ projectId, sourcePageId, slotValues: parsedSlots, name, imageUrl, canal: 'claude-code', createdBy: AUTOR_LOCAL?.id ?? null })
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
@@ -2375,6 +2376,7 @@ toolEstrita(
           const meta = porArquivo.get(file)
           const result = await importarArte({
             canal: 'claude-code',
+            createdBy: AUTOR_LOCAL?.id ?? null,
             projectId,
             bytes: fs.readFileSync(file),
             fileName,
@@ -2536,11 +2538,11 @@ toolEstrita(
 // de compatibilidade explícita; os nomes PT do catálogo são os canônicos.
 // Migrar as skills para os nomes PT aposenta a camada — decisão futura.
 
-{
-  // `clientId` diz ao catálogo que a chamada vem do MCP local — é o que
-  // grava `canal: 'claude-code'` na arte (ver `canalDoPrincipal`).
-  const PRINCIPAL_LOCAL = { kind: 'service', clientId: 'claude-code-local' } as const
+// Quem está sentado neste Mac (STUDIO_AUTOR, ver src/lib/mcp/autor-local.ts).
+// Resolvido em main(), antes de o transporte abrir; até lá, o serviço.
+let AUTOR_LOCAL: AutorLocal | null = null
 
+{
   for (const tool of CATALOGO.values()) {
     if (!tool.superficies.includes('local')) continue
     server.registerTool(
@@ -2550,7 +2552,10 @@ toolEstrita(
       // aplica gate, coerção e a moldagem de erro em PT.
       { description: tool.descricao, inputSchema: tool.schema as never },
       (async (args: Record<string, unknown>) =>
-        executarToolLocal(tool.nome, args ?? {}, PRINCIPAL_LOCAL)) as never,
+        // `clientId` diz ao catálogo que a chamada vem do MCP local — é o que
+        // grava `canal: 'claude-code'` na arte (ver `canalDoPrincipal`); a
+        // pessoa do Mac, quando declarada, é quem assina.
+        executarToolLocal(tool.nome, args ?? {}, principalLocal(AUTOR_LOCAL))) as never,
     )
   }
 }
@@ -2558,6 +2563,11 @@ toolEstrita(
 // ─── Start Server ────────────────────────────────────────────────────
 
 async function main() {
+  if (process.env.STUDIO_AUTOR) {
+    AUTOR_LOCAL = await resolverAutorLocal().catch(() => null)
+    if (AUTOR_LOCAL) console.error(`[studio-lagosta-mcp] assinando as artes como ${AUTOR_LOCAL.name ?? AUTOR_LOCAL.email} (${AUTOR_LOCAL.clerkId})`)
+    else console.error(`[studio-lagosta-mcp] AVISO: STUDIO_AUTOR="${process.env.STUDIO_AUTOR}" não é usuário do Studio — as artes saem como o dono do projeto (Automações)`)
+  }
   const transport = new StdioServerTransport()
   await server.connect(transport)
   console.error('[studio-lagosta-mcp] Server started on stdio')

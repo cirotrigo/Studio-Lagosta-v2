@@ -56,6 +56,8 @@ export interface ImportarArteInput {
   origem?: string
   /** Por qual canal a arte entrou. Ver `canal.ts`. */
   canal?: CanalDaArte | null
+  /** Quem assina a Generation (User.id interno); sem isso, o dono do projeto. */
+  createdBy?: string | null
   /**
    * Os textos que a arte contém, quando quem envia os conhece.
    *
@@ -252,7 +254,7 @@ export async function importarArte(input: ImportarArteInput): Promise<ImportarAr
       } as never,
       resultUrl: blob.url,
       projectId: project.id,
-      createdBy: project.userId,
+      createdBy: input.createdBy ?? project.userId,
       authorName: 'arte-enviada',
       canal: input.canal ?? null,
       templateName: template.name,

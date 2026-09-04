@@ -204,8 +204,10 @@ export async function resolverDono(
  * esse marcador é o Claudinho.
  */
 export function canalDoPrincipal(principal: McpPrincipal): CanalDaArte {
-  if (principal.kind === 'user') return 'claude-ai'
+  // O servidor local pode carregar uma PESSOA (STUDIO_AUTOR do Mac) e ainda
+  // assim é Claude Code — o marcador vence o tipo.
   if (principal.clientId === CLIENT_ID_LOCAL) return 'claude-code'
+  if (principal.kind === 'user') return 'claude-ai'
   return 'claudinho'
 }
 

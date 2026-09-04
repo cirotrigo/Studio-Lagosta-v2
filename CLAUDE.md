@@ -3460,6 +3460,29 @@ mostrava "?". Três produtores faziam isso: a API externa do Claudinho
   CARREGADO (páginas de 60); com mais por vir, o rótulo diz "as N carregadas".
   Baixar e excluir em lote já existiam e agora têm como ser usados de verdade.
 
+### Quem assina a arte pedida pelo Claude: a pessoa do MAC (04/09/2026)
+
+O Ciro e a Roberta usam a MESMA conta do Claude em Macs diferentes, e toda
+arte pedida pelo conector ou pelo servidor local saía assinada pelo DONO do
+projeto ("Automações"). A identidade não pode vir do Claude — vem da máquina.
+
+- **`.studio-autor` na raiz do repositório** (gitignored, um por Mac) guarda o
+  e-mail de login no Studio; `scripts/mcp-wrapper.sh` o exporta como
+  `STUDIO_AUTOR`, e `src/lib/mcp/autor-local.ts` resolve o User e monta o
+  principal do servidor local como PESSOA (`kind: 'user'`, `clientId`
+  `claude-code-local`). Valor que não é usuário do Studio AVISA no stderr e
+  cai no comportamento antigo — assinar errado em silêncio não.
+- **`createdBy` opcional em `persistAndRenderCreative`, `comporPeca`
+  (`autor`), `enfileirarPeca`, `createArteRapida` e `importarArte`**: quem
+  pediu assina (no conector, o dono do token OAuth; no local, a pessoa do
+  Mac); sem isso, o dono do projeto. `decididoPor` continua sendo a auditoria.
+- **`canalDoPrincipal` olha o `clientId` local ANTES do tipo**: o principal do
+  Mac agora é `user`, e sem essa ordem a arte do Claude Code viraria
+  `claude-ai`.
+- Servidor stdio lê o arquivo só ao subir: mudou o `.studio-autor`, reinicie o
+  Claude Code. O `.mcp.json` do repositório tem o caminho ABSOLUTO deste Mac —
+  em outra máquina o servidor entra pelo `claude mcp add` com o caminho local.
+
 ### 🔴 A régua por visão exigia a LOGO como texto (TERO, 03/09/2026)
 
 A Roberta não conseguia melhorar nenhuma arte do TERO: as duas tentativas

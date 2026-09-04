@@ -93,6 +93,8 @@ export interface ComposicaoJobArgs {
   /** A spec validada (`src/lib/compositor/spec.ts`). */
   spec: unknown
   decididoPor?: string | null
+  /** Quem assina a arte (User.id interno); sem isso, o dono do projeto. */
+  autor?: string | null
 }
 
 async function enfileirar(

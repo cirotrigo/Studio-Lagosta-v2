@@ -79,6 +79,12 @@ export interface OpcoesDeComposicao {
   provar?: boolean
   /** `User.id` INTERNO (cuid), nunca o clerkId. */
   decididoPor?: string | null
+  /**
+   * Quem ASSINA a arte (`Generation.createdBy`, User.id interno). É a pessoa
+   * que pediu — no conector, o dono do token; no servidor local, quem o Mac
+   * declara em STUDIO_AUTOR. Sem isso, o dono do projeto ("Automações").
+   */
+  autor?: string | null
   /** Por qual canal a peça foi pedida. Ver `creatives/canal.ts`. */
   canal?: CanalDaArte | null
   /** F3: a Generation PROCESSING que a fila criou — o persist a fecha em vez de criar outra. */
@@ -788,6 +794,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     layers,
     background: assinatura.numeros.fundo,
     authorName: 'compositor',
+    createdBy: opcoes.autor ?? null,
     canal: opcoes.canal ?? null,
     pageTags: [TAG_DA_PECA_COMPOSTA, spec.formato],
     fieldValues: {
