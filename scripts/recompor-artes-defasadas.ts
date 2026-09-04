@@ -12,8 +12,12 @@
  *
  * Caminho: post da agenda → `mediaUrls` → a Generation com aquele `resultUrl`
  * → a página que a gerou → o texto da página contra o `layersSnapshot` da
- * arte. Ir por aqui (e não varrendo todas as páginas do projeto) é o que faz a
- * varredura custar duas consultas por post em vez de uma por página.
+ * arte. Entrar pelo POST (e não varrendo todas as páginas do projeto) é o que
+ * limita a conta às páginas que hoje têm arte na agenda.
+ *
+ * ⚠️ É LENTO: o levantamento custa três idas ao banco por página, em série.
+ * Medido em 04/09/2026 contra produção — 160 páginas levaram ~20 minutos. Rode
+ * por projeto (`--projeto`) quando quiser resposta rápida.
  *
  * Dry-run por padrão, como todo script que escreve nesta casa.
  *
@@ -90,7 +94,12 @@ async function main() {
   let pelaInvalidacao = 0
   const semComoConferir: string[] = []
 
+  let conferidas = 0
   for (const pageId of paginas) {
+    conferidas++
+    // Progresso: sem isto a varredura da carteira inteira fica muda por ~20
+    // minutos, e quem roda não sabe se ela travou.
+    if (conferidas % 20 === 0) console.log(`  … ${conferidas}/${paginas.size} páginas conferidas`)
     const l = await levantarPagina(pageId)
     if (!l || !l.arte) continue
     if (l.slides.length === 0) {
