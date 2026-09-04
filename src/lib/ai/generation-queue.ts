@@ -86,15 +86,83 @@ export async function enfileirarComposicao(args: ComposicaoJobArgs): Promise<str
   return job.id
 }
 
+/**
+ * RECOMPOSIÇÃO de uma peça cuja página foi editada — mesma fila (`COMPOR`),
+ * trabalho diferente: refazer a arte da PÁGINA QUE JÁ EXISTE e trocar a
+ * posição dela nos posts que a invalidação não alcança (o slide de carrossel).
+ * Ver `src/lib/compositor/recompor.ts`.
+ *
+ * Duas diferenças de contrato em relação a `enfileirarComposicao`, e as duas
+ * importam:
+ *
+ * 1. **O job VOLTA à fila quando já terminou.** A composição é pedida uma vez
+ *    por peça, então `update: {}` basta lá; a recomposição é pedida a cada
+ *    edição, e um job DONE de uma edição anterior engoliria a seguinte em
+ *    silêncio — que é exatamente o defeito que isto veio consertar.
+ * 2. **Não carrega spec.** Ela é lida da própria arte no momento de executar,
+ *    junto com as camadas da página — é o que faz o job trabalhar sempre
+ *    sobre a versão mais nova, mesmo tendo sido enfileirado três edições
+ *    atrás.
+ *
+ * `generationId` é o da ARTE que já existe (COMPLETED), não uma linha nova:
+ * uma peça tem uma arte, e a fila tem um job por arte. Job RUNNING não é
+ * mexido — quem está trabalhando lê a página no fim e, se ela mudou de novo,
+ * pede outra tentativa.
+ */
+export async function enfileirarRecomposicao(args: RecomposicaoJobArgs): Promise<string> {
+  const limpo = JSON.parse(JSON.stringify(args)) as Record<string, unknown>
+  const job = await db.generationJob.upsert({
+    where: { generationId: args.generationId },
+    create: { generationId: args.generationId, kind: 'COMPOR', projectId: args.projectId, payload: limpo as never, maxAttempts: 3 },
+    update: {},
+    select: { id: true },
+  })
+  await db.generationJob.updateMany({
+    where: { id: job.id, status: { in: ['DONE', 'FAILED'] } },
+    data: {
+      kind: 'COMPOR',
+      status: 'PENDING',
+      payload: limpo as never,
+      attempts: 0,
+      maxAttempts: 3,
+      nextAttemptAt: new Date(),
+      leaseExpiresAt: null,
+      startedAt: null,
+      finishedAt: null,
+      lastError: null,
+    },
+  })
+  return job.id
+}
+
 /** O payload de um job COMPOR — o que `processarComposicaoEmBackground` recebe. */
 export interface ComposicaoJobArgs {
   generationId: string
   projectId: number
-  /** A spec validada (`src/lib/compositor/spec.ts`). */
-  spec: unknown
+  /**
+   * A spec validada (`src/lib/compositor/spec.ts`). Obrigatória na composição;
+   * ausente na RECOMPOSIÇÃO, que a lê da própria arte ao executar.
+   */
+  spec?: unknown
   decididoPor?: string | null
   /** Quem assina a arte (User.id interno); sem isso, o dono do projeto. */
   autor?: string | null
+  /**
+   * Presente = este job REFAZ a arte de uma página editada, em vez de compor
+   * uma peça nova. Ver `enfileirarRecomposicao`.
+   */
+  recompor?: { pageId: string; origem: OrigemDaRecomposicao } | null
+}
+
+/** De onde veio o pedido: o autosave do editor, ou a varredura por conteúdo. */
+export type OrigemDaRecomposicao = 'editor' | 'varredura'
+
+export interface RecomposicaoJobArgs {
+  /** A Generation da arte que já existe — a mesma linha é atualizada. */
+  generationId: string
+  projectId: number
+  recompor: { pageId: string; origem: OrigemDaRecomposicao }
+  decididoPor?: string | null
 }
 
 async function enfileirar(

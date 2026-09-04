@@ -1027,6 +1027,15 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const postsInvalidados = invalidacao.invalidados
 
   /**
+   * O outro lado da invalidação: a arte CONGELADA desta página — o slide de
+   * carrossel, que é `NOT_NEEDED` e fica FORA do alcance do re-render. Sem
+   * isto, ajustar a arte de um slide não mudava nada no post. Ver
+   * `recompor.ts`.
+   */
+  const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
+  await pedirRecomposicaoDaArteCongelada([page.id])
+
+  /**
    * A CORREÇÃO EXPLÍCITA — o sinal mais limpo que existe aqui.
    *
    * `fieldValues.ajustes` já guardava "onde a IA errou", mas só como texto
