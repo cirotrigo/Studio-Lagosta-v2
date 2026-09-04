@@ -364,8 +364,18 @@ async function marcarErro(input: ContextoDeProducao, item: ItemDoPlano, motivo: 
 }
 
 /** A spec do compositor a partir do item — copy por ordem de leitura, foto e formato. */
-function specDoItem(item: ItemDoPlano, projectId: number) {
-  const blocos = copyParaBlocos(item.copyProposta ?? [])
+async function specDoItem(item: ItemDoPlano, projectId: number) {
+  const formato = (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story'
+  // A copy é distribuída SÓ sobre os papéis que a assinatura do formato tem
+  // (Ciro, 04/09/2026: "a copy é feita em cima dos campos que existem no
+  // template"). União das variantes do formato: a escolha da variante depois
+  // pega a que cobre os papéis pedidos.
+  const { paginasDeAssinatura } = await import('@/lib/compositor/compor')
+  const { paginas } = await paginasDeAssinatura(projectId)
+  const doFormato = paginas.filter((p) => p.formato === formato)
+  // headline2 é a segunda voz da manchete, não um papel da copy.
+  const papeis = doFormato.length > 0 ? ([...new Set(doFormato.flatMap((p) => p.papeis))].filter((p) => p !== 'headline2') as Array<'pre' | 'headline' | 'apoio' | 'cta' | 'servico'>) : undefined
+  const blocos = copyParaBlocos(item.copyProposta ?? [], papeis ? { papeis } : {})
   if (blocos.length === 0) {
     throw new CreativeError('ITEM_INCOMPLETO', 'Este item não tem texto — o compositor precisa de pelo menos a manchete.', 400)
   }
@@ -376,7 +386,7 @@ function specDoItem(item: ItemDoPlano, projectId: number) {
       : undefined
   return {
     projectId,
-    formato: (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story',
+    formato,
     ...(foto ? { foto } : {}),
     blocos,
     ...(item.tema ? { tema: item.tema, nome: `${item.tema} — plano` } : {}),
@@ -393,7 +403,7 @@ function specDoItem(item: ItemDoPlano, projectId: number) {
  */
 async function enfileirarItemDeComposicao(item: ItemDoPlano, input: ContextoDeProducao): Promise<ItemExecutado> {
   const { enfileirarPeca } = await import('@/lib/compositor/fila')
-  const r = await enfileirarPeca(specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
+  const r = await enfileirarPeca(await specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
   const situacao = await mover(input, item, 'na-fila', { generationId: r.generationId })
   return { itemId: item.id, tema: item.tema, via: 'compor', situacao, generationId: r.generationId }
 }
@@ -405,7 +415,7 @@ async function enfileirarItemDeComposicao(item: ItemDoPlano, input: ContextoDePr
  */
 async function comporItemAgora(item: ItemDoPlano, input: ContextoDeProducao): Promise<ItemExecutado> {
   const { comporPeca } = await import('@/lib/compositor/compor')
-  const r = await comporPeca(specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
+  const r = await comporPeca(await specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
   const p = r.persistido!
   const situacao = await mover(input, item, 'pronto', { generationId: p.generationId, pageId: p.pageId })
   return {

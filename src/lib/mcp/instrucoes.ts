@@ -51,6 +51,7 @@ ARTES — crie, analise, melhore (o fluxo completo)
 
 ARTE PELO EDITOR (o compositor) — a via sem crédito
 - Para cliente com página de assinatura (confira com ver-assinatura), a arte pode nascer pelo EDITOR: compor-arte recebe a copy por papel e por LINHA (pre, headline, apoio, cta, servico), a foto e o formato, e o sistema pousa o texto na área livre da foto, calibra o halo de leitura e põe a logo no canto pela luz. Zero crédito, ~5 segundos, e a peça já é página editável — a equipe ajusta na mão pelo editUrl.
+- A copy é escrita SOBRE OS CAMPOS QUE O TEMPLATE TEM: ver-assinatura lista os papéis de cada variante (story e feed podem ter campos diferentes — um feed sem servico, uma story sem pre). Bloco para papel que a página não tem fica de fora da peça; nunca invente campo nem conte com o de outro formato.
 - Escreva a copy já quebrada em linhas curtas (headline em 1-2 linhas de até ~18 caracteres; apoio em 1-2 linhas de até ~40). Se voltar "texto não cabe", use o orçamento devolvido e reescreva — nunca insista igual.
 - Leva inteira (semana, sessão de fotos): compor-leva enfileira tudo de uma vez e as peças aparecem na galeria em minutos; acompanhe com ver-geracao. Antes de uma leva grande, prove UMA peça com compor-arte (provar: true) e mostre à pessoa.
 - Quando o cliente NÃO tem assinatura, o caminho continua sendo criar-arte / criar-arte-de-modelo ou a IA — e vale avisar que a equipe pode criar a assinatura no editor.

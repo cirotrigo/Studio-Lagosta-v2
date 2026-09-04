@@ -245,28 +245,6 @@ function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAss
   }
 }
 
-/**
- * Papéis que a página do formato NÃO tem caem na página de story, com a
- * escala de fonte do formato — a equipe monta o feed só com o que muda.
- */
-export function completarComStory(assinatura: AssinaturaDaMarca, story: AssinaturaDaMarca | null, escala: number): AssinaturaDaMarca {
-  if (!story) return assinatura
-  const papeis = { ...assinatura.papeis }
-  for (const papel of Object.keys(story.papeis) as Papel[]) {
-    if (papeis[papel]) continue
-    const e = story.papeis[papel]!
-    // Herdado de outro formato: a caixa e o grupo da página de story não
-    // valem aqui (a âncora sai da regra do papel).
-    papeis[papel] = { ...e, fontSize: Math.round(e.fontSize * escala), letterSpacing: Math.round(e.letterSpacing * escala * 100) / 100, caixa: undefined, grupo: null }
-    // Sem fundo próprio no formato: o do story serve, escalado.
-    if (papeis[papel]!.fundo) {
-      const f = papeis[papel]!.fundo!
-      papeis[papel] = { ...papeis[papel]!, fundo: { ...f, padding: Math.round(f.padding * escala), blur: Math.round(f.blur * escala) } }
-    }
-  }
-  return { ...assinatura, papeis, logo: assinatura.logo ?? story.logo }
-}
-
 export interface PaginaDeAssinatura {
   id: string
   name?: string
