@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
@@ -100,6 +100,19 @@ export async function PATCH(
       console.warn(
         `[API] Layer ${layerId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
       )
+    }
+
+    /**
+     * O outro lado da invalidação: a arte CONGELADA desta página (o slide de
+     * carrossel) não volta para a fila de render. Ver `recompor.ts`.
+     */
+    if (layerChanged) {
+      // Fora da resposta: este endpoint também recebe autosave, e o
+      // levantamento custa duas idas ao banco.
+      after(async () => {
+        const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
+        await pedirRecomposicaoDaArteCongelada([pageId])
+      })
     }
 
     return NextResponse.json({

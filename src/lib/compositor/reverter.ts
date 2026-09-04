@@ -37,5 +37,13 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
     await tx.page.update({ where: { id: pageId }, data: { layers: JSON.stringify(v.camadas) } })
     return invalidateScheduledRenders(tx, { pageIds: [pageId] })
   })
+  /**
+   * O outro lado da invalidação: a arte CONGELADA desta página (o slide de
+   * carrossel) não volta para a fila de render, então reverter as camadas não
+   * chegaria ao post. Fora da transação, porque o job precisa enxergar a
+   * página já gravada. Ver `recompor.ts`.
+   */
+  const { pedirRecomposicaoDaArteCongelada } = await import('./recompor')
+  await pedirRecomposicaoDaArteCongelada([pageId])
   return { generationId, pageId, camadas: v.camadas.length, invalidados: r.invalidados, congelados: r.congelados }
 }

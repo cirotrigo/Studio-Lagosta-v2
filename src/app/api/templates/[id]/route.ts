@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { updateTemplateSchema } from '@/lib/validations/studio'
@@ -133,6 +133,8 @@ export async function PUT(
 
     let invalidados = 0
     let congelados: string[] = []
+    /** As páginas cujo visual mudou — a recomposição da arte congelada roda FORA da transação. */
+    let alteradas: string[] = []
 
     // Use transaction to update template and pages together
     const updated = await db.$transaction(async (tx) => {
@@ -295,6 +297,7 @@ export async function PUT(
         // a fila de render. Só as alteradas — e só quando o payload traz
         // páginas (um PUT que muda apenas o nome do template não mexe em arte
         // nenhuma).
+        alteradas = Array.from(paginasAlteradas)
         if (paginasAlteradas.size > 0) {
           const r = await invalidateScheduledRenders(tx, {
             pageIds: Array.from(paginasAlteradas),
@@ -336,6 +339,20 @@ export async function PUT(
       console.warn(
         `[API] Template ${templateId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
       )
+    }
+
+    /**
+     * O outro lado da invalidação: a arte CONGELADA destas páginas (o slide de
+     * carrossel) não volta para a fila de render, e sem isto continuaria
+     * publicando o visual antigo em silêncio. Ver `recompor.ts`.
+     */
+    if (alteradas.length > 0) {
+      // Fora da resposta: o levantamento custa duas idas ao banco por página,
+      // e o "Salvar e Voltar" do editor pode trazer a leva inteira.
+      after(async () => {
+        const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
+        await pedirRecomposicaoDaArteCongelada(alteradas)
+      })
     }
 
     return NextResponse.json({

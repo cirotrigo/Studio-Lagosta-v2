@@ -212,81 +212,112 @@ export async function PATCH(
     }
 
     /**
+     * O TEXTO mudou? É o que a captura de aprendizado pergunta:
+     * `layersChanged` dispara também em mudança puramente geométrica
+     * (arrastar uma caixa), e uma linha de copy sem diferença de copy seria
+     * ruído no corpus.
+     */
+    const diffDeTexto = layersChanged ? diffDeCopy(copyAntes, copyDepois) : null
+    const textoMudou = !!diffDeTexto && !diffDeTexto.ilegivel && diffDeTexto.mudou
+
+    /**
+     * 🔴 A ARTE CONGELADA desta página — o slide de CARROSSEL, e a arte
+     * agendada por `generationId` — não é alcançada pela invalidação acima.
+     * Ela é `NOT_NEEDED` de propósito, porque `renderPostArt` grava
+     * `mediaUrls: [url]` e um post `RENDERED` de 5 slides perderia 4 no
+     * primeiro re-render. A proteção evitava o estrago e, no mesmo movimento,
+     * abandonava a edição: até 04/09/2026 editar a copy de um slide não fazia
+     * NADA — o post publicava o texto velho, sem log, aviso ou status (7 das
+     * 65 artes agendadas do projeto 8 estavam assim).
+     *
+     * A porta é `visualChanged`, a MESMA da invalidação, e não só a mudança de
+     * texto: para a arte congelada, mover uma caixa ou trocar uma cor fica
+     * velho exatamente como a copy fica. As duas metades da regra divergirem
+     * é o defeito de origem.
+     *
+     * Aqui só se ENFILEIRA. Refazer a arte leva dezenas de segundos e este
+     * PATCH é o autosave: ele bate a cada pausa da digitação e não pode
+     * segurar um render. O cron `generation-jobs` pega o job em no máximo um
+     * minuto; o desfecho (inclusive a recusa por texto que não cabe) fica no
+     * histórico do post e na Generation — ver `recompor.ts`.
+     */
+    if (visualChanged) {
+      after(async () => {
+        const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
+        await pedirRecomposicaoDaArteCongelada([pageId])
+      })
+    }
+
+    /**
      * A EDIÇÃO MANUAL no editor — a pessoa reescrevendo o que o gerador
      * escreveu. O detector `layersChanged` acima já existia e só invalidava
      * render; daqui para a frente ele também alimenta o corpus.
-     *
-     * Só entra quando o TEXTO mudou: `layersChanged` dispara também em
-     * mudança puramente geométrica (arrastar uma caixa), e uma linha de copy
-     * sem diferença de copy seria ruído.
      *
      * Fora da resposta (`after`): o autosave bate aqui a cada pausa da
      * digitação e não pode esperar por telemetria. Nada aqui lança — as
      * funções de `captura.ts` engolem o próprio erro.
      */
-    if (layersChanged) {
-      const diff = diffDeCopy(copyAntes, copyDepois)
-      if (!diff.ilegivel && diff.mudou) {
-        const projectId = template!.Project.id
-        after(async () => {
-          /**
-           * `decididoPor` é o `User.id` INTERNO, nunca o clerkId. Busca
-           * somente leitura: criar linha de User a partir daqui é justamente
-           * como nascem os Users fantasma, e isto é auditoria.
-           */
-          const dbUser = await db.user.findUnique({
-            where: { clerkId: userId },
-            select: { id: true },
-          })
-          /**
-           * Se esta página é a arte de um item de plano, a copy JÁ foi
-           * proposta (`propor-semana` a registrou como sugestão emitida) e o
-           * que se grava é o DESFECHO dela. Abrir uma decisão nova aqui faria
-           * o mesmo texto virar dois sinais com sentidos opostos — o defeito
-           * que a F1 já corrigiu uma vez no slot (`e3236624`).
-           *
-           * O desfecho é calculado comparando proposta × final; a tela não
-           * declara nada. Só `sem-plano` cai no registro de sempre.
-           *
-           * Custa uma consulta por autosave que MUDA TEXTO — dentro do
-           * `after()`, fora da resposta. Reescrever a mesma página várias
-           * vezes no mesmo minuto não cria linhas novas: `registrarDesfecho`
-           * só grava quando a evidência é mais forte que a já registrada.
-           */
-          const fechamento = await fecharDicaDeCopyDaPagina({
-            projectId,
-            pageId,
-            copyFinal: copyDepois,
-            decididoPor: dbUser?.id ?? null,
-            superficie: 'editor',
-          })
-          if (!caiNaEscolhaPropria(fechamento)) return
-
-          await registrarDecisaoSemSugestao({
-            projectId,
-            tipo: 'copy',
-            escolhido: {
-              copy: copyDepois,
-              // A copy de um MODELO é texto de espelho, não copy de peça —
-              // quem agrega precisa poder separar sem outro join.
-              modelo: existingPage.isTemplate,
-            },
-            diff,
-            pageId,
-            decididoPor: dbUser?.id ?? null,
-            superficie: 'editor',
-            /**
-             * Balde de 10 minutos por página. Sem ele, digitar uma headline
-             * com o autosave ligado vira uma dezena de linhas quase iguais e
-             * dilui o corpus. Com ele fica a PRIMEIRA edição do balde — que é
-             * a mais valiosa, porque o lado "antes" dela ainda é o texto que
-             * a IA gerou. O preço é perder as revisões seguintes do mesmo
-             * balde; a edição que continua depois de 10 minutos entra inteira.
-             */
-            chave: `copy:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
-          })
+    if (textoMudou) {
+      const diff = diffDeTexto!
+      const projectId = template!.Project.id
+      after(async () => {
+        /**
+         * `decididoPor` é o `User.id` INTERNO, nunca o clerkId. Busca
+         * somente leitura: criar linha de User a partir daqui é justamente
+         * como nascem os Users fantasma, e isto é auditoria.
+         */
+        const dbUser = await db.user.findUnique({
+          where: { clerkId: userId },
+          select: { id: true },
         })
-      }
+        /**
+         * Se esta página é a arte de um item de plano, a copy JÁ foi
+         * proposta (`propor-semana` a registrou como sugestão emitida) e o
+         * que se grava é o DESFECHO dela. Abrir uma decisão nova aqui faria
+         * o mesmo texto virar dois sinais com sentidos opostos — o defeito
+         * que a F1 já corrigiu uma vez no slot (`e3236624`).
+         *
+         * O desfecho é calculado comparando proposta × final; a tela não
+         * declara nada. Só `sem-plano` cai no registro de sempre.
+         *
+         * Custa uma consulta por autosave que MUDA TEXTO — dentro do
+         * `after()`, fora da resposta. Reescrever a mesma página várias
+         * vezes no mesmo minuto não cria linhas novas: `registrarDesfecho`
+         * só grava quando a evidência é mais forte que a já registrada.
+         */
+        const fechamento = await fecharDicaDeCopyDaPagina({
+          projectId,
+          pageId,
+          copyFinal: copyDepois,
+          decididoPor: dbUser?.id ?? null,
+          superficie: 'editor',
+        })
+        if (!caiNaEscolhaPropria(fechamento)) return
+
+        await registrarDecisaoSemSugestao({
+          projectId,
+          tipo: 'copy',
+          escolhido: {
+            copy: copyDepois,
+            // A copy de um MODELO é texto de espelho, não copy de peça —
+            // quem agrega precisa poder separar sem outro join.
+            modelo: existingPage.isTemplate,
+          },
+          diff,
+          pageId,
+          decididoPor: dbUser?.id ?? null,
+          superficie: 'editor',
+          /**
+           * Balde de 10 minutos por página. Sem ele, digitar uma headline
+           * com o autosave ligado vira uma dezena de linhas quase iguais e
+           * dilui o corpus. Com ele fica a PRIMEIRA edição do balde — que é
+           * a mais valiosa, porque o lado "antes" dela ainda é o texto que
+           * a IA gerou. O preço é perder as revisões seguintes do mesmo
+           * balde; a edição que continua depois de 10 minutos entra inteira.
+           */
+          chave: `copy:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+        })
+      })
     }
 
     /**

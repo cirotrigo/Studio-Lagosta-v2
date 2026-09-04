@@ -72,6 +72,24 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
 
 /** O runner do job COMPOR. Nunca lança: o desfecho fica na Generation. */
 export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & { queueJobId?: string | null }): Promise<void> {
+  /**
+   * Mesma fila, trabalho diferente: RECOMPOR refaz a arte de uma página que já
+   * existe e troca a posição dela nos posts que a invalidação não alcança (o
+   * slide de carrossel). Ver `recompor.ts` — inclusive por que aquele runner
+   * LANÇA na falha e este não.
+   */
+  if (args.recompor) {
+    const { processarRecomposicaoEmBackground } = await import('./recompor')
+    await processarRecomposicaoEmBackground({
+      generationId: args.generationId,
+      projectId: args.projectId,
+      recompor: args.recompor,
+      decididoPor: args.decididoPor ?? null,
+      queueJobId: args.queueJobId ?? null,
+    })
+    return
+  }
+
   const t0 = Date.now()
   try {
     const r = await comporPeca(args.spec, { generationId: args.generationId, decididoPor: args.decididoPor ?? null, autor: args.autor ?? null })

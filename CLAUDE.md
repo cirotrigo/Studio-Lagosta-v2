@@ -3890,6 +3890,130 @@ e o sinal `geometria`. Regras que valem para código novo:
   análise de visão (o compositor usa a estimativa por energia; `assunto`
   em frações na entrada do catálogo é o contrato, quando existir).
 
+### 🔴 A arte do slide de carrossel não seguia a página (04/09/2026)
+
+Editar a copy de uma página no editor tinha dois desfechos opostos, e ninguém
+via a diferença: em peça de imagem ÚNICA o PATCH chama
+`invalidateScheduledRenders`, o post volta para `PENDING` e o cron
+`render-stories` refaz a arte; em SLIDE DE CARROSSEL **não acontecia nada** —
+o post seguia com o render antigo em `mediaUrls` e publicaria o texto velho,
+em silêncio.
+
+A causa não era esquecimento: post de carrossel é `NOT_NEEDED` e sem `pageId`
+de propósito, porque `renderPostArt` grava `mediaUrls: [url]` e um post
+`RENDERED` de 5 slides perderia 4 no primeiro re-render. A proteção evitava o
+estrago e, no mesmo movimento, abandonava a edição. Medido na conferência de
+04/09 (projeto 8): das 65 artes agendadas, **11 não batiam com o texto da
+página** — 7 eram slides parados desde a composição, e 2 tinham sobreposição
+de texto visível. Nada disso apareceu em log, aviso ou status.
+
+O conserto é `src/lib/compositor/recompor.ts` (serviço) e `defasagem.ts`
+(contrato puro), na fila durável. Regras que valem para código novo:
+
+- 🔴 **`invalidateScheduledRenders` tem um COMPANHEIRO obrigatório.** Quem
+  muda o visual de uma página chama os dois: a invalidação devolve à fila de
+  render quem RENDERIZA da página; `pedirRecomposicaoDaArteCongelada` refaz a
+  arte de quem não renderiza (slide de carrossel, arte agendada por
+  `generationId`). Cada uma sozinha deixa metade das artes publicando o
+  antigo. As cinco portas já chamam as duas: PATCH da página, PUT do template,
+  PATCH de camada, `ajustarArte` e `reverterCamadasDaArte`.
+- 🔴 **A defasagem se mede por CONTEÚDO, nunca por carimbo de hora.**
+  `Page.updatedAt` muda em qualquer escrita — em 04/09 um `update` de `order`
+  em 30 páginas apagou o sinal de uma vez. A comparação é o texto de
+  `Page.layers` contra o de `Generation.fieldValues.layersSnapshot`, lidos por
+  `lerCamadas`/`copyDeCamadas` (ilegível **nunca** vira "em dia").
+- 🔴 **Recompor, não só re-renderizar.** Re-renderizar a página como está
+  reproduz a colisão: a caixa foi medida para o texto ANTIGO (foi assim que o
+  apoio saiu impresso por cima da manchete em duas peças). O caminho é pegar a
+  `fieldValues.spec`, trocar só a copy pela que está na página e chamar
+  `comporPeca`, que mede cada linha na fonte real e encolhe até caber.
+- 🔴 **`comporPeca` roda em `provar: true` e a gravação é feita à mão, na
+  MESMA página.** Deixar o compositor persistir criaria página nova (em outra
+  pasta, com outro nome) e o post continuaria apontando para a antiga — editar
+  de novo deixaria de ter efeito para sempre. O `provar` também evita os
+  efeitos colaterais da persistência: pasta da semana, `registrarUsoDeFoto` e
+  a transição do item do plano. Recompor é refazer A MESMA peça.
+- 🔴 **Recompor só quando a página é a que o compositor pousou.** A
+  recomposição reconstrói TODAS as camadas: se alguém moveu uma caixa,
+  escondeu um bloco ou acrescentou camada, isso iria embora em silêncio. Nesse
+  caso a arte é só re-renderizada como está (a edição chega ao post do mesmo
+  jeito) com o aviso de que a diagramação não foi medida de novo. A **altura**
+  de caixa de texto não conta como ajuste manual: ela é derivada
+  (`autoExpand`) e cresce sozinha quando o texto muda — contá-la faria a
+  recomposição nunca acontecer.
+- 🔴 **Nem toda spec tem foto.** Duas peças tinham `spec.foto` indefinida
+  porque a imagem foi posta à mão no editor depois de compor: recompor pela
+  spec devolveu a peça com FUNDO PRETO, sem erro nenhum. A PÁGINA é a verdade
+  sobre a foto (`fotoDaPagina`), e trocar a URL derruba junto o `driveFileId`
+  antigo, que levaria o assunto errado do catálogo.
+- 🔴 **O casamento post↔arte é por URL EXATA, nunca pelo prefixo do nome do
+  arquivo.** `renderPostArt` nomeia por POST (`<postId>-<epoch>.png`) e o
+  compositor por PÁGINA (`<pageId>-<epoch>.png`); supor uma coisa só produziu
+  9 falsos "página que não existe mais" no diagnóstico. A URL do Blob tem
+  sufixo aleatório, então a igualdade é inequívoca.
+- **A troca é cirúrgica**: `montarNovasMidias` (o mesmo de
+  `trocar-arte-do-post`) troca UMA posição, com compare-and-swap sobre o array
+  inteiro. A contagem de mídias nunca diminui. O alcance é o MESMO da
+  invalidação — `DRAFT`/`SCHEDULED`, `laterPostId: null` —, e post que a
+  invalidação atende é pulado (`alcancadoPelaInvalidacao`), senão as duas
+  trocariam a mídia uma da outra.
+- **`headline2` volta a ser `headline` na spec.** `comporPeca` parte a
+  manchete em duas vozes quando a assinatura tem `headline2`; devolvê-lo como
+  papel faria `validarSpec` recusar a peça inteira e o slide continuaria com o
+  texto velho.
+- **A RECUSA (`TEXTO_NAO_CABE_NA_COLUNA`) não vira log.** Ela é correta — a
+  linha não cabe na coluna nem a 80% da fonte —, e fica gravada em
+  `Generation.fieldValues.recomposicao` (merge, nunca substituição) **e** no
+  histórico de cada post afetado, com o orçamento de caracteres. A arte
+  continua sendo a antiga; quem editou decide. Nada regenera sozinho além
+  disso.
+- **A fila é a de sempre (`kind: COMPOR`), com o `generationId` da arte que já
+  existe** — uma peça tem uma arte, e a fila tem um job por arte.
+  `enfileirarRecomposicao` REABRE job já terminado (diferente de
+  `enfileirarComposicao`, cujo `update: {}` engoliria a edição seguinte em
+  silêncio) e **não carrega spec**: ela é lida da arte na hora de executar, o
+  que faz o job trabalhar sempre sobre a versão mais nova. O runner LANÇA na
+  falha definitiva (é o que faz `executarJob` gravar `falharJob` com o
+  motivo); `fecharJob` sozinho leria a Generation COMPLETED e diria DONE.
+- **O PATCH só ENFILEIRA.** Refazer a arte leva dezenas de segundos e aquele
+  PATCH é o autosave. Medido em 04/09: o levantamento custa ~1,4s (duas idas
+  ao banco) e roda dentro de `after()`.
+- **A varredura por conteúdo é `scripts/recompor-artes-defasadas.ts`**
+  (dry-run por padrão), e é ela que pega o que já está parado: post da agenda
+  → `mediaUrls` → Generation → página → texto contra o snapshot.
+- ⚠️ **Arte sem `layersSnapshot`** — a de `arte-rapida`, a do canvas de design
+  (`upload-creative`) e tudo anterior ao compositor — não tem como ser
+  conferida por conteúdo, e toda mudança visual nela cai no re-render puro
+  (não dá para afirmar que está em dia, e refazer é barato perto de publicar o
+  texto velho).
+- 🔴 **"Sem snapshot" NÃO é o mesmo que "exposta", e o relatório precisa
+  separar as duas.** Página sem CAMADA DE TEXTO — a do canvas de design, que é
+  uma imagem em tela cheia com a copy dentro do PNG — não tem copy editável, e
+  o defeito não se aplica a ela. Medido em 04/09/2026: as **53** páginas sem
+  snapshot da carteira eram **todas** assim (`source: arte-enviada`, zero
+  camadas de texto, nenhuma com `slotValues` de régua). Contá-las como "não
+  deu para conferir" fazia o relatório soar alarmante sem nada a alarmar — e
+  convidava a "consertar" 53 peças agendadas re-renderizando arte que
+  `importarArte` guarda intacta de propósito ("os bytes enviados viram o
+  `resultUrl` tal e qual").
+- **Placar da carteira em 04/09/2026** (`--dias 30`, 145 posts, 160 páginas):
+  **0 defasadas**, 36 congeladas conferidas contra o snapshot e em dia, 71
+  atendidas pela invalidação (imagem única), 53 sem texto editável, **0 sem
+  como conferir**. As 11 do projeto 8 já tinham sido consertadas na mão — o
+  zero é a confirmação disso, não a ausência do problema.
+- ⚠️ **Depois de uma recomposição, `reverter-arte` volta para a peça
+  RECOMPOSTA**, não para a composição original: o snapshot é atualizado junto.
+  É o que se quer (reverter desfaz o ajuste manual, não a edição de copy),
+  mas a entrega original deixa de ser alcançável.
+- ⚠️ **A recomposição REESCREVE `Page.layers`** (sem isso o editor e a arte
+  publicada divergiriam para sempre). Enquanto a pessoa continua digitando, o
+  autosave dela escreve o estado do navegador por cima da geometria recomposta
+  e enfileira outra rodada; converge quando ela para de digitar.
+- **`fieldValues.recomposicao.urlsAnteriores` guarda as últimas 5 URLs da
+  arte.** Refazer sobrescreve `Generation.resultUrl`, e um post que perdeu o
+  compare-and-swap ficaria com uma URL que nenhuma Generation tem mais —
+  invisível para toda varredura seguinte. O rastro é o resgate.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
