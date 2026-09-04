@@ -28,6 +28,7 @@
  */
 
 import { db } from '@/lib/db'
+import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 import { medirDefasagem } from '@/lib/compositor/defasagem'
 import {
   enfileirarRecomposicaoDaPagina,
@@ -93,6 +94,16 @@ async function main() {
    */
   let pelaInvalidacao = 0
   const semComoConferir: string[] = []
+  /**
+   * Página SEM camada de texto — a arte do canvas de design (`arte-enviada`) é
+   * uma imagem em tela cheia, com a copy dentro do PNG. Não há copy editável,
+   * então o defeito não se aplica e "sem snapshot" aqui não é exposição
+   * nenhuma. Medido em 04/09/2026: as 53 páginas sem snapshot da carteira eram
+   * TODAS assim (`source: arte-enviada`, zero camadas de texto) — contá-las
+   * como "não deu para conferir" fazia o relatório soar alarmante sem ter
+   * nada a alarmar.
+   */
+  const naoSeAplica: string[] = []
 
   let conferidas = 0
   for (const pageId of paginas) {
@@ -109,7 +120,9 @@ async function main() {
     const page = await db.page.findUnique({ where: { id: pageId }, select: { layers: true, name: true } })
     const d = medirDefasagem(page?.layers, l.arte.snapshot)
     if (d.ilegivel) {
-      semComoConferir.push(`${pageId} — ${l.nome}`)
+      const texto = copyDeCamadas(page?.layers)
+      if (texto && Object.keys(texto).length === 0) naoSeAplica.push(`${pageId} — ${l.nome}`)
+      else semComoConferir.push(`${pageId} — ${l.nome}`)
       continue
     }
     if (!d.defasada) {
@@ -127,10 +140,11 @@ async function main() {
   console.log(
     `\nResumo: ${defasadas.length} defasada(s), ${emDia} congelada(s) em dia, ` +
       `${pelaInvalidacao} atendida(s) pela invalidação (imagem única), ` +
-      `${semComoConferir.length} sem snapshot para conferir.`,
+      `${naoSeAplica.length} sem texto editável (o defeito não se aplica), ` +
+      `${semComoConferir.length} sem snapshot E com texto (só dá para conferir olhando).`,
   )
   if (semComoConferir.length > 0) {
-    console.log('Sem snapshot (arte anterior ao compositor — só dá para conferir olhando):')
+    console.log('Com texto na página e sem snapshot para comparar:')
     for (const s of semComoConferir.slice(0, 20)) console.log(`  · ${s}`)
   }
   if (defasadas.length === 0) return

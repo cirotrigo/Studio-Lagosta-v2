@@ -3983,15 +3983,24 @@ O conserto é `src/lib/compositor/recompor.ts` (serviço) e `defasagem.ts`
   → `mediaUrls` → Generation → página → texto contra o snapshot.
 - ⚠️ **Arte sem `layersSnapshot`** — a de `arte-rapida`, a do canvas de design
   (`upload-creative`) e tudo anterior ao compositor — não tem como ser
-  conferida por conteúdo: a varredura a reporta como "sem como conferir", e
-  toda mudança visual nela cai no re-render puro (não dá para afirmar que está
-  em dia, e refazer é barato perto de publicar o texto velho). São **53 das
-  160 páginas** com arte na agenda dos próximos 30 dias, medido em 04/09/2026.
+  conferida por conteúdo, e toda mudança visual nela cai no re-render puro
+  (não dá para afirmar que está em dia, e refazer é barato perto de publicar o
+  texto velho).
+- 🔴 **"Sem snapshot" NÃO é o mesmo que "exposta", e o relatório precisa
+  separar as duas.** Página sem CAMADA DE TEXTO — a do canvas de design, que é
+  uma imagem em tela cheia com a copy dentro do PNG — não tem copy editável, e
+  o defeito não se aplica a ela. Medido em 04/09/2026: as **53** páginas sem
+  snapshot da carteira eram **todas** assim (`source: arte-enviada`, zero
+  camadas de texto, nenhuma com `slotValues` de régua). Contá-las como "não
+  deu para conferir" fazia o relatório soar alarmante sem nada a alarmar — e
+  convidava a "consertar" 53 peças agendadas re-renderizando arte que
+  `importarArte` guarda intacta de propósito ("os bytes enviados viram o
+  `resultUrl` tal e qual").
 - **Placar da carteira em 04/09/2026** (`--dias 30`, 145 posts, 160 páginas):
   **0 defasadas**, 36 congeladas conferidas contra o snapshot e em dia, 71
-  atendidas pela invalidação (imagem única), 53 sem snapshot. As 11 do projeto
-  8 já tinham sido consertadas na mão — o zero é a confirmação disso, não a
-  ausência do problema.
+  atendidas pela invalidação (imagem única), 53 sem texto editável, **0 sem
+  como conferir**. As 11 do projeto 8 já tinham sido consertadas na mão — o
+  zero é a confirmação disso, não a ausência do problema.
 - ⚠️ **Depois de uma recomposição, `reverter-arte` volta para a peça
   RECOMPOSTA**, não para a composição original: o snapshot é atualizado junto.
   É o que se quer (reverter desfaz o ajuste manual, não a edição de copy),
