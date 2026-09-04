@@ -24,7 +24,8 @@ const base = {
   spec,
   projeto: { id: 6, name: 'Espeto Gaúcho', userId: 'user-interno' },
   pasta: { id: 42, name: 'Semana 07/09' },
-  nome: 'Sex 15:00 · story · churrasco',
+  nome: 'Sex 11/09 · 15:00 · churrasco',
+  ordem: 0,
   canvas: { width: 1080, height: 1920 },
   layers: [],
   fundo: '#111111',
@@ -45,6 +46,18 @@ describe('entradaDePersistencia', () => {
     const e = entradaDePersistencia({ ...base, opcoes: {} })
     expect(e.generationId).toBeNull()
     expect(e.fieldValues).not.toHaveProperty('generationIdDaFila')
+  })
+
+  it('a ordem de postagem vira Page.order — sem isso a página nasce no default 0 do schema', () => {
+    const e = entradaDePersistencia({ ...base, ordem: 133_502, opcoes: {} })
+    expect(e.pageOrder).toBe(133_502)
+  })
+
+  it('o slide é REGISTRADO por quem compõe (Generation.slideOrder), não deduzido depois', () => {
+    const comSlide = entradaDePersistencia({ ...base, spec: { ...spec, carrossel: { slide: 3, de: 5 } }, opcoes: {} })
+    expect(comSlide.slideOrder).toBe(3)
+    // Peça avulsa não é slide de nada.
+    expect(entradaDePersistencia({ ...base, opcoes: {} }).slideOrder).toBeNull()
   })
 
   it('carrega o vínculo com o plano, a foto e a tag da peça composta', () => {

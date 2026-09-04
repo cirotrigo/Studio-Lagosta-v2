@@ -4,8 +4,12 @@
  *
  *  - assinatura   → configuração da marca (o kit do compositor);
  *  - equipe       → modelos que a equipe desenha e reusa sem pedir;
- *  - programacao  → as pastas por SEMANA (e as avulsas do mês) — o que o
- *                   compositor produz, organizado por quando publica;
+ *  - programacao  → as pastas por SEMANA e por FORMATO (e as avulsas do mês) —
+ *                   o que o compositor produz, organizado por quando publica.
+ *                   Desde 04/09/2026 são DUAS por semana (Stories e Feed), e
+ *                   por isso a ordenação precisa de um desempate estável: sem
+ *                   ele as duas pastas da mesma semana trocariam de lugar
+ *                   entre um render e outro;
  *  - arquivo      → coletores automáticos antigos, famílias geradas por tema,
  *                   templates de sistema. Recolhido por padrão; nada é
  *                   excluído porque posts agendados apontam para essas páginas.
@@ -38,17 +42,48 @@ export function secaoDoTemplate(t: TemplateClassificavel): SecaoDeTemplate {
   return 'equipe'
 }
 
-/** Coletor automático vazio não merece card. */
+/**
+ * Pasta automática vazia não merece card.
+ *
+ * Vale para o ARQUIVO (coletores antigos) e, desde 04/09/2026, também para a
+ * PROGRAMAÇÃO: ao separar story de feed, a pasta mista antiga fica sem página
+ * nenhuma e viraria um card fantasma ao lado das duas novas. Nada é excluído —
+ * apagar o template arrastaria as Generations (FK em cascata) e deixaria os
+ * posts sem `templateId`; ela só deixa de aparecer.
+ */
 export function templateVisivel(t: TemplateClassificavel): boolean {
   const secao = secaoDoTemplate(t)
-  if (secao === 'arquivo' && (t._count?.Page ?? 0) === 0) return false
+  if ((secao === 'arquivo' || secao === 'programacao') && (t._count?.Page ?? 0) === 0) return false
   return true
 }
 
-/** A chave da semana (`AAAA-MM-DD` da segunda) quando a pasta é de programação. */
+/**
+ * A chave da semana (`AAAA-MM-DD` da segunda) quando a pasta é de programação.
+ *
+ * Casa a tag SEM formato (`semana:2026-09-07`) e também a com formato
+ * (`semana:2026-09-07:story`) — as duas convivem nas tags, e depender da
+ * ORDEM do array para escolher uma seria frágil.
+ */
+const TAG_DA_SEMANA = /^semana:(\d{4}-\d{2}-\d{2})(?::.+)?$/
+
 export function chaveDaSemana(t: TemplateClassificavel): string | null {
-  const tag = (t.tags ?? []).find((x) => x.startsWith('semana:'))
-  return tag ? tag.slice('semana:'.length) : null
+  for (const tag of t.tags ?? []) {
+    const m = TAG_DA_SEMANA.exec(tag)
+    if (m) return m[1]
+  }
+  return null
+}
+
+/** Ordem em que os formatos aparecem na aba; pasta antiga (sem formato) por último. */
+const ORDEM_DO_FORMATO: Record<string, number> = { story: 0, feed: 1, quadrado: 2 }
+
+/** O formato da pasta, lido do sufixo da tag-chave (`semana:…:story`, `mes:…:feed`). */
+export function formatoDaPasta(t: TemplateClassificavel): string | null {
+  for (const tag of t.tags ?? []) {
+    const m = /^(?:semana:\d{4}-\d{2}-\d{2}|mes:\d{4}-\d{2}):(story|feed|quadrado)$/.exec(tag)
+    if (m) return m[1]
+  }
+  return null
 }
 
 export interface TemplatesAgrupados<T extends TemplateClassificavel> {
@@ -69,9 +104,13 @@ export function agruparTemplates<T extends TemplateClassificavel>(templates: T[]
   g.programacao.sort((a, b) => {
     const ka = chaveDaSemana(a)
     const kb = chaveDaSemana(b)
-    if (ka && kb) return kb.localeCompare(ka)
-    if (ka) return -1
-    if (kb) return 1
+    if (ka && kb && ka !== kb) return kb.localeCompare(ka)
+    if (ka && !kb) return -1
+    if (kb && !ka) return 1
+    // Mesma semana (ou nenhuma): Stories antes de Feed, sempre na mesma ordem.
+    const fa = ORDEM_DO_FORMATO[formatoDaPasta(a) ?? ''] ?? 9
+    const fb = ORDEM_DO_FORMATO[formatoDaPasta(b) ?? ''] ?? 9
+    if (fa !== fb) return fa - fb
     return b.name.localeCompare(a.name, 'pt-BR')
   })
   g.arquivo.sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')))

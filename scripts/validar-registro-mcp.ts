@@ -1353,7 +1353,29 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
       },
       "quando": {
         "type": "string",
-        "description": "Data/hora prevista (ISO), só para registro."
+        "description": "Data/hora prevista (ISO). É o que decide a PASTA da peça na aba de templates (a semana daquela data) e a ordem dela lá dentro — sem isso a peça cai nas avulsas do mês."
+      },
+      "carrossel": {
+        "type": "object",
+        "properties": {
+          "slide": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "description": "A posição desta peça no carrossel como ele sai no Instagram — 1 é a capa. Carrossel cuja capa é foto do acervo começa as peças compostas no 2."
+          },
+          "de": {
+            "type": "integer",
+            "minimum": 2,
+            "maximum": 20,
+            "description": "Quantas mídias o carrossel tem no total."
+          }
+        },
+        "required": [
+          "slide"
+        ],
+        "additionalProperties": false,
+        "description": "Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta (\"slide 2/5\") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar."
       },
       "provar": {
         "type": "boolean",
@@ -1500,7 +1522,29 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             },
             "quando": {
               "type": "string",
-              "description": "Data/hora prevista (ISO), só para registro."
+              "description": "Data/hora prevista (ISO). É o que decide a PASTA da peça na aba de templates (a semana daquela data) e a ordem dela lá dentro — sem isso a peça cai nas avulsas do mês."
+            },
+            "carrossel": {
+              "type": "object",
+              "properties": {
+                "slide": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 20,
+                  "description": "A posição desta peça no carrossel como ele sai no Instagram — 1 é a capa. Carrossel cuja capa é foto do acervo começa as peças compostas no 2."
+                },
+                "de": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 20,
+                  "description": "Quantas mídias o carrossel tem no total."
+                }
+              },
+              "required": [
+                "slide"
+              ],
+              "additionalProperties": false,
+              "description": "Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta (\"slide 2/5\") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar."
             }
           },
           "required": [

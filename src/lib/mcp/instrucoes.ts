@@ -54,6 +54,7 @@ ARTE PELO EDITOR (o compositor) — a via sem crédito
 - A copy é escrita SOBRE OS CAMPOS QUE O TEMPLATE TEM: ver-assinatura lista os papéis de cada variante (story e feed podem ter campos diferentes — um feed sem servico, uma story sem pre). Bloco para papel que a página não tem fica de fora da peça; nunca invente campo nem conte com o de outro formato.
 - Escreva a copy já quebrada em linhas curtas (headline em 1-2 linhas de até ~18 caracteres; apoio em 1-2 linhas de até ~40). Se voltar "texto não cabe", use o orçamento devolvido e reescreva — nunca insista igual.
 - Leva inteira (semana, sessão de fotos): compor-leva enfileira tudo de uma vez e as peças aparecem na galeria em minutos; acompanhe com ver-geracao. Antes de uma leva grande, prove UMA peça com compor-arte (provar: true) e mostre à pessoa.
+- SEMPRE mande o "quando" (data e hora previstas) de cada peça: é ele que arquiva a peça na pasta da semana certa, separada por formato, e que dá a ordem de postagem lá dentro. E quando a peça é SLIDE de um carrossel, mande também "carrossel" com o slide e o total — carrossel cuja capa é foto do acervo começa as peças compostas no slide 2. Sem isso os slides irmãos ficam com o mesmo nome na pasta e a equipe não sabe qual é qual na hora de aprovar.
 - Quando o cliente NÃO tem assinatura, o caminho continua sendo criar-arte / criar-arte-de-modelo ou a IA — e vale avisar que a equipe pode criar a assinatura no editor.
 
 PROGRAMAÇÃO SEMANAL — as 4 etapas (quando a pessoa pedir "monta a semana", "planejamento da semana", "programação do cliente")
