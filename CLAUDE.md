@@ -126,10 +126,17 @@ Armadilhas registradas:
   dev também é recusado.
 - **`npx prisma migrate dev` cru continua perigoso** — ele lê o `.env`. Use
   sempre `npm run db:migrate`.
-- **Branch do Neon é copy-on-write e envelhece**: nasce com os dados do
+- 🔴 **Branch do Neon é copy-on-write e envelhece**: nasce com os dados do
   momento e não acompanha a produção. Antes de testar algo que dependa de
-  dado recente, `npm run db:dev:setup --recriar`. Isolamento verificado em
+  dado recente, `npm run db:dev:setup -- --recriar`. Isolamento verificado em
   30/07: escrita no `dev-local` não aparece na produção.
+  **O modo de falha é traiçoeiro** (custou uma sessão em 04/09/2026): uma
+  migração rodou em produção, a aba local seguiu mostrando o estado ANTIGO, e
+  a conclusão natural — "o código não funcionou" — estava errada; o banco é
+  que era outro. Por isso `npm run db:dev:status` passou a dizer quantos dias
+  o branch está atrás da produção, e não só qual banco cada camada resolve.
+  **Recriar troca o compute**, então o `npm run dev` que estiver de pé segura
+  a conexão do branch APAGADO: reinicie o servidor depois de recriar.
 - **A `NEON_API_KEY` é opcional e mora no `.env`.** Sem ela o setup imprime o
   passo a passo do console. A API exige `org_id` no `GET /projects` (contas
   hoje pertencem a uma organização) — o script descobre isso sozinho via
