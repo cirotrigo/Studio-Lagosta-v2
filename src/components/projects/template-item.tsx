@@ -31,14 +31,17 @@ interface TemplateItemProps {
 }
 
 /**
- * A capa padrão de uma PASTA da programação: as primeiras peças em mosaico.
+ * A capa em mosaico: as primeiras peças do template.
  *
- * A pasta não tem miniatura própria (nasce de `garantirPasta`, sem
- * `thumbnailUrl`), então o card ficava com "Sem preview". E mostrar só a
- * primeira peça também não resolveria: uma arte solta não diz que aquilo é a
- * semana de stories. O mosaico mostra o CONJUNTO, que é o que a pasta é.
+ * Vale para a PASTA de programação (que não tem miniatura própria, e para a
+ * qual uma arte solta não diria que aquilo é a semana de stories) e para
+ * qualquer template SEM `thumbnailUrl`, que antes ficava com "Sem preview" —
+ * na prática o ARQUIVO, onde 61 de 67 cards estavam assim.
+ *
+ * A API só manda `capa` quando ela é para ser usada, então aqui o mosaico
+ * vence sem precisar saber de que seção o card é.
  */
-function CapaDaPasta({ capa, quantas }: { capa: string[]; quantas: number }) {
+function CapaEmMosaico({ capa, quantas }: { capa: string[]; quantas: number }) {
     const mostradas = capa.slice(0, 4)
     /**
      * 1 peça ocupa tudo; 2 ficam lado a lado; 3+ entram na grade 2x2.
@@ -156,12 +159,18 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                 href={`/templates/${template.id}/editor`}
                 className={cn("relative block bg-muted overflow-hidden w-full h-full rounded-xl cursor-pointer", getAspectRatioClass())}
             >
-                {!imageLoaded && (
+                {/*
+                  * O esqueleto só faz sentido enquanto uma imagem ÚNICA carrega:
+                  * `imageLoaded` só vira true no `onLoad` do ramo do
+                  * thumbnailUrl, então nos ramos do mosaico e do "Sem preview"
+                  * ele pulsava para sempre por baixo do conteúdo.
+                  */}
+                {!imageLoaded && !temCapa && template.thumbnailUrl && (
                     <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse pointer-events-none" />
                 )}
 
                 {temCapa ? (
-                    <CapaDaPasta capa={template.capa!} quantas={template.capa!.length} />
+                    <CapaEmMosaico capa={template.capa!} quantas={template.capa!.length} />
                 ) : template.thumbnailUrl ? (
                     <Image
                         src={template.thumbnailUrl}
@@ -182,16 +191,14 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                 {/* Hover Overlay & Info */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
 
-                <div className="absolute bottom-[4.75rem] md:bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 pointer-events-none z-20">
-                    <h3 className="text-white font-bold text-sm truncate drop-shadow-md">
-                        {template.name}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-white/70">
-                        <span>{template.type}</span>
-                        <span>•</span>
-                        <span>{template.dimensions}</span>
-                    </div>
-                </div>
+                {/*
+                  * O nome, o tipo e as dimensões saíram daqui: eles agora vivem
+                  * na legenda ABAIXO do card, sempre visível e sem `truncate`.
+                  * 🔴 Não é só duplicata — em tela de toque este bloco não é de
+                  * hover (`pointer-coarse:opacity-100` o deixa permanentemente
+                  * visível), então no celular o nome apareceria DUAS VEZES ao
+                  * mesmo tempo, um deles cortado.
+                  */}
             </Link>
 
             {/* Action Buttons - Top Right Dropdown (Always visible or on hover? Let's make it on hover for cleaner look, but accessible) */}

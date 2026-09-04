@@ -127,12 +127,18 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
 
     // Grid, não `columns`: com um card só (a assinatura) o contêiner de
     // colunas não media a altura e o título da seção seguinte subia por cima.
-    const grade = (lista: Template[], comSituacao = false) => (
+    const grade = (lista: Template[]) => (
         <div className="grid grid-cols-2 gap-4 items-start sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
             {lista.map((template, index) => (
                 <div key={template.id}>
                     <TemplateItem index={index} template={template} onDuplicate={handleDuplicate} onDelete={handleDelete} />
-                    {comSituacao && <LegendaDaPasta nome={template.name} tipo={template.type} s={template.situacao} />}
+                    <LegendaDoCard
+                        nome={template.name}
+                        tipo={template.type}
+                        dimensoes={template.dimensions}
+                        paginas={template._count?.Page}
+                        s={template.situacao}
+                    />
                 </div>
             ))}
         </div>
@@ -168,7 +174,7 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
                 descricao="Uma pasta por semana, com as peças pelo dia e horário em que saem. Peça sem data fica em Avulsas até ser agendada."
             >
                 {grupos.programacao.length > 0 ? (
-                    grade(grupos.programacao, true)
+                    grade(grupos.programacao)
                 ) : (
                     <p className="text-sm text-muted-foreground">Nenhuma semana composta ainda.</p>
                 )}
@@ -212,14 +218,35 @@ function Secao({ icone, titulo, descricao, acao, children }: { icone: React.Reac
 }
 
 /**
- * O nome da pasta FORA do card, sempre visível.
+ * O nome do template FORA do card, sempre visível, em TODAS as quatro seções.
  *
- * Ele morava só no overlay de hover, com `truncate` — e "Stories · Semana 14
- * a 20/09" não cabe na largura de um card, então a semana ficava cortada
- * justamente na parte que identifica a pasta (Ciro, 04/09/2026: "não dá para
- * ver o nome da semana completo"). Aqui ele quebra em até duas linhas.
+ * Ele morava só num overlay de hover com `truncate` — e o nome não cabe na
+ * largura de um card: medido a 244px, "Wine Vix — Celebrações e Datas
+ * Comemorativas (3 layouts)" precisava de 434px, ou seja 51% ficava
+ * invisível. O ARQUIVO é a seção que mais sofre (nome com mediana de 36 e
+ * máximo de 56 caracteres, contra 12 da equipe).
+ *
+ * 🔴 `line-clamp-3`, não `line-clamp-2`: com duas linhas o nome longo do
+ * arquivo continua cortado nos cards estreitos (171px no celular, 206px no
+ * `sm`). As duas classes existem na folha — medido, não suposto.
+ *
+ * A segunda linha diz o que cada seção tem a dizer: a PASTA de programação
+ * mostra a situação das peças (é o que a API manda em `situacao`); qualquer
+ * outro template mostra o tamanho e quantas páginas tem.
  */
-function LegendaDaPasta({ nome, tipo, s }: { nome: string; tipo: string; s?: Template['situacao'] }) {
+function LegendaDoCard({
+    nome,
+    tipo,
+    dimensoes,
+    paginas,
+    s,
+}: {
+    nome: string
+    tipo: string
+    dimensoes: string
+    paginas?: number
+    s?: Template['situacao']
+}) {
     const partes: string[] = []
     if (s) {
         partes.push(`${s.pecas} ${s.pecas === 1 ? 'peça' : 'peças'}`)
@@ -229,15 +256,18 @@ function LegendaDaPasta({ nome, tipo, s }: { nome: string; tipo: string; s?: Tem
         if (s.falhas) partes.push(`${s.falhas} com falha`)
         const semPost = s.pecas - s.agendadas - s.publicadas - s.rascunhos - s.falhas
         if (semPost > 0) partes.push(`${semPost} sem post`)
+    } else {
+        partes.push(dimensoes)
+        if (typeof paginas === 'number') partes.push(`${paginas} ${paginas === 1 ? 'página' : 'páginas'}`)
     }
+    const rotuloDoTipo = tipo === 'STORY' ? 'Story' : tipo === 'FEED' ? 'Feed' : 'Quadrado'
     return (
         <div className="mt-2 px-1">
-            <p className="text-sm font-medium leading-snug line-clamp-2" title={nome}>
+            <p className="text-sm font-medium leading-snug line-clamp-3" title={nome}>
                 {nome}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-                {tipo === 'STORY' ? 'Story' : tipo === 'FEED' ? 'Feed' : 'Quadrado'}
-                {partes.length > 0 ? ` · ${partes.join(' · ')}` : ''}
+                {s ? `${rotuloDoTipo} · ${partes.join(' · ')}` : partes.join(' · ')}
             </p>
         </div>
     )
