@@ -3813,6 +3813,21 @@ e o sinal `geometria`. Regras que valem para código novo:
   3, porque não há chamada paga.
 - **`persistAndRenderCreative` aceita `generationId`** e FECHA a Generation
   PROCESSING da fila em vez de criar outra — a bancada segue o id que tem.
+  🔴 **O `comporPeca` só cumpria isso na promessa** (medido em 04/09/2026,
+  Espeto Gaúcho, `compor-leva` com 20 itens): ele anotava o id da fila em
+  `fieldValues.generationIdDaFila` e NÃO o entregava ao persist — nasciam 20
+  Generations COMPLETED duplicadas, as 20 da fila ficavam PROCESSING para
+  sempre (a varredura de órfãs PULA Generation que tem job, então nem FAILED
+  viravam), `fecharJob` marcava o job FAILED sem `lastError`, e os itens do
+  plano ficavam `proposto` com a arte pronta na galeria. Hoje a entrada do
+  persist é montada em `persistencia.ts` (puro, testado) com o `generationId`;
+  **quem reaponta o item do plano é a FILA** (`reapontarItemDoPlano` em
+  `fila.ts`: `na-fila` ao enfileirar, `pronto` com generationId/pageId ao
+  terminar, `erro` na falha definitiva — caminhando por `caminhoAte`, nunca
+  derrubando a peça); e `fecharJob` escreve por que falhou quando o runner
+  deixa a Generation aberta. Teste em `__tests__/fila.test.ts`. A limpeza das
+  40 linhas do incidente é `scripts/limpar-compor-duplicado-2026-09-04.ts`
+  (dry-run por padrão; preserva o que item ou post referenciam).
 - **Snapshot em `fieldValues.layersSnapshot`** e `reverter-arte`: o "git" de
   uma peça. Página promovida a modelo não reverte (mataria curadoria).
 - **`LearningSignal tipo 'geometria'`** nasce no PATCH da página, só em
