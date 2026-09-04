@@ -40,6 +40,7 @@ async function main() {
   fs.writeFileSync(saida, r.prova!)
   const d = r.diagnostico
   console.log(`prova em ${saida} (${((Date.now() - t0) / 1000).toFixed(1)}s)`)
+  console.log(`variante: ${d.assinatura.variante ?? '(única)'} — ${d.assinatura.motivoDaVariante ?? 'sem motivo registrado'}`)
   console.log(`posição: ${d.posicao.ancora}/${d.posicao.alinha}, corte ${d.posicao.crop} — ${d.posicao.motivo}`)
   console.log(`assunto: ${d.assuntoOrigem} ${d.assunto ? JSON.stringify(d.assunto) : ''}`)
   console.log(`halos: ${d.halos.map((h) => `${h.grupo} tinta ${h.tinta} (luz ${Math.round(h.luz)}, alvo ${h.alvo}, necessidade ${h.necessidade})`).join(' | ')}`)
