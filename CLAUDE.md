@@ -3781,6 +3781,18 @@ e o sinal `geometria`. Regras que valem para código novo:
   cor do halo por conta própria — variação de estilo é página nova; o que ele
   varia sozinho é posição, enquadramento, canto da logo e a TINTA do halo
   (dentro da faixa). A variante usada fica em `composicao.assinatura.variante`.
+- **Variantes como DESIGNS de uma leva (Espeto, 04/09/2026)**: o Ciro achou os
+  designs da semana 1 (canvas: 3 arranjos + promoção com preço) melhores que
+  os da semana 2 (compositor, 20 peças no mesmo arranjo). A resposta foi
+  `scripts/criar-variantes-assinatura-espeto.ts`: três PÁGINAS novas no
+  template Assinatura, clonadas da página que ele ajustou — "Promoção"
+  (headline2 vermelha; `apoio` = descrição Barlow branco, `servico` = PREÇO
+  Bevan amarelo; tags promocao/preco/rodizio/marmitex), "Rodapé" e "Topo".
+  🔴 Numa variante os PAPÉIS podem mudar de sentido — a copy é escrita
+  contra a variante (`ver-assinatura` mostra fonte/cor por papel): na
+  Promoção o preço vai no `servico`, nunca "a partir das 17h". A 2ª linha da
+  manchete vira `headline2` quando a página o tem: deixe a palavra-chave na
+  2ª linha. Rodar o script de novo SOBRESCREVE as páginas pelo nome.
 - 🔴 **A posição vem da FOTO, nunca do template** (§9). `mapa-de-calma.ts`:
   grade 6×10 sobre a foto COMO APARECE (cover, no corte candidato), pontuação
   por calma (energia de borda), tinta necessária (p98 vs alvo da cor) e
