@@ -140,6 +140,8 @@ export interface PersistCreativeInput {
   /** Procedência guardada na Generation (o que gerou a arte) */
   fieldValues: Record<string, unknown>
   authorName: string
+  /** Quem assina a Generation (User.id interno). Sem isso, o dono do projeto. */
+  createdBy?: string | null
   /** Por qual canal a arte entrou — decidido na porta de entrada. Ver `canal.ts`. */
   canal?: CanalDaArte | null
   /**
@@ -221,6 +223,8 @@ export interface RenderPageInput {
   }
   fieldValues: Record<string, unknown>
   authorName: string
+  /** Quem assina a Generation (User.id interno). Sem isso, o dono do projeto. */
+  createdBy?: string | null
   /** Ver `PersistCreativeInput.canal`. */
   canal?: CanalDaArte | null
   /** Ver `PersistCreativeInput.sourcePageId` — só página-MODELO entra aqui. */
@@ -270,6 +274,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
           sourcePageId: input.sourcePageId ?? null,
           resultUrl: blob.url,
           authorName: input.authorName,
+          ...(input.createdBy ? { createdBy: input.createdBy } : {}),
           // A Generation da fila já nasceu com canal; só sobrescreve se vier.
           ...(input.canal ? { canal: input.canal } : {}),
           templateName,
@@ -286,7 +291,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
           sourcePageId: input.sourcePageId ?? null,
           resultUrl: blob.url,
           projectId: project.id,
-          createdBy: project.userId,
+          createdBy: input.createdBy ?? project.userId,
           authorName: input.authorName,
           canal: input.canal ?? null,
           templateName,

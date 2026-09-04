@@ -29,7 +29,7 @@ export interface PecaEnfileirada {
 }
 
 /** Cria a Generation PROCESSING e o job. Idempotente por Generation. */
-export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null } = {}): Promise<PecaEnfileirada> {
+export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null; autor?: string | null } = {}): Promise<PecaEnfileirada> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   const spec = v.spec
@@ -44,7 +44,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
       status: 'PROCESSING',
       templateId: coletor.id,
       projectId: spec.projectId,
-      createdBy: projeto.userId,
+      createdBy: opcoes.autor ?? projeto.userId,
       authorName: 'compositor',
       canal: opcoes.canal ?? null,
       templateName: coletor.name,
@@ -54,7 +54,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
     select: { id: true },
   })
 
-  const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor: opcoes.decididoPor ?? null })
+  const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor: opcoes.decididoPor ?? null, autor: opcoes.autor ?? null })
   return { generationId: generation.id, jobId, spec }
 }
 
@@ -62,7 +62,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
 export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & { queueJobId?: string | null }): Promise<void> {
   const t0 = Date.now()
   try {
-    const r = await comporPeca(args.spec, { generationId: args.generationId, decididoPor: args.decididoPor ?? null })
+    const r = await comporPeca(args.spec, { generationId: args.generationId, decididoPor: args.decididoPor ?? null, autor: args.autor ?? null })
     console.log(
       `[compositor] ${args.generationId} pronta em ${Math.round((Date.now() - t0) / 1000)}s — ${r.diagnostico.posicao.ancora}/${r.diagnostico.posicao.alinha}@${r.diagnostico.posicao.crop}` +
         (r.diagnostico.avisos.length ? ` | avisos: ${r.diagnostico.avisos.join(' · ')}` : ''),

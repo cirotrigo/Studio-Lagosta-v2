@@ -75,6 +75,8 @@ export const toolsDeModelos = [
         name: args.name as string | undefined,
         imageUrl: args.imageUrl as string | undefined,
         decididoPor: await quemDecidiu(projectId, principal),
+        // Quem pediu é quem assina (o dono do token, ou a pessoa do Mac no local).
+        createdBy: (await quemDecidiu(projectId, principal)) ?? null,
         canal: canalDoPrincipal(principal),
       })
     },
