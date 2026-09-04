@@ -25,6 +25,8 @@ interface Template {
     }
     /** Só nas pastas de programação (semana / avulsas). */
     situacao?: { pecas: number; agendadas: number; publicadas: number; rascunhos: number; falhas: number }
+    /** Miniaturas das primeiras peças, para a capa da pasta. */
+    capa?: string[]
 }
 
 interface TemplatesGalleryProps {
@@ -130,7 +132,7 @@ export function TemplatesGallery({ projectId, onCreateClick }: TemplatesGalleryP
             {lista.map((template, index) => (
                 <div key={template.id}>
                     <TemplateItem index={index} template={template} onDuplicate={handleDuplicate} onDelete={handleDelete} />
-                    {comSituacao && template.situacao && <SituacaoDaPasta s={template.situacao} />}
+                    {comSituacao && <LegendaDaPasta nome={template.name} tipo={template.type} s={template.situacao} />}
                 </div>
             ))}
         </div>
@@ -209,15 +211,36 @@ function Secao({ icone, titulo, descricao, acao, children }: { icone: React.Reac
     )
 }
 
-function SituacaoDaPasta({ s }: { s: NonNullable<Template['situacao']> }) {
-    const partes: string[] = [`${s.pecas} ${s.pecas === 1 ? 'peça' : 'peças'}`]
-    if (s.agendadas) partes.push(`${s.agendadas} na agenda`)
-    if (s.publicadas) partes.push(`${s.publicadas} publicada${s.publicadas === 1 ? '' : 's'}`)
-    if (s.rascunhos) partes.push(`${s.rascunhos} rascunho${s.rascunhos === 1 ? '' : 's'}`)
-    if (s.falhas) partes.push(`${s.falhas} com falha`)
-    const semPost = s.pecas - s.agendadas - s.publicadas - s.rascunhos - s.falhas
-    if (semPost > 0) partes.push(`${semPost} sem post`)
-    return <p className="mt-1 px-1 text-xs text-muted-foreground">{partes.join(' · ')}</p>
+/**
+ * O nome da pasta FORA do card, sempre visível.
+ *
+ * Ele morava só no overlay de hover, com `truncate` — e "Stories · Semana 14
+ * a 20/09" não cabe na largura de um card, então a semana ficava cortada
+ * justamente na parte que identifica a pasta (Ciro, 04/09/2026: "não dá para
+ * ver o nome da semana completo"). Aqui ele quebra em até duas linhas.
+ */
+function LegendaDaPasta({ nome, tipo, s }: { nome: string; tipo: string; s?: Template['situacao'] }) {
+    const partes: string[] = []
+    if (s) {
+        partes.push(`${s.pecas} ${s.pecas === 1 ? 'peça' : 'peças'}`)
+        if (s.agendadas) partes.push(`${s.agendadas} na agenda`)
+        if (s.publicadas) partes.push(`${s.publicadas} publicada${s.publicadas === 1 ? '' : 's'}`)
+        if (s.rascunhos) partes.push(`${s.rascunhos} rascunho${s.rascunhos === 1 ? '' : 's'}`)
+        if (s.falhas) partes.push(`${s.falhas} com falha`)
+        const semPost = s.pecas - s.agendadas - s.publicadas - s.rascunhos - s.falhas
+        if (semPost > 0) partes.push(`${semPost} sem post`)
+    }
+    return (
+        <div className="mt-2 px-1">
+            <p className="text-sm font-medium leading-snug line-clamp-2" title={nome}>
+                {nome}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+                {tipo === 'STORY' ? 'Story' : tipo === 'FEED' ? 'Feed' : 'Quadrado'}
+                {partes.length > 0 ? ` · ${partes.join(' · ')}` : ''}
+            </p>
+        </div>
+    )
 }
 
 export type { SecaoDeTemplate }

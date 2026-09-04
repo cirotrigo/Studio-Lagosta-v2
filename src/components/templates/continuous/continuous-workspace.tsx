@@ -1,14 +1,73 @@
 "use client"
 
 import * as React from 'react'
-import { Copy, Plus, Trash2 } from 'lucide-react'
+import { CalendarCheck, CalendarPlus, Copy, Loader2, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useMultiPage } from '@/contexts/multi-page-context'
 import { usePageActions } from '@/hooks/use-page-actions'
+import { useAgendaDasPaginas, useAgendarPagina, type AgendaDaPagina } from '@/hooks/use-agenda-das-paginas'
+import { horarioCurto } from '@/lib/compositor/pasta-da-semana'
 import { KonvaEditorStage } from '../konva-editor-stage'
 import { PagePreview } from './page-preview'
 import type { Layer } from '@/types/template'
+
+/**
+ * O botão "Agendar" da faixa da página — e a etiqueta "Agendado" quando a
+ * peça já virou post.
+ *
+ * A peça composta já sabe quando devia sair (o compositor gravou o horário e
+ * é ele que dá a pasta e a ordem); até aqui alguém tinha de reencontrar esse
+ * horário na mão na agenda. O post nasce como RASCUNHO — o destino padrão da
+ * casa —, então isto não publica nada.
+ *
+ * Sem horário previsto o controle não aparece: agendar "no horário sugerido"
+ * exige que exista uma sugestão, e inventar uma data seria pior que não ter
+ * botão.
+ */
+function ControleDeAgenda({
+  agenda,
+  aoAgendar,
+  agendando,
+}: {
+  agenda: AgendaDaPagina | undefined
+  aoAgendar: () => void
+  agendando: boolean
+}) {
+  if (!agenda) return null
+
+  if (agenda.post) {
+    const quando = agenda.post.quando ? horarioCurto(agenda.post.quando) : null
+    return (
+      // Sem borda de propósito: `border-emerald-500/30` não pintou na medição
+      // de 04/09/2026 (caiu no cinza do reset). Fundo e texto foram medidos.
+      <span
+        className="flex h-6 items-center gap-1 rounded bg-emerald-500/10 px-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400"
+        title={quando ? `Já está na agenda — ${quando}` : 'Já está na agenda'}
+      >
+        <CalendarCheck className="h-3 w-3" />
+        Agendado
+      </span>
+    )
+  }
+
+  if (!agenda.quando) return null
+
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      className="h-6 gap-1 px-1.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+      title={`Colocar na agenda como rascunho — ${horarioCurto(agenda.quando)}`}
+      disabled={agendando}
+      onClick={aoAgendar}
+    >
+      {agendando ? <Loader2 className="h-3 w-3 animate-spin" /> : <CalendarPlus className="h-3 w-3" />}
+      Agendar
+    </Button>
+  )
+}
 
 /**
  * Hit-test de camada em coordenadas do canvas da página (topmost primeiro).
@@ -56,7 +115,29 @@ const PROGRAMMATIC_SCROLL_MS = 900
 const CAPTURE_WIDTH = 450
 
 export function ContinuousWorkspace() {
-  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer } = useTemplateEditor()
+  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer, templateId } = useTemplateEditor()
+  const { data: agendaDaPasta } = useAgendaDasPaginas(templateId)
+  const agendarPagina = useAgendarPagina(templateId)
+  const [agendandoId, setAgendandoId] = React.useState<string | null>(null)
+  const agendaPorPagina = React.useMemo(
+    () => new Map((agendaDaPasta?.paginas ?? []).map((a) => [a.pageId, a])),
+    [agendaDaPasta],
+  )
+
+  const colocarNaAgenda = React.useCallback(
+    (pageId: string, nome: string) => {
+      setAgendandoId(pageId)
+      agendarPagina.mutate(pageId, {
+        onSuccess: (r) => {
+          const quando = (r as { quando?: string } | undefined)?.quando
+          toast.success(`"${nome}" foi para a agenda como rascunho${quando ? ` — ${quando}` : ''}`)
+        },
+        onError: (erro) => toast.error(erro instanceof Error ? erro.message : 'Não deu para colocar na agenda'),
+        onSettled: () => setAgendandoId(null),
+      })
+    },
+    [agendarPagina],
+  )
   const { currentPageId, setCurrentPageId, isLoading } = useMultiPage()
   const { sortedPages, addPageAfter, duplicatePage, deletePage, canDeletePage } = usePageActions()
 
@@ -438,6 +519,11 @@ export function ContinuousWorkspace() {
               <div className="flex h-8 items-end justify-between pb-1">
                 <span className="select-none text-xs font-medium text-muted-foreground">{page.name}</span>
                 <div className="flex items-center gap-0.5 opacity-50 transition-opacity hover:opacity-100">
+                  <ControleDeAgenda
+                    agenda={agendaPorPagina.get(page.id)}
+                    agendando={agendandoId === page.id}
+                    aoAgendar={() => colocarNaAgenda(page.id, page.name)}
+                  />
                   <Button
                     size="sm"
                     variant="ghost"

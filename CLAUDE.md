@@ -3867,19 +3867,102 @@ e o sinal `geometria`. Regras que valem para código novo:
   MCP local já passam). `FEED_PORTRAIT` não existe em `TemplateType`.
 - **A aba de Templates tem QUATRO seções** (03/09/2026, `src/lib/templates/
   classificar.ts`, puro): assinatura · modelos da equipe · programação ·
-  arquivo (recolhido; coletor VAZIO não tem card). A seção diz quem criou e
-  para quê. **A peça composta vai para a pasta da SEMANA da data prevista**
-  (`pasta-da-semana.ts`: segunda a domingo em BRT, template com tag
-  `semana:AAAA-MM-DD`, categoria `programacao`), pedido de uma arte, de uma
-  sexta ou da semana inteira caindo no mesmo lugar; sem data vai para
-  `Avulsas · <mês>` e é MOVIDA para a semana quando o post é agendado
-  (`moverPaginaParaSemana`, chamado de `agendarPost`, nunca derruba o
-  agendamento). Página se chama "Ter 09:00 · story · tema". Os coletores
-  "Arte Composta" não são mais alimentados; `scripts/organizar-programacao.ts`
-  moveu as 63 peças da Lagosta. A API de templates devolve `situacao`
-  (peças, na agenda, publicadas, rascunhos, falhas) para as pastas.
+  arquivo (recolhido; pasta automática VAZIA não tem card — vale para o
+  arquivo e, desde 04/09, para a programação também). A seção diz quem criou e
+  para quê. **A peça composta vai para a pasta da SEMANA da data prevista, E
+  DO FORMATO** (`pasta-da-semana.ts`: segunda a domingo em BRT, categoria
+  `programacao`), pedido de uma arte, de uma sexta ou da semana inteira caindo
+  no mesmo lugar; sem data vai para `Avulsas · <mês>` e é MOVIDA para a semana
+  quando o post é agendado (`moverPaginaParaSemana`, chamado de `agendarPost`,
+  nunca derruba o agendamento). A API de templates devolve `situacao` (peças,
+  na agenda, publicadas, rascunhos, falhas) para as pastas.
   🔴 `Template` tem FK com cascade a partir de `Generation`: NUNCA apagar
-  coletor "vazio" sem antes reapontar as Generations — o script reaponta.
+  pasta "vazia" sem antes reapontar as Generations — e `SocialPost.templateId`
+  é SetNull, então apagar também tira o "Editar Template" do post. Por isso a
+  pasta esvaziada some da ABA, nunca do banco.
+- **Story e feed em pastas SEPARADAS, ordem de postagem, nome com data e
+  slide** (04/09/2026, pedido do Ciro depois de revisar a Lagosta: "eu me
+  perco"). São três defeitos que andavam juntos e viraram uma correção só:
+  - **Uma pasta por semana E por formato**: `pastaDaPeca(quando, formato)`.
+    A pasta 395 tinha 13 stories e 17 páginas de feed intercaladas, e a
+    aprovação de cada frente corre separada. A chave da tag ganhou o sufixo
+    (`semana:2026-09-07:story`) e é ela que `garantirPasta` procura; a tag SEM
+    formato CONTINUA nas tags, porque é por ela que se filtra a semana inteira
+    (`chaveDaSemana` casa as duas formas — nunca depender da ordem do array).
+    Cada pasta leva o `type`/`dimensions` do seu formato: o rótulo deixou de
+    ser mentira. Nome: "Stories · Semana 7 a 13/09".
+  - 🔴 **`Page.order` é GRAVADO na composição** (`ordemNaPasta`): antes toda
+    peça nascia no default 0 do schema e o editor listava na ordem arbitrária
+    do Postgres — as 30 páginas da 395 tiveram de ser renumeradas à mão. A
+    ordem é minutos desde a segunda 00:00 BRT × 100 + o slide, e é
+    DESEMPATADA contra o que já está na pasta: sem o desempate, carrossel
+    composto sem declarar o slide empata tudo no mesmo número e a pasta volta
+    à ordem arbitrária (medido em 04/09 numa leva real do Empório — quatro
+    slides com `order` 549000).
+  - 🔴 **O slide é REGISTRADO por quem compõe** (`spec.carrossel` →
+    `Generation.slideOrder`, a coluna que o carrossel de IA já usava), nunca
+    deduzido depois. A única forma de recuperá-lo em peça antiga é casar o
+    `SocialPost.mediaUrls` pelo nome do arquivo do render
+    (`<pageId>-<epoch>.png`) — é o que a migração faz, e é frágil de propósito
+    ali. `carouselGroupId` fica nulo: cada slide é composto sozinho, e um
+    grupo de um só seria pior que nenhum.
+  - **Nome da página**: "Qua 09/09 · 19:30 · Seu Quinto · slide 2/5" — com a
+    DATA (não só o dia da semana) e o número do slide; sem eles os quatro
+    slides do mesmo carrossel saíam com nomes IDÊNTICOS. O formato saiu do
+    nome da página porque já é o começo do nome da pasta.
+  - **A capa do carrossel costuma ser foto do acervo**, então as peças
+    compostas começam no slide 2 — o número é a posição como ela sai no
+    Instagram, não o índice das peças compostas.
+  - Migração: `scripts/separar-pastas-por-formato.ts` (dry-run por padrão,
+    `--projeto <id>` ou `--todos`). O formato de mais páginas FICA na pasta
+    atual (renomeada); os outros vão para a pasta do seu formato. Ele reaponta
+    `Generation.templateId` e `SocialPost.templateId` das páginas que mudam de
+    casa, e **não apaga nada**. 🔴 O período da pasta sai da TAG dela, nunca da
+    data das páginas: em 04/09 a pasta "Semana 14 a 20/09" da Lagosta guardava
+    páginas agendadas para 10/09 e, pelas datas, reivindicava a chave da
+    semana errada — duas pastas com a mesma tag, que é o que a tag existe para
+    impedir. Peça agendada para outra semana FICA onde está (a data entra só
+    na ordem) e sai listada como aviso: refilar por semana é decisão do Ciro,
+    não efeito colateral.
+  - Os coletores "Arte Composta" não são mais alimentados;
+    `scripts/organizar-programacao.ts` moveu as 63 peças da Lagosta.
+- **O card da pasta: capa em mosaico, nome fora do card e o botão Agendar**
+  (04/09/2026, ao ver a aba depois da separação):
+  - **O nome mora FORA do card** (`LegendaDaPasta`), em até duas linhas. Ele
+    vivia só no overlay de hover com `truncate`, e "Stories · Semana 14 a
+    20/09" não cabe na largura de um card — a semana ficava cortada justamente
+    na parte que identifica a pasta.
+  - **A capa é o CONJUNTO, não a primeira peça**: a pasta não tem
+    `thumbnailUrl` própria (nasce de `garantirPasta`), e a miniatura de uma
+    arte solta não diz que aquilo é a semana de stories. `capa` vem da API com
+    até 4 miniaturas de página; com 3, a primeira ocupa a linha inteira —
+    buraco na grade lê como peça que faltou.
+    🔴 **Miniatura `data:` fica de fora**: o PageSync sobrescreve
+    `Page.thumbnail` com um JPEG base64 assim que a página é aberta no editor,
+    e mandar isso numa listagem multiplicaria o payload por pasta.
+  - 🔴 **`grid-rows-2` NÃO gera CSS neste repo** (medido: a classe nem aparece
+    na folha de estilo) — o mosaico usa `gridTemplateRows` em estilo INLINE.
+    `grid-cols-*` funciona; não dá para inferir uma da outra. Some à família
+    de classes mortas.
+  - **`GET|POST /api/templates/[id]/agenda-das-paginas`** dá o horário previsto
+    de cada peça e o post que já existe, e agenda uma peça como RASCUNHO no
+    horário que a composição previu — é o botão "Agendar" / a etiqueta
+    "Agendado" na faixa de cada página do workspace contínuo.
+    🔴 Fica em cache PRÓPRIO (`['agenda-das-paginas', templateId]`), **nunca**
+    dentro de `['pages', templateId]`: o autosave do editor substitui o objeto
+    da página naquele cache a cada pausa da digitação, com o retorno do PATCH
+    — que não traz estes campos.
+    🔴 **O horário NÃO vem do cliente**: é lido no servidor da spec da
+    Generation, para o botão não poder agendar em data diferente da que a tela
+    mostrou. E o servidor recusa (409) peça que já tem post — o botão
+    desativado não segura dois cliques rápidos.
+  - 🔴 **`agendarPost` NÃO infere o tipo pelo tamanho**: sem `postType` ele
+    grava `STORY` (`input.postType ?? 'STORY'`). Agendar uma peça de feed sem
+    dizer o tipo cria um story de 1080x1350. Todo caminho novo que agende
+    precisa derivar o tipo do formato.
+  - `Page.order` codifica dia e hora, mas só DENTRO da semana — para peça
+    remarcada para outra semana ele daria a data errada. Por isso o horário
+    previsto sai sempre da spec, nunca da ordem nem do nome.
 - **Templates** (§8): o contêiner fica; a página-modelo como layout a
   preencher NÃO se cadastra mais (14 usos em 128, 0/33 no placar); o kit vira
   a página de assinatura. A curadoria das 147 existentes é do próximo

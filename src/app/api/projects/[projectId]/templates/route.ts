@@ -87,8 +87,31 @@ export async function GET(
    */
   const pastas = templates.filter((t) => t.category === 'programacao' || t.category === 'avulsas')
   const situacao = new Map<number, { pecas: number; agendadas: number; publicadas: number; rascunhos: number; falhas: number }>()
+  /**
+   * A CAPA da pasta: as primeiras peças, em mosaico. A pasta não tem
+   * `thumbnailUrl` própria, e a miniatura de uma peça só não diz que aquilo é
+   * a semana de stories — foi o que o Ciro apontou em 04/09/2026 ("apenas o
+   * thumbnail do primeiro slide não identifica o que é").
+   *
+   * 🔴 Miniatura `data:` fica de FORA: o PageSync sobrescreve `Page.thumbnail`
+   * com um JPEG base64 assim que a página é aberta no editor, e mandar isso
+   * numa listagem multiplicaria o payload por pasta. Sem nenhuma miniatura
+   * publicável, a capa cai no desenho neutro do card.
+   */
+  const capas = new Map<number, string[]>()
+  const CAPAS_POR_PASTA = 4
   if (pastas.length > 0) {
-    const paginas = await db.page.findMany({ where: { templateId: { in: pastas.map((t) => t.id) } }, select: { id: true, templateId: true } })
+    const paginas = await db.page.findMany({
+      where: { templateId: { in: pastas.map((t) => t.id) } },
+      select: { id: true, templateId: true, thumbnail: true },
+      orderBy: { order: 'asc' },
+    })
+    for (const p of paginas) {
+      if (!p.thumbnail || p.thumbnail.startsWith('data:')) continue
+      const atual = capas.get(p.templateId) ?? []
+      if (atual.length >= CAPAS_POR_PASTA) continue
+      capas.set(p.templateId, [...atual, p.thumbnail])
+    }
     const porPagina = new Map(paginas.map((p) => [p.id, p.templateId]))
     const posts = await db.socialPost.findMany({
       where: { pageId: { in: paginas.map((p) => p.id) } },
@@ -106,7 +129,13 @@ export async function GET(
     }
   }
 
-  return NextResponse.json(templates.map((t) => ({ ...t, ...(situacao.has(t.id) ? { situacao: situacao.get(t.id) } : {}) })))
+  return NextResponse.json(
+    templates.map((t) => ({
+      ...t,
+      ...(situacao.has(t.id) ? { situacao: situacao.get(t.id) } : {}),
+      ...(capas.has(t.id) ? { capa: capas.get(t.id) } : {}),
+    })),
+  )
 }
 
 export async function POST(

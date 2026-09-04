@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { MoreVertical, Edit, Copy, Trash2, FileText } from 'lucide-react'
+import { Edit, Copy, Trash2, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
     DropdownMenu,
@@ -22,10 +22,59 @@ interface TemplateItemProps {
         dimensions: string
         thumbnailUrl: string | null
         createdAt: string
+        /** Miniaturas das primeiras peças — só nas PASTAS de programação. */
+        capa?: string[]
     }
     onDuplicate: (id: number, name: string) => void
     onDelete: (id: number, name: string) => void
     index: number
+}
+
+/**
+ * A capa padrão de uma PASTA da programação: as primeiras peças em mosaico.
+ *
+ * A pasta não tem miniatura própria (nasce de `garantirPasta`, sem
+ * `thumbnailUrl`), então o card ficava com "Sem preview". E mostrar só a
+ * primeira peça também não resolveria: uma arte solta não diz que aquilo é a
+ * semana de stories. O mosaico mostra o CONJUNTO, que é o que a pasta é.
+ */
+function CapaDaPasta({ capa, quantas }: { capa: string[]; quantas: number }) {
+    const mostradas = capa.slice(0, 4)
+    /**
+     * 1 peça ocupa tudo; 2 ficam lado a lado; 3+ entram na grade 2x2.
+     *
+     * 🔴 A grade vai em estilo INLINE, não em classe: `grid-rows-2` NÃO gera
+     * CSS neste repo (medido no navegador em 04/09/2026 — a classe nem aparece
+     * na folha de estilo), e o mosaico viraria uma fileira só. Some à família
+     * de classes mortas já registrada no CLAUDE.md.
+     */
+    const grade: React.CSSProperties = {
+        gridTemplateColumns: mostradas.length === 1 ? '1fr' : '1fr 1fr',
+        gridTemplateRows: mostradas.length <= 2 ? '1fr' : '1fr 1fr',
+    }
+    return (
+        <div className="absolute inset-0">
+            <div className="grid h-full w-full gap-px bg-black/20" style={grade}>
+                {mostradas.map((url, i) => (
+                    <div
+                        key={`${url}-${i}`}
+                        className="relative overflow-hidden bg-muted"
+                        // Com 3 peças a primeira ocupa a linha inteira: numa
+                        // grade 2x2 sobraria um quadrante vazio, e buraco na
+                        // capa lê como peça que faltou.
+                        style={mostradas.length === 3 && i === 0 ? { gridColumn: 'span 2' } : undefined}
+                    >
+                        <Image src={url} alt="" fill sizes="120px" className="object-cover" unoptimized />
+                    </div>
+                ))}
+            </div>
+            {quantas > mostradas.length && (
+                <span className="absolute right-1.5 top-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                    +{quantas - mostradas.length}
+                </span>
+            )}
+        </div>
+    )
 }
 
 export function TemplateItem({ template, onDuplicate, onDelete, index }: TemplateItemProps) {
@@ -71,6 +120,8 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
         }
     }
 
+    const temCapa = (template.capa?.length ?? 0) > 0
+
     return (
         <motion.div
             ref={ref}
@@ -109,7 +160,9 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                     <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse pointer-events-none" />
                 )}
 
-                {template.thumbnailUrl ? (
+                {temCapa ? (
+                    <CapaDaPasta capa={template.capa!} quantas={template.capa!.length} />
+                ) : template.thumbnailUrl ? (
                     <Image
                         src={template.thumbnailUrl}
                         alt={template.name}
@@ -121,7 +174,7 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                     />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                        <FileText className="w-8 h-8 text-muted-foreground opacity-40" />
+                        <Layers className="w-8 h-8 text-muted-foreground opacity-40" />
                         <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
                     </div>
                 )}
