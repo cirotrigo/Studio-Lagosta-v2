@@ -47,22 +47,44 @@ export function quebrarEmDuas(texto: string, teto: number): string[] {
 const PARECE_SERVICO =
   /(\d{1,2}h(\d{2})?\s*(às|as|a|até|-|–)\s*\d{1,2}h|\b(de |das )?(segunda|terça|quarta|quinta|sexta|sábado|domingo)(-feira)?\b\s*(a|à|até)\s*(segunda|terça|quarta|quinta|sexta|sábado|domingo)|\brua\b|\bav\.|\bavenida\b|\bpraça\b|\balameda\b)/i
 
-export function copyParaBlocos(copy: string[]): Bloco[] {
+export interface OpcoesDeCopyParaBlocos {
+  /**
+   * Os papéis que a página de assinatura do formato TEM. A copy é distribuída
+   * só sobre eles (Ciro, 04/09/2026: "a copy para cada arte deve ser feita em
+   * cima dos campos que existem no template" — nunca acrescentar campo).
+   * Sem a lista, vale a distribuição por contagem.
+   */
+  papeis?: PapelDaSpec[]
+}
+
+const ORDEM_DE_LEITURA: PapelDaSpec[] = ['pre', 'headline', 'apoio', 'cta']
+/** Com menos textos que papéis, quem fica: a manchete, depois o apoio, a chamada e por último o pré-título. */
+const PRIORIDADE: PapelDaSpec[] = ['headline', 'apoio', 'cta', 'pre']
+
+export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = {}): Bloco[] {
   const limpa = copy.map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean)
   if (limpa.length === 0) return []
 
+  const disponiveis = opcoes.papeis ? new Set(opcoes.papeis) : null
   const servicoIdx = limpa.findIndex((c, i) => i > 0 && PARECE_SERVICO.test(c) && c.length <= 90)
   const servico = servicoIdx >= 0 ? limpa[servicoIdx] : null
   const resto = servicoIdx >= 0 ? limpa.filter((_, i) => i !== servicoIdx) : limpa
 
-  const papeis: PapelDaSpec[] =
-    resto.length >= 4 ? ['pre', 'headline', 'apoio', 'cta'] : resto.length === 3 ? ['headline', 'apoio', 'cta'] : resto.length === 2 ? ['headline', 'apoio'] : ['headline']
+  let papeis: PapelDaSpec[]
+  if (disponiveis) {
+    const ordem = ORDEM_DE_LEITURA.filter((p) => disponiveis.has(p))
+    const escolhidos = new Set(PRIORIDADE.filter((p) => disponiveis.has(p)).slice(0, resto.length))
+    papeis = ordem.filter((p) => escolhidos.has(p))
+  } else {
+    papeis =
+      resto.length >= 4 ? ['pre', 'headline', 'apoio', 'cta'] : resto.length === 3 ? ['headline', 'apoio', 'cta'] : resto.length === 2 ? ['headline', 'apoio'] : ['headline']
+  }
 
   const blocos: Bloco[] = resto.slice(0, papeis.length).map((texto, i) => {
     const papel = papeis[i]
     const linhas = papel === 'headline' ? quebrarEmDuas(texto, TETO_DA_HEADLINE) : papel === 'apoio' ? quebrarEmDuas(texto, TETO_DO_APOIO) : [texto]
     return { papel, linhas }
   })
-  if (servico) blocos.push({ papel: 'servico', linhas: [servico] })
+  if (servico && (!disponiveis || disponiveis.has('servico'))) blocos.push({ papel: 'servico', linhas: [servico] })
   return blocos
 }

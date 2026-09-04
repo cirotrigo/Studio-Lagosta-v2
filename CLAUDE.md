@@ -3727,10 +3727,18 @@ e o sinal `geometria`. Regras que valem para código novo:
   A sombra segue a mesma lei: camada sem sombra na página = peça sem sombra.
   `Page.background` NÃO é mais lido (o editor grava `#ffffff` ao pôr foto de
   referência na página); fundo liso e mancha da logo vêm de `Project.assinatura`.
-- **Feed montado só com o que muda**: papel que falta na página de feed vem
-  da de story, escalado (`completarComStory`). O alinhamento da headline na
-  página vira PREFERÊNCIA do rodízio (a foto ainda manda). O serviço reserva a
-  própria altura quando o bloco principal também vai ao rodapé.
+- 🔴 **A página do formato é a verdade INTEIRA daquele formato — nunca
+  acrescentar campo** (Ciro, 04/09/2026: "respeite os templates que eu defini,
+  não adicione campos; a copy é feita em cima dos campos que existem no
+  template"). O `completarComStory` (feed herdando papel da story) foi
+  REMOVIDO: papel que a página não tem sai da peça com aviso, em qualquer
+  formato. `copyParaBlocos(copy, { papeis })` distribui a copy do item de
+  plano só sobre os papéis da assinatura do formato (prioridade headline >
+  apoio > cta > pre; serviço só se a página tem `servico`), e `ver-assinatura`
+  lista os papéis por variante para a copy nascer certa. O alinhamento da
+  headline na página vira PREFERÊNCIA do rodízio (a foto ainda manda). O
+  serviço reserva a própria altura quando o bloco principal também vai ao
+  rodapé.
 - **A régua entende texto ESCURO**: para cor de texto com luz < 128 a
   pergunta inverte (p2 do fundo ≥ alvo claro) e ela só confere, nunca corrige
   — mancha clara é desenho da equipe (Real: apoio verde sobre creme).

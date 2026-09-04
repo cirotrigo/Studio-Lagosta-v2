@@ -47,6 +47,22 @@ describe('diffDeGeometria', () => {
 })
 
 describe('copyParaBlocos', () => {
+  it('com a lista de papéis do template, a copy só ocupa os campos que existem', () => {
+    const copy = ['Sexta-feira', 'Aberto até mais tarde', 'Gelato e café para fechar o dia', 'Sexta, das 12h às 00h']
+    // feed sem pre nem servico: sobram headline e apoio; serviço e pré-título ficam de fora
+    const b = copyParaBlocos(copy, { papeis: ['headline', 'apoio', 'cta'] })
+    expect(b.map((x) => x.papel)).toEqual(['headline', 'apoio', 'cta'])
+    expect(b[0].linhas.join(' ')).toBe('Sexta-feira')
+    // story completa com 3 textos + serviço: a prioridade é headline > apoio > cta (o pré-título é o último a entrar)
+    const c = copyParaBlocos(copy, { papeis: ['pre', 'headline', 'apoio', 'cta', 'servico'] })
+    expect(c.map((x) => x.papel)).toEqual(['headline', 'apoio', 'cta', 'servico'])
+    // com 4 textos + serviço, entram os quatro
+    const d = copyParaBlocos([...copy, 'Vem provar'], { papeis: ['pre', 'headline', 'apoio', 'cta', 'servico'] })
+    expect(d.map((x) => x.papel)).toEqual(['pre', 'headline', 'apoio', 'cta', 'servico'])
+    // um texto só e um template só com headline
+    expect(copyParaBlocos(['Só a manchete'], { papeis: ['headline', 'servico'] }).map((x) => x.papel)).toEqual(['headline'])
+  })
+
   it('quebra a headline no espaço mais perto do meio', () => {
     expect(quebrarEmDuas('Foto Nova a Cada Quinze Dias', 18)).toEqual(['Foto Nova a Cada', 'Quinze Dias'])
     expect(quebrarEmDuas('Curta', 18)).toEqual(['Curta'])

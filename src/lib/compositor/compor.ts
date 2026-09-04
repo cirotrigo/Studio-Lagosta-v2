@@ -31,7 +31,6 @@ import { garantirPasta } from './pastas'
 import { nomeDaPagina } from './pasta-da-semana'
 
 import {
-  completarComStory,
   escolherVariante,
   formatoDaPagina,
   montarAssinatura,
@@ -181,12 +180,10 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   const assinatura = montar(escolhida, fmt)
   assinatura.origem.motivoDaVariante = motivo
   // Feed/quadrado montado só com o que muda: o que falta vem da página de story.
-  if (fmt && fmt !== 'story' && fmt === formato) {
-    const story = escolherVariante(paginas, { formato: 'story', chave: opcoes.chave ?? '' }).pagina
-    if (story && story.id !== escolhida?.id) {
-      return completarComStory(assinatura, montar(story, 'story'), assinatura.numeros.geometria[formato].escalaDeFonte)
-    }
-  }
+  // A página do formato é a verdade INTEIRA daquele formato (Ciro, 04/09/2026:
+  // "respeite os templates que eu defini, não adicione campos"). Papel que a
+  // página de feed não tem NÃO vem da story — sai da peça com aviso, como em
+  // qualquer variante. A copy é escrita sobre os papéis que a página tem.
   return assinatura
 }
 
