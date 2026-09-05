@@ -1,6 +1,7 @@
 import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { guardarMiniatura } from '@/lib/templates/miniatura'
 import { updateTemplateSchema } from '@/lib/validations/studio'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
@@ -125,7 +126,11 @@ export async function PUT(
       data.dynamicFields = parsed.dynamicFields as unknown as Prisma.JsonValue
     }
     if (parsed.thumbnailUrl !== undefined) {
+      // O editor manda a miniatura como data URL; ela vai para o Blob e a
+      // coluna guarda só a URL. Ver src/lib/templates/miniatura.ts.
       data.thumbnailUrl = parsed.thumbnailUrl
+        ? await guardarMiniatura(parsed.thumbnailUrl, templateId)
+        : parsed.thumbnailUrl
     }
     if (parsed.localId !== undefined) {
       data.localId = parsed.localId

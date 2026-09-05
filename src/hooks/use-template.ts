@@ -73,6 +73,9 @@ export function useUpdateTemplateWithThumbnail() {
               designData: data.designData,
               width: 400,
               height: 300,
+              // Com o id, a miniatura vai para um caminho estável no Blob e o
+              // salvamento seguinte SOBRESCREVE em vez de deixar órfão.
+              templateId: id,
             },
           )
           thumbnailUrl = thumbnailResponse.thumbnailUrl
