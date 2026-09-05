@@ -679,6 +679,12 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       projectId: { type: 'number', description: 'ID do cliente.' },
       generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).' },
       pedido: { type: 'string', description: 'Instruções de melhoria vindas da sua análise da arte (máx 1200 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
+      modo: {
+        type: 'string',
+        enum: ['rediagramar', 'redesenhar', 'refinar'],
+        description:
+          'Como melhorar. `rediagramar` mantém textos, fontes, cores e foto e só melhora onde o texto pousa, o respiro e a quebra das linhas — para arte do compositor, do canvas ou já aprovada por quem cuida da marca. `redesenhar` refaz a diagramação inteira no estilo da marca, com o manual do designer como referência; copy e foto ficam intocadas — para arte de template chapado, export do editor ou primeira rodada de IA. `refinar` faz só a mudança pedida, e aí o `pedido` é OBRIGATÓRIO ("troque a frase X por Y", "remova o selo") — é como se itera uma melhoria anterior, e é o ÚNICO modo em que o pedido pode trocar texto da copy. Sem informar, o servidor escolhe pela origem da arte: melhoria anterior → refinar; compositor, canvas ou mídia de post → rediagramar; o resto → redesenhar.',
+      },
       postId: { type: 'string', description: 'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
       itemId: {
         type: 'string',
