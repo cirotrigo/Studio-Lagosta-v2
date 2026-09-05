@@ -8,6 +8,15 @@ import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 
+// Foto e vídeo são TRABALHO PONTUAL, não mensalidade — por isso a aba
+// "Foto e Vídeo" nunca leva "/mês". A promoção de produção vale até 14/09/2026;
+// no dia 15 entra o valor normal, e para ativar basta trocar esta constante para
+// `false`: os dois cards passam a mostrar só R$ 990 e R$ 1.990, sem preço
+// riscado e sem selo. A troca é manual de propósito — a Home é client component
+// e uma virada por `new Date()` dependeria do relógio de quem abre a página.
+const PROMOCAO_ATIVA = true;
+const PROMOCAO_SELO = "Até 14/09";
+
 export function OfferSection() {
     // As cinco frentes da solução completa. Preço só onde já existe tabela
     // (audiovisual e gestão, do site de 22/07; IA, do plano vigente) — sites e
@@ -17,12 +26,14 @@ export function OfferSection() {
         {
             id: "audiovisual",
             label: "Foto e Vídeo",
-            description: "Conteúdo visual de alta qualidade para despertar desejo.",
+            description: "Conteúdo visual de alta qualidade para despertar desejo. Trabalho pontual: você contrata a produção quando precisar, sem mensalidade.",
             plans: [
                 {
                     name: "Só Fotos",
-                    price: "R$ 890",
-                    period: "/mês",
+                    price: PROMOCAO_ATIVA ? "R$ 890" : "R$ 990",
+                    oldPrice: PROMOCAO_ATIVA ? "R$ 990" : "",
+                    promoLabel: PROMOCAO_SELO,
+                    period: "por sessão",
                     description: "Para quem precisa de constância visual de alta qualidade.",
                     features: [
                         "2 horas de produção (Sessão)",
@@ -31,41 +42,42 @@ export function OfferSection() {
                         "Entrega via link digital"
                     ],
                     icon: Camera,
-                    highlight: false,
+                    highlight: true,
+                    popularLabel: "Mais Popular",
                     cta: "Escolher Fotos"
                 },
                 {
                     name: "Só Vídeos",
-                    price: "R$ 1.490",
-                    period: "/mês",
+                    price: PROMOCAO_ATIVA ? "R$ 1.490" : "R$ 1.990",
+                    oldPrice: PROMOCAO_ATIVA ? "R$ 1.990" : "",
+                    promoLabel: PROMOCAO_SELO,
+                    period: "por sessão",
                     description: "O formato que mais converte nas redes sociais hoje.",
                     features: [
                         "3 horas de produção (Sessão)",
-                        "Produção de vídeos",
-                        "10 Vídeos Stories editados",
-                        "Edição de vídeo reels extra: +R$ 350",
-                        "Captação profissional"
+                        "Captação profissional",
+                        "2 vídeos editados",
+                        "Entrega de todos os vídeos brutos",
+                        "Entrega via link digital"
                     ],
                     icon: Video,
-                    highlight: true,
-                    popularLabel: "Mais Popular",
+                    highlight: false,
                     cta: "Escolher Vídeos"
                 },
                 {
-                    name: "Vídeos Pluss",
-                    price: "R$ 1.990",
-                    period: "/mês",
-                    description: "Volume máximo de conteúdo para quem posta todo dia.",
+                    name: "Edição de Vídeo",
+                    price: "R$ 500",
+                    period: "por 3 vídeos",
+                    description: "Você já tem o material bruto. A gente edita e entrega pronto para postar.",
                     features: [
-                        "4 horas de produção (Sessão)",
-                        "Produção de vídeos",
-                        "Entrega de TODOS os vídeos brutos",
-                        "10 Vídeos Stories editados",
-                        "Acervo completo sem edição"
+                        "3 vídeos editados — R$ 500",
+                        "6 vídeos editados — R$ 890",
+                        "Edição do material que você já tem",
+                        "Entrega via link digital"
                     ],
                     icon: Film,
                     highlight: false,
-                    cta: "Escolher Pluss"
+                    cta: "Escolher Edição"
                 }
             ]
         },
@@ -263,9 +275,19 @@ export function OfferSection() {
                                                 </div>
                                                 <h3 className="text-xl font-bold">{plan.name}</h3>
                                             </div>
-                                            <div className="flex items-baseline gap-1 mb-2">
-                                                <span className="text-4xl font-bold">{plan.price}</span>
-                                                <span className="text-sm text-zinc-500">{plan.period}</span>
+                                            <div className="mb-2">
+                                                {'oldPrice' in plan && plan.oldPrice ? (
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className="text-base text-zinc-500 line-through">{plan.oldPrice}</span>
+                                                        <span className="text-[11px] font-bold uppercase tracking-wider text-orange-500 bg-orange-500/10 border border-orange-500/30 px-2 py-0.5 rounded-full">
+                                                            {'promoLabel' in plan ? plan.promoLabel : 'Promoção'}
+                                                        </span>
+                                                    </div>
+                                                ) : null}
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-4xl font-bold">{plan.price}</span>
+                                                    <span className="text-sm text-zinc-500">{plan.period}</span>
+                                                </div>
                                             </div>
                                             <p className="text-sm text-zinc-400">{plan.description}</p>
                                         </div>
@@ -319,7 +341,7 @@ export function OfferSection() {
                 </Tabs >
 
                 <p className="mt-16 text-zinc-500 text-sm max-w-xl text-center">
-                    * Valores para contratos mensais. Precisa de algo personalizado? <Link href="https://wa.me/5527997578627?text=Tenho%20duvidas%20sobre%20os%20planos" target="_blank" className="underline hover:text-orange-500">Fale com um consultor.</Link>
+                    * Foto e vídeo são trabalhos pontuais, cobrados por produção — sem mensalidade. Gestão de redes, atendimento com IA e tráfego são contratos mensais. Precisa de algo personalizado? <Link href="https://wa.me/5527997578627?text=Tenho%20duvidas%20sobre%20os%20planos" target="_blank" className="underline hover:text-orange-500">Fale com um consultor.</Link>
                 </p>
 
             </div >
