@@ -75,6 +75,20 @@ nada do que você faz nele alcança o diretório em que as outras sessões estã
 trabalhando. É o único jeito de rebasear, separar hunks ou resetar sem apagar
 trabalho alheio sem perceber.
 
+Dois complementos medidos em 05/09/2026, na quarta vez que isso quase aconteceu:
+
+- **Para rodar typecheck e testes no worktree**, aponte os artefatos gerados por
+  symlink em vez de reinstalar: `ln -sfn <repo>/node_modules <wt>/node_modules` e
+  o mesmo para `prisma/generated`. Sem o segundo, o `tsc` acusa
+  `Cannot find module './generated/client'` e você lê como erro do seu código.
+  **Desfaça os symlinks ANTES de `git worktree remove`.**
+- 🔴 **Antes de descartar qualquer coisa do compartilhado, compare linha a linha
+  com o que já está na `main`.** Foi isso que evitou o quarto incidente: o
+  arquivo tinha 128 linhas sujas, das quais 114 já estavam na main e 14 eram
+  rascunho velho de quem tinha sido apagado — e nenhuma pertencia à terceira
+  sessão, que também estava editando ali. `git checkout --` às cegas teria
+  repetido o estrago original.
+
 Quando for inevitável mexer no compartilhado: `git stash push -- <caminhos>`
 com os caminhos EXATOS (nunca `-a`, nunca sem caminho), devolva imediatamente,
 e confira o retorno linha a linha. Mesmo assim a janela existe — o worktree é
@@ -3686,6 +3700,52 @@ dela. `regras-da-melhoria.ts` inverteu: **preserva, não prescreve.**
   11h30 para 11h", 7 dos 74) é impossível por construção — `[TEXTO EXATO]` é a
   última seção e vence o pedido, e a conferência reprova a arte por ela ter
   feito o que foi pedido. Gastou 3 tentativas seguidas no Bacana em 02/09.
+
+### A logo composta cai sobre a copy; o portão dos fatos abria sozinho (05/09/2026)
+
+Testando duas melhorias da Wine Vix, o Ciro viu a logo colada **em cima de
+"Happy Hour - 16h às 19h"**, cobrindo a palavra "Happy". Diagnóstico dele: "você
+pode colocar a logo onde existe texto e não tem como você encaixar ela
+economicamente na arte".
+
+- 🔴 **`compor` serve à GERAÇÃO e não serve à MELHORIA.** Na geração o prompt
+  reserva o canto ANTES de a diagramação existir, e o modelo compõe em volta do
+  vazio. Na melhoria a arte já está diagramada — e desde 04/09 as regras da casa
+  mandam PRESERVAR essa diagramação, então não há canto a reservar.
+  `comporLogo` escolhe por calma (desvio-padrão) e contraste, medidas que **não
+  distinguem área escura vazia de área escura com uma linha de texto**. Ele não
+  tem como saber onde a copy está. `MELHORIA_NAO_COMPOE` (`logo-na-melhoria.ts`)
+  tira a Wine Vix do `compor` **só na melhoria**; a geração continua compondo.
+- ⚠️ **O preço foi aceito conscientemente**: em 02/09 a melhoria da Wine Vix
+  redesenhou as letras do selo ("W|NE", "V|X") com o arquivo oficial como
+  referência. Trocamos um defeito CERTO (logo sobre a copy, que estraga a peça
+  em silêncio) por um PROVÁVEL (letra aproximada, que quem aprova enxerga).
+- 🔴 **`conferirLogo` NÃO É CHAMADA EM LUGAR NENHUM** — nem na geração, nem na
+  melhoria. A QA que compara por visão a marca desenhada com o arquivo oficial
+  existe em `creative-qa.ts` e está órfã. Ligá-la é o conserto de verdade deste
+  trade-off, e é o que permitiria devolver mais clientes ao `modelo`.
+- 🔴 **O portão dos fatos do cliente abria com NOME DE UNIDADE.** `temEndereco`
+  aceitava `LOCALIDADE`, que casa a palavra "praia" — então "Real Praia do
+  Canto, loja principal" contava como endereço e `[FATOS DO CLIENTE]` entrava.
+  Na Real Gelateria isso é grave: o `contentRules` do cliente diz "Nunca o
+  endereço completo na arte: só o NOME da unidade e o horário, nunca a rua e o
+  número" e "a fábrica de Piúma nunca aparece em comunicação" — e os fatos
+  injetados traziam a rua, o número e o endereço da fábrica. Hoje o portão exige
+  logradouro (em qualquer posição) ou CEP. `temEndereco` tem UM consumidor só, o
+  que tornou o conserto cirúrgico.
+  ⚠️ Fecha a porta aberta, não o problema: peça que TEM logradouro na copy volta
+  a receber os fatos, e nada respeita as proibições escritas no DNA. Filtrar os
+  fatos por elas é a outra metade.
+- 🔴 **"Não modifique a foto" não é alcançável por prompt** — e a resposta já
+  existe no código. `images.edit` regenera o quadro inteiro: a fotografia é
+  redesenhada mesmo com a regra 7 dizendo que é intocável (medido: luz média
+  caindo 43% a 65%). O mecanismo certo é a MÁSCARA, que `runImageEdit` já
+  aceita: a área transparente é a única que o modelo pode redesenhar, o resto
+  sai pixel por pixel. Spikeado em 01/09 (`scripts/spike-melhoria-com-mascara.ts`)
+  e nunca promovido. ⚠️ O limite conhecido: a máscara do spike sai das caixas de
+  texto de `Page.layers`, e **60 das 74 melhorias medidas não têm página**
+  (arte de canvas ou upload) — para essas seria preciso derivar as faixas de
+  texto por visão. É o caminho, não um ajuste de prompt.
 
 ### 🔴 A régua por visão exigia a LOGO como texto (TERO, 03/09/2026)
 

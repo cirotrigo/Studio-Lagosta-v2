@@ -115,17 +115,48 @@ function ehHorario(bloco: string): boolean {
   return sobra.length <= SOBRA_MAXIMA
 }
 
+/** Logradouro em QUALQUER posição do bloco ("Endereço: Rua X, 123"). */
+const LOGRADOURO = /\b(?:rua|r\.|av\.?|avenida|travessa|trav\.|praç?a|estrada|rod\.|rodovia|alameda|al\.)\s+\p{Lu}/iu
+
 /**
- * A copy tem ENDEREÇO? Logradouro, CEP ou localidade (bairro/cidade/UF) —
- * inclusive na linha mista dos modelos do Studio ("Quinta, das 11h às 00h ·
- * Praia do Canto, Vitória-ES"), que `blocosDeServico` classifica como horário.
- * É o gate dos fatos do cliente na melhoria: o endereço oficial só entra no
- * prompt para conferir um endereço que a copy JÁ tem.
+ * A copy tem ENDEREÇO DE VERDADE? Logradouro ou CEP — **nunca localidade
+ * sozinha**.
+ *
+ * É o gate dos fatos do cliente na melhoria, e tem UM consumidor só
+ * (`fatosDoClienteNaMelhoria`): o endereço oficial entra no prompt apenas para
+ * CONFERIR um endereço que a copy já tem. Bairro ou cidade no meio de um nome
+ * não é endereço a conferir — e deixá-los abrir o portão injeta dado que a peça
+ * não pede.
+ *
+ * 🔴 O FALSO POSITIVO QUE ISTO FECHA (05/09/2026, varredura dos 11 clientes).
+ * A versão anterior aceitava `LOCALIDADE`, que casa a palavra "praia" — então
+ * o NOME de uma unidade ("Real Praia do Canto, loja principal") contava como
+ * endereço, e os fatos entravam. Na Real Gelateria isso é grave: o
+ * `contentRules` do próprio cliente diz "Nunca o endereço completo na arte: só
+ * o NOME da unidade e o horário, nunca a rua e o número" e "a fábrica de Piúma
+ * nunca aparece em comunicação" — e os fatos injetados traziam a rua, o número
+ * e o endereço da fábrica, para o modelo desenhar. Medido: "Unidade Praia do
+ * Canto" e "Centro de Vitória" devolviam `true`.
+ *
+ * 🔴 O QUE SEPARA UM CASO DO OUTRO É O HORÁRIO COLADO. A linha mista dos
+ * modelos do Studio ("Quinta, das 11h às 00h · Praia do Canto, Vitória-ES")
+ * continua contando — ali o bairro é a localização da CASA, dita junto do
+ * funcionamento, e foi caso deliberado de 01/09/2026. "Real Praia do Canto,
+ * loja principal" não conta: é um NOME. A distinção é mecânica — o bloco só
+ * vale por localidade quando `blocosDeServico` já o classificou como serviço.
+ *
+ * ⚠️ Fecha a porta que estava aberta, não o problema inteiro: numa peça que TEM
+ * logradouro na copy os fatos voltam a entrar, e nada ainda respeita as
+ * proibições que o cliente escreveu no DNA. Filtrar os fatos por essas
+ * proibições é a outra metade, e continua em aberto.
  */
 export function temEndereco(copy: string[]): boolean {
-  return copy.some((bruto) => {
+  return copy.some((bruto, indice) => {
     const t = bruto.replace(/\s+/g, ' ').trim()
-    return ENDERECO.test(t) || CEP.test(t) || LOCALIDADE.test(t)
+    if (ENDERECO.test(t) || LOGRADOURO.test(t) || CEP.test(t)) return true
+    // Localidade sozinha só vale se ela vier colada a uma linha de serviço.
+    if (!LOCALIDADE.test(t)) return false
+    return blocosDeServico(copy).some((b) => b.indice === indice)
   })
 }
 

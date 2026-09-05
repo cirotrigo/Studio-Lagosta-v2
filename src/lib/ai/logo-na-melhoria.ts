@@ -25,7 +25,39 @@ import {
 /** O canto reservado no prompt da melhoria. */
 export const CANTO_DA_MELHORIA: LogoCorner = 'bottom-right'
 
+/**
+ * 🔴 Projetos em que a MELHORIA não compõe a logo, mesmo estando em `compor`
+ * para a GERAÇÃO (05/09/2026, decisão do Ciro depois de testar duas artes da
+ * Wine Vix).
+ *
+ * O `compor` funciona na GERAÇÃO porque lá o prompt reserva o canto ANTES de a
+ * diagramação existir: o modelo compõe a peça em volta do espaço vazio. Na
+ * MELHORIA a arte já está diagramada — e desde 04/09 as regras da casa mandam
+ * PRESERVAR essa diagramação, então não existe canto reservado para reservar.
+ * `comporLogo` escolhe o canto por calma (desvio-padrão) e contraste, medidas
+ * que não distinguem "área escura vazia" de "área escura com uma linha de
+ * texto" — ele não tem como saber onde a copy está.
+ *
+ * O resultado medido: na Programação de Feriado da Wine Vix a logo foi colada
+ * em cima de "Happy Hour - 16h às 19h", cobrindo a palavra "Happy". Nas
+ * palavras do Ciro: "você pode colocar a logo onde existe texto e não tem como
+ * você encaixar ela economicamente na arte".
+ *
+ * ⚠️ O PREÇO É CONHECIDO e foi aceito: em 02/09 a melhoria da Wine Vix
+ * redesenhou as letras do selo ("W|NE", "V|X") com o arquivo oficial como
+ * referência. Trocamos um defeito CERTO (a logo sobre a copy) por um
+ * PROVÁVEL (a letra aproximada) — e este último é visível para quem aprova,
+ * enquanto o primeiro estraga a peça em silêncio.
+ *
+ * A rede que falta: `conferirLogo` (`creative-qa.ts`) existe para comparar por
+ * visão a marca desenhada com o arquivo oficial e regerar quando diverge, e
+ * **não é chamada em lugar nenhum** — nem na geração, nem aqui. Ligá-la é o
+ * conserto de verdade deste trade-off.
+ */
+const MELHORIA_NAO_COMPOE = new Set<number>([11])
+
 export function melhoriaCompoeLogo(projectId: number): boolean {
+  if (MELHORIA_NAO_COMPOE.has(projectId)) return false
   return logoModePadraoPara(projectId) === 'compor'
 }
 
