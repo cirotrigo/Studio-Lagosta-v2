@@ -72,8 +72,8 @@ Os textos ocupam apenas uma pequena área da composição. Posicione
 preferencialmente em áreas desfocadas, cantos, paredes, céu ou regiões com
 espaço negativo.
 Nunca posicione textos sobre carnes, pratos, bebidas, rostos, mãos ou detalhes
-importantes. Quando precisar de legibilidade, aplique apenas um degradê discreto
-atrás do texto.
+importantes. Quando precisar de legibilidade, mude o texto de lugar: não
+escureça a foto nem acrescente degradê, mancha ou sombra atrás dele.
 
 [ESCALA TIPOGRÁFICA]
 A escala dos textos permanece equilibrada em relação à fotografia. Evite

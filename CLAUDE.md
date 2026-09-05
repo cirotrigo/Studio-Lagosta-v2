@@ -3762,6 +3762,56 @@ economicamente na arte".
   (arte de canvas ou upload) — para essas seria preciso derivar as faixas de
   texto por visão. É o caminho, não um ajuste de prompt.
 
+### 🔴 A melhoria não acrescenta contraste: o halo saiu do prompt (05/09/2026)
+
+Relatado pelo Ciro no almoço de feriado do Quintal (post `cmtoe5bb20001l804x5qdygl5`):
+"o melhorar com IA está aplicando um contraste que em algum momento eu pedi,
+mas está escurecendo muito a imagem e gostaria de retirar essa funcionalidade".
+Medido na peça: luz média de 102,7 na origem para 83,1 na melhorada (-19%), com
+o terço inferior inteiro escurecido, sem pedido nenhum.
+
+- 🔴 **A licença era a regra 4 das REGRAS DA CASA ("HALO DE LEITURA, NÃO VÉU")**
+  — nascida de um pedido do próprio Ciro em 02/09 ("a geração precisa usar o
+  halo no lugar do véu"), portada da geração para a melhoria em 01/09 e
+  reforçada em 04/09. Ela dizia "quando o texto precisar de contraste, use uma
+  mancha escura desfocada". Na MELHORIA isso está errado por desenho: a peça já
+  chega com a leitura resolvida (o halo da assinatura do compositor, o do
+  canvas), aprovada por quem cuida da marca; qualquer licença de "contraste"
+  aqui só produz escurecimento a mais. Na GERAÇÃO a regra do halo continua (lá a
+  peça nasce do zero) — não misture as duas.
+- **A regra 4 agora é "NENHUM CONTRASTE ACRESCENTADO"**: nem halo, nem véu, nem
+  gradiente, nem sombra, nem escurecimento parcial ou total. O que a origem já
+  tem atrás do texto fica EXATAMENTE como está (e acompanha o texto se ele
+  mudar de lugar); texto ilegível se resolve só por POSIÇÃO (regra 3). A regra
+  1 deixou de listar "o contraste de leitura" entre o que a melhoria melhora.
+- 🔴 **A licença vivia em TRÊS lugares além da regra, e a regra os revoga PELO
+  NOME** (lei da casa: instrução que não se declara vencedora perde para a mais
+  enfática): o DNA do cliente — o `composition` do Quintal descreve "Gradiente
+  de Leitura… opacidade máxima na borda entre 35% e 55%" e o `visualStyle`,
+  "Dark warm como véu e fundo: 8 a 15%", prosa do tempo do véu que continua
+  injetada inteira em [IDENTIDADE DA MARCA]; a direção de arte
+  (`art-direction.ts`, `[COMPOSIÇÃO DOS TEXTOS]` autorizava "um degradê discreto
+  atrás do texto" — a linha foi trocada, mas `Project.artImprovementPrompt` de
+  projeto pode carregar a versão antiga); e a própria regra 1. O DNA NÃO foi
+  editado: é documento da marca e a decisão de tirar o "gradiente de leitura"
+  de lá é do Ciro.
+- ⚠️ **O que o prompt NÃO resolve**: `images.edit` regenera o quadro inteiro e
+  a luz média cai mesmo com a foto declarada intocável (regra 7). O mecanismo
+  é a MÁSCARA (`scripts/spike-melhoria-com-mascara.ts`, nunca promovido) —
+  não outra linha de prompt. Foi o que sobrou na medição abaixo: os 13-18%
+  que ficam são a regeneração do quadro (a foto inteira sai um pouco mais
+  escura e quente), não uma camada por cima.
+- **Medido** com `scripts/medir-regras-da-melhoria.ts --so=depois --rodadas=4
+  --tier=low --gen=<origem>` antes e depois da mudança, na MESMA arte de
+  origem (luz 102,7), pedido vazio. ⚠️ Passe a geração de ORIGEM em `--gen`:
+  o script melhora a arte que a geração passada tem como `resultUrl`, e com o
+  id da melhoria a linha de base sai "melhorando a melhorada".
+
+  | | luz média das 4 rodadas |
+  |---|---|
+  | prompt com halo autorizado | 84,1 / 74,6 / 77,6 / 76,6 (**-18% a -27%**, foto inteira escurecida em 4 de 4) |
+  | prompt sem contraste | 88,6 / 84,7 / 85,7 / 89,0 (**-13% a -18%**, sem véu nem faixa em 4 de 4 — o texto pousa direto na foto) |
+
 ### 🔴 A régua por visão exigia a LOGO como texto (TERO, 03/09/2026)
 
 A Roberta não conseguia melhorar nenhuma arte do TERO: as duas tentativas

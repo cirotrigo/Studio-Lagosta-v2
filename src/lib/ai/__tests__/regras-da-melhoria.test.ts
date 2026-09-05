@@ -107,9 +107,31 @@ describe('regrasDaCasaNaMelhoria', () => {
     const texto = regrasDaCasaNaMelhoria({ expectedTexts: [], userRequest: '' })
     expect(texto).toContain('A ESTRUTURA DA ARTE É DADA')
     expect(texto).toContain('MARGEM')
-    expect(texto).toContain('HALO DE LEITURA, NÃO VÉU')
+    expect(texto).toContain('NENHUM CONTRASTE ACRESCENTADO')
     expect(texto).toContain('LEIA A FOTO ANTES DE POSICIONAR O TEXTO')
     expect(texto).toContain('NÃO INVENTE DADO')
+  })
+
+  /**
+   * 🔴 A MELHORIA NÃO ACRESCENTA CONTRASTE (Ciro, 05/09/2026: "está
+   * escurecendo muito a imagem e gostaria de retirar essa funcionalidade").
+   * A regra antiga AUTORIZAVA um halo "quando o texto precisar de contraste";
+   * no almoço de feriado do Quintal isso voltou como o terço inferior inteiro
+   * escurecido e -19% de luz média, sem pedido nenhum. A licença vive também
+   * no DNA ("Gradiente de Leitura", "véu") e na direção de arte ("degradê
+   * discreto"), então a regra precisa revogá-las PELO NOME.
+   */
+  it('não autoriza halo nem véu, e revoga pelo nome o gradiente do DNA e o degradê da direção de arte', () => {
+    const texto = regrasDaCasaNaMelhoria({ expectedTexts: [], userRequest: '' })
+    expect(texto).not.toContain('HALO DE LEITURA')
+    expect(texto).not.toMatch(/quando o texto precisar de contraste/i)
+    expect(texto).toMatch(/gradiente de leitura/i)
+    expect(texto).toMatch(/véu de legibilidade/i)
+    expect(texto).toMatch(/degradê discreto atrás do texto/i)
+    // a única saída para texto ilegível é a posição (regra 3)
+    expect(texto).toMatch(/ÚNICA ferramenta é a posição/)
+    // e o que a origem já tem fica como está — nunca reforçado
+    expect(texto).toMatch(/nunca reforce, nunca amplie/i)
   })
 
   /**

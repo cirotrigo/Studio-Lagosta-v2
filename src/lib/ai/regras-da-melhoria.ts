@@ -48,7 +48,8 @@
  *
  * O que NÃO mudou, porque nasceu de defeito medido e é preservação, não
  * prescrição: a foto intocável sem pedido, a proibição de inventar dado, a
- * contagem de blocos, a arte sem texto, o halo em vez de véu e a margem.
+ * contagem de blocos, a arte sem texto e a margem. O halo SAIU em 05/09/2026:
+ * a melhoria não acrescenta contraste nenhum (ver regra 4).
  *
  * Injetado pelo SISTEMA, fora do bloco editável (`DEFAULT_ART_DIRECTION` /
  * `Project.artImprovementPrompt`) — mesmo precedente da identidade da marca:
@@ -129,7 +130,7 @@ export function instrucaoDeEstrutura(expectedTexts: string[]): string {
     'MANTENHA: os mesmos blocos, com as mesmas palavras, na mesma ordem de leitura, nos mesmos agrupamentos (o que está junto continua junto, o que está separado continua separado) e com a mesma hierarquia entre eles.',
     '⛔ NÃO mova um bloco para outra zona da peça — não mande nada "para o rodapé", "para o topo" nem "para o canto". NÃO separe o que está junto, não junte o que está separado, não transforme a lista num parágrafo nem o parágrafo numa lista, e não repita nenhum bloco em dois lugares da mesma arte.',
     '⛔ NÃO CRIE NADA: nem linha, nem rodapé, nem faixa de serviço, nem selo, nem etiqueta, nem legenda, nem ícone, nem hashtag, nem arroba. Se a arte não tem horário, endereço, telefone ou preço, a arte nova também não tem.',
-    'O QUE VOCÊ MELHORA É OUTRA COISA: onde o conjunto do texto pousa sobre a fotografia, o respiro entre os blocos, o alinhamento, a quebra das linhas e o contraste de leitura. O conjunto inteiro pode mudar de lugar na peça (regra 3) — o que não muda é a ordem e o agrupamento DENTRO dele.',
+    'O QUE VOCÊ MELHORA É OUTRA COISA: onde o conjunto do texto pousa sobre a fotografia, o respiro entre os blocos, o alinhamento e a quebra das linhas. O conjunto inteiro pode mudar de lugar na peça (regra 3) — o que não muda é a ordem e o agrupamento DENTRO dele.',
     /**
      * 🔴 A ARBITRAGEM CONTRA A [IDENTIDADE DA MARCA] — sem ela, esta regra não
      * alcança cliente nenhum.
@@ -306,15 +307,39 @@ function regrasDeComposicao(): string[] {
      */
     '3. LEIA A FOTO ANTES DE POSICIONAR O TEXTO. Identifique o assunto principal (o prato, a bebida, a pessoa, o produto) e onde a imagem é calma — desfocada, escura, lisa, sem informação. O conjunto do texto vai na área calma, mesmo que isso signifique mudá-lo de lugar em relação à arte original: se o assunto está no topo, o texto desce; se está embaixo, o texto sobe. Nunca deixe texto sobre o assunto só porque a arte original o deixava ali. Nenhuma parte do assunto pode ser coberta. Este é o principal serviço que você presta a esta peça.',
 
-    // Portado da regra 4b do image-prompt-builder (17/08/2026), que nasceu do
-    // véu virando escurecimento GLOBAL nas peças do O Quintal. O Ciro reprovou
-    // o mesmo defeito na melhoria em 01/09: "aqui o véu ficou muito marcado".
-    // 🔴 A última frase entrou em 04/09: na agenda da Wine Vix, cujo texto
-    // ocupa ~80% da altura, "halo local de no máximo 1/3" é impossível de
-    // cumprir — e o modelo resolveu escurecendo a foto INTEIRA, de luz média
-    // 100,8 para 55,1 e 47,8 nas duas rodadas. Peça cheia de texto precisa da
-    // saída dita por escrito, senão ela vira véu.
-    '4. HALO DE LEITURA, NÃO VÉU: quando o texto precisar de contraste, use uma mancha escura DESFOCADA só atrás do bloco de texto, sem borda visível, que desmancha para a foto em volta — nunca um gradiente de faixa de borda a borda, nunca uma tarja, nunca o topo ou o rodapé inteiros escurecidos. A foto continua nítida e tão clara quanto a original POR BAIXO do halo. ⛔ Nunca escureça a foto inteira nem baixe o brilho geral da cena para destacar texto. Se a peça tiver muito texto e o halo não couber, a resposta NÃO é escurecer tudo: escolha a região mais calma da foto, e mantenha o resto da imagem com o brilho original.',
+    /**
+     * 🔴 A MELHORIA NÃO ACRESCENTA CONTRASTE NENHUM (decisão do Ciro,
+     * 05/09/2026: "está escurecendo muito a imagem e gostaria de retirar essa
+     * funcionalidade").
+     *
+     * O que havia aqui era a regra "HALO DE LEITURA, NÃO VÉU" — portada da
+     * geração em 01/09 e reforçada em 04/09 —, que AUTORIZAVA uma mancha
+     * escura desfocada atrás do bloco de texto "quando o texto precisar de
+     * contraste". Nasceu de um pedido do próprio Ciro (02/09: "a geração
+     * precisa usar o halo no lugar do véu") e resolvia o véu de borda a borda.
+     * Mas na melhoria a peça JÁ CHEGA com a leitura resolvida: a assinatura do
+     * compositor põe o halo por papel, o canvas de design tem o dele, e quem
+     * cuida da marca aprovou aquilo. Toda licença de "contraste" aqui vira
+     * escurecimento a mais — medido no almoço de feriado do Quintal
+     * (`cmtoeamyd000gjy04rvtyekkf`): a peça voltou com o terço inferior
+     * inteiro escurecido e a luz média de 102,7 para 83,1 (-19%), sem pedido.
+     *
+     * 🔴 E a licença vive em TRÊS lugares além desta regra, todos revogados
+     * pelo NOME abaixo (lei da casa: instrução que não se declara vencedora
+     * perde para a mais enfática): a `[IDENTIDADE DA MARCA]` — o DNA do
+     * Quintal descreve "Gradiente de Leitura… opacidade máxima na borda entre
+     * 35% e 55%" e "Dark warm como véu e fundo: 8 a 15%" —, a direção de arte
+     * (`[COMPOSIÇÃO DOS TEXTOS]` autorizava "um degradê discreto atrás do
+     * texto"; a linha foi trocada, mas `Project.artImprovementPrompt` de
+     * projeto pode carregar a versão antiga) e a própria regra 1, que listava
+     * "o contraste de leitura" entre o que a melhoria melhora.
+     *
+     * O que continua sendo verdade e NÃO se resolve por prompt: `images.edit`
+     * regenera o quadro inteiro e a luz média cai mesmo com a foto declarada
+     * intocável (regra 7). O mecanismo para isso é a MÁSCARA
+     * (`scripts/spike-melhoria-com-mascara.ts`), não outra linha aqui.
+     */
+    '4. NENHUM CONTRASTE ACRESCENTADO — NEM HALO, NEM VÉU, NEM GRADIENTE, NEM SOMBRA. Você NÃO cria camada nenhuma para "dar leitura" ao texto: nenhuma mancha escura atrás do bloco, nenhum halo desfocado, nenhum gradiente de borda, nenhuma tarja, nenhuma sombra de caixa, nenhum escurecimento parcial ou total da fotografia. A foto sai com o MESMO brilho, a mesma luz e as mesmas cores da IMAGEM 1 em toda a sua área — inclusive onde o texto pousa. Se a arte original JÁ tem uma mancha, sombra ou gradiente atrás do texto, isso faz parte da peça: mantenha EXATAMENTE como está (mesma cor, mesma opacidade, mesmo tamanho) e leve junto se o conjunto do texto mudar de lugar — nunca reforce, nunca amplie, nunca adense. Se o texto não estiver legível onde está, a ÚNICA ferramenta é a posição: mova o conjunto para a área calma da foto (regra 3). ⛔ ESTA REGRA VENCE a [IDENTIDADE DA MARCA] onde ela fala em "gradiente de leitura", "véu de legibilidade", "opacidade na borda", "gradiente sutil e parcial" ou qualquer véu, e vence a direção de arte onde ela autoriza "um degradê discreto atrás do texto": essas linhas descrevem como a peça FOI feita, e a peça que você recebeu já as aplicou — não são ordem de acrescentar mais.',
 
     /**
      * 🔴 Medido em 01/09/2026, com o prompt já consertado da foto: as TRÊS
