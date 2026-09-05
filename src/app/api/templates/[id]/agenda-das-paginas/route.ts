@@ -38,23 +38,59 @@ export const maxDuration = 60
  * requisição: medido em 04/09/2026, o endpoint passava de 45s e a tela ficava
  * girando. Aqui a resposta é uma linha de duas strings por geração.
  */
-async function horariosPorPagina(templateId: number, projectId: number): Promise<Map<string, string>> {
-  const linhas = await db.$queryRaw<Array<{ pageId: string | null; quando: string | null }>>`
-    SELECT "fieldValues"->>'pageId' AS "pageId",
-           "fieldValues"->'spec'->>'quando' AS "quando"
-    FROM "Generation"
-    WHERE "templateId" = ${templateId}
-      AND "projectId" = ${projectId}
-      AND "fieldValues"->>'pageId' IS NOT NULL
-      AND "fieldValues"->'spec'->>'quando' IS NOT NULL
-    ORDER BY "createdAt" DESC
+interface DadosDaPagina {
+  quando: string | null
+  /** Posição no carrossel (1 = capa). Não-nulo = a peça é SLIDE, não post. */
+  slide: number | null
+  /** A arte desta página já é mídia de algum post do projeto. */
+  jaEmPost: boolean
+}
+
+async function dadosPorPagina(templateId: number, projectId: number): Promise<Map<string, DadosDaPagina>> {
+  const linhas = await db.$queryRaw<
+    Array<{ pageId: string | null; quando: string | null; slide: number | null; jaEmPost: boolean }>
+  >`
+    SELECT g."fieldValues"->>'pageId' AS "pageId",
+           g."fieldValues"->'spec'->>'quando' AS "quando",
+           g."slideOrder" AS "slide",
+           EXISTS (
+             SELECT 1 FROM "SocialPost" sp
+             WHERE sp."projectId" = g."projectId"
+               AND g."resultUrl" IS NOT NULL
+               AND g."resultUrl" = ANY (sp."mediaUrls")
+           ) AS "jaEmPost"
+    FROM "Generation" g
+    WHERE g."templateId" = ${templateId}
+      AND g."projectId" = ${projectId}
+      AND g."fieldValues"->>'pageId' IS NOT NULL
+    ORDER BY g."createdAt" DESC
   `
-  const mapa = new Map<string, string>()
+  const mapa = new Map<string, DadosDaPagina>()
   // DESC + "o primeiro vence" = a geração mais recente da página manda.
   for (const l of linhas) {
-    if (l.pageId && l.quando && !mapa.has(l.pageId)) mapa.set(l.pageId, l.quando)
+    if (l.pageId && !mapa.has(l.pageId)) {
+      mapa.set(l.pageId, { quando: l.quando, slide: l.slide, jaEmPost: Boolean(l.jaEmPost) })
+    }
   }
   return mapa
+}
+
+/**
+ * 🔴 SLIDE DE CARROSSEL NÃO SE AGENDA SOZINHO.
+ *
+ * Um carrossel é UM `SocialPost` com `postType: CAROUSEL`, as 5 mídias e
+ * `pageId: null` — nenhum slide tem post próprio. Sem esta trava, a detecção
+ * por `SocialPost.pageId` não acha nada, o botão "Agendar" aparece em todos os
+ * slides e cada clique cria um post de imagem ÚNICA com um slide solto, no
+ * mesmo horário em que o carrossel completo já está. Medido em produção em
+ * 04/09/2026: 44 páginas nesse estado.
+ *
+ * São dois critérios porque um só não basta: `slideOrder` cobre quem declarou
+ * o carrossel na spec, e a arte já estar em `mediaUrls` cobre a peça composta
+ * SEM declarar (que o próprio compositor admite acontecer).
+ */
+function ehSlideDeCarrossel(d: DadosDaPagina | undefined): boolean {
+  return Boolean(d && (d.slide != null || d.jaEmPost))
 }
 
 /**
@@ -98,7 +134,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   // As Generations acompanham a pasta da página (é o que o compositor e a
   // migração mantêm), então uma consulta por template basta.
-  const quandoPorPagina = await horariosPorPagina(templateId, template.projectId)
+  const dados = await dadosPorPagina(templateId, template.projectId)
 
   const posts = await db.socialPost.findMany({
     where: { pageId: { in: paginas.map((p) => p.id) } },
@@ -112,10 +148,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     projectId: template.projectId,
     paginas: paginas.map((p) => {
       const post = postPorPagina.get(p.id)
+      const d = dados.get(p.id)
       return {
         pageId: p.id,
-        quando: quandoPorPagina.get(p.id) ?? null,
+        quando: d?.quando ?? null,
         postType: TIPO_DE_POST[formatoDaPagina(p)],
+        // Slide de carrossel não ganha botão: ele já vai ao ar dentro do post
+        // do carrossel, e agendá-lo sozinho duplicaria a publicação.
+        slide: d?.slide ?? null,
+        ehSlide: ehSlideDeCarrossel(d),
         post: post
           ? { id: post.id, status: post.status, quando: post.scheduledDatetime?.toISOString() ?? null }
           : null,
@@ -165,7 +206,17 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ error: 'Esta peça já está na agenda', code: 'JA_AGENDADA', postId: jaTem.id }, { status: 409 })
     }
 
-    const quando = (await horariosPorPagina(templateId, template.projectId)).get(page.id)
+    const d = (await dadosPorPagina(templateId, template.projectId)).get(page.id)
+    if (ehSlideDeCarrossel(d)) {
+      return NextResponse.json(
+        {
+          error: 'Esta peça é um slide de carrossel — ela vai ao ar dentro do post do carrossel, não sozinha.',
+          code: 'SLIDE_DE_CARROSSEL',
+        },
+        { status: 409 },
+      )
+    }
+    const quando = d?.quando
     if (!quando) {
       return NextResponse.json(
         { error: 'Esta peça não tem horário previsto — agende pela agenda, escolhendo a data.', code: 'SEM_HORARIO' },

@@ -3928,14 +3928,20 @@ e o sinal `geometria`. Regras que valem para código novo:
     data das páginas: em 04/09 a pasta "Semana 14 a 20/09" da Lagosta guardava
     páginas agendadas para 10/09 e, pelas datas, reivindicava a chave da
     semana errada — duas pastas com a mesma tag, que é o que a tag existe para
-    impedir. Peça agendada para outra semana FICA onde está (a data entra só
-    na ordem) e sai listada como aviso: refilar por semana é decisão do Ciro,
-    não efeito colateral.
+    impedir. 🔴 Mas a PÁGINA vai para a pasta da PRÓPRIA data, e a distinção
+    é a lição: "de que semana é esta PASTA" sai da tag dela; "para que pasta
+    vai esta PÁGINA" sai da data da peça. Confundir as duas deixou 14 páginas
+    da Lagosta com o nome de uma semana ("Qui 10/09") dentro da pasta de
+    outra — nome e pasta dizendo coisas diferentes sobre a mesma peça, que é
+    a confusão que a separação veio resolver. Sem data (avulsas), aí sim a
+    origem manda: é o único caso em que não há data para consultar.
   - Os coletores "Arte Composta" não são mais alimentados;
     `scripts/organizar-programacao.ts` moveu as 63 peças da Lagosta.
 - **O card da pasta: capa em mosaico, nome fora do card e o botão Agendar**
   (04/09/2026, ao ver a aba depois da separação):
-  - **O nome mora FORA do card** (`LegendaDaPasta`), em até duas linhas. Ele
+  - **O nome mora FORA do card** (`LegendaDoCard`), em até TRÊS linhas
+    (`line-clamp-3`: com duas, o nome longo do arquivo — mediana 36 e máximo
+    56 caracteres — continua cortado nos cards de 171px do celular). Ele
     vivia só no overlay de hover com `truncate`, e "Stories · Semana 14 a
     20/09" não cabe na largura de um card — a semana ficava cortada justamente
     na parte que identifica a pasta.

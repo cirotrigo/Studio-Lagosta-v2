@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { CalendarCheck, CalendarPlus, Copy, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CalendarCheck, CalendarPlus, Copy, Layers, Loader2, Plus, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
@@ -39,15 +39,36 @@ function ControleDeAgenda({
 
   if (agenda.post) {
     const quando = agenda.post.quando ? horarioCurto(agenda.post.quando) : null
+    // O botão cria RASCUNHO, então dizer "Agendado" logo depois do clique
+    // mentiria: rascunho aparece na agenda mas não publica sozinho.
+    const rascunho = agenda.post.status === 'DRAFT'
     return (
       // Sem borda de propósito: `border-emerald-500/30` não pintou na medição
       // de 04/09/2026 (caiu no cinza do reset). Fundo e texto foram medidos.
       <span
         className="flex h-6 items-center gap-1 rounded bg-emerald-500/10 px-1.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400"
-        title={quando ? `Já está na agenda — ${quando}` : 'Já está na agenda'}
+        title={`${rascunho ? 'Está na agenda como rascunho' : 'Já está agendado'}${quando ? ` — ${quando}` : ''}`}
       >
         <CalendarCheck className="h-3 w-3" />
-        Agendado
+        {rascunho ? 'Na agenda' : 'Agendado'}
+      </span>
+    )
+  }
+
+  /**
+   * 🔴 Slide de carrossel não ganha botão: ele vai ao ar DENTRO do post do
+   * carrossel (um post só, com todas as mídias e `pageId` nulo), e agendá-lo
+   * sozinho criaria um post de imagem única com um slide solto, no mesmo
+   * horário do carrossel completo. Medido: 44 páginas nesse estado.
+   */
+  if (agenda.ehSlide) {
+    return (
+      <span
+        className="flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-muted-foreground"
+        title="Esta peça é um slide de carrossel — ela vai ao ar dentro do post do carrossel, não sozinha."
+      >
+        <Layers className="h-3 w-3" />
+        {agenda.slide ? `slide ${agenda.slide}` : 'slide'}
       </span>
     )
   }

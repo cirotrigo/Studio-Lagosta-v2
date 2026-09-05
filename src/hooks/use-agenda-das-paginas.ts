@@ -17,6 +17,10 @@ export interface AgendaDaPagina {
   /** ISO do horário previsto na composição. `null` = a peça não sabe quando sai. */
   quando: string | null
   postType: 'STORY' | 'POST'
+  /** Posição no carrossel, quando a peça é slide. */
+  slide: number | null
+  /** A peça é slide de carrossel: ela não se agenda sozinha. */
+  ehSlide: boolean
   post: { id: string; status: string; quando: string | null } | null
 }
 

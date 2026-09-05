@@ -67,7 +67,15 @@ function CapaEmMosaico({ capa, quantas }: { capa: string[]; quantas: number }) {
                         // capa lê como peça que faltou.
                         style={mostradas.length === 3 && i === 0 ? { gridColumn: 'span 2' } : undefined}
                     >
-                        <Image src={url} alt="" fill sizes="120px" className="object-cover" unoptimized />
+                        {/*
+                          * 🔴 SEM `unoptimized`: com ele o navegador baixa a ARTE
+                          * INTEIRA (PNG de publicação) em cada célula — quatro por
+                          * card. É a mesma lição que a galeria de criativos já
+                          * pagou (38 MB numa carga). O host do Blob está nos
+                          * `remotePatterns`, então o Next serve a versão reduzida
+                          * que `sizes` pede.
+                          */}
+                        <Image src={url} alt="" fill sizes="120px" className="object-cover" />
                     </div>
                 ))}
             </div>
@@ -157,6 +165,10 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
 
             <Link
                 href={`/templates/${template.id}/editor`}
+                // O nome saiu de dentro do card (foi para a legenda), então o
+                // link ficaria sem nome acessível: as imagens do mosaico são
+                // decorativas (`alt=""`) e o ramo neutro só diz "Sem preview".
+                aria-label={template.name}
                 className={cn("relative block bg-muted overflow-hidden w-full h-full rounded-xl cursor-pointer", getAspectRatioClass())}
             >
                 {/*

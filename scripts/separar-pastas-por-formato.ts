@@ -20,9 +20,11 @@
  * `SocialPost.templateId` é SetNull — os posts perderiam o botão "Editar
  * Template". Post nenhum é agendado, publicado ou cancelado aqui.
  *
- * A peça NÃO muda de semana: se o post foi remarcado para outra semana depois
- * de composto, a data nova entra só na ORDEM. Refilar por semana é outra
- * decisão, e destrutiva o bastante para ser pedida.
+ * A peça VAI para a pasta da SUA data — inclusive quando a data mudou depois
+ * de ela ser composta. Foi o conserto de 04/09/2026: agrupar pela pasta de
+ * origem, enquanto o NOME já saía da data do post, deixava "Qui 10/09" dentro
+ * da pasta da semana 14-20/09, com nome e pasta dizendo coisas diferentes
+ * sobre a mesma peça. Eram 14 páginas assim na Lagosta.
  */
 import 'dotenv/config'
 
@@ -334,7 +336,16 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
         if (mudou) console.log(`          ${String(ordem).padStart(6)}  ${nome}${p.templateId !== destinoId ? '   (muda de pasta)' : ''}`)
         continue
       }
-      await db.page.update({ where: { id: p.id }, data: { templateId: destinoId, name: nome, order: ordem, tags: ['compositor', p.formato] } })
+      // 🔴 As tags são ACRESCENTADAS, não substituídas: `tags: ['compositor',
+      // formato]` apagava o que a equipe tivesse posto na página (tema de
+      // modelo, marcações próprias). Só os rótulos de OUTRO formato saem.
+      const outrosFormatos: Formato[] = ['story', 'feed', 'quadrado']
+      const tags = [
+        ...p.tags.filter((t) => t !== 'compositor' && !outrosFormatos.includes(t as Formato)),
+        'compositor',
+        p.formato,
+      ]
+      await db.page.update({ where: { id: p.id }, data: { templateId: destinoId, name: nome, order: ordem, tags } })
       const gensDaPagina = gensPorPagina.get(p.id) ?? []
       if (gensDaPagina.length > 0) {
         await db.generation.updateMany({
@@ -343,8 +354,15 @@ async function migrarProjeto(projectId: number, confirmar: boolean) {
         })
       }
       if (p.templateId !== destinoId) {
-        // Sem isso o "Editar Template" da agenda abriria a pasta antiga.
-        const r = await db.socialPost.updateMany({ where: { pageId: p.id, templateId: p.templateId }, data: { templateId: destinoId } })
+        /**
+         * Sem isso o "Editar Template" da agenda abriria a pasta antiga.
+         *
+         * 🔴 Sem condição de `templateId`: a pasta da PÁGINA é a verdade, e
+         * exigir que o post apontasse para a origem deixava de fora o post
+         * criado por outro caminho (ou por outra sessão, no meio da migração).
+         * Encontrados 3 assim em produção depois da primeira rodada.
+         */
+        const r = await db.socialPost.updateMany({ where: { pageId: p.id }, data: { templateId: destinoId } })
         postsReapontados += r.count
       }
     }
