@@ -812,6 +812,23 @@ export function regraDeSafeArea(formato?: 'story' | 'feed' | 'quadrado', alturaP
  * para exatamente este caso), somado ao TYPOGRAPHY LOCK das skills: as fontes
  * vêm da carta de identidade (brand-card), nunca de descrição vaga.
  */
+/**
+ * A copy na CAIXA que a marca pede — a mesma regra que `buildArtePrompt`
+ * aplica por dentro, exposta para o diretor de arte (`diretor-de-arte.ts`),
+ * que recebe a copy pronta e a copia verbatim para o prompt. A caixa é
+ * decidida na string porque é o único lugar onde é decidível (16-17/08/2026).
+ */
+export function copyComCaixaDaMarca(copy: string[], brand: BrandContext | null): string[] {
+  const caixaDaMarca = brand ? CAIXA_DA_MANCHETE.get(brand.projectId) : undefined
+  const nomesDaMarca = brand?.projectName ? [brand.projectName] : []
+  return copy.map((b, i) => {
+    const limpo = b.replace(/\s+/g, ' ').trim()
+    if (caixaDaMarca === 'natural') return paraCaixaNatural(limpo, nomesDaMarca)
+    if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(limpo)
+    return limpo
+  })
+}
+
 export function buildArtePrompt(args: BuildArtePromptArgs): string {
   const sections: string[] = []
 

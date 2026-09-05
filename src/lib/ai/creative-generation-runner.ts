@@ -28,11 +28,15 @@ import {
   buildArtePrompt,
   buildImagePromptViaLLM,
   buildReferencePreamble,
+  copyComCaixaDaMarca,
   orderReferences,
+  regraDeSafeArea,
   validateImagePrompt,
   type ArtReferenceRole,
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
+import { planejarArte, type ReferenciaDoPlanoDeGeracao } from '@/lib/ai/diretor-de-arte'
+import { assinaturaTipografica } from '@/lib/ai/assinatura-tipografica'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
   cantoDaAssinatura,
@@ -277,6 +281,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   const startedAt = Date.now()
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
   let promptUsado: string | null = null
+  /** O que o diretor de arte fez nesta run (F6, 05/09/2026) — vai para o fieldValues. */
+  let plannerGeracaoInfo: Record<string, unknown> = {}
   /** Registro atômico: qual referência de marca o modelo recebeu de fato. */
   let brandCardOrigem: 'manual-designer' | 'card-gerado' | null = null
 
@@ -688,30 +694,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       body = built.prompt
       promptIssues = built.issues
     } else {
-      body = buildArtePrompt({
-        copy: args.copy,
-        pedido: args.pedido || undefined,
-        brand,
-        refs: ordered.map((r) => ({ role: r.role, label: r.label })),
-        instrucaoImagem: args.instrucaoImagem,
-        // A faixa é calculada com o MESMO planejador da composição — o pixel
-        // prometido ao modelo é o pixel onde o cartão vai pousar.
-        documentoFaixa:
-          documentoTopo !== null && documentoPlano
-            ? { topoPx: documentoTopo, basePx: documentoTopo + documentoPlano.altura }
-            : null,
-        documentoNaCena,
-        // A safe area sai em PIXEL da peça real, e só no story — ver
-        // `regraDeSafeArea`.
-        formato: args.formato,
-        alturaPx: args.finalSize.height,
-        modelo: modeloLido
-          ? { descricao: modeloLido.descricao, elementos: modeloLido.elementosGraficos }
-          : null,
-        // Três estados: colar depois (reserva o canto), o modelo desenhar
-        // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
-        blocoLogo: juntarBlocosDeLogo(
-          logoParaCompor
+      // Três estados: colar depois (reserva o canto), o modelo desenhar
+      // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
+      const blocoLogo = juntarBlocosDeLogo(
+        logoParaCompor
           ? instrucaoAreaReservada(LOGO_CORNER)
           : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
             ? // Canto FIXO no slide irmão de carrossel (o LOOK SPINE manda
@@ -728,29 +714,114 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
                 args.formato,
               )
             : null,
-          // A segunda marca: reserva o canto do cliente citado. Só existe
-          // quando a logo dele baixou — reservar canto para marca que não
-          // vem seria buraco na peça.
-          logoDoClienteParaCompor && args.marcaDoCliente
-            ? instrucaoMarcaDoCliente(CLIENT_LOGO_CORNER, args.marcaDoCliente.nome)
-            : null,
-        ),
-        carrossel: args.carrossel
-          ? {
-              slideOrder: args.carrossel.slideOrder,
-              totalSlides: args.carrossel.totalSlides,
-              // O guia é o primeiro slide COM texto: é ele que estabelece o
-              // padrão que os demais copiam. A capa é foto pura e não conta.
-              ehGuia: !args.carrossel.guideGenerationId,
-              temGuia: !!args.guideResultUrl,
-              descricaoDoGuia: guiaLido?.descricao ?? null,
-              elementosDoGuia: guiaLido?.elementosGraficos ?? null,
-            }
+        // A segunda marca: reserva o canto do cliente citado. Só existe
+        // quando a logo dele baixou — reservar canto para marca que não
+        // vem seria buraco na peça.
+        logoDoClienteParaCompor && args.marcaDoCliente
+          ? instrucaoMarcaDoCliente(CLIENT_LOGO_CORNER, args.marcaDoCliente.nome)
           : null,
-      })
+      )
+
+      /**
+       * O DIRETOR DE ARTE na geração (F6, 05/09/2026,
+       * `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`): um modelo com visão
+       * OLHA a foto e as referências e escreve o prompt curto; `buildArtePrompt`
+       * (13-20 mil chars de regras) vira o caminho de volta quando ele não
+       * consegue. Só na PEÇA AVULSA: o carrossel tem o LOOK SPINE (rigidez
+       * desejada numa série) e a peça com cartão tem a faixa em pixel — os dois
+       * são mecânicos e medidos, e ficam como estão. `ARTE_PLANNER=off`
+       * desliga sem deploy.
+       */
+      const elegivelParaPlanejador = !args.carrossel && !documentoPlano && process.env.ARTE_PLANNER !== 'off'
+      let planejado: Awaited<ReturnType<typeof planejarArte>> = null
+      if (elegivelParaPlanejador) {
+        const t0 = Date.now()
+        const referencias: ReferenciaDoPlanoDeGeracao[] = ordered
+          .filter((r): r is LoadedRef & { role: ReferenciaDoPlanoDeGeracao['papel'] } => r.role !== 'series-guide')
+          .map((r, i) => ({
+            indice: i + 1,
+            papel: r.role,
+            rotulo: r.label ?? null,
+            estiloLivre: r.estiloLivre,
+            // O planejador precisa VER a foto, o modelo escolhido, a referência
+            // de clima e o manual; âncoras, prancha e logo ele conhece pelo papel.
+            buffer: ['subject', 'style-guide', 'style', 'brand-card'].includes(r.role) ? r.buffer : undefined,
+          }))
+        planejado = await planejarArte({
+          copy: copyComCaixaDaMarca(args.copy, brand),
+          pedido: args.pedido ?? '',
+          brand,
+          referencias,
+          formato: args.formato,
+          alturaPx: args.finalSize.height,
+          instrucaoImagem: args.instrucaoImagem,
+          logoCompor: !!logoParaCompor,
+          assinaturaTipografica: assinaturaTipografica(brand?.projectId),
+        })
+        plannerGeracaoInfo = {
+          planejador: planejado ? planejado.modelo : 'fallback',
+          planejadorMs: Date.now() - t0,
+          ...(planejado ? { planejadorTentativas: planejado.tentativas } : {}),
+          ...(planejado?.leitura ? { leitura: planejado.leitura } : {}),
+        }
+        if (planejado) {
+          console.log(
+            `[arte-ia.bg] diretor de arte (${planejado.modelo}) escreveu o prompt em ${(planejado.ms / 1000).toFixed(1)}s: ${planejado.prompt.length} chars${planejado.leitura ? ` — ${planejado.leitura}` : ''}`,
+          )
+        } else {
+          console.warn('[arte-ia.bg] diretor de arte indisponível — usando buildArtePrompt')
+        }
+      }
+
+      if (planejado) {
+        // O que é MECÂNICO vai colado ao fim, onde pesa mais: o canto da marca
+        // (quem cola é o código) e a safe area em PIXEL da peça real.
+        body = [planejado.prompt, blocoLogo, regraDeSafeArea(args.formato, args.finalSize.height)]
+          .filter((b): b is string => !!b && b.trim() !== '')
+          .join('\n\n')
+      } else {
+        body = buildArtePrompt({
+          copy: args.copy,
+          pedido: args.pedido || undefined,
+          brand,
+          refs: ordered.map((r) => ({ role: r.role, label: r.label })),
+          instrucaoImagem: args.instrucaoImagem,
+          // A faixa é calculada com o MESMO planejador da composição — o pixel
+          // prometido ao modelo é o pixel onde o cartão vai pousar.
+          documentoFaixa:
+            documentoTopo !== null && documentoPlano
+              ? { topoPx: documentoTopo, basePx: documentoTopo + documentoPlano.altura }
+              : null,
+          documentoNaCena,
+          // A safe area sai em PIXEL da peça real, e só no story — ver
+          // `regraDeSafeArea`.
+          formato: args.formato,
+          alturaPx: args.finalSize.height,
+          modelo: modeloLido
+            ? { descricao: modeloLido.descricao, elementos: modeloLido.elementosGraficos }
+            : null,
+          blocoLogo,
+          carrossel: args.carrossel
+            ? {
+                slideOrder: args.carrossel.slideOrder,
+                totalSlides: args.carrossel.totalSlides,
+                // O guia é o primeiro slide COM texto: é ele que estabelece o
+                // padrão que os demais copiam. A capa é foto pura e não conta.
+                ehGuia: !args.carrossel.guideGenerationId,
+                temGuia: !!args.guideResultUrl,
+                descricaoDoGuia: guiaLido?.descricao ?? null,
+                elementosDoGuia: guiaLido?.elementosGraficos ?? null,
+              }
+            : null,
+        })
+      }
     }
 
-    const prompt = preamble ? `${preamble}\n\n${body}` : body
+    // Com o planejador, o prompt já descreve cada imagem pelo índice — o
+    // preâmbulo por papel seria a mesma informação duas vezes, em inglês
+    // longo. Nos outros caminhos ele continua sendo o contrato das referências.
+    const usouPlanejador = plannerGeracaoInfo.planejador !== undefined && plannerGeracaoInfo.planejador !== 'fallback'
+    const prompt = usouPlanejador ? body : preamble ? `${preamble}\n\n${body}` : body
     promptUsado = prompt
     console.log(`[arte-ia.bg] prompt pronto (${prompt.length} chars, trilha ${args.track})`)
 
@@ -1205,6 +1276,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       ...(refModelo ? { modeloSeguido: true, modeloDecodificado: !!modeloLido } : {}),
       brandCardOrigem,
       elapsedSeconds,
+      ...plannerGeracaoInfo,
       // Sobrescreve o alvo com o que de fato foi gravado (ver `saidaReal`).
       finalSize: `${saidaReal.width}x${saidaReal.height}`,
       ...qaInfo,
@@ -1274,7 +1346,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           elapsedSeconds,
           ...(args.track === 'imagem'
             ? { resolution: args.resolution, apiProvider: 'gemini-direct' }
-            : { inputSize: args.openaiSize, quality: 'high' }),
+            : {
+                inputSize: args.openaiSize,
+                // O tier REAL da run — `'high'` cravado aqui fazia o painel de
+                // gastos ler US$ 0,165 numa peça de US$ 0,008 (05/09/2026).
+                quality: args.qualidade ?? qualidadePadraoPara({ temAjusteDeFoto: Boolean(args.instrucaoImagem?.trim()) }),
+              }),
         },
         organizationId: args.orgId,
         projectId: args.projectId,
@@ -1393,7 +1470,10 @@ function buildFieldValues(
     resolution: args.track === 'imagem' ? args.resolution : null,
     inputSize: args.track === 'arte' ? args.openaiSize : null,
     finalSize: `${args.finalSize.width}x${args.finalSize.height}`,
-    quality: args.track === 'arte' ? 'high' : null,
+    quality:
+      args.track === 'arte'
+        ? args.qualidade ?? qualidadePadraoPara({ temAjusteDeFoto: Boolean(args.instrucaoImagem?.trim()) })
+        : null,
     ...extra,
   }
 }
