@@ -37,6 +37,49 @@ npm run lint         # Run ESLint
 npm run typecheck    # TypeScript type checking (tsc --noEmit)
 ```
 
+### 🔴 O checkout é COMPARTILHADO: commite por worktree
+
+Várias sessões do Claude trabalham no MESMO diretório ao mesmo tempo. O
+working tree não é seu — é terreno de ninguém. Medido em 04/09/2026: **três
+sessões tropeçaram nisso numa única noite**, e uma delas perdeu trabalho de
+verdade.
+
+- 🔴 **`git checkout -- <arquivo>` é DESTRUTIVO e SILENCIOSO** num arquivo que
+  outra sessão está editando. Não há conflito, não há erro, não há aviso: o
+  trabalho dela simplesmente desaparece. Foi assim que **107 linhas do
+  `CLAUDE.md` de outra sessão sumiram** — para separar hunks próprios dos dela
+  numa edição concorrente, alguém fez `cp` do arquivo, `git checkout --`,
+  reaplicou os próprios hunks e restaurou os dela a partir da cópia. **O
+  backup-instantâneo não protege a janela** entre o `cp` e o restore: tudo o
+  que ela escreveu naqueles dois minutos foi apagado e não voltou.
+- 🔴 **Commit vai para o branch em que o CHECKOUT está, não para o "seu".**
+  Se outra sessão deixou o diretório num branch de feature, o seu commit cai
+  no PR dela. Aconteceu duas vezes na mesma noite, uma delas com dois commits
+  já empurrados quando alguém percebeu. **Confira `git branch --show-current`
+  antes de commitar**, sempre.
+- 🔴 **Nunca `git add -A` / `git add .`** — você leva o trabalho de outra
+  sessão junto, no meio, e sem revisão. Rode `git status` e adicione arquivo
+  por arquivo.
+
+**O que fazer em vez disso: commitar por WORKTREE.**
+
+```bash
+git worktree add --detach /tmp/wt HEAD   # (ou: git worktree add /tmp/wt main)
+# edite e commite LÁ, sem tocar no working tree compartilhado
+git -C /tmp/wt push origin HEAD:meu-branch
+git worktree remove /tmp/wt
+```
+
+O worktree tem árvore de arquivos própria e compartilha só o `.git`, então
+nada do que você faz nele alcança o diretório em que as outras sessões estão
+trabalhando. É o único jeito de rebasear, separar hunks ou resetar sem apagar
+trabalho alheio sem perceber.
+
+Quando for inevitável mexer no compartilhado: `git stash push -- <caminhos>`
+com os caminhos EXATOS (nunca `-a`, nunca sem caminho), devolva imediatamente,
+e confira o retorno linha a linha. Mesmo assim a janela existe — o worktree é
+o caminho seguro.
+
 ### Database Management
 ```bash
 npm run db:push      # Push schema changes to database
