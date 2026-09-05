@@ -62,7 +62,7 @@
  *
  * `--aplicar` exige a lista explícita de ids: a recomendação nunca vira ação
  * sozinha, quem aprova é gente. Rollback: o manifest gravado em
- * `scripts/.tmp-curadoria-modelos-manifest-<data>.json` traz os ids e o
+ * `docs/manifests/curadoria-modelos-<data>.json` traz os ids e o
  * comando de volta.
  */
 import * as fs from 'fs'
@@ -489,7 +489,10 @@ async function main() {
     resultado = await aplicar(modelos, aprovados)
   }
 
-  const caminho = `scripts/.tmp-curadoria-modelos-manifest-${new Date().toISOString().slice(0, 10)}${APLICAR ? '' : '-dryrun'}.json`
+  // O manifesto é o ROLLBACK da despromoção: vive versionado em
+  // `docs/manifests/`, não em `scripts/.tmp-*`, que é o descartável.
+  fs.mkdirSync('docs/manifests', { recursive: true })
+  const caminho = `docs/manifests/curadoria-modelos-${new Date().toISOString().slice(0, 10)}${APLICAR ? '' : '-dryrun'}.json`
   fs.writeFileSync(
     caminho,
     JSON.stringify(

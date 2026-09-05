@@ -354,7 +354,10 @@ async function main() {
     }
   }
 
-  const manifestPath = `scripts/.tmp-lh3-fix-manifest-${new Date().toISOString().slice(0, 10)}${APLICAR ? '' : '-dryrun'}.json`
+  // O manifesto é o ROLLBACK desta operação: ele mora em `docs/manifests/`,
+  // versionado, e não em `scripts/.tmp-*`, que é a convenção de descartável.
+  fs.mkdirSync('docs/manifests', { recursive: true })
+  const manifestPath = `docs/manifests/lh3-fix-${new Date().toISOString().slice(0, 10)}${APLICAR ? '' : '-dryrun'}.json`
   fs.writeFileSync(manifestPath, JSON.stringify({ aplicado: APLICAR, data: new Date().toISOString(), paginas: manifest }, null, 2))
 
   console.log('\n──────── resumo por projeto ────────')
