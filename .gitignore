@@ -55,6 +55,16 @@ my-replicate-app/
 # Only ignore the root-level prompts/ directory, not src/app/(protected)/prompts/
 /prompts/
 
+# Scripts temporários de diagnóstico. `.tmp-` é a convenção da casa para
+# "apague no fim" — mas 80 deles acabaram versionados entre julho e agosto de
+# 2026, quase todos de carona em commits de feature, e viraram 1,3 MB de
+# entulho que ninguém importava (removidos no PR #86).
+#
+# 🔴 Dado que serve de ROLLBACK não mora aqui. Manifesto de operação em lote
+# vai versionado para `docs/manifests/` — ver o README de lá. Foi o que quase
+# se perdeu quando a limpeza do entulho mirou no prefixo em vez do conteúdo.
+scripts/.tmp-*
+
 # Saída dos scripts de paridade A/B (PNGs de inspeção)
 scripts/.tmp-parity-out/
 
