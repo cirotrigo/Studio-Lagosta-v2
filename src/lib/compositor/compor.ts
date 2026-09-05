@@ -29,7 +29,7 @@ import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
 import { garantirPasta, ordemNaPasta } from './pastas'
 import { entradaDePersistencia } from './persistencia'
-import { nomeDaPagina } from './pasta-da-semana'
+import { avisoDeMinutoOcupado, nomeDaPagina } from './pasta-da-semana'
 
 import {
   escolherVariante,
@@ -789,6 +789,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // irmãos de um carrossel saem com nomes idênticos.
   const pasta = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
   const { ordem, repeticao } = await ordemNaPasta(pasta.id, spec.quando ?? null, spec.carrossel?.slide ?? null)
+
+  // Minuto já ocupado sem carrossel declarado: o compositor desempata e AVISA.
+  // A regra e o porquê moram no módulo puro (`avisoDeMinutoOcupado`).
+  const avisoDeHorario = avisoDeMinutoOcupado(spec.quando ?? null, repeticao, Boolean(spec.carrossel))
+  if (avisoDeHorario) avisos.push(avisoDeHorario)
+
   const nome = nomeDaPagina({
     quando: spec.quando ?? null,
     tema: spec.tema ?? null,

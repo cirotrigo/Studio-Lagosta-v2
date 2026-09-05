@@ -207,3 +207,31 @@ export function nomeDaPagina(args: {
   else if (typeof args.peca === 'number' && args.peca > 0) partes.push(`peça ${args.peca}`)
   return partes.join(' · ')
 }
+
+/**
+ * Duas peças no MESMO minuto da mesma pasta, e nenhuma delas declarou
+ * carrossel: são duas coisas diferentes com a mesma cara — um carrossel
+ * composto sem informar o slide, ou uma peça com o horário errado.
+ *
+ * O compositor não tem como saber qual, então DESEMPATA e AVISA — nunca
+ * recusa. Numa leva real de 04/09/2026 os dois casos apareceram juntos (os
+ * quatro slides do Empório nasceram com o mesmo `order`), e travar teria
+ * segurado o carrossel legítimo. Regra da casa: verificador avisa, nunca veta.
+ *
+ * Sem o aviso o desempate era silencioso e o caso só aparecia como "peça 2" no
+ * nome da página — que é consequência, não explicação.
+ */
+export function avisoDeMinutoOcupado(
+  quando: string | Date | null | undefined,
+  repeticao: number,
+  temCarrossel: boolean,
+): string | null {
+  if (temCarrossel || repeticao <= 0) return null
+  const quantas = repeticao === 1 ? 'outra peça' : `outras ${repeticao} peças`
+  const horario = horarioCurto(quando)
+  return (
+    `${horario ? `${horario} ` : 'Este horário '}já tinha ${quantas} nesta pasta, e esta não declarou carrossel. ` +
+    'Se são slides da mesma publicação, informe o slide para eles saírem na ordem certa; ' +
+    'se o horário está errado, corrija a data.'
+  )
+}

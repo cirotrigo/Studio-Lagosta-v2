@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { horarioCurto, nomeDaPagina, ordemDaPagina, pastaDaPeca, semanaDe } from '../pasta-da-semana'
+import { avisoDeMinutoOcupado, horarioCurto, nomeDaPagina, ordemDaPagina, pastaDaPeca, semanaDe } from '../pasta-da-semana'
 
 describe('semanaDe', () => {
   it('segunda a domingo em BRT, nome no mesmo mês', () => {
@@ -128,5 +128,36 @@ describe('horarioCurto', () => {
   it('data inválida ou ausente vira string vazia, nunca "Invalid Date"', () => {
     expect(horarioCurto(null)).toBe('')
     expect(horarioCurto('não é data')).toBe('')
+  })
+})
+
+describe('avisoDeMinutoOcupado', () => {
+  const quando = '2026-09-10T19:30:00-03:00'
+
+  it('a primeira peça do minuto não avisa nada', () => {
+    expect(avisoDeMinutoOcupado(quando, 0, false)).toBeNull()
+  })
+
+  it('carrossel DECLARADO não avisa: ali o empate é esperado e o slide resolve', () => {
+    expect(avisoDeMinutoOcupado(quando, 3, true)).toBeNull()
+  })
+
+  it('minuto ocupado sem carrossel avisa, com o horário que o Agendar mostra', () => {
+    const aviso = avisoDeMinutoOcupado(quando, 1, false)
+    expect(aviso).toContain(horarioCurto(quando))
+    expect(aviso).toContain('outra peça')
+    // As duas saídas precisam estar na mesma frase: quem lê não sabe qual dos
+    // dois casos é o dele.
+    expect(aviso).toContain('informe o slide')
+    expect(aviso).toContain('corrija a data')
+  })
+
+  it('conta as peças no plural', () => {
+    expect(avisoDeMinutoOcupado(quando, 3, false)).toContain('outras 3 peças')
+  })
+
+  it('sem data legível o aviso ainda faz sentido — nunca começa com string vazia', () => {
+    const aviso = avisoDeMinutoOcupado(null, 1, false)
+    expect(aviso?.startsWith('Este horário')).toBe(true)
   })
 })
