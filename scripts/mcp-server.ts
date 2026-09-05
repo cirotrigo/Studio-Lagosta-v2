@@ -786,7 +786,7 @@ toolEstrita(
     try {
       const existing = await prisma.socialPost.findUnique({
         where: { id: postId },
-        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true },
+        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true, projectId: true, scheduledDatetime: true },
       })
       if (!existing) {
         return { content: [{ type: 'text' as const, text: `Error: post ${postId} not found` }], isError: true }
@@ -828,6 +828,24 @@ toolEstrita(
         data,
         select: { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true },
       })
+
+      // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e
+      // ordem) — senão a pasta e o nome da página guardam a data velha, e é
+      // por eles que a equipe revisa a programação. Best-effort, como o resto
+      // dos efeitos colaterais daqui.
+      if (
+        scheduledDatetime !== undefined &&
+        updated.scheduledDatetime &&
+        existing.scheduledDatetime?.getTime() !== updated.scheduledDatetime.getTime()
+      ) {
+        try {
+          const { refilarPaginasDoPost } = await import('../src/lib/compositor/pastas')
+          const dono = await prisma.project.findUnique({ where: { id: existing.projectId }, select: { userId: true } })
+          if (dono) await refilarPaginasDoPost(postId, updated.scheduledDatetime, dono.userId)
+        } catch (erro) {
+          console.warn('[mcp] não deu para refilar as páginas do post:', (erro as Error).message)
+        }
+      }
 
       // Sync changes to Zernio if post is already on Zernio
       let zernioSynced = false
