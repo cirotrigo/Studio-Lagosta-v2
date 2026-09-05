@@ -3724,18 +3724,33 @@ economicamente na arte".
   melhoria. A QA que compara por visão a marca desenhada com o arquivo oficial
   existe em `creative-qa.ts` e está órfã. Ligá-la é o conserto de verdade deste
   trade-off, e é o que permitiria devolver mais clientes ao `modelo`.
-- 🔴 **O portão dos fatos do cliente abria com NOME DE UNIDADE.** `temEndereco`
-  aceitava `LOCALIDADE`, que casa a palavra "praia" — então "Real Praia do
-  Canto, loja principal" contava como endereço e `[FATOS DO CLIENTE]` entrava.
-  Na Real Gelateria isso é grave: o `contentRules` do cliente diz "Nunca o
-  endereço completo na arte: só o NOME da unidade e o horário, nunca a rua e o
-  número" e "a fábrica de Piúma nunca aparece em comunicação" — e os fatos
-  injetados traziam a rua, o número e o endereço da fábrica. Hoje o portão exige
-  logradouro (em qualquer posição) ou CEP. `temEndereco` tem UM consumidor só, o
-  que tornou o conserto cirúrgico.
-  ⚠️ Fecha a porta aberta, não o problema: peça que TEM logradouro na copy volta
-  a receber os fatos, e nada respeita as proibições escritas no DNA. Filtrar os
-  fatos por elas é a outra metade.
+- 🔴 **A seção `[FATOS DO CLIENTE]` FOI REMOVIDA da melhoria (05/09/2026).** Ela
+  injetava endereço e horário oficiais da base "só para conferir" um endereço
+  que a copy já tivesse — e o que produziu foi dado DESENHADO: "Rua Fernandes
+  Tourinho, 133 · Savassi" numa peça de Vitória (Quintal, 01/09) e "Dom. Pedro
+  II, 716 | Higienópolis, São José do Rio Preto - SP" (Wine Vix, 04/09). Dado
+  disponível no prompt vira dado na arte; o portão só decidia a frequência.
+  E o portão abria sozinho: `temEndereco` aceitava localidade, e "praia" casa em
+  "Real Praia do Canto, loja principal", que é NOME de unidade — na Real
+  Gelateria isso levava ao prompt a rua, o número e o endereço da fábrica, os
+  três proibidos na arte pelo `contentRules` do próprio cliente.
+  🔴 **O conserto NÃO é filtrar os fatos pelas proibições do DNA** (decisão do
+  Ciro): **as proibições do DNA valem na criação da COPY**. Ali são aplicadas, e
+  depois a copy passa pelo olho de quem pede a melhoria. Quando a arte chega à
+  melhoria, o que ela mostra já foi decidido e revisado duas vezes — não há o
+  que conferir nem por que acrescentar. `[TEXTO EXATO]` é a verdade da peça e a
+  regra 1 já proíbe criar bloco. `temEndereco` e `loadFatosDoCliente` foram
+  removidas por falta de consumidor, e sobra uma consulta a menos à base por
+  melhoria.
+  ⚠️ **Resíduo conhecido**: o `[IDENTIDADE DA MARCA]` ainda cita dados dentro
+  das próprias proibições — "a fábrica de Piúma nunca aparece em comunicação"
+  põe o endereço da fábrica no prompt para proibi-lo. Medido em 05/09 no prompt
+  real da Real Gelateria. Risco baixo (a frase diz "nunca"), e **não se resolve
+  tirando `contentRules` da melhoria**: ele também carrega regra de ARTE que ela
+  usa ("o texto NUNCA cobre o produto da foto", "gradiente leve, nunca a ponto
+  de escurecer a fotografia"). Resolver exigiria separar, no DNA, proibição de
+  COPY de proibição de ARTE.
+
 - 🔴 **"Não modifique a foto" não é alcançável por prompt** — e a resposta já
   existe no código. `images.edit` regenera o quadro inteiro: a fotografia é
   redesenhada mesmo com a regra 7 dizendo que é intocável (medido: luz média

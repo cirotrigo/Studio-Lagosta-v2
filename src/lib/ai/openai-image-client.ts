@@ -62,8 +62,6 @@ interface BuildPromptArgs {
   instrucaoImagem?: string | null
   /** A arte de origem foi transcrita e não tem texto — ver as regras da casa. */
   arteSemTexto?: boolean
-  /** Endereço e horário oficiais, só para conferir — ver `fatosDoClienteNaMelhoria`. */
-  fatosDoCliente?: string[]
   /**
    * A marca é COMPOSTA por código depois (`logo-na-melhoria.ts`): o prompt
    * manda não desenhar e reserva o canto. Projetos em `compor`.
@@ -339,7 +337,6 @@ export function buildPromptSections({
   instrucaoImagem = null,
   arteSemTexto = false,
   enxuto = false,
-  fatosDoCliente = [],
   logoCompor = false,
 }: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
@@ -445,7 +442,7 @@ export function buildPromptSections({
     id: 'regras-da-casa',
     title: 'Regras da casa',
     origin: 'system',
-    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest, instrucaoImagem, arteSemTexto, fatosDoCliente }),
+    content: regrasDaCasaNaMelhoria({ expectedTexts, userRequest, instrucaoImagem, arteSemTexto }),
   })
 
   if (hasBackground) {
@@ -625,8 +622,6 @@ interface ImproveCreativeOptions {
   quality?: 'low' | 'medium' | 'high'
   /** A arte de origem foi transcrita e não tem texto. */
   arteSemTexto?: boolean
-  /** Endereço e horário oficiais, só para conferir. */
-  fatosDoCliente?: string[]
   /** A marca é composta por código depois — o prompt manda não desenhar. */
   logoCompor?: boolean
   /** Prompt enxuto — hipótese em medição, ver `BuildPromptArgs.enxuto`. */
@@ -665,7 +660,6 @@ export async function improveCreative({
   quality,
   arteSemTexto = false,
   enxuto = false,
-  fatosDoCliente = [],
   logoCompor = false,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
@@ -673,7 +667,7 @@ export async function improveCreative({
 
   const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
   const prompt = buildPrompt({
-    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, fatosDoCliente, logoCompor,
+    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, logoCompor,
   })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {

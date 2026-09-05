@@ -5,10 +5,9 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { temEndereco } from '../blocos-de-servico'
 import { melhoriaCompoeLogo } from '../logo-na-melhoria'
 import { logoModePadraoPara } from '../logo-compositor'
-import { fatosDoClienteNaMelhoria } from '../regras-da-melhoria'
+import { regrasDaCasaNaMelhoria } from '../regras-da-melhoria'
 
 describe('a MELHORIA não compõe a logo onde a diagramação é preservada', () => {
   /**
@@ -33,55 +32,30 @@ describe('a MELHORIA não compõe a logo onde a diagramação é preservada', ()
   })
 })
 
-describe('os fatos do cliente exigem endereço DE VERDADE na copy', () => {
-  const FATOS = [
-    'Real Praia do Canto, loja principal, Rua João da Cruz, 151, Loja 1.',
-    'A fábrica fica no Polo Industrial de Piúma/ES e NÃO atende ao consumidor. Nunca divulgar esse endereço.',
-  ]
-
+describe('a melhoria não recebe mais os fatos do cliente', () => {
   /**
-   * 🔴 O falso positivo que abria a porta: `LOCALIDADE` casa a palavra "praia",
-   * então o NOME de uma unidade contava como endereço e os fatos entravam —
-   * inclusive o endereço da fábrica, que o DNA do cliente proíbe publicar.
+   * 🔴 A seção injetava endereço e horário oficiais "só para conferir", e o que
+   * produziu foi dado DESENHADO — "Rua Fernandes Tourinho, 133 · Savassi" numa
+   * peça de Vitória (Quintal, 01/09) e "São José do Rio Preto - SP" na Wine Vix
+   * (04/09). Removida em 05/09: as proibições do DNA valem na criação da COPY,
+   * e a arte chega à melhoria já decidida e revisada por quem pede.
    */
-  it('nome de unidade com bairro NÃO é endereço', () => {
-    expect(temEndereco(['Real Praia do Canto, loja principal'])).toBe(false)
-    expect(temEndereco(['Unidade Praia do Canto'])).toBe(false)
-    expect(temEndereco(['Centro de Vitória'])).toBe(false)
+  it('nenhuma régua faz a seção [FATOS DO CLIENTE] aparecer', () => {
+    const reguas = [
+      [],
+      ['Rua João da Cruz, 151, Loja 1'],
+      ['Real Praia do Canto', 'Funcionamento - 12h às 22h'],
+      ['Quinta, das 11h às 00h · Praia do Canto, Vitória-ES'],
+    ]
+    for (const expectedTexts of reguas) {
+      const texto = regrasDaCasaNaMelhoria({ expectedTexts, userRequest: '' })
+      expect(texto).not.toContain('[FATOS DO CLIENTE')
+      expect(texto).not.toMatch(/só para conferir, nunca para acrescentar/)
+    }
   })
 
-  /**
-   * 🔴 O que separa os dois casos é o HORÁRIO colado. Na linha mista dos
-   * modelos do Studio o bairro é a localização da casa, dita junto do
-   * funcionamento — caso deliberado de 01/09/2026, que a primeira versão deste
-   * conserto derrubou junto. Num NOME de unidade, não.
-   */
-  it('bairro colado a uma linha de serviço continua contando', () => {
-    expect(temEndereco(['Quinta, das 11h às 00h · Praia do Canto, Vitória-ES'])).toBe(true)
-  })
-
-  it('logradouro e CEP continuam sendo endereço, em qualquer posição', () => {
-    expect(temEndereco(['R. Aleixo Netto, 1158 - Praia do Canto'])).toBe(true)
-    expect(temEndereco(['Rua João da Cruz, 151, Loja 1'])).toBe(true)
-    expect(temEndereco(['Endereço: Avenida Nossa Senhora, 300'])).toBe(true)
-    expect(temEndereco(['CEP 29055-260'])).toBe(true)
-  })
-
-  it('a peça sem endereço na copy não recebe os fatos', () => {
-    const semEndereco = fatosDoClienteNaMelhoria({
-      expectedTexts: ['Real Praia do Canto', 'Funcionamento - 12h às 22h'],
-      userRequest: '',
-      fatosDoCliente: FATOS,
-    })
-    expect(semEndereco).toBeNull()
-  })
-
-  it('a peça COM endereço recebe os fatos, só para conferir', () => {
-    const comEndereco = fatosDoClienteNaMelhoria({
-      expectedTexts: ['Rua João da Cruz, 151, Loja 1'],
-      userRequest: '',
-      fatosDoCliente: FATOS,
-    })
-    expect(comEndereco).toMatch(/só para conferir, nunca para acrescentar/)
+  it('e a regra 1 continua proibindo criar linha de endereço', () => {
+    const texto = regrasDaCasaNaMelhoria({ expectedTexts: ['Happy hour'], userRequest: '' })
+    expect(texto).toMatch(/Se a arte não tem horário, endereço, telefone ou preço, a arte nova também não tem/)
   })
 })

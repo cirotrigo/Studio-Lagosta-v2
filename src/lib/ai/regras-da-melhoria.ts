@@ -58,7 +58,7 @@
  * Marca é client e importar o SDK da OpenAI arrastaria tudo para o bundle.
  */
 
-import { blocosDeServico, temEndereco } from './blocos-de-servico'
+import { blocosDeServico } from './blocos-de-servico'
 
 export interface RegrasDaMelhoriaArgs {
   /**
@@ -82,12 +82,6 @@ export interface RegrasDaMelhoriaArgs {
    * transcreveu — ver `regraDaArteSemTexto`.
    */
   arteSemTexto?: boolean
-  /**
-   * Fatos do cliente (endereço e horário oficiais, da base de conhecimento),
-   * só para CONFERIR. Entram apenas quando a copy já tem endereço — ver
-   * `fatosDoClienteNaMelhoria`.
-   */
-  fatosDoCliente?: string[]
 }
 
 /**
@@ -238,27 +232,33 @@ export function contagemDeBlocos(expectedTexts: string[]): string {
 }
 
 /**
- * Os fatos do cliente, SÓ para conferir.
+ * 🔴 A SEÇÃO [FATOS DO CLIENTE] FOI REMOVIDA DA MELHORIA (05/09/2026, decisão
+ * do Ciro). Não a reintroduza sem reler isto.
  *
- * 🔴 Só quando a régua tem ENDEREÇO — não basta ter horário. Medido em
- * 02/09/2026, no happy hour do Quintal: a régua tinha "Ter a Sex, das 16h às
- * 19h" (serviço de horário), os fatos entraram "só para conferir", e o modelo
- * usou o endereço oficial que estava neles para preencher o rodapé numa peça
- * cuja copy não tem endereço. Certo desta vez, mas a mais, e é o mesmo
- * mecanismo do endereço inventado: dado disponível vira dado desenhado. Os
- * fatos só servem para conferir um endereço que a copy JÁ tem; o horário da
- * copy é a própria régua.
+ * Ela injetava endereço e horário oficiais da base "só para conferir" um
+ * endereço que a copy já tivesse. O que ela produziu de fato foi dado
+ * DESENHADO: no Quintal (01/09) o modelo escreveu "Rua Fernandes Tourinho,
+ * 133 · Savassi" numa peça de Vitória; na Wine Vix (04/09), "Dom. Pedro II,
+ * 716 | Higienópolis, São José do Rio Preto - SP". Dado disponível no prompt
+ * vira dado na arte — o portão só decidia com que frequência.
+ *
+ * E o portão abria sozinho: `temEndereco` aceitava localidade, e "praia" casa
+ * em "Real Praia do Canto, loja principal", que é um NOME de unidade. Na Real
+ * Gelateria isso levava ao prompt a rua, o número e o endereço da fábrica —
+ * os três proibidos na arte pelo `contentRules` do próprio cliente ("Nunca o
+ * endereço completo na arte: só o NOME da unidade e o horário, nunca a rua e o
+ * número"; "a fábrica de Piúma nunca aparece em comunicação").
+ *
+ * O conserto NÃO é filtrar os fatos pelas proibições do DNA. A razão é de
+ * DESENHO, e é do Ciro: **as proibições do DNA valem na criação da COPY**. Ali
+ * elas são aplicadas, e depois a copy passa pelo olho de quem pede a melhoria.
+ * Quando a arte chega aqui, o que ela mostra já foi decidido e revisado duas
+ * vezes — a melhoria não tem o que conferir e não tem por que acrescentar.
+ * `[TEXTO EXATO]` é a verdade desta peça; a regra 1 já proíbe criar bloco.
+ *
+ * Efeito colateral bem-vindo: uma consulta a menos à base por melhoria, e
+ * `temEndereco` deixou de existir por falta de consumidor.
  */
-export function fatosDoClienteNaMelhoria(args: RegrasDaMelhoriaArgs): string | null {
-  const fatos = (args.fatosDoCliente ?? []).map((f) => f.trim()).filter(Boolean)
-  if (fatos.length === 0) return null
-  if (!temEndereco(args.expectedTexts)) return null
-  return [
-    '[FATOS DO CLIENTE — só para conferir, nunca para acrescentar]',
-    ...fatos.slice(0, 8).map((f) => `- ${f}`),
-    'Estes são o endereço e o horário oficiais. O bloco de serviço da arte é o de [TEXTO EXATO], letra por letra — se ele divergir destes fatos, a copy aprovada vence e você NÃO corrige. Jamais escreva um endereço, bairro, cidade ou horário que não esteja em [TEXTO EXATO].',
-  ].join('\n')
-}
 
 /**
  * As regras que não dependem da copy.
@@ -462,8 +462,6 @@ export function regrasDaCasaNaMelhoria(args: RegrasDaMelhoriaArgs): string {
     instrucaoDeEstrutura(args.expectedTexts),
     ...regrasDeComposicao(),
   ]
-  const fatos = fatosDoClienteNaMelhoria(args)
-  if (fatos) linhas.push(fatos)
   const enxugar = regraDeEnxugar(args)
   if (enxugar) linhas.push(enxugar)
   // Antes da fidelidade da foto: as duas falam do fim do prompt, e "não

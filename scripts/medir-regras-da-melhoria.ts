@@ -189,7 +189,6 @@ async function main() {
     expectedTexts: textosParaPrompt,
     instrucaoImagem: null,
     arteSemTexto: false,
-    fatosDoCliente: assets.fatos,
     logoCompor: compoe,
   }
 

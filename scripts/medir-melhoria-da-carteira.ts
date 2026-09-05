@@ -131,7 +131,7 @@ async function main() {
             imageBuffer: src.buffer, mimeType: src.contentType, userRequest: '', size,
             brandColors: assets.colors, artDirection: assets.artDirection, brand: assets.brand,
             expectedTexts: textosParaPrompt, instrucaoImagem: null, arteSemTexto: false,
-            fatosDoCliente: assets.fatos, quality: tier, logoCompor: compoe,
+            quality: tier, logoCompor: compoe,
           })
           if (compoe && logoBuffer) {
             const ehStory2 = (meta.height ?? 0) / (meta.width ?? 1) > 1.5

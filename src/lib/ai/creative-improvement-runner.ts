@@ -552,7 +552,6 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         expectedTexts: textosParaPrompt,
         instrucaoImagem: args.instrucaoImagem ?? null,
         arteSemTexto: arteSemTexto || raizSemTexto,
-        fatosDoCliente: assets.fatos,
         logoCompor: !!logoParaCompor,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),

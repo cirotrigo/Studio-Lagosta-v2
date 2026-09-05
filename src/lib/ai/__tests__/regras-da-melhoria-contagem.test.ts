@@ -6,14 +6,12 @@ import { describe, expect, it } from 'vitest'
 
 import {
   contagemDeBlocos,
-  fatosDoClienteNaMelhoria,
   instrucaoDeServicoNaMelhoria,
   regrasDaCasaNaMelhoria,
 } from '../regras-da-melhoria'
 
 const REGUA_SEM_SERVICO = ['Happy hour', 'Chope e Drinks', 'em Dobro', 'Chope e drinks selecionados em dobro.', 'Junta a galera']
 const REGUA_COM_SERVICO = ['Quinta no', 'Quintal', 'Quinta, das 11h às 00h · Praia do Canto, Vitória-ES', 'Chega mais']
-const FATOS = ['Endereço: Rua Aleixo Netto, 1158, Praia do Canto, Vitória/ES.', 'Terça a sábado: das 11h à meia-noite.']
 
 /**
  * ⚠️ LEGADO, SEM USO desde 04/09/2026 — `instrucaoDeServicoNaMelhoria` deixou
@@ -62,29 +60,12 @@ describe('contagemDeBlocos', () => {
   })
 })
 
-describe('fatos do cliente', () => {
-  it('só entram quando a régua tem ENDEREÇO — horário sozinho não basta', () => {
-    expect(fatosDoClienteNaMelhoria({ expectedTexts: REGUA_SEM_SERVICO, userRequest: '', fatosDoCliente: FATOS })).toBeNull()
-    // O happy hour real de 02/09: régua com horário, sem endereço → sem fatos.
-    expect(fatosDoClienteNaMelhoria({ expectedTexts: ['Happy hour', 'Chope e Drinks', 'em Dobro', 'Ter a Sex, das 16h às 19h', 'Junta a galera'], userRequest: '', fatosDoCliente: FATOS })).toBeNull()
-    const r = fatosDoClienteNaMelhoria({ expectedTexts: REGUA_COM_SERVICO, userRequest: '', fatosDoCliente: FATOS })
-    expect(r).toMatch(/só para conferir, nunca para acrescentar/)
-    expect(r).toMatch(/Aleixo Netto/)
-  })
-
-  /**
-   * 🔴 Este teste passava POR VAZIO depois de 04/09: ele ancorava em 'SERVIÇO
-   * VAI PARA O RODAPÉ', que saiu do bloco — `indexOf` devolve -1 e qualquer
-   * posição é maior que -1. Ancorar sempre em texto que o bloco AINDA tem, e
-   * provar que a âncora existe antes de comparar.
-   */
-  it('bloco inteiro segue a ordem: estrutura, fatos, fidelidade por último', () => {
-    const r = regrasDaCasaNaMelhoria({ expectedTexts: REGUA_COM_SERVICO, userRequest: '', fatosDoCliente: FATOS })
+describe('ordem do bloco', () => {
+  it('bloco inteiro segue a ordem: estrutura antes, fidelidade da foto por último', () => {
+    const r = regrasDaCasaNaMelhoria({ expectedTexts: REGUA_COM_SERVICO, userRequest: '' })
     expect(r).toContain('A ESTRUTURA DA ARTE É DADA')
-    expect(r).toContain('[FATOS DO CLIENTE')
     expect(r).toContain('A FOTOGRAFIA É INTOCÁVEL')
-    expect(r.indexOf('[FATOS DO CLIENTE')).toBeGreaterThan(r.indexOf('A ESTRUTURA DA ARTE É DADA'))
-    expect(r.indexOf('A FOTOGRAFIA É INTOCÁVEL')).toBeGreaterThan(r.indexOf('[FATOS DO CLIENTE'))
+    expect(r.indexOf('A FOTOGRAFIA É INTOCÁVEL')).toBeGreaterThan(r.indexOf('A ESTRUTURA DA ARTE É DADA'))
   })
 
   /**
