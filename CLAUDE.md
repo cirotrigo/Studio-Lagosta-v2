@@ -4110,6 +4110,43 @@ O conserto é `src/lib/compositor/recompor.ts` (serviço) e `defasagem.ts`
   compare-and-swap ficaria com uma URL que nenhuma Generation tem mais —
   invisível para toda varredura seguinte. O rastro é o resgate.
 
+### Remarcar um post leva as páginas da arte junto (04/09/2026)
+
+Post remarcado deixava a `Page` para trás: na pasta da semana antiga e com o
+nome carregando a data velha — "Sex 18/09 · 09:00 · Coronel Picanha" num post
+que passou a sair em 25/09. Como a pasta da semana é o que a equipe abre para
+revisar e aprovar a programação, pasta e nome mentindo a data desfaziam
+justamente o que a separação por formato veio resolver.
+
+- **`refilarPaginasDoPost(postId, quando, userId)`** (`compositor/pastas.ts`) é
+  a irmã de `moverPaginaParaSemana`, não uma extensão dela: aquela só aceita
+  peça que ainda está em coletor ou nas avulsas (`ehComposta && emAvulsas`) e
+  **não renomeia** — existe para a peça que ACABOU de ganhar data. Página já
+  arquivada numa pasta de semana cai fora do gate dela e fica parada.
+- **Está ligada nos QUATRO pontos que escrevem a data de um post existente**,
+  mapeados por varredura: o PUT de `posts/[postId]` (arrastar no calendário,
+  "Re-agendar" e o formulário de edição chegam TODOS ali — é o de maior
+  volume), o PATCH de `external/posts/[postId]`, `reagendarPost`
+  (`agenda-acoes.ts`, a tool do conector) e o `update-post` do MCP local.
+  Caminho novo que mude `scheduledDatetime` precisa chamá-la, senão a página
+  volta a ficar para trás em silêncio.
+- 🔴 **O id no nome do arquivo do render NEM SEMPRE é o da página**: o
+  compositor nomeia por PÁGINA (`<pageId>-<epoch>.png`) e o render de post
+  avulso nomeia pelo POST. Sem descartar o id do próprio post, o carrossel
+  adota uma página que não existe.
+- 🔴 **Mídia única NÃO é slide.** Story e post de imagem única também têm a arte
+  nomeada pelo id da página; sem o corte por `mediaUrls.length > 1` a peça
+  avulsa vira "slide 1" e a ordem sai deslocada dentro do minuto.
+- **Best-effort, sempre**: refilar não pode derrubar um reagendamento — mesmo
+  contrato de `moverPaginaParaSemana` e de `sendWhatsAppText`. Modelo
+  (`isTemplate`) e página que não é do compositor são pulados com aviso.
+- ⚠️ **Trocar `mediaUrls` também envelhece o nome** (o "slide 2/5" muda), e
+  isso NÃO dispara refile hoje — a função trataria, o gatilho é que não existe.
+- `scripts/validar-refile-ao-remarcar.ts` prova o caminho real indo e voltando
+  num rascunho e confere que o estado final é idêntico ao inicial. Ele CRIA a
+  pasta da semana de destino (efeito inerente do `garantirPasta`) e não a
+  remove.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
