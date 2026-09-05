@@ -1018,10 +1018,10 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
   quatro cantos IGUAIS desde que existe — a logo ia sempre para o canto
   reservado, e o mecanismo de fugir do bloco de copy nunca funcionou. Vale para
   qualquer medição por região.
-- 🔴 **`bg-zinc-400` não gera CSS neste repo** — computa `rgba(0,0,0,0)`,
-  medido no navegador em 10/08/2026. Cor de fundo fora do conjunto já usado
-  vai em estilo INLINE. Some à família de classes mortas (`sm:w-28`,
-  `w-[7rem]`, `lg:max-w-sm`, `sm:ml-auto`).
+- ⚠️ ~~`bg-zinc-400` não gera CSS neste repo~~ — **diagnóstico ERRADO, desfeito
+  em 05/09/2026.** A classe está no CSS gerado; o que estava quebrado era o
+  método de medição. Leia a última seção deste arquivo antes de escrever
+  `style={{…}}` para fugir de uma classe do Tailwind.
 - **Selo de marca precisa de fundo CINZA MÉDIO**: as logos dos clientes ocupam
   os dois extremos de luminância (Quintal e TERO em 255, Bacana 252, contra
   Wine Vix 54 e By Rock 89). Fundo claro engole as brancas, escuro engole as
@@ -4426,3 +4426,57 @@ justamente o que a separação por formato veio resolver.
 - Glass morphism UI design with backdrop blur effects
 - Responsive design with mobile-first approach
 - Admin settings follow sync-first approach for external integrations
+
+### 🔴 "Essa classe não gera CSS neste repo" era o MÉTODO de medição (05/09/2026)
+
+Este arquivo e a memória do projeto carregavam uma família inteira de "classes
+mortas" (`bg-zinc-400`, `grid-rows-2`, `sm:w-28`, `w-[7rem]`, `lg:max-w-sm`,
+`sm:ml-auto`, `sm:inline-flex`, margem negativa, `h-[…vh]`, `min-w-[7rem]`,
+`bottom-1.5`…), com a receita de fugir delas por estilo INLINE. **Não existe
+classe morta. O que havia era uma medição que não podia dar outro resultado.**
+
+O método usado nas três rodadas foi *injetar o elemento na página servida pelo
+app e ler `getComputedStyle`*. Tailwind é **JIT**: ele gera regra só para a
+classe que ENCONTRA no fonte varrido. Uma classe que ainda não está em lugar
+nenhum do `src/` não tem regra — e não teria em projeto Tailwind nenhum. A
+medição perguntava "esta classe que eu ainda não escrevi existe na folha de
+estilo?", e a resposta é sempre não.
+
+A própria memória tinha registrado o sintoma sem reconhecer a causa: *"vale a
+variante que JÁ EXISTE em outro ponto do código-fonte, não a variante em si"* —
+`sm:max-w-sm` vive e `lg:max-w-sm` morre, `top-1.5` vive e `bottom-1.5` morre,
+`h-[calc(100dvh-12rem)]` vive e `h-[calc(100dvh-10rem)]` morre. Isso é a
+descrição exata do JIT, não de uma build quebrada.
+
+**A prova, medida em 05/09/2026** compilando `src/app/globals.css` com o
+`@tailwindcss/postcss` **do projeto** (4.1.17), com os 9.001 `.tsx` de
+`.claude/worktrees/` no caminho: `.grid-rows-2`, `.bg-zinc-400` (com
+`--color-zinc-400: oklch(70.5% 0.015 286.067)` definido), `.sm\:w-28`,
+`.lg\:max-w-sm`, `.sm\:ml-auto`, `.sm\:inline-flex` e `.border-emerald-500`
+estão **todas** no CSS gerado — porque hoje elas aparecem no fonte, ainda que
+só dentro dos comentários que as declaram mortas. E uma classe INÉDITA
+acrescentada na hora a um arquivo do `src/` (`grid-rows-3`) sai na compilação
+seguinte. Não há teto de arquivos, não há classe fora do alcance da varredura,
+e **escopar `@source` não resolveria nada** — não há o que resolver.
+
+O que fica:
+
+- 🔴 **Nunca meça uma classe injetando o elemento no navegador.** Escreva a
+  classe no fonte, deixe o dev server reconstruir (ou compile o CSS) e SÓ
+  ENTÃO meça. Sem isso a medição responde outra pergunta.
+- 🔴 **`grep` no fonte também não prova**: o scanner é textual e não distingue
+  código de comentário — ele gera a classe a partir do próprio comentário que
+  a declara morta. Hoje a ÚNICA ocorrência de `grid-rows-2` no repositório é
+  esse comentário. Prova é o seletor no CSS COMPILADO.
+- **Classe que não aplica com a regra presente é outra coisa**: precedência
+  (`dark:bg-zinc-100` do Button vencendo `bg-…` sem prefixo — ver "Modificador
+  vence classe sem prefixo") ou recorte de ancestral (`[class*="container"]` do
+  `globals.css`, ver a seção da galeria). As duas continuam valendo e são
+  reais; o que era falso é "o Tailwind não gerou".
+- **O estilo inline que já está no ar NÃO foi revertido**, e não precisa ser:
+  funciona, e trocá-lo em massa mexeria em tela publicada por estética de
+  código. O que muda é a REGRA — não escreva inline novo por causa desta
+  crença.
+- ⚠️ **Limite**: esta medição é de COMPILAÇÃO de CSS. Não voltei ao navegador
+  para confirmar que `grid-rows-2` desenha a grade no card; quem reabilitar uma
+  dessas classes confere na tela depois de reconstruir.
