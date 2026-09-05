@@ -143,7 +143,12 @@ export function useCreateTemplate() {
  */
 export function useGenerateThumbnail() {
   return useMutation({
-    mutationFn: (data: { designData: DesignData; width?: number; height?: number }) =>
+    mutationFn: (data: {
+      designData: DesignData
+      width?: number
+      height?: number
+      templateId?: number
+    }) =>
       api.post<{ thumbnailUrl: string }>('/api/templates/generate-thumbnail', data),
   })
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { ehMiniaturaEmbutida, guardarMiniatura } from '@/lib/templates/miniatura'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { KONVA_PROJECT_EXPORT_CATEGORY } from '@/lib/konva-project-creatives'
@@ -246,6 +247,16 @@ export async function POST(req: Request) {
 
       return newTemplate
     })
+
+    // A miniatura só pode ir para o Blob depois de o template existir — o
+    // caminho é o id dele. Ver src/lib/templates/miniatura.ts.
+    if (ehMiniaturaEmbutida(template.thumbnailUrl)) {
+      const url = await guardarMiniatura(template.thumbnailUrl, template.id)
+      if (url !== template.thumbnailUrl) {
+        await db.template.update({ where: { id: template.id }, data: { thumbnailUrl: url } })
+        template.thumbnailUrl = url
+      }
+    }
 
     return NextResponse.json(template, { status: 201 })
   } catch (error) {
