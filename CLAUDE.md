@@ -3381,8 +3381,13 @@ novo:
   `agendar-artes` atualizada.
 - **O prompt da GERAÇÃO e o da melhoria falam em HALO, não em véu** (Ciro,
   02/09/2026: "a geração precisa usar o halo no lugar do véu"). Regras 4/4b/4c
-  do `image-prompt-builder` e regra 3 das regras da casa: mancha escura
-  DESFOCADA só atrás do bloco de texto, sem borda, no máximo ~1/3 do quadro;
+  do `image-prompt-builder` e a regra do halo nas regras da casa da melhoria
+  (era a 3, virou a **4** na renumeração de 04/09): mancha escura
+  DESFOCADA só atrás do bloco de texto, sem borda;
+  ⚠️ **o teto de "~1/3 do quadro" continua só na GERAÇÃO** — saiu do prompt da
+  melhoria em 04/09, porque numa peça cujo texto ocupa ~80% da altura ele é
+  impossível de cumprir e o modelo resolvia escurecendo tudo (ver a seção
+  "A melhoria PRESCREVIA layout"). Não o reintroduza ali sem reler aquilo;
   proibido gradiente de faixa de borda a borda, tarja, topo ou rodapé inteiros
   escurecidos. O LOOK SPINE do carrossel repete "halo de leitura".
   🔴 **A regra geral não segurou o rodapé**: medido em produção na Wine Vix
@@ -3482,6 +3487,155 @@ projeto ("Automações"). A identidade não pode vir do Claude — vem da máqui
 - Servidor stdio lê o arquivo só ao subir: mudou o `.studio-autor`, reinicie o
   Claude Code. O `.mcp.json` do repositório tem o caminho ABSOLUTO deste Mac —
   em outra máquina o servidor entra pelo `claude mcp add` com o caminho local.
+
+### 🔴 A melhoria PRESCREVIA layout, e desmontava a peça (04/09/2026)
+
+Relatado pelo Ciro: a Roberta pedia melhoria e a IA não obedecia. Testado por
+ela na Wine Vix, e a causa não era o modelo ignorar o pedido — era o **sistema
+dando uma contra-ordem**, mais enfática e mais acima no prompt que o pedido
+dela. `regras-da-melhoria.ts` inverteu: **preserva, não prescreve.**
+
+- 🔴 **A arte era uma AGENDA e a regra mandava desmontá-la.** 13 blocos, 6
+  deles "Funcionamento - 10h às 22h" / "Happy Hour - 16h às 19h", um par por
+  dia. `blocosDeServico` classificou os 6 como serviço — corretamente — e a
+  regra 1 então mandava "MOVA para o rodapé: isto é uma correção, não uma
+  opção" e "ele sai da sequência de cima". Mas os dias existem só para rotular
+  aqueles horários, e `[TEXTO EXATO]` manda reproduzir os 13 na ordem: duas
+  ordens incompatíveis. O gpt-image cumpriu **as duas** — manteve a lista por
+  dia E criou o rodapé, que saiu sendo a programação inteira REPETIDA. Nas duas
+  rodadas de produção; uma delas com o pedido "Não inclua textos extras".
+  A regra fora calibrada (17/08, 01/09) para UMA linha de horário perdida perto
+  da manchete. **Não crie a guarda "e se a peça inteira for uma agenda?"** — a
+  variação é grande demais (peça com serviço e sem, comunicado que foge do DNA,
+  peça de um título só), e qualquer regra que decida layout sozinha erra em
+  alguma delas. Decisão do Ciro: **sem pedido o modelo só REDIAGRAMA — posiciona
+  melhor o texto em relação à imagem e não muda mais nada; com pedido, manda o
+  pedido.**
+- 🔴 **O ícone era autorizado por padrão, e ela desligava na mão.** O único
+  ponto do prompt que o permitia era a regra de serviço ("um ícone pequeno pode
+  separar horário de endereço"). Medido nos 74 pedidos da Roberta entre 01/08 e
+  04/09: **36 (49%) eram, também, uma proibição** — "não inclua ícones" 34
+  vezes, "não mude as fontes" 11, "não mude o tamanho" 5, "não mude as cores" 4,
+  "não mude o alinhamento" 3. Pedido que é majoritariamente proibição é o sinal
+  de que o padrão está errado, não o usuário.
+- 🔴 **Falar em rodapé de serviço ABRE o slot do endereço inventado.** Com
+  `temEndereco(régua)` falso, `fatosDoClienteNaMelhoria` corretamente NÃO injeta
+  o endereço real — e o modelo preenche o slot que o prompt sugeriu com um
+  plausível: "Dom. Pedro II, 716 | Higienópolis, São José do Rio Preto - SP",
+  num cliente de Vitória (o mesmo mecanismo do Quintal em 01/09). Não dizendo
+  nada sobre rodapé, o slot não existe. `textoAMaisAlerta` pegou; a conferência
+  de texto deu `passed`, porque ela só confere o que FALTA.
+- **`instrucaoDeEstrutura` substituiu `instrucaoDeServicoNaMelhoria`**, que
+  segue exportada e testada como caminho de volta (precedente do spine estrito
+  do modo livre). Saíram também "DESTAQUE AS PALAVRAS-CHAVE" (obrigava mexer em
+  cor e peso — o Ciro pediu destaque 3× em 01/09 e a Roberta proibiu 15×; dois
+  donos pedindo o oposto na mesma regra fixa é o sinal de que a decisão não é do
+  sistema) e "TEXTO EM BLOCOS", absorvida na forma preservadora. **Ficou o que é
+  preservação**: foto intocável sem pedido, não inventar dado, contagem de
+  blocos, arte sem texto, halo em vez de véu, margem.
+- **O `[PEDIDO DO CLIENTE]` passou a vencer as REGRAS DA CASA nominalmente.** A
+  formulação antiga listava "palavras, família tipográfica, paleta e logo" como
+  limite intransponível — quem pedisse "destaque o dia em dourado" pedia algo
+  declarado proibido. Os dois limites que ficaram são MECÂNICOS: as palavras
+  (conferidas por visão depois — mudar uma REPROVA a arte, foi o que derrubou 3
+  tentativas de "altere o horário 11h30 para 11h" no Bacana em 02/09) e a logo
+  (composta por código).
+- 🔴 **TIRAR A LICENÇA DAS REGRAS DA CASA NÃO BASTA: ELA TAMBÉM VIVE NO DNA DE
+  CADA CLIENTE.** Varredura dos 11 projetos (05/09/2026, 21 inconsistências
+  confirmadas por verificação adversarial): `BrandDNA.composition` e
+  `visualStyle` descrevem LAYOUT, e essa prosa é injetada inteira em
+  [IDENTIDADE DA MARCA] a ~22-35% do prompt — contra a regra 1, a ~72-79%.
+  Verbatim do banco: "Endereço e horário, quando entram na arte, vão SEMPRE no
+  rodapé" e "separe o TÍTULO na parte superior" (Real Gelateria); "O rodapé pode
+  apresentar informações de funcionamento com ícones de relógio" e "linha fina
+  com losango central" (Real); "ícone de relógio antes do horário e alfinete de
+  mapa antes do endereço" (Espeto, By Rock, Empório Fonseca); ornamento e selo
+  em quase todos. **A premissa "o único ponto do prompt que autorizava ícone era
+  a regra de serviço" era FALSA para 4 dos 11 clientes** — inclusive para aquele
+  onde o defeito foi medido.
+  🔴 Pior: a regra ANTIGA tinha a arbitragem ("Onde a identidade da marca fala em
+  'endereço no rodapé', isso vale para peças que TÊM endereço na copy — esta não
+  tem") e a reescrita a removeu JUNTO com a autorização. A regra 1 ganhou a
+  cláusula de volta, agora geral e nominal: vence as descrições de LUGAR e de
+  ORNAMENTO da identidade, e **não** a paleta nem a tipografia — que é o que faz
+  a peça continuar sendo daquela marca. Regra nova que contradiga seção anterior
+  do prompt PRECISA se declarar vencedora, como as regras 6 e 7 já fazem.
+- ⚠️ **EM ABERTO, e é risco de publicação**: `[FATOS DO CLIENTE]` pode injetar
+  endereço que o DNA do próprio cliente PROÍBE na arte. Na Real Gelateria o
+  `contentRules` diz "Nunca o endereço completo na arte: só o NOME da unidade e o
+  horário, nunca a rua e o número" e "a fábrica de Piúma nunca aparece em
+  comunicação" — e os fatos entram com a rua, o número e o endereço da fábrica.
+  O portão é `temEndereco(expectedTexts)`, que dá falso positivo porque
+  `LOCALIDADE` casa "praia" no NOME da unidade ("Real Praia do Canto"). Não
+  consertado nesta leva: exige decidir entre estreitar `temEndereco` e filtrar os
+  fatos pelas proibições do DNA.
+- 🔴 **A LICENÇA DO PEDIDO PRECISA SER ESTREITA — e errar isso é pior que não
+  ter cláusula.** A 1ª redação abria com "as regras 1 a 4 acima descrevem o que
+  fazer quando ninguém pede nada", e o modelo lia: há um pedido, logo elas não
+  valem — inclusive o "não repita nenhum bloco". Medido com o pedido REAL da
+  Roberta, que só PROÍBE ("não inclua ícones. Não inclua textos extras") e não
+  pede mudança nenhuma: numa leva de 2 rodadas o rodapé duplicado voltou nas
+  DUAS (8 e 7 blocos repetidos) — **pior que o prompt antigo na mesma leva**.
+  Com a cláusula estreitada ("NAQUILO QUE ELE PEDIR" + "pedido que apenas
+  PROÍBE não revoga nada, acrescenta uma restrição"), 4 rodadas seguidas sem
+  duplicação. **Metade do que a equipe escreve é proibição** — 34 dos 74
+  pedidos —, então este é o formato que mais importa acertar.
+- **Medido** com `scripts/medir-regras-da-melhoria.ts` (A/B do prompt antes ×
+  depois na MESMA arte; dry-run por padrão, não escreve no banco, não cobra
+  crédito, ~US$ 0,008/rodada em `low`). Na agenda da Wine Vix, contando as
+  rodadas em que o rodapé duplicado apareceu:
+
+  | | rodadas com duplicação |
+  |---|---|
+  | antes · pedido vazio | **4 de 4** (2, 2, 3, 3 blocos repetidos) |
+  | depois · pedido vazio | **0 de 4** |
+  | antes · pedido da Roberta | **5 de 6** (2, 3, 3, 5, 7 — uma rodada limpa) |
+  | depois · pedido da Roberta, cláusula larga | 2 de 6 (8 e 6 numa leva; 0 nas outras 4) |
+  | depois · pedido da Roberta, cláusula estreita | **0 de 4** |
+
+- 🔴 **A MÉTRICA DE DUPLICAÇÃO CONTA POR CONTINÊNCIA, NUNCA POR IGUALDADE.** A
+  1ª versão de `duplicacao()` comparava as strings normalizadas com `Map.get` e
+  só enxergava a repetição quando a visão transcrevia o rodapé duplicado com as
+  MESMAS quebras da origem. O rodapé agrupado costuma ser lido como uma linha só
+  ("SEXTA-FEIRA | Funcionamento - 10h às 22h"), que não casa com "Funcionamento
+  - 10h às 22h" por igualdade mas o CONTÉM. Rodada sobre a peça defeituosa REAL,
+  devolvia `repetidos: 0` — a métrica dizia "limpo" sobre o defeito que existe
+  para medir. A re-medição das artes já geradas mudou os números **do braço
+  ANTES** (uma rodada saltou de 0 para 5) e não mexeu em nenhuma do DEPOIS: o
+  defeito da métrica escondia defeito do prompt antigo, não inventava melhora do
+  novo. Contar os dois lados pelo mesmo critério é o que mantém a linha de base
+  honesta.
+
+  🔴 **n=2 não decide nada aqui**: a variância entre rodadas do MESMO prompt é
+  enorme (a cláusula larga deu 0,0,0,0 numa leva e 8,6 na outra). Foi só com 4+
+  rodadas por braço que o sinal apareceu. Quem for mexer neste prompt de novo
+  precisa medir com pelo menos 4 — e com o pedido VAZIO **e** um pedido que só
+  proíbe, porque eles se comportam diferente.
+- 🔴 **O script de medição tem de terminar na peça COMO ELA É ENTREGUE.** A 1ª versão do
+  script chamava `runImageEdit` cru e parava aí — mas nos projetos em `compor`
+  (Wine Vix é um) a logo NÃO é desenhada pelo modelo: o prompt reserva o canto
+  e `finalizarLogoDaMelhoria` cola o PNG oficial DEPOIS. As peças medidas saíam
+  sem marca nenhuma e a régua acusava "faltou WINE VIX" nas quatro rodadas —
+  ruído que esconderia uma falha de régua de verdade. Com a logo composta, as
+  quatro fecham `régua OK`.
+- ⚠️ **Pedido que manda MOVER continua duplicando.** A "passe o horário de cada
+  dia para um rodapé agrupado" o modelo monta o rodapé pedido **e** mantém a
+  lista (11 e 8 repetidos). A cláusula "MOVER É MOVER, NUNCA COPIAR" reduziu e
+  não fechou. **Não resolva endurecendo mais o prompt** — foi assim que a
+  rigidez nasceu. O pedido era adversarial de propósito e é ambíguo nesta peça
+  (tirando os horários, os dias ficam sem nada embaixo).
+
+- ⚠️ **O escurecimento da foto NÃO foi resolvido.** A luz média caiu 43% a 62%
+  em relação à origem nas rodadas novas (contra 52% a 61% nas antigas) — melhora
+  no caso de pedido vazio, mas varia e às vezes piora, com a regra 9 no prompt
+  dizendo que a fotografia é INTOCÁVEL. A causa é outra: numa peça cujo texto
+  ocupa ~80% da altura, "halo local de no máximo 1/3 do quadro" é impossível de
+  cumprir. A regra 4 ganhou a saída por escrito ("escolha a região mais calma e
+  mantenha o resto com o brilho original"), que ajuda e não fecha.
+- ⚠️ **Também em aberto**: pedido que manda MUDAR um dado ("altere o horário
+  11h30 para 11h", 7 dos 74) é impossível por construção — `[TEXTO EXATO]` é a
+  última seção e vence o pedido, e a conferência reprova a arte por ela ter
+  feito o que foi pedido. Gastou 3 tentativas seguidas no Bacana em 02/09.
 
 ### 🔴 A régua por visão exigia a LOGO como texto (TERO, 03/09/2026)
 

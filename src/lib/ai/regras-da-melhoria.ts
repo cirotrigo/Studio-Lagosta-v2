@@ -1,26 +1,54 @@
 /**
  * REGRAS DA CASA NA MELHORIA — o que a arte pronta ainda precisa respeitar.
  *
- * A geração por IA acumulou, entre 17 e 24/08/2026, um corpo de regras duras
- * conquistadas peça a peça: serviço no rodapé, véu local, leitura da área
- * livre da foto. **Nada disso chegava à melhoria.** Contado por termo, o
- * prompt da melhoria (`DEFAULT_ART_DIRECTION`) tinha ZERO ocorrência de
- * "rodapé", "serviço", "véu" e "margem", contra 10, 15, 8 e 7 do
- * `image-prompt-builder`. O runner da melhoria importa 7 módulos; o da
- * geração, 17 — e nenhum dos que carregam aprendizado.
+ * ⚠️ ESTE MÓDULO PRESERVA, NÃO PRESCREVE (decisão do Ciro, 04/09/2026).
  *
- * Consequência medida em 01/09/2026, numa rodada de 7 correções do Ciro no By
- * Rock: QUATRO delas eram a mesma regra ("o horário/endereço devia estar no
- * rodapé"), que o sistema já sabia desde 17/08 e simplesmente não dizia aqui.
- * Cada repetição custou US$ 0,165 e ~95s para reensinar à mão o que já estava
- * escrito no código.
+ * Ele nasceu em 01/09 fazendo o oposto: mandava onde cada tipo de bloco tinha
+ * de pousar ("serviço vai para o rodapé"), obrigava a destacar palavra-chave e
+ * a quebrar o texto em blocos. Era o corpo de regras da GERAÇÃO portado para
+ * cá — e ali elas fazem sentido, porque lá a peça nasce do zero e alguém tem
+ * de decidir o layout. Aqui a peça JÁ ESTÁ DIAGRAMADA por quem cuida da marca.
  *
- * ⚠️ ESTE MÓDULO NÃO É CÓPIA DO PROMPT DA GERAÇÃO. Os dois trabalhos são
- * diferentes — lá se compõe uma peça do zero a partir de foto + copy; aqui se
- * redesenha uma arte que JÁ está diagramada. Duas regras da geração foram
- * deliberadamente NÃO portadas porque contradizem o feedback do próprio Ciro
- * na mesma rodada; estão anotadas caso a caso abaixo. Não "complete" a
- * paridade com a geração sem reler aqueles feedbacks.
+ * 🔴 O DEFEITO QUE INVERTEU O DESENHO, medido em 04/09/2026 na Wine Vix. A
+ * arte era uma AGENDA de feriado: 13 blocos, dos quais 6 são "Funcionamento -
+ * 10h às 22h" / "Happy Hour - 16h às 19h", um par por dia da semana.
+ * `blocosDeServico` classificou os 6 como serviço — corretamente, pela regra
+ * que ele foi escrito — e a regra 1 então mandava, com todas as letras,
+ * "MOVA para o rodapé: isto é uma correção, não uma opção" e "ele sai da
+ * sequência de cima". Isso desmonta a peça: os dias (Sexta-feira, Sábado,
+ * Domingo e Segunda, Terça-feira) existem só para rotular aqueles horários, e
+ * `[TEXTO EXATO]` manda reproduzir os 13 na ordem. Duas ordens incompatíveis,
+ * e o gpt-image cumpriu AS DUAS — manteve a lista por dia E criou o rodapé,
+ * que saiu sendo a programação inteira repetida. Nas duas rodadas. Uma delas
+ * com o pedido "Não inclua textos extras" escrito pela Roberta.
+ *
+ * A regra tinha sido calibrada (17/08, 01/09) para o caso de UMA linha de
+ * horário perdida perto da manchete. Ela não tinha guarda para "a peça inteira
+ * É uma agenda" — e não adianta criar essa guarda: a variação é grande demais.
+ * Há arte com serviço e sem serviço, comunicado que foge até do DNA, peça com
+ * um título e mais nada. Qualquer regra que decida layout por conta própria
+ * vai estar errada em alguma dessas.
+ *
+ * O DESENHO DE HOJE, em duas metades:
+ *
+ *  - **Sem pedido, o modelo só REDIAGRAMA**: reposiciona o conjunto do texto
+ *    em relação à fotografia, arruma respiro, alinhamento e leitura. O
+ *    conteúdo, a ordem, os agrupamentos, as cores, as fontes e a foto ficam
+ *    como estão.
+ *  - **Com pedido, manda o pedido.** Quem precisa de outra coisa — mandar o
+ *    horário para o rodapé, destacar uma palavra, trocar um alinhamento —
+ *    pede, e `[PEDIDO DO CLIENTE]` vence estas regras nominalmente.
+ *
+ * O CUSTO DO DESENHO ANTIGO, medido nos pedidos reais da Roberta (74
+ * melhorias, 01/08 a 04/09): **36 deles (49%) eram, também, uma proibição** —
+ * ela desligando na mão o que o sistema ligava sozinho. "Não inclua ícones"
+ * apareceu **34 vezes**; "não mude as fontes", 11; "não mude o tamanho", 5;
+ * "não mude as cores", 4; "não mude o alinhamento", 3. O único ponto do prompt
+ * que autorizava ícone era a regra de serviço, e ela era injetada por padrão.
+ *
+ * O que NÃO mudou, porque nasceu de defeito medido e é preservação, não
+ * prescrição: a foto intocável sem pedido, a proibição de inventar dado, a
+ * contagem de blocos, a arte sem texto, o halo em vez de véu e a margem.
  *
  * Injetado pelo SISTEMA, fora do bloco editável (`DEFAULT_ART_DIRECTION` /
  * `Project.artImprovementPrompt`) — mesmo precedente da identidade da marca:
@@ -34,11 +62,11 @@ import { blocosDeServico, temEndereco } from './blocos-de-servico'
 
 export interface RegrasDaMelhoriaArgs {
   /**
-   * Textos que a arte deve reproduzir verbatim. **Vazio é o caso comum** na
-   * arte vinda do canvas ou de upload (`source: 'arte-enviada'`): nas 6
-   * melhorias medidas em 01/09, todas as 6 tinham `textCheck: 'skipped'` por
-   * falta de texto esperado. Com a lista, o serviço é apontado NOMINALMENTE;
-   * sem ela, a regra passa a ser condicional ao que o modelo LÊ na IMAGEM 1.
+   * Textos que a arte deve reproduzir verbatim. **Vazio é o caso comum** — em
+   * 60 das 74 melhorias medidas em 04/09 não havia régua nenhuma (arte vinda
+   * do canvas ou de upload, `source: 'arte-enviada'`). Com a lista, a
+   * preservação é dita com contagem; sem ela, fica condicional ao que o modelo
+   * LÊ na IMAGEM 1 — que é o que torna a regra útil nos dois casos.
    */
   expectedTexts: string[]
   /** O pedido do cliente — só para detectar autorização de encurtar texto. */
@@ -56,8 +84,8 @@ export interface RegrasDaMelhoriaArgs {
   arteSemTexto?: boolean
   /**
    * Fatos do cliente (endereço e horário oficiais, da base de conhecimento),
-   * só para CONFERIR. Entram apenas quando a régua já tem bloco de serviço —
-   * ver `fatosDoClienteNaMelhoria`.
+   * só para CONFERIR. Entram apenas quando a copy já tem endereço — ver
+   * `fatosDoClienteNaMelhoria`.
    */
   fatosDoCliente?: string[]
 }
@@ -83,36 +111,87 @@ export function pedeMenosTexto(userRequest: string): boolean {
 }
 
 /**
- * A regra do serviço — a mais violada de todas (4 das 7 correções de 01/09).
+ * A regra 1 de hoje: a estrutura da peça é DADA, e o trabalho é rediagramar.
  *
- * Dois caminhos, porque a melhoria nem sempre sabe qual é a copy:
- *  - COM texto esperado: aponta cada bloco pelo nome, como faz
- *    `instrucaoDeServico` na geração.
- *  - SEM: a condição passa a ser o que o modelo enxerga na arte. É o caso
- *    comum aqui, e por isso não dá para só reusar a função da geração.
+ * Ela substitui `instrucaoDeServicoNaMelhoria` (mantida abaixo, sem uso) e
+ * herda o que aquela tinha de preservação — a proibição de criar linha que a
+ * copy não tem —, generalizada: não se cria bloco NENHUM, seja ele serviço,
+ * selo ou legenda de ícone. Era justamente o prompt FALAR em rodapé de serviço
+ * e em endereço que abria o slot que o modelo preenchia com dado inventado
+ * (Quintal 01/09: "Rua Fernandes Tourinho, 133 · Savassi"; Wine Vix 04/09:
+ * "Dom. Pedro II, 716 | Higienópolis, São José do Rio Preto - SP", num cliente
+ * de Vitória). Não dizendo nada sobre rodapé, o slot não existe.
  *
- * ⚠️ DIVERGE DA GERAÇÃO DE PROPÓSITO: lá o serviço vai "no MENOR nível de
- * texto". Aqui NÃO — em 01/09 o Ciro reprovou exatamente isso duas vezes ("as
- * fontes do horário do endereço ficaram muito pequena, não dá pra ler bem" e
- * "o horário o endereço no rodapé está muito pequeno, aumente o tamanho da
- * fonte"). O menor nível continua valendo como hierarquia, com um PISO de
- * legibilidade explícito.
+ * 🔴 A distinção que faz a regra funcionar: o CONJUNTO do texto pode mudar de
+ * lugar sobre a foto — é a regra 3, e é o próprio serviço que a melhoria
+ * presta. O que não muda é a ordem e o agrupamento DENTRO do conjunto. Sem
+ * essa distinção escrita, "preserve a estrutura" e "leia a foto e reposicione"
+ * viram a mesma contradição que este módulo veio desfazer.
+ */
+export function instrucaoDeEstrutura(expectedTexts: string[]): string {
+  const linhas = [
+    '1. A ESTRUTURA DA ARTE É DADA. VOCÊ REDIAGRAMA — NÃO REESCREVE NEM REPROJETA A PEÇA.',
+    'Esta arte já foi escrita e organizada por quem cuida da marca. Quais blocos existem, em que ordem se leem, o que está agrupado com o que e qual bloco pesa mais que o outro são decisões TOMADAS, e você as recebe prontas.',
+    'MANTENHA: os mesmos blocos, com as mesmas palavras, na mesma ordem de leitura, nos mesmos agrupamentos (o que está junto continua junto, o que está separado continua separado) e com a mesma hierarquia entre eles.',
+    '⛔ NÃO mova um bloco para outra zona da peça — não mande nada "para o rodapé", "para o topo" nem "para o canto". NÃO separe o que está junto, não junte o que está separado, não transforme a lista num parágrafo nem o parágrafo numa lista, e não repita nenhum bloco em dois lugares da mesma arte.',
+    '⛔ NÃO CRIE NADA: nem linha, nem rodapé, nem faixa de serviço, nem selo, nem etiqueta, nem legenda, nem ícone, nem hashtag, nem arroba. Se a arte não tem horário, endereço, telefone ou preço, a arte nova também não tem.',
+    'O QUE VOCÊ MELHORA É OUTRA COISA: onde o conjunto do texto pousa sobre a fotografia, o respiro entre os blocos, o alinhamento, a quebra das linhas e o contraste de leitura. O conjunto inteiro pode mudar de lugar na peça (regra 3) — o que não muda é a ordem e o agrupamento DENTRO dele.',
+    /**
+     * 🔴 A ARBITRAGEM CONTRA A [IDENTIDADE DA MARCA] — sem ela, esta regra não
+     * alcança cliente nenhum.
+     *
+     * Medido em 04-05/09/2026 numa varredura dos 11 projetos: o `composition` e
+     * o `visualStyle` do BrandDNA descrevem layout, e essa prosa é injetada
+     * INTEIRA em [IDENTIDADE DA MARCA] a ~22-35% do prompt. Exemplos verbatim do
+     * banco de produção: "Endereço e horário, quando entram na arte, vão SEMPRE
+     * no rodapé" e "separe o TÍTULO na parte superior" (Real Gelateria); "O
+     * rodapé pode apresentar informações de funcionamento com ícones de relógio"
+     * e "linha fina com losango central" (Real); "ícone de relógio antes do
+     * horário e alfinete de mapa antes do endereço" (Espeto, By Rock, Empório);
+     * ornamento e selo em quase todos. A regra 1 os contradiz a ~72-79% — e a
+     * lei da casa, medida três vezes em 16-17/08 na caixa das letras, é que a
+     * instrução que NÃO se declara vencedora perde para a mais enfática.
+     *
+     * 🔴 E o pior: a regra ANTIGA tinha esta ressalva ("Onde a identidade da
+     * marca fala em 'endereço no rodapé', isso vale para peças que TÊM endereço
+     * na copy — esta não tem"), e a reescrita de 04/09 a removeu JUNTO com a
+     * autorização de ícone. Ou seja: tirar a licença das regras da casa não
+     * bastava, porque para 4 dos 11 clientes ela também vive no DNA. A premissa
+     * "o único ponto do prompt que autorizava ícone era a regra de serviço" era
+     * FALSA — inclusive para o cliente onde o defeito foi medido.
+     *
+     * A revogação é ESTREITA de propósito: derruba prescrição de LUGAR e de
+     * ORNAMENTO, nunca a paleta nem a tipografia — que é o que faz a peça
+     * continuar sendo daquela marca.
+     */
+    'ESTA REGRA VENCE AS DESCRIÇÕES DE LAYOUT DA [IDENTIDADE DA MARCA] ACIMA. Aquela seção descreve como as peças desta marca COSTUMAM ser montadas — onde o serviço costuma ficar, que ícone ou filete o rodapé costuma ter, onde o título costuma entrar. É o repertório da marca, não uma ordem para ESTA peça: a arte que você recebeu já fez essas escolhas, e elas são as que valem.',
+    '⛔ Onde a identidade disser que endereço ou horário vão "sempre no rodapé", que o título vai na parte superior, que o rodapé "pode" ter ícone de relógio, pino de localização, filete, losango, selo, faixa ou ornamento — nada disso vale como ordem aqui. Se a arte original tem esses elementos, mantenha-os exatamente como estão; se não tem, NÃO os crie. O que a identidade continua mandando, e você obedece: a paleta, a tipografia e o jeito da marca se parecer.',
+  ]
+  linhas.push(
+    expectedTexts.length > 0
+      ? contagemDeBlocos(expectedTexts)
+      : 'CONTAGEM DE BLOCOS: os blocos de texto que você lê na IMAGEM 1 são TODOS os que existem — a arte nova tem exatamente aqueles, nem um a mais. Não corrija, não traduza, não abrevie e não complete nenhuma palavra do que está escrito ali.',
+  )
+  return linhas.join('\n')
+}
+
+/**
+ * ⚠️ SEM USO desde 04/09/2026 — a regra que MANDAVA o serviço para o rodapé.
+ *
+ * Mantida no código e coberta por teste como o caminho de volta, mesmo
+ * precedente do spine estrito do modo livre (17/08/2026). Foi ela que produziu
+ * o defeito descrito no cabeçalho deste módulo, e o que a substituiu é
+ * `instrucaoDeEstrutura`. Voltar a usá-la é trocar uma linha em
+ * `regrasDaCasaNaMelhoria` — e reler antes o caso da Wine Vix.
+ *
+ * 🔴 O que ela tem de bom e NÃO se perdeu: o ramo "esta peça não tem linha de
+ * serviço" virou a proibição geral de criar bloco, e o piso de legibilidade do
+ * serviço virou desnecessário quando ninguém mais rebaixa o serviço a letra
+ * miúda por ordem do prompt.
  */
 export function instrucaoDeServicoNaMelhoria(expectedTexts: string[]): string {
   const servico = blocosDeServico(expectedTexts)
 
-  /**
-   * 🔴 Régua SEM serviço: a regra vira proibição, não instrução de rodapé.
-   *
-   * Medido em 01/09/2026 no happy hour do Quintal: régua de 6 blocos, nenhum
-   * de serviço, e esta mesma regra (na forma condicional "se a arte tiver
-   * linha de horário ou endereço…") mais a identidade ("endereço sempre no
-   * rodapé") descreviam um rodapé de serviço que a copy não tinha. O modelo
-   * preencheu o slot: "Rua Fernandes Tourinho, 133 · Savassi, Belo Horizonte",
-   * com ícone de pino, para um cliente de Vitória — e a conferência deu verde,
-   * porque os 6 esperados estavam lá. A régua protege o que existe; o buraco
-   * é o que o prompt sugere e a copy não tem.
-   */
   if (expectedTexts.length > 0 && servico.length === 0) {
     return [
       '1. ESTA PEÇA NÃO TEM LINHA DE SERVIÇO.',
@@ -143,7 +222,7 @@ export function instrucaoDeServicoNaMelhoria(expectedTexts: string[]): string {
 }
 
 /**
- * A contagem de blocos — o fecho da régua.
+ * A contagem de blocos — o fecho da preservação.
  *
  * [TEXTO EXATO] diz o que a arte TEM; isto diz que ela não tem MAIS nada. Sem
  * a segunda metade o modelo completa a peça com o que a identidade da marca
@@ -161,27 +240,18 @@ export function contagemDeBlocos(expectedTexts: string[]): string {
 /**
  * Os fatos do cliente, SÓ para conferir.
  *
- * Entram apenas quando a régua tem bloco de serviço: aí o modelo pode conferir
- * se o endereço que vai desenhar é o do cliente (em 01/09 ele reescreveu "Rua
- * Aleixo Netto" como "Rua Gomes de Carvalho, São Paulo" numa cadeia longa).
- * Sem serviço na régua eles NÃO entram — seriam justamente o dado que o
- * modelo usaria para preencher um rodapé que a peça não tem.
+ * 🔴 Só quando a régua tem ENDEREÇO — não basta ter horário. Medido em
+ * 02/09/2026, no happy hour do Quintal: a régua tinha "Ter a Sex, das 16h às
+ * 19h" (serviço de horário), os fatos entraram "só para conferir", e o modelo
+ * usou o endereço oficial que estava neles para preencher o rodapé numa peça
+ * cuja copy não tem endereço. Certo desta vez, mas a mais, e é o mesmo
+ * mecanismo do endereço inventado: dado disponível vira dado desenhado. Os
+ * fatos só servem para conferir um endereço que a copy JÁ tem; o horário da
+ * copy é a própria régua.
  */
 export function fatosDoClienteNaMelhoria(args: RegrasDaMelhoriaArgs): string | null {
   const fatos = (args.fatosDoCliente ?? []).map((f) => f.trim()).filter(Boolean)
   if (fatos.length === 0) return null
-  /**
-   * 🔴 Só quando a régua tem ENDEREÇO — não basta ter horário.
-   *
-   * Medido em 02/09/2026, no happy hour do Quintal: a régua tinha "Ter a Sex,
-   * das 16h às 19h" (serviço de horário), os fatos entraram "só para
-   * conferir", e o modelo usou o endereço oficial que estava neles para
-   * preencher o rodapé — "Rua Aleixo Netto, 1158, Praia do Canto, Vitória/ES"
-   * numa peça cuja copy não tem endereço. Certo desta vez, mas a mais, e é o
-   * mesmo mecanismo do endereço inventado: dado disponível vira dado
-   * desenhado. Os fatos só servem para conferir um endereço que a copy JÁ
-   * tem; o horário da copy é a própria régua.
-   */
   if (!temEndereco(args.expectedTexts)) return null
   return [
     '[FATOS DO CLIENTE — só para conferir, nunca para acrescentar]',
@@ -193,9 +263,23 @@ export function fatosDoClienteNaMelhoria(args: RegrasDaMelhoriaArgs): string | n
 /**
  * As regras que não dependem da copy.
  *
- * A numeração é contínua com a do serviço porque no prompt elas formam uma
+ * A numeração é contínua com a da estrutura porque no prompt elas formam uma
  * lista só — regra numerada é mais obedecida que parágrafo corrido, que é a
  * forma que o `image-prompt-builder` já usa.
+ *
+ * 🔴 DUAS REGRAS SAÍRAM EM 04/09/2026, e a razão é a mesma nas duas: elas
+ * mandavam REPROJETAR, e quem decide reprojeto é quem pede.
+ *
+ *  - "DESTAQUE AS PALAVRAS-CHAVE" (peso e cor da marca em toda linha com mais
+ *    de três palavras) nasceu de o Ciro pedir destaque em 3 das 7 correções de
+ *    01/09. Mas ela obriga a mexer em COR e PESO da tipografia da peça — que é
+ *    exatamente o que a Roberta proibia à mão 15 vezes ("não mude as fontes",
+ *    11; "não mude as cores", 4). Duas pessoas, dois pedidos opostos, na mesma
+ *    regra fixa: é o sinal de que a decisão não é do sistema. Quem quer
+ *    destaque pede destaque, e o pedido vence estas regras.
+ *  - "TEXTO EM BLOCOS, NUNCA EM PARÁGRAFO" (quebre em linhas curtas com
+ *    hierarquia visível) foi absorvida pela regra 1 na forma preservadora: não
+ *    transforme a lista num parágrafo — e nem o contrário.
  */
 function regrasDeComposicao(): string[] {
   return [
@@ -203,43 +287,34 @@ function regrasDeComposicao(): string[] {
      * 🔴 DIVERGE DA GERAÇÃO DE PROPÓSITO — e esta é a divergência mais
      * importante do módulo.
      *
-     * `regraDeSafeArea` manda reservar 1/8 da altura no topo e no rodapé do
-     * story (~242px em 1936). Portar isso aqui contradiria FRONTALMENTE a
-     * correção do Ciro em 01/09: "a margem do topo e do rodapé estão GRANDES,
-     * use por padrão 90 pixels". As artes dele vêm do canvas de design, que
-     * tem margens próprias e já aprovadas — a melhoria não é quem redefine a
-     * margem da marca, é quem a preserva. A safe area continua sendo assunto
-     * de quem CRIA a peça.
-     *
-     * ⚠️ Isso deixa em aberto uma tensão real de produto: texto a 90px do topo
-     * de um story fica sob o avatar que o Instagram desenha. Levantado com o
-     * Ciro em 01/09/2026; enquanto ele não decidir, a melhoria PRESERVA o que
-     * a arte já tem em vez de escolher um dos dois lados sozinha.
+     * `regraDeSafeArea` (geração) manda reservar 1/8 da altura no topo e no
+     * rodapé do story (~242px em 1936). Portar isso aqui contradiria
+     * FRONTALMENTE a correção do Ciro em 01/09: "a margem do topo e do rodapé
+     * estão GRANDES, use por padrão 90 pixels". As artes dele vêm do canvas de
+     * design, que tem margens próprias e já aprovadas — a melhoria não é quem
+     * redefine a margem da marca, é quem a preserva. A safe area continua
+     * sendo assunto de quem CRIA a peça.
      */
     '2. MARGEM: preserve a margem da arte original. Não aumente o respiro das bordas, não "centralize melhor" e não recue os blocos para dentro — se a arte já tem uma margem consistente, ela é a margem da marca e permanece exatamente como está. Corrija margem apenas quando um elemento estiver encostado na borda ou visivelmente desalinhado dos demais.',
-
-    // Portado da regra 4b do image-prompt-builder (17/08/2026), que nasceu do
-    // véu virando escurecimento GLOBAL nas peças do O Quintal. O Ciro reprovou
-    // o mesmo defeito na melhoria em 01/09: "aqui o véu ficou muito marcado".
-    '3. HALO DE LEITURA, NÃO VÉU: quando o texto precisar de contraste, use uma mancha escura DESFOCADA só atrás do bloco de texto, sem borda visível, que desmancha para a foto em volta (a mancha inteira ocupa no máximo cerca de um terço do quadro) — nunca um gradiente de faixa de borda a borda, nunca uma tarja, nunca o topo ou o rodapé inteiros escurecidos. A foto continua nítida e tão clara quanto a original POR BAIXO do halo. ⛔ Nunca escureça a foto inteira nem baixe o brilho geral da cena para destacar texto. Se o texto não ficar legível com um halo leve, MUDE O TEXTO DE LUGAR em vez de adensar a mancha.',
 
     /**
      * O feedback que originou esta regra é de diagnóstico, não de gosto:
      * "você errou na leitura da imagem para definir a área livre, que nesse
-     * caso o texto fica melhor no rodapé e não o topo". A direção de arte
-     * atual só diz onde o texto PODE ir ("áreas desfocadas, cantos, paredes,
-     * céu"); faltava a ordem de LER a foto antes de decidir, e a licença
-     * explícita de contrariar a posição da arte original.
+     * caso o texto fica melhor no rodapé e não o topo". Ela É o trabalho da
+     * melhoria quando ninguém pede nada — e por isso ficou logo depois da
+     * regra 1, que diz o que NÃO muda.
      */
-    '4. LEIA A FOTO ANTES DE POSICIONAR O TEXTO. Identifique o assunto principal (o prato, a bebida, a pessoa, o produto) e onde a imagem é calma — desfocada, escura, lisa, sem informação. O bloco de texto vai na área calma, mesmo que isso signifique mudá-lo de lugar em relação à arte original: se o assunto está no topo, o texto desce; se está embaixo, o texto sobe. Nunca deixe texto sobre o assunto só porque a arte original o deixava ali. Nenhuma parte do assunto pode ser coberta.',
+    '3. LEIA A FOTO ANTES DE POSICIONAR O TEXTO. Identifique o assunto principal (o prato, a bebida, a pessoa, o produto) e onde a imagem é calma — desfocada, escura, lisa, sem informação. O conjunto do texto vai na área calma, mesmo que isso signifique mudá-lo de lugar em relação à arte original: se o assunto está no topo, o texto desce; se está embaixo, o texto sobe. Nunca deixe texto sobre o assunto só porque a arte original o deixava ali. Nenhuma parte do assunto pode ser coberta. Este é o principal serviço que você presta a esta peça.',
 
-    /**
-     * A direção de arte JÁ tinha uma seção de palavras-chave, mas permissiva
-     * ("destaque apenas as palavras realmente importantes"). O Ciro pediu
-     * destaque em 3 das 7 correções de 01/09 — ou seja, na prática o modelo
-     * lia aquilo como opcional e não destacava nada. Aqui vira ordem.
-     */
-    '5. DESTAQUE AS PALAVRAS-CHAVE. Em todo bloco de texto com mais de três palavras, as palavras que carregam a informação (o prato, o dia, o preço, o benefício) recebem destaque por PESO da fonte ou pela cor de acento da marca — o resto fica no peso normal. Bloco inteiro no mesmo peso e na mesma cor é defeito: é o que transforma a peça num parágrafo. O destaque é de peso e cor, não de tamanho: a diferença de escala entre a palavra destacada e as vizinhas não passa de cerca de 20%.',
+    // Portado da regra 4b do image-prompt-builder (17/08/2026), que nasceu do
+    // véu virando escurecimento GLOBAL nas peças do O Quintal. O Ciro reprovou
+    // o mesmo defeito na melhoria em 01/09: "aqui o véu ficou muito marcado".
+    // 🔴 A última frase entrou em 04/09: na agenda da Wine Vix, cujo texto
+    // ocupa ~80% da altura, "halo local de no máximo 1/3" é impossível de
+    // cumprir — e o modelo resolveu escurecendo a foto INTEIRA, de luz média
+    // 100,8 para 55,1 e 47,8 nas duas rodadas. Peça cheia de texto precisa da
+    // saída dita por escrito, senão ela vira véu.
+    '4. HALO DE LEITURA, NÃO VÉU: quando o texto precisar de contraste, use uma mancha escura DESFOCADA só atrás do bloco de texto, sem borda visível, que desmancha para a foto em volta — nunca um gradiente de faixa de borda a borda, nunca uma tarja, nunca o topo ou o rodapé inteiros escurecidos. A foto continua nítida e tão clara quanto a original POR BAIXO do halo. ⛔ Nunca escureça a foto inteira nem baixe o brilho geral da cena para destacar texto. Se a peça tiver muito texto e o halo não couber, a resposta NÃO é escurecer tudo: escolha a região mais calma da foto, e mantenha o resto da imagem com o brilho original.',
 
     /**
      * 🔴 Medido em 01/09/2026, com o prompt já consertado da foto: as TRÊS
@@ -247,14 +322,9 @@ function regrasDeComposicao(): string[] {
      * dos Pinhais", "Jaraguá do Sul, SC" — para um cliente de Vitória. O
      * modelo lê o serviço da imagem, não entende um pedaço, e COMPLETA com o
      * que parece plausível. Nada no prompt dizia o que fazer nesse caso.
-     *
-     * É a mesma classe já registrada sobre os tiers baratos ("inventam
-     * número, e a conferência não tem regra contra texto A MAIS") — só que
-     * aqui sai endereço de outro estado, sobre o negócio do cliente.
+     * Repetiu-se em 04/09 na Wine Vix, com "São José do Rio Preto - SP".
      */
-    '6. NÃO INVENTE DADO QUE VOCÊ NÃO CONSEGUE LER. Horário, endereço, telefone, preço e nome de prato são fatos do cliente: ou você os reproduz exatamente como estão na arte, ou os DEIXA DE FORA. Se um trecho estiver ilegível, cortado ou você tiver qualquer dúvida sobre o que está escrito, OMITA o bloco inteiro — nunca preencha com um valor parecido, plausível ou de outro estabelecimento. Faltar um dado é defeito pequeno; publicar o endereço errado do cliente é o maior de todos.',
-
-    '7. TEXTO EM BLOCOS, NUNCA EM PARÁGRAFO. Quebre a informação em linhas curtas com hierarquia visível (manchete, apoio, serviço, CTA). Um bloco corrido de texto longo é defeito de leitura, mesmo quando cada palavra está correta. Nenhuma linha termina com palavra solta e sem sentido, e nenhuma palavra fica órfã numa linha só.',
+    '5. NÃO INVENTE DADO QUE VOCÊ NÃO CONSEGUE LER. Horário, endereço, telefone, preço e nome de prato são fatos do cliente: ou você os reproduz exatamente como estão na arte, ou os DEIXA DE FORA. Se um trecho estiver ilegível, cortado ou você tiver qualquer dúvida sobre o que está escrito, OMITA o bloco inteiro — nunca preencha com um valor parecido, plausível ou de outro estabelecimento. Faltar um dado é defeito pequeno; publicar o endereço errado do cliente é o maior de todos.',
   ]
 }
 
@@ -269,10 +339,6 @@ function regrasDeComposicao(): string[] {
  * A régua por visão não cobre isto: não há o que transcrever. E a regra de
  * omissão também não, porque ela fala do dado que existe e está ilegível —
  * aqui o modelo não estava lendo mal, estava PREENCHENDO um vazio.
- *
- * Capa de carrossel é foto pura por contrato da casa (o serviço recusa copy
- * no slide 1). Melhorar uma capa é ajustar a FOTOGRAFIA e o enquadramento —
- * nunca transformá-la em peça com texto.
  */
 function regraDaArteSemTexto(args: RegrasDaMelhoriaArgs): string | null {
   // Só quando a régua rodou e não achou nada: `expectedTexts` vazio sozinho
@@ -293,28 +359,19 @@ function regraDaArteSemTexto(args: RegrasDaMelhoriaArgs): string | null {
  *
  * 🔴 O defeito que originou esta regra (relatado pelo Ciro em 01/09/2026): ele
  * pediu a melhoria SEM escrever nada e o modelo trocou o tratamento da imagem
- * de fundo. Não foi acaso — está escrito no prompt. Com o pedido vazio, a
- * seção `[PEDIDO DO CLIENTE]` deixa de existir e as instruções mais
- * específicas sobre a foto passam a ser duas da direção de arte:
+ * de fundo. Não foi acaso — está escrito no prompt: com o pedido vazio, as
+ * instruções mais específicas sobre a foto passam a ser as da direção de arte
+ * ("priorize contraste, profundidade de campo, fundo suavemente desfocado",
+ * "priorize iluminação quente"), que são ordens de REPROCESSAR a imagem.
  *
- *   [TRATAMENTO DA FOTOGRAFIA] "Priorize texturas bem definidas, contraste
- *   elegante, iluminação quente, profundidade de campo, fundo suavemente
- *   desfocado e acabamento cinematográfico."
- *   [ILUMINAÇÃO] "Priorize iluminação quente, natural e cinematográfica."
- *
- * São ordens de REPROCESSAR a imagem, e o modelo as cumpre. É a mesma brecha
- * que a trilha `arte` fechou em 17/08/2026, quando a licença de "ajuste global
- * MUITO sutil de contraste, exposição e nitidez" foi retirada do bloco de
- * fidelidade por ser justamente o que o modelo esticava. A melhoria nunca
- * recebeu aquele conserto.
- *
- * A trava é o par exato da regra 8: uma revoga a proibição de encurtar quando
- * o cliente pede; esta revoga a licença de retocar quando ele NÃO pede.
+ * É a mesma brecha que a trilha `arte` fechou em 17/08/2026, quando a licença
+ * de "ajuste global MUITO sutil de contraste, exposição e nitidez" foi
+ * retirada do bloco de fidelidade por ser justamente o que o modelo esticava.
  */
 function regraDeFidelidadeDaFoto(args: RegrasDaMelhoriaArgs): string | null {
   if (args.instrucaoImagem?.trim()) return null
   return [
-    '9. A FOTOGRAFIA É INTOCÁVEL NESTA PEÇA, E ESTA REGRA REVOGA AS LICENÇAS DE TRATAMENTO ACIMA.',
+    '7. A FOTOGRAFIA É INTOCÁVEL NESTA PEÇA, E ESTA REGRA REVOGA AS LICENÇAS DE TRATAMENTO ACIMA.',
     'Ninguém pediu para mexer na imagem. Onde as diretrizes falam em buscar aparência profissional, priorizar textura, contraste, profundidade de campo, fundo desfocado, acabamento cinematográfico ou iluminação quente — nada disso vale aqui: são descrições do que a foto JÁ é, nunca ordens de refazê-la.',
     '⛔ Não relumie, não recolora, não mude o contraste, a saturação ou a nitidez, não desfoque o fundo, não troque o enquadramento e não substitua a imagem. A foto sai do jeito que entrou, pixel por pixel, e o seu trabalho é APENAS a camada gráfica por cima dela.',
     'Se para a sua composição ficar melhor a foto precisasse mudar, a resposta é mudar a composição.',
@@ -336,9 +393,62 @@ function regraDeEnxugar(args: RegrasDaMelhoriaArgs): string | null {
   if (args.expectedTexts.length > 0) return null
   if (!pedeMenosTexto(args.userRequest)) return null
   return [
-    '8. ENXUGAR O TEXTO ESTÁ AUTORIZADO NESTA PEÇA, E ESTA REGRA REVOGA A PROIBIÇÃO DE ENCURTAR.',
+    '6. ENXUGAR O TEXTO ESTÁ AUTORIZADO NESTA PEÇA, E ESTA REGRA REVOGA A PROIBIÇÃO DE ENCURTAR.',
     'Onde as diretrizes acima dizem que nenhuma palavra pode ser encurtada e que o pedido do cliente nunca vence os limites de palavras, esta peça é a exceção: o cliente pediu menos texto e esta arte não tem copy aprovada a preservar.',
     'Corte o que for descrição desnecessária e mantenha o que gera desejo, a informação de serviço e o CTA. Não invente informação nova, não altere preço, horário, endereço nem nome de prato, e não traduza nada — CORTAR é permitido, CRIAR não.',
+  ].join('\n')
+}
+
+/**
+ * A cláusula que devolve o poder a quem está pedindo (04/09/2026).
+ *
+ * As regras acima são o comportamento PADRÃO — o que fazer quando ninguém
+ * disse nada. Elas não podem virar a camisa de força que a Roberta passou um
+ * mês desabotoando à mão: 36 dos 74 pedidos dela eram, também, uma proibição.
+ *
+ * 🔴 Precisa se declarar vencedora NOMINALMENTE, e listar o que ela NÃO
+ * revoga. `[PEDIDO DO CLIENTE]` já diz que o pedido vence "as diretrizes de
+ * diagramação acima" — mas as regras da casa se apresentam como REGRAS, com
+ * "⛔" e "isto é uma correção, não uma opção", e a lei da casa (medida três
+ * vezes em 16-17/08) é que a instrução mais enfática vence. Sem esta cláusula,
+ * "passe o horário para o rodapé" perderia para o "⛔ não mova um bloco" da
+ * regra 1 — trocando uma rigidez por outra.
+ */
+function regraDoPedidoVence(args: RegrasDaMelhoriaArgs): string | null {
+  if (!args.userRequest.trim()) return null
+  return [
+    'O PEDIDO DO CLIENTE VENCE ESTAS REGRAS.',
+    'As regras acima descrevem o que fazer quando ninguém pede nada. Há um [PEDIDO DO CLIENTE] nesta peça: NAQUILO QUE ELE PEDIR, faça o que ele mandou e por inteiro — se ele pedir para mover um bloco, mova; para destacar uma palavra, destaque; para trocar um alinhamento, uma cor ou um tamanho, troque; para acrescentar ou tirar um elemento, faça.',
+    /**
+     * 🔴 A licença precisa ser ESTREITA — medido em 04/09/2026, na agenda da
+     * Wine Vix, com o pedido REAL da Roberta ("não inclua ícones. Não inclua
+     * textos extras"), que é só uma proibição e não pede mudança nenhuma. A
+     * primeira redação abria com "as regras 1 a 4 acima descrevem o que fazer
+     * quando ninguém pede nada", e o modelo lia isso como "há um pedido, logo
+     * as regras 1 a 4 não valem" — inclusive o "não repita nenhum bloco". Numa
+     * leva de 2 rodadas o rodapé duplicado voltou nas DUAS (8 e 7 blocos
+     * repetidos), pior que o prompt antigo na mesma leva.
+     *
+     * Pedido que só PROÍBE não revoga nada: ele estreita as regras, não as
+     * afrouxa. É o formato de metade do que a equipe escreve.
+     */
+    'NO QUE O PEDIDO NÃO MENCIONAR, AS REGRAS ACIMA VALEM INTEIRAS. Um pedido que apenas PROÍBE algo ("não inclua ícones", "não mude as fontes") não revoga nada: ele acrescenta uma restrição às regras acima, que continuam de pé por completo.',
+    /**
+     * 🔴 MOVER É MOVER, e isto precisa ser dito ao lado da licença.
+     *
+     * Medido em 04/09/2026 na própria agenda da Wine Vix, já com as regras
+     * novas: ao pedido "passe o horário e o happy hour de cada dia para um
+     * rodapé agrupado", o gpt-image montou o rodapé pedido — E manteve a lista
+     * de cima. Onze blocos repetidos. A cláusula, larga demais, revogava a
+     * regra 1 INTEIRA, inclusive o "não repita nenhum bloco em dois lugares";
+     * e `[TEXTO EXATO]` manda reproduzir cada bloco sem dizer quantas vezes,
+     * então nada sobrava proibindo a cópia.
+     *
+     * É a mesma lição de 17/08/2026 na geração, com outra roupa: "dizer ONDE
+     * eles vão não basta, é preciso dizer de onde eles SAEM".
+     */
+    'MOVER É MOVER, NUNCA COPIAR: se o pedido manda levar um bloco para outro lugar, ele SAI de onde estava. Cada bloco de texto aparece UMA ÚNICA VEZ na peça — esta parte da regra 1 o pedido não revoga, porque ninguém pede a mesma informação duas vezes na mesma arte.',
+    'E o pedido também NÃO revoga, porque não são diagramação: inventar dado que você não consegue ler (regra 5) e mexer na fotografia sem autorização (regra 7). Para a foto existe um campo próprio, e ele aparece como [AJUSTE NA FOTO] quando é usado.',
   ].join('\n')
 }
 
@@ -348,8 +458,8 @@ function regraDeEnxugar(args: RegrasDaMelhoriaArgs): string | null {
  */
 export function regrasDaCasaNaMelhoria(args: RegrasDaMelhoriaArgs): string {
   const linhas = [
-    '[REGRAS DA CASA — valem para esta peça e vencem a leitura que você fizer da arte original]',
-    instrucaoDeServicoNaMelhoria(args.expectedTexts),
+    '[REGRAS DA CASA — o padrão desta peça quando ninguém pede outra coisa]',
+    instrucaoDeEstrutura(args.expectedTexts),
     ...regrasDeComposicao(),
   ]
   const fatos = fatosDoClienteNaMelhoria(args)
@@ -364,5 +474,8 @@ export function regrasDaCasaNaMelhoria(args: RegrasDaMelhoriaArgs): string {
   // casa é que a instrução mais próxima do fim tem mais peso.
   const fidelidade = regraDeFidelidadeDaFoto(args)
   if (fidelidade) linhas.push(fidelidade)
+  // Depois da fidelidade, porque ela precisa dizer que NÃO revoga a foto.
+  const pedidoVence = regraDoPedidoVence(args)
+  if (pedidoVence) linhas.push(pedidoVence)
   return linhas.join('\n\n')
 }

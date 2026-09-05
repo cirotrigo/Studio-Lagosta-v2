@@ -209,14 +209,34 @@ Não corrija, não traduza, não abrevie e não acrescente palavras. Se o pedido
 cliente conflitar com algum destes textos, os textos exatos vencem.`
 }
 
+/**
+ * O pedido de quem está na frente da tela — e, desde 04/09/2026, a autoridade
+ * sobre a diagramação desta peça.
+ *
+ * 🔴 A formulação antiga listava como limite intransponível "palavras, família
+ * tipográfica, paleta e logo", e as duas do meio custavam caro: quem pedisse
+ * "destaque o dia em dourado" ou "diminua o corpo do rodapé" estava pedindo
+ * algo que o prompt declarava proibido, e as `[REGRAS DA CASA]` — que se
+ * apresentam com "⛔" — venciam pela ênfase. Era um dos dois lados da rigidez
+ * que a Roberta desabotoava à mão em 36 dos 74 pedidos dela.
+ *
+ * Os dois limites que FICARAM são mecânicos, não estéticos: as palavras são
+ * conferidas por visão depois (mudar uma REPROVA a arte — foi o que derrubou
+ * três tentativas seguidas de "altere o horário 11h30 para 11h" no Bacana em
+ * 02/09), e a logo é composta por código depois da geração.
+ */
 function buildPedidoSection(userRequest: string): string {
   const trimmed = userRequest.trim()
   if (trimmed.length === 0) return ''
   return `[PEDIDO DO CLIENTE]
 ${trimmed}
 
-Este pedido tem prioridade sobre as diretrizes de diagramação acima, mas nunca
-sobre os limites (palavras, família tipográfica, paleta e logo).`
+Este pedido VENCE as diretrizes de diagramação e as [REGRAS DA CASA] acima:
+onde ele mandar outra coisa, faça o que ele mandou. A identidade da marca
+continua sendo a referência, e ele não vence apenas dois limites, que são
+mecânicos: as PALAVRAS da copy (conferidas depois, letra por letra) e a
+LOGOMARCA. Faça o que foi pedido, e só isso — o que ele não mencionou segue
+o padrão descrito acima.`
 }
 
 /**
@@ -381,12 +401,15 @@ export function buildPromptSections({
     origin: 'system',
     content: [
       '[A TAREFA]',
-      'Esta é uma arte PRONTA desta marca. Crie uma versão melhor dela: ajuste o',
-      'posicionamento, a hierarquia e o respiro dos textos para dar mais leitura.',
+      'Esta é uma arte PRONTA desta marca, já escrita e já diagramada por quem cuida',
+      'dela. O seu trabalho é melhorar a LEITURA: reposicionar o conjunto do texto em',
+      'relação à fotografia e arrumar o respiro entre os blocos, o alinhamento e a',
+      'quebra das linhas.',
       'Use a MESMA copy da arte original, palavra por palavra.',
-      'A composição é SUA: leia a fotografia, veja onde ela é calma, e decida onde',
-      'cada bloco fica melhor. Variar a diagramação em relação à original é bom —',
-      'o que não pode mudar é o conteúdo, a fotografia e a identidade da marca.',
+      'ONDE o texto pousa sobre a foto é decisão SUA: leia a fotografia, veja onde ela',
+      'é calma e leve o texto para lá, mesmo que isso mude o lugar dele em relação à',
+      'arte original. O que não muda é o conteúdo, a estrutura da peça, a fotografia e',
+      'a identidade da marca.',
     ].join('\n'),
   })
 

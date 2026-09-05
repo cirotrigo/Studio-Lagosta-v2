@@ -15,7 +15,12 @@ const REGUA_SEM_SERVICO = ['Happy hour', 'Chope e Drinks', 'em Dobro', 'Chope e 
 const REGUA_COM_SERVICO = ['Quinta no', 'Quintal', 'Quinta, das 11h às 00h · Praia do Canto, Vitória-ES', 'Chega mais']
 const FATOS = ['Endereço: Rua Aleixo Netto, 1158, Praia do Canto, Vitória/ES.', 'Terça a sábado: das 11h à meia-noite.']
 
-describe('serviço condicional à régua', () => {
+/**
+ * ⚠️ LEGADO, SEM USO desde 04/09/2026 — `instrucaoDeServicoNaMelhoria` deixou
+ * de ser injetada (ver o cabeçalho do módulo e a regressão da Wine Vix). Os
+ * testes ficam como o caminho de volta.
+ */
+describe('serviço condicional à régua (legado, sem uso)', () => {
   it('régua sem serviço vira PROIBIÇÃO de criar rodapé', () => {
     const r = instrucaoDeServicoNaMelhoria(REGUA_SEM_SERVICO)
     expect(r).toMatch(/NÃO TEM LINHA DE SERVIÇO/)
@@ -67,9 +72,28 @@ describe('fatos do cliente', () => {
     expect(r).toMatch(/Aleixo Netto/)
   })
 
-  it('bloco inteiro segue a ordem: serviço, fatos, fidelidade por último', () => {
+  /**
+   * 🔴 Este teste passava POR VAZIO depois de 04/09: ele ancorava em 'SERVIÇO
+   * VAI PARA O RODAPÉ', que saiu do bloco — `indexOf` devolve -1 e qualquer
+   * posição é maior que -1. Ancorar sempre em texto que o bloco AINDA tem, e
+   * provar que a âncora existe antes de comparar.
+   */
+  it('bloco inteiro segue a ordem: estrutura, fatos, fidelidade por último', () => {
     const r = regrasDaCasaNaMelhoria({ expectedTexts: REGUA_COM_SERVICO, userRequest: '', fatosDoCliente: FATOS })
-    expect(r.indexOf('[FATOS DO CLIENTE')).toBeGreaterThan(r.indexOf('SERVIÇO VAI PARA O RODAPÉ'))
+    expect(r).toContain('A ESTRUTURA DA ARTE É DADA')
+    expect(r).toContain('[FATOS DO CLIENTE')
+    expect(r).toContain('A FOTOGRAFIA É INTOCÁVEL')
+    expect(r.indexOf('[FATOS DO CLIENTE')).toBeGreaterThan(r.indexOf('A ESTRUTURA DA ARTE É DADA'))
     expect(r.indexOf('A FOTOGRAFIA É INTOCÁVEL')).toBeGreaterThan(r.indexOf('[FATOS DO CLIENTE'))
+  })
+
+  /**
+   * A cláusula do pedido é a ÚLTIMA de todas, inclusive depois da fidelidade
+   * da foto — ela precisa dizer que não revoga a foto, e a lei da casa é que a
+   * instrução mais próxima do fim tem mais peso.
+   */
+  it('a cláusula do pedido fecha o bloco, depois da fidelidade da foto', () => {
+    const r = regrasDaCasaNaMelhoria({ expectedTexts: REGUA_COM_SERVICO, userRequest: 'mova o horário para o topo' })
+    expect(r.indexOf('O PEDIDO DO CLIENTE VENCE')).toBeGreaterThan(r.indexOf('A FOTOGRAFIA É INTOCÁVEL'))
   })
 })
