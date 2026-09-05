@@ -35,7 +35,14 @@ export function getCurrentImageModel(): string {
 export interface ReferenceImage {
   buffer: Buffer
   mimeType: string
-  role: 'background' | 'logo' | 'element'
+  /**
+   * `brand-card` (o manual do designer ou o card gerado) e `type-specimen` (a
+   * prancha das fontes reais) entraram na melhoria em 05/09/2026 — a geração
+   * já os mandava desde 09/08, a melhoria só mandava a logo. Foi com eles como
+   * referência que o prompt curto da F0 acertou os ornamentos da Real
+   * Gelateria (folha, espiral, onda: todos do manual).
+   */
+  role: 'background' | 'logo' | 'element' | 'brand-card' | 'type-specimen'
   label?: string
 }
 
@@ -100,6 +107,14 @@ function buildContextSection(references: ReferenceImage[]): string {
     } else if (ref.role === 'element') {
       lines.push(
         `- IMAGEM ${n++}: elemento gráfico do projeto${ref.label ? ` (${ref.label})` : ''} — badge, ícone ou ornamento disponível para enriquecer o design.`,
+      )
+    } else if (ref.role === 'brand-card') {
+      lines.push(
+        `- IMAGEM ${n++}: o manual de identidade da marca (logo, paleta, tipografia, ornamentos). É a ÚNICA fonte de fontes, cores e ornamentos. O texto e o layout dele NÃO são conteúdo desta peça.`,
+      )
+    } else if (ref.role === 'type-specimen') {
+      lines.push(
+        `- IMAGEM ${n++}: a prancha tipográfica com o alfabeto completo das fontes reais da marca. Desenhe cada letra exatamente como está nela. Nunca copie o layout, o fundo ou as frases de amostra.`,
       )
     }
   }
@@ -626,6 +641,13 @@ interface ImproveCreativeOptions {
   logoCompor?: boolean
   /** Prompt enxuto — hipótese em medição, ver `BuildPromptArgs.enxuto`. */
   enxuto?: boolean
+  /**
+   * Prompt PRONTO, escrito pelo diretor de arte (`diretor-de-arte.ts`) depois
+   * de OLHAR a peça. Presente, substitui o prompt montado por código aqui —
+   * o runner só cai em `buildPrompt` quando o planejador não conseguiu.
+   * (05/09/2026, `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`, F1.)
+   */
+  promptPronto?: string | null
   timeoutMs?: number
 }
 
@@ -661,14 +683,17 @@ export async function improveCreative({
   arteSemTexto = false,
   enxuto = false,
   logoCompor = false,
+  promptPronto = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
   const tier = quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem?.trim() })
-  const prompt = buildPrompt({
-    userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, logoCompor,
-  })
+  const prompt =
+    promptPronto?.trim() ||
+    buildPrompt({
+      userRequest, references, brandColors, artDirection, brand, expectedTexts, instrucaoImagem, arteSemTexto, enxuto, logoCompor,
+    })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,

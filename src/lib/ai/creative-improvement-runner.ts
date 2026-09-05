@@ -31,7 +31,16 @@ import {
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
 import { semTextosDaMarca } from '@/lib/ai/text-comparison'
-import { finalizarLogoDaMelhoria, melhoriaCompoeLogo, type LogoNaMelhoriaInfo } from '@/lib/ai/logo-na-melhoria'
+import {
+  finalizarLogoDaMelhoria,
+  instrucaoLogoNaMelhoria,
+  melhoriaCompoeLogo,
+  type LogoNaMelhoriaInfo,
+} from '@/lib/ai/logo-na-melhoria'
+import { getBrandReferenceCard } from '@/lib/ai/brand-reference-card'
+import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
+import { planejarMelhoria, type ImagemDoPlano } from '@/lib/ai/diretor-de-arte'
+import { MODO_DA_MELHORIA_PADRAO, type ModoDaMelhoria } from '@/lib/ai/modo-da-melhoria'
 import {
   loadExpectedTextsDaLinhagem,
   loadExpectedTextsForGeneration,
@@ -102,6 +111,12 @@ export interface ImprovementJobArgs {
   instrucaoImagem?: string | null
   /** Tier do gpt-image. Ausente, o runner deriva de `instrucaoImagem`. */
   quality?: 'low' | 'medium' | 'high'
+  /**
+   * O MODO da melhoria (05/09/2026) — decide o que o gerador pode mudar e é o
+   * que o diretor de arte recebe. Ausente (job anterior à coluna), vale
+   * `rediagramar`, que é o comportamento que existia.
+   */
+  modo?: ModoDaMelhoria
   backgroundImageUrl: string | null
   selectedLogoIds: number[]
   selectedElementIds: number[]
@@ -389,6 +404,43 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     }
 
     /**
+     * As referências VISUAIS de marca — o manual do designer (ou o card
+     * gerado) e a prancha tipográfica — entram na melhoria (F3, 05/09/2026).
+     * A geração já as mandava desde 09/08; a melhoria só mandava a logo, e a
+     * marca chegava ao modelo em PROSA (~12 mil chars de DNA). Na F0 do plano
+     * foi com o manual como imagem que o prompt curto acertou ornamentos e
+     * tipografia da Real Gelateria em 4 de 4 rodadas.
+     *
+     * Em `refinar` só a prancha: a peça já está pronta e o manual inteiro
+     * seria convite para redesenhar o que a pessoa pediu para manter.
+     */
+    const modo: ModoDaMelhoria = args.modo ?? MODO_DA_MELHORIA_PADRAO
+    let brandCardBuffer: Buffer | null = null
+    if (modo !== 'refinar') {
+      const card = await getBrandReferenceCard(assets.brand).catch((erro) => {
+        console.warn('[improve.bg] manual/card da marca falhou — seguindo sem ele:', erro)
+        return null
+      })
+      if (card) {
+        const constrained = await ensureUnderLimit(card.buffer, card.mimeType)
+        brandCardBuffer = constrained.buffer
+        references.push({
+          buffer: constrained.buffer,
+          mimeType: constrained.mimeType,
+          role: 'brand-card',
+          label: card.origem === 'manual-designer' ? 'manual oficial de identidade' : 'card da marca',
+        })
+      }
+    }
+    const prancha = await renderTypeSpecimen(assets.brand).catch((erro) => {
+      console.warn('[improve.bg] prancha tipográfica falhou — seguindo sem ela:', erro)
+      return null
+    })
+    if (prancha) {
+      references.push({ buffer: prancha, mimeType: 'image/png', role: 'type-specimen', label: 'alfabetos oficiais da marca' })
+    }
+
+    /**
      * Sem texto esperado no banco (arte do canvas ou de upload), a régua sai
      * da PRÓPRIA arte de origem, por visão. Ver `transcreverTextosDaArte`:
      * sem isso o modelo lê o serviço da imagem e completa o que não entende —
@@ -508,7 +560,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         transcricaoDaOrigem = []
       }
     }
-    const textosParaPrompt = aplicarCaixaDaOrigem(
+    let textosParaPrompt = aplicarCaixaDaOrigem(
       textosDaRegua,
       transcricaoDaOrigem,
       CAIXA_DA_MANCHETE.get(args.projectId),
@@ -516,8 +568,82 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
 
     const downloadMs = Date.now() - startedAt
     console.log(
-      `[improve.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | textos esperados: ${expectedTexts.length}`,
+      `[improve.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | textos esperados: ${expectedTexts.length} | modo ${modo}`,
     )
+
+    /**
+     * O DIRETOR DE ARTE (F1, 05/09/2026): um modelo com visão OLHA a peça e as
+     * referências e escreve o prompt curto que o gpt-image vai receber. As
+     * regras da casa moram no system prompt dele, não no prompt do gerador —
+     * ver `diretor-de-arte.ts`. Falhou, cai no prompt montado por código
+     * (`buildPrompt`), que é o comportamento anterior.
+     *
+     * Em `refinar`, a copy pode MUDAR pelo pedido ("troque a frase X por Y"):
+     * o planejador devolve a copy DEPOIS, e é ela que vira a régua da
+     * conferência e o `textos` gravado. Sem isso o pedido era impossível por
+     * construção — a régua antiga reprovava a arte por ter obedecido.
+     */
+    const imagensDoPlano: ImagemDoPlano[] = [{ indice: 1, papel: 'origem', buffer: primaryBuffer }]
+    references.forEach((ref, i) => {
+      const papel: ImagemDoPlano['papel'] =
+        ref.role === 'background'
+          ? 'fundo'
+          : ref.role === 'logo'
+            ? 'logo'
+            : ref.role === 'element'
+              ? 'elemento'
+              : ref.role === 'brand-card'
+                ? 'manual'
+                : 'prancha'
+      // O planejador precisa VER a origem, o fundo novo e o manual; logo,
+      // elemento e prancha ele conhece pelo papel (economiza tokens de visão).
+      const anexa = papel === 'fundo' || papel === 'manual'
+      imagensDoPlano.push({
+        indice: i + 2,
+        papel,
+        rotulo: ref.label ?? null,
+        buffer: anexa ? (papel === 'manual' && brandCardBuffer ? brandCardBuffer : ref.buffer) : undefined,
+      })
+    })
+    const plannerStartedAt = Date.now()
+    const plano = await planejarMelhoria({
+      modo,
+      imagens: imagensDoPlano,
+      brand: assets.brand,
+      copy: textosParaPrompt,
+      arteSemTexto: arteSemTexto || raizSemTexto,
+      pedido: args.userRequest,
+      instrucaoImagem: args.instrucaoImagem ?? null,
+      formato: format,
+      logoCompor: !!logoParaCompor,
+      artDirection: assets.artDirection,
+    })
+    let promptPronto: string | null = null
+    const plannerInfo: Record<string, unknown> = {
+      modo,
+      planejador: plano ? plano.modelo : 'fallback',
+      planejadorMs: Date.now() - plannerStartedAt,
+    }
+    if (plano) {
+      // A área reservada da marca é mecânica (quem cola é o código): entra
+      // colada ao fim do prompt, onde pesa mais, mesmo que o planejador já
+      // tenha dito — instrução repetida aqui é barata e a duplicata de logo
+      // é o defeito mais frequente da F0 (3 de 4 no prompt de produção).
+      promptPronto = logoParaCompor ? `${plano.prompt}\n\n${instrucaoLogoNaMelhoria()}` : plano.prompt
+      plannerInfo.planejadorTentativas = plano.tentativas
+      if (plano.leitura) plannerInfo.leitura = plano.leitura
+      if (modo === 'refinar' && plano.copyFinal.join('\n') !== textosParaPrompt.join('\n')) {
+        plannerInfo.copyAntes = textosParaPrompt
+        textosParaPrompt = plano.copyFinal
+        textosDaRegua = plano.copyFinal
+        console.log(`[improve.bg] refinar: a copy mudou pelo pedido — régua nova com ${plano.copyFinal.length} bloco(s)`)
+      }
+      console.log(
+        `[improve.bg] diretor de arte (${plano.modelo}) escreveu o prompt em ${(plano.ms / 1000).toFixed(1)}s: ${plano.prompt.length} chars, ${plano.tentativas} tentativa(s)${plano.leitura ? ` — ${plano.leitura}` : ''}`,
+      )
+    } else {
+      console.warn('[improve.bg] diretor de arte indisponível — usando o prompt montado por código')
+    }
 
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
@@ -553,6 +679,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         instrucaoImagem: args.instrucaoImagem ?? null,
         arteSemTexto: arteSemTexto || raizSemTexto,
         logoCompor: !!logoParaCompor,
+        promptPronto,
         quality: tier,
         timeoutMs: Math.max(30_000, remainingMs),
       })
@@ -747,7 +874,14 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             background: references.filter((r) => r.role === 'background').length,
             logos: references.filter((r) => r.role === 'logo').length,
             elements: references.filter((r) => r.role === 'element').length,
+            brandCard: references.filter((r) => r.role === 'brand-card').length,
+            typeSpecimen: references.filter((r) => r.role === 'type-specimen').length,
           },
+          // O registro atômico da run (padrão da geração desde 09/08): o
+          // prompt que o gpt-image RECEBEU e quem o escreveu — é o que permite
+          // auditar o diretor de arte peça a peça.
+          ...plannerInfo,
+          ...(promptPronto ? { prompt: promptPronto } : {}),
           ...textCheckInfo,
         },
       },
@@ -804,7 +938,17 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
                 background: references.filter((r) => r.role === 'background').length,
                 logos: references.filter((r) => r.role === 'logo').length,
                 elements: references.filter((r) => r.role === 'element').length,
+                brandCard: references.filter((r) => r.role === 'brand-card').length,
+                typeSpecimen: references.filter((r) => r.role === 'type-specimen').length,
               },
+              // O registro do diretor de arte e o prompt propagam também por
+              // este ramo: na validação da carteira (05/09/2026) três
+              // melhorias em paralelo estouraram o tempo da transação de
+              // cobrança, e a Generation do TERO ficou sem `planejador` —
+              // parecia que o planejador não tinha rodado.
+              ...plannerInfo,
+              ...(promptPronto ? { prompt: promptPronto } : {}),
+              ...(logoInfo ? { logo: JSON.parse(JSON.stringify(logoInfo)) } : {}),
               creditDeductionError: deductMessage.slice(0, 400),
               ...textCheckInfo,
             },
