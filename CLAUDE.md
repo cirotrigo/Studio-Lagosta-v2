@@ -4469,6 +4469,79 @@ justamente o que a separação por formato veio resolver.
   pasta da semana de destino (efeito inerente do `garantirPasta`) e não a
   remove.
 
+### O diretor de arte: quem escreve o prompt do gpt-image OLHA a peça (05/09/2026)
+
+Plano e medições em `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`. O Ciro
+levou ao ChatGPT uma tabela de horários exportada do editor (Real Gelateria)
+com oito palavras de pedido e voltou uma peça editorial na marca; a mesma
+peça pelo Studio saía igual à origem. **Não é o modelo: o ChatGPT usa o mesmo
+`gpt-image-2` da API.** A diferença é o processo — um LLM com visão planeja e
+escreve um prompt curto; o gerador recebe liberdade; a pessoa itera uma
+mudança por vez. Executado no mesmo dia (F0–F6). Regras que valem para código
+novo:
+
+- 🔴 **O paredão NÃO protege — medido, n = 4 × 4 peças.** O prompt de produção
+  da melhoria tinha 22 mil caracteres com "não crie nada" e "a fotografia é
+  intocável" escritos; acrescentou um selo em 4 de 4 rodadas, inventou uma foto
+  numa, errou a grafia da tagline em outra. Um prompt de 1,4 mil com o MANUAL DA
+  MARCA como imagem saiu limpo em 4 de 4. **Não acrescente regra ao prompt do
+  gpt-image.** Regra nova vai para o system prompt do planejador
+  (`src/lib/ai/diretor-de-arte.ts`), onde texto longo é lido; o planejador
+  decide quais três ou quatro ESTA peça precisa. O prompt gerado tem teto
+  (`TETO_DO_PROMPT_PLANEJADO` = 2.600) e é conferido por código: toda copy
+  verbatim entre aspas, nenhum nome de fonte solto. Falhou o planejador →
+  cai no prompt de código (`buildPrompt`/`buildArtePrompt`), nunca derruba a
+  peça. `fieldValues.planejador|planejadorMs|leitura|prompt` registram a run.
+- 🔴 **NOME DE FONTE VIRA TEXTO DESENHADO.** Primeira geração com o planejador
+  no Quintal: o prompt dizia "line 2 in Amithen" e a peça saiu com "Amithen"
+  letrado no lugar da copy — a régua de texto PASSOU (ela confere o que falta).
+  `fontesForaDaReferencia` recusa prompt com família da marca fora da linha
+  "Image N is the type specimen…"; a fonte se cita pelo PAPEL. É a lei da
+  string literal (16-17/08) com outra roupa.
+- **A melhoria tem TRÊS MODOS** (`modo-da-melhoria.ts`, puro): `rediagramar`
+  (a peça já foi diagramada por quem cuida da marca — só posição do conjunto,
+  respiro, quebra), `redesenhar` (matéria-prima — refaz no estilo da marca com
+  manual + prancha como referência; copy e foto intocadas) e `refinar` (UMA
+  mudança pedida; **o único em que a copy pode mudar** — o planejador devolve
+  `copyFinal`, que vira a régua; "troque a frase X por Y" era impossível por
+  construção). O padrão sai da ORIGEM (`modoPadraoDaMelhoria`): melhoria
+  anterior → refinar; compositor/canvas/post → rediagramar; export do editor,
+  arte-rapida, ajuste-arte, arte-ia → redesenhar. **Redesenhar peça com
+  diagramação aprovada pinta por cima da foto em 1 de 4 rodadas** (Quintal,
+  Wine Vix) e em 4 de 4 quando a foto é escura (TERO) — daí o padrão
+  preservador para essas origens. Modal, rota (`modo` no zod), serviço, runner
+  e tool `melhorar-arte` passam o modo; `refinar` sem pedido é recusado antes
+  de cobrar.
+- **A melhoria agora manda o manual do designer e a prancha tipográfica**
+  (`brand-card`/`type-specimen` em `ReferenceImage`), como a geração já fazia;
+  em `refinar` só a prancha (o manual inteiro convida a redesenhar o que se
+  pediu para manter). Tier: `redesenhar` → `medium` (`QUALIDADE_ARTE_REDESENHO`;
+  lettering novo e ornamento fino), os outros seguem no `low`; ajuste na foto
+  continua `high`.
+- **Planejador é `gpt-5.2`** (`OPENAI_PLANNER_MODEL`), sem `temperature`
+  (gpt-5* recusa). O `gpt-4o` misturou a preserve list do refinar num
+  redesenho e descreveu a tarefa em adjetivos. Custa 10-30s e centavos por
+  peça; anexa ao planejador só as imagens que ele precisa VER (origem, fundo,
+  manual, foto, modelo) — logo, prancha e âncoras vão pelo papel.
+- **Na geração (`arte`, peça avulsa) o planejador substitui `buildArtePrompt`**;
+  o que é mecânico vai colado ao fim do prompt planejado: o bloco da logo e
+  `regraDeSafeArea` em pixel. Carrossel e peça com cartão de documento NÃO
+  passam por ele (LOOK SPINE e faixa em pixel são mecânicos e medidos).
+  `ARTE_PLANNER=off` desliga sem deploy. Com o planejador o preâmbulo por papel
+  não é prefixado — o prompt já descreve cada imagem pelo índice.
+- ⚠️ **`images.edit` regenera o quadro**: mesmo com "foto intocada" no prompt e
+  no planejador, a foto da Wine Vix voltou desfocada num redesenho. Não é
+  prompt — é a máscara (`spike-melhoria-com-mascara.ts`), como já registrado.
+- ⚠️ **Dedução de crédito em paralelo estoura a transação** (`P2028`, três
+  melhorias simultâneas na validação da carteira). A melhoria continua valendo
+  (`creditDeductionError`), mas o ramo de falha reescreve o `fieldValues` —
+  ele PRECISA carregar as mesmas chaves do ramo feliz (foi assim que o TERO
+  saiu sem `planejador` no registro).
+- **Scripts**: `medir-melhoria-estilo-chatgpt.ts` (o A/B da F0, 4 peças,
+  dry-run), `testar-melhoria-com-diretor.ts` e `testar-geracao-com-diretor.ts`
+  (caminho REAL, cobram crédito, deixam a arte na galeria — é como o Ciro quer
+  avaliar), `validar-melhoria-na-carteira.ts` (uma peça por cliente).
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

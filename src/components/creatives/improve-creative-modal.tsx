@@ -24,6 +24,13 @@ import {
   MAX_SELECTED_LOGOS,
   MAX_SELECTED_ELEMENTS,
 } from '@/lib/ai/improvement-assets-constants'
+import {
+  MODOS_DA_MELHORIA,
+  ROTULO_DO_MODO,
+  modoPadraoDaMelhoria,
+  type ModoDaMelhoria,
+  type OrigemDaArte,
+} from '@/lib/ai/modo-da-melhoria'
 
 interface ImproveTarget {
   id: string
@@ -52,6 +59,14 @@ interface ImproveTarget {
    * melhoria anterior (fieldValues.userRequest).
    */
   initialUserRequest?: string | null
+  /**
+   * De onde a arte veio (`fieldValues.source` da Generation e se ela tem
+   * `sourceGenerationId`). Decide qual MODO já vem marcado ao abrir — a
+   * peça do compositor preserva, a melhoria anterior refina, o resto
+   * redesenha (05/09/2026, `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`).
+   * Ausente, vale a heurística do módulo: `redesenhar`.
+   */
+  origem?: OrigemDaArte
 }
 
 interface ImproveCreativeModalProps {
@@ -78,8 +93,29 @@ const MAX_CHARS = 500
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
-const PLACEHOLDER =
-  'Ex: Mude o texto para Happy Hour, das 16h às 20h. Aumente o título e mantenha o resto compacto.\n\nOu deixe em branco para um aprimoramento geral sem alterações de conteúdo.'
+/**
+ * O campo de pedido muda de papel com o modo: em `rediagramar` é um ajuste
+ * opcional sobre uma peça que se preserva; em `redesenhar` é direção de arte
+ * opcional; em `refinar` é A mudança — sem ela não há o que fazer, e por isso
+ * o botão fica desabilitado.
+ */
+const PLACEHOLDER_POR_MODO: Record<ModoDaMelhoria, string> = {
+  rediagramar:
+    'Ex: Mude o texto para Happy Hour, das 16h às 20h. Aumente o título e mantenha o resto compacto.\n\nOu deixe em branco para um aprimoramento geral sem alterações de conteúdo.',
+  redesenhar:
+    'Ex.: mais editorial, manchete em serifa, pills nas unidades; ou deixe em branco para seguir só o manual da marca.',
+  refinar:
+    'Ex.: troque a frase «Gelato sempre é uma boa ideia» por «Viva o extraordinário». Ou: remova o selo do canto.',
+}
+
+const AJUDA_POR_MODO: Record<ModoDaMelhoria, string> = {
+  rediagramar:
+    'Texto, diagramação, cores e posição dos blocos. Sem pedido específico, a IA mantém o conteúdo da arte original e só melhora a leitura.',
+  redesenhar:
+    'A IA refaz a diagramação no estilo da marca. O pedido, se houver, orienta a direção de arte — a copy e a foto não mudam.',
+  refinar:
+    'Diga exatamente o que mudar. A IA faz só isso e mantém todo o resto igual — aqui o pedido pode até trocar uma frase.',
+}
 
 export function ImproveCreativeModal({
   generation,
@@ -90,6 +126,15 @@ export function ImproveCreativeModal({
   const addJob = useImproveQueueStore((s) => s.addJob)
 
   const [userRequest, setUserRequest] = React.useState('')
+  /**
+   * O MODO da melhoria — o que a IA pode mudar (05/09/2026,
+   * `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`). Começa no padrão da
+   * origem da arte e é recalculado só na ABERTURA (efeito abaixo): um clique
+   * da pessoa nunca é sobrescrito por re-render.
+   */
+  const [modo, setModo] = React.useState<ModoDaMelhoria>(() =>
+    modoPadraoDaMelhoria(generation?.origem ?? {}),
+  )
   /**
    * Ajuste NA FOTO — o segundo campo, colapsado (desenho do Ciro, 01/09/2026).
    *
@@ -150,6 +195,7 @@ export function ImproveCreativeModal({
 
   const resetAll = React.useCallback(() => {
     setUserRequest('')
+    setModo(modoPadraoDaMelhoria(generation?.origem ?? {}))
     // 🔴 O ajuste na foto PRECISA ser limpo aqui: ele é o que sobe o tier, e
     // sobreviver ao fechamento faria a próxima arte pagar o caminho caro sem
     // ninguém ter pedido — com o campo colapsado, sem nem aparecer na tela.
@@ -162,7 +208,7 @@ export function ImproveCreativeModal({
     cleanupPreview(backgroundPreview)
     setBackgroundPreview(null)
     resetUpload()
-  }, [backgroundPreview, cleanupPreview, resetUpload])
+  }, [backgroundPreview, cleanupPreview, resetUpload, generation?.origem])
 
   const handleClose = () => {
     resetAll()
@@ -175,10 +221,14 @@ export function ImproveCreativeModal({
     }
   }, [backgroundPreview, cleanupPreview])
 
-  // "Melhorar de novo": ao abrir com um pedido anterior, começa dele. Só na
-  // ABERTURA — digitação subsequente não pode ser sobrescrita.
+  // Na ABERTURA (e só nela): o modo volta ao padrão da origem desta arte, e o
+  // "Melhorar de novo" pré-preenche o pedido anterior. Digitação e cliques
+  // subsequentes não podem ser sobrescritos — por isso a dependência é só
+  // `open` + `generation.id`, nunca o objeto inteiro.
   React.useEffect(() => {
-    if (open && generation?.initialUserRequest) {
+    if (!open) return
+    setModo(modoPadraoDaMelhoria(generation?.origem ?? {}))
+    if (generation?.initialUserRequest) {
       setUserRequest(generation.initialUserRequest.slice(0, MAX_CHARS))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -272,6 +322,7 @@ export function ImproveCreativeModal({
       generationThumbnailUrl: generation.resultUrl,
       generationLabel: generation.templateName ?? 'Criativo',
       userRequest: trimmed,
+      modo,
       instrucaoImagem: instrucaoImagem.trim() || null,
       backgroundImageUrl: backgroundUrl,
       selectedLogoIds,
@@ -294,7 +345,11 @@ export function ImproveCreativeModal({
     onOpenChange(false)
   }
 
-  const isDisabled = isUploading
+  // Em `refinar` o pedido É a melhoria: sem ele não há o que fazer, e cobrar
+  // 25 créditos por uma rodada sem instrução devolveria a mesma arte.
+  const pedidoObrigatorio = modo === 'refinar'
+  const pedidoVazio = userRequest.trim().length === 0
+  const isDisabled = isUploading || (pedidoObrigatorio && pedidoVazio)
 
   const ctaLabel = (() => {
     // O tempo muda com o tier; o preço em créditos, não (25 flat).
@@ -303,7 +358,9 @@ export function ImproveCreativeModal({
     if (selectedLogoIds.length > 0 || selectedElementIds.length > 0) {
       return 'Aprimorar com assets (25 créditos)'
     }
-    if (userRequest.trim().length === 0) return 'Aprimorar (25 créditos)'
+    if (modo === 'refinar') return 'Aplicar o ajuste (25 créditos)'
+    if (modo === 'redesenhar') return 'Redesenhar (25 créditos)'
+    if (pedidoVazio) return 'Aprimorar (25 créditos)'
     return 'Adicionar à fila (25 créditos)'
   })()
 
@@ -316,9 +373,7 @@ export function ImproveCreativeModal({
             Melhorar com IA
           </DialogTitle>
           <DialogDescription>
-            A IA mantém fontes, logo e cores da arte original. Você pode (opcional) enviar uma
-            imagem para usar como novo fundo, e selecionar logos/elementos do projeto como
-            referência visual. Custa 25 créditos por melhoria.
+            Escolha o que a IA pode mudar. Custa 25 créditos por melhoria.
           </DialogDescription>
         </DialogHeader>
 
@@ -343,25 +398,63 @@ export function ImproveCreativeModal({
             </div>
           )}
 
+          {/*
+            O MODO fica entre a arte e o pedido porque ele muda o que o pedido
+            significa (ver PLACEHOLDER_POR_MODO). Três cartões-rádio, não um
+            select: a descrição de cada um é o que faz quem não é técnico
+            escolher certo — o rótulo sozinho ("Ajustar a leitura") não basta.
+          */}
+          <div className="space-y-2">
+            <Label>O que a IA pode mudar</Label>
+            <div role="radiogroup" aria-label="Modo da melhoria" className="grid gap-2 sm:grid-cols-3">
+              {MODOS_DA_MELHORIA.map((opcao) => {
+                const selecionado = opcao === modo
+                return (
+                  <button
+                    key={opcao}
+                    type="button"
+                    role="radio"
+                    aria-checked={selecionado}
+                    onClick={() => setModo(opcao)}
+                    className={cn(
+                      'flex flex-col gap-1 rounded-lg border-2 p-3 text-left transition-colors hover:border-primary/60',
+                      selecionado
+                        ? 'border-primary bg-primary/5 ring-2 ring-primary/30'
+                        : 'border-border/40 bg-muted/20',
+                    )}
+                  >
+                    <span className="flex items-center justify-between gap-2 text-sm font-medium">
+                      {ROTULO_DO_MODO[opcao].titulo}
+                      {selecionado && <Check className="h-4 w-4 flex-shrink-0 text-primary" />}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {ROTULO_DO_MODO[opcao].descricao}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="user-request">O que ajustar na arte (opcional)</Label>
+              <Label htmlFor="user-request">
+                {pedidoObrigatorio ? 'O que mudar na arte (obrigatório)' : 'O que ajustar na arte (opcional)'}
+              </Label>
               <span className="text-xs text-muted-foreground">
                 {userRequest.length}/{MAX_CHARS}
               </span>
             </div>
             <Textarea
               id="user-request"
-              placeholder={PLACEHOLDER}
+              placeholder={PLACEHOLDER_POR_MODO[modo]}
               value={userRequest}
               onChange={(e) => setUserRequest(e.target.value.slice(0, MAX_CHARS))}
               rows={4}
               className="resize-none"
+              aria-required={pedidoObrigatorio}
             />
-            <p className="text-xs text-muted-foreground">
-              Texto, diagramação, cores e posição dos blocos. Sem pedido específico, a IA mantém o
-              conteúdo da arte original e aplica apenas as diretrizes do Diretor de Arte.
-            </p>
+            <p className="text-xs text-muted-foreground">{AJUDA_POR_MODO[modo]}</p>
           </div>
 
           {/*

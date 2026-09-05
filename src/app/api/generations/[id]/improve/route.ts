@@ -11,6 +11,7 @@ import {
   MAX_SELECTED_LOGOS,
   MAX_SELECTED_ELEMENTS,
 } from '@/lib/ai/improvement-assets-constants'
+import { MODOS_DA_MELHORIA, type ModoDaMelhoria } from '@/lib/ai/modo-da-melhoria'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -66,6 +67,13 @@ const bodySchema = z.object({
   applyToItemDePlanoId: z.string().min(1).optional().nullable(),
   applyToPlanoId: z.string().min(1).optional().nullable(),
   applyToSlideOrdem: z.number().int().min(1).optional().nullable(),
+  /**
+   * O MODO da melhoria (05/09/2026, `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`):
+   * `rediagramar` preserva a diagramação, `redesenhar` refaz no estilo da
+   * marca, `refinar` faz só a mudança pedida. Ausente, o serviço escolhe pela
+   * origem da arte (`modoPadraoDaMelhoria`).
+   */
+  modo: z.enum(MODOS_DA_MELHORIA as [ModoDaMelhoria, ...ModoDaMelhoria[]]).optional(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -114,6 +122,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       applyToItemDePlanoId: parsed.data.applyToItemDePlanoId,
       applyToPlanoId: parsed.data.applyToPlanoId,
       applyToSlideOrdem: parsed.data.applyToSlideOrdem,
+      modo: parsed.data.modo,
       actorClerkId: userId,
       orgId: orgId ?? undefined,
     })

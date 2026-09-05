@@ -220,6 +220,12 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [improvingGeneration, setImprovingGeneration] = React.useState<GenerationRecord | null>(null)
   // "Melhorar de novo" reabre o modal com o pedido anterior pré-preenchido.
   const [improveInitialRequest, setImproveInitialRequest] = React.useState<string | null>(null)
+  /**
+   * Vindo do antes/depois ("melhorar de novo"), a arte É uma melhoria e o modo
+   * padrão é "só o que eu pedir" — explícito, para não depender de a lista
+   * carregada trazer `sourceGenerationId` (05/09/2026).
+   */
+  const [improveEhMelhoria, setImproveEhMelhoria] = React.useState(false)
   const [compareTarget, setCompareTarget] = React.useState<CompareTarget | null>(null)
   const [gerarArteAberto, setGerarArteAberto] = React.useState(false)
   // Painel de filtros no celular. A partir de lg ele é sempre exibido por CSS,
@@ -862,6 +868,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   const handleImprove = React.useCallback((generation: GenerationRecord) => {
     setImproveInitialRequest(null)
+    setImproveEhMelhoria(false)
     setImprovingGeneration(generation)
   }, [])
 
@@ -885,6 +892,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       const generation = allGenerations.find((g) => g.id === target.id)
       if (!generation) return
       setImproveInitialRequest(target.userRequest ?? null)
+      // Quem chega pelo antes/depois está iterando uma MELHORIA: o modo
+      // padrão é "só o que eu pedir", explícito, sem depender da lista.
+      setImproveEhMelhoria(true)
       setImprovingGeneration(generation)
     },
     [allGenerations],
@@ -1572,6 +1582,14 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 resultUrl: improvingGeneration.resultUrl,
                 templateName: improvingGeneration.templateName ?? improvingGeneration.Template?.name,
                 initialUserRequest: improveInitialRequest,
+                // De onde a arte veio decide o modo padrão da melhoria
+                // (05/09/2026): melhoria anterior refina, compositor/canvas
+                // preserva, o resto redesenha. O "melhorar de novo" do
+                // antes/depois força `ehMelhoria` — a arte ali É uma melhoria.
+                origem: {
+                  source: getStringField(improvingGeneration.fieldValues, 'source'),
+                  ehMelhoria: improveEhMelhoria || !!improvingGeneration.sourceGenerationId,
+                },
               }
             : null
         }
@@ -1580,6 +1598,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           if (!next) {
             setImprovingGeneration(null)
             setImproveInitialRequest(null)
+            setImproveEhMelhoria(false)
           }
         }}
       />

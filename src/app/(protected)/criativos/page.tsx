@@ -652,6 +652,13 @@ export default function GlobalCreativesPage() {
                 projectId: improvingGeneration.projectId,
                 resultUrl: improvingGeneration.resultUrl,
                 templateName: improvingGeneration.templateName,
+                // Só o `source`: o GenerationRecord de `use-generations` não
+                // traz `sourceGenerationId`, e expô-lo é mudança de hook/API
+                // (fora desta leva, 05/09/2026). Sem ele, uma melhoria anterior
+                // aberta daqui cai no padrão da origem em vez de "refinar".
+                origem: {
+                  source: getStringField(improvingGeneration.fieldValues ?? {}, 'source'),
+                },
               }
             : null
         }

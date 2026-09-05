@@ -19,6 +19,7 @@ import { z } from 'zod'
 import { definirTool } from '../registro/definir'
 import { ErroDeTool } from '../registro/tipos'
 import type { ArtGenerationReference } from '../../ai/creative-generation-runner'
+import { MODOS_DA_MELHORIA, type ModoDaMelhoria } from '../../ai/modo-da-melhoria'
 
 const FORMATOS = ['story', 'feed', 'quadrado'] as const
 const PAPEIS_DE_REFERENCIA = ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] as const
@@ -389,7 +390,7 @@ export const toolsDeArteIA = [
   definirTool({
     nome: 'melhorar-arte',
     descricao:
-      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com o id da geração, acompanhe com ver-geracao. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
+      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão (salvo no modo `refinar`, abaixo) e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nA melhoria tem três MODOS (parâmetro `modo`), e a diferença entre eles é o que o gerador PODE mudar. `rediagramar`: mantém textos, fontes, cores e foto; só melhora onde o texto pousa, o respiro e a quebra das linhas — é o modo para arte do compositor, do canvas ou já aprovada por quem cuida da marca. `redesenhar`: refaz a diagramação inteira no estilo da marca, com o manual do designer como referência, copy e foto intocadas — para arte de template chapado, export do editor ou primeira rodada de IA. `refinar`: faz só a mudança pedida e nada mais, e o `pedido` passa a ser OBRIGATÓRIO ("troque a frase X por Y", "remova o selo") — é como se itera uma melhoria já feita, e é o ÚNICO modo em que o pedido pode trocar texto da copy (o texto novo vira a régua da conferência). Sem `modo`, o servidor escolhe pela origem da arte: melhoria anterior → refinar; compositor, canvas ou mídia de post → rediagramar; o resto → redesenhar.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com o id da geração, acompanhe com ver-geracao. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       generationId: z
@@ -400,6 +401,16 @@ export const toolsDeArteIA = [
         .optional()
         .describe(
           'Instruções de melhoria vindas da sua análise da arte (máx 1200 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.',
+        ),
+      // O vocabulário vem do módulo puro (05/09/2026,
+      // `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`): a melhoria só sabia
+      // PRESERVAR desde 04/09, e isso é o oposto do que se quer de uma tabela
+      // chapada exportada do editor. Enum de fonte única — mudou lá, muda aqui.
+      modo: z
+        .enum(MODOS_DA_MELHORIA as [ModoDaMelhoria, ...ModoDaMelhoria[]])
+        .optional()
+        .describe(
+          'Como melhorar. `rediagramar` mantém textos, fontes, cores e foto e só melhora onde o texto pousa, o respiro e a quebra das linhas — para arte do compositor, do canvas ou já aprovada por quem cuida da marca. `redesenhar` refaz a diagramação inteira no estilo da marca, com o manual do designer como referência; copy e foto ficam intocadas — para arte de template chapado, export do editor ou primeira rodada de IA. `refinar` faz só a mudança pedida, e aí o `pedido` é OBRIGATÓRIO ("troque a frase X por Y", "remova o selo") — é como se itera uma melhoria anterior, e é o ÚNICO modo em que o pedido pode trocar texto da copy. Sem informar, o servidor escolhe pela origem da arte: melhoria anterior → refinar; compositor, canvas ou mídia de post → rediagramar; o resto → redesenhar.',
         ),
       postId: z
         .string()
@@ -465,10 +476,22 @@ export const toolsDeArteIA = [
       }
       const planoId = itemId ? await resolverPlano(projectId, args.planoId) : undefined
 
+      // `refinar` é o modo em que o pedido É a mudança (o único que pode
+      // trocar texto da copy): sem pedido não há o que refinar, e mandar a
+      // geração assim gastaria crédito para devolver a mesma peça. Os outros
+      // dois modos têm o que fazer sozinhos. (05/09/2026, plano das artes
+      // como o ChatGPT.)
+      const modo = args.modo as ModoDaMelhoria | undefined
+      const pedido = typeof args.pedido === 'string' ? args.pedido : ''
+      if (modo === 'refinar' && pedido.trim() === '') {
+        throw new CreativeError('ENTRADA_INVALIDA', 'No modo refinar o pedido é obrigatório: diga o que mudar.', 400)
+      }
+
       const dono = await resolverDono(projectId, principal)
       const started = await startImprovement({
         generationId,
-        userRequest: typeof args.pedido === 'string' ? args.pedido : '',
+        userRequest: pedido,
+        modo,
         applyToPostId: postId ?? null,
         sourceImageUrl: sourceImageUrl ?? null,
         applyToItemDePlanoId: itemId ?? null,

@@ -30,6 +30,7 @@ import {
   MAX_SELECTED_ELEMENTS,
 } from '@/lib/ai/improvement-assets-constants'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
+import { modoPadraoDaMelhoria, type ModoDaMelhoria } from '@/lib/ai/modo-da-melhoria'
 
 /** Só imagens no nosso Blob entram no pipeline — URL de fora seria SSRF. */
 export const VERCEL_BLOB_HOST_REGEX = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//
@@ -66,6 +67,12 @@ export interface StartImprovementInput {
   applyToItemDePlanoId?: string | null
   applyToPlanoId?: string | null
   applyToSlideOrdem?: number | null
+  /**
+   * O MODO da melhoria (05/09/2026) — ver `modo-da-melhoria.ts`. Ausente, sai
+   * da origem da arte: melhoria anterior → `refinar`; compositor/canvas/post →
+   * `rediagramar`; o resto → `redesenhar`.
+   */
+  modo?: ModoDaMelhoria
   /** Quem paga os créditos e assina a Generation — id do CLERK (user_…). */
   actorClerkId: string
   orgId?: string
@@ -92,8 +99,6 @@ export async function startImprovement(
 ): Promise<StartImprovementResult> {
   const userRequest = input.userRequest ?? ''
   const instrucaoImagem = input.instrucaoImagem?.trim() || null
-  const tier =
-    input.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem })
   const selectedLogoIds = input.selectedLogoIds ?? []
   const selectedElementIds = input.selectedElementIds ?? []
 
@@ -124,6 +129,8 @@ export async function startImprovement(
       templateId: true,
       resultUrl: true,
       templateName: true,
+      sourceGenerationId: true,
+      fieldValues: true,
       Template: { select: { type: true, dimensions: true } },
     },
   })
@@ -133,6 +140,19 @@ export async function startImprovement(
   if (!original.resultUrl) {
     throw new CreativeError('SEM_IMAGEM', 'Criativo sem imagem disponível', 400)
   }
+
+  /**
+   * O MODO decide o que o gerador pode mudar (05/09/2026). Quem pede escolhe;
+   * sem escolha, a origem da arte decide — ver `modoPadraoDaMelhoria`.
+   * `refinar` sem pedido não tem o que fazer: recusar ANTES de cobrar.
+   */
+  const source = ((original.fieldValues ?? {}) as { source?: string | null }).source ?? null
+  const modo: ModoDaMelhoria =
+    input.modo ?? modoPadraoDaMelhoria({ source, ehMelhoria: !!original.sourceGenerationId })
+  if (modo === 'refinar' && userRequest.trim().length === 0) {
+    throw new CreativeError('PEDIDO_OBRIGATORIO', 'No modo "só o que eu pedir" é preciso dizer o que mudar.', 400)
+  }
+  const tier = input.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!instrucaoImagem, modo })
 
   const project = await db.project.findUnique({
     where: { id: original.projectId },
@@ -309,6 +329,7 @@ export async function startImprovement(
         ...(itemDaBancada ? { applyToItemDePlanoId: itemDaBancada.itemId, applyToPlanoId: itemDaBancada.planoId, applyToSlideOrdem: itemDaBancada.slideOrdem } : {}),
         model: getCurrentImageModel(),
         quality: tier,
+        modo,
         inputSize: openaiSize,
         finalSize: `${finalSize.width}x${finalSize.height}`,
         format,
@@ -343,6 +364,7 @@ export async function startImprovement(
       userRequest,
       instrucaoImagem,
       quality: tier,
+      modo,
       backgroundImageUrl: input.backgroundImageUrl ?? null,
       selectedLogoIds,
       selectedElementIds,

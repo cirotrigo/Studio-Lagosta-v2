@@ -21,6 +21,7 @@ import { FeedbackDeArte } from '@/components/creatives/feedback-de-arte'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { useBancadaStore } from '@/stores/bancada-store'
 import { useMelhoriaDoItemDaBancada } from '@/stores/improve-queue-store'
+import type { ViaDoItem } from '@/lib/planos/vocabulario'
 import { Sparkles } from 'lucide-react'
 
 export interface PreviewSlide {
@@ -53,6 +54,7 @@ function useArteDaFila(url: string | undefined) {
           planoId: item.planoId ?? null,
           slideOrdem: null as number | null,
           titulo: item.tema ?? null,
+          via: item.via ?? null,
         }
       }
       for (const slide of item.slides ?? []) {
@@ -64,12 +66,28 @@ function useArteDaFila(url: string | undefined) {
             planoId: item.planoId ?? null,
             slideOrdem: slide.ordem ?? null,
             titulo: item.tema ?? null,
+            via: item.via ?? null,
           }
         }
       }
     }
     return null
   }, [itens, url])
+}
+
+/**
+ * A origem da arte da bancada, DERIVADA da via do item — a fila não guarda o
+ * `fieldValues.source` da Generation, só o id. O mapa segue o que cada via
+ * grava ao persistir: `compor` → `compositor` (persistencia.ts), `template` →
+ * `arte-rapida` (createArteRapida), `ia` → `arte-ia` (creative-generation-runner).
+ * Serve para o modo padrão da melhoria (05/09/2026): a peça do compositor
+ * preserva a diagramação; as outras duas redesenham.
+ */
+function origemPelaVia(via: ViaDoItem | null): { source: string | null } {
+  if (via === 'compor') return { source: 'compositor' }
+  if (via === 'template') return { source: 'arte-rapida' }
+  if (via === 'ia') return { source: 'arte-ia' }
+  return { source: null }
 }
 
 interface Props {
@@ -251,6 +269,7 @@ export function BancadaPreview({ slides, inicial, open, onOpenChange, titulo }: 
             applyToItemDePlanoId: arte.itemDePlanoId,
             applyToPlanoId: arte.planoId,
             applyToSlideOrdem: arte.slideOrdem,
+            origem: origemPelaVia(arte.via),
           }}
           open={melhorarAberto}
           onOpenChange={setMelhorarAberto}

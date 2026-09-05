@@ -66,9 +66,25 @@ export const QUALIDADE_ARTE_COM_AJUSTE_DE_FOTO: QualidadeArte = 'high'
  * fatura (US$ 0,008 → 0,165) e o tempo (~43s → ~125s), que ainda cabe folgado
  * nos 300s da rota.
  */
-export function qualidadePadraoPara(opcoes: { temAjusteDeFoto: boolean }): QualidadeArte {
-  return opcoes.temAjusteDeFoto ? QUALIDADE_ARTE_COM_AJUSTE_DE_FOTO : QUALIDADE_ARTE_PADRAO
+export function qualidadePadraoPara(opcoes: {
+  temAjusteDeFoto: boolean
+  /**
+   * O modo da MELHORIA (05/09/2026). `redesenhar` refaz a diagramação inteira
+   * — lettering novo, ornamentos finos, pills — e o guia oficial de prompting
+   * dos GPT Image models pede `medium`/`high` para texto denso e multi-fonte;
+   * a medição de 12/08 mostrou que o `low` inventa número no selo. Foi em
+   * `medium` que a F0 do plano mediu o redesenho (4/4 limpas). `rediagramar` e
+   * `refinar` mexem pouco na peça e seguem no `low`.
+   */
+  modo?: 'rediagramar' | 'redesenhar' | 'refinar'
+}): QualidadeArte {
+  if (opcoes.temAjusteDeFoto) return QUALIDADE_ARTE_COM_AJUSTE_DE_FOTO
+  if (opcoes.modo === 'redesenhar') return QUALIDADE_ARTE_REDESENHO
+  return QUALIDADE_ARTE_PADRAO
 }
+
+/** O tier do modo `redesenhar` da melhoria — ver `qualidadePadraoPara`. */
+export const QUALIDADE_ARTE_REDESENHO: QualidadeArte = 'medium'
 
 /** As opções oferecidas a quem clica em "gerar de novo". */
 export const QUALIDADES_OFERECIDAS: QualidadeArte[] = ['low', 'medium']
