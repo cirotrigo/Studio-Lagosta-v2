@@ -43,6 +43,9 @@ export function useImproveQueueProcessor() {
         `/api/generations/${next.generationId}/improve`,
         {
           userRequest: next.userRequest,
+          // O modo só vai quando o modal o escolheu — job antigo (sem o campo)
+          // deixa o servidor decidir o padrão (05/09/2026).
+          ...(next.modo ? { modo: next.modo } : {}),
           ...(next.instrucaoImagem ? { instrucaoImagem: next.instrucaoImagem } : {}),
           ...(next.backgroundImageUrl ? { backgroundImageUrl: next.backgroundImageUrl } : {}),
           ...(next.selectedLogoIds && next.selectedLogoIds.length > 0

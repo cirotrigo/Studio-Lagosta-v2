@@ -1200,6 +1200,11 @@ export function PostDetailView({
             applyToPostId: post.id,
             // Só este slide é substituído; os outros ficam intactos
             applyToPostMediaIndex: currentImageIndex,
+            // A arte de um post da agenda já foi diagramada e aprovada por
+            // quem a agendou — o modo padrão preserva (05/09/2026). O post não
+            // traz o `fieldValues.source` nem o `sourceGenerationId` da
+            // Generation; `post-midia` é a origem que o módulo trata como tal.
+            origem: { source: 'post-midia' },
           }}
           open={improveOpen}
           onOpenChange={(next) => {

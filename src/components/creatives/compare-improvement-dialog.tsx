@@ -32,7 +32,14 @@ interface CompareImprovementDialogProps {
   target: CompareTarget | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Reabre o ImproveCreativeModal pré-preenchido com o pedido gravado. */
+  /**
+   * Reabre o ImproveCreativeModal pré-preenchido com o pedido gravado.
+   * Quem implementa PRECISA montar o ImproveTarget com
+   * `origem.ehMelhoria: true`: a arte deste dialog é sempre uma melhoria
+   * (tem `sourceGenerationId`), e o modo padrão de quem itera uma melhoria é
+   * "só o que eu pedir" (05/09/2026, `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`).
+   * Este dialog não monta o modal — só devolve o alvo.
+   */
   onImproveAgain?: (target: CompareTarget) => void
 }
 

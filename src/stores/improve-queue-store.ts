@@ -2,6 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { ModoDaMelhoria } from '@/lib/ai/modo-da-melhoria'
 
 export type ImproveJobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
@@ -12,6 +13,12 @@ export interface ImproveJob {
   generationThumbnailUrl: string | null
   generationLabel: string
   userRequest: string
+  /**
+   * O que a IA pode mudar — escolhido no modal (05/09/2026,
+   * `docs/PLANO-2026-09-05-ARTES-COMO-O-CHATGPT.md`). Ausente nos jobs
+   * gravados antes do modo existir: o servidor decide o padrão.
+   */
+  modo?: ModoDaMelhoria
   /**
    * Ajuste autorizado NA FOTO — o campo avançado do modal (01/09/2026).
    * Preenchido, o servidor sobe o tier do gpt-image para `high`.
@@ -48,6 +55,8 @@ interface AddJobInput {
   generationThumbnailUrl: string | null
   generationLabel: string
   userRequest: string
+  /** Ver `ImproveJob.modo`. */
+  modo?: ModoDaMelhoria
   /**
    * Ajuste autorizado NA FOTO — o campo avançado do modal (01/09/2026).
    * Preenchido, o servidor sobe o tier do gpt-image para `high`.
