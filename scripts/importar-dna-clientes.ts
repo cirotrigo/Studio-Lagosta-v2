@@ -6,7 +6,7 @@
  * papéis e percentuais, setups de luz nomeados, louça/uniforme, anti-
  * fotografia, vetos). Este script pede a um LLM o destilado por seção —
  * denso, com as regras LITERAIS preservadas (hex, fontes, px, proibições) —
- * e grava PROPOSTAS em scripts/.tmp-dna-import/ para revisão humana.
+ * e grava PROPOSTAS em docs/manifests/dna-import/ para revisão humana.
  *
  * DRY-RUN POR PADRÃO: nada é escrito no banco sem `--aplicar`.
  *
@@ -15,7 +15,7 @@
  *   npx tsx scripts/importar-dna-clientes.ts --aplicar        # grava no BrandDNA
  *
  * ⚠ `--aplicar` SUBSTITUI as seções do BrandDNA pelos destilados propostos
- * (relê os arquivos de .tmp-dna-import se existirem — o que você editou na
+ * (relê os arquivos de docs/manifests/dna-import se existirem — o que você editou na
  * revisão é o que vale). Seção proposta vazia não toca a atual.
  */
 import { config } from 'dotenv'
@@ -25,7 +25,12 @@ import * as fs from 'fs'
 import * as path from 'path'
 
 const CLIENTES_DIR = '/Users/cirotrigo/Documents/Clientes'
-const OUT_DIR = path.join(__dirname, '.tmp-dna-import')
+/**
+ * As propostas são o ROLLBACK da importação (é o que se relê para desfazer
+ * ou reaplicar), então moram versionadas em `docs/manifests/`, e não em
+ * `scripts/.tmp-*` — que é a convenção da casa para "apague no fim".
+ */
+const OUT_DIR = path.join(__dirname, '..', 'docs', 'manifests', 'dna-import')
 
 /** Registro de Clientes/CLAUDE.md (slug → projeto do Studio). */
 const REGISTRO: Record<string, number> = {
