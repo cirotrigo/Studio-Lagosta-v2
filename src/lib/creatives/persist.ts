@@ -157,11 +157,19 @@ export interface PersistCreativeInput {
   /** Tags da Page criada. Default `['arte-rapida']` — o compositor grava as suas. */
   pageTags?: string[]
   /**
+   * `Page.order` — a posição na pasta. Sem isso a página nasce no default 0 do
+   * schema e o editor lista na ordem arbitrária do Postgres; o compositor
+   * calcula a ordem de POSTAGEM (`ordemNaPasta`).
+   */
+  pageOrder?: number | null
+  /**
    * F3: a Generation PROCESSING que a fila criou ao enfileirar. Quando vem,
    * o registro FECHA essa linha (COMPLETED + resultUrl) em vez de criar outra
    * — é o que deixa a bancada acompanhar pelo id que já tem.
    */
   generationId?: string | null
+  /** Ver `RenderPageInput.slideOrder`. */
+  slideOrder?: number | null
 }
 
 export interface PersistCreativeResult {
@@ -190,7 +198,7 @@ export async function persistAndRenderCreative(
       height,
       layers: layers as any,
       background: background ?? null,
-      order: 0,
+      order: input.pageOrder ?? 0,
       templateId,
       isTemplate: false, // arte renderizada, não um modelo reutilizável
       tags: input.pageTags ?? ['arte-rapida'],
@@ -206,6 +214,7 @@ export async function persistAndRenderCreative(
     authorName: input.authorName,
     sourcePageId: input.sourcePageId ?? null,
     generationId: input.generationId ?? null,
+    slideOrder: input.slideOrder ?? null,
   })
 }
 
@@ -231,6 +240,12 @@ export interface RenderPageInput {
   sourcePageId?: string | null
   /** Ver `PersistCreativeInput.generationId`. */
   generationId?: string | null
+  /**
+   * Posição do slide no carrossel (1 = capa) — a mesma coluna que o carrossel
+   * de IA usa. Fica na Generation porque é ela que sobrevive à página, e é o
+   * que dispensa deduzir o slide do `SocialPost.mediaUrls` depois.
+   */
+  slideOrder?: number | null
 }
 
 /**
@@ -272,6 +287,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
           templateId,
           fieldValues: fieldValues as any,
           sourcePageId: input.sourcePageId ?? null,
+          ...(input.slideOrder != null ? { slideOrder: input.slideOrder } : {}),
           resultUrl: blob.url,
           authorName: input.authorName,
           ...(input.createdBy ? { createdBy: input.createdBy } : {}),
@@ -289,6 +305,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
           templateId,
           fieldValues: fieldValues as any,
           sourcePageId: input.sourcePageId ?? null,
+          slideOrder: input.slideOrder ?? null,
           resultUrl: blob.url,
           projectId: project.id,
           createdBy: input.createdBy ?? project.userId,

@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
 import { isExternalApiAuthorized } from '@/lib/external-api/auth'
+import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { PostStatus, PostType } from '../../../../../../prisma/generated/client'
@@ -94,13 +95,14 @@ export async function PATCH(
       where: { id: postId },
       select: {
         id: true,
+        projectId: true,
         status: true,
         postType: true,
         caption: true,
         scheduledDatetime: true,
         mediaUrls: true,
         laterPostId: true,
-        Project: { select: { laterAccountId: true } },
+        Project: { select: { laterAccountId: true, userId: true } },
       },
     })
 
@@ -134,6 +136,14 @@ export async function PATCH(
         }),
       },
     })
+
+    // Remarcou? As páginas da arte seguem para a semana nova (pasta, nome e
+    // ordem). Post criado por esta API nasce sem página, então aqui costuma ser
+    // no-op — mas o PATCH aceita qualquer postId, e post do compositor pode
+    // chegar por aqui. Best-effort: refilar não derruba a remarcação.
+    if (isRescheduling && existingPost.scheduledDatetime?.getTime() !== new Date(data.scheduledDatetime!).getTime()) {
+      await refilarPaginasDoPost(postId, new Date(data.scheduledDatetime!), existingPost.Project.userId)
+    }
 
     // Sync with Zernio if the post was already sent there
     let zernioSynced = false

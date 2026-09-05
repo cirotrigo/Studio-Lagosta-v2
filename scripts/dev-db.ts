@@ -106,17 +106,54 @@ function resolveDevEnv(): { prod: Record<string, string>; dev: Record<string, st
   return { prod, dev }
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const { prod, dev } = resolveDevEnv()
 
   const devEndpoint = endpointIdOf(dev.DATABASE_URL)
   const prodEndpoint = endpointIdOf(prod.DATABASE_URL)
 
+  /**
+   * Há quantos dias o branch de dev parou no tempo.
+   *
+   * Branch do Neon é copy-on-write: nasce com os dados do momento e NÃO
+   * acompanha a produção. Isso já custou uma sessão inteira de diagnóstico em
+   * 04/09/2026 — a aba local mostrava as pastas antigas depois de uma
+   * migração em produção, e a conclusão natural ("o código não funcionou")
+   * estava errada. O status dizia QUAL banco cada camada usa, mas não que um
+   * deles envelhece; agora diz.
+   *
+   * Falha em silêncio (rede, banco suspenso): é um aviso, não pode derrubar
+   * um comando cujo trabalho é informar.
+   */
+  async function atrasoDoDev(): Promise<string | null> {
+    try {
+      const { PrismaClient } = await import('@prisma/client')
+      const ultima = async (url: string) => {
+        const c = new PrismaClient({ datasources: { db: { url } } })
+        try {
+          const p = await c.page.findFirst({ orderBy: { createdAt: 'desc' }, select: { createdAt: true } })
+          return p?.createdAt ?? null
+        } finally {
+          await c.$disconnect()
+        }
+      }
+      const [d, p] = await Promise.all([ultima(dev.DATABASE_URL), ultima(prod.DATABASE_URL)])
+      if (!d || !p) return null
+      const dias = (p.getTime() - d.getTime()) / 86_400_000
+      if (dias < 0.5) return 'em dia com a produção'
+      return `${dias.toFixed(1)} dia(s) ATRÁS da produção — "npm run db:dev:setup -- --recriar" para renovar`
+    } catch {
+      return null
+    }
+  }
+
   if (argv.length === 0 || argv[0] === '--status') {
     console.log('\nBancos resolvidos:\n')
     console.log(`  produção        (.env)                   → ${prodEndpoint ?? '(não definido)'}`)
     console.log(`  desenvolvimento (.env.development.local) → ${devEndpoint}`)
+    const atraso = await atrasoDoDev()
+    if (atraso) console.log(`\n  O branch de dev é uma CÓPIA congelada: ${atraso}`)
     console.log('\nQuem usa qual:\n')
     console.log('  npm run dev            → DEV   (Next carrega .env.development.local primeiro)')
     console.log('  npm run db:migrate     → DEV   (via este runner)')
@@ -138,4 +175,4 @@ function main(): void {
   process.exit(result.status ?? 1)
 }
 
-main()
+void main()

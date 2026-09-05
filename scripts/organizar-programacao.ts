@@ -12,7 +12,7 @@
 import 'dotenv/config'
 
 import { db } from '@/lib/db'
-import { garantirPasta } from '@/lib/compositor/pastas'
+import { garantirPasta, ordemNaPasta } from '@/lib/compositor/pastas'
 import { nomeDaPagina } from '@/lib/compositor/pasta-da-semana'
 import type { Formato } from '@/lib/compositor/spec'
 
@@ -45,7 +45,7 @@ async function main() {
   const plano = paginas.map((p) => {
     const g = genPorPagina.get(p.id)
     const formato: Formato = g?.formato ?? (p.height > p.width * 1.6 ? 'story' : p.height === p.width ? 'quadrado' : 'feed')
-    return { p, g, formato, nome: nomeDaPagina({ quando: g?.quando ?? null, formato, tema: g?.tema ?? null, nome: p.name }) }
+    return { p, g, formato, nome: nomeDaPagina({ quando: g?.quando ?? null, tema: g?.tema ?? null, nome: p.name }) }
   })
   for (const item of plano.slice(0, 8)) console.log(`  ${item.p.Template.name} / ${item.p.name} → ${item.g?.quando?.slice(0, 16) ?? 'sem data'} · "${item.nome}"`)
   if (plano.length > 8) console.log(`  … e mais ${plano.length - 8}`)
@@ -54,14 +54,13 @@ async function main() {
     return
   }
 
-  const ordem = new Map<number, number>()
   let movidas = 0
   for (const item of plano) {
-    const pasta = await garantirPasta(projectId, projeto.userId, item.g?.quando ?? null)
-    const n = ordem.get(pasta.id) ?? (await db.page.aggregate({ where: { templateId: pasta.id }, _max: { order: true } }))._max.order ?? -1
-    ordem.set(pasta.id, n + 1)
+    // A pasta é da semana E do formato (04/09/2026); a ordem é a de postagem.
+    const pasta = await garantirPasta(projectId, projeto.userId, item.g?.quando ?? null, item.formato)
+    const { ordem: n } = await ordemNaPasta(pasta.id, item.g?.quando ?? null)
     await db.$transaction([
-      db.page.update({ where: { id: item.p.id }, data: { templateId: pasta.id, name: item.nome, order: n + 1, tags: ['compositor', item.formato] } }),
+      db.page.update({ where: { id: item.p.id }, data: { templateId: pasta.id, name: item.nome, order: n, tags: ['compositor', item.formato] } }),
       ...(item.g ? [db.generation.update({ where: { id: item.g.id }, data: { templateId: pasta.id, templateName: pasta.name } })] : []),
     ])
     movidas++

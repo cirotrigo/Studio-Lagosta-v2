@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { MoreVertical, Edit, Copy, Trash2, FileText } from 'lucide-react'
+import { Edit, Copy, Trash2, Layers } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
     DropdownMenu,
@@ -22,10 +22,70 @@ interface TemplateItemProps {
         dimensions: string
         thumbnailUrl: string | null
         createdAt: string
+        /** Miniaturas das primeiras peças — só nas PASTAS de programação. */
+        capa?: string[]
     }
     onDuplicate: (id: number, name: string) => void
     onDelete: (id: number, name: string) => void
     index: number
+}
+
+/**
+ * A capa em mosaico: as primeiras peças do template.
+ *
+ * Vale para a PASTA de programação (que não tem miniatura própria, e para a
+ * qual uma arte solta não diria que aquilo é a semana de stories) e para
+ * qualquer template SEM `thumbnailUrl`, que antes ficava com "Sem preview" —
+ * na prática o ARQUIVO, onde 61 de 67 cards estavam assim.
+ *
+ * A API só manda `capa` quando ela é para ser usada, então aqui o mosaico
+ * vence sem precisar saber de que seção o card é.
+ */
+function CapaEmMosaico({ capa, quantas }: { capa: string[]; quantas: number }) {
+    const mostradas = capa.slice(0, 4)
+    /**
+     * 1 peça ocupa tudo; 2 ficam lado a lado; 3+ entram na grade 2x2.
+     *
+     * 🔴 A grade vai em estilo INLINE, não em classe: `grid-rows-2` NÃO gera
+     * CSS neste repo (medido no navegador em 04/09/2026 — a classe nem aparece
+     * na folha de estilo), e o mosaico viraria uma fileira só. Some à família
+     * de classes mortas já registrada no CLAUDE.md.
+     */
+    const grade: React.CSSProperties = {
+        gridTemplateColumns: mostradas.length === 1 ? '1fr' : '1fr 1fr',
+        gridTemplateRows: mostradas.length <= 2 ? '1fr' : '1fr 1fr',
+    }
+    return (
+        <div className="absolute inset-0">
+            <div className="grid h-full w-full gap-px bg-black/20" style={grade}>
+                {mostradas.map((url, i) => (
+                    <div
+                        key={`${url}-${i}`}
+                        className="relative overflow-hidden bg-muted"
+                        // Com 3 peças a primeira ocupa a linha inteira: numa
+                        // grade 2x2 sobraria um quadrante vazio, e buraco na
+                        // capa lê como peça que faltou.
+                        style={mostradas.length === 3 && i === 0 ? { gridColumn: 'span 2' } : undefined}
+                    >
+                        {/*
+                          * 🔴 SEM `unoptimized`: com ele o navegador baixa a ARTE
+                          * INTEIRA (PNG de publicação) em cada célula — quatro por
+                          * card. É a mesma lição que a galeria de criativos já
+                          * pagou (38 MB numa carga). O host do Blob está nos
+                          * `remotePatterns`, então o Next serve a versão reduzida
+                          * que `sizes` pede.
+                          */}
+                        <Image src={url} alt="" fill sizes="120px" className="object-cover" />
+                    </div>
+                ))}
+            </div>
+            {quantas > mostradas.length && (
+                <span className="absolute right-1.5 top-1.5 rounded-full bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+                    +{quantas - mostradas.length}
+                </span>
+            )}
+        </div>
+    )
 }
 
 export function TemplateItem({ template, onDuplicate, onDelete, index }: TemplateItemProps) {
@@ -71,6 +131,8 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
         }
     }
 
+    const temCapa = (template.capa?.length ?? 0) > 0
+
     return (
         <motion.div
             ref={ref}
@@ -103,13 +165,25 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
 
             <Link
                 href={`/templates/${template.id}/editor`}
+                // O nome saiu de dentro do card (foi para a legenda), então o
+                // link ficaria sem nome acessível: as imagens do mosaico são
+                // decorativas (`alt=""`) e o ramo neutro só diz "Sem preview".
+                aria-label={template.name}
                 className={cn("relative block bg-muted overflow-hidden w-full h-full rounded-xl cursor-pointer", getAspectRatioClass())}
             >
-                {!imageLoaded && (
+                {/*
+                  * O esqueleto só faz sentido enquanto uma imagem ÚNICA carrega:
+                  * `imageLoaded` só vira true no `onLoad` do ramo do
+                  * thumbnailUrl, então nos ramos do mosaico e do "Sem preview"
+                  * ele pulsava para sempre por baixo do conteúdo.
+                  */}
+                {!imageLoaded && !temCapa && template.thumbnailUrl && (
                     <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse pointer-events-none" />
                 )}
 
-                {template.thumbnailUrl ? (
+                {temCapa ? (
+                    <CapaEmMosaico capa={template.capa!} quantas={template.capa!.length} />
+                ) : template.thumbnailUrl ? (
                     <Image
                         src={template.thumbnailUrl}
                         alt={template.name}
@@ -121,7 +195,7 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                     />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                        <FileText className="w-8 h-8 text-muted-foreground opacity-40" />
+                        <Layers className="w-8 h-8 text-muted-foreground opacity-40" />
                         <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
                     </div>
                 )}
@@ -129,16 +203,14 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                 {/* Hover Overlay & Info */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
 
-                <div className="absolute bottom-[4.75rem] md:bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 pointer-events-none z-20">
-                    <h3 className="text-white font-bold text-sm truncate drop-shadow-md">
-                        {template.name}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-white/70">
-                        <span>{template.type}</span>
-                        <span>•</span>
-                        <span>{template.dimensions}</span>
-                    </div>
-                </div>
+                {/*
+                  * O nome, o tipo e as dimensões saíram daqui: eles agora vivem
+                  * na legenda ABAIXO do card, sempre visível e sem `truncate`.
+                  * 🔴 Não é só duplicata — em tela de toque este bloco não é de
+                  * hover (`pointer-coarse:opacity-100` o deixa permanentemente
+                  * visível), então no celular o nome apareceria DUAS VEZES ao
+                  * mesmo tempo, um deles cortado.
+                  */}
             </Link>
 
             {/* Action Buttons - Top Right Dropdown (Always visible or on hover? Let's make it on hover for cleaner look, but accessible) */}

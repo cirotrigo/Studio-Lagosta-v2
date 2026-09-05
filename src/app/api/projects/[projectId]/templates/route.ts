@@ -87,8 +87,64 @@ export async function GET(
    */
   const pastas = templates.filter((t) => t.category === 'programacao' || t.category === 'avulsas')
   const situacao = new Map<number, { pecas: number; agendadas: number; publicadas: number; rascunhos: number; falhas: number }>()
+
+  /**
+   * A CAPA: as primeiras peças do template, em mosaico.
+   *
+   * Serve a dois casos, medidos em produção em 04/09/2026:
+   *  - a PASTA de programação, que não tem `thumbnailUrl` própria (nasce de
+   *    `garantirPasta`) e para a qual a miniatura de UMA peça não diria que
+   *    aquilo é a semana de stories;
+   *  - o template SEM `thumbnailUrl` de qualquer seção, que hoje mostra
+   *    "Sem preview" — 61 dos 67 do ARQUIVO, e é lá que o resgate acontece
+   *    (18 ganham mosaico). Em `equipe` e `assinatura` o ganho medido é ZERO:
+   *    119 dos 130 já têm `thumbnailUrl`, e os 11 restantes têm só miniatura
+   *    `data:`. Por isso a regra é por DADO (tem thumbnail?) e não por seção.
+   *
+   * 🔴 Miniatura `data:` fica de FORA, e o filtro vive no WHERE, não em JS: o
+   * PageSync sobrescreve `Page.thumbnail` com um JPEG base64 (média 17,6 KB)
+   * assim que a página é aberta no editor. Medido no projeto 4: trazer as
+   * páginas e filtrar depois custa 4.810 KB; filtrando no banco, 5 KB.
+   *
+   * 🔴 CROSS JOIN LATERAL, não `ROW_NUMBER() OVER (PARTITION BY ...)`: a
+   * janela precisa ler e DESTOASTAR o thumbnail de TODAS as páginas antes de
+   * descartar as que passam de 4. Medido no projeto 8: 13,00 ms e 8807
+   * buffers contra 1,00 ms e 618 do LATERAL, que para assim que acha 4.
+   */
+  const capas = new Map<number, string[]>()
+  const CAPAS_POR_TEMPLATE = 4
+  const precisamDeCapa = new Set(
+    templates.filter((t) => !t.thumbnailUrl || t.category === 'programacao' || t.category === 'avulsas').map((t) => t.id),
+  )
+  if (precisamDeCapa.size > 0) {
+    const linhas = await db.$queryRaw<Array<{ templateId: number; thumbnail: string }>>`
+      SELECT t.id AS "templateId", capa.thumbnail
+      FROM "Template" t
+      CROSS JOIN LATERAL (
+        SELECT p.thumbnail, p."order" AS ord, p.id
+        FROM "Page" p
+        WHERE p."templateId" = t.id
+          AND p.thumbnail IS NOT NULL
+          AND p.thumbnail NOT LIKE 'data:%'
+        ORDER BY p."order" ASC, p.id ASC
+        LIMIT ${CAPAS_POR_TEMPLATE}
+      ) capa
+      WHERE t."projectId" = ${projectIdNum}
+      ORDER BY t.id, capa.ord ASC, capa.id ASC
+    `
+    for (const l of linhas) {
+      if (!precisamDeCapa.has(l.templateId)) continue
+      const atual = capas.get(l.templateId) ?? []
+      if (atual.length >= CAPAS_POR_TEMPLATE) continue
+      capas.set(l.templateId, [...atual, l.thumbnail])
+    }
+  }
+
   if (pastas.length > 0) {
-    const paginas = await db.page.findMany({ where: { templateId: { in: pastas.map((t) => t.id) } }, select: { id: true, templateId: true } })
+    const paginas = await db.page.findMany({
+      where: { templateId: { in: pastas.map((t) => t.id) } },
+      select: { id: true, templateId: true },
+    })
     const porPagina = new Map(paginas.map((p) => [p.id, p.templateId]))
     const posts = await db.socialPost.findMany({
       where: { pageId: { in: paginas.map((p) => p.id) } },
@@ -106,7 +162,13 @@ export async function GET(
     }
   }
 
-  return NextResponse.json(templates.map((t) => ({ ...t, ...(situacao.has(t.id) ? { situacao: situacao.get(t.id) } : {}) })))
+  return NextResponse.json(
+    templates.map((t) => ({
+      ...t,
+      ...(situacao.has(t.id) ? { situacao: situacao.get(t.id) } : {}),
+      ...(capas.has(t.id) ? { capa: capas.get(t.id) } : {}),
+    })),
+  )
 }
 
 export async function POST(

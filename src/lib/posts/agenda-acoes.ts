@@ -13,6 +13,7 @@ import { desfazerUsoDeFotoDoPost } from '@/lib/creatives/uso-de-foto'
 import { PostStatus, RenderStatus } from '../../../prisma/generated/client'
 import { getLaterClient, LaterNotFoundError } from '@/lib/later'
 import { parseBRT } from '@/lib/creatives/agendar'
+import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
@@ -474,6 +475,18 @@ export async function reagendarPost(params: {
     },
     select: { id: true, status: true, scheduledDatetime: true },
   })
+
+  // As páginas da arte seguem para a semana nova: pasta, nome e ordem. Sem
+  // isto a pasta e o nome guardam a data velha, e é por eles que a equipe
+  // revisa a programação. Best-effort — refilar não derruba o reagendamento.
+  if (post.scheduledDatetime?.getTime() !== atualizado.scheduledDatetime?.getTime()) {
+    const dono = await db.project
+      .findUnique({ where: { id: post.projectId }, select: { userId: true } })
+      .catch(() => null)
+    if (dono && atualizado.scheduledDatetime) {
+      await refilarPaginasDoPost(post.id, atualizado.scheduledDatetime, dono.userId)
+    }
+  }
 
   const situacao = atualizado.status === PostStatus.DRAFT ? 'rascunho' : 'agendado'
   const quandoBRT = formatarBRT(atualizado.scheduledDatetime!)

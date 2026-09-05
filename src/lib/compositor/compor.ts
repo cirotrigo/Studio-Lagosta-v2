@@ -27,7 +27,7 @@ import { calibrarHalo, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
-import { garantirPasta } from './pastas'
+import { garantirPasta, ordemNaPasta } from './pastas'
 import { entradaDePersistencia } from './persistencia'
 import { nomeDaPagina } from './pasta-da-semana'
 
@@ -781,10 +781,25 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     return { persistido: null, prova: png, layers, diagnostico }
   }
 
-  // A pasta é a SEMANA da data prevista (ou as avulsas do mês) — regra de
-  // 03/09/2026: a aba organiza por quando publica, não por quem criou.
-  const pasta = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null)
-  const nome = nomeDaPagina({ quando: spec.quando ?? null, formato: spec.formato, tema: spec.tema ?? null, nome: spec.nome ?? spec.blocos[0]?.linhas[0] ?? null })
+  // A pasta é a SEMANA da data prevista (ou as avulsas do mês) NO FORMATO da
+  // peça — regra de 03/09/2026, separada por formato em 04/09: a aba organiza
+  // por quando publica, e story e feed não se misturam porque a aprovação de
+  // cada frente corre separada. A ordem é a de POSTAGEM, com o slide
+  // desempatando o mesmo minuto; o nome leva a data e o slide, senão os
+  // irmãos de um carrossel saem com nomes idênticos.
+  const pasta = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
+  const { ordem, repeticao } = await ordemNaPasta(pasta.id, spec.quando ?? null, spec.carrossel?.slide ?? null)
+  const nome = nomeDaPagina({
+    quando: spec.quando ?? null,
+    tema: spec.tema ?? null,
+    nome: spec.nome ?? spec.blocos[0]?.linhas[0] ?? null,
+    carrossel: spec.carrossel ?? null,
+    // Quem não declarou o slide ganha ao menos um nome próprio: sem isto, os
+    // quatro irmãos de um carrossel saem com o nome IDÊNTICO na pasta (foi o
+    // que uma leva real fez em 04/09/2026). "peça" e não "slide" de propósito:
+    // é a ordem em que foi composta, não a posição no Instagram.
+    ...(spec.carrossel ? {} : { peca: repeticao > 0 ? repeticao + 1 : null }),
+  })
   // A entrada do persist é montada num módulo PURO (`persistencia.ts`): é lá
   // que mora a regra de que a Generation da FILA (`opcoes.generationId`) é
   // FECHADA em vez de nascer outra — o defeito de 04/09/2026 (Espeto).
@@ -795,6 +810,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       projeto,
       pasta,
       nome,
+      ordem,
       canvas,
       layers,
       fundo: assinatura.numeros.fundo,

@@ -9,6 +9,7 @@ import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { LaterNotFoundError } from '@/lib/later/errors'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
+import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -243,6 +244,21 @@ export async function PUT(
         },
       },
     })
+
+    // Remarcou? As páginas da arte seguem para a semana nova — pasta, nome e
+    // ordem. Sem isto a pasta da semana e o nome da página passam a mentir a
+    // data, e é por elas que a equipe revisa e aprova a programação. É o
+    // caminho de MAIOR volume: arrastar o card no calendário, "Re-agendar" e o
+    // formulário de edição chegam todos aqui. Best-effort, como o sinal de
+    // legenda logo abaixo: refilar não pode derrubar uma remarcação.
+    const dataAntes = existingPost.scheduledDatetime?.getTime() ?? null
+    const dataDepois = updatedPost.scheduledDatetime?.getTime() ?? null
+    if (dataDepois !== null && dataAntes !== dataDepois) {
+      const dono = await db.project
+        .findUnique({ where: { id: projectId }, select: { userId: true } })
+        .catch(() => null)
+      if (dono) await refilarPaginasDoPost(postId, updatedPost.scheduledDatetime!, dono.userId)
+    }
 
     // A edição da legenda entra no corpus de aprendizado (antes = proposta,
     // depois = o que ficou). Nunca lança; User é buscado só para LEITURA —

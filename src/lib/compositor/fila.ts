@@ -48,7 +48,7 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
-  const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null)
+  const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
 
   const generation = await db.generation.create({
     data: {

@@ -37,6 +37,22 @@ export const blocoSchema = z.object({
 })
 export type Bloco = z.infer<typeof blocoSchema>
 
+/**
+ * O lugar da peça num CARROSSEL — 1 é a capa, como o Instagram numera.
+ *
+ * Existe porque a posição do slide só era recuperável DEPOIS, lendo o
+ * `SocialPost.mediaUrls` e casando pelo nome do arquivo do render
+ * (`<pageId>-<epoch>.png`). Quem compõe sabe disso na hora; deduzir depois é
+ * o que deixava os quatro slides do mesmo carrossel com nomes idênticos na
+ * pasta. Vira `Generation.slideOrder` (a coluna que o carrossel de IA já usa)
+ * e desempata a ordem das páginas dentro do mesmo minuto.
+ */
+export const carrosselSchema = z.object({
+  slide: z.number().int().min(1).max(20),
+  de: z.number().int().min(2).max(20).optional(),
+})
+export type CarrosselDaPeca = z.infer<typeof carrosselSchema>
+
 export const preferenciasSchema = z.object({
   ancora: z.enum([...ANCORAS, 'auto']).optional(),
   alinha: z.enum([...ALINHAMENTOS, 'auto']).optional(),
@@ -65,6 +81,7 @@ export const specSchema = z.object({
   planoId: z.string().optional(),
   quando: z.string().optional(),
   tema: z.string().optional(),
+  carrossel: carrosselSchema.optional(),
 })
 export type SpecDePeca = z.infer<typeof specSchema>
 
@@ -75,6 +92,8 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     const papeis = r.data.blocos.map((b) => b.papel)
     const repetidos = papeis.filter((p, i) => papeis.indexOf(p) !== i)
     if (repetidos.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidos)].join(', ')}`] }
+    const c = r.data.carrossel
+    if (c?.de && c.slide > c.de) return { spec: null, problemas: [`carrossel: o slide ${c.slide} não cabe num carrossel de ${c.de}`] }
     return { spec: r.data, problemas: [] }
   }
   return {

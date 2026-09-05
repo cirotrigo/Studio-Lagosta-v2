@@ -30,6 +30,8 @@ export interface InsumosDaPersistencia {
   projeto: { id: number; name: string; userId: string }
   pasta: { id: number; name: string }
   nome: string
+  /** `Page.order` — a ordem de POSTAGEM na pasta (`ordemNaPasta`). */
+  ordem: number
   canvas: { width: number; height: number }
   layers: Layer[]
   /** Fundo liso da marca (`assinatura.numeros.fundo`). */
@@ -54,6 +56,12 @@ export function entradaDePersistencia(i: InsumosDaPersistencia): PersistCreative
     createdBy: opcoes.autor ?? null,
     canal: opcoes.canal ?? null,
     pageTags: [TAG_DA_PECA_COMPOSTA, spec.formato],
+    pageOrder: i.ordem,
+    // O slide vira `Generation.slideOrder`: registrado por quem COMPÕE, não
+    // deduzido depois do `SocialPost.mediaUrls`. `carouselGroupId` fica nulo
+    // de propósito — cada slide é composto sozinho, e um grupo de um só seria
+    // pior que nenhum.
+    slideOrder: spec.carrossel?.slide ?? null,
     // A Generation da fila é fechada em vez de nascer outra — ver o cabeçalho.
     generationId: opcoes.generationId ?? null,
     fieldValues: {

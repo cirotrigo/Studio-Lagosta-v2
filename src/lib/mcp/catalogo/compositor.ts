@@ -43,7 +43,17 @@ const spec = {
   tema: z.string().optional().describe('Tema/assunto, para o registro e o rodízio de layout.'),
   itemDePlanoId: z.string().optional().describe('Quando a peça é de um item de plano: o id do item (ver-plano).'),
   planoId: z.string().optional(),
-  quando: z.string().optional().describe('Data/hora prevista (ISO), só para registro.'),
+  quando: z
+    .string()
+    .optional()
+    .describe('Data/hora prevista (ISO). É o que decide a PASTA da peça na aba de templates (a semana daquela data) e a ordem dela lá dentro — sem isso a peça cai nas avulsas do mês.'),
+  carrossel: z
+    .object({
+      slide: z.number().int().min(1).max(20).describe('A posição desta peça no carrossel como ele sai no Instagram — 1 é a capa. Carrossel cuja capa é foto do acervo começa as peças compostas no 2.'),
+      de: z.number().int().min(2).max(20).optional().describe('Quantas mídias o carrossel tem no total.'),
+    })
+    .optional()
+    .describe('Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta ("slide 2/5") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar.'),
 }
 
 function specDe(args: Record<string, unknown>) {
@@ -58,6 +68,7 @@ function specDe(args: Record<string, unknown>) {
     ...(args.itemDePlanoId ? { itemDePlanoId: args.itemDePlanoId } : {}),
     ...(args.planoId ? { planoId: args.planoId } : {}),
     ...(args.quando ? { quando: args.quando } : {}),
+    ...(args.carrossel ? { carrossel: args.carrossel } : {}),
   }
 }
 
@@ -206,6 +217,7 @@ export const toolsDoCompositor = [
             itemDePlanoId: spec.itemDePlanoId,
             planoId: spec.planoId,
             quando: spec.quando,
+            carrossel: spec.carrossel,
           }),
         )
         .min(1)
