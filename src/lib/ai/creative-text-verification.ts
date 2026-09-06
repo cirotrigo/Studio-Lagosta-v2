@@ -290,6 +290,10 @@ export async function transcreverTextosDaArte(imageBuffer: Buffer): Promise<stri
                 'Transcreva TODOS os textos visíveis nesta arte de Instagram, letra por letra.',
                 'Inclua números, horários, endereços e pontuação exatamente como aparecem.',
                 'Um item do array por bloco de texto. Não corrija erros de grafia.',
+                // A visão "consertava" o acento em silêncio (05/09/2026: a arte trazia
+                // "familia" e a transcrição voltou "família"), escondendo o defeito
+                // que `divergenciasDeAcento` existe para acusar.
+                'ACENTOS E CEDILHA: transcreva exatamente como estão DESENHADOS. Se a letra está sem acento na imagem, escreva sem acento; se está com acento errado, copie o errado. Nunca complete o acento pela palavra que você conhece.',
                 'Se um trecho estiver ilegível, NÃO o inclua — é melhor faltar do que adivinhar.',
               ].join('\n'),
             },
@@ -339,6 +343,7 @@ export async function verifyImageTexts(
               'Transcreva TODOS os textos visíveis nesta arte de Instagram, letra por letra.',
               'Inclua números, preços, pontuação e símbolos exatamente como aparecem.',
               'Um item do array por bloco de texto. Não corrija erros de grafia — transcreva o que está escrito.',
+              'ACENTOS E CEDILHA: transcreva exatamente como estão DESENHADOS. Se a letra está sem acento na imagem, escreva sem acento; nunca complete o acento pela palavra que você conhece.',
             ].join('\n'),
           },
         ],
