@@ -338,6 +338,42 @@ do Ciro (a conta estava em zero e recebeu 1.000 para os testes).
   palavra fora da copy na geração continua faltando.
 - `n: 2` (duas variantes para escolher) e SDK 7.x não entraram.
 
+## 10. Manual gerado e estilo lido das peças (05/09/2026, noite)
+
+Pedido do Ciro depois da comparação com o ChatGPT: corrigir o manual do Espeto
+(fontes erradas), incluir separadores e ícones para a IA "fazer artes mais
+criativas", e analisar as artes de referência de todos os clientes.
+
+| o que entrou | onde |
+|---|---|
+| `BrandDNA.estiloDasReferencias` (Json) + migration idempotente aplicada em produção | `prisma/schema.prisma`, `prisma/migrations/20260905230000_…` |
+| contrato puro do estilo (vocabulário fechado de separadores e ícones, `normalizarEstilo`, `formatarEstiloParaPrompt`) | `src/lib/brand/estilo-das-referencias.ts` (+ 7 testes) |
+| leitura por visão das peças aprovadas (URLs à mão → `styleRefAt` → gostei; até 8) e gravação | `src/lib/ai/analise-de-referencias.ts`, `scripts/analisar-referencias-de-estilo.ts` |
+| `BrandContext.estiloDasReferencias` pelo loader; bloco ESTILO OBSERVADO no planejador, vencendo a prosa do DNA; redesenhar USA separadores/ícones do manual | `brand-context.ts`, `diretor-de-arte.ts` |
+| manual de marca desenhado com as fontes reais, logo, paleta, separadores, ícones/gráficos oficiais da aba Assets e "como a marca usa" | `src/lib/ai/manual-de-marca.ts`, `scripts/gerar-manual-de-marca.ts` |
+
+Placar da análise (05/09): Real, Quintal, TERO, Bacana, Espeto, By Rock,
+Lagosta Criativa e Wine Vix gravados; Seu Quinto sem referência viva (a única
+"gostei" aponta para o Blob morto); Ciro Trigo e Empório Fonseca sem
+referência aprovada. Espeto foi lido com as duas artes que o Ciro apontou mais
+3 referências de estilo e 3 "gostei".
+
+Manual: aplicado no Espeto (`brand-manual/6-espeto-ga-cho-gerado-….png`;
+anterior `brand-manual/6-espeto-gaucho.png`, com Roadhawk/Coolvetica/
+Montserrat). Os outros 10 estão em `.tmp-medicao-estilo-chatgpt/manuais/`
+para avaliação — nada aplicado.
+
+Teste real: `redesenhar` de uma peça do compositor do Espeto
+(`cmtp69b3o0001swcx9lkppw83`, 13s de planejador + geração `medium`): Bevan
+branco + "500G" vermelho, serviço em Barlow Condensed, CTA em Caveat, preço em
+amarelo, logo uma vez, sem véu. O planejador ainda escreveu "no icons" em
+bloco — corrigido no SYSTEM (usar os do manual, proibir só o que não está
+nele); segunda rodada em `cmtmfyd6m008xsw71lkjcznvv`.
+
+Em aberto: manuais dos outros clientes (decisão do Ciro); Seu Quinto precisa
+de referências marcadas (`marcar-referencia-de-estilo`) para ter estilo lido;
+`conferirLogo` continua órfã.
+
 ## 8. Fontes
 
 - OpenAI — GPT Image Generation Models Prompting Guide

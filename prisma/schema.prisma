@@ -704,6 +704,11 @@ model BrandDNA {
   /// no prompt de imagem. A polaridade é MISTA (há pergunta que reprova no
   /// "sim" e pergunta que reprova no "não"): quem lê é gente, não o modelo.
   approvalChecklist String?
+  /// O estilo OBSERVADO nas peças aprovadas (separadores, ícones, tipografia
+  /// por nível, caixa, cores de destaque, diagramação), lido por visão em
+  /// `analise-de-referencias.ts`. Escrito pelo sistema; o planejador lê o texto
+  /// formatado e o manual de marca gerado desenha a partir da estrutura.
+  estiloDasReferencias Json?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   Project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

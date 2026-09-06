@@ -4557,10 +4557,70 @@ novo:
     contraste acrescentado" agora se declara vencedora sobre manual e DNA, em
     todos os modos. O ChatGPT entrega 941x1672 (precisa de upscale); o Studio
     sai em 1080x1920 no post.
-  - ⚠️ O "manual" do Espeto (`brandManualUrl`) diz Roadhawk/Coolvetica/
-    Montserrat; `brand.fonts` diz Bevan/Caveat/Barlow Condensed. Duas verdades
-    para a mesma marca — o planejador segue a prancha (fontes reais), mas quem
-    lê o manual vê outra coisa. Curadoria do cliente, não código.
+  - ~~O "manual" do Espeto (`brandManualUrl`) diz Roadhawk/Coolvetica/
+    Montserrat; `brand.fonts` diz Bevan/Caveat/Barlow Condensed.~~ —
+    **resolvido em 05/09/2026 pelo manual GERADO**, ver a seção seguinte.
+
+### O manual de marca GERADO e o estilo lido das peças aprovadas (05/09/2026)
+
+Pedido do Ciro: "corrige o manual do Espeto com as fontes certas… incluindo
+alguns assets para serem usados como separadores de texto, ícones, para ser
+capaz de fazer artes mais criativas… Analise as artes de referência de todos
+os clientes para personalizar o estilo da marca de cada um." Três peças novas:
+
+- **`BrandDNA.estiloDasReferencias` (Json)** — o estilo OBSERVADO nas peças
+  aprovadas, lido por visão (`gpt-5.2`) em `src/lib/ai/analise-de-referencias.ts`
+  a partir de URLs à mão + `styleRefAt` + "gostei" (até 8). Contrato PURO em
+  `src/lib/brand/estilo-das-referencias.ts`: tipografia por papel, caixa da
+  manchete, cores de destaque, **separadores e ícones de vocabulário FECHADO**
+  (`SEPARADORES`, `ICONES`), ornamentos, diagramação, foto, logo, evitar,
+  resumo. Fica FORA de `BRAND_DNA_FIELDS` (não é editado à mão, é medido) e
+  entra em `BrandContext.estiloDasReferencias` pelo loader único.
+  🔴 **O schema que o modelo recebe é de TEXTO LIVRE (`estiloBrutoSchema`) e o
+  vocabulário é reconciliado no CÓDIGO (`normalizarEstilo`)** — com enum no
+  schema a Lagosta Criativa perdeu a resposta INTEIRA por um item fora da
+  lista. Item que não casa vira ornamento descrito, nunca é jogado fora.
+  Rodado em 05/09: 8 dos 11 clientes gravados (Seu Quinto tem 0 referências
+  vivas — a única "gostei" está no Blob morto; Ciro Trigo e Empório Fonseca
+  não têm referência aprovada). `scripts/analisar-referencias-de-estilo.ts`
+  (`--projeto`/`--todos --exceto 6`, `--urls`, `--confirmar`; dry-run por
+  padrão). ⚠️ `--todos` não recebe URLs: quem foi analisado com URLs à mão
+  entra em `--exceto`, senão a rodada sobrescreve.
+- **O planejador recebe o estilo como "ESTILO OBSERVADO NAS PEÇAS APROVADAS"**
+  (`contextoDaMarca`), declarado vencedor sobre a prosa do DNA quando divergem
+  — o DNA descreve intenção, isto mede. Em `redesenhar` o SYSTEM agora manda
+  USAR os separadores e ícones do manual como a marca os usa (relógio antes do
+  horário, filete entre manchete e apoio, tag atrás do CTA) e proibir só o que
+  NÃO está no manual: na primeira rodada real ele escreveu "no icons" em bloco
+  para uma marca cujas peças aprovadas têm ícone em toda linha de serviço.
+- **`src/lib/ai/manual-de-marca.ts` desenha o manual (1080x1920)** com as
+  fontes REAIS (`registerProjectFonts` + napi-rs canvas, a mesma via do
+  `brand-reference-card.ts`), logo (com caixa na cor escura da marca quando
+  ≥ 8% dos pixels opacos são claros e a logo não é predominantemente escura —
+  a MÉDIA de luminância não denuncia o arco branco do selo do Espeto),
+  paleta, tipografia por papel na caixa medida, separadores a traço (do
+  estilo), **ícones e gráficos OFICIAIS da aba Assets** (uma variante por
+  família, `-vermelho` antes de `-amarelo` antes de `-branco`; sombras e
+  arquivos sem categoria ficam de fora quando há categorizados; PNG aparado
+  com `sharp().trim()` — filete de 2px numa prancha de 1080 virava nada) e o
+  "Como a marca usa" lido das peças. `scripts/gerar-manual-de-marca.ts`
+  (`--projeto`/`--todos`, dry-run em `.tmp-medicao-estilo-chatgpt/manuais/`;
+  `--aplicar` sobe ao Blob e troca `Project.brandManualUrl`, registrando a URL
+  anterior em `manuais/ANTERIORES.txt`).
+  **Aplicado só no Espeto** (era o manual com as fontes erradas; anterior
+  `brand-manual/6-espeto-gaucho.png`). Os outros 10 manuais foram gerados em
+  dry-run para avaliação — o manual do designer continua valendo neles até o
+  Ciro decidir.
+- 🔴 **A cor de destaque do manual nunca é a primeira do estilo às cegas**: a
+  primeira cor lida é quase sempre o BRANCO do texto principal, e a segunda
+  voz da manchete saiu branca sobre fundo claro. Vale a primeira cor VIVA
+  (luminância entre 40 e 200), senão a da paleta.
+- **Medido no Espeto** (`testar-melhoria-com-diretor.ts --modo=redesenhar`
+  sobre peça do compositor, `cmtp69b3o0001swcx9lkppw83`): manchete em Bevan
+  condensada branco + "500G" em vermelho, serviço em Barlow Condensed, CTA em
+  Caveat, preço em amarelo, logo uma vez, sem véu — as fontes certas pela
+  primeira vez numa melhoria do Espeto. Régua OK; `textoAMaisAviso` acusou
+  "CHURRASCARIA" (é o arco da logo, transcrito como texto).
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
