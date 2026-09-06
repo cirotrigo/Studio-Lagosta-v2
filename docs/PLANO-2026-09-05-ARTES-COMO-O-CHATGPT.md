@@ -399,7 +399,11 @@ Teste real depois do conserto: o espeto misto (`cmtpu6k6o0001sws1dyawk60v`,
 redesenhar, pedido "destaque melhor o valor e use os elementos da marca")
 saiu com `regua: banco`, texto OK, preço numa tag amarela, relógio e filete
 vermelho, seta curva — os elementos do manual. A peça de sexta seguiu
-recusada nas duas tentativas.
+recusada nas duas tentativas; sondadas 4 fotos da pasta "Rodizio Sexta" com
+prompt neutro (4/4 passam), a foto foi trocada por `ajustar-arte`
+(CMT05062, passador servindo a mesa) e a melhoria pedida pelo Ciro
+("metade em cima, metade embaixo") saiu em `cmtpuyb8r0001swhgjjjvwurv`:
+manchete no topo, CTA e serviço no rodapé, régua do banco OK.
 
 ## 8. Fontes
 

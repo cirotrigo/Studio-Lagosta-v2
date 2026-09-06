@@ -4580,9 +4580,9 @@ os clientes para personalizar o estilo da marca de cada um." Três peças novas:
   vocabulário é reconciliado no CÓDIGO (`normalizarEstilo`)** — com enum no
   schema a Lagosta Criativa perdeu a resposta INTEIRA por um item fora da
   lista. Item que não casa vira ornamento descrito, nunca é jogado fora.
-  Rodado em 05/09: 8 dos 11 clientes gravados (Seu Quinto tem 0 referências
-  vivas — a única "gostei" está no Blob morto; Ciro Trigo e Empório Fonseca
-  não têm referência aprovada). `scripts/analisar-referencias-de-estilo.ts`
+  Rodado em 05/09: 8 dos 11 clientes gravados; em 06/09 o Ciro marcou
+  referências no Seu Quinto e no Empório Fonseca e os dois entraram (10 de 11
+  — só Ciro Trigo, que não é restaurante, fica sem estilo). `scripts/analisar-referencias-de-estilo.ts`
   (`--projeto`/`--todos --exceto 6`, `--urls`, `--confirmar`; dry-run por
   padrão). ⚠️ `--todos` não recebe URLs: quem foi analisado com URLs à mão
   entra em `--exceto`, senão a rodada sobrescreve.
