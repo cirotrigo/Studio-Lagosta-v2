@@ -4541,6 +4541,26 @@ novo:
   dry-run), `testar-melhoria-com-diretor.ts` e `testar-geracao-com-diretor.ts`
   (caminho REAL, cobram crédito, deixam a arte na galeria — é como o Ciro quer
   avaliar), `validar-melhoria-na-carteira.ts` (uma peça por cliente).
+- **Comparação lado a lado com o ChatGPT em produção (05/09/2026, noite)**, o
+  MESMO pedido e a MESMA arte do Espeto Gaúcho pela agenda e pelo ChatGPT:
+  - `refinar` ("troque a frase X por Y, aumente um pouco o serviço"): os dois
+    acertaram a troca; **os dois perderam o acento de "família"** e a régua
+    aprovou os dois, porque `normalizeForComparison` tira acento de propósito.
+    Daí `acento.ts` (`divergenciasDeAcento` → `acentoAlerta`, AVISO, nunca
+    reprova) e o tier subindo para `medium` quando o refino TROCA texto
+    (`tierSubiuPorTextoNovo`). "Um pouco maior" no Studio fez o endereço quase
+    encostar na logo; o planejador agora traduz adjetivo em número (~10-15%,
+    ~25%, ~40%) e manda manter a folga da marca.
+  - `redesenhar` (arte + manual + prancha nos dois): o ChatGPT centralizou e
+    pôs a marca no topo; o Studio manteve a estrutura e **acrescentou uma faixa
+    marrom no rodapé** porque o manual do Espeto a menciona — a regra "nenhum
+    contraste acrescentado" agora se declara vencedora sobre manual e DNA, em
+    todos os modos. O ChatGPT entrega 941x1672 (precisa de upscale); o Studio
+    sai em 1080x1920 no post.
+  - ⚠️ O "manual" do Espeto (`brandManualUrl`) diz Roadhawk/Coolvetica/
+    Montserrat; `brand.fonts` diz Bevan/Caveat/Barlow Condensed. Duas verdades
+    para a mesma marca — o planejador segue a prancha (fontes reais), mas quem
+    lê o manual vê outra coisa. Curadoria do cliente, não código.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`

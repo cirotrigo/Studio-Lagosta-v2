@@ -41,6 +41,7 @@ import { getBrandReferenceCard } from '@/lib/ai/brand-reference-card'
 import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
 import { planejarMelhoria, type ImagemDoPlano } from '@/lib/ai/diretor-de-arte'
 import { MODO_DA_MELHORIA_PADRAO, type ModoDaMelhoria } from '@/lib/ai/modo-da-melhoria'
+import { avisoDeAcento, divergenciasDeAcento } from '@/lib/ai/acento'
 import {
   loadExpectedTextsDaLinhagem,
   loadExpectedTextsForGeneration,
@@ -251,8 +252,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
-  // maçãs quando o texto divergir.
-  const tier =
+  // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
+  // refino troca texto (ver o bloco do diretor de arte).
+  let tier =
     args.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!args.instrucaoImagem?.trim() })
 
   try {
@@ -636,7 +638,17 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         plannerInfo.copyAntes = textosParaPrompt
         textosParaPrompt = plano.copyFinal
         textosDaRegua = plano.copyFinal
-        console.log(`[improve.bg] refinar: a copy mudou pelo pedido — régua nova com ${plano.copyFinal.length} bloco(s)`)
+        /**
+         * Texto NOVO é lettering novo, e o `low` é onde acento e letra fina
+         * sofrem: no refino do Espeto (05/09/2026) "família" saiu "familia".
+         * Sobe para `medium` só quando o pedido troca texto e ninguém escolheu
+         * o tier à mão — 5 centavos a mais, só nesses casos.
+         */
+        if (!args.quality && tier === 'low') {
+          tier = 'medium'
+          plannerInfo.tierSubiuPorTextoNovo = true
+        }
+        console.log(`[improve.bg] refinar: a copy mudou pelo pedido — régua nova com ${plano.copyFinal.length} bloco(s), tier ${tier}`)
       }
       console.log(
         `[improve.bg] diretor de arte (${plano.modelo}) escreveu o prompt em ${(plano.ms / 1000).toFixed(1)}s: ${plano.prompt.length} chars, ${plano.tentativas} tentativa(s)${plano.leitura ? ` — ${plano.leitura}` : ''}`,
@@ -741,6 +753,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             ...(reguaPorVisao ? { reguaPorVisao: true } : {}),
             ...avisoDeTextoAMais(check.blocosAMais),
             ...avisoDeNumerosNaMelhoria(check.numerosNaoEsperados),
+            // A régua tolera acento de propósito; o aviso não (05/09/2026).
+            ...avisoDeAcento(divergenciasDeAcento(textosDaRegua, check.extracted)),
           }
           break
         }
