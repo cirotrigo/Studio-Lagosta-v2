@@ -71,15 +71,18 @@ export const estiloBrutoSchema = z.object({
     .string()
     .optional()
     .describe('O acabamento das letras da manchete, se houver: "nenhum", "sombra-dura" (deslocada, sem desfoque, em outra cor), "sombra-suave" (desfocada), "contorno". Só o que se VÊ nas peças.'),
-  coresDeDestaque: z.array(z.object({ hex: z.string(), papel: z.string() })).max(8),
-  separadores: z.array(z.string()).max(8).describe(`Só valores desta lista: ${SEPARADORES.join(', ')}.`),
-  icones: z.array(z.string()).max(10).describe(`Só valores desta lista: ${ICONES.join(', ')}.`),
+  // Sem `.max()` nas listas: um item a mais recusava a resposta INTEIRA (a
+  // Real Gelateria caiu assim em 06/09/2026). Os tetos vivem em
+  // `normalizarEstilo`, que corta em vez de recusar.
+  coresDeDestaque: z.array(z.object({ hex: z.string(), papel: z.string() })),
+  separadores: z.array(z.string()).describe(`Só valores desta lista: ${SEPARADORES.join(', ')}.`),
+  icones: z.array(z.string()).describe(`Só valores desta lista: ${ICONES.join(', ')}.`),
   estiloDosIcones: z.string().optional(),
-  ornamentos: z.array(z.string()).max(8),
+  ornamentos: z.array(z.string()),
   diagramacao: z.string(),
   tratamentoDaFoto: z.string(),
   logo: z.string(),
-  evitar: z.array(z.string()).max(10),
+  evitar: z.array(z.string()),
   resumo: z.string(),
 })
 export type EstiloBruto = z.infer<typeof estiloBrutoSchema>
