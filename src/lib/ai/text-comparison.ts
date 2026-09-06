@@ -35,10 +35,17 @@ export function normalizeForComparison(value: string): string {
     // Como espaço, as três formas convergem. Preço e hora seguem protegidos —
     // a vírgula de "R$ 49,90" e os dígitos não são tocados.
     .replace(/[•∙●・·|]/g, ' ')
-    // A visão também espalha espaços em volta da pontuação ("VITÓRIA - ES",
-    // "CANTO , VITÓRIA"). Colar a pontuação nos vizinhos normaliza os DOIS
-    // lados da comparação sem tocar na pontuação em si.
-    .replace(/\s*([.,;:!?\-])\s*/g, '$1')
+    // O TRAÇO também é diagramação (06/09/2026): a copy diz "e coxinha de
+    // frango · a partir das 17h", o modelo desenha "frango - a partir" e a
+    // visão lê o traço — colado à pontuação virava "FRANGO-A" contra
+    // "FRANGO A" e reprovava a peça do Espeto. Como espaço, "meia-noite" e
+    // "meia noite", "VITÓRIA-ES" e "VITÓRIA - ES" convergem dos dois lados.
+    // Preço e hora seguem protegidos: dígito e vírgula não são tocados.
+    .replace(/-/g, ' ')
+    // A visão também espalha espaços em volta da pontuação ("CANTO , VITÓRIA").
+    // Colar a pontuação nos vizinhos normaliza os DOIS lados da comparação
+    // sem tocar na pontuação em si.
+    .replace(/\s*([.,;:!?])\s*/g, '$1')
     // "R$ 9,90" e "R$9,90" são o MESMO preço — o espaço após o símbolo é
     // tipografia, e o modelo usa a forma correta (com espaço) mesmo quando a
     // copy veio sem. Em 10/08/2026 isso reprovou uma arte do Espeto duas
@@ -211,14 +218,17 @@ export function descontarTextosDaOrigem(blocos: BlocosAMais, textosDaOrigem: str
   // Sem a pontuação colada ("WHATSAPP." ≠ "WHATSAPP"): a normalização cola o
   // ponto na palavra vizinha, e a origem pode continuar a frase.
   const palavrasDe = (t: string) => t.split(' ').map((p) => p.replace(/[.,;:!?]+$/, '')).filter((p) => p.length >= 3)
-  const palavrasDaOrigem = new Set(palavrasDe(origem))
+  const palavrasDaOrigem = [...new Set(palavrasDe(origem))]
   const jaEstava = (bloco: string) => {
     const alvo = normalizeForComparison(bloco)
     if (origem.includes(alvo)) return true
     // A visão quebra e junta blocos à vontade ("9 itens" pode voltar colado
-    // ao título): vale se TODAS as palavras do bloco estão na origem.
+    // ao título): vale se TODAS as palavras do bloco estão na origem — e a
+    // grafia é lida com tolerância de UMA edição, porque a MESMA placa da
+    // fachada volta como "CHURRASCARIA & CIA" numa leitura e "CHURRASCO &
+    // CIA" na outra (Espeto, 06/09/2026), e o alarme tocava em toda rodada.
     const palavras = palavrasDe(alvo)
-    return palavras.length > 0 && palavras.every((p) => palavrasDaOrigem.has(p))
+    return palavras.length > 0 && palavras.every((p) => palavrasDaOrigem.some((o) => mesmaPalavraComTolerancia(p, o)))
   }
   return {
     comDado: blocos.comDado.filter((b) => !jaEstava(b)),
@@ -228,6 +238,83 @@ export function descontarTextosDaOrigem(blocos: BlocosAMais, textosDaOrigem: str
 
 /** Palavras genéricas de casa que aparecem coladas à marca na assinatura. */
 const GENERICOS_DE_CASA = ['BAR', 'RESTAURANTE', 'BISTRO', 'GELATERIA', 'STEAKHOUSE', 'BOTEQUIM', 'PIZZARIA', 'CAFE', 'GRILL']
+
+/**
+ * Distância de edição COM transposição de vizinhas (Damerau/OSA): "PICAHNA"
+ * e "PICANHA" distam 1, não 2. É o erro de leitura mais comum da visão — e
+ * o de digitação também.
+ */
+export function distanciaComTransposicao(a: string, b: string): number {
+  const d: number[][] = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0))
+  for (let i = 0; i <= a.length; i++) d[i][0] = i
+  for (let j = 0; j <= b.length; j++) d[0][j] = j
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + custo)
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1)
+      }
+    }
+  }
+  return d[a.length][b.length]
+}
+
+/** Só PALAVRA (sem dígito) e com corpo para absorver uma edição. Preço e hora nunca. */
+const TOLERA_GRAFIA = (p: string) => /^[A-Z]{5,}$/.test(p)
+
+/**
+ * Duas palavras normalizadas são "a mesma" para a régua: iguais, ou a UMA
+ * edição (com transposição) quando ambas são palavras de 5+ letras.
+ */
+export function mesmaPalavraComTolerancia(a: string, b: string): boolean {
+  if (a === b) return true
+  if (!TOLERA_GRAFIA(a) || !TOLERA_GRAFIA(b)) return false
+  if (Math.abs(a.length - b.length) > 1) return false
+  return distanciaComTransposicao(a, b) <= 1
+}
+
+export interface CasamentoComTolerancia {
+  casou: boolean
+  /** Pares (esperado, lido) que só casaram pela tolerância — viram AVISO. */
+  divergencias: Array<{ esperado: string; lido: string }>
+}
+
+/**
+ * Procura o bloco esperado na transcrição admitindo UM erro de grafia por
+ * palavra (06/09/2026). O caso que motivou: a régua por visão da origem leu
+ * "PICAHNA" numa peça do Espeto; a arte nova desenhou "PICANHA" (o modelo
+ * corrige a grafia ao desenhar E ao ler) e a conferência reprovou duas vezes
+ * uma peça correta. Erro de OCR de um lado ou do outro não é texto errado —
+ * é aviso, nunca reprovação. Número, preço e hora continuam exatos.
+ */
+export function casarComTolerancia(esperadoNormalizado: string, transcricaoNormalizada: string): CasamentoComTolerancia {
+  if (transcricaoNormalizada.includes(esperadoNormalizado)) return { casou: true, divergencias: [] }
+  // A normalização cola a pontuação na palavra ("PICAHNA,PICAHNA"); para
+  // comparar grafia a palavra tem de estar solta — a pontuação vira fronteira
+  // dos dois lados. Dígito continua token exato ("104" e "90" do preço).
+  const soltar = (t: string) => t.split(/[ ,;:!?.]+/).filter(Boolean)
+  const alvo = soltar(esperadoNormalizado)
+  const lido = soltar(transcricaoNormalizada)
+  if (alvo.length === 0 || lido.length < alvo.length) return { casou: false, divergencias: [] }
+  for (let inicio = 0; inicio + alvo.length <= lido.length; inicio++) {
+    const divergencias: Array<{ esperado: string; lido: string }> = []
+    let ok = true
+    for (let k = 0; k < alvo.length; k++) {
+      const a = alvo[k]
+      const b = lido[inicio + k]
+      if (a === b) continue
+      if (mesmaPalavraComTolerancia(a, b)) {
+        divergencias.push({ esperado: a, lido: b })
+        continue
+      }
+      ok = false
+      break
+    }
+    if (ok) return { casou: true, divergencias }
+  }
+  return { casou: false, divergencias: [] }
+}
 
 function distanciaDeEdicao(a: string, b: string): number {
   const prev = Array.from({ length: b.length + 1 }, (_, i) => i)
@@ -296,11 +383,33 @@ export function semTextosDaMarca(
     if (alvo.length === 0) continue
     const contidoNaLogo = logo.some((t) => t.includes(alvo))
     const palavras = alvo.split(' ').filter((p) => p.length >= 2)
-    const soMarca = palavras.length > 0 && palavras.every((p) => palavrasDaMarca.has(p))
+    // A ligadura e o arco do selo também são mal lidos em palavra LONGA:
+    // "ESPACO GAUCHO" pela visão é "ESPETO GAÚCHO" (06/09/2026, reprovou a
+    // maminha do Espeto). Palavra de 5+ letras a até DUAS edições de uma
+    // palavra da marca/logo é a marca — nunca dos genéricos de casa.
+    const palavrasLongasDaMarca = [...marca.split(' '), ...logo.flatMap((t) => t.split(' '))].filter((p) => /^[A-Z]{5,}$/.test(p))
+    const ehDaMarca = (p: string) =>
+      palavrasDaMarca.has(p) ||
+      (/^[A-Z]{5,}$/.test(p) && palavrasLongasDaMarca.some((m) => Math.abs(m.length - p.length) <= 1 && distanciaComTransposicao(p, m) <= 2))
+    const soMarca = palavras.length > 0 && palavras.every(ehDaMarca)
     const ligadura =
       /^[A-Z]{2,6}$/.test(alvo) && palavrasCurtasDaMarca.some((p) => distanciaDeEdicao(alvo, p) <= 1)
     if (contidoNaLogo || soMarca || ligadura) descontados.push(bruto)
     else regua.push(bruto)
   }
   return { regua, descontados }
+}
+
+/**
+ * O aviso de grafia para `fieldValues`, irmão de `avisoDeAcento`: a peça é
+ * entregue, com o alerta ao lado. Vazio quando não há divergência.
+ */
+export function avisoDeGrafia(divergencias: Array<{ esperado: string; lido: string }>): Record<string, unknown> {
+  if (divergencias.length === 0) return {}
+  const pares = divergencias.slice(0, 4).map((d) => `"${d.esperado}" → "${d.lido}"`).join(', ')
+  return {
+    entregueComAlerta: true,
+    grafiaDivergente: divergencias,
+    grafiaAlerta: `A arte trouxe uma grafia diferente da esperada em ${divergencias.length} palavra(s): ${pares}. Pode ser erro de leitura da origem ou do resultado — confira a peça.`,
+  }
 }

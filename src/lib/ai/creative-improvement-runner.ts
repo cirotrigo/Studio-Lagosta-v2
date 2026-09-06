@@ -42,6 +42,7 @@ import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
 import { planejarMelhoria, type ImagemDoPlano } from '@/lib/ai/diretor-de-arte'
 import { MODO_DA_MELHORIA_PADRAO, type ModoDaMelhoria } from '@/lib/ai/modo-da-melhoria'
 import { avisoDeAcento, divergenciasDeAcento } from '@/lib/ai/acento'
+import { avisoDeGrafia } from '@/lib/ai/text-comparison'
 import {
   loadExpectedTextsDaLinhagem,
   loadExpectedTextsForGeneration,
@@ -248,6 +249,14 @@ async function reapontarItemDaBancada(input: {
   }
 }
 
+const mensagemDe = (erro: unknown) => (erro instanceof Error ? erro.message : String(erro))
+
+/** A recusa do filtro de segurança da OpenAI (HTTP 400 com `safety_violations`). */
+export function ehBloqueioDeSeguranca(erro: unknown): boolean {
+  const m = mensagemDe(erro)
+  return /safety[_ ]violations|rejected by the safety system|moderation_blocked/i.test(m)
+}
+
 export async function processImprovementInBackground(args: ImprovementJobArgs): Promise<void> {
   const startedAt = Date.now()
   let format = args.format
@@ -257,6 +266,14 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
   // Resultado da verificação de texto — declarado fora do try para o caminho
   // de FAILED também gravar o que foi conferido (auditoria).
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
+  /**
+   * O que a run já decidiu (modo, régua, textos, planejador, prompt) — fora
+   * do try para o ramo de FAILED gravar as MESMAS chaves do ramo feliz. Em
+   * 06/09/2026 as quatro falhas da rodada do Espeto ficaram sem modo, sem
+   * prompt e sem régua no registro, e o diagnóstico teve de ser refeito à
+   * mão a partir da transcrição.
+   */
+  const registroDaRun: Record<string, unknown> = {}
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
   // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
@@ -554,6 +571,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         : textosDaRegua.length > 0
           ? 'banco'
           : 'nenhuma'
+    Object.assign(registroDaRun, {
+      modo,
+      regua: origemDaRegua,
+      ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
+      ...(textosDaMarcaDescontados.length > 0 ? { textosDaMarcaDescontados } : {}),
+    })
 
     /**
      * A caixa da arte de ORIGEM manda no prompt (Bacana, 02/09/2026): a copy
@@ -663,6 +686,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     } else {
       console.warn('[improve.bg] diretor de arte indisponível — usando o prompt montado por código')
     }
+    Object.assign(registroDaRun, plannerInfo, promptPronto ? { prompt: promptPronto } : {}, {
+      ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
+    })
 
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
@@ -685,23 +711,52 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       }
 
       const genStartedAt = Date.now()
-      const candidate = await improveCreative({
-        imageBuffer: primaryBuffer,
-        mimeType: primaryMime,
-        userRequest: args.userRequest,
-        size: openaiSize,
-        references: references.length > 0 ? references : undefined,
-        brandColors: assets.colors,
-        artDirection: assets.artDirection,
-        brand: assets.brand,
-        expectedTexts: textosParaPrompt,
-        instrucaoImagem: args.instrucaoImagem ?? null,
-        arteSemTexto: arteSemTexto || raizSemTexto,
-        logoCompor: !!logoParaCompor,
-        promptPronto,
-        quality: tier,
-        timeoutMs: Math.max(30_000, remainingMs),
-      })
+      const gerar = () =>
+        improveCreative({
+          imageBuffer: primaryBuffer,
+          mimeType: primaryMime,
+          userRequest: args.userRequest,
+          size: openaiSize,
+          references: references.length > 0 ? references : undefined,
+          brandColors: assets.colors,
+          artDirection: assets.artDirection,
+          brand: assets.brand,
+          expectedTexts: textosParaPrompt,
+          instrucaoImagem: args.instrucaoImagem ?? null,
+          arteSemTexto: arteSemTexto || raizSemTexto,
+          logoCompor: !!logoParaCompor,
+          promptPronto,
+          quality: tier,
+          timeoutMs: Math.max(30_000, remainingMs),
+        })
+      let candidate: Buffer
+      try {
+        candidate = await gerar()
+      } catch (erro) {
+        /**
+         * 🔴 O filtro de segurança da OpenAI olha a FOTO: em 06/09/2026
+         * recusou (`safety_violations=[sexual]`) a foto de um salão de
+         * restaurante cheio, com famílias e crianças, num pedido de
+         * "distribua melhor os textos" — e sondada com prompt neutro a MESMA
+         * foto foi recusada 4 de 4 vezes: para ela não há prompt que passe.
+         * A recusa não gera imagem (não custa a chamada), então vale UMA
+         * retentativa (em outra foto pode ser ruído); na segunda recusa a
+         * mensagem diz o que foi e o que fazer — quem está na tela lia um
+         * request ID e "sexual" sem contexto.
+         */
+        if (!ehBloqueioDeSeguranca(erro)) throw erro
+        console.warn('[improve.bg] filtro de segurança da OpenAI recusou a geração — tentando de novo uma vez:', mensagemDe(erro))
+        registroDaRun.filtroDeSeguranca = { retentado: true, primeiraRecusa: mensagemDe(erro).slice(0, 300) }
+        try {
+          candidate = await gerar()
+        } catch (erro2) {
+          if (!ehBloqueioDeSeguranca(erro2)) throw erro2
+          throw new Error(
+            'A OpenAI recusou esta imagem pelo filtro de segurança nas duas tentativas. O filtro olha a FOTO (não o texto nem o pedido) e erra em cena de salão cheio; tente mais tarde ou com outra foto. ' +
+              `Detalhe: ${mensagemDe(erro2).slice(0, 200)}`,
+          )
+        }
+      }
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
 
@@ -762,6 +817,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             ...avisoDeNumerosNaMelhoria(check.numerosNaoEsperados),
             // A régua tolera acento de propósito; o aviso não (05/09/2026).
             ...avisoDeAcento(divergenciasDeAcento(textosDaRegua, check.extracted)),
+            // Idem para UMA edição de grafia por palavra (06/09/2026).
+            ...avisoDeGrafia(check.grafiaDivergente),
           }
           break
         }
@@ -1075,6 +1132,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
             format,
             error: message,
             failedAt: new Date().toISOString(),
+            ...registroDaRun,
             ...textCheckInfo,
           },
           completedAt: new Date(),

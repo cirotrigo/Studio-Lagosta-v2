@@ -4685,6 +4685,52 @@ Regras que valem para código novo:
   com a mesma legenda vêm do conector e do compositor, que gravam a caption
   do story — reaproveitá-la é trabalho do chat, não deste formulário.
 
+### A rodada de revisão do Espeto: a régua lia a origem por visão e reprovava peça certa (06/09/2026)
+
+O Ciro revisou a semana 07–13/09 do Espeto pedindo ajustes com IA: 24
+melhorias, 20 concluídas, **4 FAILED** — e as quatro eram defeito do sistema,
+não da peça. Os pedidos reais da rodada ("use mais elementos da marca",
+"destaque o valor", "deixe mais divertida", "tire da frente do rosto do
+garçom") são o formato que vale medir.
+
+- 🔴 **A peça do COMPOSITOR não tinha régua de banco.** `extractExpectedTexts`
+  lia `slotValues`/`texts`/`textos`/`textosLivres`, e o compositor grava a
+  copy em `layersSnapshot` — TODA melhoria da semana caía na régua por VISÃO,
+  que transcreveu a origem como "PICAHNA,PICAHNA SUINA,LINGUICA" e "ESPACO
+  GAUCHO" (o arco do selo). A arte nova saiu certa ("picanha", e a logo
+  redesenhada) e a conferência reprovou três vezes (duas na mesma peça, o
+  Ciro tentou de novo). Hoje `layersSnapshot` é a última forma lida
+  (`textosDaPagina`, uma linha por bloco) — régua exata, `regua: 'banco'`,
+  sem OCR. Replay offline das três falhas contra a transcrição gravada:
+  **3 de 3 passam**.
+- **A régua por visão tolera UM erro de grafia por palavra** (`casarComTolerancia`,
+  Damerau/OSA ≤ 1, só palavra de 5+ letras — número, preço e hora exatos) e
+  AVISA (`grafiaAlerta`), nunca reprova: o modelo corrige a grafia ao desenhar
+  E ao ler, então "PICAHNA"→"PICANHA" é ruído de OCR de um dos lados. O traço
+  (`-`) virou espaço na normalização, como `·` e `|`: "frango - a partir"
+  colava em "FRANGO-A" e reprovava contra "FRANGO A".
+- **Palavra longa a duas edições da marca é a marca** (`semTextosDaMarca`):
+  "ESPACO" ~ "ESPETO". E o desconto do texto a mais compara palavra a palavra
+  com a mesma tolerância — a placa da fachada voltava como "CHURRASCARIA & CIA"
+  numa leitura e "CHURRASCO & CIA" na outra, e o alerta tocava em toda rodada.
+- 🔴 **O filtro de segurança da OpenAI olha a FOTO, e para esta foto é
+  DETERMINÍSTICO**: `safety_violations=[sexual]` num salão cheio com famílias
+  e crianças (Sex 11/09, `cmtmfvn5v0081sw712x35e42v`), pedido "distribua
+  melhor os textos". Sondado com `runImageEdit` cru: **4 de 4 recusas**, duas
+  delas com prompt neutro ("reproduce this image exactly as it is") — não é o
+  prompt, não é o planejador, não é sorteio. A recusa não custa a chamada; o
+  runner retenta UMA vez (`filtroDeSeguranca.retentado`, ~20s) porque em outra
+  foto pode ser ruído, e na segunda recusa a mensagem diz "tente com outra
+  foto" em vez de um request ID. Para essa peça a melhoria por IA não existe:
+  é editor ou outra foto.
+- 🔴 **O ramo FAILED gravava só `error` e `textCheck`** — sem modo, régua,
+  textos, planejador nem prompt; o diagnóstico teve de ser refeito à mão a
+  partir da transcrição. `registroDaRun` vive fora do try e é preenchido
+  conforme a run decide; o catch espalha as mesmas chaves do ramo feliz.
+- **"Vem pro fogo" entrou no DNA do Espeto** como proibição (`virarRegra`,
+  contentRules), pelo feedback do Ciro na peça de quarta: "Não use mais esse
+  termo… Vou aprovar dessa vez mas não uso mais."
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
