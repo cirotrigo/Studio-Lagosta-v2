@@ -368,7 +368,12 @@ Teste real: `redesenhar` de uma peça do compositor do Espeto
 branco + "500G" vermelho, serviço em Barlow Condensed, CTA em Caveat, preço em
 amarelo, logo uma vez, sem véu. O planejador ainda escreveu "no icons" em
 bloco — corrigido no SYSTEM (usar os do manual, proibir só o que não está
-nele); segunda rodada em `cmtmfyd6m008xsw71lkjcznvv`.
+nele). Segunda rodada (`cmtp6cqwq0001swqseu1ro63e`, sobre
+`cmtmfyd6m008xsw71lkjcznvv`, 46s de planejador em 3 tentativas): relógio e
+pin oficiais em vermelho antes das duas linhas de serviço, filete vermelho
+separando o CTA, "FARTA" em vermelho na manchete Bevan, apoio em Caveat
+amarelo, CTA em Caveat vermelho, acento de "FAMÍLIA" preservado, foto e logo
+intocadas. Régua OK, sem texto a mais.
 
 Em aberto: manuais dos outros clientes (decisão do Ciro); Seu Quinto precisa
 de referências marcadas (`marcar-referencia-de-estilo`) para ter estilo lido;
