@@ -381,7 +381,7 @@ export async function sugerirPosts(params: {
  * possível aqui seria jogar fora histórico legítimo por causa de um metadado
  * ausente.
  */
-async function campanhasEncerradas(
+export async function campanhasEncerradas(
   projectId: number,
   ids: Array<string | null>,
   referencia: Date,

@@ -63,10 +63,9 @@ export function AgendaCalendarView() {
         return
       }
 
-      const data = quando ? new Date(quando) : undefined
-      if (data) data.setHours(10, 0, 0, 0)
-
-      router.push(novoPostHref(alvo, data))
+      // Só o DIA vai na URL: a hora é escolhida no formulário entre os
+      // horários típicos do cliente (antes era 10:00 cravado aqui).
+      router.push(novoPostHref(alvo, quando, { soDia: Boolean(quando) }))
     },
     [router, selectedProjectId, projectList],
   )

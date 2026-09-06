@@ -38,9 +38,9 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
 
   const criarPost = useCallback(
     (quando?: Date) => {
-      const data = quando ? new Date(quando) : undefined
-      if (data) data.setHours(10, 0, 0, 0)
-      router.push(novoPostHref(projectId, data))
+      // Só o DIA vai na URL: a hora é escolhida no formulário entre os
+      // horários típicos do cliente (antes era 10:00 cravado aqui).
+      router.push(novoPostHref(projectId, quando, { soDia: Boolean(quando) }))
     },
     [router, projectId],
   )

@@ -7,6 +7,7 @@ import { PostScheduler } from '@/lib/posts/scheduler'
 import { convertPageToDesignData, findUnmatchedSlotKeys } from '@/lib/posts/page-to-design-data'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
+import { fecharPropostaDeRepost } from '@/lib/aprendizado/sinal-de-repost'
 
 // Dynamic validation schema based on post type
 const createPostValidationSchema = (postType?: PostType) => {
@@ -220,6 +221,23 @@ export async function POST(
     console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
     console.log('[API Route] AFTER scheduler.createPost()')
     console.log('[API Route] Result:', JSON.stringify(result))
+
+    /*
+      Repostar (F4): se a faixa "Repostar" propôs artes para este slot, o
+      desfecho é calculado aqui — a mídia do post contra os candidatos —,
+      nunca declarado pela tela. Fire-and-forget: aprendizado não segura a
+      resposta nem derruba o agendamento.
+    */
+    if (data.postType === 'STORY' && data.scheduleType === 'SCHEDULED' && data.scheduledDatetime && result?.postId) {
+      void fecharPropostaDeRepost({
+        projectId,
+        quando: new Date(data.scheduledDatetime),
+        postId: result.postId,
+        mediaUrl: mediaUrls[0],
+        generationId,
+        decididoPor: user.id,
+      })
+    }
     console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
 
     return NextResponse.json(slotWarnings.length > 0 ? { ...result, warnings: slotWarnings } : result)

@@ -4622,6 +4622,69 @@ os clientes para personalizar o estilo da marca de cada um." Três peças novas:
   primeira vez numa melhoria do Espeto. Régua OK; `textoAMaisAviso` acusou
   "CHURRASCARIA" (é o arco da logo, transcrito como texto).
 
+### Novo Post: data primeiro, agendamento rápido e Repostar (05-06/09/2026)
+
+Plano e medições em `docs/PLANO-2026-09-05-REPOSTAR-NA-ABA-CRIATIVOS.md`.
+Regras que valem para código novo:
+
+- 🔴 **`cleanupGenerations` reaponta os POSTS antes de apagar o blob**
+  (`reapontarMidiasDosPosts`, `src/lib/cleanup/reapontar-midias.ts`, nas três
+  passagens: Pass A, Pass B-recovery e o `cleanupGenerationBlobs` diário). Até
+  05/09 só `Generation.resultUrl` era reapontado para o Drive e
+  `SocialPost.mediaUrls` ficava com a URL recém-apagada: **40% das artes de
+  posts com mais de 90 dias respondiam 404** — a arte existia, o endereço do
+  post é que tinha morrido. Vale para QUALQUER status: com repost, um post
+  SCHEDULED pode apontar para arte de 85 dias, e o cron de domingo entregaria
+  URL morta ao Zernio. `scripts/reapontar-midias-mortas.ts` (dry-run por
+  padrão) reparou o histórico em 06/09/2026: **1.311 posts** reapontados pela
+  Generation; **459** sem Generation não têm conserto (criativo apagado à mão
+  pela galeria apaga blob E linha).
+- **A mídia de um post antigo se resolve pela Generation, nunca pela
+  `mediaUrls`** — é a URL que o cleanup mantém viva. O card de repost ainda se
+  esconde no `onError` da imagem.
+- **A fonte do repost é o `SocialPost` POSTED, nunca a galeria**: só 36% dos
+  posts publicados têm Generation alcançável pela aba (76% nos últimos 90
+  dias). A chave de "mesma arte" é a **URL da imagem** sem query
+  (`chaveDaImagem`): 1.374 posts têm `generationId` cuja mídia publicada é
+  OUTRA (a melhoria cria arte nova) — contar por Generation zeraria o contador
+  de quem mais reposta.
+- **Semáforo, não portão; ordena, nunca esconde; só STORY.** Medido nos 2.605
+  reposts reais: 47% têm menos de 14 dias (verde ≥14 · âmbar 7-13 · vermelho
+  <7, tudo visível); 51% caem fora de dia+faixa (o ranking de
+  `src/lib/posts/repostar.ts` ordena, `jaAgendadas` é o único filtro); 2.595
+  são story (feed repostado fica duplicado no perfil). Aviso de prazo é
+  ESTREITO (data, mês, urgência, data comemorativa — 5% das legendas);
+  🔴 `pareceDado` dispara em 97% e não serve aqui.
+- **`horariosTipicosDoProjeto` é a leitura da cadência SEM emissão** (a mesma
+  conta de `sugerirPosts`: cadência v2 + grade da base). 🔴 **Nunca chame
+  `sugerirPosts` do formulário** — ela registra um `LearningSignal` por slot.
+- **O "+" da agenda manda só o DIA** (`novoPostHref(id, dia, { soDia: true })`
+  → `?dia=AAAA-MM-DD`); a hora vem dos horários típicos daquele dia da semana
+  (`horarioPadrao`, `src/lib/posts/quando.ts`, puro). Antes cravava 10:00 nos
+  dois chamadores, e o picker inventava "amanhã 12:00".
+- **O formulário é QUANDO → MÍDIA → LEGENDA (só feed) → "Mais opções"**, com
+  STORY e SCHEDULED como padrão (92% e 73% dos 2.684 posts de 90 dias).
+  Recorrente (0), lembrete (1%), 1º comentário (0 de 216) moram em "Mais
+  opções" com a mesma regra de negócio. 🔴 **Story não tem campo de legenda**:
+  o envio grava `caption: ''` para story desde sempre, e o campo antigo
+  descartava o que a pessoa digitava. Mídia que já chega escolhida (galeria,
+  editor) abre com as fontes recolhidas e "Trocar mídia".
+- **"Agendar e próximo"** (`proximoHorario`): agenda e reabre no horário típico
+  seguinte do mesmo dia, sem sair da tela. Os dois botões são `type="submit"`
+  do mesmo form; o secundário arma um ref no `onClick`.
+- **`LearningSignal tipo: 'repost'`** — UMA proposta por `(projeto, 'repost',
+  diaBRT, HH, safra)` (`chaveDoRepost`); o formulário reconsulta a cada toque
+  e a chave é o que impede o denominador de virar ficção. O desfecho é
+  CALCULADO na rota `POST /posts` (`fecharPropostaDeRepost`): mídia ou
+  Generation entre os candidatos → `aceita-como-veio`; faixa existia e usou
+  outra → `trocada`; sem proposta para o slot → nada.
+- **`sugerir-repost` no conector** (catálogo `agenda.ts`, fixture em
+  `validar-registro-mcp.ts`): mesma função de serviço, `superficie: 'chat'`.
+- ⚠️ **"Usar a legenda anterior" ficou de fora, de propósito**: a faixa só
+  existe em story e o formulário não tem legenda de story. Os 53% de reposts
+  com a mesma legenda vêm do conector e do compositor, que gravam a caption
+  do story — reaproveitá-la é trabalho do chat, não deste formulário.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

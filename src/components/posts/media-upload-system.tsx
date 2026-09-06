@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ImageIcon, FolderIcon, UploadIcon, X, Loader2, Sparkles } from 'lucide-react'
 import { GenerationsSelector } from './generations-selector'
+import { RepostarFaixa } from './repostar-faixa'
+import type { ItemDeRepost } from '@/lib/posts/repostar-service'
 import { AIImagesSelector } from './ai-images-selector'
 import { LocalFileUploader } from './local-file-uploader'
 import { SortableMediaItem } from './sortable-media-item'
@@ -85,6 +87,16 @@ interface MediaUploadSystemProps {
   onSelectionChange: (media: MediaItem[] | ((prev: MediaItem[]) => MediaItem[])) => void
   maxSelection: number
   postType?: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL'
+  /** O slot escolhido no bloco Quando — é o que liga a faixa "Repostar" (só STORY). */
+  quando?: Date
+  /** Editando um post: ele mesmo não é candidato a repost. */
+  postIdEmEdicao?: string
+  /**
+   * A mídia já veio escolhida (galeria, editor): as fontes ficam recolhidas e
+   * só o que foi escolhido aparece, com "Trocar mídia".
+   */
+  fontesRecolhidas?: boolean
+  onExpandirFontes?: () => void
 }
 
 interface Generation {
@@ -146,7 +158,11 @@ export function MediaUploadSystem({
   selectedMedia,
   onSelectionChange,
   maxSelection,
-  postType = 'POST'
+  postType = 'POST',
+  quando,
+  postIdEmEdicao,
+  fontesRecolhidas = false,
+  onExpandirFontes,
 }: MediaUploadSystemProps) {
   const [activeTab, setActiveTab] = useState('generations')
 
@@ -302,6 +318,32 @@ export function MediaUploadSystem({
       return [...prev.filter(m => m.type !== 'generation'), ...newMedia]
     })
   }, [onSelectionChange])
+
+  /**
+   * Repostar: a arte escolhida na faixa entra como 'generation' quando tem
+   * Generation (preserva a linhagem e o "Melhorar com IA") e como 'upload'
+   * com a URL quando não tem — que é como o formulário já trata mídia sem
+   * origem conhecida. Story tem uma mídia só, então a escolha SUBSTITUI.
+   */
+  const handleRepost = useCallback((item: ItemDeRepost) => {
+    const novo: MediaItem = item.generationId
+      ? {
+          id: item.generationId,
+          type: 'generation',
+          url: item.url,
+          thumbnailUrl: item.url,
+          name: item.templateName ?? 'Arte já publicada',
+        }
+      : {
+          id: `repost-${item.ultimoPostId}`,
+          type: 'upload',
+          url: item.url,
+          thumbnailUrl: item.url,
+          name: item.templateName ?? 'Arte já publicada',
+          preexistente: true,
+        }
+    onSelectionChange((prev) => (maxSelection === 1 ? [novo] : [...prev.filter((m) => m.id !== novo.id), novo]))
+  }, [maxSelection, onSelectionChange])
 
   // Handler para seleção de AI Images.
   // Removal is applied immediately and atomically (by id); only the newly added
@@ -571,20 +613,34 @@ export function MediaUploadSystem({
       {/* Header com contador */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="font-semibold">Selecionar Mídia</h3>
+          <h3 className="font-semibold">{fontesRecolhidas ? 'Mídia escolhida' : 'Selecionar Mídia'}</h3>
           <p className="text-sm text-muted-foreground">
-            {maxSelection === 1
-              ? 'Selecione 1 arquivo'
-              : `Selecione até ${maxSelection} arquivos`}
+            {fontesRecolhidas
+              ? 'A arte já veio escolhida. Se quiser outra, é só trocar.'
+              : maxSelection === 1
+                ? 'Selecione 1 arquivo'
+                : `Selecione até ${maxSelection} arquivos`}
           </p>
         </div>
 
-        <Badge variant="secondary" className="text-base px-3 py-1 font-mono">
-          {selectedMedia.length}/{maxSelection}
-        </Badge>
+        {fontesRecolhidas ? (
+          <Button type="button" variant="outline" size="sm" onClick={onExpandirFontes}>
+            Trocar mídia
+          </Button>
+        ) : (
+          <Badge variant="secondary" className="text-base px-3 py-1 font-mono">
+            {selectedMedia.length}/{maxSelection}
+          </Badge>
+        )}
       </div>
 
+      {/* Repostar: só story, só com data — e só com as fontes abertas */}
+      {!fontesRecolhidas && postType === 'STORY' && quando && (
+        <RepostarFaixa projectId={projectId} quando={quando} postIdEmEdicao={postIdEmEdicao} onEscolher={handleRepost} />
+      )}
+
       {/* Tabs de Fonte */}
+      {!fontesRecolhidas && (
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full">
           <TabsTrigger value="generations" className="gap-2">
@@ -652,6 +708,7 @@ export function MediaUploadSystem({
           />
         </TabsContent>
       </Tabs>
+      )}
 
       {/* Preview dos Selecionados com Drag & Drop */}
       {selectedMedia.length > 0 && (

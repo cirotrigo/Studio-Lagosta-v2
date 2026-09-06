@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { del } from '@vercel/blob'
 import { PostStatus } from '../../../prisma/generated/client'
 import { googleDriveService } from '@/server/google-drive-service'
+import { reapontarMidiasDosPosts } from './reapontar-midias'
 
 interface CleanupStats {
   postsProcessed: number
@@ -11,6 +12,8 @@ interface CleanupStats {
 
 export interface GenerationCleanupStats {
   generationsRepointed: number
+  /** Posts cujas mídias passaram a apontar para o Drive junto com a Generation. */
+  postsReapontados: number
   generationsRecovered: number
   generationsDeleted: number
   blobsDeleted: number
@@ -185,6 +188,7 @@ export async function cleanupExpiredBlobs(): Promise<CleanupStats> {
 export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
   const stats: GenerationCleanupStats = {
     generationsRepointed: 0,
+    postsReapontados: 0,
     generationsRecovered: 0,
     generationsDeleted: 0,
     blobsDeleted: 0,
@@ -226,6 +230,17 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
     GENERATION_CLEANUP_CONCURRENCY,
     async (gen) => {
       try {
+        /*
+          🔴 Os POSTS primeiro, o blob depois. Até 05/09/2026 só a Generation era
+          reapontada e `SocialPost.mediaUrls` ficava com a URL apagada — 40% das
+          artes de posts com mais de 90 dias respondiam 404 (capa quebrada na
+          agenda; com repost, URL morta entregue ao Zernio). Se o `del` falhar
+          depois disto, o post já aponta para o Drive, que é válido.
+        */
+        if (gen.resultUrl && gen.googleDriveBackupUrl) {
+          const r = await reapontarMidiasDosPosts(gen.resultUrl, gen.googleDriveBackupUrl)
+          stats.postsReapontados += r.posts
+        }
         const pathname = gen.fileName ?? extractBlobPathname(gen.resultUrl)
         if (pathname) {
           try {
@@ -298,6 +313,11 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
                 gen.Project.googleDriveFolderId,
                 gen.Project.name,
               )
+              // Mesma regra do Pass A: os posts antes do blob.
+              if (gen.resultUrl) {
+                const r = await reapontarMidiasDosPosts(gen.resultUrl, backup.publicUrl)
+                stats.postsReapontados += r.posts
+              }
               const pathname = gen.fileName ?? extractBlobPathname(gen.resultUrl)
               if (pathname) {
                 try {
@@ -376,6 +396,10 @@ export async function cleanupGenerationBlobs(): Promise<{
 
   for (const gen of candidates) {
     try {
+      // Os posts antes do blob — ver o Pass A de `cleanupGenerations`.
+      if (gen.resultUrl && gen.googleDriveBackupUrl) {
+        await reapontarMidiasDosPosts(gen.resultUrl, gen.googleDriveBackupUrl)
+      }
       const pathname = gen.fileName ?? extractBlobPathname(gen.resultUrl)
       if (pathname) {
         try {
