@@ -734,13 +734,15 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         candidate = await gerar()
       } catch (erro) {
         /**
-         * 🔴 O filtro de segurança da OpenAI é estocástico e olha a FOTO:
-         * em 06/09/2026 recusou (`safety_violations=[sexual]`) a foto de um
-         * salão de restaurante cheio, com famílias e crianças, num pedido de
-         * "distribua melhor os textos". A recusa não gera imagem (não custa a
-         * chamada) e a segunda tentativa com o MESMO prompt costuma passar.
-         * Uma retentativa imediata; se recusar de novo, a mensagem diz o que
-         * foi — quem está na tela lia um request ID e "sexual" sem contexto.
+         * 🔴 O filtro de segurança da OpenAI olha a FOTO: em 06/09/2026
+         * recusou (`safety_violations=[sexual]`) a foto de um salão de
+         * restaurante cheio, com famílias e crianças, num pedido de
+         * "distribua melhor os textos" — e sondada com prompt neutro a MESMA
+         * foto foi recusada 4 de 4 vezes: para ela não há prompt que passe.
+         * A recusa não gera imagem (não custa a chamada), então vale UMA
+         * retentativa (em outra foto pode ser ruído); na segunda recusa a
+         * mensagem diz o que foi e o que fazer — quem está na tela lia um
+         * request ID e "sexual" sem contexto.
          */
         if (!ehBloqueioDeSeguranca(erro)) throw erro
         console.warn('[improve.bg] filtro de segurança da OpenAI recusou a geração — tentando de novo uma vez:', mensagemDe(erro))

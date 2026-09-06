@@ -389,11 +389,17 @@ rediagramar, 4 refinar, 2 sem modo registrado); 20 concluídas com régua OK;
 |---|---|---|---|
 | Qua 09/09 15:00 (espeto misto), 2× | régua "PICAHNA,PICAHNA SUINA,LINGUICA" e "E COXINHA DE FRANGO A PARTIR DAS 17H" | régua por VISÃO da origem (o compositor não gravava copy em chave lida) + traço colado | `layersSnapshot` vira régua de banco; `-` vira espaço; tolerância de 1 edição com aviso |
 | Qui 10/09 15:00 (maminha) | régua "ESPACO GAUCHO" | o arco do selo lido como texto, a 2 edições de "ESPETO" | palavra longa a ≤2 edições da marca é a marca |
-| Sex 11/09 07:00 (sextou) | 400 `safety_violations=[sexual]` | filtro da OpenAI na foto do salão cheio | retentativa única + mensagem legível |
+| Sex 11/09 07:00 (sextou) | 400 `safety_violations=[sexual]` | filtro da OpenAI na FOTO do salão cheio — determinístico (4/4 recusas, inclusive com prompt neutro) | retentativa única + mensagem legível; a peça precisa de outra foto ou do editor |
 
 Replay offline das três falhas de texto contra a transcrição gravada: 3/3
 passam com a régua do snapshot. Registro de FAILED passou a carregar modo,
 régua, textos, planejador e prompt (`registroDaRun`).
+
+Teste real depois do conserto: o espeto misto (`cmtpu6k6o0001sws1dyawk60v`,
+redesenhar, pedido "destaque melhor o valor e use os elementos da marca")
+saiu com `regua: banco`, texto OK, preço numa tag amarela, relógio e filete
+vermelho, seta curva — os elementos do manual. A peça de sexta seguiu
+recusada nas duas tentativas.
 
 ## 8. Fontes
 

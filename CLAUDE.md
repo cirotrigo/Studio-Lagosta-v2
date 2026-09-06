@@ -4713,11 +4713,16 @@ garçom") são o formato que vale medir.
   "ESPACO" ~ "ESPETO". E o desconto do texto a mais compara palavra a palavra
   com a mesma tolerância — a placa da fachada voltava como "CHURRASCARIA & CIA"
   numa leitura e "CHURRASCO & CIA" na outra, e o alerta tocava em toda rodada.
-- 🔴 **O filtro de segurança da OpenAI é estocástico e olha a FOTO**:
-  `safety_violations=[sexual]` num salão cheio com famílias e crianças, pedido
-  "distribua melhor os textos". A recusa não custa a chamada; o runner retenta
-  UMA vez com o mesmo prompt (`filtroDeSeguranca.retentado`) e, se recusar de
-  novo, a mensagem diz o que foi em vez de um request ID.
+- 🔴 **O filtro de segurança da OpenAI olha a FOTO, e para esta foto é
+  DETERMINÍSTICO**: `safety_violations=[sexual]` num salão cheio com famílias
+  e crianças (Sex 11/09, `cmtmfvn5v0081sw712x35e42v`), pedido "distribua
+  melhor os textos". Sondado com `runImageEdit` cru: **4 de 4 recusas**, duas
+  delas com prompt neutro ("reproduce this image exactly as it is") — não é o
+  prompt, não é o planejador, não é sorteio. A recusa não custa a chamada; o
+  runner retenta UMA vez (`filtroDeSeguranca.retentado`, ~20s) porque em outra
+  foto pode ser ruído, e na segunda recusa a mensagem diz "tente com outra
+  foto" em vez de um request ID. Para essa peça a melhoria por IA não existe:
+  é editor ou outra foto.
 - 🔴 **O ramo FAILED gravava só `error` e `textCheck`** — sem modo, régua,
   textos, planejador nem prompt; o diagnóstico teve de ser refeito à mão a
   partir da transcrição. `registroDaRun` vive fora do try e é preenchido
