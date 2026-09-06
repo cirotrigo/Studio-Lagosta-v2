@@ -379,6 +379,22 @@ Em aberto: manuais dos outros clientes (decisão do Ciro); Seu Quinto precisa
 de referências marcadas (`marcar-referencia-de-estilo`) para ter estilo lido;
 `conferirLogo` continua órfã.
 
+## 11. A rodada de revisão do Espeto (06/09/2026, manhã)
+
+24 melhorias pedidas pelo Ciro na semana 07–13/09 (11 redesenhar, 7
+rediagramar, 4 refinar, 2 sem modo registrado); 20 concluídas com régua OK;
+1 feedback ("Vem pro fogo" → DNA). As 4 FAILED:
+
+| peça | erro | causa | conserto |
+|---|---|---|---|
+| Qua 09/09 15:00 (espeto misto), 2× | régua "PICAHNA,PICAHNA SUINA,LINGUICA" e "E COXINHA DE FRANGO A PARTIR DAS 17H" | régua por VISÃO da origem (o compositor não gravava copy em chave lida) + traço colado | `layersSnapshot` vira régua de banco; `-` vira espaço; tolerância de 1 edição com aviso |
+| Qui 10/09 15:00 (maminha) | régua "ESPACO GAUCHO" | o arco do selo lido como texto, a 2 edições de "ESPETO" | palavra longa a ≤2 edições da marca é a marca |
+| Sex 11/09 07:00 (sextou) | 400 `safety_violations=[sexual]` | filtro da OpenAI na foto do salão cheio | retentativa única + mensagem legível |
+
+Replay offline das três falhas de texto contra a transcrição gravada: 3/3
+passam com a régua do snapshot. Registro de FAILED passou a carregar modo,
+régua, textos, planejador e prompt (`registroDaRun`).
+
 ## 8. Fontes
 
 - OpenAI — GPT Image Generation Models Prompting Guide

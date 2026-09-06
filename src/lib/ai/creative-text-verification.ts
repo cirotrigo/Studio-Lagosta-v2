@@ -47,6 +47,13 @@ export interface TextCheckResult {
    */
   numerosNaoEsperados: string[]
   /**
+   * Blocos que só casaram com tolerância de UMA edição por palavra
+   * (`casarComTolerancia`, 06/09/2026): a régua dizia "PICAHNA" (leitura da
+   * origem) e a arte trouxe "PICANHA". Contam como presentes em `passed` e
+   * viram AVISO — quem aprova confere a grafia, a peça não é derrubada.
+   */
+  grafiaDivergente: Array<{ esperado: string; lido: string }>
+  /**
    * Frases da arte de REFERÊNCIA que reapareceram nesta peça sem estar na copy.
    * Vazio quando não havia modelo decodificado para comparar — ver
    * `textosVazadosDoModelo`. Também é aviso, nunca reprovação.
@@ -99,7 +106,8 @@ export function numerosSemLastro(extracted: string[], expectedTexts: string[]): 
  * daqui.
  */
 export { normalizeForComparison, textosVazadosDoModelo, blocosAMais, descontarTextosDaOrigem } from './text-comparison'
-import { normalizeForComparison, textosVazadosDoModelo, blocosAMais, descontarTextosDaOrigem } from './text-comparison'
+import { normalizeForComparison, textosVazadosDoModelo, blocosAMais, descontarTextosDaOrigem, casarComTolerancia } from './text-comparison'
+import { textosDaPagina } from '@/lib/posts/page-layers'
 
 function isTextValue(value: string): boolean {
   const trimmed = value.trim()
@@ -161,6 +169,26 @@ export function extractExpectedTexts(fieldValues: unknown): string[] {
     for (const bloco of fv.textosLivres) {
       const texto = (bloco as Record<string, unknown> | null)?.texto
       if (typeof texto === 'string' && isTextValue(texto)) texts.push(texto.trim())
+    }
+  }
+
+  /**
+   * 🔴 A peça do COMPOSITOR guarda a copy exata em `layersSnapshot` (as
+   * camadas no instante da composição) e em nenhuma das chaves acima — e por
+   * isso toda melhoria da semana do Espeto caía na régua por VISÃO, que leu
+   * "PICAHNA" e "ESPACO GAUCHO" na origem e reprovou peças corretas
+   * (06/09/2026). A cópia gravada é a verdade da peça; uma linha por bloco,
+   * como a arte os mostra. Só entra quando nenhuma outra forma existe.
+   */
+  if (texts.length === 0 && fv.layersSnapshot != null) {
+    try {
+      for (const conteudo of Object.values(textosDaPagina(fv.layersSnapshot))) {
+        for (const linha of conteudo.split(/\r?\n/)) {
+          if (isTextValue(linha)) texts.push(linha.trim())
+        }
+      }
+    } catch {
+      // snapshot ilegível: fica sem régua, como antes
     }
   }
 
@@ -354,9 +382,14 @@ export async function verifyImageTexts(
   const extracted = object.texts.map((t) => t.trim()).filter(Boolean)
   const haystack = normalizeForComparison(extracted.join('\n'))
 
-  const missing = expectedTexts
-    .map((t) => normalizeForComparison(t))
-    .filter((needle) => needle.length > 0 && !haystack.includes(needle))
+  const missing: string[] = []
+  const grafiaDivergente: Array<{ esperado: string; lido: string }> = []
+  for (const needle of expectedTexts.map((t) => normalizeForComparison(t))) {
+    if (needle.length === 0) continue
+    const casamento = casarComTolerancia(needle, haystack)
+    if (!casamento.casou) missing.push(needle)
+    else grafiaDivergente.push(...casamento.divergencias)
+  }
 
   let aMais = blocosAMais(extracted, expectedTexts, nomeDaMarca)
   let numerosForaDaCopy = numerosSemLastro(extracted, expectedTexts)
@@ -373,6 +406,7 @@ export async function verifyImageTexts(
   return {
     passed: missing.length === 0,
     missing,
+    grafiaDivergente,
     extracted,
     // Fora do `passed` de propósito — ver a nota em TextCheckResult.
     numerosNaoEsperados: numerosForaDaCopy,
