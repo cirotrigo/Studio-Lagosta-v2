@@ -238,7 +238,7 @@ function contextoDaMarca(brand: BrandContext | null): string {
   // Bevan), vale o que está nas peças — o DNA descreve intenção, isto mede.
   if (brand.estiloDasReferencias) {
     linhas.push(
-      `ESTILO OBSERVADO NAS PEÇAS APROVADAS (assinatura real; quando divergir da prosa do DNA acima, ESTA vence — e os separadores/ícones listados aqui são os únicos ornamentos que a marca usa):\n${formatarEstiloParaPrompt(brand.estiloDasReferencias)}`,
+      `ESTILO OBSERVADO NAS PEÇAS APROVADAS (assinatura real; quando divergir da prosa do DNA acima, ESTA vence — EXCETO as "Regras aprendidas na prática" do DNA, que são decisões do dono da marca e vencem tudo. Os separadores/ícones listados aqui são os únicos ornamentos que a marca usa):\n${formatarEstiloParaPrompt(brand.estiloDasReferencias)}`,
     )
   }
   if (brand.cuisineType) linhas.push(`COZINHA: ${brand.cuisineType}`)

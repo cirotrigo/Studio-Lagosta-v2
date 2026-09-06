@@ -36,6 +36,14 @@ describe('normalizarEstilo — o vocabulário é reconciliado no código, não n
     expect(estilo.ornamentos[0]).toBe('vinheta no rodapé')
   })
 
+  it('o acabamento da manchete é reconciliado do texto do modelo', () => {
+    expect(normalizarEstilo({ ...bruto, efeitoDaManchete: 'sombra dura deslocada em verde' }).efeitoDaManchete).toBe('sombra-dura')
+    expect(normalizarEstilo({ ...bruto, efeitoDaManchete: 'contorno branco' }).efeitoDaManchete).toBe('contorno')
+    expect(normalizarEstilo({ ...bruto, efeitoDaManchete: 'sombra suave' }).efeitoDaManchete).toBe('sombra-suave')
+    expect(normalizarEstilo(bruto).efeitoDaManchete).toBe('nenhum')
+    expect(formatarEstiloParaPrompt(normalizarEstilo({ ...bruto, efeitoDaManchete: 'sombra-dura' }))).toContain('sombra DURA')
+  })
+
   it('sem ícone reconhecido devolve ["nenhum"], e caixa desconhecida vira natural', () => {
     const estilo = normalizarEstilo({ ...bruto, icones: ['foguete'], caixaDaManchete: 'title case' })
     expect(estilo.icones).toEqual(['nenhum'])

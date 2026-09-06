@@ -377,11 +377,34 @@ export async function renderManualDeMarca({ brand, estilo, elementos }: ManualDe
   y += 48
   const caixaAlta = estilo?.caixaDaManchete === 'alta'
   if (brand.fonts.title) {
-    ctx.fillStyle = '#171512'
     ctx.font = `700 70px ${quote(brand.fonts.title)}`
-    ctx.fillText(caixaAlta ? 'MANCHETE DA PEÇA' : 'Manchete da peça', 56, y)
-    ctx.fillStyle = destaque
-    ctx.fillText(caixaAlta ? 'EM DUAS VOZES' : 'em duas vozes', 56, y + 74)
+    const linha1 = caixaAlta ? 'MANCHETE DA PEÇA' : 'Manchete da peça'
+    const linha2 = caixaAlta ? 'EM DUAS VOZES' : 'em duas vozes'
+    // Sombra dura = a letra numa cor da paleta e a sombra deslocada (sem
+    // desfoque) em OUTRA — duas cores combinadas, como o Seu Quinto faz.
+    const segunda = brand.colors.map((c) => c.hexCode).find((h) => h.toLowerCase() !== destaque.toLowerCase() && hexLuminancia(h) < 200) ?? '#171512'
+    const efeito = estilo?.efeitoDaManchete ?? 'nenhum'
+    const desenharManchete = (texto: string, cor: string, sombra: string, yy: number) => {
+      ctx.save()
+      if (efeito === 'sombra-dura') {
+        ctx.fillStyle = sombra
+        ctx.fillText(texto, 56 + 7, yy + 7)
+      } else if (efeito === 'sombra-suave') {
+        ctx.shadowColor = 'rgba(0,0,0,0.45)'
+        ctx.shadowBlur = 14
+        ctx.shadowOffsetY = 4
+      } else if (efeito === 'contorno') {
+        ctx.lineWidth = 6
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = sombra
+        ctx.strokeText(texto, 56, yy)
+      }
+      ctx.fillStyle = cor
+      ctx.fillText(texto, 56, yy)
+      ctx.restore()
+    }
+    desenharManchete(linha1, efeito === 'nenhum' ? '#171512' : destaque, segunda, y)
+    desenharManchete(linha2, efeito === 'nenhum' ? destaque : segunda, destaque, y + 74)
     ctx.fillStyle = '#8A8475'; ctx.font = '400 16px sans-serif'
     ctx.fillText(rotuloDeUmaLinha(ctx, `${brand.fonts.title} — manchete${estilo ? ` · ${estilo.tipografia.manchete}` : ''}`, MANUAL_W - 112), 56, y + 178)
     y += 208

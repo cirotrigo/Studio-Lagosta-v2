@@ -4580,9 +4580,9 @@ os clientes para personalizar o estilo da marca de cada um." Três peças novas:
   vocabulário é reconciliado no CÓDIGO (`normalizarEstilo`)** — com enum no
   schema a Lagosta Criativa perdeu a resposta INTEIRA por um item fora da
   lista. Item que não casa vira ornamento descrito, nunca é jogado fora.
-  Rodado em 05/09: 8 dos 11 clientes gravados (Seu Quinto tem 0 referências
-  vivas — a única "gostei" está no Blob morto; Ciro Trigo e Empório Fonseca
-  não têm referência aprovada). `scripts/analisar-referencias-de-estilo.ts`
+  Rodado em 05/09: 8 dos 11 clientes gravados; em 06/09 o Ciro marcou
+  referências no Seu Quinto e no Empório Fonseca e os dois entraram (10 de 11
+  — só Ciro Trigo, que não é restaurante, fica sem estilo). `scripts/analisar-referencias-de-estilo.ts`
   (`--projeto`/`--todos --exceto 6`, `--urls`, `--confirmar`; dry-run por
   padrão). ⚠️ `--todos` não recebe URLs: quem foi analisado com URLs à mão
   entra em `--exceto`, senão a rodada sobrescreve.
@@ -4611,6 +4611,19 @@ os clientes para personalizar o estilo da marca de cada um." Três peças novas:
   `brand-manual/6-espeto-gaucho.png`). Os outros 10 manuais foram gerados em
   dry-run para avaliação — o manual do designer continua valendo neles até o
   Ciro decidir.
+- 🔴 **EXEMPLO NO PROMPT VIRA RESPOSTA.** O SYSTEM da análise dizia que
+  "evitar" era "o que nunca aparece (véu escuro inteiro, selo redondo,
+  gradiente de borda a borda, emoji, moldura, sombra dura)" — e os 10
+  clientes voltaram com ESSA lista, quase verbatim. No Seu Quinto a visão
+  descreveu a manchete com "sombra curta deslocada" e ainda assim pôs "sombra
+  dura" em evitar; o Ciro corrigiu ("sempre tem uma sombra nítida na
+  headline, sempre com duas cores da paleta"). O prompt não dá mais exemplos
+  ali (só "ausência VERIFICADA nestas peças"), o schema ganhou
+  `efeitoDaManchete` (nenhum | sombra-dura | sombra-suave | contorno; o manual
+  desenha a amostra com ele, em duas cores da paleta) e a análise foi refeita
+  nos 10 clientes. A regra do Seu Quinto está no DNA (`visualStyle`, regras
+  aprendidas) e o planejador foi avisado: o estilo observado vence a prosa do
+  DNA, mas as "Regras aprendidas na prática" — decisões do dono — vencem tudo.
 - 🔴 **A cor de destaque do manual nunca é a primeira do estilo às cegas**: a
   primeira cor lida é quase sempre o BRANCO do texto principal, e a segunda
   voz da manchete saiu branca sobre fundo claro. Vale a primeira cor VIVA
