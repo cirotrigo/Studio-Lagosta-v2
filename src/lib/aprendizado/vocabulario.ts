@@ -86,6 +86,14 @@ export type TipoDeSinal =
    * proposta de ajuste da assinatura, aprovada por gente.
    */
   | 'geometria'
+  /**
+   * REPOSTAR: as artes já publicadas que a faixa do formulário propôs para um
+   * slot (dia + hora), e qual delas foi usada. Uma proposta por (projeto, dia,
+   * hora, safra) — o formulário reconsulta a cada toque, e sem essa chave o
+   * denominador viraria ficção em uma semana. O desfecho é calculado no
+   * servidor comparando a mídia do post criado com os candidatos.
+   */
+  | 'repost'
 
 export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'slot',
@@ -97,6 +105,7 @@ export const TIPOS_DE_SINAL: TipoDeSinal[] = [
   'item-de-plano',
   'legenda',
   'geometria',
+  'repost',
 ]
 
 /**

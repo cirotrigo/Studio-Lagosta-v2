@@ -21,12 +21,24 @@ export function postHref(projectId: number | string, postId: string): string {
 }
 
 /**
- * Criar post. `quando` preenche o horário — é o que o botão "+" de um dia da
- * agenda manda.
+ * Criar post. `quando` preenche o horário; com `soDia`, manda só o DIA
+ * (`?dia=AAAA-MM-DD`) e o formulário escolhe a hora entre os horários típicos
+ * do cliente naquele dia da semana — é o que o "+" de um dia da agenda faz
+ * desde 05/09/2026 (antes cravava 10:00, uma hora que não vinha de lugar
+ * nenhum).
  */
-export function novoPostHref(projectId: number | string, quando?: Date): string {
+export function novoPostHref(
+  projectId: number | string,
+  quando?: Date,
+  opcoes: { soDia?: boolean } = {},
+): string {
   const base = `/projects/${projectId}/agenda/novo`
-  return quando ? `${base}?data=${encodeURIComponent(quando.toISOString())}` : base
+  if (!quando) return base
+  if (opcoes.soDia) {
+    const dia = `${quando.getFullYear()}-${String(quando.getMonth() + 1).padStart(2, '0')}-${String(quando.getDate()).padStart(2, '0')}`
+    return `${base}?dia=${dia}`
+  }
+  return `${base}?data=${encodeURIComponent(quando.toISOString())}`
 }
 
 /** Editar post. */

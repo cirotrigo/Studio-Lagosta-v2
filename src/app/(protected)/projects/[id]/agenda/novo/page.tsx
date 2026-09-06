@@ -15,8 +15,9 @@ import { agendaHref } from '@/lib/agenda-routes'
  * Segmento estático, então o Next resolve esta rota antes de `[postId]`: não
  * existe post com id "novo".
  *
- * Aceita `?data=2026-08-11T10:00` para já vir com o horário preenchido — é o
- * que o botão "+" de um dia da agenda manda.
+ * Aceita `?data=2026-08-11T10:00` (dia e hora) ou `?dia=2026-08-11` (só o
+ * dia — o "+" de um dia da agenda manda este, e a hora sai dos horários
+ * típicos do cliente naquele dia da semana).
  */
 export default function NovoPostPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -49,6 +50,16 @@ export default function NovoPostPage({ params }: { params: Promise<{ id: string 
     return { scheduleType: 'SCHEDULED', scheduledDatetime: quando }
   }, [searchParams])
 
+  // `?dia=AAAA-MM-DD` — o dia em horário LOCAL (o `new Date('AAAA-MM-DD')`
+  // cairia em UTC e viraria o dia anterior à noite em Brasília).
+  const diaSugerido = useMemo(() => {
+    const dia = searchParams.get('dia')
+    const m = dia?.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (!m) return undefined
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    return Number.isNaN(d.getTime()) ? undefined : d
+  }, [searchParams])
+
   return (
     <div className="flex flex-col" style={{ height: 'calc(100dvh - 10rem)', margin: '-1rem' }}>
       <header className="flex shrink-0 items-center gap-3 border-b bg-background px-4 py-3 sm:px-6">
@@ -72,6 +83,7 @@ export default function NovoPostPage({ params }: { params: Promise<{ id: string 
       <PostComposerForm
         projectId={projectId}
         initialData={initialData}
+        diaSugerido={diaSugerido}
         onDone={() => router.push(agendaHref(projectId))}
         onCancel={voltar}
       />

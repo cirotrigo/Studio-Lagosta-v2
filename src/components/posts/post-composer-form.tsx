@@ -9,12 +9,15 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { MediaUploadSystem } from './media-upload-system'
-import { SchedulePicker } from './schedule-picker'
+import { QuandoBar } from './quando-bar'
 import { RecurringConfig } from './recurring-config'
 import { PostLivePreview, FORMAT_LABELS } from './post-live-preview'
 import { toast } from 'sonner'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../prisma/generated/client'
-import { Calendar, Repeat, Zap, Wand2, Loader2 } from 'lucide-react'
+import { ChevronDown, Wand2, Loader2 } from 'lucide-react'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { useHorariosTipicos } from '@/hooks/use-horarios-tipicos'
+import { proximoHorario, rotuloCurto, rotuloDoBotao, rotuloLongo } from '@/lib/posts/quando'
 import { useImproveCaption } from '@/hooks/use-improve-caption'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
@@ -109,6 +112,11 @@ interface PostComposerFormProps {
   projectId: number
   postId?: string
   initialData?: Partial<PostFormData>
+  /**
+   * Dia vindo do "+" da agenda, SEM hora: a primeira hora típica do cliente
+   * naquele dia da semana preenche. (Até 05/09/2026 o "+" cravava 10:00.)
+   */
+  diaSugerido?: Date
   /** Salvou (ou disparou o salvamento em segundo plano). */
   onDone: () => void
   /** Desistiu. */
@@ -118,47 +126,77 @@ interface PostComposerFormProps {
 const FORM_ID = 'post-composer-form'
 
 const TIPOS: Array<{ value: PostFormData['postType']; icon: string }> = [
-  { value: 'POST', icon: '📸' },
   { value: 'STORY', icon: '⭐' },
-  { value: 'REEL', icon: '🎬' },
+  { value: 'POST', icon: '📸' },
   { value: 'CAROUSEL', icon: '🎠' },
+  { value: 'REEL', icon: '🎬' },
 ]
 
 /**
  * O corpo do composer, sem casca — usado pela rota (tela cheia, com prévia
  * viva ao lado) e pelo `PostComposer`, que é o mesmo formulário dentro de um
- * Dialog para o painel de agenda do editor de templates.
+ * Dialog para os painéis do editor e as galerias.
  *
- * Toda a regra de validação veio intacta do modal original: legenda
- * obrigatória fora de story, carrossel de 2 a 10, reel só com vídeo, data no
- * futuro, recorrência com frequência e horário.
+ * A ordem (05/09/2026): QUANDO → MÍDIA → LEGENDA (só feed) → "Mais opções".
+ * Medido nos 2.684 posts dos 90 dias anteriores: 92% são story, 27% saem na
+ * hora, recorrente 0, primeiro comentário 0 de 216 posts de feed, lembrete
+ * 1%, e 40% nascem a menos de 2h do horário. O formulário pedia tudo isso de
+ * frente, com a data no quarto bloco. Para story, agora cabe numa tela:
+ * quando → mídia → agendar. O resto continua existindo atrás de "Mais
+ * opções", com a mesma regra de negócio.
  *
- * Diferença de ciclo de vida: aqui a inicialização acontece na MONTAGEM, não
- * num `open` — quem monta decide quando existir. O Dialog passou a montar o
- * formulário só quando abre, o que dá no mesmo e dispensa os efeitos que
- * limpavam estado ao fechar.
+ * Toda a regra de validação veio intacta: legenda obrigatória fora de story,
+ * carrossel de 2 a 10, reel só com vídeo, data no futuro, recorrência com
+ * frequência e horário.
+ *
+ * 🔴 Para STORY a legenda SOME em vez de ser "opcional": o envio grava
+ * `caption: ''` para story desde sempre (linha do `postData`), e um campo que
+ * convida a digitar o que vai ser descartado é pior que campo ausente.
  */
 export function PostComposerForm({
   projectId,
   postId,
   initialData,
+  diaSugerido,
   onDone,
   onCancel,
 }: PostComposerFormProps) {
   const { createPost, updatePost } = useSocialPosts(projectId)
+  const { data: horarios, isLoading: horariosCarregando } = useHorariosTipicos(projectId)
   const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([])
   const [hasInitializedMedia, setHasInitializedMedia] = useState(false)
   const isSubmittingRef = useRef(false)
   const improveCaption = useImproveCaption()
+  const editando = Boolean(postId)
+
+  /*
+    Quem chega da galeria ou do editor JÁ escolheu a arte: as fontes de mídia
+    começam recolhidas e o bloco mostra só o que foi escolhido, com "Trocar".
+    É exatamente o caso "o usuário normalmente já chega com o criativo
+    selecionado" — o Quando fica sozinho no topo.
+  */
+  const [fontesRecolhidas, setFontesRecolhidas] = useState(
+    () => !postId && (initialData?.mediaUrls?.length ?? 0) > 0,
+  )
+  // "Mais opções" já abre quando o post editado usa algo que mora lá.
+  const [maisOpcoes, setMaisOpcoes] = useState(
+    () =>
+      initialData?.publishType === 'REMINDER' ||
+      initialData?.scheduleType === 'RECURRING' ||
+      Boolean(initialData?.firstComment?.trim()),
+  )
 
   const form = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
     defaultValues: {
-      postType: 'POST',
+      // STORY é 92% do que a equipe cria; o padrão antigo (POST) obrigava um
+      // clique a mais em nove de cada dez posts.
+      postType: 'STORY',
       caption: '',
       mediaUrls: [],
       generationIds: [],
-      scheduleType: 'IMMEDIATE',
+      // SCHEDULED é 73%; "Agora" é um chip no bloco Quando.
+      scheduleType: 'SCHEDULED',
       altText: [],
       firstComment: '',
       publishType: 'DIRECT',
@@ -288,6 +326,15 @@ export function PostComposerForm({
     [],
   )
 
+  // Estável de propósito: é dependência do efeito que aplica o padrão no QuandoBar.
+  const handleQuandoChange = useCallback(
+    (next: { scheduleType: PostFormData['scheduleType']; scheduledDatetime?: Date }) => {
+      formRef.current.setValue('scheduleType', next.scheduleType)
+      formRef.current.setValue('scheduledDatetime', next.scheduledDatetime)
+    },
+    [],
+  )
+
   const handleImproveCaption = useCallback(() => {
     const currentCaption = formRef.current.getValues('caption')
     const currentPostType = formRef.current.getValues('postType')
@@ -298,23 +345,30 @@ export function PostComposerForm({
     }
 
     improveCaption.mutate(
-      {
-        caption: currentCaption,
-        projectId,
-        postType: currentPostType as 'POST' | 'STORY' | 'REEL' | 'CAROUSEL'
-      },
+      { caption: currentCaption, projectId, postType: currentPostType },
       {
         onSuccess: (data) => {
           formRef.current.setValue('caption', data.improvedCaption)
           toast.success('Legenda melhorada!')
         },
-      }
+        onError: (error) => {
+          const message = error instanceof Error ? error.message : 'Erro ao melhorar legenda'
+          toast.error(message)
+        },
+      },
     )
-  }, [projectId, improveCaption])
+  }, [improveCaption, projectId])
+
+  /*
+    "Agendar e próximo" (F3): o botão secundário arma este ref ANTES do submit
+    (os dois botões são `type="submit"` do mesmo form; o onClick roda antes).
+    A cadência aprovada é 3 stories/dia, e cada um era um ciclo inteiro de
+    abrir-preencher-fechar.
+  */
+  const eProximoRef = useRef(false)
 
   const onSubmit = async (data: PostFormData) => {
     if (isSubmittingRef.current) {
-      console.warn('🚫 Prevented double-submit - already processing')
       return
     }
 
@@ -415,9 +469,13 @@ export function PostComposerForm({
         reminderExtraInfo: data.reminderExtraInfo,
       }
 
+      const eProximo = eProximoRef.current && !postId && data.scheduleType === 'SCHEDULED' && data.scheduledDatetime
+      eProximoRef.current = false
+
       // Sai da tela e processa em segundo plano — carrossel de 10 imagens
       // demora, e segurar a pessoa parada olhando não ajuda em nada.
-      onDone()
+      // (No "e próximo" a tela FICA, limpa, já no horário seguinte.)
+      if (!eProximo) onDone()
 
       if (postId) {
         updatePost.mutate({ postId, data: postData }, {
@@ -434,14 +492,7 @@ export function PostComposerForm({
         if (data.scheduleType === 'IMMEDIATE') {
           toast.success('📤 Enviando post... Acompanhe o status na agenda.')
         } else if (data.scheduleType === 'SCHEDULED') {
-          const dateStr = data.scheduledDatetime?.toLocaleDateString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-          })
-          toast.success(`📅 Agendando post para ${dateStr}...`)
+          toast.success(`📅 Agendando para ${rotuloCurto(data.scheduledDatetime!)}...`)
         } else {
           toast.success('🔄 Criando série recorrente...')
         }
@@ -462,6 +513,16 @@ export function PostComposerForm({
             toast.error(`❌ ${message}`)
           }
         })
+
+        if (eProximo) {
+          const prox = proximoHorario(horarios?.porDia, data.scheduledDatetime!)
+          handleMediaChange([])
+          form.setValue('caption', '')
+          form.setValue('firstComment', '')
+          form.setValue('scheduledDatetime', prox)
+          setFontesRecolhidas(false)
+          toast.success(`Próximo: ${rotuloCurto(prox)}. Escolha a mídia.`)
+        }
       }
 
       return
@@ -484,17 +545,11 @@ export function PostComposerForm({
       : scheduleType === 'RECURRING'
         ? 'Série recorrente'
         : scheduledDatetime
-          ? `Sai ${scheduledDatetime.toLocaleDateString('pt-BR', {
-            weekday: 'short',
-            day: '2-digit',
-            month: '2-digit',
-          })} às ${scheduledDatetime.toLocaleTimeString('pt-BR', {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}`
+          ? `Sai ${rotuloLongo(scheduledDatetime)}`
           : 'Horário ainda não escolhido'
 
   const salvando = createPost.isPending || updatePost.isPending
+  const podeProximo = !postId && scheduleType === 'SCHEDULED' && Boolean(scheduledDatetime)
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -511,243 +566,250 @@ export function PostComposerForm({
             onSubmit={form.handleSubmit(onSubmit)}
             className="order-2 space-y-6 lg:order-none"
           >
-            {/* Tipo de Post — cada card declara a dimensão que o formato tem */}
+            {/* QUANDO — primeiro bloco — com o tipo de post ao lado, pequeno */}
             <div>
-              <Label className="text-base font-semibold">Tipo de Post</Label>
-              <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {TIPOS.map((type) => {
-                  const formato = FORMAT_LABELS[type.value]
-                  return (
-                    <Button
-                      key={type.value}
-                      type="button"
-                      variant={postType === type.value ? 'default' : 'outline'}
-                      onClick={() => {
-                        form.setValue('postType', type.value)
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label className="text-base font-semibold">Quando</Label>
+                <div className="inline-flex rounded-lg border bg-muted/40 p-0.5" role="radiogroup" aria-label="Tipo de post">
+                  {TIPOS.map((type) => {
+                    const ativo = postType === type.value
+                    return (
+                      <button
+                        key={type.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={ativo}
+                        title={`${FORMAT_LABELS[type.value].nome} · ${FORMAT_LABELS[type.value].medida}`}
+                        onClick={() => {
+                          form.setValue('postType', type.value)
 
-                        // Reset media if switching to/from carousel
-                        if ((type.value === 'CAROUSEL' && selectedMedia.length > 10) ||
-                          (type.value !== 'CAROUSEL' && selectedMedia.length > 1)) {
-                          handleMediaChange([])
-                        }
+                          // Reset media if switching to/from carousel
+                          if ((type.value === 'CAROUSEL' && selectedMedia.length > 10) ||
+                            (type.value !== 'CAROUSEL' && selectedMedia.length > 1)) {
+                            handleMediaChange([])
+                          }
 
-                        // STORY e REEL não têm primeiro comentário
-                        if (type.value === 'STORY' || type.value === 'REEL') {
-                          form.setValue('firstComment', '')
+                          // STORY e REEL não têm primeiro comentário
+                          if (type.value === 'STORY' || type.value === 'REEL') {
+                            form.setValue('firstComment', '')
+                          }
+                        }}
+                        className={
+                          ativo
+                            ? 'rounded-md bg-background px-2.5 py-1 text-xs font-medium shadow-sm'
+                            : 'rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground'
                         }
-                      }}
-                      className="flex h-auto flex-col items-center gap-0.5 py-2.5"
-                    >
-                      <span className="text-xl">{type.icon}</span>
-                      <span className="text-xs font-medium">{formato.nome}</span>
-                      <span className="text-[10px] font-normal opacity-70">
-                        {formato.medida}
-                      </span>
-                    </Button>
-                  )
-                })}
+                      >
+                        <span className="mr-1">{type.icon}</span>
+                        {FORMAT_LABELS[type.value].nome}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className="mt-3">
+                <QuandoBar
+                  scheduleType={scheduleType}
+                  scheduledDatetime={scheduledDatetime}
+                  onChange={handleQuandoChange}
+                  horariosPorDia={horarios?.porDia}
+                  horariosCarregando={horariosCarregando}
+                  diaSugerido={diaSugerido}
+                  editando={editando}
+                />
               </div>
             </div>
 
-            {/* Seletor de Mídia */}
+            {/* MÍDIA */}
             <div>
               <Label className="text-base font-semibold">
                 Mídia
                 <span className="ml-1 text-red-500">*</span>
               </Label>
-              <p className="mb-3 text-sm text-muted-foreground">
-                {postType === 'CAROUSEL'
-                  ? '📸 Selecione de 2 a 10 imagens para o carrossel (apenas imagens)'
-                  : postType === 'REEL'
-                    ? '🎬 Selecione 1 vídeo para o reel (.mp4, .mov, .avi ou .webm)'
-                    : postType === 'STORY'
-                      ? '⭐ Selecione 1 imagem ou vídeo para o story (24h de duração)'
-                      : '📷 Selecione 1 imagem para o post'}
-              </p>
+              {!fontesRecolhidas && (
+                <p className="mb-3 text-sm text-muted-foreground">
+                  {postType === 'CAROUSEL'
+                    ? '📸 Selecione de 2 a 10 imagens para o carrossel (apenas imagens)'
+                    : postType === 'REEL'
+                      ? '🎬 Selecione 1 vídeo para o reel (.mp4, .mov, .avi ou .webm)'
+                      : postType === 'STORY'
+                        ? '⭐ Selecione 1 imagem ou vídeo para o story (24h de duração)'
+                        : '📷 Selecione 1 imagem para o post'}
+                </p>
+              )}
               <MediaUploadSystem
                 projectId={projectId}
                 selectedMedia={selectedMedia}
                 onSelectionChange={handleMediaChange}
                 maxSelection={maxMedia}
                 postType={postType}
+                quando={scheduleType === 'SCHEDULED' ? scheduledDatetime : undefined}
+                postIdEmEdicao={postId}
+                fontesRecolhidas={fontesRecolhidas}
+                onExpandirFontes={() => setFontesRecolhidas(false)}
               />
             </div>
 
-            {/* Legenda */}
-            <div>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="caption" className="text-base font-semibold">
-                  {postType === 'STORY' ? 'Texto do Story (Opcional)' : 'Legenda'}
-                  {postType !== 'STORY' && <span className="ml-1 text-red-500">*</span>}
-                </Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleImproveCaption}
-                  disabled={improveCaption.isPending || !caption?.trim()}
-                  className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  {improveCaption.isPending ? (
-                    <>
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      Melhorando...
-                    </>
-                  ) : (
-                    <>
-                      <Wand2 className="h-3 w-3" />
-                      Melhorar legenda
-                    </>
-                  )}
-                </Button>
-              </div>
-              <Textarea
-                id="caption"
-                {...form.register('caption')}
-                placeholder={postType === 'STORY' ? 'Adicione texto que aparecerá no story...' : 'Escreva sua legenda...'}
-                rows={5}
-                maxLength={2200}
-                className="mt-2 resize-none"
-              />
-              <div className="mt-1 flex justify-between">
-                <p className="text-xs text-muted-foreground">
-                  {postType === 'STORY'
-                    ? '💡 Texto opcional. Stories são temporários e duram 24 horas'
-                    : postType === 'REEL'
-                      ? '💡 Use hashtags e mencione perfis para aumentar o alcance'
-                      : '💡 Máximo de 2.200 caracteres. Use hashtags relevantes'}
-                </p>
-                <p className="text-xs font-medium">{caption?.length || 0}/2200</p>
-              </div>
-            </div>
-
-            {/* Tipo de Agendamento */}
-            <div>
-              <Label className="text-base font-semibold">Quando postar?</Label>
-              <div className="mt-3 space-y-3">
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
-                  <input type="radio" value="IMMEDIATE" {...form.register('scheduleType')} className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4" />
-                      <span className="font-medium">Postar Agora</span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      O post será enviado imediatamente
-                    </p>
-                  </div>
-                </label>
-
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
-                  <input type="radio" value="SCHEDULED" {...form.register('scheduleType')} className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4" />
-                      <span className="font-medium">Agendar para Data/Hora</span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Escolha quando o post será publicado
-                    </p>
-                  </div>
-                </label>
-
-                {scheduleType === 'SCHEDULED' && (
-                  <div className="ml-9 border-l-2 pl-3">
-                    <SchedulePicker
-                      value={form.watch('scheduledDatetime')}
-                      onChange={(date) => form.setValue('scheduledDatetime', date)}
-                    />
-                  </div>
-                )}
-
-                <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
-                  <input type="radio" value="RECURRING" {...form.register('scheduleType')} className="mt-1" />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <Repeat className="h-4 w-4" />
-                      <span className="font-medium">Postagem Recorrente</span>
-                    </div>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Configure posts automáticos periódicos
-                    </p>
-                  </div>
-                </label>
-
-                {scheduleType === 'RECURRING' && (
-                  <div className="ml-9 border-l-2 pl-3">
-                    <RecurringConfig
-                      value={recurringConfig as RecurringConfigValue | undefined}
-                      onChange={handleRecurringConfigChange}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Tipo de Publicação - Apenas para posts agendados */}
-            {scheduleType !== 'IMMEDIATE' && (
+            {/* LEGENDA — só feed: para story o envio grava vazio, então o campo não existe */}
+            {postType !== 'STORY' && (
               <div>
-                <Label className="text-base font-semibold">Tipo de Publicação</Label>
-                <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
-                    <input type="radio" value="DIRECT" {...form.register('publishType')} className="mt-1" />
-                    <div className="flex-1">
-                      <span className="font-medium">Publicar Direto</span>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        O post será enviado automaticamente para o Instagram
-                      </p>
-                    </div>
-                  </label>
-
-                  <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
-                    <input type="radio" value="REMINDER" {...form.register('publishType')} className="mt-1" />
-                    <div className="flex-1">
-                      <span className="font-medium">Lembrete (Publicação Manual)</span>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        A equipe recebe a arte e a legenda no WhatsApp para publicar na mão
-                      </p>
-                    </div>
-                  </label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="caption" className="text-base font-semibold">
+                    Legenda
+                    <span className="ml-1 text-red-500">*</span>
+                  </Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleImproveCaption}
+                    disabled={improveCaption.isPending || !caption?.trim()}
+                    className="h-7 gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    {improveCaption.isPending ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Melhorando...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-3 w-3" />
+                        Melhorar legenda
+                      </>
+                    )}
+                  </Button>
                 </div>
-
-                {publishType === 'REMINDER' && (
-                  <div className="mt-3 rounded-lg border bg-muted/30 p-3">
-                    <Label htmlFor="reminderExtraInfo" className="text-sm font-medium">
-                      Informações Extras para o Lembrete
-                    </Label>
-                    <Textarea
-                      id="reminderExtraInfo"
-                      {...form.register('reminderExtraInfo')}
-                      placeholder="Cole um link ou adicione instruções especiais para este post..."
-                      rows={3}
-                      className="mt-2 resize-none"
-                    />
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      💡 Exemplo: Link para adicionar no story, instruções de aprovação, etc.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Primeiro Comentário - Apenas para POST e CAROUSEL */}
-            {(postType === 'POST' || postType === 'CAROUSEL') && (
-              <div>
-                <Label htmlFor="firstComment" className="text-base font-semibold">
-                  Primeiro Comentário (Opcional)
-                </Label>
                 <Textarea
-                  id="firstComment"
-                  {...form.register('firstComment')}
-                  placeholder="Adicione um comentário que será postado automaticamente..."
-                  rows={2}
+                  id="caption"
+                  {...form.register('caption')}
+                  placeholder="Escreva sua legenda..."
+                  rows={5}
+                  maxLength={2200}
                   className="mt-2 resize-none"
                 />
-                <p className="mt-1 text-xs text-muted-foreground">
-                  💡 Ideal para adicionar hashtags extras ou CTAs sem poluir a legenda
-                </p>
+                <div className="mt-1 flex justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    {postType === 'REEL'
+                      ? '💡 Use hashtags e mencione perfis para aumentar o alcance'
+                      : '💡 Máximo de 2.200 caracteres. Use hashtags relevantes'}
+                  </p>
+                  <p className="text-xs font-medium">{caption?.length || 0}/2200</p>
+                </div>
               </div>
             )}
+
+            {/* MAIS OPÇÕES — o que 99% dos posts não usa, sem sumir */}
+            <Collapsible open={maisOpcoes} onOpenChange={setMaisOpcoes}>
+              <CollapsibleTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-lg border border-dashed px-3 py-2 text-left text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground"
+                >
+                  <ChevronDown className={`h-4 w-4 transition-transform ${maisOpcoes ? 'rotate-180' : ''}`} />
+                  <span className="font-medium">Mais opções</span>
+                  <span className="hidden text-xs sm:inline">— lembrete no WhatsApp, repetição{postType === 'POST' || postType === 'CAROUSEL' ? ', primeiro comentário' : ''}</span>
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-6 pt-4">
+                {/* Repetição */}
+                {!postId && (
+                  <div>
+                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={scheduleType === 'RECURRING'}
+                        onChange={(e) =>
+                          handleQuandoChange({
+                            scheduleType: e.target.checked ? 'RECURRING' : 'SCHEDULED',
+                            scheduledDatetime,
+                          })
+                        }
+                      />
+                      <div className="flex-1">
+                        <span className="font-medium">Repetir (série recorrente)</span>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          O mesmo post em vários dias, com dias da semana e horário fixos
+                        </p>
+                      </div>
+                    </label>
+                    {scheduleType === 'RECURRING' && (
+                      <div className="ml-9 mt-3 border-l-2 pl-3">
+                        <RecurringConfig
+                          value={recurringConfig as RecurringConfigValue | undefined}
+                          onChange={handleRecurringConfigChange}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tipo de Publicação - Apenas para posts agendados */}
+                {scheduleType !== 'IMMEDIATE' && (
+                  <div>
+                    <Label className="text-base font-semibold">Como publicar</Label>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
+                        <input type="radio" value="DIRECT" {...form.register('publishType')} className="mt-1" />
+                        <div className="flex-1">
+                          <span className="font-medium">Publicar direto</span>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            O post será enviado automaticamente para o Instagram
+                          </p>
+                        </div>
+                      </label>
+
+                      <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50">
+                        <input type="radio" value="REMINDER" {...form.register('publishType')} className="mt-1" />
+                        <div className="flex-1">
+                          <span className="font-medium">Lembrete (publicação manual)</span>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            A equipe recebe a arte e a legenda no WhatsApp para publicar na mão
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {publishType === 'REMINDER' && (
+                      <div className="mt-3 rounded-lg border bg-muted/30 p-3">
+                        <Label htmlFor="reminderExtraInfo" className="text-sm font-medium">
+                          Informações extras para o lembrete
+                        </Label>
+                        <Textarea
+                          id="reminderExtraInfo"
+                          {...form.register('reminderExtraInfo')}
+                          placeholder="Cole um link ou adicione instruções especiais para este post..."
+                          rows={3}
+                          className="mt-2 resize-none"
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          💡 Exemplo: Link para adicionar no story, instruções de aprovação, etc.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Primeiro Comentário - Apenas para POST e CAROUSEL */}
+                {(postType === 'POST' || postType === 'CAROUSEL') && (
+                  <div>
+                    <Label htmlFor="firstComment" className="text-base font-semibold">
+                      Primeiro comentário (opcional)
+                    </Label>
+                    <Textarea
+                      id="firstComment"
+                      {...form.register('firstComment')}
+                      placeholder="Adicione um comentário que será postado automaticamente..."
+                      rows={2}
+                      className="mt-2 resize-none"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      💡 Ideal para adicionar hashtags extras ou CTAs sem poluir a legenda
+                    </p>
+                  </div>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
           </form>
 
           <aside className="order-1 lg:order-none lg:sticky lg:top-0">
@@ -768,17 +830,30 @@ export function PostComposerForm({
           <Button type="button" variant="outline" onClick={onCancel}>
             Cancelar
           </Button>
+          {podeProximo && (
+            <Button
+              type="submit"
+              form={FORM_ID}
+              variant="secondary"
+              title="Agenda este e já abre o próximo horário do dia"
+              disabled={salvando || selectedMedia.length === 0}
+              onClick={() => {
+                eProximoRef.current = true
+              }}
+            >
+              Agendar e próximo
+            </Button>
+          )}
           <Button
             type="submit"
             form={FORM_ID}
             className="min-w-[9rem] flex-1 sm:flex-none"
             disabled={salvando || selectedMedia.length === 0}
+            onClick={() => {
+              eProximoRef.current = false
+            }}
           >
-            {salvando ? 'Processando...' :
-              postId ? 'Salvar Alterações' :
-                scheduleType === 'IMMEDIATE' ? 'Postar Agora' :
-                  scheduleType === 'SCHEDULED' ? 'Agendar Post' :
-                    'Criar Série Recorrente'}
+            {salvando ? 'Processando...' : rotuloDoBotao(scheduleType, scheduledDatetime, Boolean(postId))}
           </Button>
         </div>
       </div>
