@@ -113,6 +113,13 @@ export interface ImprovementJobArgs {
   /** Tier do gpt-image. Ausente, o runner deriva de `instrucaoImagem`. */
   quality?: 'low' | 'medium' | 'high'
   /**
+   * true quando quem pediu ESCOLHEU o tier. O serviço sempre preenche
+   * `quality` (com o padrão, quando ninguém escolheu), então `quality`
+   * sozinho não diz se a pessoa decidiu — e foi por isso que o primeiro teste
+   * do refino com texto novo ficou no `low` (05/09/2026).
+   */
+  qualityEscolhida?: boolean
+  /**
    * O MODO da melhoria (05/09/2026) — decide o que o gerador pode mudar e é o
    * que o diretor de arte recebe. Ausente (job anterior à coluna), vale
    * `rediagramar`, que é o comportamento que existia.
@@ -644,7 +651,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
          * Sobe para `medium` só quando o pedido troca texto e ninguém escolheu
          * o tier à mão — 5 centavos a mais, só nesses casos.
          */
-        if (!args.quality && tier === 'low') {
+        if (!args.qualityEscolhida && tier === 'low') {
           tier = 'medium'
           plannerInfo.tierSubiuPorTextoNovo = true
         }

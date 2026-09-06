@@ -364,6 +364,9 @@ export async function startImprovement(
       userRequest,
       instrucaoImagem,
       quality: tier,
+      // O runner precisa distinguir tier ESCOLHIDO de tier padrão: só o padrão
+      // sobe quando o refino troca texto (05/09/2026).
+      qualityEscolhida: !!input.quality,
       modo,
       backgroundImageUrl: input.backgroundImageUrl ?? null,
       selectedLogoIds,
