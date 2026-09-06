@@ -165,6 +165,23 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
 
 /** PR 2 — os literais que o array legado servia para a agenda, verbatim. */
 const LITERAIS_AGENDA: Record<string, unknown> = {
+  // Tool NOVA (05/09/2026, repost) — o fixture nasce com ela, como manda a
+  // regra do registro: mudança de schema daqui para a frente é deliberada ou
+  // o snapshot acusa.
+  'sugerir-repost': {
+    type: 'object',
+    properties: {
+      projectId: { type: 'number', description: 'ID do cliente.' },
+      quando: {
+        type: 'string',
+        description: 'Dia e hora do story: ISO ("2026-09-11T19:00:00-03:00") ou "AAAA-MM-DD HH:mm" em horário de Brasília.',
+      },
+      dias: { type: 'number', description: 'Quantos dias para trás olhar (default 60, máximo 365).' },
+      limite: { type: 'number', description: 'Máximo de artes na resposta (default 8, máximo 24).' },
+    },
+    required: ['projectId', 'quando'],
+    additionalProperties: false,
+  },
   'ver-agenda': {
     type: 'object',
     properties: {

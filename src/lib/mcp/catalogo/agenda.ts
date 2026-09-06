@@ -146,6 +146,65 @@ export const toolsDeAgenda = [
   }),
 
   definirTool({
+    nome: 'sugerir-repost',
+    descricao:
+      'Sugere artes JÁ PUBLICADAS do cliente que valem voltar ao ar num dia e horário (só story — repostar feed duplica a peça no perfil). Ordena por afinidade com o slot: mesmo dia da semana e mesma faixa de horário primeiro, depois idade (verde = mais de 14 dias; âmbar = 7 a 13; vermelho = menos de 7 — aparece, mas avise). Cada item diz quantas vezes a arte já foi usada e traz "aviso" quando a legenda tem data, mês, urgência ou data comemorativa (não repostar fora de época). Apresente como proposta; para agendar use colocar-na-agenda com o generationId (ou a URL da arte, quando não há generationId).',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      quando: z
+        .string()
+        .describe('Dia e hora do story: ISO ("2026-09-11T19:00:00-03:00") ou "AAAA-MM-DD HH:mm" em horário de Brasília.'),
+      dias: z.number().optional().describe('Quantos dias para trás olhar (default 60, máximo 365).'),
+      limite: z.number().optional().describe('Máximo de artes na resposta (default 8, máximo 24).'),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, _principal) => {
+      const [{ sugerirRepost }, { formatarBRT }, { rotuloDeIdade, rotuloDeUso, DIAS_CURTOS }] = await Promise.all([
+        import('../../posts/repostar-service'),
+        import('../../posts/agenda-acoes'),
+        import('../../posts/repostar'),
+      ])
+      const projectId = args.projectId as number
+      const bruto = String(args.quando ?? '').trim()
+      const simples = bruto.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})$/)
+      const quando = new Date(simples ? `${simples[1]}T${simples[2]}:00-03:00` : bruto)
+      if (Number.isNaN(quando.getTime())) {
+        return { erro: 'Não entendi o horário. Use "AAAA-MM-DD HH:mm" (Brasília) ou ISO.' }
+      }
+      const dias = typeof args.dias === 'number' && args.dias > 0 ? Math.min(args.dias, 365) : undefined
+      const limite = typeof args.limite === 'number' && args.limite > 0 ? Math.min(args.limite, 24) : 8
+
+      const resultado = await sugerirRepost({ projectId, quando, dias, teto: limite, superficie: 'chat' })
+      const SEMAFORO: Record<string, string> = {
+        verde: 'verde — mais de 14 dias, bom para repostar',
+        ambar: 'âmbar — entre 7 e 13 dias',
+        vermelho: 'vermelho — menos de 7 dias, avise antes de repostar',
+      }
+      return {
+        quando: formatarBRT(quando),
+        total: resultado.total,
+        artes: resultado.itens.map((i) => ({
+          arte: i.url,
+          ...(i.generationId ? { generationId: i.generationId } : {}),
+          postAnterior: i.ultimoPostId,
+          foiAoAr: `${DIAS_CURTOS[i.diaDaSemana]} ${i.hora} · ${rotuloDeIdade(i.diasDesde)}`,
+          usos: rotuloDeUso(i.vezesUsada),
+          situacao: SEMAFORO[i.semaforo] ?? i.semaforo,
+          ...(i.mesmoDia && i.mesmaFaixa ? { afinidade: 'mesmo dia da semana e mesma faixa de horário' } : i.mesmoDia ? { afinidade: 'mesmo dia da semana' } : {}),
+          ...(i.avisoDePrazo ? { aviso: `a legenda ${i.avisoDePrazo} — confira se ainda vale` } : {}),
+          ...(i.legenda ? { legendaAnterior: i.legenda.slice(0, 140) } : {}),
+          ...(i.alcance != null ? { alcance: i.alcance } : {}),
+        })),
+        ...(resultado.total === 0
+          ? { dica: 'Nada publicado nesse dia/faixa nos últimos 60 dias. sugerir-posts propõe o que criar do zero.' }
+          : {}),
+      }
+    },
+  }),
+
+  definirTool({
     nome: 'sugerir-posts',
     descricao:
       'Sugere os próximos posts a partir da CADÊNCIA real do cliente: analisa as últimas 8 semanas (dia da semana × horário), acha os buracos dos próximos dias e devolve slots prontos — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia (ex.: Quinta do Vinho). Use quando a pessoa pedir "o que postar essa semana", ou proativamente ao notar a agenda vazia. Você escreve a copy; a sugestão é o esqueleto de quando/o quê.\n\nCada slot vem com um `sugestaoId`: guarde-o e devolva em colocar-na-agenda quando o post nascer daquele horário, mesmo que você o tenha mudado. É só um dado técnico — nunca fale dele na conversa.',
