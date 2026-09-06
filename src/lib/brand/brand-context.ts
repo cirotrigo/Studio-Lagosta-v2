@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
 import { criarEntradaBase } from '@/lib/knowledge/entries'
 import { formatarValidade } from '@/lib/knowledge/vigencia'
+import { lerEstiloDasReferencias, type EstiloDasReferenciasGravado } from '@/lib/brand/estilo-das-referencias'
 
 /**
  * Fonte única da identidade da marca para TODO prompt de geração.
@@ -54,6 +55,13 @@ export interface BrandContext {
   brandManualUrl: string | null
   /** `Project.artImprovementPrompt` — direção de arte própria do improve. */
   artDirection: string | null
+  /**
+   * O estilo OBSERVADO nas peças aprovadas (`BrandDNA.estiloDasReferencias`),
+   * lido por visão em `analise-de-referencias.ts`. É a assinatura REAL da
+   * marca, e o diretor de arte a recebe com prioridade sobre a prosa do DNA.
+   * Fica FORA de `BRAND_DNA_FIELDS`: não é editado à mão, é medido.
+   */
+  estiloDasReferencias?: EstiloDasReferenciasGravado | null
 }
 
 export const BRAND_DNA_FIELDS = [
@@ -135,6 +143,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
     logoUrl: nonEmpty(project.logoUrl) ?? nonEmpty(project.Logo[0]?.fileUrl),
     brandManualUrl: nonEmpty(project.brandManualUrl),
     artDirection: nonEmpty(project.artImprovementPrompt),
+    estiloDasReferencias: lerEstiloDasReferencias(dna?.estiloDasReferencias),
   }
 }
 

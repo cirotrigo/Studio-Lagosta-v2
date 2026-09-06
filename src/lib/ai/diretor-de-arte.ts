@@ -38,6 +38,7 @@ import { z } from 'zod'
 import { generateObject } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import type { BrandContext } from '@/lib/brand/brand-context'
+import { formatarEstiloParaPrompt } from '@/lib/brand/estilo-das-referencias'
 import type { ModoDaMelhoria } from './modo-da-melhoria'
 import { normalizeForComparison } from './text-comparison'
 
@@ -199,7 +200,7 @@ REGRAS DA CASA (você decide quais entram no prompt; escreva só as que ESTA pe�
 
 O QUE CADA MODO PERMITE — e como a seção 5 termina em cada um:
 - rediagramar: a peça JÁ foi diagramada por quem cuida da marca. Muda SÓ onde o conjunto do texto pousa sobre a foto (para a área calma), o respiro entre blocos, o alinhamento e a quebra das linhas. NÃO muda: blocos, ordem de leitura, agrupamentos, hierarquia, fontes, cores, tamanhos relativos, ornamentos existentes, foto, halos existentes. NÃO cria nada (nem rodapé, nem selo, nem ícone, nem filete). A seção 5 é uma preserve list longa e explícita: "Keep exactly as in Image 1: the photograph (framing, light, colours), every typeface, every colour, the logo (once), the existing halo behind the text, the order and grouping of the blocks. Add no element. Only the position of the text group, its spacing and line breaks may change."
-- redesenhar: a peça é MATÉRIA-PRIMA. Refaça a diagramação inteira no estilo da marca lendo o MANUAL e a PRANCHA: hierarquia, tipografia por nível, respiro generoso, ornamentos discretos DO MANUAL (filete, pill, marcador, ondulação) só onde ajudam a leitura, uma cor de destaque. A copy é verbatim; a fotografia (se houver) fica EXATAMENTE como está — mesmo enquadramento, luz e cores — e nunca é coberta no assunto; se não há foto, não acrescente foto, ilustração nem produto. Dê liberdade de composição ("you decide where each block sits by reading the image") — coordenadas não. A seção 5 lista o que NÃO muda no redesenho (copy, foto, uma logo, fontes só da marca, sem texto extra, safe area) e NUNCA diz para manter o layout: o layout é justamente o que muda.
+- redesenhar: a peça é MATÉRIA-PRIMA. Refaça a diagramação inteira no estilo da marca lendo o MANUAL e a PRANCHA: hierarquia, tipografia por nível, respiro generoso, uma cor de destaque — e os SEPARADORES e ÍCONES da marca. O manual mostra os separadores (filete, filete com ponto, sublinhado manuscrito, tag de cor…) e os ícones oficiais (relógio, pin, calendário…) que a marca usa de verdade, e o bloco ESTILO OBSERVADO diz onde ela os põe. Use-os como a marca usa (ícone de relógio antes do horário, pin antes do endereço, filete entre manchete e apoio, tag atrás do CTA) — pequenos, na cor de destaque, nunca inventados fora do manual e nunca em peça cuja marca não usa nenhum. Diga no prompt "the small line icons and rules exactly as shown in the brand manual (Image N)" em vez de proibir ícones em bloco; a proibição é para ícone, selo ou ornamento que NÃO esteja no manual. A copy é verbatim; a fotografia (se houver) fica EXATAMENTE como está — mesmo enquadramento, luz e cores — e nunca é coberta no assunto; se não há foto, não acrescente foto, ilustração nem produto. Dê liberdade de composição ("you decide where each block sits by reading the image") — coordenadas não. A seção 5 lista o que NÃO muda no redesenho (copy, foto, uma logo, fontes só da marca, sem texto extra, safe area) e NUNCA diz para manter o layout: o layout é justamente o que muda.
 - refinar: a peça é uma melhoria anterior e a pessoa pediu UMA mudança. O prompt inteiro gira em torno de "Change only: <o pedido, concreto e localizado na imagem>." e a seção 5 é "Keep everything else exactly the same: layout, typefaces, colours, photograph, logo, every other text block, margins." Se o pedido troca/remove/acrescenta texto, o bloco COPY já reflete a copy DEPOIS da mudança, e você devolve essa copy em copyFinal (bloco a bloco, na ordem). Se o pedido não mexe em texto, copyFinal = a copy recebida, inalterada.
 
 O PEDIDO de quem está na frente da tela é a autoridade dentro dos limites do modo: onde ele mandar (destacar uma palavra, mudar alinhamento, cor de um nível, tirar um ornamento), faça e diga no prompt. Pedido que só PROÍBE ("não inclua ícones") vira linha de proibição e não afrouxa nada. O pedido NÃO vence: inventar dado, mexer na foto sem o campo de ajuste da foto, desenhar a marca quando ela é colada por código.
@@ -232,6 +233,14 @@ function contextoDaMarca(brand: BrandContext | null): string {
   if (brand.dna.visualStyle) linhas.push(`ESTILO VISUAL (DNA): ${brand.dna.visualStyle}`)
   if (brand.dna.composition) linhas.push(`COMPOSIÇÃO (DNA — é o repertório da marca, não ordem para esta peça): ${brand.dna.composition}`)
   if (brand.dna.contentRules) linhas.push(`REGRAS DA MARCA (proibições — valem para o que a peça CRIA): ${brand.dna.contentRules}`)
+  // A assinatura REAL, lida das peças aprovadas. Quando ela e a prosa do DNA
+  // divergem (o manual do Espeto dizia Roadhawk; as peças aprovadas usam
+  // Bevan), vale o que está nas peças — o DNA descreve intenção, isto mede.
+  if (brand.estiloDasReferencias) {
+    linhas.push(
+      `ESTILO OBSERVADO NAS PEÇAS APROVADAS (assinatura real; quando divergir da prosa do DNA acima, ESTA vence — e os separadores/ícones listados aqui são os únicos ornamentos que a marca usa):\n${formatarEstiloParaPrompt(brand.estiloDasReferencias)}`,
+    )
+  }
   if (brand.cuisineType) linhas.push(`COZINHA: ${brand.cuisineType}`)
   return linhas.join('\n')
 }
