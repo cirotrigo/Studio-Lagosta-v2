@@ -46,35 +46,44 @@ export function DraftsBanner({
 
   return (
     <>
-      <div className="flex flex-wrap items-center gap-3 border-b border-amber-400/40 bg-amber-50 dark:bg-amber-950/20 px-4 sm:px-6 py-2.5">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <FileEdit className="w-4 h-4 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-          <p className="text-sm text-amber-900 dark:text-amber-200">
-            <strong>
-              {total} {plural}
-            </strong>{' '}
-            {total === 1 ? 'aguardando' : 'aguardando'} aprovação — não{' '}
-            {total === 1 ? 'publica' : 'publicam'} enquanto isso.
-          </p>
-        </div>
+      {/*
+        No celular o texto e os botões vão em LINHAS separadas. A versão
+        anterior era `flex-wrap` com o texto em `flex-1 min-w-0`: `min-w-0`
+        tira o piso de largura do texto, então em vez de quebrar os botões
+        para a linha de baixo o navegador espremia o parágrafo até uma letra
+        por linha — "21 rascunhos" virava uma coluna de 1.000px na agenda do
+        iPhone (05/09/2026).
+      */}
+      <div className="border-b border-amber-400/40 bg-amber-50 px-4 py-2.5 dark:bg-amber-950/20 sm:px-6">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center">
+            <FileEdit className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-400 sm:mt-0" />
+            <p className="min-w-0 text-sm text-amber-900 dark:text-amber-200">
+              <strong>
+                {total} {plural}
+              </strong>{' '}
+              aguardando aprovação — não {total === 1 ? 'publica' : 'publicam'} enquanto isso.
+            </p>
+          </div>
 
-        <div className="flex items-center gap-2">
-          {!filtroAtivo && (
-            <Button variant="outline" size="sm" onClick={onVerRascunhos}>
-              Ver {plural}
-            </Button>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {!filtroAtivo && (
+              <Button variant="outline" size="sm" onClick={onVerRascunhos} className="flex-1 sm:flex-none">
+                Ver {plural}
+              </Button>
+            )}
 
-          {projectId !== null && (
-            <Button
-              size="sm"
-              onClick={() => setDialogOpen(true)}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white"
-            >
-              <CalendarCheck className="w-4 h-4 mr-2" />
-              Revisar e aprovar
-            </Button>
-          )}
+            {projectId !== null && (
+              <Button
+                size="sm"
+                onClick={() => setDialogOpen(true)}
+                className="flex-1 bg-emerald-600 text-white hover:bg-emerald-700 sm:flex-none"
+              >
+                <CalendarCheck className="mr-2 h-4 w-4" />
+                Revisar e aprovar
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
