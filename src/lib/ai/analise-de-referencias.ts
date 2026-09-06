@@ -78,7 +78,8 @@ Regras:
 - Fonte se descreve pelo PAPEL (serifa alta, slab pesada, grotesk condensada, manuscrita), nunca por nome de arquivo.
 - Separadores e ícones vêm do vocabulário fechado descrito no schema (use os identificadores exatamente como estão na lista); se algo não cabe em nenhum item, descreva em "ornamentos". Se não há ícone, use "nenhum".
 - Cor em hex aproximado, com o papel (ex.: "#F4301A — manchete e CTA").
-- "evitar" é o que NUNCA aparece nestas peças e que um gerador tenderia a pôr (véu escuro inteiro, selo redondo, gradiente de borda a borda, emoji, moldura, sombra dura).
+- "evitar" é SÓ o que você VERIFICOU não aparecer em nenhuma das peças e que um gerador tenderia a pôr. Nunca uma lista genérica: cada item tem de ser uma ausência observada NESTAS peças. Se a marca USA sombra dura, contorno ou selo, isso vai na tipografia/ornamentos e jamais em "evitar".
+- "efeitoDaManchete": olhe as letras da manchete de perto — sombra deslocada e nítida (sombra-dura), sombra desfocada (sombra-suave), contorno, ou nenhum. Diga também, na tipografia, em que cor da paleta a sombra/contorno é feito.
 - Português do Brasil, frases curtas e concretas. Nada de adjetivo vazio.`
 
 /**

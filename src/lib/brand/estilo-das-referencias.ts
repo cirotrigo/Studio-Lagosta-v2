@@ -67,6 +67,10 @@ export const estiloBrutoSchema = z.object({
     destaque: z.string(),
   }),
   caixaDaManchete: z.string(),
+  efeitoDaManchete: z
+    .string()
+    .optional()
+    .describe('O acabamento das letras da manchete, se houver: "nenhum", "sombra-dura" (deslocada, sem desfoque, em outra cor), "sombra-suave" (desfocada), "contorno". Só o que se VÊ nas peças.'),
   coresDeDestaque: z.array(z.object({ hex: z.string(), papel: z.string() })).max(8),
   separadores: z.array(z.string()).max(8).describe(`Só valores desta lista: ${SEPARADORES.join(', ')}.`),
   icones: z.array(z.string()).max(10).describe(`Só valores desta lista: ${ICONES.join(', ')}.`),
@@ -90,6 +94,13 @@ export const estiloDasReferenciasSchema = z.object({
   }),
   /** Caixa da manchete, medida nas peças: 'alta' | 'natural' | 'mista'. */
   caixaDaManchete: z.enum(['alta', 'natural', 'mista']),
+  /**
+   * O acabamento das letras da manchete. 'sombra-dura' é a sombra DESLOCADA e
+   * sem desfoque, em OUTRA cor da paleta — a assinatura do Seu Quinto (Ciro,
+   * 06/09/2026: "sempre tem uma sombra nítida na headline, sempre usando duas
+   * combinações de cores da paleta"). O manual desenha a amostra com ele.
+   */
+  efeitoDaManchete: z.enum(['nenhum', 'sombra-dura', 'sombra-suave', 'contorno']).default('nenhum'),
   /** Cores usadas na camada gráfica, em hex quando der para inferir, com o papel de cada uma. */
   coresDeDestaque: z.array(z.object({ hex: z.string(), papel: z.string() })).max(6),
   /** Separadores que aparecem nas peças, do vocabulário fechado. */
@@ -184,6 +195,14 @@ export function normalizarEstilo(bruto: EstiloBruto): EstiloDasReferencias {
     if (i && !icones.includes(i)) icones.push(i)
     else if (!i) ornamentos.push(`ícone: ${v}`)
   }
+  const efeitoLido = semAcento(bruto.efeitoDaManchete ?? '')
+  const efeitoDaManchete: EstiloDasReferencias['efeitoDaManchete'] = /dura|extrud|deslocad|hard|drop/.test(efeitoLido)
+    ? 'sombra-dura'
+    : /suave|soft|desfoc|blur/.test(efeitoLido)
+      ? 'sombra-suave'
+      : /contorno|outline|stroke/.test(efeitoLido)
+        ? 'contorno'
+        : 'nenhum'
   const caixa = semAcento(bruto.caixaDaManchete)
   const caixaDaManchete: EstiloDasReferencias['caixaDaManchete'] = /alta|upper|maiuscul|caps/.test(caixa)
     ? 'alta'
@@ -193,6 +212,7 @@ export function normalizarEstilo(bruto: EstiloBruto): EstiloDasReferencias {
   return {
     tipografia: bruto.tipografia,
     caixaDaManchete,
+    efeitoDaManchete,
     coresDeDestaque: bruto.coresDeDestaque.slice(0, 6),
     separadores: separadores.slice(0, 6),
     icones: icones.length ? icones.slice(0, 8) : ['nenhum'],
@@ -273,7 +293,13 @@ export function nomeDoIcone(i: Icone): string {
  */
 export function formatarEstiloParaPrompt(estilo: EstiloDasReferencias): string {
   const linhas: string[] = []
-  linhas.push(`Manchete: ${estilo.tipografia.manchete} (caixa ${estilo.caixaDaManchete}).`)
+  const EFEITO: Record<EstiloDasReferencias['efeitoDaManchete'], string> = {
+    nenhum: '',
+    'sombra-dura': ' Acabamento: sombra DURA (deslocada, sem desfoque) em outra cor da paleta — sempre.',
+    'sombra-suave': ' Acabamento: sombra suave (desfocada) atrás das letras.',
+    contorno: ' Acabamento: contorno nas letras.',
+  }
+  linhas.push(`Manchete: ${estilo.tipografia.manchete} (caixa ${estilo.caixaDaManchete}).${EFEITO[estilo.efeitoDaManchete]}`)
   linhas.push(`Apoio: ${estilo.tipografia.apoio}`)
   linhas.push(`Serviço/CTA: ${estilo.tipografia.servico}`)
   linhas.push(`Destaque: ${estilo.tipografia.destaque}`)

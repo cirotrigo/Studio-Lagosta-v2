@@ -4611,6 +4611,19 @@ os clientes para personalizar o estilo da marca de cada um." Três peças novas:
   `brand-manual/6-espeto-gaucho.png`). Os outros 10 manuais foram gerados em
   dry-run para avaliação — o manual do designer continua valendo neles até o
   Ciro decidir.
+- 🔴 **EXEMPLO NO PROMPT VIRA RESPOSTA.** O SYSTEM da análise dizia que
+  "evitar" era "o que nunca aparece (véu escuro inteiro, selo redondo,
+  gradiente de borda a borda, emoji, moldura, sombra dura)" — e os 10
+  clientes voltaram com ESSA lista, quase verbatim. No Seu Quinto a visão
+  descreveu a manchete com "sombra curta deslocada" e ainda assim pôs "sombra
+  dura" em evitar; o Ciro corrigiu ("sempre tem uma sombra nítida na
+  headline, sempre com duas cores da paleta"). O prompt não dá mais exemplos
+  ali (só "ausência VERIFICADA nestas peças"), o schema ganhou
+  `efeitoDaManchete` (nenhum | sombra-dura | sombra-suave | contorno; o manual
+  desenha a amostra com ele, em duas cores da paleta) e a análise foi refeita
+  nos 10 clientes. A regra do Seu Quinto está no DNA (`visualStyle`, regras
+  aprendidas) e o planejador foi avisado: o estilo observado vence a prosa do
+  DNA, mas as "Regras aprendidas na prática" — decisões do dono — vencem tudo.
 - 🔴 **A cor de destaque do manual nunca é a primeira do estilo às cegas**: a
   primeira cor lida é quase sempre o BRANCO do texto principal, e a segunda
   voz da manchete saiu branca sobre fundo claro. Vale a primeira cor VIVA
