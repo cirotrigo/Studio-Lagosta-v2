@@ -82,6 +82,8 @@ export interface ResultadoReconciliacao {
   erros: number
   /** Entradas antigas que ganharam o hash de conteúdo nesta rodada (B8). */
   hashesPreenchidos?: number
+  /** Fotos novas que ganharam vetor semântico nesta rodada (F2). */
+  vetoresIndexados?: number
   /** Preenchido quando a rodada não mexeu no catálogo deste projeto. */
   pulado?: MotivoDePulo
   /** Erro que derrubou a reconciliação DESTE projeto (a rodada segue). */

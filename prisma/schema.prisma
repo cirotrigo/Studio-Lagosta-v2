@@ -288,6 +288,34 @@ model PhotoUsage {
 /// `PhotoUsage`: corrida de read-modify-write no arquivo único, e regerar o
 /// catálogo apagaria a curadoria. Sem FK: apagar a foto do Drive não arrasta
 /// o registro. Despromover é `revogadoEm`, nunca DELETE.
+/// Vetores semânticos de UMA foto do acervo (F2, 07/09/2026) — o que deixa a
+/// busca ENXERGAR a foto ("salão cheio", "fachada à noite") em vez de só ler
+/// o que a visão escreveu. Dois vetores no MESMO modelo (`gemini-embedding-2`,
+/// 1.536 dims): o da IMAGEM e o da DESCRIÇÃO+TAGS, porque a imagem sozinha
+/// confunde pudim com gelato de caramelo e o texto sozinho não sabe o que é
+/// "fachada noturna". Sem FK (precedente de `PhotoUsage`): a foto vive no
+/// Drive, e o catálogo é o que diz se ela ainda existe.
+///
+/// As colunas `vetor*` são `vector(1536)` do pgvector — `Unsupported` no
+/// Prisma; quem lê e escreve é SQL cru em `embeddings-de-foto.ts`.
+model PhotoEmbedding {
+  id          String   @id @default(cuid())
+  projectId   Int
+  driveFileId String
+  /// Hash do arquivo no momento da indexação — muda o arquivo, reindexa.
+  md5         String?
+  /// `modelo/dims/versao` — mudou o modelo, a linha antiga sai do alcance.
+  versao      String
+  vetorImagem Unsupported("vector(1536)")?
+  vetorTexto  Unsupported("vector(1536)")?
+  /// O texto que virou `vetorTexto`, para auditoria e reindexação seletiva.
+  texto       String?
+  geradoEm    DateTime @default(now())
+
+  @@unique([projectId, driveFileId])
+  @@index([projectId, versao])
+}
+
 model PhotoDestaque {
   id          String    @id @default(cuid())
   projectId   Int

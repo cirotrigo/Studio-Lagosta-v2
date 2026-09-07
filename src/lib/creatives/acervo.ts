@@ -12,6 +12,8 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { lerUsosDeFoto, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
   filtrarAcervo,
+  calcularIdf,
+  gruposDoTema,
   palavrasDoTema,
   ranquearAcervo,
   type FotoRanqueada,
@@ -22,6 +24,7 @@ import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, diaBRT, resumoEstavel } from '@/lib/aprendizado/chaves'
+import { buscarSemelhantes, embedarConsulta, normalizarPorRank } from '@/lib/creatives/embeddings-de-foto'
 
 const CATALOG_FILE = '_image-catalog.json'
 
@@ -35,7 +38,16 @@ const CATALOG_FILE = '_image-catalog.json'
  * `chaves.ts`): a safra nova não herda desfecho de proposta feita pela
  * heurística velha (v1 = menos usada primeiro, tema por substring da frase).
  */
-const VERSAO_DO_ACERVO = 'acervo-v2'
+/**
+ * v3 (07/09/2026): busca lexical por grupos com maioria, raridade e
+ * sinônimos (F1) + similaridade semântica por embedding de imagem e de
+ * descrição (F2). Safra nova: a proposta de hoje não é a mesma da v2.
+ */
+const VERSAO_DO_ACERVO = 'acervo-v3'
+/** Quantas fotos o ranking vetorial traz para o pelotão de candidatas. */
+const SEMELHANTES_CONSULTADAS = 200
+/** Similaridade mínima (0..1, por posição) para uma foto entrar SEM casar palavra. */
+const CORTE_DOS_EXTRAS = 0.6
 /** Quantas fotos do topo entram no registro da proposta. */
 const PROPOSTAS_REGISTRADAS = 10
 
@@ -67,6 +79,15 @@ export interface ImagemCatalogo {
   precoLegivel?: boolean
   /** Marca de terceiro em DESTAQUE (guarda-sol Brahma, geladeira de refrigerante). Ausente/null = neutro. */
   marcaDeTerceiro?: string | null
+  /** v3 (F4, 07/09/2026) — ver `catalogo-de-fotos.ts`. Ausentes na análise antiga. */
+  assunto?: string | null
+  elementos?: string[]
+  enquadramento?: string | null
+  momento?: string | null
+  lotacao?: string | null
+  pessoas?: string | null
+  tagsLivres?: string[]
+  analiseVersao?: string
 }
 
 export interface Catalogo {
@@ -281,16 +302,61 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * "almoco" no MESMO acervo (medido no Wine Vix). Os filtros exatos (pasta,
    * fileName, menuCategory, tags, quality) não mudaram.
    */
-  const palavras = input.theme ? palavrasDoTema(input.theme, pilares) : []
-  const imagens = filtrarAcervo(todas, {
+  /**
+   * F1 (07/09/2026): a busca casa por GRUPOS com maioria e raridade —
+   * `gruposDoTema` traz os sinônimos do dicionário e do pilar; `calcularIdf`
+   * é do acervo INTEIRO (não da lista filtrada), e vai também ao ranking.
+   */
+  const grupos = input.theme ? gruposDoTema(input.theme, pilares) : []
+  const idf = grupos.length > 0 ? calcularIdf(todas) : undefined
+  const filtrosExatos = {
     folder: input.folder,
     fileName: input.fileName,
     menuCategory: input.menuCategory,
     tags: input.tags,
     quality: input.quality,
     temQualidadeNoCatalogo: temQualidade,
-    palavrasDoTema: palavras,
+  }
+  const lexicais = filtrarAcervo(todas, {
+    ...filtrosExatos,
+    palavrasDoTema: grupos.flat(),
+    gruposDoTema: grupos,
+    idf,
   })
+
+  /**
+   * F2 (07/09/2026): a busca ENXERGA a foto. O tema vira vetor no mesmo
+   * modelo que embedou cada foto (imagem e descrição); as mais parecidas
+   * entram no pelotão de candidatas mesmo sem casar palavra nenhuma — é o
+   * que responde "salão cheio" e "fachada à noite" num catálogo que nunca
+   * escreveu essas palavras. Os filtros EXATOS (pasta, tags, qualidade…)
+   * continuam valendo para elas. A similaridade vai ao ranking como insumo
+   * pré-calculado (`ranquearAcervo` é puro, sem rede) e é NORMALIZADA por
+   * posição — o coseno cru vive numa faixa estreita.
+   *
+   * Nada disto derruba a busca: sem chave, sem vetor ou sem tabela, a lista
+   * é a lexical de sempre.
+   */
+  let similaridade: Map<string, number> | undefined
+  let imagens = lexicais
+  let viaSemantica = 0
+  if (input.theme && grupos.length > 0) {
+    const vetor = await embedarConsulta(input.theme)
+    const semelhantes = vetor ? await buscarSemelhantes(input.projectId, vetor, SEMELHANTES_CONSULTADAS) : new Map()
+    if (semelhantes.size > 0) {
+      similaridade = normalizarPorRank(semelhantes)
+      const jaNaLista = new Set(lexicais.map((i) => i.driveFileId))
+      // Foto SEM palavra casada entra só do pelotão de cima dos parecidos
+      // (`CORTE_DOS_EXTRAS`); o resto da lista serve para dar posição a quem
+      // casou. Um gate "só quando a lexical é fraca" foi medido e descartado:
+      // custava os temas visuais (12% contra 28%) sem ganhar nos reais.
+      const extras = filtrarAcervo(todas, { ...filtrosExatos, palavrasDoTema: [] }).filter(
+        (i) => (similaridade!.get(i.driveFileId) ?? 0) >= CORTE_DOS_EXTRAS && !jaNaLista.has(i.driveFileId),
+      )
+      viaSemantica = extras.length
+      imagens = [...lexicais, ...extras]
+    }
+  }
 
   /** Primeira entrada de cada hash — as demais são cópias dela. */
   const canonicaPorHash = new Map<string, string>()
@@ -320,6 +386,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     ultimoUso,
     destaques,
     hojeBRT: diaBRT(),
+    idf,
+    similaridade,
   })
 
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
@@ -336,6 +404,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
 
   return {
     total: imagens.length,
+    /** Quantas candidatas entraram só pela semelhança (sem casar palavra). */
+    viaSemantica,
     acervoCompleto: todas.length,
     catalogoAtualizadoEm: catalogo.lastUpdated ?? catalogo.regeneradoEm ?? null,
     pastasDisponiveis: pastas,
@@ -418,10 +488,14 @@ async function registrarProposta(
   ultimoUso: Map<string, string>,
   destaques: Set<string>,
 ): Promise<string | null> {
-  // Busca sem resultado não propõe nada — e contá-la como proposta rejeitada
-  // culparia o ranqueamento por um acervo que não tem a foto.
-  if (ranqueadas.length === 0) return null
-
+  /**
+   * Busca sem resultado TAMBÉM é registrada (07/09/2026), com `total: 0` e
+   * `propostas: []`. Até então ela não deixava rastro — e é justamente ela que
+   * diz "a equipe procurou e o acervo não tem", o dado que a pauta de
+   * fotografia mais precisa. Ninguém a lê como rejeição: sem propostas, nem
+   * `agregarSinaisDeFoto` nem `fecharSugestaoDeFoto` têm o que fechar, e a
+   * expiração é neutra.
+   */
   const criterios = {
     theme: input.theme,
     folder: input.folder,
@@ -445,7 +519,7 @@ async function registrarProposta(
     sugerido: {
       criterios,
       total: ranqueadas.length,
-      topo: ranqueadas[0].imagem.driveFileId,
+      topo: ranqueadas[0]?.imagem.driveFileId ?? null,
       propostas: ranqueadas.slice(0, PROPOSTAS_REGISTRADAS).map((r, posicao) => ({
         posicao: posicao + 1,
         driveFileId: r.imagem.driveFileId,

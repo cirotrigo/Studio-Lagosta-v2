@@ -25,11 +25,25 @@
  *   npx tsx scripts/enriquecer-catalogo.ts --project-id 7 --dry-run --limit 8
  *   npx tsx scripts/enriquecer-catalogo.ts --projeto "By Rock" --concurrency 6
  *   npx tsx scripts/enriquecer-catalogo.ts --project-id 7 --force   # re-analisa tudo
+ *   npx tsx scripts/enriquecer-catalogo.ts --project-id 7 --v3      # só o que ainda não tem análise v3
+ *
+ * v3 (07/09/2026): o prompt e a normalização passaram a ser os mesmos do cron
+ * (`src/lib/creatives/catalogo-de-fotos.ts`): vocabulário FECHADO de tags,
+ * assunto, elementos, enquadramento, momento, lotação e pessoas. `--v3`
+ * reanalisa só as entradas sem `analiseVersao: 'v3'`. Depois, rode
+ * `indexar-embeddings-de-fotos.ts` para o vetor de texto acompanhar.
  *
  * Somente leitura no banco: escreve apenas no `_image-catalog.json` do Drive.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import {
+  montarPromptDeAnalise,
+  montarVocabularioDeTags,
+  normalizarAnalise,
+  type AnaliseNormalizada,
+  type VocabularioDeTags,
+} from '../src/lib/creatives/catalogo-de-fotos'
 import { google } from 'googleapis'
 import { PrismaClient } from '../prisma/generated/client'
 import * as https from 'https'
@@ -38,7 +52,7 @@ import * as fs from 'fs'
 import 'dotenv/config'
 
 // ─── Tipos ───────────────────────────────────────────────────────────
-interface CatalogImage {
+interface CatalogImage extends Partial<AnaliseNormalizada> {
   driveFileId: string
   fileName: string
   folder: string
@@ -315,6 +329,7 @@ function montarVocabulario(pilares: string[], pastas: string[]) {
   return linhas.join('\n')
 }
 
+/** @deprecated v2 — mantido só para comparação; a v3 vive em `catalogo-de-fotos.ts`. */
 function buildPrompt(folderName: string, menu: string, contexto: string, vocab: string): string {
   return `Você é um curador visual de acervo fotográfico de restaurante.
 Analise esta foto do acervo. Ela está na pasta "${folderName}".
@@ -358,8 +373,18 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
 }
 
-async function analyze(buffer: Buffer, folderName: string, menu: string, contexto: string, vocab: string): Promise<GeminiResult> {
-  const prompt = buildPrompt(folderName, menu, contexto, vocab)
+async function analyze(
+  buffer: Buffer,
+  folderName: string,
+  menu: string,
+  contexto: string,
+  vocab: VocabularioDeTags,
+  projectName: string,
+): Promise<AnaliseNormalizada> {
+  // v3 (07/09/2026): o prompt e a normalização são os MESMOS do cron
+  // (`catalogo-de-fotos.ts`) — vocabulário fechado, assunto, elementos,
+  // enquadramento, momento, lotação, pessoas.
+  const prompt = montarPromptDeAnalise({ projectName, pasta: folderName, cardapio: menu, contextoDaMarca: contexto, vocabulario: vocab })
   let lastErr: any
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
@@ -369,7 +394,7 @@ async function analyze(buffer: Buffer, folderName: string, menu: string, context
       ])
       const text = result.response.text().trim()
       const jsonStr = text.replace(/^```json?\s*/i, '').replace(/```$/, '').trim()
-      return JSON.parse(jsonStr) as GeminiResult
+      return normalizarAnalise(JSON.parse(jsonStr), vocab, { pasta: folderName })
     } catch (e: any) {
       lastErr = e
       const msg = String(e?.message ?? e)
@@ -456,10 +481,15 @@ async function main() {
         .filter((n) => n && n !== '(raiz)'),
     ),
   ].sort()
-  const vocab = montarVocabulario(pilares, pastas)
+  const vocab = montarVocabularioDeTags({ pilares, pastas: catalog.images.map((i) => i.folder ?? '') })
+  void pastas
 
+  const soV3 = opts.v3 === true
   const pending = catalog.images.filter(
-    (i) => force || ((!i.tags || i.tags.length === 0 || !i.description) && !i.analiseBloqueada),
+    (i) =>
+      force ||
+      (soV3 && i.analiseVersao !== 'v3' && !i.analiseBloqueada) ||
+      ((!i.tags || i.tags.length === 0 || !i.description) && !i.analiseBloqueada),
   )
   const todo = pending.slice(0, limit === Infinity ? undefined : limit)
   console.log(`\n4. ${pending.length} imagens sem metadados · processando ${todo.length}`)
@@ -485,36 +515,16 @@ async function main() {
       const img = todo[idx]
       try {
         const { buffer, createdTime, folderId } = await getFileMetaAndThumb(img.driveFileId)
-        const r = await analyze(buffer, img.folder, menu, contexto, vocab)
+        const r = await analyze(buffer, img.folder, menu, contexto, vocab, project.name)
 
         img.createdTime = createdTime
         img.folderId = folderId
-        img.zona = r.zona ?? null
-        img.menuItem = r.menuItem ?? null
-        img.menuCategory = r.menuCategory ?? null
-        img.description = r.description ?? ''
-        img.mood = r.mood ?? 'casual'
-        img.bestFor = Array.isArray(r.bestFor) ? r.bestFor : []
-        img.quality = r.quality ?? 'media'
-        img.clienteIdentificavel = r.clienteIdentificavel === true
-        // Só o que o modelo AFIRMOU: omitido fica ausente (neutro no ranking).
-        if (typeof r.precoLegivel === 'boolean') img.precoLegivel = r.precoLegivel
-        if (typeof r.marcaDeTerceiro === 'string' && r.marcaDeTerceiro.trim()) {
-          img.marcaDeTerceiro = r.marcaDeTerceiro.trim().slice(0, 60)
-        } else if (r.marcaDeTerceiro === null) {
-          img.marcaDeTerceiro = null
-        }
+        // A análise v3 inteira entra na entrada; o que é da FOTO (md5,
+        // catalogadaEm, usageHistory) e da identidade (ids, pasta) fica.
+        Object.assign(img, r)
         img.usageHistory = img.usageHistory ?? []
-
-        const tags = new Set<string>(
-          (Array.isArray(r.tags) ? r.tags : [])
-            .map((t) => String(t).toLowerCase().trim())
-            .filter((t) => t && !t.includes('/') && !/^\d+_/.test(t)),
-        )
-        if (r.zona) tags.add(String(r.zona).toLowerCase())
-        if (img.clienteIdentificavel) tags.add('cliente-identificavel')
-        if (img.quality === 'baixa') tags.add('descarte-sugerido')
-        img.tags = [...tags]
+        if (r.precoLegivel === undefined) delete img.precoLegivel
+        if (r.marcaDeTerceiro === undefined) delete img.marcaDeTerceiro
 
         if (amostra.length < 8) amostra.push(img)
         ok++

@@ -73,13 +73,16 @@ describe('agregarSinaisDeFoto', () => {
     expect(rejeicoes.every((r) => r.motivo === null)).toBe(true)
   })
 
-  it('expirada rejeita o topo inteiro, sem motivo — ninguém levou nada', () => {
-    const { escolhas, rejeicoes } = agregarSinaisDeFoto([
-      sinalDeBusca({ desfecho: 'expirada', escolhido: null }),
+  it('expirada é NEUTRA: não rejeita ninguém, mas conta na última atividade', () => {
+    // 07/09/2026: 81% das buscas expiravam porque quem usava a foto (compositor,
+    // canvas, chat) não fechava a busca — a expiração punia as 3 melhores fotos
+    // do cliente por um silêncio que não significava nada.
+    const { escolhas, rejeicoes, ultimaAtividade } = agregarSinaisDeFoto([
+      sinalDeBusca({ desfecho: 'expirada', escolhido: null, decididoEm: D2 }),
     ])
     expect(escolhas).toEqual([])
-    expect(rejeicoes.map((r) => r.driveFileId)).toEqual(['foto-a', 'foto-b', 'foto-c'])
-    expect(rejeicoes.every((r) => r.motivo === null)).toBe(true)
+    expect(rejeicoes).toEqual([])
+    expect(ultimaAtividade).toBe(D2.toISOString())
   })
 
   it('sem decididoEm, o quando cai no sugeridoEm', () => {

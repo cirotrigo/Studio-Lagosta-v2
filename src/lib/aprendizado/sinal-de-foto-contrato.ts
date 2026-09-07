@@ -194,8 +194,14 @@ function escolhidoDaLinha(escolhido: unknown): { driveFileId: string | null; mot
  *  - `aceita-como-veio`/`trocada` com `escolhido.driveFileId` → uma ESCOLHA;
  *    e cada proposta do topo (posição ≤ 3) que não é a escolhida vira uma
  *    REJEIÇÃO, carregando o `motivo` do chip quando houver.
- *  - `expirada` → as propostas do topo viram rejeições sem motivo (ninguém
- *    levou nada — o topo foi visto e preterido por indiferença).
+ *  - `expirada` NÃO produz linha (07/09/2026). Até então o topo virava
+ *    rejeição "por indiferença" — mas medido na carteira, 81% das buscas
+ *    expiravam (488 de 603 desde 08/08) enquanto `PhotoUsage` registrava
+ *    1.131 usos reais: a foto ERA usada, pelo compositor, pelo canvas ou
+ *    pelo chat, que não fechavam a busca. Cada expiração punia as 3 melhores
+ *    fotos do cliente por um silêncio que não significava nada (~1.460
+ *    rejeições fabricadas). Silêncio vale zero; rejeição só existe quando
+ *    alguém escolheu OUTRA foto da lista.
  *  - Pendentes e outros desfechos não produzem linha, mas TODA linha lida
  *    conta em `ultimaAtividade` — a recência é comparação DENTRO do histórico.
  */
@@ -239,19 +245,7 @@ export function agregarSinaisDeFoto(linhas: LinhaDeSinal[]): {
       continue
     }
 
-    if (linha.desfecho === 'expirada') {
-      for (const proposta of propostasDoSugerido(linha.sugerido)) {
-        if (proposta.posicao > TOPO_REJEITAVEL) continue
-        rejeicoes.push({
-          driveFileId: proposta.driveFileId,
-          tema,
-          quando,
-          posicao: proposta.posicao,
-          motivo: null,
-          sugestaoId,
-        })
-      }
-    }
+    // `expirada` cai aqui e não produz nada — ver o cabeçalho da função.
   }
 
   return { escolhas, rejeicoes, ultimaAtividade: isoDoEpoch(ultima) }

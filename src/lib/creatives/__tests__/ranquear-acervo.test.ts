@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   PESOS,
+  calcularIdf,
+  casaComGrupos,
   casaComTema,
   filtrarAcervo,
+  gruposDoTema,
   palavrasDoTema,
+  raiz,
   ranquearAcervo,
   type CriteriosDeFiltro,
   type EntradaDeRanking,
@@ -543,8 +547,11 @@ describe('ranquearAcervo — relevância do tema no score', () => {
   it('a relevância entra multiplicada e só quando há tema', () => {
     const imagens = [foto('relevante', { bestFor: ['churrasco'] }), foto('neutra')]
     const comTema = ranquearAcervo(entrada(imagens, { tema: 'cortes e churrasco' }))
-    expect(porId(comTema, 'relevante').componentes.relevancia).toBe(
-      PESOS.CASAMENTO_BESTFOR * PESOS.RELEVANCIA_POR_PONTO,
+    // Desde 07/09/2026 a relevância pesa a RARIDADE da palavra no acervo:
+    // "churrasco" está em 1 das 2 fotos → idf = ln(2).
+    expect(porId(comTema, 'relevante').componentes.relevancia).toBeCloseTo(
+      PESOS.CASAMENTO_BESTFOR * Math.log(2) * PESOS.RELEVANCIA_POR_PONTO,
+      6,
     )
     expect(ordem(comTema)[0]).toBe('relevante')
 
@@ -594,5 +601,117 @@ describe('ranquearAcervo — o que o catálogo sabe que fere o DNA', () => {
       }),
     )
     expect(ordem(r)).toEqual(['destaque-com-preco', 'escolhida', 'com-preco'])
+  })
+})
+
+// ── F1 (07/09/2026): raiz, grupos, maioria, descrição, raridade ────────────
+
+const img = (driveFileId: string, extra: Partial<FotoRanqueavel> = {}): FotoRanqueavel => ({ driveFileId, ...extra })
+const criterios = (extra: Partial<CriteriosDeFiltro> = {}): CriteriosDeFiltro => ({
+  temQualidadeNoCatalogo: true,
+  palavrasDoTema: [],
+  ...extra,
+})
+const ids = (r: Array<{ driveFileId: string }>) => r.map((f) => f.driveFileId)
+
+describe('raiz — casamento por TOKEN, nunca substring', () => {
+  it('flexão casa: gelatos/gelato, crepes/crepe, noturna/noturno, porções/porção', () => {
+    expect(raiz('gelatos')).toBe(raiz('gelato'))
+    expect(raiz('crepes')).toBe(raiz('crepe'))
+    expect(raiz('noturna')).toBe(raiz('noturno'))
+    expect(raiz('porções')).toBe(raiz('porção'))
+    expect(raiz('picanhas')).toBe(raiz('picanha'))
+  })
+
+  it('"cheio" NÃO casa "recheio" — o defeito de "salão cheio" devolver crepe com recheio', () => {
+    expect(raiz('cheio')).not.toBe(raiz('recheio'))
+    const foto = img('crepe', { tags: ['recheio', 'crepe'] })
+    expect(casaComTema(foto, ['cheio']).casa).toBe(false)
+  })
+
+  it('"crepe" não casa "creperia" por raiz (quem liga os dois é o sinônimo)', () => {
+    expect(raiz('crepe')).not.toBe(raiz('creperia'))
+  })
+})
+
+describe('gruposDoTema — sinônimos e maioria', () => {
+  it('cada palavra vira um grupo com os sinônimos do dicionário', () => {
+    const grupos = gruposDoTema('sorvete de pistacchio')
+    expect(grupos).toHaveLength(2)
+    expect(grupos[0]).toContain('gelato')
+    expect(grupos[1]).toContain('pistache')
+  })
+
+  it('palavrasDoTema continua sem dicionário — a régua dos pilares não muda', () => {
+    expect(palavrasDoTema('cortes e churrasco')).toEqual(['cortes', 'churrasco'])
+  })
+
+  it('tema composto exige a MAIORIA dos grupos: "pistache gelato taça" não passa só com "gelato"', () => {
+    const grupos = gruposDoTema('pistache gelato taça')
+    const soGelato = img('pudim', { tags: ['pudim', 'gelato', 'caramelo'] })
+    const pistache = img('pistache', { tags: ['gelato', 'pistache', 'copinho'] })
+    expect(casaComGrupos(soGelato, grupos).casa).toBe(false)
+    expect(casaComGrupos(pistache, grupos).casa).toBe(true)
+  })
+
+  it('o sinônimo casa pelo catálogo: "sorvete" acha a foto marcada "gelato"', () => {
+    const foto = img('g', { tags: ['gelato'] })
+    expect(casaComGrupos(foto, gruposDoTema('sorvete')).casa).toBe(true)
+  })
+
+  it('a DESCRIÇÃO entra no casamento, com peso entre pasta e tags', () => {
+    const foto = img('d', { description: 'Um croissant dourado servido com café.' })
+    const r = casaComGrupos(foto, gruposDoTema('croissant'))
+    expect(r.casa).toBe(true)
+    expect(r.relevancia).toBeCloseTo(PESOS.CASAMENTO_DESCRICAO * 1, 6) // sem idf → fator 1
+  })
+
+  it('filtrarAcervo com gruposDoTema aplica a maioria; com palavrasDoTema mantém o OR', () => {
+    const fotos = [img('a', { tags: ['gelato'] }), img('b', { tags: ['gelato', 'pistache'] })]
+    const comGrupos = filtrarAcervo(fotos, criterios({ palavrasDoTema: [], gruposDoTema: gruposDoTema('gelato pistache') }))
+    expect(ids(comGrupos)).toEqual(['b'])
+    const lisa = filtrarAcervo(fotos, criterios({ palavrasDoTema: palavrasDoTema('gelato pistache') }))
+    expect(ids(lisa)).toEqual(['a', 'b'])
+  })
+})
+
+describe('calcularIdf — a palavra rara vale mais', () => {
+  it('"gelato" em 3 de 4 fotos pesa menos que "croissant" em 1 de 4', () => {
+    const fotos = [
+      img('1', { tags: ['gelato'] }),
+      img('2', { tags: ['gelato'] }),
+      img('3', { tags: ['gelato'] }),
+      img('4', { tags: ['croissant'] }),
+    ]
+    const idf = calcularIdf(fotos)
+    expect(idf.get(raiz('croissant'))!).toBeGreaterThan(idf.get(raiz('gelato'))!)
+  })
+
+  it('no ranking, a foto que casa a palavra RARA vence a que casa só a genérica, mesmo destacada', () => {
+    const fotos = [
+      img('destacada-generica', { tags: ['gelato', 'vitrine'] }),
+      img('certa', { tags: ['gelato', 'pistache', 'copinho'] }),
+      ...Array.from({ length: 20 }, (_, i) => img(`g${i}`, { tags: ['gelato'] })),
+    ]
+    // O caminho de produção: filtrar pela maioria (a genérica cai) e ranquear.
+    const idf = calcularIdf(fotos)
+    const grupos = gruposDoTema('gelato de pistache')
+    const filtradas = filtrarAcervo(fotos, criterios({ gruposDoTema: grupos, idf }))
+    expect(ids(filtradas)).toEqual(['certa'])
+    const r = ranquearAcervo(
+      entrada(filtradas, { tema: 'gelato de pistache', idf, destaques: new Set(['destacada-generica']) }),
+    )
+    expect(r[0].imagem.driveFileId).toBe('certa')
+    // E numa busca de UMA palavra o destaque continua mandando entre iguais.
+    const r1 = ranquearAcervo(entrada(fotos, { tema: 'gelato', idf, destaques: new Set(['destacada-generica']) }))
+    expect(r1[0].imagem.driveFileId).toBe('destacada-generica')
+  })
+})
+
+describe('filtrarAcervo — maioria que zera relaxa para OR', () => {
+  it('tema de 4 palavras num acervo que só tem uma delas devolve o que tem, não vazio', () => {
+    const fotos = [img('noite', { tags: ['noite', 'fachada'] }), img('dia', { tags: ['prato'] })]
+    const r = filtrarAcervo(fotos, criterios({ gruposDoTema: gruposDoTema('noite fachada neon letreiro luminoso') }))
+    expect(ids(r)).toEqual(['noite'])
   })
 })
