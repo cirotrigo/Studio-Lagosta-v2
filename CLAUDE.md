@@ -4744,6 +4744,66 @@ garçom") são o formato que vale medir.
   contentRules), pelo feedback do Ciro na peça de quarta: "Não use mais esse
   termo… Vou aprovar dessa vez mas não uso mais."
 
+### A busca de fotos enxerga a foto: laço fechado, lexical de verdade, embedding e catálogo v3 (07/09/2026)
+
+Plano em `docs/PLANO-2026-09-07-BUSCA-DE-FOTOS.md`. Nasceu da pauta de
+fotografia de 07/09 acusando "AS BUSCAS MORRERAM" para croissant, gelato e
+crepe na Real Gelateria — um acervo com 113, 2.380 e 145 fotos deles.
+Medição em `scripts/medir-busca-de-fotos.ts` (leitura; NUNCA chama
+`buscarNoAcervo`, que registra sinal).
+
+- 🔴 **`expirada` mede FECHAMENTO, não busca.** 81% das buscas da carteira
+  expiravam (488 de 603 desde 08/08) enquanto `PhotoUsage` registrava 1.131
+  usos: compositor, canvas e chat usavam a foto sem fechar a busca. A pauta
+  lia isso como "nenhuma serviu" e o ranking transformava cada expiração em
+  rejeição das 3 do topo (~1.460 rejeições fabricadas). Hoje
+  `registrarUsoDeFoto` fecha a busca (ponto único por onde todo uso passa;
+  `historico`/`usedAt` no passado não fecham), `expirada` é NEUTRA no
+  contrato do sinal, `busca-morta` exige ≥ 2 `trocada`, e a busca VAZIA
+  (`total: 0`) passa a ser registrada — é ela que diz "falta no acervo".
+- **Tema de uma palavra acertava 98%; composto, 16%** (23 temas reais da
+  Real). `casaComTema` era OR por substring (`"cheio"` casava `"recheio"`),
+  ignorava a descrição e não sabia que sorvete é gelato. Hoje
+  `gruposDoTema` (palavra + sinônimos de `sinonimos-do-acervo.ts` + pilar) com
+  MAIORIA (0,6), `raiz()` por token, `calcularIdf(todas)` como raridade e
+  `COMPLETUDE` (casar tudo vale um destaque). Composto foi a 66% só com
+  texto. `palavrasDoTema`/`casaComTema` mantêm o OR sem dicionário — são a
+  régua das medições de PILAR (pauta, curadoria, cobertura).
+- 🔴 **IDF do acervo INTEIRO, nunca da lista filtrada** — por isso
+  `buscarNoAcervo` calcula uma vez e passa a `filtrarAcervo` e a
+  `ranquearAcervo`. E palavra em toda foto tem idf 0 mas CASOU: o piso de 0,1
+  mantém o casamento contando.
+- **Maioria que zera relaxa para OR**: "noite fachada noturna luzes" tem 3
+  fotos de noite e nenhuma "luzes"; devolver vazio é pior que devolver as 3.
+- **F2: Gemini Embedding 2 + pgvector no Neon** (decisão do Ciro, chave
+  paga). `PhotoEmbedding` guarda DOIS vetores por foto (imagem e
+  descrição+tags) no MESMO modelo, 1.536 dims via MRL, versão na linha. O
+  tema vira vetor, as 60 mais parecidas entram no pelotão mesmo sem casar
+  palavra, e a similaridade vai a `ranquearAcervo` como insumo pré-calculado
+  (`similaridade`, peso 60) — o módulo continua puro. Medido: 4 embeddings
+  em 1,2s, coseno texto↔imagem entre 0,30 e 0,45, por isso a similaridade é
+  NORMALIZADA por posição (`normalizarPorRank`), nunca coseno cru. Nada
+  disto derruba a busca: sem chave/vetor/tabela, a lista é a lexical.
+  Safra `acervo-v3`.
+- 🔴 **`files.list` do Drive NÃO devolve `md5Checksum` neste acervo** (245
+  fotos listadas, zero com hash, com o `fields` pedindo), embora o
+  `files.get` devolva. Era por isso que o backfill da reconciliação nunca
+  preencheu nada e `md5` estava vazio em 100% das 12.694 entradas. O
+  indexador guarda o hash do `get` em `PhotoEmbedding` e o cron o copia de
+  lá (+ até 200 gets por rodada).
+- **Catálogo v3** (`catalogo-de-fotos.ts`, puro): UM schema zod tolerante no
+  lugar de três interfaces divergentes, o prompt de visão ÚNICO do cron e do
+  script, vocabulário FECHADO de tags (pilares + pastas + canônicas; fora
+  dele vai para `tagsLivres`) e os campos que só a foto respondia: `assunto`
+  (um só), `elementos`, `enquadramento`, `momento`, `lotacao`, `pessoas`.
+  `enriquecer-catalogo.ts --v3` reanalisa só o que não é v3; depois
+  `indexar-embeddings-de-fotos.ts` reembeda SÓ o texto de quem mudou.
+- **Indexação roda fora da Vercel** (Mac): `indexar-embeddings-de-fotos.ts`
+  (dry-run por padrão, ≈ US$ 0,00012/imagem, downloads do Drive em paralelo
+  dentro do lote — em série eram 45 fotos/min). O dia a dia é do cron
+  `reconciliar-catalogos`, que indexa a foto NOVA no mesmo passo em que a
+  cataloga.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

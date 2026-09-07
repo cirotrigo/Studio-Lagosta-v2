@@ -17,12 +17,14 @@
  *   npx tsx scripts/medir-busca-de-fotos.ts                 # carteira inteira
  *   npx tsx scripts/medir-busca-de-fotos.ts --projeto 1     # um cliente
  *   npx tsx scripts/medir-busca-de-fotos.ts --projeto 1 --dias 60 --detalhe
+ *   npx tsx scripts/medir-busca-de-fotos.ts --projeto 1 --sem-vetor   # só a F1, sem o embedding
  */
 import 'dotenv/config'
 import { db } from '../src/lib/db'
 import { lerCatalogoDoProjeto, montarInsumosDeRanking, ultimoUsoDoCatalogo } from '../src/lib/creatives/acervo'
 import { mesclarUsos } from '../src/lib/creatives/uso-de-foto'
 import { sinonimosDe } from '../src/lib/creatives/sinonimos-do-acervo'
+import { buscarSemelhantes, embedarConsulta, normalizarPorRank } from '../src/lib/creatives/embeddings-de-foto'
 import { calcularIdf, filtrarAcervo, gruposDoTema, palavrasDoTema, ranquearAcervo } from '../src/lib/creatives/ranquear-acervo'
 
 const args = process.argv.slice(2)
@@ -30,6 +32,8 @@ const flag = (nome: string) => { const i = args.indexOf(nome); return i >= 0 ? a
 const PROJETO = flag('--projeto') ? Number(flag('--projeto')) : null
 const DIAS = Number(flag('--dias') ?? 30)
 const DETALHE = args.includes('--detalhe')
+/** `--sem-vetor` mede só a F1 (a linha de base lexical). */
+const SEM_VETOR = args.includes('--sem-vetor')
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 const hojeBRT = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
@@ -67,8 +71,20 @@ async function medirProjeto(projectId: number, nome: string) {
   let simplesOk = 0, simplesN = 0, compostoOk = 0, compostoN = 0
   for (const tema of temas) {
     const grupos = gruposDoTema(tema, pilares)
-    const filtradas = filtrarAcervo(todas, { temQualidadeNoCatalogo: true, palavrasDoTema: grupos.flat(), gruposDoTema: grupos, idf })
-    const r = ranquearAcervo({ imagens: filtradas, tema, pilares, preferencias, ultimoUso, destaques, hojeBRT: hojeBRT(), idf })
+    const lexicais = filtrarAcervo(todas, { temQualidadeNoCatalogo: true, palavrasDoTema: grupos.flat(), gruposDoTema: grupos, idf })
+    // F2: o mesmo pelotão semântico de `buscarNoAcervo` (sem registrar sinal).
+    let similaridade: Map<string, number> | undefined
+    let filtradas = lexicais
+    if (!SEM_VETOR) {
+      const vetor = await embedarConsulta(tema)
+      const semelhantes = vetor ? await buscarSemelhantes(projectId, vetor, 60) : new Map()
+      if (semelhantes.size > 0) {
+        similaridade = normalizarPorRank(semelhantes)
+        const ja = new Set(lexicais.map((i) => i.driveFileId))
+        filtradas = [...lexicais, ...todas.filter((i) => similaridade!.has(i.driveFileId) && !ja.has(i.driveFileId))]
+      }
+    }
+    const r = ranquearAcervo({ imagens: filtradas, tema, pilares, preferencias, ultimoUso, destaques, hojeBRT: hojeBRT(), idf, similaridade })
     const top = r.slice(0, 5).map((f) => f.imagem as any)
     const base = palavrasDoTema(tema).map(norm)
     const presente = (t: string, p: string) => t.includes(p) || sinonimosDe(p).some((s) => t.includes(norm(s)))
