@@ -316,7 +316,6 @@ async function carregarContextoDaMarca(projectId: number, projectName: string) {
  * acervo — as duas taxonomias que gente já curou. Inventar um terceiro
  * vocabulário recriaria o problema que os pilares vieram resolver.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function montarVocabulario(pilares: string[], pastas: string[]) {
   const linhas = [
     'VOCABULÁRIO CONTROLADO DE TAGS (prefira estas; pode acrescentar as específicas do que você vê, sempre em minúsculas e com hífen):',
@@ -331,7 +330,6 @@ function montarVocabulario(pilares: string[], pastas: string[]) {
 }
 
 /** @deprecated v2 — mantido só para comparação; a v3 vive em `catalogo-de-fotos.ts`. */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function buildPrompt(folderName: string, menu: string, contexto: string, vocab: string): string {
   return `Você é um curador visual de acervo fotográfico de restaurante.
 Analise esta foto do acervo. Ela está na pasta "${folderName}".
