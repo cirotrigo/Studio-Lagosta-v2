@@ -45,8 +45,22 @@
  * mandou "seguir melhor as artes de referência". O feedback da noite dizia
  * "título e subtítulo muito grandes e fora do padrão da arte de referência"
  * — nem a PROPORÇÃO, que o modo livre promete manter, estava segurando.
+ *
+ * 11 — Wine Vix (07/09/2026). Mesmo desfecho do Quintal, com o placar em 5
+ * "gostei" × 8 "preciso melhorar" e a MESMA queixa repetida quatro vezes
+ * ("não seguiu o template escolhido", 18/08, 19/08, 23/08 e 07/09) — nenhuma
+ * delas antes de 17/08, quando o modo livre virou padrão.
+ *
+ * 🔴 O que a medição de 07/09 acrescentou, e que vale para qualquer marca que
+ * vier para cá: mandar seguir o layout não conserta só a POSIÇÃO — foi a única
+ * variante em que a FOTOGRAFIA sobreviveu. Na mesma foto e na mesma copy, o
+ * modo livre devolveu uma peça com a diagramação certa e o salão VAZIO: o
+ * gpt-image recriou a cena e apagou as pessoas, o laptop e os pratos. É o
+ * mesmo efeito que a F0 do PR #93 mediu ("o redesenho vence na tabela do
+ * editor e destrói a foto em peça aprovada"). A frase "só a fotografia e as
+ * palavras mudam" é o que ancora a cena, e ela só existe no spine estrito.
  */
-export const PROJETOS_COM_MODELO_ESTRITO = new Set<number>([2])
+export const PROJETOS_COM_MODELO_ESTRITO = new Set<number>([2, 11])
 
 /** O modelo escolhido deste projeto manda só no estilo (não no layout)? */
 export function modeloLivre(projectId?: number | null): boolean {

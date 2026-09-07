@@ -27,6 +27,22 @@
  * contra texto A MAIS, então as três peças passaram com veredito verde. Quem
  * pega isso é o olho de quem aprova. Não trate o ✅ da conferência como aval de
  * que a arte não inventou nada.
+ *
+ * SEGUNDA MEDIÇÃO (07/09/2026, Wine Vix e O Quintal, peça de composição de
+ * texto sobre foto com arte de referência): o `low` CONFIRMOU dar conta —
+ * copy exata, foto preservada, ornamentos e ícones da marca reproduzidos, em
+ * 20-26s contra 38-53s do `medium`. O padrão segue `low` por decisão do Ciro
+ * ("se funcionar é melhor usar ele para economizar").
+ *
+ * 🔴 O que ela acrescentou: o que os tiers baratos perdem é MICROTIPOGRAFIA
+ * DE MARCA. A assinatura da Wine Vix saiu "ADEGA & BISTRÓ" (acento agudo) no
+ * `low` (2 de 2) E no `medium` (1 de 1), contra "BISTRÔ" correto no `high`
+ * (1 de 1). Ou seja: neste eixo `medium` NÃO é melhor que `low` — não vale
+ * pagar 5× por ele esperando acento certo. Quem resolve isso é `logoMode:
+ * 'compor'` (o arquivo oficial colado por código), que a Wine Vix já usa
+ * desde 02/09 justamente por isso. Marca em `logoMode: 'modelo'` com acento
+ * ou detalhe fino na assinatura é candidata a `compor`, não a subir de tier.
+ * A logo do Quintal (wordmark sem acento) saiu fiel nos três.
  */
 
 export type QualidadeArte = 'low' | 'medium' | 'high'

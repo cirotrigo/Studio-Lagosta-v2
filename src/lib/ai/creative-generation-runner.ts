@@ -479,6 +479,28 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       )
     }
 
+    /**
+     * Onde a marca fica quando ela é COLADA por código (`logoMode: 'compor'`).
+     *
+     * 🔴 `cantoDaAssinatura` existia desde 17/08/2026 e só era consultado no
+     * ramo em que o MODELO desenha a logo. No ramo `compor` o canto era
+     * ignorado nas DUAS pontas: o prompt reservava `LOGO_CORNER` fixo e o
+     * compositor escolhia sozinho por calma e contraste. Resultado medido em
+     * 07/09/2026 na Wine Vix: a arte de referência tem o selo no canto
+     * superior direito, o planejador chegou a escrever na leitura que ia
+     * "manter o canto superior direito livre para a logomarca colada por
+     * código" — e a peça saiu com a marca no rodapé direito. Era a queixa
+     * literal da Roberta ("a logo deveria estar alinhada no topo").
+     *
+     * `null` (sem modelo, marca centralizada ou banda ilegível) preserva o
+     * comportamento antigo: o compositor volta a escolher, que é o certo
+     * quando não há de quem herdar. Carrossel continua no canto fixo — marca
+     * pulando entre slides é o defeito que o LOOK SPINE existe para evitar.
+     */
+    const cantoDaLogoComposta: LogoCorner | null = args.carrossel
+      ? null
+      : cantoDaAssinatura(modeloLido?.assinatura)
+
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
@@ -698,7 +720,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
       const blocoLogo = juntarBlocosDeLogo(
         logoParaCompor
-          ? instrucaoAreaReservada(LOGO_CORNER)
+          ? instrucaoAreaReservada(cantoDaLogoComposta ?? LOGO_CORNER)
           : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
             ? // Canto FIXO no slide irmão de carrossel (o LOOK SPINE manda
               // repetir o guia, e marca pulando de canto entre slides é o
@@ -1172,8 +1194,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           // levou a marca da casa para o canto fixo do cliente e as duas saíram
           // sobrepostas; (b) em CARROSSEL, a disputa escolheu topo-esquerdo no
           // guia — e marca pulando de canto entre slides é justamente o que o
-          // LOOK SPINE existe para evitar.
-          ...(logoDoClienteParaCompor || args.carrossel ? { cantoFixo: LOGO_CORNER } : {}),
+          // LOOK SPINE existe para evitar. E (c), desde 07/09/2026: quando o
+          // MODELO escolhido diz onde a marca fica, ele manda — é o mesmo
+          // canto que o prompt acabou de reservar, e sem isso o compositor
+          // colava a logo num canto e o prompt reservava outro (ver
+          // `cantoDaLogoComposta`). A ordem importa: a marca do cliente citado
+          // continua vencendo, porque ali o risco é as duas se sobreporem.
+          ...(logoDoClienteParaCompor || args.carrossel
+            ? { cantoFixo: LOGO_CORNER }
+            : cantoDaLogoComposta
+              ? { cantoFixo: cantoDaLogoComposta }
+              : {}),
         })
         finalBuffer = comLogo.buffer
         logoInfo = {
