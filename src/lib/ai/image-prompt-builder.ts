@@ -1031,6 +1031,11 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     // +16% a +42% de luz na foto pelo mesmo contraste no texto.
     '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. A leitura vem de um HALO: uma mancha escura DESFOCADA só atrás do bloco de texto, sem borda visível, que desmancha para a foto ao redor — NUNCA um gradiente de faixa que vai de borda a borda do quadro, nunca um retângulo chapado, nunca uma tarja.',
     '4b. O halo é LOCAL e SUAVE: cobre o bloco de texto e uma margem curta em volta dele (a mancha inteira ocupa no máximo ~1/3 do quadro) e some antes de chegar ao assunto — a foto continua NÍTIDA e reconhecível POR BAIXO do halo. ⛔ Nunca escureça a foto inteira, nunca baixe o brilho geral da cena, nunca escureça o topo ou o rodapé inteiros do quadro e nunca apague o fundo para "destacar" o texto — a foto tem de continuar tão clara quanto a original, com as pessoas e o ambiente visíveis. Se o texto não ficar legível com um halo leve, MUDE O TEXTO DE LUGAR em vez de adensar a mancha.',
+    // "Margem curta" (4b) é sobre o NÚCLEO da mancha, e sozinha produz aresta:
+    // foi assim que a peça da Wine Vix de 07/09/2026 saiu com uma linha reta
+    // cortando o prato e a mão. O núcleo é pequeno; a TRANSIÇÃO é larga — são
+    // duas medidas diferentes, e o prompt precisa dizer as duas.
+    '4bb. O halo NÃO PODE TER FIM VISÍVEL: quem olha a peça não consegue apontar a linha onde a mancha acaba. O núcleo escuro é curto (4b), mas o esfumaçado que sai dele é LARGO — estende-se por pelo menos a altura do próprio bloco de texto para fora dele, em todos os lados, e chega a zero antes de qualquer borda do quadro. ⛔ Proibido: aresta reta, canto, retângulo de cantos arredondados, degrau de luminosidade, faixa que corta um objeto ao meio. Se um prato, uma mesa ou um rosto atrás do texto ficar com uma metade mais escura que a outra, o halo está MARCADO — refaça mais suave e mais largo. Entre marcar e ficar fraco demais, fique fraco: a leitura se resolve pela cor do texto.',
     // A porta que o 4b não fechava: em vez de adensar o VÉU, o modelo pinta um
     // ELEMENTO (ingrediente, folha, tábua) atrás do texto e esconde a foto do
     // mesmo jeito. Reprovação real do O Quintal em 20/08/2026: "o ingrediente
