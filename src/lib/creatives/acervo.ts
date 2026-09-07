@@ -47,7 +47,7 @@ const VERSAO_DO_ACERVO = 'acervo-v3'
 /** Quantas fotos o ranking vetorial traz para o pelotão de candidatas. */
 const SEMELHANTES_CONSULTADAS = 200
 /** Similaridade mínima (0..1, por posição) para uma foto entrar SEM casar palavra. */
-const CORTE_DOS_EXTRAS = 0.6
+const CORTE_DOS_EXTRAS = 0.5
 /** Quantas fotos do topo entram no registro da proposta. */
 const PROPOSTAS_REGISTRADAS = 10
 

@@ -352,22 +352,28 @@ dos sinais (sopa de palavras vinda do chat) e 5 temas VISUAIS em linguagem
 natural ("salão cheio", "fachada à noite", "criança tomando sorvete", "mesa
 posta vista de cima", "gelato de pistache na casquinha").
 
+Com o catálogo v3 ESTÁVEL na Real (reenriquecimento concluído, 3.053 de
+3.054 fotos), medição final de 07/09/2026 à noite:
+
 | via | temas reais | temas visuais |
 |---|---:|---:|
 | lexical antiga (OR, substring) | 16% pela régua lexical | — |
-| lexical F1 | 42% | 8% |
+| lexical F1 | 40% | 12% |
 | só vetor de imagem | 43% | 32% |
 | só vetor de texto | 31% | 24% |
-| **F1 + F2 (peso 40, imagem 0,8, corte 0,6)** | **45%** | **28%** |
+| **F1 + F2 (peso 60, imagem 0,9, corte 0,5)** | **46%** | **24%** |
+
+(A primeira calibração, feita com o catálogo mudando debaixo da medição, deu
+45%/28% com peso 40 · imagem 0,8 · corte 0,6; remedida no catálogo estável
+ela caiu a 46%/20%, e a varredura moveu o ponto para 60 · 0,9 · 0,5.)
 
 - Nos temas reais tudo fica no ruído (±5%, 65 vereditos) — e **5 dos 13 são
   impossíveis** (0/5 em TODO método: "pistacchio gelato taça" pede taça num
   acervo de potes; "noite fachada noturna luzes" não tem foto noturna).
 - Nos temas visuais o vetor de IMAGEM é o que acerta; "criança tomando
   sorvete" sai de 0/5 (lexical) para 4/5. Por isso a imagem pesa 0,8.
-- ⚠️ O catálogo estava sendo reenriquecido (v3) DURANTE a medição — a
-  contagem de fotos lexicais mudou entre rodadas. Remedir quando a carteira
-  terminar.
+- A Real foi remedida com o catálogo v3 estável (tabela acima). Os outros
+  clientes ainda estavam sendo reenriquecidos.
 - Não feito: F3 (re-rank por visão do top-20). O juiz mostra que ele pegaria
   os temas visuais, mas a um custo por busca; fica para quando o KPI de
   fechamento (F0) disser o que a equipe de fato escolhe.

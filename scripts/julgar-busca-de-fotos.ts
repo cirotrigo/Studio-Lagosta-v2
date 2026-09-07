@@ -25,8 +25,8 @@ import { PESOS } from '../src/lib/creatives/ranquear-acervo'
 
 /** Varredura: PESO_SIM (peso), FRACAO_IMG (0..1, quanto da posição vem da imagem), LIMIAR (corte dos extras), FRACA (teto da lexical fraca; 99999 = sempre). */
 const PESO_SIM = Number(process.env.PESO_SIM ?? PESOS.SIMILARIDADE)
-const FRACAO_IMG = Number(process.env.FRACAO_IMG ?? 0.8)
-const LIMIAR = Number(process.env.LIMIAR ?? 0.6)
+const FRACAO_IMG = Number(process.env.FRACAO_IMG ?? 0.9)
+const LIMIAR = Number(process.env.LIMIAR ?? 0.5)
 const FRACA = Number(process.env.FRACA ?? 99999)
 function porRankPonderado(sem: Map<string, Semelhanca>): Map<string, number> {
   const img = [...sem.entries()].filter(([, x]) => x.imagem !== null).sort((a, b) => b[1].imagem! - a[1].imagem!)
