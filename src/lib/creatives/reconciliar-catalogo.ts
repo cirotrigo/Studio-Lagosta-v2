@@ -228,13 +228,25 @@ export async function reconciliarCatalogo({
     tetoDeNovas,
   )
 
+  /**
+   * F2 (07/09/2026): a foto NOVA ganha o vetor no mesmo passo em que ganha a
+   * descrição — a miniatura já está em mãos. Best-effort e depois de gravar
+   * o catálogo: falhar aqui não pode custar a análise paga que acabou de
+   * acontecer, e o script de carga (`indexar-embeddings-de-fotos`) alcança
+   * o que ficar para trás.
+   */
+  const novasParaIndexar: Array<EntradaDoCatalogo & { miniatura: Buffer }> = []
+
   const { catalogadas, erros, naoAlcancadas } = await analisarNovas({
     projectId,
     projectName: base.projeto,
     outrosClientes,
     fotos: paraAnalisar,
     prazoEm,
-    aoCatalogar: (entrada) => imagens.push(entrada),
+    aoCatalogar: (entrada, miniatura) => {
+      imagens.push(entrada)
+      novasParaIndexar.push({ ...entrada, miniatura })
+    },
   })
 
   // Grava só se mudou: rodada sem drift não deve nem tocar no arquivo.
@@ -246,12 +258,26 @@ export async function reconciliarCatalogo({
     })
   }
 
+  let vetoresIndexados = 0
+  try {
+    const { indexarFotosDoCatalogo } = await import('./indexar-fotos')
+    const { removerEmbeddingsDeFotos } = await import('./embeddings-de-foto')
+    if (orfas.length > 0) await removerEmbeddingsDeFotos(projectId, orfas)
+    if (novasParaIndexar.length > 0) {
+      const r = await indexarFotosDoCatalogo({ projectId, entradas: novasParaIndexar, concorrencia: 2, prazoEm })
+      vetoresIndexados = r.gravadas
+    }
+  } catch (erro) {
+    console.warn(`[reconciliar-catalogo] ${base.projeto}: indexação de vetores falhou (seguindo):`, erro)
+  }
+
   return encerrar({
     orfasRemovidas: orfas.length,
     hashesPreenchidos,
     novasCatalogadas: catalogadas,
     restantes: restantes + naoAlcancadas,
     erros,
+    vetoresIndexados,
   })
 }
 
@@ -314,7 +340,7 @@ async function analisarNovas({
   projectName: string
   fotos: FotoViva[]
   prazoEm: number
-  aoCatalogar: (entrada: EntradaDoCatalogo) => void
+  aoCatalogar: (entrada: EntradaDoCatalogo, miniatura: Buffer) => void
 }): Promise<{ catalogadas: number; erros: number; naoAlcancadas: number }> {
   if (fotos.length === 0) return { catalogadas: 0, erros: 0, naoAlcancadas: 0 }
 
@@ -360,7 +386,7 @@ async function analisarNovas({
           catalogadaEm: new Date().toISOString(),
           ...analise,
           usageHistory: [],
-        })
+        }, miniatura)
         catalogadas++
       } catch (error) {
         // Foto que falha não derruba a leva — conta e segue.

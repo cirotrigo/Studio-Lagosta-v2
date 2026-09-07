@@ -24,6 +24,7 @@ import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, diaBRT, resumoEstavel } from '@/lib/aprendizado/chaves'
+import { buscarSemelhantes, embedarConsulta, normalizarPorRank } from '@/lib/creatives/embeddings-de-foto'
 
 const CATALOG_FILE = '_image-catalog.json'
 
@@ -37,7 +38,14 @@ const CATALOG_FILE = '_image-catalog.json'
  * `chaves.ts`): a safra nova não herda desfecho de proposta feita pela
  * heurística velha (v1 = menos usada primeiro, tema por substring da frase).
  */
-const VERSAO_DO_ACERVO = 'acervo-v2'
+/**
+ * v3 (07/09/2026): busca lexical por grupos com maioria, raridade e
+ * sinônimos (F1) + similaridade semântica por embedding de imagem e de
+ * descrição (F2). Safra nova: a proposta de hoje não é a mesma da v2.
+ */
+const VERSAO_DO_ACERVO = 'acervo-v3'
+/** Quantas fotos o ranking vetorial traz para o pelotão de candidatas. */
+const SEMELHANTES_CONSULTADAS = 60
 /** Quantas fotos do topo entram no registro da proposta. */
 const PROPOSTAS_REGISTRADAS = 10
 
@@ -290,17 +298,50 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    */
   const grupos = input.theme ? gruposDoTema(input.theme, pilares) : []
   const idf = grupos.length > 0 ? calcularIdf(todas) : undefined
-  const imagens = filtrarAcervo(todas, {
+  const filtrosExatos = {
     folder: input.folder,
     fileName: input.fileName,
     menuCategory: input.menuCategory,
     tags: input.tags,
     quality: input.quality,
     temQualidadeNoCatalogo: temQualidade,
+  }
+  const lexicais = filtrarAcervo(todas, {
+    ...filtrosExatos,
     palavrasDoTema: grupos.flat(),
     gruposDoTema: grupos,
     idf,
   })
+
+  /**
+   * F2 (07/09/2026): a busca ENXERGA a foto. O tema vira vetor no mesmo
+   * modelo que embedou cada foto (imagem e descrição); as mais parecidas
+   * entram no pelotão de candidatas mesmo sem casar palavra nenhuma — é o
+   * que responde "salão cheio" e "fachada à noite" num catálogo que nunca
+   * escreveu essas palavras. Os filtros EXATOS (pasta, tags, qualidade…)
+   * continuam valendo para elas. A similaridade vai ao ranking como insumo
+   * pré-calculado (`ranquearAcervo` é puro, sem rede) e é NORMALIZADA por
+   * posição — o coseno cru vive numa faixa estreita.
+   *
+   * Nada disto derruba a busca: sem chave, sem vetor ou sem tabela, a lista
+   * é a lexical de sempre.
+   */
+  let similaridade: Map<string, number> | undefined
+  let imagens = lexicais
+  let viaSemantica = 0
+  if (input.theme && grupos.length > 0) {
+    const vetor = await embedarConsulta(input.theme)
+    const semelhantes = vetor ? await buscarSemelhantes(input.projectId, vetor, SEMELHANTES_CONSULTADAS) : new Map()
+    if (semelhantes.size > 0) {
+      similaridade = normalizarPorRank(semelhantes)
+      const jaNaLista = new Set(lexicais.map((i) => i.driveFileId))
+      const extras = filtrarAcervo(todas, { ...filtrosExatos, palavrasDoTema: [] }).filter(
+        (i) => similaridade!.has(i.driveFileId) && !jaNaLista.has(i.driveFileId),
+      )
+      viaSemantica = extras.length
+      imagens = [...lexicais, ...extras]
+    }
+  }
 
   /** Primeira entrada de cada hash — as demais são cópias dela. */
   const canonicaPorHash = new Map<string, string>()
@@ -331,6 +372,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     destaques,
     hojeBRT: diaBRT(),
     idf,
+    similaridade,
   })
 
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
@@ -347,6 +389,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
 
   return {
     total: imagens.length,
+    /** Quantas candidatas entraram só pela semelhança (sem casar palavra). */
+    viaSemantica,
     acervoCompleto: todas.length,
     catalogoAtualizadoEm: catalogo.lastUpdated ?? catalogo.regeneradoEm ?? null,
     pastasDisponiveis: pastas,
