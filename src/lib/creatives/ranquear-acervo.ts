@@ -201,7 +201,23 @@ export interface PesosDoAcervo {
    * taça" passava 2.388 fotos porque bastava "gelato", e o topo era um panini.
    */
   MAIORIA_DO_TEMA: number
-  /** Multiplicador sobre a similaridade semântica (F2, 0..1). */
+  /**
+   * Multiplicador sobre a similaridade semântica (F2, 0..1) — 40, calibrado
+   * pelo juiz de visão na Real (07/09/2026, `julgar-busca-de-fotos.ts`) em
+   * dois conjuntos: os 13 temas compostos REAIS dos sinais (sopa de
+   * palavras do chat) e 5 temas VISUAIS em linguagem natural ("criança
+   * tomando sorvete", "gelato de pistache na casquinha"). Sozinhos: lexical
+   * 42%/8%, vetor de imagem 43%/32%, vetor de texto 31%/24%. A varredura da
+   * fusão (peso × fração da imagem × corte dos extras):
+   *   12 · 0,5 · 0,7 (desempate)   → 48% · 12%
+   *   30 · 0,7 · 0,7               → 46% · 20%
+   *   40 · 0,8 · 0,6  ← escolhido  → 45% · 28%
+   *   60 · 1,0 · 0,7               → 48% · 24%
+   *   80 · 0,85 · 0,5              → 45% · 28%
+   * Nos temas reais tudo fica no ruído (±5%, 65 vereditos); nos visuais o
+   * vetor de IMAGEM é o que acerta — por isso ele pesa 0,8 da posição.
+   * ⚠️ 5 dos 13 temas reais são impossíveis (0/5 em TODO método).
+   */
   SIMILARIDADE: number
   /**
    * Bônus por casar TODOS os grupos do tema, × (fração casada)². Com 3
@@ -279,7 +295,7 @@ export const PESOS: PesosDoAcervo = {
    */
   RELEVANCIA_POR_PONTO: 4,
   MAIORIA_DO_TEMA: 0.6,
-  SIMILARIDADE: 60,
+  SIMILARIDADE: 40,
   COMPLETUDE: 40,
   MEIA_VIDA_SINAL_DIAS: 60,
   CASAMENTO_BESTFOR: 3,

@@ -77,11 +77,11 @@ async function medirProjeto(projectId: number, nome: string) {
     let filtradas = lexicais
     if (!SEM_VETOR) {
       const vetor = await embedarConsulta(tema)
-      const semelhantes = vetor ? await buscarSemelhantes(projectId, vetor, 60) : new Map()
+      const semelhantes = vetor ? await buscarSemelhantes(projectId, vetor, 200) : new Map()
       if (semelhantes.size > 0) {
         similaridade = normalizarPorRank(semelhantes)
         const ja = new Set(lexicais.map((i) => i.driveFileId))
-        filtradas = [...lexicais, ...todas.filter((i) => similaridade!.has(i.driveFileId) && !ja.has(i.driveFileId))]
+        filtradas = [...lexicais, ...todas.filter((i) => (similaridade!.get(i.driveFileId) ?? 0) >= 0.6 && !ja.has(i.driveFileId))]
       }
     }
     const r = ranquearAcervo({ imagens: filtradas, tema, pilares, preferencias, ultimoUso, destaques, hojeBRT: hojeBRT(), idf, similaridade })

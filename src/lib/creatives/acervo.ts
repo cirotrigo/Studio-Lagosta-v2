@@ -45,7 +45,9 @@ const CATALOG_FILE = '_image-catalog.json'
  */
 const VERSAO_DO_ACERVO = 'acervo-v3'
 /** Quantas fotos o ranking vetorial traz para o pelotão de candidatas. */
-const SEMELHANTES_CONSULTADAS = 60
+const SEMELHANTES_CONSULTADAS = 200
+/** Similaridade mínima (0..1, por posição) para uma foto entrar SEM casar palavra. */
+const CORTE_DOS_EXTRAS = 0.6
 /** Quantas fotos do topo entram no registro da proposta. */
 const PROPOSTAS_REGISTRADAS = 10
 
@@ -344,8 +346,12 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     if (semelhantes.size > 0) {
       similaridade = normalizarPorRank(semelhantes)
       const jaNaLista = new Set(lexicais.map((i) => i.driveFileId))
+      // Foto SEM palavra casada entra só do pelotão de cima dos parecidos
+      // (`CORTE_DOS_EXTRAS`); o resto da lista serve para dar posição a quem
+      // casou. Um gate "só quando a lexical é fraca" foi medido e descartado:
+      // custava os temas visuais (12% contra 28%) sem ganhar nos reais.
       const extras = filtrarAcervo(todas, { ...filtrosExatos, palavrasDoTema: [] }).filter(
-        (i) => similaridade!.has(i.driveFileId) && !jaNaLista.has(i.driveFileId),
+        (i) => (similaridade!.get(i.driveFileId) ?? 0) >= CORTE_DOS_EXTRAS && !jaNaLista.has(i.driveFileId),
       )
       viaSemantica = extras.length
       imagens = [...lexicais, ...extras]

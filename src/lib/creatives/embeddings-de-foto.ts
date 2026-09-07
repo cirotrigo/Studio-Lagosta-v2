@@ -273,25 +273,31 @@ export async function embedarConsulta(tema: string): Promise<number[] | null> {
  *
  * O coseno do gemini-embedding-2 entre texto e imagem vive numa faixa
  * estreita (0,30–0,45 medido) e varia por consulta; o que interessa ao
- * ranking é "quão no topo dos parecidos esta foto está". A 1ª vale 1, a
- * última do corte vale ~0, decaindo de forma suave; quem não está no corte
- * não aparece no Map (= 0).
+ * ranking é "quão no topo dos parecidos esta foto está". São DOIS rankings
+ * — o do vetor da IMAGEM e o do vetor do TEXTO — e cada foto recebe as duas
+ * posições normalizadas ponderadas por `FRACAO_DA_IMAGEM` (ausente num deles
+ * = 0 naquele). Medido no juiz de visão da Real (07/09/2026): a imagem é a
+ * via que acerta os temas em linguagem natural ("criança tomando sorvete":
+ * imagem 4/5, texto 5/5, lexical 0/5; "gelato de pistache na casquinha":
+ * imagem 4/5, lexical 1/5), e 0,8 foi o melhor da varredura — ver o
+ * comentário de `SIMILARIDADE` em `ranquear-acervo.ts`.
  */
+export const FRACAO_DA_IMAGEM = 0.8
 export function normalizarPorRank(semelhantes: Map<string, Semelhanca>): Map<string, number> {
-  const ordenadas = [...semelhantes.entries()].sort((a, b) => b[1].melhor - a[1].melhor)
-  const n = ordenadas.length
+  const porImagem = [...semelhantes.entries()].filter(([, s]) => s.imagem !== null).sort((a, b) => b[1].imagem! - a[1].imagem!)
+  const porTexto = [...semelhantes.entries()].filter(([, s]) => s.texto !== null).sort((a, b) => b[1].texto! - a[1].texto!)
+  const posicao = (lista: Array<[string, Semelhanca]>) => {
+    const m = new Map<string, number>()
+    const n = lista.length
+    lista.forEach(([id], i) => m.set(id, n <= 1 ? 1 : 1 - i / (n - 1)))
+    return m
+  }
+  const pImg = posicao(porImagem)
+  const pTxt = posicao(porTexto)
   const saida = new Map<string, number>()
-  if (n === 0) return saida
-  if (n === 1) return new Map([[ordenadas[0][0], 1]])
-  const topo = ordenadas[0][1].melhor
-  const fundo = ordenadas[n - 1][1].melhor
-  const faixa = topo - fundo
-  ordenadas.forEach(([id, s], i) => {
-    const porRank = 1 - i / (n - 1)
-    const porValor = faixa > 1e-6 ? (s.melhor - fundo) / faixa : porRank
-    // Metade posição, metade valor: a posição segura a ordem; o valor separa
-    // o pelotão de cima do resto quando a distância é grande.
-    saida.set(id, Math.max(0, Math.min(1, 0.5 * porRank + 0.5 * porValor)))
-  })
+  for (const id of semelhantes.keys()) {
+    const v = FRACAO_DA_IMAGEM * (pImg.get(id) ?? 0) + (1 - FRACAO_DA_IMAGEM) * (pTxt.get(id) ?? 0)
+    if (v > 0) saida.set(id, Math.max(0, Math.min(1, v)))
+  }
   return saida
 }

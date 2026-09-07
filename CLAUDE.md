@@ -4780,11 +4780,20 @@ Medição em `scripts/medir-busca-de-fotos.ts` (leitura; NUNCA chama
   descrição+tags) no MESMO modelo, 1.536 dims via MRL, versão na linha. O
   tema vira vetor, as 60 mais parecidas entram no pelotão mesmo sem casar
   palavra, e a similaridade vai a `ranquearAcervo` como insumo pré-calculado
-  (`similaridade`, peso 60) — o módulo continua puro. Medido: 4 embeddings
+  (`similaridade`, peso 40) — o módulo continua puro. Medido: 4 embeddings
   em 1,2s, coseno texto↔imagem entre 0,30 e 0,45, por isso a similaridade é
-  NORMALIZADA por posição (`normalizarPorRank`), nunca coseno cru. Nada
-  disto derruba a busca: sem chave/vetor/tabela, a lista é a lexical.
-  Safra `acervo-v3`.
+  NORMALIZADA por posição (`normalizarPorRank`, imagem 0,8 + texto 0,2),
+  nunca coseno cru. Nada disto derruba a busca: sem chave/vetor/tabela, a
+  lista é a lexical. Safra `acervo-v3`.
+- 🔴 **A régua lexical NÃO mede a via semântica** ("todas as palavras do
+  tema estão no texto da foto" dá zero a uma foto de salão lotado para
+  "salão cheio"). Quem julga é `scripts/julgar-busca-de-fotos.ts` (visão
+  sobre o top-5, vereditos em cache). Calibrado assim (Real, 07/09): a
+  lexical acerta 42% dos temas reais e 8% dos visuais; o vetor de imagem
+  43%/32%; a fusão 45%/28%. Peso maior que 40 ou RRF não ganharam nos reais
+  e um gate "só quando a lexical é fraca" custou os visuais. 5 dos 13 temas
+  reais são impossíveis (0/5 em todo método) — a sopa de palavras do chat
+  pede o que o acervo não tem.
 - 🔴 **`files.list` do Drive NÃO devolve `md5Checksum` neste acervo** (245
   fotos listadas, zero com hash, com o `fields` pedindo), embora o
   `files.get` devolva. Era por isso que o backfill da reconciliação nunca
