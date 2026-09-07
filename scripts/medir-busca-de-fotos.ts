@@ -81,7 +81,7 @@ async function medirProjeto(projectId: number, nome: string) {
       if (semelhantes.size > 0) {
         similaridade = normalizarPorRank(semelhantes)
         const ja = new Set(lexicais.map((i) => i.driveFileId))
-        filtradas = [...lexicais, ...todas.filter((i) => (similaridade!.get(i.driveFileId) ?? 0) >= 0.6 && !ja.has(i.driveFileId))]
+        filtradas = [...lexicais, ...todas.filter((i) => (similaridade!.get(i.driveFileId) ?? 0) >= 0.5 && !ja.has(i.driveFileId))]
       }
     }
     const r = ranquearAcervo({ imagens: filtradas, tema, pilares, preferencias, ultimoUso, destaques, hojeBRT: hojeBRT(), idf, similaridade })

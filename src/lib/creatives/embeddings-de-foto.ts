@@ -279,10 +279,10 @@ export async function embedarConsulta(tema: string): Promise<number[] | null> {
  * = 0 naquele). Medido no juiz de visão da Real (07/09/2026): a imagem é a
  * via que acerta os temas em linguagem natural ("criança tomando sorvete":
  * imagem 4/5, texto 5/5, lexical 0/5; "gelato de pistache na casquinha":
- * imagem 4/5, lexical 1/5), e 0,8 foi o melhor da varredura — ver o
+ * imagem 4/5, lexical 1/5), e 0,9 foi o melhor da varredura — ver o
  * comentário de `SIMILARIDADE` em `ranquear-acervo.ts`.
  */
-export const FRACAO_DA_IMAGEM = 0.8
+export const FRACAO_DA_IMAGEM = 0.9
 export function normalizarPorRank(semelhantes: Map<string, Semelhanca>): Map<string, number> {
   const porImagem = [...semelhantes.entries()].filter(([, s]) => s.imagem !== null).sort((a, b) => b[1].imagem! - a[1].imagem!)
   const porTexto = [...semelhantes.entries()].filter(([, s]) => s.texto !== null).sort((a, b) => b[1].texto! - a[1].texto!)
