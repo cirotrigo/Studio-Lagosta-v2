@@ -23,7 +23,7 @@ import 'dotenv/config'
 import { db } from '../src/lib/db'
 import { lerCatalogoDoProjeto } from '../src/lib/creatives/acervo'
 import { indexarFotosDoCatalogo } from '../src/lib/creatives/indexar-fotos'
-import { fotosIndexadas, VERSAO_DO_EMBEDDING } from '../src/lib/creatives/embeddings-de-foto'
+import { fotosIndexadas, reembedarTextos, textoDaFotoParaEmbedding, VERSAO_DO_EMBEDDING } from '../src/lib/creatives/embeddings-de-foto'
 
 const args = process.argv.slice(2)
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
@@ -50,9 +50,24 @@ async function main() {
       const i = indexadas.get(f.driveFileId)
       return !i || !i.temImagem || !i.temTexto || (f.md5 && i.md5 && f.md5 !== i.md5)
     })
+    // Descrição mudou (reenriquecimento v3)? Só o vetor de TEXTO é refeito —
+    // sem Drive, sem chamada de imagem, custo desprezível.
+    const faltamIds = new Set(faltam.map((f) => f.driveFileId))
+    const textoMudou = todas
+      .filter((f) => !faltamIds.has(f.driveFileId))
+      .map((f) => ({ driveFileId: f.driveFileId, texto: textoDaFotoParaEmbedding(f) }))
+      .filter((l) => (indexadas.get(l.driveFileId)?.texto ?? '') !== l.texto)
     totalFaltam += faltam.length
-    console.log(`\n${p.id} · ${p.name}: ${todas.length} no catálogo · ${indexadas.size} indexadas · ${faltam.length} faltam (≈ US$ ${(faltam.length * CUSTO_POR_IMAGEM_USD).toFixed(2)})`)
-    if (!CONFIRMAR || faltam.length === 0) continue
+    console.log(`\n${p.id} · ${p.name}: ${todas.length} no catálogo · ${indexadas.size} indexadas · ${faltam.length} faltam (≈ US$ ${(faltam.length * CUSTO_POR_IMAGEM_USD).toFixed(2)}) · ${textoMudou.length} com texto novo`)
+    if (!CONFIRMAR) continue
+    if (textoMudou.length > 0) {
+      let feitas = 0
+      for (let k = 0; k < textoMudou.length; k += 20) {
+        try { feitas += await reembedarTextos(p.id, textoMudou.slice(k, k + 20)) } catch (e) { console.warn('   reembed falhou:', String((e as Error)?.message ?? e)) }
+      }
+      console.log(`   texto reembedado: ${feitas}`)
+    }
+    if (faltam.length === 0) continue
     const alvo = faltam.slice(0, Number.isFinite(LIMITE) ? LIMITE : undefined)
     const inicio = Date.now()
     const r = await indexarFotosDoCatalogo({

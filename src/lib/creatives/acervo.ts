@@ -77,6 +77,15 @@ export interface ImagemCatalogo {
   precoLegivel?: boolean
   /** Marca de terceiro em DESTAQUE (guarda-sol Brahma, geladeira de refrigerante). Ausente/null = neutro. */
   marcaDeTerceiro?: string | null
+  /** v3 (F4, 07/09/2026) — ver `catalogo-de-fotos.ts`. Ausentes na análise antiga. */
+  assunto?: string | null
+  elementos?: string[]
+  enquadramento?: string | null
+  momento?: string | null
+  lotacao?: string | null
+  pessoas?: string | null
+  tagsLivres?: string[]
+  analiseVersao?: string
 }
 
 export interface Catalogo {

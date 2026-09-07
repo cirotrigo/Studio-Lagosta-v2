@@ -59,12 +59,25 @@ type Conteudo = { parts: Array<{ text: string } | { inlineData: { mimeType: stri
 async function embedar(contents: Conteudo[]): Promise<number[][]> {
   if (contents.length === 0) return []
   const ai = await genai()
-  const resposta = await ai.models.embedContent({
-    model: MODELO_DE_EMBEDDING,
-    contents,
-    config: { outputDimensionality: DIMENSOES },
-  })
-  const vetores = (resposta.embeddings ?? []).map((e) => e.values ?? [])
+  // Backoff SÓ para 429/503 (mesma regra do cron de reconciliação): erro de
+  // conteúdo ou de credencial não melhora esperando.
+  let resposta: Awaited<ReturnType<typeof ai.models.embedContent>> | undefined
+  for (let tentativa = 0; ; tentativa++) {
+    try {
+      resposta = await ai.models.embedContent({
+        model: MODELO_DE_EMBEDDING,
+        contents,
+        config: { outputDimensionality: DIMENSOES },
+      })
+      break
+    } catch (erro) {
+      const msg = String((erro as Error)?.message ?? erro)
+      const limitado = /\b(429|503)\b|rate limit|quota|overloaded|unavailable|RESOURCE_EXHAUSTED/i.test(msg)
+      if (!limitado || tentativa >= 4) throw erro
+      await new Promise((r) => setTimeout(r, 1500 * 2 ** tentativa + Math.floor(Math.random() * 500)))
+    }
+  }
+  const vetores = (resposta?.embeddings ?? []).map((e) => e.values ?? [])
   if (vetores.length !== contents.length || vetores.some((v) => v.length !== DIMENSOES)) {
     throw new Error(
       `embedContent devolveu ${vetores.length} vetor(es) para ${contents.length} conteúdo(s) (dims ${vetores[0]?.length ?? 0})`,
@@ -107,10 +120,19 @@ export function textoDaFotoParaEmbedding(entrada: {
   bestFor?: string[] | null
   menuItem?: string | null
   folder?: string | null
+  assunto?: string | null
+  elementos?: string[] | null
+  lotacao?: string | null
+  momento?: string | null
+  enquadramento?: string | null
 }): string {
   const partes: string[] = []
+  if (entrada.assunto?.trim()) partes.push(`Assunto: ${entrada.assunto.trim()}.`)
   if (entrada.description?.trim()) partes.push(entrada.description.trim())
   if (entrada.menuItem?.trim()) partes.push(`Prato: ${entrada.menuItem.trim()}.`)
+  if (entrada.elementos?.length) partes.push(`No quadro: ${entrada.elementos.join(', ')}.`)
+  const forma = [entrada.enquadramento, entrada.momento, entrada.lotacao ? `salão ${entrada.lotacao}` : null].filter(Boolean)
+  if (forma.length) partes.push(`Forma: ${forma.join(', ')}.`)
   if (entrada.tags?.length) partes.push(`Tags: ${entrada.tags.join(', ')}.`)
   if (entrada.bestFor?.length) partes.push(`Serve para: ${entrada.bestFor.join(', ')}.`)
   if (entrada.folder?.trim()) partes.push(`Pasta: ${entrada.folder.trim()}.`)
@@ -156,12 +178,30 @@ export async function gravarEmbeddingsDeFoto(projectId: number, linhas: LinhaDeE
 }
 
 /** As fotos já indexadas NA VERSÃO ATUAL, com o md5 de quando foram. */
-export async function fotosIndexadas(projectId: number): Promise<Map<string, { md5: string | null; temImagem: boolean; temTexto: boolean }>> {
-  const linhas = await db.$queryRaw<Array<{ driveFileId: string; md5: string | null; temImagem: boolean; temTexto: boolean }>>`
-    SELECT "driveFileId", "md5", ("vetorImagem" IS NOT NULL) AS "temImagem", ("vetorTexto" IS NOT NULL) AS "temTexto"
+export async function fotosIndexadas(
+  projectId: number,
+): Promise<Map<string, { md5: string | null; temImagem: boolean; temTexto: boolean; texto: string | null }>> {
+  const linhas = await db.$queryRaw<
+    Array<{ driveFileId: string; md5: string | null; temImagem: boolean; temTexto: boolean; texto: string | null }>
+  >`
+    SELECT "driveFileId", "md5", ("vetorImagem" IS NOT NULL) AS "temImagem", ("vetorTexto" IS NOT NULL) AS "temTexto", "texto"
     FROM "PhotoEmbedding" WHERE "projectId" = ${projectId} AND "versao" = ${VERSAO_DO_EMBEDDING}
   `
-  return new Map(linhas.map((l) => [l.driveFileId, { md5: l.md5, temImagem: l.temImagem, temTexto: l.temTexto }]))
+  return new Map(linhas.map((l) => [l.driveFileId, { md5: l.md5, temImagem: l.temImagem, temTexto: l.temTexto, texto: l.texto }]))
+}
+
+/**
+ * Reembeda SÓ o texto de fotos cuja descrição mudou (reenriquecimento v3):
+ * o vetor da imagem fica, o do texto é refeito — sem ida ao Drive, sem
+ * chamada de imagem. Lança; quem chama decide.
+ */
+export async function reembedarTextos(projectId: number, linhas: Array<{ driveFileId: string; texto: string }>): Promise<number> {
+  if (linhas.length === 0) return 0
+  const vetores = await embedarTextos(linhas.map((l) => (l.texto.trim() ? l.texto : 'foto de restaurante')))
+  return gravarEmbeddingsDeFoto(
+    projectId,
+    linhas.map((l, i) => ({ driveFileId: l.driveFileId, vetorTexto: vetores[i], texto: l.texto })),
+  )
 }
 
 export async function removerEmbeddingsDeFotos(projectId: number, driveFileIds: string[]): Promise<number> {

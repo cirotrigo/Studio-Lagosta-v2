@@ -23,6 +23,14 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { db } from '@/lib/db'
+import {
+  analisePelaPasta as analisePelaPastaV3,
+  montarPromptDeAnalise,
+  montarVocabularioDeTags,
+  normalizarAnalise,
+  type AnaliseNormalizada,
+  type VocabularioDeTags,
+} from './catalogo-de-fotos'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
   CONCORRENCIA_ANALISE,
@@ -36,9 +44,11 @@ import {
 } from '@/lib/creatives/reconciliacao'
 
 const CATALOG_FILE = '_image-catalog.json'
+/** Quantos `files.get` só para hash a rodada faz por projeto (o listing não traz md5). */
+const TETO_DE_GETS_DE_HASH = 200
 
 /** Uma entrada do catálogo, no formato que `acervo.ts` já lê. */
-interface EntradaDoCatalogo {
+interface EntradaDoCatalogo extends Partial<AnaliseNormalizada> {
   driveFileId: string
   fileName: string
   folder: string
@@ -99,20 +109,8 @@ interface FotoViva {
   md5?: string
 }
 
-/** O que a análise de visão devolve por foto. */
-type Analise = Pick<
-  EntradaDoCatalogo,
-  | 'menuItem'
-  | 'menuCategory'
-  | 'description'
-  | 'tags'
-  | 'mood'
-  | 'bestFor'
-  | 'quality'
-  | 'analiseBloqueada'
-  | 'precoLegivel'
-  | 'marcaDeTerceiro'
->
+/** O que a análise de visão devolve por foto — a v3 inteira (`catalogo-de-fotos.ts`). */
+type Analise = AnaliseNormalizada & { analiseBloqueada?: true }
 
 export interface ReconciliarCatalogoInput {
   projectId: number
@@ -223,6 +221,48 @@ export async function reconciliarCatalogo({
     }
   }
 
+  /**
+   * 🔴 O listing NÃO devolve `md5Checksum` neste acervo (medido em 07/09/2026:
+   * 245 fotos listadas, zero com hash, embora o `fields` o peça) — por isso o
+   * backfill acima nunca preencheu nada e `md5` estava vazio em 100% das
+   * 12.694 entradas. O `files.get` devolve. Dois caminhos baratos: o hash
+   * que a indexação de vetores já guardou em `PhotoEmbedding` (uma consulta),
+   * e um teto de `get`s por rodada para o resto — o acervo converge em
+   * poucas madrugadas sem estourar o orçamento.
+   */
+  const semHash = imagens.filter((e) => !e.md5)
+  if (semHash.length > 0) {
+    try {
+      const doIndice = await db.$queryRaw<Array<{ driveFileId: string; md5: string | null }>>`
+        SELECT "driveFileId", "md5" FROM "PhotoEmbedding" WHERE "projectId" = ${projectId} AND "md5" IS NOT NULL
+      `
+      const hashPorFoto = new Map(doIndice.map((l) => [l.driveFileId, l.md5!]))
+      for (const entrada of semHash) {
+        const h = hashPorFoto.get(entrada.driveFileId)
+        if (h) {
+          entrada.md5 = h
+          hashesPreenchidos++
+        }
+      }
+    } catch (erro) {
+      console.warn(`[reconciliar-catalogo] ${base.projeto}: md5 do índice indisponível (seguindo):`, erro)
+    }
+    let gets = 0
+    for (const entrada of semHash) {
+      if (entrada.md5 || gets >= TETO_DE_GETS_DE_HASH || !haTempo(prazoEm)) continue
+      gets++
+      try {
+        const meta = await googleDriveService.getFileMetadata(entrada.driveFileId, 'md5Checksum')
+        if (typeof meta.md5Checksum === 'string' && meta.md5Checksum) {
+          entrada.md5 = meta.md5Checksum
+          hashesPreenchidos++
+        }
+      } catch {
+        // Foto que o get não alcança fica para a próxima rodada.
+      }
+    }
+  }
+
   const { paraAnalisar, restantes } = aplicarTeto(
     novas.map((id) => vivas.get(id)!),
     tetoDeNovas,
@@ -237,10 +277,17 @@ export async function reconciliarCatalogo({
    */
   const novasParaIndexar: Array<EntradaDoCatalogo & { miniatura: Buffer }> = []
 
+  // v3: vocabulário fechado (pilares aprovados + pastas do acervo) e o
+  // contexto do DNA, carregados UMA vez por projeto.
+  const [pilares, contextoDaMarca] = await Promise.all([carregarPilares(projectId), carregarContextoDaMarca(projectId)])
+  const vocabulario = montarVocabularioDeTags({ pilares, pastas: [...new Set(imagens.map((e) => e.folder))] })
+
   const { catalogadas, erros, naoAlcancadas } = await analisarNovas({
     projectId,
     projectName: base.projeto,
     outrosClientes,
+    vocabulario,
+    contextoDaMarca,
     fotos: paraAnalisar,
     prazoEm,
     aoCatalogar: (entrada, miniatura) => {
@@ -331,6 +378,8 @@ async function analisarNovas({
   projectId,
   projectName,
   outrosClientes,
+  vocabulario,
+  contextoDaMarca,
   fotos,
   prazoEm,
   aoCatalogar,
@@ -338,6 +387,8 @@ async function analisarNovas({
   outrosClientes: string[]
   projectId: number
   projectName: string
+  vocabulario: VocabularioDeTags
+  contextoDaMarca: string
   fotos: FotoViva[]
   prazoEm: number
   aoCatalogar: (entrada: EntradaDoCatalogo, miniatura: Buffer) => void
@@ -374,6 +425,8 @@ async function analisarNovas({
           cardapio,
           projectName,
           outrosClientes,
+          vocabulario,
+          contextoDaMarca,
         })
         aoCatalogar({
           driveFileId: foto.id,
@@ -451,6 +504,30 @@ async function baixarMiniatura(fileId: string): Promise<Buffer> {
   return Buffer.from(await resposta.arrayBuffer())
 }
 
+/** Os slugs dos pilares aprovados — o vocabulário de tema que o cliente já curou. */
+async function carregarPilares(projectId: number): Promise<string[]> {
+  try {
+    const linhas = await db.contentPillar.findMany({ where: { projectId, aprovado: true }, select: { slug: true }, orderBy: { ordem: 'asc' } })
+    return linhas.map((p) => p.slug)
+  } catch {
+    return []
+  }
+}
+
+/** Direção fotográfica e estética do DNA — o que faz a visão reconhecer a casa. */
+async function carregarContextoDaMarca(projectId: number): Promise<string> {
+  try {
+    const dna = await db.brandDNA.findUnique({ where: { projectId }, select: { photoDirection: true, visualStyle: true } })
+    const cortar = (t: string | null | undefined, teto: number) => (t ? (t.length > teto ? `${t.slice(0, teto)}…` : t) : '')
+    const partes: string[] = []
+    if (dna?.photoDirection) partes.push(`DIREÇÃO FOTOGRÁFICA E CENÁRIO DA CASA:\n${cortar(dna.photoDirection, 4500)}`)
+    if (dna?.visualStyle) partes.push(`ESTÉTICA DA MARCA:\n${cortar(dna.visualStyle, 2000)}`)
+    return partes.join('\n\n')
+  } catch {
+    return ''
+  }
+}
+
 async function analisarImagem({
   genAI,
   imagem,
@@ -458,6 +535,8 @@ async function analisarImagem({
   cardapio,
   projectName,
   outrosClientes,
+  vocabulario,
+  contextoDaMarca,
 }: {
   genAI: GoogleGenerativeAI
   imagem: Buffer
@@ -466,6 +545,8 @@ async function analisarImagem({
   projectName: string
   /** Nomes dos DEMAIS clientes da carteira — ver `semClienteAlheio`. */
   outrosClientes: string[]
+  vocabulario: VocabularioDeTags
+  contextoDaMarca: string
 }): Promise<Analise> {
   /**
    * ⚠️ `gemini-2.0-flash` foi APOSENTADO: `generateContent` devolve 404 embora
@@ -477,36 +558,8 @@ async function analisarImagem({
     model: process.env.GEMINI_VISION_MODEL ?? 'gemini-2.5-flash',
   })
 
-  const secaoCardapio = cardapio
-    ? `CARDÁPIO COMPLETO DO RESTAURANTE (use EXATAMENTE estes nomes):\n${cardapio}`
-    : '(Cardápio não disponível — descreva o prato pelo que vê na foto)'
-
-  const prompt = `Analise esta foto do restaurante "${projectName}".
-
-A foto está na pasta "${pasta}" do acervo do restaurante.
-
-${secaoCardapio}
-
-Retorne um JSON com:
-{
-  "menuItem": "Nome EXATO do item do cardápio acima (copie letra por letra). null se não for comida/bebida ou se não conseguir identificar",
-  "menuCategory": "Categoria: PRATOS_PRINCIPAIS, PETISCOS_ENTRADAS, BURGERS, CHAPAS, SALADAS, SOBREMESAS, BEBIDAS, AMBIENTE, AREA_KIDS, MUSICA, ou null",
-  "description": "Descrição curta em português do que aparece na foto (1-2 frases)",
-  "tags": ["lista", "de", "tags", "relevantes"],
-  "mood": "Uma palavra: casual, aconchegante, animado, dramatico, elegante, familiar, festivo",
-  "bestFor": ["lista de temas de post ideais para esta foto: almoco, happy-hour, abertura, area-kids, churrasco, etc"],
-  "quality": "alta, media, ou baixa (baseado em foco, iluminação, composição)",
-  "precoLegivel": "true se há preço, valor em R$ ou cardápio com preços LEGÍVEIS no quadro (placa, carta, etiqueta, tela); false se não há",
-  "marcaDeTerceiro": "nome da marca de TERCEIRO em destaque no quadro (cerveja, refrigerante, loja vizinha — guarda-sol, geladeira, letreiro), ou null se não há"
-}
-
-REGRAS OBRIGATÓRIAS:
-1. menuItem DEVE ser copiado EXATAMENTE como aparece no cardápio acima (mesma capitalização, acentos e grafia)
-2. Se a foto mostra comida mas você não consegue associar a nenhum item específico do cardápio, use null
-3. NÃO invente nomes de pratos — use APENAS os que constam no cardápio
-4. Se for ambiente, pessoas, decoração ou área externa: menuItem = null, menuCategory = "AMBIENTE"
-5. Se for bebida (cerveja, chopp, drink, etc): menuCategory = "BEBIDAS"
-6. Responda APENAS o JSON, sem markdown`
+  // O prompt ÚNICO da v3 — o mesmo do script de enriquecimento.
+  const prompt = montarPromptDeAnalise({ projectName, pasta, cardapio, contextoDaMarca, vocabulario })
 
   const conteudo = [
     prompt,
@@ -551,49 +604,15 @@ REGRAS OBRIGATÓRIAS:
 
   const json = texto.replace(/^```json?\n?/, '').replace(/\n?```$/, '')
   try {
-    const bruto = JSON.parse(json) as Partial<Analise>
-    return {
-      menuItem: bruto.menuItem ?? null,
-      menuCategory: bruto.menuCategory ?? null,
-      description: semClienteAlheio(
-        bruto.description ?? `Foto do restaurante (pasta: ${pasta})`,
-        projectName,
-        outrosClientes,
-      ),
-      tags: Array.isArray(bruto.tags) ? bruto.tags : [],
-      mood: bruto.mood ?? 'casual',
-      bestFor: Array.isArray(bruto.bestFor) ? bruto.bestFor : ['generico'],
-      quality: bruto.quality ?? 'media',
-      // Só grava o que o modelo AFIRMOU: campo omitido fica ausente (neutro),
-      // nunca vira `false` por padrão.
-      ...(typeof bruto.precoLegivel === 'boolean' ? { precoLegivel: bruto.precoLegivel } : {}),
-      ...(typeof bruto.marcaDeTerceiro === 'string' && bruto.marcaDeTerceiro.trim()
-        ? { marcaDeTerceiro: bruto.marcaDeTerceiro.trim().slice(0, 60) }
-        : bruto.marcaDeTerceiro === null
-          ? { marcaDeTerceiro: null }
-          : {}),
-    }
+    const analise = normalizarAnalise(JSON.parse(json), vocabulario, { pasta })
+    return { ...analise, description: semClienteAlheio(analise.description, projectName, outrosClientes) }
   } catch {
-    // Fallback do script: entrada pobre porém navegável é melhor que foto
-    // invisível para a busca.
+    // JSON ilegível: entra pelo que dá para saber sem a análise (a pasta),
+    // como sempre foi — e volta a ser tentada só se alguém reenriquecer.
     return analisePelaPasta(pasta)
   }
 }
 
-/**
- * Tira da descrição o nome de OUTRO cliente da carteira (B7).
- *
- * O prompt já diz de quem é a foto — `Analise esta foto do restaurante "X"` —,
- * e ainda assim boa parte das descrições do TERO menciona "By Rock", segundo o
- * registro da carteira. A causa provável é o próprio conteúdo da imagem
- * (placa, guardanapo, parede com a marca) ou contaminação do modelo; de
- * qualquer forma, descrição de catálogo que cita o concorrente deixa de ser
- * fonte confiável e transforma a pasta na única conferência.
- *
- * A guarda é de SAÍDA porque a de entrada já existe e não bastou. Ela troca o
- * nome alheio por uma marca neutra em vez de apagar a frase: descrição
- * mutilada some da busca por tema, e o objetivo é o contrário.
- */
 function semClienteAlheio(descricao: string, projectName: string, outros: string[]): string {
   const normal = (v: string) => v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   const meu = normal(projectName)
@@ -614,15 +633,7 @@ function semClienteAlheio(descricao: string, projectName: string, outros: string
 
 /** O que dá para dizer de uma foto sem conseguir olhá-la: a pasta em que mora. */
 function analisePelaPasta(pasta: string): Analise {
-  return {
-    menuItem: null,
-    menuCategory: pasta.toLowerCase().includes('ambiente') ? 'AMBIENTE' : null,
-    description: `Foto do restaurante (pasta: ${pasta})`,
-    tags: pasta ? [pasta.toLowerCase()] : [],
-    mood: 'casual',
-    bestFor: ['generico'],
-    quality: 'media',
-  }
+  return analisePelaPastaV3(pasta)
 }
 
 function mensagem(error: unknown): string {

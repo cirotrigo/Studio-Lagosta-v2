@@ -46,6 +46,13 @@ export interface FotoRanqueavel {
    * lida por ela.
    */
   description?: string | null
+  /** v3 (F4): o item principal, o que mais está no quadro e os enums de forma. */
+  assunto?: string | null
+  elementos?: string[] | null
+  enquadramento?: string | null
+  momento?: string | null
+  lotacao?: string | null
+  pessoas?: string | null
   /** 'alta' | 'media' | 'baixa' quando existir — catálogos v2 não têm (neutro). */
   quality?: string | null
   /** ISO; ausente = foto antiga (sem novidade). */
@@ -410,9 +417,12 @@ export function gruposDoTema(
 /** As raízes de uma foto por campo — o lado do catálogo, quebrado uma vez. */
 function raizesDaFoto(img: FotoRanqueavel): { bestFor: Set<string>; tags: Set<string>; descricao: Set<string>; pasta: Set<string> } {
   const setDe = (textos: string[]) => new Set(textos.flatMap((t) => quebrarEmPalavras(t)).map(raiz))
+  // v3: o ASSUNTO vale como bestFor (é a palavra que a equipe pede); os
+  // elementos e os enums de forma (lotação, momento…) valem como tags.
+  const forma = [img.enquadramento, img.momento, img.lotacao, img.pessoas].filter((x): x is string => typeof x === 'string')
   return {
-    bestFor: setDe(img.bestFor ?? []),
-    tags: setDe(img.tags ?? []),
+    bestFor: setDe([...(img.bestFor ?? []), ...(img.assunto ? [img.assunto] : [])]),
+    tags: setDe([...(img.tags ?? []), ...(img.elementos ?? []), ...forma]),
     descricao: setDe(img.description ? [img.description] : []),
     pasta: setDe(img.folder ? [img.folder] : []),
   }
