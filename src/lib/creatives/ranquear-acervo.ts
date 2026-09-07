@@ -30,6 +30,7 @@
  */
 
 import { normalizar } from '@/lib/posts/dia-semana'
+import { sinonimosDe } from './sinonimos-do-acervo'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 
@@ -39,6 +40,12 @@ export interface FotoRanqueavel {
   folder?: string
   tags?: string[]
   bestFor?: string[]
+  /**
+   * A frase que a visão escreveu. Entrou no casamento em 07/09/2026 — até
+   * então era escrita "para a busca encontrar" (prompt do enriquecer) e nunca
+   * lida por ela.
+   */
+  description?: string | null
   /** 'alta' | 'media' | 'baixa' quando existir — catálogos v2 não têm (neutro). */
   quality?: string | null
   /** ISO; ausente = foto antiga (sem novidade). */
@@ -114,6 +121,19 @@ export interface EntradaDeRanking<T extends FotoRanqueavel = FotoRanqueavel> {
   destaques: Set<string>
   /** 'AAAA-MM-DD'. */
   hojeBRT: string
+  /**
+   * Raridade de cada raiz no ACERVO INTEIRO (`calcularIdf(todas)`), para a
+   * relevância pesar "croissant" (4% do acervo) mais que "gelato" (78%).
+   * Ausente, é calculada sobre `imagens` — certo no backtest, que ranqueia o
+   * acervo inteiro; errado sobre uma lista já filtrada, por isso o chamador
+   * que filtra antes (`buscarNoAcervo`) passa a do catálogo completo.
+   */
+  idf?: Map<string, number>
+  /**
+   * Similaridade semântica por foto (F2, 0..1) — pré-calculada por quem tem
+   * rede; este módulo não consulta nada. Ausente = 0 para todas.
+   */
+  similaridade?: Map<string, number>
 }
 
 export interface FotoRanqueada<T extends FotoRanqueavel = FotoRanqueavel> {
@@ -169,14 +189,31 @@ export interface PesosDoAcervo {
   /** Multiplicador sobre a `relevancia` de `casaComTema` (só quando há tema). */
   RELEVANCIA_POR_PONTO: number
   /**
+   * Fração dos GRUPOS do tema que precisam casar para a foto passar no filtro
+   * (0,6: 2 de 2, 2 de 3, 3 de 4, 3 de 5). Era OR puro — "pistacchio gelato
+   * taça" passava 2.388 fotos porque bastava "gelato", e o topo era um panini.
+   */
+  MAIORIA_DO_TEMA: number
+  /** Multiplicador sobre a similaridade semântica (F2, 0..1). */
+  SIMILARIDADE: number
+  /**
+   * Bônus por casar TODOS os grupos do tema, × (fração casada)². Com 3
+   * palavras em que a terceira é comum no acervo ("pistache" está em 20% das
+   * fotos da Real), a raridade sozinha somava ~4 pontos, e uma foto
+   * destacada com 2 das 3 palavras vencia a que tinha as 3. Casar tudo o que
+   * a pessoa pediu vale um destaque.
+   */
+  COMPLETUDE: number
+  /**
    * Meia-vida do decaimento dos sinais, em dias — medida entre o evento e a
    * ÚLTIMA ATIVIDADE do cliente. Maior que a da cadência (21) de propósito:
    * sinal de foto é bem mais esparso que post.
    */
   MEIA_VIDA_SINAL_DIAS: number
-  /** Onde a palavra casou: bestFor > tags > pasta. */
+  /** Onde a palavra casou: bestFor > tags > descrição > pasta. */
   CASAMENTO_BESTFOR: number
   CASAMENTO_TAGS: number
+  CASAMENTO_DESCRICAO: number
   CASAMENTO_PASTA: number
 }
 
@@ -224,10 +261,23 @@ export const PESOS: PesosDoAcervo = {
   MARCA_DE_TERCEIRO: -5,
   NOVIDADE_MAX: 15,
   NOVIDADE_DIAS: 21,
-  RELEVANCIA_POR_PONTO: 2,
+  /**
+   * A relevância passou a ser peso do campo × raridade da palavra (IDF, teto
+   * 4). Com o multiplicador antigo (2) uma foto que casava TODAS as palavras
+   * de um tema composto somava ~10 e perdia para um destaque (40) que casava
+   * só a palavra genérica — medido em 07/09/2026: o topo de "pistacchio
+   * gelato taça" era um panini destacado. Hoje três palavras raras casadas
+   * em tags valem ~100; um destaque continua vencendo entre fotos igualmente
+   * relevantes, que é o lugar dele.
+   */
+  RELEVANCIA_POR_PONTO: 4,
+  MAIORIA_DO_TEMA: 0.6,
+  SIMILARIDADE: 60,
+  COMPLETUDE: 40,
   MEIA_VIDA_SINAL_DIAS: 60,
   CASAMENTO_BESTFOR: 3,
   CASAMENTO_TAGS: 2,
+  CASAMENTO_DESCRICAO: 1.5,
   CASAMENTO_PASTA: 1,
 }
 
@@ -241,11 +291,14 @@ const STOPWORDS = new Set(
   [
     'de', 'da', 'do', 'das', 'dos', 'e', 'com', 'para', 'pra', 'em',
     'no', 'na', 'nos', 'nas', 'o', 'a', 'os', 'as', 'um', 'uma',
-    'por', 'ao', 'à',
+    'por', 'ao', 'à', 'foto', 'fotos', 'imagem', 'imagens',
   ].map(normalizar),
 )
 
 const DIA_MS = 24 * 3600_000
+
+/** Teto do IDF: acima disto a raridade não distingue mais nada (1 foto em 55+). */
+const IDF_TETO = 4
 
 /**
  * Normaliza (minúsculas, sem acento — o catálogo mistura "almoço" e "almoco"
@@ -258,75 +311,200 @@ function quebrarEmPalavras(texto: string): string[] {
     .filter((p) => p.length >= 3 && !STOPWORDS.has(p))
 }
 
-/** Includes bidirecional: "picanha" casa "picanhas" e vice-versa. */
+/**
+ * A RAIZ de uma palavra — o stem leve que faz "gelatos" casar "gelato",
+ * "noturna" casar "noturno" e "picanhas" casar "picanha", SEM substring.
+ *
+ * 🔴 O `includes` bidirecional que havia aqui fazia "cheio" casar "recheio":
+ * "salão cheio" devolvia 11 fotos de crepe com recheio (07/09/2026). Vale a
+ * lição de `casaComDia` ("quinta" dentro de "Quintal"): casar por TOKEN.
+ *
+ * Só sufixos de flexão do português, conservadores de propósito — errar para
+ * o lado de não casar é barato (o sinônimo e o embedding cobrem), errar para
+ * o lado de casar demais é o defeito que se está tirando.
+ */
+export function raiz(palavra: string): string {
+  const p = normalizar(palavra)
+  if (p.length <= 3) return p
+  return p
+    .replace(/oes$/, 'ao')   // porcoes → porcao
+    .replace(/aes$/, 'ao')   // paes → pao
+    .replace(/eis$/, 'el')   // paineis → painel
+    .replace(/(?<=[aeiou])s$/, '') // gelatos → gelato, crepes → crepe
+    .replace(/(?<=.{3})[ao]$/, '') // noturna/noturno → noturn, dourada/dourado → dourad
+}
+
+/** Duas palavras são a MESMA se têm a mesma raiz. */
 function casaPalavra(a: string, b: string): boolean {
-  return a.includes(b) || b.includes(a)
+  return raiz(a) === raiz(b)
 }
 
 /**
- * As palavras de busca de um tema.
+ * As palavras de busca de um tema, LISA — a expansão por PILAR incluída.
  *
  * EXPANSÃO POR PILAR: se alguma palavra do tema casa com palavra do slug ou do
  * nome de um pilar aprovado, as palavras do nome e dos `exemplos` daquele
  * pilar entram como sinônimos. É o vocabulário que o cliente já aprovou
  * fazendo a ponte entre como a equipe pede ("churrasco") e como o catálogo
  * descreve ("picanha na brasa", "costela").
+ *
+ * Semântica de OR entre todas — é o que a medição de pilar (pauta, curadoria,
+ * cobertura) precisa: "quantas fotos têm ALGUMA palavra deste assunto". Para
+ * a BUSCA, que exige a maioria, use `gruposDoTema`.
  */
 export function palavrasDoTema(tema: string, pilares?: PilarParaBusca[]): string[] {
+  return gruposDoTema(tema, pilares, { comSinonimos: false }).flat()
+}
+
+/**
+ * As palavras de busca de um tema em GRUPOS: cada palavra que a pessoa
+ * escreveu vira um grupo com os seus sinônimos (dicionário da carteira +
+ * pilar aprovado do cliente). Um grupo casa quando QUALQUER termo dele casa;
+ * a foto passa quando a MAIORIA dos grupos casa. É o que faz "pistacchio
+ * gelato taça" exigir pistache E gelato, e "sorvete" achar "gelato".
+ */
+export function gruposDoTema(
+  tema: string,
+  pilares?: PilarParaBusca[],
+  opcoes: { comSinonimos?: boolean } = {},
+): string[][] {
+  const comSinonimos = opcoes.comSinonimos !== false
   const base = quebrarEmPalavras(tema)
-  const resultado = [...base]
-  const vistas = new Set(base)
+  if (base.length === 0) return []
+
+  const grupos: string[][] = base.map((palavra) => {
+    const grupo = [palavra]
+    if (!comSinonimos) return grupo
+    for (const sinonimo of sinonimosDe(palavra)) {
+      for (const termo of quebrarEmPalavras(sinonimo)) if (!grupo.includes(termo)) grupo.push(termo)
+    }
+    return grupo
+  })
+
+  // Expressões compostas do dicionário ("happy hour", "cafe da manha") — o
+  // par de palavras vira UM grupo, com os sinônimos da expressão.
+  const texto = base.join(' ')
+  for (const chave of comSinonimos ? ['happy hour', 'cafe da manha'] : []) {
+    if (!texto.includes(chave)) continue
+    const partes = chave.split(' ')
+    const idx = grupos.findIndex((g) => g[0] === partes[0])
+    if (idx < 0) continue
+    const fundido = [...new Set([...partes, ...sinonimosDe(chave).flatMap((s) => quebrarEmPalavras(s))])]
+    grupos.splice(idx, partes.length, fundido)
+  }
 
   for (const pilar of pilares ?? []) {
     const chaves = [...quebrarEmPalavras(pilar.slug), ...quebrarEmPalavras(pilar.nome)]
-    const ativa = base.some((p) => chaves.some((c) => casaPalavra(p, c)))
-    if (!ativa) continue
-
+    const ativo = grupos.findIndex((g) => g.some((p) => chaves.some((c) => casaPalavra(p, c))))
+    if (ativo < 0) continue
     const extras = [
       ...quebrarEmPalavras(pilar.nome),
       ...(pilar.exemplos ?? []).flatMap((e) => quebrarEmPalavras(e)),
     ]
-    for (const extra of extras) {
-      if (vistas.has(extra)) continue
-      vistas.add(extra)
-      resultado.push(extra)
-    }
+    for (const extra of extras) if (!grupos[ativo].includes(extra)) grupos[ativo].push(extra)
   }
 
-  return resultado
+  return grupos
+}
+
+/** As raízes de uma foto por campo — o lado do catálogo, quebrado uma vez. */
+function raizesDaFoto(img: FotoRanqueavel): { bestFor: Set<string>; tags: Set<string>; descricao: Set<string>; pasta: Set<string> } {
+  const setDe = (textos: string[]) => new Set(textos.flatMap((t) => quebrarEmPalavras(t)).map(raiz))
+  return {
+    bestFor: setDe(img.bestFor ?? []),
+    tags: setDe(img.tags ?? []),
+    descricao: setDe(img.description ? [img.description] : []),
+    pasta: setDe(img.folder ? [img.folder] : []),
+  }
 }
 
 /**
- * Casamento por PALAVRA, nunca pela frase inteira.
+ * A raridade de cada raiz no acervo: `ln(N / df)`, teto `IDF_TETO`. Uma
+ * passada pelo catálogo (12k entradas, alguns ms) — o chamador calcula uma
+ * vez sobre TODAS as fotos e passa adiante. Palavra que não aparece em foto
+ * nenhuma recebe o teto (é rara por definição; sem foto, não muda ordem).
+ */
+export function calcularIdf(imagens: FotoRanqueavel[]): Map<string, number> {
+  const df = new Map<string, number>()
+  for (const img of imagens) {
+    const r = raizesDaFoto(img)
+    const todas = new Set([...r.bestFor, ...r.tags, ...r.descricao, ...r.pasta])
+    for (const raizDaFoto of todas) df.set(raizDaFoto, (df.get(raizDaFoto) ?? 0) + 1)
+  }
+  const n = Math.max(1, imagens.length)
+  const idf = new Map<string, number>()
+  for (const [r, d] of df) idf.set(r, Math.min(IDF_TETO, Math.log(n / d)))
+  return idf
+}
+
+function idfDe(idf: Map<string, number> | undefined, palavra: string): number {
+  if (!idf) return 1
+  return idf.get(raiz(palavra)) ?? IDF_TETO
+}
+
+/**
+ * Casamento por GRUPOS, com maioria.
  *
- * Cada palavra do tema conta o MAIOR peso do campo em que casou (bestFor >
- * tags > pasta); `relevancia` é a soma sobre as palavras casadas. O lado da
- * foto também é quebrado em palavras normalizadas — é o que faz "almoço" do
- * pedido encontrar "almoco" do catálogo, e o que impede "picanha" de casar com
- * a preposição de uma pasta por substring.
+ * Cada grupo conta UMA vez, pelo termo que casou no campo de maior peso
+ * (bestFor > tags > descrição > pasta), multiplicado pela raridade daquele
+ * termo no acervo. `casa` exige `MAIORIA_DO_TEMA` dos grupos (com 1 grupo,
+ * basta ele). A relevância é a soma sobre os grupos casados.
+ */
+export function casaComGrupos(
+  img: FotoRanqueavel,
+  grupos: string[][],
+  opcoes?: { idf?: Map<string, number>; pesos?: PesosDoAcervo },
+): { casa: boolean; relevancia: number; gruposCasados: number } {
+  if (grupos.length === 0) return { casa: false, relevancia: 0, gruposCasados: 0 }
+  const pesos = opcoes?.pesos ?? PESOS
+  const r = raizesDaFoto(img)
+
+  let relevancia = 0
+  let gruposCasados = 0
+  for (const grupo of grupos) {
+    let melhor = 0
+    for (const termo of grupo) {
+      const t = raiz(termo)
+      if (!t) continue
+      let peso = 0
+      if (r.bestFor.has(t)) peso = Math.max(peso, pesos.CASAMENTO_BESTFOR)
+      if (r.tags.has(t)) peso = Math.max(peso, pesos.CASAMENTO_TAGS)
+      if (r.descricao.has(t)) peso = Math.max(peso, pesos.CASAMENTO_DESCRICAO)
+      if (r.pasta.has(t)) peso = Math.max(peso, pesos.CASAMENTO_PASTA)
+      // Palavra presente em TODA foto tem idf 0 e não ordena nada — mas
+      // casou. O piso mantém o casamento contando e a raridade mandando.
+      if (peso > 0) melhor = Math.max(melhor, peso * Math.max(0.1, idfDe(opcoes?.idf, termo)))
+    }
+    if (melhor > 0) {
+      gruposCasados++
+      relevancia += melhor
+    }
+  }
+
+  // Pelo menos UM grupo, sempre — com a maioria zerada (o OR das medições de
+  // pilar) o teto seria 0 e toda foto passaria.
+  const exigidos = Math.max(1, grupos.length === 1 ? 1 : Math.ceil(grupos.length * pesos.MAIORIA_DO_TEMA))
+  return { casa: gruposCasados >= exigidos, relevancia, gruposCasados }
+}
+
+/**
+ * Casamento por PALAVRA solta — OR entre todas (cada palavra é um grupo de
+ * um termo, e basta UMA casar). É a régua das medições de PILAR (pauta,
+ * curadoria, cobertura): "a foto tem alguma palavra deste assunto?". A busca
+ * usa `casaComGrupos`, que exige a maioria.
  */
 export function casaComTema(
   img: FotoRanqueavel,
   palavras: string[],
+  opcoes?: { idf?: Map<string, number> },
 ): { casa: boolean; relevancia: number } {
   if (palavras.length === 0) return { casa: false, relevancia: 0 }
-
-  const bestFor = (img.bestFor ?? []).flatMap((b) => quebrarEmPalavras(b))
-  const tags = (img.tags ?? []).flatMap((t) => quebrarEmPalavras(t))
-  const pasta = img.folder ? quebrarEmPalavras(img.folder) : []
-
-  let relevancia = 0
-  for (const crua of palavras) {
-    const palavra = normalizar(crua)
-    if (!palavra) continue
-    let peso = 0
-    if (bestFor.some((p) => casaPalavra(palavra, p))) peso = Math.max(peso, PESOS.CASAMENTO_BESTFOR)
-    if (tags.some((p) => casaPalavra(palavra, p))) peso = Math.max(peso, PESOS.CASAMENTO_TAGS)
-    if (pasta.some((p) => casaPalavra(palavra, p))) peso = Math.max(peso, PESOS.CASAMENTO_PASTA)
-    relevancia += peso
-  }
-
-  return { casa: relevancia > 0, relevancia }
+  const { relevancia, gruposCasados } = casaComGrupos(
+    img,
+    palavras.map((p) => [p]),
+    { idf: opcoes?.idf, pesos: { ...PESOS, MAIORIA_DO_TEMA: 0 } },
+  )
+  return { casa: gruposCasados > 0, relevancia }
 }
 
 // ── Filtro ─────────────────────────────────────────────────────────────────
@@ -354,9 +532,14 @@ export interface CriteriosDeFiltro {
   temQualidadeNoCatalogo: boolean
   /**
    * As palavras da busca — `palavrasDoTema(tema, pilares)`, já com a expansão
-   * por pilar (F2). VAZIO = sem filtro de tema.
+   * por pilar (F2). VAZIO = sem filtro de tema. Semântica de OR (cada palavra
+   * é um grupo). Prefira `gruposDoTema`, que exige a maioria.
    */
   palavrasDoTema: string[]
+  /** Os grupos da busca (`gruposDoTema`) — quando presentes, vencem `palavrasDoTema`. */
+  gruposDoTema?: string[][]
+  /** IDF do acervo inteiro; ausente, é calculado sobre `imagens`. */
+  idf?: Map<string, number>
 }
 
 /**
@@ -392,8 +575,20 @@ export function filtrarAcervo<T extends FotoRanqueavel & { menuCategory?: string
     const f = normalizar(criterios.fileName)
     resultado = resultado.filter((i) => normalizar(i.fileName ?? '').startsWith(f))
   }
-  if (criterios.palavrasDoTema.length > 0) {
-    resultado = resultado.filter((i) => casaComTema(i, criterios.palavrasDoTema).casa)
+  const grupos = criterios.gruposDoTema ?? criterios.palavrasDoTema.map((p) => [p])
+  if (grupos.length > 0) {
+    // A maioria só vale com grupos de verdade; a lista lisa mantém o OR.
+    const pesos = criterios.gruposDoTema ? PESOS : { ...PESOS, MAIORIA_DO_TEMA: 0 }
+    const idf = criterios.idf ?? calcularIdf(imagens)
+    const antes = resultado
+    resultado = resultado.filter((i) => casaComGrupos(i, grupos, { idf, pesos }).casa)
+    // Maioria que não deixa NADA passar relaxa para OR: "noite fachada
+    // noturna luzes" tem 3 fotos de noite num acervo sem "luzes" — devolver
+    // vazio é pior que devolver as 3 (a relevância ainda as ordena).
+    if (resultado.length === 0 && grupos.length > 1 && pesos.MAIORIA_DO_TEMA > 0) {
+      const relaxado = { ...pesos, MAIORIA_DO_TEMA: 0 }
+      resultado = antes.filter((i) => casaComGrupos(i, grupos, { idf, pesos: relaxado }).casa)
+    }
   }
   if (criterios.menuCategory) {
     resultado = resultado.filter((i) => i.menuCategory === criterios.menuCategory)
@@ -514,10 +709,12 @@ export function ranquearAcervo<T extends FotoRanqueavel>(
   entrada: EntradaDeRanking<T>,
   pesos: PesosDoAcervo = PESOS,
 ): Array<FotoRanqueada<T>> {
-  const { imagens, tema, pilares, preferencias, ultimoUso, destaques, hojeBRT } = entrada
+  const { imagens, tema, pilares, preferencias, ultimoUso, destaques, hojeBRT, similaridade } = entrada
 
-  const palavrasDaBusca = tema ? palavrasDoTema(tema, pilares) : []
+  const gruposDaBusca = tema ? gruposDoTema(tema, pilares) : []
+  const palavrasDaBusca = gruposDaBusca.flat()
   const setDaBusca = new Set(palavrasDaBusca)
+  const idf = entrada.idf ?? (gruposDaBusca.length > 0 ? calcularIdf(imagens) : undefined)
 
   /**
    * 🔴 O decaimento é ancorado na ÚLTIMA ATIVIDADE do cliente, nunca em
@@ -567,6 +764,8 @@ export function ranquearAcervo<T extends FotoRanqueavel>(
       dna: 0,
       novidade: 0,
       relevancia: 0,
+      completude: 0,
+      similaridade: 0,
     }
 
     if (destaques.has(id)) componentes.destaque = pesos.DESTAQUE
@@ -614,9 +813,16 @@ export function ranquearAcervo<T extends FotoRanqueavel>(
     componentes.dna = pesoDeDna(imagem, pesos)
     componentes.novidade = bonusDeNovidade(imagem.catalogadaEm, hojeBRT, pesos)
 
-    if (palavrasDaBusca.length > 0) {
-      const { relevancia } = casaComTema(imagem, palavrasDaBusca)
+    if (gruposDaBusca.length > 0) {
+      const { relevancia, gruposCasados } = casaComGrupos(imagem, gruposDaBusca, { idf, pesos })
+      const fracao = gruposCasados / gruposDaBusca.length
       componentes.relevancia = relevancia * pesos.RELEVANCIA_POR_PONTO
+      // Só tema COMPOSTO tem completude a premiar; com uma palavra, casar é passar.
+      componentes.completude = gruposDaBusca.length > 1 ? pesos.COMPLETUDE * fracao * fracao : 0
+    }
+    const sim = similaridade?.get(id)
+    if (typeof sim === 'number' && Number.isFinite(sim) && sim > 0) {
+      componentes.similaridade = sim * pesos.SIMILARIDADE
     }
 
     let score = 0

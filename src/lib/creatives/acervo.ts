@@ -12,6 +12,8 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { lerUsosDeFoto, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
   filtrarAcervo,
+  calcularIdf,
+  gruposDoTema,
   palavrasDoTema,
   ranquearAcervo,
   type FotoRanqueada,
@@ -281,7 +283,13 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * "almoco" no MESMO acervo (medido no Wine Vix). Os filtros exatos (pasta,
    * fileName, menuCategory, tags, quality) não mudaram.
    */
-  const palavras = input.theme ? palavrasDoTema(input.theme, pilares) : []
+  /**
+   * F1 (07/09/2026): a busca casa por GRUPOS com maioria e raridade —
+   * `gruposDoTema` traz os sinônimos do dicionário e do pilar; `calcularIdf`
+   * é do acervo INTEIRO (não da lista filtrada), e vai também ao ranking.
+   */
+  const grupos = input.theme ? gruposDoTema(input.theme, pilares) : []
+  const idf = grupos.length > 0 ? calcularIdf(todas) : undefined
   const imagens = filtrarAcervo(todas, {
     folder: input.folder,
     fileName: input.fileName,
@@ -289,7 +297,9 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     tags: input.tags,
     quality: input.quality,
     temQualidadeNoCatalogo: temQualidade,
-    palavrasDoTema: palavras,
+    palavrasDoTema: grupos.flat(),
+    gruposDoTema: grupos,
+    idf,
   })
 
   /** Primeira entrada de cada hash — as demais são cópias dela. */
@@ -320,6 +330,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     ultimoUso,
     destaques,
     hojeBRT: diaBRT(),
+    idf,
   })
 
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
