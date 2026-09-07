@@ -24,11 +24,28 @@ export interface PilarDaPauta {
   destacadasQueCasam: number
 }
 
+/**
+ * Tema em que a equipe procurou ≥ 2 vezes e, em TODAS, levou outra foto que
+ * não a proposta (`trocada`) — nunca a aceitou como veio.
+ *
+ * 🔴 `expiradas` NÃO entra mais na régua (07/09/2026). Até então "fechada"
+ * incluía a expiração automática de 24h, e como 81% das buscas da carteira
+ * expiravam — a foto era usada pelo compositor, pelo canvas ou pelo chat, que
+ * não fechavam a busca —, a pauta acusava "AS BUSCAS MORRERAM" para croissant,
+ * gelato e crepe num acervo com 113, 2.380 e 145 fotos deles. O campo fica
+ * como informação; a decisão é só por `trocadas`.
+ */
 export interface TemaRejeitado {
   tema: string
   fechadas: number
   trocadas: number
   expiradas: number
+}
+
+/** Tema que a equipe pesquisou e a busca devolveu ZERO fotos — o acervo não tem. */
+export interface TemaSemFoto {
+  tema: string
+  vezes: number
 }
 
 export interface ClienteDaPauta {
@@ -38,6 +55,13 @@ export interface ClienteDaPauta {
   totalDestacadas: number
   pilares: PilarDaPauta[]
   temasRejeitados: TemaRejeitado[]
+  /** Buscas que voltaram vazias — a lacuna dita pela própria equipe. */
+  temasSemFoto?: TemaSemFoto[]
+  /**
+   * Buscas que ninguém fechou (expiraram) — informação, nunca prioridade:
+   * quase sempre a foto foi usada por um caminho que não avisa a busca.
+   */
+  buscasSemDesfecho?: number
   /** true quando o catálogo não pôde ser lido — o cliente sai da pauta com uma linha honesta. */
   semCatalogo?: boolean
 }
@@ -48,7 +72,7 @@ export interface PautaDeFotografia {
   clientes: ClienteDaPauta[]
 }
 
-export type TipoDePrioridade = 'falta-no-acervo' | 'busca-morta' | 'cobertura-magra'
+export type TipoDePrioridade = 'falta-no-acervo' | 'busca-vazia' | 'busca-morta' | 'cobertura-magra'
 
 export interface PrioridadeDaPauta {
   tipo: TipoDePrioridade
@@ -80,11 +104,14 @@ export function curadoriaPendente(p: PilarDaPauta): boolean {
 
 /**
  * As prioridades da semana, na ordem da evidência: pilar SEM foto no acervo
- * (a lacuna absoluta) → busca que morreu (a equipe procurou e nada serviu) →
- * cobertura magra. Dentro de cada faixa, mantém a ordem dos clientes.
+ * (a lacuna absoluta) → busca que voltou VAZIA (a equipe procurou e o acervo
+ * não tem) → busca que morreu (a equipe procurou e, todas as vezes, levou
+ * outra foto) → cobertura magra. Dentro de cada faixa, mantém a ordem dos
+ * clientes. Busca sem desfecho NÃO é prioridade — ver `buscasSemDesfecho`.
  */
 export function prioridadesDaPauta(pauta: PautaDeFotografia): PrioridadeDaPauta[] {
   const zeros: PrioridadeDaPauta[] = []
+  const vazias: PrioridadeDaPauta[] = []
   const mortas: PrioridadeDaPauta[] = []
   const magros: PrioridadeDaPauta[] = []
 
@@ -108,17 +135,25 @@ export function prioridadesDaPauta(pauta: PautaDeFotografia): PrioridadeDaPauta[
         })
       }
     }
+    for (const t of c.temasSemFoto ?? []) {
+      vazias.push({
+        tipo: 'busca-vazia',
+        cliente: c.nome,
+        assunto: t.tema,
+        detalhe: `${t.vezes} busca(s) e o acervo não devolveu nenhuma foto`,
+      })
+    }
     for (const t of c.temasRejeitados) {
       mortas.push({
         tipo: 'busca-morta',
         cliente: c.nome,
         assunto: t.tema,
-        detalhe: `${t.fechadas} busca(s) e nenhuma foto serviu (${t.trocadas} trocada(s), ${t.expiradas} expirada(s))`,
+        detalhe: `${t.trocadas} busca(s) e em todas a equipe levou outra foto — a proposta do topo nunca serviu`,
       })
     }
   }
 
-  return [...zeros, ...mortas, ...magros]
+  return [...zeros, ...vazias, ...mortas, ...magros]
 }
 
 /** Clientes que não entram em nenhuma prioridade nem têm curadoria pendente. */
@@ -128,6 +163,7 @@ export function clientesSemPauta(pauta: PautaDeFotografia): string[] {
       (c) =>
         !c.semCatalogo &&
         c.temasRejeitados.length === 0 &&
+        (c.temasSemFoto ?? []).length === 0 &&
         c.pilares.every((p) => situacaoDoPilar(p.casaveis) === 'ok' && !curadoriaPendente(p)),
     )
     .map((c) => c.nome)
@@ -170,7 +206,13 @@ export function mensagemCompleta(pauta: PautaDeFotografia, opcoes?: { teste?: bo
     linhas.push('*Prioridades:*')
     prioridades.forEach((p, i) => {
       const marca =
-        p.tipo === 'falta-no-acervo' ? 'FALTA NO ACERVO' : p.tipo === 'busca-morta' ? 'buscas morreram' : 'cobertura magra'
+        p.tipo === 'falta-no-acervo'
+          ? 'FALTA NO ACERVO'
+          : p.tipo === 'busca-vazia'
+            ? 'busca sem foto'
+            : p.tipo === 'busca-morta'
+              ? 'buscas morreram'
+              : 'cobertura magra'
       linhas.push(`${i + 1}. *${p.cliente} — ${p.assunto}* (${marca}): ${p.detalhe}`)
     })
     linhas.push('')

@@ -23,6 +23,8 @@
 
 import { db } from '@/lib/db'
 import { resolverGeracoesSoDestePost } from '@/lib/creatives/geracoes-do-post'
+import { fecharSugestaoDeFoto } from '@/lib/aprendizado/sinal-de-foto'
+import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
 /**
  * De onde veio o uso. TEXT no banco — o vocabulário ainda se move.
@@ -42,7 +44,22 @@ export interface RegistroDeUso {
   generationId?: string | null
   /** Quando o uso aconteceu. Padrão: agora. Serve para marcar peça já publicada. */
   usedAt?: Date | null
+  /**
+   * Onde a decisão foi tomada, para o FECHAMENTO da busca (ver abaixo).
+   * Padrão: `chat` — é de lá que vem a busca que mais expirava.
+   */
+  superficie?: Superficie
+  /** A foto que o card do item mostrava (`ItemDePlano.fotoDriveId`), quando houver. */
+  fotoDoCard?: string | null
+  decididoPor?: string | null
 }
+
+/**
+ * Uso registrado com data no PASSADO além disto é reconstituição (semeadura,
+ * `marcar-foto-como-usada` com `quando`), não decisão ao vivo: não fecha busca.
+ * Mesma janela de `fecharSugestaoDeFoto`.
+ */
+const JANELA_DE_USO_AO_VIVO_MS = 6 * 3_600_000
 
 /**
  * Marca as fotos como usadas.
@@ -69,6 +86,37 @@ export async function registrarUsoDeFoto(registro: RegistroDeUso): Promise<numbe
         ...(registro.usedAt ? { usedAt: registro.usedAt } : {}),
       })),
     })
+
+    /**
+     * 🔴 USAR a foto FECHA a busca que a propôs (07/09/2026).
+     *
+     * Só `createArteRapida` e o picker da bancada chamavam
+     * `fecharSugestaoDeFoto`; compositor, canvas (`upload-creative`), arte-ia
+     * e `marcar-foto-como-usada` registravam o uso e deixavam a busca aberta
+     * — 81% das buscas da carteira expiravam, e a pauta de fotografia lia isso
+     * como "AS BUSCAS MORRERAM" para fotos que tinham virado arte. Este é o
+     * ponto único por onde TODO uso passa, então é aqui que o laço fecha.
+     * Quem já fechou antes (arte-rapida, com `fotoDoCard`) não é afetado: a
+     * reconciliação só olha proposta ainda aberta.
+     *
+     * Reconstituição (`historico`, ou `usedAt` no passado) não fecha nada: a
+     * busca de hoje não propôs a foto de ontem.
+     */
+    const aoVivo =
+      registro.origem !== 'historico' &&
+      (!registro.usedAt || Date.now() - registro.usedAt.getTime() <= JANELA_DE_USO_AO_VIVO_MS)
+    if (aoVivo) {
+      for (const driveFileId of ids) {
+        await fecharSugestaoDeFoto({
+          projectId: registro.projectId,
+          driveFileIdUsado: driveFileId,
+          fotoDoCard: registro.fotoDoCard ?? null,
+          generationId: registro.generationId ?? null,
+          decididoPor: registro.decididoPor ?? null,
+          superficie: registro.superficie ?? 'chat',
+        })
+      }
+    }
     return r.count
   } catch (erro) {
     console.warn('[uso-de-foto] não consegui registrar o uso:', erro)

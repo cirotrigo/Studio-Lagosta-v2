@@ -34,6 +34,7 @@ import {
   type ClienteDaPauta,
   type PilarDaPauta,
   type TemaRejeitado,
+  type TemaSemFoto,
 } from './pauta-fotografos-contrato'
 
 const OFFSET_BRT_MS = 3 * 3_600_000
@@ -42,26 +43,52 @@ function hojeBRT(): string {
   return new Date(Date.now() - OFFSET_BRT_MS).toISOString().slice(0, 10)
 }
 
-/** Buscas fechadas por tema com NENHUMA aceita — mesma régua do relatório de lacunas. */
-function temasRejeitadosDosSinais(
+/**
+ * As três leituras dos sinais de foto, por tema (mesma régua do relatório de
+ * lacunas, `scripts/relatorio-lacunas-do-acervo.ts`):
+ *
+ *  - `rejeitados`: ≥ 2 `trocada` e ZERO aceita — a equipe procurou e sempre
+ *    levou outra foto. 🔴 `expirada` NÃO decide mais (07/09/2026): ela é o
+ *    carimbo automático de 24h, e 81% das buscas expiravam com a foto USADA
+ *    por um caminho que não fechava a busca. Contá-la como "não serviu" fez a
+ *    pauta acusar croissant/gelato/crepe num acervo cheio deles.
+ *  - `semFoto`: buscas que voltaram VAZIAS (`sugerido.total === 0`) — a
+ *    lacuna que a própria equipe apontou.
+ *  - `semDesfecho`: quantas expiraram — informação para a seção do cliente,
+ *    nunca prioridade.
+ */
+function lerBuscasDosSinais(
   sinais: Array<{ desfecho: string | null; sugerido: unknown }>,
-): TemaRejeitado[] {
-  const porTema = new Map<string, { tema: string; aceitas: number; trocadas: number; expiradas: number }>()
+): { rejeitados: TemaRejeitado[]; semFoto: TemaSemFoto[]; semDesfecho: number } {
+  const porTema = new Map<string, { tema: string; aceitas: number; trocadas: number; expiradas: number; vazias: number }>()
+  let semDesfecho = 0
   for (const s of sinais) {
-    const criterios = (s.sugerido as { criterios?: { theme?: unknown } } | null)?.criterios
-    const tema = typeof criterios?.theme === 'string' ? criterios.theme.trim() : ''
+    const sugerido = s.sugerido as { criterios?: { theme?: unknown }; total?: unknown } | null
+    const tema = typeof sugerido?.criterios?.theme === 'string' ? sugerido.criterios.theme.trim() : ''
     if (!tema) continue
     const chave = normalizar(tema)
-    const linha = porTema.get(chave) ?? { tema, aceitas: 0, trocadas: 0, expiradas: 0 }
-    if (s.desfecho === 'aceita-como-veio' || s.desfecho === 'sugerido-aceito') linha.aceitas++
+    const linha = porTema.get(chave) ?? { tema, aceitas: 0, trocadas: 0, expiradas: 0, vazias: 0 }
+    if (sugerido?.total === 0) linha.vazias++
+    else if (s.desfecho === 'aceita-como-veio' || s.desfecho === 'sugerido-aceito') linha.aceitas++
     else if (s.desfecho === 'trocada') linha.trocadas++
-    else if (s.desfecho === 'expirada') linha.expiradas++
+    else if (s.desfecho === 'expirada') {
+      linha.expiradas++
+      semDesfecho++
+    }
     porTema.set(chave, linha)
   }
-  return [...porTema.values()]
-    .map((l) => ({ tema: l.tema, fechadas: l.trocadas + l.expiradas + l.aceitas, trocadas: l.trocadas, expiradas: l.expiradas }))
-    .filter((l) => l.fechadas >= 2 && l.trocadas + l.expiradas === l.fechadas)
-    .sort((a, b) => b.fechadas - a.fechadas)
+  const linhas = [...porTema.values()]
+  return {
+    rejeitados: linhas
+      .filter((l) => l.trocadas >= 2 && l.aceitas === 0)
+      .map((l) => ({ tema: l.tema, fechadas: l.trocadas + l.expiradas + l.aceitas, trocadas: l.trocadas, expiradas: l.expiradas }))
+      .sort((a, b) => b.trocadas - a.trocadas),
+    semFoto: linhas
+      .filter((l) => l.vazias > 0)
+      .map((l) => ({ tema: l.tema, vezes: l.vazias }))
+      .sort((a, b) => b.vezes - a.vezes),
+    semDesfecho,
+  }
 }
 
 /** Mede um cliente: pilar × catálogo, pilar × destacadas, buscas mortas. */
@@ -82,9 +109,10 @@ async function medirCliente(projeto: { id: number; name: string }): Promise<Clie
     }),
   ])
 
-  const temasRejeitados = temasRejeitadosDosSinais(sinais)
-  // Cliente sem taxonomia e sem busca morta não tem o que entrar na pauta.
-  if (pilares.length === 0 && temasRejeitados.length === 0) return null
+  const { rejeitados: temasRejeitados, semFoto: temasSemFoto, semDesfecho: buscasSemDesfecho } =
+    lerBuscasDosSinais(sinais)
+  // Cliente sem taxonomia e sem busca que diga algo não tem o que entrar na pauta.
+  if (pilares.length === 0 && temasRejeitados.length === 0 && temasSemFoto.length === 0) return null
 
   let todas: ImagemCatalogo[]
   try {
@@ -97,6 +125,8 @@ async function medirCliente(projeto: { id: number; name: string }): Promise<Clie
       totalDestacadas: 0,
       pilares: [],
       temasRejeitados,
+      temasSemFoto,
+      buscasSemDesfecho,
       semCatalogo: true,
     }
   }
@@ -124,6 +154,8 @@ async function medirCliente(projeto: { id: number; name: string }): Promise<Clie
     totalDestacadas: fotosDestacadas.length,
     pilares: medidos,
     temasRejeitados,
+    temasSemFoto,
+    buscasSemDesfecho,
   }
 }
 
@@ -218,7 +250,7 @@ export async function gerarPdfDaPauta(pauta: PautaDeFotografia): Promise<Uint8Ar
   escrever(c, `Semana de ${dia}/${mes}/${ano} — gerada automaticamente pelo Studio`, { size: 10, cor: APAGADO, espacoDepois: 10 })
   escrever(
     c,
-    'Duas medições: quanto do acervo de cada cliente cobre os assuntos aprovados da marca, e as buscas de foto em que nada serviu. "Fotos do assunto" conta presença por descrição/tags/pasta — não qualidade.',
+    'Três medições: quanto do acervo de cada cliente cobre os assuntos aprovados da marca, as buscas em que a equipe não achou foto nenhuma, e as buscas em que ela sempre levou outra foto que não a proposta. Busca que ninguém fechou não conta. "Fotos do assunto" conta presença por descrição/tags/pasta — não qualidade.',
     { size: 9.5, cor: APAGADO, espacoDepois: 14 },
   )
 
@@ -229,8 +261,14 @@ export async function gerarPdfDaPauta(pauta: PautaDeFotografia): Promise<Uint8Ar
   } else {
     prioridades.forEach((p, i) => {
       const marca =
-        p.tipo === 'falta-no-acervo' ? 'FALTA NO ACERVO' : p.tipo === 'busca-morta' ? 'AS BUSCAS MORRERAM' : 'COBERTURA MAGRA'
-      const cor = p.tipo === 'falta-no-acervo' ? CRITICO : p.tipo === 'busca-morta' ? CRITICO : ALERTA
+        p.tipo === 'falta-no-acervo'
+          ? 'FALTA NO ACERVO'
+          : p.tipo === 'busca-vazia'
+            ? 'A EQUIPE PROCUROU E NÃO ACHOU'
+            : p.tipo === 'busca-morta'
+              ? 'AS BUSCAS MORRERAM'
+              : 'COBERTURA MAGRA'
+      const cor = p.tipo === 'cobertura-magra' ? ALERTA : CRITICO
       escrever(c, `${i + 1}. ${p.cliente} — ${p.assunto}`, { bold: true, espacoDepois: 0 })
       escrever(c, `${marca}: ${p.detalhe}`, { size: 9.5, cor, indent: 16, espacoDepois: 6 })
     })
@@ -251,12 +289,26 @@ export async function gerarPdfDaPauta(pauta: PautaDeFotografia): Promise<Uint8Ar
       espacoDepois: 4,
     })
 
-    for (const t of cliente.temasRejeitados) {
-      escrever(c, `Buscas morreram: "${t.tema}" — ${t.fechadas} busca(s), nenhuma foto serviu`, {
+    for (const t of cliente.temasSemFoto ?? []) {
+      escrever(c, `Procurou e não achou: "${t.tema}" — ${t.vezes} busca(s) sem nenhuma foto`, {
         size: 10,
         cor: CRITICO,
         indent: 8,
       })
+    }
+    for (const t of cliente.temasRejeitados) {
+      escrever(c, `Buscas morreram: "${t.tema}" — ${t.trocadas} busca(s), sempre levaram outra foto`, {
+        size: 10,
+        cor: CRITICO,
+        indent: 8,
+      })
+    }
+    if ((cliente.buscasSemDesfecho ?? 0) > 0) {
+      escrever(
+        c,
+        `${cliente.buscasSemDesfecho} busca(s) sem desfecho registrado — ninguém disse qual foto levou; não conta como lacuna`,
+        { size: 9, cor: APAGADO, indent: 8 },
+      )
     }
     for (const p of cliente.pilares) {
       const s = situacaoDoPilar(p.casaveis)
@@ -280,6 +332,7 @@ export async function gerarPdfDaPauta(pauta: PautaDeFotografia): Promise<Uint8Ar
     }
     const nadaAApontar =
       cliente.temasRejeitados.length === 0 &&
+      (cliente.temasSemFoto ?? []).length === 0 &&
       cliente.pilares.every((p) => situacaoDoPilar(p.casaveis) === 'ok') &&
       pendentes.length === 0
     if (nadaAApontar) {

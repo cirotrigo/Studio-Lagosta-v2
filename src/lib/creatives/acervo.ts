@@ -418,10 +418,14 @@ async function registrarProposta(
   ultimoUso: Map<string, string>,
   destaques: Set<string>,
 ): Promise<string | null> {
-  // Busca sem resultado não propõe nada — e contá-la como proposta rejeitada
-  // culparia o ranqueamento por um acervo que não tem a foto.
-  if (ranqueadas.length === 0) return null
-
+  /**
+   * Busca sem resultado TAMBÉM é registrada (07/09/2026), com `total: 0` e
+   * `propostas: []`. Até então ela não deixava rastro — e é justamente ela que
+   * diz "a equipe procurou e o acervo não tem", o dado que a pauta de
+   * fotografia mais precisa. Ninguém a lê como rejeição: sem propostas, nem
+   * `agregarSinaisDeFoto` nem `fecharSugestaoDeFoto` têm o que fechar, e a
+   * expiração é neutra.
+   */
   const criterios = {
     theme: input.theme,
     folder: input.folder,
@@ -445,7 +449,7 @@ async function registrarProposta(
     sugerido: {
       criterios,
       total: ranqueadas.length,
-      topo: ranqueadas[0].imagem.driveFileId,
+      topo: ranqueadas[0]?.imagem.driveFileId ?? null,
       propostas: ranqueadas.slice(0, PROPOSTAS_REGISTRADAS).map((r, posicao) => ({
         posicao: posicao + 1,
         driveFileId: r.imagem.driveFileId,

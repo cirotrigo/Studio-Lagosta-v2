@@ -187,8 +187,11 @@ function temasRejeitadosDoProjeto(sinais: SinalDeFoto[]): {
     else balde.outrasFechadas++
   }
 
+  // 🔴 `expirada` não decide (07/09/2026): é o carimbo automático de 24h, e
+  // 81% das buscas expiravam com a foto USADA por caminho que não fechava a
+  // busca. Só `trocada` diz que a equipe olhou e levou outra.
   const rejeitados = [...porTema.values()]
-    .filter((b) => b.fechadas >= MINIMO_FECHADOS && b.aceitas === 0)
+    .filter((b) => b.trocadas >= MINIMO_FECHADOS && b.aceitas === 0)
     .sort((a, b) => b.fechadas - a.fechadas || a.exibicao.localeCompare(b.exibicao))
     .map((b) => ({
       tema: b.exibicao,
