@@ -40,9 +40,33 @@ const PREFERENCIA = ['vermelh', 'amarel', 'dourad', 'verde', 'azul', 'pret', 'br
  */
 function escolherElementos(rows: Array<{ name: string; fileUrl: string; category: string | null }>) {
   // Sombras de design e arquivos de trabalho não são elementos da marca.
-  const uteis = rows.filter((r) => !/sombra|shadow|mockup|teste/i.test(r.name))
-  const categorizados = uteis.filter((r) => r.category)
-  const base = categorizados.length ? categorizados : uteis
+  // Nem asset de CAMPANHA: os `hz-*` do Quintal (Prêmio HZ Gastrô — figo,
+  // queijo, textura, a logo e o QR do prêmio) entraram no manual de
+  // 07/09/2026 como identidade permanente, e num manual eles convidam o
+  // modelo a desenhar figo em peça de terça (Ciro, 08/09/2026: "não use os
+  // elementos do HZ Gastrô"). Campanha se reconhece pelo NOME; foto e print
+  // sem transparência o renderizador barra pela cobertura do alpha.
+  // ⚠️ "Ativo N" NÃO é critério: é o nome de exportação do Illustrator, e no
+  // Seu Quinto são ~100 ícones legítimos com esse nome. O "selo-pascoa" do
+  // Real ("NA PÁSCOA 50% OFF") é a mesma classe: sazonal e com promoção
+  // escrita — num manual de identidade vira convite para inventar desconto.
+  // Idem o "selo-promo" ("TODA QUARTA-FEIRA 50% OFF"): selo com desconto
+  // escrito entra numa PEÇA quando a copy pede, nunca como identidade.
+  // "promo" NÃO fica no filtro: o Ciro confirmou (08/09) que o selo de quarta
+  // do Real e os selos de desconto do By Rock são elementos que a marca usa.
+  // Sazonal (Páscoa, Natal) continua fora.
+  // Categoria `legado` é a despromoção: o arquivo e a linha ficam (pode haver
+  // página apontando para a URL), só saem do manual. Foi o destino dos quatro
+  // selos antigos do By Rock em 08/09/2026, quando o Ciro mandou usar os dois
+  // do Drive ("os que eu te mandei, não os que você puxou do estúdio").
+  const uteis = rows.filter(
+    (r) => (r.category ?? '').toLowerCase() !== 'legado' && !/sombra|shadow|mockup|teste|hz[-_]|gastr[oô]|pascoa|natal/i.test(r.name),
+  )
+  // Categorizados primeiro, sem categoria DEPOIS — não em vez de. A regra
+  // antiga ("só com categoria quando existir algum categorizado") deixava os
+  // guarda-chuvas e o selo do TripAdvisor do Quintal fora, porque os únicos
+  // categorizados eram os da campanha HZ.
+  const base = [...uteis.filter((r) => r.category), ...uteis.filter((r) => !r.category)]
   const porFamilia = new Map<string, { name: string; fileUrl: string; categoria: string | null; peso: number }>()
   for (const r of base) {
     const nome = r.name.replace(/\.(png|jpe?g|webp|svg)$/i, '')
@@ -54,9 +78,15 @@ function escolherElementos(rows: Array<{ name: string; fileUrl: string; category
     if (!atual || pesoNormalizado < atual.peso) porFamilia.set(familia, { name: nome, fileUrl: r.fileUrl, categoria: r.category, peso: pesoNormalizado })
   }
   const lista = [...porFamilia.values()]
-  const icones = lista.filter((e) => (e.categoria ?? '').toLowerCase() === 'icones').slice(0, 8)
-  const graficos = lista.filter((e) => (e.categoria ?? '').toLowerCase() !== 'icones').slice(0, 8)
-  return [...icones, ...graficos].map(({ name, fileUrl, categoria }) => ({ name, fileUrl, categoria }))
+  const cat = (e: { categoria: string | null }) => (e.categoria ?? '').toLowerCase()
+  // Três baldes, nesta ordem: ícones, SELOS, o resto. Selo tem balde próprio
+  // porque no balde único de "gráficos" os sete "onda-*" do By Rock vinham
+  // antes de "selo-*" por ordem alfabética e os selos de desconto — que a
+  // marca usa e o Ciro pediu (08/09) — nunca chegavam ao manual.
+  const icones = lista.filter((e) => cat(e) === 'icones').slice(0, 8)
+  const selos = lista.filter((e) => cat(e) === 'selos').slice(0, 6)
+  const graficos = lista.filter((e) => cat(e) !== 'icones' && cat(e) !== 'selos').slice(0, 8)
+  return [...icones, ...selos, ...graficos].map(({ name, fileUrl, categoria }) => ({ name, fileUrl, categoria }))
 }
 
 async function main() {
@@ -74,6 +104,12 @@ async function main() {
     if (!brand) continue
     const dna = await db.brandDNA.findUnique({ where: { projectId: p.id }, select: { estiloDasReferencias: true } })
     const estilo = lerEstiloDasReferencias(dna?.estiloDasReferencias)
+    // Todas as logos do projeto: a principal grande, as outras como variações.
+    const logos = await db.logo.findMany({
+      where: { projectId: p.id },
+      orderBy: [{ isProjectLogo: 'desc' }, { name: 'asc' }],
+      select: { name: true, fileUrl: true, isProjectLogo: true },
+    })
     const elementos = escolherElementos(
       await db.element.findMany({
         where: { projectId: p.id },
@@ -82,7 +118,7 @@ async function main() {
       }),
     )
     console.log(`\n══ ${p.name} (${p.id}) · fontes ${brand.fonts.title ?? '-'} / ${brand.fonts.subtitle ?? '-'} / ${brand.fonts.body ?? '-'} · estilo ${estilo ? 'lido' : 'ausente'} · ${elementos.length} elemento(s)`)
-    const png = await renderManualDeMarca({ brand, estilo, elementos })
+    const png = await renderManualDeMarca({ brand, estilo, elementos, logos })
     const arquivo = path.join(saida, `${p.id}-manual.png`)
     await fs.writeFile(arquivo, png)
     console.log(`PNG: ${arquivo}`)

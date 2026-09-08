@@ -4815,6 +4815,51 @@ Medição em `scripts/medir-busca-de-fotos.ts` (leitura; NUNCA chama
   `reconciliar-catalogos`, que indexa a foto NOVA no mesmo passo em que a
   cataloga.
 
+### O manual como design system e as DUAS PORTAS da peça avulsa (08/09/2026)
+
+Arco em `docs/SESSAO-2026-09-08-MANUAL-E-DUAS-PORTAS.md`. Medido direto na API
+nos nove clientes (07-08/09, tier `low`): **a peça sai melhor com MENOS imagens
+e MENOS regra**. Foto + arte de referência + prompt de cinco linhas venceu; cada
+imagem do sistema a mais (prancha, âncora, card, arquivo da logo) afastou a
+peça do que a referência pedia. Receita do Ciro, confirmada: "enviar a arte
+escolhida de referência e a copy que o usuário escreveu", sem lista de "não".
+
+- **Duas portas no runner** (`creative-generation-runner.ts`, antes de
+  `ordered`): com `style-guide` → porta `referencia` (foto + referência +
+  `prompt-da-referencia.ts`); sem referência e com `brandManualUrl` → porta
+  `manual` (foto + manual + `prompt-do-manual.ts`). Carrossel, peça com
+  cartão, `finalPrompt` do MCP, sem foto ou sem manual seguem no planejador.
+  `ARTE_PORTAS=off` desliga. `fieldValues.porta` é a telemetria; `refsUsadas`
+  tem 2 itens. ⚠️ **Ainda não medido em produção** — só na API direta.
+- **Texto de porta mora em módulo PURO com teste**, nunca no runner. O runner
+  só cola ao fim o que é MECÂNICO: o bloco da logo (canto reservado) e a safe
+  area em pixel. A copy passa por `copyComCaixaDaMarca` antes — a caixa é da
+  STRING (lei de 16-17/08).
+- 🔴 **Prompt e compositor leem a MESMA variável de canto** (`cantoParaCompor`):
+  com referência, o canto da assinatura dela; na porta do manual,
+  `cantoDaLogoDoEstilo`; senão `LOGO_CORNER`. Ler variáveis diferentes é o
+  defeito de 07/09 (canto superior reservado, marca colada no rodapé).
+- **A referência do rodízio (`style`) só conta como usada se ENTROU nas
+  imagens** — na porta do manual ela fica de fora e marcá-la queimaria a vez.
+- **O manual é um design system 16:9 (3000x1688)**, `manual-de-marca.ts`: logo
+  num PAINEL cinza médio inteiro (caixa escura atrás da logo era COPIADA pelo
+  modelo em 4 de 8 peças), cada elemento no próprio ladrilho claro/escuro pelo
+  contraste DELE (ícone vermelho sobre faixa vermelha não lê), alfabetos
+  desenhados na largura do painel sem peso forçado (`700` sintetizava negrito
+  falso na Amithen), SEM prosa de uso (vai no prompt). Vertical "para o
+  gpt-image receber no formato do story" não era razão técnica: o único limite
+  da referência é o lado maior ≤ 3000px.
+- **O prompt do manual é o molde do prompt do Ciro**, genérico para qualquer
+  foto e por cliente: cor de destaque ENCAIXADA na paleta (a leitura vê a cor
+  sob a luz da foto), caixa do mapa da casa (`CAIXA_DA_MANCHETE`) vencendo a
+  leitura, direção estética SEM as orações sobre tarja/véu/degradê (elas
+  contradizem a regra do fundo), nome de fonte nunca (vira texto desenhado),
+  serviço no rodapé por `blocosDeServico`, textos exatos por último.
+- `scripts/prompts-do-manual.ts` escreve os prompts por cliente e, com
+  `--gerar`, testa direto na API (só fatura OpenAI, ~US$ 0,01/peça);
+  `scripts/gerar-manual-de-marca.ts --todos --aplicar` regenera e aplica os
+  manuais (URLs anteriores em `.tmp-medicao-estilo-chatgpt/manuais/ANTERIORES.txt`).
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

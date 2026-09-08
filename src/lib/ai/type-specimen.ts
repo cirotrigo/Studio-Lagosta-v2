@@ -36,14 +36,14 @@ const CACHE_DIR = '/tmp/studio-lagosta-type-specimen'
 /** Versão do desenho — mudou o layout ou a escolha de famílias, invalida o cache. */
 const VERSAO = 2
 
-const LINHAS_DE_AMOSTRA = [
+export const LINHAS_DE_AMOSTRA = [
   'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
   'abcdefghijklmnopqrstuvwxyz',
   'ÁÂÃÉÊÍÓÔÕÚÇ áâãéêíóôõúç',
   '0123456789 !?&,.–-()',
 ] as const
 
-interface FamiliaNaPrancha {
+export interface FamiliaNaPrancha {
   familia: string
   papel: string | null
 }
@@ -92,12 +92,12 @@ function atribuirPapeis(brand: BrandContext, familias: string[]): Map<string, st
  * alfabético cru que deixava a Mortella do By Rock fora da prancha enquanto
  * quatro pesos de Metrisch entravam.
  */
-function escolherFamilias(brand: BrandContext, candidatas: string[]): FamiliaNaPrancha[] {
+function escolherFamilias(brand: BrandContext, candidatas: string[], max = MAX_FAMILIAS): FamiliaNaPrancha[] {
   const escolhidas: FamiliaNaPrancha[] = []
   const usadas = new Set<string>()
   const basesUsadas = new Set<string>()
   const add = (familia: string, papel: string | null) => {
-    if (escolhidas.length >= MAX_FAMILIAS || usadas.has(familia.toLowerCase())) return
+    if (escolhidas.length >= max || usadas.has(familia.toLowerCase())) return
     usadas.add(familia.toLowerCase())
     basesUsadas.add(baseDaFamilia(familia))
     escolhidas.push({ familia, papel })
@@ -122,6 +122,50 @@ function escolherFamilias(brand: BrandContext, candidatas: string[]): FamiliaNaP
   }
   for (const c of candidatas) add(c, null)
   return escolhidas
+}
+
+/**
+ * As famílias que entram na prancha, já com o papel de cada uma — a mesma
+ * escolha que `renderTypeSpecimen` faz, exposta para quem desenha os alfabetos
+ * em OUTRA largura: o manual de marca (desde 08/09/2026) desenha as famílias
+ * numa grade dentro do painel dele em vez de embutir a prancha de 1080
+ * reduzida. Registra as fontes do projeto antes de responder — só família
+ * presente no GlobalFonts entra (ver a REGRA DURA no cabeçalho).
+ */
+export async function familiasDaPrancha(brand: BrandContext, max = MAX_FAMILIAS): Promise<FamiliaNaPrancha[]> {
+  const customFonts = await db.customFont.findMany({
+    where: { projectId: brand.projectId },
+    select: { fontFamily: true },
+    orderBy: { name: 'asc' },
+  })
+  if (customFonts.length === 0) return []
+  await registerProjectFonts(brand.projectId)
+  const { GlobalFonts } = await import('@napi-rs/canvas')
+
+  // Só famílias que o registro realmente conhece — o resto desenharia em
+  // fallback e ensinaria a letra errada.
+  const registradas = new Set(
+    GlobalFonts.families.map((f: { family: string }) => f.family.toLowerCase()),
+  )
+  const candidatas = customFonts
+    .map((f) => f.fontFamily)
+    .filter((familia) => registradas.has(familia.toLowerCase()))
+  // Curadoria explícita vence a heurística: CustomFont existir não significa
+  // que a marca a usa (Bacana guarda famílias legadas que camadas antigas
+  // ainda referenciam e por isso não podem ser apagadas).
+  const pinadas = brand.specimenFontFamilies
+    .map((p) => candidatas.find((c) => c.toLowerCase() === p.trim().toLowerCase()))
+    .filter((c): c is string => Boolean(c))
+  const familias: FamiliaNaPrancha[] =
+    pinadas.length > 0
+      ? (() => {
+          const papeis = atribuirPapeis(brand, pinadas)
+          return pinadas
+            .slice(0, max)
+            .map((familia) => ({ familia, papel: papeis.get(familia) ?? null }))
+        })()
+      : escolherFamilias(brand, candidatas, max)
+  return familias
 }
 
 /**
@@ -157,33 +201,9 @@ export async function renderTypeSpecimen(brand: BrandContext | null): Promise<Bu
     // cache é conveniência — falha de leitura só força re-render
   }
 
-  await registerProjectFonts(brand.projectId)
-  const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas')
-
-  // Só famílias que o registro realmente conhece — o resto desenharia em
-  // fallback e ensinaria a letra errada.
-  const registradas = new Set(
-    GlobalFonts.families.map((f: { family: string }) => f.family.toLowerCase()),
-  )
-  const candidatas = customFonts
-    .map((f) => f.fontFamily)
-    .filter((familia) => registradas.has(familia.toLowerCase()))
-  // Curadoria explícita vence a heurística: CustomFont existir não significa
-  // que a marca a usa (Bacana guarda famílias legadas que camadas antigas
-  // ainda referenciam e por isso não podem ser apagadas).
-  const pinadas = brand.specimenFontFamilies
-    .map((p) => candidatas.find((c) => c.toLowerCase() === p.trim().toLowerCase()))
-    .filter((c): c is string => Boolean(c))
-  const familias: FamiliaNaPrancha[] =
-    pinadas.length > 0
-      ? (() => {
-          const papeis = atribuirPapeis(brand, pinadas)
-          return pinadas
-            .slice(0, MAX_FAMILIAS)
-            .map((familia) => ({ familia, papel: papeis.get(familia) ?? null }))
-        })()
-      : escolherFamilias(brand, candidatas)
+  const familias = await familiasDaPrancha(brand)
   if (familias.length === 0) return null
+  const { createCanvas } = await import('@napi-rs/canvas')
 
   const quote = (family: string) => `"${family.replace(/"/g, '')}", sans-serif`
   const larguraUtil = LARGURA - MARGEM * 2

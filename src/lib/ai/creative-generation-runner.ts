@@ -65,6 +65,8 @@ import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { modeloLivre } from '@/lib/ai/modelo-livre'
+import { montarPromptDaReferencia } from '@/lib/ai/prompt-da-referencia'
+import { cantoDaLogoDoEstilo, montarPromptDoManual } from '@/lib/ai/prompt-do-manual'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -692,7 +694,44 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
-    const ordered = orderReferences(loadedRefs)
+    /**
+     * ── As DUAS PORTAS da peça avulsa (08/09/2026) ─────────────────────
+     *
+     * Medido nos nove clientes (07-08/09, `docs/PLANO-2026-09-05-ARTES-COMO-
+     * O-CHATGPT.md`): a peça sai MELHOR com menos imagens e menos regra.
+     *  - Com arte de referência escolhida: foto (Image 1) + referência
+     *    (Image 2) + prompt curto com trava dupla (`prompt-da-referencia`).
+     *  - Sem referência: foto + MANUAL da marca (o design system) + o prompt
+     *    do manual (`prompt-do-manual`, molde do prompt que o Ciro escreveu).
+     * Prancha, âncoras, referência de clima e o arquivo da logo FICAM DE FORA
+     * das imagens nas duas portas — cada uma delas puxava a peça para longe.
+     * O planejador (F6) vira o caminho de volta: carrossel, peça com cartão,
+     * prompt pronto do MCP, peça sem foto ou projeto sem manual continuam com
+     * ele. `ARTE_PORTAS=off` desliga sem deploy.
+     */
+    const refFoto = loadedRefs.find((r) => r.role === 'subject')
+    const refManual =
+      brandCardOrigem === 'manual-designer' ? loadedRefs.find((r) => r.role === 'brand-card') : undefined
+    const porta: 'referencia' | 'manual' | null =
+      args.track === 'arte' &&
+      !args.carrossel &&
+      !documentoPlano &&
+      !args.finalPrompt &&
+      refFoto &&
+      process.env.ARTE_PORTAS !== 'off'
+        ? refModelo
+          ? 'referencia'
+          : refManual
+            ? 'manual'
+            : null
+        : null
+    const ordered =
+      porta === 'referencia' && refFoto && refModelo
+        ? [refFoto, refModelo]
+        : porta === 'manual' && refFoto && refManual
+          ? [refFoto, refManual]
+          : orderReferences(loadedRefs)
+    if (porta) console.log(`[arte-ia.bg] porta ${porta}: ${ordered.length} imagens ao modelo`)
     const downloadMs = Date.now() - startedAt
     console.log(
       `[arte-ia.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | refs: ${ordered
@@ -772,7 +811,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
        * são mecânicos e medidos, e ficam como estão. `ARTE_PLANNER=off`
        * desliga sem deploy.
        */
-      const elegivelParaPlanejador = !args.carrossel && !documentoPlano && process.env.ARTE_PLANNER !== 'off'
+      const elegivelParaPlanejador = !porta && !args.carrossel && !documentoPlano && process.env.ARTE_PLANNER !== 'off'
       let planejado: Awaited<ReturnType<typeof planejarArte>> = null
       if (elegivelParaPlanejador) {
         const t0 = Date.now()
@@ -813,7 +852,47 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         }
       }
 
-      if (planejado) {
+      if (porta) {
+        // A caixa vai decidida na STRING (lei de 16-17/08): é a única forma
+        // que segura, e as duas portas copiam a copy verbatim para o prompt.
+        const copyDaPorta = copyComCaixaDaMarca(args.copy, brand)
+        // Logo colada por código: o prompt reserva um canto e o compositor
+        // cola no MESMO — com referência, o canto dela (`cantoDaAssinatura`);
+        // sem referência, o canto que as peças aprovadas da marca usam; sem
+        // nenhum dos dois, o padrão. Prompt e compositor lendo variáveis
+        // diferentes é o defeito de 07/09 (marca no rodapé com o canto
+        // superior reservado).
+        if (logoParaCompor && !cantoParaCompor) {
+          cantoParaCompor =
+            (porta === 'manual' ? cantoDaLogoDoEstilo(brand?.estiloDasReferencias ?? null) : null) ?? LOGO_CORNER
+        }
+        const corpoDaPorta =
+          porta === 'referencia'
+            ? montarPromptDaReferencia({
+                marca: brand?.projectName ?? 'the brand',
+                copy: copyDaPorta,
+                formato: args.formato,
+                logoColadaDepois: !!logoParaCompor,
+                layoutLivre: modeloLivre(args.projectId),
+                instrucaoImagem: args.instrucaoImagem,
+                pedido: args.pedido,
+              })
+            : montarPromptDoManual({
+                brand: brand!,
+                estilo: brand?.estiloDasReferencias ?? null,
+                copy: copyDaPorta,
+                formato: args.formato,
+                instrucaoImagem: args.instrucaoImagem,
+                pedido: args.pedido,
+                logo: logoParaCompor ? { modo: 'compor', canto: cantoParaCompor ?? LOGO_CORNER } : { modo: 'modelo' },
+              })
+        plannerGeracaoInfo = { porta }
+        // O que é MECÂNICO vai colado ao fim, onde pesa mais — o canto da
+        // marca (quem cola é o código) e a safe area em PIXEL da peça real.
+        body = [corpoDaPorta, montarBlocoLogo(cantoParaCompor), regraDeSafeArea(args.formato, args.finalSize.height)]
+          .filter((b): b is string => !!b && b.trim() !== '')
+          .join('\n\n')
+      } else if (planejado) {
         /**
          * O canto que o DIRETOR escolheu vence o do modelo — ele olhou ESTA
          * foto, e o canto da arte de referência foi escolhido para outra.
@@ -872,7 +951,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // preâmbulo por papel seria a mesma informação duas vezes, em inglês
     // longo. Nos outros caminhos ele continua sendo o contrato das referências.
     const usouPlanejador = plannerGeracaoInfo.planejador !== undefined && plannerGeracaoInfo.planejador !== 'fallback'
-    const prompt = usouPlanejador ? body : preamble ? `${preamble}\n\n${body}` : body
+    // As duas portas também descrevem as imagens pelo índice, no próprio prompt.
+    const prompt = usouPlanejador || porta ? body : preamble ? `${preamble}\n\n${body}` : body
     promptUsado = prompt
     console.log(`[arte-ia.bg] prompt pronto (${prompt.length} chars, trilha ${args.track})`)
 
@@ -1368,7 +1448,11 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
 
     // Rodízio: a referência só vai para o fim da fila depois de a arte existir.
     // Marcar antes faria uma geração que falhou "gastar" a referência.
-    if (styleRefUsada) await registrarUsoDaReferencia(styleRefUsada)
+    // A referência do rodízio só conta como usada se ENTROU nas imagens: na
+    // porta do manual ela fica de fora, e marcá-la queimaria a vez dela.
+    if (styleRefUsada && ordered.some((r) => r.role === 'style' || r.role === 'style-guide')) {
+      await registrarUsoDaReferencia(styleRefUsada)
+    }
 
     /**
      * Rodízio do acervo (B5): as fotos do cliente que entraram nesta arte
