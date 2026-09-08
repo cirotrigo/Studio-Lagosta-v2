@@ -40,6 +40,7 @@ import { assinaturaTipografica } from '@/lib/ai/assinatura-tipografica'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
   cantoDaAssinatura,
+  cantoEscolhidoPeloDiretor,
   comporLogo,
   instrucaoAreaReservada,
   instrucaoLogoPeloModelo,
@@ -501,6 +502,15 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       ? null
       : cantoDaAssinatura(modeloLido?.assinatura)
 
+    /**
+     * O canto onde a marca composta vai POUSAR. Começa no do modelo e o
+     * DIRETOR DE ARTE pode trocá-lo depois de olhar esta foto — por isso é
+     * `let` e vive aqui fora, no escopo que a composição alcança: o prompt
+     * reserva um canto e o compositor cola em outro se os dois lerem variáveis
+     * diferentes, que é o defeito que este trecho existe para não repetir.
+     */
+    let cantoParaCompor: LogoCorner | null = cantoDaLogoComposta
+
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
@@ -718,9 +728,16 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     } else {
       // Três estados: colar depois (reserva o canto), o modelo desenhar
       // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
-      const blocoLogo = juntarBlocosDeLogo(
+      //
+      // É FUNÇÃO do canto porque o canto só se sabe DEPOIS do planejador: ele
+      // olha a foto e escolhe (`cantoDaMarca`), e o bloco montado antes disso
+      // reservaria um canto e o compositor colaria em outro. O fallback
+      // (`buildArtePrompt`) chama com o canto do modelo, que é o que se sabe
+      // sem planejador.
+      const montarBlocoLogo = (cantoComposto: LogoCorner | null) =>
+        juntarBlocosDeLogo(
         logoParaCompor
-          ? instrucaoAreaReservada(cantoDaLogoComposta ?? LOGO_CORNER)
+          ? instrucaoAreaReservada(cantoComposto ?? LOGO_CORNER)
           : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
             ? // Canto FIXO no slide irmão de carrossel (o LOOK SPINE manda
               // repetir o guia, e marca pulando de canto entre slides é o
@@ -742,7 +759,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         logoDoClienteParaCompor && args.marcaDoCliente
           ? instrucaoMarcaDoCliente(CLIENT_LOGO_CORNER, args.marcaDoCliente.nome)
           : null,
-      )
+        )
+      const blocoLogo = montarBlocoLogo(cantoParaCompor)
 
       /**
        * O DIRETOR DE ARTE na geração (F6, 05/09/2026,
@@ -796,9 +814,20 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
 
       if (planejado) {
+        /**
+         * O canto que o DIRETOR escolheu vence o do modelo — ele olhou ESTA
+         * foto, e o canto da arte de referência foi escolhido para outra.
+         * Pedido do Ciro em 07/09/2026, na primeira leva real: "a logo não
+         * ficou boa na posição escolhida... pouse na área mais calma, no lado
+         * oposto ao texto e fora do alcance do assunto". Sem `cantoDaMarca`
+         * (planejador antigo, resposta incompleta) cai no canto do modelo, que
+         * é o comportamento de antes.
+         */
+        const doDiretor = cantoEscolhidoPeloDiretor(planejado.cantoDaMarca)
+        if (doDiretor) cantoParaCompor = doDiretor
         // O que é MECÂNICO vai colado ao fim, onde pesa mais: o canto da marca
         // (quem cola é o código) e a safe area em PIXEL da peça real.
-        body = [planejado.prompt, blocoLogo, regraDeSafeArea(args.formato, args.finalSize.height)]
+        body = [planejado.prompt, montarBlocoLogo(cantoParaCompor), regraDeSafeArea(args.formato, args.finalSize.height)]
           .filter((b): b is string => !!b && b.trim() !== '')
           .join('\n\n')
       } else {
@@ -1194,16 +1223,22 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           // levou a marca da casa para o canto fixo do cliente e as duas saíram
           // sobrepostas; (b) em CARROSSEL, a disputa escolheu topo-esquerdo no
           // guia — e marca pulando de canto entre slides é justamente o que o
-          // LOOK SPINE existe para evitar. E (c), desde 07/09/2026: quando o
-          // MODELO escolhido diz onde a marca fica, ele manda — é o mesmo
-          // canto que o prompt acabou de reservar, e sem isso o compositor
-          // colava a logo num canto e o prompt reservava outro (ver
-          // `cantoDaLogoComposta`). A ordem importa: a marca do cliente citado
-          // continua vencendo, porque ali o risco é as duas se sobreporem.
+          // LOOK SPINE existe para evitar.
+          //
+          // 🔴 O canto do MODELO entra como PREFERÊNCIA (`cornerReservado`),
+          // não como ordem. Ele nasceu `cantoFixo` mais cedo em 07/09/2026 e o
+          // Ciro reprovou na primeira leva real: "a logo não ficou boa na
+          // posição escolhida". Faz sentido — o canto que serve à arte de
+          // referência foi escolhido para a foto DELA; nesta foto o mesmo
+          // canto pode cair sobre o assunto ou do lado do texto. Com
+          // `cornerReservado` ele ganha o RESERVED_BONUS e vence os empates,
+          // mas perde para um canto claramente melhor. A marca do cliente
+          // citado continua com canto FIXO, porque ali o risco é outro: as
+          // duas marcas se sobreporem.
           ...(logoDoClienteParaCompor || args.carrossel
             ? { cantoFixo: LOGO_CORNER }
-            : cantoDaLogoComposta
-              ? { cantoFixo: cantoDaLogoComposta }
+            : cantoParaCompor
+              ? { cornerReservado: cantoParaCompor }
               : {}),
         })
         finalBuffer = comLogo.buffer

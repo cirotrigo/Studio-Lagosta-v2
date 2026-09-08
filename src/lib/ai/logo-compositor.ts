@@ -155,6 +155,18 @@ const CONTRASTE_MINIMO = 45
  */
 const PESO_CONTRASTE = 0.6
 
+/**
+ * Folga em volta da caixa da logo ao medir a calma, como fração da caixa.
+ *
+ * 🔴 A calma era medida só na caixa exata (mais 8px), então a logo podia pousar
+ * ENCOSTADA no assunto sem que a medida percebesse: bastava o prato ou o rosto
+ * começarem um pixel depois da caixa. Pedido do Ciro em 07/09/2026, olhando a
+ * primeira leva real: a marca fica "fora do alcance do assunto da imagem" —
+ * alcance, não sobreposição. Meia caixa de folga é o que transforma "não cobre"
+ * em "não encosta".
+ */
+const FOLGA_DO_ALCANCE = 0.5
+
 /** Luminância média dos pixels VISÍVEIS — pixel transparente não é a logo. */
 async function luminanciaDaLogo(logoPng: Buffer): Promise<number | null> {
   try {
@@ -290,11 +302,17 @@ export async function comporLogo(
 
   for (const corner of cantosCandidatos) {
     const pos = cornerBox(corner, { width, height }, box, margem, margemVertical)
+    // A folga mede o ALCANCE do assunto, não só a sobreposição — ver
+    // FOLGA_DO_ALCANCE.
+    const folgaX = Math.round(box.width * FOLGA_DO_ALCANCE)
+    const folgaY = Math.round(box.height * FOLGA_DO_ALCANCE)
+    const regiaoLeft = Math.max(0, pos.left - folgaX)
+    const regiaoTop = Math.max(0, pos.top - folgaY)
     const regiao = {
-      left: Math.max(0, pos.left - 8),
-      top: Math.max(0, pos.top - 8),
-      width: Math.min(box.width + 16, width - Math.max(0, pos.left - 8)),
-      height: Math.min(box.height + 16, height - Math.max(0, pos.top - 8)),
+      left: regiaoLeft,
+      top: regiaoTop,
+      width: Math.min(box.width + folgaX * 2, width - regiaoLeft),
+      height: Math.min(box.height + folgaY * 2, height - regiaoTop),
     }
     let calmness = Number.POSITIVE_INFINITY
     let contraste = Number.POSITIVE_INFINITY
@@ -555,4 +573,31 @@ export function instrucaoMarcaDoCliente(corner: LogoCorner, nomeDoCliente: strin
     `Reserve the ${onde} for it: a second clean, calm area of about 28% of the width and 14% of the height, with no text, no key subject and no busy detail. Keep every line of copy clear of this area too.`,
     `The client's NAME may appear in the copy as plain text, exactly as written — that is text, not a logo.`,
   ].join('\n')
+}
+
+/**
+ * Traduz o canto que o DIRETOR DE ARTE escolheu (em português, olhando a foto)
+ * para o vocabulário do compositor.
+ *
+ * Existe porque a escolha do canto é das poucas decisões desta cadeia que
+ * dependem de VER a imagem, e nenhuma medição de pixel a substituiu: a
+ * tentativa de achar o bloco de copy por "claro e contrastado" deu o centro do
+ * quadro em 4 de 4 artes reais (07/09/2026), porque reflexo de taça e louça
+ * branca pontuam como letra. Ver `cantoDaMarca` em `diretor-de-arte.ts`.
+ */
+export function cantoEscolhidoPeloDiretor(
+  canto?: 'superior-esquerdo' | 'superior-direito' | 'inferior-esquerdo' | 'inferior-direito' | null,
+): LogoCorner | null {
+  switch (canto) {
+    case 'superior-esquerdo':
+      return 'top-left'
+    case 'superior-direito':
+      return 'top-right'
+    case 'inferior-esquerdo':
+      return 'bottom-left'
+    case 'inferior-direito':
+      return 'bottom-right'
+    default:
+      return null
+  }
 }
