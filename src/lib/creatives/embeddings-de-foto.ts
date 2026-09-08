@@ -185,7 +185,9 @@ export async function gravarEmbeddingsDeFoto(projectId: number, linhas: LinhaDeE
         ${l.texto ?? null}, NOW()
       )
       ON CONFLICT ("projectId", "driveFileId") DO UPDATE SET
-        "md5" = EXCLUDED."md5",
+        -- 🔴 COALESCE: o reembed só de texto vem com md5 NULO e apagou o hash
+        -- de 12.672 linhas em 08/09/2026. Nada aqui sobrescreve com nulo.
+        "md5" = COALESCE(EXCLUDED."md5", "PhotoEmbedding"."md5"),
         "versao" = EXCLUDED."versao",
         "vetorImagem" = COALESCE(EXCLUDED."vetorImagem", "PhotoEmbedding"."vetorImagem"),
         "vetorTexto" = COALESCE(EXCLUDED."vetorTexto", "PhotoEmbedding"."vetorTexto"),
@@ -222,6 +224,15 @@ export async function reembedarTextos(projectId: number, linhas: Array<{ driveFi
     projectId,
     linhas.map((l, i) => ({ driveFileId: l.driveFileId, vetorTexto: vetores[i], texto: l.texto })),
   )
+}
+
+/** Só o hash, para o backfill (o listing do Drive não o devolve; o get devolve). */
+export async function gravarMd5DeFotos(projectId: number, linhas: Array<{ driveFileId: string; md5: string }>): Promise<number> {
+  let n = 0
+  for (const l of linhas) {
+    n += await db.$executeRaw`UPDATE "PhotoEmbedding" SET "md5" = ${l.md5} WHERE "projectId" = ${projectId} AND "driveFileId" = ${l.driveFileId}`
+  }
+  return n
 }
 
 export async function removerEmbeddingsDeFotos(projectId: number, driveFileIds: string[]): Promise<number> {

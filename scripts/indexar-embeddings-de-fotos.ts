@@ -18,12 +18,14 @@
  *   npx tsx scripts/indexar-embeddings-de-fotos.ts --projeto 1
  *   npx tsx scripts/indexar-embeddings-de-fotos.ts --todos --confirmar
  *   npx tsx scripts/indexar-embeddings-de-fotos.ts --projeto 1 --confirmar --limite 200 --concorrencia 4
+ *   npx tsx scripts/indexar-embeddings-de-fotos.ts --todos --confirmar --so-md5   # só o hash, pelo files.get
  */
 import 'dotenv/config'
 import { db } from '../src/lib/db'
 import { lerCatalogoDoProjeto } from '../src/lib/creatives/acervo'
 import { indexarFotosDoCatalogo } from '../src/lib/creatives/indexar-fotos'
-import { fotosIndexadas, reembedarTextos, textoDaFotoParaEmbedding, VERSAO_DO_EMBEDDING } from '../src/lib/creatives/embeddings-de-foto'
+import { fotosIndexadas, gravarMd5DeFotos, reembedarTextos, textoDaFotoParaEmbedding, VERSAO_DO_EMBEDDING } from '../src/lib/creatives/embeddings-de-foto'
+import { googleDriveService } from '../src/server/google-drive-service'
 
 const args = process.argv.slice(2)
 const flag = (n: string) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined }
@@ -32,6 +34,8 @@ const TODOS = args.includes('--todos')
 const CONFIRMAR = args.includes('--confirmar')
 const LIMITE = flag('--limite') ? Number(flag('--limite')) : Number.POSITIVE_INFINITY
 const CONCORRENCIA = flag('--concorrencia') ? Number(flag('--concorrencia')) : 4
+/** `--so-md5`: só preenche o hash das linhas sem md5, pelo files.get do Drive (o listing não o devolve). */
+const SO_MD5 = args.includes('--so-md5')
 const CUSTO_POR_IMAGEM_USD = 0.00012
 
 async function main() {
@@ -46,6 +50,25 @@ async function main() {
     let todas
     try { ({ todas } = await lerCatalogoDoProjeto(p.id)) } catch { console.log(`\n${p.id} · ${p.name}: sem catálogo`); continue }
     const indexadas = await fotosIndexadas(p.id)
+    if (SO_MD5) {
+      const semMd5 = [...indexadas.entries()].filter(([, v]) => !v.md5).map(([id]) => id)
+      console.log(`\n${p.id} · ${p.name}: ${semMd5.length} linha(s) sem md5`)
+      if (!CONFIRMAR || semMd5.length === 0) continue
+      let feitas = 0, prox = 0
+      const worker = async () => {
+        while (prox < semMd5.length) {
+          const lote = semMd5.slice(prox, prox + 10); prox += 10
+          const linhas: Array<{ driveFileId: string; md5: string }> = []
+          await Promise.all(lote.map(async (id) => {
+            try { const m = await googleDriveService.getFileMetadata(id, 'md5Checksum'); if (typeof m.md5Checksum === 'string' && m.md5Checksum) linhas.push({ driveFileId: id, md5: m.md5Checksum }) } catch { /* fica para a próxima */ }
+          }))
+          feitas += await gravarMd5DeFotos(p.id, linhas)
+        }
+      }
+      await Promise.all(Array.from({ length: Math.min(CONCORRENCIA, 8) }, worker))
+      console.log(`   md5 gravados: ${feitas}`)
+      continue
+    }
     const faltam = todas.filter((f) => {
       const i = indexadas.get(f.driveFileId)
       return !i || !i.temImagem || !i.temTexto || (f.md5 && i.md5 && f.md5 !== i.md5)
