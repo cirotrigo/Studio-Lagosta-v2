@@ -247,7 +247,7 @@ export function lerEstiloDasReferencias(bruto: unknown): EstiloDasReferenciasGra
   }
 }
 
-const NOME_DO_SEPARADOR: Record<Separador, string> = {
+export const NOME_DO_SEPARADOR: Record<Separador, string> = {
   'filete-fino': 'filete fino',
   'filete-duplo': 'filete duplo',
   pontilhado: 'linha pontilhada',
