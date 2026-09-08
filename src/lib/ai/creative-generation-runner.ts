@@ -44,6 +44,7 @@ import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
 import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
 import { lerCatalogoDoProjeto } from '@/lib/creatives/acervo'
 import { casarTomGlobal } from '@/lib/ai/mascara-da-geracao'
+import { registrarEtapasDoTom } from '@/lib/ai/registro-do-tom'
 import { assinaturaTipografica } from '@/lib/ai/assinatura-tipografica'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
@@ -1024,6 +1025,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // ── Geração (+ verificação de texto e QA na trilha `arte`) ───────────
     const expectedTexts = args.track === 'arte' ? args.copy : []
     let resultBuffer: Buffer | null = null
+    let etapasDoTom: Parameters<typeof registrarEtapasDoTom>[1] | null = null
     const attemptsLog: Array<Record<string, unknown>> = []
     let lastMissing: string[] = []
     /** Duração da geração anterior — base para decidir se a próxima cabe. */
@@ -1052,6 +1054,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
 
       const genStartedAt = Date.now()
       let candidate = await generateOnce(args, ordered, prompt, tempoParaGerar(deadlineDaGeracao))
+      const antesDoTom = candidate
+      let tomAplicadoNestaTentativa = false
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
       if (args.track === 'arte' && refFoto && process.env.ARTE_TOM_CASADO !== 'off') {
@@ -1066,11 +1070,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
          */
         try {
           candidate = await casarTomGlobal(refFoto.buffer, candidate)
+          tomAplicadoNestaTentativa = true
           plannerGeracaoInfo = { ...plannerGeracaoInfo, tomCasado: true }
           console.log('[arte-ia.bg] tom da peça casado com a foto original (LUT global)')
         } catch (error) {
           console.warn('[arte-ia.bg] tom casado falhou — segue com a peça do modelo:', error)
         }
+      }
+
+      if (args.track === 'arte' && refFoto) {
+        etapasDoTom = { referencia: refFoto.buffer, antes: antesDoTom, depois: candidate, aplicado: tomAplicadoNestaTentativa, tentativa: attempt }
+        plannerGeracaoInfo = { ...plannerGeracaoInfo, tomCasado: tomAplicadoNestaTentativa }
       }
 
       // ── QA 1: proporção. Roda ANTES da visão porque é local, instantâneo e
@@ -1464,11 +1474,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
-    const blob = await put(
+    const [blob, registroDoTom] = await Promise.all([put(
       `arte-ia/${args.projectId}/${sanitizeName(args.pedido || args.copy[0] || 'arte')}_${Date.now()}.jpg`,
       finalBuffer,
       { access: 'public', contentType: 'image/jpeg', addRandomSuffix: true },
-    )
+    ), etapasDoTom ? registrarEtapasDoTom(args.jobGenerationId, etapasDoTom) : Promise.resolve(null)])
+    if (registroDoTom) plannerGeracaoInfo = { ...plannerGeracaoInfo, registroDoTom }
 
     // Destino no Drive por TRILHA: a cena da trilha `imagem` é insumo de
     // fotografia e vai para o acervo (`Fotos/IA_LAGOSTA`, criada na primeira
