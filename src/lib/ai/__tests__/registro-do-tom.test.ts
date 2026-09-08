@@ -16,13 +16,17 @@ describe('registro das etapas do tom', () => {
     expect(r.estado).toBe('completo')
     expect(r.tentativa).toBe(2)
     for (const [i, buffer] of [referencia, antes, depois].entries()) {
-      expect(upload.mock.calls[i][1]).toBe(buffer)
+      const call = upload.mock.calls.find(c => c[0].includes('/' + ['referencia', 'antes', 'depois'][i] + '.'))!
+      expect(call[1]).toBe(buffer)
       expect(r.imagens[i].sha256).toBe(createHash('sha256').update(buffer).digest('hex'))
-      expect(upload.mock.calls[i][2].abortSignal).toBeInstanceOf(AbortSignal)
+      expect(call[2].abortSignal).toBeInstanceOf(AbortSignal)
     }
   })
   it('falha de um upload mantém os demais e não derruba a geração', async () => {
-    upload.mockRejectedValueOnce(new Error('erro privado'))
+    upload.mockImplementation(async (path: string) => {
+      if (path.includes('/referencia.')) throw new Error('erro privado')
+      return { url: `https://example.test/${path}` }
+    })
     const buffer = await foto('red')
     const r = await registrarEtapasDoTom('geracao', { referencia: buffer, antes: buffer, depois: buffer, aplicado: false, tentativa: 1 })
     expect(r.estado).toBe('incompleto')
