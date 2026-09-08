@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { PROJETOS_COM_MODELO_ESTRITO, modeloLivre } from '../modelo-livre'
+import { PROJETOS_COM_MODELO_LIVRE, modeloLivre } from '../modelo-livre'
 import {
   buildArtePrompt,
   buildModeloSpineLivre,
@@ -51,26 +51,27 @@ function argsPara(projectId: number): BuildArtePromptArgs {
 }
 
 describe('modeloLivre', () => {
-  it('é o PADRÃO para todo cliente', () => {
-    expect(modeloLivre(3)).toBe(true)
-    expect(modeloLivre(undefined)).toBe(true)
-    expect(modeloLivre(null)).toBe(true)
-  })
-
-  it('o Quintal — piloto do modo livre — voltou ao estrito em 24/08/2026', () => {
-    // "Precisa seguir melhor as artes de referência" (Ciro, 24/08), com o
-    // placar do cliente em 0 gostei × 14 melhorar. O caminho de volta de uma
-    // marca que regride é o opt-out, não o prompt.
+  it('🔴 o ESTRITO é o padrão de toda a carteira desde 07/09/2026', () => {
+    // A inversão: 5 dos 7 clientes com feedback reclamaram de a peça não
+    // seguir a referência (18 queixas), e nenhuma delas é anterior a 17/08,
+    // quando o modo livre virou padrão. Ver o cabeçalho do módulo.
+    expect(modeloLivre(1)).toBe(false)
     expect(modeloLivre(2)).toBe(false)
-    expect([...PROJETOS_COM_MODELO_ESTRITO]).toEqual([2])
+    expect(modeloLivre(11)).toBe(false)
+    expect(modeloLivre(undefined)).toBe(false)
+    expect(modeloLivre(null)).toBe(false)
   })
 
-  it('o opt-out devolve o cliente ao spine estrito', () => {
-    PROJETOS_COM_MODELO_ESTRITO.add(99)
+  it('nenhum cliente está no opt-in hoje', () => {
+    expect([...PROJETOS_COM_MODELO_LIVRE]).toEqual([])
+  })
+
+  it('o opt-in devolve o cliente ao spine livre', () => {
+    PROJETOS_COM_MODELO_LIVRE.add(99)
     try {
-      expect(modeloLivre(99)).toBe(false)
+      expect(modeloLivre(99)).toBe(true)
     } finally {
-      PROJETOS_COM_MODELO_ESTRITO.delete(99)
+      PROJETOS_COM_MODELO_LIVRE.delete(99)
     }
   })
 })
@@ -122,21 +123,21 @@ describe('o gate por projeto', () => {
     expect(prompt).not.toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
   })
 
-  it('outro projeto também recebe o spine livre — é o padrão', () => {
+  it('🔴 outro projeto também recebe o spine ESTRITO — é o padrão', () => {
     const prompt = buildArtePrompt(argsPara(3))
-    expect(prompt).toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
-    expect(prompt).not.toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
+    expect(prompt).toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
+    expect(prompt).toContain('REPLIQUE, item a item')
+    expect(prompt).not.toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
   })
 
-  it('🔴 o cliente em opt-out volta ao spine ESTRITO, intocado', () => {
-    PROJETOS_COM_MODELO_ESTRITO.add(3)
+  it('o cliente em opt-in volta ao spine LIVRE, intocado', () => {
+    PROJETOS_COM_MODELO_LIVRE.add(3)
     try {
       const prompt = buildArtePrompt(argsPara(3))
-      expect(prompt).toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
-      expect(prompt).toContain('REPLIQUE, item a item')
-      expect(prompt).not.toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
+      expect(prompt).toContain('REFERÊNCIA DE ESTILO, NÃO DE LAYOUT')
+      expect(prompt).not.toContain('A DIAGRAMAÇÃO JÁ ESTÁ DECIDIDA')
     } finally {
-      PROJETOS_COM_MODELO_ESTRITO.delete(3)
+      PROJETOS_COM_MODELO_LIVRE.delete(3)
     }
   })
 
