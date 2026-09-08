@@ -4921,3 +4921,72 @@ O que fica:
 - ⚠️ **Limite**: esta medição é de COMPILAÇÃO de CSS. Não voltei ao navegador
   para confirmar que `grid-rows-2` desenha a grade no card; quem reabilitar uma
   dessas classes confere na tela depois de reconstruir.
+
+### O diretor de arte religado dentro das portas, com o briefing do Ciro como molde (08/09/2026)
+
+O PR #107 (08/09, madrugada) pôs as duas portas ANTES do diretor de arte
+(`elegivelParaPlanejador = !porta`), e como os 11 projetos ganharam
+`brandManualUrl` no mesmo dia, toda peça avulsa com foto passou a sair de um
+MOLDE FIXO (`prompt-do-manual` / `prompt-da-referencia`). Era o "sempre o
+mesmo prompt" que o Ciro pediu para acabar. A medição de 07-08/09 comparou
+"poucas imagens + prompt curto" contra "todas as imagens do sistema" — a
+lição válida é a das IMAGENS, não a do molde; porta contra diretor nunca foi
+medido.
+
+- **A porta decide as IMAGENS; o diretor escreve o BRIEFING.** O gpt-image
+  recebe foto (Imagem 1) + manual (Imagem 2). O diretor (`gpt-5.2`,
+  `diretor-de-arte.ts`, `SYSTEM_GERACAO`) escreve o prompt; o molde da porta
+  é o caminho de volta quando ele não responde (`planejador: 'fallback'` +
+  `porta` no `fieldValues`). `ARTE_PLANNER=off` desliga o diretor;
+  `ARTE_PORTAS=off`, as portas.
+- 🔴 **A referência escolhida à mão é ANALISADA, não enviada** (decisão do
+  Ciro, 08/09): o diretor a vê (`visivelAoGerador: false`) e traduz em
+  instruções — zona do bloco, fontes por papel, cores, ornamentos, canto da
+  marca; o gpt-image não a recebe, então o texto e a cena do post antigo não
+  têm por onde vazar. Sem manual ela ainda vai como imagem (seria a única
+  fonte de fontes e logo). `ARTE_REFERENCIA_COMO_TEXTO=off` volta a mandá-la.
+  A referência vista pelo diretor CONTA no rodízio (`registrarUsoDaReferencia`).
+- **O briefing sai em PORTUGUÊS, por seções, no molde do briefing que o Ciro
+  escreveu para o happy hour da Wine Vix**: abertura + direção estética, FOTO
+  DE FUNDO, IDENTIDADE VISUAL, LOGOTIPO (versão do painel do manual, posição,
+  tamanho relativo), BLOCO PRINCIPAL, uma seção por bloco da copy, ÁREA
+  LIVRE, RODAPÉ (só com serviço), HIERARQUIA VISUAL, EVITE (3 a 6 itens
+  desta peça), TEXTOS FINAIS. Teto 4.500 caracteres (o molde tem ~4.300).
+  O que o sistema anexa DEPOIS continua mecânico: bloco da marca e safe area
+  em pixel.
+- 🔴 **Halo, véu, degradê e os tetos numéricos de tamanho SAÍRAM do diretor
+  da geração** (Ciro: "deixe isso para o gpt-image; ele pode confiar mais").
+  Legibilidade se resolve por POSIÇÃO e cor do texto. `tratamentoDeFotoNoPrompt`
+  RECUSA briefing que prescreva qualquer um deles. Na MELHORIA a regra "nenhum
+  contraste acrescentado" continua como estava (05/09) — são system prompts
+  diferentes.
+- **A foto chega com MEDIDA**: `leitura-da-foto.ts` (puro) resume o mapa de
+  calma do compositor (`mapa-de-calma.ts`, ~100ms, sobre a foto como aparece
+  na peça) em nove regiões calma/agitada × escura/clara, o assunto estimado em
+  % e as três regiões mais calmas em ordem; e o catálogo v3 da foto (assunto,
+  elementos, enquadramento, pessoas, lotação) entra como texto — até aqui
+  NENHUM prompt de geração lia o catálogo. Regra da casa: o modelo declara, o
+  código mede. Medido na Wine Vix: o diretor pousou o bloco na região que a
+  medição apontou (inferior-esquerda) e reservou o canto oposto para a marca.
+- 🔴 **As travas mecânicas do briefing** (`problemasDoBriefing`, cada uma com
+  teste em `__tests__/diretor-de-arte-geracao.test.ts`): copy verbatim entre
+  aspas; nome de fonte só em linha "Imagem N"/"Image N"; sem tratamento de
+  foto; serviço na copy ⇒ seção RODAPÉ (`blocosDeServico`); frase da
+  referência (`GuiaLido.textos`, ≥ 12 chars, fora da copy) fora do briefing;
+  **caixa da copy intocada** (`caixaAlterada` — o By Rock saiu com "RENDE PRA"
+  / "GALERA" na quebra sugerida a partir de "Rende pra galera": a caixa é do
+  mapa `CAIXA_DA_MANCHETE`, nunca do diretor; `copyEstaNoPrompt` não pega
+  porque normaliza para maiúsculas); **marca nunca no superior-esquerdo em
+  story** (`logoNoCantoDoAvatar` — a regra estava no prompt desde 07/09 e o
+  diretor a ignorou). Recusa vira feedback e o diretor reescreve (3 rodadas).
+- **`scripts/ver-prompt-do-diretor.ts`** mostra o briefing de um caso real
+  (`--projeto`, `--foto`, `--copy`, `--referencia`, `--rodadas`) sem gerar
+  imagem, sem tocar no banco: uma chamada do planejador por rodada (~20-45s).
+  Saída em `.tmp-diretor/`. É o dry-run antes de gastar crédito.
+- ⚠️ **Não medido em produção com feedback real** — como as portas de ontem.
+  O que se sabe: 3 briefings reais (Wine Vix com e sem referência, By Rock)
+  no molde, copy inteira, sem vazamento, posição pela medição. Quando o bloco
+  já vai ao terço inferior, o diretor põe o serviço como última linha do
+  bloco em vez de rodapé separado — aceito, é a mesma zona.
+- ⚠️ O prompt do manual e o da referência (moldes) continuam no código como
+  fallback e cobertos por teste; não os apague.

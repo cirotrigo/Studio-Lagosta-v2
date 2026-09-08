@@ -41,6 +41,7 @@ import type { BrandContext } from '@/lib/brand/brand-context'
 import { formatarEstiloParaPrompt } from '@/lib/brand/estilo-das-referencias'
 import type { ModoDaMelhoria } from './modo-da-melhoria'
 import { normalizeForComparison } from './text-comparison'
+import { blocosDeServico } from './blocos-de-servico'
 
 /**
  * Precisa ENXERGAR a peça (onde o assunto está, onde a foto é calma, como o
@@ -64,13 +65,6 @@ const ACEITA_TEMPERATURA = !/^gpt-5/.test(PLANNER_MODEL)
  * paredão de novo.
  */
 export const TETO_DO_PROMPT_PLANEJADO = 2600
-/**
- * Na GERAÇÃO o prompt carrega mais de nascença — cinco linhas de referência
- * (foto, clima, manual, prancha, logo) e a copy inteira — e o primeiro ensaio
- * real (Quintal, 05/09/2026) estourou 2.600 duas vezes seguidas e caiu no
- * fallback. 3.000 ainda é um oitavo do `buildArtePrompt`.
- */
-export const TETO_DO_PROMPT_PLANEJADO_GERACAO = 3000
 /** Rodadas do planejador: a 1ª costuma estourar o teto, a 2ª corrigir; a 3ª é a folga. */
 const RODADAS_DO_PLANEJADOR = 3
 
@@ -311,12 +305,25 @@ export type PapelDaReferenciaDeGeracao =
   | 'logo'
 
 export interface ReferenciaDoPlanoDeGeracao {
+  /**
+   * Índice 1-based na ordem em que o gpt-image vai receber. Referência que o
+   * gpt-image NÃO recebe (`visivelAoGerador: false`) não tem índice útil —
+   * o diretor a descreve em palavras, nunca por "Imagem N".
+   */
   indice: number
   papel: PapelDaReferenciaDeGeracao
   rotulo?: string | null
   /** Modo modelo-livre no `style-guide`: veste o texto, não copia o layout. */
   estiloLivre?: boolean
   buffer?: Buffer
+  /**
+   * `false` = só o DIRETOR vê esta imagem; o gpt-image não a recebe. É o caso
+   * da arte de referência escolhida à mão desde 08/09/2026: ela é ANALISADA
+   * para personalizar o prompt, não enviada para o modelo ler por conta
+   * própria — mandá-la junto fazia o texto e a cena do post antigo vazarem,
+   * e cada imagem a mais afastava a peça do que se pedia (medição de 07-08/09).
+   */
+  visivelAoGerador?: boolean
 }
 
 export interface PlanejarArteArgs {
@@ -331,6 +338,16 @@ export interface PlanejarArteArgs {
   logoCompor: boolean
   /** A assinatura tipográfica da marca (quando cadastrada) — texto pronto de `assinaturaTipografica`. */
   assinaturaTipografica?: string | null
+  /** A leitura MEDIDA da foto (`resumirMapaDeCalma`) — onde ela é calma, onde o assunto está. */
+  leituraDaFoto?: string | null
+  /** A entrada da foto no catálogo do acervo (`resumirCatalogoDaFoto`). */
+  catalogoDaFoto?: string | null
+  /**
+   * As palavras escritas na referência escolhida à mão (`GuiaLido.textos`).
+   * INSUMO DA TRAVA, nunca do prompt: se alguma reaparecer no prompt do
+   * diretor sem estar na copy, o prompt é recusado.
+   */
+  textosDaReferencia?: string[] | null
   timeoutMs?: number
 }
 
@@ -340,66 +357,162 @@ const PAPEL_GERACAO_LEGIVEL: Record<PapelDaReferenciaDeGeracao, string> = {
   'anchor-ambient': 'foto real do ambiente do restaurante (referência de LUGAR, nunca de enquadramento; a comida dela não é conteúdo)',
   style: 'uma peça anterior aprovada desta marca — referência de CLIMA da camada gráfica (o texto e a foto dela não são conteúdo)',
   'style-guide': 'o MODELO escolhido à mão — uma peça aprovada desta marca (o texto e a foto dele não são conteúdo)',
-  'brand-card': 'o MANUAL DE IDENTIDADE da marca (logo, paleta, tipografia, ornamentos) — a única fonte de fontes, cores e ornamentos',
+  'brand-card': 'o MANUAL DE MARCA (design system: logo e variações, paleta, alfabetos oficiais, filetes, ícones e selos) — a única fonte de fontes, cores e ornamentos',
   'type-specimen': 'a PRANCHA TIPOGRÁFICA: o alfabeto completo das fontes reais da marca',
   logo: 'o arquivo OFICIAL da logomarca — reproduzir fielmente, uma vez',
 }
 
 /**
- * As regras da GERAÇÃO — o que `buildArtePrompt` acumulou em reprovação real,
- * agora dito a quem DECIDE. A diferença para a melhoria: aqui a peça nasce do
- * zero sobre uma foto, então há regras de área do texto, de halo e de leitura
- * da foto que na melhoria não existem (lá a peça já chegou diagramada).
+ * Teto do prompt da GERAÇÃO. O briefing que serve de molde (o do Ciro para o
+ * happy hour da Wine Vix, 08/09/2026) tem ~4.300 caracteres com doze seções
+ * curtas — é "skimmable" porque é seccionado, não porque é curto. 4.500 dá
+ * espaço para ele e para a copy; o bloco da marca e a safe area entram DEPOIS,
+ * anexados pelo sistema.
  */
-const SYSTEM_GERACAO = `${SYSTEM}
+export const TETO_DO_PROMPT_PLANEJADO_GERACAO = 4500
 
-ESTA TAREFA É GERAÇÃO, NÃO MELHORIA: não existe arte de origem. O teto do prompt aqui é ${TETO_DO_PROMPT_PLANEJADO_GERACAO} caracteres (não ${TETO_DO_PROMPT_PLANEJADO}); prompt acima disso é recusado. A Image 1 é a FOTOGRAFIA REAL do prato/cena, e a peça é essa foto MAIS a camada gráfica (copy e marca). Regras que valem aqui e SÓ aqui:
-- A foto é a cena final: não recriar, não trocar fundo, não relumiar, não acrescentar nem remover objeto; se o enquadramento exigir completar bordas, estender a própria cena. O dono do restaurante precisa reconhecer o próprio prato e o próprio salão.
-- A fotografia é a protagonista: TODO o conjunto de texto ocupa no máximo ~1/5 do quadro; o lockup da manchete não passa de ~15% da altura, nenhuma linha sozinha passa de ~7%; nenhuma palavra isolada passa de ~35% da largura. Hierarquia por peso, cor e posição — nunca por tamanho. Conjunto compacto na vertical; nunca cartaz de varejo.
-- O texto mora no espaço LIVRE da foto (nunca sobre o prato, o rosto ou o assunto). A leitura vem de um HALO: mancha escura DESFOCADA só atrás do bloco de texto, sem borda, que desmancha para a foto — nunca gradiente de borda a borda, nunca tarja, nunca escurecer a foto inteira. Não cabendo sem apagar a foto, o texto muda de lugar.
-- 🔴 O HALO NÃO PODE TER FIM VISÍVEL. O teste é este, e escreva-o no prompt: quem olha a peça não consegue apontar a linha onde a mancha acaba. A transição é LARGA — o esfumaçado se estende por pelo menos a altura do próprio bloco de texto para fora dele, em todos os lados, e some por completo antes de encontrar qualquer borda do quadro. Proibido: aresta reta, canto, retângulo de cantos arredondados, degrau de luminosidade, faixa que corta um objeto da foto ao meio. Se o objeto por trás do texto (um prato, uma mesa, um rosto) aparece com uma metade mais escura que a outra, o halo está marcado — refaça mais suave e mais largo. Sutil vence contraste: prefira a mancha de menos, e resolva o resto pela cor do texto. Medido em 07/09/2026 na Wine Vix: com a regra só dizendo "sem borda", saiu uma mancha com aresta visível cortando o prato e a mão em linha reta.
-- Atrás do texto há SÓ a foto e o halo: nada de textura, folha, tábua ou ilustração pintada por cima.
-- Autonomia de composição — SÓ quando NÃO há modelo em modo estrito: diga ao gerador para ler a foto e pousar o texto onde ela é calma (coluna alta à esquerda, faixa no rodapé, bloco no topo — o que ESTA foto pedir). Você já viu a foto: DIGA onde ela é calma e proponha o lugar, sem coordenadas.
-- 🔴 HAVENDO modelo em modo ESTRITO, a autonomia acima NÃO vale e a seção 2 descreve a posição DO MODELO, nunca uma escolhida por você ao olhar a foto. Diga onde cada bloco está NA REFERÊNCIA (em que terço, alinhado a quê, agrupado com quê) e mande repetir ali. Medido em 07/09/2026 na Wine Vix: com "match its text placement" na linha da referência e, três linhas abaixo, uma decisão de design própria dizendo "place a compact text column in the upper-left", a peça saiu com a manchete no TOPO enquanto o modelo a tem no terço inferior — a instrução mais concreta e mais próxima do fim venceu. Se a foto não tiver área calma onde o modelo põe o texto, mantenha o lugar do modelo e resolva a leitura pelo halo, nunca mudando o bloco de lugar.
-- Horário e endereço (serviço) ficam agrupados no RODAPÉ, miúdos e legíveis, separados da manchete — nunca pendurados na manchete.
-- ONDE A MARCA POUSA (campo \`cantoDaMarca\`): você viu a foto e acabou de decidir onde o texto vai, então esta escolha é sua. Comece pelo canto DIAGONALMENTE oposto ao bloco de texto — texto no inferior-esquerdo pede marca no superior-direito, e assim por diante. "Lado oposto" não basta: em 07/09/2026, com a copy no canto inferior esquerdo, a marca foi para o inferior DIREITO, tecnicamente do outro lado e ainda assim na mesma faixa, e pousou em cima da mão da cliente. Saia da diagonal só se ela cair sobre o assunto ou sobre detalhe movimentado — e então diga na leitura por quê. Os outros dois critérios: o canto tem de ser CALMO (sem borda forte, sem ponto de luz) e FORA DO ALCANCE do assunto (prato, taça, rosto, mão, produto): não basta não cobrir, não pode nem encostar. Em story descarte o superior-esquerdo, que é onde o Instagram desenha o avatar e o nome do perfil. Se a marca for colada por código, o canto que você escolher é o que o prompt vai reservar — mande o texto terminar antes dele. Quando o modelo a seguir puser a marca num canto que NESTA foto cai sobre o assunto ou do lado do texto, escolha o melhor canto desta foto: o modelo mandou na diagramação do texto, não em cima do prato.
-- Modelo escolhido à mão (Image de papel style-guide): em modo livre, copiar como o texto é VESTIDO (fontes por nível, caixa, cor, proporções, ornamentos) e decidir a posição pela foto; em modo estrito, mesma posição e alinhamento do modelo. O texto e a foto do modelo NUNCA são conteúdo.
-- Em modo ESTRITO, feche o parágrafo do modelo com a frase que ANCORA A CENA: "only the photograph and the words change" (ou equivalente). Medido em 07/09/2026 na Wine Vix, mesma foto e mesma copy: sem ela o gpt-image recriou o salão e apagou as pessoas, o laptop e os pratos, mesmo com a fidelidade à foto escrita mais acima. Instrução colada ao modelo vence instrução geral — é a mesma lição de 17/08.
-- A trava de vazamento é DUPLA e vai na linha da referência, não num bloco geral: (a) "every word, number, date, tagline or headline lettered in Image N belongs to that OLD post — never copy, adapt or echo any of it; this piece letters EXCLUSIVELY the N copy blocks listed above, nothing else"; (b) a foto dela não é conteúdo. Medido em 07/09: sem o "nothing else" explícito, a peça nova saiu com a assinatura "VINHO . SABOR . AMOR" copiada do post antigo — e a conferência de texto passou, porque ela só checa o que FALTA.
-- Story: nada importante nos ~1/8 superior e ~1/8 inferior (o número em pixel virá anexado ao prompt pelo sistema; não invente outro).
-- Uma cor de destaque; tipografia SOMENTE a da prancha/manual; quebras de linha sem palavra sozinha.
+/**
+ * O DIRETOR DE ARTE da GERAÇÃO — reescrito em 08/09/2026 em cima do briefing
+ * que o Ciro escreveu à mão para a Wine Vix e pediu como molde ("ele não
+ * precisa engessar tudo; pode confiar mais no gpt-image").
+ *
+ * O que mudou em relação ao diretor de 05-07/09:
+ *  - As regras de HALO, véu e degradê SAÍRAM. Legibilidade é decisão do
+ *    gpt-image; o diretor resolve leitura por POSIÇÃO (área calma) e pela cor
+ *    do texto, e não prescreve tratamento nenhum sobre a foto.
+ *  - Os tetos numéricos de tamanho (1/5 do quadro, 15% da altura…) saíram. A
+ *    manchete é o maior elemento e a foto é a protagonista — o resto é a
+ *    decisão do diretor para ESTA foto e ESTA copy.
+ *  - O prompt sai em PORTUGUÊS, no formato de briefing por seções (o molde do
+ *    Ciro; o prompt do manual em português já tinha saído 9 de 9).
+ *  - A referência escolhida à mão é VISTA pelo diretor e traduzida em
+ *    instruções; o gpt-image não a recebe.
+ *  - A foto chega com MEDIDA (mapa de calma) e com o catálogo do acervo, para
+ *    a escolha de posição partir de dado e não de estimativa.
+ *
+ * O que ficou porque é mecânico e medido: copy verbatim conferida
+ * (`copyEstaNoPrompt`), nome de fonte só na linha da imagem
+ * (`fontesForaDaReferencia`), serviço no rodapé (`servicoSemRodape`), palavras
+ * da referência fora do prompt (`palavrasDaReferenciaNoPrompt`), teto de
+ * caracteres. E o que o sistema anexa DEPOIS: o canto da marca e a safe area
+ * em pixel.
+ */
+export const SYSTEM_GERACAO = `Você é o DIRETOR DE ARTE sênior de uma agência que cuida do Instagram de restaurantes, e escreve o briefing que um designer excelente — o modelo de imagem gpt-image-2 — vai executar. Ele recebe a FOTOGRAFIA como Imagem 1 e o MANUAL DE MARCA como Imagem 2 (quando houver), e desenha a peça a partir do seu briefing. Confie nele: ele compõe, diagrama e resolve legibilidade muito bem quando recebe uma direção clara. O seu trabalho é DIRIGIR — decidir o que ESTA peça precisa — não listar tudo o que poderia dar errado.
 
-Responda em JSON com: leitura (1-2 frases em português: o que você viu na foto e onde decidiu pousar o texto), prompt (inglês) e cantoDaMarca. Não devolva copyFinal.`
+VOCÊ RECEBE: a foto (você a vê), o manual (você o vê), a identidade da marca em texto, a copy, a LEITURA MEDIDA da foto (onde ela é calma, onde o assunto está — calculada, não estimada), o catálogo do acervo sobre a foto, e às vezes uma REFERÊNCIA escolhida à mão (uma peça aprovada desta marca) e um pedido de quem está na tela.
+
+COMO ESCREVER O BRIEFING (em PORTUGUÊS, no máximo ${TETO_DO_PROMPT_PLANEJADO_GERACAO} caracteres, seções curtas com TÍTULO EM CAIXA ALTA, nesta ordem):
+
+Abertura (2 a 4 frases): "Crie uma arte para <formato> do Instagram, <proporção>, seguindo rigorosamente a identidade visual de <marca> apresentada no manual de marca anexado (Imagem 2)." Depois a DIREÇÃO ESTÉTICA desta peça em frases concretas — o que ela deve parecer (peça editorial de gastronomia? cartaz de churrascaria? convite de bistrô?) e o que NÃO deve parecer. Tire isso do DNA e do ESTILO OBSERVADO da marca, nunca de adjetivos vazios ("sofisticado", "clean" não dizem nada sozinhos; "bastante respiro, hierarquia clara e poucos elementos gráficos" diz).
+
+FOTO DE FUNDO: a Imagem 1 é a única imagem principal, ocupando 100% da tela, adaptada ao formato só por enquadramento. Diga o que há nela (o assunto, as pessoas, os rostos) e o que tem de permanecer completamente visível. Diga ONDE está o espaço calmo — use a LEITURA MEDIDA — e por isso onde o bloco principal vai. Não prescreva véu, degradê, halo, sombra ou "contraste": o designer resolve a leitura; se a posição escolhida for calma, ela já lê.
+
+IDENTIDADE VISUAL: o manual (Imagem 2) é a ÚNICA referência para tipografia, cores, logotipo, filetes, elementos gráficos e proporções. Diga as cores DESTA peça pelo nome do manual (ex.: creme para os textos; o dourado oficial só como destaque; os tons escuros da própria foto como contraste). Diga quais ornamentos do manual entram (um filete, um ícone de relógio antes do horário) e — quando a foto já tem muita informação — que a composição fica limpa, sem ícones nem selos.
+
+LOGOTIPO: qual versão do painel de logos do manual (a principal, a variação horizontal, a monocromática…), onde pousa (em fração da altura/largura: "centralizada no topo, começando a ~5% da altura"), tamanho relativo ("~15% a 18% da largura"), e que ela não compete com a manchete. Se a marca for COLADA POR CÓDIGO depois (você será avisado), esta seção diz que o designer NÃO desenha logo nenhuma e deixa o canto indicado livre — e nada mais.
+
+BLOCO PRINCIPAL: onde o conjunto fica (faixa em % da altura, ex.: "entre 15% e 34% da altura"), alinhamento (centralizado / à esquerda), e a ordem dos elementos. Depois, UMA SEÇÃO POR BLOCO DA COPY, cada uma com: o texto exato entre aspas, a fonte pelo PAPEL do manual ("a serifa de manchete do manual", "a sans-serif oficial em peso regular"), a cor, o tamanho relativo, a quebra de linha sugerida quando fizer diferença (cada linha repete o trecho EXATAMENTE como recebido — a caixa das letras é decisão da casa, já tomada na copy; você nunca a muda, nem para "combinar" com a marca), e o destaque de UMA palavra na cor de destaque quando a marca faz isso (nunca quando o bloco tem uma palavra só — o designer coloriria uma letra). Separador (FILETE) entre blocos só se a marca usa: comprimento e cor pelo manual.
+
+ÁREA LIVRE: a faixa da altura que fica só com a fotografia, e o que ela valoriza (as pessoas, o prato, a mesa).
+
+RODAPÉ — só quando a copy tem SERVIÇO (dia, horário, endereço, telefone): esses blocos ficam isolados na parte inferior, miúdos e legíveis, na fonte de apoio, com o acabamento que a marca usa (filete, ícone de relógio/pin do manual). Diga que saem da sequência de cima: cada bloco aparece UMA vez.
+
+HIERARQUIA VISUAL: a ordem de leitura, numerada — manchete, apoio, fotografia, serviço, marca como assinatura (ou a ordem que ESTA peça pede).
+
+EVITE: de 3 a 6 itens, específicos desta peça e desta marca (ex.: "excesso de dourado", "elementos que cubram as pessoas", "qualquer texto além da copy fornecida"). Não a lista genérica de tudo: proibição em paredão é ignorada, e negativa demais piora a peça (medido em 07-08/09/2026).
+
+TEXTOS FINAIS — NÃO ALTERAR: cada bloco da copy, um por linha, verbatim, e a frase "Não corrigir, complementar, abreviar ou adicionar nenhuma outra informação."
+
+REGRAS QUE NÃO SE NEGOCIAM (escreva-as no briefing só onde a peça precisa; as mecânicas o sistema anexa):
+- A copy é sagrada: cada bloco entre aspas, letra por letra, na caixa em que foi recebida (a caixa já é a da marca). Nunca corrigir, traduzir, abreviar, completar. NUNCA inventar horário, endereço, telefone, preço, cidade, avaliação, hashtag ou @. Faltou informação, a peça fica sem ela.
+- ⛔ NOME DE FONTE VIRA TEXTO DESENHADO (medido em 05/09/2026: "line 2 in Amithen" saiu com a palavra "Amithen" letrada). Nomes de fonte só aparecem numa linha que começa por "Imagem N" descrevendo o manual/prancha. Em toda seção de bloco, a fonte é citada pelo PAPEL.
+- A fotografia é intocável salvo AJUSTE autorizado: enquadramento, luz, cor, contraste, nitidez, rostos, pessoas e objetos saem como entraram; nada de relumiar, recolorir, trocar fundo, acrescentar ou remover. Texto NUNCA atravessa rosto, prato, taça, produto — o assunto.
+- A fotografia é a protagonista: a manchete é o maior elemento gráfico e o conjunto de texto é compacto; hierarquia por peso, cor e posição.
+- UMA marca por peça, uma vez, a versão oficial do manual. Sem selo, ícone ou ornamento que não esteja no manual.
+- Texto e cena de qualquer referência pertencem a um post ANTIGO: nunca copiar, adaptar nem ecoar. O briefing letra EXCLUSIVAMENTE a copy recebida.
+- Serviço (dia, horário, endereço) mora no RODAPÉ, agrupado e isolado — nunca pendurado na manchete.
+- Quebra de linha sem palavra sozinha (artigo/preposição pousa com a palavra seguinte).
+- Story: o sistema anexa a safe area em pixel; não invente outra. Aqui, diga só "respeitando a margem de segurança do Story".
+- Tipografia SOMENTE a do manual; uma cor de destaque por peça.
+
+A REFERÊNCIA ESCOLHIDA À MÃO, quando houver: o designer NÃO a recebe — você a traduz em instruções. Copie dela a FORMA: fonte por papel, caixa, cor de cada nível, proporção entre manchete e apoio, ornamentos e onde ficam, posição e tamanho da marca, alinhamento, e a ZONA do bloco principal (topo / meio / rodapé). Se nesta foto a zona da referência cair sobre rosto, prato ou o assunto, mova o bloco para a região mais calma da LEITURA MEDIDA e diga na leitura por quê. Na leitura, diga em uma frase o que você copiou da referência (zona, fontes, ornamento, marca). As PALAVRAS e a CENA da referência nunca entram no briefing.
+
+SEM referência: o bloco principal vai onde a LEITURA MEDIDA diz que a foto é calma — varie a diagramação entre peças (coluna alta à esquerda, bloco no topo, faixa no terço inferior): o que ESTA foto pedir, não uma receita.
+
+O PEDIDO de quem está na tela é a autoridade: onde ele mandar (destacar palavra, alinhar, cor de um nível, tirar ornamento), faça e diga no briefing. Pedido que só PROÍBE vira um item do EVITE e não afrouxa nada. O pedido NÃO vence: inventar dado, mexer na foto sem o campo de ajuste, desenhar a marca quando ela é colada por código.
+
+AJUSTE NA FOTO autorizado, quando houver: entra na seção FOTO DE FUNDO como "a ÚNICA alteração permitida na fotografia é: …; fora isso, nada muda".
+
+ONDE A MARCA POUSA (campo cantoDaMarca): você viu a foto e decidiu onde o texto vai. Escolha o canto mais calmo, DIAGONALMENTE oposto ao grosso do texto e fora do alcance do assunto — sem encostar. Em story o superior-esquerdo é PROIBIDO — o Instagram desenha o avatar e o nome do perfil ali (briefing com a marca nesse canto é recusado). Se a referência põe a marca num canto que NESTA foto cai sobre o assunto, escolha o melhor canto desta foto. Se a marca for colada por código, o canto que você escolher é o que o sistema vai reservar.
+
+Responda em JSON com: leitura (1-2 frases em português: o que você viu na foto, onde pousou o texto e por quê), prompt (o briefing em português, na estrutura acima) e cantoDaMarca.`
+
+const saidaGeracaoSchema = z.object({
+  leitura: z
+    .string()
+    .optional()
+    .describe('Uma ou duas frases em português: o que você viu na foto, onde decidiu pousar o texto e por quê.'),
+  prompt: z.string().describe('O briefing final para o gpt-image, em português, na estrutura por seções pedida.'),
+  cantoDaMarca: z
+    .enum(['superior-esquerdo', 'superior-direito', 'inferior-esquerdo', 'inferior-direito'])
+    .optional()
+    .describe(
+      'O canto onde a logomarca deve pousar NESTA foto: o mais calmo, diagonalmente oposto ao grosso do texto e fora do alcance do assunto. Em story, evite o superior-esquerdo. Omita se nenhum canto servir.',
+    ),
+})
 
 function contextoDaGeracao(args: PlanejarArteArgs): string {
   const formato: Record<PlanejarArteArgs['formato'], string> = {
-    story: 'Instagram story, 9:16 vertical',
-    feed: 'Instagram feed post, 4:5 portrait',
-    quadrado: 'Instagram post, 1:1 square',
+    story: 'Story do Instagram, formato vertical 9:16, 1080 × 1920 px',
+    feed: 'post de feed do Instagram, formato vertical 4:5, 1080 × 1350 px',
+    quadrado: 'post do Instagram, formato quadrado 1:1, 1080 × 1080 px',
   }
+  const visiveis = args.referencias.filter((r) => r.visivelAoGerador !== false)
+  const soDoDiretor = args.referencias.filter((r) => r.visivelAoGerador === false)
   const linhas: string[] = [
-    `FORMATO: ${formato[args.formato]} (${args.alturaPx}px de altura)`,
-    `IMAGENS QUE O gpt-image VAI RECEBER, NA ORDEM (use estes índices no prompt):\n${args.referencias
+    `FORMATO: ${formato[args.formato]} (a peça sai com ${args.alturaPx}px de altura)`,
+    `IMAGENS QUE O gpt-image VAI RECEBER, NA ORDEM (cite-as no briefing como "Imagem N"):\n${visiveis
       .map(
         (r) =>
-          `- Image ${r.indice}: ${PAPEL_GERACAO_LEGIVEL[r.papel]}${r.rotulo ? ` (${r.rotulo})` : ''}${
-            r.papel === 'style-guide' ? (r.estiloLivre ? ' [modo LIVRE: veste o texto, layout é seu]' : ' [modo ESTRITO: mesmo layout]') : ''
-          }${r.buffer ? '' : ' [não anexada a você; descreva pelo papel]'}`,
+          `- Imagem ${r.indice}: ${PAPEL_GERACAO_LEGIVEL[r.papel]}${r.rotulo ? ` (${r.rotulo})` : ''}${r.buffer ? '' : ' [não anexada a você; descreva pelo papel]'}`,
       )
       .join('\n')}`,
+  ]
+  if (soDoDiretor.length > 0) {
+    linhas.push(
+      `REFERÊNCIA QUE SÓ VOCÊ VÊ (o gpt-image NÃO a recebe — traduza-a em instruções, nunca a cite como imagem):\n${soDoDiretor
+        .map(
+          (r) =>
+            `- ${PAPEL_GERACAO_LEGIVEL[r.papel]}${r.rotulo ? ` (${r.rotulo})` : ''}${
+              r.papel === 'style-guide' ? (r.estiloLivre ? ' [modo LIVRE: copie só como o texto é vestido; a posição é sua]' : ' [modo ESTRITO: copie também a zona de cada bloco]') : ''
+            }`,
+        )
+        .join('\n')}`,
+    )
+  }
+  linhas.push(
     args.copy.length > 0
       ? `COPY (${args.copy.length} bloco${args.copy.length === 1 ? '' : 's'}, verbatim, na ordem de leitura; a caixa JÁ é a da marca — copie letra por letra):\n${args.copy.map((b) => `"${b}"`).join('\n')}`
       : 'COPY: esta peça NÃO leva texto (capa/foto pura). Nenhuma letra na peça.',
+  )
+  linhas.push(
     args.logoCompor
-      ? 'LOGOMARCA: é COLADA POR CÓDIGO depois da geração. O prompt PROÍBE desenhar qualquer logo/selo/wordmark (o sistema anexa a linha do canto reservado).'
-      : args.referencias.some((r) => r.papel === 'logo')
-        ? 'LOGOMARCA: desenhada pelo modelo a partir do arquivo oficial (Image da logo), uma vez, num canto calmo com contraste; em story, nos cantos inferiores.'
+      ? 'LOGOMARCA: é COLADA POR CÓDIGO depois da geração. A seção LOGOTIPO do briefing diz que o designer NÃO desenha nenhuma logo, selo ou wordmark (o sistema anexa a linha do canto reservado).'
+      : args.referencias.some((r) => r.papel === 'logo' || r.papel === 'brand-card')
+        ? 'LOGOMARCA: desenhada pelo designer a partir do painel de logos do manual (Imagem 2), uma vez — escolha a versão e o lugar.'
         : 'LOGOMARCA: esta peça não leva logo.',
-    args.pedido.trim() ? `PEDIDO / DIREÇÃO DE ARTE DE QUEM ESTÁ NA TELA: ${args.pedido.trim()}` : 'PEDIDO: (vazio — vale o padrão da marca)',
-  ]
+  )
+  if (args.leituraDaFoto?.trim()) linhas.push(args.leituraDaFoto.trim())
+  if (args.catalogoDaFoto?.trim()) linhas.push(args.catalogoDaFoto.trim())
+  linhas.push(args.pedido.trim() ? `PEDIDO / DIREÇÃO DE ARTE DE QUEM ESTÁ NA TELA: ${args.pedido.trim()}` : 'PEDIDO: (vazio — vale o padrão da marca)')
   if (args.instrucaoImagem?.trim()) linhas.push(`AJUSTE NA FOTO AUTORIZADO (única exceção à fidelidade): ${args.instrucaoImagem.trim()}`)
   if (args.assinaturaTipografica?.trim()) linhas.push(`ASSINATURA TIPOGRÁFICA DA MARCA (como ela usa as fontes — obedeça):\n${args.assinaturaTipografica.trim()}`)
   return linhas.join('\n\n')
+}
+
+/** Exposto para teste: o que o diretor recebe, dado o que o runner montou. */
+export function montarContextoDaGeracao(args: PlanejarArteArgs): string {
+  return `${contextoDaMarca(args.brand)}\n\n${contextoDaGeracao(args)}`
 }
 
 export interface PromptDeGeracaoPlanejado {
@@ -413,50 +526,137 @@ export interface PromptDeGeracaoPlanejado {
 }
 
 /**
+ * Tratamento de foto que o diretor NÃO prescreve mais (08/09/2026): a leitura
+ * é do gpt-image. A trava existe porque a regra do halo viveu três semanas no
+ * prompt e o modelo, lendo "mancha escura desfocada", escurecia a foto.
+ */
+export function tratamentoDeFotoNoPrompt(prompt: string): string[] {
+  const achados: string[] = []
+  for (const [rotulo, re] of [
+    ['halo', /\bhalo\b/i],
+    ['véu', /\bv[ée]u\b/i],
+    ['degradê', /\bdegrad[êe]/i],
+    ['gradiente', /\bgradiente/i],
+  ] as const) {
+    if (re.test(prompt)) achados.push(rotulo)
+  }
+  return achados
+}
+
+/**
+ * Trecho da copy citado no briefing com a CAIXA trocada. Medido em 08/09/2026
+ * no By Rock: a copy chegou "Rende pra galera" e a quebra sugerida saiu
+ * "RENDE PRA" / "GALERA" — o diretor decidindo a caixa que o mapa da casa
+ * (`CAIXA_DA_MANCHETE`) já decidiu na string. A conferência por
+ * `copyEstaNoPrompt` não pega isso porque normaliza para maiúsculas. Aqui
+ * cada trecho entre aspas é procurado na copy sem olhar caixa e comparado
+ * com o trecho REAL: divergiu, é caixa alterada.
+ */
+export function caixaAlterada(prompt: string, copy: string[]): string[] {
+  const achados: string[] = []
+  const citados = [...prompt.matchAll(/"([^"\n]{2,})"/g), ...prompt.matchAll(/“([^”\n]{2,})”/g)].map((m) => m[1].trim())
+  for (const citado of citados) {
+    const alvo = citado.replace(/[.,;:!?…]+$/g, '')
+    if (alvo.length < 2) continue
+    for (const bloco of copy) {
+      const i = bloco.toLowerCase().indexOf(alvo.toLowerCase())
+      if (i < 0) continue
+      const real = bloco.slice(i, i + alvo.length)
+      if (real !== alvo && !achados.includes(citado)) achados.push(citado)
+      break
+    }
+  }
+  return achados
+}
+
+/**
+ * Marca no canto do AVATAR: em story o Instagram desenha o avatar e o nome do
+ * perfil no superior-esquerdo. A regra existe no system prompt desde 07/09 e
+ * o diretor a ignorou em 08/09/2026 (By Rock) — agora é recusa.
+ */
+export function logoNoCantoDoAvatar(
+  prompt: string,
+  formato: PlanejarArteArgs['formato'],
+  canto: PromptDeGeracaoPlanejado['cantoDaMarca'] | undefined,
+): boolean {
+  if (formato !== 'story') return false
+  if (canto === 'superior-esquerdo') return true
+  const secao = prompt.match(/LOGOTIPO[\s\S]*?(?=\n[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ /—-]{3,}\n|$)/)?.[0] ?? ''
+  return /superior[- ]esquerd|canto (superior|alto) (à|a) esquerda|topo (à|a) esquerda/i.test(secao)
+}
+
+/**
+ * A copy tem serviço (horário, endereço…) e o briefing não abriu a seção
+ * RODAPÉ — a regra da casa desde 17/08/2026, aqui mecânica.
+ */
+export function servicoSemRodape(prompt: string, copy: string[]): string[] {
+  const servico = blocosDeServico(copy)
+  if (servico.length === 0) return []
+  if (/rodap[ée]/i.test(prompt)) return []
+  return servico.map((b) => b.texto)
+}
+
+/**
+ * Palavras da referência (lidas por visão, `GuiaLido.textos`) que reapareceram
+ * no briefing sem estar na copy. Frase curta não conta (mesmo piso do alerta
+ * de vazamento); o nome da marca também não — ele está em toda peça.
+ */
+export function palavrasDaReferenciaNoPrompt(
+  prompt: string,
+  copy: string[],
+  textosDaReferencia: string[] | null | undefined,
+  nomeDaMarca?: string | null,
+): string[] {
+  if (!textosDaReferencia || textosDaReferencia.length === 0) return []
+  const alvo = normalizeForComparison(prompt)
+  const daCopy = normalizeForComparison(copy.join('\n'))
+  const marca = nomeDaMarca ? normalizeForComparison(nomeDaMarca) : ''
+  const vazadas: string[] = []
+  for (const bruto of textosDaReferencia) {
+    const n = normalizeForComparison(bruto)
+    if (n.length < 12) continue
+    const semMarca = marca ? n.replace(marca, ' ').replace(/\s+/g, ' ').trim() : n
+    if (semMarca.length < 12) continue
+    if (daCopy.includes(n)) continue
+    if (!alvo.includes(n)) continue
+    const limpo = bruto.trim()
+    if (!vazadas.includes(limpo)) vazadas.push(limpo)
+  }
+  return vazadas
+}
+
+/**
  * Planeja a GERAÇÃO de uma peça avulsa da trilha `arte`. `null` = o chamador
- * cai em `buildArtePrompt`. Nunca lança. Carrossel e peça com cartão de
- * documento NÃO passam por aqui: o LOOK SPINE e a faixa do cartão são
- * mecânicos e medidos, e a série é o caso em que rigidez é desejada.
+ * cai no molde da porta (ou em `buildArtePrompt`). Nunca lança. Carrossel e
+ * peça com cartão de documento NÃO passam por aqui: o LOOK SPINE e a faixa do
+ * cartão são mecânicos e medidos, e a série é o caso em que rigidez é desejada.
  */
 export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGeracaoPlanejado | null> {
   const inicio = Date.now()
   const anexos = args.referencias.filter((r) => r.buffer)
-  const contexto = `${contextoDaMarca(args.brand)}\n\n${contextoDaGeracao(args)}`
+  const contexto = montarContextoDaGeracao(args)
   let feedback: string | null = null
   for (let rodada = 1; rodada <= RODADAS_DO_PLANEJADOR; rodada++) {
     try {
       const { object } = await generateObject({
         model: openai(PLANNER_MODEL),
         ...(ACEITA_TEMPERATURA ? { temperature: 0.4 } : {}),
-        maxOutputTokens: 4000,
-        abortSignal: AbortSignal.timeout(args.timeoutMs ?? 60_000),
-        schema: saidaSchema,
+        maxOutputTokens: 5000,
+        abortSignal: AbortSignal.timeout(args.timeoutMs ?? 75_000),
+        schema: saidaGeracaoSchema,
         system: SYSTEM_GERACAO,
         messages: [
           {
             role: 'user',
             content: [
               ...anexos.map((r) => ({ type: 'image' as const, image: r.buffer as Buffer })),
-              { type: 'text' as const, text: feedback ? `${contexto}\n\nSEU PROMPT ANTERIOR FOI RECUSADO:\n${feedback}\nReescreva corrigindo.` : contexto },
+              { type: 'text' as const, text: feedback ? `${contexto}\n\nSEU BRIEFING ANTERIOR FOI RECUSADO:\n${feedback}\nReescreva corrigindo.` : contexto },
             ],
           },
         ],
       })
       const prompt = object.prompt.trim()
-      const problemas: string[] = []
-      if (prompt.length > TETO_DO_PROMPT_PLANEJADO_GERACAO) {
-        problemas.push(`o prompt tem ${prompt.length} caracteres e o teto é ${TETO_DO_PROMPT_PLANEJADO_GERACAO} — corte prosa, nunca a copy.`)
-      }
-      const faltam = copyEstaNoPrompt(prompt, args.copy)
-      if (faltam.length > 0) {
-        problemas.push(`estes blocos da copy NÃO estão no prompt, verbatim e entre aspas: ${faltam.map((t) => `"${t}"`).join(', ')}`)
-      }
-      const fontesSoltas = fontesForaDaReferencia(prompt, nomesDeFonte(args.brand))
-      if (fontesSoltas.length > 0) {
-        problemas.push(
-          `nome de fonte fora da linha de referência (${fontesSoltas.join(', ')}) — o gerador letra o que lê (a peça do Quintal saiu com "Amithen" desenhado). Cite a fonte pelo papel ("the brand's display serif from Image N") e deixe os nomes só na linha "Image N is the type specimen…".`,
-        )
-      }
+      const problemas = problemasDoBriefing(prompt, args, object.cantoDaMarca)
       if (problemas.length === 0) {
         return {
           prompt,
@@ -479,6 +679,56 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
 }
 
 /**
+ * As travas mecânicas do briefing, numa lista para o diretor corrigir. Exposta
+ * para teste: cada uma é uma lição medida, e o teste é o que impede a próxima
+ * reescrita do system prompt de perdê-la.
+ */
+export function problemasDoBriefing(
+  prompt: string,
+  args: PlanejarArteArgs,
+  cantoDaMarca?: PromptDeGeracaoPlanejado['cantoDaMarca'],
+): string[] {
+  const problemas: string[] = []
+  if (prompt.length > TETO_DO_PROMPT_PLANEJADO_GERACAO) {
+    problemas.push(`o briefing tem ${prompt.length} caracteres e o teto é ${TETO_DO_PROMPT_PLANEJADO_GERACAO} — corte prosa e itens do EVITE, nunca a copy.`)
+  }
+  const faltam = copyEstaNoPrompt(prompt, args.copy)
+  if (faltam.length > 0) {
+    problemas.push(`estes blocos da copy NÃO estão no briefing, verbatim e entre aspas: ${faltam.map((t) => `"${t}"`).join(', ')}`)
+  }
+  const fontesSoltas = fontesForaDaReferencia(prompt, nomesDeFonte(args.brand))
+  if (fontesSoltas.length > 0) {
+    problemas.push(
+      `nome de fonte fora da linha da imagem (${fontesSoltas.join(', ')}) — o designer letra o que lê (a peça do Quintal saiu com "Amithen" desenhado). Cite a fonte pelo papel ("a serifa de manchete do manual") e deixe os nomes só na linha "Imagem N é o manual…".`,
+    )
+  }
+  const tratamento = tratamentoDeFotoNoPrompt(prompt)
+  if (tratamento.length > 0) {
+    problemas.push(
+      `o briefing prescreve tratamento sobre a foto (${tratamento.join(', ')}) — isso é decisão do designer, não sua. Resolva a leitura pela POSIÇÃO (área calma da leitura medida) e pela cor do texto; tire a frase.`,
+    )
+  }
+  const servico = servicoSemRodape(prompt, args.copy)
+  if (servico.length > 0) {
+    problemas.push(`a copy tem serviço (${servico.map((t) => `"${t}"`).join(', ')}) e o briefing não tem a seção RODAPÉ: horário e endereço moram no rodapé, isolados e agrupados.`)
+  }
+  const caixa = caixaAlterada(prompt, args.copy)
+  if (caixa.length > 0) {
+    problemas.push(
+      `a caixa das letras foi alterada em ${caixa.map((t) => `"${t}"`).join(', ')} — a caixa é decisão da casa, já tomada na copy. Repita cada trecho EXATAMENTE como recebido, inclusive na quebra sugerida.`,
+    )
+  }
+  if (logoNoCantoDoAvatar(prompt, args.formato, cantoDaMarca)) {
+    problemas.push('em story a marca NUNCA fica no canto superior-esquerdo: o Instagram desenha o avatar e o nome do perfil ali. Escolha outro canto (e diga o mesmo em cantoDaMarca).')
+  }
+  const vazadas = palavrasDaReferenciaNoPrompt(prompt, args.copy, args.textosDaReferencia, args.brand?.projectName)
+  if (vazadas.length > 0) {
+    problemas.push(`estas frases são da REFERÊNCIA (post antigo) e não da copy — tire-as do briefing: ${vazadas.map((t) => `"${t}"`).join(', ')}`)
+  }
+  return problemas
+}
+
+/**
  * Nome de fonte fora da linha de referência — a trava mecânica da regra acima.
  *
  * Devolve os nomes que aparecem em linhas que NÃO começam com "Image N"
@@ -495,7 +745,7 @@ export function fontesForaDaReferencia(prompt: string, fontes: Array<string | nu
   if (familias.size === 0) return []
   const achadas = new Set<string>()
   for (const linha of prompt.split('\n')) {
-    if (/^\s*image\s+\d+/i.test(linha)) continue
+    if (/^\s*imag(?:e|em)\s+\d+/i.test(linha)) continue
     // A COPY entre aspas também é isenta: se a copy CITAR a fonte ("Noite
     // Montserrat"), ela tem de estar lá.
     const semAspas = linha.replace(/"[^"]*"/g, '').replace(/“[^”]*”/g, '')
