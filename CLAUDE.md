@@ -5023,19 +5023,21 @@ todas medidas em CIELAB contra a foto original cortada. O que se sabe:
   sozinho — o By Rock de 24/08, com o modelo reenquadrando o bolo para baixo,
   é a melhor peça do conjunto. Corte nosso no centro = assunto no meio =
   texto colidindo. Wine Vix e TERO saíram bem; By Rock, mal.
+- 🔴 **Decisão do Ciro (08/09, fim do dia): "não vamos usar" a máscara.** O
+  caminho de máscara foi REMOVIDO do runner e do diretor (nada de `zonas`,
+  nada de corte nosso); o módulo `mascara-da-geracao.ts` fica pelo
+  `casarTomGlobal` e pela passada cirúrgica. Detalhe e tabelas em
+  `docs/SESSAO-2026-09-08-DIRETOR-MASCARA-E-TOM.md`.
 - **Adotado: SEM máscara + `casarTomGlobal`** (LUT por canal levando o
   histograma da peça inteira ao da foto, depois da geração, antes do QA e da
   logo). Offline nas peças existentes: L* 26,4 → 44,5 (Vix), 46,0 → 57,7
   (Real), igual à foto; enquadramento do modelo preservado; sem retângulo,
   sem emenda. O texto claro só clareia um pouco. Não corrige mudança LOCAL
-  (fundo chapado, objeto movido) — para isso só a máscara, com os defeitos
-  dela. `ARTE_TOM_CASADO=off` desliga; `ARTE_MASCARA=on` liga a máscara
-  (opt-in, para experimento). Telemetria: `fieldValues.tomCasado`,
-  `fieldValues.mascara.{zonas, difForaDaMascara, difForaDepois}`.
-- **O diretor declara `zonas`** (frações 0..1 por bloco) e um `diagnostico`
-  (intacto, problema principal, hierarquia — a lição estruturada da conversa
-  do ChatGPT), os dois gravados no `fieldValues`. As zonas só viram máscara
-  com a flag; o diagnóstico é auditoria.
+  (fundo chapado, objeto movido). `ARTE_TOM_CASADO=off` desliga. Telemetria:
+  `fieldValues.tomCasado`.
+- **O diretor devolve um `diagnostico`** (intacto, problema principal,
+  hierarquia — a lição estruturada da conversa do ChatGPT), gravado no
+  `fieldValues` como auditoria.
 - 🔴 **Serviço: o diretor insistia em tratar "Funcionamento - 10h às 22h" como
   APOIO da manchete** (2-3 recusas seguidas, ~1 min cada, e na terceira caía
   no molde). A trava por posição de seção não bastava; o que resolveu foi o

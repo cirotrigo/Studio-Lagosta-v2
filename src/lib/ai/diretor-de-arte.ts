@@ -343,12 +343,6 @@ export interface PlanejarArteArgs {
   /** A entrada da foto no catálogo do acervo (`resumirCatalogoDaFoto`). */
   catalogoDaFoto?: string | null
   /**
-   * A foto JÁ vai cortada no enquadramento final e o gpt-image só pode pintar
-   * dentro das ZONAS que o diretor declarar (máscara). Muda o que ele escreve
-   * sobre enquadramento e exige o campo `zonas`.
-   */
-  mascara?: boolean
-  /**
    * As palavras escritas na referência escolhida à mão (`GuiaLido.textos`).
    * INSUMO DA TRAVA, nunca do prompt: se alguma reaparecer no prompt do
    * diretor sem estar na copy, o prompt é recusado.
@@ -449,13 +443,11 @@ O PEDIDO de quem está na tela é a autoridade: onde ele mandar (destacar palavr
 
 AJUSTE NA FOTO autorizado, quando houver: entra na seção FOTO DE FUNDO como "a ÚNICA alteração permitida na fotografia é: …; fora isso, nada muda".
 
-ZONAS (campo zonas): para CADA seção de bloco do briefing (bloco principal, rodapé, e qualquer outro bloco de texto), a caixa onde ele pousa, em frações de 0 a 1 da largura (x0, x1) e da altura (y0, y1), coerente com os percentuais que você escreveu. Seja generoso: a caixa tem de caber o texto na fonte e no tamanho que você pediu, com respiro. Quando a peça for gerada COM MÁSCARA, o designer só pode pintar DENTRO dessas caixas — fora delas a fotografia sai pixel por pixel; caixa curta demais vira texto apertado ou cortado.
-
 ONDE A MARCA POUSA (campo cantoDaMarca): você viu a foto e decidiu onde o texto vai. Escolha o canto mais calmo, DIAGONALMENTE oposto ao grosso do texto e fora do alcance do assunto — sem encostar. Em story o superior-esquerdo é PROIBIDO — o Instagram desenha o avatar e o nome do perfil ali (briefing com a marca nesse canto é recusado). Se a referência põe a marca num canto que NESTA foto cai sobre o assunto, escolha o melhor canto desta foto. Se a marca for colada por código, o canto que você escolher é o que o sistema vai reservar.
 
 ANTES de escrever o briefing, responda o DIAGNÓSTICO (campo diagnostico): o que fica intacto, qual é o principal risco visual desta foto com esta copy, e a hierarquia de leitura que você quer. É o que um diretor decide antes de briefar — e é o que evita começar pela decoração.
 
-Responda em JSON com: diagnostico, leitura (1-2 frases em português: o que você viu na foto, onde pousou o texto e por quê), prompt (o briefing em português, na estrutura acima), zonas e cantoDaMarca.`
+Responda em JSON com: diagnostico, leitura (1-2 frases em português: o que você viu na foto, onde pousou o texto e por quê), prompt (o briefing em português, na estrutura acima) e cantoDaMarca.`
 
 const saidaGeracaoSchema = z.object({
   leitura: z
@@ -483,18 +475,6 @@ const saidaGeracaoSchema = z.object({
       hierarquia: z.string().optional().describe('A ordem de leitura que você quer, em uma linha.'),
     })
     .optional(),
-  zonas: z
-    .array(
-      z.object({
-        nome: z.string().describe('bloco principal | rodapé | (outro bloco)'),
-        x0: z.number().min(0).max(1),
-        x1: z.number().min(0).max(1),
-        y0: z.number().min(0).max(1),
-        y1: z.number().min(0).max(1),
-      }),
-    )
-    .optional()
-    .describe('Uma caixa por seção de bloco do briefing, em frações 0..1 da largura e da altura, coerente com os percentuais escritos e com folga.'),
 })
 
 function contextoDaGeracao(args: PlanejarArteArgs): string {
@@ -546,11 +526,6 @@ function contextoDaGeracao(args: PlanejarArteArgs): string {
         ? 'LOGOMARCA: desenhada pelo designer a partir do painel de logos do manual (Imagem 2), uma vez — escolha a versão e o lugar.'
         : 'LOGOMARCA: esta peça não leva logo.',
   )
-  if (args.mascara) {
-    linhas.push(
-      'MÁSCARA: a Imagem 1 JÁ está cortada no enquadramento final da peça — não peça enquadramento nem corte. O designer só poderá pintar dentro das ZONAS que você declarar no campo zonas; fora delas a fotografia sai pixel por pixel. Declare uma zona por bloco de texto, com folga.',
-    )
-  }
   if (args.leituraDaFoto?.trim()) linhas.push(args.leituraDaFoto.trim())
   if (args.catalogoDaFoto?.trim()) linhas.push(args.catalogoDaFoto.trim())
   linhas.push(args.pedido.trim() ? `PEDIDO / DIREÇÃO DE ARTE DE QUEM ESTÁ NA TELA: ${args.pedido.trim()}` : 'PEDIDO: (vazio — vale o padrão da marca)')
@@ -572,9 +547,6 @@ export interface PromptDeGeracaoPlanejado {
   tentativas: number
   /** O diagnóstico que o diretor fez antes do briefing — auditoria por peça. */
   diagnostico?: { intacto?: string; problemaPrincipal?: string; hierarquia?: string }
-  /** As zonas de texto declaradas pelo diretor (frações 0..1) — de onde sai a máscara. */
-  /** Com `strict: false` o `z.infer` deixa toda chave opcional (lei da casa): quem consome valida cada número. */
-  zonas?: Array<{ nome?: string; x0?: number; x1?: number; y0?: number; y1?: number }>
   /** O canto que o planejador escolheu para a marca NESTA foto. Ver o schema. */
   cantoDaMarca?: 'superior-esquerdo' | 'superior-direito' | 'inferior-esquerdo' | 'inferior-direito'
 }
@@ -748,7 +720,7 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
         ],
       })
       const prompt = object.prompt.trim()
-      const problemas = problemasDoBriefing(prompt, args, object.cantoDaMarca, object.zonas)
+      const problemas = problemasDoBriefing(prompt, args, object.cantoDaMarca)
       if (problemas.length === 0) {
         return {
           prompt,
@@ -756,7 +728,6 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
           ms: Date.now() - inicio,
           leitura: object.leitura?.trim() || undefined,
           cantoDaMarca: object.cantoDaMarca,
-          zonas: object.zonas,
           diagnostico: object.diagnostico,
           tentativas: rodada,
         }
@@ -790,7 +761,6 @@ export function problemasDoBriefing(
   prompt: string,
   args: PlanejarArteArgs,
   cantoDaMarca?: PromptDeGeracaoPlanejado['cantoDaMarca'],
-  zonas?: PromptDeGeracaoPlanejado['zonas'],
 ): string[] {
   const problemas: string[] = []
   if (prompt.length > TETO_DO_PROMPT_PLANEJADO_GERACAO) {
@@ -823,9 +793,6 @@ export function problemasDoBriefing(
     problemas.push(
       `a caixa das letras foi alterada em ${caixa.map((t) => `"${t}"`).join(', ')} — a caixa é decisão da casa, já tomada na copy. Repita cada trecho EXATAMENTE como recebido, inclusive na quebra sugerida.`,
     )
-  }
-  if (args.mascara && (!zonas || zonas.length === 0)) {
-    problemas.push('a peça será gerada com MÁSCARA e você não declarou o campo zonas: uma caixa (x0, x1, y0, y1 em frações 0..1) por seção de bloco do briefing, com folga.')
   }
   if (logoNoCantoDoAvatar(prompt, args.formato, cantoDaMarca)) {
     problemas.push('em story a marca NUNCA fica no canto superior-esquerdo: o Instagram desenha o avatar e o nome do perfil ali. Escolha outro canto (e diga o mesmo em cantoDaMarca).')
