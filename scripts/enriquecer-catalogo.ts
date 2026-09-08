@@ -131,11 +131,29 @@ function getDrive() {
   return google.drive({ version: 'v3', auth: c })
 }
 
+/**
+ * 🔴 Sem timeout, um socket parado prende o worker PARA SEMPRE (08/09/2026):
+ * a rodada do Wine Vix levou 7 horas para 1.019 fotos e a do Empório ficou
+ * em zero por 20 minutos com 0% de CPU e nenhuma conexão aberta. O `get` do
+ * Node não tem teto por padrão; aqui cada download tem 30 s e cada foto tem
+ * um teto total em `comTeto`.
+ */
+const TIMEOUT_DOWNLOAD_MS = 30_000
+const TIMEOUT_POR_FOTO_MS = 120_000
+
+function comTeto<T>(promessa: Promise<T>, ms: number, rotulo: string): Promise<T> {
+  let timer: NodeJS.Timeout
+  const estouro = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${rotulo}: passou de ${ms / 1000}s`)), ms)
+  })
+  return Promise.race([promessa, estouro]).finally(() => clearTimeout(timer)) as Promise<T>
+}
+
 function fetchBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http
-    client
-      .get(url, (res) => {
+    const req = client
+      .get(url, { timeout: TIMEOUT_DOWNLOAD_MS }, (res) => {
         if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
           return fetchBuffer(res.headers.location).then(resolve).catch(reject)
         }
@@ -148,12 +166,13 @@ function fetchBuffer(url: string): Promise<Buffer> {
         res.on('error', reject)
       })
       .on('error', reject)
+    req.on('timeout', () => req.destroy(new Error(`download da miniatura parado por ${TIMEOUT_DOWNLOAD_MS / 1000}s`)))
   })
 }
 
 async function getFileMetaAndThumb(fileId: string) {
   const drive = getDrive()
-  const meta = await drive.files.get({ fileId, fields: 'thumbnailLink, createdTime, parents' })
+  const meta = await drive.files.get({ fileId, fields: 'thumbnailLink, createdTime, parents' }, { timeout: TIMEOUT_DOWNLOAD_MS })
   if (!meta.data.thumbnailLink) throw new Error('sem thumbnail')
   const url = meta.data.thumbnailLink.replace(/=s\d+/, '=s512')
   const buf = await fetchBuffer(url)
@@ -514,8 +533,8 @@ async function main() {
       if (idx >= todo.length) return
       const img = todo[idx]
       try {
-        const { buffer, createdTime, folderId } = await getFileMetaAndThumb(img.driveFileId)
-        const r = await analyze(buffer, img.folder, menu, contexto, vocab, project.name)
+        const { buffer, createdTime, folderId } = await comTeto(getFileMetaAndThumb(img.driveFileId), TIMEOUT_DOWNLOAD_MS * 2, 'miniatura')
+        const r = await comTeto(analyze(buffer, img.folder, menu, contexto, vocab, project.name), TIMEOUT_POR_FOTO_MS, 'análise')
 
         img.createdTime = createdTime
         img.folderId = folderId
