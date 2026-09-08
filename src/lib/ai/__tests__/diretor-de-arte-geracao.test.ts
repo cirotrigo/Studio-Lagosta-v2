@@ -89,7 +89,7 @@ describe('o system prompt do diretor da geração', () => {
   it('não prescreve halo, véu nem degradê — a leitura é do gpt-image (Ciro, 08/09/2026)', () => {
     const corpo = SYSTEM_GERACAO.toLowerCase()
     // As palavras só aparecem para dizer que NÃO se prescrevem.
-    const frases = corpo.split(/[.\n]/).filter((f) => /halo|v[ée]u|degrad|gradiente/.test(f))
+    const frases = corpo.split(/[.\n]/).filter((f) => /\bhalo\b|\bv[ée]u\b|degrad|gradiente/.test(f))
     expect(frases.length).toBeGreaterThan(0)
     for (const f of frases) expect(f).toMatch(/não prescreva|saíram|não prescreve|resolve a leitura/)
   })
@@ -141,6 +141,9 @@ describe('as travas mecânicas do briefing', () => {
       .replace('SUBTÍTULO\n', 'TEXTO 2 (SERVIÇO)\n"Seg a Sáb - 16h às 19h" na sans-serif, sob a manchete.\n\nSUBTÍTULO\n')
       .replace('"Seg a Sáb - 16h às 19h" isolado entre 90% e 94% da altura, na sans-serif oficial, com um filete dourado de cada lado.', 'O serviço já está agrupado sob o bloco principal no topo; não repetir aqui.')
     expect(servicoSemRodape(pendurado, copyVix)).toEqual(['Seg a Sáb - 16h às 19h'])
+    // Mencionar o horário na FOTO DE FUNDO ou na HIERARQUIA não é pendurar: aceita.
+    const mencionado = briefingBom.replace('o bloco principal vai ali.', 'o bloco principal vai ali; o rodapé fica para "Seg a Sáb - 16h às 19h".')
+    expect(servicoSemRodape(mencionado, copyVix)).toEqual([])
     // Citado no rodapé E no bloco principal: também recusa.
     const duplo = briefingBom.replace('SUBTÍTULO\n', 'TEXTO 2 (SERVIÇO)\n"Seg a Sáb - 16h às 19h" sob a manchete.\n\nSUBTÍTULO\n')
     expect(servicoSemRodape(duplo, copyVix)).toEqual(['Seg a Sáb - 16h às 19h'])
@@ -182,6 +185,12 @@ describe('o contexto que o diretor recebe', () => {
     )
     expect(ctx).toContain('LEITURA MEDIDA DA FOTO')
     expect(ctx).toContain('assunto: picanha')
+  })
+  it('aponta os blocos de serviço ao diretor, classificados pelo sistema', () => {
+    const ctx = montarContextoDaGeracao(args())
+    expect(ctx).toMatch(/"Seg a Sáb - 16h às 19h"\s+← SERVIÇO/)
+    expect(ctx).toMatch(/BLOCOS DE SERVIÇO \(classificados pelo sistema/)
+    expect(ctx).not.toMatch(/"Happy Hour"\s+← SERVIÇO/)
   })
   it('diz que a marca é colada por código quando for', () => {
     expect(montarContextoDaGeracao(args({ logoCompor: true }))).toMatch(/COLADA POR CÓDIGO/)

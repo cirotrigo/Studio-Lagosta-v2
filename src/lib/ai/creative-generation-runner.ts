@@ -40,6 +40,17 @@ import { resumirCatalogoDaFoto, resumirMapaDeCalma } from '@/lib/ai/leitura-da-f
 import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
 import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
 import { lerCatalogoDoProjeto } from '@/lib/creatives/acervo'
+import {
+  TETO_DE_AREA_EDITAVEL,
+  construirMascara,
+  cortarFotoParaOQuadro,
+  diferencaForaDaMascara,
+  casarTomGlobal,
+  fracaoEditavel,
+  restaurarFotoForaDasZonas,
+  zonasEditaveis,
+  type ZonaEditavel,
+} from '@/lib/ai/mascara-da-geracao'
 import { assinaturaTipografica } from '@/lib/ai/assinatura-tipografica'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
@@ -290,6 +301,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   let promptUsado: string | null = null
   /** O que o diretor de arte fez nesta run (F6, 05/09/2026) — vai para o fieldValues. */
   let plannerGeracaoInfo: Record<string, unknown> = {}
+  /** O plano do diretor, guardado para a máscara (as zonas) — fora do bloco que o produz. */
+  let planejadoParaMascara: Awaited<ReturnType<typeof planejarArte>> = null
   /** Registro atômico: qual referência de marca o modelo recebeu de fato. */
   let brandCardOrigem: 'manual-designer' | 'card-gerado' | null = null
 
@@ -754,6 +767,37 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         `[arte-ia.bg] porta ${porta}: ${ordered.length} imagens ao modelo${referenciaSoParaODiretor ? ' (referência só para o diretor)' : ''}`,
       )
     }
+    /**
+     * MÁSCARA (08/09/2026): com porta e foto, a foto vai CORTADA no quadro
+     * final e o gpt-image só pinta dentro das zonas do diretor — ver
+     * `mascara-da-geracao.ts`. A foto cortada substitui o subject nas imagens
+     * (o diretor também a vê assim, e decide as zonas sobre o enquadramento
+     * real). `ARTE_MASCARA=off` desliga.
+     */
+    const [larguraGeracao, alturaGeracao] = args.openaiSize.split('x').map(Number)
+    /**
+     * 🔴 A máscara é OPT-IN (`ARTE_MASCARA=on`) desde a medição de 08/09/2026 em
+     * quatro clientes: ela zera a diferença fora das zonas por construção, mas
+     * o modelo pinta fundo chapado DENTRO da zona (retângulo visível depois
+     * da recomposição: TERO -82 de luz na faixa do título), ignora a zona
+     * (CTA do By Rock apagado) e perde o enquadramento que ele mesmo faria
+     * (o By Rock de 24/08 reenquadrou o bolo e ficou melhor). O padrão é SEM
+     * máscara + `casarTomGlobal` depois da geração — ver abaixo.
+     */
+    const usarMascara =
+      !!porta && !!refFoto && process.env.ARTE_MASCARA === 'on' && Number.isFinite(larguraGeracao) && Number.isFinite(alturaGeracao)
+    let fotoCortada: Buffer | null = null
+    if (usarMascara && refFoto) {
+      try {
+        fotoCortada = await cortarFotoParaOQuadro(refFoto.buffer, larguraGeracao, alturaGeracao)
+        const i = ordered.indexOf(refFoto)
+        if (i >= 0) ordered[i] = { ...refFoto, buffer: fotoCortada, mimeType: 'image/png' }
+        console.log(`[arte-ia.bg] máscara: foto cortada em ${larguraGeracao}x${alturaGeracao}`)
+      } catch (error) {
+        fotoCortada = null
+        console.warn('[arte-ia.bg] máscara: não cortou a foto — segue sem máscara:', error)
+      }
+    }
     const downloadMs = Date.now() - startedAt
     console.log(
       `[arte-ia.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | refs: ${ordered
@@ -882,7 +926,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           leituraDaFoto,
           catalogoDaFoto,
           textosDaReferencia: modeloLido?.textos ?? null,
+          mascara: !!fotoCortada,
         })
+        planejadoParaMascara = planejado
         plannerGeracaoInfo = {
           ...(porta ? { porta } : {}),
           ...(referenciaSoParaODiretor ? { referenciaSoParaODiretor: true } : {}),
@@ -890,6 +936,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           planejadorMs: Date.now() - t0,
           ...(planejado ? { planejadorTentativas: planejado.tentativas } : {}),
           ...(planejado?.leitura ? { leitura: planejado.leitura } : {}),
+          ...(planejado?.diagnostico ? { diagnostico: planejado.diagnostico } : {}),
         }
         if (planejado) {
           console.log(
@@ -1005,6 +1052,32 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // Com o planejador, o prompt já descreve cada imagem pelo índice — o
     // preâmbulo por papel seria a mesma informação duas vezes, em inglês
     // longo. Nos outros caminhos ele continua sendo o contrato das referências.
+    // ── A máscara, a partir das zonas do diretor ──────────────────────────
+    let mascara: RawEditImage | undefined
+    let zonasDaMascara: ZonaEditavel[] = []
+    if (fotoCortada && planejadoParaMascara?.zonas && planejadoParaMascara.zonas.length > 0) {
+      const cantoDaLogoDesenhada =
+        !logoParaCompor && logoMode === 'modelo'
+          ? (cantoEscolhidoPeloDiretor(planejadoParaMascara.cantoDaMarca) ?? cantoParaCompor ?? LOGO_CORNER)
+          : null
+      zonasDaMascara = zonasEditaveis(planejadoParaMascara.zonas, { cantoDaLogo: cantoDaLogoDesenhada })
+      const fracao = fracaoEditavel(zonasDaMascara)
+      if (zonasDaMascara.length > 0 && fracao <= TETO_DE_AREA_EDITAVEL) {
+        try {
+          const png = await construirMascara(zonasDaMascara, larguraGeracao, alturaGeracao)
+          mascara = { buffer: png, mimeType: 'image/png', name: 'mask.png' }
+          body = `${body}\n\nMÁSCARA: a fotografia já está no enquadramento final. Só a área editável (as zonas de texto e o canto da marca) pode ser pintada; tudo fora dela sai exatamente como está na Imagem 1.`
+          console.log(`[arte-ia.bg] máscara: ${zonasDaMascara.length} zona(s), ${Math.round(fracao * 100)}% do quadro editável`)
+        } catch (error) {
+          console.warn('[arte-ia.bg] máscara: não construiu — segue sem:', error)
+        }
+      } else {
+        console.warn(`[arte-ia.bg] máscara: ${zonasDaMascara.length} zona(s) cobrindo ${Math.round(fracao * 100)}% do quadro — acima do teto, segue sem máscara`)
+        zonasDaMascara = []
+      }
+    } else if (fotoCortada) {
+      console.warn('[arte-ia.bg] máscara: o diretor não declarou zonas — segue sem máscara')
+    }
     const usouPlanejador = plannerGeracaoInfo.planejador !== undefined && plannerGeracaoInfo.planejador !== 'fallback'
     // As duas portas também descrevem as imagens pelo índice, no próprio prompt.
     const prompt = usouPlanejador || porta ? body : preamble ? `${preamble}\n\n${body}` : body
@@ -1041,9 +1114,59 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
 
       const genStartedAt = Date.now()
-      const candidate = await generateOnce(args, ordered, prompt, Math.max(30_000, remainingMs))
+      let candidate = await generateOnce(args, ordered, prompt, Math.max(30_000, remainingMs), mascara)
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
+      if (mascara && fotoCortada) {
+        // A prova mecânica da máscara: fora das zonas a foto tem de sair igual.
+        // Ela NÃO sai (a máscara da API é orientação) — por isso a foto é
+        // restaurada por código: tom casado + recomposição fora das zonas.
+        const dif = await diferencaForaDaMascara(fotoCortada, candidate, zonasDaMascara).catch(() => null)
+        let restaurada: { lutAplicado: boolean; difDepois: number | null } | null = null
+        if (process.env.ARTE_MASCARA_RESTAURAR !== 'off') {
+          try {
+            const r = await restaurarFotoForaDasZonas(fotoCortada, candidate, zonasDaMascara)
+            const difDepois = await diferencaForaDaMascara(fotoCortada, r.buffer, zonasDaMascara).catch(() => null)
+            candidate = r.buffer
+            restaurada = { lutAplicado: r.lutAplicado, difDepois: difDepois ? Number(difDepois.mediaFora.toFixed(2)) : null }
+            if (r.pixelsMantidosForaDaZona > 0) console.log(`[arte-ia.bg] máscara: ${r.pixelsMantidosForaDaZona} px de letra/ornamento mantidos fora da zona (transbordo)`)
+          } catch (error) {
+            console.warn('[arte-ia.bg] máscara: restauração da foto falhou — segue com a peça do modelo:', error)
+          }
+        }
+        plannerGeracaoInfo = {
+          ...plannerGeracaoInfo,
+          mascara: {
+            zonas: zonasDaMascara,
+            fracaoEditavel: Number(fracaoEditavel(zonasDaMascara).toFixed(3)),
+            ...(dif ? { difForaDaMascara: Number(dif.mediaFora.toFixed(2)), difDentroDaMascara: Number(dif.mediaDentro.toFixed(2)) } : {}),
+            ...(restaurada ? { restaurada: true, lutAplicado: restaurada.lutAplicado, difForaDepois: restaurada.difDepois } : {}),
+          },
+        }
+        if (dif) {
+          console.log(
+            `[arte-ia.bg] máscara: diferença média fora ${dif.mediaFora.toFixed(1)} · dentro ${dif.mediaDentro.toFixed(1)} (0-255)` +
+              (restaurada ? ` → restaurada (LUT ${restaurada.lutAplicado ? 'sim' : 'não'}), fora depois ${restaurada.difDepois ?? '?'}` : ''),
+          )
+        }
+      } else if (args.track === 'arte' && refFoto && process.env.ARTE_TOM_CASADO !== 'off') {
+        /**
+         * TOM CASADO (08/09/2026): o `images.edit` escurece a foto inteira
+         * (-20% a -40% de luz média em 3 de 3 medições) e nenhum prompt segura.
+         * Sem máscara o modelo enquadra a foto como quer, então não há pixel
+         * a devolver — mas o HISTOGRAMA da peça é levado ao da foto por um LUT
+         * por canal. Medido offline nas peças da Wine Vix e da Real: L* volta
+         * ao da foto (44,5 → 26,4 → 44,5), sem retângulo e sem emenda; o texto
+         * claro só clareia um pouco. `ARTE_TOM_CASADO=off` desliga.
+         */
+        try {
+          candidate = await casarTomGlobal(refFoto.buffer, candidate)
+          plannerGeracaoInfo = { ...plannerGeracaoInfo, tomCasado: true }
+          console.log('[arte-ia.bg] tom da peça casado com a foto original (LUT global)')
+        } catch (error) {
+          console.warn('[arte-ia.bg] tom casado falhou — segue com a peça do modelo:', error)
+        }
+      }
 
       // ── QA 1: proporção. Roda ANTES da visão porque é local, instantâneo e
       // pega o defeito mais caro. O `resize(fit: 'cover')` da finalização
@@ -1614,6 +1737,7 @@ async function generateOnce(
   ordered: LoadedRef[],
   prompt: string,
   timeoutMs: number,
+  mask?: RawEditImage,
 ): Promise<Buffer> {
   if (args.track === 'arte') {
     const images: RawEditImage[] = ordered.map((r, i) => ({
@@ -1626,6 +1750,7 @@ async function generateOnce(
       prompt,
       size: args.openaiSize,
       timeoutMs,
+      mask,
       // O serviço sempre define; o fallback usa a MESMA regra para chamador
       // que monte os args por fora (script, teste).
       quality:

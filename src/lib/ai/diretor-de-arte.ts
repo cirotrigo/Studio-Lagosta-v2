@@ -343,6 +343,12 @@ export interface PlanejarArteArgs {
   /** A entrada da foto no catálogo do acervo (`resumirCatalogoDaFoto`). */
   catalogoDaFoto?: string | null
   /**
+   * A foto JÁ vai cortada no enquadramento final e o gpt-image só pode pintar
+   * dentro das ZONAS que o diretor declarar (máscara). Muda o que ele escreve
+   * sobre enquadramento e exige o campo `zonas`.
+   */
+  mascara?: boolean
+  /**
    * As palavras escritas na referência escolhida à mão (`GuiaLido.textos`).
    * INSUMO DA TRAVA, nunca do prompt: se alguma reaparecer no prompt do
    * diretor sem estar na copy, o prompt é recusado.
@@ -415,7 +421,7 @@ BLOCO PRINCIPAL: onde o conjunto fica (faixa em % da altura, ex.: "entre 15% e 3
 
 ÁREA LIVRE: a faixa da altura que fica só com a fotografia, e o que ela valoriza (as pessoas, o prato, a mesa).
 
-RODAPÉ — só quando a copy tem SERVIÇO (dia, horário, endereço, telefone): esses blocos ficam SÓ AQUI, isolados na parte inferior (no story entre ~88% e ~94% da altura, respeitando a margem de segurança), miúdos e legíveis, na fonte de apoio, com o acabamento que a marca usa (filete, ícone de relógio/pin do manual). Cada bloco de serviço é citado entre aspas DENTRO desta seção e NÃO aparece como item do bloco principal — nem quando o bloco principal fica embaixo. É a regra da casa e não se negocia: o briefing que pendurar o serviço na manchete é recusado.
+RODAPÉ — só quando a copy tem SERVIÇO (dia, horário, endereço, telefone; o contexto diz QUAIS blocos são serviço — não decida você): esses blocos ficam SÓ AQUI, isolados na parte inferior (no story entre ~86% e ~94% da altura, respeitando a margem de segurança), na fonte de apoio, em corpo LEGÍVEL NO CELULAR: menor que o apoio da manchete, mas nunca abaixo de ~2,8% da altura da peça por linha — e diga também a PROPORÇÃO, que o designer entende melhor que pixel: "a linha do horário tem cerca de metade da altura de uma linha da manchete"; "miúdo" sai ilegível, e pedir 50 px rendeu 30 (medido em 08/09/2026). Com o acabamento que a marca usa (filete, ícone de relógio/pin do manual). Cada bloco de serviço é citado entre aspas DENTRO desta seção e NÃO aparece como item do bloco principal — nem quando o bloco principal fica embaixo. É a regra da casa e não se negocia: o briefing que pendurar o serviço na manchete é recusado.
 
 HIERARQUIA VISUAL: a ordem de leitura, numerada — manchete, apoio, fotografia, serviço, marca como assinatura (ou a ordem que ESTA peça pede).
 
@@ -443,9 +449,13 @@ O PEDIDO de quem está na tela é a autoridade: onde ele mandar (destacar palavr
 
 AJUSTE NA FOTO autorizado, quando houver: entra na seção FOTO DE FUNDO como "a ÚNICA alteração permitida na fotografia é: …; fora isso, nada muda".
 
+ZONAS (campo zonas): para CADA seção de bloco do briefing (bloco principal, rodapé, e qualquer outro bloco de texto), a caixa onde ele pousa, em frações de 0 a 1 da largura (x0, x1) e da altura (y0, y1), coerente com os percentuais que você escreveu. Seja generoso: a caixa tem de caber o texto na fonte e no tamanho que você pediu, com respiro. Quando a peça for gerada COM MÁSCARA, o designer só pode pintar DENTRO dessas caixas — fora delas a fotografia sai pixel por pixel; caixa curta demais vira texto apertado ou cortado.
+
 ONDE A MARCA POUSA (campo cantoDaMarca): você viu a foto e decidiu onde o texto vai. Escolha o canto mais calmo, DIAGONALMENTE oposto ao grosso do texto e fora do alcance do assunto — sem encostar. Em story o superior-esquerdo é PROIBIDO — o Instagram desenha o avatar e o nome do perfil ali (briefing com a marca nesse canto é recusado). Se a referência põe a marca num canto que NESTA foto cai sobre o assunto, escolha o melhor canto desta foto. Se a marca for colada por código, o canto que você escolher é o que o sistema vai reservar.
 
-Responda em JSON com: leitura (1-2 frases em português: o que você viu na foto, onde pousou o texto e por quê), prompt (o briefing em português, na estrutura acima) e cantoDaMarca.`
+ANTES de escrever o briefing, responda o DIAGNÓSTICO (campo diagnostico): o que fica intacto, qual é o principal risco visual desta foto com esta copy, e a hierarquia de leitura que você quer. É o que um diretor decide antes de briefar — e é o que evita começar pela decoração.
+
+Responda em JSON com: diagnostico, leitura (1-2 frases em português: o que você viu na foto, onde pousou o texto e por quê), prompt (o briefing em português, na estrutura acima), zonas e cantoDaMarca.`
 
 const saidaGeracaoSchema = z.object({
   leitura: z
@@ -459,6 +469,32 @@ const saidaGeracaoSchema = z.object({
     .describe(
       'O canto onde a logomarca deve pousar NESTA foto: o mais calmo, diagonalmente oposto ao grosso do texto e fora do alcance do assunto. Em story, evite o superior-esquerdo. Omita se nenhum canto servir.',
     ),
+  /**
+   * DIAGNÓSTICO antes do briefing (lição da conversa do Ciro com o ChatGPT,
+   * 08/09/2026): "identifique o que fica intacto, o que pode mudar, o
+   * principal problema e a hierarquia ideal antes de propor". Campos
+   * opcionais — não derrubam a resposta — gravados no fieldValues para
+   * auditoria por peça.
+   */
+  diagnostico: z
+    .object({
+      intacto: z.string().optional().describe('O que fica absolutamente intacto nesta peça (foto, rostos, assunto…).'),
+      problemaPrincipal: z.string().optional().describe('O principal risco visual desta foto + copy (ex.: rosto no terço superior; foto clara sem área calma).'),
+      hierarquia: z.string().optional().describe('A ordem de leitura que você quer, em uma linha.'),
+    })
+    .optional(),
+  zonas: z
+    .array(
+      z.object({
+        nome: z.string().describe('bloco principal | rodapé | (outro bloco)'),
+        x0: z.number().min(0).max(1),
+        x1: z.number().min(0).max(1),
+        y0: z.number().min(0).max(1),
+        y1: z.number().min(0).max(1),
+      }),
+    )
+    .optional()
+    .describe('Uma caixa por seção de bloco do briefing, em frações 0..1 da largura e da altura, coerente com os percentuais escritos e com folga.'),
 })
 
 function contextoDaGeracao(args: PlanejarArteArgs): string {
@@ -490,9 +526,17 @@ function contextoDaGeracao(args: PlanejarArteArgs): string {
         .join('\n')}`,
     )
   }
+  const servico = blocosDeServico(args.copy)
+  const ehServico = (i: number) => servico.some((s) => s.indice === i)
   linhas.push(
     args.copy.length > 0
-      ? `COPY (${args.copy.length} bloco${args.copy.length === 1 ? '' : 's'}, verbatim, na ordem de leitura; a caixa JÁ é a da marca — copie letra por letra):\n${args.copy.map((b) => `"${b}"`).join('\n')}`
+      ? `COPY (${args.copy.length} bloco${args.copy.length === 1 ? '' : 's'}, verbatim, na ordem de leitura; a caixa JÁ é a da marca — copie letra por letra):\n${args.copy
+          .map((b, i) => `"${b}"${ehServico(i) ? '   ← SERVIÇO: vai SÓ na seção RODAPÉ, nunca como bloco de apoio' : ''}`)
+          .join('\n')}${
+          servico.length > 0
+            ? `\nBLOCOS DE SERVIÇO (classificados pelo sistema, não é opinião): ${servico.map((s) => `"${s.texto}"`).join(', ')}. Os demais blocos são o bloco principal (manchete e apoio).`
+            : ''
+        }`
       : 'COPY: esta peça NÃO leva texto (capa/foto pura). Nenhuma letra na peça.',
   )
   linhas.push(
@@ -502,6 +546,11 @@ function contextoDaGeracao(args: PlanejarArteArgs): string {
         ? 'LOGOMARCA: desenhada pelo designer a partir do painel de logos do manual (Imagem 2), uma vez — escolha a versão e o lugar.'
         : 'LOGOMARCA: esta peça não leva logo.',
   )
+  if (args.mascara) {
+    linhas.push(
+      'MÁSCARA: a Imagem 1 JÁ está cortada no enquadramento final da peça — não peça enquadramento nem corte. O designer só poderá pintar dentro das ZONAS que você declarar no campo zonas; fora delas a fotografia sai pixel por pixel. Declare uma zona por bloco de texto, com folga.',
+    )
+  }
   if (args.leituraDaFoto?.trim()) linhas.push(args.leituraDaFoto.trim())
   if (args.catalogoDaFoto?.trim()) linhas.push(args.catalogoDaFoto.trim())
   linhas.push(args.pedido.trim() ? `PEDIDO / DIREÇÃO DE ARTE DE QUEM ESTÁ NA TELA: ${args.pedido.trim()}` : 'PEDIDO: (vazio — vale o padrão da marca)')
@@ -521,6 +570,11 @@ export interface PromptDeGeracaoPlanejado {
   ms: number
   leitura?: string
   tentativas: number
+  /** O diagnóstico que o diretor fez antes do briefing — auditoria por peça. */
+  diagnostico?: { intacto?: string; problemaPrincipal?: string; hierarquia?: string }
+  /** As zonas de texto declaradas pelo diretor (frações 0..1) — de onde sai a máscara. */
+  /** Com `strict: false` o `z.infer` deixa toda chave opcional (lei da casa): quem consome valida cada número. */
+  zonas?: Array<{ nome?: string; x0?: number; x1?: number; y0?: number; y1?: number }>
   /** O canto que o planejador escolheu para a marca NESTA foto. Ver o schema. */
   cantoDaMarca?: 'superior-esquerdo' | 'superior-direito' | 'inferior-esquerdo' | 'inferior-direito'
 }
@@ -597,16 +651,41 @@ export function servicoSemRodape(prompt: string, copy: string[]): string[] {
   // e escreveu "RODAPÉ: já estarão agrupadas sob o bloco principal no topo".
   // Agora cada bloco de serviço tem de estar citado DENTRO da seção — e em
   // nenhuma seção de bloco antes dela.
-  const m = prompt.match(/(^|\n)RODAP[ÉE][^\n]*\n([\s\S]*?)(?=\n[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 ()/—–-]{4,}\n|$)/)
-  if (!m || m.index === undefined) return servico.map((b) => b.texto)
-  const secao = normalizeForComparison(m[2])
-  const antes = normalizeForComparison(prompt.slice(0, m.index))
+  const secoes = secoesDoBriefing(prompt)
+  const rodape = secoes.filter((s) => /^RODAP[ÉE]/i.test(s.titulo)).map((s) => normalizeForComparison(s.corpo)).join('\n')
+  // Só as seções de BLOCO contam como "pendurado": citar o horário na leitura
+  // da foto ou na hierarquia não é pôr o texto lá. Medido em 08/09/2026: com
+  // "em nenhum lugar antes do RODAPÉ" o diretor foi recusado três vezes
+  // seguidas por mencionar o serviço na FOTO DE FUNDO, e a peça caiu no molde.
+  const blocosAntes = secoes
+    .filter((s) => !/^TEXTOS FINAIS/i.test(s.titulo) && /^(BLOCO|TEXTO|T[ÍI]TULO|SUBT[ÍI]TULO|MANCHETE|APOIO|CTA|SEPARADOR)/i.test(s.titulo))
+    .map((s) => normalizeForComparison(s.corpo))
+    .join('\n')
   return servico
     .filter((b) => {
       const n = normalizeForComparison(b.texto)
-      return n.length > 0 && (!secao.includes(n) || antes.includes(n))
+      return n.length > 0 && (!rodape.includes(n) || blocosAntes.includes(n))
     })
     .map((b) => b.texto)
+}
+
+/** O briefing por seções: título em CAIXA ALTA numa linha própria, corpo até o próximo título. */
+export function secoesDoBriefing(prompt: string): Array<{ titulo: string; corpo: string }> {
+  const linhas = prompt.split('\n')
+  const secoes: Array<{ titulo: string; corpo: string }> = []
+  let atual: { titulo: string; corpo: string } = { titulo: 'ABERTURA', corpo: '' }
+  for (const linha of linhas) {
+    const l = linha.trim()
+    const ehTitulo = l.length >= 4 && l.length <= 60 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 ()/—–-]+$/.test(l) && /[A-ZÁÉÍÓÚÂÊÔÃÕÇ]{3}/.test(l)
+    if (ehTitulo) {
+      secoes.push(atual)
+      atual = { titulo: l, corpo: '' }
+    } else {
+      atual.corpo += `${linha}\n`
+    }
+  }
+  secoes.push(atual)
+  return secoes
 }
 
 /**
@@ -669,7 +748,7 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
         ],
       })
       const prompt = object.prompt.trim()
-      const problemas = problemasDoBriefing(prompt, args, object.cantoDaMarca)
+      const problemas = problemasDoBriefing(prompt, args, object.cantoDaMarca, object.zonas)
       if (problemas.length === 0) {
         return {
           prompt,
@@ -677,11 +756,22 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
           ms: Date.now() - inicio,
           leitura: object.leitura?.trim() || undefined,
           cantoDaMarca: object.cantoDaMarca,
+          zonas: object.zonas,
+          diagnostico: object.diagnostico,
           tentativas: rodada,
         }
       }
       feedback = problemas.join('\n')
       console.warn(`[diretor-de-arte/geração] rodada ${rodada} recusada: ${feedback}`)
+      if (process.env.DIRETOR_DEBUG) {
+        const secoes = secoesDoBriefing(prompt)
+        console.warn(`[diretor-de-arte/geração] seções: ${secoes.map((s) => s.titulo).join(' | ')}`)
+        for (const b of blocosDeServico(args.copy)) {
+          const n = normalizeForComparison(b.texto)
+          const onde = secoes.filter((s) => normalizeForComparison(s.corpo).includes(n)).map((s) => s.titulo)
+          console.warn(`[diretor-de-arte/geração] "${b.texto}" aparece em: ${onde.join(' | ') || '(nenhuma seção)'}`)
+        }
+      }
     } catch (erro) {
       console.warn(`[diretor-de-arte/geração] rodada ${rodada} falhou:`, erro instanceof Error ? erro.message : erro)
       feedback = null
@@ -700,6 +790,7 @@ export function problemasDoBriefing(
   prompt: string,
   args: PlanejarArteArgs,
   cantoDaMarca?: PromptDeGeracaoPlanejado['cantoDaMarca'],
+  zonas?: PromptDeGeracaoPlanejado['zonas'],
 ): string[] {
   const problemas: string[] = []
   if (prompt.length > TETO_DO_PROMPT_PLANEJADO_GERACAO) {
@@ -732,6 +823,9 @@ export function problemasDoBriefing(
     problemas.push(
       `a caixa das letras foi alterada em ${caixa.map((t) => `"${t}"`).join(', ')} — a caixa é decisão da casa, já tomada na copy. Repita cada trecho EXATAMENTE como recebido, inclusive na quebra sugerida.`,
     )
+  }
+  if (args.mascara && (!zonas || zonas.length === 0)) {
+    problemas.push('a peça será gerada com MÁSCARA e você não declarou o campo zonas: uma caixa (x0, x1, y0, y1 em frações 0..1) por seção de bloco do briefing, com folga.')
   }
   if (logoNoCantoDoAvatar(prompt, args.formato, cantoDaMarca)) {
     problemas.push('em story a marca NUNCA fica no canto superior-esquerdo: o Instagram desenha o avatar e o nome do perfil ali. Escolha outro canto (e diga o mesmo em cantoDaMarca).')

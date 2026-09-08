@@ -4990,3 +4990,64 @@ medido.
   bloco em vez de rodapé separado — aceito, é a mesma zona.
 - ⚠️ O prompt do manual e o da referência (moldes) continuam no código como
   fallback e cobertos por teste; não os apague.
+
+### 🔴 A foto intocada: máscara medida e recusada, tom casado por código adotado (08/09/2026)
+
+Quatro clientes, doze gerações reais no dia (~US$ 0,10 e 25 créditos cada),
+todas medidas em CIELAB contra a foto original cortada. O que se sabe:
+
+- **Nenhum prompt segura a foto.** Sem tratamento nenhum, o `images.edit`
+  escurece o quadro INTEIRO: L* -26% (porta antiga), -33% e -41% (diretor
+  novo, com "sem alterar luz, cor, contraste" escrito), -20% (Real, molde). O
+  croma real até CAI; o que lê como "saturada" é a foto escura com sombras
+  fechadas. O ChatGPT, na mesma tarefa, admitiu ter recriado ponte e skyline.
+- 🔴 **A máscara do gpt-image-2 é ORIENTAÇÃO, não garantia.** Controle (foto
+  reencodada) = 0,6 de diferença fora das zonas; peça gerada COM máscara =
+  29,8, sinal negativo nas nove regiões. Reduz o estrago pela metade (63 →
+  30) e não zera. O humanizar de 07/09 já tinha visto ("objeto protegido
+  movido").
+- **O que zera é código** (`mascara-da-geracao.ts`, `restaurarFotoForaDasZonas`):
+  LUT por canal calculado nos pixels fora das zonas + recomposição da foto
+  original fora delas, com feather DENTRO da zona. Diferença fora: 0,0.
+  🔴 O sharp devolve o raw borrado em 3 canais mesmo para entrada de 1 — ler
+  com o stride errado espalhava alpha por onde não havia zona (8,8 de
+  resíduo que parecia feather). 🔴 O texto TRANSBORDA a zona ("sabore" com o
+  "s" cortado): o que o modelo pintou numa faixa em volta da zona
+  (diferença > 60 depois do LUT) é mantido.
+- 🔴 **E mesmo assim a máscara PERDEU em 2 de 4 clientes**, por três defeitos
+  que a recomposição não conserta: o modelo pinta fundo CHAPADO dentro da
+  zona (TERO: -82 de luz na faixa do título; By Rock: retângulo preto atrás
+  da manchete — o véu de volta, com borda); ignora a zona (CTA do By Rock
+  caiu fora e foi apagado; a faixa de transbordo manteve um pedaço do bolo
+  REDESENHADO, com emenda); e perde o ENQUADRAMENTO que o modelo faria
+  sozinho — o By Rock de 24/08, com o modelo reenquadrando o bolo para baixo,
+  é a melhor peça do conjunto. Corte nosso no centro = assunto no meio =
+  texto colidindo. Wine Vix e TERO saíram bem; By Rock, mal.
+- **Adotado: SEM máscara + `casarTomGlobal`** (LUT por canal levando o
+  histograma da peça inteira ao da foto, depois da geração, antes do QA e da
+  logo). Offline nas peças existentes: L* 26,4 → 44,5 (Vix), 46,0 → 57,7
+  (Real), igual à foto; enquadramento do modelo preservado; sem retângulo,
+  sem emenda. O texto claro só clareia um pouco. Não corrige mudança LOCAL
+  (fundo chapado, objeto movido) — para isso só a máscara, com os defeitos
+  dela. `ARTE_TOM_CASADO=off` desliga; `ARTE_MASCARA=on` liga a máscara
+  (opt-in, para experimento). Telemetria: `fieldValues.tomCasado`,
+  `fieldValues.mascara.{zonas, difForaDaMascara, difForaDepois}`.
+- **O diretor declara `zonas`** (frações 0..1 por bloco) e um `diagnostico`
+  (intacto, problema principal, hierarquia — a lição estruturada da conversa
+  do ChatGPT), os dois gravados no `fieldValues`. As zonas só viram máscara
+  com a flag; o diagnóstico é auditoria.
+- 🔴 **Serviço: o diretor insistia em tratar "Funcionamento - 10h às 22h" como
+  APOIO da manchete** (2-3 recusas seguidas, ~1 min cada, e na terceira caía
+  no molde). A trava por posição de seção não bastava; o que resolveu foi o
+  CONTEXTO apontar os blocos de serviço, classificados por `blocosDeServico`
+  ("← SERVIÇO: vai SÓ na seção RODAPÉ"). Depois disso, 1ª tentativa. A trava
+  `servicoSemRodape` olha SEÇÕES (BLOCO/TEXTO/TÍTULO…), não "qualquer lugar
+  antes": citar o horário na FOTO DE FUNDO não é pendurar.
+- **Rodapé miúdo** (Ciro, 08/09): pedir "50 px" rendeu ~30. O diretor agora
+  pede proporção ("metade da altura de uma linha da manchete") além de ~2,8%
+  da altura. Não medido ainda.
+- ⚠️ **Real Gelateria: o diretor foi recusado 3× por escrever "gradiente"** —
+  o DNA dela descreve "gradiente de leitura" e ele ecoa. A trava
+  `tratamentoDeFotoNoPrompt` está certa; o que falta é o DNA parar de
+  descrever véu (decisão do Ciro, como no Quintal em 05/09). Caiu no molde,
+  sem máscara e sem tom casado naquela rodada (o tom casado entrou depois).
