@@ -39,6 +39,22 @@ export const VERSAO_DO_EMBEDDING = `${MODELO_DE_EMBEDDING}/${DIMENSOES}/v1`
 /** A API aceita até 6 imagens por chamada. */
 const IMAGENS_POR_CHAMADA = 6
 const TEXTOS_POR_CHAMADA = 20
+/**
+ * 🔴 Sem timeout, uma chamada parada prende a fila PARA SEMPRE — e a fila
+ * é sequencial (08/09/2026: o reembed da Real parou em 2.765 de 3.054 e
+ * ficou 50 minutos a 0% de CPU, sem conexão aberta). O SDK aceita
+ * `httpOptions.timeout`; o `comTeto` é o cinto para o caso de o SDK não
+ * honrar.
+ */
+const TIMEOUT_DA_CHAMADA_MS = 60_000
+
+function comTeto<T>(promessa: Promise<T>, ms: number, rotulo: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const estouro = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${rotulo}: passou de ${ms / 1000}s`)), ms)
+  })
+  return Promise.race([promessa, estouro]).finally(() => clearTimeout(timer)) as Promise<T>
+}
 
 export function embeddingsConfigurados(): boolean {
   return !!process.env.GOOGLE_GENERATIVE_AI_API_KEY
@@ -64,15 +80,19 @@ async function embedar(contents: Conteudo[]): Promise<number[][]> {
   let resposta: Awaited<ReturnType<typeof ai.models.embedContent>> | undefined
   for (let tentativa = 0; ; tentativa++) {
     try {
-      resposta = await ai.models.embedContent({
-        model: MODELO_DE_EMBEDDING,
-        contents,
-        config: { outputDimensionality: DIMENSOES },
-      })
+      resposta = await comTeto(
+        ai.models.embedContent({
+          model: MODELO_DE_EMBEDDING,
+          contents,
+          config: { outputDimensionality: DIMENSOES, httpOptions: { timeout: TIMEOUT_DA_CHAMADA_MS } },
+        }),
+        TIMEOUT_DA_CHAMADA_MS + 5_000,
+        'embedContent',
+      )
       break
     } catch (erro) {
       const msg = String((erro as Error)?.message ?? erro)
-      const limitado = /\b(429|503)\b|rate limit|quota|overloaded|unavailable|RESOURCE_EXHAUSTED/i.test(msg)
+      const limitado = /\b(429|503)\b|rate limit|quota|overloaded|unavailable|RESOURCE_EXHAUSTED|passou de \d+s|timeout|ETIMEDOUT|ECONNRESET/i.test(msg)
       if (!limitado || tentativa >= 4) throw erro
       await new Promise((r) => setTimeout(r, 1500 * 2 ** tentativa + Math.floor(Math.random() * 500)))
     }
