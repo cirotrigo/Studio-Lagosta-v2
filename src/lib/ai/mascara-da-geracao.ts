@@ -1,29 +1,9 @@
 /**
- * A MÁSCARA da geração — a fotografia intocável POR CONSTRUÇÃO (08/09/2026).
- *
- * Medido três vezes nesta casa (01/09, 04/09, 08/09): "não mexa na foto" não é
- * alcançável por prompt. O `images.edit` regenera o quadro inteiro e a luz
- * média cai de 26% a 40% mesmo com a regra escrita — na peça da Wine Vix de
- * 08/09 o briefing dizia "sem alterar luz, cor, contraste, nitidez" e saiu a
- * mais escura das três. O ChatGPT, na mesma tarefa, admitiu ter recriado a
- * ponte e o skyline com o mesmo tipo de instrução.
- *
- * O mecanismo que segura é a MÁSCARA do `images.edit`: a área TRANSPARENTE é
- * a única que o modelo pode pintar; o resto sai pixel por pixel. Aqui ela é
- * furada nas ZONAS que o diretor de arte decidiu (bloco principal, rodapé) e,
- * quando o modelo desenha a marca, no canto dela. Consequências:
- *
- *  - o ENQUADRAMENTO passa a ser nosso: a foto vai cortada no tamanho final
- *    (cover, centro), porque máscara e imagem têm de coincidir pixel a pixel;
- *  - o texto só pode pousar dentro das zonas — por isso elas ganham FOLGA
- *    (`MARGEM_X`/`MARGEM_Y`), e zona pequena demais vira texto apertado;
- *  - a legibilidade que o modelo resolver (escurecer atrás da letra) fica
- *    contida na zona: é um halo local por construção;
- *  - a prova é mecânica: a diferença de pixels FORA da máscara
- *    (`diferencaForaDaMascara`) tem de ficar perto de zero.
- *
- * A parte PURA (zonas → retângulos) fica separada da parte com sharp para o
- * teste correr sem imagem. `ARTE_MASCARA=off` desliga no runner.
+ * Experimentos legados de máscara e casamento de tom (08/09/2026).
+ * A máscara da API é orientação: NÃO garante preservação de pixels.
+ * A geração normal não usa máscara. `casarTomGlobal` continua no runner.
+ * `restaurarFotoForaDasZonas` recupera transbordo e pode alterar o exterior;
+ * a cirurgia usa agora `recomposicao-estrita.ts`, sem essa recuperação.
  */
 
 import sharp from 'sharp'
