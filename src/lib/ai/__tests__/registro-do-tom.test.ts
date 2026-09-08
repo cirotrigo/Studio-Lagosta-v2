@@ -8,7 +8,7 @@ import { registrarEtapasDoTom } from '../registro-do-tom'
 async function foto(cor: string) {
   return sharp({ create: { width: 3, height: 2, channels: 3, background: cor } }).png().toBuffer()
 }
-beforeEach(() => upload.mockReset().mockImplementation(async (path: string) => ({ url: `https://example.test/${path}` })))
+beforeEach(() => { upload.mockReset().mockImplementation(async (path: string) => ({ url: `https://example.test/${path}` })) })
 describe('registro das etapas do tom', () => {
   it('guarda os bytes exatos das três etapas e identifica a tentativa', async () => {
     const referencia = await foto('red'), antes = await foto('black'), depois = await foto('white')
