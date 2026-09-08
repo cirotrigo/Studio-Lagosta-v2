@@ -136,6 +136,14 @@ describe('as travas mecânicas do briefing', () => {
     const semRodape = briefingBom.replace('RODAPÉ\n', 'HORÁRIO\n')
     expect(servicoSemRodape(semRodape, copyVix)).toEqual(['Seg a Sáb - 16h às 19h'])
     expect(servicoSemRodape('qualquer coisa', ['Happy Hour', 'Brinde com a gente'])).toEqual([])
+    // Wine Vix, 08/09/2026: a seção RODAPÉ existia e dizia "já estarão sob o bloco principal no topo".
+    const pendurado = briefingBom
+      .replace('SUBTÍTULO\n', 'TEXTO 2 (SERVIÇO)\n"Seg a Sáb - 16h às 19h" na sans-serif, sob a manchete.\n\nSUBTÍTULO\n')
+      .replace('"Seg a Sáb - 16h às 19h" isolado entre 90% e 94% da altura, na sans-serif oficial, com um filete dourado de cada lado.', 'O serviço já está agrupado sob o bloco principal no topo; não repetir aqui.')
+    expect(servicoSemRodape(pendurado, copyVix)).toEqual(['Seg a Sáb - 16h às 19h'])
+    // Citado no rodapé E no bloco principal: também recusa.
+    const duplo = briefingBom.replace('SUBTÍTULO\n', 'TEXTO 2 (SERVIÇO)\n"Seg a Sáb - 16h às 19h" sob a manchete.\n\nSUBTÍTULO\n')
+    expect(servicoSemRodape(duplo, copyVix)).toEqual(['Seg a Sáb - 16h às 19h'])
   })
   it('recusa frase da referência que não está na copy', () => {
     const textos = ['Funcionamento - 11h às 00h', 'R. Aleixo Netto, 1158', 'Wine Vix', 'Vinho']

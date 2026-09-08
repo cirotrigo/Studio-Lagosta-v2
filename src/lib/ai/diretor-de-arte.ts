@@ -415,7 +415,7 @@ BLOCO PRINCIPAL: onde o conjunto fica (faixa em % da altura, ex.: "entre 15% e 3
 
 ÁREA LIVRE: a faixa da altura que fica só com a fotografia, e o que ela valoriza (as pessoas, o prato, a mesa).
 
-RODAPÉ — só quando a copy tem SERVIÇO (dia, horário, endereço, telefone): esses blocos ficam isolados na parte inferior, miúdos e legíveis, na fonte de apoio, com o acabamento que a marca usa (filete, ícone de relógio/pin do manual). Diga que saem da sequência de cima: cada bloco aparece UMA vez.
+RODAPÉ — só quando a copy tem SERVIÇO (dia, horário, endereço, telefone): esses blocos ficam SÓ AQUI, isolados na parte inferior (no story entre ~88% e ~94% da altura, respeitando a margem de segurança), miúdos e legíveis, na fonte de apoio, com o acabamento que a marca usa (filete, ícone de relógio/pin do manual). Cada bloco de serviço é citado entre aspas DENTRO desta seção e NÃO aparece como item do bloco principal — nem quando o bloco principal fica embaixo. É a regra da casa e não se negocia: o briefing que pendurar o serviço na manchete é recusado.
 
 HIERARQUIA VISUAL: a ordem de leitura, numerada — manchete, apoio, fotografia, serviço, marca como assinatura (ou a ordem que ESTA peça pede).
 
@@ -430,7 +430,7 @@ REGRAS QUE NÃO SE NEGOCIAM (escreva-as no briefing só onde a peça precisa; as
 - A fotografia é a protagonista: a manchete é o maior elemento gráfico e o conjunto de texto é compacto; hierarquia por peso, cor e posição.
 - UMA marca por peça, uma vez, a versão oficial do manual. Sem selo, ícone ou ornamento que não esteja no manual.
 - Texto e cena de qualquer referência pertencem a um post ANTIGO: nunca copiar, adaptar nem ecoar. O briefing letra EXCLUSIVAMENTE a copy recebida.
-- Serviço (dia, horário, endereço) mora no RODAPÉ, agrupado e isolado — nunca pendurado na manchete.
+- Serviço (dia, horário, endereço) mora SÓ no RODAPÉ, agrupado e isolado — nunca no bloco principal, nunca pendurado na manchete.
 - Quebra de linha sem palavra sozinha (artigo/preposição pousa com a palavra seguinte).
 - Story: o sistema anexa a safe area em pixel; não invente outra. Aqui, diga só "respeitando a margem de segurança do Story".
 - Tipografia SOMENTE a do manual; uma cor de destaque por peça.
@@ -581,7 +581,7 @@ export function logoNoCantoDoAvatar(
 ): boolean {
   if (formato !== 'story') return false
   if (canto === 'superior-esquerdo') return true
-  const secao = prompt.match(/LOGOTIPO[\s\S]*?(?=\n[A-ZÁÉÍÓÚÂÊÔÃÕÇ][A-ZÁÉÍÓÚÂÊÔÃÕÇ /—-]{3,}\n|$)/)?.[0] ?? ''
+  const secao = prompt.match(/LOGOTIPO[\s\S]*?(?=\n[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 ()/—–-]{4,}\n|$)/)?.[0] ?? ''
   return /superior[- ]esquerd|canto (superior|alto) (à|a) esquerda|topo (à|a) esquerda/i.test(secao)
 }
 
@@ -592,8 +592,21 @@ export function logoNoCantoDoAvatar(
 export function servicoSemRodape(prompt: string, copy: string[]): string[] {
   const servico = blocosDeServico(copy)
   if (servico.length === 0) return []
-  if (/rodap[ée]/i.test(prompt)) return []
-  return servico.map((b) => b.texto)
+  // A seção RODAPÉ e o que vem antes dela. Medido em 08/09/2026 (Wine Vix):
+  // com a trava só olhando a PALAVRA, o diretor pôs o serviço sob a manchete
+  // e escreveu "RODAPÉ: já estarão agrupadas sob o bloco principal no topo".
+  // Agora cada bloco de serviço tem de estar citado DENTRO da seção — e em
+  // nenhuma seção de bloco antes dela.
+  const m = prompt.match(/(^|\n)RODAP[ÉE][^\n]*\n([\s\S]*?)(?=\n[A-ZÁÉÍÓÚÂÊÔÃÕÇ0-9 ()/—–-]{4,}\n|$)/)
+  if (!m || m.index === undefined) return servico.map((b) => b.texto)
+  const secao = normalizeForComparison(m[2])
+  const antes = normalizeForComparison(prompt.slice(0, m.index))
+  return servico
+    .filter((b) => {
+      const n = normalizeForComparison(b.texto)
+      return n.length > 0 && (!secao.includes(n) || antes.includes(n))
+    })
+    .map((b) => b.texto)
 }
 
 /**
@@ -710,7 +723,9 @@ export function problemasDoBriefing(
   }
   const servico = servicoSemRodape(prompt, args.copy)
   if (servico.length > 0) {
-    problemas.push(`a copy tem serviço (${servico.map((t) => `"${t}"`).join(', ')}) e o briefing não tem a seção RODAPÉ: horário e endereço moram no rodapé, isolados e agrupados.`)
+    problemas.push(
+      `a copy tem serviço (${servico.map((t) => `"${t}"`).join(', ')}) e ele não está DENTRO da seção RODAPÉ — ou aparece também no bloco principal. Horário e endereço moram SÓ no rodapé, isolados na parte inferior (entre ~88% e ~94% da altura no story), citados entre aspas dentro da seção RODAPÉ e em nenhuma seção de bloco antes dela. Isso vale mesmo quando o bloco principal fica no topo — é a regra da casa.`,
+    )
   }
   const caixa = caixaAlterada(prompt, args.copy)
   if (caixa.length > 0) {
