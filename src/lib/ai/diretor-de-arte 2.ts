@@ -140,30 +140,6 @@ const saidaSchema = z.object({
     .array(z.string())
     .optional()
     .describe('Só no modo refinar: a copy da peça DEPOIS do pedido, bloco a bloco, na ordem de leitura.'),
-  /**
-   * 🔴 QUEM ESCOLHE O CANTO DA MARCA É QUEM VÊ A FOTO.
-   *
-   * Tentei antes achar o bloco de copy por medição de pixels — "claro E
-   * contrastado" — para mandar a marca ao lado oposto. Falha completa em foto
-   * real, medida em 07/09/2026 nas quatro artes desta sessão: os centros de
-   * massa deram x≈0,45–0,67 e y≈0,29–0,39 em TODAS, incluindo a arte cujo
-   * texto está inteiro no terço inferior. Reflexo de taça, louça branca e
-   * garrafa iluminada são claros e contrastados exatamente como letra, e num
-   * bistrô com luz baixa eles dominam. Heurística de pixel não distingue
-   * lettering de brilho.
-   *
-   * O planejador, ao contrário, JÁ olhou a foto e JÁ decidiu onde pôs o texto
-   * — para ele isto é uma pergunta trivial, e não custa chamada nenhuma. O
-   * compositor continua com a palavra final (contraste e calma medidos), mas
-   * parte daqui em vez de partir do canto da arte de referência, que foi
-   * escolhido para OUTRA foto.
-   */
-  cantoDaMarca: z
-    .enum(['superior-esquerdo', 'superior-direito', 'inferior-esquerdo', 'inferior-direito'])
-    .optional()
-    .describe(
-      'O canto onde a logomarca deve pousar NESTA foto: o mais calmo, no lado OPOSTO ao grosso do texto e fora do alcance do assunto (prato, rosto, taça, produto) — não só sem cobri-lo, mas sem encostar. Em story, evite o superior-esquerdo (o Instagram desenha o avatar ali). Omita se nenhum canto servir.',
-    ),
 })
 
 const FORMATO_LEGIVEL: Record<PlanejarMelhoriaArgs['formato'], string> = {
@@ -362,14 +338,13 @@ ESTA TAREFA É GERAÇÃO, NÃO MELHORIA: não existe arte de origem. O teto do p
 - Autonomia de composição — SÓ quando NÃO há modelo em modo estrito: diga ao gerador para ler a foto e pousar o texto onde ela é calma (coluna alta à esquerda, faixa no rodapé, bloco no topo — o que ESTA foto pedir). Você já viu a foto: DIGA onde ela é calma e proponha o lugar, sem coordenadas.
 - 🔴 HAVENDO modelo em modo ESTRITO, a autonomia acima NÃO vale e a seção 2 descreve a posição DO MODELO, nunca uma escolhida por você ao olhar a foto. Diga onde cada bloco está NA REFERÊNCIA (em que terço, alinhado a quê, agrupado com quê) e mande repetir ali. Medido em 07/09/2026 na Wine Vix: com "match its text placement" na linha da referência e, três linhas abaixo, uma decisão de design própria dizendo "place a compact text column in the upper-left", a peça saiu com a manchete no TOPO enquanto o modelo a tem no terço inferior — a instrução mais concreta e mais próxima do fim venceu. Se a foto não tiver área calma onde o modelo põe o texto, mantenha o lugar do modelo e resolva a leitura pelo halo, nunca mudando o bloco de lugar.
 - Horário e endereço (serviço) ficam agrupados no RODAPÉ, miúdos e legíveis, separados da manchete — nunca pendurados na manchete.
-- ONDE A MARCA POUSA (campo \`cantoDaMarca\`): você viu a foto e acabou de decidir onde o texto vai, então esta escolha é sua. Comece pelo canto DIAGONALMENTE oposto ao bloco de texto — texto no inferior-esquerdo pede marca no superior-direito, e assim por diante. "Lado oposto" não basta: em 07/09/2026, com a copy no canto inferior esquerdo, a marca foi para o inferior DIREITO, tecnicamente do outro lado e ainda assim na mesma faixa, e pousou em cima da mão da cliente. Saia da diagonal só se ela cair sobre o assunto ou sobre detalhe movimentado — e então diga na leitura por quê. Os outros dois critérios: o canto tem de ser CALMO (sem borda forte, sem ponto de luz) e FORA DO ALCANCE do assunto (prato, taça, rosto, mão, produto): não basta não cobrir, não pode nem encostar. Em story descarte o superior-esquerdo, que é onde o Instagram desenha o avatar e o nome do perfil. Se a marca for colada por código, o canto que você escolher é o que o prompt vai reservar — mande o texto terminar antes dele. Quando o modelo a seguir puser a marca num canto que NESTA foto cai sobre o assunto ou do lado do texto, escolha o melhor canto desta foto: o modelo mandou na diagramação do texto, não em cima do prato.
 - Modelo escolhido à mão (Image de papel style-guide): em modo livre, copiar como o texto é VESTIDO (fontes por nível, caixa, cor, proporções, ornamentos) e decidir a posição pela foto; em modo estrito, mesma posição e alinhamento do modelo. O texto e a foto do modelo NUNCA são conteúdo.
 - Em modo ESTRITO, feche o parágrafo do modelo com a frase que ANCORA A CENA: "only the photograph and the words change" (ou equivalente). Medido em 07/09/2026 na Wine Vix, mesma foto e mesma copy: sem ela o gpt-image recriou o salão e apagou as pessoas, o laptop e os pratos, mesmo com a fidelidade à foto escrita mais acima. Instrução colada ao modelo vence instrução geral — é a mesma lição de 17/08.
 - A trava de vazamento é DUPLA e vai na linha da referência, não num bloco geral: (a) "every word, number, date, tagline or headline lettered in Image N belongs to that OLD post — never copy, adapt or echo any of it; this piece letters EXCLUSIVELY the N copy blocks listed above, nothing else"; (b) a foto dela não é conteúdo. Medido em 07/09: sem o "nothing else" explícito, a peça nova saiu com a assinatura "VINHO . SABOR . AMOR" copiada do post antigo — e a conferência de texto passou, porque ela só checa o que FALTA.
 - Story: nada importante nos ~1/8 superior e ~1/8 inferior (o número em pixel virá anexado ao prompt pelo sistema; não invente outro).
 - Uma cor de destaque; tipografia SOMENTE a da prancha/manual; quebras de linha sem palavra sozinha.
 
-Responda em JSON com: leitura (1-2 frases em português: o que você viu na foto e onde decidiu pousar o texto), prompt (inglês) e cantoDaMarca. Não devolva copyFinal.`
+Responda em JSON com: leitura (1-2 frases em português: o que você viu na foto e onde decidiu pousar o texto) e prompt (inglês). Não devolva copyFinal.`
 
 function contextoDaGeracao(args: PlanejarArteArgs): string {
   const formato: Record<PlanejarArteArgs['formato'], string> = {
@@ -408,8 +383,6 @@ export interface PromptDeGeracaoPlanejado {
   ms: number
   leitura?: string
   tentativas: number
-  /** O canto que o planejador escolheu para a marca NESTA foto. Ver o schema. */
-  cantoDaMarca?: 'superior-esquerdo' | 'superior-direito' | 'inferior-esquerdo' | 'inferior-direito'
 }
 
 /**
@@ -458,14 +431,7 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
         )
       }
       if (problemas.length === 0) {
-        return {
-          prompt,
-          modelo: PLANNER_MODEL,
-          ms: Date.now() - inicio,
-          leitura: object.leitura?.trim() || undefined,
-          cantoDaMarca: object.cantoDaMarca,
-          tentativas: rodada,
-        }
+        return { prompt, modelo: PLANNER_MODEL, ms: Date.now() - inicio, leitura: object.leitura?.trim() || undefined, tentativas: rodada }
       }
       feedback = problemas.join('\n')
       console.warn(`[diretor-de-arte/geração] rodada ${rodada} recusada: ${feedback}`)
