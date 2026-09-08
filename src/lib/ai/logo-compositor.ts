@@ -186,6 +186,40 @@ async function luminanciaDaLogo(logoPng: Buffer): Promise<number | null> {
   }
 }
 
+/**
+ * A faixa que a marca respeita no topo e no rodapé de um STORY, POR CANTO.
+ *
+ * Era um número só — 1/8 da altura (240px em 1920) nos quatro cantos, a mesma
+ * fração da regra 9 do prompt. Ela nasceu de um incidente real (TERO,
+ * 17/08/2026: a logo saiu SOB o avatar do Instagram em duas artes seguidas,
+ * porque a margem era 5,5% da LARGURA aplicada nos dois eixos, ~3% da altura
+ * num 9:16) e resolveu o problema — mas resolveu para o pior canto e aplicou a
+ * todos, deixando a marca baixa demais nos outros.
+ *
+ * O que o Instagram de fato desenha por cima muda de canto para canto, e é isso
+ * que os números refletem (valores dados pelo Ciro em 07/09/2026, em px na base
+ * de 1920 e escalados para a altura real da peça):
+ *
+ * - superior DIREITO, 90px: ali ficam só o "..." e o X de fechar, que são
+ *   ícones pequenos e altos. É o canto com mais espaço livre.
+ * - superior ESQUERDO, 180px: o avatar e o nome do perfil, que descem bem mais.
+ * - INFERIORES, 240px: a barra de resposta e os controles, que ocupam a faixa
+ *   inteira — aqui a fração original fica.
+ *
+ * Fora do story não há interface por cima: vale a margem normal.
+ */
+function margemVerticalDoCanto(
+  corner: LogoCorner,
+  ehStory: boolean,
+  height: number,
+  margemPadrao: number,
+): number {
+  if (!ehStory) return margemPadrao
+  const px = (base: number) => Math.round(height * (base / 1920))
+  const faixa = corner === 'top-right' ? px(90) : corner === 'top-left' ? px(180) : px(240)
+  return Math.max(margemPadrao, faixa)
+}
+
 function cornerBox(
   corner: LogoCorner,
   canvas: { width: number; height: number },
@@ -253,7 +287,7 @@ export async function comporLogo(
   const ehStory = formato === 'story'
   // A mesma fração da regra 9 do prompt (FAIXA_RESERVADA = 1/8): texto e logo
   // terminam ANTES da faixa que o Instagram cobre.
-  const margemVertical = ehStory ? Math.max(margem, Math.round(height * 0.125)) : margem
+  const margemVerticalPara = (corner: LogoCorner) => margemVerticalDoCanto(corner, ehStory, height, margem)
   const cantosCandidatos = (
     cantoFixo
       ? [cantoFixo]
@@ -301,7 +335,7 @@ export async function comporLogo(
   const candidatos: Candidato[] = []
 
   for (const corner of cantosCandidatos) {
-    const pos = cornerBox(corner, { width, height }, box, margem, margemVertical)
+    const pos = cornerBox(corner, { width, height }, box, margem, margemVerticalPara(corner))
     // A folga mede o ALCANCE do assunto, não só a sobreposição — ver
     // FOLGA_DO_ALCANCE.
     const folgaX = Math.round(box.width * FOLGA_DO_ALCANCE)
