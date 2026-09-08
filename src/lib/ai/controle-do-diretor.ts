@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { ResolucaoVisual } from './contexto-visual-da-geracao';
 
 /** Orçamento compartilhado entre as tentativas; registro sobrevive ao fallback. */
 export const VERSAO_DO_CONTROLE_DO_DIRETOR = '2026-09-08.1';
@@ -8,6 +9,7 @@ const MINIMO_POR_RODADA_MS = 5_000;
 type Desfecho = 'aprovado' | 'recusado' | 'erro' | 'timeout';
 
 export interface RegistroDoDiretor {
+  identidade?: ResolucaoVisual;
   versao: string;
   estado: 'nao-executado' | 'executando' | 'aprovado' | 'fallback';
   motivoFallback: 'prazo' | 'tentativas-esgotadas' | null;

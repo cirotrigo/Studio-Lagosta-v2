@@ -13,6 +13,7 @@
  * em fieldValues — o registro atômico que permite aprender com cada run.
  */
 
+import { portaDoFallback } from './contexto-visual-da-geracao'
 import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar } from './controle-do-diretor'
 
 import sharp from 'sharp'
@@ -924,8 +925,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           cantoParaCompor =
             (porta === 'manual' ? cantoDaLogoDoEstilo(brand?.estiloDasReferencias ?? null) : null) ?? LOGO_CORNER
         }
+        const fallbackPorta = portaDoFallback(porta, referenciaSoParaODiretor)
         const corpoDaPorta =
-          porta === 'referencia'
+          fallbackPorta === 'referencia'
             ? montarPromptDaReferencia({
                 marca: brand?.projectName ?? 'the brand',
                 copy: copyDaPorta,
@@ -944,7 +946,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
                 pedido: args.pedido,
                 logo: logoParaCompor ? { modo: 'compor', canto: cantoParaCompor ?? LOGO_CORNER } : { modo: 'modelo' },
               })
-        plannerGeracaoInfo = { ...plannerGeracaoInfo, porta, planejador: 'fallback' }
+        plannerGeracaoInfo = { ...plannerGeracaoInfo, porta, fallbackPorta, planejador: 'fallback' }
         // O que é MECÂNICO vai colado ao fim, onde pesa mais — o canto da
         // marca (quem cola é o código) e a safe area em PIXEL da peça real.
         body = [corpoDaPorta, montarBlocoLogo(cantoParaCompor), regraDeSafeArea(args.formato, args.finalSize.height)]

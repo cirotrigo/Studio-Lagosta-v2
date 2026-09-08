@@ -42,6 +42,7 @@ import { formatarEstiloParaPrompt } from '@/lib/brand/estilo-das-referencias'
 import type { ModoDaMelhoria } from './modo-da-melhoria'
 import { normalizeForComparison } from './text-comparison'
 import { blocosDeServico } from './blocos-de-servico'
+import { resolverContextoVisualDaGeracao } from './contexto-visual-da-geracao'
 import { criarControleDoDiretor, limiteDaRodada, registrarRodada, concluirFallback, registrarContextoDoDiretor, type ControleDoDiretor } from './controle-do-diretor'
 
 /**
@@ -541,7 +542,12 @@ function contextoDaGeracao(args: PlanejarArteArgs): string {
 
 /** Exposto para teste: o que o diretor recebe, dado o que o runner montou. */
 export function montarContextoDaGeracao(args: PlanejarArteArgs): string {
-  return `${contextoDaMarca(args.brand)}\n\n${contextoDaGeracao(args)}`
+  return resolverContextoDaGeracao(args).contexto
+}
+
+function resolverContextoDaGeracao(args: PlanejarArteArgs) {
+  const resolvido = resolverContextoVisualDaGeracao(args.brand, process.env.ARTE_CONTEXTO_VISUAL !== 'off')
+  return { contexto: `${contextoDaMarca(resolvido.brand)}\n\n${contextoDaGeracao(args)}`, resolucao: resolvido.resolucao }
 }
 
 export interface PromptDeGeracaoPlanejado {
@@ -704,7 +710,8 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
   const inicio = Date.now()
   const controle = args.controle ?? criarControleDoDiretor()
   const anexos = args.referencias.filter((r) => r.buffer)
-  const contexto = montarContextoDaGeracao(args)
+  const { contexto, resolucao } = resolverContextoDaGeracao(args)
+  controle.registro.identidade = resolucao
   registrarContextoDoDiretor(controle, PLANNER_MODEL, SYSTEM_GERACAO, contexto, anexos.map((r) => r.buffer))
   let feedback: string | null = null
   for (let rodada = 1; rodada <= RODADAS_DO_PLANEJADOR; rodada++) {

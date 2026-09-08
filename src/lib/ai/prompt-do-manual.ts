@@ -171,7 +171,7 @@ const aspas = (t: string) => `“${t.replace(/\s+/g, ' ').trim()}”`
 /**
  * A prosa lida das peças descreve também COMO a foto era tratada ("fundo
  * fotográfico com degradê escuro", "foto escura + tarja preta") — e isso
- * contradiz a regra do FUNDO, que manda o halo sutil e proíbe tarja. O
+ * contradiz a regra do FUNDO, que resolve leitura pela posição e pela cor do texto. O
  * tratamento da foto é regra desta peça, não estética da marca: essas
  * orações saem, o resto fica.
  */
@@ -242,7 +242,7 @@ Use o manual como fonte oficial de cores, tipografia, logotipo e filetes. A foto
 
   numeradas.push(
     `FUNDO
-Use a fotografia em tela cheia, adaptada ao ${proporcao} apenas por enquadramento. ${ajuste ? `A ÚNICA alteração permitida na fotografia é esta, pedida pelo cliente: ${ajuste}. Fora isso, não` : 'Não'} altere rostos, pessoas, pratos, taças, garrafas ou objetos; não acrescente nem remova nada. Os textos pousam nas áreas mais calmas da fotografia — nunca sobre rosto, comida, taça, garrafa ou o assunto principal. Se precisar de legibilidade, um degradê escuro muito sutil no topo ou no rodapé, sem fim visível; nunca tarja, caixa ou fundo sólido atrás do texto.`,
+Use a fotografia em tela cheia, adaptada ao ${proporcao} apenas por enquadramento. ${ajuste ? `A ÚNICA alteração permitida na fotografia é esta, pedida pelo cliente: ${ajuste}. Fora isso, não` : 'Não'} altere rostos, pessoas, pratos, taças, garrafas ou objetos; não acrescente nem remova nada. Os textos pousam nas áreas mais calmas da fotografia — nunca sobre rosto, comida, taça, garrafa ou o assunto principal. Resolva a legibilidade pela posição nas regiões calmas e pela cor oficial do texto, preservando a luz e as cores da fotografia.`,
   )
 
   numeradas.push(
