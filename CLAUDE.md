@@ -5051,3 +5051,33 @@ todas medidas em CIELAB contra a foto original cortada. O que se sabe:
   `tratamentoDeFotoNoPrompt` está certa; o que falta é o DNA parar de
   descrever véu (decisão do Ciro, como no Quintal em 05/09). Caiu no molde,
   sem máscara e sem tom casado naquela rodada (o tom casado entrou depois).
+
+### A passada cirúrgica: onde a máscara serve, e o que ela não garante (08/09/2026)
+
+`src/lib/ai/passada-cirurgica.ts` + `scripts/passada-cirurgica.ts`: uma
+correção LOCAL numa peça pronta ("aumente o rodapé"), com máscara só na zona
+e a peça original recomposta fora dela pelo mesmo `restaurarFotoForaDasZonas`
+(a própria peça é a referência de tom). Disparada por gente, nunca por revisor
+automático. Medido no rodapé da Wine Vix, 5 tentativas de ~30s e ~US$ 0,008:
+
+| tentativa | fora da zona | dentro da zona |
+|---|---|---|
+| 1 ("dobro") | 0,2 | trocou fonte e cor, endereço estourou a zona e foi cortado |
+| 2 ("50%", fonte e cor nomeadas) | 0,1 | certa — mas fantasma da linha antiga |
+| 3 | 0,0 | fantasma de novo |
+| 4 (feather curto) | 0,2 | faixa chapada (tarja) no rodapé inteiro |
+| 5 (zona até 99,5%) | 0,0 | limpa, texto maior — fonte virou SERIFA |
+
+- 🔴 **O fantasma era MEU, não do modelo**: a borda suave da recomposição
+  mistura a peça antiga, e a zona terminava (97%) em cima da linha antiga
+  (94%). A zona tem de conter o conteúdo antigo COM FOLGA; encurtar o feather
+  (tentativa 4) deixa a emenda visível. O feather fica o padrão.
+- **Fora da zona é garantido; dentro é cara ou coroa.** Em 5 rodadas o
+  modelo obedeceu fonte, cor, tamanho e "sem tarja" ao mesmo tempo UMA vez
+  (a 2). Pedir "mesma fonte" não segura mais que pedir "não escureça". Vale
+  como botão de ajuste fino com o olho de quem aprova; não vale como etapa
+  automática.
+- **Tamanho de texto é NÚMERO no compositor e SORTE no gpt-image.** Para
+  "aumente o rodapé" o caminho determinístico é a peça ser página do editor
+  (a via `compor`, onde `fontSize` é um campo). O gpt-image é pintor, não
+  tipógrafo.
