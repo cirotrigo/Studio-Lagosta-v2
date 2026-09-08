@@ -4921,3 +4921,165 @@ O que fica:
 - ⚠️ **Limite**: esta medição é de COMPILAÇÃO de CSS. Não voltei ao navegador
   para confirmar que `grid-rows-2` desenha a grade no card; quem reabilitar uma
   dessas classes confere na tela depois de reconstruir.
+
+### O diretor de arte religado dentro das portas, com o briefing do Ciro como molde (08/09/2026)
+
+O PR #107 (08/09, madrugada) pôs as duas portas ANTES do diretor de arte
+(`elegivelParaPlanejador = !porta`), e como os 11 projetos ganharam
+`brandManualUrl` no mesmo dia, toda peça avulsa com foto passou a sair de um
+MOLDE FIXO (`prompt-do-manual` / `prompt-da-referencia`). Era o "sempre o
+mesmo prompt" que o Ciro pediu para acabar. A medição de 07-08/09 comparou
+"poucas imagens + prompt curto" contra "todas as imagens do sistema" — a
+lição válida é a das IMAGENS, não a do molde; porta contra diretor nunca foi
+medido.
+
+- **A porta decide as IMAGENS; o diretor escreve o BRIEFING.** O gpt-image
+  recebe foto (Imagem 1) + manual (Imagem 2). O diretor (`gpt-5.2`,
+  `diretor-de-arte.ts`, `SYSTEM_GERACAO`) escreve o prompt; o molde da porta
+  é o caminho de volta quando ele não responde (`planejador: 'fallback'` +
+  `porta` no `fieldValues`). `ARTE_PLANNER=off` desliga o diretor;
+  `ARTE_PORTAS=off`, as portas.
+- 🔴 **A referência escolhida à mão é ANALISADA, não enviada** (decisão do
+  Ciro, 08/09): o diretor a vê (`visivelAoGerador: false`) e traduz em
+  instruções — zona do bloco, fontes por papel, cores, ornamentos, canto da
+  marca; o gpt-image não a recebe, então o texto e a cena do post antigo não
+  têm por onde vazar. Sem manual ela ainda vai como imagem (seria a única
+  fonte de fontes e logo). `ARTE_REFERENCIA_COMO_TEXTO=off` volta a mandá-la.
+  A referência vista pelo diretor CONTA no rodízio (`registrarUsoDaReferencia`).
+- **O briefing sai em PORTUGUÊS, por seções, no molde do briefing que o Ciro
+  escreveu para o happy hour da Wine Vix**: abertura + direção estética, FOTO
+  DE FUNDO, IDENTIDADE VISUAL, LOGOTIPO (versão do painel do manual, posição,
+  tamanho relativo), BLOCO PRINCIPAL, uma seção por bloco da copy, ÁREA
+  LIVRE, RODAPÉ (só com serviço), HIERARQUIA VISUAL, EVITE (3 a 6 itens
+  desta peça), TEXTOS FINAIS. Teto 4.500 caracteres (o molde tem ~4.300).
+  O que o sistema anexa DEPOIS continua mecânico: bloco da marca e safe area
+  em pixel.
+- 🔴 **Halo, véu, degradê e os tetos numéricos de tamanho SAÍRAM do diretor
+  da geração** (Ciro: "deixe isso para o gpt-image; ele pode confiar mais").
+  Legibilidade se resolve por POSIÇÃO e cor do texto. `tratamentoDeFotoNoPrompt`
+  RECUSA briefing que prescreva qualquer um deles. Na MELHORIA a regra "nenhum
+  contraste acrescentado" continua como estava (05/09) — são system prompts
+  diferentes.
+- **A foto chega com MEDIDA**: `leitura-da-foto.ts` (puro) resume o mapa de
+  calma do compositor (`mapa-de-calma.ts`, ~100ms, sobre a foto como aparece
+  na peça) em nove regiões calma/agitada × escura/clara, o assunto estimado em
+  % e as três regiões mais calmas em ordem; e o catálogo v3 da foto (assunto,
+  elementos, enquadramento, pessoas, lotação) entra como texto — até aqui
+  NENHUM prompt de geração lia o catálogo. Regra da casa: o modelo declara, o
+  código mede. Medido na Wine Vix: o diretor pousou o bloco na região que a
+  medição apontou (inferior-esquerda) e reservou o canto oposto para a marca.
+- 🔴 **As travas mecânicas do briefing** (`problemasDoBriefing`, cada uma com
+  teste em `__tests__/diretor-de-arte-geracao.test.ts`): copy verbatim entre
+  aspas; nome de fonte só em linha "Imagem N"/"Image N"; sem tratamento de
+  foto; serviço na copy ⇒ seção RODAPÉ (`blocosDeServico`); frase da
+  referência (`GuiaLido.textos`, ≥ 12 chars, fora da copy) fora do briefing;
+  **caixa da copy intocada** (`caixaAlterada` — o By Rock saiu com "RENDE PRA"
+  / "GALERA" na quebra sugerida a partir de "Rende pra galera": a caixa é do
+  mapa `CAIXA_DA_MANCHETE`, nunca do diretor; `copyEstaNoPrompt` não pega
+  porque normaliza para maiúsculas); **marca nunca no superior-esquerdo em
+  story** (`logoNoCantoDoAvatar` — a regra estava no prompt desde 07/09 e o
+  diretor a ignorou). Recusa vira feedback e o diretor reescreve (3 rodadas).
+- **`scripts/ver-prompt-do-diretor.ts`** mostra o briefing de um caso real
+  (`--projeto`, `--foto`, `--copy`, `--referencia`, `--rodadas`) sem gerar
+  imagem, sem tocar no banco: uma chamada do planejador por rodada (~20-45s).
+  Saída em `.tmp-diretor/`. É o dry-run antes de gastar crédito.
+- ⚠️ **Não medido em produção com feedback real** — como as portas de ontem.
+  O que se sabe: 3 briefings reais (Wine Vix com e sem referência, By Rock)
+  no molde, copy inteira, sem vazamento, posição pela medição. Quando o bloco
+  já vai ao terço inferior, o diretor põe o serviço como última linha do
+  bloco em vez de rodapé separado — aceito, é a mesma zona.
+- ⚠️ O prompt do manual e o da referência (moldes) continuam no código como
+  fallback e cobertos por teste; não os apague.
+
+### 🔴 A foto intocada: máscara medida e recusada, tom casado por código adotado (08/09/2026)
+
+Quatro clientes, doze gerações reais no dia (~US$ 0,10 e 25 créditos cada),
+todas medidas em CIELAB contra a foto original cortada. O que se sabe:
+
+- **Nenhum prompt segura a foto.** Sem tratamento nenhum, o `images.edit`
+  escurece o quadro INTEIRO: L* -26% (porta antiga), -33% e -41% (diretor
+  novo, com "sem alterar luz, cor, contraste" escrito), -20% (Real, molde). O
+  croma real até CAI; o que lê como "saturada" é a foto escura com sombras
+  fechadas. O ChatGPT, na mesma tarefa, admitiu ter recriado ponte e skyline.
+- 🔴 **A máscara do gpt-image-2 é ORIENTAÇÃO, não garantia.** Controle (foto
+  reencodada) = 0,6 de diferença fora das zonas; peça gerada COM máscara =
+  29,8, sinal negativo nas nove regiões. Reduz o estrago pela metade (63 →
+  30) e não zera. O humanizar de 07/09 já tinha visto ("objeto protegido
+  movido").
+- **O que zera é código** (`mascara-da-geracao.ts`, `restaurarFotoForaDasZonas`):
+  LUT por canal calculado nos pixels fora das zonas + recomposição da foto
+  original fora delas, com feather DENTRO da zona. Diferença fora: 0,0.
+  🔴 O sharp devolve o raw borrado em 3 canais mesmo para entrada de 1 — ler
+  com o stride errado espalhava alpha por onde não havia zona (8,8 de
+  resíduo que parecia feather). 🔴 O texto TRANSBORDA a zona ("sabore" com o
+  "s" cortado): o que o modelo pintou numa faixa em volta da zona
+  (diferença > 60 depois do LUT) é mantido.
+- 🔴 **E mesmo assim a máscara PERDEU em 2 de 4 clientes**, por três defeitos
+  que a recomposição não conserta: o modelo pinta fundo CHAPADO dentro da
+  zona (TERO: -82 de luz na faixa do título; By Rock: retângulo preto atrás
+  da manchete — o véu de volta, com borda); ignora a zona (CTA do By Rock
+  caiu fora e foi apagado; a faixa de transbordo manteve um pedaço do bolo
+  REDESENHADO, com emenda); e perde o ENQUADRAMENTO que o modelo faria
+  sozinho — o By Rock de 24/08, com o modelo reenquadrando o bolo para baixo,
+  é a melhor peça do conjunto. Corte nosso no centro = assunto no meio =
+  texto colidindo. Wine Vix e TERO saíram bem; By Rock, mal.
+- 🔴 **Decisão do Ciro (08/09, fim do dia): "não vamos usar" a máscara.** O
+  caminho de máscara foi REMOVIDO do runner e do diretor (nada de `zonas`,
+  nada de corte nosso); o módulo `mascara-da-geracao.ts` fica pelo
+  `casarTomGlobal` e pela passada cirúrgica. Detalhe e tabelas em
+  `docs/SESSAO-2026-09-08-DIRETOR-MASCARA-E-TOM.md`.
+- **Adotado: SEM máscara + `casarTomGlobal`** (LUT por canal levando o
+  histograma da peça inteira ao da foto, depois da geração, antes do QA e da
+  logo). Offline nas peças existentes: L* 26,4 → 44,5 (Vix), 46,0 → 57,7
+  (Real), igual à foto; enquadramento do modelo preservado; sem retângulo,
+  sem emenda. O texto claro só clareia um pouco. Não corrige mudança LOCAL
+  (fundo chapado, objeto movido). `ARTE_TOM_CASADO=off` desliga. Telemetria:
+  `fieldValues.tomCasado`.
+- **O diretor devolve um `diagnostico`** (intacto, problema principal,
+  hierarquia — a lição estruturada da conversa do ChatGPT), gravado no
+  `fieldValues` como auditoria.
+- 🔴 **Serviço: o diretor insistia em tratar "Funcionamento - 10h às 22h" como
+  APOIO da manchete** (2-3 recusas seguidas, ~1 min cada, e na terceira caía
+  no molde). A trava por posição de seção não bastava; o que resolveu foi o
+  CONTEXTO apontar os blocos de serviço, classificados por `blocosDeServico`
+  ("← SERVIÇO: vai SÓ na seção RODAPÉ"). Depois disso, 1ª tentativa. A trava
+  `servicoSemRodape` olha SEÇÕES (BLOCO/TEXTO/TÍTULO…), não "qualquer lugar
+  antes": citar o horário na FOTO DE FUNDO não é pendurar.
+- **Rodapé miúdo** (Ciro, 08/09): pedir "50 px" rendeu ~30. O diretor agora
+  pede proporção ("metade da altura de uma linha da manchete") além de ~2,8%
+  da altura. Não medido ainda.
+- ⚠️ **Real Gelateria: o diretor foi recusado 3× por escrever "gradiente"** —
+  o DNA dela descreve "gradiente de leitura" e ele ecoa. A trava
+  `tratamentoDeFotoNoPrompt` está certa; o que falta é o DNA parar de
+  descrever véu (decisão do Ciro, como no Quintal em 05/09). Caiu no molde,
+  sem máscara e sem tom casado naquela rodada (o tom casado entrou depois).
+
+### A passada cirúrgica: onde a máscara serve, e o que ela não garante (08/09/2026)
+
+`src/lib/ai/passada-cirurgica.ts` + `scripts/passada-cirurgica.ts`: uma
+correção LOCAL numa peça pronta ("aumente o rodapé"), com máscara só na zona
+e a peça original recomposta fora dela pelo mesmo `restaurarFotoForaDasZonas`
+(a própria peça é a referência de tom). Disparada por gente, nunca por revisor
+automático. Medido no rodapé da Wine Vix, 5 tentativas de ~30s e ~US$ 0,008:
+
+| tentativa | fora da zona | dentro da zona |
+|---|---|---|
+| 1 ("dobro") | 0,2 | trocou fonte e cor, endereço estourou a zona e foi cortado |
+| 2 ("50%", fonte e cor nomeadas) | 0,1 | certa — mas fantasma da linha antiga |
+| 3 | 0,0 | fantasma de novo |
+| 4 (feather curto) | 0,2 | faixa chapada (tarja) no rodapé inteiro |
+| 5 (zona até 99,5%) | 0,0 | limpa, texto maior — fonte virou SERIFA |
+
+- 🔴 **O fantasma era MEU, não do modelo**: a borda suave da recomposição
+  mistura a peça antiga, e a zona terminava (97%) em cima da linha antiga
+  (94%). A zona tem de conter o conteúdo antigo COM FOLGA; encurtar o feather
+  (tentativa 4) deixa a emenda visível. O feather fica o padrão.
+- **Fora da zona é garantido; dentro é cara ou coroa.** Em 5 rodadas o
+  modelo obedeceu fonte, cor, tamanho e "sem tarja" ao mesmo tempo UMA vez
+  (a 2). Pedir "mesma fonte" não segura mais que pedir "não escureça". Vale
+  como botão de ajuste fino com o olho de quem aprova; não vale como etapa
+  automática.
+- **Tamanho de texto é NÚMERO no compositor e SORTE no gpt-image.** Para
+  "aumente o rodapé" o caminho determinístico é a peça ser página do editor
+  (a via `compor`, onde `fontSize` é um campo). O gpt-image é pintor, não
+  tipógrafo.

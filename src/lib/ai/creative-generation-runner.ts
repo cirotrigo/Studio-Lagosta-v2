@@ -36,6 +36,11 @@ import {
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
 import { planejarArte, type ReferenciaDoPlanoDeGeracao } from '@/lib/ai/diretor-de-arte'
+import { resumirCatalogoDaFoto, resumirMapaDeCalma } from '@/lib/ai/leitura-da-foto'
+import { estimarAssunto, mapaDeCalma } from '@/lib/compositor/mapa-de-calma'
+import { lerFotoComoCover } from '@/lib/creatives/halo/halo-medicao'
+import { lerCatalogoDoProjeto } from '@/lib/creatives/acervo'
+import { casarTomGlobal } from '@/lib/ai/mascara-da-geracao'
 import { assinaturaTipografica } from '@/lib/ai/assinatura-tipografica'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
@@ -725,13 +730,31 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             ? 'manual'
             : null
         : null
+    /**
+     * A referência escolhida à mão é ANALISADA, não enviada (08/09/2026,
+     * decisão do Ciro): o diretor de arte a vê e traduz em instruções; o
+     * gpt-image recebe só a foto e o manual. Mandá-la junto fazia o texto e a
+     * cena do post antigo vazarem, e o modelo "ler a referência por conta
+     * própria" era justamente o que se queria evitar. Sem manual (projeto
+     * sem `brandManualUrl`) ela ainda vai como imagem — é a única fonte de
+     * fontes e logo que o gerador teria. `ARTE_REFERENCIA_COMO_TEXTO=off`
+     * volta a mandá-la sempre.
+     */
+    const referenciaSoParaODiretor =
+      porta === 'referencia' && !!refManual && process.env.ARTE_REFERENCIA_COMO_TEXTO !== 'off'
     const ordered =
       porta === 'referencia' && refFoto && refModelo
-        ? [refFoto, refModelo]
+        ? referenciaSoParaODiretor && refManual
+          ? [refFoto, refManual]
+          : [refFoto, refModelo]
         : porta === 'manual' && refFoto && refManual
           ? [refFoto, refManual]
           : orderReferences(loadedRefs)
-    if (porta) console.log(`[arte-ia.bg] porta ${porta}: ${ordered.length} imagens ao modelo`)
+    if (porta) {
+      console.log(
+        `[arte-ia.bg] porta ${porta}: ${ordered.length} imagens ao modelo${referenciaSoParaODiretor ? ' (referência só para o diretor)' : ''}`,
+      )
+    }
     const downloadMs = Date.now() - startedAt
     console.log(
       `[arte-ia.bg] fase download: ${(downloadMs / 1000).toFixed(1)}s | refs: ${ordered
@@ -811,7 +834,14 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
        * são mecânicos e medidos, e ficam como estão. `ARTE_PLANNER=off`
        * desliga sem deploy.
        */
-      const elegivelParaPlanejador = !porta && !args.carrossel && !documentoPlano && process.env.ARTE_PLANNER !== 'off'
+      /**
+       * Religado DENTRO das portas em 08/09/2026: a porta decide as IMAGENS
+       * (foto + manual), o diretor escreve o BRIEFING. O molde fixo
+       * (`prompt-do-manual` / `prompt-da-referencia`) virou o caminho de volta
+       * quando o diretor não responde — era ele o "sempre o mesmo prompt" que
+       * o Ciro pediu para acabar.
+       */
+      const elegivelParaPlanejador = !args.carrossel && !documentoPlano && !args.finalPrompt && process.env.ARTE_PLANNER !== 'off'
       let planejado: Awaited<ReturnType<typeof planejarArte>> = null
       if (elegivelParaPlanejador) {
         const t0 = Date.now()
@@ -826,6 +856,20 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             // de clima e o manual; âncoras, prancha e logo ele conhece pelo papel.
             buffer: ['subject', 'style-guide', 'style', 'brand-card'].includes(r.role) ? r.buffer : undefined,
           }))
+        // A referência escolhida à mão que o gpt-image NÃO recebe: o diretor a
+        // vê e a traduz em instruções.
+        if (referenciaSoParaODiretor && refModelo) {
+          referencias.push({
+            indice: 0,
+            papel: 'style-guide',
+            rotulo: refModelo.label ?? null,
+            estiloLivre: refModelo.estiloLivre,
+            buffer: refModelo.buffer,
+            visivelAoGerador: false,
+          })
+        }
+        const leituraDaFoto = refFoto ? await lerFotoParaODiretor(refFoto.buffer, args.finalSize) : null
+        const catalogoDaFoto = refFoto ? await lerCatalogoParaODiretor(args) : null
         planejado = await planejarArte({
           copy: copyComCaixaDaMarca(args.copy, brand),
           pedido: args.pedido ?? '',
@@ -836,12 +880,18 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           instrucaoImagem: args.instrucaoImagem,
           logoCompor: !!logoParaCompor,
           assinaturaTipografica: assinaturaTipografica(brand?.projectId),
+          leituraDaFoto,
+          catalogoDaFoto,
+          textosDaReferencia: modeloLido?.textos ?? null,
         })
         plannerGeracaoInfo = {
+          ...(porta ? { porta } : {}),
+          ...(referenciaSoParaODiretor ? { referenciaSoParaODiretor: true } : {}),
           planejador: planejado ? planejado.modelo : 'fallback',
           planejadorMs: Date.now() - t0,
           ...(planejado ? { planejadorTentativas: planejado.tentativas } : {}),
           ...(planejado?.leitura ? { leitura: planejado.leitura } : {}),
+          ...(planejado?.diagnostico ? { diagnostico: planejado.diagnostico } : {}),
         }
         if (planejado) {
           console.log(
@@ -852,7 +902,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         }
       }
 
-      if (porta) {
+      if (porta && !planejado) {
+        // O MOLDE da porta é o caminho de volta quando o diretor não respondeu.
+        console.warn(`[arte-ia.bg] diretor de arte indisponível — usando o molde da porta ${porta}`)
         // A caixa vai decidida na STRING (lei de 16-17/08): é a única forma
         // que segura, e as duas portas copiam a copy verbatim para o prompt.
         const copyDaPorta = copyComCaixaDaMarca(args.copy, brand)
@@ -886,13 +938,18 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
                 pedido: args.pedido,
                 logo: logoParaCompor ? { modo: 'compor', canto: cantoParaCompor ?? LOGO_CORNER } : { modo: 'modelo' },
               })
-        plannerGeracaoInfo = { porta }
+        plannerGeracaoInfo = { ...plannerGeracaoInfo, porta, planejador: 'fallback' }
         // O que é MECÂNICO vai colado ao fim, onde pesa mais — o canto da
         // marca (quem cola é o código) e a safe area em PIXEL da peça real.
         body = [corpoDaPorta, montarBlocoLogo(cantoParaCompor), regraDeSafeArea(args.formato, args.finalSize.height)]
           .filter((b): b is string => !!b && b.trim() !== '')
           .join('\n\n')
       } else if (planejado) {
+        // Porta do manual sem canto herdado: o das peças aprovadas, antes de o
+        // diretor opinar (mesma regra do molde).
+        if (porta === 'manual' && logoParaCompor && !cantoParaCompor) {
+          cantoParaCompor = cantoDaLogoDoEstilo(brand?.estiloDasReferencias ?? null) ?? LOGO_CORNER
+        }
         /**
          * O canto que o DIRETOR escolheu vence o do modelo — ele olhou ESTA
          * foto, e o canto da arte de referência foi escolhido para outra.
@@ -986,9 +1043,27 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
 
       const genStartedAt = Date.now()
-      const candidate = await generateOnce(args, ordered, prompt, Math.max(30_000, remainingMs))
+      let candidate = await generateOnce(args, ordered, prompt, Math.max(30_000, remainingMs))
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
+      if (args.track === 'arte' && refFoto && process.env.ARTE_TOM_CASADO !== 'off') {
+        /**
+         * TOM CASADO (08/09/2026): o `images.edit` escurece a foto inteira
+         * (-20% a -40% de luz média em 3 de 3 medições) e nenhum prompt segura.
+         * Sem máscara o modelo enquadra a foto como quer, então não há pixel
+         * a devolver — mas o HISTOGRAMA da peça é levado ao da foto por um LUT
+         * por canal. Medido offline nas peças da Wine Vix e da Real: L* volta
+         * ao da foto (44,5 → 26,4 → 44,5), sem retângulo e sem emenda; o texto
+         * claro só clareia um pouco. `ARTE_TOM_CASADO=off` desliga.
+         */
+        try {
+          candidate = await casarTomGlobal(refFoto.buffer, candidate)
+          plannerGeracaoInfo = { ...plannerGeracaoInfo, tomCasado: true }
+          console.log('[arte-ia.bg] tom da peça casado com a foto original (LUT global)')
+        } catch (error) {
+          console.warn('[arte-ia.bg] tom casado falhou — segue com a peça do modelo:', error)
+        }
+      }
 
       // ── QA 1: proporção. Roda ANTES da visão porque é local, instantâneo e
       // pega o defeito mais caro. O `resize(fit: 'cover')` da finalização
@@ -1450,7 +1525,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // Marcar antes faria uma geração que falhou "gastar" a referência.
     // A referência do rodízio só conta como usada se ENTROU nas imagens: na
     // porta do manual ela fica de fora, e marcá-la queimaria a vez dela.
-    if (styleRefUsada && ordered.some((r) => r.role === 'style' || r.role === 'style-guide')) {
+    if (
+      styleRefUsada &&
+      (ordered.some((r) => r.role === 'style' || r.role === 'style-guide') || referenciaSoParaODiretor)
+    ) {
       await registrarUsoDaReferencia(styleRefUsada)
     }
 
@@ -1669,4 +1747,41 @@ function sanitizeName(name: string): string {
       .replace(/^-+|-+$/g, '')
       .slice(0, 50) || 'arte'
   )
+}
+
+/**
+ * A leitura MEDIDA da foto para o diretor de arte: o mapa de calma do
+ * compositor sobre a foto COMO ELA APARECE na peça (cover). ~100ms; falhar
+ * aqui não derruba nada — o diretor segue só com a visão.
+ */
+async function lerFotoParaODiretor(foto: Buffer, canvas: { width: number; height: number }): Promise<string | null> {
+  try {
+    const cinza = await lerFotoComoCover(foto, canvas)
+    const mapa = mapaDeCalma(cinza)
+    return resumirMapaDeCalma(mapa, estimarAssunto(mapa))
+  } catch (error) {
+    console.warn('[arte-ia.bg] mapa de calma da foto falhou — o diretor segue só com a visão:', error)
+    return null
+  }
+}
+
+/**
+ * A entrada da foto no catálogo do acervo (assunto, elementos, enquadramento,
+ * pessoas…), quando a foto veio do Drive. Uma ida ao Drive; com teto, porque
+ * é informação de apoio e não pode segurar a geração.
+ */
+async function lerCatalogoParaODiretor(args: ArtGenerationJobArgs): Promise<string | null> {
+  const driveFileId = args.referencias.find((r) => r.role === 'subject')?.driveFileId
+  if (!driveFileId) return null
+  try {
+    const { todas } = await Promise.race([
+      lerCatalogoDoProjeto(args.projectId),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('catálogo: passou de 8s')), 8_000)),
+    ])
+    const entrada = todas.find((i) => i.driveFileId === driveFileId)
+    return resumirCatalogoDaFoto(entrada ?? null)
+  } catch (error) {
+    console.warn('[arte-ia.bg] catálogo da foto não lido — o diretor segue sem ele:', error instanceof Error ? error.message : error)
+    return null
+  }
 }

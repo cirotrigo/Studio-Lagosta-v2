@@ -117,3 +117,4 @@ design-canvas/**/*.html
 # quem está sentado neste Mac (ver scripts/mcp-wrapper.sh) — um por máquina
 .studio-autor
 .juiz-cache-*.json
+.tmp-diretor/
