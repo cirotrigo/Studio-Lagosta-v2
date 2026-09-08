@@ -42,6 +42,7 @@ import { formatarEstiloParaPrompt } from '@/lib/brand/estilo-das-referencias'
 import type { ModoDaMelhoria } from './modo-da-melhoria'
 import { normalizeForComparison } from './text-comparison'
 import { blocosDeServico } from './blocos-de-servico'
+import { criarControleDoDiretor, limiteDaRodada, registrarRodada, concluirFallback, registrarContextoDoDiretor, type ControleDoDiretor } from './controle-do-diretor'
 
 /**
  * Precisa ENXERGAR a peça (onde o assunto está, onde a foto é calma, como o
@@ -104,6 +105,8 @@ export interface PlanejarMelhoriaArgs {
   /** Direção de arte PRÓPRIA do projeto (`Project.artImprovementPrompt`). */
   artDirection?: string | null
   timeoutMs?: number
+  /** Prazo global e auditoria, inclusive quando a resposta é null. */
+  controle?: ControleDoDiretor
 }
 
 export interface PromptPlanejado {
@@ -349,6 +352,8 @@ export interface PlanejarArteArgs {
    */
   textosDaReferencia?: string[] | null
   timeoutMs?: number
+  /** Prazo global e auditoria, inclusive quando a resposta é null. */
+  controle?: ControleDoDiretor
 }
 
 const PAPEL_GERACAO_LEGIVEL: Record<PapelDaReferenciaDeGeracao, string> = {
@@ -697,16 +702,23 @@ export function palavrasDaReferenciaNoPrompt(
  */
 export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGeracaoPlanejado | null> {
   const inicio = Date.now()
+  const controle = args.controle ?? criarControleDoDiretor()
   const anexos = args.referencias.filter((r) => r.buffer)
   const contexto = montarContextoDaGeracao(args)
+  registrarContextoDoDiretor(controle, PLANNER_MODEL, SYSTEM_GERACAO, contexto, anexos.map((r) => r.buffer))
   let feedback: string | null = null
   for (let rodada = 1; rodada <= RODADAS_DO_PLANEJADOR; rodada++) {
+    const limiteMs = limiteDaRodada(controle, args.timeoutMs ?? 75_000)
+    if (!limiteMs) break
+    const inicioDaRodada = Date.now()
+    const sinal = AbortSignal.timeout(limiteMs)
     try {
       const { object } = await generateObject({
         model: openai(PLANNER_MODEL),
         ...(ACEITA_TEMPERATURA ? { temperature: 0.4 } : {}),
         maxOutputTokens: 5000,
-        abortSignal: AbortSignal.timeout(args.timeoutMs ?? 75_000),
+        abortSignal: sinal,
+        maxRetries: 0, // O laço externo controla todas as tentativas e seu orçamento.
         schema: saidaGeracaoSchema,
         system: SYSTEM_GERACAO,
         messages: [
@@ -722,6 +734,7 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
       const prompt = object.prompt.trim()
       const problemas = problemasDoBriefing(prompt, args, object.cantoDaMarca)
       if (problemas.length === 0) {
+        registrarRodada(controle, limiteMs, inicioDaRodada, 'aprovado')
         return {
           prompt,
           modelo: PLANNER_MODEL,
@@ -732,6 +745,7 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
           tentativas: rodada,
         }
       }
+      registrarRodada(controle, limiteMs, inicioDaRodada, 'recusado', problemas)
       feedback = problemas.join('\n')
       console.warn(`[diretor-de-arte/geração] rodada ${rodada} recusada: ${feedback}`)
       if (process.env.DIRETOR_DEBUG) {
@@ -744,11 +758,14 @@ export async function planejarArte(args: PlanejarArteArgs): Promise<PromptDeGera
         }
       }
     } catch (erro) {
+      // Não persistir mensagens arbitrárias do provedor (podem conter dados sensíveis).
+      registrarRodada(controle, limiteMs, inicioDaRodada, sinal.aborted ? 'timeout' : 'erro', [sinal.aborted ? 'Tempo da rodada esgotado' : 'Falha na chamada ou resposta estruturada do diretor'])
       console.warn(`[diretor-de-arte/geração] rodada ${rodada} falhou:`, erro instanceof Error ? erro.message : erro)
       feedback = null
       if (rodada === RODADAS_DO_PLANEJADOR) break
     }
   }
+  concluirFallback(controle)
   return null
 }
 
@@ -848,19 +865,26 @@ export function copyEstaNoPrompt(prompt: string, copy: string[]): string[] {
  */
 export async function planejarMelhoria(args: PlanejarMelhoriaArgs): Promise<PromptPlanejado | null> {
   const inicio = Date.now()
+  const controle = args.controle ?? criarControleDoDiretor()
   const anexos = args.imagens.filter((i) => i.buffer)
   const contexto = `${contextoDaMarca(args.brand)}\n\n${contextoDaPeca(args)}`
+  registrarContextoDoDiretor(controle, PLANNER_MODEL, SYSTEM, contexto, anexos.map((r) => r.buffer))
   let tentativas = 0
   let feedback: string | null = null
 
   for (let rodada = 1; rodada <= RODADAS_DO_PLANEJADOR; rodada++) {
     tentativas = rodada
+    const limiteMs = limiteDaRodada(controle, args.timeoutMs ?? 60_000)
+    if (!limiteMs) break
+    const inicioDaRodada = Date.now()
+    const sinal = AbortSignal.timeout(limiteMs)
     try {
       const { object } = await generateObject({
         model: openai(PLANNER_MODEL),
         ...(ACEITA_TEMPERATURA ? { temperature: 0.4 } : {}),
         maxOutputTokens: 4000,
-        abortSignal: AbortSignal.timeout(args.timeoutMs ?? 60_000),
+        abortSignal: sinal,
+        maxRetries: 0, // O laço externo controla todas as tentativas e seu orçamento.
         schema: saidaSchema,
         system: SYSTEM,
         messages: [
@@ -901,6 +925,7 @@ export async function planejarMelhoria(args: PlanejarMelhoriaArgs): Promise<Prom
         )
       }
       if (problemas.length === 0) {
+        registrarRodada(controle, limiteMs, inicioDaRodada, 'aprovado')
         return {
           prompt,
           copyFinal,
@@ -910,13 +935,17 @@ export async function planejarMelhoria(args: PlanejarMelhoriaArgs): Promise<Prom
           tentativas,
         }
       }
+      registrarRodada(controle, limiteMs, inicioDaRodada, 'recusado', problemas)
       feedback = problemas.join('\n')
       console.warn(`[diretor-de-arte] rodada ${rodada} recusada: ${feedback}`)
     } catch (erro) {
+      // Não persistir mensagens arbitrárias do provedor (podem conter dados sensíveis).
+      registrarRodada(controle, limiteMs, inicioDaRodada, sinal.aborted ? 'timeout' : 'erro', [sinal.aborted ? 'Tempo da rodada esgotado' : 'Falha na chamada ou resposta estruturada do diretor'])
       console.warn(`[diretor-de-arte] rodada ${rodada} falhou:`, erro instanceof Error ? erro.message : erro)
       feedback = null
       if (rodada === RODADAS_DO_PLANEJADOR) break
     }
   }
+  concluirFallback(controle)
   return null
 }

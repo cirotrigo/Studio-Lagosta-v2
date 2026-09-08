@@ -13,6 +13,8 @@
  * em fieldValues — o registro atômico que permite aprender com cada run.
  */
 
+import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar } from './controle-do-diretor'
+
 import sharp from 'sharp'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
@@ -287,10 +289,12 @@ function avisoDeVazamento(textos: string[]): Record<string, unknown> {
 
 export async function processArtGenerationInBackground(args: ArtGenerationJobArgs): Promise<void> {
   const startedAt = Date.now()
+  const deadlineDaGeracao = startedAt + BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS
+  const controleDiretor = criarControleDoDiretor(deadlineDaGeracao - RESERVA_PARA_GERAR_MS)
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
   let promptUsado: string | null = null
   /** O que o diretor de arte fez nesta run (F6, 05/09/2026) — vai para o fieldValues. */
-  let plannerGeracaoInfo: Record<string, unknown> = {}
+  let plannerGeracaoInfo: Record<string, unknown> = { diretor: controleDiretor.registro }
   /** Registro atômico: qual referência de marca o modelo recebeu de fato. */
   let brandCardOrigem: 'manual-designer' | 'card-gerado' | null = null
 
@@ -871,6 +875,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         const leituraDaFoto = refFoto ? await lerFotoParaODiretor(refFoto.buffer, args.finalSize) : null
         const catalogoDaFoto = refFoto ? await lerCatalogoParaODiretor(args) : null
         planejado = await planejarArte({
+          controle: controleDiretor,
           copy: copyComCaixaDaMarca(args.copy, brand),
           pedido: args.pedido ?? '',
           brand,
@@ -889,6 +894,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           ...(referenciaSoParaODiretor ? { referenciaSoParaODiretor: true } : {}),
           planejador: planejado ? planejado.modelo : 'fallback',
           planejadorMs: Date.now() - t0,
+          diretor: controleDiretor.registro,
           ...(planejado ? { planejadorTentativas: planejado.tentativas } : {}),
           ...(planejado?.leitura ? { leitura: planejado.leitura } : {}),
           ...(planejado?.diagnostico ? { diagnostico: planejado.diagnostico } : {}),
@@ -1043,7 +1049,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
 
       const genStartedAt = Date.now()
-      let candidate = await generateOnce(args, ordered, prompt, Math.max(30_000, remainingMs))
+      let candidate = await generateOnce(args, ordered, prompt, tempoParaGerar(deadlineDaGeracao))
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
       if (args.track === 'arte' && refFoto && process.env.ARTE_TOM_CASADO !== 'off') {
@@ -1617,6 +1623,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               prompt: promptUsado,
               error: message,
               failedAt: new Date().toISOString(),
+              ...plannerGeracaoInfo,
+              diretor: controleDiretor.registro,
               ...textCheckInfo,
             }),
           )) as any,
