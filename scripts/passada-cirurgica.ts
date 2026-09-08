@@ -30,8 +30,10 @@ async function main() {
   })
   mkdirSync('.tmp-medicao-estilo-chatgpt/testes-reais', { recursive: true })
   const out = `.tmp-medicao-estilo-chatgpt/testes-reais/cirurgica-${id.slice(-6)}.jpg`
+  const master = out.replace(/\.jpg$/, '.png')
+  writeFileSync(master, r.buffer)
   writeFileSync(out, await sharp(r.buffer).jpeg({ quality: 90 }).toBuffer())
-  console.log(`${(r.ms / 1000).toFixed(1)}s · dif fora antes=${r.difForaAntes.toFixed(1)} depois=${r.difForaDepois.toFixed(1)}\n--- prompt ---\n${r.prompt}\n--- ${out}`)
+  console.log(`${(r.ms / 1000).toFixed(1)}s · dif fora antes=${r.difForaAntes.toFixed(1)} depois=${r.difForaDepois.toFixed(1)} · pixels externos alterados=${r.pixelsAlteradosFora} · mestre=${master}\n--- prompt ---\n${r.prompt}\n--- ${out}`)
   await db.$disconnect()
 }
 main().catch((e) => { console.error(e); process.exit(1) })

@@ -322,7 +322,7 @@ export function formatarEstiloParaPrompt(estilo: EstiloDasReferencias): string {
   )
   if (estilo.ornamentos.length) linhas.push(`Ornamentos: ${estilo.ornamentos.join('; ')}.`)
   linhas.push(`Diagramação habitual: ${estilo.diagramacao}`)
-  linhas.push(`Foto: ${estilo.tratamentoDaFoto}`)
+  if (estilo.tratamentoDaFoto?.trim()) linhas.push(`Foto: ${estilo.tratamentoDaFoto}`)
   linhas.push(`Logo: ${estilo.logo}`)
   if (estilo.evitar.length) linhas.push(`Nunca aparece nas peças aprovadas: ${estilo.evitar.join('; ')}.`)
   linhas.push(`Em resumo: ${estilo.resumo}`)

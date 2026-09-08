@@ -12,6 +12,8 @@
  * Generation FAILED e NUNCA chega ao post.
  */
 
+import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar } from './controle-do-diretor'
+
 import sharp from 'sharp'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
@@ -259,6 +261,8 @@ export function ehBloqueioDeSeguranca(erro: unknown): boolean {
 
 export async function processImprovementInBackground(args: ImprovementJobArgs): Promise<void> {
   const startedAt = Date.now()
+  const deadlineDaGeracao = startedAt + BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS
+  const controleDiretor = criarControleDoDiretor(deadlineDaGeracao - RESERVA_PARA_GERAR_MS)
   let format = args.format
   let openaiSize = OPENAI_INPUT_SIZE[format]
   let finalSize = FINAL_OUTPUT_SIZE[format]
@@ -273,7 +277,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
    * prompt e sem régua no registro, e o diagnóstico teve de ser refeito à
    * mão a partir da transcrição.
    */
-  const registroDaRun: Record<string, unknown> = {}
+  const registroDaRun: Record<string, unknown> = { diretor: controleDiretor.registro }
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
   // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
@@ -639,6 +643,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     })
     const plannerStartedAt = Date.now()
     const plano = await planejarMelhoria({
+      controle: controleDiretor,
       modo,
       imagens: imagensDoPlano,
       brand: assets.brand,
@@ -655,6 +660,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       modo,
       planejador: plano ? plano.modelo : 'fallback',
       planejadorMs: Date.now() - plannerStartedAt,
+      diretor: controleDiretor.registro,
     }
     if (plano) {
       // A área reservada da marca é mecânica (quem cola é o código): entra
@@ -727,7 +733,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           logoCompor: !!logoParaCompor,
           promptPronto,
           quality: tier,
-          timeoutMs: Math.max(30_000, remainingMs),
+          timeoutMs: tempoParaGerar(deadlineDaGeracao),
         })
       let candidate: Buffer
       try {
