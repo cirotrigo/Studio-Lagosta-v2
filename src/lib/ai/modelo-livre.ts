@@ -1,68 +1,89 @@
 /**
- * O MODELO escolhido é referência de ESTILO, não de LAYOUT — para TODOS os
- * clientes, desde 17/08/2026.
+ * O MODELO escolhido manda também no LAYOUT — para TODOS os clientes, desde
+ * 07/09/2026. O pêndulo já esteve do outro lado; a história inteira está aqui
+ * porque é ela que impede a terceira virada sem dado novo.
  *
- * A origem: "o Claudinho estava fazendo artes melhores quando não travava
- * muito o modelo, pois o modelo já manda bem e é bem criativo — agora está
- * engessando muito. A ideia de selecionar o modelo de referência seria apenas
- * passar uma referência de FONTES que são usadas e de ORGANIZAÇÃO DE TEXTO,
- * deixando ele livre para identificar o melhor lugar de acordo com a imagem"
- * (Ciro). Nasceu como experimento só no O Quintal Parrilla, o resultado foi
- * aprovado no mesmo dia ("funcionou melhor") e virou o PADRÃO — quem opera
- * todos os clientes é a mesma equipe, e dois comportamentos para o mesmo gesto
- * da bancada seria pior que qualquer uma das duas semânticas.
+ * ── 17/08/2026: o modo livre vira padrão ────────────────────────────────────
+ * "O Claudinho estava fazendo artes melhores quando não travava muito o
+ * modelo, pois o modelo já manda bem e é bem criativo — agora está engessando
+ * muito. A ideia de selecionar o modelo de referência seria apenas passar uma
+ * referência de FONTES que são usadas e de ORGANIZAÇÃO DE TEXTO, deixando ele
+ * livre para identificar o melhor lugar de acordo com a imagem" (Ciro).
+ * Nasceu como experimento no O Quintal, foi aprovado no mesmo dia e virou
+ * padrão da carteira — quem opera todos os clientes é a mesma equipe, e dois
+ * comportamentos para o mesmo gesto da bancada seria pior que qualquer uma das
+ * duas semânticas.
  *
- * O que o modo livre faz (ver `buildModeloSpineLivre`):
- * - do modelo vêm tipografia, caixa, cor, hierarquia e ornamentos;
- * - a POSIÇÃO de cada bloco é do gerador, lendo a foto — a regra 10 das
- *   regras de composição (autonomia) vale com modelo presente;
- * - a leitura por visão sai SEM bandas/faixas/lados (`semPosicoes`), senão a
- *   descrição viraria instrução de lugar por outra porta.
+ * ── 24/08 e 07/09: dois clientes voltam, um a um ────────────────────────────
+ * O Quintal (0 "gostei" × 14) e a Wine Vix (5 × 9, com "não seguiu o template
+ * escolhido" quatro vezes) saíram do modo livre por opt-out. Aí o argumento da
+ * uniformidade que sustentava o padrão já estava perdido: eram dois
+ * comportamentos em produção.
  *
- * O que NÃO afrouxa em nenhum modo, porque veio de feedback medido:
- * - as palavras do modelo continuam fora do prompt (vazamento);
- * - UMA marca por peça, no canto em que a referência a põe;
- * - horário/endereço no rodapé (é conteúdo, não layout);
- * - safe area do story;
- * - texto contido e foto protagonista (regras 1, 2 e 4 — "o assunto da foto
- *   nunca deve ser coberto pelo texto" é a regra 4, que segue integral).
+ * ── 07/09/2026: o padrão inverte ────────────────────────────────────────────
+ * O Ciro testou a Real Gelateria e relatou o mesmo defeito. O placar de toda a
+ * carteira, contado no dia (feedback real da equipe, desde julho):
  *
- * ⚠️ O CARROSSEL não passa por aqui, de propósito: o LOOK SPINE do slide
- * irmão continua estrito, porque a série é uma peça só e slides com layouts
+ * | cliente          | modo    | gostei | melhorar | "não seguiu a referência" |
+ * |------------------|---------|-------:|---------:|--------------------------:|
+ * | O Quintal        | estrito |      2 |       29 |                        10 |
+ * | Wine Vix         | estrito |      5 |        9 |                         3 |
+ * | TERO             | livre   |      1 |       64 |                         2 |
+ * | Real Gelateria   | livre   |      8 |        7 |                         2 |
+ * | By Rock          | livre   |      3 |       10 |                         1 |
+ * | Espeto Gaúcho    | livre   |     11 |       30 |                         0 |
+ * | Lagosta Criativa | livre   |      3 |        6 |                         0 |
+ *
+ * Cinco dos sete clientes reclamaram de a peça não seguir a referência; 18
+ * queixas ao todo. Nenhuma delas é anterior a 17/08.
+ *
+ * 🔴 As 10 queixas do Quintal em modo ESTRITO não desmentem isto: são de
+ * agosto, quando o prompt vinha do `buildArtePrompt` de 16 mil caracteres. O
+ * planejador só existe desde 05/09, e a causa que fazia o estrito não pegar —
+ * a decisão de design do planejador reinventando a posição, contra o "match
+ * its text placement" da linha da referência — só foi corrigida em 07/09.
+ * Antes disso, "estrito" era uma promessa que o prompt não cumpria.
+ *
+ * O que o modo ESTRITO faz: do modelo vêm tipografia, caixa, cor, hierarquia,
+ * ornamentos E a posição de cada bloco. A autonomia de composição (regra 10)
+ * sai do prompt quando há modelo — ela competia com o modelo e vencia, por ser
+ * mais concreta e vir depois.
+ *
+ * 🔴 E o estrito não conserta só a POSIÇÃO: foi a única variante em que a
+ * FOTOGRAFIA sobreviveu. Na mesma foto e na mesma copy, o modo livre devolveu
+ * uma peça com a diagramação certa e o salão VAZIO — o gpt-image recriou a
+ * cena e apagou as pessoas, o laptop e os pratos. É o mesmo efeito que a F0 do
+ * PR #93 mediu ("o redesenho vence na tabela do editor e destrói a foto em
+ * peça aprovada"). A frase "só a fotografia e as palavras mudam" é o que
+ * ancora a cena, e ela só existe no spine estrito.
+ *
+ * ⚠️ O CARROSSEL não passa por aqui, de propósito: o LOOK SPINE do slide irmão
+ * sempre foi estrito, porque a série é uma peça só e slides com layouts
  * diferentes é o defeito que ele existe para evitar.
  *
  * Módulo PURO (sem Prisma), mesmo precedente de `caixa-da-copy.ts`.
  */
 
 /**
- * Opt-out: clientes que devem VOLTAR ao spine estrito (o modelo manda também
- * na posição). Se uma marca regredir com a liberdade — layouts ruins
- * recorrentes com modelo escolhido —, o caminho de volta é adicionar o id
- * aqui, não reescrever o prompt.
+ * Opt-in: clientes que voltam ao modo LIVRE (o modelo manda só no estilo, e a
+ * posição é do gerador lendo a foto).
  *
- * 2 — O Quintal Parrilla (24/08/2026). O piloto do modo livre foi o primeiro
- * a regredir: com o placar em 0 "gostei" × 14 "preciso melhorar", o Ciro
- * mandou "seguir melhor as artes de referência". O feedback da noite dizia
- * "título e subtítulo muito grandes e fora do padrão da arte de referência"
- * — nem a PROPORÇÃO, que o modo livre promete manter, estava segurando.
+ * Vazio hoje, e de propósito: a inversão de 07/09/2026 não tem cliente
+ * excluído. Se uma marca regredir com o layout travado — layouts repetitivos,
+ * texto pousado onde a foto não deixa —, o caminho é adicionar o id aqui, não
+ * reescrever o prompt. O spine livre continua no código e coberto por teste
+ * exatamente para esse retorno.
  *
- * 11 — Wine Vix (07/09/2026). Mesmo desfecho do Quintal, com o placar em 5
- * "gostei" × 8 "preciso melhorar" e a MESMA queixa repetida quatro vezes
- * ("não seguiu o template escolhido", 18/08, 19/08, 23/08 e 07/09) — nenhuma
- * delas antes de 17/08, quando o modo livre virou padrão.
+ * Quem vier para cá merece uma linha dizendo QUAL foi a regressão e em que
+ * data — é assim que a próxima virada do pêndulo terá dado, e não memória.
  *
- * 🔴 O que a medição de 07/09 acrescentou, e que vale para qualquer marca que
- * vier para cá: mandar seguir o layout não conserta só a POSIÇÃO — foi a única
- * variante em que a FOTOGRAFIA sobreviveu. Na mesma foto e na mesma copy, o
- * modo livre devolveu uma peça com a diagramação certa e o salão VAZIO: o
- * gpt-image recriou a cena e apagou as pessoas, o laptop e os pratos. É o
- * mesmo efeito que a F0 do PR #93 mediu ("o redesenho vence na tabela do
- * editor e destrói a foto em peça aprovada"). A frase "só a fotografia e as
- * palavras mudam" é o que ancora a cena, e ela só existe no spine estrito.
+ * Candidatos naturais, se o assunto voltar: Espeto Gaúcho (11 × 30) e Lagosta
+ * Criativa (3 × 6) foram os dois clientes que nunca reclamaram de a peça não
+ * seguir a referência.
  */
-export const PROJETOS_COM_MODELO_ESTRITO = new Set<number>([2, 11])
+export const PROJETOS_COM_MODELO_LIVRE = new Set<number>([])
 
 /** O modelo escolhido deste projeto manda só no estilo (não no layout)? */
 export function modeloLivre(projectId?: number | null): boolean {
-  return typeof projectId !== 'number' || !PROJETOS_COM_MODELO_ESTRITO.has(projectId)
+  return typeof projectId === 'number' && PROJETOS_COM_MODELO_LIVRE.has(projectId)
 }
