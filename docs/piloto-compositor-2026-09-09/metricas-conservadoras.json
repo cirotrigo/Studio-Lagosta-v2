@@ -1,0 +1,429 @@
+{
+  "captura": "2026-09-09T03:34:42.549Z",
+  "regra": "Default baseline. Opt-in explícito; cor/estrutura diferente exige revisão; empate conserva baseline.",
+  "casos": [
+    {
+      "cliente": "O Quintal Parrilla",
+      "id": 2,
+      "defaultIdenticoAoHistorico": true,
+      "hashDefault": "af62514223600f693aea33157f3b46d4ce57129c10709a54676532835cf40976",
+      "tempos": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            902.212542,
+            885.224833,
+            875.2815
+          ],
+          "medianaMs": 885.224833,
+          "status": "preview",
+          "hashes": [
+            "af62514223600f693aea33157f3b46d4ce57129c10709a54676532835cf40976"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            1.4494160000001557,
+            0.1274590000000444,
+            0.4173749999999927
+          ],
+          "medianaMs": 0.4173749999999927,
+          "status": "recusada",
+          "hashes": []
+        }
+      ],
+      "tempos073a612a": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            957.5489579999999,
+            888.6754170000002,
+            888.1685000000002
+          ],
+          "medianaMs": 888.6754170000002,
+          "status": "preview",
+          "hashes": [
+            "af62514223600f693aea33157f3b46d4ce57129c10709a54676532835cf40976"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            1.3389589999999316,
+            0.10829100000000835,
+            0.3915830000000824
+          ],
+          "medianaMs": 0.3915830000000824,
+          "status": "recusada",
+          "hashes": []
+        }
+      ],
+      "selecao": {
+        "diagnosticos": [
+          {
+            "foto": "179VzvdbjDqpA-Xs_sy8d3dqtxx_tW541",
+            "variante": "(baseline automático)",
+            "impedimentos": [
+              "Marca de terceiro em destaque: Brahma; escolha outra foto."
+            ],
+            "baseline": true
+          }
+        ],
+        "alternativas": [],
+        "limite": 6,
+        "janelaMs": 30000
+      },
+      "alternativa": null
+    },
+    {
+      "cliente": "Real Gelateria",
+      "id": 1,
+      "defaultIdenticoAoHistorico": true,
+      "hashDefault": "f784191a400ddc2cf32c31312d8ed2c71b36a93a7430dece265287b6cc5f3ae3",
+      "tempos": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            1048.6450000000004,
+            985.5830419999984,
+            983.7646249999998
+          ],
+          "medianaMs": 985.5830419999984,
+          "status": "preview",
+          "hashes": [
+            "f784191a400ddc2cf32c31312d8ed2c71b36a93a7430dece265287b6cc5f3ae3"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            4017.710958999999,
+            3833.110541,
+            3815.7409590000007
+          ],
+          "medianaMs": 3833.110541,
+          "status": "preview",
+          "hashes": [
+            "f784191a400ddc2cf32c31312d8ed2c71b36a93a7430dece265287b6cc5f3ae3"
+          ]
+        }
+      ],
+      "tempos073a612a": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            1064.054709,
+            1070.4067909999994,
+            1074.122625
+          ],
+          "medianaMs": 1070.4067909999994,
+          "status": "preview",
+          "hashes": [
+            "f784191a400ddc2cf32c31312d8ed2c71b36a93a7430dece265287b6cc5f3ae3"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            4016.2106250000006,
+            4001.2398329999996,
+            4032.2126660000013
+          ],
+          "medianaMs": 4016.2106250000006,
+          "status": "preview",
+          "hashes": [
+            "27946199a494dab49e9137bcb4ec87b60123a567ef9cfbbf8726bf4ec35e9a96"
+          ]
+        }
+      ],
+      "selecao": {
+        "combinacoes": [
+          {
+            "foto": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+            "variante": "cmtm64ckl000bl2044uij1amu",
+            "impedimentos": [],
+            "baseline": true,
+            "transitorio": false,
+            "pontos": 0.755,
+            "leitura": {
+              "tom": {
+                "alteracaoMedia": 0.08111614923747278,
+                "escurecimentoMedio": 0.08111499183006536
+              },
+              "fontes360": {
+                "headline": 28,
+                "apoio": 11.333333333333334
+              },
+              "cores": {
+                "headline": "#f3eadc",
+                "apoio": "#f6f0e4"
+              },
+              "faixas": {
+                "headline": "topo",
+                "apoio": "topo"
+              },
+              "contraste": {
+                "headline": 33,
+                "apoio": 33
+              },
+              "crop": "right-middle",
+              "logo": "inferior-direito"
+            }
+          },
+          {
+            "foto": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+            "variante": "cmtkwo22a0001swfoweujbr80",
+            "impedimentos": [],
+            "baseline": false,
+            "transitorio": false,
+            "pontos": 0.594,
+            "leitura": {
+              "tom": {
+                "alteracaoMedia": 0.14349605119825706,
+                "escurecimentoMedio": 0.10410062636165578
+              },
+              "fontes360": {
+                "headline": 28,
+                "apoio": 11.333333333333334
+              },
+              "cores": {
+                "headline": "#f3eadc",
+                "apoio": "#283d36"
+              },
+              "faixas": {
+                "headline": "topo",
+                "apoio": "rodape"
+              },
+              "contraste": {
+                "headline": 89,
+                "apoio": 77
+              },
+              "crop": "right-middle",
+              "logo": "inferior-direito"
+            },
+            "comparacao": [
+              "apoio: cor do texto mudou; contraste e identidade exigem revisão visual.",
+              "apoio: mudou de faixa vertical; revisão de hierarquia necessária.",
+              "Maior escurecimento médio pelos fundos de texto.",
+              "Maior alteração tonal média pelos fundos de texto."
+            ]
+          },
+          {
+            "foto": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+            "variante": "cmtlonjfs0001jv047xrji2nr",
+            "impedimentos": [],
+            "baseline": false,
+            "transitorio": false,
+            "pontos": 0.755,
+            "leitura": {
+              "tom": {
+                "alteracaoMedia": 0.11233122276688452,
+                "escurecimentoMedio": 0.11021875
+              },
+              "fontes360": {
+                "headline": 28,
+                "apoio": 11.333333333333334
+              },
+              "cores": {
+                "headline": "#f3eadc",
+                "apoio": "#f6f0e4"
+              },
+              "faixas": {
+                "headline": "topo",
+                "apoio": "rodape"
+              },
+              "contraste": {
+                "headline": 60,
+                "apoio": 54
+              },
+              "crop": "right-middle",
+              "logo": "inferior-direito"
+            },
+            "comparacao": [
+              "apoio: mudou de faixa vertical; revisão de hierarquia necessária.",
+              "Maior escurecimento médio pelos fundos de texto.",
+              "Maior alteração tonal média pelos fundos de texto."
+            ]
+          },
+          {
+            "foto": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+            "variante": "cmtm5hghk0003l204jkbooymg",
+            "impedimentos": [],
+            "baseline": false,
+            "transitorio": false,
+            "pontos": 0.597,
+            "leitura": {
+              "tom": {
+                "alteracaoMedia": 0.06512765522875817,
+                "escurecimentoMedio": 0.0008561410675381263
+              },
+              "fontes360": {
+                "headline": 28,
+                "apoio": 13.333333333333334
+              },
+              "cores": {
+                "headline": "#283d36",
+                "apoio": "#283d36"
+              },
+              "faixas": {
+                "headline": "topo",
+                "apoio": "topo"
+              },
+              "contraste": {
+                "headline": 75,
+                "apoio": 75
+              },
+              "crop": "right-middle",
+              "logo": "inferior-direito"
+            },
+            "comparacao": [
+              "headline: cor do texto mudou; contraste e identidade exigem revisão visual.",
+              "apoio: cor do texto mudou; contraste e identidade exigem revisão visual."
+            ]
+          }
+        ],
+        "limite": 6,
+        "janelaMs": 30000,
+        "interrompida": false,
+        "alternativas": [
+          {
+            "foto": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+            "variante": "cmtm5hghk0003l204jkbooymg",
+            "motivos": [
+              "headline: cor do texto mudou; contraste e identidade exigem revisão visual.",
+              "apoio: cor do texto mudou; contraste e identidade exigem revisão visual."
+            ]
+          },
+          {
+            "foto": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+            "variante": "cmtlonjfs0001jv047xrji2nr",
+            "motivos": [
+              "apoio: mudou de faixa vertical; revisão de hierarquia necessária.",
+              "Maior escurecimento médio pelos fundos de texto.",
+              "Maior alteração tonal média pelos fundos de texto."
+            ]
+          }
+        ],
+        "decisao": "baseline"
+      },
+      "alternativa": {
+        "variante": "cmtm5hghk0003l204jkbooymg",
+        "motivos": [
+          "headline: cor do texto mudou; contraste e identidade exigem revisão visual.",
+          "apoio: cor do texto mudou; contraste e identidade exigem revisão visual."
+        ],
+        "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-alternativa.png"
+      }
+    },
+    {
+      "cliente": "TERO",
+      "id": 3,
+      "defaultIdenticoAoHistorico": true,
+      "hashDefault": "03611b61e0fc15b09f2462fe7417490110271b1039ca052d468f45f7e08123d4",
+      "tempos": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            1000.7049999999981,
+            995.7265000000007,
+            997.1145419999993
+          ],
+          "medianaMs": 997.1145419999993,
+          "status": "preview",
+          "hashes": [
+            "03611b61e0fc15b09f2462fe7417490110271b1039ca052d468f45f7e08123d4"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            698.1547499999979,
+            697.1419580000002,
+            694.744917
+          ],
+          "medianaMs": 697.1419580000002,
+          "status": "recusada",
+          "hashes": []
+        }
+      ],
+      "tempos073a612a": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            1072.5694169999988,
+            1074.101499999997,
+            1074.895916999998
+          ],
+          "medianaMs": 1074.101499999997,
+          "status": "preview",
+          "hashes": [
+            "03611b61e0fc15b09f2462fe7417490110271b1039ca052d468f45f7e08123d4"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            697.2885000000024,
+            698.2614999999969,
+            696.002666999997
+          ],
+          "medianaMs": 697.2885000000024,
+          "status": "recusada",
+          "hashes": []
+        }
+      ],
+      "selecao": {
+        "diagnosticos": [
+          {
+            "foto": "1e7CCKGIHpnlXOpATX8i3FI2v-uObYP0-",
+            "variante": "cmtkwobex0007swfo9thdvluo",
+            "impedimentos": [
+              "Contraste insuficiente em grupo-34718; escolha outra foto ou variante aprovada."
+            ],
+            "baseline": true,
+            "transitorio": false,
+            "pontos": -0.5700000000000001,
+            "leitura": {
+              "tom": {
+                "alteracaoMedia": 0.052609272875816994,
+                "escurecimentoMedio": 0.05260450708061002
+              },
+              "fontes360": {
+                "headline": 26.666666666666668,
+                "cta": 10,
+                "servico": 12
+              },
+              "cores": {
+                "headline": "#ef7b4f",
+                "cta": "#ef7b4f",
+                "servico": "#f8f2f0"
+              },
+              "faixas": {
+                "headline": "topo",
+                "cta": "rodape",
+                "servico": "rodape"
+              },
+              "contraste": {
+                "headline": -51,
+                "cta": 26,
+                "servico": 26
+              },
+              "crop": "center-middle",
+              "logo": "inferior-direito"
+            }
+          }
+        ],
+        "alternativas": [],
+        "limite": 6,
+        "janelaMs": 30000
+      },
+      "alternativa": null
+    }
+  ],
+  "copyLiteral": {
+    "previews": 12,
+    "alternativa": 1
+  },
+  "postgresReexecutado": false
+}

@@ -27,6 +27,8 @@ import { calibrarHalo, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
+import { avaliarCombinacao, type DiagnosticoDaSelecao } from './selecionar-combinacao'
+import { lerCaixaDoAssunto, assuntoEmPixels, fracaoVisivelDoAssunto, type AssuntoNormalizado } from './assunto-da-foto'
 import { garantirPasta, ordemNaPasta } from './pastas'
 import { entradaDePersistencia } from './persistencia'
 import { avisoDeMinutoOcupado, nomeDaPagina } from './pasta-da-semana'
@@ -50,8 +52,9 @@ import {
   type MapaDeCalma,
   type PontuacaoDePosicao,
 } from './mapa-de-calma'
+import { aplicarGradienteSuave } from '@/lib/creatives/gradiente-suave'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
-import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido } from './regua'
+import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto } from './regua'
 
 export { TAG_DA_PECA_COMPOSTA } from './persistencia'
 
@@ -62,6 +65,9 @@ export interface RotuloDePosicao {
 }
 
 export interface DiagnosticoDaComposicao {
+  selecao?: DiagnosticoDaSelecao
+  intervencaoDeTexto?: IntervencaoDeTexto
+  tratamentoDeTexto?: 'gradiente-suave-topo'
   formato: Formato
   posicao: RotuloDePosicao & { pontuacao: number; motivo: string }
   candidatos: Array<RotuloDePosicao & { pontuacao: number; descartado: boolean; motivo: string }>
@@ -76,6 +82,14 @@ export interface DiagnosticoDaComposicao {
 }
 
 export interface OpcoesDeComposicao {
+  /** Interno: mede e monta camadas sem persistir nem exportar prova. */
+  somenteAvaliar?: boolean
+  medirComparacao?: boolean
+  selecao?: DiagnosticoDaSelecao
+  avisosDaSelecao?: string[]
+  /** Cache local à seleção: evita baixar/decodificar a mesma foto por variante. */
+  assuntosDoCatalogo?: Map<string, AssuntoNormalizado | null>
+  cacheDeFotos?: Map<string, Awaited<ReturnType<typeof carregarFoto>>>
   /** Só renderiza e devolve o PNG — nada é gravado. */
   provar?: boolean
   /** `User.id` INTERNO (cuid), nunca o clerkId. */
@@ -176,6 +190,12 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
     luzDaFoto: opcoes.luzDaFoto ?? null,
     chave: opcoes.chave ?? '',
   })
+
+  if (opcoes.variante && !escolhida) {
+    throw new CreativeError('ASSINATURA_INCOMPLETA',
+      `A variante solicitada "${opcoes.variante}" não foi encontrada entre as assinaturas disponíveis para ${formato}. Consulte ver-assinatura e escolha uma variante existente.`,
+      422, { variante: opcoes.variante, formato })
+  }
 
   const montar = (p: (typeof paginas)[number] | null, f: Formato | null) =>
     montarAssinatura({
@@ -408,15 +428,26 @@ function fundoDeHalo(mancha: string, tinta: number, raio: number) {
 export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = {}): Promise<ResultadoDaComposicao> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
+  if (v.spec.selecaoExperimental === true && !opcoes.somenteAvaliar) {
+    const { selecionarCombinacao } = await import('./selecionar-combinacao')
+    const selecao = await selecionarCombinacao(v.spec)
+    return comporPeca(selecao.spec, { ...opcoes, selecao: selecao.diagnostico, avisosDaSelecao: selecao.avisos, cacheDeFotos: selecao.cacheDeFotos, assuntosDoCatalogo: selecao.assuntosDoCatalogo })
+  }
   const spec = v.spec
-  const avisos: string[] = []
+  const avisos: string[] = [...(opcoes.avisosDaSelecao ?? [])]
 
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
   // A foto vem ANTES da assinatura: a luz média dela escolhe entre variantes
   // `clara`/`escura`, e a chave da peça faz o rodízio entre as demais.
-  const { foto, aviso: avisoDaFoto } = await carregarFoto(spec)
+  const chaveDaFoto = JSON.stringify(spec.foto ?? {})
+  const fotoCarregada = opcoes.cacheDeFotos?.get(chaveDaFoto) ?? await carregarFoto(spec)
+  opcoes.cacheDeFotos?.set(chaveDaFoto, fotoCarregada)
+  const { foto, aviso: avisoDaFoto } = fotoCarregada
+  if (!foto && spec.foto && (opcoes.somenteAvaliar || opcoes.selecao)) {
+    throw new CreativeError('FOTO_INDISPONIVEL', avisoDaFoto ?? 'A foto candidata não pôde ser carregada. Escolha um arquivo acessível.', 422)
+  }
   if (avisoDaFoto) avisos.push(avisoDaFoto)
   const canvas = DIMENSOES[spec.formato]
   const luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, canvas) : null
@@ -438,11 +469,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       { faltam },
     )
   }
-  // Papel pedido que ESTA variante não tem (uma story sem pré-título, por
-  // exemplo) sai da peça com aviso — a variante é um desenho, não um defeito.
   if (faltam.length > 0) {
-    avisos.push(`A variante "${assinatura.origem.variante ?? ''}" não tem ${faltam.join(', ')}: esse texto ficou de fora.`)
-    spec.blocos = spec.blocos.filter((b) => !faltam.includes(b.papel))
+    throw new CreativeError('PAPEIS_INCOMPATIVEIS',
+      `A variante não tem ${faltam.join(', ')}. Escolha uma variante com todos os papéis; preserve as condições obrigatórias da copy.`,
+      422, { faltam, variante: assinatura.origem.variante })
   }
 
   const geo = assinatura.numeros.geometria[spec.formato]
@@ -545,14 +575,18 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
   // 2. O mapa e o assunto — por corte candidato.
   const cortes = cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
-  const assuntoDoCatalogo = foto && spec.foto?.driveFileId ? await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId) : null
+  const assuntoDoCatalogo = foto && spec.foto?.driveFileId
+    ? opcoes.assuntosDoCatalogo?.has(spec.foto.driveFileId)
+      ? opcoes.assuntosDoCatalogo.get(spec.foto.driveFileId) ?? null
+      : await assuntoDoCatalogoDaFoto(spec.projectId, spec.foto.driveFileId)
+    : null
 
   let melhor: { crop: CropPosition; raster: FotoCinza | null; mapa: MapaDeCalma | null; assunto: Rect | null; escolhido: PontuacaoDePosicao<RotuloDePosicao>; todos: PontuacaoDePosicao<RotuloDePosicao>[] } | null = null
   const cores = montados.map((b) => b.cor)
   for (const crop of cortes) {
     const raster = foto ? await lerFotoComoCover(foto.bytes, canvas, { cropPosition: crop }) : null
     const mapa = raster ? mapaDeCalma(raster) : null
-    const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, canvas) : mapa ? estimarAssunto(mapa) : null
+    const assunto = assuntoDoCatalogo ? assuntoEmPixels(assuntoDoCatalogo, { width: foto!.largura, height: foto!.altura }, canvas, crop) : mapa ? estimarAssunto(mapa) : null
     const candidatos = candidatosDePosicao(g, spec, pilha, crop, {
       reservaNoRodape,
       reservaNoTopo,
@@ -562,6 +596,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: mancha, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
+    if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) < 0.75) {
+      for (const candidato of pontuados) {
+        candidato.descartado = true
+        candidato.motivo = 'O corte preserva menos de 75% da caixa do assunto catalogado.'
+      }
+    }
     const escolhido = pontuados[0]
     if (!melhor || (escolhido && (Number(!escolhido.descartado) * 10 + escolhido.pontuacao) > (Number(!melhor.escolhido.descartado) * 10 + melhor.escolhido.pontuacao))) {
       melhor = { crop, raster, mapa, assunto, escolhido, todos: pontuados }
@@ -746,32 +786,48 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   })
   avisos.push(...fix.avisos)
   let layers = fix.layers as Layer[]
+  const gradienteSuave = spec.preferencias?.tratamentoDeTexto === 'gradiente-suave-topo'
+  if (gradienteSuave) {
+    layers = aplicarGradienteSuave(layers, canvas)
+    avisos.push('Gradiente suave solicitado: conferir leitura e fotografia; a preferência não equivale a aprovação desta peça.')
+  }
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
   //    tinta uma vez dentro da faixa e AVISA quando a foto não carrega o texto.
   let contraste: ContrasteMedido[] | null = null
+  let intervencaoDeTexto: IntervencaoDeTexto | undefined
   try {
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto, corrigir: !paginaDefineHalo })
+    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto, corrigir: !paginaDefineHalo, medirIntervencao: opcoes.medirComparacao })
     layers = regua.layers
     contraste = regua.medidas
+    intervencaoDeTexto = regua.intervencao
     avisos.push(...regua.avisos)
   } catch (erro) {
     avisos.push(`A régua de contraste não rodou: ${(erro as Error).message}`)
   }
 
   const diagnostico: DiagnosticoDaComposicao = {
+    ...(opcoes.selecao ? { selecao: opcoes.selecao } : {}),
+    ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
+    ...(gradienteSuave ? { tratamentoDeTexto: 'gradiente-suave-topo' as const } : {}),
     formato: spec.formato,
     posicao: { ancora, alinha, crop, pontuacao: Number(melhor.escolhido.pontuacao.toFixed(3)), motivo: melhor.escolhido.motivo },
     candidatos: melhor.todos.map((c) => ({ ...c.rotulo, pontuacao: Number(c.pontuacao.toFixed(3)), descartado: c.descartado, motivo: c.motivo })),
     assunto: melhor.assunto,
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
-    halos,
+    halos: gradienteSuave ? halos.filter((h) => layers.some((l) => l.metadata?.groupId === h.grupo && l.effects?.background?.enabled)) : halos,
     logo: logoDiag,
     blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height })),
     contraste,
     assinatura: assinatura.origem,
     avisos,
   }
+
+  if (opcoes.selecao) {
+    const { impedimentos, transitorio } = avaliarCombinacao({ persistido: null, prova: null, layers, diagnostico })
+    if (impedimentos.length) throw new CreativeError(transitorio ? 'SELECAO_INDISPONIVEL' : 'SEM_COMBINACAO', 'A combinação selecionada falhou na conferência final; nada foi salvo.', 422, { impedimentos, selecao: opcoes.selecao })
+  }
+  if (opcoes.somenteAvaliar) return { persistido: null, prova: null, layers, diagnostico }
 
   // 9. Provar ou persistir.
   if (opcoes.provar) {
@@ -840,32 +896,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
 // ─── Assunto pelo catálogo ─────────────────────────────────────────────────
 
-interface AssuntoNormalizado {
-  x0: number
-  y0: number
-  x1: number
-  y1: number
-}
-
 /** A caixa do assunto gravada no catálogo (frações 0..1), quando a análise a deu. */
 async function assuntoDoCatalogoDaFoto(projectId: number, driveFileId: string): Promise<AssuntoNormalizado | null> {
   try {
     const { lerCatalogoDoProjeto } = await import('@/lib/creatives/acervo')
     const catalogo = await lerCatalogoDoProjeto(projectId)
     const entrada = catalogo?.todas?.find((i) => i.driveFileId === driveFileId) as unknown as (Record<string, unknown> | undefined)
-    const a = entrada?.assunto as Partial<AssuntoNormalizado> | undefined
-    if (!a || [a.x0, a.y0, a.x1, a.y1].some((v) => typeof v !== 'number')) return null
-    return { x0: a.x0!, y0: a.y0!, x1: a.x1!, y1: a.y1! }
+    return lerCaixaDoAssunto(entrada?.assunto)
   } catch {
     return null
   }
-}
-
-/**
- * Do catálogo o assunto vem em frações da FOTO ORIGINAL; a peça mostra um
- * corte dela. A conversão para px da peça é aproximada (assume o corte
- * central) — o suficiente para descartar candidato que pousa em cima do prato.
- */
-function assuntoEmPixels(a: AssuntoNormalizado, canvas: { width: number; height: number }): Rect {
-  return { x: a.x0 * canvas.width, y: a.y0 * canvas.height, width: (a.x1 - a.x0) * canvas.width, height: (a.y1 - a.y0) * canvas.height }
 }

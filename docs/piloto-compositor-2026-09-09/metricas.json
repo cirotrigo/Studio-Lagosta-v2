@@ -1,0 +1,180 @@
+{
+  "captura": "2026-09-09T03:34:42.549Z",
+  "bancoMs": 6032.793333,
+  "preparacaoTotalMs": 27971.248583,
+  "preparacaoAdicionalRasterMs": 2759.7124580000004,
+  "casos": [
+    {
+      "cliente": "O Quintal Parrilla",
+      "id": 2,
+      "preparacaoMs": 7223.826083,
+      "fotoHash": "907ed84d55aaa5a28d0f6c3ba3e822d326b122d38ee21cf6232e016659b46a9d",
+      "assinaturaHistorica": "cmtkwo79n0005swfoemw1fipr",
+      "paginasAtualizadasAntesDoEnsaio": true,
+      "condicoes": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            957.5489579999999,
+            888.6754170000002,
+            888.1685000000002
+          ],
+          "medianaMs": 888.6754170000002,
+          "status": "preview",
+          "hashes": [
+            "af62514223600f693aea33157f3b46d4ce57129c10709a54676532835cf40976"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            1.3389589999999316,
+            0.10829100000000835,
+            0.3915830000000824
+          ],
+          "medianaMs": 0.3915830000000824,
+          "status": "recusada",
+          "hashes": []
+        }
+      ],
+      "previews": [
+        "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/2-anterior-0.png",
+        "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/2-atual-recusada.png"
+      ]
+    },
+    {
+      "cliente": "Real Gelateria",
+      "id": 1,
+      "preparacaoMs": 8153.216958000001,
+      "fotoHash": "0534487309f00c6f653bfa83290ffe3d50803b2e5ff4be1c9bed137c7f9b5f6e",
+      "assinaturaHistorica": "cmtm64ckl000bl2044uij1amu",
+      "paginasAtualizadasAntesDoEnsaio": true,
+      "condicoes": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            1064.054709,
+            1070.4067909999994,
+            1074.122625
+          ],
+          "medianaMs": 1070.4067909999994,
+          "status": "preview",
+          "hashes": [
+            "f784191a400ddc2cf32c31312d8ed2c71b36a93a7430dece265287b6cc5f3ae3"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            4016.2106250000006,
+            4001.2398329999996,
+            4032.2126660000013
+          ],
+          "medianaMs": 4016.2106250000006,
+          "status": "preview",
+          "hashes": [
+            "27946199a494dab49e9137bcb4ec87b60123a567ef9cfbbf8726bf4ec35e9a96"
+          ]
+        }
+      ],
+      "previews": [
+        "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-anterior-0.png",
+        "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-atual-0.png"
+      ]
+    },
+    {
+      "cliente": "TERO",
+      "id": 3,
+      "preparacaoMs": 6559.5075,
+      "fotoHash": "2c9b09091677fea589a14c59c8744afa51621c3508ac4b2576beb610554a3f4f",
+      "assinaturaHistorica": "cmtkwobex0007swfo9thdvluo",
+      "paginasAtualizadasAntesDoEnsaio": true,
+      "condicoes": [
+        {
+          "condicao": "anterior",
+          "ms": [
+            1072.5694169999988,
+            1074.101499999997,
+            1074.895916999998
+          ],
+          "medianaMs": 1074.101499999997,
+          "status": "preview",
+          "hashes": [
+            "03611b61e0fc15b09f2462fe7417490110271b1039ca052d468f45f7e08123d4"
+          ]
+        },
+        {
+          "condicao": "atual",
+          "ms": [
+            697.2885000000024,
+            698.2614999999969,
+            696.002666999997
+          ],
+          "medianaMs": 697.2885000000024,
+          "status": "recusada",
+          "hashes": []
+        }
+      ],
+      "previews": [
+        "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/3-anterior-0.png",
+        "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/3-atual-recusada.png"
+      ]
+    }
+  ],
+  "previewsComCopyLiteralPreservada": 12,
+  "postgres": {
+    "versao": "PostgreSQL 15.13 (Homebrew) on aarch64-apple-darwin24.4.0, compiled by Apple clang version 17.0.0 (clang-1700.0.13.3), 64-bit",
+    "local": "127.0.0.1:55439/lagosta_pilot",
+    "resultados": [
+      {
+        "caso": "8 enfileiramentos simultâneos, mesmo item/revisão",
+        "ms": 28.571915999999987,
+        "generations": 1,
+        "jobs": 1,
+        "ok": true
+      },
+      {
+        "caso": "resposta perdida e resultado concluído com spec resolvida",
+        "ok": true
+      },
+      {
+        "caso": "trigger falha depois de inserir Generation: rollback real, seguido de retomada",
+        "ok": true
+      },
+      {
+        "caso": "conteúdo revisado em estado executável recebe nova geração",
+        "ok": true
+      },
+      {
+        "caso": "callback disputa lock com edição; CAS não sobrescreve revisão",
+        "esperaPostgresObservada": true,
+        "ok": true
+      }
+    ]
+  },
+  "reproducaoHistorica": [
+    {
+      "id": 1,
+      "dimensoesIguais": true,
+      "pixelsIguais": true,
+      "diferencaMediaPorCanal": 0,
+      "fracaoCanaisDiferentes": 0
+    },
+    {
+      "id": 2,
+      "dimensoesIguais": true,
+      "pixelsIguais": true,
+      "diferencaMediaPorCanal": 0,
+      "fracaoCanaisDiferentes": 0
+    },
+    {
+      "id": 3,
+      "dimensoesIguais": true,
+      "pixelsIguais": true,
+      "diferencaMediaPorCanal": 0,
+      "fracaoCanaisDiferentes": 0
+    }
+  ],
+  "revisaoTestada": "0b94bd34",
+  "baseline": "7dfbde33"
+}

@@ -34,6 +34,7 @@ export const maxDuration = 300
  */
 
 const bodySchema = z.object({
+  selecaoExperimental: z.boolean().optional(),
   /** A leva. Sem isto, a que está em aberto (a mais recente ativa). */
   planoId: z.string().min(1).max(64).optional(),
   /** Subconjunto da leva. Sem isto, todos os itens executáveis. */
@@ -101,6 +102,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       planoId,
       itemIds: parsed.data.itemIds,
       confirmar,
+      selecaoExperimental: parsed.data.selecaoExperimental === true,
       actorClerkId: userId,
       donoUserId: dbUser?.id ?? null,
       decididoPor: dbUser?.id ?? null,

@@ -1,0 +1,11 @@
+# Protocolo do piloto real — 09/09/2026
+
+Três casos: TERO, Quintal e Real, mesmas specs/fotos do ensaio MCP em `docs/investigacao-mcp-editor-2026-09-09/` do checkout original. Sem ampliar antes de avaliar estes três.
+
+1. Capturar páginas de assinatura, números, logos/fontes e geração histórica em transação de leitura somente; baixar apenas ativos necessários e registrar hashes. Credenciais ficam em memória, nunca no fixture ou relatório. Confirmar limites da equivalência histórica: resumo de assinatura não prova geometria integral.
+2. Congelar essa captura para as duas condições. Baseline: `compor.ts` e `assinatura.ts` do commit anterior `7dfbde33`. Atual: branch integrado. Mesma copy/foto explícita e preferências em ambos; atual habilita seleção com a lista contendo a mesma foto. Não buscar alternativa para melhorar artificialmente o resultado.
+3. Executar com adaptadores locais de leitura: DB/Drive substituídos pela captura; fontes e fotos reais, medição/layout/régua/render reais. Persistência proibida. Baseline em `provar`; atual em `provar`, cuja implementação interna retorna Buffer. Não usar tool MCP que sobe a prova ao Blob. Falhas são resultados; não alterar assinatura/halo/copy para passar.
+4. Medir captura/preparação separadamente; uma rodada fria seguida de duas quentes por condição, alternando ordem para reduzir viés. Registrar duração, status, diagnóstico e checksum dos arquivos. Esses tempos locais não são comparáveis diretamente com os tempos HTTP/MCP históricos nem com ambiente Vercel.
+5. Inspecionar PNGs em tamanho integral e aproximação de celular: texto literal (considerando uppercase aprovado), serviço, CTA quando presente, logo, recorte, contrastes e integridade dos ativos. Não equiparar OCR/contraste à aprovação humana ou à qualidade de geração por IA.
+6. PostgreSQL descartável, com conexão local construída pelo harness e nunca herdada de DATABASE_URL/DIRECT_URL. Testar dois enfileiramentos simultâneos do mesmo item, resposta perdida, revisão alterada, falha após inserir Generation antes de job e callback concorrente. Diferenciar evidência PostgreSQL de testes com mocks.
+7. Salvar resultados e limitações, desligar a instância local, executar testes relevantes, typecheck e lint. Sem merge, deploy, página de produção, publicação, agendamento ou geração paga.

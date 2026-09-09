@@ -13,6 +13,7 @@
  * ~18 caracteres; apoio em 2 quando passa de ~40. Módulo puro.
  */
 
+import { CreativeError } from '@/lib/creatives/errors'
 import type { Bloco } from './spec'
 
 type PapelDaSpec = Bloco['papel']
@@ -55,6 +56,8 @@ export interface OpcoesDeCopyParaBlocos {
    * Sem a lista, vale a distribuição por contagem.
    */
   papeis?: PapelDaSpec[]
+  /** Executor semanal: nenhuma condição recebida pode desaparecer no mapeamento. */
+  estrito?: boolean
 }
 
 const ORDEM_DE_LEITURA: PapelDaSpec[] = ['pre', 'headline', 'apoio', 'cta']
@@ -80,6 +83,9 @@ export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = 
       resto.length >= 4 ? ['pre', 'headline', 'apoio', 'cta'] : resto.length === 3 ? ['headline', 'apoio', 'cta'] : resto.length === 2 ? ['headline', 'apoio'] : ['headline']
   }
 
+  if (opcoes.estrito && (resto.length > papeis.length || (servico && disponiveis && !disponiveis.has('servico')))) {
+    throw new CreativeError('PAPEIS_INCOMPATIVEIS', 'A copy do item excede os papéis da assinatura. Escolha uma variante compatível e preserve o serviço e as condições obrigatórias.', 422, { textosSemPapel: [...resto.slice(papeis.length), ...(servico && disponiveis && !disponiveis.has('servico') ? [servico] : [])] })
+  }
   const blocos: Bloco[] = resto.slice(0, papeis.length).map((texto, i) => {
     const papel = papeis[i]
     const linhas = papel === 'headline' ? quebrarEmDuas(texto, TETO_DA_HEADLINE) : papel === 'apoio' ? quebrarEmDuas(texto, TETO_DO_APOIO) : [texto]

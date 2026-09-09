@@ -46,9 +46,11 @@ import {
   type CampoDeTexto,
   type ContaDaExecucao,
 } from '@/lib/planos/execucao'
-import { copyParaBlocos } from '@/lib/compositor/copy-para-blocos'
+import { montarSpecDoItem } from './spec-do-item'
 
 export interface ExecutarPlanoInput {
+  /** Piloto explícito apenas para a via compor. Não decorre das candidatas do card. */
+  selecaoExperimental?: boolean
   projectId: number
   planoId: string
   /** Subconjunto da leva. Vazio/ausente = todos os itens executáveis. */
@@ -120,6 +122,8 @@ type ItemDoPlano = Awaited<ReturnType<typeof lerPlano>>['itens'][number]
  * não ter de inventar campos que não usa.
  */
 interface ContextoDeProducao {
+  selecaoExperimental?: boolean
+  assinaturas?: ReturnType<typeof import('@/lib/compositor/compor').paginasDeAssinatura>
   projectId: number
   planoId: string
   decididoPor?: string | null
@@ -233,6 +237,7 @@ export async function executarPlano(input: ExecutarPlanoInput): Promise<Resultad
   const porCompor = elegiveis.filter((i) => i.via === 'compor')
   const porModelo = elegiveis.filter((i) => i.via !== 'ia' && i.via !== 'compor')
 
+  const contextoCompor: ContextoDeProducao = { ...input }
   let semCredito = false
   for (const item of porIA) {
     if (semCredito) {
@@ -259,11 +264,17 @@ export async function executarPlano(input: ExecutarPlanoInput): Promise<Resultad
   // — a fila durável compõe em série, fora desta invocação.
   for (const item of porCompor) {
     try {
-      executados.push(await enfileirarItemDeComposicao(item, input))
+      executados.push(await enfileirarItemDeComposicao(item, contextoCompor))
     } catch (erro) {
       const motivo = mensagemDoErro(erro)
       falhas.push({ itemId: item.id, tema: item.tema, via: 'compor', motivo })
-      await marcarErro(input, item, motivo)
+      if (!(erro instanceof CreativeError && erro.code === 'ITEM_EXECUCAO_CONCORRENTE')) {
+        // Uma falha desta chamada não pode rebaixar a revisão de outra chamada.
+        await db.itemDePlano.updateMany({
+          where: { id: item.id, projectId: input.projectId, updatedAt: item.updatedAt, status: item.status },
+          data: { status: 'erro', erro: motivo },
+        }).catch((falha) => console.error('[planos] não foi possível registrar a falha de enfileiramento:', falha))
+      }
     }
   }
 
@@ -364,36 +375,12 @@ async function marcarErro(input: ContextoDeProducao, item: ItemDoPlano, motivo: 
 }
 
 /** A spec do compositor a partir do item — copy por ordem de leitura, foto e formato. */
-async function specDoItem(item: ItemDoPlano, projectId: number) {
-  const formato = (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story'
-  // A copy é distribuída SÓ sobre os papéis que a assinatura do formato tem
-  // (Ciro, 04/09/2026: "a copy é feita em cima dos campos que existem no
-  // template"). União das variantes do formato: a escolha da variante depois
-  // pega a que cobre os papéis pedidos.
+async function specDoItem(item: ItemDoPlano, projectId: number, contexto?: ContextoDeProducao) {
   const { paginasDeAssinatura } = await import('@/lib/compositor/compor')
-  const { paginas } = await paginasDeAssinatura(projectId)
-  const doFormato = paginas.filter((p) => p.formato === formato)
-  // headline2 é a segunda voz da manchete, não um papel da copy.
-  const papeis = doFormato.length > 0 ? ([...new Set(doFormato.flatMap((p) => p.papeis))].filter((p) => p !== 'headline2') as Array<'pre' | 'headline' | 'apoio' | 'cta' | 'servico'>) : undefined
-  const blocos = copyParaBlocos(item.copyProposta ?? [], papeis ? { papeis } : {})
-  if (blocos.length === 0) {
-    throw new CreativeError('ITEM_INCOMPLETO', 'Este item não tem texto — o compositor precisa de pelo menos a manchete.', 400)
-  }
-  const foto = item.fotoDriveId?.trim()
-    ? { driveFileId: item.fotoDriveId.trim() }
-    : item.fotoUrl?.trim()
-      ? { url: item.fotoUrl.trim() }
-      : undefined
-  return {
-    projectId,
-    formato,
-    ...(foto ? { foto } : {}),
-    blocos,
-    ...(item.tema ? { tema: item.tema, nome: `${item.tema} — plano` } : {}),
-    itemDePlanoId: item.id,
-    planoId: item.planoId,
-    ...(item.quando ? { quando: typeof item.quando === 'string' ? item.quando : new Date(item.quando as unknown as string).toISOString() } : {}),
-  }
+  const consulta = contexto?.assinaturas ?? paginasDeAssinatura(projectId)
+  if (contexto) contexto.assinaturas = consulta
+  const { paginas } = await consulta
+  return montarSpecDoItem(item, projectId, paginas, contexto?.selecaoExperimental === true)
 }
 
 /**
@@ -403,8 +390,9 @@ async function specDoItem(item: ItemDoPlano, projectId: number) {
  */
 async function enfileirarItemDeComposicao(item: ItemDoPlano, input: ContextoDeProducao): Promise<ItemExecutado> {
   const { enfileirarPeca } = await import('@/lib/compositor/fila')
-  const r = await enfileirarPeca(await specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
-  const situacao = await mover(input, item, 'na-fila', { generationId: r.generationId })
+  const r = await enfileirarPeca(await specDoItem(item, input.projectId, input), { decididoPor: input.decididoPor ?? null, itemAtualizadoEm: item.updatedAt })
+  const atual = await db.itemDePlano.findUnique({ where: { id: item.id }, select: { status: true } })
+  const situacao = statusDoItem(atual ?? item)
   return { itemId: item.id, tema: item.tema, via: 'compor', situacao, generationId: r.generationId }
 }
 
@@ -415,7 +403,7 @@ async function enfileirarItemDeComposicao(item: ItemDoPlano, input: ContextoDePr
  */
 async function comporItemAgora(item: ItemDoPlano, input: ContextoDeProducao): Promise<ItemExecutado> {
   const { comporPeca } = await import('@/lib/compositor/compor')
-  const r = await comporPeca(await specDoItem(item, input.projectId), { decididoPor: input.decididoPor ?? null })
+  const r = await comporPeca(await specDoItem(item, input.projectId, input), { decididoPor: input.decididoPor ?? null })
   const p = r.persistido!
   const situacao = await mover(input, item, 'pronto', { generationId: p.generationId, pageId: p.pageId })
   return {

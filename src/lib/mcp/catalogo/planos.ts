@@ -477,6 +477,7 @@ export const toolsDePlanos = [
         .array(z.string())
         .optional()
         .describe('Só estes itens (de ver-plano). Sem isto, todos os que estiverem prontos para produzir.'),
+      selecaoExperimental: z.boolean().optional().describe('Opt-in do piloto de seleção para itens da via compor. Default false: preserva layout anterior, mesmo com candidatas no card. Não equivale a aprovação estética.'),
       confirmar: z
         .boolean()
         .optional()
@@ -505,6 +506,7 @@ export const toolsDePlanos = [
           ? (args.itemIds as string[])
           : undefined,
         confirmar: args.confirmar === true,
+        selecaoExperimental: args.selecaoExperimental === true,
         actorClerkId: dono.clerkId,
         donoUserId: dono.id,
         decididoPor: dono.id,

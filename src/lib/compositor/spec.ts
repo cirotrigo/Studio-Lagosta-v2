@@ -54,6 +54,7 @@ export const carrosselSchema = z.object({
 export type CarrosselDaPeca = z.infer<typeof carrosselSchema>
 
 export const preferenciasSchema = z.object({
+  tratamentoDeTexto: z.enum(['assinatura', 'gradiente-suave-topo']).optional(),
   ancora: z.enum([...ANCORAS, 'auto']).optional(),
   alinha: z.enum([...ALINHAMENTOS, 'auto']).optional(),
   cantoDaMarca: z.enum([...CANTOS, 'auto', 'nenhum']).optional(),
@@ -73,6 +74,8 @@ export const specSchema = z.object({
       driveFileId: z.string().min(1).optional(),
     })
     .optional(),
+  selecaoExperimental: z.boolean().optional(),
+  fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional(),
   blocos: z.array(blocoSchema).min(1).max(5),
   preferencias: preferenciasSchema.optional(),
   nome: z.string().max(120).optional(),
@@ -89,6 +92,7 @@ export type SpecDePeca = z.infer<typeof specSchema>
 export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: [] } | { spec: null; problemas: string[] } {
   const r = specSchema.safeParse(entrada)
   if (r.success) {
+    if (!r.data.selecaoExperimental) delete r.data.selecaoExperimental
     const papeis = r.data.blocos.map((b) => b.papel)
     const repetidos = papeis.filter((p, i) => papeis.indexOf(p) !== i)
     if (repetidos.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidos)].join(', ')}`] }

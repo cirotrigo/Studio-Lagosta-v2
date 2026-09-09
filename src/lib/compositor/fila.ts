@@ -40,7 +40,7 @@ export interface PecaEnfileirada {
 }
 
 /** Cria a Generation PROCESSING e o job. Idempotente por Generation. */
-export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null; autor?: string | null } = {}): Promise<PecaEnfileirada> {
+export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null; autor?: string | null; itemAtualizadoEm?: Date | string } = {}): Promise<PecaEnfileirada> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   const spec = v.spec
@@ -50,9 +50,8 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
 
   const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
 
-  const generation = await db.generation.create({
-    data: {
-      status: 'PROCESSING',
+  const data = {
+      status: 'PROCESSING' as const,
       templateId: coletor.id,
       projectId: spec.projectId,
       createdBy: opcoes.autor ?? projeto.userId,
@@ -61,9 +60,12 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
       templateName: coletor.name,
       projectName: projeto.name,
       fieldValues: { source: 'compositor', spec, fila: 'aguardando' } as never,
-    },
-    select: { id: true },
-  })
+    }
+  if (spec.itemDePlanoId) {
+    const { enfileirarComposicaoDoPlano } = await import('@/lib/planos/enfileirar-composicao')
+    return enfileirarComposicaoDoPlano(spec, data, opcoes.decididoPor ?? null, opcoes.autor ?? null, opcoes.itemAtualizadoEm)
+  }
+  const generation = await db.generation.create({ data, select: { id: true } })
 
   const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor: opcoes.decididoPor ?? null, autor: opcoes.autor ?? null })
   await reapontarItemDoPlano(spec, 'na-fila', { generationId: generation.id, decididoPor: opcoes.decididoPor ?? null })
@@ -106,6 +108,7 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
     if (r.persistido) {
       await reapontarItemDoPlano(specDe(args.spec), 'pronto', {
         generationId: r.persistido.generationId,
+        generationEsperada: args.generationId,
         pageId: r.persistido.pageId,
         decididoPor: args.decididoPor ?? null,
       })
@@ -116,7 +119,7 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
     console.error(`[compositor] ${args.generationId} falhou (${code}): ${msg}`)
     // Erro determinístico (spec, assinatura, texto que não cabe) não melhora
     // tentando de novo; erro de infra (foto, fonte, render) ganha outra vez.
-    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND'].includes(code)
+    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND', 'PAPEIS_INCOMPATIVEIS', 'SEM_COMBINACAO'].includes(code)
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
     const atual = await db.generation.findUnique({ where: { id: args.generationId }, select: { fieldValues: true } })
     const fv = (atual?.fieldValues && typeof atual.fieldValues === 'object' ? atual.fieldValues : {}) as Record<string, unknown>
@@ -124,7 +127,7 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
       where: { id: args.generationId },
       data: { status: 'FAILED', fieldValues: { ...fv, error: msg, errorCode: code, ...(erro instanceof CreativeError && erro.details ? { errorDetails: erro.details } : {}) } as never },
     })
-    await reapontarItemDoPlano(specDe(args.spec), 'erro', { erro: msg, decididoPor: args.decididoPor ?? null })
+    await reapontarItemDoPlano(specDe(args.spec), 'erro', { erro: msg, decididoPor: args.decididoPor ?? null, generationEsperada: args.generationId })
   }
 }
 
@@ -144,25 +147,39 @@ function specDe(spec: unknown): SpecDePeca | null {
 export async function reapontarItemDoPlano(
   spec: SpecDePeca | null,
   para: 'na-fila' | 'pronto' | 'erro',
-  extras: { generationId?: string; pageId?: string; erro?: string; decididoPor?: string | null } = {},
+  extras: { generationEsperada?: string; generationId?: string; pageId?: string; erro?: string; decididoPor?: string | null } = {},
 ): Promise<StatusDoItem | null> {
   if (!spec?.itemDePlanoId) return null
   try {
     const item = await db.itemDePlano.findFirst({
       where: { id: spec.itemDePlanoId, projectId: spec.projectId, ...(spec.planoId ? { planoId: spec.planoId } : {}) },
-      select: { id: true, planoId: true, status: true },
+      select: { id: true, planoId: true, status: true, generationId: true, updatedAt: true },
     })
     if (!item) {
       console.warn(`[compositor] item de plano ${spec.itemDePlanoId} não encontrado no projeto ${spec.projectId} — a peça fica só na galeria`)
       return null
     }
     const de = normalizarStatusDoItem(item.status) ?? 'proposto'
+    if (extras.generationEsperada && (item.generationId !== extras.generationEsperada || !['na-fila', 'gerando'].includes(de))) return de
     const passos = caminhoAte(de, para)
     if (passos === null) {
       console.warn(`[compositor] item ${item.id} está em "${de}" e não pode ir para "${para}" — não reaponto`)
       return de
     }
     if (passos.length === 0) return de
+
+    if (extras.generationEsperada) {
+      // O caminho foi validado acima. Publica o desfecho em um único CAS:
+      // uma revisão/edição entre a leitura e a escrita não pode ser perdida.
+      const atualizado = await db.itemDePlano.updateMany({
+        where: { id: item.id, projectId: spec.projectId, planoId: item.planoId,
+          generationId: extras.generationEsperada, status: item.status, updatedAt: item.updatedAt },
+        data: { status: para, ...(extras.generationId !== undefined ? { generationId: extras.generationId } : {}),
+          ...(extras.pageId !== undefined ? { pageId: extras.pageId } : {}),
+          ...(extras.erro !== undefined ? { erro: extras.erro } : {}) },
+      })
+      return atualizado.count === 1 ? para : null
+    }
 
     const { transicionarItem } = await import('@/lib/planos/plano-service')
     for (const passo of passos) {

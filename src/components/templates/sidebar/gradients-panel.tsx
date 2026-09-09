@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import { textosNoTopo } from '@/lib/creatives/gradiente-suave'
 import { GRADIENTS_LIBRARY } from '@/lib/assets/gradients-library'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useBrandColors } from '@/hooks/use-brand-colors'
@@ -10,7 +11,7 @@ import { FundoDeTextoControls } from '@/components/templates/fundo-de-texto-cont
 import { Button } from '@/components/ui/button'
 
 export function GradientsPanel() {
-  const { addLayer, design, selectedLayerId, selectedLayerIds, updateLayer, projectId } = useTemplateEditor()
+  const { addLayer, applySoftTopGradient, design, selectedLayerId, selectedLayerIds, updateLayer, projectId } = useTemplateEditor()
   const { data: cores = [] } = useBrandColors(projectId ?? null)
 
   // Verifica se há uma layer de gradiente selecionada
@@ -102,6 +103,14 @@ export function GradientsPanel() {
           </p>
         )}
         {textoSelecionado && <FundoDeTextoControls layer={textoSelecionado} />}
+      </div>
+
+      <div className="space-y-3 rounded-lg border border-border/40 bg-muted/20 p-4">
+        <h3 className="text-sm font-semibold">Gradiente suave no topo</h3>
+        <p className="text-xs text-muted-foreground">Substitui o halo dos textos do topo por uma transição longa até transparente. Depois, ajuste o gradiente no canvas. Confira a leitura sobre sua foto.</p>
+        <Button type="button" size="sm" onClick={applySoftTopGradient} disabled={textosNoTopo(design.layers, design.canvas).length === 0}>
+          Aplicar gradiente suave
+        </Button>
       </div>
 
       {/* Controles de edição (se houver gradiente selecionado) */}

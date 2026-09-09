@@ -1,0 +1,720 @@
+{
+  "nota": "19 renders finais: 1 reprodu\u00e7\u00e3o aprovada + 9 pares; recusas visuais no relat\u00f3rio. N\u00e3o \u00e9 aprova\u00e7\u00e3o est\u00e9tica por passar na r\u00e9gua.",
+  "resultados": [
+    {
+      "projectId": 1,
+      "slug": "aprovada",
+      "driveFileId": "15xqCYPSI-xU6dRZrgaLhnu-Q8sVRxql9",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-aprovada-gradiente-suave-topo.png",
+      "ms": 1053.6322910000001,
+      "hash": "6dce231cc2e6b3d127b800b0004c2c0e7f1f9b5b83281f606d0d929275a472ff",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 229,
+          "p98ComHalo": 110,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.1055625,
+        "escurecimentoMedio": 0.10556127450980392
+      }
+    },
+    {
+      "projectId": 1,
+      "slug": "cafe",
+      "driveFileId": "1F2wwjv0sPKcRdLAXMKY3HqSrqfSAD4oO",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-cafe-assinatura.png",
+      "ms": 1206.3467499999997,
+      "hash": "78104ee78a7e636563ad530e9f0d5960d7c6a283a56e878701b0db9c3ba4ed14",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 33,
+          "p98ComHalo": 12,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.022412581699346405,
+        "escurecimentoMedio": 0.02241081154684096
+      }
+    },
+    {
+      "projectId": 1,
+      "slug": "cafe",
+      "driveFileId": "1F2wwjv0sPKcRdLAXMKY3HqSrqfSAD4oO",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-cafe-gradiente-suave-topo.png",
+      "ms": 1133.1915829999998,
+      "hash": "de72b85d709fa62a8259596e6138fb9e0a802e97e070553fb742090394e8b949",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 33,
+          "p98ComHalo": 17,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.029421296296296296,
+        "escurecimentoMedio": 0.029420138888888888
+      }
+    },
+    {
+      "projectId": 1,
+      "slug": "gelato",
+      "driveFileId": "11bmbL2HTf3-EtqrL4y8XIKdTbHH9Z_09",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-gelato-assinatura.png",
+      "ms": 1074.110458,
+      "hash": "b14a0ae6fb2285780f410ca98bb0a7004b6c1121ef05dbc7aa194c42daecc63c",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 199,
+          "p98ComHalo": 83,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.07406855936819173,
+        "escurecimentoMedio": 0.07406685729847495
+      }
+    },
+    {
+      "projectId": 1,
+      "slug": "gelato",
+      "driveFileId": "11bmbL2HTf3-EtqrL4y8XIKdTbHH9Z_09",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-gelato-gradiente-suave-topo.png",
+      "ms": 1017.7884999999997,
+      "hash": "f842cd4672bfee0f56203413a2abf3dc272dc7c0b0610e80c4050388fe8865f7",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 199,
+          "p98ComHalo": 97,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.09023658769063181,
+        "escurecimentoMedio": 0.09023454520697168
+      }
+    },
+    {
+      "projectId": 1,
+      "slug": "atendimento",
+      "driveFileId": "1m_c2b_kcJ_9x7X0-2FPm3ekQA-r75DvW",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-atendimento-assinatura.png",
+      "ms": 1101.2059590000008,
+      "hash": "0ba3597c65ee686083eae2f4003c488c3aaf7a7949374d21e774d5ccf20b02aa",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 127,
+          "p98ComHalo": 54,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.04278506263616558,
+        "escurecimentoMedio": 0.04278363289760348
+      }
+    },
+    {
+      "projectId": 1,
+      "slug": "atendimento",
+      "driveFileId": "1m_c2b_kcJ_9x7X0-2FPm3ekQA-r75DvW",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/1-atendimento-gradiente-suave-topo.png",
+      "ms": 1060.2897079999993,
+      "hash": "1035defb165522c9addd1a54e32c0e5d7d202c8754c37343d8c466d13ceadcbb",
+      "contraste": [
+        {
+          "grupo": "grupo-52396",
+          "camadas": [
+            "headline",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 135,
+          "p98SemHalo": 127,
+          "p98ComHalo": 69,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.0586536628540305,
+        "escurecimentoMedio": 0.05865059912854031
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "ambiente",
+      "driveFileId": "1K9Y0C96E1cjL_nLw2UJCG74kqdSSBIkg",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-ambiente-assinatura.png",
+      "ms": 954.6499999999996,
+      "hash": "b64178961b324a83f30e3240179628ebd9d4a0370e0e96b7a0439bfac6d32f6b",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 246,
+          "p98ComHalo": 121,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 232,
+          "p98ComHalo": 161,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": false
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.07379309640522876,
+        "escurecimentoMedio": 0.07379078159041394
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "ambiente",
+      "driveFileId": "1K9Y0C96E1cjL_nLw2UJCG74kqdSSBIkg",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-ambiente-gradiente-suave-topo.png",
+      "ms": 935.9539999999997,
+      "hash": "38c722873e72623a7d109be6337f23a6bd653e57c05552b8a842dea88470fe3f",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 246,
+          "p98ComHalo": 144,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 232,
+          "p98ComHalo": 161,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": false
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.11177062908496732,
+        "escurecimentoMedio": 0.11176913126361657
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "servindo",
+      "driveFileId": "1uUauFva1pIK0_t7Joq36wGu4G6JZf7Je",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-servindo-assinatura.png",
+      "ms": 1064.6044169999986,
+      "hash": "eb4c2f9dcc2031b1bd278d2d84d554f00ce5da4454b50c6fbfdec7e905aee114",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 255,
+          "p98ComHalo": 132,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 204,
+          "p98ComHalo": 144,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.07511363017429194,
+        "escurecimentoMedio": 0.07511077069716776
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "servindo",
+      "driveFileId": "1uUauFva1pIK0_t7Joq36wGu4G6JZf7Je",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-servindo-gradiente-suave-topo.png",
+      "ms": 1041.9923340000005,
+      "hash": "45d326646ab58b697826cddd873c2caf65425d548d114f1deb5c7a79f00abed1",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 255,
+          "p98ComHalo": 149,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 204,
+          "p98ComHalo": 144,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.11653887527233114,
+        "escurecimentoMedio": 0.116536424291939
+      }
+    },
+    {
+      "projectId": 3,
+      "slug": "brasa",
+      "driveFileId": "1v-nz0txtb9VfnCSVoA1Xj3fKz0vTYoFP",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/3-brasa-assinatura.png",
+      "ms": 1181.5992920000008,
+      "hash": "414faa9b1ed6d446be587c50af1207664d637a3ea671409b6ac4cc80642592de",
+      "contraste": [
+        {
+          "grupo": "grupo-34718",
+          "camadas": [
+            "headline"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 59,
+          "p98ComHalo": 30,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-20324",
+          "camadas": [
+            "cta",
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 120,
+          "p98ComHalo": 30,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.020033428649237472,
+        "escurecimentoMedio": 0.02003036492374728
+      }
+    },
+    {
+      "projectId": 3,
+      "slug": "brasa",
+      "driveFileId": "1v-nz0txtb9VfnCSVoA1Xj3fKz0vTYoFP",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/3-brasa-gradiente-suave-topo.png",
+      "ms": 1222.6640420000003,
+      "hash": "6f216cd5967727afe7ca2c3e6a90de5dd04e3bb6ce04df7f39f755b9eb3a5881",
+      "contraste": [
+        {
+          "grupo": "grupo-34718",
+          "camadas": [
+            "headline"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 59,
+          "p98ComHalo": 30,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-20324",
+          "camadas": [
+            "cta",
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 120,
+          "p98ComHalo": 30,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.05580344498910675,
+        "escurecimentoMedio": 0.055798883442265794
+      }
+    },
+    {
+      "projectId": 3,
+      "slug": "pratos",
+      "driveFileId": "1wcphmyKdfZgIpEGTHCoiRsV8GHBQ6_kc",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/3-pratos-assinatura.png",
+      "ms": 1187.645833999999,
+      "hash": "d35a1df084ddbb76314d7c810e813b4021c99dbfe194944b45bdff0d6b8759dd",
+      "contraste": [
+        {
+          "grupo": "grupo-34718",
+          "camadas": [
+            "headline"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 254,
+          "p98ComHalo": 103,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": false
+        },
+        {
+          "grupo": "grupo-20324",
+          "camadas": [
+            "cta",
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 212,
+          "p98ComHalo": 66,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.06149210239651416,
+        "escurecimentoMedio": 0.06148910675381264
+      }
+    },
+    {
+      "projectId": 3,
+      "slug": "pratos",
+      "driveFileId": "1wcphmyKdfZgIpEGTHCoiRsV8GHBQ6_kc",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/3-pratos-gradiente-suave-topo.png",
+      "ms": 1194.1041659999992,
+      "hash": "b2e238f3091ec65f44c6f31cf90a1686625e32d24aa88782cdef2466a2387b87",
+      "contraste": [
+        {
+          "grupo": "grupo-34718",
+          "camadas": [
+            "headline"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 254,
+          "p98ComHalo": 117,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": false
+        },
+        {
+          "grupo": "grupo-20324",
+          "camadas": [
+            "cta",
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 78,
+          "p98SemHalo": 212,
+          "p98ComHalo": 66,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.11515107570806099,
+        "escurecimentoMedio": 0.1151463779956427
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "cabotia",
+      "driveFileId": "1NomDO5w_bV_iGATyPl851VfXcMhsqw0H",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-cabotia-assinatura.png",
+      "ms": 1091.136125000001,
+      "hash": "f1e662ac3c1012db19ae08a09ff6733ab18f3ed15c909018f214952feb204bb7",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 209,
+          "p98ComHalo": 99,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 244,
+          "p98ComHalo": 179,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": false
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.07044859749455339,
+        "escurecimentoMedio": 0.07044675925925925
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "cabotia",
+      "driveFileId": "1NomDO5w_bV_iGATyPl851VfXcMhsqw0H",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-cabotia-gradiente-suave-topo.png",
+      "ms": 1050.531167000001,
+      "hash": "59eb8a604a2b2ae715b3e621cf8cbafbc7cdce6cd0e62ddf565e1c1cc4985a56",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 209,
+          "p98ComHalo": 108,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 244,
+          "p98ComHalo": 179,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": false
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.12078267973856209,
+        "escurecimentoMedio": 0.12078165849673203
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "parrilla",
+      "driveFileId": "1beMw4i38QcQgZc5rj7XWt2FSVfz88HIj",
+      "tratamento": "assinatura",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-parrilla-assinatura.png",
+      "ms": 1244.3000829999999,
+      "hash": "24aaabfd41fd14f775ca7261170b9b370516bb554e885396332b3e1c765dbb3e",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 222,
+          "p98ComHalo": 102,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 90,
+          "p98ComHalo": 56,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.05199108115468409,
+        "escurecimentoMedio": 0.05198686002178649
+      }
+    },
+    {
+      "projectId": 2,
+      "slug": "parrilla",
+      "driveFileId": "1beMw4i38QcQgZc5rj7XWt2FSVfz88HIj",
+      "tratamento": "gradiente-suave-topo",
+      "path": "/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/diversidade/2-parrilla-gradiente-suave-topo.png",
+      "ms": 1169.187,
+      "hash": "0c25dbb28f9a9d713322dbc0fe8fc29d211e08ac4919512b503f1384d615efd9",
+      "contraste": [
+        {
+          "grupo": "grupo-39219",
+          "camadas": [
+            "headline",
+            "headline2",
+            "apoio"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 222,
+          "p98ComHalo": 112,
+          "tinta": 0,
+          "tintaCorrigida": null,
+          "ok": true
+        },
+        {
+          "grupo": "grupo-43470",
+          "camadas": [
+            "servico"
+          ],
+          "sentido": "claro",
+          "alvo": 139,
+          "p98SemHalo": 90,
+          "p98ComHalo": 56,
+          "tinta": 1,
+          "tintaCorrigida": null,
+          "ok": true
+        }
+      ],
+      "intervencao": {
+        "alteracaoMedia": 0.08002471405228759,
+        "escurecimentoMedio": 0.08002171840958605
+      }
+    }
+  ]
+}

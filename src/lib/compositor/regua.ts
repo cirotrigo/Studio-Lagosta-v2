@@ -54,7 +54,14 @@ export interface ContrasteMedido {
   ok: boolean
 }
 
+export interface IntervencaoDeTexto {
+  /** Frações 0..1, medidas na imagem inteira reduzida a 180px. */
+  alteracaoMedia: number
+  escurecimentoMedio: number
+}
+
 export interface ReguaResultado {
+  intervencao?: IntervencaoDeTexto
   layers: Layer[]
   medidas: ContrasteMedido[]
   avisos: string[]
@@ -124,7 +131,7 @@ function semTinta(layers: Layer[]): Layer[] {
 }
 
 function semHalo(layers: Layer[]): Layer[] {
-  return semTinta(layers).map((l) => (l.type === 'text' ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
+  return semTinta(layers).filter((l) => l.metadata?.tratamentoDeTexto !== 'gradiente-suave-topo').map((l) => (l.type === 'text' ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
 }
 
 export async function medirContrasteDaPeca(args: {
@@ -135,6 +142,7 @@ export async function medirContrasteDaPeca(args: {
   faixa: [number, number]
   /** `false` = só medir e avisar (halo definido na página de assinatura: a tinta é da equipe). */
   corrigir?: boolean
+  medirIntervencao?: boolean
 }): Promise<ReguaResultado> {
   const avisos: string[] = []
   const textos = args.layers.filter((l) => l.type === 'text' && l.visible !== false)
@@ -168,6 +176,7 @@ export async function medirContrasteDaPeca(args: {
     renderizar(semHalo(args.layers), args.canvas, args.background),
     renderizar(semTinta(args.layers), args.canvas, args.background),
   ])
+  let pngFinal = pngCom
   const qs = entradas.map((e) => (e.escuro ? 0.02 : 0.98))
   const medirTodos = async (png: Buffer) => {
     const claros = await percentilSob(png, args.canvas, rects, 0.98)
@@ -206,6 +215,7 @@ export async function medirContrasteDaPeca(args: {
         : l
     })
     const pngCorrigido = await renderizar(semTinta(layers), args.canvas, args.background)
+    pngFinal = pngCorrigido
     const depois = await medirTodos(pngCorrigido)
     medidas.forEach((m, i) => {
       if (correcoes.has(m.grupo)) {
@@ -225,5 +235,13 @@ export async function medirContrasteDaPeca(args: {
       )
     }
   }
-  return { layers, medidas, avisos }
+  let intervencao: IntervencaoDeTexto | undefined
+  if (args.medirIntervencao) {
+    const sharp = (await import('sharp')).default
+    const { compararTons } = await import('./comparar-baseline')
+    const cinza = (png: Buffer) => sharp(png).resize(180).removeAlpha().grayscale().toColourspace('b-w').raw().toBuffer()
+    const [antes, depois] = await Promise.all([cinza(pngSem), cinza(pngFinal)])
+    intervencao = compararTons(antes, depois)
+  }
+  return { layers, medidas, avisos, ...(intervencao ? { intervencao } : {}) }
 }
