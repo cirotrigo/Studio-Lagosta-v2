@@ -51,6 +51,7 @@ import {
  */
 export interface ItemDePlanoDoServidor {
   id: string
+  resultUrl?: string | null
   planoId?: string | null
   projectId?: number | null
   ordem?: number | null
@@ -300,7 +301,7 @@ export function mesclarSlides(
   const daTela = new Map((locais ?? []).map((s) => [s.ordem, s]))
   return (doServidor ?? []).map((s) => {
     const local = daTela.get(s.ordem)
-    if (!local) return s
+    if (!local || (s.generationId && s.generationId !== local.generationId)) return s
     return {
       ...s,
       generationId: s.generationId ?? local.generationId,
@@ -545,7 +546,7 @@ export function paraItemDaBancada(
     ...(doServidor.generationId ? { generationId: doServidor.generationId } : {}),
     ...(doServidor.pageId ? { pageId: doServidor.pageId } : {}),
     ...(doServidor.postId ? { postId: doServidor.postId } : {}),
-    resultUrl: null,
+    resultUrl: doServidor.resultUrl ?? null,
     erro: doServidor.erro?.trim() || null,
   }
 }
@@ -580,6 +581,9 @@ const CAMPOS_FUNDIDOS = [
   'pageId',
   'postId',
   'resultUrl',
+  'slides',
+  'carouselGroupId',
+  'tipo',
   'erro',
 ] as const
 
@@ -608,6 +612,8 @@ export function fundirComOLocal(
 
   const terminal = local.status === 'agendado'
   const status = situacaoQueVence(local.status, doServidor.status)
+  const mudouArte = (!terminal || !!doServidor.resultUrl) && !!doServidor.generationId &&
+    doServidor.generationId !== local.generationId
 
   const candidato: BancadaItemComCandidatas = {
     ...local,
@@ -667,10 +673,11 @@ export function fundirComOLocal(
     motivoReprovacao: doServidor.motivoReprovacao,
     // Resultado do trabalho: o que o navegador já tem nunca é apagado; o que
     // falta é preenchido pelo servidor.
-    generationId: local.generationId ?? doServidor.generationId,
-    pageId: local.pageId ?? doServidor.pageId,
+    generationId: mudouArte ? doServidor.generationId : (local.generationId ?? doServidor.generationId),
+    pageId: mudouArte ? doServidor.pageId : (local.pageId ?? doServidor.pageId),
     postId: local.postId ?? doServidor.postId,
-    resultUrl: local.resultUrl ?? doServidor.resultUrl,
+    // URL e vínculo de página pertencem à geração; nunca herdar da arte anterior.
+    resultUrl: mudouArte ? doServidor.resultUrl : (local.resultUrl ?? doServidor.resultUrl),
     erro: status === 'erro' ? (local.erro ?? doServidor.erro) : null,
     status,
   }

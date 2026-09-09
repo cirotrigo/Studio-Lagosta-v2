@@ -258,6 +258,19 @@ async function nomesDosClientesCitados(
   return new Map(projetos.map((p) => [p.id, p.name]))
 }
 
+async function imagensAtuaisDosItens<T extends { generationId: string | null }>(
+  projectId: number,
+  itens: T[],
+): Promise<Array<T & { resultUrl?: string | null }>> {
+  const ids = itens.flatMap((item) => item.generationId ? [item.generationId] : [])
+  const geracoes = ids.length ? await db.generation.findMany({
+    where: { projectId, id: { in: ids }, status: 'COMPLETED' },
+    select: { id: true, resultUrl: true },
+  }) : []
+  const urls = new Map(geracoes.map((g) => [g.id, g.resultUrl]))
+  return itens.map((item) => ({ ...item, resultUrl: item.generationId ? (urls.get(item.generationId) ?? null) : null }))
+}
+
 export async function lerPlano(projectId: number, planoId: string) {
   const plano = await db.planoDeConteudo.findFirst({
     where: { id: planoId, projectId },
@@ -269,7 +282,7 @@ export async function lerPlano(projectId: number, planoId: string) {
   const nomes = await nomesDosClientesCitados(plano.itens)
   return comProgresso({
     ...plano,
-    itens: plano.itens.map((item) => ({
+    itens: (await imagensAtuaisDosItens(projectId, plano.itens)).map((item) => ({
       ...item,
       /** Derivado, não coluna: o nome do cliente citado, para a revisão na bancada. */
       clienteCitadoNome: item.clienteProjectId ? (nomes.get(item.clienteProjectId) ?? null) : null,
@@ -290,7 +303,7 @@ export async function planoAtivo(projectId: number) {
     orderBy: { createdAt: 'desc' },
     include: INCLUDE_ITENS,
   })
-  return plano ? comProgresso(plano) : null
+  return plano ? comProgresso({ ...plano, itens: await imagensAtuaisDosItens(projectId, plano.itens) }) : null
 }
 
 export async function listarPlanos(

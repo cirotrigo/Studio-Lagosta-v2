@@ -800,3 +800,47 @@ describe('ordenarPorDataDesc', () => {
     expect(original[0].quando).toBe('2026-08-11 10:00')
   })
 })
+
+
+describe('arte melhorada como resultado atual', () => {
+  it('troca o ID, descarta a imagem anterior e aguarda a URL nova antes de agendar', () => {
+    const anterior = local({ status: 'pronto', generationId: 'original', resultUrl: 'original.jpg', pageId: 'pagina' })
+    const remoto = plano([doServidor({ status: 'pronto', generationId: 'melhorada' })])
+    const [atual] = hidratarItens([anterior], remoto, 7, AGORA)
+    expect(atual.generationId).toBe('melhorada')
+    expect(atual.resultUrl).toBeNull()
+    expect(atual.pageId).toBeUndefined()
+    expect(atual.status).toBe('gerando')
+    const pronta = { ...atual, status: 'pronto' as const, resultUrl: 'melhorada.jpg' }
+    const [recarregada] = hidratarItens([pronta], remoto, 7, AGORA)
+    expect(recarregada.generationId).toBe('melhorada')
+    expect(recarregada.resultUrl).toBe('melhorada.jpg')
+    expect(recarregada.status).toBe('pronto')
+  })
+
+  it('notifica a troca de um slide sem alterar os demais', () => {
+    const slide = { ordem: 1, copy: [], referencia: { papel: 'subject' as const, thumbUrl: '' }, generationId: 'original', resultUrl: 'original.jpg' }
+    const anterior = local({ status: 'pronto', resultUrl: 'capa.jpg', tipo: 'carrossel', slides: [slide, { ...slide, ordem: 2 }] })
+    const remoto = { ...anterior, slides: [{ ...slide, generationId: 'melhorada', resultUrl: 'melhorada.jpg' }, { ...slide, ordem: 2 }] }
+    const atual = fundirComOLocal(anterior, remoto, AGORA)
+    expect(atual).not.toBe(anterior)
+    expect(atual.slides?.map(s => s.resultUrl)).toEqual(['melhorada.jpg', 'original.jpg'])
+    expect(atual.slides?.[0].generationId).toBe('melhorada')
+  })
+
+  it('não combina um slide novo sem URL com a imagem antiga', () => {
+    const slide = { ordem: 1, copy: [], referencia: { papel: 'subject' as const, thumbUrl: '' }, generationId: 'original', resultUrl: 'original.jpg' }
+    expect(mesclarSlides([slide], [{ ...slide, generationId: 'melhorada', resultUrl: null }])?.[0].resultUrl).toBeNull()
+  })
+})
+
+
+it('recupera a arte atual de um item já agendado sem alterar o post nem o horário', () => {
+  const anterior = local({ status: 'agendado', generationId: 'original', resultUrl: 'original.jpg', postId: 'post-original', quando: '2026-09-09 08:00' })
+  const [atual] = hidratarItens([anterior], plano([doServidor({ status: 'agendado', generationId: 'melhorada', resultUrl: 'melhorada.jpg' })]), 7, AGORA)
+  expect(atual.generationId).toBe('melhorada')
+  expect(atual.resultUrl).toBe('melhorada.jpg')
+  expect(atual.status).toBe('agendado')
+  expect(atual.postId).toBe('post-original')
+  expect(atual.quando).toBe('2026-09-09 08:00')
+})
