@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import * as selecao from '../selecionar-combinacao'
 import type { Layer } from '@/types/template'
 const mocks = vi.hoisted(() => ({ persistir: vi.fn(), pasta: vi.fn(), regua: vi.fn(), paginas: vi.fn() }))
 vi.mock('@/lib/db', () => ({ db: {
@@ -7,7 +8,7 @@ vi.mock('@/lib/db', () => ({ db: {
   page: { findMany: mocks.paginas },
 } }))
 vi.mock('@/lib/creatives/persist', () => ({ persistAndRenderCreative: mocks.persistir, resolveImageUrl: vi.fn() }))
-vi.mock('../pastas', () => ({ garantirPasta: mocks.pasta, ordemNaPasta: vi.fn() }))
+vi.mock('../pastas', () => ({ garantirPasta: mocks.pasta, ordemNaPasta: async () => ({ ordem: 1, repeticao: 0 }) }))
 vi.mock('@/lib/creatives/uso-de-foto', () => ({ registrarUsoDeFoto: vi.fn() }))
 vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: vi.fn(), fetchBuffer: vi.fn() }))
 vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextBoxMeasurer: async () => (l: Layer) => ({ width: l.size.width, height: Number(l.style?.fontSize ?? 48), maxLineWidth: 100, lineCount: 1 }) }))
@@ -30,11 +31,24 @@ describe('compositor em avaliação local', () => {
     expect(mocks.regua.mock.calls[0][0].corrigir).toBe(false)
   })
   it('confere novamente antes de salvar a combinação selecionada', async () => {
-    await expect(comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quintal'] }] }, { selecao: { combinacoes: [], limite: 6, janelaMs: 30000, interrompida: false } })).rejects.toMatchObject({ code: 'SEM_COMBINACAO' })
+    await expect(comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quintal'] }] }, { selecao: { combinacoes: [], limite: 6, janelaMs: 30000, interrompida: false } })).rejects.toMatchObject({ code: 'SELECAO_INDISPONIVEL' })
     expect(mocks.persistir).not.toHaveBeenCalled(); expect(mocks.pasta).not.toHaveBeenCalled()
   })
   it('recusa serviço incompatível antes da régua/persistência', async () => {
     await expect(comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quintal'] }, { papel: 'servico', linhas: ['Somente quarta'] }] }, { somenteAvaliar: true })).rejects.toMatchObject({ code: 'PAPEIS_INCOMPATIVEIS' })
     expect(mocks.regua).not.toHaveBeenCalled(); expect(mocks.persistir).not.toHaveBeenCalled()
   })
+})
+
+
+it('reentrada após seleção preserva a Generation da fila até a persistência final', async () => {
+  const spec = { projectId: 3, formato: 'story' as const, blocos: [{ papel: 'headline' as const, linhas: ['Quintal'] }], itemDePlanoId: 'i', planoId: 'p' }
+  // Seleção simulada: este teste isola o fio generationId, não aprova uma foto.
+  vi.spyOn(selecao, 'selecionarCombinacao').mockResolvedValueOnce({ spec, avisos: [], diagnostico: { combinacoes: [], limite: 6, janelaMs: 30000, interrompida: false }, cacheDeFotos: new Map(), assuntosDoCatalogo: new Map() })
+  mocks.regua.mockImplementation(async (args) => ({ layers: args.layers, medidas: [{ grupo: 'headline', ok: true }], avisos: [] }))
+  mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
+  mocks.persistir.mockResolvedValue({ generationId: 'g-fila', pageId: 'page', url: 'https://example.com/arte.png' })
+  await comporPeca({ ...spec, fotosCandidatas: ['foto'] }, { generationId: 'g-fila', autor: 'u' })
+  expect(mocks.persistir).toHaveBeenCalledTimes(1)
+  expect(mocks.persistir.mock.calls[0][0]).toMatchObject({ generationId: 'g-fila', createdBy: 'u', fieldValues: { generationIdDaFila: 'g-fila', spec: { itemDePlanoId: 'i', planoId: 'p' }, composicao: { selecao: { limite: 6 } } } })
 })

@@ -30,7 +30,7 @@ export async function enfileirarComposicaoDoPlano(
       ? await tx.generation.findUnique({ where: { id: item.generationId } }) : null
     // Revisão de conteúdo, independente de transições/updatedAt e da ordem das chaves JSON.
     const revisao = stableStringify({
-      copy: item.copyProposta, foto: [item.fotoDriveId, item.fotoUrl], formato: item.formato,
+      candidatas: item.fotoCandidatas, copy: item.copyProposta, foto: [item.fotoDriveId, item.fotoUrl], formato: item.formato,
       quando: item.quando, tema: item.tema, legenda: item.legenda, via: item.via,
       modelo: item.sourcePageId, direcao: item.direcao, ajuste: item.ajusteDaFoto,
       referencias: item.referencias, cliente: item.clienteProjectId,

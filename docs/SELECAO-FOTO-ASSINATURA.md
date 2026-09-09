@@ -6,7 +6,7 @@ Implementado em 09/09/2026 a partir do ensaio MCP documentado no checkout origin
 
 Antes, o compositor recebia uma foto e escolhia uma variante por papéis, tema, luz média e rodízio. Um papel ausente podia ser eliminado com aviso. A leitura de assunto esperava uma caixa normalizada, mas o catálogo v3 guarda um nome textual nesse campo. A conversão da caixa legada ignorava proporção e corte.
 
-Agora, `compor-arte` aceita opcionalmente `fotosCandidatas`, até três driveFileIds já curados, na ordem de relevância da busca. Compara até seis pares foto/variante do formato solicitado, monta e mede a copy com as fontes reais e usa a régua de contraste existente antes de persistir a escolhida. A resposta e o diagnóstico persistido incluem `selecao`: combinações, impedimentos, pontuação, limite e indicação de interrupção. Sem candidata utilizável, `SEM_COMBINACAO` devolve motivos e, quando disponíveis, orçamentos de texto.
+Agora, `compor-arte` aceita opcionalmente `fotosCandidatas`, até três driveFileIds já curados, na ordem de relevância da busca. Compara até seis pares foto/variante do formato solicitado, monta e mede a copy com as fontes reais e usa a régua de contraste existente antes de persistir a escolhida. A resposta e o diagnóstico persistido incluem `selecao`: combinações, impedimentos, pontuação, limite e indicação de interrupção. Sem candidata utilizável, `SEM_COMBINACAO` devolve motivos e, quando disponíveis, orçamentos de texto. Falhas de download, exceções de infraestrutura ou régua indisponível retornam `SELECAO_INDISPONIVEL`, permitindo a retomada limitada da fila.
 
 A foto explícita (`fotoDriveId`/`fotoUrl`, ou `foto` na spec interna) prevalece sobre a lista. A variante explícita restringe a seleção. Âncora, alinhamento, enquadramento fixo e canto da marca são preservados. A seleção é opt-in pela presença de `fotosCandidatas`; o fluxo de uma foto continua disponível. Em todos os fluxos, papéis pedidos e ausentes agora causam `PAPEIS_INCOMPATIVEIS` antes da persistência. Uma variante explícita inexistente também deixa de cair silenciosamente em outra.
 
@@ -22,7 +22,7 @@ A foto explícita (`fotoDriveId`/`fotoUrl`, ou `foto` na spec interna) prevalece
 }
 ```
 
-Exemplo de contrato, não autorização de criação ou publicação. O campo não foi adicionado ao contrato de `compor-leva` nesta entrega; a estrutura da fila e a orquestração semanal não mudam.
+Exemplo de contrato, não autorização de criação ou publicação. Na revisão conjunta, o campo também foi conectado a `compor-leva` e às candidatas já persistidas no item semanal. Ver [revisão integrada](REVISAO-INTEGRADA-COMPOSICAO-SEMANAL.md) para o contrato de retomada e as limitações de escolha explícita.
 
 ## O que foi reutilizado
 

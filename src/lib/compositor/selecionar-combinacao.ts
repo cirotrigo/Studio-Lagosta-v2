@@ -5,7 +5,7 @@ import type { SpecDePeca } from './spec'
 import type { ResultadoDaComposicao, OpcoesDeComposicao } from './compor'
 
 export interface DiagnosticoDaSelecao {
-  combinacoes: Array<{ foto: string; variante: string; impedimentos: string[]; pontos?: number; detalhes?: Record<string, unknown> }>
+  combinacoes: Array<{ foto: string; variante: string; impedimentos: string[]; pontos?: number; transitorio?: boolean; detalhes?: Record<string, unknown> }>
   limite: number
   janelaMs: number
   interrompida: boolean
@@ -28,6 +28,7 @@ export function avaliarCombinacao(r: ResultadoDaComposicao) {
   if (cobertura && d.assuntoOrigem === 'catalogo') impedimentos.push('Todas as posições cobrem ou recortam excessivamente o assunto catalogado; escolha outro enquadramento/foto.')
   return {
     impedimentos,
+    transitorio: !d.contraste?.length,
     pontos: d.posicao.pontuacao - (cobertura ? 1 : 0) - d.blocos.reduce((s, b) => s + (1 - b.escala), 0),
   }
 }
@@ -75,13 +76,14 @@ export async function selecionarCombinacao(spec: SpecDePeca) {
         // Em empate, mantém essa ordem; não usa "nunca usada" como qualidade.
         if (!avaliacao.impedimentos.length && (!melhor || avaliacao.pontos > melhor.pontos)) melhor = { spec: candidata, pontos: avaliacao.pontos }
       } catch (erro) {
+        registro.transitorio = !(erro instanceof CreativeError) || erro.status >= 500 || erro.code === 'FOTO_INDISPONIVEL'
         if (erro instanceof CreativeError) registro.detalhes = erro.details
         registro.impedimentos.push(erro instanceof Error ? erro.message : 'Falha na avaliação da combinação')
       }
     }
     if (diagnosticos.length >= LIMITE_COMBINACOES || Date.now() - inicio >= JANELA_DE_SELECAO_MS) break
   }
-  if (!melhor) throw new CreativeError('SEM_COMBINACAO', 'Nenhuma combinação avaliada passou. Troque a foto ou escolha uma variante compatível, sem eliminar condições obrigatórias.', 422, { diagnosticos, limite: LIMITE_COMBINACOES, janelaMs: JANELA_DE_SELECAO_MS })
+  if (!melhor) throw new CreativeError(!diagnosticos.length || diagnosticos.some((d) => d.transitorio) ? 'SELECAO_INDISPONIVEL' : 'SEM_COMBINACAO', 'Nenhuma combinação avaliada passou. Troque a foto ou escolha uma variante compatível, sem eliminar condições obrigatórias.', 422, { diagnosticos, limite: LIMITE_COMBINACOES, janelaMs: JANELA_DE_SELECAO_MS })
   avisos.push(`Seleção foto/assinatura: ${diagnosticos.length} combinações avaliadas. Assunto por energia é estimativa; logo, campanha, unidade e conteúdo exigem revisão visual.`)
   const diagnostico: DiagnosticoDaSelecao = { combinacoes: diagnosticos, limite: LIMITE_COMBINACOES, janelaMs: JANELA_DE_SELECAO_MS, interrompida: diagnosticos.length < variantes.length * fotos.length }
   return { spec: melhor.spec, avisos, diagnostico, cacheDeFotos, assuntosDoCatalogo }

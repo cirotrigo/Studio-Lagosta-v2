@@ -86,3 +86,11 @@ describe('caixa legada e catálogo v3', () => {
     expect(fracaoVisivelDoAssunto(assuntoEmPixels(a, foto, canvas, 'left-middle'), canvas)).toBe(1)
   })
 })
+
+
+it('indisponibilidade de download/medição é retomável, incompatibilidade não', async () => {
+  mocks.compor.mockRejectedValue(new Error('timeout do download'))
+  await expect(selecionarCombinacao(spec)).rejects.toMatchObject({ code: 'SELECAO_INDISPONIVEL' })
+  mocks.compor.mockResolvedValue(resultado(false))
+  await expect(selecionarCombinacao(spec)).rejects.toMatchObject({ code: 'SEM_COMBINACAO' })
+})

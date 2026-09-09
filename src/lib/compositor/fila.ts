@@ -119,7 +119,7 @@ export async function processarComposicaoEmBackground(args: ComposicaoJobArgs & 
     console.error(`[compositor] ${args.generationId} falhou (${code}): ${msg}`)
     // Erro determinístico (spec, assinatura, texto que não cabe) não melhora
     // tentando de novo; erro de infra (foto, fonte, render) ganha outra vez.
-    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND'].includes(code)
+    const deterministico = ['SPEC_INVALIDA', 'ASSINATURA_INCOMPLETA', 'TEXTO_NAO_CABE_NA_COLUNA', 'TEXTO_NAO_CABE', 'PROJECT_NOT_FOUND', 'PAPEIS_INCOMPATIVEIS', 'SEM_COMBINACAO'].includes(code)
     if (!deterministico && (await pedirNovaTentativa(args.queueJobId, msg))) return
     const atual = await db.generation.findUnique({ where: { id: args.generationId }, select: { fieldValues: true } })
     const fv = (atual?.fieldValues && typeof atual.fieldValues === 'object' ? atual.fieldValues : {}) as Record<string, unknown>
@@ -153,7 +153,7 @@ export async function reapontarItemDoPlano(
   try {
     const item = await db.itemDePlano.findFirst({
       where: { id: spec.itemDePlanoId, projectId: spec.projectId, ...(spec.planoId ? { planoId: spec.planoId } : {}) },
-      select: { id: true, planoId: true, status: true, generationId: true },
+      select: { id: true, planoId: true, status: true, generationId: true, updatedAt: true },
     })
     if (!item) {
       console.warn(`[compositor] item de plano ${spec.itemDePlanoId} não encontrado no projeto ${spec.projectId} — a peça fica só na galeria`)
@@ -167,6 +167,19 @@ export async function reapontarItemDoPlano(
       return de
     }
     if (passos.length === 0) return de
+
+    if (extras.generationEsperada) {
+      // O caminho foi validado acima. Publica o desfecho em um único CAS:
+      // uma revisão/edição entre a leitura e a escrita não pode ser perdida.
+      const atualizado = await db.itemDePlano.updateMany({
+        where: { id: item.id, projectId: spec.projectId, planoId: item.planoId,
+          generationId: extras.generationEsperada, status: item.status, updatedAt: item.updatedAt },
+        data: { status: para, ...(extras.generationId !== undefined ? { generationId: extras.generationId } : {}),
+          ...(extras.pageId !== undefined ? { pageId: extras.pageId } : {}),
+          ...(extras.erro !== undefined ? { erro: extras.erro } : {}) },
+      })
+      return atualizado.count === 1 ? para : null
+    }
 
     const { transicionarItem } = await import('@/lib/planos/plano-service')
     for (const passo of passos) {

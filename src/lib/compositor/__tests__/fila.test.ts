@@ -20,6 +20,7 @@ const banco = vi.hoisted(() => ({
   itens: new Map<string, Record<string, unknown>>(),
   seq: 0,
   interromperJob: false,
+  antesDoCallback: null as (() => void) | null,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -64,6 +65,13 @@ vi.mock('@/lib/db', () => {
       },
     },
     itemDePlano: {
+      updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        banco.antesDoCallback?.()
+        const item = banco.itens.get(where.id as string)
+        if (!item || Object.entries(where).some(([key, value]) => item[key] !== value)) return { count: 0 }
+        banco.itens.set(where.id as string, { ...item, ...data })
+        return { count: 1 }
+      },
       update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
         banco.itens.set(where.id, { ...banco.itens.get(where.id), ...data })
       },
@@ -114,13 +122,15 @@ vi.mock('@/lib/planos/plano-service', async () => {
 
 const compositor = vi.hoisted(() => ({
   chamadas: [] as Array<{ spec: unknown; opcoes: Record<string, unknown> }>,
-  modo: 'ok' as 'ok' | 'duplica' | 'texto-nao-cabe' | 'infra',
+  modo: 'ok' as 'ok' | 'duplica' | 'texto-nao-cabe' | 'infra' | 'sem-combinacao' | 'selecao-indisponivel',
 }))
 vi.mock('../compor', () => ({
   comporPeca: async (spec: unknown, opcoes: Record<string, unknown>) => {
     compositor.chamadas.push({ spec, opcoes })
     const { CreativeError } = await import('@/lib/creatives/errors')
     if (compositor.modo === 'texto-nao-cabe') throw new CreativeError('TEXTO_NAO_CABE_NA_COLUNA', 'A manchete não cabe na coluna', 422)
+    if (compositor.modo === 'sem-combinacao') throw new CreativeError('SEM_COMBINACAO', 'Escolha outra foto', 422)
+    if (compositor.modo === 'selecao-indisponivel') throw new CreativeError('SELECAO_INDISPONIVEL', 'Foto indisponível', 422)
     if (compositor.modo === 'infra') throw new Error('fonte não carregou')
     // O contrato do persist: com generationId, FECHA aquela linha; sem, cria.
     let generationId = opcoes.generationId as string | null
@@ -166,6 +176,7 @@ beforeEach(() => {
   banco.itens.clear()
   banco.seq = 0
   banco.interromperJob = false
+  banco.antesDoCallback = null
   transicoes.length = 0
   compositor.chamadas.length = 0
   compositor.modo = 'ok'
@@ -197,11 +208,8 @@ describe('fila COMPOR', () => {
     expect(banco.generations.size).toBe(1)
 
     expect(banco.itens.get('item-1')).toMatchObject({ status: 'pronto', generationId: r.generationId, pageId: 'page-1' })
-    // Caminhou pela tabela (`na-fila` → `gerando` → `pronto`), sem atalho.
-    expect(transicoes.map((t) => t.para)).toEqual(['gerando', 'pronto'])
-    // Os vínculos só acompanham o passo final.
-    expect(transicoes[0]).not.toHaveProperty('pageId')
-    expect(transicoes[1]).toMatchObject({ generationId: r.generationId, pageId: 'page-1', planoId: 'plano-1', projectId: 6 })
+    // Caminho validado; desfecho publicado atomicamente, sem estado intermediário.
+    expect(transicoes).toHaveLength(0)
   })
 
   it('REGRESSÃO 04/09: peça gravada em OUTRA Generation deixa a da fila aberta, e o job FAILED diz isso', async () => {
@@ -314,4 +322,46 @@ it('conclusão atrasada não sobrescreve escolha humana ou vínculo de outra rev
   banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', generationId: 'nova-revisao' })
   await rodarComoOCron(antiga.jobId)
   expect(banco.itens.get('item-1')).toMatchObject({ status: 'editado', generationId: 'nova-revisao' })
+})
+
+
+it('callback perde a disputa se houver edição entre leitura e escrita', async () => {
+  const r = await enfileirarPeca(spec)
+  banco.antesDoCallback = () => banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', generationId: 'outra' })
+  await rodarComoOCron(r.jobId)
+  expect(banco.itens.get('item-1')).toMatchObject({ status: 'editado', generationId: 'outra' })
+})
+
+it('callback também protege edição de conteúdo que mantém estado e geração', async () => {
+  const r = await enfileirarPeca(spec)
+  banco.antesDoCallback = () => banco.itens.set('item-1', { ...banco.itens.get('item-1'), updatedAt: new Date('2026-09-10'), tema: 'novo' })
+  await rodarComoOCron(r.jobId)
+  expect(banco.itens.get('item-1')).toMatchObject({ status: 'na-fila', tema: 'novo' })
+})
+
+it('candidatas e preferências atravessam a fila e a retomada usa a spec do job', async () => {
+  const entrada = { ...spec, fotosCandidatas: ['a', 'b'], preferencias: { variante: 'assinatura-aprovada' } }
+  const r = await enfileirarPeca(entrada)
+  await rodarComoOCron(r.jobId)
+  expect(compositor.chamadas[0].spec).toMatchObject({ fotosCandidatas: ['a', 'b'], preferencias: entrada.preferencias })
+  const g = banco.generations.get(r.generationId)!
+  banco.generations.set(r.generationId, { ...g, fieldValues: { spec: { ...entrada, fotosCandidatas: undefined, foto: { driveFileId: 'b' } } } })
+  expect(await enfileirarPeca(entrada)).toEqual(r)
+  expect(banco.generations.size).toBe(1)
+})
+
+it('mudança das candidatas constitui nova revisão', async () => {
+  const r = await enfileirarPeca({ ...spec, fotosCandidatas: ['a'] })
+  await rodarComoOCron(r.jobId)
+  banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', fotoCandidatas: [{ driveFileId: 'b' }] })
+  expect((await enfileirarPeca({ ...spec, fotosCandidatas: ['b'] })).generationId).not.toBe(r.generationId)
+})
+
+it('não repete rejeição determinística de seleção, mas retoma indisponibilidade', async () => {
+  compositor.modo = 'sem-combinacao'
+  const r = await enfileirarPeca(spec)
+  expect(await rodarComoOCron(r.jobId)).toBe('FAILED')
+  compositor.modo = 'selecao-indisponivel'
+  const nova = await enfileirarPeca(spec)
+  expect(await rodarComoOCron(nova.jobId)).toBe('REENFILEIRADO')
 })

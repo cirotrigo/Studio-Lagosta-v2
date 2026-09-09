@@ -213,6 +213,7 @@ export const toolsDoCompositor = [
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
+            fotosCandidatas: spec.fotosCandidatas,
             blocos: spec.blocos,
             preferencias,
             nome: spec.nome,

@@ -805,8 +805,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   }
 
   if (opcoes.selecao) {
-    const { impedimentos } = avaliarCombinacao({ persistido: null, prova: null, layers, diagnostico })
-    if (impedimentos.length) throw new CreativeError('SEM_COMBINACAO', 'A combinação selecionada falhou na conferência final; nada foi salvo.', 422, { impedimentos, selecao: opcoes.selecao })
+    const { impedimentos, transitorio } = avaliarCombinacao({ persistido: null, prova: null, layers, diagnostico })
+    if (impedimentos.length) throw new CreativeError(transitorio ? 'SELECAO_INDISPONIVEL' : 'SEM_COMBINACAO', 'A combinação selecionada falhou na conferência final; nada foi salvo.', 422, { impedimentos, selecao: opcoes.selecao })
   }
   if (opcoes.somenteAvaliar) return { persistido: null, prova: null, layers, diagnostico }
 

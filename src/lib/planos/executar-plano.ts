@@ -46,7 +46,7 @@ import {
   type CampoDeTexto,
   type ContaDaExecucao,
 } from '@/lib/planos/execucao'
-import { copyParaBlocos } from '@/lib/compositor/copy-para-blocos'
+import { montarSpecDoItem } from './spec-do-item'
 
 export interface ExecutarPlanoInput {
   projectId: number
@@ -373,37 +373,11 @@ async function marcarErro(input: ContextoDeProducao, item: ItemDoPlano, motivo: 
 
 /** A spec do compositor a partir do item — copy por ordem de leitura, foto e formato. */
 async function specDoItem(item: ItemDoPlano, projectId: number, contexto?: ContextoDeProducao) {
-  const formato = (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story'
-  // A copy é distribuída SÓ sobre os papéis que a assinatura do formato tem
-  // (Ciro, 04/09/2026: "a copy é feita em cima dos campos que existem no
-  // template"). União das variantes do formato: a escolha da variante depois
-  // pega a que cobre os papéis pedidos.
   const { paginasDeAssinatura } = await import('@/lib/compositor/compor')
   const consulta = contexto?.assinaturas ?? paginasDeAssinatura(projectId)
   if (contexto) contexto.assinaturas = consulta
   const { paginas } = await consulta
-  const doFormato = paginas.filter((p) => p.formato === formato)
-  // headline2 é a segunda voz da manchete, não um papel da copy.
-  const papeis = doFormato.length > 0 ? ([...new Set(doFormato.flatMap((p) => p.papeis))].filter((p) => p !== 'headline2') as Array<'pre' | 'headline' | 'apoio' | 'cta' | 'servico'>) : undefined
-  const blocos = copyParaBlocos(item.copyProposta ?? [], papeis ? { papeis } : {})
-  if (blocos.length === 0) {
-    throw new CreativeError('ITEM_INCOMPLETO', 'Este item não tem texto — o compositor precisa de pelo menos a manchete.', 400)
-  }
-  const foto = item.fotoDriveId?.trim()
-    ? { driveFileId: item.fotoDriveId.trim() }
-    : item.fotoUrl?.trim()
-      ? { url: item.fotoUrl.trim() }
-      : undefined
-  return {
-    projectId,
-    formato,
-    ...(foto ? { foto } : {}),
-    blocos,
-    ...(item.tema ? { tema: item.tema, nome: `${item.tema} — plano` } : {}),
-    itemDePlanoId: item.id,
-    planoId: item.planoId,
-    ...(item.quando ? { quando: typeof item.quando === 'string' ? item.quando : new Date(item.quando as unknown as string).toISOString() } : {}),
-  }
+  return montarSpecDoItem(item, projectId, paginas)
 }
 
 /**

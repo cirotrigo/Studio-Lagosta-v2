@@ -8,7 +8,7 @@ A proposta semanal já distribui cadência/pilares, escolhe fotos sem repetiçã
 - Composição com `itemDePlanoId`: bloqueio de linha PostgreSQL por item e uma transação gravam Generation, GenerationJob e vínculo/status do item. Uma interrupção antes do commit desfaz os três; depois do commit, o reenvio encontra o mesmo job.
 - A revisão compara spec normalizada e conteúdo do item (copy, fotos, data, formato, tema, legenda, via, modelo, direção, referências, ajuste, cliente, escopo e campanha). A chave fica no payload durável do job, que não é substituído ao salvar a arte.
 - Mesma revisão em processamento ou concluída com URL reutiliza a geração vinculada. Falha terminal permite nova tentativa. Revisão diferente exige estado executável; pronto/agendado/reprovado/em voo não inicia outra composição.
-- O executor transmite `updatedAt` para recusar uma preparação que perdeu uma edição concorrente. Falhas só marcam erro se o snapshot ainda for atual. O callback de conclusão/falha confere o vínculo da geração e estado em voo antes de movimentar o item.
+- O executor transmite `updatedAt` para recusar uma preparação que perdeu uma edição concorrente. Falhas só marcam erro se o snapshot ainda for atual. Na revisão integrada, o callback de conclusão/falha atualiza o desfecho por compare-and-set de geração, estado bruto e updatedAt, após validar o caminho de transições permitido.
 - Aprovação editorial continua distinta de geração e agendamento. Reenvio não aprova nem publica.
 
 ## Operação
@@ -21,9 +21,9 @@ A proposta semanal já distribui cadência/pilares, escolhe fotos sem repetiçã
 
 A garantia transacional é do **enfileiramento de composição ligado a item de plano**. Peças avulsas, IA e render síncrono de modelo/bancada conservam os contratos anteriores. Não há chave externa nova para uma leva sem plano. Jobs legados sem revisão persistida não recebem retrospectivamente essa garantia. Não há migração de banco.
 
-O lock serializa o enfileiramento por item; não é um lock global de edição ou de render. O callback verifica o vínculo antes das transições existentes, mas não torna todas as edições/reconciliações do sistema transacionais. Uma próxima etapa deve unificar compare-and-set nesses escritores. Interrupção durante o render/persistência continua sob a recuperação existente da fila; este incremento não promete exatamente uma gravação de página em todos os pontos de falha do renderer.
+O lock serializa o enfileiramento por item; não é um lock global de edição ou de render. O callback usa compare-and-set, mas isso não torna todas as edições/reconciliações do sistema transacionais. Uma próxima etapa deve unificar essa proteção nos demais escritores. Interrupção durante o render/persistência continua sob a recuperação existente da fila; este incremento não promete exatamente uma gravação de página em todos os pontos de falha do renderer.
 
-A revisão não certifica validade factual nem estética. Alteração externa de DNA/assinatura/fatos não invalida automaticamente uma arte pronta. Revalidar campanhas/serviço antes de aprovar; a precondição temporal cobre edição do item pelo executor, não um snapshot externo de regras. Não se alteraram o catálogo v3, ranking, análise visual, mapa de calma, seleção de assinatura ou `compor`.
+A revisão não certifica validade factual nem estética. Alteração externa de DNA/assinatura/fatos não invalida automaticamente uma arte pronta. Revalidar campanhas/serviço antes de aprovar; a precondição temporal cobre edição do item pelo executor, não um snapshot externo de regras. A primeira entrega não alterou o catálogo v3, ranking ou seleção. A conexão posterior com a seleção limitada está descrita na [revisão integrada](REVISAO-INTEGRADA-COMPOSICAO-SEMANAL.md).
 
 ## Grade de revisão: próxima entrega
 
