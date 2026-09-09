@@ -36,6 +36,7 @@ const spec = {
   projectId: z.number().describe('ID do cliente.'),
   formato: z.enum(['story', 'feed', 'quadrado']).describe('story (1080x1920), feed (1080x1350) ou quadrado (1080x1080).'),
   fotoDriveId: z.string().optional().describe('A foto do acervo (driveFileId de buscar-fotos). Preferido: liga a peça ao rodízio de fotos.'),
+  fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional().describe('Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.'),
   fotoUrl: z.string().optional().describe('URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada).'),
   blocos: z.array(bloco).min(1).max(5).describe('A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura.'),
   preferencias,
@@ -61,6 +62,7 @@ function specDe(args: Record<string, unknown>) {
     projectId: args.projectId,
     formato: args.formato,
     ...(args.fotoDriveId || args.fotoUrl ? { foto: { ...(args.fotoDriveId ? { driveFileId: args.fotoDriveId } : {}), ...(args.fotoUrl ? { url: args.fotoUrl } : {}) } } : {}),
+    fotosCandidatas: args.fotosCandidatas,
     blocos: args.blocos,
     ...(args.preferencias ? { preferencias: args.preferencias } : {}),
     ...(args.nome ? { nome: args.nome } : {}),
@@ -157,7 +159,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-arte',
     descricao:
-      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, calibra o halo de leitura e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. A COPY É ESCRITA SOBRE OS PAPÉIS QUE A VARIANTE TEM — ver-assinatura lista os papéis de cada variante por formato; papel que a página não tem (um feed sem servico, uma story sem pre) NÃO entra na peça e o texto fica de fora com aviso. Nunca escreva um bloco para um campo que o template não tem. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
+      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, preserva o halo aprovado (calibra apenas quando a página não define fundos) e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. A COPY É ESCRITA SOBRE OS PAPÉIS QUE A VARIANTE TEM — ver-assinatura lista os papéis de cada variante por formato; papel pedido que a página não tem causa erro antes de salvar; escolha variante compatível sem omitir condições obrigatórias. Nunca escreva um bloco para um campo que o template não tem. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. fotosCandidatas habilita a seleção limitada de foto e variante; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
     schema: z.object({
       ...spec,
       provar: z.boolean().optional().describe('true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável.'),
@@ -176,6 +178,7 @@ export const toolsDoCompositor = [
         posicao: `${d.posicao.ancora}/${d.posicao.alinha}`,
         enquadramento: d.posicao.crop,
         logo: d.logo?.canto ?? 'sem logo',
+        selecao: d.selecao,
         halo: d.halos.map((h) => ({ bloco: h.grupo, tinta: h.tinta })),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
         avisos: d.avisos,

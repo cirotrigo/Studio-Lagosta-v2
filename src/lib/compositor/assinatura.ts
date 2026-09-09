@@ -45,9 +45,8 @@ export interface EstiloDePapel {
    * margem, desfoque, cantos, opacidade). Quando algum papel da página tem
    * fundo, a página é a verdade: cada papel recebe o SEU; papel sem fundo sai
    * sem mancha. Só quando nenhum papel tem é que o compositor calibra o halo
-   * sozinho pela foto. A opacidade da página é o TETO: em mancha escura e
-   * ajuste `texto` a foto modula dentro dela; caixa sólida ou mancha clara
-   * saem como a equipe desenhou.
+   * sozinho pela foto. A opacidade e os demais valores da página são preservados;
+   * a régua mede e avisa, sem modular o halo aprovado.
    */
   fundo?: FundoDePapel | null
   /** O grupo da camada na página (Cmd+G do editor) — papéis no mesmo grupo formam UM bloco na peça. */
@@ -503,6 +502,7 @@ export function escolherVariante<T extends CandidataAVariante>(
         `${p.id ?? ''}`.toLowerCase() === alvo,
     )
     if (achada) return { pagina: achada, formatoDaPagina: fmt(achada), motivo: 'pedida' }
+    return { pagina: null, formatoDaPagina: null, motivo: 'variante pedida não encontrada' }
   }
 
   const avaliadas = avaliarVariantes(base, args)

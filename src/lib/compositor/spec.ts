@@ -73,6 +73,7 @@ export const specSchema = z.object({
       driveFileId: z.string().min(1).optional(),
     })
     .optional(),
+  fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional(),
   blocos: z.array(blocoSchema).min(1).max(5),
   preferencias: preferenciasSchema.optional(),
   nome: z.string().max(120).optional(),
