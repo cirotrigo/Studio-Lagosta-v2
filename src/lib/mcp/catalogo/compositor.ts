@@ -21,6 +21,7 @@ const bloco = z.object({
 
 const preferencias = z
   .object({
+    tratamentoDeTexto: z.enum(['assinatura', 'gradiente-suave-topo']).optional().describe('Escolha explícita: gradiente-suave-topo substitui fundos dos textos do topo por gradiente preto suave editável. Sem opção mantém assinatura. Aprovado visualmente na Real; revisar em outras fotos/marcas. Não move texto nem muda foto.'),
     ancora: z.enum(['topo', 'meio', 'rodape', 'auto']).optional().describe('Onde o bloco de texto pousa. "auto" (default) deixa a foto decidir — a área mais calma ganha.'),
     alinha: z.enum(['esquerda', 'centro', 'direita', 'auto']).optional().describe('Alinhamento do bloco. "auto" (default) segue a área livre da foto.'),
     cantoDaMarca: z
@@ -181,6 +182,7 @@ export const toolsDoCompositor = [
         enquadramento: d.posicao.crop,
         logo: d.logo?.canto ?? 'sem logo',
         selecao: d.selecao,
+        tratamentoDeTexto: d.tratamentoDeTexto ?? 'assinatura',
         halo: d.halos.map((h) => ({ bloco: h.grupo, tinta: h.tinta })),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
         avisos: d.avisos,
@@ -198,7 +200,7 @@ export const toolsDoCompositor = [
         editUrl: p.editUrl,
         galleryUrl: p.galleryUrl,
         ...resumo,
-        nota: 'A peça é uma página editável: o link editUrl abre no editor, onde a equipe move, redimensiona e reescreve; o halo acompanha o texto.',
+        nota: d.tratamentoDeTexto === 'gradiente-suave-topo' ? 'Página editável: o gradiente é uma camada independente; selecione-a para ajustar transição e intensidade. Ao mover o texto, confira novamente a leitura.' : 'A peça é uma página editável: o link editUrl abre no editor, onde a equipe move, redimensiona e reescreve; o halo acompanha o texto.',
       }
     },
   }),

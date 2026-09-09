@@ -1,5 +1,7 @@
 # Revisão conservadora do piloto — 09/09/2026
 
+> Etapa posterior: Ciro aprovou o novo gradiente suave após rejeitar A/B. Integração e testes diversos em [GRADIENTE-SUAVE-REAL-2026-09-09.md](../GRADIENTE-SUAVE-REAL-2026-09-09.md). Este relatório conserva os resultados anteriores.
+
 **O padrão voltou a conservar o baseline: candidatas no card não ativam seleção.** O opt-in explícito também conservou o baseline do Real; duas alternativas ficam disponíveis no diagnóstico, sem aprovação estética. Quintal e TERO continuam recusados pelo experimento. Há uma alternativa clara do Real para avaliação humana, mas não há melhora estética aprovada nem ganho de velocidade demonstrado.
 
 [Galeria para revisão](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/revisao.html) · [Real: opções A/B em 360px](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-opcoes-revisao.png) · [Métricas e decisões](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/docs/piloto-compositor-2026-09-09/metricas-conservadoras.json).

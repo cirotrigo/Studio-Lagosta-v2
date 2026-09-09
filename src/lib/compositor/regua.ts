@@ -131,7 +131,7 @@ function semTinta(layers: Layer[]): Layer[] {
 }
 
 function semHalo(layers: Layer[]): Layer[] {
-  return semTinta(layers).map((l) => (l.type === 'text' ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
+  return semTinta(layers).filter((l) => l.metadata?.tratamentoDeTexto !== 'gradiente-suave-topo').map((l) => (l.type === 'text' ? { ...l, effects: { ...(l.effects ?? {}), background: undefined } } : l))
 }
 
 export async function medirContrasteDaPeca(args: {

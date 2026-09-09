@@ -54,6 +54,7 @@ export const carrosselSchema = z.object({
 export type CarrosselDaPeca = z.infer<typeof carrosselSchema>
 
 export const preferenciasSchema = z.object({
+  tratamentoDeTexto: z.enum(['assinatura', 'gradiente-suave-topo']).optional(),
   ancora: z.enum([...ANCORAS, 'auto']).optional(),
   alinha: z.enum([...ALINHAMENTOS, 'auto']).optional(),
   cantoDaMarca: z.enum([...CANTOS, 'auto', 'nenhum']).optional(),

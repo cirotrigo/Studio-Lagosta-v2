@@ -340,7 +340,7 @@ it('callback também protege edição de conteúdo que mantém estado e geraçã
 })
 
 it('candidatas e preferências atravessam a fila e a retomada usa a spec do job', async () => {
-  const entrada = { ...spec, selecaoExperimental: true, fotosCandidatas: ['a', 'b'], preferencias: { variante: 'assinatura-aprovada' } }
+  const entrada = { ...spec, selecaoExperimental: true, fotosCandidatas: ['a', 'b'], preferencias: { variante: 'assinatura-aprovada', tratamentoDeTexto: 'gradiente-suave-topo' } }
   const r = await enfileirarPeca(entrada)
   await rodarComoOCron(r.jobId)
   expect(compositor.chamadas[0].spec).toMatchObject({ selecaoExperimental: true, fotosCandidatas: ['a', 'b'], preferencias: entrada.preferencias })

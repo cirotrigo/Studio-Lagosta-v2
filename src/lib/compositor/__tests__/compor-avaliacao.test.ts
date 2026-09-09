@@ -64,3 +64,19 @@ it('candidatas sem opt-in não acionam seleção nem mudam o baseline', async ()
   expect(selecionar).not.toHaveBeenCalled()
   expect(candidata.layers).toEqual(base.layers)
 })
+
+it('preferência explícita cria gradiente editável antes da régua, sem alterar copy', async () => {
+  const r = await comporPeca({ projectId: 3, formato: 'story', preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' }, blocos: [{ papel: 'headline', linhas: ['Quarta no', 'Quintal'] }] }, { somenteAvaliar: true })
+  expect(r.layers.filter((l) => l.type === 'text').map((l) => l.content)).toEqual(['Quarta no', 'Quintal'])
+  expect(r.layers.some((l) => l.type === 'gradient')).toBe(true)
+  expect(mocks.regua.mock.calls[0][0].layers.some((l: Layer) => l.type === 'gradient')).toBe(true)
+  expect(r.layers.filter((l) => l.type === 'text').every((l) => !l.effects?.background)).toBe(true)
+  expect(r.diagnostico.tratamentoDeTexto).toBe('gradiente-suave-topo')
+})
+
+it('persiste o gradiente como camada editável e conserva preferência na spec', async () => {
+  mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
+  mocks.persistir.mockResolvedValue({ generationId: 'g', pageId: 'page', url: 'https://example.com/arte.png' })
+  await comporPeca({ projectId: 3, formato: 'story', preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' }, blocos: [{ papel: 'headline', linhas: ['Quintal'] }] })
+  expect(mocks.persistir.mock.calls[0][0]).toMatchObject({ layers: expect.arrayContaining([expect.objectContaining({ type: 'gradient', metadata: { tratamentoDeTexto: 'gradiente-suave-topo' } })]), fieldValues: { spec: { preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' } } } })
+})

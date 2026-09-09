@@ -52,6 +52,7 @@ import {
   type MapaDeCalma,
   type PontuacaoDePosicao,
 } from './mapa-de-calma'
+import { aplicarGradienteSuave } from '@/lib/creatives/gradiente-suave'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
 import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto } from './regua'
 
@@ -66,6 +67,7 @@ export interface RotuloDePosicao {
 export interface DiagnosticoDaComposicao {
   selecao?: DiagnosticoDaSelecao
   intervencaoDeTexto?: IntervencaoDeTexto
+  tratamentoDeTexto?: 'gradiente-suave-topo'
   formato: Formato
   posicao: RotuloDePosicao & { pontuacao: number; motivo: string }
   candidatos: Array<RotuloDePosicao & { pontuacao: number; descartado: boolean; motivo: string }>
@@ -778,6 +780,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   })
   avisos.push(...fix.avisos)
   let layers = fix.layers as Layer[]
+  const gradienteSuave = spec.preferencias?.tratamentoDeTexto === 'gradiente-suave-topo'
+  if (gradienteSuave) {
+    layers = aplicarGradienteSuave(layers, canvas)
+    avisos.push('Gradiente suave solicitado: conferir leitura e fotografia; a preferência não equivale a aprovação desta peça.')
+  }
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
   //    tinta uma vez dentro da faixa e AVISA quando a foto não carrega o texto.
@@ -796,12 +803,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const diagnostico: DiagnosticoDaComposicao = {
     ...(opcoes.selecao ? { selecao: opcoes.selecao } : {}),
     ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
+    ...(gradienteSuave ? { tratamentoDeTexto: 'gradiente-suave-topo' as const } : {}),
     formato: spec.formato,
     posicao: { ancora, alinha, crop, pontuacao: Number(melhor.escolhido.pontuacao.toFixed(3)), motivo: melhor.escolhido.motivo },
     candidatos: melhor.todos.map((c) => ({ ...c.rotulo, pontuacao: Number(c.pontuacao.toFixed(3)), descartado: c.descartado, motivo: c.motivo })),
     assunto: melhor.assunto,
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
-    halos,
+    halos: gradienteSuave ? halos.filter((h) => layers.some((l) => l.metadata?.groupId === h.grupo && l.effects?.background?.enabled)) : halos,
     logo: logoDiag,
     blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height })),
     contraste,

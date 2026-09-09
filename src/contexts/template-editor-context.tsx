@@ -5,6 +5,7 @@ import type { DesignData, DynamicField, Layer } from '@/types/template'
 import type Konva from 'konva'
 import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradiente-suave'
 import { createId } from '@/lib/id'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
@@ -44,6 +45,7 @@ export interface TemplateEditorContextValue {
   updateLayerStyle: (id: string, style: Layer['style']) => void
   moveLayer: (id: string, deltaX: number, deltaY: number) => void
   addLayer: (layer: Layer) => void
+  applySoftTopGradient: () => void
   duplicateLayer: (id: string) => void
   removeLayer: (id: string) => void
   toggleLayerVisibility: (id: string) => void
@@ -434,6 +436,14 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     },
     [applyDesign],
   )
+
+  const applySoftTopGradient = React.useCallback(() => {
+    applyDesign((prev) => {
+      const layers = aplicarGradienteSuave(prev.layers, prev.canvas)
+      return layers === prev.layers ? prev : { ...prev, layers }
+    })
+    setSelectedLayerIds([ID_GRADIENTE_SUAVE])
+  }, [applyDesign])
 
   const duplicateLayer = React.useCallback(
     (id: string) => {
@@ -1323,6 +1333,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       updateLayerStyle,
       moveLayer,
       addLayer,
+      applySoftTopGradient,
       duplicateLayer,
       removeLayer,
       toggleLayerVisibility,
@@ -1401,6 +1412,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       updateLayerStyle,
       moveLayer,
       addLayer,
+      applySoftTopGradient,
       duplicateLayer,
       removeLayer,
       toggleLayerVisibility,

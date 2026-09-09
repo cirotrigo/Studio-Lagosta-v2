@@ -1,3 +1,5 @@
+> Tratamento explícito reutilizável: `preferencias.tratamentoDeTexto: "gradiente-suave-topo"` está documentado em [Gradiente suave Real](GRADIENTE-SUAVE-REAL-2026-09-09.md). Sem preferência, preservar assinatura.
+
 > Atualização: seleção exige `selecaoExperimental: true`; candidatas sozinhas mantêm o baseline. Ver [revisão conservadora](piloto-compositor-2026-09-09/REVISAO-CONSERVADORA.md).
 
 # Escolha conjunta de foto e assinatura — piloto opt-in
