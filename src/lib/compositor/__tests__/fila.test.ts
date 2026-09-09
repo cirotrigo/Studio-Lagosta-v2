@@ -19,10 +19,11 @@ const banco = vi.hoisted(() => ({
   jobs: new Map<string, Record<string, unknown>>(),
   itens: new Map<string, Record<string, unknown>>(),
   seq: 0,
+  interromperJob: false,
 }))
 
-vi.mock('@/lib/db', () => ({
-  db: {
+vi.mock('@/lib/db', () => {
+  const mockDb = {
     project: {
       findUnique: async () => ({ id: 6, name: 'Espeto Gaúcho', userId: 'dono-interno' }),
     },
@@ -41,6 +42,12 @@ vi.mock('@/lib/db', () => ({
       },
     },
     generationJob: {
+      create: async ({ data }: { data: Record<string, unknown> }) => {
+        if (banco.interromperJob) throw new Error('interrupção antes do job')
+        const id = `job-${++banco.seq}`
+        banco.jobs.set(id, { id, status: 'PENDING', attempts: 0, ...data })
+        return { id }
+      },
       upsert: async ({ where, create }: { where: { generationId: string }; create: Record<string, unknown> }) => {
         const existente = [...banco.jobs.values()].find((j) => j.generationId === where.generationId)
         if (existente) return { id: existente.id }
@@ -48,7 +55,7 @@ vi.mock('@/lib/db', () => ({
         banco.jobs.set(id, { id, status: 'PENDING', attempts: 0, ...create })
         return { id }
       },
-      findUnique: async ({ where }: { where: { id: string } }) => banco.jobs.get(where.id) ?? null,
+      findUnique: async ({ where }: { where: { id?: string; generationId?: string } }) => where.id ? banco.jobs.get(where.id) ?? null : [...banco.jobs.values()].find((j) => j.generationId === where.generationId) ?? null,
       updateMany: async ({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
         const j = banco.jobs.get(where.id)
         if (!j || (where.status && j.status !== where.status)) return { count: 0 }
@@ -57,14 +64,24 @@ vi.mock('@/lib/db', () => ({
       },
     },
     itemDePlano: {
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        banco.itens.set(where.id, { ...banco.itens.get(where.id), ...data })
+      },
       findFirst: async ({ where }: { where: { id: string; projectId: number; planoId?: string } }) => {
         const i = banco.itens.get(where.id)
         if (!i || i.projectId !== where.projectId || (where.planoId && i.planoId !== where.planoId)) return null
-        return { id: i.id, planoId: i.planoId, status: i.status }
+        return i
       },
     },
-  },
-}))
+  }
+  return { db: { ...mockDb, $transaction: async (run: (tx: unknown) => Promise<unknown>) => {
+    const snapshot = structuredClone({ generations: banco.generations, jobs: banco.jobs, itens: banco.itens })
+    try { return await run({ ...mockDb, $queryRaw: async () => [] }) } catch (error) {
+      banco.generations = snapshot.generations; banco.jobs = snapshot.jobs; banco.itens = snapshot.itens
+      throw error
+    }
+  } } }
+})
 
 vi.mock('../pastas', () => ({
   garantirPasta: async () => ({ id: 42, name: 'Semana 07/09' }),
@@ -148,6 +165,7 @@ beforeEach(() => {
   banco.jobs.clear()
   banco.itens.clear()
   banco.seq = 0
+  banco.interromperJob = false
   transicoes.length = 0
   compositor.chamadas.length = 0
   compositor.modo = 'ok'
@@ -180,10 +198,10 @@ describe('fila COMPOR', () => {
 
     expect(banco.itens.get('item-1')).toMatchObject({ status: 'pronto', generationId: r.generationId, pageId: 'page-1' })
     // Caminhou pela tabela (`na-fila` → `gerando` → `pronto`), sem atalho.
-    expect(transicoes.map((t) => t.para)).toEqual(['na-fila', 'gerando', 'pronto'])
+    expect(transicoes.map((t) => t.para)).toEqual(['gerando', 'pronto'])
     // Os vínculos só acompanham o passo final.
-    expect(transicoes[1]).not.toHaveProperty('pageId')
-    expect(transicoes[2]).toMatchObject({ generationId: r.generationId, pageId: 'page-1', planoId: 'plano-1', projectId: 6 })
+    expect(transicoes[0]).not.toHaveProperty('pageId')
+    expect(transicoes[1]).toMatchObject({ generationId: r.generationId, pageId: 'page-1', planoId: 'plano-1', projectId: 6 })
   })
 
   it('REGRESSÃO 04/09: peça gravada em OUTRA Generation deixa a da fila aberta, e o job FAILED diz isso', async () => {
@@ -228,8 +246,8 @@ describe('fila COMPOR', () => {
 
   it('item que já foi para a agenda não é movido, e isso não derruba a peça', async () => {
     banco.itens.set('item-1', { id: 'item-1', planoId: 'plano-1', projectId: 6, status: 'agendado' })
-    const r = await enfileirarPeca(spec)
-    expect(await rodarComoOCron(r.jobId)).toBe('DONE')
+    await expect(enfileirarPeca(spec)).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE' })
+    expect(banco.generations.size).toBe(0)
     expect(banco.itens.get('item-1')?.status).toBe('agendado')
     expect(transicoes).toHaveLength(0)
   })
@@ -240,4 +258,60 @@ describe('fila COMPOR', () => {
     expect(await reapontarItemDoPlano(null, 'pronto')).toBeNull()
     expect(banco.itens.get('item-1')?.status).toBe('proposto')
   })
+})
+
+ describe('retomada por item', () => {
+  it('resposta perdida após commit reutiliza o job, inclusive depois de pronto', async () => {
+    const primeira = await enfileirarPeca(spec)
+    expect(await enfileirarPeca(spec)).toEqual(primeira)
+    await rodarComoOCron(primeira.jobId)
+    expect(await enfileirarPeca(spec)).toEqual(primeira)
+    expect(banco.generations.size).toBe(1)
+    expect(banco.itens.get('item-1')?.status).toBe('pronto')
+  })
+  it('falha parcial não refaz o item pronto e permite continuar o segundo aprovado', async () => {
+    const primeira = await enfileirarPeca(spec)
+    await rodarComoOCron(primeira.jobId)
+    banco.itens.set('item-2', { id: 'item-2', planoId: 'plano-1', projectId: 6, status: 'aprovado' })
+    const segundaSpec = { ...spec, itemDePlanoId: 'item-2' }
+    const segunda = await enfileirarPeca(segundaSpec)
+    compositor.modo = 'texto-nao-cabe'
+    await rodarComoOCron(segunda.jobId)
+    compositor.modo = 'ok'
+    const retomada = await enfileirarPeca(segundaSpec)
+    expect(retomada.generationId).not.toBe(segunda.generationId)
+    await rodarComoOCron(retomada.jobId)
+    expect(await enfileirarPeca(spec)).toEqual(primeira)
+    expect(banco.itens.get('item-2')?.status).toBe('pronto')
+  })
+  it('revisão alterada durante preparação recusa antes de criar geração', async () => {
+    banco.itens.set('item-1', { ...banco.itens.get('item-1'), updatedAt: new Date('2026-09-09'), status: 'editado' })
+    await expect(enfileirarPeca(spec, { itemAtualizadoEm: new Date('2026-09-08') })).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE' })
+    expect(banco.generations.size).toBe(0)
+  })
+})
+
+it('interrupção antes do commit não deixa geração órfã e permite retomar', async () => {
+  banco.interromperJob = true
+  await expect(enfileirarPeca(spec)).rejects.toThrow('interrupção')
+  expect(banco.generations.size).toBe(0)
+  expect(banco.jobs.size).toBe(0)
+  expect(banco.itens.get('item-1')?.status).toBe('proposto')
+  banco.interromperJob = false
+  await enfileirarPeca(spec)
+  expect(banco.generations.size).toBe(1)
+})
+it('mudança de campanha exige outra revisão mesmo com a mesma spec', async () => {
+  const primeira = await enfileirarPeca(spec)
+  await rodarComoOCron(primeira.jobId)
+  banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', campaignId: 'nova' })
+  const nova = await enfileirarPeca(spec)
+  expect(nova.generationId).not.toBe(primeira.generationId)
+})
+
+it('conclusão atrasada não sobrescreve escolha humana ou vínculo de outra revisão', async () => {
+  const antiga = await enfileirarPeca(spec)
+  banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado', generationId: 'nova-revisao' })
+  await rodarComoOCron(antiga.jobId)
+  expect(banco.itens.get('item-1')).toMatchObject({ status: 'editado', generationId: 'nova-revisao' })
 })
