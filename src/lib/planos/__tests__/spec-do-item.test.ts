@@ -5,7 +5,7 @@ const paginas = [{ formato: 'story' as const, papeis: ['headline' as const, 'hea
 describe('ponte semanal para seleção de composição', () => {
   it('passa candidatas persistidas em ordem, mantendo foto explícita', () => {
     const r = montarSpecDoItem({ ...item, fotoDriveId: 'escolhida' }, 2, paginas)
-    expect(r.fotosCandidatas).toEqual(['a', 'b']); expect(r.foto).toEqual({ driveFileId: 'escolhida' })
+    expect(r.selecaoExperimental).toBeUndefined(); expect(r.fotosCandidatas).toEqual(['a', 'b']); expect(r.foto).toEqual({ driveFileId: 'escolhida' })
     expect(r.blocos.map((b) => b.papel)).toEqual(['headline', 'servico'])
   })
   it('sem foto selecionada permite avaliar alternativas, sem inventar foto', () => {
@@ -20,4 +20,9 @@ describe('ponte semanal para seleção de composição', () => {
     expect(() => montarSpecDoItem(item, 2, [{ formato: 'story', papeis: ['headline'] }])).toThrow(/preserve o serviço/)
     expect(() => montarSpecDoItem({ ...item, copyProposta: ['Quarta', 'Somente consumo no local', 'Até acabar o estoque'] }, 2, paginas)).toThrow(/condições obrigatórias/)
   })
+})
+
+it('ativação semanal exige opt-in separado das candidatas', () => {
+  expect(montarSpecDoItem(item, 2, paginas, true).selecaoExperimental).toBe(true)
+  expect(montarSpecDoItem(item, 2, paginas, false).selecaoExperimental).toBeUndefined()
 })

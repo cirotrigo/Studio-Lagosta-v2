@@ -53,7 +53,7 @@ import {
   type PontuacaoDePosicao,
 } from './mapa-de-calma'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
-import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido } from './regua'
+import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto } from './regua'
 
 export { TAG_DA_PECA_COMPOSTA } from './persistencia'
 
@@ -65,6 +65,7 @@ export interface RotuloDePosicao {
 
 export interface DiagnosticoDaComposicao {
   selecao?: DiagnosticoDaSelecao
+  intervencaoDeTexto?: IntervencaoDeTexto
   formato: Formato
   posicao: RotuloDePosicao & { pontuacao: number; motivo: string }
   candidatos: Array<RotuloDePosicao & { pontuacao: number; descartado: boolean; motivo: string }>
@@ -81,6 +82,7 @@ export interface DiagnosticoDaComposicao {
 export interface OpcoesDeComposicao {
   /** Interno: mede e monta camadas sem persistir nem exportar prova. */
   somenteAvaliar?: boolean
+  medirComparacao?: boolean
   selecao?: DiagnosticoDaSelecao
   avisosDaSelecao?: string[]
   /** Cache local à seleção: evita baixar/decodificar a mesma foto por variante. */
@@ -418,7 +420,7 @@ function fundoDeHalo(mancha: string, tinta: number, raio: number) {
 export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = {}): Promise<ResultadoDaComposicao> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
-  if (v.spec.fotosCandidatas && !opcoes.somenteAvaliar) {
+  if (v.spec.selecaoExperimental === true && !opcoes.somenteAvaliar) {
     const { selecionarCombinacao } = await import('./selecionar-combinacao')
     const selecao = await selecionarCombinacao(v.spec)
     return comporPeca(selecao.spec, { ...opcoes, selecao: selecao.diagnostico, avisosDaSelecao: selecao.avisos, cacheDeFotos: selecao.cacheDeFotos, assuntosDoCatalogo: selecao.assuntosDoCatalogo })
@@ -780,10 +782,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
   //    tinta uma vez dentro da faixa e AVISA quando a foto não carrega o texto.
   let contraste: ContrasteMedido[] | null = null
+  let intervencaoDeTexto: IntervencaoDeTexto | undefined
   try {
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto, corrigir: !paginaDefineHalo })
+    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto, corrigir: !paginaDefineHalo, medirIntervencao: opcoes.medirComparacao })
     layers = regua.layers
     contraste = regua.medidas
+    intervencaoDeTexto = regua.intervencao
     avisos.push(...regua.avisos)
   } catch (erro) {
     avisos.push(`A régua de contraste não rodou: ${(erro as Error).message}`)
@@ -791,6 +795,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
   const diagnostico: DiagnosticoDaComposicao = {
     ...(opcoes.selecao ? { selecao: opcoes.selecao } : {}),
+    ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
     formato: spec.formato,
     posicao: { ancora, alinha, crop, pontuacao: Number(melhor.escolhido.pontuacao.toFixed(3)), motivo: melhor.escolhido.motivo },
     candidatos: melhor.todos.map((c) => ({ ...c.rotulo, pontuacao: Number(c.pontuacao.toFixed(3)), descartado: c.descartado, motivo: c.motivo })),

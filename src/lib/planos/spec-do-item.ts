@@ -16,7 +16,7 @@ interface ItemParaComposicao {
 }
 
 /** Ponte pura entre o item revisado e a spec durável da fila. */
-export function montarSpecDoItem(item: ItemParaComposicao, projectId: number, paginas: Array<{ formato: Formato | null; papeis: Papel[] }>): SpecDePeca {
+export function montarSpecDoItem(item: ItemParaComposicao, projectId: number, paginas: Array<{ formato: Formato | null; papeis: Papel[] }>, selecaoExperimental = false): SpecDePeca {
   const formato = (item.formato ?? 'story') as Formato
   const doFormato = paginas.filter((p) => p.formato === formato)
   const papeis = doFormato.length > 0
@@ -30,6 +30,7 @@ export function montarSpecDoItem(item: ItemParaComposicao, projectId: number, pa
   // O card não distingue foto automática de decisão humana. Tratar a foto
   // preenchida como explícita: ela restringe a seleção, nunca é substituída.
   return {
+    ...(selecaoExperimental ? { selecaoExperimental: true } : {}),
     projectId, formato, blocos, itemDePlanoId: item.id, planoId: item.planoId,
     ...(foto ? { foto } : {}), ...(fotosCandidatas.length ? { fotosCandidatas } : {}),
     ...(item.tema ? { tema: item.tema, nome: `${item.tema} — plano` } : {}),

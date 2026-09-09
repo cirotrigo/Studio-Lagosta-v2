@@ -9,25 +9,26 @@ vi.mock('../compor', () => ({ comporPeca: mocks.compor, paginasDeAssinatura: moc
 vi.mock('@/lib/creatives/acervo', () => ({ lerCatalogoDoProjeto: mocks.catalogo }))
 const spec: SpecDePeca = { projectId: 3, formato: 'story', fotosCandidatas: ['clara', 'escura'], blocos: [{ papel: 'headline', linhas: ['Quarta no', 'Quintal'] }, { papel: 'servico', linhas: ['Quarta, 11h à meia-noite'] }] }
 const variante = (id: string, papeis = ['headline', 'servico']) => ({ id, name: id, tags: [], formato: 'story', papeis })
-const resultado = (ok = true): ResultadoDaComposicao => ({ persistido: null, prova: null, layers: [], diagnostico: {
-  formato: 'story', posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle', pontuacao: 0.8, motivo: '' }, candidatos: [{ ancora: 'topo', alinha: 'esquerda', crop: 'center-middle', pontuacao: 0.8, motivo: '', descartado: false }], assunto: null, assuntoOrigem: 'estimado', halos: [], logo: null, blocos: [{ papel: 'headline', escala: 1, width: 500, height: 180 }], contraste: [{ grupo: 'headline', camadas: [], sentido: 'claro', alvo: 149, p98SemHalo: 160, p98ComHalo: ok ? 100 : 200, tinta: 0.4, tintaCorrigida: null, ok }], assinatura: {} as ResultadoDaComposicao['diagnostico']['assinatura'], avisos: [],
+const resultado = (ok = true): ResultadoDaComposicao => ({ persistido: null, prova: null, layers: [{ id: 'h', name: 'headline', type: 'text', visible: true, position: { x: 0, y: 100 }, size: { width: 500, height: 180 }, style: { fontSize: 60, color: '#ffffff' } } as any], diagnostico: {
+  formato: 'story', posicao: { ancora: 'topo', alinha: 'esquerda', crop: 'center-middle', pontuacao: 0.8, motivo: '' }, candidatos: [{ ancora: 'topo', alinha: 'esquerda', crop: 'center-middle', pontuacao: 0.8, motivo: '', descartado: false }], assunto: null, assuntoOrigem: 'estimado', halos: [], logo: null, blocos: [{ papel: 'headline', escala: 1, width: 500, height: 180 }], contraste: [{ grupo: 'headline', camadas: ['h'], sentido: 'claro', alvo: 149, p98SemHalo: 160, p98ComHalo: ok ? 100 : 200, tinta: 0.4, tintaCorrigida: null, ok }], intervencaoDeTexto: { alteracaoMedia: 0.1, escurecimentoMedio: 0.1 }, assinatura: { pageId: 'a' } as ResultadoDaComposicao['diagnostico']['assinatura'], avisos: [],
 } })
 beforeEach(() => {
   vi.restoreAllMocks(); vi.clearAllMocks()
   mocks.paginas.mockResolvedValue({ paginas: [variante('a'), variante('b')] })
   mocks.catalogo.mockResolvedValue({ todas: [] })
-  mocks.compor.mockResolvedValue(resultado())
+  mocks.compor.mockImplementation(async (s: SpecDePeca) => { const r = resultado(); r.diagnostico.assinatura.pageId = s.preferencias?.variante ?? 'a'; return r })
 })
 describe('seleção offline foto/assinatura', () => {
-  it('TERO: troca combinação com contraste ruim sem salvar tentativas', async () => {
-    mocks.compor.mockImplementation(async (s: SpecDePeca) => resultado(s.foto?.driveFileId === 'escura' && s.preferencias?.variante === 'b'))
+  it('contraste melhor na mesma foto, sem regressões, pode dominar tecnicamente', async () => {
+    mocks.compor.mockImplementation(async (s: SpecDePeca) => { const r = resultado(s.preferencias?.variante === 'b'); r.diagnostico.assinatura.pageId = s.preferencias?.variante ?? 'a'; return r })
     const r = await selecionarCombinacao(spec)
-    expect(r.spec.foto?.driveFileId).toBe('escura'); expect(r.spec.preferencias?.variante).toBe('b')
+    expect(r.spec.foto?.driveFileId).toBe('clara'); expect(r.spec.preferencias?.variante).toBe('b')
     expect(mocks.compor.mock.calls.every((c) => c[1].somenteAvaliar === true)).toBe(true)
     expect(r.spec.blocos).toEqual(spec.blocos)
   })
   it('Quintal: não usa variante sem serviço nem inventa papel headline2 na entrada', async () => {
     mocks.paginas.mockResolvedValue({ paginas: [variante('sem-servico', ['headline', 'headline2']), variante('quintal', ['headline', 'headline2', 'servico'])] })
+    mocks.compor.mockImplementation(async () => { const r = resultado(); r.diagnostico.assinatura.pageId = 'quintal'; return r })
     const r = await selecionarCombinacao(spec)
     expect(r.spec.preferencias?.variante).toBe('quintal'); expect(r.spec.blocos[0].linhas).toEqual(['Quarta no', 'Quintal'])
   })
@@ -37,8 +38,10 @@ describe('seleção offline foto/assinatura', () => {
     expect(mocks.compor).toHaveBeenCalledTimes(1); expect(r.spec.foto?.driveFileId).toBe('escolhida'); expect(r.spec.preferencias).toEqual(preferencias)
   })
   it('não substitui variante explícita ausente ou incompatível', async () => {
-    await expect(selecionarCombinacao({ ...spec, preferencias: { variante: 'ausente' } })).rejects.toThrow(/Nenhuma variante/)
-    expect(mocks.compor).not.toHaveBeenCalled()
+    mocks.compor.mockRejectedValue(new Error('Variante ausente'))
+    await expect(selecionarCombinacao({ ...spec, preferencias: { variante: 'ausente' } })).rejects.toThrow(/Nenhuma escolha/)
+    expect(mocks.compor).toHaveBeenCalledTimes(1)
+    expect(mocks.compor.mock.calls[0][0].preferencias.variante).toBe('ausente')
   })
   it('limita a seis combinações', async () => {
     mocks.paginas.mockResolvedValue({ paginas: Array.from({ length: 20 }, (_, i) => variante(String(i))) })
@@ -56,7 +59,7 @@ describe('seleção offline foto/assinatura', () => {
   })
   it('aproveita análise já existente de preço/marca sem reanalisar fotos', async () => {
     mocks.catalogo.mockResolvedValue({ todas: [{ driveFileId: 'clara', precoLegivel: true }, { driveFileId: 'escura', marcaDeTerceiro: 'cerveja' }] })
-    await expect(selecionarCombinacao(spec)).rejects.toThrow(/Nenhuma combinação/)
+    await expect(selecionarCombinacao(spec)).rejects.toThrow(/Nenhuma escolha/)
     expect(mocks.compor).not.toHaveBeenCalled()
   })
   it('informa ausência de catálogo e não transforma assunto estimado em oclusão confirmada', async () => {
@@ -93,4 +96,15 @@ it('indisponibilidade de download/medição é retomável, incompatibilidade nã
   await expect(selecionarCombinacao(spec)).rejects.toMatchObject({ code: 'SELECAO_INDISPONIVEL' })
   mocks.compor.mockResolvedValue(resultado(false))
   await expect(selecionarCombinacao(spec)).rejects.toMatchObject({ code: 'SEM_COMBINACAO' })
+})
+
+it('empate conserva o baseline real, mesmo quando não é a primeira página', async () => {
+  mocks.compor.mockImplementation(async (s: SpecDePeca) => { const r = resultado(); r.diagnostico.assinatura.pageId = s.preferencias?.variante ?? 'b'; return r })
+  const r = await selecionarCombinacao({ ...spec, foto: { driveFileId: 'clara' } })
+  expect(r.spec.preferencias?.variante).toBe('b')
+  expect(r.diagnostico.decisao).toBe('baseline')
+})
+it('foto diferente válida é alternativa humana quando o baseline falha', async () => {
+  mocks.compor.mockImplementation(async (s: SpecDePeca) => { const r = resultado(s.foto?.driveFileId === 'escura'); r.diagnostico.assinatura.pageId = s.preferencias?.variante ?? 'a'; return r })
+  await expect(selecionarCombinacao(spec)).rejects.toMatchObject({ code: 'SEM_COMBINACAO', details: { alternativas: expect.arrayContaining([expect.objectContaining({ foto: 'escura' })]) } })
 })

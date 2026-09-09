@@ -1,10 +1,12 @@
 # Piloto real de composição e concorrência — 09/09/2026
 
+> Registro do piloto negativo 073a612a. A revisão com opt-in e comparação conservadora está em [REVISAO-CONSERVADORA.md](./REVISAO-CONSERVADORA.md).
+
 **Resultado: ganho de diagnóstico confirmado; melhora estética e ganho de velocidade não demonstrados.** A seleção impediu duas combinações problemáticas, mas a única arte aceita ficou mais escura e levou mais tempo. Não ampliar para a carteira nem ativar automaticamente a seleção semanal com base neste piloto.
 
-[Galeria antes/depois, lado a lado a 360 px](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/galeria.html) · [Métricas registradas](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/docs/piloto-compositor-2026-09-09/metricas.json) · [Diagnósticos completos](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/resultados-render.json).
+[Galeria antes/depois, lado a lado a 360 px](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/galeria.html) · [Métricas registradas](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/docs/piloto-compositor-2026-09-09/metricas.json) · [Diagnósticos completos](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/resultados-render.json).
 
-Comparações em PNG para apresentar lado a lado: [TERO](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/3-comparacao.png), [Quintal](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/2-comparacao.png), [Real](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-comparacao.png).
+Comparações em PNG para apresentar lado a lado: [TERO](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/3-comparacao.png), [Quintal](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/2-comparacao.png), [Real](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/1-comparacao.png).
 
 ## Insumos e fidelidade
 
@@ -36,9 +38,9 @@ As 18 chamadas de comparação produziram 9 previews baseline, 3 atuais da Real 
 
 | Caso | Antes | Atual / diagnóstico |
 |---|---|---|
-| Quintal | [PNG anterior](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/2-anterior-0.png) | [PNG da combinação recusada](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/2-atual-recusada.png) |
-| Real | [PNG anterior](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-anterior-0.png) | [PNG atual](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/1-atual-0.png) |
-| TERO | [PNG anterior](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/3-anterior-0.png) | [PNG da combinação recusada](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/3-atual-recusada.png) |
+| Quintal | [PNG anterior](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/2-anterior-0.png) | [PNG da combinação recusada](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/2-atual-recusada.png) |
+| Real | [PNG anterior](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/1-anterior-0.png) | [PNG atual](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/1-atual-0.png) |
+| TERO | [PNG anterior](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/3-anterior-0.png) | [PNG da combinação recusada](/Users/cirotrigo/.codex/worktrees/aedf/Studio-Lagosta-v2/.tmp-medicao-compositor/piloto-073a612a/3-atual-recusada.png) |
 
 **Quintal:** duas vozes preservadas, título forte; apoio muito fino, e serviço/logo pequenos em celular. A marca Brahma é visível nos guarda-sóis, coerente com a análise do catálogo; a recusa não exigiu visão nova. A forte curvatura de fachada/mesas já existe na foto original 2250×4000 (9:16), portanto não é deformação introduzida pelo compositor. CTA não estava na spec; não é texto ausente. Não corrigi nem substituí a foto explícita.
 

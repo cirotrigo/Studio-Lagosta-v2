@@ -1,3 +1,5 @@
+> Atualização: seleção exige `selecaoExperimental: true`; candidatas sozinhas mantêm o baseline. Ver [revisão conservadora](piloto-compositor-2026-09-09/REVISAO-CONSERVADORA.md).
+
 # Escolha conjunta de foto e assinatura — piloto opt-in
 
 Implementado em 09/09/2026 a partir do ensaio MCP documentado no checkout original em `docs/investigacao-mcp-editor-2026-09-09/`. TERO, Quintal e Real inspiram os casos de regressão; os testes usam dados sintéticos e dependências simuladas, não cópias atuais de suas assinaturas nem evidência de aprovação estética.

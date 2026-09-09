@@ -340,10 +340,10 @@ it('callback também protege edição de conteúdo que mantém estado e geraçã
 })
 
 it('candidatas e preferências atravessam a fila e a retomada usa a spec do job', async () => {
-  const entrada = { ...spec, fotosCandidatas: ['a', 'b'], preferencias: { variante: 'assinatura-aprovada' } }
+  const entrada = { ...spec, selecaoExperimental: true, fotosCandidatas: ['a', 'b'], preferencias: { variante: 'assinatura-aprovada' } }
   const r = await enfileirarPeca(entrada)
   await rodarComoOCron(r.jobId)
-  expect(compositor.chamadas[0].spec).toMatchObject({ fotosCandidatas: ['a', 'b'], preferencias: entrada.preferencias })
+  expect(compositor.chamadas[0].spec).toMatchObject({ selecaoExperimental: true, fotosCandidatas: ['a', 'b'], preferencias: entrada.preferencias })
   const g = banco.generations.get(r.generationId)!
   banco.generations.set(r.generationId, { ...g, fieldValues: { spec: { ...entrada, fotosCandidatas: undefined, foto: { driveFileId: 'b' } } } })
   expect(await enfileirarPeca(entrada)).toEqual(r)
@@ -364,4 +364,12 @@ it('não repete rejeição determinística de seleção, mas retoma indisponibil
   compositor.modo = 'selecao-indisponivel'
   const nova = await enfileirarPeca(spec)
   expect(await rodarComoOCron(nova.jobId)).toBe('REENFILEIRADO')
+})
+
+it('opt-in constitui outra revisão; false reutiliza o default', async () => {
+  const r = await enfileirarPeca({ ...spec, selecaoExperimental: false })
+  expect(await enfileirarPeca(spec)).toEqual(r)
+  await rodarComoOCron(r.jobId)
+  banco.itens.set('item-1', { ...banco.itens.get('item-1'), status: 'editado' })
+  expect((await enfileirarPeca({ ...spec, selecaoExperimental: true })).generationId).not.toBe(r.generationId)
 })

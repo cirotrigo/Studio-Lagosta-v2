@@ -58,7 +58,7 @@ it('piloto com ativos reais congelados e persistência proibida', async () => {
       for (const condicao of rodada === 1 ? ['atual', 'anterior'] : ['anterior', 'atual']) {
         const t = performance.now()
         try {
-          const r = await (condicao === 'anterior' ? before.comporPeca(spec, { provar: true }) : after.comporPeca({ ...spec, fotosCandidatas: [e.fotoDriveId] }, { provar: true }))
+          const r = await (condicao === 'anterior' ? before.comporPeca(spec, { provar: true }) : after.comporPeca({ ...spec, selecaoExperimental: true, fotosCandidatas: [e.fotoDriveId] }, { provar: true }))
           const ms = performance.now() - t
           const path = resolve(out, `${c.projeto.id}-${condicao}-${rodada}.png`)
           writeFileSync(path, r.prova)
@@ -69,6 +69,20 @@ it('piloto com ativos reais congelados e persistência proibida', async () => {
           caso.rodadas.push({ rodada, condicao, ms: performance.now() - t, status: 'recusada', codigo: erro.code, mensagem: erro.message, detalhes: erro.details })
         }
       }
+    }
+    const padrao = await after.comporPeca({ ...spec, fotosCandidatas: [e.fotoDriveId] }, { provar: true })
+    caso.padraoHash = createHash('sha256').update(padrao.prova!).digest('hex')
+    caso.padraoPath = resolve(out, `${c.projeto.id}-padrao.png`)
+    writeFileSync(caso.padraoPath, padrao.prova!)
+    expect(caso.padraoHash).toBe(caso.rodadas.find((r: any) => r.condicao === 'anterior').hash)
+    const selecao = caso.rodadas.find((r: any) => r.condicao === 'atual' && r.status === 'preview')?.diagnostico.selecao
+    const alternativa = selecao?.alternativas?.[0]
+    if (alternativa) {
+      const r = await after.comporPeca({ ...spec, preferencias: { ...spec.preferencias, variante: alternativa.variante } }, { somenteAvaliar: true, medirComparacao: true })
+      const png = await new CanvasRenderer(1080, 1920).renderDesign({ canvas: { width: 1080, height: 1920 }, layers: r.layers as Layer[] })
+      caso.alternativa = { ...alternativa, path: resolve(out, `${c.projeto.id}-alternativa.png`), diagnostico: r.diagnostico }
+      writeFileSync(caso.alternativa.path, png)
+      writeFileSync(caso.alternativa.path + '.layers.json', JSON.stringify(r.layers, null, 2))
     }
     // Materializa para inspeção a variante histórica também se a seleção a recusou.
     // Não conta no benchmark: é diagnóstico, não resultado aprovado da seleção.

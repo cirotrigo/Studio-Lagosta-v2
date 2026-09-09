@@ -49,6 +49,8 @@ import {
 import { montarSpecDoItem } from './spec-do-item'
 
 export interface ExecutarPlanoInput {
+  /** Piloto explícito apenas para a via compor. Não decorre das candidatas do card. */
+  selecaoExperimental?: boolean
   projectId: number
   planoId: string
   /** Subconjunto da leva. Vazio/ausente = todos os itens executáveis. */
@@ -120,6 +122,7 @@ type ItemDoPlano = Awaited<ReturnType<typeof lerPlano>>['itens'][number]
  * não ter de inventar campos que não usa.
  */
 interface ContextoDeProducao {
+  selecaoExperimental?: boolean
   assinaturas?: ReturnType<typeof import('@/lib/compositor/compor').paginasDeAssinatura>
   projectId: number
   planoId: string
@@ -377,7 +380,7 @@ async function specDoItem(item: ItemDoPlano, projectId: number, contexto?: Conte
   const consulta = contexto?.assinaturas ?? paginasDeAssinatura(projectId)
   if (contexto) contexto.assinaturas = consulta
   const { paginas } = await consulta
-  return montarSpecDoItem(item, projectId, paginas)
+  return montarSpecDoItem(item, projectId, paginas, contexto?.selecaoExperimental === true)
 }
 
 /**

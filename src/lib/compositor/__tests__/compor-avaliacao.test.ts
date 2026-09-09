@@ -48,7 +48,19 @@ it('reentrada após seleção preserva a Generation da fila até a persistência
   mocks.regua.mockImplementation(async (args) => ({ layers: args.layers, medidas: [{ grupo: 'headline', ok: true }], avisos: [] }))
   mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
   mocks.persistir.mockResolvedValue({ generationId: 'g-fila', pageId: 'page', url: 'https://example.com/arte.png' })
-  await comporPeca({ ...spec, fotosCandidatas: ['foto'] }, { generationId: 'g-fila', autor: 'u' })
+  await comporPeca({ ...spec, selecaoExperimental: true, fotosCandidatas: ['foto'] }, { generationId: 'g-fila', autor: 'u' })
   expect(mocks.persistir).toHaveBeenCalledTimes(1)
   expect(mocks.persistir.mock.calls[0][0]).toMatchObject({ generationId: 'g-fila', createdBy: 'u', fieldValues: { generationIdDaFila: 'g-fila', spec: { itemDePlanoId: 'i', planoId: 'p' }, composicao: { selecao: { limite: 6 } } } })
+})
+
+
+it('candidatas sem opt-in não acionam seleção nem mudam o baseline', async () => {
+  const selecionar = vi.spyOn(selecao, 'selecionarCombinacao')
+  const spec = { projectId: 3, formato: 'story' as const, blocos: [{ papel: 'headline' as const, linhas: ['Quintal'] }] }
+  mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
+  mocks.persistir.mockResolvedValue({ generationId: 'g', pageId: 'page', url: 'https://example.com/arte.png' })
+  const base = await comporPeca(spec)
+  const candidata = await comporPeca({ ...spec, fotosCandidatas: ['foto'] })
+  expect(selecionar).not.toHaveBeenCalled()
+  expect(candidata.layers).toEqual(base.layers)
 })

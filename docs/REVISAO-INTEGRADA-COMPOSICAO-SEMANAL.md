@@ -1,3 +1,5 @@
+> Atualização: seleção exige `selecaoExperimental: true`; candidatas sozinhas mantêm o baseline. Ver [revisão conservadora](piloto-compositor-2026-09-09/REVISAO-CONSERVADORA.md).
+
 # Revisão integrada: seleção e retomada semanal
 
 09/09/2026. Branch isolado `codex/foto-assinatura`.
