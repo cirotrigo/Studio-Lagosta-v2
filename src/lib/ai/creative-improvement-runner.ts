@@ -243,6 +243,7 @@ async function reapontarItemDaBancada(input: {
         itemId: input.itemId,
         para: 'pronto',
         generationId: input.generationId,
+        pageId: null,
       })
     }
     console.log(`[improve.bg] item da bancada ${input.itemId} reapontado para ${input.generationId}`)
@@ -917,12 +918,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     await db.generation.update({
       where: { id: args.jobGenerationId },
       data: {
-        status: 'COMPLETED',
+        // O polling só termina depois de aplicar os vínculos abaixo.
+        status: 'PROCESSING',
         resultUrl: blob.url,
         fileName: blob.pathname,
         googleDriveFileId,
         googleDriveBackupUrl,
-        completedAt: new Date(),
         fieldValues: {
           source: 'ai_improvement',
           originalGenerationId: args.originalGenerationId,
@@ -1115,6 +1116,10 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         )
       }
     }
+    await db.generation.update({
+      where: { id: args.jobGenerationId },
+      data: { status: 'COMPLETED', completedAt: new Date() },
+    })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido'
     console.error('[improve.bg] failed:', message)

@@ -1,5 +1,7 @@
 'use client'
 
+import { useMelhoriaDoItemDaBancada } from '@/stores/improve-queue-store'
+
 /**
  * Fila de cards da bancada — o que está sendo produzido agora, mais recente
  * primeiro (é fila, não grade semanal).
@@ -573,6 +575,7 @@ function Card({
   /** F4: trocar a foto do item por uma candidata da emissão, em 1 toque. */
   onTrocarFoto: (candidata: CandidataDeFoto) => void
 }) {
+  const melhoria = useMelhoriaDoItemDaBancada(item.itemDePlanoId)
   const [quando, setQuando] = React.useState(() => paraInputs(item.quando))
   /**
    * Publicação manual com lembrete — POR CARD e desligado por padrão, de
@@ -696,9 +699,10 @@ function Card({
         {capa ? (
           <Image src={capa} alt="" fill sizes="112px" className="object-cover" unoptimized />
         ) : null}
-        {item.status === 'gerando' && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/70">
+        {(item.status === 'gerando' || melhoria) && (
+          <div role="status" aria-live="polite" className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/70">
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
+            {melhoria && <span className="px-2 text-xs">Melhorando com IA…</span>}
           </div>
         )}
         {!podeVer && item.status !== 'gerando' && capa && (
@@ -1017,7 +1021,7 @@ function Card({
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!quandoTexto}
+                disabled={!quandoTexto || !!melhoria}
                 onClick={() => onAgendar(quandoTexto, 'rascunho', { lembrete })}
               >
                 <Calendar className="mr-2 h-4 w-4" />
@@ -1025,7 +1029,7 @@ function Card({
               </Button>
               <Button
                 size="sm"
-                disabled={!quandoTexto}
+                disabled={!quandoTexto || !!melhoria}
                 onClick={() => onAgendar(quandoTexto, 'agendado', { lembrete })}
               >
                 {lembrete && <BellRing className="mr-2 h-4 w-4" />}

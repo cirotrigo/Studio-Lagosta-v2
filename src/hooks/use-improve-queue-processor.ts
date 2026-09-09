@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useImproveQueueStore } from '@/stores/improve-queue-store'
+import { useBancadaStore } from '@/stores/bancada-store'
 import { pollGenerationStatus } from '@/lib/ai/poll-generation'
 
 interface StartImproveResponse {
@@ -72,10 +73,6 @@ export function useImproveQueueProcessor() {
       const finalStatus = await pollGenerationStatus(serverGenerationId)
 
       if (finalStatus.status === 'COMPLETED') {
-        useImproveQueueStore.getState().markCompleted(next.id, {
-          resultGenerationId: finalStatus.id,
-          resultUrl: finalStatus.resultUrl,
-        })
         queryClient.invalidateQueries({ queryKey: ['generations', next.projectId] })
         queryClient.invalidateQueries({ queryKey: ['all-generations'] })
         // Painel Criativos do editor. Invalidar por prefixo (sem o templateId,
@@ -84,7 +81,7 @@ export function useImproveQueueProcessor() {
         queryClient.invalidateQueries({ queryKey: ['template-creatives'] })
         if (next.applyToItemDePlanoId) {
           // O servidor reapontou o item da fila — a bancada re-hidrata do plano.
-          queryClient.invalidateQueries({ queryKey: ['plano', next.projectId] })
+          await queryClient.invalidateQueries({ queryKey: ['plano', next.projectId] })
           queryClient.invalidateQueries({ queryKey: ['planos', next.projectId] })
         }
         if (next.applyToPostId) {
@@ -93,6 +90,24 @@ export function useImproveQueueProcessor() {
           queryClient.invalidateQueries({ queryKey: ['social-post', next.applyToPostId] })
           queryClient.invalidateQueries({ queryKey: ['agenda-posts', next.projectId] })
         }
+        if (next.applyToItemDePlanoId && finalStatus.resultUrl) {
+          const bancada = useBancadaStore.getState()
+          const item = bancada.itens.find((i) => i.projectId === next.projectId && i.itemDePlanoId === next.applyToItemDePlanoId)
+          if (item && item.status !== 'agendado') {
+            if (typeof next.applyToSlideOrdem === 'number') {
+              bancada.atualizar(item.id, { slides: item.slides?.map((slide) =>
+                slide.ordem === next.applyToSlideOrdem && (slide.generationId === next.generationId || slide.generationId === finalStatus.id)
+                  ? { ...slide, generationId: finalStatus.id, resultUrl: finalStatus.resultUrl, erro: null }
+                  : slide) })
+            } else if (item.generationId === next.generationId || item.generationId === finalStatus.id) {
+              bancada.atualizar(item.id, { generationId: finalStatus.id, resultUrl: finalStatus.resultUrl, pageId: undefined, status: 'pronto', erro: null })
+            }
+          }
+        }
+        useImproveQueueStore.getState().markCompleted(next.id, {
+          resultGenerationId: finalStatus.id,
+          resultUrl: finalStatus.resultUrl,
+        })
         toast({
           title: 'Criativo melhorado',
           description: next.applyToPostId

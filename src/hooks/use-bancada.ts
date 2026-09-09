@@ -11,6 +11,7 @@
  */
 
 import * as React from 'react'
+import { useImproveQueueStore } from '@/stores/improve-queue-store'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
@@ -516,6 +517,11 @@ export function useBancada(projectId: number) {
       situacao: 'rascunho' | 'agendado',
       opcoes: { lembrete?: boolean } = {},
     ) => {
+      item = useBancadaStore.getState().itens.find((i) => i.id === item.id) ?? item
+      if (useImproveQueueStore.getState().jobs.some((job) =>
+        job.applyToItemDePlanoId && job.applyToItemDePlanoId === item.itemDePlanoId &&
+        (job.status === 'pending' || job.status === 'processing'))) return
+      if (item.status !== 'pronto') return
       const ehCarrossel = item.tipo === 'carrossel'
       // Carrossel vai como CAROUSEL com as mídias NA ORDEM dos slides; peça
       // única vai pelo generationId (o vínculo que habilita melhorar depois).
