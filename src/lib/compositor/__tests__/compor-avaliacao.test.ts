@@ -80,3 +80,9 @@ it('persiste o gradiente como camada editável e conserva preferência na spec',
   await comporPeca({ projectId: 3, formato: 'story', preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' }, blocos: [{ papel: 'headline', linhas: ['Quintal'] }] })
   expect(mocks.persistir.mock.calls[0][0]).toMatchObject({ layers: expect.arrayContaining([expect.objectContaining({ type: 'gradient', metadata: { tratamentoDeTexto: 'gradiente-suave-topo' } })]), fieldValues: { spec: { preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' } } } })
 })
+
+it('variante explícita ausente recebe diagnóstico específico sem fallback', async () => {
+  await expect(comporPeca({ projectId: 3, formato: 'story', preferencias: { variante: 'ausente' }, blocos: [{ papel: 'headline', linhas: ['Quintal'] }] }, { somenteAvaliar: true })).rejects.toMatchObject({ code: 'ASSINATURA_INCOMPLETA', message: expect.stringContaining('variante solicitada "ausente"'), details: { variante: 'ausente', formato: 'story' } })
+  expect(mocks.regua).not.toHaveBeenCalled()
+  expect(mocks.persistir).not.toHaveBeenCalled()
+})

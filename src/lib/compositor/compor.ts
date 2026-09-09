@@ -191,6 +191,12 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
     chave: opcoes.chave ?? '',
   })
 
+  if (opcoes.variante && !escolhida) {
+    throw new CreativeError('ASSINATURA_INCOMPLETA',
+      `A variante solicitada "${opcoes.variante}" não foi encontrada entre as assinaturas disponíveis para ${formato}. Consulte ver-assinatura e escolha uma variante existente.`,
+      422, { variante: opcoes.variante, formato })
+  }
+
   const montar = (p: (typeof paginas)[number] | null, f: Formato | null) =>
     montarAssinatura({
       pagina: p ? { id: p.id, name: p.name, tags: p.tags, width: p.width, height: p.height, background: p.background, layers: parsePageLayers(p.layers) as unknown as Layer[] } : null,
