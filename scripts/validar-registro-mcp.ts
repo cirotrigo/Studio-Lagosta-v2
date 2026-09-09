@@ -552,6 +552,11 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
         items: { type: 'string' },
         description: 'Só estes itens (de ver-plano). Sem isto, todos os que estiverem prontos para produzir.',
       },
+      // Opt-in deliberado de 09/09/2026; candidatas sozinhas mantêm o baseline.
+      selecaoExperimental: {
+        type: 'boolean',
+        description: 'Opt-in do piloto de seleção para itens da via compor. Default false: preserva layout anterior, mesmo com candidatas no card. Não equivale a aprovação estética.',
+      },
       confirmar: {
         type: 'boolean',
         description:
@@ -1355,6 +1360,14 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
           "variante": {
             "type": "string",
             "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
+          },
+          "tratamentoDeTexto": {
+            "description": "Escolha explícita: gradiente-suave-topo substitui fundos dos textos do topo por gradiente preto suave editável. Sem opção mantém assinatura. Aprovado visualmente na Real; revisar em outras fotos/marcas. Não move texto nem muda foto.",
+            "enum": [
+              "assinatura",
+              "gradiente-suave-topo"
+            ],
+            "type": "string"
           }
         },
         "additionalProperties": false
@@ -1403,6 +1416,20 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
       "provar": {
         "type": "boolean",
         "description": "true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável."
+      },
+      "selecaoExperimental": {
+        "description": "Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.",
+        "type": "boolean"
+      },
+      "fotosCandidatas": {
+        "description": "Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.",
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "maxItems": 3,
+        "minItems": 1,
+        "type": "array"
       }
     },
     "required": [
@@ -1524,6 +1551,14 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                 "variante": {
                   "type": "string",
                   "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
+                },
+                "tratamentoDeTexto": {
+                  "description": "Escolha explícita: gradiente-suave-topo substitui fundos dos textos do topo por gradiente preto suave editável. Sem opção mantém assinatura. Aprovado visualmente na Real; revisar em outras fotos/marcas. Não move texto nem muda foto.",
+                  "enum": [
+                    "assinatura",
+                    "gradiente-suave-topo"
+                  ],
+                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -1568,6 +1603,20 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               ],
               "additionalProperties": false,
               "description": "Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta (\"slide 2/5\") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar."
+            },
+            "selecaoExperimental": {
+              "description": "Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.",
+              "type": "boolean"
+            },
+            "fotosCandidatas": {
+              "description": "Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.",
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "maxItems": 3,
+              "minItems": 1,
+              "type": "array"
             }
           },
           "required": [
