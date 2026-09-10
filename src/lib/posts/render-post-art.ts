@@ -15,7 +15,8 @@
 import { db } from '@/lib/db'
 import { renderStoryImage } from '@/lib/posts/story-renderer'
 import { ensurePostGeneration } from './ensure-post-generation'
-import { RenderStatus } from '../../../prisma/generated/client'
+import { ehCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
+import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
  * Shape único em vez de união discriminada: o tsconfig do projeto roda com
@@ -81,6 +82,15 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
         renderError: null,
         // Também alimenta o executor, que publica a partir de mediaUrls
         mediaUrls: [result.url],
+        /**
+         * A cópia da copy acompanha o que acabou de ser DESENHADO. É ela que o
+         * corpus e a conferência de texto da melhoria leem; sem isto ficaria
+         * com o texto do dia do agendamento — justamente o que o render
+         * deixou de aplicar.
+         */
+        ...(ehCopiaDaPagina(post.slotValues)
+          ? { slotValues: slotValuesSeguindo(post.slotValues, result.copyDaPagina) as Prisma.InputJsonValue }
+          : {}),
       },
     })
 

@@ -1287,10 +1287,13 @@ toolEstrita(
         background: page.background,
       })
 
-      // 5. Apply slot values
+      // 5. Apply slot values — só a copy PRÓPRIA do post. A cópia que o
+      // agendamento grava da página (`_copiaDaPagina`) nunca volta para a arte.
       const slotValues = (post.slotValues as Record<string, unknown>) ?? {}
-      if (Object.keys(slotValues).length > 0) {
-        designData = applySlotValues(designData, slotValues)
+      const { slotValuesParaRender } = await import('../src/lib/posts/copy-segue-a-pagina')
+      const slots = slotValuesParaRender(slotValues)
+      if (slots) {
+        designData = applySlotValues(designData, slots)
       }
 
       // 5b. Resolve _driveImageId → thumbnail URL for isDynamic image layers

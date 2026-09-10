@@ -24,6 +24,7 @@ import {
 } from '@/lib/aprendizado/sinal-de-agendamento'
 import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
+import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus } from '@prisma/client'
 
@@ -407,7 +408,13 @@ export async function agendarPost(input: AgendarPostInput) {
       decididoPor: input.decididoPor ?? null,
       // A coluna existe desde sempre e só o `later-scheduler` a preenchia — o
       // post que nasce do chat ficava sem registro nenhum do texto que carrega.
-      ...(copyFinal ? { slotValues: copyFinal } : {}),
+      //
+      // Com página, o que se grava é uma CÓPIA do texto dela, e vai MARCADA: o
+      // render desenha a página como ela estiver na hora, e esta cópia nunca
+      // volta para a arte. Sem a marca ela era aplicada por cima e desfazia a
+      // edição feita no editor (Real Gelateria, 10/09/2026) — ver
+      // copy-segue-a-pagina.ts.
+      ...(copyFinal ? { slotValues: copyDaPagina ? comoCopiaDaPagina(copyDaPagina) : copyFinal } : {}),
     },
     select: {
       id: true,

@@ -40,7 +40,7 @@ import { getFontManager } from '@/lib/font-manager'
 import { useReorderPages } from '@/hooks/use-pages'
 import { usePageActions } from '@/hooks/use-page-actions'
 import { EditorViewModeProvider, useEditorViewMode } from '@/hooks/use-editor-view-mode'
-import { PageSyncWrapper } from './page-sync-wrapper'
+import { PageSyncWrapper, usePageSync } from './page-sync-wrapper'
 import { GenerateCreativesModal } from './modals/generate-creatives-modal'
 import { ScheduleStoryModal } from './modals/schedule-story-modal'
 import { useGenerateMultipleCreatives } from '@/hooks/use-generate-multiple-creatives'
@@ -273,14 +273,23 @@ function TemplateEditorContent({
     prevLayerCountRef.current = layerCount
   }, [layerCount, mobileToolsOpen])
 
-  const handleBack = React.useCallback(() => {
+  const pageSync = usePageSync()
+
+  const handleBack = React.useCallback(async () => {
     if (dirty && !window.confirm('Você tem alterações não salvas. Sair mesmo assim?')) return
+    // O autosave da página tem debounce: sair sem descarregar perdia a última edição.
+    try {
+      await pageSync?.descarregar()
+    } catch (error) {
+      console.error('[TemplateEditor] Falha ao salvar a página antes de sair:', error)
+      if (!window.confirm('Não deu para salvar a última alteração da página. Sair mesmo assim?')) return
+    }
     if (agendaMode) {
       router.back()
       return
     }
     router.push(`/projects/${projectId}?tab=templates`)
-  }, [dirty, agendaMode, router, projectId])
+  }, [dirty, agendaMode, router, projectId, pageSync])
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -301,6 +310,14 @@ function TemplateEditorContent({
     })
 
     try {
+      /**
+       * Primeiro a PÁGINA: é a edição dela que a agenda re-renderiza, e o
+       * autosave tem debounce. No modo agenda o `router.back()` lá embaixo
+       * desmontava o editor com o timer pendente, e a última edição feita antes
+       * do clique nunca chegava ao banco.
+       */
+      await pageSync?.descarregar()
+
       // Guardar página atual para restaurar depois
       const originalPageId = currentPageId
 
@@ -405,7 +422,7 @@ function TemplateEditorContent({
         variant: 'destructive',
       })
     }
-  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId, agendaMode, router])
+  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId, agendaMode, router, pageSync])
 
   // O modal abre sempre, mesmo com uma página só: além de escolher páginas ele
   // é onde se digita a instrução opcional para a melhoria com IA. Com uma

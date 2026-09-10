@@ -4,7 +4,6 @@ import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
-import { seguirCopyDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import { descreverDiff, diffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import {
   caiNaEscolhaPropria,
@@ -163,10 +162,11 @@ export async function PATCH(
     // transação à toa — com o Accelerate, transações concorrentes estouravam
     // "Unable to start a transaction in the given time" no meio da edição.
     /**
-     * O texto da página antes e depois — lido UMA vez, porque serve a duas
-     * coisas: o post que carregava a copy desta página segue a copy nova
-     * (dentro da transação, antes do render que a invalidação dispara), e a
-     * captura de aprendizado abaixo mede o diff.
+     * O texto da página antes e depois — o que a captura de aprendizado abaixo
+     * mede. A cópia da copy que o post carrega não é mais atualizada aqui: o
+     * render desenha a página como ela está (copy-segue-a-pagina.ts), e o
+     * remendo que fazia a cópia "seguir" a página só neste PATCH era o que
+     * deixava de funcionar quando outro caminho escrevia as camadas.
      */
     const copyAntes = layersChanged ? copyDeCamadas(existingPage.layers) : null
     const copyDepois = layersChanged ? copyDeCamadas(updateData.layers) : null
@@ -174,19 +174,15 @@ export async function PATCH(
     let page
     let invalidated = 0
     let congelados: string[] = []
-    let seguiram = 0
     if (visualChanged) {
-      ;({ page, invalidated, congelados, seguiram } = await db.$transaction(
+      ;({ page, invalidated, congelados } = await db.$transaction(
         async (tx) => {
           const updated = await tx.page.update({
             where: { id: pageId },
             data: updateData,
           })
-          // ANTES de invalidar: o render lê `slotValues` por cima da página, e
-          // a cópia gravada no agendamento reescreveria a edição no re-render.
-          const s = layersChanged ? await seguirCopyDaPagina(tx, { pageId, copyAntes, copyDepois }) : 0
           const r = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
-          return { page: updated, invalidated: r.invalidados, congelados: r.congelados, seguiram: s }
+          return { page: updated, invalidated: r.invalidados, congelados: r.congelados }
         },
         // Accelerate: o maxWait default (2s) estourava com autosaves em
         // sequência — "Unable to start a transaction in the given time"
@@ -201,9 +197,6 @@ export async function PATCH(
 
     if (invalidated > 0) {
       console.log(`[API] Page ${pageId} changed — invalidated ${invalidated} scheduled render(s)`)
-    }
-    if (seguiram > 0) {
-      console.log(`[API] Page ${pageId}: ${seguiram} post(s) passaram a carregar a copy nova da página`)
     }
     if (congelados.length > 0) {
       console.warn(

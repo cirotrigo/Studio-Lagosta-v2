@@ -17,6 +17,7 @@
  * manual num post PENDING mandaria a arte velha.
  */
 import { PostStatus, RenderStatus, type Prisma, type PrismaClient } from '../../../prisma/generated/client'
+import { renderDaPaginaCobreAMidia } from './render-da-pagina'
 
 /**
  * `normalizeLayersString` mudou de casa para `page-layers.ts` — um módulo SEM
@@ -93,8 +94,31 @@ export async function invalidateScheduledRenders(
     select: { id: true },
   })
 
-  const result = await client.socialPost.updateMany({
+  /**
+   * Post com VÁRIAS mídias não volta para a fila de render. `renderPostArt`
+   * grava `mediaUrls: [url]`, então devolver à fila o carrossel que nasceu da
+   * página e ganhou fotos na agenda o reduziria à arte da página, apagando os
+   * outros slides. Medido em 10/09/2026: o carrossel de sexta da Real
+   * Gelateria (4 fotos, RENDERED, com `pageId`) estava a uma edição da página
+   * de virar uma imagem só. O slide que é arte da página continua alcançado
+   * pela recomposição, que troca apenas a posição dele.
+   */
+  const candidatos = await client.socialPost.findMany({
     where: { ...base, laterPostId: null },
+    select: { id: true, mediaUrls: true },
+  })
+  const alvos = candidatos.filter((p) => renderDaPaginaCobreAMidia(p.mediaUrls)).map((p) => p.id)
+  if (alvos.length < candidatos.length) {
+    console.warn(
+      `[invalidate-renders] ${candidatos.length - alvos.length} post(s) com várias mídias ficaram fora da fila de render`,
+    )
+  }
+  if (alvos.length === 0) {
+    return { invalidados: 0, congelados: congeladosRows.map((p) => p.id) }
+  }
+
+  const result = await client.socialPost.updateMany({
+    where: { ...base, laterPostId: null, id: { in: alvos } },
     data: {
       renderStatus: RenderStatus.PENDING,
       renderedImageUrl: null,

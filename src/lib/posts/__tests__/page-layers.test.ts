@@ -82,4 +82,18 @@ describe('textosDaPagina', () => {
     ]
     expect(textosDaPagina(camadas)).toEqual({ linha: 'primeira', 'linha#2': 'segunda' })
   })
+
+  it('rich text é copy: a linha convertida continua na peça (e a oculta continua fora)', () => {
+    const camadas = [
+      {
+        id: 'apoio',
+        name: 'apoio',
+        type: 'rich-text',
+        content: 'Seu milk-shake vem em dobro esse sábado!',
+        richTextStyles: [{ start: 33, end: 40, fill: '#EA5328' }],
+      },
+      { id: 'cta', name: 'cta', type: 'rich-text', content: 'oculta', visible: false },
+    ]
+    expect(textosDaPagina(camadas)).toEqual({ apoio: 'Seu milk-shake vem em dobro esse sábado!' })
+  })
 })

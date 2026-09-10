@@ -6,6 +6,26 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, Page } from '@/types/template'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 
+interface PageSyncControle {
+  /**
+   * Salva AGORA o que o debounce ainda não mandou, depois de esperar o PATCH
+   * que já está em voo. Lança se o save falhar — quem sai do editor não pode
+   * seguir achando que a edição foi gravada.
+   *
+   * O "Salvar e Voltar" do modo agenda navega com `router.back()`, e desmontar
+   * o editor cancela o timer de 800ms: a edição feita logo antes do clique
+   * nunca chegava ao banco, enquanto a tela prometia "imagem será regenerada".
+   */
+  descarregar: () => Promise<void>
+}
+
+const PageSyncContext = React.createContext<PageSyncControle | null>(null)
+
+/** O controle do autosave da página — `null` fora do editor. */
+export function usePageSync(): PageSyncControle | null {
+  return React.useContext(PageSyncContext)
+}
+
 /**
  * Componente que sincroniza o estado entre MultiPageContext e TemplateEditorContext
  * - Carrega layers + canvas da página atual quando ela muda
@@ -21,6 +41,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
   const lastSavedLayersRef = React.useRef<string>('')
   const lastSavedCanvasRef = React.useRef<string>('')
   const lastSavedAudioRef = React.useRef<string>('')
+  /** O PATCH do debounce que já saiu e ainda não voltou. */
+  const emVooRef = React.useRef<Promise<void> | null>(null)
 
   // Trilha da página (aba Músicas). null e undefined são o mesmo estado ("sem
   // trilha") — normalizar para não gerar PATCH por falso diff.
@@ -108,6 +130,36 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         console.error('[PageSync] Erro ao salvar página no flush:', error)
       })
   }, [currentPageId, buildPendingPatch, savePageState])
+
+  const descarregar = React.useCallback(async () => {
+    const emVoo = emVooRef.current
+    if (emVoo) await emVoo.catch(() => undefined)
+
+    if (!currentPageId || isSyncingRef.current || lastPageIdRef.current !== currentPageId) {
+      return
+    }
+
+    const pending = buildPendingPatch()
+    if (!pending) return
+
+    await savePageState(currentPageId, pending.patch)
+    if (lastPageIdRef.current === currentPageId) {
+      lastSavedLayersRef.current = pending.layersString
+      lastSavedCanvasRef.current = pending.canvasString
+      lastSavedAudioRef.current = pending.audioString
+    }
+  }, [currentPageId, buildPendingPatch, savePageState])
+
+  // O controle é estável e sempre chama a versão mais nova: trocar o valor do
+  // contexto a cada tecla re-renderizaria o editor inteiro à toa.
+  const descarregarRef = React.useRef(descarregar)
+  React.useLayoutEffect(() => {
+    descarregarRef.current = descarregar
+  }, [descarregar])
+  const controle = React.useMemo<PageSyncControle>(
+    () => ({ descarregar: () => descarregarRef.current() }),
+    [],
+  )
 
   // 1. Carregar layers quando a página atual muda
   React.useEffect(() => {
@@ -208,8 +260,15 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Salvar sem invalidar queries (evita re-render)
-        await savePageState(currentPageId, pending.patch)
+        // Salvar sem invalidar queries (evita re-render). Fica registrado em
+        // voo para quem descarrega o autosave esperar por ele.
+        const salvando = savePageState(currentPageId, pending.patch)
+        emVooRef.current = salvando
+        try {
+          await salvando
+        } finally {
+          if (emVooRef.current === salvando) emVooRef.current = null
+        }
 
         // Se trocou de página durante o await, os refs já pertencem à nova página
         // e o stage mostra outro conteúdo — não sobrescrever nem gerar thumbnail
@@ -256,5 +315,5 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     }
   }, [flushPendingSave])
 
-  return <>{children}</>
+  return <PageSyncContext.Provider value={controle}>{children}</PageSyncContext.Provider>
 }

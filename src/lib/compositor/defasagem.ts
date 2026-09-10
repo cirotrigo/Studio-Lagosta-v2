@@ -34,6 +34,7 @@ import type { Layer } from '@/types/template'
 import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 import { diffDeGeometria, type DiffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 
 import { PAPEIS, type Papel, type SpecDePeca } from './spec'
 
@@ -56,14 +57,15 @@ export function papelDaCamada(camada: Layer): Papel | 'headline2' | null {
  *
  * Camada oculta fica de fora pelo mesmo motivo de `textosDaPagina`: desde
  * 13/08/2026 o campo que a copy não cobre sai invisível, e contá-lo poria na
- * peça um texto que não está na arte.
+ * peça um texto que não está na arte. Rich text entra, pelo mesmo motivo de
+ * lá: converter a linha no editor não tira o texto da peça.
  */
 export function copyDosPapeis(camadas: unknown): Record<string, string> | null {
   const { camadas: lidas, legivel } = lerCamadas(camadas)
   if (!legivel) return null
   const out: Record<string, string> = {}
   for (const bruta of lidas as Layer[]) {
-    if (bruta?.type !== 'text' || bruta.visible === false) continue
+    if ((bruta?.type !== 'text' && bruta?.type !== 'rich-text') || bruta.visible === false) continue
     const papel = papelDaCamada(bruta)
     if (!papel) continue
     const conteudo = typeof bruta.content === 'string' ? bruta.content.trim() : ''
@@ -134,6 +136,31 @@ export function mexeuNaMao(diff: DiffDeGeometria): string[] {
 }
 
 /**
+ * Camadas que mudaram de TIPO entre a arte e a página — a conversão para rich
+ * text no editor é o caso real. Recompor reconstrói cada camada pelo papel, em
+ * texto simples: os trechos estilizados iriam embora em silêncio, e com eles a
+ * edição de quem converteu. Por isso mudar o tipo conta como ajuste manual.
+ */
+function mudancasDeTipo(antes: unknown, depois: unknown): string[] {
+  const a = lerCamadas(antes)
+  const d = lerCamadas(depois)
+  if (!a.legivel || !d.legivel) return []
+  const tipoAntes = new Map((a.camadas as Layer[]).map((c) => [c.id, c.type]))
+  const motivos: string[] = []
+  for (const camada of d.camadas as Layer[]) {
+    const anterior = tipoAntes.get(camada.id)
+    if (!anterior || anterior === camada.type) continue
+    const quem = papelDaCamada(camada) ?? camada.id
+    motivos.push(
+      camada.type === 'rich-text'
+        ? `"${quem}" foi convertida para rich text`
+        : `"${quem}" mudou de tipo (${anterior} → ${camada.type})`,
+    )
+  }
+  return motivos
+}
+
+/**
  * A página de hoje contra o SNAPSHOT do que foi composto
  * (`Generation.fieldValues.layersSnapshot`).
  */
@@ -149,7 +176,9 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
     .sort()
 
   const diff = diffDeGeometria(snapshot, camadasDaPagina)
-  const motivos = diff.ilegivel ? ['não deu para comparar a geometria da página com a da arte'] : mexeuNaMao(diff)
+  const motivos = diff.ilegivel
+    ? ['não deu para comparar a geometria da página com a da arte']
+    : [...mexeuNaMao(diff), ...mudancasDeTipo(snapshot, camadasDaPagina)]
 
   return {
     ilegivel: false,
@@ -242,7 +271,13 @@ const ALCANCADOS_PELA_INVALIDACAO = ['RENDERED', 'PENDING', 'RENDERING']
  * post seria trocar a mídia de alguém que a invalidação acabou de zerar.
  */
 export function alcancadoPelaInvalidacao(post: PostComArte, pageId: string): boolean {
-  return post.pageId === pageId && ALCANCADOS_PELA_INVALIDACAO.includes(String(post.renderStatus ?? ''))
+  return (
+    post.pageId === pageId &&
+    ALCANCADOS_PELA_INVALIDACAO.includes(String(post.renderStatus ?? '')) &&
+    // Com várias mídias a invalidação não toca o post (o render colapsaria o
+    // carrossel), e o slide que é arte da página fica com a recomposição.
+    renderDaPaginaCobreAMidia(post.mediaUrls)
+  )
 }
 
 export interface SlideDefasado {
