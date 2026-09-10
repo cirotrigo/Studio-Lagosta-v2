@@ -25,6 +25,7 @@ import {
 } from '@/lib/konva-smart-guides'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import { decidirSelecaoPorGesto, type FaseDoGesto, type GestoDeSelecao } from '@/lib/selecao-por-gesto'
+import { ehIconeDeTexto } from '@/lib/font-combinations-icones'
 import { useIsMobile } from '@/hooks/use-device-detection'
 
 /**
@@ -1136,7 +1137,9 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                 // mostra a imagem inteira com a janela por cima
                 layer={layer.id === croppingLayerId ? { ...layer, visible: false } : layer}
                 disableInteractions={croppingLayerId !== null}
-                dimmed={focusTextMode && layer.type !== 'text'}
+                // Ícone de texto (alfinete, relógio) faz parte do bloco em
+                // edição: escurecido a 12% sobre o fundo escuro, sumia de vista
+                dimmed={focusTextMode && layer.type !== 'text' && !ehIconeDeTexto(layer)}
                 onSelect={(event) => handleLayerSelect(event, layer)}
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
                 onDragMove={(event) => handleLayerDragMove(event, layer)}

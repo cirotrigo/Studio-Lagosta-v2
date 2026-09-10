@@ -60,7 +60,7 @@ function extrairEfeitos(layer: Layer): FontComboElement['effects'] {
  * geometria: o ícone fica à esquerda do texto, com o centro na altura da caixa
  * dele, e perto (até três larguras do ícone). Cada texto leva um ícone só.
  */
-function associarIcones(textos: Layer[], imagens: Layer[]): Map<string, Layer> {
+export function associarIcones(textos: Layer[], imagens: Layer[]): Map<string, Layer> {
   const porTexto = new Map<string, Layer>()
   const idDoElemento = (l: Layer) => l.metadata?.elementId as string | undefined
 

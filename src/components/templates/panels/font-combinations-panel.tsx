@@ -22,7 +22,10 @@ import {
   useDeleteFontCombination,
   type FontCombination,
 } from '@/hooks/use-font-combinations'
-import { capturarCombinacao } from '@/lib/font-combinations-capture'
+import { associarIcones, capturarCombinacao } from '@/lib/font-combinations-capture'
+import { caixaDoIconeTrocado, iconeNovoParaTexto } from '@/lib/font-combinations-icones'
+import { useProjectElements, type ProjectElement } from '@/hooks/use-project-elements'
+import { IconesDaCombinacao, carregarDimensoes, type LinhaDeIcone } from './combo-icones'
 import { getFontManager } from '@/lib/font-manager'
 import { FONT_CONFIG } from '@/lib/font-config'
 import {
@@ -39,8 +42,17 @@ import type { Layer } from '@/types/template'
  * e aplicar/editar/criar combinações tipográficas do projeto.
  */
 export function FontCombinationsPanel() {
-  const { projectId, design, selectedLayerIds, addLayer, selectLayers, focusTextMode, setFocusTextMode } =
-    useTemplateEditor()
+  const {
+    projectId,
+    design,
+    selectedLayerIds,
+    addLayer,
+    updateLayer,
+    removeLayer,
+    selectLayers,
+    focusTextMode,
+    setFocusTextMode,
+  } = useTemplateEditor()
   const { data: brand } = useBrandFonts(projectId)
   const updateBrand = useUpdateBrandFonts(projectId)
   const { data: combinacoes, isLoading } = useFontCombinations(projectId)
@@ -53,6 +65,9 @@ export function FontCombinationsPanel() {
   const [editando, setEditando] = React.useState<{ id: string; nome: string; layerIds: string[] } | null>(null)
   const [nomeNovo, setNomeNovo] = React.useState('')
   const [criandoNova, setCriandoNova] = React.useState(false)
+  // Elementos do projeto só durante a edição de uma combinação: é ali que o
+  // ícone de cada texto se troca
+  const { data: elementos, isLoading: carregandoElementos } = useProjectElements(editando ? projectId : null)
 
   const customFamilies = React.useMemo(
     () => [...new Set((brand?.fonts ?? []).map((f) => f.fontFamily))],
@@ -79,6 +94,19 @@ export function FontCombinationsPanel() {
   const layersSelecionadas = React.useMemo(
     () => design.layers.filter((l) => selectedLayerIds.includes(l.id) && l.type === 'text'),
     [design.layers, selectedLayerIds],
+  )
+  // Imagens selecionadas junto com os textos: as que acompanham um texto viram
+  // o ícone dele na combinação salva
+  const imagensSelecionadas = React.useMemo(
+    () =>
+      design.layers.filter(
+        (l) => selectedLayerIds.includes(l.id) && l.type === 'image' && typeof l.fileUrl === 'string' && l.fileUrl.length > 0,
+      ),
+    [design.layers, selectedLayerIds],
+  )
+  const iconesNaSelecao = React.useMemo(
+    () => associarIcones(layersSelecionadas, imagensSelecionadas).size,
+    [layersSelecionadas, imagensSelecionadas],
   )
 
   // Se o usuário trocar de painel no meio da edição, o modo não pode ficar preso
@@ -162,12 +190,77 @@ export function FontCombinationsPanel() {
 
   const capturarSelecao = React.useCallback((): FontComboElement[] => {
     return capturarCombinacao({
-      layers: layersSelecionadas,
+      layers: [...layersSelecionadas, ...imagensSelecionadas],
       canvasWidth: design.canvas.width,
       canvasHeight: design.canvas.height,
       pair,
     })
-  }, [layersSelecionadas, design.canvas, pair])
+  }, [layersSelecionadas, imagensSelecionadas, design.canvas, pair])
+
+  // Os textos da combinação em edição e o ícone de cada um — a mesma
+  // associação que o salvar usa, para a lista mostrar o que será salvo
+  const linhasDeIcone: LinhaDeIcone[] = React.useMemo(() => {
+    if (!editando) return []
+    const doConjunto = design.layers.filter((l) => editando.layerIds.includes(l.id))
+    const textos = doConjunto
+      .filter((l) => l.type === 'text')
+      .sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
+    const imagens = doConjunto.filter(
+      (l) => l.type === 'image' && typeof l.fileUrl === 'string' && l.fileUrl.length > 0,
+    )
+    const icones = associarIcones(textos, imagens)
+    return textos.map((texto) => ({ texto, icone: icones.get(texto.id) ?? null }))
+  }, [editando, design.layers])
+
+  /** Troca a imagem do ícone de um texto, ou põe um ícone onde não havia */
+  const escolherIcone = React.useCallback(
+    async ({ texto, icone }: LinhaDeIcone, elemento: ProjectElement) => {
+      const natural = await carregarDimensoes(elemento.fileUrl)
+      if (icone) {
+        const elementoDoTexto =
+          typeof texto.metadata?.elementId === 'string' && texto.metadata.elementId
+            ? texto.metadata.elementId
+            : texto.id
+        updateLayer(icone.id, (layer) => ({
+          ...layer,
+          fileUrl: elemento.fileUrl,
+          ...caixaDoIconeTrocado(
+            {
+              position: { x: layer.position?.x ?? 0, y: layer.position?.y ?? 0 },
+              size: { width: layer.size?.width ?? 0, height: layer.size?.height ?? 0 },
+            },
+            natural,
+          ),
+          // Ícone ligado ao texto só pela geometria ganha a marca: é ela que o
+          // deixa aceso no modo de foco e amarrado ao texto ao salvar
+          metadata: { ...layer.metadata, iconeDe: layer.metadata?.iconeDe ?? elementoDoTexto },
+        }))
+        selectLayers([icone.id])
+        return
+      }
+      const referencia = linhasDeIcone.find((linha) => linha.icone)
+      const novo = iconeNovoParaTexto({
+        texto,
+        url: elemento.fileUrl,
+        natural,
+        referencia: referencia?.icone ? { icone: referencia.icone, texto: referencia.texto } : null,
+      })
+      addLayer(novo)
+      // O salvar só captura os ids da edição: o ícone novo precisa entrar neles
+      setEditando((atual) => (atual ? { ...atual, layerIds: [...atual.layerIds, novo.id] } : atual))
+    },
+    [linhasDeIcone, updateLayer, selectLayers, addLayer],
+  )
+
+  const tirarIcone = React.useCallback(
+    (icone: Layer) => {
+      removeLayer(icone.id)
+      setEditando((atual) =>
+        atual ? { ...atual, layerIds: atual.layerIds.filter((id) => id !== icone.id) } : atual,
+      )
+    },
+    [removeLayer],
+  )
 
   const salvarEdicao = React.useCallback(async () => {
     if (!editando) return
@@ -309,30 +402,44 @@ export function FontCombinationsPanel() {
 
       {/* Barra de edição em andamento */}
       {editando && (
-        <div className="flex items-center justify-between gap-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-2">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-medium">Editando “{editando.nome}”</p>
-            <p className="text-[10px] text-muted-foreground">
-              {editando.layerIds.length} texto(s) — imagens escurecidas durante o ajuste
-            </p>
+        <div className="space-y-2 rounded-md border border-primary/40 bg-primary/10 px-2.5 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-medium">Editando “{editando.nome}”</p>
+              <p className="text-[10px] text-muted-foreground">
+                {linhasDeIcone.length} texto(s)
+                {linhasDeIcone.some((l) => l.icone)
+                  ? ` e ${linhasDeIcone.filter((l) => l.icone).length} ícone(s)`
+                  : ''}{' '}
+                — fotos escurecidas durante o ajuste
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-1">
+              <Button size="sm" className="h-7 px-2 text-[11px]" onClick={salvarEdicao} disabled={atualizar.isPending}>
+                <Check className="mr-1 h-3 w-3" />
+                Salvar
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-[11px]"
+                onClick={() => {
+                  setEditando(null)
+                  setFocusTextMode(false)
+                }}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
           </div>
-          <div className="flex shrink-0 gap-1">
-            <Button size="sm" className="h-7 px-2 text-[11px]" onClick={salvarEdicao} disabled={atualizar.isPending}>
-              <Check className="mr-1 h-3 w-3" />
-              Salvar
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-[11px]"
-              onClick={() => {
-                setEditando(null)
-                setFocusTextMode(false)
-              }}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          </div>
+          <IconesDaCombinacao
+            linhas={linhasDeIcone}
+            elementos={elementos}
+            carregando={carregandoElementos}
+            onEscolher={escolherIcone}
+            onTirar={tirarIcone}
+            onSelecionar={(layerId) => selectLayers([layerId])}
+          />
         </div>
       )}
 
@@ -348,7 +455,8 @@ export function FontCombinationsPanel() {
             className="h-8 text-xs"
           />
           <p className="text-[10px] text-muted-foreground">
-            Serão salvos os {layersSelecionadas.length} texto(s) selecionado(s), com posição, cor e
+            Serão salvos os {layersSelecionadas.length} texto(s) selecionado(s)
+            {iconesNaSelecao > 0 ? ` e ${iconesNaSelecao} ícone(s) ao lado deles` : ''}, com posição, cor e
             efeitos.
           </p>
           <div className="flex justify-end gap-1">

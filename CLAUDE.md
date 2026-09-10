@@ -4918,6 +4918,23 @@ bloco de texto com os ícones de local e horário prontos para usar.
   página, como a regra sempre quis (e como o `reflowComboStack` do servidor
   já fazia). Para não mexer em nada ao abrir, a altura gravada precisa ser a
   medida — nas páginas da Real ela já é (74, 120, 48, 48).
+- **Os ícones se ajustam DENTRO da edição da combinação** (pedido do Ciro, no
+  mesmo dia): o painel lista o ícone de cada texto e deixa trocar, pôr e tirar
+  (`panels/combo-icones.tsx`); o nome da linha seleciona o ícone no canvas
+  para mover e redimensionar. Antes eles não estavam travados — o modo de foco
+  escurecia toda imagem a 12% sobre o fundo #141414, e o ícone sumia de vista.
+  Hoje ele só escurece a imagem que NÃO é ícone de texto (`ehIconeDeTexto`).
+- 🔴 **O controle de ícone não pode morar na aba Elementos**: trocar de aba
+  desmonta o painel de Texto e o estado `editando` (os ids que o salvar
+  captura) se perde. Pela mesma razão, ícone POSTO durante a edição entra em
+  `editando.layerIds` — o salvar só enxerga esses ids.
+- **Trocar a imagem mantém o CENTRO e a ÁREA** (`caixaDoIconeTrocado`,
+  `src/lib/font-combinations-icones.ts`): manter a caixa com `contain`
+  encolheria o relógio quadrado dentro da caixa alta do alfinete. Ícone novo
+  copia tamanho, vão e altura de um ícone que já existe na combinação
+  (`iconeNovoParaTexto`); sem nenhum, usa a proporção dos ícones da Real.
+- **"Salvar seleção como combinação" leva os ícones selecionados** junto com os
+  textos; antes filtrava só texto e a combinação nova nascia sem ícone.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
