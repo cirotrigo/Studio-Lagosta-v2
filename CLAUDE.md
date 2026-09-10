@@ -4900,6 +4900,24 @@ bloco de texto com os ícones de local e horário prontos para usar.
   sobre verde" e "— verde sobre creme". ⚠️ Enquanto este código não está no ar,
   o editor antigo ignora o `icon` (mostra só os textos) e **apaga o ícone** se
   alguém salvar a combinação por lá.
+- 🔴 **Ao abrir as páginas, os ícones do grupo subiam — e o editor SALVAVA
+  isso.** Dois defeitos do crescimento automático de texto
+  (`konva-editable-text.tsx`), que existiam antes e só apareceram com camada
+  que não é texto dentro do grupo:
+  1. Quando vários textos do grupo são medidos no mesmo instante, a pilha
+     desloca os de baixo, mas cada texto regravava a própria posição com o y
+     lido no render — desfazendo o deslocamento. Só as camadas que não são
+     texto ficavam deslocadas. Com âncora no topo, a medida agora grava só a
+     altura (`ajusteDeAlturaMedida`, `src/lib/texto-altura-automatica.ts`).
+  2. As MINIATURAS de página também mediam: o `onChange` delas é no-op, mas o
+     reflow da pilha escreve direto no editor, então cada miniatura montada
+     empurrava o grupo de novo (os ícones da página 5 subiram em dobro). Texto
+     com `disableInteractions` não mede mais.
+  ⚠️ Consequência da correção 1: num grupo cuja altura gravada difere da que o
+  editor mede, os TEXTOS de baixo passam a acompanhar a pilha ao abrir a
+  página, como a regra sempre quis (e como o `reflowComboStack` do servidor
+  já fazia). Para não mexer em nada ao abrir, a altura gravada precisa ser a
+  medida — nas páginas da Real ela já é (74, 120, 48, 48).
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`

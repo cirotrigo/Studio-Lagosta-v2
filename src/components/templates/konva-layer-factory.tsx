@@ -438,6 +438,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
           borderWidth={borderWidth}
           onChange={onChange}
           stageRef={stageRef}
+          disableInteractions={disableInteractions}
         />
       )
 
