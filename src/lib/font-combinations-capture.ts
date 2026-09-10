@@ -53,6 +53,45 @@ function extrairEfeitos(layer: Layer): FontComboElement['effects'] {
   return Object.keys(out).length > 0 ? out : undefined
 }
 
+/**
+ * Liga cada ícone (camada de imagem) ao texto que ele acompanha.
+ *
+ * Primeiro pela marca deixada na aplicação (`metadata.iconeDe`); sem ela, pela
+ * geometria: o ícone fica à esquerda do texto, com o centro na altura da caixa
+ * dele, e perto (até três larguras do ícone). Cada texto leva um ícone só.
+ */
+function associarIcones(textos: Layer[], imagens: Layer[]): Map<string, Layer> {
+  const porTexto = new Map<string, Layer>()
+  const idDoElemento = (l: Layer) => l.metadata?.elementId as string | undefined
+
+  for (const imagem of imagens) {
+    const iconeDe = imagem.metadata?.iconeDe as string | undefined
+    const dono = iconeDe ? textos.find((t) => idDoElemento(t) === iconeDe) : undefined
+    if (dono && !porTexto.has(dono.id)) porTexto.set(dono.id, imagem)
+  }
+
+  const livres = imagens.filter((img) => ![...porTexto.values()].includes(img))
+  for (const imagem of livres) {
+    const ix = imagem.position?.x ?? 0
+    const iw = imagem.size?.width ?? 0
+    const centroY = (imagem.position?.y ?? 0) + (imagem.size?.height ?? 0) / 2
+    let melhor: { texto: Layer; distancia: number } | null = null
+    for (const texto of textos) {
+      if (porTexto.has(texto.id)) continue
+      const tx = texto.position?.x ?? 0
+      const ty = texto.position?.y ?? 0
+      const th = texto.size?.height ?? 0
+      const distancia = tx - (ix + iw)
+      const naAltura = centroY >= ty && centroY <= ty + th
+      if (!naAltura || distancia < -4 || distancia > iw * 3) continue
+      if (!melhor || distancia < melhor.distancia) melhor = { texto, distancia }
+    }
+    if (melhor) porTexto.set(melhor.texto.id, imagem)
+  }
+
+  return porTexto
+}
+
 export interface CapturarOpcoes {
   layers: Layer[]
   canvasWidth: number
@@ -80,6 +119,8 @@ export function capturarCombinacao({
 
   const escala = canvasWidth / COMBO_BASE_CANVAS_WIDTH
   const papeis = resolverPapeis(textos, pair)
+  const imagens = layers.filter((l) => l.type === 'image' && typeof l.fileUrl === 'string' && l.fileUrl.length > 0)
+  const icones = associarIcones(textos, imagens)
 
   const normalizarFamilia = (v?: string | null) => (v ?? '').trim().toLowerCase()
 
@@ -119,6 +160,19 @@ export function capturarCombinacao({
         ? { height: Math.round((layer.size.height / canvasHeight) * 10000) / 10000 }
         : {}),
       ...(layer.rotation ? { rotation: Math.round(layer.rotation) } : {}),
+      ...(icones.has(layer.id) ? { icon: medirIcone(icones.get(layer.id)!, layer, escala) } : {}),
     }
   })
+}
+
+/** O ícone em px na base de 1080, relativo ao canto superior esquerdo do texto */
+function medirIcone(imagem: Layer, texto: Layer, escala: number): NonNullable<FontComboElement['icon']> {
+  const arredondar = (v: number) => Math.round(v * 10) / 10
+  return {
+    url: imagem.fileUrl as string,
+    width: arredondar((imagem.size?.width ?? 0) / escala),
+    height: arredondar((imagem.size?.height ?? 0) / escala),
+    offsetX: arredondar(((imagem.position?.x ?? 0) - (texto.position?.x ?? 0)) / escala),
+    offsetY: arredondar(((imagem.position?.y ?? 0) - (texto.position?.y ?? 0)) / escala),
+  }
 }

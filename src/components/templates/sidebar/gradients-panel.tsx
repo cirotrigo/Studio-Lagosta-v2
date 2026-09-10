@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { textosNoTopo } from '@/lib/creatives/gradiente-suave'
-import { GRADIENTS_LIBRARY } from '@/lib/assets/gradients-library'
+import { gradientesDoProjeto, type GradientDefinition } from '@/lib/assets/gradients-library'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useBrandColors } from '@/hooks/use-brand-colors'
 import { corEscuraDaMarca, presetHalo } from '@/lib/creatives/halo/fundo-de-texto'
@@ -55,9 +55,12 @@ export function GradientsPanel() {
     }
   }, [alvosDoHalo, cores, design.layers, updateLayer])
 
+  // Gradientes da marca só aparecem no projeto dela; os gerais, em todos
+  const { daMarca, gerais } = React.useMemo(() => gradientesDoProjeto(projectId), [projectId])
+
   const handleAddGradient = React.useCallback(
     (gradientId: string) => {
-      const definition = GRADIENTS_LIBRARY.find((item) => item.id === gradientId)
+      const definition = [...daMarca, ...gerais].find((item) => item.id === gradientId)
       if (!definition) return
 
       const base = createDefaultLayer('gradient')
@@ -70,11 +73,12 @@ export function GradientsPanel() {
           ...base.style,
           gradientType: definition.gradientType,
           gradientAngle: definition.gradientAngle,
-          gradientStops: definition.gradientStops,
+          // Cópia: a camada é editada depois e não pode alterar a definição
+          gradientStops: definition.gradientStops.map((stop) => ({ ...stop })),
         },
       })
     },
-    [addLayer, design.canvas.width, design.canvas.height],
+    [addLayer, daMarca, gerais, design.canvas.width, design.canvas.height],
   )
 
   return (
@@ -124,6 +128,21 @@ export function GradientsPanel() {
         </div>
       )}
 
+      {/* Gradientes da marca (só no projeto dela) */}
+      {daMarca.length > 0 && (
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold">Gradientes da marca</h3>
+            <p className="text-xs text-muted-foreground">Feitos para esta marca. Clique para adicionar ao canvas (tamanho completo)</p>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {daMarca.map((gradient) => (
+              <GradientCard key={gradient.id} gradient={gradient} onAdd={handleAddGradient} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Templates pré-definidos */}
       <div className="space-y-3">
         <div className="space-y-1">
@@ -131,18 +150,8 @@ export function GradientsPanel() {
           <p className="text-xs text-muted-foreground">Clique para adicionar ao canvas (tamanho completo)</p>
         </div>
         <div className="grid gap-3 md:grid-cols-2">
-          {GRADIENTS_LIBRARY.map((gradient) => (
-            <button
-              key={gradient.id}
-              type="button"
-              onClick={() => handleAddGradient(gradient.id)}
-              className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border/40 bg-muted/40 p-3 transition hover:border-primary hover:shadow-md"
-            >
-              <div className="flex h-16 w-full items-center justify-center overflow-hidden rounded bg-white">
-                <GradientPreview gradient={gradient} />
-              </div>
-              <span className="text-[11px] font-medium text-muted-foreground">{gradient.label}</span>
-            </button>
+          {gerais.map((gradient) => (
+            <GradientCard key={gradient.id} gradient={gradient} onAdd={handleAddGradient} />
           ))}
         </div>
       </div>
@@ -150,8 +159,35 @@ export function GradientsPanel() {
   )
 }
 
+function GradientCard({ gradient, onAdd }: { gradient: GradientDefinition; onAdd: (id: string) => void }) {
+  // Gradiente claro (o creme) some sobre o fundo branco da miniatura
+  const claro = gradient.gradientStops.some((stop) => luminancia(stop.color) > 0.7)
+  return (
+    <button
+      type="button"
+      onClick={() => onAdd(gradient.id)}
+      className="flex flex-col items-center justify-center gap-2 rounded-lg border border-border/40 bg-muted/40 p-3 transition hover:border-primary hover:shadow-md"
+    >
+      <div
+        className="flex h-16 w-full items-center justify-center overflow-hidden rounded bg-white"
+        style={claro ? { backgroundColor: '#52525b' } : undefined}
+      >
+        <GradientPreview gradient={gradient} />
+      </div>
+      <span className="text-[11px] font-medium text-muted-foreground">{gradient.label}</span>
+    </button>
+  )
+}
+
+function luminancia(hex: string): number {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+}
+
 interface GradientPreviewProps {
-  gradient: typeof GRADIENTS_LIBRARY[0]
+  gradient: GradientDefinition
 }
 
 function GradientPreview({ gradient }: GradientPreviewProps) {

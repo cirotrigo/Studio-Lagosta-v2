@@ -25,6 +25,16 @@ const efeitosSchema = z
   })
   .optional()
 
+const iconeSchema = z
+  .object({
+    url: z.string().url().max(2048),
+    width: z.number().positive().max(1080),
+    height: z.number().positive().max(1920),
+    offsetX: z.number().min(-1080).max(1080),
+    offsetY: z.number().min(-1920).max(1920),
+  })
+  .optional()
+
 const elementoSchema = z.object({
   id: z.string(),
   label: z.string(),
@@ -45,6 +55,7 @@ const elementoSchema = z.object({
   width: z.number().min(0.01).max(2),
   height: z.number().min(0.001).max(2).optional(),
   rotation: z.number().min(-360).max(360).optional(),
+  icon: iconeSchema,
 })
 
 export const criarSchema = z.object({

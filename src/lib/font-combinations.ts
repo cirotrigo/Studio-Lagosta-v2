@@ -32,6 +32,20 @@ export interface FontComboEffects {
   background?: { enabled: boolean; backgroundColor: string; padding: number }
 }
 
+/**
+ * Ícone à esquerda de um texto da combinação (o alfinete do local, o relógio
+ * do horário). Medidas em px na base de 1080 de largura, relativas ao canto
+ * superior esquerdo da caixa do texto — o ícone acompanha o texto em qualquer
+ * formato e na pilha da combinação.
+ */
+export interface FontComboIcon {
+  url: string
+  width: number
+  height: number
+  offsetX: number
+  offsetY: number
+}
+
 export interface FontComboElement {
   id: string
   label: string
@@ -66,6 +80,8 @@ export interface FontComboElement {
   height?: number
   /** Inclinação em graus */
   rotation?: number
+  /** Ícone ao lado do texto; vira uma camada de imagem ao aplicar */
+  icon?: FontComboIcon
 }
 
 export interface FontComboLayout {

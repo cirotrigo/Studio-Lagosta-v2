@@ -51,10 +51,10 @@ export function buildComboLayers({
   const escala = canvasWidth / COMBO_BASE_CANVAS_WIDTH
   const grupo = groupId ?? `combo-${createId()}`
 
-  return elements.map((element, index) => {
+  return elements.flatMap((element, index) => {
     const texto = textOverrides?.[element.id] ?? textOverrides?.[element.label] ?? element.text
 
-    return {
+    const camadaTexto = {
       id: createId(),
       type: 'text',
       name: `${comboName} - ${element.label}`,
@@ -108,5 +108,39 @@ export function buildComboLayers({
         stackOrder: index,
       },
     } as Layer
+
+    if (!element.icon) return [camadaTexto]
+
+    // O ícone mora no mesmo grupo e na mesma posição da pilha do seu texto:
+    // quando um texto de cima cresce, o reflow empurra os dois juntos.
+    const camadaIcone = {
+      id: createId(),
+      type: 'image',
+      name: `${comboName} - ${element.label} (ícone)`,
+      visible: true,
+      locked: false,
+      order: 0,
+      fileUrl: element.icon.url,
+      position: {
+        x: Math.round(element.x * canvasWidth + element.icon.offsetX * escala),
+        y: Math.round(element.y * canvasHeight + element.icon.offsetY * escala),
+      },
+      size: {
+        width: Math.round(element.icon.width * escala),
+        height: Math.round(element.icon.height * escala),
+      },
+      style: { objectFit: 'contain' },
+      metadata: {
+        presetId: comboId,
+        presetName: comboName,
+        elementId: `${element.id}:icone`,
+        elementLabel: `${element.label} (ícone)`,
+        groupId: grupo,
+        stackOrder: index,
+        iconeDe: element.id,
+      },
+    } as Layer
+
+    return [camadaTexto, camadaIcone]
   })
 }

@@ -456,6 +456,8 @@ export async function listFontCombinations(projectId: number) {
         textoAtual: el.text,
         fontSize: el.fontSize,
         posicao: { x: el.x, y: el.y, width: el.width },
+        // O ícone (local, horário) entra junto ao aplicar a combinação
+        ...(el.icon ? { icone: true } : {}),
       })),
     })),
   }

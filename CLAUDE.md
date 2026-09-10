@@ -4860,6 +4860,47 @@ escolhida de referência e a copy que o usuário escreveu", sem lista de "não".
   `scripts/gerar-manual-de-marca.ts --todos --aplicar` regenera e aplica os
   manuais (URLs anteriores em `.tmp-medicao-estilo-chatgpt/manuais/ANTERIORES.txt`).
 
+### Gradientes da marca e ícone nas combinações de texto (10/09/2026)
+
+Pedido da Roberta: o verde da arte "Comece a Semana com Sabores Real" (feita
+pelo Claudinho) não saía no editor, e a Real precisava do gradiente e de um
+bloco de texto com os ícones de local e horário prontos para usar.
+
+- **Gradiente de uma marca só mora em `GRADIENTES_POR_PROJETO`**
+  (`src/lib/assets/gradients-library.ts`); o painel Gradientes mostra a seção
+  "Gradientes da marca" apenas no projeto da chave. Hoje: Real (1), Verde Real
+  e Creme, no rodapé e no topo. Mesmo precedente de mapa por projeto de
+  `CAIXA_DA_MANCHETE` e `LOGO_MODE_POR_PROJETO`. Cliente novo = entrada no mapa
+  e deploy; se virar rotina, o caminho é uma tabela por projeto, como a
+  `FontCombination`.
+- 🔴 **Toda parada de um gradiente de marca tem a MESMA cor; só a opacidade
+  muda.** O preset "Preto para Transparente" com a cor trocada numa ponta
+  deixava a outra em `#000000` com opacidade 0 — o editor (Konva) e o render
+  (napi-rs) interpolam cor e opacidade separados, sem pré-multiplicar, e o
+  meio acinzenta. `gradients-library.test.ts` trava isso.
+- **A curva foi MEDIDA, não chutada**: a foto original do acervo alinhada à
+  arte do Claudinho, opacidade estimada linha a linha, ângulo e curva
+  ajustados simulando a interpolação do canvas, e conferência final com o
+  `CanvasRenderer`. Resultado: 11° (mais alto do lado do texto), 11 paradas,
+  sólida no pé e sumindo perto do meio da arte. Duas paradas lineares deixam um
+  "degrau" visível onde o verde começa. O topo é o espelho vertical (169°).
+- **Combinação de texto aceita ícone** (`FontComboElement.icon`: url, largura,
+  altura e deslocamento em px na base 1080, relativos ao canto superior
+  esquerdo do texto). `buildComboLayers` emite a camada de imagem logo depois
+  do texto, no mesmo `groupId` e `stackOrder` — o reflow da pilha empurra texto
+  e ícone juntos. `capturarCombinacao` devolve o ícone ao salvar: pela marca
+  `metadata.iconeDe` ou, sem ela, pela geometria (à esquerda do texto, com o
+  centro na altura da caixa, a no máximo três larguras de distância).
+- **A arte sem modelo (`createArteLivre`) aplica o ícone também**, porque usa o
+  mesmo `buildComboLayers`; `listar-combinacoes-de-texto` marca `icone: true`
+  no elemento que tem um.
+- **Dados criados junto**: template 427 "Real Gelateria — Gradientes e textos
+  da marca" (6 páginas de CONTEÚDO, não modelos), elementos 429–432 (alfinete
+  e relógio em creme e em Verde Real) e as combinações "Local e horário — creme
+  sobre verde" e "— verde sobre creme". ⚠️ Enquanto este código não está no ar,
+  o editor antigo ignora o `icon` (mostra só os textos) e **apaga o ícone** se
+  alguém salvar a combinação por lá.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
