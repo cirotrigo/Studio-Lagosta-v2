@@ -462,6 +462,22 @@ function ComboCard({
             backgroundColor: '#141414',
           }}
         >
+          {combo.elements.map((element) => element.icon && (
+            <img
+              key={`${element.id}:icone`}
+              src={element.icon.url}
+              alt=""
+              draggable={false}
+              className="pointer-events-none absolute block"
+              style={{
+                left: `calc(${element.x * 100}% + ${emCqw(element.icon.offsetX)})`,
+                top: `calc(${element.y * 100}% + ${emCqw(element.icon.offsetY)})`,
+                width: emCqw(element.icon.width),
+                height: emCqw(element.icon.height),
+                objectFit: 'contain',
+              }}
+            />
+          ))}
           {combo.elements.map((element) => (
             <span
               key={element.id}

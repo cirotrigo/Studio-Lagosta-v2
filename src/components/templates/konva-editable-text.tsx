@@ -7,6 +7,7 @@ import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer } from '@/types/template'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { FundoDoTexto } from './konva-text-background'
+import { ajusteDeAlturaMedida } from '@/lib/texto-altura-automatica'
 
 /**
  * KonvaEditableText - Componente de texto editável para Konva.js
@@ -44,6 +45,8 @@ interface KonvaEditableTextProps {
   borderWidth: number
   onChange: (updates: Partial<Layer>) => void
   stageRef?: React.RefObject<Konva.Stage | null>
+  /** Miniatura de página: só desenha — nunca mede nem escreve nas camadas */
+  disableInteractions?: boolean
 }
 
 interface TextEditingState {
@@ -74,6 +77,7 @@ export function KonvaEditableText({
   borderWidth: _borderWidth,
   onChange,
   stageRef,
+  disableInteractions = false,
 }: KonvaEditableTextProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [editingState, setEditingState] = React.useState<TextEditingState | null>(null)
@@ -338,7 +342,10 @@ export function KonvaEditableText({
   const ultimoAjusteRef = React.useRef<string | null>(null)
 
   React.useLayoutEffect(() => {
-    if (!autoExpand || editingState) {
+    // Miniatura de página não mede: o onChange dela é um no-op, mas o reflow
+    // da pilha escreve direto no editor — cada miniatura montada empurrava as
+    // camadas do grupo de novo, e o deslocamento dos ícones vinha em dobro.
+    if (!autoExpand || editingState || disableInteractions) {
       ultimoAjusteRef.current = null
       return
     }
@@ -381,12 +388,17 @@ export function KonvaEditableText({
     if (Math.abs(diff) < 1) return
 
     const y = layer.position?.y ?? 0
-    const novoY = anchor === 'bottom' ? y - diff : anchor === 'middle' ? y - diff / 2 : y
 
-    onChangeRef.current({
-      size: { width: layer.size?.width ?? textNode.width(), height: natural },
-      position: { x: layer.position?.x ?? 0, y: Math.round(novoY) },
-    })
+    onChangeRef.current(
+      ajusteDeAlturaMedida({
+        anchor,
+        x: layer.position?.x ?? 0,
+        y,
+        width: layer.size?.width ?? textNode.width(),
+        natural,
+        atual,
+      }),
+    )
 
     // Reflow da pilha: membros do grupo INTEIRAMENTE abaixo (topo além do
     // bottom original desta caixa) descem/sobem pelo mesmo delta. Colunas na
@@ -417,6 +429,7 @@ export function KonvaEditableText({
     autoExpand,
     anchor,
     editingState,
+    disableInteractions,
     shapeRef,
     layer.size?.width,
     layer.size?.height,
