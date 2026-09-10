@@ -95,11 +95,17 @@ export function normalizeLayersString(raw: unknown): string | null {
  * Nome repetido entre camadas: o sufixo `#2`, `#3`… mantém as duas no mapa.
  * Antes, a segunda camada de mesmo nome apagava a primeira, e o diff acusava
  * um texto "removido" que estava lá.
+ *
+ * 🔴 Rich text é copy como qualquer texto: a camada convertida guarda o
+ * conteúdo no mesmo `content` e só acrescenta os trechos estilizados. Até
+ * 10/09/2026 ela ficava de fora, e converter uma linha no editor fazia o bloco
+ * SUMIR da copy da peça — do corpus, da conferência de texto e da
+ * recomposição, que refazia a arte sem ele.
  */
 export function textosDaPagina(layers: unknown): Record<string, string> {
   const out: Record<string, string> = {}
   for (const layer of parsePageLayers(layers)) {
-    if (layer?.type !== 'text') continue
+    if (layer?.type !== 'text' && layer?.type !== 'rich-text') continue
     // Camada OCULTA não é copy da peça: desde 13/08/2026 o campo que a copy
     // não cobre sai invisível (placeholder do modelo), e contá-lo aqui poria
     // no corpus — e no diff — um texto que não está na arte.

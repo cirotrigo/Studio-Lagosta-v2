@@ -125,6 +125,50 @@ describe('medirDefasagem', () => {
     expect(d.ilegivel).toBe(false)
     expect(d.defasada).toBe(false)
   })
+
+  /**
+   * Converter uma linha para rich text no editor muda o TIPO da camada. Até
+   * 10/09/2026 isso não contava: a camada sumia da copy, a página parecia
+   * defasada "só no texto", e a recomposição refaria a peça sem aquele bloco,
+   * reescrevendo `Page.layers` em texto simples.
+   */
+  it('rich text continua sendo a copy do papel, e a conversão desliga a recomposição', () => {
+    const pagina = [
+      foto,
+      texto('headline', 'Mão na foto\nconvida'),
+      {
+        ...texto('apoio', 'A foto precisa mostrar que dá para dividir.'),
+        type: 'rich-text',
+        richTextStyles: [{ start: 0, end: 6, fill: '#EA5328' }],
+      },
+    ]
+    const d = medirDefasagem(pagina, snapshot)
+    expect(d.defasada).toBe(false)
+    expect(d.soTexto).toBe(false)
+    expect(d.mexidoNaMao.join(' ')).toContain('apoio')
+  })
+})
+
+describe('rich text na copy dos papéis', () => {
+  it('a camada convertida continua respondendo pelo papel', () => {
+    const camadas = [foto, { ...texto('apoio', 'Seu milk-shake vem em dobro esse sábado!'), type: 'rich-text' }]
+    expect(copyDosPapeis(camadas)).toEqual({ apoio: 'Seu milk-shake vem em dobro esse sábado!' })
+  })
+})
+
+describe('post com várias mídias e a invalidação', () => {
+  it('o carrossel com pageId nunca é da invalidação', () => {
+    const carrossel = { id: 'car', pageId: 'pag123', renderStatus: 'RENDERED', mediaUrls: ['f1', 'f2', 'f3', 'f4'] }
+    expect(alcancadoPelaInvalidacao(carrossel, 'pag123')).toBe(false)
+    expect(alcancadoPelaInvalidacao({ ...carrossel, mediaUrls: ['arte'] }, 'pag123')).toBe(true)
+  })
+
+  it('e o slide que é arte da página fica com a recomposição, que troca só a posição dele', () => {
+    const carrossel = { id: 'car', pageId: 'pag123', renderStatus: 'RENDERED', mediaUrls: ['foto1', 'arte-da-pagina', 'foto3'] }
+    expect(slidesDaPagina([carrossel], ['arte-da-pagina'], 'pag123')).toEqual([
+      { postId: 'car', indice: 1, total: 3, urlAntiga: 'arte-da-pagina' },
+    ])
+  })
 })
 
 describe('copyDosPapeis', () => {

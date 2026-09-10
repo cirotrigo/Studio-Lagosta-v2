@@ -41,6 +41,7 @@ import {
   type RecusaDaTroca,
 } from './troca-de-arte'
 import { formatarBRT } from './agenda-acoes'
+import { comoCopiaDaPagina } from './copy-segue-a-pagina'
 import { PostLogEvent, Prisma } from '../../../prisma/generated/client'
 
 /** Versão da regra, para a chave de idempotência do sinal de aprendizado. */
@@ -285,10 +286,10 @@ export async function trocarArteDoPost(
   const vinculaGeneration = indice === 0 && !!novaGenerationId
 
   /**
-   * `slotValues` do post é o que o cron re-renderiza POR CIMA da página
-   * (`renderStoryImage` aplica os slots por id/nome de camada). Trocar a página
-   * sem trocar os slots faria o próximo render escrever a copy ANTIGA na arte
-   * nova — silenciosamente. Por isso os textos acompanham a arte.
+   * Os textos acompanham a arte. Vindos de uma PÁGINA eles são uma cópia do
+   * texto dela e vão MARCADOS: o render desenha a página como ela estiver e a
+   * cópia nunca volta para a arte (copy-segue-a-pagina.ts). Vindos da galeria
+   * são a copy daquela arte, que não renderiza de página nenhuma.
    *
    * `null` aqui significa "não sei ler os textos desta arte", não "não tem":
    * nesse caso o que já estava gravado é preservado quando a página continua a
@@ -297,7 +298,7 @@ export async function trocarArteDoPost(
    */
   const trocaDePagina = decisao.vinculaPagina && pageId !== post.pageId
   const slotValuesNovo = novosTextos
-    ? { slotValues: novosTextos as Prisma.InputJsonValue }
+    ? { slotValues: (origem === 'pagina' ? comoCopiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
     : trocaDePagina
       ? { slotValues: Prisma.DbNull }
       : {}

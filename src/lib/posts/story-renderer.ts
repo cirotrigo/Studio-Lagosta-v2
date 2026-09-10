@@ -9,6 +9,8 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { convertPageToDesignData, applySlotValues } from './page-to-design-data'
 import { registerProjectFonts } from './register-project-fonts'
+import { slotValuesParaRender } from './copy-segue-a-pagina'
+import { textosDaPagina } from './page-layers'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 
@@ -17,6 +19,11 @@ export interface RenderStoryResult {
   url: string
   width: number
   height: number
+  /**
+   * O texto da PÁGINA que foi desenhada. Quem carrega uma cópia dela
+   * (`_copiaDaPagina`) grava isto de volta, para a cópia não envelhecer.
+   */
+  copyDaPagina: Record<string, string>
 }
 
 /**
@@ -52,9 +59,13 @@ export async function renderStoryImage(
     background: page.background,
   })
 
-  // 3. Apply slot values if provided
-  if (slotValues && Object.keys(slotValues).length > 0) {
-    designData = applySlotValues(designData, slotValues)
+  // 3. Slots por cima da página — só a copy PRÓPRIA do post (via de template).
+  // A cópia que o agendamento grava da página nunca volta para a arte: era ela
+  // que desfazia, no re-render, toda edição feita no editor. Ver
+  // copy-segue-a-pagina.ts.
+  const slots = slotValuesParaRender(slotValues)
+  if (slots) {
+    designData = applySlotValues(designData, slots)
   }
 
   // Guard: o render server-side é imagem estática. Camada de vídeo sairia como
@@ -73,10 +84,11 @@ export async function renderStoryImage(
 
   // 4b. Slot com texto maior (ou menor) que o do template: reacomodar as
   // pilhas de combinação e crescer caixas soltas — DEPOIS das fontes, porque
-  // medir com fallback dá altura errada. Sem slots não há o que refluir.
-  if (slotValues && Object.keys(slotValues).length > 0) {
+  // medir com fallback dá altura errada. Sem slots não há o que refluir, e a
+  // página desenhada como está mantém o espaçamento que alguém acertou à mão.
+  if (slots) {
     const changedTextIds = designData.layers
-      .filter((layer) => layer.type === 'text' && (slotValues[layer.id] ?? slotValues[layer.name]) !== undefined)
+      .filter((layer) => layer.type === 'text' && (slots[layer.id] ?? slots[layer.name]) !== undefined)
       .map((layer) => layer.id)
     const measure = await createServerTextMeasurer()
     designData = { ...designData, layers: reflowLayersAfterFill(designData.layers, changedTextIds, measure) }
@@ -105,5 +117,6 @@ export async function renderStoryImage(
     url: blob.url,
     width: designData.canvas.width,
     height: designData.canvas.height,
+    copyDaPagina: textosDaPagina(page.layers),
   }
 }

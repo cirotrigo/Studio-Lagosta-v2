@@ -5142,3 +5142,60 @@ automático. Medido no rodapé da Wine Vix, 5 tentativas de ~30s e ~US$ 0,008:
   "aumente o rodapé" o caminho determinístico é a peça ser página do editor
   (a via `compor`, onde `fontSize` é um campo). O gpt-image é pintor, não
   tipógrafo.
+
+### 🔴 A arte agendada por página desenha a PÁGINA (10/09/2026)
+
+Relatado pelo Ciro na Real Gelateria: abriu pela agenda os stories do Dia do
+Milk-shake (compostos e agendados pelo chat), editou texto e espaçamento,
+converteu uma linha para rich text e clicou em "Salvar e Voltar". A arte
+re-renderizou e voltou para a agenda sem nenhuma das edições. O contorno foi
+gerar o criativo, apagar o post e agendar o criativo.
+
+- 🔴 **O render aplicava `SocialPost.slotValues` por cima da página, e na via
+  de conteúdo esse campo é só uma CÓPIA do texto do dia do agendamento.** O
+  remendo de 03/09 (`seguirCopyDaPagina`) fazia a cópia seguir a página no
+  PATCH do editor, mas só enquanto ela ainda era IGUAL ao texto anterior.
+  Linha do tempo real, lida dos sinais `copy`/`geometria` das páginas: às
+  15:35 um `ajuste-arte` pelo chat reescreveu a página por outro caminho, as
+  duas divergiram, e dali em diante nenhuma edição chegou mais à arte.
+  Renderizado localmente com o pipeline de produção: só a página sai idêntica
+  ao criativo de contorno; com a cópia por cima, o rich text pinta os
+  caracteres errados, e no story de sexta o apoio velho, em duas linhas, cai
+  em cima da linha de serviço (estava agendado para publicar assim).
+- **A semântica é gravada na ESCRITA** (`src/lib/posts/copy-segue-a-pagina.ts`):
+  quem copia o texto da página — `agendarPost` e `trocar-arte-do-post` por
+  página — grava `slotValues` com `_copiaDaPagina: true`. `slotValuesParaRender`
+  devolve nada para post marcado, e `renderStoryImage` desenha a página como
+  está: sem aplicar slot e sem refluir, então o espaçamento acertado à mão
+  sobrevive. Sem a marca vale a regra antiga (via de template: página-modelo
+  com a copy de cada post em `slotValues`). O remendo do PATCH saiu.
+- **A cópia acompanha o que foi DESENHADO**: `renderPostArt` regrava o
+  `slotValues` do post marcado com `RenderStoryResult.copyDaPagina`. É o que o
+  corpus e a conferência de texto da melhoria leem.
+- 🔴 **Rich text é copy.** `textosDaPagina` e `copyDosPapeis` liam só
+  `type: 'text'`: converter uma linha fazia o bloco sumir da copy — do corpus,
+  da conferência e da recomposição, que refaria o slide sem ele e reescreveria
+  `Page.layers` em texto simples. Camada que muda de tipo passa a contar como
+  ajuste manual em `medirDefasagem` (re-render como está, nunca recompor).
+- 🔴 **Post com várias mídias nunca volta para a fila de render**
+  (`renderDaPaginaCobreAMidia`, na invalidação E em
+  `alcancadoPelaInvalidacao`). `renderPostArt` grava `mediaUrls: [url]`; o
+  carrossel de sexta da Real (4 fotos, `RENDERED`, com `pageId`) estava a uma
+  edição da página de virar uma imagem só. A regra é de CONTAGEM, não de URL:
+  o agendador do editor grava `renderedImageUrl` cru e `mediaUrls` normalizado.
+- **"Salvar e Voltar" descarrega o autosave antes de sair**
+  (`usePageSync().descarregar()`, também no botão de voltar). O
+  `router.back()` desmontava o editor e cancelava o timer de 800ms do
+  PageSync: a edição feita logo antes do clique nunca chegava ao banco.
+- **Backfill `scripts/marcar-copia-da-pagina.ts`** (dry-run por padrão): marca
+  o post vivo que comprovadamente carrega cópia da página (sinal
+  `copy:post:<id>`, troca de arte por página, ou página do compositor — nunca
+  página-modelo), sincroniza a cópia e devolve à fila a arte que já estava com
+  texto divergente. Rodado em 10/09/2026: 56 marcados, 1 arte refeita (o story
+  de sexta da Real), 2 pulados (rascunhos de abril do By Rock em
+  página-modelo). Seguro antes do deploy; **rode de novo depois dele**, porque
+  o código antigo agenda sem a marca.
+- ⚠️ **Escritor NOVO de `slotValues` a partir da página precisa de
+  `comoCopiaDaPagina`.** Sem a marca, a cópia volta a ser aplicada por cima e o
+  defeito reaparece em silêncio na primeira escrita de camadas por outro
+  caminho.
