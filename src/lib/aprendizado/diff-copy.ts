@@ -23,6 +23,7 @@
  */
 
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
+import { semColchetes } from '@/lib/compositor/destaques'
 import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
 import type { Desfecho } from './vocabulario'
 
@@ -89,10 +90,18 @@ const DIFF_ILEGIVEL = (motivo: string): DiffDeCopy => ({
   proporcaoAlterada: 0,
 })
 
+/**
+ * Os [colchetes] do destaque (compositor, 11/09/2026) são MARCAÇÃO, não texto:
+ * a dica de copy sugere "vem [em dobro]" e a página grava "vem em dobro". Sem
+ * tirá-los aqui, toda copy aceita como veio contaria como editada.
+ */
 function normalizarLado(lado: LadoDaCopy): { comChave: Record<string, string> | null; valores: string[] } | null {
   if (lado == null) return null
   if (Array.isArray(lado)) {
-    const valores = lado.filter((t): t is string => typeof t === 'string' && t.trim() !== '').map((t) => t.trim())
+    const valores = lado
+      .filter((t): t is string => typeof t === 'string')
+      .map((t) => semColchetes(t).trim())
+      .filter((t) => t !== '')
     return { comChave: null, valores }
   }
   if (typeof lado !== 'object') return null
@@ -101,7 +110,7 @@ function normalizarLado(lado: LadoDaCopy): { comChave: Record<string, string> | 
     // `_driveImageId` / `_imageUrl` são reservados do slotValues — não são copy.
     if (campo.startsWith('_')) continue
     if (typeof valor !== 'string') continue
-    const limpo = valor.trim()
+    const limpo = semColchetes(valor).trim()
     if (!limpo) continue
     comChave[campo] = limpo
   }

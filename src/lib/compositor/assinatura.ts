@@ -2,18 +2,21 @@
  * A ASSINATURA da marca — o kit que o compositor lê antes de compor.
  *
  * Duas casas, de propósito (§8 do plano):
- *  - o ESTILO por papel (fonte, tamanho, cor, caixa, tracking, entrelinha)
- *    mora numa PÁGINA do projeto (`Page.isTemplate` com a tag `assinatura`),
- *    cujas camadas de texto se chamam pelo papel. A equipe edita página no
- *    editor, não JSON — trocar a fonte da headline é abrir a página e mudar;
- *  - os NÚMEROS (margens, safe area, faixa de tinta e raio do halo, largura
- *    da logo) moram em `Project.assinatura` (Json), com defaults da casa.
+ *  - o ESTILO por papel (fonte, tamanho, cor, caixa, tracking, entrelinha,
+ *    destaque) mora numa PÁGINA do projeto (template "Assinatura"), cujas
+ *    camadas de texto se chamam pelo papel. A equipe edita página no editor,
+ *    não JSON — trocar a fonte da headline é abrir a página e mudar;
+ *  - os NÚMEROS (margens, safe area, gradiente de leitura, destaque padrão,
+ *    largura da logo) moram em `Project.assinatura` (Json), com defaults da casa.
  *
  * Módulo PURO: lê camadas e JSON que quem chama já carregou.
  */
 
 import type { Layer } from '@/types/template'
 import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
+import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
+import { configDaCamada, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
+import { papelDoNome } from './papel-do-nome'
 import type { Formato, Papel } from './spec'
 
 export const TAG_DA_ASSINATURA = 'assinatura'
@@ -34,21 +37,23 @@ export interface EstiloDePapel {
   /** Largura máxima do bloco como fração da coluna útil (0..1). */
   larguraMaxima?: number
   /**
-   * Sombra presa ao glifo — o que segura a cor onde a mancha já caiu.
+   * Sombra presa ao glifo — o que segura a leitura onde o gradiente é fraco.
    * `null` = a página de assinatura NÃO tem sombra nessa camada, e a peça
    * nasce sem (a página é a verdade; o default só vale quando ela não diz).
    */
   sombra?: { color: string; blur: number; offsetY: number; opacity: number } | null
   /**
-   * O FUNDO DE TEXTO que a equipe deixou ligado nessa camada da página de
-   * assinatura — a configuração literal do editor (cor, ajuste caixa/texto,
-   * margem, desfoque, cantos, opacidade). Quando algum papel da página tem
-   * fundo, a página é a verdade: cada papel recebe o SEU; papel sem fundo sai
-   * sem mancha. Só quando nenhum papel tem é que o compositor calibra o halo
-   * sozinho pela foto. A opacidade e os demais valores da página são preservados;
-   * a régua mede e avisa, sem modular o halo aprovado.
+   * O FUNDO DE TEXTO (halo) que a página ainda carrega nessa camada. Desde
+   * 11/09/2026 o compositor NÃO o desenha mais (o contraste é o gradiente de
+   * leitura); fica lido só para o diagnóstico e para quem for limpar as páginas.
    */
   fundo?: FundoDePapel | null
+  /**
+   * O destaque de palavra-chave que a equipe desenhou numa camada RICH TEXT
+   * desse papel na página (a cor, a família mais pesada, o itálico). Vence o
+   * destaque padrão de `Project.assinatura.destaque`.
+   */
+  destaque?: EstiloDeDestaque | null
   /** O grupo da camada na página (Cmd+G do editor) — papéis no mesmo grupo formam UM bloco na peça. */
   grupo?: string | null
   /** A caixa da camada na página — de onde sai a âncora (topo/rodapé) dos blocos secundários. */
@@ -75,6 +80,8 @@ export interface LogoDaAssinatura {
   largura: number
   /** altura / largura. */
   razao: number
+  /** Onde a página pôs a logo (canto superior esquerdo, px): o lugar preferido quando ali ela não encosta no texto. */
+  posicao?: { x: number; y: number }
 }
 
 export interface GeometriaDoFormato {
@@ -88,17 +95,27 @@ export interface GeometriaDoFormato {
 }
 
 export interface NumerosDaAssinatura {
-  /** A cor da mancha do halo (o dark da marca). */
+  /** O dark da marca: cor padrão do gradiente de leitura e sombra padrão do glifo. */
   mancha: string
   /** Fundo liso, quando a peça não tem foto. */
   fundo: string
+  /**
+   * Os números do halo — LEGADO desde 11/09/2026: o compositor não desenha mais
+   * halo. Ficam aceitos no JSON para não quebrar quem ainda os grava.
+   */
   halo: {
-    /** A tinta anda numa FAIXA, nunca persegue um alvo (PADRAO.md §5.0 da Lagosta). */
     faixaTexto: [number, number]
     faixaMarca: [number, number]
     raioTexto: number
     raioMarca: number
   }
+  /** O gradiente de leitura. Sem `cor`: a camada da página, o gradiente da marca ou a mancha, nessa ordem. */
+  gradiente: Omit<ConfigDoGradiente, 'cor'> & { cor?: string }
+  /**
+   * O destaque de palavra-chave quando a página não o desenha. `pesado` = usar
+   * a versão mais pesada da família do papel entre as fontes cadastradas.
+   */
+  destaque: { fill?: string; fontFamily?: string; pesado: boolean; alternativa?: string }
   logo: { largura: number }
   geometria: Record<Formato, GeometriaDoFormato>
 }
@@ -112,6 +129,8 @@ export const NUMEROS_PADRAO: NumerosDaAssinatura = {
     raioTexto: 190,
     raioMarca: 96,
   },
+  gradiente: { ...GRADIENTE_PADRAO },
+  destaque: { pesado: true },
   logo: { largura: 236 },
   geometria: {
     // Safe area do story: onde o Instagram desenha avatar e barra de resposta.
@@ -130,26 +149,20 @@ export interface AssinaturaDaMarca {
   numeros: NumerosDaAssinatura
   /** O alinhamento da headline na página — vira preferência do rodízio (a foto ainda manda). */
   alinhamento: 'esquerda' | 'centro' | 'direita' | null
+  /** A camada de gradiente que a equipe desenhou na página: manda na cor e na curva do gradiente de leitura. */
+  gradienteDaPagina: AjustesDoGradiente | null
   /** De onde veio — para o registro atômico da geração. */
   origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; motivoDaVariante?: string; versao: string }
+  /** As camadas da página escolhida, para os arranjos de texto — preenchido por quem carrega a página. */
+  camadasDaPagina?: Layer[]
 }
 
-/** Nome de camada → papel. Aceita o que a equipe tende a escrever. */
-export function papelDoNome(nome: string | null | undefined): Papel | null {
-  const n = (nome ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim()
-  if (!n) return null
-  if (/^(pre|pre-?titulo|pretitulo|kicker|sobretitulo)$/.test(n)) return 'pre'
-  if (/^(headline|titulo|manchete|title)[\s-]*(copy|2|b|dois|segunda)$/.test(n)) return 'headline2'
-  if (/^(headline|titulo|manchete|title)$/.test(n)) return 'headline'
-  if (/^(apoio|descricao|subtitulo|corpo|body)$/.test(n)) return 'apoio'
-  if (/^(cta|chamada)$/.test(n)) return 'cta'
-  if (/^(servico|info|rodape|footer)$/.test(n)) return 'servico'
-  return null
+/** Camada que carrega texto de um papel: texto simples ou rich text (o destaque). */
+export function camadaDeTexto(camada: Pick<Layer, 'type'>): boolean {
+  return camada.type === 'text' || camada.type === 'rich-text'
 }
+
+export { papelDoNome }
 
 const PREFIXO = /^([^\p{L}\p{N}\s]{1,3})\s+/u
 
@@ -214,6 +227,7 @@ export function estiloDaCamada(camada: Layer, todas: Layer[] = []): EstiloDePape
     color: typeof s.color === 'string' ? s.color : '#FFFFFF',
     ...(prefixo ? { prefixo: `${prefixo} ` } : {}),
     fundo: fundoDaCamada(camada, todas),
+    destaque: destaqueDaCamada(camada),
     grupo: grupoDaCamada(camada),
     caixa: { x: camada.position.x, y: camada.position.y, width: camada.size.width, height: camada.size.height },
     alinhamento: s.textAlign === 'center' ? 'centro' : s.textAlign === 'right' ? 'direita' : s.textAlign === 'left' ? 'esquerda' : null,
@@ -228,8 +242,43 @@ export function estiloDaCamada(camada: Layer, todas: Layer[] = []): EstiloDePape
   }
 }
 
-function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAssinatura {
+const numeroEm = (v: unknown, min: number, max: number, padrao: number) =>
+  typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : padrao
+
+function curvaValida(v: unknown): CurvaDoGradiente | null {
+  if (!Array.isArray(v) || v.length < 2) return null
+  const ok = v.every((p) => Array.isArray(p) && p.length === 2 && p.every((n) => typeof n === 'number' && Number.isFinite(n)))
+  return ok ? (v as CurvaDoGradiente) : null
+}
+
+function mesclarGradiente(base: NumerosDaAssinatura['gradiente'], extra: unknown): NumerosDaAssinatura['gradiente'] {
   if (!extra || typeof extra !== 'object') return base
+  const e = extra as Record<string, unknown>
+  return {
+    ...base,
+    ...(typeof e.cor === 'string' && e.cor ? { cor: e.cor } : {}),
+    curva: curvaValida(e.curva) ?? base.curva,
+    forcaMinima: numeroEm(e.forcaMinima, 0, 1, base.forcaMinima),
+    forcaMaxima: numeroEm(e.forcaMaxima, 0, 1, base.forcaMaxima),
+    fatorDeAlcance: numeroEm(e.fatorDeAlcance, 1, 4, base.fatorDeAlcance),
+    alturaMinima: numeroEm(e.alturaMinima, 0.05, 1, base.alturaMinima),
+    alturaMaxima: numeroEm(e.alturaMaxima, 0.05, 1, base.alturaMaxima),
+  }
+}
+
+function mesclarDestaque(base: NumerosDaAssinatura['destaque'], extra: unknown): NumerosDaAssinatura['destaque'] {
+  if (!extra || typeof extra !== 'object') return base
+  const e = extra as Record<string, unknown>
+  return {
+    ...(typeof e.fill === 'string' && e.fill ? { fill: e.fill } : base.fill ? { fill: base.fill } : {}),
+    ...(typeof e.fontFamily === 'string' && e.fontFamily ? { fontFamily: e.fontFamily } : base.fontFamily ? { fontFamily: base.fontFamily } : {}),
+    pesado: typeof e.pesado === 'boolean' ? e.pesado : base.pesado,
+    ...(typeof e.alternativa === 'string' && e.alternativa ? { alternativa: e.alternativa } : base.alternativa ? { alternativa: base.alternativa } : {}),
+  }
+}
+
+function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAssinatura {
+  if (!extra || typeof extra !== 'object') return { ...base, gradiente: { ...base.gradiente }, destaque: { ...base.destaque }, geometria: { ...base.geometria } }
   const e = extra as Partial<NumerosDaAssinatura> & { geometria?: Partial<Record<Formato, Partial<GeometriaDoFormato>>> }
   const geometria = { ...base.geometria }
   for (const f of Object.keys(base.geometria) as Formato[]) {
@@ -239,6 +288,8 @@ function mesclarNumeros(base: NumerosDaAssinatura, extra: unknown): NumerosDaAss
     mancha: typeof e.mancha === 'string' ? e.mancha : base.mancha,
     fundo: typeof e.fundo === 'string' ? e.fundo : base.fundo,
     halo: { ...base.halo, ...(e.halo ?? {}) },
+    gradiente: mesclarGradiente(base.gradiente, e.gradiente),
+    destaque: mesclarDestaque(base.destaque, e.destaque),
     logo: { ...base.logo, ...(e.logo ?? {}) },
     geometria,
   }
@@ -270,11 +321,12 @@ export function montarAssinatura(args: {
   const papeis: AssinaturaDaMarca['papeis'] = {}
   let logo: LogoDaAssinatura | null = null
   let alinhamento: AssinaturaDaMarca['alinhamento'] = null
+  let gradienteDaPagina: AjustesDoGradiente | null = null
 
   if (args.pagina) {
     for (const camada of args.pagina.layers) {
       if (camada.visible === false) continue
-      if (camada.type === 'text') {
+      if (camadaDeTexto(camada)) {
         const papel = papelDoNome(camada.name) ?? papelDoNome(camada.id)
         if (!papel || papeis[papel]) continue
         const estilo = estiloDaCamada(camada, args.pagina.layers)
@@ -285,6 +337,10 @@ export function montarAssinatura(args: {
         }
         continue
       }
+      if (camada.type === 'gradient' || camada.type === 'gradient2') {
+        gradienteDaPagina = gradienteDaPagina ?? configDaCamada(camada)
+        continue
+      }
       if ((camada.type === 'logo' || camada.type === 'image') && /logo|marca/i.test(`${camada.name} ${camada.id}`)) {
         const url = typeof camada.fileUrl === 'string' ? camada.fileUrl : null
         if (url && !logo) {
@@ -292,14 +348,15 @@ export function montarAssinatura(args: {
             url,
             largura: Math.round(camada.size.width),
             razao: camada.size.height / camada.size.width,
+            posicao: { x: camada.position.x, y: camada.position.y },
           }
         }
       }
     }
-    // O fundo liso e a mancha da logo vêm só de Project.assinatura: o editor
-    // grava `#ffffff` na página assim que a equipe põe uma foto de referência
-    // nela, e o fundo da marca não pode virar branco por isso. O halo do TEXTO
-    // a equipe define por camada (`EstiloDePapel.fundo`).
+    // O fundo liso e a cor do gradiente vêm de Project.assinatura (ou de uma
+    // camada de gradiente na página): o editor grava `#ffffff` na página assim
+    // que a equipe põe uma foto de referência nela, e o fundo da marca não pode
+    // virar branco por isso.
   }
 
   // As MARGENS vêm da página, não dos números do projeto (Ciro, 03/09/2026:
@@ -308,19 +365,26 @@ export function montarAssinatura(args: {
   // texto ou a logo termina é o rodapé útil; a menor distância à lateral é a
   // margem horizontal. Só vale para o formato da própria página.
   if (args.pagina && args.formatoDaPagina) {
-    const uteis = args.pagina.layers.filter((c) => c.visible !== false && (c.type === 'text' || c.type === 'logo'))
-    const textos = uteis.filter((c) => c.type === 'text')
+    const uteis = args.pagina.layers.filter((c) => c.visible !== false && (camadaDeTexto(c) || c.type === 'logo'))
+    const textos = uteis.filter((c) => camadaDeTexto(c))
     if (textos.length >= 2) {
       const H = args.pagina.height
       const W = args.pagina.width
-      const topo = Math.min(...uteis.map((c) => c.position.y))
-      const rodape = H - Math.max(...uteis.map((c) => c.position.y + c.size.height))
+      // Cada margem sai do que mora na METADE dela: a página com todo o texto no
+      // rodapé não diz nada sobre o topo (medido em 11/09/2026 nos modelos do
+      // Quintal: o topo "derivado" dava 1281 px).
+      // O topo útil é onde o primeiro TEXTO começa: a logo acima da manchete
+      // (os "Clássicos" do TERO) não pode puxar o texto para cima dela.
+      const deCima = textos.filter((c) => c.position.y + c.size.height / 2 < H / 2)
+      const deBaixo = uteis.filter((c) => c.position.y + c.size.height / 2 >= H / 2)
       const lateral = Math.min(...textos.map((c) => Math.min(c.position.x, W - (c.position.x + c.size.width))))
       const base = numeros.geometria[args.formatoDaPagina]
       numeros.geometria[args.formatoDaPagina] = {
         ...base,
-        safeTopo: Math.max(60, Math.round(topo)),
-        safeRodape: Math.max(60, Math.round(rodape)),
+        ...(deCima.length > 0 ? { safeTopo: Math.max(60, Math.round(Math.min(...deCima.map((c) => c.position.y)))) } : {}),
+        ...(deBaixo.length > 0
+          ? { safeRodape: Math.max(60, Math.round(H - Math.max(...deBaixo.map((c) => c.position.y + c.size.height)))) }
+          : {}),
         margemH: Math.max(40, Math.min(200, Math.round(lateral))),
       }
     }
@@ -335,7 +399,8 @@ export function montarAssinatura(args: {
     logo,
     numeros,
     alinhamento,
-    origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, variante: args.pagina?.name ?? null, versao: 'assinatura-v2' },
+    gradienteDaPagina,
+    origem: { pageId: args.pagina?.id ?? null, formatoDaPagina: args.formatoDaPagina, variante: args.pagina?.name ?? null, versao: 'assinatura-v3' },
   }
 }
 

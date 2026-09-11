@@ -22,8 +22,14 @@ import {
   useDeleteFontCombination,
   type FontCombination,
 } from '@/hooks/use-font-combinations'
-import { associarIcones, capturarCombinacao } from '@/lib/font-combinations-capture'
-import { caixaDoIconeTrocado, iconeNovoParaTexto } from '@/lib/font-combinations-icones'
+import {
+  associarIcones,
+  associarOrnamentos,
+  capturarCombinacao,
+  ehTextoDeCombinacao,
+  papelDoTexto,
+} from '@/lib/font-combinations-capture'
+import { caixaDoIconeTrocado, elementoNovoParaTexto, iconeNovoParaTexto } from '@/lib/font-combinations-icones'
 import { useProjectElements, type ProjectElement } from '@/hooks/use-project-elements'
 import { IconesDaCombinacao, carregarDimensoes, type LinhaDeIcone } from './combo-icones'
 import { getFontManager } from '@/lib/font-manager'
@@ -33,6 +39,8 @@ import {
   resolveComboFontFamily,
   type FontComboElement,
   type FontComboPair,
+  type LadoDoOrnamento,
+  type PapelDaCombinacao,
 } from '@/lib/font-combinations'
 import { buildComboLayers } from '@/lib/font-combinations-layers'
 import type { Layer } from '@/types/template'
@@ -92,7 +100,7 @@ export function FontCombinationsPanel() {
   )
 
   const layersSelecionadas = React.useMemo(
-    () => design.layers.filter((l) => selectedLayerIds.includes(l.id) && l.type === 'text'),
+    () => design.layers.filter((l) => selectedLayerIds.includes(l.id) && ehTextoDeCombinacao(l)),
     [design.layers, selectedLayerIds],
   )
   // Imagens selecionadas junto com os textos: as que acompanham um texto viram
@@ -108,6 +116,9 @@ export function FontCombinationsPanel() {
     () => associarIcones(layersSelecionadas, imagensSelecionadas).size,
     [layersSelecionadas, imagensSelecionadas],
   )
+  // O resto das imagens selecionadas vira elemento preso ao texto mais perto
+  // (filete, selo, ornamento)
+  const elementosNaSelecao = Math.max(0, imagensSelecionadas.length - iconesNaSelecao)
 
   // Se o usuário trocar de painel no meio da edição, o modo não pode ficar preso
   React.useEffect(() => () => setFocusTextMode(false), [setFocusTextMode])
@@ -203,19 +214,51 @@ export function FontCombinationsPanel() {
     if (!editando) return []
     const doConjunto = design.layers.filter((l) => editando.layerIds.includes(l.id))
     const textos = doConjunto
-      .filter((l) => l.type === 'text')
+      .filter(ehTextoDeCombinacao)
       .sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0))
     const imagens = doConjunto.filter(
       (l) => l.type === 'image' && typeof l.fileUrl === 'string' && l.fileUrl.length > 0,
     )
     const icones = associarIcones(textos, imagens)
-    return textos.map((texto) => ({ texto, icone: icones.get(texto.id) ?? null }))
+    const usados = new Set([...icones.values()].map((l) => l.id))
+    const presos = associarOrnamentos(textos, imagens.filter((l) => !usados.has(l.id)))
+    return textos.map((texto) => ({
+      texto,
+      icone: icones.get(texto.id) ?? null,
+      papel: papelDoTexto(texto),
+      elementos: presos.get(texto.id)?.length ?? 0,
+    }))
   }, [editando, design.layers])
 
-  /** Troca a imagem do ícone de um texto, ou põe um ícone onde não havia */
+  /** O papel do texto no compositor fica gravado na camada — é o que a captura salva */
+  const definirPapel = React.useCallback(
+    (texto: Layer, papel: PapelDaCombinacao | null) => {
+      updateLayer(texto.id, (layer) => {
+        const metadata = { ...(layer.metadata ?? {}) } as Record<string, unknown>
+        if (papel) metadata.compositor = { papel }
+        else delete metadata.compositor
+        return { ...layer, metadata: metadata as Layer['metadata'] }
+      })
+    },
+    [updateLayer],
+  )
+
+  /**
+   * Troca a imagem do ícone de um texto, põe um ícone onde não havia, ou prende
+   * um elemento acima, abaixo ou depois do texto (filete, selo, ornamento)
+   */
   const escolherIcone = React.useCallback(
-    async ({ texto, icone }: LinhaDeIcone, elemento: ProjectElement) => {
+    async (linha: LinhaDeIcone, elemento: ProjectElement, lado: LadoDoOrnamento = 'antes') => {
+      const { texto, icone } = linha
       const natural = await carregarDimensoes(elemento.fileUrl)
+      if (lado !== 'antes') {
+        const novo = elementoNovoParaTexto({ texto, url: elemento.fileUrl, natural, lado })
+        addLayer(novo)
+        // O salvar só captura os ids da edição: o elemento novo precisa entrar neles
+        setEditando((atual) => (atual ? { ...atual, layerIds: [...atual.layerIds, novo.id] } : atual))
+        selectLayers([novo.id])
+        return
+      }
       if (icone) {
         const elementoDoTexto =
           typeof texto.metadata?.elementId === 'string' && texto.metadata.elementId
@@ -409,7 +452,10 @@ export function FontCombinationsPanel() {
               <p className="text-[10px] text-muted-foreground">
                 {linhasDeIcone.length} texto(s)
                 {linhasDeIcone.some((l) => l.icone)
-                  ? ` e ${linhasDeIcone.filter((l) => l.icone).length} ícone(s)`
+                  ? `, ${linhasDeIcone.filter((l) => l.icone).length} ícone(s)`
+                  : ''}
+                {linhasDeIcone.some((l) => (l.elementos ?? 0) > 0)
+                  ? `, ${linhasDeIcone.reduce((n, l) => n + (l.elementos ?? 0), 0)} elemento(s)`
                   : ''}{' '}
                 — fotos escurecidas durante o ajuste
               </p>
@@ -439,6 +485,7 @@ export function FontCombinationsPanel() {
             onEscolher={escolherIcone}
             onTirar={tirarIcone}
             onSelecionar={(layerId) => selectLayers([layerId])}
+            onPapel={definirPapel}
           />
         </div>
       )}
@@ -456,8 +503,9 @@ export function FontCombinationsPanel() {
           />
           <p className="text-[10px] text-muted-foreground">
             Serão salvos os {layersSelecionadas.length} texto(s) selecionado(s)
-            {iconesNaSelecao > 0 ? ` e ${iconesNaSelecao} ícone(s) ao lado deles` : ''}, com posição, cor e
-            efeitos.
+            {iconesNaSelecao > 0 ? `, ${iconesNaSelecao} ícone(s) ao lado deles` : ''}
+            {elementosNaSelecao > 0 ? `, ${elementosNaSelecao} elemento(s) presos a eles` : ''}, com posição, cor e
+            efeitos. Para o compositor usar a combinação, dê um papel a cada texto (Manchete, Serviço…) na edição.
           </p>
           <div className="flex justify-end gap-1">
             <Button size="sm" variant="ghost" className="h-7 text-[11px]" onClick={() => setCriandoNova(false)}>

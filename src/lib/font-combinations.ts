@@ -46,6 +46,61 @@ export interface FontComboIcon {
   offsetY: number
 }
 
+/**
+ * Papel SEMÂNTICO do texto para o compositor — outra coisa que o `role`
+ * tipográfico, que só diz de qual fonte da marca a família vem. Com papel, a
+ * combinação vira bloco da usina: a manchete da copy entra no texto `headline`,
+ * o horário no `servico`. Combinação com texto sem papel não entra no compositor.
+ */
+export type PapelDaCombinacao = 'pre' | 'headline' | 'headline2' | 'apoio' | 'cta' | 'servico'
+
+/** De que lado do texto o elemento gráfico fica. */
+export type LadoDoOrnamento = 'antes' | 'depois' | 'acima' | 'abaixo'
+
+/** Em `acima`/`abaixo`, a que borda do texto o elemento se alinha. */
+export type EixoDoOrnamento = 'inicio' | 'centro' | 'fim'
+
+/**
+ * Elemento gráfico preso a um texto da combinação, além do ícone: o filete sob
+ * a manchete, o selo depois do preço, o ornamento acima do pré-título. Medidas
+ * em px na base de 1080 de largura, relativas à caixa do texto:
+ * - `antes`: x a partir da borda ESQUERDA da caixa, y a partir do topo (como o ícone);
+ * - `depois`: x a partir da borda DIREITA, y a partir do topo;
+ * - `acima`: y a partir do topo, x a partir da borda do `eixo`;
+ * - `abaixo`: y a partir da BASE, x a partir da borda do `eixo`.
+ * Preso à borda certa, o elemento acompanha o texto quando ele cresce.
+ */
+export interface FontComboOrnamento {
+  /** A imagem do elemento (ícone, selo, a logo). Ausente quando o elemento é uma forma do editor. */
+  url?: string
+  /**
+   * A camada de uma forma do editor (o filete é uma `shape` de linha), sem id,
+   * posição e tamanho — é copiada ao aplicar.
+   */
+  camada?: Record<string, unknown>
+  /** O elemento é a LOGO da marca, presa ao texto: a peça não põe outra logo no canto. */
+  logo?: boolean
+  /** A caixa VISÍVEL do elemento (px na base de 1080) — já girada, quando a camada gira. */
+  width: number
+  height: number
+  lado: LadoDoOrnamento
+  eixo?: EixoDoOrnamento
+  offsetX: number
+  offsetY: number
+  /** Camada girada ou forma: o tamanho sem giro (px na base de 1080). */
+  tamanhoDaCamada?: { width: number; height: number }
+  /** Onde a posição da camada fica em relação à caixa visível (px na base de 1080) — o giro do Konva é em torno da origem. */
+  ajuste?: { x: number; y: number }
+}
+
+/** O estilo da palavra marcada com [colchetes] — o trecho do rich text que difere do resto. */
+export interface FontComboDestaque {
+  fill?: string
+  fontFamily?: string
+  fontStyle?: string
+  textDecoration?: string
+}
+
 export interface FontComboElement {
   id: string
   label: string
@@ -82,7 +137,110 @@ export interface FontComboElement {
   rotation?: number
   /** Ícone ao lado do texto; vira uma camada de imagem ao aplicar */
   icon?: FontComboIcon
+  /** Papel do texto para o compositor */
+  papel?: PapelDaCombinacao
+  /** Elementos gráficos presos ao texto, além do ícone */
+  ornamentos?: FontComboOrnamento[]
+  /** Estilo da palavra marcada com [colchetes] no texto */
+  destaque?: FontComboDestaque
+  /**
+   * Altura do canvas em que a combinação foi salva (px). As posições são
+   * frações, e o compositor precisa do ritmo vertical em px: a mesma fração num
+   * feed achataria os vãos de uma combinação desenhada num story.
+   */
+  alturaDeBase?: number
 }
+
+/** Onde o elemento gráfico fica, dada a caixa FINAL do texto (px) e a escala da base 1080. */
+export function caixaDoOrnamento(
+  o: FontComboOrnamento,
+  texto: { x: number; y: number; width: number; height: number },
+  escala: number,
+): { x: number; y: number; width: number; height: number } {
+  const w = o.width * escala
+  const h = o.height * escala
+  const dx = o.offsetX * escala
+  const dy = o.offsetY * escala
+  let x: number
+  let y: number
+  if (o.lado === 'antes') {
+    x = texto.x + dx
+    y = texto.y + dy
+  } else if (o.lado === 'depois') {
+    x = texto.x + texto.width + dx
+    y = texto.y + dy
+  } else {
+    const eixo = o.eixo ?? 'inicio'
+    x = eixo === 'inicio' ? texto.x + dx : eixo === 'centro' ? texto.x + texto.width / 2 + dx - w / 2 : texto.x + texto.width + dx - w
+    y = o.lado === 'acima' ? texto.y + dy : texto.y + texto.height + dy
+  }
+  return { x: Math.round(x), y: Math.round(y), width: Math.round(w), height: Math.round(h) }
+}
+
+/** A caixa visível de uma camada girada em torno da própria origem (a regra do Konva). */
+export function caixaVisivel(l: {
+  position?: { x: number; y: number }
+  size?: { width: number; height: number }
+  rotation?: number
+}): { x: number; y: number; width: number; height: number } {
+  const x = l.position?.x ?? 0
+  const y = l.position?.y ?? 0
+  const w = l.size?.width ?? 0
+  const h = l.size?.height ?? 0
+  const graus = l.rotation ?? 0
+  if (!graus) return { x, y, width: w, height: h }
+  const r = (graus * Math.PI) / 180
+  const cos = Math.cos(r)
+  const sin = Math.sin(r)
+  const xs = [0, w * cos, -h * sin, w * cos - h * sin].map((d) => x + d)
+  const ys = [0, w * sin, h * cos, w * sin + h * cos].map((d) => y + d)
+  const minX = Math.min(...xs)
+  const minY = Math.min(...ys)
+  return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY }
+}
+
+/**
+ * A camada de um elemento na caixa visível que `caixaDoOrnamento` calculou: a
+ * forma volta do molde, a imagem e a logo do arquivo. A mesma conta serve ao
+ * editor, ao aplicar a combinação, e ao compositor, ao montar a peça.
+ */
+export function camadaDoOrnamento(
+  o: FontComboOrnamento,
+  caixa: { x: number; y: number; width: number; height: number },
+  escala: number,
+  base: { id: string; name: string; metadata?: Record<string, unknown> },
+): Layer {
+  const position = {
+    x: Math.round(caixa.x + (o.ajuste?.x ?? 0) * escala),
+    y: Math.round(caixa.y + (o.ajuste?.y ?? 0) * escala),
+  }
+  const size = o.tamanhoDaCamada
+    ? {
+        width: Math.max(1, Math.round(o.tamanhoDaCamada.width * escala)),
+        height: Math.max(1, Math.round(o.tamanhoDaCamada.height * escala)),
+      }
+    : { width: Math.max(1, Math.round(caixa.width)), height: Math.max(1, Math.round(caixa.height)) }
+  const comum = {
+    id: base.id,
+    name: base.name,
+    visible: true,
+    locked: false,
+    order: 0,
+    position,
+    size,
+    ...(base.metadata ? { metadata: base.metadata } : {}),
+  }
+  if (o.camada) return { rotation: 0, ...o.camada, ...comum } as unknown as Layer
+  return {
+    ...comum,
+    type: o.logo ? 'logo' : 'image',
+    rotation: 0,
+    fileUrl: o.url,
+    style: { objectFit: 'contain' },
+  } as unknown as Layer
+}
+
+type Layer = import('@/types/template').Layer
 
 export interface FontComboLayout {
   id: string

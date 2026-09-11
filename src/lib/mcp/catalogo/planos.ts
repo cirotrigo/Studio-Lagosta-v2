@@ -100,7 +100,7 @@ export const toolsDePlanos = [
                 .array(z.string())
                 .optional()
                 .describe(
-                  'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca.',
+                  'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca. DESTAQUE: marque com [colchetes] 1 ou 2 palavras da peça que decidem a leitura ("Terça é dia de [rodízio]") — na arte do editor elas saem na cor e no peso de destaque da marca; sem colchetes, sem destaque.',
                 ),
               legenda: z.string().optional().describe('A legenda do Instagram, quando houver.'),
               fotoDriveId: z.string().optional().describe('A foto do acervo (de buscar-fotos).'),
@@ -299,7 +299,7 @@ export const toolsDePlanos = [
         .array(z.string())
         .optional()
         .describe(
-          'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui.',
+          'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui. Marque com [colchetes] 1 ou 2 palavras de destaque — na arte do editor elas saem na cor e no peso de destaque da marca.',
         ),
       legenda: z.string().optional().describe('Nova legenda.'),
       fotoDriveId: z.string().optional().describe('Outra foto do acervo.'),
@@ -537,7 +537,7 @@ export const toolsDePlanos = [
     nome: 'listar-combinacoes-de-texto',
     apelidos: ['list-font-combinations'],
     descricao:
-      'Composições de texto prontas do cliente, com posição, tamanho e cor já ajustados à marca. Escolher uma e só trocar as palavras costuma dar resultado melhor do que posicionar tudo na mão. Repare em quantos campos cada uma tem: texto longo demais para os campos disponíveis fica sobreposto na arte.',
+      'Composições de texto prontas do cliente, com posição, tamanho e cor já ajustados à marca. Escolher uma e só trocar as palavras costuma dar resultado melhor do que posicionar tudo na mão. Repare em quantos campos cada uma tem: texto longo demais para os campos disponíveis fica sobreposto na arte. Cada texto pode trazer o papel (manchete, apoio, CTA, serviço), e aí o texto novo pode ser passado pelo papel; os elementos presos a ele (ícone, filete, selo) entram junto; e a palavra entre [colchetes] sai destacada quando a combinação tem destaque. O compositor usa sozinho as combinações em que todo texto tem papel.',
     schema: z.object({
       projectId: z.number().describe('ID do projeto.'),
     }),

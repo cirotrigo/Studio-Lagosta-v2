@@ -5216,3 +5216,125 @@ gerar o criativo, apagar o post e agendar o criativo.
   `comoCopiaDaPagina`.** Sem a marca, a cópia volta a ser aplicada por cima e o
   defeito reaparece em silêncio na primeira escrita de camadas por outro
   caminho.
+
+### O compositor sem halo: gradiente de leitura e destaque com [colchetes] (11/09/2026)
+
+Decisão do Ciro: "prefiro que deixe de usar o halo, e aprenda a usar o gradiente
+de forma sutil", e destaque de palavra-chave com rich text, marcado na copy com
+`[]` ("sem marcação a peça sai sem destaque"). Vale para TODA peça do
+compositor — `compor-arte`, `compor-leva`, a fila COMPOR, o `executar-plano`
+via compor, o Gerar da bancada e a recomposição —, porque todos terminam em
+`comporPeca`. Módulos puros com teste: `src/lib/compositor/gradiente-de-leitura.ts`
+e `destaques.ts`.
+
+- **Uma camada de gradiente por BORDA que tem texto**; topo e rodapé em camadas
+  INDEPENDENTES (pedido explícito). A faixa vai da borda até ~1,9× o alcance do
+  texto mais distante, presa entre 30% e 62% da altura e nunca terminando antes
+  do texto; a força (opacidade na borda) é a necessidade medida sob o texto,
+  dentro de [0,45; 0,9]. Sem foto, sem gradiente. Números em
+  `Project.assinatura.gradiente` (JSON, sem migration).
+- **Código, e não os templates de gradiente**: a usina compõe sem ninguém
+  escolher camada, e o gradiente precisa nascer onde o texto pousou — o que só
+  se sabe depois de medir a foto. Os templates são GABARITO: a curva padrão é a
+  `CURVA_REAL` que a Roberta mediu (template 427), normalizada para a faixa. A
+  COR, nesta ordem: camada de gradiente na página de assinatura (a equipe
+  desenha; manda também na curva) → `Project.assinatura.gradiente.cor` → o
+  gradiente da marca que contrasta com o texto (`GRADIENTES_POR_PROJETO`, hoje
+  só a Real) → a mancha.
+- 🔴 **O fundo de texto da página de assinatura NÃO é mais copiado, e o
+  `halo-marca` saiu.** As 10 páginas ainda têm halo ligado em todos os papéis
+  (medido em 11/09) — é lido só para diagnóstico. `Project.assinatura.halo`,
+  `diagnostico.halos` (sempre vazio) e os valores antigos de
+  `tratamentoDeTexto` ficam aceitos como legado; nenhum devolve o halo.
+- **A régua corrige a FORÇA do gradiente da borda** (uma vez, dentro da faixa),
+  não mais a opacidade do fundo. E mede rich text: apaga a cor dos TRECHOS
+  também, senão o destaque contava como fundo.
+- Logo numa borda sem texto, sobre canto claro (necessidade > 0,5), ganha um
+  gradiente fraco (metade da necessidade) — é o que substituiu o halo-marca.
+- **Destaque**: `[palavra]` numa linha da copy → o bloco sai como camada
+  `rich-text`. Estilo: a camada rich-text do papel na página de assinatura
+  (primeiro trecho que difere da base) → `Project.assinatura.destaque`
+  (`{ fill, fontFamily, pesado }`); `pesado` escolhe a versão mais pesada da
+  MESMA família do papel entre as fontes cadastradas (`familiaMaisPesada`: ~300
+  acima, ao menos Medium — é o que a equipe fazia à mão). Sem estilo, sai texto
+  comum com aviso; sem colchetes, sem destaque. Regra em `destaqueDoPapel`.
+- 🔴 **Papel que JÁ É da cor de destaque não destaca nada** — o CTA vermelho do
+  Espeto, a manchete dourada do Empório. Medido em 11/09: 8 dos 10 clientes têm
+  papel da cor de destaque em alguma variante. Distância RGB < 90 usa
+  `destaque.alternativa` (também da paleta); sem ela fica só o peso, e sem peso
+  nada. Semeado por `scripts/semear-destaque-da-marca.ts`.
+- 🔴 **O renderer de rich text IGNORA `effects.shadow` da camada** e só desenha
+  sombra por trecho: com sombra na assinatura, os trechos cobrem o conteúdo
+  INTEIRO. E o medidor do servidor não mede rich text: a altura sai do texto
+  simples (mesmo corpo e entrelinha) e a largura soma o quanto os trechos
+  alargam na família pesada — sem isso a linha que "cabia" transbordava.
+- 🔴 **Os colchetes são marcação e saem em todo caminho que desenha texto
+  simples**: `startArtGeneration` (IA), `decidirGeracao`, `mapearCopyParaSlots`
+  (template), o nome da página e o `diff-copy` do aprendizado (senão toda copy
+  aceita como veio contaria como editada). Na volta, `specComACopyDaPagina`
+  reconstrói os colchetes a partir do rich text (`linhasComColchetes`) — sem
+  isso o destaque sumiria na primeira edição de texto. `copyParaBlocos` não
+  conta os colchetes no teto nem corta a linha dentro de um.
+- **Quem escreve a copy marca**: instruções do conector, descrições de
+  `compor-arte`, `compor-leva`, `criar-plano` e `editar-item-do-plano`, e o
+  prompt da dica de copy (safra `dica-copy-v2`).
+- ⚠️ Rich text não passa pelo autofix de colisão (`text-geometry` só enxerga
+  `text`): o compositor empilha pela própria medida. Escritor NOVO de camada
+  rich-text precisa medir a altura sozinho.
+- ⚠️ Nada disto foi aprovado ainda em peça real: a regra do Ciro é uma amostra
+  por cliente, salva no Studio sem agendar, revisada no editor ANTES de ir para
+  produção.
+
+### Combinações de texto no compositor: papel, elementos e logo no grupo (11/09/2026)
+
+Pedido do Ciro: o compositor aproveitar da assinatura também ícones, filetes e
+outros elementos, usando (e editando) as combinações de texto da aba Texto. Até
+aqui a usina lia só texto, logo e gradiente da página de assinatura; o resto
+ficava para trás. Plano em `docs/PLANO-2026-09-11-COMBINACOES-NO-COMPOSITOR.md`,
+núcleo em `src/lib/compositor/combinacoes.ts` (puro, com teste).
+
+- **Um grupo de texto é um ARRANJO**: o grupo da página de assinatura (Cmd+G) ou
+  uma combinação salva. Carrega o estilo de cada texto, o vão vertical antes de
+  cada um e os ELEMENTOS presos a cada texto. O compositor continua escolhendo
+  onde o bloco pousa pela foto; o arranjo diz como ele é por dentro.
+- **Só serve à usina texto com PAPEL** (`pre`, `headline`, `headline2`, `apoio`,
+  `cta`, `servico`): `metadata.compositor.papel` (o painel grava), o nome da
+  camada ou o rótulo. Combinação com algum texto sem papel fica de fora — é o
+  que mantém o catálogo base ("Sabor de Verdade") longe das peças até alguém
+  revisá-lo.
+- **O elemento se mede pela TINTA do texto, nunca pela caixa**: na página a
+  caixa costuma ser larga, e na peça ela é justa. `lado` (`antes`, `depois`,
+  `acima`, `abaixo`) + `eixo` (`inicio`, `centro`, `fim`) dizem a que borda ele
+  se prende (`caixaDoOrnamento`); preso à base, o filete acompanha o texto que
+  cresce. Forma do editor guarda o MOLDE da camada + `tamanhoDaCamada` + `ajuste`
+  (o Konva gira em torno da origem, então a caixa visível ≠ posição), e a logo no
+  grupo vira elemento com `logo: true` — a peça não ganha outra no canto.
+- **Associação pela geometria** (`associarIcones` / `associarOrnamentos`):
+  imagem à esquerda, na faixa do texto, é o ícone; o resto na mesma faixa (centro
+  dentro da caixa ou metade da altura do menor sobreposta — o divisor vertical é
+  mais alto que a linha) é `antes`/`depois`; fora dela, o texto mais perto na
+  vertical, e entre dois a distâncias parecidas fica o de BAIXO (o filete some
+  junto com o apoio que falta).
+- **Elemento ao lado de uma linha que a peça não tem sai** (o alfinete da
+  segunda linha do serviço quando só há horário). Papel com vários textos (Local
+  + Horário) recebe uma linha por texto, casando horário com relógio e endereço
+  com alfinete (`blocosDeServico` + pistas do ícone) antes da ordem; na volta,
+  `copyDosPapeis` junta os textos do mesmo papel de cima para baixo.
+- **Escolha** (`escolherArranjo`): o grupo da página e as combinações que cobrem
+  os papéis do grupo; −1 por papel sem copy, +3 por palavra do tema no nome,
+  empate em rodízio pela chave da peça. Os arranjos usados ficam em
+  `spec.preferencias.arranjos`: a recomposição refaz A MESMA peça.
+- **Elementos entram DEPOIS do autofix**, presos à caixa final (o autofix pode
+  encolher a fonte), e o gradiente de leitura cobre o grupo com eles.
+- **O gradiente de cada borda segue a camada que a página desenhou naquela
+  borda** (`bordaDaCamadaDeGradiente`: segmento explícito ou ângulo; 169° topo,
+  11° rodapé). Ler só a primeira camada prendia o rodapé à força do topo.
+- 🔴 **As margens derivadas da página saem da METADE em que cada texto mora.**
+  Página com todo o texto no rodapé dava `safeTopo` de 1281 px.
+- **Provar antes de a usina usar**: `comporPeca(spec, { provar: true,
+  paginasDeAssinatura: [ids] })` compõe com páginas em espera sem gravar nada —
+  `scripts/provar-combinacoes-no-compositor.ts`. Nunca em produção.
+- 🔴 **O editor ANTERIOR a este deploy descarta os campos novos** ao salvar uma
+  combinação (o zod antigo stripa `papel`, `ornamentos`, `destaque`). Combinação
+  gravada com eles não pode ser editada no app antigo — grave os dados da usina
+  junto com o deploy.

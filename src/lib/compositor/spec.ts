@@ -54,7 +54,13 @@ export const carrosselSchema = z.object({
 export type CarrosselDaPeca = z.infer<typeof carrosselSchema>
 
 export const preferenciasSchema = z.object({
-  tratamentoDeTexto: z.enum(['assinatura', 'gradiente-suave-topo']).optional(),
+  /**
+   * LEGADO desde 11/09/2026: todo texto ganha o gradiente de leitura na borda
+   * onde pousa. Os valores antigos seguem aceitos (specs gravadas na fila e em
+   * `Generation.fieldValues.spec` são revalidadas na recomposição) e dão o
+   * mesmo resultado — nenhum deles devolve o halo.
+   */
+  tratamentoDeTexto: z.enum(['gradiente', 'assinatura', 'gradiente-suave-topo']).optional(),
   ancora: z.enum([...ANCORAS, 'auto']).optional(),
   alinha: z.enum([...ALINHAMENTOS, 'auto']).optional(),
   cantoDaMarca: z.enum([...CANTOS, 'auto', 'nenhum']).optional(),
@@ -62,6 +68,12 @@ export const preferenciasSchema = z.object({
   enquadramento: z.enum(['auto', 'fixo']).optional(),
   /** Nome (ou tag) da página de assinatura a usar, quando o cliente tem mais de uma no formato. */
   variante: z.string().max(80).optional(),
+  /**
+   * Os arranjos de texto que esta peça já usou (grupo da página ou combinação
+   * salva, ver `combinacoes.ts`). O compositor grava ao persistir, e a
+   * recomposição os mantém — refazer a peça não pode sortear outra combinação.
+   */
+  arranjos: z.array(z.string().max(160)).max(8).optional(),
 })
 export type Preferencias = z.infer<typeof preferenciasSchema>
 

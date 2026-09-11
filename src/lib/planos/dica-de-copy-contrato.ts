@@ -33,7 +33,7 @@ import { estaVigente } from '@/lib/knowledge/vigencia'
 import type { Suspeita } from '@/lib/ai/revisao-ortografica-contrato'
 
 /** Muda quando o prompt ou a regra muda — é a safra da dica. */
-export const VERSAO_DA_DICA = 'dica-copy-v1'
+export const VERSAO_DA_DICA = 'dica-copy-v2' // v2 (11/09/2026): a copy marca o destaque com [colchetes]
 
 /** Quantas palavras da âncora o modelo copia de volta. */
 export const PALAVRAS_DO_ECO = 6
@@ -446,6 +446,7 @@ const INSTRUCOES = [
   'COMO ESCREVER',
   `- Cada bloco é uma linha independente na arte (chamada, apoio, convite). De 1 a ${MAX_BLOCOS} blocos por peça; a maioria fica bem com 2 ou 3.`,
   '- Bloco é curto: o que não cabe numa respiração não cabe na arte.',
+  '- DESTAQUE: marque com [colchetes] 1 ou 2 palavras da peça inteira — as que decidem a leitura (a oferta, o dia, o prato). Ex.: "Terça é dia de [rodízio]". Nunca a frase inteira, nunca mais de dois trechos. Os colchetes não aparecem na arte: viram a cor e o peso de destaque da marca.',
   '🔴 CADA BLOCO SE SUSTENTA SOZINHO. Ele vai para um campo próprio do layout, e os campos podem ficar longe um do outro, em tamanhos e cores diferentes. NÃO quebre uma frase em três blocos ("A cozinha da casa prepara" / "uma experiência especial" / "para a sua noite") — isso é uma frase só, e ela chega picada na arte. Escreva blocos inteiros: chamada, apoio, convite.',
   '- Português do Brasil, na voz desta marca. Sem emoji, sem hashtag dentro da arte, sem reticências.',
   '- Nada de clichê de agência ("venha conferir", "não perca", "imperdível", "o melhor da cidade").',

@@ -371,7 +371,7 @@ describe('montarPromptDeDica', () => {
 
 describe('VERSAO_DA_DICA', () => {
   it('é a safra que B2 grava junto com a proposta', () => {
-    expect(VERSAO_DA_DICA).toBe('dica-copy-v1')
+    expect(VERSAO_DA_DICA).toBe('dica-copy-v2')
   })
 })
 

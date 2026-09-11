@@ -16,12 +16,12 @@ const bloco = z.object({
     .array(z.string().min(1))
     .min(1)
     .max(6)
-    .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas.'),
+    .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.'),
 })
 
 const preferencias = z
   .object({
-    tratamentoDeTexto: z.enum(['assinatura', 'gradiente-suave-topo']).optional().describe('Escolha explícita: gradiente-suave-topo substitui fundos dos textos do topo por gradiente preto suave editável. Sem opção mantém assinatura. Aprovado visualmente na Real; revisar em outras fotos/marcas. Não move texto nem muda foto.'),
+    tratamentoDeTexto: z.enum(['gradiente', 'assinatura', 'gradiente-suave-topo']).optional().describe('Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado.'),
     ancora: z.enum(['topo', 'meio', 'rodape', 'auto']).optional().describe('Onde o bloco de texto pousa. "auto" (default) deixa a foto decidir — a área mais calma ganha.'),
     alinha: z.enum(['esquerda', 'centro', 'direita', 'auto']).optional().describe('Alinhamento do bloco. "auto" (default) segue a área livre da foto.'),
     cantoDaMarca: z
@@ -122,7 +122,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'ver-assinatura',
     descricao:
-      'Mostra a assinatura de composição do cliente: quais papéis de texto (pre, headline, apoio, cta, servico) a página de assinatura define, com fonte, tamanho e cor, a logo e os números (margens, safe area, faixa do halo). Use ANTES de compor-arte para saber o que o cliente tem — sem assinatura o compositor não compõe. Também diz o link para a equipe ajustar a assinatura no editor.',
+      'Mostra a assinatura de composição do cliente: quais papéis de texto (pre, headline, apoio, cta, servico) a página de assinatura define, com fonte, tamanho, cor e o estilo do DESTAQUE de cada um, a logo, o gradiente de leitura e os números (margens, safe area). Use ANTES de compor-arte para saber o que o cliente tem — sem assinatura o compositor não compõe. Também diz o link para a equipe ajustar a assinatura no editor.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       formato: z.enum(['story', 'feed', 'quadrado']).optional().describe('Formato a conferir (default story).'),
@@ -146,14 +146,23 @@ export const toolsDoCompositor = [
         papeis: Object.fromEntries(
           Object.entries(a.papeis).map(([papel, e]) => [
             papel,
-            { fonte: e.fontFamily, tamanho: e.fontSize, cor: e.color, caixa: e.textTransform ?? 'como escrito', ...(e.prefixo ? { prefixo: e.prefixo.trim() } : {}) },
+            {
+              fonte: e.fontFamily,
+              tamanho: e.fontSize,
+              cor: e.color,
+              caixa: e.textTransform ?? 'como escrito',
+              ...(e.prefixo ? { prefixo: e.prefixo.trim() } : {}),
+              ...(e.destaque ? { destaqueDaPagina: e.destaque } : {}),
+            },
           ]),
         ),
+        destaquePadrao: a.numeros.destaque,
+        gradiente: { ...a.numeros.gradiente, ...(a.gradienteDaPagina ? { daPagina: a.gradienteDaPagina } : {}) },
         logo: a.logo ? { largura: a.logo.largura } : null,
         numeros: a.numeros,
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
         dica: a.origem.pageId
-          ? 'A equipe ajusta fonte, tamanho e cor de cada papel abrindo a página de assinatura no editor; o próximo lote sai com a mudança.'
+          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança.'
           : 'Este cliente ainda não tem página de assinatura. Peça para a equipe criar (template "Assinatura", uma página por formato com camadas de texto chamadas pre, headline, apoio, cta, servico).',
       }
     },
@@ -162,7 +171,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-arte',
     descricao:
-      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, preserva o halo aprovado (calibra apenas quando a página não define fundos) e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. A COPY É ESCRITA SOBRE OS PAPÉIS QUE A VARIANTE TEM — ver-assinatura lista os papéis de cada variante por formato; papel pedido que a página não tem causa erro antes de salvar; escolha variante compatível sem omitir condições obrigatórias. Nunca escreva um bloco para um campo que o template não tem. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
+      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo, rodapé ou os dois, em camadas independentes), destaca as palavras marcadas com [colchetes] e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. A COPY É ESCRITA SOBRE OS PAPÉIS QUE A VARIANTE TEM — ver-assinatura lista os papéis de cada variante por formato; papel pedido que a página não tem causa erro antes de salvar; escolha variante compatível sem omitir condições obrigatórias. Nunca escreva um bloco para um campo que o template não tem. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. DESTAQUE: marque com [colchetes] 1 ou 2 palavras-chave da peça (preço, dia, a oferta) — sem colchetes a peça sai sem destaque. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
     schema: z.object({
       ...spec,
       provar: z.boolean().optional().describe('true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável.'),
@@ -182,8 +191,9 @@ export const toolsDoCompositor = [
         enquadramento: d.posicao.crop,
         logo: d.logo?.canto ?? 'sem logo',
         selecao: d.selecao,
-        tratamentoDeTexto: d.tratamentoDeTexto ?? 'assinatura',
-        halo: d.halos.map((h) => ({ bloco: h.grupo, tinta: h.tinta })),
+        tratamentoDeTexto: d.tratamentoDeTexto ?? 'gradiente-de-leitura',
+        gradientes: (d.gradientes ?? []).map((g) => ({ borda: g.borda, forca: g.forca })),
+        destaques: d.blocos.filter((b) => b.destacado).map((b) => b.papel),
         contraste: d.contraste?.map((c) => ({ bloco: c.grupo, ok: c.ok, p98: c.p98ComHalo, alvo: Math.round(c.alvo) })) ?? null,
         avisos: d.avisos,
       }
@@ -200,7 +210,7 @@ export const toolsDoCompositor = [
         editUrl: p.editUrl,
         galleryUrl: p.galleryUrl,
         ...resumo,
-        nota: d.tratamentoDeTexto === 'gradiente-suave-topo' ? 'Página editável: o gradiente é uma camada independente; selecione-a para ajustar transição e intensidade. Ao mover o texto, confira novamente a leitura.' : 'A peça é uma página editável: o link editUrl abre no editor, onde a equipe move, redimensiona e reescreve; o halo acompanha o texto.',
+        nota: 'A peça é uma página editável: o link editUrl abre no editor, onde a equipe move, redimensiona e reescreve. Cada gradiente de leitura é uma camada própria (topo e rodapé separados) — ao mover o texto para outra borda, confira a leitura e ajuste a camada.',
       }
     },
   }),
@@ -208,7 +218,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-leva',
     descricao:
-      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.',
+      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       itens: z

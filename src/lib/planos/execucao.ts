@@ -18,6 +18,7 @@ import {
   type StatusDoItem,
   type ViaDoItem,
 } from '@/lib/planos/vocabulario'
+import { semColchetes } from '@/lib/compositor/destaques'
 
 // ── Orçamento de tempo ──────────────────────────────────────────────────────
 
@@ -417,7 +418,8 @@ export function decidirGeracao(item: {
 }): PedidoDeGeracao | RecusaDeGeracao {
   const copy = (item.copyProposta ?? [])
     .filter((b): b is string => typeof b === 'string')
-    .map((b) => b.trim())
+    // Os [colchetes] do destaque só significam algo no compositor.
+    .map((b) => semColchetes(b).trim())
     .filter(Boolean)
   const tema = item.tema?.trim() ?? ''
   // A direção adicional é o briefing que a pessoa escreveu; o tema é só o

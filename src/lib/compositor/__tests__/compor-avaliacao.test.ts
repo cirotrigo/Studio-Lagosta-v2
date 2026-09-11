@@ -22,13 +22,22 @@ beforeEach(() => {
   mocks.regua.mockImplementation(async (args) => ({ layers: args.layers, medidas: [], avisos: [] }))
 })
 describe('compositor em avaliação local', () => {
-  it('monta segunda voz e mantém halo aprovado sem gravar/exportar', async () => {
+  it('monta segunda voz SEM halo: o fundo de texto da página não é copiado', async () => {
     const r = await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quarta no', 'Quintal'] }] }, { somenteAvaliar: true })
     expect(r.persistido).toBeNull(); expect(r.prova).toBeNull()
     expect(mocks.persistir).not.toHaveBeenCalled(); expect(mocks.pasta).not.toHaveBeenCalled()
     expect(r.layers.filter((l) => l.type === 'text').map((l) => l.content)).toEqual(['Quarta no', 'Quintal'])
-    expect(r.layers.filter((l) => l.type === 'text').every((l) => l.effects?.background?.opacity === 0.37)).toBe(true)
-    expect(mocks.regua.mock.calls[0][0].corrigir).toBe(false)
+    expect(r.layers.filter((l) => l.type === 'text').every((l) => !l.effects?.background)).toBe(true)
+    expect(r.layers.some((l) => l.id === 'halo-marca')).toBe(false)
+    // A régua corrige a força do gradiente dentro da faixa da marca
+    expect(mocks.regua.mock.calls[0][0]).toMatchObject({ corrigir: true, faixa: [0.45, 0.9] })
+    expect(r.diagnostico.tratamentoDeTexto).toBe('gradiente-de-leitura')
+    expect(r.diagnostico.halos).toEqual([])
+  })
+  it('sem foto não há gradiente: a peça sai sobre o fundo liso da marca', async () => {
+    const r = await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quintal'] }] }, { somenteAvaliar: true })
+    expect(r.layers.some((l) => l.type === 'gradient')).toBe(false)
+    expect(r.diagnostico.gradientes).toEqual([])
   })
   it('confere novamente antes de salvar a combinação selecionada', async () => {
     await expect(comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quintal'] }] }, { selecao: { combinacoes: [], limite: 6, janelaMs: 30000, interrompida: false } })).rejects.toMatchObject({ code: 'SELECAO_INDISPONIVEL' })
@@ -37,6 +46,18 @@ describe('compositor em avaliação local', () => {
   it('recusa serviço incompatível antes da régua/persistência', async () => {
     await expect(comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Quintal'] }, { papel: 'servico', linhas: ['Somente quarta'] }] }, { somenteAvaliar: true })).rejects.toMatchObject({ code: 'PAPEIS_INCOMPATIVEIS' })
     expect(mocks.regua).not.toHaveBeenCalled(); expect(mocks.persistir).not.toHaveBeenCalled()
+  })
+  it('palavra entre [colchetes] sai destacada no estilo que a página de assinatura desenhou', async () => {
+    const headline = { ...texto('headline'), type: 'rich-text' as const, richTextStyles: [{ start: 0, end: 5, fill: '#ff0000' }] }
+    mocks.paginas.mockResolvedValue([{ id: 'quintal', name: 'Quintal', width: 1080, height: 1920, layers: [headline, texto('headline2')], tags: [], background: '#000000' }])
+    const r = await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['[Quarta] no', 'Quintal'] }] }, { somenteAvaliar: true })
+    const destacada = r.layers.find((l) => l.id === 'headline')!
+    expect(destacada.type).toBe('rich-text')
+    expect(destacada.content).toBe('Quarta no')
+    expect(destacada.richTextStyles).toEqual([{ start: 0, end: 6, fill: '#ff0000' }])
+    // A segunda voz não tem destaque na página e a copy não a marcou: texto comum
+    expect(r.layers.find((l) => l.id === 'headline2')).toMatchObject({ type: 'text', content: 'Quintal' })
+    expect(r.diagnostico.blocos.find((b) => b.papel === 'headline')?.destacado).toBe(true)
   })
 })
 
@@ -65,20 +86,29 @@ it('candidatas sem opt-in não acionam seleção nem mudam o baseline', async ()
   expect(candidata.layers).toEqual(base.layers)
 })
 
-it('preferência explícita cria gradiente editável antes da régua, sem alterar copy', async () => {
+it('preferência legada de tratamento continua aceita e não devolve o halo', async () => {
   const r = await comporPeca({ projectId: 3, formato: 'story', preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' }, blocos: [{ papel: 'headline', linhas: ['Quarta no', 'Quintal'] }] }, { somenteAvaliar: true })
   expect(r.layers.filter((l) => l.type === 'text').map((l) => l.content)).toEqual(['Quarta no', 'Quintal'])
-  expect(r.layers.some((l) => l.type === 'gradient')).toBe(true)
-  expect(mocks.regua.mock.calls[0][0].layers.some((l: Layer) => l.type === 'gradient')).toBe(true)
   expect(r.layers.filter((l) => l.type === 'text').every((l) => !l.effects?.background)).toBe(true)
-  expect(r.diagnostico.tratamentoDeTexto).toBe('gradiente-suave-topo')
+  expect(r.diagnostico.tratamentoDeTexto).toBe('gradiente-de-leitura')
+  const assinatura = await comporPeca({ projectId: 3, formato: 'story', preferencias: { tratamentoDeTexto: 'assinatura' }, blocos: [{ papel: 'headline', linhas: ['Quintal'] }] }, { somenteAvaliar: true })
+  expect(assinatura.layers.filter((l) => l.type === 'text').every((l) => !l.effects?.background)).toBe(true)
 })
 
-it('persiste o gradiente como camada editável e conserva preferência na spec', async () => {
+it('persiste sem halo e conserva a preferência na spec', async () => {
   mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
   mocks.persistir.mockResolvedValue({ generationId: 'g', pageId: 'page', url: 'https://example.com/arte.png' })
   await comporPeca({ projectId: 3, formato: 'story', preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' }, blocos: [{ papel: 'headline', linhas: ['Quintal'] }] })
-  expect(mocks.persistir.mock.calls[0][0]).toMatchObject({ layers: expect.arrayContaining([expect.objectContaining({ type: 'gradient', metadata: { tratamentoDeTexto: 'gradiente-suave-topo' } })]), fieldValues: { spec: { preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' } } } })
+  const entrada = mocks.persistir.mock.calls[0][0]
+  expect(entrada).toMatchObject({ fieldValues: { spec: { preferencias: { tratamentoDeTexto: 'gradiente-suave-topo' } } } })
+  expect((entrada.layers as Layer[]).filter((l) => l.type === 'text').every((l) => !l.effects?.background)).toBe(true)
+})
+
+it('o nome da página não leva os colchetes do destaque', async () => {
+  mocks.pasta.mockResolvedValue({ id: 42, name: 'Semana' })
+  mocks.persistir.mockResolvedValue({ generationId: 'g', pageId: 'page', url: 'https://example.com/arte.png' })
+  await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Vem pro [Quintal]'] }] })
+  expect(String(mocks.persistir.mock.calls[0][0].pageName ?? mocks.persistir.mock.calls[0][0].nome ?? '')).not.toMatch(/[[\]]/)
 })
 
 it('variante explícita ausente recebe diagnóstico específico sem fallback', async () => {

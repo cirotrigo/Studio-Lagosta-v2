@@ -398,7 +398,7 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
               type: 'array',
               items: { type: 'string' },
               description:
-                'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca.',
+                'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca. DESTAQUE: marque com [colchetes] 1 ou 2 palavras da peça que decidem a leitura ("Terça é dia de [rodízio]") — na arte do editor elas saem na cor e no peso de destaque da marca; sem colchetes, sem destaque.',
             },
             legenda: { type: 'string', description: 'A legenda do Instagram, quando houver.' },
             fotoDriveId: { type: 'string', description: 'A foto do acervo (de buscar-fotos).' },
@@ -486,7 +486,7 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
         type: 'array',
         items: { type: 'string' },
         description:
-          'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui.',
+          'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui. Marque com [colchetes] 1 ou 2 palavras de destaque — na arte do editor elas saem na cor e no peso de destaque da marca.',
       },
       legenda: { type: 'string', description: 'Nova legenda.' },
       fotoDriveId: { type: 'string', description: 'Outra foto do acervo.' },
@@ -1301,7 +1301,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               },
               "minItems": 1,
               "maxItems": 6,
-              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas."
+              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
             }
           },
           "required": [
@@ -1362,8 +1362,9 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
           },
           "tratamentoDeTexto": {
-            "description": "Escolha explícita: gradiente-suave-topo substitui fundos dos textos do topo por gradiente preto suave editável. Sem opção mantém assinatura. Aprovado visualmente na Real; revisar em outras fotos/marcas. Não move texto nem muda foto.",
+            "description": "Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado.",
             "enum": [
+              "gradiente",
               "assinatura",
               "gradiente-suave-topo"
             ],
@@ -1492,7 +1493,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     },
                     "minItems": 1,
                     "maxItems": 6,
-                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas."
+                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
                   }
                 },
                 "required": [
@@ -1553,8 +1554,9 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                   "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
                 },
                 "tratamentoDeTexto": {
-                  "description": "Escolha explícita: gradiente-suave-topo substitui fundos dos textos do topo por gradiente preto suave editável. Sem opção mantém assinatura. Aprovado visualmente na Real; revisar em outras fotos/marcas. Não move texto nem muda foto.",
+                  "description": "Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado.",
                   "enum": [
+                    "gradiente",
                     "assinatura",
                     "gradiente-suave-topo"
                   ],
