@@ -127,6 +127,37 @@ describe('blocos', () => {
     expect(p.offsets).toEqual([0, 37, 235])
     expect(p.height).toBe(269)
   })
+
+  it('o recuo da página entra na pilha: o ícone que mora no recuo não empurra a coluna (Real, segunda)', () => {
+    const icone = { url: 'https://exemplo.com/icone-sacola.png', width: 72, height: 72, lado: 'antes' as const, offsetX: -92, offsetY: -12 }
+    const b = (width: number, recuo = 0) => ({
+      papel: 'servico' as const,
+      layer: texto('servico', 'servico', {}),
+      width,
+      height: 42,
+      escala: 1,
+      cor: '#fff',
+      ...(recuo ? { recuo, elementos: [icone], escalaDosElementos: 1 } : {}),
+    })
+    const blocos = [b(300), b(520, 90), b(480, 90)] as unknown as Parameters<typeof empilhar>[0]
+    const plana = empilhar(blocos, 14)
+    expect(plana.recuos).toBeUndefined()
+    const recuada = empilhar(blocos, 14, 'esquerda')
+    expect(recuada.recuos).toEqual([0, 90, 90])
+    expect(recuada.offsets).toEqual(plana.offsets)
+    expect(recuada.height).toBe(plana.height)
+    // O ícone passa 92 px da tinta; 90 deles moram no recuo
+    expect(recuada.esquerda).toBe(plana.esquerda - 90)
+    expect(recuada.width).toBe(recuada.esquerda + 610)
+    // Espelhado à direita, o recuo conta da borda direita e o ícone fica do lado de dentro
+    const direita = empilhar(blocos, 14, 'direita')
+    expect(direita.direita).toBe(0)
+    expect(direita.esquerda).toBe(plana.esquerda)
+    expect(direita.width).toBe(610 + plana.esquerda)
+    // Sem recuo nenhum, o lado não muda nada
+    const rentes = [b(300), b(520)] as unknown as Parameters<typeof empilhar>[0]
+    expect(empilhar(rentes, 14, 'esquerda')).toEqual(empilhar(rentes, 14))
+  })
 })
 
 /** Foto sintética: metade esquerda lisa e escura, metade direita ruidosa e clara. */

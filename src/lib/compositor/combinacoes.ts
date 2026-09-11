@@ -58,6 +58,12 @@ export interface TextoDoArranjo {
   tipo: 'horario' | 'endereco' | null
   /** O id do elemento da combinação de onde o texto veio (quando veio de uma). */
   elementoId?: string
+  /**
+   * Quanto a tinta começa para DENTRO da borda em que o grupo alinha (px da
+   * origem): "Funcionamento" rente e as unidades 90 px para dentro, ao lado dos
+   * ícones. Ausente = rente (e sempre em grupo centrado).
+   */
+  recuo?: number
 }
 
 export type OrigemDoArranjo = 'pagina' | 'combinacao'
@@ -75,6 +81,8 @@ export interface ArranjoDeGrupo {
   temLogo: boolean
   /** Onde os textos do arranjo moram no canvas de origem (união das caixas) — na página, é o que diz topo ou rodapé. */
   caixa?: { x: number; y: number; width: number; height: number }
+  /** Do topo da primeira tinta à base da última, na origem — o que mede o vão entre dois grupos da página. */
+  faixaDaTinta?: { topo: number; base: number }
 }
 
 interface Retangulo {
@@ -237,6 +245,7 @@ export function arranjoDasCamadas(args: {
   const presos = associarOrnamentos(textos, elementos.filter((e) => !usados.has(e.id)))
 
   const itens: TextoDoArranjo[] = []
+  const tintas: Retangulo[] = []
   let anterior: { y: number; altura: number; umaLinha: number; linhas: string[] } | null = null
   for (const texto of textos) {
     const estilo = estiloDaCamada(texto, args.todas ?? args.camadas)
@@ -262,21 +271,50 @@ export function arranjoDasCamadas(args: {
       tipo: papel === 'servico' ? tipoDoServico(texto, doTexto) : null,
       ...(typeof elementoId === 'string' && elementoId ? { elementoId } : {}),
     })
+    tintas.push(tinta)
     anterior = { y, altura: tinta.height, umaLinha: alturaDeUmaLinha(texto), linhas: (texto.content ?? '').split('\n') }
   }
   if (itens.length === 0) return null
 
   const referencia = itens.find((t) => t.papel === 'headline') ?? itens[0]
+  const alinhamento = referencia.estilo.alinhamento ?? null
+  const recuos = recuosDaOrigem(itens, tintas, alinhamento)
   return {
     id: args.id,
     nome: args.nome,
     origem: args.origem,
-    textos: itens,
+    textos: recuos ? itens.map((t, i) => (recuos[i] > 0 ? { ...t, recuo: recuos[i] } : t)) : itens,
     papeis: [...new Set(itens.map((t) => t.papel))],
-    alinhamento: referencia.estilo.alinhamento ?? null,
+    alinhamento,
     temLogo: itens.some((t) => t.elementos.some((e) => e.logo)),
     caixa: uniaoDasCaixas(textos),
+    faixaDaTinta: { topo: Math.min(...tintas.map((t) => t.y)), base: Math.max(...tintas.map((t) => t.y + t.height)) },
   }
+}
+
+/** Menos que isto é mão no editor, não desenho: o texto arrastado 4 px para dentro não vira recuo. */
+const RECUO_MINIMO = 8
+
+/**
+ * O recuo de cada texto dentro da borda em que o grupo alinha: a tinta rente é
+ * 0; a linha de serviço 90 px para dentro, ao lado do ícone, é 90 (a segunda da
+ * Real, 11/09/2026 — sem isto as três linhas saíam no mesmo x e o ícone ia a
+ * 30 px da borda). Só conta texto alinhado como o grupo; grupo centrado não tem
+ * recuo. `null` quando ninguém tem recuo, o caso comum.
+ */
+function recuosDaOrigem(itens: TextoDoArranjo[], tintas: Retangulo[], alinhamento: Alinhamento | null): number[] | null {
+  if (alinhamento !== 'esquerda' && alinhamento !== 'direita') return null
+  const alinhados = itens.map((t) => (t.estilo.alinhamento ?? 'esquerda') === alinhamento)
+  const bordas = tintas.map((t) => (alinhamento === 'esquerda' ? t.x : t.x + t.width))
+  const doGrupo = bordas.filter((_, i) => alinhados[i])
+  if (doGrupo.length < 2) return null
+  const rente = alinhamento === 'esquerda' ? Math.min(...doGrupo) : Math.max(...doGrupo)
+  const recuos = bordas.map((borda, i) => {
+    if (!alinhados[i]) return 0
+    const recuo = Math.round(Math.abs(borda - rente))
+    return recuo >= RECUO_MINIMO ? recuo : 0
+  })
+  return recuos.some((r) => r > 0) ? recuos : null
 }
 
 /**

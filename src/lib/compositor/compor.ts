@@ -376,6 +376,8 @@ function candidatosDePosicao(
     ancoraDaPagina?: Ancora | null
     /** A margem lateral do bloco em cada alinhamento — a do grupo na página. */
     margemPara?: (alinha: Alinhamento) => number | undefined
+    /** A largura do bloco em cada alinhamento: com o recuo da página, o lado de dentro muda. */
+    larguraPara?: (alinha: Alinhamento) => number
   } = {},
 ): CandidatoDePosicao<RotuloDePosicao>[] {
   const pref = spec.preferencias ?? {}
@@ -406,7 +408,11 @@ function candidatosDePosicao(
             : 0.3
       const reservaBaixo = ancora === 'rodape' ? extra.reservaNoRodape ?? 0 : 0
       const reservaCima = ancora === 'topo' ? extra.reservaNoTopo ?? 0 : 0
-      const rect = retanguloDoBloco(g, ancora, alinha, bloco.width, bloco.height + reservaBaixo + reservaCima)
+      // A margem do grupo na página chega ao principal também: declarada em
+      // f9c24278, ela nunca era usada aqui, e o principal caía na margem da
+      // assinatura (a do texto mais rente de TODA a página).
+      const largura = extra.larguraPara?.(alinha) ?? bloco.width
+      const rect = retanguloDoBloco(g, ancora, alinha, largura, bloco.height + reservaBaixo + reservaCima, extra.margemPara?.(alinha))
       saida.push({ rect: { ...rect, y: rect.y + reservaCima, height: bloco.height }, preferencia, rotulo: { ancora, alinha, crop } })
     }
   }
@@ -701,6 +707,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         layer,
         chave,
         ...(vaoAntes !== null ? { vaoAntes } : {}),
+        ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
       })
     }
@@ -741,6 +748,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     chave: string
     blocos: BlocoMontado[]
     pilha: ReturnType<typeof empilhar>
+    /** A pilha com o recuo que a página desenhou, para o lado em que o grupo alinha lá. */
+    pilhaRecuada?: ReturnType<typeof empilhar>
     principal: boolean
     ancora: Ancora
     /** A âncora veio de uma caixa REAL da página (e não do default do papel). */
@@ -765,10 +774,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const centro = caixas.length > 0 ? caixas.reduce((acc, c) => acc + (c.y + c.height / 2), 0) / caixas.length / canvas.height : null
     const soServico = papeis.every((p) => p === 'servico')
     const ancora: Ancora = soServico || centro === null ? (soServico ? 'rodape' : 'topo') : centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
+    const ladoDoRecuo = arranjoDoGrupo?.alinhamento === 'esquerda' || arranjoDoGrupo?.alinhamento === 'direita' ? arranjoDoGrupo.alinhamento : null
     return {
       chave,
       blocos,
       pilha: empilhar(blocos, g.gap),
+      ...(ladoDoRecuo && blocos.some((b) => (b.recuo ?? 0) > 0) ? { pilhaRecuada: empilhar(blocos, g.gap, ladoDoRecuo) } : {}),
       principal: papeis.includes('headline'),
       ancora,
       temCaixa: caixas.length > 0,
@@ -795,17 +806,52 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // todos punha o serviço do Happy hour do TERO 18 px para dentro e a oferta do
   // Happy wine 11 px para fora (11/09/2026). Virado para o outro lado pelo mapa,
   // o grupo leva a mesma distância à borda.
+  //
+  // O recuo da página (a linha de serviço 90 px para dentro de "Funcionamento",
+  // ao lado do ícone, na segunda da Real) vale no lado em que o grupo alinha lá;
+  // virado pelo mapa, o grupo sai rente, como antes.
+  const pilhaPara = (c: BlocoComposto, alinha: Alinhamento) => (c.pilhaRecuada && c.pilhaRecuada.lado === alinha ? c.pilhaRecuada : c.pilha)
   const margemDoGrupo = (c: BlocoComposto, alinha: Alinhamento): number | undefined => {
     const a = arranjoPorGrupo.get(c.chave)
     if (a?.origem !== 'pagina' || !a.caixa || assinatura.origem.formatoDaPagina !== spec.formato || alinha === 'centro') return undefined
     const distancia = a.alinhamento === 'direita' ? canvas.width - (a.caixa.x + a.caixa.width) : a.alinhamento === 'esquerda' ? a.caixa.x : null
     if (distancia === null) return undefined
-    return Math.max(24, Math.min(240, Math.round(distancia - (alinha === 'esquerda' ? c.pilha.esquerda : c.pilha.direita))))
+    const p = pilhaPara(c, alinha)
+    return Math.max(24, Math.min(240, Math.round(distancia - (alinha === 'esquerda' ? p.esquerda : p.direita))))
+  }
+  // O vão entre dois grupos que moram na mesma borda é o da PÁGINA: da base da
+  // tinta do de cima ao topo da tinta do de baixo, descontado o que os elementos
+  // passam das pilhas (o filete sob o apoio, o ícone acima do serviço). O ritmo
+  // fixo de 1,6 gap deixava o apoio da terça da Real a 24 px de "Funcionamento",
+  // contra 61 no modelo, e abria a segunda 14 px a mais (11/09/2026). Bordas
+  // diferentes, página de outro formato ou vão que não é vão (sobreposto, ou
+  // maior que um quarto da altura) ficam no ritmo da casa.
+  const vaoEntreGrupos = (acima: BlocoComposto, abaixo: BlocoComposto): number => {
+    const padrao = Math.round(g.gap * 1.6)
+    const a = arranjoPorGrupo.get(acima.chave)
+    const b = arranjoPorGrupo.get(abaixo.chave)
+    if (a?.origem !== 'pagina' || b?.origem !== 'pagina' || !a.faixaDaTinta || !b.faixaDaTinta) return padrao
+    if (assinatura.origem.formatoDaPagina !== spec.formato || acima.ancora !== abaixo.ancora) return padrao
+    const vao = (b.faixaDaTinta.topo - a.faixaDaTinta.base) * escalaDoFormato
+    if (vao < 0 || vao > canvas.height * 0.25) return padrao
+    const ultimo = acima.blocos.length - 1
+    const sobraAbaixoDoDeCima = acima.pilha.height - (acima.pilha.offsets[ultimo] + acima.blocos[ultimo].height)
+    const sobraAcimaDoDeBaixo = abaixo.pilha.offsets[0] ?? 0
+    return Math.max(0, Math.round(vao - sobraAbaixoDoDeCima - sobraAcimaDoDeBaixo))
   }
   // Os blocos secundários reservam a própria altura na âncora deles, para o
-  // principal não pousar em cima.
-  const reservaNoRodape = secundarios.filter((c) => c.ancora === 'rodape').reduce((acc, c) => acc + c.pilha.height + Math.round(g.gap * 1.6), 0)
-  const reservaNoTopo = secundarios.filter((c) => c.ancora === 'topo').reduce((acc, c) => acc + c.pilha.height + Math.round(g.gap * 1.6), 0)
+  // principal não pousar em cima — cada um com o vão até o vizinho do lado do
+  // principal (o próximo grupo da mesma borda, ou o próprio principal).
+  const vaoRumoAoPrincipal = new Map<BlocoComposto, number>()
+  for (const borda of ['rodape', 'topo'] as const) {
+    const fila = secundarios.filter((c) => c.ancora === borda)
+    fila.forEach((c, i) => {
+      const vizinho = fila[i + 1] ?? principal
+      vaoRumoAoPrincipal.set(c, borda === 'rodape' ? vaoEntreGrupos(vizinho, c) : vaoEntreGrupos(c, vizinho))
+    })
+  }
+  const reservaNoRodape = secundarios.filter((c) => c.ancora === 'rodape').reduce((acc, c) => acc + c.pilha.height + vaoRumoAoPrincipal.get(c)!, 0)
+  const reservaNoTopo = secundarios.filter((c) => c.ancora === 'topo').reduce((acc, c) => acc + c.pilha.height + vaoRumoAoPrincipal.get(c)!, 0)
 
   // 2. O mapa e o assunto — por corte candidato.
   const cortes = cortesCandidatos(foto, canvas, spec.preferencias?.enquadramento === 'fixo')
@@ -827,6 +873,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       alinhaDaAssinatura: principal.alinha ?? assinatura.alinhamento,
       ancoraDaPagina: principal.temCaixa ? principal.ancora : null,
       margemPara: (al) => margemDoGrupo(principal, al),
+      larguraPara: (al) => pilhaPara(principal, al).width,
     })
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: cfgGradiente.cor, assunto })
@@ -856,13 +903,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const textAlign = alinhamentoParaTextAlign(alinhaDoBloco)
     // Os elementos presos aos textos (o ícone antes, o selo depois) moram dentro
     // do retângulo: a coluna de tinta começa depois do que passa à esquerda.
-    const { esquerda, direita } = c.pilha
+    const { esquerda, direita, recuos } = pilhaPara(c, alinhaDoBloco)
     const camadas = c.blocos.map((b, i) => {
+      const recuo = recuos?.[i] ?? 0
       const x =
         alinhaDoBloco === 'esquerda'
-          ? rect.x + esquerda
+          ? rect.x + esquerda + recuo
           : alinhaDoBloco === 'direita'
-            ? rect.x + rect.width - direita - b.width
+            ? rect.x + rect.width - direita - b.width - recuo
             : rect.x + esquerda + (rect.width - esquerda - direita - b.width) / 2
       const camada: Layer = { ...b.layer, position: { x: Math.round(x), y: Math.round(rect.y + c.pilha.offsets[i]) }, style: { ...b.layer.style, textAlign } }
       camadasDeTexto.push(camada)
@@ -875,13 +923,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   let ocupadoNoTopo = 0
   for (const c of secundarios) {
     const al = c.alinha ?? alinha
-    let rect = retanguloDoBloco(g, c.ancora, al, c.pilha.width, c.pilha.height, margemDoGrupo(c, al))
+    let rect = retanguloDoBloco(g, c.ancora, al, pilhaPara(c, al).width, c.pilha.height, margemDoGrupo(c, al))
     if (c.ancora === 'rodape') {
       rect = { ...rect, y: g.H - g.safeRodape - c.pilha.height - ocupadoNoRodape }
-      ocupadoNoRodape += c.pilha.height + Math.round(g.gap * 1.6)
+      ocupadoNoRodape += c.pilha.height + (vaoRumoAoPrincipal.get(c) ?? Math.round(g.gap * 1.6))
     } else if (c.ancora === 'topo') {
       rect = { ...rect, y: g.safeTopo + ocupadoNoTopo }
-      ocupadoNoTopo += c.pilha.height + Math.round(g.gap * 1.6)
+      ocupadoNoTopo += c.pilha.height + (vaoRumoAoPrincipal.get(c) ?? Math.round(g.gap * 1.6))
     }
     posicionar(c, rect, al, c.ancora)
   }

@@ -93,6 +93,32 @@ describe('arranjo de um grupo', () => {
     expect(Math.abs(forma.position.x - 391.5)).toBeLessThanOrEqual(1)
     expect([primeira, segunda].find((l) => l.type === 'logo')?.id).toBe('logo')
   })
+
+  it('grava o recuo das linhas ao lado dos ícones e a faixa da tinta do grupo (Real, segunda)', () => {
+    const servico = { fontFamily: 'StageGrotesk', fontSize: 34, lineHeight: 1.2, color: CLARO, textAlign: 'left' as const }
+    const rodape: Layer[] = [
+      camada({ id: 'servico', type: 'text', content: 'Funcionamento', style: { ...servico, fontSize: 50, color: '#B78566' }, position: { x: 70, y: 1518 }, size: { width: 600, height: 60 }, metadata: { groupId: 'r' } }),
+      camada({ id: 'servico-2', type: 'text', name: 'servico', content: 'Shopping Vitória - 11h às 22h', style: servico, position: { x: 160, y: 1639 }, size: { width: 760, height: 42 }, metadata: { groupId: 'r' } }),
+      camada({ id: 'sacola', type: 'image', fileUrl: 'https://exemplo.com/icone-sacola.png', position: { x: 74, y: 1627 }, size: { width: 72, height: 72 }, metadata: { groupId: 'r' } }),
+      camada({ id: 'servico-3', type: 'text', name: 'servico', content: 'Praia do Canto - Fechado', style: servico, position: { x: 160, y: 1739 }, size: { width: 760, height: 42 }, metadata: { groupId: 'r' } }),
+      camada({ id: 'praia', type: 'image', fileUrl: 'https://exemplo.com/icone-praia.png', position: { x: 74, y: 1725 }, size: { width: 72, height: 72 }, metadata: { groupId: 'r' } }),
+    ]
+    const a = arranjoDasCamadas({ id: 'p:r', nome: 'Rodapé', origem: 'pagina', camadas: rodape, medir: medirFalso })!
+    expect(a.alinhamento).toBe('esquerda')
+    expect(a.textos.map((t) => t.recuo ?? 0)).toEqual([0, 90, 90])
+    // Da primeira linha (1518) à base da última: 1739 + 34 × 1,2
+    expect(a.faixaDaTinta).toEqual({ topo: 1518, base: 1739 + Math.ceil(34 * 1.2) })
+  })
+
+  it('texto poucos px fora do alinhamento não vira recuo; grupo centrado não tem recuo', () => {
+    expect(arranjoDoGrupo().textos.every((t) => t.recuo === undefined)).toBe(true)
+    const torto: Layer[] = [
+      camada({ id: 'headline', type: 'text', content: 'Terça Pede', style: { fontFamily: 'Branley', fontSize: 142, lineHeight: 1, color: CLARO, textAlign: 'left' }, position: { x: 74, y: 1309 }, size: { width: 860, height: 142 }, metadata: { groupId: 'p' } }),
+      camada({ id: 'apoio', type: 'text', content: 'Doçura e Aconchego', style: { fontFamily: 'StageGrotesk', fontSize: 50, lineHeight: 1.2, color: CLARO, textAlign: 'left' }, position: { x: 78, y: 1458 }, size: { width: 760, height: 60 }, metadata: { groupId: 'p' } }),
+    ]
+    const a = arranjoDasCamadas({ id: 'p:p', nome: 'Principal', origem: 'pagina', camadas: torto, medir: medirFalso })!
+    expect(a.textos.every((t) => t.recuo === undefined)).toBe(true)
+  })
 })
 
 describe('linhas da copy nos textos', () => {
