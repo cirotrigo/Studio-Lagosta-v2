@@ -215,9 +215,19 @@ export function estiloDaCamada(camada: Layer, todas: Layer[] = []): EstiloDePape
   const conteudo = camada.content ?? ''
   const prefixo = PREFIXO.exec(conteudo)?.[1]
   const shadow = camada.effects?.shadow
+  // O editor grava o peso como TEXTO ("100", "bold"): lido só como número, o
+  // "HOUR" em Montserrat 100 do Happy hour do TERO saía no peso normal.
+  const peso =
+    typeof s.fontWeight === 'number' && Number.isFinite(s.fontWeight)
+      ? s.fontWeight
+      : typeof s.fontWeight === 'string' && /^\d{3}$/.test(s.fontWeight.trim())
+        ? Number(s.fontWeight.trim())
+        : s.fontWeight === 'bold'
+          ? 700
+          : null
   return {
     fontFamily,
-    ...(typeof s.fontWeight === 'number' ? { fontWeight: s.fontWeight } : {}),
+    ...(peso ? { fontWeight: peso } : {}),
     fontSize,
     lineHeight,
     letterSpacing: typeof s.letterSpacing === 'number' ? s.letterSpacing : 0,
@@ -361,30 +371,56 @@ export function montarAssinatura(args: {
 
   // As MARGENS vêm da página, não dos números do projeto (Ciro, 03/09/2026:
   // "compare com a margem superior e inferior do template, está dando muito
-  // espaço"). Onde o primeiro texto começa é o topo útil; onde o último
-  // texto ou a logo termina é o rodapé útil; a menor distância à lateral é a
-  // margem horizontal. Só vale para o formato da própria página.
+  // espaço"). Só vale para o formato da própria página.
   if (args.pagina && args.formatoDaPagina) {
-    const uteis = args.pagina.layers.filter((c) => c.visible !== false && (camadaDeTexto(c) || c.type === 'logo'))
-    const textos = uteis.filter((c) => camadaDeTexto(c))
+    const textos = args.pagina.layers.filter((c) => c.visible !== false && camadaDeTexto(c))
     if (textos.length >= 2) {
       const H = args.pagina.height
       const W = args.pagina.width
+      // A caixa que a camada ocupa, com a rotação do editor (o Konva gira em torno da posição).
+      const caixaNaPagina = (c: Layer) => {
+        const { x, y } = c.position
+        const { width: w, height: h } = c.size
+        const rad = ((c.rotation ?? 0) * Math.PI) / 180
+        if (!rad) return { x, y, width: w, height: h }
+        const pontos = [[0, 0], [w, 0], [0, h], [w, h]].map(([px, py]) => [x + px * Math.cos(rad) - py * Math.sin(rad), y + px * Math.sin(rad) + py * Math.cos(rad)])
+        const xs = pontos.map((p) => p[0])
+        const ys = pontos.map((p) => p[1])
+        return { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) }
+      }
+      // As margens de cima e de baixo saem dos TEXTOS e dos elementos que moram
+      // no grupo deles (o ícone, o filete, a logo ao lado do serviço) — é esse
+      // conjunto que a peça empilha. A logo SOLTA no canto não conta: no
+      // "Convite do dia" do Quintal (11/09/2026) ela terminava 32 px abaixo do
+      // CTA e empurrava o grupo inteiro para baixo, até ele encostar nela e a
+      // logo fugir para o canto de cima. Nem a logo acima da manchete (os
+      // "Clássicos" do TERO) pode puxar o texto para cima dela.
+      const gruposDosTextos = new Set(textos.map((c) => grupoDaCamada(c)).filter((g): g is string => !!g))
+      const doGrupo = args.pagina.layers.filter((c) => {
+        if (c.visible === false || camadaDeTexto(c) || c.type === 'gradient' || c.type === 'gradient2') return false
+        const grupo = grupoDaCamada(c)
+        return !!grupo && gruposDosTextos.has(grupo)
+      })
+      const caixas = [...textos, ...doGrupo].map(caixaNaPagina).filter((c) => !(c.width >= W * 0.9 && c.height >= H * 0.5))
       // Cada margem sai do que mora na METADE dela: a página com todo o texto no
       // rodapé não diz nada sobre o topo (medido em 11/09/2026 nos modelos do
       // Quintal: o topo "derivado" dava 1281 px).
-      // O topo útil é onde o primeiro TEXTO começa: a logo acima da manchete
-      // (os "Clássicos" do TERO) não pode puxar o texto para cima dela.
-      const deCima = textos.filter((c) => c.position.y + c.size.height / 2 < H / 2)
-      const deBaixo = uteis.filter((c) => c.position.y + c.size.height / 2 >= H / 2)
-      const lateral = Math.min(...textos.map((c) => Math.min(c.position.x, W - (c.position.x + c.size.width))))
+      const deCima = caixas.filter((c) => c.y + c.height / 2 < H / 2)
+      const deBaixo = caixas.filter((c) => c.y + c.height / 2 >= H / 2)
+      // A margem lateral é a do lado em que cada texto ALINHA. A caixa larga de um
+      // texto alinhado à esquerda chega perto da borda direita sem que a tinta
+      // chegue: no Happy wine do TERO o endereço dava 40 px e o bloco todo
+      // encostava na esquerda, 47 px além do modelo. Texto centrado não diz nada.
+      const lados = textos.flatMap((c) =>
+        c.style?.textAlign === 'center' ? [] : c.style?.textAlign === 'right' ? [W - (c.position.x + c.size.width)] : [c.position.x],
+      )
+      const lateral =
+        lados.length > 0 ? Math.min(...lados) : Math.min(...textos.map((c) => Math.min(c.position.x, W - (c.position.x + c.size.width))))
       const base = numeros.geometria[args.formatoDaPagina]
       numeros.geometria[args.formatoDaPagina] = {
         ...base,
-        ...(deCima.length > 0 ? { safeTopo: Math.max(60, Math.round(Math.min(...deCima.map((c) => c.position.y)))) } : {}),
-        ...(deBaixo.length > 0
-          ? { safeRodape: Math.max(60, Math.round(H - Math.max(...deBaixo.map((c) => c.position.y + c.size.height)))) }
-          : {}),
+        ...(deCima.length > 0 ? { safeTopo: Math.max(60, Math.round(Math.min(...deCima.map((c) => c.y)))) } : {}),
+        ...(deBaixo.length > 0 ? { safeRodape: Math.max(60, Math.round(H - Math.max(...deBaixo.map((c) => c.y + c.height)))) } : {}),
         margemH: Math.max(40, Math.min(200, Math.round(lateral))),
       }
     }

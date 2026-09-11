@@ -154,6 +154,21 @@ export function checkTextGeometry(
   //    ocupam o mesmo RETÂNGULO sem os pixels se tocarem (estão em x
   //    diferentes) — 11px de interseção em fs77 é roçar de pontas, 25px em
   //    fs38 é texto sobre texto.
+  //    Encaixe de DESENHO: a voz 2 que a página de assinatura põe entrando na
+  //    linha de cima (o "executivo" em script sob o "Almoço" do Quintal) chega
+  //    marcada pelo compositor com quanto a página sobrepõe
+  //    (`metadata.compositor.encaixe`). Entre textos do MESMO grupo esse tanto
+  //    não é colisão — sem isso o autofix encolhia a manchete até desfazer o
+  //    encaixe (88 → 77 px, 11/09/2026). Entre grupos diferentes não vale nada.
+  const porId = new Map(layers.map((l) => [l.id, l]))
+  const encaixeDaCamada = (l: Layer | undefined): number => {
+    const v = (l?.metadata as { compositor?: { encaixe?: unknown } } | undefined)?.compositor?.encaixe
+    return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0
+  }
+  const grupoDe = (l: Layer | undefined): string | null => {
+    const g = (l?.metadata as { groupId?: unknown } | undefined)?.groupId
+    return typeof g === 'string' && g ? g : null
+  }
   for (let i = 0; i < metricas.length; i++) {
     for (let j = i + 1; j < metricas.length; j++) {
       const a = metricas[i]
@@ -162,7 +177,11 @@ export function checkTextGeometry(
         Math.min(a.glyphBottom, b.glyphBottom) - Math.max(a.glyphTop, b.glyphTop)
       const overlapH =
         Math.min(a.box.x + a.box.width, b.box.x + b.box.width) - Math.max(a.box.x, b.box.x)
-      const toleranciaV = Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize))
+      const la = porId.get(a.layerId)
+      const lb = porId.get(b.layerId)
+      const mesmoGrupo = grupoDe(la) !== null && grupoDe(la) === grupoDe(lb)
+      const encaixe = mesmoGrupo ? Math.max(encaixeDaCamada(la), encaixeDaCamada(lb)) : 0
+      const toleranciaV = Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize)) + encaixe
       if (overlapV > toleranciaV && overlapH > COLLISION_TOLERANCE_PX) {
         colisoes.push({
           tipo: 'colisao',

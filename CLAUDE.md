@@ -5391,3 +5391,50 @@ deploy do compositor de arranjos (PRs #119 e #121). Troca feita por
 - ⚠️ A prova tira a copy da própria página. Em página que desenha a voz 2 por
   cima da manchete, a manchete da prova sai com a última linha repetida — é
   artefato da prova, não da usina (a copy real chega com as linhas uma vez só).
+
+### A peça segue o modelo ajustado: lado, margens, peso e encaixe (11/09/2026)
+
+O Ciro ajustou os modelos do Quintal e do TERO no editor, e a comparação
+`provar-combinacoes-no-compositor.ts --assinatura --comparar` (o modelo
+renderizado como está, ao lado da peça com a mesma copy e a mesma foto, e a
+tabela papel a papel de posição, corpo e cor) mostrou seis divergências. Cinco
+eram da usina:
+
+- 🔴 **A preferência de posição NUNCA valia o lado do modelo.** Em
+  `candidatosDePosicao` só o ALINHAMENTO vinha da página; a âncora seguia
+  sorteada pelo rodízio, e como a preferência de 0,6 pede as duas, o lado do
+  modelo pontuava 0,30 como os outros. Medido: o Almoço executivo do Quintal
+  (esquerda no modelo) perdia para a direita por 0,469 × 0,438; o do TERO, por
+  0,666 × 0,660; o feed do Quintal (centro), por 0,823 × 0,794. Hoje a âncora
+  da página entra no rodízio; o sorteio só completa o que a página não diz. Os
+  pesos do mapa não mudaram — a foto ainda vira o lado quando o outro é
+  claramente melhor ou cobre o assunto.
+- 🔴 **A margem de baixo NÃO conta a logo solta no canto.** Ela conta os textos
+  e os elementos que moram no grupo deles (ícone, filete, a logo ao lado do
+  serviço). No "Convite do dia" do Quintal a logo terminava 32 px abaixo do
+  CTA: o grupo descia até encostar nela, e ela fugia para o canto de cima.
+- 🔴 **A margem lateral é a do lado em que o texto alinha, e cada grupo leva a
+  sua.** A caixa larga de um texto alinhado à esquerda chega perto da borda
+  direita sem que a tinta chegue — o endereço do Happy wine dava 40 px e o bloco
+  todo encostava na esquerda, 47 px além do modelo. E uma margem só para todos
+  os grupos punha o serviço com ícone do Happy hour 18 px para dentro. Hoje a
+  margem de cada grupo de página é a caixa dos textos dele na borda em que
+  alinham, menos o quanto os elementos passam da tinta (`margemDoGrupo`);
+  virado pelo mapa, leva a mesma distância à borda oposta.
+- 🔴 **O peso da fonte chega como TEXTO do editor** (`"100"`, `"bold"`), e
+  `estiloDaCamada` só lia número: o "HOUR" em Montserrat 100 do Happy hour saía
+  no peso normal.
+- 🔴 **A regra de vão do Espeto (sobrepor mais de meia linha = sem vão) desfazia
+  encaixe legítimo**: o "quintal" em script entra 44 px em "é dia de" no
+  Convite do dia, e descolava 55 px. Hoje só é "desenhado por cima" o texto que
+  REPETE uma linha do anterior ou COMEÇA numa delas; o resto mantém o vão da
+  página, com teto de meia altura.
+- 🔴 **Encaixe de desenho não é colisão.** O compositor marca a camada com
+  quanto a página sobrepõe (`metadata.compositor.encaixe`), e `checkTextGeometry`
+  soma isso à tolerância vertical entre textos do MESMO grupo. Sem a marca, o
+  autofix encolhia a manchete até desfazer o encaixe ("Almoço" 88 → 77 px;
+  "Sexta é dia de" 97 → 93). Entre grupos diferentes a marca não vale nada.
+- ⚠️ A sexta divergência era da PROVA: a camada "headline Copy" do feed antigo
+  do Quintal é a segunda voz para a assinatura (`papelDoNome`), mas
+  `copyDosPapeis` da defasagem só aceita o nome exato do papel, e a copy da
+  prova saía sem "Quintal".
