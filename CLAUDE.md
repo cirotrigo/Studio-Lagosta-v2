@@ -5438,3 +5438,32 @@ eram da usina:
   do Quintal é a segunda voz para a assinatura (`papelDoNome`), mas
   `copyDosPapeis` da defasagem só aceita o nome exato do papel, e a copy da
   prova saía sem "Quintal".
+- **A logo da página é conferida contra a caixa de cada TEXTO**, não contra o
+  retângulo do grupo: a linha longa do serviço esticava o retângulo do rodapé
+  do Convite do dia até a logo, e ela ia para o canto de cima.
+
+Depois do deploy, a recomposição das peças reais (`scripts/recompor-pecas-reais.ts`,
+rodada antes e depois, folha contra folha) pegou mais três coisas:
+
+- 🔴 **O canto gravado na spec (`cantoDaMarca`) cai quando encosta no texto.** O
+  chat grava canto em boa parte das peças (30 dias: Bacana 38 de 39, Quintal 21
+  de 32, Real 7 de 31), e `escolherCanto` obedecia o pedido mesmo colidindo:
+  sem canto livre na lista do pedido, devolvia o próprio pedido. Com o lado da
+  página valendo, a variante da Real alinhada à direita pôs pré-título e
+  manchete debaixo da logo "Real" do canto de cima. Hoje o pedido que encosta
+  cai com aviso, e vale a posição da página e depois o canto livre.
+- 🔴 **Recompor fixa a posição original** (`specComAPosicaoOriginal`): âncora e
+  alinhamento de `fieldValues.composicao.posicao` entram na spec da
+  recomposição, a não ser que ela já peça posição. Sem isso, a primeira edição
+  de texto de uma peça composta antes de 11/09 mudaria o lado do bloco.
+- 🔴 **Caixa alta de modelo é PROPRIEDADE da camada, não texto digitado em
+  maiúsculas.** Os 7 modelos recriados do TERO traziam o exemplo escrito em
+  caixa alta sem `textTransform`; a usina copia o estilo, não a caixa do
+  exemplo, e depois da troca as manchetes saíram em caixa mista — a assinatura
+  antiga tinha `uppercase` em pré-título, manchete, apoio e CTA. Corrigido nos
+  dados (uppercase só nas camadas já escritas em caixa alta). Quem recriar
+  modelo marca `textTransform: 'uppercase'` onde a referência usa caixa alta de
+  propósito.
+- ⚠️ **A prova dos modelos não pega esse tipo de regressão**: ela compõe com a
+  copy da própria página, que já vem em maiúsculas. Troca de assinatura pede
+  também a recomposição das peças reais com a spec gravada, antes e depois.
