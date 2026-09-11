@@ -912,12 +912,18 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const altura = Math.round(largura * assinatura.logo.razao)
     // A logo onde a PÁGINA a pôs — no alto e ao centro no "Almoço TERO", no
     // canto de cima nos "Clássicos" —, quando ali ela não encosta em nenhum
-    // bloco de texto da peça; senão, o canto mais calmo de sempre.
+    // TEXTO da peça; senão, o canto mais calmo de sempre. Confere-se a caixa de
+    // cada texto, e não o retângulo do grupo inteiro: no "Convite do dia" do
+    // Quintal a linha longa do serviço esticava o retângulo do rodapé até a
+    // logo, que no modelo mora ao lado do CTA curto, e ela fugia para o canto de
+    // cima (11/09/2026).
     const naPagina =
       !spec.preferencias?.cantoDaMarca && assinatura.logo.posicao && assinatura.origem.formatoDaPagina === spec.formato
         ? { x: Math.round(assinatura.logo.posicao.x), y: Math.round(assinatura.logo.posicao.y), width: largura, height: altura }
         : null
-    const livreNaPagina = naPagina && !rectsDeGrupo.some((r) => intersecta(r.rect, naPagina)) ? naPagina : null
+    const encostaNumTexto = (rect: Rect) =>
+      rectsDeGrupo.some((r) => r.camadas.some((c) => intersecta({ x: c.position.x, y: c.position.y, width: c.size.width, height: c.size.height }, rect)))
+    const livreNaPagina = naPagina && !encostaNumTexto(naPagina) ? naPagina : null
     const canto = livreNaPagina
       ? {
           canto: `${livreNaPagina.y + altura / 2 < g.H / 2 ? 'superior' : 'inferior'}-${livreNaPagina.x + largura / 2 < g.W / 2 ? 'esquerdo' : 'direito'}` as Canto,
