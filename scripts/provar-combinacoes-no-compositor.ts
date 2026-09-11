@@ -9,8 +9,9 @@
  * usá-las.
  *
  * Cada página vira duas peças, com a copy QUE ELA MESMA traz (nada inventado):
- * a completa, e uma enxuta — só a manchete e a primeira linha do serviço — que
- * prova que os elementos de texto ausente somem junto.
+ * a completa, e uma enxuta — só a manchete e o serviço — que prova que os
+ * elementos do texto ausente somem junto. E toda peça é CONFERIDA: cada linha
+ * da copy precisa estar numa camada de texto da peça, senão sai "FALTOU".
  *
  *   npx tsx scripts/provar-combinacoes-no-compositor.ts --projeto 3 [--saida <pasta>] [--so <trecho do nome>]
  *
@@ -25,6 +26,7 @@ import sharp from 'sharp'
 import { db } from '@/lib/db'
 import { comporPeca } from '@/lib/compositor/compor'
 import { copyDosPapeisComDestaque, fotoDaPagina } from '@/lib/compositor/defasagem'
+import { semColchetes } from '@/lib/compositor/destaques'
 import { PAPEIS, type SpecDePeca } from '@/lib/compositor/spec'
 
 function argumento(nome: string): string | null {
@@ -48,6 +50,8 @@ function slug(texto: string): string {
     .slice(0, 48)
 }
 
+const normalizar = (texto: string) => texto.replace(/\s+/g, ' ').trim().toLowerCase()
+
 /** As duas peças de uma página: a copy completa dela e a enxuta. */
 function casosDaPagina(projectId: number, pagina: { id: string; name: string; layers: unknown }): Caso[] {
   const copy = copyDosPapeisComDestaque(pagina.layers)
@@ -63,14 +67,14 @@ function casosDaPagina(projectId: number, pagina: { id: string; name: string; la
   const servico = linhas(copy.servico)
   const enxuta: SpecDePeca['blocos'] = [
     { papel: 'headline', linhas: manchete.slice(0, 6) },
-    ...(servico.length > 0 ? [{ papel: 'servico' as const, linhas: servico.slice(0, 1) }] : []),
+    ...(servico.length > 0 ? [{ papel: 'servico' as const, linhas: servico.slice(0, 6) }] : []),
   ]
   const base = { projectId, formato: 'story' as const, ...(foto ? { foto: { url: foto } } : {}) }
   const nome = slug(pagina.name.replace(/^Modelo\s*·\s*/, ''))
-  return [
-    { nome: `${nome}`, pagina: pagina.id, spec: { ...base, blocos: completa, nome: pagina.name } },
-    { nome: `${nome}-enxuta`, pagina: pagina.id, spec: { ...base, blocos: enxuta, nome: `${pagina.name} (enxuta)` } },
-  ]
+  const casos: Caso[] = [{ nome, pagina: pagina.id, spec: { ...base, blocos: completa, nome: pagina.name } }]
+  // A enxuta só existe quando tira alguma coisa da completa
+  if (enxuta.length < completa.length) casos.push({ nome: `${nome}-enxuta`, pagina: pagina.id, spec: { ...base, blocos: enxuta, nome: `${pagina.name} (enxuta)` } })
+  return casos
 }
 
 async function main() {
@@ -89,6 +93,7 @@ async function main() {
   console.log(`${paginas.length} página(s), ${casos.length} peça(s)`)
 
   const arquivos: string[] = []
+  let comFalta = 0
   for (const caso of casos) {
     try {
       const r = await comporPeca(caso.spec, { provar: true, paginasDeAssinatura: [caso.pagina] })
@@ -97,12 +102,23 @@ async function main() {
       arquivos.push(arquivo)
       const d = r.diagnostico
       const elementos = r.layers.filter((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe)
-      console.log(`\n✓ ${caso.nome}`)
+      // Cada linha da copy precisa estar numa camada de texto visível da peça
+      const escritas = r.layers
+        .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false)
+        .flatMap((l) => String(l.content ?? '').split('\n'))
+        .map(normalizar)
+      const faltou = caso.spec.blocos
+        .flatMap((b) => b.linhas.map((linha) => ({ papel: b.papel, linha: semColchetes(linha) })))
+        .filter(({ linha }) => !escritas.some((escrita) => escrita.includes(normalizar(linha))))
+      if (faltou.length > 0) comFalta++
+      console.log(`\n${faltou.length > 0 ? '✗' : '✓'} ${caso.nome}`)
       console.log(`  copy: ${caso.spec.blocos.map((b) => `${b.papel}(${b.linhas.length})`).join(' ')}`)
+      console.log(`  texto: ${faltou.length === 0 ? 'completo' : `FALTOU ${faltou.map((f) => `${f.papel} "${f.linha}"`).join(', ')}`}`)
       console.log(`  arranjos: ${(d.arranjos ?? []).map((a) => `${a.grupo} (${a.motivo})`).join(' | ')}`)
       console.log(`  posição: ${d.posicao.ancora}/${d.posicao.alinha} · logo: ${d.logo ? d.logo.canto : 'no arranjo ou nenhuma'} · elementos: ${elementos.length}`)
       if (d.avisos.length > 0) console.log(`  avisos: ${d.avisos.join(' · ')}`)
     } catch (erro) {
+      comFalta++
       console.log(`\n✗ ${caso.nome}: ${erro instanceof Error ? erro.message : String(erro)}`)
     }
   }
@@ -119,8 +135,9 @@ async function main() {
       .composite(miniaturas.map((input, i) => ({ input, left: 12 + (i % porLinha) * (largura + 12), top: 12 + Math.floor(i / porLinha) * (altura + 12) })))
       .png()
       .toFile(path.join(saida, 'folha.png'))
-    console.log(`\nFolha: ${path.join(saida, 'folha.png')} (${folha.width}x${folha.height}) — ${arquivos.map((a) => path.basename(a, '.png')).join(', ')}`)
+    console.log(`\nFolha: ${path.join(saida, 'folha.png')} (${folha.width}x${folha.height})`)
   }
+  console.log(`\n${casos.length - comFalta} de ${casos.length} peça(s) com o texto completo.`)
 }
 
 main()
