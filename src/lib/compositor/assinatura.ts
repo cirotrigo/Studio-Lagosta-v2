@@ -16,6 +16,7 @@ import type { Layer } from '@/types/template'
 import { grupoDaCamada, membrosDoBloco, papelNoBloco } from '@/lib/creatives/halo/bloco-de-fundo'
 import { destaqueDaCamada, type EstiloDeDestaque } from './destaques'
 import { configDaCamada, GRADIENTE_PADRAO, type AjustesDoGradiente, type ConfigDoGradiente, type CurvaDoGradiente } from './gradiente-de-leitura'
+import { papelDoNome } from './papel-do-nome'
 import type { Formato, Papel } from './spec'
 
 export const TAG_DA_ASSINATURA = 'assinatura'
@@ -150,6 +151,8 @@ export interface AssinaturaDaMarca {
   gradienteDaPagina: AjustesDoGradiente | null
   /** De onde veio — para o registro atômico da geração. */
   origem: { pageId: string | null; formatoDaPagina: Formato | null; variante: string | null; motivoDaVariante?: string; versao: string }
+  /** As camadas da página escolhida, para os arranjos de texto — preenchido por quem carrega a página. */
+  camadasDaPagina?: Layer[]
 }
 
 /** Camada que carrega texto de um papel: texto simples ou rich text (o destaque). */
@@ -157,22 +160,7 @@ export function camadaDeTexto(camada: Pick<Layer, 'type'>): boolean {
   return camada.type === 'text' || camada.type === 'rich-text'
 }
 
-/** Nome de camada → papel. Aceita o que a equipe tende a escrever. */
-export function papelDoNome(nome: string | null | undefined): Papel | null {
-  const n = (nome ?? '')
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .trim()
-  if (!n) return null
-  if (/^(pre|pre-?titulo|pretitulo|kicker|sobretitulo)$/.test(n)) return 'pre'
-  if (/^(headline|titulo|manchete|title)[\s-]*(copy|2|b|dois|segunda)$/.test(n)) return 'headline2'
-  if (/^(headline|titulo|manchete|title)$/.test(n)) return 'headline'
-  if (/^(apoio|descricao|subtitulo|corpo|body)$/.test(n)) return 'apoio'
-  if (/^(cta|chamada)$/.test(n)) return 'cta'
-  if (/^(servico|info|rodape|footer)$/.test(n)) return 'servico'
-  return null
-}
+export { papelDoNome }
 
 const PREFIXO = /^([^\p{L}\p{N}\s]{1,3})\s+/u
 
@@ -379,14 +367,19 @@ export function montarAssinatura(args: {
     if (textos.length >= 2) {
       const H = args.pagina.height
       const W = args.pagina.width
-      const topo = Math.min(...uteis.map((c) => c.position.y))
-      const rodape = H - Math.max(...uteis.map((c) => c.position.y + c.size.height))
+      // Cada margem sai do que mora na METADE dela: a página com todo o texto no
+      // rodapé não diz nada sobre o topo (medido em 11/09/2026 nos modelos do
+      // Quintal: o topo "derivado" dava 1281 px).
+      const deCima = uteis.filter((c) => c.position.y + c.size.height / 2 < H / 2)
+      const deBaixo = uteis.filter((c) => c.position.y + c.size.height / 2 >= H / 2)
       const lateral = Math.min(...textos.map((c) => Math.min(c.position.x, W - (c.position.x + c.size.width))))
       const base = numeros.geometria[args.formatoDaPagina]
       numeros.geometria[args.formatoDaPagina] = {
         ...base,
-        safeTopo: Math.max(60, Math.round(topo)),
-        safeRodape: Math.max(60, Math.round(rodape)),
+        ...(deCima.length > 0 ? { safeTopo: Math.max(60, Math.round(Math.min(...deCima.map((c) => c.position.y)))) } : {}),
+        ...(deBaixo.length > 0
+          ? { safeRodape: Math.max(60, Math.round(H - Math.max(...deBaixo.map((c) => c.position.y + c.size.height)))) }
+          : {}),
         margemH: Math.max(40, Math.min(200, Math.round(lateral))),
       }
     }

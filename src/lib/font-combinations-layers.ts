@@ -1,5 +1,5 @@
 /**
- * Converte os elementos de uma combinação tipográfica em camadas de texto.
+ * Converte os elementos de uma combinação tipográfica em camadas.
  *
  * Fica separado do painel do editor porque o servidor também precisa disso:
  * a geração de arte sem modelo (createArteLivre) monta a página aplicando uma
@@ -11,12 +11,15 @@
 import { createId } from '@/lib/id'
 import {
   COMBO_BASE_CANVAS_WIDTH,
+  caixaDoOrnamento,
+  camadaDoOrnamento,
   estimateComboElementHeight,
   resolveComboFontFamily,
   type FontComboElement,
   type FontComboPair,
 } from '@/lib/font-combinations'
-import type { Layer } from '@/types/template'
+import { estilosDoRichText, lerDestaques, type EstiloDeDestaque, type TrechoDestacado } from '@/lib/compositor/destaques'
+import type { Layer, RichTextStyle } from '@/types/template'
 
 export interface BuildComboLayersOptions {
   elements: FontComboElement[]
@@ -29,8 +32,40 @@ export interface BuildComboLayersOptions {
   comboName: string
   /** Agrupa as camadas criadas numa mesma aplicação */
   groupId?: string
-  /** Substitui o texto de um elemento, por id ou por label */
+  /** Substitui o texto de um elemento, por id, por label ou pelo papel do compositor */
   textOverrides?: Record<string, string>
+}
+
+/**
+ * O conteúdo final de um texto. Palavra entre [colchetes] vira trecho de rich
+ * text no estilo de destaque do elemento; sem estilo de destaque, os colchetes
+ * só saem (marcação nunca aparece na arte).
+ */
+export function conteudoDoElemento(
+  texto: string,
+  element: Pick<FontComboElement, 'destaque' | 'effects'>,
+): { content: string; richTextStyles: RichTextStyle[] | null } {
+  const linhas = texto.split('\n').map(lerDestaques)
+  const content = linhas.map((l) => l.texto).join('\n')
+  const temTrecho = linhas.some((l) => l.trechos.length > 0)
+  const temEstilo = Boolean(element.destaque && Object.values(element.destaque).some(Boolean))
+  if (!temTrecho || !temEstilo) return { content, richTextStyles: null }
+
+  const trechos: TrechoDestacado[] = []
+  let inicioDaLinha = 0
+  for (const linha of linhas) {
+    for (const t of linha.trechos) trechos.push({ inicio: inicioDaLinha + t.inicio, fim: inicioDaLinha + t.fim })
+    inicioDaLinha += linha.texto.length + 1
+  }
+  // O rich text só desenha sombra por trecho: a sombra do texto vai junto
+  const shadow = element.effects?.shadow
+  const sombra = shadow?.enabled
+    ? { color: shadow.shadowColor, blur: shadow.shadowBlur, offsetY: shadow.shadowOffsetY, opacity: shadow.shadowOpacity }
+    : null
+  return {
+    content,
+    richTextStyles: estilosDoRichText({ conteudo: content, trechos, destaque: element.destaque as EstiloDeDestaque, sombra }),
+  }
 }
 
 /**
@@ -52,16 +87,22 @@ export function buildComboLayers({
   const grupo = groupId ?? `combo-${createId()}`
 
   return elements.flatMap((element, index) => {
-    const texto = textOverrides?.[element.id] ?? textOverrides?.[element.label] ?? element.text
+    const bruto =
+      textOverrides?.[element.id] ??
+      textOverrides?.[element.label] ??
+      (element.papel ? textOverrides?.[element.papel] : undefined) ??
+      element.text
+    const { content, richTextStyles } = conteudoDoElemento(bruto, element)
 
     const camadaTexto = {
       id: createId(),
-      type: 'text',
+      type: richTextStyles ? 'rich-text' : 'text',
       name: `${comboName} - ${element.label}`,
       visible: true,
       locked: false,
       order: 0,
-      content: texto,
+      content,
+      ...(richTextStyles ? { richTextStyles } : {}),
       position: {
         x: Math.round(element.x * canvasWidth),
         y: Math.round(element.y * canvasHeight),
@@ -70,7 +111,7 @@ export function buildComboLayers({
         width: Math.round(element.width * canvasWidth),
         height: element.height
           ? Math.round(element.height * canvasHeight)
-          : estimateComboElementHeight({ ...element, text: texto }, escala),
+          : estimateComboElementHeight({ ...element, text: content }, escala),
       },
       style: {
         fontSize: Math.round(element.fontSize * escala),
@@ -106,41 +147,66 @@ export function buildComboLayers({
         elementLabel: element.label,
         groupId: grupo,
         stackOrder: index,
+        // O papel sobrevive a salvar de novo e é o que o compositor lê
+        ...(element.papel ? { compositor: { papel: element.papel } } : {}),
       },
     } as Layer
 
-    if (!element.icon) return [camadaTexto]
+    const camadas: Layer[] = [camadaTexto]
 
     // O ícone mora no mesmo grupo e na mesma posição da pilha do seu texto:
     // quando um texto de cima cresce, o reflow empurra os dois juntos.
-    const camadaIcone = {
-      id: createId(),
-      type: 'image',
-      name: `${comboName} - ${element.label} (ícone)`,
-      visible: true,
-      locked: false,
-      order: 0,
-      fileUrl: element.icon.url,
-      position: {
-        x: Math.round(element.x * canvasWidth + element.icon.offsetX * escala),
-        y: Math.round(element.y * canvasHeight + element.icon.offsetY * escala),
-      },
-      size: {
-        width: Math.round(element.icon.width * escala),
-        height: Math.round(element.icon.height * escala),
-      },
-      style: { objectFit: 'contain' },
-      metadata: {
-        presetId: comboId,
-        presetName: comboName,
-        elementId: `${element.id}:icone`,
-        elementLabel: `${element.label} (ícone)`,
-        groupId: grupo,
-        stackOrder: index,
-        iconeDe: element.id,
-      },
-    } as Layer
+    if (element.icon) {
+      camadas.push({
+        id: createId(),
+        type: 'image',
+        name: `${comboName} - ${element.label} (ícone)`,
+        visible: true,
+        locked: false,
+        order: 0,
+        fileUrl: element.icon.url,
+        position: {
+          x: Math.round(element.x * canvasWidth + element.icon.offsetX * escala),
+          y: Math.round(element.y * canvasHeight + element.icon.offsetY * escala),
+        },
+        size: {
+          width: Math.round(element.icon.width * escala),
+          height: Math.round(element.icon.height * escala),
+        },
+        style: { objectFit: 'contain' },
+        metadata: {
+          presetId: comboId,
+          presetName: comboName,
+          elementId: `${element.id}:icone`,
+          elementLabel: `${element.label} (ícone)`,
+          groupId: grupo,
+          stackOrder: index,
+          iconeDe: element.id,
+        },
+      } as Layer)
+    }
 
-    return [camadaTexto, camadaIcone]
+    // Os outros elementos presos ao texto (filete, selo, a logo), na mesma
+    // regra de grupo e pilha
+    const caixaDoTexto = { ...camadaTexto.position, ...camadaTexto.size }
+    ;(element.ornamentos ?? []).forEach((ornamento, i) => {
+      camadas.push(
+        camadaDoOrnamento(ornamento, caixaDoOrnamento(ornamento, caixaDoTexto, escala), escala, {
+          id: createId(),
+          name: `${comboName} - ${element.label} (elemento ${i + 1})`,
+          metadata: {
+            presetId: comboId,
+            presetName: comboName,
+            elementId: `${element.id}:elemento-${i + 1}`,
+            elementLabel: `${element.label} (elemento)`,
+            groupId: grupo,
+            stackOrder: index,
+            ornamentoDe: element.id,
+          },
+        }),
+      )
+    })
+
+    return camadas
   })
 }

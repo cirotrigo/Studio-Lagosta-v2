@@ -6,6 +6,7 @@
  */
 
 import { createId } from '@/lib/id'
+import type { LadoDoOrnamento } from '@/lib/font-combinations'
 import type { Layer } from '@/types/template'
 
 export interface Dimensoes {
@@ -24,8 +25,89 @@ export function ehIconeDeTexto(layer: Pick<Layer, 'metadata'>): boolean {
   return typeof iconeDe === 'string' && iconeDe.length > 0
 }
 
+/** Elemento gráfico preso a um texto, além do ícone (marca deixada ao aplicar ou ao pôr no painel) */
+export function ehElementoDeTexto(layer: Pick<Layer, 'metadata'>): boolean {
+  const dono = layer.metadata?.ornamentoDe
+  return typeof dono === 'string' && dono.length > 0
+}
+
 function proporcaoDe(natural: Dimensoes | null | undefined, fallback: number): number {
   return natural && natural.width > 0 && natural.height > 0 ? natural.width / natural.height : fallback
+}
+
+export interface ElementoNovoEntrada {
+  texto: Layer
+  url: string
+  natural: Dimensoes | null
+  lado: Exclude<LadoDoOrnamento, 'antes'>
+  id?: string
+}
+
+/**
+ * Elemento novo preso a um texto: o filete abaixo da manchete, o ornamento
+ * acima do pré-título, o selo depois do preço. O tamanho sai do corpo da letra
+ * — peça larga (proporção de 3 para 1 ou mais, o filete) ganha a largura de ~6
+ * corpos sem passar da caixa; peça compacta (selo, ornamento) a altura de ~1,2
+ * corpo. Acima e abaixo ele se alinha à borda que o texto usa; depois, fica à
+ * direita da caixa. Mesmo contrato de grupo e pilha do ícone, com a marca
+ * `ornamentoDe` — é o que a captura lê para salvar do lado certo.
+ */
+export function elementoNovoParaTexto({ texto, url, natural, lado, id }: ElementoNovoEntrada): Layer {
+  const fontSize = Math.max(1, texto.style?.fontSize ?? 32)
+  const proporcao = proporcaoDe(natural, 1)
+  const larguraDoTexto = Math.max(1, texto.size?.width ?? fontSize * 10)
+  const alturaDoTexto = Math.max(1, texto.size?.height ?? fontSize)
+
+  let width: number
+  let height: number
+  if (proporcao >= 3) {
+    width = Math.min(larguraDoTexto, fontSize * 6)
+    height = width / proporcao
+  } else {
+    height = fontSize * 1.2
+    width = height * proporcao
+  }
+  width = Math.max(1, Math.round(width))
+  height = Math.max(1, Math.round(height))
+
+  const vao = Math.round(fontSize * 0.35)
+  const tx = texto.position?.x ?? 0
+  const ty = texto.position?.y ?? 0
+  const alinhamento = texto.style?.textAlign
+  const xNoEixo =
+    alinhamento === 'center' ? tx + (larguraDoTexto - width) / 2 : alinhamento === 'right' ? tx + larguraDoTexto - width : tx
+  const primeiraLinha = fontSize * (texto.style?.lineHeight ?? 1.2)
+  const position =
+    lado === 'depois'
+      ? { x: Math.round(tx + larguraDoTexto + vao), y: Math.round(ty + (Math.min(alturaDoTexto, primeiraLinha) - height) / 2) }
+      : { x: Math.round(xNoEixo), y: Math.round(lado === 'acima' ? ty - vao - height : ty + alturaDoTexto + vao) }
+
+  const meta = texto.metadata ?? {}
+  const elementId = typeof meta.elementId === 'string' && meta.elementId ? meta.elementId : texto.id
+  const rotulo = typeof meta.elementLabel === 'string' && meta.elementLabel ? meta.elementLabel : 'Texto'
+  const novoId = id ?? createId()
+
+  return {
+    id: novoId,
+    type: 'image',
+    name: `${texto.name ?? rotulo} (elemento)`,
+    visible: true,
+    locked: false,
+    order: 0,
+    fileUrl: url,
+    position,
+    size: { width, height },
+    style: { objectFit: 'contain' },
+    metadata: {
+      ...(meta.presetId ? { presetId: meta.presetId } : {}),
+      ...(meta.presetName ? { presetName: meta.presetName } : {}),
+      elementId: `${elementId}:elemento-${novoId.slice(-6)}`,
+      elementLabel: `${rotulo} (elemento)`,
+      ...(typeof meta.groupId === 'string' && meta.groupId ? { groupId: meta.groupId } : {}),
+      ...(typeof meta.stackOrder === 'number' ? { stackOrder: meta.stackOrder } : {}),
+      ornamentoDe: elementId,
+    },
+  } as Layer
 }
 
 /**
