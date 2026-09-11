@@ -2,12 +2,20 @@
  * Prova o compositor montando peças com os ARRANJOS de páginas de assinatura
  * que ainda estão em espera — sem gravar nada (`provar: true`, só renderiza).
  *
- * Nasceu com os modelos do Quintal recriados no editor (template 448, 11/09/2026):
- * grupos com elementos (ícones, filete, a logo ao lado do serviço), manchete com
- * segunda voz e serviço em duas linhas. É o que se roda antes de mover páginas
- * para o template "Assinatura", onde a usina de produção passa a usá-las.
+ * Nasceu com os modelos recriados no editor (Quintal e TERO, 11/09/2026):
+ * grupos com elementos (ícones, filete, losangos, a logo ao lado do serviço),
+ * manchete com segunda voz, serviço em várias linhas. É o que se roda antes de
+ * mover páginas para o template "Assinatura", onde a usina de produção passa a
+ * usá-las.
  *
- *   npx tsx scripts/provar-combinacoes-no-compositor.ts [--saida <pasta>] [--so <caso>]
+ * Cada página vira duas peças, com a copy QUE ELA MESMA traz (nada inventado):
+ * a completa, e uma enxuta — só a manchete e a primeira linha do serviço — que
+ * prova que os elementos de texto ausente somem junto.
+ *
+ *   npx tsx scripts/provar-combinacoes-no-compositor.ts --projeto 3 [--saida <pasta>] [--so <trecho do nome>]
+ *
+ * Sem `--paginas`, usa as páginas do template com a tag `modelos-da-marca` do
+ * projeto; com `--paginas id1,id2`, só essas.
  */
 import 'dotenv/config'
 import fs from 'node:fs/promises'
@@ -16,93 +24,83 @@ import sharp from 'sharp'
 
 import { db } from '@/lib/db'
 import { comporPeca } from '@/lib/compositor/compor'
-import type { SpecDePeca } from '@/lib/compositor/spec'
+import { copyDosPapeisComDestaque, fotoDaPagina } from '@/lib/compositor/defasagem'
+import { PAPEIS, type SpecDePeca } from '@/lib/compositor/spec'
 
 function argumento(nome: string): string | null {
   const i = process.argv.indexOf(nome)
   return i >= 0 ? (process.argv[i + 1] ?? null) : null
 }
 
-const ALMOCO = '30603bb5-b178-448b-a554-b4cdcbf702ae'
-const CONVITE = '9d449c7d-0b59-4e02-adfe-cc82ea67c572'
-const DIA = 'e543493d-62eb-46e5-ad23-08a85284cf73'
-
 interface Caso {
   nome: string
   pagina: string
-  foto: string
-  blocos: SpecDePeca['blocos']
+  spec: SpecDePeca
 }
 
-const CASOS: Caso[] = [
-  {
-    nome: 'almoco-executivo',
-    pagina: ALMOCO,
-    foto: '1vYhEoXUKBlgkk9qTSawOcVGL-ozOp6ue',
-    blocos: [
-      { papel: 'headline', linhas: ['Almoço', 'executivo'] },
-      { papel: 'apoio', linhas: ['Direto da parrilla', 'para o seu prato.'] },
-      { papel: 'servico', linhas: ['Seg a sex das 11h às 16h ·', 'Praia do Canto, Vitória-ES'] },
-    ],
-  },
-  {
-    nome: 'almoco-sem-servico',
-    pagina: ALMOCO,
-    foto: '1vYhEoXUKBlgkk9qTSawOcVGL-ozOp6ue',
-    blocos: [
-      { papel: 'headline', linhas: ['Almoço', '[executivo] hoje'] },
-      { papel: 'apoio', linhas: ['Picanha, arroz e farofa.'] },
-    ],
-  },
-  {
-    nome: 'convite-do-dia',
-    pagina: CONVITE,
-    foto: '1al6QmDGFsEqO0x3nvAosZewquuh2671E',
-    blocos: [
-      { papel: 'headline', linhas: ['Sexta', 'é dia de', 'quintal'] },
-      { papel: 'apoio', linhas: ['Da hora do almoço', 'até o último brinde.'] },
-      { papel: 'servico', linhas: ['Sexta, [das 11h às 00h] · Praia do Canto, Vitória-ES'] },
-      { papel: 'cta', linhas: ['Bora pro quintal?'] },
-    ],
-  },
-  {
-    nome: 'dia-no-quintal',
-    pagina: DIA,
-    foto: '1ro_HncFU1X677HQ3EOvG4UrxpZII6_bz',
-    blocos: [
-      { papel: 'headline', linhas: ['Sábado no', 'Quintal'] },
-      { papel: 'servico', linhas: ['Sábado, das 11h às 00h', 'Rua Aleixo Netto, 1158, Praia do Canto'] },
-    ],
-  },
-  {
-    nome: 'dia-so-horario',
-    pagina: DIA,
-    foto: '1ro_HncFU1X677HQ3EOvG4UrxpZII6_bz',
-    blocos: [
-      { papel: 'headline', linhas: ['Domingo no', 'Quintal'] },
-      { papel: 'servico', linhas: ['Domingo, das 11h às 18h'] },
-    ],
-  },
-]
+function slug(texto: string): string {
+  return texto
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+    .slice(0, 48)
+}
+
+/** As duas peças de uma página: a copy completa dela e a enxuta. */
+function casosDaPagina(projectId: number, pagina: { id: string; name: string; layers: unknown }): Caso[] {
+  const copy = copyDosPapeisComDestaque(pagina.layers)
+  const foto = fotoDaPagina(pagina.layers)
+  if (!copy) return []
+  const linhas = (texto: string | undefined) => (texto ?? '').split('\n').map((l) => l.trim()).filter(Boolean)
+  const manchete = [...linhas(copy.headline), ...linhas(copy.headline2)]
+  if (manchete.length === 0) return []
+  const completa: SpecDePeca['blocos'] = PAPEIS.flatMap((papel) => {
+    const texto = papel === 'headline' ? manchete : linhas(copy[papel])
+    return texto.length > 0 ? [{ papel, linhas: texto.slice(0, 6) }] : []
+  })
+  const servico = linhas(copy.servico)
+  const enxuta: SpecDePeca['blocos'] = [
+    { papel: 'headline', linhas: manchete.slice(0, 6) },
+    ...(servico.length > 0 ? [{ papel: 'servico' as const, linhas: servico.slice(0, 1) }] : []),
+  ]
+  const base = { projectId, formato: 'story' as const, ...(foto ? { foto: { url: foto } } : {}) }
+  const nome = slug(pagina.name.replace(/^Modelo\s*·\s*/, ''))
+  return [
+    { nome: `${nome}`, pagina: pagina.id, spec: { ...base, blocos: completa, nome: pagina.name } },
+    { nome: `${nome}-enxuta`, pagina: pagina.id, spec: { ...base, blocos: enxuta, nome: `${pagina.name} (enxuta)` } },
+  ]
+}
 
 async function main() {
-  const saida = argumento('--saida') ?? path.join(process.cwd(), '.tmp-provas-combinacoes')
+  const projectId = Number(argumento('--projeto') ?? 2)
+  const saida = argumento('--saida') ?? path.join(process.cwd(), '.tmp-provas-combinacoes', String(projectId))
   const so = argumento('--so')
+  const ids = argumento('--paginas')?.split(',').filter(Boolean) ?? null
   await fs.mkdir(saida, { recursive: true })
 
+  const paginas = await db.page.findMany({
+    where: ids ? { id: { in: ids }, Template: { projectId } } : { Template: { projectId, tags: { has: 'modelos-da-marca' } } },
+    select: { id: true, name: true, layers: true },
+    orderBy: { order: 'asc' },
+  })
+  const casos = paginas.flatMap((p) => casosDaPagina(projectId, p)).filter((c) => !so || c.nome.includes(so))
+  console.log(`${paginas.length} página(s), ${casos.length} peça(s)`)
+
   const arquivos: string[] = []
-  for (const caso of CASOS.filter((c) => !so || c.nome === so)) {
-    const spec: SpecDePeca = { projectId: 2, formato: 'story', foto: { driveFileId: caso.foto }, blocos: caso.blocos, nome: caso.nome }
+  for (const caso of casos) {
     try {
-      const r = await comporPeca(spec, { provar: true, paginasDeAssinatura: [caso.pagina] })
+      const r = await comporPeca(caso.spec, { provar: true, paginasDeAssinatura: [caso.pagina] })
       const arquivo = path.join(saida, `${caso.nome}.png`)
       await fs.writeFile(arquivo, r.prova!)
       arquivos.push(arquivo)
       const d = r.diagnostico
+      const elementos = r.layers.filter((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe)
       console.log(`\n✓ ${caso.nome}`)
-      console.log(`  arranjos: ${(d.arranjos ?? []).map((a) => `${a.grupo} → ${a.nome} (${a.motivo})`).join(' | ')}`)
-      console.log(`  posição: ${d.posicao.ancora}/${d.posicao.alinha} · logo: ${d.logo ? d.logo.canto : 'no arranjo ou nenhuma'}`)
-      console.log(`  elementos: ${r.layers.filter((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe).map((l) => `${l.name}@${Math.round(l.position.x)},${Math.round(l.position.y)}`).join(', ') || 'nenhum'}`)
+      console.log(`  copy: ${caso.spec.blocos.map((b) => `${b.papel}(${b.linhas.length})`).join(' ')}`)
+      console.log(`  arranjos: ${(d.arranjos ?? []).map((a) => `${a.grupo} (${a.motivo})`).join(' | ')}`)
+      console.log(`  posição: ${d.posicao.ancora}/${d.posicao.alinha} · logo: ${d.logo ? d.logo.canto : 'no arranjo ou nenhuma'} · elementos: ${elementos.length}`)
       if (d.avisos.length > 0) console.log(`  avisos: ${d.avisos.join(' · ')}`)
     } catch (erro) {
       console.log(`\n✗ ${caso.nome}: ${erro instanceof Error ? erro.message : String(erro)}`)
@@ -110,11 +108,15 @@ async function main() {
   }
 
   if (arquivos.length > 0) {
-    const largura = 360
-    const altura = 640
+    const largura = 270
+    const altura = 480
+    const porLinha = 8
+    const linhasDaFolha = Math.ceil(arquivos.length / porLinha)
     const miniaturas = await Promise.all(arquivos.map((a) => sharp(a).resize(largura, altura).png().toBuffer()))
-    const folha = await sharp({ create: { width: (largura + 16) * miniaturas.length + 16, height: altura + 32, channels: 3, background: '#222222' } })
-      .composite(miniaturas.map((input, i) => ({ input, left: 16 + i * (largura + 16), top: 16 })))
+    const folha = await sharp({
+      create: { width: (largura + 12) * Math.min(porLinha, arquivos.length) + 12, height: (altura + 12) * linhasDaFolha + 12, channels: 3, background: '#222222' },
+    })
+      .composite(miniaturas.map((input, i) => ({ input, left: 12 + (i % porLinha) * (largura + 12), top: 12 + Math.floor(i / porLinha) * (altura + 12) })))
       .png()
       .toFile(path.join(saida, 'folha.png'))
     console.log(`\nFolha: ${path.join(saida, 'folha.png')} (${folha.width}x${folha.height}) — ${arquivos.map((a) => path.basename(a, '.png')).join(', ')}`)
