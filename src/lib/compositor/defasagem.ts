@@ -90,8 +90,13 @@ const PAPEIS_DA_PECA: readonly string[] = [...PAPEIS, 'headline2']
  */
 export function papelDaCamada(camada: Layer): Papel | 'headline2' | null {
   const meta = camada.metadata as { compositor?: { papel?: string } } | undefined
-  const candidato = meta?.compositor?.papel ?? camada.id ?? camada.name
-  return PAPEIS_DA_PECA.includes(String(candidato)) ? (candidato as Papel | 'headline2') : null
+  // Cada fonte é conferida sozinha: página feita à mão tem id próprio
+  // ("dia-no-quintal-headline") e o papel só no nome — com `??`, o id que não
+  // é papel escondia o nome que é.
+  for (const candidato of [meta?.compositor?.papel, camada.id, camada.name]) {
+    if (PAPEIS_DA_PECA.includes(String(candidato))) return candidato as Papel | 'headline2'
+  }
+  return null
 }
 
 /**
