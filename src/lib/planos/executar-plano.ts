@@ -47,6 +47,7 @@ import {
   type ContaDaExecucao,
 } from '@/lib/planos/execucao'
 import { montarSpecDoItem } from './spec-do-item'
+import { semColchetes } from '@/lib/compositor/destaques'
 
 export interface ExecutarPlanoInput {
   /** Piloto explícito apenas para a via compor. Não decorre das candidatas do card. */
@@ -539,7 +540,8 @@ async function renderizarItemDeModelo(
   }
 
   const campos = await camposDeTextoDoModelo(sourcePageId)
-  const { slotValues, ocultar, avisos } = mapearCopyParaSlots(campos, item.copyProposta ?? [])
+  // O modelo desenha texto simples: os [colchetes] do destaque (marcação do compositor) saem.
+  const { slotValues, ocultar, avisos } = mapearCopyParaSlots(campos, (item.copyProposta ?? []).map((b) => semColchetes(b)))
 
   const valores: Record<string, unknown> = { ...slotValues }
   // Campo de texto que a copy não cobriu sai OCULTO: o texto do modelo é

@@ -54,7 +54,13 @@ export const carrosselSchema = z.object({
 export type CarrosselDaPeca = z.infer<typeof carrosselSchema>
 
 export const preferenciasSchema = z.object({
-  tratamentoDeTexto: z.enum(['assinatura', 'gradiente-suave-topo']).optional(),
+  /**
+   * LEGADO desde 11/09/2026: todo texto ganha o gradiente de leitura na borda
+   * onde pousa. Os valores antigos seguem aceitos (specs gravadas na fila e em
+   * `Generation.fieldValues.spec` são revalidadas na recomposição) e dão o
+   * mesmo resultado — nenhum deles devolve o halo.
+   */
+  tratamentoDeTexto: z.enum(['gradiente', 'assinatura', 'gradiente-suave-topo']).optional(),
   ancora: z.enum([...ANCORAS, 'auto']).optional(),
   alinha: z.enum([...ALINHAMENTOS, 'auto']).optional(),
   cantoDaMarca: z.enum([...CANTOS, 'auto', 'nenhum']).optional(),

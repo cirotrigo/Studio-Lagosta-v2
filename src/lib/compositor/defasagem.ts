@@ -36,7 +36,29 @@ import { diffDeGeometria, type DiffDeGeometria } from '@/lib/aprendizado/diff-ge
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
 
+import { linhasComColchetes } from './destaques'
 import { PAPEIS, type Papel, type SpecDePeca } from './spec'
+
+/**
+ * Como `copyDosPapeis`, mas a camada RICH TEXT volta com os [colchetes] nos
+ * trechos destacados. A recomposição refaz a peça pela spec: sem os colchetes,
+ * o destaque sumiria na primeira edição de texto — e a peça voltaria a ser
+ * texto simples sem ninguém ter pedido.
+ */
+export function copyDosPapeisComDestaque(camadas: unknown): Record<string, string> | null {
+  const { camadas: lidas, legivel } = lerCamadas(camadas)
+  if (!legivel) return null
+  const out: Record<string, string> = {}
+  for (const bruta of lidas as Layer[]) {
+    if ((bruta?.type !== 'text' && bruta?.type !== 'rich-text') || bruta.visible === false) continue
+    const papel = papelDaCamada(bruta)
+    if (!papel) continue
+    const marcadas = linhasComColchetes(bruta)
+    const conteudo = marcadas ? marcadas.join('\n').trim() : typeof bruta.content === 'string' ? bruta.content.trim() : ''
+    if (conteudo) out[papel] = conteudo
+  }
+  return out
+}
 
 /** Os papéis que uma camada de texto do compositor pode carregar. */
 const PAPEIS_DA_PECA: readonly string[] = [...PAPEIS, 'headline2']
@@ -204,7 +226,8 @@ export interface SpecRecomposta {
  */
 export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown): SpecRecomposta {
   const avisos: string[] = []
-  const copy = copyDosPapeis(camadasDaPagina)
+  // Com os [colchetes] de volta: o destaque da página sobrevive à recomposição.
+  const copy = copyDosPapeisComDestaque(camadasDaPagina)
   if (!copy) return { spec, avisos: ['não deu para ler as camadas da página; a spec ficou como estava'] }
 
   /**

@@ -10,10 +10,12 @@
  * papel servico onde quer que esteja.
  *
  * As linhas: headline quebrada em até 2 linhas equilibradas quando passa de
- * ~18 caracteres; apoio em 2 quando passa de ~40. Módulo puro.
+ * ~18 caracteres; apoio em 2 quando passa de ~40. Os [colchetes] do destaque
+ * não contam no tamanho e o corte nunca cai dentro de um. Módulo puro.
  */
 
 import { CreativeError } from '@/lib/creatives/errors'
+import { semColchetes } from './destaques'
 import type { Bloco } from './spec'
 
 type PapelDaSpec = Bloco['papel']
@@ -25,17 +27,33 @@ const TETO_DO_APOIO = 40
 export function quebrarEmDuas(texto: string, teto: number): string[] {
   const t = texto.replace(/\s+/g, ' ').trim()
   if (t.includes('\n')) return t.split('\n').map((l) => l.trim()).filter(Boolean)
-  if (t.length <= teto) return [t]
-  const meio = t.length / 2
+  const visivel = semColchetes(t).length
+  if (visivel <= teto) return [t]
+  const meio = visivel / 2
   let melhor = -1
   let dist = Infinity
+  // O corte nunca cai DENTRO de um destaque: "[em" / "dobro]" viraria
+  // colchete sem par nas duas linhas e o destaque sumiria das duas.
+  let dentro = false
+  let visiveis = 0
   for (let i = 0; i < t.length; i++) {
-    if (t[i] !== ' ') continue
-    const d = Math.abs(i - meio)
-    if (d < dist) {
-      dist = d
-      melhor = i
+    const ch = t[i]
+    if (ch === '[') {
+      dentro = true
+      continue
     }
+    if (ch === ']') {
+      dentro = false
+      continue
+    }
+    if (ch === ' ' && !dentro) {
+      const d = Math.abs(visiveis - meio)
+      if (d < dist) {
+        dist = d
+        melhor = i
+      }
+    }
+    visiveis++
   }
   if (melhor < 0) return [t]
   return [t.slice(0, melhor).trim(), t.slice(melhor + 1).trim()]
@@ -69,7 +87,10 @@ export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = 
   if (limpa.length === 0) return []
 
   const disponiveis = opcoes.papeis ? new Set(opcoes.papeis) : null
-  const servicoIdx = limpa.findIndex((c, i) => i > 0 && PARECE_SERVICO.test(c) && c.length <= 90)
+  const servicoIdx = limpa.findIndex((c, i) => {
+    const visivel = semColchetes(c)
+    return i > 0 && PARECE_SERVICO.test(visivel) && visivel.length <= 90
+  })
   const servico = servicoIdx >= 0 ? limpa[servicoIdx] : null
   const resto = servicoIdx >= 0 ? limpa.filter((_, i) => i !== servicoIdx) : limpa
 

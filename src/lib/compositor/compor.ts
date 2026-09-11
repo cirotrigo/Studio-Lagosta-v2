@@ -4,8 +4,10 @@
  * Recebe uma spec (copy por papel e por linha, foto, formato, preferências),
  * lê a assinatura da marca (página + números), MEDE cada linha com a fonte
  * real, acha a área livre da foto (mapa de calma + assunto), escolhe o
- * enquadramento e a posição, calibra o halo por bloco, põe a logo no canto
- * pela luz, passa pelo autofix geométrico e persiste como página EDITÁVEL —
+ * enquadramento e a posição, destaca as palavras marcadas com [colchetes],
+ * desenha o gradiente de leitura na borda onde o texto pousou (sem halo desde
+ * 11/09/2026), põe a logo no canto pela luz, passa pelo autofix geométrico e
+ * persiste como página EDITÁVEL —
  * ou, em `provar`, só renderiza e devolve o PNG, sem gravar nada.
  *
  * É o port do `gerar.py` do canvas de design para dentro do backend: a spec
@@ -23,7 +25,8 @@ import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measure
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
 import { lerFotoComoCover, luzNoRect, type FotoCinza } from '@/lib/creatives/halo/halo-medicao'
-import { calibrarHalo, luzDaCor, type Rect } from '@/lib/creatives/halo/halo'
+import { calibrarHalo, uniao, type Rect } from '@/lib/creatives/halo/halo'
+import { gradientesDoProjeto } from '@/lib/assets/gradients-library'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 
@@ -41,6 +44,8 @@ import {
   papeisQueFaltam,
   NOME_DO_TEMPLATE_DE_ASSINATURA,
   type AssinaturaDaMarca,
+  type EstiloDePapel,
+  type NumerosDaAssinatura,
 } from './assinatura'
 import { montarBloco, empilhar, type BlocoMontado } from './blocos'
 import {
@@ -52,7 +57,16 @@ import {
   type MapaDeCalma,
   type PontuacaoDePosicao,
 } from './mapa-de-calma'
-import { aplicarGradienteSuave } from '@/lib/creatives/gradiente-suave'
+import { destaqueDoPapel, semColchetes, type EstiloDeDestaque } from './destaques'
+import {
+  bordaDoGrupo,
+  corQueContrasta,
+  inserirAcimaDaFoto,
+  montarGradientes,
+  type Borda,
+  type ConfigDoGradiente,
+  type GrupoParaGradiente,
+} from './gradiente-de-leitura'
 import { DIMENSOES, validarSpec, type Alinhamento, type Ancora, type Canto, type Formato, type Papel, type SpecDePeca } from './spec'
 import { alvoClaroPorContraste, medirContrasteDaPeca, type ContrasteMedido, type IntervencaoDeTexto } from './regua'
 
@@ -67,15 +81,20 @@ export interface RotuloDePosicao {
 export interface DiagnosticoDaComposicao {
   selecao?: DiagnosticoDaSelecao
   intervencaoDeTexto?: IntervencaoDeTexto
-  tratamentoDeTexto?: 'gradiente-suave-topo'
+  /** Sempre 'gradiente-de-leitura' desde 11/09/2026 (diagnósticos antigos podem trazer 'gradiente-suave-topo'). */
+  tratamentoDeTexto?: 'gradiente-de-leitura' | 'gradiente-suave-topo'
   formato: Formato
   posicao: RotuloDePosicao & { pontuacao: number; motivo: string }
   candidatos: Array<RotuloDePosicao & { pontuacao: number; descartado: boolean; motivo: string }>
   assunto: Rect | null
   assuntoOrigem: 'catalogo' | 'estimado' | 'nenhum'
+  /** LEGADO — sempre vazio desde 11/09/2026: o compositor não desenha mais halo. */
   halos: Array<{ grupo: string; tinta: number; raio: number; luz: number; alvo: number; necessidade: number }>
+  /** Um gradiente de leitura por borda com texto, com a força FINAL (depois da régua). Ausente em diagnósticos antigos. */
+  gradientes?: Array<{ borda: Borda; forca: number; altura: number; cor: string; necessidade: number }>
+  /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
   logo: { canto: Canto; tinta: number } | null
-  blocos: Array<{ papel: Papel; escala: number; width: number; height: number }>
+  blocos: Array<{ papel: Papel; escala: number; width: number; height: number; destacado?: boolean }>
   contraste: ContrasteMedido[] | null
   assinatura: AssinaturaDaMarca['origem']
   avisos: string[]
@@ -146,7 +165,7 @@ export async function paginasDeAssinatura(projectId: number) {
     paginas: paginas.map(({ layers, ...p }) => ({
       ...p,
       formato: formatoDaPagina(p),
-      papeis: [...new Set((parsePageLayers(layers) as unknown as Layer[]).filter((c) => c.type === 'text' && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))],
+      papeis: [...new Set((parsePageLayers(layers) as unknown as Layer[]).filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))],
     })),
   }
 }
@@ -180,7 +199,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   // mensagem (a peça de funcionamento precisa de serviço; a de sabor, não).
   const comPapeis = paginas.map((p) => ({
     ...p,
-    papeis: [...new Set((parsePageLayers(p.layers) as unknown as Layer[]).filter((c) => c.type === 'text' && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))],
+    papeis: [...new Set((parsePageLayers(p.layers) as unknown as Layer[]).filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))],
   }))
   const { pagina: escolhida, formatoDaPagina: fmt, motivo } = escolherVariante(comPapeis, {
     formato,
@@ -400,27 +419,28 @@ function escolherCanto(args: {
   return pontuados[0] ?? null
 }
 
-// ─── Halo ──────────────────────────────────────────────────────────────────
+// ─── Destaque ──────────────────────────────────────────────────────────────
 
-function tintaNaFaixa(necessidade: number, faixa: [number, number]): number {
-  const n = Math.max(0, Math.min(1, necessidade))
-  return Number((faixa[0] + n * (faixa[1] - faixa[0])).toFixed(3))
+/** As famílias de fonte cadastradas no projeto — de onde sai a versão mais pesada do destaque. */
+async function familiasDoProjeto(projectId: number): Promise<string[]> {
+  try {
+    const fontes = await db.customFont.findMany({ where: { projectId }, select: { fontFamily: true } })
+    return [...new Set(fontes.map((f) => f.fontFamily))]
+  } catch {
+    return []
+  }
 }
 
-function fundoDeHalo(mancha: string, tinta: number, raio: number) {
-  return {
-    enabled: true,
-    backgroundColor: mancha,
-    baseColor: mancha,
-    tone: 0,
-    fit: 'texto' as const,
-    opacity: tinta,
-    padding: Math.min(200, Math.round(raio * 0.9)),
-    borderRadius: Math.min(300, raio),
-    blur: raio,
-    offsetX: 0,
-    offsetY: 0,
-  }
+/**
+ * O estilo do destaque de um papel. A página de assinatura manda (a equipe
+ * destacou um trecho lá); sem ela, `Project.assinatura.destaque` — a cor da
+ * paleta e, com `pesado`, a versão mais pesada da família DAQUELE papel entre
+ * as fontes cadastradas (manchete e apoio costumam ter famílias diferentes).
+ */
+function estiloDeDestaqueDoPapel(estilo: EstiloDePapel, padrao: NumerosDaAssinatura['destaque'], familias: string[]): EstiloDeDestaque | null {
+  // A regra (página manda; família pesada DO papel; alternativa quando o papel
+  // já é da cor de destaque) mora no módulo puro, com teste.
+  return destaqueDoPapel({ daPagina: estilo.destaque, padrao, corDoPapel: estilo.color, familiaDoPapel: estilo.fontFamily, familias })
 }
 
 // ─── A composição ──────────────────────────────────────────────────────────
@@ -504,6 +524,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   )
   const chaveDoGrupo = (papel: Papel) => assinatura.papeis[papel]?.grupo ?? (papel === 'headline2' ? assinatura.papeis.headline?.grupo ?? 'solo:headline' : `solo:${papel}`)
   const montados: BlocoMontado[] = []
+  const familias = await familiasDoProjeto(spec.projectId)
   for (const b of blocosDaSpec) {
     const estilo = assinatura.papeis[b.papel]!
     const r = montarBloco({
@@ -516,7 +537,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       groupId: `grupo-${hashDe(chaveDoGrupo(b.papel)) % 99991}`,
       corDaMancha: mancha,
       medir,
+      // Palavra entre [colchetes] na copy sai destacada no estilo da marca.
+      destaque: estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias),
     })
+    avisos.push(...r.avisos)
     if (r.recusa) {
       recusas.push({ papel: r.recusa.papel, orcamento: r.recusa.orcamento })
       continue
@@ -533,6 +557,28 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     )
   }
   if (montados.length === 0) throw new CreativeError('SPEC_INVALIDA', 'Nenhum bloco de texto', 400)
+
+  // O gradiente de leitura (Ciro, 11/09/2026: "prefiro que deixe de usar o
+  // halo, e aprenda a usar o gradiente de forma sutil"). A COR, nesta ordem:
+  // uma camada de gradiente na página de assinatura (a equipe desenhou) →
+  // `Project.assinatura.gradiente.cor` → o gradiente da marca que contrasta com
+  // o texto (a Real, na curva que a Roberta mediu) → o dark da marca.
+  const coresDaMarca = [
+    ...new Set(
+      gradientesDoProjeto(spec.projectId)
+        .daMarca.map((g) => g.gradientStops[0]?.color)
+        .filter((c): c is string => typeof c === 'string'),
+    ),
+  ]
+  const cfgGradiente: ConfigDoGradiente = {
+    ...assinatura.numeros.gradiente,
+    ...(assinatura.gradienteDaPagina ?? {}),
+    cor:
+      assinatura.gradienteDaPagina?.cor ??
+      assinatura.numeros.gradiente.cor ??
+      corQueContrasta(coresDaMarca, montados.map((b) => b.cor)) ??
+      mancha,
+  }
 
   interface BlocoComposto {
     chave: string
@@ -594,7 +640,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       ancoraDaPagina: principal.temCaixa ? principal.ancora : null,
     })
     const pontuados = mapa
-      ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: mancha, assunto })
+      ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: cfgGradiente.cor, assunto })
       : candidatos.map((c) => ({ ...c, pontuacao: c.preferencia, calma: 1, tintaNecessaria: 0, cobreAssunto: 0, descartado: false, motivo: 'sem foto: vale a preferência' }))
     if (assuntoDoCatalogo && assunto && fracaoVisivelDoAssunto(assunto, canvas) < 0.75) {
       for (const candidato of pontuados) {
@@ -616,8 +662,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // 3. Posicionar cada bloco: o principal na caixa que o mapa escolheu; os
   //    secundários na âncora e no alinhamento que têm na página.
   const camadasDeTexto: Layer[] = []
-  const rectsDeGrupo: Array<{ grupo: string; rect: Rect; cores: string[]; camadas: Layer[] }> = []
-  const posicionar = (c: BlocoComposto, rect: Rect, alinhaDoBloco: Alinhamento) => {
+  const rectsDeGrupo: Array<{ grupo: string; rect: Rect; cores: string[]; camadas: Layer[]; ancora: Ancora }> = []
+  const posicionar = (c: BlocoComposto, rect: Rect, alinhaDoBloco: Alinhamento, ancoraDoBloco: Ancora) => {
     const textAlign = alinhamentoParaTextAlign(alinhaDoBloco)
     const camadas = c.blocos.map((b, i) => {
       const x = alinhaDoBloco === 'esquerda' ? rect.x : alinhaDoBloco === 'direita' ? rect.x + rect.width - b.width : rect.x + (rect.width - b.width) / 2
@@ -625,9 +671,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       camadasDeTexto.push(camada)
       return camada
     })
-    rectsDeGrupo.push({ grupo: c.chave, rect, cores: c.blocos.map((b) => b.cor), camadas })
+    rectsDeGrupo.push({ grupo: c.chave, rect, cores: c.blocos.map((b) => b.cor), camadas, ancora: ancoraDoBloco })
   }
-  posicionar(principal, rectPrincipal, alinha)
+  posicionar(principal, rectPrincipal, alinha, ancora)
   let ocupadoNoRodape = 0
   let ocupadoNoTopo = 0
   for (const c of secundarios) {
@@ -640,68 +686,25 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       rect = { ...rect, y: g.safeTopo + ocupadoNoTopo }
       ocupadoNoTopo += c.pilha.height + Math.round(g.gap * 1.6)
     }
-    posicionar(c, rect, al)
+    posicionar(c, rect, al, c.ancora)
   }
 
-  // 4. O halo. Se a equipe ligou o fundo de texto em ALGUM papel da página de
-  //    assinatura, a página é a verdade papel a papel (cor, ajuste, margem,
-  //    desfoque; a opacidade dela é o teto e a foto modula dentro). O GRUPO
-  //    da peça é o grupo da página — a mancha é a do líder, como no editor.
-  //    Sem fundo em papel nenhum, vale a calibragem da casa na FAIXA da marca.
-  const halos: DiagnosticoDaComposicao['halos'] = []
-  const paginaDefineHalo = Object.values(assinatura.papeis).some((e) => e?.fundo)
-  if (paginaDefineHalo) {
-    for (const grupo of rectsDeGrupo) {
-      const luz = melhor.raster ? luzNoRect(melhor.raster, grupo.rect) : null
-      const calibrado = calibrarHalo({ texto: grupo.rect, luz: luz ?? { media: 0, p75: 0 }, coresDoTexto: grupo.cores, corDaMancha: mancha, raioBase: assinatura.numeros.halo.raioTexto })
-      const necessidade = luz ? calibrado.tinta / 0.95 : 0
-      for (const camada of grupo.camadas) {
-        const papel = (camada.metadata as { compositor?: { papel?: Papel } })?.compositor?.papel
-        const fundo = papel ? assinatura.papeis[papel]?.fundo : null
-        if (!fundo) {
-          camada.effects = { ...(camada.effects ?? {}), background: undefined }
-          continue
-        }
-        // Ciro (03/09/2026): "pode manter a mesma configuração que a minha do
-        // halo, não precisa ajustar de acordo com a luminosidade". A mancha
-        // sai EXATAMENTE como está na página — cor, ajuste, margem, desfoque
-        // e opacidade. A foto não modula nada; a régua só mede e avisa.
-        const opacity = fundo.opacity
-        camada.effects = {
-          ...(camada.effects ?? {}),
-          background: { enabled: true, ...fundo, baseColor: fundo.backgroundColor, tone: 0, opacity },
-        }
-        halos.push({ grupo: `${grupo.grupo}/${papel}`, tinta: opacity, raio: fundo.blur, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
-      }
-    }
-  } else {
-    for (const grupo of rectsDeGrupo) {
-      const luz = melhor.raster ? luzNoRect(melhor.raster, grupo.rect) : null
-      const calibrado = calibrarHalo({
-        texto: grupo.rect,
-        luz: luz ?? { media: 0, p75: 0 },
-        coresDoTexto: grupo.cores,
-        corDaMancha: mancha,
-        raioBase: assinatura.numeros.halo.raioTexto,
-      })
-      const necessidade = luz ? calibrado.tinta / 0.95 : 0
-      const tinta = luz ? tintaNaFaixa(necessidade, assinatura.numeros.halo.faixaTexto) : 0
-      const raio = assinatura.numeros.halo.raioTexto
-      for (const camada of grupo.camadas) {
-        camada.effects = { ...(camada.effects ?? {}), ...(tinta > 0 ? { background: fundoDeHalo(mancha, tinta, raio) } : {}) }
-      }
-      halos.push({ grupo: grupo.grupo, tinta, raio, luz: calibrado.luzMedida, alvo: calibrado.alvo, necessidade: Number(necessidade.toFixed(3)) })
-    }
+  // 4. SEM HALO (Ciro, 11/09/2026: "prefiro que deixe de usar o halo"). O fundo
+  //    de texto que a página de assinatura ainda carrega não é copiado; o
+  //    contraste é o gradiente de leitura, montado no passo 7b sobre as caixas
+  //    FINAIS (o autofix ainda pode mexer nelas). Aqui só se mede quanto a foto
+  //    pede sob um retângulo — a mesma conta que calibrava o halo.
+  const necessidadeSob = (rect: Rect, coresDoTexto: string[]): number => {
+    const luz = melhor.raster ? luzNoRect(melhor.raster, rect) : null
+    if (!luz) return 0
+    const c = calibrarHalo({ texto: rect, luz, coresDoTexto, corDaMancha: cfgGradiente.cor, raioBase: 0 })
+    return Number(Math.min(1, c.tinta / 0.95).toFixed(3))
   }
 
-  // 5. A logo, no canto mais calmo e escuro que não encosta no texto.
-  //
-  // 🔴 A logo vai no TOPO da pilha, depois dos textos (ajuste do Ciro na
-  // leva de setembro, 02/09/2026): o halo é desenhado pela camada de TEXTO,
-  // com margem de ~170px além da tinta, e com a logo abaixo do texto na ordem
-  // a mancha cobria a marca sempre que os dois ficavam perto. Só o halo da
-  // marca (shape) fica embaixo de tudo.
-  const haloDaMarca: Layer[] = []
+  // 5. A logo, no canto mais calmo e escuro que não encosta no texto. Vai no
+  //    TOPO da pilha, depois dos textos (ajuste do Ciro na leva de setembro,
+  //    02/09/2026). Não ganha halo próprio: canto claro numa borda sem texto
+  //    recebe um gradiente fraco no passo 7b.
   const camadasDaLogo: Layer[] = []
   let logoDiag: DiagnosticoDaComposicao['logo'] = null
   if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum') {
@@ -716,28 +719,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       formato: spec.formato,
     })
     if (canto) {
-      const luz = melhor.raster ? luzNoRect(melhor.raster, canto.rect) : null
-      const calibrado = calibrarHalo({ texto: canto.rect, luz: luz ?? { media: 0, p75: 0 }, coresDoTexto: ['#FFFFFF'], corDaMancha: mancha, raioBase: assinatura.numeros.halo.raioMarca })
-      const tinta = luz ? tintaNaFaixa(calibrado.tinta / 0.95, assinatura.numeros.halo.faixaMarca) : 0
-      const raio = assinatura.numeros.halo.raioMarca
-      // A página não desenha halo na logo; só o modo calibrado pela casa põe um.
-      if (tinta > 0 && !paginaDefineHalo) {
-        const margem = Math.round(raio * 1.4)
-        haloDaMarca.push({
-          id: 'halo-marca',
-          name: 'Halo da marca',
-          type: 'shape',
-          visible: true,
-          locked: false,
-          order: 0,
-          position: { x: canto.rect.x - margem, y: canto.rect.y - margem },
-          size: { width: largura + 2 * margem, height: altura + 2 * margem },
-          rotation: 0,
-          style: { shapeType: 'rectangle', fill: mancha, fillOpacity: tinta, strokeWidth: 0, border: { width: 0, color: mancha, radius: Math.min(raio + 40, Math.floor((altura + 2 * margem) / 2)) } },
-          effects: { blur: { enabled: true, blurRadius: raio } },
-          metadata: { halo: { tinta, raio, alvo: calibrado.alvo, luzMedida: calibrado.luzMedida, papel: 'marca' } },
-        })
-      }
+      const tinta = 0
       camadasDaLogo.push({
         id: 'logo',
         name: 'Logo',
@@ -776,8 +758,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       ]
     : []
 
-  // 7. Contrato + autofix geométrico (colisão, transbordo, safe area).
-  const normalizado = normalizarCamadas([...fundo, ...haloDaMarca, ...camadasDeTexto, ...camadasDaLogo])
+  // 7. Contrato + autofix geométrico (colisão, transbordo, safe area). O fundo
+  //    de texto que viria da página de assinatura não entra: a peça nasce sem halo.
+  const textosSemHalo = camadasDeTexto.map((c) => (c.effects?.background ? { ...c, effects: { ...c.effects, background: undefined } } : c))
+  const normalizado = normalizarCamadas([...fundo, ...textosSemHalo, ...camadasDaLogo])
   const fix = await aplicarAutofixOuFalhar({
     projectId: spec.projectId,
     layers: normalizado.camadas,
@@ -786,18 +770,36 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   })
   avisos.push(...fix.avisos)
   let layers = fix.layers as Layer[]
-  const gradienteSuave = spec.preferencias?.tratamentoDeTexto === 'gradiente-suave-topo'
-  if (gradienteSuave) {
-    layers = aplicarGradienteSuave(layers, canvas)
-    avisos.push('Gradiente suave solicitado: conferir leitura e fotografia; a preferência não equivale a aprovação desta peça.')
+
+  // 7b. O gradiente de leitura, sobre as caixas FINAIS: um por borda que tem
+  //     texto — topo e rodapé em camadas independentes (pedido do Ciro). Sem
+  //     foto não há o que escurecer: a peça sai sobre o fundo liso da marca.
+  const caixaDe = (l: Layer): Rect => ({ x: l.position.x, y: l.position.y, width: l.size.width, height: l.size.height })
+  const paraGradiente: GrupoParaGradiente[] = rectsDeGrupo.map((grupo) => {
+    const ids = new Set(grupo.camadas.map((c) => c.id))
+    const rect = uniao(layers.filter((l) => ids.has(l.id) && l.visible !== false).map(caixaDe)) ?? grupo.rect
+    return { rect, ancora: grupo.ancora, necessidade: necessidadeSob(rect, grupo.cores) }
+  })
+  const logoFinal = layers.find((l) => l.id === 'logo')
+  if (logoFinal && melhor.raster) {
+    // A logo não tem mais halo: canto claro numa borda SEM texto ganha um
+    // gradiente fraco (metade da necessidade), só o bastante para ela ler.
+    const rect = caixaDe(logoFinal)
+    const borda = bordaDoGrupo(rect, null, canvas.height)
+    const bordaTemTexto = paraGradiente.some((grupo) => bordaDoGrupo(grupo.rect, grupo.ancora, canvas.height) === borda)
+    const necessidade = necessidadeSob(rect, ['#FFFFFF'])
+    if (!bordaTemTexto && necessidade > 0.5) paraGradiente.push({ rect, ancora: borda, necessidade: necessidade * 0.5 })
   }
+  const gradientes = foto ? montarGradientes({ W: canvas.width, H: canvas.height, grupos: paraGradiente, cfg: cfgGradiente }) : []
+  if (gradientes.length > 0) layers = inserirAcimaDaFoto(layers, gradientes.map((gr) => gr.layer))
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
-  //    tinta uma vez dentro da faixa e AVISA quando a foto não carrega o texto.
+  //    FORÇA do gradiente uma vez dentro da faixa e AVISA quando a foto não
+  //    carrega o texto.
   let contraste: ContrasteMedido[] | null = null
   let intervencaoDeTexto: IntervencaoDeTexto | undefined
   try {
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: assinatura.numeros.halo.faixaTexto, corrigir: !paginaDefineHalo, medirIntervencao: opcoes.medirComparacao })
+    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: [cfgGradiente.forcaMinima, cfgGradiente.forcaMaxima], corrigir: true, medirIntervencao: opcoes.medirComparacao })
     layers = regua.layers
     contraste = regua.medidas
     intervencaoDeTexto = regua.intervencao
@@ -809,15 +811,26 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const diagnostico: DiagnosticoDaComposicao = {
     ...(opcoes.selecao ? { selecao: opcoes.selecao } : {}),
     ...(intervencaoDeTexto ? { intervencaoDeTexto } : {}),
-    ...(gradienteSuave ? { tratamentoDeTexto: 'gradiente-suave-topo' as const } : {}),
+    tratamentoDeTexto: 'gradiente-de-leitura',
     formato: spec.formato,
     posicao: { ancora, alinha, crop, pontuacao: Number(melhor.escolhido.pontuacao.toFixed(3)), motivo: melhor.escolhido.motivo },
     candidatos: melhor.todos.map((c) => ({ ...c.rotulo, pontuacao: Number(c.pontuacao.toFixed(3)), descartado: c.descartado, motivo: c.motivo })),
     assunto: melhor.assunto,
     assuntoOrigem: assuntoDoCatalogo ? 'catalogo' : melhor.assunto ? 'estimado' : 'nenhum',
-    halos: gradienteSuave ? halos.filter((h) => layers.some((l) => l.metadata?.groupId === h.grupo && l.effects?.background?.enabled)) : halos,
+    halos: [],
+    gradientes: gradientes.map((gr) => {
+      const forcaFinal = layers.find((l) => l.id === gr.layer.id)?.metadata?.forca
+      const daBorda = paraGradiente.filter((p) => bordaDoGrupo(p.rect, p.ancora, canvas.height) === gr.borda).map((p) => p.necessidade)
+      return {
+        borda: gr.borda,
+        forca: typeof forcaFinal === 'number' ? forcaFinal : gr.forca,
+        altura: gr.altura,
+        cor: cfgGradiente.cor,
+        necessidade: daBorda.length > 0 ? Math.max(...daBorda) : 0,
+      }
+    }),
     logo: logoDiag,
-    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height })),
+    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado })),
     contraste,
     assinatura: assinatura.origem,
     avisos,
@@ -854,7 +867,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const nome = nomeDaPagina({
     quando: spec.quando ?? null,
     tema: spec.tema ?? null,
-    nome: spec.nome ?? spec.blocos[0]?.linhas[0] ?? null,
+    // Os [colchetes] do destaque são marcação: não entram no nome da página.
+    nome: spec.nome ?? (spec.blocos[0]?.linhas[0] ? semColchetes(spec.blocos[0].linhas[0]) : null),
     carrossel: spec.carrossel ?? null,
     // Quem não declarou o slide ganha ao menos um nome próprio: sem isto, os
     // quatro irmãos de um carrossel saem com o nome IDÊNTICO na pasta (foi o

@@ -38,6 +38,7 @@ import type {
   CarouselMeta,
 } from '@/lib/ai/creative-generation-runner'
 import type { TemplateType } from '@prisma/client'
+import { semColchetes } from '@/lib/compositor/destaques'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -142,7 +143,9 @@ export async function startArtGeneration(
   input: StartArtGenerationInput,
 ): Promise<StartArtGenerationResult> {
   const pedido = input.pedido?.trim() ?? ''
-  const copy = (input.copy ?? []).map((b) => b.trim()).filter(Boolean)
+  // Os [colchetes] do destaque são marcação do compositor: a IA os desenharia
+  // na arte. Saem aqui, na entrada única da trilha (bancada, plano e MCP).
+  const copy = (input.copy ?? []).map((b) => semColchetes(b).trim()).filter(Boolean)
   // Cópia rasa: a conferência do `generationId` abaixo descarta o marcador que
   // não confere, e não é papel deste serviço mexer no objeto de quem chamou.
   const referencias = (input.referencias ?? []).map((r) => ({ ...r }))
