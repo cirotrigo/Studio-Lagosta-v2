@@ -5284,3 +5284,57 @@ e `destaques.ts`.
 - ⚠️ Nada disto foi aprovado ainda em peça real: a regra do Ciro é uma amostra
   por cliente, salva no Studio sem agendar, revisada no editor ANTES de ir para
   produção.
+
+### Combinações de texto no compositor: papel, elementos e logo no grupo (11/09/2026)
+
+Pedido do Ciro: o compositor aproveitar da assinatura também ícones, filetes e
+outros elementos, usando (e editando) as combinações de texto da aba Texto. Até
+aqui a usina lia só texto, logo e gradiente da página de assinatura; o resto
+ficava para trás. Plano em `docs/PLANO-2026-09-11-COMBINACOES-NO-COMPOSITOR.md`,
+núcleo em `src/lib/compositor/combinacoes.ts` (puro, com teste).
+
+- **Um grupo de texto é um ARRANJO**: o grupo da página de assinatura (Cmd+G) ou
+  uma combinação salva. Carrega o estilo de cada texto, o vão vertical antes de
+  cada um e os ELEMENTOS presos a cada texto. O compositor continua escolhendo
+  onde o bloco pousa pela foto; o arranjo diz como ele é por dentro.
+- **Só serve à usina texto com PAPEL** (`pre`, `headline`, `headline2`, `apoio`,
+  `cta`, `servico`): `metadata.compositor.papel` (o painel grava), o nome da
+  camada ou o rótulo. Combinação com algum texto sem papel fica de fora — é o
+  que mantém o catálogo base ("Sabor de Verdade") longe das peças até alguém
+  revisá-lo.
+- **O elemento se mede pela TINTA do texto, nunca pela caixa**: na página a
+  caixa costuma ser larga, e na peça ela é justa. `lado` (`antes`, `depois`,
+  `acima`, `abaixo`) + `eixo` (`inicio`, `centro`, `fim`) dizem a que borda ele
+  se prende (`caixaDoOrnamento`); preso à base, o filete acompanha o texto que
+  cresce. Forma do editor guarda o MOLDE da camada + `tamanhoDaCamada` + `ajuste`
+  (o Konva gira em torno da origem, então a caixa visível ≠ posição), e a logo no
+  grupo vira elemento com `logo: true` — a peça não ganha outra no canto.
+- **Associação pela geometria** (`associarIcones` / `associarOrnamentos`):
+  imagem à esquerda, na faixa do texto, é o ícone; o resto na mesma faixa (centro
+  dentro da caixa ou metade da altura do menor sobreposta — o divisor vertical é
+  mais alto que a linha) é `antes`/`depois`; fora dela, o texto mais perto na
+  vertical, e entre dois a distâncias parecidas fica o de BAIXO (o filete some
+  junto com o apoio que falta).
+- **Elemento ao lado de uma linha que a peça não tem sai** (o alfinete da
+  segunda linha do serviço quando só há horário). Papel com vários textos (Local
+  + Horário) recebe uma linha por texto, casando horário com relógio e endereço
+  com alfinete (`blocosDeServico` + pistas do ícone) antes da ordem; na volta,
+  `copyDosPapeis` junta os textos do mesmo papel de cima para baixo.
+- **Escolha** (`escolherArranjo`): o grupo da página e as combinações que cobrem
+  os papéis do grupo; −1 por papel sem copy, +3 por palavra do tema no nome,
+  empate em rodízio pela chave da peça. Os arranjos usados ficam em
+  `spec.preferencias.arranjos`: a recomposição refaz A MESMA peça.
+- **Elementos entram DEPOIS do autofix**, presos à caixa final (o autofix pode
+  encolher a fonte), e o gradiente de leitura cobre o grupo com eles.
+- **O gradiente de cada borda segue a camada que a página desenhou naquela
+  borda** (`bordaDaCamadaDeGradiente`: segmento explícito ou ângulo; 169° topo,
+  11° rodapé). Ler só a primeira camada prendia o rodapé à força do topo.
+- 🔴 **As margens derivadas da página saem da METADE em que cada texto mora.**
+  Página com todo o texto no rodapé dava `safeTopo` de 1281 px.
+- **Provar antes de a usina usar**: `comporPeca(spec, { provar: true,
+  paginasDeAssinatura: [ids] })` compõe com páginas em espera sem gravar nada —
+  `scripts/provar-combinacoes-no-compositor.ts`. Nunca em produção.
+- 🔴 **O editor ANTERIOR a este deploy descarta os campos novos** ao salvar uma
+  combinação (o zod antigo stripa `papel`, `ornamentos`, `destaque`). Combinação
+  gravada com eles não pode ser editada no app antigo — grave os dados da usina
+  junto com o deploy.
