@@ -178,19 +178,35 @@ function alturaDeUmaLinha(camada: Layer): number {
   return corpo * entrelinha
 }
 
+const linhaNormalizada = (t: string) => t.replace(/\s+/g, ' ').trim().toLowerCase()
+
 /**
  * O vão que a página dá antes de um texto: do fim da tinta do anterior ao topo
- * dele. Sobrepor até meia linha do anterior é desenho (lockup apertado). Mais
- * do que isso, a página DESENHA POR CIMA de uma linha do anterior — as
- * variantes do Espeto guardam a manchete inteira na caixa da voz 1 e põem a
- * voz 2 sobre a última linha — e o vão dela não vale para a peça, em que cada
- * voz tem só as suas linhas: sem vão, a peça usa o ritmo da casa (a voz 2
- * encosta na 1), como o compositor sempre fez.
+ * dele, com teto de meia altura do anterior para a sobreposição (o lockup
+ * apertado, a voz 2 em script entrando na linha de cima).
+ *
+ * A exceção é o texto DESENHADO POR CIMA de uma linha do anterior: as variantes
+ * do Espeto guardam a manchete inteira na caixa da voz 1 e põem a voz 2 sobre a
+ * última linha, repetindo-a. Na peça cada voz tem só as suas linhas, e o vão
+ * negativo da página as sobrepunha (TEXTO_NAO_CABE). Duas marcas denunciam o
+ * desenho por cima: o texto REPETE uma linha do anterior, ou COMEÇA numa delas
+ * (a um quinto do passo de linha). Aí não há vão e a peça usa o ritmo da casa.
+ * Sobrepor mais de meia linha, sozinho, NÃO é marca: o "quintal" do Convite do
+ * dia do Quintal entra 44 px em "é dia de" de propósito, e a primeira versão
+ * desta regra, que cortava pela meia linha, o descolava 55 px (11/09/2026).
  */
-export function vaoDaPagina(anterior: { y: number; altura: number; umaLinha: number }, y: number): number | null {
-  const vao = Math.round(y - (anterior.y + anterior.altura))
+export function vaoDaPagina(
+  anterior: { y: number; altura: number; umaLinha: number; linhas: string[] },
+  atual: { y: number; conteudo: string },
+): number | null {
+  const vao = Math.round(atual.y - (anterior.y + anterior.altura))
   if (vao >= 0) return vao
-  return -vao > anterior.umaLinha * 0.5 ? null : vao
+  const repete = anterior.linhas.length > 1 && anterior.linhas.map(linhaNormalizada).includes(linhaNormalizada(atual.conteudo))
+  const emLinhas = anterior.umaLinha > 0 ? (atual.y - anterior.y) / anterior.umaLinha : 0
+  const k = Math.round(emLinhas)
+  const comecaNumaLinha = k >= 1 && k < anterior.linhas.length && Math.abs(emLinhas - k) <= 0.2
+  if (repete || comecaNumaLinha) return null
+  return Math.max(-Math.round(anterior.altura * 0.5), vao)
 }
 
 /**
@@ -221,7 +237,7 @@ export function arranjoDasCamadas(args: {
   const presos = associarOrnamentos(textos, elementos.filter((e) => !usados.has(e.id)))
 
   const itens: TextoDoArranjo[] = []
-  let anterior: { y: number; altura: number; umaLinha: number } | null = null
+  let anterior: { y: number; altura: number; umaLinha: number; linhas: string[] } | null = null
   for (const texto of textos) {
     const estilo = estiloDaCamada(texto, args.todas ?? args.camadas)
     if (!estilo) continue
@@ -235,7 +251,7 @@ export function arranjoDasCamadas(args: {
       doTexto.push(relativoATinta(o.imagem, tinta, lado, eixo))
     }
     const y = texto.position?.y ?? 0
-    const vaoAntes = anterior ? vaoDaPagina(anterior, y) : null
+    const vaoAntes = anterior ? vaoDaPagina(anterior, { y, conteudo: texto.content ?? '' }) : null
     const papel = papelDoTexto(texto) as Papel
     const elementoId = texto.metadata?.elementId
     itens.push({
@@ -246,7 +262,7 @@ export function arranjoDasCamadas(args: {
       tipo: papel === 'servico' ? tipoDoServico(texto, doTexto) : null,
       ...(typeof elementoId === 'string' && elementoId ? { elementoId } : {}),
     })
-    anterior = { y, altura: tinta.height, umaLinha: alturaDeUmaLinha(texto) }
+    anterior = { y, altura: tinta.height, umaLinha: alturaDeUmaLinha(texto), linhas: (texto.content ?? '').split('\n') }
   }
   if (itens.length === 0) return null
 

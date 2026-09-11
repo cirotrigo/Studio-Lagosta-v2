@@ -358,8 +358,8 @@ interface GeometriaDaPeca {
   gap: number
 }
 
-function retanguloDoBloco(g: GeometriaDaPeca, ancora: Ancora, alinha: Alinhamento, w: number, h: number): Rect {
-  const x = alinha === 'esquerda' ? g.margemH : alinha === 'direita' ? g.W - g.margemH - w : (g.W - w) / 2
+function retanguloDoBloco(g: GeometriaDaPeca, ancora: Ancora, alinha: Alinhamento, w: number, h: number, margem = g.margemH): Rect {
+  const x = alinha === 'esquerda' ? margem : alinha === 'direita' ? g.W - margem - w : (g.W - w) / 2
   const y = ancora === 'topo' ? g.safeTopo : ancora === 'rodape' ? g.H - g.safeRodape - h : (g.H - h) / 2
   return { x: Math.round(x), y: Math.round(Math.max(g.safeTopo, Math.min(y, g.H - g.safeRodape - h))), width: w, height: h }
 }
@@ -369,10 +369,23 @@ function candidatosDePosicao(
   spec: SpecDePeca,
   bloco: { width: number; height: number },
   crop: CropPosition,
-  extra: { reservaNoRodape?: number; reservaNoTopo?: number; alinhaDaAssinatura?: Alinhamento | null; ancoraDaPagina?: Ancora | null } = {},
+  extra: {
+    reservaNoRodape?: number
+    reservaNoTopo?: number
+    alinhaDaAssinatura?: Alinhamento | null
+    ancoraDaPagina?: Ancora | null
+    /** A margem lateral do bloco em cada alinhamento — a do grupo na página. */
+    margemPara?: (alinha: Alinhamento) => number | undefined
+  } = {},
 ): CandidatoDePosicao<RotuloDePosicao>[] {
   const pref = spec.preferencias ?? {}
-  const rodizio = { ...preferenciaDoRodizio(spec), ...(extra.alinhaDaAssinatura ? { alinha: extra.alinhaDaAssinatura } : {}) }
+  // A posição que a PÁGINA desenhou é a preferência; o sorteio só completa o
+  // que ela não diz. Até 11/09/2026 só o alinhamento vinha da página e a âncora
+  // seguia sorteada — e como a preferência pede as duas, o lado do modelo
+  // valia 0,30 como qualquer outro: o Almoço executivo do Quintal e o do TERO,
+  // alinhados à esquerda nos modelos, saíam à direita por 0,01 a 0,03 de calma.
+  const sorteada = preferenciaDoRodizio(spec)
+  const rodizio = { ancora: extra.ancoraDaPagina ?? sorteada.ancora, alinha: extra.alinhaDaAssinatura ?? sorteada.alinha }
   // Ciro (03/09/2026): "o agrupamento que está no topo deve permanecer no
   // topo… o que está no rodapé a mesma coisa" — o VERTICAL é da página; o
   // mapa da foto só escolhe o HORIZONTAL (esquerda/centro/direita). A spec
@@ -672,10 +685,22 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
       const escalaDosElementos = escalaDoFormato * r.bloco.escala
       if (p.texto && p.texto.elementos.length > 0) elementosPorTexto.set(r.bloco.layer.id, { elementos: p.texto.elementos, escala: escalaDosElementos })
+      const vaoAntes = p.texto && p.texto.vaoAntes !== null ? Math.round(p.texto.vaoAntes * escalaDoFormato) : null
+      // O encaixe que a página desenhou — a voz 2 entrando na linha de cima, como
+      // o "executivo" em script sob o "Almoço" do Quintal — vai marcado na camada
+      // com quanto sobrepõe. A conferência de colisão o aceita entre textos do
+      // mesmo grupo; sem a marca, o autofix encolhia a manchete até desfazer o
+      // encaixe (88 → 77 px, 11/09/2026).
+      const compositorDaCamada = (r.bloco.layer.metadata as { compositor?: Record<string, unknown> } | undefined)?.compositor
+      const layer =
+        vaoAntes !== null && vaoAntes < 0
+          ? { ...r.bloco.layer, metadata: { ...r.bloco.layer.metadata, compositor: { ...compositorDaCamada, encaixe: -vaoAntes } } }
+          : r.bloco.layer
       montados.push({
         ...r.bloco,
+        layer,
         chave,
-        ...(p.texto && p.texto.vaoAntes !== null ? { vaoAntes: Math.round(p.texto.vaoAntes * escalaDoFormato) } : {}),
+        ...(vaoAntes !== null ? { vaoAntes } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
       })
     }
@@ -763,6 +788,20 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     ...outros.filter((c) => c.ancora === 'rodape').sort(porCentro(-1)),
   ]
   const pilha = principal.pilha
+  // A margem lateral de cada grupo é a que ELE tem na página: a caixa dos textos
+  // na borda em que alinham, menos o quanto os elementos passam da tinta (o ícone
+  // à esquerda do serviço) — os elementos se medem pela tinta, na página e na
+  // peça, então o texto cai no mesmo x e o ícone vem junto. Uma margem só para
+  // todos punha o serviço do Happy hour do TERO 18 px para dentro e a oferta do
+  // Happy wine 11 px para fora (11/09/2026). Virado para o outro lado pelo mapa,
+  // o grupo leva a mesma distância à borda.
+  const margemDoGrupo = (c: BlocoComposto, alinha: Alinhamento): number | undefined => {
+    const a = arranjoPorGrupo.get(c.chave)
+    if (a?.origem !== 'pagina' || !a.caixa || assinatura.origem.formatoDaPagina !== spec.formato || alinha === 'centro') return undefined
+    const distancia = a.alinhamento === 'direita' ? canvas.width - (a.caixa.x + a.caixa.width) : a.alinhamento === 'esquerda' ? a.caixa.x : null
+    if (distancia === null) return undefined
+    return Math.max(24, Math.min(240, Math.round(distancia - (alinha === 'esquerda' ? c.pilha.esquerda : c.pilha.direita))))
+  }
   // Os blocos secundários reservam a própria altura na âncora deles, para o
   // principal não pousar em cima.
   const reservaNoRodape = secundarios.filter((c) => c.ancora === 'rodape').reduce((acc, c) => acc + c.pilha.height + Math.round(g.gap * 1.6), 0)
@@ -787,6 +826,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       reservaNoTopo,
       alinhaDaAssinatura: principal.alinha ?? assinatura.alinhamento,
       ancoraDaPagina: principal.temCaixa ? principal.ancora : null,
+      margemPara: (al) => margemDoGrupo(principal, al),
     })
     const pontuados = mapa
       ? pontuarCandidatos({ mapa, candidatos, coresDoTexto: cores, corDaMancha: cfgGradiente.cor, assunto })
@@ -835,7 +875,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   let ocupadoNoTopo = 0
   for (const c of secundarios) {
     const al = c.alinha ?? alinha
-    let rect = retanguloDoBloco(g, c.ancora, al, c.pilha.width, c.pilha.height)
+    let rect = retanguloDoBloco(g, c.ancora, al, c.pilha.width, c.pilha.height, margemDoGrupo(c, al))
     if (c.ancora === 'rodape') {
       rect = { ...rect, y: g.H - g.safeRodape - c.pilha.height - ocupadoNoRodape }
       ocupadoNoRodape += c.pilha.height + Math.round(g.gap * 1.6)

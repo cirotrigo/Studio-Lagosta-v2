@@ -32,11 +32,18 @@ const texto = (id: string, content: string, y: number, altura: number, fontSize:
   }) as Layer
 
 describe('vão da página entre textos que se sobrepõem', () => {
-  it('sobrepor até meia linha é lockup apertado e vale; mais que isso não dá vão', () => {
-    const anterior = { y: 0, altura: 100, umaLinha: 50 }
-    expect(vaoDaPagina(anterior, 110)).toBe(10)
-    expect(vaoDaPagina(anterior, 80)).toBe(-20)
-    expect(vaoDaPagina(anterior, 70)).toBeNull()
+  const anterior = { y: 0, altura: 100, umaLinha: 50, linhas: ['PRIMEIRA', 'SEGUNDA'] }
+
+  it('vão positivo e sobreposição que não cai numa linha do anterior valem, até meia altura dele', () => {
+    expect(vaoDaPagina(anterior, { y: 110, conteudo: 'OUTRA' })).toBe(10)
+    expect(vaoDaPagina(anterior, { y: 80, conteudo: 'OUTRA' })).toBe(-20)
+    expect(vaoDaPagina(anterior, { y: 72, conteudo: 'OUTRA' })).toBe(-28)
+    expect(vaoDaPagina({ ...anterior, altura: 300, linhas: ['A', 'B', 'C', 'D', 'E', 'F'] }, { y: 30, conteudo: 'OUTRA' })).toBe(-150)
+  })
+
+  it('texto que começa numa linha do anterior, ou repete uma delas, está desenhado por cima: sem vão', () => {
+    expect(vaoDaPagina(anterior, { y: 50, conteudo: 'OUTRA' })).toBeNull()
+    expect(vaoDaPagina(anterior, { y: 60, conteudo: 'segunda' })).toBeNull()
   })
 
   it('a voz 2 desenhada sobre a 2ª linha da manchete (variantes do Espeto) cai no ritmo da casa', () => {
@@ -50,6 +57,18 @@ describe('vão da página entre textos que se sobrepõem', () => {
     })!
     expect(a.textos.map((t) => t.papel)).toEqual(['headline', 'headline2'])
     expect(a.textos[1].vaoAntes).toBeNull()
+  })
+
+  it('o encaixe do "quintal" entrando em "é dia de" (Convite do dia do Quintal) mantém o vão da página', () => {
+    // Sobrepõe mais de meia linha, mas não começa numa linha da voz 1 nem a repete: é desenho
+    const a = arranjoDasCamadas({
+      id: 'convite:g',
+      nome: 'Convite do dia',
+      origem: 'pagina',
+      camadas: [texto('headline', 'Sexta\né dia de', 173, 217, 97, 1.052), texto('headline2', 'quintal', 334, 173, 161, 1)],
+      medir: medirFalso,
+    })!
+    expect(a.textos[1].vaoAntes).toBe(-44)
   })
 
   it('duas vozes empilhadas com as caixas encostando um pouco mantêm o vão da página', () => {

@@ -18,7 +18,13 @@
  *   npx tsx scripts/provar-combinacoes-no-compositor.ts --projeto 3 [--saida <pasta>] [--so <trecho do nome>]
  *
  * Sem `--paginas`, usa as páginas do template com a tag `modelos-da-marca` do
- * projeto; com `--paginas id1,id2`, só essas.
+ * projeto; com `--paginas id1,id2`, só essas; com `--assinatura`, as do template
+ * "Assinatura" (as que a usina lê).
+ *
+ * `--comparar` põe o MODELO renderizado como está no editor ao lado da peça
+ * composta com a mesma copy e a mesma foto, e imprime, papel a papel, onde o
+ * texto está e com que corpo e cor nos dois. É a conferência depois de a equipe
+ * ajustar um modelo: a peça tem de seguir o ajuste.
  */
 import 'dotenv/config'
 import fs from 'node:fs/promises'
@@ -30,7 +36,9 @@ import { formatoDaPagina, NOME_DO_TEMPLATE_DE_ASSINATURA } from '@/lib/composito
 import { comporPeca } from '@/lib/compositor/compor'
 import { copyDosPapeisComDestaque, fotoDaPagina } from '@/lib/compositor/defasagem'
 import { semColchetes } from '@/lib/compositor/destaques'
+import { papelDoNome } from '@/lib/compositor/papel-do-nome'
 import { PAPEIS, type SpecDePeca } from '@/lib/compositor/spec'
+import type { Layer } from '@/types/template'
 
 function argumento(nome: string): string | null {
   const i = process.argv.indexOf(nome)
@@ -40,6 +48,7 @@ function argumento(nome: string): string | null {
 interface Caso {
   nome: string
   pagina: string
+  completa: boolean
   spec: SpecDePeca
 }
 
@@ -50,6 +59,7 @@ interface PaginaDaProva {
   tags: string[]
   width: number
   height: number
+  background: string | null
 }
 
 function slug(texto: string): string {
@@ -84,10 +94,50 @@ function casosDaPagina(projectId: number, pagina: PaginaDaProva): Caso[] {
   const formato = formatoDaPagina(pagina) ?? 'story'
   const base = { projectId, formato, ...(foto ? { foto: { url: foto } } : {}) }
   const nome = `${slug(pagina.name.replace(/^Modelo\s*·\s*/, ''))}${formato === 'story' ? '' : `-${formato}`}`
-  const casos: Caso[] = [{ nome, pagina: pagina.id, spec: { ...base, blocos: completa, nome: pagina.name } }]
+  const casos: Caso[] = [{ nome, pagina: pagina.id, completa: true, spec: { ...base, blocos: completa, nome: pagina.name } }]
   // A enxuta só existe quando tira alguma coisa da completa
-  if (enxuta.length < completa.length) casos.push({ nome: `${nome}-enxuta`, pagina: pagina.id, spec: { ...base, blocos: enxuta, nome: `${pagina.name} (enxuta)` } })
+  if (enxuta.length < completa.length) casos.push({ nome: `${nome}-enxuta`, pagina: pagina.id, completa: false, spec: { ...base, blocos: enxuta, nome: `${pagina.name} (enxuta)` } })
   return casos
+}
+
+function camadasDaPagina(layers: unknown): Layer[] {
+  let v: unknown = layers
+  for (let i = 0; i < 2 && typeof v === 'string'; i++) v = JSON.parse(v)
+  return Array.isArray(v) ? (v as Layer[]) : []
+}
+
+const papelDe = (l: Layer): string | null =>
+  (l.metadata as { compositor?: { papel?: string } } | undefined)?.compositor?.papel ?? papelDoNome(l.name) ?? papelDoNome(l.id)
+
+/** Os textos com papel, de cima para baixo: onde estão, com que corpo e cor. */
+function textosPorPapel(camadas: Layer[]): Array<{ papel: string; y: number; x: number; corpo: number; cor: string }> {
+  return camadas
+    .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && papelDe(l))
+    .map((l) => ({
+      papel: papelDe(l)!,
+      y: Math.round(l.position?.y ?? 0),
+      x: Math.round(l.position?.x ?? 0),
+      corpo: Math.round(Number(l.style?.fontSize ?? 0) * 10) / 10,
+      cor: String(l.style?.color ?? ''),
+    }))
+    .sort((a, b) => a.y - b.y)
+}
+
+function tabelaDeComparacao(modelo: Layer[], peca: Layer[]): string[] {
+  const doModelo = textosPorPapel(modelo)
+  const daPeca = textosPorPapel(peca)
+  const papeis = [...new Set([...doModelo, ...daPeca].map((t) => t.papel))]
+  const linhas: string[] = []
+  for (const papel of papeis) {
+    const m = doModelo.filter((t) => t.papel === papel)
+    const p = daPeca.filter((t) => t.papel === papel)
+    for (let i = 0; i < Math.max(m.length, p.length); i++) {
+      const fmt = (t?: { y: number; x: number; corpo: number; cor: string }) => (t ? `y=${t.y} x=${t.x} corpo=${t.corpo} ${t.cor}` : '—')
+      const dy = m[i] && p[i] ? ` · Δy=${p[i].y - m[i].y} Δcorpo=${Math.round((p[i].corpo - m[i].corpo) * 10) / 10}` : ''
+      linhas.push(`    ${papel.padEnd(9)} modelo ${fmt(m[i]).padEnd(38)} peça ${fmt(p[i])}${dy}`)
+    }
+  }
+  return linhas
 }
 
 async function main() {
@@ -97,6 +147,7 @@ async function main() {
   const ids = argumento('--paginas')?.split(',').filter(Boolean) ?? null
   // `--assinatura`: as páginas que a usina de produção lê hoje (template "Assinatura")
   const daAssinatura = process.argv.includes('--assinatura')
+  const comparar = process.argv.includes('--comparar')
   await fs.mkdir(saida, { recursive: true })
 
   const paginas = await db.page.findMany({
@@ -105,7 +156,7 @@ async function main() {
       : daAssinatura
         ? { Template: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA } }
         : { Template: { projectId, tags: { has: 'modelos-da-marca' } } },
-    select: { id: true, name: true, layers: true, tags: true, width: true, height: true },
+    select: { id: true, name: true, layers: true, tags: true, width: true, height: true, background: true },
     orderBy: { order: 'asc' },
   })
   const todos = paginas.flatMap((p) => casosDaPagina(projectId, p))
@@ -113,8 +164,14 @@ async function main() {
   const repetidos = new Set(todos.filter((c) => todos.some((d) => d.nome === c.nome && d.pagina !== c.pagina)).map((c) => c.nome))
   const casos = todos
     .map((c) => (repetidos.has(c.nome) ? { ...c, nome: `${c.nome}-${c.pagina.slice(0, 6)}` } : c))
-    .filter((c) => !so || c.nome.includes(so))
-  console.log(`${paginas.length} página(s), ${casos.length} peça(s)`)
+    // Na comparação só a completa tem par: a enxuta não tem modelo igual a ela
+    .filter((c) => (!so || c.nome.includes(so)) && (!comparar || c.completa))
+  console.log(`${paginas.length} página(s), ${casos.length} peça(s)${comparar ? ' comparadas ao modelo' : ''}`)
+
+  if (comparar) {
+    const { registerProjectFonts } = await import('@/lib/posts/register-project-fonts')
+    await registerProjectFonts(projectId)
+  }
 
   const arquivos: string[] = []
   let comFalta = 0
@@ -123,6 +180,18 @@ async function main() {
       const r = await comporPeca(caso.spec, { provar: true, paginasDeAssinatura: [caso.pagina] })
       const arquivo = path.join(saida, `${caso.nome}.png`)
       await fs.writeFile(arquivo, r.prova!)
+      if (comparar) {
+        const pagina = paginas.find((p) => p.id === caso.pagina)!
+        const camadas = camadasDaPagina(pagina.layers)
+        const { CanvasRenderer } = await import('@/lib/canvas-renderer')
+        const png = await new CanvasRenderer(pagina.width, pagina.height).renderDesign(
+          { canvas: { width: pagina.width, height: pagina.height, backgroundColor: pagina.background ?? '#000000' }, layers: camadas },
+          {},
+        )
+        const doModelo = path.join(saida, `${caso.nome}-modelo.png`)
+        await fs.writeFile(doModelo, png)
+        arquivos.push(doModelo)
+      }
       arquivos.push(arquivo)
       const d = r.diagnostico
       const elementos = r.layers.filter((l) => (l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe)
@@ -141,6 +210,11 @@ async function main() {
       console.log(`  arranjos: ${(d.arranjos ?? []).map((a) => `${a.grupo} (${a.motivo})`).join(' | ')}`)
       console.log(`  posição: ${d.posicao.ancora}/${d.posicao.alinha} · logo: ${d.logo ? d.logo.canto : 'no arranjo ou nenhuma'} · elementos: ${elementos.length}`)
       if (d.avisos.length > 0) console.log(`  avisos: ${d.avisos.join(' · ')}`)
+      if (comparar) {
+        const pagina = paginas.find((p) => p.id === caso.pagina)!
+        console.log('  modelo × peça, por papel:')
+        for (const linha of tabelaDeComparacao(camadasDaPagina(pagina.layers), r.layers)) console.log(linha)
+      }
     } catch (erro) {
       comFalta++
       console.log(`\n✗ ${caso.nome}: ${erro instanceof Error ? erro.message : String(erro)}`)
@@ -150,17 +224,20 @@ async function main() {
   if (arquivos.length > 0) {
     const largura = 270
     const altura = 480
-    const porLinha = 8
+    // Na comparação cada linha da folha tem pares modelo | peça
+    const porLinha = comparar ? 6 : 8
+    const vao = (i: number) => (comparar ? Math.floor(i / 2) * 18 : 0)
     const linhasDaFolha = Math.ceil(arquivos.length / porLinha)
     // `contain`: a peça de feed entra inteira na célula de story, sem esticar
     const miniaturas = await Promise.all(arquivos.map((a) => sharp(a).resize(largura, altura, { fit: 'contain', background: '#222222' }).png().toBuffer()))
+    const colunas = Math.min(porLinha, arquivos.length)
     const folha = await sharp({
-      create: { width: (largura + 12) * Math.min(porLinha, arquivos.length) + 12, height: (altura + 12) * linhasDaFolha + 12, channels: 3, background: '#222222' },
+      create: { width: (largura + 12) * colunas + 12 + vao(colunas - 1), height: (altura + 12) * linhasDaFolha + 12, channels: 3, background: '#222222' },
     })
-      .composite(miniaturas.map((input, i) => ({ input, left: 12 + (i % porLinha) * (largura + 12), top: 12 + Math.floor(i / porLinha) * (altura + 12) })))
+      .composite(miniaturas.map((input, i) => ({ input, left: 12 + (i % porLinha) * (largura + 12) + vao(i % porLinha), top: 12 + Math.floor(i / porLinha) * (altura + 12) })))
       .png()
       .toFile(path.join(saida, 'folha.png'))
-    console.log(`\nFolha: ${path.join(saida, 'folha.png')} (${folha.width}x${folha.height})`)
+    console.log(`\nFolha: ${path.join(saida, 'folha.png')} (${folha.width}x${folha.height})${comparar ? ' · em cada par, o modelo à esquerda e a peça à direita' : ''}`)
   }
   console.log(`\n${casos.length - comFalta} de ${casos.length} peça(s) com o texto completo.`)
 }
