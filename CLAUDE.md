@@ -5281,9 +5281,11 @@ e `destaques.ts`.
 - ⚠️ Rich text não passa pelo autofix de colisão (`text-geometry` só enxerga
   `text`): o compositor empilha pela própria medida. Escritor NOVO de camada
   rich-text precisa medir a altura sozinho.
-- ⚠️ Nada disto foi aprovado ainda em peça real: a regra do Ciro é uma amostra
-  por cliente, salva no Studio sem agendar, revisada no editor ANTES de ir para
-  produção.
+- ⚠️ **Em produção desde 11/09/2026** (merge 6f1ebed7), junto com a troca da
+  assinatura do Quintal e do TERO pelos modelos da marca — o Ciro autorizou
+  subir antes de revisar as 10 amostras de gradiente, que continuam nas pastas
+  "AMOSTRA · Gradiente e destaque — não agendar". As primeiras peças compostas
+  de cada cliente são a revisão que falta.
 
 ### Combinações de texto no compositor: papel, elementos e logo no grupo (11/09/2026)
 
@@ -5338,3 +5340,54 @@ núcleo em `src/lib/compositor/combinacoes.ts` (puro, com teste).
   combinação (o zod antigo stripa `papel`, `ornamentos`, `destaque`). Combinação
   gravada com eles não pode ser editada no app antigo — grave os dados da usina
   junto com o deploy.
+- 🔴 **O vão entre os textos de um grupo vem da página, e página que DESENHA POR
+  CIMA não tem vão.** As variantes Promoção, Rodapé e Topo do Espeto guardam a
+  manchete inteira ("COSTELA⏎NO BAFO") na caixa da voz 1 e põem a voz 2 sobre a
+  última linha. Lido ao pé da letra, isso é um vão de −75px, e na peça, em que
+  cada voz tem só as suas linhas, as duas se sobrepunham: TEXTO_NAO_CABE nas três
+  variantes. `vaoDaPagina` aceita sobreposição de até meia linha (lockup
+  apertado); além disso devolve `null` e a peça usa o ritmo da casa (a voz 2
+  encosta na 1), como o compositor sempre fez. Pego pela prova das assinaturas
+  de TODOS os clientes antes do merge — com os modelos do Quintal e do TERO
+  sozinhos, não aparecia.
+
+### A assinatura do Quintal e do TERO são os modelos da marca (11/09/2026)
+
+Os modelos recriados no editor a partir das artes de referência (Quintal 3,
+TERO 7) viraram as variantes de STORY da usina, por decisão do Ciro, no mesmo
+deploy do compositor de arranjos (PRs #119 e #121). Troca feita por
+`scripts/trocar-assinatura-pelos-modelos.ts` (dry-run por padrão).
+
+- **As páginas foram MOVIDAS para o template "Assinatura", não copiadas.** A aba
+  Modelos lista as páginas-modelo de TODOS os templates do projeto
+  (`/api/templates/[id]/template-pages`), então a cópia apareceria duas vezes, e
+  as duas versões divergiriam na primeira edição. Com uma página só, editar o
+  modelo no editor é editar a assinatura. Os templates "Modelos da marca" (457 e
+  458) ficaram vazios.
+- **As stories antigas foram arquivadas, nunca apagadas**: template
+  "Assinatura — arquivada em 11/09/2026", categoria
+  `__system_assinatura_arquivada__` (seção Arquivo da aba Templates; a listagem
+  só esconde a categoria do export do Konva), páginas com `isTemplate: false` e a
+  tag `assinatura` trocada por `assinatura-arquivada`. Voltar atrás é mover as
+  páginas de volta.
+- **As páginas de feed ficaram**: os modelos são só story. A de feed do Quintal
+  se chama "Assinatura — story" e mesmo assim é lida como feed, porque
+  `formatoDaPagina` testa o TAMANHO de feed (1080x1350) antes do nome "story".
+- 🔴 **A troca só vale com o compositor de arranjos no ar.** O código anterior
+  lia papel só de `type === 'text'`: o serviço e o apoio em rich-text dos modelos
+  sumiam da escolha de variante, e ícones, filetes e a logo do grupo eram
+  ignorados. Página de assinatura com elemento ou rich-text não pode voltar para
+  um deploy anterior ao #121.
+- ⚠️ **O script que recriou os modelos (`recriar-modelos-da-marca.ts`, fora do
+  repo) procura as páginas no template "Modelos da marca" pelo nome.** Rodado de
+  novo, ele RECRIA os modelos lá em vez de atualizar os que estão na assinatura.
+- **Provas**: `provar-combinacoes-no-compositor.ts --assinatura` prova as páginas
+  que a usina lê hoje, cada uma com a copy dela (página de feed prova peça de
+  feed); `--paginas` prova páginas em espera. Antes do merge rodaram também as
+  últimas peças reais de cada cliente, recompostas com a spec gravada: 47 de 50.
+  As 3 recusas eram do Wine Vix e já aconteciam em produção — copy com `apoio`
+  de 04/09 e a página de story editada sem apoio horas depois. Recusa por papel
+  que a variante perdeu não é regressão do compositor: é a página que mudou.
+- ⚠️ A prova tira a copy da própria página. Em página que desenha a voz 2 por
+  cima da manchete, a manchete da prova sai com a última linha repetida — é
+  artefato da prova, não da usina (a copy real chega com as linhas uma vez só).
