@@ -110,14 +110,18 @@ describe('arranjo de um grupo', () => {
     expect(a.faixaDaTinta).toEqual({ topo: 1518, base: 1739 + Math.ceil(34 * 1.2) })
   })
 
-  it('texto poucos px fora do alinhamento não vira recuo; grupo centrado não tem recuo', () => {
+  it('texto 2 px fora do alinhamento não vira recuo; grupo centrado não tem recuo', () => {
     expect(arranjoDoGrupo().textos.every((t) => t.recuo === undefined)).toBe(true)
     const torto: Layer[] = [
       camada({ id: 'headline', type: 'text', content: 'Terça Pede', style: { fontFamily: 'Branley', fontSize: 142, lineHeight: 1, color: CLARO, textAlign: 'left' }, position: { x: 74, y: 1309 }, size: { width: 860, height: 142 }, metadata: { groupId: 'p' } }),
-      camada({ id: 'apoio', type: 'text', content: 'Doçura e Aconchego', style: { fontFamily: 'StageGrotesk', fontSize: 50, lineHeight: 1.2, color: CLARO, textAlign: 'left' }, position: { x: 78, y: 1458 }, size: { width: 760, height: 60 }, metadata: { groupId: 'p' } }),
+      camada({ id: 'apoio', type: 'text', content: 'Doçura e Aconchego', style: { fontFamily: 'StageGrotesk', fontSize: 50, lineHeight: 1.2, color: CLARO, textAlign: 'left' }, position: { x: 76, y: 1458 }, size: { width: 760, height: 60 }, metadata: { groupId: 'p' } }),
     ]
     const a = arranjoDasCamadas({ id: 'p:p', nome: 'Principal', origem: 'pagina', camadas: torto, medir: medirFalso })!
     expect(a.textos.every((t) => t.recuo === undefined)).toBe(true)
+    // 7 px já é desenho: o apoio para dentro da manchete serifada (Feriado do TERO)
+    const otico = torto.map((c) => (c.id === 'apoio' ? { ...c, position: { x: 81, y: 1458 } } : c))
+    const b = arranjoDasCamadas({ id: 'p:p', nome: 'Principal', origem: 'pagina', camadas: otico, medir: medirFalso })!
+    expect(b.textos.map((t) => t.recuo ?? 0)).toEqual([0, 7])
   })
 })
 

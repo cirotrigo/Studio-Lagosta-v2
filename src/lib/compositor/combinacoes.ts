@@ -292,8 +292,12 @@ export function arranjoDasCamadas(args: {
   }
 }
 
-/** Menos que isto é mão no editor, não desenho: o texto arrastado 4 px para dentro não vira recuo. */
-const RECUO_MINIMO = 8
+/**
+ * Até 2 px é arraste no editor, não desenho. 3 px já pode ser alinhamento ótico:
+ * no Feriado do TERO o apoio mora 7 px para dentro da manchete serifada, e um
+ * piso de 8 px o achatava na borda dela (11/09/2026).
+ */
+const RECUO_MINIMO = 3
 
 /**
  * O recuo de cada texto dentro da borda em que o grupo alinha: a tinta rente é
