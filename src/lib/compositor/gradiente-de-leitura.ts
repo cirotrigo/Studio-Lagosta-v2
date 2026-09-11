@@ -268,6 +268,28 @@ export function configDaCamada(camada: Layer): AjustesDoGradiente | null {
   return { ...(cor ? { cor } : {}), curva, forcaMaxima: arred(Math.min(1, maxima)) }
 }
 
+/**
+ * A borda FORTE de uma camada de gradiente desenhada no editor: pelo segmento
+ * explícito (início e fim), quando existe, ou pelo ângulo — nos gradientes da
+ * marca, 169° é o topo e 11° o rodapé. Sem paradas legíveis, null.
+ */
+export function bordaDaCamadaDeGradiente(camada: Layer): Borda | null {
+  if (camada.type !== 'gradient' && camada.type !== 'gradient2') return null
+  const paradas = paradasDe(camada)
+    .filter((s) => typeof s.position === 'number')
+    .sort((a, b) => (a.position as number) - (b.position as number))
+  if (paradas.length < 2) return null
+  const opacidade = (s: ParadaLida) => (typeof s.opacity === 'number' ? s.opacity : 1)
+  const forteNoInicio = opacidade(paradas[0]) >= opacidade(paradas[paradas.length - 1])
+  const s = (camada.style ?? {}) as { gradientStartY?: unknown; gradientEndY?: unknown; gradientAngle?: unknown }
+  if (typeof s.gradientStartY === 'number' && typeof s.gradientEndY === 'number' && s.gradientStartY !== s.gradientEndY) {
+    return forteNoInicio === s.gradientStartY < s.gradientEndY ? 'topo' : 'rodape'
+  }
+  const angulo = (((typeof s.gradientAngle === 'number' ? s.gradientAngle : 180) % 360) + 360) % 360
+  const inicioEmCima = angulo > 90 && angulo < 270
+  return forteNoInicio === inicioEmCima ? 'topo' : 'rodape'
+}
+
 /** Entre cores candidatas (os gradientes da marca), a que mais contrasta com o texto. */
 export function corQueContrasta(candidatas: string[], coresDoTexto: string[]): string | null {
   const textos = coresDoTexto.length > 0 ? coresDoTexto : ['#FFFFFF']

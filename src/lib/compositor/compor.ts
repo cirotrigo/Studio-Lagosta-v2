@@ -70,8 +70,11 @@ import {
 } from './mapa-de-calma'
 import { destaqueDoPapel, semColchetes, type EstiloDeDestaque } from './destaques'
 import {
+  bordaDaCamadaDeGradiente,
   bordaDoGrupo,
+  configDaCamada,
   corQueContrasta,
+  type AjustesDoGradiente,
   inserirAcimaDaFoto,
   montarGradientes,
   type Borda,
@@ -925,7 +928,29 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const necessidade = necessidadeSob(rect, ['#FFFFFF'])
     if (!bordaTemTexto && necessidade > 0.5) paraGradiente.push({ rect, ancora: borda, necessidade: necessidade * 0.5 })
   }
-  const gradientes = foto ? montarGradientes({ W: canvas.width, H: canvas.height, grupos: paraGradiente, cfg: cfgGradiente }) : []
+  // O gradiente de cada BORDA segue a camada que a página desenhou naquela
+  // borda: nos modelos do Quintal (11/09/2026) o rodapé é mais forte que o
+  // topo, e ler só a primeira camada prendia o rodapé à força do topo.
+  const gradientesDaPagina = new Map<Borda, AjustesDoGradiente>()
+  for (const camada of assinatura.camadasDaPagina ?? []) {
+    const ajustes = configDaCamada(camada)
+    const borda = ajustes ? bordaDaCamadaDeGradiente(camada) : null
+    if (ajustes && borda && !gradientesDaPagina.has(borda)) gradientesDaPagina.set(borda, ajustes)
+  }
+  const cfgDaBorda = (borda: Borda): ConfigDoGradiente => {
+    const daBorda = gradientesDaPagina.get(borda)
+    return daBorda ? { ...cfgGradiente, ...daBorda, cor: daBorda.cor ?? cfgGradiente.cor } : cfgGradiente
+  }
+  const gradientes = foto
+    ? (['topo', 'rodape'] as const).flatMap((borda) =>
+        montarGradientes({
+          W: canvas.width,
+          H: canvas.height,
+          grupos: paraGradiente.filter((p) => bordaDoGrupo(p.rect, p.ancora, canvas.height) === borda),
+          cfg: cfgDaBorda(borda),
+        }),
+      )
+    : []
   if (gradientes.length > 0) layers = inserirAcimaDaFoto(layers, gradientes.map((gr) => gr.layer))
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
@@ -934,7 +959,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   let contraste: ContrasteMedido[] | null = null
   let intervencaoDeTexto: IntervencaoDeTexto | undefined
   try {
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: [cfgGradiente.forcaMinima, cfgGradiente.forcaMaxima], corrigir: true, medirIntervencao: opcoes.medirComparacao })
+    const faixa: [number, number] = [
+      Math.min(cfgDaBorda('topo').forcaMinima, cfgDaBorda('rodape').forcaMinima),
+      Math.max(cfgDaBorda('topo').forcaMaxima, cfgDaBorda('rodape').forcaMaxima),
+    ]
+    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa, corrigir: true, medirIntervencao: opcoes.medirComparacao })
     layers = regua.layers
     contraste = regua.medidas
     intervencaoDeTexto = regua.intervencao
