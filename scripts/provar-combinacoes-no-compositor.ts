@@ -12,6 +12,8 @@
  * a completa, e uma enxuta — só a manchete e o serviço — que prova que os
  * elementos do texto ausente somem junto. E toda peça é CONFERIDA: cada linha
  * da copy precisa estar numa camada de texto da peça, senão sai "FALTOU".
+ * O formato da peça é o que a página declara (nome, tags ou tamanho), então
+ * página de feed prova peça de feed.
  *
  *   npx tsx scripts/provar-combinacoes-no-compositor.ts --projeto 3 [--saida <pasta>] [--so <trecho do nome>]
  *
@@ -24,6 +26,7 @@ import path from 'node:path'
 import sharp from 'sharp'
 
 import { db } from '@/lib/db'
+import { formatoDaPagina, NOME_DO_TEMPLATE_DE_ASSINATURA } from '@/lib/compositor/assinatura'
 import { comporPeca } from '@/lib/compositor/compor'
 import { copyDosPapeisComDestaque, fotoDaPagina } from '@/lib/compositor/defasagem'
 import { semColchetes } from '@/lib/compositor/destaques'
@@ -40,6 +43,15 @@ interface Caso {
   spec: SpecDePeca
 }
 
+interface PaginaDaProva {
+  id: string
+  name: string
+  layers: unknown
+  tags: string[]
+  width: number
+  height: number
+}
+
 function slug(texto: string): string {
   return texto
     .normalize('NFD')
@@ -53,7 +65,7 @@ function slug(texto: string): string {
 const normalizar = (texto: string) => texto.replace(/\s+/g, ' ').trim().toLowerCase()
 
 /** As duas peças de uma página: a copy completa dela e a enxuta. */
-function casosDaPagina(projectId: number, pagina: { id: string; name: string; layers: unknown }): Caso[] {
+function casosDaPagina(projectId: number, pagina: PaginaDaProva): Caso[] {
   const copy = copyDosPapeisComDestaque(pagina.layers)
   const foto = fotoDaPagina(pagina.layers)
   if (!copy) return []
@@ -69,8 +81,9 @@ function casosDaPagina(projectId: number, pagina: { id: string; name: string; la
     { papel: 'headline', linhas: manchete.slice(0, 6) },
     ...(servico.length > 0 ? [{ papel: 'servico' as const, linhas: servico.slice(0, 6) }] : []),
   ]
-  const base = { projectId, formato: 'story' as const, ...(foto ? { foto: { url: foto } } : {}) }
-  const nome = slug(pagina.name.replace(/^Modelo\s*·\s*/, ''))
+  const formato = formatoDaPagina(pagina) ?? 'story'
+  const base = { projectId, formato, ...(foto ? { foto: { url: foto } } : {}) }
+  const nome = `${slug(pagina.name.replace(/^Modelo\s*·\s*/, ''))}${formato === 'story' ? '' : `-${formato}`}`
   const casos: Caso[] = [{ nome, pagina: pagina.id, spec: { ...base, blocos: completa, nome: pagina.name } }]
   // A enxuta só existe quando tira alguma coisa da completa
   if (enxuta.length < completa.length) casos.push({ nome: `${nome}-enxuta`, pagina: pagina.id, spec: { ...base, blocos: enxuta, nome: `${pagina.name} (enxuta)` } })
@@ -82,14 +95,25 @@ async function main() {
   const saida = argumento('--saida') ?? path.join(process.cwd(), '.tmp-provas-combinacoes', String(projectId))
   const so = argumento('--so')
   const ids = argumento('--paginas')?.split(',').filter(Boolean) ?? null
+  // `--assinatura`: as páginas que a usina de produção lê hoje (template "Assinatura")
+  const daAssinatura = process.argv.includes('--assinatura')
   await fs.mkdir(saida, { recursive: true })
 
   const paginas = await db.page.findMany({
-    where: ids ? { id: { in: ids }, Template: { projectId } } : { Template: { projectId, tags: { has: 'modelos-da-marca' } } },
-    select: { id: true, name: true, layers: true },
+    where: ids
+      ? { id: { in: ids }, Template: { projectId } }
+      : daAssinatura
+        ? { Template: { projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA } }
+        : { Template: { projectId, tags: { has: 'modelos-da-marca' } } },
+    select: { id: true, name: true, layers: true, tags: true, width: true, height: true },
     orderBy: { order: 'asc' },
   })
-  const casos = paginas.flatMap((p) => casosDaPagina(projectId, p)).filter((c) => !so || c.nome.includes(so))
+  const todos = paginas.flatMap((p) => casosDaPagina(projectId, p))
+  // Variantes com o mesmo nome ("Assinatura — story" duplicada no editor) não podem sobrescrever o PNG uma da outra
+  const repetidos = new Set(todos.filter((c) => todos.some((d) => d.nome === c.nome && d.pagina !== c.pagina)).map((c) => c.nome))
+  const casos = todos
+    .map((c) => (repetidos.has(c.nome) ? { ...c, nome: `${c.nome}-${c.pagina.slice(0, 6)}` } : c))
+    .filter((c) => !so || c.nome.includes(so))
   console.log(`${paginas.length} página(s), ${casos.length} peça(s)`)
 
   const arquivos: string[] = []
@@ -128,7 +152,8 @@ async function main() {
     const altura = 480
     const porLinha = 8
     const linhasDaFolha = Math.ceil(arquivos.length / porLinha)
-    const miniaturas = await Promise.all(arquivos.map((a) => sharp(a).resize(largura, altura).png().toBuffer()))
+    // `contain`: a peça de feed entra inteira na célula de story, sem esticar
+    const miniaturas = await Promise.all(arquivos.map((a) => sharp(a).resize(largura, altura, { fit: 'contain', background: '#222222' }).png().toBuffer()))
     const folha = await sharp({
       create: { width: (largura + 12) * Math.min(porLinha, arquivos.length) + 12, height: (altura + 12) * linhasDaFolha + 12, channels: 3, background: '#222222' },
     })

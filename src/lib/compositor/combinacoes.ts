@@ -171,6 +171,28 @@ function foraDaTinta(e: ElementoDoArranjo, alturaDaTinta: number, escala: number
   return e.offsetY * escala + altura / 2 > alturaDaTinta
 }
 
+/** A altura de UMA linha do texto (corpo × entrelinha), com a entrelinha que o render lê primeiro. */
+function alturaDeUmaLinha(camada: Layer): number {
+  const corpo = camada.style?.fontSize ?? 0
+  const entrelinha = camada.textboxConfig?.autoWrap?.lineHeight ?? camada.style?.lineHeight ?? 1.2
+  return corpo * entrelinha
+}
+
+/**
+ * O vão que a página dá antes de um texto: do fim da tinta do anterior ao topo
+ * dele. Sobrepor até meia linha do anterior é desenho (lockup apertado). Mais
+ * do que isso, a página DESENHA POR CIMA de uma linha do anterior — as
+ * variantes do Espeto guardam a manchete inteira na caixa da voz 1 e põem a
+ * voz 2 sobre a última linha — e o vão dela não vale para a peça, em que cada
+ * voz tem só as suas linhas: sem vão, a peça usa o ritmo da casa (a voz 2
+ * encosta na 1), como o compositor sempre fez.
+ */
+export function vaoDaPagina(anterior: { y: number; altura: number; umaLinha: number }, y: number): number | null {
+  const vao = Math.round(y - (anterior.y + anterior.altura))
+  if (vao >= 0) return vao
+  return -vao > anterior.umaLinha * 0.5 ? null : vao
+}
+
 /**
  * O arranjo de um conjunto de camadas (um grupo da página ou uma combinação
  * materializada). Textos sem papel ficam de fora — e os elementos presos a eles
@@ -199,7 +221,7 @@ export function arranjoDasCamadas(args: {
   const presos = associarOrnamentos(textos, elementos.filter((e) => !usados.has(e.id)))
 
   const itens: TextoDoArranjo[] = []
-  let anterior: { y: number; altura: number } | null = null
+  let anterior: { y: number; altura: number; umaLinha: number } | null = null
   for (const texto of textos) {
     const estilo = estiloDaCamada(texto, args.todas ?? args.camadas)
     if (!estilo) continue
@@ -213,7 +235,7 @@ export function arranjoDasCamadas(args: {
       doTexto.push(relativoATinta(o.imagem, tinta, lado, eixo))
     }
     const y = texto.position?.y ?? 0
-    const vaoAntes = anterior ? Math.max(-Math.round(anterior.altura * 0.5), Math.round(y - (anterior.y + anterior.altura))) : null
+    const vaoAntes = anterior ? vaoDaPagina(anterior, y) : null
     const papel = papelDoTexto(texto) as Papel
     const elementoId = texto.metadata?.elementId
     itens.push({
@@ -224,7 +246,7 @@ export function arranjoDasCamadas(args: {
       tipo: papel === 'servico' ? tipoDoServico(texto, doTexto) : null,
       ...(typeof elementoId === 'string' && elementoId ? { elementoId } : {}),
     })
-    anterior = { y, altura: tinta.height }
+    anterior = { y, altura: tinta.height, umaLinha: alturaDeUmaLinha(texto) }
   }
   if (itens.length === 0) return null
 
