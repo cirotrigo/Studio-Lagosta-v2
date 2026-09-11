@@ -299,6 +299,28 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
   return { spec: { ...spec, blocos, ...(foto ? { foto } : {}) } as SpecDePeca, avisos }
 }
 
+const ehAncora = (v: unknown): v is 'topo' | 'meio' | 'rodape' => v === 'topo' || v === 'meio' || v === 'rodape'
+const ehAlinhamento = (v: unknown): v is 'esquerda' | 'centro' | 'direita' => v === 'esquerda' || v === 'centro' || v === 'direita'
+
+/**
+ * A POSIÇÃO que a peça tinha, fixada na spec da recomposição. Recompor é
+ * refazer A MESMA peça — os arranjos já iam gravados na spec por isso —, mas o
+ * lado do bloco era escolhido de novo a cada vez. Em 11/09/2026 a preferência
+ * pelo lado da página passou a valer de verdade, e a peça da Real que tinha
+ * saído com a manchete à esquerda passaria para a direita na primeira edição
+ * de texto (e para baixo da logo). Com âncora e alinhamento da composição
+ * original, só a copy muda. Spec que já pede posição fica como está.
+ */
+export function specComAPosicaoOriginal(spec: SpecDePeca, fieldValues: unknown): SpecDePeca {
+  const posicao = (fieldValues as { composicao?: { posicao?: { ancora?: unknown; alinha?: unknown } } } | null | undefined)?.composicao?.posicao
+  if (!posicao || !ehAncora(posicao.ancora) || !ehAlinhamento(posicao.alinha)) return spec
+  const pref = spec.preferencias ?? {}
+  const pedeAncora = pref.ancora && pref.ancora !== 'auto'
+  const pedeAlinha = pref.alinha && pref.alinha !== 'auto'
+  if (pedeAncora || pedeAlinha) return spec
+  return { ...spec, preferencias: { ...pref, ancora: posicao.ancora, alinha: posicao.alinha } }
+}
+
 export interface PostComArte {
   id: string
   pageId?: string | null

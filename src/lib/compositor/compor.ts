@@ -917,12 +917,23 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     // Quintal a linha longa do serviço esticava o retângulo do rodapé até a
     // logo, que no modelo mora ao lado do CTA curto, e ela fugia para o canto de
     // cima (11/09/2026).
-    const naPagina =
-      !spec.preferencias?.cantoDaMarca && assinatura.logo.posicao && assinatura.origem.formatoDaPagina === spec.formato
-        ? { x: Math.round(assinatura.logo.posicao.x), y: Math.round(assinatura.logo.posicao.y), width: largura, height: altura }
-        : null
     const encostaNumTexto = (rect: Rect) =>
       rectsDeGrupo.some((r) => r.camadas.some((c) => intersecta({ x: c.position.x, y: c.position.y, width: c.size.width, height: c.size.height }, rect)))
+    // O canto pedido na spec vale enquanto não encosta num texto. Pedido gravado
+    // numa peça que depois é refeita punha a logo em cima do título: na Real
+    // (11/09/2026) o chat gravou "superior-direito" com a manchete à esquerda,
+    // e a variante alinhada à direita levou pré-título e manchete para baixo da
+    // logo. Encostando, o pedido cai com aviso e vale a regra de sempre: a
+    // posição da página, depois o canto livre.
+    const pedidoBruto = spec.preferencias?.cantoDaMarca
+    const pedido: Canto | null = pedidoBruto && pedidoBruto !== 'auto' ? pedidoBruto : null
+    const pedidoEncosta = pedido ? encostaNumTexto(retanguloDoCanto(g, pedido, largura, altura)) : false
+    if (pedido && pedidoEncosta) avisos.push(`A logo não foi para o canto pedido (${pedido}): ali ela encostava no texto.`)
+    const pedidoQueVale = pedido && !pedidoEncosta ? pedido : null
+    const naPagina =
+      !pedidoQueVale && assinatura.logo.posicao && assinatura.origem.formatoDaPagina === spec.formato
+        ? { x: Math.round(assinatura.logo.posicao.x), y: Math.round(assinatura.logo.posicao.y), width: largura, height: altura }
+        : null
     const livreNaPagina = naPagina && !encostaNumTexto(naPagina) ? naPagina : null
     const canto = livreNaPagina
       ? {
@@ -935,7 +946,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
           mapa: melhor.mapa,
           blocos: rectsDeGrupo.map((r) => r.rect),
           logo: { w: largura, h: altura },
-          pedido: spec.preferencias?.cantoDaMarca,
+          pedido: pedidoQueVale ?? undefined,
           formato: spec.formato,
         })
     if (canto) {

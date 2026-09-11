@@ -58,6 +58,7 @@ import {
   precisaRefazer,
   slidesDaPagina,
   specComACopyDaPagina,
+  specComAPosicaoOriginal,
   type Defasagem,
   type SlideDefasado,
 } from './defasagem'
@@ -315,8 +316,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   let invalidados = 0
 
   if (podeRecompor) {
-    const { spec, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
+    const { spec: specComCopy, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
     avisos.push(...avisosDaSpec)
+    // O lado do bloco é o da composição original: só a copy muda (ver `specComAPosicaoOriginal`).
+    const spec = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
     /**
      * `provar: true` é obrigatório — ver a regra 2 do cabeçalho. Ele também
      * evita os efeitos colaterais da persistência do compositor: pasta da
