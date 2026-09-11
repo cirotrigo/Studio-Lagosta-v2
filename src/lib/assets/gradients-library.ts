@@ -54,10 +54,28 @@ function paradasDaCurva(cor: string, curva: Array<[number, number]>): GradientSt
 }
 
 /**
+ * O conjunto da Real para outra marca: o escuro e o claro, cada um no rodapé e
+ * no topo, na mesma curva e inclinação — só a cor muda.
+ */
+function escuroEClaro(prefixo: string, escuro: string, claro: { nome: string; cor: string }): GradientDefinition[] {
+  return [{ nome: 'Escuro', cor: escuro }, claro].flatMap(({ nome, cor }): GradientDefinition[] => {
+    const chave = `${prefixo}-${nome.toLowerCase().replace(/[^a-z]+/g, '-')}`
+    return [
+      { id: `${chave}-rodape`, label: `${nome} (rodapé)`, gradientType: 'linear', gradientAngle: 11, gradientStops: paradasDaCurva(cor, CURVA_REAL) },
+      { id: `${chave}-topo`, label: `${nome} (topo)`, gradientType: 'linear', gradientAngle: 169, gradientStops: paradasDaCurva(cor, CURVA_REAL) },
+    ]
+  })
+}
+
+/**
  * Gradientes de uma marca só: o painel mostra estes apenas no projeto da chave.
  *
  * Inclinação de 11° (mais alto do lado do texto, à esquerda), como na arte
  * medida; o topo é o espelho vertical do rodapé (180 − 11).
+ *
+ * Nas outras marcas (11/09/2026) as cores são as dos templates "<Cliente> —
+ * Gradientes da marca": o escuro é a mancha de `Project.assinatura`, o claro é
+ * o creme ou o branco da paleta. São ponto de partida para personalizar.
  */
 export const GRADIENTES_POR_PROJETO: Record<number, GradientDefinition[]> = {
   // Real Gelateria
@@ -67,6 +85,15 @@ export const GRADIENTES_POR_PROJETO: Record<number, GradientDefinition[]> = {
     { id: 'real-creme-rodape', label: 'Creme (rodapé)', gradientType: 'linear', gradientAngle: 11, gradientStops: paradasDaCurva('#F3EADC', CURVA_REAL) },
     { id: 'real-creme-topo', label: 'Creme (topo)', gradientType: 'linear', gradientAngle: 169, gradientStops: paradasDaCurva('#F3EADC', CURVA_REAL) },
   ],
+  2: escuroEClaro('quintal', '#1F1B16', { nome: 'Creme', cor: '#F5F0E8' }), // O Quintal Parrilla
+  3: escuroEClaro('tero', '#130D0A', { nome: 'Creme', cor: '#F8F2F0' }), // TERO
+  4: escuroEClaro('seu-quinto', '#0E0B08', { nome: 'Branco', cor: '#FFFFFF' }), // Seu Quinto
+  5: escuroEClaro('bacana', '#1A1410', { nome: 'Branco', cor: '#FFFFFF' }), // Bacana
+  6: escuroEClaro('espeto', '#170E09', { nome: 'Branco', cor: '#FFFFFF' }), // Espeto Gaúcho
+  7: escuroEClaro('by-rock', '#111111', { nome: 'Branco', cor: '#FFFFFF' }), // By Rock
+  8: escuroEClaro('lagosta', '#0B0B0B', { nome: 'Branco', cor: '#FFFFFF' }), // Lagosta Criativa
+  11: escuroEClaro('wine-vix', '#240000', { nome: 'Off-white', cor: '#F9F7F2' }), // Wine Vix
+  12: escuroEClaro('emporio', '#2C3445', { nome: 'Branco', cor: '#FFFFFF' }), // Empório Fonseca
 }
 
 /** Os gradientes da marca do projeto e os que servem a todos os projetos. */
