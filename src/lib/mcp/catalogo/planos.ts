@@ -537,7 +537,7 @@ export const toolsDePlanos = [
     nome: 'listar-combinacoes-de-texto',
     apelidos: ['list-font-combinations'],
     descricao:
-      'Composições de texto prontas do cliente, com posição, tamanho e cor já ajustados à marca. Escolher uma e só trocar as palavras costuma dar resultado melhor do que posicionar tudo na mão. Repare em quantos campos cada uma tem: texto longo demais para os campos disponíveis fica sobreposto na arte.',
+      'Composições de texto prontas do cliente, com posição, tamanho e cor já ajustados à marca. Escolher uma e só trocar as palavras costuma dar resultado melhor do que posicionar tudo na mão. Repare em quantos campos cada uma tem: texto longo demais para os campos disponíveis fica sobreposto na arte. Cada texto pode trazer o papel (manchete, apoio, CTA, serviço), e aí o texto novo pode ser passado pelo papel; os elementos presos a ele (ícone, filete, selo) entram junto; e a palavra entre [colchetes] sai destacada quando a combinação tem destaque. O compositor usa sozinho as combinações em que todo texto tem papel.',
     schema: z.object({
       projectId: z.number().describe('ID do projeto.'),
     }),

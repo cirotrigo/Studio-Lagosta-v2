@@ -458,6 +458,11 @@ export async function listFontCombinations(projectId: number) {
         posicao: { x: el.x, y: el.y, width: el.width },
         // O ícone (local, horário) entra junto ao aplicar a combinação
         ...(el.icon ? { icone: true } : {}),
+        // Papel do texto para o compositor; texto por papel também é aceito em textos
+        ...(el.papel ? { papel: el.papel } : {}),
+        ...(Array.isArray(el.ornamentos) && el.ornamentos.length > 0 ? { elementos: el.ornamentos.length } : {}),
+        // Palavra entre [colchetes] sai destacada no estilo da combinação
+        ...(el.destaque ? { destaque: true } : {}),
       })),
     })),
   }

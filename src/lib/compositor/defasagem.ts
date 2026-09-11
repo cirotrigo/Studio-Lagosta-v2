@@ -48,14 +48,34 @@ import { PAPEIS, type Papel, type SpecDePeca } from './spec'
 export function copyDosPapeisComDestaque(camadas: unknown): Record<string, string> | null {
   const { camadas: lidas, legivel } = lerCamadas(camadas)
   if (!legivel) return null
-  const out: Record<string, string> = {}
+  const itens: TextoDePapel[] = []
   for (const bruta of lidas as Layer[]) {
     if ((bruta?.type !== 'text' && bruta?.type !== 'rich-text') || bruta.visible === false) continue
     const papel = papelDaCamada(bruta)
     if (!papel) continue
     const marcadas = linhasComColchetes(bruta)
     const conteudo = marcadas ? marcadas.join('\n').trim() : typeof bruta.content === 'string' ? bruta.content.trim() : ''
-    if (conteudo) out[papel] = conteudo
+    if (conteudo) itens.push({ papel, y: bruta.position?.y ?? 0, conteudo })
+  }
+  return juntarPorPapel(itens)
+}
+
+interface TextoDePapel {
+  papel: string
+  y: number
+  conteudo: string
+}
+
+/**
+ * Os textos de um mesmo papel, de cima para baixo, numa copy só. Desde que a
+ * peça nasce de combinações (11/09/2026), um papel pode ter mais de um texto —
+ * o serviço com "Local" e "Horário", cada um com o seu ícone — e ler só um
+ * deles faria a recomposição perder a outra linha.
+ */
+function juntarPorPapel(itens: TextoDePapel[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const item of [...itens].sort((a, b) => a.y - b.y)) {
+    out[item.papel] = out[item.papel] ? `${out[item.papel]}\n${item.conteudo}` : item.conteudo
   }
   return out
 }
@@ -70,8 +90,13 @@ const PAPEIS_DA_PECA: readonly string[] = [...PAPEIS, 'headline2']
  */
 export function papelDaCamada(camada: Layer): Papel | 'headline2' | null {
   const meta = camada.metadata as { compositor?: { papel?: string } } | undefined
-  const candidato = meta?.compositor?.papel ?? camada.id ?? camada.name
-  return PAPEIS_DA_PECA.includes(String(candidato)) ? (candidato as Papel | 'headline2') : null
+  // Cada fonte é conferida sozinha: página feita à mão tem id próprio
+  // ("dia-no-quintal-headline") e o papel só no nome — com `??`, o id que não
+  // é papel escondia o nome que é.
+  for (const candidato of [meta?.compositor?.papel, camada.id, camada.name]) {
+    if (PAPEIS_DA_PECA.includes(String(candidato))) return candidato as Papel | 'headline2'
+  }
+  return null
 }
 
 /**

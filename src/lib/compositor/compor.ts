@@ -29,6 +29,7 @@ import { calibrarHalo, uniao, type Rect } from '@/lib/creatives/halo/halo'
 import { gradientesDoProjeto } from '@/lib/assets/gradients-library'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
+import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 
 import { avaliarCombinacao, type DiagnosticoDaSelecao } from './selecionar-combinacao'
 import { lerCaixaDoAssunto, assuntoEmPixels, fracaoVisivelDoAssunto, type AssuntoNormalizado } from './assunto-da-foto'
@@ -49,6 +50,17 @@ import {
 } from './assinatura'
 import { montarBloco, empilhar, type BlocoMontado } from './blocos'
 import {
+  arranjoDaCombinacao,
+  arranjosDaPagina,
+  camadasDosElementos,
+  distribuirLinhas,
+  escolherArranjo,
+  type ArranjoDeGrupo,
+  type ElementoDoArranjo,
+} from './combinacoes'
+import type { FontComboElement } from '@/lib/font-combinations'
+import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
+import {
   estimarAssunto,
   lerMapaSob,
   mapaDeCalma,
@@ -59,8 +71,11 @@ import {
 } from './mapa-de-calma'
 import { destaqueDoPapel, semColchetes, type EstiloDeDestaque } from './destaques'
 import {
+  bordaDaCamadaDeGradiente,
   bordaDoGrupo,
+  configDaCamada,
   corQueContrasta,
+  type AjustesDoGradiente,
   inserirAcimaDaFoto,
   montarGradientes,
   type Borda,
@@ -95,6 +110,8 @@ export interface DiagnosticoDaComposicao {
   /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
   logo: { canto: Canto; tinta: number } | null
   blocos: Array<{ papel: Papel; escala: number; width: number; height: number; destacado?: boolean }>
+  /** O arranjo de texto usado em cada grupo: o da página ou uma combinação salva. Ausente em diagnósticos antigos. */
+  arranjos?: Array<{ grupo: string; id: string; nome: string; origem: ArranjoDeGrupo['origem']; motivo: string }>
   contraste: ContrasteMedido[] | null
   assinatura: AssinaturaDaMarca['origem']
   avisos: string[]
@@ -123,6 +140,12 @@ export interface OpcoesDeComposicao {
   canal?: CanalDaArte | null
   /** F3: a Generation PROCESSING que a fila criou — o persist a fecha em vez de criar outra. */
   generationId?: string | null
+  /**
+   * Páginas (ids) que fazem as vezes da assinatura, no lugar do template
+   * "Assinatura" — para PROVAR páginas em espera antes de a usina usá-las
+   * (`scripts/provar-combinacoes-no-compositor.ts`). Nunca em produção.
+   */
+  paginasDeAssinatura?: string[]
 }
 
 export interface ResultadoDaComposicao {
@@ -135,6 +158,8 @@ export interface ResultadoDaComposicao {
 // ─── Assinatura ────────────────────────────────────────────────────────────
 
 export interface OpcoesDeAssinatura {
+  /** Páginas (ids) no lugar do template "Assinatura" — ver `OpcoesDeComposicao.paginasDeAssinatura`. */
+  paginas?: string[]
   /** Nome/tag da variante pedida na spec. */
   variante?: string | null
   /** Os papéis que a peça pede: variante que os tem vence a que não os tem. */
@@ -186,7 +211,13 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   ])
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${projectId} não encontrado`, 404)
 
-  const paginas = template
+  const paginas = opcoes.paginas?.length
+    ? await db.page.findMany({
+        where: { id: { in: opcoes.paginas }, Template: { projectId } },
+        select: { id: true, name: true, width: true, height: true, layers: true, background: true, tags: true },
+        orderBy: { order: 'asc' },
+      })
+    : template
     ? await db.page.findMany({
         where: { templateId: template.id },
         select: { id: true, name: true, width: true, height: true, layers: true, background: true, tags: true },
@@ -225,6 +256,9 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
     })
   const assinatura = montar(escolhida, fmt)
   assinatura.origem.motivoDaVariante = motivo
+  // As camadas da página escolhida: é delas que saem os arranjos de texto
+  // (os grupos, com os elementos presos a cada texto) que a peça usa.
+  assinatura.camadasDaPagina = escolhida ? (parsePageLayers(escolhida.layers) as unknown as Layer[]) : []
   // Feed/quadrado montado só com o que muda: o que falta vem da página de story.
   // A página do formato é a verdade INTEIRA daquele formato (Ciro, 04/09/2026:
   // "respeite os templates que eu defini, não adicione campos"). Papel que a
@@ -445,6 +479,28 @@ function estiloDeDestaqueDoPapel(estilo: EstiloDePapel, padrao: NumerosDaAssinat
 
 // ─── A composição ──────────────────────────────────────────────────────────
 
+/**
+ * As combinações salvas do projeto que servem à usina (todo texto com papel),
+ * já como arranjos. Falha de leitura vira lista vazia: a peça sai com os grupos
+ * da página de assinatura, como antes.
+ */
+async function arranjosDasCombinacoes(projectId: number, medir: MeasureTextBox): Promise<ArranjoDeGrupo[]> {
+  try {
+    const [projeto, combinacoes] = await Promise.all([
+      db.project.findUnique({ where: { id: projectId }, select: { titleFontFamily: true, bodyFontFamily: true, subtitleFontFamily: true } }),
+      db.fontCombination.findMany({ where: { projectId }, select: { id: true, name: true, elements: true }, orderBy: [{ order: 'asc' }, { createdAt: 'asc' }] }),
+    ])
+    // Sem o par de fontes da marca, o texto sem família própria sairia na fonte padrão
+    if (!projeto?.titleFontFamily || !projeto.bodyFontFamily) return []
+    const pair = { title: projeto.titleFontFamily, body: projeto.bodyFontFamily, subtitle: projeto.subtitleFontFamily }
+    return combinacoes
+      .map((c) => arranjoDaCombinacao({ combinacao: { id: c.id, name: c.name, elements: c.elements as unknown as FontComboElement[] }, pair, medir }))
+      .filter((a): a is ArranjoDeGrupo => a !== null)
+  } catch {
+    return []
+  }
+}
+
 export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = {}): Promise<ResultadoDaComposicao> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
@@ -472,6 +528,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const canvas = DIMENSOES[spec.formato]
   const luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, canvas) : null
   const assinatura = await carregarAssinatura(spec.projectId, spec.formato, {
+    paginas: opcoes.paginasDeAssinatura,
     variante: spec.preferencias?.variante ?? null,
     papeis: spec.blocos.map((b) => b.papel),
     tema: spec.tema ?? spec.nome ?? null,
@@ -509,44 +566,119 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //    mapa da foto o posiciona; os outros ficam onde estão na página (topo
   //    ou rodapé) com o alinhamento de lá. Papel sem grupo é bloco sozinho;
   //    serviço sozinho vai ao rodapé (regra da casa).
+  //
+  //    Desde 11/09/2026 cada grupo é um ARRANJO (`combinacoes.ts`): o grupo da
+  //    página ou uma combinação salva na aba Texto com os mesmos papéis — o
+  //    estilo de cada texto, o vão entre eles e os ELEMENTOS presos a cada um
+  //    (ícone, filete, selo). Pedido do Ciro: o compositor aproveitar da
+  //    assinatura também os ícones e os filetes, que até aqui ficavam para trás.
   const colunaUtil = g.W - 2 * g.margemH
   const recusas: Array<{ papel: Papel; orcamento: unknown }> = []
-  // A manchete com segunda voz vira DOIS papéis no mesmo grupo: as linhas de
-  // cima na voz 1 e a última na voz 2 (o que o Quintal, o TERO e o By Rock
-  // fazem à mão). Sem `headline2` na assinatura, nada muda.
-  const blocosDaSpec = spec.blocos.flatMap((b) =>
-    b.papel === 'headline' && assinatura.papeis.headline2 && b.linhas.length >= 2
-      ? [
-          { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1) },
-          { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1) },
-        ]
-      : [b as { papel: Papel; linhas: string[] }],
-  )
   const chaveDoGrupo = (papel: Papel) => assinatura.papeis[papel]?.grupo ?? (papel === 'headline2' ? assinatura.papeis.headline?.grupo ?? 'solo:headline' : `solo:${papel}`)
-  const montados: BlocoMontado[] = []
-  const familias = await familiasDoProjeto(spec.projectId)
-  for (const b of blocosDaSpec) {
-    const estilo = assinatura.papeis[b.papel]!
-    const r = montarBloco({
-      papel: b.papel,
-      linhas: b.linhas,
-      estilo,
-      escalaDoFormato,
-      colunaUtil,
-      textAlign: 'left',
-      groupId: `grupo-${hashDe(chaveDoGrupo(b.papel)) % 99991}`,
-      corDaMancha: mancha,
-      medir,
-      // Palavra entre [colchetes] na copy sai destacada no estilo da marca.
-      destaque: estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias),
-    })
-    avisos.push(...r.avisos)
-    if (r.recusa) {
-      recusas.push({ papel: r.recusa.papel, orcamento: r.recusa.orcamento })
+  const gruposDaPagina = arranjosDaPagina({
+    pageId: assinatura.origem.pageId ?? 'assinatura',
+    nome: assinatura.origem.variante ?? 'Assinatura',
+    camadas: assinatura.camadasDaPagina ?? [],
+    medir,
+  })
+  // O papel que a página tem em MAIS de um grupo (no Happy wine do TERO, o
+  // horário junto da oferta e o endereço sozinho no pé) recebe as linhas pelo
+  // tipo: horário no grupo do horário, endereço no do endereço. Sem isso as duas
+  // linhas iam para o primeiro grupo e saíam coladas numa caixa só.
+  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[] }>>()
+  const juntarNoGrupo = (chave: string, papel: Papel, linhas: string[]) => {
+    const lista = blocosPorGrupo.get(chave) ?? []
+    const mesmo = lista.find((x) => x.papel === papel)
+    if (mesmo) mesmo.linhas.push(...linhas)
+    else lista.push({ papel, linhas: [...linhas] })
+    blocosPorGrupo.set(chave, lista)
+  }
+  for (const b of spec.blocos) {
+    const papel = b.papel as Papel
+    const chaves = [...gruposDaPagina.entries()].filter(([, a]) => a.papeis.includes(papel)).map(([chave]) => chave)
+    if (chaves.length <= 1 || b.linhas.length <= 1) {
+      juntarNoGrupo(chaveDoGrupo(papel), papel, b.linhas)
       continue
     }
-    if (r.bloco.escala < 1) avisos.push(`${b.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
-    montados.push(r.bloco)
+    const tipos = new Map(blocosDeServico(b.linhas).map((s) => [s.indice, s.papel === 'horário' ? 'horario' : 'endereco'] as const))
+    b.linhas.forEach((linha, i) => {
+      const tipo = tipos.get(i)
+      const doTipo = tipo ? chaves.find((chave) => gruposDaPagina.get(chave)!.textos.some((t) => t.papel === papel && t.tipo === tipo)) : undefined
+      juntarNoGrupo(doTipo ?? chaveDoGrupo(papel), papel, [linha])
+    })
+  }
+  const combinacoesSalvas = await arranjosDasCombinacoes(spec.projectId, medir)
+  const chaveDaPeca = `${spec.nome ?? ''}|${spec.tema ?? ''}|${spec.foto?.driveFileId ?? spec.foto?.url ?? ''}|${spec.blocos[0]?.linhas.join(' ') ?? ''}`
+  const arranjos: NonNullable<DiagnosticoDaComposicao['arranjos']> = []
+  const arranjoPorGrupo = new Map<string, ArranjoDeGrupo>()
+  const elementosPorTexto = new Map<string, { elementos: ElementoDoArranjo[]; escala: number }>()
+
+  const montados: Array<BlocoMontado & { chave: string }> = []
+  const familias = await familiasDoProjeto(spec.projectId)
+  for (const [chave, blocosDoGrupo] of blocosPorGrupo) {
+    const daPagina = gruposDaPagina.get(chave)
+    const escolha = escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
+      papeis: blocosDoGrupo.map((b) => b.papel),
+      tema: spec.tema ?? spec.nome ?? null,
+      chave: `${chaveDaPeca}|${chave}`,
+      preferidos: spec.preferencias?.arranjos,
+    })
+    const arranjo = escolha?.arranjo ?? null
+    if (escolha) {
+      arranjoPorGrupo.set(chave, escolha.arranjo)
+      arranjos.push({ grupo: chave, id: escolha.arranjo.id, nome: escolha.arranjo.nome, origem: escolha.arranjo.origem, motivo: escolha.motivo })
+    }
+    // A manchete com segunda voz vira DOIS papéis no mesmo grupo: as linhas de
+    // cima na voz 1 e a última na voz 2 (o que o Quintal, o TERO e o By Rock
+    // fazem à mão). Sem `headline2` no arranjo (ou na assinatura), nada muda.
+    const temSegundaVoz = arranjo ? arranjo.papeis.includes('headline2') : Boolean(assinatura.papeis.headline2)
+    const comSegundaVoz = blocosDoGrupo.flatMap((b) =>
+      b.papel === 'headline' && temSegundaVoz && b.linhas.length >= 2
+        ? [
+            { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1) },
+            { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1) },
+          ]
+        : [b],
+    )
+    const preenchidos = arranjo
+      ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, texto: p.texto }))
+      : comSegundaVoz.map((b) => ({ ...b, texto: null }))
+    const repeticoes = new Map<Papel, number>()
+    for (const p of preenchidos) {
+      const estilo = p.texto?.estilo ?? assinatura.papeis[p.papel]
+      if (!estilo) continue
+      const n = (repeticoes.get(p.papel) ?? 0) + 1
+      repeticoes.set(p.papel, n)
+      const r = montarBloco({
+        papel: p.papel,
+        // O segundo texto do mesmo papel (o Local e o Horário) ganha id próprio
+        id: n > 1 ? `${p.papel}-${n}` : p.papel,
+        linhas: p.linhas,
+        estilo,
+        escalaDoFormato,
+        colunaUtil,
+        textAlign: 'left',
+        groupId: `grupo-${hashDe(chave) % 99991}`,
+        corDaMancha: mancha,
+        medir,
+        // Palavra entre [colchetes] na copy sai destacada no estilo da marca.
+        destaque: estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias),
+      })
+      avisos.push(...r.avisos)
+      if (r.recusa) {
+        recusas.push({ papel: r.recusa.papel, orcamento: r.recusa.orcamento })
+        continue
+      }
+      if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
+      const escalaDosElementos = escalaDoFormato * r.bloco.escala
+      if (p.texto && p.texto.elementos.length > 0) elementosPorTexto.set(r.bloco.layer.id, { elementos: p.texto.elementos, escala: escalaDosElementos })
+      montados.push({
+        ...r.bloco,
+        chave,
+        ...(p.texto && p.texto.vaoAntes !== null ? { vaoAntes: Math.round(p.texto.vaoAntes * escalaDoFormato) } : {}),
+        ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
+      })
+    }
   }
   if (recusas.length > 0) {
     throw new CreativeError(
@@ -589,15 +721,22 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     /** A âncora veio de uma caixa REAL da página (e não do default do papel). */
     temCaixa: boolean
     alinha: Alinhamento | null
+    /** O centro vertical do grupo na página (0..1) — ordena os grupos que dividem a mesma borda. */
+    centro: number | null
   }
   const porGrupo = new Map<string, BlocoMontado[]>()
   for (const b of montados) {
-    const chave = chaveDoGrupo(b.papel)
-    porGrupo.set(chave, [...(porGrupo.get(chave) ?? []), b])
+    porGrupo.set(b.chave, [...(porGrupo.get(b.chave) ?? []), b])
   }
   const compostos: BlocoComposto[] = [...porGrupo.entries()].map(([chave, blocos]) => {
     const papeis = blocos.map((b) => b.papel)
-    const caixas = papeis.map((p) => assinatura.papeis[p]?.caixa).filter((c): c is NonNullable<typeof c> => !!c)
+    // Onde o grupo mora na página: a caixa do próprio arranjo da página — que
+    // distingue os dois grupos de serviço do Happy wine — ou as caixas dos papéis.
+    const arranjoDoGrupo = arranjoPorGrupo.get(chave)
+    const caixas =
+      arranjoDoGrupo?.origem === 'pagina' && arranjoDoGrupo.caixa
+        ? [arranjoDoGrupo.caixa]
+        : papeis.map((p) => assinatura.papeis[p]?.caixa).filter((c): c is NonNullable<typeof c> => !!c)
     const centro = caixas.length > 0 ? caixas.reduce((acc, c) => acc + (c.y + c.height / 2), 0) / caixas.length / canvas.height : null
     const soServico = papeis.every((p) => p === 'servico')
     const ancora: Ancora = soServico || centro === null ? (soServico ? 'rodape' : 'topo') : centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
@@ -608,11 +747,21 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       principal: papeis.includes('headline'),
       ancora,
       temCaixa: caixas.length > 0,
-      alinha: assinatura.papeis[papeis[0]]?.alinhamento ?? null,
+      // O alinhamento preferido é o do arranjo: é o que a combinação desenhou.
+      alinha: arranjoPorGrupo.get(chave)?.alinhamento ?? assinatura.papeis[papeis[0]]?.alinhamento ?? null,
+      centro,
     }
   })
   const principal = compostos.find((c) => c.principal) ?? compostos[0]
-  const secundarios = compostos.filter((c) => c !== principal)
+  // Na mesma borda, o grupo mais PERTO dela na página é posto primeiro: o
+  // endereço no pé do Happy wine fica abaixo da oferta, como no modelo.
+  const outros = compostos.filter((c) => c !== principal)
+  const porCentro = (sentido: 1 | -1) => (a: BlocoComposto, b: BlocoComposto) => sentido * ((a.centro ?? 0) - (b.centro ?? 0))
+  const secundarios = [
+    ...outros.filter((c) => c.ancora === 'topo').sort(porCentro(1)),
+    ...outros.filter((c) => c.ancora === 'meio'),
+    ...outros.filter((c) => c.ancora === 'rodape').sort(porCentro(-1)),
+  ]
   const pilha = principal.pilha
   // Os blocos secundários reservam a própria altura na âncora deles, para o
   // principal não pousar em cima.
@@ -665,8 +814,16 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const rectsDeGrupo: Array<{ grupo: string; rect: Rect; cores: string[]; camadas: Layer[]; ancora: Ancora }> = []
   const posicionar = (c: BlocoComposto, rect: Rect, alinhaDoBloco: Alinhamento, ancoraDoBloco: Ancora) => {
     const textAlign = alinhamentoParaTextAlign(alinhaDoBloco)
+    // Os elementos presos aos textos (o ícone antes, o selo depois) moram dentro
+    // do retângulo: a coluna de tinta começa depois do que passa à esquerda.
+    const { esquerda, direita } = c.pilha
     const camadas = c.blocos.map((b, i) => {
-      const x = alinhaDoBloco === 'esquerda' ? rect.x : alinhaDoBloco === 'direita' ? rect.x + rect.width - b.width : rect.x + (rect.width - b.width) / 2
+      const x =
+        alinhaDoBloco === 'esquerda'
+          ? rect.x + esquerda
+          : alinhaDoBloco === 'direita'
+            ? rect.x + rect.width - direita - b.width
+            : rect.x + esquerda + (rect.width - esquerda - direita - b.width) / 2
       const camada: Layer = { ...b.layer, position: { x: Math.round(x), y: Math.round(rect.y + c.pilha.offsets[i]) }, style: { ...b.layer.style, textAlign } }
       camadasDeTexto.push(camada)
       return camada
@@ -707,17 +864,34 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //    recebe um gradiente fraco no passo 7b.
   const camadasDaLogo: Layer[] = []
   let logoDiag: DiagnosticoDaComposicao['logo'] = null
-  if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum') {
+  // A logo que mora DENTRO de um arranjo (ao lado do serviço, como no Quintal)
+  // entra com os elementos do texto; a peça não ganha outra no canto.
+  const logoNoArranjo = montados.some((b) => b.elementos?.some((e) => e.logo))
+  if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum' && !logoNoArranjo) {
     const largura = Math.round(assinatura.logo.largura * (spec.formato === 'story' ? 1 : escalaDoFormato))
     const altura = Math.round(largura * assinatura.logo.razao)
-    const canto = escolherCanto({
-      g,
-      mapa: melhor.mapa,
-      blocos: rectsDeGrupo.map((r) => r.rect),
-      logo: { w: largura, h: altura },
-      pedido: spec.preferencias?.cantoDaMarca,
-      formato: spec.formato,
-    })
+    // A logo onde a PÁGINA a pôs — no alto e ao centro no "Almoço TERO", no
+    // canto de cima nos "Clássicos" —, quando ali ela não encosta em nenhum
+    // bloco de texto da peça; senão, o canto mais calmo de sempre.
+    const naPagina =
+      !spec.preferencias?.cantoDaMarca && assinatura.logo.posicao && assinatura.origem.formatoDaPagina === spec.formato
+        ? { x: Math.round(assinatura.logo.posicao.x), y: Math.round(assinatura.logo.posicao.y), width: largura, height: altura }
+        : null
+    const livreNaPagina = naPagina && !rectsDeGrupo.some((r) => intersecta(r.rect, naPagina)) ? naPagina : null
+    const canto = livreNaPagina
+      ? {
+          canto: `${livreNaPagina.y + altura / 2 < g.H / 2 ? 'superior' : 'inferior'}-${livreNaPagina.x + largura / 2 < g.W / 2 ? 'esquerdo' : 'direito'}` as Canto,
+          rect: livreNaPagina,
+          luz: 0,
+        }
+      : escolherCanto({
+          g,
+          mapa: melhor.mapa,
+          blocos: rectsDeGrupo.map((r) => r.rect),
+          logo: { w: largura, h: altura },
+          pedido: spec.preferencias?.cantoDaMarca,
+          formato: spec.formato,
+        })
     if (canto) {
       const tinta = 0
       camadasDaLogo.push({
@@ -771,13 +945,30 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   avisos.push(...fix.avisos)
   let layers = fix.layers as Layer[]
 
+  // 7a. Os ELEMENTOS presos aos textos (ícone, filete, selo, a logo do
+  //     arranjo), na tinta FINAL — o autofix pode ter encolhido a fonte. Entram
+  //     logo acima dos textos, antes da logo do canto.
+  const camadasDeElementos = layers.flatMap((l) => {
+    const presos = elementosPorTexto.get(l.id)
+    return presos && l.visible !== false ? camadasDosElementos(l, presos.elementos, presos.escala) : []
+  })
+  if (camadasDeElementos.length > 0) {
+    const ondeALogo = layers.findIndex((l) => l.id === 'logo')
+    const antes = ondeALogo >= 0 ? layers.slice(0, ondeALogo) : layers
+    const depois = ondeALogo >= 0 ? layers.slice(ondeALogo) : []
+    layers = [...antes, ...camadasDeElementos, ...depois].map((l, order) => ({ ...l, order }))
+  }
+
   // 7b. O gradiente de leitura, sobre as caixas FINAIS: um por borda que tem
   //     texto — topo e rodapé em camadas independentes (pedido do Ciro). Sem
   //     foto não há o que escurecer: a peça sai sobre o fundo liso da marca.
   const caixaDe = (l: Layer): Rect => ({ x: l.position.x, y: l.position.y, width: l.size.width, height: l.size.height })
+  const elementoDe = (l: Layer) => String((l.metadata as { compositor?: { elementoDe?: string } } | undefined)?.compositor?.elementoDe ?? '')
   const paraGradiente: GrupoParaGradiente[] = rectsDeGrupo.map((grupo) => {
     const ids = new Set(grupo.camadas.map((c) => c.id))
-    const rect = uniao(layers.filter((l) => ids.has(l.id) && l.visible !== false).map(caixaDe)) ?? grupo.rect
+    // O gradiente cobre também os elementos presos aos textos do grupo
+    const doGrupo = layers.filter((l) => l.visible !== false && (ids.has(l.id) || ids.has(elementoDe(l))))
+    const rect = uniao(doGrupo.map(caixaDe)) ?? grupo.rect
     return { rect, ancora: grupo.ancora, necessidade: necessidadeSob(rect, grupo.cores) }
   })
   const logoFinal = layers.find((l) => l.id === 'logo')
@@ -790,7 +981,29 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const necessidade = necessidadeSob(rect, ['#FFFFFF'])
     if (!bordaTemTexto && necessidade > 0.5) paraGradiente.push({ rect, ancora: borda, necessidade: necessidade * 0.5 })
   }
-  const gradientes = foto ? montarGradientes({ W: canvas.width, H: canvas.height, grupos: paraGradiente, cfg: cfgGradiente }) : []
+  // O gradiente de cada BORDA segue a camada que a página desenhou naquela
+  // borda: nos modelos do Quintal (11/09/2026) o rodapé é mais forte que o
+  // topo, e ler só a primeira camada prendia o rodapé à força do topo.
+  const gradientesDaPagina = new Map<Borda, AjustesDoGradiente>()
+  for (const camada of assinatura.camadasDaPagina ?? []) {
+    const ajustes = configDaCamada(camada)
+    const borda = ajustes ? bordaDaCamadaDeGradiente(camada) : null
+    if (ajustes && borda && !gradientesDaPagina.has(borda)) gradientesDaPagina.set(borda, ajustes)
+  }
+  const cfgDaBorda = (borda: Borda): ConfigDoGradiente => {
+    const daBorda = gradientesDaPagina.get(borda)
+    return daBorda ? { ...cfgGradiente, ...daBorda, cor: daBorda.cor ?? cfgGradiente.cor } : cfgGradiente
+  }
+  const gradientes = foto
+    ? (['topo', 'rodape'] as const).flatMap((borda) =>
+        montarGradientes({
+          W: canvas.width,
+          H: canvas.height,
+          grupos: paraGradiente.filter((p) => bordaDoGrupo(p.rect, p.ancora, canvas.height) === borda),
+          cfg: cfgDaBorda(borda),
+        }),
+      )
+    : []
   if (gradientes.length > 0) layers = inserirAcimaDaFoto(layers, gradientes.map((gr) => gr.layer))
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
@@ -799,7 +1012,11 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   let contraste: ContrasteMedido[] | null = null
   let intervencaoDeTexto: IntervencaoDeTexto | undefined
   try {
-    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa: [cfgGradiente.forcaMinima, cfgGradiente.forcaMaxima], corrigir: true, medirIntervencao: opcoes.medirComparacao })
+    const faixa: [number, number] = [
+      Math.min(cfgDaBorda('topo').forcaMinima, cfgDaBorda('rodape').forcaMinima),
+      Math.max(cfgDaBorda('topo').forcaMaxima, cfgDaBorda('rodape').forcaMaxima),
+    ]
+    const regua = await medirContrasteDaPeca({ layers, canvas, background: assinatura.numeros.fundo, faixa, corrigir: true, medirIntervencao: opcoes.medirComparacao })
     layers = regua.layers
     contraste = regua.medidas
     intervencaoDeTexto = regua.intervencao
@@ -831,6 +1048,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     }),
     logo: logoDiag,
     blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado })),
+    arranjos,
     contraste,
     assinatura: assinatura.origem,
     avisos,
@@ -879,9 +1097,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // A entrada do persist é montada num módulo PURO (`persistencia.ts`): é lá
   // que mora a regra de que a Generation da FILA (`opcoes.generationId`) é
   // FECHADA em vez de nascer outra — o defeito de 04/09/2026 (Espeto).
+  // Os arranjos usados ficam gravados na spec: a recomposição refaz A MESMA
+  // peça, sem sortear outra combinação.
+  const specGravada: SpecDePeca = arranjos.length > 0 ? { ...spec, preferencias: { ...spec.preferencias, arranjos: arranjos.map((a) => a.id) } } : spec
   const persistido = await persistAndRenderCreative(
     entradaDePersistencia({
-      spec,
+      spec: specGravada,
       opcoes,
       projeto,
       pasta,

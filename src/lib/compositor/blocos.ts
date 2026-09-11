@@ -22,6 +22,7 @@ import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { PADDING_DE_DESENHO } from '@/lib/creatives/halo/fundo-de-texto'
 
 import type { EstiloDePapel } from './assinatura'
+import { extensoesDosElementos, type ElementoDoArranjo } from './combinacoes'
 import { estilosDoRichText, lerDestaques, type EstiloDeDestaque, type TrechoDestacado } from './destaques'
 import type { Papel } from './spec'
 
@@ -40,6 +41,15 @@ export interface BlocoMontado {
   cor: string
   /** O bloco saiu com palavra destacada (camada rich-text). Ausente = não. */
   destacado?: boolean
+  /**
+   * O vão antes deste texto (px) como o arranjo o desenhou — a página de
+   * assinatura ou a combinação. Ausente = o ritmo da casa (`vaoEntre`).
+   */
+  vaoAntes?: number
+  /** Os elementos presos ao texto (ícone, filete, selo), relativos à tinta. */
+  elementos?: ElementoDoArranjo[]
+  /** A escala dos elementos em relação à base 1080 (a do formato × a da fonte). */
+  escalaDosElementos?: number
 }
 
 export interface OrcamentoDeLinha {
@@ -76,6 +86,8 @@ export interface DestaqueDoBloco {
 /** A camada de texto de um papel, ainda sem posição (x/y = 0). */
 export function camadaDoPapel(args: {
   papel: Papel
+  /** Id e nome da camada — o papel, ou `servico-2` quando o arranjo tem dois textos do mesmo papel. */
+  id?: string
   /** As linhas JÁ sem colchetes. */
   linhas: string[]
   estilo: EstiloDePapel
@@ -93,9 +105,10 @@ export function camadaDoPapel(args: {
   const sombra = estilo.sombra === undefined ? { color: args.corDaMancha, blur: 10, offsetY: 1, opacity: 0.65 } : estilo.sombra
   const linhasFinais = aplicarPrefixo(args.linhas, estilo.prefixo)
   const conteudo = linhasFinais.join('\n')
+  const id = args.id ?? args.papel
   const camada: Layer = {
-    id: `${args.papel}`,
-    name: args.papel,
+    id,
+    name: id,
     type: 'text',
     visible: true,
     locked: false,
@@ -189,6 +202,8 @@ function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: strin
  */
 export function montarBloco(args: {
   papel: Papel
+  /** Id da camada; ausente = o papel. */
+  id?: string
   /** As linhas como vieram da copy — podem trazer [colchetes]. */
   linhas: string[]
   estilo: EstiloDePapel
@@ -285,18 +300,48 @@ export function vaoEntre(anterior: Papel | null, proximo: Papel, gapPadrao: numb
   return gapPadrao
 }
 
-/** Empilha os blocos (já com largura/altura) e devolve a caixa do conjunto. */
-export function empilhar(blocos: BlocoMontado[], gapPadrao: number): { width: number; height: number; offsets: number[] } {
-  let y = 0
+export interface PilhaDeBlocos {
+  /** Largura do conjunto, contando o que os elementos passam da coluna de tinta. */
+  width: number
+  /** Altura do conjunto, contando o elemento acima do primeiro texto e abaixo do último. */
+  height: number
+  /** O topo de cada bloco dentro do conjunto (px). */
+  offsets: number[]
+  /** Quanto os elementos passam da coluna de tinta à esquerda e à direita (px). */
+  esquerda: number
+  direita: number
+}
+
+/**
+ * Empilha os blocos (já com largura/altura) e devolve a caixa do conjunto. O
+ * vão antes de cada bloco é o do arranjo quando ele o traz, e o ritmo da casa
+ * quando não; os elementos presos aos textos entram na caixa.
+ */
+export function empilhar(blocos: BlocoMontado[], gapPadrao: number): PilhaDeBlocos {
+  const extensoes = blocos.map((b) =>
+    b.elementos?.length
+      ? extensoesDosElementos(
+          b.elementos,
+          { width: Math.max(1, b.width - 2 * PADDING_DE_DESENHO - 2), height: b.height },
+          b.escalaDosElementos ?? 1,
+        )
+      : { esquerda: 0, direita: 0, topo: 0, base: 0 },
+  )
+  let y = extensoes[0]?.topo ?? 0
   let anterior: Papel | null = null
   const offsets: number[] = []
-  let width = 0
-  for (const b of blocos) {
-    y += vaoEntre(anterior, b.papel, gapPadrao)
+  let largura = 0
+  let esquerda = 0
+  let direita = 0
+  blocos.forEach((b, i) => {
+    if (i > 0) y += typeof b.vaoAntes === 'number' ? b.vaoAntes : vaoEntre(anterior, b.papel, gapPadrao)
     offsets.push(y)
     y += b.height
-    width = Math.max(width, b.width)
+    largura = Math.max(largura, b.width)
+    esquerda = Math.max(esquerda, extensoes[i].esquerda)
+    direita = Math.max(direita, extensoes[i].direita)
     anterior = b.papel
-  }
-  return { width, height: y, offsets }
+  })
+  const base = extensoes[extensoes.length - 1]?.base ?? 0
+  return { width: Math.ceil(largura + esquerda + direita), height: Math.ceil(y + base), offsets, esquerda: Math.ceil(esquerda), direita: Math.ceil(direita) }
 }

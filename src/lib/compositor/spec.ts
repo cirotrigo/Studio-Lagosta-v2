@@ -68,6 +68,12 @@ export const preferenciasSchema = z.object({
   enquadramento: z.enum(['auto', 'fixo']).optional(),
   /** Nome (ou tag) da página de assinatura a usar, quando o cliente tem mais de uma no formato. */
   variante: z.string().max(80).optional(),
+  /**
+   * Os arranjos de texto que esta peça já usou (grupo da página ou combinação
+   * salva, ver `combinacoes.ts`). O compositor grava ao persistir, e a
+   * recomposição os mantém — refazer a peça não pode sortear outra combinação.
+   */
+  arranjos: z.array(z.string().max(160)).max(8).optional(),
 })
 export type Preferencias = z.infer<typeof preferenciasSchema>
 
