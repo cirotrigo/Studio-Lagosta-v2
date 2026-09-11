@@ -5467,3 +5467,57 @@ rodada antes e depois, folha contra folha) pegou mais três coisas:
 - ⚠️ **A prova dos modelos não pega esse tipo de regressão**: ela compõe com a
   copy da própria página, que já vem em maiúsculas. Troca de assinatura pede
   também a recomposição das peças reais com a spec gravada, antes e depois.
+
+### A Real ajustada: recuo no grupo, vão entre grupos e a régua por texto (11/09/2026)
+
+O Ciro ajustou os seis modelos da Real Gelateria (template 461, em espera), e a
+mesma comparação (`--comparar`) mostrou divergências que eram todas da usina,
+nenhuma dos modelos:
+
+- 🔴 **Texto recuado dentro do grupo saía rente.** Na segunda, "Funcionamento"
+  começa em x=70 e as unidades em x=160, ao lado dos ícones; `posicionar` punha
+  todo texto do grupo no mesmo x, e como o ícone passa 86 px da tinta, a margem
+  do grupo caía no piso de 24: as três linhas saíam em x=116 e os ícones a 30 px
+  da borda. Hoje `arranjoDasCamadas` grava o `recuo` de cada texto (da tinta até
+  a borda em que o grupo alinha; só texto alinhado como o grupo; até 2 px é arraste
+  e não conta — 3 px já pode ser alinhamento ótico, como o apoio 7 px para
+  dentro da manchete serifada no Feriado do TERO), e `empilhar(blocos, gap, lado)` monta a pilha
+  recuada, em que o ícone que mora no recuo não empurra a coluna. O recuo vale
+  no lado em que o grupo alinha na página; virado pelo mapa, o grupo sai rente.
+  🔴 **Recuo que abriga elemento SOLTO não vale**: a peça só desenha elemento
+  de grupo, e na assinatura antiga da Real o relógio está fora do grupo — o
+  serviço entrava 47 px sozinho, com o vão vazio. O ícone no grupo (a segunda
+  dos modelos) mantém o recuo; solto, ele é zerado.
+- 🔴 **O vão entre dois grupos era o ritmo fixo de 1,6 gap, não o da página.** Na
+  terça o apoio ficava a 24 px de "Funcionamento" (61 no modelo, Δy=+37); a
+  segunda subia 14 px e a quarta 5. Hoje o arranjo guarda a `faixaDaTinta` (do
+  topo da primeira tinta à base da última) e o vão entre dois grupos da MESMA
+  borda é o da página, descontado o que os elementos passam das pilhas. Bordas
+  diferentes, página de outro formato, sobreposição ou vão maior que um quarto
+  da altura ficam no ritmo da casa. Era o resíduo de "Δy entre grupos" que as
+  comparações do Quintal e do TERO já mostravam.
+- 🔴 **A margem do grupo nunca chegava ao principal.** `margemPara` foi declarada
+  em `candidatosDePosicao` (f9c24278) e não era usada: o principal caía na
+  margem da assinatura, a do texto mais rente da página inteira. Na Real batia
+  por coincidência, porque o principal é o grupo mais rente em todos os modelos.
+- 🔴 **A régua mede cada TEXTO, não a união do grupo.** Com o recuo certo, a
+  segunda passou a acusar "foto clara demais" no próprio modelo: o marrom de
+  "Funcionamento" (alvo 69) era julgado pelo pires claro que só passa sob as
+  linhas creme. E o dourado da segunda voz do Dia dos Pais (luz 132) sobre o
+  creme era medido como texto CLARO, com alvo 0, porque o corte de texto escuro
+  era fixo em 128. Hoje cada camada tem o próprio retângulo, o próprio sentido
+  (escuro quando a mancha é clara e o texto é 48 mais escuro que ela) e o
+  próprio alvo; o grupo vale o pior, e a força do gradiente se corrige pelo
+  texto claro mais longe do alvo.
+
+Medido. Real (`--comparar`, 6 modelos): antes 3 de 6 peças fora do modelo
+(Δy de −14, +37 e −5; serviço da segunda em x=116); depois as 6 com Δx = Δy = 0
+em todos os papéis. TERO (8 páginas): Δy = 0 em todos os papéis menos o apoio do
+Happy hour (−3), com o recuo ótico seguindo o modelo. Quintal (3 stories): Δy = 0.
+Peças reais recompostas (últimas 5 de 10 clientes, geometria por camada antes ×
+depois): 36 iguais e 11 mudaram, todas para a posição da página (Wine Vix
+pré-título 55 → 70; TERO apoio +7 e serviço +13 pelo vão da página; By Rock −6 e
+Lagosta +20 pela margem do grupo); as 3 recusas antigas do Wine Vix nos dois
+lados; nenhum aviso novo e 12 a menos (invasão de margem e "foto clara demais"
+falsos). ⚠️ Sobra um aviso real: o dourado da segunda voz do Dia dos Pais sobre o
+creme fica abaixo de 3:1 onde a foto escurece — é o desenho do modelo.
