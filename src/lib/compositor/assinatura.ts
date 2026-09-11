@@ -80,6 +80,8 @@ export interface LogoDaAssinatura {
   largura: number
   /** altura / largura. */
   razao: number
+  /** Onde a página pôs a logo (canto superior esquerdo, px): o lugar preferido quando ali ela não encosta no texto. */
+  posicao?: { x: number; y: number }
 }
 
 export interface GeometriaDoFormato {
@@ -346,6 +348,7 @@ export function montarAssinatura(args: {
             url,
             largura: Math.round(camada.size.width),
             razao: camada.size.height / camada.size.width,
+            posicao: { x: camada.position.x, y: camada.position.y },
           }
         }
       }
@@ -370,7 +373,9 @@ export function montarAssinatura(args: {
       // Cada margem sai do que mora na METADE dela: a página com todo o texto no
       // rodapé não diz nada sobre o topo (medido em 11/09/2026 nos modelos do
       // Quintal: o topo "derivado" dava 1281 px).
-      const deCima = uteis.filter((c) => c.position.y + c.size.height / 2 < H / 2)
+      // O topo útil é onde o primeiro TEXTO começa: a logo acima da manchete
+      // (os "Clássicos" do TERO) não pode puxar o texto para cima dela.
+      const deCima = textos.filter((c) => c.position.y + c.size.height / 2 < H / 2)
       const deBaixo = uteis.filter((c) => c.position.y + c.size.height / 2 >= H / 2)
       const lateral = Math.min(...textos.map((c) => Math.min(c.position.x, W - (c.position.x + c.size.width))))
       const base = numeros.geometria[args.formatoDaPagina]

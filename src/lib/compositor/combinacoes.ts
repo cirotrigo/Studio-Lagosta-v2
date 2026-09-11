@@ -73,6 +73,8 @@ export interface ArranjoDeGrupo {
   alinhamento: Alinhamento | null
   /** A logo mora dentro do arranjo (ao lado do serviço, por exemplo): a peça não põe outra no canto. */
   temLogo: boolean
+  /** Onde os textos do arranjo moram no canvas de origem (união das caixas) — na página, é o que diz topo ou rodapé. */
+  caixa?: { x: number; y: number; width: number; height: number }
 }
 
 interface Retangulo {
@@ -109,6 +111,15 @@ export function tintaDaCaixaJusta(camada: Layer): Retangulo {
     width: Math.max(1, (camada.size?.width ?? 0) - 2 * PADDING_DE_DESENHO - 2),
     height: camada.size?.height ?? 0,
   }
+}
+
+/** A caixa que envolve um conjunto de camadas (px no canvas delas). */
+function uniaoDasCaixas(camadas: Layer[]): Retangulo {
+  const x0 = Math.min(...camadas.map((c) => c.position?.x ?? 0))
+  const y0 = Math.min(...camadas.map((c) => c.position?.y ?? 0))
+  const x1 = Math.max(...camadas.map((c) => (c.position?.x ?? 0) + (c.size?.width ?? 0)))
+  const y1 = Math.max(...camadas.map((c) => (c.position?.y ?? 0) + (c.size?.height ?? 0)))
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 }
 }
 
 function relativoATinta(elemento: Layer, tinta: Retangulo, lado: LadoDoOrnamento, eixo?: EixoDoOrnamento): ElementoDoArranjo {
@@ -152,7 +163,12 @@ function ehElementoDoGrupo(c: Layer): boolean {
  * linha do serviço, quando a peça só traz o horário — fica de fora.
  */
 function foraDaTinta(e: ElementoDoArranjo, alturaDaTinta: number, escala: number): boolean {
-  return (e.lado === 'antes' || e.lado === 'depois') && e.offsetY * escala >= alturaDaTinta - 2
+  if (e.lado !== 'antes' && e.lado !== 'depois') return false
+  const altura = e.height * escala
+  // Elemento da altura do bloco (a logo, o divisor vertical) acompanha o bloco inteiro
+  if (altura >= alturaDaTinta * 0.9) return false
+  // Ícone de linha: some quando o centro dele cai abaixo do texto que sobrou
+  return e.offsetY * escala + altura / 2 > alturaDaTinta
 }
 
 /**
@@ -221,6 +237,7 @@ export function arranjoDasCamadas(args: {
     papeis: [...new Set(itens.map((t) => t.papel))],
     alinhamento: referencia.estilo.alinhamento ?? null,
     temLogo: itens.some((t) => t.elementos.some((e) => e.logo)),
+    caixa: uniaoDasCaixas(textos),
   }
 }
 

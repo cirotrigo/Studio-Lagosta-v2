@@ -29,6 +29,7 @@ import { calibrarHalo, uniao, type Rect } from '@/lib/creatives/halo/halo'
 import { gradientesDoProjeto } from '@/lib/assets/gradients-library'
 import type { CropPosition } from '@/lib/image-crop-utils'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
+import { blocosDeServico } from '@/lib/ai/blocos-de-servico'
 
 import { avaliarCombinacao, type DiagnosticoDaSelecao } from './selecionar-combinacao'
 import { lerCaixaDoAssunto, assuntoEmPixels, fracaoVisivelDoAssunto, type AssuntoNormalizado } from './assunto-da-foto'
@@ -574,17 +575,38 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const colunaUtil = g.W - 2 * g.margemH
   const recusas: Array<{ papel: Papel; orcamento: unknown }> = []
   const chaveDoGrupo = (papel: Papel) => assinatura.papeis[papel]?.grupo ?? (papel === 'headline2' ? assinatura.papeis.headline?.grupo ?? 'solo:headline' : `solo:${papel}`)
-  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[] }>>()
-  for (const b of spec.blocos) {
-    const chave = chaveDoGrupo(b.papel as Papel)
-    blocosPorGrupo.set(chave, [...(blocosPorGrupo.get(chave) ?? []), b as { papel: Papel; linhas: string[] }])
-  }
   const gruposDaPagina = arranjosDaPagina({
     pageId: assinatura.origem.pageId ?? 'assinatura',
     nome: assinatura.origem.variante ?? 'Assinatura',
     camadas: assinatura.camadasDaPagina ?? [],
     medir,
   })
+  // O papel que a página tem em MAIS de um grupo (no Happy wine do TERO, o
+  // horário junto da oferta e o endereço sozinho no pé) recebe as linhas pelo
+  // tipo: horário no grupo do horário, endereço no do endereço. Sem isso as duas
+  // linhas iam para o primeiro grupo e saíam coladas numa caixa só.
+  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[] }>>()
+  const juntarNoGrupo = (chave: string, papel: Papel, linhas: string[]) => {
+    const lista = blocosPorGrupo.get(chave) ?? []
+    const mesmo = lista.find((x) => x.papel === papel)
+    if (mesmo) mesmo.linhas.push(...linhas)
+    else lista.push({ papel, linhas: [...linhas] })
+    blocosPorGrupo.set(chave, lista)
+  }
+  for (const b of spec.blocos) {
+    const papel = b.papel as Papel
+    const chaves = [...gruposDaPagina.entries()].filter(([, a]) => a.papeis.includes(papel)).map(([chave]) => chave)
+    if (chaves.length <= 1 || b.linhas.length <= 1) {
+      juntarNoGrupo(chaveDoGrupo(papel), papel, b.linhas)
+      continue
+    }
+    const tipos = new Map(blocosDeServico(b.linhas).map((s) => [s.indice, s.papel === 'horário' ? 'horario' : 'endereco'] as const))
+    b.linhas.forEach((linha, i) => {
+      const tipo = tipos.get(i)
+      const doTipo = tipo ? chaves.find((chave) => gruposDaPagina.get(chave)!.textos.some((t) => t.papel === papel && t.tipo === tipo)) : undefined
+      juntarNoGrupo(doTipo ?? chaveDoGrupo(papel), papel, [linha])
+    })
+  }
   const combinacoesSalvas = await arranjosDasCombinacoes(spec.projectId, medir)
   const chaveDaPeca = `${spec.nome ?? ''}|${spec.tema ?? ''}|${spec.foto?.driveFileId ?? spec.foto?.url ?? ''}|${spec.blocos[0]?.linhas.join(' ') ?? ''}`
   const arranjos: NonNullable<DiagnosticoDaComposicao['arranjos']> = []
@@ -699,6 +721,8 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     /** A âncora veio de uma caixa REAL da página (e não do default do papel). */
     temCaixa: boolean
     alinha: Alinhamento | null
+    /** O centro vertical do grupo na página (0..1) — ordena os grupos que dividem a mesma borda. */
+    centro: number | null
   }
   const porGrupo = new Map<string, BlocoMontado[]>()
   for (const b of montados) {
@@ -706,7 +730,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   }
   const compostos: BlocoComposto[] = [...porGrupo.entries()].map(([chave, blocos]) => {
     const papeis = blocos.map((b) => b.papel)
-    const caixas = papeis.map((p) => assinatura.papeis[p]?.caixa).filter((c): c is NonNullable<typeof c> => !!c)
+    // Onde o grupo mora na página: a caixa do próprio arranjo da página — que
+    // distingue os dois grupos de serviço do Happy wine — ou as caixas dos papéis.
+    const arranjoDoGrupo = arranjoPorGrupo.get(chave)
+    const caixas =
+      arranjoDoGrupo?.origem === 'pagina' && arranjoDoGrupo.caixa
+        ? [arranjoDoGrupo.caixa]
+        : papeis.map((p) => assinatura.papeis[p]?.caixa).filter((c): c is NonNullable<typeof c> => !!c)
     const centro = caixas.length > 0 ? caixas.reduce((acc, c) => acc + (c.y + c.height / 2), 0) / caixas.length / canvas.height : null
     const soServico = papeis.every((p) => p === 'servico')
     const ancora: Ancora = soServico || centro === null ? (soServico ? 'rodape' : 'topo') : centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
@@ -719,10 +749,19 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       temCaixa: caixas.length > 0,
       // O alinhamento preferido é o do arranjo: é o que a combinação desenhou.
       alinha: arranjoPorGrupo.get(chave)?.alinhamento ?? assinatura.papeis[papeis[0]]?.alinhamento ?? null,
+      centro,
     }
   })
   const principal = compostos.find((c) => c.principal) ?? compostos[0]
-  const secundarios = compostos.filter((c) => c !== principal)
+  // Na mesma borda, o grupo mais PERTO dela na página é posto primeiro: o
+  // endereço no pé do Happy wine fica abaixo da oferta, como no modelo.
+  const outros = compostos.filter((c) => c !== principal)
+  const porCentro = (sentido: 1 | -1) => (a: BlocoComposto, b: BlocoComposto) => sentido * ((a.centro ?? 0) - (b.centro ?? 0))
+  const secundarios = [
+    ...outros.filter((c) => c.ancora === 'topo').sort(porCentro(1)),
+    ...outros.filter((c) => c.ancora === 'meio'),
+    ...outros.filter((c) => c.ancora === 'rodape').sort(porCentro(-1)),
+  ]
   const pilha = principal.pilha
   // Os blocos secundários reservam a própria altura na âncora deles, para o
   // principal não pousar em cima.
@@ -831,14 +870,28 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   if (assinatura.logo && spec.preferencias?.cantoDaMarca !== 'nenhum' && !logoNoArranjo) {
     const largura = Math.round(assinatura.logo.largura * (spec.formato === 'story' ? 1 : escalaDoFormato))
     const altura = Math.round(largura * assinatura.logo.razao)
-    const canto = escolherCanto({
-      g,
-      mapa: melhor.mapa,
-      blocos: rectsDeGrupo.map((r) => r.rect),
-      logo: { w: largura, h: altura },
-      pedido: spec.preferencias?.cantoDaMarca,
-      formato: spec.formato,
-    })
+    // A logo onde a PÁGINA a pôs — no alto e ao centro no "Almoço TERO", no
+    // canto de cima nos "Clássicos" —, quando ali ela não encosta em nenhum
+    // bloco de texto da peça; senão, o canto mais calmo de sempre.
+    const naPagina =
+      !spec.preferencias?.cantoDaMarca && assinatura.logo.posicao && assinatura.origem.formatoDaPagina === spec.formato
+        ? { x: Math.round(assinatura.logo.posicao.x), y: Math.round(assinatura.logo.posicao.y), width: largura, height: altura }
+        : null
+    const livreNaPagina = naPagina && !rectsDeGrupo.some((r) => intersecta(r.rect, naPagina)) ? naPagina : null
+    const canto = livreNaPagina
+      ? {
+          canto: `${livreNaPagina.y + altura / 2 < g.H / 2 ? 'superior' : 'inferior'}-${livreNaPagina.x + largura / 2 < g.W / 2 ? 'esquerdo' : 'direito'}` as Canto,
+          rect: livreNaPagina,
+          luz: 0,
+        }
+      : escolherCanto({
+          g,
+          mapa: melhor.mapa,
+          blocos: rectsDeGrupo.map((r) => r.rect),
+          logo: { w: largura, h: altura },
+          pedido: spec.preferencias?.cantoDaMarca,
+          formato: spec.formato,
+        })
     if (canto) {
       const tinta = 0
       camadasDaLogo.push({
