@@ -278,7 +278,9 @@ export function arranjoDasCamadas(args: {
 
   const referencia = itens.find((t) => t.papel === 'headline') ?? itens[0]
   const alinhamento = referencia.estilo.alinhamento ?? null
-  const recuos = recuosDaOrigem(itens, tintas, alinhamento)
+  const doGrupo = new Set(args.camadas.map((c) => c.id))
+  const soltos = (args.todas ?? []).filter((c) => !doGrupo.has(c.id) && c.visible !== false && c.type !== 'logo' && !grupoDaCamada(c) && ehElementoDoGrupo(c))
+  const recuos = recuosDaOrigem(itens, tintas, alinhamento, soltos)
   return {
     id: args.id,
     nome: args.nome,
@@ -306,7 +308,7 @@ const RECUO_MINIMO = 3
  * 30 px da borda). Só conta texto alinhado como o grupo; grupo centrado não tem
  * recuo. `null` quando ninguém tem recuo, o caso comum.
  */
-function recuosDaOrigem(itens: TextoDoArranjo[], tintas: Retangulo[], alinhamento: Alinhamento | null): number[] | null {
+function recuosDaOrigem(itens: TextoDoArranjo[], tintas: Retangulo[], alinhamento: Alinhamento | null, soltos: Layer[] = []): number[] | null {
   if (alinhamento !== 'esquerda' && alinhamento !== 'direita') return null
   const alinhados = itens.map((t) => (t.estilo.alinhamento ?? 'esquerda') === alinhamento)
   const bordas = tintas.map((t) => (alinhamento === 'esquerda' ? t.x : t.x + t.width))
@@ -316,7 +318,19 @@ function recuosDaOrigem(itens: TextoDoArranjo[], tintas: Retangulo[], alinhament
   const recuos = bordas.map((borda, i) => {
     if (!alinhados[i]) return 0
     const recuo = Math.round(Math.abs(borda - rente))
-    return recuo >= RECUO_MINIMO ? recuo : 0
+    if (recuo < RECUO_MINIMO) return 0
+    // O recuo que abriga um elemento SOLTO da página é o lugar dele, e a peça
+    // só desenha elemento de grupo: na assinatura antiga da Real o relógio está
+    // fora do grupo, e o serviço entrava 47 px sozinho, com o vão vazio
+    // (11/09/2026). Recuo com o ícone NO grupo (a segunda dos modelos) vale.
+    const t = tintas[i]
+    const [de, ate] = alinhamento === 'esquerda' ? [rente - 4, borda] : [borda, rente + 4]
+    const abrigaSolto = soltos.some((s) => {
+      const c = caixaVisivel(s)
+      const centro = c.x + c.width / 2
+      return centro > de && centro < ate && c.y < t.y + t.height && c.y + c.height > t.y
+    })
+    return abrigaSolto ? 0 : recuo
   })
   return recuos.some((r) => r > 0) ? recuos : null
 }

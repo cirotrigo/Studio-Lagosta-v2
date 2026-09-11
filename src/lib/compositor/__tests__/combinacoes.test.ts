@@ -110,6 +110,18 @@ describe('arranjo de um grupo', () => {
     expect(a.faixaDaTinta).toEqual({ topo: 1518, base: 1739 + Math.ceil(34 * 1.2) })
   })
 
+  it('o recuo que abriga um elemento SOLTO da página não vale: a peça não desenha o relógio fora do grupo (Real, assinatura antiga)', () => {
+    const texto = { fontFamily: 'StageGrotesk', fontSize: 34, lineHeight: 1.2, color: CLARO, textAlign: 'left' as const }
+    const apoio = camada({ id: 'apoio', type: 'text', content: 'Sabor por sabor', style: { ...texto, fontSize: 40 }, position: { x: 70, y: 1591 }, size: { width: 767, height: 80 }, metadata: { groupId: 'r' } })
+    const servico = camada({ id: 'servico', type: 'text', content: 'Todos os dias, das 12h às 22h', style: texto, position: { x: 117, y: 1741 }, size: { width: 680, height: 52 }, metadata: { groupId: 'r' } })
+    const relogioSolto = camada({ id: 'relogio', type: 'image', fileUrl: RELOGIO, position: { x: 78, y: 1750 }, size: { width: 34, height: 34 } })
+    const rodape = [apoio, servico]
+    const semSolto = arranjoDasCamadas({ id: 'p:r', nome: 'r', origem: 'pagina', camadas: rodape, todas: rodape, medir: medirFalso })!
+    expect(semSolto.textos.map((t) => t.recuo ?? 0)).toEqual([0, 47])
+    const comSolto = arranjoDasCamadas({ id: 'p:r', nome: 'r', origem: 'pagina', camadas: rodape, todas: [...rodape, relogioSolto], medir: medirFalso })!
+    expect(comSolto.textos.map((t) => t.recuo ?? 0)).toEqual([0, 0])
+  })
+
   it('texto 2 px fora do alinhamento não vira recuo; grupo centrado não tem recuo', () => {
     expect(arranjoDoGrupo().textos.every((t) => t.recuo === undefined)).toBe(true)
     const torto: Layer[] = [
