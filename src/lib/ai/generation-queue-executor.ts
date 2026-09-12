@@ -89,9 +89,12 @@ type Desfecho = 'DONE' | 'FAILED' | 'REENFILEIRADO' | 'ocupado'
  * Reserva e executa UM job. A reserva é compare-and-set: perder a corrida para
  * outra varredura não é erro, é o mecanismo funcionando.
  */
-async function executarJob(job: JobParaExecutar): Promise<Desfecho> {
-  const pegou = await reservarJob(job.id)
-  if (!pegou) return 'ocupado'
+async function executarJob(jobDaVarredura: JobParaExecutar): Promise<Desfecho> {
+  const reservado = await reservarJob(jobDaVarredura.id)
+  if (!reservado) return 'ocupado'
+  // O payload é o do banco DEPOIS da reserva (ver `reservarJob`): uma força
+  // promovida entre a varredura e a reserva é executada nesta tentativa.
+  const job = reservado
 
   const t0 = Date.now()
   console.log(

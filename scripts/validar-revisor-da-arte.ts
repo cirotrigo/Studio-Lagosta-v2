@@ -150,6 +150,8 @@ async function main() {
   const templatesAntes = new Set((await db.template.findMany({ where: { projectId: PROJETO }, select: { id: true } })).map((t) => t.id))
   const posts: string[] = []
   const blobs = new Set<string>()
+  /** Toda página que esta rodada criou (a 1ª e a 2ª peça): o cleanup limpa TODAS (REV-08). */
+  const paginasCriadas: string[] = []
   let pageId: string | null = null
   const tokenDoBlob = process.env.BLOB_READ_WRITE_TOKEN
 
@@ -425,6 +427,7 @@ async function main() {
     const persistido2 = composta2.persistido
     if (!persistido2) abortar('a segunda composição não persistiu nada')
     const pageId2 = persistido2.pageId
+    paginasCriadas.push(pageId2)
     blobs.add(persistido2.url)
     const carrossel2 = await db.socialPost.create({
       data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} carrossel 2 — pode apagar`, mediaUrls: [fotoUrl, persistido2.url], scheduleType: 'SCHEDULED', scheduledDatetime: daqui7, status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED' },
@@ -509,6 +512,69 @@ async function main() {
       conferir('re-renderizada (não "feita" pela spec), DONE, texto novo e força ajustada preservados (REV-04 isolado)', d6h === 'DONE' && (gen6h?.fieldValues as Record<string, any>)?.recomposicao?.estado === 're-renderizada' && String(pagina6h.find((c) => c.id === headline2?.id)?.content) === textoDo6h && forcaDe(pagina6h) === forcaNova2, `${d6h}; ${(gen6h?.fieldValues as Record<string, any>)?.recomposicao?.estado}; força ${forcaDe(pagina6h)}`)
     }
 
+    // ── 6i. o ajuste chega ENTRE o levantamento e a leitura que compõe (REV-05, 2ª rodada) ──
+    console.log('6i) o ajuste do revisor entra entre o levantamento e a leitura da página: a recomposição para ANTES de compor')
+    const camadas6i = await camadasDaPagina(pageId2)
+    const textoDo6i = 'Segunda peça\nterceira vez'
+    await db.page.update({ where: { id: pageId2 }, data: { layers: camadas6i.map((c) => (c.id === headline2?.id ? { ...c, content: textoDo6i } : c)) as never } })
+    const forcaDo6i = Math.min(0.9, Math.round((forcaNova2 + 0.05) * 1000) / 1000)
+    const ajuste6i = { ...ajuste2, forca: forcaDo6i }
+    let erroDoAjuste6i: Awaited<ReturnType<typeof erroDe>> = null
+    const genAntes6i = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+    const e6i = await erroDe(
+      recomporPaginaDefasada({
+        pageId: pageId2,
+        origem: 'editor',
+        depoisDoLevantamento: async () => {
+          const rv = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+          process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+          erroDoAjuste6i = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: rv.versao, ajustes: [ajuste6i], canal: 'claude-code' }))
+          process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+        },
+      }),
+    )
+    const pagina6i = await camadasDaPagina(pageId2)
+    const gen6i = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+    conferir('o ajuste gravou a página (render falhou) na janela entre as duas leituras', !!erroDoAjuste6i && erroDoAjuste6i.code !== 'VERSAO_DIVERGENTE', erroDoAjuste6i?.message.slice(0, 60))
+    conferir('a recomposição parou ANTES de compor (PAGINA_MUDOU_DURANTE 409) — a decisão do levantamento não vale para a página nova', e6i?.code === 'PAGINA_MUDOU_DURANTE' && e6i.status === 409, e6i?.message.slice(0, 90))
+    conferir('página com o ajuste E o texto novo; arte intocada', forcaDe(pagina6i) === forcaDo6i && String(pagina6i.find((c) => c.id === headline2?.id)?.content) === textoDo6i && gen6i?.resultUrl === genAntes6i?.resultUrl, `força ${forcaDe(pagina6i)} (esperava ${forcaDo6i})`)
+    // fecha o pedido forçado que o ajuste deixou na fila desta página (o executor da prova não vai rodá-lo)
+    {
+      const jobs2 = await db.generationJob.findMany({ where: { generationId: persistido2.generationId }, select: { id: true, payload: true } })
+      for (const j of jobs2) {
+        const rec = (j.payload as Record<string, any>).recompor ?? {}
+        await db.generationJob.update({ where: { id: j.id }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...(j.payload as object), recompor: { ...rec, forcaAtendida: rec.forcaPedidaEm ?? '' } } as never } })
+      }
+    }
+
+    // ── 6j. falha na última tentativa COM força pendente: falharJob devolve à fila (REV-06, 2ª rodada) ──
+    console.log('6j) erro na última tentativa enquanto uma força chegou: falharJob devolve à fila em vez de FAILED')
+    const { falharJob, reservarJob, buscarJob } = await import('../src/lib/ai/generation-queue')
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, startedAt: new Date(), payload: payloadNormal as never } })
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const desfecho6j = await falharJob(jobId6d, 'erro simulado da prova')
+    const job6j = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, attempts: true, maxAttempts: true, lastError: true, payload: true } })
+    conferir('falharJob com força pendente → REENFILEIRADO/PENDING, com o motivo e a força no registro, e orçamento para rodar', desfecho6j === 'REENFILEIRADO' && job6j?.status === 'PENDING' && /forçada/.test(String(job6j.lastError)) && job6j.attempts < job6j.maxAttempts && (job6j.payload as Record<string, any>).recompor?.forcar === true, `${desfecho6j}; ${job6j?.status} ${job6j?.attempts}/${job6j?.maxAttempts}: ${job6j?.lastError}`)
+    // sem força pendente, falharJob continua marcando FAILED
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', payload: payloadNormal as never } })
+    const desfecho6jB = await falharJob(jobId6d, 'erro simulado sem força')
+    const job6jB = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, lastError: true } })
+    conferir('sem força pendente, falharJob marca FAILED com o motivo', desfecho6jB === 'FAILED' && job6jB?.status === 'FAILED' && job6jB.lastError === 'erro simulado sem força')
+
+    // ── 6k. força promovida entre a varredura e a reserva: o executor roda o payload FRESCO (REV-07, 2ª rodada) ──
+    console.log('6k) força que chega entre a varredura e a reserva: a reserva devolve o job fresco, com a força')
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'PENDING', attempts: 2, maxAttempts: 3, nextAttemptAt: new Date(), payload: payloadNormal as never } })
+    const capturadoPelaVarredura = await buscarJob(jobId6d)
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const fresco = await reservarJob(jobId6d)
+    const estado6k = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, attempts: true } })
+    conferir('a varredura tinha o payload antigo (sem força) e a reserva devolve o fresco (com força), RUNNING 3/3', (capturadoPelaVarredura?.payload as Record<string, any>)?.recompor?.forcar !== true && (fresco?.payload as Record<string, any>)?.recompor?.forcar === true && estado6k?.status === 'RUNNING' && estado6k.attempts === 3 && fresco?.attempts === 3, JSON.stringify({ antes: (capturadoPelaVarredura?.payload as Record<string, any>)?.recompor?.forcar, depois: (fresco?.payload as Record<string, any>)?.recompor?.forcar, estado: estado6k }))
+    // deixa a fila limpa para o passo 7
+    {
+      const rec = (fresco?.payload as Record<string, any>)?.recompor ?? {}
+      await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...((fresco?.payload as object) ?? {}), recompor: { ...rec, forcaAtendida: rec.forcaPedidaEm ?? '' } } as never } })
+    }
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))
@@ -563,37 +629,33 @@ async function main() {
     // Falha no meio da composição deixa Page (e às vezes Generation) sem que
     // `pageId` tenha sido preenchido: o que foi criado com a MARCA desta rodada
     // entra no cleanup do mesmo jeito (achado R2 da revisão do Codex).
-    if (!pageId) {
-      const orfas = await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })
-      if (orfas.length === 1) pageId = orfas[0].id
-      else if (orfas.length > 1) console.warn(`  ${orfas.length} páginas com a marca desta rodada — apagando todas`)
-      for (const extra of orfas.slice(1)) {
-        const gensExtra = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: extra.id } }, select: { id: true, resultUrl: true } })
-        for (const g of gensExtra) if (g.resultUrl) blobs.add(g.resultUrl)
-        await db.generationJob.deleteMany({ where: { generationId: { in: gensExtra.map((g) => g.id) } } })
-        criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensExtra.map((g) => g.id) } } })).count
-        await db.page.delete({ where: { id: extra.id } })
-        criados.pages++
-      }
-      const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], equals: `${MARCA} peça` } }, select: { id: true, resultUrl: true } })
-      for (const g of gensSemPagina) if (g.resultUrl) blobs.add(g.resultUrl)
-      if (gensSemPagina.length) {
-        await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
-        criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
-      }
-      const postsOrfaos = await db.socialPost.findMany({ where: { projectId: PROJETO, caption: { contains: MARCA } }, select: { id: true } })
-      for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
+    // TODAS as páginas da rodada: as que a prova registrou (1ª e 2ª peça) e o
+    // que nasceu com a MARCA sem chegar a um id (falha no meio da composição —
+    // achado R2 e, na 2ª peça, REV-08 da revisão do Codex).
+    const idsDePagina = new Set<string>(paginasCriadas)
+    if (pageId) idsDePagina.add(pageId)
+    for (const p of await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })) idsDePagina.add(p.id)
+    const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], string_contains: MARCA } }, select: { id: true, resultUrl: true } })
+    for (const g of gensSemPagina) if (g.resultUrl) blobs.add(g.resultUrl)
+    if (gensSemPagina.length) {
+      await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
+      criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
     }
-    if (pageId) {
-      const gens = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true, resultUrl: true } }))
+    const postsOrfaos = await db.socialPost.findMany({ where: { projectId: PROJETO, caption: { contains: MARCA } }, select: { id: true } })
+    for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
+    criados.pages = 0
+    for (const id of idsDePagina) {
+      const gens = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: id } }, select: { id: true, resultUrl: true } })
       for (const g of gens) if (g.resultUrl) blobs.add(g.resultUrl)
       criados.jobs += (await db.generationJob.deleteMany({ where: { generationId: { in: gens.map((g) => g.id) } } })).count
-      criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId, createdAt: { gte: inicio } } })).count
+      criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId: id, createdAt: { gte: inicio } } })).count
       criados.generations += (await db.generation.deleteMany({ where: { id: { in: gens.map((g) => g.id) } } })).count
-      const pagina = await db.page.findUnique({ where: { id: pageId }, select: { templateId: true } })
-      await db.page.delete({ where: { id: pageId } })
+      const pagina = await db.page.findUnique({ where: { id }, select: { templateId: true } })
+      if (!pagina) continue
+      await db.page.delete({ where: { id } })
+      criados.pages++
       // A pasta da semana só sai se nasceu nesta prova e ficou vazia.
-      if (pagina && !templatesAntes.has(pagina.templateId)) {
+      if (!templatesAntes.has(pagina.templateId)) {
         const restam = await db.page.count({ where: { templateId: pagina.templateId } })
         const gensNoTemplate = await db.generation.count({ where: { templateId: pagina.templateId } })
         if (restam === 0 && gensNoTemplate === 0) {

@@ -321,7 +321,7 @@ export async function buscarJob(id: string): Promise<JobParaExecutar | null> {
  * varreduras concorrentes chegariam ao mesmo job e as duas gerariam a mesma
  * arte, pagando duas vezes.
  */
-export async function reservarJob(id: string): Promise<boolean> {
+export async function reservarJob(id: string): Promise<JobParaExecutar | null> {
   const agora = new Date()
   const r = await db.generationJob.updateMany({
     where: { id, status: 'PENDING' },
@@ -332,7 +332,15 @@ export async function reservarJob(id: string): Promise<boolean> {
       attempts: { increment: 1 },
     },
   })
-  return r.count > 0
+  if (r.count === 0) return null
+  /**
+   * O job FRESCO, não o que a varredura capturou: entre a varredura e a
+   * reserva o payload pode ter sido promovido a uma recuperação forçada, e
+   * executar o payload antigo gastaria a tentativa sem atender à força — na
+   * última tentativa deixava o job PENDING sem orçamento (REV-07, segunda
+   * rodada). Quem executa roda o que está no banco AGORA.
+   */
+  return buscarJob(id)
 }
 
 /**
@@ -441,11 +449,27 @@ export async function fecharJob(id: string, generationId: string): Promise<'DONE
 }
 
 /** Marca o job como falho sem consultar a Generation (erro do próprio executor). */
-export async function falharJob(id: string, motivo: string): Promise<void> {
-  await db.generationJob.updateMany({
-    where: { id, status: 'RUNNING' },
-    data: { status: 'FAILED', finishedAt: new Date(), leaseExpiresAt: null, lastError: motivo.slice(0, 500) },
-  })
+export async function falharJob(id: string, motivo: string): Promise<'FAILED' | 'REENFILEIRADO'> {
+  /**
+   * O fechamento por ERRO tem a mesma regra do fechamento normal: força
+   * pedida e não atendida devolve o job à fila (com o orçamento que a promoção
+   * garantiu) em vez de matá-lo FAILED com o pedido no payload (REV-06,
+   * segunda rodada da revisão do Codex). O motivo da falha fica registrado nos
+   * dois casos.
+   */
+  for (let volta = 0; volta < 4; volta++) {
+    const job = await db.generationJob.findUnique({ where: { id }, select: { status: true, payload: true } })
+    if (!job || job.status !== 'RUNNING') return job?.status === 'PENDING' ? 'REENFILEIRADO' : 'FAILED'
+    const pendente = forcaPendente(job.payload)
+    const r = await db.generationJob.updateMany({
+      where: { id, status: 'RUNNING', payload: { equals: job.payload as never } },
+      data: pendente
+        ? { status: 'PENDING', nextAttemptAt: new Date(), leaseExpiresAt: null, lastError: `${motivo.slice(0, 400)} — recuperação forçada pendente: volta à fila` }
+        : { status: 'FAILED', finishedAt: new Date(), leaseExpiresAt: null, lastError: motivo.slice(0, 500) },
+    })
+    if (r.count > 0) return pendente ? 'REENFILEIRADO' : 'FAILED'
+  }
+  return 'FAILED'
 }
 
 export interface ResultadoRecuperacao {

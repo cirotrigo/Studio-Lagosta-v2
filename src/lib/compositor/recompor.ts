@@ -100,6 +100,8 @@ export interface LevantamentoDaPagina {
   slides: SlideDefasado[]
   /** Posts já entregues ao publicador: a edição não os alcança mais. */
   congelados: string[]
+  /** `Page.updatedAt` da leitura que decidiu a defasagem — a versão que a recomposição tem de reencontrar. */
+  versaoDaPagina: Date
 }
 
 /**
@@ -114,6 +116,7 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
       name: true,
       layers: true,
       isTemplate: true,
+      updatedAt: true,
       Template: { select: { projectId: true } },
     },
   })
@@ -187,6 +190,7 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
     nome: page.name,
     arte,
     urlsConhecidas,
+    versaoDaPagina: page.updatedAt,
     defasagem: medirDefasagem(page.layers, arte?.snapshot),
     slides: slidesDaPagina(
       candidatos.filter((p) => !p.laterPostId),
@@ -241,6 +245,8 @@ export interface RecomporInput {
    * recompostas, para simular a edição concorrente. Nunca vem do payload.
    */
   antesDeGravar?: () => Promise<void>
+  /** SÓ PARA PROVA: roda entre o levantamento (que decide a defasagem) e a leitura da página que vai ser composta. */
+  depoisDoLevantamento?: () => Promise<void>
 }
 
 /**
@@ -276,6 +282,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   const forcar = input.forcar === true
   if (!forcar && !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return vazio
 
+  if (input.depoisDoLevantamento) await input.depoisDoLevantamento()
   const page = await db.page.findUnique({
     where: { id: pageId },
     select: {
@@ -292,6 +299,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     },
   })
   if (!page) throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada: ${pageId}`, 404)
+  /**
+   * A decisão (defasagem, `podeRecompor`) saiu do LEVANTAMENTO; a composição e
+   * o compare-and-set da gravação usam ESTA leitura. Se a página mudou entre
+   * as duas — o revisor gravou um ajuste e o render falhou —, a decisão não
+   * vale mais para esta versão: parar aqui, antes de compor, e deixar a
+   * próxima execução decidir sobre a página nova (REV-05, segunda rodada da
+   * revisão do Codex, 12/09/2026).
+   */
+  if (page.updatedAt.getTime() !== levantamento.versaoDaPagina.getTime()) {
+    throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada entre o levantamento e a composição; a arte será refeita a partir da página nova.', 409)
+  }
   /**
    * Mesma recusa de `ajustarArte` e `reverterCamadasDaArte`: modelo é o layout
    * reutilizável do cliente, e reescrever as camadas dele apagaria curadoria.
