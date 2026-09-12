@@ -12,18 +12,11 @@ import { familiasNaoCarregadas, registerProjectFonts } from '@/lib/posts/registe
 import { parsePageLayers } from '@/lib/posts/page-layers'
 import type { Layer } from '@/types/template'
 import { formatoDaPagina, montarAssinatura, NOME_DO_TEMPLATE_DE_ASSINATURA, papelDoNome, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
-import { carregarAssinatura } from './compor'
+import { arranjosDasCombinacoes, carregarAssinatura, carregarFoto, familiasDoProjeto, luzMediaDaFoto } from './compor'
+import { chaveDaPeca } from './preparar-blocos'
 import { areaUtilDe, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
-import { validarSpec, type Formato, type Papel } from './spec'
+import { DIMENSOES, validarSpec, type Formato, type Papel, type SpecDePeca } from './spec'
 
-async function familiasDoProjeto(projectId: number): Promise<string[]> {
-  try {
-    const fontes = await db.customFont.findMany({ where: { projectId }, select: { fontFamily: true } })
-    return [...new Set(fontes.map((f) => f.fontFamily))]
-  } catch {
-    return []
-  }
-}
 
 /** As famílias que uma assinatura pode pedir: a de cada papel, a do destaque desenhado na página e a do destaque padrão. */
 function familiasDaAssinatura(a: AssinaturaDaMarca): string[] {
@@ -43,6 +36,11 @@ export interface PedidoDeMedicao {
   copyAutoral?: unknown
   variante?: string | null
   tema?: string | null
+  nome?: string | null
+  /** A foto da peça: entra na escolha da variante (luz clara/escura) e na chave do rodízio — como na composição. */
+  fotoDriveId?: string | null
+  fotoUrl?: string | null
+  preferencias?: { arranjos?: string[] } | null
 }
 
 export interface VarianteMedida {
@@ -57,6 +55,12 @@ export interface VarianteMedida {
 
 export interface ResultadoDaMedicao {
   variante: { id: string | null; nome: string | null; formatoDaPagina: Formato | null; motivo: string | null }
+  /**
+   * A escolha da variante pode DIFERIR na composição: não veio variante e a
+   * medição não recebeu a foto (a luz clara/escura e a chave do rodízio entram
+   * na escolha). Quem for compor fixa `preferencias.variante` com o id medido.
+   */
+  escolhaProvisoria: boolean
   medicao: MedicaoDaCopy
   /** As outras variantes do formato, medidas com a mesma copy — para escolher pela capacidade, não só pelo nome. */
   outrasVariantes: VarianteMedida[]
@@ -67,25 +71,46 @@ export interface ResultadoDaMedicao {
  * de quebra, contra as outras variantes do formato. Nada é gravado.
  */
 export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<ResultadoDaMedicao> {
-  const v = validarSpec({ projectId: pedido.projectId, formato: pedido.formato, blocos: pedido.blocos, copyAutoral: pedido.copyAutoral })
+  const v = validarSpec({
+    projectId: pedido.projectId,
+    formato: pedido.formato,
+    blocos: pedido.blocos,
+    copyAutoral: pedido.copyAutoral,
+    ...(pedido.fotoDriveId || pedido.fotoUrl ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}) } } : {}),
+    ...(pedido.nome ? { nome: pedido.nome } : {}),
+    ...(pedido.tema ? { tema: pedido.tema } : {}),
+    ...(pedido.variante || pedido.preferencias?.arranjos ? { preferencias: { ...(pedido.variante ? { variante: pedido.variante } : {}), ...(pedido.preferencias?.arranjos ? { arranjos: pedido.preferencias.arranjos } : {}) } } : {}),
+  })
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', v.problemas.join('; '), 400, { problemas: v.problemas })
-  const blocos = v.spec.blocos as Array<{ papel: Papel; linhas: string[] }>
+  const spec: SpecDePeca = v.spec
+  const blocos = spec.blocos as Array<{ papel: Papel; linhas: string[] }>
   const papeis = blocos.map((b) => b.papel)
-  const chave = `medir|${pedido.tema ?? ''}|${blocos[0]?.linhas.join(' ') ?? ''}`
-  const assinatura = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: pedido.variante ?? null, papeis, tema: pedido.tema ?? null, chave })
+
+  // A MESMA escolha de variante da composição: a foto antes (a luz média
+  // escolhe entre clara/escura), o tema OU o nome, e a chave da peça (R02).
+  let luzDaFoto: number | null = null
+  const avisosDaFoto: string[] = []
+  if (spec.foto) {
+    const { foto, aviso } = await carregarFoto(spec)
+    if (aviso) avisosDaFoto.push(aviso)
+    luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, DIMENSOES[spec.formato]) : null
+  }
+  const criterios = { papeis, tema: spec.tema ?? spec.nome ?? null, luzDaFoto, chave: chaveDaPeca(spec) }
+  const assinatura = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: spec.preferencias?.variante ?? null, ...criterios })
   if (!assinatura.origem.pageId) {
     throw new CreativeError('ASSINATURA_INCOMPLETA', 'O projeto não tem página de assinatura (template "Assinatura"): sem ela não há fonte, tamanho nem cor para medir.', 422)
   }
 
   await registerProjectFonts(pedido.projectId)
   const [medir, familias] = await Promise.all([createServerTextBoxMeasurer(), familiasDoProjeto(pedido.projectId)])
-  const declaradas = (v.spec.copyAutoral as { blocos?: Array<{ funcao?: string; estilo?: { linhasNaVoz2?: number[] } }> } | undefined)?.blocos?.find((b) => b.funcao === 'headline')?.estilo?.linhasNaVoz2 ?? null
+  const combinacoesSalvas = await arranjosDasCombinacoes(pedido.projectId, medir)
 
   const medirContra = async (a: AssinaturaDaMarca): Promise<MedicaoDaCopy> => {
     const fontesNaoCarregadas = await familiasNaoCarregadas([...familiasDaAssinatura(a), ...familias])
-    return medirCopy({ blocos, assinatura: a, formato: pedido.formato, medir, familias, fontesNaoCarregadas, comContrato: Boolean(v.spec.copyAutoral), linhasNaVoz2: declaradas })
+    return medirCopy({ spec, assinatura: a, formato: pedido.formato, medir, familias, fontesNaoCarregadas, combinacoesSalvas })
   }
   const medicao = await medirContra(assinatura)
+  medicao.avisos.unshift(...avisosDaFoto)
 
   // As outras variantes do MESMO formato (a página é a verdade do formato), pela mesma régua.
   const template = await db.template.findFirst({ where: { projectId: pedido.projectId, name: NOME_DO_TEMPLATE_DE_ASSINATURA }, select: { id: true } })
@@ -111,6 +136,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
 
   return {
     variante: { id: assinatura.origem.pageId, nome: assinatura.origem.variante, formatoDaPagina: assinatura.origem.formatoDaPagina, motivo: assinatura.origem.motivoDaVariante ?? null },
+    escolhaProvisoria: !spec.preferencias?.variante && !spec.foto && outrasVariantes.length > 0,
     medicao,
     outrasVariantes,
   }

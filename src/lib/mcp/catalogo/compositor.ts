@@ -176,14 +176,17 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'medir-copy',
     descricao:
-      'MEDE a copy ANTES de compor, com a MESMA régua e o MESMO medidor do render que compor-arte usa — sem gravar nada (nem página, nem arte, nem prova). Para cada bloco diz se cabe na coluna útil da variante no tamanho da assinatura (cabe), só com a fonte reduzida até 80% (cabe-reduzido, com a escala), ou não cabe nem assim (nao-cabe, com o orçamento: quantos caracteres cabem em cada linha) — e se a variante não tem o papel (papel-ausente). Cada linha volta com a largura medida e os caracteres que cabem; cada bloco com o corpo final, a caixa e as linhas.\n\nA medida é dita pelo que é: naoMedido = a fonte do papel não está carregada no servidor (os números saíram na fonte de fallback e NÃO valem — avise a pessoa e não confie neles); aproximado = há destaque entre [colchetes] e a largura extra do trecho é estimada. A resposta também mede a copy contra as OUTRAS variantes do formato (outrasVariantes: cabe tudo? falta papel?) para você escolher a variante pela capacidade, não só pelo nome. Use antes de compor-arte/compor-leva quando a copy estiver perto do limite ou quando a peça tiver muitos blocos; ver-assinatura já traz o orçamento aproximado por papel antes de escrever.',
+      'MEDE a copy ANTES de compor, com a MESMA preparação da composição (agrupamento pela assinatura, arranjos, divisão das linhas, segunda voz, estilos, ids dos blocos) e o MESMO medidor do render que compor-arte usa — sem gravar nada (nem página, nem arte, nem prova). Para cada bloco diz se cabe na coluna útil da variante no tamanho da assinatura (cabe), só com a fonte reduzida até 80% (cabe-reduzido, com a escala), ou não cabe nem assim (nao-cabe, com o orçamento: quantos caracteres cabem em cada linha) — e se a variante não tem o papel (papel-ausente). Cada linha volta com a largura medida e os caracteres que cabem; cada bloco com o corpo final, a caixa e as linhas.\n\nA medida é dita pelo que é: naoMedido = a fonte do papel não está carregada no servidor (os números saíram na fonte de fallback e NÃO valem — avise a pessoa e não confie neles); aproximado = há destaque entre [colchetes] e a largura extra do trecho é estimada. A resposta também mede a copy contra as OUTRAS variantes do formato (outrasVariantes: cabe tudo? falta papel?) para você escolher a variante pela capacidade, não só pelo nome. Use antes de compor-arte/compor-leva quando a copy estiver perto do limite ou quando a peça tiver muitos blocos; ver-assinatura já traz o orçamento aproximado por papel antes de escrever.',
     schema: z.object({
       projectId: spec.projectId,
       formato: spec.formato,
       blocos: spec.blocos,
       copyAutoral: spec.copyAutoral,
-      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy.'),
+      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a foto a escolha é PROVISÓRIA (escolhaProvisoria: true) e você fixa preferencias.variante com o id medido ao compor.'),
       tema: spec.tema,
+      nome: spec.nome,
+      fotoDriveId: spec.fotoDriveId,
+      fotoUrl: spec.fotoUrl,
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -197,10 +200,14 @@ export const toolsDoCompositor = [
         ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
         variante: typeof args.variante === 'string' ? args.variante : null,
         tema: typeof args.tema === 'string' ? args.tema : null,
+        nome: typeof args.nome === 'string' ? args.nome : null,
+        fotoDriveId: typeof args.fotoDriveId === 'string' ? args.fotoDriveId : null,
+        fotoUrl: typeof args.fotoUrl === 'string' ? args.fotoUrl : null,
       })
       const m = r.medicao
       return {
         variante: r.variante,
+        ...(r.escolhaProvisoria ? { escolhaProvisoria: true, comoFixar: `ao compor, mande preferencias.variante = "${r.variante.id}" — sem a foto, a composição pode escolher outra variante (luz clara/escura e rodízio).` } : {}),
         formato: args.formato,
         areaUtil: m.areaUtil,
         cabeTudo: m.cabeTudo,
@@ -208,7 +215,9 @@ export const toolsDoCompositor = [
         aproximado: m.aproximado,
         ...(m.papeisAusentes.length ? { papeisAusentes: m.papeisAusentes } : {}),
         ...(m.fontesNaoCarregadas.length ? { fontesNaoCarregadas: m.fontesNaoCarregadas } : {}),
+        arranjos: m.arranjos,
         blocos: m.blocos.map((b) => ({
+          id: b.id,
           papel: b.papel,
           situacao: b.situacao,
           ...(b.fonte ? { fonte: b.fonte } : {}),

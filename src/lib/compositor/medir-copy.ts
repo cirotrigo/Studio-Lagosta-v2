@@ -25,10 +25,9 @@
 
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import type { AssinaturaDaMarca, EstiloDePapel } from './assinatura'
-import { camadaDoPapel, medirLinha, montarBloco, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
-import { destaqueDoPapel } from './destaques'
-import { familiasDaCamada } from './medidas'
-import { dividirManchete } from './segunda-voz'
+import { camadaDoPapel, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
+import type { ArranjoDeGrupo } from './combinacoes'
+import { prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
 
 /** Amostra em português para o orçamento por caracteres (a largura média de uma letra da marca). */
@@ -131,6 +130,7 @@ export type SituacaoDoBloco = 'cabe' | 'cabe-reduzido' | 'nao-cabe' | 'papel-aus
 
 export interface MedidaDeBloco {
   papel: Papel
+  /** O id que a composição daria à camada (`servico`, `servico-2`, `headline2`…) — a identidade do bloco. */
   id: string
   situacao: SituacaoDoBloco
   fonte: string | null
@@ -141,7 +141,7 @@ export interface MedidaDeBloco {
   width: number | null
   height: number | null
   linhas: number
-  /** A fonte do papel não está no servidor: os números saíram na fonte de fallback e não valem. */
+  /** Alguma fonte que a montagem PEDIU não está no servidor: os números saíram na fonte de fallback e não valem. */
   naoMedido: boolean
   /** Há destaque entre [colchetes]: a largura extra do trecho é estimada (o medidor não mede rich text). */
   aproximado: boolean
@@ -153,6 +153,7 @@ export interface MedidaDeBloco {
 
 export interface MedicaoDaCopy {
   areaUtil: AreaUtil
+  /** Os blocos COMO A COMPOSIÇÃO OS MONTARIA: mesmos arranjos, divisão de linhas, estilos e ids. */
   blocos: MedidaDeBloco[]
   /** Todo bloco coube (na escala que fosse) e nenhum papel falta. */
   cabeTudo: boolean
@@ -165,73 +166,56 @@ export interface MedicaoDaCopy {
   alturaDosBlocos: number
   /** De onde saiu a divisão da manchete em duas vozes. */
   segundaVoz: 'contrato' | 'legado' | 'nenhuma'
+  /** O arranjo escolhido para cada grupo (o da página ou uma combinação salva). */
+  arranjos: Array<{ grupo: string; id: string; nome: string; origem: ArranjoDeGrupo['origem']; motivo: string }>
   avisos: string[]
 }
 
 /**
- * Mede a copy contra UMA assinatura (a variante já escolhida), papel a papel,
- * com a mesma régua da composição.
+ * Mede a copy contra UMA assinatura (a variante já escolhida) com a MESMA
+ * preparação da composição (`prepararBlocos`): agrupamento, arranjos,
+ * distribuição das linhas, segunda voz, estilos, ids e a régua. O que sai daqui
+ * é o que `comporPeca` montaria — bloco a bloco, com a identidade de cada um.
  */
 export function medirCopy(args: {
-  blocos: Array<{ papel: Papel; linhas: string[] }>
+  spec: PecaParaBlocos
   assinatura: AssinaturaDaMarca
   formato: Formato
   medir: MeasureTextBox
   /** As famílias cadastradas no projeto (o destaque "pesado" escolhe entre elas). */
   familias: string[]
   fontesNaoCarregadas: ReadonlySet<string>
-  /** A divisão da manchete: com contrato, as linhas declaradas na voz 2; sem, a regra legada. */
-  comContrato?: boolean
-  linhasNaVoz2?: number[] | null
+  /** As combinações salvas do projeto, já como arranjos (a composição também as considera). */
+  combinacoesSalvas?: ArranjoDeGrupo[]
 }): MedicaoDaCopy {
   const area = areaUtilDe(args.assinatura, args.formato)
-  const avisos: string[] = []
-  const medidas: MedidaDeBloco[] = []
-  const papeisAusentes: Papel[] = []
-  const fontesUsadasSemCarregar = new Set<string>()
-  let segundaVoz: MedicaoDaCopy['segundaVoz'] = 'nenhuma'
-
-  // A manchete com segunda voz vira DOIS papéis — a mesma divisão da composição.
-  const temSegundaVoz = Boolean(args.assinatura.papeis.headline2)
-  const expandidos = args.blocos.flatMap((b) => {
-    if (b.papel !== 'headline') return [b]
-    const d = dividirManchete(b.linhas, { temSegundaVoz, comContrato: Boolean(args.comContrato), declaradas: args.linhasNaVoz2 ?? null })
-    if (d.aviso) avisos.push(`headline: ${d.aviso}`)
-    segundaVoz = d.origem
-    if (d.voz2.length === 0) return [b]
-    const partes: Array<{ papel: Papel; linhas: string[] }> = []
-    if (d.voz1.length > 0) partes.push({ papel: 'headline', linhas: d.voz1 })
-    partes.push({ papel: 'headline2' as Papel, linhas: d.voz2 })
-    return partes
+  const preparados = prepararBlocos({
+    spec: args.spec,
+    assinatura: args.assinatura,
+    colunaUtil: area.colunaUtil,
+    escalaDoFormato: area.escalaDoFormato,
+    mancha: args.assinatura.numeros.mancha,
+    medir: args.medir,
+    familias: args.familias,
+    combinacoesSalvas: args.combinacoesSalvas ?? [],
   })
+  const avisos = [...preparados.avisos]
+  const medidas: MedidaDeBloco[] = []
+  const fontesUsadasSemCarregar = new Set<string>()
 
-  for (const b of expandidos) {
-    const estilo = args.assinatura.papeis[b.papel]
-    if (!estilo) {
-      papeisAusentes.push(b.papel)
-      medidas.push({ papel: b.papel, id: b.papel, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: b.linhas.length, naoMedido: false, aproximado: false, linhasMedidas: [], avisos: [`a variante não tem o papel "${b.papel}"`] })
-      continue
-    }
+  // Papel pedido que a variante (e os arranjos) não têm: a preparação o
+  // descarta em silêncio; aqui ele é DECLARADO.
+  const preparadosPorPapel = new Set([...preparados.montados, ...preparados.recusas].map((b) => b.papel))
+  const papeisAusentes = [...new Set((args.spec.blocos ?? []).map((b) => b.papel as Papel))].filter((p) => !preparadosPorPapel.has(p) && !(p === 'headline' && preparadosPorPapel.has('headline2' as Papel)))
+  for (const papel of papeisAusentes) {
+    const linhas = (args.spec.blocos ?? []).find((b) => (b.papel as Papel) === papel)?.linhas ?? []
+    medidas.push({ papel, id: papel, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: linhas.length, naoMedido: false, aproximado: false, linhasMedidas: [], avisos: [`a variante não tem o papel "${papel}"`] })
+  }
+
+  const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean): MedidaDeLinha[] => {
     const coluna = Math.floor(area.colunaUtil * (estilo.larguraMaxima ?? 1))
-    const r = montarBloco({
-      papel: b.papel,
-      linhas: b.linhas,
-      estilo,
-      escalaDoFormato: area.escalaDoFormato,
-      colunaUtil: area.colunaUtil,
-      textAlign: 'left',
-      groupId: 'medicao',
-      corDaMancha: args.assinatura.numeros.mancha,
-      medir: args.medir,
-      destaque: destaqueDoPapel({ daPagina: estilo.destaque, padrao: args.assinatura.numeros.destaque, corDoPapel: estilo.color, familiaDoPapel: estilo.fontFamily, familias: args.familias }),
-    })
-    // Linha a linha, no tamanho da assinatura (sem o prefixo do CTA, que a
-    // composição acrescenta; a recusa dela já vem com ele).
-    const base = camadaDoPapel({ papel: b.papel, linhas: b.linhas.map(semColchetes), estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
-    const familias = r.bloco ? familiasDaCamada(r.bloco.layer) : [estilo.fontFamily]
-    const naoMedido = familias.some((f) => args.fontesNaoCarregadas.has(f))
-    for (const f of familias) if (args.fontesNaoCarregadas.has(f)) fontesUsadasSemCarregar.add(f)
-    const linhasMedidas: MedidaDeLinha[] = b.linhas.map((linha) => {
+    const base = camadaDoPapel({ papel, linhas: linhasDaCopy.map(semColchetes), estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
+    return linhasDaCopy.map((linha) => {
       const limpa = semColchetes(linha)
       const m = naoMedido ? null : medirLinha(args.medir, base, limpa, coluna)
       return {
@@ -242,41 +226,54 @@ export function medirCopy(args: {
         caracteresQueCabem: m && m.largura > 0 ? Math.max(1, Math.floor((limpa.length * coluna) / m.largura)) : null,
       }
     })
-    if (r.bloco) {
-      const escala = r.bloco.escala
-      medidas.push({
-        papel: b.papel,
-        id: r.bloco.layer.id,
-        situacao: escala < 1 ? 'cabe-reduzido' : 'cabe',
-        fonte: estilo.fontFamily,
-        escala,
-        fontSize: Number(r.bloco.layer.style?.fontSize ?? null),
-        width: r.bloco.width,
-        height: r.bloco.height,
-        linhas: b.linhas.length,
-        naoMedido,
-        aproximado: Boolean(r.bloco.destacado),
-        linhasMedidas,
-        avisos: [...r.avisos, ...(escala < 1 ? [`fonte reduzida a ${Math.round(escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [])],
-      })
-    } else {
-      medidas.push({
-        papel: b.papel,
-        id: b.papel,
-        situacao: 'nao-cabe',
-        fonte: estilo.fontFamily,
-        escala: null,
-        fontSize: null,
-        width: null,
-        height: null,
-        linhas: b.linhas.length,
-        naoMedido,
-        aproximado: b.linhas.some((l) => /\[[^\]]+\]/.test(l)),
-        linhasMedidas,
-        orcamento: r.recusa.orcamento,
-        avisos: [...r.avisos, `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`],
-      })
-    }
+  }
+  const naoCarregou = (familias: string[]) => {
+    const faltam = familias.filter((f) => args.fontesNaoCarregadas.has(f))
+    for (const f of faltam) fontesUsadasSemCarregar.add(f)
+    return faltam.length > 0
+  }
+
+  for (const b of preparados.montados) {
+    const naoMedido = naoCarregou(b.familiasPedidas)
+    medidas.push({
+      papel: b.papel,
+      id: b.layer.id,
+      situacao: b.escala < 1 ? 'cabe-reduzido' : 'cabe',
+      fonte: b.estilo.fontFamily,
+      escala: b.escala,
+      fontSize: Number(b.layer.style?.fontSize ?? null),
+      width: b.width,
+      height: b.height,
+      linhas: b.linhasDaCopy.length,
+      naoMedido,
+      aproximado: Boolean(b.destacado),
+      linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido),
+      avisos: b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [],
+    })
+  }
+  for (const r of preparados.recusas) {
+    const naoMedido = naoCarregou(r.familiasPedidas)
+    const coluna = Math.floor(area.colunaUtil * (r.estilo.larguraMaxima ?? 1))
+    medidas.push({
+      papel: r.papel,
+      id: r.id,
+      situacao: 'nao-cabe',
+      fonte: r.estilo.fontFamily,
+      escala: null,
+      fontSize: null,
+      width: null,
+      height: null,
+      linhas: r.linhasDaCopy.length,
+      naoMedido,
+      aproximado: r.linhasDaCopy.some((l) => /\[[^\]]+\]/.test(l)),
+      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido),
+      orcamento: r.orcamento,
+      avisos: [
+        naoMedido
+          ? `a fonte de "${r.papel}" (${r.familiasPedidas.filter((f) => args.fontesNaoCarregadas.has(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
+          : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
+      ],
+    })
   }
 
   const alturaDosBlocos = medidas.reduce((s, m) => s + (m.height ?? 0), 0)
@@ -290,7 +287,8 @@ export function medirCopy(args: {
     aproximado: medidas.some((m) => m.aproximado),
     fontesNaoCarregadas: [...fontesUsadasSemCarregar],
     alturaDosBlocos,
-    segundaVoz,
+    segundaVoz: preparados.segundaVoz,
+    arranjos: preparados.arranjos,
     avisos,
   }
 }

@@ -7430,12 +7430,25 @@ caracteres") — igual para toda marca. Módulo PURO com teste:
 migration. Prova no branch de dev: `scripts/validar-medir-copy.ts` (confere
 que NADA é gravado e que a medida é a da composição).
 
-- 🔴 **A MESMA régua da composição, nunca uma conta paralela**: `medirCopy`
-  chama `montarBloco` e `medirLinha` (exportada para isso) com o medidor do
-  render (`createServerTextBoxMeasurer`), depois de `registerProjectFonts`. A
-  prova compara, papel a papel, escala/largura/altura do bloco medido com o
-  que `comporPeca` monta para a mesma copy e a mesma variante — têm de ser
-  IDÊNTICOS. Régua própria divergiria no primeiro ajuste do compositor.
+- 🔴 **A MESMA PREPARAÇÃO da composição, nunca uma conta paralela**: a
+  preparação dos blocos — agrupamento pela página de assinatura, escolha do
+  arranjo de cada grupo (página ou combinação salva), distribuição das linhas
+  (horário no texto do horário, endereço no do endereço), segunda voz, estilo
+  de cada texto, ids (`servico`, `servico-2`, `headline2`) e a montagem com a
+  régua — saiu de `comporPeca` para `preparar-blocos.ts` (puro), e `medirCopy`
+  a chama com o medidor do render. Uma medição por `assinatura.papeis[papel]`
+  dizia "cabe" para uma copy que a composição recusava (R01 da revisão do
+  Codex). A prova compara bloco a bloco, pela IDENTIDADE e na ordem: id, papel,
+  escala, largura, altura, "não medido" e os arranjos — IDÊNTICOS.
+- **A escolha da variante é a da composição** (`chaveDaPeca` num lugar só; a
+  foto entra pela luz clara/escura e pela chave do rodízio, como em
+  `comporPeca`). Sem variante pedida e sem a foto, a escolha é declarada
+  PROVISÓRIA (`escolhaProvisoria` + `comoFixar`): quem compõe fixa
+  `preferencias.variante` com o id medido (R02).
+- **As famílias que a montagem PEDE são sabidas antes de montar**
+  (`familiasPedidas`: a do papel e, com [colchetes], a do destaque): valem
+  também no bloco RECUSADO — a recusa medida no fallback é `naoMedido`, com a
+  família ausente declarada e as medidas por linha invalidadas (R03).
 - **A medida é dita pelo que é**: `cabe` (escala 1), `cabe-reduzido` (fonte
   encolhida até o piso de 80%, com a escala), `nao-cabe` (com o orçamento por
   linha — os mesmos `caracteresQueCabem` da recusa `TEXTO_NAO_CABE_NA_COLUNA`)

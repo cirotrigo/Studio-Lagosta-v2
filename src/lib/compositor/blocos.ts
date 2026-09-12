@@ -55,6 +55,8 @@ export interface BlocoMontado {
   elementos?: ElementoDoArranjo[]
   /** A escala dos elementos em relação à base 1080 (a do formato × a da fonte). */
   escalaDosElementos?: number
+  /** As famílias que ENTRARAM na medição (ver `RecusaDeBloco.familiasMedidas`). */
+  familiasMedidas: string[]
 }
 
 export interface OrcamentoDeLinha {
@@ -279,6 +281,14 @@ export function montarBloco(args: {
   if (pediuDestaque && !temEstilo) {
     avisos.push(`${args.papel}: a copy marcou destaque, mas a marca não tem estilo de destaque (página de assinatura ou Project.assinatura.destaque) — saiu sem destaque`)
   }
+  // 🔴 As famílias que entraram na medição, calculadas UMA vez e devolvidas
+  // tanto no sucesso quanto na recusa: quem decide se a medida vale (o
+  // `TEXTO_NAO_CABE_NA_COLUNA` de `compor.ts`, o `naoMedido` do `medir-copy`)
+  // lê daqui, nunca reinterpreta os colchetes por fora — a divergência entre
+  // as duas leituras é como o defeito volta (PR4-R2-01).
+  const familiasMedidas = [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
+    (f): f is string => typeof f === 'string' && f.trim() !== '',
+  )
 
   const coluna = Math.floor(args.colunaUtil * (args.estilo.larguraMaxima ?? 1))
   const linhas = aplicarPrefixo(linhasLimpas, args.estilo.prefixo)
@@ -316,6 +326,7 @@ export function montarBloco(args: {
         escala: Number((escala / args.escalaDoFormato).toFixed(3)),
         cor: args.estilo.color,
         destacado: Boolean(destaque),
+        familiasMedidas,
       },
       recusa: null,
       avisos,
@@ -342,9 +353,7 @@ export function montarBloco(args: {
     recusa: {
       papel: args.papel,
       orcamento,
-      familiasMedidas: [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
-        (f): f is string => typeof f === 'string' && f.trim() !== '',
-      ),
+      familiasMedidas,
     },
     avisos,
   }

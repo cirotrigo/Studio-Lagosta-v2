@@ -180,27 +180,28 @@ async function main() {
       pendente('papel-ausente pela tool', `todas as ${deStory.length} variantes de story deste projeto têm os cinco papéis — o caso está coberto pelo teste unitário (medir-copy.test.ts)`)
     }
     const semVariante = await tool('medir-copy', { projectId: PROJETO, formato: 'story', blocos: [{ papel: 'headline', linhas: [curta] }] })
-    conferir('sem variante pedida, medir-copy escolhe como a composição (motivo declarado) e mede as OUTRAS variantes do formato', typeof semVariante.variante.motivo === 'string' && Array.isArray(semVariante.outrasVariantes) && semVariante.outrasVariantes.length === deStory.length - 1 && semVariante.outrasVariantes.every((o: any) => typeof o.cabeTudo === 'boolean'), JSON.stringify({ variante: semVariante.variante, outras: semVariante.outrasVariantes.length }))
+    conferir('sem variante pedida, medir-copy escolhe como a composição (motivo declarado), mede as OUTRAS variantes do formato e, sem a foto, diz que a escolha é PROVISÓRIA com o jeito de fixá-la', typeof semVariante.variante.motivo === 'string' && Array.isArray(semVariante.outrasVariantes) && semVariante.outrasVariantes.length === deStory.length - 1 && semVariante.outrasVariantes.every((o: any) => typeof o.cabeTudo === 'boolean') && semVariante.escolhaProvisoria === true && /preferencias.variante/.test(semVariante.comoFixar ?? ''), JSON.stringify({ variante: semVariante.variante, outras: semVariante.outrasVariantes.length, provisoria: semVariante.escolhaProvisoria }))
     conferir('as fontes NÃO carregadas são declaradas por nome, e todo bloco naoMedido é de uma delas', (mCurta.fontesNaoCarregadas ?? []).every((f: string) => typeof f === 'string') && mCurta.blocos.every((b: any) => !b.naoMedido || (mCurta.fontesNaoCarregadas ?? []).includes(b.fonte)), JSON.stringify(mCurta.fontesNaoCarregadas ?? []))
     writeFileSync(resolve(SAIDA, 'medir-copy.json'), JSON.stringify({ mCurta, mComprida, mEnorme, mDestaque, semVariante }, null, 2))
 
     // ── 3. fidelidade: a mesma régua da composição ──────────────────────────
     console.log('3) fidelidade: comporPeca (provar: true, sem gravar) monta os blocos com as MESMAS medidas que medir-copy devolveu')
     const blocos = [{ papel: 'headline' as const, linhas: [curta] }, ...(alvo.papeis.includes('apoio') ? [{ papel: 'apoio' as const, linhas: ['Sexta é dia de churrasco'] }] : [])]
-    const medida = await medirCopyDoProjeto({ projectId: PROJETO, formato: 'story', variante: alvo.id, blocos })
-    const composicao = await comporPeca({ projectId: PROJETO, formato: 'story', blocos, preferencias: { variante: alvo.id } }, { provar: true })
-    const porPapelMedido = new Map(medida.medicao.blocos.map((b) => [b.papel, b]))
-    const porPapelComposto = new Map(composicao.diagnostico.blocos.map((b) => [b.papel, b]))
-    const papeis = [...porPapelMedido.keys()]
-    const iguais = papeis.every((p) => {
-      const m = porPapelMedido.get(p)!
-      const c = porPapelComposto.get(p)
-      return !!c && m.escala === c.escala && m.width === c.width && m.height === c.height
-    })
-    conferir('para cada papel, escala, largura e altura do bloco são IDÊNTICAS entre medir-copy e a composição (mesmo medidor, mesma régua)', iguais && composicao.diagnostico.assinatura.pageId === alvo.id, JSON.stringify(papeis.map((p) => ({ p, medido: [porPapelMedido.get(p)!.escala, porPapelMedido.get(p)!.width, porPapelMedido.get(p)!.height], composto: porPapelComposto.get(p) ? [porPapelComposto.get(p)!.escala, porPapelComposto.get(p)!.width, porPapelComposto.get(p)!.height] : null }))))
-    conferir('o "não medido" bate: o bloco que a composição marca naoMedido é o que medir-copy marcou', papeis.every((p) => Boolean(porPapelComposto.get(p)?.naoMedido) === porPapelMedido.get(p)!.naoMedido), JSON.stringify(papeis.map((p) => [p, porPapelMedido.get(p)!.naoMedido])))
+    const blocosDaProva = [...blocos, ...(alvo.papeis.includes('servico') ? [{ papel: 'servico' as const, linhas: ['Ter a dom, das 18h às 23h', 'Av. Beira Mar, 100'] }] : [])]
+    const medida = await medirCopyDoProjeto({ projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: blocosDaProva })
+    const composicao = await comporPeca({ projectId: PROJETO, formato: 'story', blocos: blocosDaProva, preferencias: { variante: alvo.id } }, { provar: true })
+    // Bloco a bloco, pela IDENTIDADE (id) e na ordem — não por papel, que colapsa os dois textos de serviço.
+    const medidos = medida.medicao.blocos.filter((b) => b.situacao === 'cabe' || b.situacao === 'cabe-reduzido').map((b) => [b.id, b.papel, b.escala, b.width, b.height, b.naoMedido])
+    const compostos = composicao.diagnostico.blocos.map((b) => [b.id, b.papel, b.escala, b.width, b.height, Boolean(b.naoMedido)])
+    conferir(`os blocos são os MESMOS, na mesma ordem e com a mesma identidade (${medidos.length} bloco(s)): id, papel, escala, largura, altura e "não medido" idênticos entre medir-copy e a composição`, medidos.length > 0 && JSON.stringify(medidos) === JSON.stringify(compostos) && composicao.diagnostico.assinatura.pageId === alvo.id, JSON.stringify({ medidos, compostos }).slice(0, 400))
+    conferir('os arranjos escolhidos (o da página ou combinação salva) são os mesmos, grupo a grupo', JSON.stringify(medida.medicao.arranjos.map((a) => [a.grupo, a.id])) === JSON.stringify((composicao.diagnostico.arranjos ?? []).map((a) => [a.grupo, a.id])), JSON.stringify(medida.medicao.arranjos.map((a) => [a.grupo, a.id, a.origem])))
     conferir('a composição provou (PNG em memória) e não persistiu nada', !!composicao.prova && !composicao.persistido)
-    registro.fidelidade = papeis.map((p) => ({ papel: p, medido: porPapelMedido.get(p), composto: porPapelComposto.get(p) }))
+    registro.fidelidade = { medidos, compostos, arranjos: medida.medicao.arranjos }
+
+    // Sem variante: a MESMA escolha da composição (mesma chave, mesmo tema/nome) — e a escolha é declarada provisória sem a foto.
+    const semVarianteMedida = await medirCopyDoProjeto({ projectId: PROJETO, formato: 'story', blocos, nome: 'Prova de fidelidade', tema: 'churrasco' })
+    const semVarianteComposta = await comporPeca({ projectId: PROJETO, formato: 'story', blocos, nome: 'Prova de fidelidade', tema: 'churrasco' }, { provar: true })
+    conferir('sem variante pedida, medir-copy escolhe a MESMA variante que a composição (mesma chave de rodízio, mesmo tema/nome) e declara a escolha provisória (sem a foto)', semVarianteMedida.variante.id === semVarianteComposta.diagnostico.assinatura.pageId && semVarianteMedida.escolhaProvisoria === true, JSON.stringify({ medida: semVarianteMedida.variante, composta: semVarianteComposta.diagnostico.assinatura.pageId, motivo: semVarianteMedida.variante.motivo }))
 
     // ── 4. nada gravado ─────────────────────────────────────────────────────
     const depois = await contar()
