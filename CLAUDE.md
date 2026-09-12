@@ -7273,6 +7273,57 @@ Da décima revisão FINAL (BLOQUEADO, PR13-42…43):
   conferência, os dois testes do PR13-44 resolvem; com `updateEntry` e as rotas
   do commit anterior, os dois do PR13-45 recebem 409.
 
+**Da revisão FINAL do Codex sobre 82b763a8 (BLOQUEADO, PR13-46…48, 12/09/2026):**
+
+- 🔴 **O `metadata` de uma entrada da base tem TRÊS donos, e todo escritor mexe
+  só no seu** (PR13-47). A confirmação do chat manda `metadata: null` quando a
+  prévia não traz metadata, e `metadataDaEdicao` preservava só marca, token e
+  prazo — apagava `chaveDoFato`. Como a retomada da migração acha o fato SÓ por
+  essa chave (`estadoDoFatoNaBase`), uma edição comum entre a falha parcial e a
+  reaplicação fazia o fato ser lido como ausente: outra entrada criada, ou o
+  texto anterior à correção da pessoa recriado em vez de bloqueio por
+  divergência. Hoje a partição mora em `marca-de-indexado.ts`:
+  `CHAVES_DE_IDENTIDADE` (`chaveDoFato`, `origem`, `versaoDaPrevia` — nasce
+  com a entrada, vem sempre da linha, SOBREVIVE a toda edição inclusive a que
+  troca o conteúdo, e não se forja pelo pedido), `CHAVES_TRANSITORIAS` (marca,
+  token, prazo — só o ciclo escreve, e a edição que muda o índice as tira) e o
+  resto, que é da pessoa (`metadataDaPessoa`). Os escritores, varridos um a um:
+  `editarEntradaCoordenada` (PUT `/api/knowledge/[id]`, `updateEntry` da rota
+  admin e do `confirm`, tool `atualizar-entrada-base`) por `metadataDaEdicao`,
+  com CAS no `updatedAt`; `indexEntry` (criação pela PESSOA: `confirm` CREATE,
+  POST da base e do admin) grava só `metadataDaPessoa`; `criarEntradaBase`
+  aceita a identidade de quem cria mas descarta marca e prazo prontos (um
+  `cicloExpiraEm` futuro no metadata fazia a própria indexação da criação ser
+  recusada); `adquirir`/`renovar`/`publicarMarca`/`liberar` já eram
+  leitura-derivação-CAS tocando só as chaves transitórias; `marcarFatoIndexado`
+  ver abaixo. Não escrevem metadata: arquivamento (cron, tool, DELETE do
+  `confirm`), `migrate-workspace` e os scripts de uma vez só.
+- 🔴 **A marca de indexado toca SÓ a própria chave, por compare-and-set no
+  `updatedAt` lido** (PR13-48): `marcarFatoIndexado` lia o metadata, conferia
+  só o token na escrita e gravava o objeto capturado. Uma edição coordenada de
+  metadata no meio não troca o token (não muda o índice), então a marca passava
+  e a nota que a pessoa acabara de salvar sumia. Hoje é um laço de até 5
+  tentativas: relê, confere aborto e token na leitura, e grava com `updatedAt`
+  lido + token no `where`, reconstruindo o metadata a cada conflito.
+- **`INDEXACAO_PERDIDA` não promete recuperação** (PR13-46): `ArrendamentoPerdido`
+  também sai de cinco conflitos seguidos de CAS com o token AINDA desta
+  execução (edições de etiqueta no meio), sem outra execução nenhuma. O aviso
+  diz que a edição foi salva e a indexação não concluiu; só
+  `INDEXACAO_EM_ANDAMENTO`, que prova arrendamento vigente alheio, fala em
+  outra execução indexando o texto novo.
+- Testes em `metadata-do-sistema.test.ts`: a migração REAL (`aplicarManifesto`
+  com `lerEstadoDoCliente`, `estadoDoFatoNaBase` e o registrador padrão sobre o
+  banco falso) falha no 2º fato, a confirmação real edita o 1º com metadata
+  omitido, nulo e substituído, e a reaplicação cria só o que faltava; com o
+  conteúdo corrigido, bloqueia por "conteúdo editado". Cada escritor contra a
+  partição (PUT da base, PUT admin, tool, `confirm` CREATE, `criarEntradaBase`,
+  o ciclo no meio e no fim); a marca suspensa depois da leitura com edição de
+  metadata no meio preserva a nota, e com troca de ciclo continua recusada; e
+  cinco conflitos pela confirmação real respondem 202, invalidam o cache e não
+  prometem outra execução. Mutações conferidas: `metadataDaEdicao` do commit
+  anterior derruba 9 testes, `marcarFatoIndexado` antigo 1, o aviso antigo 1,
+  `criarEntradaBase` sem o filtro 1, `indexEntry` sem o filtro 1.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

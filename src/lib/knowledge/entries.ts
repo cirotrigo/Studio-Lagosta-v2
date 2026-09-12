@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import { db } from '@/lib/db'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 import { foiAbortada, lancarSeAbortado } from '@/lib/knowledge/aborto'
-import { ArrendamentoPerdido, CICLO_DE_INDEXACAO, ehIndexacaoEmAndamento, metadataComoObjeto, perdeuOArrendamento } from '@/lib/knowledge/marca-de-indexado'
+import { ArrendamentoPerdido, CICLO_DE_INDEXACAO, ehIndexacaoEmAndamento, perdeuOArrendamento, semChavesTransitorias } from '@/lib/knowledge/marca-de-indexado'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
@@ -57,7 +57,9 @@ export async function criarEntradaBase(args: CriarEntradaBaseArgs, opcoes: { sig
       tags: args.tags ?? [],
       status: 'ACTIVE',
       expiresAt: args.expiresAt ?? null,
-      metadata: { ...metadataComoObjeto(args.metadata ?? { origem: 'chat-conector' }), [CICLO_DE_INDEXACAO]: cicloProprio } as Prisma.InputJsonValue,
+      // A identidade (a chave do fato da migração, a origem) vem de quem cria; marca, token e prazo NUNCA vêm do
+      // chamador (PR13-47): um prazo pronto no metadata faria a própria indexação desta criação ser recusada.
+      metadata: { ...semChavesTransitorias(args.metadata ?? { origem: 'chat-conector' }), [CICLO_DE_INDEXACAO]: cicloProprio } as Prisma.InputJsonValue,
       createdBy: args.autor,
       userId: args.autor,
     },

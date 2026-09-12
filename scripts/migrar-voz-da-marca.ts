@@ -62,7 +62,7 @@ import {
   trechosRepetidos,
   ehPooler,
 } from '../src/lib/brand/migracao-da-voz'
-import { ehIndexacaoEmAndamento, perdeuOArrendamento } from '../src/lib/knowledge/marca-de-indexado'
+import { cicloDeIndexacaoDe, ehIndexacaoEmAndamento, metadataComoObjeto, perdeuOArrendamento } from '../src/lib/knowledge/marca-de-indexado'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -263,24 +263,40 @@ export async function estadoDoFatoNaBase(db: Db, chave: string, projectId: numbe
   return estado === 'ausente' || !linha ? { estado: 'ausente' } : { estado, entryId: linha.id, linha: { content: linha.content, category: linha.category, status: linha.status, expiresAt: linha.expiresAt } }
 }
 
-/** A marca durável de indexação concluída, gravada DEPOIS de o vetor existir — a linha existir não prova o vetor (PR13-11). */
+const TENTATIVAS_DA_MARCA = 5
+
+/**
+ * A marca durável de indexação concluída, gravada DEPOIS de o vetor existir — a linha existir não prova o vetor (PR13-11).
+ *
+ * Toca SÓ a chave da marca, por compare-and-set no `updatedAt` lido (e no token do ciclo, quando há um), relendo e
+ * reconstruindo o metadata a cada conflito (PR13-48). Gravar o objeto capturado na leitura apagava o que uma edição
+ * coordenada salvasse no meio — a edição de metadata da pessoa não troca o token, então a conferência só do token
+ * deixava a escrita passar por cima dela.
+ */
 export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new Date(), signal?: AbortSignal, ciclo?: string): Promise<void> {
-  const linha = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
-  const metadata = linha?.metadata && typeof linha.metadata === 'object' && !Array.isArray(linha.metadata) ? (linha.metadata as Record<string, unknown>) : {}
-  // A posse pode ter se perdido enquanto a leitura esperava (PR13-23): a marca de indexado de uma execução que
-  // perdeu a trava faria a retomada ler `completo` uma linha que outra aplicação ainda está reindexando.
-  if (signal?.aborted) throw new Error('a posse da trava se perdeu antes de gravar a marca de indexado: esta execução não a grava')
-  // Com o token do ciclo (PR13-39), a marca só é publicada se NENHUMA outra indexação assumiu a entrada no meio
-  // (a API administrativa de reindex não participa da trava): compare-and-set no `metadata.cicloDeIndexacao`.
-  if (ciclo) {
+  for (let tentativa = 0; tentativa < TENTATIVAS_DA_MARCA; tentativa++) {
+    const linha = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true, updatedAt: true } })
+    // A posse pode ter se perdido enquanto a leitura esperava (PR13-23): a marca de indexado de uma execução que
+    // perdeu a trava faria a retomada ler `completo` uma linha que outra aplicação ainda está reindexando.
+    if (signal?.aborted) throw new Error('a posse da trava se perdeu antes de gravar a marca de indexado: esta execução não a grava')
+    if (!linha) throw new Error(`a entrada ${entryId} não existe mais: a marca de indexado não é gravada por esta execução`)
+    // Com o token do ciclo (PR13-39), a marca só é publicada se NENHUMA outra indexação assumiu a entrada no meio
+    // (a API administrativa de reindex não participa da trava): conferido na leitura E no próprio `updateMany`.
+    const desteCiclo = { path: [CICLO_DE_INDEXACAO], equals: ciclo }
+    if (ciclo && cicloDeIndexacaoDe(linha.metadata) !== ciclo) {
+      throw new Error(`outra indexação assumiu a entrada ${entryId} durante esta (ciclo ${ciclo} não é mais o atual): a marca de indexado não é gravada por esta execução`)
+    }
     const r = await db.knowledgeBaseEntry.updateMany({
-      where: { id: entryId, metadata: { path: [CICLO_DE_INDEXACAO], equals: ciclo } },
-      data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never },
+      where: { id: entryId, updatedAt: linha.updatedAt, ...(ciclo ? { metadata: desteCiclo } : {}) },
+      data: {
+        metadata: { ...metadataComoObjeto(linha.metadata), [MARCA_DE_INDEXADO]: em.toISOString() } as never,
+        updatedAt: new Date(Math.max(Date.now(), linha.updatedAt.getTime() + 1)),
+      },
     })
-    if (r.count === 0) throw new Error(`outra indexação assumiu a entrada ${entryId} durante esta (ciclo ${ciclo} não é mais o atual): a marca de indexado não é gravada por esta execução`)
-    return
+    if (r.count === 1) return
+    // A linha mudou entre a leitura e a escrita: relê e decide de novo (o token trocado é recusado na leitura).
   }
-  await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never } })
+  throw new Error(`a entrada ${entryId} mudou ${TENTATIVAS_DA_MARCA} vezes seguidas enquanto a marca de indexado era publicada: ela não foi gravada`)
 }
 
 /**

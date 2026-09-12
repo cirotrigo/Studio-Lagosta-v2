@@ -9,7 +9,7 @@ import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
 import { EscritaAbortada, lancarSeAbortado, motivoDoAborto } from './aborto'
-import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS, indexacaoPendenteDe, type IndexacaoPendente } from './marca-de-indexado'
+import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS, indexacaoPendenteDe, metadataDaPessoa, type IndexacaoPendente } from './marca-de-indexado'
 import { adquirirArrendamento, editarEntradaCoordenada, type ArrendamentoDaEntrada } from './arrendamento'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
@@ -70,7 +70,9 @@ export async function indexEntry(input: IndexEntryInput) {
       tags,
       status,
       expiresAt: expiresAt ?? null,
-      metadata: metadata ?? undefined,
+      // Quem cria por aqui é a PESSOA (confirmação do chat, POST da base, admin): o metadata dela nunca carrega chave
+      // do sistema — nem identidade de fato da migração, nem marca, token ou prazo de indexação (PR13-47).
+      metadata: metadata != null ? (metadataDaPessoa(metadata) as Prisma.InputJsonValue) : undefined,
       createdBy,
       updatedBy,
       userId: tenant.userId,

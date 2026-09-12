@@ -153,8 +153,10 @@ export function perdeuOArrendamento(erro: unknown): erro is ArrendamentoPerdido 
 /**
  * A indexação que ficou PENDENTE depois de uma edição já GRAVADA (PR13-45): a reindexação da edição tomou um
  * conflito de arrendamento. Não é recusa — a edição vale —, e por isso quem responde nunca diz "nada foi salvo".
- * - `INDEXACAO_EM_ANDAMENTO`/`INDEXACAO_PERDIDA`: outra execução adquiriu (ou tomou) a entrada DEPOIS da edição, e
- *   a aquisição lê o conteúdo da linha — ela indexa o texto novo;
+ * - `INDEXACAO_EM_ANDAMENTO`: outra execução adquiriu a entrada DEPOIS da edição, e a aquisição lê o conteúdo da
+ *   linha — ela indexa o texto novo;
+ * - `INDEXACAO_PERDIDA`: a posse não se confirmou (token trocado, ou cinco conflitos seguidos de compare-and-set):
+ *   não prova que outra execução vá concluir (PR13-46);
  * - `INDEXACAO_SUPERADA`: a linha mudou de novo por fora (script, SQL direto) no meio: ninguém indexa a versão atual.
  * `null` para qualquer outro erro, que segue como erro.
  */
@@ -163,10 +165,19 @@ export interface IndexacaoPendente {
   aviso: string
 }
 export function indexacaoPendenteDe(erro: unknown): IndexacaoPendente | null {
-  if (ehIndexacaoEmAndamento(erro) || temCodigo(erro, 'INDEXACAO_PERDIDA') || erro instanceof ArrendamentoPerdido) {
+  if (ehIndexacaoEmAndamento(erro)) {
+    // Há um arrendamento VIGENTE de outra execução, adquirido depois da edição: ela leu o texto novo.
     return {
-      code: ehIndexacaoEmAndamento(erro) ? 'INDEXACAO_EM_ANDAMENTO' : 'INDEXACAO_PERDIDA',
+      code: 'INDEXACAO_EM_ANDAMENTO',
       aviso: 'A edição foi salva. Outra execução está indexando esta entrada para a busca agora, já com o texto novo: ela aparece nas buscas quando essa indexação terminar.',
+    }
+  }
+  if (erro instanceof ArrendamentoPerdido || temCodigo(erro, 'INDEXACAO_PERDIDA')) {
+    // PR13-46: `ArrendamentoPerdido` também sai de cinco conflitos seguidos de compare-and-set com o token AINDA desta
+    // execução (edições de campo não indexado no meio) — não prova que outra execução exista. Sem promessa.
+    return {
+      code: 'INDEXACAO_PERDIDA',
+      aviso: 'A edição foi salva, mas a indexação para a busca não foi concluída: a entrada pode ficar fora da busca ou com o texto anterior até ser reindexada.',
     }
   }
   if (erro instanceof IndexacaoSuperada || temCodigo(erro, 'INDEXACAO_SUPERADA')) {
@@ -195,25 +206,56 @@ export function edicaoMudaIndice(atual: CamposIndexados, edicao: Partial<CamposI
   return CAMPOS_INDEXADOS.some((campo) => edicao[campo] !== undefined && edicao[campo] !== atual[campo])
 }
 
-const CHAVES_DO_SISTEMA = [MARCA_DE_INDEXADO, CICLO_DE_INDEXACAO, EXPIRACAO_DO_CICLO] as const
+/**
+ * O `metadata` de uma entrada da base tem TRÊS donos (PR13-47), e todo escritor mexe só no que é seu:
+ * - a IDENTIDADE do sistema (`CHAVES_DE_IDENTIDADE`): `chaveDoFato` — a ÚNICA forma de a retomada da migração da voz
+ *   reencontrar o fato (`estadoDoFatoNaBase` consulta por ela) — e a procedência gravada junto (`origem`,
+ *   `versaoDaPrevia`). Nasce com a entrada, nunca vem de uma edição da pessoa e SOBREVIVE a toda edição, inclusive a
+ *   que troca o conteúdo. Apagá-la fazia a reaplicação ler o fato como ausente e criar outra entrada — ou recriar o
+ *   texto anterior à correção da pessoa em vez de bloquear pela divergência;
+ * - as marcas TRANSITÓRIAS da indexação (`CHAVES_TRANSITORIAS`: marca de indexado, token, prazo): só o ciclo as
+ *   escreve (`arrendamento.ts`, `marcarFatoIndexado`), e a edição que muda o índice as tira;
+ * - o resto é da PESSOA: é o que a edição substitui (`metadataDaPessoa`).
+ */
+export const CHAVE_DO_FATO = 'chaveDoFato'
+export const CHAVES_DE_IDENTIDADE = [CHAVE_DO_FATO, 'origem', 'versaoDaPrevia'] as const
+export const CHAVES_TRANSITORIAS = [MARCA_DE_INDEXADO, CICLO_DE_INDEXACAO, EXPIRACAO_DO_CICLO] as const
+export const CHAVES_DO_SISTEMA = [...CHAVES_DE_IDENTIDADE, ...CHAVES_TRANSITORIAS] as const
+
+function soAsChaves(metadata: unknown, chaves: readonly string[]): Record<string, unknown> {
+  const obj = metadataComoObjeto(metadata)
+  return Object.fromEntries(chaves.filter((k) => k in obj).map((k) => [k, obj[k]]))
+}
+function semAsChaves(metadata: unknown, chaves: readonly string[]): Record<string, unknown> {
+  const resto = { ...metadataComoObjeto(metadata) }
+  for (const k of chaves) delete resto[k]
+  return resto
+}
+/** A identidade do sistema presente no metadata (`chaveDoFato`, `origem`, `versaoDaPrevia`). */
+export function identidadeDo(metadata: unknown): Record<string, unknown> {
+  return soAsChaves(metadata, CHAVES_DE_IDENTIDADE)
+}
+/** O que é da PESSOA: o metadata sem nenhuma chave do sistema — é o que um pedido externo pode escrever. */
+export function metadataDaPessoa(metadata: unknown): Record<string, unknown> {
+  return semAsChaves(metadata, CHAVES_DO_SISTEMA)
+}
+/** O metadata sem as marcas transitórias da indexação: quem CRIA nunca chega com marca, token ou prazo prontos. */
+export function semChavesTransitorias(metadata: unknown): Record<string, unknown> {
+  return semAsChaves(metadata, CHAVES_TRANSITORIAS)
+}
 
 /**
- * O `metadata` que uma EDIÇÃO grava (PR13-42), ou `undefined` para não escrever metadata:
- * - as chaves do SISTEMA (marca, token, prazo) vêm sempre da linha lida — o metadata que a pessoa manda substitui o
- *   dela, nunca apaga nem forja um arrendamento em curso;
- * - quando a edição muda o índice, as três saem: a marca atestava os chunks do conteúdo anterior, e sem o token a
- *   marca que um ciclo anterior publicaria DEPOIS do retorno (`marcarFatoIndexado`) é recusada.
+ * O `metadata` que uma EDIÇÃO grava (PR13-42/47), ou `undefined` para não escrever metadata:
+ * - a IDENTIDADE vem sempre da linha lida e fica mesmo quando o índice muda — o pedido não a apaga nem a forja;
+ * - as marcas TRANSITÓRIAS vêm da linha lida quando o índice não muda, e SAEM quando muda: a marca atestava os chunks
+ *   do conteúdo anterior, e sem o token a marca que um ciclo anterior publicaria DEPOIS do retorno
+ *   (`marcarFatoIndexado`) é recusada;
+ * - o metadata do pedido substitui só o que é da pessoa (`null` o limpa).
  */
 export function metadataDaEdicao(atual: unknown, pedido: unknown, mudaIndice: boolean): unknown {
-  const obj = metadataComoObjeto(atual)
-  const temSistema = CHAVES_DO_SISTEMA.some((k) => k in obj)
-  const sistema = Object.fromEntries(CHAVES_DO_SISTEMA.filter((k) => k in obj).map((k) => [k, obj[k]]))
-  const semSistema = (m: unknown) => {
-    const resto = { ...metadataComoObjeto(m) }
-    for (const k of CHAVES_DO_SISTEMA) delete resto[k]
-    return resto
-  }
-  if (pedido === undefined) return mudaIndice && temSistema ? semSistema(atual) : undefined
-  if (pedido === null) return !mudaIndice && temSistema ? sistema : null
-  return { ...semSistema(pedido), ...(mudaIndice ? {} : sistema) }
+  const transitoriasAtuais = soAsChaves(atual, CHAVES_TRANSITORIAS)
+  const doSistema = { ...identidadeDo(atual), ...(mudaIndice ? {} : transitoriasAtuais) }
+  if (pedido === undefined) return mudaIndice && Object.keys(transitoriasAtuais).length > 0 ? semChavesTransitorias(atual) : undefined
+  if (pedido === null) return Object.keys(doSistema).length > 0 ? doSistema : null
+  return { ...metadataDaPessoa(pedido), ...doSistema }
 }

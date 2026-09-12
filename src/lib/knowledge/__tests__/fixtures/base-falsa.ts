@@ -46,6 +46,8 @@ export const base = {
   /** Roda dentro de `index.upsert`, antes de gravar. */
   aoSubir: undefined as undefined | (() => Promise<void>),
   chamadas: { query: 0, delete: [] as string[][], upsert: 0 },
+  /** O DNA de texto do projeto que a migração lê (PR13-47). */
+  dna: null as null | { toneOfVoice: string | null; contentRules: string | null; updatedAt: Date },
   reset() {
     this.entradas.clear()
     this.chunks = []
@@ -54,6 +56,7 @@ export const base = {
     this.aoConsultar = undefined
     this.aoSubir = undefined
     this.chamadas = { query: 0, delete: [], upsert: 0 }
+    this.dna = null
   },
   linha(id: string): LinhaFalsa {
     const l = this.entradas.get(id)
@@ -107,10 +110,13 @@ export const dbFalso = {
       if (include?._count) r._count = { chunks: base.chunks.filter((c) => c.entryId === l.id).length }
       return r
     }),
-    /** O que a rota de confirmação lê para conferir que a entrada é do projeto (PR13-45). */
-    findFirst: vi.fn(async ({ where }: { where: { id: string; projectId?: number } }) => {
-      const l = base.entradas.get(where.id)
-      return l && (where.projectId === undefined || l.projectId === where.projectId) ? clonar(l) : null
+    /**
+     * A rota de confirmação confere a entrada do projeto (PR13-45); a retomada da migração acha o fato pela chave no
+     * metadata (`estadoDoFatoNaBase`, PR13-47). A primeira criada vence (a ordem do `createdAt`).
+     */
+    findFirst: vi.fn(async ({ where, select }: { where: { id?: string; projectId?: number; metadata?: FiltroDeCaminho }; select?: Record<string, boolean> }) => {
+      const l = [...base.entradas.values()].find((e) => (where.id === undefined || e.id === where.id) && (where.projectId === undefined || e.projectId === where.projectId) && casaMetadata(e.metadata, where.metadata))
+      return l ? projetar(l, select) : null
     }),
     update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
       const l = base.linha(where.id)
@@ -139,10 +145,20 @@ export const dbFalso = {
       return {}
     }),
   },
-  /** O projeto que a rota de confirmação confere (PR13-45): todo projeto existe e é de quem pede. */
+  /** O projeto que a rota de confirmação confere (PR13-45) e que a migração lê (PR13-47): todo projeto existe e é de 'u'. */
   project: {
     findFirst: vi.fn(async ({ where }: { where: { id: number } }) => ({ id: where.id, userId: 'u' })),
+    findUnique: vi.fn(async ({ where }: { where: { id: number } }) => ({ id: where.id, name: `projeto ${where.id}`, userId: 'u' })),
   },
+  /** O DNA de texto que a migração lê (`base.dna`). */
+  brandDNA: {
+    findUnique: vi.fn(async () => clonar(base.dna)),
+  },
+  /** Sem tabela de voz (o `$queryRaw` abaixo diz que ela não existe): a leitura do registro nunca chega aqui. */
+  brandVoice: {
+    findUnique: vi.fn(async () => null),
+  },
+  $queryRaw: vi.fn(async () => [{ existe: null }]),
   knowledgeChunk: {
     deleteMany: vi.fn(async ({ where }: { where: { entryId: string; entry?: { metadata?: FiltroDeCaminho } } }) => {
       const l = base.entradas.get(where.entryId)

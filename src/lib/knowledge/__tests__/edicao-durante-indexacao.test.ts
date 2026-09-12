@@ -240,19 +240,24 @@ describe('PR13-42 — nenhuma indexação publica chunks, vetores ou marca de um
   })
 })
 
-describe('metadataDaEdicao — as chaves do sistema vêm da linha; mudando o índice, saem', () => {
-  const ATUAL = { chaveDoFato: 'k', indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' }
+describe('metadataDaEdicao — identidade e marcas vêm da linha; mudando o índice, só as marcas saem', () => {
+  const ATUAL = { chaveDoFato: 'k', origem: 'migracao-da-voz', versaoDaPrevia: 'v1', nota: 'antiga', indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' }
+  const IDENTIDADE = { chaveDoFato: 'k', origem: 'migracao-da-voz', versaoDaPrevia: 'v1' }
+  const MARCAS = { indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' }
   it('sem metadata no pedido e sem mudar o índice: não escreve metadata', () => {
     expect(metadataDaEdicao(ATUAL, undefined, false)).toBeUndefined()
   })
-  it('mudando o índice: marca, token e prazo saem; o resto fica', () => {
-    expect(metadataDaEdicao(ATUAL, undefined, true)).toEqual({ chaveDoFato: 'k' })
+  it('mudando o índice: marca, token e prazo saem; identidade e metadata da pessoa ficam', () => {
+    expect(metadataDaEdicao(ATUAL, undefined, true)).toEqual({ ...IDENTIDADE, nota: 'antiga' })
     expect(metadataDaEdicao({ a: 1 }, undefined, true)).toBeUndefined()
   })
-  it('o metadata da pessoa substitui o dela, mas não apaga nem forja as chaves do sistema', () => {
-    expect(metadataDaEdicao(ATUAL, { nota: 1, cicloDeIndexacao: 'forjado' }, false)).toEqual({ nota: 1, indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' })
-    expect(metadataDaEdicao(ATUAL, null, false)).toEqual({ indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' })
+  it('PR13-47: o metadata da pessoa substitui SÓ o dela — a identidade do fato sobrevive a nulo, a objeto novo e à troca de conteúdo, e não se forja', () => {
+    expect(metadataDaEdicao(ATUAL, { nota: 1, cicloDeIndexacao: 'forjado', chaveDoFato: 'forjada' }, false)).toEqual({ nota: 1, ...IDENTIDADE, ...MARCAS })
+    expect(metadataDaEdicao(ATUAL, null, false)).toEqual({ ...IDENTIDADE, ...MARCAS })
+    expect(metadataDaEdicao(ATUAL, null, true)).toEqual(IDENTIDADE)
+    expect(metadataDaEdicao(ATUAL, { nota: 2 }, true)).toEqual({ nota: 2, ...IDENTIDADE })
     expect(metadataDaEdicao({ a: 1 }, null, false)).toBeNull()
+    expect(metadataDaEdicao({ a: 1 }, { chaveDoFato: 'forjada', origem: 'forjada', indexadoEm: 'forjada' }, false)).toEqual({})
   })
 })
 
