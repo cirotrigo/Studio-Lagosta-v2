@@ -124,11 +124,19 @@ async function main() {
   if (!projeto) abortar(`projeto ${PROJETO} não existe no banco de dev`)
   console.log(`projeto da prova: ${PROJETO} (${projeto.name})`)
 
+  /**
+   * "Nada gravado" se mede pelo que NASCEU depois do início da prova, nunca
+   * pela contagem total: o branch de dev é compartilhado com outras provas, e
+   * a limpeza de uma delas (posts apagados no meio desta rodada) fazia a
+   * contagem CAIR e a conferência acusar escrita que não houve. Medição só
+   * cria linhas — se criar —, então o que importa é `createdAt >= inicio`.
+   */
+  const inicio = new Date(Date.now() - 1000)
   const contar = async () => ({
-    generations: await db.generation.count({ where: { projectId: PROJETO } }),
-    pages: await db.page.count({ where: { Template: { projectId: PROJETO } } }),
-    sinais: await db.learningSignal.count({ where: { projectId: PROJETO } }),
-    posts: await db.socialPost.count({ where: { projectId: PROJETO } }),
+    generations: await db.generation.count({ where: { projectId: PROJETO, createdAt: { gte: inicio } } }),
+    pages: await db.page.count({ where: { Template: { projectId: PROJETO }, createdAt: { gte: inicio } } }),
+    sinais: await db.learningSignal.count({ where: { projectId: PROJETO, createdAt: { gte: inicio } } }),
+    posts: await db.socialPost.count({ where: { projectId: PROJETO, createdAt: { gte: inicio } } }),
   })
   const antes = await contar()
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT, projeto: PROJETO }
@@ -205,7 +213,8 @@ async function main() {
 
     // ── 4. nada gravado ─────────────────────────────────────────────────────
     const depois = await contar()
-    conferir('NADA foi gravado: Generation, Page, LearningSignal e SocialPost com as mesmas contagens de antes', JSON.stringify(antes) === JSON.stringify(depois), `${JSON.stringify(antes)} → ${JSON.stringify(depois)}`)
+    const nadaNovo = Object.values(depois).every((n) => n === 0)
+    conferir('NADA foi gravado: nenhuma Generation, Page, LearningSignal ou SocialPost do projeto criada desde o início da prova', nadaNovo, `criadas desde ${inicio.toISOString()}: ${JSON.stringify(depois)} (antes: ${JSON.stringify(antes)})`)
     registro.contagens = { antes, depois }
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
