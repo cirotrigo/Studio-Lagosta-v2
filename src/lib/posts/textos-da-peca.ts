@@ -78,6 +78,15 @@ export interface SlideDaPeca {
      * fallback declarado.
      */
     reRenderizada?: boolean
+    /**
+     * PROCEDÊNCIA da arte (`fieldValues.source`). `post-schedule` é a arte que
+     * o render de post gravou desenhando um MODELO com a copy do post por
+     * cima: a página dela (`pageId`) é o modelo, e o texto cru do modelo NÃO
+     * é o desta mídia — quem diz o que foi desenhado é `slotValues` (R36).
+     */
+    source?: string | null
+    /** A copy com que a arte foi desenhada (`fieldValues.slotValues`), quando a procedência a carrega. */
+    slotValues?: unknown
   } | null
   /** `Page.layers` ATUAL da página daquela arte — vale só na peça viva. */
   camadasDaPagina?: unknown
@@ -95,6 +104,9 @@ export interface TextosDeSlide {
   /** Definitivo quando `origem` vem — inclusive VAZIO (a arte não tem texto). */
   textos: string[]
   origem?: 'pagina' | 'arte'
+  /** A leitura deste slide NÃO cobre a mídia inteira (só a copy com que o modelo foi preenchido — R36). */
+  parcial?: boolean
+  nota?: string
   indisponiveis?: string
 }
 
@@ -170,6 +182,19 @@ function textosDaCopiaRegistrada(slotValues: unknown): string[] {
   return Object.values(textosDoSlot(slotValues) ?? {}).map((t) => t.trim()).filter(Boolean)
 }
 const NOTA_DA_COPIA_REGISTRADA = 'cópia da página registrada no agendamento: o texto das camadas ANTES da caixa do render (textTransform) e sem a ordem em que foram desenhadas — não prova a arte inteira.'
+const NOTA_DA_ARTE_DE_MODELO = 'arte desenhada de um MODELO com a copy do post por cima: só a copy registrada na arte; o que o modelo trazia fora dela (e a caixa do render) não tem registro — o texto cru do modelo não é o desta mídia.'
+
+/**
+ * A arte de `post-schedule` desenhou um MODELO com copy por cima (a via de
+ * template): devolve essa copy quando ela é copy PRÓPRIA (não a cópia da
+ * página, que aponta para a página da peça e cai na leitura normal). Ler a
+ * página dessa arte entregaria "Título do modelo" por uma mídia que mostra
+ * "Costela no bafo" (R36 da revisão final de bf4650f2).
+ */
+function copyDaArteDeModelo(arte: NonNullable<SlideDaPeca['arte']>): Record<string, unknown> | null {
+  if (arte.source !== 'post-schedule') return null
+  return slotValuesParaRender(arte.slotValues)
+}
 
 /** O snapshot afirma texto só quando é o registro do que foi desenhado: existe e a arte não foi re-renderizada por cima dele. */
 function snapshotConfiavel(arte: NonNullable<SlideDaPeca['arte']>): boolean {
@@ -179,6 +204,14 @@ function snapshotConfiavel(arte: NonNullable<SlideDaPeca['arte']>): boolean {
 function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide[] {
   return slides.map((s, i) => {
     const slide = i + 1
+    // R36: procedência antes da página — a página de uma arte de modelo é o MODELO, não a peça.
+    const copyDoModelo = s.arte ? copyDaArteDeModelo(s.arte) : null
+    if (copyDoModelo) {
+      const daCopy = textosDoPost(copyDoModelo)
+      return daCopy.length > 0
+        ? { slide, textos: daCopy, origem: 'arte', parcial: true, nota: NOTA_DA_ARTE_DE_MODELO }
+        : { slide, textos: [], indisponiveis: 'arte desenhada de um modelo sem copy registrada: o texto cru do modelo não é o desta mídia — nada a afirmar' }
+    }
     if (!entregue && s.camadasDaPagina !== undefined) {
       const daPagina = textosDasCamadas(s.camadasDaPagina)
       // Legível é definitivo — inclusive vazio (todas as camadas ocultas).
@@ -239,11 +272,15 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
     if (resolvidos.length > 0) {
       const faltam = porSlide.length - resolvidos.length
+      const notas = [
+        ...(faltam > 0 ? [`${faltam} de ${porSlide.length} mídia(s) sem arte registrada (ou re-renderizada sem registro): os textos delas não estão aqui.`] : []),
+        ...(porSlide.some((s) => s.parcial) ? [carrossel ? `mídia(s) ${porSlide.filter((s) => s.parcial).map((s) => s.slide).join(', ')}: ${NOTA_DA_ARTE_DE_MODELO}` : NOTA_DA_ARTE_DE_MODELO] : []),
+      ]
       return {
         textos: porSlide.flatMap((s) => s.textos),
         origem: resolvidos.every((s) => s.origem === 'pagina') ? 'pagina' : 'arte',
         ...(carrossel ? { slides: porSlide } : {}),
-        ...(faltam > 0 ? { parcial: true, nota: `${faltam} de ${porSlide.length} mídia(s) sem arte registrada (ou re-renderizada sem registro): os textos delas não estão aqui.` } : {}),
+        ...(notas.length > 0 ? { parcial: true, nota: notas.join(' ') } : {}),
       }
     }
     /**

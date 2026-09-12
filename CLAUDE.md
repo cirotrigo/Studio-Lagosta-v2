@@ -6471,6 +6471,18 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   sem nada. Só um FEED às 11h30 não tira o story das 11h30 (controle no
   teste). O orquestrador não decide horário: registra como sugestão o que a
   função devolve em `semeados`.
+- 🔴 **A arte de `post-schedule` é um MODELO com a copy do post por cima, e a
+  PÁGINA dela não é a peça** (R36 da segunda revisão final, `copyDaArteDeModelo`
+  em `textos-da-peca.ts`): o render de post grava a Generation com
+  `source: 'post-schedule'`, `pageId` do modelo e `slotValues` com a copy;
+  reagendada pela galeria por `generationId`, o post nasce sem página e a
+  agenda lia a página daquela arte — "Título do modelo" por uma mídia que
+  mostra "Costela no bafo". Hoje a PROCEDÊNCIA vem antes da página: na arte de
+  `post-schedule` com copy PRÓPRIA (`slotValuesParaRender` não nula) vale a
+  copy registrada na arte, declarada PARCIAL (o que o modelo trazia fora dela
+  e a caixa do render não têm registro), viva ou entregue; a cópia da página
+  (`_copiaDaPagina`) e as outras procedências (compositor, com snapshot) caem
+  na leitura de sempre. O `arteDe` do handler leva `source` e `slotValues`.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito

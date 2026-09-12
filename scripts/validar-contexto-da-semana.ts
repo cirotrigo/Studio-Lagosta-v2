@@ -361,6 +361,25 @@ async function main() {
       conferir('R13: URL casa, mas a arte foi RE-RENDERIZADA por cima do snapshot: volta a cópia registrada B (parcial), NUNCA o snapshot A', !!i13 && JSON.stringify(i13.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i13.textosOrigem === 'copy-registrada-na-entrega' && i13.textosParciais === true && !JSON.stringify(i13).includes('texto A antigo'), JSON.stringify({ textos: i13?.textos, origem: i13?.textosOrigem }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3d.json'), JSON.stringify(agenda3d, null, 2))
 
+      // R36 (revisão final de bf4650f2): a arte de `post-schedule` desenhou um MODELO com a copy do post por cima.
+      // Reagendada por generationId (post sem página), a agenda lia a PÁGINA da arte — o modelo — e devolvia
+      // "Título do modelo" por uma mídia que mostra "Costela no bafo". Vale a copy registrada na arte, PARCIAL.
+      console.log('3f) ver-agenda: arte de post-schedule (modelo + copy) reagendada por generationId NÃO devolve o texto do modelo (R36)')
+      const dia3f = somarDias(hoje, 8)
+      const copyA = `${MARCA} copy A do reagendado`, copyB = `${MARCA} copy B do reagendado`
+      const genModA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyA } } as never }, select: { id: true } })
+      const genModB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyB } } as never }, select: { id: true } })
+      geracoes.push(genModA.id, genModB.id)
+      const reagendado = await criar('11:00', { scheduledDatetime: new Date(`${dia3f}T11:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-A.png`], generationId: genModA.id, slotValues: null })
+      const carrosselDeModelo = await criar('12:00', { postType: 'POST', scheduledDatetime: new Date(`${dia3f}T12:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-A.png`, `${marcaUrl}/modelo-B.png`], generationId: genModA.id, slotValues: null })
+      posts.push(reagendado.id, carrosselDeModelo.id)
+      const agenda3f = await tool('ver-agenda', { projectId: PROJETO, from: dia3f, to: dia3f })
+      const itens3f = (agenda3f.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const i36 = itens3f.find((i) => i.postId === reagendado.id), i36c = itens3f.find((i) => i.postId === carrosselDeModelo.id)
+      conferir('R36: post VIVO reagendado por generationId de uma arte post-schedule volta com a copy registrada na arte (parcial, origem "arte"), NUNCA o texto cru do modelo', !!i36 && JSON.stringify(i36.textos) === JSON.stringify([copyA]) && i36.textosOrigem === 'arte' && i36.textosParciais === true && !temSemCaixa(i36.textos, textoDoModelo) && !JSON.stringify(i36).includes(textoDoModelo), JSON.stringify({ textos: i36?.textos, origem: i36?.textosOrigem, parcial: i36?.textosParciais }).slice(0, 220))
+      conferir('R36: duas mídias com copies DISTINTAS sobre o MESMO modelo voltam cada uma com a sua, slide a slide, sem o texto do modelo', !!i36c && JSON.stringify((i36c.textosPorSlide as Array<{ textos: string[] }> | undefined)?.map((s) => s.textos)) === JSON.stringify([[copyA], [copyB]]) && i36c.textosParciais === true && !JSON.stringify(i36c).includes(textoDoModelo), JSON.stringify(i36c?.textosPorSlide).slice(0, 220))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3f.json'), JSON.stringify(agenda3f, null, 2))
+
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
       console.log('3e) carrossel PUBLICADO com cópia A no post, slide re-renderizado e slide sem arte: nada é afirmado — indisponível, slide a slide')
       const dia3e = somarDias(hoje, 8)

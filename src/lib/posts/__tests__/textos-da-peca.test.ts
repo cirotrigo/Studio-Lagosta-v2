@@ -206,6 +206,41 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
       }
     }
   })
+  it('R36: arte de `post-schedule` (MODELO + copy do post) nunca devolve o texto cru do modelo — vale a copy registrada na arte, PARCIAL; a cópia da página cai na leitura normal', () => {
+    const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: 'g1', slotValues: null }
+    const modelo = [{ id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo' }, { id: 'l2', name: 'apoio', type: 'text', content: 'Apoio do modelo' }]
+    const arte = { pageId: 'tpl', source: 'post-schedule', slotValues: { headline: 'Costela no bafo' } }
+    // reagendado por generationId, VIVO: a página da arte (o modelo) está carregada e mesmo assim não é lida
+    const vivo = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }] })
+    expect(vivo.textos).toEqual(['Costela no bafo'])
+    expect(vivo.origem).toBe('arte')
+    expect(vivo.parcial).toBe(true)
+    expect(JSON.stringify(vivo)).not.toContain('Título do modelo')
+    // ENTREGUE: sem snapshot, a copy da arte continua sendo o que se sabe (parcial) — não "indisponível"
+    const entregue = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }] })
+    expect(entregue).toMatchObject({ textos: ['Costela no bafo'], origem: 'arte', parcial: true })
+    // duas mídias com copies DISTINTAS sobre o MESMO modelo: cada slide com a sua
+    const duas = textosDaPeca({ ...base, mediaUrls: ['u1', 'u2'], status: 'DRAFT' }, {
+      slides: [
+        { url: 'u1', arte, camadasDaPagina: modelo },
+        { url: 'u2', arte: { ...arte, slotValues: { headline: 'Picanha na brasa', apoio: 'Sexta é dia' } }, camadasDaPagina: modelo },
+      ],
+    })
+    expect(duas.slides?.map((s) => s.textos)).toEqual([['Costela no bafo'], ['Picanha na brasa', 'Sexta é dia']])
+    expect(duas.slides?.every((s) => s.parcial === true && s.origem === 'arte')).toBe(true)
+    expect(duas.parcial).toBe(true)
+    expect(JSON.stringify(duas)).not.toContain('Título do modelo')
+    // a CÓPIA da página (`_copiaDaPagina`) não é copy própria: a página da arte É a peça, e a leitura é a normal
+    const copia = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { ...arte, slotValues: { headline: 'Texto velho', _copiaDaPagina: true } }, camadasDaPagina: modelo }] })
+    expect(copia).toEqual({ textos: ['Título do modelo', 'Apoio do modelo'], origem: 'pagina' })
+    // procedência que NÃO é post-schedule com slotValues (o compositor grava a copy também): a página/snapshot continuam mandando
+    const compositor = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { pageId: 'p1', source: 'compositor', slotValues: { headline: 'Costela no bafo' }, layersSnapshot: snap('S') }, camadasDaPagina: snap('P') }] })
+    expect(compositor).toEqual({ textos: ['P'], origem: 'pagina' })
+    // arte de modelo SEM copy registrada: declarada, nunca o texto do modelo
+    const semCopy = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { pageId: 'tpl', source: 'post-schedule', slotValues: {} }, camadasDaPagina: modelo }] })
+    expect(semCopy).toEqual({ textos: ['Título do modelo', 'Apoio do modelo'], origem: 'pagina' })
+  })
+
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
     expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['P'], origem: 'pagina' })
