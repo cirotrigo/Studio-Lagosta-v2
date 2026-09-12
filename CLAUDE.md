@@ -7419,3 +7419,51 @@ papel; a medida de fallback) em vez de pela identidade ou pelo fato já resolvid
   composição FEZ (a escala está mesmo gravada na camada) e não pede ação, e o
   mesmo bloco já sai com `naoMedido` e com o aviso de que a medida não vale —
   acrescentar ressalva ali seria ruído.
+
+### Medir antes de compor: `ver-assinatura` por variante e `medir-copy` (PR 8 de "Marca simples, copy melhor", 12/09/2026)
+
+Quem escreve a copy no chat precisava de uma medida VERIFICÁVEL antes de gastar
+uma composição: o único jeito de saber se a manchete cabia era compor e ler a
+recusa, e o orçamento vinha de cabeça nas instruções ("headline até ~18
+caracteres") — igual para toda marca. Módulo PURO com teste:
+`src/lib/compositor/medir-copy.ts`; serviço em `medir-copy-service.ts`. Sem
+migration. Prova no branch de dev: `scripts/validar-medir-copy.ts` (confere
+que NADA é gravado e que a medida é a da composição).
+
+- 🔴 **A MESMA régua da composição, nunca uma conta paralela**: `medirCopy`
+  chama `montarBloco` e `medirLinha` (exportada para isso) com o medidor do
+  render (`createServerTextBoxMeasurer`), depois de `registerProjectFonts`. A
+  prova compara, papel a papel, escala/largura/altura do bloco medido com o
+  que `comporPeca` monta para a mesma copy e a mesma variante — têm de ser
+  IDÊNTICOS. Régua própria divergiria no primeiro ajuste do compositor.
+- **A medida é dita pelo que é**: `cabe` (escala 1), `cabe-reduzido` (fonte
+  encolhida até o piso de 80%, com a escala), `nao-cabe` (com o orçamento por
+  linha — os mesmos `caracteresQueCabem` da recusa `TEXTO_NAO_CABE_NA_COLUNA`)
+  e `papel-ausente` (a variante não tem o papel; declarado, nunca some).
+  🔴 **`naoMedido` = a fonte do papel não está carregada no servidor**
+  (`familiasNaoCarregadas`): os números saíram na fonte de fallback e NÃO
+  valem — a tool devolve os números E o aviso, nunca finge que mediu.
+  **`aproximado` = há destaque entre [colchetes]**: o trecho ganha outra
+  família e a largura extra é estimada trecho a trecho (o medidor do servidor
+  não mede rich text).
+- **O orçamento ANTES do texto** (`orcamentoDaVariante`) é medido com uma
+  amostra em português (`AMOSTRA_DO_ORCAMENTO`) na fonte real de cada papel:
+  caracteres por linha e linhas na altura útil, por variante. É aproximado por
+  construção (a largura de uma linha depende das letras dela) e dito assim.
+  As instruções do conector deixaram de dar o número de cabeça.
+- **`ver-assinatura` descreve CADA variante** (`descreverVariantes`): estilos
+  próprios por papel (fonte, `fonteDisponivel`, tamanho já na escala do
+  formato pedido, cor, caixa, prefixo, destaque, grupo, alinhamento), papéis,
+  `aceitaServico`, `temSegundaVoz`, a área útil do formato (coluna = largura −
+  2·margem; altura = altura − safe topo − safe rodapé; `escalaDoFormato`), o
+  orçamento e as fontes não carregadas. Até aqui os detalhes eram só da
+  variante carregada, e as outras apareciam pelo nome e pelos papéis.
+- **`medir-copy` escolhe a variante como a composição** (`carregarAssinatura`
+  com os mesmos critérios: id/nome/tag pedido, papéis, tema) e mede a copy
+  também contra as OUTRAS variantes do formato (`outrasVariantes`: cabe tudo?
+  falta papel? reduzido?) — é a "capacidade medida" para escolher a variante
+  pela mensagem, sem trocar a escolha da composição.
+- **Nada é gravado**: nem página, nem Generation, nem sinal, nem Blob. A prova
+  conta as tabelas antes e depois; `comporPeca(…, { provar: true })` na prova
+  renderiza em memória e não persiste (é a tool `compor-arte` que sobe a prova
+  ao Blob, não o serviço).

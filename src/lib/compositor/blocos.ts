@@ -218,9 +218,10 @@ export function camadaDoPapel(args: {
 
 /**
  * Mede uma linha sozinha, numa caixa larga o bastante para não quebrar.
- * Devolve a largura da tinta e a altura da linha.
+ * Devolve a largura da tinta e a altura da linha. Exportada para o
+ * `medir-copy` (PR 8) medir com a MESMA régua que monta o bloco.
  */
-function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUtil: number) {
+export function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUtil: number) {
   const m = medir({
     ...base,
     content: linha,

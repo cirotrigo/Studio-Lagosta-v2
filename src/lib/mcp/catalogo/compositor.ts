@@ -134,17 +134,20 @@ export const toolsDoCompositor = [
     superficies: ['remoto', 'local'],
     handler: async (args) => {
       const { carregarAssinatura } = await import('../../compositor/compor')
+      const { descreverVariantes } = await import('../../compositor/medir-copy-service')
       const { getPublicAppUrl } = await import('../../creatives/persist')
       const projectId = args.projectId as number
       const formato = (args.formato as 'story' | 'feed' | 'quadrado' | undefined) ?? 'story'
       const a = await carregarAssinatura(projectId, formato)
-      const { paginasDeAssinatura } = await import('../../compositor/compor')
-      const { templateId, paginas } = await paginasDeAssinatura(projectId)
+      // Cada variante com os PRÓPRIOS estilos, a fonte disponível no servidor,
+      // a área útil do formato pedido e o orçamento por papel (PR 8).
+      const { templateId, variantes } = await descreverVariantes(projectId, formato)
       const template = templateId ? { id: templateId } : null
       return {
         temAssinatura: Boolean(a.origem.pageId),
         formatoDaPagina: a.origem.formatoDaPagina,
-        variantes: paginas.map((p) => ({ id: p.id, nome: p.name, formato: p.formato, papeis: p.papeis, aceitaServico: p.papeis.includes('servico'), tags: p.tags.filter((t) => t !== 'assinatura') })),
+        varianteCarregada: a.origem.pageId ? { id: a.origem.pageId, nome: a.origem.variante, motivo: a.origem.motivoDaVariante ?? null } : null,
+        variantes,
         papeis: Object.fromEntries(
           Object.entries(a.papeis).map(([papel, e]) => [
             papel,
@@ -164,8 +167,69 @@ export const toolsDoCompositor = [
         numeros: a.numeros,
         editorUrl: template ? `${getPublicAppUrl()}/templates/${template.id}/editor` : null,
         dica: a.origem.pageId
-          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança.'
+          ? 'A equipe ajusta fonte, tamanho, cor e destaque de cada papel abrindo a página de assinatura no editor; uma camada de gradiente na página manda na cor e na curva do gradiente de leitura. O próximo lote sai com a mudança. Cada variante traz o orçamento por papel (caracteres por linha, aproximado) e a fonte disponível: papel com fonteDisponivel false sai na fonte de fallback e a medida não vale. Antes de compor, medir-copy mede a copy escrita contra a variante.'
           : 'Este cliente ainda não tem página de assinatura. Peça para a equipe criar (template "Assinatura", uma página por formato com camadas de texto chamadas pre, headline, apoio, cta, servico).',
+      }
+    },
+  }),
+
+  definirTool({
+    nome: 'medir-copy',
+    descricao:
+      'MEDE a copy ANTES de compor, com a MESMA régua e o MESMO medidor do render que compor-arte usa — sem gravar nada (nem página, nem arte, nem prova). Para cada bloco diz se cabe na coluna útil da variante no tamanho da assinatura (cabe), só com a fonte reduzida até 80% (cabe-reduzido, com a escala), ou não cabe nem assim (nao-cabe, com o orçamento: quantos caracteres cabem em cada linha) — e se a variante não tem o papel (papel-ausente). Cada linha volta com a largura medida e os caracteres que cabem; cada bloco com o corpo final, a caixa e as linhas.\n\nA medida é dita pelo que é: naoMedido = a fonte do papel não está carregada no servidor (os números saíram na fonte de fallback e NÃO valem — avise a pessoa e não confie neles); aproximado = há destaque entre [colchetes] e a largura extra do trecho é estimada. A resposta também mede a copy contra as OUTRAS variantes do formato (outrasVariantes: cabe tudo? falta papel?) para você escolher a variante pela capacidade, não só pelo nome. Use antes de compor-arte/compor-leva quando a copy estiver perto do limite ou quando a peça tiver muitos blocos; ver-assinatura já traz o orçamento aproximado por papel antes de escrever.',
+    schema: z.object({
+      projectId: spec.projectId,
+      formato: spec.formato,
+      blocos: spec.blocos,
+      copyAutoral: spec.copyAutoral,
+      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy.'),
+      tema: spec.tema,
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const { medirCopyDoProjeto } = await import('../../compositor/medir-copy-service')
+      const r = await medirCopyDoProjeto({
+        projectId: args.projectId as number,
+        formato: args.formato as 'story' | 'feed' | 'quadrado',
+        blocos: args.blocos as Array<{ papel: 'pre' | 'headline' | 'apoio' | 'cta' | 'servico'; linhas: string[] }> | undefined,
+        ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
+        variante: typeof args.variante === 'string' ? args.variante : null,
+        tema: typeof args.tema === 'string' ? args.tema : null,
+      })
+      const m = r.medicao
+      return {
+        variante: r.variante,
+        formato: args.formato,
+        areaUtil: m.areaUtil,
+        cabeTudo: m.cabeTudo,
+        naoMedido: m.naoMedido,
+        aproximado: m.aproximado,
+        ...(m.papeisAusentes.length ? { papeisAusentes: m.papeisAusentes } : {}),
+        ...(m.fontesNaoCarregadas.length ? { fontesNaoCarregadas: m.fontesNaoCarregadas } : {}),
+        blocos: m.blocos.map((b) => ({
+          papel: b.papel,
+          situacao: b.situacao,
+          ...(b.fonte ? { fonte: b.fonte } : {}),
+          ...(b.escala !== null ? { escala: b.escala } : {}),
+          ...(b.fontSize !== null ? { corpo: b.fontSize } : {}),
+          ...(b.width !== null && b.height !== null ? { caixa: { largura: b.width, altura: b.height } } : {}),
+          linhas: b.linhasMedidas.map((l) => ({ linha: l.linha, largura: l.largura, coluna: l.coluna, cabe: l.cabe, caracteresQueCabem: l.caracteresQueCabem })),
+          ...(b.naoMedido ? { naoMedido: true } : {}),
+          ...(b.aproximado ? { aproximado: true } : {}),
+          ...(b.orcamento ? { orcamento: b.orcamento } : {}),
+          ...(b.avisos.length ? { avisos: b.avisos } : {}),
+        })),
+        alturaDosBlocos: m.alturaDosBlocos,
+        segundaVoz: m.segundaVoz,
+        outrasVariantes: r.outrasVariantes,
+        ...(m.avisos.length ? { avisos: m.avisos } : {}),
+        nota: m.naoMedido
+          ? 'Há bloco NÃO MEDIDO: a fonte dele não está no servidor de render, e a peça sairia na fonte de fallback — avise a pessoa (a equipe cadastra a fonte em Configurações → Fontes) antes de compor.'
+          : m.cabeTudo
+            ? 'Tudo cabe nesta variante. Nada foi gravado: compor-arte é o próximo passo.'
+            : 'Algum bloco não cabe (ou falta papel na variante): reescreva com o orçamento devolvido ou escolha outra variante (outrasVariantes) — nunca insista com o mesmo texto.',
       }
     },
   }),
