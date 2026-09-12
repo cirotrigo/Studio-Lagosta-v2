@@ -97,6 +97,11 @@ export interface GravarVozArgs {
    * (PR7-FINAL-01). Recusa com `REGRA_DESTINO_MUDOU`.
    */
   exigirMigrada?: boolean
+  /**
+   * Conferência de POSSE de uma trava externa (PR13-38): roda depois da leitura da versão e imediatamente antes
+   * de `create`/`updateMany`. Lança para abortar — a escrita não acontece.
+   */
+  antesDeEscrever?: () => Promise<void>
 }
 
 export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; voz: VozCompacta; criada: boolean }> {
@@ -105,6 +110,9 @@ export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; 
     throw new CreativeError('VOZ_INVALIDA', `A voz não passa no contrato (${problemas.length} problema${problemas.length === 1 ? '' : 's'}): ${problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`, 400, { problemas })
   }
   const atual = await db.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { versao: true } })
+  // PR13-38: quem detém uma trava externa (a migração por manifesto) confere a POSSE aqui — depois da leitura,
+  // que espera, e imediatamente antes de escrever. Conferir antes de entrar no serviço não cobre esta janela.
+  await args.antesDeEscrever?.()
   if (!atual) {
     if (args.versaoEsperada != null && args.versaoEsperada !== 0) {
       throw new CreativeError('VOZ_DIVERGENTE', 'Ainda não há voz gravada para este cliente; a versão esperada não bate.', 409, { versaoEsperada: args.versaoEsperada, versaoAtual: null })
@@ -154,6 +162,11 @@ export async function migrarParaVoz(args: {
    * segue mandando, e a edição concorrente da linha é preservada (PR13-35).
    */
   fatosEsperados?: readonly FatoEsperado[]
+  /**
+   * Conferência de POSSE de uma trava externa (PR13-38): roda DENTRO da transação, depois das leituras do DNA e
+   * dos fatos e imediatamente antes de ligar a precedência. Lança para abortar.
+   */
+  antesDeEscrever?: () => Promise<void>
 }): Promise<{ migradaEm: Date; jaEstava: boolean; versao: number }> {
   /**
    * DUAS proteções, porque são dois vizinhos diferentes:
@@ -194,6 +207,7 @@ export async function migrarParaVoz(args: {
           }
         }
         const em = args.em ?? new Date()
+        await args.antesDeEscrever?.()
         const gravada = await tx.brandVoice.updateMany({
           where: { projectId: args.projectId, versao: args.versaoEsperada, migradaEm: null },
           data: { migradaEm: em, dnaArquivado: arquivoDoDna({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }, em) as never },

@@ -622,7 +622,7 @@ export function podeIndexar(destino: DestinoDaAplicacao | undefined, efetivo?: {
  * (`knowledge/marca-de-indexado.ts`) porque quem a INVALIDA e REPÕE é o
  * reindexador (PR13-36); aqui só é lida.
  */
-export { MARCA_DE_INDEXADO } from '../knowledge/marca-de-indexado'
+export { MARCA_DE_INDEXADO, CICLO_DE_INDEXACAO, cicloDeIndexacaoDe, comCicloDeIndexacao } from '../knowledge/marca-de-indexado'
 export type EstadoDoFato = 'ausente' | 'incompleto' | 'completo'
 /** Pela linha da base: sem linha `ausente`; linha sem `indexadoEm` (interrompida entre o SQL e o vetor, ou reindexação que caiu depois das exclusões) `incompleto`; com a marca `completo`. */
 export function classificarFato(linha: { metadata?: unknown } | null | undefined): EstadoDoFato {

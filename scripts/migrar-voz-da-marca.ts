@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 /**
  * A MIGRAÇÃO DA VOZ, cliente a cliente (PR 13 de "Marca simples, copy
  * melhor", 12/09/2026). Entregar o script e aplicá-lo são coisas separadas.
@@ -53,6 +54,7 @@ import {
   type DestinoDaAplicacao,
   classificarFato,
   MARCA_DE_INDEXADO,
+  CICLO_DE_INDEXACAO,
   divergenciasDoFato, type FatoEsperado,
   mesmoBanco,
   type LinhaDoFato,
@@ -261,12 +263,22 @@ export async function estadoDoFatoNaBase(db: Db, chave: string, projectId: numbe
 }
 
 /** A marca durável de indexação concluída, gravada DEPOIS de o vetor existir — a linha existir não prova o vetor (PR13-11). */
-export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new Date(), signal?: AbortSignal): Promise<void> {
+export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new Date(), signal?: AbortSignal, ciclo?: string): Promise<void> {
   const linha = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
   const metadata = linha?.metadata && typeof linha.metadata === 'object' && !Array.isArray(linha.metadata) ? (linha.metadata as Record<string, unknown>) : {}
   // A posse pode ter se perdido enquanto a leitura esperava (PR13-23): a marca de indexado de uma execução que
   // perdeu a trava faria a retomada ler `completo` uma linha que outra aplicação ainda está reindexando.
   if (signal?.aborted) throw new Error('a posse da trava se perdeu antes de gravar a marca de indexado: esta execução não a grava')
+  // Com o token do ciclo (PR13-39), a marca só é publicada se NENHUMA outra indexação assumiu a entrada no meio
+  // (a API administrativa de reindex não participa da trava): compare-and-set no `metadata.cicloDeIndexacao`.
+  if (ciclo) {
+    const r = await db.knowledgeBaseEntry.updateMany({
+      where: { id: entryId, metadata: { path: [CICLO_DE_INDEXACAO], equals: ciclo } },
+      data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never },
+    })
+    if (r.count === 0) throw new Error(`outra indexação assumiu a entrada ${entryId} durante esta (ciclo ${ciclo} não é mais o atual): a marca de indexado não é gravada por esta execução`)
+    return
+  }
   await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never } })
 }
 
@@ -432,6 +444,7 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
     opcoes.criarFato ??
     (async (fato: FatoACriar, autor: string, signal?: AbortSignal) => {
       const { criarEntradaBase } = await import('../src/lib/knowledge/entries')
+      const ciclo = randomUUID()
       const entrada = await criarEntradaBase({
         projectId: fato.projectId,
         category: fato.categoria,
@@ -439,21 +452,21 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
         content: fato.trecho,
         tags: ['migracao-da-voz'],
         expiresAt: fato.validaAte ? new Date(`${fato.validaAte}T23:59:59-03:00`) : null,
-        metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave },
+        metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave, [CICLO_DE_INDEXACAO]: ciclo },
         autor,
       }, { signal })
       // `criarEntradaBase` só devolve depois de indexar; a marca durável é o que a retomada lê (PR13-11).
       if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de indexar: a marca de indexado não é gravada por esta execução')
-      await marcarFatoIndexado(db, entrada.id, new Date(), signal)
+      await marcarFatoIndexado(db, entrada.id, new Date(), signal, ciclo)
     })
   const estadoDoFato = opcoes.estadoDoFato ?? ((chave: string, projectId: number) => estadoDoFatoNaBase(db, chave, projectId))
   const reindexarFato =
     opcoes.reindexarFato ??
     (async (entryId: string, fato: FatoACriar, autor: string, signal?: AbortSignal) => {
       const { reindexEntry } = await import('../src/lib/knowledge/indexer')
-      await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
+      const { ciclo } = await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
       if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de reindexar: a marca de indexado não é gravada por esta execução')
-      await marcarFatoIndexado(db, entryId, new Date(), signal)
+      await marcarFatoIndexado(db, entryId, new Date(), signal, ciclo)
       // A criação normal invalida o cache de busca do projeto (`criarEntradaBase`); a RETOMADA por
       // reindexação também tem de invalidar, senão uma busca cacheada no intervalo da falha continua
       // devolvendo o resultado sem o fato até o TTL (PR13-26). Best-effort, como na criação.
@@ -544,12 +557,13 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
           // nem incrementa a voz pendente (outra aplicação que tomou a trava e leu a versão anterior falharia no
           // CAS por causa dessa escrita) (PR13-37).
           await trava.conferir()
-          const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
+          // PR13-38: a posse é conferida DENTRO do serviço, depois das leituras dele e imediatamente antes de escrever.
+          const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}), antesDeEscrever: () => trava.conferir() })
           await opcoes.seams?.antesDeAtivar?.(acao.projectId)
           await trava.conferir()
           // A ativação confere, na mesma transação dela, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02)
           // e que os fatos aprovados continuam na base como foram conferidos (PR13-35).
-          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules }, fatosEsperados })
+          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules }, fatosEsperados, antesDeEscrever: () => trava.conferir() })
           return { vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString() }
       })
       if ('bloqueado' in desfecho) {

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 /**
  * Knowledge base indexing service
  * Handles creating, updating, and deleting indexed entries
@@ -8,7 +9,7 @@ import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
 import { lancarSeAbortado } from './aborto'
-import { comMarcaDeIndexado, semMarcaDeIndexado, temMarcaDeIndexado } from './marca-de-indexado'
+import { CICLO_DE_INDEXACAO, comCicloDeIndexacao, comMarcaDeIndexado, temMarcaDeIndexado } from './marca-de-indexado'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
 export interface IndexEntryInput {
@@ -152,8 +153,10 @@ export async function indexFile(input: IndexFileInput) {
  * exclusão externa (a migração da voz) dispara o sinal ao perdê-la, e a
  * reindexação para sem tocar em nada que outra aplicação possa ter retomado.
  */
-export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal } = {}) {
+export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal; ciclo?: string } = {}) {
   const { signal } = opcoes
+  // O token DESTE ciclo (PR13-39): carimbado antes de apagar, conferido por compare-and-set ao repor a marca.
+  const ciclo = opcoes.ciclo ?? randomUUID()
   // Get entry
   const entry = await db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
@@ -175,11 +178,12 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
   // INVALIDADA antes de apagar — preservando `chaveDoFato` e o resto do metadata — e REPOSTA só depois de subir os
   // vetores. Entrada sem a marca (a criação normal, ou a retomada de uma linha incompleta) não ganha marca aqui:
   // quem a grava é quem sabe que a indexação inteira fechou (`marcarFatoIndexado`, depois deste retorno).
+  // E SEMPRE carimba o ciclo (PR13-39): a marca só volta — aqui ou em `marcarFatoIndexado` — se o ciclo ainda for
+  // este; outra indexação que começou no meio (a API de reindex não participa da trava da migração) troca o token
+  // e a execução atrasada não publica marca sobre chunks que não são mais os dela.
   const tinhaMarcaDeIndexado = temMarcaDeIndexado(entry.metadata)
-  if (tinhaMarcaDeIndexado) {
-    lancarSeAbortado(signal, 'invalidar a marca de indexado')
-    await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: semMarcaDeIndexado(entry.metadata) as Prisma.InputJsonValue } })
-  }
+  lancarSeAbortado(signal, 'invalidar a marca de indexado')
+  await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: comCicloDeIndexacao(entry.metadata, ciclo) as Prisma.InputJsonValue } })
 
   // Delete old chunks and vectors
   lancarSeAbortado(signal, 'apagar chunks antigos')
@@ -244,12 +248,19 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
     lancarSeAbortado(signal, 'repor a marca de indexado')
     const atual = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
     lancarSeAbortado(signal, 'repor a marca de indexado')
-    await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: comMarcaDeIndexado(atual?.metadata, new Date()) as Prisma.InputJsonValue } })
+    // Compare-and-set no CICLO: se outra indexação assumiu a entrada no meio, o token mudou e a marca NÃO é reposta
+    // por esta execução (PR13-39) — a linha fica incompleta, para quem detém o ciclo fechar (ou a retomada refazer).
+    const reposta = await db.knowledgeBaseEntry.updateMany({
+      where: { id: entryId, metadata: { path: [CICLO_DE_INDEXACAO], equals: ciclo } },
+      data: { metadata: comMarcaDeIndexado(atual?.metadata, new Date()) as Prisma.InputJsonValue },
+    })
+    if (reposta.count === 0) throw new Error(`outra indexação assumiu a entrada ${entryId} durante esta reindexação: a marca de indexado não é reposta por esta execução`)
   }
 
   return {
     entry,
     chunks: createdChunks,
+    ciclo,
   }
 }
 

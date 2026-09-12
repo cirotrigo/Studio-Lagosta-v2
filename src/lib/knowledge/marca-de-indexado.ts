@@ -13,6 +13,16 @@
  * preservando `chaveDoFato` e o resto do metadata. Módulo PURO, sem Prisma.
  */
 export const MARCA_DE_INDEXADO = 'indexadoEm'
+/**
+ * O CICLO de indexação em curso (`metadata.cicloDeIndexacao`): quem começa a
+ * indexar (criar ou reindexar) carimba um token próprio; a marca de indexado só
+ * é publicada por compare-and-set sobre ESSE token. Duas execuções sobre a mesma
+ * entrada (a migração da voz e a API administrativa de reindex, que não
+ * participa da trava por projeto) deixavam a marca válida sem chunks nem
+ * vetores: a segunda apagava tudo e a primeira, atrasada, gravava a marca por
+ * cima (PR13-39). Com o token, quem perdeu o ciclo não publica.
+ */
+export const CICLO_DE_INDEXACAO = 'cicloDeIndexacao'
 
 /** O `metadata` de uma entrada como objeto (Json pode ser qualquer coisa; só objeto plano carrega a marca). */
 export function metadataComoObjeto(metadata: unknown): Record<string, unknown> {
@@ -29,6 +39,17 @@ export function temMarcaDeIndexado(metadata: unknown): boolean {
 export function semMarcaDeIndexado(metadata: unknown): Record<string, unknown> {
   const { [MARCA_DE_INDEXADO]: _marca, ...resto } = metadataComoObjeto(metadata)
   return resto
+}
+
+/** O token do ciclo de indexação em curso, ou null. */
+export function cicloDeIndexacaoDe(metadata: unknown): string | null {
+  const v = metadataComoObjeto(metadata)[CICLO_DE_INDEXACAO]
+  return typeof v === 'string' && v.length > 0 ? v : null
+}
+
+/** O metadata SEM a marca e COM o ciclo novo: é o que se grava ao COMEÇAR uma indexação. */
+export function comCicloDeIndexacao(metadata: unknown, ciclo: string): Record<string, unknown> {
+  return { ...semMarcaDeIndexado(metadata), [CICLO_DE_INDEXACAO]: ciclo }
 }
 
 /** O metadata COM a marca gravada em `em` — o resto fica intacto. */

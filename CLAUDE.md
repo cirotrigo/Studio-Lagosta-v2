@@ -7117,6 +7117,33 @@ Da sétima revisão FINAL (BLOQUEADO, PR13-36…37):
   DEPOIS da última espera e ANTES de escrever** — conferir cedo e escrever
   tarde é o mesmo que não conferir.
 
+Da oitava revisão FINAL (BLOQUEADO, PR13-38…39):
+
+- 🔴 **A posse da trava é conferida DENTRO dos serviços de voz, depois das
+  leituras deles e imediatamente antes de escrever** (PR13-38):
+  `gravarVoz({ antesDeEscrever })` roda a conferência depois do
+  `brandVoice.findUnique` e antes de `create`/`updateMany`;
+  `migrarParaVoz({ antesDeEscrever })` a roda DENTRO da transação
+  serializável, depois das leituras do DNA e dos fatos e antes de ligar
+  `migradaEm`. O script passa `() => trava.conferir()` nas duas chamadas. A
+  conferência que ficava só do lado de fora não cobria a janela em que a
+  leitura interna espera — a sessão da trava caía ali e o serviço seguia
+  escrevendo. Teste em `voz-service-posse.test.ts` (o `Prisma` mockado: o
+  client gerado do worktree não resolve em teste).
+- 🔴 **A marca de indexado só é publicada por compare-and-set no CICLO**
+  (PR13-39, `metadata.cicloDeIndexacao`): quem começa a indexar — a criação
+  do fato pela migração (o token vai no `metadata` de `criarEntradaBase`) e
+  `reindexEntry` (SEMPRE carimba, com ou sem marca anterior) — grava um token
+  próprio; `marcarFatoIndexado(…, ciclo)` e a reposição da marca em
+  `reindexEntry` são `updateMany` onde `cicloDeIndexacao = <meu token>`, e
+  `count 0` LANÇA ("outra indexação assumiu a entrada"). A API administrativa
+  de reindex não participa da trava por projeto: sem o token, ela apagava
+  chunks e vetores no meio, a migração atrasada gravava a marca por cima, e
+  `classificarFato` lia `completo` uma linha vazia — a voz ativava sem a
+  busca. Limite declarado: os vetores da execução perdedora podem subir
+  depois (mesmo `vectorId` por chunk — o upsert sobrescreve, não duplica); o
+  que a marca atesta continua sendo o ciclo que fechou por último.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
