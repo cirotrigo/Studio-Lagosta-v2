@@ -386,6 +386,38 @@ async function main() {
       conferir('R37: arte de post-schedule RE-RENDERIZADA num post vivo volta com a PÁGINA atual (origem "pagina"), nunca a copy antiga preservada no fieldValues', !!i37 && i37.textosOrigem === 'pagina' && temSemCaixa(i37.textos, textoDoModelo) && !JSON.stringify(i37).includes('copy ANTIGA'), JSON.stringify({ textos: i37?.textos, origem: i37?.textosOrigem }).slice(0, 220))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3f.json'), JSON.stringify(agenda3f, null, 2))
 
+      // R38 (revisão final de 8c60437c): reagendar PELO SERVIÇO uma Generation re-renderizada não copia a copy
+      // antiga para o post — depois da entrega, sem registro confiável, os textos são declarados indisponíveis;
+      // o controle é a Generation NÃO re-renderizada, cuja copy é legítima e volta (parcial).
+      console.log('3g) agendarPost por generationId de uma arte post-schedule RE-RENDERIZADA não herda a copy antiga: entregue, os textos ficam indisponíveis (R38); a não re-renderizada é o controle')
+      const { agendarPost } = await import('../src/lib/creatives/agendar')
+      const blobHost = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/prova-pr6'
+      const genRR2 = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-rerender-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A invalidada` }, recomposicao: { estado: 're-renderizada' } } as never }, select: { id: true, resultUrl: true } })
+      const genCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-controle-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy B legítima` } } as never }, select: { id: true } })
+      geracoes.push(genRR2.id, genCtl.id)
+      const dia3g = somarDias(hoje, 9)
+      const agRR = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3g} 10:00`, generationId: genRR2.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3g re-renderizada` })
+      const agCtl = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3g} 11:00`, generationId: genCtl.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3g controle` })
+      posts.push(agRR.postId, agCtl.postId)
+      const postRR = await db.socialPost.findUnique({ where: { id: agRR.postId }, select: { slotValues: true, pageId: true, mediaUrls: true } })
+      const postCtl = await db.socialPost.findUnique({ where: { id: agCtl.postId }, select: { slotValues: true } })
+      conferir('R38: o post reagendado da arte re-renderizada nasce sem página, com a mídia dela e SEM cópia textual (a copy A não é copiada); o serviço avisa', postRR?.pageId === null && postRR.mediaUrls[0] === genRR2.resultUrl && !JSON.stringify(postRR.slotValues ?? {}).includes('copy A invalidada') && /re-renderizada/.test(String((agRR as { aviso?: string }).aviso ?? '')), JSON.stringify({ slot: postRR?.slotValues, aviso: (agRR as { aviso?: string }).aviso }).slice(0, 200))
+      conferir('controle: o post da arte NÃO re-renderizada nasce com a copy B legítima', JSON.stringify(postCtl?.slotValues ?? {}).includes('copy B legítima'), JSON.stringify(postCtl?.slotValues).slice(0, 120))
+      // entregues (no publicador e publicado): sem registro confiável da mídia B, os textos são declarados; a copy A não aparece
+      await db.socialPost.update({ where: { id: agRR.postId }, data: { status: 'SCHEDULED', laterPostId: `prova-${Date.now()}` } })
+      await db.socialPost.update({ where: { id: agCtl.postId }, data: { status: 'POSTED' } })
+      const agenda3g = await tool('ver-agenda', { projectId: PROJETO, from: dia3g, to: dia3g })
+      const itens3g = (agenda3g.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const iRR = itens3g.find((i) => i.postId === agRR.postId), iCtl = itens3g.find((i) => i.postId === agCtl.postId)
+      conferir('R38: entregue (no publicador), a arte re-renderizada volta com `textosIndisponiveis` — nunca a copy A', !!iRR && !('textos' in iRR) && !!iRR.textosIndisponiveis && !JSON.stringify(iRR).includes('copy A invalidada'), JSON.stringify({ ind: iRR?.textosIndisponiveis, textos: iRR?.textos }).slice(0, 200))
+      conferir('controle: publicada, a arte não re-renderizada volta com a copy B legítima (parcial, origem "arte")', !!iCtl && JSON.stringify(iCtl.textos) === JSON.stringify([`${MARCA} copy B legítima`]) && iCtl.textosParciais === true && iCtl.textosOrigem === 'arte', JSON.stringify({ textos: iCtl?.textos, origem: iCtl?.textosOrigem }).slice(0, 200))
+      // POSTED também
+      await db.socialPost.update({ where: { id: agRR.postId }, data: { status: 'POSTED' } })
+      const agenda3gB = await tool('ver-agenda', { projectId: PROJETO, from: dia3g, to: dia3g })
+      const iRRB = (agenda3gB.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === agRR.postId)
+      conferir('R38: publicada, idem — indisponível, sem a copy A', !!iRRB && !('textos' in iRRB) && !!iRRB.textosIndisponiveis && !JSON.stringify(iRRB).includes('copy A invalidada'))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3g.json'), JSON.stringify(agenda3gB, null, 2))
+
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
       console.log('3e) carrossel PUBLICADO com cópia A no post, slide re-renderizado e slide sem arte: nada é afirmado — indisponível, slide a slide')
       const dia3e = somarDias(hoje, 8)

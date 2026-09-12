@@ -6489,6 +6489,16 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   copy — afirmá-la seria atribuir texto de outra versão à mídia, contornando
   R13. Com `reRenderizada`, vale o tratamento de sempre: página atual na peça
   viva; cópia registrada ou indisponível na entregue.
+  🔴 E `agendarPost` NÃO copia para o post a copy de uma Generation
+  re-renderizada (R38): reagendar por `generationId` (ou por `mediaUrls`
+  casada pela URL) gravava os `slotValues` antigos em `SocialPost.slotValues`,
+  e depois da entrega o fallback `copy-do-post` devolvia a copy A pela mídia B
+  — declarar parcial não conserta texto já invalidado. O post nasce SEM cópia
+  textual (com aviso) e a agenda declara os textos indisponíveis até um render
+  com registro. A cópia legítima (arte não re-renderizada) continua sendo
+  copiada. Quando a recuperação passar a REGRAVAR a copy visual junto do PNG
+  (REV-127-F02 do PR 0), o marcador dessa regravação é o que deve reabilitar a
+  cópia — não a ausência da marca de re-render.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito

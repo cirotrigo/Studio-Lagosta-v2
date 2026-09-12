@@ -21,6 +21,16 @@
  *
  * `sourcePageId`: a coluna vence; o Json só é lido para linhas antigas e nunca
  * para `ajuste-arte`, em que aponta para a própria cópia ajustada.
+ *
+ * `copyInvalidada` (R38 da revisão final do PR 6): a arte RE-RENDERIZADA como a
+ * página estava (`recomposicao.estado === 're-renderizada'`) trocou a URL e os
+ * `slotValues` dela podem ser os da versão anterior — copiá-los para o post
+ * reagendado por `generationId` (ou por `mediaUrls` casada pela URL) fazia a
+ * agenda atribuir à mídia B um texto da versão A. Com a marca, os `slotValues`
+ * não viram copy VISUAL nem proposta; a proposta de aprendizado preservada
+ * (`copyDeAprendizado`, REV-93D-02) continua valendo. Quando a regravação da
+ * copy visual junto do PNG (REV-127-F02) ganhar um marcador próprio, é ele que
+ * deve reabilitar a cópia — não a ausência da marca de re-render.
  */
 import { chaveUnicaDeTexto, lerCamadas } from '@/lib/posts/page-layers'
 
@@ -72,10 +82,12 @@ export function copyVisualDasCamadas(layers: unknown): Record<string, string> | 
 export function lerProcedencia(
   fieldValues: unknown,
   colunaSourcePageId: string | null,
-): { copyProposta: Record<string, unknown> | null; copyVisual: Record<string, unknown> | null; sourcePageId: string | null } {
+): { copyProposta: Record<string, unknown> | null; copyVisual: Record<string, unknown> | null; sourcePageId: string | null; copyInvalidada: boolean } {
   const fv = objeto(fieldValues) ?? {}
-  const copyVisual = objeto(fv.slotValues)
+  const slotValues = objeto(fv.slotValues)
+  const copyInvalidada = objeto(fv.recomposicao)?.estado === 're-renderizada' && slotValues !== null
+  const copyVisual = copyInvalidada ? null : slotValues
   const copyProposta = objeto(fv.copyDeAprendizado) ?? copyVisual
   const doJson = fv.source !== 'ajuste-arte' && typeof fv.sourcePageId === 'string' ? fv.sourcePageId : null
-  return { copyProposta, copyVisual, sourcePageId: colunaSourcePageId ?? doJson }
+  return { copyProposta, copyVisual, sourcePageId: colunaSourcePageId ?? doJson, copyInvalidada }
 }

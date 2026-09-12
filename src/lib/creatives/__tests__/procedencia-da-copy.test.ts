@@ -50,6 +50,19 @@ describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-
     expect(copyVisualDasCamadas(camadas)).toEqual({ Texto: 'Almoço executivo', 'Texto#2': ' Até 15h ', 'Texto#3': 'Terceiro', texto: 'Sem nome nem id' })
   })
 
+  it('R38: arte re-renderizada com slotValues — a copy invalidada não vira copy visual nem proposta; a proposta de aprendizado preservada continua', () => {
+    const reRenderizada = { recomposicao: { estado: 're-renderizada' }, slotValues: { headline: 'Versão A' } }
+    expect(lerProcedencia(reRenderizada, null)).toMatchObject({ copyProposta: null, copyVisual: null, copyInvalidada: true })
+    expect(lerProcedencia({ ...reRenderizada, copyDeAprendizado: { headline: 'Versão A', cta: 'Escondido' } }, null)).toMatchObject({
+      copyProposta: { headline: 'Versão A', cta: 'Escondido' },
+      copyVisual: null,
+      copyInvalidada: true,
+    })
+    // controle: recomposição FEITA (não re-render) e re-render sem slotValues não invalidam nada
+    expect(lerProcedencia({ recomposicao: { estado: 'feita' }, slotValues: { headline: 'B' } }, null)).toMatchObject({ copyVisual: { headline: 'B' }, copyInvalidada: false })
+    expect(lerProcedencia({ recomposicao: { estado: 're-renderizada' } }, null)).toMatchObject({ copyVisual: null, copyInvalidada: false })
+  })
+
   it('sourcePageId: a coluna vence; o Json só vale fora de ajuste-arte', () => {
     expect(lerProcedencia({ sourcePageId: 'p-json' }, 'p-col').sourcePageId).toBe('p-col')
     expect(lerProcedencia({ sourcePageId: 'p-json' }, null).sourcePageId).toBe('p-json')
