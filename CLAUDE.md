@@ -6978,6 +6978,36 @@ Da segunda revisão FINAL (BLOQUEADO, PR13-27…28):
   encerrar porque nada foi tocado), e `abortar` LANÇA `ProvaAbortada` — o
   `finally` restaura voz e DNA, e o `main().catch` encerra com o motivo.
 
+Da terceira revisão FINAL (BLOQUEADO, PR13-29…30):
+
+- 🔴 **DISPONIBILIDADE de item, canal e preparo também é condição da casa**
+  (PR13-29): "Assunto exclusivo da Praia do Canto (Semifreddo de Pistache…)"
+  (Real), "cervejas além da IPA, bebida sem álcool além do café expresso"
+  (Wine Vix), "WhatsApp, link de pedido ou botão de compra: não existem"
+  (Real), "encomenda só com garçom ou gerente, sem site ou app; sem delivery"
+  (Bacana), "(retirada sim)" (Espeto) e "a casa não tem brasa, os cortes são
+  grelhados" (By Rock) passavam pelos detectores — cadastrar o item em outra
+  unidade, ampliar o cardápio ou abrir um canal na base deixava a voz impondo
+  a restrição velha. `condicoesOperacionais` pega exclusividade de unidade
+  (`exclusivo da <Nome>`), cardápio restrito a item (`<bebida> além da`),
+  canal/serviço afirmado (`<canal>… não existem`, `sem site/app/delivery`,
+  `só com garçom`, `retirada sim`) e preparo afirmado (`a casa não tem
+  brasa`, `são grelhados`). As seis propostas trocaram a frase pela
+  orientação editorial com a condição devolvida à base ("item fora do
+  cardápio da base", "canal que a base não registra", "quais itens são
+  exclusivos, e de qual unidade, vem da base na data da peça"); o teste roda
+  as seis frases reais e as seis redações corrigidas; prévias regeradas.
+  A régua que fica: **a voz diz COMO falar; TUDO o que pode mudar com a
+  operação (dia, período, item, unidade, canal, preparo, preço) é fato da
+  base, e a proposta só pode apontar para a base.**
+- 🔴 **O CACHE de busca (Redis) segue a régua do indexador** (PR13-30,
+  `isolamentoDoCache`): `--dev` trocava SQL e Vector e herdava o
+  `UPSTASH_REDIS_*` do `.env` — criar ou reindexar um fato no dev chamava
+  `invalidateProjectCache` e incrementava a versão do cache de PRODUÇÃO. Em
+  dev só o Redis PRÓPRIO do `.env.development.local` (URL e token, URL
+  diferente da de produção); sem ele as variáveis saem do processo e o cache
+  vira no-op limpo. A prova (`apontarParaODev`) faz o mesmo com Redis e Vector.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

@@ -15,6 +15,7 @@ import {
   condicoesOperacionais,
   fatosNaVoz,
   fatosNoDna,
+  isolamentoDoCache,
   isolamentoDoIndexador,
   lerManifesto,
   diaExiste,
@@ -339,6 +340,50 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
       const voz = vozDeTeste({ proibicoes: [frase] })
       expect(problemasParaMigrar(voz).some((p) => /condi/i.test(p)), frase).toBe(true)
     }
+  })
+
+  it('PR13-29: exclusividade de unidade, cardápio restrito, canal/serviço afirmado e preparo afirmado são condição — detectados no DNA e recusados na voz; a orientação "vem da base" passa', () => {
+    const reais = [
+      'Assunto exclusivo da Praia do Canto (Semifreddo de Pistache, Suco de Frutas Vermelhas) exige peça nomeando essa unidade.',
+      'item fora do cardápio (cervejas além da IPA, bebida sem álcool além do café expresso, Cheesecake Basca, a versão antiga do executivo)',
+      'WhatsApp, link de pedido ou botão de compra: não existem, não inventar',
+      'prometer o que não fazemos: encomenda só com garçom ou gerente, sem site ou app; sem delivery; inventar happy hour ou campanha semanal',
+      'WhatsApp, telefone, CEP, estacionamento, delivery e aplicativos de entrega (retirada sim)',
+      'técnica ou equipamento de preparo (brasa, chapa, forno, defumação): a casa não tem brasa, os cortes são grelhados; "chapa" só como travessa',
+    ]
+    expect(condicoesOperacionais(reais[0])).toEqual(['exclusividade de unidade'])
+    expect(condicoesOperacionais(reais[1])).toEqual(['cardápio restrito a item'])
+    expect(condicoesOperacionais(reais[2])).toEqual(['canal ou serviço afirmado'])
+    expect(condicoesOperacionais(reais[3])).toEqual(['canal ou serviço afirmado'])
+    expect(condicoesOperacionais(reais[4])).toEqual(['canal ou serviço afirmado'])
+    expect(condicoesOperacionais(reais[5])).toEqual(['preparo afirmado'])
+    // As redações corrigidas — orientação editorial com a condição devolvida à base — passam.
+    for (const t of [
+      'Assunto exclusivo de uma unidade exige peça nomeando essa unidade; quais itens são exclusivos, e de qual unidade, vem da base na data da peça.',
+      'item fora do cardápio da base (bebida, sobremesa ou versão do executivo que a base não registra na data da peça)',
+      'canal de pedido ou botão de compra que a base não registra (os canais existentes vêm da base)',
+      'prometer canal, serviço ou programação que a base não registra (encomenda, delivery, site, app, happy hour, campanha): o que a casa oferece vem da base',
+      'WhatsApp, telefone, CEP, estacionamento, delivery e aplicativos de entrega; retirada só como a base registra',
+      'técnica ou equipamento de preparo que a base não registra (brasa, chapa, forno, defumação): o modo de preparo dos cortes vem da base; "chapa" só como travessa',
+      'Solicite pelo Direct',
+      'sabor, combinação ou produto fora do cardápio da base',
+    ]) {
+      expect(condicoesOperacionais(t), t).toEqual([])
+    }
+    const noDna = fatosNoDna({ toneOfVoice: null, contentRules: `${reais[0]}\nNunca prometa: ${reais[3]}.` })
+    expect(noDna.map((f) => f.tipos)).toEqual([['condicao'], ['condicao']])
+    for (const frase of reais) {
+      const voz = vozDeTeste({ proibicoes: [frase] })
+      expect(problemasParaMigrar(voz).some((p) => /condi/i.test(p)), frase).toBe(true)
+    }
+  })
+
+  it('PR13-30: o cache de busca (Redis) tem a mesma régua do indexador — isolado só com URL e token próprios e URL diferente da de produção', () => {
+    const prod = { UPSTASH_REDIS_REST_URL: 'https://prod-redis.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'p' }
+    expect(isolamentoDoCache(prod, {})).toBe('ausente')
+    expect(isolamentoDoCache(prod, { UPSTASH_REDIS_REST_URL: 'https://dev-redis.upstash.io' })).toBe('ausente')
+    expect(isolamentoDoCache(prod, prod)).toBe('producao')
+    expect(isolamentoDoCache(prod, { UPSTASH_REDIS_REST_URL: 'https://dev-redis.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'd' })).toBe('isolado')
   })
 
   it('PR13-07: condicoesOperacionais pega mecânica, janela de dias e período; vocabulário citado entre aspas e o nome da mecânica nos TERMOS não contam', () => {

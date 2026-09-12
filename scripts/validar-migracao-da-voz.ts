@@ -94,6 +94,15 @@ function apontarParaODev(): string {
   if (!dev.DATABASE_URL) sairAntesDeComecar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
   for (const [k, v] of Object.entries(prod)) if (!(k in process.env)) process.env[k] = v
   for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
+  // PR13-30: o cache de busca (Redis) e o indexador (Vector) herdados do .env seriam os de PRODUÇÃO — em dev só o
+  // isolado do .env.development.local, senão nenhum (a invalidação do cache vira no-op).
+  for (const [urlKey, tokenKey] of [['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'], ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN']] as const) {
+    const isolado = dev[urlKey]?.trim() && dev[tokenKey]?.trim() && dev[urlKey].trim() !== prod[urlKey]?.trim()
+    for (const k of [urlKey, tokenKey]) {
+      if (isolado) process.env[k] = dev[k]
+      else delete process.env[k]
+    }
+  }
   const alvo = endpointDe(process.env.DATABASE_URL)
   const producao = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
   if (producao.size === 0) sairAntesDeComecar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')

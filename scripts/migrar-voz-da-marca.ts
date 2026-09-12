@@ -45,6 +45,7 @@ import {
   type Manifesto,
   type PreviaDaMigracao,
   chaveDoFato,
+  isolamentoDoCache,
   isolamentoDoIndexador,
   podeIndexar,
   problemasParaMigrar,
@@ -62,6 +63,7 @@ import {
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
 const VECTOR_KEYS = ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN'] as const
+const REDIS_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'] as const
 
 function parseEnvFile(caminho: string): Record<string, string> {
   if (!existsSync(caminho)) return {}
@@ -122,6 +124,16 @@ export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; pro
     if (fonteDoIndexador[k]) process.env[k] = fonteDoIndexador[k]
     else delete process.env[k]
   }
+  // O CACHE de busca (Redis) pela mesma régua (PR13-30): `invalidateProjectCache` roda ao criar e ao reindexar um
+  // fato, e o Redis de produção herdado do .env em --dev teria a versão do cache de PRODUÇÃO incrementada. Em dev
+  // só o Redis isolado do .env.development.local; sem ele, sem as variáveis — o cache vira no-op limpo.
+  const cache = isolamentoDoCache(prod, dev)
+  const fonteDoCache = opcoes.dev ? (cache === 'isolado' ? dev : {}) : prod
+  for (const k of REDIS_KEYS) {
+    if (fonteDoCache[k]) process.env[k] = fonteDoCache[k]
+    else delete process.env[k]
+  }
+  if (opcoes.dev && cache !== 'isolado') console.log('  cache de busca (Redis): desligado neste processo — o .env.development.local não declara um UPSTASH_REDIS_* próprio (PR13-30)')
   const alvo = endpointDe(process.env.DATABASE_URL)
   const producaoSet = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
   if (producaoSet.size === 0) abortar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')

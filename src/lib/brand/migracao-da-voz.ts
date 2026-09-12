@@ -186,6 +186,13 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
   { re: new RegExp(`\\b(?:noturn[oa]s?|matinal|matutin[oa]|vespertin[oa]|de\\s+(?:almo[çc]o|jantar|manh[ãa]))\\s+(?:em|a[os]?|às?|n[ao]s?)\\s+(?:o\\s+|a\\s+)?${DIA}`, 'i'), rotulo: 'período por dia' },
   { re: new RegExp(`\\b${DIA}\\s+(?:nada|sem|s[óo])\\s+(?:noturn[oa]|de\\s+(?:almo[çc]o|jantar|manh[ãa])|à\\s+noite|de\\s+dia)`, 'i'), rotulo: 'período por dia' },
   { re: new RegExp(`\\bprograma[çc][ãa]o\\s+(?:em|a[os]?|às?|n[ao]s?)\\s+(?:o\\s+|a\\s+)?${DIA}`, 'i'), rotulo: 'programação por dia' },
+  // PR13-29: DISPONIBILIDADE de item, canal e preparo também é condição da casa — "exclusivo da Praia do Canto",
+  // "cervejas além da IPA", "não existem"/"sem site ou app"/"só com garçom"/"retirada sim", "a casa não tem brasa,
+  // os cortes são grelhados" mudam com a operação e têm de vir da base. A orientação genérica ("vem da base") passa.
+  { re: /\bexclusiv[oa]s?\s+(?:d[aeo]s?|n[ao]s?)\s+(?:o\s+|a\s+)?[A-ZÀ-Ú]/, rotulo: 'exclusividade de unidade' },
+  { re: /\b(?:cervejas?|bebidas?|drinks?|vinhos?|sobremesas?|pratos?|sabores?)\s+(?:sem\s+[áa]lcool\s+)?al[ée]m\s+d[aeo]s?\b/i, rotulo: 'cardápio restrito a item' },
+  { re: /\b(?:whatsapp|site|app|aplicativo|delivery|entrega|encomendas?|link\s+de\s+pedido|bot[ãa]o\s+de\s+compra|telefone)\b[^.;]{0,40}\bn[ãa]o\s+(?:existem?|temos|fazemos|oferecemos)\b|\bn[ãa]o\s+(?:temos|fazemos|oferecemos|trabalhamos\s+com)\s+(?:whatsapp|site|app|aplicativo|delivery|entrega|encomendas?)\b|\bsem\s+(?:site|app|aplicativo|delivery|entrega)\b|\b(?:s[óo]|apenas|somente)\s+(?:com|pel[oa]|por|via)\s+(?:o\s+|a\s+)?(?:gar[çc]om|gerente|balc[ãa]o|direct|whatsapp|telefone)\b|\bretirada\s+sim\b/i, rotulo: 'canal ou serviço afirmado' },
+  { re: /\b(?:casa|cozinha|restaurante)\s+(?:n[ãa]o\s+)?(?:tem|usa|trabalha\s+com)\s+(?:brasa|chapa|forno|defuma[çc][ãa]o|grelha)\b|\bs[ãa]o\s+grelhad[oa]s\b/i, rotulo: 'preparo afirmado' },
 ]
 
 /**
@@ -526,10 +533,26 @@ export interface DestinoDaAplicacao {
  * (PR13-01).
  */
 export function isolamentoDoIndexador(prod: Record<string, string | undefined>, alvo: Record<string, string | undefined>): Indexador {
-  const url = alvo.UPSTASH_VECTOR_REST_URL?.trim()
-  const token = alvo.UPSTASH_VECTOR_REST_TOKEN?.trim()
+  return isolamentoDoServico(prod, alvo, 'UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN')
+}
+
+/**
+ * O CACHE de busca da base (Redis do Upstash) segue a mesma régua do indexador
+ * (PR13-30): `invalidateProjectCache` roda ao criar e ao reindexar um fato, e
+ * um `UPSTASH_REDIS_*` herdado do `.env` em `--dev` incrementaria a versão do
+ * cache de PRODUÇÃO (e apagaria chaves dela). Em dev só o Redis PRÓPRIO do
+ * `.env.development.local`; sem ele o cache é desligado (sem as variáveis o
+ * caminho é no-op limpo).
+ */
+export function isolamentoDoCache(prod: Record<string, string | undefined>, alvo: Record<string, string | undefined>): Indexador {
+  return isolamentoDoServico(prod, alvo, 'UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN')
+}
+
+function isolamentoDoServico(prod: Record<string, string | undefined>, alvo: Record<string, string | undefined>, urlKey: string, tokenKey: string): Indexador {
+  const url = alvo[urlKey]?.trim()
+  const token = alvo[tokenKey]?.trim()
   if (!url || !token) return 'ausente'
-  return url === prod.UPSTASH_VECTOR_REST_URL?.trim() ? 'producao' : 'isolado'
+  return url === prod[urlKey]?.trim() ? 'producao' : 'isolado'
 }
 
 /**
