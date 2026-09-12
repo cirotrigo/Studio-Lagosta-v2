@@ -223,6 +223,26 @@ export interface Ocupante {
 }
 
 /** O slot está ocupado quando há post do MESMO formato a até `toleranciaMin` dele. */
+/**
+ * A janela de CONSULTA da ocupação: a pedida, alargada pela tolerância dos dois
+ * lados (R27 da revisão de 2848096f). A consulta que começava exatamente no
+ * início da janela não trazia o story de domingo 23h45 — e o slot de segunda
+ * 0h saía livre a 15 minutos dele. Sugestões, `ocupacao` e `jaNaAgenda`
+ * continuam limitados à janela pedida (`dentroDaJanela`); só a detecção de
+ * conflito enxerga a borda.
+ */
+export function janelaDeConsultaDeOcupacao(janela: { inicio: Date; fim: Date }, toleranciaMin: number): { inicio: Date; fim: Date } {
+  const folga = Math.max(0, toleranciaMin) * 60_000
+  return { inicio: new Date(janela.inicio.getTime() - folga), fim: new Date(janela.fim.getTime() + folga) }
+}
+
+/** O instante cai DENTRO da janela pedida (bordas inclusivas)? */
+export function dentroDaJanela(quando: Date | null | undefined, janela: { inicio: Date; fim: Date }): boolean {
+  if (!quando) return false
+  const t = quando.getTime()
+  return t >= janela.inicio.getTime() && t <= janela.fim.getTime()
+}
+
 export function slotOcupado(ocupados: Ocupante[], quandoUTC: number, formato: FormatoDaPeca, toleranciaMin: number): boolean {
   const tol = toleranciaMin * 60_000
   return ocupados.some((o) => o.formato === formato && Math.abs(o.t - quandoUTC) <= tol)

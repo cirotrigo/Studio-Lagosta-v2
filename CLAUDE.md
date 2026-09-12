@@ -6281,6 +6281,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   enquanto o slot é uma proposta VÁLIDA (o manual vence). Antes o efeito só
   preenchia `!slot`: o story das 19h pré-selecionado sobrevivia à troca para
   feed e a peça entrava nas mesmas 19h, em cima do feed que ocupava o horário.
+  🔴 **A consulta de ocupação vai além da janela pela tolerância do slot**
+  (`janelaDeConsultaDeOcupacao`, 45 min dos dois lados; R27 da revisão de
+  2848096f): a consulta que começava exatamente no início da janela não trazia
+  o story de domingo 23h45, e o slot de segunda 0h saía livre a 15 minutos
+  dele. Só a DETECÇÃO de conflito enxerga a borda; sugestões, `ocupacao` e
+  `jaNaAgenda` continuam limitados à janela pedida (`dentroDaJanela`).
 - 🔴 **A grade aprovada tem precedência por dia E FORMATO**
   (`fundirGradeComCadencia(…, { formatoDe })`): ela é de story, então
   substitui os horários de STORY do dia que cobre e mantém o FEED que o
@@ -6393,6 +6399,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   corte de uso compara o DIA EM BRASÍLIA (`diaDoUso`): um uso às 02:30Z de
   segunda é domingo à noite aqui, e `evitarUsadasDesde: segunda` não pode
   excluí-lo; a data pura do catálogo legado fica como está.
+  🔴 **Para EXCLUIR, o dia do último uso funde banco e legado DEPOIS de converter
+  cada fonte para o dia em Brasília** (`diaDoUltimoUso`, R26 da revisão de
+  2848096f): `mesclarUsos` compara os textos, e o timestamp do banco
+  ("…07T02:30Z", domingo 6 aqui) vencia a data pura do legado ("2026-09-07")
+  — a foto usada no dia 7 escapava de `evitarUsadasDesde: 2026-09-07` com a
+  exclusão dada como cumprida. Para ORDENAR o rodízio `mesclarUsos` continua.
   🔴 **Com corte por uso, a identidade da proposta leva o conjunto
   EFETIVAMENTE excluído** (`resumo.idsPorUso` → `identidadeDaExclusao`): a
   lista que a pessoa vê muda quando uma foto do topo é usada no meio do dia,

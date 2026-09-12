@@ -50,6 +50,8 @@ import {
   janelaDaSugestao,
   montarGradeDaSemana,
   slotOcupado,
+  janelaDeConsultaDeOcupacao,
+  dentroDaJanela,
   type DiaDaGrade,
   type FormatoDaPeca,
   type Ocupante,
@@ -219,7 +221,12 @@ export async function sugerirPosts(params: {
       where: {
         projectId,
         status: { in: ['DRAFT', 'SCHEDULED'] },
-        scheduledDatetime: { gte: janela.inicio, lte: janela.fim },
+        // A CONSULTA vai além da janela pela tolerância do slot (45 min) dos
+        // dois lados: o story de domingo 23h45 ocupa o slot de segunda 0h, e
+        // uma consulta que começava na segunda não o via (R27). O que a
+        // resposta LISTA (`ocupacao`, `jaNaAgenda`) continua sendo só o que
+        // cai dentro da janela pedida — ver `naJanela` abaixo.
+        scheduledDatetime: { gte: janelaDeConsultaDeOcupacao(janela, TOLERANCIA_SLOT_MIN).inicio, lte: janelaDeConsultaDeOcupacao(janela, TOLERANCIA_SLOT_MIN).fim },
         // Sem filtro de escopo: um post pontual OCUPA o horário do mesmo
         // jeito, e sugerir em cima dele empilharia dois posts.
       },
@@ -384,7 +391,10 @@ export async function sugerirPosts(params: {
   const { grade: gradeDaSemana, excecoes } = montarGradeDaSemana(slotsFinais, formatoDoSlot)
 
   // ── O que já ocupa a janela, por formato ─────────────────────────────────
-  const ocupacao: OcupacaoDaJanela[] = futuros
+  // O que a resposta lista é o que está DENTRO da janela pedida; os posts da
+  // borda (até 45 min fora) só servem à detecção de conflito (R27).
+  const naJanela = futuros.filter((p) => dentroDaJanela(p.scheduledDatetime, janela))
+  const ocupacao: OcupacaoDaJanela[] = naJanela
     .filter((p) => p.scheduledDatetime)
     .map((p) => {
       const brt = new Date(p.scheduledDatetime!.getTime() - 3 * 3600_000)
@@ -449,7 +459,7 @@ export async function sugerirPosts(params: {
     grade: gradeDaSemana,
     excecoes,
     ocupacao,
-    jaNaAgenda: futuros.length,
+    jaNaAgenda: naJanela.length,
     sugestoes,
     sinaisRegistrados: registrar,
     avisos,

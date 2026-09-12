@@ -20,7 +20,7 @@ import {
   type PilarParaBusca,
   type PreferenciasDeFoto,
 } from '@/lib/creatives/ranquear-acervo'
-import { excluirFotos, identidadeDaExclusao, normalizarExclusao } from '@/lib/creatives/excluir-fotos'
+import { diaDoUltimoUso, excluirFotos, identidadeDaExclusao, normalizarExclusao } from '@/lib/creatives/excluir-fotos'
 import { dataValida } from '@/lib/posts/contexto-da-semana'
 import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
@@ -381,9 +381,20 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * "nunca usada", que é como `ranquearAcervo` desempata.
    */
   const ultimoUso = new Map<string, string>()
+  /**
+   * O DIA em Brasília do último uso, por foto — para a EXCLUSÃO por data, que
+   * compara dias: cada fonte vira dia ANTES de escolher a mais recente. Fundir
+   * pelo texto (`mesclarUsos`) deixava o timestamp do banco vencer a data do
+   * legado que caía num dia posterior em Brasília (R26).
+   */
+  const diaDoUso = new Map<string, string>()
   for (const i of todas) {
-    const uso = mesclarUsos(usos.get(i.driveFileId), ultimoUsoDoCatalogo(i))
+    const doBanco = usos.get(i.driveFileId)
+    const doCatalogo = ultimoUsoDoCatalogo(i)
+    const uso = mesclarUsos(doBanco, doCatalogo)
     if (uso) ultimoUso.set(i.driveFileId, uso)
+    const dia = diaDoUltimoUso(doBanco?.ultimoUso, doCatalogo)
+    if (dia) diaDoUso.set(i.driveFileId, dia)
   }
 
   /**
@@ -409,7 +420,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * registrada — o que se registra é o que a pessoa viu. Data inválida em
    * `evitarUsadasDesde` não exclui nada e vira aviso.
    */
-  const exclusao = excluirFotos(ranqueadasTodas, { ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, ultimoUso)
+  const exclusao = excluirFotos(ranqueadasTodas, { ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, diaDoUso)
   if (input.evitarUsadasDesde && !dataValida(input.evitarUsadasDesde)) {
     avisos.push(`evitarUsadasDesde ignorado: "${input.evitarUsadasDesde}" não é uma data AAAA-MM-DD que exista no calendário.`)
   }

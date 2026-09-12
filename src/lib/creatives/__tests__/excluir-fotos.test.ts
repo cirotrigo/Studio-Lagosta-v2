@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diaDoUso, excluirFotos, identidadeDaExclusao, normalizarExclusao } from '../excluir-fotos'
+import { diaDoUltimoUso, diaDoUso, excluirFotos, identidadeDaExclusao, normalizarExclusao } from '../excluir-fotos'
 
 const lista = ['a', 'b', 'c', 'd'].map((id) => ({ imagem: { driveFileId: id }, score: 1 }))
 const usos = new Map([
@@ -64,6 +64,20 @@ describe('a exclusão de fotos da lista ranqueada', () => {
     expect(identidadeDaExclusao({ usadasDesde: '2026-09-10' }, ['b', 'b'])).toBe(depoisDoUso)
     expect(identidadeDaExclusao({ ids: ['a'] }, ['b'])).toBe(identidadeDaExclusao({ ids: ['a'] }, []))
   })
+  it('o dia do último uso funde banco e legado DEPOIS de converter cada um para o dia em Brasília (R26): banco 02:30Z de segunda (domingo aqui) + legado "segunda" → segunda; a foto sai com "desde segunda", porUso 1', () => {
+    // `mesclarUsos` (texto) escolheria o timestamp — que é dia 6 em Brasília — e a foto escaparia do corte de dia 7
+    expect(diaDoUltimoUso('2026-09-07T02:30:00.000Z', '2026-09-07')).toBe('2026-09-07')
+    expect(diaDoUltimoUso('2026-09-07T02:30:00.000Z', undefined)).toBe('2026-09-06')
+    expect(diaDoUltimoUso(undefined, '2026-09-07')).toBe('2026-09-07')
+    expect(diaDoUltimoUso(null, null)).toBeNull()
+    expect(diaDoUltimoUso('2026-09-09T15:00:00.000Z', '2026-09-07')).toBe('2026-09-09')
+    const dias = new Map([['b', diaDoUltimoUso('2026-09-07T02:30:00.000Z', '2026-09-07')!]])
+    const r = excluirFotos(lista, { usadasDesde: '2026-09-07' }, dias)
+    expect(r.mantidas.map((m) => m.imagem.driveFileId)).toEqual(['a', 'c', 'd'])
+    expect(r.resumo.porUso).toBe(1)
+    expect(r.resumo.idsPorUso).toEqual(['b'])
+  })
+
   it('data inválida não exclui nada (quem chama avisa)', () => {
     expect(excluirFotos(lista, { usadasDesde: '15/09/2026' }, usos).mantidas).toHaveLength(4)
   })

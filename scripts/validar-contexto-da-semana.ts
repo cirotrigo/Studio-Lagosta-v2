@@ -183,6 +183,20 @@ async function main() {
       const ocupFeed = s2.ocupacao.find((o) => o.postId === feed.id)
       const ocupStory = s2.ocupacao.find((o) => o.postId === story.id)
       conferir('a ocupação lista os dois, com formato, data/hora em Brasília e situação', ocupFeed?.formato === 'feed' && ocupFeed.situacao === 'rascunho' && ocupStory?.formato === 'story' && `${ocupStory.data} ${ocupStory.hora}` === outroSlot.scheduledDatetime, JSON.stringify({ feed: ocupFeed, story: ocupStory }).slice(0, 220))
+
+      // ── 2b. a borda da janela (R27) ──
+      console.log('2b) um story 15 min ANTES do início da janela é visto pela detecção de conflito, mas não entra na listagem (ocupação/jaNaAgenda) nem move a janela')
+      const inicioDaJanela = new Date(`${segunda}T00:00:00-03:00`)
+      const naBorda = await db.socialPost.create({
+        data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} story 15 min antes da janela`, mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(inicioDaJanela.getTime() - 15 * 60_000), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED' },
+        select: { id: true },
+      })
+      posts.push(naBorda.id)
+      const s2b = await sugerirPosts({ projectId: PROJETO, inicio: segunda, fim: domingo, registrarSugestoes: false })
+      conferir('o story da borda NÃO aparece em ocupacao nem conta em jaNaAgenda; a janela não mudou', !s2b.ocupacao.some((o) => o.postId === naBorda.id) && s2b.jaNaAgenda === s2.jaNaAgenda && s2b.janela.inicio === segunda && s2b.janela.fim === domingo, JSON.stringify({ jaNaAgenda: [s2.jaNaAgenda, s2b.jaNaAgenda] }))
+      const slotColado = s2.sugestoes.find((s) => s.formato === 'story' && Math.abs(new Date(`${s.scheduledDatetime.replace(' ', 'T')}:00-03:00`).getTime() - inicioDaJanela.getTime()) <= 30 * 60_000)
+      if (slotColado) conferir(`o slot de story colado ao início (${slotColado.scheduledDatetime}) deixou de ser sugerido por causa do story da borda`, !s2b.sugestoes.some((s) => s.scheduledDatetime === slotColado.scheduledDatetime && s.formato === 'story'))
+      else console.log('  ○ não há slot de story a até 30 min do início da janela neste cliente: o bloqueio pela borda fica com o teste unitário (janelaDeConsultaDeOcupacao + slotOcupado)')
     }
 
     // ── 3. ver-agenda com textos ────────────────────────────────────────────

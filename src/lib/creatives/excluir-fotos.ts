@@ -52,6 +52,23 @@ export function diaDoUso(uso: string | null | undefined): string | null {
 }
 
 /**
+ * O DIA (em Brasília) do ÚLTIMO uso, fundindo banco e legado DEPOIS de
+ * converter cada fonte para o seu dia (R26 da revisão de 2848096f):
+ * `mesclarUsos` compara os textos, e o timestamp do banco
+ * ("2026-09-07T02:30:00Z", que é domingo 6 em Brasília) vencia a data pura do
+ * legado ("2026-09-07") — a foto usada no dia 7 escapava de
+ * `evitarUsadasDesde: 2026-09-07` com a exclusão "cumprida". Para ORDENAR o
+ * rodízio `mesclarUsos` continua valendo; para EXCLUIR, o dia é este.
+ */
+export function diaDoUltimoUso(doBanco: string | null | undefined, doCatalogo: string | null | undefined): string | null {
+  const a = diaDoUso(doBanco)
+  const b = diaDoUso(doCatalogo)
+  if (!a) return b
+  if (!b) return a
+  return a > b ? a : b
+}
+
+/**
  * A identidade da exclusão para a CHAVE da proposta de fotos: ids normalizados
  * (ordem, duplicata e espaço externo não contam) com a CAIXA preservada — a
  * filtragem distingue "AbC" de "abc", e `resumoEstavel` passa strings por

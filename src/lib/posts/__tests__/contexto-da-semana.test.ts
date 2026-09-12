@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chaveDoSlot, dataValida, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, montarGradeDaSemana, quandoDaPeca, reconciliarSlot, slotOcupado, slotsParaAPeca, slotValido, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
+import { chaveDoSlot, dataValida, dentroDaJanela, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, janelaDeConsultaDeOcupacao, montarGradeDaSemana, quandoDaPeca, reconciliarSlot, slotOcupado, slotsParaAPeca, slotValido, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
 import { fundirGradeComCadencia } from '../grade-da-base'
 
 // quinta 17/09/2026, 10:00 em Brasília
@@ -139,6 +139,31 @@ describe('formato e ocupação por formato', () => {
     expect(slotOcupado(ocupados, t + 30 * 60_000, 'feed', 45)).toBe(true)
     expect(slotOcupado(ocupados, t + 46 * 60_000, 'feed', 45)).toBe(false)
   })
+  it('a consulta de ocupação enxerga a BORDA (R27): a janela de consulta é a pedida ± a tolerância; o story de domingo 23h45 ocupa o slot de segunda 0h; a listagem continua só com o que cai dentro da janela pedida', () => {
+    const j = janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-09-27' })
+    const consulta = janelaDeConsultaDeOcupacao(j, 45)
+    expect(consulta.inicio.toISOString()).toBe('2026-09-21T02:15:00.000Z') // segunda 00:00 BRT − 45 min
+    expect(consulta.fim.getTime()).toBe(j.fim.getTime() + 45 * 60_000)
+    // o post de domingo 23h45 (02:45Z) está FORA da janela pedida e DENTRO da consulta
+    const domingo2345 = new Date('2026-09-21T02:45:00.000Z')
+    expect(dentroDaJanela(domingo2345, j)).toBe(false)
+    expect(dentroDaJanela(domingo2345, consulta)).toBe(true)
+    expect(dentroDaJanela(j.inicio, j)).toBe(true)
+    expect(dentroDaJanela(j.fim, j)).toBe(true)
+    expect(dentroDaJanela(null, j)).toBe(false)
+    // e ele OCUPA o slot de segunda 0h do mesmo formato; formato diferente continua livre
+    const slotSegunda0h = new Date('2026-09-21T03:00:00.000Z').getTime()
+    const ocupados = [{ t: domingo2345.getTime(), formato: 'story' as const }]
+    expect(slotOcupado(ocupados, slotSegunda0h, 'story', 45)).toBe(true)
+    expect(slotOcupado(ocupados, slotSegunda0h, 'feed', 45)).toBe(false)
+    // a mesma coisa na borda final: domingo 23h50 da janela × slot de 0h05 do dia seguinte — fora da janela, não é sugerido de qualquer jeito; o que importa é o post de 00:10 do dia seguinte ocupar o slot de 23h50
+    const segunda0010 = new Date('2026-09-28T03:10:00.000Z')
+    expect(dentroDaJanela(segunda0010, j)).toBe(false)
+    expect(dentroDaJanela(segunda0010, consulta)).toBe(true)
+    expect(slotOcupado([{ t: segunda0010.getTime(), formato: 'story' }], new Date('2026-09-28T02:50:00.000Z').getTime(), 'story', 45)).toBe(true)
+    expect(janelaDeConsultaDeOcupacao(j, 0)).toEqual({ inicio: j.inicio, fim: j.fim })
+  })
+
   it('diaDaSemanaDe lê a data em Brasília', () => {
     expect(diaDaSemanaDe('2026-09-21')).toBe(1)
     expect(diaDaSemanaDe('2026-09-27')).toBe(0)
