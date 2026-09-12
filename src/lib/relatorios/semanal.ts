@@ -1,10 +1,14 @@
 /**
  * Relatório semanal da carteira — o relógio do ciclo contínuo.
  *
- * Toda segunda de manhã, para cada cliente ativo: alcance e engajamento
- * medianos da semana que fechou contra as 8 anteriores, os melhores e piores
+ * Todo DOMINGO às 20h (BRT), fechando a semana seg–dom que termina (o cron
+ * roda com o domingo ainda em curso), para cada cliente ativo: alcance e
+ * engajamento medianos da semana contra as 8 anteriores, os melhores e piores
  * posts, aderência à cadência padrão (3 stories/dia + 3 carrosséis/semana,
- * decisão de 29/08/2026) e o resumo dos sinais de aprendizado. Grava em
+ * decisão de 29/08/2026), o resumo dos sinais de aprendizado e — desde o PR 15
+ * de "Marca simples, copy melhor" (12/09/2026) — a qualidade da copy: fidelidade
+ * até a agenda, causa das correções, correções indevidas, tempo até o rascunho
+ * e a voz na escrita (`qualidade-da-copy.ts`). Grava em
  * `InstagramWeeklyReport` — a tabela existia desde a era dos webhooks
  * externos, vazia, e foi REAPROVEITADA aqui sem migration — e manda UM resumo
  * da carteira inteira no grupo do WhatsApp (nunca uma mensagem por cliente:
@@ -21,12 +25,21 @@ import { isEvolutionConfigured, sendWhatsAppText } from '@/lib/notifications/evo
 import { coletarFeedDeTodos } from '@/lib/instagram/feed-insights'
 import { coletarFeedViaWindsor } from '@/lib/windsor/coleta-feed'
 import { blocoAnunciosDaSemana, blocoAvaliacoesDaSemana } from '@/lib/windsor/relatorio-extras'
+import { medirQualidadeDaCarteira } from '@/lib/relatorios/qualidade-da-copy'
+import { blocoDaQualidadeDaCopy, linhaDaCopyDoCliente, type QualidadeDaCopy } from '@/lib/relatorios/qualidade-da-copy-contrato'
 
 const FUSO_OFFSET_MS = 3 * 3600_000 // BRT = UTC-3, fixo (sem horário de verão desde 2019)
 const SEMANA_MS = 7 * 24 * 3600_000
 const META_STORIES = 21
 const META_FEEDS = 3
 const SEMANAS_DE_BASE = 8
+/**
+ * Orçamento da medida da copy (PR 15): até 180 s, e nunca além de 240 s desde
+ * o início do relatório — o cron tem 300 s, e depois dela ainda vêm a gravação,
+ * os blocos do Windsor e o WhatsApp.
+ */
+const ORCAMENTO_DA_COPY_MS = 180_000
+const PRAZO_DA_COPY_DESDE_O_INICIO_MS = 240_000
 
 export interface JanelaDaSemana {
   /** Segunda 00:00 BRT (instante UTC). */
@@ -132,6 +145,12 @@ interface LinhaDoCliente {
    * isto "a melhoria melhora?" era palpite — 3 sinais em 141 melhorias.
    */
   melhorias: { total: number; comRegua: number; comAviso: number; gostei: number; melhorar: number }
+  /**
+   * A qualidade da copy (PR 15). `null` = não medida (fora do orçamento de
+   * tempo ou falha geral); `indisponivel` diz por quê quando a medida do
+   * cliente não saiu (esquema dos PRs 3/7 ausente, teto de tempo, erro).
+   */
+  copy: { qualidade: QualidadeDaCopy | null; indisponivel: string | null; avisos: string[] } | null
   alertas: string[]
 }
 
@@ -267,6 +286,7 @@ async function montarLinhaDoCliente(
     diasSemPost,
     sinais,
     melhorias,
+    copy: null,
     alertas,
   }
 }
@@ -295,6 +315,8 @@ function mensagemDaCarteira(janela: JanelaDaSemana, linhas: LinhaDoCliente[]): s
         `  melhoria IA: ${m.total} (régua ${Math.round((m.comRegua / m.total) * 100)}%, ${m.comAviso} com aviso, 👍${m.gostei} 👎${m.melhorar})`,
       )
     }
+    const linhaDaCopy = linhaDaCopyDoCliente(l.copy?.qualidade ?? null)
+    if (linhaDaCopy) partes.push(linhaDaCopy)
     for (const a of l.alertas.filter((x) => !x.startsWith('sem token'))) partes.push(`  ⚠️ ${a}`)
   }
 
@@ -321,6 +343,7 @@ export async function gerarRelatorioSemanal(opts?: {
   /** Marca a mensagem como envio de teste (não substitui o relatório oficial). */
   teste?: boolean
 }): Promise<ResultadoRelatorio> {
+  const inicioDoRelatorio = Date.now()
   const janela = janelaDaSemanaCorrente(opts?.referencia ?? new Date())
 
   // Coleta as métricas da semana NA HORA: rodando domingo à noite, o feed de
@@ -354,6 +377,21 @@ export async function gerarRelatorioSemanal(opts?: {
   for (const p of projetos) {
     const linha = await montarLinhaDoCliente(p, janela)
     if (linha) linhas.push(linha)
+  }
+
+  // A qualidade da copy (PR 15): só leitura, com prazo próprio. Falha geral
+  // degrada para a ausência do bloco — nunca derruba o relatório.
+  const qualidadeDaCopy = await medirQualidadeDaCarteira(
+    linhas.map((l) => ({ projectId: l.projectId, nome: l.nome })),
+    janela,
+    { prazo: Math.min(Date.now() + ORCAMENTO_DA_COPY_MS, inicioDoRelatorio + PRAZO_DA_COPY_DESDE_O_INICIO_MS) },
+  ).catch((erro) => {
+    console.error('[relatorio-semanal] qualidade da copy falhou (seguindo sem ela):', erro)
+    return null
+  })
+  for (const l of linhas) {
+    const r = qualidadeDaCopy?.porCliente.get(l.projectId)
+    l.copy = r ? { qualidade: r.qualidade, indisponivel: r.indisponivel, avisos: r.avisos } : null
   }
 
   let gravados = 0
@@ -409,10 +447,12 @@ export async function gerarRelatorioSemanal(opts?: {
   // Blocos que só o Windsor enxerga (anúncios e Google) — cada um degrada
   // para ausência sozinho; nenhum atrasa nem derruba o relatório.
   const [blocoAds, blocoGoogle] = await Promise.all([blocoAnunciosDaSemana(), blocoAvaliacoesDaSemana()])
+  const blocoCopy = qualidadeDaCopy ? blocoDaQualidadeDaCopy(qualidadeDaCopy.bloco) : null
 
   const mensagem =
     (opts?.teste ? '🧪 *Envio de teste* — o relatório oficial sai todo domingo às 20h.\n\n' : '') +
     mensagemDaCarteira(janela, linhas) +
+    (blocoCopy ? `\n${blocoCopy}` : '') +
     (blocoAds ? `\n${blocoAds}` : '') +
     (blocoGoogle ? `\n${blocoGoogle}` : '')
   let enviado = false
@@ -437,8 +477,13 @@ function linhaParaJson(l: LinhaDoCliente) {
     piorFeed: l.piorFeed,
     sinais: l.sinais,
     melhorias: l.melhorias,
-    // Honestidade da medição: colhido na segunda de manhã, o fim de semana
-    // ainda acumula alcance — comparar sempre com a mesma defasagem.
+    // PR 15: a medida inteira da copy (com as exclusões e os limiares), ou
+    // `null` quando não foi medida neste envio.
+    // Serializado aqui: a medida é JSON puro (números e textos), e o tipo do
+    // Prisma para Json não aceita interface sem assinatura de índice.
+    copy: l.copy ? JSON.parse(JSON.stringify(l.copy)) : null,
+    // Honestidade da medição: colhido no domingo à noite, os posts mais
+    // recentes ainda acumulam alcance — comparar sempre com a mesma defasagem.
     colhidoEm: new Date().toISOString(),
   }
 }
