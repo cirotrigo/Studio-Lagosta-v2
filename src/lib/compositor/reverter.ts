@@ -49,6 +49,8 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
       pageId,
       camadas: () => camadasDoSnapshot,
       quem: { autor: 'sistema', motivo: 'reverter-arte (camadas do snapshot)', superficie: 'reverter-arte' },
+      // A leitura de hoje sobre as camadas de ANTES é do sistema (PR5-06); a diferença para o snapshot é da reversão.
+      reconciliarComAnteriores: true,
     })
     if (!g) throw new CreativeError('PAGE_NOT_FOUND', 'A página desta arte não existe mais', 404)
     const inv = await invalidateScheduledRenders(tx, { pageIds: [pageId] })

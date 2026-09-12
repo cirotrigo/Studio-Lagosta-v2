@@ -267,7 +267,8 @@ export async function PATCH(
             const dados = dadosContra(fresca)
             let avisoDestaVolta: string | null = null
             if (m.layersChanged) {
-              const revisao = revisaoDaPaginaComCamadas(fresca.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+              // As camadas de ANTES vão junto: o que a leitura corrige nelas é do sistema, não de quem editou (PR5-06).
+              const revisao = revisaoDaPaginaComCamadas(fresca.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' }, { camadasAnteriores: fresca.layers })
               if (revisao.estado === 'registrada' && revisao.copy) dados.copyAutoral = revisao.copy
               // 🔴 Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida das camadas que não cabe
               // (`RevisaoDaCopyInvalida`): o autosave NUNCA falha nem perde o que a pessoa editou — as

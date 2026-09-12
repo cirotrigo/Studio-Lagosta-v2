@@ -1144,11 +1144,17 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * sem contrato segue sem — nada é inventado.
    */
   const autorDaRevisao = input.canal === 'studio' ? 'equipe' : 'claude'
-  const revisaoDaCopy = revisaoDaPaginaComCamadas(page.copyAutoral, layers, {
-    autor: autorDaRevisao,
-    motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
-    superficie: input.canal ?? 'chat',
-  })
+  const revisaoDaCopy = revisaoDaPaginaComCamadas(
+    page.copyAutoral,
+    layers,
+    {
+      autor: autorDaRevisao,
+      motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
+      superficie: input.canal ?? 'chat',
+    },
+    // As camadas de ANTES do ajuste: o que a leitura corrige nelas é do sistema (PR5-06).
+    { camadasAnteriores: page.layers },
+  )
   /**
    * Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida que não cabe (`RevisaoDaCopyInvalida`): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
    * contrato como estava e a arte nasce SEM registro de copy (a efetiva não cabe no histórico), com o aviso no retorno.

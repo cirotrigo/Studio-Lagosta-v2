@@ -688,7 +688,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       promptPronto = logoParaCompor ? `${plano.prompt}\n\n${instrucaoLogoNaMelhoria()}` : plano.prompt
       plannerInfo.planejadorTentativas = plano.tentativas
       if (plano.leitura) plannerInfo.leitura = plano.leitura
-      if (modo === 'refinar' && plano.copyFinal.join('\n') !== textosParaPrompt.join('\n')) {
+      // Bloco a bloco, nunca `join('\n')`: mover uma quebra de linha de um bloco
+      // para o outro dá o mesmo texto concatenado e outra divisão em blocos —
+      // e a régua, o `enviada` e a revisão do contrato têm de acompanhar a
+      // divisão nova (PR5-07 da revisão do Codex, 12/09/2026).
+      const copyMudou = plano.copyFinal.length !== textosParaPrompt.length || plano.copyFinal.some((t, i) => t !== textosParaPrompt[i])
+      if (modo === 'refinar' && copyMudou) {
         copyAntesDoRefino = textosParaPrompt
         plannerInfo.copyAntes = textosParaPrompt
         textosParaPrompt = plano.copyFinal

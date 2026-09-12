@@ -64,6 +64,16 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(r.copy!.revisoes).toEqual([{ em: '2026-09-12T13:00:00.000Z', autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', blocos: ['headline'], campos: { headline: ['linhas'] } }])
   })
 
+  it('ocultaPeloRevisor com camadasAnteriores: a reconciliação também lê a escondida pelo revisor como presente — mover uma caixa não vira remoção do sistema nem adição da equipe', () => {
+    const escondida = comVisibilidadeDoRevisor(texto('cta', 300, 'Conheça nossos pacotes'), false, { em: '2026-09-12T12:00:00.000Z', ajuste: 0 })
+    const anteriores = [texto('headline', 100, 'Milk-shake'), escondida]
+    const novas = [texto('headline', 140, 'Milk-shake'), escondida]
+    const r = revisaoDaPaginaComCamadas(contrato, novas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' }, { camadasAnteriores: anteriores })
+    expect(r.estado).toBe('sem-mudanca')
+    expect(r.lacunas).toEqual([])
+    expect(r.copy!.revisoes).toEqual([])
+  })
+
   it('controle: camada escondida SEM a marca do revisor é a pessoa apagando — revisão autoral com o bloco vazio', () => {
     const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes', { visible: false })]
     const r = revisaoDaPaginaComCamadas(contrato, camadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', em: '2026-09-12T13:00:00.000Z' })
@@ -229,6 +239,46 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(r.mudancas).toEqual([])
     expect(r.lacunas).toEqual([])
     expect(r.efetiva.blocos.map((b) => [b.id, b.linhas[0]])).toEqual([['headline', 'Milk-shake'], ['cta', 'Conheça nossos pacotes'], ['aviso-do-dia', 'Só hoje']])
+  })
+
+  it('PR5-06: contrato gravado por uma leitura ANTIGA (conteúdo trocado entre ids) + só uma caixa movida: a correção é do SISTEMA (reconciliação), nenhuma revisão da equipe; salvar de novo é estável', () => {
+    // efetiva produzida pela leitura antiga: posição venceu o carimbo, e os apoios ficaram trocados
+    const trocado: CopyAutoral = {
+      ...contrato,
+      blocos: [
+        { id: 'a1', funcao: 'apoio', ordem: 0, linhas: ['segundo'] },
+        { id: 'a2', funcao: 'apoio', ordem: 1, linhas: ['primeiro'] },
+      ],
+    }
+    const antes: Layer[] = [
+      texto('apoio', 300, 'segundo', { metadata: { compositor: { papel: 'apoio', bloco: 'a2' } } } as Partial<Layer>),
+      texto('apoio-2', 900, 'primeiro', { metadata: { compositor: { papel: 'apoio', bloco: 'a1' } } } as Partial<Layer>),
+    ]
+    const depois: Layer[] = [antes[0], { ...antes[1], position: { x: 100, y: 950 } } as Layer]
+    const r = revisaoDaPaginaComCamadas(trocado, depois, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' }, { camadasAnteriores: antes })
+    expect(r.estado).toBe('registrada')
+    expect(r.blocos).toEqual([])
+    expect(r.copy!.revisoes.map((x) => x.autor)).toEqual(['sistema'])
+    expect(r.copy!.revisoes[0].blocos.sort()).toEqual(['a1', 'a2'])
+    expect(r.copy!.blocos.map((b) => [b.id, b.linhas[0]])).toEqual([
+      ['a1', 'primeiro'],
+      ['a2', 'segundo'],
+    ])
+    expect(r.lacunas.some((l) => /reconciliado/.test(l))).toBe(true)
+    // a mesma edição, agora com texto novo na caixa movida: a equipe assina SÓ o texto
+    const comTexto: Layer[] = [antes[0], { ...antes[1], position: { x: 100, y: 950 }, content: 'primeiro, editado' } as Layer]
+    const r2 = revisaoDaPaginaComCamadas(trocado, comTexto, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' }, { camadasAnteriores: antes })
+    expect(r2.copy!.revisoes.map((x) => [x.autor, [...x.blocos].sort()])).toEqual([
+      ['sistema', ['a1', 'a2']],
+      ['equipe', ['a1']],
+    ])
+    expect(r2.blocos).toEqual(['a1'])
+    // salvar de novo (anteriores = novas): estável
+    const r3 = revisaoDaPaginaComCamadas(r.copy, depois, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' }, { camadasAnteriores: depois })
+    expect(r3.estado).toBe('sem-mudanca')
+    // sem as camadas anteriores o comportamento é o de antes (a chamada tardia)
+    const r4 = revisaoDaPaginaComCamadas(r.copy, depois, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(r4.estado).toBe('sem-mudanca')
   })
 
   it('R03: duplicar a página regenera os ids das camadas e os blocos extra acompanham, no bloco e no histórico', () => {

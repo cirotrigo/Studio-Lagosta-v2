@@ -145,6 +145,13 @@ export function identidadeDoContrato(copy: CopyAutoral | null | undefined): stri
   return JSON.stringify([
     copy.origem.autor,
     blocosEmOrdem(copy).map((b) => [b.id, b.funcao, b.ordem, b.linhas, b.grupoDeLeitura ?? null, b.estilo?.linhasNaVoz2 ?? null]),
+    // O HISTÓRICO autoral também é identidade: `autorDoBloco` decide quem foi o
+    // último a tocar cada bloco pelas revisões, e dois contratos com os mesmos
+    // blocos e revisões de autores diferentes são histórias diferentes — o
+    // segundo pedido não pode herdar a geração (e a autoria) do primeiro
+    // (PR5-05 da revisão do Codex, 12/09/2026). Serialização estável: só os
+    // campos que decidem autoria, na ordem em que as revisões aconteceram.
+    copy.revisoes.map((r) => [r.autor, r.em ?? null, [...r.blocos].sort(), r.motivo ?? null]),
   ])
 }
 

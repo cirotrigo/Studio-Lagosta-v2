@@ -114,5 +114,10 @@ describe('o registro da copy numa arte SEM camadas (via de IA e melhoria)', () =
     expect(identidadeDoContrato({ ...contrato, origem: { autor: 'desconhecido' } })).not.toBe(a)
     expect(identidadeDoContrato({ ...contrato, blocos: contrato.blocos.map((b) => (b.id === 'servico' ? { ...b, id: 'rodape' } : b)) })).not.toBe(a)
     expect(identidadeDoContrato({ ...contrato, blocos: contrato.blocos.map((b) => (b.id === 'servico' ? { ...b, funcao: 'apoio' as const } : b)) })).not.toBe(a)
+    // o histórico autoral é identidade (PR5-05): mesmos blocos, última revisão de autores diferentes
+    const revClaude = { ...contrato, revisoes: [{ autor: 'claude' as const, em: '2026-09-12T11:00:00.000Z', motivo: 'ajuste', superficie: 'chat', blocos: ['headline'] }] }
+    const revEquipe = { ...contrato, revisoes: [{ autor: 'equipe' as const, em: '2026-09-12T11:00:00.000Z', motivo: 'ajuste', superficie: 'editor', blocos: ['headline'] }] }
+    expect(identidadeDoContrato(revClaude)).not.toBe(identidadeDoContrato(revEquipe))
+    expect(identidadeDoContrato(revClaude)).toBe(identidadeDoContrato({ ...revClaude }))
   })
 })
