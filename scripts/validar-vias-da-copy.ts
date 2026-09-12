@@ -157,8 +157,11 @@ async function main() {
     const mapa = mapearContratoParaCampos(campos, contrato)
     const por = Object.fromEntries(mapa.vinculos.map((v) => [v.blocoId, `${v.layerId}:${v.por}`]))
     conferir('manchete, chamada e horário casam pelo PAPEL do nome do campo', por.headline === 'titulo-1:papel' && por.cta === 'chamada-1:papel' && por.servico === 'horario-1:papel', JSON.stringify(por))
-    conferir('o apoio (sem campo do papel) vai para o campo SEM papel, declarado como posição', por.apoio === 'texto-3:posicao', String(por.apoio))
-    conferir('o pré-título não tem campo nem vaga: fica em semCampo, com aviso (nunca some em silêncio)', mapa.semCampo.length === 1 && mapa.semCampo[0] === 'pre' && mapa.avisos.some((a) => a.includes('Só hoje')), JSON.stringify(mapa.semCampo))
+    // Dois blocos sem campo do papel (pre e apoio) e UMA vaga sem papel: o
+    // primeiro na ordem de leitura a toma (declarado como posição); o outro
+    // fica em semCampo, com aviso — nunca some em silêncio.
+    conferir('o pré-título (primeiro sem campo, na ordem de leitura) vai para o campo SEM papel, declarado como posição', por.pre === 'texto-3:posicao', String(por.pre))
+    conferir('o apoio não tem campo nem vaga: fica em semCampo, com aviso (nunca some em silêncio)', mapa.semCampo.length === 1 && mapa.semCampo[0] === 'apoio' && mapa.avisos.some((a) => a.includes('Peça criada')), JSON.stringify(mapa.semCampo))
     conferir('o slot leva o conteúdo SEM colchetes, com a quebra do autor, e o bloco/papel de origem', (mapa.slotValues['titulo-1'] as { content: string; bloco: string; papel?: string })?.content === 'Milk-shake\nem dobro' && (mapa.slotValues['titulo-1'] as { bloco: string }).bloco === 'headline', JSON.stringify(mapa.slotValues['titulo-1']))
 
     const arte = await createArteRapida({
@@ -184,10 +187,10 @@ async function main() {
     conferir('a Generation guarda o ORIGINAL do autor, byte a byte', JSON.stringify(lerCopyAutoral(registro?.original).copy) === JSON.stringify(contrato), registro ? Object.keys(registro).join(',') : 'sem registro')
     conferir('a página guarda a EFETIVA (contrato válido, revisão do sistema pelo que o modelo desenhou)', !!efetivaDaPagina && efetivaDaPagina.revisoes.some((r) => r.autor === 'sistema'), efetivaDaPagina ? `${efetivaDaPagina.revisoes.length} revisão(ões)` : 'ilegível')
     const copyLida = copyDaArte(fv)
-    conferir('ver-geracao: comparável por CAMADAS; cta e serviço desenhados como escritos; manchete com o destaque não desenhado em blocosDiferentes; pré-título em lacuna', !!copyLida && copyLida.comparavel && copyLida.comparadoPor === 'camadas' && JSON.stringify(copyLida.desenhada.find((b) => b.id === 'cta')?.linhas) === JSON.stringify(['Vem pra cá']) && JSON.stringify(copyLida.desenhada.find((b) => b.id === 'servico')?.linhas) === JSON.stringify(['Ter a dom · 11h às 23h']) && copyLida.blocosDiferentes.includes('headline') && copyLida.lacunas.some((l) => l.includes('pre')), JSON.stringify({ comparavel: copyLida?.comparavel, por: copyLida?.comparadoPor, diferentes: copyLida?.blocosDiferentes, lacunas: copyLida?.lacunas }).slice(0, 220))
+    conferir('ver-geracao: comparável por CAMADAS; cta e serviço desenhados como escritos; manchete com o destaque não desenhado em blocosDiferentes; o apoio não desenhado em lacuna', !!copyLida && copyLida.comparavel && copyLida.comparadoPor === 'camadas' && JSON.stringify(copyLida.desenhada.find((b) => b.id === 'cta')?.linhas) === JSON.stringify(['Vem pra cá']) && JSON.stringify(copyLida.desenhada.find((b) => b.id === 'servico')?.linhas) === JSON.stringify(['Ter a dom · 11h às 23h']) && copyLida.blocosDiferentes.includes('headline') && copyLida.lacunas.some((l) => l.includes('"apoio"')), JSON.stringify({ comparavel: copyLida?.comparavel, por: copyLida?.comparadoPor, diferentes: copyLida?.blocosDiferentes, lacunas: copyLida?.lacunas }).slice(0, 220))
     const camadas = lerCamadas(pagina.layers).camadas as unknown as Layer[]
     const carimbo = (id: string) => (camadas.find((c) => String(c.id) === id)?.metadata as { compositor?: { papel?: string; bloco?: string } } | undefined)?.compositor
-    conferir('as camadas saem CARIMBADAS com papel e bloco (é o que a releitura usa com id UUID)', carimbo('titulo-1')?.bloco === 'headline' && carimbo('titulo-1')?.papel === 'headline' && carimbo('texto-3')?.bloco === 'apoio' && carimbo('texto-3')?.papel === 'apoio', JSON.stringify({ titulo: carimbo('titulo-1'), texto3: carimbo('texto-3') }))
+    conferir('as camadas saem CARIMBADAS com papel e bloco (é o que a releitura usa com id UUID)', carimbo('titulo-1')?.bloco === 'headline' && carimbo('titulo-1')?.papel === 'headline' && carimbo('texto-3')?.bloco === 'pre' && carimbo('texto-3')?.papel === 'pre', JSON.stringify({ titulo: carimbo('titulo-1'), texto3: carimbo('texto-3') }))
     const releitura = efetivaDaPagina ? copyEfetivaDasCamadas(efetivaDaPagina, camadas, { superficie: 'editor' }) : null
     conferir('reler a página com a efetiva gravada não muda nada (autosave idêntico não vira revisão)', !!releitura && releitura.mudancas.length === 0, releitura ? JSON.stringify(releitura.mudancas.map((m) => m.id)) : '—')
 
@@ -198,7 +201,8 @@ async function main() {
       limpeza.push(async () => { await db.creditBalance.update({ where: { userId: dono.id }, data: { creditsRemaining: saldoAntes.creditsRemaining } }) })
       console.log(`  saldo de dev elevado de ${saldoAntes.creditsRemaining} para 50 (será restaurado)`)
     }
-    const contrato2: CopyAutoral = { ...contrato, blocos: contrato.blocos.filter((b) => b.id !== 'pre') }
+    // Sem o pré-título; a ORDEM é renumerada porque o contrato exige leitura contígua a partir de 0.
+    const contrato2: CopyAutoral = { ...contrato, blocos: contrato.blocos.filter((b) => b.id !== 'pre').map((b, i) => ({ ...b, ordem: i })) }
     const started = await startArtGeneration({
       projectId: PROJETO,
       track: 'arte',
