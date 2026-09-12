@@ -6646,6 +6646,27 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   (`VOZ_INVALIDA`, 400, com os problemas). `migrarParaVoz` arquiva o DNA de
   texto e liga a precedência; `desfazerMigracao` só a desliga — voz e snapshot
   ficam. A gravação da regra pela tool passa pelo mesmo CAS.
+- **A PRÉVIA passa pelo contrato inteiro** (`aplicarRegraNaVoz` valida a voz
+  resultante com `lerVoz`): regra comprida, a 61ª regra ou o prompt acima do
+  teto são recusados ANTES de a pessoa confirmar (`VOZ_RESULTANTE_INVALIDA`) —
+  o que não pode ser gravado não pode ser proposto.
+- 🔴 **Confirmar exige a versão da PRÉVIA** (`versaoDaVoz` = a `versaoLida`
+  que a proposta devolveu; sem ela `VOZ_VERSAO_OBRIGATORIA`, com a versão de
+  uma proposta antiga `VOZ_DIVERGENTE`): entre a prévia e a confirmação outra
+  edição pode ter trocado a regra que seria substituída mantendo o id, e o CAS
+  da gravação sozinho protegia só a janela da própria requisição.
+- 🔴 **O vocabulário da revisão ortográfica vem de `brand.voz.vocabulario`**,
+  nunca de `voz.texto`: o texto do prompt carrega o "antes" das reescritas
+  ("churasco → churrasco") para o modelo NÃO repetir o erro, e posto no
+  vocabulário ele PROTEGIA a grafia errada e engolia a sugestão certa. Só os
+  campos positivos (descrição, tratamento, termos, exemplos, "depois") são
+  grafia aprovada; no legado, o `toneOfVoice`.
+- **`prepareCreative` (escolher-modelo, `create-arte-rapida`, a API externa)
+  entrega a identidade de texto EFETIVA**: `brand.dna.toneOfVoice` é o texto
+  da voz no cliente migrado (e `contentRules` fica null — as regras já estão
+  nele), o DNA no legado; `brand.voz` traz a precedência inteira. Consumidor
+  que monte identidade de texto por `select` próprio de `brandDNA` repete o
+  defeito — passe pela precedência.
 - **No conector**: `consultar-voz` (só leitura) diz QUEM manda na copy hoje,
   a voz, a versão, os problemas e os caracteres no prompt contra os do DNA;
   `virar-regra` ganhou `escopo`, `substitui` e `conviver`; as instruções

@@ -225,7 +225,7 @@ export interface NovaRegra {
 
 export type ResultadoDeRegra =
   | { ok: true; voz: VozCompacta; regra: RegraDaVoz; substituida: RegraDaVoz | null; conflitos: RegraDaVoz[]; proibicoesRelacionadas: string[] }
-  | { ok: false; erro: 'SUBSTITUIDA_NAO_EXISTE' | 'SUBSTITUIDA_INATIVA' | 'CONFLITO_DE_REGRA' | 'REGRA_INVALIDA'; mensagem: string; conflitos: RegraDaVoz[]; proibicoesRelacionadas: string[] }
+  | { ok: false; erro: 'SUBSTITUIDA_NAO_EXISTE' | 'SUBSTITUIDA_INATIVA' | 'CONFLITO_DE_REGRA' | 'REGRA_INVALIDA' | 'VOZ_RESULTANTE_INVALIDA'; mensagem: string; conflitos: RegraDaVoz[]; proibicoesRelacionadas: string[] }
 
 /**
  * "Virar regra" na voz: SUBSTITUI quando `substitui` vem (a antiga fica
@@ -259,7 +259,37 @@ export function aplicarRegraNaVoz(voz: VozCompacta, nova: NovaRegra): ResultadoD
   }
   const regra: RegraDaVoz = { id: idDeRegra(voz, nova.em), texto, motivo, em: nova.em, escopo, ...(nova.substitui ? { substitui: nova.substitui } : {}), ativa: true }
   const regras = voz.regras.map((r) => (substituida && r.id === substituida.id ? { ...r, ativa: false } : r))
-  return { ok: true, voz: { ...voz, regras: [...regras, regra] }, regra, substituida, conflitos, proibicoesRelacionadas: relacionadas }
+  const vozNova: VozCompacta = { ...voz, regras: [...regras, regra] }
+  /**
+   * A PRÉVIA já passa pelo contrato inteiro (PR7-03 da revisão do Codex,
+   * 12/09/2026): regra comprida demais, a 61ª regra ou o prompt acima do teto
+   * eram aceitos aqui e só recusados na gravação — a pessoa confirmava uma
+   * proposta que falhava com VOZ_INVALIDA. O que não pode ser gravado não
+   * pode ser proposto.
+   */
+  const conferida = lerVoz(vozNova)
+  if (!conferida.voz) {
+    return {
+      ok: false,
+      erro: 'VOZ_RESULTANTE_INVALIDA',
+      mensagem: `A voz com esta regra não passa no contrato: ${conferida.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`,
+      conflitos,
+      proibicoesRelacionadas: relacionadas,
+    }
+  }
+  return { ok: true, voz: conferida.voz, regra, substituida, conflitos, proibicoesRelacionadas: relacionadas }
+}
+
+/**
+ * O VOCABULÁRIO da voz — só o que é grafia APROVADA: descrição, tratamento,
+ * termos da casa, exemplos e o lado "depois" das reescritas. Fica de fora o
+ * lado "antes" (a grafia que a marca corrigiu), as proibições e os motivos:
+ * postos no vocabulário, eles PROTEGIAM o erro que a reescrita existe para
+ * tirar — "churasco → churrasco" gravado fazia a revisão ortográfica engolir
+ * a sugestão certa (PR7-02 da revisão do Codex, 12/09/2026).
+ */
+export function vocabularioDaVoz(voz: VozCompacta): string {
+  return [voz.descricao, voz.tratamento ?? '', ...voz.termos, ...voz.exemplos, ...voz.antesDepois.map((r) => r.depois)].filter((t) => t && t.trim()).join('\n')
 }
 
 /** Linhas da seção legada ("Regras aprendidas na prática") que falam do mesmo assunto — só AVISO: em prosa não há substituição mecânica. */
@@ -290,10 +320,18 @@ export interface ContextoDeVoz {
    * migração e que o DNA não tem. Legado: null.
    */
   regrasDeArte: string | null
+  /**
+   * O que conta como GRAFIA DA CASA para a revisão ortográfica: na voz, só os
+   * campos positivos (`vocabularioDaVoz` — nunca o "antes" das reescritas nem
+   * as proibições); no legado, o `toneOfVoice`. É separado de `texto` de
+   * propósito: o texto do prompt carrega o erro corrigido para o modelo NÃO
+   * repeti-lo, e isso não é vocabulário aprovado.
+   */
+  vocabulario: string | null
 }
 
 /** O contexto de quem não tem voz nem DNA de texto — para fixtures de teste e páginas sem identidade. */
-export const SEM_VOZ: ContextoDeVoz = { fonte: 'nenhuma', texto: null, regrasDaMarca: null, versao: null, migradaEm: null, vozPendente: false, regrasDeArte: null }
+export const SEM_VOZ: ContextoDeVoz = { fonte: 'nenhuma', texto: null, regrasDaMarca: null, versao: null, migradaEm: null, vozPendente: false, regrasDeArte: null, vocabulario: null }
 
 /** As regras ativas de ARTE como bloco de prompt — vazio vira null. */
 export function regrasDeArteParaPrompt(voz: VozCompacta): string | null {
@@ -322,6 +360,7 @@ export function precedenciaDaVoz(args: {
     migradaEm: null,
     vozPendente: !!args.registro,
     regrasDeArte: null,
+    vocabulario: tom,
   })
   if (!args.registro || !args.registro.migradaEm) return legado()
   const { voz } = lerVoz(args.registro.voz)
@@ -335,6 +374,7 @@ export function precedenciaDaVoz(args: {
     migradaEm,
     vozPendente: false,
     regrasDeArte: regrasDeArteParaPrompt(voz),
+    vocabulario: vocabularioDaVoz(voz),
   }
 }
 

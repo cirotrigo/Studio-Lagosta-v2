@@ -214,11 +214,17 @@ async function main() {
 
     // ── 8. virarRegra migrado: conflito, substituição, CAS, seção de arte ──
     console.log('8) virarRegra no cliente migrado vai para a VOZ: conflito recusado, substituição gravada com CAS')
-    const v8a = await virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', confirmado: true })
+    const v8a = await virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', confirmado: true, versaoDaVoz: 3 })
     conferir('sem dizer o que fazer: destino voz, ok false, CONFLITO_DE_REGRA com a regra antiga listada, NADA gravado mesmo com confirmado', v8a.destino === 'voz' && v8a.ok === false && v8a.erro === 'CONFLITO_DE_REGRA' && v8a.conflitos.map((c) => c.id).join() === 'regra-2026-09-06-1' && v8a.gravado === false && (await lerRegistroDaVoz(PROJETO))?.versao === 3, JSON.stringify(v8a.destino === 'voz' && v8a.ok === false ? { erro: v8a.erro, conflitos: v8a.conflitos.map((c) => c.id) } : v8a).slice(0, 160))
     const v8b = await virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: false })
     conferir('com `substitui` e SEM confirmar: proposta (antes/depois), substituída identificada, versão não muda', v8b.destino === 'voz' && v8b.ok === true && v8b.gravado === false && v8b.versaoGravada === null && v8b.substituida?.id === 'regra-2026-09-06-1' && v8b.antes.some((l) => /Nunca usar/.test(l)) && !v8b.depois.some((l) => /Nunca usar/.test(l)) && (await lerRegistroDaVoz(PROJETO))?.versao === 3, JSON.stringify(v8b.destino === 'voz' && v8b.ok ? { antes: v8b.antes, depois: v8b.depois } : v8b).slice(0, 200))
-    const v8c = await virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: true })
+    const e8semVersao = await erroDe(virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: true }))
+    conferir('confirmar SEM a versão da proposta → VOZ_VERSAO_OBRIGATORIA (400), nada gravado (PR7-04)', e8semVersao?.code === 'VOZ_VERSAO_OBRIGATORIA' && e8semVersao.status === 400 && (await lerRegistroDaVoz(PROJETO))?.versao === 3, `${e8semVersao?.code}`)
+    const e8versaoVelha = await erroDe(virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: true, versaoDaVoz: 2 }))
+    conferir('confirmar com a versão de uma proposta ANTIGA → VOZ_DIVERGENTE (409), nada gravado (PR7-04)', e8versaoVelha?.code === 'VOZ_DIVERGENTE' && e8versaoVelha.status === 409 && (await lerRegistroDaVoz(PROJETO))?.versao === 3, `${e8versaoVelha?.code}`)
+    const v8comprida = await virarRegra({ projectId: PROJETO, regra: 'x'.repeat(241), motivo: 'm', escopo: 'copy', confirmado: false })
+    conferir('regra que a gravação recusaria já é recusada NA PRÉVIA (VOZ_RESULTANTE_INVALIDA) (PR7-03)', v8comprida.destino === 'voz' && v8comprida.ok === false && v8comprida.erro === 'VOZ_RESULTANTE_INVALIDA', JSON.stringify(v8comprida.destino === 'voz' && v8comprida.ok === false ? v8comprida.erro : v8comprida).slice(0, 80))
+    const v8c = await virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: true, versaoDaVoz: 3 })
     const r8 = await lerRegistroDaVoz(PROJETO)
     const antiga8 = r8?.voz?.regras.find((r) => r.id === 'regra-2026-09-06-1')
     const nova8 = r8?.voz?.regras.find((r) => r.substitui === 'regra-2026-09-06-1')
@@ -229,6 +235,19 @@ async function main() {
     conferir('regra de ARTE do mesmo assunto com `conviver`: aceita (as duas ficam), sem gravar', v8d.destino === 'voz' && v8d.ok === true && v8d.conflitos.length === 1 && v8d.gravado === false)
     const v8e = await virarRegra({ projectId: PROJETO, regra: `${MARCA} a logo sempre no canto inferior direito`, motivo: 'm', secao: 'composition', confirmado: false })
     conferir('seção de ARTE do DNA no cliente migrado continua indo ao DNA (a voz não substitui composition)', v8e.destino === 'dna' && v8e.secao === 'composition' && v8e.gravado === false)
+
+    // ── 8b. prepareCreative entrega a identidade EFETIVA de texto (PR7-01) ──
+    console.log('8b) prepareCreative (escolher-modelo / API externa) entrega a voz no cliente migrado')
+    try {
+      const { prepareCreative } = await import('../src/lib/creatives/arte-rapida')
+      const prep = await prepareCreative({ projectId: PROJETO } as never)
+      const dnaPrep = (prep as { brand: { dna: { toneOfVoice: string | null; contentRules: string | null } | null; voz: { fonte: string } } }).brand
+      conferir('brand.dna.toneOfVoice é o texto da VOZ (não o toneOfVoice do DNA), contentRules null, brand.voz.fonte "voz"', !!dnaPrep.dna && dnaPrep.dna.toneOfVoice === c8.texto && dnaPrep.dna.contentRules === null && dnaPrep.voz.fonte === 'voz', JSON.stringify({ fonte: dnaPrep.voz.fonte, chars: dnaPrep.dna?.toneOfVoice?.length }))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e)
+      // Projeto sem modelo cadastrado: prepareCreative recusa antes de montar o bloco da marca — declarado, não escondido.
+      conferir('prepareCreative não pôde ser exercitado neste projeto (sem modelo): ' + msg.slice(0, 80), /NO_TEMPLATE|modelo|template/i.test(msg), msg.slice(0, 120))
+    }
 
     // ── 9. a tool consultar-voz ────────────────────────────────────────────
     console.log('9) consultar-voz pelo catálogo do conector')

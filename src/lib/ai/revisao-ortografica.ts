@@ -120,7 +120,9 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
 
   const fontes: Array<string | null> = [
     contexto.projectName,
-    contexto.voz.texto,
+    // Só o vocabulário APROVADO da voz — nunca o "antes" das reescritas nem as
+    // proibições, que protegeriam justamente a grafia que a marca corrigiu.
+    contexto.voz.vocabulario,
     contexto.dna.toneOfVoice,
     contexto.dna.contentRules,
     contexto.dna.composition,
@@ -136,7 +138,7 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
   const marca: MarcaParaRevisao = {
     nome: contexto.projectName,
     vocabulario: extrairVocabulario(fontes),
-    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.voz.texto, contexto.dna.toneOfVoice]),
+    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.voz.vocabulario, contexto.dna.toneOfVoice]),
     // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
     tomDeVoz: contexto.voz.texto,
   }

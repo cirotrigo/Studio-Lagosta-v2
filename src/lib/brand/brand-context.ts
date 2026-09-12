@@ -245,6 +245,8 @@ export interface VirarRegraArgs {
   substitui?: string
   /** Voz compacta: manter as duas mesmo com conflito apontado — decisão explícita de quem confirma. */
   conviver?: boolean
+  /** Voz compacta: a `versaoLida` que a proposta devolveu — obrigatória ao confirmar (CAS entre prévia e confirmação). */
+  versaoDaVoz?: number
 }
 
 export interface VirarRegraResultDNA {
@@ -305,6 +307,7 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
       substitui: args.substitui,
       conviver: args.conviver,
       confirmado: args.confirmado,
+      versaoEsperada: args.versaoDaVoz,
     })
   }
   if (!secao) {

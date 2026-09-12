@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { aplicarRegraNaVoz, conflitosNoTextoLegado, lerVoz, precedenciaDaVoz, semelhancaDeRegras, TETO_DO_PROMPT_DA_VOZ, vozParaPrompt, vozVazia, type VozCompacta } from '../voz'
+import { aplicarRegraNaVoz, conflitosNoTextoLegado, lerVoz, precedenciaDaVoz, semelhancaDeRegras, TETO_DO_PROMPT_DA_VOZ, vocabularioDaVoz, vozParaPrompt, vozVazia, type VozCompacta } from '../voz'
 
 const voz: VozCompacta = {
   versao: 'voz-v1',
@@ -92,6 +92,31 @@ describe('a voz compacta (contrato puro)', () => {
     const secao = 'Tom direto.\n\nRegras aprendidas na prática:\n- Nunca usar "Vem pro fogo" (2026-09-06 — reprovado)\n- Horário no rodapé (2026-09-01 — peça empilhada)'
     expect(conflitosNoTextoLegado(secao, 'Liberar "Vem pro fogo" no evento')).toEqual(['Nunca usar "Vem pro fogo" (2026-09-06 — reprovado)'])
     expect(conflitosNoTextoLegado(null, 'x')).toEqual([])
+  })
+
+  it('PR7-03: a PRÉVIA já recusa o que a gravação recusaria — regra comprida, 61ª regra, prompt acima do teto', () => {
+    const comprida = aplicarRegraNaVoz(voz, { texto: 'x'.repeat(241), motivo: 'm', em: '2026-09-12', escopo: 'copy' })
+    expect(comprida.ok === false && comprida.erro).toBe('VOZ_RESULTANTE_INVALIDA')
+    const sessenta: VozCompacta = { ...voz, regras: Array.from({ length: 60 }, (_, i) => ({ id: `r-${i}`, texto: `regra número ${i} sobre assunto ${i}`, motivo: 'm', em: '2026-09-01', escopo: 'arte' as const, ativa: true })) }
+    const sessentaEUma = aplicarRegraNaVoz(sessenta, { texto: 'mais uma regra de copy diferente', motivo: 'm', em: '2026-09-12', escopo: 'copy' })
+    expect(sessentaEUma.ok === false && sessentaEUma.erro).toBe('VOZ_RESULTANTE_INVALIDA')
+    const noTeto: VozCompacta = { ...voz, exemplos: Array.from({ length: 12 }, (_, i) => `${'exemplo comprido '.repeat(7)}${i}`), antesDepois: Array.from({ length: 12 }, (_, i) => ({ antes: 'a'.repeat(80), depois: 'b'.repeat(80), motivo: `m${i}` })) }
+    expect(lerVoz(noTeto).voz).not.toBeNull()
+    const estoura = aplicarRegraNaVoz(noTeto, { texto: 'r'.repeat(200), motivo: 'm'.repeat(150), em: '2026-09-12', escopo: 'copy' })
+    expect(estoura.ok === false && /passa de 4000/.test(estoura.mensagem)).toBe(true)
+  })
+
+  it('PR7-02: o vocabulário da voz leva só a grafia APROVADA — nunca o "antes" das reescritas nem as proibições', () => {
+    const v: VozCompacta = { ...voz, antesDepois: [{ antes: 'churasco no bafo', depois: 'churrasco no bafo', motivo: 'grafia' }], proibicoes: ['promessa sem base', 'emoji na arte'] }
+    const voc = vocabularioDaVoz(v)
+    expect(voc).toContain('churrasco no bafo')
+    expect(voc).not.toContain('churasco')
+    expect(voc).toContain('Costela no Bafo')
+    expect(voc).not.toContain('promessa sem base')
+    const migrada = precedenciaDaVoz({ registro: { voz: v, versao: 1, migradaEm: new Date() }, dna: { toneOfVoice: 'tom', contentRules: null } })
+    expect(migrada.vocabulario).toBe(voc)
+    expect(migrada.texto).toContain('churasco') // o prompt carrega o erro corrigido para o modelo não repeti-lo
+    expect(precedenciaDaVoz({ registro: null, dna: { toneOfVoice: 'tom legado', contentRules: null } }).vocabulario).toBe('tom legado')
   })
 
   it('vozVazia é válida', () => {

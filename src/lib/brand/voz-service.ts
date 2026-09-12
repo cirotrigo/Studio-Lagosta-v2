@@ -126,6 +126,14 @@ export interface VirarRegraNaVozArgs extends NovaRegra {
   projectId: number
   /** Sem isto nada é gravado: devolve só a proposta. */
   confirmado?: boolean
+  /**
+   * A versão da voz que a PRÉVIA mostrou (`versaoLida`). OBRIGATÓRIA ao
+   * confirmar: entre a prévia e a confirmação outra edição pode ter mudado a
+   * regra que seria substituída, mantendo o id — confirmar contra a versão
+   * atual desativaria uma regra que a pessoa não viu (PR7-04 da revisão do
+   * Codex, 12/09/2026). Versão que não bate → VOZ_DIVERGENTE, nada gravado.
+   */
+  versaoEsperada?: number
 }
 
 export type VirarRegraNaVozResult =
@@ -152,6 +160,12 @@ export type VirarRegraNaVozResult =
 export async function virarRegraNaVoz(args: VirarRegraNaVozArgs): Promise<VirarRegraNaVozResult> {
   const registro = await lerRegistroDaVoz(args.projectId)
   if (!registro?.voz) throw new CreativeError('VOZ_INEXISTENTE', 'Este cliente não tem voz compacta válida gravada.', 404)
+  if (args.versaoEsperada != null && args.versaoEsperada !== registro.versao) {
+    throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou desde a proposta (versão mostrada ${args.versaoEsperada}, atual ${registro.versao}). Peça a proposta de novo antes de confirmar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: registro.versao })
+  }
+  if (args.confirmado && args.versaoEsperada == null) {
+    throw new CreativeError('VOZ_VERSAO_OBRIGATORIA', `Para gravar a regra mande a versão da voz que a proposta mostrou (versaoLida = ${registro.versao}). Sem ela a confirmação pode desativar uma regra que a pessoa não viu.`, 400, { versaoAtual: registro.versao })
+  }
   const resultado = aplicarRegraNaVoz(registro.voz, args)
   // Igualdade explícita: sem strictNullChecks o TS não estreita a união por `!ok`.
   if (resultado.ok === false) {

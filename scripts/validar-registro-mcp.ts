@@ -1177,6 +1177,7 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
       escopo: { type: 'string', enum: ['copy', 'arte', 'ambas'], description: 'Voz compacta: onde a regra manda — só na copy, só na arte, ou nas duas (padrão). Ignorado no DNA legado e na base.' },
       substitui: { type: 'string', description: 'Voz compacta: id da regra ativa que esta SUBSTITUI (a antiga sai do prompt e fica no histórico). Use quando a tool devolver CONFLITO_DE_REGRA e a pessoa disser que a nova vale no lugar da antiga.' },
       conviver: { type: 'boolean', description: 'Voz compacta: manter as duas regras mesmo com conflito apontado — só com a decisão explícita da pessoa.' },
+      versaoDaVoz: { type: 'number', description: 'Voz compacta: a `versaoLida` que a PROPOSTA devolveu. OBRIGATÓRIA ao confirmar (a gravação é recusada com VOZ_DIVERGENTE se a voz mudou desde a proposta). Ignorado no DNA legado e na base.' },
     },
     required: ['projectId', 'regra', 'motivo'],
     additionalProperties: false,
