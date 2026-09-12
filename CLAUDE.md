@@ -6765,7 +6765,13 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   com a substituta apontando para ela, o contrato recusa a voz ("a substituída
   continua ativa") e a tela oferecia uma operação que não podia ser salva;
   voltar ao texto antigo é uma NOVA substituição da regra atual (o histórico
-  fica). Só regra apenas desativada volta com "reativar".
+  fica) — da regra que vale HOJE (`sucessoraAtiva`: a cadeia A → B → C pode
+  ter mais de um elo, PR14-06). Só regra apenas desativada volta com
+  "reativar". Regra ainda NÃO gravada (não está na base lida) e sem referência
+  pode ser REMOVIDA da lista (`podeRemoverRegra`, PR14-05): sem isso a regra
+  em branco que a pessoa abandonou travava o Salvar do resto da edição — o
+  contrato exige texto e motivo também nas inativas. Regra gravada é
+  histórico: desativa, nunca some.
 - 🔴 **Listas e reescritas são campos ESTRUTURADOS, um item por campo — nunca
   texto serializado por delimitador** (PR14-01): "uma reescrita por linha,
   `antes → depois — motivo`" partia um `depois` com travessão, juntava exemplos

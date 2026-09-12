@@ -112,9 +112,44 @@ export function substituirRegraNoFormulario(regras: RegraNoFormulario[], idAntig
   return [...regras.map((r) => (r.id === idAntiga ? { ...r, ativa: false } : r)), { ...nova, id, substitui: idAntiga, ativa: true }]
 }
 
-/** A regra ATIVA que substitui esta (a cadeia pode ter mais de um elo: devolve a última ativa). */
+/** A regra que substitui esta DIRETAMENTE (o elo seguinte da cadeia, ativa ou não). */
 export function substituidaPor(regras: RegraNoFormulario[], id: string): RegraNoFormulario | null {
   return regras.find((r) => r.substitui === id) ?? null
+}
+
+/**
+ * A SUCESSORA ATIVA no fim da cadeia A → B → C (PR14-06): "voltar ao texto de
+ * A" é uma substituição da regra que vale HOJE, e ela pode estar dois elos
+ * adiante. Cadeia interrompida (a última também inativa) devolve null.
+ */
+export function sucessoraAtiva(regras: RegraNoFormulario[], id: string): RegraNoFormulario | null {
+  const vistos = new Set<string>([id])
+  let atual = substituidaPor(regras, id)
+  while (atual) {
+    if (atual.ativa) return atual
+    if (vistos.has(atual.id)) return null
+    vistos.add(atual.id)
+    atual = substituidaPor(regras, atual.id)
+  }
+  return null
+}
+
+/**
+ * Uma regra pode ser REMOVIDA do formulário (não só desativada) quando ainda
+ * não foi gravada (não está na base lida do servidor) e nenhuma outra a
+ * referencia (PR14-05): a regra nova em branco que a pessoa abandonou ficava
+ * na lista e o contrato — que exige texto e motivo também nas inativas —
+ * impedia salvar o resto da edição. Regra já gravada é histórico: desativa.
+ */
+export function podeRemoverRegra(regras: RegraNoFormulario[], id: string, idsGravados: Iterable<string>): boolean {
+  if (new Set(idsGravados).has(id)) return false
+  if (!regras.some((r) => r.id === id)) return false
+  return !regras.some((r) => r.substitui === id)
+}
+
+export function removerRegraNoFormulario(regras: RegraNoFormulario[], id: string, idsGravados: Iterable<string>): RegraNoFormulario[] {
+  if (!podeRemoverRegra(regras, id, idsGravados)) return regras
+  return regras.filter((r) => r.id !== id)
 }
 
 /**

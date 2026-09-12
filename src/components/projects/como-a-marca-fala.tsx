@@ -18,10 +18,13 @@ import {
   formularioParaVoz,
   formulariosIguais,
   podeReativar,
+  podeRemoverRegra,
   reativarRegraNoFormulario,
   regraEmBranco,
+  removerRegraNoFormulario,
   substituidaPor,
   substituirRegraNoFormulario,
+  sucessoraAtiva,
   vozParaFormulario,
   type FormularioDaVoz,
   type ReescritaNoFormulario,
@@ -153,6 +156,8 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
   const migrado = contexto.fonte === 'voz'
   const regrasAtivas = form.regras.filter((r) => r.ativa)
   const regrasInativas = form.regras.filter((r) => !r.ativa)
+  /** As regras que o servidor conhece: só as que ainda não foram gravadas podem ser REMOVIDAS (PR14-05); as outras são histórico e só desativam. */
+  const idsGravados = base.regras.map((r) => r.id)
   const salvando = salvar.isPending
 
   return (
@@ -243,7 +248,13 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
                     <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setSubstituindo({ id: r.id, texto: r.texto, motivo: '', escopo: r.escopo })}>
                       <Replace className="mr-1 h-3 w-3" /> Substituir
                     </Button>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setRegra(r.id, { ativa: false })}>Desativar</Button>
+                    {podeRemoverRegra(form.regras, r.id, idsGravados) ? (
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" title="Esta regra ainda não foi gravada: sai da lista sem deixar histórico" onClick={() => set('regras', removerRegraNoFormulario(form.regras, r.id, idsGravados))}>
+                        <X className="mr-1 h-3 w-3" /> Remover
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={() => setRegra(r.id, { ativa: false })}>Desativar</Button>
+                    )}
                   </span>
                 </div>
                 <Textarea rows={2} value={r.texto} onChange={(e) => setRegra(r.id, { texto: e.target.value })} placeholder="A regra, no imperativo (até 240 caracteres)." />
@@ -278,6 +289,8 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
                 <CollapsibleContent className="mt-2 space-y-1 text-xs text-muted-foreground">
                   {regrasInativas.map((r) => {
                     const substituta = substituidaPor(form.regras, r.id)
+                    // A cadeia pode ter mais de um elo (A → B → C): voltar ao texto de A é substituir a que vale HOJE (PR14-06).
+                    const atual = sucessoraAtiva(form.regras, r.id)
                     return (
                       <div key={r.id} className="flex flex-wrap items-center gap-2">
                         <code className="rounded bg-muted px-1">{r.id}</code>
@@ -286,14 +299,14 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
                           <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => set('regras', reativarRegraNoFormulario(form.regras, r.id))}>reativar</Button>
                         ) : substituta ? (
                           <>
-                            <span>substituída por <code className="rounded bg-muted px-1">{substituta.id}</code></span>
-                            {substituta.ativa && (
+                            <span>substituída por <code className="rounded bg-muted px-1">{substituta.id}</code>{atual && atual.id !== substituta.id && <> · vale hoje: <code className="rounded bg-muted px-1">{atual.id}</code></>}</span>
+                            {atual && (
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 className="h-6 text-xs"
-                                title="Abre uma substituição da regra atual com este texto — o histórico fica"
-                                onClick={() => setSubstituindo({ id: substituta.id, texto: r.texto, motivo: '', escopo: r.escopo })}
+                                title="Abre uma substituição da regra que vale hoje com este texto — o histórico fica"
+                                onClick={() => setSubstituindo({ id: atual.id, texto: r.texto, motivo: '', escopo: r.escopo })}
                               >
                                 voltar a este texto (nova substituição)
                               </Button>

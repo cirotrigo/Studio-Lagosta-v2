@@ -4,6 +4,9 @@ import {
   formularioParaVoz,
   formulariosIguais,
   podeReativar,
+  podeRemoverRegra,
+  removerRegraNoFormulario,
+  sucessoraAtiva,
   reativarRegraNoFormulario,
   regraEmBranco,
   substituidaPor,
@@ -100,6 +103,55 @@ describe('voz-formulario — ida e volta EXATA entre o contrato e os campos da t
     expect(reativadas.find((r) => r.id === 'regra-2026-08-01-1')?.ativa).toBe(true)
     expect(lerVoz(formularioParaVoz({ ...form, regras: reativadas })).problemas).toEqual([])
     expect(podeReativar(regras, 'regra-2026-09-12-1')).toBe(false)
+  })
+  it('PR14-05: regra nova em branco pode ser REMOVIDA sem comprometer a edição; regra já gravada ou referenciada só desativa', () => {
+    const form = vozParaFormulario(voz)
+    const gravadas = form.regras.map((r) => r.id)
+    const editado = { ...form, descricao: 'Direta e quente.', regras: [...form.regras, regraEmBranco(form.regras, '2026-09-12')] }
+    // com a regra vazia na lista, o contrato não deixa salvar nem a descrição
+    expect(lerVoz(formularioParaVoz(editado)).voz).toBeNull()
+    const idNova = editado.regras[editado.regras.length - 1].id
+    expect(podeRemoverRegra(editado.regras, idNova, gravadas)).toBe(true)
+    const semANova = { ...editado, regras: removerRegraNoFormulario(editado.regras, idNova, gravadas) }
+    const volta = lerVoz(formularioParaVoz(semANova))
+    expect(volta.problemas).toEqual([])
+    expect(volta.voz).toEqual({ ...voz, descricao: 'Direta e quente.' })
+    // regra parcialmente preenchida também sai
+    const parcial = { ...editado, regras: editado.regras.map((r) => (r.id === idNova ? { ...r, texto: 'só o texto' } : r)) }
+    expect(lerVoz(formularioParaVoz(parcial)).voz).toBeNull()
+    expect(lerVoz(formularioParaVoz({ ...parcial, regras: removerRegraNoFormulario(parcial.regras, idNova, gravadas) })).voz).not.toBeNull()
+    // regra gravada não se remove (é histórico); regra referenciada por uma substituição também não
+    expect(podeRemoverRegra(form.regras, 'regra-2026-09-04-1', gravadas)).toBe(false)
+    expect(removerRegraNoFormulario(form.regras, 'regra-2026-09-04-1', gravadas)).toBe(form.regras)
+    const comSubstituicao = substituirRegraNoFormulario(editado.regras, 'regra-2026-09-04-1', { texto: 'nova', motivo: 'm', em: '2026-09-12', escopo: 'copy' })
+    const idDaSubstituta = comSubstituicao[comSubstituicao.length - 1].id
+    expect(podeRemoverRegra(comSubstituicao, 'regra-2026-09-04-1', [])).toBe(false)
+    // a substituta ainda não gravada pode ser removida — e a antiga continua inativa até a pessoa reativá-la
+    expect(podeRemoverRegra(comSubstituicao, idDaSubstituta, gravadas)).toBe(true)
+    const desfeita = removerRegraNoFormulario(comSubstituicao, idDaSubstituta, gravadas)
+    expect(podeReativar(desfeita, 'regra-2026-09-04-1')).toBe(true)
+  })
+  it('PR14-06: A → B → C — a sucessora ativa de A é C; voltar ao texto de A cria D que substitui C', () => {
+    const form = vozParaFormulario(voz)
+    const ab = substituirRegraNoFormulario(form.regras, 'regra-2026-09-04-1', { texto: 'B', motivo: 'm', em: '2026-09-10', escopo: 'copy' })
+    const idB = ab[ab.length - 1].id
+    const abc = substituirRegraNoFormulario(ab, idB, { texto: 'C', motivo: 'm', em: '2026-09-11', escopo: 'copy' })
+    const idC = abc[abc.length - 1].id
+    expect(substituidaPor(abc, 'regra-2026-09-04-1')?.id).toBe(idB)
+    expect(abc.find((r) => r.id === idB)?.ativa).toBe(false)
+    expect(sucessoraAtiva(abc, 'regra-2026-09-04-1')?.id).toBe(idC)
+    expect(sucessoraAtiva(abc, idB)?.id).toBe(idC)
+    expect(sucessoraAtiva(abc, idC)).toBeNull()
+    const textoDeA = abc.find((r) => r.id === 'regra-2026-09-04-1')!.texto
+    const abcd = substituirRegraNoFormulario(abc, idC, { texto: textoDeA, motivo: 'voltou ao texto de A', em: '2026-09-12', escopo: 'copy' })
+    const d = abcd[abcd.length - 1]
+    expect(d).toMatchObject({ substitui: idC, ativa: true, texto: textoDeA })
+    const cadeia = abcd.filter((r) => ['regra-2026-09-04-1', idB, idC, d.id].includes(r.id))
+    expect(cadeia.filter((r) => r.ativa).map((r) => r.id)).toEqual([d.id])
+    expect(lerVoz(formularioParaVoz({ ...form, regras: abcd })).problemas).toEqual([])
+    expect(podeReativar(abcd, 'regra-2026-09-04-1')).toBe(false)
+    expect(podeReativar(abcd, idB)).toBe(false)
+    expect(podeReativar(abcd, idC)).toBe(false)
   })
   it('formulariosIguais ignora espaço das pontas, mas vê mudança de conteúdo', () => {
     const a = vozParaFormulario(voz)
