@@ -4,7 +4,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { caminhoAte, itemExecutavel } from './execucao'
 import { normalizarStatusDoItem, type StatusDoItem } from './vocabulario'
 import type { SpecDePeca } from '@/lib/compositor/spec'
-import type { RecuperacaoDaReserva } from '@/lib/lotes/identidade'
+import { estadoDaPeca, mesmoPedidoDoLote, type RecuperacaoDaReserva } from '@/lib/lotes/identidade'
 import type { Prisma } from '../../../prisma/generated/client'
 
 /** Item, geração e job são um único commit. Nenhum render dentro da transação. */
@@ -27,13 +27,36 @@ const RECUSA_REVISADO = () =>
   new CreativeError('ITEM_EXECUCAO_CONCORRENTE', 'O item já avançou ou foi revisado. Releia o plano antes de continuar.', 409)
 
 /**
+ * A spec gravada com a peça (no payload do job ou na Generation) é o pedido de
+ * agora?
+ *
+ * Com identidade de lote, pela MESMA normalização do hash do lote (revisão
+ * R03): os carimbos `copyAutoral.origem.em` e `revisoes[].em` não são
+ * diferença. O lote já aceitou a retentativa que só mudou a hora; comparar cru
+ * aqui recusava com ITEM_EXECUCAO_CONCORRENTE um item que ninguém revisou, e a
+ * peça ficava sem job executável. O projeto é conferido À PARTE, porque o hash
+ * o deixa de fora — e `planoRevisao` continua sendo conferida por quem chama.
+ *
+ * Sem lote, a comparação crua de sempre: nada muda para a bancada.
+ */
+export function mesmaSpecDaPeca(gravada: unknown, spec: SpecDePeca, comLote: boolean): boolean {
+  if (!comLote) return stableStringify(gravada) === stableStringify(spec)
+  if (!gravada || typeof gravada !== 'object' || Array.isArray(gravada)) return false
+  if ((gravada as { projectId?: unknown }).projectId !== spec.projectId) return false
+  return mesmoPedidoDoLote(gravada, spec)
+}
+
+/**
  * O mesmo, dentro de uma transação que já existe — a reserva do item de lote
  * (`src/lib/lotes/reserva.ts`) liga a linha dela à Generation no mesmo commit.
  * `reaproveitado` diz se a Generation devolvida já existia (mesma revisão).
  *
- * `recuperacao` (só o lote manda — revisão R01–R02) é a decisão de que a peça
- * que a linha do lote aponta MORREU (`geracao-e-job`) ou ficou sem job (`job`).
- * Sem ela, o comportamento de sempre.
+ * `lote` só vem do lote. `lote.recuperacao` (revisão R01–R02) é a decisão de
+ * que a peça que a linha do lote aponta MORREU (`geracao-e-job`) ou ficou sem
+ * job (`job`) — tomada sob a trava da LINHA, antes desta. Ela é re-decidida
+ * aqui com o estado relido sob a trava do item (R04). Com `lote`, as specs são
+ * comparadas pela normalização do lote (R03). Sem `lote`, o comportamento de
+ * sempre.
  */
 export async function enfileirarComposicaoDoPlanoEm(
   tx: Prisma.TransactionClient,
@@ -42,8 +65,10 @@ export async function enfileirarComposicaoDoPlanoEm(
   decididoPor: string | null,
   autor: string | null,
   itemAtualizadoEm?: Date | string,
-  recuperacao?: RecuperacaoDaReserva | null,
+  lote?: { recuperacao: RecuperacaoDaReserva | null } | null,
 ) {
+  const comLote = !!lote
+  const recuperacao = lote?.recuperacao ?? null
   // Serializa reenvios do mesmo item, inclusive de invocações diferentes.
   await tx.$queryRaw`SELECT id FROM "ItemDePlano" WHERE id = ${spec.itemDePlanoId} AND "projectId" = ${spec.projectId} FOR UPDATE`
   const item = await tx.itemDePlano.findFirst({ where: {
@@ -67,13 +92,19 @@ export async function enfileirarComposicaoDoPlanoEm(
   })
   const jobAnterior = item.generationId ? await tx.generationJob.findUnique({ where: { generationId: item.generationId } }) : null
   const fv = jobAnterior?.payload as { spec?: unknown; planoRevisao?: string } | null
-  const mesmaRevisao = fv?.planoRevisao === revisao && stableStringify(fv?.spec) === stableStringify(spec)
+  const mesmaRevisao = fv?.planoRevisao === revisao && mesmaSpecDaPeca(fv?.spec, spec, comLote)
 
   // A peça que o LOTE declarou morta (ou sem job) ainda é a do item: o lote
-  // manda na retomada, nunca o reaproveitamento abaixo.
-  const retomandoAPecaDoItem = !!recuperacao && item.generationId === recuperacao.generationId
-  if (retomandoAPecaDoItem && EM_VOO.includes(status)) {
-    return retomarPecaEmVoo(tx, { item, status, anterior, jobAnterior, mesmaRevisao, revisao, spec, data, decididoPor, autor, recuperacao: recuperacao! })
+  // manda na retomada, nunca o reaproveitamento abaixo. Mas a declaração foi
+  // feita ANTES desta trava (R04): outra linha de lote apontando para a mesma
+  // Generation pode já ter refeito o job, ou a peça ter ficado pronta. A
+  // retomada é re-decidida com o estado relido aqui; peça viva de novo cai no
+  // reaproveitamento, com a mesma guarda de revisão.
+  const estadoAgora = recuperacao && item.generationId === recuperacao.generationId
+    ? estadoDaPeca({ geracao: anterior, job: jobAnterior }) : null
+  const retomandoAPecaDoItem = estadoAgora?.acao === 'retomar'
+  if (estadoAgora?.acao === 'retomar' && EM_VOO.includes(status)) {
+    return retomarPecaEmVoo(tx, { item, status, anterior, jobAnterior, mesmaRevisao, revisao, spec, data, decididoPor, autor, recuperacao: { falta: estadoAgora.falta, generationId: item.generationId! } })
   }
 
   // Na retomada do lote, Generation aberta com job TERMINAL não é peça viva (R01).
@@ -147,7 +178,8 @@ async function retomarPecaEmVoo(
     if (!ctx.mesmaRevisao) throw RECUSA_REVISADO()
   } else if (anterior) {
     const gravado = (anterior.fieldValues && typeof anterior.fieldValues === 'object' ? anterior.fieldValues : {}) as { spec?: unknown; planoRevisao?: string }
-    if (gravado.spec !== undefined && stableStringify(gravado.spec) !== stableStringify(spec)) throw RECUSA_REVISADO()
+    // Só o lote chega aqui: a spec gravada é comparada pela normalização dele (R03).
+    if (gravado.spec !== undefined && !mesmaSpecDaPeca(gravado.spec, spec, true)) throw RECUSA_REVISADO()
     if (gravado.planoRevisao !== undefined && gravado.planoRevisao !== revisao) throw RECUSA_REVISADO()
   }
 

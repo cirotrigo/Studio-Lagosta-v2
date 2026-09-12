@@ -178,12 +178,40 @@ export function decidirReserva(entrada: {
   if (!registro) return { acao: 'criar' }
   if (!hashConfere(registro, hash)) return { acao: 'conflito', diferencas: diferencasDoPayload(registro.payload, entrada.payload) }
   if (!registro.generationId) return { acao: 'retomar', falta: 'geracao-e-job', motivo: 'a reserva ficou sem geração (a chamada anterior parou entre reservar e criar)' }
+  return estadoDaPeca({ geracao, job })
+}
+
+export type EstadoDaPeca = Extract<DecisaoDaReserva, { acao: 'reaproveitar' | 'retomar' }>
+
+/**
+ * O que a peça que EXISTE pede, dado o estado da Generation e do job — a regra
+ * única da retomada. `decidirReserva` a aplica sob a trava da LINHA do lote; o
+ * caminho do item de plano a aplica DE NOVO sob a trava do ITEM (revisão R04):
+ * duas linhas de lote diferentes podem apontar para a mesma Generation, e a
+ * decisão tomada antes da trava do item fica velha quando a outra linha já
+ * refez o job. Decidir → travar → decidir de novo, nunca reusar a primeira.
+ */
+export function estadoDaPeca(entrada: { geracao: { status: string } | null; job: { status: string } | null }): EstadoDaPeca {
+  const { geracao, job } = entrada
   if (!geracao) return { acao: 'retomar', falta: 'geracao-e-job', motivo: 'a geração do item não existe mais' }
   if (geracao.status === 'COMPLETED') return { acao: 'reaproveitar' }
   if (geracao.status === 'FAILED') return { acao: 'retomar', falta: 'geracao-e-job', motivo: 'a geração anterior falhou' }
   if (!job) return { acao: 'retomar', falta: 'job', motivo: 'a geração ficou sem job' }
   if (job.status === 'DONE' || job.status === 'FAILED') return { acao: 'retomar', falta: 'geracao-e-job', motivo: `o job terminou (${job.status}) sem fechar a geração` }
   return { acao: 'reaproveitar' }
+}
+
+/**
+ * Duas specs são o MESMO pedido para o lote? A mesma normalização e o mesmo
+ * hash que decidem a reserva (revisão R03): quem compara specs no caminho da
+ * retomada usa ISTO, nunca a comparação crua — senão o lote aceita a
+ * retentativa que só mudou os carimbos `em` e o criador a recusa.
+ *
+ * Não confere `projectId` (fica fora do hash por ser parte da chave): quem
+ * compara a spec gravada numa peça confere o projeto à parte.
+ */
+export function mesmoPedidoDoLote(a: unknown, b: unknown): boolean {
+  return hashDoPayload(payloadParaHash(a)) === hashDoPayload(payloadParaHash(b))
 }
 
 /**

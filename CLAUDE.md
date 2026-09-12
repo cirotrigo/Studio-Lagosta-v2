@@ -9779,3 +9779,60 @@ comportamento de sempre. Reaproveita `GenerationJob` — nenhuma fila nova.
   `20260912210000_lote_de_composicao` precisa estar aplicada antes de alguém
   mandar `loteId` em produção — sem ela, `db.itemDeLote` falha e cada item
   cai em `falhas`.
+
+**Da revisão do commit 8d663918 (BLOQUEADO, R03…R04, 12/09/2026):**
+
+A retomada tinha duas quebras do mesmo desenho: uma comparação que não usava a
+normalização do lote e uma decisão tomada antes de uma trava que nunca era
+refeita depois dela. A auditoria procurou as duas formas em
+`enfileirar-composicao.ts`, `reserva.ts` e `fila.ts`; cada instância achada tem
+teste em `fila-lote.test.ts` ("correção da revisão (R03, R04)").
+
+- 🔴 **R03 — no caminho do lote, spec se compara pela normalização do HASH,
+  nunca crua** (`mesmaSpecDaPeca`, que usa `mesmoPedidoDoLote` de
+  `identidade.ts`). O hash ignora `copyAutoral.origem.em` e `revisoes[].em` e
+  aceita a retentativa; o caminho do plano comparava a spec gravada com
+  `stableStringify` e recusava com `ITEM_EXECUCAO_CONCORRENTE` um item que
+  ninguém revisou — a peça ficava sem job executável. Eram TRÊS pontos: o payload
+  do job (retomada com job FAILED), a spec gravada na Generation (job removido)
+  e o reaproveitamento de uma SEGUNDA identidade de lote que só muda os
+  carimbos. O projeto é conferido À PARTE (o hash o deixa fora), e
+  `planoRevisao` continua sendo conferida. **Sem lote nada muda**: a bancada
+  segue na comparação crua, com teste.
+- 🔴 **R04 — decidir → travar → decidir de novo.** A retomada é decidida sob a
+  trava da LINHA do lote, e o caminho do plano toma OUTRA trava (a do item).
+  Duas linhas de lote DIFERENTES ligadas à mesma Generation (o
+  reaproveitamento permite) seguram travas diferentes, decidem as duas "falta
+  job" e disputam a trava do item: a primeira refazia o job, e a segunda caía
+  em `criarPecaDoItem` e criava uma Generation duplicada. Hoje o estado é
+  re-decidido sob a trava do item com `estadoDaPeca` — a MESMA regra de
+  `decidirReserva` depois das checagens da linha, extraída para os dois lugares
+  não divergirem. Peça viva de novo (job vivo, ou COMPLETED) vai para o
+  reaproveitamento, com a guarda de revisão de sempre; ainda morta, a retomada
+  usa o `falta` re-derivado.
+- **Variante achada na auditoria**: a peça ficou PRONTA entre as duas travas (o
+  job refeito rodou antes de a segunda chamada chegar). Com o item `pronto`, a
+  segunda chamada era recusada; com o item ainda `na-fila`, duplicava. As duas
+  agora reaproveitam a peça pronta. A variante do job FAILED (as duas linhas
+  decidem refazer tudo) já saía certa — o item muda de Generation e a segunda
+  chamada cai no reaproveitamento — e ficou coberta como guarda.
+- **O que a auditoria NÃO achou**: `reserva.ts` só decide por `hashConfere`
+  (normalizado) e já relê a linha sob a trava dela; o caminho sem plano cria
+  sempre Generation nova, então duas linhas nunca dividem uma Generation ali, e
+  o job é criado por `upsert` na `generationId` única.
+- 🔴 **O banco falso tem um modo de travas POR LINHA** (`banco.travasPorLinha`):
+  a trava global serializa a transação inteira e por isso não consegue
+  reproduzir duas decisões sob travas de linhas diferentes. No modo por linha,
+  cada `SELECT … FOR UPDATE` trava a própria linha até o fim da transação, o
+  rollback desfaz só o que AQUELA transação escreveu (diário de imagens
+  anteriores), e `antesDaTravaDoPlano` é a barreira que segura as duas chamadas
+  até ambas terem decidido. Teste de corrida entre linhas diferentes precisa
+  desse modo; na trava global ele passa sem exercitar nada.
+- **A assinatura mudou**: o 7º argumento de `enfileirarComposicaoDoPlanoEm` é
+  `lote?: { recuperacao }`, e a presença do objeto é o que liga as comparações
+  do lote. `enfileirarComposicaoDoPlano` (bancada, sem lote) não o passa.
+- ⚠️ **Resíduo conhecido**: Generation COMPLETED sem `resultUrl`, ou sem job,
+  re-decidida sob a trava do item cai na guarda de sempre (recusa com o item
+  fora do executável) em vez de ser reaproveitada; a repetição seguinte
+  reaproveita pela decisão da linha. É o mesmo comportamento do caminho sem
+  lote.

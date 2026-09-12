@@ -10,8 +10,10 @@ import {
   VERSAO_DO_HASH,
   decidirReserva,
   diferencasDoPayload,
+  estadoDaPeca,
   hashConfere,
   hashDoPayload,
+  mesmoPedidoDoLote,
   payloadParaHash,
   recuperacaoDaDecisao,
   situacaoDaPeca,
@@ -199,5 +201,32 @@ describe('decisão da reserva', () => {
     expect(situacaoDaPeca('COMPLETED')).toBe('pronta')
     expect(situacaoDaPeca('FAILED')).toBe('falhou')
     expect(situacaoDaPeca(null)).toBe('falhou')
+  })
+})
+
+describe('as regras que o criador reaplica sob a própria trava (R03, R04)', () => {
+  it('estadoDaPeca é a MESMA regra de decidirReserva depois das checagens da linha', () => {
+    const registro = { hashDoPayload: hashDoPayload(payloadParaHash(spec)), payload: payloadParaHash(spec), generationId: 'g1', jobId: 'j1' }
+    const hash = registro.hashDoPayload
+    const casos: Array<[{ status: string } | null, { status: string } | null]> = [
+      [null, null], [null, { status: 'PENDING' }], [{ status: 'COMPLETED' }, null], [{ status: 'COMPLETED' }, { status: 'DONE' }],
+      [{ status: 'FAILED' }, { status: 'FAILED' }], [{ status: 'PROCESSING' }, null], [{ status: 'PROCESSING' }, { status: 'FAILED' }],
+      [{ status: 'PROCESSING' }, { status: 'DONE' }], [{ status: 'PROCESSING' }, { status: 'PENDING' }], [{ status: 'PROCESSING' }, { status: 'RUNNING' }],
+    ]
+    for (const [geracao, job] of casos) {
+      expect(estadoDaPeca({ geracao, job })).toEqual(decidirReserva({ registro, hash, payload: registro.payload, geracao, job }))
+    }
+    expect(estadoDaPeca({ geracao: { status: 'PROCESSING' }, job: null })).toMatchObject({ acao: 'retomar', falta: 'job' })
+    expect(estadoDaPeca({ geracao: { status: 'PROCESSING' }, job: { status: 'PENDING' } })).toEqual({ acao: 'reaproveitar' })
+    expect(estadoDaPeca({ geracao: { status: 'COMPLETED' }, job: { status: 'DONE' } })).toEqual({ acao: 'reaproveitar' })
+  })
+
+  it('mesmoPedidoDoLote: carimbos e ordem das chaves não são diferença; conteúdo é; projectId fica fora', () => {
+    const a = { ...spec, blocos: undefined, copyAutoral: contrato('2026-09-12T10:00:00.000Z') }
+    const b = { ...spec, blocos: undefined, copyAutoral: contrato('2026-09-12T10:07:31.000Z') }
+    expect(mesmoPedidoDoLote(a, b)).toBe(true)
+    expect(mesmoPedidoDoLote(a, { ...b, nome: 'Outra' })).toBe(false)
+    expect(mesmoPedidoDoLote(a, { ...b, copyAutoral: { ...contrato('t'), blocos: contrato('t').blocos.map((x) => (x.id === 'cta' ? { ...x, linhas: ['Reserve'] } : x)) } })).toBe(false)
+    expect(mesmoPedidoDoLote(spec, { ...spec, projectId: 99 })).toBe(true)
   })
 })

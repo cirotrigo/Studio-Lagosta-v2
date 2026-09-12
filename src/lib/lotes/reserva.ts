@@ -52,6 +52,9 @@ export interface EntradaDaReserva {
    * Cria (ou obtém) a Generation e o job DENTRO da transação que segura a linha.
    * `recuperacao` é a decisão da retomada (a peça que a linha aponta morreu, ou
    * ficou sem job) e o criador tem de honrá-la — ver `RecuperacaoDaReserva`.
+   * Ela vale sob a trava DESTA linha: criador que toma outra trava (o item de
+   * plano) re-decide com `estadoDaPeca` sobre o que relê sob ela (R04), e
+   * compara specs com `mesmoPedidoDoLote`, nunca cru (R03).
    */
   criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean }>
   /**
