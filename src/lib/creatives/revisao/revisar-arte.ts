@@ -370,6 +370,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
   let issues: ReturnType<typeof checkTextGeometry>['issues'] = []
   let metricas: ReturnType<typeof checkTextGeometry>['metricas'] = []
   let motivoSemMedida: string | undefined
+  let textosSemMetrica: string[] = []
   try {
     await registerProjectFonts(projectId)
     const medir = await createServerTextBoxMeasurer()
@@ -379,6 +380,13 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
       return { ...l, type: 'text', richTextStyles: undefined } as Layer
     })
     ;({ issues, metricas } = checkTextGeometry(paraMedir, canvas, medir))
+    // Texto visível com conteúdo que a geometria OMITIU (curvo, fitty,
+    // auto-resize — o medidor devolve null sem exceção): não foi examinado, e
+    // a cobertura tem de dizer (REV-127-03).
+    const medidos = new Set(metricas.map((mm) => mm.layerId))
+    textosSemMetrica = camadas
+      .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && String(l.content ?? '').trim() && !medidos.has(l.id))
+      .map((l) => l.id)
   } catch (erro) {
     motivoSemMedida = `a medição dos textos falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
     console.warn('[revisar-arte]', motivoSemMedida)
@@ -492,6 +500,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     fontesAusentes,
     medidasAproximadas,
     motivoSemMedida,
+    textosSemMetrica,
     vistos,
     visaoConclusiva: visao.estado === 'feita' && (visao.descartados ?? 0) === 0,
     motivoSemVisao: visao.estado === 'feita' ? undefined : visao.motivo,

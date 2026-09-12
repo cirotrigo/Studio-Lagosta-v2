@@ -5718,3 +5718,23 @@ Codex antes de ser escrito.
   Redução abaixo do mínimo (0,08) vira observação — e a conta é em MILÉSIMOS
   (`reducaoAtingeOMinimo`): `0.6 − 0.52` dá 0,0799… em ponto flutuante, e a
   redução exatamente no mínimo era descartada (REV-C19-02).
+- 🔴 **A recuperação de job expirado é compare-and-set sobre o que LEU**
+  (`recuperarJobsPerdidos`: tentativas, orçamento e payload; perdeu a corrida
+  → relê e decide de novo). Entre a leitura dos vencidos e a escrita terminal,
+  um ajuste cujo render falhou pode PROMOVER o job (força nova no payload,
+  `maxAttempts` ampliado): com o filtro só por id e status, a recuperação
+  gravava FAILED por cima da força aceita, com orçamento disponível, e o
+  carrossel ficava com a arte anterior (REV-127-01 da revisão FINAL do Codex,
+  12/09/2026). Prova 6s.
+- **`menos-gradiente` da visão com texto ESCURO na borda fica como observação**
+  (REV-127-02): a conta da necessidade é a do texto claro (o gradiente
+  escurece; sem ele o fundo fica claro demais); para texto escuro a
+  desigualdade é a inversa e a mesma conta propunha tirar o clareamento de
+  que o texto depende. Grupo de sentidos mistos idem.
+- 🔴 **Texto visível que o medidor não mede não vira regra "avaliada"**
+  (REV-127-03): curvo, `fitty` e `auto-resize-*` fazem `measureTextLayerBox`
+  devolver `null` sem exceção, e a geometria simplesmente os omitia — colisão,
+  corte e margem saíam avaliadas sem ter olhado a camada, e a visão ficava sem
+  marca dela. `revisarArte` compara os textos visíveis com as métricas e passa
+  `textosSemMetrica`; `avaliarPeca` rebaixa para `parcial`, com os ids, tudo
+  que depende da métrica (inclusive a visão). Prova 6t.

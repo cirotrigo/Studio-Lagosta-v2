@@ -972,6 +972,50 @@ async function main() {
       conferir('o slide do carrossel aponta para a arte re-renderizada e o carrossel não perdeu mídia', (carrossel6r?.mediaUrls ?? []).includes(String(gen6rB?.resultUrl)) && (carrossel6r?.mediaUrls.length ?? 0) === 2, JSON.stringify(carrossel6r?.mediaUrls?.map((u) => u.slice(-30))))
     }
 
+    // ── 6s. a recuperação de job expirado não descarta força que chegou entre a leitura e a escrita (REV-127-01) ──
+    console.log('6s) job RUNNING expirado com 3/3 tentativas: ENTRE a leitura dos vencidos e a escrita terminal, um ajuste promove o job (força nova, orçamento 4): a recuperação NÃO grava FAILED por cima — relê e devolve à fila com a força preservada (REV-127-01)')
+    if (jobId6r) {
+      const { recuperarJobsPerdidos } = await import('../src/lib/ai/generation-queue')
+      const payloadNormal6s = { generationId: persistido2.generationId, projectId: PROJETO, recompor: { pageId: pageId2, origem: 'editor' } }
+      await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, startedAt: new Date(Date.now() - 3_600_000), leaseExpiresAt: new Date(Date.now() - 600_000), finishedAt: null, payload: payloadNormal6s as never } })
+      const genAntes6s = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { status: true } })
+      const r6s = await recuperarJobsPerdidos({
+        apenas: [jobId6r],
+        seams: {
+          depoisDeLerOsVencidos: async () => {
+            await enfileirarRecomposicao({ generationId: persistido2.generationId, projectId: PROJETO, recompor: { pageId: pageId2, origem: 'editor', forcar: true } })
+          },
+        },
+      })
+      const job6s = await db.generationJob.findUnique({ where: { id: jobId6r }, select: { status: true, attempts: true, maxAttempts: true, payload: true, lastError: true } })
+      const rec6s = (job6s?.payload as Record<string, any>)?.recompor ?? {}
+      const genDepois6s = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { status: true } })
+      conferir('a recuperação NÃO marcou FAILED: relê depois de perder o CAS e devolve o job à fila (reenfileirados 1, falhados 0)', r6s.falhados === 0 && r6s.reenfileirados === 1 && job6s?.status === 'PENDING', JSON.stringify({ r: r6s, status: job6s?.status, lastError: job6s?.lastError }))
+      conferir('a força promovida durante a corrida FICOU no payload, com o orçamento ampliado (3 → 4) e a Generation intacta', rec6s.forcar === true && typeof rec6s.forcaPedidaEm === 'string' && job6s?.maxAttempts === 4 && job6s.attempts === 3 && genDepois6s?.status === genAntes6s?.status, JSON.stringify({ recompor: rec6s, attempts: job6s?.attempts, maxAttempts: job6s?.maxAttempts, gen: genDepois6s?.status }))
+      // controle: sem corrida, 3/3 expirado vira FAILED terminal (o comportamento de sempre) — e a Generation COMPLETED não é tocada
+      await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, leaseExpiresAt: new Date(Date.now() - 600_000), payload: payloadNormal6s as never } })
+      const r6sB = await recuperarJobsPerdidos({ apenas: [jobId6r] })
+      const job6sB = await db.generationJob.findUnique({ where: { id: jobId6r }, select: { status: true } })
+      conferir('controle: sem promoção no meio, o job 3/3 expirado é FAILED terminal (falhados 1)', r6sB.falhados === 1 && job6sB?.status === 'FAILED')
+      await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'DONE', finishedAt: new Date(), lastError: null } })
+    }
+
+    // ── 6t. texto que o medidor não mede (curvo) deixa a cobertura PARCIAL, com o id (REV-127-03) ──
+    console.log('6t) página com um texto CURVO ao lado dos textos normais: revisar-arte não finge que mediu — as regras de geometria saem "parcial" citando a camada (REV-127-03)')
+    const camadasAntesDo6t = await camadasDaPagina(pageId2)
+    const curvo6t = { id: 'curvo-prova-6t', name: 'curvo-prova-6t', type: 'text', visible: true, locked: false, order: 99, position: { x: 120, y: 900 }, size: { width: 600, height: 80 }, rotation: 0, content: 'Texto curvo de prova', style: { fontFamily: 'Arial', fontSize: 40, color: '#ffffff', lineHeight: 1.1 }, effects: { curved: { enabled: true, radius: 300 } } }
+    await db.page.update({ where: { id: pageId2 }, data: { layers: [...camadasAntesDo6t, curvo6t] as never } })
+    try {
+      const r6t = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+      const cob6t = r6t.relatorio.cobertura
+      conferir('com o texto curvo na página, colisão/corte/margem ficam "parcial" e o motivo cita a camada sem métrica', cob6t.colisao?.estado === 'parcial' && cob6t['texto-cortado']?.estado === 'parcial' && cob6t['fora-da-area-segura']?.estado === 'parcial' && /curvo-prova-6t/.test(cob6t.colisao?.motivo ?? ''), JSON.stringify({ colisao: cob6t.colisao, resumo: r6t.relatorio.resumo }).slice(0, 260))
+      conferir('a régua e a fonte continuam avaliadas (não dependem da métrica de texto) e o resumo não diz "nada a corrigir"', cob6t['fonte-nao-carregada']?.estado === 'avaliada' && !/nada a corrigir/i.test(r6t.relatorio.resumo), r6t.relatorio.resumo.slice(0, 160))
+    } finally {
+      await db.page.update({ where: { id: pageId2 }, data: { layers: camadasAntesDo6t as never } })
+    }
+    const camadasDepoisDo6t = await camadasDaPagina(pageId2)
+    conferir('a página voltou exatamente ao que era antes do 6t', JSON.stringify(camadasDepoisDo6t) === JSON.stringify(camadasAntesDo6t))
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))

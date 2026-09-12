@@ -568,52 +568,83 @@ export interface ResultadoRecuperacao {
  * PROCESSING ali é normal, e marcá-la FAILED mataria um vídeo saudável. Aquela
  * fila tem a própria recuperação (`failStuckVideoJobs`).
  */
-export async function recuperarJobsPerdidos(): Promise<ResultadoRecuperacao> {
+export async function recuperarJobsPerdidos(
+  opcoes: {
+    /** Só para a prova de integração: restringe a varredura a estes jobs e abre a costura entre a leitura e a decisão. */
+    apenas?: string[]
+    seams?: { depoisDeLerOsVencidos?: () => Promise<void> }
+  } = {},
+): Promise<ResultadoRecuperacao> {
   const agora = new Date()
   let reenfileirados = 0
   let falhados = 0
 
   const vencidos = await db.generationJob.findMany({
-    where: { status: 'RUNNING', leaseExpiresAt: { lt: agora } },
-    select: { id: true, generationId: true, attempts: true, maxAttempts: true },
+    where: { status: 'RUNNING', leaseExpiresAt: { lt: agora }, ...(opcoes.apenas ? { id: { in: opcoes.apenas } } : {}) },
+    select: { id: true, generationId: true, attempts: true, maxAttempts: true, payload: true },
     take: 50,
   })
+  if (opcoes.seams?.depoisDeLerOsVencidos) await opcoes.seams.depoisDeLerOsVencidos()
 
-  for (const job of vencidos) {
-    if (job.attempts < job.maxAttempts) {
-      const r = await db.generationJob.updateMany({
-        where: { id: job.id, status: 'RUNNING' },
-        data: {
-          status: 'PENDING',
-          nextAttemptAt: new Date(agora.getTime() + BACKOFF_APOS_MORTE_MS),
-          leaseExpiresAt: null,
-          lastError: 'a invocação anterior foi interrompida antes de terminar',
-        },
-      })
-      if (r.count > 0) {
-        reenfileirados++
-        console.warn(
-          `[fila-arte] job ${job.id} (tentativa ${job.attempts}/${job.maxAttempts}) voltou à fila — a invocação anterior morreu`,
-        )
+  /**
+   * 🔴 A decisão (devolver à fila × FAILED terminal) é tomada sobre o que foi
+   * LIDO, e a escrita é compare-and-set sobre exatamente isso — tentativas,
+   * orçamento e payload. Entre a leitura e a escrita um ajuste cujo render
+   * falhou pode PROMOVER o job (força nova no payload e `maxAttempts`
+   * ampliado, `enfileirarRecomposicao`): com o filtro só por id e status, a
+   * recuperação gravava FAILED por cima da força aceita, com orçamento
+   * disponível, e o carrossel ficava com a arte anterior (REV-127-01 da
+   * revisão FINAL do Codex, 12/09/2026). Perdeu a corrida → relê e decide de
+   * novo sobre o estado atual.
+   */
+  for (const lido of vencidos) {
+    let job = lido
+    for (let volta = 0; volta < 4; volta++) {
+      const cas = { id: job.id, status: 'RUNNING' as const, attempts: job.attempts, maxAttempts: job.maxAttempts, payload: { equals: job.payload as never } }
+      if (job.attempts < job.maxAttempts) {
+        const r = await db.generationJob.updateMany({
+          where: cas,
+          data: {
+            status: 'PENDING',
+            nextAttemptAt: new Date(agora.getTime() + BACKOFF_APOS_MORTE_MS),
+            leaseExpiresAt: null,
+            lastError: 'a invocação anterior foi interrompida antes de terminar',
+          },
+        })
+        if (r.count > 0) {
+          reenfileirados++
+          console.warn(
+            `[fila-arte] job ${job.id} (tentativa ${job.attempts}/${job.maxAttempts}) voltou à fila — a invocação anterior morreu`,
+          )
+          break
+        }
+      } else {
+        const r = await db.generationJob.updateMany({
+          where: cas,
+          data: {
+            status: 'FAILED',
+            finishedAt: agora,
+            leaseExpiresAt: null,
+            lastError: 'tentativas esgotadas — a execução foi interrompida',
+          },
+        })
+        if (r.count > 0) {
+          falhados++
+          await marcarGenerationFalha(
+            job.generationId,
+            'A geração foi interrompida e as tentativas acabaram. Nada foi cobrado por esta tentativa; peça de novo.',
+          )
+          break
+        }
       }
-      continue
+      // Perdeu a corrida: alguém mexeu no job entre a leitura e a escrita. Relê.
+      const atual = await db.generationJob.findUnique({
+        where: { id: job.id },
+        select: { id: true, generationId: true, attempts: true, maxAttempts: true, payload: true, status: true, leaseExpiresAt: true },
+      })
+      if (!atual || atual.status !== 'RUNNING' || !atual.leaseExpiresAt || atual.leaseExpiresAt >= agora) break
+      job = atual
     }
-
-    const r = await db.generationJob.updateMany({
-      where: { id: job.id, status: 'RUNNING' },
-      data: {
-        status: 'FAILED',
-        finishedAt: agora,
-        leaseExpiresAt: null,
-        lastError: 'tentativas esgotadas — a execução foi interrompida',
-      },
-    })
-    if (r.count === 0) continue
-    falhados++
-    await marcarGenerationFalha(
-      job.generationId,
-      'A geração foi interrompida e as tentativas acabaram. Nada foi cobrado por esta tentativa; peça de novo.',
-    )
   }
 
   // (b) órfãs anteriores à fila

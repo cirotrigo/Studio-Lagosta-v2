@@ -565,6 +565,42 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     expect(g3 && 'forca' in g3 ? g3.forca : null).toBe(0.672)
   })
 
+  it('texto ESCURO sobre gradiente claro: a conta da redução é a do texto claro e não vale — "menos gradiente" fica como observação, também em grupo de sentidos mistos (REV-127-02)', () => {
+    const rodapeA08 = { ...gradienteDoRodape, metadata: { ...gradienteDoRodape.metadata, forca: 0.8 } } as Layer
+    const visto: AchadoVisto = { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa pesa no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'muito' }
+    // o exemplo da revisão: sem gradiente o fundo é 0 (escuro), com gradiente 160 = alvo — o texto DEPENDE do clareamento; a conta do texto claro proporia 0,55
+    const escuroSobreClaro = medida({ camadas: ['servico'], gradiente: rodapeA08.id, tinta: 0.8, sentido: 'escuro', p98SemHalo: 0, p98ComHalo: 160, alvo: 160, ok: true })
+    const r = avaliarPeca(entrada({ camadas: [rodapeA08, servico], metricas: [metrica(servico)], contraste: [escuroSobreClaro], vistos: [visto] }))
+    expect(r.ajustes.filter((a) => a.tipo === 'gradiente')).toHaveLength(0)
+    expect(r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!.ajustes).toEqual([])
+    // grupo com sentidos mistos na mesma borda: o texto claro sobra, o escuro não — sem redução
+    const misto = medida({ camadas: ['servico'], gradiente: rodapeA08.id, tinta: 0.8, ok: true, textos: [
+      { camada: 'servico', sentido: 'claro', alvo: 110, p98SemHalo: 130, p98ComHalo: 75, ok: true },
+      { camada: 'servico-2', sentido: 'escuro', alvo: 160, p98SemHalo: 0, p98ComHalo: 160, ok: true },
+    ] })
+    const r2 = avaliarPeca(entrada({ camadas: [rodapeA08, servico], metricas: [metrica(servico)], contraste: [misto], vistos: [visto] }))
+    expect(r2.ajustes.filter((a) => a.tipo === 'gradiente')).toHaveLength(0)
+  })
+
+  it('texto visível que o medidor não mede (curvo, fitty, auto-resize) deixa as regras de geometria e a visão PARCIAIS, com o id — nunca "avaliada" sem ter olhado (REV-127-03)', () => {
+    const r = avaliarPeca(entrada({ camadas: [servico], metricas: [metrica(servico)], textosSemMetrica: ['curvo-1'] }))
+    for (const regra of ['texto-cortado', 'colisao', 'fora-da-area-segura', 'palavra-orfa', 'texto-pequeno'] as const) {
+      expect(r.cobertura[regra]?.estado).toBe('parcial')
+      expect(r.cobertura[regra]?.motivo).toMatch(/curvo-1/)
+    }
+    // regra que já não estava "avaliada" não é promovida a parcial: sem título na peça e sem visão nesta entrada
+    expect(r.cobertura['titulo-grande']?.estado).toBe('nao-avaliada')
+    expect(r.cobertura.visao?.estado).toBe('nao-avaliada')
+    // com a visão rodando, ela também fica parcial: a camada sem métrica não recebeu marca
+    const comVisao = avaliarPeca(entrada({ camadas: [servico], metricas: [metrica(servico)], textosSemMetrica: ['curvo-1'], vistos: [] }))
+    expect(comVisao.cobertura.visao?.estado).toBe('parcial')
+    expect(comVisao.cobertura.visao?.motivo).toMatch(/curvo-1/)
+    expect(r.cobertura['fonte-nao-carregada']?.estado).toBe('avaliada')
+    expect(r.resumo).not.toMatch(/nada a corrigir/i)
+    // sem textos sem métrica, nada muda
+    expect(avaliarPeca(entrada({ camadas: [servico], metricas: [metrica(servico)], textosSemMetrica: [] })).cobertura.colisao?.estado).toBe('avaliada')
+  })
+
   it('redução exatamente no mínimo (0,6 → 0,52 com "pouco") é aceita — a conta é em milésimos, não em ponto flutuante; abaixo do mínimo continua recusada (REV-C19-02)', () => {
     const rodapeA06 = { ...gradienteDoRodape, metadata: { ...gradienteDoRodape.metadata, forca: 0.6 } } as Layer
     const pouco: AchadoVisto = { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa escura pesa no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'pouco' }

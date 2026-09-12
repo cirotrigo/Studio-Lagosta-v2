@@ -99,6 +99,14 @@ export interface EntradaDaRevisao {
    * Métrica ausente nunca vira avaliação positiva (R4, 12/09/2026).
    */
   motivoSemMedida?: string
+  /**
+   * Textos VISÍVEIS que o medidor não mediu (curvo, `fitty`, `auto-resize-*` —
+   * `measureTextLayerBox` devolve null e a geometria simplesmente os omite).
+   * Sem isto, colisão, corte e margem terminavam "avaliadas" sem ter olhado a
+   * camada, e a visão ficava sem marca dela (REV-127-03 da revisão FINAL do
+   * Codex, 12/09/2026).
+   */
+  textosSemMetrica?: string[]
   /** O que a visão viu, já reconciliado. `undefined` = a visão não rodou. */
   vistos?: AchadoVisto[]
   motivoSemVisao?: string
@@ -1162,7 +1170,18 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
               const rect = uniao(rects)
               return !!rect && bordaDoGrupo(rect, null, H) === borda
             })
-            const necessarias = medidasDaBorda.flatMap((m) => leiturasDoGrupo(m)).map((t) => {
+            const leiturasDaBorda = medidasDaBorda.flatMap((m) => leiturasDoGrupo(m))
+            /**
+             * A conta abaixo é a do texto CLARO (o gradiente escurece; sem ele o
+             * fundo fica claro demais). Para texto ESCURO a desigualdade é a
+             * inversa — "fundo sem gradiente abaixo de alvo − 15" é justamente
+             * FALTA de luz —, e a mesma conta propunha tirar o clareamento de
+             * que o texto depende (REV-127-02 da revisão FINAL do Codex,
+             * 12/09/2026). Com texto escuro na borda, a redução fica como
+             * observação: quem decide é gente.
+             */
+            if (leiturasDaBorda.some((t) => t.sentido === 'escuro')) return []
+            const necessarias = leiturasDaBorda.map((t) => {
               const alvoFolgado = t.alvo - 15
               if (t.p98SemHalo <= alvoFolgado) return faixa[0]
               return (atual * (t.p98SemHalo - alvoFolgado)) / Math.max(1, t.p98SemHalo - t.p98ComHalo)
@@ -1257,7 +1276,18 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     for (const regra of ['texto-cortado', 'colisao', 'palavra-orfa'] as RegraDaRevisao[]) {
       if (cobertura[regra]?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo: 'rich text medido como texto simples (a largura dos trechos destacados é aproximada)' }
     }
+  }  if (e.textosSemMetrica && e.textosSemMetrica.length > 0) {
+    // Texto visível que o medidor não mede não foi examinado por NENHUMA regra
+    // de geometria — e não recebeu marca para a visão. Cobertura parcial, com
+    // os ids, em tudo que depende da métrica (REV-127-03).
+    const nome = (id: string) => { const l = porId.get(id); return l ? nomeDaCamada(l) : id }
+    const motivo = `texto(s) sem métrica — curvo, fitty ou auto-resize, que o medidor não mede: ${e.textosSemMetrica.map(nome).join(', ')}; as regras de geometria não os examinaram e a visão não recebeu marca deles`
+    for (const regra of REGRAS_DA_REVISAO) {
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais') continue
+      if (cobertura[regra]?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo }
+    }
   }
+
 
   const ordenados = achados
     .map((a, i) => ({ a, i }))
