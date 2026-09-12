@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
-import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
+import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, idDeExtraLegado, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
 
 function texto(id: string, y: number, content: string, extra: Partial<Layer> = {}): Layer {
   return { id, name: id, type: 'text', visible: true, locked: false, order: 1, content, position: { x: 100, y }, size: { width: 800, height: 60 }, style: { fontSize: 40 }, metadata: { compositor: { papel: id.replace(/-\d+$/, '') } }, ...extra } as Layer
@@ -63,6 +63,42 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(l3.efetiva.blocos).toEqual(l1.efetiva.blocos)
     expect(l3.efetiva.revisoes).toEqual(l1.efetiva.revisoes)
     expect(lerCopyAutoral(serializarCopyAutoral(l3.efetiva)).problemas).toEqual([])
+  })
+
+  it('REV-03 (3ª rodada): contrato gravado pela forma ANTIGA do id (`extra-nota` para a camada "Nota") é relido pelo vínculo — sem bloco novo, sem revisão artificial', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('Nota', 500, 'Só hoje', { metadata: {} } as Partial<Layer>)]
+    expect(idDeExtraLegado('Nota')).toBe('extra-nota')
+    expect(idDeExtra('Nota')).toBe('extra-Nota')
+    // o que a base (82d9b202) gravou: bloco livre `extra-nota`, já com o texto da camada
+    const gravadoPelaBase: CopyAutoral = { ...contrato, blocos: [...contrato.blocos, { id: 'extra-nota', funcao: 'livre', ordem: 2, linhas: ['Só hoje'] }], lacunas: ['a arte tem um texto que a copy não tinha: "extra-nota" (Só hoje)'] }
+    const relida = copyEfetivaDasCamadas(gravadoPelaBase, camadas, { superficie: 'editor' })
+    expect(relida.mudancas).toEqual([])
+    expect(relida.efetiva.blocos.map((b) => b.id)).toEqual(['headline', 'cta', 'extra-nota'])
+    expect(relida.efetiva.revisoes).toEqual([])
+    // edição só geométrica: nenhuma revisão da equipe
+    const mexida = camadas.map((c) => (c.id === 'Nota' ? { ...c, position: { x: 200, y: 700 } } : c)) as Layer[]
+    expect(revisaoDaPaginaComCamadas(gravadoPelaBase, mexida, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' }).estado).toBe('sem-mudanca')
+    // edição de texto: revisão no bloco ANTIGO, com o id preservado
+    const editada = camadas.map((c) => (c.id === 'Nota' ? { ...c, content: 'Só amanhã' } : c)) as Layer[]
+    const r = revisaoDaPaginaComCamadas(gravadoPelaBase, editada, { autor: 'equipe', motivo: 'edição', superficie: 'editor' })
+    expect(r.estado).toBe('registrada')
+    expect(r.blocos).toEqual(['extra-nota'])
+    expect(lerCopyAutoral(serializarCopyAutoral(r.copy!)).problemas).toEqual([])
+  })
+
+  it('REV-03 (3ª rodada): ids antigos com sufixo de colisão (`extra-nota-`, `extra-nota--2`) caem nas camadas na ordem de leitura, com a ambiguidade declarada; a duplicação leva o vínculo', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('nota!', 500, 'a', { metadata: {} } as Partial<Layer>), texto('nota?', 560, 'b', { metadata: {} } as Partial<Layer>)]
+    expect(idDeExtraLegado('nota!')).toBe('extra-nota-')
+    expect(idDeExtraLegado('nota?')).toBe('extra-nota-')
+    const gravadoPelaBase: CopyAutoral = { ...contrato, blocos: [...contrato.blocos, { id: 'extra-nota-', funcao: 'livre', ordem: 2, linhas: ['a'] }, { id: 'extra-nota--2', funcao: 'livre', ordem: 3, linhas: ['b'] }] }
+    const relida = copyEfetivaDasCamadas(gravadoPelaBase, camadas, { superficie: 'editor' })
+    expect(relida.mudancas).toEqual([])
+    expect(relida.efetiva.blocos.map((b) => [b.id, b.linhas[0]])).toEqual([['headline', 'Milk-shake'], ['cta', 'Conheça nossos pacotes'], ['extra-nota-', 'a'], ['extra-nota--2', 'b']])
+    expect(relida.lacunas.some((l) => l.includes('forma antiga do id') && l.includes('2 camadas'))).toBe(true)
+    expect(lerCopyAutoral(serializarCopyAutoral(relida.efetiva)).problemas).toEqual([])
+    const mapa = new Map([['headline', 'u1'], ['cta', 'u2'], ['nota!', 'u3'], ['nota?', 'u4']])
+    const copia = renomearExtrasDuplicados(gravadoPelaBase, mapa)
+    expect(copia.blocos.map((b) => b.id)).toEqual(['headline', 'cta', 'extra-u3', 'extra-u4'])
   })
 
   it('R03: duplicar a página regenera os ids das camadas e os blocos extra acompanham, no bloco e no histórico', () => {

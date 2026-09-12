@@ -350,10 +350,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   /**
    * A decisão (defasagem, `podeRecompor`) saiu do LEVANTAMENTO; a composição e
    * o compare-and-set da gravação usam ESTA leitura. Se a página mudou entre
-   * as duas — o revisor gravou um ajuste e o render falhou —, a decisão não
-   * vale mais para esta versão: parar aqui, antes de compor, e deixar a
-   * próxima execução decidir sobre a página nova (REV-05, segunda rodada da
-   * revisão do Codex, 12/09/2026).
+   * as duas — o editor moveu uma caixa, o revisor gravou um ajuste —, a decisão
+   * não vale mais para esta versão: parar aqui, antes de compor, e deixar a
+   * próxima execução decidir sobre a página nova (REV-05 da segunda rodada do
+   * PR 0 e REV-02 da terceira rodada do PR 3, revisão do Codex, 12/09/2026).
    */
   if (page.updatedAt.getTime() !== levantamento.versaoDaPagina.getTime()) {
     throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada entre o levantamento e a composição; a arte será refeita a partir da página nova.', 409)

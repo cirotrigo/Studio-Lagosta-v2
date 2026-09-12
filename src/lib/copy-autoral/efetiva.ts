@@ -55,6 +55,26 @@ export function idDeExtra(camadaOuId: Pick<Layer, 'id'> | string): string {
 }
 
 /**
+ * O id que a forma ANTERIOR do algoritmo (base do PR 3, 82d9b202) dava à mesma
+ * camada: caixa baixa, sem hash, com `-2`, `-3`… para colisões. Existe SÓ para
+ * reconhecer contrato gravado por ela — a compatibilização técnica não pode
+ * virar alteração autoral da pessoa (REV-03 da 3ª rodada da revisão do Codex
+ * sobre o PR 3, 12/09/2026). Não gera id novo.
+ */
+export function idDeExtraLegado(camadaOuId: Pick<Layer, 'id'> | string): string {
+  const cru = String(typeof camadaOuId === 'string' ? camadaOuId : camadaOuId.id)
+  return `extra-${cru.toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '') || 'camada'}`
+}
+
+/** `extra-nota` → 0; `extra-nota-2` → 1 (o sufixo de colisão da forma antiga); outro → null. */
+function indiceLegado(id: string, legado: string): number | null {
+  if (id === legado) return 0
+  if (!id.startsWith(`${legado}-`)) return null
+  const resto = id.slice(legado.length + 1)
+  return /^\d+$/.test(resto) && Number(resto) >= 2 ? Number(resto) - 1 : null
+}
+
+/**
  * Duplicar página regenera os ids das camadas; os blocos `extra-…` do contrato
  * (nomeados pelo id da camada solta) acompanham a troca — nos blocos e no
  * histórico (`revisoes[].blocos`, `campos`, `removidos`) —, senão a próxima
@@ -62,9 +82,24 @@ export function idDeExtra(camadaOuId: Pick<Layer, 'id'> | string): string {
  */
 export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: ReadonlyMap<string, string>): CopyAutoral {
   const mapa = new Map<string, string>()
-  for (const [antigo, novo] of idsDeCamada) mapa.set(idDeExtra(antigo), idDeExtra(novo))
-  if (!copy.blocos.some((b) => mapa.has(b.id))) return copy
-  const troca = (id: string) => mapa.get(id) ?? id
+  // A forma antiga do id colapsava camadas ("nota!" e "nota?" → `extra-nota-`
+  // e `extra-nota--2`, na ordem das camadas): o vínculo legado segue a mesma
+  // ordem, para a duplicação não trocar os blocos entre si (REV-03, 3ª rodada).
+  const legado = new Map<string, string[]>()
+  for (const [antigo, novo] of idsDeCamada) {
+    mapa.set(idDeExtra(antigo), idDeExtra(novo))
+    const chave = idDeExtraLegado(antigo)
+    legado.set(chave, [...(legado.get(chave) ?? []), novo])
+  }
+  const trocaLegada = (id: string): string | null => {
+    for (const [chave, novos] of legado) {
+      const i = indiceLegado(id, chave)
+      if (i !== null && novos[i] !== undefined) return idDeExtra(novos[i])
+    }
+    return null
+  }
+  const troca = (id: string) => mapa.get(id) ?? trocaLegada(id) ?? id
+  if (!copy.blocos.some((b) => troca(b.id) !== b.id)) return copy
   return {
     ...copy,
     blocos: copy.blocos.map((b) => ({ ...b, id: troca(b.id) })),
@@ -115,6 +150,7 @@ export interface CopyEfetiva {
  */
 export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): CopyEfetiva {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
+  const camadasEmOrdemDeLeitura = [...soltas, ...[...porFuncao.values()].flat(), ...voz2]
   const lacunas: string[] = []
   const usadas = new Set<string>()
   const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
@@ -123,7 +159,20 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
       // do bloco) — ou pelo id `extra-…` que uma leitura anterior deu à camada
       // solta: sem isso a segunda leitura esvaziava o bloco e criava outro com o
       // mesmo id (R03 da revisão do Codex, 12/09/2026).
-      const camada = camadas.find((c) => ehTextoVisivel(c) && !usadas.has(c.id) && (c.id === b.id || c.name === b.id || idDeExtra(c) === b.id))
+      let camada = camadas.find((c) => ehTextoVisivel(c) && !usadas.has(c.id) && (c.id === b.id || c.name === b.id || idDeExtra(c) === b.id))
+      if (!camada) {
+        // Contrato gravado pela forma ANTIGA do id (`extra-nota` para a camada
+        // "Nota"): reconhece o vínculo em vez de esvaziar o bloco e criar outro
+        // com o mesmo texto — isso viraria revisão artificial da equipe na
+        // próxima edição geométrica. Os blocos são visitados em ordem e cada um
+        // consome uma camada, então `extra-nota` e `extra-nota-2` caem nas
+        // camadas na mesma ordem em que a forma antiga as nomeou; havendo mais
+        // de uma candidata no momento, a escolha é declarada em `lacunas`
+        // (REV-03, 3ª rodada da revisão do Codex, 12/09/2026).
+        const candidatas = camadasEmOrdemDeLeitura.filter((c) => !usadas.has(c.id) && indiceLegado(b.id, idDeExtraLegado(c)) !== null)
+        camada = candidatas[0]
+        if (camada && candidatas.length > 1) lacunas.push(`o bloco "${b.id}" usa a forma antiga do id e ${candidatas.length} camadas casavam com ela; ficou com a primeira na ordem de leitura ("${camada.id}")`)
+      }
       if (!camada) {
         lacunas.push(`o bloco "${b.id}" (livre) não foi desenhado`)
         return { ...b, linhas: [] }
