@@ -54,6 +54,8 @@ import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
+import { copyAutoralDaPagina, registrarRevisaoDaPagina } from '@/lib/copy-autoral/persistir'
+import { copyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
@@ -1147,6 +1149,37 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    */
   const versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers })
 
+  /**
+   * F1: o contrato da copy da página. Texto trocado por aqui é REVISÃO de quem
+   * pediu (o app = `equipe`; o chat = `claude`), e a Generation nova grava
+   * original (o da página, já revisado) e efetiva (o que as camadas finais
+   * mostram). Página sem contrato segue sem — nada é inventado. Nunca lança.
+   */
+  const autorDaRevisao = input.canal === 'studio' ? 'equipe' : 'claude'
+  const revisaoDaCopy = await registrarRevisaoDaPagina({
+    pageId: page.id,
+    camadas: layers,
+    quem: {
+      autor: autorDaRevisao,
+      motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
+      superficie: input.canal ?? 'chat',
+    },
+  })
+  const contratoDaPagina =
+    revisaoDaCopy.copy ??
+    copyAutoralDaPagina((await db.page.findUnique({ where: { id: page.id }, select: { copyAutoral: true } }))?.copyAutoral)
+  const copyAutoralDaArte = contratoDaPagina
+    ? (() => {
+        const { efetiva, lacunas } = copyEfetivaDasCamadas(contratoDaPagina, layers as Layer[], { superficie: 'ajuste-arte' })
+        return {
+          original: contratoDaPagina,
+          efetiva,
+          comparavel: contratoDaPagina.origem.autor !== 'desconhecido',
+          ...(lacunas.length ? { lacunas } : {}),
+        }
+      })()
+    : null
+
   // A página JÁ foi gravada: se o render falhar (Blob fora do ar), a invalidação
   // e a recomposição acontecem do mesmo jeito — senão a agenda segue com a arte
   // antiga e o retry com a versão anterior toma VERSAO_DIVERGENTE.
@@ -1182,6 +1215,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         driveImageId,
         imageUrl: resolved.url ?? directUrl ?? null,
         autocorrecao: fix.autocorrecao,
+        ...(copyAutoralDaArte ? { copyAutoral: copyAutoralDaArte } : {}),
       },
     })
   } catch (erro) {

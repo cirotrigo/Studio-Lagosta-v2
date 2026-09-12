@@ -1,0 +1,142 @@
+/**
+ * A COPY EFETIVA — o que foi DESENHADO, lido das camadas da peça, no formato do
+ * contrato. É a outra metade da fidelidade: o original é o que o autor
+ * escreveu; a efetiva é o que a arte mostra. Quem grava as duas lado a lado
+ * (`Generation.fieldValues.copyAutoral`) deixa a comparação inteira, bloco a
+ * bloco, sem OCR.
+ *
+ * Como as camadas viram blocos:
+ *  - o papel de cada camada sai de `papelDaCamada` (metadata do compositor,
+ *    id ou nome); camadas do mesmo papel se atribuem aos blocos daquela
+ *    função na ORDEM vertical (o serviço com duas linhas vira `servico` e
+ *    `servico-2` na página, e volta para os dois blocos de serviço em ordem);
+ *  - `headline2` é a SEGUNDA VOZ da manchete (o compositor tira a última linha
+ *    do bloco para ela): as linhas dela voltam ao bloco `headline`, e a
+ *    posição vira `estilo.linhasNaVoz2` — declarada, como o contrato pede;
+ *  - rich text volta com os [colchetes] nos trechos destacados
+ *    (`linhasComColchetes`); texto simples volta como está;
+ *  - bloco do original que NÃO foi desenhado volta com `linhas: []` e uma
+ *    lacuna nomeando-o — nunca some;
+ *  - camada de texto que não casa com bloco nenhum vira bloco `livre` novo
+ *    (`extra-<id>`), com lacuna: a arte mostra texto que a copy não tinha.
+ *
+ * Módulo PURO (tipos, `papelDaCamada`, `linhasComColchetes`).
+ */
+
+import type { Layer } from '@/types/template'
+import { papelDaCamada } from '@/lib/compositor/defasagem'
+import { linhasComColchetes } from '@/lib/compositor/destaques'
+import { VERSAO_DO_CONTRATO, type BlocoAutoral, type CopyAutoral, type FuncaoDoBloco } from './contrato'
+import { blocosEmOrdem } from './validar'
+import { aplicarRevisao, type MudancaDeBloco } from './revisao'
+
+function ehTextoVisivel(l: Layer): boolean {
+  return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
+}
+
+function linhasDaCamada(l: Layer): string[] {
+  const ricas = linhasComColchetes(l)
+  if (ricas) return ricas
+  return String(l.content ?? '').split('\n')
+}
+
+/** As camadas de texto agrupadas por função, de cima para baixo. */
+function camadasPorFuncao(camadas: Layer[]): { porFuncao: Map<FuncaoDoBloco, Layer[]>; voz2: Layer[]; soltas: Layer[] } {
+  const porFuncao = new Map<FuncaoDoBloco, Layer[]>()
+  const voz2: Layer[] = []
+  const soltas: Layer[] = []
+  const ordenadas = camadas.filter(ehTextoVisivel).sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0) || (a.position?.x ?? 0) - (b.position?.x ?? 0))
+  for (const c of ordenadas) {
+    const papel = papelDaCamada(c)
+    if (papel === 'headline2') voz2.push(c)
+    else if (papel) porFuncao.set(papel, [...(porFuncao.get(papel) ?? []), c])
+    else soltas.push(c)
+  }
+  return { porFuncao, voz2, soltas }
+}
+
+export interface CopyEfetiva {
+  efetiva: CopyAutoral
+  mudancas: MudancaDeBloco[]
+  lacunas: string[]
+}
+
+/**
+ * Lê a copy efetiva das camadas e a registra como REVISÃO do sistema sobre o
+ * original — só quando algo difere. `origemDaLeitura` é a superfície que
+ * desenhou (compositor, ajuste-arte, editor…).
+ */
+export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): CopyEfetiva {
+  const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
+  const lacunas: string[] = []
+  const usadas = new Set<string>()
+  const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
+    if (b.funcao === 'livre') {
+      // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id do bloco).
+      const camada = camadas.find((c) => ehTextoVisivel(c) && (c.id === b.id || c.name === b.id))
+      if (!camada) {
+        lacunas.push(`o bloco "${b.id}" (livre) não foi desenhado`)
+        return { ...b, linhas: [] }
+      }
+      usadas.add(camada.id)
+      return { ...b, linhas: linhasDaCamada(camada) }
+    }
+    const fila = porFuncao.get(b.funcao) ?? []
+    const camada = fila.find((c) => !usadas.has(c.id))
+    if (!camada) {
+      lacunas.push(`o bloco "${b.id}" (${b.funcao}) não foi desenhado`)
+      return { ...b, linhas: [] }
+    }
+    usadas.add(camada.id)
+    let linhas = linhasDaCamada(camada)
+    let estilo = b.estilo
+    if (b.funcao === 'headline' && voz2.length > 0) {
+      const segunda = voz2.find((c) => !usadas.has(c.id))
+      if (segunda) {
+        usadas.add(segunda.id)
+        const daVoz2 = linhasDaCamada(segunda)
+        const inicio = linhas.length
+        linhas = [...linhas, ...daVoz2]
+        estilo = { ...(estilo ?? {}), linhasNaVoz2: daVoz2.map((_, i) => inicio + i) }
+      }
+    }
+    return { ...b, linhas, ...(estilo ? { estilo } : {}) }
+  })
+
+  const restantes = [...soltas, ...[...porFuncao.values()].flat(), ...voz2].filter((c) => !usadas.has(c.id))
+  let ordem = blocos.reduce((m, b) => Math.max(m, b.ordem), -1) + 1
+  for (const c of restantes) {
+    const papel = papelDaCamada(c)
+    const id = `extra-${String(c.id).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '') || 'camada'}`
+    blocos.push({
+      id,
+      funcao: papel && papel !== 'headline2' ? papel : 'livre',
+      ordem: ordem++,
+      linhas: linhasDaCamada(c),
+    })
+    lacunas.push(`a arte tem um texto que a copy não tinha: "${id}" (${String(c.content ?? '').slice(0, 40)})`)
+  }
+
+  const { copy: efetiva, mudancas } = aplicarRevisao(original, blocos, {
+    autor: 'sistema',
+    motivo: `o que foi desenhado (${opcoes.superficie})`,
+    superficie: opcoes.superficie,
+    ...(opcoes.em ? { em: opcoes.em } : {}),
+  })
+  return { efetiva: lacunas.length ? { ...efetiva, lacunas: [...(efetiva.lacunas ?? []), ...lacunas] } : efetiva, mudancas, lacunas }
+}
+
+/**
+ * O ESPELHO do contrato no formato posicional legado (`ItemDePlano.copyProposta`):
+ * um item por bloco, na ordem de leitura, linhas unidas por "\n". Bloco vazio
+ * vira item vazio, para a posição não deslizar — quem consome o espelho já
+ * filtra vazio.
+ */
+export function espelhoPosicional(copy: CopyAutoral): string[] {
+  return blocosEmOrdem(copy).map((b) => b.linhas.join('\n'))
+}
+
+/** Um contrato vazio-de-propósito é inválido pelo schema (min 1 bloco); este é o sentinela que o legado usa quando não há copy. */
+export function copyVazia(): CopyAutoral {
+  return { versao: VERSAO_DO_CONTRATO, origem: { autor: 'desconhecido' }, blocos: [{ id: 'sem-copy', funcao: 'livre', ordem: 0, linhas: [] }], revisoes: [], lacunas: ['sem copy'] }
+}

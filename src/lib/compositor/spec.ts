@@ -9,6 +9,10 @@
  */
 
 import { z } from 'zod'
+import { copyAutoralSchema } from '@/lib/copy-autoral/contrato'
+import { blocosParaOCompositor } from '@/lib/copy-autoral/legado'
+import { canonico } from '@/lib/copy-autoral/revisao'
+import { problemasDeCoerencia } from '@/lib/copy-autoral/validar'
 
 export const PAPEIS = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
 /**
@@ -88,7 +92,11 @@ export const specSchema = z.object({
     .optional(),
   selecaoExperimental: z.boolean().optional(),
   fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional(),
-  blocos: z.array(blocoSchema).min(1).max(5),
+  /**
+   * A copy por papel. Dispensável quando `copyAutoral` vem: `validarSpec`
+   * deriva os blocos do contrato (F1) — e recusa quando os dois vêm e não batem.
+   */
+  blocos: z.array(blocoSchema).max(5).optional(),
   preferencias: preferenciasSchema.optional(),
   nome: z.string().max(120).optional(),
   /** Vínculos frouxos com o plano — sem FK, como todo vínculo da casa. */
@@ -97,6 +105,13 @@ export const specSchema = z.object({
   quando: z.string().optional(),
   tema: z.string().optional(),
   carrossel: carrosselSchema.optional(),
+  /**
+   * O contrato da copy autoral (F1, 12/09/2026) — o que o autor escreveu,
+   * gravado ANTES de qualquer adaptação. `blocos` continua sendo o que o
+   * compositor consome; quem monta a spec a partir do contrato deriva os
+   * blocos por `blocosParaOCompositor` na porta (nunca aqui, em silêncio).
+   */
+  copyAutoral: copyAutoralSchema.optional(),
 })
 export type SpecDePeca = z.infer<typeof specSchema>
 
@@ -105,6 +120,25 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
   const r = specSchema.safeParse(entrada)
   if (r.success) {
     if (!r.data.selecaoExperimental) delete r.data.selecaoExperimental
+    if (r.data.copyAutoral) {
+      const problemas = problemasDeCoerencia(r.data.copyAutoral)
+      if (problemas.length > 0) return { spec: null, problemas: problemas.map((p) => `copyAutoral: ${p.mensagem}`) }
+      // F1: os blocos do compositor saem do contrato pela ÚNICA conversão
+      // sancionada. Bloco `livre` COM texto não tem para onde ir até a camada
+      // extra da F3 — recusar é o oposto de sumir em silêncio.
+      const { blocos: derivados, semPapel } = blocosParaOCompositor(r.data.copyAutoral)
+      const livresComTexto = semPapel.filter((b) => b.linhas.length > 0)
+      if (livresComTexto.length > 0) {
+        return { spec: null, problemas: [`copyAutoral: bloco(s) sem papel do compositor com texto (${livresComTexto.map((b) => `"${b.id}"`).join(', ')}) — a camada livre chega na F3; até lá, dê a eles uma função (pre, headline, apoio, cta, servico)`] }
+      }
+      const soPapelELinhas = (lista: Array<{ papel: string; linhas: string[] }>) => lista.map((b) => ({ papel: b.papel, linhas: b.linhas }))
+      if (!r.data.blocos || r.data.blocos.length === 0) {
+        r.data.blocos = derivados as unknown as NonNullable<typeof r.data.blocos>
+      } else if (canonico(soPapelELinhas(r.data.blocos as Array<{ papel: string; linhas: string[] }>)) !== canonico(soPapelELinhas(derivados))) {
+        return { spec: null, problemas: ['copyAutoral: `blocos` não bate com o contrato — mande só o contrato (os blocos saem dele) ou faça os dois dizerem o mesmo'] }
+      }
+    }
+    if (!r.data.blocos || r.data.blocos.length === 0) return { spec: null, problemas: ['blocos: pelo menos um bloco (ou copyAutoral)'] }
     const papeis = r.data.blocos.map((b) => b.papel)
     const repetidos = papeis.filter((p, i) => papeis.indexOf(p) !== i)
     if (repetidos.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidos)].join(', ')}`] }

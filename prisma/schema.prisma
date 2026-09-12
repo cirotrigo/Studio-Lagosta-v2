@@ -463,8 +463,15 @@ model ItemDePlano {
   /// Quando publicar, em UTC. Nulo enquanto o horário não foi decidido.
   quando       DateTime?
   tema         String?
-  /// Blocos de texto, como a copy da bancada (headline, apoio, CTA).
+  /// Blocos de texto, como a copy da bancada (headline, apoio, CTA). Desde
+  /// 12/09/2026 é ESPELHO de `copyAutoral` quando o contrato existe (uma linha
+  /// por bloco, na ordem de leitura); continua sendo a verdade dos itens sem
+  /// contrato, durante a transição.
   copyProposta String[]  @default([])
+  /// O contrato da copy autoral do item (`src/lib/copy-autoral`), como foi
+  /// recebido — id, função, grupo de leitura, ordem, linhas exatas, fatos,
+  /// estilo, autoria. NULL = item anterior ao contrato (F1, 12/09/2026).
+  copyAutoral  Json?
   legenda      String?
   fotoUrl      String?
   fotoDriveId  String?
@@ -1054,6 +1061,11 @@ model Page {
   /// Última vez usada como base de uma arte. NULL = nunca usada — e por isso
   /// o rodízio precisa de `nulls: 'first'` explícito (ASC é NULLS LAST no PG).
   lastUsedAt     DateTime?
+  /// O contrato da copy autoral desta peça (`src/lib/copy-autoral`), gravado
+  /// ANTES de qualquer adaptação e revisado a cada mudança de texto com autor,
+  /// data e motivo. NULL = página anterior ao contrato ou sem copy (modelo,
+  /// arte enviada) — nunca é backfillado por inferência (F1, 12/09/2026).
+  copyAutoral    Json?
   Template       Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
   scheduledPosts SocialPost[]
 

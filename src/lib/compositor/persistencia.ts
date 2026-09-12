@@ -15,6 +15,7 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import type { PersistCreativeInput } from '@/lib/creatives/persist'
 
 import type { SpecDePeca } from './spec'
+import { copyDeBlocosLegados, copyEfetivaDasCamadas, type CopyAutoral, type BlocoLegado } from '@/lib/copy-autoral'
 
 /** Tag que marca a página nascida do compositor (é o que liga o sinal `geometria`). */
 export const TAG_DA_PECA_COMPOSTA = 'compositor'
@@ -41,9 +42,34 @@ export interface InsumosDaPersistencia {
   fotoUrl: string | null
 }
 
+/**
+ * O contrato da copy que a peça grava: o que veio na spec, ou — spec antiga,
+ * só com `blocos` — o adaptador do legado, que declara autoria desconhecida
+ * e não inventa grupo nem ordem. NUNCA `null` numa peça do compositor: a
+ * fidelidade se mede a partir daqui.
+ */
+export function copyAutoralDaSpec(spec: SpecDePeca): CopyAutoral {
+  // `z.infer` com strict:false marca `papel` como opcional; `validarSpec` já
+  // garantiu o papel em runtime (ver CLAUDE.md, "Com strict: false, z.infer…").
+  return spec.copyAutoral ?? copyDeBlocosLegados(spec.blocos as BlocoLegado[], { superficie: 'compositor' })
+}
+
 export function entradaDePersistencia(i: InsumosDaPersistencia): PersistCreativeInput {
   const { spec, opcoes } = i
+  // O ORIGINAL é o que o autor escreveu; a EFETIVA é o que as camadas finais
+  // (depois do autofix) mostram — lida das camadas, bloco a bloco, com o que
+  // o compositor mudou registrado como revisão do SISTEMA. As duas vão para a
+  // Generation (o original fica preservado ali, verbatim). A PÁGINA guarda a
+  // efetiva: é o contrato do que a página MOSTRA, e é sobre ele que a edição
+  // seguinte (editor, ajuste) é diferenciada — se a página guardasse o
+  // original, a primeira edição da equipe levaria a culpa pelo que o
+  // compositor transformou (medido na prova de dev do PR 3, 12/09/2026: a
+  // seta que o compositor põe no CTA e o destaque não desenhado apareciam
+  // como revisão da equipe).
+  const original = copyAutoralDaSpec(spec)
+  const { efetiva, lacunas } = copyEfetivaDasCamadas(original, i.layers, { superficie: 'compositor' })
   return {
+    copyAutoral: efetiva,
     project: i.projeto,
     templateId: i.pasta.id,
     templateName: i.pasta.name,
@@ -70,6 +96,9 @@ export function entradaDePersistencia(i: InsumosDaPersistencia): PersistCreative
       composicao: i.diagnostico,
       // F4: o snapshot das camadas como nasceram — é o "git" de uma peça.
       layersSnapshot: i.layers,
+      // F1: o contrato da copy — original (do autor) e efetiva (o desenhado).
+      // `comparavel` é falso quando a autoria é desconhecida (legado).
+      copyAutoral: { original, efetiva, comparavel: original.origem.autor !== 'desconhecido', ...(lacunas.length ? { lacunas } : {}) },
       ...(spec.foto?.driveFileId ? { driveImageId: spec.foto.driveFileId } : {}),
       imageUrl: i.fotoUrl,
       ...(spec.itemDePlanoId ? { itemDePlanoId: spec.itemDePlanoId } : {}),

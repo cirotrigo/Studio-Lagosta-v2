@@ -265,6 +265,13 @@ export async function PATCH(
       const projectId = template!.Project.id
       after(async () => {
         /**
+         * F1: o contrato da copy autoral da página ganha a REVISÃO desta
+         * edição (autor `equipe`, superfície `editor`). Página sem contrato
+         * fica como está — não se inventa histórico. Nunca lança.
+         */
+        const { registrarRevisaoDaPagina } = await import('@/lib/copy-autoral/persistir')
+        await registrarRevisaoDaPagina({ pageId, camadas: updateData.layers, quem: { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' } })
+        /**
          * `decididoPor` é o `User.id` INTERNO, nunca o clerkId. Busca
          * somente leitura: criar linha de User a partir daqui é justamente
          * como nascem os Users fantasma, e isto é auditoria.
