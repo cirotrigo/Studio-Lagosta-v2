@@ -118,13 +118,21 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
   ])
   if (!contexto) return null
 
+  /**
+   * A identidade de TEXTO entra pela PRECEDÊNCIA: no cliente migrado, só o
+   * vocabulário positivo da voz; o DNA de texto legado (toneOfVoice,
+   * contentRules) fica FORA — ele carrega a grafia que a voz corrigiu ("Nunca
+   * escrever churasco") e, no vocabulário, protegia o erro (PR7-02-R da
+   * revisão do Codex, 12/09/2026). Antes da migração vale o legado, como
+   * sempre. As seções de ARTE do DNA continuam: são vocabulário da casa.
+   */
+  const legadoDeTexto = contexto.voz.fonte === 'voz' ? [] : [contexto.dna.toneOfVoice, contexto.dna.contentRules]
   const fontes: Array<string | null> = [
     contexto.projectName,
     // Só o vocabulário APROVADO da voz — nunca o "antes" das reescritas nem as
     // proibições, que protegeriam justamente a grafia que a marca corrigiu.
     contexto.voz.vocabulario,
-    contexto.dna.toneOfVoice,
-    contexto.dna.contentRules,
+    ...legadoDeTexto,
     contexto.dna.composition,
     contexto.dna.visualStyle,
     contexto.dna.photoDirection,
@@ -138,7 +146,7 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
   const marca: MarcaParaRevisao = {
     nome: contexto.projectName,
     vocabulario: extrairVocabulario(fontes),
-    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.voz.vocabulario, contexto.dna.toneOfVoice]),
+    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.voz.vocabulario, ...(contexto.voz.fonte === 'voz' ? [] : [contexto.dna.toneOfVoice])]),
     // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
     tomDeVoz: contexto.voz.texto,
   }

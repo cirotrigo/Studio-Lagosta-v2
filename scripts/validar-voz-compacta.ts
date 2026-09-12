@@ -123,6 +123,8 @@ async function main() {
   const vozAntes = await db.brandVoice.findUnique({ where: { projectId: PROJETO } })
   if (vozAntes) await db.brandVoice.delete({ where: { projectId: PROJETO } })
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT }
+  const templates: number[] = []
+  const paginas: string[] = []
 
   try {
     // ── 1. sem voz: legado ─────────────────────────────────────────────────
@@ -237,17 +239,34 @@ async function main() {
     conferir('seção de ARTE do DNA no cliente migrado continua indo ao DNA (a voz não substitui composition)', v8e.destino === 'dna' && v8e.secao === 'composition' && v8e.gravado === false)
 
     // ── 8b. prepareCreative entrega a identidade EFETIVA de texto (PR7-01) ──
-    console.log('8b) prepareCreative (escolher-modelo / API externa) entrega a voz no cliente migrado')
-    try {
-      const { prepareCreative } = await import('../src/lib/creatives/arte-rapida')
-      const prep = await prepareCreative({ projectId: PROJETO } as never)
-      const dnaPrep = (prep as { brand: { dna: { toneOfVoice: string | null; contentRules: string | null } | null; voz: { fonte: string } } }).brand
-      conferir('brand.dna.toneOfVoice é o texto da VOZ (não o toneOfVoice do DNA), contentRules null, brand.voz.fonte "voz"', !!dnaPrep.dna && dnaPrep.dna.toneOfVoice === c8.texto && dnaPrep.dna.contentRules === null && dnaPrep.voz.fonte === 'voz', JSON.stringify({ fonte: dnaPrep.voz.fonte, chars: dnaPrep.dna?.toneOfVoice?.length }))
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      // Projeto sem modelo cadastrado: prepareCreative recusa antes de montar o bloco da marca — declarado, não escondido.
-      conferir('prepareCreative não pôde ser exercitado neste projeto (sem modelo): ' + msg.slice(0, 80), /NO_TEMPLATE|modelo|template/i.test(msg), msg.slice(0, 120))
-    }
+    console.log('8b) prepareCreative (escolher-modelo / API externa) entrega a voz no cliente migrado — com um modelo de prova cadastrado só para isto')
+    const { prepareCreative } = await import('../src/lib/creatives/arte-rapida')
+    const templateDeProva = await db.template.create({
+      data: { name: `${MARCA} template`, type: 'STORY', dimensions: '1080x1920', designData: {} as never, projectId: PROJETO, createdBy: projeto.userId, tags: ['prova-voz'] },
+      select: { id: true },
+    })
+    templates.push(templateDeProva.id)
+    const modeloDeProva = await db.page.create({
+      data: {
+        name: `${MARCA} modelo`,
+        width: 1080,
+        height: 1920,
+        templateId: templateDeProva.id,
+        isTemplate: true,
+        tags: ['prova-voz'],
+        layers: [{ id: 'prova-headline', name: 'headline', type: 'text', content: 'Título de prova', visible: true, locked: false, order: 1, position: { x: 100, y: 300 }, size: { width: 880, height: 120 }, style: { fontSize: 72, color: '#ffffff' } }] as never,
+      },
+      select: { id: true },
+    })
+    paginas.push(modeloDeProva.id)
+    const prep = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz' })
+    conferir('brand.dna.toneOfVoice é o texto da VOZ (não o toneOfVoice do DNA), contentRules null, brand.voz.fonte "voz", e o modelo de prova foi o escolhido', !!prep.brand.dna && prep.brand.dna.toneOfVoice === c8.texto && prep.brand.dna.contentRules === null && prep.brand.voz.fonte === 'voz' && prep.page.id === modeloDeProva.id, JSON.stringify({ fonte: prep.brand.voz.fonte, chars: prep.brand.dna?.toneOfVoice?.length, page: prep.page.id === modeloDeProva.id }))
+    // o mesmo chamador com a migração desfeita volta ao DNA (o caminho de volta); depois remigra para os passos seguintes
+    await desfazerMigracao({ projectId: PROJETO })
+    const prepLegado = await prepareCreative({ projectId: PROJETO, theme: 'prova-voz' })
+    conferir('com a migração desfeita, prepareCreative volta ao DNA (toneOfVoice e contentRules do DNA, voz.fonte "legado" com vozPendente)', !!prepLegado.brand.dna && prepLegado.brand.dna.toneOfVoice === (dnaAntes?.toneOfVoice ?? null) && prepLegado.brand.dna.contentRules === regrasDeProva && prepLegado.brand.voz.fonte === 'legado' && prepLegado.brand.voz.vozPendente === true, JSON.stringify({ fonte: prepLegado.brand.voz.fonte }))
+    const remigrada = await migrarParaVoz({ projectId: PROJETO, versaoEsperada: 4 })
+    conferir('remigrada para os passos seguintes (versão 4)', !remigrada.jaEstava && !!(await lerRegistroDaVoz(PROJETO))?.migradaEm)
 
     // ── 9. a tool consultar-voz ────────────────────────────────────────────
     console.log('9) consultar-voz pelo catálogo do conector')
@@ -277,6 +296,11 @@ async function main() {
         falhasDoCleanup.push(`${nome}: ${e instanceof Error ? e.message : String(e)}`)
       }
     }
+    await passo('modelo e template de prova', async () => {
+      await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId: { in: paginas } } })
+      await db.page.deleteMany({ where: { id: { in: paginas } } })
+      await db.template.deleteMany({ where: { id: { in: templates }, projectId: PROJETO } })
+    })
     await passo('voz da prova', async () => { await db.brandVoice.deleteMany({ where: { projectId: PROJETO } }) })
     if (vozAntes) {
       await passo('voz anterior recriada', async () => {

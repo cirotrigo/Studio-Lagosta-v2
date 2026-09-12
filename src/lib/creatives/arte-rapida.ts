@@ -500,15 +500,19 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       logos: project.Logo,
       colors: project.BrandColor,
       fonts: project.CustomFont,
-      dna: project.brandDNA
-        ? {
-            toneOfVoice: voz.fonte === 'voz' ? voz.texto : project.brandDNA.toneOfVoice,
-            contentRules: voz.fonte === 'voz' ? voz.regrasDaMarca : project.brandDNA.contentRules,
-            composition: project.brandDNA.composition,
-            visualStyle: project.brandDNA.visualStyle,
-            photoDirection: project.brandDNA.photoDirection,
-          }
-        : null,
+      // Com voz MIGRADA o bloco existe mesmo sem BrandDNA (o schema e
+      // `migrarParaVoz` permitem): senão o chamador antigo lia `dna: null` e
+      // ficava sem a identidade efetiva (PR7-01-R da revisão do Codex).
+      dna:
+        project.brandDNA || voz.fonte === 'voz'
+          ? {
+              toneOfVoice: voz.fonte === 'voz' ? voz.texto : (project.brandDNA?.toneOfVoice ?? null),
+              contentRules: voz.fonte === 'voz' ? voz.regrasDaMarca : (project.brandDNA?.contentRules ?? null),
+              composition: project.brandDNA?.composition ?? null,
+              visualStyle: project.brandDNA?.visualStyle ?? null,
+              photoDirection: project.brandDNA?.photoDirection ?? null,
+            }
+          : null,
       voz,
     },
     knowledge,
