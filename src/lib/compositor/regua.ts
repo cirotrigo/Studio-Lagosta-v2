@@ -65,7 +65,7 @@ export interface ContrasteMedido {
    * corrigiu a força. É o que deixa o revisor dizer "não dava leitura, e com a
    * força X passa a dar" a partir de UMA rodada de render.
    */
-  antesDaCorrecao?: { p98: number; ok: boolean; tinta: number }
+  antesDaCorrecao?: { p98: number; ok: boolean; tinta: number; alvo: number; sentido: 'claro' | 'escuro' }
 }
 
 export interface IntervencaoDeTexto {
@@ -196,6 +196,11 @@ export async function medirContrasteDaPeca(args: {
     const g = grupoDe(t)
     grupos.set(g, [...(grupos.get(g) ?? []), t])
   }
+  // Cada TEXTO é medido no próprio retângulo, com o alvo da própria cor, e o
+  // grupo vale o pior deles. Medir a união do grupo contra a cor mais exigente
+  // julgava o "Funcionamento" marrom da segunda da Real pelo pires claro que só
+  // passa sob as linhas creme, e o dourado do Dia dos Pais pela parte escura da
+  // foto sob o "Feliz" — aviso no próprio modelo da equipe (11/09/2026).
   const entradas = [...grupos.entries()].map(([grupo, camadas]) => {
     const rect = uniao(camadas.map(rectDe))!
     const borda = bordaDoGrupo(rect, null, args.canvas.height)
@@ -205,66 +210,81 @@ export async function medirContrasteDaPeca(args: {
     // Vermelho ou amarelo saturado sobre gradiente escuro (Espeto, By Rock)
     // têm luz baixa mas leem pelo contraste de cor — medi-los como escuros
     // acusava 'fundo escuro demais' em toda peça.
-    const escuro = camadas.every((c) => textoEscuro(String(c.style?.color ?? '#FFFFFF'))) && luzDaCor(mancha) >= 128
-    return {
-      grupo,
-      camadas,
-      rect,
-      escuro,
-      alvo: escuro
-        ? Math.max(...camadas.map((c) => alvoClaroPorContraste(String(c.style?.color ?? '#000000'), 3)))
-        : Math.min(...camadas.map((c) => alvoPorContraste(String(c.style?.color ?? '#FFFFFF'), 3))),
-      gradiente,
-      tinta: gradiente ? forcaDaCamada(gradiente) : 0,
-      mancha,
-    }
+    // O corte acompanha a mancha: texto bem mais escuro que o gradiente claro é
+    // escuro mesmo acima de 128. O dourado da segunda voz do Dia dos Pais da Real
+    // (luz 132) sobre o creme era medido como texto claro, com alvo 0, e o aviso
+    // de foto clara demais saía no próprio modelo (11/09/2026).
+    const luzDaMancha = luzDaCor(mancha)
+    const corteDoEscuro = Math.max(128, luzDaMancha - 48)
+    const leituras = camadas.map((c) => {
+      const cor = String(c.style?.color ?? '#FFFFFF')
+      const escuro = luzDaMancha >= 128 && (textoEscuro(cor) || luzDaCor(cor) < corteDoEscuro)
+      return { rect: rectDe(c), escuro, alvo: escuro ? alvoClaroPorContraste(cor, 3) : alvoPorContraste(cor, 3) }
+    })
+    return { grupo, camadas, leituras, gradiente, tinta: gradiente ? forcaDaCamada(gradiente) : 0, mancha }
   })
-  const rects = entradas.map((e) => e.rect)
+  const leituras = entradas.flatMap((e) => e.leituras)
+  const rects = leituras.map((l) => l.rect)
+  let cursor = 0
+  const indicesDoGrupo = entradas.map((e) => {
+    const lista = e.leituras.map((_, k) => cursor + k)
+    cursor += e.leituras.length
+    return lista
+  })
 
   const [pngSem, pngCom] = await Promise.all([
     renderizar(semTratamento(args.layers), args.canvas, args.background),
     renderizar(semTinta(args.layers), args.canvas, args.background),
   ])
   let pngFinal = pngCom
-  const qs = entradas.map((e) => (e.escuro ? 0.02 : 0.98))
   const medirTodos = async (png: Buffer) => {
-    const claros = await percentilSob(png, args.canvas, rects, 0.98)
-    const escuros = await percentilSob(png, args.canvas, rects, 0.02)
-    return rects.map((_, i) => (qs[i] === 0.02 ? escuros[i] : claros[i]))
+    const [claros, escuros] = await Promise.all([percentilSob(png, args.canvas, rects, 0.98), percentilSob(png, args.canvas, rects, 0.02)])
+    return leituras.map((l, i) => (l.escuro ? escuros[i] : claros[i]))
   }
   const [semP98, comP98] = await Promise.all([medirTodos(pngSem), medirTodos(pngCom)])
+  /** Quanto a leitura sobra do alvo, já com a tolerância: ≥ 0 é ok. */
+  const folga = (i: number, valores: number[]) =>
+    leituras[i].escuro ? valores[i] - (leituras[i].alvo - TOLERANCIA_DO_ALVO) : leituras[i].alvo + TOLERANCIA_DO_ALVO - valores[i]
+  /** A leitura com menos folga de uma lista. */
+  const pior = (lista: number[], valores: number[]) => lista.reduce((a, b) => (folga(b, valores) < folga(a, valores) ? b : a))
 
   let layers = args.layers
   const medidas: ContrasteMedido[] = []
   /** Força corrigida por camada de gradiente — a borda serve vários blocos, vale o mais exigente. */
   const correcoes = new Map<string, number>()
   entradas.forEach((e, i) => {
-    const sem = semP98[i]
-    const com = comP98[i]
     let tintaCorrigida: number | null = null
     // Texto escuro: a régua só CONFERE (o gradiente claro é desenho da equipe).
-    if (args.corrigir !== false && !e.escuro && e.gradiente && com > e.alvo && e.tinta > 0 && e.tinta < args.faixa[1]) {
-      // cob = quanto da força chegou ao ponto da letra (a curva enfraquece
-      // longe da borda); a força que atinge o alvo é a bruta dividida por ele.
-      const luzTinta = luzDaCor(e.mancha)
-      const cob = sem > luzTinta ? Math.max(0.05, (sem - com) / (sem - luzTinta) / Math.max(0.01, e.tinta)) : 1
-      const necessaria = sem > luzTinta ? (sem - e.alvo) / (sem - luzTinta) / cob : 0
-      tintaCorrigida = Number(Math.min(args.faixa[1], Math.max(e.tinta, necessaria)).toFixed(3))
-      if (tintaCorrigida > e.tinta + 0.01) correcoes.set(e.gradiente.id, Math.max(correcoes.get(e.gradiente.id) ?? 0, tintaCorrigida))
-      else tintaCorrigida = null
+    // A força se corrige pelo texto claro mais longe do alvo.
+    const claros = indicesDoGrupo[i].filter((k) => !leituras[k].escuro)
+    if (claros.length > 0) {
+      const k = pior(claros, comP98)
+      const alvo = leituras[k].alvo
+      const sem = semP98[k]
+      const com = comP98[k]
+      if (args.corrigir !== false && e.gradiente && com > alvo && e.tinta > 0 && e.tinta < args.faixa[1]) {
+        // cob = quanto da força chegou ao ponto da letra (a curva enfraquece
+        // longe da borda); a força que atinge o alvo é a bruta dividida por ele.
+        const luzTinta = luzDaCor(e.mancha)
+        const cob = sem > luzTinta ? Math.max(0.05, (sem - com) / (sem - luzTinta) / Math.max(0.01, e.tinta)) : 1
+        const necessaria = sem > luzTinta ? (sem - alvo) / (sem - luzTinta) / cob : 0
+        tintaCorrigida = Number(Math.min(args.faixa[1], Math.max(e.tinta, necessaria)).toFixed(3))
+        if (tintaCorrigida > e.tinta + 0.01) correcoes.set(e.gradiente.id, Math.max(correcoes.get(e.gradiente.id) ?? 0, tintaCorrigida))
+        else tintaCorrigida = null
+      }
     }
-    const ok = e.escuro ? com >= e.alvo - TOLERANCIA_DO_ALVO : com <= e.alvo + TOLERANCIA_DO_ALVO
+    const k = pior(indicesDoGrupo[i], comP98)
     medidas.push({
       grupo: e.grupo,
       camadas: e.camadas.map((c) => c.id),
-      sentido: e.escuro ? 'escuro' : 'claro',
-      alvo: Math.round(e.alvo),
-      p98SemHalo: sem,
-      p98ComHalo: com,
+      sentido: leituras[k].escuro ? 'escuro' : 'claro',
+      alvo: Math.round(leituras[k].alvo),
+      p98SemHalo: semP98[k],
+      p98ComHalo: comP98[k],
       tinta: e.tinta,
       tintaCorrigida,
       gradiente: e.gradiente?.id ?? null,
-      ok,
+      ok: folga(k, comP98) >= 0,
     })
   })
 
@@ -275,10 +295,18 @@ export async function medirContrasteDaPeca(args: {
     const depois = await medirTodos(pngCorrigido)
     medidas.forEach((m, i) => {
       if (m.gradiente && correcoes.has(m.gradiente)) {
-        m.antesDaCorrecao = { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta }
-        m.p98ComHalo = depois[i]
+        // A medida de ANTES sai do texto que decidiu a medida antes da correção
+        // — p98, ok, força, alvo e sentido juntos —, porque o pior texto do grupo
+        // pode ser outro depois que a força muda (a régua da main mede texto a
+        // texto e o grupo vale o pior).
+        m.antesDaCorrecao = { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta, alvo: m.alvo, sentido: m.sentido }
+        const k = pior(indicesDoGrupo[i], depois)
+        m.sentido = leituras[k].escuro ? 'escuro' : 'claro'
+        m.alvo = Math.round(leituras[k].alvo)
+        m.p98SemHalo = semP98[k]
+        m.p98ComHalo = depois[k]
         m.tinta = correcoes.get(m.gradiente)!
-        m.ok = m.sentido === 'escuro' ? depois[i] >= m.alvo - TOLERANCIA_DO_ALVO : depois[i] <= m.alvo + TOLERANCIA_DO_ALVO
+        m.ok = folga(k, depois) >= 0
       }
     })
   }

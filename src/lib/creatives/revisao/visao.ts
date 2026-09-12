@@ -31,7 +31,7 @@ import type { TextLayerMetrics } from '@/lib/creatives/text-geometry'
 import type { ContrasteMedido } from '@/lib/compositor/regua'
 import type { Rect } from '@/lib/creatives/halo/halo'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
-import { blocosDeTexto, entrelinhaDaCamada, logosDaPeca } from './regras'
+import { blocosDeTexto, entrelinhaDaCamada, leituraDecisiva, logosDaPeca } from './regras'
 
 export const PROBLEMAS_VISTOS = [
   'acento-ou-cedilha-cortado',
@@ -269,10 +269,9 @@ export function textoDeContexto(args: {
     linhas.push('', 'Régua de contraste medida pelo código (fundo sob o texto contra o alvo de leitura):')
     for (const c of args.contraste) {
       const marca = args.marcas.find((m) => m.camadas.some((id) => c.camadas.includes(id)))
-      const antes = c.antesDaCorrecao
-      const ok = antes ? antes.ok : c.ok
+      const d = leituraDecisiva(c)
       linhas.push(
-        `- ${marca?.marca ?? c.grupo}: ${ok ? 'dentro do alvo' : 'fora do alvo'} (p98 ${antes ? antes.p98 : c.p98ComHalo}, alvo ${c.alvo}, força do gradiente ${antes ? antes.tinta : c.tinta})`,
+        `- ${marca?.marca ?? c.grupo}: ${d.ok ? 'dentro do alvo' : 'fora do alvo'} (${d.sentido === 'escuro' ? 'p2' : 'p98'} ${d.p98}, alvo ${d.alvo}, força do gradiente ${d.tinta})`,
       )
     }
   }

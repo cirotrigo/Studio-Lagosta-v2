@@ -48,6 +48,19 @@ import {
 } from './contrato'
 import type { AchadoVisto, ProblemaVisto } from './visao'
 
+/**
+ * A leitura que DECIDE um achado de contraste. Quando a régua corrigiu a força,
+ * é a medida de ANTES da correção — p98, ok, força, alvo e sentido juntos: a
+ * régua mede texto a texto e o grupo vale o pior, e o pior texto pode ser
+ * outro depois que a força muda (11/09/2026). Sem correção, é a medida atual.
+ */
+export function leituraDecisiva(m: ContrasteMedido): { p98: number; ok: boolean; tinta: number; alvo: number; sentido: 'claro' | 'escuro' } {
+  const a = m.antesDaCorrecao
+  return a
+    ? { p98: a.p98, ok: a.ok, tinta: a.tinta, alvo: a.alvo, sentido: a.sentido }
+    : { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta, alvo: m.alvo, sentido: m.sentido }
+}
+
 export interface ReferenciaDeCamada {
   /** Corpo do modelo, normalizado para 1080 de largura. */
   fontSize1080: number
@@ -656,10 +669,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     })()
     const sobrandoPorGradiente = new Map<string, { medidas: ContrasteMedido[]; todosSobrando: boolean }>()
     for (const m of e.contraste) {
-      const antes = m.antesDaCorrecao
-      const p98 = antes ? antes.p98 : m.p98ComHalo
-      const okAntes = antes ? antes.ok : m.ok
-      const tinta = antes ? antes.tinta : m.tinta
+      const { p98, ok: okAntes, tinta, alvo, sentido } = leituraDecisiva(m)
       const ids = m.camadas.filter((id) => porId.has(id))
       if (ids.length === 0) continue
       const nomes = ids.map((id) => nomeDaCamada(porId.get(id))).join(' + ')
@@ -671,13 +681,13 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (!okAntes) {
         const propostas: Ajuste[] = []
         let observacao: string | undefined
-        if (m.sentido === 'escuro') {
+        if (sentido === 'escuro') {
           observacao = 'Texto escuro sobre fundo escuro: a régua não corrige esse caso — mova o bloco para uma área clara da foto ou mude a cor do texto.'
         } else if (gradiente && m.tintaCorrigida != null) {
           propostas.push({ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: m.tintaCorrigida })
           if (!m.ok) observacao = `Mesmo com a força em ${m.tintaCorrigida} (teto da marca: ${forcaMaxima}) a leitura não fecha (p98 ${m.p98ComHalo} contra alvo ${m.alvo}): mova o bloco para uma área mais escura da foto ou troque a foto.`
         } else if (!gradiente) {
-          const necessaria = m.p98SemHalo > 0 ? (m.p98SemHalo - (m.alvo - 10)) / m.p98SemHalo / 0.7 : forcaMinima
+          const necessaria = m.p98SemHalo > 0 ? (m.p98SemHalo - (alvo - 10)) / m.p98SemHalo / 0.7 : forcaMinima
           const forca = arred(Math.min(forcaMaxima, Math.max(forcaMinima, necessaria)), 3)
           const desenhado = gradienteNaBorda(borda)
           if (desenhado) {
@@ -695,7 +705,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
         const doGrupo = ids.map((id) => porId.get(id)!)
         const sombra = doGrupo.some(temSombraNoGlifo)
         const saturada = doGrupo.some((c) => corSaturada(String(c.style?.color ?? '')))
-        const atenuada = m.sentido === 'claro' && (sombra || saturada)
+        const atenuada = sentido === 'claro' && (sombra || saturada)
         if (atenuada) {
           observacao = [
             observacao,
@@ -705,7 +715,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
             .join(' ')
         }
         const severidadeBase = servico ? 'problema' : 'aviso'
-        const fundo = m.sentido === 'escuro' ? 'o fundo está escuro demais para o texto escuro' : 'a foto está clara demais sob o texto'
+        const fundo = sentido === 'escuro' ? 'o fundo está escuro demais para o texto escuro' : 'a foto está clara demais sob o texto'
         adicionar(
           {
             regra: 'texto-sem-leitura',
@@ -713,11 +723,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
             certeza: certezaDe(ids),
             camadas: ids,
             mensagem: servico
-              ? `O horário/serviço ("${nomes}") não dá leitura: ${fundo} (${m.sentido === 'escuro' ? 'p2' : 'p98'} ${p98} contra alvo ${m.alvo}).`
-              : `"${nomes}" não dá leitura: ${fundo} (${m.sentido === 'escuro' ? 'p2' : 'p98'} ${p98} contra alvo ${m.alvo}).`,
+              ? `O horário/serviço ("${nomes}") não dá leitura: ${fundo} (${sentido === 'escuro' ? 'p2' : 'p98'} ${p98} contra alvo ${alvo}).`
+              : `"${nomes}" não dá leitura: ${fundo} (${sentido === 'escuro' ? 'p2' : 'p98'} ${p98} contra alvo ${alvo}).`,
             evidencia: {
               p98,
-              alvo: m.alvo,
+              alvo,
               forcaAtual: tinta,
               forcaProposta: m.tintaCorrigida ?? (propostas[0]?.forca ?? null),
               fechaComAProposta: gradiente ? m.ok : null,
@@ -732,6 +742,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (gradiente) {
         const registro = sobrandoPorGradiente.get(gradiente.id) ?? { medidas: [], todosSobrando: true }
         registro.medidas.push(m)
+        // A sobra se lê no estado ATUAL da peça (m.*): é a força que está lá que pode baixar.
         if (!okAntes || m.sentido !== 'claro' || !(m.p98ComHalo < m.alvo - L.gradienteSobra)) registro.todosSobrando = false
         sobrandoPorGradiente.set(gradiente.id, registro)
       }
@@ -960,10 +971,8 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       ) {
         const medida = e.contraste.find((c) => v.marca!.camadas.some((id) => c.camadas.includes(id)))
         if (medida) {
-          const antes = medida.antesDaCorrecao
-          const p98 = antes ? antes.p98 : medida.p98ComHalo
-          const ok = antes ? antes.ok : medida.ok
-          const folga = medida.sentido === 'claro' ? medida.alvo - p98 : p98 - medida.alvo
+          const { p98, ok, alvo, sentido } = leituraDecisiva(medida)
+          const folga = sentido === 'claro' ? alvo - p98 : p98 - alvo
           if (ok && folga >= 12) {
             leiturasDesmentidas++
             continue
@@ -1094,7 +1103,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
           if (v.correcao === 'menos-gradiente') {
             if (!gradiente || atual <= faixa[0] + 0.01) return []
             // Tirar gradiente onde a régua mede falta de leitura pioraria o texto.
-            if ((e.contraste ?? []).some((c) => c.gradiente === gradiente.id && !(c.antesDaCorrecao ? c.antesDaCorrecao.ok : c.ok))) return []
+            if ((e.contraste ?? []).some((c) => c.gradiente === gradiente.id && !leituraDecisiva(c).ok)) return []
             return [{ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: arred(Math.max(faixa[0], atual - passo), 3) }]
           }
           const medida = e.contraste?.find((c) => textos.some((id) => c.camadas.includes(id)))
@@ -1127,7 +1136,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (
         v.problema === 'gradiente-escuro-demais' &&
         e.contraste?.some(
-          (c) => !(c.antesDaCorrecao ? c.antesDaCorrecao.ok : c.ok) && (!v.marca || v.marca.camadas.some((id) => c.camadas.includes(id))),
+          (c) => !leituraDecisiva(c).ok && (!v.marca || v.marca.camadas.some((id) => c.camadas.includes(id))),
         )
       ) {
         return 'A régua mede falta de leitura nesse texto: tirar gradiente pioraria a leitura — o conserto é mudar o bloco de lugar ou a foto.'
@@ -1135,9 +1144,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (v.problema !== 'texto-sem-leitura' || !e.contraste || !v.marca) return null
       const medida = e.contraste.find((c) => v.marca!.camadas.some((id) => c.camadas.includes(id)))
       if (!medida) return null
-      const antes = medida.antesDaCorrecao
-      if (!(antes ? antes.ok : medida.ok)) return null
-      return `A régua mediu leitura dentro do alvo (p98 ${antes ? antes.p98 : medida.p98ComHalo}, alvo ${medida.alvo}): confira na miniatura.`
+      const decisiva = leituraDecisiva(medida)
+      if (!decisiva.ok) return null
+      return `A régua mediu leitura dentro do alvo (p98 ${decisiva.p98}, alvo ${decisiva.alvo}): confira na miniatura.`
     }
 
     // A visão ARBITRA o que a medida aproxima. Leitura que a régua acusou e a

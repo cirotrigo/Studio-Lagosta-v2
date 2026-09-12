@@ -157,7 +157,7 @@ describe('a leitura sobre a foto (a régua)', () => {
             tintaCorrigida: 0.72,
             p98ComHalo: 130,
             ok: true,
-            antesDaCorrecao: { p98: 175, ok: false, tinta: 0.6 },
+            antesDaCorrecao: { p98: 175, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' },
           }),
         ],
       }),
@@ -166,6 +166,34 @@ describe('a leitura sobre a foto (a régua)', () => {
     expect(achado.severidade).toBe('problema')
     expect(achado.mensagem).toContain('horário')
     expect(r.ajustes[achado.ajustes[0]]).toMatchObject({ tipo: 'gradiente', borda: 'rodape', forca: 0.72 })
+  })
+
+  it('a régua da main mede texto a texto: o achado sai da leitura de ANTES da correção, com o alvo e o sentido dela', () => {
+    // Depois da correção o pior texto do grupo mudou (outro alvo, e a peça atual
+    // até fecha); o achado tem de falar do texto que NÃO dava leitura antes.
+    const r = avaliarPeca(
+      entrada({
+        camadas: [gradienteDoRodape, servico],
+        metricas: [metrica(servico)],
+        contraste: [
+          medida({
+            camadas: ['servico'],
+            gradiente: gradienteDoRodape.id,
+            tinta: 0.8,
+            tintaCorrigida: 0.8,
+            sentido: 'claro',
+            alvo: 90,
+            p98ComHalo: 70,
+            ok: true,
+            antesDaCorrecao: { p98: 175, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' },
+          }),
+        ],
+      }),
+    )
+    const achado = r.achados.find((a) => a.regra === 'texto-sem-leitura')!
+    expect(achado).toBeDefined()
+    expect(achado.evidencia).toMatchObject({ p98: 175, alvo: 139, forcaAtual: 0.6, forcaProposta: 0.8, fechaComAProposta: true })
+    expect(achado.mensagem).toContain('p98 175 contra alvo 139')
   })
 
   it('no teto da força da marca não há ajuste mecânico: a observação manda mudar posição ou foto', () => {
@@ -291,7 +319,7 @@ describe('calibração contra peças reais (11/09/2026)', () => {
     tintaCorrigida: 0.72,
     p98ComHalo: 130,
     ok: true,
-    antesDaCorrecao: { p98: 175, ok: false, tinta: 0.6 },
+    antesDaCorrecao: { p98: 175, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' },
   })
 
   it('a sombra presa ao glifo rebaixa a leitura um nível e diz por quê', () => {

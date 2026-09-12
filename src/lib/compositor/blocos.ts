@@ -46,6 +46,11 @@ export interface BlocoMontado {
    * assinatura ou a combinação. Ausente = o ritmo da casa (`vaoEntre`).
    */
   vaoAntes?: number
+  /**
+   * O recuo do texto a partir da borda em que o grupo alinha no arranjo (px) —
+   * a linha de serviço ao lado do ícone. Só vale em `empilhar` com `lado`.
+   */
+  recuo?: number
   /** Os elementos presos ao texto (ícone, filete, selo), relativos à tinta. */
   elementos?: ElementoDoArranjo[]
   /** A escala dos elementos em relação à base 1080 (a do formato × a da fonte). */
@@ -310,14 +315,22 @@ export interface PilhaDeBlocos {
   /** Quanto os elementos passam da coluna de tinta à esquerda e à direita (px). */
   esquerda: number
   direita: number
+  /** O recuo de cada bloco a partir da borda de alinhamento (px), no `lado` pedido. Ausente = todos rentes. */
+  recuos?: number[]
+  lado?: 'esquerda' | 'direita'
 }
 
 /**
  * Empilha os blocos (já com largura/altura) e devolve a caixa do conjunto. O
  * vão antes de cada bloco é o do arranjo quando ele o traz, e o ritmo da casa
  * quando não; os elementos presos aos textos entram na caixa.
+ *
+ * Com `lado`, o RECUO que o arranjo desenhou entra na conta: cada texto começa
+ * `recuo` px para dentro da borda em que o grupo alinha, e o ícone que mora no
+ * recuo (ao lado da linha de serviço) já não empurra a coluna inteira para
+ * dentro. Sem nenhum recuo, a pilha sai exatamente como sem `lado`.
  */
-export function empilhar(blocos: BlocoMontado[], gapPadrao: number): PilhaDeBlocos {
+export function empilhar(blocos: BlocoMontado[], gapPadrao: number, lado?: 'esquerda' | 'direita'): PilhaDeBlocos {
   const extensoes = blocos.map((b) =>
     b.elementos?.length
       ? extensoesDosElementos(
@@ -343,5 +356,26 @@ export function empilhar(blocos: BlocoMontado[], gapPadrao: number): PilhaDeBloc
     anterior = b.papel
   })
   const base = extensoes[extensoes.length - 1]?.base ?? 0
-  return { width: Math.ceil(largura + esquerda + direita), height: Math.ceil(y + base), offsets, esquerda: Math.ceil(esquerda), direita: Math.ceil(direita) }
+  const height = Math.ceil(y + base)
+  const recuos = blocos.map((b) => (lado ? Math.max(0, Math.round(b.recuo ?? 0)) : 0))
+  if (!lado || recuos.every((r) => r === 0)) {
+    return { width: Math.ceil(largura + esquerda + direita), height, offsets, esquerda: Math.ceil(esquerda), direita: Math.ceil(direita) }
+  }
+  // Medido a partir da borda de alinhamento, crescendo para dentro da coluna: o
+  // texto ocupa [recuo, recuo + largura], e os elementos passam dele para fora
+  // (o lado da borda) e para dentro.
+  const paraFora = (i: number) => (lado === 'esquerda' ? extensoes[i].esquerda : extensoes[i].direita)
+  const paraDentro = (i: number) => (lado === 'esquerda' ? extensoes[i].direita : extensoes[i].esquerda)
+  const conteudo = Math.max(...blocos.map((b, i) => recuos[i] + b.width))
+  const sobraFora = Math.max(0, ...blocos.map((_, i) => paraFora(i) - recuos[i]))
+  const sobraDentro = Math.max(0, ...blocos.map((b, i) => recuos[i] + b.width + paraDentro(i) - conteudo))
+  return {
+    width: Math.ceil(sobraFora + conteudo + sobraDentro),
+    height,
+    offsets,
+    esquerda: Math.ceil(lado === 'esquerda' ? sobraFora : sobraDentro),
+    direita: Math.ceil(lado === 'esquerda' ? sobraDentro : sobraFora),
+    recuos,
+    lado,
+  }
 }
