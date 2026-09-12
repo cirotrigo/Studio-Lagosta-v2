@@ -132,7 +132,31 @@ export async function enfileirarRecomposicao(args: RecomposicaoJobArgs): Promise
       lastError: null,
     },
   })
+  /**
+   * A recuperação FORÇADA não pode ser descartada por um pedido que já estava
+   * na fila (REV-03 da revisão do Codex, 12/09/2026): o `update: {}` acima
+   * preserva o payload de um job PENDING/RUNNING, e o executor receberia o
+   * pedido antigo sem `forcar` — recomporia pela spec e apagaria o ajuste.
+   * Job PENDING é promovido ATOMICAMENTE ao payload forçado; job RUNNING
+   * recebe o payload novo no banco, e o executor, ao terminar, relê o job e
+   * pede outra tentativa quando encontra a força que não tinha ao começar
+   * (`processarRecomposicaoEmBackground`).
+   */
+  if (args.recompor.forcar === true) {
+    await db.generationJob.updateMany({
+      where: { id: job.id, status: { in: ['PENDING', 'RUNNING'] } },
+      data: { payload: limpo as never },
+    })
+  }
   return job.id
+}
+
+/** O job desta Generation tem `recompor.forcar` gravado no banco agora? (o executor confere ao terminar) */
+export async function jobPedeRecuperacaoForcada(queueJobId: string | null | undefined): Promise<boolean> {
+  if (!queueJobId) return false
+  const job = await db.generationJob.findUnique({ where: { id: queueJobId }, select: { payload: true } })
+  const payload = (job?.payload ?? {}) as { recompor?: { forcar?: boolean } }
+  return payload.recompor?.forcar === true
 }
 
 /** O payload de um job COMPOR — o que `processarComposicaoEmBackground` recebe. */

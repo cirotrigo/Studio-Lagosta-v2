@@ -311,9 +311,16 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
    * geometria fica por conta de quem mexeu.
    */
   // Forçado = re-render como está: recompor pela spec desfaria o ajuste que
-  // acabou de ser gravado na página.
-  const podeRecompor = !forcar && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  // acabou de ser gravado na página. E a página que JÁ passou por uma
+  // recuperação forçada fica marcada na arte (`somenteReRender`): a spec e o
+  // snapshot dela não conhecem o ajuste, então recompor por eles numa edição
+  // de texto posterior desfaria o ajuste do mesmo jeito (REV-04, 12/09/2026).
+  const travada = !!(arte.fieldValues as Record<string, unknown> | undefined)?.somenteReRender
+  const podeRecompor = !forcar && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
   if (forcar) avisos.push('Recuperação forçada: a página foi re-renderizada como está, sem medir a diagramação de novo.')
+  else if (travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto) {
+    avisos.push('A página carrega um ajuste que a spec não conhece (recuperação anterior): a arte foi re-renderizada como está, sem medir a diagramação de novo.')
+  }
   if (!podeRecompor && !forcar && defasagem.mexidoNaMao.length > 0) {
     avisos.push(
       `A arte foi refeita SEM medir a diagramação de novo, porque a página foi ajustada à mão (${defasagem.mexidoNaMao.join('; ')}). ` +
@@ -396,6 +403,9 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       fieldValues: {
         ...arte.fieldValues,
         recomposicao: registro('re-renderizada', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        // A recuperação forçada preservou um ajuste que a spec não conhece:
+        // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
+        ...(forcar ? { somenteReRender: { desde: new Date().toISOString(), motivo: 'recuperação forçada preservou ajuste manual (revisor)' } } : {}),
       },
     })
     novaUrl = registrada.url
@@ -655,6 +665,18 @@ export async function processarRecomposicaoEmBackground(args: {
     if (copyAntes && copyDepois && JSON.stringify(copyAntes) !== JSON.stringify(copyDepois)) {
       const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
       if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
+    }
+    /**
+     * Uma recuperação FORÇADA chegou enquanto este job rodava sem força
+     * (REV-03): o payload no banco já a carrega; esta execução não a honrou.
+     * Pede outra tentativa, que vai ler o payload novo.
+     */
+    if (args.recompor.forcar !== true) {
+      const { jobPedeRecuperacaoForcada } = await import('@/lib/ai/generation-queue')
+      if (await jobPedeRecuperacaoForcada(args.queueJobId)) {
+        const voltou = await pedirNovaTentativa(args.queueJobId, 'recuperação forçada chegou durante a execução')
+        if (voltou) console.log(`[recompor] ${pageId} voltou à fila: recuperação forçada pendente`)
+      }
     }
   } catch (erro) {
     const msg = erro instanceof Error ? erro.message : String(erro)

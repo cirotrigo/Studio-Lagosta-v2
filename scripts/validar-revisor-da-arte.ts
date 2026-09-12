@@ -254,9 +254,22 @@ async function main() {
     // denuncie — o job de recomposição só pode nascer pela recomposição FORÇADA
     // do catch (achado R2 da revisão do Codex). O carrossel aponta para a arte
     // atual (U0), que é a `urlAtual` do levantamento.
+    // ── 6a. um pedido NORMAL já está na fila (edição de texto pelo editor) ───
+    // REV-03: a força não pode ser descartada por um job PENDING anterior.
+    console.log('6a) edição de texto pelo editor deixa um job de recomposição NORMAL pendente')
+    const { pedirRecomposicaoDaArteCongelada } = await import('../src/lib/compositor/recompor')
+    const camadasDo5 = lerCamadas(depoisDo5!.layers).camadas as Array<Record<string, any>>
+    const headlineDo5 = camadasDo5.find((c) => c.type === 'text' && /headline/i.test(String(c.name ?? c.id)))
+    const textoDo6a = 'Título editado\npela equipe'
+    await db.page.update({ where: { id: pageId }, data: { layers: camadasDo5.map((c) => (c.id === headlineDo5?.id ? { ...c, content: textoDo6a } : c)) as never } })
+    await pedirRecomposicaoDaArteCongelada([pageId])
+    const idsDaPaginaDo6a = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
+    const jobDo6a = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPaginaDo6a }, kind: 'COMPOR' }, select: { id: true, status: true, payload: true } })
+    conferir('job normal pendente, SEM forcar', !!jobDo6a && jobDo6a.status === 'PENDING' && (jobDo6a.payload as Record<string, any>).recompor?.forcar !== true, jobDo6a ? `job ${jobDo6a.id}` : 'sem job')
+
     console.log('6) render falhando (Blob recusa o token) num ajuste só de gradiente: página gravada e agenda avisada')
     const r6 = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
-    const camadasDo6 = lerCamadas(depoisDo5!.layers).camadas as Array<Record<string, any>>
+    const camadasDo6 = lerCamadas((await db.page.findUnique({ where: { id: pageId }, select: { layers: true } }))!.layers).camadas as Array<Record<string, any>>
     const gradienteDeLeitura = camadasDo6.find((c) => (c.type === 'gradient' || c.type === 'gradient2') && c.metadata?.tratamentoDeTexto)
     const bordaDo6 = (gradienteDeLeitura?.metadata?.borda === 'topo' ? 'topo' : 'rodape') as 'topo' | 'rodape'
     const forcaAtual = Number(gradienteDeLeitura?.metadata?.forca ?? 0.5)
@@ -274,9 +287,9 @@ async function main() {
     conferir('a página ficou gravada com o ajuste (versão nova)', !!paginaDo6 && versaoDaPagina(paginaDo6) !== r6.versao)
     conferir('imagem única voltou a PENDING mesmo com o render falhando', unicoDo6?.renderStatus === 'PENDING', String(unicoDo6?.renderStatus))
     conferir(
-      'slide de carrossel entrou na fila pela recomposição FORÇADA (R2: sem Generation nova e sem diff, só o forçar enfileira)',
-      !!jobDo6 && jobDo6.status === 'PENDING' && (jobDo6.payload as Record<string, any>).recompor?.pageId === pageId,
-      jobDo6 ? `job ${jobDo6.id} ${jobDo6.status}` : 'sem job',
+      'o job PENDENTE foi promovido à recuperação FORÇADA (REV-03: o mesmo job, agora com forcar no payload)',
+      !!jobDo6 && jobDo6.id === jobDo6a?.id && jobDo6.status === 'PENDING' && (jobDo6.payload as Record<string, any>).recompor?.forcar === true && (jobDo6.payload as Record<string, any>).recompor?.pageId === pageId,
+      jobDo6 ? `job ${jobDo6.id} ${jobDo6.status} forcar=${String((jobDo6.payload as Record<string, any>).recompor?.forcar)}` : 'sem job',
     )
     // ── 6b. o job forçado EXECUTA e troca só o slide certo ──────────────────
     // REV-01 da revisão do Codex: enfileirar não bastava — o executor repetia a
@@ -292,6 +305,11 @@ async function main() {
     const forcaAntesDo6b = forcaGravada(lerCamadas(antesDo6b.layers).camadas as Array<Record<string, any>>)
     if (jobDo6) {
       await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: payloadDo6.recompor, queueJobId: jobDo6.id })
+      // A prova chamou o PROCESSADOR direto, sem a fila: na produção `executarJob`
+      // fecha o job DONE ao terminar (`fecharJob`). Simula esse fechamento — sem
+      // ele, 6c encontraria o mesmo job ainda PENDING com o payload forçado, que
+      // é artefato da prova, não comportamento da fila.
+      await db.generationJob.updateMany({ where: { id: jobDo6.id, status: 'PENDING' }, data: { status: 'DONE', finishedAt: new Date(), lastError: null } })
     }
     const carrosselDo6b = await db.socialPost.findUnique({ where: { id: carrossel.id }, select: { mediaUrls: true } })
     const genDo6b = await db.generation.findUnique({ where: { id: persistido.generationId }, select: { resultUrl: true, fieldValues: true } })
@@ -300,8 +318,45 @@ async function main() {
     conferir('o slide da arte trocou de URL e a capa (foto) ficou', !!carrosselDo6b && carrosselDo6b.mediaUrls[0] === fotoUrl && carrosselDo6b.mediaUrls[1] !== persistido.url && carrosselDo6b.mediaUrls.length === 2, JSON.stringify(carrosselDo6b?.mediaUrls.map((u) => u.slice(-40))))
     conferir('a arte foi RE-RENDERIZADA (não recomposta): a mesma Generation, marcada "re-renderizada"', genDo6b?.resultUrl === carrosselDo6b?.mediaUrls[1] && (genDo6b?.fieldValues as Record<string, any>)?.recomposicao?.estado === 're-renderizada', String((genDo6b?.fieldValues as Record<string, any>)?.recomposicao?.estado))
     conferir('a força do gradiente ajustada continua na página (o forçado não recompôs pela spec)', Number.isFinite(forcaAntesDo6b) && forcaGravada(lerCamadas(depoisDo6b.layers).camadas as Array<Record<string, any>>) === forcaAntesDo6b && forcaAntesDo6b === ajusteDeForca.forca, `${forcaAntesDo6b}`)
+    const textoDepoisDo6b = String((lerCamadas(depoisDo6b.layers).camadas as Array<Record<string, any>>).find((c) => c.id === headlineDo5?.id)?.content)
+    conferir('o texto editado em 6a continua (re-render como está, não pela spec)', textoDepoisDo6b === textoDo6a, textoDepoisDo6b)
+    conferir('a arte ficou marcada somenteReRender (REV-04: a spec não conhece o ajuste)', !!(genDo6b?.fieldValues as Record<string, any>)?.somenteReRender)
     const idsDaPaginaDo6b = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
     conferir('nenhuma Generation nova nasceu no re-render forçado', idsDaPaginaDo6b.length === geracoesAntesDo6, `${idsDaPaginaDo6b.length}`)
+
+    // ── 6c. edição de texto DEPOIS da recuperação: recomposição normal NÃO recompõe pela spec ──
+    console.log('6c) outra edição de texto pelo editor: a fila normal re-renderiza como está e preserva o gradiente (REV-04)')
+    const textoDo6c = 'Título editado\nde novo'
+    const camadasDo6c = lerCamadas(depoisDo6b.layers).camadas as Array<Record<string, any>>
+    await db.page.update({ where: { id: pageId }, data: { layers: camadasDo6c.map((c) => (c.id === headlineDo5?.id ? { ...c, content: textoDo6c } : c)) as never } })
+    await pedirRecomposicaoDaArteCongelada([pageId])
+    const jobDo6c = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPaginaDo6b }, kind: 'COMPOR', status: 'PENDING' }, select: { id: true, payload: true } })
+    conferir('job normal (sem forcar) pendente para a edição', !!jobDo6c && (jobDo6c.payload as Record<string, any>).recompor?.forcar !== true, jobDo6c ? jobDo6c.id : 'sem job')
+    if (jobDo6c) await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: (jobDo6c.payload as Record<string, any>).recompor, queueJobId: jobDo6c.id })
+    const genDo6c = await db.generation.findUnique({ where: { id: persistido.generationId }, select: { resultUrl: true, fieldValues: true } })
+    const paginaDo6c = (await db.page.findUnique({ where: { id: pageId }, select: { layers: true } }))!
+    const camadasFinaisDo6c = lerCamadas(paginaDo6c.layers).camadas as Array<Record<string, any>>
+    if (genDo6c?.resultUrl) blobs.add(genDo6c.resultUrl)
+    conferir('a arte foi RE-RENDERIZADA de novo (não "feita" pela spec)', (genDo6c?.fieldValues as Record<string, any>)?.recomposicao?.estado === 're-renderizada' && genDo6c?.resultUrl !== genDo6b?.resultUrl, String((genDo6c?.fieldValues as Record<string, any>)?.recomposicao?.estado))
+    conferir('o texto novo está na peça e a força do gradiente ajustada FICOU', String(camadasFinaisDo6c.find((c) => c.id === headlineDo5?.id)?.content) === textoDo6c && forcaGravada(camadasFinaisDo6c) === ajusteDeForca.forca)
+    const carrosselDo6c = await db.socialPost.findUnique({ where: { id: carrossel.id }, select: { mediaUrls: true } })
+    conferir('só o slide da arte trocou de URL outra vez', !!carrosselDo6c && carrosselDo6c.mediaUrls[0] === fotoUrl && carrosselDo6c.mediaUrls[1] === genDo6c?.resultUrl && carrosselDo6c.mediaUrls.length === 2)
+
+    // ── 6d. a força chega enquanto o job está RUNNING: o executor pede outra tentativa ──
+    console.log('6d) força que chega durante a execução: o job volta à fila em vez de terminar sem honrá-la')
+    const { enfileirarRecomposicao } = await import('../src/lib/ai/generation-queue')
+    const jobId6d = await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' } })
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 1, startedAt: new Date(), leaseExpiresAt: new Date(Date.now() + 600_000) } })
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const jobRunning = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, payload: true } })
+    conferir('o job RUNNING recebeu o payload forçado no banco', jobRunning?.status === 'RUNNING' && (jobRunning.payload as Record<string, any>).recompor?.forcar === true)
+    // a execução em curso partiu SEM força; ao terminar, relê o job e devolve à fila
+    await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' }, queueJobId: jobId6d })
+    const jobDepoisDo6d = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, lastError: true } })
+    conferir('o executor devolveu o job à fila (PENDING) com o motivo', jobDepoisDo6d?.status === 'PENDING' && /forçada/.test(String(jobDepoisDo6d.lastError)), `${jobDepoisDo6d?.status}: ${jobDepoisDo6d?.lastError}`)
+    // a copy de referência do passo 7 passa a ser a da página como está agora
+    for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
+    Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))
 
     await db.socialPost.update({ where: { id: unico.postId }, data: { renderStatus: 'RENDERED' } })
     await db.generationJob.updateMany({ where: { generationId: { in: idsDaPaginaDo6 }, kind: 'COMPOR' }, data: { status: 'DONE', finishedAt: new Date() } })
