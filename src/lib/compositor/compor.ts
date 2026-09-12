@@ -259,11 +259,11 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   // As camadas da página escolhida: é delas que saem os arranjos de texto
   // (os grupos, com os elementos presos a cada texto) que a peça usa.
   assinatura.camadasDaPagina = escolhida ? (parsePageLayers(escolhida.layers) as unknown as Layer[]) : []
-  // Feed/quadrado montado só com o que muda: o que falta vem da página de story.
-  // A página do formato é a verdade INTEIRA daquele formato (Ciro, 04/09/2026:
-  // "respeite os templates que eu defini, não adicione campos"). Papel que a
-  // página de feed não tem NÃO vem da story — sai da peça com aviso, como em
-  // qualquer variante. A copy é escrita sobre os papéis que a página tem.
+  // A página do formato é a verdade daquele formato: papel que a página de
+  // feed não tem NÃO vem da story. Desde 11/09/2026 a regra é "copy primeiro,
+  // campos depois" (os campos são opcionais e nenhum texto é descartado por
+  // falta de campo): até a camada extra da F3 existir, papel que a variante não
+  // tem é RECUSADO com PAPEIS_INCOMPATIVEIS — nunca some em silêncio.
   return assinatura
 }
 

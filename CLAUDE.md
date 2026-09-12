@@ -4079,18 +4079,22 @@ e o sinal `geometria`. Regras que valem para código novo:
   A sombra segue a mesma lei: camada sem sombra na página = peça sem sombra.
   `Page.background` NÃO é mais lido (o editor grava `#ffffff` ao pôr foto de
   referência na página); fundo liso e mancha da logo vêm de `Project.assinatura`.
-- 🔴 **A página do formato é a verdade INTEIRA daquele formato — nunca
-  acrescentar campo** (Ciro, 04/09/2026: "respeite os templates que eu defini,
-  não adicione campos; a copy é feita em cima dos campos que existem no
-  template"). O `completarComStory` (feed herdando papel da story) foi
-  REMOVIDO: papel que a página não tem sai da peça com aviso, em qualquer
-  formato. `copyParaBlocos(copy, { papeis })` distribui a copy do item de
-  plano só sobre os papéis da assinatura do formato (prioridade headline >
-  apoio > cta > pre; serviço só se a página tem `servico`), e `ver-assinatura`
-  lista os papéis por variante para a copy nascer certa. O alinhamento da
-  headline na página vira PREFERÊNCIA do rodízio (a foto ainda manda). O
-  serviço reserva a própria altura quando o bloco principal também vai ao
-  rodapé.
+- 🔴 **COPY PRIMEIRO, CAMPOS DEPOIS** (Ciro, 11/09/2026; substitui a regra de
+  04/09 "não adicione campos; a copy é feita em cima dos campos que existem no
+  template"). A redação aprovada: *A assinatura define a identidade visual e oferece composições iniciais. Os campos são opcionais. A mensagem determina quais blocos e grupos de leitura a peça precisa. O Claude pode escolher outra variante, acrescentar camadas com estilos da assinatura e reorganizar a composição. Nenhum texto é descartado por ausência de campo. Fatos vêm da base; a caixa vem da string; safe area e avatar permanecem respeitados. O verificador informa problemas e não veta a peça.* Nada é escrito para
+  preencher espaço. Até a camada extra (F3) existir, o que já dá é deixar o
+  campo vazio, escolher a variante que tem o campo (`ver-assinatura` lista os
+  papéis por variante) ou `criar-arte` com `textosLivres`; papel que a variante
+  não tem volta como `PAPEIS_INCOMPATIVEIS` — nunca some em silêncio. A regra
+  nova entrou de uma vez em todos os lugares onde a antiga estava ativa
+  (CLAUDE.md, `docs/FORMAS-DE-ARTE.md`, `instrucoes.ts`, descrição de
+  `compor-arte`, comentários do compositor): regra velha e nova convivendo era
+  o defeito. O que continua: a página do formato é a verdade daquele formato
+  (o `completarComStory` segue removido — papel de feed não vem da story);
+  `copyParaBlocos(copy, { papeis })` distribui a copy do item de plano sobre os
+  papéis do formato e AVISA o que não coube; o alinhamento da headline na
+  página é PREFERÊNCIA do rodízio (a foto ainda manda); o serviço reserva a
+  própria altura quando o bloco principal também vai ao rodapé.
 - **A régua entende texto ESCURO**: para cor de texto com luz < 128 a
   pergunta inverte (p2 do fundo ≥ alvo claro) e ela só confere, nunca corrige
   — mancha clara é desenho da equipe (Real: apoio verde sobre creme).
