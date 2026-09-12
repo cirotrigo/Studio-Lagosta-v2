@@ -157,9 +157,12 @@ async function main() {
     // MESMO id; story e feed no mesmo horário seriam ids diferentes. Registra no DEV de propósito (é o branch de
     // prova) e apaga no cleanup.
     console.log('2c) emissão REGISTRADA (dev): a chave do sinal termina no formato, o sugerido carrega o formato e a reemissão devolve o mesmo id')
+    // R43: o id de cada proposta entra no cleanup LOGO depois da chamada que a registrou, antes do próximo `await` —
+    // falhando a chamada seguinte, a anterior não fica no aprendizado.
     const e1 = await sugerirPosts({ projectId: PROJETO, inicio: segunda, fim: domingo })
+    for (const s of e1.sugestoes) if (typeof s.sugestaoId === 'string') sinaisDeSlotDaProva.add(s.sugestaoId)
     const e2 = await sugerirPosts({ projectId: PROJETO, inicio: segunda, fim: domingo })
-    for (const s of [...e1.sugestoes, ...e2.sugestoes]) if (typeof s.sugestaoId === 'string') sinaisDeSlotDaProva.add(s.sugestaoId)
+    for (const s of e2.sugestoes) if (typeof s.sugestaoId === 'string') sinaisDeSlotDaProva.add(s.sugestaoId)
     const comId = e1.sugestoes.filter((s) => typeof s.sugestaoId === 'string')
     const sinais = await db.learningSignal.findMany({ where: { id: { in: comId.map((s) => s.sugestaoId as string) } }, select: { id: true, chave: true, sugerido: true } })
     const porId = new Map(sinais.map((s) => [s.id, s]))
@@ -418,6 +421,35 @@ async function main() {
       conferir('R38: publicada, idem — indisponível, sem a copy A', !!iRRB && !('textos' in iRRB) && !!iRRB.textosIndisponiveis && !JSON.stringify(iRRB).includes('copy A invalidada'))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3g.json'), JSON.stringify(agenda3gB, null, 2))
 
+      // R42 (revisão final de be055fe0): a ordem INVERSA de 3g — agendar pela arte AINDA legítima (a copy A é copiada
+      // para o post, sem página), RE-RENDERIZAR depois (a Generation ganha URL nova e `recomposicao.estado`; o post só
+      // tem a mídia trocada, como `recompor.ts` faz), entregar, consultar: a copy A herdada não pode ser atribuída à mídia B.
+      console.log('3h) agendar → re-renderizar → entregar → consultar: a copy A herdada no agendamento não é atribuída à mídia B (R42); o controle é a mesma arte NÃO re-renderizada, cuja copy é legítima')
+      const genH = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A herdada 3h` } } as never }, select: { id: true, resultUrl: true } })
+      const genHCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-ctl.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A legítima 3h` } } as never }, select: { id: true } })
+      geracoes.push(genH.id, genHCtl.id)
+      const dia3h = somarDias(hoje, 10)
+      const agH = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3h} 12:00`, generationId: genH.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3h herdada` })
+      const agHCtl = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3h} 13:00`, generationId: genHCtl.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3h controle` })
+      posts.push(agH.postId, agHCtl.postId)
+      const postH0 = await db.socialPost.findUnique({ where: { id: agH.postId }, select: { slotValues: true, pageId: true, mediaUrls: true } })
+      conferir('3h: agendada ANTES da re-renderização, a copy A é copiada para o post (legítima naquele momento), sem página', postH0?.pageId === null && JSON.stringify(postH0.slotValues ?? {}).includes('copy A herdada 3h'), JSON.stringify(postH0).slice(0, 200))
+      // a re-renderização como o sistema faz: URL nova + `recomposicao.estado` na Generation; no post só a mídia trocada
+      const urlB3h = `${blobHost}/${Date.now()}-3h-B.png`
+      await db.generation.update({ where: { id: genH.id }, data: { resultUrl: urlB3h, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A herdada 3h` }, recomposicao: { estado: 're-renderizada', urlsAnteriores: [genH.resultUrl] } } as never } })
+      await db.socialPost.update({ where: { id: agH.postId }, data: { mediaUrls: [urlB3h] } })
+      const agenda3hVivo = await tool('ver-agenda', { projectId: PROJETO, from: dia3h, to: dia3h })
+      const iHv = (agenda3hVivo.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === agH.postId)
+      conferir('3h vivo: a peça sem página lê a página ATUAL da arte re-renderizada (é a mídia B) — a copy A herdada não aparece', !!iHv && Array.isArray(iHv.textos) && !JSON.stringify(iHv).includes('copy A herdada 3h'), JSON.stringify(iHv).slice(0, 300))
+      await db.socialPost.update({ where: { id: agH.postId }, data: { status: 'POSTED' } })
+      await db.socialPost.update({ where: { id: agHCtl.postId }, data: { status: 'POSTED' } })
+      const agenda3h = await tool('ver-agenda', { projectId: PROJETO, from: dia3h, to: dia3h })
+      const itens3h = (agenda3h.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const iH = itens3h.find((i) => i.postId === agH.postId), iHCtl = itens3h.find((i) => i.postId === agHCtl.postId)
+      conferir('R42: entregue, a copy A herdada NÃO é atribuída à mídia B — `textosIndisponiveis` diz que a arte foi re-renderizada depois do agendamento', !!iH && !('textos' in iH) && /re-renderizada .*DEPOIS do agendamento/.test(iH.textosIndisponiveis ?? '') && !JSON.stringify(iH).includes('copy A herdada 3h'), JSON.stringify(iH).slice(0, 300))
+      conferir('controle 3h: a mesma arte NÃO re-renderizada volta com a copy legítima (parcial, origem "arte")', !!iHCtl && JSON.stringify(iHCtl.textos) === JSON.stringify([`${MARCA} copy A legítima 3h`]) && iHCtl.textosParciais === true && iHCtl.textosOrigem === 'arte', JSON.stringify(iHCtl).slice(0, 300))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3h.json'), JSON.stringify(agenda3h, null, 2))
+
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
       console.log('3e) carrossel PUBLICADO com cópia A no post, slide re-renderizado e slide sem arte: nada é afirmado — indisponível, slide a slide')
       const dia3e = somarDias(hoje, 8)
@@ -486,9 +518,11 @@ async function main() {
       console.log('5b) a proposta de fotos COM exclusão é outra proposta; a mesma exclusão em outra ordem é a mesma')
       const pasta = r1.images[0].folder
       const p1 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta })
+      if (typeof p1.sugestaoId === 'string') sinaisDaProva.add(p1.sugestaoId) // R43: coletado antes do próximo await
       const p2 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, excluir: [escolhida, 'id-que-nao-existe'] })
+      if (typeof p2.sugestaoId === 'string') sinaisDaProva.add(p2.sugestaoId)
       const p3 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, excluir: ['id-que-nao-existe', ` ${escolhida} `] })
-      for (const id of [p1.sugestaoId, p2.sugestaoId, p3.sugestaoId]) if (typeof id === 'string') sinaisDaProva.add(id)
+      if (typeof p3.sugestaoId === 'string') sinaisDaProva.add(p3.sugestaoId)
       const sinalP2 = p2.sugestaoId ? await db.learningSignal.findUnique({ where: { id: p2.sugestaoId }, select: { sugerido: true, createdAt: true } }) : null
       const criteriosP2 = (sinalP2?.sugerido as { criterios?: { excluir?: string[] } } | null)?.criterios
       conferir('com exclusão a proposta é OUTRA (sugestaoId diferente) e o topo registrado já não é a foto excluída', typeof p1.sugestaoId === 'string' && typeof p2.sugestaoId === 'string' && p1.sugestaoId !== p2.sugestaoId && p2.propostaTopo !== escolhida && p2.propostaTopo !== p1.propostaTopo, JSON.stringify({ p1: p1.sugestaoId, p2: p2.sugestaoId, topo1: p1.propostaTopo, topo2: p2.propostaTopo }))
@@ -504,8 +538,9 @@ async function main() {
         const uso = await db.photoUsage.create({ data: { projectId: PROJETO, driveFileId: topoU1, origem: 'prova-pr6', tema: MARCA }, select: { id: true } })
         usosDaProva.push(uso.id)
         const u2 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, evitarUsadasDesde: desde })
+        if (typeof u2.sugestaoId === 'string') sinaisDaProva.add(u2.sugestaoId) // R43
         const u3 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, evitarUsadasDesde: desde })
-        for (const id of [u2.sugestaoId, u3.sugestaoId]) if (typeof id === 'string') sinaisDaProva.add(id)
+        if (typeof u3.sugestaoId === 'string') sinaisDaProva.add(u3.sugestaoId)
         conferir('depois do uso do topo, a MESMA busca registra OUTRA proposta (id novo), com o topo seguinte — e a busca seguinte reutiliza essa', typeof u1.sugestaoId === 'string' && typeof u2.sugestaoId === 'string' && u2.sugestaoId !== u1.sugestaoId && u2.propostaTopo !== topoU1 && u3.sugestaoId === u2.sugestaoId && (u2 as any).excluidas?.porUso >= 1, JSON.stringify({ u1: [u1.sugestaoId, topoU1], u2: [u2.sugestaoId, u2.propostaTopo], u3: u3.sugestaoId, porUso: (u2 as any).excluidas?.porUso }))
       } else {
         conferir('a busca com evitarUsadasDesde não devolveu topo para exercitar R21 (pasta sem foto nunca usada?)', false, JSON.stringify({ total: u1.total }))

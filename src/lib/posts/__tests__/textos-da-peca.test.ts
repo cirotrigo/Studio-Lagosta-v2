@@ -306,3 +306,38 @@ describe('textosDaPeca — arte já entregue não segue a página', () => {
     expect(semNada.indisponiveis).toMatch(/já foi entregue/)
   })
 })
+
+describe('R42 — a copy herdada da arte com que o post foi agendado cai quando essa arte é RE-RENDERIZADA depois', () => {
+  const snapA = [{ id: 'l1', name: 'headline', type: 'text', content: 'Copy A antiga' }]
+  const semPagina = { pageId: null, generationId: 'gA', mediaUrls: ['https://blob/B.png'], slotValues: { headline: 'Copy A herdada' } }
+  const arteRR = { layersSnapshot: snapA, pageId: 'p1', source: 'post-schedule', slotValues: { headline: 'Copy A herdada' }, reRenderizada: true }
+  it('entregue: a copy do post NÃO é atribuída à mídia re-renderizada — indisponível, com o porquê', () => {
+    for (const status of ['POSTED', 'POSTING', 'FAILED']) {
+      const r = textosDaPeca({ ...semPagina, status, laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: arteRR }] })
+      expect(r.textos).toEqual([])
+      expect(r.indisponiveis).toMatch(/re-renderizada como a página estava DEPOIS do agendamento/)
+      expect(JSON.stringify(r)).not.toContain('Copy A')
+    }
+    const noPublicador = textosDaPeca({ ...semPagina, status: 'SCHEDULED', laterPostId: 'zernio-1' }, { slides: [{ url: 'https://blob/B.png', arte: arteRR }] })
+    expect(noPublicador.indisponiveis).toMatch(/DEPOIS do agendamento/)
+  })
+  it('viva com a página da arte ilegível: também não cai na copy do post (nem parcial)', () => {
+    const r = textosDaPeca({ ...semPagina, status: 'DRAFT', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: arteRR, camadasDaPagina: '{{ilegível' }] })
+    expect(r.textos).toEqual([])
+    expect(r.origem).toBeUndefined()
+    expect(JSON.stringify(r)).not.toContain('Copy A')
+  })
+  it('viva com a página da arte legível: a mídia É a página atual — vale ela (passo 2), a copy A herdada some', () => {
+    const r = textosDaPeca({ ...semPagina, status: 'DRAFT', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: arteRR, camadasDaPagina: [{ id: 'l1', name: 'headline', type: 'text', content: 'Página atual B' }] }] })
+    expect(r.textos).toEqual(['Página atual B'])
+    expect(r.origem).toBe('pagina')
+  })
+  it('controle: a MESMA arte não re-renderizada mantém a copy legítima (parcial, origem arte); e post COM página própria não é alcançado pela regra', () => {
+    const ctl = textosDaPeca({ ...semPagina, status: 'POSTED', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: { ...arteRR, reRenderizada: false } }] })
+    expect(ctl.textos).toEqual(['Copy A herdada'])
+    expect(ctl.origem).toBe('arte')
+    expect(ctl.parcial).toBe(true)
+    const comPagina = textosDaPeca({ ...semPagina, pageId: 'p9', status: 'POSTED', laterPostId: null, slotValues: { headline: 'Sobrescrito', _copiaDaPagina: true } }, { slides: [{ url: 'https://blob/B.png', arte: arteRR }] })
+    expect(comPagina.origem).toBe('copy-registrada-na-entrega')
+  })
+})

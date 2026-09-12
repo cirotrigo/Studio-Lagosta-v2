@@ -305,9 +305,21 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
   }
 
+  // 🔴 A copy de um post SEM página própria veio da arte com que ele foi agendado
+  //    (por `generationId`), e a RE-RENDERIZAÇÃO daquela arte DEPOIS do agendamento
+  //    troca só a mídia do post (`recompor.ts`): o PNG novo é a página atual,
+  //    desenhada SEM essa copy (R37), e o post fica carregando o texto de OUTRA
+  //    versão da mídia. Ela não é afirmada — nem entregue, nem viva com a página
+  //    da arte ilegível — porque a procedência da mídia atual a invalidou; o que
+  //    resta é declarar (R42 da revisão final de be055fe0). Com a página da arte
+  //    legível e a peça viva, o passo 2 já devolveu a página (que É a mídia).
+  const copyHerdadaInvalidada = !carrossel && !post.pageId && slides[0]?.arte?.reRenderizada === true
+  const NOTA_R42 =
+    'a arte desta peça foi re-renderizada como a página estava DEPOIS do agendamento, e o post (sem página própria) só guarda a copy da versão anterior da mídia: o texto que está na arte não tem registro aqui.'
+
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
-    if (textosProprios.length > 0) {
+    if (textosProprios.length > 0 && !copyHerdadaInvalidada) {
       return {
         textos: textosProprios,
         origem: 'copy-do-post',
@@ -321,8 +333,9 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
     return {
       textos: [],
-      indisponiveis:
-        'a arte desta peça já foi entregue (no publicador, publicada ou falhou) e a página pode ter mudado depois: o texto que vale é o da própria arte, e não há registro dele aqui.',
+      indisponiveis: copyHerdadaInvalidada
+        ? NOTA_R42
+        : 'a arte desta peça já foi entregue (no publicador, publicada ou falhou) e a página pode ter mudado depois: o texto que vale é o da própria arte, e não há registro dele aqui.',
     }
   }
 
@@ -344,7 +357,8 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
       }
     }
   }
-  const doPost = textosDoPost(sv)
+  const doPost = copyHerdadaInvalidada ? [] : textosDoPost(sv)
+  if (copyHerdadaInvalidada && textosDoPost(sv).length > 0) return { textos: [], indisponiveis: NOTA_R42 }
   if (doPost.length > 0) {
     if (paginaIlegivel) {
       return {

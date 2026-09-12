@@ -6493,6 +6493,22 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   (a MESMA string `slot|versao|projeto|horário`), sem nenhum import de
   `chaves`; o teste fixa a igualdade com a chave legada inteira. Módulo
   compartilhado com o navegador só importa módulo puro.
+- 🔴 **A copy HERDADA da arte no agendamento cai quando essa arte é re-renderizada
+  DEPOIS** (R42 da quinta revisão final, `textos-da-peca.ts`): a ordem inversa de
+  R38 — agendar por `generationId` com a arte AINDA legítima copia a copy A para o
+  post (sem página própria); a página é editada, a recomposição re-renderiza a
+  Generation e `recompor.ts` troca só `mediaUrls`. Entregue, o leitor recusava o
+  snapshot mas caía em `copy-do-post` e atribuía A à mídia B. Hoje, com mídia
+  única, post sem `pageId` e arte `reRenderizada`, a copy do post (a herdada) não é
+  afirmada em nenhum caminho — nem entregue, nem viva com a página ilegível —, e a
+  peça é declarada indisponível com o porquê; a cópia REGISTRADA (`_copiaDaPagina`)
+  continua valendo, e com a página da arte legível a peça viva já lê a página (que
+  É a mídia B). Prova 3h: agendar → re-renderizar → entregar → consultar, sem A.
+- 🔴 **Prova que registra propostas coleta o id LOGO depois de cada chamada, antes
+  do próximo `await`** (R43): `sugerir-posts` e `buscar-fotos` registram sinal na
+  emissão, e ids coletados só depois de TODAS as chamadas deixavam as anteriores
+  fora do cleanup quando uma chamada intermediária falhava — sinal sintético
+  acumulando no dev com cleanup declarado completo.
 - 🔴 **A arte de `post-schedule` é um MODELO com a copy do post por cima, e a
   PÁGINA dela não é a peça** (R36 da segunda revisão final, `copyDaArteDeModelo`
   em `textos-da-peca.ts`): o render de post grava a Generation com
