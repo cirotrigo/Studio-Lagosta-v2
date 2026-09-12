@@ -413,6 +413,8 @@ const CONTEXTO = {
     contentRules: 'Uma oferta por peça.',
     approvalChecklist: 'Tem emoji dentro da arte?',
   },
+  // A identidade de TEXTO pela precedência (PR 7): cliente não migrado = o legado do DNA.
+  voz: { fonte: 'legado' as const, texto: 'Direto.', regrasDaMarca: 'Uma oferta por peça.', versao: null, migradaEm: null, vozPendente: false, regrasDeArte: null },
 }
 
 describe('montarDicasDeCopy', () => {
