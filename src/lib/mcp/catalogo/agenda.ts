@@ -148,8 +148,12 @@ export const toolsDeAgenda = [
         ),
       ]
       const todasAsPaginas = [...new Set([...idsDePagina, ...idsDePaginaDosSlides])]
+      // Só páginas DESTE projeto (R29 da revisão de 061195d3): `fieldValues.pageId` de uma Generation (e o
+      // `pageId` de um post) podem apontar para página de outro projeto — o konva-export grava `body.pageId`
+      // sem conferir o dono —, e a leitura pelo id nu entregaria os textos de B pela agenda de A. Página de fora
+      // fica sem camadas, e a peça segue como fonte indisponível.
       const paginas = todasAsPaginas.length
-        ? await db.page.findMany({ where: { id: { in: todasAsPaginas } }, select: { id: true, layers: true } })
+        ? await db.page.findMany({ where: { id: { in: todasAsPaginas }, Template: { projectId } }, select: { id: true, layers: true } })
         : []
       const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
       const textosDe = (post: (typeof posts)[number]) =>

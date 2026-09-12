@@ -6347,6 +6347,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   a cópia registrada passa pela leitura que preserva URL de camada (a de R19),
   não pelo filtro genérico. Sem página nenhuma, a copy do post continua sendo
   a leitura inteira do que existe.
+  🔴 **`ver-agenda` só lê páginas DESTE projeto** (R29 da revisão de 061195d3,
+  P1): o `pageId` de um post e o `fieldValues.pageId` de uma Generation podem
+  apontar para página de OUTRO projeto (o `konva-export` grava `body.pageId`
+  sem conferir o dono), e a consulta pelo id nu entregava os textos de B pela
+  agenda de A. A busca das páginas leva `Template: { projectId }`; página de
+  fora fica sem camadas e a peça segue como fonte indisponível.
   **A cópia registrada é PARCIAL por natureza**: `textosDaPagina` guarda o
   texto das camadas ANTES da caixa do render e sem a ordem em que são
   desenhadas — quem a devolve (`copy-registrada-na-entrega`) declara
