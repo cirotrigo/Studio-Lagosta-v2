@@ -8638,3 +8638,57 @@ mesma linha; normalizar para comparar **e** para registrar.
   mas ela é diagnóstico — `passou` e `faltando` vêm do próprio check, então o
   corte não muda veredito nenhum (diferente do teto da visão do PR 0, que
   mudava).
+
+### A camada EXTRA: função separada de estilo (PR 9 de "Marca simples, copy melhor", 12/09/2026)
+
+"Copy primeiro, campos depois" ganhou o mecanismo que faltava: um texto que
+veste o estilo de um papel da assinatura SEM ser esse papel. Até aqui, papel que
+a variante não tinha era `PAPEIS_INCOMPATIVEIS`, e bloco `livre` com texto era
+recusado ("a camada livre chega na F3"). Módulo PURO em
+`src/lib/compositor/camadas-extras.ts` (com teste em `camadas-extras.test.ts`);
+`preparar-blocos.ts`, `compor.ts` e `medir-copy.ts` chamam a MESMA resolução.
+**Ainda sem anunciar no conector** — a descrição de `compor-arte` e as
+instruções só mudam no PR 10, quando o ciclo inteiro (editar, trocar a foto,
+recompor) preservar os extras.
+
+- **Um extra declara `id` + `linhas` + `herdaDe` (o papel de ESTILO) e,
+  opcionalmente, `grupoVisual` (`principal` · `topo` · `rodape`), `grupoDeLeitura`
+  e `ordem`.** Ele herda fonte, peso, corpo (na faixa do papel, com a escala da
+  peça), entrelinha, tracking, caixa alta, cor, sombra e prefixo — é
+  `estiloHerdado(assinatura.papeis[herdaDe])`, que TIRA `caixa`, `grupo` e
+  `alinhamento`: a POSIÇÃO do papel de origem nunca é herdada. Nem o id, nem o
+  grupo: a camada nasce com o id do autor e `metadata.compositor.extra = { id,
+  funcao, herdaDe, grupoVisual, grupoDeLeitura?, ordem? }`.
+- 🔴 **Função ≠ estilo.** `metadata.compositor.papel` do extra é a FUNÇÃO
+  original (`servico` na linha de horário que herda do apoio) — é o que
+  `papelDaCamada`/`copyDosPapeis` e a recomposição leem; `livre` não é papel e
+  fica sem ele. O papel de ESTILO (`herdaDe`) mora só em `extra.herdaDe`. Medir
+  e compor contam o bloco pela `funcao` (`BlocoPreparado.funcao`), nunca pelo
+  papel de estilo: a peça que precisa de horário funciona numa variante sem o
+  campo, e `medir-copy` não a declara `papel-ausente`.
+- **Grupo de LEITURA ≠ grupo VISUAL.** `grupoDeLeitura` é do autor (os blocos
+  que se leem como uma frase) e viaja intacto; `grupoVisual` decide onde o
+  extra POUSA: `principal` junta-se ao grupo da manchete (depois dos textos do
+  arranjo, fora da distribuição de linhas — o extra não é o papel de que
+  herda); `topo`/`rodape` formam grupo só de extras (`extra:<borda>`), sem
+  arranjo da página nem combinação salva, ancorado na borda com `temCaixa:
+  false`. Padrão: `servico` → `rodape`; o resto → `principal`
+  (`grupoVisualPadrao`).
+- **Na spec**: `blocos[].herdaDe` (+ `id` + `grupoVisual`) para papel que a
+  variante não tem, ou para repetir um papel com estilo emprestado — papel
+  repetido só passa quando toda ocorrência além da primeira tem `id` próprio E
+  `herdaDe`; a manchete nunca herda (ela É o papel); ids de camada não se
+  repetem (nem com `camadasExtras`). `camadasExtras[]` (até 5) é o que os
+  blocos `livre` do contrato viram: `validarSpec` exige `estilo.herdaDe` no
+  bloco livre com texto (sem herança não há de onde tirar fonte, corpo e cor —
+  recusar continua sendo o oposto de sumir em silêncio), aceita
+  `estilo.grupoVisual`, e recusa `camadasExtras` que não batam com o contrato.
+  `blocosParaOCompositor` passa `id`/`herdaDe`/`grupoVisual` adiante.
+- 🔴 **`herdaDe` declarado é sempre honrado**, mesmo quando a variante TEM o
+  papel: função ≠ estilo é decisão do autor. `herdaDe` de papel que a variante
+  não tem FALTA (com aviso dizendo qual), e `PAPEIS_INCOMPATIVEIS` passou a
+  sugerir a saída ("declare de que papel ele herda o estilo").
+- **R17 (P3 da revisão do PR 8)**: em `medir-copy-service` o motivo "algum
+  arranjo saiu por rodízio" não depende mais de `preferencias.arranjos` estar
+  vazio — fixar o arranjo de UM grupo não fixa o do outro; o motivo vale
+  enquanto algum arranjo ainda sair por rodízio (teste com dois grupos).

@@ -150,6 +150,8 @@ export interface MedidaDeBloco {
   linhasMedidas: MedidaDeLinha[]
   /** Só quando não cabe: o orçamento por linha que a composição devolveria. */
   orcamento?: OrcamentoDeLinha[]
+  /** F3: o bloco é uma camada EXTRA — `papel` é o de estilo; aqui a função original, a herança e onde pousa. */
+  extra?: { funcao: string; herdaDe: Papel; grupoVisual: string }
   avisos: string[]
 }
 
@@ -220,9 +222,12 @@ export function medirCopy(args: {
   // composição faz ANTES dos arranjos (`papeisQueFaltam` → PAPEIS_INCOMPATIVEIS):
   // uma combinação salva que oferece o papel monta o bloco aqui, mas a
   // composição recusa a peça (R05). O bloco montado por ela não conta.
+  // F3: o papel que HERDA estilo (camada extra) não está ausente — a mesma
+  // resolução da composição (`resolverCamadasExtras`, dentro da preparação) diz
+  // o que falta de verdade; e o bloco montado conta pela FUNÇÃO que cumpre.
   const papeisPedidos = [...new Set((args.spec.blocos ?? []).map((b) => b.papel as Papel))]
-  const faltamNaAssinatura = new Set(papeisQueFaltam(args.assinatura, papeisPedidos))
-  const preparadosPorPapel = new Set([...preparados.montados, ...preparados.recusas].map((b) => b.papel))
+  const faltamNaAssinatura = new Set(preparados.faltam)
+  const preparadosPorPapel = new Set([...preparados.montados, ...preparados.recusas].map((b) => b.funcao))
   const papeisAusentes = papeisPedidos.filter((p) => faltamNaAssinatura.has(p) || (!preparadosPorPapel.has(p) && !(p === 'headline' && preparadosPorPapel.has('headline2' as Papel))))
   for (const papel of papeisAusentes) {
     const linhas = (args.spec.blocos ?? []).find((b) => (b.papel as Papel) === papel)?.linhas ?? []
@@ -267,7 +272,9 @@ export function medirCopy(args: {
   }
 
   for (const b of preparados.montados) {
-    if (faltamNaAssinatura.has(b.papel)) continue
+    // O extra existe mesmo quando a variante não tem o papel: é dele que herda
+    // o estilo, e a peça o compõe — declará-lo ausente seria medir outra peça.
+    if (faltamNaAssinatura.has(b.papel) && !b.extra) continue
     const naoMedido = naoCarregou(b.familiasMedidas)
     medidas.push({
       papel: b.papel,
@@ -282,11 +289,12 @@ export function medirCopy(args: {
       naoMedido,
       aproximado: Boolean(b.destacado),
       linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido, b.destaque),
+      ...(b.extra ? { extra: { funcao: b.extra.funcao, herdaDe: b.extra.herdaDe, grupoVisual: b.extra.grupoVisual } } : {}),
       avisos: [...avisosDoPapel(b.papel), ...(b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [])],
     })
   }
   for (const r of preparados.recusas) {
-    if (faltamNaAssinatura.has(r.papel)) continue
+    if (faltamNaAssinatura.has(r.papel) && !r.extra) continue
     const naoMedido = naoCarregou(r.familiasMedidas)
     const coluna = Math.floor(area.colunaUtil * (r.estilo.larguraMaxima ?? 1))
     medidas.push({

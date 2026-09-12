@@ -135,6 +135,8 @@ export function camadaDoPapel(args: {
   groupId: string
   corDaMancha: string
   destaque?: DestaqueDoBloco | null
+  /** F3: a identidade da camada EXTRA — vai declarada na camada, com o papel de que herda; o `papel` do arg é o de estilo. */
+  extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): Layer {
   const { estilo } = args
   const fontSize = Math.max(8, Math.round(estilo.fontSize * args.escala))
@@ -192,7 +194,14 @@ export function camadaDoPapel(args: {
       // As posições só valem COM o bloco (a leitura as ignora sem ele): sem
       // contrato na spec, a camada sai como sempre saiu.
       compositor: {
-        papel: args.papel,
+        // No extra o `papel` é a FUNÇÃO original (o que a defasagem e a copy por
+        // papel leem); `livre` não é papel e fica sem ele. O estilo veio de
+        // `herdaDe`, declarado ao lado — a camada nunca é confundida com ele.
+        ...(args.extra ? (args.extra.funcao !== 'livre' ? { papel: args.extra.funcao } : {}) : { papel: args.papel }),
+        ...(args.extra ? { extra: { ...args.extra } } : {}),
+        // O vínculo declarado (PR 3) vale para a camada EXTRA como para qualquer
+        // outra: ela também nasce de um bloco do contrato, e é por `bloco` que a
+        // leitura efetiva a reencontra sem depender do id nem da ordem.
         ...(args.origem?.bloco ? { bloco: args.origem.bloco, ...(args.origem.linhas ? { linhas: [...args.origem.linhas] } : {}) } : {}),
         ...(linhasFinais[0] !== args.linhas[0] && estilo.prefixo ? { prefixo: estilo.prefixo } : {}),
       },
@@ -274,6 +283,8 @@ export function montarBloco(args: {
   destaque?: EstiloDeDestaque | null
   /** O vínculo com a copy do autor (ver `VinculoComACopy`) — vai para `metadata.compositor` das camadas. */
   origem?: VinculoComACopy | null
+  /** F3: a camada extra que este bloco é (vai à camada, não muda a medida). */
+  extra?: { id: string; funcao: string; herdaDe: string; grupoVisual: string; grupoDeLeitura?: string; ordem?: number } | null
 }): ResultadoDoBloco {
   const avisos: string[] = []
   const lidas = args.linhas.map(lerDestaques)

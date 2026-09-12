@@ -35,10 +35,36 @@ export type Alinhamento = (typeof ALINHAMENTOS)[number]
 export const CANTOS = ['inferior-esquerdo', 'inferior-direito', 'superior-esquerdo', 'superior-direito'] as const
 export type Canto = (typeof CANTOS)[number]
 
+/**
+ * Onde uma camada EXTRA pousa (F3): `principal` junta-se ao bloco da manchete;
+ * `topo` e `rodape` formam grupo próprio naquela borda. Nunca o grupo do papel
+ * de que ela herda o estilo — ver `camadas-extras.ts`.
+ */
+export const GRUPOS_VISUAIS = ['principal', 'topo', 'rodape'] as const
+export type GrupoVisual = (typeof GRUPOS_VISUAIS)[number]
+
+const idDeCamadaSchema = z.string().min(1).max(60).regex(/^[a-z0-9][a-z0-9._-]*$/i)
+
 export const blocoSchema = z.object({
   papel: z.enum(PAPEIS),
   linhas: z.array(z.string().min(1)).min(1).max(6),
+  /** Id próprio da camada — obrigatório quando o papel se repete (função ≠ estilo, F3). */
+  id: idDeCamadaSchema.optional(),
+  /** O papel da assinatura de que este texto HERDA o estilo, sem virar esse papel (F3): a linha de horário em variante sem `servico`. */
+  herdaDe: z.enum(PAPEIS).optional(),
+  grupoVisual: z.enum(GRUPOS_VISUAIS).optional(),
 })
+
+/** Texto sem função do compositor (`livre` no contrato) que veste o estilo de um papel — a camada extra da F3. */
+export const camadaExtraSchema = z.object({
+  id: idDeCamadaSchema,
+  linhas: z.array(z.string().min(1)).min(1).max(6),
+  herdaDe: z.enum(PAPEIS),
+  grupoVisual: z.enum(GRUPOS_VISUAIS).optional(),
+  grupoDeLeitura: z.string().min(1).max(60).optional(),
+  ordem: z.number().int().min(0).max(99).optional(),
+})
+export type CamadaExtra = z.infer<typeof camadaExtraSchema>
 export type Bloco = z.infer<typeof blocoSchema>
 
 /**
@@ -113,7 +139,9 @@ export const specSchema = z.object({
    * A copy por papel. Dispensável quando `copyAutoral` vem: `validarSpec`
    * deriva os blocos do contrato (F1) — e recusa quando os dois vêm e não batem.
    */
-  blocos: z.array(blocoSchema).max(5).optional(),
+  blocos: z.array(blocoSchema).max(10).optional(),
+  /** As camadas extras (F3) — os blocos `livre` do contrato com `estilo.herdaDe`; até 5. */
+  camadasExtras: z.array(camadaExtraSchema).max(5).optional(),
   preferencias: preferenciasSchema.optional(),
   nome: z.string().max(120).optional(),
   /** Vínculos frouxos com o plano — sem FK, como todo vínculo da casa. */
@@ -144,9 +172,29 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
       // sancionada. Bloco `livre` COM texto não tem para onde ir até a camada
       // extra da F3 — recusar é o oposto de sumir em silêncio.
       const { blocos: derivados, semPapel } = blocosParaOCompositor(r.data.copyAutoral)
+      // F3: bloco `livre` COM texto entra como camada EXTRA, vestindo o estilo do
+      // papel que o autor declarou em `estilo.herdaDe`. Sem herança declarada não
+      // há de onde tirar fonte, corpo e cor — recusar continua sendo o oposto de
+      // sumir em silêncio.
       const livresComTexto = semPapel.filter((b) => b.linhas.length > 0)
-      if (livresComTexto.length > 0) {
-        return { spec: null, problemas: [`copyAutoral: bloco(s) sem papel do compositor com texto (${livresComTexto.map((b) => `"${b.id}"`).join(', ')}) — a camada livre chega na F3; até lá, dê a eles uma função (pre, headline, apoio, cta, servico)`] }
+      const semHeranca = livresComTexto.filter((b) => !b.estilo?.herdaDe)
+      if (semHeranca.length > 0) {
+        return { spec: null, problemas: [`copyAutoral: bloco(s) livre(s) com texto sem \`estilo.herdaDe\` (${semHeranca.map((b) => `"${b.id}"`).join(', ')}) — diga de que papel da assinatura a camada extra herda o estilo (pre, headline, apoio, cta, servico)`] }
+      }
+      const extrasDoContrato = livresComTexto.map((b) => ({
+        id: b.id,
+        linhas: [...b.linhas],
+        herdaDe: b.estilo!.herdaDe as (typeof PAPEIS)[number],
+        ...(b.estilo?.grupoVisual ? { grupoVisual: b.estilo.grupoVisual } : {}),
+        ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
+        ordem: b.ordem,
+      }))
+      if (extrasDoContrato.length > 0) {
+        const declaradas = r.data.camadasExtras ?? []
+        if (declaradas.length === 0) r.data.camadasExtras = extrasDoContrato
+        else if (canonico(declaradas.map((c) => ({ id: c.id, linhas: c.linhas }))) !== canonico(extrasDoContrato.map((c) => ({ id: c.id, linhas: c.linhas })))) {
+          return { spec: null, problemas: ['copyAutoral: `camadasExtras` não bate com os blocos livres do contrato — mande só o contrato (as camadas extras saem dele)'] }
+        }
       }
       // Os blocos DERIVADOS passam pelo mesmo schema dos explícitos (PR3-R8-03, 18/09/2026): o contrato aceita linha
       // vazia e até 12 linhas, o compositor não — e sem isto a porta gravava o job que o worker recusava ao revalidar
@@ -169,9 +217,18 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
       }
     }
     if (!r.data.blocos || r.data.blocos.length === 0) return { spec: null, problemas: ['blocos: pelo menos um bloco (ou copyAutoral)'] }
+    // A manchete é a peça: ela não herda de ninguém e não se repete.
+    const mancheteHerda = r.data.blocos.find((b) => b.papel === 'headline' && b.herdaDe)
+    if (mancheteHerda) return { spec: null, problemas: ['headline: a manchete não herda estilo de outro papel — ela é o papel'] }
+    // Papel repetido só quando cada ocorrência além da primeira é uma camada
+    // EXTRA com id próprio (função ≠ estilo, F3): sem id, duas camadas
+    // disputariam o mesmo nome na página.
     const papeis = r.data.blocos.map((b) => b.papel)
-    const repetidos = papeis.filter((p, i) => papeis.indexOf(p) !== i)
-    if (repetidos.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidos)].join(', ')}`] }
+    const repetidosSemId = r.data.blocos.filter((b, i) => papeis.indexOf(b.papel) !== i && !(b.herdaDe && b.id)).map((b) => b.papel)
+    if (repetidosSemId.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidosSemId)].join(', ')} — a segunda ocorrência precisa de \`id\` próprio e \`herdaDe\``] }
+    const ids = [...r.data.blocos.map((b) => b.id ?? b.papel), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
+    const idsRepetidos = ids.filter((id, i) => ids.indexOf(id) !== i)
+    if (idsRepetidos.length > 0) return { spec: null, problemas: [`id de camada repetido: ${[...new Set(idsRepetidos)].join(', ')}`] }
     const c = r.data.carrossel
     if (c?.de && c.slide > c.de) return { spec: null, problemas: [`carrossel: o slide ${c.slide} não cabe num carrossel de ${c.de}`] }
     return { spec: r.data, problemas: [] }

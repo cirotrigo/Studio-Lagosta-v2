@@ -141,7 +141,8 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   const semLuz = luzDaFoto === null
   const motivosDaProvisoriedade: string[] = []
   if (semLuz && !spec.preferencias?.variante && outrasVariantes.length > 0) motivosDaProvisoriedade.push(spec.foto ? 'a foto não pôde ser medida: a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha' : 'sem a foto, a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha')
-  if (semLuz && !spec.preferencias?.arranjos?.length && medicao.arranjos.some((a) => /rod[ií]zio/.test(a.motivo))) motivosDaProvisoriedade.push('algum arranjo saiu por rodízio, e a chave do rodízio inclui a foto: com ela a composição pode escolher outro arranjo (fonte, tamanho, distribuição das linhas)')
+  // R17 (P3): fixar o arranjo de UM grupo não fixa o do outro — o motivo vale enquanto algum arranjo ainda sai por rodízio.
+  if (semLuz && medicao.arranjos.some((a) => /rod[ií]zio/.test(a.motivo))) motivosDaProvisoriedade.push('algum arranjo saiu por rodízio, e a chave do rodízio inclui a foto: com ela a composição pode escolher outro arranjo (fonte, tamanho, distribuição das linhas)')
   return {
     variante: { id: assinatura.origem.pageId, nome: assinatura.origem.variante, formatoDaPagina: assinatura.origem.formatoDaPagina, motivo: assinatura.origem.motivoDaVariante ?? null },
     escolhaProvisoria: motivosDaProvisoriedade.length > 0,

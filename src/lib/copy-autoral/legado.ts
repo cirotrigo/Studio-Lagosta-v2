@@ -40,6 +40,10 @@ import { validarCopyAutoral, type ProblemaDaCopy } from './validar'
 export interface BlocoLegado {
   papel: string
   linhas: string[]
+  /** F3: o id do bloco do contrato e a herança de estilo declarada — a preparação lê; o legado sem contrato não os tem. */
+  id?: string
+  herdaDe?: string
+  grupoVisual?: 'principal' | 'topo' | 'rodape'
 }
 
 /** O resultado de converter o legado: contrato válido, ou `copy: null` com os problemas e o original intacto. */
@@ -225,7 +229,11 @@ export function blocosParaOCompositor(copy: CopyAutoral): { blocos: BlocoLegado[
     // o que desenhar, e o schema do compositor exige linha — ele fica de fora
     // dos blocos, e continua no contrato (R01 da revisão do Codex, 12/09/2026).
     if (b.linhas.length === 0) continue
-    blocos.push({ papel: b.funcao, linhas: [...b.linhas] })
+    blocos.push({
+      papel: b.funcao,
+      linhas: [...b.linhas],
+      ...(b.estilo?.herdaDe ? { id: b.id, herdaDe: b.estilo.herdaDe, ...(b.estilo.grupoVisual ? { grupoVisual: b.estilo.grupoVisual } : {}) } : {}),
+    })
   }
   return { blocos, semPapel }
 }

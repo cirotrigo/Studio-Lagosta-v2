@@ -183,3 +183,38 @@ describe('medirCopyDoProjeto com fotoDriveId — leitura que NÃO publica no Blo
     expect(mocks.put).not.toHaveBeenCalled()
   })
 })
+
+describe('R17 (P3, PR 9): o motivo do rodízio vale enquanto ALGUM grupo ainda sai por rodízio', () => {
+  it('dois grupos; só o do topo fixado em preferencias.arranjos; o do rodapé com duas combinações empatadas → o motivo do rodízio continua na lista', async () => {
+    const { arranjosDasCombinacoes } = await import('../compor')
+    const a = assinaturaMockGlobal()
+    const estiloServico = a.papeis.servico!
+    const combo = {
+      id: 'combinacao:alt-servico', nome: 'Serviço alternativo', origem: 'combinacao' as const,
+      textos: [{ papel: 'servico' as const, estilo: estiloServico, vaoAntes: null, elementos: [], tipo: null }],
+      papeis: ['servico' as const], alinhamento: null, temLogo: false,
+    }
+    vi.mocked(arranjosDasCombinacoes).mockResolvedValue([combo])
+    mocks.carregarAssinatura.mockResolvedValue(a)
+    mocks.template.mockResolvedValue(null)
+    const blocos = [{ papel: 'headline' as const, linhas: ['Costela'] }, { papel: 'servico' as const, linhas: ['Seg a sex'] }]
+    const livre = await medirCopyDoProjeto({ projectId: 6, formato: 'story', variante: 'p6', blocos })
+    const doTopo = livre.medicao.arranjos.find((x) => !/rod[ií]zio/.test(x.motivo))!
+    const doRodape = livre.medicao.arranjos.find((x) => /rod[ií]zio/.test(x.motivo))!
+    expect(doTopo).toBeDefined()
+    expect(doRodape).toBeDefined()
+    const fixadoSoOTopo = await medirCopyDoProjeto({ projectId: 6, formato: 'story', variante: 'p6', blocos, preferencias: { arranjos: [{ grupo: doTopo.grupo, arranjo: doTopo.id }] } })
+    expect(fixadoSoOTopo.medicao.arranjos.find((x) => x.grupo === doRodape.grupo)!.motivo).toMatch(/rod[ií]zio/)
+    expect(fixadoSoOTopo.motivosDaProvisoriedade.some((m) => /arranjo saiu por rodízio/.test(m))).toBe(true)
+    // Fixados os DOIS, o motivo some.
+    const fixados = await medirCopyDoProjeto({ projectId: 6, formato: 'story', variante: 'p6', blocos, preferencias: { arranjos: livre.medicao.arranjos.map((x) => ({ grupo: x.grupo, arranjo: x.id })) } })
+    expect(fixados.motivosDaProvisoriedade.some((m) => /arranjo saiu por rodízio/.test(m))).toBe(false)
+    vi.mocked(arranjosDasCombinacoes).mockResolvedValue([])
+  })
+})
+
+function assinaturaMockGlobal() {
+  const a = montarAssinatura({ pagina: { id: 'p6', name: 'Story base', tags: ['assinatura'], width: 1080, height: 1920, layers: camadas }, formatoDaPagina: 'story', numerosDoProjeto: null })
+  a.camadasDaPagina = camadas
+  return a
+}
