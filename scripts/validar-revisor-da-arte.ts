@@ -105,6 +105,17 @@ function conferir(titulo: string, condicao: boolean, detalhe = '') {
   console.log(`  ${condicao ? '✓' : '✗'} ${titulo}${detalhe ? ` — ${detalhe}` : ''}`)
   condicao ? ok++ : mau++
 }
+/**
+ * O domínio público do Blob levanta o "Vercel Security Checkpoint" (403 para
+ * TODA URL, por alguns minutos) quando esta máquina faz muitas idas em pouco
+ * tempo — cada render busca fontes, foto e logo lá, e sobe o PNG. Medido em
+ * 12/09/2026: duas rodadas seguidas pararam no mesmo ponto (a composição da
+ * segunda peça) com "Failed to load image" da logo. As pausas espaçam o pico.
+ */
+async function pausaParaOBlob(ms: number, porque: string) {
+  console.log(`   (pausa de ${Math.round(ms / 1000)}s: ${porque})`)
+  await new Promise((r) => setTimeout(r, ms))
+}
 async function erroDe(p: Promise<unknown>): Promise<{ code?: string; status?: number; message: string } | null> {
   try {
     await p
@@ -343,17 +354,161 @@ async function main() {
     conferir('só o slide da arte trocou de URL outra vez', !!carrosselDo6c && carrosselDo6c.mediaUrls[0] === fotoUrl && carrosselDo6c.mediaUrls[1] === genDo6c?.resultUrl && carrosselDo6c.mediaUrls.length === 2)
 
     // ── 6d. a força chega enquanto o job está RUNNING: o executor pede outra tentativa ──
-    console.log('6d) força que chega durante a execução: o job volta à fila em vez de terminar sem honrá-la')
-    const { enfileirarRecomposicao } = await import('../src/lib/ai/generation-queue')
+    console.log('6d) força que chega durante a execução: o executor não a honrou, e o FECHAMENTO devolve o job à fila (REV-03/REV-06)')
+    const { enfileirarRecomposicao, fecharJob, pedirNovaTentativa } = await import('../src/lib/ai/generation-queue')
+    const payloadNormal = { generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' } }
     const jobId6d = await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' } })
-    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 1, startedAt: new Date(), leaseExpiresAt: new Date(Date.now() + 600_000) } })
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 1, maxAttempts: 3, startedAt: new Date(), leaseExpiresAt: new Date(Date.now() + 600_000), payload: payloadNormal as never } })
     await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
-    const jobRunning = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, payload: true } })
-    conferir('o job RUNNING recebeu o payload forçado no banco', jobRunning?.status === 'RUNNING' && (jobRunning.payload as Record<string, any>).recompor?.forcar === true)
-    // a execução em curso partiu SEM força; ao terminar, relê o job e devolve à fila
+    const jobRunning = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, payload: true, maxAttempts: true } })
+    const pedidaEm6d = String((jobRunning?.payload as Record<string, any>)?.recompor?.forcaPedidaEm ?? '')
+    conferir('o job RUNNING recebeu o payload forçado, com o carimbo forcaPedidaEm', jobRunning?.status === 'RUNNING' && (jobRunning.payload as Record<string, any>).recompor?.forcar === true && pedidaEm6d.length > 0, pedidaEm6d)
+    // a execução em curso partiu SEM força e termina sem honrá-la
     await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' }, queueJobId: jobId6d })
-    const jobDepoisDo6d = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, lastError: true } })
-    conferir('o executor devolveu o job à fila (PENDING) com o motivo', jobDepoisDo6d?.status === 'PENDING' && /forçada/.test(String(jobDepoisDo6d.lastError)), `${jobDepoisDo6d?.status}: ${jobDepoisDo6d?.lastError}`)
+    const desfecho6d = await fecharJob(jobId6d, persistido.generationId)
+    const jobDepoisDo6d = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, lastError: true, payload: true } })
+    conferir('fecharJob devolveu o job à fila (REENFILEIRADO → PENDING) com o motivo, em vez de DONE com a força no payload', desfecho6d === 'REENFILEIRADO' && jobDepoisDo6d?.status === 'PENDING' && /forçada/.test(String(jobDepoisDo6d.lastError)), `${desfecho6d}; ${jobDepoisDo6d?.status}: ${jobDepoisDo6d?.lastError}`)
+    // a execução seguinte, FORÇADA, honra o pedido e fecha DONE
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: { increment: 1 }, startedAt: new Date() } })
+    await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: (jobDepoisDo6d!.payload as Record<string, any>).recompor, queueJobId: jobId6d })
+    const desfecho6dB = await fecharJob(jobId6d, persistido.generationId)
+    const jobFim6d = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, payload: true } })
+    conferir('a execução forçada seguinte marca forcaAtendida = forcaPedidaEm e o job fecha DONE', desfecho6dB === 'DONE' && jobFim6d?.status === 'DONE' && (jobFim6d.payload as Record<string, any>).recompor?.forcaAtendida === pedidaEm6d, `${desfecho6dB}; atendida=${(jobFim6d?.payload as Record<string, any>)?.recompor?.forcaAtendida}`)
+    const urlDaArte = async () => (await db.generation.findUnique({ where: { id: persistido.generationId }, select: { resultUrl: true } }))?.resultUrl ?? null
+    { const u = await urlDaArte(); if (u) blobs.add(u) }
+
+    console.log('6e) a força chega no job RUNNING da ÚLTIMA tentativa: ganha orçamento próprio e a re-execução cabe (REV-07)')
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, startedAt: new Date(), payload: payloadNormal as never } })
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const job6e = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, attempts: true, maxAttempts: true, payload: true } })
+    conferir('maxAttempts subiu para attempts + 1 (3 → 4) e o payload é o forçado', job6e?.status === 'RUNNING' && job6e.attempts === 3 && job6e.maxAttempts === 4 && (job6e.payload as Record<string, any>).recompor?.forcar === true, `${job6e?.attempts}/${job6e?.maxAttempts}`)
+    // A execução NORMAL em curso não escreve no job (só a forçada marca
+    // `forcaAtendida`, provado em 6d): o que se prova aqui é o FECHAMENTO, e
+    // rodar o render de novo só gastaria Blob (ver `pausaParaOBlob`).
+    const desfecho6e = await fecharJob(jobId6d, persistido.generationId)
+    const job6eDepois = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, attempts: true, maxAttempts: true } })
+    conferir('o fechamento devolve à fila e a próxima varredura ainda pega o job (attempts < maxAttempts)', desfecho6e === 'REENFILEIRADO' && job6eDepois?.status === 'PENDING' && job6eDepois.attempts < job6eDepois.maxAttempts, `${desfecho6e}; ${job6eDepois?.attempts}/${job6eDepois?.maxAttempts}`)
+    { const u = await urlDaArte(); if (u) blobs.add(u) }
+
+    console.log('6f) a força chega DEPOIS de o executor terminar e ANTES do fechamento: REENFILEIRADO, nunca DONE (REV-06)')
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 1, maxAttempts: 3, startedAt: new Date(), payload: payloadNormal as never } })
+    // (a execução normal terminou — sem escrever no job, como em 6e) e a força chega ANTES do fechamento:
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const desfecho6f = await fecharJob(jobId6d, persistido.generationId)
+    const job6f = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, payload: true } })
+    conferir('força na janela entre o runner e o fechamento: o job volta à fila com o pedido', desfecho6f === 'REENFILEIRADO' && job6f?.status === 'PENDING' && (job6f.payload as Record<string, any>).recompor?.forcar === true, `${desfecho6f}; ${job6f?.status}`)
+    { const u = await urlDaArte(); if (u) blobs.add(u) }
+    // fecha o job de vez (a força atendida) para o passo 7 encontrar a fila limpa
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...(job6f!.payload as object), recompor: { ...((job6f!.payload as Record<string, any>).recompor as object), forcaAtendida: (job6f!.payload as Record<string, any>).recompor?.forcaPedidaEm } } as never } })
+
+    // ── 6g. a página muda ENQUANTO a arte é recomposta (REV-05) ─────────────
+    await pausaParaOBlob(75_000, 'a segunda peça e as execuções de 6g/6h buscam fontes, foto e logo no Blob')
+    console.log('6g) segunda peça: o revisor grava um ajuste (render falha) ENQUANTO a arte era recomposta — nada é gravado por cima (REV-05)')
+    const composta2 = await comporPeca(
+      {
+        projectId: PROJETO,
+        formato: 'story',
+        foto: { url: fotoUrl },
+        blocos: [
+          { papel: 'pre', linhas: ['Prova do revisor 2'] },
+          { papel: 'headline', linhas: ['Segunda peça', 'da prova'] },
+          { papel: 'apoio', linhas: ['Também pode apagar.'] },
+          { papel: 'cta', linhas: ['Fale com a gente'] },
+          { papel: 'servico', linhas: ['Seg a sex · 9h às 18h'] },
+        ],
+        nome: `${MARCA} peça 2`,
+        quando,
+        tema: `${MARCA} teste 2`,
+      },
+      { canal: 'claude-code' },
+    )
+    const persistido2 = composta2.persistido
+    if (!persistido2) abortar('a segunda composição não persistiu nada')
+    const pageId2 = persistido2.pageId
+    blobs.add(persistido2.url)
+    const carrossel2 = await db.socialPost.create({
+      data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} carrossel 2 — pode apagar`, mediaUrls: [fotoUrl, persistido2.url], scheduleType: 'SCHEDULED', scheduledDatetime: daqui7, status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED' },
+      select: { id: true },
+    })
+    posts.push(carrossel2.id)
+    const camadasDaPagina = async (id: string) => lerCamadas((await db.page.findUnique({ where: { id }, select: { layers: true } }))!.layers).camadas as Array<Record<string, any>>
+    const camadas2 = await camadasDaPagina(pageId2)
+    const headline2 = camadas2.find((c) => c.type === 'text' && c.metadata?.compositor?.papel === 'headline')
+    const gradiente2 = camadas2.find((c) => (c.type === 'gradient' || c.type === 'gradient2') && c.metadata?.tratamentoDeTexto)
+    const forcaDe = (camadas: Array<Record<string, any>>) => Number(camadas.find((c) => c.id === gradiente2?.id)?.metadata?.forca ?? NaN)
+    // 1. edição de TEXTO pelo editor → job normal (a recomposição vai RECOMPOR pela spec)
+    const textoDo6g = 'Segunda peça\neditada'
+    await db.page.update({ where: { id: pageId2 }, data: { layers: camadas2.map((c) => (c.id === headline2?.id ? { ...c, content: textoDo6g } : c)) as never } })
+    const { levantarPagina, recomporPaginaDefasada } = await import('../src/lib/compositor/recompor')
+    const pedido6g = await pedirRecomposicaoDaArteCongelada([pageId2])
+    const jobId2 = pedido6g[0]?.jobId ?? null
+    const lev6g = await levantarPagina(pageId2)
+    conferir('a edição é só de texto (a recomposição RECOMPORIA pela spec) e há job normal pendente', lev6g?.defasagem.soTexto === true && !lev6g.defasagem.ilegivel && !!jobId2, JSON.stringify({ soTexto: lev6g?.defasagem.soTexto, papeis: lev6g?.defasagem.papeis, job: jobId2 }))
+    if (jobId2) await db.generationJob.update({ where: { id: jobId2 }, data: { status: 'RUNNING', attempts: 1, startedAt: new Date(), leaseExpiresAt: new Date(Date.now() + 600_000) } })
+    // 2. a recomposição roda; ENTRE a leitura e a gravação, o revisor grava um ajuste de gradiente e o render falha
+    const forcaNova2 = Math.min(0.9, Math.round((Number(gradiente2?.metadata?.forca ?? 0.5) + 0.15) * 1000) / 1000)
+    const ajuste2 = { tipo: 'gradiente' as const, borda: (gradiente2?.metadata?.borda === 'topo' ? 'topo' : 'rodape') as 'topo' | 'rodape', forca: forcaNova2, ...(gradiente2 ? { camadas: [String(gradiente2.id)] } : {}) }
+    let erroDoAjuste6g: Awaited<ReturnType<typeof erroDe>> = null
+    const e6g = await erroDe(
+      recomporPaginaDefasada({
+        pageId: pageId2,
+        origem: 'editor',
+        antesDeGravar: async () => {
+          const rv = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+          process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+          erroDoAjuste6g = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: rv.versao, ajustes: [ajuste2], canal: 'claude-code' }))
+          process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+        },
+      }),
+    )
+    const pagina6g = await camadasDaPagina(pageId2)
+    const gen6g = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+    const job6g = jobId2 ? await db.generationJob.findUnique({ where: { id: jobId2 }, select: { status: true, payload: true, attempts: true, maxAttempts: true } }) : null
+    conferir('o ajuste do revisor gravou a página e o render falhou (como no passo 6)', !!erroDoAjuste6g && erroDoAjuste6g.code !== 'VERSAO_DIVERGENTE', erroDoAjuste6g?.message.slice(0, 60))
+    conferir('a recomposição recusou gravar por cima (PAGINA_MUDOU_DURANTE 409)', e6g?.code === 'PAGINA_MUDOU_DURANTE' && e6g.status === 409, e6g?.message.slice(0, 80))
+    conferir('a página ficou com o ajuste concorrente E o texto editado (nada foi sobrescrito)', forcaDe(pagina6g) === forcaNova2 && String(pagina6g.find((c) => c.id === headline2?.id)?.content) === textoDo6g, `força ${forcaDe(pagina6g)} (esperava ${forcaNova2})`)
+    conferir('a arte não trocou (a composição foi descartada)', gen6g?.resultUrl === persistido2.url)
+    conferir('o job RUNNING foi promovido à força pelo ajuste, com orçamento (maxAttempts ≥ attempts + 1)', job6g?.status === 'RUNNING' && (job6g.payload as Record<string, any>).recompor?.forcar === true && job6g.maxAttempts >= job6g.attempts + 1, job6g ? `${job6g.attempts}/${job6g.maxAttempts}` : 'sem job')
+    // 3. como faria o executor: a falha vira nova tentativa e o fechamento devolve à fila
+    if (jobId2) {
+      await pedirNovaTentativa(jobId2, e6g?.message ?? 'PAGINA_MUDOU_DURANTE')
+      const d = await fecharJob(jobId2, persistido2.generationId)
+      conferir('o executor devolve o job à fila (REENFILEIRADO)', d === 'REENFILEIRADO', d)
+      // 4. a execução seguinte é a FORÇADA: re-render como está — texto novo E força nova preservados
+      const jobF = await db.generationJob.findUnique({ where: { id: jobId2 }, select: { payload: true } })
+      await db.generationJob.update({ where: { id: jobId2 }, data: { status: 'RUNNING', attempts: { increment: 1 }, startedAt: new Date() } })
+      await processarRecomposicaoEmBackground({ generationId: persistido2.generationId, projectId: PROJETO, recompor: (jobF!.payload as Record<string, any>).recompor, queueJobId: jobId2 })
+      const dF = await fecharJob(jobId2, persistido2.generationId)
+      const genF = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+      if (genF?.resultUrl) blobs.add(genF.resultUrl)
+      const paginaF = await camadasDaPagina(pageId2)
+      const carrosselF = await db.socialPost.findUnique({ where: { id: carrossel2.id }, select: { mediaUrls: true } })
+      conferir('a execução forçada re-renderiza como está (não recompõe), fecha DONE e marca somenteReRender', dF === 'DONE' && (genF?.fieldValues as Record<string, any>)?.recomposicao?.estado === 're-renderizada' && !!(genF?.fieldValues as Record<string, any>)?.somenteReRender, `${dF}; ${(genF?.fieldValues as Record<string, any>)?.recomposicao?.estado}`)
+      conferir('texto editado e força ajustada estão na página e o slide trocou', String(paginaF.find((c) => c.id === headline2?.id)?.content) === textoDo6g && forcaDe(paginaF) === forcaNova2 && carrosselF?.mediaUrls[1] === genF?.resultUrl && carrosselF.mediaUrls.length === 2)
+    }
+
+    // ── 6h. somenteReRender isolado: spec válida, SÓ texto mudou, e mesmo assim re-render ──
+    await pausaParaOBlob(45_000, 'mais um render no Blob')
+    console.log('6h) somenteReRender isolado: edição SÓ de texto numa página recuperada (spec válida, soTexto) re-renderiza, não recompõe')
+    const textoDo6h = 'Segunda peça\nde novo'
+    const camadas6h = await camadasDaPagina(pageId2)
+    await db.page.update({ where: { id: pageId2 }, data: { layers: camadas6h.map((c) => (c.id === headline2?.id ? { ...c, content: textoDo6h } : c)) as never } })
+    const pedido6h = await pedirRecomposicaoDaArteCongelada([pageId2])
+    const jobId6h = pedido6h[0]?.jobId ?? null
+    const lev6h = await levantarPagina(pageId2)
+    conferir('a defasagem é só de texto (sem a marca, isto RECOMPORIA pela spec)', lev6h?.defasagem.soTexto === true && !lev6h.defasagem.ilegivel && !!jobId6h, JSON.stringify({ soTexto: lev6h?.defasagem.soTexto, papeis: lev6h?.defasagem.papeis }))
+    if (jobId6h) {
+      const job6h = await db.generationJob.findUnique({ where: { id: jobId6h }, select: { payload: true } })
+      conferir('o job é NORMAL (sem forcar)', (job6h?.payload as Record<string, any>)?.recompor?.forcar !== true)
+      await db.generationJob.update({ where: { id: jobId6h }, data: { status: 'RUNNING', attempts: 1, startedAt: new Date() } })
+      await processarRecomposicaoEmBackground({ generationId: persistido2.generationId, projectId: PROJETO, recompor: (job6h!.payload as Record<string, any>).recompor, queueJobId: jobId6h })
+      const d6h = await fecharJob(jobId6h, persistido2.generationId)
+      const gen6h = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+      if (gen6h?.resultUrl) blobs.add(gen6h.resultUrl)
+      const pagina6h = await camadasDaPagina(pageId2)
+      conferir('re-renderizada (não "feita" pela spec), DONE, texto novo e força ajustada preservados (REV-04 isolado)', d6h === 'DONE' && (gen6h?.fieldValues as Record<string, any>)?.recomposicao?.estado === 're-renderizada' && String(pagina6h.find((c) => c.id === headline2?.id)?.content) === textoDo6h && forcaDe(pagina6h) === forcaNova2, `${d6h}; ${(gen6h?.fieldValues as Record<string, any>)?.recomposicao?.estado}; força ${forcaDe(pagina6h)}`)
+    }
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))

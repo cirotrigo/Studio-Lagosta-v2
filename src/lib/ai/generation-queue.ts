@@ -110,19 +110,63 @@ export async function enfileirarComposicao(args: ComposicaoJobArgs): Promise<str
  * pede outra tentativa.
  */
 export async function enfileirarRecomposicao(args: RecomposicaoJobArgs): Promise<string> {
-  const limpo = JSON.parse(JSON.stringify(args)) as Record<string, unknown>
+  /**
+   * Toda recuperação FORÇADA carrega um carimbo próprio (`forcaPedidaEm`): é
+   * por ele que o executor diz "esta força eu atendi" (`marcarForcaAtendida`)
+   * e que `fecharJob` distingue força atendida de força que chegou no meio
+   * (REV-06 da revisão do Codex, 12/09/2026).
+   */
+  const pedido: RecomposicaoJobArgs =
+    args.recompor.forcar === true
+      ? { ...args, recompor: { ...args.recompor, forcaPedidaEm: args.recompor.forcaPedidaEm ?? new Date().toISOString() } }
+      : args
+  const limpo = JSON.parse(JSON.stringify(pedido)) as Record<string, unknown>
   const job = await db.generationJob.upsert({
     where: { generationId: args.generationId },
     create: { generationId: args.generationId, kind: 'COMPOR', projectId: args.projectId, payload: limpo as never, maxAttempts: 3 },
     update: {},
     select: { id: true },
   })
-  await db.generationJob.updateMany({
-    where: { id: job.id, status: { in: ['DONE', 'FAILED'] } },
+  if (pedido.recompor.forcar !== true) {
+    await reabrirRecomposicaoTerminada(job.id, limpo)
+    return job.id
+  }
+  /**
+   * A recuperação FORÇADA não pode ser descartada por um pedido que já estava
+   * na fila (REV-03): o `update: {}` acima preserva o payload de um job
+   * PENDING/RUNNING, e o executor receberia o pedido antigo sem `forcar` —
+   * recomporia pela spec e apagaria o ajuste. Job PENDING/RUNNING é PROMOVIDO
+   * ao payload forçado numa escrita só; o RUNNING ganha também orçamento
+   * próprio (`maxAttempts` ≥ attempts + 1) para a re-execução que `fecharJob`
+   * vai pedir caber mesmo quando a força chega na última tentativa (REV-07).
+   * Se o job terminou entre uma escrita e outra, reabre; o laço converge em
+   * poucas voltas porque cada volta cobre um estado.
+   */
+  for (let volta = 0; volta < 4; volta++) {
+    const atual = await db.generationJob.findUnique({ where: { id: job.id }, select: { status: true, attempts: true, maxAttempts: true, payload: true } })
+    if (!atual) break
+    if (atual.status === 'PENDING' || atual.status === 'RUNNING') {
+      // Compare-and-set no payload LIDO: quem perder a corrida relê e tenta de novo.
+      const r = await db.generationJob.updateMany({
+        where: { id: job.id, status: atual.status, payload: { equals: atual.payload as never } },
+        data: { payload: limpo as never, ...(atual.status === 'RUNNING' ? { maxAttempts: Math.max(atual.maxAttempts, atual.attempts + 1) } : {}) },
+      })
+      if (r.count > 0) return job.id
+      continue
+    }
+    if (await reabrirRecomposicaoTerminada(job.id, limpo)) return job.id
+  }
+  return job.id
+}
+
+/** Job DONE/FAILED volta a PENDING com o pedido novo (a edição seguinte reabre o job do zero). */
+async function reabrirRecomposicaoTerminada(id: string, payload: Record<string, unknown>): Promise<boolean> {
+  const r = await db.generationJob.updateMany({
+    where: { id, status: { in: ['DONE', 'FAILED'] } },
     data: {
       kind: 'COMPOR',
       status: 'PENDING',
-      payload: limpo as never,
+      payload: payload as never,
       attempts: 0,
       maxAttempts: 3,
       nextAttemptAt: new Date(),
@@ -132,31 +176,38 @@ export async function enfileirarRecomposicao(args: RecomposicaoJobArgs): Promise
       lastError: null,
     },
   })
-  /**
-   * A recuperação FORÇADA não pode ser descartada por um pedido que já estava
-   * na fila (REV-03 da revisão do Codex, 12/09/2026): o `update: {}` acima
-   * preserva o payload de um job PENDING/RUNNING, e o executor receberia o
-   * pedido antigo sem `forcar` — recomporia pela spec e apagaria o ajuste.
-   * Job PENDING é promovido ATOMICAMENTE ao payload forçado; job RUNNING
-   * recebe o payload novo no banco, e o executor, ao terminar, relê o job e
-   * pede outra tentativa quando encontra a força que não tinha ao começar
-   * (`processarRecomposicaoEmBackground`).
-   */
-  if (args.recompor.forcar === true) {
-    await db.generationJob.updateMany({
-      where: { id: job.id, status: { in: ['PENDING', 'RUNNING'] } },
-      data: { payload: limpo as never },
-    })
-  }
-  return job.id
+  return r.count > 0
 }
 
-/** O job desta Generation tem `recompor.forcar` gravado no banco agora? (o executor confere ao terminar) */
-export async function jobPedeRecuperacaoForcada(queueJobId: string | null | undefined): Promise<boolean> {
+/**
+ * O executor HONROU a recuperação forçada com que partiu (`pedidaEm`): grava
+ * `forcaAtendida` no payload — por compare-and-set: se uma força MAIS NOVA
+ * chegou durante a execução, o carimbo não casa, nada é marcado, e
+ * `fecharJob` devolve o job à fila em vez de DONE.
+ */
+export async function marcarForcaAtendida(queueJobId: string | null | undefined, pedidaEm: string | null | undefined): Promise<boolean> {
   if (!queueJobId) return false
-  const job = await db.generationJob.findUnique({ where: { id: queueJobId }, select: { payload: true } })
-  const payload = (job?.payload ?? {}) as { recompor?: { forcar?: boolean } }
-  return payload.recompor?.forcar === true
+  const atual = await db.generationJob.findUnique({ where: { id: queueJobId }, select: { status: true, payload: true } })
+  if (!atual || atual.status !== 'RUNNING') return false
+  const recompor = recomporDoPayload(atual.payload)
+  if ((recompor.forcaPedidaEm ?? '') !== (pedidaEm ?? '')) return false
+  const novo = { ...(atual.payload as Record<string, unknown>), recompor: { ...recompor, forcaAtendida: pedidaEm ?? '' } }
+  const r = await db.generationJob.updateMany({
+    where: { id: queueJobId, status: 'RUNNING', payload: { equals: atual.payload as never } },
+    data: { payload: novo as never },
+  })
+  return r.count > 0
+}
+
+type RecomporNoPayload = { forcar?: boolean; forcaPedidaEm?: string; forcaAtendida?: string; [k: string]: unknown }
+function recomporDoPayload(payload: unknown): RecomporNoPayload {
+  const r = payload && typeof payload === 'object' ? (payload as { recompor?: unknown }).recompor : null
+  return r && typeof r === 'object' ? (r as RecomporNoPayload) : {}
+}
+/** Há recuperação forçada pedida que o executor ainda não atendeu? */
+function forcaPendente(payload: unknown): boolean {
+  const r = recomporDoPayload(payload)
+  return (r.forcaPedidaEm ?? '') !== (r.forcaAtendida ?? '')
 }
 
 /** O payload de um job COMPOR — o que `processarComposicaoEmBackground` recebe. */
@@ -187,13 +238,11 @@ export interface RecomposicaoJobArgs {
   projectId: number
   recompor: {
     pageId: string
-    origem: OrigemDaRecomposicao
-    /**
-     * Recuperação FORÇADA (ajuste do revisor cujo render falhou): o executor
-     * pula a checagem de defasagem e re-renderiza a página COMO ESTÁ — nunca
-     * recompõe pela spec, que desfaria o ajuste. Ver `recompor.ts`.
-     */
+    origem: 'editor' | 'varredura'
     forcar?: boolean
+    /** Carimbo (ISO) da força pedida — posto por `enfileirarRecomposicao`; `forcaAtendida` recebe o mesmo valor quando o executor a honra. */
+    forcaPedidaEm?: string
+    forcaAtendida?: string
   }
   decididoPor?: string | null
 }
@@ -328,11 +377,6 @@ export async function pedirNovaTentativa(
  * COMPLETED/FAILED lá; aqui só espelhamos.
  */
 export async function fecharJob(id: string, generationId: string): Promise<'DONE' | 'FAILED' | 'REENFILEIRADO'> {
-  const job = await db.generationJob.findUnique({ where: { id }, select: { status: true } })
-  // O runner pediu outra tentativa: o job já voltou para PENDING e não é
-  // nosso para fechar.
-  if (job?.status === 'PENDING') return 'REENFILEIRADO'
-
   const gen = await db.generation.findUnique({
     where: { id: generationId },
     select: { status: true, fieldValues: true },
@@ -354,16 +398,46 @@ export async function fecharJob(id: string, generationId: string): Promise<'DONE
         ? 'a Generation deste job não existe mais'
         : `o runner terminou sem fechar a Generation (ficou ${gen.status}) — defeito do runner, não da arte`)
 
-  await db.generationJob.updateMany({
-    where: { id, status: 'RUNNING' },
-    data: {
-      status: ok ? 'DONE' : 'FAILED',
-      finishedAt: new Date(),
-      leaseExpiresAt: null,
-      ...(erro ? { lastError: erro } : {}),
-    },
-  })
-  return ok ? 'DONE' : 'FAILED'
+  /**
+   * O fechamento é compare-and-set sobre o PAYLOAD lido: só fecha se ninguém
+   * o mudou entre a leitura e a escrita — e só fecha DONE/FAILED se não há
+   * recuperação forçada pedida sem atender (`forcaPedidaEm` ≠ `forcaAtendida`).
+   * Força que chegou durante a execução (promovida em `enfileirarRecomposicao`,
+   * inclusive na janela entre o fim do runner e este fechamento) não pode
+   * morrer num job DONE com o pedido no payload (REV-06); o job volta à fila,
+   * com o orçamento que a promoção já garantiu (REV-07). Duas escritas na
+   * mesma linha se serializam no Postgres: a segunda sempre enxerga a primeira.
+   */
+  for (let volta = 0; volta < 4; volta++) {
+    const job = await db.generationJob.findUnique({ where: { id }, select: { status: true, payload: true } })
+    if (!job) return ok ? 'DONE' : 'FAILED'
+    // O runner pediu outra tentativa: o job já voltou para PENDING e não é
+    // nosso para fechar.
+    if (job.status === 'PENDING') return 'REENFILEIRADO'
+    if (job.status !== 'RUNNING') return ok ? 'DONE' : 'FAILED'
+    if (forcaPendente(job.payload)) {
+      const devolvido = await db.generationJob.updateMany({
+        where: { id, status: 'RUNNING', payload: { equals: job.payload as never } },
+        data: { status: 'PENDING', nextAttemptAt: new Date(), leaseExpiresAt: null, lastError: 'recuperação forçada chegou durante a execução' },
+      })
+      if (devolvido.count > 0) {
+        console.log(`[fila-arte] job ${id} devolvido à fila: recuperação forçada chegou durante a execução`)
+        return 'REENFILEIRADO'
+      }
+      continue
+    }
+    const fechado = await db.generationJob.updateMany({
+      where: { id, status: 'RUNNING', payload: { equals: job.payload as never } },
+      data: {
+        status: ok ? 'DONE' : 'FAILED',
+        finishedAt: new Date(),
+        leaseExpiresAt: null,
+        ...(erro ? { lastError: erro } : {}),
+      },
+    })
+    if (fechado.count > 0) return ok ? 'DONE' : 'FAILED'
+  }
+  return 'REENFILEIRADO'
 }
 
 /** Marca o job como falho sem consultar a Generation (erro do próprio executor). */

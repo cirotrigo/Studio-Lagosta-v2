@@ -40,10 +40,10 @@
  * recomposição roda depois dele, e a arte que publica está sempre certa.
  */
 
-import { put } from '@vercel/blob'
+import { del, put } from '@vercel/blob'
 
 import { db } from '@/lib/db'
-import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { marcarForcaAtendida, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
@@ -236,6 +236,11 @@ export interface RecomporInput {
    * do Codex, 12/09/2026).
    */
   forcar?: boolean
+  /**
+   * SÓ PARA PROVA: roda entre a leitura da página e a gravação das camadas
+   * recompostas, para simular a edição concorrente. Nunca vem do payload.
+   */
+  antesDeGravar?: () => Promise<void>
 }
 
 /**
@@ -282,6 +287,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       background: true,
       isTemplate: true,
       templateId: true,
+      updatedAt: true,
       Template: { select: { id: true, name: true, projectId: true } },
     },
   })
@@ -359,10 +365,23 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     novaUrl = blob.url
     recomposta = true
 
-    await db.page.update({
-      where: { id: page.id },
+    if (input.antesDeGravar) await input.antesDeGravar()
+    /**
+     * Compare-and-set na versão LIDA da página. Enquanto a peça era composta a
+     * página pode ter mudado — o revisor gravou um ajuste cujo render falhou,
+     * alguém digitou. Gravar por cima apagaria essa edição em silêncio, e a
+     * recuperação forçada que viesse depois protegeria a página ERRADA
+     * (REV-05 da revisão do Codex, 12/09/2026). Mudou → a composição e o PNG
+     * são descartados e o job volta à fila: a próxima execução lê a página nova.
+     */
+    const gravada = await db.page.updateMany({
+      where: { id: page.id, updatedAt: page.updatedAt },
       data: { layers: camadas.camadas as never, thumbnail: blob.url },
     })
+    if (gravada.count === 0) {
+      await del(blob.url).catch(() => undefined)
+      throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada enquanto a arte era refeita; a composição foi descartada e a arte será refeita a partir da página nova.', 409)
+    }
     await db.generation.update({
       where: { id: arte.generationId },
       data: {
@@ -636,7 +655,7 @@ export async function pedirRecomposicaoDaArteCongelada(
 export async function processarRecomposicaoEmBackground(args: {
   generationId: string
   projectId: number
-  recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean }
+  recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean; forcaPedidaEm?: string }
   decididoPor?: string | null
   queueJobId?: string | null
 }): Promise<void> {
@@ -667,17 +686,13 @@ export async function processarRecomposicaoEmBackground(args: {
       if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
     }
     /**
-     * Uma recuperação FORÇADA chegou enquanto este job rodava sem força
-     * (REV-03): o payload no banco já a carrega; esta execução não a honrou.
-     * Pede outra tentativa, que vai ler o payload novo.
+     * Esta execução HONROU a recuperação forçada com que partiu: marca no job,
+     * por compare-and-set — se uma força mais nova chegou no meio, o carimbo
+     * não casa, nada é marcado, e `fecharJob` devolve o job à fila em vez de
+     * DONE (REV-03, REV-06, REV-07). Execução SEM força não marca nada: força
+     * que chegou durante ela fica pendente no payload e `fecharJob` a enxerga.
      */
-    if (args.recompor.forcar !== true) {
-      const { jobPedeRecuperacaoForcada } = await import('@/lib/ai/generation-queue')
-      if (await jobPedeRecuperacaoForcada(args.queueJobId)) {
-        const voltou = await pedirNovaTentativa(args.queueJobId, 'recuperação forçada chegou durante a execução')
-        if (voltou) console.log(`[recompor] ${pageId} voltou à fila: recuperação forçada pendente`)
-      }
-    }
+    if (args.recompor.forcar === true) await marcarForcaAtendida(args.queueJobId, args.recompor.forcaPedidaEm)
   } catch (erro) {
     const msg = erro instanceof Error ? erro.message : String(erro)
     const code = erro instanceof CreativeError ? erro.code : 'ERRO'
