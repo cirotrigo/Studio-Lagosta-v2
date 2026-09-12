@@ -6933,6 +6933,27 @@ Da sétima revisão (APTO COM NOTAS, PR13-24):
   a conversão para `Date` só falhava no script, depois de fatos anteriores já
   gravados. `lerManifesto` recusa antes de qualquer escrita.
 
+Da revisão FINAL do PR (BLOQUEADO, PR13-25…26):
+
+- 🔴 **Disponibilidade, programa fixo do dia e dia fechado são CONDIÇÃO da
+  casa, não voz** (PR13-25): "HAPPY HOUR TODO DIA" e "QUINTA É DIA DE VINHO"
+  (By Rock), "convidar para segunda-feira (a casa está fechada)" (Empório)
+  passavam pelos detectores e entravam no prompt — uma mudança de
+  funcionamento na base deixava a identidade contradizendo a base.
+  `condicoesOperacionais` pega "todo dia"/"diariamente", "<dia> é dia de X" e
+  "a casa está fechada"/"não abre"/"fechado aos domingos" ("lista fechada" e
+  "menu fechado" não são dia fechado); as propostas trocaram essas frases por
+  editorial que só CITA o dia ("Vem de happy hour", "SEXTA NO QUINTAL",
+  "QUARTA NO BOTECO", "CHURRASCO DE VERDADE") ou pela regra sem o dado ("dia
+  sem funcionamento: os dias em que a casa recebe vêm da base"); as prévias de
+  produção foram regeradas e o fato correspondente do DNA aparece nelas com
+  tipo `condicao`. O teste das dez propostas roda o detector novo: proposta
+  com condição não passa.
+- **A retomada por reindexação invalida o cache de busca do projeto**
+  (PR13-26), como a criação normal já fazia: sem isso uma busca cacheada no
+  intervalo da falha devolvia o resultado sem o fato até o TTL. Best-effort
+  (erro vira log), e só quando a posse da trava continua.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

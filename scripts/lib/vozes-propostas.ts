@@ -128,7 +128,7 @@ export const VOZES_PROPOSTAS: Record<number, { nome: string; voz: VozCompacta }>
       versao: V,
       descricao: 'Fala como um amigo convidando para o churrasco, nunca como anúncio: frases curtas, ritmo de conversa, toque regional sem exagero (um "tchê" ou um "bah" por peça, no máximo). Alegre, popular, direta, sensorial e acolhedora; nunca caricatura gaúcha, formal, debochada, publicitária ou exclusivista. Em crise ou reclamação: sério, humano, sem gíria.',
       tratamento: 'você / "a piazada" / "o pessoal", como quem chama pra mesa',
-      exemplos: ['Chama a piazada!', 'Vem pra resenha!', 'Partiu Espeto!', 'Garanta seu lugar!', 'Vem curtir o sabor!', 'Vem se servir!', 'Bora pro Espeto!', 'Chama o pessoal!', 'Vem pro boteco do Espeto!', 'SEXTOU COM ESPETO', 'DOMINGO EM FAMÍLIA', 'CHURRASCO TODO DIA'],
+      exemplos: ['Chama a piazada!', 'Vem pra resenha!', 'Partiu Espeto!', 'Garanta seu lugar!', 'Vem curtir o sabor!', 'Vem se servir!', 'Bora pro Espeto!', 'Chama o pessoal!', 'Vem pro boteco do Espeto!', 'SEXTOU COM ESPETO', 'DOMINGO EM FAMÍLIA', 'CHURRASCO DE VERDADE'],
       antesDepois: [
         { antes: 'Vem pra brasa! / Vem pro fogo!', depois: 'Vem pro Espeto!', motivo: 'os dois saíram da lista de CTAs por decisão do Ciro' },
         { antes: 'desmancha no garfo', depois: 'desmancha na boca', motivo: 'a costela desmancha na boca' },
