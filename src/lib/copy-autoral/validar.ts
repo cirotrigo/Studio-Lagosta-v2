@@ -78,9 +78,16 @@ export function problemasDeCoerencia(copy: CopyAutoral): ProblemaDaCopy[] {
     }
   })
 
+  // Um id citado no histórico existe HOJE ou foi REMOVIDO por alguma revisão
+  // (a remoção fica registrada com o que o bloco dizia). Id sem lastro nenhum
+  // continua sendo problema.
+  const removidos = new Set(copy.revisoes.flatMap((r) => (r.removidos ?? []).map((x) => x.id)))
   copy.revisoes.forEach((r, i) => {
     for (const id of r.blocos) {
-      if (!ids.has(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `revisão ${i} cita o bloco "${id}", que não existe na copy` })
+      if (!ids.has(id) && !removidos.has(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `revisão ${i} cita o bloco "${id}", que não existe na copy nem consta como removido` })
+    }
+    for (const id of Object.keys(r.campos ?? {})) {
+      if (!r.blocos.includes(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `revisão ${i} detalha campos do bloco "${id}" sem listá-lo em blocos` })
     }
   })
 
@@ -100,11 +107,16 @@ export function blocosEmOrdem(copy: CopyAutoral): BlocoAutoral[] {
 }
 
 /** Os grupos de leitura, cada um com os blocos em ordem; bloco sem grupo é um grupo de si mesmo. */
-export function gruposDeLeitura(copy: CopyAutoral): Array<{ grupo: string; blocos: BlocoAutoral[] }> {
-  const saida = new Map<string, BlocoAutoral[]>()
+export function gruposDeLeitura(copy: CopyAutoral): Array<{ grupo: string; blocos: BlocoAutoral[]; declarado: boolean }> {
+  // A chave interna do bloco SEM grupo usa um separador que o alfabeto do id
+  // e do grupo não permitem ("\u0000"): um grupo declarado "_aviso" nunca
+  // engole o bloco independente "aviso".
+  const saida = new Map<string, { grupo: string; blocos: BlocoAutoral[]; declarado: boolean }>()
   for (const b of blocosEmOrdem(copy)) {
-    const chave = b.grupoDeLeitura ?? `_${b.id}`
-    saida.set(chave, [...(saida.get(chave) ?? []), b])
+    const chave = b.grupoDeLeitura ? `g\u0000${b.grupoDeLeitura}` : `solo\u0000${b.id}`
+    const atual = saida.get(chave) ?? { grupo: b.grupoDeLeitura ?? b.id, blocos: [], declarado: !!b.grupoDeLeitura }
+    atual.blocos.push(b)
+    saida.set(chave, atual)
   }
-  return [...saida.entries()].map(([grupo, blocos]) => ({ grupo, blocos }))
+  return [...saida.values()]
 }

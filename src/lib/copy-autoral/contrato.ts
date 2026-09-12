@@ -44,6 +44,9 @@ import { z } from 'zod'
 
 export const VERSAO_DO_CONTRATO = 'copy-autoral-v1' as const
 
+/** Teto de linhas por bloco — e, por consequência, do índice que a voz 2 pode apontar. */
+export const MAX_LINHAS = 12
+
 /** O que o texto FAZ. `livre` é o bloco sem papel de assinatura (camada extra, F3). */
 export const FUNCOES = ['pre', 'headline', 'apoio', 'cta', 'servico', 'livre'] as const
 export type FuncaoDoBloco = (typeof FUNCOES)[number]
@@ -82,7 +85,7 @@ export const estiloDoBlocoSchema = z
      * linhas que saem na voz 2. Até aqui a última linha mudava de voz sozinha,
      * e ao passar de duas para três linhas o destaque trocava de trecho.
      */
-    linhasNaVoz2: z.array(z.number().int().min(0).max(5)).max(6).optional(),
+    linhasNaVoz2: z.array(z.number().int().min(0).max(MAX_LINHAS - 1)).max(MAX_LINHAS).optional(),
   })
   .strict()
 export type EstiloDoBloco = z.infer<typeof estiloDoBlocoSchema>
@@ -91,8 +94,8 @@ export const blocoAutoralSchema = z
   .object({
     id: idDeBlocoSchema,
     funcao: z.enum(FUNCOES),
-    /** Os blocos que se leem como UMA frase. Um id de grupo, do autor. Sem grupo = frase própria. */
-    grupoDeLeitura: z.string().min(1).max(60).optional(),
+    /** Os blocos que se leem como UMA frase. Um id de grupo, do autor (mesmo alfabeto do id). Sem grupo = frase própria. */
+    grupoDeLeitura: idDeBlocoSchema.optional(),
     /** A ordem de leitura. Explícita e única na copy. */
     ordem: z.number().int().min(0).max(99),
     /**
@@ -100,7 +103,7 @@ export const blocoAutoralSchema = z
      * quebra e [colchetes] preservados. Linha vazia é permitida DENTRO do bloco
      * (respiro que o autor quis); bloco vazio (`[]`) é decisão explícita.
      */
-    linhas: z.array(z.string().max(300)).max(12),
+    linhas: z.array(z.string().max(300)).max(MAX_LINHAS),
     fatos: z.array(referenciaDeFatoSchema).max(8).optional(),
     estilo: estiloDoBlocoSchema.optional(),
   })
@@ -114,8 +117,18 @@ export const revisaoDaCopySchema = z
     autor: z.enum(AUTORES),
     /** Por que mudou, em uma frase ("a Roberta trocou o CTA", "acento corrigido pelo revisor"). */
     motivo: z.string().min(1).max(300),
-    /** Os ids dos blocos tocados nesta revisão. */
+    /** Os ids dos blocos tocados nesta revisão (alterados, acrescentados e removidos). */
     blocos: z.array(idDeBlocoSchema).max(40),
+    /**
+     * Os blocos REMOVIDOS nesta revisão, com o que diziam — é o que deixa o
+     * histórico citar um id que não está mais na copy sem inventar bloco.
+     */
+    removidos: z
+      .array(z.object({ id: idDeBlocoSchema, funcao: z.enum(FUNCOES), linhas: z.array(z.string().max(300)).max(MAX_LINHAS) }).strict())
+      .max(40)
+      .optional(),
+    /** O que mudou em cada bloco alterado, por campo (`linhas`, `ordem`, `estilo`…). */
+    campos: z.record(idDeBlocoSchema, z.array(z.string().min(1).max(30)).max(10)).optional(),
     /** Superfície por onde a mudança entrou (chat, editor, bancada, agendamento, sistema). */
     superficie: z.string().min(1).max(40).optional(),
   })

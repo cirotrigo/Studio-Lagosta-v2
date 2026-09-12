@@ -63,9 +63,43 @@ describe('o contrato da copy autoral — ida e volta EXATA', () => {
 
   it('grupos de leitura: o pré-título e a manchete formam UMA frase declarada pelo autor', () => {
     const grupos = gruposDeLeitura(copy)
-    expect(grupos[0]).toMatchObject({ grupo: 'frase-1' })
+    expect(grupos[0]).toMatchObject({ grupo: 'frase-1', declarado: true })
     expect(grupos[0].blocos.map((b) => b.id)).toEqual(['pre', 'headline'])
     expect(grupos.map((g) => g.blocos.length)).toEqual([2, 1, 1])
+  })
+
+  it('grupo declarado com nome parecido com um id não engole o bloco independente (F03)', () => {
+    const c: CopyAutoral = {
+      ...copy,
+      blocos: [
+        // Grupo declarado com o MESMO nome que o id de um bloco independente:
+        // a chave interna separa os dois (e "_aviso", que começava com "_",
+        // deixou de ser aceito — grupo tem o alfabeto do id).
+        { id: 'a', funcao: 'pre', grupoDeLeitura: 'aviso', ordem: 0, linhas: ['a'] },
+        { id: 'b', funcao: 'headline', grupoDeLeitura: 'aviso', ordem: 1, linhas: ['b'] },
+        { id: 'aviso', funcao: 'apoio', ordem: 2, linhas: ['c'] },
+      ],
+    }
+    expect(validarCopyAutoral(c).problemas).toEqual([])
+    const grupos = gruposDeLeitura(c)
+    expect(grupos.map((g) => [g.declarado, g.blocos.map((b) => b.id)])).toEqual([[true, ['a', 'b']], [false, ['aviso']]])
+  })
+
+  it('mesmaCopy não depende da ordem das propriedades do estilo (F04)', () => {
+    const a = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { herdaDe: 'headline' as const, linhasNaVoz2: [1] } } : b)) }
+    const b = { ...copy, blocos: copy.blocos.map((x) => (x.id === 'headline' ? { ...x, estilo: { linhasNaVoz2: [1], herdaDe: 'headline' as const } } : x)) }
+    expect(mesmaCopy(a, b)).toBe(true)
+    const c = { ...copy, blocos: copy.blocos.map((x) => (x.id === 'headline' ? { ...x, estilo: { linhasNaVoz2: [0], herdaDe: 'headline' as const } } : x)) }
+    expect(mesmaCopy(a, c)).toBe(false)
+  })
+
+  it('a segunda voz alcança qualquer linha que exista no bloco (F05)', () => {
+    const sete = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['1', '2', '3', '4', '5', '6', '7'], estilo: { linhasNaVoz2: [6] } } : b)) }
+    expect(validarCopyAutoral(sete).problemas).toEqual([])
+    const doze = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: Array.from({ length: 12 }, (_, i) => String(i)), estilo: { linhasNaVoz2: [11] } } : b)) }
+    expect(validarCopyAutoral(doze).problemas).toEqual([])
+    const fora = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['1', '2'], estilo: { linhasNaVoz2: [7] } } : b)) }
+    expect(validarCopyAutoral(fora).problemas.some((p) => p.tipo === 'estilo')).toBe(true)
   })
 })
 
@@ -114,7 +148,7 @@ describe('revisões: autor, data e motivo em toda mudança', () => {
   it('mudar caixa ou acento é revisão (o diff é EXATO), e o autor do bloco passa a ser quem mexeu', () => {
     const novos = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['MILK-SHAKE', 'vem [em dobro]'] } : b))
     const { copy: revisada, mudancas } = aplicarRevisao(copy, novos, { autor: 'equipe', motivo: 'a Roberta pôs a manchete em caixa alta', em: '2026-09-12T12:00:00.000Z', superficie: 'editor' })
-    expect(mudancas).toEqual([{ id: 'headline', tipo: 'alterado', antes: ['Milk-shake', 'vem [em dobro]'], depois: ['MILK-SHAKE', 'vem [em dobro]'] }])
+    expect(mudancas).toEqual([{ id: 'headline', tipo: 'alterado', campos: ['linhas'], antes: ['Milk-shake', 'vem [em dobro]'], depois: ['MILK-SHAKE', 'vem [em dobro]'] }])
     expect(revisada.revisoes).toHaveLength(1)
     expect(revisada.revisoes[0]).toMatchObject({ autor: 'equipe', blocos: ['headline'], superficie: 'editor' })
     expect(autorDoBloco(revisada, 'headline').autor).toBe('equipe')
@@ -129,6 +163,44 @@ describe('revisões: autor, data e motivo em toda mudança', () => {
     const semServico = copy.blocos.filter((b) => b.id !== 'servico').concat([{ id: 'cta', funcao: 'cta', ordem: 3, linhas: ['Vem pra cá'] }])
     const d = diferencasDeBlocos(copy, { ...copy, blocos: semServico })
     expect(d.map((m) => [m.id, m.tipo])).toEqual([['cta', 'acrescentado'], ['servico', 'removido']])
+  })
+
+  it('remover um bloco produz copy que o LEITOR aceita: a remoção fica no histórico com o que o bloco dizia (F01)', () => {
+    const semServico = copy.blocos.filter((b) => b.id !== 'servico')
+    const { copy: revisada } = aplicarRevisao(copy, semServico, { autor: 'equipe', motivo: 'tirou o serviço', em: '2026-09-12T13:00:00.000Z' })
+    expect(revisada.revisoes[0].removidos).toEqual([{ id: 'servico', funcao: 'servico', linhas: ['Seg a sáb · 11h às 22h'] }])
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(revisada))
+    expect(problemas).toEqual([])
+    expect(lida!.blocos.some((b) => b.id === 'servico')).toBe(false)
+    expect(autorDoBloco(lida!, 'servico').autor).toBe('equipe')
+    // uma revisão que cita id sem lastro nenhum continua sendo problema
+    const fantasma = { ...revisada, revisoes: [{ ...revisada.revisoes[0], blocos: ['fantasma'], removidos: undefined }] }
+    expect(validarCopyAutoral(fantasma).problemas.some((p) => p.tipo === 'revisao')).toBe(true)
+  })
+
+  it('mudar só a ordem, a função, o grupo, o estilo ou os fatos É revisão, com os campos nomeados (F02)', () => {
+    const casos: Array<[string, (b: (typeof copy.blocos)[number]) => (typeof copy.blocos)[number], string]> = [
+      ['ordem', (b) => (b.id === 'apoio' ? { ...b, ordem: 3 } : b.id === 'servico' ? { ...b, ordem: 2 } : b), 'ordem'],
+      ['estilo', (b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b), 'estilo'],
+      ['grupo', (b) => (b.id === 'apoio' ? { ...b, grupoDeLeitura: 'frase-1' } : b), 'grupoDeLeitura'],
+      ['fatos', (b) => (b.id === 'servico' ? { ...b, fatos: [{ entradaId: 'kb-outro' }] } : b), 'fatos'],
+      ['funcao', (b) => (b.id === 'apoio' ? { ...b, funcao: 'cta' as const } : b), 'funcao'],
+    ]
+    for (const [nome, muda, campo] of casos) {
+      const { copy: revisada, mudancas } = aplicarRevisao(copy, copy.blocos.map(muda), { autor: 'claude', motivo: nome })
+      expect(mudancas.length, nome).toBeGreaterThan(0)
+      expect(mudancas.every((m) => m.tipo === 'alterado' && m.campos?.includes(campo as never)), nome).toBe(true)
+      expect(revisada.revisoes, nome).toHaveLength(1)
+      const alterado = mudancas[0].id
+      expect(revisada.revisoes[0].campos?.[alterado], nome).toContain(campo)
+      expect(validarCopyAutoral(revisada).problemas, nome).toEqual([])
+    }
+    // combinada com texto noutro bloco: os dois ids ficam registrados
+    const combinada = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b.id === 'apoio' ? { ...b, linhas: ['outro apoio'] } : b))
+    const { copy: r2 } = aplicarRevisao(copy, combinada, { autor: 'equipe', motivo: 'duas' })
+    expect(r2.revisoes[0].blocos.sort()).toEqual(['apoio', 'headline'])
+    expect(r2.revisoes[0].campos).toEqual({ headline: ['estilo'], apoio: ['linhas'] })
+    expect(autorDoBloco(r2, 'headline').autor).toBe('equipe')
   })
 })
 

@@ -10,6 +10,7 @@
  */
 
 import type { CopyAutoral } from './contrato'
+import { canonico } from './revisao'
 import { validarCopyAutoral, type ProblemaDaCopy } from './validar'
 
 /** JSON estável (chaves em ordem de declaração; `undefined` não é gravado). */
@@ -31,11 +32,9 @@ export function lerCopyAutoral(gravado: unknown): { copy: CopyAutoral | null; pr
 
 /** Duas copies são a MESMA copy (mesmos blocos, mesmas linhas exatas, mesma ordem)? Revisões e lacunas não entram. */
 export function mesmaCopy(a: CopyAutoral, b: CopyAutoral): boolean {
+  // Canônico: a ordem em que as propriedades do estilo (ou dos fatos) foram
+  // montadas não é diferença de copy.
   const norm = (c: CopyAutoral) =>
-    JSON.stringify(
-      [...c.blocos]
-        .sort((x, y) => x.ordem - y.ordem)
-        .map((x) => [x.id, x.funcao, x.grupoDeLeitura ?? null, x.ordem, x.linhas, x.estilo ?? null]),
-    )
+    canonico([...c.blocos].sort((x, y) => x.ordem - y.ordem).map((x) => ({ id: x.id, funcao: x.funcao, grupo: x.grupoDeLeitura ?? null, ordem: x.ordem, linhas: x.linhas, estilo: x.estilo ?? null, fatos: x.fatos ?? null })))
   return norm(a) === norm(b)
 }
