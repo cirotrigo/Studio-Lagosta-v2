@@ -68,7 +68,8 @@ let ok = 0
 let mau = 0
 function conferir(titulo: string, condicao: boolean, detalhe = '') {
   console.log(`  ${condicao ? '✓' : '✗'} ${titulo}${detalhe ? ` — ${detalhe}` : ''}`)
-  condicao ? ok++ : mau++
+  if (condicao) ok++
+  else mau++
 }
 
 async function main() {
@@ -139,7 +140,19 @@ async function main() {
     const estiloDaManchete = efetiva?.blocos.find((b) => b.id === 'headline')?.estilo
     conferir('a efetiva declara a voz 2 como foi DESENHADA (com headline2: [1]; sem: nenhuma) — nunca inventa', temVoz2 ? JSON.stringify(estiloDaManchete?.linhasNaVoz2) === '[1]' : !estiloDaManchete?.linhasNaVoz2, JSON.stringify(estiloDaManchete))
     const textos = camadas.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.metadata?.compositor?.papel)
-    conferir('medidasFinais: uma por texto, com corpo > 0, linhas certas e nenhuma "não medida"', Array.isArray(diag.medidasFinais) && diag.medidasFinais.length === textos.length && diag.medidasFinais.every((m: Record<string, unknown>) => Number(m.fontSize) > 0 && Number(m.height) > 0 && m.naoMedido === false), JSON.stringify(diag.medidasFinais?.map((m: Record<string, unknown>) => [m.papel, m.fontSize, m.linhas, m.naoMedido])))
+    // As medidas são casadas com as camadas FINAIS por id (sem repetição) e
+    // comparadas campo a campo — contagem e "fontSize > 0" aceitavam medida de
+    // antes do autofix, id repetido e linhas erradas (REV-02 da revisão do Codex).
+    const porIdFinal = new Map(textos.map((c) => [String(c.id), c]))
+    const medidas: Array<Record<string, unknown>> = Array.isArray(diag.medidasFinais) ? diag.medidasFinais : []
+    const medidasBatem =
+      medidas.length === textos.length &&
+      new Set(medidas.map((m) => String(m.id))).size === medidas.length &&
+      medidas.every((m) => {
+        const l = porIdFinal.get(String(m.id))
+        return !!l && m.naoMedido === false && Number(m.fontSize) === Number(l.style?.fontSize) && Number(m.width) === Math.round(Number(l.size?.width)) && Number(m.height) === Math.round(Number(l.size?.height)) && Number(m.linhas) === String(l.content ?? '').split('\n').length
+      })
+    conferir('medidasFinais: uma por texto FINAL, casada por id (sem repetição), com corpo, caixa e linhas iguais às camadas gravadas e nenhuma "não medida"', medidasBatem, JSON.stringify(medidas.map((m) => [m.id, m.fontSize, m.width, m.height, m.linhas, m.naoMedido])))
     conferir('nenhuma fonte da assinatura ficou sem carregar', !diag.fontesNaoCarregadas, JSON.stringify(diag.fontesNaoCarregadas ?? []))
     conferir('a variante usada está registrada pelo id da página', typeof diag.assinatura?.pageId === 'string' && diag.assinatura.pageId.length > 0, String(diag.assinatura?.pageId))
 
@@ -155,7 +168,8 @@ async function main() {
     if (r2.url) blobs.add(r2.url)
     const gen2 = await db.generation.findUnique({ where: { id: persistido.generationId }, select: { fieldValues: true } })
     const fv2 = (gen2?.fieldValues ?? {}) as Record<string, any>
-    conferir('recompôs e trocou o slide', r2.recomposta === true && r2.trocados.length === 1, JSON.stringify({ recomposta: r2.recomposta, avisos: r2.avisos.slice(0, 2) }))
+    const carrosselDepois = await db.socialPost.findUnique({ where: { id: carrossel.id }, select: { mediaUrls: true } })
+    conferir('recompôs e trocou o slide — relido no post: a posição 1 é a arte nova, a capa (posição 0) ficou, nenhuma mídia a menos', r2.recomposta === true && r2.trocados.length === 1 && !!r2.url && carrosselDepois?.mediaUrls.length === 2 && carrosselDepois.mediaUrls[0] === fotoUrl && carrosselDepois.mediaUrls[1] === r2.url, JSON.stringify({ recomposta: r2.recomposta, mediaUrls: carrosselDepois?.mediaUrls.map((u) => u.slice(-30)), avisos: r2.avisos.slice(0, 2) }))
     conferir('a spec da recomposição fixou a variante pelo id da página original, e a composição usou a mesma página', fv2.spec?.preferencias?.variante === diag.assinatura.pageId && fv2.composicao?.assinatura?.pageId === diag.assinatura.pageId && fv2.composicao?.assinatura?.motivoDaVariante === 'fixada por id', JSON.stringify({ variante: fv2.spec?.preferencias?.variante, pageId: fv2.composicao?.assinatura?.pageId, motivo: fv2.composicao?.assinatura?.motivoDaVariante }))
     conferir('a posição da composição original foi mantida', fv2.composicao?.posicao?.ancora === diag.posicao.ancora && fv2.composicao?.posicao?.alinha === diag.posicao.alinha, `${diag.posicao.ancora}/${diag.posicao.alinha} → ${fv2.composicao?.posicao?.ancora}/${fv2.composicao?.posicao?.alinha}`)
     const copy2 = copyDaArte(fv2)
@@ -186,7 +200,13 @@ async function main() {
     }
     const idsDePagina = new Set<string>(pages)
     await passo('páginas', async () => {
-      for (const p of await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })) idsDePagina.add(p.id)
+      // A thumbnail da página é o blob que `renderPageAndRegister` sobe ANTES
+      // de criar a Generation: se a Generation falhar, é o único rastro dele
+      // (REV-01 da revisão do Codex sobre a prova).
+      for (const p of await db.page.findMany({ where: { OR: [{ id: { in: [...idsDePagina] } }, { name: { contains: MARCA }, Template: { projectId: PROJETO } }] }, select: { id: true, thumbnail: true } })) {
+        idsDePagina.add(p.id)
+        if (typeof p.thumbnail === 'string' && p.thumbnail.startsWith('http')) blobs.add(p.thumbnail)
+      }
     })
     let gens: string[] = []
     await passo('generations', async () => {

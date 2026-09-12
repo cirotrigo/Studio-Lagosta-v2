@@ -24,6 +24,20 @@ export interface MedidaFinal {
   prefixo?: string
 }
 
+/**
+ * As famílias que a camada USA: a do estilo e as dos trechos de rich text — o
+ * destaque costuma estar na versão pesada da família, e é com ela que a largura
+ * extra é medida. Qualquer uma ausente no servidor invalida a medida (R02).
+ */
+export function familiasDaCamada(l: Layer): string[] {
+  const s = (l.style ?? {}) as Record<string, unknown>
+  const base = typeof s.fontFamily === 'string' && s.fontFamily.trim() ? [s.fontFamily] : []
+  const trechos = (Array.isArray(l.richTextStyles) ? l.richTextStyles : [])
+    .map((t) => (t as { fontFamily?: unknown } | null)?.fontFamily)
+    .filter((f): f is string => typeof f === 'string' && f.trim().length > 0)
+  return [...new Set([...base, ...trechos])]
+}
+
 function papelDe(l: Layer): string | null {
   const meta = l.metadata as { compositor?: { papel?: unknown } } | undefined
   return typeof meta?.compositor?.papel === 'string' ? meta.compositor.papel : null
@@ -49,7 +63,10 @@ export function medidasFinaisDasCamadas(layers: Layer[], fontesNaoCarregadas: Re
       width: Math.round(l.size?.width ?? 0),
       height: Math.round(l.size?.height ?? 0),
       linhas: String(l.content ?? '').split('\n').length,
-      naoMedido: fontFamily ? fontesNaoCarregadas.has(fontFamily) : true,
+      naoMedido: (() => {
+        const familias = familiasDaCamada(l)
+        return familias.length ? familias.some((f) => fontesNaoCarregadas.has(f)) : true
+      })(),
       ...(prefixo ? { prefixo } : {}),
     })
   }

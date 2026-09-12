@@ -22,7 +22,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
 import { registerProjectFonts, fetchBuffer, familiasNaoCarregadas } from '@/lib/posts/register-project-fonts'
 import { dividirManchete } from './segunda-voz'
-import { medidasFinaisDasCamadas, type MedidaFinal } from './medidas'
+import { familiasDaCamada, medidasFinaisDasCamadas, type MedidaFinal } from './medidas'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
@@ -686,11 +686,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       // A voz 2 é sempre o FIM da manchete, então o corte das LINHAS vale para
       // os índices do bloco — é isso que deixa cada camada declarar quais
       // linhas do bloco do autor ela desenha (PR 3).
+      // E voz 1 vazia (manchete INTEIRA na voz 2) não vira camada: um texto sem
+      // linha seria lido depois como bloco vazio e viraria revisão falsa (R01).
       const corte = d.voz1.length
-      return [
-        { papel: 'headline' as Papel, linhas: d.voz1, indicesDoBloco: b.indicesDoBloco.slice(0, corte) },
-        { papel: 'headline2' as Papel, linhas: d.voz2, indicesDoBloco: b.indicesDoBloco.slice(corte) },
-      ]
+      const partes: Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[] }> = []
+      if (corte > 0) partes.push({ papel: 'headline' as Papel, linhas: d.voz1, indicesDoBloco: b.indicesDoBloco.slice(0, corte) })
+      partes.push({ papel: 'headline2' as Papel, linhas: d.voz2, indicesDoBloco: b.indicesDoBloco.slice(corte) })
+      return partes
     })
     const preenchidos = arranjo
       ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
@@ -1077,7 +1079,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // 6c. As fontes que NÃO carregaram no servidor: o texto nelas foi medido e
   //     vai ser desenhado na fonte de fallback — a medida não vale, e isso
   //     precisa ficar dito ("não medido"), nunca parecer medida (PR 4).
-  const fontesNaoCarregadas = await familiasNaoCarregadas(montados.map((b) => String(b.layer.style?.fontFamily ?? '')))
+  // A família do TRECHO destacado (rich text) conta também: o destaque pode
+  // estar noutra família (a versão pesada), e é com ela que a largura extra é
+  // medida — ausente, a medida do bloco não vale (R02 da revisão do Codex).
+  const fontesNaoCarregadas = await familiasNaoCarregadas(montados.flatMap((b) => familiasDaCamada(b.layer as Layer)))
   for (const f of fontesNaoCarregadas) avisos.push(`a fonte "${f}" não está carregada no servidor: o texto nela saiu na fonte de fallback e a medida não vale (não medido)`)
 
   // 7. Contrato + autofix geométrico (colisão, transbordo, safe area). O fundo
@@ -1195,7 +1200,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       }
     }),
     logo: logoDiag,
-    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(fontesNaoCarregadas.has(String(b.layer.style?.fontFamily ?? '')) ? { naoMedido: true } : {}) })),
+    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(familiasDaCamada(b.layer as Layer).some((f) => fontesNaoCarregadas.has(f)) ? { naoMedido: true } : {}) })),
     // As medidas FINAIS, depois do autofix — é o que vale para quem for ler a
     // peça (ver-geracao, medir-copy): o bloco montado acima ainda pode encolher.
     medidasFinais: medidasFinaisDasCamadas(layers, fontesNaoCarregadas),

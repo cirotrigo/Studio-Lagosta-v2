@@ -7279,3 +7279,43 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   de conteúdo); `proprios` trocado por `slotValuesParaRender(...)` → 6 falhas (o fallback some em toda peça sem
   página). A prova de integração cobre os DOIS lados no caminho real — página de conteúdo devolvendo a página, e
   uma página MODELO (quando o projeto tem uma com texto) em que os slots continuam vencendo.
+### O compositor consome o contrato sem conversão implícita (PR 4 de "Marca simples, copy melhor", 12/09/2026)
+
+Até aqui o compositor recebia `Bloco[]` por papel e TRANSFORMAVA texto sem
+registro: a última linha da manchete virava voz 2 sozinha, o CTA ganhava uma
+seta que a copy não tinha, fonte que não carregou no servidor saía medida na
+fonte de fallback como se a medida valesse, e a recomposição podia trocar de
+variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
+`scripts/validar-compositor-fiel.ts` é a prova de integração no branch de dev.
+
+- **A segunda voz da manchete é do AUTOR** (`estilo.linhasNaVoz2` no contrato,
+  `dividirManchete`): com contrato, só as linhas DECLARADAS vão para
+  `headline2` — e têm de ser o fim contíguo da manchete (`validarCopyAutoral`
+  recusa o resto); sem declaração, a manchete inteira fica na voz 1 mesmo com
+  `headline2` na variante; declaração numa variante SEM voz 2 vira aviso e a
+  efetiva registra o estilo como revisão do sistema — nunca some em silêncio.
+  Sem contrato (legado) vale a regra antiga: a última linha.
+  🔴 Manchete INTEIRA na voz 2 não gera camada de voz 1 vazia, e a efetiva lê
+  a `headline2` como a própria manchete (id preservado, índices do zero) — sem
+  isso o bloco saía vazio com índice para linha inexistente e a camada virava
+  `extra-headline2` (R01 da revisão do Codex).
+- **O prefixo que a assinatura desenha antes do texto (o "→ " do CTA) é
+  DECLARADO** em `metadata.compositor.prefixo` e descontado por
+  `copyEfetivaDasCamadas`; prefixo sem declaração conta como diferença entre o
+  escrito e o desenhado — `ver-geracao` mostra, ninguém "corrige" a efetiva.
+- 🔴 **Fonte que não carregou no servidor é "não medido", nunca medida.**
+  `familiasNaoCarregadas` (`GlobalFonts.has`) confere TODAS as famílias que a
+  camada usa — a do estilo E as dos trechos de rich text (`familiasDaCamada`; o
+  destaque costuma estar na versão pesada, e é com ela que a largura extra é
+  medida). Ausente → aviso, `composicao.fontesNaoCarregadas`,
+  `blocos[].naoMedido` e `medidasFinais[].naoMedido` (R02).
+- **`composicao.medidasFinais`** (`medidasFinaisDasCamadas`): corpo, entrelinha
+  (do `autoWrap`), caixa arredondada, número de linhas e prefixo de cada texto
+  COMO FOI GRAVADO, depois do autofix — é o que `ver-geracao` e a métrica da F2
+  leem. A prova casa cada medida com a camada final por id.
+- **A recomposição fixa a VARIANTE pelo id da página** da composição original
+  (`preferencias.variante = composicao.assinatura.pageId`; motivo
+  `fixada por id`; o id vence o nome que o contém em `escolherVariante`) — a
+  edição de texto não pode trocar a peça de variante.
+- `PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3): papel que a variante
+  não tem recusa, nunca some.

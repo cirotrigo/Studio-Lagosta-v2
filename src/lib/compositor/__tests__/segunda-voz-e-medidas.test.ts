@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { dividirManchete } from '../segunda-voz'
-import { medidasFinaisDasCamadas } from '../medidas'
+import { familiasDaCamada, medidasFinaisDasCamadas } from '../medidas'
 import { escolherVariante } from '../assinatura'
 import { specComAPosicaoOriginal } from '../defasagem'
 import { validarSpec, type SpecDePeca } from '../spec'
@@ -46,6 +46,34 @@ describe('as medidas finais e o prefixo declarado', () => {
     expect(m[0]).toEqual({ id: 'headline', papel: 'headline', fontFamily: 'Lato', fontSize: 48, lineHeight: 1.05, width: 500, height: 121, linhas: 2, naoMedido: true })
     expect(m[1].prefixo).toBe('→ ')
     expect(medidasFinaisDasCamadas([camada('headline', 'headline')])[0].naoMedido).toBe(false)
+  })
+  it('R02: a fonte do TRECHO destacado ausente marca o bloco como não medido, mesmo com a família base carregada', () => {
+    const rica = { ...camada('headline', 'headline'), type: 'rich-text', richTextStyles: [{ start: 0, end: 1, fontFamily: 'Lato Bold' }] } as Layer
+    expect(familiasDaCamada(rica)).toEqual(['Lato', 'Lato Bold'])
+    expect(medidasFinaisDasCamadas([rica], new Set(['Lato Bold']))[0].naoMedido).toBe(true)
+    expect(medidasFinaisDasCamadas([rica], new Set())[0].naoMedido).toBe(false)
+    expect(medidasFinaisDasCamadas([rica], new Set(['Lato']))[0].naoMedido).toBe(true)
+  })
+  it('R01: manchete INTEIRA na voz 2 (uma ou várias linhas) é relida como a manchete declarada — id preservado, índices do zero, sem bloco extra, segunda leitura sem revisão', () => {
+    for (const linhas of [['Título'], ['Título', 'inteiro']]) {
+      const contrato: CopyAutoral = { versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude' }, blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas, estilo: { linhasNaVoz2: linhas.map((_, i) => i) } }], revisoes: [] }
+      expect(validarCopyAutoral(contrato).problemas).toEqual([])
+      const desenhada = [camada('headline2', 'headline2', { content: linhas.join('\n') } as Partial<Layer>)]
+      const r = copyEfetivaDasCamadas(contrato, desenhada, { superficie: 'compositor' })
+      expect(r.mudancas).toEqual([])
+      expect(r.lacunas).toEqual([])
+      expect(r.efetiva.blocos.map((b) => b.id)).toEqual(['headline'])
+      expect(r.efetiva.blocos[0].linhas).toEqual(linhas)
+      expect(r.efetiva.blocos[0].estilo?.linhasNaVoz2).toEqual(linhas.map((_, i) => i))
+      expect(validarCopyAutoral(r.efetiva).problemas).toEqual([])
+      const r2 = copyEfetivaDasCamadas(r.efetiva, desenhada, { superficie: 'compositor' })
+      expect(r2.mudancas).toEqual([])
+      expect(r2.efetiva.revisoes).toEqual([])
+    }
+    // a divisão do compositor com tudo na voz 2 devolve voz 1 VAZIA — que não vira camada
+    const d = dividirManchete(['Título'], { temSegundaVoz: true, comContrato: true, declaradas: [0] })
+    expect(d.voz1).toEqual([])
+    expect(d.voz2).toEqual(['Título'])
   })
   it('voz 2 declarada e NÃO desenhada (variante sem headline2): a efetiva sai sem linhasNaVoz2 e o diff aponta o estilo', () => {
     const contrato: CopyAutoral = { versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude' }, blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Título fiel', 'ao contrato'], estilo: { linhasNaVoz2: [1] } }], revisoes: [] }
