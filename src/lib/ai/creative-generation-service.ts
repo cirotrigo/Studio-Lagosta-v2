@@ -39,7 +39,7 @@ import type {
 } from '@/lib/ai/creative-generation-runner'
 import type { TemplateType } from '@prisma/client'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
+import { identidadeDoContrato, lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -416,6 +416,12 @@ export async function startArtGeneration(
         fp: input.finalPrompt?.trim() || null,
         // A mesma copy e a mesma foto com OUTRO cliente citado é outra peça.
         mc: marcaDoCliente?.projectId ?? null,
+        // O CONTRATO da copy (F1): mesmos textos com ids, papéis ou autoria
+        // diferentes são peças diferentes, e pedido sem contrato não pode
+        // reaproveitar a geração de um pedido com contrato (nem o contrário)
+        // — o reaproveitado sai `reused` sem runner novo, e o contrato nunca
+        // seria gravado (PR5-01 da revisão do Codex, 12/09/2026).
+        ca: identidadeDoContrato(contrato),
       }),
     )
     .digest('hex')

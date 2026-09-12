@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { comConferencia, conferenciaDoCheck, LACUNA_SEM_CAMADAS, registroParaIA, revisaoPosicional, textoEnviadoDoContrato, type CopyAutoral } from '..'
+import { comConferencia, conferenciaDoCheck, identidadeDoContrato, LACUNA_SEM_CAMADAS, registroParaIA, revisaoDoRefino, revisaoPosicional, textoEnviadoDoContrato, type CopyAutoral } from '..'
 
 const contrato: CopyAutoral = {
   versao: 'copy-autoral-v1',
@@ -53,5 +53,66 @@ describe('o registro da copy numa arte SEM camadas (via de IA e melhoria)', () =
     expect('copy' in igual && igual.mudou).toBe(false)
     const r = revisaoPosicional(contrato, ['só um bloco'], { autor: 'claude', superficie: 'melhoria' }, 'x')
     expect('descartado' in r && r.descartado).toMatch(/mudou o número de blocos com texto \(2 → 1\)/)
+  })
+
+  describe('revisaoDoRefino: o par entrada→saída do planejador, com o bloco localizado pelo texto', () => {
+    const quem = { autor: 'claude' as const, superficie: 'melhoria' }
+    const misto: CopyAutoral = {
+      ...contrato,
+      blocos: [
+        { id: 'pre', funcao: 'pre', ordem: 0, linhas: ['Hoje tem'] },
+        { id: 'headline', funcao: 'headline', ordem: 1, linhas: ['Costela'] },
+      ],
+    }
+    it('a ordem dos slots da arte NÃO é a do contrato: a headline trocada vai para o bloco headline, o pré-título fica intacto (PR5-03)', () => {
+      const r = revisaoDoRefino(misto, ['COSTELA', 'HOJE TEM'], ['COSTELA NO BAFO', 'HOJE TEM'], quem, 'pedido de refino: acrescente "no bafo"')
+      expect('copy' in r).toBe(true)
+      if (!('copy' in r)) return
+      expect(r.mudou).toBe(true)
+      expect(r.copy.blocos.find((b) => b.id === 'headline')!.linhas).toEqual(['COSTELA NO BAFO'])
+      expect(r.copy.blocos.find((b) => b.id === 'pre')!.linhas).toEqual(['Hoje tem'])
+      expect(r.copy.revisoes).toHaveLength(1)
+      expect(r.copy.revisoes[0].autor).toBe('claude')
+      expect(r.copy.revisoes[0].blocos).toEqual(['headline'])
+    })
+    it('só acento, ou só uma quebra de linha, É revisão: a comparação é exata entre o que o planejador recebeu e devolveu (PR5-04)', () => {
+      const so = (linhas: string[]): CopyAutoral => ({ ...contrato, blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas }] })
+      const acento = revisaoDoRefino(so(['Almoço em familia']), ['ALMOÇO EM FAMILIA'], ['ALMOÇO EM FAMÍLIA'], quem, 'pedido de refino: corrija família')
+      expect('copy' in acento && acento.mudou).toBe(true)
+      if ('copy' in acento) expect(acento.copy.blocos[0].linhas).toEqual(['ALMOÇO EM FAMÍLIA'])
+      const quebra = revisaoDoRefino(so(['Almoço em família']), ['Almoço em família'], ['Almoço\nem família'], quem, 'pedido de refino: quebre a linha')
+      expect('copy' in quebra && quebra.mudou).toBe(true)
+      if ('copy' in quebra) expect(quebra.copy.blocos[0].linhas).toEqual(['Almoço', 'em família'])
+    })
+    it('a caixa da origem aplicada pelo sistema NÃO vira revisão: bloco devolvido igual ao recebido mantém as linhas do autor', () => {
+      const r = revisaoDoRefino(misto, ['COSTELA', 'HOJE TEM'], ['COSTELA', 'HOJE TEM'], quem, 'pedido de refino: só a foto')
+      expect(r).toEqual({ copy: misto, mudou: false })
+    })
+    it('texto enviado que não casa com bloco nenhum, ou casa com dois, é descartado com o motivo — nunca aplicado por posição', () => {
+      const semPar = revisaoDoRefino(misto, ['OUTRA COISA', 'HOJE TEM'], ['OUTRA COISA X', 'HOJE TEM'], quem, 'm')
+      expect('descartado' in semPar && /posição 1/.test(semPar.descartado)).toBe(true)
+      const duplo: CopyAutoral = { ...misto, blocos: [...misto.blocos, { id: 'apoio', funcao: 'apoio', ordem: 2, linhas: ['Costela'] }] }
+      const ambiguo = revisaoDoRefino(duplo, ['COSTELA', 'HOJE TEM', 'COSTELA'], ['COSTELA X', 'HOJE TEM', 'COSTELA'], quem, 'm')
+      expect('descartado' in ambiguo && /2 blocos/.test(ambiguo.descartado)).toBe(true)
+      const contagem = revisaoDoRefino(misto, ['COSTELA', 'HOJE TEM'], ['COSTELA'], quem, 'm')
+      expect('descartado' in contagem).toBe(true)
+    })
+    it('a voz 2 declarada acompanha as linhas que sobraram', () => {
+      const r = revisaoDoRefino(contrato, ['MILK-SHAKE\nEM DOBRO', 'Seg a sáb · 11h às 22h'], ['MILK-SHAKE', 'Seg a sáb · 11h às 22h'], quem, 'pedido de refino: tire o em dobro')
+      expect('copy' in r).toBe(true)
+      if (!('copy' in r)) return
+      const h = r.copy.blocos.find((b) => b.id === 'headline')!
+      expect(h.linhas).toEqual(['MILK-SHAKE'])
+      expect(h.estilo?.linhasNaVoz2).toBeUndefined()
+    })
+  })
+
+  it('identidadeDoContrato: mesmos textos com ids, papéis ou autoria diferentes são identidades diferentes; sem contrato é null (PR5-01)', () => {
+    const a = identidadeDoContrato(contrato)
+    expect(identidadeDoContrato(null)).toBeNull()
+    expect(identidadeDoContrato({ ...contrato, revisoes: [], lacunas: ['x'] })).toBe(a)
+    expect(identidadeDoContrato({ ...contrato, origem: { autor: 'desconhecido' } })).not.toBe(a)
+    expect(identidadeDoContrato({ ...contrato, blocos: contrato.blocos.map((b) => (b.id === 'servico' ? { ...b, id: 'rodape' } : b)) })).not.toBe(a)
+    expect(identidadeDoContrato({ ...contrato, blocos: contrato.blocos.map((b) => (b.id === 'servico' ? { ...b, funcao: 'apoio' as const } : b)) })).not.toBe(a)
   })
 })

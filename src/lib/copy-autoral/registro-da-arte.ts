@@ -33,6 +33,7 @@ import { lerCamadas } from '@/lib/posts/page-layers'
 import type { CopyAutoral } from './contrato'
 import { tentarCopyEfetivaDasCamadas } from './efetiva'
 import { lerCopyAutoral } from './serializar'
+import { normalizeForComparison } from '@/lib/ai/text-comparison'
 import { aplicarRevisao, blocosEmOrdem, copyComparavel, validarCopyAutoral, type Autor, type BlocoAutoral } from '.'
 
 export interface RegistroDaCopyDaArte {
@@ -129,7 +130,81 @@ export function conferenciaDoCheck(
   }
 }
 
+/**
+ * A IDENTIDADE de um contrato para a chave de deduplicação da geração: quem
+ * escreveu, e cada bloco com id, função, ordem, linhas EXATAS, grupo de leitura
+ * e a voz 2 declarada. Dois pedidos com os mesmos TEXTOS e contratos
+ * diferentes (ids, papéis ou autoria) são peças diferentes; pedido SEM contrato
+ * devolve `null`, e quem monta a chave o distingue do pedido com contrato —
+ * sem isso o pedido legado e o pedido com contrato colidiam na janela e o
+ * segundo saía `reused` sem o contrato gravado (PR5-01 da revisão do Codex,
+ * 12/09/2026).
+ */
+export function identidadeDoContrato(copy: CopyAutoral | null | undefined): string | null {
+  if (!copy) return null
+  return JSON.stringify([
+    copy.origem.autor,
+    blocosEmOrdem(copy).map((b) => [b.id, b.funcao, b.ordem, b.linhas, b.grupoDeLeitura ?? null, b.estilo?.linhasNaVoz2 ?? null]),
+  ])
+}
+
 export type ResultadoDaRevisaoPosicional = { copy: CopyAutoral; mudou: boolean } | { descartado: string }
+
+/**
+ * A revisão do REFINO: o planejador recebeu a copy `antes` (os textos como
+ * foram ao prompt — na ORDEM DOS SLOTS da arte, já na caixa da origem) e
+ * devolveu `depois`, bloco a bloco na mesma ordem. O que decide se um bloco
+ * MUDOU é a comparação EXATA entre entrada e saída do planejador — acento e
+ * quebra de linha contam (PR5-04: a tolerância da régua por visão apagava a
+ * correção "familia → família" do histórico). O bloco do CONTRATO que recebe
+ * a mudança é LOCALIZADO pelo texto de `antes` (normalizado só para achar —
+ * a caixa da origem é transformação do sistema), nunca pela posição: a ordem
+ * dos slots não é a ordem do contrato (PR5-03: a headline trocada caía no
+ * pré-título). Bloco sem correspondência única é descartado com o motivo, e
+ * os blocos que não mudaram mantêm as linhas do autor.
+ */
+export function revisaoDoRefino(
+  contrato: CopyAutoral,
+  antes: string[],
+  depois: string[],
+  quem: { autor: Autor; superficie: string; em?: string },
+  motivo: string,
+): ResultadoDaRevisaoPosicional {
+  if (antes.length !== depois.length) {
+    return { descartado: `o planejador devolveu ${depois.length} bloco(s) para ${antes.length} enviado(s) e não há como saber qual bloco é qual` }
+  }
+  const mudancas = antes.map((a, i) => ({ i, antes: a, depois: depois[i] })).filter((m) => m.antes !== m.depois)
+  if (mudancas.length === 0) return { copy: contrato, mudou: false }
+  const emOrdem = blocosEmOrdem(contrato)
+  const comTexto = emOrdem.filter((b) => b.linhas.some((l) => l.trim().length > 0))
+  const chave = (t: string) => normalizeForComparison(t.replace(/\[|\]/g, ''))
+  const novos = new Map<string, string[]>()
+  for (const m of mudancas) {
+    const candidatos = comTexto.filter((b) => !novos.has(b.id) && chave(b.linhas.join('\n')) === chave(m.antes))
+    if (candidatos.length !== 1) {
+      return {
+        descartado:
+          candidatos.length === 0
+            ? `o texto enviado na posição ${m.i + 1} ("${m.antes.slice(0, 40)}") não corresponde a nenhum bloco do contrato`
+            : `o texto enviado na posição ${m.i + 1} ("${m.antes.slice(0, 40)}") corresponde a ${candidatos.length} blocos do contrato`,
+      }
+    }
+    novos.set(candidatos[0].id, m.depois.split('\n'))
+  }
+  const blocos: BlocoAutoral[] = emOrdem.map((b) => {
+    const linhas = novos.get(b.id)
+    if (!linhas) return b
+    const { estilo: estiloAntigo, ...semEstilo } = b
+    const voz2 = estiloAntigo?.linhasNaVoz2?.filter((i) => i < linhas.length) ?? []
+    const { linhasNaVoz2: _fora, ...restoDoEstilo } = estiloAntigo ?? {}
+    const estilo = { ...restoDoEstilo, ...(voz2.length > 0 ? { linhasNaVoz2: voz2 } : {}) }
+    return { ...semEstilo, linhas, ...(Object.keys(estilo).length > 0 ? { estilo } : {}) }
+  })
+  const { copy } = aplicarRevisao(contrato, blocos, { autor: quem.autor, motivo, superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
+  const conferida = validarCopyAutoral(copy)
+  if (!conferida.copy) return { descartado: `a revisão do refino deixou o contrato inválido (${conferida.problemas.map((p) => p.mensagem).join('; ')})` }
+  return { copy: conferida.copy, mudou: conferida.copy.revisoes.length !== contrato.revisoes.length }
+}
 
 /**
  * Uma lista POSICIONAL de textos aplicada sobre um contrato: vira REVISÃO

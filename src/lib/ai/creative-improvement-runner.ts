@@ -52,7 +52,7 @@ import {
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
 import type { TextCheckResult } from '@/lib/ai/creative-text-verification'
-import { comConferencia, conferenciaDoCheck, lerCopyAutoral, registroParaIA, revisaoPosicional, textoEnviadoDoContrato, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
+import { comConferencia, conferenciaDoCheck, lerCopyAutoral, registroParaIA, revisaoDoRefino, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
@@ -612,6 +612,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         transcricaoDaOrigem = []
       }
     }
+    /** A copy como foi ao planejador do refino, quando ele a trocou — o lado "antes" da revisão do contrato. */
+    let copyAntesDoRefino: string[] | null = null
     let textosParaPrompt = aplicarCaixaDaOrigem(
       textosDaRegua,
       transcricaoDaOrigem,
@@ -687,6 +689,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       plannerInfo.planejadorTentativas = plano.tentativas
       if (plano.leitura) plannerInfo.leitura = plano.leitura
       if (modo === 'refinar' && plano.copyFinal.join('\n') !== textosParaPrompt.join('\n')) {
+        copyAntesDoRefino = textosParaPrompt
         plannerInfo.copyAntes = textosParaPrompt
         textosParaPrompt = plano.copyFinal
         textosDaRegua = plano.copyFinal
@@ -717,19 +720,18 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
      * `original` (o contrato da origem, ou a REVISÃO EXPLÍCITA dele quando o
      * pedido de refino trocou texto), `enviada` (o que foi ao prompt) e, ao
      * fim, `conferencia`. Pedido de troca de texto vira revisão de `claude`
-     * com o pedido como motivo — nunca mudança silenciosa. A caixa da origem
-     * (`aplicarCaixaDaOrigem`) não conta como revisão: bloco igual ao do
-     * contrato a menos de caixa/acento mantém as linhas do autor.
+     * com o pedido como motivo — nunca mudança silenciosa. O que mudou é
+     * decidido pelo PAR entrada→saída do planejador, EXATO (acento e quebra
+     * contam), e o bloco do contrato é localizado pelo texto enviado, nunca
+     * pela posição — a ordem dos slots da arte não é a do contrato. A caixa da
+     * origem (`aplicarCaixaDaOrigem`) não vira revisão: bloco que o planejador
+     * devolveu igual mantém as linhas do autor (ver `revisaoDoRefino`).
      */
     if (contratoDaOrigem) {
       const lacunas = ['melhoria por IA: a régua e o texto enviado são os desta rodada']
       let original = contratoDaOrigem
-      if (modo === 'refinar' && plannerInfo.copyAntes) {
-        const doContrato = textoEnviadoDoContrato(contratoDaOrigem)
-        const lista = textosParaPrompt.map((t, i) =>
-          doContrato[i] !== undefined && normalizeForComparison(t) === normalizeForComparison(doContrato[i]) ? doContrato[i] : t,
-        )
-        const r = revisaoPosicional(contratoDaOrigem, lista, { autor: 'claude', superficie: 'melhoria' }, `pedido de refino: ${args.userRequest.slice(0, 200)}`)
+      if (modo === 'refinar' && copyAntesDoRefino) {
+        const r = revisaoDoRefino(contratoDaOrigem, copyAntesDoRefino, textosParaPrompt, { autor: 'claude', superficie: 'melhoria' }, `pedido de refino: ${args.userRequest.slice(0, 200)}`)
         if ('copy' in r) original = r.copy
         else lacunas.push(`o pedido trocou o texto e a revisão não casou com o contrato (${r.descartado}); o texto enviado é o do pedido`)
       }

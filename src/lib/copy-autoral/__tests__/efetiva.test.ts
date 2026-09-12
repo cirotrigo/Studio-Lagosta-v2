@@ -76,6 +76,48 @@ describe('a copy efetiva lida das camadas', () => {
   })
 })
 
+  it('o CARIMBO do bloco vale para toda função e é reservado antes da posição: servico vazio + servico com horário, e campos fora da ordem vertical (PR5-02)', () => {
+    const doisServicos: CopyAutoral = {
+      ...original,
+      blocos: [
+        { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Milk-shake'] },
+        { id: 'servico-vazio', funcao: 'servico', ordem: 1, linhas: [] },
+        { id: 'servico-horario', funcao: 'servico', ordem: 2, linhas: ['Seg a sáb · 11h às 22h'] },
+      ],
+    }
+    const camadas: Layer[] = [
+      texto('headline', 200, 'Milk-shake', { metadata: { compositor: { papel: 'headline', bloco: 'headline' } } } as Partial<Layer>),
+      texto('rodape', 1700, 'Seg a sáb · 11h às 22h', { metadata: { compositor: { papel: 'servico', bloco: 'servico-horario' } } } as Partial<Layer>),
+    ]
+    const r = copyEfetivaDasCamadas(doisServicos, camadas, { superficie: 'modelo' })
+    expect(r.lacunas).toEqual([])
+    expect(r.efetiva.revisoes).toEqual([])
+    expect(r.efetiva.blocos.find((b) => b.id === 'servico-vazio')!.linhas).toEqual([])
+    expect(r.efetiva.blocos.find((b) => b.id === 'servico-horario')!.linhas).toEqual(['Seg a sáb · 11h às 22h'])
+
+    // dois apoios, o carimbo diz o contrário da posição vertical
+    const doisApoios: CopyAutoral = {
+      ...original,
+      blocos: [
+        { id: 'a1', funcao: 'apoio', ordem: 0, linhas: ['primeiro'] },
+        { id: 'a2', funcao: 'apoio', ordem: 1, linhas: ['segundo'] },
+      ],
+    }
+    const invertidas: Layer[] = [
+      texto('apoio', 300, 'segundo', { metadata: { compositor: { papel: 'apoio', bloco: 'a2' } } } as Partial<Layer>),
+      texto('apoio-2', 900, 'primeiro', { metadata: { compositor: { papel: 'apoio', bloco: 'a1' } } } as Partial<Layer>),
+    ]
+    const r2 = copyEfetivaDasCamadas(doisApoios, invertidas, { superficie: 'modelo' })
+    expect(r2.efetiva.revisoes).toEqual([])
+    expect(r2.efetiva.blocos.map((b) => [b.id, b.linhas[0]])).toEqual([
+      ['a1', 'primeiro'],
+      ['a2', 'segundo'],
+    ])
+    // relida uma segunda vez (a página como está), nada muda
+    const r3 = copyEfetivaDasCamadas(r2.efetiva, invertidas, { superficie: 'editor' })
+    expect(r3.mudancas).toEqual([])
+  })
+
 describe('o espelho posicional', () => {
   it('um item por bloco, na ordem de leitura, linhas unidas por \\n', () => {
     expect(espelhoPosicional(original)).toEqual(['Na sexta o', 'Milk-shake\nvem [em dobro]', 'Seg a sáb · 11h às 22h', 'Praia do Canto'])
