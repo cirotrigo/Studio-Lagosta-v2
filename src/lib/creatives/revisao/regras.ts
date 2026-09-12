@@ -135,6 +135,13 @@ export const LIMITES_DA_REVISAO = {
 
 const PAD = TEXT_DRAW_PADDING
 const arred = (v: number, casas = 0) => Number(v.toFixed(casas))
+/**
+ * A redução de força atinge o mínimo? Comparado em MILÉSIMOS: em ponto
+ * flutuante `0.6 - 0.52` dá 0,0799…, menor que 0,08, e uma redução válida
+ * exatamente no mínimo virava observação (REV-C19-02 da revisão do Codex,
+ * 12/09/2026). As forças já andam em milésimos (`arred(…, 3)`).
+ */
+const reducaoAtingeOMinimo = (de: number, para: number, minimo: number) => Math.round((de - para) * 1000) >= Math.round(minimo * 1000)
 
 /** Sombra presa ao glifo: segura a leitura onde o fundo não segura, e a régua não a mede. */
 function temSombraNoGlifo(l: Layer): boolean {
@@ -780,7 +787,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
         return (tinta * (t.p98SemHalo - alvoFolgado)) / Math.max(1, t.p98SemHalo - t.p98ComHalo)
       })
       const forca = arred(Math.min(tinta, Math.max(forcaMinima, ...necessarias)), 3)
-      if (tinta - forca < L.gradienteReducaoMinima) continue
+      if (!reducaoAtingeOMinimo(tinta, forca, L.gradienteReducaoMinima)) continue
       const borda = bordaDaLeitura(gradiente, H)
       const ids = medidas.flatMap((m) => m.camadas).filter((id) => porId.has(id))
       adicionar(
@@ -1161,7 +1168,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
               return (atual * (t.p98SemHalo - alvoFolgado)) / Math.max(1, t.p98SemHalo - t.p98ComHalo)
             })
             const forcaSegura = arred(Math.min(atual, Math.max(faixa[0], atual - passo, ...necessarias)), 3)
-            if (atual - forcaSegura < L.gradienteReducaoMinima) return []
+            if (!reducaoAtingeOMinimo(atual, forcaSegura, L.gradienteReducaoMinima)) return []
             return [{ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: forcaSegura }]
           }
           const medida = e.contraste?.find((c) => textos.some((id) => c.camadas.includes(id)))

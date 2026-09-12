@@ -303,9 +303,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // empurrãozinho de 1px, e o que faz reverter uma peça já em dia sair calado.
   const forcar = input.forcar === true
   const emDia = !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)
-  // "Renderizar como está" (REV-FINAL-01) só faz diferença quando a defasagem
-  // por conteúdo diz em dia: a mudança foi de gradiente, que o diff não vê.
-  const renderComoEsta = input.renderizarComoEsta === true && emDia
+  /**
+   * "Renderizar como está" (REV-FINAL-01) vale SEMPRE que o marcador vier, em
+   * dia ou não. O marcador diz que a página mudou enquanto a arte anterior
+   * era refeita — e a mudança pode ter sido de gradiente (que o diff não vê)
+   * E de texto, quando o editor continua digitando antes do retry.
+   * Condicioná-lo a "em dia" deixava exatamente esse caso recompor pela
+   * spec: `soTexto` verdadeiro, a spec sem o gradiente salvo, e o gradiente
+   * ia embora em silêncio (REV-C19-01 da revisão do Codex, 12/09/2026). Com
+   * o marcador a página é desenhada como está — copy, paradas e força.
+   */
+  const renderComoEsta = input.renderizarComoEsta === true
   if (!forcar && emDia && !renderComoEsta) return vazio
 
   if (input.depoisDoLevantamento) await input.depoisDoLevantamento()
@@ -368,7 +376,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   const travada = !!(arte.fieldValues as Record<string, unknown> | undefined)?.somenteReRender
   const podeRecompor = !forcar && !renderComoEsta && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
   if (forcar) avisos.push('Recuperação forçada: a página foi re-renderizada como está, sem medir a diagramação de novo.')
-  if (renderComoEsta) avisos.push('A página mudou enquanto a arte anterior era refeita (mudança que o diff de conteúdo não vê): re-renderizada como está.')
+  if (renderComoEsta) avisos.push('A página mudou enquanto a arte anterior era refeita: re-renderizada como está (copy, paradas e força do gradiente como o editor gravou), sem medir a diagramação de novo.')
   else if (travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto) {
     avisos.push('A página carrega um ajuste que a spec não conhece (recuperação anterior): a arte foi re-renderizada como está, sem medir a diagramação de novo.')
   }

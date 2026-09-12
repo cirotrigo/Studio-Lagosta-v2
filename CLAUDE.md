@@ -5701,3 +5701,20 @@ Codex antes de ser escrito.
   com a régua satisfeita (`ehGradienteDeLeitura` na regra; o apontamento da
   visão fica como observação). E `revisar-antes-depois.ts` renderiza sobre o
   MESMO fundo do serviço (`convertPageToDesignData`): página sem fundo é branca.
+- 🔴 **A página que mudou DURANTE a recomposição é re-renderizada COMO ESTÁ no
+  retry, em dia ou não** (`recompor.renderizarComoEsta` no payload do job,
+  gravado por `marcarRenderComoEsta` ANTES de devolver o job à fila; revisão
+  FINAL do Codex, REV-FINAL-01 e REV-C19-01, 12/09/2026). A divergência de
+  versão detectada no fim da execução pode ser SÓ de gradiente (paradas e
+  força), que o diff de conteúdo não vê: sem o marcador o retry dizia "em dia"
+  e fechava DONE com o slide velho. E o marcador vale mesmo quando o editor
+  também mudou o TEXTO antes do retry — condicioná-lo a "em dia" deixava esse
+  caso recompor pela spec e apagar o gradiente salvo. O marcador sai do
+  payload quando a execução o consome; não escreve a trava `somenteReRender`
+  (o ajuste do editor não é ajuste do revisor).
+- **A redução de força da visão (`menos-gradiente`) respeita a necessidade de
+  CADA texto da borda** com a conta da régua (`max(piso, atual − passo,
+  …necessárias)`; REV-FINAL-02): texto legível AGORA não é texto com folga.
+  Redução abaixo do mínimo (0,08) vira observação — e a conta é em MILÉSIMOS
+  (`reducaoAtingeOMinimo`): `0.6 − 0.52` dá 0,0799… em ponto flutuante, e a
+  redução exatamente no mínimo era descartada (REV-C19-02).

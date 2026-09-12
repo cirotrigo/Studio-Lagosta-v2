@@ -565,6 +565,21 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     expect(g3 && 'forca' in g3 ? g3.forca : null).toBe(0.672)
   })
 
+  it('redução exatamente no mínimo (0,6 → 0,52 com "pouco") é aceita — a conta é em milésimos, não em ponto flutuante; abaixo do mínimo continua recusada (REV-C19-02)', () => {
+    const rodapeA06 = { ...gradienteDoRodape, metadata: { ...gradienteDoRodape.metadata, forca: 0.6 } } as Layer
+    const pouco: AchadoVisto = { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa escura pesa no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'pouco' }
+    // necessária = 0,6 × (130 − 95) / (130 − 75) ≈ 0,382 → vale o passo: 0,6 − 0,08 = 0,52; em JS 0.6 − 0.52 = 0,0799… e a redução era descartada
+    const folgado = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, p98SemHalo: 130, p98ComHalo: 75, alvo: 110, ok: true })
+    const r = avaliarPeca(entrada({ camadas: [rodapeA06, servico], metricas: [metrica(servico)], contraste: [folgado], vistos: [pouco] }))
+    const g = r.ajustes.find((a) => a.tipo === 'gradiente')
+    expect(g && 'forca' in g ? g.forca : null).toBe(0.52)
+    // necessária = 0,6 × (240 − 95) / (240 − 75) ≈ 0,527 → redução de 0,073, abaixo do mínimo de 0,08: observação, sem ajuste
+    const quaseNoLimite = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, p98SemHalo: 240, p98ComHalo: 75, alvo: 110, ok: true })
+    const r2 = avaliarPeca(entrada({ camadas: [rodapeA06, servico], metricas: [metrica(servico)], contraste: [quaseNoLimite], vistos: [pouco] }))
+    expect(r2.ajustes.filter((a) => a.tipo === 'gradiente')).toHaveLength(0)
+    expect(r2.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!.ajustes).toEqual([])
+  })
+
   it('visão que voltou SEM a lista (inconclusiva) não rebaixa a leitura medida nem marca a visão como avaliada (REV-02)', () => {
     const falta = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, tintaCorrigida: 0.8, p98ComHalo: 120, ok: true, antesDaCorrecao: { p98: 180, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' } })
     const base = { camadas: [rodapeA06, servico], metricas: [metrica(servico)], contraste: [falta] }

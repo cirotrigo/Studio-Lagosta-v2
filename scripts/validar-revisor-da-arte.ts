@@ -946,15 +946,25 @@ async function main() {
       const lev6rB = await levantarPagina(pageId2)
       conferir('ANTES do retry, a defasagem por conteúdo diz "em dia" (o diff não vê gradiente) e o slide já aponta para a arte atual — é o que fazia o retry sair sem renderizar', lev6rB?.defasagem.defasada === false && lev6rB.defasagem.mexidoNaMao.length === 0 && lev6rB.slides.every((sl) => sl.urlAntiga === gen6rA?.resultUrl), JSON.stringify({ defasada: lev6rB?.defasagem.defasada, mexido: lev6rB?.defasagem.mexidoNaMao, slides: lev6rB?.slides.length }))
       // 2ª execução (o retry): re-renderiza a página COMO ESTÁ
+      // REV-C19-01: ANTES do retry o editor ainda muda o TEXTO. Agora a defasagem por conteúdo diz "defasada, só texto" — o caso em
+      // que o retry, sem honrar o marcador, recomporia pela spec e apagaria o gradiente que o editor salvou.
+      const paginaAntesDoRetry = await camadasDaPagina(pageId2)
+      const headlineAntesDoRetry = paginaAntesDoRetry.find((c) => c.type === 'text' && c.metadata?.compositor?.papel === 'headline')
+      const textoBis6r = 'Segunda peça\nrecomposta 6r-bis'
+      await db.page.update({ where: { id: pageId2 }, data: { layers: paginaAntesDoRetry.map((l) => (l.id === headlineAntesDoRetry?.id ? { ...l, content: textoBis6r } : l)) as never } })
+      const lev6rC = await levantarPagina(pageId2)
+      conferir('o editor mudou o TEXTO antes do retry: a defasagem por conteúdo volta a dizer "defasada, só texto" — sem o marcador, este retry recomporia pela spec (REV-C19-01)', lev6rC?.defasagem.defasada === true && lev6rC.defasagem.soTexto === true && lev6rC.defasagem.mexidoNaMao.length === 0, JSON.stringify({ defasada: lev6rC?.defasagem.defasada, soTexto: lev6rC?.defasagem.soTexto }))
       const reservado6rB = await reservarJob(jobId6r)
       const rec6rB = (reservado6rB?.payload as Record<string, any>)?.recompor
+      conferir('o payload do retry ainda carrega o marcador (o pedido normal da edição de texto não o apagou)', rec6rB?.renderizarComoEsta === true && rec6rB?.forcar !== true, JSON.stringify(rec6rB))
       await processarRecomposicaoEmBackground({ generationId: persistido2.generationId, projectId: PROJETO, recompor: rec6rB, queueJobId: jobId6r })
       const gen6rB = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
       if (gen6rB?.resultUrl) blobs.add(gen6rB.resultUrl)
       const fv6rB = (gen6rB?.fieldValues ?? {}) as Record<string, any>
       const pagina6rB = await camadasDaPagina(pageId2)
       const grad6rB = pagina6rB.find((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.metadata?.tratamentoDeTexto)
-      conferir('2ª execução: RENDERIZOU a página atual (URL nova de novo, `re-renderizada`, aviso "como está"), sem trava e sem reescrever as camadas (o gradiente do editor continua na página)', gen6rB?.resultUrl !== gen6rA?.resultUrl && fv6rB?.recomposicao?.estado === 're-renderizada' && (fv6rB?.recomposicao?.avisos ?? []).some((a: string) => /como está/.test(a)) && !fv6rB?.somenteReRender && Number(grad6rB?.metadata?.forca) === forcaDurante6r && JSON.stringify(grad6rB?.style?.gradientStops) === JSON.stringify(paradasDurante6r), JSON.stringify({ estado: fv6rB?.recomposicao?.estado, avisos: fv6rB?.recomposicao?.avisos, forca: grad6rB?.metadata?.forca }).slice(0, 220))
+      const headline6rB = pagina6rB.find((l) => l.id === headlineAntesDoRetry?.id)
+      conferir('2ª execução: RENDERIZOU a página atual (URL nova de novo, `re-renderizada`, aviso "como está"), sem trava e sem reescrever as camadas — o gradiente do editor E o texto novo continuam na página (não recompôs pela spec, mesmo "defasada")', gen6rB?.resultUrl !== gen6rA?.resultUrl && fv6rB?.recomposicao?.estado === 're-renderizada' && (fv6rB?.recomposicao?.avisos ?? []).some((a: string) => /como está/.test(a)) && !fv6rB?.somenteReRender && Number(grad6rB?.metadata?.forca) === forcaDurante6r && JSON.stringify(grad6rB?.style?.gradientStops) === JSON.stringify(paradasDurante6r) && headline6rB?.content === textoBis6r, JSON.stringify({ estado: fv6rB?.recomposicao?.estado, avisos: fv6rB?.recomposicao?.avisos, forca: grad6rB?.metadata?.forca, headline: headline6rB?.content }).slice(0, 260))
       const d6r = await fecharJob(jobId6r, persistido2.generationId)
       const job6rB = await db.generationJob.findUnique({ where: { id: jobId6r }, select: { status: true, payload: true } })
       conferir('o job fecha DONE (a página não mudou durante o retry) e o marcador saiu do payload', d6r === 'DONE' && job6rB?.status === 'DONE' && ((job6rB?.payload as Record<string, any>)?.recompor ?? {}).renderizarComoEsta === undefined, `${d6r} ${job6rB?.status} ${JSON.stringify((job6rB?.payload as Record<string, any>)?.recompor)}`)
