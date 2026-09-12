@@ -199,7 +199,7 @@ export async function marcarForcaAtendida(queueJobId: string | null | undefined,
   return r.count > 0
 }
 
-type RecomporNoPayload = { forcar?: boolean; forcaPedidaEm?: string; forcaTentada?: string; forcaAtendida?: string; [k: string]: unknown }
+type RecomporNoPayload = { forcar?: boolean; forcaPedidaEm?: string; forcaTentada?: string; forcaAtendida?: string; renderizarComoEsta?: boolean; [k: string]: unknown }
 function recomporDoPayload(payload: unknown): RecomporNoPayload {
   const r = payload && typeof payload === 'object' ? (payload as { recompor?: unknown }).recompor : null
   return r && typeof r === 'object' ? (r as RecomporNoPayload) : {}
@@ -220,6 +220,30 @@ function forcaNovaDesdeOInicio(payload: unknown): boolean {
   const r = recomporDoPayload(payload)
   const pedida = r.forcaPedidaEm ?? ''
   return pedida !== (r.forcaAtendida ?? '') && pedida !== (r.forcaTentada ?? '')
+}
+
+/**
+ * Liga (ou desliga) no payload do job RUNNING o marcador de que a PRÓXIMA
+ * execução deve re-renderizar a página COMO ESTÁ, mesmo que a defasagem por
+ * conteúdo diga "em dia" (REV-FINAL-01 da revisão FINAL do Codex,
+ * 12/09/2026): a divergência de versão detectada depois da recomposição pode
+ * ser só de gradiente (paradas, força), que o diff geométrico não enxerga — e
+ * o retry com o payload normal saía sem renderizar, DONE com o slide velho.
+ * Compare-and-set no payload lido; a força pedida (`forcar`) não é tocada.
+ */
+export async function marcarRenderComoEsta(queueJobId: string | null | undefined, ligar: boolean): Promise<boolean> {
+  if (!queueJobId) return false
+  for (let volta = 0; volta < 3; volta++) {
+    const atual = await db.generationJob.findUnique({ where: { id: queueJobId }, select: { status: true, payload: true } })
+    if (!atual || atual.status !== 'RUNNING') return false
+    const recompor = recomporDoPayload(atual.payload)
+    if (!!recompor.renderizarComoEsta === ligar) return true
+    const { renderizarComoEsta: _r, ...resto } = recompor
+    const novo = { ...(atual.payload as Record<string, unknown>), recompor: ligar ? { ...recompor, renderizarComoEsta: true } : resto }
+    const r = await db.generationJob.updateMany({ where: { id: queueJobId, status: 'RUNNING', payload: { equals: atual.payload as never } }, data: { payload: novo as never } })
+    if (r.count > 0) return true
+  }
+  return false
 }
 
 /**
@@ -268,6 +292,8 @@ export interface RecomposicaoJobArgs {
     pageId: string
     origem: 'editor' | 'varredura'
     forcar?: boolean
+    /** Posto pelo executor ao devolver o job à fila por divergência de versão: a próxima execução re-renderiza a página como está (REV-FINAL-01). */
+    renderizarComoEsta?: boolean
     /** Carimbo (ISO) da força pedida — posto por `enfileirarRecomposicao`; `forcaAtendida` recebe o mesmo valor quando o executor a honra. */
     forcaPedidaEm?: string
     /** O carimbo da força que a execução em curso está TENTANDO atender (posto ao começar) — a que falhar não volta à fila como se fosse nova. */

@@ -43,7 +43,7 @@
 import { del, put } from '@vercel/blob'
 
 import { db } from '@/lib/db'
-import { marcarForcaAtendida, marcarForcaEmExecucao, pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
@@ -250,6 +250,14 @@ export interface RecomporInput {
    */
   forcar?: boolean
   /**
+   * A execução anterior detectou que a página mudou DEPOIS da recomposição
+   * (só de gradiente, por exemplo) e devolveu o job à fila: esta execução
+   * re-renderiza a página COMO ESTÁ mesmo que a defasagem por conteúdo diga
+   * "em dia" — sem isto o retry saía sem renderizar e o job fechava DONE com o
+   * slide velho (REV-FINAL-01). Não escreve a trava `somenteReRender`.
+   */
+  renderizarComoEsta?: boolean
+  /**
    * SÓ PARA PROVA: roda entre a leitura da página e a gravação das camadas
    * recompostas, para simular a edição concorrente. Nunca vem do payload.
    */
@@ -294,7 +302,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // Nada a fazer — ver `precisaRefazer`. É o que evita gastar um render num
   // empurrãozinho de 1px, e o que faz reverter uma peça já em dia sair calado.
   const forcar = input.forcar === true
-  if (!forcar && !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return vazio
+  const emDia = !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)
+  // "Renderizar como está" (REV-FINAL-01) só faz diferença quando a defasagem
+  // por conteúdo diz em dia: a mudança foi de gradiente, que o diff não vê.
+  const renderComoEsta = input.renderizarComoEsta === true && emDia
+  if (!forcar && emDia && !renderComoEsta) return vazio
 
   if (input.depoisDoLevantamento) await input.depoisDoLevantamento()
   const page = await db.page.findUnique({
@@ -354,8 +366,9 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // snapshot dela não conhecem o ajuste, então recompor por eles numa edição
   // de texto posterior desfaria o ajuste do mesmo jeito (REV-04, 12/09/2026).
   const travada = !!(arte.fieldValues as Record<string, unknown> | undefined)?.somenteReRender
-  const podeRecompor = !forcar && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  const podeRecompor = !forcar && !renderComoEsta && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
   if (forcar) avisos.push('Recuperação forçada: a página foi re-renderizada como está, sem medir a diagramação de novo.')
+  if (renderComoEsta) avisos.push('A página mudou enquanto a arte anterior era refeita (mudança que o diff de conteúdo não vê): re-renderizada como está.')
   else if (travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto) {
     avisos.push('A página carrega um ajuste que a spec não conhece (recuperação anterior): a arte foi re-renderizada como está, sem medir a diagramação de novo.')
   }
@@ -754,7 +767,7 @@ export async function pedirRecomposicaoDaArteCongelada(
 export async function processarRecomposicaoEmBackground(args: {
   generationId: string
   projectId: number
-  recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean; forcaPedidaEm?: string }
+  recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean; forcaPedidaEm?: string; renderizarComoEsta?: boolean }
   decididoPor?: string | null
   queueJobId?: string | null
   /** Só para a prova de integração: as costuras de `RecomporInput`. */
@@ -768,7 +781,7 @@ export async function processarRecomposicaoEmBackground(args: {
   if (args.recompor.forcar === true) await marcarForcaEmExecucao(args.queueJobId, args.recompor.forcaPedidaEm)
 
   try {
-    const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, decididoPor: args.decididoPor ?? null, ...(args.seams ?? {}) })
+    const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, renderizarComoEsta: args.recompor.renderizarComoEsta === true, decididoPor: args.decididoPor ?? null, ...(args.seams ?? {}) })
     console.log(
       `[recompor] ${pageId} em ${Math.round((Date.now() - t0) / 1000)}s — ${r.recomposta ? 'recomposta' : 're-renderizada'}, ` +
         `${r.trocados.length} slide(s) trocado(s)` +
@@ -794,6 +807,14 @@ export async function processarRecomposicaoEmBackground(args: {
       const versaoAtual = atual ? versaoDaPagina(atual) : null
       if (versaoAtual !== r.versaoGravada) {
         const motivo = 'a página foi editada de novo enquanto a arte era refeita'
+        /**
+         * A próxima execução tem de RENDERIZAR a página como está, mesmo que a
+         * defasagem por conteúdo a considere em dia (a mudança pode ser só de
+         * gradiente): marcado no payload ANTES de devolver à fila
+         * (REV-FINAL-01). Sem orçamento, o marcador fica sem efeito e a falha
+         * explícita abaixo é o que vale.
+         */
+        await marcarRenderComoEsta(args.queueJobId, true)
         const voltou = await pedirNovaTentativa(args.queueJobId, motivo)
         if (voltou) {
           console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição (${r.versaoGravada} → ${versaoAtual ?? 'ilegível'})`)
@@ -824,6 +845,8 @@ export async function processarRecomposicaoEmBackground(args: {
      * que chegou durante ela fica pendente no payload e `fecharJob` a enxerga.
      */
     if (args.recompor.forcar === true) await marcarForcaAtendida(args.queueJobId, args.recompor.forcaPedidaEm)
+    // O "renderizar como está" foi consumido por esta execução (a página não mudou durante ela): sai do payload.
+    if (args.recompor.renderizarComoEsta === true) await marcarRenderComoEsta(args.queueJobId, false)
   } catch (erro) {
     const msg = erro instanceof Error ? erro.message : String(erro)
     const code = erro instanceof CreativeError ? erro.code : 'ERRO'

@@ -1142,7 +1142,27 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
               return !!rect && bordaDoGrupo(rect, null, H) === borda
             })
             if (semLeituraNaBorda) return []
-            return [{ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: arred(Math.max(faixa[0], atual - passo), 3) }]
+            /**
+             * A redução pedida pela visão respeita a NECESSIDADE de cada texto
+             * daquela borda, com a mesma conta da régua (seção 6): um texto no
+             * limite não perde a leitura porque outro sobra ou porque a visão
+             * achou a faixa pesada (REV-FINAL-02 da revisão FINAL do Codex,
+             * 12/09/2026). Redução menor que o mínimo vira só observação.
+             */
+            const medidasDaBorda = (e.contraste ?? []).filter((c) => {
+              if (c.gradiente === gradiente.id) return true
+              const rects = c.camadas.map((id) => porId.get(id)).filter((l): l is Layer => !!l).map(rectDaCamada)
+              const rect = uniao(rects)
+              return !!rect && bordaDoGrupo(rect, null, H) === borda
+            })
+            const necessarias = medidasDaBorda.flatMap((m) => leiturasDoGrupo(m)).map((t) => {
+              const alvoFolgado = t.alvo - 15
+              if (t.p98SemHalo <= alvoFolgado) return faixa[0]
+              return (atual * (t.p98SemHalo - alvoFolgado)) / Math.max(1, t.p98SemHalo - t.p98ComHalo)
+            })
+            const forcaSegura = arred(Math.min(atual, Math.max(faixa[0], atual - passo, ...necessarias)), 3)
+            if (atual - forcaSegura < L.gradienteReducaoMinima) return []
+            return [{ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: forcaSegura }]
           }
           const medida = e.contraste?.find((c) => textos.some((id) => c.camadas.includes(id)))
           const forca = arred(Math.min(faixa[1], Math.max(medida?.tintaCorrigida ?? 0, atual + passo, gradiente ? 0 : faixa[0])), 3)

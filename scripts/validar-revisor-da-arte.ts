@@ -906,6 +906,62 @@ async function main() {
       await db.generationJob.update({ where: { id: jobId6q }, data: { status: 'DONE', finishedAt: new Date() } })
     }
 
+    // ── 6r. divergência SÓ DE GRADIENTE durante a recomposição: o retry re-renderiza a página COMO ESTÁ (REV-FINAL-01) ──
+    await pausaParaOBlob(45_000, 'dois renders no Blob (6r)')
+    console.log('6r) job NORMAL recompõe; ENTRE o CAS da página e a escrita da arte o editor salva SÓ o gradiente (paradas + força): o job volta à fila com "renderizar como está", e a execução seguinte RENDERIZA a página atual antes de fechar DONE (REV-FINAL-01)')
+    await limparTrava()
+    const genBase6r = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+    const snapshot6r = lerCamadas(((genBase6r?.fieldValues ?? {}) as Record<string, any>).layersSnapshot).camadas as Array<Record<string, any>>
+    const headlineSnap6r = snapshot6r.find((c) => c.type === 'text' && c.metadata?.compositor?.papel === 'headline')
+    await db.page.update({ where: { id: pageId2 }, data: { layers: snapshot6r.map((c) => (c.id === headlineSnap6r?.id ? { ...c, content: 'Segunda peça\nrecomposta 6r' } : c)) as never } })
+    const lev6r = await levantarPagina(pageId2)
+    conferir('precondição 6r: sem trava, defasagem só de texto', (await gensDaPagina2()).every((g) => !travaDe(g.fieldValues)) && lev6r?.defasagem.soTexto === true && lev6r.defasagem.defasada === true, JSON.stringify({ soTexto: lev6r?.defasagem.soTexto, mexido: lev6r?.defasagem.mexidoNaMao }))
+    const pedido6r = await pedirRecomposicaoDaArteCongelada([pageId2], 'editor')
+    const jobId6r = pedido6r[0]?.jobId ?? null
+    conferir('há job NORMAL na fila (6r)', !!jobId6r, String(jobId6r))
+    if (jobId6r) {
+      const reservado6r = await reservarJob(jobId6r)
+      const rec6r = (reservado6r?.payload as Record<string, any>)?.recompor
+      let forcaDurante6r = NaN
+      let paradasDurante6r: unknown = null
+      const editorMexeNoGradiente = async () => {
+        const c = await camadasDaPagina(pageId2)
+        const grad = c.find((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.metadata?.tratamentoDeTexto)
+        if (!grad) return
+        const stops = Array.isArray(grad.style?.gradientStops) ? (grad.style.gradientStops as Array<Record<string, any>>) : []
+        // O editor salva OUTRA força E OUTRAS PARADAS (é o que muda os pixels — 6m/6n só mudavam `metadata.forca`).
+        forcaDurante6r = Math.min(0.9, Math.round((Number(grad.metadata?.forca ?? 0.5) + 0.12) * 1000) / 1000)
+        paradasDurante6r = stops.map((st) => ({ ...st, opacity: Math.min(1, Math.round(((typeof st.opacity === 'number' ? st.opacity : 1) * 1.2 + 0.05) * 1000) / 1000) }))
+        await db.page.update({
+          where: { id: pageId2 },
+          data: { layers: c.map((l) => (l.id === grad.id ? { ...l, style: { ...(l.style ?? {}), gradientStops: paradasDurante6r }, metadata: { ...(l.metadata ?? {}), forca: forcaDurante6r } } : l)) as never },
+        })
+      }
+      await processarRecomposicaoEmBackground({ generationId: persistido2.generationId, projectId: PROJETO, recompor: rec6r, queueJobId: jobId6r, seams: { entreGravarPaginaEArte: editorMexeNoGradiente } })
+      const gen6rA = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+      if (gen6rA?.resultUrl) blobs.add(gen6rA.resultUrl)
+      const job6rA = await db.generationJob.findUnique({ where: { id: jobId6r }, select: { status: true, lastError: true, payload: true } })
+      const rec6rA = (job6rA?.payload as Record<string, any>)?.recompor ?? {}
+      conferir('1ª execução: recompôs (URL nova, `feita`) e, como a página mudou durante (só gradiente), voltou à fila COM o marcador "renderizar como está" no payload — e SEM força', gen6rA?.resultUrl !== genBase6r?.resultUrl && ((gen6rA?.fieldValues ?? {}) as Record<string, any>).recomposicao?.estado === 'feita' && job6rA?.status === 'PENDING' && /editada de novo/.test(String(job6rA?.lastError)) && rec6rA.renderizarComoEsta === true && rec6rA.forcar !== true && Number.isFinite(forcaDurante6r), JSON.stringify({ status: job6rA?.status, payload: rec6rA }).slice(0, 200))
+      const lev6rB = await levantarPagina(pageId2)
+      conferir('ANTES do retry, a defasagem por conteúdo diz "em dia" (o diff não vê gradiente) e o slide já aponta para a arte atual — é o que fazia o retry sair sem renderizar', lev6rB?.defasagem.defasada === false && lev6rB.defasagem.mexidoNaMao.length === 0 && lev6rB.slides.every((sl) => sl.urlAntiga === gen6rA?.resultUrl), JSON.stringify({ defasada: lev6rB?.defasagem.defasada, mexido: lev6rB?.defasagem.mexidoNaMao, slides: lev6rB?.slides.length }))
+      // 2ª execução (o retry): re-renderiza a página COMO ESTÁ
+      const reservado6rB = await reservarJob(jobId6r)
+      const rec6rB = (reservado6rB?.payload as Record<string, any>)?.recompor
+      await processarRecomposicaoEmBackground({ generationId: persistido2.generationId, projectId: PROJETO, recompor: rec6rB, queueJobId: jobId6r })
+      const gen6rB = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+      if (gen6rB?.resultUrl) blobs.add(gen6rB.resultUrl)
+      const fv6rB = (gen6rB?.fieldValues ?? {}) as Record<string, any>
+      const pagina6rB = await camadasDaPagina(pageId2)
+      const grad6rB = pagina6rB.find((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.metadata?.tratamentoDeTexto)
+      conferir('2ª execução: RENDERIZOU a página atual (URL nova de novo, `re-renderizada`, aviso "como está"), sem trava e sem reescrever as camadas (o gradiente do editor continua na página)', gen6rB?.resultUrl !== gen6rA?.resultUrl && fv6rB?.recomposicao?.estado === 're-renderizada' && (fv6rB?.recomposicao?.avisos ?? []).some((a: string) => /como está/.test(a)) && !fv6rB?.somenteReRender && Number(grad6rB?.metadata?.forca) === forcaDurante6r && JSON.stringify(grad6rB?.style?.gradientStops) === JSON.stringify(paradasDurante6r), JSON.stringify({ estado: fv6rB?.recomposicao?.estado, avisos: fv6rB?.recomposicao?.avisos, forca: grad6rB?.metadata?.forca }).slice(0, 220))
+      const d6r = await fecharJob(jobId6r, persistido2.generationId)
+      const job6rB = await db.generationJob.findUnique({ where: { id: jobId6r }, select: { status: true, payload: true } })
+      conferir('o job fecha DONE (a página não mudou durante o retry) e o marcador saiu do payload', d6r === 'DONE' && job6rB?.status === 'DONE' && ((job6rB?.payload as Record<string, any>)?.recompor ?? {}).renderizarComoEsta === undefined, `${d6r} ${job6rB?.status} ${JSON.stringify((job6rB?.payload as Record<string, any>)?.recompor)}`)
+      const carrossel6r = await db.socialPost.findUnique({ where: { id: carrossel2.id }, select: { mediaUrls: true } })
+      conferir('o slide do carrossel aponta para a arte re-renderizada e o carrossel não perdeu mídia', (carrossel6r?.mediaUrls ?? []).includes(String(gen6rB?.resultUrl)) && (carrossel6r?.mediaUrls.length ?? 0) === 2, JSON.stringify(carrossel6r?.mediaUrls?.map((u) => u.slice(-30))))
+    }
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))

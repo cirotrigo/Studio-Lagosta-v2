@@ -449,19 +449,27 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
   const rodapeA06 = { ...gradienteDoRodape, metadata: { ...gradienteDoRodape.metadata, forca: 0.6 } } as Layer
   const noLimite = (id: string) => medida({ camadas: [id], gradiente: rodapeA06.id, tinta: 0.6, p98ComHalo: 135, alvo: 139, ok: true })
 
-  it('"mais" e "menos" gradiente na mesma borda não se fundem', () => {
+  it('"mais" para o apoio no limite e "menos" para o serviço folgado, na MESMA borda: só o "mais" sai — o apoio no limite é o piso da redução (REV-FINAL-02)', () => {
     const vistos: AchadoVisto[] = [
       { marca: marcaApoio, problema: 'gradiente-claro-demais', evidencia: 'o apoio some sobre o piso claro', confianca: 'alta', correcao: 'mais-gradiente', intensidade: 'medio' },
       { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa escura pesa sobre a foto no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'medio' },
     ]
+    // O serviço sobra; o apoio está no limite (sem halo 200, alvo 139: precisa de
+    // ~0,70 de força). Até 12/09 as duas propostas nasciam e a fusão as
+    // descartava como "opostas"; com o piso texto a texto o "menos" nem nasce —
+    // reduzir por causa do serviço tiraria a leitura do apoio.
+    const servicoFolgado = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, p98SemHalo: 120, p98ComHalo: 100, alvo: 139, ok: true })
     const r = avaliarPeca(
-      entrada({ camadas: [rodapeA06, apoio, servico], metricas: [metrica(apoio), metrica(servico)], contraste: [noLimite('apoio'), noLimite('servico')], vistos }),
+      entrada({ camadas: [rodapeA06, apoio, servico], metricas: [metrica(apoio), metrica(servico)], contraste: [noLimite('apoio'), servicoFolgado], vistos }),
     )
     expect(r.ajustes).toHaveLength(1)
     expect(r.ajustes[0]).toMatchObject({ tipo: 'gradiente', borda: 'rodape', forca: 0.75 })
     const escuro = r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!
+    expect(escuro).toBeDefined()
     expect(escuro.ajustes).toEqual([])
-    expect(escuro.observacao).toContain('opostas')
+    // sem o apoio na borda, a redução do serviço É segura e sai
+    const so = avaliarPeca(entrada({ camadas: [rodapeA06, servico], metricas: [metrica(servico)], contraste: [servicoFolgado], vistos: [vistos[1]] }))
+    expect(so.ajustes.find((a) => a.tipo === 'gradiente')).toMatchObject({ forca: 0.45 })
   })
 
   it('"menos gradiente" não é proposto onde a régua mede falta de leitura', () => {
@@ -532,6 +540,29 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     const escuro = r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!
     expect(escuro).toBeDefined()
     expect(escuro.ajustes).toEqual([])
+  })
+
+  it('"menos gradiente" da visão respeita a necessidade texto a texto: com um texto no limite não há redução segura — fica observação; com folga real, reduz até o piso do texto (REV-FINAL-02)', () => {
+    const rodapeA08 = { ...gradienteDoRodape, metadata: { ...gradienteDoRodape.metadata, forca: 0.8 } } as Layer
+    const visto: AchadoVisto = { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa escura pesa no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'muito' }
+    // legível AGORA (105 ≤ 110), mas sem halo o fundo é 255: a força necessária é ~0,85 — acima da atual; reduzir 0,25 tiraria a leitura
+    const noLimite = medida({ camadas: ['servico'], gradiente: rodapeA08.id, tinta: 0.8, p98SemHalo: 255, p98ComHalo: 105, alvo: 110, ok: true })
+    const r = avaliarPeca(entrada({ camadas: [rodapeA08, servico], metricas: [metrica(servico)], contraste: [noLimite], vistos: [visto] }))
+    expect(r.ajustes.filter((a) => a.tipo === 'gradiente')).toHaveLength(0)
+    expect(r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!.ajustes).toEqual([])
+    // com folga de verdade (sem halo o fundo já quase serve), a redução acontece — até o piso que o texto exige, não até onde a visão pediu
+    // (p98ComHalo acima de alvo − 40: a régua NÃO mede sobra, então o único caminho de redução é o da visão)
+    const folgado = medida({ camadas: ['servico'], gradiente: rodapeA08.id, tinta: 0.8, p98SemHalo: 130, p98ComHalo: 75, alvo: 110, ok: true })
+    const r2 = avaliarPeca(entrada({ camadas: [rodapeA08, servico], metricas: [metrica(servico)], contraste: [folgado], vistos: [visto] }))
+    const g = r2.ajustes.find((a) => a.tipo === 'gradiente')
+    expect(g).toBeDefined()
+    // necessária = 0,8 × (130 − 95) / (130 − 75) ≈ 0,509 → o pedido da visão (0,8 − 0,25 = 0,55) fica acima do piso: 0,55
+    expect(g && 'forca' in g ? g.forca : null).toBe(0.55)
+    const apertado = medida({ camadas: ['servico'], gradiente: rodapeA08.id, tinta: 0.8, p98SemHalo: 200, p98ComHalo: 75, alvo: 110, ok: true })
+    const r3 = avaliarPeca(entrada({ camadas: [rodapeA08, servico], metricas: [metrica(servico)], contraste: [apertado], vistos: [visto] }))
+    const g3 = r3.ajustes.find((a) => a.tipo === 'gradiente')
+    // necessária = 0,8 × (200 − 95) / (200 − 75) = 0,672 → o piso do texto vence o pedido da visão (0,55)
+    expect(g3 && 'forca' in g3 ? g3.forca : null).toBe(0.672)
   })
 
   it('visão que voltou SEM a lista (inconclusiva) não rebaixa a leitura medida nem marca a visão como avaliada (REV-02)', () => {
