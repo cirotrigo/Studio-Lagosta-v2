@@ -12,7 +12,7 @@ import {
   mesmoBanco,
   nomeDoBancoDe,
   trechosRepetidos,
-  condicoesOperacionais,
+  condicoesOperacionais, conferirFatosEsperados,
   fatosNaVoz,
   fatosNoDna,
   frasesDoDna,
@@ -434,6 +434,41 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(fatosNoDna(dna).every((f) => f.tipos.includes('condicao'))).toBe(true)
     expect(problemasParaMigrar(vozDeTeste({ proibicoes: [reais[0]] })).some((p) => /proibicoes\.0 carrega condicao/.test(p))).toBe(true)
     expect(problemasParaMigrar(vozDeTeste({ regras: [{ id: 'r1', texto: reais[1], motivo: 'm', em: '2026-08-16', escopo: 'ambas', ativa: true }] })).some((p) => /regras\.0\.texto carrega condicao/.test(p))).toBe(true)
+  })
+
+  it('PR13-34: serviço e preparo AFIRMADOS são condição — a equivalência da Bacana e os preparos do By Rock são detectados (inclusive no MOTIVO da reescrita) e recusados; as redações corrigidas passam', () => {
+    const reais = ['a Bacana é no kilo, não rodízio', 'Grelhado na hora, com a combinação do dia. É o Roberto Carlos.', 'os cortes grelhados (os Rock Steaks)', 'a casa não tem rodízio']
+    for (const t of reais) expect(condicoesOperacionais(t), t).toEqual(['serviço ou preparo afirmado'])
+    for (const t of [
+      'Monte seu prato do jeito Bacana.',
+      'sem urgência nem superlativo, e sem afirmar o serviço da casa — o que a casa serve vem da base',
+      'O prato com a combinação do dia. É o Roberto Carlos.',
+      'a seção do cardápio (os Rock Steaks)',
+      'Te esperamos na brasa',
+      'BORA, GALERA, vamos estar, chave de ouro, gourmet, dry-aged, mise en place, degustação, harmonização, rodízio',
+    ]) {
+      expect(condicoesOperacionais(t), t).toEqual([])
+    }
+    // O motivo da reescrita vai ao prompt: condição nele é problema da voz, como no "depois".
+    const voz = vozDeTeste({ antesDepois: [{ antes: 'rodízio', depois: 'no kilo', motivo: 'a Bacana é no kilo, não rodízio' }] })
+    expect(fatosNaVoz(voz).map((f) => f.caminho)).toEqual(['antesDepois.0.motivo'])
+    expect(problemasParaMigrar(voz).some((p) => /antesDepois\.0\.motivo carrega condicao/.test(p))).toBe(true)
+    // "no kilo" nos termos continua vocabulário; "rodízio" nu nas proibições continua palavra proibida.
+    expect(fatosNaVoz(vozDeTeste({ termos: ['no kilo'], proibicoes: ['rodízio, gourmet'] }))).toEqual([])
+  })
+
+  it('PR13-35: a ativação confere os fatos aprovados dentro da transação — linha que sumiu, arquivada, editada ou sem indexação concluída recusa; a linha como foi conferida passa', () => {
+    const fato = { entryId: 'e1', trecho: 'Funcionamento: terça a domingo.', categoria: 'HORARIOS', validaAte: null }
+    const ok = { content: 'Funcionamento: terça a domingo.', category: 'HORARIOS', status: 'ACTIVE', expiresAt: null, metadata: { chaveDoFato: 'x', indexadoEm: '2026-09-12T10:00:00.000Z' } }
+    expect(conferirFatosEsperados([fato], new Map([['e1', ok]]))).toEqual([])
+    expect(conferirFatosEsperados([fato], new Map())).toEqual(['"Funcionamento: terça a domingo." (e1): a linha não existe mais'])
+    expect(conferirFatosEsperados([fato], new Map([['e1', { ...ok, status: 'ARCHIVED' }]]))[0]).toMatch(/status ARCHIVED/)
+    expect(conferirFatosEsperados([fato], new Map([['e1', { ...ok, content: 'Funcionamento: terça a sábado.' }]]))[0]).toMatch(/conteúdo editado/)
+    expect(conferirFatosEsperados([fato], new Map([['e1', { ...ok, metadata: { chaveDoFato: 'x' } }]]))[0]).toMatch(/indexação não concluída/)
+    // Todos os problemas de uma vez, na ordem dos fatos.
+    const dois = conferirFatosEsperados([fato, { ...fato, entryId: 'e2', trecho: 'Outro fato.' }], new Map([['e1', { ...ok, status: 'ARCHIVED' }]]))
+    expect(dois).toHaveLength(2)
+    expect(dois[1]).toMatch(/\(e2\): a linha não existe mais/)
   })
 
   it('PR13-30: o cache de busca (Redis) tem a mesma régua do indexador — isolado só com URL e token próprios e URL diferente da de produção', () => {

@@ -19,6 +19,7 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
+import { conferirFatosEsperados, type FatoEsperado } from './migracao-da-voz'
 import { Prisma } from '@prisma/client'
 import {
   aplicarRegraNaVoz,
@@ -145,6 +146,14 @@ export async function migrarParaVoz(args: {
    * revisão do Codex, 12/09/2026). Sem ele, a ativação não olha o DNA.
    */
   dnaEsperado?: { toneOfVoice: string | null; contentRules: string | null }
+  /**
+   * Os fatos aprovados que a aplicação escreveu ou encontrou na base, conferidos
+   * na MESMA transação: existência, conteúdo, categoria, status ACTIVE, validade
+   * e indexação concluída (`metadata.indexadoEm`). Divergência recusa com
+   * `VOZ_FATOS_DIVERGENTES` (409): a voz fica gravada e NÃO migrada, o legado
+   * segue mandando, e a edição concorrente da linha é preservada (PR13-35).
+   */
+  fatosEsperados?: readonly FatoEsperado[]
 }): Promise<{ migradaEm: Date; jaEstava: boolean; versao: number }> {
   /**
    * DUAS proteções, porque são dois vizinhos diferentes:
@@ -172,6 +181,16 @@ export async function migrarParaVoz(args: {
           const campos = dnaDiverge({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null }, args.dnaEsperado)
           if (campos.length > 0) {
             throw new CreativeError('VOZ_DNA_DIVERGENTE', `O DNA de texto mudou desde a prévia aprovada (${campos.join(', ')}). A voz NÃO foi ativada e o legado continua mandando: gere a prévia de novo e aprove o que está no banco.`, 409, { campos })
+          }
+        }
+        if (args.fatosEsperados && args.fatosEsperados.length > 0) {
+          const linhas = await tx.knowledgeBaseEntry.findMany({
+            where: { projectId: args.projectId, id: { in: args.fatosEsperados.map((f) => f.entryId) } },
+            select: { id: true, content: true, category: true, status: true, expiresAt: true, metadata: true },
+          })
+          const problemas = conferirFatosEsperados(args.fatosEsperados, new Map(linhas.map((l) => [l.id, l])))
+          if (problemas.length > 0) {
+            throw new CreativeError('VOZ_FATOS_DIVERGENTES', `Os fatos aprovados mudaram na base entre a conferência e a ativação (${problemas.join('; ')}). A voz NÃO foi ativada e o legado continua mandando: decida sobre as linhas e aplique de novo.`, 409, { problemas })
           }
         }
         const em = args.em ?? new Date()

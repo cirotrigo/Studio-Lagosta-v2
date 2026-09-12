@@ -7048,6 +7048,41 @@ Da quinta revisão FINAL (BLOQUEADO, PR13-33):
   condição — e recusadas na voz) e as redações corrigidas; prévias de produção
   regeradas (Real 11 → 17 fatos, Lagosta 15).
 
+Da sexta revisão FINAL (BLOQUEADO, PR13-34…35):
+
+- 🔴 **SERVIÇO e PREPARO afirmados como identidade também são condição da
+  casa** (PR13-34): a reescrita da Bacana ("rodízio" → "no kilo", motivo "a
+  Bacana é no kilo, não rodízio") e as do By Rock ("Grelhado na hora, com a
+  combinação do dia", "os cortes grelhados") iam para o prompt afirmando o
+  serviço e a técnica — mudar isso na base deixava a voz contradizendo a base.
+  `condicoesOperacionais` pega `é/somos no kilo|quilo`, `não (é|tem) rodízio`,
+  `grelhado na hora` e `cortes grelhados`; as três reescritas viraram
+  orientação de linguagem sem o dado ("Monte seu prato do jeito Bacana", "O
+  prato com a combinação do dia. É o Roberto Carlos.", "a seção do cardápio
+  (os Rock Steaks)"), com "rodízio" mantido nas PROIBIÇÕES (palavra nua é
+  vocabulário proibido) e "no kilo" nos TERMOS (nome do serviço). 🔴 **O motivo
+  da REESCRITA vai ao prompt e passou a ser lido** — para preço, horário e
+  CONDIÇÃO, como o motivo da regra (ele carrega a data em que a reescrita
+  nasceu; lido inteiro, TERO e Lagosta viravam "fato de data"). ⚠️ `\b` do JS
+  não enxerga acento: detector que começa em "é" ou "não" entra por
+  `(?:^|\s)`, nunca por `\b` — com `\b` a frase real da Bacana passava.
+- 🔴 **A ativação confere os FATOS aprovados dentro da transação que liga a
+  precedência** (PR13-35, `migrarParaVoz({ fatosEsperados })` +
+  `conferirFatosEsperados`, puro): a 2ª passada conferia e escrevia as linhas,
+  mas entre ela e a ativação a linha podia ser arquivada, editada ou perder a
+  indexação — e a voz assumia com a base que a sustenta fora do lugar. Hoje o
+  script relê os ids POR CHAVE depois das escritas (o registrador padrão não
+  devolve id) e a ativação confere existência, conteúdo, categoria, `ACTIVE`,
+  validade e `indexadoEm` na MESMA transação serializável do DNA; divergência
+  é `VOZ_FATOS_DIVERGENTES` (409): a voz fica gravada e NÃO migrada, o legado
+  segue mandando, e a edição concorrente da linha é PRESERVADA (nada é
+  compensado). A prova arquiva um fato já conferido em `antesDeAtivar` e
+  confere erro explícito citando a linha, `migradaEm` nulo, precedência legada
+  e a linha ainda arquivada. 🔴 **O registrador da prova passou a gravar a
+  LINHA REAL** (com a chave e a marca de indexado, sem indexar, com a tag da
+  prova que o cleanup apaga): com o stub que só anotava, a ativação não teria
+  linha para conferir — e o antigo `entryId: 'stub'` derrubaria a migração.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

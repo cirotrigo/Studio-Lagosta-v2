@@ -53,7 +53,7 @@ import {
   type DestinoDaAplicacao,
   classificarFato,
   MARCA_DE_INDEXADO,
-  divergenciasDoFato,
+  divergenciasDoFato, type FatoEsperado,
   mesmoBanco,
   type LinhaDoFato,
   nomeDoBancoDe,
@@ -531,11 +531,20 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
             fatosCriados++
           }
           await trava.conferir()
+          // Os ids das linhas que sustentam a voz, relidos POR CHAVE depois das escritas (o registrador padrão não
+          // devolve id): a ativação os confere de novo dentro da transação dela (PR13-35).
+          const fatosEsperados: FatoEsperado[] = []
+          for (const fato of fatos) {
+            const estado = await estadoDoFato(fato.chave, acao.projectId)
+            if (estado.estado === 'ausente') throw new Error(`o fato "${fato.trecho.slice(0, 60)}" não está na base depois da escrita — nada foi ativado`)
+            fatosEsperados.push({ entryId: estado.entryId, trecho: fato.trecho, categoria: fato.categoria, validaAte: fato.validaAte })
+          }
           const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
           await opcoes.seams?.antesDeAtivar?.(acao.projectId)
           await trava.conferir()
-          // A ativação confere, na mesma transação dela, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02).
-          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules } })
+          // A ativação confere, na mesma transação dela, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02)
+          // e que os fatos aprovados continuam na base como foram conferidos (PR13-35).
+          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules }, fatosEsperados })
           return { vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString() }
       })
       if ('bloqueado' in desfecho) {

@@ -207,6 +207,12 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
   { re: /\b(?:n[ãa]o\s+)?(?:est[áa]|est[ãa]o|foi|foram|j[áa]\s+(?:est[áa]|est[ãa]o|foi|foram))\s+confirmad[oa]s?\b|\bj[áa]\s+confirmad[oa]s?\b/i, rotulo: 'estado de confirmação' },
   { re: /\b(?:as\s+|os\s+)?(?:duas|dois|tr[êe]s|quatro|cinco|\d+)\s+(?:lojas|unidades|casas|endere[çc]os|filiais)\b|\bambas\s+as\s+(?:lojas|unidades|casas|filiais)\b|\bambos\s+os\s+endere[çc]os\b/i, rotulo: 'conjunto fixo de unidades' },
   { re: /\b(?:lojas|unidades|casas|filiais)\s*\([A-ZÀ-Ú][^)]{1,60}\s+e\s+[A-ZÀ-Ú]/, rotulo: 'conjunto fixo de unidades' },
+  // PR13-34: o SERVIÇO e o PREPARO afirmados como identidade ("a Bacana é no kilo, não rodízio", "grelhado na hora",
+  // "os cortes grelhados") também são condição da casa — trocar o serviço ou a técnica na base não pode deixar a voz
+  // afirmando o anterior. O NOME do serviço no vocabulário ("no kilo" nos termos) continua sendo vocabulário, e a
+  // palavra nua nas proibições ("rodízio") continua sendo palavra proibida, não afirmação.
+  // (`\b` do JS não enxerga acento: "é" e "não" entram por espaço ou início, nunca por `\b`.)
+  { re: /(?:^|\s)(?:é|somos|servimos|trabalhamos)\s+(?:no|a|por)\s+(?:kilo|quilo)\b|(?:^|\s)n[ãa]o\s+(?:é\s+|tem\s+|temos\s+|fazemos\s+)?rod[íi]zio\b|(?:^|\s)(?:é|tem|temos)\s+rod[íi]zio\b|\bgrelhad[oa]s?\s+na\s+hora\b|\bcortes?\s+grelhad[oa]s?\b/i, rotulo: 'serviço ou preparo afirmado' },
 ]
 
 /**
@@ -277,7 +283,7 @@ const PALAVRA_DE_PROMOCAO_NUA = /^(descontos?|gratis|cortesia|promocao)$/i
  */
 export function fatosNaVoz(voz: VozCompacta): FatoNaVoz[] {
   const achados: FatoNaVoz[] = []
-  const olhar = (caminho: string, trecho: string, opcoes: { proibicaoOuRegra?: boolean; soPrecoEHorario?: boolean; vocabulario?: boolean } = {}) => {
+  const olhar = (caminho: string, trecho: string, opcoes: { proibicaoOuRegra?: boolean; soPrecoEHorario?: boolean; vocabulario?: boolean; condicoesTambem?: boolean } = {}) => {
     const dados = dadosProibidos(trecho)
     let tipos: TipoDeFatoNaVoz[] = dados.tipos
     if (opcoes.soPrecoEHorario) tipos = tipos.filter((t) => t === 'preco' || t === 'horario')
@@ -285,16 +291,23 @@ export function fatosNaVoz(voz: VozCompacta): FatoNaVoz[] {
       const termosDePromocao = dados.termos.filter((t) => /%|^\d|leve\d+pague/.test(t) || !PALAVRA_DE_PROMOCAO_NUA.test(t))
       if (termosDePromocao.length === 0) tipos = tipos.filter((t) => t !== 'promocao')
     }
-    // Condição operacional é fato em qualquer campo de copy E nas regras. Ficam de fora o motivo da regra (é
+    // Condição operacional é fato em qualquer campo de copy E nas regras. Ficam de fora o motivo da REGRA (é
     // história) e o VOCABULÁRIO: "happy em dobro" nos termos é o NOME que a casa dá à mecânica, não a promessa
-    // de que ela vale — a promessa (o que dobra, quando) é o que a regra e o exemplo não podem carregar.
-    if (!opcoes.soPrecoEHorario && !opcoes.vocabulario && condicoesOperacionais(trecho).length > 0) tipos = [...tipos, 'condicao']
+    // de que ela vale — a promessa (o que dobra, quando) é o que a regra e o exemplo não podem carregar. O motivo
+    // da REESCRITA é lido para preço, horário e condição (PR13-34): `vozParaPrompt` o leva ao prompt.
+    if ((!opcoes.soPrecoEHorario || opcoes.condicoesTambem) && !opcoes.vocabulario && condicoesOperacionais(trecho).length > 0) tipos = [...tipos, 'condicao']
     if (tipos.length > 0) achados.push({ caminho, trecho, tipos })
   }
   olhar('descricao', voz.descricao)
   if (voz.tratamento) olhar('tratamento', voz.tratamento)
   voz.exemplos.forEach((e, i) => olhar(`exemplos.${i}`, e))
-  voz.antesDepois.forEach((r, i) => olhar(`antesDepois.${i}.depois`, r.depois))
+  voz.antesDepois.forEach((r, i) => {
+    olhar(`antesDepois.${i}.depois`, r.depois)
+    // O motivo da reescrita vai ao prompt (`vozParaPrompt`): "a Bacana é no kilo, não rodízio" ali é afirmação de
+    // serviço (PR13-34). Como o motivo da regra, ele carrega a DATA em que a reescrita nasceu (história, não dado) —
+    // por isso só preço, horário e CONDIÇÃO são lidos nele.
+    olhar(`antesDepois.${i}.motivo`, r.motivo, { soPrecoEHorario: true, condicoesTambem: true })
+  })
   voz.termos.forEach((t, i) => olhar(`termos.${i}`, t, { vocabulario: true }))
   voz.proibicoes.forEach((p, i) => olhar(`proibicoes.${i}`, p, { proibicaoOuRegra: true }))
   voz.regras.forEach((r, i) => {
@@ -693,6 +706,37 @@ export function divergenciasDoFato(linha: LinhaDoFato, fato: { trecho: string; c
   const validadeDaLinha = linha.expiresAt ? diaEmBrasilia(linha.expiresAt) : null
   if (validadeDaLinha !== (fato.validaAte ?? null)) d.push(`validade ${validadeDaLinha ?? 'sem prazo'} (aprovada ${fato.validaAte ?? 'sem prazo'})`)
   return d
+}
+
+/** Um fato aprovado, já na base, que a ativação da voz confere de novo DENTRO da transação (PR13-35). */
+export interface FatoEsperado {
+  entryId: string
+  trecho: string
+  categoria: string
+  validaAte: string | null
+}
+
+/**
+ * Os fatos aprovados ainda são o que foi conferido? Chamada pela ativação da
+ * voz, na MESMA transação que liga a precedência (PR13-35): entre a 2ª passada
+ * e a ativação a linha pode ter sido arquivada, editada ou perdido a indexação
+ * — e a voz não pode assumir com a base que a sustenta fora do lugar. Devolve
+ * TODOS os problemas; vazio é "pode ativar".
+ */
+export function conferirFatosEsperados(fatos: readonly FatoEsperado[], linhas: ReadonlyMap<string, LinhaDoFato & { metadata?: unknown }>): string[] {
+  const problemas: string[] = []
+  for (const f of fatos) {
+    const rotulo = `"${f.trecho.slice(0, 60)}" (${f.entryId})`
+    const linha = linhas.get(f.entryId)
+    if (!linha) {
+      problemas.push(`${rotulo}: a linha não existe mais`)
+      continue
+    }
+    const d = divergenciasDoFato(linha, f)
+    if (classificarFato(linha) !== 'completo') d.push('indexação não concluída (sem indexadoEm)')
+    if (d.length > 0) problemas.push(`${rotulo}: ${d.join(', ')}`)
+  }
+  return problemas
 }
 
 function diaEmBrasilia(d: Date | string): string | null {
