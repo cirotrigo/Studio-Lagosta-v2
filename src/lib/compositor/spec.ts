@@ -249,11 +249,18 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     // A manchete é a peça: ela não herda de ninguém e não se repete.
     const mancheteHerda = r.data.blocos.find((b) => b.papel === 'headline' && b.herdaDe)
     if (mancheteHerda) return { spec: null, problemas: ['headline: a manchete não herda estilo de outro papel — ela é o papel'] }
-    // Papel repetido só quando cada ocorrência além da primeira é uma camada
-    // EXTRA com id próprio (função ≠ estilo, F3): sem id, duas camadas
-    // disputariam o mesmo nome na página.
-    const papeis = r.data.blocos.map((b) => b.papel)
-    const repetidosSemId = r.data.blocos.filter((b, i) => papeis.indexOf(b.papel) !== i && !(b.herdaDe && b.id)).map((b) => b.papel)
+    // Papel repetido só quando, ALÉM de um bloco comum, cada ocorrência é uma
+    // camada EXTRA com id próprio e herança (função ≠ estilo, F3): sem id, duas
+    // camadas disputariam o mesmo nome na página. R21 (revisão FINAL do Codex
+    // sobre e11abce7, 12/09/2026): a regra é a CONTAGEM de blocos comuns por
+    // papel, nunca a posição do extra. Conferir "a segunda ocorrência" aceitava
+    // `[headline, servico, extra servico (ordem 0)]`, a persistência gravava o
+    // contrato na ordem autoral `[extra, headline, servico]`, e a recomposição
+    // seguinte recusava o MESMO conteúdo porque o serviço comum passou a ser a
+    // segunda ocorrência — SPEC_INVALIDA e o slide preso na arte antiga.
+    const comunsPorPapel = new Map<string, number>()
+    for (const b of r.data.blocos) if (!(b.herdaDe && b.id)) comunsPorPapel.set(b.papel, (comunsPorPapel.get(b.papel) ?? 0) + 1)
+    const repetidosSemId = [...comunsPorPapel].filter(([, n]) => n > 1).map(([papel]) => papel)
     if (repetidosSemId.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidosSemId)].join(', ')} — a segunda ocorrência precisa de \`id\` próprio e \`herdaDe\``] }
     // R02: a unicidade é conferida contra os ids que a PREPARAÇÃO produz. Bloco
     // sem herança se chama pelo PAPEL — um `id` avulso nele seria ignorado na

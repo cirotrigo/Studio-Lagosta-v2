@@ -231,7 +231,8 @@ export function medirCopy(args: {
   const preparadosPorPapel = new Set([...preparados.montados, ...preparados.recusas].map((b) => b.funcao))
   const papeisAusentes = papeisPedidos.filter((p) => faltamNaAssinatura.has(p) || (!preparadosPorPapel.has(p) && !(p === 'headline' && preparadosPorPapel.has('headline2' as Papel))))
   for (const papel of papeisAusentes) {
-    const linhas = (args.spec.blocos ?? []).find((b) => (b.papel as Papel) === papel)?.linhas ?? []
+    // R21: as linhas são as do bloco COMUM do papel — o extra da mesma função pode vir antes dele na spec.
+    const linhas = (args.spec.blocos ?? []).find((b) => (b.papel as Papel) === papel && !b.herdaDe)?.linhas ?? []
     medidas.push({ papel, id: papel, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: linhas.length, naoMedido: false, aproximado: false, linhasMedidas: [], avisos: [`a variante não tem o papel "${papel}"`] })
   }
 

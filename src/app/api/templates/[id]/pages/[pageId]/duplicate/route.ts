@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { lerCopyAutoral, renomearExtrasDuplicados } from '@/lib/copy-autoral'
+import { duplicarCamadasDaPagina, lerCopyAutoral, renomearExtrasDuplicados } from '@/lib/copy-autoral'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import {
@@ -56,36 +56,23 @@ export async function POST(
     })
 
     // Regenerar ids das layers — overrides por layerId (agendamento, editor)
-    // assumem ids únicos por página
+    // assumem ids únicos por página. A transformação mora em
+    // `duplicarCamadasDaPagina` (pura, testada contra o leitor da copy): ela
+    // também leva para a cópia o vínculo de parte que só o id antigo dava (R22).
     const originalLayers = typeof pageToDuplicate.layers === 'string'
       ? JSON.parse(pageToDuplicate.layers)
       : pageToDuplicate.layers
 
-    let duplicatedLayers = originalLayers
-    if (Array.isArray(originalLayers)) {
-      const idMap = new Map<string, string>(
-        originalLayers.map((layer: any) => [layer.id, crypto.randomUUID()]),
-      )
-      duplicatedLayers = originalLayers.map((layer: any) => ({
-        ...layer,
-        id: idMap.get(layer.id),
-        // parentId referencia outra layer da mesma página (agrupamento)
-        parentId: layer.parentId ? idMap.get(layer.parentId) ?? layer.parentId : layer.parentId,
-      }))
-    }
+    const duplicacao = Array.isArray(originalLayers)
+      ? duplicarCamadasDaPagina(originalLayers, () => crypto.randomUUID())
+      : null
+    const duplicatedLayers = duplicacao ? duplicacao.camadas : originalLayers
 
     const contratoDaCopia = (() => {
       if (pageToDuplicate.copyAutoral == null) return null
       const lido = lerCopyAutoral(pageToDuplicate.copyAutoral).copy
       if (!lido) return pageToDuplicate.copyAutoral
-      const idMap = new Map<string, string>()
-      if (Array.isArray(originalLayers)) {
-        for (const [i, camada] of (originalLayers as Array<{ id?: string }>).entries()) {
-          const novo = (duplicatedLayers as Array<{ id?: string }>)[i]?.id
-          if (camada?.id && novo) idMap.set(String(camada.id), String(novo))
-        }
-      }
-      return renomearExtrasDuplicados(lido, idMap, Array.isArray(originalLayers) ? (originalLayers as never[]) : [])
+      return renomearExtrasDuplicados(lido, duplicacao?.idsDeCamada ?? new Map(), Array.isArray(originalLayers) ? (originalLayers as never[]) : [])
     })()
 
     // Criar cópia da página logo após a original

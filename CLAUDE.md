@@ -8842,3 +8842,40 @@ Da revisão do commit G (BLOQUEADO, R20, 12/09/2026):
   ordem do TEXTO — `[endereço, reserva]`, inversão que o autosave atribuía à
   equipe. Hoje a leitura pela marca vale também com uma única candidata
   marcada; uma camada só SEM a marca segue o caminho de sempre.
+
+**Da revisão FINAL do Codex sobre e11abce7 (BLOQUEADO, R21…R22, 12/09/2026):**
+
+- 🔴 **R21 — papel repetido se confere pela CONTAGEM de blocos comuns, nunca
+  pela posição do extra.** `validarSpec` exigia id e herança da "segunda
+  ocorrência" do papel. A spec sem contrato
+  `[headline, servico, servico (id hora-extra, herdaDe apoio, ordem 0)]` passava;
+  `copyDaSpecSemContrato` gravava o contrato na ordem AUTORAL
+  `[hora-extra, headline, servico]`; a recomposição derivava os blocos desse
+  contrato, o serviço comum virava a segunda ocorrência e a mesma validação o
+  recusava — `SPEC_INVALIDA` na edição seguinte, slide preso na arte antiga.
+  Hoje cada papel admite no máximo UM bloco comum (sem `id`+`herdaDe`), e todo
+  o resto daquele papel tem de ser extra, em qualquer posição. O mesmo vício de
+  "primeira ocorrência" estava no `medirCopy`: o papel ausente contava as
+  linhas do extra declarado antes do bloco comum (agora `!b.herdaDe`).
+  Testes: o cenário da revisão atravessa validação → preparação → persistência
+  → edição → recomposição (e revalidação), pela spec sem contrato E pela
+  entrada direta do contrato; dois serviços comuns continuam recusados com o
+  extra antes, entre ou depois; e o consumidor `recomporPaginaDefasada` troca
+  só o slide da arte (post entregue intacto), com cada texto no seu id.
+- 🔴 **R22 — duplicar a página tem de levar o vínculo que só o ID dava.** A
+  página legada reúne `servico` e `servico-2` (sem `parte` nem
+  `linhasDoBloco`) pelos ids reservados; a duplicação os troca por UUIDs, e a
+  cópia reunia uma parte só — a outra virava `extra-…` de função `servico` sem
+  herança: alteração técnica que o autosave atribuía à equipe e, de novo, dois
+  serviços comuns que a recomposição recusa. A transformação da rota saiu para
+  `duplicarCamadasDaPagina` (`src/lib/copy-autoral/duplicacao.ts`, pura), que
+  antes de regenerar os ids chama `marcarPartesLegadas`: grava a marca antiga
+  `parte` com o MESMO número que a leitura tiraria do id (`<papel>` → 1,
+  `<papel>-N` → N), só em texto sem `parte` e sem identidade de extra. A cópia
+  se lê exatamente como a original; `linhasDoBloco` nunca é inventado. O
+  reconhecimento pelo id e o da marca são as MESMAS funções no leitor e no
+  duplicador. Teste: o cenário legado do R18 duplicado pela função da rota —
+  um único `svc`, as mesmas linhas, nenhuma revisão, `parte` 1 e 2 sem marca
+  autoral, e a spec derivada válida.
+- **As três correções têm prova por mutação** (arquivo corrigido salvo,
+  correção desfeita, teste falhando, restauro conferido com `cmp`).
