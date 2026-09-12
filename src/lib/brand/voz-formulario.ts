@@ -71,8 +71,12 @@ export function vozParaFormulario(voz: VozCompacta | null | undefined): Formular
  * lista; reescrita pela metade FICA (o contrato recusa e a pessoa vê onde).
  */
 export function formularioParaVoz(form: FormularioDaVoz): unknown {
+  // `id`, `substitui` e `em` viajam LITERAIS (PR14-13): o contrato aceita id com
+  // espaço nas pontas, e aparar o id sem aparar a referência quebrava o vínculo
+  // — a voz deixava de salvar por uma edição só na descrição. Só texto e motivo
+  // perdem o espaço das pontas.
   const regras = form.regras.map((r) => {
-    const regra: Record<string, unknown> = { id: r.id.trim(), texto: r.texto.trim(), motivo: r.motivo.trim(), em: r.em.trim(), escopo: r.escopo, ativa: r.ativa }
+    const regra: Record<string, unknown> = { id: r.id, texto: r.texto.trim(), motivo: r.motivo.trim(), em: r.em, escopo: r.escopo, ativa: r.ativa }
     if (r.substitui) regra.substitui = r.substitui
     return regra
   })

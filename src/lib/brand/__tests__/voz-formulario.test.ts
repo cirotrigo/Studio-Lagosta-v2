@@ -153,6 +153,20 @@ describe('voz-formulario — ida e volta EXATA entre o contrato e os campos da t
     expect(podeReativar(abcd, idB)).toBe(false)
     expect(podeReativar(abcd, idC)).toBe(false)
   })
+  it('PR14-13: id com espaço nas pontas e a referência a ele atravessam a ida e volta literais; editar só a descrição não quebra o vínculo', () => {
+    const comEspaco: VozCompacta = {
+      ...voz,
+      regras: [
+        { id: ' regra-A ', texto: 'Regra antiga que foi substituída.', motivo: 'm', em: '2026-08-01', escopo: 'copy', ativa: false },
+        { id: 'regra-B', texto: 'Regra nova no lugar da antiga.', motivo: 'm', em: '2026-09-01', escopo: 'copy', substitui: ' regra-A ', ativa: true },
+      ],
+    }
+    expect(lerVoz(comEspaco).problemas).toEqual([])
+    const form = vozParaFormulario(comEspaco)
+    const volta = lerVoz(formularioParaVoz({ ...form, descricao: 'Direta.' }))
+    expect(volta.problemas).toEqual([])
+    expect(volta.voz).toEqual({ ...comEspaco, descricao: 'Direta.' })
+  })
   it('formulariosIguais ignora espaço das pontas, mas vê mudança de conteúdo', () => {
     const a = vozParaFormulario(voz)
     expect(formulariosIguais(a, { ...a, descricao: `  ${a.descricao}  ` })).toBe(true)

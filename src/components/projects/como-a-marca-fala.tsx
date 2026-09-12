@@ -80,12 +80,21 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
   const [estado, setEstado] = React.useState<Estado>(ESTADO_INICIAL)
   const enviadoRef = React.useRef<FormularioDaVoz | null>(null)
   const [substituindo, setSubstituindo] = React.useState<{ id: string; texto: string; motivo: string; escopo: EscopoDaRegra } | null>(null)
+  // A substituição em andamento é RASCUNHO fora de `form`: conta como edição local para a releitura não a apagar (PR14-12).
+  const substituindoRef = React.useRef<typeof substituindo>(null)
+  substituindoRef.current = substituindo
+  const [legadoAberto, setLegadoAberto] = React.useState(false)
+  const [legadoJaAbriu, setLegadoJaAbriu] = React.useState(false)
+  const abrirLegado = (v: boolean) => {
+    setLegadoAberto(v)
+    if (v) setLegadoJaAbriu(true)
+  }
 
   React.useEffect(() => {
     if (!data) return
     const servidor = formDoServidor(data)
     setEstado((e) => {
-      const semEdicaoLocal = formulariosIguais(e.form, e.base)
+      const semEdicaoLocal = formulariosIguais(e.form, e.base) && !substituindoRef.current
       if (semEdicaoLocal) return { form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null }
       // Há edição local não salva. O que chegou é o NOSSO salvamento? Então a base avança e o rascunho fica.
       if (enviadoRef.current && formulariosIguais(servidor.form, enviadoRef.current)) return { ...e, base: servidor.form, versaoLida: servidor.versao, divergente: null }
@@ -109,6 +118,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
     if (!data) return
     const servidor = formDoServidor(data)
     enviadoRef.current = null
+    setSubstituindo(null)
     setEstado({ form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null })
     void refetch()
   }
@@ -322,6 +332,17 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
             )}
           </div>
 
+          {substituindo && !regrasAtivas.some((r) => r.id === substituindo.id) && (
+            <div className="space-y-2 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <p className="text-xs">A regra <code className="rounded bg-muted px-1">{substituindo.id}</code> que você estava substituindo deixou de estar ativa (outra pessoa mexeu nela). O texto que você escreveu está aqui; use-o numa regra nova ou descarte.</p>
+              <Textarea rows={2} value={substituindo.texto} onChange={(e) => setSubstituindo({ ...substituindo, texto: e.target.value })} />
+              <div className="flex justify-end gap-2">
+                <Button size="sm" variant="ghost" onClick={() => setSubstituindo(null)}>Descartar</Button>
+                <Button size="sm" onClick={() => { const nova = regraEmBranco(form.regras, hojeEmBrasilia()); set('regras', [...form.regras, { ...nova, texto: substituindo.texto, motivo: substituindo.motivo, escopo: substituindo.escopo }]); setSubstituindo(null) }}>Virar regra nova</Button>
+              </div>
+            </div>
+          )}
+
           {!previa.voz && mudou && (
             <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-xs">
               Ainda não dá para salvar: {previa.problemas.slice(0, 4).map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}
@@ -341,7 +362,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
         </fieldset>
       </Card>
 
-      <Collapsible>
+      <Collapsible open={legadoAberto} onOpenChange={abrirLegado}>
         <CollapsibleTrigger className="flex w-full items-center gap-2 rounded-md border border-border/60 bg-card/60 px-4 py-2 text-left text-sm text-muted-foreground hover:bg-card">
           <ChevronDown className="h-4 w-4" />
           {migrado ? 'DNA de texto ARQUIVADO (só leitura — a voz manda desde ' : 'DNA de texto LEGADO (manda na copy até a migração'}
@@ -350,7 +371,9 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
             <span className="ml-auto text-xs">{((legado.toneOfVoice?.length ?? 0) + (legado.contentRules?.length ?? 0)).toLocaleString()} caracteres</span>
           )}
         </CollapsibleTrigger>
-        <CollapsibleContent className="mt-3">
+        {/* Montado depois da primeira abertura e só ESCONDIDO ao recolher: o editor do DNA guarda rascunho em estado local (PR14-11). */}
+        <CollapsibleContent forceMount hidden={!legadoAberto} className="mt-3">
+          {legadoJaAbriu && (
           <BrandDnaSection
             projectId={projectId}
             secoes={['toneOfVoice', 'contentRules']}
@@ -360,6 +383,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
             mostrarImportacaoDoTom={!migrado}
             somenteLeitura={migrado}
           />
+          )}
         </CollapsibleContent>
       </Collapsible>
     </div>

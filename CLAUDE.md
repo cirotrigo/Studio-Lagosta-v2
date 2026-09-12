@@ -6796,8 +6796,16 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   tratado (aviso + carregar a versão atual); com `null` vinha
   `VOZ_VERSAO_OBRIGATORIA` sem saída, e a tela repetia a falha a cada clique.
   `VOZ_VERSAO_OBRIGATORIA` também é tratado como divergência.
+- **A substituição de regra em andamento é RASCUNHO fora do formulário e conta
+  como edição local** (PR14-12): a releitura não a apaga; se a regra deixou de
+  estar ativa por baixo, o texto reaparece num painel próprio (virar regra nova
+  ou descartar). **`id`, `substitui` e `em` viajam literais** (PR14-13): o
+  contrato aceita id com espaço nas pontas, e aparar o id sem aparar a
+  referência quebrava o vínculo — a voz não salvava mais nem uma edição só na
+  descrição.
 - **Seção recolhível NÃO desmonta o que já abriu** (PR14-10, `Secao` de
-  "Avançado · direção de arte"): os editores movidos guardam rascunho em
+  "Avançado · direção de arte"; PR14-11, o DNA legado recolhido em "Como a
+  marca fala"): os editores movidos guardam rascunho em
   estado local, e `{aberto && children}` descartava a edição ao recolher;
   `forceMount` + `hidden`, montando na primeira abertura.
 - **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
