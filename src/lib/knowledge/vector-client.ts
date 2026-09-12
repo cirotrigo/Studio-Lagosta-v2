@@ -4,6 +4,7 @@
  */
 
 import { Index } from '@upstash/vector'
+import { lancarSeAbortado } from './aborto'
 
 type VectorStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
 
@@ -131,7 +132,12 @@ export async function queryVectors(
  * @param tenant Tenant isolation keys (requires projectId)
  * @returns Number of vectors deleted
  */
-export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey): Promise<number> {
+/**
+ * `opcoes.signal`: aborto cooperativo (PR13-20/22) — conferido DEPOIS da consulta
+ * e ANTES do `index.delete`: quem perdeu a posse externa não pode apagar vetores
+ * que outra aplicação já recuperou.
+ */
+export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal } = {}): Promise<number> {
   if (!tenant?.projectId) {
     throw new Error('projectId is required to delete vectors')
   }
@@ -148,6 +154,7 @@ export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey): 
 
   if (results.length > 0) {
     const idsToDelete = results.map(r => String(r.id))
+    lancarSeAbortado(opcoes.signal, 'apagar vetores')
     await index.delete(idsToDelete)
     return results.length
   }

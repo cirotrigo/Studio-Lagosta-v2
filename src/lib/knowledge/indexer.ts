@@ -169,12 +169,15 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
   }
 
   // Delete old chunks and vectors
-  lancarSeAbortado(signal, 'apagar chunks e vetores antigos')
+  lancarSeAbortado(signal, 'apagar chunks antigos')
   await db.knowledgeChunk.deleteMany({
     where: { entryId },
   })
 
-  await deleteVectorsByEntry(entryId, tenant)
+  // O sinal pode ter disparado enquanto o `deleteMany` esperava (PR13-22): confere de novo antes da exclusão
+  // vetorial — e ela mesma confere outra vez entre a consulta e o `delete`.
+  lancarSeAbortado(signal, 'apagar vetores antigos')
+  await deleteVectorsByEntry(entryId, tenant, { signal })
 
   // Re-chunk content
   const chunks = chunkText(entry.content)

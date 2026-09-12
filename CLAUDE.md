@@ -6912,6 +6912,19 @@ Da quinta revisão (BLOQUEADO, PR13-19…21):
   seguinte (o Prisma NÃO reconecta sozinho — a consulta falha), a escrita
   recebe o aborto e nada é anotado. Trava pelo pooler é coberta na 4b'.
 
+Da sexta revisão (BLOQUEADO, PR13-22…23):
+
+- 🔴 **O sinal é conferido ANTES de cada escrita, inclusive as que vêm depois
+  de uma espera**: `reindexEntry` confere de novo depois do `deleteMany` (o
+  sinal pode ter disparado enquanto ele esperava) e `deleteVectorsByEntry`
+  confere entre a consulta e o `index.delete` — uma execução que perdeu a posse
+  não pode apagar vetores que outra aplicação já recuperou (PR13-22). Teste com
+  o `Index` do Upstash mockado: aborto durante a consulta, zero deletes.
+- 🔴 **A marca de indexado confere o sinal DEPOIS da leitura, antes do
+  `update`** (`marcarFatoIndexado(db, id, em, signal)`, PR13-23): a marca
+  gravada por quem perdeu a trava faria a retomada ler `completo` uma linha que
+  outra aplicação ainda reindexa.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

@@ -247,9 +247,12 @@ export async function estadoDoFatoNaBase(db: Db, chave: string, projectId: numbe
 }
 
 /** A marca durável de indexação concluída, gravada DEPOIS de o vetor existir — a linha existir não prova o vetor (PR13-11). */
-export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new Date()): Promise<void> {
+export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new Date(), signal?: AbortSignal): Promise<void> {
   const linha = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
   const metadata = linha?.metadata && typeof linha.metadata === 'object' && !Array.isArray(linha.metadata) ? (linha.metadata as Record<string, unknown>) : {}
+  // A posse pode ter se perdido enquanto a leitura esperava (PR13-23): a marca de indexado de uma execução que
+  // perdeu a trava faria a retomada ler `completo` uma linha que outra aplicação ainda está reindexando.
+  if (signal?.aborted) throw new Error('a posse da trava se perdeu antes de gravar a marca de indexado: esta execução não a grava')
   await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never } })
 }
 
@@ -427,7 +430,7 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       }, { signal })
       // `criarEntradaBase` só devolve depois de indexar; a marca durável é o que a retomada lê (PR13-11).
       if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de indexar: a marca de indexado não é gravada por esta execução')
-      await marcarFatoIndexado(db, entrada.id)
+      await marcarFatoIndexado(db, entrada.id, new Date(), signal)
     })
   const estadoDoFato = opcoes.estadoDoFato ?? ((chave: string, projectId: number) => estadoDoFatoNaBase(db, chave, projectId))
   const reindexarFato =
@@ -436,7 +439,7 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       const { reindexEntry } = await import('../src/lib/knowledge/indexer')
       await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
       if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de reindexar: a marca de indexado não é gravada por esta execução')
-      await marcarFatoIndexado(db, entryId)
+      await marcarFatoIndexado(db, entryId, new Date(), signal)
     })
   const estados = new Map<number, EstadoDoCliente>()
   const dnas = new Map<number, DnaDeTexto>()
