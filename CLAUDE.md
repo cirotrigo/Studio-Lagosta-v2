@@ -1935,6 +1935,13 @@ assunto por slot → `buscarNoAcervo` → `montarDicasDeCopy` → `criarPlano`. 
 **monta e persiste; nunca gera, nunca cobra, nunca agenda** — quem produz é
 `executar-plano`, com o gate de confirmação.
 
+- 🔴 **Desde 12/09/2026 `propor-semana` é automação SÓ QUANDO PEDIDA** (decisão
+  do Ciro em 11/09, plano "Marca simples, copy melhor"): quem escreve a copy da
+  semana é o Claude, no chat, pelas 4 etapas da programação semanal, e a
+  descrição da tool deixou de dizer "é por onde começar". Ela só entra quando a
+  pessoa pede com todas as letras a proposta automática do Studio. O código e
+  as regras abaixo continuam valendo para quando ela roda.
+
 - 🔴 **A F2 NÃO dá tema por slot.** `SugestaoSlot` não tem campo de pilar, e
   `modeloSugerido.temas` são as TAGS da página, não assunto. Quem escolhe o
   assunto é `propor-semana`, cruzando `taxonomiaAprovada` com a distribuição
