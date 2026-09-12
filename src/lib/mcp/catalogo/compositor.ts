@@ -584,4 +584,59 @@ export const toolsDoCompositor = [
       }
     },
   }),
+
+  definirTool({
+    nome: 'agendar-leva',
+    descricao:
+      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Post apagado da agenda não é recriado.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha rascunho — ou reaproveitado), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      loteId: z.string().min(1).max(120).describe('O MESMO loteId usado em compor-leva.'),
+      itens: z
+        .array(
+          z.object({
+            itemId: z.string().min(1).max(120).describe('O MESMO itemId da peça em compor-leva.'),
+            quando: z.string().optional().describe('Horário do rascunho: "AAAA-MM-DD HH:mm" (Brasília) ou ISO. Sem ele, vale o horário previsto na composição.'),
+            postType: z.enum(['STORY', 'POST']).optional().describe('Só para contrariar o formato da peça (story vira STORY; feed e quadrado viram POST). Normalmente omita.'),
+            caption: z.string().max(2200).optional().describe('Legenda do post. Story costuma ir sem.'),
+            lembrete: z.boolean().optional().describe('true = lembrete de publicação manual: o sistema não publica, o grupo do WhatsApp recebe a arte no horário.'),
+            escopo: z.enum(['rotina', 'campanha', 'pontual']).optional().describe('O que o sistema pode aprender com o post — a mesma escolha de colocar-na-agenda (padrão rotina).'),
+            campanhaId: z.string().optional().describe('Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base).'),
+          }),
+        )
+        .min(1)
+        .max(60)
+        .describe('Um item por peça da leva.'),
+      simular: z.boolean().optional().describe('true = faz a conta (o que entraria, o que ainda está pendente, o que falharia) sem gravar nada. Use antes da chamada de verdade.'),
+    }),
+    // Idempotente por construção: loteId e itemId são obrigatórios, e a mesma
+    // chamada devolve os mesmos rascunhos. Não publica nada (rascunho).
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const [{ agendarItensDoLote }, { quemDecidiu }] = await Promise.all([import('../../lotes/agendar-itens'), import('../tools')])
+      const projectId = args.projectId as number
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const r = await agendarItensDoLote({
+        projectId,
+        loteId: args.loteId as string,
+        itens: args.itens as unknown[],
+        simular: args.simular === true,
+        // User.id INTERNO — nunca o clerkId. Falha aqui não derruba o agendamento.
+        decididoPor: decididoPor ?? null,
+        superficie: 'chat',
+      })
+      return {
+        ...r,
+        nota: r.simulado
+          ? 'Simulação: nada foi gravado. Mostre a conta à pessoa e só então chame sem simular.'
+          : [
+              'Os concluídos estão na agenda como rascunho — nada publica até aprovar-rascunhos.',
+              ...(r.resumo.pendentes > 0 ? ['Pendentes: a peça ainda está sendo composta; repita a MESMA chamada em alguns minutos.'] : []),
+              ...(r.resumo.falhas > 0 ? ['Falhas: leia o codigo e o motivo de cada item; repetir não resolve conflito nem post apagado.'] : []),
+            ].join(' '),
+      }
+    },
+  }),
 ]
