@@ -55,6 +55,7 @@ import {
   type DiaDaGrade,
   type FormatoDaPeca,
   type Ocupante,
+  chaveDaPropostaDeSlot,
 } from '@/lib/posts/contexto-da-semana'
 
 const JANELA_HISTORICO_DIAS = 56
@@ -80,8 +81,9 @@ const SERVICO = 'sugerir-posts'
  * Com ela, recarregar a tela não cria nada: o mesmo slot devolve o mesmo id, e
  * o desfecho continua sendo um só.
  */
-function chaveDoSlot(projectId: number, scheduledDatetime: string, versao = VERSAO_DA_CADENCIA): string {
-  return chaveDeSugestao('slot', versao, projectId, scheduledDatetime)
+function chaveDoSlot(projectId: number, scheduledDatetime: string, versao = VERSAO_DA_CADENCIA, formato?: FormatoDaPeca | null): string {
+  // O formato faz parte da identidade da proposta (R33): a mesma conta de `chaveDeSugestao`, com o formato no fim.
+  return formato ? chaveDaPropostaDeSlot(projectId, scheduledDatetime, versao, formato) : chaveDeSugestao('slot', versao, projectId, scheduledDatetime)
 }
 
 /**
@@ -507,7 +509,7 @@ export async function campanhasEncerradas(
 async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): Promise<void> {
   if (sugestoes.length === 0) return
 
-  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime, versaoDoSlot(s)))
+  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime, versaoDoSlot(s), s.formato))
   const jaEmitidas = await sugestoesJaEmitidas(chaves)
 
   const novas: number[] = []
@@ -535,6 +537,8 @@ async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): P
           data: s.data,
           hora: s.hora,
           diaSemana: s.diaSemana,
+          // O formato é PARTE da proposta (R33): um story e um feed no mesmo horário são propostas diferentes.
+          ...(s.formato ? { formato: s.formato } : {}),
           motivo: s.motivo,
           ...(s.origem ? { origem: s.origem } : {}),
           ...(s.temaDaGrade ? { temaDaGrade: s.temaDaGrade } : {}),

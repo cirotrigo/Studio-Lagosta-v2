@@ -6359,6 +6359,15 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   E a prova escolhe a página de outro projeto lendo as camadas de verdade
   (`textosDaPagina`), não com `LIKE` no JSONB (R31), e exercita os dois
   caminhos: `SocialPost.pageId` e `Generation.fieldValues.pageId`.
+  🔴 **O FORMATO faz parte da identidade da proposta de slot** (R33 da
+  revisão de 4bf1d0a3): a chave era `(versão, projeto, horário)`, e o mesmo
+  bloco classificado como story numa semana e feed na seguinte (a população
+  do histórico muda) reutilizava o `sugestaoId` — o feed herdava o
+  `descartada` do story, e a precedência de desfechos impedia o aceite de
+  sobrescrever. `chaveDaPropostaDeSlot` (puro) põe o formato no fim da chave
+  e `sugerido.formato` é gravado; a emissão legada (sem formato) fica com a
+  chave antiga, nunca reescrita. A prova registra de verdade no dev (2c) e
+  apaga no cleanup.
   🔴 **Mídia ÚNICA cuja arte não afirma texto também é fonte INDISPONÍVEL**
   (R32 da revisão de d871673c): post vivo sem `pageId` e uma mídia cuja
   Generation aponta para página de outro projeto (ou apagada), sem snapshot

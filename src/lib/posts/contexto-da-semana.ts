@@ -44,6 +44,20 @@ export function chaveDoSlot(quando: string, formato: FormatoDaPeca): string {
 }
 
 /**
+ * A chave de IDEMPOTÊNCIA da proposta de slot (`LearningSignal.chave`): a
+ * proposta é `(projeto, horário, FORMATO)` desde que a ocupação passou a ser
+ * por formato — o mesmo bloco pode ser classificado como story numa semana e
+ * como feed na seguinte (a população do histórico mudou), e são propostas
+ * DIFERENTES: sem o formato na chave, o feed herdava o `descartada` do story,
+ * e a precedência de desfechos impedia o aceite de sobrescrever (R33 da
+ * revisão de 4bf1d0a3). Emissão nova sempre leva o formato; a legada (sem
+ * ele) fica como está, com a chave antiga — o histórico não é reescrito.
+ */
+export function chaveDaPropostaDeSlot(projectId: number, scheduledDatetime: string, versao: string, formato: FormatoDaPeca | null | undefined): string {
+  return formato ? `slot|${versao}|${projectId}|${scheduledDatetime}|${formato}` : `slot|${versao}|${projectId}|${scheduledDatetime}`
+}
+
+/**
  * Os slots que servem a uma peça: só os do formato dela, fora os já reservados
  * (por horário E formato). `formato` ausente no slot (resposta antiga) é story.
  */

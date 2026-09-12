@@ -137,6 +137,7 @@ async function main() {
   const generationsDaProva: string[] = []
   const entradas: string[] = []
   const sinaisDaProva = new Set<string>()
+  const sinaisDeSlotDaProva = new Set<string>()
   const geracoes: string[] = []
   const usosDaProva: string[] = []
   const inicioDaProva = new Date()
@@ -152,6 +153,19 @@ async function main() {
     conferir('a grade COMPLETA tem os 7 dias, cada horário com origem/formato/evidência; exceções são os dias vazios', s1.grade.length === 7 && s1.grade.every((d) => d.horarios.every((h) => ['combinado', 'historico', 'nova'].includes(h.origem) && ['story', 'feed'].includes(h.formato) && typeof h.evidenciaFraca === 'boolean')) && s1.excecoes.length === s1.grade.filter((d) => d.horarios.length === 0).length, JSON.stringify({ horarios: s1.grade.map((d) => d.horarios.length), excecoes: s1.excecoes, origens: [...new Set(s1.grade.flatMap((d) => d.horarios.map((h) => h.origem)))] }))
     conferir('NENHUM LearningSignal foi gravado (registrarSugestoes: false) e a resposta diz sinaisRegistrados = false', sinaisDepois === sinaisAntes && s1.sinaisRegistrados === false, `${sinaisAntes} → ${sinaisDepois}`)
     conferir('toda sugestão cai dentro da janela, traz formato e não tem sugestaoId', s1.sugestoes.every((s) => s.data >= segunda && s.data <= domingo && ['story', 'feed'].includes(s.formato)) && s1.sugestoes.every((s) => !s.sugestaoId), `${s1.sugestoes.length} sugestão(ões)`)
+    // R33 (revisão de 4bf1d0a3): a proposta REGISTRADA leva o formato na chave e no `sugerido`; reemitir devolve o
+    // MESMO id; story e feed no mesmo horário seriam ids diferentes. Registra no DEV de propósito (é o branch de
+    // prova) e apaga no cleanup.
+    console.log('2c) emissão REGISTRADA (dev): a chave do sinal termina no formato, o sugerido carrega o formato e a reemissão devolve o mesmo id')
+    const e1 = await sugerirPosts({ projectId: PROJETO, inicio: segunda, fim: domingo })
+    const e2 = await sugerirPosts({ projectId: PROJETO, inicio: segunda, fim: domingo })
+    for (const s of [...e1.sugestoes, ...e2.sugestoes]) if (typeof s.sugestaoId === 'string') sinaisDeSlotDaProva.add(s.sugestaoId)
+    const comId = e1.sugestoes.filter((s) => typeof s.sugestaoId === 'string')
+    const sinais = await db.learningSignal.findMany({ where: { id: { in: comId.map((s) => s.sugestaoId as string) } }, select: { id: true, chave: true, sugerido: true } })
+    const porId = new Map(sinais.map((s) => [s.id, s]))
+    const todasComFormato = comId.length > 0 && comId.every((s) => { const g = porId.get(s.sugestaoId as string); return !!g && g.chave.endsWith(`|${s.formato}`) && (g.sugerido as Record<string, unknown> | null)?.formato === s.formato })
+    const mesmosIds = e2.sugestoes.length === e1.sugestoes.length && e2.sugestoes.every((s, i) => s.sugestaoId === e1.sugestoes[i].sugestaoId)
+    conferir('R33: toda proposta registrada tem a chave terminando no formato e `sugerido.formato`; a reemissão reutiliza os mesmos ids', e1.sinaisRegistrados === true && todasComFormato && mesmosIds, JSON.stringify({ propostas: e1.sugestoes.length, comId: comId.length, exemploChave: sinais[0]?.chave, mesmosIds }).slice(0, 200))
     const passado = await sugerirPosts({ projectId: PROJETO, inicio: somarDias(hoje, -10), fim: somarDias(hoje, 2), registrarSugestoes: false })
     const longa = await sugerirPosts({ projectId: PROJETO, inicio: segunda, fim: somarDias(segunda, 40), registrarSugestoes: false })
     conferir('início no passado vira hoje, com aviso; janela longa é cortada em 21 dias, com aviso', passado.janela.inicio === hoje && passado.avisos.some((a) => /já passou/.test(a)) && longa.janela.dias === 21 && longa.avisos.some((a) => /cortada/.test(a)))
@@ -444,7 +458,7 @@ async function main() {
     console.log('\ncleanup (só o que ESTA rodada criou)')
     if (generationsDaProva.length) await db.generation.deleteMany({ where: { id: { in: generationsDaProva }, projectId: PROJETO } })
     const falhas: string[] = []
-    const apagados = { posts: 0, entradas: 0, sinais: 0, geracoes: 0, usos: 0 }
+    const apagados = { posts: 0, entradas: 0, sinais: 0, sinaisDeSlot: 0, geracoes: 0, usos: 0 }
     try {
       apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] } })).count
     } catch (e) { falhas.push(`posts: ${e instanceof Error ? e.message : String(e)}`) }
@@ -460,6 +474,7 @@ async function main() {
     try {
       // Só o sinal que ESTA rodada criou: proposta reutilizada de antes da prova (createdAt anterior) fica.
       apagados.sinais = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDaProva] }, projectId: PROJETO, tipo: 'foto', createdAt: { gte: inicioDaProva } } })).count
+      apagados.sinaisDeSlot = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDeSlotDaProva] }, projectId: PROJETO, tipo: 'slot', createdAt: { gte: inicioDaProva } } })).count
     } catch (e) { falhas.push(`sinais: ${e instanceof Error ? e.message : String(e)}`) }
     if (falhas.length) {
       console.error('  ✗ cleanup incompleto:', falhas.join(' | '))

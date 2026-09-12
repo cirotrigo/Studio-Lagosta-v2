@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chaveDoSlot, dataValida, dentroDaJanela, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, janelaDeConsultaDeOcupacao, montarGradeDaSemana, quandoDaPeca, reconciliarSlot, slotOcupado, slotsParaAPeca, slotValido, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
+import { chaveDaPropostaDeSlot, chaveDoSlot, dataValida, dentroDaJanela, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, janelaDeConsultaDeOcupacao, montarGradeDaSemana, quandoDaPeca, reconciliarSlot, slotOcupado, slotsParaAPeca, slotValido, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
 import { fundirGradeComCadencia } from '../grade-da-base'
 
 // quinta 17/09/2026, 10:00 em Brasília
@@ -193,3 +193,16 @@ describe('a grade completa da semana', () => {
     ])
   })
 })
+
+describe('chaveDaPropostaDeSlot — o formato é parte da identidade da proposta (R33)', () => {
+  it('story e feed no mesmo horário são propostas diferentes; o mesmo formato repete a chave; sem formato é a chave legada', () => {
+    const story = chaveDaPropostaDeSlot(8, '2026-09-21 19:00', 'cadencia-v2', 'story')
+    const feed = chaveDaPropostaDeSlot(8, '2026-09-21 19:00', 'cadencia-v2', 'feed')
+    expect(story).not.toBe(feed)
+    expect(story).toBe(chaveDaPropostaDeSlot(8, '2026-09-21 19:00', 'cadencia-v2', 'story'))
+    expect(story).toBe('slot|cadencia-v2|8|2026-09-21 19:00|story')
+    expect(chaveDaPropostaDeSlot(8, '2026-09-21 19:00', 'cadencia-v2', null)).toBe('slot|cadencia-v2|8|2026-09-21 19:00')
+    expect(chaveDaPropostaDeSlot(8, '2026-09-21 19:00', 'grade-v1', 'story')).not.toBe(story)
+  })
+})
+
