@@ -382,13 +382,18 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    herdou dela, no agendamento, a MESMA copy bruta que a arte guarda — com o valor que o render descartou
   //    quando id e nome endereçam a mesma camada. Afirmá-la pelo fallback `copy-do-post` seria a porta lateral
   //    do defeito que a leitura do slide acabou de recusar.
+  //    R49 (revisão do commit 402c11b1): a PRESENÇA do registro não basta. Chegar até aqui com a mídia única numa
+  //    arte de modelo significa que a leitura do slide NÃO resolveu — nenhum valor aplicado (o slot pelo id vazio
+  //    descarta o do nome, e `agendarPost` grava só o que não é vazio) ou registro ilegível — e a copy herdada é a
+  //    mesma bruta, com o valor descartado. Só a leitura do slide afirma; o fallback nunca.
   const arteUnica = !carrossel ? slides[0]?.arte : undefined
-  const copyHerdadaDeModeloSemRegistro =
-    !post.pageId && !!arteUnica && copyDaArteDeModelo(arteUnica) !== null && !snapshotConfiavel(arteUnica)
+  const copyHerdadaDeModelo = !post.pageId && !!arteUnica && copyDaArteDeModelo(arteUnica) !== null
   const NOTA_R47 =
     'a arte desta peça foi desenhada de um modelo sem registro das camadas que o render usou, e a copy que o post (sem página própria) herdou dela não diz quais valores chegaram à mídia — o id da camada vence o nome, e a estrutura atual do modelo pode ser outra: nada a afirmar.'
-  const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModeloSemRegistro
-  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : NOTA_R47
+  const NOTA_R49 =
+    'a arte desta peça foi desenhada de um modelo e o registro das camadas que o render usou não resolve o texto da mídia (nenhum valor aplicado, ou registro ilegível); a copy que o post (sem página própria) herdou dela inclui o que o render descartou: nada a afirmar.'
+  const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModelo
+  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : arteUnica && snapshotConfiavel(arteUnica) ? NOTA_R49 : NOTA_R47
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {

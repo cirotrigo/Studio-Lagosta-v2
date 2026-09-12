@@ -6579,3 +6579,14 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito
   desde 01/09. O formato do feed vem do histórico.
+
+- 🔴 **Só a leitura do SLIDE afirma texto de arte de modelo — o fallback da
+  copy herdada nunca** (R49, revisão do commit 402c11b1). A presença do
+  registro não basta: com o slot `{ content: "" }` pelo id o render descarta o
+  valor pelo nome, `agendarPost` grava só o não-vazio, e o post herda
+  `{ headline: "Costela" }` — que nunca foi desenhado; com registro ilegível,
+  idem. Post sem página própria cuja mídia única é arte de modelo com copy, e
+  que chegou ao fallback (o slide não resolveu), declara indisponível em todo
+  estado. Teste: `R49` em `textos-da-peca.test.ts` (DRAFT, POSTED, no
+  publicador, FAILED; sem valor aplicado e ilegível; controle com valor
+  aplicado).

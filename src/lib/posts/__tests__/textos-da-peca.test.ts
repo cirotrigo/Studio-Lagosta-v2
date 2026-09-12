@@ -382,6 +382,32 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(JSON.stringify(semCaixa)).not.toContain('Apoio novo')
   })
 
+  it('R49: o registro PRESENTE que não resolve o slide (nenhum valor aplicado, ou ilegível) não libera o fallback da copy herdada — em nenhum estado', () => {
+    const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: 'g1' }
+    const renderizado = [{ id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', order: 1 }]
+    // o render aplica o conteúdo VAZIO pelo id e descarta "Costela"; `agendarPost` filtra o vazio e o post herda { headline: 'Costela' }
+    const slots = { l1: { content: '' }, headline: 'Costela' }
+    expect(aplicarSlotNaCamada(renderizado[0], slots).content).toBe('')
+    const herdada = { headline: 'Costela' }
+    const semAplicado = { pageId: 'tpl', source: 'post-schedule', slotValues: slots, layersSnapshot: renderizado }
+    const ilegivel = { pageId: 'tpl', source: 'post-schedule', slotValues: { l1: 'Picanha', headline: 'Costela' }, layersSnapshot: '{nao é json' }
+    for (const peca of [{ status: 'DRAFT' }, { status: 'POSTED' }, { status: 'SCHEDULED', laterPostId: 'zernio-1' }, { status: 'FAILED' }]) {
+      for (const arte of [semAplicado, ilegivel]) {
+        const r = textosDaPeca({ ...base, ...peca, slotValues: herdada }, { slides: [{ url: 'u1', arte, camadasDaPagina: renderizado }] })
+        expect(r.textos).toEqual([])
+        expect(r.origem).toBeUndefined()
+        expect(r.indisponiveis).toMatch(/não resolve o texto da mídia|nada a afirmar/)
+        expect(JSON.stringify(r)).not.toContain('Costela')
+        expect(JSON.stringify(r)).not.toContain('Picanha')
+      }
+    }
+    // controle: com um valor APLICADO pelo registro, o slide responde — e o descartado continua fora
+    const aplicado = { ...semAplicado, slotValues: { l1: 'Picanha', headline: 'Costela' } }
+    const c = textosDaPeca({ ...base, status: 'POSTED', slotValues: herdada }, { slides: [{ url: 'u1', arte: aplicado }] })
+    expect(c).toMatchObject({ textos: ['Picanha'], origem: 'arte', parcial: true })
+    expect(JSON.stringify(c)).not.toContain('Costela')
+  })
+
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
     expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['P'], origem: 'pagina' })
