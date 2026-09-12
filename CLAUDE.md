@@ -5614,7 +5614,12 @@ Codex antes de ser escrito.
   `scripts/validar-revisor-da-arte.ts` é a prova de integração no branch de
   dev (versão, projeto errado, modelo, autosave no meio, imagem única, slide
   de carrossel, render falhando); ela sobe PNG ao Blob de produção e apaga no
-  cleanup.
+  cleanup. 🔴 **Fixture criada em OUTRO projeto entra na lista do cleanup no
+  INSTANTE da criação** (`generationsAlheias`, apagada pelo id exato no
+  `finally` externo, e a exclusão que não acontece CONTA como falha): o cleanup
+  filtra por projeto e marca e não a alcançaria, e um `try/finally` local com
+  `.catch(() => undefined)` deixava a órfã no outro projeto quando o passo
+  quebrava antes dele, com a prova verde (REV-052-01).
 - **Gradiente se aponta pelo id.** Sem `camadas`, o ajuste só mexe no gradiente
   de LEITURA da borda (o que o compositor desenhou) ou cria um; o gradiente que a
   equipe desenhou à mão só muda quando o ajuste traz o id dele, e as regras nunca

@@ -153,6 +153,28 @@ async function main() {
   const blobs = new Set<string>()
   /** Toda página que esta rodada criou (a 1ª e a 2ª peça): o cleanup limpa TODAS (REV-08). */
   const paginasCriadas: string[] = []
+  /**
+   * Generations de prova criadas em OUTRO projeto (a órfã alheia do 6s): o
+   * cleanup externo filtra pelo PROJETO e pela MARCA e não as alcançaria. O id
+   * entra aqui no instante da criação e é apagado no `finally` externo, pelo id
+   * exato, com a falha de exclusão CONTADA — nunca engolida (REV-052-01).
+   */
+  const generationsAlheias: string[] = []
+  /** Apaga Generations pelo id EXATO, uma a uma, e diz quais NÃO sumiram: exclusão que não acontece é falha da prova, não silêncio. */
+  const apagarGenerationsPorId = async (ids: string[]): Promise<{ apagadas: string[]; faltaram: Array<{ id: string; motivo: string }> }> => {
+    const apagadas: string[] = []
+    const faltaram: Array<{ id: string; motivo: string }> = []
+    for (const id of ids) {
+      try {
+        const r = await db.generation.deleteMany({ where: { id } })
+        if (r.count === 1) apagadas.push(id)
+        else faltaram.push({ id, motivo: `deleteMany devolveu ${r.count}` })
+      } catch (e) {
+        faltaram.push({ id, motivo: e instanceof Error ? e.message : String(e) })
+      }
+    }
+    return { apagadas, faltaram }
+  }
   let pageId: string | null = null
   const tokenDoBlob = process.env.BLOB_READ_WRITE_TOKEN
 
@@ -982,9 +1004,14 @@ async function main() {
       // REV-4B-01: uma "órfã" de OUTRO projeto (PROCESSING há mais de 10 min, sem job) tem de ficar intacta na varredura restrita.
       const outroProjeto6s = await db.project.findFirst({ where: { id: { not: PROJETO } }, select: { id: true, userId: true, Template: { take: 1, select: { id: true } } } })
       const templateAlheio = outroProjeto6s?.Template[0]?.id ?? null
-      const orfa6s = templateAlheio && outroProjeto6s
-        ? await db.generation.create({ data: { projectId: outroProjeto6s.id, templateId: templateAlheio, createdBy: outroProjeto6s.userId, status: 'PROCESSING', createdAt: new Date(Date.now() - 20 * 60_000), fieldValues: { prova: '6s', marca: MARCA } as never }, select: { id: true, status: true, fieldValues: true } })
-        : null
+      const criarOrfaAlheia = async (rotulo: string) => {
+        if (!templateAlheio || !outroProjeto6s) return null
+        const criada = await db.generation.create({ data: { projectId: outroProjeto6s.id, templateId: templateAlheio, createdBy: outroProjeto6s.userId, status: 'PROCESSING', createdAt: new Date(Date.now() - 20 * 60_000), fieldValues: { prova: rotulo, marca: MARCA } as never }, select: { id: true, status: true, fieldValues: true } })
+        // Registrada para o cleanup NO INSTANTE da criação: qualquer erro daqui em diante cai no `finally` externo, que a apaga (REV-052-01).
+        generationsAlheias.push(criada.id)
+        return criada
+      }
+      const orfa6s = await criarOrfaAlheia('6s')
       const r6s = await recuperarJobsPerdidos({
         apenas: [jobId6r],
         seams: {
@@ -999,12 +1026,8 @@ async function main() {
       conferir('a recuperação NÃO marcou FAILED: relê depois de perder o CAS e devolve o job à fila (reenfileirados 1, falhados 0)', r6s.falhados === 0 && r6s.reenfileirados === 1 && job6s?.status === 'PENDING', JSON.stringify({ r: r6s, status: job6s?.status, lastError: job6s?.lastError }))
       conferir('a força promovida durante a corrida FICOU no payload, com o orçamento ampliado (3 → 4) e a Generation intacta', rec6s.forcar === true && typeof rec6s.forcaPedidaEm === 'string' && job6s?.maxAttempts === 4 && job6s.attempts === 3 && genDepois6s?.status === genAntes6s?.status, JSON.stringify({ recompor: rec6s, attempts: job6s?.attempts, maxAttempts: job6s?.maxAttempts, gen: genDepois6s?.status }))
       if (orfa6s) {
-        try {
-          const orfaDepois = await db.generation.findUnique({ where: { id: orfa6s.id }, select: { status: true, fieldValues: true } })
-          conferir('a varredura RESTRITA (`apenas`) não tocou na órfã de outro projeto: continua PROCESSING, com o fieldValues intacto, e o resultado diz orfasSemJob 0 (REV-4B-01)', orfaDepois?.status === 'PROCESSING' && JSON.stringify(orfaDepois?.fieldValues) === JSON.stringify(orfa6s.fieldValues) && r6s.orfasSemJob === 0, JSON.stringify({ status: orfaDepois?.status, orfasSemJob: r6s.orfasSemJob }))
-        } finally {
-          await db.generation.delete({ where: { id: orfa6s.id } }).catch(() => undefined)
-        }
+        const orfaDepois = await db.generation.findUnique({ where: { id: orfa6s.id }, select: { status: true, fieldValues: true } })
+        conferir('a varredura RESTRITA (`apenas`) não tocou na órfã de outro projeto: continua PROCESSING, com o fieldValues intacto, e o resultado diz orfasSemJob 0 (REV-4B-01)', orfaDepois?.status === 'PROCESSING' && JSON.stringify(orfaDepois?.fieldValues) === JSON.stringify(orfa6s.fieldValues) && r6s.orfasSemJob === 0, JSON.stringify({ status: orfaDepois?.status, orfasSemJob: r6s.orfasSemJob }))
       } else {
         conferir('não há outro projeto com template no dev para exercitar a órfã alheia (REV-4B-01)', false)
       }
@@ -1013,6 +1036,24 @@ async function main() {
       const r6sB = await recuperarJobsPerdidos({ apenas: [jobId6r] })
       const job6sB = await db.generationJob.findUnique({ where: { id: jobId6r }, select: { status: true } })
       conferir('controle: sem promoção no meio, o job 3/3 expirado é FAILED terminal (falhados 1)', r6sB.falhados === 1 && job6sB?.status === 'FAILED')
+
+      // REV-052-01: a órfã de prova é limpa MESMO quando o passo quebra depois de
+      // criá-la — e a exclusão que não acontece é falha declarada, nunca silêncio.
+      const orfa6sC = await criarOrfaAlheia('6s-c')
+      if (orfa6sC) {
+        await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, leaseExpiresAt: new Date(Date.now() - 600_000), finishedAt: null, payload: payloadNormal6s as never } })
+        let erroDaCostura: unknown = null
+        try {
+          await recuperarJobsPerdidos({ apenas: [jobId6r], seams: { depoisDeLerOsVencidos: async () => { throw new Error('costura de prova quebrou de propósito (REV-052-01)') } } })
+        } catch (e) {
+          erroDaCostura = e
+        }
+        conferir('a costura que quebra DEPOIS de a órfã existir propaga o erro (o passo teria parado aqui) e a órfã já está registrada para o cleanup externo (REV-052-01)', erroDaCostura instanceof Error && /REV-052-01/.test(erroDaCostura.message) && generationsAlheias.includes(orfa6sC.id), erroDaCostura instanceof Error ? erroDaCostura.message : String(erroDaCostura))
+        const aindaExiste = await db.generation.findUnique({ where: { id: orfa6sC.id }, select: { id: true } })
+        conferir('a órfã continua no banco até o cleanup externo — é ele quem apaga, não o passo', Boolean(aindaExiste))
+        const ensaio = await apagarGenerationsPorId(['inexistente-rev-052-01'])
+        conferir('ensaio do cleanup: id que não existe volta em `faltaram` (falha explícita), nada é apagado', ensaio.apagadas.length === 0 && ensaio.faltaram.length === 1 && ensaio.faltaram[0].id === 'inexistente-rev-052-01', JSON.stringify(ensaio))
+      }
       await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'DONE', finishedAt: new Date(), lastError: null } })
     }
 
@@ -1082,7 +1123,14 @@ async function main() {
   } finally {
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
     console.log('\ncleanup (só os ids criados por esta prova)')
-    const criados = { posts: posts.length, generations: 0, jobs: 0, sinais: 0, pages: pageId ? 1 : 0, templates: 0, blobs: blobs.size }
+    const criados = { posts: posts.length, generations: 0, generationsAlheias: 0, jobs: 0, sinais: 0, pages: pageId ? 1 : 0, templates: 0, blobs: blobs.size }
+    // As Generations de prova criadas em OUTRO projeto (6s): pelo id exato,
+    // independentemente do projeto, e a que não sumir CONTA como falha (REV-052-01).
+    if (generationsAlheias.length) {
+      const r = await apagarGenerationsPorId(generationsAlheias)
+      criados.generationsAlheias = r.apagadas.length
+      conferir(`cleanup: as ${generationsAlheias.length} Generation(s) de prova criadas em outro projeto foram apagadas pelo id (nenhuma faltou)`, r.faltaram.length === 0, JSON.stringify(r.faltaram))
+    }
     // Falha no meio da composição deixa Page (e às vezes Generation) sem que
     // `pageId` tenha sido preenchido: o que foi criado com a MARCA desta rodada
     // entra no cleanup do mesmo jeito (achado R2 da revisão do Codex).
