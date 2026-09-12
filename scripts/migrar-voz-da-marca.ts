@@ -62,6 +62,7 @@ import {
   trechosRepetidos,
   ehPooler,
 } from '../src/lib/brand/migracao-da-voz'
+import { ehIndexacaoEmAndamento, perdeuOArrendamento } from '../src/lib/knowledge/marca-de-indexado'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -282,6 +283,53 @@ export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new
   await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never } })
 }
 
+/**
+ * O registrador PADRÃO de um fato novo: `criarEntradaBase` (grava e indexa) e a marca durável de indexado
+ * (PR13-11). O ciclo é gerado AQUI, entregue a `criarEntradaBase` e publicado com o ciclo que ela devolve —
+ * o token que a indexação carimbou (PR13-40). Com o token descartado no meio, todo fato novo caía num falso
+ * "outra indexação assumiu a entrada".
+ */
+export async function criarFatoPeloIndexador(db: Db, fato: FatoACriar, autor: string, signal?: AbortSignal): Promise<void> {
+  const { criarEntradaBase } = await import('../src/lib/knowledge/entries')
+  const entrada = await criarEntradaBase({
+    projectId: fato.projectId,
+    category: fato.categoria,
+    title: fato.titulo,
+    content: fato.trecho,
+    tags: ['migracao-da-voz'],
+    expiresAt: fato.validaAte ? new Date(`${fato.validaAte}T23:59:59-03:00`) : null,
+    metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave },
+    autor,
+  }, { signal, ciclo: randomUUID() })
+  // `criarEntradaBase` só devolve depois de indexar; a marca durável é o que a retomada lê (PR13-11).
+  if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de indexar: a marca de indexado não é gravada por esta execução')
+  await marcarFatoIndexado(db, entrada.id, new Date(), signal, entrada.ciclo)
+}
+
+/** O reindexador PADRÃO da linha incompleta: `reindexEntry` pelo MESMO id e a marca com o ciclo que ele devolve. */
+export async function reindexarFatoPeloIndexador(db: Db, entryId: string, fato: FatoACriar, autor: string, signal?: AbortSignal): Promise<void> {
+  const { reindexEntry } = await import('../src/lib/knowledge/indexer')
+  const { ciclo } = await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
+  if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de reindexar: a marca de indexado não é gravada por esta execução')
+  await marcarFatoIndexado(db, entryId, new Date(), signal, ciclo)
+  // A criação normal invalida o cache de busca do projeto (`criarEntradaBase`); a RETOMADA por
+  // reindexação também tem de invalidar, senão uma busca cacheada no intervalo da falha continua
+  // devolvendo o resultado sem o fato até o TTL (PR13-26). Best-effort, como na criação.
+  if (signal?.aborted) return
+  const { invalidateProjectCache } = await import('../src/lib/knowledge/cache')
+  await invalidateProjectCache(fato.projectId).catch((e) => console.error('[migrar-voz] invalidateProjectCache falhou depois da reindexação:', e))
+}
+
+/**
+ * A entrada do fato está sendo indexada por OUTRA execução (arrendamento vigente, ou tomado no meio — PR13-41):
+ * o cliente é BLOQUEADO com o motivo, sem gravar voz nem ativar; a próxima aplicação retoma pela chave do fato.
+ * `null` para qualquer outro erro, que segue como erro.
+ */
+export function motivoDeBloqueioPorIndexacao(erro: unknown, fato: Pick<FatoACriar, 'trecho'>): string | null {
+  if (!ehIndexacaoEmAndamento(erro) && !perdeuOArrendamento(erro)) return null
+  return `o fato "${fato.trecho.slice(0, 60)}" está sendo indexado por outra execução — ${erro.message}. Nada da voz foi gravado; aplique de novo depois`
+}
+
 /** A trava por projeto: duas aplicações do mesmo manifesto ao mesmo tempo criariam o mesmo fato duas vezes (PR13-10). */
 export function chaveDaTrava(projectId: number): string {
   return `migracao-da-voz:${projectId}`
@@ -440,40 +488,9 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
   // o indexador tem de ser o do banco escolhido — senão NENHUM cliente é escrito (PR13-01).
   // O indexador é conferido contra o que o PROCESSO usa agora (process.env), não só contra o destino declarado (PR13-09).
   const indexacao: ReturnType<typeof podeIndexar> = opcoes.criarFato ? { ok: true } : podeIndexar(opcoes.destino, { url: process.env.UPSTASH_VECTOR_REST_URL ?? null })
-  const criarFato =
-    opcoes.criarFato ??
-    (async (fato: FatoACriar, autor: string, signal?: AbortSignal) => {
-      const { criarEntradaBase } = await import('../src/lib/knowledge/entries')
-      const ciclo = randomUUID()
-      const entrada = await criarEntradaBase({
-        projectId: fato.projectId,
-        category: fato.categoria,
-        title: fato.titulo,
-        content: fato.trecho,
-        tags: ['migracao-da-voz'],
-        expiresAt: fato.validaAte ? new Date(`${fato.validaAte}T23:59:59-03:00`) : null,
-        metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave, [CICLO_DE_INDEXACAO]: ciclo },
-        autor,
-      }, { signal })
-      // `criarEntradaBase` só devolve depois de indexar; a marca durável é o que a retomada lê (PR13-11).
-      if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de indexar: a marca de indexado não é gravada por esta execução')
-      await marcarFatoIndexado(db, entrada.id, new Date(), signal, ciclo)
-    })
+  const criarFato = opcoes.criarFato ?? ((fato: FatoACriar, autor: string, signal?: AbortSignal) => criarFatoPeloIndexador(db, fato, autor, signal))
   const estadoDoFato = opcoes.estadoDoFato ?? ((chave: string, projectId: number) => estadoDoFatoNaBase(db, chave, projectId))
-  const reindexarFato =
-    opcoes.reindexarFato ??
-    (async (entryId: string, fato: FatoACriar, autor: string, signal?: AbortSignal) => {
-      const { reindexEntry } = await import('../src/lib/knowledge/indexer')
-      const { ciclo } = await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
-      if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de reindexar: a marca de indexado não é gravada por esta execução')
-      await marcarFatoIndexado(db, entryId, new Date(), signal, ciclo)
-      // A criação normal invalida o cache de busca do projeto (`criarEntradaBase`); a RETOMADA por
-      // reindexação também tem de invalidar, senão uma busca cacheada no intervalo da falha continua
-      // devolvendo o resultado sem o fato até o TTL (PR13-26). Best-effort, como na criação.
-      if (signal?.aborted) return
-      const { invalidateProjectCache } = await import('../src/lib/knowledge/cache')
-      await invalidateProjectCache(fato.projectId).catch((e) => console.error('[migrar-voz] invalidateProjectCache falhou depois da reindexação:', e))
-    })
+  const reindexarFato = opcoes.reindexarFato ?? ((entryId: string, fato: FatoACriar, autor: string, signal?: AbortSignal) => reindexarFatoPeloIndexador(db, entryId, fato, autor, signal))
   const estados = new Map<number, EstadoDoCliente>()
   const dnas = new Map<number, DnaDeTexto>()
   const donos = new Map<number, string>()
@@ -534,14 +551,20 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
               continue
             }
             await trava.conferir()
-            if (estado.estado === 'incompleto') {
-              // A linha existe sem a marca: o processo anterior caiu entre o SQL e o vetor. Reindexar pelo MESMO id.
-              await trava.vigiar((signal) => reindexarFato(estado.entryId, fato, autor, signal))
-              fatosReindexados++
-              continue
+            try {
+              if (estado.estado === 'incompleto') {
+                // A linha existe sem a marca: o processo anterior caiu entre o SQL e o vetor. Reindexar pelo MESMO id.
+                await trava.vigiar((signal) => reindexarFato(estado.entryId, fato, autor, signal))
+                fatosReindexados++
+                continue
+              }
+              await trava.vigiar((signal) => criarFato(fato, autor, signal))
+              fatosCriados++
+            } catch (e) {
+              const bloqueio = motivoDeBloqueioPorIndexacao(e, fato)
+              if (bloqueio) return { bloqueado: bloqueio }
+              throw e
             }
-            await trava.vigiar((signal) => criarFato(fato, autor, signal))
-            fatosCriados++
           }
           await trava.conferir()
           // Os ids das linhas que sustentam a voz, relidos POR CHAVE depois das escritas (o registrador padrão não

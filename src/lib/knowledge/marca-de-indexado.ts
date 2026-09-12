@@ -56,3 +56,81 @@ export function comCicloDeIndexacao(metadata: unknown, ciclo: string): Record<st
 export function comMarcaDeIndexado(metadata: unknown, em: Date): Record<string, unknown> {
   return { ...metadataComoObjeto(metadata), [MARCA_DE_INDEXADO]: em.toISOString() }
 }
+
+/**
+ * O ARRENDAMENTO da entrada (PR13-41): o token do ciclo só protegia a
+ * PUBLICAÇÃO da marca. A execução que perdeu o ciclo ainda apagava chunks e
+ * vetores que a vencedora tinha acabado de recuperar, e sobrava marca válida
+ * sem vetor. Hoje quem indexa ADQUIRE a entrada por um prazo
+ * (`metadata.cicloExpiraEm`, ISO), renova antes de cada passo destrutivo ou de
+ * publicação e libera ao terminar. Quem encontra arrendamento VIGENTE de outro
+ * token não toca em nada (`IndexacaoEmAndamento`); quem descobre, ao renovar,
+ * que o token não é mais o seu para sem escrever (`ArrendamentoPerdido`).
+ *
+ * Liberar tira SÓ o prazo: o token fica como "o último ciclo", e é contra ele
+ * que `marcarFatoIndexado` publica a marca depois do retorno (PR13-40) — outra
+ * execução que adquirir no meio troca o token e a publicação atrasada é recusada.
+ */
+export const EXPIRACAO_DO_CICLO = 'cicloExpiraEm'
+/**
+ * Duração do arrendamento: bem maior que o prazo de UM passo, para que a
+ * chamada abortada no prazo nunca termine depois do fim do arrendamento que a
+ * autorizou (a folga cobre também relógios de processos diferentes, até ~4 min
+ * de desvio). Preço: uma execução morta segura a entrada por até 5 minutos.
+ */
+export const DURACAO_DO_ARRENDAMENTO_MS = 5 * 60_000
+/** Prazo de cada passo destrutivo ou de publicação depois de renovar (apagar chunks, apagar vetores, gravar chunks, subir vetores, repor a marca). */
+export const PRAZO_DO_PASSO_MS = 60_000
+
+/** O token do arrendamento VIGENTE (token + prazo no futuro), ou null — token sem prazo é ciclo encerrado, não arrendamento. */
+export function arrendamentoVigenteDe(metadata: unknown, agora: number): string | null {
+  const ciclo = cicloDeIndexacaoDe(metadata)
+  const expira = metadataComoObjeto(metadata)[EXPIRACAO_DO_CICLO]
+  if (!ciclo || typeof expira !== 'string') return null
+  const fim = Date.parse(expira)
+  return Number.isFinite(fim) && fim > agora ? ciclo : null
+}
+
+/** Ao ADQUIRIR: sem a marca, com o token e o prazo novos. */
+export function comArrendamento(metadata: unknown, ciclo: string, expiraEm: number): Record<string, unknown> {
+  return { ...comCicloDeIndexacao(metadata, ciclo), [EXPIRACAO_DO_CICLO]: new Date(expiraEm).toISOString() }
+}
+
+/** Ao RENOVAR: o mesmo metadata com o prazo estendido. */
+export function comPrazoRenovado(metadata: unknown, expiraEm: number): Record<string, unknown> {
+  return { ...metadataComoObjeto(metadata), [EXPIRACAO_DO_CICLO]: new Date(expiraEm).toISOString() }
+}
+
+/** Ao LIBERAR: sem o prazo; o token fica como o último ciclo (é contra ele que a marca é publicada depois). */
+export function semPrazoDoArrendamento(metadata: unknown): Record<string, unknown> {
+  const { [EXPIRACAO_DO_CICLO]: _prazo, ...resto } = metadataComoObjeto(metadata)
+  return resto
+}
+
+/** Outra execução detém o arrendamento vigente da entrada: nada foi tocado. A API responde 409; a migração bloqueia o cliente. */
+export class IndexacaoEmAndamento extends Error {
+  readonly code = 'INDEXACAO_EM_ANDAMENTO' as const
+  constructor(readonly entryId: string, readonly expiraEm: string | null) {
+    super(`a entrada ${entryId} está sendo indexada por outra execução${expiraEm ? ` (arrendamento vigente até ${expiraEm})` : ''}: nada foi tocado, tente de novo depois`)
+    this.name = 'IndexacaoEmAndamento'
+  }
+}
+
+/** A execução perdeu o arrendamento no meio (expirou e outra o tomou, ou a linha sumiu): parou antes de escrever, sem compensar nada. */
+export class ArrendamentoPerdido extends Error {
+  readonly code = 'INDEXACAO_PERDIDA' as const
+  constructor(readonly entryId: string, readonly etapa: string) {
+    super(`outra indexação assumiu a entrada ${entryId} antes de "${etapa}": esta execução parou sem escrever mais nada`)
+    this.name = 'ArrendamentoPerdido'
+  }
+}
+
+function temCodigo(erro: unknown, code: string): boolean {
+  return typeof erro === 'object' && erro !== null && (erro as { code?: unknown }).code === code
+}
+export function ehIndexacaoEmAndamento(erro: unknown): erro is IndexacaoEmAndamento {
+  return erro instanceof IndexacaoEmAndamento || temCodigo(erro, 'INDEXACAO_EM_ANDAMENTO')
+}
+export function perdeuOArrendamento(erro: unknown): erro is ArrendamentoPerdido {
+  return erro instanceof ArrendamentoPerdido || temCodigo(erro, 'INDEXACAO_PERDIDA')
+}

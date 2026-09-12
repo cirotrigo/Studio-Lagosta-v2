@@ -8,8 +8,9 @@ import { db } from '@/lib/db'
 import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
-import { lancarSeAbortado } from './aborto'
-import { CICLO_DE_INDEXACAO, comCicloDeIndexacao, comMarcaDeIndexado, temMarcaDeIndexado } from './marca-de-indexado'
+import { EscritaAbortada, lancarSeAbortado, motivoDoAborto } from './aborto'
+import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS } from './marca-de-indexado'
+import { adquirirArrendamento, type ArrendamentoDaEntrada } from './arrendamento'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
 export interface IndexEntryInput {
@@ -143,19 +144,64 @@ export async function indexFile(input: IndexFileInput) {
 }
 
 /**
+ * Um passo destrutivo ou de publicação da reindexação (PR13-41): confere o
+ * sinal, RENOVA o arrendamento com o próprio token (lança `ArrendamentoPerdido`
+ * se outra execução tomou a entrada), confere o sinal de novo e roda a escrita
+ * com um prazo (`PRAZO_DO_PASSO_MS`) muito menor que o arrendamento renovado.
+ * Estourado o prazo — ou disparado o sinal com a chamada em voo —, `emVoo` fica
+ * `true`: o arrendamento NÃO é liberado e vence sozinho, para uma chamada
+ * cancelada que ainda chegue ao destino não cair sobre o ciclo de outra execução.
+ */
+async function passoArrendado<T>(
+  etapa: string,
+  arrendamento: ArrendamentoDaEntrada,
+  signal: AbortSignal | undefined,
+  controle: { emVoo: boolean },
+  escrita: (sinal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  lancarSeAbortado(signal, etapa)
+  await arrendamento.renovar(etapa)
+  lancarSeAbortado(signal, etapa)
+  const prazo = new AbortController()
+  const timer = setTimeout(() => prazo.abort(new Error(`o passo passou do prazo de ${PRAZO_DO_PASSO_MS / 1000}s`)), PRAZO_DO_PASSO_MS)
+  const sinal = signal ? AbortSignal.any([signal, prazo.signal]) : prazo.signal
+  const noPrazo = new Promise<never>((_, rejeitar) => {
+    prazo.signal.addEventListener('abort', () => rejeitar(new EscritaAbortada(etapa, motivoDoAborto(prazo.signal))), { once: true })
+  })
+  noPrazo.catch(() => undefined)
+  try {
+    const trabalho = escrita(sinal)
+    trabalho.catch(() => undefined)
+    const resultado = await Promise.race([trabalho, noPrazo])
+    if (prazo.signal.aborted) throw new EscritaAbortada(etapa, motivoDoAborto(prazo.signal))
+    return resultado
+  } finally {
+    clearTimeout(timer)
+    if (sinal.aborted) controle.emVoo = true
+  }
+}
+
+/**
  * Reindex an existing entry (update chunks and vectors)
  * @param entryId Entry ID to reindex
  * @param tenant Tenant keys
- */
-/**
+ *
  * `opcoes.signal`: aborto cooperativo — conferido antes de cada escrita
  * (apagar chunks/vetores, gravar chunks, subir vetores). Quem segura uma
  * exclusão externa (a migração da voz) dispara o sinal ao perdê-la, e a
  * reindexação para sem tocar em nada que outra aplicação possa ter retomado.
+ *
+ * `opcoes.ciclo`: o token do ciclo, quando quem chama vai publicar a marca de
+ * indexado DEPOIS do retorno (`criarEntradaBase` → `marcarFatoIndexado`,
+ * PR13-40). Sem ele, um token novo. O token EFETIVO sai no retorno.
+ *
+ * A entrada é ARRENDADA do começo ao fim (PR13-41): quem encontra outro ciclo
+ * vigente lança `IndexacaoEmAndamento` sem tocar em nada (a API responde 409);
+ * quem perde o arrendamento no meio lança `ArrendamentoPerdido` antes da
+ * próxima escrita, sem compensar.
  */
 export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal; ciclo?: string } = {}) {
   const { signal } = opcoes
-  // O token DESTE ciclo (PR13-39): carimbado antes de apagar, conferido por compare-and-set ao repor a marca.
   const ciclo = opcoes.ciclo ?? randomUUID()
   // Get entry
   const entry = await db.knowledgeBaseEntry.findUnique({
@@ -173,94 +219,95 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
   }
 
   // A marca durável de indexado (`metadata.indexadoEm`, a que a migração da voz lê) atesta chunks e vetores que
-  // vão ser APAGADOS já já. Se a reindexação cair depois das exclusões (embeddings fora do ar) e a marca ficar, a
-  // retomada da migração lê `completo` e a voz é ativada sem os chunks da busca (PR13-36). Por isso ela é
-  // INVALIDADA antes de apagar — preservando `chaveDoFato` e o resto do metadata — e REPOSTA só depois de subir os
-  // vetores. Entrada sem a marca (a criação normal, ou a retomada de uma linha incompleta) não ganha marca aqui:
-  // quem a grava é quem sabe que a indexação inteira fechou (`marcarFatoIndexado`, depois deste retorno).
-  // E SEMPRE carimba o ciclo (PR13-39): a marca só volta — aqui ou em `marcarFatoIndexado` — se o ciclo ainda for
-  // este; outra indexação que começou no meio (a API de reindex não participa da trava da migração) troca o token
-  // e a execução atrasada não publica marca sobre chunks que não são mais os dela.
-  const tinhaMarcaDeIndexado = temMarcaDeIndexado(entry.metadata)
+  // vão ser APAGADOS já já (PR13-36): adquirir o arrendamento a INVALIDA na mesma escrita — preservando
+  // `chaveDoFato` e o resto do metadata — e ela só volta depois de subir os vetores. Entrada sem a marca (a criação
+  // normal, ou a retomada de uma linha incompleta) não ganha marca aqui: quem a grava é quem sabe que a indexação
+  // inteira fechou (`marcarFatoIndexado`, depois deste retorno, contra o token do ciclo — PR13-39/40).
+  // O token sozinho protegia só a publicação da marca; a execução que perdia o ciclo ainda apagava os chunks e os
+  // vetores da vencedora (PR13-41). Por isso o ciclo inteiro é ARRENDADO: ninguém adquire enquanto ele vale, e
+  // cada passo abaixo renova com o próprio token antes de escrever.
   lancarSeAbortado(signal, 'invalidar a marca de indexado')
-  await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: comCicloDeIndexacao(entry.metadata, ciclo) as Prisma.InputJsonValue } })
+  const arrendamento = await adquirirArrendamento(entryId, ciclo)
+  const controle = { emVoo: false }
 
-  // Delete old chunks and vectors
-  lancarSeAbortado(signal, 'apagar chunks antigos')
-  await db.knowledgeChunk.deleteMany({
-    where: { entryId },
-  })
-
-  // O sinal pode ter disparado enquanto o `deleteMany` esperava (PR13-22): confere de novo antes da exclusão
-  // vetorial — e ela mesma confere outra vez entre a consulta e o `delete`.
-  lancarSeAbortado(signal, 'apagar vetores antigos')
-  await deleteVectorsByEntry(entryId, tenant, { signal })
-
-  // Re-chunk content
-  const chunks = chunkText(entry.content)
-
-  if (chunks.length === 0) {
-    throw new Error('Content is too short to create chunks')
-  }
-
-  // Generate new embeddings
-  const embeddings = await generateEmbeddings(chunks.map(c => c.content))
-
-  // Os embeddings demoram: é AQUI que a posse externa costuma ter se perdido (PR13-20).
-  lancarSeAbortado(signal, 'gravar chunks')
-  // Create new chunks
-  const createdChunks = await Promise.all(
-    chunks.map((chunk) =>
-      db.knowledgeChunk.create({
-        data: {
-          entryId: entry.id,
-          ordinal: chunk.ordinal,
-          content: chunk.content,
-          tokens: chunk.tokens,
-          vectorId: `${entry.id}:${chunk.ordinal}`,
-        },
-      })
+  try {
+    // A exclusão dos chunks é condicionada ao token no PRÓPRIO delete: mesmo que ela chegue ao banco atrasada, não
+    // apaga os chunks de um ciclo que outra execução já tenha tomado.
+    await passoArrendado('apagar chunks antigos', arrendamento, signal, controle, () =>
+      db.knowledgeChunk.deleteMany({
+        where: { entryId, entry: { metadata: { path: [CICLO_DE_INDEXACAO], equals: ciclo } } },
+      }),
     )
-  )
 
-  // Upsert new vectors
-  lancarSeAbortado(signal, 'subir vetores')
-  await upsertVectors(
-    createdChunks.map((chunk, index) => ({
-      id: chunk.vectorId,
-      vector: embeddings[index],
-      metadata: {
-        entryId: chunk.entryId,
-        ordinal: chunk.ordinal,
-        projectId: tenant.projectId,
-        category: entry.category,
-        status: entry.status,
-        userId: tenant.userId,
-        workspaceId: tenant.workspaceId,
-      },
-    }))
-  )
+    // O sinal pode ter disparado enquanto o `deleteMany` esperava (PR13-22) — o passo confere de novo. E a consulta
+    // dos ids pode esperar o bastante para o arrendamento vencer: a renovação roda de novo entre ela e o `delete`.
+    await passoArrendado('apagar vetores antigos', arrendamento, signal, controle, (sinal) =>
+      deleteVectorsByEntry(entryId, tenant, { signal: sinal, antesDeApagar: () => arrendamento.renovar('apagar vetores') }),
+    )
 
-  // Chunks e vetores novos no lugar: a marca volta, sobre o metadata COMO ESTÁ AGORA (outra escrita pode ter
-  // mexido nele no meio). Quem perdeu a posse externa não a repõe (PR13-23): a marca de uma execução abortada
-  // faria a retomada ler `completo` uma linha que outra aplicação ainda reindexa.
-  if (tinhaMarcaDeIndexado) {
-    lancarSeAbortado(signal, 'repor a marca de indexado')
-    const atual = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
-    lancarSeAbortado(signal, 'repor a marca de indexado')
-    // Compare-and-set no CICLO: se outra indexação assumiu a entrada no meio, o token mudou e a marca NÃO é reposta
-    // por esta execução (PR13-39) — a linha fica incompleta, para quem detém o ciclo fechar (ou a retomada refazer).
-    const reposta = await db.knowledgeBaseEntry.updateMany({
-      where: { id: entryId, metadata: { path: [CICLO_DE_INDEXACAO], equals: ciclo } },
-      data: { metadata: comMarcaDeIndexado(atual?.metadata, new Date()) as Prisma.InputJsonValue },
-    })
-    if (reposta.count === 0) throw new Error(`outra indexação assumiu a entrada ${entryId} durante esta reindexação: a marca de indexado não é reposta por esta execução`)
-  }
+    // Re-chunk content
+    const chunks = chunkText(entry.content)
 
-  return {
-    entry,
-    chunks: createdChunks,
-    ciclo,
+    if (chunks.length === 0) {
+      throw new Error('Content is too short to create chunks')
+    }
+
+    // Generate new embeddings (não escreve nada: o arrendamento pode vencer aqui, e o passo seguinte descobre)
+    const embeddings = await generateEmbeddings(chunks.map(c => c.content))
+
+    // Os embeddings demoram: é AQUI que a posse externa costuma ter se perdido (PR13-20).
+    const createdChunks = await passoArrendado('gravar chunks', arrendamento, signal, controle, () =>
+      Promise.all(
+        chunks.map((chunk) =>
+          db.knowledgeChunk.create({
+            data: {
+              entryId: entry.id,
+              ordinal: chunk.ordinal,
+              content: chunk.content,
+              tokens: chunk.tokens,
+              vectorId: `${entry.id}:${chunk.ordinal}`,
+            },
+          })
+        )
+      ),
+    )
+
+    await passoArrendado('subir vetores', arrendamento, signal, controle, (sinal) =>
+      upsertVectors(
+        createdChunks.map((chunk, index) => ({
+          id: chunk.vectorId,
+          vector: embeddings[index],
+          metadata: {
+            entryId: chunk.entryId,
+            ordinal: chunk.ordinal,
+            projectId: tenant.projectId,
+            category: entry.category,
+            status: entry.status,
+            userId: tenant.userId,
+            workspaceId: tenant.workspaceId,
+          },
+        })),
+        { signal: sinal },
+      ),
+    )
+
+    // Chunks e vetores novos no lugar: a marca volta, sobre o metadata COMO ESTÁ AGORA, por compare-and-set no
+    // token (PR13-39). Quem perdeu a posse externa não a repõe (PR13-23), e quem perdeu o arrendamento também não.
+    if (arrendamento.tinhaMarcaDeIndexado) {
+      await passoArrendado('repor a marca de indexado', arrendamento, signal, controle, () => arrendamento.publicarMarca(new Date()))
+    }
+
+    return {
+      entry,
+      chunks: createdChunks,
+      ciclo,
+    }
+  } finally {
+    // Libera só se o token ainda é este (senão é no-op) e nenhuma chamada ficou em voo. O token fica como o último
+    // ciclo: é contra ele que `marcarFatoIndexado` publica a marca depois deste retorno.
+    if (!controle.emVoo) {
+      await arrendamento.liberar().catch((e) => console.error(`[knowledge] não consegui liberar o arrendamento da entrada ${entryId}:`, e))
+    }
   }
 }
 

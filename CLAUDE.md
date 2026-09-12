@@ -7144,6 +7144,35 @@ Da oitava revisão FINAL (BLOQUEADO, PR13-38…39):
   depois (mesmo `vectorId` por chunk — o upsert sobrescreve, não duplica); o
   que a marca atesta continua sendo o ciclo que fechou por último.
 
+Da nona revisão FINAL (BLOQUEADO, PR13-40…41):
+
+- 🔴 **O ciclo que a indexação carimba é o MESMO que quem chama publica**
+  (PR13-40): o registrador padrão da migração punha o token A no `metadata`,
+  `criarEntradaBase` chamava `reindexEntry` só com o sinal, o indexador gerava
+  B, sobrescrevia e devolvia B — descartado — e a marca com A caía no CAS:
+  falso "outra indexação assumiu" em TODO fato novo, sem concorrência nenhuma.
+  Hoje `criarEntradaBase(…, { ciclo })` entrega o token a `reindexEntry` e
+  devolve o ciclo EFETIVO; `criarFatoPeloIndexador` (o registrador padrão,
+  exportado e testado com banco e Upstash falsos) publica com ele. Token
+  gerado fora e não repassado é o mesmo defeito com outra roupa.
+- 🔴 **O token protegia a PUBLICAÇÃO; o ciclo inteiro precisa de EXCLUSÃO**
+  (PR13-41): a execução que perdia o ciclo ainda apagava chunks e vetores que a
+  seguinte tinha recuperado, e sobrava marca válida sem vetor. A entrada é
+  ARRENDADA no próprio `metadata` (`cicloDeIndexacao` + `cicloExpiraEm`,
+  `src/lib/knowledge/arrendamento.ts`, sem migration): adquirir é
+  compare-and-set no `updatedAt` lido; arrendamento vigente de outro token →
+  `IndexacaoEmAndamento` sem tocar em nada (API admin 409, migração
+  `bloqueado`); cada passo destrutivo ou de publicação (apagar chunks, o
+  `index.delete` DEPOIS da consulta dos ids, gravar chunks, subir vetores, repor
+  a marca) RENOVA com o próprio token antes e roda com prazo de 60 s contra 5 min
+  de arrendamento — renovação que falha é `ArrendamentoPerdido` e nada mais é
+  escrito; o `deleteMany` dos chunks ainda confere o token no próprio DELETE.
+  Liberar tira só o prazo (o token fica: é contra ele que `marcarFatoIndexado`
+  publica depois do retorno), e passo abortado com a chamada em voo NÃO libera —
+  o arrendamento vence sozinho. Limite declarado: a exclusão vale para relógios
+  com desvio menor que a folga (~4 min) e para chamadas que respeitam o aborto;
+  uma execução morta segura a entrada por até 5 min.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
