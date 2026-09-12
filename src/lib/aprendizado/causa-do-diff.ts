@@ -149,7 +149,20 @@ export function classificarAlteracao(alteracao: CampoAlterado): AlteracaoComCaus
       ...alteracao,
       causa: 'estilo',
       tiposDeFato: [],
-      evidencia: 'só mudou a diagramação do texto (caixa, acento, separador)',
+      evidencia: 'só mudou a diagramação do texto (caixa, separador)',
+    }
+  }
+
+  // Acento ou cedilha corrigidos: é correção de REDAÇÃO (as mesmas palavras,
+  // escritas certo), não diagramação nem troca de assunto. Fica em `estilo`
+  // (é sobre como a marca escreve) com evidência própria, para a métrica de
+  // correções separá-la da reescrita e da formatação (12/09/2026).
+  if (alteracao.diferenca === 'acento') {
+    return {
+      ...alteracao,
+      causa: 'estilo',
+      tiposDeFato: [],
+      evidencia: 'corrigiu acento ou cedilha (redação)',
     }
   }
 

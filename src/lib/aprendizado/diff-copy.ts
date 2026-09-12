@@ -44,11 +44,20 @@ export interface CampoAlterado {
   antes: string
   depois: string
   /**
-   * `true` quando a diferença some na normalização da casa (caixa, acento,
-   * separador de lista, espaço do "R$"). É edição de DIAGRAMAÇÃO, não de
-   * conteúdo — a F2 vai querer pesá-la diferente.
+   * `true` quando a diferença é só de DIAGRAMAÇÃO — caixa, espaço, separador
+   * de lista, traço, espaço do "R$" — e o texto mantém as MESMAS letras com os
+   * MESMOS acentos. Correção de acento ou cedilha NÃO é formatação: é correção
+   * de redação, e conta como correção (decisão do plano "Marca simples, copy
+   * melhor", 12/09/2026 — antes ela sumia da métrica porque
+   * `normalizeForComparison` tira o acento).
    */
   apenasFormatacao: boolean
+  /**
+   * O que mudou: `formatacao` (caixa/espaço/separador), `acento` (só acento
+   * ou cedilha — as mesmas letras de base) ou `conteudo` (palavra trocada,
+   * acrescentada ou tirada).
+   */
+  diferenca: 'formatacao' | 'acento' | 'conteudo'
   /** 0..1, quanto os dois textos se parecem (bigramas). */
   semelhanca: number
 }
@@ -159,12 +168,40 @@ export function semelhanca(a: string, b: string): number {
   return (2 * comuns) / (x.length - 1 + (y.length - 1))
 }
 
+/**
+ * A normalização da casa SEM tirar o acento: caixa, espaço, separador, traço e
+ * o espaço do "R$" continuam sendo diagramação; "familia" e "família" não.
+ * Espelha `normalizeForComparison` passo a passo, só sem o NFD.
+ */
+export function normalizarMantendoAcento(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/[‘’‚′]/g, "'")
+    .replace(/[“”„″]/g, '"')
+    .replace(/[–—−]/g, '-')
+    .replace(/[•∙●・·|]/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s*([.,;:!?])\s*/g, '$1')
+    .replace(/R\$\s+/gi, 'R$')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toUpperCase()
+}
+
+/** Classifica a diferença entre dois textos que NÃO são idênticos. */
+export function classificarDiferenca(antes: string, depois: string): CampoAlterado['diferenca'] {
+  if (normalizeForComparison(antes) !== normalizeForComparison(depois)) return 'conteudo'
+  return normalizarMantendoAcento(antes) === normalizarMantendoAcento(depois) ? 'formatacao' : 'acento'
+}
+
 function alteracao(campo: string | null, antes: string, depois: string): CampoAlterado {
+  const diferenca = classificarDiferenca(antes, depois)
   return {
     campo,
     antes,
     depois,
-    apenasFormatacao: normalizeForComparison(antes) === normalizeForComparison(depois),
+    apenasFormatacao: diferenca === 'formatacao',
+    diferenca,
     semelhanca: semelhanca(antes, depois),
   }
 }

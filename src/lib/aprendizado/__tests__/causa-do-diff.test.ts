@@ -7,14 +7,15 @@ import {
   dadosProibidos,
   sanitizarParaPerfil,
 } from '@/lib/aprendizado/causa-do-diff'
-import { diffDeCopy, semelhanca } from '@/lib/aprendizado/diff-copy'
+import { diffDeCopy, semelhanca, classificarDiferenca } from '@/lib/aprendizado/diff-copy'
 
 function alteracao(antes: string, depois: string) {
   return classificarAlteracao({
     campo: 'titulo',
     antes,
     depois,
-    apenasFormatacao: false,
+    apenasFormatacao: classificarDiferenca(antes, depois) === 'formatacao',
+    diferenca: classificarDiferenca(antes, depois),
     semelhanca: semelhanca(antes, depois),
   })
 }
@@ -60,9 +61,18 @@ describe('causa da edição', () => {
       antes: 'HAPPY HOUR · TODO DIA',
       depois: 'Happy Hour | Todo dia',
       apenasFormatacao: true,
+      diferenca: 'formatacao',
       semelhanca: 1,
     })
     expect(a.causa).toBe('estilo')
+    expect(a.evidencia).toContain('diagramação')
+  })
+
+  it('acento corrigido é correção de redação — estilo com evidência própria, nunca "só diagramação"', () => {
+    const a = alteracao('Almoco em familia', 'Almoço em família')
+    expect(a.causa).toBe('estilo')
+    expect(a.evidencia).toContain('acento')
+    expect(a.apenasFormatacao).toBe(false)
   })
 
   it('troca de assunto é pontual — ensina sobre a peça, não sobre a marca', () => {
