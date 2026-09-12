@@ -8897,7 +8897,7 @@ esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
 | id do bloco = id físico (comum: com o papel; livre: id ou nome, **só em texto SEM papel** — R26) | sim: o bloco sai vazio | `metadata.compositor.bloco` (novo) |
 | id inferido `extra-<camada>` (formas atual e antiga) — **só o livre SEM herança** (R25), **só em texto SEM papel** (R26) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
 | marca `linhasDoBloco` / `parte` — **inclusive as partes da voz 2 da manchete** (R27) | as partes visíveis seguem do bloco único | a própria metadata |
-| id reservado `<papel>` / `<papel>-N` | as partes visíveis seguem do bloco único | `parte` (R22) |
+| id reservado `<papel>` / `<papel>-N`, **inclusive `headline2` / `headline2-N`** (R28) | as partes visíveis seguem do bloco único | `parte` (R22; a voz 2 também, R28) |
 | papel reconhecido só pelo id | — | `metadata.compositor.papel` |
 | posição (fila por função; voz 2 sem marca, pela altura) | **não é identidade**: só decide o que nada acima decidiu | — |
 
@@ -9032,3 +9032,40 @@ passou a enumerar os casos em vez de escolhê-los à mão
 - Mutação por regra: M0 (tudo desfeito) 88 casos; M1 (livre alcança texto com
   papel) 16; M2 (spec sem o id do livre vazio) pego pelo teste R26; M3 (só a
   primeira voz 2) 15; M4 (bloco vazio com `linhasNaVoz2`) 6.
+
+**Da revisão do commit 9c96dec9 (BLOQUEADO, R28, 12/09/2026):**
+
+- 🔴 **R28 — a voz 2 também tem número legado, e a duplicação precisa levá-lo.**
+  Página legada (sem `linhasDoBloco` nem `parte`) com a manchete
+  `['Costela', 'na brasa', 'hoje']` em `headline` + `headline2` + `headline2-2`:
+  a leitura original junta as vozes 2 pela numeração dos ids (`partesDaVoz2`,
+  R27), mesmo com as camadas movidas no editor contra ela. Mas
+  `materializarVinculosDoIdFisico` EXCLUÍA a `headline2` da marca `parte`; os ids
+  viravam UUIDs e a cópia ordenava pela altura — `['Costela', 'hoje', 'na brasa']`,
+  com o contrato duplicado dizendo o contrário, e a edição seguinte registrando
+  a inversão como revisão da equipe. Hoje a materialização grava `parte` para
+  todo número que a leitura usa — `<papel>`, `<papel>-N`, `headline2`,
+  `headline2-N` — pela mesma função (`numeroDaPartePeloId`).
+- 🔴 **O invariante só via página PREPARADA, e a preparada carrega a marca.**
+  Ganhou dois eixos de VARIANTE de página: marcas (`preparada`; `legada`, sem
+  `linhasDoBloco`/`parte`/`bloco`; `legada-sem-papel`, sem o papel também) e
+  altura (`identidade`, `invertida`, `troca-no-grupo` nas partes de cada papel
+  repartido). Duas lições de construção do próprio teste:
+  - **a preparação devolve todo texto em y 0** — permutar alturas empatadas não
+    reordena nada, e a primeira versão passou sem enxergar o R28. As alturas
+    distintas são atribuídas na ordem do array (a da numeração) ANTES de
+    permutar;
+  - **o contrato AUTORAL não é oráculo da página legada**: ela foi persistida
+    pela leitura legada, que numa distribuição `[0, 2]` / `[1]` segue a
+    numeração e não a ordem autoral. Na legada vale PRESERVAR a leitura em toda
+    operação (releitura, duplicação, ocultar e reexibir, e ocultar na cópia igual
+    a ocultar na original); o contrato autoral e o dono texto a texto valem só na
+    preparada. `legada-sem-papel` é forma que o compositor nunca gravou (o papel
+    existe desde 02/09, o id numerado desde 11/09) e só entra na regra
+    diferencial.
+- Números: 708 contratos, 243 aceitos, **1.239 variantes de página, 18.042
+  operações, 0 falhas**. Antes da correção: **15 casos falhando**, todos na voz 2
+  em dois textos, página legada com altura invertida ou trocada, na duplicação.
+  Teste do R28 em `camadas-extras.test.ts` (leituras original e duplicada
+  idênticas, sem revisão, `parte` 1 e 2 na cópia). Mutação: devolver a exclusão
+  da `headline2` derruba o teste R28 e os mesmos 15 casos.

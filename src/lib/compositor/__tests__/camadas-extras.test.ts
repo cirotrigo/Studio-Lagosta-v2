@@ -1414,6 +1414,33 @@ describe('correção da revisão FINAL do Codex sobre 5d5d378e (R27): a segunda 
     }
   })
 
+  it('R28: a voz 2 LEGADA (sem `linhasDoBloco` nem `parte`) com a altura CONTRÁRIA à numeração dos ids — a leitura original e a da cópia duplicada são idênticas, sem revisão, e a cópia leva `parte` 1 e 2', () => {
+    const v = validarSpec({ ...base, copyAutoral: contrato })
+    const alturas: Record<string, number> = { headline: 200, headline2: 500, 'headline2-2': 400 }
+    const legado = preparar(v.spec!).map((l) => {
+      const { linhasDoBloco: _l, parte: _p, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      return { ...l, position: { ...l.position, y: alturas[String(l.id)] ?? l.position.y }, metadata: { ...l.metadata, compositor } }
+    }) as Layer[]
+    const porId = Object.fromEntries(legado.map((l) => [l.id, l]))
+    expect([porId.headline?.content, porId.headline2?.content, porId['headline2-2']?.content]).toEqual(['Costela', 'na brasa', 'hoje'])
+    expect(legado.every((l) => marca(l) === undefined && (l.metadata?.compositor as { parte?: number }).parte === undefined)).toBe(true)
+
+    const efetiva = persistir(v.spec!, legado).copyAutoral as CopyAutoral
+    expect(manchete(efetiva)).toEqual([['h', ['Costela', 'na brasa', 'hoje'], [1, 2]]])
+    expect(efetiva.revisoes).toEqual([])
+
+    let n = 0
+    const dup = duplicarCamadasDaPagina(legado, () => `uuid-r28-${++n}`, efetiva)
+    const copia = dup.camadas as Layer[]
+    expect(copia.every((l) => !legado.some((o) => o.id === l.id))).toBe(true)
+    const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, copia, { superficie: 'editor' })
+    expect(lidaCopia.mudancas).toEqual([])
+    expect(manchete(lidaCopia.efetiva)).toEqual(manchete(efetiva))
+    expect(revisaoDaPaginaComCamadas(dup.contrato!, copia, equipe).estado).toBe('sem-mudanca')
+    const parteDe = (conteudo: string) => (copia.find((l) => l.content === conteudo)?.metadata?.compositor as { parte?: number } | undefined)?.parte
+    expect([parteDe('na brasa'), parteDe('hoje')]).toEqual([1, 2])
+  })
+
   it('R27 (achado do invariante): a manchete INTEIRA na voz 2 com a camada dela oculta sai vazia SEM `linhasNaVoz2` — o contrato continua válido', () => {
     const inteira: CopyAutoral = { ...contrato, blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'], estilo: { linhasNaVoz2: [0] } }] }
     const v = validarSpec({ ...base, copyAutoral: inteira })
