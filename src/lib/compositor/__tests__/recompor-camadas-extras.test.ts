@@ -34,6 +34,20 @@ const estado = vi.hoisted(() => ({
 
 vi.mock('@/lib/db', () => ({
   db: {
+    /**
+     * A recomposição do PR 0 grava a arte por `mesclarFieldValuesDaArte`: MERGE
+     * raso no banco (`"fieldValues" || ${patch}::jsonb`, e `"resultUrl"` quando
+     * vem), nunca `generation.update` com o `fieldValues` lido antes (REV-R01).
+     * O falso aplica o mesmo merge sobre a arte e registra o resultado.
+     */
+    $executeRaw: async (strings: TemplateStringsArray, ...valores: unknown[]) => {
+      const sql = strings.join('?')
+      if (!sql.includes('UPDATE "Generation" SET "fieldValues" = (CASE')) throw new Error(`SQL inesperado no teste: ${sql}`)
+      const patch = JSON.parse(String(valores[0])) as Record<string, unknown>
+      const atual = (estado.generationGravada?.fieldValues ?? estado.generation?.fieldValues ?? {}) as Record<string, unknown>
+      estado.generationGravada = { ...(sql.includes('"resultUrl" =') ? { resultUrl: valores[1] } : {}), fieldValues: { ...atual, ...patch } }
+      return 1
+    },
     page: {
       findUnique: async () => estado.page,
       updateMany: async ({ where, data }: { where: { id: string; updatedAt: Date }; data: Record<string, unknown> }) => {
