@@ -10934,3 +10934,77 @@ passo 21); o código da aplicação (R12-09) foi aprovado.
   as outras duas camadas (compute de produção, mesmo banco) recusam do mesmo
   jeito, com outra mensagem. Os testes da herança afirmam a INSTRUÇÃO — sem
   isso o mutante sobrevive.
+
+### A qualidade da copy medida (PR 15 de "Marca simples, copy melhor", 12/09/2026)
+
+O relatório de domingo passou a medir a copy: **fidelidade até a agenda**,
+**causa de cada correção**, **correções indevidas**, **tempo até o rascunho** e a
+**voz na escrita**. Contrato PURO em `src/lib/relatorios/qualidade-da-copy-contrato.ts`
+(com teste, e com as provas de mutação dos guardas), serviço só de leitura em
+`qualidade-da-copy.ts`, bloco da carteira + linha por cliente + `metricsJson.copy`
+em `semanal.ts`, carimbo da voz em `src/lib/brand/voz-na-escrita.ts`. Sem migration.
+A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
+
+- 🔴 **A causa NUNCA sai só do autor.** `autor: 'equipe'` tanto é a pessoa
+  reescrevendo quanto o ajuste do REVISOR aplicado pelo app. O que separa, nesta
+  ordem: o motivo gravado (`MOTIVO_DO_AJUSTE_DO_REVISOR`, a MESMA constante que
+  `ajustarArte` grava — não reescreva a string em outro lugar), a arte do ajuste
+  com `fieldValues.revisao` e sem texto trocado na mesma janela de 2 min (fora o
+  autosave do `editor`, que é gesto humano), e a marca
+  `metadata.revisao.ocultaPeloRevisor` na camada. `sistema` em
+  `compositor`/`recomposicao` é compositor; em `reverter-arte`, design; mexer só
+  em `estilo` é design, nunca redação.
+- 🔴 **O revisor é classe PRÓPRIA e nunca vira preferência da equipe** — nem
+  redação, nem design. Ajuste do revisor que não deixou revisão de copy (corpo,
+  gradiente) conta como revisor pela arte do ajuste.
+- **Indevidas** saem da LINHA DO TEMPO dos estados da copy (o original, as
+  efetivas das artes da página em ordem e o contrato da página hoje), bloco a
+  bloco: o sistema mudou linhas; um ajuste do revisor foi desfeito; equipe ou
+  Claude devolveram ao original o texto que o compositor mudou; um refino foi
+  desfeito. A equipe indo e voltando no próprio texto NÃO é indevida.
+- 🔴 **Amostra abaixo do limiar declarado não vira percentual** (`LIMIAR_DE_AMOSTRA`
+  = 5 por cliente, 15 na carteira): a proporção sai `amostraInsuficiente` com
+  `n`/`de`, e o texto do relatório não imprime "%".
+- 🔴 **Legado fica FORA do denominador, e a exclusão é contada**: peça sem
+  contrato, com autoria `desconhecida` (o adaptador do legado) ou sem copy final
+  não é fiel nem infiel. Nenhuma autoria é reconstruída do histórico.
+- **Uma peça por PÁGINA**: todas as artes da página (compositor, cada ajuste) e
+  todos os posts que apontam para ela viram uma peça só; sem página, a arte.
+- **Evidências fora da copy**: `troca-de-arte` e foto `trocada` contam como foto
+  (desenho do plano), `geometria` como design, recusa `TEXTO_NAO_CABE*` da
+  recomposição como compositor. **Avisos do compositor saem À PARTE e nunca como
+  correção** — aviso não é mudança.
+- **Tempo até o rascunho é PROXY declarado** (do item de plano, ou da primeira
+  arte da peça, até o primeiro post; post anterior à arte fica fora) e é medido
+  sobre TODAS as peças, legado incluído — ele não depende do contrato. Mediana e
+  p90 só com amostra acima do limiar.
+- **Esquema ausente degrada, nunca derruba**: sem `Page.copyAutoral` (PR 3) a
+  medida do cliente sai `indisponivel` DIZENDO a coluna (P2022/42703); sem a
+  tabela `BrandVoice` (PR 7) só a versão da voz fica de fora. A carteira tem
+  PRAZO (até 180 s e nunca além de 240 s do início do relatório) e teto de 25 s
+  por cliente; quem não coube sai em "fora do tempo do relatório".
+- **O carimbo da voz** (`fieldValues.vozNaEscrita = { fonte, versao, lidoEm,
+  escritaEm?, incerto? }`) fica FORA do contrato estrito da copy (uma chave a
+  mais recusaria a copy na leitura) e é gravado por `comporPeca` e
+  `startArtGeneration`, best-effort. 🔴 **O `criar-plano` não tem onde guardá-lo**
+  (`ItemDePlano` não tem `fieldValues`, e o PR 15 é sem migration): quem produz
+  passa `escritaEm` (o `createdAt` do item — `executar-plano` e, no compositor,
+  pelo `itemDePlanoId`) e o carimbo NÃO chuta: voz migrada ou regravada depois da
+  escrita sai com `fonte`/`versao` nulas e o motivo em `incerto`. Sem o carimbo o
+  relatório só conta.
+- 🔴 **`voz-service` puxa o `Prisma` do client em RUNTIME**: importado
+  estaticamente em `compor.ts`, derrubou o `compor-avaliacao.test.ts` (que só
+  dubla `@/lib/db`) com `Cannot find module '.prisma/client/default'`. O carimbo
+  entra por `await import()` nos dois produtores.
+- ⚠️ **Dependência de pilha**: a marca `ocultaPeloRevisor` nasceu no fechamento
+  do revisor (`8ad936ee`/`2ceb25fc`) e esta pilha (3 → 7 → 13 → 14) não a tem —
+  a leitura é defensiva. E o `refino` é aceito no contrato mas não tem produtor
+  nesta pilha (a melhoria ainda não grava contrato). Nenhum código de
+  `copy-autoral` foi mexido aqui.
+- **A medida de partida** (`scripts/medir-qualidade-da-copy.ts`) é SEMPRE só
+  leitura, numa transação `READ ONLY`; recusa a produção sem
+  `--producao-somente-leitura` (produção reconhecida pelo COMPUTE contra o
+  `.env`) e falha FECHADA sem `.env` legível. Rodada no branch de dev em
+  12/09/2026 (15/08 a 12/09, dev em dia com a produção): **761 peças em 10
+  clientes, todas sem contrato** — o esperado com o PR 3 fora de produção; a
+  primeira medida comparável vem depois do deploy dos PRs 3 e 7.
