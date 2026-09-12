@@ -41,7 +41,8 @@ const assinatura = montarAssinatura({
 })
 const geo = assinatura.numeros.geometria.story
 const COLUNA = 1080 - 2 * geo.margemH
-const base = { assinatura, medir: medirFalso, familias: ['Bevan', 'Barlow'], fontesNaoCarregadas: new Set<string>() }
+const carregadaExceto = (...ausentes: string[]) => (f: string) => !ausentes.includes(f)
+const base = { assinatura, medir: medirFalso, familias: ['Bevan', 'Barlow'], fonteCarregada: carregadaExceto() }
 
 describe('medirCopy — a mesma régua da composição, dita pelo que é', () => {
   it('a área útil sai dos números da assinatura: coluna = largura − 2 margens; escala 1 quando a página é do formato, a do formato quando não é', () => {
@@ -97,7 +98,7 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
   })
 
   it('fonte que não carregou no servidor = NÃO MEDIDO (os números saem, mas não valem); destaque entre [colchetes] = APROXIMADO', () => {
-    const semBevan = medirCopy({ ...base, fontesNaoCarregadas: new Set(['Bevan']), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'apoio', linhas: ['Sexta é dia'] }] } })
+    const semBevan = medirCopy({ ...base, fonteCarregada: carregadaExceto('Bevan'), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'apoio', linhas: ['Sexta é dia'] }] } })
     expect(semBevan.naoMedido).toBe(true)
     expect(semBevan.blocos[0].naoMedido).toBe(true)
     expect(semBevan.blocos[0].linhasMedidas[0].largura).toBeNull()
@@ -142,7 +143,7 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
       formatoDaPagina: 'story',
       numerosDoProjeto: { destaque: { fontFamily: 'Bevan Bold', pesado: false } },
     })
-    const r = medirCopy({ ...base, assinatura: comDestaque, fontesNaoCarregadas: new Set(['Bevan Bold']), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['[Costela] no bafo da casa hoje!'] }] } })
+    const r = medirCopy({ ...base, assinatura: comDestaque, fonteCarregada: carregadaExceto('Bevan Bold'), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['[Costela] no bafo da casa hoje!'] }] } })
     expect(r.blocos[0].situacao).toBe('nao-cabe')
     expect(r.blocos[0].naoMedido).toBe(true)
     expect(r.naoMedido).toBe(true)
@@ -150,8 +151,59 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
     expect(r.blocos[0].linhasMedidas[0].largura).toBeNull()
     expect(r.blocos[0].avisos.some((a) => /Bevan Bold/.test(a) && /NÃO vale/.test(a))).toBe(true)
     // a mesma linha SEM colchetes não pede a família do destaque: medida vale, mesmo com "Bevan Bold" ausente
-    const semDestaque = medirCopy({ ...base, assinatura: comDestaque, fontesNaoCarregadas: new Set(['Bevan Bold']), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Costela no bafo da casa hoje!'] }] } })
+    const semDestaque = medirCopy({ ...base, assinatura: comDestaque, fonteCarregada: carregadaExceto('Bevan Bold'), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Costela no bafo da casa hoje!'] }] } })
     expect(semDestaque.blocos[0].naoMedido).toBe(false)
+  })
+
+  it('a fonte é conferida por bloco, sobre as famílias PEDIDAS (R04): o segundo serviço com família própria ausente sai NÃO MEDIDO, o primeiro não', () => {
+    const camadas: Layer[] = [
+      { ...texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#fff', lineHeight: 1 }, 'Título'), metadata: { groupId: 'g-topo' } },
+      { ...texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#fff', lineHeight: 1.2 }, 'Seg a sex, das 11h às 15h'), position: { x: 92, y: 1600 }, metadata: { groupId: 'g-rodape' } },
+      { ...texto('info', { fontFamily: 'Fonte Rara', fontSize: 24, color: '#ddd', lineHeight: 1.2 }, 'Rua das Flores, 12 — Centro'), id: 'servico-endereco', position: { x: 92, y: 1650 }, metadata: { groupId: 'g-rodape' } },
+    ]
+    const a = montarAssinatura({ pagina: { id: 'p6', width: 1080, height: 1920, layers: camadas }, formatoDaPagina: 'story', numerosDoProjeto: null })
+    a.camadasDaPagina = camadas
+    const r = medirCopy({ ...base, assinatura: a, fonteCarregada: carregadaExceto('Fonte Rara'), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['Ter a dom, das 18h às 23h', 'Av. Beira Mar, 100'] }] } })
+    expect(r.blocos.map((b) => [b.id, b.naoMedido])).toEqual([['headline', false], ['servico', false], ['servico-2', true]])
+    expect(r.blocos.find((b) => b.id === 'servico-2')?.linhasMedidas[0].largura).toBeNull()
+    expect(r.fontesNaoCarregadas).toEqual(['Fonte Rara'])
+    expect(r.naoMedido).toBe(true)
+  })
+
+  it('papel que a ASSINATURA não tem é ausente mesmo quando uma combinação salva o oferece (R05): a composição recusa antes dos arranjos, e a medição diz o mesmo', () => {
+    const semServico = montarAssinatura({ pagina: { id: 'p7', width: 1080, height: 1920, layers: [texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#fff', lineHeight: 1 })] }, formatoDaPagina: 'story', numerosDoProjeto: null })
+    const combinacaoComServico = {
+      id: 'combinacao:x',
+      nome: 'Rodapé salvo',
+      origem: 'combinacao' as const,
+      papeis: ['servico' as const],
+      alinhamento: null,
+      temLogo: false,
+      textos: [{ papel: 'servico' as const, estilo: { fontFamily: 'Barlow', fontSize: 30, lineHeight: 1.2, letterSpacing: 0, color: '#fff' }, vaoAntes: null, elementos: [], tipo: null }],
+    }
+    const r = medirCopy({ ...base, assinatura: semServico, formato: 'story', combinacoesSalvas: [combinacaoComServico], spec: { blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['Sexta, 19h'] }] } })
+    expect(r.papeisAusentes).toEqual(['servico'])
+    expect(r.cabeTudo).toBe(false)
+    expect(r.blocos.map((b) => [b.id, b.situacao])).toEqual([['servico', 'papel-ausente'], ['headline', 'cabe']])
+  })
+
+  it('a medida por linha leva o PREFIXO da assinatura como a montagem (R06): o "→ " do CTA conta na largura; a linha volta como o autor escreveu; prefixo já escrito não dobra', () => {
+    const comCta = montarAssinatura({ pagina: { id: 'p8', width: 1080, height: 1920, layers: [texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#fff', lineHeight: 1 }), texto('cta', { fontFamily: 'Barlow', fontSize: 50, color: '#fff', lineHeight: 1.2 }, '→ Reserve')] }, formatoDaPagina: 'story', numerosDoProjeto: null })
+    expect(comCta.papeis.cta?.prefixo).toBe('→ ')
+    // 50px × 0,55 = 27,5px por letra; coluna 1000: 36 letras cabem (990), 37 não (1017,5). 36 letras SÓ cabem sem o prefixo (com "→ " são 38 = 1045)
+    const linha = 'Peça agora e garanta a sua mesa hoje'
+    expect(linha.length).toBe(36)
+    const r = medirCopy({ ...base, assinatura: comCta, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Oi'] }, { papel: 'cta', linhas: [linha] }] } })
+    const cta = r.blocos.find((b) => b.papel === 'cta')!
+    expect(cta.linhasMedidas[0].linha).toBe(linha)
+    expect(cta.linhasMedidas[0].largura).toBe(Math.round(38 * 27.5))
+    expect(cta.linhasMedidas[0].cabe).toBe(false)
+    expect(cta.situacao).toBe('cabe-reduzido')
+    // caracteres que cabem descontam o prefixo: o autor tem 36 − 2 = 34 letras
+    expect(cta.linhasMedidas[0].caracteresQueCabem).toBe(34)
+    // prefixo já escrito pelo autor não dobra
+    const jaComSeta = medirCopy({ ...base, assinatura: comCta, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Oi'] }, { papel: 'cta', linhas: ['→ Reserve já'] }] } })
+    expect(jaComSeta.blocos.find((b) => b.papel === 'cta')!.linhasMedidas[0].largura).toBe(Math.round('→ Reserve já'.length * 27.5))
   })
 
   it('o orçamento antes do texto: caracteres por linha pela amostra em português e linhas na altura útil, por papel; sem fonte, nulo', () => {

@@ -105,10 +105,12 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   const [medir, familias] = await Promise.all([createServerTextBoxMeasurer(), familiasDoProjeto(pedido.projectId)])
   const combinacoesSalvas = await arranjosDasCombinacoes(pedido.projectId, medir)
 
-  const medirContra = async (a: AssinaturaDaMarca): Promise<MedicaoDaCopy> => {
-    const fontesNaoCarregadas = await familiasNaoCarregadas([...familiasDaAssinatura(a), ...familias])
-    return medirCopy({ spec, assinatura: a, formato: pedido.formato, medir, familias, fontesNaoCarregadas, combinacoesSalvas })
-  }
+  // A disponibilidade é consultada sobre as famílias que cada bloco PEDIU — o
+  // registro real do napi-rs (a mesma pergunta de `familiasNaoCarregadas`),
+  // por predicado, para valer também na fonte própria do segundo serviço e na
+  // da combinação salva (R04). Sem o módulo nativo, nada está carregado.
+  const fonteCarregada = await predicadoDeFonteCarregada()
+  const medirContra = async (a: AssinaturaDaMarca): Promise<MedicaoDaCopy> => medirCopy({ spec, assinatura: a, formato: pedido.formato, medir, familias, fonteCarregada, combinacoesSalvas })
   const medicao = await medirContra(assinatura)
   medicao.avisos.unshift(...avisosDaFoto)
 
@@ -139,6 +141,15 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     escolhaProvisoria: !spec.preferencias?.variante && !spec.foto && outrasVariantes.length > 0,
     medicao,
     outrasVariantes,
+  }
+}
+
+async function predicadoDeFonteCarregada(): Promise<(familia: string) => boolean> {
+  try {
+    const { GlobalFonts } = await import('@napi-rs/canvas')
+    return (familia) => GlobalFonts.has(familia)
+  } catch {
+    return () => false
   }
 }
 

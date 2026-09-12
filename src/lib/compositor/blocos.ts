@@ -86,7 +86,8 @@ export type ResultadoDoBloco =
   | { bloco: BlocoMontado; recusa: null; avisos: string[] }
   | { bloco: null; recusa: RecusaDeBloco; avisos: string[] }
 
-function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
+/** O prefixo da assinatura (o "→ " do CTA) na primeira linha, salvo quando o autor já o escreveu. Exportada para o `medir-copy` medir a linha EFETIVA. */
+export function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
   if (!prefixo || linhas.length === 0) return linhas
   const primeira = linhas[0]
   return primeira.startsWith(prefixo.trim()) ? linhas : [`${prefixo}${primeira}`, ...linhas.slice(1)]

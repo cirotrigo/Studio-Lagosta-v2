@@ -24,8 +24,8 @@
  */
 
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
-import type { AssinaturaDaMarca, EstiloDePapel } from './assinatura'
-import { camadaDoPapel, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
+import { papeisQueFaltam, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
+import { aplicarPrefixo, camadaDoPapel, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
 import type { ArranjoDeGrupo } from './combinacoes'
 import { prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
@@ -184,7 +184,13 @@ export function medirCopy(args: {
   medir: MeasureTextBox
   /** As famílias cadastradas no projeto (o destaque "pesado" escolhe entre elas). */
   familias: string[]
-  fontesNaoCarregadas: ReadonlySet<string>
+  /**
+   * A família está carregada no servidor de render? Consultada sobre as
+   * famílias que a montagem PEDIU em cada bloco (`familiasPedidas`) — não sobre
+   * uma lista prévia: o segundo texto de serviço pode ter família própria, e a
+   * combinação salva também (R04).
+   */
+  fonteCarregada: (familia: string) => boolean
   /** As combinações salvas do projeto, já como arranjos (a composição também as considera). */
   combinacoesSalvas?: ArranjoDeGrupo[]
 }): MedicaoDaCopy {
@@ -208,8 +214,14 @@ export function medirCopy(args: {
 
   // Papel pedido que a variante (e os arranjos) não têm: a preparação o
   // descarta em silêncio; aqui ele é DECLARADO.
+  // Papel pedido que a ASSINATURA não tem é ausente — a MESMA conferência que a
+  // composição faz ANTES dos arranjos (`papeisQueFaltam` → PAPEIS_INCOMPATIVEIS):
+  // uma combinação salva que oferece o papel monta o bloco aqui, mas a
+  // composição recusa a peça (R05). O bloco montado por ela não conta.
+  const papeisPedidos = [...new Set((args.spec.blocos ?? []).map((b) => b.papel as Papel))]
+  const faltamNaAssinatura = new Set(papeisQueFaltam(args.assinatura, papeisPedidos))
   const preparadosPorPapel = new Set([...preparados.montados, ...preparados.recusas].map((b) => b.papel))
-  const papeisAusentes = [...new Set((args.spec.blocos ?? []).map((b) => b.papel as Papel))].filter((p) => !preparadosPorPapel.has(p) && !(p === 'headline' && preparadosPorPapel.has('headline2' as Papel)))
+  const papeisAusentes = papeisPedidos.filter((p) => faltamNaAssinatura.has(p) || (!preparadosPorPapel.has(p) && !(p === 'headline' && preparadosPorPapel.has('headline2' as Papel))))
   for (const papel of papeisAusentes) {
     const linhas = (args.spec.blocos ?? []).find((b) => (b.papel as Papel) === papel)?.linhas ?? []
     medidas.push({ papel, id: papel, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: linhas.length, naoMedido: false, aproximado: false, linhasMedidas: [], avisos: [`a variante não tem o papel "${papel}"`] })
@@ -217,26 +229,31 @@ export function medirCopy(args: {
 
   const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean): MedidaDeLinha[] => {
     const coluna = Math.floor(area.colunaUtil * (estilo.larguraMaxima ?? 1))
-    const base = camadaDoPapel({ papel, linhas: linhasDaCopy.map(semColchetes), estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
-    return linhasDaCopy.map((linha) => {
-      const limpa = semColchetes(linha)
-      const m = naoMedido ? null : medirLinha(args.medir, base, limpa, coluna)
+    const limpas = linhasDaCopy.map(semColchetes)
+    const base = camadaDoPapel({ papel, linhas: limpas, estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
+    // A linha EFETIVA leva o prefixo da assinatura (o "→ " do CTA) como a
+    // montagem a mede; `linha` continua sendo a string do autor (R06).
+    const efetivas = aplicarPrefixo(limpas, estilo.prefixo)
+    return linhasDaCopy.map((linha, i) => {
+      const efetiva = efetivas[i]
+      const m = naoMedido ? null : medirLinha(args.medir, base, efetiva, coluna)
       return {
         linha,
         largura: m ? Math.round(m.largura) : null,
         coluna,
         cabe: m ? m.largura <= coluna : null,
-        caracteresQueCabem: m && m.largura > 0 ? Math.max(1, Math.floor((limpa.length * coluna) / m.largura)) : null,
+        caracteresQueCabem: m && m.largura > 0 ? Math.max(1, Math.floor((efetiva.length * coluna) / m.largura) - (efetiva.length - limpas[i].length)) : null,
       }
     })
   }
   const naoCarregou = (familias: string[]) => {
-    const faltam = familias.filter((f) => args.fontesNaoCarregadas.has(f))
+    const faltam = familias.filter((f) => !args.fonteCarregada(f))
     for (const f of faltam) fontesUsadasSemCarregar.add(f)
     return faltam.length > 0
   }
 
   for (const b of preparados.montados) {
+    if (faltamNaAssinatura.has(b.papel)) continue
     const naoMedido = naoCarregou(b.familiasPedidas)
     medidas.push({
       papel: b.papel,
@@ -255,6 +272,7 @@ export function medirCopy(args: {
     })
   }
   for (const r of preparados.recusas) {
+    if (faltamNaAssinatura.has(r.papel)) continue
     const naoMedido = naoCarregou(r.familiasPedidas)
     const coluna = Math.floor(area.colunaUtil * (r.estilo.larguraMaxima ?? 1))
     medidas.push({
@@ -274,7 +292,7 @@ export function medirCopy(args: {
       avisos: [
         ...avisosDoPapel(r.papel),
         naoMedido
-          ? `a fonte de "${r.papel}" (${r.familiasPedidas.filter((f) => args.fontesNaoCarregadas.has(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
+          ? `a fonte de "${r.papel}" (${r.familiasPedidas.filter((f) => !args.fonteCarregada(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
           : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
       ],
     })
