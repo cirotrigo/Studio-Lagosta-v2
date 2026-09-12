@@ -4,6 +4,7 @@ import { lerVoz, TETO_DO_PROMPT_DA_VOZ, vozParaPrompt, vozVazia, type VozCompact
 import {
   CATEGORIAS_DE_FATO,
   chaveDoFato,
+  classificarFato,
   coberturaDasRegrasLegadas,
   condicoesOperacionais,
   fatosNaVoz,
@@ -325,11 +326,47 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(isolamentoDoIndexador(prod, { UPSTASH_VECTOR_REST_URL: 'https://prod.upstash.io ', UPSTASH_VECTOR_REST_TOKEN: 'outro' })).toBe('producao')
     expect(isolamentoDoIndexador(prod, { UPSTASH_VECTOR_REST_URL: 'https://dev.upstash.io', UPSTASH_VECTOR_REST_TOKEN: 'd' })).toBe('isolado')
     expect(podeIndexar(undefined)).toMatchObject({ ok: false, motivo: expect.stringMatching(/não foi declarado/) })
-    expect(podeIndexar({ banco: 'dev', indexador: 'producao' })).toMatchObject({ ok: false, motivo: expect.stringMatching(/é o de PRODUÇÃO/) })
-    expect(podeIndexar({ banco: 'dev', indexador: 'ausente' })).toMatchObject({ ok: false, motivo: expect.stringMatching(/não existe/) })
-    expect(podeIndexar({ banco: 'dev', indexador: 'isolado' })).toEqual({ ok: true })
-    expect(podeIndexar({ banco: 'producao', indexador: 'producao' })).toEqual({ ok: true })
-    expect(podeIndexar({ banco: 'producao', indexador: 'isolado' })).toMatchObject({ ok: false })
+    expect(podeIndexar({ banco: 'dev', indexador: 'producao', indexadorUrl: 'https://prod.upstash.io' })).toMatchObject({ ok: false, motivo: expect.stringMatching(/é o de PRODUÇÃO/) })
+    expect(podeIndexar({ banco: 'dev', indexador: 'ausente', indexadorUrl: null })).toMatchObject({ ok: false, motivo: expect.stringMatching(/não existe/) })
+    expect(podeIndexar({ banco: 'dev', indexador: 'isolado', indexadorUrl: 'https://dev.upstash.io' })).toEqual({ ok: true })
+    expect(podeIndexar({ banco: 'producao', indexador: 'producao', indexadorUrl: 'https://prod.upstash.io' })).toEqual({ ok: true })
+    expect(podeIndexar({ banco: 'producao', indexador: 'isolado', indexadorUrl: 'https://dev.upstash.io' })).toMatchObject({ ok: false })
+  })
+
+  it('PR13-12: a condição operacional do DNA vira FATO da prévia (mesma régua da voz) e pode ser citada no manifesto; o rodapé de aprendizado continua fora', () => {
+    const dna = { toneOfVoice: 'Chopp e drinks selecionados em dobro.\nRolha free de segunda a quinta, no jantar.\nFale como quem recebe em casa.', contentRules: 'Regras aprendidas na prática:\n- Nunca prometa em dobro sem a base confirmar (2026-09-05 — decisão de segunda a quinta, no jantar do Ciro)' }
+    const fatos = fatosNoDna(dna)
+    expect(fatos.map((f) => [f.trecho, f.tipos])).toEqual([
+      ['Chopp e drinks selecionados em dobro.', ['condicao']],
+      ['Rolha free de segunda a quinta, no jantar.', ['condicao']],
+      ['Nunca prometa em dobro sem a base confirmar', ['condicao']],
+    ])
+    expect(fatos[1].termos).toEqual(['janela de dias', 'período do dia'])
+    // no manifesto: os dois trechos são aceitos como fatos da prévia
+    const estado: EstadoDoCliente = { versaoDaPreviaAtual: 'abcdef0123456789', trechosDeFato: fatos.map((f) => f.trecho), registro: null, vozValida: true }
+    const m: Manifesto = { versao: VERSAO_DO_MANIFESTO, geradoEm: '2026-09-12T00:00:00.000Z', clientes: [{ projectId: 3, nome: 'TERO', versaoDaPrevia: 'abcdef0123456789', decisao: 'migrar', aprovadoPor: 'Ciro', aprovadoEm: '2026-09-12', fatosParaABase: [{ trecho: 'Chopp e drinks selecionados em dobro.', categoria: 'CAMPANHAS', titulo: 'Happy hour' }, { trecho: 'Rolha free de segunda a quinta, no jantar.', categoria: 'HORARIOS', titulo: 'Rolha free' }] }] }
+    expect(planoDeAplicacao(m, new Map([[3, estado]]))[0]).toMatchObject({ acao: 'migrar', fatos: [expect.objectContaining({ trecho: 'Chopp e drinks selecionados em dobro.' }), expect.objectContaining({ trecho: 'Rolha free de segunda a quinta, no jantar.' })] })
+    // e a MESMA frase na voz continua proibida
+    expect(problemasParaMigrar(vozDeTeste({ exemplos: ['Chopp e drinks selecionados em dobro.'] }))).toHaveLength(1)
+  })
+
+  it('PR13-09: o indexador em uso pelo processo tem de ser o validado no destino', () => {
+    const destino = { banco: 'dev' as const, indexador: 'isolado' as const, indexadorUrl: 'https://dev.upstash.io' }
+    expect(podeIndexar(destino, { url: 'https://dev.upstash.io' })).toEqual({ ok: true })
+    expect(podeIndexar(destino, { url: ' https://dev.upstash.io ' })).toEqual({ ok: true })
+    expect(podeIndexar(destino, { url: 'https://prod.upstash.io' })).toMatchObject({ ok: false, motivo: expect.stringMatching(/não é o validado/) })
+    expect(podeIndexar(destino, { url: undefined })).toMatchObject({ ok: false, motivo: expect.stringMatching(/nenhum.*não é o validado/) })
+    expect(podeIndexar({ banco: 'producao', indexador: 'producao', indexadorUrl: 'https://prod.upstash.io' }, { url: 'https://outro.upstash.io' })).toMatchObject({ ok: false })
+    // sem `efetivo` a conferência do processo não roda (quem chama sem ela não tem o ambiente à mão)
+    expect(podeIndexar(destino)).toEqual({ ok: true })
+  })
+
+  it('PR13-11: a linha existir não prova o vetor — classificarFato: ausente, incompleto (sem indexadoEm) e completo', () => {
+    expect(classificarFato(null)).toBe('ausente')
+    expect(classificarFato({ metadata: { chaveDoFato: 'x' } })).toBe('incompleto')
+    expect(classificarFato({ metadata: null })).toBe('incompleto')
+    expect(classificarFato({ metadata: { chaveDoFato: 'x', indexadoEm: '' } })).toBe('incompleto')
+    expect(classificarFato({ metadata: { chaveDoFato: 'x', indexadoEm: '2026-09-12T10:00:00.000Z' } })).toBe('completo')
   })
 
   it('PR13-02: dnaDiverge aponta os campos que mudaram; null e undefined são a mesma ausência', () => {

@@ -57,7 +57,8 @@ export type OrigemNoDna = 'toneOfVoice' | 'contentRules'
 export interface FatoDetectado {
   /** A frase inteira em que o dado apareceu — é o que o manifesto cita para levar à base. */
   trecho: string
-  tipos: TipoProibido[]
+  /** Preço/horário/data/promoção (`dadosProibidos`) ou `condicao` operacional (`condicoesOperacionais`) — os MESMOS detectores da voz (PR13-12). */
+  tipos: TipoDeFatoNaVoz[]
   termos: string[]
   origem: OrigemNoDna
 }
@@ -201,11 +202,15 @@ export function fatosNoDna(dna: DnaDeTexto): FatoDetectado[] {
     if (!texto) continue
     for (const frase of frasesDe(texto)) {
       const dados = dadosProibidos(frase)
-      if (dados.tipos.length === 0) continue
+      // A condição operacional ("em dobro", "de segunda a quinta, no jantar") é fato aqui pela MESMA régua que a
+      // recusa na voz: o que sai da voz por ser condição tem de poder entrar na base pela prévia (PR13-12).
+      const condicoes = condicoesOperacionais(frase)
+      const tipos: TipoDeFatoNaVoz[] = [...dados.tipos, ...(condicoes.length > 0 ? (['condicao'] as const) : [])]
+      if (tipos.length === 0) continue
       const chave = `${origem}:${frase}`
       if (vistos.has(chave)) continue
       vistos.add(chave)
-      achados.push({ trecho: frase, tipos: dados.tipos, termos: dados.termos, origem })
+      achados.push({ trecho: frase, tipos, termos: [...dados.termos, ...condicoes], origem })
     }
   }
   return achados
@@ -470,6 +475,8 @@ export type Indexador = 'producao' | 'isolado' | 'ausente'
 export interface DestinoDaAplicacao {
   banco: 'producao' | 'dev'
   indexador: Indexador
+  /** A URL do indexador que foi VALIDADA — conferida de novo contra a que o processo usa na hora de aplicar (PR13-09). */
+  indexadorUrl: string | null
 }
 
 /**
@@ -487,15 +494,36 @@ export function isolamentoDoIndexador(prod: Record<string, string | undefined>, 
   return url === prod.UPSTASH_VECTOR_REST_URL?.trim() ? 'producao' : 'isolado'
 }
 
-/** Pode INDEXAR fatos neste destino? Dev exige indexador isolado; produção exige o de produção; sem destino declarado, nada. */
-export function podeIndexar(destino: DestinoDaAplicacao | undefined): { ok: true } | { ok: false; motivo: string } {
+/**
+ * Pode INDEXAR fatos neste destino? Dev exige indexador isolado; produção
+ * exige o de produção; sem destino declarado, nada. E o indexador que o
+ * processo USA na hora de aplicar (`efetivo.url`, o `process.env` que o
+ * cliente vetorial lê) tem de ser o que foi validado: um `UPSTASH_VECTOR_*`
+ * herdado do ambiente apontaria os vetores para outro índice com o SQL em
+ * produção (PR13-09).
+ */
+export function podeIndexar(destino: DestinoDaAplicacao | undefined, efetivo?: { url: string | null | undefined }): { ok: true } | { ok: false; motivo: string } {
   if (!destino) return { ok: false, motivo: 'o destino da aplicação (banco + indexador de vetores) não foi declarado; sem isso os fatos iriam para o índice de PRODUÇÃO' }
+  if (efetivo && (efetivo.url?.trim() || null) !== (destino.indexadorUrl?.trim() || null)) {
+    return { ok: false, motivo: `o indexador de vetores em uso pelo processo (${efetivo.url?.trim() || 'nenhum'}) não é o validado (${destino.indexadorUrl ?? 'nenhum'}): o UPSTASH_VECTOR_* do ambiente mudou depois de resolver o destino` }
+  }
   if (destino.banco === 'dev' && destino.indexador !== 'isolado') {
     const qual = destino.indexador === 'producao' ? 'é o de PRODUÇÃO' : 'não existe'
     return { ok: false, motivo: `o banco é o de dev e o indexador de vetores ${qual}: declare UPSTASH_VECTOR_REST_URL/UPSTASH_VECTOR_REST_TOKEN próprios no .env.development.local antes de aplicar em dev` }
   }
   if (destino.banco === 'producao' && destino.indexador !== 'producao') return { ok: false, motivo: `o banco é o de produção e o indexador de vetores não é o de produção (${destino.indexador})` }
   return { ok: true }
+}
+
+/** A marca DURÁVEL de que o fato foi indexado por completo (metadata da entrada). A linha existir não prova indexação (PR13-11). */
+export const MARCA_DE_INDEXADO = 'indexadoEm'
+export type EstadoDoFato = 'ausente' | 'incompleto' | 'completo'
+/** Pela linha da base: sem linha `ausente`; linha sem `indexadoEm` (interrompida entre o SQL e o vetor) `incompleto`; com a marca `completo`. */
+export function classificarFato(linha: { metadata?: unknown } | null | undefined): EstadoDoFato {
+  if (!linha) return 'ausente'
+  const m = linha.metadata
+  const indexadoEm = m && typeof m === 'object' && !Array.isArray(m) ? (m as Record<string, unknown>)[MARCA_DE_INDEXADO] : undefined
+  return typeof indexadoEm === 'string' && indexadoEm.length > 0 ? 'completo' : 'incompleto'
 }
 
 export interface EstadoDoCliente {

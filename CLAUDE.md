@@ -6819,6 +6819,35 @@ Da revisão do Codex sobre o primeiro commit (BLOQUEADO, PR13-01…08, 12/09/202
   fica ativa; o motivo diz a diferença, e há teste que recusa uma regra ativa
   de "campos do template" na proposta do Espeto.
 
+Da segunda revisão (BLOQUEADO, PR13-09…12, complementos dos anteriores):
+
+- 🔴 **O indexador é ATRIBUÍDO, nunca herdado do ambiente.** `resolverBanco`
+  escreve `UPSTASH_VECTOR_*` no `process.env` nos dois modos (produção: o do
+  `.env`, por cima do que o processo trouxe; dev: só o isolado, senão apaga),
+  guarda a URL validada em `destino.indexadorUrl`, e `podeIndexar` confere na
+  hora de aplicar que a URL em uso pelo processo é a validada — um
+  `UPSTASH_VECTOR_*` exportado antes mandaria os vetores para outro índice
+  com o SQL em produção (PR13-09).
+- 🔴 **Uma aplicação por projeto de cada vez**: `aplicarManifesto` toma
+  `pg_try_advisory_xact_lock(hashtext('migracao-da-voz:<projectId>'))` numa
+  transação que dura até a ativação; quem não consegue é `bloqueado` na hora
+  ("trava por projeto"), sem esperar. A chave do fato vive em JSON, sem
+  unicidade — duas aplicações simultâneas liam "ausente" as duas e criavam o
+  fato e os vetores duas vezes (PR13-10). Os serviços de voz e da base
+  escrevem por outras conexões; a transação só segura a exclusão.
+- 🔴 **A linha existir não prova o vetor.** `criarEntradaBase` grava a linha e
+  indexa depois; interrompido no meio, sobra linha sem vetor. Por isso o fato
+  só é `completo` com `metadata.indexadoEm`, gravado DEPOIS de indexar
+  (`marcarFatoIndexado`); `estadoDoFato` distingue `ausente` / `incompleto` /
+  `completo`, e o incompleto é REINDEXADO pelo mesmo id (`reindexEntry`, que
+  apaga chunks e vetores antigos antes de refazer) antes de a voz ser ativada
+  (PR13-11). `fatosReindexados` sai no resultado.
+- **Condição operacional é fato do DNA também**: `fatosNoDna` usa os MESMOS
+  detectores da voz (`dadosProibidos` + `condicoesOperacionais`), então "chopp
+  e drinks selecionados em dobro" e "de segunda a quinta, no jantar" aparecem
+  na prévia com tipo `condicao` e podem ser citados no manifesto — o que sai
+  da voz por ser condição precisa ter porta de entrada na base (PR13-12).
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

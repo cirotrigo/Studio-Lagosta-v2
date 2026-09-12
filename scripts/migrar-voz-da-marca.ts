@@ -49,10 +49,13 @@ import {
   podeIndexar,
   problemasParaMigrar,
   type DestinoDaAplicacao,
+  classificarFato,
+  MARCA_DE_INDEXADO,
 } from '../src/lib/brand/migracao-da-voz'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
+const VECTOR_KEYS = ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN'] as const
 
 function parseEnvFile(caminho: string): Record<string, string> {
   if (!existsSync(caminho)) return {}
@@ -97,12 +100,15 @@ export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; pro
     if (!dev.DATABASE_URL) abortar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
     for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
   }
-  // O indexador de vetores da base: em dev só é usado o que o .env.development.local declara — e só se for OUTRO.
+  // O indexador de vetores da base é ATRIBUÍDO, nunca herdado: em produção o do .env, por cima do que o processo
+  // trouxe do ambiente (um UPSTASH_VECTOR_* exportado antes mandaria os vetores para outro índice com o SQL em
+  // produção — PR13-09); em dev só o isolado do .env.development.local, senão nenhum.
   const dev = opcoes.dev ? parseEnvFile(resolve(ROOT, '.env.development.local')) : prod
   const indexador = isolamentoDoIndexador(prod, dev)
-  if (opcoes.dev) {
-    if (indexador === 'isolado') for (const k of ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN'] as const) process.env[k] = dev[k]
-    else for (const k of ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN'] as const) delete process.env[k]
+  const fonteDoIndexador = opcoes.dev ? (indexador === 'isolado' ? dev : {}) : prod
+  for (const k of VECTOR_KEYS) {
+    if (fonteDoIndexador[k]) process.env[k] = fonteDoIndexador[k]
+    else delete process.env[k]
   }
   const alvo = endpointDe(process.env.DATABASE_URL)
   const producaoSet = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
@@ -110,7 +116,7 @@ export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; pro
   if (!alvo) abortar('DATABASE_URL ilegível.')
   const producao = producaoSet.has(alvo)
   if (opcoes.dev && producao) abortar('--dev pediu o branch de dev, mas o banco resolvido é o de PRODUÇÃO.', [`DATABASE_URL aponta para ${alvo}.`])
-  return { endpoint: alvo, producao, destino: { banco: producao ? 'producao' : 'dev', indexador } }
+  return { endpoint: alvo, producao, destino: { banco: producao ? 'producao' : 'dev', indexador, indexadorUrl: process.env.UPSTASH_VECTOR_REST_URL ?? null } }
 }
 
 type Db = Pick<PrismaClient, 'project' | 'brandDNA' | 'brandVoice' | 'knowledgeBaseEntry' | '$queryRaw'>
@@ -190,14 +196,22 @@ export interface ResultadoDaAplicacao {
   /** Contados mesmo quando a aplicação termina em `erro`: é o que uma retomada precisa saber. */
   fatosCriados?: number
   fatosJaExistentes?: number
+  /** Linhas que existiam SEM a marca de indexado (interrupção entre o SQL e o vetor) e foram reindexadas (PR13-11). */
+  fatosReindexados?: number
   erro?: string
 }
 
 export interface AplicarOpcoes {
   /** Quem grava o fato na base. O padrão é `criarEntradaBase` (indexa na busca); a prova injeta um registrador. */
   criarFato?: (fato: FatoACriar, autor: string) => Promise<void>
-  /** O fato com esta chave já está na base? O padrão consulta `metadata.chaveDoFato`; a prova injeta o próprio registro. */
-  fatoJaExiste?: (chave: string, projectId: number) => Promise<boolean>
+  /**
+   * O estado do fato com esta chave na base: `ausente`, `incompleto` (linha
+   * sem a marca `indexadoEm` — o processo caiu entre o SQL e o vetor) ou
+   * `completo`. O padrão consulta `metadata`; a prova injeta o próprio registro.
+   */
+  estadoDoFato?: (chave: string, projectId: number) => Promise<{ estado: 'ausente' } | { estado: 'incompleto' | 'completo'; entryId: string }>
+  /** Reindexa a linha incompleta e a marca como indexada. O padrão é `reindexEntry` + `marcarFatoIndexado`; a prova injeta. */
+  reindexarFato?: (entryId: string, fato: FatoACriar, autor: string) => Promise<void>
   /**
    * Onde o registrador PADRÃO vai escrever (o de `resolverBanco`). Sem
    * `criarFato` injetado ele é obrigatório, e dev com indexador de produção
@@ -205,14 +219,61 @@ export interface AplicarOpcoes {
    */
   destino?: DestinoDaAplicacao
   agora?: Date
+  /** A trava por projeto (PR13-10). O padrão é `travaPorProjeto()`; a prova injeta para simular a concorrência. */
+  comTrava?: ComTrava
   /** Costuras para a prova: rodam entre etapas reais e nunca são usadas pelo script. */
   seams?: { antesDeAtivar?: (projectId: number) => Promise<void> }
 }
 
-/** O fato com esta chave já existe na base deste projeto? (consulta por `metadata.chaveDoFato`). */
-export async function fatoExisteNaBase(db: Db, chave: string, projectId: number): Promise<boolean> {
-  const achado = await db.knowledgeBaseEntry.findFirst({ where: { projectId, metadata: { path: ['chaveDoFato'], equals: chave } }, select: { id: true } })
-  return achado !== null
+/** O estado do fato com esta chave na base deste projeto (consulta por `metadata.chaveDoFato`; `classificarFato` decide). */
+export async function estadoDoFatoNaBase(db: Db, chave: string, projectId: number): Promise<{ estado: 'ausente' } | { estado: 'incompleto' | 'completo'; entryId: string }> {
+  const linha = await db.knowledgeBaseEntry.findFirst({ where: { projectId, metadata: { path: ['chaveDoFato'], equals: chave } }, select: { id: true, metadata: true }, orderBy: { createdAt: 'asc' } })
+  const estado = classificarFato(linha)
+  return estado === 'ausente' || !linha ? { estado: 'ausente' } : { estado, entryId: linha.id }
+}
+
+/** A marca durável de indexação concluída, gravada DEPOIS de o vetor existir — a linha existir não prova o vetor (PR13-11). */
+export async function marcarFatoIndexado(db: Db, entryId: string, em: Date = new Date()): Promise<void> {
+  const linha = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
+  const metadata = linha?.metadata && typeof linha.metadata === 'object' && !Array.isArray(linha.metadata) ? (linha.metadata as Record<string, unknown>) : {}
+  await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: { ...metadata, [MARCA_DE_INDEXADO]: em.toISOString() } as never } })
+}
+
+/** A trava por projeto: duas aplicações do mesmo manifesto ao mesmo tempo criariam o mesmo fato duas vezes (PR13-10). */
+export function chaveDaTrava(projectId: number): string {
+  return `migracao-da-voz:${projectId}`
+}
+
+export type ComTrava = <T>(projectId: number, corpo: () => Promise<T>) => Promise<T | { bloqueado: string }>
+
+/**
+ * A trava é um advisory lock de TRANSAÇÃO numa CONEXÃO PRÓPRIA (`DIRECT_URL`,
+ * sem o pooler — advisory lock por trás do pgbouncer em modo transação não é
+ * confiável), aberta só para isto. Não pode ser a conexão do `db` da
+ * aplicação: o `DATABASE_URL` da casa tem `connection_limit=1`, e segurar uma
+ * transação interativa nela enquanto os serviços de voz e da base consultam o
+ * mesmo client esgota o pool (medido na prova, 12/09/2026: "Timed out
+ * fetching a new connection… connection limit: 1"). O corpo roda nas conexões
+ * de sempre; a transação da trava só existe para segurar a exclusão até a
+ * ativação terminar. Quem não consegue a trava é `bloqueado` na hora.
+ */
+export function travaPorProjeto(url = process.env.DIRECT_URL ?? process.env.DATABASE_URL): ComTrava {
+  return async (projectId, corpo) => {
+    const { PrismaClient } = await import('@prisma/client')
+    const cliente = new PrismaClient({ datasources: { db: { url } } })
+    try {
+      return await cliente.$transaction(
+        async (tx) => {
+          const trava = await tx.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${chaveDaTrava(projectId)})) AS ok`
+          if (!trava[0]?.ok) return { bloqueado: 'outra aplicação da migração deste cliente está em andamento (trava por projeto); tente de novo quando ela terminar' }
+          return corpo()
+        },
+        { maxWait: 30_000, timeout: 10 * 60_000 },
+      )
+    } finally {
+      await cliente.$disconnect().catch(() => undefined)
+    }
+  }
 }
 
 /**
@@ -226,12 +287,13 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
   const { gravarVoz, migrarParaVoz } = await import('../src/lib/brand/voz-service')
   // O registrador padrão INDEXA (Upstash Vector). Sem um registrador injetado, o destino tem de estar declarado e
   // o indexador tem de ser o do banco escolhido — senão NENHUM cliente é escrito (PR13-01).
-  const indexacao: ReturnType<typeof podeIndexar> = opcoes.criarFato ? { ok: true } : podeIndexar(opcoes.destino)
+  // O indexador é conferido contra o que o PROCESSO usa agora (process.env), não só contra o destino declarado (PR13-09).
+  const indexacao: ReturnType<typeof podeIndexar> = opcoes.criarFato ? { ok: true } : podeIndexar(opcoes.destino, { url: process.env.UPSTASH_VECTOR_REST_URL ?? null })
   const criarFato =
     opcoes.criarFato ??
     (async (fato: FatoACriar, autor: string) => {
       const { criarEntradaBase } = await import('../src/lib/knowledge/entries')
-      await criarEntradaBase({
+      const entrada = await criarEntradaBase({
         projectId: fato.projectId,
         category: fato.categoria,
         title: fato.titulo,
@@ -241,8 +303,17 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
         metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave },
         autor,
       })
+      // `criarEntradaBase` só devolve depois de indexar; a marca durável é o que a retomada lê (PR13-11).
+      await marcarFatoIndexado(db, entrada.id)
     })
-  const fatoJaExiste = opcoes.fatoJaExiste ?? ((chave: string, projectId: number) => fatoExisteNaBase(db, chave, projectId))
+  const estadoDoFato = opcoes.estadoDoFato ?? ((chave: string, projectId: number) => estadoDoFatoNaBase(db, chave, projectId))
+  const reindexarFato =
+    opcoes.reindexarFato ??
+    (async (entryId: string, fato: FatoACriar, autor: string) => {
+      const { reindexEntry } = await import('../src/lib/knowledge/indexer')
+      await reindexEntry(entryId, { projectId: fato.projectId, userId: autor })
+      await marcarFatoIndexado(db, entryId)
+    })
   const estados = new Map<number, EstadoDoCliente>()
   const dnas = new Map<number, DnaDeTexto>()
   const donos = new Map<number, string>()
@@ -272,25 +343,45 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
     // Contados FORA do try: uma falha no meio devolve quantos fatos já estão na base (a retomada não os recria).
     let fatosCriados = 0
     let fatosJaExistentes = 0
+    let fatosReindexados = 0
     try {
       if (!autor) throw new Error('projeto sem dono (userId) para assinar as entradas da base')
       if (!dna) throw new Error('o DNA de texto aprovado não foi lido')
-      for (const f of acao.fatos) {
-        const chave = chaveDoFato({ projectId: acao.projectId, versaoDaPrevia: cliente.versaoDaPrevia, trecho: f.trecho })
-        if (await fatoJaExiste(chave, acao.projectId)) {
-          fatosJaExistentes++
-          continue
-        }
-        await criarFato({ projectId: acao.projectId, categoria: f.categoria, titulo: f.titulo, trecho: f.trecho, validaAte: f.validaAte ?? null, versaoDaPrevia: cliente.versaoDaPrevia, chave }, autor)
-        fatosCriados++
+      // A TRAVA por projeto (advisory lock do Postgres, em conexão própria — ver `travaPorProjeto`): duas aplicações
+      // do mesmo manifesto ao mesmo tempo leriam "chave ausente" as duas e criariam o fato (e os vetores) duas
+      // vezes — a chave em JSON não tem unicidade (PR13-10). Quem não consegue a trava é bloqueado, sem esperar.
+      const comTrava = opcoes.comTrava ?? travaPorProjeto()
+      const desfecho = await comTrava(acao.projectId, async () => {
+          for (const f of acao.fatos) {
+            const chave = chaveDoFato({ projectId: acao.projectId, versaoDaPrevia: cliente.versaoDaPrevia, trecho: f.trecho })
+            const fato: FatoACriar = { projectId: acao.projectId, categoria: f.categoria, titulo: f.titulo, trecho: f.trecho, validaAte: f.validaAte ?? null, versaoDaPrevia: cliente.versaoDaPrevia, chave }
+            const estado = await estadoDoFato(chave, acao.projectId)
+            if (estado.estado === 'completo') {
+              fatosJaExistentes++
+              continue
+            }
+            if (estado.estado === 'incompleto') {
+              // A linha existe sem a marca: o processo anterior caiu entre o SQL e o vetor. Reindexar pelo MESMO id.
+              await reindexarFato(estado.entryId, fato, autor)
+              fatosReindexados++
+              continue
+            }
+            await criarFato(fato, autor)
+            fatosCriados++
+          }
+          const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
+          await opcoes.seams?.antesDeAtivar?.(acao.projectId)
+          // A ativação confere, na mesma transação dela, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02).
+          const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules } })
+          return { vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString() }
+      })
+      if ('bloqueado' in desfecho) {
+        resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'bloqueado', motivo: desfecho.bloqueado })
+        continue
       }
-      const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
-      await opcoes.seams?.antesDeAtivar?.(acao.projectId)
-      // A ativação confere, na mesma transação, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02).
-      const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules } })
-      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString(), fatosCriados, fatosJaExistentes })
+      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', vozVersao: desfecho.vozVersao, migradaEm: desfecho.migradaEm, fatosCriados, fatosJaExistentes, fatosReindexados })
     } catch (e) {
-      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', erro: e instanceof Error ? e.message : String(e), fatosCriados, fatosJaExistentes })
+      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', erro: e instanceof Error ? e.message : String(e), fatosCriados, fatosJaExistentes, fatosReindexados })
     }
   }
   return resultados
@@ -342,7 +433,7 @@ async function main() {
   console.log(`indexador de vetores da base: ${destino.indexador}`)
   const resultados = await aplicarManifesto(db, lido.manifesto, { destino })
   for (const r of resultados) {
-    const fatos = r.fatosCriados !== undefined ? ` · fatos: ${r.fatosCriados} criado(s), ${r.fatosJaExistentes ?? 0} já na base` : ''
+    const fatos = r.fatosCriados !== undefined ? ` · fatos: ${r.fatosCriados} criado(s), ${r.fatosJaExistentes ?? 0} já na base, ${r.fatosReindexados ?? 0} reindexado(s)` : ''
     console.log(`  ${r.projectId} ${r.nome}: ${r.acao}${r.motivo ? ` — ${r.motivo}` : ''}${r.erro ? ` — ERRO: ${r.erro}` : ''}${r.vozVersao ? ` · voz v${r.vozVersao}, migrada em ${r.migradaEm}` : ''}${fatos}`)
   }
   const arquivo = resolve(saida, `resultado-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)

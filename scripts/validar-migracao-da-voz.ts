@@ -14,11 +14,14 @@
  *     nada gravado, o registrador não é chamado;
  *  3b. o caminho REAL (sem registrador injetado) em dev com o indexador de
  *     vetores de produção (ou sem indexador) é BLOQUEADO antes de qualquer
- *     escrita (PR13-01);
- *  4a. falha parcial: o registrador quebra no 2º fato — o cliente volta em
- *     erro com a contagem do que já está na base, voz não gravada; um fato
- *     já existente na base (linha real com `metadata.chaveDoFato`) é
- *     reconhecido pela consulta padrão (PR13-03);
+ *     escrita (PR13-01); 3c. destino validado com um indexador e o processo
+ *     usando OUTRO (UPSTASH_VECTOR_* herdado) também bloqueia (PR13-09);
+ *  4a. falha parcial: uma linha REAL com a chave do 1º fato e SEM a marca de
+ *     indexado é `incompleto` e é REINDEXADA pelo mesmo id (PR13-11); o
+ *     registrador quebra na 2ª criação — o cliente volta em erro com as
+ *     contagens, voz não gravada (PR13-03);
+ *  4b. com a trava do projeto tomada por outra transação, a aplicação é
+ *     bloqueada sem escrever nada (PR13-10);
  *  4. aplicar com o manifesto aprovado: a retomada NÃO recria os fatos que já
  *     existem, cria só os que faltam (trecho exato, categoria, título, autor
  *     = dono do projeto), a voz é gravada (v1), a migração liga a precedência
@@ -110,7 +113,7 @@ async function main() {
   const inicio = new Date(Date.now() - 1000)
 
   const { db } = await import('../src/lib/db')
-  const { aplicarManifesto, bancoSemTabelaDeVoz, fatoExisteNaBase, gerarPrevias, lerEstadoDoCliente } = await import('./migrar-voz-da-marca')
+  const { aplicarManifesto, bancoSemTabelaDeVoz, chaveDaTrava, estadoDoFatoNaBase, gerarPrevias, lerEstadoDoCliente, marcarFatoIndexado } = await import('./migrar-voz-da-marca')
   type FatoACriar = import('./migrar-voz-da-marca').FatoACriar
   const { chaveDoFato, isolamentoDoIndexador, lerManifesto, manifestoEmBranco, previaParaMarkdown, VERSAO_DO_MANIFESTO } = await import('../src/lib/brand/migracao-da-voz')
   const { VOZES_PROPOSTAS } = await import('./lib/vozes-propostas')
@@ -133,8 +136,14 @@ async function main() {
   const criarFato = async (fato: FatoACriar, autor: string) => {
     fatosAnotados.push({ fato, autor })
   }
-  // "Já existe" para a prova: o que o stub anotou OU o que está de verdade na base (a consulta padrão do script).
-  const fatoJaExiste = async (chave: string, projectId: number) => fatosAnotados.some((a) => a.fato.chave === chave) || fatoExisteNaBase(db, chave, projectId)
+  // O estado do fato para a prova: o que o stub anotou é "completo"; o resto vem da base (a consulta padrão do script).
+  const estadoDoFato = async (chave: string, projectId: number) => (fatosAnotados.some((a) => a.fato.chave === chave) ? ({ estado: 'completo' as const, entryId: 'stub' }) : estadoDoFatoNaBase(db, chave, projectId))
+  // O reindexador da prova: anota e grava a marca durável (o que o padrão faz depois do `reindexEntry`).
+  const reindexados: Array<{ entryId: string; chave: string }> = []
+  const reindexarFato = async (entryId: string, fato: FatoACriar) => {
+    reindexados.push({ entryId, chave: fato.chave })
+    await marcarFatoIndexado(db, entryId)
+  }
   const TAG_DA_PROVA = 'prova-migracao-da-voz-pr13'
   const linhasDeBaseDaProva: string[] = []
   const manifestoCom = (cliente: Partial<Manifesto['clientes'][number]>): Manifesto => ({
@@ -185,33 +194,62 @@ async function main() {
     console.log('3b) o caminho REAL (sem registrador injetado) em dev: indexador de vetores de produção ou ausente BLOQUEIA antes de qualquer escrita (PR13-01)')
     const indexadorDaqui = isolamentoDoIndexador(parseEnvFile(resolve(ROOT, '.env')), parseEnvFile(resolve(ROOT, '.env.development.local')))
     const baseAntes3b = await db.knowledgeBaseEntry.count({ where: { projectId: PROJETO } })
-    const r3b = await aplicarManifesto(db, aprovado.manifesto, { destino: { banco: 'dev', indexador: indexadorDaqui === 'isolado' ? 'producao' : indexadorDaqui } })
+    const r3b = await aplicarManifesto(db, aprovado.manifesto, { destino: { banco: 'dev', indexador: indexadorDaqui === 'isolado' ? 'producao' : indexadorDaqui, indexadorUrl: process.env.UPSTASH_VECTOR_REST_URL ?? null } })
     const r3c = await aplicarManifesto(db, aprovado.manifesto, {})
     conferir(`destino dev com indexador "${indexadorDaqui === 'isolado' ? 'producao' : indexadorDaqui}" e destino não declarado: os dois bloqueados com o motivo do indexador`, r3b[0]?.acao === 'bloqueado' && /indexador da base/.test(r3b[0].motivo ?? '') && r3c[0]?.acao === 'bloqueado' && /não foi declarado/.test(r3c[0].motivo ?? ''), `${r3b[0]?.motivo} || ${r3c[0]?.motivo}`)
+    // 3c (PR13-09): o destino foi validado com um indexador isolado, mas o PROCESSO usa outro (UPSTASH_VECTOR_* herdado)
+    const urlAntes3c = process.env.UPSTASH_VECTOR_REST_URL
+    process.env.UPSTASH_VECTOR_REST_URL = 'https://herdado-do-ambiente.exemplo.upstash.io'
+    const r3d = await aplicarManifesto(db, aprovado.manifesto, { destino: { banco: 'dev', indexador: 'isolado', indexadorUrl: 'https://isolado-validado.exemplo.upstash.io' } })
+    if (urlAntes3c === undefined) delete process.env.UPSTASH_VECTOR_REST_URL
+    else process.env.UPSTASH_VECTOR_REST_URL = urlAntes3c
+    conferir('destino "isolado" validado com uma URL e o processo usando OUTRA: bloqueado ("não é o validado"), nada escrito (PR13-09)', r3d[0]?.acao === 'bloqueado' && /não é o validado/.test(r3d[0].motivo ?? ''), r3d[0]?.motivo)
     conferir('nenhuma voz gravada, nenhuma entrada na base, registrador quieto', (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0 && (await db.knowledgeBaseEntry.count({ where: { projectId: PROJETO } })) === baseAntes3b && fatosAnotados.length === 0)
 
     // ── 4a. falha parcial e a chave durável (PR13-03) ──────────────────────
-    console.log('4a) falha parcial: uma linha REAL na base já carrega a chave do 1º fato; o registrador quebra no 2º fato criado — erro com a contagem, voz não gravada')
+    console.log('4a) falha parcial: uma linha REAL na base carrega a chave do 1º fato SEM a marca de indexado (reindexada pelo mesmo id, PR13-11); o registrador quebra na 2ª criação — erro com as contagens, voz não gravada')
     const linha4a = await db.knowledgeBaseEntry.create({
       data: { projectId: PROJETO, category: fatosDaPrevia[0].categoria, title: `${fatosDaPrevia[0].titulo} [linha da prova]`, content: fatosDaPrevia[0].trecho, tags: [TAG_DA_PROVA], status: 'ARCHIVED', metadata: { origem: 'migracao-da-voz', versaoDaPrevia: previa.versaoDaPrevia, chaveDoFato: chaves[0], prova: true }, createdBy: projeto.userId, userId: projeto.userId },
       select: { id: true },
     })
     linhasDeBaseDaProva.push(linha4a.id)
-    conferir('a consulta padrão reconhece a chave do 1º fato na base e não reconhece a do 2º', (await fatoExisteNaBase(db, chaves[0], PROJETO)) && !(await fatoExisteNaBase(db, chaves[1], PROJETO)))
+    conferir('a consulta padrão vê o 1º fato como INCOMPLETO (linha sem indexadoEm) e o 2º como ausente', (await estadoDoFatoNaBase(db, chaves[0], PROJETO)).estado === 'incompleto' && (await estadoDoFatoNaBase(db, chaves[1], PROJETO)).estado === 'ausente')
     let chamadas4a = 0
     const criarFatoQueQuebra = async (fato: FatoACriar, autor: string) => {
       chamadas4a++
       if (chamadas4a === 2) throw new Error('costura de prova: o registrador quebrou no 2º fato (PR13-03)')
       fatosAnotados.push({ fato, autor })
     }
-    const r4a = await aplicarManifesto(db, aprovado.manifesto, { criarFato: criarFatoQueQuebra })
-    conferir('erro dito, com fatosJaExistentes 1 (a linha real) e fatosCriados 1 (o 2º fato); o 3º não foi tentado; voz NÃO gravada', /quebrou no 2º fato/.test(r4a[0]?.erro ?? '') && r4a[0]?.fatosJaExistentes === 1 && r4a[0]?.fatosCriados === 1 && chamadas4a === 2 && fatosAnotados.length === 1 && fatosAnotados[0].fato.chave === chaves[1] && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, JSON.stringify(r4a[0]))
+    const r4a = await aplicarManifesto(db, aprovado.manifesto, { criarFato: criarFatoQueQuebra, reindexarFato })
+    conferir('erro dito, com fatosReindexados 1 (a linha real, pelo id dela), fatosCriados 1 (o 2º fato), 0 já existentes; o 3º não foi tentado; voz NÃO gravada', /quebrou no 2º fato/.test(r4a[0]?.erro ?? '') && r4a[0]?.fatosReindexados === 1 && reindexados.length === 1 && reindexados[0].entryId === linha4a.id && reindexados[0].chave === chaves[0] && r4a[0]?.fatosJaExistentes === 0 && r4a[0]?.fatosCriados === 1 && chamadas4a === 2 && fatosAnotados.length === 1 && fatosAnotados[0].fato.chave === chaves[1] && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, JSON.stringify(r4a[0]))
+    conferir('a linha reindexada ficou com a marca durável (agora é "completo")', (await estadoDoFatoNaBase(db, chaves[0], PROJETO)).estado === 'completo')
+
+    // ── 4b. a trava por projeto (PR13-10) ──────────────────────────────────
+    console.log('4b) com a trava do projeto tomada por OUTRA transação (outra aplicação em andamento), a aplicação é bloqueada sem escrever nada')
+    // "A outra aplicação": uma conexão própria (a mesma forma da trava real) segura o advisory lock do projeto
+    // enquanto `aplicarManifesto` — com a trava PADRÃO, em outra conexão própria — tenta pegá-lo.
+    const { PrismaClient } = await import('@prisma/client')
+    const outraAplicacao = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL } } })
+    let r4b: Awaited<ReturnType<typeof aplicarManifesto>> = []
+    try {
+      r4b = await outraAplicacao.$transaction(
+        async (tx) => {
+          const t = await tx.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${chaveDaTrava(PROJETO)})) AS ok`
+          if (!t[0]?.ok) abortar('a prova não conseguiu a trava do projeto para simular a concorrência')
+          return aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
+        },
+        { maxWait: 30_000, timeout: 120_000 },
+      )
+    } finally {
+      await outraAplicacao.$disconnect().catch(() => undefined)
+    }
+    conferir('bloqueado pela trava por projeto; nenhuma voz gravada; registrador e reindexador quietos', r4b[0]?.acao === 'bloqueado' && /trava por projeto/.test(r4b[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0 && fatosAnotados.length === 1 && reindexados.length === 1, r4b[0]?.motivo)
 
     // ── 4. aplicar de verdade (com o stub de fatos) — a retomada ──────────
     console.log('4) aplicar o manifesto aprovado (retomada): só o fato que falta é criado, a voz é gravada (v1), a migração liga a precedência e o DNA fica arquivado')
     const agora4 = new Date()
-    const r4 = await aplicarManifesto(db, aprovado.manifesto, { criarFato, fatoJaExiste, agora: agora4 })
-    conferir(`migrou: voz v1, 1 fato criado e 2 já existentes (${previa.fatos.noLegado.length} disponíveis na prévia)`, r4[0]?.acao === 'migrar' && !r4[0].erro && r4[0].vozVersao === 1 && r4[0].fatosCriados === 1 && r4[0].fatosJaExistentes === 2 && r4[0].migradaEm === agora4.toISOString(), JSON.stringify(r4[0]))
+    const r4 = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, agora: agora4 })
+    conferir(`migrou: voz v1, 1 fato criado, 2 já existentes (a linha reindexada e o do stub), 0 reindexados (${previa.fatos.noLegado.length} disponíveis na prévia)`, r4[0]?.acao === 'migrar' && !r4[0].erro && r4[0].vozVersao === 1 && r4[0].fatosCriados === 1 && r4[0].fatosJaExistentes === 2 && r4[0].fatosReindexados === 0 && r4[0].migradaEm === agora4.toISOString(), JSON.stringify(r4[0]))
     const anotadosPorChave = new Map(fatosAnotados.map((a) => [a.fato.chave, a]))
     conferir('cada fato criado foi ao registrador com o trecho EXATO da prévia, a categoria, o título, a validade, a chave e o autor = dono do projeto; o 1º (já na base) nunca foi criado', fatosAnotados.length === 2 && !anotadosPorChave.has(chaves[0]) && [1, 2].every((i) => { const a = anotadosPorChave.get(chaves[i]); const f = fatosDaPrevia[i]; return !!a && a.fato.trecho === f.trecho && a.fato.categoria === f.categoria && a.fato.titulo === f.titulo && a.fato.validaAte === (f.validaAte ?? null) && a.fato.versaoDaPrevia === previa.versaoDaPrevia && a.autor === projeto.userId }), JSON.stringify(fatosAnotados.map((a) => [a.fato.categoria, a.fato.validaAte])))
     const reg4 = await lerRegistroDaVoz(PROJETO)
@@ -224,7 +262,7 @@ async function main() {
     // ── 5. de novo: já migrado ─────────────────────────────────────────────
     console.log('5) aplicar de novo o mesmo manifesto é "ja-migrado": nada muda, registrador quieto')
     const antes5 = fatosAnotados.length
-    const r5 = await aplicarManifesto(db, aprovado.manifesto, { criarFato, fatoJaExiste })
+    const r5 = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
     const reg5 = await lerRegistroDaVoz(PROJETO)
     conferir('ja-migrado; versão continua 1; nenhum fato novo', r5[0]?.acao === 'ja-migrado' && reg5?.versao === 1 && fatosAnotados.length === antes5, JSON.stringify(r5[0]))
 
@@ -232,13 +270,13 @@ async function main() {
     console.log('6) desfeita a migração e EDITADO o DNA, aplicar bloqueia ("a prévia mudou"); restaurado o DNA, migra de novo pelo CAS (v2)')
     const d6 = await desfazerMigracao({ projectId: PROJETO })
     await db.brandDNA.update({ where: { projectId: PROJETO }, data: { contentRules: `${dnaAntes.contentRules ?? ''}\n- Linha de prova da migração (não é regra) [PR13 ${sha.slice(0, 8)}]` } })
-    const r6a = await aplicarManifesto(db, aprovado.manifesto, { criarFato, fatoJaExiste })
+    const r6a = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
     const reg6a = await lerRegistroDaVoz(PROJETO)
     conferir('desfeita e com o DNA editado: bloqueado ("a prévia mudou"), a voz continua v1 e NÃO migrada, registrador quieto', d6.desfeita && r6a[0]?.acao === 'bloqueado' && /prévia mudou/.test(r6a[0].motivo ?? '') && reg6a?.versao === 1 && reg6a.migradaEm === null && fatosAnotados.length === antes5, r6a[0]?.motivo)
     await db.brandDNA.update({ where: { projectId: PROJETO }, data: { contentRules: dnaAntes.contentRules ?? null } })
     const lido6 = await lerEstadoDoCliente(db, PROJETO)
     conferir('com o DNA restaurado a versão da prévia volta a ser a aprovada e o estado traz o registro v1 (não migrado)', lido6?.estado.versaoDaPreviaAtual === previa.versaoDaPrevia && lido6.estado.registro?.versao === 1 && lido6.estado.registro.migradaEm === null)
-    const r6b = await aplicarManifesto(db, aprovado.manifesto, { criarFato, fatoJaExiste })
+    const r6b = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
     const reg6b = await lerRegistroDaVoz(PROJETO)
     conferir('migra de novo pelo CAS: voz v2 (versão esperada 1), migradaEm gravada; nenhum fato recriado (os 3 já existem para esta prévia)', r6b[0]?.acao === 'migrar' && !r6b[0].erro && r6b[0].vozVersao === 2 && r6b[0].fatosCriados === 0 && r6b[0].fatosJaExistentes === 3 && reg6b?.versao === 2 && reg6b.migradaEm !== null && fatosAnotados.length === antes5, JSON.stringify(r6b[0]))
 
@@ -247,14 +285,15 @@ async function main() {
     const d6c = await desfazerMigracao({ projectId: PROJETO })
     const r6c = await aplicarManifesto(db, aprovado.manifesto, {
       criarFato,
-      fatoJaExiste,
+      estadoDoFato,
+      reindexarFato,
       seams: { antesDeAtivar: async () => { await db.brandDNA.update({ where: { projectId: PROJETO }, data: { toneOfVoice: `${dnaAntes.toneOfVoice ?? ''}\n- Edição concorrente da prova [PR13-02 ${sha.slice(0, 8)}]` } }) } },
     })
     const reg6c = await lerRegistroDaVoz(PROJETO)
     const c6c = await contextoDeVoz(PROJETO)
     conferir('desfeita; a ativação recusou com VOZ_DNA_DIVERGENTE citando toneOfVoice; a voz foi gravada (v3) mas NÃO migrada; a copy continua lendo o legado', d6c.desfeita && /DNA de texto mudou/.test(r6c[0]?.erro ?? '') && /toneOfVoice/.test(r6c[0]?.erro ?? '') && reg6c?.versao === 3 && reg6c.migradaEm === null && c6c.fonte !== 'voz', JSON.stringify({ erro: r6c[0]?.erro, versao: reg6c?.versao, migradaEm: reg6c?.migradaEm, fonte: c6c.fonte }))
     await db.brandDNA.update({ where: { projectId: PROJETO }, data: { toneOfVoice: dnaAntes.toneOfVoice ?? null } })
-    const r6d = await aplicarManifesto(db, aprovado.manifesto, { criarFato, fatoJaExiste })
+    const r6d = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
     const reg6d = await lerRegistroDaVoz(PROJETO)
     conferir('com o DNA restaurado migra: voz v4 (CAS sobre a v3), migradaEm gravada, nenhum fato recriado', r6d[0]?.acao === 'migrar' && !r6d[0].erro && r6d[0].vozVersao === 4 && r6d[0].fatosCriados === 0 && reg6d?.versao === 4 && reg6d.migradaEm !== null, JSON.stringify(r6d[0]))
 
@@ -262,8 +301,8 @@ async function main() {
     console.log('7) "manter-legado" e "pendente" não escrevem nada')
     const antes7 = fatosAnotados.length
     const migradaEm7 = reg6d?.migradaEm?.toISOString()
-    const r7a = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'manter-legado', ...APROVACAO })).manifesto!, { criarFato, fatoJaExiste })
-    const r7b = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'pendente' })).manifesto!, { criarFato, fatoJaExiste })
+    const r7a = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'manter-legado', ...APROVACAO })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
+    const r7b = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'pendente' })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const reg7 = await lerRegistroDaVoz(PROJETO)
     conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v4 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 4 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
 
