@@ -7526,4 +7526,3 @@ que NADA é gravado e que a medida é a da composição).
   foto definitiva ou passar os DOIS em `preferencias` ao compor (o compositor
   honra `preferencias.arranjos` como "mantido"). Prova 3c: a medição COM a
   foto e a fixação da medição sem foto reproduz variante e arranjos.
-
