@@ -58,8 +58,24 @@ export interface PecaParaTextos {
 /** Uma mídia do post e o que se sabe da arte que ela é. */
 export interface SlideDaPeca {
   url: string
-  /** A Generation casada com a URL (a mais recente); `null`/ausente = nenhuma. */
-  arte?: { layersSnapshot?: unknown; pageId?: string | null } | null
+  /**
+   * A Generation casada com a URL DESTA mídia (a mais recente); `null`/ausente
+   * = nenhuma. 🔴 Só a URL casa: o `generationId` do post aponta para a
+   * Generation de uma versão anterior quando o re-render grava URL nova sem
+   * trocar o vínculo — o snapshot dela é de OUTRA mídia.
+   */
+  arte?: {
+    layersSnapshot?: unknown
+    pageId?: string | null
+    /**
+     * A arte foi RE-RENDERIZADA como a página estava (`recomposicao.estado`):
+     * esse caminho grava a URL nova e PRESERVA o snapshot da composição
+     * anterior — o snapshot não é registro do que foi desenhado, e não afirma
+     * texto. Até a re-renderização gravar as camadas que desenhou, vale o
+     * fallback declarado.
+     */
+    reRenderizada?: boolean
+  } | null
   /** `Page.layers` ATUAL da página daquela arte — vale só na peça viva. */
   camadasDaPagina?: unknown
 }
@@ -73,12 +89,14 @@ export interface FontesDaPeca {
 
 export interface TextosDeSlide {
   slide: number
+  /** Definitivo quando `origem` vem — inclusive VAZIO (a arte não tem texto). */
   textos: string[]
   origem?: 'pagina' | 'arte'
   indisponiveis?: string
 }
 
 export interface TextosDaPeca {
+  /** Definitivo quando `origem` vem — inclusive VAZIO: leitura que deu certo e não achou texto não é "não sei". */
   textos: string[]
   origem?: OrigemDosTextos
   /** A leitura NÃO cobre a peça inteira (só os campos sobrescritos; slide sem registro). */
@@ -107,7 +125,9 @@ function camadaDeTexto(c: PageLayer): boolean {
 /**
  * Os textos das camadas, na ordem e na multiplicidade em que existem — com a
  * copy própria do post aplicada por cima quando ela vem (a função do render).
- * `null` quando as camadas são ilegíveis.
+ * `null` quando as camadas são ilegíveis; `[]` é leitura que DEU CERTO e não
+ * achou texto (a única camada apagada pelo slot, todas ocultas) — definitiva,
+ * nunca motivo para procurar em outra fonte um texto que o render removeu.
  */
 function textosDasCamadas(camadas: unknown, slots?: Record<string, unknown>): string[] | null {
   const lidas = lerCamadas(camadas)
@@ -129,21 +149,31 @@ function textosDoPost(slotValues: unknown): string[] {
     .filter((t) => t && !RE_URL.test(t))
 }
 
+/** O snapshot afirma texto só quando é o registro do que foi desenhado: existe e a arte não foi re-renderizada por cima dele. */
+function snapshotConfiavel(arte: NonNullable<SlideDaPeca['arte']>): boolean {
+  return arte.layersSnapshot !== undefined && arte.layersSnapshot !== null && arte.reRenderizada !== true
+}
+
 function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide[] {
   return slides.map((s, i) => {
     const slide = i + 1
     if (!entregue && s.camadasDaPagina !== undefined) {
       const daPagina = textosDasCamadas(s.camadasDaPagina)
-      if (daPagina && daPagina.length > 0) return { slide, textos: daPagina, origem: 'pagina' }
+      // Legível é definitivo — inclusive vazio (todas as camadas ocultas).
+      if (daPagina !== null) return { slide, textos: daPagina, origem: 'pagina' }
     }
-    if (s.arte?.layersSnapshot !== undefined && s.arte.layersSnapshot !== null) {
+    if (s.arte && snapshotConfiavel(s.arte)) {
       const doSnapshot = textosDasCamadas(s.arte.layersSnapshot)
-      if (doSnapshot && doSnapshot.length > 0) return { slide, textos: doSnapshot, origem: 'arte' }
+      if (doSnapshot !== null) return { slide, textos: doSnapshot, origem: 'arte' }
     }
     return {
       slide,
       textos: [],
-      indisponiveis: s.arte ? 'a arte deste slide não guardou as camadas (sem snapshot): nada a afirmar' : 'nenhuma arte registrada para esta mídia',
+      indisponiveis: !s.arte
+        ? 'nenhuma arte registrada para esta mídia'
+        : s.arte.reRenderizada
+          ? 'a arte desta mídia foi re-renderizada como a página estava e não guardou as camadas desenhadas: nada a afirmar'
+          : 'a arte desta mídia não guardou as camadas (sem snapshot): nada a afirmar',
     }
   })
 }
@@ -155,25 +185,29 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   const proprios = slotValuesParaRender(sv)
   const textosProprios = textosDoPost(proprios ?? null)
 
-  // 1. Peça VIVA com página: a mesma precedência do render.
+  // 1. Peça VIVA com página: a mesma precedência do render. Legível é
+  //    definitivo — inclusive vazio (a única camada apagada pelo slot).
+  let paginaIlegivel = false
   if (!entregue && !carrossel && fontes.camadas !== undefined) {
     const daPagina = textosDasCamadas(fontes.camadas, proprios)
-    if (daPagina && daPagina.length > 0) return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
-    if (daPagina === null && !textosDoSlot(sv)) return { textos: [], indisponiveis: 'as camadas da página não puderam ser lidas.' }
+    if (daPagina !== null) return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
+    paginaIlegivel = true
   }
 
-  // 2. Pelas ARTES do post, slide a slide (carrossel, peça sem página, peça entregue).
+  // 2. Pelas ARTES do post, slide a slide (carrossel, peça sem página, peça
+  //    entregue). Um slide conta como resolvido quando a FONTE dele é legível,
+  //    não quando tem texto.
   const slides = fontes.slides ?? []
   if (slides.length > 0) {
     const porSlide = textosPorSlide(slides, entregue)
-    const resolvidos = porSlide.filter((s) => s.textos.length > 0)
+    const resolvidos = porSlide.filter((s) => s.origem !== undefined)
     if (resolvidos.length > 0) {
       const faltam = porSlide.length - resolvidos.length
       return {
         textos: porSlide.flatMap((s) => s.textos),
         origem: resolvidos.every((s) => s.origem === 'pagina') ? 'pagina' : 'arte',
         ...(carrossel ? { slides: porSlide } : {}),
-        ...(faltam > 0 ? { parcial: true, nota: `${faltam} de ${porSlide.length} mídia(s) sem arte registrada: os textos delas não estão aqui.` } : {}),
+        ...(faltam > 0 ? { parcial: true, nota: `${faltam} de ${porSlide.length} mídia(s) sem arte registrada (ou re-renderizada sem registro): os textos delas não estão aqui.` } : {}),
       }
     }
   }
@@ -199,8 +233,9 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
   }
 
-  // 4. Peça viva sem página (nem arte casada): a copy gravada no post.
+  // 4. Peça viva sem página legível (nem arte casada): a copy gravada no post.
   const doPost = textosDoPost(sv)
   if (doPost.length > 0) return { textos: doPost, origem: 'copy-do-post' }
+  if (paginaIlegivel) return { textos: [], indisponiveis: 'as camadas da página não puderam ser lidas.' }
   return { textos: [] }
 }

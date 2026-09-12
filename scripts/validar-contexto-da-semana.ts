@@ -265,8 +265,24 @@ async function main() {
       const iCar = item3c(carrossel.id), iPar = item3c(parcialPropria.id), iVaz = item3c(slotVazio.id), iApa = item3c(slotApaga.id)
       conferir('carrossel PUBLICADO com 3 mídias: os textos dos slides 1 e 2 em ordem (pela URL, não só pelo generationId), o 3º declarado sem arte, leitura parcial', !!iCar && JSON.stringify(iCar.textos) === JSON.stringify([`${MARCA} slide um`, `${MARCA} slide dois`]) && iCar.textosOrigem === 'arte' && iCar.textosParciais === true && Array.isArray(iCar.textosPorSlide) && iCar.textosPorSlide.length === 3 && iCar.textosPorSlide[2].textos.length === 0 && /nenhuma arte/.test(iCar.textosPorSlide[2].indisponiveis ?? ''), JSON.stringify({ textos: iCar?.textos, slides: iCar?.textosPorSlide?.map((s: any) => s.origem ?? s.indisponiveis) }).slice(0, 260))
       conferir('post PUBLICADO com copy própria e sem snapshot: só o título sobrescrito, marcado PARCIAL (não completa pela página atual)', !!iPar && JSON.stringify(iPar.textos) === JSON.stringify([`${MARCA} só o título`]) && iPar.textosOrigem === 'copy-do-post' && iPar.textosParciais === true && /sobrescreveu/.test(iPar.textosNota ?? ''), JSON.stringify({ textos: iPar?.textos, parciais: iPar?.textosParciais }).slice(0, 200))
-      conferir('slot "" mantém o texto da página (como o render); slot { content: "" } o apaga (como o render)', !!iVaz && iVaz.textos.includes(textoDoModelo) && !!iApa && !(iApa.textos ?? []).includes(textoDoModelo), JSON.stringify({ vazio: iVaz?.textos?.[0], apaga: iApa?.textos }).slice(0, 200))
+      conferir('slot "" mantém o texto da página (como o render); slot { content: "" } o apaga (como o render) — e a leitura vazia é definitiva (textos sai, mesmo vazio)', !!iVaz && iVaz.textos.includes(textoDoModelo) && !!iApa && Array.isArray(iApa.textos) && !iApa.textos.includes(textoDoModelo) && typeof iApa.textosOrigem === 'string', JSON.stringify({ vazio: iVaz?.textos?.[0], apaga: iApa?.textos, origem: iApa?.textosOrigem }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3c.json'), JSON.stringify(agenda3c, null, 2))
+
+      // R12/R13 (revisão de 6ad711bd): o snapshot de OUTRA versão da mídia nunca é atribuído à publicação.
+      console.log('3d) ver-agenda: mídia nova sem Generation casada (R12) e arte re-renderizada (R13) não devolvem o snapshot antigo — vale a cópia registrada')
+      const dia3d = somarDias(hoje, 7)
+      const genAntiga = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/versao-A.png`, fieldValues: { layersSnapshot: snap(`${MARCA} texto A antigo`), source: 'prova' } as never }, select: { id: true } })
+      const genReRender = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/re-render.png`, fieldValues: { layersSnapshot: snap(`${MARCA} texto A antigo`), recomposicao: { estado: 're-renderizada' }, source: 'prova' } as never }, select: { id: true } })
+      geracoes.push(genAntiga.id, genReRender.id)
+      const r12 = await criar('09:00', { status: 'POSTED', scheduledDatetime: new Date(`${dia3d}T09:00:00-03:00`), mediaUrls: [`${marcaUrl}/versao-B.png`], generationId: genAntiga.id, slotValues: { [chaveDoTexto]: `${MARCA} texto B registrado`, _copiaDaPagina: true } })
+      const r13 = await criar('10:00', { status: 'POSTED', scheduledDatetime: new Date(`${dia3d}T10:00:00-03:00`), mediaUrls: [`${marcaUrl}/re-render.png`], generationId: genReRender.id, slotValues: { [chaveDoTexto]: `${MARCA} texto B registrado`, _copiaDaPagina: true } })
+      posts.push(r12.id, r13.id)
+      const agenda3d = await tool('ver-agenda', { projectId: PROJETO, from: dia3d, to: dia3d })
+      const itens3d = (agenda3d.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const i12 = itens3d.find((i) => i.postId === r12.id), i13 = itens3d.find((i) => i.postId === r13.id)
+      conferir('R12: mídia B publicada com generationId da versão A (URL não casa): volta a cópia registrada B, NUNCA o snapshot A', !!i12 && JSON.stringify(i12.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i12.textosOrigem === 'copy-registrada-na-entrega' && !JSON.stringify(i12).includes('texto A antigo'), JSON.stringify({ textos: i12?.textos, origem: i12?.textosOrigem }).slice(0, 200))
+      conferir('R13: URL casa, mas a arte foi RE-RENDERIZADA por cima do snapshot: volta a cópia registrada B, NUNCA o snapshot A', !!i13 && JSON.stringify(i13.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i13.textosOrigem === 'copy-registrada-na-entrega' && !JSON.stringify(i13).includes('texto A antigo'), JSON.stringify({ textos: i13?.textos, origem: i13?.textosOrigem }).slice(0, 200))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3d.json'), JSON.stringify(agenda3d, null, 2))
     } else {
       conferir('projeto sem página com texto para exercitar `textos` pela página', false)
     }

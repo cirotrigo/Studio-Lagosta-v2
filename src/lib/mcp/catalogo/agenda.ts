@@ -111,34 +111,40 @@ export const toolsDeAgenda = [
        */
       const vivas = posts.filter((p) => !arteEntregue(p))
       const idsDePagina = [...new Set(vivas.map((p) => p.pageId).filter((id): id is string => !!id))]
-      // As artes de TODAS as mídias, casadas pela URL — a mais recente por URL
-      // vence (`orderBy desc` + primeira gravada), a regra de `artes-do-post.ts`.
+      // As artes de TODAS as mídias, casadas SÓ pela URL — a mais recente por
+      // URL vence (`orderBy desc` + primeira gravada), a regra de
+      // `artes-do-post.ts`. 🔴 Sem fallback pelo `generationId` do post: o
+      // re-render grava URL nova sem trocar o vínculo, e o snapshot daquela
+      // Generation é de OUTRA versão da mídia (R12).
       const urls = [...new Set(posts.flatMap((p) => p.mediaUrls ?? []).filter((u) => u && !u.startsWith('data:')))]
-      const idsDeArte = [...new Set(posts.map((p) => p.generationId).filter((id): id is string => !!id))]
-      const artes = urls.length || idsDeArte.length
+      const artes = urls.length
         ? await db.generation.findMany({
-            where: { projectId, OR: [...(urls.length ? [{ resultUrl: { in: urls } }] : []), ...(idsDeArte.length ? [{ id: { in: idsDeArte } }] : [])] },
+            where: { projectId, resultUrl: { in: urls } },
             select: { id: true, resultUrl: true, fieldValues: true },
             orderBy: { createdAt: 'desc' },
           })
         : []
       const fvDe = (fv: unknown) => (fv && typeof fv === 'object' && !Array.isArray(fv) ? (fv as Record<string, unknown>) : {})
-      const arteDe = (g: (typeof artes)[number]) => ({
-        layersSnapshot: fvDe(g.fieldValues).layersSnapshot,
-        pageId: typeof fvDe(g.fieldValues).pageId === 'string' ? (fvDe(g.fieldValues).pageId as string) : null,
-      })
+      const arteDe = (g: (typeof artes)[number]) => {
+        const fv = fvDe(g.fieldValues)
+        const recomposicao = fvDe(fv.recomposicao)
+        return {
+          layersSnapshot: fv.layersSnapshot,
+          pageId: typeof fv.pageId === 'string' ? fv.pageId : null,
+          // Re-render como a página estava: a URL é nova e o snapshot é o da
+          // composição anterior — não afirma texto (R13).
+          reRenderizada: recomposicao.estado === 're-renderizada',
+        }
+      }
       const artePorUrl = new Map<string, ReturnType<typeof arteDe>>()
-      const artePorId = new Map<string, ReturnType<typeof arteDe>>()
       for (const g of artes) {
         if (g.resultUrl && !artePorUrl.has(g.resultUrl)) artePorUrl.set(g.resultUrl, arteDe(g))
-        artePorId.set(g.id, arteDe(g))
       }
-      const arteDoSlide = (post: (typeof posts)[number], url: string, indice: number) =>
-        artePorUrl.get(url) ?? (indice === 0 && post.generationId ? artePorId.get(post.generationId) ?? null : null)
+      const arteDoSlide = (_post: (typeof posts)[number], url: string) => artePorUrl.get(url) ?? null
       // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê.
       const idsDePaginaDosSlides = [
         ...new Set(
-          vivas.flatMap((p) => (p.mediaUrls ?? []).map((u, i) => arteDoSlide(p, u, i)?.pageId).filter((id): id is string => !!id)),
+          vivas.flatMap((p) => (p.mediaUrls ?? []).map((u) => arteDoSlide(p, u)?.pageId).filter((id): id is string => !!id)),
         ),
       ]
       const todasAsPaginas = [...new Set([...idsDePagina, ...idsDePaginaDosSlides])]
@@ -151,8 +157,8 @@ export const toolsDeAgenda = [
           { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId },
           {
             ...(post.pageId && camadasPorPagina.has(post.pageId) ? { camadas: camadasPorPagina.get(post.pageId) } : {}),
-            slides: (post.mediaUrls ?? []).map((url, i) => {
-              const arte = arteDoSlide(post, url, i)
+            slides: (post.mediaUrls ?? []).map((url) => {
+              const arte = arteDoSlide(post, url)
               return {
                 url,
                 arte,
@@ -188,7 +194,8 @@ export const toolsDeAgenda = [
           ...((() => {
             const t = textosDe(post)
             return {
-              ...(t.textos.length > 0 ? { textos: t.textos, textosOrigem: t.origem } : {}),
+              // `textos` sai sempre que a leitura deu certo — inclusive vazia (a arte não tem texto); some só quando não há o que afirmar.
+              ...(t.origem ? { textos: t.textos, textosOrigem: t.origem } : {}),
               ...(t.parcial ? { textosParciais: true, textosNota: t.nota } : {}),
               ...(t.slides ? { textosPorSlide: t.slides } : {}),
               ...(t.indisponiveis ? { textosIndisponiveis: t.indisponiveis } : {}),

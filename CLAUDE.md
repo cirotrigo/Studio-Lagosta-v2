@@ -6301,6 +6301,17 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   PÁGINA daquela arte (`fieldValues.pageId`, é ela que o re-render desenha);
   na entregue, do `layersSnapshot`. `textosPorSlide` sai no carrossel; mídia
   sem arte registrada é declarada no slide e a leitura vira `textosParciais`.
+  🔴 **Só a URL casa a arte — NUNCA o `generationId` do post como fallback**: o
+  re-render grava URL nova sem trocar o vínculo (`ensurePostGeneration`
+  devolve cedo), e o snapshot daquela Generation é de OUTRA versão da mídia.
+  🔴 **Snapshot de arte RE-RENDERIZADA não afirma texto**
+  (`recomposicao.estado === 're-renderizada'`): esse caminho grava a URL nova
+  e PRESERVA o snapshot da composição anterior. Até a re-renderização gravar
+  as camadas que desenhou, a mídia é declarada sem registro e vale o fallback
+  (cópia registrada, parcial, indisponível). Leitura LEGÍVEL E VAZIA é
+  definitiva (`textos: []` com `textosOrigem`): a única camada apagada pelo
+  slot ou todas ocultas não são motivo para buscar em outra fonte um texto
+  que o render removeu.
   🔴 **Arte já ENTREGUE não segue a página** (`arteEntregue`: `laterPostId`,
   publicado, publicando ou falhou): a página pode ter sido editada DEPOIS da
   entrega, e a invalidação não alcança o post — atribuir-lhe o texto atual da

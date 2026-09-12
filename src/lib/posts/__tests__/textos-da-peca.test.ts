@@ -93,6 +93,34 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(r.slides?.map((s) => s.origem)).toEqual(['pagina', 'arte'])
     expect(r.parcial).toBeUndefined()
   })
+  it('leitura legível VAZIA é definitiva (R14): a única camada apagada pelo slot, todas as camadas ocultas num slide, snapshot válido sem texto — nada ressuscita copy antiga', () => {
+    const umaSo = [{ id: 'l1', name: 'headline', type: 'text', content: 'Texto antigo' }]
+    const apagada = textosDaPeca({ ...viva, mediaUrls: ['u1'], slotValues: { headline: { content: '' } } }, { camadas: umaSo, slides: [{ url: 'u1', arte: { layersSnapshot: snap('Texto antigo'), pageId: 'p1' } }] })
+    expect(apagada).toEqual({ textos: [], origem: 'pagina-com-copy-do-post' })
+    const ocultas = textosDaPeca({ pageId: null, status: 'DRAFT', laterPostId: null, mediaUrls: ['u1', 'u2'], generationId: null, slotValues: null }, {
+      slides: [
+        { url: 'u1', arte: { layersSnapshot: snap('Velho'), pageId: 'p1' }, camadasDaPagina: [{ id: 'l1', name: 'headline', type: 'text', content: 'Escondido', visible: false }] },
+        { url: 'u2', arte: { layersSnapshot: snap('Slide dois') } },
+      ],
+    })
+    expect(ocultas.textos).toEqual(['Slide dois'])
+    expect(ocultas.slides?.[0]).toEqual({ slide: 1, textos: [], origem: 'pagina' })
+    expect(ocultas.parcial).toBeUndefined()
+    const semTexto = textosDaPeca({ pageId: null, status: 'POSTED', laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: { headline: 'registrado', _copiaDaPagina: true } }, { slides: [{ url: 'u1', arte: { layersSnapshot: [{ id: 'f', type: 'image', fileUrl: 'https://x' }] } }] })
+    expect(semTexto).toEqual({ textos: [], origem: 'arte' })
+  })
+  it('a arte casa SÓ pela URL (R12) e o snapshot de arte RE-RENDERIZADA não afirma texto (R13): sobra a cópia registrada, nunca o texto de outra versão', () => {
+    // R12: a mídia B não casa com a Generation A do generationId — o chamador não a passa como arte do slide; vale a cópia registrada B
+    const r12 = textosDaPeca({ pageId: 'p1', status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B.png'], generationId: 'gA', slotValues: { headline: 'B registrado', _copiaDaPagina: true } }, { slides: [{ url: 'https://blob/B.png', arte: null }] })
+    expect(r12).toEqual({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega' })
+    // R13: URL casa, mas a arte foi re-renderizada por cima do snapshot da composição anterior
+    const r13 = textosDaPeca({ pageId: 'p1', status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B.png'], generationId: 'gA', slotValues: { headline: 'B registrado', _copiaDaPagina: true } }, { slides: [{ url: 'https://blob/B.png', arte: { layersSnapshot: snap('A antigo'), pageId: 'p1', reRenderizada: true } }] })
+    expect(r13).toEqual({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega' })
+    const r13SemRegistro = textosDaPeca({ pageId: null, status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B.png', 'https://blob/C.png'], generationId: null, slotValues: null }, { slides: [{ url: 'https://blob/B.png', arte: { layersSnapshot: snap('A antigo'), reRenderizada: true } }, { url: 'https://blob/C.png', arte: { layersSnapshot: snap('C') } }] })
+    expect(r13SemRegistro.textos).toEqual(['C'])
+    expect(r13SemRegistro.parcial).toBe(true)
+    expect(r13SemRegistro.slides?.[0].indisponiveis).toMatch(/re-renderizada/)
+  })
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
     expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['P'], origem: 'pagina' })
