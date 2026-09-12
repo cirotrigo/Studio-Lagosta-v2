@@ -446,6 +446,12 @@ export function lerManifesto(entrada: unknown): { manifesto: Manifesto | null; p
     if (c.decisao !== 'migrar' && c.fatosParaABase.length > 0) problemas.push(`clientes.${c.projectId}: fatosParaABase só vale com decisão "migrar" (o legado continua guardando o fato)`)
   }
   for (const [id, n] of ids) if (n > 1) problemas.push(`manifesto: projeto ${id} aparece ${n}×`)
+  if (parsed.success) {
+    for (const [ci, c] of parsed.data.clientes.entries()) {
+      for (const r of trechosRepetidos(c.fatosParaABase)) problemas.push(`clientes.${ci} (${c.nome}): fatosParaABase repete o trecho "${r.trecho.slice(0, 60)}" nas posições ${r.posicoes.join(', ')} — a mesma identidade de fato duas vezes criaria duas linhas; deixe uma`)
+    }
+  }
+
   return problemas.length > 0 ? { manifesto: null, problemas } : { manifesto: parsed.data, problemas: [] }
 }
 
@@ -536,11 +542,39 @@ export function computeDe(url: string | null | undefined): string | null {
   }
 }
 
-/** A conexão da TRAVA e a das escritas têm de ser o MESMO banco: trava em outro banco não exclui nada (PR13-13). */
+/** O NOME do banco na URL (`/neondb`), sem query; `null` quando ilegível ou ausente. */
+export function nomeDoBancoDe(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    const nome = decodeURIComponent(new URL(url).pathname.replace(/^\//, ''))
+    return nome || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * A conexão da TRAVA e a das escritas têm de ser o MESMO banco: mesmo compute
+ * (pooler e direto são a mesma instância) E mesmo nome de banco — advisory
+ * lock é por banco, e `/neondb` e `/outro_banco` no mesmo compute travam
+ * coisas diferentes (PR13-13 e PR13-16).
+ */
 export function mesmoBanco(urlDaTrava: string | null | undefined, urlDasEscritas: string | null | undefined): boolean {
   const a = computeDe(urlDaTrava)
   const b = computeDe(urlDasEscritas)
-  return a !== null && b !== null && a === b
+  const na = nomeDoBancoDe(urlDaTrava)
+  const nb = nomeDoBancoDe(urlDasEscritas)
+  return a !== null && b !== null && a === b && na !== null && nb !== null && na === nb
+}
+
+/** Trechos repetidos em `fatosParaABase` de um cliente: a mesma identidade de fato duas vezes criaria duas linhas numa só aplicação (PR13-17). */
+export function trechosRepetidos(fatos: Array<{ trecho?: string }>): Array<{ trecho: string; posicoes: number[] }> {
+  const porTrecho = new Map<string, number[]>()
+  fatos.forEach((f, i) => {
+    if (typeof f.trecho !== 'string') return
+    porTrecho.set(f.trecho, [...(porTrecho.get(f.trecho) ?? []), i])
+  })
+  return [...porTrecho.entries()].filter(([, p]) => p.length > 1).map(([trecho, posicoes]) => ({ trecho, posicoes }))
 }
 
 /** A linha da base que carrega a chave de um fato — os campos que a retomada CONFERE antes de reutilizá-la (PR13-14). */

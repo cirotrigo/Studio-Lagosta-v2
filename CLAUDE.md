@@ -6866,6 +6866,24 @@ Da terceira revisão (BLOQUEADO, PR13-13…15):
   ali, em vez de continuar por outras conexões sem exclusão (PR13-15). O
   timeout padrão é 60 min; a prova o encurta para 2 s.
 
+Da quarta revisão (BLOQUEADO, PR13-16…18):
+
+- 🔴 **"Mesmo banco" é mesmo compute E mesmo nome de banco** (`nomeDoBancoDe`):
+  advisory lock é por banco, e `/neondb` e `/outro_banco` no mesmo compute
+  travam coisas diferentes (PR13-16).
+- 🔴 **Trecho repetido em `fatosParaABase` é recusado** por `lerManifesto`
+  (com as posições) e, como última porta, por `aplicarManifesto` antes de
+  escrever: a mesma identidade de fato duas vezes criava duas linhas numa só
+  aplicação, com a trava funcionando (PR13-17).
+- 🔴 **A trava virou de SESSÃO, sem timeout** (`pg_try_advisory_lock` numa
+  conexão própria com `connection_limit=1`, liberada no fim): transação
+  expirando liberava a exclusão com o corpo ainda escrevendo. E toda escrita
+  LONGA (criar/reindexar fato, que espera embeddings) roda em `trava.vigiar()`,
+  uma corrida com a vigilância da conexão: perdida a trava no meio, a escrita
+  é abandonada com erro e nada novo começa (PR13-18). Limite declarado: o
+  indexador não recebe sinal de aborto — o que já está em voo termina; o que
+  se garante é que a aplicação PARA (nenhum fato seguinte, nenhuma voz).
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

@@ -54,6 +54,8 @@ import {
   divergenciasDoFato,
   mesmoBanco,
   type LinhaDoFato,
+  nomeDoBancoDe,
+  trechosRepetidos,
 } from '../src/lib/brand/migracao-da-voz'
 
 const ROOT = process.cwd()
@@ -255,9 +257,19 @@ export function chaveDaTrava(projectId: number): string {
   return `migracao-da-voz:${projectId}`
 }
 
-/** O que o corpo recebe: `conferir()` confirma que a transação da trava continua viva — e LANÇA se ela expirou (PR13-15). */
+/**
+ * O que o corpo recebe (PR13-15/18): `conferir()` confirma que a conexão da
+ * trava continua viva — e LANÇA se ela se perdeu; `vigiar(promessa)` embrulha
+ * uma escrita LONGA (criar/reindexar fato, que espera embeddings) numa corrida
+ * com a vigilância da trava: perdida a trava no meio, a promessa embrulhada é
+ * abandonada com erro e a aplicação para ali. O que já está em voo no
+ * indexador não tem como ser cancelado (ele não recebe sinal de aborto) — o
+ * que se garante é que NENHUMA escrita nova começa e que a aplicação não
+ * segue para a voz.
+ */
 export interface TravaViva {
   conferir: () => Promise<void>
+  vigiar: <T>(promessa: Promise<T>) => Promise<T>
 }
 export type ComTrava = <T>(projectId: number, corpo: (trava: TravaViva) => Promise<T>) => Promise<T | { bloqueado: string }>
 
@@ -272,33 +284,69 @@ export type ComTrava = <T>(projectId: number, corpo: (trava: TravaViva) => Promi
  * de sempre; a transação da trava só existe para segurar a exclusão até a
  * ativação terminar. Quem não consegue a trava é `bloqueado` na hora.
  */
-export function travaPorProjeto(url = process.env.DIRECT_URL ?? process.env.DATABASE_URL, opcoes: { timeoutMs?: number } = {}): ComTrava {
+/** Uma URL do Postgres com `connection_limit=1`: a trava de SESSÃO mora numa conexão, e o client não pode rotacionar. */
+function comUmaConexao(url: string): string {
+  const u = new URL(url)
+  u.searchParams.set('connection_limit', '1')
+  return u.toString()
+}
+
+export function travaPorProjeto(
+  url = process.env.DIRECT_URL ?? process.env.DATABASE_URL,
+  opcoes: {
+    /** Costura da prova: devolve `false` para simular a perda da conexão da trava. Nunca usada pelo script. */
+    travaViva?: () => boolean
+    /** Intervalo da vigilância durante uma escrita longa (ms). */
+    vigiaMs?: number
+  } = {},
+): ComTrava {
   return async (projectId, corpo) => {
-    // A trava só vale no MESMO banco das escritas (PR13-13): em outro compute ela não exclui ninguém.
-    if (!mesmoBanco(url, process.env.DATABASE_URL)) {
-      return { bloqueado: `a conexão da trava por projeto (${endpointDe(url) ?? 'ilegível'}) não é o banco das escritas (${endpointDe(process.env.DATABASE_URL) ?? 'ilegível'}); confira DIRECT_URL/DATABASE_URL antes de aplicar` }
+    // A trava só vale no MESMO banco das escritas (PR13-13/16): em outro compute, ou em outro banco do mesmo compute,
+    // ela não exclui ninguém (advisory lock é por banco).
+    if (!url || !mesmoBanco(url, process.env.DATABASE_URL)) {
+      return { bloqueado: `a conexão da trava por projeto (${endpointDe(url) ?? 'ilegível'}/${nomeDoBancoDe(url) ?? '?'}) não é o banco das escritas (${endpointDe(process.env.DATABASE_URL) ?? 'ilegível'}/${nomeDoBancoDe(process.env.DATABASE_URL) ?? '?'}); confira DIRECT_URL/DATABASE_URL antes de aplicar` }
     }
     const { PrismaClient } = await import('@prisma/client')
-    const cliente = new PrismaClient({ datasources: { db: { url } } })
+    // Trava de SESSÃO (`pg_try_advisory_lock`) numa conexão própria e ÚNICA — não de transação: transação tem
+    // timeout, e uma que expirasse liberaria a exclusão com o corpo ainda escrevendo (PR13-15). A trava de sessão
+    // vive enquanto a conexão viver; morre com o processo (e aí não há mais escritas). Liberada no fim.
+    const cliente = new PrismaClient({ datasources: { db: { url: comUmaConexao(url) } } })
+    const chave = chaveDaTrava(projectId)
+    let travada = false
     try {
-      return await cliente.$transaction(
-        async (tx) => {
-          const trava = await tx.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${chaveDaTrava(projectId)})) AS ok`
-          if (!trava[0]?.ok) return { bloqueado: 'outra aplicação da migração deste cliente está em andamento (trava por projeto); tente de novo quando ela terminar' }
-          // A transação da trava pode EXPIRAR enquanto o corpo escreve por outras conexões; o corpo confere a trava
-          // antes de cada escrita e para na primeira conferência que falha (PR13-15).
-          const conferir = async () => {
-            try {
-              await tx.$queryRaw`SELECT 1`
-            } catch (e) {
-              throw new Error(`a trava por projeto expirou ou se perdeu antes desta escrita — a aplicação parou aqui para não concorrer com outra: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
-            }
+      const trava = await cliente.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_lock(hashtext(${chave})) AS ok`
+      if (!trava[0]?.ok) return { bloqueado: 'outra aplicação da migração deste cliente está em andamento (trava por projeto); tente de novo quando ela terminar' }
+      travada = true
+      const conferir = async () => {
+        try {
+          if (opcoes.travaViva && !opcoes.travaViva()) throw new Error('conexão da trava perdida (simulada pela prova)')
+          const viva = await cliente.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_lock(hashtext(${chave})) AS ok`
+          // A sessão que já tem a trava consegue "pegá-la" de novo (reentrante) — e aí soltamos a repetição.
+          if (viva[0]?.ok) await cliente.$queryRaw`SELECT pg_advisory_unlock(hashtext(${chave}))`
+          else throw new Error('a sessão da trava não a detém mais')
+        } catch (e) {
+          throw new Error(`a trava por projeto se perdeu antes desta escrita — a aplicação parou aqui para não concorrer com outra: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+        }
+      }
+      const vigiar = async <T,>(promessa: Promise<T>): Promise<T> => {
+        let parar = false
+        const vigia = (async () => {
+          while (!parar) {
+            await new Promise((r) => setTimeout(r, opcoes.vigiaMs ?? 1000))
+            if (parar) return undefined as never
+            await conferir()
           }
-          return corpo({ conferir })
-        },
-        { maxWait: 30_000, timeout: opcoes.timeoutMs ?? 60 * 60_000 },
-      )
+          return undefined as never
+        })()
+        try {
+          return await Promise.race([promessa, vigia])
+        } finally {
+          parar = true
+        }
+      }
+      return await corpo({ conferir, vigiar })
     } finally {
+      if (travada) await cliente.$queryRaw`SELECT pg_advisory_unlock(hashtext(${chave}))`.catch(() => undefined)
       await cliente.$disconnect().catch(() => undefined)
     }
   }
@@ -380,6 +428,10 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       // vezes — a chave em JSON não tem unicidade (PR13-10). Quem não consegue a trava é bloqueado, sem esperar.
       const comTrava = opcoes.comTrava ?? travaPorProjeto()
       const desfecho = await comTrava(acao.projectId, async (trava) => {
+          // Trecho repetido no mesmo cliente é a mesma identidade de fato duas vezes: duas linhas numa só aplicação
+          // (PR13-17). `lerManifesto` já recusa; aqui é a última porta antes de escrever.
+          const repetidos = trechosRepetidos(acao.fatos)
+          if (repetidos.length > 0) return { bloqueado: `fatosParaABase repete trecho — ${repetidos.map((r) => `"${r.trecho.slice(0, 50)}" (posições ${r.posicoes.join(', ')})`).join('; ')}: corrija o manifesto` }
           // 1ª passada, SEM escrever: o estado de cada fato e a conferência da linha encontrada. Linha editada ou
           // arquivada não é o fato aprovado — nem se reutiliza, nem se reindexa: bloqueia para decisão (PR13-14).
           const fatos = acao.fatos.map((f) => {
@@ -400,11 +452,11 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
             await trava.conferir()
             if (estado.estado === 'incompleto') {
               // A linha existe sem a marca: o processo anterior caiu entre o SQL e o vetor. Reindexar pelo MESMO id.
-              await reindexarFato(estado.entryId, fato, autor)
+              await trava.vigiar(reindexarFato(estado.entryId, fato, autor))
               fatosReindexados++
               continue
             }
-            await criarFato(fato, autor)
+            await trava.vigiar(criarFato(fato, autor))
             fatosCriados++
           }
           await trava.conferir()

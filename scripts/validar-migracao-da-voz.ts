@@ -260,7 +260,9 @@ async function main() {
     // 4b'. a trava apontada para OUTRO banco não vale (PR13-13): bloqueado antes de conectar, nada escrito
     const urlDeOutroBanco = String(process.env.DATABASE_URL).replace(/\/\/([^@]*@)?([^./]+)/, (m, cred, host) => `//${cred ?? ''}${host}-x-outro-compute`)
     const r4bOutro = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, comTrava: travaPorProjeto(urlDeOutroBanco) })
-    conferir('trava em OUTRO compute: bloqueado ("não é o banco das escritas"), nenhuma voz gravada', r4bOutro[0]?.acao === 'bloqueado' && /não é o banco das escritas/.test(r4bOutro[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, r4bOutro[0]?.motivo)
+    const urlDeOutroNome = String(process.env.DATABASE_URL).replace(/\/([^/?]+)(\?|$)/, '/outro_banco_da_prova$2')
+    const r4bNome = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, comTrava: travaPorProjeto(urlDeOutroNome) })
+    conferir('trava em OUTRO compute, ou em outro BANCO do mesmo compute (PR13-16): bloqueado ("não é o banco das escritas"), nenhuma voz gravada', r4bOutro[0]?.acao === 'bloqueado' && /não é o banco das escritas/.test(r4bOutro[0].motivo ?? '') && r4bNome[0]?.acao === 'bloqueado' && /não é o banco das escritas/.test(r4bNome[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, `${r4bOutro[0]?.motivo?.slice(0, 90)} || ${r4bNome[0]?.motivo?.slice(0, 90)}`)
 
     // ── 4. aplicar de verdade (com o stub de fatos) — a retomada ──────────
     console.log('4) aplicar o manifesto aprovado (retomada): só o fato que falta é criado, a voz é gravada (v1), a migração liga a precedência e o DNA fica arquivado')
@@ -314,21 +316,42 @@ async function main() {
     const reg6d = await lerRegistroDaVoz(PROJETO)
     conferir('com o DNA restaurado migra: voz v4 (CAS sobre a v3), migradaEm gravada, nenhum fato recriado', r6d[0]?.acao === 'migrar' && !r6d[0].erro && r6d[0].vozVersao === 4 && r6d[0].fatosCriados === 0 && reg6d?.versao === 4 && reg6d.migradaEm !== null, JSON.stringify(r6d[0]))
 
-    // ── 6e. a trava EXPIRA enquanto o corpo trabalha (PR13-15) ────────────
-    console.log('6e) a transação da trava expira (timeout curto) enquanto a costura antesDeAtivar demora: a ativação NÃO acontece, a aplicação para com o erro da trava')
+    // ── 6e. a trava se PERDE enquanto um fato longo é escrito (PR13-15/18) ──
+    // A conexão da trava é de sessão (sem timeout); a perda simulada pela costura acontece NO MEIO de um `criarFato`
+    // lento (o indexador esperando embeddings): a vigilância abandona a escrita, nada mais é escrito e a voz não é
+    // gravada nem ativada. O que já estava em voo não é cancelável — o que se prova é que a aplicação PARA.
+    console.log('6e) a trava se perde DURANTE um fato longo: a vigilância abandona a escrita, o fato seguinte não é criado, a voz não é gravada')
     const d6e = await desfazerMigracao({ projectId: PROJETO })
-    const r6e = await aplicarManifesto(db, aprovado.manifesto, {
-      criarFato,
+    // um fato NOVO (fora dos 3 já existentes) para haver o que criar, e um registrador lento
+    const fatoNovo6e = previa.fatos.noLegado.slice(3, 4).map((f) => ({ trecho: f.trecho, categoria: 'ESTABELECIMENTO_INFO' as const, titulo: 'Fato 4 da prévia (prova, lento)' }))
+    if (fatoNovo6e.length < 1) throw new Error('a prévia precisa de um 4º fato para o 6e')
+    const manifesto6e = lerManifesto(manifestoCom({ versaoDaPrevia: previa.versaoDaPrevia, decisao: 'migrar', ...APROVACAO, fatosParaABase: [...fatosDaPrevia, ...fatoNovo6e, ...previa.fatos.noLegado.slice(4, 5).map((f) => ({ trecho: f.trecho, categoria: 'ESTABELECIMENTO_INFO' as const, titulo: 'Fato 5 da prévia (prova)' }))] })).manifesto!
+    let viva6e = true
+    let lentosIniciados = 0
+    // a conexão da trava "cai" 300 ms DEPOIS de o 1º fato lento começar — no meio da escrita, não antes dela
+    const criarFatoLento = async (fato: FatoACriar, autor: string) => {
+      lentosIniciados++
+      setTimeout(() => { viva6e = false }, 300)
+      await new Promise((r) => setTimeout(r, 2_500))
+      fatosAnotados.push({ fato, autor })
+    }
+    const anotadosAntes6e = fatosAnotados.length
+    const r6e = await aplicarManifesto(db, manifesto6e, {
+      criarFato: criarFatoLento,
       estadoDoFato,
       reindexarFato,
-      comTrava: travaPorProjeto(undefined, { timeoutMs: 2_000 }),
-      seams: { antesDeAtivar: async () => { await new Promise((r) => setTimeout(r, 4_000)) } },
+      comTrava: travaPorProjeto(undefined, { travaViva: () => viva6e, vigiaMs: 200 }),
     })
+    await new Promise((r) => setTimeout(r, 2_600))
     const reg6e = await lerRegistroDaVoz(PROJETO)
-    conferir('desfeita; a trava expirou durante a costura: erro "a trava por projeto expirou", voz gravada (v5) mas NÃO migrada', d6e.desfeita && /trava por projeto expirou/.test(r6e[0]?.erro ?? '') && reg6e?.versao === 5 && reg6e.migradaEm === null, JSON.stringify({ erro: r6e[0]?.erro?.slice(0, 120), versao: reg6e?.versao, migradaEm: reg6e?.migradaEm }))
+    conferir('desfeita; a trava se perdeu no meio do 1º fato novo: erro "a trava por projeto se perdeu", só UM fato lento iniciado (o 2º nunca começou), voz continua v4 e NÃO migrada', d6e.desfeita && /trava por projeto se perdeu/.test(r6e[0]?.erro ?? '') && lentosIniciados === 1 && reg6e?.versao === 4 && reg6e.migradaEm === null, JSON.stringify({ erro: r6e[0]?.erro?.slice(0, 140), lentos: lentosIniciados, versao: reg6e?.versao, anotados: fatosAnotados.length - anotadosAntes6e }))
+    // PR13-17 (com a migração ainda desfeita): trecho repetido é recusado por lerManifesto e, se passasse, pela aplicação — antes de qualquer escrita
+    const repetido = lerManifesto(manifestoCom({ versaoDaPrevia: previa.versaoDaPrevia, decisao: 'migrar', ...APROVACAO, fatosParaABase: [fatosDaPrevia[0], { ...fatosDaPrevia[0], categoria: 'HORARIOS' as const }] }))
+    const r6g = await aplicarManifesto(db, { ...aprovado.manifesto, clientes: aprovado.manifesto.clientes.map((c) => ({ ...c, fatosParaABase: [fatosDaPrevia[1], fatosDaPrevia[1]] })) }, { criarFato, estadoDoFato, reindexarFato })
+    conferir('PR13-17: trecho repetido → lerManifesto recusa (posições ditas) e aplicarManifesto bloqueia antes de escrever', repetido.manifesto === null && repetido.problemas.some((p) => /repete o trecho.*posições 0, 1/.test(p)) && r6g[0]?.acao === 'bloqueado' && /repete trecho/.test(r6g[0].motivo ?? ''), `${repetido.problemas[0]?.slice(0, 120)} || ${r6g[0]?.motivo?.slice(0, 100)}`)
     const r6f = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
     const reg6f = await lerRegistroDaVoz(PROJETO)
-    conferir('com a trava normal migra de novo: voz v6, migradaEm gravada', r6f[0]?.acao === 'migrar' && !r6f[0].erro && reg6f?.versao === 6 && reg6f.migradaEm !== null, JSON.stringify(r6f[0]))
+    conferir('com a trava normal migra de novo: voz v5, migradaEm gravada', r6f[0]?.acao === 'migrar' && !r6f[0].erro && reg6f?.versao === 5 && reg6f.migradaEm !== null, JSON.stringify(r6f[0]))
 
     // ── 7. manter-legado e pendente não escrevem ───────────────────────────
     console.log('7) "manter-legado" e "pendente" não escrevem nada')
@@ -337,7 +360,7 @@ async function main() {
     const r7a = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'manter-legado', ...APROVACAO })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const r7b = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'pendente' })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const reg7 = await lerRegistroDaVoz(PROJETO)
-    conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v6 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 6 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
+    conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v5 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 5 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
 
     // ── 8. nada além de BrandVoice ─────────────────────────────────────────
     console.log('8) nada além de BrandVoice (e da linha de base da própria prova) foi criado desde o início da prova')

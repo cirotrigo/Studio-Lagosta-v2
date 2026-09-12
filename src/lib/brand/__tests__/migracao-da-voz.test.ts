@@ -9,6 +9,8 @@ import {
   computeDe,
   divergenciasDoFato,
   mesmoBanco,
+  nomeDoBancoDe,
+  trechosRepetidos,
   condicoesOperacionais,
   fatosNaVoz,
   fatosNoDna,
@@ -380,6 +382,22 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(mesmoBanco('postgresql://u:p@ep-a.x.neon.tech/db', 'postgresql://u:p@ep-b.x.neon.tech/db')).toBe(false)
     expect(mesmoBanco(undefined, 'postgresql://u:p@ep-a.x.neon.tech/db')).toBe(false)
     expect(mesmoBanco('nada', 'nada')).toBe(false)
+    // PR13-16: mesmo compute, bancos DIFERENTES não é o mesmo banco (advisory lock é por banco); pooler/direto do mesmo banco, sim
+    expect(nomeDoBancoDe('postgresql://u:p@ep-a.x.neon.tech/neondb?sslmode=require')).toBe('neondb')
+    expect(nomeDoBancoDe('postgresql://u:p@ep-a.x.neon.tech')).toBeNull()
+    expect(mesmoBanco('postgresql://u:p@ep-a.x.neon.tech/neondb', 'postgresql://u:p@ep-a.x.neon.tech/outro_banco')).toBe(false)
+    expect(mesmoBanco('postgresql://u:p@ep-a-pooler.x.neon.tech/neondb?pgbouncer=true', 'postgresql://u:p@ep-a.x.neon.tech/neondb?sslmode=require')).toBe(true)
+    expect(mesmoBanco('postgresql://u:p@ep-a.x.neon.tech/', 'postgresql://u:p@ep-a.x.neon.tech/neondb')).toBe(false)
+  })
+
+  it('PR13-17: trecho repetido em fatosParaABase é recusado por lerManifesto com as posições; trechosRepetidos lista cada repetição', () => {
+    const fatos = [{ trecho: 'A', categoria: 'HORARIOS' as const, titulo: 't' }, { trecho: 'B', categoria: 'HORARIOS' as const, titulo: 't' }, { trecho: 'A', categoria: 'CAMPANHAS' as const, titulo: 'outro' }, { trecho: 'B', categoria: 'HORARIOS' as const, titulo: 't' }]
+    expect(trechosRepetidos(fatos)).toEqual([{ trecho: 'A', posicoes: [0, 2] }, { trecho: 'B', posicoes: [1, 3] }])
+    expect(trechosRepetidos([{ trecho: 'A' }, { trecho: 'B' }])).toEqual([])
+    const m: Manifesto = { versao: VERSAO_DO_MANIFESTO, geradoEm: '2026-09-12T00:00:00.000Z', clientes: [{ projectId: 3, nome: 'TERO', versaoDaPrevia: 'abcdef0123456789', decisao: 'migrar', aprovadoPor: 'Ciro', aprovadoEm: '2026-09-12', fatosParaABase: [{ trecho: 'Happy hour das 17h às 19h.', categoria: 'HORARIOS', titulo: 'Happy hour' }, { trecho: 'Happy hour das 17h às 19h.', categoria: 'CAMPANHAS', titulo: 'Happy hour (campanha)' }] }] }
+    const lido = lerManifesto(m)
+    expect(lido.manifesto).toBeNull()
+    expect(lido.problemas).toEqual([expect.stringMatching(/clientes\.0 \(TERO\): fatosParaABase repete o trecho "Happy hour das 17h às 19h\." nas posições 0, 1/)])
   })
 
   it('PR13-14: a linha com a chave só é o fato aprovado se conteúdo, categoria, status ACTIVE e validade (em Brasília) batem — cada divergência é dita', () => {
