@@ -6484,6 +6484,15 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   formato no fim) e `sugerido.formato` é gravado; o registro legado (sem
   formato) fica com a chave antiga, nunca reescrita. Teste: as duas levas
   com ids diferentes, reutilização no mesmo formato e âncoras independentes.
+  🔴 **`proposta-de-semana.ts` entra no bundle da BANCADA** (R41 da revisão de
+  637e9faa, P1): o store cliente importa `para-bancada`, que importa
+  `lerFotoCandidatas` dali — e o commit anterior trouxe `aprendizado/chaves`
+  para dentro, que importa `node:crypto`. A compilação cliente não resolve
+  módulo exclusivo de Node, e a bancada não abriria; o vitest em Node não vê.
+  A chave legada (sem formato) sai de `chaveDaPropostaDeSlot` com formato nulo
+  (a MESMA string `slot|versao|projeto|horário`), sem nenhum import de
+  `chaves`; o teste fixa a igualdade com a chave legada inteira. Módulo
+  compartilhado com o navegador só importa módulo puro.
 - 🔴 **A arte de `post-schedule` é um MODELO com a copy do post por cima, e a
   PÁGINA dela não é a peça** (R36 da segunda revisão final, `copyDaArteDeModelo`
   em `textos-da-peca.ts`): o render de post grava a Generation com

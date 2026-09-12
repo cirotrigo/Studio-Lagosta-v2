@@ -702,6 +702,9 @@ describe('R40 — o slot SEMEADO carrega o formato da leva, e a proposta registr
     const chaveFeed = chaveDaSemente(7, feed[0], 'semente-v1')
     expect(chaveStory).not.toBe(chaveFeed)
     expect(chaveStory.endsWith('|story')).toBe(true)
+    // R41: a chave sem formato é a LEGADA inteira, montada sem `aprendizado/chaves` (que traz `node:crypto` ao bundle da bancada).
+    expect(chaveDaSemente(7, { scheduledDatetime: story[0].scheduledDatetime, formato: undefined }, 'semente-v1')).toBe(`slot|semente-v1|7|${story[0].scheduledDatetime}`)
+    expect(chaveStory).toBe(`slot|semente-v1|7|${story[0].scheduledDatetime}|story`)
     expect(chaveFeed.endsWith('|feed')).toBe(true)
 
     // um "banco" de propostas emitidas (chave → id), como `sugestoesJaEmitidas` devolve

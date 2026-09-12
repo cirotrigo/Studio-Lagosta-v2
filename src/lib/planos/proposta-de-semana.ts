@@ -20,7 +20,6 @@
 
 import type { Pilar } from '@/lib/aprendizado/pilares'
 import { chaveDaPropostaDeSlot, formatoDoSlotDaPeca, slotOcupado, type FormatoDaPeca } from '@/lib/posts/contexto-da-semana'
-import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 
 // ── Horários ────────────────────────────────────────────────────────────────
 
@@ -727,7 +726,10 @@ export function montarSlotsDaLeva(entrada: {
  * com a chave antiga — nunca reescrita.
  */
 export function chaveDaSemente(projectId: number, slot: Pick<SlotParaProposta, 'scheduledDatetime' | 'formato'>, versao: string): string {
-  return slot.formato ? chaveDaPropostaDeSlot(projectId, slot.scheduledDatetime, versao, slot.formato) : chaveDeSugestao('slot', versao, projectId, slot.scheduledDatetime)
+  // Sem formato, `chaveDaPropostaDeSlot` devolve a chave LEGADA (`slot|versao|projeto|horário`) — a mesma que
+  // `chaveDeSugestao('slot', …)` montava. Este módulo entra no bundle da BANCADA (via `para-bancada`), e
+  // `aprendizado/chaves` importa `node:crypto`: importá-lo daqui quebrava a compilação cliente (R41).
+  return chaveDaPropostaDeSlot(projectId, slot.scheduledDatetime, versao, slot.formato ?? null)
 }
 
 export interface SugestaoDaSemente {
