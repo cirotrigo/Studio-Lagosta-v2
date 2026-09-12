@@ -55,6 +55,7 @@ import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -599,8 +600,10 @@ function bakeLayers(
         explicitFileUrl.add(layer.id)
       }
       // O render pula `visible === false` — e o editor mostra a camada como
-      // oculta, então quem abrir a arte consegue religá-la.
-      if (slotObj.hidden === true) updated.visible = false
+      // oculta, então quem abrir a arte consegue religá-la. `hidden: true` é
+      // instrução HUMANA explícita: uma marca antiga de "escondida pelo
+      // revisor" não pode encobri-la (REV-8AD-02).
+      if (slotObj.hidden === true) Object.assign(updated, semMarcaDoRevisor({ ...updated, visible: false }))
     }
     return updated
   })
@@ -1152,6 +1155,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }
           : {}),
         slotValues: slotValuesFinais,
+        // A copy como o APRENDIZADO a lê (a camada escondida pelo revisor conta): é o lado "antes" do diff no
+        // agendamento — os `slotValues` visuais acima acusariam essa camada como ADICIONADA (REV-8AD-01).
+        copyDeAprendizado: copyParaDecisao(layers) ?? undefined,
         driveImageId,
         imageUrl: resolved.url ?? directUrl ?? null,
         autocorrecao: fix.autocorrecao,

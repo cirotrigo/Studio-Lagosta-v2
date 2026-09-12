@@ -101,8 +101,11 @@ export function reconciliarMarcasDoRevisor<L extends CamadaComMarca & { id: stri
   const antesPorId = new Map((antes ?? []).map((l) => [l.id, l]))
   return depois.map((l) => {
     if (!marcaDoRevisor(l)) return l
+    // Mostrada pela pessoa (chega visível): a marca não tem mais o que dizer — e, deixada ali, encobriria um
+    // esconder humano posterior por outro caminho (`hidden: true` do chat), REV-8AD-02.
+    if (l.visible !== false) return semMarcaDoRevisor(l)
     const a = antesPorId.get(l.id)
-    if (l.visible === false && a && a.visible !== false) return semMarcaDoRevisor(l)
+    if (a && a.visible !== false) return semMarcaDoRevisor(l)
     return l
   })
 }

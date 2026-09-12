@@ -5662,6 +5662,22 @@ Codex antes de ser escrito.
   estava visível e chega escondida (a pessoa a escondeu). Módulo puro
   `revisao/oculta-pelo-revisor.ts`; prova no passo 9 (com render OK, com
   render falhando, e o controle humano virando `editada`).
+- 🔴 **A proposta do diff sem plano é `fieldValues.copyDeAprendizado`, não os
+  `slotValues`** (REV-8AD-01). Os `slotValues` da Generation do ajuste são a
+  copy VISÍVEL; contra a página lida por `copyParaDecisao` eles acusavam o
+  texto escondido pelo revisor como ADICIONADO pela pessoa
+  (`versusProposta: 'editada'`). O ajuste grava as duas: `slotValues` para o
+  que a arte mostra, `copyDeAprendizado` (com as ocultações mecânicas) para o
+  aprendizado; `lerProcedencia` (`procedencia-da-copy.ts`, puro) lê a de
+  aprendizado primeiro. Prova 9e, sem leva nem dica.
+- 🔴 **A marca sai em todo gesto HUMANO sobre a camada** (REV-8AD-02): ao
+  MOSTRAR pelo editor (`reconciliarMarcasDoRevisor` tira a marca de qualquer
+  camada que chega visível) e ao esconder pelo chat (`hidden: true` no
+  `bakeLayers` passa por `semMarcaDoRevisor`). Marca antiga que sobrevivesse
+  encobriria a remoção humana. Prova 9f pelos dois caminhos.
+- **Falha dentro do passo 9 LANÇA, nunca `abortar`** (REV-8AD-03):
+  `process.exit` não passa pelo `finally`, e o cleanup do Blob e do banco
+  ficaria para trás.
 - **A prova captura a URL da arte IMEDIATAMENTE depois de cada render** e o
   cleanup varre também `recomposicao.urlsAnteriores`: dois renders seguidos
   sobre a mesma Generation sobrescrevem `resultUrl`, e o 1º PNG do passo 6d

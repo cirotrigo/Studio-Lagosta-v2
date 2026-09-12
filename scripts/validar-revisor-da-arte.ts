@@ -1140,16 +1140,16 @@ async function main() {
     const ctaDo9 = escolher9(/cta/i)
     const preDo9 = escolher9(/^pre/i)
     const apoioDo9 = escolher9(/apoio/i)
-    if (!ctaDo9 || !preDo9 || !apoioDo9) abortar('a peça do 9 precisa de três textos visíveis (cta, pre, apoio)')
+    if (!ctaDo9 || !preDo9 || !apoioDo9) throw new Error('a peça do 9 precisa de três textos visíveis (cta, pre, apoio)')
     const quando9 = new Date(daqui7.getTime() + 5 * 3_600_000)
     const plano9 = await db.planoDeConteudo.create({ data: { projectId: PROJETO, titulo: `${MARCA} leva do passo 9`, inicio: daqui7, fim: new Date(daqui7.getTime() + 7 * 86_400_000), origem: 'chat', versao: 'prova-rev-9e-01', criadoPor: projeto.userId } })
     plano9Id = plano9.id
     const item9 = await db.itemDePlano.create({ data: { planoId: plano9.id, projectId: PROJETO, quando: quando9, formato: 'story', via: 'compor', pageId, copyProposta: textosDo9, status: 'pronto' } })
     const ancora9 = ancoraDaDica(item9)
-    if (!ancora9) abortar('o item do 9 não tem âncora')
+    if (!ancora9) throw new Error('o item do 9 não tem âncora')
     const dicas9 = await registrarDicasDeCopy({ projectId: PROJETO, servico: 'prova', versao: 'prova-rev-9e-01', dicas: [{ ancora: ancora9, blocos: textosDo9, pageId }] })
     const sinal9 = dicas9.get(ancora9)
-    if (!sinal9) abortar('a dica do 9 não foi registrada')
+    if (!sinal9) throw new Error('a dica do 9 não foi registrada')
     sinaisDaProva.push(sinal9)
     const lerDica9 = async () => db.learningSignal.findUnique({ where: { id: sinal9 }, select: { desfecho: true, diff: true, decididoPor: true } })
     const removidosDe = (diff: unknown) => (Array.isArray((diff as Record<string, any> | null)?.removidos) ? ((diff as Record<string, any>).removidos as Array<{ texto?: string }>).map((r) => r.texto ?? '') : [])
@@ -1186,6 +1186,56 @@ async function main() {
     posts.push(post9d.postId)
     const dica9d = await lerDica9()
     conferir('controle: escondida pela pessoa, a dica vira editada com a REMOÇÃO do apoio (e só dele)', dica9d?.desfecho === 'editada' && removidosDe(dica9d?.diff).length === 1 && removidosDe(dica9d?.diff)[0] === String(apoioDo9.content).trim(), JSON.stringify({ desfecho: dica9d?.desfecho, removidos: removidosDe(dica9d?.diff) }))
+
+    // ── 9e. REV-8AD-01: SEM leva/dica, o esconder mecânico não vira ADIÇÃO humana ──
+    // Sem plano, a proposta do diff é a copy da Generation do ajuste. Os `slotValues` dela são a copy VISÍVEL (sem
+    // o texto escondido); comparados com a página lida por `copyParaDecisao` acusavam o texto como ADICIONADO. A
+    // Generation passou a gravar `copyDeAprendizado` (com as ocultações mecânicas), e é ela que `lerProcedencia` lê.
+    console.log('9e) REV-8AD-01: na 2ª peça, SEM leva nem dica — esconder pelo revisor e agendar: nenhuma adição nem remoção no sinal de copy')
+    const { lerProcedencia } = await import('../src/lib/creatives/procedencia-da-copy')
+    const camadas9e = await camadasDaPagina(pageId2)
+    const visiveis9e = camadas9e.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false && typeof c.content === 'string' && c.content.trim())
+    const alvo9e = visiveis9e.find((c) => /cta|apoio/i.test(String(c.name ?? c.id))) ?? visiveis9e[visiveis9e.length - 1]
+    if (!alvo9e) throw new Error('a 2ª peça não tem texto visível para o 9e')
+    const texto9e = String(alvo9e.content).trim()
+    const r9e = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+    const a9e = await ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: r9e.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(alvo9e.id)], visivel: false }], canal: 'claude-code' })
+    if (a9e.url) blobs.add(a9e.url)
+    const gen9e = await db.generation.findUnique({ where: { id: a9e.generationId }, select: { fieldValues: true, sourcePageId: true } })
+    const fv9e = (gen9e?.fieldValues ?? {}) as Record<string, any>
+    const proposta9e = lerProcedencia(gen9e?.fieldValues, gen9e?.sourcePageId ?? null).copyProposta ?? {}
+    conferir('a Generation do ajuste grava `copyDeAprendizado` COM o texto escondido e `slotValues` SEM ele; a procedência lê a de aprendizado', Object.values(fv9e.copyDeAprendizado ?? {}).includes(texto9e) && !Object.values(fv9e.slotValues ?? {}).includes(texto9e) && Object.values(proposta9e).includes(texto9e), JSON.stringify({ aprendizado: Object.keys(fv9e.copyDeAprendizado ?? {}), slot: Object.keys(fv9e.slotValues ?? {}) }))
+    const post9e = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 16:30`, pageId: pageId2, generationId: a9e.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-8ad-01` })
+    posts.push(post9e.postId)
+    const sinal9e = await db.learningSignal.findFirst({ where: { projectId: PROJETO, chave: `copy:post:${post9e.postId}` }, select: { desfecho: true, diff: true, escolhido: true } })
+    const diff9e = (sinal9e?.diff ?? {}) as Record<string, any>
+    const versus9e = (sinal9e?.escolhido as Record<string, any> | null)?.versusProposta
+    conferir('o sinal de copy do post (escolha própria, sem plano) não acusa ADIÇÃO nem remoção, e versusProposta é aceita-como-veio', !!sinal9e && (diff9e.adicionados ?? []).length === 0 && (diff9e.removidos ?? []).length === 0 && versus9e === 'aceita-como-veio', JSON.stringify({ adicionados: diff9e.adicionados, removidos: diff9e.removidos, versus: versus9e }))
+    const postDo9e = await db.socialPost.findUnique({ where: { id: post9e.postId }, select: { slotValues: true } })
+    conferir('a cópia visual que o post carrega segue SEM o texto escondido', !Object.entries((postDo9e?.slotValues ?? {}) as Record<string, unknown>).some(([k, v]) => !k.startsWith('_') && v === texto9e))
+
+    // ── 9f. REV-8AD-02: a marca não encobre um esconder HUMANO por outro caminho ──
+    console.log('9f) REV-8AD-02: a pessoa MOSTRA a camada pelo editor (a marca sai) e depois manda escondê-la pelo chat (hidden: true, sem revisão): a remoção é dela')
+    const { reconciliarMarcasDoRevisor, marcaDoRevisor: marcaDe } = await import('../src/lib/creatives/revisao/oculta-pelo-revisor')
+    const antesDo9f = await camadasDaPagina(pageId2)
+    // o que o PATCH do editor faz ao receber a camada de volta visível
+    const mostradas9f = reconciliarMarcasDoRevisor(antesDo9f as Array<{ id: string; visible?: unknown }>, antesDo9f.map((c) => (c.id === alvo9e.id ? { ...c, visible: true } : c)) as Array<{ id: string; [k: string]: unknown }>)
+    const mostrada9f = mostradas9f.find((c) => c.id === alvo9e.id) as Record<string, any>
+    conferir('mostrada pela pessoa: a camada volta visível e SEM a marca do revisor', mostrada9f?.visible === true && marcaDe(mostrada9f) === null, JSON.stringify(mostrada9f?.metadata?.revisao))
+    await db.page.update({ where: { id: pageId2 }, data: { layers: mostradas9f as never } })
+    // caminho do chat: ajustar-arte com `hidden: true` (sem ajustes de revisão) — e com uma marca ANTIGA plantada para provar que ela não encobre
+    await db.page.update({ where: { id: pageId2 }, data: { layers: mostradas9f.map((c) => (c.id === alvo9e.id ? { ...c, metadata: { ...((c as Record<string, any>).metadata ?? {}), revisao: { ocultaPeloRevisor: { em: '2026-09-01T00:00:00.000Z', ajuste: 0 } } } } : c)) as never } })
+    const a9f = await ajustarArte({ projectId: PROJETO, pageId: pageId2, slotValues: { [String(alvo9e.id)]: { hidden: true } }, canal: 'claude-code' })
+    if (a9f.url) blobs.add(a9f.url)
+    const depoisDo9f = (await camadasDaPagina(pageId2)).find((c) => c.id === alvo9e.id)
+    conferir('escondida pelo chat (hidden: true): a camada fica oculta e a marca antiga SAI (não é "oculta pelo revisor")', depoisDo9f?.visible === false && marcaDe(depoisDo9f) === null, JSON.stringify(depoisDo9f?.metadata?.revisao))
+    // agendar com a Generation do 9e como procedência (a copy de aprendizado de ANTES, com o texto): agora a remoção é humana
+    const post9f = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 17:00`, pageId: pageId2, generationId: a9e.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-8ad-02` })
+    posts.push(post9f.postId)
+    const sinal9f = await db.learningSignal.findFirst({ where: { projectId: PROJETO, chave: `copy:post:${post9f.postId}` }, select: { diff: true, escolhido: true } })
+    const diff9f = (sinal9f?.diff ?? {}) as Record<string, any>
+    const removidos9f = ((diff9f.removidos ?? []) as Array<{ texto?: string }>).map((r) => r.texto)
+    conferir('contra a proposta de antes, o texto escondido pela pessoa aparece como REMOVIDO e versusProposta é editada', removidos9f.includes(texto9e) && (sinal9f?.escolhido as Record<string, any> | null)?.versusProposta === 'editada' && !Object.values(((await db.socialPost.findUnique({ where: { id: post9f.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).includes(texto9e), JSON.stringify({ removidos: removidos9f, versus: (sinal9f?.escolhido as Record<string, any> | null)?.versusProposta }))
   } catch (erro) {
     // O erro da prova é impresso ANTES do cleanup: sem isto uma falha no
     // cleanup engoliria a causa (aconteceu na primeira rodada).

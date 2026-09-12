@@ -17,6 +17,7 @@ import {
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
 import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { lerProcedencia } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
   registrarCopyDoPost,
@@ -71,30 +72,7 @@ function apenasTextos(valores: Record<string, unknown> | null): Record<string, s
   return Object.keys(out).length > 0 ? out : null
 }
 
-/**
- * Copy proposta e modelo de origem, a partir da Generation que virou o post.
- *
- * ⚠️ `fieldValues.sourcePageId` é AMBÍGUO: em `source: 'ajuste-arte'` ele
- * aponta para a própria cópia ajustada, não para um modelo. A coluna
- * `Generation.sourcePageId` (espelho novo) não tem esse vício e por isso vem
- * primeiro; o Json só é consultado quando a coluna está vazia — o caso das
- * linhas anteriores a 11/08/2026 — e nunca para arte ajustada.
- */
-function lerProcedencia(
-  fieldValues: unknown,
-  colunaSourcePageId: string | null,
-): { copyProposta: Record<string, unknown> | null; sourcePageId: string | null } {
-  const fv = (fieldValues ?? {}) as Record<string, unknown>
-  const slotValues =
-    fv.slotValues && typeof fv.slotValues === 'object' && !Array.isArray(fv.slotValues)
-      ? (fv.slotValues as Record<string, unknown>)
-      : null
-
-  const doJson =
-    fv.source !== 'ajuste-arte' && typeof fv.sourcePageId === 'string' ? fv.sourcePageId : null
-
-  return { copyProposta: slotValues, sourcePageId: colunaSourcePageId ?? doJson }
-}
+// `lerProcedencia` mora em `procedencia-da-copy.ts` (puro, com teste): copyDeAprendizado vence slotValues (REV-8AD-01).
 
 export interface AgendarPostInput {
   projectId: number

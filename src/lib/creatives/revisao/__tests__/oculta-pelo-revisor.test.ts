@@ -53,6 +53,8 @@ describe('a marca da camada escondida pelo revisor (REV-9E-01)', () => {
     // continua escondida desde o ajuste: mantém
     const r2 = reconciliarMarcasDoRevisor([escondidaPeloRevisor], [escondidaPeloRevisor])
     expect(ocultaPeloRevisor(r2[0])).toBe(true)
+    // mostrada pela pessoa (chega VISÍVEL com a marca antiga): a marca sai — REV-8AD-02
+    expect(marcaDoRevisor(reconciliarMarcasDoRevisor([escondidaPeloRevisor], [mostradaPelaPessoa])[0])).toBeNull()
     // camada nova (sem "antes") com marca escondida: mantém (não há evidência de gesto humano)
     expect(ocultaPeloRevisor(reconciliarMarcasDoRevisor([], [escondidaPeloRevisor])[0])).toBe(true)
     expect(ocultaPeloRevisor(reconciliarMarcasDoRevisor(null, [escondidaPeloRevisor])[0])).toBe(true)
