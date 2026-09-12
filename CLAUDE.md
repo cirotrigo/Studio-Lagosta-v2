@@ -6720,6 +6720,55 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   (mesmo id), a presente volta campo a campo, e a conferência cobre todos os
   campos menos `updatedAt`.
 
+### A migração da voz, por manifesto (PR 13 de "Marca simples, copy melhor", 12/09/2026)
+
+A troca do DNA de texto (5–12 mil caracteres por cliente) pela voz compacta
+do PR 7 é decisão do Ciro, cliente a cliente, sobre uma PRÉVIA que ele viu.
+Contrato PURO em `src/lib/brand/migracao-da-voz.ts` (com teste); as dez vozes
+propostas em `scripts/lib/vozes-propostas.ts`; o script em
+`scripts/migrar-voz-da-marca.ts` (dry-run por padrão; `--aplicar --manifesto`
+escreve; `--dev` para o branch; em produção exige `--producao`). Prova de
+integração no branch de dev: `scripts/validar-migracao-da-voz.ts` (projeto 6;
+o registrador de fatos é um stub — `criarEntradaBase` indexa no vetor de
+produção). **Nenhum cliente foi migrado**: as prévias reais estão em
+`~/Documents/Studio-Lagosta-execucao/marca-e-copy/PR-13/previa-producao/`
+com o manifesto em branco, à espera das decisões.
+
+- **A prévia tem VERSÃO de conteúdo** (`versaoDaPrevia`: hash estável do DNA
+  de texto + da voz proposta). O manifesto cita a versão aprovada e a
+  aplicação BLOQUEIA quando ela mudou por baixo (DNA editado, voz retocada) —
+  prévia refeita pede aprovação nova. Nada é adaptado por quem aplica.
+- 🔴 **O manifesto é FECHADO e silêncio não é aprovação**: todo cliente é
+  `migrar`, `manter-legado` ou `pendente`; `migrar` e `manter-legado` exigem
+  `aprovadoPor` + `aprovadoEm`; `lerManifesto` devolve TODOS os problemas.
+  `pendente` e `manter-legado` não escrevem nada; cliente já migrado é
+  `ja-migrado`.
+- 🔴 **Fato vai para a BASE, nunca para a voz.** `fatosNoDna` lista as frases
+  do DNA com preço, horário, data ou promoção; só entra na base o que o
+  manifesto listar POR EXTENSO (trecho exato da prévia + categoria + título +
+  validade), e trecho que a prévia não lista bloqueia. `fatosNaVoz` tem de dar
+  VAZIO na voz proposta (é problema, não aviso). Em PROIBIÇÃO e REGRA a palavra
+  nua "promoção"/"desconto"/"grátis" é vocabulário proibido, não dado;
+  percentual e "leve X pague Y" são dado em qualquer campo; o motivo da regra
+  só é lido para preço e horário (ele carrega a data em que a regra nasceu).
+  🔴 O rodapé "(AAAA-MM-DD — motivo)" de uma regra aprendida é METADADO e sai
+  antes da leitura — lido como frase, toda regra legada virava "fato de data".
+- **Cobertura das "Regras aprendidas na prática" é APROXIMAÇÃO declarada**
+  (`semelhancaDeRegras` ≥ `LIMIAR_DE_CONFLITO`, o mesmo detector de conflito
+  da voz): a prévia diz qual regra/proibição/reescrita da voz fala do mesmo
+  assunto e marca o que ficou "sem correspondente" — para a pessoa ver, nunca
+  para decidir sozinha.
+- **Aplicar**: fatos ANTES da voz (um fato perdido depois de a voz assumir é
+  pior que um fato duplicado do DNA), `gravarVoz` com a versão lida (CAS),
+  `migrarParaVoz` amarrada a essa versão; erro por cliente volta no resultado,
+  sem derrubar os outros. `CATEGORIAS_DE_FATO` é subconjunto de
+  `CATEGORIAS_DA_BASE` sem `TOM_DE_VOZ` (identidade nunca volta para a base).
+- **A prévia sai de produção ANTES da migration do PR 7 chegar lá**: o script
+  tolera a tabela `BrandVoice` ausente (P2021 → sem registro, com aviso); a
+  aplicação nesse banco falha em `gravarVoz`, por cliente. A migration entra
+  por `db:deploy` com o OK do Ciro — nunca antes do código do PR 7 e nunca o
+  código antes do schema.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
