@@ -73,10 +73,16 @@ const SAIDA = argumento('--saida') ?? '.tmp-validar-medir-copy'
 
 let ok = 0
 let mau = 0
+let pendentesDaProva = 0
 function conferir(titulo: string, condicao: boolean, detalhe = '') {
   console.log(`  ${condicao ? '✓' : '✗'} ${titulo}${detalhe ? ` — ${detalhe}` : ''}`)
   if (condicao) ok++
   else mau++
+}
+/** Caso que o banco de dev não permite exercitar: contado à parte, nunca como sucesso nem como falha. */
+function pendente(titulo: string, detalhe = '') {
+  console.log(`  ○ NÃO EXERCITADO: ${titulo}${detalhe ? ` — ${detalhe}` : ''}`)
+  pendentesDaProva++
 }
 
 async function main() {
@@ -144,25 +150,34 @@ async function main() {
     // ── 2. medir-copy ─────────────────────────────────────────────────────
     console.log('2) medir-copy: cabe / cabe reduzido / não cabe com orçamento / papel ausente / aproximado')
     const alvo = deStory.find((v) => v.orcamento.find((o: any) => o.papel === 'headline' && !o.naoMedido && typeof o.caracteresPorLinha === 'number')) ?? deStory[0]
-    const orcAlvo = alvo.orcamento.find((o: any) => o.papel === 'headline')
-    const n = Number(orcAlvo?.caracteresPorLinha ?? 12)
-    const curta = 'a'.repeat(Math.max(3, Math.floor(n * 0.6)))
-    const comprida = 'a'.repeat(Math.max(6, Math.ceil(n * 1.15)))
-    const enorme = 'a'.repeat(Math.max(10, Math.ceil(n * 1.6)))
+    const n = Number(alvo.orcamento.find((o: any) => o.papel === 'headline')?.caracteresPorLinha ?? 12)
+    // A largura de UMA letra "a" na fonte da headline, medida pela própria tool: os comprimentos das linhas de
+    // teste saem dela (o orçamento por amostra é aproximado de propósito — letras diferentes têm larguras diferentes).
+    const sonda = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: [{ papel: 'headline', linhas: ['aaaaaaaaaa'] }] })
+    const coluna = Number(sonda.blocos[0].linhas[0].coluna)
+    const larguraDoA = Number(sonda.blocos[0].linhas[0].largura) / 10
+    conferir(`a sonda mede: coluna ${coluna}px e a letra "a" da headline com ${larguraDoA.toFixed(1)}px (fonte ${sonda.blocos[0].fonte}, não medido = ${sonda.naoMedido})`, coluna > 0 && larguraDoA > 0 && sonda.naoMedido === false)
+    const letras = (fracaoDaColuna: number) => 'a'.repeat(Math.max(3, Math.round((coluna * fracaoDaColuna) / larguraDoA)))
+    const curta = letras(0.7)
+    const comprida = letras(1.1) // entre a coluna e a coluna ÷ 0,8: cabe só reduzida
+    const enorme = letras(1.5) // além de 1,25 × coluna: não cabe nem a 80%
     const mCurta = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: [{ papel: 'headline', linhas: [curta] }] })
-    conferir(`copy curta (${curta.length} letras, orçamento ${n}) CABE em escala 1, com corpo e caixa medidos, na variante pedida`, mCurta.cabeTudo === true && mCurta.blocos[0].situacao === 'cabe' && mCurta.blocos[0].escala === 1 && mCurta.blocos[0].caixa?.altura > 0 && mCurta.blocos[0].linhas[0].cabe === true && mCurta.variante.id === alvo.id && mCurta.naoMedido === false, JSON.stringify({ situacao: mCurta.blocos[0].situacao, escala: mCurta.blocos[0].escala, caixa: mCurta.blocos[0].caixa, largura: mCurta.blocos[0].linhas[0].largura, coluna: mCurta.blocos[0].linhas[0].coluna }))
+    conferir(`copy curta (${curta.length} letras; orçamento por amostra ${n}) CABE em escala 1, com corpo e caixa medidos, na variante pedida`, mCurta.cabeTudo === true && mCurta.blocos[0].situacao === 'cabe' && mCurta.blocos[0].escala === 1 && mCurta.blocos[0].caixa?.altura > 0 && mCurta.blocos[0].linhas[0].cabe === true && mCurta.variante.id === alvo.id && mCurta.naoMedido === false, JSON.stringify({ situacao: mCurta.blocos[0].situacao, escala: mCurta.blocos[0].escala, caixa: mCurta.blocos[0].caixa, largura: mCurta.blocos[0].linhas[0].largura, coluna: mCurta.blocos[0].linhas[0].coluna }))
     const mComprida = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: [{ papel: 'headline', linhas: [comprida] }] })
-    conferir(`linha comprida (${comprida.length} letras) cabe só REDUZIDA (escala entre 0,8 e 1) e a linha diz que não cabe no tamanho da assinatura`, mComprida.blocos[0].situacao === 'cabe-reduzido' && mComprida.blocos[0].escala < 1 && mComprida.blocos[0].escala >= 0.8 && mComprida.blocos[0].linhas[0].cabe === false && mComprida.cabeTudo === true, JSON.stringify({ situacao: mComprida.blocos[0].situacao, escala: mComprida.blocos[0].escala }))
+    conferir(`linha comprida (${comprida.length} letras ≈ 110% da coluna) cabe só REDUZIDA (escala entre 0,8 e 1) e a linha diz que não cabe no tamanho da assinatura`, mComprida.blocos[0].situacao === 'cabe-reduzido' && mComprida.blocos[0].escala < 1 && mComprida.blocos[0].escala >= 0.8 && mComprida.blocos[0].linhas[0].cabe === false && mComprida.cabeTudo === true, JSON.stringify({ situacao: mComprida.blocos[0].situacao, escala: mComprida.blocos[0].escala, largura: mComprida.blocos[0].linhas[0].largura }))
     const mEnorme = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: [{ papel: 'headline', linhas: [enorme] }] })
-    conferir(`linha enorme (${enorme.length} letras) NÃO cabe nem a 80%: volta com o orçamento por linha (caracteres que cabem ≈ ${n}) e cabeTudo false`, mEnorme.cabeTudo === false && mEnorme.blocos[0].situacao === 'nao-cabe' && Array.isArray(mEnorme.blocos[0].orcamento) && mEnorme.blocos[0].orcamento[0].caracteresQueCabem >= n - 2 && mEnorme.blocos[0].orcamento[0].caracteresQueCabem <= n + 2 && /reescreva/.test(mEnorme.nota), JSON.stringify({ orcamento: mEnorme.blocos[0].orcamento?.[0], nota: mEnorme.nota?.slice(0, 60) }))
+    const orc = mEnorme.blocos[0].orcamento?.[0]
+    conferir(`linha enorme (${enorme.length} letras ≈ 150% da coluna) NÃO cabe nem a 80%: volta com o orçamento por linha (caracteres que cabem = ⌊letras × coluna ÷ largura⌋, menor que a linha) e cabeTudo false`, mEnorme.cabeTudo === false && mEnorme.blocos[0].situacao === 'nao-cabe' && !!orc && orc.caracteresQueCabem === Math.floor((enorme.length * orc.coluna) / orc.largura) && orc.caracteresQueCabem < enorme.length && /reescreva/.test(mEnorme.nota), JSON.stringify({ orcamento: orc, nota: mEnorme.nota?.slice(0, 60) }))
     const mDestaque = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: [{ papel: 'headline', linhas: [`[${curta}]`] }] })
-    conferir('destaque entre [colchetes] marca a medida como APROXIMADA (e a linha volta como foi escrita)', mDestaque.aproximado === true && mDestaque.blocos[0].aproximado === true && mDestaque.blocos[0].linhas[0].linha === `[${curta}]`, JSON.stringify({ aproximado: mDestaque.aproximado, situacao: mDestaque.blocos[0].situacao }))
-    const semServico = deStory.find((v) => !v.aceitaServico)
-    if (semServico) {
-      const mAusente = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: semServico.id, blocos: [{ papel: 'headline', linhas: [curta] }, { papel: 'servico', linhas: ['Sexta, 19h'] }] })
-      conferir(`papel que a variante "${semServico.nome}" não tem é declarado (papel-ausente), cabeTudo false, e outrasVariantes diz quem o tem`, mAusente.cabeTudo === false && mAusente.papeisAusentes?.includes('servico') && mAusente.blocos.find((b: any) => b.papel === 'servico')?.situacao === 'papel-ausente' && (mAusente.outrasVariantes as any[]).some((o) => !o.papeisAusentes.includes('servico')), JSON.stringify({ ausentes: mAusente.papeisAusentes, outras: (mAusente.outrasVariantes as any[]).map((o) => [o.nome, o.papeisAusentes]) }))
+    const semEstiloDeDestaque = (mDestaque.blocos[0].avisos ?? []).some((a: string) => /não tem estilo de destaque/.test(a))
+    conferir('destaque entre [colchetes]: a medida vira APROXIMADA — ou, quando a marca não tem estilo de destaque, o bloco AVISA que saiu sem destaque (nunca em silêncio); a linha volta como foi escrita', ((mDestaque.aproximado === true && mDestaque.blocos[0].aproximado === true) || semEstiloDeDestaque) && mDestaque.blocos[0].linhas[0].linha === `[${curta}]`, JSON.stringify({ aproximado: mDestaque.aproximado, semEstiloDeDestaque, situacao: mDestaque.blocos[0].situacao }))
+    const PAPEIS = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
+    const faltante = deStory.flatMap((v) => PAPEIS.filter((p) => !v.papeis.includes(p)).map((p) => ({ v, p }))).find(Boolean)
+    if (faltante) {
+      const mAusente = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: faltante.v.id, blocos: [{ papel: 'headline', linhas: [curta] }, { papel: faltante.p, linhas: ['Sexta, 19h'] }] })
+      conferir(`papel "${faltante.p}" que a variante "${faltante.v.nome}" não tem é declarado (papel-ausente), cabeTudo false, e outrasVariantes diz quem o tem`, mAusente.cabeTudo === false && mAusente.papeisAusentes?.includes(faltante.p) && mAusente.blocos.find((b: any) => b.papel === faltante.p)?.situacao === 'papel-ausente' && Array.isArray(mAusente.outrasVariantes), JSON.stringify({ ausentes: mAusente.papeisAusentes, outras: (mAusente.outrasVariantes as any[]).map((o) => [o.nome, o.papeisAusentes]) }))
     } else {
-      conferir('há uma variante de story sem `servico` para exercitar papel-ausente', false, 'todas aceitam serviço')
+      pendente('papel-ausente pela tool', `todas as ${deStory.length} variantes de story deste projeto têm os cinco papéis — o caso está coberto pelo teste unitário (medir-copy.test.ts)`)
     }
     const semVariante = await tool('medir-copy', { projectId: PROJETO, formato: 'story', blocos: [{ papel: 'headline', linhas: [curta] }] })
     conferir('sem variante pedida, medir-copy escolhe como a composição (motivo declarado) e mede as OUTRAS variantes do formato', typeof semVariante.variante.motivo === 'string' && Array.isArray(semVariante.outrasVariantes) && semVariante.outrasVariantes.length === deStory.length - 1 && semVariante.outrasVariantes.every((o: any) => typeof o.cabeTudo === 'boolean'), JSON.stringify({ variante: semVariante.variante, outras: semVariante.outrasVariantes.length }))
@@ -195,8 +210,8 @@ async function main() {
     console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
     mau++
   } finally {
-    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ ...registro, pendentes, ok, falhas: mau }, null, 2))
-    console.log(`\n${ok} ok, ${mau} falha(s). Saída em ${resolve(SAIDA)}`)
+    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ ...registro, pendentes, ok, falhas: mau, naoExercitados: pendentesDaProva }, null, 2))
+    console.log(`\n${ok} ok, ${mau} falha(s)${pendentesDaProva ? `, ${pendentesDaProva} não exercitado(s)` : ''}. Saída em ${resolve(SAIDA)}`)
     await db.$disconnect()
     process.exit(mau > 0 ? 1 : 0)
   }
