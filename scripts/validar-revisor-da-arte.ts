@@ -42,7 +42,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { apagarBlobsDaRodada } from './lib/limpeza-de-blobs'
+import { apagarBlobsDaRodada, limpezaFalhou } from './lib/limpeza-de-blobs'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -1643,8 +1643,9 @@ async function main() {
     // Falha ao apagar o Blob é FALHA da prova (REV-9E-03): resíduo no Blob de produção não pode passar no gate.
     // "encontrados" e "apagados" são contados em separado; o conjunto inclui o PNG que o persist descartou (REV-90AA-01).
     const limpezaDeBlobs = await apagarBlobsDaRodada(blobs, (urls) => del(urls))
-    if (limpezaDeBlobs.erro) {
-      console.error('  ✗ blob NÃO apagado (conta como falha da prova):', limpezaDeBlobs.erro)
+    // `limpezaFalhou`, nunca `if (erro)`: erro '' é falsy e passava no gate (REV-0352-01).
+    if (limpezaFalhou(limpezaDeBlobs)) {
+      console.error('  ✗ blob NÃO apagado (conta como falha da prova):', limpezaDeBlobs.erro ?? 'restaram URLs no Blob')
       mau++
     }
     console.log(`  apagados: ${JSON.stringify({ ...criados, blobs: `${limpezaDeBlobs.apagados} de ${limpezaDeBlobs.encontrados} encontrados` })}`)

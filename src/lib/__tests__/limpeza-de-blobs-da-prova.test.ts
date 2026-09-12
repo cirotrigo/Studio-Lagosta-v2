@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { apagarBlobsDaRodada, urlsDoBlob } from '../../../scripts/lib/limpeza-de-blobs'
+import { apagarBlobsDaRodada, limpezaFalhou, urlsDoBlob } from '../../../scripts/lib/limpeza-de-blobs'
 
 /**
  * REV-90AA-01 (revisão do commit 90aa3739): o PNG que o ajuste A subiu e que o `persist` descartou tem de estar no
@@ -29,5 +29,25 @@ describe('apagarBlobsDaRodada — a limpeza de Blob da prova (REV-90AA-01)', () 
     expect(await apagarBlobsDaRodada(['https://prova.invalid/y.png'], apagar)).toEqual({ encontrados: 0, apagados: 0, erro: null, restantes: [] })
     expect(apagar).not.toHaveBeenCalled()
     expect(urlsDoBlob([])).toEqual([])
+  })
+
+  it('exclusão que rejeita com mensagem VAZIA (`new Error(\'\')` ou `throw \'\'`) conta como falha da prova — o erro nunca sai vazio (REV-0352-01)', async () => {
+    for (const rejeicao of [new Error(''), '', new Error('   ')]) {
+      const r = await apagarBlobsDaRodada([A, B], async () => {
+        throw rejeicao
+      })
+      expect(r.erro).not.toBeNull()
+      expect(r.erro!.trim().length).toBeGreaterThan(0)
+      expect(r.restantes).toEqual([A, B])
+      expect(r.apagados).toBe(0)
+      expect(limpezaFalhou(r)).toBe(true)
+    }
+  })
+
+  it('a decisão da prova é `erro !== null` ou sobra de URL: erro vazio vindo de outro caminho também falha; limpeza completa passa (REV-0352-01)', async () => {
+    expect(limpezaFalhou({ erro: '', restantes: [] })).toBe(true)
+    expect(limpezaFalhou({ erro: null, restantes: [A] })).toBe(true)
+    expect(limpezaFalhou(await apagarBlobsDaRodada([A], async () => undefined))).toBe(false)
+    expect(limpezaFalhou(await apagarBlobsDaRodada([], async () => undefined))).toBe(false)
   })
 })

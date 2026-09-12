@@ -229,6 +229,22 @@ function refluir(camadas: Layer[], novas: Map<string, Layer>, canvas: Canvas): L
 }
 
 /**
+ * Um id que NENHUMA camada da página usa — escondida inclusive. Criar, ocultar
+ * e recriar o gradiente deixa `gradiente-leitura-rodape` e
+ * `gradiente-leitura-rodape-revisao` ocultos na página; conferir só a primeira
+ * colisão recriava o segundo, e dois ids iguais em `Page.layers` fazem o
+ * ajuste seguinte por id atingir as DUAS camadas (REV-127-INTEGRAL-01). Os ids
+ * existentes nunca mudam: só a camada nova ganha sufixo.
+ */
+export function idLivre(base: string, camadas: Layer[]): string {
+  const usados = new Set(camadas.map((l) => l.id))
+  if (!usados.has(base)) return base
+  let candidato = `${base}-revisao`
+  for (let n = 2; usados.has(candidato); n++) candidato = `${base}-revisao-${n}`
+  return candidato
+}
+
+/**
  * Põe a camada nova logo acima da foto de fundo VISÍVEL que fica abaixo dos
  * textos (ou no fundo da pilha) e renumera a ordem. `bg-foto` escondido com
  * outra foto por cima deixaria o gradiente coberto.
@@ -384,7 +400,7 @@ export function aplicarAjustes(
           : CURVA_DE_LEITURA
         const altura = Math.round(Math.min(H, a.altura ?? H * 0.45))
         let nova = camadaDeGradiente({ borda, W, H, altura, cor, curva, forca: a.forca! })
-        if (camadas.some((l) => l.id === nova.id)) nova = { ...nova, id: `${nova.id}-revisao` }
+        nova = { ...nova, id: idLivre(nova.id, camadas) }
         camadas = inserirAcimaDoFundo(camadas, nova, ctx.canvas)
         aplicados.push({
           indice,

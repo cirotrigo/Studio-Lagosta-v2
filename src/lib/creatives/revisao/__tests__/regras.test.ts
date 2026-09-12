@@ -3,7 +3,7 @@ import type { Layer } from '@/types/template'
 import type { TextLayerMetrics } from '@/lib/creatives/text-geometry'
 import type { ContrasteMedido } from '@/lib/compositor/regua'
 import { avaliarPeca, type EntradaDaRevisao } from '../regras'
-import type { AchadoVisto } from '../visao'
+import { insumosDaVisao, reconciliarVisao, type AchadoVisto } from '../visao'
 
 const W = 1080
 const H = 1920
@@ -633,6 +633,45 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     const vazia = avaliarPeca(entrada({ ...base, vistos: [], visaoConclusiva: true }))
     expect(vazia.achados.find((a) => a.regra === 'texto-sem-leitura')!.severidade).toBe('sugestao')
     expect(vazia.cobertura.visao?.estado).toBe('avaliada')
+  })
+
+  it('visão CORTADA no teto — a confirmação da leitura medida era o 7º achado — sai parcial e não rebaixa a leitura (REV-127-INTEGRAL-02)', () => {
+    const falta = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, tintaCorrigida: 0.8, p98ComHalo: 120, ok: true, antesDaCorrecao: { p98: 180, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' } })
+    const base = { camadas: [rodapeA06, apoio, servico], metricas: [metrica(apoio), metrica(servico)], contraste: [falta] }
+    const achado = (marca: string, problema: string) => ({ marca, problema, evidencia: 'visto com clareza na peça renderizada', confianca: 'alta', correcao: '', intensidade: 'pouco' })
+    const seisOutros = [
+      achado('T1', 'entrelinha-grande'),
+      achado('T1', 'texto-pequeno'),
+      achado('T2', 'palavra-orfa'),
+      achado('T2', 'colisao'),
+      achado('PECA', 'respiro-desequilibrado'),
+      achado('PECA', 'posicao-estranha'),
+    ]
+    const confirmacao = achado('T2', 'texto-sem-leitura')
+    const marcas = [marcaApoio, marcaServico]
+    const avaliar = (achados: unknown[]) => {
+      const r = reconciliarVisao({ achados }, marcas)
+      return avaliarPeca(entrada({ ...base, vistos: r.vistos, ...insumosDaVisao({ estado: 'feita', descartados: r.descartados, truncados: r.truncados }) }))
+    }
+
+    const cortada = avaliar([...seisOutros, confirmacao])
+    expect(cortada.achados.find((a) => a.regra === 'texto-sem-leitura')!.severidade).toBe('problema')
+    expect(cortada.cobertura.visao?.estado).toBe('parcial')
+    expect(cortada.cobertura.visao?.motivo).toMatch(/teto/)
+    expect(cortada.resumo).toMatch(/a visão concluiu só em parte/)
+
+    // controle: a mesma confirmação dentro do teto confirma a leitura e a visão fica avaliada
+    const inteira = avaliar([confirmacao, ...seisOutros.slice(0, 5)])
+    const leitura = inteira.achados.find((a) => a.regra === 'texto-sem-leitura')!
+    expect(leitura.severidade).toBe('problema')
+    expect(leitura.visao?.problema).toBe('texto-sem-leitura')
+    expect(inteira.cobertura.visao?.estado).toBe('avaliada')
+
+    // a trava mora na regra também: `visaoConclusiva: true` com corte não autoriza rebaixar
+    const direto = avaliarPeca(entrada({ ...base, vistos: [], visaoConclusiva: true, visaoTruncados: 2 }))
+    expect(direto.achados.find((a) => a.regra === 'texto-sem-leitura')!.severidade).toBe('problema')
+    expect(direto.cobertura.visao).toMatchObject({ estado: 'parcial' })
+    expect(direto.cobertura.visao?.motivo).toMatch(/2 ficaram de fora/)
   })
 
   it('"sem leitura" onde a régua mede folga clara é descartado; no limite do alvo, fica', () => {

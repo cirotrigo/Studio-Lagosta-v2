@@ -149,8 +149,17 @@ function slug(v: unknown): string {
     .replace(/[\s_]+/g, '-')
 }
 
-/** Cada campo é suspeito: o que não casa com o vocabulário ou com uma marca da peça é descartado. */
-export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { vistos: AchadoVisto[]; descartados: number } {
+/**
+ * Cada campo é suspeito: o que não casa com o vocabulário ou com uma marca da peça é descartado.
+ *
+ * O teto (`TETO_DE_ACHADOS_VISTOS`) corta a lista, mas o corte é DECLARADO:
+ * achado válido e distinto além dele conta em `truncados`, e a revisão trata a
+ * resposta como cobertura parcial — o sétimo achado podia ser justamente a
+ * confirmação de uma leitura medida, e rebaixá-la porque "a visão não viu"
+ * seria mentir (REV-127-INTEGRAL-02). Item inválido além do teto continua
+ * contando em `descartados`.
+ */
+export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { vistos: AchadoVisto[]; descartados: number; truncados: number } {
   const lido = respostaDaVisaoSchema.safeParse(bruto)
   // Resposta SEM a lista não é "nenhum achado": é resposta incompleta, e conta
   // como item descartado para a cobertura sair parcial e nada ser rebaixado por
@@ -162,6 +171,7 @@ export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { visto
   const vistos: AchadoVisto[] = []
   const vistas = new Set<string>()
   let descartados = listaVeio ? 0 : 1
+  let truncados = 0
   for (const item of itens) {
     const problema = slug(item.problema) as ProblemaVisto
     if (!PROBLEMAS_VISTOS.includes(problema)) {
@@ -187,6 +197,10 @@ export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { visto
     const chave = `${marca?.marca ?? 'PECA'}|${problema}`
     if (vistas.has(chave)) continue
     vistas.add(chave)
+    if (vistos.length >= TETO_DE_ACHADOS_VISTOS) {
+      truncados++
+      continue
+    }
     const correcao = slug(item.correcao) as CorrecaoVista
     const intensidade = slug(item.intensidade) as Intensidade
     vistos.push({
@@ -197,9 +211,27 @@ export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { visto
       correcao: CORRECOES_VISTAS.includes(correcao) ? correcao : null,
       intensidade: INTENSIDADES.includes(intensidade) ? intensidade : 'pouco',
     })
-    if (vistos.length >= TETO_DE_ACHADOS_VISTOS) break
   }
-  return { vistos, descartados }
+  return { vistos, descartados, truncados }
+}
+
+/**
+ * O que a revisão recebe do estado da visão — num lugar só, para quem chama
+ * `avaliarPeca` não esquecer o corte: `visaoConclusiva` diz que nada foi
+ * descartado; `visaoTruncados`, que nada ficou além do teto. Qualquer um dos
+ * dois deixa a cobertura parcial e desliga o rebaixamento (REV-127-INTEGRAL-02).
+ */
+export function insumosDaVisao(visao: { estado: string; descartados?: number; truncados?: number; motivo?: string }): {
+  visaoConclusiva: boolean
+  visaoTruncados: number
+  motivoSemVisao: string | undefined
+} {
+  const feita = visao.estado === 'feita'
+  return {
+    visaoConclusiva: feita && (visao.descartados ?? 0) === 0,
+    visaoTruncados: feita ? Math.max(0, visao.truncados ?? 0) : 0,
+    motivoSemVisao: feita ? undefined : visao.motivo,
+  }
 }
 
 export const SYSTEM_DA_VISAO = `Você revisa a diagramação de stories e posts de Instagram de restaurantes, feitos no editor de um estúdio. Recebe a peça JÁ RENDERIZADA, a mesma peça com os blocos de texto marcados (T1, T2… e L1 para a logo) e recortes ampliados dos blocos em resolução real. Aponte só DEFEITOS DE EXECUÇÃO que você consegue VER. Não opine sobre a copy (palavras, gramática, tom), sobre a escolha da foto nem sobre as cores da marca.

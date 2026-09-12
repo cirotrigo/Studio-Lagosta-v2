@@ -45,6 +45,7 @@ import {
   MODELO_DA_VISAO,
   marcasDaPeca,
   pedirOlharDaVisao,
+  insumosDaVisao,
   reconciliarVisao,
   textoDeContexto,
   type AchadoVisto,
@@ -68,6 +69,8 @@ export interface EstadoDaVisao {
   modelo?: string
   ms?: number
   descartados?: number
+  /** Achados válidos que ficaram além do teto da reconciliação (REV-127-INTEGRAL-02). */
+  truncados?: number
   motivo?: string
 }
 
@@ -475,7 +478,13 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
         ])
         const reconciliado = reconciliarVisao(bruto, marcas)
         vistos = reconciliado.vistos
-        visao = { estado: 'feita', modelo: MODELO_DA_VISAO, ms: Date.now() - t0, descartados: reconciliado.descartados }
+        visao = {
+          estado: 'feita',
+          modelo: MODELO_DA_VISAO,
+          ms: Date.now() - t0,
+          descartados: reconciliado.descartados,
+          truncados: reconciliado.truncados,
+        }
       } catch (erro) {
         visao = {
           estado: 'falhou',
@@ -502,8 +511,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     motivoSemMedida,
     textosSemMetrica,
     vistos,
-    visaoConclusiva: visao.estado === 'feita' && (visao.descartados ?? 0) === 0,
-    motivoSemVisao: visao.estado === 'feita' ? undefined : visao.motivo,
+    ...insumosDaVisao(visao),
   })
 
   // A prévia é conveniência: falhar aqui não pode descartar um relatório pronto.

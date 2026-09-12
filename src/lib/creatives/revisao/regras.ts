@@ -117,6 +117,12 @@ export interface EntradaDaRevisao {
    * marca inválida pode ter sido justamente sobre aquele bloco.
    */
   visaoConclusiva?: boolean
+  /**
+   * Achados válidos que a reconciliação deixou além do teto. Resposta cortada
+   * também não é conclusiva: o que ficou de fora podia confirmar a leitura
+   * medida (REV-127-INTEGRAL-02). Use `insumosDaVisao` para preencher os dois.
+   */
+  visaoTruncados?: number
 }
 
 export const LIMITES_DA_REVISAO = {
@@ -1236,7 +1242,9 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     // A visão ARBITRA o que a medida aproxima. Leitura que a régua acusou e a
     // visão, olhando a peça, não viu vira sugestão; assunto só estimado pela
     // textura que ela não confirmou é ruído e sai.
-    for (let i = achados.length - 1; i >= 0 && e.visaoConclusiva !== false; i--) {
+    const visaoTruncados = Math.max(0, e.visaoTruncados ?? 0)
+    const visaoParcial = e.visaoConclusiva === false || visaoTruncados > 0
+    for (let i = achados.length - 1; i >= 0 && !visaoParcial; i--) {
       const a = achados[i]
       if (a.visao) continue
       if (a.regra === 'texto-sem-leitura') {
@@ -1253,10 +1261,13 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     ].filter(Boolean)
     const motivos = [
       e.visaoConclusiva === false ? 'parte da resposta da visão não pôde ser lida (item sem marca válida ou incompleto), então nada foi rebaixado por ela' : null,
+      visaoTruncados > 0
+        ? `a visão devolveu mais achados do que o teto aceita e ${visaoTruncados} ${visaoTruncados === 1 ? 'ficou' : 'ficaram'} de fora sem ser ${visaoTruncados === 1 ? 'examinado' : 'examinados'}, então nada foi rebaixado por ela`
+        : null,
       desmentidos.length ? `apontamentos da visão descartados pela medida: ${desmentidos.join('; ')}` : null,
     ].filter(Boolean)
     cobertura.visao = {
-      estado: e.visaoConclusiva === false ? 'parcial' : 'avaliada',
+      estado: visaoParcial ? 'parcial' : 'avaliada',
       ...(motivos.length ? { motivo: `${motivos.join('. ')}.` } : {}),
     }
   } else {

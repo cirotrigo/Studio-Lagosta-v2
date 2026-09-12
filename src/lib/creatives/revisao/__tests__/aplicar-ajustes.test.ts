@@ -292,3 +292,52 @@ describe('aplicarAjustes — gradiente, posição, visibilidade e caixa', () => 
     expect(r.camadas).toEqual([apoio, fotoDeFundo])
   })
 })
+
+describe('aplicarAjustes — id da camada criada (REV-127-INTEGRAL-01)', () => {
+  const idsDe = (camadas: Layer[]) => camadas.map((l) => l.id)
+  const forcaDe = (l: Layer) => (l.metadata as { forca: number }).forca
+
+  it('criar, ocultar e recriar o gradiente várias vezes nunca repete id; os ids existentes ficam como estavam', () => {
+    let camadas: Layer[] = [fotoDeFundo]
+    const criar = () => aplicarAjustes(camadas, [{ tipo: 'gradiente', borda: 'rodape', forca: 0.7 }], { canvas, medir })
+    const esconder = (id: string) => aplicarAjustes(camadas, [{ tipo: 'visibilidade', camadas: [id], visivel: false }], { canvas, medir })
+
+    const criados: string[] = []
+    for (let ciclo = 0; ciclo < 4; ciclo++) {
+      const r = criar()
+      expect(r.aplicados).toHaveLength(1)
+      camadas = r.camadas
+      criados.push(r.aplicados[0].camadas[0])
+      if (ciclo < 3) camadas = esconder(criados[ciclo]).camadas
+      // ids únicos entre TODAS as camadas, escondidas inclusive, a cada volta
+      expect(new Set(idsDe(camadas)).size).toBe(camadas.length)
+    }
+    expect(criados).toEqual([
+      'gradiente-leitura-rodape',
+      'gradiente-leitura-rodape-revisao',
+      'gradiente-leitura-rodape-revisao-2',
+      'gradiente-leitura-rodape-revisao-3',
+    ])
+    expect(camadas.filter((l) => l.visible === false).map((l) => l.id).sort()).toEqual(criados.slice(0, 3).sort())
+  })
+
+  it('o ajuste seguinte por id atinge SÓ a camada indicada — nem a força nem a visibilidade da irmã mudam', () => {
+    const escondidoA = { ...camadaDeGradiente({ borda: 'rodape', W, H, altura: 700, cor: '#111111', curva: CURVA_DE_LEITURA, forca: 0.5 }), order: 1, visible: false }
+    const escondidoB = { ...escondidoA, id: 'gradiente-leitura-rodape-revisao', order: 2 }
+    const r = aplicarAjustes([fotoDeFundo, escondidoA, escondidoB], [{ tipo: 'gradiente', borda: 'rodape', forca: 0.8 }], { canvas, medir })
+    const novo = r.aplicados[0].camadas[0]
+    expect(novo).toBe('gradiente-leitura-rodape-revisao-2')
+    expect(new Set(idsDe(r.camadas)).size).toBe(r.camadas.length)
+
+    const depois = aplicarAjustes(r.camadas, [{ tipo: 'gradiente', borda: 'rodape', camadas: [novo], forca: 0.3 }], { canvas, medir }).camadas
+    const porId = new Map(depois.map((l) => [l.id, l]))
+    expect(depois).toHaveLength(4)
+    expect(forcaDe(porId.get(novo)!)).toBe(0.3)
+    expect(porId.get(novo)!.visible).toBe(true)
+    // a irmã escondida que tinha o id que o código antigo repetia continua escondida e com a força dela
+    expect(forcaDe(porId.get('gradiente-leitura-rodape-revisao')!)).toBe(0.5)
+    expect(porId.get('gradiente-leitura-rodape-revisao')!.visible).toBe(false)
+    expect(forcaDe(porId.get('gradiente-leitura-rodape')!)).toBe(0.5)
+    expect(porId.get('gradiente-leitura-rodape')!.visible).toBe(false)
+  })
+})

@@ -5901,3 +5901,42 @@ Codex antes de ser escrito.
 - Provas: `ajuste-render-atrasado.test.ts` (a costura recebe a URL antes da
   publicação; se lançar, a URL já foi entregue) e
   `src/lib/__tests__/limpeza-de-blobs-da-prova.test.ts`.
+
+**Da revisão FINAL do Codex sobre 0352c590 (BLOQUEADO, REV-127-INTEGRAL-01…02, REV-0352-01, 12/09/2026):**
+
+- 🔴 **Id de camada criada pelo revisor se confere contra TODAS as camadas,
+  escondidas inclusive — nunca só a primeira colisão** (REV-127-INTEGRAL-01).
+  `aplicarAjustes` criava o gradiente de leitura e, se o id existia, tentava só
+  `-revisao`. Criar, ocultar e recriar deixa `gradiente-leitura-rodape` e
+  `…-revisao` ocultos na página; a terceira criação repetia `…-revisao`, e dois
+  ids iguais em `Page.layers` fazem o ajuste seguinte por id atingir as DUAS
+  camadas (o `Map` escolhe uma, a substituição por `l.id === alvoId` escreve nas
+  duas, visibilidade inclusive). Hoje `idLivre` procura `-revisao`,
+  `-revisao-2`… até achar um id livre; os ids existentes nunca mudam.
+- 🔴 **Lista de saída do modelo cortada por teto é COBERTURA PARCIAL e nunca
+  rebaixa achado medido** (REV-127-INTEGRAL-02). `reconciliarVisao` parava no
+  6º achado com `break`, sem contar o resto: a visão saía "avaliada" e, se o 7º
+  confirmava a falta de leitura medida, a leitura era rebaixada a sugestão
+  dizendo que a visão não a viu. Hoje o achado válido e distinto além do teto
+  conta em `truncados` (item inválido além dele segue em `descartados`); o
+  estado da visão chega a `avaliarPeca` por `insumosDaVisao` (num lugar só,
+  para ninguém esquecer o corte), e a regra trata `visaoTruncados > 0` como
+  parcial mesmo com `visaoConclusiva: true` — a trava mora na regra, não só em
+  quem chama.
+- 🔴 **Gate de falha nunca é `if (erro)`: string vazia é falsy** (REV-0352-01).
+  A exclusão do Blob que rejeitava com `new Error('')` ou `throw ''` devolvia
+  `erro: ''` e a prova terminava com código zero e URLs no Blob de produção.
+  Hoje a mensagem nunca sai vazia (texto padrão quando vem vazia) e a prova
+  decide por `limpezaFalhou(r)` = `erro !== null` ou sobra de URL.
+- Varredura: em `src/lib/creatives/revisao/` o único id com sufixo gerado é o do
+  gradiente criado, e a única lista de saída de modelo com teto é a da visão.
+  O `.slice(0, 5)` dos recortes é ENTRADA do modelo (a peça inteira e a marcada
+  vão junto), e os `slice` de `descricao`/`evidencia`/`motivo` cortam texto,
+  não lista.
+- Provas: `aplicar-ajustes.test.ts` (quatro ciclos criar/ocultar com ids únicos
+  e o ajuste por id que só toca a camada indicada), `visao.test.ts` (sete
+  achados → `truncados: 1`; repetição não é corte; `insumosDaVisao`),
+  `regras.test.ts` (cadeia reconciliar → insumos → avaliar com a confirmação da
+  leitura em 7º: parcial e `problema`; controle dentro do teto: avaliada) e
+  `limpeza-de-blobs-da-prova.test.ts` (rejeição com mensagem vazia e o gate
+  `limpezaFalhou`). Cada correção desfeita por mutação faz a sua prova falhar.

@@ -31,6 +31,25 @@ export async function apagarBlobsDaRodada(urls: Iterable<unknown>, apagar: (urls
     await apagar(doBlob)
     return { encontrados: doBlob.length, apagados: doBlob.length, erro: null, restantes: [] }
   } catch (e) {
-    return { encontrados: doBlob.length, apagados: 0, erro: e instanceof Error ? e.message : String(e), restantes: doBlob }
+    return { encontrados: doBlob.length, apagados: 0, erro: mensagemDaFalha(e), restantes: doBlob }
   }
+}
+
+/**
+ * A mensagem nunca sai VAZIA: `new Error('')` ou `throw ''` viravam `erro: ''`,
+ * e o `if (erro)` da prova passava com URLs no Blob de produção
+ * (REV-0352-01).
+ */
+function mensagemDaFalha(e: unknown): string {
+  const texto = (e instanceof Error ? e.message : String(e ?? '')).trim()
+  return texto || 'a exclusão do Blob falhou sem mensagem'
+}
+
+/**
+ * A decisão da prova: falhou quando houve erro (qualquer valor que não seja
+ * `null`, inclusive `''`) ou sobrou URL. É o que a prova usa no lugar de
+ * `if (erro)` — string vazia é falsy e passava no gate (REV-0352-01).
+ */
+export function limpezaFalhou(r: Pick<ResultadoDaLimpezaDeBlobs, 'erro' | 'restantes'>): boolean {
+  return r.erro !== null || r.restantes.length > 0
 }

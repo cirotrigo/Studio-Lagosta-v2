@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { reconciliarVisao, type MarcaDaPeca } from '../visao'
+import { insumosDaVisao, reconciliarVisao, TETO_DE_ACHADOS_VISTOS, type MarcaDaPeca } from '../visao'
 
 const marcas: MarcaDaPeca[] = [
   { marca: 'T1', tipo: 'texto', camadas: ['headline'], rect: { x: 0, y: 0, width: 10, height: 10 }, descricao: 'Almoço' },
@@ -63,12 +63,33 @@ describe('a reconciliação do que a visão devolveu', () => {
   })
 
   it('resposta SEM a lista é incompleta (descartados 1); `achados: []` é conclusão válida (REV-02)', () => {
-    expect(reconciliarVisao({}, marcas)).toEqual({ vistos: [], descartados: 1 })
-    expect(reconciliarVisao({ achados: [] }, marcas)).toEqual({ vistos: [], descartados: 0 })
+    expect(reconciliarVisao({}, marcas)).toEqual({ vistos: [], descartados: 1, truncados: 0 })
+    expect(reconciliarVisao({ achados: [] }, marcas)).toEqual({ vistos: [], descartados: 0, truncados: 0 })
   })
 
   it('repetição do mesmo problema na mesma marca conta uma vez; resposta fora do schema vira zero achados', () => {
     expect(reconciliarVisao({ achados: [bom, bom] }, marcas).vistos).toHaveLength(1)
-    expect(reconciliarVisao('lixo', marcas)).toEqual({ vistos: [], descartados: 1 })
+    expect(reconciliarVisao('lixo', marcas)).toEqual({ vistos: [], descartados: 1, truncados: 0 })
+  })
+
+  it('achado válido e distinto além do teto é DECLARADO em `truncados`, nunca some calado (REV-127-INTEGRAL-02)', () => {
+    const problemas = ['entrelinha-grande', 'titulo-grande', 'texto-pequeno', 'palavra-orfa', 'colisao', 'texto-cortado', 'texto-sem-leitura']
+    const sete = problemas.map((problema) => ({ ...bom, problema }))
+    expect(sete).toHaveLength(TETO_DE_ACHADOS_VISTOS + 1)
+    const r = reconciliarVisao({ achados: sete }, marcas)
+    expect(r.vistos.map((v) => v.problema)).toEqual(problemas.slice(0, TETO_DE_ACHADOS_VISTOS))
+    expect(r.truncados).toBe(1)
+    expect(r.descartados).toBe(0)
+    // repetição de um que já entrou não é corte; item inválido além do teto segue sendo descarte
+    const comRepeticao = reconciliarVisao({ achados: [...sete.slice(0, 6), sete[0], { ...bom, marca: 'T9', problema: 'colisao' }] }, marcas)
+    expect(comRepeticao).toMatchObject({ truncados: 0, descartados: 1 })
+    // exatamente no teto: nada cortado
+    expect(reconciliarVisao({ achados: sete.slice(0, 6) }, marcas)).toMatchObject({ truncados: 0, descartados: 0 })
+  })
+
+  it('insumosDaVisao: corte e descarte chegam separados à revisão; visão que não rodou não carrega nenhum dos dois (REV-127-INTEGRAL-02)', () => {
+    expect(insumosDaVisao({ estado: 'feita', descartados: 0, truncados: 1 })).toEqual({ visaoConclusiva: true, visaoTruncados: 1, motivoSemVisao: undefined })
+    expect(insumosDaVisao({ estado: 'feita', descartados: 2, truncados: 0 })).toEqual({ visaoConclusiva: false, visaoTruncados: 0, motivoSemVisao: undefined })
+    expect(insumosDaVisao({ estado: 'falhou', truncados: 3, motivo: 'timeout' })).toEqual({ visaoConclusiva: false, visaoTruncados: 0, motivoSemVisao: 'timeout' })
   })
 })
