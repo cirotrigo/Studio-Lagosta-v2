@@ -1263,6 +1263,97 @@ async function main() {
     const diff9f = (sinal9f?.diff ?? {}) as Record<string, any>
     const removidos9f = ((diff9f.removidos ?? []) as Array<{ texto?: string }>).map((r) => r.texto)
     conferir('contra a proposta de antes, o texto escondido pela pessoa aparece como REMOVIDO e versusProposta é editada', removidos9f.includes(texto9e) && (sinal9f?.escolhido as Record<string, any> | null)?.versusProposta === 'editada' && !Object.values(((await db.socialPost.findUnique({ where: { id: post9f.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).includes(texto9e), JSON.stringify({ removidos: removidos9f, versus: (sinal9f?.escolhido as Record<string, any> | null)?.versusProposta }))
+
+    // ── 9h. REV-127-F01: peça SEM post + ajuste cujo render FALHA → agendar pela página nasce PENDING ──
+    console.log('9h) REV-127-F01: peça sem post, ajuste do revisor com o render FALHANDO: a miniatura antiga é invalidada e agendar pela página nasce PENDING')
+    const quando9h = `${daqui7.toISOString().slice(0, 10)} 19:00`
+    const composta9h = await comporPeca(
+      {
+        projectId: PROJETO,
+        formato: 'story',
+        foto: { url: fotoUrl },
+        blocos: [
+          { papel: 'pre', linhas: ['Pré-título do 9h'] },
+          { papel: 'headline', linhas: ['Título do 9h', 'segunda linha'] },
+          { papel: 'apoio', linhas: ['Apoio do 9h, para esconder depois.'] },
+          { papel: 'cta', linhas: ['Chame agora'] },
+        ],
+        nome: `${MARCA} peça 9h`,
+        quando: quando9h,
+        tema: `${MARCA} teste`,
+      },
+      { canal: 'claude-code' },
+    )
+    const persistido9h = composta9h.persistido
+    if (!persistido9h) throw new Error(`a peça do 9h não foi persistida: ${JSON.stringify(composta9h).slice(0, 200)}`)
+    const pageId9h = persistido9h.pageId
+    paginasCriadas.push(pageId9h)
+    blobs.add(persistido9h.url)
+    const thumbAntes9h = (await db.page.findUnique({ where: { id: pageId9h }, select: { thumbnail: true } }))?.thumbnail ?? null
+    conferir('a peça composta nasce com miniatura do render (URL do Blob) e SEM post', !!thumbAntes9h && !thumbAntes9h.startsWith('data:') && (await db.socialPost.count({ where: { pageId: pageId9h } })) === 0, String(thumbAntes9h).slice(0, 60))
+    const camadas9h = await camadasDaPagina(pageId9h)
+    const textoDe9h = (c: Record<string, any>) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false && typeof c.content === 'string' && c.content.trim()
+    const porPapel9h = (papel: RegExp) => camadas9h.find((c) => textoDe9h(c) && papel.test(String(c.name ?? c.id)))
+    const cta9h = porPapel9h(/^cta$/i) ?? camadas9h.filter(textoDe9h).at(-1)
+    const apoio9i = porPapel9h(/^apoio$/i)
+    const pre9i = porPapel9h(/^pre$/i)
+    if (!cta9h || !apoio9i || !pre9i) throw new Error(`a peça do 9h não tem cta/apoio/pre com texto: ${camadas9h.filter(textoDe9h).map((c) => c.name ?? c.id).join(', ')}`)
+    const r9h = await revisarArte({ projectId: PROJETO, pageId: pageId9h, visao: false, previa: false })
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+    const e9h = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId9h, versaoEsperada: r9h.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(cta9h.id)], visivel: false }], canal: 'claude-code' }))
+    process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+    const pagina9h = await db.page.findUnique({ where: { id: pageId9h }, select: { thumbnail: true } })
+    const camadasDepois9h = await camadasDaPagina(pageId9h)
+    conferir('o ajuste gravou a página (CTA oculto) e o render falhou', !!e9h && e9h.code !== 'VERSAO_DIVERGENTE' && camadasDepois9h.find((c) => c.id === cta9h.id)?.visible === false, e9h?.message.slice(0, 60))
+    conferir('a miniatura antiga foi INVALIDADA junto da gravação das camadas (thumbnail null)', pagina9h?.thumbnail === null, String(pagina9h?.thumbnail).slice(0, 60))
+    const post9h = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: quando9h, pageId: pageId9h, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-127-f01` })
+    posts.push(post9h.postId)
+    const postDo9h = await db.socialPost.findUnique({ where: { id: post9h.postId }, select: { renderStatus: true, mediaUrls: true, nextRenderAt: true } })
+    conferir('agendar pela página nasce PENDING, sem mídia e na fila de render (nextRenderAt) — nunca RENDERED com a miniatura da versão anterior', postDo9h?.renderStatus === 'PENDING' && postDo9h.mediaUrls.length === 0 && !!postDo9h.nextRenderAt && !postDo9h.mediaUrls.includes(thumbAntes9h!), JSON.stringify({ renderStatus: postDo9h?.renderStatus, mediaUrls: postDo9h?.mediaUrls }))
+
+    // ── 9i. REV-127-F02: a recuperação forçada re-renderiza o PNG E a copy visual da Generation ──
+    console.log('9i) REV-127-F02: ajuste que ESCONDE um texto com o render falhando → a recuperação forçada reusa a Generation do ajuste anterior: o PNG novo E a copy visual saem sem o texto; a copy de aprendizado fica')
+    // (a) um ajuste com o render OK: G1 nasce com a copy visual (slotValues) que ainda mostra o pré-título
+    const r9iA = await revisarArte({ projectId: PROJETO, pageId: pageId9h, visao: false, previa: false })
+    const textoPre9i = String(pre9i.content).trim()
+    const g1 = await ajustarArte({ projectId: PROJETO, pageId: pageId9h, versaoEsperada: r9iA.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(apoio9i.id)], visivel: false }], canal: 'claude-code' })
+    if (g1.url) blobs.add(g1.url)
+    const fvG1 = ((await db.generation.findUnique({ where: { id: g1.generationId }, select: { fieldValues: true } }))?.fieldValues ?? {}) as Record<string, any>
+    conferir('G1 (ajuste com render OK) guarda a copy visual COM o pré-título e a de aprendizado com o apoio escondido', Object.values(fvG1.slotValues ?? {}).includes(textoPre9i) && Object.values(fvG1.copyDeAprendizado ?? {}).includes(String(apoio9i.content).trim()), JSON.stringify(Object.values(fvG1.slotValues ?? {})).slice(0, 160))
+    // um post SÓ pela Generation (sem página, NOT_NEEDED): a mídia congelada que a recuperação vai trocar
+    const post9iG = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 19:30`, generationId: g1.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-127-f02 antes` })
+    posts.push(post9iG.postId)
+    // (b) esconder o pré-título com o render FALHANDO: a página muda, G1 segue sendo a arte mais recente, e a recuperação é FORÇADA
+    const r9iB = await revisarArte({ projectId: PROJETO, pageId: pageId9h, visao: false, previa: false })
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+    const e9i = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId9h, versaoEsperada: r9iB.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(pre9i.id)], visivel: false }], canal: 'claude-code' }))
+    process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+    conferir('o segundo ajuste gravou a página (pré-título oculto) e o render falhou', !!e9i && e9i.code !== 'VERSAO_DIVERGENTE' && (await camadasDaPagina(pageId9h)).find((c) => c.id === pre9i.id)?.visible === false, e9i?.message.slice(0, 60))
+    const job9i = await db.generationJob.findFirst({ where: { generationId: g1.generationId, kind: 'COMPOR' }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, payload: true } })
+    conferir('a recuperação FORÇADA foi enfileirada para G1 (a arte congelada do post sem página)', !!job9i && (job9i.payload as Record<string, any>).recompor?.forcar === true, JSON.stringify(job9i?.payload).slice(0, 140))
+    if (job9i) {
+      await db.generationJob.update({ where: { id: job9i.id }, data: { status: 'RUNNING', attempts: { increment: 1 }, startedAt: new Date() } })
+      await processarRecomposicaoEmBackground({ generationId: g1.generationId, projectId: PROJETO, recompor: (job9i.payload as Record<string, any>).recompor, queueJobId: job9i.id })
+      await fecharJob(job9i.id, g1.generationId)
+    }
+    const g1Depois = await db.generation.findUnique({ where: { id: g1.generationId }, select: { resultUrl: true, fieldValues: true, sourcePageId: true } })
+    if (g1Depois?.resultUrl) blobs.add(g1Depois.resultUrl)
+    const fvDepois = (g1Depois?.fieldValues ?? {}) as Record<string, any>
+    const proc9i = lerProcedencia(g1Depois?.fieldValues, g1Depois?.sourcePageId ?? null)
+    conferir('a recuperação trocou o PNG de G1 (re-renderizada) e a copy VISUAL acompanhou: sem o pré-título; a copy de APRENDIZADO segue com o apoio (merge preservado) e a trava está lá', g1Depois?.resultUrl !== g1.url && fvDepois.recomposicao?.estado === 're-renderizada' && !Object.values(proc9i.copyVisual ?? {}).includes(textoPre9i) && Object.values(fvDepois.copyDeAprendizado ?? {}).includes(String(apoio9i.content).trim()) && !!fvDepois.somenteReRender, JSON.stringify({ url: g1Depois?.resultUrl === g1.url ? 'igual' : 'nova', estado: fvDepois.recomposicao?.estado, visual: Object.values(proc9i.copyVisual ?? {}).slice(0, 4) }).slice(0, 220))
+    const postDo9iG = await db.socialPost.findUnique({ where: { id: post9iG.postId }, select: { mediaUrls: true } })
+    conferir('o post sem página que carregava G1 recebeu a URL nova', !!g1Depois?.resultUrl && postDo9iG?.mediaUrls[0] === g1Depois.resultUrl)
+    // agendar SÓ pela Generation e pela URL nova: a cópia textual do post não afirma o pré-título que o PNG não mostra
+    const post9iB = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 20:00`, generationId: g1.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-127-f02 gen` })
+    posts.push(post9iB.postId)
+    const valores9iB = Object.entries(((await db.socialPost.findUnique({ where: { id: post9iB.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+    conferir('agendar por generationId depois da recuperação: a cópia textual tem texto e NÃO carrega o pré-título escondido', valores9iB.length > 0 && !valores9iB.includes(textoPre9i), JSON.stringify(valores9iB).slice(0, 160))
+    if (g1Depois?.resultUrl) {
+      const post9iC = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 20:30`, mediaUrls: [g1Depois.resultUrl], situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-127-f02 url` })
+      posts.push(post9iC.postId)
+      const valores9iC = Object.entries(((await db.socialPost.findUnique({ where: { id: post9iC.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+      conferir('agendar por mediaUrls casada pela URL nova: idem, sem o pré-título', !valores9iC.includes(textoPre9i), JSON.stringify(valores9iC).slice(0, 160))
+    }
   } catch (erro) {
     // O erro da prova é impresso ANTES do cleanup: sem isto uma falha no
     // cleanup engoliria a causa (aconteceu na primeira rodada).

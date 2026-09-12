@@ -15,6 +15,7 @@
  *      render to PNG and register it in the Criativos gallery.
  */
 
+import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
 import type { CanalDaArte } from './canal'
 import { db } from '@/lib/db'
 import { KnowledgeCategory } from '@prisma/client'
@@ -1055,7 +1056,16 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       : undefined)
 
   const pageName = input.name ?? page.name
-  const dadosDaPagina = { layers: layers as any, ...(input.name ? { name: input.name } : {}) }
+  /**
+   * A miniatura da página é INVALIDADA junto das camadas (REV-127-F01 da
+   * revisão FINAL do Codex, 12/09/2026): ela é o PNG do render ANTERIOR, e
+   * `agendarPost` a reutiliza como mídia quando a página ainda não tem post —
+   * se o render abaixo falhar, o post nasceria RENDERED com a versão velha e
+   * fora do cron de renders pendentes (a invalidação não acha post nenhum e a
+   * recuperação sai sem slide). Nula, o agendamento nasce PENDING e o cron
+   * desenha a página ajustada; o render bem-sucedido a regrava.
+   */
+  const dadosDaPagina = { layers: layers as any, thumbnail: null as string | null, ...(input.name ? { name: input.name } : {}) }
   /**
    * A página passa a carregar o ajuste do revisor; a arte do compositor (spec
    * e snapshot) não o conhece. Se o render abaixo e todas as recuperações
@@ -1099,17 +1109,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // slotValues), então precisa refletir a página como ficou, não só o patch.
   // Rich text é copy (o executor dos ajustes mexe nele), e camada escondida não
   // aparece na arte — exigi-la na conferência reprovaria a peça certa.
-  const slotValuesFinais = Object.fromEntries(
-    (layers as any[])
-      .filter(
-        (l) =>
-          (l.type === 'text' || l.type === 'rich-text') &&
-          l.visible !== false &&
-          typeof l.content === 'string' &&
-          l.content.trim(),
-      )
-      .map((l) => [l.name ?? l.id, l.content]),
-  )
+  const slotValuesFinais = copyVisualDasCamadas(layers)
 
   const avisarAgenda = async (opcoes: { renderFalhou?: boolean } = {}) => {
     // Page.layers mudou: posts da agenda que usam esta página precisam voltar à

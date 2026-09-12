@@ -26,6 +26,25 @@ function objeto(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 }
 
+/**
+ * A copy VISUAL de uma arte a partir das camadas que ela DESENHOU: os textos
+ * (texto simples e rich text) visíveis, por nome de camada (ou id). É o que
+ * `ajustarArte` grava em `fieldValues.slotValues` e o que a recuperação
+ * forçada regrava quando re-renderiza a página por cima da MESMA Generation —
+ * sem isso o PNG deixava de mostrar um texto escondido e a copy visual da
+ * Generation continuava afirmando-o (REV-127-F02 da revisão FINAL do Codex,
+ * 12/09/2026). A copy de APRENDIZADO é outra coisa e não passa por aqui.
+ */
+export function copyVisualDasCamadas(layers: unknown): Record<string, string> {
+  if (!Array.isArray(layers)) return {}
+  return Object.fromEntries(
+    layers
+      .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object' && !Array.isArray(l))
+      .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && typeof l.content === 'string' && (l.content as string).trim())
+      .map((l) => [String(l.name ?? l.id), l.content as string]),
+  )
+}
+
 export function lerProcedencia(
   fieldValues: unknown,
   colunaSourcePageId: string | null,

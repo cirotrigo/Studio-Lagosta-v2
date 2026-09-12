@@ -40,6 +40,7 @@
  * recomposição roda depois dele, e a arte que publica está sempre certa.
  */
 
+import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
 import { del, put } from '@vercel/blob'
 
 import { db } from '@/lib/db'
@@ -500,6 +501,14 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       // apagaria a trava que o revisor gravou durante o render (REV-R01).
       fieldValues: {
         recomposicao: registro('re-renderizada', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        // A copy VISUAL acompanha o PNG (REV-127-F02): a Generation reutilizada aqui pode ser a de um ajuste
+        // anterior, cujos `slotValues` afirmavam um texto que o ajuste seguinte escondeu — o render falhou, a
+        // recuperação trocou a URL e `lerProcedencia` seguia devolvendo o texto ausente como `copyVisual`. Só
+        // quando a arte JÁ carrega copy visual (não se inventa uma para a arte do compositor); a copy de
+        // APRENDIZADO fica como está (o merge não a toca).
+        ...(arte.fieldValues && typeof (arte.fieldValues as Record<string, unknown>).slotValues === 'object' && (arte.fieldValues as Record<string, unknown>).slotValues !== null
+          ? { slotValues: copyVisualDasCamadas(page.layers) }
+          : {}),
         // A recuperação forçada preservou um ajuste que a spec não conhece:
         // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
         ...(forcar ? { somenteReRender: { desde: new Date().toISOString(), motivo: 'recuperação forçada preservou ajuste manual (revisor)' } } : {}),

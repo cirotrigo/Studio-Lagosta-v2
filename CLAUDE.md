@@ -5606,6 +5606,27 @@ Codex antes de ser escrito.
   mesmo tempo derrubou a prova deste PR em 2 de 3 rodadas: o "flake" de 6a/6h
   era isolamento por projeto, não tempo. A prova agora cria a alheia de
   propósito e confere que o job nasce na Generation certa.
+- 🔴 **O ajuste do revisor INVALIDA a miniatura da página junto das camadas**
+  (REV-127-F01, P1 da revisão FINAL, 12/09/2026): `Page.thumbnail` é o PNG do
+  render ANTERIOR, e `agendarPost` o reutiliza como mídia (post `RENDERED`)
+  quando a página ainda não tem post. Peça composta sem post + ajuste cujo
+  render falha = a invalidação não acha post nenhum, a recuperação sai sem
+  slide (`enfileirarRecomposicaoDaPagina` devolve null), e o agendamento
+  seguinte pela página nascia com a versão velha, fora do cron de renders
+  pendentes. Com o thumbnail nulo na MESMA escrita das camadas, o post nasce
+  `PENDING` (`nextRenderAt` agora) e o cron desenha a página ajustada; o
+  render que dá certo regrava a miniatura. Prova 9h.
+- 🔴 **A recuperação forçada regrava a copy VISUAL da Generation que reutiliza**
+  (REV-127-F02, P2): o re-render passa por `renderPageAndRegister` com o
+  `generationId` da arte mais recente da página — que pode ser a de um AJUSTE
+  anterior, cujos `slotValues` afirmavam o texto que o ajuste seguinte
+  escondeu (render falhou → recuperação). A URL trocava e `lerProcedencia`
+  seguia devolvendo o texto ausente como `copyVisual`; agendar por
+  `generationId` ou pela URL registrava texto que a imagem não mostra.
+  `copyVisualDasCamadas` (puro, `procedencia-da-copy.ts`) é a MESMA conta do
+  `slotValuesFinais` do ajuste, e entra no patch do re-render só quando a arte
+  JÁ carrega copy visual (a arte do compositor não ganha uma inventada); a
+  copy de APRENDIZADO e a trava ficam como estão (merge no banco). Prova 9i.
 - **No chat** (instruções do conector): compor → `revisar-arte` → `ajustar-arte`
   com os ajustes → revisar de novo, no máximo DUAS rodadas; o que sobrar vira
   observação para a pessoa, e a revisão nunca trava a agenda. `ARTE_REVISAO_VISAO=off`

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { lerProcedencia } from '../procedencia-da-copy'
+import { copyVisualDasCamadas, lerProcedencia } from '../procedencia-da-copy'
 
 describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-8AD-01)', () => {
   it('copyDeAprendizado vence slotValues: a camada escondida pelo revisor conta na proposta e não vira adição humana', () => {
@@ -17,6 +17,20 @@ describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-
     expect(lerProcedencia({ slotValues: ['x'], copyDeAprendizado: 'y' }, null).copyProposta).toBeNull()
     expect(lerProcedencia(null, null).copyProposta).toBeNull()
   })
+  it('copyVisualDasCamadas (REV-127-F02): só texto e rich text VISÍVEIS, por nome (ou id), sem vazio; lixo vira {}', () => {
+    const camadas = [
+      { id: 'l1', name: 'pre', type: 'text', content: 'Pré-título', visible: false },
+      { id: 'l2', name: 'headline', type: 'text', content: 'Título' },
+      { id: 'l3', type: 'rich-text', content: 'Apoio rico', visible: true },
+      { id: 'l4', name: 'cta', type: 'text', content: '   ' },
+      { id: 'l5', name: 'foto', type: 'image', fileUrl: 'https://x/y.png' },
+      null,
+    ]
+    expect(copyVisualDasCamadas(camadas)).toEqual({ headline: 'Título', l3: 'Apoio rico' })
+    expect(copyVisualDasCamadas('nada')).toEqual({})
+    expect(lerProcedencia({ slotValues: copyVisualDasCamadas(camadas), copyDeAprendizado: { pre: 'Pré-título', headline: 'Título' } }, null).copyVisual).toEqual({ headline: 'Título', l3: 'Apoio rico' })
+  })
+
   it('sourcePageId: a coluna vence; o Json só vale fora de ajuste-arte', () => {
     expect(lerProcedencia({ sourcePageId: 'p-json' }, 'p-col').sourcePageId).toBe('p-col')
     expect(lerProcedencia({ sourcePageId: 'p-json' }, null).sourcePageId).toBe('p-json')
