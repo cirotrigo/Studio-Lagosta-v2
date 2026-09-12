@@ -541,7 +541,7 @@ export const toolsDeArteIA = [
     nome: 'ver-geracao',
     apelidos: ['ver-melhoria'],
     descricao:
-      'Acompanha qualquer arte em andamento — a criada por gerar-imagem/criar-arte E a melhoria disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova e o resultado da conferência de texto; quando falha, a arte original continua valendo. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).\n\nChamava-se `ver-melhoria`, e esse nome segue funcionando — mas ele sugeria que só servia para melhorias, o que fazia quem gerava arte nova procurar uma tool que não existe.',
+      'Acompanha qualquer arte em andamento — a criada por gerar-imagem/criar-arte, a peça de compor-arte/compor-leva E a melhoria disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova, o resultado da conferência de texto e, para peça com página (compositor, modelo, ajuste), o pageId, o link do editor e os avisos do compositor — é o pageId que vai em colocar-na-agenda. Quando falha, a arte original continua valendo. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).\n\nChamava-se `ver-melhoria`, e esse nome segue funcionando — mas ele sugeria que só servia para melhorias, o que fazia quem gerava arte nova procurar uma tool que não existe.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       geracaoId: z.string().optional().describe('O geracaoId (ou melhoriaId) devolvido por quem disparou.'),
@@ -594,11 +594,26 @@ export const toolsDeArteIA = [
 
       const fv = (gen.fieldValues ?? {}) as Record<string, unknown>
       const galleryUrl = `${getPublicAppUrl()}/projects/${projectId}?tab=criativos`
+      const doCompositor = fv.source === 'compositor'
+
+      // A PÁGINA da arte (peça do compositor, arte de modelo, ajuste): é por
+      // ela que a peça vai à agenda. O template vem da página ATUAL — ela
+      // muda de pasta ao ser agendada, e o gravado na arte envelhece.
+      const { montarRetornoDaPagina } = await import('./ver-geracao-retorno')
+      const paginaId = typeof fv.pageId === 'string' && fv.pageId.trim() ? fv.pageId.trim() : null
+      const pagina = paginaId
+        ? await db.page.findFirst({
+            where: { id: paginaId, Template: { projectId } },
+            select: { id: true, name: true, templateId: true, isTemplate: true },
+          })
+        : null
+      const daPagina = montarRetornoDaPagina({ fieldValues: fv, pagina, appUrl: getPublicAppUrl(), projectId, concluida: gen.status === 'COMPLETED' })
 
       if (gen.status === 'PROCESSING') {
         const decorrido = Math.round((Date.now() - gen.createdAt.getTime()) / 1000)
         return {
           situacao: 'em-andamento',
+          ...daPagina,
           decorridoSegundos: decorrido,
           mensagem:
             decorrido > 300
@@ -627,6 +642,7 @@ export const toolsDeArteIA = [
         return {
           situacao: 'pronta',
           url: gen.resultUrl,
+          ...daPagina,
           verificacaoTexto: fv.textCheck ?? 'skipped',
           ...(typeof fv.regua === 'string' ? { regua: fv.regua } : {}),
           // Aviso vermelho primeiro: texto a mais com dado (endereço, horário)
@@ -642,10 +658,14 @@ export const toolsDeArteIA = [
 
       return {
         situacao: 'falhou',
+        ...daPagina,
         motivo: typeof fv.error === 'string' ? fv.error : 'Erro desconhecido',
         verificacaoTexto: fv.textCheck ?? undefined,
-        mensagem:
-          'A melhoria foi descartada e a arte original continua valendo — nada mudou no post nem na galeria. Dá para tentar de novo com um pedido mais específico.',
+        mensagem: doCompositor
+          ? 'A composição falhou e nada foi gravado na galeria — o motivo está acima (texto que não cabe volta com o orçamento de caracteres: reescreva e componha de novo).'
+          : gen.sourceGenerationId
+            ? 'A melhoria foi descartada e a arte original continua valendo — nada mudou no post nem na galeria. Dá para tentar de novo com um pedido mais específico.'
+            : 'A geração falhou e nada foi gravado na galeria. Dá para tentar de novo com um pedido mais específico.',
       }
     },
   }),
