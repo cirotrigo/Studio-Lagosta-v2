@@ -87,7 +87,10 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
   // "Nota"/"nota" colidem entre a forma atual e a antiga, e a ordem do array
   // não é a ordem visual que nomeou os sufixos (R4-01 e R4-02, 4ª rodada da
   // revisão do Codex sobre o PR 3, 12/09/2026).
-  const { vinculos } = vincularExtras(blocosEmOrdem(copy).filter((b) => b.funcao === 'livre'), camadasOriginais)
+  // Camada OCULTA entra aqui: o bloco dela continua no contrato (com
+  // `linhas: []`) e o id da cópia tem de acompanhar — senão reexibir a camada
+  // na cópia não reencontra o bloco e nasce outro (R5-02, 5ª rodada).
+  const { vinculos } = vincularExtras(blocosEmOrdem(copy).filter((b) => b.funcao === 'livre'), camadasOriginais, { incluirOcultas: true })
   const mapa = new Map<string, string>()
   for (const [blocoId, camada] of vinculos) {
     const novo = idsDeCamada.get(String(camada.id))
@@ -117,14 +120,21 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
  *     extra da F3 nasce assim;
  *  2. candidatas pelo id — forma atual OU forma antiga (com o sufixo `-N` da
  *     colisão); enquanto houver bloco com UMA candidata livre, ele a toma;
- *  3. o que sobrar: entre as candidatas livres, a de TEXTO igual ao do bloco;
- *     senão a primeira na ORDEM DE LEITURA (a mesma que nomeou os sufixos),
- *     com a ambiguidade declarada em `ambiguos`.
+ *  3. entre os pendentes, o bloco cujo TEXTO é igual ao de exatamente UMA
+ *     candidata livre a toma — para TODOS os pendentes, antes de qualquer
+ *     escolha por ordem, e cada tomada volta ao passo 2 (a unicidade que ela
+ *     cria resolve o vizinho). Escolher pela ordem enquanto outro bloco ainda
+ *     casava por texto trocava o conteúdo entre ids e atribuía revisão à
+ *     equipe nos dois (R5-01, 5ª rodada da revisão do Codex, 12/09/2026);
+ *  4. o que sobrar: a primeira na ORDEM DE LEITURA (a mesma que nomeou os
+ *     sufixos), com a ambiguidade declarada em `ambiguos`.
  * As camadas entram na ordem de leitura (y, x), soltas primeiro — nunca na
- * ordem do array.
+ * ordem do array. A LEITURA da copy só vê camadas visíveis; a DUPLICAÇÃO passa
+ * `incluirOcultas` porque o bloco da camada oculta continua no contrato e o
+ * id da cópia precisa acompanhá-lo (R5-02).
  */
-export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[]): { vinculos: Map<string, Layer>; ambiguos: string[] } {
-  const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
+export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], opcoes: { incluirOcultas?: boolean } = {}): { vinculos: Map<string, Layer>; ambiguos: string[] } {
+  const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas, opcoes)
   const emOrdem = [...soltas, ...[...porFuncao.values()].flat(), ...voz2]
   const vinculos = new Map<string, Layer>()
   const usadas = new Set<string>()
@@ -141,7 +151,10 @@ export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[]): 
     if (c) tomar(b, c)
   }
   const candidatasDe = (b: BlocoAutoral) => emOrdem.filter((c) => !usadas.has(c.id) && (idDeExtra(c) === b.id || indiceLegado(b.id, idDeExtraLegado(c)) !== null))
-  // 2. propagação: bloco com UMA candidata livre a toma, até estabilizar
+  const mesmoTexto = (b: BlocoAutoral, cs: Layer[]) => cs.filter((c) => JSON.stringify(linhasDaCamada(c)) === JSON.stringify(b.linhas))
+  // 2 + 3. até estabilizar: primeiro toda unicidade pelo id; depois UM casamento
+  // inequívoco por texto (que cria unicidade nova e volta ao passo 2). Nenhuma
+  // escolha por ordem acontece enquanto restar casamento exato em algum bloco.
   for (let mudou = true; mudou; ) {
     mudou = false
     for (const b of [...pendentes]) {
@@ -151,14 +164,25 @@ export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[]): 
         mudou = true
       }
     }
+    if (mudou) continue
+    for (const b of [...pendentes]) {
+      const cs = candidatasDe(b)
+      if (cs.length < 2) continue
+      const iguais = mesmoTexto(b, cs)
+      if (iguais.length === 1) {
+        tomar(b, iguais[0])
+        mudou = true
+        break
+      }
+    }
   }
-  // 3. o resto: texto igual, senão a primeira na ordem de leitura (declarado)
+  // 4. o resto: a primeira na ordem de leitura, declarado
   for (const b of [...pendentes]) {
     const cs = candidatasDe(b)
     if (cs.length === 0) continue
-    const mesmoTexto = cs.filter((c) => JSON.stringify(linhasDaCamada(c)) === JSON.stringify(b.linhas))
-    const escolhida = mesmoTexto.length === 1 ? mesmoTexto[0] : (mesmoTexto[0] ?? cs[0])
-    if (mesmoTexto.length !== 1) ambiguos.push(`o bloco "${b.id}" casava com ${cs.length} camadas pelo id; ficou com "${escolhida.id}" (${mesmoTexto.length > 1 ? 'texto igual, primeira na ordem de leitura' : 'primeira na ordem de leitura'})`)
+    const iguais = mesmoTexto(b, cs)
+    const escolhida = iguais[0] ?? cs[0]
+    ambiguos.push(`o bloco "${b.id}" casava com ${cs.length} camadas pelo id; ficou com "${escolhida.id}" (${iguais.length > 1 ? 'texto igual, primeira na ordem de leitura' : 'primeira na ordem de leitura'})`)
     tomar(b, escolhida)
   }
   return { vinculos, ambiguos }
@@ -175,11 +199,12 @@ function linhasDaCamada(l: Layer): string[] {
 }
 
 /** As camadas de texto agrupadas por função, de cima para baixo. */
-function camadasPorFuncao(camadas: Layer[]): { porFuncao: Map<FuncaoDoBloco, Layer[]>; voz2: Layer[]; soltas: Layer[] } {
+function camadasPorFuncao(camadas: Layer[], opcoes: { incluirOcultas?: boolean } = {}): { porFuncao: Map<FuncaoDoBloco, Layer[]>; voz2: Layer[]; soltas: Layer[] } {
   const porFuncao = new Map<FuncaoDoBloco, Layer[]>()
   const voz2: Layer[] = []
   const soltas: Layer[] = []
-  const ordenadas = camadas.filter(ehTextoVisivel).sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0) || (a.position?.x ?? 0) - (b.position?.x ?? 0))
+  const ehTexto = (l: Layer) => (opcoes.incluirOcultas ? l.type === 'text' || l.type === 'rich-text' : ehTextoVisivel(l))
+  const ordenadas = camadas.filter(ehTexto).sort((a, b) => (a.position?.y ?? 0) - (b.position?.y ?? 0) || (a.position?.x ?? 0) - (b.position?.x ?? 0))
   for (const c of ordenadas) {
     const papel = papelDaCamada(c)
     if (papel === 'headline2') voz2.push(c)

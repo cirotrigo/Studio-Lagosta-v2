@@ -125,6 +125,50 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(r.mudancas.map((m) => m.id)).toEqual(['extra-nota', 'extra-nota-2'])
   })
 
+  it('R5-01 (5ª rodada): "Nota" editada E movida para baixo de "nota" intacta — o casamento exato de "nota" vem ANTES da ordem visual; só extra-nota muda, e a releitura é estável', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('Nota', 500, 'A', { metadata: {} } as Partial<Layer>), texto('nota', 560, 'B', { metadata: {} } as Partial<Layer>)]
+    const gravadoPelaBase: CopyAutoral = { ...contrato, blocos: [...contrato.blocos, { id: 'extra-nota', funcao: 'livre', ordem: 2, linhas: ['A'] }, { id: 'extra-nota-2', funcao: 'livre', ordem: 3, linhas: ['B'] }] }
+    // no MESMO salvamento: "Nota" vira A2 e desce para y=700 (agora DEPOIS de "nota" na ordem de leitura); "nota" fica igual
+    const mexida = camadas.map((c) => (c.id === 'Nota' ? { ...c, content: 'A2', position: { x: 100, y: 700 } } : c)) as Layer[]
+    const r = copyEfetivaDasCamadas(gravadoPelaBase, mexida, { superficie: 'editor' })
+    expect(r.efetiva.blocos.slice(2).map((b) => [b.id, b.linhas[0]])).toEqual([['extra-nota', 'A2'], ['extra-nota-2', 'B']])
+    expect(r.mudancas.map((m) => m.id)).toEqual(['extra-nota'])
+    expect(r.lacunas).toEqual([])
+    const rev = revisaoDaPaginaComCamadas(gravadoPelaBase, mexida, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' })
+    expect(rev.estado).toBe('registrada')
+    if (rev.estado !== 'registrada') return
+    expect(rev.copy.revisoes.at(-1)?.blocos).toEqual(['extra-nota'])
+    // releitura com o contrato revisado: nada muda, nada ambíguo
+    const r2 = copyEfetivaDasCamadas(rev.copy, mexida, { superficie: 'editor' })
+    expect(r2.mudancas).toEqual([])
+    expect(r2.lacunas).toEqual([])
+  })
+
+  it('R5-02 (5ª rodada): ocultar → salvar → duplicar → reexibir na cópia: o bloco extra acompanha o id novo mesmo com a camada OCULTA, e reexibir restaura o MESMO bloco sem criar outro', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('aviso', 500, 'Só hoje', { metadata: {} } as Partial<Layer>)]
+    const original = copyEfetivaDasCamadas(contrato, camadas, { superficie: 'compositor' }).efetiva
+    expect(original.blocos.map((b) => b.id)).toEqual(['headline', 'cta', 'extra-aviso'])
+    // oculta e salva: o bloco fica, vazio, como revisão da equipe
+    const ocultas = camadas.map((c) => (c.id === 'aviso' ? { ...c, visible: false } : c)) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(original, ocultas, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' })
+    expect(rev.estado).toBe('registrada')
+    if (rev.estado !== 'registrada') return
+    expect(rev.copy.blocos.find((b) => b.id === 'extra-aviso')?.linhas).toEqual([])
+    // duplica com a camada ainda oculta
+    const mapa = new Map([['headline', 'uuid-1'], ['cta', 'uuid-2'], ['aviso', 'uuid-3']])
+    const copia = renomearExtrasDuplicados(rev.copy, mapa, ocultas)
+    expect(copia.blocos.map((b) => b.id)).toEqual(['headline', 'cta', 'extra-uuid-3'])
+    expect(copia.revisoes.every((r) => !r.blocos.includes('extra-aviso'))).toBe(true)
+    expect(copia.revisoes.some((r) => r.blocos.includes('extra-uuid-3'))).toBe(true)
+    expect(lerCopyAutoral(serializarCopyAutoral(copia)).problemas).toEqual([])
+    // reexibe na cópia: o texto volta ao MESMO bloco; nenhum bloco a mais
+    const camadasDaCopia = ocultas.map((c) => ({ ...c, id: mapa.get(c.id)!, name: mapa.get(c.id)!, visible: true, metadata: c.id === 'aviso' ? {} : { compositor: { papel: c.id } } })) as Layer[]
+    const r = copyEfetivaDasCamadas(copia, camadasDaCopia, { superficie: 'editor' })
+    expect(r.efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual([['headline', ['Milk-shake']], ['cta', ['Conheça nossos pacotes']], ['extra-uuid-3', ['Só hoje']]])
+    expect(r.mudancas.map((m) => m.id)).toEqual(['extra-uuid-3'])
+    expect(r.lacunas).toEqual([])
+  })
+
   it('R4-02 (4ª rodada): a duplicação resolve o vínculo pela ORDEM VISUAL das camadas originais, nunca pela ordem do array', () => {
     // array: nota? (y=560, "b") ANTES de nota! (y=500, "a"); a forma antiga nomeou pela ordem visual: extra-nota- → a, extra-nota--2 → b
     const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('nota?', 560, 'b', { metadata: {} } as Partial<Layer>), texto('nota!', 500, 'a', { metadata: {} } as Partial<Layer>)]
