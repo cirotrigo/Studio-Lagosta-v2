@@ -8206,3 +8206,61 @@ que NADA é gravado e que a medida é a da composição).
   revisão de 5d628520): `carregarFotoParaMedir` devolve `{ foto: null, aviso }`
   também quando `fetchBuffer` rejeita (403/503 do lh3, conexão) ou o sharp não
   lê os bytes — a medição segue provisória, como sem foto, sem publicar nada.
+
+### As vias consomem o contrato: modelo por PAPEL, IA com escrita × enviada × lida (PR 5 de "Marca simples, copy melhor", 12/09/2026)
+
+O PR 4 fez o compositor fiel; as OUTRAS vias — o modelo (`createArteRapida`,
+`executar-plano` via template, `criar-arte-de-modelo`), a IA
+(`startArtGeneration`, `gerar-imagem`), a melhoria e a conferência — ainda
+recebiam a copy como lista posicional e não registravam nada. Módulos puros com
+teste: `planos/execucao.ts` (`mapearContratoParaCampos`, `papelDoCampo`),
+`copy-autoral/registro-da-arte.ts`; prova de integração no branch de dev:
+`scripts/validar-vias-da-copy.ts`.
+
+- **Na via de MODELO o bloco casa com o campo do MESMO PAPEL, nunca por
+  posição** (`mapearContratoParaCampos`): o papel do campo é o declarado da
+  camada (`metadata.compositor.papel`) ou o que o NOME diz (Pré-título,
+  Título, Subtítulo, Chamada, Horário); nome que não diz nada é `null`. Bloco
+  sem campo do seu papel vai só para campo SEM papel reconhecido (declarado
+  como `posicao`) — o campo de manchete não recebe o serviço só porque sobrou;
+  o que sobrar fica em `semCampo` e no aviso, nunca perdido em silêncio. Bloco
+  `linhas: []` não ocupa campo; campo sem copy fica oculto, como sempre. Os
+  `[colchetes]` saem (o modelo desenha texto simples) e a quebra do autor fica.
+  Sem contrato, `mapearCopyParaSlots` (posicional) continua para o legado.
+- **O slot deixa de ser só texto**: `{ content, papel, bloco }`, e `bakeLayers`
+  carimba `metadata.compositor.{papel,bloco}` na camada. É o carimbo que faz a
+  leitura da copy efetiva reencontrar o bloco numa camada de id UUID — sem ele
+  a via de modelo relia o contrato como `extra-<uuid>`.
+- **A arte de modelo grava o mesmo registro do compositor**: `Page.copyAutoral =
+  efetiva` (superfície `modelo`) e `fieldValues.copyAutoral = { original,
+  efetiva, comparavel, lacunas }`. `ver-geracao` mostra.
+- 🔴 **Na via de IA não há camada, e o registro DIZ isso em vez de fingir uma
+  efetiva** (`registro-da-arte.ts`): `original` (o contrato), `enviada` (os
+  blocos como FORAM ao modelo de imagem — caixa da marca aplicada, colchetes
+  fora), `conferencia` (o que a visão leu, o que faltou, se passou, a régua) e a
+  lacuna `LACUNA_SEM_CAMADAS`. `ver-geracao` devolve `comparadoPor: 'visao'` e
+  a arte só é `comparavel` quando a conferência RODOU (`passou !== null`).
+- **Com `copyAutoral`, `startArtGeneration` deriva a copy do contrato** (blocos
+  com texto, em ordem, linhas do autor unidas por quebra) e RECUSA `copy` que
+  divirja dele (`COPY_DIVERGE_DO_CONTRATO`). O contrato viaja nos args do
+  runner, que fecha o registro no sucesso; a falha preserva o registro da
+  criação (`fieldValuesPreservando`).
+- 🔴 **`copyComCaixaDaMarca` preserva a QUEBRA do autor**: o colapso de espaços
+  vale dentro de cada linha, nunca sobre o "\n" — antes ele apagava a quebra
+  antes de a copy chegar ao prompt.
+- **A melhoria PROPAGA o contrato pela cadeia como a régua** (`copyAutoral.original`
+  da arte de origem). Em `refinar`, copy trocada pelo pedido vira REVISÃO
+  EXPLÍCITA de `claude` com o pedido como motivo (`revisaoPosicional`, a mesma
+  regra do item de plano: casou posição a posição, é revisão; não casou, a
+  lacuna diz e o texto enviado é o do pedido). A caixa da origem
+  (`aplicarCaixaDaOrigem`) NÃO conta como revisão: bloco igual ao do contrato a
+  menos de caixa/acento mantém as linhas do autor. Gravado no sucesso, na falha
+  de cobrança e na falha.
+- **`conferir-arte` devolve a metade que faltava**: `textoAMais` (com dado é
+  alerta), `grafiaDivergente` e a `copy` da arte quando ela tem contrato —
+  avisa, nunca veta.
+- **Fixtures do registro MCP** (`criar-arte-de-modelo`, `gerar-imagem`)
+  atualizadas nos mesmos commits — mudança deliberada do schema.
+- ⚠️ **Carrossel de IA e `criar-arte` (textos livres) continuam sem contrato**:
+  o slide vive em `slides[].copy` posicional e a arte livre não passa por
+  `startArtGeneration` com contrato. É lacuna declarada, não regressão.
