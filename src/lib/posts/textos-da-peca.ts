@@ -7,19 +7,31 @@
  * página — e a página é o MODELO: dois posts sobre a mesma página com copy
  * própria em `slotValues` voltavam com o texto de exemplo do modelo, e um
  * post cuja arte já foi entregue ao publicador voltava com a edição feita na
- * página DEPOIS da entrega. Aqui vale a mesma precedência do render
- * (`story-renderer.ts`): a copy PRÓPRIA do post sobrepõe a página; a cópia
- * que o agendamento grava (`_copiaDaPagina`) não volta para a arte.
+ * página DEPOIS da entrega. Aqui vale a mesma precedência do render:
  *
- * Peça cuja arte já foi ENTREGUE (no publicador, publicada ou falhou) não
- * segue a página: a copy que vale é a da arte. O que se pode afirmar dela é
- * o snapshot da própria arte (quando é a que o post carrega), a copy própria
- * do post, ou a cópia registrada no último render antes da entrega. Sem
- * nenhuma dessas, a indisponibilidade é DECLARADA — nunca se atribui à peça
- * um texto que ela pode não ter.
+ *  - peça VIVA com página: a página com a copy PRÓPRIA do post por cima,
+ *    camada a camada, com a MESMA função que o render usa
+ *    (`aplicarSlotNaCamada`); a cópia que o agendamento grava
+ *    (`_copiaDaPagina`) não volta para a arte;
+ *  - CARROSSEL (ou peça sem página): slide a slide, pela arte que cada
+ *    mídia é (`Generation` casada pela URL) — na peça viva, a página daquela
+ *    arte (é ela que o re-render desenha); na entregue, o snapshot das
+ *    camadas gravado na composição. `generationId` do post aponta só para a
+ *    PRIMEIRA arte; os demais slides sumiam;
+ *  - peça cuja arte já foi ENTREGUE (no publicador, publicada ou falhou) não
+ *    segue a página: sem snapshot, a copy própria do post é PARCIAL (só os
+ *    campos sobrescritos — o resto veio da página no render e não há
+ *    registro) e é declarada assim; a cópia registrada no último render antes
+ *    da entrega é inteira. Sem nenhuma, a indisponibilidade é DECLARADA.
+ *
+ * O texto de camada volta INTEIRO e na multiplicidade em que existe: uma URL
+ * numa camada de texto é texto da peça, duas camadas com a mesma frase são
+ * duas ocorrências (é a repetição que a revisão procura). Só o fallback por
+ * `slotValues` — onde não há tipo de camada — descarta valor com cara de URL.
  */
 
-import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
+import { lerCamadas, type PageLayer } from '@/lib/posts/page-layers'
+import { aplicarSlotNaCamada } from '@/lib/posts/page-to-design-data'
 import { ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
 
 export type OrigemDosTextos =
@@ -29,8 +41,8 @@ export type OrigemDosTextos =
   | 'pagina-com-copy-do-post'
   /** Só a copy gravada no post (sem página, ou página ilegível/sem texto). */
   | 'copy-do-post'
-  /** Arte já entregue: o snapshot das camadas da arte que o post carrega. */
-  | 'arte-entregue'
+  /** A arte que o post carrega, slide a slide (snapshot da composição; na peça viva, a página daquela arte). */
+  | 'arte'
   /** Arte já entregue: a cópia da página registrada no último render antes da entrega. */
   | 'copy-registrada-na-entrega'
 
@@ -43,18 +55,39 @@ export interface PecaParaTextos {
   generationId: string | null
 }
 
+/** Uma mídia do post e o que se sabe da arte que ela é. */
+export interface SlideDaPeca {
+  url: string
+  /** A Generation casada com a URL (a mais recente); `null`/ausente = nenhuma. */
+  arte?: { layersSnapshot?: unknown; pageId?: string | null } | null
+  /** `Page.layers` ATUAL da página daquela arte — vale só na peça viva. */
+  camadasDaPagina?: unknown
+}
+
 export interface FontesDaPeca {
-  /** `Page.layers` da página do post; `undefined` quando não há página (ou não foi carregada). */
+  /** `Page.layers` da página do post (`pageId`); `undefined` quando não há página (ou não foi carregada). */
   camadas?: unknown
-  /** A arte que o post aponta (`generationId`): a URL dela e o snapshot das camadas gravado na composição. */
-  arte?: { resultUrl: string | null; layersSnapshot: unknown } | null
+  /** As mídias do post, na ordem, com a arte de cada uma. */
+  slides?: SlideDaPeca[]
+}
+
+export interface TextosDeSlide {
+  slide: number
+  textos: string[]
+  origem?: 'pagina' | 'arte'
+  indisponiveis?: string
 }
 
 export interface TextosDaPeca {
   textos: string[]
   origem?: OrigemDosTextos
+  /** A leitura NÃO cobre a peça inteira (só os campos sobrescritos; slide sem registro). */
+  parcial?: boolean
+  nota?: string
   /** Por que não há texto a afirmar. */
   indisponiveis?: string
+  /** Carrossel: os textos por slide, na ordem das mídias. */
+  slides?: TextosDeSlide[]
 }
 
 /** Situações em que a arte já saiu da mão do Studio e não acompanha mais a página. */
@@ -67,57 +100,96 @@ export function arteEntregue(post: Pick<PecaParaTextos, 'status' | 'laterPostId'
 
 const RE_URL = /^(https?:\/\/|data:)/i
 
-function limpar(textos: Iterable<string>): string[] {
-  const out: string[] = []
-  for (const t of textos) {
-    const limpo = t.trim()
-    if (!limpo || RE_URL.test(limpo) || out.includes(limpo)) continue
-    out.push(limpo)
-  }
-  return out
-}
-
-function textoDoValor(valor: unknown): string | null {
-  if (typeof valor === 'string') return valor
-  if (valor && typeof valor === 'object' && typeof (valor as { content?: unknown }).content === 'string') {
-    return (valor as { content: string }).content
-  }
-  return null
+function camadaDeTexto(c: PageLayer): boolean {
+  return (c?.type === 'text' || c?.type === 'rich-text') && c.visible !== false
 }
 
 /**
- * A página com a copy própria do post por cima, camada a camada, como
- * `applySlotValues` faz no render (casa por id OU por nome). Camada oculta não
- * é copy da peça. `null` quando as camadas são ilegíveis.
+ * Os textos das camadas, na ordem e na multiplicidade em que existem — com a
+ * copy própria do post aplicada por cima quando ela vem (a função do render).
+ * `null` quando as camadas são ilegíveis.
  */
-function textosDaPaginaComSlots(camadas: unknown, slots: Record<string, unknown> | undefined): string[] | null {
+function textosDasCamadas(camadas: unknown, slots?: Record<string, unknown>): string[] | null {
   const lidas = lerCamadas(camadas)
   if (!lidas.legivel) return null
   const out: string[] = []
   for (const camada of lidas.camadas) {
-    if (camada?.type !== 'text' && camada?.type !== 'rich-text') continue
-    if (camada.visible === false) continue
-    const slot = slots ? (slots[String(camada.id)] ?? slots[String(camada.name)]) : undefined
-    const texto = textoDoValor(slot) ?? (typeof camada.content === 'string' ? camada.content : '')
-    out.push(texto)
+    if (!camadaDeTexto(camada)) continue
+    const efetiva = slots ? aplicarSlotNaCamada(camada, slots) : camada
+    const texto = typeof efetiva.content === 'string' ? efetiva.content.trim() : ''
+    if (texto) out.push(texto)
   }
-  return limpar(out)
+  return out
+}
+
+/** Os textos de `slotValues` sem tipo de camada: valor com cara de URL é imagem, não copy. */
+function textosDoPost(slotValues: unknown): string[] {
+  return Object.values(textosDoSlot(slotValues) ?? {})
+    .map((t) => t.trim())
+    .filter((t) => t && !RE_URL.test(t))
+}
+
+function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide[] {
+  return slides.map((s, i) => {
+    const slide = i + 1
+    if (!entregue && s.camadasDaPagina !== undefined) {
+      const daPagina = textosDasCamadas(s.camadasDaPagina)
+      if (daPagina && daPagina.length > 0) return { slide, textos: daPagina, origem: 'pagina' }
+    }
+    if (s.arte?.layersSnapshot !== undefined && s.arte.layersSnapshot !== null) {
+      const doSnapshot = textosDasCamadas(s.arte.layersSnapshot)
+      if (doSnapshot && doSnapshot.length > 0) return { slide, textos: doSnapshot, origem: 'arte' }
+    }
+    return {
+      slide,
+      textos: [],
+      indisponiveis: s.arte ? 'a arte deste slide não guardou as camadas (sem snapshot): nada a afirmar' : 'nenhuma arte registrada para esta mídia',
+    }
+  })
 }
 
 export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): TextosDaPeca {
   const sv = post.slotValues
+  const entregue = arteEntregue(post)
+  const carrossel = post.mediaUrls.length > 1
   const proprios = slotValuesParaRender(sv)
-  const textosProprios = limpar(Object.values(textosDoSlot(proprios ?? null) ?? {}))
+  const textosProprios = textosDoPost(proprios ?? null)
 
-  if (arteEntregue(post)) {
-    const arte = fontes.arte
-    if (arte?.resultUrl && arte.layersSnapshot !== undefined && arte.layersSnapshot !== null && post.mediaUrls.includes(arte.resultUrl)) {
-      const doSnapshot = limpar(Object.values(textosDaPagina(arte.layersSnapshot)))
-      if (doSnapshot.length > 0) return { textos: doSnapshot, origem: 'arte-entregue' }
+  // 1. Peça VIVA com página: a mesma precedência do render.
+  if (!entregue && !carrossel && fontes.camadas !== undefined) {
+    const daPagina = textosDasCamadas(fontes.camadas, proprios)
+    if (daPagina && daPagina.length > 0) return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
+    if (daPagina === null && !textosDoSlot(sv)) return { textos: [], indisponiveis: 'as camadas da página não puderam ser lidas.' }
+  }
+
+  // 2. Pelas ARTES do post, slide a slide (carrossel, peça sem página, peça entregue).
+  const slides = fontes.slides ?? []
+  if (slides.length > 0) {
+    const porSlide = textosPorSlide(slides, entregue)
+    const resolvidos = porSlide.filter((s) => s.textos.length > 0)
+    if (resolvidos.length > 0) {
+      const faltam = porSlide.length - resolvidos.length
+      return {
+        textos: porSlide.flatMap((s) => s.textos),
+        origem: resolvidos.every((s) => s.origem === 'pagina') ? 'pagina' : 'arte',
+        ...(carrossel ? { slides: porSlide } : {}),
+        ...(faltam > 0 ? { parcial: true, nota: `${faltam} de ${porSlide.length} mídia(s) sem arte registrada: os textos delas não estão aqui.` } : {}),
+      }
     }
-    if (textosProprios.length > 0) return { textos: textosProprios, origem: 'copy-do-post' }
+  }
+
+  // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
+  if (entregue) {
+    if (textosProprios.length > 0) {
+      return {
+        textos: textosProprios,
+        origem: 'copy-do-post',
+        parcial: true,
+        nota: 'só os campos que o post sobrescreveu: o resto veio da página no render e não tem registro — a página pode ter mudado depois da entrega.',
+      }
+    }
     if (ehCopiaDaPagina(sv)) {
-      const registrada = limpar(Object.values(textosDoSlot(sv) ?? {}))
+      const registrada = textosDoPost(sv)
       if (registrada.length > 0) return { textos: registrada, origem: 'copy-registrada-na-entrega' }
     }
     return {
@@ -127,17 +199,8 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
   }
 
-  if (fontes.camadas !== undefined) {
-    const daPagina = textosDaPaginaComSlots(fontes.camadas, proprios)
-    if (daPagina && daPagina.length > 0) {
-      return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
-    }
-    if (daPagina === null && textosProprios.length === 0 && !textosDoSlot(sv)) {
-      return { textos: [], indisponiveis: 'as camadas da página não puderam ser lidas.' }
-    }
-  }
-
-  const doPost = limpar(Object.values(textosDoSlot(sv) ?? {}))
+  // 4. Peça viva sem página (nem arte casada): a copy gravada no post.
+  const doPost = textosDoPost(sv)
   if (doPost.length > 0) return { textos: doPost, origem: 'copy-do-post' }
   return { textos: [] }
 }

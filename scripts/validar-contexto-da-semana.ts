@@ -136,6 +136,7 @@ async function main() {
   const posts: string[] = []
   const entradas: string[] = []
   const sinaisDaProva = new Set<string>()
+  const geracoes: string[] = []
   const inicioDaProva = new Date()
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT }
 
@@ -240,6 +241,32 @@ async function main() {
       conferir('post PUBLICADO com cópia registrada: volta o que foi registrado na entrega, NÃO o texto atual da página', !!iD && JSON.stringify(iD.textos) === JSON.stringify(['o que foi ao ar']) && iD.textosOrigem === 'copy-registrada-na-entrega', JSON.stringify({ textos: iD?.textos, origem: iD?.textosOrigem }))
       conferir('post no publicador (laterPostId) sem registro nenhum: `textosIndisponiveis` declarado e nenhum texto da página atribuído', !!iE && !('textos' in iE) && typeof iE.textosIndisponiveis === 'string' && /entregue/.test(iE.textosIndisponiveis), JSON.stringify({ textos: iE?.textos, indisponiveis: iE?.textosIndisponiveis }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3b.json'), JSON.stringify(agenda3b, null, 2))
+
+      // R8/R9/R11 (revisão de 0585363f): carrossel slide a slide, copy própria parcial depois da entrega, slot vazio com a semântica do render.
+      console.log('3c) ver-agenda: carrossel publicado lê CADA slide pela arte; copy própria sem snapshot é PARCIAL; slot vazio segue o render')
+      const dia3c = somarDias(hoje, 6)
+      const paginaDoTemplate = await db.page.findUnique({ where: { id: paginaComTexto[0].id }, select: { templateId: true } })
+      const snap = (texto: string) => [{ id: 'l1', name: 'headline', type: 'text', content: texto, visible: true }]
+      const marcaUrl = `https://prova.invalid/${Date.now()}`
+      const genA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/slide-1.png`, fieldValues: { layersSnapshot: snap(`${MARCA} slide um`), source: 'prova' } as never }, select: { id: true } })
+      const genB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/slide-2.png`, fieldValues: { layersSnapshot: snap(`${MARCA} slide dois`), source: 'prova' } as never }, select: { id: true } })
+      geracoes.push(genA.id, genB.id)
+      const carrossel = await db.socialPost.create({
+        data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} 3c carrossel`, mediaUrls: [`${marcaUrl}/slide-1.png`, `${marcaUrl}/slide-2.png`, `${marcaUrl}/slide-3-sem-arte.png`], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3c}T09:00:00-03:00`), status: 'POSTED', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', generationId: genA.id },
+        select: { id: true },
+      })
+      const parcialPropria = await criar('10:00', { status: 'POSTED', scheduledDatetime: new Date(`${dia3c}T10:00:00-03:00`), slotValues: { [chaveDoTexto]: `${MARCA} só o título` } })
+      const slotVazio = await criar('11:00', { scheduledDatetime: new Date(`${dia3c}T11:00:00-03:00`), slotValues: { [chaveDoTexto]: '' } })
+      const slotApaga = await criar('12:00', { scheduledDatetime: new Date(`${dia3c}T12:00:00-03:00`), slotValues: { [chaveDoTexto]: { content: '' } } })
+      posts.push(carrossel.id, parcialPropria.id, slotVazio.id, slotApaga.id)
+      const agenda3c = await tool('ver-agenda', { projectId: PROJETO, from: dia3c, to: dia3c })
+      const itens3c = (agenda3c.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const item3c = (id: string) => itens3c.find((i) => i.postId === id)
+      const iCar = item3c(carrossel.id), iPar = item3c(parcialPropria.id), iVaz = item3c(slotVazio.id), iApa = item3c(slotApaga.id)
+      conferir('carrossel PUBLICADO com 3 mídias: os textos dos slides 1 e 2 em ordem (pela URL, não só pelo generationId), o 3º declarado sem arte, leitura parcial', !!iCar && JSON.stringify(iCar.textos) === JSON.stringify([`${MARCA} slide um`, `${MARCA} slide dois`]) && iCar.textosOrigem === 'arte' && iCar.textosParciais === true && Array.isArray(iCar.textosPorSlide) && iCar.textosPorSlide.length === 3 && iCar.textosPorSlide[2].textos.length === 0 && /nenhuma arte/.test(iCar.textosPorSlide[2].indisponiveis ?? ''), JSON.stringify({ textos: iCar?.textos, slides: iCar?.textosPorSlide?.map((s: any) => s.origem ?? s.indisponiveis) }).slice(0, 260))
+      conferir('post PUBLICADO com copy própria e sem snapshot: só o título sobrescrito, marcado PARCIAL (não completa pela página atual)', !!iPar && JSON.stringify(iPar.textos) === JSON.stringify([`${MARCA} só o título`]) && iPar.textosOrigem === 'copy-do-post' && iPar.textosParciais === true && /sobrescreveu/.test(iPar.textosNota ?? ''), JSON.stringify({ textos: iPar?.textos, parciais: iPar?.textosParciais }).slice(0, 200))
+      conferir('slot "" mantém o texto da página (como o render); slot { content: "" } o apaga (como o render)', !!iVaz && iVaz.textos.includes(textoDoModelo) && !!iApa && !(iApa.textos ?? []).includes(textoDoModelo), JSON.stringify({ vazio: iVaz?.textos?.[0], apaga: iApa?.textos }).slice(0, 200))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3c.json'), JSON.stringify(agenda3c, null, 2))
     } else {
       conferir('projeto sem página com texto para exercitar `textos` pela página', false)
     }
@@ -301,13 +328,16 @@ async function main() {
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou)')
     const falhas: string[] = []
-    const apagados = { posts: 0, entradas: 0, sinais: 0 }
+    const apagados = { posts: 0, entradas: 0, sinais: 0, geracoes: 0 }
     try {
       apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] } })).count
     } catch (e) { falhas.push(`posts: ${e instanceof Error ? e.message : String(e)}`) }
     try {
       apagados.entradas = (await db.knowledgeBaseEntry.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: entradas } }, { title: { contains: MARCA } }] } })).count
     } catch (e) { falhas.push(`entradas: ${e instanceof Error ? e.message : String(e)}`) }
+    try {
+      apagados.geracoes = (await db.generation.deleteMany({ where: { id: { in: geracoes }, projectId: PROJETO } })).count
+    } catch (e) { falhas.push(`geracoes: ${e instanceof Error ? e.message : String(e)}`) }
     try {
       // Só o sinal que ESTA rodada criou: proposta reutilizada de antes da prova (createdAt anterior) fica.
       apagados.sinais = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDaProva] }, projectId: PROJETO, tipo: 'foto', createdAt: { gte: inicioDaProva } } })).count

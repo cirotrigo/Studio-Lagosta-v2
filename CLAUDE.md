@@ -6294,14 +6294,31 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   post sobrepõe a página camada a camada (por id ou nome, como
   `applySlotValues`); a cópia que o agendamento grava (`_copiaDaPagina`) não
   sobrepõe (`slotValuesParaRender`); camada oculta fica de fora.
+  🔴 **Carrossel e peça sem página se leem SLIDE A SLIDE, pela arte que cada
+  mídia é** (`mediaUrls` → `Generation` casada pela URL, a mais recente por
+  URL — a regra de `artes-do-post.ts`; `generationId` do post é só o PRIMEIRO
+  slide, e os outros sumiam da revisão). Na peça viva o slide é lido da
+  PÁGINA daquela arte (`fieldValues.pageId`, é ela que o re-render desenha);
+  na entregue, do `layersSnapshot`. `textosPorSlide` sai no carrossel; mídia
+  sem arte registrada é declarada no slide e a leitura vira `textosParciais`.
   🔴 **Arte já ENTREGUE não segue a página** (`arteEntregue`: `laterPostId`,
   publicado, publicando ou falhou): a página pode ter sido editada DEPOIS da
   entrega, e a invalidação não alcança o post — atribuir-lhe o texto atual da
-  página seria mentir sobre o que foi ao ar. Vale, nesta ordem, o snapshot da
-  arte que o post carrega (`layersSnapshot`, só se a `resultUrl` está em
-  `mediaUrls`), a copy própria do post e a cópia registrada no último render
-  antes da entrega; sem nenhuma, `textosIndisponiveis` DECLARA, e `textos`
+  página seria mentir sobre o que foi ao ar. Sem snapshot, a copy PRÓPRIA do
+  post é PARCIAL e dita assim (`textosParciais` + `textosNota`: só os campos
+  sobrescritos; o resto veio da página no render e não tem registro — nunca
+  se completa pela página atual); a cópia registrada no último render antes
+  da entrega é inteira; sem nenhuma, `textosIndisponiveis` DECLARA e `textos`
   não sai. Camadas ilegíveis também declaram, nunca erro.
+  🔴 **O texto de camada volta INTEIRO e na multiplicidade em que existe**: URL
+  numa camada de texto é texto da peça, duas camadas com a mesma frase são
+  duas ocorrências (é a repetição que a revisão procura), acento e quebra de
+  linha ficam. Só o fallback por `slotValues` (sem tipo de camada) descarta
+  valor com cara de URL. E o slot é aplicado pela MESMA função do render
+  (`aplicarSlotNaCamada`, extraída de `applySlotValues`): `""` mantém o texto
+  da camada, `{ content: "" }` o apaga, id vence nome — reproduzir a
+  semântica "à mão" foi como a leitura passou a afirmar ausência de um texto
+  que continuava na arte.
 - **`consultar-base` recebe `em`** (a data em que a peça VAI AO AR):
   `vigenteEm(início daquele dia em Brasília)` — o que vence durante o dia
   ainda vale para a peça que sai nele. 🔴 Só dia que EXISTE (`dataValida`,

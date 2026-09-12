@@ -100,41 +100,65 @@ export const toolsDeAgenda = [
       })
 
       /**
-       * Os TEXTOS COMPLETOS de cada peça (PR 6), como a ARTE os mostra: a
-       * mesma precedência do render — a copy PRÓPRIA do post por cima da
-       * página; a cópia que o agendamento grava não volta para a arte. Peça
-       * cuja arte já foi ENTREGUE não segue a página: vale o snapshot da arte
-       * que o post carrega, a copy própria ou a cópia registrada na entrega —
-       * e, sem nenhuma delas, a indisponibilidade é declarada. Ver
-       * `textos-da-peca.ts`. É o que permite revisar repetição entre os dias —
-       * a legenda cortada em 140 caracteres não dizia o que a arte diz.
+       * Os TEXTOS COMPLETOS de cada peça (PR 6), como a ARTE os mostra — ver
+       * `textos-da-peca.ts`: peça viva com página = a página com a copy
+       * própria do post por cima (a função do render); carrossel e peça sem
+       * página = slide a slide, pela arte que cada mídia é (a URL casa a
+       * Generation; `generationId` do post é só o primeiro slide); peça
+       * entregue = o snapshot da arte, e sem ele a leitura é declarada
+       * parcial ou indisponível. É o que permite revisar repetição entre os
+       * dias — a legenda cortada em 140 caracteres não dizia o que a arte diz.
        */
-      const idsDePagina = [...new Set(posts.filter((p) => !arteEntregue(p)).map((p) => p.pageId).filter((id): id is string => !!id))]
-      const paginas = idsDePagina.length
-        ? await db.page.findMany({ where: { id: { in: idsDePagina } }, select: { id: true, layers: true } })
+      const vivas = posts.filter((p) => !arteEntregue(p))
+      const idsDePagina = [...new Set(vivas.map((p) => p.pageId).filter((id): id is string => !!id))]
+      // As artes de TODAS as mídias, casadas pela URL — a mais recente por URL
+      // vence (`orderBy desc` + primeira gravada), a regra de `artes-do-post.ts`.
+      const urls = [...new Set(posts.flatMap((p) => p.mediaUrls ?? []).filter((u) => u && !u.startsWith('data:')))]
+      const idsDeArte = [...new Set(posts.map((p) => p.generationId).filter((id): id is string => !!id))]
+      const artes = urls.length || idsDeArte.length
+        ? await db.generation.findMany({
+            where: { projectId, OR: [...(urls.length ? [{ resultUrl: { in: urls } }] : []), ...(idsDeArte.length ? [{ id: { in: idsDeArte } }] : [])] },
+            select: { id: true, resultUrl: true, fieldValues: true },
+            orderBy: { createdAt: 'desc' },
+          })
+        : []
+      const fvDe = (fv: unknown) => (fv && typeof fv === 'object' && !Array.isArray(fv) ? (fv as Record<string, unknown>) : {})
+      const arteDe = (g: (typeof artes)[number]) => ({
+        layersSnapshot: fvDe(g.fieldValues).layersSnapshot,
+        pageId: typeof fvDe(g.fieldValues).pageId === 'string' ? (fvDe(g.fieldValues).pageId as string) : null,
+      })
+      const artePorUrl = new Map<string, ReturnType<typeof arteDe>>()
+      const artePorId = new Map<string, ReturnType<typeof arteDe>>()
+      for (const g of artes) {
+        if (g.resultUrl && !artePorUrl.has(g.resultUrl)) artePorUrl.set(g.resultUrl, arteDe(g))
+        artePorId.set(g.id, arteDe(g))
+      }
+      const arteDoSlide = (post: (typeof posts)[number], url: string, indice: number) =>
+        artePorUrl.get(url) ?? (indice === 0 && post.generationId ? artePorId.get(post.generationId) ?? null : null)
+      // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê.
+      const idsDePaginaDosSlides = [
+        ...new Set(
+          vivas.flatMap((p) => (p.mediaUrls ?? []).map((u, i) => arteDoSlide(p, u, i)?.pageId).filter((id): id is string => !!id)),
+        ),
+      ]
+      const todasAsPaginas = [...new Set([...idsDePagina, ...idsDePaginaDosSlides])]
+      const paginas = todasAsPaginas.length
+        ? await db.page.findMany({ where: { id: { in: todasAsPaginas } }, select: { id: true, layers: true } })
         : []
       const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
-      const idsDeArte = [...new Set(posts.filter((p) => arteEntregue(p) && p.generationId).map((p) => p.generationId as string))]
-      const artes = idsDeArte.length
-        ? await db.generation.findMany({ where: { id: { in: idsDeArte } }, select: { id: true, resultUrl: true, fieldValues: true } })
-        : []
-      const artePorId = new Map(
-        artes.map((g) => [
-          g.id,
-          {
-            resultUrl: g.resultUrl,
-            layersSnapshot: (g.fieldValues && typeof g.fieldValues === 'object' && !Array.isArray(g.fieldValues)
-              ? (g.fieldValues as Record<string, unknown>).layersSnapshot
-              : undefined),
-          },
-        ]),
-      )
       const textosDe = (post: (typeof posts)[number]) =>
         textosDaPeca(
           { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId },
           {
             ...(post.pageId && camadasPorPagina.has(post.pageId) ? { camadas: camadasPorPagina.get(post.pageId) } : {}),
-            ...(post.generationId && artePorId.has(post.generationId) ? { arte: artePorId.get(post.generationId) } : {}),
+            slides: (post.mediaUrls ?? []).map((url, i) => {
+              const arte = arteDoSlide(post, url, i)
+              return {
+                url,
+                arte,
+                ...(arte?.pageId && camadasPorPagina.has(arte.pageId) ? { camadasDaPagina: camadasPorPagina.get(arte.pageId) } : {}),
+              }
+            }),
           },
         )
 
@@ -165,6 +189,8 @@ export const toolsDeAgenda = [
             const t = textosDe(post)
             return {
               ...(t.textos.length > 0 ? { textos: t.textos, textosOrigem: t.origem } : {}),
+              ...(t.parcial ? { textosParciais: true, textosNota: t.nota } : {}),
+              ...(t.slides ? { textosPorSlide: t.slides } : {}),
               ...(t.indisponiveis ? { textosIndisponiveis: t.indisponiveis } : {}),
             }
           })()),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { arteEntregue, textosDaPeca } from '../textos-da-peca'
+import { aplicarSlotNaCamada } from '../page-to-design-data'
 
 const camadas = [
   { id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', visible: true },
@@ -20,13 +21,82 @@ describe('textosDaPeca — a mesma precedência do render', () => {
     const r = textosDaPeca({ ...viva, slotValues: { headline: 'Texto velho', apoio: 'Apoio velho', _copiaDaPagina: true } }, { camadas })
     expect(r).toEqual({ textos: ['Título do modelo', 'Apoio do modelo'], origem: 'pagina' })
   })
-  it('sem página vale a copy do post (as chaves _ e URLs ficam de fora); sem nada, lista vazia sem alegação', () => {
-    expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta', _imageUrl: 'https://x/y.png', foto: 'https://x/z.png' } })).toEqual({ textos: ['Solta'], origem: 'copy-do-post' })
+  it('slot vazio tem a semântica do render (R11): "" mantém o texto da camada; { content: "" } o apaga; id vence nome mesmo quando o id vem vazio', () => {
+    const pagina = [
+      { id: 'l1', name: 'headline', type: 'text', content: 'Preço sob consulta' },
+      { id: 'l2', name: 'apoio', type: 'text', content: 'Apoio' },
+    ]
+    expect(textosDaPeca({ ...viva, slotValues: { headline: '' } }, { camadas: pagina }).textos).toEqual(['Preço sob consulta', 'Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { headline: { content: '' } } }, { camadas: pagina }).textos).toEqual(['Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { l1: '', headline: 'pelo nome' } }, { camadas: pagina }).textos).toEqual(['Preço sob consulta', 'Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { l1: 'pelo id', headline: 'pelo nome' } }, { camadas: pagina }).textos).toEqual(['pelo id', 'Apoio'])
+    // a MESMA função do render, com o mesmo resultado
+    expect(aplicarSlotNaCamada(pagina[0], { headline: '' }).content).toBe('Preço sob consulta')
+    expect(aplicarSlotNaCamada(pagina[0], { headline: { content: '' } }).content).toBe('')
+    expect(aplicarSlotNaCamada(pagina[0], { l1: { fileUrl: 'https://x' } }).content).toBe('Preço sob consulta')
+  })
+  it('o texto de camada volta INTEIRO e na multiplicidade em que existe (R10): URL numa camada é texto; frase repetida conta duas vezes; acento e quebra de linha ficam', () => {
+    const pagina = [
+      { id: 'a', name: 'cta', type: 'text', content: 'https://cliente.com/reservas' },
+      { id: 'b', name: 'apoio', type: 'text', content: 'Sexta é dia de churrasco' },
+      { id: 'c', name: 'apoio-2', type: 'text', content: 'Sexta é dia de churrasco' },
+      { id: 'd', name: 'headline', type: 'text', content: 'Costela\nno bafo' },
+    ]
+    expect(textosDaPeca({ ...viva, slotValues: null }, { camadas: pagina }).textos).toEqual([
+      'https://cliente.com/reservas',
+      'Sexta é dia de churrasco',
+      'Sexta é dia de churrasco',
+      'Costela\nno bafo',
+    ])
+    // só o fallback por slotValues (sem tipo de camada) descarta valor com cara de URL
+    expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta', _imageUrl: 'https://x/y.png', foto: 'https://x/z.png', outro: 'Solta' } })).toEqual({ textos: ['Solta', 'Solta'], origem: 'copy-do-post' })
+  })
+  it('sem página nem arte: a copy do post; sem nada, lista vazia sem alegação', () => {
+    expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta' } })).toEqual({ textos: ['Solta'], origem: 'copy-do-post' })
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: null })).toEqual({ textos: [] })
   })
   it('camadas ilegíveis sem copy no post: indisponível, nunca erro; com copy, cai na copy', () => {
     expect(textosDaPeca({ ...viva, slotValues: null }, { camadas: '{nao é json' }).indisponiveis).toMatch(/não puderam ser lidas/)
     expect(textosDaPeca({ ...viva, slotValues: { headline: 'Da copy' } }, { camadas: '{nao é json' })).toEqual({ textos: ['Da copy'], origem: 'copy-do-post' })
+  })
+})
+
+describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia é (R8)', () => {
+  const snap = (texto: string) => [{ id: 'l1', name: 'headline', type: 'text', content: texto }]
+  it('peça ENTREGUE com duas mídias e snapshots: os textos dos dois slides, em ordem; um terceiro sem arte é declarado e a leitura é parcial', () => {
+    const post = { pageId: null, status: 'POSTED', laterPostId: null, mediaUrls: ['u1', 'u2', 'u3'], generationId: 'g1', slotValues: null }
+    const r = textosDaPeca(post, {
+      slides: [
+        { url: 'u1', arte: { layersSnapshot: snap('Slide um') } },
+        { url: 'u2', arte: { layersSnapshot: snap('Slide dois') } },
+        { url: 'u3', arte: null },
+      ],
+    })
+    expect(r.textos).toEqual(['Slide um', 'Slide dois'])
+    expect(r.origem).toBe('arte')
+    expect(r.parcial).toBe(true)
+    expect(r.slides?.map((s) => [s.slide, s.textos, s.origem ?? s.indisponiveis])).toEqual([
+      [1, ['Slide um'], 'arte'],
+      [2, ['Slide dois'], 'arte'],
+      [3, [], 'nenhuma arte registrada para esta mídia'],
+    ])
+  })
+  it('carrossel VIVO: cada slide é lido da PÁGINA da sua arte (a edição que o re-render vai desenhar), não do snapshot velho; sem página, o snapshot', () => {
+    const post = { pageId: null, status: 'SCHEDULED', laterPostId: null, mediaUrls: ['u1', 'u2'], generationId: 'g1', slotValues: null }
+    const r = textosDaPeca(post, {
+      slides: [
+        { url: 'u1', arte: { layersSnapshot: snap('Velho'), pageId: 'p1' }, camadasDaPagina: snap('Editado agora') },
+        { url: 'u2', arte: { layersSnapshot: snap('Slide dois') } },
+      ],
+    })
+    expect(r.textos).toEqual(['Editado agora', 'Slide dois'])
+    expect(r.slides?.map((s) => s.origem)).toEqual(['pagina', 'arte'])
+    expect(r.parcial).toBeUndefined()
+  })
+  it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
+    const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
+    expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['P'], origem: 'pagina' })
+    expect(textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['S'], origem: 'arte' })
   })
 })
 
@@ -43,15 +113,28 @@ describe('textosDaPeca — arte já entregue não segue a página', () => {
   })
   it('a página editada para B depois da entrega NÃO é atribuída à publicação: vale o snapshot da arte que o post carrega', () => {
     const paginaEditada = [{ id: 'l1', name: 'headline', type: 'text', content: 'Texto B, editado depois' }]
-    const r = textosDaPeca({ ...entregue, slotValues: { headline: 'Texto A, o que foi ao ar', _copiaDaPagina: true } }, { camadas: paginaEditada, arte: { resultUrl: 'https://blob/arte-1.png', layersSnapshot: snapshot } })
-    expect(r).toEqual({ textos: ['Texto A, o que foi ao ar'], origem: 'arte-entregue' })
+    const r = textosDaPeca(
+      { ...entregue, slotValues: { headline: 'Texto A, o que foi ao ar', _copiaDaPagina: true } },
+      { camadas: paginaEditada, slides: [{ url: 'https://blob/arte-1.png', arte: { layersSnapshot: snapshot, pageId: 'p1' }, camadasDaPagina: paginaEditada }] },
+    )
+    expect(r).toEqual({ textos: ['Texto A, o que foi ao ar'], origem: 'arte' })
   })
-  it('snapshot de uma arte que NÃO é a que o post carrega não conta; sobra a cópia registrada na entrega', () => {
-    const r = textosDaPeca({ ...entregue, slotValues: { headline: 'Texto A registrado', _copiaDaPagina: true } }, { camadas: [], arte: { resultUrl: 'https://blob/outra.png', layersSnapshot: snapshot } })
-    expect(r).toEqual({ textos: ['Texto A registrado'], origem: 'copy-registrada-na-entrega' })
+  it('sem snapshot, a copy PRÓPRIA do post é PARCIAL e dita assim (R9): só o título sobrescrito, sem completar pela página atual', () => {
+    const paginaComPreco = [
+      { id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo' },
+      { id: 'l2', name: 'preco', type: 'text', content: 'R$ 39,90' },
+    ]
+    const antes = textosDaPeca({ ...entregue, status: 'DRAFT', laterPostId: null, slotValues: { headline: 'Meu título' } }, { camadas: paginaComPreco })
+    expect(antes).toEqual({ textos: ['Meu título', 'R$ 39,90'], origem: 'pagina-com-copy-do-post' })
+    const depois = textosDaPeca({ ...entregue, status: 'POSTED', laterPostId: null, slotValues: { headline: 'Meu título' } }, { camadas: paginaComPreco, slides: [{ url: 'https://blob/arte-1.png', arte: { pageId: 'p1' } }] })
+    expect(depois.textos).toEqual(['Meu título'])
+    expect(depois.origem).toBe('copy-do-post')
+    expect(depois.parcial).toBe(true)
+    expect(depois.nota).toMatch(/só os campos que o post sobrescreveu/)
   })
-  it('copy própria do post vence a cópia registrada; publicado sem registro nenhum declara a indisponibilidade', () => {
-    expect(textosDaPeca({ ...entregue, status: 'POSTED', laterPostId: null, slotValues: { headline: 'Própria' } })).toEqual({ textos: ['Própria'], origem: 'copy-do-post' })
+  it('a cópia registrada na entrega é inteira; publicado sem registro nenhum declara a indisponibilidade', () => {
+    const r = textosDaPeca({ ...entregue, slotValues: { headline: 'Texto A registrado', apoio: 'Apoio registrado', _copiaDaPagina: true } }, { camadas: [], slides: [{ url: 'https://blob/arte-1.png', arte: null }] })
+    expect(r).toEqual({ textos: ['Texto A registrado', 'Apoio registrado'], origem: 'copy-registrada-na-entrega' })
     const semNada = textosDaPeca({ ...entregue, status: 'POSTED', laterPostId: null, generationId: null, slotValues: null }, { camadas })
     expect(semNada.textos).toEqual([])
     expect(semNada.indisponiveis).toMatch(/já foi entregue/)
