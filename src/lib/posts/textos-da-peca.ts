@@ -153,6 +153,18 @@ function textosDoPost(slotValues: unknown): string[] {
     .filter((t) => t && !RE_URL.test(t))
 }
 
+/**
+ * A cópia da página que o agendamento grava (`_copiaDaPagina`): é texto de
+ * CAMADA por construção (`textosDaPagina`), então uma URL ali é texto da peça e
+ * fica. O que esse registro NÃO guarda: a caixa do render (`textTransform`) e
+ * a ordem em que as camadas são desenhadas — por isso quem o devolve declara
+ * a leitura PARCIAL (R19).
+ */
+function textosDaCopiaRegistrada(slotValues: unknown): string[] {
+  return Object.values(textosDoSlot(slotValues) ?? {}).map((t) => t.trim()).filter(Boolean)
+}
+const NOTA_DA_COPIA_REGISTRADA = 'cópia da página registrada no agendamento: o texto das camadas ANTES da caixa do render (textTransform) e sem a ordem em que foram desenhadas — não prova a arte inteira.'
+
 /** O snapshot afirma texto só quando é o registro do que foi desenhado: existe e a arte não foi re-renderizada por cima dele. */
 function snapshotConfiavel(arte: NonNullable<SlideDaPeca['arte']>): boolean {
   return arte.layersSnapshot !== undefined && arte.layersSnapshot !== null && arte.reRenderizada !== true
@@ -214,24 +226,25 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
         ...(faltam > 0 ? { parcial: true, nota: `${faltam} de ${porSlide.length} mídia(s) sem arte registrada (ou re-renderizada sem registro): os textos delas não estão aqui.` } : {}),
       }
     }
+    /**
+     * CARROSSEL sem NENHUM slide legível — vivo ou entregue: a copy do post não
+     * cobre as mídias (a cópia da página não acompanha o slide; o re-render de
+     * slide troca só `mediaUrls`). Declara-se, slide a slide; nada se afirma
+     * (R15 e R20 das revisões de 3f784e1a e 941d8e77).
+     */
+    if (carrossel) {
+      return {
+        textos: [],
+        indisponiveis: entregue
+          ? 'carrossel já entregue sem registro confiável das artes por slide: a cópia gravada no post não prova o que foi ao ar (o re-render de slide troca só a mídia).'
+          : 'carrossel sem página legível nem snapshot em nenhum slide: a copy gravada no post não cobre as mídias.',
+        slides: porSlide,
+      }
+    }
   }
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
-    /**
-     * CARROSSEL entregue sem slide confiável: nem a cópia da página nem a copy
-     * própria provam o que foi ao ar — o re-render de slide troca só
-     * `mediaUrls` (`recompor.ts`), e `slotValues` do carrossel fica como
-     * estava (a cópia A sobrevive à mídia B). Aqui só se declara, slide a
-     * slide; nada se afirma (R15 da revisão de 3f784e1a).
-     */
-    if (carrossel && slides.length > 0) {
-      return {
-        textos: [],
-        indisponiveis: 'carrossel já entregue sem registro confiável das artes por slide: a cópia gravada no post não prova o que foi ao ar (o re-render de slide troca só a mídia).',
-        slides: textosPorSlide(slides, true),
-      }
-    }
     if (textosProprios.length > 0) {
       return {
         textos: textosProprios,
@@ -241,8 +254,8 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
       }
     }
     if (ehCopiaDaPagina(sv)) {
-      const registrada = textosDoPost(sv)
-      if (registrada.length > 0) return { textos: registrada, origem: 'copy-registrada-na-entrega' }
+      const registrada = textosDaCopiaRegistrada(sv)
+      if (registrada.length > 0) return { textos: registrada, origem: 'copy-registrada-na-entrega', parcial: true, nota: NOTA_DA_COPIA_REGISTRADA }
     }
     return {
       textos: [],

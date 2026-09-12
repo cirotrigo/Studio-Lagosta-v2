@@ -113,10 +113,10 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
   it('a arte casa SÓ pela URL (R12) e o snapshot de arte RE-RENDERIZADA não afirma texto (R13): sobra a cópia registrada, nunca o texto de outra versão', () => {
     // R12: a mídia B não casa com a Generation A do generationId — o chamador não a passa como arte do slide; vale a cópia registrada B
     const r12 = textosDaPeca({ pageId: 'p1', status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B.png'], generationId: 'gA', slotValues: { headline: 'B registrado', _copiaDaPagina: true } }, { slides: [{ url: 'https://blob/B.png', arte: null }] })
-    expect(r12).toEqual({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega' })
+    expect(r12).toMatchObject({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega', parcial: true })
     // R13: URL casa, mas a arte foi re-renderizada por cima do snapshot da composição anterior
     const r13 = textosDaPeca({ pageId: 'p1', status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B.png'], generationId: 'gA', slotValues: { headline: 'B registrado', _copiaDaPagina: true } }, { slides: [{ url: 'https://blob/B.png', arte: { layersSnapshot: snap('A antigo'), pageId: 'p1', reRenderizada: true } }] })
-    expect(r13).toEqual({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega' })
+    expect(r13).toMatchObject({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega', parcial: true })
     const r13SemRegistro = textosDaPeca({ pageId: null, status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B.png', 'https://blob/C.png'], generationId: null, slotValues: null }, { slides: [{ url: 'https://blob/B.png', arte: { layersSnapshot: snap('A antigo'), reRenderizada: true } }, { url: 'https://blob/C.png', arte: { layersSnapshot: snap('C') } }] })
     expect(r13SemRegistro.textos).toEqual(['C'])
     expect(r13SemRegistro.parcial).toBe(true)
@@ -132,7 +132,7 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(r.slides?.map((s) => [s.slide, s.indisponiveis?.slice(0, 20)])).toEqual([[1, 'a arte desta mídia f'], [2, 'nenhuma arte registr']])
     // mídia ÚNICA entregue continua com a cópia registrada (o render de post a mantém em dia)
     const unica = textosDaPeca({ ...post, mediaUrls: ['https://blob/B.png'] }, { slides: [{ url: 'https://blob/B.png', arte: null }] })
-    expect(unica).toEqual({ textos: ['Cópia A da página'], origem: 'copy-registrada-na-entrega' })
+    expect(unica).toMatchObject({ textos: ['Cópia A da página'], origem: 'copy-registrada-na-entrega', parcial: true })
   })
   it('a CAIXA é a do render (textTransform), aplicada depois do slot: uppercase, lowercase, capitalize e none, com acento e quebra de linha (R16)', () => {
     const pagina = [
@@ -148,6 +148,20 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(aplicarCaixa('Almoço executivo', 'uppercase')).toBe('ALMOÇO EXECUTIVO')
     expect(aplicarCaixa('vem pra cá\nhoje', 'capitalize')).toBe('Vem Pra Cá\nHoje')
     expect(aplicarCaixa('X', undefined)).toBe('X')
+  })
+  it('carrossel EDITÁVEL sem nenhum slide legível declara por slide também (R20), com ou sem copy no post — a copy global não cobre as mídias', () => {
+    const slides = [{ url: 'u1', arte: null }, { url: 'u2', arte: { layersSnapshot: '{ilegivel', pageId: 'p9' }, camadasDaPagina: '{ilegivel' }]
+    for (const status of ['DRAFT', 'SCHEDULED']) {
+      for (const slotValues of [null, { headline: 'Copy do post' }]) {
+        const r = textosDaPeca({ pageId: null, status, laterPostId: null, mediaUrls: ['u1', 'u2'], generationId: null, slotValues }, { slides })
+        expect(r.textos).toEqual([])
+        expect(r.origem).toBeUndefined()
+        expect(r.indisponiveis).toMatch(/carrossel sem página legível/)
+        expect(r.slides?.length).toBe(2)
+        expect(r.slides?.every((s) => s.textos.length === 0 && typeof s.indisponiveis === 'string')).toBe(true)
+        expect(JSON.stringify(r)).not.toContain('Copy do post')
+      }
+    }
   })
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
@@ -188,9 +202,12 @@ describe('textosDaPeca — arte já entregue não segue a página', () => {
     expect(depois.parcial).toBe(true)
     expect(depois.nota).toMatch(/só os campos que o post sobrescreveu/)
   })
-  it('a cópia registrada na entrega é inteira; publicado sem registro nenhum declara a indisponibilidade', () => {
-    const r = textosDaPeca({ ...entregue, slotValues: { headline: 'Texto A registrado', apoio: 'Apoio registrado', _copiaDaPagina: true } }, { camadas: [], slides: [{ url: 'https://blob/arte-1.png', arte: null }] })
-    expect(r).toEqual({ textos: ['Texto A registrado', 'Apoio registrado'], origem: 'copy-registrada-na-entrega' })
+  it('a cópia registrada na entrega mantém a URL de camada de texto e é declarada PARCIAL (sem a caixa do render nem a ordem) — R19; publicado sem registro nenhum declara a indisponibilidade', () => {
+    const r = textosDaPeca({ ...entregue, slotValues: { headline: 'Texto A registrado', cta: 'https://cliente.com/reservas', apoio: 'Apoio registrado', _copiaDaPagina: true } }, { camadas: [], slides: [{ url: 'https://blob/arte-1.png', arte: null }] })
+    expect(r.textos.sort()).toEqual(['Apoio registrado', 'Texto A registrado', 'https://cliente.com/reservas'])
+    expect(r.origem).toBe('copy-registrada-na-entrega')
+    expect(r.parcial).toBe(true)
+    expect(r.nota).toMatch(/ANTES da caixa/)
     const semNada = textosDaPeca({ ...entregue, status: 'POSTED', laterPostId: null, generationId: null, slotValues: null }, { camadas })
     expect(semNada.textos).toEqual([])
     expect(semNada.indisponiveis).toMatch(/já foi entregue/)

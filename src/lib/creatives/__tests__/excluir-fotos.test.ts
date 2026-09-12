@@ -16,7 +16,7 @@ describe('a exclusão de fotos da lista ranqueada', () => {
   it('por id: as escolhidas saem, na ordem que estavam; id que não está na lista é declarado', () => {
     const r = excluirFotos(lista, { ids: ['a', 'zz', ' d '] }, usos)
     expect(r.mantidas.map((m) => m.imagem.driveFileId)).toEqual(['b', 'c'])
-    expect(r.resumo).toEqual({ porId: 2, porUso: 0, naoEncontrados: ['zz'] })
+    expect(r.resumo).toEqual({ porId: 2, porUso: 0, naoEncontrados: ['zz'], idsPorUso: [] })
   })
   it('por uso: só a foto usada A PARTIR da data sai; sem uso registrado fica', () => {
     const r = excluirFotos(lista, { usadasDesde: '2026-09-10' }, usos)
@@ -54,12 +54,22 @@ describe('a exclusão de fotos da lista ranqueada', () => {
     expect(identidadeDaExclusao({})).toBeNull()
     expect(identidadeDaExclusao({ ids: [], usadasDesde: '2026-02-31' })).toBeNull()
   })
+  it('com corte por uso, a identidade leva o conjunto EFETIVAMENTE excluído (R21): uso novo no meio do dia → proposta nova; nada mudou → a mesma; sem corte por uso o conjunto não conta', () => {
+    const r = excluirFotos(lista, { usadasDesde: '2026-09-10' }, usos)
+    expect(r.resumo.idsPorUso).toEqual(['b'])
+    const antes = identidadeDaExclusao({ usadasDesde: '2026-09-10' }, [])
+    const depoisDoUso = identidadeDaExclusao({ usadasDesde: '2026-09-10' }, ['b'])
+    expect(antes).not.toBe(depoisDoUso)
+    expect(identidadeDaExclusao({ usadasDesde: '2026-09-10' }, ['b'])).toBe(depoisDoUso)
+    expect(identidadeDaExclusao({ usadasDesde: '2026-09-10' }, ['b', 'b'])).toBe(depoisDoUso)
+    expect(identidadeDaExclusao({ ids: ['a'] }, ['b'])).toBe(identidadeDaExclusao({ ids: ['a'] }, []))
+  })
   it('data inválida não exclui nada (quem chama avisa)', () => {
     expect(excluirFotos(lista, { usadasDesde: '15/09/2026' }, usos).mantidas).toHaveLength(4)
   })
   it('id e uso juntos: cada foto conta uma vez', () => {
     const r = excluirFotos(lista, { ids: ['b'], usadasDesde: '2026-09-10' }, usos)
     expect(r.mantidas.map((m) => m.imagem.driveFileId)).toEqual(['a', 'c', 'd'])
-    expect(r.resumo).toEqual({ porId: 1, porUso: 0, naoEncontrados: [] })
+    expect(r.resumo).toEqual({ porId: 1, porUso: 0, naoEncontrados: [], idsPorUso: [] })
   })
 })

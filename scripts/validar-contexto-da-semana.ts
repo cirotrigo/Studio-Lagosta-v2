@@ -137,6 +137,7 @@ async function main() {
   const entradas: string[] = []
   const sinaisDaProva = new Set<string>()
   const geracoes: string[] = []
+  const usosDaProva: string[] = []
   const inicioDaProva = new Date()
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT }
 
@@ -240,7 +241,7 @@ async function main() {
       const temSemCaixa = (lista: string[] | undefined, alvo: string) => (lista ?? []).some((t) => t.toUpperCase() === alvo.toUpperCase())
       conferir('dois posts sobre a MESMA página com copy própria voltam cada um com a SUA headline (não o texto do modelo), origem "pagina-com-copy-do-post"', !!iA && !!iB && temSemCaixa(iA.textos, `${MARCA} headline A`) && !temSemCaixa(iA.textos, textoDoModelo) && temSemCaixa(iB.textos, `${MARCA} headline B`) && !temSemCaixa(iB.textos, textoDoModelo) && iA.textosOrigem === 'pagina-com-copy-do-post' && iB.textosOrigem === 'pagina-com-copy-do-post', JSON.stringify({ chave: chaveDoTexto, a: iA?.textos?.[0], b: iB?.textos?.[0] }).slice(0, 200))
       conferir('a cópia da página (_copiaDaPagina) NÃO sobrepõe: os textos são os da página, origem "pagina"', !!iC && temSemCaixa(iC.textos, textoDoModelo) && !temSemCaixa(iC.textos, 'texto velho da cópia') && iC.textosOrigem === 'pagina', JSON.stringify(iC?.textos).slice(0, 160))
-      conferir('post PUBLICADO com cópia registrada: volta o que foi registrado na entrega, NÃO o texto atual da página', !!iD && JSON.stringify(iD.textos) === JSON.stringify(['o que foi ao ar']) && iD.textosOrigem === 'copy-registrada-na-entrega', JSON.stringify({ textos: iD?.textos, origem: iD?.textosOrigem }))
+      conferir('post PUBLICADO com cópia registrada: volta o que foi registrado na entrega, NÃO o texto atual da página — e declarado PARCIAL (sem a caixa do render nem a ordem)', !!iD && JSON.stringify(iD.textos) === JSON.stringify(['o que foi ao ar']) && iD.textosOrigem === 'copy-registrada-na-entrega' && iD.textosParciais === true && /ANTES da caixa/.test(iD.textosNota ?? ''), JSON.stringify({ textos: iD?.textos, origem: iD?.textosOrigem, parciais: iD?.textosParciais }))
       conferir('post no publicador (laterPostId) sem registro nenhum: `textosIndisponiveis` declarado e nenhum texto da página atribuído', !!iE && !('textos' in iE) && typeof iE.textosIndisponiveis === 'string' && /entregue/.test(iE.textosIndisponiveis), JSON.stringify({ textos: iE?.textos, indisponiveis: iE?.textosIndisponiveis }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3b.json'), JSON.stringify(agenda3b, null, 2))
 
@@ -282,8 +283,8 @@ async function main() {
       const agenda3d = await tool('ver-agenda', { projectId: PROJETO, from: dia3d, to: dia3d })
       const itens3d = (agenda3d.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
       const i12 = itens3d.find((i) => i.postId === r12.id), i13 = itens3d.find((i) => i.postId === r13.id)
-      conferir('R12: mídia B publicada com generationId da versão A (URL não casa): volta a cópia registrada B, NUNCA o snapshot A', !!i12 && JSON.stringify(i12.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i12.textosOrigem === 'copy-registrada-na-entrega' && !JSON.stringify(i12).includes('texto A antigo'), JSON.stringify({ textos: i12?.textos, origem: i12?.textosOrigem }).slice(0, 200))
-      conferir('R13: URL casa, mas a arte foi RE-RENDERIZADA por cima do snapshot: volta a cópia registrada B, NUNCA o snapshot A', !!i13 && JSON.stringify(i13.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i13.textosOrigem === 'copy-registrada-na-entrega' && !JSON.stringify(i13).includes('texto A antigo'), JSON.stringify({ textos: i13?.textos, origem: i13?.textosOrigem }).slice(0, 200))
+      conferir('R12: mídia B publicada com generationId da versão A (URL não casa): volta a cópia registrada B (parcial), NUNCA o snapshot A', !!i12 && JSON.stringify(i12.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i12.textosOrigem === 'copy-registrada-na-entrega' && i12.textosParciais === true && !JSON.stringify(i12).includes('texto A antigo'), JSON.stringify({ textos: i12?.textos, origem: i12?.textosOrigem }).slice(0, 200))
+      conferir('R13: URL casa, mas a arte foi RE-RENDERIZADA por cima do snapshot: volta a cópia registrada B (parcial), NUNCA o snapshot A', !!i13 && JSON.stringify(i13.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i13.textosOrigem === 'copy-registrada-na-entrega' && i13.textosParciais === true && !JSON.stringify(i13).includes('texto A antigo'), JSON.stringify({ textos: i13?.textos, origem: i13?.textosOrigem }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3d.json'), JSON.stringify(agenda3d, null, 2))
 
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
@@ -298,6 +299,15 @@ async function main() {
       const i3e = (agenda3e.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === carrosselA.id)
       conferir('R15: nem "cópia A" nem "texto A antigo" aparecem; `textosIndisponiveis` declara o carrossel e `textosPorSlide` diz o porquê de cada mídia', !!i3e && !('textos' in i3e) && /carrossel já entregue/.test(i3e.textosIndisponiveis ?? '') && Array.isArray(i3e.textosPorSlide) && i3e.textosPorSlide.length === 2 && i3e.textosPorSlide.every((sl: any) => sl.textos.length === 0 && typeof sl.indisponiveis === 'string') && !JSON.stringify(i3e).includes('cópia A') && !JSON.stringify(i3e).includes('texto A antigo'), JSON.stringify({ indisponiveis: i3e?.textosIndisponiveis?.slice(0, 60), slides: i3e?.textosPorSlide?.map((sl: any) => sl.indisponiveis?.slice(0, 40)) }))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3e.json'), JSON.stringify(agenda3e, null, 2))
+      // R20: o mesmo carrossel EDITÁVEL (rascunho), com copy no post — nada é afirmado; declaração por slide.
+      const carrosselVivo = await db.socialPost.create({
+        data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} 3e carrossel vivo`, mediaUrls: [`${marcaUrl}/re-render.png`, `${marcaUrl}/sem-arte.png`], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3e}T10:00:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', slotValues: { [chaveDoTexto]: `${MARCA} copy solta no post` } as never },
+        select: { id: true },
+      })
+      posts.push(carrosselVivo.id)
+      const agenda3eVivo = await tool('ver-agenda', { projectId: PROJETO, from: dia3e, to: dia3e })
+      const i3eVivo = (agenda3eVivo.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === carrosselVivo.id)
+      conferir('R20: carrossel EDITÁVEL sem slide legível (arte re-renderizada sem página + mídia sem arte): `textosIndisponiveis` + `textosPorSlide`, e a copy do post NÃO é apresentada como cobertura', !!i3eVivo && !('textos' in i3eVivo) && /carrossel sem página legível/.test(i3eVivo.textosIndisponiveis ?? '') && Array.isArray(i3eVivo.textosPorSlide) && i3eVivo.textosPorSlide.length === 2 && !JSON.stringify(i3eVivo).includes('copy solta'), JSON.stringify({ indisponiveis: i3eVivo?.textosIndisponiveis?.slice(0, 60), slides: i3eVivo?.textosPorSlide?.length }))
     } else {
       conferir('projeto sem página com texto para exercitar `textos` pela página', false)
     }
@@ -352,6 +362,23 @@ async function main() {
       const criteriosP2 = (sinalP2?.sugerido as { criterios?: { excluir?: string[] } } | null)?.criterios
       conferir('com exclusão a proposta é OUTRA (sugestaoId diferente) e o topo registrado já não é a foto excluída', typeof p1.sugestaoId === 'string' && typeof p2.sugestaoId === 'string' && p1.sugestaoId !== p2.sugestaoId && p2.propostaTopo !== escolhida && p2.propostaTopo !== p1.propostaTopo, JSON.stringify({ p1: p1.sugestaoId, p2: p2.sugestaoId, topo1: p1.propostaTopo, topo2: p2.propostaTopo }))
       conferir('a mesma exclusão em outra ordem (e com espaço) REUTILIZA a proposta; os critérios registrados trazem `excluir` normalizado', p3.sugestaoId === p2.sugestaoId && JSON.stringify(criteriosP2?.excluir) === JSON.stringify([escolhida, 'id-que-nao-existe'].sort()) && !!sinalP2, JSON.stringify({ p3: p3.sugestaoId, excluir: criteriosP2?.excluir }))
+
+      // R21 (revisão de 941d8e77): com corte por uso, um uso novo no meio do dia muda a lista vista — e a proposta.
+      console.log('5c) a proposta com evitarUsadasDesde muda quando uma foto do topo é usada no meio do dia; sem mudança, reutiliza')
+      const desde = somarDias(hoje, -30)
+      const u1 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, evitarUsadasDesde: desde })
+      const topoU1 = u1.propostaTopo as string | null
+      if (typeof u1.sugestaoId === 'string') sinaisDaProva.add(u1.sugestaoId)
+      if (topoU1) {
+        const uso = await db.photoUsage.create({ data: { projectId: PROJETO, driveFileId: topoU1, origem: 'prova-pr6', tema: MARCA }, select: { id: true } })
+        usosDaProva.push(uso.id)
+        const u2 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, evitarUsadasDesde: desde })
+        const u3 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, evitarUsadasDesde: desde })
+        for (const id of [u2.sugestaoId, u3.sugestaoId]) if (typeof id === 'string') sinaisDaProva.add(id)
+        conferir('depois do uso do topo, a MESMA busca registra OUTRA proposta (id novo), com o topo seguinte — e a busca seguinte reutiliza essa', typeof u1.sugestaoId === 'string' && typeof u2.sugestaoId === 'string' && u2.sugestaoId !== u1.sugestaoId && u2.propostaTopo !== topoU1 && u3.sugestaoId === u2.sugestaoId && (u2 as any).excluidas?.porUso >= 1, JSON.stringify({ u1: [u1.sugestaoId, topoU1], u2: [u2.sugestaoId, u2.propostaTopo], u3: u3.sugestaoId, porUso: (u2 as any).excluidas?.porUso }))
+      } else {
+        conferir('a busca com evitarUsadasDesde não devolveu topo para exercitar R21 (pasta sem foto nunca usada?)', false, JSON.stringify({ total: u1.total }))
+      }
     }
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
@@ -359,7 +386,7 @@ async function main() {
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou)')
     const falhas: string[] = []
-    const apagados = { posts: 0, entradas: 0, sinais: 0, geracoes: 0 }
+    const apagados = { posts: 0, entradas: 0, sinais: 0, geracoes: 0, usos: 0 }
     try {
       apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] } })).count
     } catch (e) { falhas.push(`posts: ${e instanceof Error ? e.message : String(e)}`) }
@@ -369,6 +396,9 @@ async function main() {
     try {
       apagados.geracoes = (await db.generation.deleteMany({ where: { id: { in: geracoes }, projectId: PROJETO } })).count
     } catch (e) { falhas.push(`geracoes: ${e instanceof Error ? e.message : String(e)}`) }
+    try {
+      apagados.usos = (await db.photoUsage.deleteMany({ where: { id: { in: usosDaProva }, projectId: PROJETO } })).count
+    } catch (e) { falhas.push(`usos: ${e instanceof Error ? e.message : String(e)}`) }
     try {
       // Só o sinal que ESTA rodada criou: proposta reutilizada de antes da prova (createdAt anterior) fica.
       apagados.sinais = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDaProva] }, projectId: PROJETO, tipo: 'foto', createdAt: { gte: inicioDaProva } } })).count

@@ -6312,11 +6312,17 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   definitiva (`textos: []` com `textosOrigem`): a única camada apagada pelo
   slot ou todas ocultas não são motivo para buscar em outra fonte um texto
   que o render removeu.
-  🔴 **Carrossel entregue sem slide confiável não cai em fallback nenhum**: a
-  cópia da página gravada no post (`_copiaDaPagina`) e a copy própria só
-  provam o que foi ao ar em MÍDIA ÚNICA (o render de post as mantém em dia);
-  o re-render de slide troca só `mediaUrls` e o `slotValues` do carrossel
-  fica como estava — a cópia A sobrevive à mídia B. Declara-se, slide a slide.
+  🔴 **Carrossel sem NENHUM slide legível não cai em fallback nenhum — vivo ou
+  entregue**: a cópia da página gravada no post (`_copiaDaPagina`) e a copy
+  própria só provam o que foi ao ar em MÍDIA ÚNICA (o render de post as
+  mantém em dia); o re-render de slide troca só `mediaUrls` e o `slotValues`
+  do carrossel fica como estava — a cópia A sobrevive à mídia B. Declara-se,
+  slide a slide (`textosPorSlide`), inclusive no rascunho.
+  **A cópia registrada é PARCIAL por natureza**: `textosDaPagina` guarda o
+  texto das camadas ANTES da caixa do render e sem a ordem em que são
+  desenhadas — quem a devolve (`copy-registrada-na-entrega`) declara
+  `textosParciais` com a nota; e uma URL nela é texto de camada e FICA (o
+  filtro de URL vale só para `slotValues` sem tipo de camada).
   **A CAIXA é a do render** (`aplicarCaixa` em `posts/caixa-do-texto.ts`, a
   MESMA função que `render-engine.ts` usa, aplicada depois do slot): a camada
   guarda "Almoço executivo" e a arte mostra "ALMOÇO EXECUTIVO".
@@ -6368,6 +6374,11 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   corte de uso compara o DIA EM BRASÍLIA (`diaDoUso`): um uso às 02:30Z de
   segunda é domingo à noite aqui, e `evitarUsadasDesde: segunda` não pode
   excluí-lo; a data pura do catálogo legado fica como está.
+  🔴 **Com corte por uso, a identidade da proposta leva o conjunto
+  EFETIVAMENTE excluído** (`resumo.idsPorUso` → `identidadeDaExclusao`): a
+  lista que a pessoa vê muda quando uma foto do topo é usada no meio do dia,
+  e o `upsert` reutilizaria a proposta com o topo antigo — escolher o novo
+  topo viraria "troca" atribuída à pessoa. Nada mudou → a mesma proposta.
 - 🔴 **`prisma/generated/` no `.gitignore` ignora a PASTA, não o symlink** que
   os worktrees usam: `git status` o lista como `??` e a prova imprimia
   "pendente: 1 arquivo(s)" numa árvore que estava limpa (foi o que a revisão

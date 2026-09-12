@@ -422,7 +422,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * de fato escolheu — sem isso o aprendizado só enxerga o que foi aceito.
    */
   const sugestaoId =
-    input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques)
+    input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques, exclusao.resumo.idsPorUso)
 
   return {
     total: ranqueadas.length,
@@ -510,6 +510,8 @@ async function registrarProposta(
   /** O mesmo mapa que desempatou o ranking — o sinal grava o uso REAL (banco + legado), não só o do catálogo. */
   ultimoUso: Map<string, string>,
   destaques: Set<string>,
+  /** Os ids que saíram por uso nesta busca — entram na identidade da proposta (R21). */
+  excluidasPorUso: string[] = [],
 ): Promise<string | null> {
   /**
    * Busca sem resultado TAMBÉM é registrada (07/09/2026), com `total: 0` e
@@ -552,7 +554,7 @@ async function registrarProposta(
       // A exclusão com a CAIXA dos ids preservada (`resumoEstavel` passa
       // strings por minúsculas e "AbC"/"abc" colidiam — R17). Só entra quando
       // há exclusão: a chave de quem nunca excluiu é a de sempre.
-      ...(identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }) ? [identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde })] : []),
+      ...(identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, excluidasPorUso) ? [identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, excluidasPorUso)] : []),
     ),
     sugerido: {
       criterios,

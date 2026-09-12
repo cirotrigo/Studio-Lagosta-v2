@@ -24,6 +24,8 @@ export interface ResumoDaExclusao {
   porUso: number
   /** Ids pedidos em `ids` que não estavam na lista (útil para quem confere). */
   naoEncontrados: string[]
+  /** Os ids que saíram POR USO — o conjunto efetivo, que muda conforme fotos são usadas ao longo do dia. */
+  idsPorUso: string[]
 }
 
 /**
@@ -57,10 +59,15 @@ export function diaDoUso(uso: string | null | undefined): string | null {
  * mesma chave). `null` sem exclusão, para a chave de quem nunca excluiu não
  * mudar.
  */
-export function identidadeDaExclusao(exclusao: ExclusaoDeFotos): string | null {
+export function identidadeDaExclusao(exclusao: ExclusaoDeFotos, excluidasPorUso: string[] = []): string | null {
   const { ids, desde } = normalizarExclusao(exclusao)
   if (ids.length === 0 && !desde) return null
-  return createHash('sha1').update(JSON.stringify({ ids, desde })).digest('hex').slice(0, 12)
+  // Com corte por uso, o que se registra é a lista que a pessoa VIU — e ela muda
+  // quando uma foto é usada durante o dia. A identidade leva o conjunto EFETIVO
+  // excluído por uso: mesma busca, uso novo no meio → proposta nova, com o topo
+  // certo; nada mudou → a mesma proposta (R21 da revisão de 941d8e77).
+  const porUso = desde ? [...new Set(excluidasPorUso)].sort() : []
+  return createHash('sha1').update(JSON.stringify({ ids, desde, porUso })).digest('hex').slice(0, 12)
 }
 
 export function normalizarExclusao(exclusao: ExclusaoDeFotos): { ids: string[]; desde: string | null } {
@@ -85,10 +92,10 @@ export function excluirFotos<T extends { imagem: { driveFileId: string } }>(
   const ids = new Set(normalizada.ids)
   const desde = normalizada.desde
   const pedida = ids.size > 0 || !!desde
-  if (!pedida) return { mantidas: ranqueadas, resumo: { porId: 0, porUso: 0, naoEncontrados: [] }, pedida }
+  if (!pedida) return { mantidas: ranqueadas, resumo: { porId: 0, porUso: 0, naoEncontrados: [], idsPorUso: [] }, pedida }
   const vistos = new Set<string>()
   let porId = 0
-  let porUso = 0
+  const idsPorUso: string[] = []
   const mantidas = ranqueadas.filter((r) => {
     const id = r.imagem.driveFileId
     vistos.add(id)
@@ -99,11 +106,11 @@ export function excluirFotos<T extends { imagem: { driveFileId: string } }>(
     if (desde) {
       const uso = diaDoUso(ultimoUso.get(id))
       if (uso && uso >= desde) {
-        porUso++
+        idsPorUso.push(id)
         return false
       }
     }
     return true
   })
-  return { mantidas, resumo: { porId, porUso, naoEncontrados: [...ids].filter((i) => !vistos.has(i)) }, pedida }
+  return { mantidas, resumo: { porId, porUso: idsPorUso.length, naoEncontrados: [...ids].filter((i) => !vistos.has(i)), idsPorUso }, pedida }
 }
