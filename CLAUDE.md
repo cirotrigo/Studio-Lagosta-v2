@@ -8811,3 +8811,24 @@ Da revisão FINAL do Codex sobre E (BLOQUEADO, R18, 12/09/2026):
   é parte, e com dois blocos da mesma função vale a associação por posição.
 - ⚠️ O defeito nasce na efetiva do PR 3 (a leitura por função existe desde
   lá): o PR 3 não pode ir à main sem esta correção na pilha.
+
+Da revisão do commit F (BLOQUEADO, R19, 12/09/2026):
+
+- 🔴 **A ordem das partes vem da posição AUTORAL de cada linha, nunca do id da
+  montagem.** A montagem segue a ordem dos grupos e do arranjo, não a do autor:
+  com o endereço no grupo da MANCHETE (que já existe quando o serviço é
+  distribuído), o endereço sai `servico` e o horário `servico-2`, e a marca
+  `parte` derivada do id gravava `[endereço, horário]` como revisão do sistema,
+  que a recomposição seguinte adotava. Hoje a distribuição (`juntarNoGrupo`,
+  `dividirManchete`, `distribuirLinhas`) carrega o índice de cada linha no
+  bloco até a camada, e a preparação grava `metadata.compositor.linhasDoBloco`
+  (paralela às linhas do texto; só quando o papel foi repartido). A marca
+  `parte` deixou de ser escrita.
+- 🔴 **Uma camada pode receber linhas NÃO consecutivas** (`[0, 2]` no texto do
+  relógio, `[1]` no do pin), e a sobra entra no último texto DEPOIS das linhas
+  tipadas. A efetiva põe cada linha na sua posição, intercalando as camadas;
+  reunir camada a camada, mesmo na ordem certa das camadas, embaralha o bloco.
+- **Camada editada cuja contagem de linhas já não bate com a marca** entra
+  INTEIRA, como trecho contíguo, no menor índice marcado. Sem a marca em todas
+  as partes (página composta antes dela) vale a ordem do R18: `parte`, depois
+  o id `<papel>-N`, depois a altura.
