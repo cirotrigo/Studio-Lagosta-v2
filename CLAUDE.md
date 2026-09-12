@@ -6231,9 +6231,65 @@ PURO (zod), sem Prisma, com teste de ida e volta exata.
 - **Validação devolve TODOS os problemas** (id repetido, ordem repetida ou
   com buraco, grupo de um bloco só, voz 2 fora da manchete ou em linha
   inexistente, revisão citando bloco que não existe), nunca só o primeiro.
-- Nada persiste ainda: o PR 3 grava o contrato ANTES de qualquer adaptação
-  (Page, ItemDePlano, Generation.fieldValues) e nenhum backfill inventa copy
-  original para o histórico.
+- ~~Nada persiste ainda~~ — **o PR 3 gravou o contrato** (seção seguinte). Nenhum
+  backfill inventa copy original para o histórico: página, item e arte antigos
+  ficam sem contrato, e o adaptador do legado só entra quando uma spec nova
+  chega só com `blocos`.
+
+### A persistência do contrato da copy (PR 3 de "Marca simples, copy melhor", 12/09/2026)
+
+Migration aditiva `20260912120000_copy_autoral`: `Page.copyAutoral` e
+`ItemDePlano.copyAutoral` (JSONB, nulos). Na arte, `Generation.fieldValues.copyAutoral
+= { original, efetiva, comparavel, lacunas? }`. Módulos: `src/lib/copy-autoral/efetiva.ts`
+(camadas → contrato, puro), `persistir.ts` (a única casa do módulo que importa o
+Prisma), `src/lib/planos/copy-do-item.ts` (puro). Prova de integração no branch de
+dev: `scripts/validar-copy-autoral.ts`.
+
+- 🔴 **A PÁGINA guarda a EFETIVA, a GENERATION guarda o ORIGINAL.** A efetiva é o
+  original + a revisão do SISTEMA com o que o compositor mudou ao desenhar
+  (`copyEfetivaDasCamadas`, superfície `compositor`). Medido na primeira rodada da
+  prova: com a página guardando o original, a primeira edição da EQUIPE levava a
+  culpa pela seta que o compositor põe no CTA e pelo destaque `[]` que ele não
+  desenhou sem estilo cadastrado. O contrato da página descreve o que a página
+  MOSTRA; a edição seguinte é diferenciada contra ele, e cada bloco tem o autor
+  certo (`autorDoBloco`). O texto verbatim do autor está em
+  `fieldValues.copyAutoral.original` (e em `ItemDePlano.copyAutoral`).
+- **`comparavel` só é verdadeiro com autoria conhecida.** Spec que chega só com
+  `blocos` (legado) vira contrato ADAPTADO com `origem.autor: 'desconhecido'` e
+  entra na métrica como "não comparável" — nunca como fidelidade comprovada.
+- **Quem mexe no texto revisa o contrato da página, com o autor certo**
+  (`registrarRevisaoDaPagina`): o PATCH do editor (`equipe`, `editor`) e
+  `ajustarArte` (`equipe` quando `canal: 'studio'`, `claude` no resto). Página SEM
+  contrato fica sem — a função sai calada (`sem-contrato`), nunca lança, e sem
+  mudança de texto não há revisão. A Generation do ajuste leva `original` (o
+  contrato da página, já revisado) e `efetiva` (as camadas finais).
+- **O compositor ainda transforma texto, e o contrato EXPÕE isso em vez de
+  esconder**: a seta no CTA e o destaque não desenhado saem em `ver-geracao`
+  como `copy.blocosDiferentes` e na revisão do sistema. Tirar as transformações
+  é o PR 4 — não "corrija" a efetiva para bater com o original.
+- 🔴 **`validarSpec` deriva `blocos` de `copyAutoral`** (a única conversão
+  sancionada, `blocosParaOCompositor`) e recusa: bloco `livre` COM texto (a camada
+  livre chega na F3 — recusar é o oposto de sumir em silêncio) e `blocos` que não
+  batem com o contrato quando os dois vêm. `blocos` passou a ser opcional na spec;
+  sem contrato continua obrigatório.
+- **Item de plano: o contrato manda, `copyProposta` é o ESPELHO posicional**
+  (um item por bloco com texto, linhas unidas por `\n`) — é o que a bancada,
+  `executar-plano` e as vias de template/IA leem até o PR 5. Contrato inválido
+  recusa o item (`COPY_AUTORAL_INVALIDA`, 400). Edição só da lista (bancada) vira
+  revisão da `equipe` quando casa posição a posição (mesmo número de blocos com
+  texto; a segunda voz por índice acompanha a linha que sumiu); quando não casa,
+  o contrato é DESCARTADO COM AVISO — manter um contrato que não descreve mais o
+  texto seria mentir para a métrica. `montarSpecDoItem` leva o contrato à spec.
+- **No conector**: `compor-arte`, `compor-leva`, `criar-plano` e
+  `editar-item-do-plano` aceitam `copyAutoral` (com ele `blocos`/`texto` são
+  dispensáveis); `editar-item-do-plano` assina a revisão como `claude`;
+  `ver-geracao` devolve `copy` (escrita × desenhada, `comparavel`,
+  `blocosDiferentes`, `lacunas`). Os quatro snapshots do registro foram atualizados
+  no mesmo commit.
+- ⚠️ **A migration ainda não foi aplicada em produção** (regra da casa: escrita à
+  mão + `db:deploy`, com o OK do Ciro); no branch de dev está aplicada. O código
+  sem a coluna falha na leitura de `Page.copyAutoral` — não subir o código antes
+  do schema.
 
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
