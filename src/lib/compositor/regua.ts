@@ -60,6 +60,12 @@ export interface ContrasteMedido {
   /** O id da camada de gradiente que cobre o bloco (ausente em medidas anteriores a 11/09/2026). */
   gradiente?: string | null
   ok: boolean
+  /**
+   * A medida ANTES da correção desta chamada — presente só quando a régua
+   * corrigiu a força. É o que deixa o revisor dizer "não dava leitura, e com a
+   * força X passa a dar" a partir de UMA rodada de render.
+   */
+  antesDaCorrecao?: { p98: number; ok: boolean; tinta: number }
 }
 
 export interface IntervencaoDeTexto {
@@ -269,6 +275,7 @@ export async function medirContrasteDaPeca(args: {
     const depois = await medirTodos(pngCorrigido)
     medidas.forEach((m, i) => {
       if (m.gradiente && correcoes.has(m.gradiente)) {
+        m.antesDaCorrecao = { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta }
         m.p98ComHalo = depois[i]
         m.tinta = correcoes.get(m.gradiente)!
         m.ok = m.sentido === 'escuro' ? depois[i] >= m.alvo - TOLERANCIA_DO_ALVO : depois[i] <= m.alvo + TOLERANCIA_DO_ALVO
