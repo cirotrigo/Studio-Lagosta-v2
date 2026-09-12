@@ -5649,6 +5649,24 @@ Codex antes de ser escrito.
   copy.
 - ⚠️ Rich text é medido como texto simples (a largura dos trechos destacados é
   aproximada, cobertura "parcial").
+- 🔴 **A copy de APRENDIZADO da Generation não é a copy VISUAL** (REV-2CEB-01 da
+  revisão de 2ceb25fc): `lerProcedencia` devolve as duas — `copyProposta`
+  (`copyDeAprendizado` vence `slotValues`; é o lado "antes" do diff do
+  agendamento, com a camada escondida pelo revisor contada como presente) e
+  `copyVisual` (os `slotValues` como a ARTE os mostra). Sem página (só
+  `generationId`, ou `mediaUrls` casada pela URL) a cópia que o post carrega é a
+  VISUAL: com a de aprendizado, o post afirmava um CTA que o PNG não tem, e
+  `textoDoPost` o levava ao histórico. A prova 9g agenda só pela Generation e
+  pela URL e confere que o texto escondido não está no post.
+- **A prova-dev-24 (2ceb25fc) fechou com 6 falhas em 6h/6m–6r que NÃO se
+  reproduziram**: a prova-dev-25, no mesmo commit, fechou 128 ok / 0 falhas com
+  um vigia lendo do banco as Generations da 2ª página a cada 15 s — spec e
+  snapshot presentes em 6h. Em 24 a arte lida em 6h estava sem spec e sem
+  snapshot (o log do recompor diz "Esta arte não guardou a spec"), com as
+  páginas já apagadas pelo cleanup quando a investigação começou. Fica como
+  ocorrência não explicada; a chain passou a NÃO disparar a revisão quando a
+  prova tem falha.
+
 - 🔴 **Esconder por ajuste do revisor NÃO é a pessoa apagando o texto** (REV-9E-01
   da revisão FINAL do Codex, 12/09/2026). O ajuste `visibilidade` grava na
   camada `metadata.revisao.ocultaPeloRevisor` (com a página, no mesmo write —

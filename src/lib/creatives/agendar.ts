@@ -215,6 +215,8 @@ export async function agendarPost(input: AgendarPostInput) {
    * o que sobrou depois de todo mundo mexer.
    */
   let copyProposta: Record<string, unknown> | null = null
+  /** Os `slotValues` da Generation como a ARTE os mostra — a cópia que o post carrega quando não há página (REV-2CEB-01). */
+  let copyVisual: Record<string, unknown> | null = null
   let sourcePageId: string | null = null
 
   if (input.generationId) {
@@ -230,7 +232,7 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     generationId = gen.id
-    ;({ copyProposta, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    ;({ copyProposta, copyVisual, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
     // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
     // própria Generation — é o caso da arte MELHORADA (que não tem página) e
     // poupa o chat de copiar URL à mão, com os erros que isso traz.
@@ -251,7 +253,7 @@ export async function agendarPost(input: AgendarPostInput) {
       orderBy: { createdAt: 'desc' },
     })
     generationId = gen?.id ?? null
-    if (gen) ({ copyProposta, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (gen) ({ copyProposta, copyVisual, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
   }
 
   /**
@@ -343,7 +345,9 @@ export async function agendarPost(input: AgendarPostInput) {
    */
   const copyDaPagina = copyDeCamadas(camadasDaPagina)
   const copyPropostaTexto = apenasTextos(copyProposta)
-  const copyFinal = copyDaPagina ?? copyPropostaTexto
+  // Sem página, a cópia do post é a copy VISUAL da Generation (o que o PNG mostra) — nunca a de aprendizado,
+  // que conta como presente a camada que o revisor escondeu (REV-2CEB-01).
+  const copyFinal = copyDaPagina ?? apenasTextos(copyVisual)
   /**
    * O lado FINAL do APRENDIZADO é outro: a camada que o REVISOR escondeu por
    * ajuste mecânico conta como presente (`copyParaDecisao`) — senão o

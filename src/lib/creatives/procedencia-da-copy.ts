@@ -12,6 +12,13 @@
  * Codex, 12/09/2026). `copyDeAprendizado` é a mesma copy com as ocultações
  * mecânicas contadas, gravada pelo ajuste ao lado dos `slotValues` visuais.
  *
+ * `copyVisual` é OUTRA coisa: os `slotValues` da Generation como a ARTE os
+ * mostra. É o que vira `SocialPost.slotValues` quando o post nasce sem página
+ * (só `generationId`, ou `mediaUrls` casada pela URL) — a cópia textual do post
+ * tem de dizer o que o PNG mostra, nunca o que o aprendizado conta como
+ * presente (REV-2CEB-01: a copy de aprendizado virava copy visual e o post
+ * afirmava um CTA que a arte não tem).
+ *
  * `sourcePageId`: a coluna vence; o Json só é lido para linhas antigas e nunca
  * para `ajuste-arte`, em que aponta para a própria cópia ajustada.
  */
@@ -22,9 +29,10 @@ function objeto(v: unknown): Record<string, unknown> | null {
 export function lerProcedencia(
   fieldValues: unknown,
   colunaSourcePageId: string | null,
-): { copyProposta: Record<string, unknown> | null; sourcePageId: string | null } {
+): { copyProposta: Record<string, unknown> | null; copyVisual: Record<string, unknown> | null; sourcePageId: string | null } {
   const fv = objeto(fieldValues) ?? {}
-  const copyProposta = objeto(fv.copyDeAprendizado) ?? objeto(fv.slotValues)
+  const copyVisual = objeto(fv.slotValues)
+  const copyProposta = objeto(fv.copyDeAprendizado) ?? copyVisual
   const doJson = fv.source !== 'ajuste-arte' && typeof fv.sourcePageId === 'string' ? fv.sourcePageId : null
-  return { copyProposta, sourcePageId: colunaSourcePageId ?? doJson }
+  return { copyProposta, copyVisual, sourcePageId: colunaSourcePageId ?? doJson }
 }

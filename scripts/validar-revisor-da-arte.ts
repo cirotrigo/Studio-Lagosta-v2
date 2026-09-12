@@ -1214,6 +1214,23 @@ async function main() {
     const postDo9e = await db.socialPost.findUnique({ where: { id: post9e.postId }, select: { slotValues: true } })
     conferir('a cópia visual que o post carrega segue SEM o texto escondido', !Object.entries((postDo9e?.slotValues ?? {}) as Record<string, unknown>).some(([k, v]) => !k.startsWith('_') && v === texto9e))
 
+    // ── 9g. REV-2CEB-01: agendar SÓ pela Generation (sem página) — a cópia do post é a copy VISUAL, não a de aprendizado ──
+    console.log('9g) REV-2CEB-01: agendar só por generationId (e por mediaUrls casada pela URL): a cópia textual do post NÃO afirma o texto que o revisor escondeu')
+    const post9g = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 18:00`, generationId: a9e.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-2ceb-01 só generation` })
+    posts.push(post9g.postId)
+    const postDo9g = await db.socialPost.findUnique({ where: { id: post9g.postId }, select: { slotValues: true, pageId: true, mediaUrls: true } })
+    const valores9g = Object.entries((postDo9g?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+    conferir('só generationId: o post nasce sem página, com a mídia da Generation, e a cópia textual NÃO carrega o texto escondido pelo revisor (só a copy visual)', postDo9g?.pageId === null && postDo9g.mediaUrls[0] === a9e.url && valores9g.length > 0 && !valores9g.includes(texto9e), JSON.stringify({ pageId: postDo9g?.pageId, valores: valores9g }).slice(0, 200))
+    const sinal9g = await db.learningSignal.findFirst({ where: { projectId: PROJETO, chave: `copy:post:${post9g.postId}` }, select: { desfecho: true, diff: true, escolhido: true } })
+    conferir('e o APRENDIZADO segue lendo a copy de aprendizado como proposta: sem página não há diff (lado final desconhecido), e o sinal não acusa adição', !!sinal9g && (((sinal9g.diff ?? {}) as Record<string, any>).adicionados ?? []).length === 0, JSON.stringify(sinal9g?.diff).slice(0, 160))
+    if (a9e.url) {
+      const post9gB = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 18:30`, mediaUrls: [a9e.url], situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-2ceb-01 por mediaUrls` })
+      posts.push(post9gB.postId)
+      const postDo9gB = await db.socialPost.findUnique({ where: { id: post9gB.postId }, select: { slotValues: true, generationId: true } })
+      const valores9gB = Object.entries((postDo9gB?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+      conferir('por mediaUrls casada pela URL: a Generation é vinculada e a cópia textual também é a copy visual, sem o texto escondido', postDo9gB?.generationId === a9e.generationId && valores9gB.length > 0 && !valores9gB.includes(texto9e), JSON.stringify({ gen: postDo9gB?.generationId === a9e.generationId, valores: valores9gB }).slice(0, 200))
+    }
+
     // ── 9f. REV-8AD-02: a marca não encobre um esconder HUMANO por outro caminho ──
     console.log('9f) REV-8AD-02: a pessoa MOSTRA a camada pelo editor (a marca sai) e depois manda escondê-la pelo chat (hidden: true, sem revisão): a remoção é dela')
     const { reconciliarMarcasDoRevisor, marcaDoRevisor: marcaDe } = await import('../src/lib/creatives/revisao/oculta-pelo-revisor')
