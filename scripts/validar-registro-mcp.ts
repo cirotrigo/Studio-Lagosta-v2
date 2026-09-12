@@ -1134,6 +1134,12 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
     required: ['projectId'],
     additionalProperties: false,
   },
+  'consultar-voz': {
+    type: 'object',
+    properties: { projectId: { type: 'number', description: 'ID do cliente.' } },
+    required: ['projectId'],
+    additionalProperties: false,
+  },
   'atualizar-dna': {
     type: 'object',
     properties: {
@@ -1168,6 +1174,9 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
       },
       titulo: { type: 'string', description: 'Título da entrada na base, quando a regra tem validade (ex: "Festival Italiano — agosto"). Opcional.' },
       confirmado: { type: 'boolean', description: 'Só grava com true. Sem isto devolve a proposta para você mostrar à pessoa.' },
+      escopo: { type: 'string', enum: ['copy', 'arte', 'ambas'], description: 'Voz compacta: onde a regra manda — só na copy, só na arte, ou nas duas (padrão). Ignorado no DNA legado e na base.' },
+      substitui: { type: 'string', description: 'Voz compacta: id da regra ativa que esta SUBSTITUI (a antiga sai do prompt e fica no histórico). Use quando a tool devolver CONFLITO_DE_REGRA e a pessoa disser que a nova vale no lugar da antiga.' },
+      conviver: { type: 'boolean', description: 'Voz compacta: manter as duas regras mesmo com conflito apontado — só com a decisão explícita da pessoa.' },
     },
     required: ['projectId', 'regra', 'motivo'],
     additionalProperties: false,
