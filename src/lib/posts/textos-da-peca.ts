@@ -84,6 +84,14 @@ export interface SlideDaPeca {
      */
     reRenderizada?: boolean
     /**
+     * O re-render desta arte REGRAVOU a copy visual (`slotValues`) com o texto
+     * das camadas que desenhou (`recomposicao.copyVisualRegravada`, gravado no
+     * mesmo registro pela recuperação do PR 0): os `slotValues` são o texto
+     * DESTE PNG. O snapshot NÃO é regravado — continua sem afirmar nada. Só
+     * vale junto de `reRenderizada`.
+     */
+    copyVisualRegravada?: boolean
+    /**
      * PROCEDÊNCIA da arte (`fieldValues.source`). `post-schedule` é a arte que
      * o render de post gravou desenhando um MODELO com a copy do post por
      * cima: a página dela (`pageId`) é o modelo, e o texto cru do modelo NÃO
@@ -251,6 +259,20 @@ function snapshotConfiavel(arte: NonNullable<SlideDaPeca['arte']>): boolean {
   return arte.layersSnapshot !== undefined && arte.layersSnapshot !== null && arte.reRenderizada !== true
 }
 
+const NOTA_DA_COPY_VISUAL_REGRAVADA =
+  'arte re-renderizada com a copy visual regravada junto do PNG: o texto das camadas que ela desenhou, ANTES da caixa do render (textTransform) e sem a ordem em que foram desenhadas — não prova a arte inteira.'
+
+/**
+ * A copy visual REGRAVADA no re-render desta arte (integração do PR 0 com R13/R37/R42): com o marcador, os
+ * `slotValues` são o texto das camadas que o PNG atual desenhou — a copy desta mídia, e não a de outra versão.
+ * Sem o marcador (ou sem `reRenderizada`), `null`: a arte re-renderizada segue sem afirmar texto como antes.
+ */
+function copyVisualRegravadaDaArte(arte: NonNullable<SlideDaPeca['arte']>): Record<string, unknown> | null {
+  if (arte.reRenderizada !== true || arte.copyVisualRegravada !== true) return null
+  const sv = arte.slotValues
+  return sv && typeof sv === 'object' && !Array.isArray(sv) ? (sv as Record<string, unknown>) : null
+}
+
 function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide[] {
   return slides.map((s, i) => {
     const slide = i + 1
@@ -287,6 +309,16 @@ function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide
     if (s.arte && snapshotConfiavel(s.arte)) {
       const doSnapshot = textosDasCamadas(s.arte.layersSnapshot)
       if (doSnapshot !== null) return { slide, textos: doSnapshot, origem: 'arte' }
+    }
+    // A arte re-renderizada cuja copy visual foi REGRAVADA no mesmo re-render: depois da página (peça viva) e antes
+    // da indisponibilidade, os `slotValues` dela são o texto desta mídia — com a nota do que o registro não guarda
+    // (caixa e ordem do render), como a cópia registrada. `{}` é leitura definitiva (a arte não desenhou texto).
+    const regravada = s.arte ? copyVisualRegravadaDaArte(s.arte) : null
+    if (regravada) {
+      const textos = textosDaCopiaRegistrada(regravada)
+      return textos.length > 0
+        ? { slide, textos, origem: 'arte', parcial: true, nota: NOTA_DA_COPY_VISUAL_REGRAVADA }
+        : { slide, textos: [], origem: 'arte' }
     }
     return {
       slide,
@@ -341,7 +373,12 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
       const faltam = porSlide.length - resolvidos.length
       const notas = [
         ...(faltam > 0 ? [`${faltam} de ${porSlide.length} mídia(s) sem arte registrada (ou re-renderizada sem registro): os textos delas não estão aqui.`] : []),
-        ...(porSlide.some((s) => s.parcial) ? [carrossel ? `mídia(s) ${porSlide.filter((s) => s.parcial).map((s) => s.slide).join(', ')}: ${NOTA_DA_ARTE_DE_MODELO}` : NOTA_DA_ARTE_DE_MODELO] : []),
+        // Uma nota por NATUREZA de leitura parcial (arte de modelo; copy visual regravada), com as mídias dela no carrossel.
+        ...[...new Set(porSlide.filter((s) => s.parcial).map((s) => s.nota ?? NOTA_DA_ARTE_DE_MODELO))].map((nota) =>
+          carrossel
+            ? `mídia(s) ${porSlide.filter((s) => s.parcial && (s.nota ?? NOTA_DA_ARTE_DE_MODELO) === nota).map((s) => s.slide).join(', ')}: ${nota}`
+            : nota,
+        ),
       ]
       return {
         textos: porSlide.flatMap((s) => s.textos),
@@ -375,6 +412,8 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    da arte ilegível — porque a procedência da mídia atual a invalidou; o que
   //    resta é declarar (R42 da revisão final de be055fe0). Com a página da arte
   //    legível e a peça viva, o passo 2 já devolveu a página (que É a mídia).
+  //    O marcador da copy visual REGRAVADA (PR 0) valida a copy da ARTE, lida no passo 2 — nunca a que o post herdou
+  //    antes do re-render. Com ele o slide já resolveu e não chega aqui; esta regra fica como era.
   const copyHerdadaInvalidada = !carrossel && !post.pageId && slides[0]?.arte?.reRenderizada === true
   const NOTA_R42 =
     'a arte desta peça foi re-renderizada e o post (sem página própria) não guarda registro textual confiável da mídia atual: o texto que está na arte não tem registro aqui.'

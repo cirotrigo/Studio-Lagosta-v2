@@ -134,6 +134,8 @@ export const toolsDeAgenda = [
           // Re-render como a página estava: a URL é nova e o snapshot é o da
           // composição anterior — não afirma texto (R13).
           reRenderizada: recomposicao.estado === 're-renderizada',
+          // ...e o re-render REGRAVOU a copy visual junto do PNG (marcador do PR 0): os `slotValues` são desta mídia.
+          copyVisualRegravada: recomposicao.estado === 're-renderizada' && recomposicao.copyVisualRegravada === true,
           // Procedência e a copy com que a arte foi desenhada: a arte de `post-schedule` é um MODELO com a copy
           // do post por cima, e a página dela não é a peça — ler a página entregaria o texto cru do modelo por
           // uma mídia que mostra outra coisa (R36 da revisão final de bf4650f2).

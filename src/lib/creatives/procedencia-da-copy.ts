@@ -28,9 +28,13 @@
  * reagendado por `generationId` (ou por `mediaUrls` casada pela URL) fazia a
  * agenda atribuir à mídia B um texto da versão A. Com a marca, os `slotValues`
  * não viram copy VISUAL nem proposta; a proposta de aprendizado preservada
- * (`copyDeAprendizado`, REV-93D-02) continua valendo. Quando a regravação da
- * copy visual junto do PNG (REV-127-F02) ganhar um marcador próprio, é ele que
- * deve reabilitar a cópia — não a ausência da marca de re-render.
+ * (`copyDeAprendizado`, REV-93D-02) continua valendo. O que REABILITA a cópia é
+ * o marcador da regravação (`recomposicao.copyVisualRegravada === true`): a
+ * recuperação forçada regrava os `slotValues` com a copy visual do PNG que
+ * desenhou (REV-127-F02/REV-FINAL-02 do PR 0) e marca no MESMO registro — aí os
+ * `slotValues` são a copy deste PNG, e o post agendado por Generation ou por URL
+ * a herda. Sem o marcador (re-render antes dele, página ilegível que manteve a
+ * copy, arte sem copy visual), segue invalidada. Só `true` estrito reabilita.
  */
 import { chaveUnicaDeTexto, lerCamadas } from '@/lib/posts/page-layers'
 
@@ -85,7 +89,8 @@ export function lerProcedencia(
 ): { copyProposta: Record<string, unknown> | null; copyVisual: Record<string, unknown> | null; sourcePageId: string | null; copyInvalidada: boolean } {
   const fv = objeto(fieldValues) ?? {}
   const slotValues = objeto(fv.slotValues)
-  const copyInvalidada = objeto(fv.recomposicao)?.estado === 're-renderizada' && slotValues !== null
+  const recomposicao = objeto(fv.recomposicao)
+  const copyInvalidada = recomposicao?.estado === 're-renderizada' && slotValues !== null && recomposicao.copyVisualRegravada !== true
   const copyVisual = copyInvalidada ? null : slotValues
   const copyProposta = objeto(fv.copyDeAprendizado) ?? copyVisual
   const doJson = fv.source !== 'ajuste-arte' && typeof fv.sourcePageId === 'string' ? fv.sourcePageId : null

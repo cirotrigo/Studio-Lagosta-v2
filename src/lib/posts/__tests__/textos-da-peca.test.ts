@@ -523,3 +523,81 @@ describe('R42 — a copy herdada da arte com que o post foi agendado cai quando 
     expect(comPagina.origem).toBe('copy-registrada-na-entrega')
   })
 })
+
+describe('copy visual REGRAVADA no re-render (marcador do PR 0): vale para a mídia; sem o marcador, R13/R37/R42 como antes', () => {
+  const snapA = [{ id: 'l1', name: 'headline', type: 'text', content: 'Copy A antiga' }]
+  const semPagina = { pageId: null, generationId: 'gA', mediaUrls: ['https://blob/B.png'], slotValues: { headline: 'Copy A herdada' } }
+  const regravada = { layersSnapshot: snapA, pageId: 'p1', source: 'ajuste-arte', slotValues: { headline: 'Copy B regravada', 'headline#2': 'Até 15h' }, reRenderizada: true, copyVisualRegravada: true }
+  const semMarca = { ...regravada, copyVisualRegravada: false }
+
+  it('entregue, post sem página (o caso do R42): a copy REGRAVADA da arte é afirmada — nunca a herdada A nem o snapshot A; sem o marcador, indisponível como antes', () => {
+    const estados: Array<[string, string | null]> = [['POSTED', null], ['POSTING', null], ['FAILED', null], ['SCHEDULED', 'zernio-1']]
+    for (const [status, laterPostId] of estados) {
+      const r = textosDaPeca({ ...semPagina, status, laterPostId }, { slides: [{ url: 'https://blob/B.png', arte: regravada }] })
+      expect(r).toMatchObject({ textos: ['Copy B regravada', 'Até 15h'], origem: 'arte', parcial: true })
+      expect(r.nota).toMatch(/copy visual regravada junto do PNG/)
+      expect(JSON.stringify(r)).not.toContain('Copy A')
+      const controle = textosDaPeca({ ...semPagina, status, laterPostId }, { slides: [{ url: 'https://blob/B.png', arte: semMarca }] })
+      expect(controle.textos).toEqual([])
+      expect(controle.origem).toBeUndefined()
+      expect(controle.indisponiveis).toMatch(/re-renderizada e o post \(sem página própria\) não guarda registro textual confiável/)
+      expect(JSON.stringify(controle)).not.toContain('Copy')
+    }
+  })
+
+  it('viva: a página legível manda (é a fonte do render); página ilegível ou não carregada → a copy regravada, nunca a herdada; sem o marcador, nada', () => {
+    const vivo = { ...semPagina, status: 'DRAFT', laterPostId: null }
+    const pagina = [{ id: 'l1', name: 'headline', type: 'text', content: 'Página atual C' }]
+    expect(textosDaPeca(vivo, { slides: [{ url: 'https://blob/B.png', arte: regravada, camadasDaPagina: pagina }] })).toEqual({ textos: ['Página atual C'], origem: 'pagina' })
+    for (const camadasDaPagina of ['{{ilegível', undefined]) {
+      const r = textosDaPeca(vivo, { slides: [{ url: 'https://blob/B.png', arte: regravada, camadasDaPagina }] })
+      expect(r).toMatchObject({ textos: ['Copy B regravada', 'Até 15h'], origem: 'arte', parcial: true })
+      expect(JSON.stringify(r)).not.toContain('Copy A')
+      const controle = textosDaPeca(vivo, { slides: [{ url: 'https://blob/B.png', arte: semMarca, camadasDaPagina }] })
+      expect(controle.textos).toEqual([])
+      expect(JSON.stringify(controle)).not.toContain('Copy')
+    }
+  })
+
+  it('regravada VAZIA (`{}`: a página desenhada não tinha texto visível) é leitura definitiva — nem a herdada, nem o snapshot', () => {
+    const r = textosDaPeca({ ...semPagina, status: 'POSTED', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: { ...regravada, slotValues: {} } }] })
+    expect(r).toEqual({ textos: [], origem: 'arte' })
+  })
+
+  it('carrossel: o slide re-renderizado com a copy regravada entra com a nota DELE, separada da nota da arte de modelo; sem o marcador o slide fica indisponível', () => {
+    const modelo = { pageId: 'tpl', source: 'post-schedule', slotValues: { headline: 'Costela no bafo' }, layersSnapshot: [{ id: 'l9', name: 'headline', type: 'text', content: 'Título do modelo' }] }
+    const post = { pageId: null, generationId: null, mediaUrls: ['https://blob/B.png', 'https://blob/C.png'], slotValues: null, status: 'POSTED', laterPostId: null }
+    const r = textosDaPeca(post, { slides: [{ url: 'https://blob/B.png', arte: regravada }, { url: 'https://blob/C.png', arte: modelo }] })
+    expect(r.textos).toEqual(['Copy B regravada', 'Até 15h', 'Costela no bafo'])
+    expect(r).toMatchObject({ origem: 'arte', parcial: true })
+    expect(r.nota).toMatch(/mídia\(s\) 1: arte re-renderizada com a copy visual regravada/)
+    expect(r.nota).toMatch(/mídia\(s\) 2: arte desenhada de um MODELO/)
+    expect(r.slides?.[0]).toMatchObject({ slide: 1, origem: 'arte', parcial: true })
+    const controle = textosDaPeca(post, { slides: [{ url: 'https://blob/B.png', arte: semMarca }, { url: 'https://blob/C.png', arte: modelo }] })
+    expect(controle.textos).toEqual(['Costela no bafo'])
+    expect(controle.slides?.[0].indisponiveis).toMatch(/re-renderizada/)
+    expect(controle.nota).toMatch(/1 de 2 mídia\(s\) sem arte registrada/)
+    expect(controle.nota).not.toMatch(/regravada/)
+    expect(JSON.stringify(controle)).not.toContain('Copy')
+  })
+
+  it('arte de `post-schedule` re-renderizada COM o marcador: a copy regravada é o texto da página desenhada — não volta à leitura de modelo (R37) e não reabre R47–R50', () => {
+    const modeloRR = { layersSnapshot: [{ id: 'l1', name: 'headline', type: 'text', content: 'Registro antigo' }], pageId: 'tpl', source: 'post-schedule', slotValues: { headline: 'Título do modelo' }, reRenderizada: true, copyVisualRegravada: true }
+    const semPag = textosDaPeca({ ...semPagina, status: 'POSTED', laterPostId: null, slotValues: { headline: 'Costela herdada' } }, { slides: [{ url: 'https://blob/B.png', arte: modeloRR }] })
+    expect(semPag).toMatchObject({ textos: ['Título do modelo'], origem: 'arte', parcial: true })
+    expect(semPag.nota).toMatch(/copy visual regravada/)
+    expect(semPag.nota).not.toMatch(/MODELO/)
+    expect(JSON.stringify(semPag)).not.toMatch(/Costela herdada|Registro antigo/)
+    const comPagina = textosDaPeca({ ...semPagina, pageId: 'p9', status: 'POSTED', laterPostId: null, slotValues: { headline: 'Costela herdada' } }, { slides: [{ url: 'https://blob/B.png', arte: modeloRR }] })
+    expect(comPagina).toMatchObject({ textos: ['Título do modelo'], origem: 'arte' })
+    // controle: sem o marcador, o mesmo post sem página segue indisponível (R42) e o com página segue indisponível (R50 não é alcançado: é R37)
+    const semMarcaSemPag = textosDaPeca({ ...semPagina, status: 'POSTED', laterPostId: null, slotValues: { headline: 'Costela herdada' } }, { slides: [{ url: 'https://blob/B.png', arte: { ...modeloRR, copyVisualRegravada: false } }] })
+    expect(semMarcaSemPag.textos).toEqual([])
+    expect(JSON.stringify(semMarcaSemPag)).not.toMatch(/Costela herdada|Registro antigo|Título do modelo/)
+  })
+
+  it('o marcador sem `reRenderizada` não muda nada: a arte não re-renderizada segue pelo snapshot confiável', () => {
+    const r = textosDaPeca({ ...semPagina, status: 'POSTED', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: { ...regravada, reRenderizada: false } }] })
+    expect(r).toEqual({ textos: ['Copy A antiga'], origem: 'arte' })
+  })
+})

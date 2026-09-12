@@ -6534,9 +6534,27 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   — declarar parcial não conserta texto já invalidado. O post nasce SEM cópia
   textual (com aviso) e a agenda declara os textos indisponíveis até um render
   com registro. A cópia legítima (arte não re-renderizada) continua sendo
-  copiada. Quando a recuperação passar a REGRAVAR a copy visual junto do PNG
-  (REV-127-F02 do PR 0), o marcador dessa regravação é o que deve reabilitar a
-  cópia — não a ausência da marca de re-render.
+  copiada.
+  🔴 **O que reabilita a copy de arte re-renderizada é o MARCADOR da regravação,
+  nunca a ausência da marca de re-render** (integração com o PR 0, 12/09/2026,
+  opção a — as duas regras valem). A recuperação forçada do PR 0
+  (REV-127-F02/REV-FINAL-02) regrava os `slotValues` com a copy visual do PNG
+  que desenhou e grava `recomposicao.copyVisualRegravada: true` no MESMO
+  registro. Com o marcador: `lerProcedencia` devolve a copy como visual (e como
+  proposta, se não houver `copyDeAprendizado`), `agendarPost` a copia para o
+  post por Generation ou por URL, e `textos-da-peca.ts` afirma a copy REGRAVADA
+  da arte pela mídia (origem `arte`, parcial — sem a caixa e a ordem do render),
+  depois da página na peça viva e antes da indisponibilidade. Sem o marcador
+  (re-render anterior ao PR 0, página ilegível que manteve a copy, arte sem copy
+  visual), R37/R38/R42 seguem como estavam. Três limites de propósito: o
+  SNAPSHOT de arte re-renderizada continua sem afirmar nada (o re-render não o
+  regrava); a arte de `post-schedule` re-renderizada não volta a ser lida como
+  "modelo com copy por cima" (R37 — ela é a página desenhada), então R47–R50
+  não mudam; e o marcador valida a copy da ARTE, nunca a que o post HERDOU
+  antes do re-render (R42 continua recusando a herdada; com o slide resolvido
+  pela arte, ela simplesmente não aparece). Só `true` estrito reabilita.
+  ⚠️ O commit que GRAVA o marcador (`recompor.ts`, 5cc62726 no branch do PR 6)
+  é código do PR 0 e deve descer para o PR 0 quando ele for mergeado.
 - 🔴 **Na arte de `post-schedule`, o id vence o nome também na LEITURA** (R46
   da revisão final de b90b4335): a copy registrada na arte pode endereçar a
   mesma camada por id e por nome, e o render aplica só a do id. Enumerar os
