@@ -173,15 +173,23 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
   { re: new RegExp(`\\b(?:de|das?)\\s+${DIA}\\s+(?:a|à|até)\\s+${DIA}`, 'i'), rotulo: 'janela de dias' },
   { re: /\bno\s+(?:jantar|almo[çc]o)\b|\bà\s+noite\b|\bde\s+manh[ãa]\b/i, rotulo: 'período do dia' },
   { re: /\ba partir d[aeo]s?\s+\d/i, rotulo: 'a partir de horário' },
+  // PR13-25: disponibilidade e programa fixo também são condição da casa, não voz — "HAPPY HOUR TODO DIA",
+  // "quinta é dia de vinho", "a casa está fechada" mudam com a operação e têm de vir da base na data da peça.
+  { re: /\btod[oa]s?\s+(?:os\s+|as\s+)?dias?\b|\bdiariamente\b/i, rotulo: 'disponibilidade "todo dia"' },
+  { re: new RegExp(`\\b${DIA}\\s+[ée]\\s+dia\\s+de\\b`, 'i'), rotulo: 'programa fixo do dia' },
+  { re: /\b(?:casa|restaurante|loja|cozinha)\s+(?:est[áa]|fica|permanece)\s+fechad[ao]s?\b|\bestamos\s+fechad[ao]s\b|\bn[ãa]o\s+abr(?:e|imos)\b|\bfechad[ao]s?\s+(?:a|à|na|no|aos?|às?|em)\s+(?:o\s+)?(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|feriado)/i, rotulo: 'dia fechado' },
 ]
 
 /**
  * CONDIÇÕES operacionais que o detector de preço/horário/data/promoção não
  * pega e que também são fato da base, não voz: a mecânica ("chopp e drinks
  * selecionados em dobro"), a janela de dias ("de segunda a quinta") e o
- * período ("no jantar") — as duas que sobraram na proposta do TERO (PR13-07).
- * Texto entre aspas é vocabulário citado (o que a regra proíbe ou exige), não
- * condição.
+ * período ("no jantar") — as duas que sobraram na proposta do TERO (PR13-07) —,
+ * e a DISPONIBILIDADE ("todo dia"), o programa fixo do dia ("quinta é dia de
+ * vinho") e o dia fechado ("a casa está fechada") que sobraram no By Rock e no
+ * Empório (PR13-25). Texto entre aspas é vocabulário citado (o que a regra
+ * proíbe ou exige), não condição; "lista fechada" e "menu fechado" não são
+ * dia fechado.
  */
 export function condicoesOperacionais(texto: string): string[] {
   const semCitacoes = texto.replace(/"[^"]*"|“[^”]*”|'[^']*'/g, ' ')

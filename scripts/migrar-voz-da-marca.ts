@@ -440,6 +440,12 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
       if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de reindexar: a marca de indexado não é gravada por esta execução')
       await marcarFatoIndexado(db, entryId, new Date(), signal)
+      // A criação normal invalida o cache de busca do projeto (`criarEntradaBase`); a RETOMADA por
+      // reindexação também tem de invalidar, senão uma busca cacheada no intervalo da falha continua
+      // devolvendo o resultado sem o fato até o TTL (PR13-26). Best-effort, como na criação.
+      if (signal?.aborted) return
+      const { invalidateProjectCache } = await import('../src/lib/knowledge/cache')
+      await invalidateProjectCache(fato.projectId).catch((e) => console.error('[migrar-voz] invalidateProjectCache falhou depois da reindexação:', e))
     })
   const estados = new Map<number, EstadoDoCliente>()
   const dnas = new Map<number, DnaDeTexto>()

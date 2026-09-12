@@ -87,6 +87,16 @@ describe('dado dentro da voz proposta', () => {
     const comNumero = vozDeTeste({ proibicoes: ['20% de desconto na primeira compra'], regras: [regra('r1', 'Leve 2 pague 1 só às terças.')] })
     expect(fatosNaVoz(comNumero).map((a) => a.caminho)).toEqual(['proibicoes.0', 'regras.0.texto'])
     expect(fatosNaVoz(vozDeTeste({ descricao: 'Sempre com promoção.' })).map((a) => a.caminho)).toEqual(['descricao'])
+    // PR13-25: disponibilidade, programa fixo do dia e dia fechado são condição da casa — fato no DNA, recusados na voz
+    expect(fatosNaVoz(vozDeTeste({ exemplos: ['HAPPY HOUR TODO DIA'] })).map((a) => a.caminho)).toEqual(['exemplos.0'])
+    expect(fatosNaVoz(vozDeTeste({ exemplos: ['QUINTA É DIA DE VINHO'] })).map((a) => a.caminho)).toEqual(['exemplos.0'])
+    expect(fatosNaVoz(vozDeTeste({ proibicoes: ['convidar para segunda-feira (a casa está fechada)'] })).map((a) => a.caminho)).toEqual(['proibicoes.0'])
+    expect(fatosNaVoz(vozDeTeste({ proibicoes: ['convidar para dia sem funcionamento: os dias em que a casa recebe vêm da base, na data da peça'] }))).toEqual([])
+    // editorial que só MENCIONA o dia, sem afirmar disponibilidade, passa; "lista fechada" e "menu fechado" não são dia fechado
+    expect(fatosNaVoz(vozDeTeste({ exemplos: ['SEXTA NA WINE VIX', 'Sábado para celebrar', 'Domingo merece'] }))).toEqual([])
+    expect(fatosNaVoz(vozDeTeste({ regras: [{ id: 'r1', texto: 'CTA de lista fechada, cópia literal; valor de menu fechado de evento não entra.', motivo: 'm', em: '2026-09-01', escopo: 'copy', ativa: true }] }))).toEqual([])
+    const dnaComCondicoes = fatosNoDna({ toneOfVoice: 'Fale de happy hour todo dia com energia.\nQuinta é dia de vinho na casa.', contentRules: 'Nunca convide para segunda-feira: a casa está fechada.' })
+    expect(dnaComCondicoes.map((f) => f.tipos.includes('condicao'))).toEqual([true, true, true])
   })
 })
 
