@@ -247,4 +247,34 @@ describe('adaptadores do legado: declaram o que não sabem, não inventam autori
     expect(blocos[1].linhas).toEqual(['Milk-shake', 'vem [em dobro]'])
     expect(semPapel.map((b) => b.id)).toEqual(['aviso'])
   })
+
+  it('R01: grupo de leitura com nome livre (v1) continua sendo lido, e não engole o bloco solto de nome parecido', () => {
+    const c = structuredClone(copy)
+    c.blocos = [
+      { id: 'pre', funcao: 'pre', ordem: 0, linhas: ['Sexta é dia de'], grupoDeLeitura: '_aviso' },
+      { id: 'headline', funcao: 'headline', ordem: 1, linhas: ['Rodízio'], grupoDeLeitura: '_aviso' },
+      { id: 'aviso', funcao: 'livre', ordem: 2, linhas: ['Só hoje'] },
+    ]
+    const lida = lerCopyAutoral(serializarCopyAutoral(c))
+    expect(lida.problemas).toEqual([])
+    expect(lida.copy?.blocos[0].grupoDeLeitura).toBe('_aviso')
+    const grupos = gruposDeLeitura(lida.copy!)
+    expect(grupos.find((g) => g.declarado)?.blocos.map((b) => b.id)).toEqual(['pre', 'headline'])
+    expect(grupos.find((g) => !g.declarado)?.blocos.map((b) => b.id)).toEqual(['aviso'])
+  })
+
+  it('R02: remoção registrada fora de `blocos` é recusada; a sequência equipe → sistema (remoção) relida dá autoria sistema', () => {
+    const c = structuredClone(copy)
+    const editada = aplicarRevisao(c, c.blocos.map((b) => (b.id === 'servico' ? { ...b, linhas: ['das 12h às 15h'] } : b)), { autor: 'equipe', motivo: 'horário' }).copy
+    const removida = aplicarRevisao(editada, editada.blocos.filter((b) => b.id !== 'servico'), { autor: 'sistema', motivo: 'sem serviço nesta variante' }).copy
+    const relida = lerCopyAutoral(serializarCopyAutoral(removida))
+    expect(relida.problemas).toEqual([])
+    expect(autorDoBloco(relida.copy!, 'servico').autor).toBe('sistema')
+
+    const torta = JSON.parse(serializarCopyAutoral(removida)) as { revisoes: Array<{ blocos: string[] }> }
+    torta.revisoes[torta.revisoes.length - 1].blocos = []
+    const lida = lerCopyAutoral(torta)
+    expect(lida.copy).toBeNull()
+    expect(lida.problemas.some((p) => /remoção do bloco "servico"/.test(p.mensagem))).toBe(true)
+  })
 })

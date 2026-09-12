@@ -95,7 +95,13 @@ export const blocoAutoralSchema = z
     id: idDeBlocoSchema,
     funcao: z.enum(FUNCOES),
     /** Os blocos que se leem como UMA frase. Um id de grupo, do autor (mesmo alfabeto do id). Sem grupo = frase própria. */
-    grupoDeLeitura: idDeBlocoSchema.optional(),
+    /**
+     * Nome livre (1–60): o leitor v1 sempre aceitou qualquer string aqui, e
+     * restringir o alfabeto rejeitaria copy já gravada (R01 da revisão do
+     * Codex, 12/09/2026). A separação entre grupo declarado e bloco solto é
+     * feita pela CHAVE interna de `gruposDeLeitura`, não pelo nome.
+     */
+    grupoDeLeitura: z.string().min(1).max(60).optional(),
     /** A ordem de leitura. Explícita e única na copy. */
     ordem: z.number().int().min(0).max(99),
     /**

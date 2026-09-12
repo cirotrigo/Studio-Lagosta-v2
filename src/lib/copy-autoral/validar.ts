@@ -89,6 +89,12 @@ export function problemasDeCoerencia(copy: CopyAutoral): ProblemaDaCopy[] {
     for (const id of Object.keys(r.campos ?? {})) {
       if (!r.blocos.includes(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `revisão ${i} detalha campos do bloco "${id}" sem listá-lo em blocos` })
     }
+    // Remoção é mudança do bloco: quem a registra lista o id em `blocos`,
+    // senão `autorDoBloco` (que anda pelas revisões por `blocos`) devolveria o
+    // autor da edição anterior (R02 da revisão do Codex, 12/09/2026).
+    for (const x of r.removidos ?? []) {
+      if (!r.blocos.includes(x.id)) problemas.push({ tipo: 'revisao', bloco: x.id, mensagem: `revisão ${i} registra a remoção do bloco "${x.id}" sem listá-lo em blocos` })
+    }
   })
 
   return problemas
