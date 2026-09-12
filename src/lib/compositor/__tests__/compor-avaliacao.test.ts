@@ -10,7 +10,7 @@ vi.mock('@/lib/db', () => ({ db: {
 vi.mock('@/lib/creatives/persist', () => ({ persistAndRenderCreative: mocks.persistir, resolveImageUrl: vi.fn() }))
 vi.mock('../pastas', () => ({ garantirPasta: mocks.pasta, ordemNaPasta: async () => ({ ordem: 1, repeticao: 0 }) }))
 vi.mock('@/lib/creatives/uso-de-foto', () => ({ registrarUsoDeFoto: vi.fn() }))
-vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: vi.fn(), fetchBuffer: vi.fn() }))
+vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: vi.fn(), fetchBuffer: vi.fn(), familiasNaoCarregadas: async () => new Set<string>() }))
 vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextBoxMeasurer: async () => (l: Layer) => ({ width: l.size.width, height: Number(l.style?.fontSize ?? 48), maxLineWidth: 100, lineCount: 1 }) }))
 vi.mock('@/lib/creatives/text-autofix', () => ({ aplicarAutofixOuFalhar: async (args: { layers: Layer[] }) => ({ layers: args.layers, avisos: [] }) }))
 vi.mock('../regua', async (original) => ({ ...await original<typeof import('../regua')>(), medirContrasteDaPeca: mocks.regua }))

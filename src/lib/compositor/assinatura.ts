@@ -491,7 +491,7 @@ export interface CandidataAVariante {
 
 export interface CriteriosDeVariante {
   formato: Formato
-  /** Variante pedida pelo nome, tag ou id — vence tudo. */
+  /** Variante pedida pelo ID da página (vence nome e tag), pelo nome ou pela tag — vence tudo. */
   variante?: string | null
   /** Os papéis que a PEÇA pede. Variante que os tem vence a que não os tem. */
   papeis?: Papel[]
@@ -596,12 +596,12 @@ export function escolherVariante<T extends CandidataAVariante>(
 
   if (args.variante) {
     const alvo = args.variante.toLowerCase().trim()
-    const achada = base.find(
-      (p) =>
-        `${p.name ?? ''}`.toLowerCase().includes(alvo) ||
-        (p.tags ?? []).some((t) => t.toLowerCase() === alvo) ||
-        `${p.id ?? ''}`.toLowerCase() === alvo,
-    )
+    // O ID da página vence nome e tag: é como a recomposição FIXA a variante
+    // com que a peça foi composta (`specComAPosicaoOriginal`), e como o chat
+    // pede uma variante sem ambiguidade (ver-assinatura lista o `id`).
+    const porId = base.find((p) => `${p.id ?? ''}`.toLowerCase() === alvo)
+    if (porId) return { pagina: porId, formatoDaPagina: fmt(porId), motivo: 'fixada por id' }
+    const achada = base.find((p) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo))
     if (achada) return { pagina: achada, formatoDaPagina: fmt(achada), motivo: 'pedida' }
     return { pagina: null, formatoDaPagina: null, motivo: 'variante pedida não encontrada' }
   }

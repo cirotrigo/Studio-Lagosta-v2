@@ -217,8 +217,14 @@ function ehTextoVisivel(l: Layer): boolean {
 
 function linhasDaCamada(l: Layer): string[] {
   const ricas = linhasComColchetes(l)
-  if (ricas) return ricas
-  return String(l.content ?? '').split('\n')
+  const linhas = ricas ?? String(l.content ?? '').split('\n')
+  // O prefixo que a assinatura desenha antes da primeira linha ("→ " no CTA)
+  // vem DECLARADO pelo compositor em `metadata.compositor.prefixo`: é ornamento
+  // da marca, não texto do autor, e sai da comparação. Prefixo NÃO declarado
+  // continua contando como diferença — nada é descontado por palpite.
+  const prefixo = (l.metadata as { compositor?: { prefixo?: unknown } } | undefined)?.compositor?.prefixo
+  if (typeof prefixo === 'string' && prefixo && linhas[0]?.startsWith(prefixo)) return [linhas[0].slice(prefixo.length), ...linhas.slice(1)]
+  return linhas
 }
 
 /**

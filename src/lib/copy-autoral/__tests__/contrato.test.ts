@@ -192,7 +192,8 @@ describe('revisões: autor, data e motivo em toda mudança', () => {
   it('mudar só a ordem, a função, o grupo, o estilo ou os fatos É revisão, com os campos nomeados (F02)', () => {
     const casos: Array<[string, (b: (typeof copy.blocos)[number]) => (typeof copy.blocos)[number], string]> = [
       ['ordem', (b) => (b.id === 'apoio' ? { ...b, ordem: 3 } : b.id === 'servico' ? { ...b, ordem: 2 } : b), 'ordem'],
-      ['estilo', (b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b), 'estilo'],
+      // a voz 2 só pode ser o FIM da manchete (PR 4): a mudança de estilo aqui é a herança
+      ['estilo', (b) => (b.id === 'headline' ? { ...b, estilo: { ...b.estilo, herdaDe: 'apoio' } } : b), 'estilo'],
       ['grupo', (b) => (b.id === 'apoio' ? { ...b, grupoDeLeitura: 'frase-1' } : b), 'grupoDeLeitura'],
       ['fatos', (b) => (b.id === 'servico' ? { ...b, fatos: [{ entradaId: 'kb-outro' }] } : b), 'fatos'],
       ['funcao', (b) => (b.id === 'apoio' ? { ...b, funcao: 'cta' as const } : b), 'funcao'],

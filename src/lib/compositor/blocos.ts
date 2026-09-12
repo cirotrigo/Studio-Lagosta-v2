@@ -172,6 +172,10 @@ export function camadaDoPapel(args: {
           },
         }
       : {},
+    // O prefixo que a assinatura desenha ("→ " no CTA) fica DECLARADO: é uma
+    // transformação do sistema sobre o texto do autor, e quem lê a copy
+    // efetiva da peça (`copyEfetivaDasCamadas`) a desconta em vez de atribuí-la
+    // a quem escreveu (PR 4 de "Marca simples, copy melhor", 12/09/2026).
     metadata: {
       groupId: args.groupId,
       // As posições só valem COM o bloco (a leitura as ignora sem ele): sem
@@ -179,6 +183,7 @@ export function camadaDoPapel(args: {
       compositor: {
         papel: args.papel,
         ...(args.origem?.bloco ? { bloco: args.origem.bloco, ...(args.origem.linhas ? { linhas: [...args.origem.linhas] } : {}) } : {}),
+        ...(linhasFinais[0] !== args.linhas[0] && estilo.prefixo ? { prefixo: estilo.prefixo } : {}),
       },
     },
   }

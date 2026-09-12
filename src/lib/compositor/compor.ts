@@ -20,7 +20,9 @@ import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
 import { persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
-import { registerProjectFonts, fetchBuffer } from '@/lib/posts/register-project-fonts'
+import { registerProjectFonts, fetchBuffer, familiasNaoCarregadas } from '@/lib/posts/register-project-fonts'
+import { dividirManchete } from './segunda-voz'
+import { medidasFinaisDasCamadas, type MedidaFinal } from './medidas'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
@@ -109,7 +111,17 @@ export interface DiagnosticoDaComposicao {
   gradientes?: Array<{ borda: Borda; forca: number; altura: number; cor: string; necessidade: number }>
   /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
   logo: { canto: Canto; tinta: number } | null
-  blocos: Array<{ papel: Papel; escala: number; width: number; height: number; destacado?: boolean }>
+  blocos: Array<{ papel: Papel; escala: number; width: number; height: number; destacado?: boolean; naoMedido?: boolean }>
+  /**
+   * As medidas FINAIS de cada texto, depois do autofix (corpo, entrelinha,
+   * caixa, linhas) e se a medida vale — `naoMedido` quando a fonte do papel não
+   * carregou no servidor. Ausente em diagnósticos anteriores ao PR 4 (12/09/2026).
+   */
+  medidasFinais?: MedidaFinal[]
+  /** As famílias de fonte pedidas pela assinatura que NÃO carregaram no servidor. */
+  fontesNaoCarregadas?: string[]
+  /** De onde saiu a divisão da manchete em duas vozes: do contrato do autor, da regra legada, ou nenhuma. */
+  segundaVoz?: 'contrato' | 'legado' | 'nenhuma'
   /** O arranjo de texto usado em cada grupo: o da página ou uma combinação salva. Ausente em diagnósticos antigos. */
   arranjos?: Array<{ grupo: string; id: string; nome: string; origem: ArranjoDeGrupo['origem']; motivo: string }>
   contraste: ContrasteMedido[] | null
@@ -645,6 +657,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
   const montados: Array<BlocoMontado & { chave: string }> = []
   const familias = await familiasDoProjeto(spec.projectId)
+  let segundaVoz: NonNullable<DiagnosticoDaComposicao['segundaVoz']> = 'nenhuma'
   for (const [chave, blocosDoGrupo] of blocosPorGrupo) {
     const daPagina = gruposDaPagina.get(chave)
     const escolha = escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
@@ -658,18 +671,27 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       arranjoPorGrupo.set(chave, escolha.arranjo)
       arranjos.push({ grupo: chave, id: escolha.arranjo.id, nome: escolha.arranjo.nome, origem: escolha.arranjo.origem, motivo: escolha.motivo })
     }
-    // A manchete com segunda voz vira DOIS papéis no mesmo grupo: as linhas de
-    // cima na voz 1 e a última na voz 2 (o que o Quintal, o TERO e o By Rock
-    // fazem à mão). Sem `headline2` no arranjo (ou na assinatura), nada muda.
+    // A manchete com segunda voz vira DOIS papéis no mesmo grupo (o que o
+    // Quintal, o TERO e o By Rock fazem à mão). Quem diz QUAIS linhas vão na
+    // voz 2 é o AUTOR, no contrato (`estilo.linhasNaVoz2`); sem contrato vale a
+    // regra legada (a última linha) — ver `segunda-voz.ts`.
     const temSegundaVoz = arranjo ? arranjo.papeis.includes('headline2') : Boolean(assinatura.papeis.headline2)
-    const comSegundaVoz = blocosDoGrupo.flatMap((b) =>
-      b.papel === 'headline' && temSegundaVoz && b.linhas.length >= 2
-        ? [
-            { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1), indicesDoBloco: b.indicesDoBloco.slice(0, -1) },
-            { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1), indicesDoBloco: b.indicesDoBloco.slice(-1) },
-          ]
-        : [b],
-    )
+    const declaradasNaVoz2 = spec.copyAutoral?.blocos.find((b) => b.funcao === 'headline')?.estilo?.linhasNaVoz2 ?? null
+    const comSegundaVoz = blocosDoGrupo.flatMap((b) => {
+      if (b.papel !== 'headline') return [b]
+      const d = dividirManchete(b.linhas, { temSegundaVoz, comContrato: Boolean(spec.copyAutoral), declaradas: declaradasNaVoz2 })
+      if (d.aviso) avisos.push(`headline: ${d.aviso}`)
+      segundaVoz = d.origem
+      if (d.voz2.length === 0) return [b]
+      // A voz 2 é sempre o FIM da manchete, então o corte das LINHAS vale para
+      // os índices do bloco — é isso que deixa cada camada declarar quais
+      // linhas do bloco do autor ela desenha (PR 3).
+      const corte = d.voz1.length
+      return [
+        { papel: 'headline' as Papel, linhas: d.voz1, indicesDoBloco: b.indicesDoBloco.slice(0, corte) },
+        { papel: 'headline2' as Papel, linhas: d.voz2, indicesDoBloco: b.indicesDoBloco.slice(corte) },
+      ]
+    })
     const preenchidos = arranjo
       ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
       : comSegundaVoz.map((b) => ({ ...b, texto: null }))
@@ -1052,6 +1074,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       ]
     : []
 
+  // 6c. As fontes que NÃO carregaram no servidor: o texto nelas foi medido e
+  //     vai ser desenhado na fonte de fallback — a medida não vale, e isso
+  //     precisa ficar dito ("não medido"), nunca parecer medida (PR 4).
+  const fontesNaoCarregadas = await familiasNaoCarregadas(montados.map((b) => String(b.layer.style?.fontFamily ?? '')))
+  for (const f of fontesNaoCarregadas) avisos.push(`a fonte "${f}" não está carregada no servidor: o texto nela saiu na fonte de fallback e a medida não vale (não medido)`)
+
   // 7. Contrato + autofix geométrico (colisão, transbordo, safe area). O fundo
   //    de texto que viria da página de assinatura não entra: a peça nasce sem halo.
   const textosSemHalo = camadasDeTexto.map((c) => (c.effects?.background ? { ...c, effects: { ...c.effects, background: undefined } } : c))
@@ -1167,7 +1195,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       }
     }),
     logo: logoDiag,
-    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado })),
+    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(fontesNaoCarregadas.has(String(b.layer.style?.fontFamily ?? '')) ? { naoMedido: true } : {}) })),
+    // As medidas FINAIS, depois do autofix — é o que vale para quem for ler a
+    // peça (ver-geracao, medir-copy): o bloco montado acima ainda pode encolher.
+    medidasFinais: medidasFinaisDasCamadas(layers, fontesNaoCarregadas),
+    ...(fontesNaoCarregadas.size > 0 ? { fontesNaoCarregadas: [...fontesNaoCarregadas] } : {}),
+    segundaVoz,
     arranjos,
     contraste,
     assinatura: assinatura.origem,
