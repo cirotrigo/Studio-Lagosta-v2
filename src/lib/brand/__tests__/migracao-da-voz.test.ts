@@ -15,6 +15,7 @@ import {
   condicoesOperacionais,
   fatosNaVoz,
   fatosNoDna,
+  frasesDoDna,
   isolamentoDoCache,
   isolamentoDoIndexador,
   lerManifesto,
@@ -234,7 +235,7 @@ describe('o manifesto', () => {
     const motivo = (id: number) => (plano.find((a) => a.projectId === id) as { motivo?: string }).motivo ?? ''
     expect(motivo(4)).toMatch(/não passa no contrato/)
     expect(motivo(5)).toMatch(/prévia mudou.*aprovada abcdef0123456789, atual ffffffffffffffff/)
-    expect(motivo(6)).toMatch(/fato\(s\) do manifesto que a prévia não lista: "Frase que a prévia não lista"/)
+    expect(motivo(6)).toMatch(/fato\(s\) do manifesto que a prévia não lista \(nem como fato detectado, nem como frase do DNA integral\): "Frase que a prévia não lista"/)
     expect(plano.find((a) => a.projectId === 7)).toMatchObject({ acao: 'migrar', versaoEsperadaDaVoz: 3, fatos: [fato] })
     expect(plano.find((a) => a.projectId === 8)).toMatchObject({ acao: 'migrar', versaoEsperadaDaVoz: 0, fatos: [] })
     // cliente do manifesto sem estado lido (sem DNA/voz proposta) é bloqueado, nunca migrado
@@ -376,6 +377,33 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
       const voz = vozDeTeste({ proibicoes: [frase] })
       expect(problemasParaMigrar(voz).some((p) => /condi/i.test(p)), frase).toBe(true)
     }
+  })
+
+  it('PR13-31/32: programação fechada, cadastro afirmado e serviço/cortesia afirmados são condição; e o manifesto pode citar QUALQUER frase do DNA integral, detectada ou não', () => {
+    const reais = [
+      'nomear item "do dia" (caldinho, doce, chopp convidado); inventar programação além de Samba do Canto e Almoço ao vivo',
+      'telefone (não está cadastrado); inventar número',
+      'Aniversário só com bolo próprio para cantar parabéns e brinde à escolha: uma sobremesa OU um drink.',
+      'Todo o cardápio disponível para retirada no balcão.',
+    ]
+    expect(condicoesOperacionais(reais[0])).toEqual(['programação fechada'])
+    expect(condicoesOperacionais(reais[1])).toEqual(['cadastro afirmado'])
+    expect(condicoesOperacionais(reais[2])).toEqual(['serviço ou cortesia afirmados'])
+    expect(condicoesOperacionais(reais[3])).toEqual(['serviço ou cortesia afirmados'])
+    for (const t of ['nomear item "do dia" (caldinho, doce, chopp convidado); inventar programação: a programação da casa vem da base, na data da peça', 'telefone ou número que a base não registra', 'Gastronomia, bons rótulos e o cenário perfeito para brindar', 'preço do almoço executivo enquanto não estiver cadastrado na base (o do Happy Wine pode, vindo da base)']) {
+      expect(condicoesOperacionais(t), t).toEqual([])
+    }
+    // No DNA as duas frases do Espeto viram fato da prévia (citáveis) …
+    const dna = { toneOfVoice: null, contentRules: `${reais[2]}\n${reais[3]}\nFale como quem recebe em casa.` }
+    expect(fatosNoDna(dna).map((f) => f.trecho)).toEqual([reais[2], reais[3]])
+    // … e mesmo uma frase que NENHUM detector pega é citável por extenso (PR13-32): o limite é o DNA integral.
+    expect(frasesDoDna(dna)).toEqual([reais[2], reais[3], 'Fale como quem recebe em casa.'])
+    const estado = { versaoDaPreviaAtual: 'v', trechosDeFato: [reais[2]], frasesDoDna: frasesDoDna(dna), registro: null, vozValida: true }
+    const manifesto = (trecho: string) => ({ versao: VERSAO_DO_MANIFESTO, geradoEm: 'x', clientes: [{ projectId: 6, nome: 'Espeto', versaoDaPrevia: 'v', decisao: 'migrar' as const, aprovadoPor: 'Ciro', aprovadoEm: '2026-09-12', fatosParaABase: [{ trecho, categoria: 'ESTABELECIMENTO_INFO' as const, titulo: 't' }] }] })
+    expect(planoDeAplicacao(manifesto('Fale como quem recebe em casa.'), new Map([[6, estado]]))[0]).toMatchObject({ acao: 'migrar' })
+    expect(planoDeAplicacao(manifesto(reais[3]), new Map([[6, estado]]))[0]).toMatchObject({ acao: 'migrar' })
+    expect(planoDeAplicacao(manifesto('Frase que não está no DNA.'), new Map([[6, estado]]))[0]).toMatchObject({ acao: 'bloqueado', motivo: expect.stringMatching(/frase do DNA integral/) })
+    for (const frase of reais) expect(problemasParaMigrar(vozDeTeste({ proibicoes: [frase] })).some((p) => /condi/i.test(p)), frase).toBe(true)
   })
 
   it('PR13-30: o cache de busca (Redis) tem a mesma régua do indexador — isolado só com URL e token próprios e URL diferente da de produção', () => {

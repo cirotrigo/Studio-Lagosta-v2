@@ -7008,6 +7008,27 @@ Da terceira revisão FINAL (BLOQUEADO, PR13-29…30):
   diferente da de produção); sem ele as variáveis saem do processo e o cache
   vira no-op limpo. A prova (`apontarParaODev`) faz o mesmo com Redis e Vector.
 
+Da quarta revisão FINAL (BLOQUEADO, PR13-31…32):
+
+- 🔴 **Os detectores são AJUDA de leitura, não o limite do que pode ir para a
+  base** (PR13-32): "Aniversário só com bolo próprio… e brinde à escolha" e
+  "Todo o cardápio disponível para retirada no balcão" estão no DNA do Espeto,
+  nenhum detector os pegava, e o plano recusava o manifesto que os citasse —
+  fato literalmente no DNA aprovado sem porta de entrada na base. Hoje
+  `EstadoDoCliente.frasesDoDna` traz TODAS as frases do DNA integral da prévia
+  (`frasesDoDna`, a mesma leitura de `frasesDe`), e `planoDeAplicacao` aceita
+  o trecho que é fato detectado OU frase inteira do DNA; o que não está no
+  DNA continua bloqueando. A prévia diz isso no rodapé da lista de fatos.
+- 🔴 **Programação em lista fechada, cadastro afirmado e serviço/cortesia
+  afirmados também são condição** (PR13-31): "inventar programação além de
+  Samba do Canto e Almoço ao vivo" (Seu Quinto) e "telefone (não está
+  cadastrado); inventar número" (Empório) foram trocados pela orientação
+  ("a programação da casa vem da base", "telefone ou número que a base não
+  registra"); `condicoesOperacionais` pega `programação além de`, `além de
+  <Nome> e <Nome>`, `não está cadastrado`/`inventar número`, `retirada no
+  balcão`/`disponível para retirada`/`brinde`/`cortesia de`. Prévias
+  regeradas (Espeto 13 → 16 fatos).
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

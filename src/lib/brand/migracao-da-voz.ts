@@ -193,6 +193,12 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
   { re: /\b(?:cervejas?|bebidas?|drinks?|vinhos?|sobremesas?|pratos?|sabores?)\s+(?:sem\s+[áa]lcool\s+)?al[ée]m\s+d[aeo]s?\b/i, rotulo: 'cardápio restrito a item' },
   { re: /\b(?:whatsapp|site|app|aplicativo|delivery|entrega|encomendas?|link\s+de\s+pedido|bot[ãa]o\s+de\s+compra|telefone)\b[^.;]{0,40}\bn[ãa]o\s+(?:existem?|temos|fazemos|oferecemos)\b|\bn[ãa]o\s+(?:temos|fazemos|oferecemos|trabalhamos\s+com)\s+(?:whatsapp|site|app|aplicativo|delivery|entrega|encomendas?)\b|\bsem\s+(?:site|app|aplicativo|delivery|entrega)\b|\b(?:s[óo]|apenas|somente)\s+(?:com|pel[oa]|por|via)\s+(?:o\s+|a\s+)?(?:gar[çc]om|gerente|balc[ãa]o|direct|whatsapp|telefone)\b|\bretirada\s+sim\b/i, rotulo: 'canal ou serviço afirmado' },
   { re: /\b(?:casa|cozinha|restaurante)\s+(?:n[ãa]o\s+)?(?:tem|usa|trabalha\s+com)\s+(?:brasa|chapa|forno|defuma[çc][ãa]o|grelha)\b|\bs[ãa]o\s+grelhad[oa]s\b/i, rotulo: 'preparo afirmado' },
+  // PR13-31/32: a lista FECHADA de programação ("além de Samba do Canto e Almoço ao vivo"), o cadastro afirmado
+  // ("não está cadastrado", "inventar número") e o serviço/cortesia afirmados ("retirada no balcão", "brinde à
+  // escolha") também mudam com a operação — vêm da base, na data da peça.
+  { re: /\bprograma[çc][ãa]o\s+al[ée]m\s+d[aeo]s?\b|\bal[ée]m\s+d[aeo]s?\s+[A-ZÀ-Ú][^,;)]{2,40}\s+e\s+[A-ZÀ-Ú]/, rotulo: 'programação fechada' },
+  { re: /\bn[ãa]o\s+est[áa]\s+cadastrad[oa]s?\b|\bn[ãa]o\s+cadastrad[oa]s?\b|\binventar\s+(?:n[úu]mero|telefone|endere[çc]o)\b/i, rotulo: 'cadastro afirmado' },
+  { re: /\bretirada\s+(?:no|na|em)\s+balc[ãa]o\b|\bdispon[íi]vel\s+para\s+retirada\b|\bbrindes?\b|\bcortesias?\s+(?:d[aeo]|para|no|na)\b|\b(?:sobremesa|drink|caf[ée])\s+(?:de\s+)?cortesia\b/i, rotulo: 'serviço ou cortesia afirmados' },
 ]
 
 /**
@@ -220,6 +226,16 @@ export function condicoesOperacionais(texto: string): string[] {
  * regra aprendida é METADADO da regra (quando e por que ela nasceu), não fato:
  * sai antes da leitura, senão toda regra legada virava "data" na prévia.
  */
+/** TODAS as frases do DNA de texto, na leitura de `frasesDe` — as citáveis por extenso no manifesto (PR13-32). */
+export function frasesDoDna(dna: DnaDeTexto): string[] {
+  const frases: string[] = []
+  for (const origem of ['toneOfVoice', 'contentRules'] as const) {
+    const texto = dna[origem]
+    if (texto) frases.push(...frasesDe(texto))
+  }
+  return [...new Set(frases)]
+}
+
 export function fatosNoDna(dna: DnaDeTexto): FatoDetectado[] {
   const achados: FatoDetectado[] = []
   const vistos = new Set<string>()
@@ -332,7 +348,7 @@ export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDe
   const semCorrespondente = regrasLegadas.filter((r) => r.situacao === 'sem-correspondente')
   if (semCorrespondente.length > 0) avisos.push(`${semCorrespondente.length} regra(s) aprendida(s) do DNA sem correspondente na voz — confira se foram absorvidas na descrição/exemplos ou se ficaram de fora de propósito.`)
   if (naVoz.length > 0) avisos.push(`a voz proposta carrega DADO (${naVoz.map((f) => f.caminho).join(', ')}): fato vai para a base, nunca para a voz.`)
-  if (noLegado.length > 0) avisos.push(`${noLegado.length} frase(s) do DNA carregam dado (preço, horário, data ou promoção): quem quiser mantê-las lista cada uma no manifesto, com categoria e título, para virar entrada da base.`)
+  if (noLegado.length > 0) avisos.push(`${noLegado.length} frase(s) do DNA carregam dado (preço, horário, data ou promoção): quem quiser mantê-las lista cada uma no manifesto, com categoria e título, para virar entrada da base — e qualquer outra frase do DNA integral também pode ser citada por extenso.`)
   if (!voz) avisos.push('a voz proposta não passa no contrato; a migração deste cliente é impossível até corrigir.')
   const dnaAtualizadoEm = args.dna.updatedAt ? (args.dna.updatedAt instanceof Date ? args.dna.updatedAt.toISOString() : String(args.dna.updatedAt)) : null
   return {
@@ -409,6 +425,8 @@ export function previaParaMarkdown(p: PreviaDaMigracao): string {
   L.push('')
   if (p.fatos.noLegado.length === 0) L.push('(nenhuma frase com preço, horário, data ou promoção)')
   for (const f of p.fatos.noLegado) L.push(`- [${f.origem} · ${f.tipos.join('/')}] ${f.trecho}`)
+  L.push('')
+  L.push('Os detectores acima são uma AJUDA de leitura, não o limite: qualquer frase do DNA integral (seções "antes", acima) pode ser citada por extenso em `fatosParaABase` — a aplicação aceita o trecho que é fato detectado OU frase inteira do DNA desta prévia, e recusa o que não está nele.')
   L.push('')
   if (p.fatos.naVoz.length > 0) {
     L.push('## ⚠️ Dado dentro da voz proposta (precisa sair)')
@@ -678,8 +696,15 @@ function diaEmBrasilia(d: Date | string): string | null {
 export interface EstadoDoCliente {
   /** A versão da prévia CALCULADA AGORA (DNA atual + voz proposta atual). */
   versaoDaPreviaAtual: string
-  /** Os trechos de fato que a prévia atual lista — o manifesto só pode citar estes. */
+  /** Os trechos de fato que a prévia atual lista (os detectados). */
   trechosDeFato: string[]
+  /**
+   * TODAS as frases do DNA integral da prévia (PR13-32): o manifesto pode citar
+   * por extenso qualquer frase do DNA aprovado, detectada ou não — os detectores
+   * são uma AJUDA de leitura, não o limite do que pode ir para a base. Frase
+   * que não está no DNA continua bloqueando.
+   */
+  frasesDoDna?: string[]
   /** O registro de voz que já existe no banco, se houver. */
   registro: { versao: number; migradaEm: Date | string | null } | null
   /** A voz proposta pode ser migrada agora: passa no contrato E não carrega dado nem condição operacional (PR13-07). */
@@ -718,9 +743,12 @@ export function planoDeAplicacao(manifesto: Manifesto, estados: Map<number, Esta
     if (estado.versaoDaPreviaAtual !== c.versaoDaPrevia) {
       return { ...base, acao: 'bloqueado' as const, motivo: `a prévia mudou desde a aprovação (aprovada ${c.versaoDaPrevia}, atual ${estado.versaoDaPreviaAtual}): refaça a prévia e peça aprovação nova` }
     }
-    const foraDaPrevia = c.fatosParaABase.filter((f) => !estado.trechosDeFato.includes(f.trecho)).map((f) => f.trecho)
+    // O trecho tem de ser um fato DETECTADO ou uma frase INTEIRA do DNA integral da prévia (PR13-32) — nunca texto
+    // que não está no DNA aprovado.
+    const citaveis = new Set([...estado.trechosDeFato, ...(estado.frasesDoDna ?? [])])
+    const foraDaPrevia = c.fatosParaABase.filter((f) => !citaveis.has(f.trecho)).map((f) => f.trecho)
     if (foraDaPrevia.length > 0) {
-      return { ...base, acao: 'bloqueado' as const, motivo: `fato(s) do manifesto que a prévia não lista: ${foraDaPrevia.map((t) => `"${t.slice(0, 60)}"`).join(', ')}` }
+      return { ...base, acao: 'bloqueado' as const, motivo: `fato(s) do manifesto que a prévia não lista (nem como fato detectado, nem como frase do DNA integral): ${foraDaPrevia.map((t) => `"${t.slice(0, 60)}"`).join(', ')}` }
     }
     return { ...base, acao: 'migrar' as const, versaoEsperadaDaVoz: estado.registro?.versao ?? 0, fatos: c.fatosParaABase }
   })

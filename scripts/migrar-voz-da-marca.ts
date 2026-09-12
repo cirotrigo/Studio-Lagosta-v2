@@ -45,6 +45,7 @@ import {
   type Manifesto,
   type PreviaDaMigracao,
   chaveDoFato,
+  frasesDoDna,
   isolamentoDoCache,
   isolamentoDoIndexador,
   podeIndexar,
@@ -183,6 +184,7 @@ export async function lerEstadoDoCliente(db: Db, projectId: number): Promise<{ n
   const estado: EstadoDoCliente = {
     versaoDaPreviaAtual: versaoDaPrevia({ dna: dnaDeTexto, voz: proposta.voz }),
     trechosDeFato: fatosNoDna(dnaDeTexto).map((f) => f.trecho),
+    frasesDoDna: frasesDoDna(dnaDeTexto),
     registro: registro ? { versao: registro.versao, migradaEm: registro.migradaEm } : null,
     vozValida: problemasDaVoz.length === 0,
     problemasDaVoz,
