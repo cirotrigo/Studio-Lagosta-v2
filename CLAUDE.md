@@ -5665,7 +5665,13 @@ Codex antes de ser escrito.
   `finally` externo, e a exclusão que não acontece CONTA como falha): o cleanup
   filtra por projeto e marca e não a alcançaria, e um `try/finally` local com
   `.catch(() => undefined)` deixava a órfã no outro projeto quando o passo
-  quebrava antes dele, com a prova verde (REV-052-01).
+  quebrava antes dele, com a prova verde (REV-052-01). 🔴 **A prova lê cada imagem do Blob UMA
+  vez por URL, com nova tentativa espaçada em 403/429/5xx** (só no processo
+  dela, trocando `CanvasRenderer.nodeImageLoader`): as provas 29 a 33 pararam
+  no mesmo ponto com o desafio anti-bot do Blob sobre a logo que ela renderiza
+  dezenas de vezes, e esperar três `curl` com 200 antes de lançar não segurava.
+  E o processo sai explicitamente no fim — as provas 32 e 33 ficaram penduradas
+  uma hora com conexões de banco abertas depois do resumo.
 - **Gradiente se aponta pelo id.** Sem `camadas`, o ajuste só mexe no gradiente
   de LEITURA da borda (o que o compositor desenhou) ou cria um; o gradiente que a
   equipe desenhou à mão só muda quando o ajuste traz o id dele, e as regras nunca

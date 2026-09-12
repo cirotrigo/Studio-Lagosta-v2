@@ -145,6 +145,47 @@ async function main() {
   const { lerCamadas } = await import('../src/lib/posts/page-layers')
   const { del } = await import('@vercel/blob')
 
+  // O Blob de produção devolve 403 (o desafio anti-bot) no meio da rodada: as
+  // provas 29 a 33 pararam no MESMO ponto, na logo da Lagosta que a prova
+  // renderiza dezenas de vezes. O que se prova aqui é a composição e a revisão,
+  // não a disponibilidade do Blob: neste processo, cada imagem do Blob é baixada
+  // UMA vez por URL (a URL do Blob leva sufixo aleatório, o conteúdo dela não
+  // muda), com User-Agent próprio e nova tentativa espaçada em 403/429/5xx. O
+  // "render falhando" dos passos 6 e 9 continua real: ele vem do token de
+  // gravação recusado, não da leitura de imagem.
+  const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
+  const { loadImage } = await import('@napi-rs/canvas')
+  const HOST_DO_BLOB = /^https:\/\/[^/]+\.public\.blob\.vercel-storage\.com\//
+  const bytesDoBlob = new Map<string, Promise<Buffer>>()
+  const esperasDoBlob = [20_000, 45_000, 90_000, 120_000]
+  const baixarDoBlob = async (url: string): Promise<Buffer> => {
+    for (let tentativa = 0; ; tentativa++) {
+      const r = await fetch(url, { headers: { 'user-agent': 'studio-lagosta-prova/1.0 (validar-revisor-da-arte)' } })
+      if (r.ok) return Buffer.from(await r.arrayBuffer())
+      if (![403, 429, 500, 502, 503, 504].includes(r.status) || tentativa >= esperasDoBlob.length) throw new Error(`o Blob respondeu ${r.status}`)
+      console.log(`  (Blob ${r.status} em ${url.split('/').pop()} — nova tentativa em ${esperasDoBlob[tentativa] / 1000}s)`)
+      await new Promise((pronto) => setTimeout(pronto, esperasDoBlob[tentativa]))
+    }
+  }
+  const prototipo = CanvasRenderer.prototype as unknown as { nodeImageLoader?: (url: string) => Promise<unknown> }
+  const carregarOriginal = prototipo.nodeImageLoader
+  if (typeof carregarOriginal !== 'function') abortar('CanvasRenderer.nodeImageLoader não existe mais: a leitura do Blob desta prova precisa ser refeita.')
+  prototipo.nodeImageLoader = async function (this: unknown, url: string) {
+    if (!HOST_DO_BLOB.test(url)) return carregarOriginal!.call(this, url)
+    let bytes = bytesDoBlob.get(url)
+    if (!bytes) {
+      bytes = baixarDoBlob(url)
+      bytesDoBlob.set(url, bytes)
+      bytes.catch(() => bytesDoBlob.delete(url))
+    }
+    try {
+      return await loadImage(await bytes)
+    } catch (erro) {
+      console.error('[prova] imagem do Blob indisponível:', url, erro)
+      throw new Error(`Failed to load image: ${url}`)
+    }
+  }
+
   const projeto = await db.project.findUnique({ where: { id: PROJETO }, select: { id: true, name: true, userId: true } })
   if (!projeto) abortar(`Projeto ${PROJETO} não existe neste banco.`)
 
@@ -1544,7 +1585,12 @@ async function main() {
   if (mau > 0) process.exitCode = 1
 }
 
-main().catch((e) => {
-  console.error(e)
-  process.exit(1)
-})
+main().then(
+  // Sai explicitamente: as provas 32 e 33 imprimiram o resumo e o cleanup e o
+  // processo ficou pendurado por uma hora com conexões de banco abertas.
+  () => process.exit(process.exitCode ?? 0),
+  (e) => {
+    console.error(e)
+    process.exit(1)
+  },
+)
