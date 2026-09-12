@@ -27,6 +27,7 @@ import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { papeisQueFaltam, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
 import { aplicarPrefixo, camadaDoPapel, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
 import type { ArranjoDeGrupo } from './combinacoes'
+import { lerDestaques } from './destaques'
 import { prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
 
@@ -229,7 +230,10 @@ export function medirCopy(args: {
 
   const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean): MedidaDeLinha[] => {
     const coluna = Math.floor(area.colunaUtil * (estilo.larguraMaxima ?? 1))
-    const limpas = linhasDaCopy.map(semColchetes)
+    // O texto EFETIVO da linha é o que `montarBloco` mede: `lerDestaques` tira
+    // os colchetes — inclusive o colchete sem par, que a montagem remove com
+    // aviso (R07). `linha` continua sendo a string do autor.
+    const limpas = linhasDaCopy.map((l) => lerDestaques(l).texto)
     const base = camadaDoPapel({ papel, linhas: limpas, estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
     // A linha EFETIVA leva o prefixo da assinatura (o "→ " do CTA) como a
     // montagem a mede; `linha` continua sendo a string do autor (R06).
@@ -286,7 +290,7 @@ export function medirCopy(args: {
       height: null,
       linhas: r.linhasDaCopy.length,
       naoMedido,
-      aproximado: r.linhasDaCopy.some((l) => /\[[^\]]+\]/.test(l)),
+      aproximado: r.linhasDaCopy.some((l) => lerDestaques(l).trechos.length > 0),
       linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido),
       orcamento: r.orcamento,
       avisos: [
@@ -313,8 +317,4 @@ export function medirCopy(args: {
     arranjos: preparados.arranjos,
     avisos,
   }
-}
-
-function semColchetes(linha: string): string {
-  return linha.replace(/\[([^\]]+)\]/g, '$1')
 }

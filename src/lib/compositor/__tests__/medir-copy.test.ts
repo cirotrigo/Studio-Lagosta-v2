@@ -206,6 +206,19 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
     expect(jaComSeta.blocos.find((b) => b.papel === 'cta')!.linhasMedidas[0].largura).toBe(Math.round('→ Reserve já'.length * 27.5))
   })
 
+  it('colchete sem par: a linha é medida com o texto EFETIVO que a montagem desenha (R07) — "[" + 18 letras cabe em escala 1, a linha diz cabe, a string do autor volta inteira e o aviso fica', () => {
+    const abertoSemPar = '[' + 'a'.repeat(18)
+    const r = medirCopy({ ...base, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: [abertoSemPar] }] } })
+    expect(r.blocos[0].situacao).toBe('cabe')
+    expect(r.blocos[0].escala).toBe(1)
+    expect(r.blocos[0].linhasMedidas[0]).toMatchObject({ linha: abertoSemPar, largura: 18 * 55, cabe: true })
+    expect(r.blocos[0].aproximado).toBe(false)
+    expect([...r.blocos[0].avisos, ...r.avisos].some((a) => /colchete/i.test(a))).toBe(true)
+    const fechadoSemPar = 'a'.repeat(18) + ']'
+    const r2 = medirCopy({ ...base, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: [fechadoSemPar] }] } })
+    expect(r2.blocos[0].linhasMedidas[0]).toMatchObject({ linha: fechadoSemPar, largura: 18 * 55, cabe: true })
+  })
+
   it('o orçamento antes do texto: caracteres por linha pela amostra em português e linhas na altura útil, por papel; sem fonte, nulo', () => {
     const o = orcamentoDaVariante({ assinatura, formato: 'story', medir: medirFalso, fontesNaoCarregadas: new Set() })
     // 1000 / (100 × 0,55) = 18,18 → 18 caracteres na headline; 1000 / 22 = 45,45 → 45 no apoio
