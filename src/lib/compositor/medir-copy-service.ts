@@ -12,7 +12,8 @@ import { familiasNaoCarregadas, registerProjectFonts } from '@/lib/posts/registe
 import { parsePageLayers } from '@/lib/posts/page-layers'
 import type { Layer } from '@/types/template'
 import { formatoDaPagina, montarAssinatura, NOME_DO_TEMPLATE_DE_ASSINATURA, papelDoNome, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
-import { arranjosDasCombinacoes, carregarAssinatura, carregarFoto, familiasDoProjeto, luzMediaDaFoto } from './compor'
+import { arranjosDasCombinacoes, carregarAssinatura, familiasDoProjeto, luzMediaDaFoto } from './compor'
+import { carregarFotoParaMedir } from './foto-para-medir'
 import { chaveDaPeca } from './preparar-blocos'
 import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
 import { DIMENSOES, validarSpec, type Formato, type Papel, type SpecDePeca } from './spec'
@@ -79,7 +80,9 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   let luzDaFoto: number | null = null
   const avisosDaFoto: string[] = []
   if (spec.foto) {
-    const { foto, aviso } = await carregarFoto(spec)
+    // SEM publicar no Blob: a medição é leitura (R10). A luz e a escolha da
+    // variante saem dos mesmos bytes que a composição usaria.
+    const { foto, aviso } = await carregarFotoParaMedir(spec)
     if (aviso) avisosDaFoto.push(aviso)
     luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, DIMENSOES[spec.formato]) : null
   }
@@ -207,7 +210,11 @@ export async function descreverVariantes(projectId: number, formato: Formato): P
     })
     // As famílias de TODOS os textos reconhecidos da variante (o segundo serviço
     // com fonte própria incluído), não só o primeiro estilo de cada papel (R09).
-    const familiasDaVariante = familiasUsadasNaVariante(a, camadas)
+    // …incluindo o destaque AUTOMÁTICO (`pesado`), resolvido pela mesma função
+    // da preparação dos blocos — sem isso `ver-assinatura` dizia "nenhuma
+    // ausente" enquanto `medir-copy` com [colchetes] declarava a família
+    // pesada ausente (R11).
+    const familiasDaVariante = familiasUsadasNaVariante(a, camadas, familias)
     const naoCarregadas = await familiasNaoCarregadas([...familiasDaVariante, ...familias])
     const papeis = [...new Set(camadas.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))]
     const area = areaUtilDe(a, formato)

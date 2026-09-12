@@ -285,6 +285,18 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
     expect(familiasUsadasNaVariante(a)).toContain('Fonte Rara')
   })
 
+  it('o destaque AUTOMÁTICO conta (R11): marca com `pesado: true` e "Barlow Bold" cadastrada → a família pesada do serviço entra nas famílias da variante, e medirCopy com [colchetes] declara a MESMA ausência', () => {
+    const camadas: Layer[] = [texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#fff', lineHeight: 1 }), texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#fff', lineHeight: 1.2 })]
+    const pesada = montarAssinatura({ pagina: { id: 'p11', width: 1080, height: 1920, layers: camadas }, formatoDaPagina: 'story', numerosDoProjeto: { destaque: { pesado: true } } })
+    const familias = ['Bevan', 'Barlow', 'Barlow Bold']
+    expect(familiasUsadasNaVariante(pesada, camadas, familias)).toEqual(expect.arrayContaining(['Barlow', 'Barlow Bold']))
+    // sem a lista das cadastradas não há como resolver a família pesada — ela não é inventada
+    expect(familiasUsadasNaVariante(pesada, camadas)).not.toContain('Barlow Bold')
+    const r = medirCopy({ ...base, assinatura: pesada, familias, fonteCarregada: carregadaExceto('Barlow Bold'), formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['[Seg] a sex, 11h'] }] } })
+    expect(r.fontesNaoCarregadas).toEqual(['Barlow Bold'])
+    expect(r.blocos.find((b) => b.papel === 'servico')?.naoMedido).toBe(true)
+  })
+
   it('o orçamento antes do texto: caracteres por linha pela amostra em português e linhas na altura útil, por papel; sem fonte, nulo', () => {
     const o = orcamentoDaVariante({ assinatura, formato: 'story', medir: medirFalso, fontesNaoCarregadas: new Set() })
     // 1000 / (100 × 0,55) = 18,18 → 18 caracteres na headline; 1000 / 22 = 45,45 → 45 no apoio

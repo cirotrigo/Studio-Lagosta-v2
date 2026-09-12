@@ -29,7 +29,7 @@ import { estiloDaCamada, papeisQueFaltam, papelDoNome, type AssinaturaDaMarca, t
 import { aplicarPrefixo, camadaDoPapel, larguraExtraDoDestaque, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
 import type { ArranjoDeGrupo } from './combinacoes'
 import { lerDestaques, type EstiloDeDestaque } from './destaques'
-import { prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
+import { estiloDeDestaqueDoPapel, prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
 
 /** Amostra em português para o orçamento por caracteres (a largura média de uma letra da marca). */
@@ -333,24 +333,31 @@ export function medirCopy(args: {
  * As famílias que a variante efetivamente USA: a de cada papel, a de TODO texto
  * reconhecido da página (o segundo serviço com fonte própria, que
  * `montarAssinatura` não guarda em `papeis` — só o primeiro estilo de cada
- * papel), a do destaque desenhado na página e a do destaque padrão. É contra
- * esta lista que `ver-assinatura` declara as fontes ausentes (R09 da revisão de
- * fd82505c): pela lista de `papeis`, a "Fonte Rara" do segundo serviço sumia da
- * resposta e o texto era medido em fallback sem aviso.
+ * papel), a do destaque desenhado na página, a do destaque padrão E a do
+ * destaque AUTOMÁTICO de cada estilo — a família pesada que `pesado: true`
+ * escolhe entre as cadastradas (`familias`), resolvida pela MESMA função da
+ * preparação dos blocos (`estiloDeDestaqueDoPapel`). É contra esta lista que
+ * `ver-assinatura` declara as fontes ausentes: pela lista de `papeis`, a
+ * "Fonte Rara" do segundo serviço sumia da resposta (R09 da revisão de
+ * fd82505c); só com as famílias explícitas, a "Barlow Bold" que o destaque
+ * automático usaria sumia também, e `medir-copy` com [colchetes] a declarava
+ * ausente enquanto `ver-assinatura` dizia "nenhuma" (R11 da revisão de
+ * 775f4377).
  */
-export function familiasUsadasNaVariante(a: AssinaturaDaMarca, camadas: Layer[] = a.camadasDaPagina ?? []): string[] {
+export function familiasUsadasNaVariante(a: AssinaturaDaMarca, camadas: Layer[] = a.camadasDaPagina ?? [], familias: string[] = []): string[] {
   const out = new Set<string>()
-  for (const e of Object.values(a.papeis) as EstiloDePapel[]) {
+  const olhar = (e: EstiloDePapel) => {
     if (e.fontFamily) out.add(e.fontFamily)
     if (e.destaque?.fontFamily) out.add(e.destaque.fontFamily)
+    const efetivo = estiloDeDestaqueDoPapel(e, a.numeros.destaque, familias)
+    if (efetivo?.fontFamily) out.add(efetivo.fontFamily)
   }
+  for (const e of Object.values(a.papeis) as EstiloDePapel[]) olhar(e)
   for (const c of camadas) {
     if ((c.type !== 'text' && c.type !== 'rich-text') || c.visible === false) continue
     if (!papelDoNome(c.name) && !papelDoNome(c.id)) continue
     const e = estiloDaCamada(c, camadas)
-    if (!e) continue
-    out.add(e.fontFamily)
-    if (e.destaque?.fontFamily) out.add(e.destaque.fontFamily)
+    if (e) olhar(e)
   }
   if (a.numeros.destaque.fontFamily) out.add(a.numeros.destaque.fontFamily)
   return [...out]

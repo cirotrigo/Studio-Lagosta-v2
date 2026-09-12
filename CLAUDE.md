@@ -7475,6 +7475,21 @@ que NADA é gravado e que a medida é a da composição).
   detectada entre as cadastradas — o texto era medido em fallback sem aviso
   (R09). Camada oculta e camada sem papel ficam de fora. `descreverVariantes` é
   testado com o serviço mockado (Prisma, medidor e registro de fontes).
+  🔴 **O destaque AUTOMÁTICO conta** (R11 da revisão de 775f4377): com
+  `destaque.pesado: true` a composição resolve a família pesada do papel entre
+  as CADASTRADAS (`familiaMaisPesada`), e `familiasUsadasNaVariante` faz a
+  mesma conta (`estiloDeDestaqueDoPapel`, a função da preparação dos blocos)
+  — só com as famílias explícitas, `ver-assinatura` dizia "nenhuma ausente"
+  enquanto `medir-copy` com [colchetes] declarava a "Barlow Bold" ausente.
+- 🔴 **`medir-copy` é LEITURA e não escreve no Blob** (R10 da revisão de
+  775f4377): `carregarFoto` do compositor resolve a foto do Drive por
+  `resolveImageUrl`, que PUBLICA `drive-cache/<id>-s1920.jpg` (público,
+  sobrescrevendo) — certo para compor, errado para medir. A medição lê os
+  bytes por `carregarFotoParaMedir` (`foto-para-medir.ts`: a URL dada, ou a
+  miniatura grande do Drive, sem `put`); a luz e a escolha da variante saem
+  iguais. O módulo não importa `@vercel/blob` nem `persist.ts`, e há teste
+  que confere isso no fonte. A prova mede com uma foto real do acervo (Drive
+  só leitura).
 - **O orçamento ANTES do texto** (`orcamentoDaVariante`) é medido com uma
   amostra em português (`AMOSTRA_DO_ORCAMENTO`) na fonte real de cada papel:
   caracteres por linha e linhas na altura útil, por variante. É aproximado por

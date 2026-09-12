@@ -188,6 +188,20 @@ async function main() {
       pendente('papel-ausente pela tool', `todas as ${deStory.length} variantes de story deste projeto têm os cinco papéis — o caso está coberto pelo teste unitário (medir-copy.test.ts)`)
     }
     const semVariante = await tool('medir-copy', { projectId: PROJETO, formato: 'story', blocos: [{ papel: 'headline', linhas: [curta] }] })
+
+    // 2c) medir-copy COM foto do Drive: a luz da foto entra na escolha da variante e a escolha deixa de ser provisória —
+    // a foto é lida direto (miniatura do Drive), sem publicar cópia no Blob (R10): leitura que não escreve.
+    const { lerCatalogoDoProjeto } = await import('../src/lib/creatives/acervo')
+    const catalogo = (await lerCatalogoDoProjeto(PROJETO)) as unknown
+    const listaDoCatalogo: Array<{ driveFileId?: string }> = Array.isArray(catalogo) ? catalogo : ((catalogo as { imagens?: unknown[]; todas?: unknown[] } | null)?.imagens ?? (catalogo as { todas?: unknown[] } | null)?.todas ?? []) as Array<{ driveFileId?: string }>
+    const fotoDoAcervo = listaDoCatalogo.find((i) => typeof i?.driveFileId === 'string')?.driveFileId ?? null
+    if (fotoDoAcervo) {
+      const comFoto = await medirCopyDoProjeto({ projectId: PROJETO, formato: 'story', blocos: [{ papel: 'headline', linhas: [curta] }], fotoDriveId: fotoDoAcervo })
+      conferir(`2c) medir-copy com a foto ${fotoDoAcervo} do acervo (lida do Drive, sem publicar): variante escolhida pela luz, escolha NÃO provisória, sem aviso de foto`, comFoto.escolhaProvisoria === false && !!comFoto.variante.id && !comFoto.medicao.avisos.some((a) => /foto/i.test(a)), JSON.stringify({ variante: comFoto.variante.nome, motivo: comFoto.variante.motivo, avisos: comFoto.medicao.avisos.slice(0, 2) }).slice(0, 220))
+    } else {
+      console.log('  ○ 2c) o acervo do projeto não devolveu foto com driveFileId — a leitura sem Blob fica com o teste unitário (foto-para-medir.test, medir-copy-service.test)')
+      pendentesDaProva++
+    }
     conferir('sem variante pedida, medir-copy escolhe como a composição (motivo declarado), mede as OUTRAS variantes do formato e, sem a foto, diz que a escolha é PROVISÓRIA com o jeito de fixá-la', typeof semVariante.variante.motivo === 'string' && Array.isArray(semVariante.outrasVariantes) && semVariante.outrasVariantes.length === deStory.length - 1 && semVariante.outrasVariantes.every((o: any) => typeof o.cabeTudo === 'boolean') && semVariante.escolhaProvisoria === true && /preferencias.variante/.test(semVariante.comoFixar ?? ''), JSON.stringify({ variante: semVariante.variante, outras: semVariante.outrasVariantes.length, provisoria: semVariante.escolhaProvisoria }))
     conferir('as fontes NÃO carregadas são declaradas por nome, e todo bloco naoMedido é de uma delas', (mCurta.fontesNaoCarregadas ?? []).every((f: string) => typeof f === 'string') && mCurta.blocos.every((b: any) => !b.naoMedido || (mCurta.fontesNaoCarregadas ?? []).includes(b.fonte)), JSON.stringify(mCurta.fontesNaoCarregadas ?? []))
     writeFileSync(resolve(SAIDA, 'medir-copy.json'), JSON.stringify({ mCurta, mComprida, mEnorme, mDestaque, semVariante }, null, 2))
