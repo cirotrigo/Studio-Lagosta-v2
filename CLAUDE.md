@@ -5848,3 +5848,38 @@ Codex antes de ser escrito.
   marca dela. `revisarArte` compara os textos visíveis com as métricas e passa
   `textosSemMetrica`; `avaliarPeca` rebaixa para `parcial`, com os ids, tudo
   que depende da métrica (inclusive a visão). Prova 6t.
+
+**Da revisão FINAL do Codex sobre 618e45f7 (BLOQUEADO, REV-FINAL-01…02, 12/09/2026):**
+
+- 🔴 **O render do ajuste só PUBLICA se a página ainda estiver na versão que
+  ele desenhou** (REV-FINAL-01). A proteção de versão cobria a escrita das
+  CAMADAS; a miniatura e a Generation eram gravadas sem conferir nada.
+  Intercalação real: numa peça sem post, o ajuste A grava V1 e renderiza; o
+  ajuste B lê V1, grava V2 e publica; A termina por último, regravava a
+  miniatura e virava a Generation mais recente com V1 — e `agendarPost`
+  reutiliza a miniatura como mídia `RENDERED`, fora da fila de renders.
+- **`renderPageAndRegister` recebe `versaoEsperada`** (o hash de
+  `versaoDaPagina` das camadas que renderizou) e publica numa transação só:
+  trava a linha da página (`SELECT … FOR UPDATE`), relê a versão, grava
+  miniatura e Generation. Mudou → PNG apagado, nada publicado,
+  `PAGINA_MUDOU_DURANTE` (409; no ajuste, com `ajusteGravado: true`). Quem
+  gravou a versão seguinte responde pela arte dela; a agenda é avisada como no
+  render que falha.
+- 🔴 **A conferência é pelo CONTEÚDO, nunca `updatedAt`.** O autosave do
+  PageSync que só troca a miniatura move o carimbo sem mudar o desenho, e
+  descartar por ele recusaria ajuste bom. Os outros chamadores (fila COMPOR,
+  recomposição, arte nova) não passam versão e seguem como antes — a
+  recomposição já confere a versão no runner.
+- 🔴 **Mapa de copy por camada usa `chaveUnicaDeTexto`** (`page-layers.ts`, a
+  regra `#2`, `#3` de `textosDaPagina`), nunca `Object.fromEntries` por
+  `name ?? id` (REV-FINAL-02). `copyVisualDasCamadas` colapsava duas camadas
+  de mesmo nome ("Texto" em texto simples e em rich text): o PNG mostrava as
+  duas, e a copy visual regravada pela recuperação, a conferência de texto e o
+  post agendado por Generation/URL ficavam só com a última. O conteúdo entra
+  inteiro, sem trim. Generation antiga já colapsada é regravada com os dois na
+  próxima recuperação forçada.
+- Provas: `ajuste-render-atrasado.test.ts` (A parado no `put`, B completo, A
+  liberado por último; e o autosave de miniatura no meio, que NÃO descarta),
+  `copy-visual-nomes-repetidos.test.ts` (as três codificações de
+  `Page.layers`) e o passo 9k da prova de integração (costura
+  `_prova.antesDePublicar`; escrito, ainda não rodado).

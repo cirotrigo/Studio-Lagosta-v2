@@ -1494,6 +1494,76 @@ async function main() {
         conferir(`[${formato}] agendar por mediaUrls casada pela URL nova: idem`, valoresUrl9j.includes(textoApoio9j) && !valoresUrl9j.includes(textoPre9j), JSON.stringify(valoresUrl9j).slice(0, 160))
       }
     }
+
+    // ── 9k. REV-FINAL-01 (revisão FINAL do Codex sobre 618e45f7): o render ATRASADO de um ajuste não publica ──
+    // Peça SEM post. O ajuste A grava V1 e para DEPOIS de subir o PNG, antes da publicação (costura
+    // `_prova.antesDePublicar`); dentro da parada o ajuste B revisa (lê V1), grava V2, renderiza e publica. A é
+    // liberado por último. Esperado: A recusa com PAGINA_MUDOU_DURANTE (ajuste gravado, arte descartada), a página em
+    // V2, miniatura e Generation mais recente de B, nenhuma Generation de A, e o 1º agendamento pela página com a arte
+    // de B. (O PNG de A é apagado pelo próprio persist; a URL dele não chega à prova.)
+    console.log('9k) REV-FINAL-01: dois ajustes intercalados numa peça sem post — o render de A que termina por último é descartado; miniatura, Generation e agendamento ficam com B')
+    {
+      const { versaoDaPagina: versaoDaPagina9k } = await import('../src/lib/creatives/revisao/versao')
+      const quando9k = `${daqui7.toISOString().slice(0, 10)} 23:00`
+      const composta9k = await comporPeca(
+        {
+          projectId: PROJETO,
+          formato: 'story',
+          foto: { url: fotoUrl },
+          blocos: [
+            { papel: 'headline', linhas: ['Título do 9k', 'segunda linha'] },
+            { papel: 'apoio', linhas: ['Apoio do 9k.'] },
+          ],
+          nome: `${MARCA} peça 9k`,
+          quando: quando9k,
+          tema: `${MARCA} teste`,
+        },
+        { canal: 'claude-code' },
+      )
+      const persistido9k = composta9k.persistido
+      if (!persistido9k) throw new Error(`a peça do 9k não foi persistida: ${JSON.stringify(composta9k).slice(0, 200)}`)
+      const pageId9k = persistido9k.pageId
+      paginasCriadas.push(pageId9k)
+      blobs.add(persistido9k.url)
+      conferir('a peça do 9k nasce SEM post', (await db.socialPost.count({ where: { pageId: pageId9k } })) === 0)
+      const manchete9k = (await camadasDaPagina(pageId9k)).find((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false && typeof c.content === 'string' && c.content.trim())
+      if (!manchete9k) throw new Error('a peça do 9k não tem texto visível')
+      const yAntes9k = Number(manchete9k.position?.y)
+      const onde9k = { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId9k } }
+      const gensAntes9k = await db.generation.count({ where: onde9k })
+      const estado9k: { b: Awaited<ReturnType<typeof ajustarArte>> | null } = { b: null }
+      const r9kA = await revisarArte({ projectId: PROJETO, pageId: pageId9k, visao: false, previa: false })
+      const e9kA = await erroDe(
+        ajustarArte({
+          projectId: PROJETO,
+          pageId: pageId9k,
+          versaoEsperada: r9kA.versao,
+          ajustes: [{ tipo: 'mover', camadas: [String(manchete9k.id)], dy: -8 }],
+          canal: 'claude-code',
+          _prova: {
+            antesDePublicar: async () => {
+              const r9kB = await revisarArte({ projectId: PROJETO, pageId: pageId9k, visao: false, previa: false })
+              estado9k.b = await ajustarArte({ projectId: PROJETO, pageId: pageId9k, versaoEsperada: r9kB.versao, ajustes: [{ tipo: 'mover', camadas: [String(manchete9k.id)], dy: -6 }], canal: 'claude-code' })
+              if (estado9k.b.url) blobs.add(estado9k.b.url)
+            },
+          },
+        }),
+      )
+      const b9k = estado9k.b
+      conferir('A recusa com PAGINA_MUDOU_DURANTE (409) e diz que o ajuste foi gravado; B terminou', e9kA?.code === 'PAGINA_MUDOU_DURANTE' && e9kA.status === 409 && !!b9k, e9kA?.message.slice(0, 80))
+      if (!b9k) throw new Error('o ajuste B do 9k não terminou')
+      const pagina9k = await db.page.findUnique({ where: { id: pageId9k }, select: { thumbnail: true, width: true, height: true, background: true, layers: true } })
+      const yDepois9k = Number((lerCamadas(pagina9k!.layers).camadas.find((c) => c.id === manchete9k.id) as Record<string, any> | undefined)?.position?.y)
+      conferir('a página está em V2: os dois deslocamentos (−8 e −6) e a versão que B devolveu', yDepois9k === yAntes9k - 14 && versaoDaPagina9k(pagina9k!) === b9k.versao, JSON.stringify({ yAntes9k, yDepois9k }))
+      conferir('a miniatura da página é a de B, nunca a de A', pagina9k?.thumbnail === b9k.url, String(pagina9k?.thumbnail).slice(-48))
+      const maisRecente9k = await db.generation.findFirst({ where: onde9k, orderBy: { createdAt: 'desc' }, select: { id: true, resultUrl: true } })
+      const gensDepois9k = await db.generation.count({ where: onde9k })
+      conferir('a Generation mais recente da página é a de B, e A não registrou nenhuma (uma a mais, só)', maisRecente9k?.id === b9k.generationId && maisRecente9k.resultUrl === b9k.url && gensDepois9k === gensAntes9k + 1, JSON.stringify({ gensAntes9k, gensDepois9k }))
+      const post9k = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: quando9k, pageId: pageId9k, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-final-01` })
+      posts.push(post9k.postId)
+      const postDo9k = await db.socialPost.findUnique({ where: { id: post9k.postId }, select: { renderStatus: true, mediaUrls: true, generationId: true } })
+      conferir('o 1º agendamento pela página nasce com a arte de B (RENDERED com a miniatura de B, vinculado à Generation de B)', postDo9k?.renderStatus === 'RENDERED' && postDo9k.mediaUrls[0] === b9k.url && postDo9k.generationId === b9k.generationId, JSON.stringify(postDo9k).slice(0, 200))
+    }
   } catch (erro) {
     // O erro da prova é impresso ANTES do cleanup: sem isto uma falha no
     // cleanup engoliria a causa (aconteceu na primeira rodada).

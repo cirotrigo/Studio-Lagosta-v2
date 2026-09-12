@@ -112,11 +112,23 @@ export function textosDaPagina(layers: unknown): Record<string, string> {
     if (layer.visible === false) continue
     const conteudo = typeof layer.content === 'string' ? layer.content.trim() : ''
     if (!conteudo) continue
-    const base = layer.name ?? layer.id ?? 'texto'
-    let chave = base
-    let n = 2
-    while (chave in out) chave = `${base}#${n++}`
-    out[chave] = conteudo
+    out[chaveUnicaDeTexto(out, layer)] = conteudo
   }
   return out
+}
+
+/**
+ * A chave de um texto num mapa por nome de camada — `name`, senão `id`, senão
+ * `texto` —, com o sufixo `#2`, `#3`… quando a chave já está no mapa. É a
+ * regra de `textosDaPagina`, exportada para todo mapa de copy por camada usar
+ * a MESMA: com `Object.fromEntries` por `name ?? id`, a segunda camada de mesmo
+ * nome apagava a primeira (REV-FINAL-02 da revisão FINAL do Codex sobre
+ * 618e45f7, 12/09/2026 — a copy visual da recuperação perdia um dos textos).
+ */
+export function chaveUnicaDeTexto(mapa: Record<string, unknown>, layer: { name?: unknown; id?: unknown }): string {
+  const base = String(layer.name ?? layer.id ?? 'texto')
+  let chave = base
+  let n = 2
+  while (chave in mapa) chave = `${base}#${n++}`
+  return chave
 }

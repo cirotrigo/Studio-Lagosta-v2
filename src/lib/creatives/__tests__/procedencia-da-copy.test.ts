@@ -39,6 +39,17 @@ describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-
     expect(lerProcedencia({ slotValues: copyVisualDasCamadas(camadas), copyDeAprendizado: { pre: 'Pré-título', headline: 'Título' } }, null).copyVisual).toEqual({ headline: 'Título', l3: 'Apoio rico' })
   })
 
+  it('copyVisualDasCamadas (REV-FINAL-02): nome repetido não apaga texto — a chave única de textosDaPagina, conteúdo inteiro', () => {
+    const camadas = [
+      { id: 'a', name: 'Texto', type: 'text', content: 'Almoço executivo' },
+      { id: 'b', name: 'Texto', type: 'rich-text', content: ' Até 15h ' },
+      { id: 'c', name: 'Texto', type: 'text', content: 'Oculto', visible: false },
+      { id: 'd', name: 'Texto', type: 'text', content: 'Terceiro' },
+      { type: 'text', content: 'Sem nome nem id' },
+    ]
+    expect(copyVisualDasCamadas(camadas)).toEqual({ Texto: 'Almoço executivo', 'Texto#2': ' Até 15h ', 'Texto#3': 'Terceiro', texto: 'Sem nome nem id' })
+  })
+
   it('sourcePageId: a coluna vence; o Json só vale fora de ajuste-arte', () => {
     expect(lerProcedencia({ sourcePageId: 'p-json' }, 'p-col').sourcePageId).toBe('p-col')
     expect(lerProcedencia({ sourcePageId: 'p-json' }, null).sourcePageId).toBe('p-json')

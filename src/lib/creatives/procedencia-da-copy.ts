@@ -22,7 +22,7 @@
  * `sourcePageId`: a coluna vence; o Json só é lido para linhas antigas e nunca
  * para `ajuste-arte`, em que aponta para a própria cópia ajustada.
  */
-import { lerCamadas } from '@/lib/posts/page-layers'
+import { chaveUnicaDeTexto, lerCamadas } from '@/lib/posts/page-layers'
 
 function objeto(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
@@ -48,12 +48,25 @@ function objeto(v: unknown): Record<string, unknown> | null {
 export function copyVisualDasCamadas(layers: unknown): Record<string, string> | null {
   const { camadas, legivel } = lerCamadas(layers)
   if (!legivel) return null
-  return Object.fromEntries(
-    (camadas as unknown[])
-      .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object' && !Array.isArray(l))
-      .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && typeof l.content === 'string' && (l.content as string).trim())
-      .map((l) => [String(l.name ?? l.id), l.content as string]),
-  )
+  /**
+   * 🔴 Chave ÚNICA por camada (`chaveUnicaDeTexto`, a regra de
+   * `textosDaPagina`): com `Object.fromEntries` por `name ?? id`, duas camadas
+   * com o mesmo nome ("Texto" em texto simples e em rich text) viravam UMA
+   * entrada, a segunda apagando a primeira. O PNG mostrava as duas; a copy
+   * visual regravada pela recuperação, a conferência de texto e o post
+   * agendado por Generation/URL ficavam só com a última (REV-FINAL-02 da
+   * revisão FINAL do Codex sobre 618e45f7, 12/09/2026). O conteúdo entra
+   * INTEIRO, sem trim — é o que a arte desenha.
+   */
+  const out: Record<string, string> = {}
+  for (const l of camadas as unknown[]) {
+    if (!l || typeof l !== 'object' || Array.isArray(l)) continue
+    const camada = l as Record<string, unknown>
+    if (camada.type !== 'text' && camada.type !== 'rich-text') continue
+    if (camada.visible === false || typeof camada.content !== 'string' || !camada.content.trim()) continue
+    out[chaveUnicaDeTexto(out, camada)] = camada.content
+  }
+  return out
 }
 
 export function lerProcedencia(

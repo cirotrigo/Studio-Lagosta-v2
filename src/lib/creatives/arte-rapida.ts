@@ -868,7 +868,11 @@ export interface AjustarArteInput {
   /** A `versao` da revisão: página que mudou desde então recusa o ajuste (VERSAO_DIVERGENTE). */
   versaoEsperada?: string | null
   /** Só para a prova de integração: costura que roda DENTRO da transação, entre a escrita da página e a trava. */
-  _prova?: { entreGravarETravar?: () => Promise<void> }
+  _prova?: {
+    entreGravarETravar?: () => Promise<void>
+    /** Depois de o PNG deste ajuste subir ao Blob e antes da publicação condicionada pela versão (REV-FINAL-01). */
+    antesDePublicar?: () => Promise<void>
+  }
 }
 
 export interface AjustarArteResult {
@@ -1129,12 +1133,25 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     return resultado
   }
 
+  /**
+   * A versão que ESTE ajuste gravou e que o render abaixo desenha. A miniatura
+   * e a Generation só são publicadas se a página ainda estiver nela
+   * (REV-FINAL-01 da revisão FINAL do Codex sobre 618e45f7, 12/09/2026): a
+   * proteção de versão acima cobre a escrita das CAMADAS, e o render de A que
+   * terminava depois do ajuste B (que leu a versão de A e já publicou a sua)
+   * regravava a miniatura e virava a Generation mais recente com a versão
+   * velha — o agendamento seguinte pela página nascia RENDERED com ela.
+   */
+  const versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers })
+
   // A página JÁ foi gravada: se o render falhar (Blob fora do ar), a invalidação
   // e a recomposição acontecem do mesmo jeito — senão a agenda segue com a arte
   // antiga e o retry com a versão anterior toma VERSAO_DIVERGENTE.
   let persisted: Awaited<ReturnType<typeof renderPageAndRegister>>
   try {
     persisted = await renderPageAndRegister({
+      versaoEsperada: versaoGravada,
+      antesDePublicar: input._prova?.antesDePublicar,
       project,
       templateId: page.Template.id,
       templateName: page.Template.name,
@@ -1166,6 +1183,15 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     })
   } catch (erro) {
     await avisarAgenda({ renderFalhou: true }).catch((falha) => console.warn('[ajustar-arte] invalidação depois da falha do render:', falha))
+    if (erro instanceof CreativeError && erro.code === 'PAGINA_MUDOU_DURANTE') {
+      // O render desta versão foi DESCARTADO (a página já está na seguinte): o ajuste está gravado, a arte não.
+      throw new CreativeError(
+        'PAGINA_MUDOU_DURANTE',
+        'O ajuste foi gravado na página, mas ela mudou de novo enquanto a arte era renderizada (outro ajuste ou uma edição): a arte desta versão foi descartada — não virou miniatura nem entrou na galeria. A versão atual da página é a que vale; rode revisar-arte de novo sobre ela.',
+        409,
+        { ...(erro.details ?? {}), ajusteGravado: true },
+      )
+    }
     throw erro
   }
 
@@ -1238,7 +1264,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   return {
     ajustada: true,
     ...persisted,
-    versao: versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers }),
+    versao: versaoGravada,
     ...(revisao ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados } : {}),
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
