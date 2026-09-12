@@ -67,9 +67,18 @@ describe('textosDaPeca — a mesma precedência do render', () => {
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta' } })).toEqual({ textos: ['Solta'], origem: 'copy-do-post' })
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: null })).toEqual({ textos: [] })
   })
-  it('camadas ilegíveis sem copy no post: indisponível, nunca erro; com copy, cai na copy', () => {
+  it('camadas ilegíveis sem copy no post: indisponível, nunca erro; com copy, cai na copy — dita PARCIAL, com a nota (R28)', () => {
     expect(textosDaPeca({ ...viva, slotValues: null }, { camadas: '{nao é json' }).indisponiveis).toMatch(/não puderam ser lidas/)
-    expect(textosDaPeca({ ...viva, slotValues: { headline: 'Da copy' } }, { camadas: '{nao é json' })).toEqual({ textos: ['Da copy'], origem: 'copy-do-post' })
+    const soHeadline = textosDaPeca({ ...viva, slotValues: { headline: 'Da copy' } }, { camadas: '{nao é json' })
+    expect(soHeadline).toEqual({ textos: ['Da copy'], origem: 'copy-do-post', parcial: true, nota: expect.stringMatching(/não puderam ser lidas.*só os campos que o post sobrescreveu/) })
+    // a cópia registrada (`_copiaDaPagina`) numa peça VIVA sem página legível: leitura que PRESERVA a URL de camada, parcial, com a nota
+    const registrada = textosDaPeca({ ...viva, slotValues: { _copiaDaPagina: true, headline: 'Da cópia', link: 'https://exemplo.com/x' } }, { camadas: '{nao é json' })
+    expect(registrada.textos).toEqual(['Da cópia', 'https://exemplo.com/x'])
+    expect(registrada).toMatchObject({ origem: 'copy-registrada', parcial: true, nota: expect.stringMatching(/não puderam ser lidas.*cópia da página registrada/) })
+    // sem página nenhuma (pageId null) a cópia registrada continua parcial por natureza, e a nota não fala em ilegível
+    const semPagina = textosDaPeca({ ...viva, pageId: null, slotValues: { _copiaDaPagina: true, headline: 'Da cópia' } })
+    expect(semPagina).toMatchObject({ textos: ['Da cópia'], origem: 'copy-registrada', parcial: true })
+    expect(semPagina.nota).not.toMatch(/não puderam ser lidas/)
   })
 })
 

@@ -46,6 +46,8 @@ export type OrigemDosTextos =
   | 'arte'
   /** Arte já entregue: a cópia da página registrada no último render antes da entrega. */
   | 'copy-registrada-na-entrega'
+  /** Peça VIVA sem página legível: a cópia da página registrada no agendamento (parcial por natureza — R28). */
+  | 'copy-registrada'
 
 export interface PecaParaTextos {
   pageId: string | null
@@ -268,9 +270,36 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
   }
 
-  // 4. Peça viva sem página legível (nem arte casada): a copy gravada no post.
+  // 4. Peça viva sem página legível (nem arte casada): a copy gravada no post,
+  //    DITA pelo que é (R28 da revisão de f3ac8b92). Com página ILEGÍVEL a copy
+  //    do post não cobre a peça: os campos sobrescritos são um subconjunto, e a
+  //    cópia registrada (`_copiaDaPagina`) é parcial por natureza (sem caixa,
+  //    sem ordem) — devolvê-las como leitura completa escondia preço, serviço
+  //    ou CTA na revisão semanal. E a cópia registrada passa pela leitura que
+  //    PRESERVA URL de camada (a mesma de R19), não pelo filtro genérico.
+  if (ehCopiaDaPagina(sv)) {
+    const registrada = textosDaCopiaRegistrada(sv)
+    if (registrada.length > 0) {
+      return {
+        textos: registrada,
+        origem: 'copy-registrada',
+        parcial: true,
+        nota: paginaIlegivel ? `as camadas da página não puderam ser lidas; ${NOTA_DA_COPIA_REGISTRADA}` : NOTA_DA_COPIA_REGISTRADA,
+      }
+    }
+  }
   const doPost = textosDoPost(sv)
-  if (doPost.length > 0) return { textos: doPost, origem: 'copy-do-post' }
+  if (doPost.length > 0) {
+    if (paginaIlegivel) {
+      return {
+        textos: doPost,
+        origem: 'copy-do-post',
+        parcial: true,
+        nota: 'as camadas da página não puderam ser lidas: estes são só os campos que o post sobrescreveu, e o resto do texto da peça não tem registro aqui.',
+      }
+    }
+    return { textos: doPost, origem: 'copy-do-post' }
+  }
   if (paginaIlegivel) return { textos: [], indisponiveis: 'as camadas da página não puderam ser lidas.' }
   return { textos: [] }
 }

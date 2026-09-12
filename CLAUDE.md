@@ -6340,6 +6340,13 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   mantém em dia); o re-render de slide troca só `mediaUrls` e o `slotValues`
   do carrossel fica como estava — a cópia A sobrevive à mídia B. Declara-se,
   slide a slide (`textosPorSlide`), inclusive no rascunho.
+  🔴 **Peça VIVA sem página legível também é dita PARCIAL** (R28 da revisão de
+  f3ac8b92): a copy do post é só o que ele sobrescreveu, e a cópia registrada
+  (`_copiaDaPagina`, origem `copy-registrada`) é parcial por natureza — as duas
+  voltam com `parcial` e a nota dizendo que as camadas não puderam ser lidas, e
+  a cópia registrada passa pela leitura que preserva URL de camada (a de R19),
+  não pelo filtro genérico. Sem página nenhuma, a copy do post continua sendo
+  a leitura inteira do que existe.
   **A cópia registrada é PARCIAL por natureza**: `textosDaPagina` guarda o
   texto das camadas ANTES da caixa do render e sem a ordem em que são
   desenhadas — quem a devolve (`copy-registrada-na-entrega`) declara
