@@ -5583,8 +5583,12 @@ Codex antes de ser escrito.
 - **A versão é do conteúdo** (`versaoDaPagina`: hash de dimensões, fundo e
   camadas com as chaves ordenadas), nunca `updatedAt` nem a URL. Com
   `versaoEsperada`, `ajustar-arte` recusa página que mudou (`VERSAO_DIVERGENTE`,
-  409) e grava com compare-and-set em `updatedAt`. Ajuste recusado volta com o
-  motivo; nenhum aplicável e nada mais a mudar é `AJUSTE_SEM_EFEITO`.
+  409) e grava com compare-and-set em `updatedAt`. **`versaoEsperada` é
+  OBRIGATÓRIA quando vierem `ajustes`** (`VERSAO_OBRIGATORIA`, 400; decidido em
+  12/09/2026 na revisão do Codex): ajuste calculado sobre uma versão só se
+  aplica a ela. Chamada sem `ajustes` (texto, foto, nome) continua sem exigir
+  versão. Ajuste recusado volta com o motivo; nenhum aplicável e nada mais a
+  mudar é `AJUSTE_SEM_EFEITO`.
 - **As regras da casa continuam valendo no ajuste**: a escrita é a de
   `ajustarArte` (recusa página-modelo, `invalidateScheduledRenders` +
   `pedirRecomposicaoDaArteCongelada`, Generation nova com `fieldValues.revisao`).
@@ -5601,7 +5605,16 @@ Codex antes de ser escrito.
 - `scripts/revisar-pecas-reais.ts` roda o revisor nas últimas peças do
   compositor de cada cliente, sem gravar (`--sem-visao` só mede), e imprime o
   placar por regra: regra que acusa em quase toda peça boa é limite para
-  recalibrar, não defeito da carteira.
+  recalibrar, não defeito da carteira. Recalibrado em 12/09/2026 com a régua
+  texto a texto da main (20 peças, 2 por cliente, 30 dias): 22 ajustes e UM
+  ponto como problema — o serviço em texto escuro sobre a camisa escura da Real
+  ("milk-shake em dobro"), que é defeito real e sem ajuste mecânico.
+  `scripts/revisar-antes-depois.ts` renderiza a peça antes e depois dos
+  ajustes EM MEMÓRIA (nada gravado) — é a evidência da calibração de gosto.
+  `scripts/validar-revisor-da-arte.ts` é a prova de integração no branch de
+  dev (versão, projeto errado, modelo, autosave no meio, imagem única, slide
+  de carrossel, render falhando); ela sobe PNG ao Blob de produção e apaga no
+  cleanup.
 - **Gradiente se aponta pelo id.** Sem `camadas`, o ajuste só mexe no gradiente
   de LEITURA da borda (o que o compositor desenhou) ou cria um; o gradiente que a
   equipe desenhou à mão só muda quando o ajuste traz o id dele, e as regras nunca

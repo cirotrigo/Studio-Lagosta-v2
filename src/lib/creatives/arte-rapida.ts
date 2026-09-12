@@ -932,6 +932,17 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   if (ajustesIncompletos.length > 0) {
     throw new CreativeError('AJUSTE_INVALIDO', `Ajustes incompletos — ${ajustesIncompletos.join('; ')}.`, 400)
   }
+  // Ajuste CALCULADO (pelo revisor) só se aplica sobre a versão em que foi
+  // calculado: sem `versaoEsperada` os deltas iriam para o lugar errado se a
+  // página tivesse mudado. Chamada sem `ajustes` (texto, foto, nome) continua
+  // como sempre foi.
+  if (ajustes.length > 0 && !input.versaoEsperada) {
+    throw new CreativeError(
+      'VERSAO_OBRIGATORIA',
+      'Ajustes de diagramação exigem `versaoEsperada` — a `versao` que revisar-arte devolveu. Rode revisar-arte e mande a versão junto.',
+      400,
+    )
+  }
 
   const project = await db.project.findUnique({
     where: { id: projectId },

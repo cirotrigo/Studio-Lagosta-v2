@@ -719,7 +719,7 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       },
       versaoEsperada: {
         type: 'string',
-        description: 'A `versao` que revisar-arte devolveu. Se a página mudou desde a revisão, nada é aplicado (VERSAO_DIVERGENTE) — revise de novo.',
+        description: 'A `versao` que revisar-arte devolveu. OBRIGATÓRIA quando vierem `ajustes` (VERSAO_OBRIGATORIA sem ela). Se a página mudou desde a revisão, nada é aplicado (VERSAO_DIVERGENTE) — revise de novo.',
       },
     },
     required: ['projectId', 'pageId'],
