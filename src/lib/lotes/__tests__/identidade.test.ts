@@ -13,6 +13,7 @@ import {
   hashConfere,
   hashDoPayload,
   payloadParaHash,
+  recuperacaoDaDecisao,
   situacaoDaPeca,
   validarIdentidadeDeLote,
 } from '../identidade'
@@ -183,6 +184,14 @@ describe('decisão da reserva', () => {
 
   it('geração aberta sem job: retomar só o job', () => {
     expect(decidir(registro(), 'PROCESSING', null)).toMatchObject({ acao: 'retomar', falta: 'job' })
+  })
+
+  it('a recuperação que o criador recebe: só quando a linha já apontava uma peça (R01–R02)', () => {
+    expect(recuperacaoDaDecisao(decidir(registro(), 'PROCESSING', 'FAILED'), 'g1')).toEqual({ falta: 'geracao-e-job', generationId: 'g1' })
+    expect(recuperacaoDaDecisao(decidir(registro(), 'PROCESSING', null), 'g1')).toEqual({ falta: 'job', generationId: 'g1' })
+    expect(recuperacaoDaDecisao(decidir(registro({ generationId: null, jobId: null }), null, null), null)).toBeNull()
+    expect(recuperacaoDaDecisao({ acao: 'criar' }, null)).toBeNull()
+    expect(recuperacaoDaDecisao({ acao: 'reaproveitar' }, 'g1')).toBeNull()
   })
 
   it('situação da peça lida da Generation', () => {

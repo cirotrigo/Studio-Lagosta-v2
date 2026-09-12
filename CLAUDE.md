@@ -9716,3 +9716,32 @@ comportamento de sempre. Reaproveita `GenerationJob` — nenhuma fila nova.
   `db.itemDeLote` só é tocado quando `lote` vem — aplicar o schema antes de
   expor. A prova no branch de dev é `scripts/validar-lote-duravel.ts` (ainda
   não rodada). O agendamento idempotente por item (PR 12) usa esta identidade.
+
+**Da revisão dos commits 1ba1e67f + 9517ac1d (BLOQUEADO, R01–R02, 12/09/2026)**
+
+- 🔴 **A decisão de retomada do lote é PASSADA ao caminho do plano e honrada
+  lá.** `reservarItemDeLote` entrega a `criar(tx, { recuperacao })` o que
+  `recuperacaoDaDecisao` (puro, `identidade.ts`) extrai da decisão — qual
+  Generation morreu e o que falta —, e `enfileirarComposicaoDoPlanoEm` a recebe.
+  Sem isso o caminho do plano decidia sozinho e errava nos dois sentidos.
+- 🔴 **R01 — job terminal com a Generation aberta vira Generation + job NOVOS**,
+  com o item do plano (`na-fila`, `generationId`) e a linha do lote religados
+  no MESMO commit. Antes o caminho do plano reaproveitava qualquer job anterior
+  sem olhar o status: devolvia o job FAILED como `reaproveitado`/`pendente`, a
+  fila nunca o rodava e repetir não mudava nada. Vale também para Generation
+  FAILED com o item ainda `na-fila` (a fila não conseguiu reapontá-lo).
+- 🔴 **R02 — item em voo (`na-fila`/`gerando`) que só perdeu o job ganha só o
+  job**, na MESMA Generation, com `planoRevisao`. Antes caía no caminho normal,
+  que recusava com `ITEM_EXECUCAO_CONCORRENTE` porque `na-fila` não é
+  executável. **Generation desaparecida é tratada à parte**: o job é procurado
+  pelo `item.generationId` (não pela Generation que sumiu) e a peça é refeita.
+  `gerando` volta a `na-fila` só porque `caminhoAte` acha o caminho.
+- 🔴 **A guarda de revisão ficou intacta.** Com o job, vale `mesmaRevisao` do
+  payload; sem o job, a spec e a `planoRevisao` gravadas NA Generation (a
+  criação passou a gravá-la em `fieldValues` justamente para isso — Generation
+  antiga sem o campo só confere a spec); sem os dois, sobra o vínculo do item,
+  que em voo não é editável. Item revisado, `reprovado`, `pronto`, `agendado`
+  ou com ficha `itemAtualizadoEm` velha continua recusado sem escrever nada.
+- **Sem identidade de lote, nada muda**: `recuperacao` ausente mantém o
+  reaproveitamento e as recusas de sempre. Sete mutações conferidas em
+  `fila-lote.test.ts` ("correção da revisão (R01, R02)").

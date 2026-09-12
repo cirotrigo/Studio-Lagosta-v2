@@ -30,10 +30,12 @@ import type { Prisma } from '../../../prisma/generated/client'
 import {
   decidirReserva,
   hashDoPayload,
+  recuperacaoDaDecisao,
   situacaoDaPeca,
   type DecisaoDaReserva,
   type DesfechoDoItemDeLote,
   type IdentidadeDeLote,
+  type RecuperacaoDaReserva,
   type SituacaoDaPecaDoLote,
 } from './identidade'
 
@@ -46,12 +48,17 @@ export interface EntradaDaReserva {
   payload: Record<string, unknown>
   /** Trabalho FORA da transação, só quando é preciso criar (a pasta da semana, por exemplo). */
   preparar?: () => Promise<void>
-  /** Cria (ou obtém) a Generation e o job DENTRO da transação que segura a linha. */
-  criar: (tx: ClienteDaTransacao) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean }>
+  /**
+   * Cria (ou obtém) a Generation e o job DENTRO da transação que segura a linha.
+   * `recuperacao` é a decisão da retomada (a peça que a linha aponta morreu, ou
+   * ficou sem job) e o criador tem de honrá-la — ver `RecuperacaoDaReserva`.
+   */
+  criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean }>
   /**
    * Cria só o job para uma Generation PROCESSING que ficou sem ele. Ausente,
-   * a retomada cai em `criar` (é o caso do item de plano, cujo job carrega a
-   * revisão do item e só o caminho do plano sabe montá-lo).
+   * a retomada cai em `criar` COM `recuperacao.falta === 'job'` (é o caso do
+   * item de plano, cujo job carrega a revisão do item e só o caminho do plano
+   * sabe montá-lo — sob a trava do item).
    */
   criarJob?: (tx: ClienteDaTransacao, generationId: string) => Promise<string>
 }
@@ -151,11 +158,12 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
       let generationId: string
       let jobId: string
       let reaproveitado = false
-      if (decisao.acao === 'retomar' && decisao.falta === 'job' && atual.generationId && entrada.criarJob) {
-        generationId = atual.generationId
+      const recuperacao = recuperacaoDaDecisao(decisao, atual.generationId)
+      if (recuperacao?.falta === 'job' && entrada.criarJob) {
+        generationId = recuperacao.generationId
         jobId = await entrada.criarJob(tx, generationId)
       } else {
-        const criado = await entrada.criar(tx)
+        const criado = await entrada.criar(tx, { recuperacao })
         generationId = criado.generationId
         jobId = criado.jobId
         reaproveitado = criado.reaproveitado === true

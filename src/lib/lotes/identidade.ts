@@ -186,6 +186,27 @@ export function decidirReserva(entrada: {
   return { acao: 'reaproveitar' }
 }
 
+/**
+ * O que o CRIADOR precisa saber da retomada (revisão R01–R02): a peça que a
+ * linha do lote aponta morreu, e o que falta refazer. Quem cria por outro
+ * caminho (o do item de plano) tem de HONRAR isto — sem a decisão ele via a
+ * Generation aberta e reaproveitava o job terminal (R01), ou recusava o item em
+ * voo porque `na-fila` não é executável (R02).
+ *
+ * `null` quando não há peça anterior (criar, reserva órfã): aí o criador segue
+ * o caminho normal, que pode ligar a linha à peça que o item já tinha.
+ */
+export interface RecuperacaoDaReserva {
+  falta: 'geracao-e-job' | 'job'
+  /** A Generation que a linha do lote aponta — a que morreu, ou a que ficou sem job. */
+  generationId: string
+}
+
+export function recuperacaoDaDecisao(decisao: DecisaoDaReserva, generationIdDaLinha: string | null): RecuperacaoDaReserva | null {
+  if (decisao.acao !== 'retomar' || !generationIdDaLinha) return null
+  return { falta: decisao.falta, generationId: generationIdDaLinha }
+}
+
 /** Como a peça do item está agora, lida da Generation — o retorno individual da F4. */
 export type SituacaoDaPecaDoLote = 'pendente' | 'pronta' | 'falhou'
 

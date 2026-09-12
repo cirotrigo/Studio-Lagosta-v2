@@ -413,3 +413,128 @@ describe('lote durável — bordas', () => {
     expect([...banco.itensDeLote.values()][0]).toMatchObject({ generationId: pelaBancada.generationId, tentativas: 0 })
   })
 })
+
+describe('correção da revisão (R01, R02)', () => {
+  const specDoPlano = { ...peca(1), itemDePlanoId: 'item-1', planoId: 'plano-1' }
+  const criarItemDoPlano = (extra: Record<string, unknown> = {}) =>
+    banco.itensDePlano.set('item-1', { id: 'item-1', planoId: 'plano-1', projectId: 6, status: 'proposto', updatedAt: new Date('2026-09-08'), ...extra })
+  const linhaDoLote = () => [...banco.itensDeLote.values()][0]
+  const revisaoDoJob = (jobId: string) => (banco.jobs.get(jobId)!.payload as { planoRevisao: string }).planoRevisao
+  const marcar = (tabela: 'generations' | 'jobs' | 'itensDePlano', id: string, extra: Record<string, unknown>) => banco[tabela].set(id, { ...banco[tabela].get(id), ...extra })
+
+  it.each(['na-fila', 'gerando'])('R01 — job FAILED com a Generation aberta (item "%s"): nova Generation e novo job PENDING, plano e lote apontam para ela, e a terceira chamada reaproveita', async (statusDoItem) => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    const revisao = revisaoDoJob(primeira.jobId)
+    marcar('jobs', primeira.jobId, { status: 'FAILED' })
+    marcar('itensDePlano', 'item-1', { status: statusDoItem })
+
+    const segunda = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(segunda.generationId).not.toBe(primeira.generationId)
+    expect(segunda.jobId).not.toBe(primeira.jobId)
+    expect(segunda.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.generations.get(segunda.generationId)).toMatchObject({ status: 'PROCESSING' })
+    expect(banco.jobs.get(segunda.jobId)).toMatchObject({ status: 'PENDING', generationId: segunda.generationId, payload: { planoRevisao: revisao } })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: segunda.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: segunda.generationId, jobId: segunda.jobId, situacao: 'enfileirado', tentativas: 2 })
+
+    const terceira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(terceira).toMatchObject({ generationId: segunda.generationId, jobId: segunda.jobId, lote: { desfecho: 'reaproveitado', situacao: 'pendente' } })
+    expect(banco.generations.size).toBe(2)
+    expect(banco.jobs.size).toBe(2)
+    // O job novo é executável: o cron o roda e fecha a peça.
+    expect(await rodarComoOCron(segunda.jobId)).toBe('DONE')
+    expect(banco.generations.get(segunda.generationId)?.status).toBe('COMPLETED')
+  })
+
+  it.each(['erro', 'na-fila'])('R01 — Generation FAILED com item de plano (item "%s"): nova peça ligada ao plano e ao lote, a que falhou fica como histórico', async (statusDoItem) => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    marcar('generations', primeira.generationId, { status: 'FAILED' })
+    marcar('jobs', primeira.jobId, { status: 'FAILED' })
+    marcar('itensDePlano', 'item-1', { status: statusDoItem })
+
+    const segunda = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(segunda.generationId).not.toBe(primeira.generationId)
+    expect(segunda.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(segunda.jobId)).toMatchObject({ status: 'PENDING', generationId: segunda.generationId })
+    expect(banco.generations.get(primeira.generationId)?.status).toBe('FAILED')
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: segunda.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: segunda.generationId, jobId: segunda.jobId, tentativas: 2 })
+    expect((await enfileirarPeca(specDoPlano, lote('seg-19h'))).lote?.desfecho).toBe('reaproveitado')
+    expect(banco.generations.size).toBe(2)
+    expect(banco.jobs.size).toBe(2)
+  })
+
+  it('R02 — job removido: mesma Generation, novo job executável com planoRevisao, vínculos atualizados, sem duplicar', async () => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    const revisao = revisaoDoJob(primeira.jobId)
+    banco.jobs.delete(primeira.jobId)
+
+    const r = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(r.generationId).toBe(primeira.generationId)
+    expect(r.jobId).not.toBe(primeira.jobId)
+    expect(r.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(r.jobId)).toMatchObject({ status: 'PENDING', kind: 'COMPOR', generationId: primeira.generationId, payload: { generationId: primeira.generationId, planoRevisao: revisao } })
+    expect(banco.generations.size).toBe(1)
+    expect(banco.jobs.size).toBe(1)
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: primeira.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: primeira.generationId, jobId: r.jobId, situacao: 'enfileirado', tentativas: 1 })
+
+    const repetida = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(repetida).toMatchObject({ generationId: primeira.generationId, jobId: r.jobId, lote: { desfecho: 'reaproveitado' } })
+    expect(banco.jobs.size).toBe(1)
+    expect(await rodarComoOCron(r.jobId)).toBe('DONE')
+  })
+
+  it.each([
+    ['só a Generation', false],
+    ['a Generation e o job', true],
+  ])('R02 — Generation desaparecida (%s) com o item ainda "na-fila": nova Generation e novo job, sem ITEM_EXECUCAO_CONCORRENTE', async (_caso, apagarJob) => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    banco.generations.delete(primeira.generationId)
+    if (apagarJob) banco.jobs.delete(primeira.jobId)
+
+    const segunda = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(segunda.generationId).not.toBe(primeira.generationId)
+    expect(segunda.jobId).not.toBe(primeira.jobId)
+    expect(segunda.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(segunda.jobId)).toMatchObject({ status: 'PENDING', generationId: segunda.generationId })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: segunda.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: segunda.generationId, jobId: segunda.jobId, tentativas: 2 })
+    expect((await enfileirarPeca(specDoPlano, lote('seg-19h'))).lote?.desfecho).toBe('reaproveitado')
+    expect(banco.generations.size).toBe(1)
+  })
+
+  it.each([
+    ['job FAILED', (g: { generationId: string; jobId: string }) => marcar('jobs', g.jobId, { status: 'FAILED' })],
+    ['job removido', (g: { generationId: string; jobId: string }) => banco.jobs.delete(g.jobId)],
+    ['Generation apagada, job mantido', (g: { generationId: string; jobId: string }) => banco.generations.delete(g.generationId)],
+  ])('a guarda de revisão continua (%s): item revisado depois da peça que morreu é recusado sem escrever nada', async (_caso, matar) => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    matar(primeira)
+    marcar('itensDePlano', 'item-1', { tema: 'Revisado por fora' })
+    const antes = structuredClone({ generations: banco.generations, jobs: banco.jobs, itensDeLote: banco.itensDeLote, itensDePlano: banco.itensDePlano })
+
+    await expect(enfileirarPeca(specDoPlano, lote('seg-19h'))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', status: 409 })
+    expect({ generations: banco.generations, jobs: banco.jobs, itensDeLote: banco.itensDeLote, itensDePlano: banco.itensDePlano }).toEqual(antes)
+  })
+
+  it('a ficha de concorrência continua valendo na retomada do item executável, e item reprovado não é refeito', async () => {
+    criarItemDoPlano()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    marcar('generations', primeira.generationId, { status: 'FAILED' })
+    marcar('jobs', primeira.jobId, { status: 'FAILED' })
+    marcar('itensDePlano', 'item-1', { status: 'erro' })
+    await expect(enfileirarPeca(specDoPlano, { ...lote('seg-19h'), itemAtualizadoEm: new Date('2026-09-01') })).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE' })
+
+    marcar('itensDePlano', 'item-1', { status: 'reprovado' })
+    await expect(enfileirarPeca(specDoPlano, lote('seg-19h'))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE' })
+    expect(banco.generations.size).toBe(1)
+    expect(banco.jobs.size).toBe(1)
+    expect(linhaDoLote()).toMatchObject({ generationId: primeira.generationId, jobId: primeira.jobId, tentativas: 1 })
+  })
+})

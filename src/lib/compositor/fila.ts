@@ -137,18 +137,21 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
     preparar: async () => {
       await pasta()
     },
-    criar: async (tx) => {
+    criar: async (tx, { recuperacao }) => {
       const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
       if (spec.itemDePlanoId) {
+        // A decisão da retomada vai junto: sem ela o caminho do plano reaproveitava
+        // o job terminal (R01) e recusava o item em voo sem job (R02).
         const { enfileirarComposicaoDoPlanoEm } = await import('@/lib/planos/enfileirar-composicao')
-        const p = await enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm)
+        const p = await enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, recuperacao)
         return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado }
       }
       const generation = await tx.generation.create({ data, select: { id: true } })
       const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor, autor }, tx)
       return { generationId: generation.id, jobId }
     },
-    // O job do item de plano carrega a revisão do item: só o caminho do plano o monta.
+    // O job do item de plano carrega a revisão do item: só o caminho do plano o
+    // monta, e recebe a retomada "só o job" pela `recuperacao` de `criar`.
     ...(spec.itemDePlanoId
       ? {}
       : { criarJob: (tx, generationId) => enfileirarComposicao({ generationId, projectId: spec.projectId, spec, decididoPor, autor }, tx) }),
