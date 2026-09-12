@@ -16,7 +16,7 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
-import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { copyDeCamadas, copyParaDecisao, diffDeCopy, type DiffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { lerProcedencia, AVISO_COPY_DE_ARTE_RE_RENDERIZADA } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
@@ -28,26 +28,9 @@ import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
 import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus, Prisma } from '@prisma/client'
+import { formatarBRT, parseBRT } from './data-brt'
 
-/**
- * Aceita "YYYY-MM-DD HH:mm" em horário de Brasília (o jeito que a agenda é
- * pensada no dia a dia) ou um ISO com fuso explícito.
- */
-export function parseBRT(input: string): Date {
-  if (input.includes('T') && (input.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(input))) {
-    return new Date(input)
-  }
-  const semFuso = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})$/.exec(input)
-  if (semFuso) {
-    // BRT (UTC-3) → UTC
-    return new Date(`${semFuso[1]}T${semFuso[2]}:00.000-03:00`)
-  }
-  const d = new Date(input)
-  if (Number.isNaN(d.getTime())) {
-    throw new CreativeError('DATA_INVALIDA', `Data não reconhecida: "${input}". Use "YYYY-MM-DD HH:mm" (BRT).`, 400)
-  }
-  return d
-}
+export { parseBRT } from './data-brt'
 
 /**
  * Só os valores de texto de um `slotValues`, no formato do diff de copy.
@@ -134,8 +117,59 @@ export interface AgendarPostInput {
   superficie?: Superficie
 }
 
-export async function agendarPost(input: AgendarPostInput) {
-  const project = await db.project.findUnique({
+/**
+ * O que `agendarPost` lê (e o cliente que a leitura usa). A transação de quem
+ * chama serve: o agendamento por LOTE (PR 12) resolve DENTRO da transação que
+ * segura a linha do item e a página, e nunca pelo `db` global (com o pooler do
+ * Neon o cliente tem uma conexão só — ver `reserva.ts`).
+ */
+export type LeitorDoAgendamento = Pick<Prisma.TransactionClient, 'project' | 'page' | 'generation' | 'knowledgeBaseEntry'>
+export type EscritorDoAgendamento = Pick<Prisma.TransactionClient, 'socialPost'>
+
+export interface OpcoesDaResolucao {
+  leitor?: LeitorDoAgendamento
+  /**
+   * O PNG gravado em `Page.thumbnail` serve como a arte do post? O padrão é o
+   * de sempre (qualquer thumbnail que não seja `data:`). O lote só aceita o
+   * thumbnail que É a peça que ele produziu — ver `thumbnailEhAtual`.
+   */
+  aceitarThumbnail?: (pagina: { thumbnail: string; layers: unknown }) => boolean
+  /** `false` pula a ingestão de mídia externa (o lote só usa o render da própria página). */
+  ingerir?: boolean
+}
+
+/** Tudo que `agendarPost` decidiu antes de escrever — a entrada de `criarPostDoAgendamento`. */
+export interface AgendamentoResolvido {
+  input: AgendarPostInput
+  project: { id: number; name: string; userId: string; instagramAccountId: string | null }
+  templateId: number | null
+  mediaUrls: string[]
+  midiaVeioDaPagina: boolean
+  generationId: string | null
+  sourcePageId: string | null
+  avisos: string[]
+  learningScope: EscopoAprendizado
+  vaiPublicar: boolean
+  status: PostStatus
+  quando: Date
+  /** O recado do lembrete (`reminderExtraInfo`), já aparado; nulo sem observação. */
+  observacao: string | null
+  copyDaPagina: Record<string, string> | null
+  /** A cópia textual que o POST carrega (`slotValues`): a página como está, ou a copy VISUAL da Generation (REV-2CEB-01). */
+  copyFinal: Record<string, string> | null
+  /**
+   * O lado FINAL do APRENDIZADO — a página lida por `copyParaDecisao` (a camada
+   * escondida pelo revisor conta como presente, REV-9E-01), ou a proposta. É o
+   * que os efeitos registram no corpus; nunca é a cópia do post.
+   */
+  copyDoCorpus: Record<string, string> | null
+  diffDaCopy: DiffDeCopy | null
+}
+
+/** As leituras e as validações de `agendarPost`, sem escrever nada no banco. */
+export async function resolverAgendamento(input: AgendarPostInput, opcoes: OpcoesDaResolucao = {}): Promise<AgendamentoResolvido> {
+  const leitor: LeitorDoAgendamento = opcoes.leitor ?? db
+  const project = await leitor.project.findUnique({
     where: { id: input.projectId },
     select: { id: true, name: true, userId: true, instagramAccountId: true },
   })
@@ -172,7 +206,7 @@ export async function agendarPost(input: AgendarPostInput) {
   let camadasDaPagina: unknown = null
 
   if (input.pageId) {
-    const page = await db.page.findUnique({
+    const page = await leitor.page.findUnique({
       where: { id: input.pageId },
       select: {
         templateId: true,
@@ -200,7 +234,12 @@ export async function agendarPost(input: AgendarPostInput) {
     // base64 de 150px — publicar isso mandaria uma miniatura borrada (ou uma
     // data URL que o Zernio nem aceita). Sem PNG utilizável, o post nasce sem
     // mídia e o cron renderiza a página atual.
-    if (mediaUrls.length === 0 && page.thumbnail && !page.thumbnail.startsWith('data:')) {
+    if (
+      mediaUrls.length === 0 &&
+      page.thumbnail &&
+      !page.thumbnail.startsWith('data:') &&
+      (opcoes.aceitarThumbnail ? opcoes.aceitarThumbnail({ thumbnail: page.thumbnail, layers: page.layers }) : true)
+    ) {
       mediaUrls = [page.thumbnail]
       midiaVeioDaPagina = true
     }
@@ -226,7 +265,7 @@ export async function agendarPost(input: AgendarPostInput) {
   let copyInvalidada = false
 
   if (input.generationId) {
-    const gen = await db.generation.findFirst({
+    const gen = await leitor.generation.findFirst({
       where: { id: input.generationId, projectId: project.id },
       select: { id: true, resultUrl: true, fieldValues: true, sourcePageId: true },
     })
@@ -253,7 +292,7 @@ export async function agendarPost(input: AgendarPostInput) {
       mediaUrls = [gen.resultUrl]
     }
   } else if (mediaUrls.length > 0) {
-    const gen = await db.generation.findFirst({
+    const gen = await leitor.generation.findFirst({
       where: { projectId: project.id, resultUrl: mediaUrls[0] },
       select: { id: true, fieldValues: true, sourcePageId: true },
       orderBy: { createdAt: 'desc' },
@@ -273,7 +312,7 @@ export async function agendarPost(input: AgendarPostInput) {
   if (copyInvalidada && !input.pageId) {
     avisos.push(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
   }
-  if (mediaUrls.length > 0) {
+  if (mediaUrls.length > 0 && opcoes.ingerir !== false) {
     const ingestao = await ingerirMidiaExterna(mediaUrls, project.id)
     mediaUrls = ingestao.urls
     if (ingestao.falhas.length > 0) {
@@ -299,7 +338,7 @@ export async function agendarPost(input: AgendarPostInput) {
    * pior do que gravar um vínculo torto e visível.
    */
   if (input.campaignId) {
-    const campanha = await db.knowledgeBaseEntry.findFirst({
+    const campanha = await leitor.knowledgeBaseEntry.findFirst({
       where: { id: input.campaignId, projectId: project.id },
       select: { id: true, category: true },
     })
@@ -319,9 +358,6 @@ export async function agendarPost(input: AgendarPostInput) {
   const vaiPublicar = input.situacao === 'agendado'
   const status = (vaiPublicar ? 'SCHEDULED' : 'DRAFT') as PostStatus
   const quando = parseBRT(input.scheduledDatetime)
-
-  const formatarBRT = (d: Date) =>
-    d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
 
   if (vaiPublicar && quando.getTime() < Date.now()) {
     throw new CreativeError(
@@ -383,7 +419,31 @@ export async function agendarPost(input: AgendarPostInput) {
     avisos.push('A observação só vai no lembrete de publicação manual; neste post, que publica sozinho, ela fica guardada e ninguém a recebe.')
   }
 
-  const post = await db.socialPost.create({
+  return {
+    input,
+    project,
+    templateId,
+    mediaUrls,
+    midiaVeioDaPagina,
+    generationId,
+    sourcePageId,
+    avisos,
+    learningScope,
+    vaiPublicar,
+    status,
+    quando,
+    observacao,
+    copyDaPagina,
+    copyFinal,
+    copyDoCorpus,
+    diffDaCopy,
+  }
+}
+
+/** Cria o post decidido por `resolverAgendamento`, pelo cliente de quem chama (o `db` ou a transação). */
+export async function criarPostDoAgendamento(client: EscritorDoAgendamento, r: AgendamentoResolvido) {
+  const { input, project, mediaUrls, midiaVeioDaPagina, observacao, copyDaPagina, copyFinal } = r
+  return client.socialPost.create({
     data: {
       projectId: project.id,
       userId: project.userId,
@@ -391,15 +451,15 @@ export async function agendarPost(input: AgendarPostInput) {
       caption: input.caption ?? '',
       mediaUrls,
       scheduleType: 'SCHEDULED',
-      scheduledDatetime: quando,
-      status,
+      scheduledDatetime: r.quando,
+      status: r.status,
       // REMINDER tira o post do alcance do executor e o entrega ao cron de
       // lembretes; DIRECT é o default do schema e fica implícito.
       ...(input.lembrete ? { publishType: 'REMINDER' as const } : {}),
       reminderExtraInfo: observacao,
       pageId: input.pageId ?? null,
-      templateId,
-      generationId,
+      templateId: r.templateId,
+      generationId: r.generationId,
       renderStatus: (mediaUrls.length === 0
         ? 'PENDING'
         : midiaVeioDaPagina
@@ -409,7 +469,7 @@ export async function agendarPost(input: AgendarPostInput) {
       // Sem arte pronta o cron precisa renderizar — sem isso o post fica
       // PENDING com nextRenderAt null e nunca entra na fila de render.
       ...(mediaUrls.length === 0 ? { nextRenderAt: new Date() } : {}),
-      learningScope,
+      learningScope: r.learningScope,
       campaignId: input.campaignId ?? null,
       origem: input.origem ?? null,
       sugestaoId: input.sugestaoId ?? null,
@@ -439,7 +499,59 @@ export async function agendarPost(input: AgendarPostInput) {
       learningScope: true,
     },
   })
+}
 
+/** O que os efeitos pós-criação precisam saber — tirado da resolução, ou refeito na repetição do lote. */
+export interface ContextoDosEfeitos {
+  projectId: number
+  userId: string
+  quando: Date
+  situacao: 'rascunho' | 'agendado'
+  pageId: string | null
+  generationId: string | null
+  campaignId: string | null
+  sourcePageId: string | null
+  sugestaoId: string | null
+  origem: OrigemDecisao | null
+  caption: string | undefined
+  decididoPor: string | null
+  superficie: Superficie
+  /** A copy que os efeitos registram no CORPUS (`registrarCopyDoPost`) — o `copyDoCorpus` da resolução, nunca a cópia visual do post. */
+  copyFinal: Record<string, string> | null
+  diffDaCopy: DiffDeCopy | null
+}
+
+export function contextoDosEfeitos(r: AgendamentoResolvido): ContextoDosEfeitos {
+  return {
+    projectId: r.project.id,
+    userId: r.project.userId,
+    quando: r.quando,
+    situacao: r.vaiPublicar ? 'agendado' : 'rascunho',
+    pageId: r.input.pageId ?? null,
+    generationId: r.generationId,
+    campaignId: r.input.campaignId ?? null,
+    sourcePageId: r.sourcePageId,
+    sugestaoId: r.input.sugestaoId ?? null,
+    origem: r.input.origem ?? null,
+    caption: r.input.caption,
+    decididoPor: r.input.decididoPor ?? null,
+    superficie: r.input.superficie ?? 'chat',
+    // O corpus do aprendizado recebe a leitura para DECISÃO (REV-9E-01), não a cópia visual do post.
+    copyFinal: r.copyDoCorpus,
+    diffDaCopy: r.diffDaCopy,
+  }
+}
+
+/**
+ * Os efeitos que acontecem DEPOIS de o post existir: o registro das artes, os
+ * sinais de aprendizado e a pasta da semana. Todos idempotentes pelo id do
+ * post (sinais por chave única, artes por URL, pasta por categoria) — é o que
+ * deixa o lote refazê-los numa repetição sem duplicar nada. Nenhum lança.
+ */
+export async function efeitosDoAgendamento(
+  post: { id: string; postType: PostType | string },
+  contexto: ContextoDosEfeitos,
+): Promise<{ generationDoPost: string | null }> {
   /**
    * A arte que chegou PRONTA vira Generation aqui.
    *
@@ -457,7 +569,7 @@ export async function agendarPost(input: AgendarPostInput) {
    * Nunca lança (contrato de `artes-do-post.ts`).
    */
   const registroDeArtes = await registrarArtesDoPost(post.id)
-  const generationDoPost = generationId ?? registroDeArtes.artes[0]?.generationId ?? null
+  const generationDoPost = contexto.generationId ?? registroDeArtes.artes[0]?.generationId ?? null
 
   /**
    * Sinais do agendamento. Depois do create, de propósito: a chave de
@@ -465,79 +577,88 @@ export async function agendarPost(input: AgendarPostInput) {
    * criação falhasse. Nenhuma destas chamadas lança — captura que quebra o
    * agendamento é o defeito que `captura.ts` foi escrito para impedir.
    */
-  const superficie = input.superficie ?? 'chat'
+  const superficie = contexto.superficie
   /**
    * Uma linha por slot, nunca duas. Com proposta, quem registra é
    * `fecharSugestaoDeSlot` (logo abaixo), que já grava o proposto E o
    * comprometido; sem proposta, é escolha absoluta e entra por aqui.
    */
-  if (!input.sugestaoId) {
+  if (!contexto.sugestaoId) {
     await registrarSlotDoPost({
-      projectId: project.id,
+      projectId: contexto.projectId,
       postId: post.id,
-      quando,
+      quando: contexto.quando,
       postType: post.postType,
-      situacao: vaiPublicar ? 'agendado' : 'rascunho',
-      pageId: input.pageId ?? null,
+      situacao: contexto.situacao,
+      pageId: contexto.pageId,
       generationId: generationDoPost,
-      campaignId: input.campaignId ?? null,
-      sourcePageId,
-      decididoPor: input.decididoPor ?? null,
+      campaignId: contexto.campaignId,
+      sourcePageId: contexto.sourcePageId,
+      decididoPor: contexto.decididoPor,
       superficie,
     })
   }
   await registrarCopyDoPost({
-    projectId: project.id,
+    projectId: contexto.projectId,
     postId: post.id,
-    copyFinal: copyDoCorpus,
-    diff: diffDaCopy,
-    pageId: input.pageId ?? null,
+    copyFinal: contexto.copyFinal,
+    diff: contexto.diffDaCopy,
+    pageId: contexto.pageId,
     generationId: generationDoPost,
-    campaignId: input.campaignId ?? null,
-    decididoPor: input.decididoPor ?? null,
+    campaignId: contexto.campaignId,
+    decididoPor: contexto.decididoPor,
     superficie,
   })
   // A LEGENDA tem sinal próprio: o post do fluxo de canvas nasce sem
   // slotValues e escapava do corpus inteiro (ver sinal-de-legenda.ts).
   await registrarLegendaDoPost({
-    projectId: project.id,
+    projectId: contexto.projectId,
     postId: post.id,
-    legenda: input.caption,
-    pageId: input.pageId ?? null,
+    legenda: contexto.caption,
+    pageId: contexto.pageId,
     generationId: generationDoPost,
-    campaignId: input.campaignId ?? null,
-    decididoPor: input.decididoPor ?? null,
+    campaignId: contexto.campaignId,
+    decididoPor: contexto.decididoPor,
     superficie,
   })
-  if (input.sugestaoId) {
+  if (contexto.sugestaoId) {
     await fecharSugestaoDeSlot({
-      sugestaoId: input.sugestaoId,
+      sugestaoId: contexto.sugestaoId,
       postId: post.id,
-      quando,
+      quando: contexto.quando,
       // O horário virou post: a proposta foi aceita. Se alguém a moveu antes
       // de agendar, quem corrige o desfecho é o reagendamento — a janela vai
       // até a publicação e evidência mais forte sobrescreve.
-      desfecho: input.origem === 'sugerido-editado' ? 'editada' : 'aceita-como-veio',
+      desfecho: contexto.origem === 'sugerido-editado' ? 'editada' : 'aceita-como-veio',
       contexto: {
         postType: post.postType,
-        situacao: vaiPublicar ? 'agendado' : 'rascunho',
-        sourcePageId,
+        situacao: contexto.situacao,
+        sourcePageId: contexto.sourcePageId,
       },
-      pageId: input.pageId ?? null,
+      pageId: contexto.pageId,
       generationId: generationDoPost,
-      campaignId: input.campaignId ?? null,
-      decididoPor: input.decididoPor ?? null,
+      campaignId: contexto.campaignId,
+      decididoPor: contexto.decididoPor,
       superficie,
     })
   }
 
   // Peça composta que estava nas AVULSAS (sem data) ganhou data: vai para a
   // pasta da semana na aba de templates. Nunca derruba o agendamento.
-  if (input.pageId) {
+  if (contexto.pageId) {
     const { moverPaginaParaSemana } = await import('@/lib/compositor/pastas')
-    await moverPaginaParaSemana(input.pageId, quando, project.userId)
+    await moverPaginaParaSemana(contexto.pageId, contexto.quando, contexto.userId)
   }
 
+  return { generationDoPost }
+}
+
+export async function agendarPost(input: AgendarPostInput) {
+  const r = await resolverAgendamento(input)
+  const post = await criarPostDoAgendamento(db, r)
+  await efeitosDoAgendamento(post, contextoDosEfeitos(r))
+
+  const { project, vaiPublicar, avisos } = r
   const quandoBRT = formatarBRT(post.scheduledDatetime!)
   const tipo = post.postType === 'STORY' ? 'story' : post.postType.toLowerCase()
 
