@@ -10322,3 +10322,91 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   main nunca o gravou: vale como ausência); `fieldValues.pageId` (lido, não
   comparado); o token da chamada (os dois lados são do código novo, e antes do
   deploy o `ver-plano` não o devolvia: `ITEM_REVISAO_OBRIGATORIA`).
+
+### PR 12 — do lote até os rascunhos: agendamento idempotente por item (12/09/2026)
+
+Nada impedia a mesma peça composta de virar dois rascunhos: `agendarPost` não
+tem guarda, `agenda-das-paginas` faz check-then-act sem trava e
+`colocar-na-agenda` é `idempotentHint: false`. Agora a leva de `compor-leva`
+vai à agenda por **`agendar-leva`** (catálogo `compositor.ts`) →
+`agendarItensDoLote` (`src/lib/lotes/agendar-itens.ts`), com a decisão no
+módulo puro `src/lib/lotes/agendamento.ts`. `ItemDeLote` ganhou `postId`
+(+índice), `hashDoAgendamento`, `agendadoEm` e `efeitosDoAgendamentoEm` —
+migration `20260913090000_lote_ate_rascunhos`, escrita à mão e **NÃO
+aplicada**.
+
+- 🔴 **`agendarPost` virou TRÊS funções compostas sobre o `db`**, com o
+  comportamento público igual: `resolverAgendamento(input, { leitor,
+  aceitarThumbnail, ingerir })` (leituras e validações, sem escrever),
+  `criarPostDoAgendamento(client, r)` e `efeitosDoAgendamento(post,
+  contexto)`. Quem agenda DENTRO de uma transação passa a transação como
+  `leitor`/`client` — nunca o `db` global (pooler com uma conexão). `parseBRT`
+  mudou para o módulo puro `creatives/data-brt.ts` e segue re-exportado.
+- **Decisões de produto (defaults do PR, a revisar com o Ciro):**
+  - **O hash é do PEDIDO efetivo, como feito na primeira vez**
+    (`agendamento-v1`): o instante (Brasília e ISO do mesmo minuto são o mesmo
+    pedido), o tipo, a legenda, o lembrete, o escopo normalizado e a campanha.
+  - **O mesmo pedido devolve o rascunho que existe MESMO que a equipe o tenha
+    remarcado ou editado depois** — a edição da equipe vence e nunca é
+    revertida. Outro pedido sob o mesmo item é `LOTE_AGENDAMENTO_CONFLITO`,
+    item a item; os outros itens seguem.
+  - **Post apagado da agenda não volta** (`POST_REMOVIDO`), e isso é decidido
+    ANTES do conflito: quem apagou decidiu.
+  - Composição que falhou sob o `itemId` continua na regra do PR 11 (conteúdo
+    novo sob a mesma chave é conflito).
+- 🔴 **Só se ADOTA rascunho ou agendado.** Post DRAFT/SCHEDULED que já tenha a
+  página (criado à mão, pelo editor, por `colocar-na-agenda`) é ligado ao item
+  sem criar outro, sem mudar o horário dele (volta aviso). Página que já foi a
+  post publicando, publicado ou que falhou é `PAGINA_JA_EM_POST` — criar outro
+  seria publicar duas vezes; rascunho que já pertence a outro item é
+  `POST_DE_OUTRO_ITEM`. A arte da peça já em `mediaUrls` de outro post: com
+  várias mídias é `SLIDE_DE_CARROSSEL`, com uma é `PECA_JA_NA_AGENDA` (a peça
+  agendada por `generationId`, sem página).
+- 🔴 **A decisão é tomada duas vezes**: sem trava (é o caminho de toda
+  repetição, que reaproveita sem escrever) e de novo sob `SELECT … FOR UPDATE`
+  na linha do item **E na página**, depois de reler as duas. O vínculo é
+  compare-and-set em `postId: null`; post e vínculo são um commit. Medido por
+  mutação: sem a releitura sob a trava o par concorrente cria dois posts; sem
+  o `postId: null` o vínculo por fora é sobrescrito e o post fica órfão.
+- **Os efeitos rodam DEPOIS do commit** e são idempotentes pelo id do post:
+  sinais por chave única, artes por URL, pasta por categoria,
+  `refilarPaginasDoPost` quando o horário pedido não é o da composição, e o
+  item de plano → `agendado` pelas transições válidas (`caminhoAte`,
+  best-effort — falha vira aviso). `efeitosDoAgendamentoEm` só é carimbado
+  quando tudo rodou: nulo com `postId` preenchido é a chamada que caiu entre
+  o commit e os efeitos, e a repetição os refaz sem duplicar nada.
+- 🔴 **Imagem atual: no lote, o `Page.thumbnail` só vira a arte RENDERED
+  quando É o `resultUrl` da peça E as camadas da página são as do
+  `layersSnapshot`** (`thumbnailEhAtual`, `canonico` sobre `lerCamadas`).
+  Qualquer dúvida — PNG de outro render, camada editada pelo PATCH avulso que
+  não refaz o thumbnail, snapshot ausente, página ilegível — e o post nasce
+  PENDING com `nextRenderAt`, para o cron desenhar a página como está.
+  ⚠️ **Fora do lote `agendarPost` continua aceitando qualquer thumbnail do
+  Blob** (comportamento público mantido de propósito), e o risco do rascunho
+  RENDERED com PNG velho segue lá. ⚠️ Página que o autosave apenas
+  re-serializou pode sair PENDING à toa: custa um render, nunca publica arte
+  velha — a prova mede isso.
+- **O tipo sai sempre do formato da peça** (story → STORY, feed e quadrado →
+  POST); `postType` explícito que contraria o formato é aceito com aviso. A
+  situação é sempre rascunho — publicar é `aprovar-rascunhos`.
+- **`simular: true` toma as MESMAS decisões e não escreve nada** (mutação
+  conferida). É o que roda em produção antes da chamada de verdade, e as
+  instruções mandam mostrar a conta à pessoa primeiro.
+- **`agendar-leva` é `idempotentHint: true`** (loteId e itemId obrigatórios —
+  a mesma chamada devolve os mesmos rascunhos) e `destructiveHint: false`. A
+  leva inteira é validada antes de ler qualquer item
+  (`LOTE_IDENTIDADE_INVALIDA`: itemId repetido, data ilegível, chave
+  desconhecida). Fluxo da semana nas INSTRUCTIONS: `compor-leva` (loteId +
+  itemId) → `ver-geracao` → `agendar-leva` com `simular: true` → de verdade;
+  peça avulsa segue por `colocar-na-agenda` com o `pageId`.
+- Prova no dev: `scripts/validar-lote-ate-rascunhos.ts` (**ainda não
+  rodada**) — semana de 5 com a do meio falhando por texto que não cabe,
+  simular sem escrita, repetição, par concorrente, queda entre commit e
+  efeitos, adoção, post apagado, conflito, camada editada → PENDING e feed →
+  POST. `--producao-somente-leitura` conta em produção dentro de
+  `SET TRANSACTION READ ONLY` com as mesmas decisões puras, sem chamar o
+  serviço — a garantia de só-leitura é do banco, não da disciplina.
+- ⚠️ **Em aberto**: `colocar-na-agenda`, `/agendar` e `agenda-das-paginas`
+  continuam sem idempotência nem trava da página; carrossel montado a partir
+  do lote não é agrupado (o slide é recusado); e sem a migration aplicada
+  cada item de `agendar-leva` cai em falha — aplicar antes de expor.
