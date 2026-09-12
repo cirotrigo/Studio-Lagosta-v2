@@ -541,7 +541,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
               const indisponivel = copyDaArteIndisponivel(copyAutoralAnterior, motivo)
               return indisponivel ? { copyAutoral: indisponivel } : {}
             })()),
-        recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        recomposicao: registro('feita', { origem, papeis: defasagem.papeis, ...(defasagem.fotoTrocada ? { fotoTrocada: true } : {}), avisos, urlsAnteriores: rastro }),
         // A recusa de uma rodada anterior fica superada por esta (C6-01).
         recusaDaRecomposicao: null,
       },
@@ -624,6 +624,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         recomposicao: registro('re-renderizada', {
           origem,
           papeis: defasagem.papeis,
+          ...(defasagem.fotoTrocada ? { fotoTrocada: true } : {}),
           avisos,
           urlsAnteriores: rastro,
           ...(copyVisualNova ? { copyVisualRegravada: true } : {}),
