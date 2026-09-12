@@ -6084,3 +6084,46 @@ Codex antes de ser escrito.
   `limpeza-de-blobs-da-prova.test.ts` (mensagens e consultas não rodadas) e
   `copy-visual-regravada-marcador.test.ts` (histórico por post e
   `arteTrocada`). A 6n da prova foi só tipada, não rodada aqui.
+
+### O contrato da copy autoral (F1 de "Marca simples, copy melhor", 12/09/2026)
+
+Quem escreve é o Claude, no chat; o Studio é guardião da FIDELIDADE. Até
+aqui a copy viajava como `string[]` posicional (`ItemDePlano.copyProposta`) ou
+como `Bloco[]` por papel (`spec.blocos`), e o caminho até a arte cortava,
+reordenava ou transformava o texto em pelo menos uma dezena de pontos sem
+registro (seção 6 do plano). `src/lib/copy-autoral/` é o contrato — módulo
+PURO (zod), sem Prisma, com teste de ida e volta exata.
+
+- **Por bloco: `id` estável (do autor), `funcao` (pre · headline · apoio · cta ·
+  servico · livre), `grupoDeLeitura` (os blocos que se leem como UMA frase —
+  do AUTOR, nunca deduzido do papel), `ordem` explícita (a ordem do array não
+  é contrato), `linhas` EXATAS (caixa, acento, quebra e `[colchetes]` como
+  escritos), `fatos` (as entradas da base que sustentam preço, horário, data,
+  promoção) e `estilo` (`herdaDe`, e a segunda voz da manchete DECLARADA por
+  linha em `linhasNaVoz2` — até aqui a última linha mudava de voz sozinha).**
+- **Na copy: `versao`, `origem` (quem escreveu, quando, por onde), `revisoes`
+  (toda mudança com autor claude · equipe · sistema · desconhecido, data,
+  motivo e blocos tocados) e `lacunas` (o que o contrato NÃO sabe).**
+- 🔴 **Campo OMITIDO ≠ bloco VAZIO.** O autor que não escreveu o CTA não
+  manda o bloco; o que quer a camada sem texto manda `linhas: []`. No legado
+  os dois viravam "sem texto".
+- 🔴 **O adaptador do legado DECLARA o que não sabe e NÃO INVENTA**:
+  autoria `desconhecido` (nunca "claude" por palpite), ordem pela posição
+  registrada em `lacunas`, sem grupos de leitura, e a lista posicional sai
+  com função `livre` — atribuir papel pela posição era justamente a
+  transformação silenciosa (`copyParaBlocos`) que o contrato existe para
+  expor. `copyComparavel()` é falso para autoria desconhecida: legado entra
+  na métrica como "não comparável", nunca como fidelidade comprovada.
+- **A única conversão de saída é `blocosParaOCompositor`** (contrato →
+  `Bloco[]` por papel, em ordem), e ela não transforma texto: bloco `livre`
+  volta em `semPapel` em vez de sumir — quem chama decide (recusa, camada
+  extra da F3, aviso). O PR 4 faz o compositor consumir o contrato direto.
+- **Revisão é diff EXATO** (`aplicarRevisao`/`diferencasDeBlocos`): mudar a
+  caixa ou o acento aparece como revisão de quem mexeu, e `autorDoBloco` diz
+  quem foi o último a tocar em cada bloco. Sem mudança não há revisão vazia.
+- **Validação devolve TODOS os problemas** (id repetido, ordem repetida ou
+  com buraco, grupo de um bloco só, voz 2 fora da manchete ou em linha
+  inexistente, revisão citando bloco que não existe), nunca só o primeiro.
+- Nada persiste ainda: o PR 3 grava o contrato ANTES de qualquer adaptação
+  (Page, ItemDePlano, Generation.fieldValues) e nenhum backfill inventa copy
+  original para o histórico.

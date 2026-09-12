@@ -1,0 +1,5 @@
+export * from './contrato'
+export * from './validar'
+export * from './legado'
+export * from './revisao'
+export * from './serializar'

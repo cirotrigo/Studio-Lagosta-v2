@@ -1,0 +1,178 @@
+import { describe, expect, it } from 'vitest'
+import {
+  VERSAO_DO_CONTRATO,
+  aplicarRevisao,
+  autorDoBloco,
+  blocosEmOrdem,
+  blocosParaOCompositor,
+  copyComparavel,
+  copyDeBlocosLegados,
+  copyDeListaLegada,
+  diferencasDeBlocos,
+  gruposDeLeitura,
+  lerCopyAutoral,
+  mesmaCopy,
+  serializarCopyAutoral,
+  validarCopyAutoral,
+  type CopyAutoral,
+} from '..'
+
+const copy: CopyAutoral = {
+  versao: VERSAO_DO_CONTRATO,
+  origem: { autor: 'claude', em: '2026-09-12T10:00:00.000Z', superficie: 'chat' },
+  blocos: [
+    { id: 'pre', funcao: 'pre', grupoDeLeitura: 'frase-1', ordem: 0, linhas: ['Na sexta o'] },
+    { id: 'headline', funcao: 'headline', grupoDeLeitura: 'frase-1', ordem: 1, linhas: ['Milk-shake', 'vem [em dobro]'], estilo: { linhasNaVoz2: [1] } },
+    { id: 'apoio', funcao: 'apoio', ordem: 2, linhas: ['Praia do Canto e Shopping Vitória,', 'durante todo o horário de funcionamento'] },
+    { id: 'servico', funcao: 'servico', ordem: 3, linhas: ['Seg a sáb · 11h às 22h'], fatos: [{ entradaId: 'kb-horario', trecho: '11h às 22h' }] },
+  ],
+  revisoes: [],
+}
+
+describe('o contrato da copy autoral — ida e volta EXATA', () => {
+  it('serializa e volta idêntico: caixa mista, acento, quebra e [colchetes] preservados', () => {
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(copy))
+    expect(problemas).toEqual([])
+    expect(lida).toEqual(copy)
+    expect(lida!.blocos[1].linhas).toEqual(['Milk-shake', 'vem [em dobro]'])
+    expect(lida!.blocos[2].linhas[0]).toBe('Praia do Canto e Shopping Vitória,')
+    expect(mesmaCopy(copy, lida!)).toBe(true)
+  })
+
+  it('caixa e acento diferentes NÃO são a mesma copy', () => {
+    const gritada = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['MILK-SHAKE', 'vem [em dobro]'] } : b)) }
+    const semAcento = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'apoio' ? { ...b, linhas: ['Praia do Canto e Shopping Vitoria,', b.linhas[1]] } : b)) }
+    expect(mesmaCopy(copy, gritada)).toBe(false)
+    expect(mesmaCopy(copy, semAcento)).toBe(false)
+  })
+
+  it('a ordem do array não é contrato: blocosEmOrdem segue `ordem`', () => {
+    const embaralhada = { ...copy, blocos: [copy.blocos[3], copy.blocos[1], copy.blocos[0], copy.blocos[2]] }
+    expect(validarCopyAutoral(embaralhada).problemas).toEqual([])
+    expect(blocosEmOrdem(embaralhada).map((b) => b.id)).toEqual(['pre', 'headline', 'apoio', 'servico'])
+    expect(mesmaCopy(copy, embaralhada)).toBe(true)
+  })
+
+  it('campo OMITIDO ≠ bloco VAZIO: o bloco vazio existe, com id, e volta vazio', () => {
+    const comVazio = { ...copy, blocos: [...copy.blocos, { id: 'cta', funcao: 'cta' as const, ordem: 4, linhas: [] }] }
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(comVazio))
+    expect(problemas).toEqual([])
+    expect(lida!.blocos.find((b) => b.id === 'cta')?.linhas).toEqual([])
+    expect(copy.blocos.some((b) => b.id === 'cta')).toBe(false)
+  })
+
+  it('grupos de leitura: o pré-título e a manchete formam UMA frase declarada pelo autor', () => {
+    const grupos = gruposDeLeitura(copy)
+    expect(grupos[0]).toMatchObject({ grupo: 'frase-1' })
+    expect(grupos[0].blocos.map((b) => b.id)).toEqual(['pre', 'headline'])
+    expect(grupos.map((g) => g.blocos.length)).toEqual([2, 1, 1])
+  })
+})
+
+describe('validação: o que o schema não vê', () => {
+  it('id duplicado', () => {
+    const dup = { ...copy, blocos: [...copy.blocos, { id: 'apoio', funcao: 'apoio' as const, ordem: 4, linhas: ['outro'] }] }
+    const r = validarCopyAutoral(dup)
+    expect(r.copy).toBeNull()
+    expect(r.problemas.map((p) => p.tipo)).toContain('id')
+  })
+
+  it('ordem repetida e ordem com buraco', () => {
+    const repetida = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'servico' ? { ...b, ordem: 2 } : b)) }
+    const buraco = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'servico' ? { ...b, ordem: 7 } : b)) }
+    expect(validarCopyAutoral(repetida).problemas.some((p) => p.tipo === 'ordem' && /repetida/.test(p.mensagem))).toBe(true)
+    expect(validarCopyAutoral(buraco).problemas.some((p) => p.tipo === 'ordem' && /buraco/.test(p.mensagem))).toBe(true)
+  })
+
+  it('grupo de leitura com um bloco só, voz 2 fora da manchete e voz 2 apontando para linha inexistente', () => {
+    const grupoSolto = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'pre' ? { ...b, grupoDeLeitura: 'sozinho' } : b)) }
+    expect(validarCopyAutoral(grupoSolto).problemas.some((p) => p.tipo === 'grupo')).toBe(true)
+    const voz2NoApoio = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'apoio' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b)) }
+    expect(validarCopyAutoral(voz2NoApoio).problemas.some((p) => p.tipo === 'estilo')).toBe(true)
+    const voz2Fora = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [5] } } : b)) }
+    expect(validarCopyAutoral(voz2Fora).problemas.some((p) => p.tipo === 'estilo')).toBe(true)
+  })
+
+  it('revisão que cita bloco inexistente; id com espaço recusado pelo schema; JSON ilegível', () => {
+    const revisaoRuim = { ...copy, revisoes: [{ em: '2026-09-12T11:00:00.000Z', autor: 'equipe' as const, motivo: 'x', blocos: ['fantasma'] }] }
+    expect(validarCopyAutoral(revisaoRuim).problemas.some((p) => p.tipo === 'revisao')).toBe(true)
+    const idRuim = { ...copy, blocos: copy.blocos.map((b) => (b.id === 'pre' ? { ...b, id: 'pré título' } : b)) }
+    expect(validarCopyAutoral(idRuim).problemas[0].tipo).toBe('schema')
+    expect(lerCopyAutoral('{isto não é json').problemas[0].mensagem).toBe('JSON ilegível')
+  })
+
+  it('todos os problemas voltam de uma vez, não só o primeiro', () => {
+    const varios = { ...copy, blocos: [...copy.blocos.map((b) => (b.id === 'pre' ? { ...b, grupoDeLeitura: 'sozinho' } : b)), { id: 'apoio', funcao: 'apoio' as const, ordem: 2, linhas: ['x'] }] }
+    const tipos = validarCopyAutoral(varios).problemas.map((p) => p.tipo)
+    expect(tipos).toContain('id')
+    expect(tipos).toContain('ordem')
+    expect(tipos).toContain('grupo')
+  })
+})
+
+describe('revisões: autor, data e motivo em toda mudança', () => {
+  it('mudar caixa ou acento é revisão (o diff é EXATO), e o autor do bloco passa a ser quem mexeu', () => {
+    const novos = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['MILK-SHAKE', 'vem [em dobro]'] } : b))
+    const { copy: revisada, mudancas } = aplicarRevisao(copy, novos, { autor: 'equipe', motivo: 'a Roberta pôs a manchete em caixa alta', em: '2026-09-12T12:00:00.000Z', superficie: 'editor' })
+    expect(mudancas).toEqual([{ id: 'headline', tipo: 'alterado', antes: ['Milk-shake', 'vem [em dobro]'], depois: ['MILK-SHAKE', 'vem [em dobro]'] }])
+    expect(revisada.revisoes).toHaveLength(1)
+    expect(revisada.revisoes[0]).toMatchObject({ autor: 'equipe', blocos: ['headline'], superficie: 'editor' })
+    expect(autorDoBloco(revisada, 'headline').autor).toBe('equipe')
+    expect(autorDoBloco(revisada, 'apoio').autor).toBe('claude')
+    // a original não foi mutada
+    expect(copy.revisoes).toEqual([])
+    expect(copy.blocos[1].linhas[0]).toBe('Milk-shake')
+  })
+
+  it('sem mudança nenhuma não há revisão vazia; bloco tirado e bloco posto aparecem no diff', () => {
+    expect(aplicarRevisao(copy, copy.blocos, { autor: 'sistema', motivo: 'nada' }).copy).toBe(copy)
+    const semServico = copy.blocos.filter((b) => b.id !== 'servico').concat([{ id: 'cta', funcao: 'cta', ordem: 3, linhas: ['Vem pra cá'] }])
+    const d = diferencasDeBlocos(copy, { ...copy, blocos: semServico })
+    expect(d.map((m) => [m.id, m.tipo])).toEqual([['cta', 'acrescentado'], ['servico', 'removido']])
+  })
+})
+
+describe('adaptadores do legado: declaram o que não sabem, não inventam autoria', () => {
+  it('blocos por papel (spec) → contrato, autor desconhecido, ordem pela posição, sem grupos', () => {
+    const c = copyDeBlocosLegados([
+      { papel: 'pre', linhas: ['Na sexta o'] },
+      { papel: 'headline', linhas: ['Milk-shake', 'vem [em dobro]'] },
+      { papel: 'servico', linhas: ['11h às 22h'] },
+      { papel: 'servico', linhas: ['Praia do Canto'] },
+    ])
+    expect(validarCopyAutoral(c).problemas).toEqual([])
+    expect(c.origem.autor).toBe('desconhecido')
+    expect(copyComparavel(c)).toBe(false)
+    expect(c.blocos.map((b) => [b.id, b.funcao, b.ordem])).toEqual([['pre', 'pre', 0], ['headline', 'headline', 1], ['servico', 'servico', 2], ['servico-2', 'servico', 3]])
+    expect(c.blocos.every((b) => !b.grupoDeLeitura)).toBe(true)
+    expect(c.blocos[1].linhas).toEqual(['Milk-shake', 'vem [em dobro]'])
+    expect(c.lacunas?.some((l) => /autoria desconhecida/.test(l))).toBe(true)
+    expect(c.lacunas?.some((l) => /grupos de leitura/.test(l))).toBe(true)
+  })
+
+  it('lista posicional (copyProposta) → contrato: função "livre" sem palpite de papel, \\n vira quebra, texto exato', () => {
+    const c = copyDeListaLegada(['Almoço em família', 'Seg a sex\n11h às 15h', 'Vem pra cá'])
+    expect(validarCopyAutoral(c).problemas).toEqual([])
+    expect(c.blocos.map((b) => b.funcao)).toEqual(['livre', 'livre', 'livre'])
+    expect(c.blocos[1].linhas).toEqual(['Seg a sex', '11h às 15h'])
+    expect(c.blocos[0].linhas[0]).toBe('Almoço em família')
+    expect(c.lacunas?.some((l) => /função dos blocos não informada/.test(l))).toBe(true)
+    const comFuncoes = copyDeListaLegada(['Almoço em família', 'Vem pra cá'], { funcoes: ['headline', 'cta'] })
+    expect(comFuncoes.blocos.map((b) => [b.id, b.funcao])).toEqual([['headline', 'headline'], ['cta', 'cta']])
+    expect(comFuncoes.lacunas?.some((l) => /função dos blocos não informada/.test(l))).toBe(false)
+  })
+
+  it('papel desconhecido vira livre COM lacuna, nunca some', () => {
+    const c = copyDeBlocosLegados([{ papel: 'rodape', linhas: ['x'] }])
+    expect(c.blocos[0].funcao).toBe('livre')
+    expect(c.lacunas?.some((l) => /papel desconhecido "rodape"/.test(l))).toBe(true)
+  })
+
+  it('contrato → blocos do compositor: só uma conversão de saída, em ordem, e o bloco livre volta em `semPapel` em vez de sumir', () => {
+    const comLivre = { ...copy, blocos: [...copy.blocos, { id: 'aviso', funcao: 'livre' as const, ordem: 4, linhas: ['Só hoje'] }] }
+    const { blocos, semPapel } = blocosParaOCompositor({ ...comLivre, blocos: [...comLivre.blocos].reverse() })
+    expect(blocos.map((b) => b.papel)).toEqual(['pre', 'headline', 'apoio', 'servico'])
+    expect(blocos[1].linhas).toEqual(['Milk-shake', 'vem [em dobro]'])
+    expect(semPapel.map((b) => b.id)).toEqual(['aviso'])
+  })
+})
