@@ -12,6 +12,7 @@
  * banco é `executar-plano.ts` e `reconciliar.ts`.
  */
 
+import { blocosEmOrdem, type CopyAutoral } from '@/lib/copy-autoral'
 import {
   STATUS_DO_ITEM,
   transicaoPermitida,
@@ -157,6 +158,8 @@ function frasearConta(c: {
 export interface CampoDeTexto {
   layerId: string
   name?: string | null
+  /** O papel da camada no modelo (`metadata.compositor.papel`, id ou nome exato) — é por ele que o CONTRATO casa (F1). */
+  papel?: string | null
 }
 
 export interface MapaDeCopy {
@@ -242,6 +245,113 @@ export function mapearCopyParaSlots(campos: CampoDeTexto[], copy: string[]): Map
   }
 
   return { slotValues, ocultar, avisos }
+}
+
+/** O que vai no slot de um campo do modelo quando a copy vem pelo CONTRATO: o texto e o bloco/papel de origem, que `bakeLayers` carimba na camada. */
+export interface SlotDoContrato {
+  content: string
+  bloco: string
+  papel?: PapelDoModelo
+}
+
+export interface MapaDoContrato extends Omit<MapaDeCopy, 'slotValues'> {
+  /** Pronto para o `slotValues` de `createArteRapida` (chave = id da camada), com a origem de cada texto. */
+  slotValues: Record<string, SlotDoContrato>
+  /** Bloco do contrato → camada do modelo que o recebeu, e por quê. */
+  vinculos: Array<{ blocoId: string; layerId: string; por: 'papel' | 'posicao' }>
+  /** Blocos COM texto que não acharam campo — declarados, nunca perdidos em silêncio. */
+  semCampo: string[]
+}
+
+const PAPEIS_DO_MODELO = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
+type PapelDoModelo = (typeof PAPEIS_DO_MODELO)[number]
+
+/**
+ * O papel de um campo do modelo: o declarado (`papel`) ou o que o NOME diz
+ * ("Pré-título", "Título", "Subtítulo", "Chamada", "Horário"). Conservador: nome
+ * que não diz nada devolve null, e o campo só entra por posição.
+ */
+export function papelDoCampo(campo: CampoDeTexto): PapelDoModelo | null {
+  if (campo.papel && (PAPEIS_DO_MODELO as readonly string[]).includes(campo.papel)) return campo.papel as PapelDoModelo
+  const nome = (campo.name ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  if (!nome) return null
+  if (/^pre\b|^pre-|pre-titulo|pretitulo/.test(nome)) return 'pre'
+  if (/subtitulo|sub-titulo|apoio|descri/.test(nome)) return 'apoio'
+  if (/headline|manchete|^titulo|\btitulo\b/.test(nome)) return 'headline'
+  if (/\bcta\b|chamada|acao\b/.test(nome)) return 'cta'
+  if (/servi|horario|endere|rodape/.test(nome)) return 'servico'
+  return null
+}
+
+/**
+ * Casa o CONTRATO da copy autoral (F1) com os campos de texto do modelo — por
+ * PAPEL, não por posição: o bloco `headline` vai para o campo de manchete, o
+ * `servico` para o de horário. O que não tem campo com o mesmo papel cai no
+ * próximo campo SEM papel reconhecido (declarado como "por posição"); o que
+ * ainda assim não couber é AVISADO com o texto, e fica em `semCampo` — nunca
+ * some em silêncio (PR 5 de "Marca simples, copy melhor", 12/09/2026). Campo
+ * que a copy não cobriu sai OCULTO, como antes: o texto do modelo é
+ * placeholder, e publicá-lo mentia na peça.
+ *
+ * O slot leva o `papel` e o id do `bloco`: `createArteRapida` os grava na
+ * camada (`metadata.compositor`), e é assim que a copy EFETIVA da página é
+ * relida bloco a bloco depois. Os [colchetes] do destaque saem — o modelo
+ * desenha texto simples — e a efetiva registra isso como transformação do
+ * sistema, nunca como edição de alguém.
+ */
+export function mapearContratoParaCampos(campos: CampoDeTexto[], contrato: CopyAutoral): MapaDoContrato {
+  const alvos = (campos ?? []).filter((c) => c && typeof c.layerId === 'string' && c.layerId)
+  const blocos = blocosEmOrdem(contrato).filter((b) => b.linhas.some((l) => l.trim().length > 0))
+  const slotValues: Record<string, SlotDoContrato> = {}
+  const ocultar: string[] = []
+  const avisos: string[] = []
+  const vinculos: MapaDoContrato['vinculos'] = []
+  const semCampo: string[] = []
+
+  if (blocos.length === 0) {
+    if (alvos.length > 0) avisos.push('Este item não tem texto próprio — a arte sai com os textos que já estão no modelo.')
+    return { slotValues, ocultar, avisos, vinculos, semCampo }
+  }
+  if (alvos.length === 0) {
+    avisos.push(`O modelo escolhido não tem campo de texto para receber a copy — ${plural(blocos.length, 'bloco', 'blocos')} não ficaram na arte.`)
+    return { slotValues, ocultar, avisos, vinculos, semCampo: blocos.map((b) => b.id) }
+  }
+
+  const usados = new Set<string>()
+  const conteudo = (linhas: string[]) => linhas.map((l) => semColchetes(l)).join('\n')
+  const ligar = (b: (typeof blocos)[number], alvo: CampoDeTexto, por: 'papel' | 'posicao') => {
+    usados.add(alvo.layerId)
+    slotValues[alvo.layerId] = { content: conteudo(b.linhas), bloco: b.id, ...(b.funcao !== 'livre' ? { papel: b.funcao as PapelDoModelo } : {}) }
+    vinculos.push({ blocoId: b.id, layerId: alvo.layerId, por })
+  }
+  // 1. por papel
+  const pendentes: typeof blocos = []
+  for (const b of blocos) {
+    const alvo = b.funcao === 'livre' ? undefined : alvos.find((a) => !usados.has(a.layerId) && papelDoCampo(a) === b.funcao)
+    if (alvo) ligar(b, alvo, 'papel')
+    else pendentes.push(b)
+  }
+  // 2. por posição, só em campo SEM papel reconhecido — campo de manchete não
+  //    recebe o serviço só porque sobrou
+  for (const b of pendentes) {
+    const alvo = alvos.find((a) => !usados.has(a.layerId) && papelDoCampo(a) === null)
+    if (alvo) {
+      ligar(b, alvo, 'posicao')
+      avisos.push(`O bloco "${b.id}" (${b.funcao}) não tem campo com esse papel no modelo e foi para o campo "${alvo.name || alvo.layerId}", por posição.`)
+    } else {
+      semCampo.push(b.id)
+    }
+  }
+  if (semCampo.length > 0) {
+    const textos = semCampo.map((id) => `"${blocos.find((b) => b.id === id)!.linhas.join(' ').slice(0, 40)}"`).join(', ')
+    avisos.push(`O modelo não tem campo para ${plural(semCampo.length, 'bloco', 'blocos')} da copy — ${semCampo.length === 1 ? 'ficou' : 'ficaram'} fora da arte: ${textos}. Escolha um modelo com esse campo ou outra forma de arte.`)
+  }
+  const restantes = alvos.filter((a) => !usados.has(a.layerId))
+  if (restantes.length > 0) {
+    ocultar.push(...restantes.map((c) => c.layerId))
+    avisos.push(`O modelo tem mais campos de texto que a copy do item — ${restantes.map((c) => `"${c.name || c.layerId}"`).join(', ')} ${restantes.length === 1 ? 'ficou oculto' : 'ficaram ocultos'} na arte.`)
+  }
+  return { slotValues, ocultar, avisos, vinculos, semCampo }
 }
 
 // ── Referências de imagem de um item ────────────────────────────────────────

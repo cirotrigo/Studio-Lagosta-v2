@@ -56,7 +56,7 @@ import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
-import { tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
+import { copyEfetivaDasCamadas, lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
@@ -561,6 +561,13 @@ export interface CreateArteRapidaInput {
    * — ver `halo/layout-pela-foto.ts`. Com `true`, a página pedida é a usada.
    */
   layoutFixo?: boolean
+  /**
+   * F1 (PR 5): o CONTRATO da copy autoral desta peça. Os slots já vêm casados
+   * por papel (`mapearContratoParaCampos`); aqui o contrato é validado, a copy
+   * EFETIVA é lida das camadas finais e as duas são gravadas — a efetiva na
+   * página, original+efetiva na Generation — como o compositor faz.
+   */
+  copyAutoral?: unknown
 }
 
 export interface CreateArteRapidaResult {
@@ -629,6 +636,16 @@ function bakeLayers(
       // instrução HUMANA explícita: uma marca antiga de "escondida pelo
       // revisor" não pode encobri-la (REV-8AD-02).
       if (slotObj.hidden === true) Object.assign(updated, semMarcaDoRevisor({ ...updated, visible: false }))
+      // F1: o papel e o bloco do contrato ficam na camada — é o que deixa a
+      // copy efetiva da página ser relida bloco a bloco (`papelDaCamada`,
+      // `vincularExtras`).
+      if (typeof slotObj.papel === 'string' || typeof slotObj.bloco === 'string') {
+        const meta = (updated.metadata && typeof updated.metadata === 'object' ? { ...updated.metadata } : {}) as Record<string, unknown>
+        const compositor = (meta.compositor && typeof meta.compositor === 'object' ? { ...(meta.compositor as Record<string, unknown>) } : {}) as Record<string, unknown>
+        if (typeof slotObj.papel === 'string') compositor.papel = slotObj.papel
+        if (typeof slotObj.bloco === 'string') compositor.bloco = slotObj.bloco
+        updated.metadata = { ...meta, compositor }
+      }
     }
     return updated
   })
@@ -654,6 +671,13 @@ function bakeLayers(
  */
 export async function createArteRapida(input: CreateArteRapidaInput): Promise<CreateArteRapidaResult> {
   const { projectId, sourcePageId, slotValues } = input
+  // F1: contrato inválido recusa antes de qualquer escrita — mesma regra do item de plano.
+  const contratoRecebido = (() => {
+    if (input.copyAutoral == null) return null
+    const lido = lerCopyAutoral(input.copyAutoral)
+    if (!lido.copy) throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
+    return lido.copy
+  })()
 
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -761,7 +785,22 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
 
   const pageName = input.name ?? `${modelo.name} — ${new Date().toLocaleString('pt-BR')}`
 
+  /**
+   * F1 (PR 5): a copy EFETIVA lida das camadas finais sobre o contrato
+   * recebido. A página guarda a efetiva (o contrato do que ela MOSTRA); a
+   * Generation guarda original e efetiva, com `comparavel` e as lacunas — a
+   * mesma forma do compositor (`persistencia.ts`). Os [colchetes] que o modelo
+   * não desenha aparecem como revisão do SISTEMA, nunca como edição de alguém.
+   */
+  const registroDaCopy = contratoRecebido
+    ? (() => {
+        const { efetiva, lacunas } = copyEfetivaDasCamadas(contratoRecebido, layers as Layer[], { superficie: 'modelo' })
+        return { efetiva, registro: { original: contratoRecebido, efetiva, comparavel: contratoRecebido.origem.autor !== 'desconhecido', ...(lacunas.length ? { lacunas } : {}) } }
+      })()
+    : null
+
   const persisted = await persistAndRenderCreative({
+    ...(registroDaCopy ? { copyAutoral: registroDaCopy.efetiva } : {}),
     project,
     templateId: arteTemplate.id,
     templateName: arteTemplate.name,
@@ -787,6 +826,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
       slotValues,
+      ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {
         aplicado: halo.aplicado,

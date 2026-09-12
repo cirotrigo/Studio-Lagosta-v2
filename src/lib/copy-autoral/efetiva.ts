@@ -150,6 +150,12 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
  * `incluirOcultas` porque o bloco da camada oculta continua no contrato e o
  * id da cópia precisa acompanhá-lo (R5-02).
  */
+/** O id do bloco carimbado na camada por quem a desenhou (`metadata.compositor.bloco` — a via de modelo, PR 5). */
+function blocoCarimbado(l: Layer): string | null {
+  const meta = l.metadata as { compositor?: { bloco?: unknown } } | undefined
+  return typeof meta?.compositor?.bloco === 'string' ? meta.compositor.bloco : null
+}
+
 export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], opcoes: { incluirOcultas?: boolean } = {}): { vinculos: Map<string, Layer>; ambiguos: string[] } {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas, opcoes)
   const emOrdem = [...soltas, ...[...porFuncao.values()].flat(), ...voz2]
@@ -164,7 +170,7 @@ export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], o
   }
   // 1. nomeada pelo bloco
   for (const b of [...pendentes]) {
-    const c = emOrdem.find((l) => !usadas.has(l.id) && (l.id === b.id || l.name === b.id))
+    const c = emOrdem.find((l) => !usadas.has(l.id) && (l.id === b.id || l.name === b.id || blocoCarimbado(l) === b.id))
     if (c) tomar(b, c)
   }
   const candidatasDe = (b: BlocoAutoral) => emOrdem.filter((c) => !usadas.has(c.id) && (idDeExtra(c) === b.id || indiceLegado(b.id, idDeExtraLegado(c)) !== null))

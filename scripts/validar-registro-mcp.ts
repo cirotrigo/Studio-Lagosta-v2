@@ -158,6 +158,13 @@ const LITERAL_CRIAR_ARTE_DE_MODELO = {
     },
     name: { type: 'string', description: 'Nome da página gerada (opcional).' },
     imageUrl: { type: 'string', description: 'URL pública da imagem de fundo. Tem prioridade sobre _driveImageId.' },
+    // PR 5 (F1): o contrato da copy autoral — mudança DELIBERADA do schema.
+    copyAutoral: {
+      type: 'object',
+      description:
+        'O CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele, os campos do modelo são casados por PAPEL (não por posição) — mande também os slotValues das chaves reservadas (_driveImageId/_imageUrl) e nada de texto; o bloco sem campo no modelo é AVISADO, nunca perdido, e a arte grava a copy escrita × desenhada (ver-geracao).',
+      additionalProperties: {},
+    },
   },
   required: ['projectId', 'sourcePageId'],
   additionalProperties: false,

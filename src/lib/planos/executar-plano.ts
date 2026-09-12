@@ -24,6 +24,8 @@
  */
 
 import { db } from '@/lib/db'
+import { lerCopyAutoral } from '@/lib/copy-autoral'
+import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { CreativeError } from '@/lib/creatives/errors'
 import { getFeatureCost } from '@/lib/credits/settings'
 import { createArteRapida } from '@/lib/creatives/arte-rapida'
@@ -39,6 +41,7 @@ import {
   caminhoAte,
   calcularConta,
   decidirGeracao,
+  mapearContratoParaCampos,
   ehRecusa,
   itemExecutavel,
   mapearCopyParaSlots,
@@ -540,8 +543,14 @@ async function renderizarItemDeModelo(
   }
 
   const campos = await camposDeTextoDoModelo(sourcePageId)
-  // O modelo desenha texto simples: os [colchetes] do destaque (marcação do compositor) saem.
-  const { slotValues, ocultar, avisos } = mapearCopyParaSlots(campos, (item.copyProposta ?? []).map((b) => semColchetes(b)))
+  // F1 (PR 5): com o CONTRATO da copy no item, o casamento é por PAPEL e o
+  // contrato viaja até a página e a arte (createArteRapida grava original e
+  // efetiva). Sem contrato, o caminho posicional de sempre — o modelo
+  // desenha texto simples: os [colchetes] do destaque (marcação do compositor) saem.
+  const contrato = item.copyAutoral == null ? null : lerCopyAutoral(item.copyAutoral).copy
+  const { slotValues, ocultar, avisos } = contrato
+    ? mapearContratoParaCampos(campos, contrato)
+    : mapearCopyParaSlots(campos, (item.copyProposta ?? []).map((b) => semColchetes(b)))
 
   const valores: Record<string, unknown> = { ...slotValues }
   // Campo de texto que a copy não cobriu sai OCULTO: o texto do modelo é
@@ -561,6 +570,7 @@ async function renderizarItemDeModelo(
     // fecha o sinal de foto como aceitação, mesmo fora do topo da busca.
     fotoDoCard: item.fotoDriveId?.trim() || null,
     decididoPor: input.decididoPor ?? null,
+    ...(contrato ? { copyAutoral: contrato } : {}),
   })
 
   const situacao = await mover(input, item, 'pronto', {
@@ -691,6 +701,11 @@ export async function gerarItemPorModelo(input: GerarItemPorModeloInput): Promis
  * aqui isso viraria "o modelo não tem campo de texto" e a copy inteira do item
  * sumiria da arte sem que ninguém soubesse.
  */
+/** Os campos de texto de uma página-modelo, com o papel de cada um — para quem casa o CONTRATO por papel (F1). */
+export async function camposDeTextoDaPagina(pageId: string): Promise<CampoDeTexto[]> {
+  return camposDeTextoDoModelo(pageId)
+}
+
 async function camposDeTextoDoModelo(pageId: string): Promise<CampoDeTexto[]> {
   const page = await db.page.findUnique({ where: { id: pageId }, select: { layers: true } })
   if (!page) {
@@ -706,6 +721,6 @@ async function camposDeTextoDoModelo(pageId: string): Promise<CampoDeTexto[]> {
   }
   return camadas
     .filter((c) => c?.type === 'text')
-    .map((c) => ({ layerId: String(c.id ?? ''), name: typeof c.name === 'string' ? c.name : null }))
+    .map((c) => ({ layerId: String(c.id ?? ''), name: typeof c.name === 'string' ? c.name : null, papel: papelDaCamada(c as never) }))
     .filter((c) => !!c.layerId)
 }

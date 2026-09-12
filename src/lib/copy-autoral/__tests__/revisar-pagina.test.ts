@@ -222,6 +222,15 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(revisaoDaPaginaComCamadas(copia, camadasDaCopia, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' }).estado).toBe('sem-mudanca')
   })
 
+  it('PR 5: a camada CARIMBADA (`metadata.compositor.bloco`) casa com o bloco livre pelo carimbo, mesmo com id UUID — a via de modelo grava assim', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('uuid-9', 500, 'Só hoje', { metadata: { compositor: { bloco: 'aviso-do-dia' } } } as Partial<Layer>)]
+    const escrito: CopyAutoral = { ...contrato, blocos: [...contrato.blocos, { id: 'aviso-do-dia', funcao: 'livre', ordem: 2, linhas: ['Só hoje'] }] }
+    const r = copyEfetivaDasCamadas(escrito, camadas, { superficie: 'modelo' })
+    expect(r.mudancas).toEqual([])
+    expect(r.lacunas).toEqual([])
+    expect(r.efetiva.blocos.map((b) => [b.id, b.linhas[0]])).toEqual([['headline', 'Milk-shake'], ['cta', 'Conheça nossos pacotes'], ['aviso-do-dia', 'Só hoje']])
+  })
+
   it('R03: duplicar a página regenera os ids das camadas e os blocos extra acompanham, no bloco e no histórico', () => {
     const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('aviso', 500, 'Só hoje', { metadata: {} } as Partial<Layer>)]
     const original = copyEfetivaDasCamadas(contrato, camadas, { superficie: 'compositor' }).efetiva

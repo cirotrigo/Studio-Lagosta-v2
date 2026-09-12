@@ -47,6 +47,10 @@ describe('diffDeGeometria', () => {
 })
 
 describe('copyParaBlocos', () => {
+  it('a quebra ESCRITA pelo autor fica: "\\n" no bloco vale como linha (antes o colapso de espaços apagava a quebra antes de ela ser lida)', () => {
+    const b = copyParaBlocos(['Milk-shake\nvem em dobro', 'Só hoje', 'Vem\npra cá'])
+    expect(b.map((x) => [x.papel, x.linhas])).toEqual([['headline', ['Milk-shake', 'vem em dobro']], ['apoio', ['Só hoje']], ['cta', ['Vem', 'pra cá']]])
+  })
   it('com a lista de papéis do template, a copy só ocupa os campos que existem', () => {
     const copy = ['Sexta-feira', 'Aberto até mais tarde', 'Gelato e café para fechar o dia', 'Sexta, das 12h às 00h']
     // feed sem pre nem servico: sobram headline e apoio; serviço e pré-título ficam de fora
