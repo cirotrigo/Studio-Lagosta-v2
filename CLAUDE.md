@@ -7173,6 +7173,66 @@ Da nona revisão FINAL (BLOQUEADO, PR13-40…41):
   com desvio menor que a folga (~4 min) e para chamadas que respeitam o aborto;
   uma execução morta segura a entrada por até 5 min.
 
+Da décima revisão FINAL (BLOQUEADO, PR13-42…43):
+
+- 🔴 **A edição de campo INDEXADO é coordenada com o arrendamento e recusada
+  ANTES de salvar** (PR13-42): `PUT /api/knowledge/[id]` gravava o texto novo e
+  só depois chamava `reindexEntry`; com outra indexação em curso, a
+  reindexação tomava `INDEXACAO_EM_ANDAMENTO`, a rota engolia e respondia
+  sucesso, e o ciclo em curso publicava chunks, vetores e marca do texto
+  ANTIGO. Hoje toda porta de edição (a rota, a tool `atualizar-entrada-base`,
+  `updateEntry` — rota admin e `confirm`) passa por `editarEntradaCoordenada`
+  (`arrendamento.ts`): troca de `content`, `category` ou `status` com
+  arrendamento vigente → `IndexacaoEmAndamento` sem escrita (409 legível; na
+  tool, `CreativeError` 409). A escrita é compare-and-set no `updatedAt` lido:
+  arrendamento adquirido entre a leitura e a escrita faz a edição reler e ser
+  recusada. Edição só de etiquetas, validade ou metadata da pessoa continua
+  valendo durante o arrendamento.
+- **Campo indexado é o que ENTRA no índice**: `content` (chunks), `category` e
+  `status` (metadata do vetor). O título não entra em nenhum dos dois — trocar
+  só o título durante a indexação passa.
+- 🔴 **O metadata da pessoa nunca apaga nem forja o arrendamento**
+  (`metadataDaEdicao`): a rota substitui o metadata inteiro, e um PUT com
+  metadata no meio de um ciclo apagava `cicloDeIndexacao`/`cicloExpiraEm` —
+  outra execução adquiria e PR13-41 voltava. As chaves do sistema vêm sempre da
+  linha lida; quando a edição muda o índice, marca, token e prazo SAEM (a marca
+  atestava os chunks do texto anterior, e sem o token a `marcarFatoIndexado`
+  atrasada de um ciclo anterior é recusada).
+- 🔴 **O ciclo indexa o conteúdo lido NA AQUISIÇÃO e confere a versão antes de
+  publicar**: `ArrendamentoDaEntrada.indexada` sai da mesma leitura cujo
+  `updatedAt` a aquisição carimbou, nunca do `findUnique` anterior; `renovar` e
+  `publicarMarca` comparam `versaoIndexadaDe` com a linha e, se uma escrita que
+  não passou pelo serviço (SQL direto, script) a mudou, lançam
+  `IndexacaoSuperada` (`INDEXACAO_SUPERADA`) antes de gravar chunks, subir
+  vetores ou repor a marca. `perdeuOArrendamento` reconhece os dois códigos
+  (API admin 409, migração bloqueia, criação não compensa). `liberar` NÃO
+  confere a versão: o ciclo superado ainda solta a entrada, senão a
+  reindexação da edição esperaria o prazo. Limite: para chunks e vetores a
+  conferência é antes do passo, não no próprio write — a proteção primária é a
+  recusa da edição; só a marca é atômica (CAS no `updatedAt` da leitura que
+  conferiu).
+- ⚠️ **Fora da coordenação**: as escritas que apagam vetores e arquivam direto
+  (cron `archive-expired-knowledge`, `arquivar-entrada-base`, o DELETE do
+  `confirm`) e os scripts com `db.knowledgeBaseEntry.update`. No meio de um
+  ciclo, a indexação em curso para por `IndexacaoSuperada` e não ressuscita
+  vetores; fora de um ciclo, nada mudou.
+- 🔴 **O token da criação é RETIDO desde a própria criação, e a compensação é
+  condicionada a ele** (PR13-43): `criarEntradaBase` deixava o ciclo nascer no
+  indexador e desfazia por `id`. Com os embeddings de A demorando até o
+  arrendamento vencer, B (a reindexação administrativa) assumia e recuperava a
+  linha; depois os embeddings de A rejeitavam com erro COMUM — que não passa
+  pela renovação e não vira `ArrendamentoPerdido` —, o `finally` ignorava o
+  `false` de `liberar()` e a compensação apagava a linha e, em cascata, os
+  chunks de B (vetores órfãos). Hoje o ciclo nasce em `criarEntradaBase`, vai
+  carimbado no `metadata` da própria criação, e a compensação é `deleteMany`
+  onde `cicloDeIndexacao = <meu token>`: `count 0` preserva a linha e lança
+  `ArrendamentoPerdido` ("antes de desfazer a entrada…"), com o erro original
+  no log. **Erro comum não prova posse; só o DELETE condicionado prova.**
+- Testes com banco e Upstash falsos: `edicao-durante-indexacao.test.ts` (chama
+  a rota REAL com Clerk mockado) e `indexacao-arrendada.test.ts`. A prova de
+  integração (`validar-migracao-da-voz.ts`) não mudou: as edições diretas
+  dela rodam fora de ciclo.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

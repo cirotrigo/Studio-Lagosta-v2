@@ -7,6 +7,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, updateEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { ehIndexacaoEmAndamento, perdeuOArrendamento } from '@/lib/knowledge/marca-de-indexado'
 
 export const runtime = 'nodejs'
 
@@ -210,6 +211,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, entryId })
   } catch (error) {
     console.error('[knowledge/confirm] Error confirming knowledge action', error)
+    // Edição de campo indexado durante a indexação de outra execução é recusada antes de salvar (PR13-42).
+    if (ehIndexacaoEmAndamento(error) || perdeuOArrendamento(error)) {
+      return NextResponse.json({ error: 'A entrada está sendo indexada para a busca agora. Nada foi salvo: tente de novo em alguns minutos.', code: error.code }, { status: 409 })
+    }
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }
 }

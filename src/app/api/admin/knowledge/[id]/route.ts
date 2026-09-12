@@ -12,6 +12,7 @@ import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { updateEntry, deleteEntry } from '@/lib/knowledge/indexer'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { ehIndexacaoEmAndamento, perdeuOArrendamento } from '@/lib/knowledge/marca-de-indexado'
 import { KnowledgeCategory } from '@prisma/client'
 
 // Admin check utility
@@ -136,6 +137,11 @@ export async function PUT(
     return NextResponse.json(entry)
   } catch (error) {
     console.error('Error updating knowledge entry:', error)
+
+    // Edição de campo indexado durante a indexação de outra execução é recusada antes de salvar (PR13-42).
+    if (ehIndexacaoEmAndamento(error) || perdeuOArrendamento(error)) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 409 })
+    }
 
     if (error.message === 'Entry not found') {
       return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })

@@ -125,12 +125,67 @@ export class ArrendamentoPerdido extends Error {
   }
 }
 
+/**
+ * A linha mudou POR BAIXO do ciclo (PR13-42): o conteúdo, a categoria ou o status que a indexação leu ao adquirir
+ * não são mais os da linha. O ciclo parou antes de publicar (chunks, vetores ou marca) uma versão superada, sem
+ * compensar nada. Só acontece com escrita que não passa por `editarEntradaCoordenada` (script, SQL direto): a
+ * edição coordenada é recusada enquanto o arrendamento vale.
+ */
+export class IndexacaoSuperada extends Error {
+  readonly code = 'INDEXACAO_SUPERADA' as const
+  constructor(readonly entryId: string, readonly etapa: string) {
+    super(`o conteúdo da entrada ${entryId} mudou durante a indexação, antes de "${etapa}": esta execução parou sem publicar a versão antiga`)
+    this.name = 'IndexacaoSuperada'
+  }
+}
+
 function temCodigo(erro: unknown, code: string): boolean {
   return typeof erro === 'object' && erro !== null && (erro as { code?: unknown }).code === code
 }
 export function ehIndexacaoEmAndamento(erro: unknown): erro is IndexacaoEmAndamento {
   return erro instanceof IndexacaoEmAndamento || temCodigo(erro, 'INDEXACAO_EM_ANDAMENTO')
 }
-export function perdeuOArrendamento(erro: unknown): erro is ArrendamentoPerdido {
-  return erro instanceof ArrendamentoPerdido || temCodigo(erro, 'INDEXACAO_PERDIDA')
+/** O ciclo perdeu a posse: outra execução tomou o arrendamento, ou a linha indexada mudou por baixo dele (PR13-42). Nos dois casos a linha não é mais deste ciclo — nada se compensa. */
+export function perdeuOArrendamento(erro: unknown): erro is ArrendamentoPerdido | IndexacaoSuperada {
+  return erro instanceof ArrendamentoPerdido || erro instanceof IndexacaoSuperada || temCodigo(erro, 'INDEXACAO_PERDIDA') || temCodigo(erro, 'INDEXACAO_SUPERADA')
+}
+
+/**
+ * Os campos da linha que ENTRAM no índice (PR13-42): `content` vira os chunks; `category` e `status` vão no metadata
+ * de cada vetor (a busca filtra por eles). O título não entra em nenhum dos dois.
+ */
+export const CAMPOS_INDEXADOS = ['content', 'category', 'status'] as const
+export type CamposIndexados = { content: string; category: string; status: string }
+
+/** A versão do que a linha indexa: o ciclo a lê ao adquirir e confere antes de cada publicação. */
+export function versaoIndexadaDe(linha: CamposIndexados): string {
+  return JSON.stringify([linha.content, linha.category, linha.status])
+}
+
+/** A edição troca algum campo indexado (campo ausente na edição não conta). */
+export function edicaoMudaIndice(atual: CamposIndexados, edicao: Partial<CamposIndexados>): boolean {
+  return CAMPOS_INDEXADOS.some((campo) => edicao[campo] !== undefined && edicao[campo] !== atual[campo])
+}
+
+const CHAVES_DO_SISTEMA = [MARCA_DE_INDEXADO, CICLO_DE_INDEXACAO, EXPIRACAO_DO_CICLO] as const
+
+/**
+ * O `metadata` que uma EDIÇÃO grava (PR13-42), ou `undefined` para não escrever metadata:
+ * - as chaves do SISTEMA (marca, token, prazo) vêm sempre da linha lida — o metadata que a pessoa manda substitui o
+ *   dela, nunca apaga nem forja um arrendamento em curso;
+ * - quando a edição muda o índice, as três saem: a marca atestava os chunks do conteúdo anterior, e sem o token a
+ *   marca que um ciclo anterior publicaria DEPOIS do retorno (`marcarFatoIndexado`) é recusada.
+ */
+export function metadataDaEdicao(atual: unknown, pedido: unknown, mudaIndice: boolean): unknown {
+  const obj = metadataComoObjeto(atual)
+  const temSistema = CHAVES_DO_SISTEMA.some((k) => k in obj)
+  const sistema = Object.fromEntries(CHAVES_DO_SISTEMA.filter((k) => k in obj).map((k) => [k, obj[k]]))
+  const semSistema = (m: unknown) => {
+    const resto = { ...metadataComoObjeto(m) }
+    for (const k of CHAVES_DO_SISTEMA) delete resto[k]
+    return resto
+  }
+  if (pedido === undefined) return mudaIndice && temSistema ? semSistema(atual) : undefined
+  if (pedido === null) return !mudaIndice && temSistema ? sistema : null
+  return { ...semSistema(pedido), ...(mudaIndice ? {} : sistema) }
 }

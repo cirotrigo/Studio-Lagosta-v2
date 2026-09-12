@@ -9,6 +9,7 @@ vi.mock('../cache', () => ({ invalidateProjectCache: vi.fn(async () => 1) }))
 import { generateEmbeddings } from '../embeddings'
 import { invalidateProjectCache } from '../cache'
 import { reindexEntry } from '../indexer'
+import { criarEntradaBase } from '../entries'
 import { EXPIRACAO_DO_CICLO, IndexacaoEmAndamento } from '../marca-de-indexado'
 import { classificarFato } from '../../brand/migracao-da-voz'
 import { criarFatoPeloIndexador, marcarFatoIndexado, motivoDeBloqueioPorIndexacao, reindexarFatoPeloIndexador, type FatoACriar } from '../../../../scripts/migrar-voz-da-marca'
@@ -130,5 +131,46 @@ describe('PR13-41 — a entrada é ARRENDADA do começo ao fim: a execução que
     expect(motivo).toMatch(/Nada da voz foi gravado/)
     expect(motivoDeBloqueioPorIndexacao({ code: 'INDEXACAO_PERDIDA', message: 'perdida' }, FATO)).toMatch(/perdida/)
     expect(motivoDeBloqueioPorIndexacao(new Error('embeddings fora do ar'), FATO)).toBeNull()
+  })
+})
+
+describe('PR13-43 — a falha tardia da criação nunca apaga a entrada que outra execução recuperou', () => {
+  const ARGS = { projectId: 6, category: 'ESTABELECIMENTO_INFO' as const, title: FATO.titulo, content: FATO.trecho, autor: 'u' }
+
+  it('A cria e espera os embeddings; o arrendamento vence; B (reindexação administrativa) assume e conclui; os embeddings de A falham com erro COMUM: a entrada, os chunks e os vetores de B ficam, e A reporta a perda de posse', async () => {
+    const b = barreira()
+    embeddings.mockImplementationOnce(async () => {
+      await b.parar()
+      throw new Error('embeddings fora do ar')
+    })
+    const execucaoA = criarEntradaBase(ARGS, { ciclo: 'ciclo-A' })
+    execucaoA.catch(() => undefined)
+    await b.chegou
+    const [criada] = [...base.entradas.values()]
+    expect(base.meta(criada.id).cicloDeIndexacao).toBe('ciclo-A')
+
+    // o arrendamento de A vence (embeddings lentos demais)
+    await dbFalso.knowledgeBaseEntry.update({ where: { id: criada.id }, data: { metadata: { ...base.meta(criada.id), [EXPIRACAO_DO_CICLO]: new Date(Date.now() - 1000).toISOString() } } })
+
+    // B assume, recupera chunks e vetores e solta
+    await reindexEntry(criada.id, tenant, { ciclo: 'ciclo-B' })
+    const depoisDeB = structuredClone({ linha: base.linha(criada.id), chunks: base.chunks, vetores: [...base.vetores.entries()] })
+    expect(depoisDeB.chunks.length).toBeGreaterThan(0)
+    expect(depoisDeB.vetores.length).toBeGreaterThan(0)
+
+    // os embeddings de A rejeitam com erro comum (não passa pela renovação, não vira ArrendamentoPerdido no indexador)
+    b.liberar()
+    await expect(execucaoA).rejects.toMatchObject({ code: 'INDEXACAO_PERDIDA', message: expect.stringMatching(/antes de "desfazer a entrada depois da falha da indexação"/) })
+    expect(base.entradas.has(criada.id)).toBe(true)
+    expect({ linha: base.linha(criada.id), chunks: base.chunks, vetores: [...base.vetores.entries()] }).toEqual(depoisDeB)
+    expect(base.meta(criada.id).cicloDeIndexacao).toBe('ciclo-B')
+    expect(dbFalso.knowledgeBaseEntry.delete).not.toHaveBeenCalled()
+  })
+
+  it('sem concorrência, a falha comum ainda desfaz a entrada — condicionada ao ciclo DESTA criação, no próprio DELETE', async () => {
+    embeddings.mockRejectedValueOnce(new Error('embeddings fora do ar'))
+    await expect(criarEntradaBase(ARGS, { ciclo: 'ciclo-A' })).rejects.toMatchObject({ code: 'FALHA_INDEXACAO' })
+    expect(base.entradas.size).toBe(0)
+    expect(dbFalso.knowledgeBaseEntry.deleteMany).toHaveBeenCalledWith({ where: { id: 'e-nova-1', metadata: { path: ['cicloDeIndexacao'], equals: 'ciclo-A' } } })
   })
 })

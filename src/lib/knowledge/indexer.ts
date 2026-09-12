@@ -10,7 +10,7 @@ import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
 import { EscritaAbortada, lancarSeAbortado, motivoDoAborto } from './aborto'
 import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS } from './marca-de-indexado'
-import { adquirirArrendamento, type ArrendamentoDaEntrada } from './arrendamento'
+import { adquirirArrendamento, editarEntradaCoordenada, type ArrendamentoDaEntrada } from './arrendamento'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
 export interface IndexEntryInput {
@@ -198,7 +198,9 @@ async function passoArrendado<T>(
  * A entrada é ARRENDADA do começo ao fim (PR13-41): quem encontra outro ciclo
  * vigente lança `IndexacaoEmAndamento` sem tocar em nada (a API responde 409);
  * quem perde o arrendamento no meio lança `ArrendamentoPerdido` antes da
- * próxima escrita, sem compensar.
+ * próxima escrita, sem compensar; e se o conteúdo, a categoria ou o status
+ * mudaram por baixo (escrita que não passou por `editarEntradaCoordenada`),
+ * `IndexacaoSuperada` antes de publicar a versão antiga (PR13-42).
  */
 export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal; ciclo?: string } = {}) {
   const { signal } = opcoes
@@ -245,8 +247,10 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
       deleteVectorsByEntry(entryId, tenant, { signal: sinal, antesDeApagar: () => arrendamento.renovar('apagar vetores') }),
     )
 
-    // Re-chunk content
-    const chunks = chunkText(entry.content)
+    // Re-chunk content — o conteúdo lido NA AQUISIÇÃO (PR13-42), não o de `entry`: uma edição entre a primeira leitura
+    // e a aquisição já o teria superado. E cada passo seguinte confere que a linha ainda indexa esta versão.
+    const { indexada } = arrendamento
+    const chunks = chunkText(indexada.content)
 
     if (chunks.length === 0) {
       throw new Error('Content is too short to create chunks')
@@ -281,8 +285,8 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
             entryId: chunk.entryId,
             ordinal: chunk.ordinal,
             projectId: tenant.projectId,
-            category: entry.category,
-            status: entry.status,
+            category: indexada.category,
+            status: indexada.status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED',
             userId: tenant.userId,
             workspaceId: tenant.workspaceId,
           },
@@ -344,14 +348,12 @@ export async function updateEntry(
     throw new Error('Unauthorized access to entry')
   }
 
-  // Update entry
-  const entry = await db.knowledgeBaseEntry.update({
-    where: { id: entryId },
-    data: updates,
-  })
+  // Coordenada com o arrendamento (PR13-42): campo indexado com indexação em curso → `IndexacaoEmAndamento`, nada salvo.
+  const { antes } = await editarEntradaCoordenada(entryId, updates)
+  const entry = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId } })
 
   // If content changed, reindex
-  if (updates.content && updates.content !== existing.content) {
+  if (updates.content && updates.content !== antes.content) {
     await reindexEntry(entryId, tenant)
   }
 

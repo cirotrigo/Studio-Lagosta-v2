@@ -97,11 +97,14 @@ export const dbFalso = {
       base.entradas.set(id, l)
       return projetar(l, select)
     }),
-    findUnique: vi.fn(async ({ where, select, include }: { where: { id: string }; select?: Record<string, boolean>; include?: { chunks?: boolean } }) => {
+    findUnique: vi.fn(async ({ where, select, include }: { where: { id: string }; select?: Record<string, boolean>; include?: { chunks?: boolean; project?: unknown; _count?: unknown } }) => {
       const l = base.entradas.get(where.id)
       if (!l) return null
       const r = projetar(l, select)
       if (include?.chunks) r.chunks = base.chunks.filter((c) => c.entryId === l.id).map(clonar)
+      // o que a rota de edição lê para conferir a posse do projeto (PR13-42): o dono é o `userId` da linha
+      if (include?.project) r.project = { id: l.projectId, userId: l.userId, name: `projeto ${l.projectId}`, organizationProjects: [] }
+      if (include?._count) r._count = { chunks: base.chunks.filter((c) => c.entryId === l.id).length }
       return r
     }),
     update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
@@ -115,6 +118,14 @@ export const dbFalso = {
       if (where.updatedAt && l.updatedAt.getTime() !== new Date(where.updatedAt).getTime()) return { count: 0 }
       if (!casaMetadata(l.metadata, where.metadata)) return { count: 0 }
       aplicar(l, data)
+      return { count: 1 }
+    }),
+    /** A compensação condicionada ao ciclo (PR13-43): apaga (com os chunks, em cascata) só se o filtro do metadata casar. */
+    deleteMany: vi.fn(async ({ where }: { where: { id: string; metadata?: FiltroDeCaminho } }) => {
+      const l = base.entradas.get(where.id)
+      if (!l || !casaMetadata(l.metadata, where.metadata)) return { count: 0 }
+      base.entradas.delete(where.id)
+      base.chunks = base.chunks.filter((c) => c.entryId !== where.id)
       return { count: 1 }
     }),
     delete: vi.fn(async ({ where }: { where: { id: string } }) => {
