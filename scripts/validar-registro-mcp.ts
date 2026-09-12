@@ -680,6 +680,47 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
       imageUrl: { type: 'string', description: 'Nova foto de fundo (URL pública).' },
       driveImageId: { type: 'string', description: 'Nova foto de fundo pelo id do Drive (de buscar-fotos).' },
       name: { type: 'string', description: 'Novo nome da página (opcional).' },
+      ajustes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            tipo: {
+              type: 'string',
+              enum: ['fonte', 'mover', 'gradiente', 'visibilidade', 'caixa'],
+              description: 'fonte (corpo e/ou entrelinha), mover (desloca camadas), gradiente (força/altura do gradiente de leitura de uma borda), visibilidade, caixa (largura ou altura automática de UM texto).',
+            },
+            camadas: {
+              type: 'array',
+              items: { type: 'string', minLength: 1, maxLength: 200 },
+              minItems: 1,
+              maxItems: 40,
+              description: 'Ids das camadas. fonte, mover e visibilidade aceitam várias (mover um bloco = todas as camadas dele); caixa aceita UMA; gradiente aceita UM id — o gradiente a alterar (sem ele, altera o gradiente de leitura da borda ou cria um).',
+            },
+            fontSize: { type: 'number', minimum: 8, maximum: 600, description: 'fonte: corpo novo em px da peça.' },
+            escala: { type: 'number', minimum: 0.5, maximum: 2, description: 'fonte: multiplica o corpo atual (mantém a proporção entre as vozes de um título).' },
+            entrelinha: { type: 'number', minimum: 0.7, maximum: 3, description: 'fonte: entrelinha nova (multiplicador do corpo).' },
+            dx: { type: 'number', minimum: -2000, maximum: 2000, description: 'mover: px para a direita (negativo = esquerda).' },
+            dy: { type: 'number', minimum: -4000, maximum: 4000, description: 'mover: px para baixo (negativo = cima).' },
+            borda: { type: 'string', enum: ['topo', 'rodape'], description: 'gradiente: a borda do gradiente de leitura.' },
+            forca: { type: 'number', minimum: 0, maximum: 1, description: 'gradiente: força nova (opacidade na borda, 0 a 1).' },
+            altura: { type: 'number', minimum: 40, maximum: 4000, description: 'gradiente: altura nova da faixa em px.' },
+            cor: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', description: 'gradiente: cor (#RRGGBB), só usada quando a borda ainda não tem gradiente.' },
+            visivel: { type: 'boolean', description: 'visibilidade: true mostra, false esconde.' },
+            largura: { type: 'number', minimum: 20, maximum: 4000, description: 'caixa: largura nova da caixa de texto em px (o alinhamento do texto é preservado).' },
+            alturaAutomatica: { type: 'boolean', description: 'caixa: true liga a altura automática (a caixa cresce até caber o texto).' },
+            achado: { type: 'string', maxLength: 200, description: 'O id do achado da revisão que este ajuste corrige (rastreabilidade).' },
+          },
+          required: ['tipo'],
+          additionalProperties: false,
+        },
+        maxItems: 30,
+        description: 'Ajustes de diagramação — a lista `ajustes` que revisar-arte devolve (mande todos ou só os que decidir aplicar). Aplicados depois dos textos e da foto.',
+      },
+      versaoEsperada: {
+        type: 'string',
+        description: 'A `versao` que revisar-arte devolveu. Se a página mudou desde a revisão, nada é aplicado (VERSAO_DIVERGENTE) — revise de novo.',
+      },
     },
     required: ['projectId', 'pageId'],
     additionalProperties: false,
@@ -1194,6 +1235,18 @@ for (const [nome, literal] of Object.entries(LITERAIS_AVALIACOES)) {
 // fixture nasce com elas, como manda a regra do registro: mudança de schema
 // daqui para a frente é deliberada ou o snapshot acusa.
 const LITERAIS_COMPOSITOR: Record<string, unknown> = {
+  "revisar-arte": {
+    "type": "object",
+    "properties": {
+      "projectId": { "type": "number", "description": "ID do cliente." },
+      "pageId": { "type": "string", "description": "A peça (pageId de compor-arte, criar-arte, ajustar-arte ou do post)." },
+      "generationId": { "type": "string", "description": "Alternativa ao pageId: o id da arte (compor-leva devolve só este); a página é achada por ele." },
+      "visao": { "type": "boolean", "description": "Olhar da visão sobre a peça renderizada (default true). false = só as medidas, mais rápido." },
+      "previa": { "type": "boolean", "description": "Devolver a miniatura com as marcas (default true)." }
+    },
+    "required": ["projectId"],
+    "additionalProperties": false
+  },
   "reverter-arte": {
     "type": "object",
     "properties": {

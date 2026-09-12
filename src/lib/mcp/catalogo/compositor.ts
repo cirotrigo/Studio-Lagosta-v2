@@ -169,6 +169,59 @@ export const toolsDoCompositor = [
   }),
 
   definirTool({
+    nome: 'revisar-arte',
+    descricao:
+      'Revisa uma arte feita no EDITOR — peça do compositor, arte de modelo ou página editada — ANTES de ela ir para a agenda, e devolve o que está errado COM A MEDIDA e os AJUSTES prontos para aplicar. Não grava nada.\n\nDuas camadas. O código mede: texto cortado, fonte não cadastrada, colisão, texto fora da margem de segurança, logo sobre texto, texto sem leitura sobre a foto (a régua de contraste — o "horário não deu leitura"), gradiente mais forte do que o texto precisa, título grande demais para a peça ou maior que o modelo, entrelinha grande, texto pequeno, palavra sozinha na última linha e texto sobre o assunto da foto. A visão olha a peça renderizada, com cada bloco marcado (T1, T2… e L1 para a logo), e aponta o que a medida não vê — bloco mal colocado, gradiente pesando na foto, respiro desequilibrado. A resposta traz a miniatura com as marcas para você conferir.\n\nCada achado tem severidade (problema, aviso, sugestão), a evidência e os índices dos ajustes que o corrigem; o número de todo ajuste é calculado pelas medidas. Para corrigir: ajustar-arte com o pageId, versaoEsperada = a `versao` desta revisão e os ajustes que decidir aplicar — todos, ou só os que concordar (sugestão é gosto; achado de confiança média, confira na miniatura) — e revise de novo. No máximo DUAS rodadas por peça; o que sobrar vira observação para a pessoa. A revisão nunca bloqueia: peça com pendência vai para a agenda como rascunho do mesmo jeito, com a pendência dita. Achado sem ajuste é decisão de gente (trocar a foto, reescrever, mudar o bloco de borda) — proponha em vez de insistir.\n\nNa leva (compor-leva), revise pelo generationId assim que a peça aparecer pronta em ver-geracao. Com a visão leva ~20 a 40 segundos por peça; visao: false devolve só as medidas em poucos segundos.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      pageId: z.string().optional().describe('A peça (pageId de compor-arte, criar-arte, ajustar-arte ou do post).'),
+      generationId: z.string().optional().describe('Alternativa ao pageId: o id da arte (compor-leva devolve só este); a página é achada por ele.'),
+      visao: z.boolean().optional().describe('Olhar da visão sobre a peça renderizada (default true). false = só as medidas, mais rápido.'),
+      previa: z.boolean().optional().describe('Devolver a miniatura com as marcas (default true).'),
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const [{ revisarArte }, { CreativeError }] = await Promise.all([
+        import('../../creatives/revisao/revisar-arte'),
+        import('../../creatives/errors'),
+      ])
+      const projectId = args.projectId as number
+      const pageId = typeof args.pageId === 'string' && args.pageId.trim() ? args.pageId.trim() : null
+      const generationId = typeof args.generationId === 'string' && args.generationId.trim() ? args.generationId.trim() : null
+      if (!pageId && !generationId) throw new CreativeError('SEM_PAGINA', 'Informe pageId ou generationId da peça.', 400)
+      const r = await revisarArte({ projectId, pageId, generationId, visao: args.visao !== false, previa: args.previa !== false })
+      const corpo = {
+        pageId: r.pageId,
+        pagina: r.pagina,
+        editUrl: r.editUrl,
+        formato: r.formato,
+        versao: r.versao,
+        aplicavel: r.aplicavel,
+        ...(r.motivo ? { motivo: r.motivo } : {}),
+        resumo: r.relatorio.resumo,
+        achados: r.relatorio.achados,
+        ajustes: r.relatorio.ajustes,
+        cobertura: r.relatorio.cobertura,
+        visao: r.visao,
+        ...(r.referencia ? { referencia: r.referencia } : {}),
+        comoAplicar:
+          r.aplicavel && r.relatorio.ajustes.length > 0
+            ? `ajustar-arte com projectId ${projectId}, pageId "${r.pageId}", versaoEsperada "${r.versao}" e os ajustes escolhidos (a lista inteira ou só os que fizerem sentido). Depois, revisar-arte de novo.`
+            : null,
+      }
+      if (!r.previa) return corpo
+      return {
+        _mcpContent: [
+          { type: 'text', text: JSON.stringify(corpo, null, 2) },
+          { type: 'image', data: r.previa.toString('base64'), mimeType: 'image/jpeg' },
+        ],
+      }
+    },
+  }),
+
+  definirTool({
     nome: 'compor-arte',
     descricao:
       'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo, rodapé ou os dois, em camadas independentes), destaca as palavras marcadas com [colchetes] e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. A COPY É ESCRITA SOBRE OS PAPÉIS QUE A VARIANTE TEM — ver-assinatura lista os papéis de cada variante por formato; papel pedido que a página não tem causa erro antes de salvar; escolha variante compatível sem omitir condições obrigatórias. Nunca escreva um bloco para um campo que o template não tem. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. DESTAQUE: marque com [colchetes] 1 ou 2 palavras-chave da peça (preço, dia, a oferta) — sem colchetes a peça sai sem destaque. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',

@@ -5467,3 +5467,113 @@ rodada antes e depois, folha contra folha) pegou mais três coisas:
 - ⚠️ **A prova dos modelos não pega esse tipo de regressão**: ela compõe com a
   copy da própria página, que já vem em maiúsculas. Troca de assinatura pede
   também a recomposição das peças reais com a spec gravada, antes e depois.
+
+### O revisor da arte: medida e visão antes de agendar (11/09/2026)
+
+Pedido do Ciro: revisar a arte feita no EDITOR antes de concluir a programação
+("o título está muito grande", "o horário de funcionamento não deu leitura") e
+devolver os comandos para ajustar no editor. Diante do desenho só por código,
+ele insistiu na visão: "tem detalhes que por código não está dando para ver — se
+desse, o compositor não errava". Módulos em `src/lib/creatives/revisao/`
+(contrato, versão, executor e regras PUROS, com teste; a visão com reconciliação
+pura; o serviço `revisar-arte.ts`), a tool `revisar-arte` (só leitura) e
+`ajustar-arte` com `ajustes` + `versaoEsperada`. O desenho passou pela revisão do
+Codex antes de ser escrito.
+
+- **Duas camadas, uma saída.** O código mede — a régua com correção em memória,
+  a geometria dos glifos, corpo e entrelinha contra a variante da assinatura com
+  que a peça foi composta (ou contra o modelo de onde a arte saiu), o assunto da
+  foto, as fontes — e a visão (gpt-5.2) olha a peça renderizada com cada bloco
+  marcado (T1, T2… e L1 para a logo) e recortes em resolução real. Os dois viram
+  ACHADOS no mesmo formato, e o número de todo ajuste é do CÓDIGO: a visão
+  escolhe a correção num vocabulário fechado (subir, reduzir-entrelinha,
+  mais-gradiente…), nunca o valor.
+- **A visão ARBITRA o que a medida aproxima.** Leitura que a régua acusou e a
+  visão não viu vira sugestão; assunto só estimado pela textura e não confirmado
+  sai; o que a visão confirma vira evidência do achado medido, sem comando
+  duplicado. Visão fora do ar deixa a revisão só com as medidas (cobertura "não
+  avaliada") — nunca derruba a revisão.
+- **Na visão valem as lições do crivo e do decodificador**: schema de texto livre
+  com todo campo opcional e o rigor na reconciliação; a resposta aponta pela
+  MARCA desenhada, nunca por índice; evidência observável obrigatória; confiança
+  baixa descartada; no máximo 6 achados.
+- 🔴 **A cedilha cortada é do EDITOR, não da arte.** Medido em 11/09 em manchetes
+  com entrelinha 0,9–0,94 (Lobster em "direção.", Amithen em "Bora votar"): a
+  tinta passa 5 a 8px da caixa gravada, o render do servidor desenha a letra
+  inteira, e o cache do Konva (`textNode.cache()`, que liga acima de 24px)
+  recorta na altura da caixa. O revisor acusa (`tinta-fora-da-caixa`, sem
+  ajuste); o conserto é no cache do editor, nunca na altura da caixa — ela é o
+  contrato com o render (ver "O modo Auto re-mede…").
+- 🔴 **Peso de fonte não é fonte faltando.** A carteira cadastra cada peso como
+  família própria ("Lato Bold", "Didot HTF B06 Bold") e o render usa o estilo do
+  arquivo que existe: conferir o peso pedido contra o do arquivo deu **45 falsos
+  alarmes em 30 peças reais**. Só a família ausente do registro conta.
+- **A régua acusa demais em cor saturada e com sombra presa ao glifo** (18 de 30
+  peças na primeira calibração): o alvo de luminância do vermelho do Espeto pede
+  fundo quase preto, e a régua apaga a sombra antes de medir. Esses casos descem
+  um nível de severidade e dizem por quê; a visão decide o resto.
+- **Assunto estimado pela textura precisa cobrir 40% do bloco** (com 25% ele
+  acusava 8 de 30 peças sem nada visível); o do catálogo continua nos 25% do
+  mapa de calma.
+- **Um ajuste por camada por rodada.** Dois achados que mexem nas mesmas camadas
+  não empilham deltas calculados sobre a geometria antiga — o segundo espera a
+  revisão seguinte. Corpo e entrelinha nas MESMAS camadas se fundem num comando;
+  gradiente na mesma borda fica com a força maior; reduzir o gradiente só quando
+  TODOS os blocos daquela borda sobram (um folgado não tira a leitura do vizinho).
+- **O executor preserva a diagramação.** Corpo novo re-mede a altura e refaz a
+  pilha pelo delta — rich text incluído, que o `combo-stack-reflow` não enxerga —;
+  o elemento ao lado do texto (relógio, alfinete) acompanha o centro dele; grupo
+  da metade de baixo mantém a BASE; a entrelinha vai nos dois campos; o encaixe
+  da voz 2 escala com o corpo; o gradiente muda por `comForca`, e borda sem
+  gradiente ganha um logo acima da foto.
+- **A versão é do conteúdo** (`versaoDaPagina`: hash de dimensões, fundo e
+  camadas com as chaves ordenadas), nunca `updatedAt` nem a URL. Com
+  `versaoEsperada`, `ajustar-arte` recusa página que mudou (`VERSAO_DIVERGENTE`,
+  409) e grava com compare-and-set em `updatedAt`. Ajuste recusado volta com o
+  motivo; nenhum aplicável e nada mais a mudar é `AJUSTE_SEM_EFEITO`.
+- **As regras da casa continuam valendo no ajuste**: a escrita é a de
+  `ajustarArte` (recusa página-modelo, `invalidateScheduledRenders` +
+  `pedirRecomposicaoDaArteCongelada`, Generation nova com `fieldValues.revisao`).
+  Ajuste de diagramação não muda copy e por isso não gera sinal de copy — a
+  correção do revisor não pode virar "preferência da equipe" no aprendizado.
+- 🔴 **A arte do compositor fica no template ANTIGO depois que a página muda de
+  pasta** (`moverPaginaParaSemana`, ao agendar): buscar a Generation da página
+  filtrando por `templateId` perdia a referência de corpo e o assunto. A busca é
+  por projeto + `fieldValues.pageId`.
+- **No chat** (instruções do conector): compor → `revisar-arte` → `ajustar-arte`
+  com os ajustes → revisar de novo, no máximo DUAS rodadas; o que sobrar vira
+  observação para a pessoa, e a revisão nunca trava a agenda. `ARTE_REVISAO_VISAO=off`
+  desliga a visão; `OPENAI_REVISOR_MODEL` troca o modelo.
+- `scripts/revisar-pecas-reais.ts` roda o revisor nas últimas peças do
+  compositor de cada cliente, sem gravar (`--sem-visao` só mede), e imprime o
+  placar por regra: regra que acusa em quase toda peça boa é limite para
+  recalibrar, não defeito da carteira.
+- **Gradiente se aponta pelo id.** Sem `camadas`, o ajuste só mexe no gradiente
+  de LEITURA da borda (o que o compositor desenhou) ou cria um; o gradiente que a
+  equipe desenhou à mão só muda quando o ajuste traz o id dele, e as regras nunca
+  propõem enfraquecê-lo. Antes, "criar gradiente" numa borda com o gradiente da
+  equipe alterava o dela, que a régua nem reconhece como gradiente de leitura.
+- 🔴 **O delta da pilha sai do MESMO medidor dos dois lados** (antes e depois do
+  ajuste). A altura gravada pode ter vindo do editor; comparar a medida nova do
+  servidor com ela deslocava o bloco pela diferença entre os medidores, não pela
+  mudança pedida. E o reflow de preenchimento só roda quando algum TEXTO foi
+  trocado: com ajustes e nenhum texto novo, normalizar a pilha antes deslocaria a
+  base do grupo que o executor preserva.
+- **Gosto nunca passa de sugestão.** Posição estranha, respiro desequilibrado e
+  desalinhado vistos pela visão ficam em sugestão mesmo com confiança alta — na
+  recalibração de 11/09 o respiro saía aviso em 7 de 20 peças boas.
+- **Revisão sem achado não é aprovação quando a cobertura tem buraco**: o resumo
+  diz o que não foi avaliado (visão que não rodou ou concluiu só em parte, regra
+  medida em parte), e visão com item que não pôde ser lido
+  (`visaoConclusiva: false`) não rebaixa nem tira nada.
+- **A agenda é avisada mesmo quando o render falha**: `Page.layers` já está
+  gravado quando `renderPageAndRegister` roda, então a invalidação e a
+  recomposição rodam no `catch` antes de o erro subir.
+- ⚠️ **Depois de um ajuste, a página deixa de ser recomposta.** A arte mais nova
+  dela passa a ser a do ajuste (Generation de `renderPageAndRegister`, sem
+  `layersSnapshot` nem spec), e `lerArteDaPagina` usa a mais recente: uma edição
+  de copy posterior cai no re-render como está. Os ajustes sobrevivem, mas o
+  texto novo não é medido de novo — revise a peça outra vez depois de editar a
+  copy.
+- ⚠️ Rich text é medido como texto simples (a largura dos trechos destacados é
+  aproximada, cobertura "parcial").
