@@ -6790,6 +6790,7 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   as três áreas distinguem erro (mensagem + tentar de novo), carregando e
   resultado vazio — "este cliente não tem página de assinatura" só é dito com a
   consulta respondida.
+- **Os atalhos de categoria de "Fatos da casa" FILTRAM a base** (`/knowledge?projectId=&category=`, PR14-07): a página lia só `projectId` e todo atalho abria a listagem geral; valor fora do vocabulário é ignorado, e o filtro aparece como chip que se tira.
 - **"Fatos da casa" é contagem e prazo, nunca conteúdo** (`resumoDosFatos`:
   `groupBy` por categoria das ACTIVE, o que vence em 14 dias e o que já venceu e
   o cron ainda não arquivou, atalhos para `/projects/[id]/base` e `/knowledge`).
