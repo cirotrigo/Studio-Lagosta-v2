@@ -5883,3 +5883,21 @@ Codex antes de ser escrito.
   `copy-visual-nomes-repetidos.test.ts` (as três codificações de
   `Page.layers`) e o passo 9k da prova de integração (costura
   `_prova.antesDePublicar`; escrito, ainda não rodado).
+
+**Da revisão do commit 90aa3739 (BLOQUEADO, REV-90AA-01, 12/09/2026):**
+
+- 🔴 **A costura de prova que roda ENTRE o upload e a publicação recebe a URL
+  do PNG** (`antesDePublicar({ url })`) e a registra para a limpeza ANTES de
+  fazer qualquer outra coisa. O PNG de A já está no Blob quando o passo 9k
+  roda o ajuste B: se B lançar, A sai sem apagar nada; se o `del` da versão
+  descartada falhar, `persist` só avisa (não pode derrubar o 409 esperado). Nos
+  dois casos a URL não estava em Generation nenhuma nem no conjunto `blobs`, e
+  a prova terminava verde com resíduo no Blob de PRODUÇÃO.
+- **A limpeza de Blob da prova mora em `scripts/lib/limpeza-de-blobs.ts`**
+  (`apagarBlobsDaRodada`, sem Prisma nem SDK): só URLs do Blob, sem repetição,
+  falha ao apagar devolve erro e as URLs que ficaram — e quem chama conta como
+  falha da prova (REV-9E-03). Tentar de novo o PNG que `persist` já apagou não
+  custa nada; é o que pega a exclusão que virou só aviso.
+- Provas: `ajuste-render-atrasado.test.ts` (a costura recebe a URL antes da
+  publicação; se lançar, a URL já foi entregue) e
+  `src/lib/__tests__/limpeza-de-blobs-da-prova.test.ts`.

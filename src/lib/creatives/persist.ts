@@ -264,8 +264,13 @@ export interface RenderPageInput {
    * sempre.
    */
   versaoEsperada?: string | null
-  /** SÓ PARA PROVA: roda depois de o PNG subir ao Blob e antes da publicação condicionada pela versão. */
-  antesDePublicar?: () => Promise<void>
+  /**
+   * SÓ PARA PROVA: roda depois de o PNG subir ao Blob e antes da publicação condicionada pela versão. Recebe a URL
+   * do PNG recém-subido: quem costura registra essa URL para a limpeza ANTES de fazer qualquer outra coisa — se a
+   * costura lançar, ou se o `del` da versão descartada falhar (vira só aviso), é a única forma de o PNG não ficar no
+   * Blob sem ninguém saber (REV-90AA-01).
+   */
+  antesDePublicar?: (png: { url: string }) => Promise<void>
 }
 
 /**
@@ -329,7 +334,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
     fileName: `${page.name}.png`,
   }
 
-  if (input.antesDePublicar) await input.antesDePublicar()
+  if (input.antesDePublicar) await input.antesDePublicar({ url: blob.url })
 
   if (input.versaoEsperada) {
     /**

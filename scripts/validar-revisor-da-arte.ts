@@ -42,6 +42,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { apagarBlobsDaRodada } from './lib/limpeza-de-blobs'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -1500,7 +1501,8 @@ async function main() {
     // `_prova.antesDePublicar`); dentro da parada o ajuste B revisa (lê V1), grava V2, renderiza e publica. A é
     // liberado por último. Esperado: A recusa com PAGINA_MUDOU_DURANTE (ajuste gravado, arte descartada), a página em
     // V2, miniatura e Generation mais recente de B, nenhuma Generation de A, e o 1º agendamento pela página com a arte
-    // de B. (O PNG de A é apagado pelo próprio persist; a URL dele não chega à prova.)
+    // de B. REV-90AA-01: a costura recebe a URL do PNG de A e a registra para a limpeza ANTES de rodar B — se B lançar,
+    // ou se o `del` da versão descartada falhar (vira só aviso no persist), a limpeza final ainda alcança o PNG de A.
     console.log('9k) REV-FINAL-01: dois ajustes intercalados numa peça sem post — o render de A que termina por último é descartado; miniatura, Generation e agendamento ficam com B')
     {
       const { versaoDaPagina: versaoDaPagina9k } = await import('../src/lib/creatives/revisao/versao')
@@ -1531,7 +1533,7 @@ async function main() {
       const yAntes9k = Number(manchete9k.position?.y)
       const onde9k = { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId9k } }
       const gensAntes9k = await db.generation.count({ where: onde9k })
-      const estado9k: { b: Awaited<ReturnType<typeof ajustarArte>> | null } = { b: null }
+      const estado9k: { b: Awaited<ReturnType<typeof ajustarArte>> | null; pngDeA: string | null } = { b: null, pngDeA: null }
       const r9kA = await revisarArte({ projectId: PROJETO, pageId: pageId9k, visao: false, previa: false })
       const e9kA = await erroDe(
         ajustarArte({
@@ -1541,7 +1543,9 @@ async function main() {
           ajustes: [{ tipo: 'mover', camadas: [String(manchete9k.id)], dy: -8 }],
           canal: 'claude-code',
           _prova: {
-            antesDePublicar: async () => {
+            antesDePublicar: async ({ url: pngDeA }) => {
+              blobs.add(pngDeA)
+              estado9k.pngDeA = pngDeA
               const r9kB = await revisarArte({ projectId: PROJETO, pageId: pageId9k, visao: false, previa: false })
               estado9k.b = await ajustarArte({ projectId: PROJETO, pageId: pageId9k, versaoEsperada: r9kB.versao, ajustes: [{ tipo: 'mover', camadas: [String(manchete9k.id)], dy: -6 }], canal: 'claude-code' })
               if (estado9k.b.url) blobs.add(estado9k.b.url)
@@ -1550,6 +1554,7 @@ async function main() {
         }),
       )
       const b9k = estado9k.b
+      conferir('a URL do PNG de A chegou à prova e está no conjunto da limpeza (REV-90AA-01)', !!estado9k.pngDeA && blobs.has(estado9k.pngDeA) && estado9k.pngDeA !== b9k?.url, String(estado9k.pngDeA).slice(-48))
       conferir('A recusa com PAGINA_MUDOU_DURANTE (409) e diz que o ajuste foi gravado; B terminou', e9kA?.code === 'PAGINA_MUDOU_DURANTE' && e9kA.status === 409 && !!b9k, e9kA?.message.slice(0, 80))
       if (!b9k) throw new Error('o ajuste B do 9k não terminou')
       const pagina9k = await db.page.findUnique({ where: { id: pageId9k }, select: { thumbnail: true, width: true, height: true, background: true, layers: true } })
@@ -1635,19 +1640,15 @@ async function main() {
       criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
       await db.socialPost.deleteMany({ where: { id: { in: posts } } })
     }
-    const urls = [...blobs].filter((u): u is string => typeof u === 'string' && u.includes('blob.vercel-storage.com'))
     // Falha ao apagar o Blob é FALHA da prova (REV-9E-03): resíduo no Blob de produção não pode passar no gate.
-    // "encontrados" e "apagados" são contados em separado.
-    let blobsApagados = 0
-    try {
-      if (urls.length) await del(urls)
-      blobsApagados = urls.length
-    } catch (e) {
-      console.error('  ✗ blob NÃO apagado (conta como falha da prova):', e instanceof Error ? e.message : e)
+    // "encontrados" e "apagados" são contados em separado; o conjunto inclui o PNG que o persist descartou (REV-90AA-01).
+    const limpezaDeBlobs = await apagarBlobsDaRodada(blobs, (urls) => del(urls))
+    if (limpezaDeBlobs.erro) {
+      console.error('  ✗ blob NÃO apagado (conta como falha da prova):', limpezaDeBlobs.erro)
       mau++
     }
-    console.log(`  apagados: ${JSON.stringify({ ...criados, blobs: `${blobsApagados} de ${urls.length} encontrados` })}`)
-    if (blobsApagados !== urls.length) console.error(`  ✗ ${urls.length - blobsApagados} blob(s) ficaram no Blob: ${urls.join(' ')}`)
+    console.log(`  apagados: ${JSON.stringify({ ...criados, blobs: `${limpezaDeBlobs.apagados} de ${limpezaDeBlobs.encontrados} encontrados` })}`)
+    if (limpezaDeBlobs.restantes.length) console.error(`  ✗ ${limpezaDeBlobs.restantes.length} blob(s) ficaram no Blob: ${limpezaDeBlobs.restantes.join(' ')}`)
     await db.$disconnect()
   }
 

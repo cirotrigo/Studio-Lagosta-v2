@@ -870,8 +870,11 @@ export interface AjustarArteInput {
   /** Só para a prova de integração: costura que roda DENTRO da transação, entre a escrita da página e a trava. */
   _prova?: {
     entreGravarETravar?: () => Promise<void>
-    /** Depois de o PNG deste ajuste subir ao Blob e antes da publicação condicionada pela versão (REV-FINAL-01). */
-    antesDePublicar?: () => Promise<void>
+    /**
+     * Depois de o PNG deste ajuste subir ao Blob e antes da publicação condicionada pela versão (REV-FINAL-01). Recebe
+     * a URL do PNG: a prova a registra para a limpeza antes de tudo (REV-90AA-01).
+     */
+    antesDePublicar?: (png: { url: string }) => Promise<void>
   }
 }
 

@@ -236,3 +236,45 @@ describe('REV-FINAL-01 — o render atrasado de um ajuste não publica a versão
     expect(banco.apagados).toEqual([])
   })
 })
+
+describe('REV-90AA-01 — a costura da prova recebe a URL do PNG antes de qualquer outra coisa', () => {
+  it('`_prova.antesDePublicar` recebe a URL que acabou de subir ao Blob, antes da publicação', async () => {
+    const v0 = versaoDaPagina(banco.pagina!)!
+    const vistas: string[] = []
+    const r = await ajustarArte({
+      projectId: 8,
+      pageId: 'p1',
+      versaoEsperada: v0,
+      ajustes: [{ tipo: 'mover', camadas: ['t1'], dy: -10 }],
+      _prova: {
+        antesDePublicar: async ({ url }) => {
+          vistas.push(url)
+          // Ainda não publicou: a miniatura da página não é esta URL.
+          expect(banco.pagina!.thumbnail).not.toBe(url)
+        },
+      },
+    })
+    expect(vistas).toEqual([r.url])
+  })
+
+  it('se a costura lançar, a URL já foi entregue a ela — quem costura consegue limpar o PNG', async () => {
+    const v0 = versaoDaPagina(banco.pagina!)!
+    const registradas = new Set<string>()
+    await expect(
+      ajustarArte({
+        projectId: 8,
+        pageId: 'p1',
+        versaoEsperada: v0,
+        ajustes: [{ tipo: 'mover', camadas: ['t1'], dy: -10 }],
+        _prova: {
+          antesDePublicar: async ({ url }) => {
+            registradas.add(url)
+            throw new Error('ajuste B lançou')
+          },
+        },
+      }),
+    ).rejects.toThrow('ajuste B lançou')
+    expect([...registradas]).toEqual([expect.stringMatching(/\?n=1$/)])
+    expect(banco.generations).toHaveLength(0)
+  })
+})
