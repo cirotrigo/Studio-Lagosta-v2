@@ -1280,11 +1280,16 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     // Texto visível que o medidor não mede não foi examinado por NENHUMA regra
     // de geometria — e não recebeu marca para a visão. Cobertura parcial, com
     // os ids, em tudo que depende da métrica (REV-127-03).
-    const nome = (id: string) => { const l = porId.get(id); return l ? nomeDaCamada(l) : id }
-    const motivo = `texto(s) sem métrica — curvo, fitty ou auto-resize, que o medidor não mede: ${e.textosSemMetrica.map(nome).join(', ')}; as regras de geometria não os examinaram e a visão não recebeu marca deles`
+    // O ID vai SEMPRE (dois textos podem dividir nome e papel); o nome vai
+    // junto quando difere. Regra já parcial (rich text aproximado) GANHA este
+    // motivo em vez de perdê-lo (REV-4B-02).
+    const rotulo = (id: string) => { const l = porId.get(id); const nome = l ? nomeDaCamada(l) : null; return nome && nome !== id ? `${id} ("${nome}")` : id }
+    const motivo = `texto(s) sem métrica — curvo, fitty ou auto-resize, que o medidor não mede: ${e.textosSemMetrica.map(rotulo).join(', ')}; as regras de geometria não os examinaram e a visão não recebeu marca deles`
     for (const regra of REGRAS_DA_REVISAO) {
       if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais') continue
-      if (cobertura[regra]?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo }
+      const atual = cobertura[regra]
+      if (atual?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo }
+      else if (atual?.estado === 'parcial') cobertura[regra] = { estado: 'parcial', motivo: [atual.motivo, motivo].filter(Boolean).join('; ') }
     }
   }
 

@@ -647,7 +647,10 @@ export async function recuperarJobsPerdidos(
     }
   }
 
-  // (b) órfãs anteriores à fila
+  // (b) órfãs anteriores à fila — SÓ na varredura global: com `apenas` (a
+  // prova), esta etapa alcançaria Generations de outros projetos e as marcaria
+  // FAILED fora do que a prova criou (REV-4B-01 da revisão do Codex, 12/09/2026).
+  if (opcoes.apenas) return { reenfileirados, falhados, orfasSemJob: 0 }
   const orfas = await db.generation.findMany({
     where: {
       status: 'PROCESSING',

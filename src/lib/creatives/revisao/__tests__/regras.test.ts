@@ -599,6 +599,13 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     expect(r.resumo).not.toMatch(/nada a corrigir/i)
     // sem textos sem métrica, nada muda
     expect(avaliarPeca(entrada({ camadas: [servico], metricas: [metrica(servico)], textosSemMetrica: [] })).cobertura.colisao?.estado).toBe('avaliada')
+    // dois textos com o MESMO nome e ids diferentes: o motivo cita o ID (e o nome entre aspas); e a regra já parcial por rich text AGREGA o motivo (REV-4B-02)
+    const gemeo = { ...servico, id: 'servico-b', name: servico.name } as Layer
+    const rr = avaliarPeca(entrada({ camadas: [servico, gemeo], metricas: [metrica(servico)], textosSemMetrica: ['servico-b'], medidasAproximadas: [servico.id] }))
+    expect(rr.cobertura.colisao?.motivo).toMatch(/servico-b/)
+    expect(rr.cobertura.colisao?.motivo).toMatch(/rich text medido como texto simples/)
+    expect(rr.cobertura.colisao?.motivo).toMatch(/sem métrica/)
+    expect(rr.cobertura['fora-da-area-segura']?.motivo).toMatch(/servico-b \("/)
   })
 
   it('redução exatamente no mínimo (0,6 → 0,52 com "pouco") é aceita — a conta é em milésimos, não em ponto flutuante; abaixo do mínimo continua recusada (REV-C19-02)', () => {

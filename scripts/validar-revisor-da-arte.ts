@@ -979,6 +979,12 @@ async function main() {
       const payloadNormal6s = { generationId: persistido2.generationId, projectId: PROJETO, recompor: { pageId: pageId2, origem: 'editor' } }
       await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, startedAt: new Date(Date.now() - 3_600_000), leaseExpiresAt: new Date(Date.now() - 600_000), finishedAt: null, payload: payloadNormal6s as never } })
       const genAntes6s = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { status: true } })
+      // REV-4B-01: uma "órfã" de OUTRO projeto (PROCESSING há mais de 10 min, sem job) tem de ficar intacta na varredura restrita.
+      const outroProjeto6s = await db.project.findFirst({ where: { id: { not: PROJETO } }, select: { id: true, userId: true, Template: { take: 1, select: { id: true } } } })
+      const templateAlheio = outroProjeto6s?.Template[0]?.id ?? null
+      const orfa6s = templateAlheio && outroProjeto6s
+        ? await db.generation.create({ data: { projectId: outroProjeto6s.id, templateId: templateAlheio, createdBy: outroProjeto6s.userId, status: 'PROCESSING', createdAt: new Date(Date.now() - 20 * 60_000), fieldValues: { prova: '6s', marca: MARCA } as never }, select: { id: true, status: true, fieldValues: true } })
+        : null
       const r6s = await recuperarJobsPerdidos({
         apenas: [jobId6r],
         seams: {
@@ -992,6 +998,16 @@ async function main() {
       const genDepois6s = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { status: true } })
       conferir('a recuperação NÃO marcou FAILED: relê depois de perder o CAS e devolve o job à fila (reenfileirados 1, falhados 0)', r6s.falhados === 0 && r6s.reenfileirados === 1 && job6s?.status === 'PENDING', JSON.stringify({ r: r6s, status: job6s?.status, lastError: job6s?.lastError }))
       conferir('a força promovida durante a corrida FICOU no payload, com o orçamento ampliado (3 → 4) e a Generation intacta', rec6s.forcar === true && typeof rec6s.forcaPedidaEm === 'string' && job6s?.maxAttempts === 4 && job6s.attempts === 3 && genDepois6s?.status === genAntes6s?.status, JSON.stringify({ recompor: rec6s, attempts: job6s?.attempts, maxAttempts: job6s?.maxAttempts, gen: genDepois6s?.status }))
+      if (orfa6s) {
+        try {
+          const orfaDepois = await db.generation.findUnique({ where: { id: orfa6s.id }, select: { status: true, fieldValues: true } })
+          conferir('a varredura RESTRITA (`apenas`) não tocou na órfã de outro projeto: continua PROCESSING, com o fieldValues intacto, e o resultado diz orfasSemJob 0 (REV-4B-01)', orfaDepois?.status === 'PROCESSING' && JSON.stringify(orfaDepois?.fieldValues) === JSON.stringify(orfa6s.fieldValues) && r6s.orfasSemJob === 0, JSON.stringify({ status: orfaDepois?.status, orfasSemJob: r6s.orfasSemJob }))
+        } finally {
+          await db.generation.delete({ where: { id: orfa6s.id } }).catch(() => undefined)
+        }
+      } else {
+        conferir('não há outro projeto com template no dev para exercitar a órfã alheia (REV-4B-01)', false)
+      }
       // controle: sem corrida, 3/3 expirado vira FAILED terminal (o comportamento de sempre) — e a Generation COMPLETED não é tocada
       await db.generationJob.update({ where: { id: jobId6r }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, leaseExpiresAt: new Date(Date.now() - 600_000), payload: payloadNormal6s as never } })
       const r6sB = await recuperarJobsPerdidos({ apenas: [jobId6r] })
