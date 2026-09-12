@@ -67,22 +67,37 @@ function endpointDe(url: string | undefined): string | null {
     return null
   }
 }
-function abortar(titulo: string, linhas: string[] = []): never {
+/** Falha de pré-requisito ANTES de qualquer conexão (ambiente, compute): pode encerrar o processo na hora. */
+function sairAntesDeComecar(titulo: string, linhas: string[] = []): never {
   console.error(`\n✗ ${titulo}\n`)
   for (const l of linhas) console.error(`  ${l}`)
   process.exit(1)
 }
+class ProvaAbortada extends Error {
+  constructor(titulo: string, readonly linhas: string[] = []) {
+    super(titulo)
+    this.name = 'ProvaAbortada'
+  }
+}
+/**
+ * Falha de pré-requisito ou de passo DEPOIS de a prova ter tocado o banco: LANÇA, para o `finally` restaurar
+ * a voz anterior e o DNA. `process.exit` aqui pulava o cleanup — com uma `BrandVoice` no projeto 6 e um DNA
+ * que produzisse menos de três fatos, a voz anterior era apagada e nunca restaurada (PR13-28).
+ */
+function abortar(titulo: string, linhas: string[] = []): never {
+  throw new ProvaAbortada(titulo, linhas)
+}
 function apontarParaODev(): string {
   const prod = parseEnvFile(resolve(ROOT, '.env'))
   const dev = parseEnvFile(resolve(ROOT, '.env.development.local'))
-  if (!existsSync(resolve(ROOT, '.env'))) abortar('não há .env aqui para dizer qual compute é PRODUÇÃO.')
-  if (!dev.DATABASE_URL) abortar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
+  if (!existsSync(resolve(ROOT, '.env'))) sairAntesDeComecar('não há .env aqui para dizer qual compute é PRODUÇÃO.')
+  if (!dev.DATABASE_URL) sairAntesDeComecar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
   for (const [k, v] of Object.entries(prod)) if (!(k in process.env)) process.env[k] = v
   for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
   const alvo = endpointDe(process.env.DATABASE_URL)
   const producao = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
-  if (producao.size === 0) abortar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')
-  if (!alvo || producao.has(alvo)) abortar('O banco resolvido é o de PRODUÇÃO.', [`DATABASE_URL aponta para ${alvo ?? '(ilegível)'}.`])
+  if (producao.size === 0) sairAntesDeComecar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')
+  if (!alvo || producao.has(alvo)) sairAntesDeComecar('O banco resolvido é o de PRODUÇÃO.', [`DATABASE_URL aponta para ${alvo ?? '(ilegível)'}.`])
   return alvo
 }
 const ENDPOINT = apontarParaODev()
@@ -127,6 +142,12 @@ async function main() {
   if (!VOZES_PROPOSTAS[PROJETO]) abortar(`o projeto ${PROJETO} não tem voz proposta`)
   const dnaAntes = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { toneOfVoice: true, contentRules: true } })
   if (!dnaAntes) abortar(`o projeto ${PROJETO} não tem BrandDNA no dev — a prova precisa de um DNA de texto real`)
+  // PR13-28: TODO pré-requisito é conferido ANTES da primeira mutação (a exclusão da voz anterior, logo abaixo).
+  // Quem falha aqui ainda pode encerrar sem restaurar nada, porque nada foi tocado.
+  const previaDeEntrada = (await lerEstadoDoCliente(db, PROJETO))?.previa
+  if (!previaDeEntrada) sairAntesDeComecar('lerEstadoDoCliente devolveu null antes de a prova começar')
+  if (previaDeEntrada.fatos.noLegado.length < 3) sairAntesDeComecar(`a prévia do projeto ${PROJETO} tem só ${previaDeEntrada.fatos.noLegado.length} fato(s) no DNA; a prova precisa de 3`)
+  if (previaDeEntrada.problemasDaVoz.length > 0) sairAntesDeComecar(`a voz proposta do projeto ${PROJETO} não passa no contrato`, previaDeEntrada.problemasDaVoz.map((p) => `${p.caminho}: ${p.mensagem}`))
   const vozAntes = await db.brandVoice.findUnique({ where: { projectId: PROJETO } })
   if (vozAntes) await db.brandVoice.delete({ where: { projectId: PROJETO } })
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT, projeto: PROJETO }
@@ -387,7 +408,10 @@ async function main() {
     conferir('0 entradas na base além da linha da prova, 0 sinais, 0 páginas, 0 artes do projeto criadas desde o início (o registrador de fatos é o stub)', Object.values(criados).every((n) => n === 0), JSON.stringify(criados))
     registro.fatosAnotados = fatosAnotados.map((a) => a.fato.trecho.slice(0, 80))
   } catch (erro) {
-    console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
+    if (erro instanceof ProvaAbortada) {
+      console.error(`\n✗ a prova parou: ${erro.message}`)
+      for (const l of erro.linhas) console.error(`  ${l}`)
+    } else console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
     mau++
   } finally {
     console.log('\ncleanup (a voz da prova sai; o DNA volta ao que era)')
@@ -426,4 +450,11 @@ async function main() {
   }
 }
 
-main()
+main().catch((erro) => {
+  // Falha ANTES do try/finally (pré-requisito de banco): nada foi tocado, e o processo encerra dizendo por quê.
+  if (erro instanceof ProvaAbortada) {
+    console.error(`\n✗ ${erro.message}\n`)
+    for (const l of erro.linhas) console.error(`  ${l}`)
+  } else console.error('\n✗ a prova falhou antes de começar:', erro instanceof Error ? erro.stack ?? erro.message : erro)
+  process.exit(1)
+})

@@ -177,7 +177,15 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
   // "quinta é dia de vinho", "a casa está fechada" mudam com a operação e têm de vir da base na data da peça.
   { re: /\btod[oa]s?\s+(?:os\s+|as\s+)?dias?\b|\bdiariamente\b/i, rotulo: 'disponibilidade "todo dia"' },
   { re: new RegExp(`\\b${DIA}\\s+[ée]\\s+dia\\s+de\\b`, 'i'), rotulo: 'programa fixo do dia' },
-  { re: /\b(?:casa|restaurante|loja|cozinha)\s+(?:est[áa]|fica|permanece)\s+fechad[ao]s?\b|\bestamos\s+fechad[ao]s\b|\bn[ãa]o\s+abr(?:e|imos)\b|\bfechad[ao]s?\s+(?:a|à|na|no|aos?|às?|em)\s+(?:o\s+)?(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|feriado)/i, rotulo: 'dia fechado' },
+  // PR13-27: "a casa fecha cedo", "com a casa fechada" e "fechamos aos domingos" são o mesmo fato de funcionamento.
+  { re: /\b(?:casa|restaurante|loja|cozinha)\s+(?:est[áa]|fica|permanece)\s+fechad[ao]s?\b|\bcasa\s+fechada\b|\bestamos\s+fechad[ao]s\b|\bn[ãa]o\s+abr(?:e|imos)\b|\bfecha(?:mos)?\s+(?:mais\s+)?cedo\b|\bfecha(?:mos)?\s+(?:a|à|na|no|aos?|às?|em)\s+(?:o\s+)?(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|feriado)|\bfechad[ao]s?\s+(?:a|à|na|no|aos?|às?|em)\s+(?:o\s+)?(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo|feriado)/i, rotulo: 'dia fechado' },
+  // PR13-27: refeição ou período AMARRADOS a um dia ("jantar de domingo", "programação noturna em domingo e segunda",
+  // "domingo nada noturno; segunda nada de almoço", "programação em domingo") são condição da casa — o que o cliente
+  // recebe em cada dia e período vem da base, na data da peça. Citar o dia sozinho ("SEXTA NO QUINTAL") não é.
+  { re: new RegExp(`\\b(?:jantar|almo[çc]o|caf[ée]\\s+da\\s+manh[ãa]|brunch)\\s+d[eao]s?\\s+${DIA}`, 'i'), rotulo: 'refeição por dia' },
+  { re: new RegExp(`\\b(?:noturn[oa]s?|matinal|matutin[oa]|vespertin[oa]|de\\s+(?:almo[çc]o|jantar|manh[ãa]))\\s+(?:em|a[os]?|às?|n[ao]s?)\\s+(?:o\\s+|a\\s+)?${DIA}`, 'i'), rotulo: 'período por dia' },
+  { re: new RegExp(`\\b${DIA}\\s+(?:nada|sem|s[óo])\\s+(?:noturn[oa]|de\\s+(?:almo[çc]o|jantar|manh[ãa])|à\\s+noite|de\\s+dia)`, 'i'), rotulo: 'período por dia' },
+  { re: new RegExp(`\\bprograma[çc][ãa]o\\s+(?:em|a[os]?|às?|n[ao]s?)\\s+(?:o\\s+|a\\s+)?${DIA}`, 'i'), rotulo: 'programação por dia' },
 ]
 
 /**
@@ -187,13 +195,16 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
  * período ("no jantar") — as duas que sobraram na proposta do TERO (PR13-07) —,
  * e a DISPONIBILIDADE ("todo dia"), o programa fixo do dia ("quinta é dia de
  * vinho") e o dia fechado ("a casa está fechada") que sobraram no By Rock e no
- * Empório (PR13-25). Texto entre aspas é vocabulário citado (o que a regra
- * proíbe ou exige), não condição; "lista fechada" e "menu fechado" não são
- * dia fechado.
+ * Empório (PR13-25), e a refeição ou o período AMARRADOS a um dia ("jantar de
+ * domingo", "programação noturna em domingo e segunda", "domingo nada noturno")
+ * que sobraram no Seu Quinto, no Quintal e no TERO (PR13-27). Texto entre
+ * aspas é vocabulário citado (o que a regra proíbe ou exige), não condição;
+ * "lista fechada" e "menu fechado" não são dia fechado; o dia SOZINHO
+ * ("SEXTA NO QUINTAL", "Domingou no boteco") é editorial e passa.
  */
 export function condicoesOperacionais(texto: string): string[] {
   const semCitacoes = texto.replace(/"[^"]*"|“[^”]*”|'[^']*'/g, ' ')
-  return CONDICOES_OPERACIONAIS.filter((c) => c.re.test(semCitacoes)).map((c) => c.rotulo)
+  return [...new Set(CONDICOES_OPERACIONAIS.filter((c) => c.re.test(semCitacoes)).map((c) => c.rotulo))]
 }
 
 /**

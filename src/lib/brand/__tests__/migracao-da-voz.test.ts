@@ -315,6 +315,32 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(legadas[1].texto).toBe('Pré-título, manchete e apoio são lidos como UMA frase, de cima para baixo.')
   })
 
+  it('PR13-27: refeição ou período AMARRADOS a um dia, "fecha cedo" e "casa fechada" são condição — detectados no DNA e recusados na voz; o dia sozinho (editorial) passa', () => {
+    // As três frases reais que a revisão FINAL achou nas propostas (Seu Quinto, TERO, Quintal) e a do Empório.
+    const reais = [
+      'sugerir jantar de domingo (a casa fecha cedo); prova social de domingo sai com a casa fechada',
+      'domingo nada noturno; segunda nada de almoço',
+      'programação noturna em domingo e segunda; tempo relativo',
+      'programação em domingo',
+    ]
+    expect(condicoesOperacionais(reais[0])).toEqual(['dia fechado', 'refeição por dia'])
+    expect(condicoesOperacionais(reais[1])).toEqual(['período por dia'])
+    expect(condicoesOperacionais(reais[2])).toEqual(['período por dia'])
+    expect(condicoesOperacionais(reais[3])).toEqual(['programação por dia'])
+    expect(condicoesOperacionais('Fechamos aos domingos; abrimos de terça a sábado.')).toContain('dia fechado')
+    // Editorial que só CITA o dia — e o que a regra proíbe entre aspas — passa.
+    for (const t of ['SEXTA NO QUINTAL', 'DOMINGOU NO QUINTAL', 'Domingou no boteco favorito', 'SÁBADO DE BOTECO', 'Seu fim de semana começa aqui', 'Almoço executivo', 'Almoço ao vivo', 'rodízio de sexta', 'Leia em voz alta antes de fechar.', 'Story de funcionamento: título identifica o DIA como convite ("Quarta no TERO").', 'convite para período em que a casa não recebe: os dias e períodos de funcionamento vêm da base, na data da peça']) {
+      expect(condicoesOperacionais(t), t).toEqual([])
+    }
+    // No DNA a frase vira FATO de tipo condição (a porta de entrada na base); na voz ela impede a migração.
+    const noDna = fatosNoDna({ toneOfVoice: null, contentRules: `Nunca ${reais[0]}.\nEvite ${reais[1]}.` })
+    expect(noDna.map((f) => f.tipos)).toEqual([['condicao'], ['condicao']])
+    for (const frase of reais) {
+      const voz = vozDeTeste({ proibicoes: [frase] })
+      expect(problemasParaMigrar(voz).some((p) => /condi/i.test(p)), frase).toBe(true)
+    }
+  })
+
   it('PR13-07: condicoesOperacionais pega mecânica, janela de dias e período; vocabulário citado entre aspas e o nome da mecânica nos TERMOS não contam', () => {
     expect(condicoesOperacionais('chopp e drinks selecionados em dobro')).toEqual(['mecânica "em dobro"'])
     expect(condicoesOperacionais('a janela (de segunda a quinta, no jantar)')).toEqual(['janela de dias', 'período do dia'])

@@ -6954,6 +6954,30 @@ Da revisão FINAL do PR (BLOQUEADO, PR13-25…26):
   intervalo da falha devolvia o resultado sem o fato até o TTL. Best-effort
   (erro vira log), e só quando a posse da trava continua.
 
+Da segunda revisão FINAL (BLOQUEADO, PR13-27…28):
+
+- 🔴 **Refeição ou período AMARRADOS a um dia também são condição da casa**
+  (PR13-27): "sugerir jantar de domingo (a casa fecha cedo); prova social de
+  domingo sai com a casa fechada" (Seu Quinto), "domingo nada noturno; segunda
+  nada de almoço" (TERO), "programação noturna em domingo e segunda" (Quintal)
+  e "programação em domingo" (Empório) passavam pelos detectores de PR13-25 e
+  iam para o prompt — uma mudança de funcionamento na base deixava a voz
+  contradizendo a base. `condicoesOperacionais` pega `<refeição> de <dia>`,
+  `<período> em/aos <dia>`, `<dia> nada/sem <período>`, `programação em <dia>`,
+  "fecha cedo" e "casa fechada"; as quatro propostas trocaram a frase pela
+  regra sem o dado ("período sem funcionamento — dia e horário vêm da base");
+  o dia SOZINHO ("SEXTA NO QUINTAL", "Domingou no boteco") continua editorial.
+  O teste roda as quatro frases reais (detectadas no DNA como `condicao`,
+  recusadas na voz) e a lista de editoriais que têm de passar. As prévias de
+  produção foram regeradas.
+- 🔴 **O script de prova só encerra o processo DEPOIS do cleanup** (PR13-28):
+  `abortar` era `process.exit(1)`, e chamado depois de apagar a `BrandVoice`
+  anterior do projeto 6 (pré-requisito de três fatos, trava da concorrência)
+  pulava o `finally` que a restaurava. Hoje todo pré-requisito de banco é
+  conferido ANTES da primeira mutação (`sairAntesDeComecar`, que ainda pode
+  encerrar porque nada foi tocado), e `abortar` LANÇA `ProvaAbortada` — o
+  `finally` restaura voz e DNA, e o `main().catch` encerra com o motivo.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
