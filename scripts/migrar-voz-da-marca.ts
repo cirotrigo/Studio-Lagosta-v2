@@ -44,8 +44,12 @@ import {
   type EstadoDoCliente,
   type Manifesto,
   type PreviaDaMigracao,
+  chaveDoFato,
+  isolamentoDoIndexador,
+  podeIndexar,
+  problemasParaMigrar,
+  type DestinoDaAplicacao,
 } from '../src/lib/brand/migracao-da-voz'
-import { lerVoz } from '../src/lib/brand/voz'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -84,7 +88,7 @@ function flag(nome: string): boolean {
 }
 
 /** Resolve o banco: `--dev` aponta para o branch de dev; sem ele fica o `.env`. Devolve o endpoint e se ele é a PRODUÇÃO. */
-export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; producao: boolean } {
+export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; producao: boolean; destino: DestinoDaAplicacao } {
   const prod = parseEnvFile(resolve(ROOT, '.env'))
   if (!existsSync(resolve(ROOT, '.env'))) abortar('não há .env aqui para dizer qual compute é PRODUÇÃO.')
   for (const [k, v] of Object.entries(prod)) if (!(k in process.env)) process.env[k] = v
@@ -93,16 +97,23 @@ export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; pro
     if (!dev.DATABASE_URL) abortar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
     for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
   }
+  // O indexador de vetores da base: em dev só é usado o que o .env.development.local declara — e só se for OUTRO.
+  const dev = opcoes.dev ? parseEnvFile(resolve(ROOT, '.env.development.local')) : prod
+  const indexador = isolamentoDoIndexador(prod, dev)
+  if (opcoes.dev) {
+    if (indexador === 'isolado') for (const k of ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN'] as const) process.env[k] = dev[k]
+    else for (const k of ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN'] as const) delete process.env[k]
+  }
   const alvo = endpointDe(process.env.DATABASE_URL)
   const producaoSet = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
   if (producaoSet.size === 0) abortar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')
   if (!alvo) abortar('DATABASE_URL ilegível.')
   const producao = producaoSet.has(alvo)
   if (opcoes.dev && producao) abortar('--dev pediu o branch de dev, mas o banco resolvido é o de PRODUÇÃO.', [`DATABASE_URL aponta para ${alvo}.`])
-  return { endpoint: alvo, producao }
+  return { endpoint: alvo, producao, destino: { banco: producao ? 'producao' : 'dev', indexador } }
 }
 
-type Db = Pick<PrismaClient, 'project' | 'brandDNA' | 'brandVoice' | '$queryRaw'>
+type Db = Pick<PrismaClient, 'project' | 'brandDNA' | 'brandVoice' | 'knowledgeBaseEntry' | '$queryRaw'>
 
 /**
  * O banco tem a tabela `BrandVoice` (migration do PR 7)? Em produção ela chega
@@ -138,11 +149,13 @@ export async function lerEstadoDoCliente(db: Db, projectId: number): Promise<{ n
   if (!projeto) return null
   const dnaDeTexto: DnaDeTexto = { toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }
   const previa = montarPrevia({ projectId, nome: proposta.nome, dna: dnaDeTexto, voz: proposta.voz })
+  const problemasDaVoz = problemasParaMigrar(proposta.voz)
   const estado: EstadoDoCliente = {
     versaoDaPreviaAtual: versaoDaPrevia({ dna: dnaDeTexto, voz: proposta.voz }),
     trechosDeFato: fatosNoDna(dnaDeTexto).map((f) => f.trecho),
     registro: registro ? { versao: registro.versao, migradaEm: registro.migradaEm } : null,
-    vozValida: lerVoz(proposta.voz).voz !== null,
+    vozValida: problemasDaVoz.length === 0,
+    problemasDaVoz,
   }
   return { nome: proposta.nome, dna: dnaDeTexto, estado, previa }
 }
@@ -163,6 +176,8 @@ export interface FatoACriar {
   trecho: string
   validaAte: string | null
   versaoDaPrevia: string
+  /** `chaveDoFato(projectId, versaoDaPrevia, trecho)` — a identidade durável, gravada em `metadata.chaveDoFato`. */
+  chave: string
 }
 
 export interface ResultadoDaAplicacao {
@@ -172,14 +187,32 @@ export interface ResultadoDaAplicacao {
   motivo?: string
   vozVersao?: number
   migradaEm?: string
+  /** Contados mesmo quando a aplicação termina em `erro`: é o que uma retomada precisa saber. */
   fatosCriados?: number
+  fatosJaExistentes?: number
   erro?: string
 }
 
 export interface AplicarOpcoes {
   /** Quem grava o fato na base. O padrão é `criarEntradaBase` (indexa na busca); a prova injeta um registrador. */
   criarFato?: (fato: FatoACriar, autor: string) => Promise<void>
+  /** O fato com esta chave já está na base? O padrão consulta `metadata.chaveDoFato`; a prova injeta o próprio registro. */
+  fatoJaExiste?: (chave: string, projectId: number) => Promise<boolean>
+  /**
+   * Onde o registrador PADRÃO vai escrever (o de `resolverBanco`). Sem
+   * `criarFato` injetado ele é obrigatório, e dev com indexador de produção
+   * BLOQUEIA o cliente antes de qualquer escrita (PR13-01).
+   */
+  destino?: DestinoDaAplicacao
   agora?: Date
+  /** Costuras para a prova: rodam entre etapas reais e nunca são usadas pelo script. */
+  seams?: { antesDeAtivar?: (projectId: number) => Promise<void> }
+}
+
+/** O fato com esta chave já existe na base deste projeto? (consulta por `metadata.chaveDoFato`). */
+export async function fatoExisteNaBase(db: Db, chave: string, projectId: number): Promise<boolean> {
+  const achado = await db.knowledgeBaseEntry.findFirst({ where: { projectId, metadata: { path: ['chaveDoFato'], equals: chave } }, select: { id: true } })
+  return achado !== null
 }
 
 /**
@@ -191,6 +224,9 @@ export interface AplicarOpcoes {
  */
 export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: AplicarOpcoes = {}): Promise<ResultadoDaAplicacao[]> {
   const { gravarVoz, migrarParaVoz } = await import('../src/lib/brand/voz-service')
+  // O registrador padrão INDEXA (Upstash Vector). Sem um registrador injetado, o destino tem de estar declarado e
+  // o indexador tem de ser o do banco escolhido — senão NENHUM cliente é escrito (PR13-01).
+  const indexacao: ReturnType<typeof podeIndexar> = opcoes.criarFato ? { ok: true } : podeIndexar(opcoes.destino)
   const criarFato =
     opcoes.criarFato ??
     (async (fato: FatoACriar, autor: string) => {
@@ -202,15 +238,20 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
         content: fato.trecho,
         tags: ['migracao-da-voz'],
         expiresAt: fato.validaAte ? new Date(`${fato.validaAte}T23:59:59-03:00`) : null,
-        metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia },
+        metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave },
         autor,
       })
     })
+  const fatoJaExiste = opcoes.fatoJaExiste ?? ((chave: string, projectId: number) => fatoExisteNaBase(db, chave, projectId))
   const estados = new Map<number, EstadoDoCliente>()
+  const dnas = new Map<number, DnaDeTexto>()
   const donos = new Map<number, string>()
   for (const c of manifesto.clientes) {
     const lido = await lerEstadoDoCliente(db, c.projectId)
-    if (lido) estados.set(c.projectId, lido.estado)
+    if (lido) {
+      estados.set(c.projectId, lido.estado)
+      dnas.set(c.projectId, lido.dna)
+    }
     const projeto = await db.project.findUnique({ where: { id: c.projectId }, select: { userId: true } })
     if (projeto) donos.set(c.projectId, projeto.userId)
   }
@@ -221,20 +262,35 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: acao.acao, ...(acao.acao === 'bloqueado' ? { motivo: acao.motivo } : {}) })
       continue
     }
+    if (indexacao.ok === false) {
+      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'bloqueado', motivo: `indexador da base: ${indexacao.motivo}` })
+      continue
+    }
     const cliente = manifesto.clientes.find((c) => c.projectId === acao.projectId)!
     const autor = donos.get(acao.projectId)
+    const dna = dnas.get(acao.projectId)
+    // Contados FORA do try: uma falha no meio devolve quantos fatos já estão na base (a retomada não os recria).
+    let fatosCriados = 0
+    let fatosJaExistentes = 0
     try {
       if (!autor) throw new Error('projeto sem dono (userId) para assinar as entradas da base')
-      let fatosCriados = 0
+      if (!dna) throw new Error('o DNA de texto aprovado não foi lido')
       for (const f of acao.fatos) {
-        await criarFato({ projectId: acao.projectId, categoria: f.categoria, titulo: f.titulo, trecho: f.trecho, validaAte: f.validaAte ?? null, versaoDaPrevia: cliente.versaoDaPrevia }, autor)
+        const chave = chaveDoFato({ projectId: acao.projectId, versaoDaPrevia: cliente.versaoDaPrevia, trecho: f.trecho })
+        if (await fatoJaExiste(chave, acao.projectId)) {
+          fatosJaExistentes++
+          continue
+        }
+        await criarFato({ projectId: acao.projectId, categoria: f.categoria, titulo: f.titulo, trecho: f.trecho, validaAte: f.validaAte ?? null, versaoDaPrevia: cliente.versaoDaPrevia, chave }, autor)
         fatosCriados++
       }
       const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
-      const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora })
-      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString(), fatosCriados })
+      await opcoes.seams?.antesDeAtivar?.(acao.projectId)
+      // A ativação confere, na mesma transação, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02).
+      const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules } })
+      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString(), fatosCriados, fatosJaExistentes })
     } catch (e) {
-      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', erro: e instanceof Error ? e.message : String(e) })
+      resultados.push({ projectId: acao.projectId, nome: acao.nome, acao: 'migrar', erro: e instanceof Error ? e.message : String(e), fatosCriados, fatosJaExistentes })
     }
   }
   return resultados
@@ -253,7 +309,7 @@ async function main() {
   const dev = flag('--dev')
   const aplicar = flag('--aplicar')
   const producaoPedida = flag('--producao')
-  const { endpoint, producao } = resolverBanco({ dev })
+  const { endpoint, producao, destino } = resolverBanco({ dev })
   const saida = argumento('--saida') ?? '.tmp-migrar-voz'
   mkdirSync(resolve(saida, 'previa'), { recursive: true })
   const { db } = await import('../src/lib/db')
@@ -283,9 +339,11 @@ async function main() {
   if (producao && !producaoPedida) abortar('O banco resolvido é o de PRODUÇÃO e --producao não foi pedido.', ['Aplicar em produção exige o PR 7 na main com o schema BrandVoice confirmado, o OK do Ciro e a flag --producao.'])
   const lido = lerManifesto(JSON.parse(readFileSync(resolve(caminho), 'utf8')))
   if (!lido.manifesto) abortar('O manifesto não passa no contrato:', lido.problemas)
-  const resultados = await aplicarManifesto(db, lido.manifesto)
+  console.log(`indexador de vetores da base: ${destino.indexador}`)
+  const resultados = await aplicarManifesto(db, lido.manifesto, { destino })
   for (const r of resultados) {
-    console.log(`  ${r.projectId} ${r.nome}: ${r.acao}${r.motivo ? ` — ${r.motivo}` : ''}${r.erro ? ` — ERRO: ${r.erro}` : ''}${r.vozVersao ? ` · voz v${r.vozVersao}, migrada em ${r.migradaEm}, ${r.fatosCriados} fato(s) na base` : ''}`)
+    const fatos = r.fatosCriados !== undefined ? ` · fatos: ${r.fatosCriados} criado(s), ${r.fatosJaExistentes ?? 0} já na base` : ''
+    console.log(`  ${r.projectId} ${r.nome}: ${r.acao}${r.motivo ? ` — ${r.motivo}` : ''}${r.erro ? ` — ERRO: ${r.erro}` : ''}${r.vozVersao ? ` · voz v${r.vozVersao}, migrada em ${r.migradaEm}` : ''}${fatos}`)
   }
   const arquivo = resolve(saida, `resultado-${new Date().toISOString().replace(/[:.]/g, '-')}.json`)
   writeFileSync(arquivo, `${JSON.stringify({ banco: endpoint, producao, manifesto: caminho, resultados }, null, 2)}\n`)

@@ -6769,6 +6769,56 @@ com o manifesto em branco, à espera das decisões.
   por `db:deploy` com o OK do Ciro — nunca antes do código do PR 7 e nunca o
   código antes do schema.
 
+Da revisão do Codex sobre o primeiro commit (BLOQUEADO, PR13-01…08, 12/09/2026):
+
+- 🔴 **`--dev` trocava só o SQL; o índice de vetores continuava o de PRODUÇÃO**
+  (`criarEntradaBase` indexa em `UPSTASH_VECTOR_*`, que vem do `.env`). Hoje
+  `resolverBanco` devolve o `destino` (banco + `indexador`: `isolado` só quando
+  o `.env.development.local` declara URL e token PRÓPRIOS e a URL é outra;
+  `producao`; `ausente`), e `aplicarManifesto` sem registrador injetado BLOQUEIA
+  o cliente antes de qualquer escrita quando o indexador não é o do banco
+  (`podeIndexar`). Em dev o processo fica SEM `UPSTASH_VECTOR_*` a menos que
+  seja isolado. A prova chama o caminho real e confere o bloqueio (PR13-01).
+- 🔴 **A ativação confere o DNA na MESMA transação em que liga a precedência**
+  (`migrarParaVoz({ dnaEsperado })`, serializável): DNA que mudou entre a
+  leitura da prévia e a ativação recusa com `VOZ_DNA_DIVERGENTE` (409), a voz
+  fica gravada e NÃO migrada, o legado segue mandando. O `dnaArquivado` é
+  exatamente o DNA comparado. Uma edição do DNA que commite depois é, na ordem
+  serial, posterior à migração — o mesmo que editar a aba Marca com a voz já
+  valendo. Costura `seams.antesDeAtivar` só para a prova (PR13-02).
+- 🔴 **Todo fato criado pela migração carrega `metadata.chaveDoFato`**
+  (`sha1(projectId|versaoDaPrevia|trecho)`), e `aplicarManifesto` pula o que já
+  existe (`fatoJaExiste`, padrão por consulta ao `metadata`): retomar depois de
+  uma falha parcial (registrador quebrou no 2º fato, CAS perdido) cria só o que
+  falta. O resultado traz `fatosCriados`/`fatosJaExistentes` também no `erro`
+  (PR13-03). Reaplicar a mesma prévia depois de `desfazerMigracao` NÃO recria
+  fato — é a base datada por prévia, não pelo manifesto.
+- **A prévia carrega o `toneOfVoice` e o `contentRules` INTEGRAIS** (`antes`),
+  e o markdown os reproduz verbatim em blocos de código: vocabulário, exemplos
+  e instruções fora das seções reconhecidas só são revisáveis com o texto
+  inteiro ao lado (PR13-05).
+- 🔴 **O marcador de lista sai; o número que é conteúdo FICA.** A expressão
+  antiga (`^\s*[-*•\d.)]+`) comia "20" de "20% de desconto" e "10" de "10h às
+  22h" — o trecho mutilado ia para a prévia como "exato". Hoje só `-`, `*`, `•`
+  e `1.`/`1)` com espaço depois (PR13-06). E o rodapé `(data — motivo)` sai POR
+  LINHA, antes da divisão em frases, com captura gulosa até o último parêntese
+  (motivo com duas frases, aspas e parênteses internos — os três formatos reais
+  do Espeto viravam "fato de data" mesmo depois do primeiro conserto, PR13-08).
+- 🔴 **Condição operacional é fato, e voz com fato NÃO migra.** `fatosNaVoz`
+  passou a pegar a mecânica ("em dobro", "leve X pague Y"), a janela de dias
+  ("de segunda a quinta") e o período ("no jantar") em copy e regras — não no
+  motivo (história) nem nos TERMOS ("happy em dobro" é o NOME da mecânica, não a
+  promessa). `problemasParaMigrar` = problemas do contrato + fatos na voz, e é
+  isso que `vozValida` do plano lê: a proposta do TERO perdeu as duas condições
+  que carregava (PR13-07). Nunca reintroduza dado numa regra "para explicar".
+- **PR13-04 (a regra de 04/09 do Espeto), respondido sem mudar a proposta**: a
+  regra que o plano substituiu em 11/09 é "não adicione campos; a copy é feita
+  em cima dos campos do template" (compositor); a `regra-2026-09-04-1` da voz é
+  a LEITURA CONTÍNUA entre pré-título, manchete e apoio (feedback do Ciro em
+  03/09), que o próprio plano formaliza como "grupo de leitura" no PR 1. Ela
+  fica ativa; o motivo diz a diferença, e há teste que recusa uma regra ativa
+  de "campos do template" na proposta do Espeto.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

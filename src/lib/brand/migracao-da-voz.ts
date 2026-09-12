@@ -62,10 +62,13 @@ export interface FatoDetectado {
   origem: OrigemNoDna
 }
 
+/** Um dado dentro da voz: preço/horário/data/promoção (`dadosProibidos`) ou uma CONDIÇÃO operacional (mecânica, janela de dias e período). */
+export type TipoDeFatoNaVoz = TipoProibido | 'condicao'
+
 export interface FatoNaVoz {
   caminho: string
   trecho: string
-  tipos: TipoProibido[]
+  tipos: TipoDeFatoNaVoz[]
 }
 
 export interface RegraLegada {
@@ -88,6 +91,9 @@ export interface PreviaDaMigracao {
     contentRulesChars: number
     regrasLegadas: number
     dnaAtualizadoEm: string | null
+    /** Os textos INTEGRAIS que a voz vai substituir — a prévia é revisável só com eles na mão (PR13-05). */
+    toneOfVoice: string | null
+    contentRules: string | null
   }
   depois: {
     prompt: string
@@ -110,7 +116,15 @@ export interface PreviaDaMigracao {
 }
 
 const CABECALHO_LEGADO = /regras aprendidas na pr[aá]tica\s*:?/i
-const RODAPE_DA_LINHA = /\s*\((\d{4}-\d{2}-\d{2})\s*[—-][^)]*\)\s*$/
+/**
+ * O rodapé "(AAAA-MM-DD — motivo)" de uma regra aprendida, no FIM da linha. O
+ * motivo pode ter frases, aspas e parênteses internos ("(2026-09-04 — Em
+ * 03/09 o Ciro editou … "TRADIÇÃO GAÚCHA NO" e explicou …)"): a captura é
+ * gulosa até o último parêntese da linha (PR13-08).
+ */
+const RODAPE_DA_LINHA = /\s*\((\d{4}-\d{2}-\d{2})\s*[—–-].*\)\s*$/
+/** Marcador de LISTA no começo da linha: traço, asterisco, bolinha ou "1." / "1)". Nunca um número que é parte da frase ("20% de desconto"). */
+const MARCADOR_DE_LISTA = /^\s*(?:[-*•]|\d{1,2}[.)])\s+/
 
 /** As linhas da seção "Regras aprendidas na prática" de um texto do DNA (sem o "(data — motivo)"). */
 export function linhasDaSecaoLegada(texto: string | null | undefined): Array<{ texto: string; em: string | null }> {
@@ -131,11 +145,46 @@ export function linhasDaSecaoLegada(texto: string | null | undefined): Array<{ t
   return linhas.filter((l) => l.texto.length >= 8)
 }
 
+/**
+ * As frases de um texto do DNA: linha a linha, o rodapé de regra aprendida
+ * sai ANTES da divisão em frases (um rodapé com duas frases virava dois
+ * fragmentos que a expressão não reconhecia mais — PR13-08), o marcador de
+ * lista sai sem engolir número que é conteúdo ("20% de desconto" ficava "% de
+ * desconto" — PR13-06), e só então cada linha é partida em frases.
+ */
 function frasesDe(texto: string): string[] {
-  return texto
-    .split(/\n+|(?<=[.!?])\s+(?=[A-ZÀ-Ú"“(])/)
-    .map((f) => f.replace(/^\s*[-*•\d.)]+\s*/, '').trim())
-    .filter((f) => f.length >= 6)
+  const frases: string[] = []
+  for (const linhaCrua of texto.split(/\n+/)) {
+    const linha = linhaCrua.replace(RODAPE_DA_LINHA, '').replace(MARCADOR_DE_LISTA, '').trim()
+    if (!linha) continue
+    for (const f of linha.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ú"“(])/)) {
+      const frase = f.trim()
+      if (frase.length >= 6) frases.push(frase)
+    }
+  }
+  return frases
+}
+
+const DIA = '(?:segunda|ter[çc]a|quarta|quinta|sexta|s[áa]bado|domingo)(?:-feira)?'
+const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
+  { re: /\bem dobro\b|\bdobro\b/i, rotulo: 'mecânica "em dobro"' },
+  { re: /\bleve\s+\d+\b|\bpague\s+\d+\b|\bleve\s+\w+\s+pague\b/i, rotulo: 'mecânica leve/pague' },
+  { re: new RegExp(`\\b(?:de|das?)\\s+${DIA}\\s+(?:a|à|até)\\s+${DIA}`, 'i'), rotulo: 'janela de dias' },
+  { re: /\bno\s+(?:jantar|almo[çc]o)\b|\bà\s+noite\b|\bde\s+manh[ãa]\b/i, rotulo: 'período do dia' },
+  { re: /\ba partir d[aeo]s?\s+\d/i, rotulo: 'a partir de horário' },
+]
+
+/**
+ * CONDIÇÕES operacionais que o detector de preço/horário/data/promoção não
+ * pega e que também são fato da base, não voz: a mecânica ("chopp e drinks
+ * selecionados em dobro"), a janela de dias ("de segunda a quinta") e o
+ * período ("no jantar") — as duas que sobraram na proposta do TERO (PR13-07).
+ * Texto entre aspas é vocabulário citado (o que a regra proíbe ou exige), não
+ * condição.
+ */
+export function condicoesOperacionais(texto: string): string[] {
+  const semCitacoes = texto.replace(/"[^"]*"|“[^”]*”|'[^']*'/g, ' ')
+  return CONDICOES_OPERACIONAIS.filter((c) => c.re.test(semCitacoes)).map((c) => c.rotulo)
 }
 
 /**
@@ -150,9 +199,7 @@ export function fatosNoDna(dna: DnaDeTexto): FatoDetectado[] {
   for (const origem of ['toneOfVoice', 'contentRules'] as const) {
     const texto = dna[origem]
     if (!texto) continue
-    for (const fraseCrua of frasesDe(texto)) {
-      const frase = fraseCrua.replace(RODAPE_DA_LINHA, '').trim()
-      if (frase.length < 6) continue
+    for (const frase of frasesDe(texto)) {
       const dados = dadosProibidos(frase)
       if (dados.tipos.length === 0) continue
       const chave = `${origem}:${frase}`
@@ -175,21 +222,25 @@ const PALAVRA_DE_PROMOCAO_NUA = /^(descontos?|gratis|cortesia|promocao)$/i
  */
 export function fatosNaVoz(voz: VozCompacta): FatoNaVoz[] {
   const achados: FatoNaVoz[] = []
-  const olhar = (caminho: string, trecho: string, opcoes: { proibicaoOuRegra?: boolean; soPrecoEHorario?: boolean } = {}) => {
+  const olhar = (caminho: string, trecho: string, opcoes: { proibicaoOuRegra?: boolean; soPrecoEHorario?: boolean; vocabulario?: boolean } = {}) => {
     const dados = dadosProibidos(trecho)
-    let tipos = dados.tipos
+    let tipos: TipoDeFatoNaVoz[] = dados.tipos
     if (opcoes.soPrecoEHorario) tipos = tipos.filter((t) => t === 'preco' || t === 'horario')
     if (opcoes.proibicaoOuRegra && tipos.includes('promocao')) {
       const termosDePromocao = dados.termos.filter((t) => /%|^\d|leve\d+pague/.test(t) || !PALAVRA_DE_PROMOCAO_NUA.test(t))
       if (termosDePromocao.length === 0) tipos = tipos.filter((t) => t !== 'promocao')
     }
+    // Condição operacional é fato em qualquer campo de copy E nas regras. Ficam de fora o motivo da regra (é
+    // história) e o VOCABULÁRIO: "happy em dobro" nos termos é o NOME que a casa dá à mecânica, não a promessa
+    // de que ela vale — a promessa (o que dobra, quando) é o que a regra e o exemplo não podem carregar.
+    if (!opcoes.soPrecoEHorario && !opcoes.vocabulario && condicoesOperacionais(trecho).length > 0) tipos = [...tipos, 'condicao']
     if (tipos.length > 0) achados.push({ caminho, trecho, tipos })
   }
   olhar('descricao', voz.descricao)
   if (voz.tratamento) olhar('tratamento', voz.tratamento)
   voz.exemplos.forEach((e, i) => olhar(`exemplos.${i}`, e))
   voz.antesDepois.forEach((r, i) => olhar(`antesDepois.${i}.depois`, r.depois))
-  voz.termos.forEach((t, i) => olhar(`termos.${i}`, t))
+  voz.termos.forEach((t, i) => olhar(`termos.${i}`, t, { vocabulario: true }))
   voz.proibicoes.forEach((p, i) => olhar(`proibicoes.${i}`, p, { proibicaoOuRegra: true }))
   voz.regras.forEach((r, i) => {
     if (!r.ativa) return
@@ -263,6 +314,8 @@ export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDe
       contentRulesChars: args.dna.contentRules?.length ?? 0,
       regrasLegadas: regrasLegadas.length,
       dnaAtualizadoEm,
+      toneOfVoice: args.dna.toneOfVoice ?? null,
+      contentRules: args.dna.contentRules ?? null,
     },
     depois: {
       prompt,
@@ -291,6 +344,17 @@ export function previaParaMarkdown(p: PreviaDaMigracao): string {
   L.push(`- toneOfVoice: ${p.antes.toneOfVoiceChars} caracteres · contentRules: ${p.antes.contentRulesChars} caracteres${p.antes.dnaAtualizadoEm ? ` · DNA atualizado em ${p.antes.dnaAtualizadoEm}` : ''}`)
   L.push(`- ${p.antes.regrasLegadas} regra(s) em "Regras aprendidas na prática"`)
   L.push('')
+  // Os textos INTEGRAIS, como estão no banco (caixa, acentos, linhas e ordem):
+  // sem eles a prévia mostra só o que os detectores reconhecem, e vocabulário,
+  // exemplos e instruções fora das seções reconhecidas sumiriam sem comparação.
+  for (const [rotulo, texto] of [['toneOfVoice', p.antes.toneOfVoice], ['contentRules', p.antes.contentRules]] as const) {
+    L.push(`### ${rotulo} — texto integral`)
+    L.push('')
+    L.push('```text')
+    L.push(texto && texto.length > 0 ? texto : '(vazio)')
+    L.push('```')
+    L.push('')
+  }
   L.push(`## Depois (a voz compacta, como o gerador de copy a lerá — ${p.depois.chars} de ${p.depois.teto} caracteres)`)
   L.push('')
   L.push('```')
@@ -391,6 +455,49 @@ export function manifestoEmBranco(previas: PreviaDaMigracao[], agora: Date = new
 
 // ── o plano de aplicação ────────────────────────────────────────────────────
 
+/**
+ * A chave DURÁVEL de um fato criado pela migração: projeto + versão da prévia
+ * + trecho exato. Vai no `metadata.chaveDoFato` da entrada da base; retomar
+ * a aplicação depois de uma falha parcial NÃO recria o que já existe
+ * (PR13-03). Mesmo trecho em outra prévia é outro fato — a base é datada.
+ */
+export function chaveDoFato(f: { projectId: number; versaoDaPrevia: string; trecho: string }): string {
+  return createHash('sha1').update(`${f.projectId}|${f.versaoDaPrevia}|${f.trecho}`).digest('hex')
+}
+
+export type Indexador = 'producao' | 'isolado' | 'ausente'
+/** Onde a aplicação vai ESCREVER: o banco (SQL) e o índice de vetores da base (`criarEntradaBase` indexa). */
+export interface DestinoDaAplicacao {
+  banco: 'producao' | 'dev'
+  indexador: Indexador
+}
+
+/**
+ * O indexador de vetores que o processo vai usar, comparado com o de
+ * produção: `isolado` quando o alvo declara URL e token próprios e a URL é
+ * outra; `producao` quando é a mesma URL; `ausente` sem URL ou sem token.
+ * `--dev` troca só `DATABASE_URL`/`DIRECT_URL` — o `UPSTASH_VECTOR_*` do
+ * `.env` continuava valendo e um fato de dev iria para o índice de produção
+ * (PR13-01).
+ */
+export function isolamentoDoIndexador(prod: Record<string, string | undefined>, alvo: Record<string, string | undefined>): Indexador {
+  const url = alvo.UPSTASH_VECTOR_REST_URL?.trim()
+  const token = alvo.UPSTASH_VECTOR_REST_TOKEN?.trim()
+  if (!url || !token) return 'ausente'
+  return url === prod.UPSTASH_VECTOR_REST_URL?.trim() ? 'producao' : 'isolado'
+}
+
+/** Pode INDEXAR fatos neste destino? Dev exige indexador isolado; produção exige o de produção; sem destino declarado, nada. */
+export function podeIndexar(destino: DestinoDaAplicacao | undefined): { ok: true } | { ok: false; motivo: string } {
+  if (!destino) return { ok: false, motivo: 'o destino da aplicação (banco + indexador de vetores) não foi declarado; sem isso os fatos iriam para o índice de PRODUÇÃO' }
+  if (destino.banco === 'dev' && destino.indexador !== 'isolado') {
+    const qual = destino.indexador === 'producao' ? 'é o de PRODUÇÃO' : 'não existe'
+    return { ok: false, motivo: `o banco é o de dev e o indexador de vetores ${qual}: declare UPSTASH_VECTOR_REST_URL/UPSTASH_VECTOR_REST_TOKEN próprios no .env.development.local antes de aplicar em dev` }
+  }
+  if (destino.banco === 'producao' && destino.indexador !== 'producao') return { ok: false, motivo: `o banco é o de produção e o indexador de vetores não é o de produção (${destino.indexador})` }
+  return { ok: true }
+}
+
 export interface EstadoDoCliente {
   /** A versão da prévia CALCULADA AGORA (DNA atual + voz proposta atual). */
   versaoDaPreviaAtual: string
@@ -398,8 +505,17 @@ export interface EstadoDoCliente {
   trechosDeFato: string[]
   /** O registro de voz que já existe no banco, se houver. */
   registro: { versao: number; migradaEm: Date | string | null } | null
-  /** A voz proposta passa no contrato agora? */
+  /** A voz proposta pode ser migrada agora: passa no contrato E não carrega dado nem condição operacional (PR13-07). */
   vozValida: boolean
+  /** Por que não pode (vazio quando `vozValida`). */
+  problemasDaVoz?: string[]
+}
+
+/** O que impede a voz proposta de migrar: problemas do contrato + fato/condição dentro dela. Vazio = pode. */
+export function problemasParaMigrar(voz: unknown): string[] {
+  const lida = lerVoz(voz)
+  if (!lida.voz) return lida.problemas.map((p) => `${p.caminho}: ${p.mensagem}`)
+  return fatosNaVoz(lida.voz).map((f) => `${f.caminho} carrega ${f.tipos.join('/')}: "${f.trecho.slice(0, 80)}"`)
 }
 
 export type AcaoDoPlano =
@@ -421,7 +537,7 @@ export function planoDeAplicacao(manifesto: Manifesto, estados: Map<number, Esta
     const estado = estados.get(c.projectId)
     if (!estado) return { ...base, acao: 'bloqueado' as const, motivo: 'o cliente não está no estado lido (sem DNA ou sem voz proposta)' }
     if (estado.registro?.migradaEm) return { ...base, acao: 'ja-migrado' as const }
-    if (!estado.vozValida) return { ...base, acao: 'bloqueado' as const, motivo: 'a voz proposta não passa no contrato agora' }
+    if (!estado.vozValida) return { ...base, acao: 'bloqueado' as const, motivo: `a voz proposta não pode migrar agora: ${(estado.problemasDaVoz ?? ['não passa no contrato']).join(' · ')}` }
     if (estado.versaoDaPreviaAtual !== c.versaoDaPrevia) {
       return { ...base, acao: 'bloqueado' as const, motivo: `a prévia mudou desde a aprovação (aprovada ${c.versaoDaPrevia}, atual ${estado.versaoDaPreviaAtual}): refaça a prévia e peça aprovação nova` }
     }

@@ -3,20 +3,26 @@ import { CATEGORIAS_DA_BASE } from '@/lib/mcp/catalogo/base-e-dna'
 import { lerVoz, TETO_DO_PROMPT_DA_VOZ, vozParaPrompt, vozVazia, type VozCompacta } from '../voz'
 import {
   CATEGORIAS_DE_FATO,
+  chaveDoFato,
   coberturaDasRegrasLegadas,
+  condicoesOperacionais,
   fatosNaVoz,
   fatosNoDna,
+  isolamentoDoIndexador,
   lerManifesto,
   linhasDaSecaoLegada,
   manifestoEmBranco,
   montarPrevia,
   planoDeAplicacao,
+  podeIndexar,
   previaParaMarkdown,
+  problemasParaMigrar,
   VERSAO_DO_MANIFESTO,
   versaoDaPrevia,
   type EstadoDoCliente,
   type Manifesto,
 } from '../migracao-da-voz'
+import { dnaDiverge } from '../voz'
 import { PROJETOS_COM_VOZ_PROPOSTA, VOZES_PROPOSTAS } from '../../../../scripts/lib/vozes-propostas'
 
 const regra = (id: string, texto: string, extra: Partial<VozCompacta['regras'][number]> = {}): VozCompacta['regras'][number] => ({ id, texto, motivo: 'motivo de teste', em: '2026-09-01', escopo: 'copy', ativa: true, ...extra })
@@ -106,7 +112,7 @@ describe('a prévia', () => {
     expect(p.depois.chars).toBe(p.depois.prompt.length)
     expect(p.depois.teto).toBe(TETO_DO_PROMPT_DA_VOZ)
     expect(p.depois).toMatchObject({ regras: 1, exemplos: 1, termos: 1, proibicoes: 0 })
-    expect(p.antes).toEqual({ toneOfVoiceChars: DNA_COM_SECAO.length, contentRulesChars: 0, regrasLegadas: 2, dnaAtualizadoEm: '2026-09-10T12:00:00.000Z' })
+    expect(p.antes).toEqual({ toneOfVoiceChars: DNA_COM_SECAO.length, contentRulesChars: 0, regrasLegadas: 2, dnaAtualizadoEm: '2026-09-10T12:00:00.000Z', toneOfVoice: DNA_COM_SECAO, contentRules: null })
     expect(p.fatos.noLegado.map((f) => f.trecho)).toEqual(['O gelato custa R$ 25 hoje.'])
     expect(p.fatos.naVoz).toEqual([])
     expect(p.avisos.some((a) => /1 regra\(s\) aprendida\(s\) do DNA sem correspondente/.test(a))).toBe(true)
@@ -214,6 +220,7 @@ describe('as vozes propostas da carteira (scripts/lib/vozes-propostas.ts)', () =
       const lida = lerVoz(voz)
       expect(lida.problemas, `${id} ${nome}`).toEqual([])
       expect(fatosNaVoz(voz), `${id} ${nome}`).toEqual([])
+      expect(problemasParaMigrar(voz), `${id} ${nome}`).toEqual([])
       const prompt = vozParaPrompt(voz, { escopo: 'copy' })
       expect(prompt.length, `${id} ${nome}`).toBeLessThanOrEqual(TETO_DO_PROMPT_DA_VOZ)
       expect(prompt.length, `${id} ${nome}`).toBeGreaterThan(400)
@@ -224,5 +231,111 @@ describe('as vozes propostas da carteira (scripts/lib/vozes-propostas.ts)', () =
       expect(p.problemasDaVoz).toEqual([])
       expect(p.fatos.naVoz).toEqual([])
     }
+  })
+
+  it('PR13-07: a proposta do TERO não carrega mais a mecânica ("em dobro") nem a janela ("de segunda a quinta, no jantar") — e o detector as pegaria de volta', () => {
+    const tero = VOZES_PROPOSTAS[3].voz
+    const textos = [...tero.regras.map((r) => r.texto), ...tero.proibicoes, ...tero.exemplos, tero.descricao]
+    expect(textos.some((t) => /em dobro|de segunda a quinta|no jantar/i.test(t))).toBe(false)
+    const comCondicao = { ...tero, regras: [...tero.regras, regra('r-x', 'O happy hour comunica-se pela mecânica (chopp e drinks selecionados em dobro).'), regra('r-y', 'Rolha free: nome da mecânica e a janela (de segunda a quinta, no jantar).')] }
+    const achados = fatosNaVoz(comCondicao)
+    expect(achados.map((a) => [a.caminho, a.tipos])).toEqual(expect.arrayContaining([[expect.stringMatching(/^regras\.\d+\.texto$/), ['condicao']], [expect.stringMatching(/^regras\.\d+\.texto$/), ['condicao']]]))
+    const soAsDuas = vozDeTeste({ regras: [regra('r-x', 'O happy hour comunica-se pela mecânica (chopp e drinks selecionados em dobro).'), regra('r-y', 'Rolha free: nome da mecânica e a janela (de segunda a quinta, no jantar).')] })
+    expect(lerVoz(soAsDuas).voz).not.toBeNull()
+    expect(problemasParaMigrar(soAsDuas)).toEqual([expect.stringMatching(/^regras\.0\.texto carrega condicao/), expect.stringMatching(/^regras\.1\.texto carrega condicao/)])
+  })
+
+  it('PR13-04: a regra de 04/09 do Espeto que fica é a da LEITURA CONTÍNUA entre blocos (feedback de 03/09), não a "não adicione campos" substituída em 11/09', () => {
+    const espeto = VOZES_PROPOSTAS[6].voz
+    const r = espeto.regras.find((x) => x.id === 'regra-2026-09-04-1')
+    expect(r?.ativa).toBe(true)
+    expect(r?.texto).toMatch(/lidos como UMA frase/)
+    expect(r?.motivo).toMatch(/Não é a regra de 04\/09 substituída em 11\/09/)
+    expect(espeto.regras.some((x) => /não adicione campos|campos do template|campos que existem/i.test(x.texto) && x.ativa)).toBe(false)
+  })
+})
+
+describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => {
+  it('PR13-06: o marcador de lista sai, o número que é conteúdo FICA ("20% de desconto", "10h às 22h", "R$ 25", "12/10", "1. item")', () => {
+    const dna = { toneOfVoice: '20% de desconto em setembro.\n10h às 22h todos os dias.\n- R$ 25 o gelato.\n1. 12/10 é o Dia das Crianças.\n2) Promoção da semana vale até domingo.', contentRules: null }
+    const trechos = fatosNoDna(dna).map((f) => f.trecho)
+    expect(trechos).toEqual(expect.arrayContaining(['20% de desconto em setembro.', '10h às 22h todos os dias.', 'R$ 25 o gelato.', '12/10 é o Dia das Crianças.', 'Promoção da semana vale até domingo.']))
+    expect(trechos.some((t) => t.startsWith('% de') || t.startsWith('h às') || t.startsWith('/10'))).toBe(false)
+  })
+
+  it('PR13-08: os três formatos reais de rodapé do Espeto (01/09, 04/09 com aspas e parênteses internos, 06/09 com duas frases) NÃO viram fato — a regra antes deles vira uma frase só', () => {
+    const dna = {
+      toneOfVoice: `Regras aprendidas na prática:
+- Copy curta: a manchete tem no máximo 4 palavras. (2026-09-01 — Decisão do Ciro em 01/09/2026, estendida a toda a carteira. Vale para stories e feed.)
+- Pré-título, manchete e apoio são lidos como UMA frase, de cima para baixo. (2026-09-04 — Em 03/09/2026 o Ciro editou o story do aniversário de Vitória deixando "TRADIÇÃO GAÚCHA NO" (o pré-título) e explicou a estratégia: dar continuidade à leitura. Leia em voz alta antes de fechar.)
+- Nunca "Vem pro fogo". (2026-09-06 — Feedback do Ciro na peça de quarta, 06/09/2026. Vou aprovar dessa vez mas não uso mais.)`,
+      contentRules: null,
+    }
+    const fatos = fatosNoDna(dna)
+    expect(fatos.filter((f) => f.tipos.includes('data'))).toEqual([])
+    expect(fatos.map((f) => f.trecho).join(' | ')).not.toMatch(/2026-09-0[146]|01\/09\/2026|03\/09\/2026|06\/09\/2026/)
+    const legadas = linhasDaSecaoLegada(dna.toneOfVoice)
+    expect(legadas.map((l) => l.em)).toEqual(['2026-09-01', '2026-09-04', '2026-09-06'])
+    expect(legadas[1].texto).toBe('Pré-título, manchete e apoio são lidos como UMA frase, de cima para baixo.')
+  })
+
+  it('PR13-07: condicoesOperacionais pega mecânica, janela de dias e período; vocabulário citado entre aspas e o nome da mecânica nos TERMOS não contam', () => {
+    expect(condicoesOperacionais('chopp e drinks selecionados em dobro')).toEqual(['mecânica "em dobro"'])
+    expect(condicoesOperacionais('a janela (de segunda a quinta, no jantar)')).toEqual(['janela de dias', 'período do dia'])
+    expect(condicoesOperacionais('leve 3 pague 2 nas sextas')).toEqual(['mecânica leve/pague'])
+    expect(condicoesOperacionais('Nunca escreva "em dobro" na manchete.')).toEqual([])
+    expect(condicoesOperacionais('Fale como quem recebe em casa.')).toEqual([])
+    const voz = vozDeTeste({ termos: ['happy em dobro'], exemplos: ['Happy em dobro de segunda a quinta, no jantar.'] })
+    const achados = fatosNaVoz(voz)
+    expect(achados.map((a) => a.caminho)).toEqual(['exemplos.0'])
+    expect(achados[0].tipos).toContain('condicao')
+    // e a voz com condição NÃO pode migrar, mesmo passando no contrato
+    expect(lerVoz(voz).voz).not.toBeNull()
+    expect(problemasParaMigrar(voz)).toEqual([expect.stringMatching(/^exemplos\.0 carrega .*condicao/)])
+    expect(problemasParaMigrar({ descricao: 42 })).toEqual(expect.arrayContaining([expect.stringMatching(/^descricao:/)]))
+  })
+
+  it('PR13-05: a prévia carrega o toneOfVoice e o contentRules INTEGRAIS, e o markdown os reproduz verbatim (caixa, acento, linhas) — vazio é dito', () => {
+    const dna = { toneOfVoice: 'Tom DOCE.\n  Segunda linha com acento: ação.', contentRules: 'Nunca emoji.\nVocabulário fora das seções reconhecidas.' }
+    const p = montarPrevia({ projectId: 1, nome: 'X', dna, voz: vozDeTeste() })
+    expect(p.antes.toneOfVoice).toBe(dna.toneOfVoice)
+    expect(p.antes.contentRules).toBe(dna.contentRules)
+    const md = previaParaMarkdown(p)
+    expect(md).toContain('### toneOfVoice — texto integral')
+    expect(md).toContain(dna.toneOfVoice)
+    expect(md).toContain(dna.contentRules)
+    const vazio = previaParaMarkdown(montarPrevia({ projectId: 1, nome: 'X', dna: { toneOfVoice: null, contentRules: null }, voz: vozDeTeste() }))
+    expect(vazio.match(/\(vazio\)/g)?.length).toBe(2)
+  })
+
+  it('PR13-03: a chave do fato é durável e distingue projeto, prévia e trecho', () => {
+    const a = chaveDoFato({ projectId: 6, versaoDaPrevia: 'abcdef0123456789', trecho: 'Happy hour das 17h às 19h.' })
+    expect(a).toMatch(/^[0-9a-f]{40}$/)
+    expect(chaveDoFato({ projectId: 6, versaoDaPrevia: 'abcdef0123456789', trecho: 'Happy hour das 17h às 19h.' })).toBe(a)
+    expect(chaveDoFato({ projectId: 7, versaoDaPrevia: 'abcdef0123456789', trecho: 'Happy hour das 17h às 19h.' })).not.toBe(a)
+    expect(chaveDoFato({ projectId: 6, versaoDaPrevia: 'ffffffffffffffff', trecho: 'Happy hour das 17h às 19h.' })).not.toBe(a)
+    expect(chaveDoFato({ projectId: 6, versaoDaPrevia: 'abcdef0123456789', trecho: 'Happy hour das 17h às 19h' })).not.toBe(a)
+  })
+
+  it('PR13-01: o indexador é isolado só com URL e token PRÓPRIOS; dev sem indexador isolado e destino não declarado não podem indexar; produção exige o de produção', () => {
+    const prod = { UPSTASH_VECTOR_REST_URL: 'https://prod.upstash.io', UPSTASH_VECTOR_REST_TOKEN: 'p' }
+    expect(isolamentoDoIndexador(prod, {})).toBe('ausente')
+    expect(isolamentoDoIndexador(prod, { UPSTASH_VECTOR_REST_URL: 'https://dev.upstash.io' })).toBe('ausente')
+    expect(isolamentoDoIndexador(prod, prod)).toBe('producao')
+    expect(isolamentoDoIndexador(prod, { UPSTASH_VECTOR_REST_URL: 'https://prod.upstash.io ', UPSTASH_VECTOR_REST_TOKEN: 'outro' })).toBe('producao')
+    expect(isolamentoDoIndexador(prod, { UPSTASH_VECTOR_REST_URL: 'https://dev.upstash.io', UPSTASH_VECTOR_REST_TOKEN: 'd' })).toBe('isolado')
+    expect(podeIndexar(undefined)).toMatchObject({ ok: false, motivo: expect.stringMatching(/não foi declarado/) })
+    expect(podeIndexar({ banco: 'dev', indexador: 'producao' })).toMatchObject({ ok: false, motivo: expect.stringMatching(/é o de PRODUÇÃO/) })
+    expect(podeIndexar({ banco: 'dev', indexador: 'ausente' })).toMatchObject({ ok: false, motivo: expect.stringMatching(/não existe/) })
+    expect(podeIndexar({ banco: 'dev', indexador: 'isolado' })).toEqual({ ok: true })
+    expect(podeIndexar({ banco: 'producao', indexador: 'producao' })).toEqual({ ok: true })
+    expect(podeIndexar({ banco: 'producao', indexador: 'isolado' })).toMatchObject({ ok: false })
+  })
+
+  it('PR13-02: dnaDiverge aponta os campos que mudaram; null e undefined são a mesma ausência', () => {
+    expect(dnaDiverge({ toneOfVoice: 'a', contentRules: null }, { toneOfVoice: 'a', contentRules: undefined })).toEqual([])
+    expect(dnaDiverge({ toneOfVoice: 'a', contentRules: 'b' }, { toneOfVoice: 'A', contentRules: 'b' })).toEqual(['toneOfVoice'])
+    expect(dnaDiverge({ toneOfVoice: null, contentRules: 'b ' }, { toneOfVoice: null, contentRules: 'b' })).toEqual(['contentRules'])
+    expect(dnaDiverge({}, { toneOfVoice: 'x', contentRules: 'y' })).toEqual(['toneOfVoice', 'contentRules'])
   })
 })
