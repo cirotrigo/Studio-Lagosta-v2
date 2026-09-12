@@ -9352,3 +9352,10 @@ herdando do apoio, os dois tipos de post).
   nova não tem spec nem snapshot, e daí em diante a página só re-renderiza como
   está (os extras continuam na página, editáveis). Herdado do desenho da
   recomposição, não deste PR.
+- 🔴 **A recomposição grava a spec VALIDADA, com a mesma forma que a
+  composição grava** (prova-dev-1 do PR 10, 12/09/2026). `specDaRecomposicao`
+  tira os extras velhos e deixa só contrato + blocos; `camadasExtras` só é
+  remontado por `validarSpec`. Gravar a entrada deixava a nota (extra `livre`)
+  apenas dentro do contrato, e quem lê `fieldValues.spec.camadasExtras` a
+  perdia depois da primeira recomposição. Teste: o consumidor R15 em
+  `recompor-camadas-extras.test.ts` confere a spec gravada.

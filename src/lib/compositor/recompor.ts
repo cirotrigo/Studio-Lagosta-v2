@@ -518,7 +518,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       db,
       arte.generationId,
       {
-        spec,
+        // A spec GRAVADA tem a mesma forma que a composição grava: a validada, com as `camadasExtras` rederivadas
+        // do contrato (prova-dev-1 do PR 10). `specDaRecomposicao` tira os extras velhos e só `validarSpec` os remonta —
+        // gravar a entrada deixava a nota só no contrato, e quem lê `spec.camadasExtras` a perdia.
+        spec: validarSpec(spec).spec ?? spec,
         composicao: composicao.diagnostico,
         layersSnapshot: camadas.camadas,
         thumbnailUrl: blob.url,

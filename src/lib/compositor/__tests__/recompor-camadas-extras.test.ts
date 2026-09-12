@@ -186,6 +186,9 @@ describe('recomporPaginaDefasada — R15: edição só do texto de uma camada ex
     const efetiva = estado.paginaGravada?.copyAutoral as CopyAutoral
     expect(efetiva.blocos.find((b) => b.id === 'nota')?.linhas).toEqual(['Amanhã'])
     expect(validarSpec((estado.generationGravada?.fieldValues as Record<string, unknown>).spec).problemas).toEqual([])
+    // a spec gravada tem a forma da composição: o extra com o texto novo em `camadasExtras`, não só no contrato
+    const gravada = (estado.generationGravada?.fieldValues as Record<string, unknown>).spec as SpecDePeca
+    expect(gravada.camadasExtras).toEqual([expect.objectContaining({ id: 'nota', linhas: ['Amanhã'], herdaDe: 'apoio', ordem: 1 })])
   })
 })
 
