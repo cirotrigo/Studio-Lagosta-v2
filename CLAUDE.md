@@ -6925,6 +6925,14 @@ Da sexta revisão (BLOQUEADO, PR13-22…23):
   gravada por quem perdeu a trava faria a retomada ler `completo` uma linha que
   outra aplicação ainda reindexa.
 
+Da sétima revisão (APTO COM NOTAS, PR13-24):
+
+- **Data do manifesto é dia que EXISTE** (`diaExiste`, ida e volta pelo ISO
+  em UTC — o mesmo cuidado do PR 6 com `dataValida`): `validaAte` e
+  `aprovadoEm` aceitavam "2026-13-01" e "2026-02-29" pela expressão regular, e
+  a conversão para `Date` só falhava no script, depois de fatos anteriores já
+  gravados. `lerManifesto` recusa antes de qualquer escrita.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

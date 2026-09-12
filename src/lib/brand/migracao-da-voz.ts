@@ -401,6 +401,19 @@ export function previaParaMarkdown(p: PreviaDaMigracao): string {
 
 // ── o manifesto ─────────────────────────────────────────────────────────────
 
+/**
+ * "AAAA-MM-DD" de um dia que EXISTE no calendário (PR13-24): a expressão
+ * regular aceitava o mês 13 e 29/02 de ano comum, e a conversão para `Date`
+ * só falhava tarde — no script, depois de fatos anteriores já gravados.
+ * A ida e volta pelo ISO em UTC é o que recusa a data normalizada em silêncio.
+ */
+export function diaExiste(valor: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(valor)) return false
+  const d = new Date(`${valor}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === valor
+}
+const diaDoCalendario = z.string().refine(diaExiste, { message: 'data inválida — precisa ser AAAA-MM-DD de um dia que existe no calendário' })
+
 export const fatoParaABaseSchema = z
   .object({
     /** O trecho EXATO listado na prévia (é como a aplicação confere que a pessoa viu o que aprova). */
@@ -408,7 +421,7 @@ export const fatoParaABaseSchema = z
     categoria: z.enum(CATEGORIAS_DE_FATO),
     titulo: z.string().min(3).max(120),
     /** Sem prazo = vale para sempre; campanha leva a data em que vence (AAAA-MM-DD). */
-    validaAte: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    validaAte: diaDoCalendario.optional(),
   })
   .strict()
 
@@ -419,7 +432,7 @@ export const clienteDoManifestoSchema = z
     versaoDaPrevia: z.string().min(8),
     decisao: z.enum(DECISOES),
     aprovadoPor: z.string().min(1).optional(),
-    aprovadoEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    aprovadoEm: diaDoCalendario.optional(),
     observacao: z.string().max(600).optional(),
     fatosParaABase: z.array(fatoParaABaseSchema).max(40).default([]),
   })

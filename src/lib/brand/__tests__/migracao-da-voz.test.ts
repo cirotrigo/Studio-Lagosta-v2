@@ -17,6 +17,7 @@ import {
   fatosNoDna,
   isolamentoDoIndexador,
   lerManifesto,
+  diaExiste,
   linhasDaSecaoLegada,
   manifestoEmBranco,
   montarPrevia,
@@ -173,6 +174,24 @@ describe('o manifesto', () => {
     expect(lerManifesto({ ...base, versao: 'manifesto-voz-v0', clientes: [clienteOk] }).problemas.some((p) => /versao/.test(p))).toBe(true)
     expect(lerManifesto({ ...base, clientes: [{ ...clienteOk, extra: 1 }] }).manifesto).toBeNull()
     expect(lerManifesto({ ...base, clientes: [] }).manifesto).toBeNull()
+  })
+
+  it('PR13-24: recusa data que não existe no calendário em validaAte e aprovadoEm, antes de qualquer escrita', () => {
+    expect(diaExiste('2028-02-29')).toBe(true)
+    expect(diaExiste('2026-02-29')).toBe(false)
+    expect(diaExiste('2026-13-01')).toBe(false)
+    expect(diaExiste('2026-1-01')).toBe(false)
+    const comFatoRuim = lerManifesto({
+      ...base,
+      clientes: [{ ...clienteOk, fatosParaABase: [{ trecho: 'chopp em dobro das 17h às 19h', categoria: 'PROMOCOES', titulo: 'Happy em dobro', validaAte: '2026-13-01' }] }],
+    })
+    expect(comFatoRuim.manifesto).toBeNull()
+    expect(comFatoRuim.problemas.some((p) => /validaAte/.test(p) && /calend/.test(p))).toBe(true)
+    const aprovadoRuim = lerManifesto({ ...base, clientes: [{ ...clienteOk, aprovadoEm: '2026-02-29' }] })
+    expect(aprovadoRuim.manifesto).toBeNull()
+    expect(aprovadoRuim.problemas.some((p) => /aprovadoEm/.test(p))).toBe(true)
+    const bissexto = lerManifesto({ ...base, clientes: [{ ...clienteOk, aprovadoEm: '2028-02-29' }] })
+    expect(bissexto.manifesto).not.toBeNull()
   })
 
   it('o plano: pendente e manter-legado não escrevem; já migrado é dito; voz inválida, prévia que mudou e fato fora da prévia BLOQUEIAM; migrar leva a versão lida e os fatos', () => {
