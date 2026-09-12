@@ -44,6 +44,20 @@ const pedirNovaTentativa = vi.hoisted(() => vi.fn(async (_jobId: unknown, _motiv
 
 vi.mock('@/lib/db', () => ({
   db: {
+    /**
+     * A recomposição do PR 0 grava a arte por `mesclarFieldValuesDaArte`: MERGE
+     * raso no banco (`"fieldValues" || ${patch}::jsonb`, e `"resultUrl"` quando
+     * vem), nunca `generation.update` com o `fieldValues` lido antes (REV-R01).
+     * O falso aplica o mesmo merge sobre a arte.
+     */
+    $executeRaw: async (strings: TemplateStringsArray, ...valores: unknown[]) => {
+      const sql = strings.join('?')
+      if (!sql.includes('UPDATE "Generation" SET "fieldValues" = (CASE')) throw new Error(`SQL inesperado no teste: ${sql}`)
+      const patch = JSON.parse(String(valores[0])) as Record<string, unknown>
+      const atual = (estado.generation?.fieldValues ?? {}) as Record<string, unknown>
+      estado.generation = { ...estado.generation, ...(sql.includes('"resultUrl" =') ? { resultUrl: valores[1] } : {}), fieldValues: { ...atual, ...patch } }
+      return 1
+    },
     page: {
       findUnique: async () => estado.page,
       updateMany: async ({ where, data }: { where: { id: string; updatedAt: Date }; data: Record<string, unknown> }) => {
@@ -76,7 +90,8 @@ vi.mock('@/lib/db', () => ({
   },
 }))
 vi.mock('@vercel/blob', () => ({ put: async () => ({ url: `https://blob.exemplo/arte-rapida/8/pg-1-nova-${++estado.blobs}.png` }), del: async () => undefined }))
-vi.mock('@/lib/ai/generation-queue', () => ({ pedirNovaTentativa }))
+// A fila do PR 0 também marca a força em execução/atendida e o "renderizar como está" (REV-09, REV-FINAL-01).
+vi.mock('@/lib/ai/generation-queue', () => ({ pedirNovaTentativa, marcarForcaAtendida: async () => undefined, marcarForcaEmExecucao: async () => undefined, marcarRenderComoEsta: async () => undefined }))
 vi.mock('@/lib/creatives/persist', () => ({ renderPageAndRegister: async () => { throw new Error('não deveria re-renderizar: a página só teve texto ou foto trocados') } }))
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 vi.mock('../../../../prisma/generated/client', () => ({ PostLogEvent: { EDITED: 'EDITED' } }))
