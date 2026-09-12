@@ -77,6 +77,11 @@ function argumento(nome: string): string | null {
 const CANDIDATOS = [8, 6, 3, 2, 7, 1, 5, 4, 9, 10, 11, 12]
 const SAIDA = argumento('--saida') ?? '.tmp-validar-contexto-da-semana'
 const MARCA = `[PR6-SEMANA ${new Date().toISOString()}]`
+// A caixa é a do render (R16): na arte de modelo o texto sai na caixa da camada
+// (R46 aplica `textTransform`). A sequência e a quantidade continuam exatas; só a
+// caixa fica fora da comparação — o teste unitário confere a caixa exata.
+const mesmaSequenciaSemCaixa = (lista: unknown, esperado: string[]) =>
+  Array.isArray(lista) && JSON.stringify(lista.map((t) => String(t).toUpperCase())) === JSON.stringify(esperado.map((t) => t.toUpperCase()))
 
 let ok = 0
 let mau = 0
@@ -387,8 +392,8 @@ async function main() {
       const agenda3f = await tool('ver-agenda', { projectId: PROJETO, from: dia3f, to: dia3f })
       const itens3f = (agenda3f.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
       const i36 = itens3f.find((i) => i.postId === reagendado.id), i36c = itens3f.find((i) => i.postId === carrosselDeModelo.id)
-      conferir('R36: post VIVO reagendado por generationId de uma arte post-schedule volta com a copy registrada na arte (parcial, origem "arte"), NUNCA o texto cru do modelo', !!i36 && JSON.stringify(i36.textos) === JSON.stringify([copyA]) && i36.textosOrigem === 'arte' && i36.textosParciais === true && !temSemCaixa(i36.textos, textoDoModelo) && !JSON.stringify(i36).includes(textoDoModelo), JSON.stringify({ textos: i36?.textos, origem: i36?.textosOrigem, parcial: i36?.textosParciais }).slice(0, 220))
-      conferir('R36: duas mídias com copies DISTINTAS sobre o MESMO modelo voltam cada uma com a sua, slide a slide, sem o texto do modelo', !!i36c && JSON.stringify((i36c.textosPorSlide as Array<{ textos: string[] }> | undefined)?.map((s) => s.textos)) === JSON.stringify([[copyA], [copyB]]) && i36c.textosParciais === true && !JSON.stringify(i36c).includes(textoDoModelo), JSON.stringify(i36c?.textosPorSlide).slice(0, 220))
+      conferir('R36: post VIVO reagendado por generationId de uma arte post-schedule volta com a copy registrada na arte (parcial, origem "arte"), NUNCA o texto cru do modelo', !!i36 && mesmaSequenciaSemCaixa(i36.textos, [copyA]) && i36.textosOrigem === 'arte' && i36.textosParciais === true && !temSemCaixa(i36.textos, textoDoModelo) && !JSON.stringify(i36).includes(textoDoModelo), JSON.stringify({ textos: i36?.textos, origem: i36?.textosOrigem, parcial: i36?.textosParciais }).slice(0, 220))
+      conferir('R36: duas mídias com copies DISTINTAS sobre o MESMO modelo voltam cada uma com a sua, slide a slide, sem o texto do modelo', !!i36c && (i36c.textosPorSlide as Array<{ textos: string[] }> | undefined)?.length === 2 && mesmaSequenciaSemCaixa((i36c.textosPorSlide as Array<{ textos: string[] }>)[0].textos, [copyA]) && mesmaSequenciaSemCaixa((i36c.textosPorSlide as Array<{ textos: string[] }>)[1].textos, [copyB]) && i36c.textosParciais === true && !JSON.stringify(i36c).includes(textoDoModelo), JSON.stringify(i36c?.textosPorSlide).slice(0, 220))
       const i37 = itens3f.find((i) => i.postId === reagendadoRR.id)
       conferir('R37: arte de post-schedule RE-RENDERIZADA num post vivo volta com a PÁGINA atual (origem "pagina"), nunca a copy antiga preservada no fieldValues', !!i37 && i37.textosOrigem === 'pagina' && temSemCaixa(i37.textos, textoDoModelo) && !JSON.stringify(i37).includes('copy ANTIGA'), JSON.stringify({ textos: i37?.textos, origem: i37?.textosOrigem }).slice(0, 220))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3f.json'), JSON.stringify(agenda3f, null, 2))
@@ -418,7 +423,7 @@ async function main() {
       const itens3g = (agenda3g.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
       const iRR = itens3g.find((i) => i.postId === agRR.postId), iCtl = itens3g.find((i) => i.postId === agCtl.postId)
       conferir('R38: entregue (no publicador), a arte re-renderizada volta com `textosIndisponiveis` — nunca a copy A', !!iRR && !('textos' in iRR) && !!iRR.textosIndisponiveis && !JSON.stringify(iRR).includes('copy A invalidada'), JSON.stringify({ ind: iRR?.textosIndisponiveis, textos: iRR?.textos }).slice(0, 200))
-      conferir('controle: publicada, a arte não re-renderizada volta com a copy B legítima (parcial, origem "arte")', !!iCtl && JSON.stringify(iCtl.textos) === JSON.stringify([`${MARCA} copy B legítima`]) && iCtl.textosParciais === true && iCtl.textosOrigem === 'arte', JSON.stringify({ textos: iCtl?.textos, origem: iCtl?.textosOrigem }).slice(0, 200))
+      conferir('controle: publicada, a arte não re-renderizada volta com a copy B legítima (parcial, origem "arte")', !!iCtl && mesmaSequenciaSemCaixa(iCtl.textos, [`${MARCA} copy B legítima`]) && iCtl.textosParciais === true && iCtl.textosOrigem === 'arte', JSON.stringify({ textos: iCtl?.textos, origem: iCtl?.textosOrigem, parcial: iCtl?.textosParciais }).slice(0, 200))
       // POSTED também
       await db.socialPost.update({ where: { id: agRR.postId }, data: { status: 'POSTED' } })
       const agenda3gB = await tool('ver-agenda', { projectId: PROJETO, from: dia3g, to: dia3g })
@@ -453,7 +458,7 @@ async function main() {
       const itens3h = (agenda3h.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
       const iH = itens3h.find((i) => i.postId === agH.postId), iHCtl = itens3h.find((i) => i.postId === agHCtl.postId)
       conferir('R42: entregue, a copy A herdada NÃO é atribuída à mídia B — `textosIndisponiveis` diz que a arte foi re-renderizada e que não há registro textual confiável (sem afirmar cronologia — R45)', !!iH && !('textos' in iH) && /re-renderizada .*não guarda registro textual confiável/.test(iH.textosIndisponiveis ?? '') && !/DEPOIS do agendamento/.test(iH.textosIndisponiveis ?? '') && !JSON.stringify(iH).includes('copy A herdada 3h'), JSON.stringify(iH).slice(0, 300))
-      conferir('controle 3h: a mesma arte NÃO re-renderizada volta com a copy legítima (parcial, origem "arte")', !!iHCtl && JSON.stringify(iHCtl.textos) === JSON.stringify([`${MARCA} copy A legítima 3h`]) && iHCtl.textosParciais === true && iHCtl.textosOrigem === 'arte', JSON.stringify(iHCtl).slice(0, 300))
+      conferir('controle 3h: a mesma arte NÃO re-renderizada volta com a copy legítima (parcial, origem "arte")', !!iHCtl && mesmaSequenciaSemCaixa(iHCtl.textos, [`${MARCA} copy A legítima 3h`]) && iHCtl.textosParciais === true && iHCtl.textosOrigem === 'arte', JSON.stringify(iHCtl).slice(0, 300))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3h.json'), JSON.stringify(agenda3h, null, 2))
 
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
