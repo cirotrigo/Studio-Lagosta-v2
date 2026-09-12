@@ -655,6 +655,79 @@ async function main() {
       conferir('a execução seguinte fecha DONE, o slide carrega a arte da página ATUAL e a força gravada durante o render ficou', d6mB === 'DONE' && gen6mB?.resultUrl !== gen6m?.resultUrl && carrossel6m?.mediaUrls[1] === gen6mB?.resultUrl && carrossel6m.mediaUrls.length === 2 && forcaDe(pagina6mB) === forcaDurante6m, `${d6mB}; força ${forcaDe(pagina6mB)} (esperava ${forcaDurante6m}); slide=${carrossel6m?.mediaUrls[1] === gen6mB?.resultUrl}`)
     }
 
+    // ── 6n. a divergência visual na ÚLTIMA tentativa nunca termina DONE (REV-D02) ──
+    await pausaParaOBlob(45_000, 'um render no Blob (6n)')
+    console.log('6n) mesma corrida do 6m, SEM orçamento (attempts = maxAttempts): falha explícita, força NÃO atendida, nunca DONE com o slide velho (REV-D02)')
+    const camadas6n = await camadasDaPagina(pageId2)
+    const forcaAntes6n = forcaDe(camadas6n)
+    const forcaDurante6n = Math.min(0.9, Math.round((forcaAntes6n + 0.07) * 1000) / 1000)
+    const pedido6n = await pedirRecomposicaoDaArteCongelada([pageId2], 'editor', { forcar: true })
+    const jobId6n = pedido6n[0]?.jobId ?? null
+    conferir('há job FORÇADO na fila para a segunda peça (6n)', !!jobId6n && forcaDurante6n !== forcaAntes6n, JSON.stringify({ job: jobId6n, forcaAntes: forcaAntes6n, forcaDurante: forcaDurante6n }))
+    if (jobId6n) {
+      const reservado6n = await reservarJob(jobId6n)
+      const rec6n = (reservado6n?.payload as Record<string, any>)?.recompor
+      const teto6n = await db.generationJob.findUnique({ where: { id: jobId6n }, select: { maxAttempts: true } })
+      await db.generationJob.update({ where: { id: jobId6n }, data: { attempts: teto6n!.maxAttempts } })
+      const genAntes6n = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+      const e6n = await erroDe(
+        processarRecomposicaoEmBackground({
+          generationId: persistido2.generationId,
+          projectId: PROJETO,
+          recompor: rec6n,
+          queueJobId: jobId6n,
+          seams: {
+            antesDeRenderizar: async () => {
+              const c = await camadasDaPagina(pageId2)
+              await db.page.update({ where: { id: pageId2 }, data: { layers: c.map((l) => (l.id === gradiente2?.id ? { ...l, metadata: { ...(l.metadata ?? {}), forca: forcaDurante6n } } : l)) as never } })
+            },
+          },
+        }),
+      )
+      const gen6n = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+      if (gen6n?.resultUrl) blobs.add(gen6n.resultUrl)
+      const jobAberto6n = await db.generationJob.findUnique({ where: { id: jobId6n }, select: { status: true, payload: true } })
+      const rec6nDepois = (jobAberto6n?.payload as Record<string, any>)?.recompor ?? {}
+      conferir('sem orçamento, o runner FALHA explicitamente (PAGINA_MUDOU_DURANTE) em vez de seguir até o sucesso', e6n?.code === 'PAGINA_MUDOU_DURANTE' && gen6n?.resultUrl !== genAntes6n?.resultUrl, e6n?.message.slice(0, 90))
+      conferir('a força NÃO foi marcada como atendida; o job segue RUNNING para o executor decidir', jobAberto6n?.status === 'RUNNING' && rec6nDepois.forcaAtendida !== rec6nDepois.forcaPedidaEm, JSON.stringify({ status: jobAberto6n?.status, pedida: rec6nDepois.forcaPedidaEm, atendida: rec6nDepois.forcaAtendida }))
+      // como o executor faz com o erro: falharJob
+      const d6n = await falharJob(jobId6n, e6n?.message ?? 'PAGINA_MUDOU_DURANTE')
+      const job6n = await db.generationJob.findUnique({ where: { id: jobId6n }, select: { status: true, lastError: true, attempts: true, maxAttempts: true } })
+      conferir('o executor fecha FAILED terminal com o motivo — nunca DONE; a próxima edição reabre o job', d6n === 'FAILED' && job6n?.status === 'FAILED' && /editada de novo/.test(String(job6n.lastError)), `${d6n}; ${job6n?.status} ${job6n?.attempts}/${job6n?.maxAttempts}: ${String(job6n?.lastError).slice(0, 60)}`)
+      const gen6nRegistro = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { fieldValues: true } })
+      const recusa6n = (gen6nRegistro?.fieldValues as Record<string, any>)?.recomposicao
+      conferir('a recusa ficou registrada na arte (fieldValues.recomposicao) com o código', recusa6n?.codigo === 'PAGINA_MUDOU_DURANTE' || /PAGINA_MUDOU_DURANTE/.test(JSON.stringify(recusa6n ?? {})), JSON.stringify(recusa6n).slice(0, 120))
+    }
+
+    // ── 6o. página e trava numa transação (REV-D01) ──
+    console.log('6o) o ajuste grava a página e a trava numa TRANSAÇÃO: outro leitor nunca vê a página ajustada sem a trava (REV-D01)')
+    const antes6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+    const camadas6o = await camadasDaPagina(pageId2)
+    const forcaDo6o = Math.max(0.45, Math.round((forcaDe(camadas6o) - 0.05) * 1000) / 1000)
+    const ajuste6o = { ...ajuste2, forca: forcaDo6o }
+    let dentro6o: { updatedAt: Date } | null = null
+    const rv6o = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+    const e6o = await erroDe(
+      ajustarArte({
+        projectId: PROJETO,
+        pageId: pageId2,
+        versaoEsperada: rv6o.versao,
+        ajustes: [ajuste6o],
+        canal: 'claude-code',
+        _prova: {
+          entreGravarETravar: async () => {
+            dentro6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+          },
+        },
+      }),
+    )
+    process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+    const depois6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+    const pagina6o = await camadasDaPagina(pageId2)
+    conferir('o ajuste gravou a página (render falhou, como no passo 6)', !!e6o && e6o.code !== 'VERSAO_DIVERGENTE' && forcaDe(pagina6o) === forcaDo6o, `${e6o?.code}; força ${forcaDe(pagina6o)} (esperava ${forcaDo6o})`)
+    conferir('DENTRO da transação (página escrita, trava ainda não) outro leitor viu a página ANTERIOR — página e trava só aparecem juntas', !!dentro6o && (dentro6o as { updatedAt: Date }).updatedAt.getTime() === antes6o!.updatedAt.getTime() && depois6o!.updatedAt.getTime() !== antes6o!.updatedAt.getTime(), JSON.stringify({ antes: antes6o?.updatedAt, dentro: (dentro6o as { updatedAt: Date } | null)?.updatedAt, depois: depois6o?.updatedAt }))
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))

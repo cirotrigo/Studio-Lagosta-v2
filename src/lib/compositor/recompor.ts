@@ -50,7 +50,7 @@ import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
 import { renderPageAndRegister } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
-import { PostLogEvent } from '../../../prisma/generated/client'
+import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
 import {
@@ -512,8 +512,12 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
  * FINAL do Codex, 12/09/2026). A proteção nasce junto da gravação do ajuste,
  * não do desfecho do render. Idempotente; nunca lança para quem chama.
  */
-export async function travarRecomposicaoDaArte(pageId: string, motivo: string): Promise<boolean> {
-  const geracoes = await db.generation.findMany({
+export async function travarRecomposicaoDaArte(pageId: string, motivo: string, client: Prisma.TransactionClient | typeof db = db): Promise<boolean> {
+  // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
+  // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
+  // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
+  // já ajustada com a arte ainda sem trava e recompunha por cima).
+  const geracoes = await client.generation.findMany({
     where: { fieldValues: { path: ['pageId'], equals: pageId } },
     select: { id: true, resultUrl: true, fieldValues: true },
     orderBy: { createdAt: 'desc' },
@@ -526,7 +530,7 @@ export async function travarRecomposicaoDaArte(pageId: string, motivo: string): 
       ? (primeira.fieldValues as Record<string, unknown>)
       : {}
   if (fv.somenteReRender) return true
-  await db.generation.update({
+  await client.generation.update({
     where: { id: primeira.id },
     data: { fieldValues: { ...fv, somenteReRender: { desde: new Date().toISOString(), motivo } } as never },
   })
@@ -762,8 +766,27 @@ export async function processarRecomposicaoEmBackground(args: {
       const atual = await db.page.findUnique({ where: { id: pageId }, select: { width: true, height: true, background: true, layers: true } })
       const versaoAtual = atual ? versaoDaPagina(atual) : null
       if (versaoAtual !== r.versaoGravada) {
-        const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
-        if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição (${r.versaoGravada} → ${versaoAtual ?? 'ilegível'})`)
+        const motivo = 'a página foi editada de novo enquanto a arte era refeita'
+        const voltou = await pedirNovaTentativa(args.queueJobId, motivo)
+        if (voltou) {
+          console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição (${r.versaoGravada} → ${versaoAtual ?? 'ilegível'})`)
+          // Reenfileirado: esta execução acabou aqui — nada de marcar a força
+          // como atendida com o slide refletindo a versão velha.
+          return
+        }
+        /**
+         * Sem orçamento para outra tentativa, a divergência NÃO pode virar
+         * sucesso: seguir até `marcarForcaAtendida` fechava DONE com o slide
+         * velho diante da página nova (REV-D02 da revisão do Codex, 12/09/2026).
+         * Falha explícita, pelo tratamento de sempre (`falharJob` grava o
+         * motivo; força NOVA pendente ainda devolve o job à fila).
+         */
+        throw new CreativeError(
+          'PAGINA_MUDOU_DURANTE',
+          `${motivo}, e não há mais tentativas: a arte do slide reflete a versão anterior. Edite a página de novo para refazer.`,
+          409,
+          { versaoGravada: r.versaoGravada, versaoAtual },
+        )
       }
     }
     /**

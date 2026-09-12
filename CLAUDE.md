@@ -5654,17 +5654,23 @@ Codex antes de ser escrito.
   `fecharJob`/`falharJob` devolvem o job à fila enquanto houver força NOVA por
   atender — nunca DONE nem FAILED com pedido pendente; a própria forçada que
   falha em 3/3 é FAILED terminal, reabrível pela edição seguinte.
-- 🔴 **A trava `somenteReRender` nasce JUNTO da gravação do ajuste**
-  (`travarRecomposicaoDaArte`, chamada por `ajustarArte` antes do render): a
-  arte do compositor (spec e snapshot) não conhece o ajuste, e uma recomposição
-  pela spec o desfaria. Até a revisão FINAL a marca só era gravada pelo
-  re-render forçado bem-sucedido — com o render e as recuperações falhando, a
-  edição de texto seguinte reabria o job normal e recompunha (REV-F01).
+- 🔴 **A trava `somenteReRender` nasce JUNTO da gravação do ajuste, NA MESMA
+  TRANSAÇÃO** (`travarRecomposicaoDaArte(pageId, motivo, tx)`, chamada por
+  `ajustarArte` antes do render): a arte do compositor (spec e snapshot) não
+  conhece o ajuste, e uma recomposição pela spec o desfaria. Até a revisão
+  FINAL a marca só era gravada pelo re-render forçado bem-sucedido — com o
+  render e as recuperações falhando, a edição de texto seguinte reabria o job
+  normal e recompunha (REV-F01); e fora da transação um worker lia a página já
+  ajustada com a arte ainda sem trava e recompunha por cima (REV-D01). Se a
+  trava falhar, a página não é gravada.
 - 🔴 **O runner confere a VERSÃO VISUAL da página depois de refazer a arte**
   (`versaoGravada`, o hash de `versaoDaPagina`), nunca só a copy: só a força de
   um gradiente salva durante o render não muda copy nem diff geométrico, e o
   re-render forçado fechava DONE com o slide em G1 e a página em G2 (REV-F02).
-  Divergiu → `pedirNovaTentativa`, e a execução seguinte desenha a página atual.
+  Divergiu → `pedirNovaTentativa` e a execução ACABA ali (a seguinte desenha a
+  página atual); sem orçamento, falha explícita (`PAGINA_MUDOU_DURANTE`, pelo
+  `falharJob` de sempre) — nunca DONE com o slide velho nem força marcada como
+  atendida (REV-D02).
 - **A recomposição RECUSA (`PAGINA_MUDOU_DURANTE`) quando a página mudou entre o
   levantamento e a leitura que compõe, ou entre a composição e a gravação**
   (compare-and-set em `updatedAt`; o PNG é apagado). O executor lê o job FRESCO
