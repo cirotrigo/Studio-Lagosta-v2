@@ -498,3 +498,131 @@ describe('correção da revisão do Codex sobre 4aa2297a (R15)', () => {
     expect(r.blocos).toEqual(legado.spec!.blocos)
   })
 })
+
+describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
+  const base = { projectId: 8, formato: 'story' as const }
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+  const HORARIO = 'Ter a dom, das 18h às 23h'
+  const ENDERECO = 'Av. Beira Mar, 100'
+  const img = (id: string, url: string, x: number, y: number, grupo: string): Layer =>
+    ({ id, name: id, type: 'image', visible: true, locked: false, order: 0, rotation: 0, fileUrl: url, position: { x, y }, size: { width: 26, height: 26 }, metadata: { groupId: grupo } }) as Layer
+  // A mesma página do R13: horário num grupo, endereço noutro.
+  const camadasDaPagina: Layer[] = [
+    texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { position: { x: 92, y: 300 }, metadata: { groupId: 'g-topo' } }),
+    texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2, textAlign: 'left' }, 'Seg a sex, das 11h às 15h', { position: { x: 160, y: 1200 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-meio' } }),
+    img('relogio', 'https://exemplo.com/relogio.png', 120, 1204, 'g-meio'),
+    texto('info', { fontFamily: 'Barlow', fontSize: 24, color: '#DDDDDD', lineHeight: 1.2, textAlign: 'left' }, 'Rua das Flores, 12 — Centro', { id: 'servico-endereco', position: { x: 160, y: 1650 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape' } }),
+    img('pin', 'https://exemplo.com/pin.png', 122, 1652, 'g-rodape'),
+  ]
+  const a = montarAssinatura({ pagina: { id: 'p-dois-grupos', width: 1080, height: 1920, layers: camadasDaPagina }, formatoDaPagina: 'story', numerosDoProjeto: null })
+  a.camadasDaPagina = camadasDaPagina
+  const comum = { assinatura: a, colunaUtil: 1080 - 2 * a.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [] }
+  const persistir = (spec: Parameters<typeof entradaDePersistencia>[0]['spec'], layers: Layer[]) =>
+    entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
+  const copy = (endereco: string): CopyAutoral => ({
+    versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+    blocos: [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'svc', funcao: 'servico', ordem: 1, linhas: [HORARIO, endereco] },
+    ],
+  })
+  const parteDe = (l: Layer) => (l.metadata?.compositor as { parte?: number } | undefined)?.parte
+
+  it('R18: serviço repartido em dois grupos — as partes levam o vínculo; a efetiva reúne as duas no bloco autoral (id e linhas), sem bloco fictício, lacuna nem revisão', () => {
+    const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
+    expect(v.problemas).toEqual([])
+    const p = prepararBlocos({ ...comum, spec: v.spec! })
+    const camadas = p.montados.map((b) => b.layer)
+    const porId = Object.fromEntries(camadas.map((l) => [l.id, l]))
+    expect(Object.keys(porId).sort()).toEqual(['headline', 'servico', 'servico-2'])
+    expect([porId.servico.content, porId['servico-2'].content]).toEqual([HORARIO, ENDERECO])
+    expect([parteDe(porId.servico), parteDe(porId['servico-2']), parteDe(porId.headline)]).toEqual([1, 2, undefined])
+
+    const entrada = persistir(v.spec!, camadas)
+    const efetiva = entrada.copyAutoral as CopyAutoral
+    expect(efetiva.blocos.map((b) => [b.id, b.funcao, b.linhas])).toEqual([['h', 'headline', ['Costela']], ['svc', 'servico', [HORARIO, ENDERECO]]])
+    expect(efetiva.revisoes).toEqual([])
+    expect(efetiva.lacunas ?? []).toEqual([])
+    expect(validarCopyAutoral(efetiva).problemas).toEqual([])
+  })
+
+  it('R18: editar SÓ o endereço → revisão da equipe só no bloco `svc` (as duas linhas, a nova no lugar) → a spec da recomposição passa em validarSpec com UM serviço de duas linhas', () => {
+    const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    const editadas = camadas.map((l) => (l.id === 'servico-2' ? { ...l, content: 'Av. Beira Mar, 200' } : l))
+
+    const rev = revisaoDaPaginaComCamadas(efetiva, editadas, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' })
+    expect(rev.estado).toBe('registrada')
+    expect(rev.blocos).toEqual(['svc'])
+    expect(rev.copy!.blocos.map((b) => [b.id, b.linhas])).toEqual([['h', ['Costela']], ['svc', [HORARIO, 'Av. Beira Mar, 200']]])
+    expect(rev.copy!.revisoes.at(-1)).toMatchObject({ autor: 'equipe', blocos: ['svc'] })
+
+    // O que a recomposição monta: a spec persistida com o contrato atual da página.
+    const recomposta = validarSpec(specDaRecomposicao(v.spec!, rev.copy!))
+    expect(recomposta.problemas).toEqual([])
+    expect(recomposta.spec!.blocos!.map((b) => [b.papel, b.linhas])).toEqual([['headline', ['Costela']], ['servico', [HORARIO, 'Av. Beira Mar, 200']]])
+    expect(recomposta.spec!.camadasExtras ?? []).toEqual([])
+    expect(validarSpec(recomposta.spec).problemas).toEqual([])
+    // E a recomposição reparte de novo nas mesmas duas partes, com o endereço novo.
+    const denovo = prepararBlocos({ ...comum, spec: recomposta.spec! }).montados.map((b) => b.layer)
+    expect(Object.fromEntries(denovo.map((l) => [l.id, l.content]))).toEqual({ headline: 'Costela', servico: HORARIO, 'servico-2': 'Av. Beira Mar, 200' })
+  })
+
+  it('R18: a página DUPLICADA (ids novos) reúne as partes pela marca; página composta antes da marca reúne pelo id `<papel>-N`; camada comum sem marca nem id reservado continua fora (legado)', () => {
+    const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+
+    const duplicadas = camadas.map((l) => ({ ...l, id: `uuid-${l.id}` })) as Layer[]
+    const lidaDuplicada = copyEfetivaDasCamadas(efetiva, duplicadas, { superficie: 'editor' })
+    expect(lidaDuplicada.mudancas).toEqual([])
+    expect(lidaDuplicada.efetiva.blocos.map((b) => b.id)).toEqual(['h', 'svc'])
+
+    const semMarca = camadas.map((l) => {
+      const { parte: _p, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      return { ...l, metadata: { ...l.metadata, compositor } }
+    }) as Layer[]
+    const lidaSemMarca = copyEfetivaDasCamadas(efetiva, semMarca, { superficie: 'editor' })
+    expect(lidaSemMarca.mudancas).toEqual([])
+    expect(lidaSemMarca.efetiva.blocos.find((b) => b.id === 'svc')?.linhas).toEqual([HORARIO, ENDERECO])
+
+    // Controle: sem marca E com id qualquer, a segunda camada de serviço não é parte — é texto a mais.
+    const soltas = semMarca.map((l) => (l.id === 'servico-2' ? { ...l, id: 'uuid-solta' } : l)) as Layer[]
+    const lidaSolta = copyEfetivaDasCamadas(efetiva, soltas, { superficie: 'editor' })
+    expect(lidaSolta.efetiva.blocos.find((b) => b.id === 'svc')?.linhas).toEqual([HORARIO])
+    expect(lidaSolta.efetiva.blocos.some((b) => b.id === idDeExtra('uuid-solta'))).toBe(true)
+  })
+
+  it('R18: o extra com identidade explícita (serviço herdando a manchete) continua bloco próprio, mesmo com um serviço comum repartido', () => {
+    const contrato: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'svc', funcao: 'servico', ordem: 1, linhas: [HORARIO, ENDERECO] },
+        { id: 'hora-extra', funcao: 'servico', ordem: 2, linhas: ['Delivery até 22h'], estilo: { herdaDe: 'headline' } },
+      ],
+    }
+    const v = validarSpec({ ...base, copyAutoral: contrato })
+    expect(v.problemas).toEqual([])
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    const extra = camadas.find((l) => l.id === 'hora-extra')
+    expect(extra?.metadata?.compositor).toMatchObject({ extra: { id: 'hora-extra', funcao: 'servico' } })
+    expect(parteDe(extra!)).toBeUndefined()
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    expect(efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual([['h', ['Costela']], ['svc', [HORARIO, ENDERECO]], ['hora-extra', ['Delivery até 22h']]])
+    expect(efetiva.revisoes).toEqual([])
+  })
+
+  it('R18: sem contrato (spec legada com um serviço de duas linhas), o ORIGINAL derivado e a efetiva concordam — sem bloco extra', () => {
+    const spec = { ...base, blocos: [{ papel: 'headline' as const, linhas: ['Costela'] }, { papel: 'servico' as const, linhas: [HORARIO, ENDERECO] }] }
+    const v = validarSpec(spec)
+    expect(v.problemas).toEqual([])
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    const entrada = persistir(v.spec!, camadas)
+    const efetiva = entrada.copyAutoral as CopyAutoral
+    expect(efetiva.blocos.filter((b) => b.funcao === 'servico').map((b) => b.linhas)).toEqual([[HORARIO, ENDERECO]])
+    expect(efetiva.blocos.some((b) => b.id.startsWith('extra-'))).toBe(false)
+    expect(efetiva.revisoes).toEqual([])
+  })
+})

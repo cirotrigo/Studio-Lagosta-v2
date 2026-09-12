@@ -8792,3 +8792,22 @@ Da revisão do Codex sobre o quarto commit (BLOQUEADO, R15, 12/09/2026):
   (`copyAutoral`, `blocos`, `camadasExtras`). Sem contrato, a spec legada segue
   com os extras que tinha. Teste do consumidor com banco falso em
   `__tests__/recompor-camadas-extras.test.ts`.
+
+Da revisão FINAL do Codex sobre E (BLOQUEADO, R18, 12/09/2026):
+
+- 🔴 **O bloco de um papel que a preparação REPARTE entre textos do arranjo
+  continua sendo UM bloco na copy efetiva.** O horário num grupo e o endereço
+  noutro saem como `servico` e `servico-2`; a efetiva casava só a primeira
+  camada com o bloco autoral e a segunda virava `extra-servico-2`, com função
+  `servico` e SEM herança — revisão fictícia do sistema na persistência e, na
+  edição seguinte, `papel repetido: servico` (SPEC_INVALIDA) na recomposição,
+  com o slide preso na arte antiga. Hoje a preparação marca cada parte
+  (`metadata.compositor.parte`, na ordem das linhas; só quando o papel foi
+  repartido) e `copyEfetivaDasCamadas` reúne as partes no bloco ÚNICO daquela
+  função sem herança, na ordem da numeração, mantendo id e linhas. Página
+  composta antes da marca reúne pelo id `<papel>` / `<papel>-N`, que só a
+  composição gera (reservado na spec); a marca sobrevive à duplicação (o id
+  muda, a metadata vai junto). Camada com identidade explícita de extra nunca
+  é parte, e com dois blocos da mesma função vale a associação por posição.
+- ⚠️ O defeito nasce na efetiva do PR 3 (a leitura por função existe desde
+  lá): o PR 3 não pode ir à main sem esta correção na pilha.

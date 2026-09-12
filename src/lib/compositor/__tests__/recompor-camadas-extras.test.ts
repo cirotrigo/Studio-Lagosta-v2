@@ -163,3 +163,77 @@ describe('recomporPaginaDefasada — R15: edição só do texto de uma camada ex
     expect(validarSpec((estado.generationGravada?.fieldValues as Record<string, unknown>).spec).problemas).toEqual([])
   })
 })
+
+describe('recomporPaginaDefasada — R18: serviço repartido em duas camadas, edição só do endereço', () => {
+  it('recompõe com UM serviço de duas linhas (sem bloco fictício), troca SÓ o slide da arte e grava a efetiva com o bloco autoral inteiro', async () => {
+    estado.page = null
+    estado.generation = null
+    estado.posts.clear()
+    estado.specsCompostas = []
+    estado.paginaGravada = null
+    estado.generationGravada = null
+    const HORARIO = 'Ter a dom, das 18h às 23h'
+    // A página do R13: horário num grupo (com relógio), endereço noutro (com alfinete).
+    const img = (id: string, url: string, x: number, y: number, grupo: string): Layer =>
+      ({ id, name: id, type: 'image', visible: true, locked: false, order: 0, rotation: 0, fileUrl: url, position: { x, y }, size: { width: 26, height: 26 }, metadata: { groupId: grupo } }) as Layer
+    const camadasDaPagina: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { position: { x: 92, y: 300 }, metadata: { groupId: 'g-topo' } }),
+      texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2, textAlign: 'left' }, 'Seg a sex, das 11h às 15h', { position: { x: 160, y: 1200 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-meio' } }),
+      img('relogio', 'https://exemplo.com/relogio.png', 120, 1204, 'g-meio'),
+      texto('info', { fontFamily: 'Barlow', fontSize: 24, color: '#DDDDDD', lineHeight: 1.2, textAlign: 'left' }, 'Rua das Flores, 12 — Centro', { id: 'servico-endereco', position: { x: 160, y: 1650 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape' } }),
+      img('pin', 'https://exemplo.com/pin.png', 122, 1652, 'g-rodape'),
+    ]
+    const assinatura = montarAssinatura({ pagina: { id: 'p-dois-grupos', width: 1080, height: 1920, layers: camadasDaPagina }, formatoDaPagina: 'story', numerosDoProjeto: null })
+    assinatura.camadasDaPagina = camadasDaPagina
+    const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+    const copy: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'svc', funcao: 'servico', ordem: 1, linhas: [HORARIO, 'Av. Beira Mar, 100'] },
+      ],
+    }
+    const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy })
+    expect(v.problemas).toEqual([])
+    const specPersistida = v.spec as SpecDePeca
+    const camadasHoje = prepararBlocos({
+      assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+      medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: specPersistida,
+    }).montados.map((b) => b.layer)
+    expect(camadasHoje.map((l) => l.id).sort()).toEqual(['headline', 'servico', 'servico-2'])
+    const entrada = entradaDePersistencia({
+      spec: specPersistida, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+      nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadasHoje, fundo: '#000', diagnostico: {}, fotoUrl: null,
+    })
+    expect((entrada.copyAutoral as CopyAutoral).blocos.map((b) => b.id)).toEqual(['h', 'svc'])
+    const camadasEditadas = camadasHoje.map((l) => (l.id === 'servico-2' ? { ...l, content: 'Av. Beira Mar, 200' } : l))
+
+    estado.page = {
+      id: 'pg-2', name: 'Sáb 19/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: camadasEditadas, background: '#000',
+      isTemplate: false, templateId: 't-1', copyAutoral: entrada.copyAutoral, updatedAt: new Date('2026-09-12T16:00:00.000Z'),
+      Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
+    }
+    estado.generation = {
+      id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null,
+      fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-2' },
+    }
+    estado.camadasDaComposicao = camadasEditadas
+    const capa = 'https://blob.exemplo/capa.png'
+    const slide3 = 'https://blob.exemplo/slide-3.png'
+    estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [capa, URL_ANTIGA, slide3] })
+
+    const { recomporPaginaDefasada } = await import('../recompor')
+    const r = await recomporPaginaDefasada({ pageId: 'pg-2' })
+
+    expect(r.recomposta).toBe(true)
+    expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_NOVA, slide3])
+    expect(estado.specsCompostas).toHaveLength(1)
+    const composta = estado.specsCompostas[0] as SpecDePeca
+    expect(composta.blocos!.map((b) => [b.papel, b.linhas])).toEqual([['headline', ['Costela']], ['servico', [HORARIO, 'Av. Beira Mar, 200']]])
+    expect(composta.camadasExtras ?? []).toEqual([])
+    const efetiva = estado.paginaGravada?.copyAutoral as CopyAutoral
+    expect(efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual([['h', ['Costela']], ['svc', [HORARIO, 'Av. Beira Mar, 200']]])
+    expect(validarSpec((estado.generationGravada?.fieldValues as Record<string, unknown>).spec).problemas).toEqual([])
+  })
+})
