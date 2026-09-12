@@ -232,6 +232,12 @@ export function prepararBlocos(args: {
 
   const montados: BlocoPreparado[] = []
   let segundaVoz: BlocosPreparados['segundaVoz'] = 'nenhuma'
+  // A numeração dos textos comuns do mesmo papel é da PEÇA inteira, não do
+  // grupo: horário num grupo e endereço noutro saíam os dois com id `servico`,
+  // a conferência final de ids recusava a composição e os elementos de um
+  // texto sobrescreviam os do outro em `elementosPorTexto` (R13 da revisão do
+  // Codex sobre o PR 9, 12/09/2026).
+  const repeticoes = new Map<Papel, number>()
   for (const [chaveDoGrupoAtual, blocosDoGrupo] of blocosPorGrupo) {
     const daPagina = gruposDaPagina.get(chaveDoGrupoAtual)
     // Grupo só de extras não tem arranjo: nem o da página (ele não mora nela)

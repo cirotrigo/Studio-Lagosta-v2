@@ -8760,3 +8760,23 @@ Da revisão do Codex sobre o segundo commit (BLOQUEADO, R08…R11, 12/09/2026):
   `camadasExtras` são recusados na porta. Antes a persistência gravava um
   contrato que `lerCopyAutoral` devolvia inválido e a edição seguinte caía em
   `sem-contrato`.
+
+Da revisão do Codex sobre o terceiro commit (BLOQUEADO, R12…R14, 12/09/2026):
+
+- 🔴 **A identidade EXPLÍCITA vem antes de TODO fallback legado, livres
+  inclusive** (R12, `vincularExtras`): o passo 0 casa o bloco livre pela
+  `metadata.compositor.extra.id` da camada, e camada que declara OUTRO bloco não
+  entra em nenhum fallback (nome, id inferido `extra-<id>`, forma antiga, nem a
+  associação por função). Um livre vazio `extra-hora` tomava a camada `hora` do
+  serviço pelo id inferido e esvaziava o serviço já na persistência inicial.
+- 🔴 **A numeração de textos comuns do mesmo papel é da PEÇA, não do grupo**
+  (R13, `prepararBlocos`): horário num grupo e endereço noutro saíam os dois com
+  id `servico`, a conferência final recusava a composição e os ícones de um
+  texto sobrescreviam os do outro em `elementosPorTexto`. Hoje o segundo é
+  `servico-2`, como no mesmo grupo.
+- 🔴 **Duplicar página não renomeia id AUTORAL** (R14,
+  `renomearExtrasDuplicados`): só o id INFERIDO do id da camada (`extra-<id>`,
+  atual ou antigo) acompanha a camada nova; o bloco que a camada declara em
+  `extra.id`, ou cujo id não é derivado dela, mantém o id e as referências no
+  histórico — senão contrato e metadados divergiam depois de uma operação
+  técnica.

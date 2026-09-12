@@ -6,7 +6,7 @@ import { medirCopy } from '../medir-copy'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
 import { copyAutoralDaSpec, entradaDePersistencia } from '../persistencia'
-import { validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, renomearExtrasDuplicados, validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 
 /**
@@ -370,5 +370,91 @@ describe('correções da revisão do Codex sobre 9a03c12c (R08–R11)', () => {
     const quarentaEUm = comExtras(40)
     expect(quarentaEUm.spec).toBeNull()
     expect(quarentaEUm.problemas[0]).toMatch(/^copy derivada da spec: blocos/)
+  })
+})
+
+describe('correções da revisão do Codex sobre 6ee684c4 (R12–R14)', () => {
+  const base = { projectId: 8, formato: 'story' as const }
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+  const comum = { assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [] }
+  const persistir = (spec: Parameters<typeof entradaDePersistencia>[0]['spec'], layers: Layer[]) =>
+    entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
+
+  it('R12: o livre VAZIO `extra-hora` não toma a camada `hora` que declara o serviço — a identidade explícita vem antes de todo fallback legado; horário preservado, livre vazio e nenhuma revisão', () => {
+    const copy = { versao: VERSAO_DO_CONTRATO, origem, revisoes: [], blocos: [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'hora', funcao: 'servico', ordem: 1, linhas: ['11h às 15h'], estilo: { herdaDe: 'apoio' } },
+      { id: 'extra-hora', funcao: 'livre', ordem: 2, linhas: [] },
+    ] }
+    const v = validarSpec({ ...base, copyAutoral: copy })
+    expect(v.problemas).toEqual([])
+    const p = prepararBlocos({ ...comum, spec: v.spec! })
+    const hora = p.montados.find((b) => b.layer.id === 'hora')!
+    expect(hora.layer.metadata?.compositor).toMatchObject({ extra: { id: 'hora', funcao: 'servico' } })
+    expect(idDeExtra(hora.layer)).toBe('extra-hora')
+    const efetiva = persistir(v.spec!, p.montados.map((b) => b.layer)).copyAutoral as CopyAutoral
+    expect(Object.fromEntries(efetiva.blocos.map((b) => [b.id, b.linhas]))).toEqual({ h: ['Costela'], hora: ['11h às 15h'], 'extra-hora': [] })
+    expect(efetiva.revisoes).toEqual([])
+  })
+
+  it('R13: horário e endereço em grupos DIFERENTES da página — ids únicos na peça (servico, servico-2), cada texto com o SEU ícone, e a medição concorda com a preparação', () => {
+    const RELOGIO = 'https://exemplo.com/relogio.png'
+    const PIN = 'https://exemplo.com/pin.png'
+    const img = (id: string, url: string, x: number, y: number, grupo: string): Layer =>
+      ({ id, name: id, type: 'image', visible: true, locked: false, order: 0, rotation: 0, fileUrl: url, position: { x, y }, size: { width: 26, height: 26 }, metadata: { groupId: grupo } }) as Layer
+    const camadas: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { position: { x: 92, y: 300 }, metadata: { groupId: 'g-topo' } }),
+      texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2, textAlign: 'left' }, 'Seg a sex, das 11h às 15h', { position: { x: 160, y: 1200 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-meio' } }),
+      img('relogio', RELOGIO, 120, 1204, 'g-meio'),
+      texto('info', { fontFamily: 'Barlow', fontSize: 24, color: '#DDDDDD', lineHeight: 1.2, textAlign: 'left' }, 'Rua das Flores, 12 — Centro', { id: 'servico-endereco', position: { x: 160, y: 1650 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape' } }),
+      img('pin', PIN, 122, 1652, 'g-rodape'),
+    ]
+    const a = montarAssinatura({ pagina: { id: 'p-dois-grupos', width: 1080, height: 1920, layers: camadas }, formatoDaPagina: 'story', numerosDoProjeto: null })
+    a.camadasDaPagina = camadas
+    const spec = { ...base, blocos: [{ papel: 'headline' as const, linhas: ['Costela'] }, { papel: 'servico' as const, linhas: ['Ter a dom, das 18h às 23h', 'Av. Beira Mar, 100'] }] }
+    const p = prepararBlocos({ ...comum, assinatura: a, colunaUtil: 1080 - 2 * a.numeros.geometria.story.margemH, spec })
+    const ids = p.montados.map((b) => b.layer.id)
+    expect([...ids].sort()).toEqual(['headline', 'servico', 'servico-2'])
+    expect(idsDeCamadaRepetidos(p.montados.map((b) => b.layer))).toEqual([])
+    const horario = p.montados.find((b) => b.linhasDaCopy[0] === 'Ter a dom, das 18h às 23h')!
+    const endereco = p.montados.find((b) => b.linhasDaCopy[0] === 'Av. Beira Mar, 100')!
+    expect(horario.layer.id).not.toBe(endereco.layer.id)
+    expect(horario.chave).not.toBe(endereco.chave)
+    expect(p.elementosPorTexto.get(horario.layer.id)?.elementos.map((e) => e.url)).toEqual([RELOGIO])
+    expect(p.elementosPorTexto.get(endereco.layer.id)?.elementos.map((e) => e.url)).toEqual([PIN])
+    const m = medirCopy({ assinatura: a, medir: medirFalso, familias: ['Bevan', 'Barlow'], fonteCarregada: () => true, formato: 'story', spec })
+    expect([...m.blocos.map((b) => b.id)].sort()).toEqual([...ids].sort())
+    expect(m.cabeTudo).toBe(true)
+  })
+
+  it('R14: duplicar a página preserva o id AUTORAL dos extras livres (visível e oculto) e as referências no histórico; só o id inferido `extra-<camada>` acompanha a camada nova, e a releitura da cópia não cria revisão', () => {
+    const doExtra = (id: string) => ({ groupId: 'g', compositor: { extra: { id, funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'principal' } } })
+    const camadas: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { groupId: 'g', compositor: { papel: 'headline' } } }),
+      texto('nota', { fontFamily: 'Barlow', fontSize: 40 }, 'vale hoje', { name: 'Nota da casa', position: { x: 92, y: 500 }, metadata: doExtra('nota') }),
+      texto('aviso', { fontFamily: 'Barlow', fontSize: 40 }, '', { name: 'Aviso', visible: false, position: { x: 92, y: 600 }, metadata: doExtra('aviso') }),
+      texto('solta', { fontFamily: 'Barlow', fontSize: 40 }, 'texto solto', { position: { x: 92, y: 900 } }),
+    ]
+    const copy: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem,
+      blocos: [
+        { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['vale hoje'] },
+        { id: 'aviso', funcao: 'livre', ordem: 2, linhas: [] },
+        { id: 'extra-solta', funcao: 'livre', ordem: 3, linhas: ['texto solto'] },
+      ],
+      revisoes: [{ autor: 'equipe', em: '2026-09-12T13:00:00.000Z', superficie: 'editor', motivo: 'autosave', blocos: ['nota', 'aviso', 'extra-solta'] }],
+    }
+    expect(validarCopyAutoral(copy).problemas).toEqual([])
+    const mapa = new Map([['headline', 'uuid-h'], ['nota', 'uuid-n'], ['aviso', 'uuid-a'], ['solta', 'uuid-s']])
+    const copia = renomearExtrasDuplicados(copy, mapa, camadas)
+    expect(copia.blocos.map((b) => b.id)).toEqual(['headline', 'nota', 'aviso', idDeExtra('uuid-s')])
+    expect(copia.revisoes[0].blocos).toEqual(['nota', 'aviso', idDeExtra('uuid-s')])
+    expect(validarCopyAutoral(copia).problemas).toEqual([])
+    const camadasDaCopia = camadas.map((c) => ({ ...c, id: mapa.get(c.id)! })) as Layer[]
+    const lida = copyEfetivaDasCamadas(copia, camadasDaCopia, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(lida.efetiva.blocos.find((b) => b.id === 'nota')?.linhas).toEqual(['vale hoje'])
+    expect(revisaoDaPaginaComCamadas(copia, camadasDaCopia, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' }).estado).not.toBe('registrada')
   })
 })
