@@ -106,6 +106,11 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
 
     const destacado = medirCopy({ ...base, formato: 'story', spec: { blocos: [{ papel: 'apoio', linhas: ['Sexta é [dia]'] }] } })
     expect(destacado.aproximado).toBe(true)
+    // marca SEM estilo de destaque: [colchetes] saem sem destaque e o BLOCO avisa (não só a lista geral)
+    const semEstilo = montarAssinatura({ pagina: { id: 'p5', width: 1080, height: 1920, layers: [texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#fff', lineHeight: 1.2 })] }, formatoDaPagina: 'story', numerosDoProjeto: { destaque: { pesado: false } } })
+    const semDestaque = medirCopy({ ...base, assinatura: semEstilo, familias: [], formato: 'story', spec: { blocos: [{ papel: 'apoio', linhas: ['Sexta é [dia]'] }] } })
+    expect(semDestaque.aproximado).toBe(false)
+    expect(semDestaque.blocos[0].avisos.some((a) => /não tem estilo de destaque/.test(a))).toBe(true)
     expect(destacado.blocos[0].aproximado).toBe(true)
     expect(destacado.blocos[0].linhasMedidas[0].linha).toBe('Sexta é [dia]')
   })

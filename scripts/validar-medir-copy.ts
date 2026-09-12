@@ -169,7 +169,7 @@ async function main() {
     const orc = mEnorme.blocos[0].orcamento?.[0]
     conferir(`linha enorme (${enorme.length} letras ≈ 150% da coluna) NÃO cabe nem a 80%: volta com o orçamento por linha (caracteres que cabem = ⌊letras × coluna ÷ largura⌋, menor que a linha) e cabeTudo false`, mEnorme.cabeTudo === false && mEnorme.blocos[0].situacao === 'nao-cabe' && !!orc && orc.caracteresQueCabem === Math.floor((enorme.length * orc.coluna) / orc.largura) && orc.caracteresQueCabem < enorme.length && /reescreva/.test(mEnorme.nota), JSON.stringify({ orcamento: orc, nota: mEnorme.nota?.slice(0, 60) }))
     const mDestaque = await tool('medir-copy', { projectId: PROJETO, formato: 'story', variante: alvo.id, blocos: [{ papel: 'headline', linhas: [`[${curta}]`] }] })
-    const semEstiloDeDestaque = (mDestaque.blocos[0].avisos ?? []).some((a: string) => /não tem estilo de destaque/.test(a))
+    const semEstiloDeDestaque = [...(mDestaque.blocos[0].avisos ?? []), ...(mDestaque.avisos ?? [])].some((a: string) => /não tem estilo de destaque/.test(a))
     conferir('destaque entre [colchetes]: a medida vira APROXIMADA — ou, quando a marca não tem estilo de destaque, o bloco AVISA que saiu sem destaque (nunca em silêncio); a linha volta como foi escrita', ((mDestaque.aproximado === true && mDestaque.blocos[0].aproximado === true) || semEstiloDeDestaque) && mDestaque.blocos[0].linhas[0].linha === `[${curta}]`, JSON.stringify({ aproximado: mDestaque.aproximado, semEstiloDeDestaque, situacao: mDestaque.blocos[0].situacao }))
     const PAPEIS = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
     const faltante = deStory.flatMap((v) => PAPEIS.filter((p) => !v.papeis.includes(p)).map((p) => ({ v, p }))).find(Boolean)

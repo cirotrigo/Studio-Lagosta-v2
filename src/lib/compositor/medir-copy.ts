@@ -200,6 +200,9 @@ export function medirCopy(args: {
     combinacoesSalvas: args.combinacoesSalvas ?? [],
   })
   const avisos = [...preparados.avisos]
+  // Os avisos que a montagem deu por PAPEL ("headline: a copy marcou destaque, mas a marca não tem estilo…") viajam
+  // também no bloco: quem lê o bloco tem de ver por que ele saiu sem destaque ou sem o que pediu.
+  const avisosDoPapel = (papel: Papel) => preparados.avisos.filter((a) => a.startsWith(`${papel}:`))
   const medidas: MedidaDeBloco[] = []
   const fontesUsadasSemCarregar = new Set<string>()
 
@@ -248,7 +251,7 @@ export function medirCopy(args: {
       naoMedido,
       aproximado: Boolean(b.destacado),
       linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido),
-      avisos: b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [],
+      avisos: [...avisosDoPapel(b.papel), ...(b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [])],
     })
   }
   for (const r of preparados.recusas) {
@@ -269,6 +272,7 @@ export function medirCopy(args: {
       linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido),
       orcamento: r.orcamento,
       avisos: [
+        ...avisosDoPapel(r.papel),
         naoMedido
           ? `a fonte de "${r.papel}" (${r.familiasPedidas.filter((f) => args.fontesNaoCarregadas.has(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
           : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
