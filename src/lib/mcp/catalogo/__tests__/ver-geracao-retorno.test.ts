@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { avisosDoCompositor, montarRetornoDaPagina } from '../ver-geracao-retorno'
+import { avisosDoCompositor, falhaDaGeracao, montarRetornoDaPagina } from '../ver-geracao-retorno'
 
 const pagina = { id: 'pg1', name: 'Qua 09/09 · 10:00 · gestão', templateId: 412, isTemplate: false }
 const app = 'https://studio.exemplo'
@@ -42,5 +42,22 @@ describe('ver-geracao devolve a página e os avisos do compositor', () => {
     expect(avisosDoCompositor({ composicao: { avisos: ['a', '', 3, null] } })).toEqual(['a'])
     expect(avisosDoCompositor({ composicao: 'x' })).toEqual([])
     expect(avisosDoCompositor(null)).toEqual([])
+  })
+})
+
+describe('a falha só promete orçamento quando ele veio', () => {
+  it('compositor com errorDetails.orcamento: devolve os detalhes e diz onde estão', () => {
+    const f = falhaDaGeracao({ fieldValues: { error: 'texto não cabe', errorDetails: { orcamento: { headline: 18 } } }, doCompositor: true, ehMelhoria: false })
+    expect(f.detalhes).toEqual({ orcamento: { headline: 18 } })
+    expect(f.mensagem).toContain('detalhes.orcamento')
+  })
+  it('compositor sem detalhes: não promete orçamento', () => {
+    const f = falhaDaGeracao({ fieldValues: { error: 'assinatura incompleta' }, doCompositor: true, ehMelhoria: false })
+    expect(f.detalhes).toBeUndefined()
+    expect(f.mensagem).not.toContain('orçamento')
+  })
+  it('melhoria e geração nova têm mensagens próprias', () => {
+    expect(falhaDaGeracao({ fieldValues: {}, doCompositor: false, ehMelhoria: true }).mensagem).toContain('melhoria')
+    expect(falhaDaGeracao({ fieldValues: {}, doCompositor: false, ehMelhoria: false }).mensagem).toContain('geração falhou')
   })
 })

@@ -58,6 +58,8 @@ describe('diffDeCopy — comparação por campo', () => {
       ['acento E caixa ao mesmo tempo', 'almoco executivo', 'ALMOÇO EXECUTIVO', 'acento', false],
       ['palavra trocada', 'Almoço executivo', 'Almoço em família', 'conteudo', false],
       ['acento errado posto', 'Voce merece', 'Vocé merece', 'acento', false],
+      ['mesmo acento em outra forma Unicode (NFC × NFD) é formatação, não correção', 'Caf\u00e9 da manh\u00e3', 'Cafe\u0301 da manha\u0303', 'formatacao', true],
+      ['NFD com caixa trocada continua formatação', 'Caf\u00e9', 'CAFE\u0301', 'formatacao', true],
     ]
     for (const [nome, antes, depois, esperado, formatacao] of casos) {
       it(nome, () => {

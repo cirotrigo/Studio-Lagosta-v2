@@ -63,3 +63,34 @@ export function montarRetornoDaPagina(args: {
   if (avisos.length > 0) saida.avisosDoCompositor = avisos
   return saida
 }
+
+/**
+ * A mensagem do ramo FALHOU e os detalhes que a sustentam. A promessa de
+ * orçamento só é feita quando o orçamento VEIO (`errorDetails.orcamento`, que
+ * a fila preserva de `TEXTO_NAO_CABE_NA_COLUNA`) — prometer o que a resposta
+ * não entrega deixava o chamador adivinhando quanto cortar (revisão do Codex,
+ * 12/09/2026).
+ */
+export function falhaDaGeracao(args: {
+  fieldValues: Record<string, unknown> | null | undefined
+  doCompositor: boolean
+  ehMelhoria: boolean
+}): { mensagem: string; detalhes?: Record<string, unknown> } {
+  const fv = args.fieldValues ?? {}
+  const detalhes = fv.errorDetails && typeof fv.errorDetails === 'object' && !Array.isArray(fv.errorDetails) ? (fv.errorDetails as Record<string, unknown>) : undefined
+  if (args.doCompositor) {
+    const temOrcamento = !!detalhes && 'orcamento' in detalhes
+    return {
+      mensagem: temOrcamento
+        ? 'A composição falhou e nada foi gravado na galeria — o texto não coube na coluna; use o orçamento em `detalhes.orcamento` (caracteres que cabem) para reescrever e compor de novo.'
+        : 'A composição falhou e nada foi gravado na galeria — o motivo está acima. Reveja a copy ou a variante e componha de novo.',
+      ...(detalhes ? { detalhes } : {}),
+    }
+  }
+  return {
+    mensagem: args.ehMelhoria
+      ? 'A melhoria foi descartada e a arte original continua valendo — nada mudou no post nem na galeria. Dá para tentar de novo com um pedido mais específico.'
+      : 'A geração falhou e nada foi gravado na galeria. Dá para tentar de novo com um pedido mais específico.',
+    ...(detalhes ? { detalhes } : {}),
+  }
+}

@@ -4099,7 +4099,10 @@ e o sinal `geometria`. Regras que valem para código novo:
   o defeito. O que continua: a página do formato é a verdade daquele formato
   (o `completarComStory` segue removido — papel de feed não vem da story);
   `copyParaBlocos(copy, { papeis })` distribui a copy do item de plano sobre os
-  papéis do formato e AVISA o que não coube; o alinhamento da headline na
+  papéis do formato — no modo `estrito` (o executor semanal) o que não cabe
+  LANÇA `PAPEIS_INCOMPATIVEIS` (com `textosSemPapel`); no modo legado o excedente ainda é CORTADO
+  sem aviso, que é a perda posicional que o PR 5 da F1 vai fechar; o
+  alinhamento da headline na
   página é PREFERÊNCIA do rodízio (a foto ainda manda); o serviço reserva a
   própria altura quando o bloco principal também vai ao rodapé.
 - **A régua entende texto ESCURO**: para cor de texto com luz < 128 a
@@ -4114,8 +4117,11 @@ e o sinal `geometria`. Regras que valem para código novo:
   serve para a peça de funcionamento — aconteceu na sexta da Real), −1 por
   papel que sobra, +3 por palavra do tema no nome/tags da página, ±2 pela tag
   `clara`/`escura` contra a luz da foto; empate → rodízio pela chave da peça.
-  Papel pedido que a variante escolhida não tem sai da peça com aviso (só a
-  manchete é obrigatória). `ver-assinatura` lista as variantes com os papéis
+  Papel pedido que a variante escolhida não tem é RECUSADO antes de gravar
+  (`PAPEIS_INCOMPATIVEIS`, com a lista do que falta) — nunca sai da peça em
+  silêncio; a saída é outra variante ou `criar-arte` com `textosLivres`, com a
+  copy preservada (só a manchete é obrigatória para compor). `ver-assinatura`
+  lista as variantes com os papéis
   e `aceitaServico`. Nome/tag da página é o que faz o tema casar: vale nomear
   as variantes pelo que elas servem. O compositor NÃO varia cor de fonte nem
   cor do halo por conta própria — variação de estilo é página nova; o que ele

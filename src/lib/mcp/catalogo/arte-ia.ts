@@ -656,16 +656,15 @@ export const toolsDeArteIA = [
         }
       }
 
+      const { falhaDaGeracao } = await import('./ver-geracao-retorno')
+      const falha = falhaDaGeracao({ fieldValues: fv, doCompositor, ehMelhoria: !!gen.sourceGenerationId })
       return {
         situacao: 'falhou',
         ...daPagina,
         motivo: typeof fv.error === 'string' ? fv.error : 'Erro desconhecido',
+        ...(falha.detalhes ? { detalhes: falha.detalhes } : {}),
         verificacaoTexto: fv.textCheck ?? undefined,
-        mensagem: doCompositor
-          ? 'A composição falhou e nada foi gravado na galeria — o motivo está acima (texto que não cabe volta com o orçamento de caracteres: reescreva e componha de novo).'
-          : gen.sourceGenerationId
-            ? 'A melhoria foi descartada e a arte original continua valendo — nada mudou no post nem na galeria. Dá para tentar de novo com um pedido mais específico.'
-            : 'A geração falhou e nada foi gravado na galeria. Dá para tentar de novo com um pedido mais específico.',
+        mensagem: falha.mensagem,
       }
     },
   }),

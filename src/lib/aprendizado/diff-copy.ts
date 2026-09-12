@@ -175,6 +175,9 @@ export function semelhanca(a: string, b: string): number {
  */
 export function normalizarMantendoAcento(value: string): string {
   return value
+    // NFC: "Café" composto e "Cafe\u0301" decomposto são o MESMO acento —
+    // sem isto a forma Unicode contava como correção de acento (nota do Codex).
+    .normalize('NFC')
     .replace(/<br\s*\/?>/gi, ' ')
     .replace(/[‘’‚′]/g, "'")
     .replace(/[“”„″]/g, '"')
