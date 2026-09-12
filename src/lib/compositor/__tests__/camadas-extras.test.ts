@@ -608,10 +608,10 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
 
     // A MESMA transformação da rota de duplicação, com a mesma renomeação do contrato.
     let n = 0
-    const { camadas: brutas, idsDeCamada } = duplicarCamadasDaPagina(legado, () => `uuid-${++n}`)
-    const duplicadas = brutas as Layer[]
+    const dup = duplicarCamadasDaPagina(legado, () => `uuid-${++n}`, efetiva)
+    const duplicadas = dup.camadas as Layer[]
     expect(duplicadas.every((l) => !legado.some((o) => o.id === l.id))).toBe(true)
-    const copia = renomearExtrasDuplicados(efetiva, idsDeCamada, legado)
+    const copia = dup.contrato!
 
     const lida = copyEfetivaDasCamadas(copia, duplicadas, { superficie: 'editor' })
     expect(lida.mudancas).toEqual([])
@@ -973,5 +973,229 @@ describe('correção da revisão FINAL do Codex sobre e11abce7 (R21)', () => {
     ] } })
     expect(m.papeisAusentes).toEqual(['servico'])
     expect(m.blocos.find((b) => b.id === 'servico' && b.situacao === 'papel-ausente')?.linhas).toBe(1)
+  })
+})
+
+describe('correção da revisão FINAL do Codex sobre 838bde61 (R23–R24): identidade vence posição, e duplicar transporta todo vínculo do id físico', () => {
+  const base = { projectId: 8, formato: 'story' as const }
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+  const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
+  const camadasDaPagina: Layer[] = [
+    texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { position: { x: 92, y: 300 }, metadata: { groupId: 'g-topo' } }),
+    texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 420 }, metadata: { groupId: 'g-topo' } }),
+    texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2, textAlign: 'left' }, 'Seg a sex, das 11h às 15h', { position: { x: 160, y: 1650 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape' } }),
+  ]
+  const a = montarAssinatura({ pagina: { id: 'p-r23', width: 1080, height: 1920, layers: camadasDaPagina }, formatoDaPagina: 'story', numerosDoProjeto: null })
+  a.camadasDaPagina = camadasDaPagina
+  const comum = { assinatura: a, colunaUtil: 1080 - 2 * a.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [] }
+  const persistir = (spec: Parameters<typeof entradaDePersistencia>[0]['spec'], layers: Layer[]) =>
+    entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
+  const linhasPorId = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.linhas])
+  const semExtraInventado = (c: CopyAutoral) => c.blocos.filter((b) => b.id.startsWith('extra-')).map((b) => b.id)
+  const duplicar = (camadas: Layer[], contrato: CopyAutoral) => {
+    let n = 0
+    const d = duplicarCamadasDaPagina(camadas, () => `uuid-dup-${++n}`, contrato)
+    expect((d.camadas as Layer[]).every((l) => !camadas.some((o) => o.id === l.id))).toBe(true)
+    return { camadas: d.camadas as Layer[], contrato: d.contrato! }
+  }
+  const ehDoExtra = (id: string) => (l: Layer) => (l.metadata?.compositor as { extra?: { id?: string } } | undefined)?.extra?.id === id
+  // A peça do R21 pela entrada DIRETA do contrato: o extra `hora-extra` (servico, ordem 0, herdaDe apoio) e o comum `svc`.
+  const montarR21 = () => {
+    const contrato: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [
+        { id: 'hora-extra', funcao: 'servico', ordem: 0, linhas: ['Delivery até 22h'], estilo: { herdaDe: 'apoio', grupoVisual: 'topo' } },
+        { id: 'h', funcao: 'headline', ordem: 1, linhas: ['Costela'] },
+        { id: 'svc', funcao: 'servico', ordem: 2, linhas: ['11h às 15h'] },
+      ],
+    }
+    const v = validarSpec({ ...base, copyAutoral: contrato })
+    expect(v.problemas).toEqual([])
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    expect(efetiva.revisoes).toEqual([])
+    return { spec: v.spec!, camadas, efetiva }
+  }
+  const INTACTO = [['hora-extra', ['Delivery até 22h']], ['h', ['Costela']], ['svc', ['11h às 15h']]]
+  const SEM_EXTRA = [['hora-extra', []], ['h', ['Costela']], ['svc', ['11h às 15h']]]
+  const ocultarOuExcluir = (camadas: Layer[], alvo: (l: Layer) => boolean) =>
+    [['oculta', camadas.map((l) => (alvo(l) ? { ...l, visible: false } : l)) as Layer[]], ['excluída', camadas.filter((l) => !alvo(l))]] as const
+
+  it('R23: ocultar ou excluir SÓ o extra `hora-extra` muda só `hora-extra` — o comum `svc` fica com o texto dele, a releitura é estável e a recomposição continua válida', () => {
+    const { spec, camadas, efetiva } = montarR21()
+    for (const [nome, restantes] of ocultarOuExcluir(camadas, ehDoExtra('hora-extra'))) {
+      const rev = revisaoDaPaginaComCamadas(efetiva, restantes, equipe)
+      expect(rev.estado, nome).toBe('registrada')
+      expect(rev.blocos, nome).toEqual(['hora-extra'])
+      expect(linhasPorId(rev.copy!), nome).toEqual(SEM_EXTRA)
+      expect(semExtraInventado(rev.copy!), nome).toEqual([])
+      expect(copyEfetivaDasCamadas(rev.copy!, restantes, { superficie: 'editor' }).mudancas, nome).toEqual([])
+      expect(validarSpec(specDaRecomposicao(spec, rev.copy!)).problemas, nome).toEqual([])
+    }
+  })
+
+  it('R23: ocultar e REEXIBIR o extra — a segunda revisão devolve o texto só a `hora-extra`, sem tocar `svc`', () => {
+    const { camadas, efetiva } = montarR21()
+    const oculta = camadas.map((l) => (ehDoExtra('hora-extra')(l) ? { ...l, visible: false } : l)) as Layer[]
+    const rev1 = revisaoDaPaginaComCamadas(efetiva, oculta, equipe)
+    expect(linhasPorId(rev1.copy!)).toEqual(SEM_EXTRA)
+    const rev2 = revisaoDaPaginaComCamadas(rev1.copy!, camadas, equipe)
+    expect(rev2.blocos).toEqual(['hora-extra'])
+    expect(linhasPorId(rev2.copy!)).toEqual(INTACTO)
+  })
+
+  it('R23: na página DUPLICADA (ids físicos regenerados), a cópia se lê sem mudança, e ocultar ou excluir o extra nela muda só `hora-extra`', () => {
+    const { camadas, efetiva } = montarR21()
+    const dup = duplicar(camadas, efetiva)
+    expect(copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' }).mudancas).toEqual([])
+    for (const [nome, restantes] of ocultarOuExcluir(dup.camadas, ehDoExtra('hora-extra'))) {
+      const rev = revisaoDaPaginaComCamadas(dup.contrato, restantes, equipe)
+      expect(rev.blocos, nome).toEqual(['hora-extra'])
+      expect(linhasPorId(rev.copy!), nome).toEqual(SEM_EXTRA)
+    }
+  })
+
+  it('R23: o extra EXCLUÍDO não toma o texto que a equipe acrescentou — a camada nova de serviço vira bloco `extra-…` próprio e `svc` fica intacto', () => {
+    const { camadas, efetiva } = montarR21()
+    const nova = texto('uuid-nova', { fontFamily: 'Barlow', fontSize: 30 }, 'Retirada no balcão', { position: { x: 160, y: 1800 }, metadata: { groupId: 'g-rodape', compositor: { papel: 'servico' } } })
+    const restantes = [...camadas.filter((l) => !ehDoExtra('hora-extra')(l)), nova]
+    const lida = copyEfetivaDasCamadas(efetiva, restantes, { superficie: 'editor' }).efetiva
+    expect(linhasPorId(lida).slice(0, 3)).toEqual(SEM_EXTRA)
+    expect(lida.blocos.slice(3).map((b) => [b.id, b.funcao, b.linhas])).toEqual([[idDeExtra('uuid-nova'), 'servico', ['Retirada no balcão']]])
+  })
+
+  it('R23 (compatibilidade): a segunda voz legada (`headline2`: função headline herdando headline) continua lida pela voz 2, como antes', () => {
+    const legado: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [{ id: 'headline2', funcao: 'headline', ordem: 0, linhas: ['Grelhada'], estilo: { herdaDe: 'headline', linhasNaVoz2: [0] } }],
+    }
+    expect(validarCopyAutoral(legado).problemas).toEqual([])
+    const camadas = [texto('headline2', { fontFamily: 'Bevan', fontSize: 80 }, 'Grelhada', { position: { x: 92, y: 400 }, metadata: { compositor: { papel: 'headline2' } } })]
+    const lida = copyEfetivaDasCamadas(legado, camadas, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(linhasPorId(lida.efetiva)).toEqual([['headline2', ['Grelhada']]])
+    expect(semExtraInventado(lida.efetiva)).toEqual([])
+  })
+
+  // Dois blocos COMUNS da mesma função: `servico` vinculado pelo id físico (camada de BAIXO) e `svc-b` só por posição (camada de CIMA).
+  const contratoDoisComuns: CopyAutoral = {
+    versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+    blocos: [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'servico', funcao: 'servico', ordem: 1, linhas: ['Seg a sex, 11h às 15h'] },
+      { id: 'svc-b', funcao: 'servico', ordem: 2, linhas: ['Av. Beira Mar, 100'] },
+    ],
+  }
+  const camadasDoisComuns: Layer[] = [
+    texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } }),
+    texto('servico', { fontFamily: 'Barlow', fontSize: 30 }, 'Seg a sex, 11h às 15h', { position: { x: 160, y: 1700 }, metadata: { compositor: { papel: 'servico' } } }),
+    texto('uuid-b', { fontFamily: 'Barlow', fontSize: 30 }, 'Av. Beira Mar, 100', { position: { x: 160, y: 1500 }, metadata: { compositor: { papel: 'servico' } } }),
+  ]
+
+  it('R23 (variante): o bloco comum cuja camada do id físico está OCULTA não toma por posição a camada do outro bloco da mesma função; reexibir devolve só a ele', () => {
+    expect(copyEfetivaDasCamadas(contratoDoisComuns, camadasDoisComuns, { superficie: 'editor' }).mudancas).toEqual([])
+    const oculta = camadasDoisComuns.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(contratoDoisComuns, oculta, equipe)
+    expect(rev.blocos).toEqual(['servico'])
+    expect(linhasPorId(rev.copy!)).toEqual([['h', ['Costela']], ['servico', []], ['svc-b', ['Av. Beira Mar, 100']]])
+    const volta = revisaoDaPaginaComCamadas(rev.copy!, camadasDoisComuns, equipe)
+    expect(volta.blocos).toEqual(['servico'])
+    expect(linhasPorId(volta.copy!)).toEqual(linhasPorId(contratoDoisComuns))
+  })
+
+  it('R23 (variante, legado): a parte VISÍVEL do bloco único continua sendo dele quando a camada do id físico está oculta (partes `servico` + `servico-2`)', () => {
+    const contrato: CopyAutoral = { ...contratoDoisComuns, blocos: [contratoDoisComuns.blocos[0], { id: 'servico', funcao: 'servico', ordem: 1, linhas: ['Seg a sex, 11h às 15h', 'Av. Beira Mar, 100'] }] }
+    const camadas = [camadasDoisComuns[0], { ...camadasDoisComuns[1], position: { x: 160, y: 1500 } }, { ...camadasDoisComuns[2], id: 'servico-2', position: { x: 160, y: 1700 } }] as Layer[]
+    expect(copyEfetivaDasCamadas(contrato, camadas, { superficie: 'editor' }).mudancas).toEqual([])
+    const oculta = camadas.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
+    const lida = copyEfetivaDasCamadas(contrato, oculta, { superficie: 'editor' }).efetiva
+    expect(linhasPorId(lida)).toEqual([['h', ['Costela']], ['servico', ['Av. Beira Mar, 100']]])
+    expect(semExtraInventado(lida)).toEqual([])
+  })
+
+  it('R24 (variante): duplicar a página com o vínculo de bloco COMUM pelo id físico — a cópia não troca os textos entre `servico` e `svc-b`, também depois de ocultar e reexibir', () => {
+    const dup = duplicar(camadasDoisComuns, contratoDoisComuns)
+    const lida = copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(linhasPorId(lida.efetiva)).toEqual(linhasPorId(contratoDoisComuns))
+    // Oculta no ORIGINAL, duplica, reexibe na CÓPIA.
+    const oculta = camadasDoisComuns.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(contratoDoisComuns, oculta, equipe)
+    const dupOculta = duplicar(oculta, rev.copy!)
+    const reexibida = dupOculta.camadas.map((l) => ({ ...l, visible: true })) as Layer[]
+    const volta = revisaoDaPaginaComCamadas(dupOculta.contrato, reexibida, equipe)
+    expect(volta.blocos).toEqual(['servico'])
+    expect(linhasPorId(volta.copy!)).toEqual(linhasPorId(contratoDoisComuns))
+  })
+
+  it('R24: o bloco LIVRE autoral `nota` vinculado só pelo id físico (nome "Nota da casa", sem metadata) — a cópia mantém id, texto e histórico, sem bloco novo nem revisão; oculto no original e reexibido na cópia, volta a `nota`', () => {
+    const contrato: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem,
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['vale hoje'] },
+      ],
+      revisoes: [{ autor: 'equipe', em: '2026-09-12T13:00:00.000Z', superficie: 'editor', motivo: 'autosave', blocos: ['nota'] }],
+    }
+    expect(validarCopyAutoral(contrato).problemas).toEqual([])
+    const camadas: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } }),
+      texto('nota', { fontFamily: 'Barlow', fontSize: 40 }, 'vale hoje', { name: 'Nota da casa', position: { x: 92, y: 600 } }),
+    ]
+    expect(copyEfetivaDasCamadas(contrato, camadas, { superficie: 'editor' }).mudancas).toEqual([])
+    const dup = duplicar(camadas, contrato)
+    expect(dup.contrato.blocos.map((b) => b.id)).toEqual(['h', 'nota'])
+    expect(dup.contrato.revisoes).toEqual(contrato.revisoes)
+    const lida = copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(linhasPorId(lida.efetiva)).toEqual([['h', ['Costela']], ['nota', ['vale hoje']]])
+    expect(revisaoDaPaginaComCamadas(dup.contrato, dup.camadas, equipe).estado).toBe('sem-mudanca')
+
+    const oculta = camadas.map((l) => (l.id === 'nota' ? { ...l, visible: false } : l)) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(contrato, oculta, equipe)
+    expect(rev.blocos).toEqual(['nota'])
+    const dupOculta = duplicar(oculta, rev.copy!)
+    const reexibida = dupOculta.camadas.map((l) => ({ ...l, visible: true })) as Layer[]
+    const volta = revisaoDaPaginaComCamadas(dupOculta.contrato, reexibida, equipe)
+    expect(volta.blocos).toEqual(['nota'])
+    expect(linhasPorId(volta.copy!)).toEqual([['h', ['Costela']], ['nota', ['vale hoje']]])
+    expect(semExtraInventado(volta.copy!)).toEqual([])
+  })
+
+  it('R24 (variante): o PAPEL reconhecido só pelo id físico (camada `apoio` com nome "Texto 2", sem metadata) sobrevive à duplicação', () => {
+    const contrato: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }, { id: 'ap', funcao: 'apoio', ordem: 1, linhas: ['Só hoje'] }],
+    }
+    const camadas: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } }),
+      texto('apoio', { fontFamily: 'Barlow', fontSize: 40 }, 'Só hoje', { name: 'Texto 2', position: { x: 92, y: 500 } }),
+    ]
+    expect(copyEfetivaDasCamadas(contrato, camadas, { superficie: 'editor' }).mudancas).toEqual([])
+    const dup = duplicar(camadas, contrato)
+    const lida = copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(linhasPorId(lida.efetiva)).toEqual(linhasPorId(contrato))
+  })
+
+  it('R23 (variante, ids inferidos da forma antiga): "Nota" e "nota" — ocultar "Nota" esvazia só `extra-nota`; `extra-nota-2` não troca de camada', () => {
+    const contrato: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'extra-nota', funcao: 'livre', ordem: 1, linhas: ['A'] },
+        { id: 'extra-nota-2', funcao: 'livre', ordem: 2, linhas: ['B'] },
+      ],
+    }
+    const camadas: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 100 }, metadata: { compositor: { papel: 'headline' } } }),
+      texto('Nota', { fontFamily: 'Barlow', fontSize: 40 }, 'A', { position: { x: 92, y: 500 }, metadata: {} }),
+      texto('nota', { fontFamily: 'Barlow', fontSize: 40 }, 'B', { position: { x: 92, y: 560 }, metadata: {} }),
+    ]
+    expect(copyEfetivaDasCamadas(contrato, camadas, { superficie: 'editor' }).mudancas).toEqual([])
+    const oculta = camadas.map((l) => (l.id === 'Nota' ? { ...l, visible: false } : l)) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(contrato, oculta, equipe)
+    expect(rev.blocos).toEqual(['extra-nota'])
+    expect(linhasPorId(rev.copy!)).toEqual([['h', ['Costela']], ['extra-nota', []], ['extra-nota-2', ['B']]])
   })
 })

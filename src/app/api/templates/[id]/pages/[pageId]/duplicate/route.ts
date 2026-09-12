@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { duplicarCamadasDaPagina, lerCopyAutoral, renomearExtrasDuplicados } from '@/lib/copy-autoral'
+import { duplicarCamadasDaPagina, lerCopyAutoral } from '@/lib/copy-autoral'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import {
@@ -58,22 +58,24 @@ export async function POST(
     // Regenerar ids das layers — overrides por layerId (agendamento, editor)
     // assumem ids únicos por página. A transformação mora em
     // `duplicarCamadasDaPagina` (pura, testada contra o leitor da copy): ela
-    // também leva para a cópia o vínculo de parte que só o id antigo dava (R22).
+    // leva para a cópia todo vínculo que só o id antigo dava (R22, R24) e
+    // devolve o contrato da cópia.
     const originalLayers = typeof pageToDuplicate.layers === 'string'
       ? JSON.parse(pageToDuplicate.layers)
       : pageToDuplicate.layers
 
+    const contratoLido = pageToDuplicate.copyAutoral == null ? null : lerCopyAutoral(pageToDuplicate.copyAutoral).copy
     const duplicacao = Array.isArray(originalLayers)
-      ? duplicarCamadasDaPagina(originalLayers, () => crypto.randomUUID())
+      ? duplicarCamadasDaPagina(originalLayers, () => crypto.randomUUID(), contratoLido)
       : null
     const duplicatedLayers = duplicacao ? duplicacao.camadas : originalLayers
 
-    const contratoDaCopia = (() => {
-      if (pageToDuplicate.copyAutoral == null) return null
-      const lido = lerCopyAutoral(pageToDuplicate.copyAutoral).copy
-      if (!lido) return pageToDuplicate.copyAutoral
-      return renomearExtrasDuplicados(lido, duplicacao?.idsDeCamada ?? new Map(), Array.isArray(originalLayers) ? (originalLayers as never[]) : [])
-    })()
+    // Contrato ilegível segue como estava; legível sai com os ids inferidos renomeados.
+    const contratoDaCopia = pageToDuplicate.copyAutoral == null
+      ? null
+      : !contratoLido
+        ? pageToDuplicate.copyAutoral
+        : (duplicacao?.contrato ?? contratoLido)
 
     // Criar cópia da página logo após a original
     // IMPORTANTE: Não copiar thumbnail - será gerado automaticamente pelo editor

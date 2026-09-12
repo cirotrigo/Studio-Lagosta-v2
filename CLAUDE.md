@@ -8879,3 +8879,62 @@ Da revisão do commit G (BLOQUEADO, R20, 12/09/2026):
   autoral, e a spec derivada válida.
 - **As três correções têm prova por mutação** (arquivo corrigido salvo,
   correção desfeita, teste falhando, restauro conferido com `cmp`).
+
+**Da revisão FINAL do Codex sobre 838bde61 (BLOQUEADO, R23…R24, 12/09/2026):**
+
+As duas são o MESMO defeito visto de lados opostos, e a revisão vinha achando
+a variante seguinte a cada rodada. R23: um bloco cuja camada própria sumiu
+(oculta ou excluída) tomava uma camada por uma regra MAIS FRACA — o extra
+`hora-extra` levava pela função o texto do serviço comum `svc`, e o autosave
+gravava a troca como revisão da equipe. R24: a duplicação troca o id físico
+por UUID e perdia todo vínculo que a leitura só reconhecia por ele — o bloco
+livre autoral `nota` (camada `id: "nota"`, nome "Nota da casa", sem metadata)
+esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
+
+| Vínculo | Vale oculta? | Sobrevive à duplicação por |
+|---|---|---|
+| identidade do extra (`metadata.compositor.extra.id`) | sim: o bloco sai vazio | a própria metadata |
+| id do bloco = id físico (comum: com o papel; livre: id ou nome) | sim: o bloco sai vazio | `metadata.compositor.bloco` (novo) |
+| id inferido `extra-<camada>` (formas atual e antiga) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
+| marca `linhasDoBloco` / `parte` | as partes visíveis seguem do bloco único | a própria metadata |
+| id reservado `<papel>` / `<papel>-N` | as partes visíveis seguem do bloco único | `parte` (R22) |
+| papel reconhecido só pelo id | — | `metadata.compositor.papel` |
+| posição (fila por função, voz 2) | **não é identidade**: só decide o que nada acima decidiu | — |
+
+- 🔴 **Identidade vence posição, inclusive oculta.** A identidade é procurada
+  também nas camadas ocultas (a visível primeiro); o bloco vinculado a uma
+  camada oculta sai `[]` e NÃO entra no fallback por função — só as partes
+  reconhecidas do mesmo bloco único (id reservado ou marca) ainda contam.
+  Os livres passam a ser vinculados sobre todas as camadas na LEITURA, como já
+  eram na duplicação: as duas pontas discordavam, e ocultar "Nota" fazia
+  `extra-nota` tomar "nota" pela forma atual do id e esvaziar `extra-nota-2`.
+- 🔴 **O extra com identidade (herança em função que não é `livre` nem
+  `headline`) só é lido por ela.** Sem a camada, sai vazio — nem pela função,
+  nem pela sobra. "Resolver os comuns primeiro" foi avaliado e RECUSADO: numa
+  página cujo extra fosse uma camada `servico-2` comum, o bloco único juntaria
+  as duas como partes dele. A compatibilidade que existe de fato é a segunda
+  voz LEGADA (`headline2`: função headline herdando headline, dos
+  adaptadores), que a F3 nunca produz e continua lida pela voz 2. Página
+  composta ANTES da F3 com extra sem metadata não é suportada: o contrato
+  (`copyAutoral`) não está na main, então esse registro só existe em dev.
+- 🔴 **Posição não é identidade — e é por isso que não se ocultam camadas do
+  fallback por posição.** Incluir as ocultas na FILA por função pareceu mais
+  correto (dois blocos comuns, a de cima oculta) e foi recusado: a arte-rápida
+  deixa invisível o campo que a copy não cobre, e a camada oculta de cima
+  tomaria o bloco da visível de baixo. O caso só por posição continua
+  ambíguo por construção.
+- 🔴 **A duplicação materializa TODO vínculo do id físico** antes de trocá-lo
+  (`materializarVinculosDoIdFisico`, com o MESMO valor que a leitura tiraria
+  do id), e `duplicarCamadasDaPagina(camadas, novoId, contrato)` devolve
+  camadas e contrato da cópia numa chamada — a rota não reimplementa nada.
+  Nunca inventa `linhasDoBloco`, não sobrescreve marca, não toca camada com
+  identidade de extra, e só age com contrato legível: página sem contrato
+  duplica exatamente como antes.
+- Testes (`camadas-extras.test.ts`, bloco R23–R24): extra oculto, excluído,
+  oculto e reexibido, e na página duplicada (só `hora-extra` muda, `svc`
+  intacto, releitura estável, recomposição válida); extra excluído com camada
+  nova da equipe (vira `extra-…`, não é tomada); segunda voz legada; dois
+  comuns com a camada do id oculta; parte visível do bloco único com a do id
+  oculta; livre `nota` pelo id físico duplicado (id, texto e histórico, e
+  oculto no original → reexibido na cópia); dois comuns duplicados; papel só
+  pelo id duplicado; "Nota"/"nota" com uma oculta. Mutação por regra (M1–M6).
