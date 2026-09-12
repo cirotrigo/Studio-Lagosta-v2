@@ -21,6 +21,8 @@ import {
   diasAteDomingoBRT,
   gradeSemente,
   montarSlotsDaLeva,
+  chaveDaSemente,
+  planoDaSemente,
   semOcupados,
   horaMinimaHoje,
   POSTS_POR_DIA_ALVO,
@@ -666,5 +668,72 @@ describe('R34 — a grade-semente e a complementação não caem em cima de post
   it('sem ocupação nada muda: cold start dá os três horários de sempre', () => {
     const leva = montarSlotsDaLeva({ daCadencia: [], ocupacao: [], formato: 'story', agora, dias: 1, maxItens: 3, temRotinaConhecida: false })
     expect(leva.slots.map((s) => s.hora)).toEqual(['11:30', '15:00', '18:30'])
+  })
+})
+
+describe('R40 — o slot SEMEADO carrega o formato da leva, e a proposta registrada é por horário E formato', () => {
+  const agora = new Date('2026-09-14T11:00:00.000Z') // segunda, 08:00 em Brasília
+  const emitir = (formato: 'story' | 'feed') => montarSlotsDaLeva({ daCadencia: [], ocupacao: [], formato, agora, dias: 1, maxItens: 1, temRotinaConhecida: false })
+
+  it('a grade-semente e a complementação carimbam o formato do slot da leva (feed, quadrado e carrossel viram feed)', () => {
+    expect(emitir('story').semeados.map((s) => s.formato)).toEqual(['story'])
+    expect(emitir('feed').semeados.map((s) => s.formato)).toEqual(['feed'])
+    expect(montarSlotsDaLeva({ daCadencia: [], ocupacao: [], formato: 'carrossel', agora, dias: 1, maxItens: 1, temRotinaConhecida: false }).semeados.map((s) => s.formato)).toEqual(['feed'])
+    // complementação (há cadência, mas abaixo do alvo): o horário inventado também leva o formato
+    const comCadencia = montarSlotsDaLeva({
+      daCadencia: [{ scheduledDatetime: '2026-09-14 19:00', data: '2026-09-14', hora: '19:00', motivo: 'rotina', formato: 'feed' }],
+      ocupacao: [],
+      formato: 'feed',
+      agora,
+      dias: 1,
+      maxItens: 3,
+      temRotinaConhecida: true,
+      alvoPorDia: 2,
+    })
+    expect(comCadencia.semeados.length).toBeGreaterThan(0)
+    expect(comCadencia.semeados.every((s) => s.formato === 'feed' && s.semente)).toBe(true)
+  })
+
+  it('o cenário do R40: às 8h, sem cadência e sem ocupação, a leva de story e a de feed recebem 11h30 — e chaves DIFERENTES; repetir o mesmo formato reutiliza o id', () => {
+    const story = emitir('story').semeados
+    const feed = emitir('feed').semeados
+    expect(story[0].scheduledDatetime).toBe(feed[0].scheduledDatetime)
+    const chaveStory = chaveDaSemente(7, story[0], 'semente-v1')
+    const chaveFeed = chaveDaSemente(7, feed[0], 'semente-v1')
+    expect(chaveStory).not.toBe(chaveFeed)
+    expect(chaveStory.endsWith('|story')).toBe(true)
+    expect(chaveFeed.endsWith('|feed')).toBe(true)
+
+    // um "banco" de propostas emitidas (chave → id), como `sugestoesJaEmitidas` devolve
+    const banco = new Map<string, string>()
+    const registrar = (semente: typeof story, id: string) => {
+      const plano = planoDaSemente(7, semente, banco, { versao: 'semente-v1', servico: 'propor-semana' })
+      for (const n of plano.novas) banco.set(n.sugestao.chave, id)
+      return plano
+    }
+    const p1 = registrar(story, 'sug-story')
+    expect(p1.novas).toHaveLength(1)
+    expect(p1.reutilizados).toHaveLength(0)
+    expect(p1.novas[0].sugestao.sugerido).toMatchObject({ scheduledDatetime: story[0].scheduledDatetime, semente: true, formato: 'story' })
+    const p2 = registrar(feed, 'sug-feed')
+    expect(p2.novas).toHaveLength(1) // o feed NÃO reutiliza o id do story
+    expect(p2.novas[0].sugestao.sugerido).toMatchObject({ formato: 'feed' })
+    const p3 = registrar(emitir('story').semeados, 'nunca-usado')
+    expect(p3.novas).toHaveLength(0)
+    expect(p3.reutilizados).toEqual([{ indice: 0, id: 'sug-story' }]) // o mesmo formato reutiliza
+    expect(banco.get(chaveStory)).toBe('sug-story')
+    expect(banco.get(chaveFeed)).toBe('sug-feed')
+    // as âncoras de copy (o sugestaoId de cada slot) são independentes por construção: ids diferentes
+    expect(banco.get(chaveStory)).not.toBe(banco.get(chaveFeed))
+  })
+
+  it('slot sem formato (registro legado) mantém a chave antiga, sem formato — nunca reescrita', () => {
+    const legado = { scheduledDatetime: '2026-09-14 11:30', data: '2026-09-14', hora: '11:30', motivo: 'x' }
+    const chave = chaveDaSemente(7, legado, 'semente-v1')
+    expect(chave.includes('|story')).toBe(false)
+    expect(chave.includes('|feed')).toBe(false)
+    const plano = planoDaSemente(7, [legado], new Map(), { versao: 'semente-v1', servico: 'propor-semana' })
+    expect('formato' in plano.novas[0].sugestao.sugerido).toBe(false)
+    expect(plano.chaves[0]).toBe(chave)
   })
 })

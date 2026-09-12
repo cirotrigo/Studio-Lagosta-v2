@@ -37,7 +37,6 @@ import { taxonomiaAprovada } from '@/lib/aprendizado/pilares-service'
 import { montarPerfil } from '@/lib/aprendizado/perfil'
 import type { Pilar } from '@/lib/aprendizado/pilares'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
-import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 import { registrarDicasDeCopy, type DicaParaRegistrar } from '@/lib/aprendizado/sinal-de-copy-do-plano'
 import { criarPlano, MAX_ITENS_POR_PLANO, type ItemDePlanoInput } from '@/lib/planos/plano-service'
 import {
@@ -57,6 +56,8 @@ import {
   type SlotParaProposta,
   type TipoDeFoto,
   montarSlotsDaLeva,
+  chaveDaSemente,
+  planoDaSemente,
   type OcupacaoParaALeva,
 } from '@/lib/planos/proposta-de-semana'
 
@@ -168,44 +169,21 @@ function slotDaCadencia(s: SugestaoSlot): SlotParaProposta {
  * taxa de aceitação medir só os clientes que já têm rotina — justamente os que
  * menos precisam de proposta.
  *
- * A chave é determinística (projeto + horário + versão da semente), então
- * montar a semana duas vezes no mesmo dia não grava nada de novo.
+ * A chave é determinística (projeto + horário + FORMATO + versão da semente,
+ * `chaveDaSemente` — R40: story e feed semeados no mesmo horário são propostas
+ * DIFERENTES, com desfechos e âncoras de copy próprios), então montar a semana
+ * duas vezes no mesmo dia, no mesmo formato, não grava nada de novo.
  */
 async function registrarSemente(projectId: number, semente: SlotParaProposta[]): Promise<void> {
   if (semente.length === 0) return
-  const chaves = semente.map((s) =>
-    chaveDeSugestao('slot', VERSAO_DA_SEMENTE, projectId, s.scheduledDatetime),
-  )
-  const jaEmitidas = await sugestoesJaEmitidas(chaves)
+  const plano = planoDaSemente(projectId, semente, await sugestoesJaEmitidas(semente.map((s) => chaveDaSemente(projectId, s, VERSAO_DA_SEMENTE))), { versao: VERSAO_DA_SEMENTE, servico: SERVICO })
+  for (const r of plano.reutilizados) semente[r.indice].sugestaoId = r.id
+  if (plano.novas.length === 0) return
 
-  const novas: number[] = []
-  semente.forEach((s, i) => {
-    const id = jaEmitidas.get(chaves[i])
-    if (id) s.sugestaoId = id
-    else novas.push(i)
-  })
-  if (novas.length === 0) return
-
-  const ids = await registrarSugestoes(
-    novas.map((i) => ({
-      projectId,
-      tipo: 'slot' as const,
-      servico: SERVICO,
-      versao: VERSAO_DA_SEMENTE,
-      chave: chaves[i],
-      sugerido: {
-        scheduledDatetime: semente[i].scheduledDatetime,
-        data: semente[i].data,
-        hora: semente[i].hora,
-        diaSemana: semente[i].diaSemana,
-        motivo: semente[i].motivo,
-        semente: true,
-      },
-    })),
-  )
-  novas.forEach((indice, n) => {
-    const id = ids[n]
-    if (id) semente[indice].sugestaoId = id
+  const ids = await registrarSugestoes(plano.novas.map((n) => n.sugestao))
+  plano.novas.forEach((n, i) => {
+    const id = ids[i]
+    if (id) semente[n.indice].sugestaoId = id
   })
 }
 

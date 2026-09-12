@@ -6471,6 +6471,19 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   sem nada. Só um FEED às 11h30 não tira o story das 11h30 (controle no
   teste). O orquestrador não decide horário: registra como sugestão o que a
   função devolve em `semeados`.
+  🔴 **O slot semeado leva o FORMATO da leva, e a proposta registrada é por
+  horário E formato** (R40 da quarta revisão final, `chaveDaSemente` e
+  `planoDaSemente` em `proposta-de-semana.ts`, puros): `registrarSemente`
+  usava só versão, projeto e horário — às 8h, sem cadência e sem ocupação,
+  a leva de story e a de feed do mesmo dia recebiam 11h30 e o MESMO
+  `sugestaoId`; descartar o story marcava como descartada a proposta do feed
+  (aceitar depois não vence esse desfecho), e as dicas de copy dos dois
+  formatos, ancoradas nesse id, eram comparadas como uma proposta só. Hoje
+  `montarSlotsDaLeva` carimba `formato` em todo slot inventado (semente e
+  complementação), a chave é a MESMA conta de `sugerir-posts` (R33, com o
+  formato no fim) e `sugerido.formato` é gravado; o registro legado (sem
+  formato) fica com a chave antiga, nunca reescrita. Teste: as duas levas
+  com ids diferentes, reutilização no mesmo formato e âncoras independentes.
 - 🔴 **A arte de `post-schedule` é um MODELO com a copy do post por cima, e a
   PÁGINA dela não é a peça** (R36 da segunda revisão final, `copyDaArteDeModelo`
   em `textos-da-peca.ts`): o render de post grava a Generation com

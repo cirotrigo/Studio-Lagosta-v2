@@ -19,7 +19,8 @@
  */
 
 import type { Pilar } from '@/lib/aprendizado/pilares'
-import { formatoDoSlotDaPeca, slotOcupado, type FormatoDaPeca } from '@/lib/posts/contexto-da-semana'
+import { chaveDaPropostaDeSlot, formatoDoSlotDaPeca, slotOcupado, type FormatoDaPeca } from '@/lib/posts/contexto-da-semana'
+import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 
 // ── Horários ────────────────────────────────────────────────────────────────
 
@@ -689,6 +690,10 @@ export function montarSlotsDaLeva(entrada: {
     slots = completarAteOAlvo(slots, { agora, dias, maxItens, alvoPorDia: entrada.alvoPorDia, ocupado })
     const inventados = slots.filter((s) => s.semente)
     if (inventados.length > 0) {
+      // O slot inventado leva o FORMATO da leva (R40): é ele que entra na
+      // identidade da proposta registrada — sem isso o story e o feed
+      // semeados às 11h30 do mesmo dia compartilhavam o `sugestaoId`.
+      for (const s of inventados) s.formato = formatoDoSlot
       semeados = inventados
       avisos.push(
         `Este cliente vem publicando menos que ${entrada.alvoPorDia ?? POSTS_POR_DIA_ALVO} por dia; completei ${slots.length - antes} horário(s) para fechar o ritmo. Eles vêm marcados — ajuste ou tire o que não fizer sentido.`,
@@ -699,6 +704,7 @@ export function montarSlotsDaLeva(entrada: {
 
   const rotulo = entrada.temRotinaConhecida ? ROTULO_DE_COMPLEMENTO : ROTULO_DE_COLD_START
   const semente = gradeSemente({ agora, dias, maxItens, rotulo, ocupado })
+  for (const s of semente) s.formato = formatoDoSlot // R40, como acima
   semeados = semente
   slots = semente
   avisos.push(
@@ -707,4 +713,80 @@ export function montarSlotsDaLeva(entrada: {
       : `${ROTULO_DE_COLD_START}. Os horários abaixo são um começo para ajustar com ele, não uma leitura do que ele já faz.`,
   )
   return { slots, coldStart, semeados, avisos }
+}
+
+/**
+ * A identidade da proposta de um slot SEMEADO (grade-semente e complementação)
+ * — a mesma conta de `sugerir-posts` (R33): versão, projeto, horário E
+ * FORMATO. Até o R40 a semente entrava só com versão, projeto e horário, e
+ * duas levas do mesmo dia, uma de story e outra de feed, recebiam o MESMO
+ * `sugestaoId` às 11h30: descartar o story marcava como descartada a proposta
+ * do feed (aceitar depois não vence esse desfecho), e as dicas de copy dos
+ * dois formatos, ancoradas nesse id, eram comparadas como uma proposta só.
+ * Slot sem formato (registro legado, ou semente de uma versão anterior) fica
+ * com a chave antiga — nunca reescrita.
+ */
+export function chaveDaSemente(projectId: number, slot: Pick<SlotParaProposta, 'scheduledDatetime' | 'formato'>, versao: string): string {
+  return slot.formato ? chaveDaPropostaDeSlot(projectId, slot.scheduledDatetime, versao, slot.formato) : chaveDeSugestao('slot', versao, projectId, slot.scheduledDatetime)
+}
+
+export interface SugestaoDaSemente {
+  projectId: number
+  tipo: 'slot'
+  servico: string
+  versao: string
+  chave: string
+  sugerido: {
+    scheduledDatetime: string
+    data: string
+    hora: string
+    diaSemana?: string
+    motivo: string
+    semente: true
+    /** O formato do slot semeado (R40) — ausente só no registro legado. */
+    formato?: FormatoDaPeca
+  }
+}
+
+/**
+ * O que registrar de uma leva de slots semeados, dado o que JÁ foi emitido
+ * (chave → id): os índices que reutilizam um id e as sugestões novas, com a
+ * chave e o `sugerido.formato` por slot. Puro — quem chama consulta e grava.
+ */
+export function planoDaSemente(
+  projectId: number,
+  semente: SlotParaProposta[],
+  jaEmitidas: ReadonlyMap<string, string>,
+  opcoes: { versao: string; servico: string },
+): { chaves: string[]; reutilizados: Array<{ indice: number; id: string }>; novas: Array<{ indice: number; sugestao: SugestaoDaSemente }> } {
+  const chaves = semente.map((s) => chaveDaSemente(projectId, s, opcoes.versao))
+  const reutilizados: Array<{ indice: number; id: string }> = []
+  const novas: Array<{ indice: number; sugestao: SugestaoDaSemente }> = []
+  semente.forEach((s, indice) => {
+    const id = jaEmitidas.get(chaves[indice])
+    if (id) {
+      reutilizados.push({ indice, id })
+      return
+    }
+    novas.push({
+      indice,
+      sugestao: {
+        projectId,
+        tipo: 'slot',
+        servico: opcoes.servico,
+        versao: opcoes.versao,
+        chave: chaves[indice],
+        sugerido: {
+          scheduledDatetime: s.scheduledDatetime,
+          data: s.data,
+          hora: s.hora,
+          diaSemana: s.diaSemana,
+          motivo: s.motivo,
+          semente: true,
+          ...(s.formato ? { formato: s.formato } : {}),
+        },
+      },
+    })
+  })
+  return { chaves, reutilizados, novas }
 }
