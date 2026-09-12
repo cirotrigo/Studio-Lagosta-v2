@@ -48,8 +48,16 @@ export function PlanejamentoDePilares({ projectId }: { projectId: number }) {
 
 function Secao({ titulo, resumo, children }: { titulo: string; resumo: string; children: React.ReactNode }) {
   const [aberto, setAberto] = React.useState(false)
+  // Uma vez aberta, a seção fica MONTADA (só escondida) ao recolher: os editores
+  // guardam rascunho em estado local, e desmontá-los descartava a edição em
+  // silêncio — recolher não pode apagar trabalho (PR14-10).
+  const [jaAbriu, setJaAbriu] = React.useState(false)
+  const abrir = (v: boolean) => {
+    setAberto(v)
+    if (v) setJaAbriu(true)
+  }
   return (
-    <Collapsible open={aberto} onOpenChange={setAberto}>
+    <Collapsible open={aberto} onOpenChange={abrir}>
       <CollapsibleTrigger className="flex w-full items-start gap-3 rounded-md border border-border/60 bg-card/60 px-4 py-3 text-left hover:bg-card">
         <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 transition-transform ${aberto ? 'rotate-180' : ''}`} />
         <span className="min-w-0">
@@ -57,7 +65,9 @@ function Secao({ titulo, resumo, children }: { titulo: string; resumo: string; c
           <span className="block text-xs text-muted-foreground">{resumo}</span>
         </span>
       </CollapsibleTrigger>
-      <CollapsibleContent className="mt-3 space-y-4">{aberto && children}</CollapsibleContent>
+      <CollapsibleContent forceMount hidden={!aberto} className="mt-3 space-y-4">
+        {jaAbriu && children}
+      </CollapsibleContent>
     </Collapsible>
   )
 }

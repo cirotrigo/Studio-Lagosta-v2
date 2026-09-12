@@ -6786,6 +6786,20 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   o rascunho fica; quando outra pessoa salvou por baixo, a tela avisa e a pessoa
   decide recarregar (o CAS recusa a gravação até lá). A releitura é AGUARDADA
   dentro da mutação e os campos ficam desabilitados durante o ciclo inteiro.
+- 🔴 **Campo cujo contrato aceita quebra de linha é multilinha na tela**
+  (PR14-08): `<input>` de texto DESCARTA a quebra preexistente ao editar —
+  tratamento, motivo da regra e motivo da reescrita são `Textarea` de uma
+  linha; a conversão pura preservava e o controle não.
+- **A leitura que confirmou AUSÊNCIA de voz grava com `versaoEsperada: 0`**
+  (PR14-09; o serviço aceita 0 como "esperava nenhuma"): se outra pessoa
+  criou a v1 no meio, o conflito volta como `VOZ_DIVERGENTE` e cai no caminho
+  tratado (aviso + carregar a versão atual); com `null` vinha
+  `VOZ_VERSAO_OBRIGATORIA` sem saída, e a tela repetia a falha a cada clique.
+  `VOZ_VERSAO_OBRIGATORIA` também é tratado como divergência.
+- **Seção recolhível NÃO desmonta o que já abriu** (PR14-10, `Secao` de
+  "Avançado · direção de arte"): os editores movidos guardam rascunho em
+  estado local, e `{aberto && children}` descartava a edição ao recolher;
+  `forceMount` + `hidden`, montando na primeira abertura.
 - **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
   as três áreas distinguem erro (mensagem + tentar de novo), carregando e
   resultado vazio — "este cliente não tem página de assinatura" só é dito com a

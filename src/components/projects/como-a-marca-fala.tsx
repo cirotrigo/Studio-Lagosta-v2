@@ -7,7 +7,6 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
@@ -70,7 +69,9 @@ interface Estado {
 const ESTADO_INICIAL: Estado = { form: FORMULARIO_VAZIO, base: FORMULARIO_VAZIO, versaoLida: null, divergente: null }
 
 function formDoServidor(d: VozDaMarca): { form: FormularioDaVoz; versao: number | null } {
-  return { form: vozParaFormulario(d.registro?.voz ?? null), versao: d.registro?.versao ?? null }
+  // Leitura que CONFIRMOU ausência envia 0 na gravação (o serviço aceita): se outra pessoa criou a v1 no meio, o
+  // conflito volta como VOZ_DIVERGENTE e cai no caminho tratado — com null vinha VOZ_VERSAO_OBRIGATORIA sem saída (PR14-09).
+  return { form: vozParaFormulario(d.registro?.voz ?? null), versao: d.registro?.versao ?? 0 }
 }
 
 export function ComoAMarcaFala({ projectId }: { projectId: number }) {
@@ -124,7 +125,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
         onSuccess: (r) => toast.success(r.gravada.criada ? 'Voz criada (versão 1). Ela passa a valer na copy quando o cliente for migrado.' : `Voz salva (versão ${r.gravada.versao}).`),
         onError: (e: Error & { code?: string; status?: number }) => {
           enviadoRef.current = null
-          if (/VOZ_DIVERGENTE|mudou enquanto/.test(`${e.code ?? ''} ${e.message}`)) {
+          if (/VOZ_DIVERGENTE|VOZ_VERSAO_OBRIGATORIA|mudou enquanto/.test(`${e.code ?? ''} ${e.message}`)) {
             toast.error('Alguém salvou a voz enquanto você editava. O que você escreveu continua aqui, NÃO salvo: carregue a versão atual e refaça por cima.')
             setEstado((s) => ({ ...s, divergente: s.divergente ?? -1 }))
             void refetch()
@@ -209,7 +210,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
               <Textarea id="voz-descricao" rows={3} value={form.descricao} onChange={(e) => set('descricao', e.target.value)} placeholder="Direta e quente, com orgulho do fogo de chão; fala de comida como quem convida para a mesa." />
             </Campo>
             <Campo id="voz-tratamento" label="Tratamento" dica="Como se dirige à pessoa: você, tu, a gente…">
-              <Input id="voz-tratamento" value={form.tratamento} onChange={(e) => set('tratamento', e.target.value)} placeholder="você" />
+              <Textarea id="voz-tratamento" rows={1} value={form.tratamento} onChange={(e) => set('tratamento', e.target.value)} placeholder="você" className="min-h-9" />
             </Campo>
             <Campo id="voz-termos" label="Termos da casa" dica="Na grafia exata (até 40).">
               <ListaDeItens id="voz-termos" itens={form.termos} onChange={(v) => set('termos', v)} max={40} placeholder="costela no bafo" rotuloAdicionar="termo" />
@@ -258,12 +259,12 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
                   </span>
                 </div>
                 <Textarea rows={2} value={r.texto} onChange={(e) => setRegra(r.id, { texto: e.target.value })} placeholder="A regra, no imperativo (até 240 caracteres)." />
-                <Input value={r.motivo} onChange={(e) => setRegra(r.id, { motivo: e.target.value })} placeholder="O caso concreto que a gerou (até 300 caracteres)." />
+                <Textarea rows={1} value={r.motivo} onChange={(e) => setRegra(r.id, { motivo: e.target.value })} placeholder="O caso concreto que a gerou (até 300 caracteres)." className="min-h-9" />
                 {substituindo?.id === r.id && (
                   <div className="space-y-2 rounded-md border border-primary/40 bg-primary/5 p-3">
                     <p className="text-xs text-muted-foreground">A regra acima fica INATIVA (no histórico) e esta passa a valer no lugar dela.</p>
                     <Textarea rows={2} value={substituindo.texto} onChange={(e) => setSubstituindo({ ...substituindo, texto: e.target.value })} placeholder="A regra nova." />
-                    <Input value={substituindo.motivo} onChange={(e) => setSubstituindo({ ...substituindo, motivo: e.target.value })} placeholder="Por que ela substitui a anterior." />
+                    <Textarea rows={1} value={substituindo.motivo} onChange={(e) => setSubstituindo({ ...substituindo, motivo: e.target.value })} placeholder="Por que ela substitui a anterior." className="min-h-9" />
                     <div className="flex justify-end gap-2">
                       <Button size="sm" variant="ghost" onClick={() => setSubstituindo(null)}>Cancelar</Button>
                       <Button
@@ -409,7 +410,7 @@ function ListaDeReescritas({ itens, onChange, max }: { itens: ReescritaNoFormula
           <div className="grid flex-1 gap-1">
             <Textarea rows={1} value={r.antes} onChange={(e) => setItem(i, { antes: e.target.value })} placeholder="antes: Venha conhecer nossas opções" className="min-h-9" />
             <Textarea rows={1} value={r.depois} onChange={(e) => setItem(i, { depois: e.target.value })} placeholder="depois: Vem provar" className="min-h-9" />
-            <Input value={r.motivo} onChange={(e) => setItem(i, { motivo: e.target.value })} placeholder="por quê: menos institucional" />
+            <Textarea rows={1} value={r.motivo} onChange={(e) => setItem(i, { motivo: e.target.value })} placeholder="por quê: menos institucional" className="min-h-9" />
           </div>
           <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label="Tirar esta reescrita" onClick={() => onChange(itens.filter((_, j) => j !== i))}>
             <X className="h-3.5 w-3.5" />
