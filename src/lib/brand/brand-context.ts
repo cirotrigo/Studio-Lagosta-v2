@@ -2,6 +2,8 @@ import { db } from '@/lib/db'
 import { criarEntradaBase } from '@/lib/knowledge/entries'
 import { formatarValidade } from '@/lib/knowledge/vigencia'
 import { lerEstiloDasReferencias, type EstiloDasReferenciasGravado } from '@/lib/brand/estilo-das-referencias'
+import { conflitosNoTextoLegado, precedenciaDaVoz, type ContextoDeVoz, type EscopoDaRegra } from '@/lib/brand/voz'
+import { virarRegraNaVoz, type VirarRegraNaVozResult } from '@/lib/brand/voz-service'
 
 /**
  * Fonte única da identidade da marca para TODO prompt de geração.
@@ -62,6 +64,15 @@ export interface BrandContext {
    * Fica FORA de `BRAND_DNA_FIELDS`: não é editado à mão, é medido.
    */
   estiloDasReferencias?: EstiloDasReferenciasGravado | null
+  /**
+   * A identidade de TEXTO resolvida pela precedência (`precedenciaDaVoz`,
+   * PR 7 de "Marca simples, copy melhor"): a voz compacta quando o cliente
+   * foi MIGRADO, o `toneOfVoice`/`contentRules` legado até lá. Consumidor de
+   * COPY lê `voz.texto` e `voz.regrasDaMarca` — nunca `dna.toneOfVoice`
+   * direto, senão a migração não chega a ele. A ARTE continua em
+   * `dna.contentRules` (proibição não é estilo) e soma `voz.regrasDeArte`.
+   */
+  voz: ContextoDeVoz
 }
 
 export const BRAND_DNA_FIELDS = [
@@ -99,6 +110,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       bodyFontFamily: true,
       specimenFontFamilies: true,
       brandDNA: true,
+      brandVoice: { select: { voz: true, versao: true, migradaEm: true } },
       BrandColor: {
         select: { name: true, hexCode: true },
         orderBy: { createdAt: 'asc' },
@@ -144,6 +156,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
     brandManualUrl: nonEmpty(project.brandManualUrl),
     artDirection: nonEmpty(project.artImprovementPrompt),
     estiloDasReferencias: lerEstiloDasReferencias(dna?.estiloDasReferencias),
+    voz: precedenciaDaVoz({ registro: project.brandVoice, dna: { toneOfVoice: dna?.toneOfVoice, contentRules: dna?.contentRules } }),
   }
 }
 
@@ -226,6 +239,12 @@ export interface VirarRegraArgs {
   autor?: string
   /** Sem isto nada é gravado: devolve só a proposta. */
   confirmado?: boolean
+  /** Onde a regra manda (voz compacta): só na copy, só na arte, ou nas duas. Default: ambas. */
+  escopo?: EscopoDaRegra
+  /** Voz compacta: id da regra ativa que esta SUBSTITUI (a antiga fica inativa, no histórico). */
+  substitui?: string
+  /** Voz compacta: manter as duas mesmo com conflito apontado — decisão explícita de quem confirma. */
+  conviver?: boolean
 }
 
 export interface VirarRegraResultDNA {
@@ -235,6 +254,12 @@ export interface VirarRegraResultDNA {
   depois: string
   linhaAdicionada: string
   gravado: boolean
+  /**
+   * Linhas da seção que falam do MESMO assunto da regra nova (só AVISO: em
+   * prosa não há substituição mecânica — no legado a regra nova é acrescentada
+   * e a antiga continua; quem resolve é a pessoa, ou a migração para a voz).
+   */
+  conflitos: string[]
 }
 
 export interface VirarRegraResultBase {
@@ -247,7 +272,7 @@ export interface VirarRegraResultBase {
   gravado: boolean
 }
 
-export type VirarRegraResult = VirarRegraResultDNA | VirarRegraResultBase
+export type VirarRegraResult = VirarRegraResultDNA | VirarRegraResultBase | VirarRegraNaVozResult
 
 export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult> {
   const regra = args.regra.trim()
@@ -262,6 +287,26 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
   }
 
   const secao = args.secao
+  /**
+   * Cliente MIGRADO para a voz compacta: regra de TEXTO (sem seção, ou nas
+   * seções de texto do DNA) vai para a VOZ — com escopo, motivo, data e
+   * conflito apontado (substitui / conviver). As seções de ARTE do DNA
+   * (composition, visualStyle, photoDirection, approvalChecklist) continuam
+   * no DNA: a voz não as substitui.
+   */
+  const registroVoz = await db.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { migradaEm: true } })
+  if (registroVoz?.migradaEm && (!secao || secao === 'toneOfVoice' || secao === 'contentRules')) {
+    return virarRegraNaVoz({
+      projectId: args.projectId,
+      texto: regra,
+      motivo,
+      em: dia,
+      escopo: args.escopo,
+      substitui: args.substitui,
+      conviver: args.conviver,
+      confirmado: args.confirmado,
+    })
+  }
   if (!secao) {
     throw new Error(
       'Regra sem prazo vai para o DNA: informe a seção (contentRules, composition, visualStyle, photoDirection, toneOfVoice ou approvalChecklist). Se a regra vale só até uma data, mande a validade.',
@@ -270,6 +315,9 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
 
   const atual = await db.brandDNA.findUnique({ where: { projectId: args.projectId } })
   const antes = nonEmpty(atual?.[secao] ?? null)
+  // No legado não há substituição: a regra nova é acrescentada e a antiga
+  // continua valendo. O aviso mostra as linhas que falam do mesmo assunto.
+  const conflitos = conflitosNoTextoLegado(antes, regra)
 
   const linhaAdicionada = `- ${regra} (${dia} — ${motivo})`
 
@@ -293,7 +341,7 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
     await updateBrandDNA(args.projectId, { [secao]: depois })
   }
 
-  return { destino: 'dna', secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado }
+  return { destino: 'dna', secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado, conflitos }
 }
 
 /**

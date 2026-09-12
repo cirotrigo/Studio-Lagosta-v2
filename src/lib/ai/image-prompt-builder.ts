@@ -1187,6 +1187,8 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
         )
       }
     }
+    // Regras de ARTE nascidas depois da migração para a voz compacta (o DNA não as tem).
+    if (args.brand.voz?.regrasDeArte) identidade.push(args.brand.voz.regrasDeArte)
     if (args.brand.dna.contentRules) {
       identidade.push(`Regras da marca (respeite sempre): ${args.brand.dna.contentRules}`)
       // Escopo da lista negativa — portado do `nuncaBloco` do insta-automatico.

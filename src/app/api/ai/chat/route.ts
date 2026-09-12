@@ -275,12 +275,14 @@ export async function POST(req: Request) {
             // 1b. DNA da marca (aba Marca): tom de voz e regras entram SEMPRE.
             // aiChatBehavior segue sendo o comportamento do ASSISTENTE; o DNA
             // é a identidade da MARCA — os dois se somam, não competem.
+            // A identidade de TEXTO vem de `brand.voz` (precedência voz compacta
+            // × DNA legado num lugar só) — nunca de `dna.toneOfVoice` direto.
             const brandDna = await loadBrandContext(projectId)
-            if (brandDna?.dna.toneOfVoice) {
-              systemPrompt += `TOM DE VOZ DA MARCA (siga sempre): ${brandDna.dna.toneOfVoice}\n\n`
+            if (brandDna?.voz.texto) {
+              systemPrompt += `TOM DE VOZ DA MARCA (siga sempre): ${brandDna.voz.texto}\n\n`
             }
-            if (brandDna?.dna.contentRules) {
-              systemPrompt += `REGRAS DA MARCA (nunca violar): ${brandDna.dna.contentRules}\n\n`
+            if (brandDna?.voz.regrasDaMarca) {
+              systemPrompt += `REGRAS DA MARCA (nunca violar): ${brandDna.voz.regrasDaMarca}\n\n`
             }
 
             // 2. RAG context instructions (if RAG context available)

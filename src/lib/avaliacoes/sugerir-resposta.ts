@@ -37,7 +37,7 @@ export interface PedidoDeRascunho {
 export async function sugerirRespostaDeAvaliacao(pedido: PedidoDeRascunho): Promise<string | null> {
   try {
     const brand = await loadBrandContext(pedido.projectId).catch(() => null)
-    const tom = brand?.dna?.toneOfVoice ?? null
+    const tom = brand?.voz?.texto ?? null
 
     const negativa = pedido.estrelas <= 3
     const primeiroNome = (pedido.autor ?? '').trim().split(/\s+/)[0] || null
@@ -100,7 +100,7 @@ export async function sugerirRespostaDeComentario(pedido: PedidoDeRascunhoDeCome
         )
         .catch(() => []),
     ])
-    const tom = brand?.dna?.toneOfVoice ?? null
+    const tom = brand?.voz?.texto ?? null
     const primeiroNome = (pedido.autor ?? '').trim().split(/\s+/)[0] || null
     const baseDeFatos = fatos.map((f) => `- ${f.content.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')
 

@@ -120,6 +120,7 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
 
   const fontes: Array<string | null> = [
     contexto.projectName,
+    contexto.voz.texto,
     contexto.dna.toneOfVoice,
     contexto.dna.contentRules,
     contexto.dna.composition,
@@ -135,8 +136,9 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
   const marca: MarcaParaRevisao = {
     nome: contexto.projectName,
     vocabulario: extrairVocabulario(fontes),
-    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.dna.toneOfVoice]),
-    tomDeVoz: contexto.dna.toneOfVoice,
+    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.voz.texto, contexto.dna.toneOfVoice]),
+    // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
+    tomDeVoz: contexto.voz.texto,
   }
 
   cache.set(projectId, { em: Date.now(), marca })
