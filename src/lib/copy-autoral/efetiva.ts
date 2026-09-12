@@ -80,25 +80,20 @@ function indiceLegado(id: string, legado: string): number | null {
  * histórico (`revisoes[].blocos`, `campos`, `removidos`) —, senão a próxima
  * leitura esvaziaria o bloco antigo e criaria outro, com autoria falsa (R03).
  */
-export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: ReadonlyMap<string, string>): CopyAutoral {
+export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: ReadonlyMap<string, string>, camadasOriginais: Layer[]): CopyAutoral {
+  // O vínculo bloco → camada é resolvido em CONJUNTO contra as camadas
+  // ORIGINAIS, com a mesma seleção e ordem da leitura (`vincularExtras`): o
+  // mapa de ids sozinho não diz qual camada cada bloco antigo descrevia —
+  // "Nota"/"nota" colidem entre a forma atual e a antiga, e a ordem do array
+  // não é a ordem visual que nomeou os sufixos (R4-01 e R4-02, 4ª rodada da
+  // revisão do Codex sobre o PR 3, 12/09/2026).
+  const { vinculos } = vincularExtras(blocosEmOrdem(copy).filter((b) => b.funcao === 'livre'), camadasOriginais)
   const mapa = new Map<string, string>()
-  // A forma antiga do id colapsava camadas ("nota!" e "nota?" → `extra-nota-`
-  // e `extra-nota--2`, na ordem das camadas): o vínculo legado segue a mesma
-  // ordem, para a duplicação não trocar os blocos entre si (REV-03, 3ª rodada).
-  const legado = new Map<string, string[]>()
-  for (const [antigo, novo] of idsDeCamada) {
-    mapa.set(idDeExtra(antigo), idDeExtra(novo))
-    const chave = idDeExtraLegado(antigo)
-    legado.set(chave, [...(legado.get(chave) ?? []), novo])
+  for (const [blocoId, camada] of vinculos) {
+    const novo = idsDeCamada.get(String(camada.id))
+    if (novo) mapa.set(blocoId, idDeExtra(novo))
   }
-  const trocaLegada = (id: string): string | null => {
-    for (const [chave, novos] of legado) {
-      const i = indiceLegado(id, chave)
-      if (i !== null && novos[i] !== undefined) return idDeExtra(novos[i])
-    }
-    return null
-  }
-  const troca = (id: string) => mapa.get(id) ?? trocaLegada(id) ?? id
+  const troca = (id: string) => mapa.get(id) ?? id
   if (!copy.blocos.some((b) => troca(b.id) !== b.id)) return copy
   return {
     ...copy,
@@ -110,6 +105,63 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
       ...(r.removidos ? { removidos: r.removidos.map((x) => ({ ...x, id: troca(x.id) })) } : {}),
     })),
   }
+}
+
+/**
+ * O vínculo de cada bloco `livre` com a camada solta que o desenhou, resolvido
+ * em CONJUNTO — nunca bloco a bloco pela preferência do formato atual: o mesmo
+ * id pode ser a forma ATUAL de uma camada e a forma ANTIGA de outra ("Nota" e
+ * "nota": `extra-nota` é o legado da primeira e o atual da segunda). Regras,
+ * nesta ordem (R4-01/R4-02, 4ª rodada da revisão do Codex, 12/09/2026):
+ *  1. camada NOMEADA pelo bloco (`id`/`name` iguais ao id do bloco) — a camada
+ *     extra da F3 nasce assim;
+ *  2. candidatas pelo id — forma atual OU forma antiga (com o sufixo `-N` da
+ *     colisão); enquanto houver bloco com UMA candidata livre, ele a toma;
+ *  3. o que sobrar: entre as candidatas livres, a de TEXTO igual ao do bloco;
+ *     senão a primeira na ORDEM DE LEITURA (a mesma que nomeou os sufixos),
+ *     com a ambiguidade declarada em `ambiguos`.
+ * As camadas entram na ordem de leitura (y, x), soltas primeiro — nunca na
+ * ordem do array.
+ */
+export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[]): { vinculos: Map<string, Layer>; ambiguos: string[] } {
+  const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
+  const emOrdem = [...soltas, ...[...porFuncao.values()].flat(), ...voz2]
+  const vinculos = new Map<string, Layer>()
+  const usadas = new Set<string>()
+  const ambiguos: string[] = []
+  const pendentes = [...blocosLivres]
+  const tomar = (b: BlocoAutoral, c: Layer) => {
+    vinculos.set(b.id, c)
+    usadas.add(c.id)
+    pendentes.splice(pendentes.indexOf(b), 1)
+  }
+  // 1. nomeada pelo bloco
+  for (const b of [...pendentes]) {
+    const c = emOrdem.find((l) => !usadas.has(l.id) && (l.id === b.id || l.name === b.id))
+    if (c) tomar(b, c)
+  }
+  const candidatasDe = (b: BlocoAutoral) => emOrdem.filter((c) => !usadas.has(c.id) && (idDeExtra(c) === b.id || indiceLegado(b.id, idDeExtraLegado(c)) !== null))
+  // 2. propagação: bloco com UMA candidata livre a toma, até estabilizar
+  for (let mudou = true; mudou; ) {
+    mudou = false
+    for (const b of [...pendentes]) {
+      const cs = candidatasDe(b)
+      if (cs.length === 1) {
+        tomar(b, cs[0])
+        mudou = true
+      }
+    }
+  }
+  // 3. o resto: texto igual, senão a primeira na ordem de leitura (declarado)
+  for (const b of [...pendentes]) {
+    const cs = candidatasDe(b)
+    if (cs.length === 0) continue
+    const mesmoTexto = cs.filter((c) => JSON.stringify(linhasDaCamada(c)) === JSON.stringify(b.linhas))
+    const escolhida = mesmoTexto.length === 1 ? mesmoTexto[0] : (mesmoTexto[0] ?? cs[0])
+    if (mesmoTexto.length !== 1) ambiguos.push(`o bloco "${b.id}" casava com ${cs.length} camadas pelo id; ficou com "${escolhida.id}" (${mesmoTexto.length > 1 ? 'texto igual, primeira na ordem de leitura' : 'primeira na ordem de leitura'})`)
+    tomar(b, escolhida)
+  }
+  return { vinculos, ambiguos }
 }
 
 function ehTextoVisivel(l: Layer): boolean {
@@ -150,34 +202,25 @@ export interface CopyEfetiva {
  */
 export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): CopyEfetiva {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
-  const camadasEmOrdemDeLeitura = [...soltas, ...[...porFuncao.values()].flat(), ...voz2]
   const lacunas: string[] = []
   const usadas = new Set<string>()
+  // Os blocos livres são vinculados em CONJUNTO (ver `vincularExtras`), antes
+  // de qualquer leitura por papel — e as camadas que eles tomam ficam
+  // reservadas para eles.
+  const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas)
+  lacunas.push(...extras.ambiguos)
+  for (const c of extras.vinculos.values()) usadas.add(c.id)
   const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
     if (b.funcao === 'livre') {
       // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id
       // do bloco) — ou pelo id `extra-…` que uma leitura anterior deu à camada
       // solta: sem isso a segunda leitura esvaziava o bloco e criava outro com o
       // mesmo id (R03 da revisão do Codex, 12/09/2026).
-      let camada = camadas.find((c) => ehTextoVisivel(c) && !usadas.has(c.id) && (c.id === b.id || c.name === b.id || idDeExtra(c) === b.id))
-      if (!camada) {
-        // Contrato gravado pela forma ANTIGA do id (`extra-nota` para a camada
-        // "Nota"): reconhece o vínculo em vez de esvaziar o bloco e criar outro
-        // com o mesmo texto — isso viraria revisão artificial da equipe na
-        // próxima edição geométrica. Os blocos são visitados em ordem e cada um
-        // consome uma camada, então `extra-nota` e `extra-nota-2` caem nas
-        // camadas na mesma ordem em que a forma antiga as nomeou; havendo mais
-        // de uma candidata no momento, a escolha é declarada em `lacunas`
-        // (REV-03, 3ª rodada da revisão do Codex, 12/09/2026).
-        const candidatas = camadasEmOrdemDeLeitura.filter((c) => !usadas.has(c.id) && indiceLegado(b.id, idDeExtraLegado(c)) !== null)
-        camada = candidatas[0]
-        if (camada && candidatas.length > 1) lacunas.push(`o bloco "${b.id}" usa a forma antiga do id e ${candidatas.length} camadas casavam com ela; ficou com a primeira na ordem de leitura ("${camada.id}")`)
-      }
+      const camada = extras.vinculos.get(b.id)
       if (!camada) {
         lacunas.push(`o bloco "${b.id}" (livre) não foi desenhado`)
         return { ...b, linhas: [] }
       }
-      usadas.add(camada.id)
       return { ...b, linhas: linhasDaCamada(camada) }
     }
     const fila = porFuncao.get(b.funcao) ?? []

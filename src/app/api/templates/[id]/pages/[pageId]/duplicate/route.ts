@@ -85,7 +85,7 @@ export async function POST(
           if (camada?.id && novo) idMap.set(String(camada.id), String(novo))
         }
       }
-      return renomearExtrasDuplicados(lido, idMap)
+      return renomearExtrasDuplicados(lido, idMap, Array.isArray(originalLayers) ? (originalLayers as never[]) : [])
     })()
 
     // Criar cópia da página logo após a original
