@@ -9643,3 +9643,76 @@ herdando do apoio, os dois tipos de post).
   passo 16 da prova de integração. Mutações: sem a conferência de
   `validarSpec` → 2 testes caem; sem o contrato lido → 7; sem a guarda do texto
   que nenhum bloco originou → 1; com o `recompor.ts` de 1d18e983 → os 8 novos.
+
+### O lote durável: identidade por item e reserva antes da fila (PR 11 de "Marca simples, copy melhor", 12/09/2026)
+
+Repetir uma leva — retentativa do modelo no chat, timeout do conector, retomada
+depois de falha parcial — criava Generations e jobs NOVOS: não havia identidade
+de lote nem de item. Agora quem chama manda `loteId` + `itemId` estáveis, e a
+tabela **`ItemDeLote`** (chave única composta `(projectId, loteId, itemId)`)
+responde. Módulos: `src/lib/lotes/identidade.ts` (puro: identidade, hash,
+diferenças, decisão) e `src/lib/lotes/reserva.ts` (a ordem das escritas).
+Entrada: `enfileirarPeca(spec, { lote: { loteId, itemId } })`; sem `lote`, o
+comportamento de sempre. Reaproveita `GenerationJob` — nenhuma fila nova.
+
+- **Mesma chave e mesmo payload = a MESMA Generation e o MESMO job**, sem
+  escrever nada (nem a pasta da semana). **Mesma chave com outro payload =
+  `LOTE_ITEM_CONFLITO` (409)** com os caminhos que diferem
+  (`blocos[headline].linhas`, `nome`), nunca sobrescrita. O retorno por item
+  traz `lote: { desfecho: criado | reaproveitado | retomado, situacao: pendente
+  | pronta | falhou }` — a situação é LIDA da Generation, nunca guardada na
+  linha (`situacao` da linha é só `reservado` | `enfileirado`).
+- 🔴 **A reserva é um `create` FORA de transação, de propósito.** Dentro de uma
+  transação interativa do Postgres a violação de unicidade (P2002) aborta a
+  transação inteira e não dá para ler o vencedor depois. Quem perde a corrida
+  toma o P2002 e lê a linha.
+- 🔴 **A decisão é tomada DUAS vezes: sem trava (é o caminho de toda repetição)
+  e de novo sob `SELECT … FOR UPDATE`**, depois de reler a linha. Sem a
+  segunda, duas chamadas concorrentes que viram a linha ainda sem Generation
+  criam duas — medido por mutação no teste de concorrência.
+- **Generation, job e o vínculo da linha são UM commit.** O único estado
+  intermediário possível é `reservado` sem Generation (o processo morreu entre
+  reservar e criar, ou a criação lançou e a transação voltou atrás), e ele é
+  retomado pela própria repetição, criando só o que falta.
+- 🔴 **Dentro da transação da reserva, nunca o `db` global.** Com o pooler do
+  Neon o cliente tem `connection_limit=1`: uma consulta por fora espera a
+  conexão que a própria transação segura, até estourar o tempo. Por isso
+  `enfileirarComposicao(args, tx)` e `enfileirarComposicaoDoPlanoEm(tx, …)`
+  aceitam a transação de quem chama.
+- **O hash (`lote-v1:<sha256>`) é da spec JÁ validada** — só o contrato e o
+  contrato com os blocos derivados são o mesmo pedido. Ficam fora SÓ:
+  `projectId` (está na chave) e os carimbos `copyAutoral.origem.em` e
+  `copyAutoral.revisoes[].em` (o modelo que remonta a chamada escreve outra
+  hora). Atribuição e ficha de concorrência (`decididoPor`, `autor`, `canal`,
+  `itemAtualizadoEm`) não moram na spec e nunca entram. `nome` e `quando`
+  ENTRAM: persistem com a peça. Mudou a normalização, suba a versão —
+  `hashConfere` recalcula o hash do `payload` guardado para linha de versão
+  antiga, senão toda repetição de lote antigo viraria conflito.
+- **O conflito vence tudo, inclusive a reserva órfã e a peça que falhou.**
+  Corrigir a copy de um item que falhou (texto que não coube) sob a MESMA chave
+  é 409 — hoje a saída é outro `itemId`. Aceitar revisão depois de falha
+  definitiva é decisão de produto em aberto.
+- **Peça que falhou (ou sumiu) é retomada com Generation NOVA**; a que falhou
+  fica como histórico e `tentativas` conta. Generation COMPLETED sem job é
+  reaproveitada (a peça existe); PROCESSING sem job ganha só o job; job
+  terminal com a Generation aberta é tratado como falha.
+- **Com `itemDePlanoId`, quem cria é o caminho do plano, na MESMA transação**
+  (ele pode devolver a Generation que o item já tinha na mesma revisão — aí o
+  desfecho é `reaproveitado`). Mas chave VIVA é decidida pela identidade de
+  lote antes de chegar ao plano: revisão do item fora da spec (campanha,
+  escopo) não gera peça nova sob a mesma chave — revisão nova pede lote ou
+  item novo.
+- 🔴 **O banco falso do teste precisa distinguir escrita pela transação de
+  escrita por fora.** Com um rollback que restaurava TUDO, gravar o vínculo (ou
+  a Generation) pelo `db` global dentro da transação passava como atômico —
+  a mutação sobreviveu até o falso reaplicar, depois do rollback, o que foi
+  escrito fora dela (`src/lib/compositor/__tests__/fila-lote.test.ts`).
+- **`gerar-imagem-lote` também tem `loteId`, e é OUTRA coisa**: um UUID gerado
+  no servidor para reencontrar as cenas juntas. A identidade daqui vem de quem
+  chama e é estável entre chamadas.
+- ⚠️ **Ainda não exposto no conector**: `compor-leva` passa a aceitar
+  `loteId`/`itemId` no commit seguinte, depois do PR 10. A migration
+  `20260912210000_lote_de_composicao` não foi aplicada em lugar nenhum, e
+  `db.itemDeLote` só é tocado quando `lote` vem — aplicar o schema antes de
+  expor. A prova no branch de dev é `scripts/validar-lote-duravel.ts` (ainda
+  não rodada). O agendamento idempotente por item (PR 12) usa esta identidade.
