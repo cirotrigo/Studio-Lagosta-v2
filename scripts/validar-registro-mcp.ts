@@ -1573,7 +1573,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                 "cta",
                 "servico"
               ],
-              "description": "O papel do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé)."
+              "description": "O papel (a FUNÇÃO) do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé)."
             },
             "linhas": {
               "type": "array",
@@ -1584,6 +1584,45 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "minItems": 1,
               "maxItems": 6,
               "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+            },
+            "herdaDe": {
+              "type": "string",
+              "enum": [
+                "pre",
+                "headline",
+                "apoio",
+                "cta",
+                "servico"
+              ],
+              "description": "CAMADA EXTRA: o papel da assinatura de que este texto veste o estilo (fonte, peso, corpo, entrelinha, cor, sombra e prefixo) SEM virar esse papel e sem herdar a posição dele. Use quando a variante escolhida não tem o papel do texto — a linha de horário numa variante sem servico: papel \"servico\", herdaDe \"apoio\" — em vez de trocar de variante; ou para repetir um papel com estilo emprestado (a segunda linha de serviço). O herdaDe é sempre honrado, mesmo quando a variante tem o papel. A manchete nunca herda."
+            },
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "description": "Só com herdaDe: o id da camada extra, do autor e único na peça — obrigatório quando o papel se repete. Sem herdaDe a camada se chama pelo papel e um id é recusado. Não pode ser headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* nem <texto>-elemento-N (a composição gera esses)."
+            },
+            "grupoVisual": {
+              "type": "string",
+              "enum": [
+                "principal",
+                "topo",
+                "rodape"
+              ],
+              "description": "Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo."
+            },
+            "grupoDeLeitura": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual."
+            },
+            "ordem": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99,
+              "description": "A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras)."
             }
           },
           "required": [
@@ -1592,13 +1631,78 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
           ],
           "additionalProperties": false
         },
-        "maxItems": 5,
-        "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura. Dispensável quando copyAutoral vem — aí os blocos saem do contrato."
+        "maxItems": 40,
+        "description": "A copy por papel, na ordem de leitura. Um bloco por papel; o papel só se repete como CAMADA EXTRA (herdaDe + id próprio). Dispensável quando copyAutoral vem — aí os blocos saem do contrato. Blocos e camadasExtras somados: até 40."
+      },
+      "camadasExtras": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "description": "O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco)."
+            },
+            "linhas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "maxItems": 6,
+              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+            },
+            "herdaDe": {
+              "type": "string",
+              "enum": [
+                "pre",
+                "headline",
+                "apoio",
+                "cta",
+                "servico"
+              ],
+              "description": "O papel da assinatura de que a camada veste o estilo — sem virar esse papel e sem a posição dele."
+            },
+            "grupoVisual": {
+              "type": "string",
+              "enum": [
+                "principal",
+                "topo",
+                "rodape"
+              ],
+              "description": "Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo."
+            },
+            "grupoDeLeitura": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 60,
+              "description": "Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual."
+            },
+            "ordem": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 99,
+              "description": "A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras)."
+            }
+          },
+          "required": [
+            "id",
+            "linhas",
+            "herdaDe"
+          ],
+          "additionalProperties": false
+        },
+        "maxItems": 40,
+        "description": "Texto SEM papel (uma nota, \"vale só no almoço\", um aviso) que veste o estilo de um papel da assinatura: {id, linhas, herdaDe, grupoVisual?, grupoDeLeitura?, ordem?}. Vira camada editável na página, com o id dado. Com copyAutoral não mande aqui: declare o bloco com funcao \"livre\" e estilo.herdaDe no contrato (as camadas extras saem dele)."
       },
       "copyAutoral": {
         "type": "object",
         "additionalProperties": {},
-        "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` é dispensável (os blocos saem do contrato, sem transformar texto). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
+        "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao \"servico\", herdaDe \"apoio\") ou um texto sem papel (funcao \"livre\", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
       },
       "preferencias": {
         "type": "object",
@@ -1652,40 +1756,40 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             ],
             "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
           },
+          "variante": {
+            "type": "string",
+            "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
+          },
           "arranjos": {
-            "description": "Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como \"cabe\" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.",
+            "type": "array",
             "items": {
               "anyOf": [
                 {
-                  "maxLength": 160,
-                  "type": "string"
+                  "type": "string",
+                  "maxLength": 160
                 },
                 {
-                  "additionalProperties": false,
+                  "type": "object",
                   "properties": {
-                    "arranjo": {
-                      "maxLength": 160,
-                      "type": "string"
-                    },
                     "grupo": {
-                      "maxLength": 80,
-                      "type": "string"
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "arranjo": {
+                      "type": "string",
+                      "maxLength": 160
                     }
                   },
                   "required": [
                     "grupo",
                     "arranjo"
                   ],
-                  "type": "object"
+                  "additionalProperties": false
                 }
               ]
             },
             "maxItems": 8,
-            "type": "array"
-          },
-          "variante": {
-            "type": "string",
-            "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
+            "description": "Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como \"cabe\" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição."
           }
         },
         "additionalProperties": false
@@ -1799,7 +1903,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                       "cta",
                       "servico"
                     ],
-                    "description": "O papel do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé)."
+                    "description": "O papel (a FUNÇÃO) do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé)."
                   },
                   "linhas": {
                     "type": "array",
@@ -1810,6 +1914,45 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "minItems": 1,
                     "maxItems": 6,
                     "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+                  },
+                  "herdaDe": {
+                    "type": "string",
+                    "enum": [
+                      "pre",
+                      "headline",
+                      "apoio",
+                      "cta",
+                      "servico"
+                    ],
+                    "description": "CAMADA EXTRA: o papel da assinatura de que este texto veste o estilo (fonte, peso, corpo, entrelinha, cor, sombra e prefixo) SEM virar esse papel e sem herdar a posição dele. Use quando a variante escolhida não tem o papel do texto — a linha de horário numa variante sem servico: papel \"servico\", herdaDe \"apoio\" — em vez de trocar de variante; ou para repetir um papel com estilo emprestado (a segunda linha de serviço). O herdaDe é sempre honrado, mesmo quando a variante tem o papel. A manchete nunca herda."
+                  },
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                    "description": "Só com herdaDe: o id da camada extra, do autor e único na peça — obrigatório quando o papel se repete. Sem herdaDe a camada se chama pelo papel e um id é recusado. Não pode ser headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* nem <texto>-elemento-N (a composição gera esses)."
+                  },
+                  "grupoVisual": {
+                    "type": "string",
+                    "enum": [
+                      "principal",
+                      "topo",
+                      "rodape"
+                    ],
+                    "description": "Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo."
+                  },
+                  "grupoDeLeitura": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "description": "Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual."
+                  },
+                  "ordem": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 99,
+                    "description": "A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras)."
                   }
                 },
                 "required": [
@@ -1818,13 +1961,78 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                 ],
                 "additionalProperties": false
               },
-              "maxItems": 5,
-              "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura. Dispensável quando copyAutoral vem — aí os blocos saem do contrato."
+              "maxItems": 40,
+              "description": "A copy por papel, na ordem de leitura. Um bloco por papel; o papel só se repete como CAMADA EXTRA (herdaDe + id próprio). Dispensável quando copyAutoral vem — aí os blocos saem do contrato. Blocos e camadasExtras somados: até 40."
+            },
+            "camadasExtras": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                    "description": "O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco)."
+                  },
+                  "linhas": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+                  },
+                  "herdaDe": {
+                    "type": "string",
+                    "enum": [
+                      "pre",
+                      "headline",
+                      "apoio",
+                      "cta",
+                      "servico"
+                    ],
+                    "description": "O papel da assinatura de que a camada veste o estilo — sem virar esse papel e sem a posição dele."
+                  },
+                  "grupoVisual": {
+                    "type": "string",
+                    "enum": [
+                      "principal",
+                      "topo",
+                      "rodape"
+                    ],
+                    "description": "Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo."
+                  },
+                  "grupoDeLeitura": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 60,
+                    "description": "Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual."
+                  },
+                  "ordem": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 99,
+                    "description": "A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras)."
+                  }
+                },
+                "required": [
+                  "id",
+                  "linhas",
+                  "herdaDe"
+                ],
+                "additionalProperties": false
+              },
+              "maxItems": 40,
+              "description": "Texto SEM papel (uma nota, \"vale só no almoço\", um aviso) que veste o estilo de um papel da assinatura: {id, linhas, herdaDe, grupoVisual?, grupoDeLeitura?, ordem?}. Vira camada editável na página, com o id dado. Com copyAutoral não mande aqui: declare o bloco com funcao \"livre\" e estilo.herdaDe no contrato (as camadas extras saem dele)."
             },
             "copyAutoral": {
               "type": "object",
               "additionalProperties": {},
-              "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` é dispensável (os blocos saem do contrato, sem transformar texto). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
+              "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao \"servico\", herdaDe \"apoio\") ou um texto sem papel (funcao \"livre\", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
             },
             "preferencias": {
               "type": "object",
@@ -1878,40 +2086,40 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                   ],
                   "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
                 },
+                "variante": {
+                  "type": "string",
+                  "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
+                },
                 "arranjos": {
-                  "description": "Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como \"cabe\" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.",
+                  "type": "array",
                   "items": {
                     "anyOf": [
                       {
-                        "maxLength": 160,
-                        "type": "string"
+                        "type": "string",
+                        "maxLength": 160
                       },
                       {
-                        "additionalProperties": false,
+                        "type": "object",
                         "properties": {
-                          "arranjo": {
-                            "maxLength": 160,
-                            "type": "string"
-                          },
                           "grupo": {
-                            "maxLength": 80,
-                            "type": "string"
+                            "type": "string",
+                            "maxLength": 80
+                          },
+                          "arranjo": {
+                            "type": "string",
+                            "maxLength": 160
                           }
                         },
                         "required": [
                           "grupo",
                           "arranjo"
                         ],
-                        "type": "object"
+                        "additionalProperties": false
                       }
                     ]
                   },
                   "maxItems": 8,
-                  "type": "array"
-                },
-                "variante": {
-                  "type": "string",
-                  "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
+                  "description": "Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como \"cabe\" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição."
                 }
               },
               "additionalProperties": false

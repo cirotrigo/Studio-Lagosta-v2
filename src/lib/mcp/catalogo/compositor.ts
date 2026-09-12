@@ -8,15 +8,50 @@
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
 
+const papelDaAssinatura = z.enum(['pre', 'headline', 'apoio', 'cta', 'servico'])
+const linhasDoBloco = z
+  .array(z.string().min(1))
+  .min(1)
+  .max(6)
+  .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.')
+/** O mesmo alfabeto do id de camada da spec (`idDeCamadaSchema`). */
+const idDaCamadaExtra = z.string().min(1).max(60).regex(/^[a-z0-9][a-z0-9._-]*$/i)
+const grupoVisual = z
+  .enum(['principal', 'topo', 'rodape'])
+  .describe('Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo.')
+const grupoDeLeitura = z
+  .string()
+  .min(1)
+  .max(60)
+  .describe('Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual.')
+const ordemDeLeitura = z
+  .number()
+  .int()
+  .min(0)
+  .max(99)
+  .describe('A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras).')
+
 const bloco = z.object({
-  papel: z
-    .enum(['pre', 'headline', 'apoio', 'cta', 'servico'])
-    .describe('O papel do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé).'),
-  linhas: z
-    .array(z.string().min(1))
-    .min(1)
-    .max(6)
-    .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.'),
+  papel: papelDaAssinatura.describe('O papel (a FUNÇÃO) do texto: pre (pré-título curto), headline (a manchete), apoio (a frase de apoio), cta (a chamada), servico (horário/endereço — vai para o rodapé).'),
+  linhas: linhasDoBloco,
+  herdaDe: papelDaAssinatura
+    .optional()
+    .describe('CAMADA EXTRA: o papel da assinatura de que este texto veste o estilo (fonte, peso, corpo, entrelinha, cor, sombra e prefixo) SEM virar esse papel e sem herdar a posição dele. Use quando a variante escolhida não tem o papel do texto — a linha de horário numa variante sem servico: papel "servico", herdaDe "apoio" — em vez de trocar de variante; ou para repetir um papel com estilo emprestado (a segunda linha de serviço). O herdaDe é sempre honrado, mesmo quando a variante tem o papel. A manchete nunca herda.'),
+  id: idDaCamadaExtra
+    .optional()
+    .describe('Só com herdaDe: o id da camada extra, do autor e único na peça — obrigatório quando o papel se repete. Sem herdaDe a camada se chama pelo papel e um id é recusado. Não pode ser headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* nem <texto>-elemento-N (a composição gera esses).'),
+  grupoVisual: grupoVisual.optional(),
+  grupoDeLeitura: grupoDeLeitura.optional(),
+  ordem: ordemDeLeitura.optional(),
+})
+
+const camadaExtra = z.object({
+  id: idDaCamadaExtra.describe('O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco).'),
+  linhas: linhasDoBloco,
+  herdaDe: papelDaAssinatura.describe('O papel da assinatura de que a camada veste o estilo — sem virar esse papel e sem a posição dele.'),
+  grupoVisual: grupoVisual.optional(),
+  grupoDeLeitura: grupoDeLeitura.optional(),
+  ordem: ordemDeLeitura.optional(),
 })
 
 const preferencias = z
@@ -45,8 +80,17 @@ const spec = {
   selecaoExperimental: z.boolean().optional().describe('Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.'),
   fotosCandidatas: z.array(z.string().min(1)).min(1).max(3).optional().describe('Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.'),
   fotoUrl: z.string().optional().describe('URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada).'),
-  blocos: z.array(bloco).max(5).optional().describe('A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura. Dispensável quando copyAutoral vem — aí os blocos saem do contrato.'),
-  copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` é dispensável (os blocos saem do contrato, sem transformar texto). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item).'),
+  blocos: z
+    .array(bloco)
+    .max(40)
+    .optional()
+    .describe('A copy por papel, na ordem de leitura. Um bloco por papel; o papel só se repete como CAMADA EXTRA (herdaDe + id próprio). Dispensável quando copyAutoral vem — aí os blocos saem do contrato. Blocos e camadasExtras somados: até 40.'),
+  camadasExtras: z
+    .array(camadaExtra)
+    .max(40)
+    .optional()
+    .describe('Texto SEM papel (uma nota, "vale só no almoço", um aviso) que veste o estilo de um papel da assinatura: {id, linhas, herdaDe, grupoVisual?, grupoDeLeitura?, ordem?}. Vira camada editável na página, com o id dado. Com copyAutoral não mande aqui: declare o bloco com funcao "livre" e estilo.herdaDe no contrato (as camadas extras saem dele).'),
+  copyAutoral: z.record(z.string(), z.unknown()).optional().describe('O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico|livre), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {herdaDe?, grupoVisual?, linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` e `camadasExtras` são dispensáveis (saem do contrato, sem transformar texto). CAMADA EXTRA no contrato: bloco com estilo.herdaDe (o papel de que veste o estilo) e estilo.grupoVisual (principal|topo|rodape) — um bloco com função que a variante não tem (funcao "servico", herdaDe "apoio") ou um texto sem papel (funcao "livre", que EXIGE herdaDe). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item).'),
   preferencias,
   nome: z.string().optional().describe('Nome da peça na galeria (opcional).'),
   tema: z.string().optional().describe('Tema/assunto, para o registro e o rodízio de layout.'),
@@ -73,6 +117,7 @@ function specDe(args: Record<string, unknown>) {
     fotosCandidatas: args.fotosCandidatas,
     selecaoExperimental: args.selecaoExperimental,
     blocos: args.blocos,
+    ...(Array.isArray(args.camadasExtras) ? { camadasExtras: args.camadasExtras } : {}),
     ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
     ...(args.preferencias ? { preferencias: args.preferencias } : {}),
     ...(args.nome ? { nome: args.nome } : {}),
@@ -186,6 +231,7 @@ export const toolsDoCompositor = [
       projectId: spec.projectId,
       formato: spec.formato,
       blocos: spec.blocos,
+      camadasExtras: spec.camadasExtras,
       copyAutoral: spec.copyAutoral,
       variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos).'),
       tema: spec.tema,
@@ -201,7 +247,8 @@ export const toolsDoCompositor = [
       const r = await medirCopyDoProjeto({
         projectId: args.projectId as number,
         formato: args.formato as 'story' | 'feed' | 'quadrado',
-        blocos: args.blocos as Array<{ papel: 'pre' | 'headline' | 'apoio' | 'cta' | 'servico'; linhas: string[] }> | undefined,
+        blocos: args.blocos as NonNullable<Parameters<typeof medirCopyDoProjeto>[0]['blocos']> | undefined,
+        ...(Array.isArray(args.camadasExtras) ? { camadasExtras: args.camadasExtras as NonNullable<Parameters<typeof medirCopyDoProjeto>[0]['camadasExtras']> } : {}),
         ...(args.copyAutoral && typeof args.copyAutoral === 'object' ? { copyAutoral: args.copyAutoral } : {}),
         variante: typeof args.variante === 'string' ? args.variante : null,
         tema: typeof args.tema === 'string' ? args.tema : null,
@@ -233,6 +280,8 @@ export const toolsDoCompositor = [
         blocos: m.blocos.map((b) => ({
           id: b.id,
           papel: b.papel,
+          // A camada extra diz a FUNÇÃO e de que papel veio o estilo — `papel` aqui é o de estilo.
+          ...(b.extra ? { extra: b.extra } : {}),
           situacao: b.situacao,
           ...(b.fonte ? { fonte: b.fonte } : {}),
           ...(b.escala !== null ? { escala: b.escala } : {}),
@@ -313,7 +362,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-arte',
     descricao:
-      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo, rodapé ou os dois, em camadas independentes), destaca as palavras marcadas com [colchetes] e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. OS CAMPOS SÃO OPCIONAIS: a mensagem decide quais blocos a peça precisa; nada é escrito para preencher espaço e nenhum texto é descartado por falta de campo. Enquanto a camada extra (F3) não existe, o que já dá: deixar o campo vazio, escolher a variante que tem o campo (ver-assinatura lista os papéis de cada variante por formato), ou usar criar-arte com textosLivres. Papel pedido que a variante não tem devolve PAPEIS_INCOMPATIVEIS antes de gravar — nunca some em silêncio. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. DESTAQUE: marque com [colchetes] 1 ou 2 palavras-chave da peça (preço, dia, a oferta) — sem colchetes a peça sai sem destaque. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
+      'Compõe UMA arte pelo EDITOR, sem crédito de imagem: a copy (por papel e por linha) pousa na área livre da foto — o compositor mede a foto, escolhe posição e enquadramento, desenha um gradiente de leitura sutil na borda onde o texto pousou (topo, rodapé ou os dois, em camadas independentes), destaca as palavras marcadas com [colchetes] e põe a logo no canto pela luz — e a peça nasce como página editável, onde a equipe ajusta na mão. Use para peça avulsa ou para testar antes de uma leva (compor-leva). Sem foto, a peça sai sobre o fundo liso da marca.\n\nAntes: ver-assinatura (o cliente precisa de página de assinatura) e consultar-dna/consultar-base para a copy. OS CAMPOS SÃO OPCIONAIS: a mensagem decide quais blocos a peça precisa; nada é escrito para preencher espaço e nenhum texto é descartado por falta de campo. CAMADA EXTRA: quando a variante escolhida não tem o papel de um texto, não troque de variante só por isso — declare no bloco de que papel ele herda o estilo (herdaDe): ele entra como camada extra, com id próprio, a tipografia daquele papel e o lugar dado por grupoVisual (principal, topo ou rodape; serviço vai ao rodapé por padrão), sem virar esse papel (a linha de horário numa variante sem servico: papel "servico", herdaDe "apoio"). Texto sem papel nenhum (uma nota) vai em camadasExtras, ou como bloco livre com estilo.herdaDe no copyAutoral. A camada extra é editável no editor e sobrevive a editar o texto, trocar a foto e recompor. Papel sem herdaDe que a variante não tem, ou herdaDe de um papel que ela também não tem, devolve PAPEIS_INCOMPATIVEIS antes de gravar — nunca some em silêncio. Se a variante tem headline2, a última de duas ou mais linhas da headline recebe essa segunda voz automaticamente; não envie headline2 como papel. DESTAQUE: marque com [colchetes] 1 ou 2 palavras-chave da peça (preço, dia, a oferta) — sem colchetes a peça sai sem destaque. selecaoExperimental: true habilita a comparação conservadora com o baseline; fotosCandidatas sozinha não ativa seleção; a foto explícita prevalece. Se a resposta disser "texto não cabe", reescreva com o orçamento devolvido (caracteres que cabem por linha) — nunca insista igual.\n\nprovar: true renderiza e devolve só a prova (URL do PNG + diagnóstico), sem gravar nada na galeria.',
     schema: z.object({
       ...spec,
       provar: z.boolean().optional().describe('true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável.'),
@@ -372,6 +421,7 @@ export const toolsDoCompositor = [
             fotosCandidatas: spec.fotosCandidatas,
             selecaoExperimental: spec.selecaoExperimental,
             blocos: spec.blocos,
+            camadasExtras: spec.camadasExtras,
             copyAutoral: spec.copyAutoral,
             preferencias,
             nome: spec.nome,

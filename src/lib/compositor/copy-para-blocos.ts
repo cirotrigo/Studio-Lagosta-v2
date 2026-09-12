@@ -76,8 +76,12 @@ export interface OpcoesDeCopyParaBlocos {
    * pelo `slice`, sem aviso — é a perda posicional que o contrato da copy (F1)
    * expõe e que o PR 5 fecha. A regra de 04/09/2026 ("só os campos do
    * template") foi substituída em 11/09/2026 por "copy primeiro, campos
-   * depois" — os campos são opcionais, e a camada extra (F3) é o que vai
-   * acomodar o que sobra. Sem a lista, vale a distribuição por contagem.
+   * depois" — os campos são opcionais. A camada extra (PR 9 e 10) acomoda o
+   * texto cujo papel a variante não tem, mas só quando o autor DECLARA a
+   * herança de estilo (`herdaDe` no bloco ou no contrato): a lista posicional
+   * daqui não carrega herança, e deduzi-la seria a transformação silenciosa
+   * que o contrato expõe — por isso o que sobra não vira camada extra.
+   * Sem a lista, vale a distribuição por contagem.
    */
   papeis?: PapelDaSpec[]
   /** Executor semanal: nenhuma condição recebida pode desaparecer no mapeamento. */

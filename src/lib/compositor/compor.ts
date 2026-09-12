@@ -278,8 +278,10 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   // A página do formato é a verdade daquele formato: papel que a página de
   // feed não tem NÃO vem da story. Desde 11/09/2026 a regra é "copy primeiro,
   // campos depois" (os campos são opcionais e nenhum texto é descartado por
-  // falta de campo): até a camada extra da F3 existir, papel que a variante não
-  // tem é RECUSADO com PAPEIS_INCOMPATIVEIS — nunca some em silêncio.
+  // falta de campo): o texto cujo papel a variante não tem entra como camada
+  // EXTRA quando declara `herdaDe` (PR 9 e 10, `camadas-extras.ts`); sem a
+  // herança declarada ele é RECUSADO com PAPEIS_INCOMPATIVEIS — nunca some em
+  // silêncio.
   return assinatura
 }
 

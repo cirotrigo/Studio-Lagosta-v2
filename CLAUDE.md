@@ -4122,10 +4122,11 @@ e o sinal `geometria`. Regras que valem para código novo:
 - 🔴 **COPY PRIMEIRO, CAMPOS DEPOIS** (Ciro, 11/09/2026; substitui a regra de
   04/09 "não adicione campos; a copy é feita em cima dos campos que existem no
   template"). A redação aprovada: *A assinatura define a identidade visual e oferece composições iniciais. Os campos são opcionais. A mensagem determina quais blocos e grupos de leitura a peça precisa. O Claude pode escolher outra variante, acrescentar camadas com estilos da assinatura e reorganizar a composição. Nenhum texto é descartado por ausência de campo. Fatos vêm da base; a caixa vem da string; safe area e avatar permanecem respeitados. O verificador informa problemas e não veta a peça.* Nada é escrito para
-  preencher espaço. Até a camada extra (F3) existir, o que já dá é deixar o
-  campo vazio, escolher a variante que tem o campo (`ver-assinatura` lista os
-  papéis por variante) ou `criar-arte` com `textosLivres`; papel que a variante
-  não tem volta como `PAPEIS_INCOMPATIVEIS` — nunca some em silêncio. A regra
+  preencher espaço. Desde o PR 10 (12/09/2026) o texto cujo papel a variante
+  não tem entra como CAMADA EXTRA quando declara `herdaDe` (ver "A camada
+  EXTRA" e "O ciclo da camada extra" no fim deste arquivo); sem a herança
+  declarada, papel que a variante não tem volta como `PAPEIS_INCOMPATIVEIS` —
+  nunca some em silêncio. A regra
   nova entrou de uma vez em todos os lugares onde a antiga estava ativa
   (CLAUDE.md, `docs/FORMAS-DE-ARTE.md`, `instrucoes.ts`, descrição de
   `compor-arte`, comentários do compositor): regra velha e nova convivendo era
@@ -8233,8 +8234,9 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   sido arquivada (as stories do Quintal e do TERO foram, em 11/09), e aí a
   escolha automática segue, com o motivo dizendo que a original não existe
   mais. `variante` continua sendo o pedido explícito — ausente é recusa.
-- `PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3): papel que a variante
-  não tem recusa, nunca some.
+- ~~`PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3)~~ — **superado pelos
+  PRs 9 e 10**: papel que a variante não tem vira camada extra quando o bloco
+  declara `herdaDe`; sem herança, continua recusando, nunca some.
 
 **Da revisão FINAL do Codex sobre b5c2bd5b (BLOQUEADO, PR4-FINAL-01…02, 21/09/2026).**
 Os dois são a MESMA forma: uma decisão tomada por PROXY (o primeiro bloco do
@@ -8735,9 +8737,9 @@ a variante não tinha era `PAPEIS_INCOMPATIVEIS`, e bloco `livre` com texto era
 recusado ("a camada livre chega na F3"). Módulo PURO em
 `src/lib/compositor/camadas-extras.ts` (com teste em `camadas-extras.test.ts`);
 `preparar-blocos.ts`, `compor.ts` e `medir-copy.ts` chamam a MESMA resolução.
-**Ainda sem anunciar no conector** — a descrição de `compor-arte` e as
-instruções só mudam no PR 10, quando o ciclo inteiro (editar, trocar a foto,
-recompor) preservar os extras.
+~~Ainda sem anunciar no conector~~ — **anunciada no PR 10** (seção "O ciclo da
+camada extra", no fim deste arquivo), depois que editar, trocar a foto e
+recompor passaram a preservar os extras.
 
 - **Um extra declara `id` + `linhas` + `herdaDe` (o papel de ESTILO) e,
   opcionalmente, `grupoVisual` (`principal` · `topo` · `rodape`), `grupoDeLeitura`
@@ -9289,3 +9291,64 @@ passou a enumerar os casos em vez de escolhê-los à mão
   composição (`parte`, `linhasDoBloco` ou id `<funcao>`/`<funcao>-N`) — é o que
   protege contrato já gravado antes da porta. O invariante enumera o extra vazio
   com função (cobertura `f02`).
+### O ciclo da camada extra (PR 10 de "Marca simples, copy melhor", 12/09/2026)
+
+O PR 9 criou a camada extra; este fecha o CICLO dela — criar, editar, trocar a
+foto, re-renderizar, editar a copy e recompor — em imagem única e em slide de
+carrossel, e só então a anuncia no conector. Testes puros em
+`src/lib/compositor/__tests__/ciclo-extras.test.ts`; prova no branch de dev em
+`scripts/validar-camadas-extras.ts` (variante sem `servico`, horário e nota
+herdando do apoio, os dois tipos de post).
+
+- 🔴 **A camada extra se lê pela IDENTIDADE, nunca pelo papel da função dela**
+  (`copyDaPaginaPorIdentidade`, em `defasagem.ts`). O serviço que herda do
+  apoio grava `metadata.compositor.papel = 'servico'`, e a recomposição SEM
+  contrato (`specComACopyDaPagina`) juntava o texto dele ao do serviço comum,
+  tirava `herdaDe` e `id`, e devolvia ao compositor um bloco de papel que a
+  variante não tem: `PAPEIS_INCOMPATIVEIS` (ou "papel repetido"), e o slide
+  ficava com a arte velha. O livre, sem papel, nem era lido. Hoje o extra volta
+  com a identidade da SPEC (id, herança, grupos, ordem) e só o TEXTO vem da
+  página, respiro incluído; extra apagado na página sai da spec com aviso.
+  `copyDosPapeis` continua lendo o extra pela função — é outra pergunta.
+- **Com contrato, os extras saem do CONTRATO**: a spec da recomposição não
+  carrega `camadasExtras` da spec antiga (R15 do PR 9, `specDaRecomposicao`) —
+  com o texto editado, o `validarSpec` a recusava como divergente.
+- 🔴 **Trocar a foto é defasagem** (`Defasagem.fotoTrocada`). `precisaRefazer`
+  só olhava texto e geometria, e a foto trocada no editor num slide de
+  carrossel NUNCA chegava ao post — a página parecia em dia. A peça é
+  RECOMPOSTA com a foto da página (os extras junto). Só conta com foto dos dois
+  lados: imagem acrescentada ou removida já é ajuste manual pelo diff.
+- **O enquadramento da foto mexido à mão é ajuste manual** (`style.crop`,
+  `cropPosition`, `objectFit` da camada de imagem, que o diff de geometria não
+  via): recompor escolheria o corte de novo pelo mapa de calma e apagaria o
+  acerto. Re-renderiza como está.
+- **O aviso de ajuste manual nomeia o extra pelo id**, não pelo papel da função
+  ("hora foi movida", nunca "servico foi movida" numa peça que também tem o
+  serviço comum).
+- **Escritas visuais: nenhuma nova neste PR.** As cinco portas (PATCH da página,
+  PUT do template, PATCH de camada, `ajustarArte`, `reverterCamadasDaArte`) já
+  chamam `invalidateScheduledRenders` + `pedirRecomposicaoDaArteCongelada`, e os
+  dois escritores de cópia da página em `slotValues` (`agendarPost`,
+  `trocar-arte-do-post` por página) já usam `comoCopiaDaPagina` — a cópia leva
+  o extra pelo id da camada, e `renderPostArt` a mantém em dia.
+- ⚠️ **O PATCH de camada avulsa** (`/api/pages/[pageId]/layers/[layerId]`, o
+  autosave do painel do gerador de criativos) **não revisa o contrato** da
+  página: texto de extra mudado por ali entra na próxima leitura como revisão do
+  SISTEMA (superfície da recomposição), não da equipe. Herdado do PR 3.
+- **No conector** (`catalogo/compositor.ts`): `compor-arte`, `compor-leva` e
+  `medir-copy` aceitam `id`, `herdaDe`, `grupoVisual`, `grupoDeLeitura` e `ordem`
+  no bloco, e `camadasExtras`; o teto de blocos é o da spec (40, somados com os
+  extras — `validarSpec` confere a soma). `medir-copy` devolve `extra` em cada
+  bloco medido (o `papel` ali é o de estilo). A regra "até a camada extra
+  existir" saiu de TODOS os lugares no mesmo commit (instruções, descrição,
+  `FORMAS-DE-ARTE.md`, este arquivo, comentários) — regra velha e nova
+  convivendo é defeito. Snapshots do registro atualizados de propósito.
+- ⚠️ **A escolha da VARIANTE ainda pontua pelo papel da FUNÇÃO**
+  (`carregarAssinatura` recebe `spec.blocos.map(b => b.papel)`): o horário que
+  herda do apoio conta como "pede servico" e empurra para a variante que tem o
+  campo, se houver. Não quebra nada — a peça compõe nas duas —, mas quem quer a
+  variante sem o campo fixa `preferencias.variante`.
+- ⚠️ **Arte ajustada por `ajustarArte` deixa de ser recomposta**: a Generation
+  nova não tem spec nem snapshot, e daí em diante a página só re-renderiza como
+  está (os extras continuam na página, editáveis). Herdado do desenho da
+  recomposição, não deste PR.

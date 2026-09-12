@@ -16,12 +16,15 @@ import { arranjosDasCombinacoes, carregarAssinatura, familiasDoProjeto, luzMedia
 import { carregarFotoParaMedir } from './foto-para-medir'
 import { chaveDaPeca } from './preparar-blocos'
 import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
-import { DIMENSOES, validarSpec, type Formato, type Papel, type SpecDePeca } from './spec'
+import { DIMENSOES, validarSpec, type Formato, type GrupoVisual, type Papel, type SpecDePeca } from './spec'
 
 export interface PedidoDeMedicao {
   projectId: number
   formato: Formato
-  blocos?: Array<{ papel: Papel; linhas: string[] }>
+  /** A copy por papel — o bloco com `herdaDe` é camada extra (PR 9), com id, grupo visual, grupo de leitura e ordem. */
+  blocos?: Array<{ papel: Papel; linhas: string[]; id?: string; herdaDe?: Papel; grupoVisual?: GrupoVisual; grupoDeLeitura?: string; ordem?: number }>
+  /** O texto sem papel que veste o estilo de um papel (PR 10: chega à medição como chega à composição). */
+  camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: Papel; grupoVisual?: GrupoVisual; grupoDeLeitura?: string; ordem?: number }>
   copyAutoral?: unknown
   variante?: string | null
   tema?: string | null
@@ -71,6 +74,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     projectId: pedido.projectId,
     formato: pedido.formato,
     blocos: pedido.blocos,
+    ...(pedido.camadasExtras ? { camadasExtras: pedido.camadasExtras } : {}),
     copyAutoral: pedido.copyAutoral,
     ...(pedido.fotoDriveId || pedido.fotoUrl ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}) } } : {}),
     ...(pedido.nome ? { nome: pedido.nome } : {}),
