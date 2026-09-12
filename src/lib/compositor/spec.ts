@@ -10,9 +10,9 @@
 
 import { z } from 'zod'
 import { MAX_LINHAS, copyAutoralSchema } from '@/lib/copy-autoral/contrato'
-import { blocosParaOCompositor } from '@/lib/copy-autoral/legado'
+import { blocosParaOCompositor, copyDaSpecSemContrato, type BlocoLegado } from '@/lib/copy-autoral/legado'
 import { canonico } from '@/lib/copy-autoral/revisao'
-import { problemasDeCoerencia } from '@/lib/copy-autoral/validar'
+import { problemasDeCoerencia, validarCopyAutoral } from '@/lib/copy-autoral/validar'
 import { idReservado } from './camadas-extras'
 
 export const PAPEIS = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
@@ -263,10 +263,20 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     if (idAvulso.length > 0) return { spec: null, problemas: [`id só vale com herdaDe: ${idAvulso.join(', ')} — sem herança a camada se chama pelo papel`] }
     const idsDeExtras = [...r.data.blocos.filter((b) => b.herdaDe && b.id).map((b) => b.id!), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
     const reservados = idsDeExtras.filter(idReservado)
-    if (reservados.length > 0) return { spec: null, problemas: [`id de camada reservado pela composição: ${[...new Set(reservados)].join(', ')} — headline2 e <papel>-N são gerados pela preparação`] }
+    if (reservados.length > 0) return { spec: null, problemas: [`id de camada reservado pela composição: ${[...new Set(reservados)].join(', ')} — headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* e <texto>-elemento-N são gerados pela composição`] }
     const ids = [...r.data.blocos.map((b) => b.id ?? b.papel), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
     const idsRepetidos = ids.filter((id, i) => ids.indexOf(id) !== i)
     if (idsRepetidos.length > 0) return { spec: null, problemas: [`id de camada repetido: ${[...new Set(idsRepetidos)].join(', ')}`] }
+    // R11: sem contrato, o ORIGINAL persistido nasce da spec
+    // (`copyDaSpecSemContrato`), e ele tem de passar no MESMO contrato que o
+    // leitor exige — senão a persistência grava uma copy que `lerCopyAutoral`
+    // devolve inválida (grupo de leitura de um bloco só, mais de 40 blocos
+    // somados entre blocos e camadasExtras) e a edição seguinte cai em
+    // `sem-contrato`, perdendo o acompanhamento autoral.
+    if (!r.data.copyAutoral) {
+      const derivada = validarCopyAutoral(copyDaSpecSemContrato({ blocos: r.data.blocos as BlocoLegado[], camadasExtras: r.data.camadasExtras as Parameters<typeof copyDaSpecSemContrato>[0]['camadasExtras'] }))
+      if (derivada.problemas.length > 0) return { spec: null, problemas: derivada.problemas.map((p) => `copy derivada da spec: ${p.mensagem}`) }
+    }
     const c = r.data.carrossel
     if (c?.de && c.slide > c.de) return { spec: null, problemas: [`carrossel: o slide ${c.slide} não cabe num carrossel de ${c.de}`] }
     return { spec: r.data, problemas: [] }

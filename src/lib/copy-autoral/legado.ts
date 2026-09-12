@@ -263,7 +263,14 @@ export function copyDaSpecSemContrato(
   spec: { blocos?: BlocoLegado[]; camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string; grupoVisual?: 'principal' | 'topo' | 'rodape'; grupoDeLeitura?: string; ordem?: number }> },
   opcoes: { em?: string; superficie?: string } = {},
 ): CopyAutoral {
-  const usados = new Set<string>()
+  // R08: o id EXPLÍCITO (o do extra, já validado pela spec) é do autor e viaja
+  // EXATO — caixa inclusive. Só a identidade INFERIDA do legado (o papel) passa
+  // por `idUnico`, e nunca toma um id explícito. Normalizar "Nota" para "nota"
+  // desligava o bloco da camada e criava `extra-Nota` com revisão fictícia.
+  const usados = new Set<string>([
+    ...(spec.blocos ?? []).filter((b) => b.herdaDe && b.id).map((b) => b.id!),
+    ...(spec.camadasExtras ?? []).map((e) => e.id),
+  ])
   const lacunas = ['autoria desconhecida: a copy veio de blocos por papel (spec) sem registro de quem escreveu']
   type Item = { chave: number; bloco: Omit<BlocoAutoral, 'ordem'>; ordemDeclarada: number | undefined }
   const itens: Item[] = []
@@ -287,7 +294,7 @@ export function copyDaSpecSemContrato(
       chave: b.ordem ?? 1000 + seq,
       ordemDeclarada: b.ordem,
       bloco: {
-        id: idUnico(b.herdaDe && b.id ? b.id : b.papel, usados),
+        id: b.herdaDe && b.id ? b.id : idUnico(b.papel, usados),
         funcao: funcao ?? 'livre',
         linhas: [...b.linhas],
         ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
@@ -303,7 +310,7 @@ export function copyDaSpecSemContrato(
       chave: e.ordem ?? 1000 + seq,
       ordemDeclarada: e.ordem,
       bloco: {
-        id: idUnico(e.id, usados),
+        id: e.id,
         funcao: 'livre',
         linhas: [...e.linhas],
         ...(e.grupoDeLeitura ? { grupoDeLeitura: e.grupoDeLeitura } : {}),

@@ -8736,3 +8736,27 @@ Da revisão do Codex sobre o primeiro commit (BLOQUEADO, R01…R07, 12/09/2026):
   contrato exige ordem contígua), autoria `desconhecido`. Antes só `spec.blocos`
   virava original e a nota fornecida na entrada aparecia como texto a mais do
   sistema, com id `extra-…`.
+
+Da revisão do Codex sobre o segundo commit (BLOQUEADO, R08…R11, 12/09/2026):
+
+- 🔴 **O id EXPLÍCITO do extra viaja exato, caixa inclusive** (R08,
+  `copyDaSpecSemContrato`): só a identidade inferida do legado (o papel) passa
+  por `idUnico`, que normaliza; o id do extra, já validado pela spec, entra no
+  `usados` antes e nunca é reescrito. "Nota" virava "nota" no original, a
+  efetiva não achava a camada e criava `extra-Nota` com revisão fictícia.
+- 🔴 **Vínculo por id físico só com a MESMA função** (R09,
+  `copyEfetivaDasCamadas`): primeiro `metadata.compositor.extra.id`; depois
+  `layer.id === bloco.id` apenas quando `papelDaCamada` é a função do bloco. Um
+  contrato com ids trocados entre funções (id "apoio" na manchete) trocava os
+  textos na persistência — e o autosave registrava a troca como edição da equipe.
+- 🔴 **Nenhum extra toma o nome de uma camada interna** (R10, `idReservado`):
+  além de `headline2` e `<papel>-N`, `bg-foto`, `logo`, `gradiente-leitura-*` e
+  `<texto>-elemento-N`; e `comporPeca` confere a unicidade no conjunto FINAL de
+  camadas (`idsDeCamadaRepetidos`, `SPEC_INVALIDA`) — id repetido torna seleção,
+  ajuste e leitura por id ambíguos.
+- 🔴 **Sem contrato, a copy DERIVADA da spec passa no contrato do leitor antes
+  de a spec valer** (R11, `validarSpec` → `validarCopyAutoral(copyDaSpecSemContrato(…))`):
+  grupo de leitura de um bloco só e mais de 40 blocos SOMADOS entre `blocos` e
+  `camadasExtras` são recusados na porta. Antes a persistência gravava um
+  contrato que `lerCopyAutoral` devolvia inválido e a edição seguinte caía em
+  `sem-contrato`.

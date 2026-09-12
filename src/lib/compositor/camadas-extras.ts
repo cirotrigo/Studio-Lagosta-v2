@@ -86,14 +86,35 @@ export interface ResolucaoDosExtras {
 }
 
 /**
- * Ids que a PREPARAÇÃO produz sozinha e nenhum extra pode tomar (R02): a
+ * Ids que a COMPOSIÇÃO produz sozinha e nenhum extra pode tomar (R02, R10): a
  * segunda voz da manchete (`headline2`) e o segundo texto do mesmo papel
  * (`servico-2`, `apoio-3`…). O nome nu do papel (`servico`) é o id padrão do
  * extra sem id — ele só colide quando um bloco comum do mesmo papel existe, e
  * isso a unicidade por id já pega.
  */
 export function idReservado(id: string): boolean {
-  return id === 'headline2' || /^(pre|headline|apoio|cta|servico)-\d+$/.test(id)
+  return (
+    id === 'headline2' ||
+    /^(pre|headline|apoio|cta|servico)-\d+$/.test(id) ||
+    // R10: as camadas internas da composição — a foto de fundo, a logo (a do
+    // canto e a do arranjo), os gradientes de leitura (um por borda) e os
+    // elementos presos aos textos (`<texto>-elemento-N`).
+    id === 'bg-foto' ||
+    id === 'logo' ||
+    id.startsWith('gradiente-leitura-') ||
+    /-elemento-\d+$/.test(id)
+  )
+}
+
+/** Os ids que aparecem mais de uma vez no conjunto FINAL de camadas (R10) — a composição recusa em vez de gravar identidade ambígua. */
+export function idsDeCamadaRepetidos(camadas: ReadonlyArray<{ id: string }>): string[] {
+  const vistos = new Set<string>()
+  const repetidos = new Set<string>()
+  for (const c of camadas) {
+    if (vistos.has(c.id)) repetidos.add(c.id)
+    vistos.add(c.id)
+  }
+  return [...repetidos]
 }
 
 /**

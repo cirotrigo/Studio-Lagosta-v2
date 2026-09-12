@@ -51,7 +51,7 @@ import {
 } from './assinatura'
 import { empilhar, type BlocoMontado } from './blocos'
 import { prepararBlocos, chaveDaPeca } from './preparar-blocos'
-import { resolverCamadasExtras } from './camadas-extras'
+import { resolverCamadasExtras, idsDeCamadaRepetidos } from './camadas-extras'
 import {
   arranjoDaCombinacao,
   arranjosDaPagina,
@@ -1077,6 +1077,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       )
     : []
   if (gradientes.length > 0) layers = inserirAcimaDaFoto(layers, gradientes.map((gr) => gr.layer))
+  // R10: a identidade de cada camada é única no conjunto FINAL. A validação da
+  // spec já recusa os nomes internos; esta é a última porta — id repetido
+  // tornaria ambíguos seleção, ajuste e leitura da copy por id.
+  const idsRepetidosNaPeca = idsDeCamadaRepetidos(layers)
+  if (idsRepetidosNaPeca.length > 0) {
+    const problema = `id de camada repetido na composição: ${idsRepetidosNaPeca.join(', ')}`
+    throw new CreativeError('SPEC_INVALIDA', problema, 400, { problemas: [problema] })
+  }
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
   //    FORÇA do gradiente uma vez dentro da faixa e AVISA quando a foto não

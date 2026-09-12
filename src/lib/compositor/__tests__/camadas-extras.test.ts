@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { montarAssinatura } from '../assinatura'
-import { estiloHerdado, grupoVisualPadrao, resolverCamadasExtras } from '../camadas-extras'
+import { estiloHerdado, grupoVisualPadrao, idReservado, idsDeCamadaRepetidos, resolverCamadasExtras } from '../camadas-extras'
 import { medirCopy } from '../medir-copy'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
 import { copyAutoralDaSpec, entradaDePersistencia } from '../persistencia'
-import type { CopyAutoral } from '@/lib/copy-autoral'
+import { validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 
 /**
  * F3 / PR 9 — a camada EXTRA: texto que veste o estilo de um papel SEM ser
@@ -283,14 +284,91 @@ describe('correções da revisão do Codex sobre 53ce6340 (R01–R07)', () => {
   it('R07: sem copyAutoral, o ORIGINAL persistido nasce da spec inteira — o extra livre e o serviço herdado entram com id, herança, grupo visual e ordem, autoria desconhecida', () => {
     const v = validarSpec({ ...base,
       blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'], herdaDe: 'apoio', id: 'hora', grupoVisual: 'rodape' }],
-      camadasExtras: [{ id: 'nota', linhas: ['vale hoje'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }],
+      camadasExtras: [{ id: 'nota', linhas: ['vale hoje'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }, { id: 'nota-2b', linhas: ['só no almoço'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }],
     })
     expect(v.problemas).toEqual([])
     const original = copyAutoralDaSpec(v.spec!)
+    expect(validarCopyAutoral(JSON.parse(JSON.stringify(original))).problemas).toEqual([])
     expect(original.origem.autor).toBe('desconhecido')
-    expect(original.blocos.map((b) => [b.id, b.funcao, b.ordem])).toEqual([['headline', 'headline', 0], ['hora', 'servico', 1], ['nota', 'livre', 2]])
+    expect(original.blocos.map((b) => [b.id, b.funcao, b.ordem])).toEqual([['headline', 'headline', 0], ['hora', 'servico', 1], ['nota', 'livre', 2], ['nota-2b', 'livre', 3]])
     expect(original.blocos[1].estilo).toEqual({ herdaDe: 'apoio', grupoVisual: 'rodape' })
     expect(original.blocos[2]).toMatchObject({ grupoDeLeitura: 'frase', estilo: { herdaDe: 'apoio' } })
     expect(original.lacunas).toContain('ordem de leitura inferida pela posição no array')
+  })
+})
+
+describe('correções da revisão do Codex sobre 9a03c12c (R08–R11)', () => {
+  const base = { projectId: 8, formato: 'story' as const }
+  const camada = (id: string, y: number, content: string, compositor: Record<string, unknown>): Layer =>
+    texto(id, { fontFamily: 'Barlow', fontSize: 40 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor } })
+  const persistir = (spec: Parameters<typeof entradaDePersistencia>[0]['spec'], layers: Layer[]) =>
+    entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+
+  it('R08: sem contrato, o id explícito do extra viaja EXATO — "Nota" e "nota", com textos diferentes, mantêm id e texto no original e na efetiva, sem revisão fictícia', () => {
+    const v = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: [
+      { id: 'Nota', linhas: ['vale hoje'], herdaDe: 'apoio' },
+      { id: 'nota', linhas: ['só no almoço'], herdaDe: 'apoio', grupoVisual: 'rodape' },
+    ] })
+    expect(v.problemas).toEqual([])
+    const original = copyAutoralDaSpec(v.spec!)
+    expect(original.blocos.map((b) => [b.id, b.linhas])).toEqual([['headline', ['Costela']], ['Nota', ['vale hoje']], ['nota', ['só no almoço']]])
+    const layers = [
+      camada('headline', 800, 'Costela', { papel: 'headline' }),
+      camada('Nota', 900, 'vale hoje', { papel: 'apoio', extra: { id: 'Nota', funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'principal' } }),
+      camada('nota', 1700, 'só no almoço', { papel: 'apoio', extra: { id: 'nota', funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'rodape' } }),
+    ]
+    const efetiva = persistir(v.spec!, layers).copyAutoral as CopyAutoral
+    expect(Object.fromEntries(efetiva.blocos.map((b) => [b.id, b.linhas]))).toEqual({ headline: ['Costela'], Nota: ['vale hoje'], nota: ['só no almoço'] })
+    expect(efetiva.revisoes).toEqual([])
+    expect(efetiva.blocos.some((b) => b.id.startsWith('extra-'))).toBe(false)
+  })
+
+  it('R09: contrato com ids trocados entre funções (id "apoio" na manchete, "headline" no apoio) — o id físico da camada de OUTRA função não é tomado; textos preservados na persistência e na revisão da página, sem revisão', () => {
+    const copy = { versao: 'copy-autoral-v1', origem, revisoes: [], blocos: [
+      { id: 'apoio', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'headline', funcao: 'apoio', ordem: 1, linhas: ['Hoje'] },
+    ] }
+    const v = validarSpec({ ...base, copyAutoral: copy })
+    expect(v.problemas).toEqual([])
+    const layers = [camada('headline', 800, 'Costela', { papel: 'headline' }), camada('apoio', 900, 'Hoje', { papel: 'apoio' })]
+    const efetiva = persistir(v.spec!, layers).copyAutoral as CopyAutoral
+    expect(Object.fromEntries(efetiva.blocos.map((b) => [b.id, b.linhas]))).toEqual({ apoio: ['Costela'], headline: ['Hoje'] })
+    expect(efetiva.revisoes).toEqual([])
+    const rev = revisaoDaPaginaComCamadas(copy, layers, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' })
+    expect(rev.estado).not.toBe('registrada')
+    expect(rev.blocos).toEqual([])
+  })
+
+  it('R10: extras com os ids das camadas internas (bg-foto, logo, gradiente-leitura-topo, <texto>-elemento-N) são recusados; o conjunto final de camadas não admite id repetido', () => {
+    for (const id of ['bg-foto', 'logo', 'gradiente-leitura-topo', 'headline-elemento-1']) {
+      expect(idReservado(id)).toBe(true)
+      const v = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['A'] }], camadasExtras: [{ id, linhas: ['x'], herdaDe: 'apoio' }] })
+      expect(v.spec).toBeNull()
+      expect(v.problemas[0]).toContain(`reservado pela composição: ${id}`)
+    }
+    expect(idReservado('nota')).toBe(false)
+    expect(idReservado('Logo')).toBe(false)
+    expect(idsDeCamadaRepetidos([{ id: 'logo' }, { id: 'nota' }, { id: 'logo' }])).toEqual(['logo'])
+    expect(idsDeCamadaRepetidos([{ id: 'a' }, { id: 'b' }])).toEqual([])
+  })
+
+  it('R11: sem copyAutoral, a copy derivada da spec passa no contrato do leitor — grupo de leitura de um bloco só e 41 blocos somados são recusados; grupo com dois membros e 40 blocos valem e sobrevivem à releitura', () => {
+    const umSo = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: [{ id: 'nota', linhas: ['vale hoje'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }] })
+    expect(umSo.spec).toBeNull()
+    expect(umSo.problemas[0]).toMatch(/^copy derivada da spec: grupo de leitura "frase" tem um bloco só/)
+    const dois = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: [
+      { id: 'nota', linhas: ['vale hoje'], herdaDe: 'apoio', grupoDeLeitura: 'frase' },
+      { id: 'nota-b', linhas: ['só no almoço'], herdaDe: 'apoio', grupoDeLeitura: 'frase' },
+    ] })
+    expect(dois.problemas).toEqual([])
+    expect(validarCopyAutoral(JSON.parse(JSON.stringify(copyAutoralDaSpec(dois.spec!)))).problemas).toEqual([])
+    const comExtras = (n: number) => validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: Array.from({ length: n }, (_, i) => ({ id: `n${i}`, linhas: [`nota ${i}`], herdaDe: 'apoio' as const })) })
+    const quarenta = comExtras(39)
+    expect(quarenta.problemas).toEqual([])
+    expect(validarCopyAutoral(JSON.parse(JSON.stringify(copyAutoralDaSpec(quarenta.spec!)))).problemas).toEqual([])
+    const quarentaEUm = comExtras(40)
+    expect(quarentaEUm.spec).toBeNull()
+    expect(quarentaEUm.problemas[0]).toMatch(/^copy derivada da spec: blocos/)
   })
 })
