@@ -406,6 +406,36 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     for (const frase of reais) expect(problemasParaMigrar(vozDeTeste({ proibicoes: [frase] })).some((p) => /condi/i.test(p)), frase).toBe(true)
   })
 
+  it('PR13-33: o estado de confirmação de um dado e o conjunto fixo de unidades são condição — detectados no DNA e recusados na voz; a exigência de confirmação e "todas as unidades vigentes" passam', () => {
+    const reais = [
+      'case, número ou resultado não confirmado na entrada "Provas e números reais" da base; os números do site não estão confirmados',
+      'A peça de FUNCIONAMENTO leva as DUAS lojas (Praia do Canto e Shopping Vitória), uma em cada linha do rodapé; é a primeira peça do dia. As três artes do dia comunicam para ambas as unidades.',
+    ]
+    expect(condicoesOperacionais(reais[0])).toEqual(['estado de confirmação'])
+    expect(condicoesOperacionais(reais[1])).toEqual(['conjunto fixo de unidades'])
+    expect(condicoesOperacionais('o número já foi confirmado pela equipe')).toEqual(['estado de confirmação'])
+    expect(condicoesOperacionais('as unidades (Praia do Canto e Shopping Vitória) abrem juntas')).toEqual(['conjunto fixo de unidades'])
+    for (const t of [
+      'case, número ou resultado não confirmado na entrada "Provas e números reais" da base (número tirado do site incluído: só entra depois de confirmado lá)',
+      'A peça de FUNCIONAMENTO comunica todas as unidades vigentes, uma em cada linha do rodapé; é a primeira peça do dia, e as três artes do dia falam para todas elas. Quais são as unidades vem da base, na data da peça.',
+      'imperdível, corre, últimas unidades, aproveita agora',
+      'Assunto exclusivo de uma unidade exige peça nomeando essa unidade; quais itens são exclusivos, e de qual unidade, vem da base na data da peça.',
+      'Nunca o endereço completo na arte: só o NOME da unidade e o horário; rua e número ficam de fora.',
+    ]) {
+      expect(condicoesOperacionais(t), t).toEqual([])
+    }
+    const dna = { toneOfVoice: reais[1], contentRules: `${reais[0]}\nFale como quem recebe em casa.` }
+    // A leitura do DNA divide em frases: as DUAS da regra da Real são condição (o conjunto e o "ambas").
+    expect(fatosNoDna(dna).map((f) => f.trecho)).toEqual([
+      'A peça de FUNCIONAMENTO leva as DUAS lojas (Praia do Canto e Shopping Vitória), uma em cada linha do rodapé; é a primeira peça do dia.',
+      'As três artes do dia comunicam para ambas as unidades.',
+      reais[0],
+    ])
+    expect(fatosNoDna(dna).every((f) => f.tipos.includes('condicao'))).toBe(true)
+    expect(problemasParaMigrar(vozDeTeste({ proibicoes: [reais[0]] })).some((p) => /proibicoes\.0 carrega condicao/.test(p))).toBe(true)
+    expect(problemasParaMigrar(vozDeTeste({ regras: [{ id: 'r1', texto: reais[1], motivo: 'm', em: '2026-08-16', escopo: 'ambas', ativa: true }] })).some((p) => /regras\.0\.texto carrega condicao/.test(p))).toBe(true)
+  })
+
   it('PR13-30: o cache de busca (Redis) tem a mesma régua do indexador — isolado só com URL e token próprios e URL diferente da de produção', () => {
     const prod = { UPSTASH_REDIS_REST_URL: 'https://prod-redis.upstash.io', UPSTASH_REDIS_REST_TOKEN: 'p' }
     expect(isolamentoDoCache(prod, {})).toBe('ausente')

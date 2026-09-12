@@ -199,6 +199,14 @@ const CONDICOES_OPERACIONAIS: Array<{ re: RegExp; rotulo: string }> = [
   { re: /\bprograma[çc][ãa]o\s+al[ée]m\s+d[aeo]s?\b|\bal[ée]m\s+d[aeo]s?\s+[A-ZÀ-Ú][^,;)]{2,40}\s+e\s+[A-ZÀ-Ú]/, rotulo: 'programação fechada' },
   { re: /\bn[ãa]o\s+est[áa]\s+cadastrad[oa]s?\b|\bn[ãa]o\s+cadastrad[oa]s?\b|\binventar\s+(?:n[úu]mero|telefone|endere[çc]o)\b/i, rotulo: 'cadastro afirmado' },
   { re: /\bretirada\s+(?:no|na|em)\s+balc[ãa]o\b|\bdispon[íi]vel\s+para\s+retirada\b|\bbrindes?\b|\bcortesias?\s+(?:d[aeo]|para|no|na)\b|\b(?:sobremesa|drink|caf[ée])\s+(?:de\s+)?cortesia\b/i, rotulo: 'serviço ou cortesia afirmados' },
+  // PR13-33: o ESTADO de confirmação de um dado ("os números do site não estão confirmados") e o CONJUNTO FIXO de
+  // unidades ("as DUAS lojas (Praia do Canto e Shopping Vitória)", "ambas as unidades") também mudam com a operação —
+  // confirmar o número na base, ou abrir/fechar uma loja, não pode deixar a voz afirmando o estado anterior. A
+  // exigência de confirmação ("não confirmado na entrada X da base") e a orientação sem o conjunto ("todas as
+  // unidades vigentes, vindas da base") passam; "últimas unidades" é vocabulário de varejo, não conjunto.
+  { re: /\b(?:n[ãa]o\s+)?(?:est[áa]|est[ãa]o|foi|foram|j[áa]\s+(?:est[áa]|est[ãa]o|foi|foram))\s+confirmad[oa]s?\b|\bj[áa]\s+confirmad[oa]s?\b/i, rotulo: 'estado de confirmação' },
+  { re: /\b(?:as\s+|os\s+)?(?:duas|dois|tr[êe]s|quatro|cinco|\d+)\s+(?:lojas|unidades|casas|endere[çc]os|filiais)\b|\bambas\s+as\s+(?:lojas|unidades|casas|filiais)\b|\bambos\s+os\s+endere[çc]os\b/i, rotulo: 'conjunto fixo de unidades' },
+  { re: /\b(?:lojas|unidades|casas|filiais)\s*\([A-ZÀ-Ú][^)]{1,60}\s+e\s+[A-ZÀ-Ú]/, rotulo: 'conjunto fixo de unidades' },
 ]
 
 /**

@@ -7029,6 +7029,25 @@ Da quarta revisão FINAL (BLOQUEADO, PR13-31…32):
   balcão`/`disponível para retirada`/`brinde`/`cortesia de`. Prévias
   regeradas (Espeto 13 → 16 fatos).
 
+Da quinta revisão FINAL (BLOQUEADO, PR13-33):
+
+- 🔴 **O ESTADO de confirmação de um dado e o CONJUNTO FIXO de unidades também
+  são condição da casa** (PR13-33): "os números do site não estão confirmados"
+  (Lagosta) e "as DUAS lojas (Praia do Canto e Shopping Vitória)… ambas as
+  unidades" (Real) passavam pelos detectores e iam para o prompt — confirmar o
+  número na entrada "Provas e números reais" ou abrir/fechar uma loja deixava a
+  voz afirmando o estado anterior. `condicoesOperacionais` pega `(não) está/
+  estão/foi/foram confirmado(s)` e `já confirmado`, `<número> lojas/unidades/
+  casas/endereços/filiais`, `ambas as unidades` e `unidades (Nome e Nome)`. A
+  Lagosta ficou só com a EXIGÊNCIA de confirmação na base (número tirado do
+  site incluído); a Real, com "todas as unidades vigentes, uma em cada linha;
+  quais são as unidades vem da base, na data da peça". "últimas unidades",
+  "uma unidade", "essa unidade" e "não confirmado na entrada X da base"
+  (exigência, não estado) passam. Teste com as duas frases reais (detectadas
+  no DNA — a leitura divide a regra da Real em DUAS frases, e as duas são
+  condição — e recusadas na voz) e as redações corrigidas; prévias de produção
+  regeradas (Real 11 → 17 fatos, Lagosta 15).
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
