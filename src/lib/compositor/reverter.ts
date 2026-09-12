@@ -29,12 +29,17 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   const v = validarCamadas(fv.layersSnapshot)
   if (v.camadas.length === 0) throw new CreativeError('SEM_SNAPSHOT', 'Esta arte não guardou o snapshot das camadas (só peças do compositor guardam)', 422)
 
-  const page = await db.page.findUnique({ where: { id: pageId }, select: { id: true, isTemplate: true } })
+  const page = await db.page.findUnique({ where: { id: pageId }, select: { id: true, isTemplate: true, copyAutoral: true } })
   if (!page) throw new CreativeError('PAGE_NOT_FOUND', 'A página desta arte não existe mais', 404)
   if (page.isTemplate) throw new CreativeError('PAGINA_E_MODELO', 'A página virou modelo do cliente; reverter apagaria a curadoria', 409)
 
+  // F1: o contrato da página acompanha as camadas restauradas — a reversão é
+  // uma revisão do SISTEMA (motivo `reverter-arte`), na mesma transação; sem
+  // isso a próxima edição levaria a culpa pelo que a reversão desfez (R09).
+  const { revisaoDaPaginaComCamadas } = await import('@/lib/copy-autoral/revisar-pagina')
+  const revisao = revisaoDaPaginaComCamadas(page.copyAutoral, v.camadas, { autor: 'sistema', motivo: 'reverter-arte (camadas do snapshot)', superficie: 'reverter-arte' })
   const r = await db.$transaction(async (tx) => {
-    await tx.page.update({ where: { id: pageId }, data: { layers: JSON.stringify(v.camadas) } })
+    await tx.page.update({ where: { id: pageId }, data: { layers: JSON.stringify(v.camadas), ...(revisao.estado === 'registrada' && revisao.copy ? { copyAutoral: revisao.copy as never } : {}) } })
     return invalidateScheduledRenders(tx, { pageIds: [pageId] })
   })
   /**

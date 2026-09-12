@@ -5,7 +5,12 @@
  * O que ela prova, com dados criados e apagados por ela:
  *  1. compor uma peça com `copyAutoral` grava o contrato na Page (original) e
  *     na Generation (`fieldValues.copyAutoral` = original + efetiva + comparável);
- *  2. a edição de texto pelo caminho do PATCH do editor vira REVISÃO da equipe;
+ *  2. a revisão da equipe pela função PURA que o PATCH do editor chama na
+ *     mesma escrita das camadas (`revisaoDaPaginaComCamadas`) — o handler do
+ *     PATCH em si NÃO é exercitado: exige sessão Clerk. É integração da
+ *     função de persistência, não do endpoint;
+ *  2b. editar o texto e RECOMPOR (a arte congelada de um carrossel) leva o
+ *     contrato da página à spec e grava a efetiva nova na página e na arte;
  *  3. `ajustarArte` com texto novo vira revisão de quem pediu (claude no chat) e
  *     a Generation nova leva original e efetiva;
  *  4. item de plano com contrato grava o contrato e o espelho posicional; a
@@ -16,7 +21,13 @@
  * Só roda contra o branch de dev (guard por compute, falha fechada). Sobe PNG
  * ao Blob de produção e apaga no cleanup (declarado).
  *
- * USO: npx tsx scripts/validar-copy-autoral.ts [--saida <pasta>]
+ * Cleanup: SÓ o que esta rodada criou (ids + a MARCA desta rodada, no projeto
+ * da prova). `--varrer-antigas` apaga também o que rodadas anteriores
+ * interrompidas deixaram com o prefixo da marca, SÓ neste projeto — nunca é o
+ * padrão, porque alcançaria uma rodada concorrente. Falha de cleanup conta
+ * como falha da prova (saída ≠ 0).
+ *
+ * USO: npx tsx scripts/validar-copy-autoral.ts [--saida <pasta>] [--varrer-antigas]
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -70,6 +81,7 @@ function argumento(nome: string): string | null {
 }
 const PROJETO = 8
 const SAIDA = argumento('--saida') ?? '.tmp-validar-copy-autoral'
+const VARRER_ANTIGAS = process.argv.includes('--varrer-antigas')
 const MARCA = `[PR3-COPY ${new Date().toISOString()}]`
 
 let ok = 0
@@ -96,12 +108,14 @@ async function main() {
   const { criarPlano, atualizarItem } = await import('../src/lib/planos/plano-service')
   const { montarSpecDoItem } = await import('../src/lib/planos/spec-do-item')
   const { montarRetornoDaPagina } = await import('../src/lib/mcp/catalogo/ver-geracao-retorno')
+  const { recomporPaginaDefasada } = await import('../src/lib/compositor/recompor')
   const { del } = await import('@vercel/blob')
   type CopyAutoral = import('../src/lib/copy-autoral').CopyAutoral
 
   const blobs = new Set<string>()
   const pages: string[] = []
   const planos: string[] = []
+  const posts: string[] = []
   let planoId: string | null = null
 
   const projeto = await db.project.findUnique({ where: { id: PROJETO }, select: { id: true, userId: true, name: true } })
@@ -166,7 +180,7 @@ async function main() {
     conferir('ver-geracao devolve a copy escrita × desenhada, comparável, e aponta EXATAMENTE os blocos que o compositor mudou', retorno1.copy?.comparavel === true && JSON.stringify([...retorno1.copy.blocosDiferentes].sort()) === JSON.stringify([...diferentesNaPeca].sort()) && retorno1.copy.original.length === 5, JSON.stringify(retorno1.copy?.blocosDiferentes))
 
     // ── 2. edição de texto pelo editor → revisão da equipe ─────────────────
-    console.log('2) o caminho do PATCH do editor: texto editado vira REVISÃO da equipe no contrato da página')
+    console.log('2) a função do PATCH do editor (revisão na mesma escrita das camadas): texto editado vira REVISÃO da equipe — o handler HTTP não é exercitado (sessão Clerk)')
     const apoio = camadas1.find((c) => c.type === 'text' && c.metadata?.compositor?.papel === 'apoio')
     const camadasEditadas = camadas1.map((c) => (c.id === apoio?.id ? { ...c, content: 'Peça editada pela equipe.\nPode apagar.' } : c))
     await db.page.update({ where: { id: persistido.pageId }, data: { layers: camadasEditadas as never } })
@@ -179,6 +193,33 @@ async function main() {
     const semMudanca = await registrarRevisaoDaPagina({ pageId: persistido.pageId, camadas: camadasEditadas, quem: { autor: 'equipe', motivo: 'autosave', superficie: 'editor' } })
     conferir('autosave sem mudança de texto não grava revisão', semMudanca.estado === 'sem-mudanca')
 
+    // ── 2b. recompor com o contrato (R01 da revisão do Codex) ───────────────
+    console.log('2b) editar o texto e RECOMPOR o slide de carrossel: a spec leva o contrato da página; página e arte recebem a efetiva nova')
+    const carrossel = await db.socialPost.create({
+      data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} carrossel — pode apagar`, mediaUrls: [fotoUrl, persistido.url], scheduleType: 'SCHEDULED', scheduledDatetime: daqui7, status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED' },
+      select: { id: true },
+    })
+    posts.push(carrossel.id)
+    const camadas2b = lerCamadas((await db.page.findUnique({ where: { id: persistido.pageId }, select: { layers: true } }))!.layers).camadas as Array<Record<string, any>>
+    const headline2b = camadas2b.find((c) => (c.type === 'text' || c.type === 'rich-text') && c.metadata?.compositor?.papel === 'headline')
+    await db.page.update({ where: { id: persistido.pageId }, data: { layers: camadas2b.map((c) => (c.id === headline2b?.id ? { ...c, content: 'Título recomposto' } : c)) as never } })
+    // a edição de texto pelo editor revisa o contrato na mesma escrita; aqui a função pura faz esse papel
+    const camadasEditadas2b = lerCamadas((await db.page.findUnique({ where: { id: persistido.pageId }, select: { layers: true } }))!.layers).camadas
+    await registrarRevisaoDaPagina({ pageId: persistido.pageId, camadas: camadasEditadas2b, quem: { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' } })
+    const r2b = await recomporPaginaDefasada({ pageId: persistido.pageId, origem: 'editor' })
+    if (r2b.url) blobs.add(r2b.url)
+    const pagina2b = lerCopyAutoral((await db.page.findUnique({ where: { id: persistido.pageId }, select: { copyAutoral: true } }))?.copyAutoral).copy
+    const gen2b = await db.generation.findUnique({ where: { id: persistido.generationId }, select: { fieldValues: true } })
+    const fv2b = (gen2b?.fieldValues ?? {}) as Record<string, any>
+    const efetiva2b = lerCopyAutoral(fv2b.copyAutoral?.efetiva).copy
+    const original2b = lerCopyAutoral(fv2b.copyAutoral?.original).copy
+    conferir('a recomposição RECOMPÔS (não recusou a spec) e trocou o slide', r2b.recomposta === true && r2b.trocados.length === 1, JSON.stringify({ recomposta: r2b.recomposta, trocados: r2b.trocados.length, avisos: r2b.avisos.slice(0, 2) }))
+    conferir('a spec gravada leva o contrato da página e os blocos saem dele', !!fv2b.spec?.copyAutoral && Array.isArray(fv2b.spec?.blocos) && fv2b.spec.blocos.some((b: { papel: string; linhas: string[] }) => b.papel === 'headline' && b.linhas[0] === 'Título recomposto'))
+    conferir('Page.copyAutoral é a efetiva RECOMPOSTA: manchete nova, revisão da equipe preservada, e nada atribuído à equipe além da manchete', !!pagina2b && pagina2b.blocos.find((b) => b.id === 'headline')!.linhas[0] === 'Título recomposto' && pagina2b.revisoes.some((r) => r.autor === 'equipe' && r.blocos.includes('headline')), JSON.stringify(pagina2b?.revisoes.map((r) => [r.autor, r.superficie, r.blocos])))
+    conferir('Generation.copyAutoral: original INTACTO (o do autor) e efetiva atualizada com o texto novo', !!original2b && original2b.blocos.find((b) => b.id === 'headline')!.linhas[0] === 'Título de teste' && !!efetiva2b && efetiva2b.blocos.find((b) => b.id === 'headline')!.linhas[0] === 'Título recomposto' && fv2b.copyAutoral?.comparavel === true)
+    const carrossel2b = await db.socialPost.findUnique({ where: { id: carrossel.id }, select: { mediaUrls: true } })
+    conferir('só o slide da arte trocou; a capa ficou', carrossel2b?.mediaUrls[0] === fotoUrl && carrossel2b.mediaUrls[1] === r2b.url && carrossel2b.mediaUrls.length === 2)
+
     // ── 3. ajustarArte com texto novo → revisão de quem pediu ──────────────
     console.log('3) ajustarArte com texto: revisão de quem pediu (claude) e a Generation nova leva original + efetiva')
     const ctaId = String(camadas1.find((c) => c.type === 'text' && c.metadata?.compositor?.papel === 'cta')?.id)
@@ -186,7 +227,7 @@ async function main() {
     if (ajustada?.url) blobs.add(ajustada.url)
     const pagina3 = lerCopyAutoral((await db.page.findUnique({ where: { id: persistido.pageId }, select: { copyAutoral: true } }))?.copyAutoral).copy!
     const ultima3 = pagina3.revisoes[pagina3.revisoes.length - 1]
-    conferir('a revisão do ajuste tem autor claude e só o bloco cta', pagina3.revisoes.length === pagina2.revisoes.length + 1 && ultima3.autor === 'claude' && JSON.stringify(ultima3.blocos) === JSON.stringify(['cta']), JSON.stringify(pagina3.revisoes.map((r) => [r.autor, r.blocos])))
+    conferir('a revisão do ajuste tem autor claude e só o bloco cta', pagina3.revisoes.length === (pagina2b?.revisoes.length ?? 0) + 1 && ultima3.autor === 'claude' && JSON.stringify(ultima3.blocos) === JSON.stringify(['cta']), JSON.stringify(pagina3.revisoes.map((r) => [r.autor, r.blocos])))
     const gen3 = await db.generation.findUnique({ where: { id: ajustada.generationId }, select: { fieldValues: true } })
     const fv3 = (gen3?.fieldValues ?? {}) as Record<string, any>
     const original3 = lerCopyAutoral(fv3.copyAutoral?.original).copy
@@ -251,38 +292,52 @@ async function main() {
     console.error('\n✗ a prova parou:', erro)
     mau++
   } finally {
-    console.log('\ncleanup (só os ids criados por esta prova)')
+    console.log('\ncleanup (só o que ESTA rodada criou, no projeto da prova)')
     const apagados = { posts: 0, generations: 0, jobs: 0, pages: 0, planos: 0, blobs: 0 }
-    try {
-      // Tudo o que esta prova (e qualquer rodada anterior interrompida) criou
-      // leva o prefixo da marca: o cleanup varre pelo prefixo, não só pelo
-      // carimbo desta rodada.
-      const PREFIXO = '[PR3-COPY '
+    const falhasDoCleanup: string[] = []
+    const passo = async (nome: string, fn: () => Promise<void>) => {
+      try {
+        await fn()
+      } catch (e) {
+        falhasDoCleanup.push(`${nome}: ${e instanceof Error ? e.message : String(e)}`)
+      }
+    }
+    // A marca desta rodada (com o carimbo) — nunca o prefixo: o prefixo alcançaria
+    // uma rodada concorrente (R1 da revisão do Codex). `--varrer-antigas` é o
+    // caminho explícito para o que rodadas interrompidas deixaram, só neste projeto.
+    const marcas = VARRER_ANTIGAS ? ['[PR3-COPY '] : [MARCA]
+    const filtroDePagina = { OR: [{ id: { in: pages } }, ...marcas.map((m) => ({ name: { contains: m }, Template: { projectId: PROJETO } }))] }
+    const idsDePagina = new Set<string>(pages)
+    await passo('páginas da rodada', async () => {
+      for (const p of await db.page.findMany({ where: filtroDePagina, select: { id: true } })) idsDePagina.add(p.id)
+    })
+    let idsDeGeracao: string[] = []
+    await passo('generations', async () => {
       const gens = await db.generation.findMany({
-        where: { projectId: PROJETO, OR: [...pages.map((id) => ({ fieldValues: { path: ['pageId'], equals: id } })), { fieldValues: { path: ['spec', 'nome'], string_contains: PREFIXO } }] },
+        where: { projectId: PROJETO, OR: [...[...idsDePagina].map((id) => ({ fieldValues: { path: ['pageId'], equals: id } })), ...marcas.map((m) => ({ fieldValues: { path: ['spec', 'nome'], string_contains: m } }))] },
         select: { id: true, resultUrl: true },
       })
       for (const g of gens) if (g.resultUrl) blobs.add(g.resultUrl)
-      const ids = gens.map((g) => g.id)
-      apagados.jobs = (await db.generationJob.deleteMany({ where: { generationId: { in: ids } } })).count
-      apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, caption: { contains: PREFIXO } } })).count
-      apagados.generations = (await db.generation.deleteMany({ where: { id: { in: ids } } })).count
-      await db.learningSignal.deleteMany({ where: { projectId: PROJETO, OR: [{ pageId: { in: pages } }, { generationId: { in: ids } }] } }).catch(() => undefined)
-      apagados.pages = (await db.page.deleteMany({ where: { OR: [{ id: { in: pages } }, { name: { contains: PREFIXO } }] } })).count
-      apagados.planos = (await db.planoDeConteudo.deleteMany({ where: { OR: [{ id: { in: planos } }, { projectId: PROJETO, titulo: { contains: PREFIXO } }] } })).count
-      for (const url of blobs) {
-        try {
-          await del(url)
-          apagados.blobs++
-        } catch (e) {
-          console.warn('  blob não apagado:', url, (e as Error).message)
-        }
-      }
-    } catch (e) {
-      console.error('  cleanup falhou:', e)
+      idsDeGeracao = gens.map((g) => g.id)
+    })
+    await passo('jobs', async () => { apagados.jobs = (await db.generationJob.deleteMany({ where: { generationId: { in: idsDeGeracao } } })).count })
+    await passo('posts', async () => { apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, ...marcas.map((m) => ({ caption: { contains: m } }))] } })).count })
+    await passo('generations', async () => { apagados.generations = (await db.generation.deleteMany({ where: { id: { in: idsDeGeracao } } })).count })
+    await passo('sinais', async () => { await db.learningSignal.deleteMany({ where: { projectId: PROJETO, OR: [{ pageId: { in: [...idsDePagina] } }, { generationId: { in: idsDeGeracao } }] } }) })
+    await passo('páginas', async () => { apagados.pages = (await db.page.deleteMany({ where: { id: { in: [...idsDePagina] } } })).count })
+    await passo('planos', async () => { apagados.planos = (await db.planoDeConteudo.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: planos } }, ...marcas.map((m) => ({ titulo: { contains: m } }))] } })).count })
+    for (const url of blobs) {
+      await passo(`blob ${url.slice(-40)}`, async () => {
+        await del(url)
+        apagados.blobs++
+      })
+    }
+    if (falhasDoCleanup.length) {
+      console.error('  ✗ cleanup incompleto:', falhasDoCleanup.join(' | '))
+      mau += falhasDoCleanup.length
     }
     console.log('  apagados:', JSON.stringify(apagados))
-    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ sha, branch, pendentes, banco: ENDPOINT, ok, falhas: mau, apagados }, null, 2))
+    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ sha, branch, pendentes, banco: ENDPOINT, ok, falhas: mau, apagados, falhasDoCleanup }, null, 2))
     console.log(`\n${ok} ok, ${mau} falha(s). Saída em ${resolve(SAIDA)}`)
     await db.$disconnect()
     process.exit(mau > 0 ? 1 : 0)

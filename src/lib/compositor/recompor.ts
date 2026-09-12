@@ -46,6 +46,8 @@ import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { blocosParaOCompositor, copyEfetivaDasCamadas, lerCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
 import { mesclarFieldValuesDaArte, preservarPropostaDeAprendizado } from '@/lib/creatives/mesclar-field-values'
@@ -340,6 +342,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       isTemplate: true,
       templateId: true,
       updatedAt: true,
+      copyAutoral: true,
       Template: { select: { id: true, name: true, projectId: true } },
     },
   })
@@ -410,7 +413,24 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     const { spec: specComCopy, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
     avisos.push(...avisosDaSpec)
     // O lado do bloco é o da composição original: só a copy muda (ver `specComAPosicaoOriginal`).
-    const spec = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
+    const specPosicionada = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
+    /**
+     * F1: a spec da recomposição leva o CONTRATO da página como ele está —
+     * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
+     * pela equipe, e o que algum caminho gravou sem revisar entra como revisão
+     * do sistema, superfície `recomposicao`) — e os blocos saem DELE. Sem
+     * isso `validarSpec` recusava a spec (blocos novos × contrato velho) e o
+     * slide ficava com o texto antigo (R01 da revisão do Codex, 12/09/2026).
+     * Página sem contrato recompõe pelo caminho legado, sem contrato.
+     */
+    const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
+    const contratoAtual: CopyAutoral | null = contratoDaPagina
+      ? copyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }).efetiva
+      : null
+    const { copyAutoral: _contratoVelho, ...specSemContrato } = specPosicionada
+    const spec: SpecDePeca = contratoAtual
+      ? { ...specSemContrato, copyAutoral: contratoAtual, blocos: blocosParaOCompositor(contratoAtual).blocos as unknown as SpecDePeca['blocos'] }
+      : specSemContrato
     /**
      * `provar: true` é obrigatório — ver a regra 2 do cabeçalho. Ele também
      * evita os efeitos colaterais da persistência do compositor: pasta da
@@ -431,6 +451,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     recomposta = true
 
     if (input.antesDeGravar) await input.antesDeGravar()
+    // F1: a copy EFETIVA da peça recomposta — o que as camadas novas mostram
+    // sobre o contrato atual. Vai para a página (o contrato do que ela mostra)
+    // e para a Generation (`copyAutoral.efetiva`); o `original` fica intacto.
+    const efetivaRecomposta = contratoAtual ? copyEfetivaDasCamadas(contratoAtual, camadas.camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    const copyAutoralAnterior = arte.fieldValues.copyAutoral && typeof arte.fieldValues.copyAutoral === 'object' ? (arte.fieldValues.copyAutoral as Record<string, unknown>) : null
     /**
      * Compare-and-set na versão LIDA da página. Enquanto a peça era composta a
      * página pode ter mudado — o revisor gravou um ajuste cujo render falhou,
@@ -441,7 +466,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      */
     const gravada = await db.page.updateMany({
       where: { id: page.id, updatedAt: page.updatedAt },
-      data: { layers: camadas.camadas as never, thumbnail: blob.url },
+      data: { layers: camadas.camadas as never, thumbnail: blob.url, ...(efetivaRecomposta ? { copyAutoral: efetivaRecomposta.efetiva as never } : {}) },
     })
     if (gravada.count === 0) {
       await del(blob.url).catch(() => undefined)
@@ -466,6 +491,16 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         composicao: composicao.diagnostico,
         layersSnapshot: camadas.camadas,
         thumbnailUrl: blob.url,
+        ...(efetivaRecomposta && contratoAtual
+          ? {
+              copyAutoral: {
+                original: copyAutoralAnterior?.original ?? contratoAtual,
+                efetiva: efetivaRecomposta.efetiva,
+                comparavel: (lerCopyAutoral(copyAutoralAnterior?.original ?? contratoAtual).copy?.origem.autor ?? 'desconhecido') !== 'desconhecido',
+                ...(efetivaRecomposta.lacunas.length ? { lacunas: efetivaRecomposta.lacunas } : {}),
+              },
+            }
+          : {}),
         recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
         // A recusa de uma rodada anterior fica superada por esta (C6-01).
         recusaDaRecomposicao: null,

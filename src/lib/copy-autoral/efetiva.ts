@@ -30,6 +30,11 @@ import { VERSAO_DO_CONTRATO, type BlocoAutoral, type CopyAutoral, type FuncaoDoB
 import { blocosEmOrdem } from './validar'
 import { aplicarRevisao, type MudancaDeBloco } from './revisao'
 
+/** O id do bloco `extra-…` que uma camada solta gera — estável entre leituras. */
+function idDeExtra(camada: Layer): string {
+  return `extra-${String(camada.id).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '') || 'camada'}`
+}
+
 function ehTextoVisivel(l: Layer): boolean {
   return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
 }
@@ -72,8 +77,11 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   const usadas = new Set<string>()
   const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
     if (b.funcao === 'livre') {
-      // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id do bloco).
-      const camada = camadas.find((c) => ehTextoVisivel(c) && (c.id === b.id || c.name === b.id))
+      // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id
+      // do bloco) — ou pelo id `extra-…` que uma leitura anterior deu à camada
+      // solta: sem isso a segunda leitura esvaziava o bloco e criava outro com o
+      // mesmo id (R03 da revisão do Codex, 12/09/2026).
+      const camada = camadas.find((c) => ehTextoVisivel(c) && !usadas.has(c.id) && (c.id === b.id || c.name === b.id || idDeExtra(c) === b.id))
       if (!camada) {
         lacunas.push(`o bloco "${b.id}" (livre) não foi desenhado`)
         return { ...b, linhas: [] }
@@ -107,7 +115,9 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   let ordem = blocos.reduce((m, b) => Math.max(m, b.ordem), -1) + 1
   for (const c of restantes) {
     const papel = papelDaCamada(c)
-    const id = `extra-${String(c.id).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '') || 'camada'}`
+    let id = idDeExtra(c)
+    // Id único mesmo quando duas camadas soltas dão o mesmo apelido.
+    for (let n = 2; blocos.some((x) => x.id === id); n++) id = `${idDeExtra(c)}-${n}`
     blocos.push({
       id,
       funcao: papel && papel !== 'headline2' ? papel : 'livre',

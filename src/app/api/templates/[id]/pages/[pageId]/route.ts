@@ -6,6 +6,7 @@ import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { reconciliarMarcasDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { descreverDiff, diffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import {
   caiNaEscolhaPropria,
@@ -181,6 +182,20 @@ export async function PATCH(
     const copyAntes = layersChanged ? copyParaDecisao(existingPage.layers) : null
     const copyDepois = layersChanged ? copyParaDecisao(updateData.layers) : null
 
+    /**
+     * F1: o contrato da copy autoral da página ganha a REVISÃO desta edição
+     * (autor `equipe`, superfície `editor`) NA MESMA ESCRITA das camadas — o
+     * diff é exato e decide sozinho se há revisão (mudou só o destaque do rich
+     * text, ou uma quebra: revisa; autosave idêntico: não). Calculada aqui e
+     * não num `after()`, para dois autosaves fora de ordem não deixarem a
+     * página com as camadas B e o contrato de A. Página sem contrato fica
+     * como está — não se inventa histórico.
+     */
+    if (layersChanged) {
+      const revisao = revisaoDaPaginaComCamadas(existingPage.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+      if (revisao.estado === 'registrada' && revisao.copy) updateData.copyAutoral = revisao.copy
+    }
+
     let page
     let invalidated = 0
     let congelados: string[] = []
@@ -264,13 +279,6 @@ export async function PATCH(
       const diff = diffDeTexto!
       const projectId = template!.Project.id
       after(async () => {
-        /**
-         * F1: o contrato da copy autoral da página ganha a REVISÃO desta
-         * edição (autor `equipe`, superfície `editor`). Página sem contrato
-         * fica como está — não se inventa histórico. Nunca lança.
-         */
-        const { registrarRevisaoDaPagina } = await import('@/lib/copy-autoral/persistir')
-        await registrarRevisaoDaPagina({ pageId, camadas: updateData.layers, quem: { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' } })
         /**
          * `decididoPor` é o `User.id` INTERNO, nunca o clerkId. Busca
          * somente leitura: criar linha de User a partir daqui é justamente

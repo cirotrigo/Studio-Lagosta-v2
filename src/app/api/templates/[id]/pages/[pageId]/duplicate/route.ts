@@ -85,6 +85,11 @@ export async function POST(
         thumbnail: null, // Não copiar thumbnail - será gerado ao abrir a página
         order: newOrder, // Logo após a página original
         templateId,
+        // F1: a cópia leva o contrato da copy (autoria, fatos, histórico) — a
+        // origem é conhecida. Os ids autorais dos blocos não mudam; só um bloco
+        // `extra-<id de camada>` (texto solto lido da página) perde o vínculo
+        // com a camada regenerada e é relido como extra novo na próxima revisão.
+        ...(pageToDuplicate.copyAutoral != null ? { copyAutoral: pageToDuplicate.copyAutoral as never } : {}),
       },
     })
 

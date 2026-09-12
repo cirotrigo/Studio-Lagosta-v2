@@ -6257,12 +6257,30 @@ dev: `scripts/validar-copy-autoral.ts`.
 - **`comparavel` só é verdadeiro com autoria conhecida.** Spec que chega só com
   `blocos` (legado) vira contrato ADAPTADO com `origem.autor: 'desconhecido'` e
   entra na métrica como "não comparável" — nunca como fidelidade comprovada.
-- **Quem mexe no texto revisa o contrato da página, com o autor certo**
-  (`registrarRevisaoDaPagina`): o PATCH do editor (`equipe`, `editor`) e
-  `ajustarArte` (`equipe` quando `canal: 'studio'`, `claude` no resto). Página SEM
-  contrato fica sem — a função sai calada (`sem-contrato`), nunca lança, e sem
-  mudança de texto não há revisão. A Generation do ajuste leva `original` (o
-  contrato da página, já revisado) e `efetiva` (as camadas finais).
+- 🔴 **Quem grava camadas grava a revisão do contrato NA MESMA ESCRITA**
+  (`revisaoDaPaginaComCamadas`, puro, em `revisar-pagina.ts`): o PATCH do editor
+  (`equipe`, `editor` — disparado por QUALQUER mudança de camadas, e o diff
+  exato decide se há revisão: só o destaque do rich text, ou uma quebra, revisa;
+  autosave idêntico não), `ajustarArte` (`equipe` com `canal: 'studio'`, `claude`
+  no resto), `reverterCamadasDaArte` (`sistema`, `reverter-arte`) e a
+  recomposição. Calculada num `after()`, dois autosaves fora de ordem deixavam
+  a página com as camadas B e o contrato de A (R02 da revisão do Codex). Página
+  SEM contrato fica sem (`sem-contrato`), nunca lança. A Generation do ajuste
+  leva `original` (o contrato da página, já revisado) e `efetiva` (as camadas
+  finais). `registrarRevisaoDaPagina` (com Prisma, compare-and-set no contrato
+  lido) é só o caminho tardio para quem tem o `pageId` e camadas já gravadas.
+- **A recomposição leva à spec o contrato DA PÁGINA como ela está** (lido das
+  camadas atuais sobre o contrato gravado) e tira os blocos dele; ao terminar,
+  grava a efetiva recomposta na página e em `fieldValues.copyAutoral.efetiva`
+  (o `original` fica). Manter o contrato velho na spec fazia `validarSpec`
+  recusar a recomposição e o slide ficava com o texto antigo (R01).
+- **Bloco VAZIO de propósito não vira bloco do compositor**
+  (`blocosParaOCompositor` o pula; ele continua no contrato): o schema exige
+  linha, e o item de plano com `cta: []` caía em `SPEC_INVALIDA` na fila.
+- **Texto solto lido como bloco `extra-<id>` é relido ESTÁVEL** (o bloco casa
+  também pelo id que a leitura anterior deu à camada; ids únicos) — antes a
+  segunda leitura esvaziava o bloco e criava outro com o mesmo id, e o
+  contrato deixava de ser lido (R03). Duplicar página leva o contrato (R08).
 - **O compositor ainda transforma texto, e o contrato EXPÕE isso em vez de
   esconder**: a seta no CTA e o destaque não desenhado saem em `ver-geracao`
   como `copy.blocosDiferentes` e na revisão do sistema. Tirar as transformações

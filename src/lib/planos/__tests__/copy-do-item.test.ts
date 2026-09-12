@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { VERSAO_DO_CONTRATO, lerCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 import { CopyAutoralInvalida, copyDoItemNoPatch, copyDoItemNovo, espelhoDoContrato } from '../copy-do-item'
+import { montarSpecDoItem } from '../spec-do-item'
+import { validarSpec } from '@/lib/compositor/spec'
 
 const contrato: CopyAutoral = {
   versao: VERSAO_DO_CONTRATO,
@@ -82,5 +84,16 @@ describe('a copy do item de plano: o contrato manda, a lista é o espelho', () =
   it('item sem contrato editado pela lista continua sem contrato (nada é inventado)', () => {
     const r = copyDoItemNoPatch(null, { copyProposta: ['A', 'B'] }, { autor: 'equipe', superficie: 'bancada' })!
     expect(r).toEqual({ copyAutoral: null, copyProposta: ['A', 'B'], avisos: [] })
+  })
+
+  it('R01 (C2): item com bloco VAZIO de propósito (cta: []) passa inteiro por copyDoItemNovo → montarSpecDoItem → validarSpec, e a fila o revalida', () => {
+    const item = copyDoItemNovo({ copyAutoral: contrato })
+    const spec = montarSpecDoItem({ id: 'item-1', planoId: 'plano-1', formato: 'story', copyAutoral: item.copyAutoral, copyProposta: item.copyProposta } as never, 8, [], false)
+    expect(spec.blocos?.map((b) => b.papel)).toEqual(['pre', 'headline', 'servico'])
+    const v = validarSpec(spec)
+    expect(v.problemas).toEqual([])
+    expect(v.spec?.copyAutoral?.blocos.find((b) => b.id === 'cta')?.linhas).toEqual([])
+    // a spec revalidada (como a fila faz ao executar) continua válida
+    expect(validarSpec(JSON.parse(JSON.stringify(v.spec))).problemas).toEqual([])
   })
 })
