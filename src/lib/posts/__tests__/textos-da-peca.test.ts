@@ -209,14 +209,15 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
   it('R36: arte de `post-schedule` (MODELO + copy do post) nunca devolve o texto cru do modelo — vale a copy registrada na arte, PARCIAL; a cópia da página cai na leitura normal', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: 'g1', slotValues: null }
     const modelo = [{ id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo' }, { id: 'l2', name: 'apoio', type: 'text', content: 'Apoio do modelo' }]
-    const arte = { pageId: 'tpl', source: 'post-schedule', slotValues: { headline: 'Costela no bafo' } }
+    // R47: a arte carrega o REGISTRO das camadas que o render desenhou — sem ele, nada se afirma (ver o teste de R47)
+    const arte = { pageId: 'tpl', source: 'post-schedule', slotValues: { headline: 'Costela no bafo' }, layersSnapshot: modelo }
     // reagendado por generationId, VIVO: a página da arte (o modelo) está carregada e mesmo assim não é lida
     const vivo = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }] })
     expect(vivo.textos).toEqual(['Costela no bafo'])
     expect(vivo.origem).toBe('arte')
     expect(vivo.parcial).toBe(true)
     expect(JSON.stringify(vivo)).not.toContain('Título do modelo')
-    // ENTREGUE: sem snapshot, a copy da arte continua sendo o que se sabe (parcial) — não "indisponível"
+    // ENTREGUE: pelo registro das camadas desenhadas, a copy que o render aplicou (parcial)
     const entregue = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }] })
     expect(entregue).toMatchObject({ textos: ['Costela no bafo'], origem: 'arte', parcial: true })
     // duas mídias com copies DISTINTAS sobre o MESMO modelo: cada slide com a sua
@@ -266,7 +267,8 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
       { id: 'l3', name: 'oculta', type: 'text', content: 'Placeholder escondido', order: 3, visible: false },
     ]
     const slots = { l1: 'Picanha', headline: 'Costela', apoio: 'sexta é dia', oculta: 'Não desenhado' }
-    const arte = { pageId: 'tpl', source: 'post-schedule', slotValues: slots }
+    const arte = { pageId: 'tpl', source: 'post-schedule', slotValues: slots, layersSnapshot: modelo }
+    const semRegistro = { pageId: 'tpl', source: 'post-schedule', slotValues: slots }
     // o que o render desenha, pela MESMA função
     expect(aplicarSlotNaCamada(modelo[1], slots).content).toBe('Picanha')
     const esperado = ['Picanha', aplicarCaixa('sexta é dia', 'uppercase')]
@@ -274,7 +276,7 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
       const j = JSON.stringify(r)
       for (const proibido of ['Costela', 'Não desenhado', 'Título do modelo', 'Apoio do modelo', 'Placeholder escondido']) expect(j).not.toContain(proibido)
     }
-    // peça VIVA e ENTREGUE (publicada e no publicador), com a página do modelo
+    // peça VIVA e ENTREGUE (publicada e no publicador), pelo registro das camadas desenhadas (a página carregada não conta — R47)
     for (const peca of [{ status: 'DRAFT' }, { status: 'POSTED' }, { status: 'SCHEDULED', laterPostId: 'zernio-1' }]) {
       const r = textosDaPeca({ ...base, ...peca }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }] })
       expect(r).toMatchObject({ textos: esperado, origem: 'arte', parcial: true })
@@ -294,31 +296,90 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
       semDescartado(r)
     }
 
-    // SEM camadas legíveis do modelo (página fora do projeto/apagada e sem snapshot; ou ilegível): indisponível, e a copy bruta NÃO vai à mídia
+    // SEM registro legível das camadas desenhadas (a página, carregada ou não, não conta — R47; registro ilegível): indisponível, e a copy bruta NÃO vai à mídia
     const semValores = (r: unknown) => {
       semDescartado(r)
       expect(JSON.stringify(r)).not.toContain('Picanha')
       expect(JSON.stringify(r)).not.toContain('sexta é dia')
     }
-    const vivaSemPagina = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte }] })
+    const vivaSemPagina = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: semRegistro }] })
     expect(vivaSemPagina.textos).toEqual([])
     expect(vivaSemPagina.origem).toBeUndefined()
-    expect(vivaSemPagina.indisponiveis).toMatch(/a arte desta peça não afirma texto \(arte desenhada de um modelo cuja página não foi carregada.*id da camada vence o nome/)
+    expect(vivaSemPagina.indisponiveis).toMatch(/a arte desta peça não afirma texto \(arte desenhada de um modelo sem registro das camadas que o render usou.*id da camada vence o nome/)
     semValores(vivaSemPagina)
-    const entregueSemPagina = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte }] })
+    const entregueSemPagina = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte: semRegistro }] })
     expect(entregueSemPagina.textos).toEqual([])
     expect(entregueSemPagina.indisponiveis).toBeTruthy()
     semValores(entregueSemPagina)
-    const ilegivel = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte, camadasDaPagina: '{nao é json' }] })
+    const ilegivel = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { ...semRegistro, layersSnapshot: '{nao é json' }, camadasDaPagina: modelo }] })
     expect(ilegivel.textos).toEqual([])
-    expect(ilegivel.indisponiveis).toMatch(/as camadas do modelo desta arte não puderam ser lidas/)
+    expect(ilegivel.indisponiveis).toMatch(/as camadas registradas desta arte de modelo não puderam ser lidas/)
     semValores(ilegivel)
     // carrossel com um slide sem página: aquele slide declara, o outro responde, a leitura é parcial
-    const carrosselSemPagina = textosDaPeca({ ...base, mediaUrls: ['u1', 'u2'], status: 'POSTED' }, { slides: [{ url: 'u1', arte }, { url: 'u2', arte: outra, camadasDaPagina: modelo }] })
-    expect(carrosselSemPagina.slides?.[0]).toMatchObject({ textos: [], indisponiveis: expect.stringMatching(/página não foi carregada/) })
+    const carrosselSemPagina = textosDaPeca({ ...base, mediaUrls: ['u1', 'u2'], status: 'POSTED' }, { slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: modelo }, { url: 'u2', arte: outra, camadasDaPagina: modelo }] })
+    expect(carrosselSemPagina.slides?.[0]).toMatchObject({ textos: [], indisponiveis: expect.stringMatching(/sem registro das camadas/) })
     expect(carrosselSemPagina.slides?.[1].textos).toEqual(['Linguiça da casa'])
     expect(carrosselSemPagina).toMatchObject({ textos: ['Linguiça da casa'], origem: 'arte', parcial: true })
     semValores(carrosselSemPagina)
+  })
+
+  it('R47: a estrutura ATUAL do modelo nunca diz o que a arte desenhou — sem o registro das camadas da versão renderizada, indisponível em qualquer estado (vivo, publicado, no publicador, falhou, carrossel), e a copy que o post herdou dessa arte não é afirmada', () => {
+    const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: 'g1', slotValues: null }
+    // o que o render DESENHOU: a camada `l1` chamada "headline"; slots endereçando a mesma camada por id e por nome
+    const renderizado = [{ id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', order: 1 }]
+    const slots = { l1: 'Picanha', headline: 'Costela' }
+    expect(aplicarSlotNaCamada(renderizado[0], slots).content).toBe('Picanha')
+    // DEPOIS da entrega a camada foi apagada e recriada com outro id e o mesmo nome — e a caixa, a visibilidade e a
+    // ordem também mudam em outras edições. Aplicar os slots na página de hoje daria o valor que o render descartou.
+    const recriado = [{ id: 'l2', name: 'headline', type: 'text', content: 'Título do modelo', order: 1 }]
+    expect(aplicarSlotNaCamada(recriado[0], slots).content).toBe('Costela')
+    const caixaEOrdemTrocadas = [
+      { id: 'lx', name: 'apoio', type: 'text', content: 'Apoio novo', order: 0 },
+      { id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', order: 5, style: { textTransform: 'uppercase' } },
+    ]
+    const oculto = [{ ...renderizado[0], visible: false }]
+    const semRegistro = { pageId: 'tpl', source: 'post-schedule', slotValues: slots }
+    const comRegistro = { ...semRegistro, layersSnapshot: renderizado }
+    const nuncaCostela = (r: unknown) => expect(JSON.stringify(r)).not.toContain('Costela')
+
+    for (const peca of [{ status: 'DRAFT' }, { status: 'POSTED' }, { status: 'SCHEDULED', laterPostId: 'zernio-1' }, { status: 'FAILED' }]) {
+      for (const paginaDeHoje of [recriado, caixaEOrdemTrocadas, oculto]) {
+        // sem registro, com a página de hoje carregada: indisponível — nem "Costela", nem "Picanha"
+        const r = textosDaPeca({ ...base, ...peca }, { slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: paginaDeHoje }] })
+        expect(r.textos).toEqual([])
+        expect(r.origem).toBeUndefined()
+        expect(r.indisponiveis).toMatch(/sem registro das camadas que o render usou/)
+        nuncaCostela(r)
+        expect(JSON.stringify(r)).not.toContain('Picanha')
+        // com o registro: exatamente o que o render aplicou, na caixa e visibilidade registradas, qualquer que seja a página de hoje
+        const c = textosDaPeca({ ...base, ...peca }, { slides: [{ url: 'u1', arte: comRegistro, camadasDaPagina: paginaDeHoje }] })
+        expect(c).toMatchObject({ textos: ['Picanha'], origem: 'arte', parcial: true })
+        nuncaCostela(c)
+        // o post sem página própria HERDOU a copy da arte no agendamento: sem registro, ela também não é afirmada
+        const h = textosDaPeca({ ...base, ...peca, slotValues: slots }, { slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: paginaDeHoje }] })
+        expect(h.textos).toEqual([])
+        expect(h.origem).toBeUndefined()
+        expect(h.indisponiveis).toMatch(/herdou dela não diz quais valores chegaram à mídia/)
+        nuncaCostela(h)
+        expect(JSON.stringify(h)).not.toContain('Picanha')
+        // herdada e COM registro: o slide responde pelo registro, e o valor descartado continua fora
+        const hc = textosDaPeca({ ...base, ...peca, slotValues: slots }, { slides: [{ url: 'u1', arte: comRegistro, camadasDaPagina: paginaDeHoje }] })
+        expect(hc).toMatchObject({ textos: ['Picanha'], origem: 'arte' })
+        nuncaCostela(hc)
+      }
+      // CARROSSEL no mesmo estado: o slide sem registro declara, o com registro responde pelo registro
+      const outraComRegistro = { ...comRegistro, slotValues: { l1: 'Linguiça', headline: 'Costela' } }
+      const k = textosDaPeca({ ...base, ...peca, mediaUrls: ['u1', 'u2'] }, { slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: recriado }, { url: 'u2', arte: outraComRegistro, camadasDaPagina: recriado }] })
+      expect(k.slides?.[0]).toMatchObject({ textos: [], indisponiveis: expect.stringMatching(/sem registro das camadas/) })
+      expect(k.slides?.[1]).toMatchObject({ textos: ['Linguiça'], origem: 'arte', parcial: true })
+      expect(k).toMatchObject({ textos: ['Linguiça'], origem: 'arte', parcial: true })
+      nuncaCostela(k)
+    }
+    // a página de caixa/ordem trocadas NÃO muda a leitura do registro: sem caixa alta, só a camada registrada
+    const semCaixa = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte: comRegistro, camadasDaPagina: caixaEOrdemTrocadas }] })
+    expect(semCaixa.textos).toEqual(['Picanha'])
+    expect(JSON.stringify(semCaixa)).not.toContain('PICANHA')
+    expect(JSON.stringify(semCaixa)).not.toContain('Apoio novo')
   })
 
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {

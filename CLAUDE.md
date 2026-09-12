@@ -6541,10 +6541,22 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   da revisão final de b90b4335): a copy registrada na arte pode endereçar a
   mesma camada por id e por nome, e o render aplica só a do id. Enumerar os
   valores brutos devolvia o valor descartado como texto da mídia. Hoje só entra
-  o que `aplicarSlotNaCamada` aplica às camadas de texto visíveis (snapshot
-  confiável da arte, senão a página do modelo — que o handler agora carrega
-  também na peça ENTREGUE), na ordem e na caixa delas. Sem camadas legíveis, a
-  arte se declara indisponível: a copy bruta nunca é atribuída à mídia.
+  o que `aplicarSlotNaCamada` aplica às camadas de texto visíveis do REGISTRO
+  das camadas desenhadas (o snapshot confiável da arte — R47), na ordem e na
+  caixa delas. Sem registro legível, a arte se declara indisponível: a copy
+  bruta nunca é atribuída à mídia.
+- 🔴 **A estrutura ATUAL do modelo não diz o que a arte desenhou** (R47 da
+  oitava revisão final de 74afb769): a Generation de `post-schedule` guarda
+  slots e `pageId`, sem as camadas, e depois do render a camada pode ser
+  apagada e recriada com outro id e o mesmo nome, ou ter caixa, ordem e
+  visibilidade trocadas — aplicar os slots na página de HOJE devolvia pela mídia
+  congelada o valor que o render descartou. Só o snapshot confiável afirma, em
+  QUALQUER estado: o slide que lê a arte de modelo é sempre um PNG congelado
+  (post sem página própria ou carrossel), e o handler não carrega mais a página
+  do modelo para a peça entregue. A copy que o post herdou dessa arte no
+  agendamento também não é afirmada pelo fallback `copy-do-post` — é o mesmo
+  valor bruto. A leitura dessas artes só volta quando o render gravar o
+  registro das camadas que desenhou.
 - 🔴 **Prova que agenda pelo serviço tem de apagar os SINAIS dos posts que
   criou** (R39 da revisão de 03c279ff): `agendarPost` registra sinal de slot e
   de copy por post (`escolha-propria`), e `LearningSignal.postId` não tem FK —
@@ -6554,6 +6566,15 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   pela marca na legenda, para a falha parcial antes do `push`), apaga os sinais
   deles restritos por projeto, post e início da rodada, e confere que nenhum
   sobrou — sobra é falha do cleanup, não aviso.
+- 🔴 **Cleanup de prova é uma lista de PASSOS INDEPENDENTES, e nenhuma exclusão
+  roda fora da proteção** (R48 da oitava revisão final de 74afb769): o primeiro
+  `generation.deleteMany` do `finally` estava fora do bloco protegido, e uma
+  falha de conexão nele pulava tudo — posts, entradas, usos e sinais ficavam no
+  dev e nem o `resultado.json` era escrito. `limparRodada`
+  (`scripts/lib/limpeza-contexto-da-semana.ts`, sem Prisma) roda cada passo no
+  próprio `try`, ACUMULA a falha e continua; a prova soma as falhas ao placar
+  (saída ≠ 0) e grava o resultado e desconecta mesmo assim. Teste com banco
+  falso em que só uma exclusão falha.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito

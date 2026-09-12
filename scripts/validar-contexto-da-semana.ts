@@ -24,6 +24,7 @@
  * USO: npx tsx scripts/validar-contexto-da-semana.ts [--saida <pasta>]
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { limparRodada, type BancoDaLimpeza } from './lib/limpeza-contexto-da-semana'
 import { resolve } from 'node:path'
 
 const ROOT = process.cwd()
@@ -373,13 +374,14 @@ async function main() {
 
       // R36 (revisão final de bf4650f2): a arte de `post-schedule` desenhou um MODELO com a copy do post por cima.
       // Reagendada por generationId (post sem página), a agenda lia a PÁGINA da arte — o modelo — e devolvia
-      // "Título do modelo" por uma mídia que mostra "Costela no bafo". Vale a copy registrada na arte, PARCIAL.
+      // "Título do modelo" por uma mídia que mostra "Costela no bafo". Vale a copy registrada na arte, PARCIAL — e só com o
+      // REGISTRO das camadas que o render desenhou (R47): as artes daqui o carregam; a 3i prova a arte sem ele.
       console.log('3f) ver-agenda: arte de post-schedule (modelo + copy) reagendada por generationId NÃO devolve o texto do modelo (R36)')
       const dia3f = somarDias(hoje, 8)
       const copyA = `${MARCA} copy A do reagendado`, copyB = `${MARCA} copy B do reagendado`
-      const genModA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyA } } as never }, select: { id: true } })
+      const genModA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyA }, layersSnapshot: pagina!.layers } as never }, select: { id: true } })
       geracoes.push(genModA.id) // R44: coletado ANTES do próximo await
-      const genModB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyB } } as never }, select: { id: true } })
+      const genModB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyB }, layersSnapshot: pagina!.layers } as never }, select: { id: true } })
       geracoes.push(genModB.id) // R44: coletado ANTES do próximo await
       // R37: a arte de post-schedule RE-RENDERIZADA (o PNG novo é a página atual) não afirma mais a copy antiga.
       const genModRR = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-rerender.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy ANTIGA do re-render` }, recomposicao: { estado: 're-renderizada' } } as never }, select: { id: true } })
@@ -406,7 +408,7 @@ async function main() {
       const blobHost = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/prova-pr6'
       const genRR2 = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-rerender-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A invalidada` }, recomposicao: { estado: 're-renderizada' } } as never }, select: { id: true, resultUrl: true } })
       geracoes.push(genRR2.id) // R44: coletado ANTES do próximo await
-      const genCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-controle-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy B legítima` } } as never }, select: { id: true } })
+      const genCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-controle-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy B legítima` }, layersSnapshot: pagina!.layers } as never }, select: { id: true } })
       geracoes.push(genCtl.id) // R44: coletado ANTES do próximo await
       const dia3g = somarDias(hoje, 9)
       const agRR = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3g} 10:00`, generationId: genRR2.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3g re-renderizada` })
@@ -437,7 +439,7 @@ async function main() {
       console.log('3h) agendar → re-renderizar → entregar → consultar: a copy A herdada no agendamento não é atribuída à mídia B (R42); o controle é a mesma arte NÃO re-renderizada, cuja copy é legítima')
       const genH = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A herdada 3h` } } as never }, select: { id: true, resultUrl: true } })
       geracoes.push(genH.id) // R44: coletado ANTES do próximo await — a falha na criação seguinte não deixa esta fora do cleanup
-      const genHCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-ctl.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A legítima 3h` } } as never }, select: { id: true } })
+      const genHCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-ctl.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A legítima 3h` }, layersSnapshot: pagina!.layers } as never }, select: { id: true } })
       geracoes.push(genHCtl.id)
       const dia3h = somarDias(hoje, 10)
       const agH = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3h} 12:00`, generationId: genH.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3h herdada` })
@@ -460,6 +462,38 @@ async function main() {
       conferir('R42: entregue, a copy A herdada NÃO é atribuída à mídia B — `textosIndisponiveis` diz que a arte foi re-renderizada e que não há registro textual confiável (sem afirmar cronologia — R45)', !!iH && !('textos' in iH) && /re-renderizada .*não guarda registro textual confiável/.test(iH.textosIndisponiveis ?? '') && !/DEPOIS do agendamento/.test(iH.textosIndisponiveis ?? '') && !JSON.stringify(iH).includes('copy A herdada 3h'), JSON.stringify(iH).slice(0, 300))
       conferir('controle 3h: a mesma arte NÃO re-renderizada volta com a copy legítima (parcial, origem "arte")', !!iHCtl && mesmaSequenciaSemCaixa(iHCtl.textos, [`${MARCA} copy A legítima 3h`]) && iHCtl.textosParciais === true && iHCtl.textosOrigem === 'arte', JSON.stringify(iHCtl).slice(0, 300))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3h.json'), JSON.stringify(agenda3h, null, 2))
+
+      // R47 (oitava revisão final de 74afb769): a arte de modelo só afirma com o REGISTRO das camadas desenhadas. A de
+      // `post-schedule` sem ele (a do serviço de post guarda slots e pageId, sem camadas) não pode ser lida pela página de
+      // HOJE do modelo — em estado nenhum; e a com registro de OUTRA estrutura responde só pelo que o registro aplica.
+      console.log('3i) arte de post-schedule SEM registro das camadas: a página atual do modelo não diz o que a mídia mostra — indisponível viva, publicada e no publicador (R47); com registro, só o que ele aplicou')
+      const dia3i = somarDias(hoje, 11)
+      const copyAtual3i = `${MARCA} só casa com a página atual 3i`
+      const aplicada3i = `${MARCA} aplicada pelo registro 3i`, descartada3i = `${MARCA} descartada pelo render 3i`
+      const urlSemReg = `${marcaUrl}/3i-sem-registro.png`, urlComReg = `${marcaUrl}/3i-com-registro.png`
+      const genSemReg = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: urlSemReg, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyAtual3i } } as never }, select: { id: true } })
+      geracoes.push(genSemReg.id)
+      // o registro é de OUTRA estrutura: a camada `r47-l1` chamada `r47-headline`; o slot pelo nome é descartado pelo render
+      // e o slot pela chave da página de hoje não casa com camada nenhuma do registro
+      const registro3i = [{ id: 'r47-l1', name: 'r47-headline', type: 'text', content: 'modelo antigo', visible: true, order: 1 }]
+      const genComReg = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: urlComReg, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, layersSnapshot: registro3i, slotValues: { 'r47-l1': aplicada3i, 'r47-headline': descartada3i, [chaveDoTexto]: copyAtual3i } } as never }, select: { id: true } })
+      geracoes.push(genComReg.id)
+      const base3i = { projectId: PROJETO, userId: projeto.userId, postType: 'STORY' as const, scheduleType: 'SCHEDULED' as const, publishType: 'REMINDER' as const, renderStatus: 'NOT_NEEDED' as const, pageId: null }
+      const vivo3i = await db.socialPost.create({ data: { ...base3i, caption: `${MARCA} 3i vivo`, mediaUrls: [urlSemReg], scheduledDatetime: new Date(`${dia3i}T10:00:00-03:00`), status: 'DRAFT', generationId: genSemReg.id, slotValues: { [chaveDoTexto]: copyAtual3i } as never }, select: { id: true } })
+      posts.push(vivo3i.id)
+      const publicado3i = await db.socialPost.create({ data: { ...base3i, caption: `${MARCA} 3i publicado`, mediaUrls: [urlSemReg], scheduledDatetime: new Date(`${dia3i}T11:00:00-03:00`), status: 'POSTED', generationId: genSemReg.id, slotValues: { [chaveDoTexto]: copyAtual3i } as never }, select: { id: true } })
+      posts.push(publicado3i.id)
+      const publicador3i = await db.socialPost.create({ data: { ...base3i, postType: 'CAROUSEL', caption: `${MARCA} 3i carrossel no publicador`, mediaUrls: [urlSemReg, urlComReg], scheduledDatetime: new Date(`${dia3i}T12:00:00-03:00`), status: 'SCHEDULED', laterPostId: `prova-3i-${Date.now()}`, generationId: genSemReg.id }, select: { id: true } })
+      posts.push(publicador3i.id)
+      const agenda3i = await tool('ver-agenda', { projectId: PROJETO, from: dia3i, to: dia3i })
+      const itens3i = (agenda3i.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const iV3i = itens3i.find((i) => i.postId === vivo3i.id), iP3i = itens3i.find((i) => i.postId === publicado3i.id), iK3i = itens3i.find((i) => i.postId === publicador3i.id)
+      const semCopyAtual = (i: unknown) => !JSON.stringify(i).includes('só casa com a página atual 3i') && !JSON.stringify(i).includes('descartada pelo render 3i')
+      conferir('R47: VIVO, a arte de modelo sem registro (com a página do modelo carregada) e a copy que o post herdou dela NÃO são afirmadas — `textosIndisponiveis`, sem a copy', !!iV3i && !('textos' in iV3i) && /sem registro das camadas/.test(iV3i.textosIndisponiveis ?? '') && semCopyAtual(iV3i), JSON.stringify({ ind: iV3i?.textosIndisponiveis, textos: iV3i?.textos }).slice(0, 260))
+      conferir('R47: PUBLICADA, idem — indisponível, sem a copy herdada', !!iP3i && !('textos' in iP3i) && /sem registro das camadas/.test(iP3i.textosIndisponiveis ?? '') && semCopyAtual(iP3i), JSON.stringify({ ind: iP3i?.textosIndisponiveis, textos: iP3i?.textos }).slice(0, 260))
+      const slides3i = (iK3i?.textosPorSlide as Array<{ textos: string[]; indisponiveis?: string; origem?: string }> | undefined) ?? []
+      conferir('R47: carrossel NO PUBLICADOR — o slide sem registro declara; o com registro de outra estrutura devolve só o que o registro aplicou (id vence nome), nunca a copy que casaria com a página de hoje', !!iK3i && slides3i.length === 2 && slides3i[0].textos.length === 0 && /sem registro das camadas/.test(slides3i[0].indisponiveis ?? '') && mesmaSequenciaSemCaixa(slides3i[1].textos, [aplicada3i]) && slides3i[1].origem === 'arte' && mesmaSequenciaSemCaixa(iK3i.textos, [aplicada3i]) && iK3i.textosParciais === true && semCopyAtual(iK3i), JSON.stringify({ textos: iK3i?.textos, slides: slides3i }).slice(0, 300))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3i.json'), JSON.stringify(agenda3i, null, 2))
 
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
       console.log('3e) carrossel PUBLICADO com cópia A no post, slide re-renderizado e slide sem arte: nada é afirmado — indisponível, slide a slide')
@@ -562,47 +596,32 @@ async function main() {
     mau++
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou)')
-    if (generationsDaProva.length) await db.generation.deleteMany({ where: { id: { in: generationsDaProva }, projectId: PROJETO } })
-    const falhas: string[] = []
-    const apagados = { posts: 0, sinaisDePost: 0, entradas: 0, sinais: 0, sinaisDeSlot: 0, geracoes: 0, usos: 0 }
-    // R39 (revisão de 03c279ff): `agendarPost` registra sinais de slot e de copy POR POST (`escolha-propria`), e
-    // `LearningSignal.postId` não tem FK — apagar o post não os leva, e cada rodada acumulava sinais sintéticos no
-    // dev anunciando cleanup completo. Os posts desta rodada são identificados ANTES de apagar (os ids coletados
-    // + os recuperados pela marca na legenda, que cobrem a falha parcial antes do `posts.push`), e os sinais
-    // deles saem restritos por projeto, post e início da rodada; o que sobrar depois é falha do cleanup.
-    let postsDaRodada: string[] = []
-    try {
-      postsDaRodada = (await db.socialPost.findMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] }, select: { id: true } })).map((p) => p.id)
-      if (postsDaRodada.length) apagados.sinaisDePost = (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: postsDaRodada }, createdAt: { gte: inicioDaProva } } })).count
-      apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, id: { in: postsDaRodada } } })).count
-    } catch (e) { falhas.push(`posts: ${e instanceof Error ? e.message : String(e)}`) }
-    try {
-      apagados.entradas = (await db.knowledgeBaseEntry.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: entradas } }, { title: { contains: MARCA } }] } })).count
-    } catch (e) { falhas.push(`entradas: ${e instanceof Error ? e.message : String(e)}`) }
-    try {
-      apagados.geracoes = (await db.generation.deleteMany({ where: { id: { in: geracoes }, projectId: PROJETO } })).count
-    } catch (e) { falhas.push(`geracoes: ${e instanceof Error ? e.message : String(e)}`) }
-    try {
-      apagados.usos = (await db.photoUsage.deleteMany({ where: { id: { in: usosDaProva }, projectId: PROJETO } })).count
-    } catch (e) { falhas.push(`usos: ${e instanceof Error ? e.message : String(e)}`) }
-    try {
-      // Só o sinal que ESTA rodada criou: proposta reutilizada de antes da prova (createdAt anterior) fica.
-      apagados.sinais = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDaProva] }, projectId: PROJETO, tipo: 'foto', createdAt: { gte: inicioDaProva } } })).count
-      apagados.sinaisDeSlot = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDeSlotDaProva] }, projectId: PROJETO, tipo: 'slot', createdAt: { gte: inicioDaProva } } })).count
-    } catch (e) { falhas.push(`sinais: ${e instanceof Error ? e.message : String(e)}`) }
-    try {
-      // A conferência do R39: nenhum sinal amarrado a um post desta rodada pode sobrar (o post é novo — não há
-      // sinal legítimo anterior a ela com esse id).
-      const sobraram = postsDaRodada.length ? await db.learningSignal.count({ where: { projectId: PROJETO, postId: { in: postsDaRodada } } }) : 0
-      if (sobraram > 0) falhas.push(`R39: ${sobraram} sinal(is) de aprendizado ainda amarrado(s) aos posts desta rodada`)
-    } catch (e) { falhas.push(`conferência R39: ${e instanceof Error ? e.message : String(e)}`) }
+    // R48 (oitava revisão final de 74afb769): cada exclusão num passo protegido e independente — a falha de uma não
+    // pula as outras, e cada falha entra no placar (saída ≠ 0). As Generations do isolamento entre projetos e as das
+    // seções 3c–3i vão no MESMO passo; antes a primeira exclusão estava fora da proteção e derrubava o cleanup inteiro.
+    const { apagados, falhas } = await limparRodada(db as unknown as BancoDaLimpeza, {
+      projeto: PROJETO,
+      marca: MARCA,
+      inicio: inicioDaProva,
+      posts,
+      geracoes: [...generationsDaProva, ...geracoes],
+      entradas,
+      usos: usosDaProva,
+      sinais: [...sinaisDaProva],
+      sinaisDeSlot: [...sinaisDeSlotDaProva],
+    })
     if (falhas.length) {
       console.error('  ✗ cleanup incompleto:', falhas.join(' | '))
       mau += falhas.length
     } else console.log('  apagados:', JSON.stringify(apagados))
-    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ ...registro, pendentes, ok, falhas: mau, apagados, falhasDoCleanup: falhas }, null, 2))
+    try {
+      writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ ...registro, pendentes, ok, falhas: mau, apagados, falhasDoCleanup: falhas }, null, 2))
+    } catch (e) {
+      console.error('  ✗ resultado.json não foi gravado:', e instanceof Error ? e.message : e)
+      mau++
+    }
     console.log(`\n${ok} ok, ${mau} falha(s). Saída em ${resolve(SAIDA)}`)
-    await db.$disconnect()
+    await db.$disconnect().catch(() => {})
     process.exit(mau > 0 ? 1 : 0)
   }
 }

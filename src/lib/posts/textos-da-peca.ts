@@ -22,7 +22,12 @@
  *    segue a página: sem snapshot, a copy própria do post é PARCIAL (só os
  *    campos sobrescritos — o resto veio da página no render e não há
  *    registro) e é declarada assim; a cópia registrada no último render antes
- *    da entrega é inteira. Sem nenhuma, a indisponibilidade é DECLARADA.
+ *    da entrega é inteira. Sem nenhuma, a indisponibilidade é DECLARADA;
+ *  - arte de MODELO (`post-schedule` com copy própria): só o REGISTRO das
+ *    camadas que o render desenhou (o snapshot confiável da arte) diz quais
+ *    valores chegaram à mídia, em qualquer estado — a estrutura atual do
+ *    modelo pode ser outra (R46, R47). Sem registro, nada se afirma, nem a
+ *    copy que o post herdou dessa arte.
  *
  * O texto de camada volta INTEIRO e na multiplicidade em que existe: uma URL
  * numa camada de texto é texto da peça, duas camadas com a mesma frase são
@@ -90,8 +95,9 @@ export interface SlideDaPeca {
   } | null
   /**
    * `Page.layers` ATUAL da página daquela arte — o texto dela vale só na peça viva. Na arte de MODELO
-   * (`post-schedule`) vale também na entregue, mas só como ESTRUTURA: quais valores da copy registrada o render
-   * aplicou (id antes de nome), nunca o texto do modelo (R46).
+   * (`post-schedule`) não vale nem como ESTRUTURA: a página de hoje pode não ser a que o render desenhou (camada
+   * recriada com outro id e o mesmo nome, caixa, ordem, visibilidade), e quem diz quais valores chegaram à mídia é
+   * só o registro das camadas desenhadas (R47).
    */
   camadasDaPagina?: unknown
 }
@@ -220,7 +226,7 @@ function textosDaCopiaRegistrada(slotValues: unknown): string[] {
 }
 const NOTA_DA_COPIA_REGISTRADA = 'cópia da página registrada no agendamento: o texto das camadas ANTES da caixa do render (textTransform) e sem a ordem em que foram desenhadas — não prova a arte inteira.'
 const NOTA_DA_ARTE_DE_MODELO = 'arte desenhada de um MODELO com a copy do post por cima: só os valores da copy registrada que o render aplicou às camadas do modelo (id antes de nome, na ordem e na caixa delas); o que o modelo trazia fora dela não tem registro — o texto cru do modelo não é o desta mídia.'
-const NOTA_DO_MODELO_SEM_CAMADAS = 'sem elas não há como saber quais valores da copy registrada o render aplicou (o id da camada vence o nome) — a copy registrada não é atribuída à mídia, nada a afirmar'
+const NOTA_DO_MODELO_SEM_REGISTRO = 'a estrutura atual do modelo pode não ser a que o render desenhou (camada recriada com outro id e o mesmo nome, caixa, ordem, visibilidade), e o id da camada vence o nome — sem esse registro não há como saber quais valores da copy registrada chegaram à mídia, e ela não é atribuída a ela: nada a afirmar'
 
 /**
  * A arte de `post-schedule` desenhou um MODELO com copy por cima (a via de
@@ -255,19 +261,19 @@ function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide
         return { slide, textos: [], indisponiveis: 'arte desenhada de um modelo sem copy registrada: o texto cru do modelo não é o desta mídia — nada a afirmar' }
       }
       // R46: a copy registrada pode trazer a MESMA camada por id e por nome, e o render aplica só a do id — os
-      // valores brutos não são os textos da mídia. Vale o que a função do render aplica às camadas daquela versão:
-      // o snapshot confiável da arte, senão a página do modelo. Sem camadas legíveis, nada se afirma.
-      const estruturas = [snapshotConfiavel(s.arte) ? s.arte.layersSnapshot : undefined, s.camadasDaPagina].filter((c) => c !== undefined)
-      if (estruturas.length === 0) {
-        return { slide, textos: [], indisponiveis: `arte desenhada de um modelo cuja página não foi carregada (fora deste projeto, ou apagada) e que não guardou as camadas: ${NOTA_DO_MODELO_SEM_CAMADAS}` }
+      // valores brutos não são os textos da mídia. Vale o que a função do render aplica às camadas que ele DESENHOU.
+      // R47: e essas camadas só se conhecem pelo REGISTRO da versão renderizada (o snapshot confiável da arte). A
+      // página do modelo é a estrutura de HOJE — a Generation de `post-schedule` guarda slots e `pageId`, sem as
+      // camadas, e a camada pode ter sido recriada com outro id e o mesmo nome, ou ter caixa, ordem e visibilidade
+      // trocadas depois do render. A mídia que lê a arte de modelo é sempre um PNG congelado (post sem página própria
+      // ou carrossel): aplicar os slots na página de hoje atribuía a ela o valor que o render descartou. Vale em
+      // qualquer estado, viva ou entregue.
+      if (!snapshotConfiavel(s.arte)) {
+        return { slide, textos: [], indisponiveis: `arte desenhada de um modelo sem registro das camadas que o render usou: ${NOTA_DO_MODELO_SEM_REGISTRO}` }
       }
-      let aplicados: string[] | null = null
-      for (const estrutura of estruturas) {
-        aplicados = textosAplicadosAoModelo(estrutura, copyDoModelo)
-        if (aplicados !== null) break
-      }
+      const aplicados = textosAplicadosAoModelo(s.arte.layersSnapshot, copyDoModelo)
       if (aplicados === null) {
-        return { slide, textos: [], indisponiveis: `as camadas do modelo desta arte não puderam ser lidas: ${NOTA_DO_MODELO_SEM_CAMADAS}` }
+        return { slide, textos: [], indisponiveis: `as camadas registradas desta arte de modelo não puderam ser lidas: ${NOTA_DO_MODELO_SEM_REGISTRO}` }
       }
       return aplicados.length > 0
         ? { slide, textos: aplicados, origem: 'arte', parcial: true, nota: NOTA_DA_ARTE_DE_MODELO }
@@ -372,10 +378,21 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   const copyHerdadaInvalidada = !carrossel && !post.pageId && slides[0]?.arte?.reRenderizada === true
   const NOTA_R42 =
     'a arte desta peça foi re-renderizada e o post (sem página própria) não guarda registro textual confiável da mídia atual: o texto que está na arte não tem registro aqui.'
+  // 🔴 R47: o post sem página própria cuja mídia é uma arte de MODELO sem o registro das camadas desenhadas
+  //    herdou dela, no agendamento, a MESMA copy bruta que a arte guarda — com o valor que o render descartou
+  //    quando id e nome endereçam a mesma camada. Afirmá-la pelo fallback `copy-do-post` seria a porta lateral
+  //    do defeito que a leitura do slide acabou de recusar.
+  const arteUnica = !carrossel ? slides[0]?.arte : undefined
+  const copyHerdadaDeModeloSemRegistro =
+    !post.pageId && !!arteUnica && copyDaArteDeModelo(arteUnica) !== null && !snapshotConfiavel(arteUnica)
+  const NOTA_R47 =
+    'a arte desta peça foi desenhada de um modelo sem registro das camadas que o render usou, e a copy que o post (sem página própria) herdou dela não diz quais valores chegaram à mídia — o id da camada vence o nome, e a estrutura atual do modelo pode ser outra: nada a afirmar.'
+  const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModeloSemRegistro
+  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : NOTA_R47
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
-    if (textosProprios.length > 0 && !copyHerdadaInvalidada) {
+    if (textosProprios.length > 0 && !copyDoPostNaoAfirmavel) {
       return {
         textos: textosProprios,
         origem: 'copy-do-post',
@@ -389,8 +406,8 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     }
     return {
       textos: [],
-      indisponiveis: copyHerdadaInvalidada
-        ? NOTA_R42
+      indisponiveis: copyDoPostNaoAfirmavel
+        ? notaDaCopyNaoAfirmavel
         : 'a arte desta peça já foi entregue (no publicador, publicada ou falhou) e a página pode ter mudado depois: o texto que vale é o da própria arte, e não há registro dele aqui.',
     }
   }
@@ -413,8 +430,8 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
       }
     }
   }
-  const doPost = copyHerdadaInvalidada ? [] : textosDoPost(sv)
-  if (copyHerdadaInvalidada && textosDoPost(sv).length > 0) return { textos: [], indisponiveis: NOTA_R42 }
+  const doPost = copyDoPostNaoAfirmavel ? [] : textosDoPost(sv)
+  if (copyDoPostNaoAfirmavel && textosDoPost(sv).length > 0) return { textos: [], indisponiveis: notaDaCopyNaoAfirmavel }
   if (doPost.length > 0) {
     if (paginaIlegivel) {
       return {

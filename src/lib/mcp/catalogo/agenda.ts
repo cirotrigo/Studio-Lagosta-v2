@@ -146,15 +146,15 @@ export const toolsDeAgenda = [
         if (g.resultUrl && !artePorUrl.has(g.resultUrl)) artePorUrl.set(g.resultUrl, arteDe(g))
       }
       const arteDoSlide = (_post: (typeof posts)[number], url: string) => artePorUrl.get(url) ?? null
-      // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê. Na arte de MODELO
-      // (`post-schedule`), viva ou ENTREGUE, a página do modelo vem também — não para ler o texto dele, só para
-      // saber quais valores da copy registrada o render aplicou, id antes de nome (R46).
+      // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê. A peça ENTREGUE não carrega
+      // página nenhuma — nem o texto dela, nem a estrutura do modelo valem pela mídia congelada: na arte de MODELO
+      // (`post-schedule`) só o registro das camadas desenhadas diz quais valores chegaram à mídia (R46, R47).
       const idsDePaginaDosSlides = [
         ...new Set(
           posts.flatMap((p) =>
             (p.mediaUrls ?? [])
               .map((u) => arteDoSlide(p, u))
-              .filter((a) => !!a && (!arteEntregue(p) || a.source === 'post-schedule'))
+              .filter((a) => !!a && !arteEntregue(p))
               .map((a) => a?.pageId)
               .filter((id): id is string => !!id),
           ),
