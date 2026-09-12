@@ -1,0 +1,89 @@
+import { describe, expect, it } from 'vitest'
+import { diaDaSemanaDe, formatoDoBloco, formatoDoTipo, janelaDaSugestao, montarGradeDaSemana, slotOcupado, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
+import { fundirGradeComCadencia } from '../grade-da-base'
+
+// quinta 17/09/2026, 10:00 em Brasília
+const AGORA = new Date('2026-09-17T13:00:00.000Z')
+
+describe('a janela da sugestão (início e fim em Brasília)', () => {
+  it('sem início nem fim: hoje + dias (o comportamento de sempre)', () => {
+    const j = janelaDaSugestao({ agora: AGORA })
+    expect(j.inicioISO).toBe('2026-09-17')
+    expect(j.fimISO).toBe('2026-09-23')
+    expect(j.datas).toHaveLength(7)
+    expect(j.inicio).toBe(AGORA)
+    expect(j.avisos).toEqual([])
+  })
+  it('a semana que vem: segunda a domingo, sete datas, fim no último instante do domingo', () => {
+    const j = janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-09-27' })
+    expect(j.datas).toEqual(['2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27'])
+    expect(j.inicio.toISOString()).toBe('2026-09-21T03:00:00.000Z')
+    expect(j.fim.toISOString()).toBe('2026-09-28T02:59:59.999Z')
+  })
+  it('início no passado vira hoje, com aviso; fim antes do início é erro; além do teto é cortada', () => {
+    const j = janelaDaSugestao({ agora: AGORA, inicio: '2026-09-10', fim: '2026-09-19' })
+    expect(j.inicioISO).toBe('2026-09-17')
+    expect(j.avisos[0]).toMatch(/já passou/)
+    expect(() => janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-09-20' })).toThrow(/vem antes/)
+    const longa = janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-12-31' })
+    expect(longa.datas).toHaveLength(TETO_DE_DIAS_DA_JANELA)
+    expect(longa.avisos[0]).toMatch(/cortada/)
+    expect(() => janelaDaSugestao({ agora: AGORA, inicio: '2026-02-31' })).toThrow(/inválido/)
+  })
+  it('dias é ignorado quando fim vem; sem fim, dias conta a partir do início', () => {
+    expect(janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', dias: 3 }).datas).toEqual(['2026-09-21', '2026-09-22', '2026-09-23'])
+    expect(janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-09-22', dias: 10 }).datas).toHaveLength(2)
+  })
+})
+
+describe('formato e ocupação por formato', () => {
+  it('story é story; post, carrossel e reel disputam o feed', () => {
+    expect(formatoDoTipo('STORY')).toBe('story')
+    expect(formatoDoTipo('POST')).toBe('feed')
+    expect(formatoDoTipo('CAROUSEL')).toBe('feed')
+    expect(formatoDoTipo('REEL')).toBe('feed')
+  })
+  it('o horário típico leva o formato da MAIORIA do bloco; empate e bloco vazio caem em story', () => {
+    const quinta19 = (min: number, postType: string) => ({ quando: new Date(`2026-09-10T${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}:00-03:00`), postType })
+    const historico = [quinta19(19 * 60, 'POST'), quinta19(19 * 60 + 10, 'CAROUSEL'), quinta19(19 * 60 + 20, 'STORY'), quinta19(12 * 60, 'STORY')]
+    expect(formatoDoBloco(historico, 4, 19 * 60)).toBe('feed')
+    expect(formatoDoBloco(historico, 4, 12 * 60)).toBe('story')
+    expect(formatoDoBloco(historico, 4, 8 * 60)).toBe('story')
+    expect(formatoDoBloco([quinta19(19 * 60, 'POST'), quinta19(19 * 60 + 5, 'STORY')], 4, 19 * 60)).toBe('story')
+  })
+  it('um feed às 19h NÃO ocupa o story das 19h; o mesmo formato a 45 min ocupa', () => {
+    const t = new Date('2026-09-24T19:00:00-03:00').getTime()
+    const ocupados = [{ t, formato: 'feed' as const }]
+    expect(slotOcupado(ocupados, t, 'story', 45)).toBe(false)
+    expect(slotOcupado(ocupados, t + 30 * 60_000, 'feed', 45)).toBe(true)
+    expect(slotOcupado(ocupados, t + 46 * 60_000, 'feed', 45)).toBe(false)
+  })
+  it('diaDaSemanaDe lê a data em Brasília', () => {
+    expect(diaDaSemanaDe('2026-09-21')).toBe(1)
+    expect(diaDaSemanaDe('2026-09-27')).toBe(0)
+  })
+})
+
+describe('a grade completa da semana', () => {
+  it('os 7 dias, com origem (combinado · histórico · nova), formato e evidência; dias vazios viram exceções', () => {
+    const cadencia = new Map([
+      [4, [{ minutosDoDia: 19 * 60, hora: '19:00', motivo: 'rotina', picoRecente: false, apoioFraco: false }]],
+      [5, [{ minutosDoDia: 12 * 60, hora: '12:00', motivo: 'campanha', picoRecente: false, apoioFraco: true }, { minutosDoDia: 18 * 60, hora: '18:00', motivo: 'novidade', picoRecente: true, apoioFraco: false }]],
+    ])
+    const grade = [{ hora: '11:00', dias: [1, 2], origem: 'grade' as const, linha: 'seg e ter 11h: almoço', tema: 'almoço' }]
+    const fundido = fundirGradeComCadencia(cadencia, grade)
+    expect(fundido.get(5)?.map((s) => [s.hora, s.novidade ?? false, s.evidenciaFraca ?? false])).toEqual([
+      ['12:00', false, true],
+      ['18:00', true, false],
+    ])
+    const { grade: semana, excecoes } = montarGradeDaSemana(fundido, (dia, slot) => (slot.origem === 'grade' ? 'story' : dia === 4 ? 'feed' : 'story'))
+    expect(semana).toHaveLength(7)
+    expect(excecoes).toEqual(['domingo', 'quarta', 'sábado'])
+    expect(semana[1].horarios).toEqual([{ hora: '11:00', formato: 'story', origem: 'combinado', evidenciaFraca: false, tema: 'almoço', motivo: 'grade aprovada do cliente: seg e ter 11h: almoço' }])
+    expect(semana[4].horarios[0]).toMatchObject({ hora: '19:00', formato: 'feed', origem: 'historico', evidenciaFraca: false })
+    expect(semana[5].horarios.map((h) => [h.hora, h.origem, h.evidenciaFraca])).toEqual([
+      ['12:00', 'historico', true],
+      ['18:00', 'nova', true],
+    ])
+  })
+})

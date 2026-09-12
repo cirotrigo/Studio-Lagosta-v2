@@ -1,0 +1,192 @@
+/**
+ * O CONTEXTO DA SEMANA que `sugerir-posts` entrega ao Claude (PR 6 de "Marca
+ * simples, copy melhor", F2, 12/09/2026) — módulo PURO, sem Prisma.
+ *
+ * O que muda em relação ao "dias à frente" de antes:
+ *  - a janela tem INÍCIO e FIM (datas em Brasília), não só "os próximos N
+ *    dias": quem monta a semana que vem pede de segunda a domingo;
+ *  - cada peça tem FORMATO (story × feed), e a OCUPAÇÃO é por formato — um
+ *    feed às 19h não ocupa o slot do story das 19h, e vice-versa;
+ *  - a GRADE COMPLETA sai por dia da semana, com a ORIGEM de cada horário
+ *    (combinado = grade aprovada na base; histórico = o que o cliente faz;
+ *    nova = só apareceu nas últimas duas semanas), o formato e a evidência.
+ */
+
+import { CreativeError } from '@/lib/creatives/errors'
+import { BLOCO_MIN, emBRT } from '@/lib/posts/cadencia'
+import { DIAS_SEMANA } from '@/lib/posts/dia-semana'
+
+/** Teto da janela: três semanas. Mais que isso é planejamento de mês, que a proposta por slot não serve. */
+export const TETO_DE_DIAS_DA_JANELA = 21
+
+export type FormatoDaPeca = 'story' | 'feed'
+
+/** Story é story; o resto (post, carrossel, reel) disputa o mesmo lugar no feed. */
+export function formatoDoTipo(postType: string | null | undefined): FormatoDaPeca {
+  return postType === 'STORY' ? 'story' : 'feed'
+}
+
+const RE_DATA = /^\d{4}-\d{2}-\d{2}$/
+
+/** "AAAA-MM-DD" do instante em Brasília. */
+export function dataBRT(d: Date): string {
+  return new Date(d.getTime() - 3 * 3600_000).toISOString().slice(0, 10)
+}
+
+function inicioDoDiaBRT(dataISO: string): Date {
+  return new Date(`${dataISO}T00:00:00-03:00`)
+}
+function fimDoDiaBRT(dataISO: string): Date {
+  return new Date(`${dataISO}T23:59:59.999-03:00`)
+}
+function somarDias(dataISO: string, n: number): string {
+  const d = new Date(`${dataISO}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
+function conferirData(valor: string, campo: string): string {
+  const texto = valor.trim()
+  if (!RE_DATA.test(texto) || Number.isNaN(new Date(`${texto}T12:00:00Z`).getTime()) || new Date(`${texto}T12:00:00Z`).toISOString().slice(0, 10) !== texto) {
+    throw new CreativeError('JANELA_INVALIDA', `${campo} inválido: "${valor}". Use AAAA-MM-DD (data em Brasília).`, 400)
+  }
+  return texto
+}
+
+export interface JanelaDaSugestao {
+  /** Primeiro instante considerado (nunca antes de agora). */
+  inicio: Date
+  /** Último instante considerado (fim do último dia, em Brasília). */
+  fim: Date
+  inicioISO: string
+  fimISO: string
+  /** Os dias da janela, em "AAAA-MM-DD" (Brasília), do primeiro ao último. */
+  datas: string[]
+  avisos: string[]
+}
+
+/**
+ * A janela pedida, saneada: início no passado vira agora; fim antes do início
+ * é erro; mais que o teto é cortada com aviso. Sem início nem fim é o
+ * comportamento de sempre (agora + `dias`).
+ */
+export function janelaDaSugestao(args: { agora: Date; inicio?: string | null; fim?: string | null; dias?: number | null }): JanelaDaSugestao {
+  const avisos: string[] = []
+  const hojeISO = dataBRT(args.agora)
+  let inicioISO = args.inicio ? conferirData(args.inicio, 'inicio') : hojeISO
+  if (inicioISO < hojeISO) {
+    avisos.push(`O início pedido (${inicioISO}) já passou: a janela começa hoje (${hojeISO}).`)
+    inicioISO = hojeISO
+  }
+  const dias = Math.min(Math.max(Math.round(args.dias ?? 7), 1), TETO_DE_DIAS_DA_JANELA)
+  let fimISO = args.fim ? conferirData(args.fim, 'fim') : somarDias(inicioISO, dias - 1)
+  if (fimISO < inicioISO) {
+    throw new CreativeError('JANELA_INVALIDA', `O fim (${fimISO}) vem antes do início (${inicioISO}).`, 400)
+  }
+  const tetoISO = somarDias(inicioISO, TETO_DE_DIAS_DA_JANELA - 1)
+  if (fimISO > tetoISO) {
+    avisos.push(`A janela pedida passa de ${TETO_DE_DIAS_DA_JANELA} dias: cortada em ${tetoISO}. Peça o resto em outra chamada.`)
+    fimISO = tetoISO
+  }
+  const datas: string[] = []
+  for (let d = inicioISO; d <= fimISO; d = somarDias(d, 1)) datas.push(d)
+  const inicio = inicioISO === hojeISO ? args.agora : inicioDoDiaBRT(inicioISO)
+  return { inicio, fim: fimDoDiaBRT(fimISO), inicioISO, fimISO, datas, avisos }
+}
+
+/** Dia da semana (0 = domingo) de uma data "AAAA-MM-DD" em Brasília. */
+export function diaDaSemanaDe(dataISO: string): number {
+  return new Date(`${dataISO}T12:00:00Z`).getUTCDay()
+}
+
+export interface PostComFormato {
+  quando: Date
+  postType: string
+}
+
+/**
+ * O formato de um horário TÍPICO do histórico: a maioria do que o cliente
+ * publicou naquele dia da semana, naquele bloco de meia hora. Empate e bloco
+ * vazio caem em story — é o formato de 92% do que a carteira publica.
+ */
+export function formatoDoBloco(historico: PostComFormato[], dia: number, minutosDoDia: number): FormatoDaPeca {
+  const bloco = Math.floor(minutosDoDia / BLOCO_MIN) * BLOCO_MIN
+  let story = 0
+  let feed = 0
+  for (const p of historico) {
+    const b = emBRT(p.quando)
+    if (b.dia !== dia || Math.floor(b.minutos / BLOCO_MIN) * BLOCO_MIN !== bloco) continue
+    if (formatoDoTipo(p.postType) === 'story') story++
+    else feed++
+  }
+  return feed > story ? 'feed' : 'story'
+}
+
+export interface Ocupante {
+  /** Instante do post (ms). */
+  t: number
+  formato: FormatoDaPeca
+}
+
+/** O slot está ocupado quando há post do MESMO formato a até `toleranciaMin` dele. */
+export function slotOcupado(ocupados: Ocupante[], quandoUTC: number, formato: FormatoDaPeca, toleranciaMin: number): boolean {
+  const tol = toleranciaMin * 60_000
+  return ocupados.some((o) => o.formato === formato && Math.abs(o.t - quandoUTC) <= tol)
+}
+
+export type OrigemDoHorario = 'combinado' | 'historico' | 'nova'
+
+export interface HorarioDaGrade {
+  hora: string
+  formato: FormatoDaPeca
+  /** combinado = grade aprovada na base; histórico = rotina medida; nova = só nas últimas duas semanas. */
+  origem: OrigemDoHorario
+  /** Evidência FRACA: o horário se sustenta em campanha ou em sugestão aceita sem edição, ou é novidade. */
+  evidenciaFraca: boolean
+  tema?: string
+  motivo: string
+}
+
+export interface DiaDaGrade {
+  dia: number
+  diaSemana: string
+  horarios: HorarioDaGrade[]
+}
+
+export interface SlotParaGrade {
+  minutosDoDia: number
+  hora: string
+  motivo: string
+  origem: 'grade' | 'cadencia'
+  tema?: string
+  novidade?: boolean
+  evidenciaFraca?: boolean
+}
+
+/**
+ * A grade da semana INTEIRA (os 7 dias, mesmo os vazios), com a origem e o
+ * formato de cada horário. `excecoes` são os dias da semana sem horário nenhum.
+ */
+export function montarGradeDaSemana(
+  slotsPorDia: Map<number, SlotParaGrade[]>,
+  formatoDe: (dia: number, slot: SlotParaGrade) => FormatoDaPeca,
+): { grade: DiaDaGrade[]; excecoes: string[] } {
+  const grade: DiaDaGrade[] = []
+  const excecoes: string[] = []
+  for (let dia = 0; dia < 7; dia++) {
+    const slots = [...(slotsPorDia.get(dia) ?? [])].sort((a, b) => a.minutosDoDia - b.minutosDoDia)
+    if (slots.length === 0) excecoes.push(DIAS_SEMANA[dia])
+    grade.push({
+      dia,
+      diaSemana: DIAS_SEMANA[dia],
+      horarios: slots.map((s) => ({
+        hora: s.hora,
+        formato: formatoDe(dia, s),
+        origem: s.origem === 'grade' ? 'combinado' : s.novidade ? 'nova' : 'historico',
+        evidenciaFraca: s.origem !== 'grade' && (!!s.evidenciaFraca || !!s.novidade),
+        ...(s.tema ? { tema: s.tema } : {}),
+        motivo: s.motivo,
+      })),
+    })
+  }
+  return { grade, excecoes }
+}

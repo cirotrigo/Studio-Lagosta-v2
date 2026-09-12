@@ -202,7 +202,9 @@ const LITERAIS_AGENDA: Record<string, unknown> = {
     type: 'object',
     properties: {
       projectId: { type: 'number', description: 'ID do cliente.' },
-      dias: { type: 'number', description: 'Quantos dias à frente (default 7, máx 14).' },
+      inicio: { type: 'string', description: 'Início da janela, "AAAA-MM-DD" (Brasília). Default: hoje. Data no passado vira hoje.' },
+      fim: { type: 'string', description: 'Fim da janela, inclusivo, "AAAA-MM-DD". Default: início + dias − 1. Teto de 21 dias.' },
+      dias: { type: 'number', description: 'Quantos dias a partir do início (default 7, máx 21). Ignorado quando `fim` vem.' },
     },
     required: ['projectId'],
     additionalProperties: false,
@@ -961,6 +963,7 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
     properties: {
       projectId: { type: 'number', description: 'ID do projeto.' },
       category: { type: 'string', enum: CATEGORIAS, description: 'Filtra por categoria. Omita para trazer tudo.' },
+      em: { type: 'string', description: 'Data de USO do conteúdo, "AAAA-MM-DD" (Brasília): só o que ainda vale nesse dia entra. Default: hoje.' },
     },
     required: ['projectId'],
     additionalProperties: false,
@@ -1069,6 +1072,15 @@ const LITERAIS_RESTANTE: Record<string, unknown> = {
       explorando: {
         type: 'boolean',
         description: 'Só olhando — não conta como proposta. Use quando estiver conhecendo o acervo ou conferindo o que existe, sem escolher foto para uma peça. Sem isso, cada busca vira uma sugestão registrada, e explorar sem decidir infla a conta.',
+      },
+      excluir: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Fotos (driveFileId) JÁ ESCOLHIDAS nesta leva: saem da lista. Ao montar a semana, passe aqui as que você já usou nas peças anteriores — é o que garante "sem repetir na semana". A resposta diz quantas saíram (`excluidas`).',
+      },
+      evitarUsadasDesde: {
+        type: 'string',
+        description: '"AAAA-MM-DD": foto com uso registrado a partir dessa data sai da lista (a que foi ao ar esta semana, por exemplo). O rodízio já empurra a usada para baixo; isto é para tirá-la de vista.',
       },
     },
     required: ['projectId'],

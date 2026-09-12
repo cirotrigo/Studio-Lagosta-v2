@@ -157,6 +157,10 @@ export interface SlotDeCadenciaMinimo {
   minutosDoDia: number
   hora: string
   motivo: string
+  /** Todas as ocorrências são das últimas duas semanas (novidade, não rotina). */
+  picoRecente?: boolean
+  /** O horário se apoia em evidência fraca (campanha, sugestão aceita sem edição). */
+  apoioFraco?: boolean
 }
 
 export interface SlotFundido {
@@ -165,6 +169,10 @@ export interface SlotFundido {
   motivo: string
   origem: 'grade' | 'cadencia'
   tema?: string
+  /** Só na cadência: o horário é novidade das últimas duas semanas. */
+  novidade?: boolean
+  /** Só na cadência: o horário se apoia em evidência fraca. */
+  evidenciaFraca?: boolean
 }
 
 /**
@@ -203,7 +211,16 @@ export function fundirGradeComCadencia<T extends SlotDeCadenciaMinimo>(
     if (porDia.has(dia)) continue
     porDia.set(
       dia,
-      tipicos.map((t) => ({ minutosDoDia: t.minutosDoDia, hora: t.hora, motivo: t.motivo, origem: 'cadencia' as const })),
+      // A evidência viaja junto (PR 6): quem lê a grade completa precisa saber
+      // se o horário é rotina, novidade ou se apoia em evidência fraca.
+      tipicos.map((t) => ({
+        minutosDoDia: t.minutosDoDia,
+        hora: t.hora,
+        motivo: t.motivo,
+        origem: 'cadencia' as const,
+        ...(t.picoRecente ? { novidade: true } : {}),
+        ...(t.apoioFraco ? { evidenciaFraca: true } : {}),
+      })),
     )
   }
 

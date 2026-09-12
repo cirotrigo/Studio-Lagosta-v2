@@ -42,10 +42,11 @@ export const toolsDeBaseEDna = [
     nome: 'consultar-base',
     apelidos: ['get-knowledge'],
     descricao:
-      'Base de conhecimento do cliente: tom de voz, horário de funcionamento, cardápio, diferenciais e campanhas. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nEntrada com validade vencida não aparece aqui. Cada entrada traz `validade` quando tem prazo — se você está escrevendo para uma data FUTURA, confira se a campanha ainda estará no ar naquele dia.',
+      'Base de conhecimento do cliente: horário de funcionamento, cardápio, diferenciais, campanhas e políticas — os FATOS. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nPasse `em` com a DATA EM QUE A PEÇA VAI AO AR: só entra o que ainda vale naquele dia (campanha que vence antes fica de fora), e a resposta diz a data de referência. Sem `em`, vale hoje. Cada entrada traz `validade` quando tem prazo, e `dados` com o que foi gravado estruturado (preços, horários, produto, unidade) quando há.\n\nTrês horários que não se confundem: o HORÁRIO DE PUBLICAÇÃO é a grade (sugerir-posts); o HORÁRIO DO SERVIÇO é o funcionamento/happy hour que vai na copy (categoria HORARIOS); a VIGÊNCIA é até quando a oferta vale (`validade`). A identidade de texto (tom de voz) NÃO mora aqui: é consultar-dna / consultar-voz.',
     schema: z.object({
       projectId: z.number().describe('ID do projeto.'),
       category: z.enum(CATEGORIAS_DA_BASE).optional().describe('Filtra por categoria. Omita para trazer tudo.'),
+      em: z.string().optional().describe('Data de USO do conteúdo, "AAAA-MM-DD" (Brasília): só o que ainda vale nesse dia entra. Default: hoje.'),
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -57,6 +58,21 @@ export const toolsDeBaseEDna = [
       ])
       const projectId = args.projectId as number
       const category = typeof args.category === 'string' ? args.category : undefined
+      /**
+       * A referência é a DATA DE USO (PR 6): quem escreve a peça de sexta
+       * confere a base contra a sexta, não contra hoje — campanha que vence na
+       * quarta não pode entrar na copy de sexta. Data pura é o COMEÇO daquele
+       * dia em Brasília: o que vence durante o dia ainda vale para a peça que
+       * sai nele (o fim do dia excluiria a oferta "até sexta" da própria sexta).
+       */
+      let referencia = new Date()
+      if (typeof args.em === 'string' && args.em.trim()) {
+        const texto = args.em.trim()
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(texto) || Number.isNaN(new Date(`${texto}T12:00:00Z`).getTime())) {
+          throw new Error(`Data inválida em "em": "${texto}". Use AAAA-MM-DD.`)
+        }
+        referencia = new Date(`${texto}T00:00:00-03:00`)
+      }
       const entries = await db.knowledgeBaseEntry.findMany({
         where: {
           projectId,
@@ -64,7 +80,7 @@ export const toolsDeBaseEDna = [
           // Campanha vencida não pode alimentar texto nenhum. O cron diário
           // arquiva, mas ele roda uma vez por dia — o filtro é o que garante
           // que ninguém leia a entrada nas horas entre o vencimento e a faxina.
-          ...vigenteEm(),
+          ...vigenteEm(referencia),
           ...(category ? { category: category as never } : {}),
         },
         select: {
@@ -75,14 +91,23 @@ export const toolsDeBaseEDna = [
           tags: true,
           updatedAt: true,
           expiresAt: true,
+          metadata: true,
         },
         orderBy: { category: 'asc' },
       })
+      const dadosDe = (metadata: unknown): Record<string, unknown> | undefined => {
+        if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return undefined
+        // `origem`/`revisao` são carimbos de quem gravou, não fato do cliente.
+        const { origem: _o, revisao: _r, ...resto } = metadata as Record<string, unknown>
+        return Object.keys(resto).length > 0 ? resto : undefined
+      }
       return {
+        referencia: new Date(referencia.getTime() - 3 * 3600_000).toISOString().slice(0, 10),
         count: entries.length,
-        entries: entries.map(({ expiresAt, ...resto }) => ({
+        entries: entries.map(({ expiresAt, metadata, ...resto }) => ({
           ...resto,
           validade: expiresAt ? formatarValidade(expiresAt) : null,
+          ...(dadosDe(metadata) ? { dados: dadosDe(metadata) } : {}),
         })),
       }
     },

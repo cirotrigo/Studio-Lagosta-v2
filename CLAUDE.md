@@ -6234,3 +6234,62 @@ PURO (zod), sem Prisma, com teste de ida e volta exata.
 - Nada persiste ainda: o PR 3 grava o contrato ANTES de qualquer adaptação
   (Page, ItemDePlano, Generation.fieldValues) e nenhum backfill inventa copy
   original para o histórico.
+
+### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
+
+Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
+CONTEXTO. Até aqui `sugerir-posts` só olhava "os próximos N dias", contava um
+feed como ocupante do slot de story, e a grade só aparecia nos buracos;
+`ver-agenda` mostrava 140 caracteres de legenda; `consultar-base` conferia a
+validade contra HOJE; e `buscar-fotos` não tinha como tirar da lista a foto já
+escolhida na peça anterior. Módulos PUROS com teste:
+`src/lib/posts/contexto-da-semana.ts` e `src/lib/creatives/excluir-fotos.ts`.
+Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
+
+- **A janela tem INÍCIO e FIM** (`janelaDaSugestao`; "AAAA-MM-DD" em
+  Brasília; início no passado vira hoje com aviso; fim antes do início é
+  `JANELA_INVALIDA`; teto de 21 dias, cortada com aviso). Sem os dois é o
+  comportamento de sempre (hoje + `dias`). A tool `sugerir-posts` recebe
+  `inicio`/`fim`; `dias` continua e é ignorado quando `fim` vem.
+- 🔴 **A OCUPAÇÃO é por FORMATO** (`slotOcupado`): story só é ocupado por
+  story; post, carrossel e reel disputam o feed entre si. A grade aprovada da
+  base é de STORY por construção (o parser deixa feed e carrossel de fora);
+  horário do histórico leva o formato da MAIORIA do bloco (`formatoDoBloco`;
+  empate e bloco vazio caem em story — 92% do que a carteira publica). Cada
+  `sugestao` e cada item de `ocupacao` dizem o `formato`.
+- **A GRADE COMPLETA sai sempre** (`montarGradeDaSemana`): os 7 dias, cada
+  horário com `origem` (`combinado` = grade aprovada na base; `historico` =
+  rotina medida; `nova` = só nas últimas duas semanas), `formato`, `tema` e
+  `evidenciaFraca` (campanha/sugestão aceita sem edição, ou novidade —
+  `fundirGradeComCadencia` passou a carregar `picoRecente`/`apoioFraco`);
+  `excecoes` são os dias sem horário. É o que se apresenta UMA vez: as
+  instruções do conector mandam não pedir aprovação da mesma grade em cada
+  leva — só a DIVERGÊNCIA volta à conversa.
+- 🔴 **`registrarSugestoes: false` desliga a emissão de sinais** em
+  `sugerirPosts` (a resposta diz `sinaisRegistrados`). É para prova e medição:
+  cada slot emitido é uma proposta no KPI, e prova que emite contamina o
+  denominador — a regra de 11/08 ("script NUNCA chama o que registra sinal")
+  ganhou a alavanca em vez de um caminho paralelo.
+- **`ver-agenda` traz `textos`** (as camadas de texto visíveis da página do
+  post via `textosDaPagina`; sem página, a copy gravada em `slotValues`),
+  `formato` e `legendaCompleta` quando a legenda passa de 140 caracteres. É
+  por eles que se revisa repetição de tema e frase entre os dias. Camadas
+  ilegíveis viram lista vazia, nunca erro.
+- **`consultar-base` recebe `em`** (a data em que a peça VAI AO AR):
+  `vigenteEm(início daquele dia em Brasília)` — o que vence durante o dia
+  ainda vale para a peça que sai nele. A resposta diz `referencia` e traz
+  `dados` (o `metadata` estruturado da entrada, sem os carimbos `origem`/
+  `revisao`). A descrição separa os três horários que se confundiam: o de
+  PUBLICAÇÃO (grade), o do SERVIÇO (funcionamento, na copy) e a VIGÊNCIA da
+  oferta (`validade`).
+- **`buscar-fotos` recebe `excluir` (driveFileIds já escolhidos) e
+  `evitarUsadasDesde`** ("AAAA-MM-DD", por `PhotoUsage` + legado): a exclusão
+  é aplicada sobre a lista JÁ ranqueada, ANTES de a proposta ser registrada (o
+  que se registra é o que a pessoa viu), e declarada em `excluidas` (`porId`,
+  `porUso`, `naoEncontrados`). Data inválida não exclui nada e vira aviso. O
+  rodízio continua empurrando a usada para baixo; excluir é decisão de quem
+  busca.
+- ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
+  (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
+  18h30"), não uma grade semanal — o parser a deixa de fora de propósito
+  desde 01/09. O formato do feed vem do histórico.

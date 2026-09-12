@@ -23,7 +23,7 @@ export const toolsDeAgenda = [
     nome: 'ver-agenda',
     apelidos: ['list-posts'],
     descricao:
-      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília e a capa de cada arte. Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.\n\nQuando um item traz "aviso", repasse: é post de campanha marcado para depois do fim dela. O campo "escopo" só aparece quando o post não é rotina (campanha ou pontual).',
+      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília, formato (story/feed), a capa de cada arte e os TEXTOS COMPLETOS da peça (`textos`: as camadas de texto da página, ou a copy gravada no post) — é por eles que se revisa repetição de tema e de frase entre os dias, não pelos 140 caracteres da legenda (`legendaCompleta` traz o resto quando há). Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.\n\nQuando um item traz "aviso", repasse: é post de campanha marcado para depois do fim dela. O campo "escopo" só aparece quando o post não é rotina (campanha ou pontual).',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       from: z.string().optional().describe('Data inicial ("AAAA-MM-DD" ou ISO). Default: ontem.'),
@@ -38,13 +38,14 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }] =
+      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPagina }] =
         await Promise.all([
           import('../../db'),
           import('../../posts/campanha-vigencia'),
           import('../../posts/agenda-acoes'),
           import('../../posts/freeze-window'),
           import('../../posts/learning-scope'),
+          import('../../posts/page-layers'),
         ])
       const projectId = args.projectId as number
 
@@ -91,10 +92,47 @@ export const toolsDeAgenda = [
           laterPostId: true,
           learningScope: true,
           campaignId: true,
+          pageId: true,
+          slotValues: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: typeof args.limit === 'number' ? Math.min(args.limit, 200) : 50,
       })
+
+      /**
+       * Os TEXTOS COMPLETOS de cada peça (PR 6): a página do post (as camadas
+       * de texto visíveis, como o editor as mostra) e, sem página, a copy
+       * gravada em `slotValues`. É o que permite revisar repetição entre os
+       * dias — a legenda cortada em 140 caracteres não dizia o que a arte diz.
+       * Camadas ilegíveis viram lista vazia, nunca erro.
+       */
+      const idsDePagina = [...new Set(posts.map((p) => p.pageId).filter((id): id is string => !!id))]
+      const paginas = idsDePagina.length
+        ? await db.page.findMany({ where: { id: { in: idsDePagina } }, select: { id: true, layers: true } })
+        : []
+      const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
+      const textosDe = (post: { pageId: string | null; slotValues: unknown }): string[] => {
+        const layers = post.pageId ? camadasPorPagina.get(post.pageId) : undefined
+        if (layers !== undefined) {
+          try {
+            const lidos = Object.values(textosDaPagina(layers)).map((t) => t.trim()).filter(Boolean)
+            if (lidos.length > 0) return [...new Set(lidos)]
+          } catch {
+            // camadas ilegíveis: cai na copy do post
+          }
+        }
+        const sv = post.slotValues
+        if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
+          const out: string[] = []
+          for (const [chave, valor] of Object.entries(sv as Record<string, unknown>)) {
+            if (chave.startsWith('_')) continue
+            const texto = typeof valor === 'string' ? valor : typeof (valor as { content?: unknown } | null)?.content === 'string' ? String((valor as { content: string }).content) : null
+            if (texto && texto.trim() && !/^(https?:\/\/|data:)/i.test(texto.trim())) out.push(texto.trim())
+          }
+          return [...new Set(out)]
+        }
+        return []
+      }
 
       // Post de campanha marcado para depois do fim dela: aviso por post, com
       // o texto pronto para o modelo repassar. Nunca esconde nem bloqueia.
@@ -113,10 +151,16 @@ export const toolsDeAgenda = [
         grupo.posts.push({
           postId: post.id,
           tipo: post.postType === 'STORY' ? 'story' : post.postType.toLowerCase(),
+          formato: post.postType === 'STORY' ? 'story' : 'feed',
           situacao: PARA_SITUACAO[post.status] ?? post.status.toLowerCase(),
           hora: `${String(brt.getUTCHours()).padStart(2, '0')}:${String(brt.getUTCMinutes()).padStart(2, '0')}`,
           quando: formatarBRT(quando),
           legenda: post.caption ? post.caption.slice(0, 140) : null,
+          ...(post.caption && post.caption.length > 140 ? { legendaCompleta: post.caption } : {}),
+          ...((() => {
+            const textos = textosDe(post)
+            return textos.length > 0 ? { textos } : {}
+          })()),
           capa: post.mediaUrls?.[0] ?? null,
           publicacao: post.publishType === 'REMINDER' ? 'manual (lembrete no WhatsApp)' : 'automática',
           ...(post.generationId ? { generationId: post.generationId } : {}),
@@ -207,10 +251,12 @@ export const toolsDeAgenda = [
   definirTool({
     nome: 'sugerir-posts',
     descricao:
-      'Sugere os próximos posts a partir da CADÊNCIA real do cliente: analisa as últimas 8 semanas (dia da semana × horário), acha os buracos dos próximos dias e devolve slots prontos — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia (ex.: Quinta do Vinho). Use quando a pessoa pedir "o que postar essa semana", ou proativamente ao notar a agenda vazia. Você escreve a copy; a sugestão é o esqueleto de quando/o quê.\n\nCada slot vem com um `sugestaoId`: guarde-o e devolva em colocar-na-agenda quando o post nascer daquele horário, mesmo que você o tenha mudado. É só um dado técnico — nunca fale dele na conversa.',
+      'O CONTEXTO DA SEMANA do cliente, numa chamada: a GRADE COMPLETA por dia da semana (cada horário com a origem — combinado = grade aprovada na base, histórico = o que ele publica de fato, nova = só nas últimas duas semanas —, o formato story/feed, o tema e a evidência), o que JÁ OCUPA a janela (`ocupacao`, rascunhos e agendados, por formato), as exceções (dias sem horário) e os BURACOS prontos para preencher (`sugestoes`) — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia. A ocupação é por FORMATO: um feed às 19h não ocupa o story das 19h. Peça a janela com `inicio` e `fim` ("a semana que vem" = segunda a domingo); sem eles, os próximos 7 dias.\n\nApresente a grade UMA vez e não peça aprovação da mesma grade de novo em cada leva: o que volta à conversa é só a DIVERGÊNCIA (horário ocupado, dia sem horário, grade que não bate com o que a pessoa pediu). Você escreve a copy; isto é o esqueleto de quando/o quê.\n\nCada slot vem com um `sugestaoId`: guarde-o e devolva em colocar-na-agenda quando o post nascer daquele horário, mesmo que você o tenha mudado. É só um dado técnico — nunca fale dele na conversa.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
-      dias: z.number().optional().describe('Quantos dias à frente (default 7, máx 14).'),
+      inicio: z.string().optional().describe('Início da janela, "AAAA-MM-DD" (Brasília). Default: hoje. Data no passado vira hoje.'),
+      fim: z.string().optional().describe('Fim da janela, inclusivo, "AAAA-MM-DD". Default: início + dias − 1. Teto de 21 dias.'),
+      dias: z.number().optional().describe('Quantos dias a partir do início (default 7, máx 21). Ignorado quando `fim` vem.'),
     }),
     // NÃO é readOnly: cada slot emitido vira LearningSignal (a sugestão se
     // registra na EMISSÃO — F1). Idempotente pela chave de proposta.
@@ -222,6 +268,8 @@ export const toolsDeAgenda = [
       return sugerirPosts({
         projectId: args.projectId as number,
         dias: typeof args.dias === 'number' ? args.dias : undefined,
+        inicio: typeof args.inicio === 'string' ? args.inicio : undefined,
+        fim: typeof args.fim === 'string' ? args.fim : undefined,
       })
     },
   }),

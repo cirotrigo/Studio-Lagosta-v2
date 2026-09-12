@@ -20,6 +20,7 @@ import {
   type PilarParaBusca,
   type PreferenciasDeFoto,
 } from '@/lib/creatives/ranquear-acervo'
+import { excluirFotos } from '@/lib/creatives/excluir-fotos'
 import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
@@ -152,6 +153,14 @@ export interface BuscarAcervoInput {
    */
   fileName?: string
   limit?: number
+  /**
+   * Fotos JÁ ESCOLHIDAS nesta leva (driveFileId) — saem da lista (PR 6).
+   * Exclusão explícita de quem busca, declarada na resposta; o rodízio só
+   * empurra para baixo.
+   */
+  excluirDriveFileIds?: string[]
+  /** "AAAA-MM-DD": foto com uso registrado a partir desta data sai da lista (PR 6). */
+  evitarUsadasDesde?: string
   /**
    * Quantas pular antes de montar a página (B2). A ordem é estável DENTRO DO
    * DIA (comparator total do ranking + semente diária), então paginar por
@@ -378,7 +387,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * semente diária), que é o que a paginação por offset exige. Score ordena,
    * nunca esconde: `ranqueadas` tem exatamente as fotos filtradas.
    */
-  const ranqueadas = ranquearAcervo({
+  const ranqueadasTodas = ranquearAcervo({
     imagens,
     tema: input.theme ?? null,
     pilares,
@@ -389,6 +398,18 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     idf,
     similaridade,
   })
+
+  /**
+   * A EXCLUSÃO pedida por quem busca (PR 6): as fotos já escolhidas na leva e
+   * as usadas a partir de uma data saem da lista ANTES de a proposta ser
+   * registrada — o que se registra é o que a pessoa viu. Data inválida em
+   * `evitarUsadasDesde` não exclui nada e vira aviso.
+   */
+  const exclusao = excluirFotos(ranqueadasTodas, { ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, ultimoUso)
+  if (input.evitarUsadasDesde && !/^\d{4}-\d{2}-\d{2}$/.test(input.evitarUsadasDesde.trim())) {
+    avisos.push(`evitarUsadasDesde ignorado: "${input.evitarUsadasDesde}" não é uma data AAAA-MM-DD.`)
+  }
+  const ranqueadas = exclusao.mantidas
 
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
   // não tem como saber que existe "01_cortes/picanha-bovina" para pedir.
@@ -403,7 +424,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
     input.registrarSugestao === false ? null : await registrarProposta(input, ranqueadas, ultimoUso, destaques)
 
   return {
-    total: imagens.length,
+    total: ranqueadas.length,
+    ...(exclusao.pedida ? { excluidas: exclusao.resumo } : {}),
     /** Quantas candidatas entraram só pela semelhança (sem casar palavra). */
     viaSemantica,
     acervoCompleto: todas.length,
