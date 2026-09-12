@@ -767,6 +767,54 @@ describe('correção da revisão do commit 10e5d381 (R19)', () => {
     expect(servicoDe(copyEfetivaDasCamadas(contrato, comLinhaAMenos, { superficie: 'editor' }).efetiva)).toEqual(['L0', 'L1'])
   })
 
+  it('R20: sobra UMA parte marcada — ocultar ou excluir o horário não inverte as linhas que ficaram ([2, 0] → [reserva, endereço]); o id do bloco se mantém e a releitura e a duplicação não criam revisão', () => {
+    const RESERVA = 'Reserve pelo direct'
+    // O arranjo da revisão: horário (relógio) e endereço (pin) no MESMO grupo — dois textos do papel num arranjo só.
+    const paginaServicoNoMesmoGrupo: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { position: { x: 92, y: 300 }, metadata: { groupId: 'g-topo' } }),
+      texto('servico', estiloHorario, 'Seg a sex, das 11h às 15h', { position: { x: 160, y: 1580 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape' } }),
+      img('relogio', 'https://exemplo.com/relogio.png', 120, 1584, 'g-rodape'),
+      texto('info', estiloEndereco, 'Rua das Flores, 12 — Centro', { id: 'servico-endereco', position: { x: 160, y: 1650 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape' } }),
+      img('pin', 'https://exemplo.com/pin.png', 122, 1652, 'g-rodape'),
+    ]
+    const comum = comumDe(paginaServicoNoMesmoGrupo)
+    const v = validarSpec({ ...base, copyAutoral: copy([RESERVA, HORARIO, ENDERECO]) })
+    expect(v.problemas).toEqual([])
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    const porId = Object.fromEntries(camadas.map((l) => [l.id, l]))
+    // A distribuição real da revisão: horário no texto do relógio, endereço no do pin e a sobra DEPOIS do endereço.
+    expect([porId.servico.content, porId['servico-2'].content]).toEqual([HORARIO, `${ENDERECO}\n${RESERVA}`])
+    expect([marcaDe(porId.servico), marcaDe(porId['servico-2'])]).toEqual([[1], [2, 0]])
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    expect(servicoDe(efetiva)).toEqual([RESERVA, HORARIO, ENDERECO])
+    expect(efetiva.revisoes).toEqual([])
+
+    const oculto = camadas.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
+    const excluido = camadas.filter((l) => l.id !== 'servico')
+    for (const [nome, restantes] of [['oculto', oculto], ['excluído', excluido]] as const) {
+      const rev = revisaoDaPaginaComCamadas(efetiva, restantes, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' })
+      expect(rev.estado, nome).toBe('registrada')
+      expect(rev.blocos, nome).toEqual(['svc'])
+      const svc = rev.copy!.blocos.find((b) => b.funcao === 'servico')!
+      expect([svc.id, svc.linhas], nome).toEqual(['svc', [RESERVA, ENDERECO]])
+      expect(rev.copy!.blocos.some((b) => b.id.startsWith('extra-')), nome).toBe(false)
+      // releitura das MESMAS camadas sobre o contrato revisado: nada muda
+      const relida = copyEfetivaDasCamadas(rev.copy!, restantes, { superficie: 'editor' })
+      expect(relida.mudancas, nome).toEqual([])
+      expect(servicoDe(relida.efetiva), nome).toEqual([RESERVA, ENDERECO])
+      // duplicação (ids novos, a marca vai junto): nada muda
+      const mapa = new Map(restantes.map((l) => [String(l.id), `uuid-${l.id}`]))
+      const copia = renomearExtrasDuplicados(relida.efetiva, mapa, restantes)
+      const duplicadas = restantes.map((l) => ({ ...l, id: mapa.get(String(l.id))! })) as Layer[]
+      const lidaDuplicada = copyEfetivaDasCamadas(copia, duplicadas, { superficie: 'editor' })
+      expect(lidaDuplicada.mudancas, nome).toEqual([])
+      expect(servicoDe(lidaDuplicada.efetiva), nome).toEqual([RESERVA, ENDERECO])
+    }
+    // uma camada só SEM a marca continua no caminho comum (a ordem do texto)
+    const semMarca = semMarcas(excluido)
+    expect(servicoDe(copyEfetivaDasCamadas(efetiva, semMarca, { superficie: 'editor' }).efetiva)).toEqual([ENDERECO, RESERVA])
+  })
+
   it('R19: página sem a marca nova continua com o comportamento do R18 — pela marca `parte` da página composta entre R18 e R19, e pelo id `<papel>-N` quando não há marca nenhuma', () => {
     const comum = comumDe(paginaR18)
     const v = validarSpec({ ...base, copyAutoral: copy([HORARIO, ENDERECO]) })

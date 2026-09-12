@@ -8832,3 +8832,13 @@ Da revisão do commit F (BLOQUEADO, R19, 12/09/2026):
   INTEIRA, como trecho contíguo, no menor índice marcado. Sem a marca em todas
   as partes (página composta antes dela) vale a ordem do R18: `parte`, depois
   o id `<papel>-N`, depois a altura.
+
+Da revisão do commit G (BLOQUEADO, R20, 12/09/2026):
+
+- 🔴 **Uma parte marcada que SOBROU continua sendo parte.** Com o serviço
+  `[reserva, horário, endereço]`, a sobra entra depois do endereço (`[2, 0]`) e
+  o horário vai sozinho (`[1]`); ocultado ou excluído o horário, sobrava uma
+  candidata e o retorno antecipado (`< 2`) caía no caminho comum, que lê a
+  ordem do TEXTO — `[endereço, reserva]`, inversão que o autosave atribuía à
+  equipe. Hoje a leitura pela marca vale também com uma única candidata
+  marcada; uma camada só SEM a marca segue o caminho de sempre.
