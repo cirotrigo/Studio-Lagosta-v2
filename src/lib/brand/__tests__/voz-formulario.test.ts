@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { lerVoz, type VozCompacta } from '../voz'
-import { formularioParaVoz, formulariosIguais, linhasParaAntesDepois, linhasParaLista, regraEmBranco, substituirRegraNoFormulario, vozParaFormulario } from '../voz-formulario'
+import {
+  formularioParaVoz,
+  formulariosIguais,
+  podeReativar,
+  reativarRegraNoFormulario,
+  regraEmBranco,
+  substituidaPor,
+  substituirRegraNoFormulario,
+  vozParaFormulario,
+} from '../voz-formulario'
 
 const voz: VozCompacta = {
   versao: 'voz-v1',
@@ -16,28 +25,54 @@ const voz: VozCompacta = {
   ],
 }
 
+/** O caso do PR14-01: travessão no "depois", seta no exemplo, marcador literal, quebra de linha interna. */
+const vozComArestas: VozCompacta = {
+  ...voz,
+  exemplos: ['Fogo\nna mesa', '- costela, não "costelinha"', 'Vem → hoje'],
+  antesDepois: [
+    { antes: 'Venha', depois: 'Vem — hoje', motivo: 'mais direto' },
+    { antes: 'a -> b', depois: 'a → b -- c', motivo: 'seta e travessão são conteúdo' },
+  ],
+  termos: ['• happy em dobro', 'costela no bafo — a da casa'],
+  proibicoes: ['"o melhor da cidade"', '- emoji na manchete'],
+}
+
 describe('voz-formulario — ida e volta EXATA entre o contrato e os campos da tela', () => {
   it('vozParaFormulario → formularioParaVoz devolve a mesma voz (passa em lerVoz sem diferença)', () => {
     const form = vozParaFormulario(voz)
-    expect(form.exemplos).toBe('Sexta é dia de costela.\nVem pra cá.')
-    expect(form.antesDepois).toBe('Venha conhecer nossas opções → Vem provar — menos institucional')
+    expect(form.exemplos).toEqual(['Sexta é dia de costela.', 'Vem pra cá.'])
+    expect(form.antesDepois).toEqual([{ antes: 'Venha conhecer nossas opções', depois: 'Vem provar', motivo: 'menos institucional' }])
     const volta = lerVoz(formularioParaVoz(form))
     expect(volta.problemas).toEqual([])
     expect(volta.voz).toEqual(voz)
   })
-  it('campo vazio vira ausente (tratamento) ou lista vazia; marcador de lista e linha em branco saem; sem seta a reescrita fica só com "antes" e o contrato recusa', () => {
+  it('PR14-01: travessão, seta, marcador literal e quebra interna atravessam a ida e volta LITERALMENTE', () => {
+    const form = vozParaFormulario(vozComArestas)
+    const volta = lerVoz(formularioParaVoz(form))
+    expect(volta.problemas).toEqual([])
+    expect(volta.voz).toEqual(vozComArestas)
+  })
+  it('PR14-01: editar SÓ a descrição não muda nenhum outro campo', () => {
+    const form = vozParaFormulario(vozComArestas)
+    const editado = { ...form, descricao: 'Direta e quente.' }
+    const volta = lerVoz(formularioParaVoz(editado)).voz
+    expect(volta).toEqual({ ...vozComArestas, descricao: 'Direta e quente.' })
+    expect(formulariosIguais(form, editado)).toBe(false)
+  })
+  it('campo vazio vira ausente (tratamento) ou lista vazia; item em branco sai; só o espaço das pontas é limpo; reescrita pela metade FICA e o contrato recusa', () => {
     const form = vozParaFormulario(null)
     form.descricao = 'Curta.'
-    form.termos = '- a\n\n• b\n  c  '
+    form.termos = ['  a  ', '', '- b', '   ']
     const obj = formularioParaVoz(form) as Record<string, unknown>
     expect(obj).not.toHaveProperty('tratamento')
-    expect(obj.termos).toEqual(['a', 'b', 'c'])
+    expect(obj.termos).toEqual(['a', '- b'])
     expect(obj.exemplos).toEqual([])
     expect(lerVoz(obj).voz).not.toBeNull()
-    expect(linhasParaAntesDepois('x -> y')).toEqual([{ antes: 'x', depois: 'y', motivo: '' }])
-    expect(linhasParaAntesDepois('só antes')).toEqual([{ antes: 'só antes', depois: '', motivo: '' }])
-    expect(lerVoz(formularioParaVoz({ ...form, antesDepois: 'só antes' })).voz).toBeNull()
-    expect(linhasParaLista('')).toEqual([])
+    const soAntes = formularioParaVoz({ ...form, antesDepois: [{ antes: 'só antes', depois: '', motivo: '' }] }) as { antesDepois: unknown[] }
+    expect(soAntes.antesDepois).toEqual([{ antes: 'só antes', depois: '', motivo: '' }])
+    expect(lerVoz(soAntes).voz).toBeNull()
+    const emBranco = formularioParaVoz({ ...form, antesDepois: [{ antes: ' ', depois: '', motivo: '' }] }) as { antesDepois: unknown[] }
+    expect(emBranco.antesDepois).toEqual([])
   })
   it('regraEmBranco não repete id; substituir inativa a antiga e a nova aponta para ela; regra já inativa não é substituída de novo', () => {
     const form = vozParaFormulario(voz)
@@ -50,9 +85,25 @@ describe('voz-formulario — ida e volta EXATA entre o contrato e os campos da t
     expect(lerVoz(formularioParaVoz({ ...form, regras })).problemas).toEqual([])
     expect(substituirRegraNoFormulario(regras, 'regra-2026-09-04-1', { texto: 'x', motivo: 'y', em: '2026-09-13', escopo: 'copy' })).toBe(regras)
   })
-  it('formulariosIguais ignora espaço e ordem das chaves, mas vê mudança de conteúdo', () => {
+  it('PR14-03: regra SUBSTITUÍDA não pode ser reativada (a voz não passaria no contrato); regra só desativada pode', () => {
+    const form = vozParaFormulario(voz)
+    const regras = substituirRegraNoFormulario(form.regras, 'regra-2026-09-04-1', { texto: 'x y z', motivo: 'm', em: '2026-09-12', escopo: 'copy' })
+    expect(substituidaPor(regras, 'regra-2026-09-04-1')?.id).toBe('regra-2026-09-12-1')
+    expect(podeReativar(regras, 'regra-2026-09-04-1')).toBe(false)
+    expect(reativarRegraNoFormulario(regras, 'regra-2026-09-04-1')).toBe(regras)
+    // o que a tela oferecia antes: reativar por baixo → o contrato recusa
+    const forcado = regras.map((r) => (r.id === 'regra-2026-09-04-1' ? { ...r, ativa: true } : r))
+    expect(lerVoz(formularioParaVoz({ ...form, regras: forcado })).problemas.some((p) => /continua ativa/.test(p.mensagem))).toBe(true)
+    // a regra apenas desativada volta, e a voz continua válida
+    expect(podeReativar(regras, 'regra-2026-08-01-1')).toBe(true)
+    const reativadas = reativarRegraNoFormulario(regras, 'regra-2026-08-01-1')
+    expect(reativadas.find((r) => r.id === 'regra-2026-08-01-1')?.ativa).toBe(true)
+    expect(lerVoz(formularioParaVoz({ ...form, regras: reativadas })).problemas).toEqual([])
+    expect(podeReativar(regras, 'regra-2026-09-12-1')).toBe(false)
+  })
+  it('formulariosIguais ignora espaço das pontas, mas vê mudança de conteúdo', () => {
     const a = vozParaFormulario(voz)
     expect(formulariosIguais(a, { ...a, descricao: `  ${a.descricao}  ` })).toBe(true)
-    expect(formulariosIguais(a, { ...a, termos: a.termos + '\nchimarrão' })).toBe(false)
+    expect(formulariosIguais(a, { ...a, termos: [...a.termos, 'chimarrão'] })).toBe(false)
   })
 })

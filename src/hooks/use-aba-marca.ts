@@ -17,11 +17,13 @@ export function useSalvarVozDaMarca(projectId: number) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: (args: { voz: unknown; versaoEsperada: number | null }) => api.put<VozDaMarca & { gravada: { versao: number; criada: boolean } }>(`/api/projects/${projectId}/voz`, args),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['voz-da-marca', projectId] })
+    // A releitura é AGUARDADA: `isPending` cobre gravação + releitura, e a tela
+    // mantém os campos desabilitados até a resposta chegar (PR14-02).
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['voz-da-marca', projectId] })
       // A voz entra em `brand.voz` do loader único: a prévia do prompt e o DNA lido pela tela acompanham.
-      queryClient.invalidateQueries({ queryKey: ['brand-dna', projectId] })
-      queryClient.invalidateQueries({ queryKey: ['prompt-preview', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['brand-dna', projectId] })
+      void queryClient.invalidateQueries({ queryKey: ['prompt-preview', projectId] })
     },
   })
 }

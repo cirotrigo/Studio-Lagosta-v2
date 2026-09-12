@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
-import { ExternalLink, Loader2, PenLine } from 'lucide-react'
+import { AlertTriangle, ExternalLink, Loader2, PenLine, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -25,7 +25,7 @@ export function IdentidadeVisual({ projectId }: { projectId: number }) {
 }
 
 function AssinaturasDaMarca({ projectId }: { projectId: number }) {
-  const { data, isLoading } = useAssinaturasDaMarca(projectId)
+  const { data, isLoading, isError, error, refetch } = useAssinaturasDaMarca(projectId)
   return (
     <Card className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -44,9 +44,14 @@ function AssinaturasDaMarca({ projectId }: { projectId: number }) {
           </Button>
         )}
       </div>
-      {isLoading ? (
+      {isError ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm">
+          <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Não consegui ler as assinaturas: {(error as Error)?.message || 'erro ao consultar'}. Isto NÃO quer dizer que o cliente não tem página.</span>
+          <Button size="sm" variant="outline" onClick={() => void refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" /> Tentar de novo</Button>
+        </div>
+      ) : isLoading || !data ? (
         <div className="mt-4 flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Carregando assinaturas…</div>
-      ) : !data || data.variantes.length === 0 ? (
+      ) : data.variantes.length === 0 ? (
         <p className="mt-4 text-sm text-muted-foreground">Este cliente ainda não tem página de assinatura. Ela nasce no template &quot;Assinatura&quot;, uma página por formato, com camadas de texto chamadas pelo papel.</p>
       ) : (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">

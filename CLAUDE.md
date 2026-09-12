@@ -6758,10 +6758,32 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   `loadBrandContext`. Editar a voz e mandar o DNA inteiro para o modelo era o
   defeito que o plano queria evitar.
 - **Regra recente com SUBSTITUIÇÃO no formulário** (`substituirRegraNoFormulario`):
-  a antiga fica inativa (histórico, recolhido, com "reativar"), a nova nasce com
-  `substitui` e id novo — a mesma semântica de `aplicarRegraNaVoz`, sem o
-  detector de conflito, porque a pessoa está decidindo à vista. `vozParaPrompt`
-  só carrega as ativas.
+  a antiga fica inativa (histórico, recolhido), a nova nasce com `substitui` e
+  id novo — a mesma semântica de `aplicarRegraNaVoz`, sem o detector de
+  conflito, porque a pessoa está decidindo à vista. `vozParaPrompt` só carrega
+  as ativas. 🔴 **Regra SUBSTITUÍDA não se reativa** (`podeReativar`, PR14-03):
+  com a substituta apontando para ela, o contrato recusa a voz ("a substituída
+  continua ativa") e a tela oferecia uma operação que não podia ser salva;
+  voltar ao texto antigo é uma NOVA substituição da regra atual (o histórico
+  fica). Só regra apenas desativada volta com "reativar".
+- 🔴 **Listas e reescritas são campos ESTRUTURADOS, um item por campo — nunca
+  texto serializado por delimitador** (PR14-01): "uma reescrita por linha,
+  `antes → depois — motivo`" partia um `depois` com travessão, juntava exemplos
+  com quebra interna e tirava um marcador literal "- ", e campos que a pessoa
+  NÃO editou saíam mudados ao salvar. O valor de cada item viaja literal; só o
+  espaço das pontas sai. A prova grava travessão, seta, marcador e quebra pela
+  camada da tela e confere que o conector devolve byte a byte, e que editar só
+  a descrição deixa o resto idêntico.
+- 🔴 **O que chega do servidor NUNCA apaga edição local não salva** (PR14-02):
+  a resposta só substitui o formulário quando ele não tem mudança pendente;
+  quando o nosso salvamento chegou e a pessoa já digitou mais, a base avança e
+  o rascunho fica; quando outra pessoa salvou por baixo, a tela avisa e a pessoa
+  decide recarregar (o CAS recusa a gravação até lá). A releitura é AGUARDADA
+  dentro da mutação e os campos ficam desabilitados durante o ciclo inteiro.
+- **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
+  as três áreas distinguem erro (mensagem + tentar de novo), carregando e
+  resultado vazio — "este cliente não tem página de assinatura" só é dito com a
+  consulta respondida.
 - **"Fatos da casa" é contagem e prazo, nunca conteúdo** (`resumoDosFatos`:
   `groupBy` por categoria das ACTIVE, o que vence em 14 dias e o que já venceu e
   o cron ainda não arquivou, atalhos para `/projects/[id]/base` e `/knowledge`).
@@ -6770,9 +6792,10 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   (`paginasDeAssinatura`, a mesma leitura de `ver-assinatura`), com a miniatura
   só quando ela é publicável — `Page.thumbnail` vira `data:` assim que a página
   é aberta no editor e fica de fora — e o `editorUrl` com o `pageId`.
-- ⚠️ **Não há teste de UI neste repo** (vitest só em node): a prova cobre a
-  camada que a tela chama e o conector; a tela em si é o critério do Ciro (uma
-  edição feita por ele, plano §11). O `prisma/generated` deste worktree é
+- ⚠️ **A aba nova não tem teste de UI** (o vitest é só node; os Playwright de
+  `tests/e2e/` não a cobrem): a prova cobre a camada que a tela chama e o
+  conector; a tela em si é o critério do Ciro (uma edição feita por ele, plano
+  §11). O `prisma/generated` deste worktree é
   GERADO LOCALMENTE (não o symlink para o repo principal): o schema daqui tem
   `BrandVoice` e `copyAutoral` (PRs 7 e 3), e o client do repo principal não.
 

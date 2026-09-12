@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { ChevronDown, Loader2, MessageSquareQuote, Plus, Replace, Save } from 'lucide-react'
+import { AlertTriangle, ChevronDown, Loader2, MessageSquareQuote, Plus, RefreshCw, Replace, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -14,16 +14,22 @@ import { cn } from '@/lib/utils'
 import { ESCOPOS_DA_REGRA, TETO_DO_PROMPT_DA_VOZ, lerVoz, vozParaPrompt, type EscopoDaRegra } from '@/lib/brand/voz'
 import {
   FORMULARIO_VAZIO,
+  REESCRITA_VAZIA,
   formularioParaVoz,
   formulariosIguais,
+  podeReativar,
+  reativarRegraNoFormulario,
   regraEmBranco,
+  substituidaPor,
   substituirRegraNoFormulario,
   vozParaFormulario,
   type FormularioDaVoz,
+  type ReescritaNoFormulario,
   type RegraNoFormulario,
 } from '@/lib/brand/voz-formulario'
 import { useSalvarVozDaMarca, useVozDaMarca } from '@/hooks/use-aba-marca'
 import { BrandDnaSection } from '@/components/projects/brand-dna-section'
+import type { VozDaMarca } from '@/lib/brand/aba-marca'
 
 /**
  * "Como a marca fala" — a primeira das três áreas da aba Marca (plano "Marca
@@ -36,6 +42,13 @@ import { BrandDnaSection } from '@/components/projects/brand-dna-section'
  * em silêncio. Quem MANDA na copy hoje é dito no topo — a voz só passa a
  * valer quando o cliente é MIGRADO (manifesto do PR 13, decisão do Ciro);
  * até lá o DNA de texto legado continua editável aqui, recolhido.
+ *
+ * 🔴 O que chega do servidor NUNCA apaga uma edição local não salva (PR14-02):
+ * a resposta só substitui o formulário quando ele não tem mudança pendente;
+ * quando o nosso salvamento chegou e a pessoa já digitou mais, a base avança
+ * e o rascunho fica; quando OUTRA pessoa salvou por baixo, a tela avisa e a
+ * pessoa decide recarregar (o CAS recusa a gravação até lá). Enquanto o
+ * salvamento e a releitura correm, os campos ficam desabilitados.
  */
 const ESCOPO_LABEL: Record<EscopoDaRegra, string> = { copy: 'só na copy', arte: 'só na arte', ambas: 'copy e arte' }
 
@@ -43,41 +56,74 @@ function hojeEmBrasilia(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
+interface Estado {
+  form: FormularioDaVoz
+  base: FormularioDaVoz
+  versaoLida: number | null
+  /** O servidor tem uma versão que não é a que este formulário partiu, e há edição local não salva. */
+  divergente: number | null
+}
+
+const ESTADO_INICIAL: Estado = { form: FORMULARIO_VAZIO, base: FORMULARIO_VAZIO, versaoLida: null, divergente: null }
+
+function formDoServidor(d: VozDaMarca): { form: FormularioDaVoz; versao: number | null } {
+  return { form: vozParaFormulario(d.registro?.voz ?? null), versao: d.registro?.versao ?? null }
+}
+
 export function ComoAMarcaFala({ projectId }: { projectId: number }) {
-  const { data, isLoading, refetch } = useVozDaMarca(projectId)
+  const { data, isLoading, isError, error, refetch } = useVozDaMarca(projectId)
   const salvar = useSalvarVozDaMarca(projectId)
-  const [form, setForm] = React.useState<FormularioDaVoz>(FORMULARIO_VAZIO)
-  const [base, setBase] = React.useState<FormularioDaVoz>(FORMULARIO_VAZIO)
-  const [versaoLida, setVersaoLida] = React.useState<number | null>(null)
+  const [estado, setEstado] = React.useState<Estado>(ESTADO_INICIAL)
+  const enviadoRef = React.useRef<FormularioDaVoz | null>(null)
   const [substituindo, setSubstituindo] = React.useState<{ id: string; texto: string; motivo: string; escopo: EscopoDaRegra } | null>(null)
 
   React.useEffect(() => {
     if (!data) return
-    const f = vozParaFormulario(data.registro?.voz ?? null)
-    setForm(f)
-    setBase(f)
-    setVersaoLida(data.registro?.versao ?? null)
+    const servidor = formDoServidor(data)
+    setEstado((e) => {
+      const semEdicaoLocal = formulariosIguais(e.form, e.base)
+      if (semEdicaoLocal) return { form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null }
+      // Há edição local não salva. O que chegou é o NOSSO salvamento? Então a base avança e o rascunho fica.
+      if (enviadoRef.current && formulariosIguais(servidor.form, enviadoRef.current)) return { ...e, base: servidor.form, versaoLida: servidor.versao, divergente: null }
+      // Nada mudou no servidor (releitura de fundo): só a versão se confirma.
+      if (formulariosIguais(servidor.form, e.base)) return { ...e, versaoLida: servidor.versao, divergente: null }
+      // Outra pessoa salvou por baixo: não descartar nada; a pessoa decide.
+      return { ...e, divergente: servidor.versao }
+    })
   }, [data])
 
+  const { form, base, versaoLida, divergente } = estado
   const mudou = React.useMemo(() => !formulariosIguais(form, base), [form, base])
   const previa = React.useMemo(() => lerVoz(formularioParaVoz(form)), [form])
   const caracteres = previa.voz ? vozParaPrompt(previa.voz, { escopo: 'copy' }).length : 0
 
+  const setForm = (fn: (f: FormularioDaVoz) => FormularioDaVoz) => setEstado((e) => ({ ...e, form: fn(e.form) }))
   const set = <K extends keyof FormularioDaVoz>(k: K, v: FormularioDaVoz[K]) => setForm((f) => ({ ...f, [k]: v }))
   const setRegra = (id: string, patch: Partial<RegraNoFormulario>) => setForm((f) => ({ ...f, regras: f.regras.map((r) => (r.id === id ? { ...r, ...patch } : r)) }))
+
+  const adotarServidor = () => {
+    if (!data) return
+    const servidor = formDoServidor(data)
+    enviadoRef.current = null
+    setEstado({ form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null })
+    void refetch()
+  }
 
   const gravar = () => {
     if (!previa.voz) {
       toast.error(`A voz ainda não passa no contrato: ${previa.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).slice(0, 3).join(' · ')}`)
       return
     }
+    enviadoRef.current = form
     salvar.mutate(
       { voz: formularioParaVoz(form), versaoEsperada: versaoLida },
       {
         onSuccess: (r) => toast.success(r.gravada.criada ? 'Voz criada (versão 1). Ela passa a valer na copy quando o cliente for migrado.' : `Voz salva (versão ${r.gravada.versao}).`),
         onError: (e: Error & { code?: string; status?: number }) => {
+          enviadoRef.current = null
           if (/VOZ_DIVERGENTE|mudou enquanto/.test(`${e.code ?? ''} ${e.message}`)) {
-            toast.error('Alguém salvou a voz enquanto você editava. Recarreguei a versão atual — refaça a sua mudança por cima.')
+            toast.error('Alguém salvou a voz enquanto você editava. O que você escreveu continua aqui, NÃO salvo: carregue a versão atual e refaça por cima.')
+            setEstado((s) => ({ ...s, divergente: s.divergente ?? -1 }))
             void refetch()
             return
           }
@@ -87,6 +133,14 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
     )
   }
 
+  if (isError) {
+    return (
+      <Card className="flex flex-wrap items-center justify-between gap-3 border-destructive/40 p-6 text-sm">
+        <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Não consegui ler a voz da marca: {(error as Error)?.message || 'erro ao consultar'}.</span>
+        <Button size="sm" variant="outline" onClick={() => void refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" /> Tentar de novo</Button>
+      </Card>
+    )
+  }
   if (isLoading || !data) {
     return (
       <Card className="flex items-center justify-center p-10 text-muted-foreground">
@@ -99,11 +153,12 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
   const migrado = contexto.fonte === 'voz'
   const regrasAtivas = form.regras.filter((r) => r.ativa)
   const regrasInativas = form.regras.filter((r) => !r.ativa)
+  const salvando = salvar.isPending
 
   return (
     <div className="space-y-4">
       <Card className="p-6">
-        <div className="space-y-5">
+        <fieldset disabled={salvando} className="space-y-5 disabled:opacity-80">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -134,6 +189,16 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
             </div>
           )}
 
+          {divergente !== null && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
+              <span className="flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4" />
+                {divergente > 0 ? `A voz mudou no servidor (versão ${divergente}) enquanto você editava.` : 'A voz mudou no servidor enquanto você editava.'} O que está aqui NÃO foi salvo e não será gravado por cima.
+              </span>
+              <Button size="sm" variant="outline" onClick={adotarServidor}>Carregar a versão atual (descarta o não salvo)</Button>
+            </div>
+          )}
+
           <div className="grid gap-4 md:grid-cols-2">
             <Campo id="voz-descricao" label="Descrição" dica="Como a marca fala, em poucas linhas (até 600 caracteres)." className="md:col-span-2">
               <Textarea id="voz-descricao" rows={3} value={form.descricao} onChange={(e) => set('descricao', e.target.value)} placeholder="Direta e quente, com orgulho do fogo de chão; fala de comida como quem convida para a mesa." />
@@ -141,17 +206,17 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
             <Campo id="voz-tratamento" label="Tratamento" dica="Como se dirige à pessoa: você, tu, a gente…">
               <Input id="voz-tratamento" value={form.tratamento} onChange={(e) => set('tratamento', e.target.value)} placeholder="você" />
             </Campo>
-            <Campo id="voz-termos" label="Termos da casa" dica="Um por linha, na grafia exata (até 40).">
-              <Textarea id="voz-termos" rows={3} value={form.termos} onChange={(e) => set('termos', e.target.value)} placeholder={'costela no bafo\nhappy em dobro'} />
+            <Campo id="voz-termos" label="Termos da casa" dica="Na grafia exata (até 40).">
+              <ListaDeItens id="voz-termos" itens={form.termos} onChange={(v) => set('termos', v)} max={40} placeholder="costela no bafo" rotuloAdicionar="termo" />
             </Campo>
-            <Campo id="voz-exemplos" label="Exemplos aprovados" dica="Frases como saíram, uma por linha (até 12).">
-              <Textarea id="voz-exemplos" rows={4} value={form.exemplos} onChange={(e) => set('exemplos', e.target.value)} placeholder={'Sexta é dia de costela.\nVem pra cá.'} />
+            <Campo id="voz-exemplos" label="Exemplos aprovados" dica="Frases como saíram (até 12).">
+              <ListaDeItens id="voz-exemplos" itens={form.exemplos} onChange={(v) => set('exemplos', v)} max={12} placeholder="Sexta é dia de costela." rotuloAdicionar="exemplo" />
             </Campo>
-            <Campo id="voz-antesdepois" label="Reescritas (antes → depois — motivo)" dica="Uma por linha, com a seta; o motivo depois do travessão (até 12).">
-              <Textarea id="voz-antesdepois" rows={4} value={form.antesDepois} onChange={(e) => set('antesDepois', e.target.value)} placeholder={'Venha conhecer nossas opções → Vem provar — menos institucional'} />
+            <Campo id="voz-antesdepois" label="Reescritas (antes → depois, por quê)" dica="O que estava, o que ficou e o motivo (até 12).">
+              <ListaDeReescritas itens={form.antesDepois} onChange={(v) => set('antesDepois', v)} max={12} />
             </Campo>
-            <Campo id="voz-proibicoes" label="Proibições" dica="Poucas e curtas, uma por linha (até 20). Preço e horário nunca entram aqui." className="md:col-span-2">
-              <Textarea id="voz-proibicoes" rows={3} value={form.proibicoes} onChange={(e) => set('proibicoes', e.target.value)} placeholder={'"o melhor da cidade"\nemoji na manchete'} />
+            <Campo id="voz-proibicoes" label="Proibições" dica="Poucas e curtas (até 20). Preço e horário nunca entram aqui." className="md:col-span-2">
+              <ListaDeItens id="voz-proibicoes" itens={form.proibicoes} onChange={(v) => set('proibicoes', v)} max={20} placeholder={'"o melhor da cidade"'} rotuloAdicionar="proibição" />
             </Campo>
           </div>
 
@@ -211,13 +276,33 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
                   <ChevronDown className="h-3 w-3" /> {regrasInativas.length} regra{regrasInativas.length === 1 ? '' : 's'} no histórico (substituídas ou desativadas)
                 </CollapsibleTrigger>
                 <CollapsibleContent className="mt-2 space-y-1 text-xs text-muted-foreground">
-                  {regrasInativas.map((r) => (
-                    <div key={r.id} className="flex flex-wrap items-center gap-2">
-                      <code className="rounded bg-muted px-1">{r.id}</code>
-                      <span className="line-through">{r.texto}</span>
-                      <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => setRegra(r.id, { ativa: true })}>reativar</Button>
-                    </div>
-                  ))}
+                  {regrasInativas.map((r) => {
+                    const substituta = substituidaPor(form.regras, r.id)
+                    return (
+                      <div key={r.id} className="flex flex-wrap items-center gap-2">
+                        <code className="rounded bg-muted px-1">{r.id}</code>
+                        <span className="line-through">{r.texto}</span>
+                        {podeReativar(form.regras, r.id) ? (
+                          <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => set('regras', reativarRegraNoFormulario(form.regras, r.id))}>reativar</Button>
+                        ) : substituta ? (
+                          <>
+                            <span>substituída por <code className="rounded bg-muted px-1">{substituta.id}</code></span>
+                            {substituta.ativa && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-6 text-xs"
+                                title="Abre uma substituição da regra atual com este texto — o histórico fica"
+                                onClick={() => setSubstituindo({ id: substituta.id, texto: r.texto, motivo: '', escopo: r.escopo })}
+                              >
+                                voltar a este texto (nova substituição)
+                              </Button>
+                            )}
+                          </>
+                        ) : null}
+                      </div>
+                    )
+                  })}
                 </CollapsibleContent>
               </Collapsible>
             )}
@@ -235,11 +320,11 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
                 ? 'Salvar vale na próxima copy. O conector (consultar-voz) lê a mesma versão.'
                 : 'Salvar grava a voz como PRÉVIA: a copy continua lendo o DNA legado até a migração deste cliente.'}
             </p>
-            <Button onClick={gravar} disabled={!mudou || salvar.isPending}>
-              {salvar.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando…</> : <><Save className="mr-2 h-4 w-4" /> Salvar voz</>}
+            <Button onClick={gravar} disabled={!mudou || salvando || divergente !== null}>
+              {salvando ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Salvando…</> : <><Save className="mr-2 h-4 w-4" /> Salvar voz</>}
             </Button>
           </div>
-        </div>
+        </fieldset>
       </Card>
 
       <Collapsible>
@@ -272,6 +357,55 @@ function Campo({ id, label, dica, className, children }: { id: string; label: st
     <div className={cn('space-y-1.5', className)}>
       <Label htmlFor={id}>{label}{dica && <span className="ml-1 text-xs font-normal text-muted-foreground">· {dica}</span>}</Label>
       {children}
+    </div>
+  )
+}
+
+/** Um item por campo: o valor viaja literal (travessão, seta, marcador, quebra de linha são conteúdo). */
+function ListaDeItens({ id, itens, onChange, max, placeholder, rotuloAdicionar }: { id: string; itens: string[]; onChange: (v: string[]) => void; max: number; placeholder: string; rotuloAdicionar: string }) {
+  return (
+    <div className="space-y-1.5">
+      {itens.map((item, i) => (
+        <div key={i} className="flex items-start gap-1">
+          <Textarea
+            id={i === 0 ? id : undefined}
+            rows={1}
+            value={item}
+            onChange={(e) => onChange(itens.map((x, j) => (j === i ? e.target.value : x)))}
+            placeholder={placeholder}
+            className="min-h-9"
+          />
+          <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label="Tirar este item" onClick={() => onChange(itens.filter((_, j) => j !== i))}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
+      <Button type="button" size="sm" variant="outline" disabled={itens.length >= max} onClick={() => onChange([...itens, ''])}>
+        <Plus className="mr-2 h-3.5 w-3.5" /> {rotuloAdicionar}
+      </Button>
+    </div>
+  )
+}
+
+function ListaDeReescritas({ itens, onChange, max }: { itens: ReescritaNoFormulario[]; onChange: (v: ReescritaNoFormulario[]) => void; max: number }) {
+  const setItem = (i: number, patch: Partial<ReescritaNoFormulario>) => onChange(itens.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+  return (
+    <div className="space-y-2">
+      {itens.map((r, i) => (
+        <div key={i} className="flex items-start gap-1">
+          <div className="grid flex-1 gap-1">
+            <Textarea rows={1} value={r.antes} onChange={(e) => setItem(i, { antes: e.target.value })} placeholder="antes: Venha conhecer nossas opções" className="min-h-9" />
+            <Textarea rows={1} value={r.depois} onChange={(e) => setItem(i, { depois: e.target.value })} placeholder="depois: Vem provar" className="min-h-9" />
+            <Input value={r.motivo} onChange={(e) => setItem(i, { motivo: e.target.value })} placeholder="por quê: menos institucional" />
+          </div>
+          <Button type="button" size="icon" variant="ghost" className="h-9 w-9 shrink-0" aria-label="Tirar esta reescrita" onClick={() => onChange(itens.filter((_, j) => j !== i))}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
+      <Button type="button" size="sm" variant="outline" disabled={itens.length >= max} onClick={() => onChange([...itens, { ...REESCRITA_VAZIA }])}>
+        <Plus className="mr-2 h-3.5 w-3.5" /> reescrita
+      </Button>
     </div>
   )
 }

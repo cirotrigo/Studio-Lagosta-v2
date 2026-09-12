@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { BookOpen, CalendarClock, Loader2 } from 'lucide-react'
+import { AlertTriangle, BookOpen, CalendarClock, Loader2, RefreshCw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -28,7 +28,7 @@ const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { timeZon
  * só, com vigência, e é ela que a copy consulta na data da peça.
  */
 export function FatosDaCasa({ projectId }: { projectId: number }) {
-  const { data, isLoading } = useFatosDaCasa(projectId)
+  const { data, isLoading, isError, error, refetch } = useFatosDaCasa(projectId)
   return (
     <Card className="p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -46,7 +46,12 @@ export function FatosDaCasa({ projectId }: { projectId: number }) {
           <Button asChild size="sm" variant="outline"><Link href={`/knowledge?projectId=${projectId}`}>Ver tudo</Link></Button>
         </div>
       </div>
-      {isLoading || !data ? (
+      {isError ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/40 p-3 text-sm">
+          <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Não consegui ler a base: {(error as Error)?.message || 'erro ao consultar'}. Isto NÃO quer dizer que ela está vazia.</span>
+          <Button size="sm" variant="outline" onClick={() => void refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" /> Tentar de novo</Button>
+        </div>
+      ) : isLoading || !data ? (
         <div className="mt-4 flex items-center text-sm text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Lendo a base…</div>
       ) : (
         <div className="mt-4 space-y-4">
