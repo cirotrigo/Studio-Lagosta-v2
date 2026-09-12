@@ -47,6 +47,7 @@ import { marcarForcaAtendida, marcarForcaEmExecucao, pedirNovaTentativa } from '
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
+import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { renderPageAndRegister } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
@@ -255,6 +256,8 @@ export interface RecomporInput {
   antesDeGravar?: () => Promise<void>
   /** Só para a prova: roda ANTES do re-render (o ramo que não recompõe), depois de a versão visual ser lida. */
   antesDeRenderizar?: () => Promise<void>
+  /** SÓ PARA PROVA: roda DEPOIS do CAS da página recomposta e ANTES da escrita da arte — a janela em que a trava do revisor pode nascer (REV-R01). */
+  entreGravarPaginaEArte?: () => Promise<void>
   /** SÓ PARA PROVA: roda entre o levantamento (que decide a defasagem) e a leitura da página que vai ser composta. */
   depoisDoLevantamento?: () => Promise<void>
 }
@@ -413,20 +416,28 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada enquanto a arte era refeita; a composição foi descartada e a arte será refeita a partir da página nova.', 409)
     }
     versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: camadas.camadas })
-    await db.generation.update({
-      where: { id: arte.generationId },
-      data: {
-        resultUrl: blob.url,
-        fieldValues: {
-          ...arte.fieldValues,
-          spec,
-          composicao: composicao.diagnostico,
-          layersSnapshot: camadas.camadas,
-          thumbnailUrl: blob.url,
-          recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
-        } as never,
+    if (input.entreGravarPaginaEArte) await input.entreGravarPaginaEArte()
+    /**
+     * MERGE no banco, nunca `{ ...arte.fieldValues, … }`: `arte.fieldValues`
+     * foi lido no começo da execução, e entre o CAS da página e esta escrita
+     * o revisor pode ter gravado a trava `somenteReRender` na arte (REV-R01
+     * da revisão do Codex, 12/09/2026). O objeto capturado não a tem, e
+     * gravá-lo inteiro a apagaria — a edição de texto seguinte recomporia pela
+     * spec e desfaria o ajuste. O Postgres aplica só estas chaves sobre o
+     * valor atual.
+     */
+    await mesclarFieldValuesDaArte(
+      db,
+      arte.generationId,
+      {
+        spec,
+        composicao: composicao.diagnostico,
+        layersSnapshot: camadas.camadas,
+        thumbnailUrl: blob.url,
+        recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
       },
-    })
+      { resultUrl: blob.url },
+    )
   } else {
     /**
      * O re-render passa por `renderPageAndRegister` com o `generationId` da
@@ -454,8 +465,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       authorName: arte.authorName ?? 'compositor',
       sourcePageId: arte.sourcePageId,
       generationId: arte.generationId,
+      // Só o PATCH: com `generationId` o persist faz MERGE no banco sobre a
+      // linha atual — mandar `{ ...arte.fieldValues }` capturado no começo
+      // apagaria a trava que o revisor gravou durante o render (REV-R01).
       fieldValues: {
-        ...arte.fieldValues,
         recomposicao: registro('re-renderizada', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
         // A recuperação forçada preservou um ajuste que a spec não conhece:
         // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
@@ -544,10 +557,10 @@ export async function travarRecomposicaoDaArte(
       ? (primeira.fieldValues as Record<string, unknown>)
       : {}
   if (fv.somenteReRender) return true
-  await client.generation.update({
-    where: { id: primeira.id },
-    data: { fieldValues: { ...fv, somenteReRender: { desde: new Date().toISOString(), motivo } } as never },
-  })
+  // MERGE no banco: um worker pode estar gravando a MESMA arte neste instante
+  // (spec, snapshot, recomposição) — `{ ...fv, trava }` com o `fv` lido acima
+  // apagaria o que ele acabou de escrever (a outra face do REV-R01).
+  await mesclarFieldValuesDaArte(client, primeira.id, { somenteReRender: { desde: new Date().toISOString(), motivo } })
   return true
 }
 
@@ -745,7 +758,7 @@ export async function processarRecomposicaoEmBackground(args: {
   decididoPor?: string | null
   queueJobId?: string | null
   /** Só para a prova de integração: as costuras de `RecomporInput`. */
-  seams?: Pick<RecomporInput, 'antesDeGravar' | 'depoisDoLevantamento' | 'antesDeRenderizar'>
+  seams?: Pick<RecomporInput, 'antesDeGravar' | 'depoisDoLevantamento' | 'antesDeRenderizar' | 'entreGravarPaginaEArte'>
 }): Promise<void> {
   const { pageId, origem } = args.recompor
   const t0 = Date.now()
@@ -867,23 +880,11 @@ export async function registrarRecusa(args: {
 
   if (args.generationId) {
     try {
-      const atual = await db.generation.findUnique({
-        where: { id: args.generationId },
-        select: { fieldValues: true },
-      })
-      const fv =
-        atual?.fieldValues && typeof atual.fieldValues === 'object' && !Array.isArray(atual.fieldValues)
-          ? (atual.fieldValues as Record<string, unknown>)
-          : {}
-      // MERGE, nunca substituição: `fieldValues` é o registro atômico da run.
-      await db.generation.update({
-        where: { id: args.generationId },
-        data: {
-          fieldValues: {
-            ...fv,
-            recomposicao: registro('recusada', { erro: mensagem, errorCode: code, detalhes }),
-          } as never,
-        },
+      // MERGE NO BANCO, nunca substituição: `fieldValues` é o registro atômico
+      // da run, e ler-e-regravar aqui apagaria a trava que o revisor gravasse
+      // entre a leitura e a escrita (REV-R01).
+      await mesclarFieldValuesDaArte(db, args.generationId, {
+        recomposicao: registro('recusada', { erro: mensagem, errorCode: code, detalhes }),
       })
     } catch (falha) {
       console.error('[recompor] não deu para registrar a recusa na arte:', falha)

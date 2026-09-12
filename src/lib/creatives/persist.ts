@@ -10,6 +10,7 @@
 import type { CanalDaArte } from './canal'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
+import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { googleDriveService } from '@/server/google-drive-service'
@@ -279,26 +280,38 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
   // pageId entra sempre: é como conferir-arte localiza as camadas da arte
   // para o diagnóstico geométrico (sobreposição vs texto faltando).
   const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url }
+  /**
+   * Arte que JÁ existe (a Generation da fila, a arte recomposta): o
+   * `fieldValues` entra por MERGE NO BANCO (jsonb `||`), no mesmo lote das
+   * colunas. O worker que chega aqui leu `fieldValues` dezenas de segundos
+   * antes; a trava `somenteReRender` que o revisor gravou nesse intervalo
+   * seria apagada por um `update` com o objeto inteiro (REV-R01 da revisão
+   * do Codex, 12/09/2026). Chave ausente do patch fica como está.
+   */
   const generation = input.generationId
-    ? await db.generation.update({
-        where: { id: input.generationId },
-        data: {
-          status: 'COMPLETED' as any,
-          templateId,
-          fieldValues: fieldValues as any,
-          sourcePageId: input.sourcePageId ?? null,
-          ...(input.slideOrder != null ? { slideOrder: input.slideOrder } : {}),
-          resultUrl: blob.url,
-          authorName: input.authorName,
-          ...(input.createdBy ? { createdBy: input.createdBy } : {}),
-          // A Generation da fila já nasceu com canal; só sobrescreve se vier.
-          ...(input.canal ? { canal: input.canal } : {}),
-          templateName,
-          completedAt: new Date(),
-          fileName: `${page.name}.png`,
-        },
-        select: { id: true },
-      })
+    ? await db
+        .$transaction([
+          mesclarFieldValuesDaArte(db, input.generationId, fieldValues),
+          db.generation.update({
+            where: { id: input.generationId },
+            data: {
+              status: 'COMPLETED' as any,
+              templateId,
+              sourcePageId: input.sourcePageId ?? null,
+              ...(input.slideOrder != null ? { slideOrder: input.slideOrder } : {}),
+              resultUrl: blob.url,
+              authorName: input.authorName,
+              ...(input.createdBy ? { createdBy: input.createdBy } : {}),
+              // A Generation da fila já nasceu com canal; só sobrescreve se vier.
+              ...(input.canal ? { canal: input.canal } : {}),
+              templateName,
+              completedAt: new Date(),
+              fileName: `${page.name}.png`,
+            },
+            select: { id: true },
+          }),
+        ])
+        .then(([, atualizada]) => atualizada)
     : await db.generation.create({
         data: {
           status: 'COMPLETED' as any,

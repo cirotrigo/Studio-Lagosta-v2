@@ -699,19 +699,62 @@ async function main() {
       conferir('a recusa ficou registrada na arte (fieldValues.recomposicao) com o código', recusa6n?.codigo === 'PAGINA_MUDOU_DURANTE' || /PAGINA_MUDOU_DURANTE/.test(JSON.stringify(recusa6n ?? {})), JSON.stringify(recusa6n).slice(0, 120))
     }
 
-    // ── 6o. página e trava numa transação (REV-D01) ──
-    console.log('6o) o ajuste grava a página e a trava numa TRANSAÇÃO: outro leitor nunca vê a página ajustada sem a trava (REV-D01)')
-    const antes6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
-    const camadas6o = await camadasDaPagina(pageId2)
-    const forcaDo6o = Math.max(0.45, Math.round((forcaDe(camadas6o) - 0.05) * 1000) / 1000)
-    const ajuste6o = { ...ajuste2, forca: forcaDo6o }
-    let dentro6o: { updatedAt: Date } | null = null
+    // ── 6o. página e trava numa transação (REV-D01), em peça SEM trava, lendo página E arte (REV-R02) ──
+    console.log('6o) o ajuste grava a página e a trava numa TRANSAÇÃO: falhou depois da página, tudo volta; página e trava só aparecem juntas (REV-D01, REV-R02)')
     // 🔴 O leitor externo precisa de um cliente PRÓPRIO: no pool do dev uma
     // leitura pelo `db` com a transação aberta no MESMO cliente fica presa até
     // o timeout dela (P2028 aos 20s) — foi o que derrubou a rodada 14 (medido
     // por sonda isolada em 12/09/2026). Em produção o worker é OUTRO processo.
     const { PrismaClient } = await import('../prisma/generated/client')
     const leitor6o = new PrismaClient()
+    const gensDaPagina2 = async (c: { generation: { findMany: (args: any) => Promise<any> } } = db): Promise<Array<{ id: string; fieldValues: unknown }>> =>
+      c.generation.findMany({ where: { projectId: PROJETO, resultUrl: { not: null }, fieldValues: { path: ['pageId'], equals: pageId2 } }, select: { id: true, fieldValues: true }, orderBy: { createdAt: 'desc' } })
+    const travaDe = (fv: unknown) => (fv && typeof fv === 'object' && !Array.isArray(fv) ? ((fv as Record<string, unknown>).somenteReRender ?? null) : null)
+    const limparTrava = async () => {
+      for (const g of await gensDaPagina2()) await db.$executeRaw`UPDATE "Generation" SET "fieldValues" = "fieldValues" - 'somenteReRender' WHERE "id" = ${g.id}`
+    }
+    // Precondição (REV-R02): os passos 6g–6n deixaram a segunda peça TRAVADA, e
+    // com a trava `travarRecomposicaoDaArte` devolve cedo sem escrever nada —
+    // a prova não estaria provando a criação da trava. A peça começa limpa.
+    await limparTrava()
+    const gens6oPre = await gensDaPagina2()
+    conferir('precondição: a segunda peça começa SEM trava (a trava dos passos anteriores foi retirada da arte)', gens6oPre.length > 0 && gens6oPre.every((g) => !travaDe(g.fieldValues)), JSON.stringify(gens6oPre.map((g) => ({ id: g.id, trava: travaDe(g.fieldValues) }))))
+
+    // 6o-a: falha controlada DEPOIS de a página ser escrita e ANTES da trava → a transação inteira volta
+    const antes6oA = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+    const forcaAntes6oA = forcaDe(await camadasDaPagina(pageId2))
+    const forcaDo6oA = Math.max(0.45, Math.round((forcaAntes6oA - 0.05) * 1000) / 1000)
+    const rv6oA = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+    let dentro6oA: { updatedAt: Date } | null = null
+    const e6oA = await erroDe(
+      ajustarArte({
+        projectId: PROJETO,
+        pageId: pageId2,
+        versaoEsperada: rv6oA.versao,
+        ajustes: [{ ...ajuste2, forca: forcaDo6oA }],
+        canal: 'claude-code',
+        _prova: {
+          entreGravarETravar: async () => {
+            dentro6oA = await leitor6o.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+            throw new Error('falha controlada da prova: a trava não pôde ser gravada')
+          },
+        },
+      }),
+    )
+    const depois6oA = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+    const pagina6oA = await camadasDaPagina(pageId2)
+    const travas6oA = (await gensDaPagina2()).map((g) => travaDe(g.fieldValues))
+    conferir('falhou depois de escrever a página e antes da trava: o erro subiu e a PÁGINA voltou INTEIRA à versão anterior (mesma updatedAt, mesma força)', !!e6oA && e6oA.code !== 'VERSAO_DIVERGENTE' && depois6oA!.updatedAt.getTime() === antes6oA!.updatedAt.getTime() && forcaDe(pagina6oA) === forcaAntes6oA && forcaDo6oA !== forcaAntes6oA, `${String(e6oA?.message ?? '').slice(0, 70)}; força ${forcaDe(pagina6oA)} (antes ${forcaAntes6oA}, pedida ${forcaDo6oA})`)
+    conferir('…e a arte continua SEM trava: nada da transação vazou', !!dentro6oA && travas6oA.every((t) => !t), JSON.stringify(travas6oA))
+
+    // 6o-b: o caminho feliz: DENTRO da transação (página escrita, trava ainda não)
+    // o leitor externo vê a página ANTERIOR e a arte SEM trava; depois do commit,
+    // página e trava mudaram JUNTAS.
+    const antes6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+    const camadas6o = await camadasDaPagina(pageId2)
+    const forcaDo6o = Math.max(0.45, Math.round((forcaDe(camadas6o) - 0.05) * 1000) / 1000)
+    const ajuste6o = { ...ajuste2, forca: forcaDo6o }
+    let dentro6o: { pagina: { updatedAt: Date } | null; travas: unknown[] } | null = null
     const rv6o = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
     process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
     const e6o = await erroDe(
@@ -723,7 +766,9 @@ async function main() {
         canal: 'claude-code',
         _prova: {
           entreGravarETravar: async () => {
-            dentro6o = await leitor6o.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+            const pagina = await leitor6o.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+            const gens = await gensDaPagina2(leitor6o)
+            dentro6o = { pagina, travas: gens.map((g) => travaDe(g.fieldValues)) }
           },
         },
       }),
@@ -732,8 +777,66 @@ async function main() {
     await leitor6o.$disconnect().catch(() => undefined)
     const depois6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
     const pagina6o = await camadasDaPagina(pageId2)
+    const travas6o = (await gensDaPagina2()).map((g) => travaDe(g.fieldValues))
+    const d6o = dentro6o as unknown as { pagina: { updatedAt: Date } | null; travas: unknown[] } | null
     conferir('o ajuste gravou a página (render falhou, como no passo 6)', !!e6o && e6o.code !== 'VERSAO_DIVERGENTE' && forcaDe(pagina6o) === forcaDo6o, `${e6o?.code} ${String(e6o?.message ?? '').slice(0, 120)}; força ${forcaDe(pagina6o)} (esperava ${forcaDo6o})`)
-    conferir('DENTRO da transação (página escrita, trava ainda não) outro leitor viu a página ANTERIOR — página e trava só aparecem juntas', !!dentro6o && (dentro6o as { updatedAt: Date }).updatedAt.getTime() === antes6o!.updatedAt.getTime() && depois6o!.updatedAt.getTime() !== antes6o!.updatedAt.getTime(), JSON.stringify({ antes: antes6o?.updatedAt, dentro: (dentro6o as { updatedAt: Date } | null)?.updatedAt, depois: depois6o?.updatedAt }))
+    conferir('DENTRO da transação (página escrita, trava ainda não) o leitor externo viu a página ANTERIOR e a arte SEM trava', !!d6o && !!d6o.pagina && d6o.pagina.updatedAt.getTime() === antes6o!.updatedAt.getTime() && d6o.travas.length > 0 && d6o.travas.every((t) => !t), JSON.stringify({ antes: antes6o?.updatedAt, dentro: d6o?.pagina?.updatedAt, travasDentro: d6o?.travas }))
+    conferir('DEPOIS do commit a página mudou E a arte mais recente da página carrega a trava — as duas apareceram JUNTAS', depois6o!.updatedAt.getTime() !== antes6o!.updatedAt.getTime() && !!travas6o[0] && /ajuste do revisor/.test(String((travas6o[0] as Record<string, unknown> | null)?.motivo ?? '')), JSON.stringify({ depois: depois6o?.updatedAt, trava: travas6o[0] }).slice(0, 200))
+
+    // ── 6p. a trava gravada ENQUANTO o worker refaz a arte sobrevive à escrita dele (REV-R01) ──
+    await pausaParaOBlob(45_000, 'um render no Blob (6p)')
+    console.log('6p) a trava nasce ENQUANTO o worker refaz a arte (depois de ele LER a arte, antes de ele GRAVÁ-LA): a escrita dele é MERGE no banco e a trava fica (REV-R01)')
+    await limparTrava()
+    conferir('precondição: a segunda peça está SEM trava quando o worker lê a arte', (await gensDaPagina2()).every((g) => !travaDe(g.fieldValues)))
+    const pedido6p = await pedirRecomposicaoDaArteCongelada([pageId2], 'editor', { forcar: true })
+    const jobId6p = pedido6p[0]?.jobId ?? null
+    conferir('há job FORÇADO na fila para a segunda peça (6p)', !!jobId6p, String(jobId6p))
+    if (jobId6p) {
+      const reservado6p = await reservarJob(jobId6p)
+      const rec6p = (reservado6p?.payload as Record<string, any>)?.recompor
+      const genAntes6p = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+      let travaDurante6p: unknown = null
+      let erroDoAjuste6p: { code?: string; message: string } | null = null
+      let correu6p = false
+      // O revisor entra DEPOIS de o worker ter lido a arte (ainda sem trava) e
+      // ANTES de ele gravá-la — no ramo do re-render (`antesDeRenderizar`) ou
+      // no da recomposição (`entreGravarPaginaEArte`): as duas escritas passam
+      // pelo mesmo merge no banco.
+      const revisorDurante = async () => {
+        if (correu6p) return
+        correu6p = true
+        const c = await camadasDaPagina(pageId2)
+        const forca = Math.min(0.9, Math.round((forcaDe(c) + 0.06) * 1000) / 1000)
+        const rv = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+        process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+        erroDoAjuste6p = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: rv.versao, ajustes: [{ ...ajuste2, forca }], canal: 'claude-code' }))
+        process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+        travaDurante6p = travaDe((await gensDaPagina2())[0]?.fieldValues)
+      }
+      await processarRecomposicaoEmBackground({
+        generationId: persistido2.generationId,
+        projectId: PROJETO,
+        recompor: rec6p,
+        queueJobId: jobId6p,
+        seams: { antesDeRenderizar: revisorDurante, entreGravarPaginaEArte: revisorDurante },
+      })
+      const gen6p = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+      if (gen6p?.resultUrl) blobs.add(gen6p.resultUrl)
+      const fv6p = (gen6p?.fieldValues ?? {}) as Record<string, any>
+      const job6p = await db.generationJob.findUnique({ where: { id: jobId6p }, select: { status: true, lastError: true } })
+      const eAj6p = erroDoAjuste6p as unknown as { code?: string; message: string } | null
+      conferir('o revisor gravou página + trava NO MEIO da execução do worker (o render dele falhou, como no passo 6)', correu6p && !!eAj6p && eAj6p.code !== 'VERSAO_DIVERGENTE' && !!travaDurante6p, `${eAj6p?.code} ${String(eAj6p?.message ?? '').slice(0, 60)}; trava durante: ${!!travaDurante6p}`)
+      conferir('o worker gravou a arte DEPOIS (URL nova, registro da recomposição) e a trava do revisor SOBREVIVEU à escrita dele — merge no banco, não `{ ...fieldValues }` capturado', gen6p?.resultUrl !== genAntes6p?.resultUrl && ['feita', 're-renderizada'].includes(String(fv6p?.recomposicao?.estado)) && !!fv6p?.somenteReRender, JSON.stringify({ estado: fv6p?.recomposicao?.estado, trava: fv6p?.somenteReRender }).slice(0, 180))
+      conferir('a página mudou durante: o runner devolveu o job à fila em vez de fechar DONE (como em 6m)', job6p?.status === 'PENDING' && /editada de novo/.test(String(job6p?.lastError)), `${job6p?.status}: ${String(job6p?.lastError).slice(0, 60)}`)
+      const d6p = await fecharJob(jobId6p, persistido2.generationId)
+      conferir('o fechamento devolve REENFILEIRADO', d6p === 'REENFILEIRADO', d6p)
+      // O que faltava provar já foi provado; o job fecha à mão para não gastar outro render.
+      {
+        const j = await db.generationJob.findUnique({ where: { id: jobId6p }, select: { payload: true } })
+        const rec = (j?.payload as Record<string, any>)?.recompor ?? {}
+        await db.generationJob.update({ where: { id: jobId6p }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...((j?.payload as object) ?? {}), recompor: { ...rec, forcaAtendida: rec.forcaPedidaEm ?? '' } } as never } })
+      }
+    }
 
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]

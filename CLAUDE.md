@@ -5669,6 +5669,21 @@ Codex antes de ser escrito.
   `PrismaClient` próprio, e a busca da arte da página filtra por
   `projectId` (JSON path sem o índice do projeto varria a tabela: 1,9s
   contra 0,75s).
+- 🔴 **`Generation.fieldValues` de uma arte que dois lados escrevem se grava por
+  MERGE NO BANCO** (`mesclarFieldValuesDaArte`, `src/lib/creatives/
+  mesclar-field-values.ts`: jsonb `||` sobre a linha atual, numa instrução
+  só), nunca por `{ ...fieldValues }` capturado antes. O worker da fila lê a
+  arte no começo, trabalha dezenas de segundos e gravava o objeto inteiro: a
+  trava `somenteReRender` que o revisor gravasse nesse intervalo (na
+  transação do ajuste) era apagada, e a edição de texto seguinte recompunha
+  pela spec e desfazia o ajuste (REV-R01 da revisão do Codex, 12/09/2026).
+  Reler antes de um `update` incondicional só encurta a janela. Passam pelo
+  merge: a escrita da recomposição, o `renderPageAndRegister` com
+  `generationId` (o re-render e a fila `COMPOR` — o persist manda só o patch
+  no lote com as colunas), a própria trava e o registro da recusa. Escritor
+  NOVO de `fieldValues` de arte que já existe usa o helper; `update` com o
+  objeto inteiro é a corrida de volta. A prova de dev (6p) grava a trava no
+  meio da execução do worker e confere que ela sobrevive à escrita dele.
 - 🔴 **O runner confere a VERSÃO VISUAL da página depois de refazer a arte**
   (`versaoGravada`, o hash de `versaoDaPagina`), nunca só a copy: só a força de
   um gradiente salva durante o render não muda copy nem diff geométrico, e o
