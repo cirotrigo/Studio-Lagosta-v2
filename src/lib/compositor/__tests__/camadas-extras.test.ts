@@ -5,8 +5,9 @@ import { estiloHerdado, grupoVisualPadrao, idReservado, idsDeCamadaRepetidos, re
 import { medirCopy } from '../medir-copy'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
+import { specDaRecomposicao } from '../spec-da-recomposicao'
 import { copyAutoralDaSpec, entradaDePersistencia } from '../persistencia'
-import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, renomearExtrasDuplicados, validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import { VERSAO_DO_CONTRATO, blocosParaOCompositor, copyEfetivaDasCamadas, idDeExtra, renomearExtrasDuplicados, validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 
 /**
@@ -456,5 +457,44 @@ describe('correções da revisão do Codex sobre 6ee684c4 (R12–R14)', () => {
     expect(lida.mudancas).toEqual([])
     expect(lida.efetiva.blocos.find((b) => b.id === 'nota')?.linhas).toEqual(['vale hoje'])
     expect(revisaoDaPaginaComCamadas(copia, camadasDaCopia, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' }).estado).not.toBe('registrada')
+  })
+})
+
+describe('correção da revisão do Codex sobre 4aa2297a (R15)', () => {
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+  const copy = (nota: string): CopyAutoral => ({
+    versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+    blocos: [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'nota', funcao: 'livre', ordem: 1, linhas: [nota], estilo: { herdaDe: 'apoio' } },
+    ],
+  })
+
+  it('R15: a spec persistida → edição SÓ do texto do extra → spec da recomposição passa em validarSpec com id, herança e o texto novo (os extras antigos não sobrevivem ao contrato novo)', () => {
+    const persistida = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy('Hoje') })
+    expect(persistida.problemas).toEqual([])
+    expect(persistida.spec!.camadasExtras?.map((c) => c.linhas)).toEqual([['Hoje']])
+
+    // O que a recomposição montava antes: contrato novo + extras da spec antiga.
+    const { copyAutoral: _velho, ...semContrato } = persistida.spec!
+    const comoEra = validarSpec({ ...semContrato, copyAutoral: copy('Amanhã'), blocos: blocosParaOCompositor(copy('Amanhã')).blocos })
+    expect(comoEra.spec).toBeNull()
+    expect(comoEra.problemas.join(' ')).toContain('camadasExtras')
+
+    const recomposta = validarSpec(specDaRecomposicao(persistida.spec!, copy('Amanhã')))
+    expect(recomposta.problemas).toEqual([])
+    expect(recomposta.spec!.camadasExtras).toEqual([expect.objectContaining({ id: 'nota', linhas: ['Amanhã'], herdaDe: 'apoio', ordem: 1 })])
+    expect(recomposta.spec!.copyAutoral).toEqual(copy('Amanhã'))
+    // R06: a forma derivada revalida.
+    expect(validarSpec(recomposta.spec).problemas).toEqual([])
+  })
+
+  it('R15: sem contrato (página legada) a spec da recomposição mantém os extras que tinha e não ganha contrato', () => {
+    const legado = validarSpec({ projectId: 8, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: [{ id: 'nota', linhas: ['Hoje'], herdaDe: 'apoio' }] })
+    expect(legado.problemas).toEqual([])
+    const r = specDaRecomposicao(legado.spec!, null)
+    expect(r.copyAutoral).toBeUndefined()
+    expect(r.camadasExtras).toEqual(legado.spec!.camadasExtras)
+    expect(r.blocos).toEqual(legado.spec!.blocos)
   })
 })

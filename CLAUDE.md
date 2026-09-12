@@ -8780,3 +8780,15 @@ Da revisão do Codex sobre o terceiro commit (BLOQUEADO, R12…R14, 12/09/2026):
   `extra.id`, ou cujo id não é derivado dela, mantém o id e as referências no
   histórico — senão contrato e metadados divergiam depois de uma operação
   técnica.
+
+Da revisão do Codex sobre o quarto commit (BLOQUEADO, R15, 12/09/2026):
+
+- 🔴 **Com contrato, a recomposição rederiva do CONTRATO os blocos E as camadas
+  extras** (R15, `specDaRecomposicao` em `spec-da-recomposicao.ts`, puro): o
+  espalhamento da spec antiga preservava `camadasExtras` com o texto de antes da
+  edição, `validarSpec` (contrato canônico, R05) recusava e o slide agendado
+  ficava com a arte antiga em toda tentativa. Quem monta spec a partir de uma
+  spec gravada e de um contrato novo tira da antiga TUDO o que sai do contrato
+  (`copyAutoral`, `blocos`, `camadasExtras`). Sem contrato, a spec legada segue
+  com os extras que tinha. Teste do consumidor com banco falso em
+  `__tests__/recompor-camadas-extras.test.ts`.

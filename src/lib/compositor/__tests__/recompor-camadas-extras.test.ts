@@ -1,0 +1,165 @@
+/**
+ * R15 (revisão do Codex sobre o PR 9, 12/09/2026) pelo CONSUMIDOR: a peça com
+ * uma camada extra livre é agendada como slide de carrossel; a equipe edita no
+ * editor SÓ o texto do extra ("Hoje" → "Amanhã"). A recomposição tem de passar
+ * pelo compositor com a spec válida e trocar, no post, apenas o slide daquela
+ * arte — os irmãos ficam, e o post já entregue ao publicador não é tocado.
+ *
+ * Banco, Blob, render e fila são falsos. `comporPeca` é falso, mas com o
+ * contrato real da primeira linha dele: `validarSpec` e `SPEC_INVALIDA` — é
+ * exatamente onde a recomposição parava antes da correção.
+ */
+import { describe, expect, it, vi } from 'vitest'
+import type { Layer } from '@/types/template'
+import { VERSAO_DO_CONTRATO, type CopyAutoral } from '@/lib/copy-autoral'
+import { montarAssinatura } from '../assinatura'
+import { entradaDePersistencia } from '../persistencia'
+import { prepararBlocos } from '../preparar-blocos'
+import { validarSpec, type SpecDePeca } from '../spec'
+
+const URL_ANTIGA = 'https://blob.exemplo/arte-rapida/8/pg-1-antiga.png'
+const URL_NOVA = 'https://blob.exemplo/arte-rapida/8/pg-1-nova.png'
+
+const estado = vi.hoisted(() => ({
+  page: null as Record<string, unknown> | null,
+  generation: null as Record<string, unknown> | null,
+  posts: new Map<string, Record<string, unknown>>(),
+  specsCompostas: [] as unknown[],
+  camadasDaComposicao: [] as unknown[],
+  paginaGravada: null as Record<string, unknown> | null,
+  generationGravada: null as Record<string, unknown> | null,
+}))
+
+vi.mock('@/lib/db', () => ({
+  db: {
+    page: {
+      findUnique: async () => estado.page,
+      updateMany: async ({ where, data }: { where: { id: string; updatedAt: Date }; data: Record<string, unknown> }) => {
+        if (!estado.page || where.id !== estado.page.id || (estado.page.updatedAt as Date).getTime() !== where.updatedAt.getTime()) return { count: 0 }
+        estado.paginaGravada = data
+        return { count: 1 }
+      },
+    },
+    generation: {
+      findMany: async () => (estado.generation ? [estado.generation] : []),
+      update: async ({ data }: { data: Record<string, unknown> }) => {
+        estado.generationGravada = data
+        return { id: 'gen-1' }
+      },
+    },
+    project: { findUnique: async () => ({ id: 8, name: 'Lagosta', userId: 'dono' }) },
+    socialPost: {
+      findMany: async () => [...estado.posts.values()].map((p) => ({ id: p.id, pageId: p.pageId, renderStatus: p.renderStatus, mediaUrls: p.mediaUrls, laterPostId: p.laterPostId })),
+      findUnique: async ({ where }: { where: { id: string } }) => estado.posts.get(where.id) ?? null,
+      updateMany: async ({ where, data }: { where: { id: string; laterPostId: null; mediaUrls: { equals: string[] } }; data: { mediaUrls: string[] } }) => {
+        const p = estado.posts.get(where.id)
+        if (!p || p.laterPostId || JSON.stringify(p.mediaUrls) !== JSON.stringify(where.mediaUrls.equals)) return { count: 0 }
+        estado.posts.set(where.id, { ...p, mediaUrls: data.mediaUrls })
+        return { count: 1 }
+      },
+    },
+    postLog: { create: async () => ({}) },
+  },
+}))
+vi.mock('@vercel/blob', () => ({ put: async () => ({ url: URL_NOVA }), del: async () => undefined }))
+vi.mock('@/lib/ai/generation-queue', () => ({ pedirNovaTentativa: async () => undefined }))
+vi.mock('@/lib/creatives/persist', () => ({ renderPageAndRegister: async () => { throw new Error('não deveria re-renderizar: a página só teve texto editado') } }))
+vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
+vi.mock('../../../../prisma/generated/client', () => ({ PostLogEvent: { EDITED: 'EDITED' } }))
+vi.mock('../compor', async () => {
+  const { validarSpec: validar } = await vi.importActual<typeof import('../spec')>('../spec')
+  const { CreativeError } = await vi.importActual<typeof import('@/lib/creatives/errors')>('@/lib/creatives/errors')
+  return {
+    comporPeca: async (entrada: unknown) => {
+      const v = validar(entrada)
+      if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
+      estado.specsCompostas.push(v.spec)
+      return { prova: Buffer.from('png'), layers: estado.camadasDaComposicao, diagnostico: { avisos: [] } }
+    },
+  }
+})
+
+const medirFalso = (layer: Layer) => {
+  const fontSize = Number(layer.style?.fontSize ?? 16)
+  const linhas = (layer.content ?? '').split('\n')
+  return { width: layer.size.width, height: linhas.length * fontSize * Number(layer.style?.lineHeight ?? 1.1), maxLineWidth: Math.max(...linhas.map((l) => l.length * fontSize * 0.55)), lineCount: linhas.length }
+}
+const texto = (id: string, style: Record<string, unknown>, content: string, extra: Partial<Layer> = {}): Layer => ({
+  id, name: id, type: 'text', visible: true, locked: false, order: 0,
+  position: { x: 92, y: 200 }, size: { width: 400, height: 80 }, content, style, ...extra,
+})
+
+describe('recomporPaginaDefasada — R15: edição só do texto de uma camada extra livre', () => {
+  it('recompõe com a spec válida (id, herança e texto novo) e troca SÓ o slide da arte; irmãos e post entregue ficam', async () => {
+    const assinatura = montarAssinatura({
+      pagina: {
+        id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
+        layers: [
+          texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+          texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 320 }, metadata: { groupId: 'g1' } }),
+        ],
+      },
+      formatoDaPagina: 'story',
+      numerosDoProjeto: null,
+    })
+    const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+    const copy: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['Hoje'], estilo: { herdaDe: 'apoio' } },
+      ],
+    }
+    const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy })
+    expect(v.problemas).toEqual([])
+    const specPersistida = v.spec as SpecDePeca
+    expect(specPersistida.camadasExtras?.map((c) => c.linhas)).toEqual([['Hoje']])
+
+    const preparados = prepararBlocos({
+      assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+      medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: specPersistida,
+    })
+    const camadasHoje = preparados.montados.map((b) => b.layer)
+    const nota = camadasHoje.find((l) => (l.metadata?.compositor as { extra?: { id?: string } } | undefined)?.extra?.id === 'nota')
+    expect(nota?.content).toBe('Hoje')
+    const entrada = entradaDePersistencia({
+      spec: specPersistida, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+      nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadasHoje, fundo: '#000', diagnostico: {}, fotoUrl: null,
+    })
+    const camadasAmanha = camadasHoje.map((l) => (l.id === nota!.id ? { ...l, content: 'Amanhã' } : l))
+
+    estado.page = {
+      id: 'pg-1', name: 'Sex 18/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: camadasAmanha, background: '#000',
+      isTemplate: false, templateId: 't-1', copyAutoral: entrada.copyAutoral, updatedAt: new Date('2026-09-12T15:00:00.000Z'),
+      Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
+    }
+    estado.generation = {
+      id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null,
+      fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-1' },
+    }
+    estado.camadasDaComposicao = camadasAmanha
+    const irmaA = 'https://blob.exemplo/capa.png'
+    const irmaB = 'https://blob.exemplo/slide-3.png'
+    estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [irmaA, URL_ANTIGA, irmaB] })
+    estado.posts.set('post-entregue', { id: 'post-entregue', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: 'zernio-1', mediaUrls: [URL_ANTIGA, irmaB] })
+
+    const { recomporPaginaDefasada } = await import('../recompor')
+    const r = await recomporPaginaDefasada({ pageId: 'pg-1' })
+
+    expect(r.recomposta).toBe(true)
+    expect(r.url).toBe(URL_NOVA)
+    expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
+    expect(r.congelados).toEqual(['post-entregue'])
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([irmaA, URL_NOVA, irmaB])
+    expect(estado.posts.get('post-entregue')!.mediaUrls).toEqual([URL_ANTIGA, irmaB])
+
+    expect(estado.specsCompostas).toHaveLength(1)
+    const composta = estado.specsCompostas[0] as SpecDePeca
+    expect(composta.camadasExtras).toEqual([expect.objectContaining({ id: 'nota', linhas: ['Amanhã'], herdaDe: 'apoio', ordem: 1 })])
+    expect(composta.copyAutoral?.blocos.find((b) => b.id === 'nota')?.linhas).toEqual(['Amanhã'])
+
+    const efetiva = estado.paginaGravada?.copyAutoral as CopyAutoral
+    expect(efetiva.blocos.find((b) => b.id === 'nota')?.linhas).toEqual(['Amanhã'])
+    expect(validarSpec((estado.generationGravada?.fieldValues as Record<string, unknown>).spec).problemas).toEqual([])
+  })
+})

@@ -46,7 +46,7 @@ import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { blocosParaOCompositor, lerCopyAutoral, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
+import { lerCopyAutoral, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
 import type { Layer } from '@/types/template'
 import { copyDaArteIndisponivel, registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -69,6 +69,7 @@ import {
   type SlideDefasado,
 } from './defasagem'
 import { validarSpec, type SpecDePeca } from './spec'
+import { specDaRecomposicao } from './spec-da-recomposicao'
 
 /** As situações de post que a recomposição alcança — as mesmas da invalidação. */
 const SITUACOES_ALCANCADAS = ['DRAFT', 'SCHEDULED'] as const
@@ -430,10 +431,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     const leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
     if (leituraDoContrato && leituraDoContrato.ok === false) avisos.push(`${leituraDoContrato.aviso} A peça foi recomposta pelo texto da página, sem contrato.`)
     const contratoAtual: CopyAutoral | null = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
-    const { copyAutoral: _contratoVelho, ...specSemContrato } = specPosicionada
-    const spec: SpecDePeca = contratoAtual
-      ? { ...specSemContrato, copyAutoral: contratoAtual, blocos: blocosParaOCompositor(contratoAtual).blocos as unknown as SpecDePeca['blocos'] }
-      : specSemContrato
+    // R15 (revisão do Codex sobre o PR 9): com contrato, os blocos E as camadas
+    // extras saem dele — os extras da spec antiga carregavam o texto de antes
+    // da edição e faziam `validarSpec` recusar a recomposição.
+    const spec: SpecDePeca = specDaRecomposicao(specPosicionada, contratoAtual)
     /**
      * `provar: true` é obrigatório — ver a regra 2 do cabeçalho. Ele também
      * evita os efeitos colaterais da persistência do compositor: pasta da
