@@ -12,14 +12,20 @@
  * retorno. É o que deixa o contrato ser testado sem banco.
  */
 
-import { diferencasDeBlocos, lerCopyAutoral, type CopyAutoral } from '../../copy-autoral'
+import { diferencasDeBlocos, lerCopyAutoral, type ConferenciaDaCopy, type CopyAutoral } from '../../copy-autoral'
 
 /** A copy da arte, comparável INTEIRA com o que o autor escreveu (F1). */
 export interface CopyDaArte {
   /** Só é comparável quando a autoria do original é conhecida (legado adaptado não conta como fidelidade comprovada). */
   comparavel: boolean
+  /** Por onde a comparação é possível: `camadas` (a efetiva lida da página) ou `visao` (a transcrição da arte de IA). */
+  comparadoPor?: 'camadas' | 'visao'
   original: Array<{ id: string; funcao: string; linhas: string[] }>
+  /** Via de IA/melhoria: o texto como FOI ao modelo de imagem (caixa da marca aplicada). */
+  enviada?: string[]
   desenhada: Array<{ id: string; funcao: string; linhas: string[] }>
+  /** Via de IA/melhoria: o que a visão leu, o que faltou, se passou. */
+  conferencia?: ConferenciaDaCopy
   /** Os blocos cujo texto exato (caixa, acento, quebra, colchetes) difere entre o escrito e o desenhado. */
   blocosDiferentes: string[]
   /** O que o contrato NÃO conseguiu conferir (bloco não desenhado, texto a mais na arte…). */
@@ -39,12 +45,27 @@ export function copyDaArte(fieldValues: Record<string, unknown> | null | undefin
   if (!original) return null
   const efetiva = lerCopyAutoral(r.efetiva).copy
   const lacunas = Array.isArray(r.lacunas) ? r.lacunas.filter((l): l is string => typeof l === 'string') : []
+  const enviada = Array.isArray(r.enviada) ? r.enviada.filter((t): t is string => typeof t === 'string') : null
+  const c = r.conferencia && typeof r.conferencia === 'object' && !Array.isArray(r.conferencia) ? (r.conferencia as Record<string, unknown>) : null
+  const conferencia: ConferenciaDaCopy | null = c
+    ? {
+        lida: Array.isArray(c.lida) ? c.lida.filter((t): t is string => typeof t === 'string') : [],
+        faltando: Array.isArray(c.faltando) ? c.faltando.filter((t): t is string => typeof t === 'string') : [],
+        passou: typeof c.passou === 'boolean' ? c.passou : null,
+        regua: typeof c.regua === 'string' ? c.regua : 'desconhecida',
+        ...(Array.isArray(c.grafiaDivergente) && c.grafiaDivergente.length > 0 ? { grafiaDivergente: c.grafiaDivergente as Array<{ esperado: string; lido: string }> } : {}),
+      }
+    : null
+  const porVisao = !efetiva && !!enviada
   return {
-    comparavel: r.comparavel === true && !!efetiva,
+    comparavel: r.comparavel === true && (!!efetiva || (porVisao && !!conferencia && conferencia.passou !== null)),
+    ...(efetiva ? { comparadoPor: 'camadas' as const } : porVisao ? { comparadoPor: 'visao' as const } : {}),
     original: resumoDosBlocos(original),
+    ...(enviada ? { enviada } : {}),
     desenhada: efetiva ? resumoDosBlocos(efetiva) : [],
+    ...(conferencia ? { conferencia } : {}),
     blocosDiferentes: efetiva ? diferencasDeBlocos(original, efetiva).filter((m) => !m.campos || m.campos.includes('linhas')).map((m) => m.id) : [],
-    lacunas: efetiva ? lacunas : [...lacunas, 'a copy desenhada não foi registrada nesta arte'],
+    lacunas: efetiva || porVisao ? lacunas : [...lacunas, 'a copy desenhada não foi registrada nesta arte'],
   }
 }
 

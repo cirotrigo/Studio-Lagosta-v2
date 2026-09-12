@@ -457,7 +457,11 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
     projectId: input.projectId,
     track: pedido.trilha,
     pedido: pedido.pedido || undefined,
-    copy: pedido.copy.length > 0 ? pedido.copy : undefined,
+    // F1: com contrato, ele manda (o serviço deriva a copy dele e grava
+    // original × enviada); sem contrato, a lista posicional de sempre.
+    ...(item.copyAutoral != null
+      ? { copyAutoral: item.copyAutoral }
+      : { copy: pedido.copy.length > 0 ? pedido.copy : undefined }),
     formato: (item.formato as 'story' | 'feed' | 'quadrado') ?? 'story',
     // A lista do item (23/08+) vence o espelho de foto única — é ela que
     // carrega âncoras e estilo além da cena.

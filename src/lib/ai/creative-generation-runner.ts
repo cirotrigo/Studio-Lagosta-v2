@@ -26,7 +26,8 @@ import { generateImageWithGemini } from '@/lib/ai/gemini-image-client'
 import { loadBrandContext } from '@/lib/brand/brand-context'
 import { getBrandReferenceCard } from '@/lib/ai/brand-reference-card'
 import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
-import { verifyImageTexts } from '@/lib/ai/creative-text-verification'
+import { verifyImageTexts, type TextCheckResult } from '@/lib/ai/creative-text-verification'
+import { comConferencia, conferenciaDoCheck, registroParaIA, type CopyAutoral } from '@/lib/copy-autoral'
 import {
   buildArtePrompt,
   buildImagePromptViaLLM,
@@ -178,6 +179,8 @@ export interface ArtGenerationJobArgs {
   track: GenerationTrack
   pedido: string
   copy: string[]
+  /** O contrato da copy autoral de que `copy` foi derivado (F1, PR 5) — grava original × enviada × conferência. */
+  copyAutoral?: CopyAutoral | null
   instrucaoImagem: string | null
   /**
    * Co-branding: o cliente CITADO na peça. A logo oficial dele (tabela Logo do
@@ -293,6 +296,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   const deadlineDaGeracao = startedAt + BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS
   const controleDiretor = criarControleDoDiretor(deadlineDaGeracao - RESERVA_PARA_GERAR_MS)
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
+  /** A última conferência por visão desta run — vira `copyAutoral.conferencia` (F1). */
+  let ultimoCheck: TextCheckResult | null = null
   let promptUsado: string | null = null
   /** O que o diretor de arte fez nesta run (F6, 05/09/2026) — vai para o fieldValues. */
   let plannerGeracaoInfo: Record<string, unknown> = { diretor: controleDiretor.registro }
@@ -1149,6 +1154,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           brand?.projectName ?? null,
         )
         const checkMs = Date.now() - checkStartedAt
+        ultimoCheck = check
         attemptsLog.push({ attempt, generationMs, checkMs, passed: check.passed, missing: check.missing })
         console.log(
           `[arte-ia.bg] tentativa ${attempt}: geração ${(generationMs / 1000).toFixed(1)}s, checagem ${(checkMs / 1000).toFixed(1)}s → ${check.passed ? 'texto OK' : `divergente (${check.missing.length})`}`,
@@ -1513,6 +1519,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       ...logoInfo,
       ...marcaDoClienteInfo,
       ...textCheckInfo,
+      // F1: o contrato do autor, o que FOI ao modelo (caixa da marca aplicada)
+      // e o que a visão leu de volta — a via de IA não tem camadas, e o
+      // registro diz isso em vez de fingir uma efetiva.
+      ...(args.copyAutoral
+        ? {
+            copyAutoral: comConferencia(
+              registroParaIA(args.copyAutoral, copyComCaixaDaMarca(args.copy, brand)),
+              conferenciaDoCheck(ultimoCheck, ultimoCheck ? 'copy' : `nenhuma (${String(textCheckInfo.textCheckReason ?? 'a conferência não rodou')})`),
+            ),
+          }
+        : {}),
     })
 
     await db.generation.update({

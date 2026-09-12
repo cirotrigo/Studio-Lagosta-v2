@@ -14,7 +14,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BrandContext } from '@/lib/brand/brand-context'
 import { SEM_VOZ } from '@/lib/brand/voz'
-import { buildArtePrompt } from '../image-prompt-builder'
+import { buildArtePrompt, copyComCaixaDaMarca } from '../image-prompt-builder'
 
 function marca(projectId: number, projectName: string): BrandContext {
   return {
@@ -90,6 +90,12 @@ describe('caixa da manchete no prompt de arte', () => {
 
   it('sem marca não há caixa a aplicar', () => {
     expect(copyDoPrompt(null, ['Almoço executivo'])).toEqual(['Almoço executivo'])
+  })
+
+  it('a QUEBRA escrita pelo autor sobrevive à caixa (F1): o colapso de espaços vale dentro da linha, nunca sobre a quebra', () => {
+    expect(copyComCaixaDaMarca(['Almoço  \nexecutivo', 'Vem   provar'], marca(3, 'TERO'))).toEqual(['ALMOÇO\nEXECUTIVO', 'Vem provar'])
+    expect(copyComCaixaDaMarca(['DESACELERE\nE DESFRUTE'], marca(1, 'Real Gelateria'))).toEqual(['Desacelere\nE Desfrute'])
+    expect(copyComCaixaDaMarca(['Happy\nhour'], null)).toEqual(['Happy\nhour'])
   })
 })
 

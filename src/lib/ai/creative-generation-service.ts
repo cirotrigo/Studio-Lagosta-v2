@@ -39,6 +39,7 @@ import type {
 } from '@/lib/ai/creative-generation-runner'
 import type { TemplateType } from '@prisma/client'
 import { semColchetes } from '@/lib/compositor/destaques'
+import { lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -68,6 +69,14 @@ export interface StartArtGenerationInput {
   pedido?: string
   /** Blocos de copy verbatim — obrigatório na trilha `arte`. */
   copy?: string[]
+  /**
+   * O CONTRATO da copy autoral (F1, PR 5): quando vem, ele MANDA — `copy` é
+   * derivado dele (blocos com texto, em ordem, linhas do autor unidas por
+   * "\n") e um `copy` que divirja dele é recusado. A Generation grava
+   * `fieldValues.copyAutoral = { original, enviada, comparavel, lacunas }` e a
+   * conferência por visão entra ali como `conferencia` ao terminar.
+   */
+  copyAutoral?: unknown
   formato: FormatoArteIA
   /**
    * Referências com papel. `url` precisa ser do nosso Blob (SSRF); foto do
@@ -145,7 +154,32 @@ export async function startArtGeneration(
   const pedido = input.pedido?.trim() ?? ''
   // Os [colchetes] do destaque são marcação do compositor: a IA os desenharia
   // na arte. Saem aqui, na entrada única da trilha (bancada, plano e MCP).
-  const copy = (input.copy ?? []).map((b) => semColchetes(b).trim()).filter(Boolean)
+  // O contrato manda na copy (F1): `copy` solto continua valendo só sem ele.
+  let contrato: CopyAutoral | null = null
+  if (input.copyAutoral != null) {
+    const lido = lerCopyAutoral(input.copyAutoral)
+    if (!lido.copy) {
+      throw new CreativeError(
+        'COPY_AUTORAL_INVALIDA',
+        `O contrato da copy é inválido: ${lido.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem)).join('; ')}`,
+        400,
+        { problemas: lido.problemas },
+      )
+    }
+    contrato = lido.copy
+  }
+  const limparBloco = (b: string) => semColchetes(b).trim()
+  const copyDoContrato = contrato ? textoEnviadoDoContrato(contrato).map(limparBloco).filter(Boolean) : null
+  const copySolta = (input.copy ?? []).map(limparBloco).filter(Boolean)
+  if (copyDoContrato && copySolta.length > 0 && JSON.stringify(copySolta) !== JSON.stringify(copyDoContrato)) {
+    throw new CreativeError(
+      'COPY_DIVERGE_DO_CONTRATO',
+      'A `copy` enviada não bate com os blocos do `copyAutoral`. Mande só o contrato (ou os dois iguais).',
+      400,
+      { copy: copySolta, contrato: copyDoContrato },
+    )
+  }
+  const copy = copyDoContrato ?? copySolta
   // Cópia rasa: a conferência do `generationId` abaixo descarta o marcador que
   // não confere, e não é papel deste serviço mexer no objeto de quem chamou.
   const referencias = (input.referencias ?? []).map((r) => ({ ...r }))
@@ -461,6 +495,9 @@ export async function startArtGeneration(
         ...(input.loteId ? { loteId: input.loteId } : {}),
         pedido,
         slotValues,
+        // F1: o contrato do autor e o que vai ao modelo, lado a lado; a
+        // conferência por visão entra como `conferencia` quando o runner termina.
+        ...(contrato ? { copyAutoral: registroParaIA(contrato, copy) } : {}),
         pedidoHash,
         formato: input.formato,
         referencias,
@@ -499,6 +536,7 @@ export async function startArtGeneration(
       track: input.track,
       pedido,
       copy,
+      copyAutoral: contrato,
       instrucaoImagem: input.instrucaoImagem?.trim() || null,
       marcaDoCliente,
       formato: input.formato,

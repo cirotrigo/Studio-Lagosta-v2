@@ -821,12 +821,21 @@ export function regraDeSafeArea(formato?: 'story' | 'feed' | 'quadrado', alturaP
 export function copyComCaixaDaMarca(copy: string[], brand: BrandContext | null): string[] {
   const caixaDaMarca = brand ? CAIXA_DA_MANCHETE.get(brand.projectId) : undefined
   const nomesDaMarca = brand?.projectName ? [brand.projectName] : []
-  return copy.map((b, i) => {
-    const limpo = b.replace(/\s+/g, ' ').trim()
-    if (caixaDaMarca === 'natural') return paraCaixaNatural(limpo, nomesDaMarca)
-    if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(limpo)
-    return limpo
-  })
+  // A QUEBRA escrita pelo autor é contrato (F1): o colapso de espaços vale
+  // dentro de cada linha, nunca sobre o "\n" — antes ele apagava a quebra
+  // antes de a copy chegar ao prompt.
+  return copy.map((b, i) =>
+    b
+      .split('\n')
+      .map((linha) => linha.replace(/[ \t]+/g, ' ').trim())
+      .filter((linha) => linha.length > 0)
+      .map((limpo) => {
+        if (caixaDaMarca === 'natural') return paraCaixaNatural(limpo, nomesDaMarca)
+        if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(limpo)
+        return limpo
+      })
+      .join('\n'),
+  )
 }
 
 export function buildArtePrompt(args: BuildArtePromptArgs): string {

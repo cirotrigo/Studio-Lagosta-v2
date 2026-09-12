@@ -32,7 +32,7 @@ import {
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
-import { semTextosDaMarca } from '@/lib/ai/text-comparison'
+import { normalizeForComparison, semTextosDaMarca } from '@/lib/ai/text-comparison'
 import {
   finalizarLogoDaMelhoria,
   instrucaoLogoNaMelhoria,
@@ -51,6 +51,8 @@ import {
   transcreverTextosDaArte,
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
+import type { TextCheckResult } from '@/lib/ai/creative-text-verification'
+import { comConferencia, conferenciaDoCheck, lerCopyAutoral, registroParaIA, revisaoPosicional, textoEnviadoDoContrato, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
@@ -279,6 +281,10 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
    * mão a partir da transcrição.
    */
   const registroDaRun: Record<string, unknown> = { diretor: controleDiretor.registro }
+  /** O contrato da copy da arte de ORIGEM (F1): original × enviada × conferência nesta melhoria. */
+  let registroDaCopy: RegistroDaCopyNaArte | null = null
+  /** A última conferência por visão desta run. */
+  let ultimoCheck: TextCheckResult | null = null
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
   // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
@@ -287,12 +293,21 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     args.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!args.instrucaoImagem?.trim() })
 
   try {
-    const [assets, expectedTexts] = await Promise.all([
+    const [assets, expectedTexts, contratoDaOrigem] = await Promise.all([
       loadImprovementAssets(args.projectId, {
         selectedLogoIds: args.selectedLogoIds,
         selectedElementIds: args.selectedElementIds,
       }),
       loadExpectedTextsForGeneration(args.originalGenerationId),
+      // O contrato PROPAGA pela cadeia como a régua: a origem (arte de IA, de
+      // modelo, do compositor ou outra melhoria) carrega `copyAutoral.original`.
+      db.generation
+        .findUnique({ where: { id: args.originalGenerationId }, select: { fieldValues: true } })
+        .then((g) => {
+          const r = (g?.fieldValues as Record<string, unknown> | null)?.copyAutoral
+          return r && typeof r === 'object' && !Array.isArray(r) ? lerCopyAutoral((r as Record<string, unknown>).original).copy : null
+        })
+        .catch(() => null),
     ])
 
     const downloadTasks: Array<Promise<DownloadResult | null>> = []
@@ -697,6 +712,31 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
     })
 
+    /**
+     * F1 (PR 5): a melhoria grava o contrato da copy como a geração grava —
+     * `original` (o contrato da origem, ou a REVISÃO EXPLÍCITA dele quando o
+     * pedido de refino trocou texto), `enviada` (o que foi ao prompt) e, ao
+     * fim, `conferencia`. Pedido de troca de texto vira revisão de `claude`
+     * com o pedido como motivo — nunca mudança silenciosa. A caixa da origem
+     * (`aplicarCaixaDaOrigem`) não conta como revisão: bloco igual ao do
+     * contrato a menos de caixa/acento mantém as linhas do autor.
+     */
+    if (contratoDaOrigem) {
+      const lacunas = ['melhoria por IA: a régua e o texto enviado são os desta rodada']
+      let original = contratoDaOrigem
+      if (modo === 'refinar' && plannerInfo.copyAntes) {
+        const doContrato = textoEnviadoDoContrato(contratoDaOrigem)
+        const lista = textosParaPrompt.map((t, i) =>
+          doContrato[i] !== undefined && normalizeForComparison(t) === normalizeForComparison(doContrato[i]) ? doContrato[i] : t,
+        )
+        const r = revisaoPosicional(contratoDaOrigem, lista, { autor: 'claude', superficie: 'melhoria' }, `pedido de refino: ${args.userRequest.slice(0, 200)}`)
+        if ('copy' in r) original = r.copy
+        else lacunas.push(`o pedido trocou o texto e a revisão não casou com o contrato (${r.descartado}); o texto enviado é o do pedido`)
+      }
+      registroDaCopy = registroParaIA(original, textosParaPrompt, lacunas)
+      registroDaRun.copyAutoral = registroDaCopy
+    }
+
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
     let improvedBuffer: Buffer | null = null
@@ -798,6 +838,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           transcricaoDaOrigem.length > 0 ? transcricaoDaOrigem : primaryBuffer,
         )
         const checkMs = Date.now() - checkStartedAt
+        ultimoCheck = check
         attemptsLog.push({
           attempt,
           generationMs,
@@ -863,6 +904,14 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         }
         break
       }
+    }
+
+    if (registroDaCopy) {
+      registroDaCopy = comConferencia(
+        registroDaCopy,
+        conferenciaDoCheck(ultimoCheck, ultimoCheck ? origemDaRegua : `nenhuma (${String(textCheckInfo.textCheckReason ?? 'a conferência não rodou')})`),
+      )
+      registroDaRun.copyAutoral = registroDaCopy
     }
 
     if (!improvedBuffer) {
@@ -968,6 +1017,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           ...plannerInfo,
           ...(promptPronto ? { prompt: promptPronto } : {}),
           ...textCheckInfo,
+          ...(registroDaCopy ? { copyAutoral: registroDaCopy as never } : {}),
         },
       },
     })
@@ -1015,6 +1065,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               // cadeia nascia sem régua.
               ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
               regua: origemDaRegua,
+              ...(registroDaCopy ? { copyAutoral: registroDaCopy as never } : {}),
               inputSize: openaiSize,
               finalSize: `${finalSize.width}x${finalSize.height}`,
               format,

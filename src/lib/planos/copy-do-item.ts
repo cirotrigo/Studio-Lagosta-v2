@@ -22,14 +22,13 @@
  */
 
 import {
-  HistoricoDaCopyCheio,
   MAX_BLOCOS_NA_COPY,
   blocoAutoralSchema,
   blocosEmOrdem,
   lerCopyAutoral,
   orientacaoDosProblemas,
   orientacaoEmFrase,
-  tentarAplicarRevisao,
+  revisaoPosicional,
   type Autor,
   type BlocoAutoral,
   type CopyAutoral,
@@ -148,35 +147,14 @@ export function copyDoItemNoPatch(
   if (!contrato) return { copyAutoral: null, copyProposta: listaLimpa(patch.copyProposta), avisos: [] }
   const lista = listaExata(patch.copyProposta)
 
-  const emOrdem = blocosEmOrdem(contrato)
-  const comTexto = emOrdem.filter(temTexto)
   const descartado = (motivo: string): CopyDoItem => ({
     copyAutoral: null,
     copyProposta: lista,
     avisos: [`O contrato da copy do item foi descartado: ${motivo}. A copy passa a valer só pela lista posicional; mande copyAutoral para o item voltar a ter contrato.`],
   })
-  if (comTexto.length !== lista.length) {
-    return descartado(`a edição posicional mudou o número de blocos com texto (${comTexto.length} → ${lista.length}) e não há como saber qual bloco é qual`)
-  }
-  const novos: BlocoAutoral[] = emOrdem.map((b) => {
-    if (!temTexto(b)) return b
-    const linhas = lista[comTexto.indexOf(b)].split('\n')
-    // A segunda voz aponta para linhas por índice; linha que sumiu leva o índice junto.
-    const { estilo: estiloAntigo, ...semEstilo } = b
-    const voz2 = estiloAntigo?.linhasNaVoz2?.filter((i) => i < linhas.length) ?? []
-    const { linhasNaVoz2: _fora, ...restoDoEstilo } = estiloAntigo ?? {}
-    const estilo = { ...restoDoEstilo, ...(voz2.length > 0 ? { linhasNaVoz2: voz2 } : {}) }
-    return { ...semEstilo, linhas, ...(Object.keys(estilo).length > 0 ? { estilo } : {}) }
-  })
-  // `tentarAplicarRevisao` (9238098f): a revisão confere o RESULTADO inteiro. Histórico cheio PROPAGA (plano-service →
-  // 409); resultado que o leitor recusaria é descartado com o motivo e a orientação, como sempre foi.
-  const revisada = tentarAplicarRevisao(contrato, novos, {
-    autor: quem.autor,
-    motivo: 'edição posicional do texto do item',
-    superficie: quem.superficie,
-    ...(quem.em ? { em: quem.em } : {}),
-  })
-  if (revisada.historicoCheio) throw new HistoricoDaCopyCheio(contrato, revisada.mudancas)
-  if (!revisada.copy) return descartado(`a edição posicional deixou o contrato inválido (${revisada.problemas.map((p) => p.mensagem).join('; ')})${orientacaoEmFrase(orientacaoDosProblemas(revisada.problemas)).replace(/\.$/, '')}`)
-  return { copyAutoral: revisada.copy, copyProposta: espelhoDoContrato(revisada.copy), avisos: [] }
+  // A regra mora em `revisaoPosicional` (copy-autoral): é a mesma do pedido de
+  // refino da melhoria — casou posição a posição, é revisão; não casou, descarta.
+  const r = revisaoPosicional(contrato, lista, quem, 'edição posicional do texto do item')
+  if ('descartado' in r) return descartado(r.descartado)
+  return { copyAutoral: r.copy, copyProposta: espelhoDoContrato(r.copy), avisos: [] }
 }

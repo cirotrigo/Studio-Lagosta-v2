@@ -978,6 +978,13 @@ const LITERAIS_ARTE_IA: Record<string, unknown> = {
         description:
           'Trilha arte: os blocos de texto EXATOS da peça, na ordem de leitura (máx 12 blocos de 200 chars). As PALAVRAS são reproduzidas verbatim e conferidas por visão; a CAIXA das letras, não — quem decide se a manchete sai em caixa alta é a identidade da marca. Escreva em caixa natural ("Desacelere e desfrute"), deixando em maiúsculas só sigla, unidade, valor e o nome da marca.',
       },
+      // PR 5 (F1): o contrato da copy autoral — mudança DELIBERADA do schema.
+      copyAutoral: {
+        type: 'object',
+        description:
+          'Trilha arte: o CONTRATO da copy autoral (F1), como em compor-arte: {versao: "copy-autoral-v1", origem: {autor: "claude", superficie: "chat"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), ordem, linhas EXATAS}], revisoes: []}. Com ele `copy` é dispensável (e, se vier, tem de bater com os blocos); as linhas do autor viram quebras no prompt. A arte grava a copy escrita × enviada × lida por visão (ver-geracao e conferir-arte mostram).',
+        additionalProperties: {},
+      },
       formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'story 9:16, feed 4:5, quadrado 1:1.' },
       referencias: {
         type: 'array',
