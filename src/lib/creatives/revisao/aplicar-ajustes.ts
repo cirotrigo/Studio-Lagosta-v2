@@ -33,6 +33,7 @@
  */
 
 import type { Layer } from '@/types/template'
+import { comVisibilidadeDoRevisor } from './oculta-pelo-revisor'
 import type { MeasureLayerHeight } from '@/lib/combo-stack-reflow'
 import {
   bordaDaCamadaDeGradiente,
@@ -396,7 +397,10 @@ export function aplicarAjustes(
 
       case 'visibilidade': {
         const alvo = new Set(ids)
-        camadas = camadas.map((l) => (alvo.has(l.id) ? { ...l, visible: a.visivel! } : l))
+        // A camada escondida pelo revisor leva a MARCA (metadata.revisao.ocultaPeloRevisor): é o que faz o
+        // aprendizado não ler o esconder mecânico como a pessoa apagando o texto ao agendar (REV-9E-01).
+        const marca = { em: new Date().toISOString(), ajuste: indice }
+        camadas = camadas.map((l) => (alvo.has(l.id) ? comVisibilidadeDoRevisor(l, a.visivel!, marca) : l))
         aplicados.push({ indice, tipo: a.tipo, camadas: ids, detalhe: a.visivel ? 'mostradas' : 'escondidas' })
         return
       }

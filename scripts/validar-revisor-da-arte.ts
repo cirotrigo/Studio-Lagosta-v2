@@ -150,6 +150,9 @@ async function main() {
 
   const templatesAntes = new Set((await db.template.findMany({ where: { projectId: PROJETO }, select: { id: true } })).map((t) => t.id))
   const posts: string[] = []
+  // Passo 9 (REV-9E-01): a leva e a dica de copy criadas pela prova, apagadas no cleanup.
+  let plano9Id: string | null = null
+  const sinaisDaProva: string[] = []
   const blobs = new Set<string>()
   /** Toda página que esta rodada criou (a 1ª e a 2ª peça): o cleanup limpa TODAS (REV-08). */
   const paginasCriadas: string[] = []
@@ -382,6 +385,9 @@ async function main() {
     console.log('6d) força que chega durante a execução: o executor não a honrou, e o FECHAMENTO devolve o job à fila (REV-03/REV-06)')
     const { enfileirarRecomposicao, fecharJob, pedirNovaTentativa } = await import('../src/lib/ai/generation-queue')
     const payloadNormal = { generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' } }
+    // A URL da arte entra no cleanup IMEDIATAMENTE depois de cada render: dois renders seguidos sobre a mesma
+    // Generation sobrescrevem `resultUrl`, e capturar só no fim deixava o 1º PNG no Blob (REV-9E-02).
+    const urlDaArte = async () => (await db.generation.findUnique({ where: { id: persistido.generationId }, select: { resultUrl: true } }))?.resultUrl ?? null
     const jobId6d = await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' } })
     await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 1, maxAttempts: 3, startedAt: new Date(), leaseExpiresAt: new Date(Date.now() + 600_000), payload: payloadNormal as never } })
     await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
@@ -390,6 +396,7 @@ async function main() {
     conferir('o job RUNNING recebeu o payload forçado, com o carimbo forcaPedidaEm', jobRunning?.status === 'RUNNING' && (jobRunning.payload as Record<string, any>).recompor?.forcar === true && pedidaEm6d.length > 0, pedidaEm6d)
     // a execução em curso partiu SEM força e termina sem honrá-la
     await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' }, queueJobId: jobId6d })
+    { const u = await urlDaArte(); if (u) blobs.add(u) }
     const desfecho6d = await fecharJob(jobId6d, persistido.generationId)
     const jobDepoisDo6d = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, lastError: true, payload: true } })
     conferir('fecharJob devolveu o job à fila (REENFILEIRADO → PENDING) com o motivo, em vez de DONE com a força no payload', desfecho6d === 'REENFILEIRADO' && jobDepoisDo6d?.status === 'PENDING' && /forçada/.test(String(jobDepoisDo6d.lastError)), `${desfecho6d}; ${jobDepoisDo6d?.status}: ${jobDepoisDo6d?.lastError}`)
@@ -399,7 +406,6 @@ async function main() {
     const desfecho6dB = await fecharJob(jobId6d, persistido.generationId)
     const jobFim6d = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, payload: true } })
     conferir('a execução forçada seguinte marca forcaAtendida = forcaPedidaEm e o job fecha DONE', desfecho6dB === 'DONE' && jobFim6d?.status === 'DONE' && (jobFim6d.payload as Record<string, any>).recompor?.forcaAtendida === pedidaEm6d, `${desfecho6dB}; atendida=${(jobFim6d?.payload as Record<string, any>)?.recompor?.forcaAtendida}`)
-    const urlDaArte = async () => (await db.generation.findUnique({ where: { id: persistido.generationId }, select: { resultUrl: true } }))?.resultUrl ?? null
     { const u = await urlDaArte(); if (u) blobs.add(u) }
 
     console.log('6e) a força chega no job RUNNING da ÚLTIMA tentativa: ganha orçamento próprio e a re-execução cabe (REV-07)')
@@ -1115,6 +1121,71 @@ async function main() {
       if (r8.previa) writeFileSync(resolve(SAIDA, 'revisao-8.jpg'), r8.previa)
       conferir('visão rodou', r8.visao.estado === 'feita', `${r8.visao.modelo} em ${r8.visao.ms}ms; ${r8.relatorio.achados.length} achado(s)`)
     }
+
+    // ── 9. REV-9E-01: esconder por ajuste MECÂNICO não é a pessoa apagando ──
+    // A peça vem de uma leva com DICA de copy (os textos exatos da página). O
+    // revisor esconde uma camada por ajuste de visibilidade; ao agendar, o
+    // fechamento da dica tem de ler o texto como PRESENTE (aceita-como-veio,
+    // sem remoção em nome da pessoa) — inclusive quando o render do ajuste
+    // falhou (a marca nasce com a gravação da página). O CONTROLE: a mesma
+    // camada escondida pela PESSOA (sem a marca) vira remoção, com `editada`.
+    console.log('9) REV-9E-01: camada escondida por ajuste do revisor NÃO vira remoção humana ao agendar; escondida pela pessoa, vira')
+    const { registrarDicasDeCopy, ancoraDaDica } = await import('../src/lib/aprendizado/sinal-de-copy-do-plano')
+    const { marcaDoRevisor, ocultaPeloRevisor } = await import('../src/lib/creatives/revisao/oculta-pelo-revisor')
+    const camadasDaPagina9 = async () => lerCamadas((await db.page.findUnique({ where: { id: pageId }, select: { layers: true } }))!.layers).camadas as Array<Record<string, any>>
+    const camadasDo9 = await camadasDaPagina9()
+    const visiveis9 = camadasDo9.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false && typeof c.content === 'string' && c.content.trim())
+    const textosDo9 = visiveis9.map((c) => String(c.content).trim())
+    const escolher9 = (re: RegExp) => { const i = visiveis9.findIndex((c) => re.test(String(c.name ?? c.id))); const [c] = visiveis9.splice(i >= 0 ? i : visiveis9.length - 1, 1); return c }
+    const ctaDo9 = escolher9(/cta/i)
+    const preDo9 = escolher9(/^pre/i)
+    const apoioDo9 = escolher9(/apoio/i)
+    if (!ctaDo9 || !preDo9 || !apoioDo9) abortar('a peça do 9 precisa de três textos visíveis (cta, pre, apoio)')
+    const quando9 = new Date(daqui7.getTime() + 5 * 3_600_000)
+    const plano9 = await db.planoDeConteudo.create({ data: { projectId: PROJETO, titulo: `${MARCA} leva do passo 9`, inicio: daqui7, fim: new Date(daqui7.getTime() + 7 * 86_400_000), origem: 'chat', versao: 'prova-rev-9e-01', criadoPor: projeto.userId } })
+    plano9Id = plano9.id
+    const item9 = await db.itemDePlano.create({ data: { planoId: plano9.id, projectId: PROJETO, quando: quando9, formato: 'story', via: 'compor', pageId, copyProposta: textosDo9, status: 'pronto' } })
+    const ancora9 = ancoraDaDica(item9)
+    if (!ancora9) abortar('o item do 9 não tem âncora')
+    const dicas9 = await registrarDicasDeCopy({ projectId: PROJETO, servico: 'prova', versao: 'prova-rev-9e-01', dicas: [{ ancora: ancora9, blocos: textosDo9, pageId }] })
+    const sinal9 = dicas9.get(ancora9)
+    if (!sinal9) abortar('a dica do 9 não foi registrada')
+    sinaisDaProva.push(sinal9)
+    const lerDica9 = async () => db.learningSignal.findUnique({ where: { id: sinal9 }, select: { desfecho: true, diff: true, decididoPor: true } })
+    const removidosDe = (diff: unknown) => (Array.isArray((diff as Record<string, any> | null)?.removidos) ? ((diff as Record<string, any>).removidos as Array<{ texto?: string }>).map((r) => r.texto ?? '') : [])
+    conferir('a leva e a dica existem, com os textos EXATOS da página, ainda pendente', (await lerDica9())?.desfecho == null, `sinal ${sinal9}`)
+
+    // 9a. o revisor esconde o CTA por ajuste mecânico (render OK)
+    const r9a = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
+    const a9a = await ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: r9a.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(ctaDo9.id)], visivel: false }], canal: 'claude-code' })
+    if (a9a.url) blobs.add(a9a.url)
+    const ctaDepois9a = (await camadasDaPagina9()).find((c) => c.id === ctaDo9.id)
+    conferir('a camada ficou escondida COM a marca do revisor (metadata.revisao.ocultaPeloRevisor, ajuste 0)', ctaDepois9a?.visible === false && ocultaPeloRevisor(ctaDepois9a) && marcaDoRevisor(ctaDepois9a)?.ajuste === 0, JSON.stringify(ctaDepois9a?.metadata?.revisao))
+    // 9b. agendar pela página: a dica fecha como aceita, sem remoção; a cópia do post segue a arte (sem o CTA)
+    const post9b = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 15:00`, pageId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-9e-01 b` })
+    posts.push(post9b.postId)
+    const dica9b = await lerDica9()
+    conferir('ao agendar, a dica fechou como aceita-como-veio e o diff não tem remoção (esconder pelo revisor não é a pessoa apagando)', dica9b?.desfecho === 'aceita-como-veio' && removidosDe(dica9b?.diff).length === 0, JSON.stringify({ desfecho: dica9b?.desfecho, removidos: removidosDe(dica9b?.diff) }))
+    const postDo9b = await db.socialPost.findUnique({ where: { id: post9b.postId }, select: { slotValues: true } })
+    const valores9b = Object.entries((postDo9b?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+    conferir('a cópia que o post carrega segue a ARTE: sem o CTA escondido (a marca não muda o que a peça mostra)', !valores9b.includes(String(ctaDo9.content).trim()) && valores9b.includes(String(apoioDo9.content).trim()), JSON.stringify(valores9b).slice(0, 160))
+    // 9c. o revisor esconde o PRÉ com o render FALHANDO: a marca nasce com a gravação da página, não com o render
+    const r9c = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+    const e9c = await erroDe(ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: r9c.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(preDo9.id)], visivel: false }], canal: 'claude-code' }))
+    process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+    const preDepois9c = (await camadasDaPagina9()).find((c) => c.id === preDo9.id)
+    conferir('com o render falhando, a página ficou gravada com o pré escondido E marcado', !!e9c && e9c.code !== 'VERSAO_DIVERGENTE' && preDepois9c?.visible === false && ocultaPeloRevisor(preDepois9c), `${e9c?.code ?? 'sem erro'}; ${JSON.stringify(preDepois9c?.metadata?.revisao)}`)
+    const post9c = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 15:30`, pageId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-9e-01 c` })
+    posts.push(post9c.postId)
+    const dica9c = await lerDica9()
+    conferir('agendar de novo mantém aceita-como-veio, sem remoção (duas camadas escondidas pelo revisor)', dica9c?.desfecho === 'aceita-como-veio' && removidosDe(dica9c?.diff).length === 0, JSON.stringify({ desfecho: dica9c?.desfecho, removidos: removidosDe(dica9c?.diff) }))
+    // 9d. CONTROLE: a PESSOA esconde o apoio (escrita sem a marca, como o editor faz) e agenda: remoção dela, `editada`
+    await db.page.update({ where: { id: pageId }, data: { layers: (await camadasDaPagina9()).map((c) => (c.id === apoioDo9.id ? { ...c, visible: false } : c)) as never } })
+    const post9d = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} 16:00`, pageId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-9e-01 d` })
+    posts.push(post9d.postId)
+    const dica9d = await lerDica9()
+    conferir('controle: escondida pela pessoa, a dica vira editada com a REMOÇÃO do apoio (e só dele)', dica9d?.desfecho === 'editada' && removidosDe(dica9d?.diff).length === 1 && removidosDe(dica9d?.diff)[0] === String(apoioDo9.content).trim(), JSON.stringify({ desfecho: dica9d?.desfecho, removidos: removidosDe(dica9d?.diff) }))
   } catch (erro) {
     // O erro da prova é impresso ANTES do cleanup: sem isto uma falha no
     // cleanup engoliria a causa (aconteceu na primeira rodada).
@@ -1140,8 +1211,15 @@ async function main() {
     const idsDePagina = new Set<string>(paginasCriadas)
     if (pageId) idsDePagina.add(pageId)
     for (const p of await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })) idsDePagina.add(p.id)
-    const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], string_contains: MARCA } }, select: { id: true, resultUrl: true } })
-    for (const g of gensSemPagina) if (g.resultUrl) blobs.add(g.resultUrl)
+    // Toda URL que a arte já teve: `resultUrl` e o rastro `recomposicao.urlsAnteriores` (o re-render sobrescreve
+    // a URL, e um PNG que saiu da coluna sem entrar no conjunto ficaria no Blob de produção — REV-9E-02).
+    const urlsDaGeneration = (g: { resultUrl: string | null; fieldValues: unknown }): string[] => {
+      const fv = (g.fieldValues ?? {}) as Record<string, any>
+      const anteriores = Array.isArray(fv.recomposicao?.urlsAnteriores) ? (fv.recomposicao.urlsAnteriores as unknown[]).filter((u): u is string => typeof u === 'string') : []
+      return [...(g.resultUrl ? [g.resultUrl] : []), ...anteriores]
+    }
+    const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], string_contains: MARCA } }, select: { id: true, resultUrl: true, fieldValues: true } })
+    for (const g of gensSemPagina) for (const u of urlsDaGeneration(g)) blobs.add(u)
     if (gensSemPagina.length) {
       await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
       criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
@@ -1150,8 +1228,8 @@ async function main() {
     for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
     criados.pages = 0
     for (const id of idsDePagina) {
-      const gens = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: id } }, select: { id: true, resultUrl: true } })
-      for (const g of gens) if (g.resultUrl) blobs.add(g.resultUrl)
+      const gens = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: id } }, select: { id: true, resultUrl: true, fieldValues: true } })
+      for (const g of gens) for (const u of urlsDaGeneration(g)) blobs.add(u)
       criados.jobs += (await db.generationJob.deleteMany({ where: { generationId: { in: gens.map((g) => g.id) } } })).count
       criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId: id, createdAt: { gte: inicio } } })).count
       criados.generations += (await db.generation.deleteMany({ where: { id: { in: gens.map((g) => g.id) } } })).count
@@ -1169,18 +1247,29 @@ async function main() {
         }
       }
     }
+    if (plano9Id) {
+      await db.itemDePlano.deleteMany({ where: { planoId: plano9Id } })
+      await db.planoDeConteudo.deleteMany({ where: { id: plano9Id } })
+    }
+    if (sinaisDaProva.length) criados.sinais += (await db.learningSignal.deleteMany({ where: { id: { in: sinaisDaProva } } })).count
     if (posts.length) {
       criados.posts = posts.length
       criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
       await db.socialPost.deleteMany({ where: { id: { in: posts } } })
     }
     const urls = [...blobs].filter((u): u is string => typeof u === 'string' && u.includes('blob.vercel-storage.com'))
+    // Falha ao apagar o Blob é FALHA da prova (REV-9E-03): resíduo no Blob de produção não pode passar no gate.
+    // "encontrados" e "apagados" são contados em separado.
+    let blobsApagados = 0
     try {
       if (urls.length) await del(urls)
+      blobsApagados = urls.length
     } catch (e) {
-      console.warn('  blob não apagado:', e instanceof Error ? e.message : e)
+      console.error('  ✗ blob NÃO apagado (conta como falha da prova):', e instanceof Error ? e.message : e)
+      mau++
     }
-    console.log(`  apagados: ${JSON.stringify(criados)}`)
+    console.log(`  apagados: ${JSON.stringify({ ...criados, blobs: `${blobsApagados} de ${urls.length} encontrados` })}`)
+    if (blobsApagados !== urls.length) console.error(`  ✗ ${urls.length - blobsApagados} blob(s) ficaram no Blob: ${urls.join(' ')}`)
     await db.$disconnect()
   }
 

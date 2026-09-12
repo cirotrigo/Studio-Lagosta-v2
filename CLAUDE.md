@@ -5649,6 +5649,25 @@ Codex antes de ser escrito.
   copy.
 - ⚠️ Rich text é medido como texto simples (a largura dos trechos destacados é
   aproximada, cobertura "parcial").
+- 🔴 **Esconder por ajuste do revisor NÃO é a pessoa apagando o texto** (REV-9E-01
+  da revisão FINAL do Codex, 12/09/2026). O ajuste `visibilidade` grava na
+  camada `metadata.revisao.ocultaPeloRevisor` (com a página, no mesmo write —
+  sobrevive ao render que falha); mostrar de novo tira a marca. O APRENDIZADO
+  lê a página por `copyParaDecisao` (a escondida pelo revisor conta como
+  presente) nos quatro pontos — `agendarPost`, `ajustarArte` (antes e depois),
+  o PATCH do editor —, enquanto o render e a cópia que o post carrega
+  (`slotValues`) seguem `copyDeCamadas`: a marca nunca muda o que a arte
+  mostra. Camada escondida SEM a marca é decisão humana e conta como remoção;
+  e no PATCH do editor `reconciliarMarcasDoRevisor` tira a marca da camada que
+  estava visível e chega escondida (a pessoa a escondeu). Módulo puro
+  `revisao/oculta-pelo-revisor.ts`; prova no passo 9 (com render OK, com
+  render falhando, e o controle humano virando `editada`).
+- **A prova captura a URL da arte IMEDIATAMENTE depois de cada render** e o
+  cleanup varre também `recomposicao.urlsAnteriores`: dois renders seguidos
+  sobre a mesma Generation sobrescrevem `resultUrl`, e o 1º PNG do passo 6d
+  ficava no Blob de produção (REV-9E-02). E falha do `del` CONTA como falha
+  da prova, com "encontrados" e "apagados" separados (REV-9E-03) — resíduo no
+  Blob não passa no gate.
 - **A recuperação da arte CONGELADA depois de um ajuste** (rodadas da revisão
   do Codex em 12/09/2026, REV-01 a REV-11 e a revisão FINAL, prova em
   `scripts/validar-revisor-da-arte.ts`, passos 6a–6m): quando o render do ajuste

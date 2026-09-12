@@ -16,7 +16,7 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
-import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import {
   fecharSugestaoDeSlot,
   registrarCopyDoPost,
@@ -366,6 +366,15 @@ export async function agendarPost(input: AgendarPostInput) {
   const copyDaPagina = copyDeCamadas(camadasDaPagina)
   const copyPropostaTexto = apenasTextos(copyProposta)
   const copyFinal = copyDaPagina ?? copyPropostaTexto
+  /**
+   * O lado FINAL do APRENDIZADO é outro: a camada que o REVISOR escondeu por
+   * ajuste mecânico conta como presente (`copyParaDecisao`) — senão o
+   * fechamento da dica lia o esconder como a pessoa apagando o texto e
+   * registrava `editada` em nome dela (REV-9E-01). A cópia que o post carrega
+   * (`slotValues`) segue a página como está: ela é o que a arte mostra.
+   */
+  const copyDaDecisao = copyParaDecisao(camadasDaPagina)
+  const copyDoCorpus = copyDaDecisao ?? copyPropostaTexto
 
   /**
    * O diff que interessa: o que a IA propôs na criação × o que de fato está na
@@ -374,7 +383,7 @@ export async function agendarPost(input: AgendarPostInput) {
    * sabe nada.
    */
   const diffDaCopy =
-    copyPropostaTexto && copyDaPagina ? diffDeCopy(copyPropostaTexto, copyDaPagina) : null
+    copyPropostaTexto && copyDaDecisao ? diffDeCopy(copyPropostaTexto, copyDaDecisao) : null
 
   const post = await db.socialPost.create({
     data: {
@@ -475,7 +484,7 @@ export async function agendarPost(input: AgendarPostInput) {
   await registrarCopyDoPost({
     projectId: project.id,
     postId: post.id,
-    copyFinal,
+    copyFinal: copyDoCorpus,
     diff: diffDaCopy,
     pageId: input.pageId ?? null,
     generationId: generationDoPost,

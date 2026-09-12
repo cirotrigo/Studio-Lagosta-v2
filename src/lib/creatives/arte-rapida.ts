@@ -29,7 +29,7 @@ import {
 } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
-import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { lerCamadas, parsePageLayers } from '@/lib/posts/page-layers'
 import {
   caiNaEscolhaPropria,
@@ -995,7 +995,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * o diff falsamente vazio, ao contrário. `null` = ilegível, e ilegível não
    * vira sinal.
    */
-  const copyAntes = copyDeCamadas(page.layers)
+  // Lado do APRENDIZADO: a camada escondida por ajuste anterior do revisor conta como presente (REV-9E-01).
+  const copyAntes = copyParaDecisao(page.layers)
 
   const sourceLayers = camadasParaBake(page.layers, page)
   const baked = bakeLayers(sourceLayers, slotValues, resolved.url)
@@ -1196,7 +1197,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    */
   // Com ajustes do revisor, a copy da DECISÃO é a de antes deles: esconder uma
   // camada por ajuste mecânico não é a pessoa apagando o texto.
-  const copyDepois = copyDeCamadas(revisao ? reflowed : layers)
+  const copyDepois = copyParaDecisao(revisao ? reflowed : layers)
   const diffDaCorrecao = diffDeCopy(copyAntes, copyDepois)
   if (!diffDaCorrecao.ilegivel && diffDaCorrecao.mudou) {
     const fechamento = await fecharDicaDeCopyDaPagina({

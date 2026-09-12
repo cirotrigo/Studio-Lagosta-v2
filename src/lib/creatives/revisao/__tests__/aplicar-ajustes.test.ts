@@ -261,6 +261,20 @@ describe('aplicarAjustes — gradiente, posição, visibilidade e caixa', () => 
     expect(r.aplicados.map((a) => a.tipo)).toEqual(['mover', 'visibilidade', 'caixa'])
   })
 
+  it('esconder por visibilidade grava a MARCA do revisor na camada (metadata.revisao.ocultaPeloRevisor, com o índice do ajuste); mostrar tira a marca e preserva o resto do metadata (REV-9E-01)', () => {
+    const cta = { ...texto('cta', 400, 40), metadata: { compositor: { papel: 'cta' } } } as Layer
+    const r = aplicarAjustes([cta], [{ tipo: 'mover', camadas: ['cta'], dy: -8 }, { tipo: 'visibilidade', camadas: ['cta'], visivel: false }], { canvas, medir })
+    const escondida = r.camadas[0]
+    expect(escondida.visible).toBe(false)
+    const marca = (escondida.metadata as Record<string, any>).revisao.ocultaPeloRevisor
+    expect(marca.ajuste).toBe(1)
+    expect(typeof marca.em).toBe('string')
+    expect((escondida.metadata as Record<string, any>).compositor).toEqual({ papel: 'cta' })
+    const r2 = aplicarAjustes(r.camadas, [{ tipo: 'visibilidade', camadas: ['cta'], visivel: true }], { canvas, medir })
+    expect(r2.camadas[0].visible).toBe(true)
+    expect(r2.camadas[0].metadata).toEqual({ compositor: { papel: 'cta' } })
+  })
+
   it('recusa o que não pode aplicar, com o motivo, sem aplicar nada pela metade', () => {
     const apoio = texto('apoio', 600, 40)
     const r = aplicarAjustes(
