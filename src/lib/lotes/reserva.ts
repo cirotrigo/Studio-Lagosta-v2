@@ -53,10 +53,13 @@ export interface EntradaDaReserva {
    * `recuperacao` é a decisão da retomada (a peça que a linha aponta morreu, ou
    * ficou sem job) e o criador tem de honrá-la — ver `RecuperacaoDaReserva`.
    * Ela vale sob a trava DESTA linha: criador que toma outra trava (o item de
-   * plano) re-decide com `estadoDaPeca` sobre o que relê sob ela (R04), e
-   * compara specs com `mesmoPedidoDoLote`, nunca cru (R03).
+   * plano) decide de novo sobre o que relê sob ela (R04; desde a revisão final,
+   * pela tabela `decidirNoItemDoPlano`, que nem usa a `recuperacao`), e compara
+   * specs com `mesmoPedidoDoLote`, nunca cru (R03). `retomado` diz que a peça
+   * que o item JÁ tinha foi refeita — inclusive quando esta linha acabou de
+   * nascer e adotou a peça (R05).
    */
-  criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean }>
+  criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean; retomado?: boolean }>
   /**
    * Cria só o job para uma Generation PROCESSING que ficou sem ele. Ausente,
    * a retomada cai em `criar` COM `recuperacao.falta === 'job'` (é o caso do
@@ -161,6 +164,7 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
       let generationId: string
       let jobId: string
       let reaproveitado = false
+      let retomado = false
       const recuperacao = recuperacaoDaDecisao(decisao, atual.generationId)
       if (recuperacao?.falta === 'job' && entrada.criarJob) {
         generationId = recuperacao.generationId
@@ -170,12 +174,14 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
         generationId = criado.generationId
         jobId = criado.jobId
         reaproveitado = criado.reaproveitado === true
+        retomado = criado.retomado === true
       }
 
       const novaGeracao = generationId !== atual.generationId
       const ligado = await tx.itemDeLote.updateMany({
         where: { id: atual.id, generationId: atual.generationId },
-        data: { generationId, jobId, situacao: 'enfileirado', ...(novaGeracao && !reaproveitado ? { tentativas: { increment: 1 } } : {}) },
+        // Peça pronta reaproveitada sem job devolve jobId vazio: grava nulo, nunca ''.
+        data: { generationId, jobId: jobId || null, situacao: 'enfileirado', ...(novaGeracao && !reaproveitado ? { tentativas: { increment: 1 } } : {}) },
       })
       // Com a trava isto não acontece; se acontecer, a transação volta atrás
       // inteira e nenhuma Generation fica sem a linha apontando para ela.
@@ -184,10 +190,12 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
       }
       if (decisao.acao === 'retomar' && !(criadaAgora && !atual.generationId)) {
         console.warn(`[lote] ${loteId}/${itemId} (projeto ${projectId}) retomado: ${decisao.motivo}`)
+      } else if (retomado) {
+        console.warn(`[lote] ${loteId}/${itemId} (projeto ${projectId}) retomado: a peça que o item de plano já tinha foi refeita`)
       }
 
       const status = reaproveitado ? (await tx.generation.findUnique({ where: { id: generationId }, select: { status: true } }))?.status : 'PROCESSING'
-      const desfecho: DesfechoDoItemDeLote = reaproveitado ? 'reaproveitado' : criadaAgora && !atual.generationId ? 'criado' : 'retomado'
+      const desfecho: DesfechoDoItemDeLote = reaproveitado ? 'reaproveitado' : criadaAgora && !atual.generationId && !retomado ? 'criado' : 'retomado'
       return resultado(generationId, jobId, desfecho, status)
     },
     // A espera pela trava conta no tempo da transação; o trabalho sob ela é curto.

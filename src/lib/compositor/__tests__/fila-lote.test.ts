@@ -202,6 +202,13 @@ vi.mock('../pastas', () => ({
   },
 }))
 
+// O R06 edita a copy pelo SERVIÇO de verdade (`atualizarItem`). O plano-service
+// importa `Prisma` de '@prisma/client' (o cliente gerado não existe no
+// worktree) e `parseBRT` de agendar.ts (que arrasta Blob e persist): os dois
+// são trocados só pelo que o serviço usa aqui.
+vi.mock('@prisma/client', () => ({ Prisma: { DbNull: 'DbNull', JsonNull: 'JsonNull' } }))
+vi.mock('@/lib/creatives/agendar', () => ({ parseBRT: (valor: string) => new Date(valor) }))
+
 const compositor = vi.hoisted(() => ({ chamadas: 0 }))
 vi.mock('../compor', () => ({
   comporPeca: async (_spec: unknown, opcoes: { generationId: string }) => {
@@ -798,5 +805,100 @@ describe('correção da revisão (R03, R04)', () => {
       expect([...banco.itensDeLote.values()][0]).toMatchObject({ situacao: 'reservado', generationId: null })
       expect(banco.travas.size).toBe(0)
     })
+  })
+})
+
+describe('correção da revisão final (R05, R06): a tabela única sob a trava do item, pelo caminho real', () => {
+  const specDoPlano = { ...peca(1), itemDePlanoId: 'item-1', planoId: 'plano-1' }
+  const criarItem = (extra: Record<string, unknown> = {}) =>
+    banco.itensDePlano.set('item-1', {
+      id: 'item-1', planoId: 'plano-1', projectId: 6, status: 'proposto', ordem: 0, updatedAt: new Date('2026-09-08'),
+      plano: { id: 'plano-1', status: 'ativo', inicio: new Date('2026-09-07'), fim: new Date('2026-09-13') },
+      ...extra,
+    })
+  const marcar = (tabela: 'generations' | 'jobs' | 'itensDePlano', id: string, extra: Record<string, unknown>) => banco[tabela].set(id, { ...banco[tabela].get(id), ...extra })
+  const retrato = () => structuredClone({ generations: banco.generations, jobs: banco.jobs, itensDeLote: banco.itensDeLote, itensDePlano: banco.itensDePlano })
+  const linhaDoLote = (loteId = 'semana-2026-09-07') => [...banco.itensDeLote.values()].find((l) => l.loteId === loteId)
+
+  beforeEach(() => {
+    banco.travasPorLinha = true
+  })
+
+  it('R05 — peça enfileirada SEM lote que perdeu o job: a primeira chamada COM lote refaz só o job na mesma Generation, liga a linha, e a repetição reaproveita', async () => {
+    criarItem()
+    const pelaBancada = await enfileirarPeca(specDoPlano)
+    const revisao = (banco.jobs.get(pelaBancada.jobId)!.payload as { planoRevisao: string }).planoRevisao
+    banco.jobs.delete(pelaBancada.jobId)
+
+    const r = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(r.generationId).toBe(pelaBancada.generationId)
+    expect(r.jobId).not.toBe(pelaBancada.jobId)
+    expect(r.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(r.jobId)).toMatchObject({ status: 'PENDING', kind: 'COMPOR', generationId: pelaBancada.generationId, payload: { generationId: pelaBancada.generationId, planoRevisao: revisao } })
+    expect(banco.generations.size).toBe(1)
+    expect(banco.jobs.size).toBe(1)
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: pelaBancada.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: pelaBancada.generationId, jobId: r.jobId, situacao: 'enfileirado' })
+
+    const repetida = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(repetida).toMatchObject({ generationId: pelaBancada.generationId, jobId: r.jobId, lote: { desfecho: 'reaproveitado', situacao: 'pendente' } })
+    expect(banco.jobs.size).toBe(1)
+    expect(await rodarComoOCron(r.jobId)).toBe('DONE')
+    expect(banco.generations.get(pelaBancada.generationId)?.status).toBe('COMPLETED')
+  })
+
+  it('R05, a mesma linha da tabela sem lote: a bancada que repete o item em voo sem job também refaz só o job', async () => {
+    criarItem()
+    const primeira = await enfileirarPeca(specDoPlano)
+    banco.jobs.delete(primeira.jobId)
+    const segunda = await enfileirarPeca(specDoPlano)
+    expect(segunda.generationId).toBe(primeira.generationId)
+    expect(banco.jobs.get(segunda.jobId)).toMatchObject({ status: 'PENDING', generationId: primeira.generationId })
+    expect(banco.generations.size).toBe(1)
+    expect(banco.jobs.size).toBe(1)
+  })
+
+  it('linha fresca diante de uma peça cujo job morreu: Generation e job NOVOS (antes devolvia o job FAILED como reaproveitado)', async () => {
+    criarItem()
+    const pelaBancada = await enfileirarPeca(specDoPlano)
+    marcar('jobs', pelaBancada.jobId, { status: 'FAILED' })
+    const r = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(r.generationId).not.toBe(pelaBancada.generationId)
+    expect(r.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(r.jobId)).toMatchObject({ status: 'PENDING', generationId: r.generationId })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: r.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: r.generationId, jobId: r.jobId })
+  })
+
+  it('R06 — a peça falhou, a copy foi editada pelo SERVIÇO e a chamada original da leva é repetida sem ficha: 409, e nada muda em Generations, jobs, linha do lote ou item', async () => {
+    criarItem()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    marcar('generations', primeira.generationId, { status: 'FAILED' })
+    marcar('jobs', primeira.jobId, { status: 'FAILED' })
+    marcar('itensDePlano', 'item-1', { status: 'erro' })
+
+    const { atualizarItem } = await import('@/lib/planos/plano-service')
+    await atualizarItem({ projectId: 6, planoId: 'plano-1', itemId: 'item-1', patch: { copyProposta: ['Costela no bafo', 'Vem pra cá'] } })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'editado', generationId: primeira.generationId, copyProposta: ['Costela no bafo', 'Vem pra cá'] })
+
+    const antes = retrato()
+    await expect(enfileirarPeca(specDoPlano, lote('seg-19h'))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', status: 409, details: { motivo: 'revisado' } })
+    expect(retrato()).toEqual(antes)
+    expect(banco.travas.size).toBe(0)
+  })
+
+  it('R06, o controle: sem a edição a mesma retomada continua — Generation e job novos, item na fila, linha religada', async () => {
+    criarItem()
+    const primeira = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    marcar('generations', primeira.generationId, { status: 'FAILED' })
+    marcar('jobs', primeira.jobId, { status: 'FAILED' })
+    marcar('itensDePlano', 'item-1', { status: 'erro' })
+
+    const segunda = await enfileirarPeca(specDoPlano, lote('seg-19h'))
+    expect(segunda.generationId).not.toBe(primeira.generationId)
+    expect(segunda.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(segunda.jobId)).toMatchObject({ status: 'PENDING', generationId: segunda.generationId })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: segunda.generationId })
+    expect(linhaDoLote()).toMatchObject({ generationId: segunda.generationId, jobId: segunda.jobId, tentativas: 2 })
   })
 })

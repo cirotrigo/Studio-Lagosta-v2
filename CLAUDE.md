@@ -9836,3 +9836,102 @@ teste em `fila-lote.test.ts` ("correção da revisão (R03, R04)").
   fora do executável) em vez de ser reaproveitada; a repetição seguinte
   reaproveita pela decisão da linha. É o mesmo comportamento do caminho sem
   lote.
+
+**Da revisão FINAL do Codex sobre 2d1b5278 (BLOQUEADO, R05…R06, 12/09/2026):**
+
+Terceira rodada na retomada do item de plano, e as três nasceram do mesmo
+desenho: ramos por caso, cada um conferindo parte das guardas, e a decisão do
+LOTE (tomada antes da trava do item) decidindo se a guarda rodava. A saída foi
+trocar os ramos por UMA tabela, avaliada sob a trava do item sobre o estado
+RELIDO, para toda entrada no caminho do plano — com ou sem lote, com ou sem a
+linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
+(`classificarPecaDoItem`, `confrontarComOGravado`, `decidirNoItemDoPlano`);
+`enfileirarComposicaoDoPlanoEm` só lê, chama a tabela e executa a saída.
+
+- 🔴 **R05 — linha de lote NOVA diante de peça que já perdeu o job.** O item
+  enfileirado pela bancada ficava `na-fila` com a Generation `PROCESSING` sem
+  job; a primeira chamada com lote chegava com `recuperacao: null` (a linha
+  ainda não apontava peça nenhuma), o caminho do plano só retomava COM
+  recuperação e recusava — e toda repetição recusava igual, com a linha presa
+  em `reservado`. Hoje o vínculo da linha **não é entrada**: o que decide é o
+  item e a peça dele, e a mesma linha da tabela refaz só o job. O desfecho sai
+  `retomado` (`criar` devolve `retomado`, que a reserva respeita).
+- 🔴 **R06 — retomada que ignorava a revisão num item EXECUTÁVEL.** A peça do
+  lote falha, o item fica `erro`, alguém edita a copy (`atualizarItem` mantém o
+  vínculo e leva a `editado`) e a chamada original da leva é repetida: o hash
+  aceita o payload antigo, e como `editado` é executável o caminho criava peça
+  NOVA com a copy ANTIGA, gravando nela a revisão atual. A conferência de
+  revisão só existia no ramo `na-fila`/`gerando`. Hoje, com lote, item
+  executável cuja peça não serve e cujo pedido é o mesmo da peça (ou não dá
+  para saber) só produz quando a revisão gravada é IGUAL à atual; diferente ou
+  desconhecida recusa com 409, sem escrever nada. Sem lote a spec é montada do
+  item atual por quem chama, então lá a peça nova continua sendo a resposta.
+- **Entradas da tabela** (todas lidas sob a trava): status do item; ficha
+  (`itemAtualizadoEm` ausente/confere/diverge); estado da peça (`nenhuma`,
+  `sumiu`, `falhou`, `job-terminal`, `sem-job`, `viva`, `pronta`,
+  `pronta-sem-arquivo`); `pedido` (a spec de agora contra a GRAVADA — no payload
+  do job e, sem job, nos `fieldValues` da Generation; com lote pela normalização
+  do hash); `projeto` (à parte, porque o hash o deixa fora); `revisao` (a
+  `planoRevisao` gravada contra a do item); `comLote`. **Nada gravado vale
+  `desconhecido`, nunca "igual".** O job vem antes da Generation porque a
+  Generation COMPLETED pode guardar a spec RESOLVIDA.
+- **A tabela** (em ordem; a primeira linha que casa vence; coluna ausente vale
+  qualquer valor; EXECUTÁVEL = proposto/editado/aprovado/erro, EM VOO =
+  na-fila/gerando, FINAL = pronto/agendado):
+
+  | # | condição | saída |
+  |---|---|---|
+  | 1 | status reprovado | recusar |
+  | 2 | EXECUTÁVEL e ficha diverge | recusar |
+  | 3 | peça viva ou pronta, pedido igual, projeto não diverge, revisão igual | reaproveitar |
+  | 4 | FINAL | recusar |
+  | 5 | EM VOO e peça nenhuma, viva ou pronta | recusar |
+  | 6 | EM VOO e (pedido diferente ou projeto diverge) | recusar |
+  | 7 | EM VOO e revisão diferente | recusar |
+  | 8 | EM VOO e peça sem job | refazer só o job |
+  | 9 | EM VOO (peça sumiu, falhou, job terminal, pronta sem arquivo) | peça nova |
+  | 10 | EXECUTÁVEL e peça nenhuma | peça nova |
+  | 11 | EXECUTÁVEL sem lote | peça nova |
+  | 12 | EXECUTÁVEL e (pedido diferente ou projeto diverge) | peça nova |
+  | 13 | EXECUTÁVEL e revisão igual | peça nova |
+  | 14 | EXECUTÁVEL (com lote, pedido igual ou desconhecido, revisão diferente ou desconhecida) | recusar |
+
+- **O teste enumera as 11.664 combinações** (`__tests__/decisao-do-item.test.ts`):
+  a tabela escrita (colunas cruas, `pedido` e `projeto` separados — derivar "o
+  mesmo pedido" no teste repetiria o código) contra a função em código corrido,
+  com nenhuma combinação sem linha e nenhuma linha morta; e as invariantes
+  (peça nova só onde o item tem caminho até `na-fila`, refazer o job só sem
+  job, reaproveitar só peça viva ou pronta). Os dois cenários da revisão
+  rodam também pelo caminho REAL, no banco falso com travas por linha: R05 com
+  a peça enfileirada sem lote e o job apagado, e R06 com a copy editada pelo
+  `atualizarItem` de verdade (o teste troca só `@prisma/client` e
+  `agendar.ts`, que o serviço arrasta).
+- **O que mudou de comportamento** (oráculo da decisão de 2d1b5278 contra a
+  tabela, 39.015 combinações cruas, 3.080 com saída diferente):
+  - linha 9 **para toda entrada sem linha ligada** (sem lote e lote novo): peça
+    em voo que falhou, sumiu ou ficou pronta sem arquivo era RECUSADA e passa a
+    ser refeita; a de linha 8 (sem job) passa a ganhar só o job — é o R05, e
+    vale para a bancada também;
+  - **job terminal com a Generation aberta deixou de ser reaproveitado em
+    qualquer entrada**: antes, sem lote ou com lote novo, o caminho devolvia o
+    job FAILED/DONE como peça viva (o R01 só tinha sido fechado para a linha
+    ligada); agora vira peça nova (executável ou em voo) ou recusa (final);
+  - linha 14: com lote, item executável cuja peça não serve e cuja revisão
+    diverge ou não pode ser conferida era produzido e passa a ser recusado —
+    é o R06, generalizado para peça sumida, sem job, viva e pronta;
+  - linha 3: peça pronta cujo pedido e revisão só estão gravados na Generation
+    (sem job) era produzida de novo (executável) ou recusada (em voo, final) e
+    passa a ser reaproveitada. Sem job, o `jobId` devolvido é vazio e a linha
+    do lote grava `null`, nunca `''`.
+- **O vínculo `lote.recuperacao` continua viajando e não entra na decisão.** A
+  reserva ainda decide `reaproveitar` pela LINHA antes de chegar ao plano
+  (peça COMPLETED ou viva) — sem escrita, sem produzir nada.
+- ⚠️ **Resíduo conhecido**: a peça que o "Gerar" da bancada compõe na hora
+  (`comporItemAgora`) não tem job nem `planoRevisao`, só a spec nos
+  `fieldValues`. Se o item volta a ser executável e alguém repete sob uma chave
+  de lote o MESMO pedido daquela peça, a revisão é desconhecida e a linha 14
+  recusa; com pedido diferente (a copy editada), sai peça nova normalmente.
+- ⚠️ **Resíduo conhecido**: reserva ÓRFÃ (linha sem Generation) de um item
+  editado depois dela não é detectável — a linha do lote não grava
+  `planoRevisao`, e sem peça não há revisão gravada para conferir. Fechar isso
+  pede a revisão na linha, que é migration.
