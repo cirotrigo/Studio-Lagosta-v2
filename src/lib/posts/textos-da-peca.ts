@@ -315,7 +315,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    legível e a peça viva, o passo 2 já devolveu a página (que É a mídia).
   const copyHerdadaInvalidada = !carrossel && !post.pageId && slides[0]?.arte?.reRenderizada === true
   const NOTA_R42 =
-    'a arte desta peça foi re-renderizada como a página estava DEPOIS do agendamento, e o post (sem página própria) só guarda a copy da versão anterior da mídia: o texto que está na arte não tem registro aqui.'
+    'a arte desta peça foi re-renderizada e o post (sem página própria) não guarda registro textual confiável da mídia atual: o texto que está na arte não tem registro aqui.'
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {

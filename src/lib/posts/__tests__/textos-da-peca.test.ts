@@ -315,11 +315,13 @@ describe('R42 — a copy herdada da arte com que o post foi agendado cai quando 
     for (const status of ['POSTED', 'POSTING', 'FAILED']) {
       const r = textosDaPeca({ ...semPagina, status, laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: arteRR }] })
       expect(r.textos).toEqual([])
-      expect(r.indisponiveis).toMatch(/re-renderizada como a página estava DEPOIS do agendamento/)
+      expect(r.indisponiveis).toMatch(/re-renderizada e o post \(sem página própria\) não guarda registro textual confiável/)
+      // R45: a nota não afirma cronologia (antes/depois do agendamento) nem copy guardada que os dados não comprovam
+      expect(r.indisponiveis).not.toMatch(/DEPOIS do agendamento|versão anterior/)
       expect(JSON.stringify(r)).not.toContain('Copy A')
     }
     const noPublicador = textosDaPeca({ ...semPagina, status: 'SCHEDULED', laterPostId: 'zernio-1' }, { slides: [{ url: 'https://blob/B.png', arte: arteRR }] })
-    expect(noPublicador.indisponiveis).toMatch(/DEPOIS do agendamento/)
+    expect(noPublicador.indisponiveis).toMatch(/não guarda registro textual confiável/)
   })
   it('viva com a página da arte ilegível: também não cai na copy do post (nem parcial)', () => {
     const r = textosDaPeca({ ...semPagina, status: 'DRAFT', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: arteRR, camadasDaPagina: '{{ilegível' }] })

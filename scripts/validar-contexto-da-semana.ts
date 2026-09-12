@@ -329,8 +329,9 @@ async function main() {
       // R23: o snapshot do slide 1 vem FORA DE ORDEM no array (order 2 antes do order 1) — a agenda devolve na ordem do render.
       const snapForaDeOrdem = [{ id: 'l2', name: 'apoio', type: 'text', content: `${MARCA} slide um — linha 2`, visible: true, order: 2 }, { id: 'l1', name: 'headline', type: 'text', content: `${MARCA} slide um`, visible: true, order: 1 }]
       const genA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/slide-1.png`, fieldValues: { layersSnapshot: snapForaDeOrdem, source: 'prova' } as never }, select: { id: true } })
+      geracoes.push(genA.id) // R44: coletado ANTES do próximo await
       const genB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/slide-2.png`, fieldValues: { layersSnapshot: snap(`${MARCA} slide dois`), source: 'prova' } as never }, select: { id: true } })
-      geracoes.push(genA.id, genB.id)
+      geracoes.push(genB.id) // R44: coletado ANTES do próximo await
       const carrossel = await db.socialPost.create({
         data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} 3c carrossel`, mediaUrls: [`${marcaUrl}/slide-1.png`, `${marcaUrl}/slide-2.png`, `${marcaUrl}/slide-3-sem-arte.png`], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3c}T09:00:00-03:00`), status: 'POSTED', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', generationId: genA.id },
         select: { id: true },
@@ -352,8 +353,9 @@ async function main() {
       console.log('3d) ver-agenda: mídia nova sem Generation casada (R12) e arte re-renderizada (R13) não devolvem o snapshot antigo — vale a cópia registrada')
       const dia3d = somarDias(hoje, 7)
       const genAntiga = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/versao-A.png`, fieldValues: { layersSnapshot: snap(`${MARCA} texto A antigo`), source: 'prova' } as never }, select: { id: true } })
+      geracoes.push(genAntiga.id) // R44: coletado ANTES do próximo await
       const genReRender = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/re-render.png`, fieldValues: { layersSnapshot: snap(`${MARCA} texto A antigo`), recomposicao: { estado: 're-renderizada' }, source: 'prova' } as never }, select: { id: true } })
-      geracoes.push(genAntiga.id, genReRender.id)
+      geracoes.push(genReRender.id) // R44: coletado ANTES do próximo await
       const r12 = await criar('09:00', { status: 'POSTED', scheduledDatetime: new Date(`${dia3d}T09:00:00-03:00`), mediaUrls: [`${marcaUrl}/versao-B.png`], generationId: genAntiga.id, slotValues: { [chaveDoTexto]: `${MARCA} texto B registrado`, _copiaDaPagina: true } })
       const r13 = await criar('10:00', { status: 'POSTED', scheduledDatetime: new Date(`${dia3d}T10:00:00-03:00`), mediaUrls: [`${marcaUrl}/re-render.png`], generationId: genReRender.id, slotValues: { [chaveDoTexto]: `${MARCA} texto B registrado`, _copiaDaPagina: true } })
       posts.push(r12.id, r13.id)
@@ -371,10 +373,12 @@ async function main() {
       const dia3f = somarDias(hoje, 8)
       const copyA = `${MARCA} copy A do reagendado`, copyB = `${MARCA} copy B do reagendado`
       const genModA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyA } } as never }, select: { id: true } })
+      geracoes.push(genModA.id) // R44: coletado ANTES do próximo await
       const genModB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyB } } as never }, select: { id: true } })
+      geracoes.push(genModB.id) // R44: coletado ANTES do próximo await
       // R37: a arte de post-schedule RE-RENDERIZADA (o PNG novo é a página atual) não afirma mais a copy antiga.
       const genModRR = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-rerender.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy ANTIGA do re-render` }, recomposicao: { estado: 're-renderizada' } } as never }, select: { id: true } })
-      geracoes.push(genModA.id, genModB.id, genModRR.id)
+      geracoes.push(genModRR.id) // R44: coletado ANTES do próximo await
       const reagendadoRR = await criar('10:00', { scheduledDatetime: new Date(`${dia3f}T10:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-rerender.png`], generationId: genModRR.id, slotValues: null })
       posts.push(reagendadoRR.id)
       const reagendado = await criar('11:00', { scheduledDatetime: new Date(`${dia3f}T11:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-A.png`], generationId: genModA.id, slotValues: null })
@@ -396,8 +400,9 @@ async function main() {
       const { agendarPost } = await import('../src/lib/creatives/agendar')
       const blobHost = 'https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/prova-pr6'
       const genRR2 = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-rerender-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A invalidada` }, recomposicao: { estado: 're-renderizada' } } as never }, select: { id: true, resultUrl: true } })
+      geracoes.push(genRR2.id) // R44: coletado ANTES do próximo await
       const genCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-controle-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy B legítima` } } as never }, select: { id: true } })
-      geracoes.push(genRR2.id, genCtl.id)
+      geracoes.push(genCtl.id) // R44: coletado ANTES do próximo await
       const dia3g = somarDias(hoje, 9)
       const agRR = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3g} 10:00`, generationId: genRR2.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3g re-renderizada` })
       const agCtl = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3g} 11:00`, generationId: genCtl.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3g controle` })
@@ -426,8 +431,9 @@ async function main() {
       // tem a mídia trocada, como `recompor.ts` faz), entregar, consultar: a copy A herdada não pode ser atribuída à mídia B.
       console.log('3h) agendar → re-renderizar → entregar → consultar: a copy A herdada no agendamento não é atribuída à mídia B (R42); o controle é a mesma arte NÃO re-renderizada, cuja copy é legítima')
       const genH = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A herdada 3h` } } as never }, select: { id: true, resultUrl: true } })
+      geracoes.push(genH.id) // R44: coletado ANTES do próximo await — a falha na criação seguinte não deixa esta fora do cleanup
       const genHCtl = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3h-ctl.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy A legítima 3h` } } as never }, select: { id: true } })
-      geracoes.push(genH.id, genHCtl.id)
+      geracoes.push(genHCtl.id)
       const dia3h = somarDias(hoje, 10)
       const agH = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3h} 12:00`, generationId: genH.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3h herdada` })
       const agHCtl = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3h} 13:00`, generationId: genHCtl.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3h controle` })
@@ -446,7 +452,7 @@ async function main() {
       const agenda3h = await tool('ver-agenda', { projectId: PROJETO, from: dia3h, to: dia3h })
       const itens3h = (agenda3h.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
       const iH = itens3h.find((i) => i.postId === agH.postId), iHCtl = itens3h.find((i) => i.postId === agHCtl.postId)
-      conferir('R42: entregue, a copy A herdada NÃO é atribuída à mídia B — `textosIndisponiveis` diz que a arte foi re-renderizada depois do agendamento', !!iH && !('textos' in iH) && /re-renderizada .*DEPOIS do agendamento/.test(iH.textosIndisponiveis ?? '') && !JSON.stringify(iH).includes('copy A herdada 3h'), JSON.stringify(iH).slice(0, 300))
+      conferir('R42: entregue, a copy A herdada NÃO é atribuída à mídia B — `textosIndisponiveis` diz que a arte foi re-renderizada e que não há registro textual confiável (sem afirmar cronologia — R45)', !!iH && !('textos' in iH) && /re-renderizada .*não guarda registro textual confiável/.test(iH.textosIndisponiveis ?? '') && !/DEPOIS do agendamento/.test(iH.textosIndisponiveis ?? '') && !JSON.stringify(iH).includes('copy A herdada 3h'), JSON.stringify(iH).slice(0, 300))
       conferir('controle 3h: a mesma arte NÃO re-renderizada volta com a copy legítima (parcial, origem "arte")', !!iHCtl && JSON.stringify(iHCtl.textos) === JSON.stringify([`${MARCA} copy A legítima 3h`]) && iHCtl.textosParciais === true && iHCtl.textosOrigem === 'arte', JSON.stringify(iHCtl).slice(0, 300))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3h.json'), JSON.stringify(agenda3h, null, 2))
 
