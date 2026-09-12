@@ -9710,8 +9710,8 @@ comportamento de sempre. Reaproveita `GenerationJob` — nenhuma fila nova.
 - **`gerar-imagem-lote` também tem `loteId`, e é OUTRA coisa**: um UUID gerado
   no servidor para reencontrar as cenas juntas. A identidade daqui vem de quem
   chama e é estável entre chamadas.
-- ⚠️ **Ainda não exposto no conector**: `compor-leva` passa a aceitar
-  `loteId`/`itemId` no commit seguinte, depois do PR 10. A migration
+- ⚠️ **Exposto no conector só por `compor-leva`** (`loteId`/`itemId`, ver "A
+  exposição em `compor-leva`" abaixo). A migration
   `20260912210000_lote_de_composicao` não foi aplicada em lugar nenhum, e
   `db.itemDeLote` só é tocado quando `lote` vem — aplicar o schema antes de
   expor. A prova no branch de dev é `scripts/validar-lote-duravel.ts` (ainda
@@ -9745,3 +9745,37 @@ comportamento de sempre. Reaproveita `GenerationJob` — nenhuma fila nova.
 - **Sem identidade de lote, nada muda**: `recuperacao` ausente mantém o
   reaproveitamento e as recusas de sempre. Sete mutações conferidas em
   `fila-lote.test.ts` ("correção da revisão (R01, R02)").
+
+**A exposição em `compor-leva` (12/09/2026)**
+
+- **`loteId` na raiz e `itemId` em cada item** (`catalogo/compositor.ts`),
+  estáveis em qualquer retentativa. Com eles a porta passa
+  `lote: { loteId, itemId }` para `enfileirarPeca`; o `itemId` **nunca entra
+  na spec** (`specDe` só copia os campos dela), senão viraria diferença de hash.
+- 🔴 **A identidade da leva é conferida INTEIRA antes de enfileirar qualquer
+  peça** (`identidadeDaLevaComProblemas`): com `loteId`, todo item precisa de
+  `itemId`, válido pelo contrato do lote e único na chamada DEPOIS de aparar
+  espaços ("a" e "a " são a mesma chave). **`itemId` sem `loteId` também é
+  recusado**, nunca ignorado: quem mandou acha que a leva está protegida
+  contra duplicar. Tudo isso é `LOTE_IDENTIDADE_INVALIDA` (400) com a lista de
+  problemas, e nada vai para a fila — metade da leva enfileirada e a outra
+  recusada é justamente a retomada que a identidade existe para tornar segura.
+- **O retorno**: `{ enfileiradas, reaproveitadas, retomadas, falhas, conflitos,
+  pecas, nota }`. ⚠️ `enfileiradas` passou a contar só as peças CRIADAS agora;
+  a soma das três é o total de `pecas`. Cada peça traz `itemId` (null sem
+  lote), `desfecho` e `situacao` (sem lote: `criado`/`pendente`, como antes).
+  `LOTE_ITEM_CONFLITO` vai para `conflitos` (`{ indice, itemId, diferencas,
+  generationId }`) e **não derruba os outros itens**; qualquer outro erro
+  continua em `falhas`. Sem identidade, a chamada é a de sempre.
+- **`idempotentHint` continua `false`**: sem `loteId` a chamada cria peças
+  novas a cada vez.
+- As instruções pedem `loteId`/`itemId` na leva e na etapa 3 da programação
+  semanal — **sem exemplo hifenizado ali**: a seção D de
+  `validar-registro-mcp.ts` trata toda palavra hifenizada das INSTRUCTIONS
+  como nome de tool (os exemplos `semana-2026-09-14` e `seg-19h-happy` ficam
+  só nas descrições do schema). Snapshot de `compor-leva` atualizado de
+  propósito; testes em `src/lib/mcp/__tests__/compositor-leva-lote.test.ts`.
+- ⚠️ **Continua valendo o aviso do PR 11**: a migration
+  `20260912210000_lote_de_composicao` precisa estar aplicada antes de alguém
+  mandar `loteId` em produção — sem ela, `db.itemDeLote` falha e cada item
+  cai em `falhas`.

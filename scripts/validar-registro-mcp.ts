@@ -1853,11 +1853,23 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
         "type": "number",
         "description": "ID do cliente."
       },
+      "loteId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 120,
+        "description": "Identidade ESTÁVEL desta leva (ex.: \"semana-2026-09-14\"). A MESMA em toda retentativa da leva."
+      },
       "itens": {
         "type": "array",
         "items": {
           "type": "object",
           "properties": {
+            "itemId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120,
+              "description": "Identidade ESTÁVEL desta peça na leva (ex.: \"seg-19h-happy\"). Obrigatório quando loteId vem; único na chamada."
+            },
             "formato": {
               "type": "string",
               "enum": [

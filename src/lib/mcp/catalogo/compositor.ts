@@ -134,6 +134,43 @@ function specDe(args: Record<string, unknown>) {
   }
 }
 
+/**
+ * Os problemas da identidade de lote de uma chamada de `compor-leva` (vazio =
+ * pode enfileirar). Com `loteId`, todo item precisa de `itemId`, válido pelo
+ * contrato do lote e único na chamada DEPOIS da normalização (o contrato apara
+ * espaços: "a" e "a " são a mesma chave). `itemId` sem `loteId` é recusado, não
+ * ignorado — quem mandou acha que a leva está protegida contra duplicar.
+ */
+function identidadeDaLevaComProblemas(
+  loteId: string | undefined,
+  itens: Array<Record<string, unknown>>,
+  // `strict: false` deixa as chaves do z.infer opcionais: o tipo precisa admitir isso.
+  validar: (entrada: unknown) => { identidade: { itemId?: string } | null; problemas: string[] },
+): string[] {
+  const problemas = new Set<string>()
+  if (loteId === undefined) {
+    const comItemId = itens.flatMap((item, indice) => (item.itemId !== undefined ? [indice] : []))
+    if (comItemId.length > 0) problemas.add(`itemId sem loteId (itens ${comItemId.join(', ')}): mande o loteId da leva junto, ou tire os itemId`)
+    return Array.from(problemas)
+  }
+  const vistos = new Map<string, number>()
+  for (const [indice, item] of itens.entries()) {
+    if (item.itemId === undefined) {
+      problemas.add(`itens.${indice}.itemId: obrigatório quando loteId vem`)
+      continue
+    }
+    const r = validar({ loteId, itemId: item.itemId })
+    if (!r.identidade) {
+      for (const p of r.problemas) problemas.add(p.startsWith('itemId') ? `itens.${indice}.${p}` : p)
+      continue
+    }
+    const anterior = vistos.get(r.identidade.itemId)
+    if (anterior !== undefined) problemas.add(`itens.${indice}.itemId: "${r.identidade.itemId}" repete o itemId do item ${anterior} — cada peça da leva tem o seu`)
+    else vistos.set(r.identidade.itemId, indice)
+  }
+  return Array.from(problemas)
+}
+
 export const toolsDoCompositor = [
   definirTool({
     nome: 'reverter-arte',
@@ -414,12 +451,14 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-leva',
     descricao:
-      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.',
+      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.\n\nIDEMPOTÊNCIA: mande `loteId` (a leva) e, em cada item, `itemId` (a peça), estáveis e iguais em qualquer retentativa. Repetir a chamada inteira (timeout, erro no meio) devolve as peças que já existem e cria só as que faltaram; nada duplica. Mudou o conteúdo de um item? É outra peça: use outro itemId. O mesmo itemId com outro conteúdo volta em `conflitos`, sem alterar nada.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
+      loteId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta leva (ex.: "semana-2026-09-14"). A MESMA em toda retentativa da leva.'),
       itens: z
         .array(
           z.object({
+            itemId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta peça na leva (ex.: "seg-19h-happy"). Obrigatório quando loteId vem; único na chamada.'),
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
@@ -445,26 +484,66 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([import('../../compositor/fila'), import('../tools')])
+      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }, { CreativeError }, { validarIdentidadeDeLote }] = await Promise.all([
+        import('../../compositor/fila'),
+        import('../tools'),
+        import('../../creatives/errors'),
+        import('../../lotes/identidade'),
+      ])
       const projectId = args.projectId as number
-      const decididoPor = await quemDecidiu(projectId, principal)
       const itens = args.itens as Array<Record<string, unknown>>
-      const enfileiradas: Array<{ indice: number; generationId: string; nome: string | null }> = []
+      const loteId = args.loteId as string | undefined
+
+      // A identidade da leva é conferida INTEIRA antes de enfileirar qualquer
+      // peça: metade da leva na fila e a outra metade recusada é justamente a
+      // retomada que a identidade existe para tornar segura.
+      const problemas = identidadeDaLevaComProblemas(loteId, itens, validarIdentidadeDeLote)
+      if (problemas.length > 0) {
+        throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade de lote inválida — ${problemas.join('; ')}. Nada foi enfileirado.`, 400, { problemas })
+      }
+
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: 'criado' | 'reaproveitado' | 'retomado'; situacao: 'pendente' | 'pronta' | 'falhou' }> = []
       const falhas: Array<{ indice: number; erro: string }> = []
+      const conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }> = []
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
+        const itemId = (item.itemId as string | undefined) ?? null
         try {
-          const r = await enfileirarPeca(specDe({ ...item, projectId }), { decididoPor, autor: decididoPor, canal: canalDoPrincipal(principal) })
-          enfileiradas.push({ indice, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null })
+          // `specDe` só copia os campos da spec: o itemId nunca entra nela (nem no hash do lote).
+          const r = await enfileirarPeca(specDe({ ...item, projectId }), {
+            decididoPor,
+            autor: decididoPor,
+            canal: canalDoPrincipal(principal),
+            ...(loteId !== undefined ? { lote: { loteId, itemId: itemId as string } } : {}),
+          })
+          pecas.push({ indice, itemId, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null, desfecho: r.lote?.desfecho ?? 'criado', situacao: r.lote?.situacao ?? 'pendente' })
         } catch (erro) {
+          const e = erro as { code?: unknown; details?: Record<string, unknown> }
+          if (e?.code === 'LOTE_ITEM_CONFLITO') {
+            const diferencas = Array.isArray(e.details?.diferencas) ? (e.details.diferencas as string[]) : []
+            const generationId = typeof e.details?.generationId === 'string' ? e.details.generationId : null
+            conflitos.push({ indice, itemId, diferencas, generationId })
+            continue
+          }
           falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro) })
         }
       }
+      const contar = (d: string) => pecas.filter((p) => p.desfecho === d).length
+      const reaproveitadas = contar('reaproveitado')
+      const retomadas = contar('retomado')
       return {
-        enfileiradas: enfileiradas.length,
+        enfileiradas: contar('criado'),
+        reaproveitadas,
+        retomadas,
         falhas,
-        pecas: enfileiradas,
-        nota: 'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
+        conflitos,
+        pecas,
+        nota: [
+          'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
+          ...(reaproveitadas + retomadas > 0 ? ['Reaproveitadas já existiam nesta leva com o mesmo conteúdo e não foram duplicadas; retomadas tinham falhado ou se perdido e voltaram à fila.'] : []),
+          ...(conflitos.length > 0 ? ['Conflitos: o itemId já foi pedido com outro conteúdo e nada foi alterado — repita o conteúdo original para reaproveitar a peça, ou use outro itemId para uma peça nova.'] : []),
+        ].join(' '),
       }
     },
   }),
