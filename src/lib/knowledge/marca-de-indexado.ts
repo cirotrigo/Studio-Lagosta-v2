@@ -151,6 +151,34 @@ export function perdeuOArrendamento(erro: unknown): erro is ArrendamentoPerdido 
 }
 
 /**
+ * A indexação que ficou PENDENTE depois de uma edição já GRAVADA (PR13-45): a reindexação da edição tomou um
+ * conflito de arrendamento. Não é recusa — a edição vale —, e por isso quem responde nunca diz "nada foi salvo".
+ * - `INDEXACAO_EM_ANDAMENTO`/`INDEXACAO_PERDIDA`: outra execução adquiriu (ou tomou) a entrada DEPOIS da edição, e
+ *   a aquisição lê o conteúdo da linha — ela indexa o texto novo;
+ * - `INDEXACAO_SUPERADA`: a linha mudou de novo por fora (script, SQL direto) no meio: ninguém indexa a versão atual.
+ * `null` para qualquer outro erro, que segue como erro.
+ */
+export interface IndexacaoPendente {
+  code: 'INDEXACAO_EM_ANDAMENTO' | 'INDEXACAO_PERDIDA' | 'INDEXACAO_SUPERADA'
+  aviso: string
+}
+export function indexacaoPendenteDe(erro: unknown): IndexacaoPendente | null {
+  if (ehIndexacaoEmAndamento(erro) || temCodigo(erro, 'INDEXACAO_PERDIDA') || erro instanceof ArrendamentoPerdido) {
+    return {
+      code: ehIndexacaoEmAndamento(erro) ? 'INDEXACAO_EM_ANDAMENTO' : 'INDEXACAO_PERDIDA',
+      aviso: 'A edição foi salva. Outra execução está indexando esta entrada para a busca agora, já com o texto novo: ela aparece nas buscas quando essa indexação terminar.',
+    }
+  }
+  if (erro instanceof IndexacaoSuperada || temCodigo(erro, 'INDEXACAO_SUPERADA')) {
+    return {
+      code: 'INDEXACAO_SUPERADA',
+      aviso: 'A edição foi salva, mas a entrada foi alterada de novo por fora enquanto era indexada: ela pode ficar fora da busca até ser reindexada.',
+    }
+  }
+  return null
+}
+
+/**
  * Os campos da linha que ENTRAM no índice (PR13-42): `content` vira os chunks; `category` e `status` vão no metadata
  * de cada vetor (a busca filtra por eles). O título não entra em nenhum dos dois.
  */

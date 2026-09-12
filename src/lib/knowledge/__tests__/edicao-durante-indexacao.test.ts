@@ -11,12 +11,16 @@ vi.mock('@/lib/auth-utils', () => ({ getUserFromClerkId: vi.fn(async () => ({ id
 vi.mock('@prisma/client', () => ({ KnowledgeCategory: { ESTABELECIMENTO_INFO: 'ESTABELECIMENTO_INFO', CAMPANHAS: 'CAMPANHAS' } }))
 
 import { generateEmbeddings } from '../embeddings'
+import { invalidateProjectCache } from '../cache'
 import { chunkText } from '../chunking'
 import { reindexEntry } from '../indexer'
 import { adquirirArrendamento, editarEntradaCoordenada } from '../arrendamento'
 import { CICLO_DE_INDEXACAO, EXPIRACAO_DO_CICLO, metadataDaEdicao, perdeuOArrendamento } from '../marca-de-indexado'
-import { marcarFatoIndexado } from '../../../../scripts/migrar-voz-da-marca'
+import { criarFatoPeloIndexador, marcarFatoIndexado, reindexarFatoPeloIndexador, type FatoACriar } from '../../../../scripts/migrar-voz-da-marca'
+import { classificarFato } from '../../brand/migracao-da-voz'
 import { PUT } from '@/app/api/knowledge/[id]/route'
+import { POST as confirmar } from '@/app/api/knowledge/confirm/route'
+import { PUT as editarPeloAdmin } from '@/app/api/admin/knowledge/[id]/route'
 
 const tenant = { projectId: 6, userId: 'u' }
 const embeddings = vi.mocked(generateEmbeddings)
@@ -29,6 +33,35 @@ const MARCA = { chaveDoFato: 'chave-1', indexadoEm: '2026-09-01T10:00:00.000Z' }
 function editarPelaRota(id: string, corpo: Record<string, unknown>) {
   const req = new NextRequest(`http://localhost/api/knowledge/${id}`, { method: 'PUT', body: JSON.stringify(corpo), headers: { 'content-type': 'application/json' } })
   return PUT(req, { params: Promise.resolve({ id }) })
+}
+
+function confirmarPelaRota(corpo: Record<string, unknown>) {
+  const req = new Request('http://localhost/api/knowledge/confirm', { method: 'POST', body: JSON.stringify(corpo), headers: { 'content-type': 'application/json' } })
+  return confirmar(req)
+}
+const PREVIA_DE_EDICAO = (content: string) => ({ projectId: 6, preview: { operation: 'UPDATE', category: 'ESTABELECIMENTO_INFO', title: 't', content, tags: [], targetEntryId: 'e1' } })
+
+function editarPeloAdminPelaRota(id: string, corpo: Record<string, unknown>) {
+  const req = new NextRequest(`http://localhost/api/admin/knowledge/${id}`, { method: 'PUT', body: JSON.stringify(corpo), headers: { 'content-type': 'application/json' } })
+  return editarPeloAdmin(req, { params: Promise.resolve({ id }) })
+}
+
+/**
+ * Suspende a reindexação que a EDIÇÃO dispara na primeira leitura dela (`findUnique` com os chunks) — ou seja, DEPOIS
+ * de a edição estar gravada e ANTES de o arrendamento ser adquirido. Devolve a barreira e a função que desfaz o desvio.
+ */
+function suspenderAntesDaReindexacao() {
+  const b = barreira()
+  const lerDeVerdade = dbFalso.knowledgeBaseEntry.findUnique.getMockImplementation()!
+  let parou = false
+  dbFalso.knowledgeBaseEntry.findUnique.mockImplementation(async (args: Parameters<typeof lerDeVerdade>[0]) => {
+    if (args.include?.chunks && !parou) {
+      parou = true
+      await b.parar()
+    }
+    return lerDeVerdade(args)
+  })
+  return { b, restaurar: () => dbFalso.knowledgeBaseEntry.findUnique.mockImplementation(lerDeVerdade) }
 }
 
 /** Cadastro, chunks e vetores dizem o MESMO texto. */
@@ -154,6 +187,37 @@ describe('PR13-42 — nenhuma indexação publica chunks, vetores ou marca de um
     expect(base.meta('e1')[EXPIRACAO_DO_CICLO]).toBeUndefined()
   })
 
+  describe('PR13-44 — entrada SEM marca prévia (nova ou incompleta): a versão é conferida depois dos vetores do mesmo jeito', () => {
+    const FATO: FatoACriar = { projectId: 6, categoria: 'ESTABELECIMENTO_INFO', titulo: 'Rodízio', trecho: ANTIGO, validaAte: null, versaoDaPrevia: 'v1', chave: 'chave-1' }
+
+    it('retomada de uma linha INCOMPLETA pelo registrador real (reindexarFatoPeloIndexador): conteúdo trocado por fora enquanto os vetores sobem → INDEXACAO_SUPERADA, e a marca NÃO é publicada', async () => {
+      base.semear({ id: 'e1', content: ANTIGO, metadata: { origem: 'migracao-da-voz', chaveDoFato: 'chave-1' } })
+      expect(classificarFato(base.linha('e1'))).toBe('incompleto')
+      base.aoSubir = async () => {
+        base.aoSubir = undefined
+        await dbFalso.knowledgeBaseEntry.update({ where: { id: 'e1' }, data: { content: NOVO } }) // SQL direto, fora do serviço
+      }
+      await expect(reindexarFatoPeloIndexador(dbFalso as never, 'e1', FATO, 'u')).rejects.toMatchObject({ code: 'INDEXACAO_SUPERADA', message: expect.stringMatching(/antes de "confirmar a versão indexada"/) })
+      expect(base.linha('e1').content).toBe(NOVO)
+      expect(base.meta('e1').indexadoEm).toBeUndefined()
+      expect(base.meta('e1')[EXPIRACAO_DO_CICLO]).toBeUndefined() // o ciclo superado ainda solta a entrada
+      expect(classificarFato(base.linha('e1'))).toBe('incompleto') // a retomada seguinte reindexa o texto novo
+    })
+
+    it('fato NOVO pelo registrador real (criarFatoPeloIndexador): conteúdo trocado por fora enquanto os vetores sobem → INDEXACAO_SUPERADA, sem marca e sem desfazer a linha', async () => {
+      base.aoSubir = async () => {
+        base.aoSubir = undefined
+        const [linha] = [...base.entradas.values()]
+        await dbFalso.knowledgeBaseEntry.update({ where: { id: linha.id }, data: { content: NOVO } })
+      }
+      await expect(criarFatoPeloIndexador(dbFalso as never, FATO, 'u')).rejects.toMatchObject({ code: 'INDEXACAO_SUPERADA', message: expect.stringMatching(/antes de "confirmar a versão indexada"/) })
+      const [linha] = [...base.entradas.values()]
+      expect(linha.content).toBe(NOVO)
+      expect((linha.metadata as Record<string, unknown>).indexadoEm).toBeUndefined()
+      expect(classificarFato(linha)).toBe('incompleto')
+    })
+  })
+
   it('publicarMarca e renovar recusam a versão superada (status arquivado por fora); liberar ainda solta', async () => {
     base.semear({ id: 'e1', content: ANTIGO, metadata: MARCA })
     const arrendamento = await adquirirArrendamento('e1', 'ciclo-A')
@@ -189,5 +253,64 @@ describe('metadataDaEdicao — as chaves do sistema vêm da linha; mudando o ín
     expect(metadataDaEdicao(ATUAL, { nota: 1, cicloDeIndexacao: 'forjado' }, false)).toEqual({ nota: 1, indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' })
     expect(metadataDaEdicao(ATUAL, null, false)).toEqual({ indexadoEm: 'x', cicloDeIndexacao: 'c', cicloExpiraEm: 'p' })
     expect(metadataDaEdicao({ a: 1 }, null, false)).toBeNull()
+  })
+})
+
+describe('PR13-45 — conflito DEPOIS de salvar não é "Nada foi salvo": a edição vale, a indexação fica pendente e o cache é invalidado', () => {
+  it('pela rota real de confirmação: suspensa depois da edição, outra execução adquire a entrada; retomada, responde 202 com a edição salva e a indexação pendente — e invalida o cache', async () => {
+    base.semear({ id: 'e1', content: ANTIGO, metadata: MARCA })
+    const { b, restaurar } = suspenderAntesDaReindexacao()
+    try {
+      const resposta = confirmarPelaRota(PREVIA_DE_EDICAO(NOVO))
+      await b.chegou
+      expect(base.linha('e1').content).toBe(NOVO) // a edição JÁ está gravada
+
+      const outra = await adquirirArrendamento('e1', 'ciclo-B')
+      expect(outra.indexada.content).toBe(NOVO) // a outra execução indexa o texto novo
+      b.liberar()
+
+      const r = await resposta
+      const corpo = await r.json()
+      expect(r.status).toBe(202)
+      expect(corpo).toMatchObject({ success: true, entryId: 'e1', indexacao: 'pendente', code: 'INDEXACAO_EM_ANDAMENTO', aviso: expect.stringMatching(/A edição foi salva/) })
+      expect(JSON.stringify(corpo)).not.toMatch(/Nada foi salvo/)
+      expect(base.linha('e1').content).toBe(NOVO)
+      expect(base.meta('e1')[CICLO_DE_INDEXACAO]).toBe('ciclo-B') // o arrendamento da outra execução não foi tocado
+      expect(invalidateProjectCache).toHaveBeenCalledWith(6)
+    } finally {
+      restaurar()
+    }
+  })
+
+  it('pela rota real de confirmação: arrendamento vigente ANTES da edição → 409 "Nada foi salvo", linha intacta e cache sem invalidar', async () => {
+    base.semear({ id: 'e1', content: ANTIGO, metadata: MARCA })
+    await adquirirArrendamento('e1', 'ciclo-A')
+    const antes = structuredClone(base.linha('e1'))
+    const r = await confirmarPelaRota(PREVIA_DE_EDICAO(NOVO))
+    expect(r.status).toBe(409)
+    await expect(r.json()).resolves.toMatchObject({ code: 'INDEXACAO_EM_ANDAMENTO', error: expect.stringMatching(/Nada foi salvo/) })
+    expect(base.linha('e1')).toEqual(antes)
+    expect(invalidateProjectCache).not.toHaveBeenCalled()
+  })
+
+  it('pela rota real do admin: o mesmo conflito depois de salvar responde 202 com a entrada gravada e a indexação pendente, e invalida o cache', async () => {
+    process.env.ADMIN_USER_IDS = 'clerk_u'
+    base.semear({ id: 'e1', content: ANTIGO, metadata: MARCA })
+    const { b, restaurar } = suspenderAntesDaReindexacao()
+    try {
+      const resposta = editarPeloAdminPelaRota('e1', { content: NOVO })
+      await b.chegou
+      await adquirirArrendamento('e1', 'ciclo-B')
+      b.liberar()
+      const r = await resposta
+      expect(r.status).toBe(202)
+      await expect(r.json()).resolves.toMatchObject({ id: 'e1', content: NOVO, indexacao: 'pendente', code: 'INDEXACAO_EM_ANDAMENTO' })
+      expect(base.linha('e1').content).toBe(NOVO)
+      expect(base.meta('e1')[CICLO_DE_INDEXACAO]).toBe('ciclo-B')
+      expect(invalidateProjectCache).toHaveBeenCalledWith(6)
+    } finally {
+      restaurar()
+      delete process.env.ADMIN_USER_IDS
+    }
   })
 })

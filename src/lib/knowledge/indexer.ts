@@ -9,7 +9,7 @@ import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
 import { EscritaAbortada, lancarSeAbortado, motivoDoAborto } from './aborto'
-import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS } from './marca-de-indexado'
+import { CICLO_DE_INDEXACAO, PRAZO_DO_PASSO_MS, indexacaoPendenteDe, type IndexacaoPendente } from './marca-de-indexado'
 import { adquirirArrendamento, editarEntradaCoordenada, type ArrendamentoDaEntrada } from './arrendamento'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
@@ -299,6 +299,13 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
     // token (PR13-39). Quem perdeu a posse externa não a repõe (PR13-23), e quem perdeu o arrendamento também não.
     if (arrendamento.tinhaMarcaDeIndexado) {
       await passoArrendado('repor a marca de indexado', arrendamento, signal, controle, () => arrendamento.publicarMarca(new Date()))
+    } else {
+      // Sem marca a repor (entrada nova, ou retomada de uma linha incompleta), a versão é conferida do MESMO jeito
+      // depois dos vetores (PR13-44): a escrita que troca o conteúdo ENQUANTO eles sobem só é vista aqui. Sem esta
+      // conferência a execução devolvia sucesso, `liberar()` não olha a versão e `marcarFatoIndexado` — que confere
+      // só o token — publicava a marca sobre um cadastro com texto novo e chunks/vetores do antigo.
+      lancarSeAbortado(signal, 'confirmar a versão indexada')
+      await arrendamento.renovar('confirmar a versão indexada')
     }
 
     return {
@@ -320,6 +327,9 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
  * @param entryId Entry ID
  * @param updates Fields to update
  * @param tenant Tenant keys
+ *
+ * Lança `IndexacaoEmAndamento` só ANTES de salvar (PR13-42). Depois de salvar, um conflito de arrendamento na
+ * reindexação NÃO é lançado: volta em `indexacaoPendente` (PR13-45), porque a edição já está gravada.
  */
 export async function updateEntry(
   entryId: string,
@@ -349,15 +359,26 @@ export async function updateEntry(
   }
 
   // Coordenada com o arrendamento (PR13-42): campo indexado com indexação em curso → `IndexacaoEmAndamento`, nada salvo.
+  // É a ÚNICA recusa anterior à escrita: todo `IndexacaoEmAndamento` que sai lançado daqui significa "nada foi salvo".
   const { antes } = await editarEntradaCoordenada(entryId, updates)
   const entry = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId } })
 
   // If content changed, reindex
+  let indexacaoPendente: IndexacaoPendente | null = null
   if (updates.content && updates.content !== antes.content) {
-    await reindexEntry(entryId, tenant)
+    try {
+      await reindexEntry(entryId, tenant)
+    } catch (erro) {
+      // Depois da edição GRAVADA (PR13-45): outra execução adquiriu (ou tomou) o arrendamento — e leu o texto novo —,
+      // ou a linha mudou por fora no meio. A edição vale; o que fica pendente é a indexação, e quem chama responde
+      // isso em vez de "nada foi salvo" (e ainda invalida o cache). Erro comum segue lançado.
+      indexacaoPendente = indexacaoPendenteDe(erro)
+      if (!indexacaoPendente) throw erro
+      console.error(`[knowledge] a edição da entrada ${entryId} foi salva, mas a reindexação ficou pendente:`, erro)
+    }
   }
 
-  return entry
+  return { entry, indexacaoPendente }
 }
 
 /**

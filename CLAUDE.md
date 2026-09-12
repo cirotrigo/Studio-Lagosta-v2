@@ -7233,6 +7233,46 @@ Da décima revisão FINAL (BLOQUEADO, PR13-42…43):
   integração (`validar-migracao-da-voz.ts`) não mudou: as edições diretas
   dela rodam fora de ciclo.
 
+**Da revisão do commit b5647079 (BLOQUEADO, PR13-44…45, 12/09/2026):**
+
+- 🔴 **A versão indexada é conferida DEPOIS dos vetores também na entrada sem
+  marca prévia** (PR13-44): a conferência posterior ao `upsert` só existia
+  dentro de `publicarMarca`, que roda apenas quando `tinhaMarcaDeIndexado`. Na
+  entrada nova (`criarEntradaBase`) ou incompleta (retomada da migração), uma
+  escrita direta que trocasse o conteúdo ENQUANTO os vetores subiam passava:
+  `reindexEntry` devolvia sucesso, `liberar()` não olha a versão, e
+  `marcarFatoIndexado` — que confere só o token — publicava a marca sobre um
+  cadastro com texto novo e chunks/vetores do antigo. Hoje o ramo sem marca faz
+  `arrendamento.renovar('confirmar a versão indexada')`, que confere token e
+  versão por compare-and-set, e lança `IndexacaoSuperada` antes de retornar; a
+  liberação continua possível com a versão superada. Limite: entre `liberar()`
+  e a `marcarFatoIndexado` do chamador não há conferência de versão — a edição
+  coordenada tira o token (e a marca é recusada), a escrita por fora não.
+- 🔴 **Conflito DEPOIS de salvar não é "Nada foi salvo"** (PR13-45):
+  `updateEntry` salvava por `editarEntradaCoordenada` e só então chamava
+  `reindexEntry`; outra execução que adquirisse a entrada no intervalo fazia a
+  reindexação lançar `INDEXACAO_EM_ANDAMENTO`, e as rotas `confirm` e admin
+  respondiam 409 "Nada foi salvo" com a edição GRAVADA — e pulavam a
+  invalidação do cache. Hoje `updateEntry` devolve `{ entry, indexacaoPendente }`:
+  o único `IndexacaoEmAndamento` lançado é a recusa ANTERIOR à escrita; o
+  conflito posterior (`INDEXACAO_EM_ANDAMENTO`/`PERDIDA` — a outra execução leu o
+  texto novo —, ou `SUPERADA`) volta em `indexacaoPendente`
+  (`indexacaoPendenteDe`, `marca-de-indexado.ts`), e as rotas invalidam o cache
+  e respondem **202** com `indexacao: 'pendente'`, `code` e `aviso` ("A edição
+  foi salva…"). Os clientes (`ai-chat`, `template-ai-chat`, `useUpdateKnowledgeEntry`)
+  tratam 2xx como sucesso. `PUT /api/knowledge/[id]` e a tool
+  `atualizar-entrada-base` já separavam as duas etapas (a reindexação pós-edição
+  não derruba a resposta) e não mudaram. Erro comum da reindexação segue lançado.
+- Testes em `edicao-durante-indexacao.test.ts`: o `aoSubir` sem `indexadoEm`
+  pelos registradores reais (`reindexarFatoPeloIndexador` e
+  `criarFatoPeloIndexador`) exige `INDEXACAO_SUPERADA` e nenhuma marca; a rota
+  real de `confirm` suspensa depois da edição, com outro arrendamento adquirido
+  no meio, exige 202, conteúdo novo persistido, o arrendamento alheio intacto e
+  o cache invalidado (e o mesmo pela rota admin); a recusa antes da edição
+  continua 409 "Nada foi salvo" sem invalidar. Mutação conferida: sem a
+  conferência, os dois testes do PR13-44 resolvem; com `updateEntry` e as rotas
+  do commit anterior, os dois do PR13-45 recebem 409.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

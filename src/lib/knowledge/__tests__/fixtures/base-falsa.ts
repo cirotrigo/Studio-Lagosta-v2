@@ -107,6 +107,11 @@ export const dbFalso = {
       if (include?._count) r._count = { chunks: base.chunks.filter((c) => c.entryId === l.id).length }
       return r
     }),
+    /** O que a rota de confirmação lê para conferir que a entrada é do projeto (PR13-45). */
+    findFirst: vi.fn(async ({ where }: { where: { id: string; projectId?: number } }) => {
+      const l = base.entradas.get(where.id)
+      return l && (where.projectId === undefined || l.projectId === where.projectId) ? clonar(l) : null
+    }),
     update: vi.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
       const l = base.linha(where.id)
       aplicar(l, data)
@@ -133,6 +138,10 @@ export const dbFalso = {
       base.chunks = base.chunks.filter((c) => c.entryId !== where.id)
       return {}
     }),
+  },
+  /** O projeto que a rota de confirmação confere (PR13-45): todo projeto existe e é de quem pede. */
+  project: {
+    findFirst: vi.fn(async ({ where }: { where: { id: number } }) => ({ id: where.id, userId: 'u' })),
   },
   knowledgeChunk: {
     deleteMany: vi.fn(async ({ where }: { where: { entryId: string; entry?: { metadata?: FiltroDeCaminho } } }) => {
