@@ -7511,3 +7511,19 @@ que NADA é gravado e que a medida é a da composição).
   conta as tabelas antes e depois; `comporPeca(…, { provar: true })` na prova
   renderiza em memória e não persiste (é a tool `compor-arte` que sobe a prova
   ao Blob, não o serviço).
+- 🔴 **Provisório é pela LUZ disponível, e a fixação é variante E arranjos**
+  (R12 e R13 da revisão de 4b326e7c). `escolhaProvisoria` era `!spec.foto`:
+  foto pedida que NÃO carregou (Drive fora do ar, `foto: null` com aviso)
+  passava como contexto suficiente e a tool omitia o `comoFixar` — com a foto
+  carregando na composição seguinte, a luz clara/escura mudava a variante.
+  Hoje a provisoriedade sai de `luzDaFoto === null` (sem foto OU foto não
+  medida), com `motivosDaProvisoriedade` e um aviso. E fixar só a variante
+  não fixava o segundo sorteio: a chave da peça (`chaveDaPeca`) inclui a foto
+  e é a chave do rodízio de ARRANJOS também — medir sem foto e compor com
+  foto podia trocar fonte, tamanho e distribuição das linhas de um arranjo
+  empatado, e uma copy medida como `cabe` ser recusada. A medição devolve
+  `fixacao: { variante, arranjos }`; `comoFixar` manda repetir a medição com a
+  foto definitiva ou passar os DOIS em `preferencias` ao compor (o compositor
+  honra `preferencias.arranjos` como "mantido"). Prova 3c: a medição COM a
+  foto e a fixação da medição sem foto reproduz variante e arranjos.
+

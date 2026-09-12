@@ -182,7 +182,7 @@ export const toolsDoCompositor = [
       formato: spec.formato,
       blocos: spec.blocos,
       copyAutoral: spec.copyAutoral,
-      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a foto a escolha é PROVISÓRIA (escolhaProvisoria: true) e você fixa preferencias.variante com o id medido ao compor.'),
+      variante: z.string().optional().describe('A variante a medir (id da página, nome ou tag, como em compor-arte). Sem ela, a que a composição escolheria para esta copy — mande também nome, tema e a foto (a luz da foto e a chave da peça entram nessa escolha); sem a LUZ da foto (foto ausente, ou que não carregou) a escolha é PROVISÓRIA (escolhaProvisoria: true, com os motivos) — o rodízio de arranjos também usa a chave da peça, que inclui a foto, então fixar só a variante não basta: repita a medição com a foto definitiva antes de confiar nas medidas, ou fixe ao compor a `fixacao` inteira (preferencias.variante E preferencias.arranjos).'),
       tema: spec.tema,
       nome: spec.nome,
       fotoDriveId: spec.fotoDriveId,
@@ -207,7 +207,16 @@ export const toolsDoCompositor = [
       const m = r.medicao
       return {
         variante: r.variante,
-        ...(r.escolhaProvisoria ? { escolhaProvisoria: true, comoFixar: `ao compor, mande preferencias.variante = "${r.variante.id}" — sem a foto, a composição pode escolher outra variante (luz clara/escura e rodízio).` } : {}),
+        // O que reproduz ESTA medição na composição: variante E arranjos (o rodízio de arranjos usa a chave da
+        // peça, que inclui a foto — fixar só a variante não fixa o segundo sorteio, R12).
+        fixacao: r.fixacao,
+        ...(r.escolhaProvisoria
+          ? {
+              escolhaProvisoria: true,
+              motivos: r.motivosDaProvisoriedade,
+              comoFixar: `repita a medição com a foto definitiva antes de confiar nas medidas; para reutilizar ESTA medição ao compor, mande preferencias.variante = ${JSON.stringify(r.fixacao.variante)} E preferencias.arranjos = ${JSON.stringify(r.fixacao.arranjos)} — sem os dois a composição pode escolher outra variante (luz clara/escura e rodízio) e outro arranjo (o rodízio de arranjos usa a chave da peça, que inclui a foto).`,
+            }
+          : {}),
         formato: args.formato,
         areaUtil: m.areaUtil,
         cabeTudo: m.cabeTudo,

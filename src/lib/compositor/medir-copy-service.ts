@@ -45,11 +45,18 @@ export interface VarianteMedida {
 export interface ResultadoDaMedicao {
   variante: { id: string | null; nome: string | null; formatoDaPagina: Formato | null; motivo: string | null }
   /**
-   * A escolha da variante pode DIFERIR na composição: não veio variante e a
-   * medição não recebeu a foto (a luz clara/escura e a chave do rodízio entram
-   * na escolha). Quem for compor fixa `preferencias.variante` com o id medido.
+   * A escolha pode DIFERIR na composição: a medição não teve a LUZ da foto
+   * (sem foto, ou foto que não carregou/não pôde ser medida — R13) e ou a
+   * variante não veio pedida (a luz clara/escura e a chave do rodízio entram
+   * na escolha) ou algum arranjo saiu por rodízio (a chave do rodízio inclui
+   * a foto — R12). Quem for compor fixa `fixacao` inteira, ou repete a
+   * medição com a foto definitiva.
    */
   escolhaProvisoria: boolean
+  /** Por que é provisória (vazio quando não é). */
+  motivosDaProvisoriedade: string[]
+  /** O que fixar ao compor para reproduzir ESTA medição: `preferencias.variante` e `preferencias.arranjos`. */
+  fixacao: { variante: string | null; arranjos: string[] }
   medicao: MedicaoDaCopy
   /** As outras variantes do formato, medidas com a mesma copy — para escolher pela capacidade, não só pelo nome. */
   outrasVariantes: VarianteMedida[]
@@ -85,6 +92,8 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     const { foto, aviso } = await carregarFotoParaMedir(spec)
     if (aviso) avisosDaFoto.push(aviso)
     luzDaFoto = foto ? await luzMediaDaFoto(foto.bytes, DIMENSOES[spec.formato]) : null
+    // Foto pedida e não medida NÃO é contexto suficiente (R13): a escolha fica provisória como se não houvesse foto.
+    if (luzDaFoto === null) avisosDaFoto.push('a foto não pôde ser lida/medida: a escolha da variante e dos arranjos ficou PROVISÓRIA — repita a medição quando ela carregar, ou fixe `preferencias.variante` e `preferencias.arranjos` ao compor')
   }
   const criterios = { papeis, tema: spec.tema ?? spec.nome ?? null, luzDaFoto, chave: chaveDaPeca(spec) }
   const assinatura = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: spec.preferencias?.variante ?? null, ...criterios })
@@ -127,9 +136,17 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     })
   }
 
+  // Provisoriedade pela LUZ efetivamente disponível (não pela presença do pedido de foto — R13), e também pelo
+  // rodízio de arranjos: a chave da peça inclui a foto, então fixar só a variante não fixa o segundo sorteio (R12).
+  const semLuz = luzDaFoto === null
+  const motivosDaProvisoriedade: string[] = []
+  if (semLuz && !spec.preferencias?.variante && outrasVariantes.length > 0) motivosDaProvisoriedade.push(spec.foto ? 'a foto não pôde ser medida: a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha' : 'sem a foto, a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha')
+  if (semLuz && !spec.preferencias?.arranjos?.length && medicao.arranjos.some((a) => /rod[ií]zio/.test(a.motivo))) motivosDaProvisoriedade.push('algum arranjo saiu por rodízio, e a chave do rodízio inclui a foto: com ela a composição pode escolher outro arranjo (fonte, tamanho, distribuição das linhas)')
   return {
     variante: { id: assinatura.origem.pageId, nome: assinatura.origem.variante, formatoDaPagina: assinatura.origem.formatoDaPagina, motivo: assinatura.origem.motivoDaVariante ?? null },
-    escolhaProvisoria: !spec.preferencias?.variante && !spec.foto && outrasVariantes.length > 0,
+    escolhaProvisoria: motivosDaProvisoriedade.length > 0,
+    motivosDaProvisoriedade,
+    fixacao: { variante: assinatura.origem.pageId, arranjos: medicao.arranjos.map((a) => a.id) },
     medicao,
     outrasVariantes,
   }
