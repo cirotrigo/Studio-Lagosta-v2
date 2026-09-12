@@ -130,8 +130,17 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
    * (melhoria, refazer) não entra: medido em 04/09/2026, 0 de 300 Generations
    * recentes com `sourceGenerationId` carregam `pageId`.
    */
+  //
+  // 🔴 E só do PROJETO da página (REV-2CEB-02, 12/09/2026): `fieldValues.pageId`
+  // é gravado sem conferir o dono (o `konva-export` aceita `body.pageId`), e uma
+  // Generation de OUTRO projeto apontando para esta página seria a "arte mais
+  // recente" — o job de recomposição nascia preso a ela, a arte deste projeto
+  // ficava sem refazer e a alheia era reescrita a partir desta página. Medido:
+  // a prova do PR 6 cria exatamente essa linha (Generation em B com o pageId de
+  // uma página de A) e, rodando ao mesmo tempo, derrubou a prova deste PR em
+  // 2 de 3 rodadas — o "flake" era isolamento por projeto.
   const geracoes = await db.generation.findMany({
-    where: { fieldValues: { path: ['pageId'], equals: pageId } },
+    where: { projectId: page.Template.projectId, fieldValues: { path: ['pageId'], equals: pageId } },
     select: { id: true, resultUrl: true, fieldValues: true, authorName: true, sourcePageId: true },
     orderBy: { createdAt: 'desc' },
     take: 20,

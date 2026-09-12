@@ -5598,6 +5598,14 @@ Codex antes de ser escrito.
   pasta** (`moverPaginaParaSemana`, ao agendar): buscar a Generation da página
   filtrando por `templateId` perdia a referência de corpo e o assunto. A busca é
   por projeto + `fieldValues.pageId`.
+- 🔴 **`levantarPagina` (recomposição) só lê Generations do PROJETO da página**
+  (REV-2CEB-02, 12/09/2026): `fieldValues.pageId` é gravado sem conferir o dono
+  (o `konva-export` aceita `body.pageId`), e uma Generation de OUTRO projeto
+  apontando para a página era a "arte mais recente" — o job de recomposição
+  nascia preso a ela. A prova do PR 6 cria exatamente essa linha, e rodando ao
+  mesmo tempo derrubou a prova deste PR em 2 de 3 rodadas: o "flake" de 6a/6h
+  era isolamento por projeto, não tempo. A prova agora cria a alheia de
+  propósito e confere que o job nasce na Generation certa.
 - **No chat** (instruções do conector): compor → `revisar-arte` → `ajustar-arte`
   com os ajustes → revisar de novo, no máximo DUAS rodadas; o que sobrar vira
   observação para a pessoa, e a revisão nunca trava a agenda. `ARTE_REVISAO_VISAO=off`

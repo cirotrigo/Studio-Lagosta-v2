@@ -301,10 +301,20 @@ async function main() {
     const headlineDo5 = camadasDo5.find((c) => c.type === 'text' && /headline/i.test(String(c.name ?? c.id)))
     const textoDo6a = 'Título editado\npela equipe'
     await db.page.update({ where: { id: pageId }, data: { layers: camadasDo5.map((c) => (c.id === headlineDo5?.id ? { ...c, content: textoDo6a } : c)) as never } })
+    // REV-2CEB-02: uma Generation de OUTRO projeto apontando para ESTA página (é o que o `konva-export` deixa
+    // gravar e o que a prova do PR 6 cria) — mais recente que a arte real — NÃO pode ser a "arte da página":
+    // o job tem de nascer preso à Generation deste projeto. Registrada para o cleanup pelo id exato.
+    const outroProjeto6a = await db.project.findFirst({ where: { id: { not: PROJETO } }, select: { id: true, userId: true, Template: { take: 1, select: { id: true } } } })
+    if (outroProjeto6a?.Template[0]) {
+      const alheia = await db.generation.create({ data: { projectId: outroProjeto6a.id, templateId: outroProjeto6a.Template[0].id, createdBy: outroProjeto6a.userId, status: 'COMPLETED', resultUrl: 'https://exemplo.invalido/alheia-6a.png', fieldValues: { pageId, prova: '6a-alheia', marca: MARCA } as never }, select: { id: true } })
+      generationsAlheias.push(alheia.id)
+    }
     await pedirRecomposicaoDaArteCongelada([pageId])
     const idsDaPaginaDo6a = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
     const jobDo6a = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPaginaDo6a }, kind: 'COMPOR' }, select: { id: true, status: true, payload: true } })
     conferir('job normal pendente, SEM forcar', !!jobDo6a && jobDo6a.status === 'PENDING' && (jobDo6a.payload as Record<string, any>).recompor?.forcar !== true, jobDo6a ? `job ${jobDo6a.id}` : 'sem job')
+    const jobsAlheios6a = generationsAlheias.length ? await db.generationJob.count({ where: { generationId: { in: generationsAlheias }, kind: 'COMPOR' } }) : 0
+    conferir('REV-2CEB-02: a Generation de outro projeto com o pageId desta página (mais recente) NÃO recebeu o job — o levantamento é só do projeto da página', outroProjeto6a?.Template[0] ? jobsAlheios6a === 0 && !!jobDo6a : true, outroProjeto6a?.Template[0] ? `jobs na alheia: ${jobsAlheios6a}` : 'sem outro projeto no dev — não exercitado')
 
     console.log('6) render falhando (Blob recusa o token) num ajuste só de gradiente: página gravada e agenda avisada')
     const r6 = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
