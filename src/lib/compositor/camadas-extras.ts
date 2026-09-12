@@ -48,6 +48,18 @@ export interface BlocoDaSpec {
   id?: string
   herdaDe?: Papel
   grupoVisual?: GrupoVisual
+  /** R04: o bloco com função que herda estilo também é um extra — leva o grupo de leitura e a ordem do autor. */
+  grupoDeLeitura?: string
+  ordem?: number
+}
+
+/** Uma camada extra que NÃO pôde ser resolvida: o papel de que herdaria o estilo não existe na variante (R03). */
+export interface FalhaDeResolucao {
+  id: string
+  funcao: FuncaoDoExtra
+  herdaDe: Papel
+  grupoVisual: GrupoVisual
+  linhas: number
 }
 
 /**
@@ -68,7 +80,20 @@ export interface ResolucaoDosExtras {
   blocos: BlocoResolvido[]
   /** Os papéis que a peça pede e a variante não tem, sem herança declarada que os salve — a composição recusa (`PAPEIS_INCOMPATIVEIS`). */
   faltam: Papel[]
+  /** R03: cada extra que não pôde ser composto, pelo id — a medição os declara um a um, e `cabeTudo` os conta. */
+  falhas: FalhaDeResolucao[]
   avisos: string[]
+}
+
+/**
+ * Ids que a PREPARAÇÃO produz sozinha e nenhum extra pode tomar (R02): a
+ * segunda voz da manchete (`headline2`) e o segundo texto do mesmo papel
+ * (`servico-2`, `apoio-3`…). O nome nu do papel (`servico`) é o id padrão do
+ * extra sem id — ele só colide quando um bloco comum do mesmo papel existe, e
+ * isso a unicidade por id já pega.
+ */
+export function idReservado(id: string): boolean {
+  return id === 'headline2' || /^(pre|headline|apoio|cta|servico)-\d+$/.test(id)
 }
 
 /**
@@ -104,23 +129,35 @@ export function resolverCamadasExtras(
 ): ResolucaoDosExtras {
   const blocos: BlocoResolvido[] = []
   const faltam: Papel[] = []
+  const falhas: FalhaDeResolucao[] = []
   const avisos: string[] = []
   const idsUsados = new Set<string>()
   const falta = (p: Papel) => {
     if (!faltam.includes(p)) faltam.push(p)
   }
+  // Candidatos a extra, das DUAS fontes, numa lista só: o bloco com função que
+  // herda estilo (`spec.blocos` com `herdaDe`) e a camada livre do contrato
+  // (`camadasExtras`). A ordem é a do AUTOR (`ordem`), conjunta — acrescentar
+  // primeiro os por papel e depois os livres invertia a sequência de um
+  // contrato com nota livre na ordem 1 e serviço na ordem 2 (R04). Sem `ordem`
+  // (spec legada) vale a posição de declaração, blocos antes de camadasExtras.
+  const candidatos: Array<{ chave: number; id: string; funcao: FuncaoDoExtra; herdaDe: Papel; linhas: string[]; grupoVisual: GrupoVisual; grupoDeLeitura?: string; ordem?: number }> = []
+  let seq = 0
   for (const b of spec.blocos ?? []) {
     const papel = b.papel as Papel
     const linhas = [...(b.linhas ?? [])]
+    seq++
     if (b.herdaDe) {
-      if (!assinatura.papeis[b.herdaDe]) {
-        falta(b.herdaDe)
-        avisos.push(`${papel}: herda de "${b.herdaDe}", que a variante não tem`)
-        continue
-      }
-      const id = b.id ?? papel
-      idsUsados.add(id)
-      blocos.push({ papel: b.herdaDe, linhas, extra: { id, funcao: papel, herdaDe: b.herdaDe, grupoVisual: b.grupoVisual ?? grupoVisualPadrao(papel) } })
+      candidatos.push({
+        chave: b.ordem ?? 1000 + seq,
+        id: b.id ?? papel,
+        funcao: papel,
+        herdaDe: b.herdaDe,
+        linhas,
+        grupoVisual: b.grupoVisual ?? grupoVisualPadrao(papel),
+        ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
+        ...(b.ordem !== undefined ? { ordem: b.ordem } : {}),
+      })
       continue
     }
     if (!assinatura.papeis[papel]) {
@@ -130,34 +167,52 @@ export function resolverCamadasExtras(
     idsUsados.add(papel)
     blocos.push({ papel, linhas })
   }
-  const extras = [...(spec.camadasExtras ?? [])].sort((a, z) => (a.ordem ?? 0) - (z.ordem ?? 0))
-  for (const e of extras) {
+  for (const e of spec.camadasExtras ?? []) {
+    seq++
     if (!e.id || !e.herdaDe) {
       avisos.push(`camada extra sem id ou sem herdaDe foi ignorada`)
       continue
     }
-    if (!assinatura.papeis[e.herdaDe]) {
-      falta(e.herdaDe)
-      avisos.push(`camada extra "${e.id}": herda de "${e.herdaDe}", que a variante não tem`)
-      continue
-    }
-    if (idsUsados.has(e.id)) {
-      avisos.push(`camada extra "${e.id}": id já usado por outro bloco — a camada ficou de fora`)
-      continue
-    }
-    idsUsados.add(e.id)
-    blocos.push({
-      papel: e.herdaDe,
+    candidatos.push({
+      chave: e.ordem ?? 1000 + seq,
+      id: e.id,
+      funcao: 'livre',
+      herdaDe: e.herdaDe,
       linhas: [...(e.linhas ?? [])],
+      grupoVisual: e.grupoVisual ?? grupoVisualPadrao('livre'),
+      ...(e.grupoDeLeitura ? { grupoDeLeitura: e.grupoDeLeitura } : {}),
+      ...(e.ordem !== undefined ? { ordem: e.ordem } : {}),
+    })
+  }
+  candidatos.sort((a, z) => a.chave - z.chave)
+  for (const c of candidatos) {
+    const rotulo = c.funcao === 'livre' ? `camada extra "${c.id}"` : `${c.funcao} ("${c.id}")`
+    if (!assinatura.papeis[c.herdaDe]) {
+      falta(c.herdaDe)
+      falhas.push({ id: c.id, funcao: c.funcao, herdaDe: c.herdaDe, grupoVisual: c.grupoVisual, linhas: c.linhas.length })
+      avisos.push(`${rotulo}: herda de "${c.herdaDe}", que a variante não tem`)
+      continue
+    }
+    // R02: o id do extra não pode ser um que a preparação produz sozinha
+    // (`headline2`, `servico-2`) nem um já tomado — `validarSpec` recusa antes;
+    // aqui é a última porta, com aviso.
+    if (idsUsados.has(c.id) || idReservado(c.id)) {
+      avisos.push(`${rotulo}: id já usado por outro bloco ou reservado pela composição — a camada ficou de fora`)
+      continue
+    }
+    idsUsados.add(c.id)
+    blocos.push({
+      papel: c.herdaDe,
+      linhas: c.linhas,
       extra: {
-        id: e.id,
-        funcao: 'livre',
-        herdaDe: e.herdaDe,
-        grupoVisual: e.grupoVisual ?? grupoVisualPadrao('livre'),
-        ...(e.grupoDeLeitura ? { grupoDeLeitura: e.grupoDeLeitura } : {}),
-        ...(e.ordem !== undefined ? { ordem: e.ordem } : {}),
+        id: c.id,
+        funcao: c.funcao,
+        herdaDe: c.herdaDe,
+        grupoVisual: c.grupoVisual,
+        ...(c.grupoDeLeitura ? { grupoDeLeitura: c.grupoDeLeitura } : {}),
+        ...(c.ordem !== undefined ? { ordem: c.ordem } : {}),
       },
     })
   }
-  return { blocos, faltam, avisos }
+  return { blocos, faltam, falhas, avisos }
 }

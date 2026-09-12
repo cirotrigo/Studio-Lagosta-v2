@@ -22,7 +22,7 @@ import { arranjosDaPagina, distribuirLinhas, escolherArranjo, type ArranjoDeGrup
 import { destaqueDoPapel, type EstiloDeDestaque } from './destaques'
 import { dividirManchete } from './segunda-voz'
 import type { GrupoVisual, Papel } from './spec'
-import { chaveDoGrupoExtra, estiloHerdado, resolverCamadasExtras, type BlocoResolvido, type CamadaExtraDaSpec, type IdentidadeDoExtra } from './camadas-extras'
+import { chaveDoGrupoExtra, estiloHerdado, resolverCamadasExtras, type BlocoResolvido, type CamadaExtraDaSpec, type IdentidadeDoExtra, type FalhaDeResolucao } from './camadas-extras'
 
 export function hashDe(texto: string): number {
   let h = 2166136261
@@ -100,6 +100,8 @@ export interface BlocosPreparados {
   gruposExtras: Map<string, Exclude<GrupoVisual, 'principal'>>
   /** F3: os papéis pedidos que a variante não tem e nenhuma herança salvou — a composição recusa. */
   faltam: Papel[]
+  /** R03: cada extra que não pôde ser resolvido, pelo id — a medição os declara e conta em `cabeTudo`. */
+  falhas: FalhaDeResolucao[]
   avisos: string[]
   /**
    * O SUPERCONJUNTO de famílias que a peça podia usar: o estilo de cada papel
@@ -348,5 +350,5 @@ export function prepararBlocos(args: {
       })
     }
   }
-  return { montados, recusas, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras, faltam: resolvidos.faltam, avisos, familiasCandidatas: [...familiasCandidatas] }
+  return { montados, recusas, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras, faltam: resolvidos.faltam, falhas: resolvidos.falhas, avisos, familiasCandidatas: [...familiasCandidatas] }
 }

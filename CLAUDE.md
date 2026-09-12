@@ -8692,3 +8692,47 @@ recompor) preservar os extras.
   arranjo saiu por rodízio" não depende mais de `preferencias.arranjos` estar
   vazio — fixar o arranjo de UM grupo não fixa o do outro; o motivo vale
   enquanto algum arranjo ainda sair por rodízio (teste com dois grupos).
+
+Da revisão do Codex sobre o primeiro commit (BLOQUEADO, R01…R07, 12/09/2026):
+
+- 🔴 **O vínculo por ID vem ANTES da associação por função e posição** (R01,
+  `copyEfetivaDasCamadas`): dois extras de função `servico` herdando `apoio`,
+  um no topo e outro no rodapé, trocavam de texto entre os ids já na
+  persistência inicial — a leitura casava por função + `y`. A camada extra
+  nasce com o id do bloco (`metadata.compositor.extra.id`), e uma camada comum
+  tem o id do papel; esses vínculos são reservados antes da fila por função.
+- 🔴 **A unicidade é conferida contra os ids que a PREPARAÇÃO produz** (R02,
+  `idReservado`): `id` num bloco SEM `herdaDe` é recusado (a camada se chama
+  pelo papel; um id avulso era ignorado na composição e só enganava a
+  conferência), e nenhum extra pode tomar `headline2` nem `<papel>-N` — a
+  segunda voz e o segundo texto do mesmo papel são gerados pela preparação. A
+  resolução repete a porta com aviso.
+- **Extra que não pôde ser resolvido é DECLARADO por bloco** (R03,
+  `ResolucaoDosExtras.falhas` → `MedidaDeBloco` `papel-ausente` com o id do
+  bloco, e `cabeTudo` os conta): o livre herdando um `cta` ausente sumia da
+  medição com `cabeTudo` verdadeiro enquanto `comporPeca` recusava a mesma
+  entrada. `papeisAusentes` passou a olhar só os blocos sem herança.
+- **O extra com função leva `grupoDeLeitura` e `ordem`, e os extras das duas
+  fontes são ordenados JUNTOS pela ordem do autor** (R04): o contrato com nota
+  livre na ordem 1 e serviço na ordem 2 saía com o serviço antes da nota,
+  porque a resolução acrescentava primeiro os por papel e depois os livres. Sem
+  `ordem` (spec legada) vale a posição de declaração, blocos antes de
+  `camadasExtras`. Os campos atravessam `blocoSchema`, `BlocoLegado`,
+  `blocosParaOCompositor` e a identidade do extra até a camada.
+- 🔴 **O contrato é CANÔNICO** (R05): `blocos` e `camadasExtras` mandados
+  junto dele têm de dizer o MESMO em todos os campos (id, herança, grupo
+  visual, grupo de leitura, ordem), e extra declarado sem correspondente no
+  contrato também diverge. Comparar só id e linhas deixava a versão sem
+  herança prevalecer e a composição recusar uma variante que o contrato
+  resolvia.
+- 🔴 **`validarSpec(validarSpec(x).spec)` tem de continuar válido** (R06): os
+  limites de linha da spec são os do contrato (linha vazia é respiro permitido,
+  `MAX_LINHAS`, 40 blocos), e a forma derivada é revalidada pelo schema antes de
+  ser aceita — o worker da fila revalida a spec gravada, e uma spec aceita na
+  porta falhava lá.
+- **Sem contrato, o ORIGINAL persistido nasce da spec INTEIRA** (R07,
+  `copyDaSpecSemContrato`): o extra livre e o serviço herdado entram com id,
+  herança, grupo visual, grupo de leitura e ordem (renumerada do zero, porque o
+  contrato exige ordem contígua), autoria `desconhecido`. Antes só `spec.blocos`
+  virava original e a nota fornecida na entrada aparecia como texto a mais do
+  sistema, com id `extra-…`.

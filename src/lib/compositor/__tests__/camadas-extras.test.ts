@@ -5,6 +5,8 @@ import { estiloHerdado, grupoVisualPadrao, resolverCamadasExtras } from '../cama
 import { medirCopy } from '../medir-copy'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
+import { copyAutoralDaSpec, entradaDePersistencia } from '../persistencia'
+import type { CopyAutoral } from '@/lib/copy-autoral'
 
 /**
  * F3 / PR 9 — a camada EXTRA: texto que veste o estilo de um papel SEM ser
@@ -86,7 +88,7 @@ describe('validarSpec — as camadas extras na spec e no contrato', () => {
     const semId = validarSpec({ ...base, blocos: [{ papel: 'servico', linhas: ['A'] }, { papel: 'servico', linhas: ['B'], herdaDe: 'apoio' }] })
     expect(semId.spec).toBeNull()
     expect(semId.problemas[0]).toMatch(/papel repetido: servico/)
-    const ok = validarSpec({ ...base, blocos: [{ papel: 'servico', linhas: ['A'] }, { papel: 'servico', linhas: ['B'], herdaDe: 'apoio', id: 'servico-2' }] })
+    const ok = validarSpec({ ...base, blocos: [{ papel: 'servico', linhas: ['A'] }, { papel: 'servico', linhas: ['B'], herdaDe: 'apoio', id: 'servico-local' }] })
     expect(ok.problemas).toEqual([])
     const manchete = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['A'], herdaDe: 'apoio' }] })
     expect(manchete.problemas[0]).toMatch(/manchete não herda/)
@@ -163,5 +165,132 @@ describe('prepararBlocos / medirCopy — a peça que precisa de horário funcion
     const sem = medirCopy({ ...base, spec: { ...spec, blocos: [spec.blocos[0], { papel: 'servico', linhas: ['11h'] }] } })
     expect(sem.papeisAusentes).toEqual(['servico'])
     expect(sem.cabeTudo).toBe(false)
+  })
+})
+
+
+describe('correções da revisão do Codex sobre 53ce6340 (R01–R07)', () => {
+  const base = { projectId: 8, formato: 'story' as const }
+  const coluna = 1080 - 2 * assinatura.numeros.geometria.story.margemH
+  const comum = { assinatura, colunaUtil: coluna, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [] }
+  const camada = (id: string, y: number, content: string, compositor: Record<string, unknown>): Layer =>
+    texto(id, { fontFamily: 'Barlow', fontSize: 40 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor } })
+
+  it('R01: dois extras de função servico herdando apoio em bordas opostas — cada id preserva o próprio texto na persistência, sem revisão fictícia', () => {
+    const v = validarSpec({ ...base, blocos: [
+      { papel: 'headline', linhas: ['Costela'] },
+      { papel: 'servico', linhas: ['11h às 15h'], herdaDe: 'apoio', id: 'hora-rodape' },
+      { papel: 'servico', linhas: ['A partir das 19h'], herdaDe: 'apoio', id: 'hora-topo', grupoVisual: 'topo' },
+    ] })
+    expect(v.problemas).toEqual([])
+    // As camadas como o compositor as desenha: o extra do TOPO fica acima do do rodapé.
+    const layers = [
+      camada('headline', 800, 'Costela', { papel: 'headline' }),
+      camada('hora-topo', 100, 'A partir das 19h', { papel: 'servico', extra: { id: 'hora-topo', funcao: 'servico', herdaDe: 'apoio', grupoVisual: 'topo' } }),
+      camada('hora-rodape', 1700, '11h às 15h', { papel: 'servico', extra: { id: 'hora-rodape', funcao: 'servico', herdaDe: 'apoio', grupoVisual: 'rodape' } }),
+    ]
+    const e = entradaDePersistencia({ spec: v.spec!, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
+    const efetiva = e.copyAutoral as CopyAutoral
+    const porId = Object.fromEntries(efetiva.blocos.map((b) => [b.id, b.linhas]))
+    expect(porId['hora-rodape']).toEqual(['11h às 15h'])
+    expect(porId['hora-topo']).toEqual(['A partir das 19h'])
+    expect(efetiva.revisoes).toEqual([])
+    expect(efetiva.lacunas?.some((l) => /não foi desenhado|texto que a copy não tinha/.test(l))).toBeFalsy()
+  })
+
+  it('R02: id avulso em bloco sem herdaDe é recusado; ids que a preparação gera sozinha (headline2, servico-2) são reservados', () => {
+    const avulso = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['A'], id: 'titulo' }] })
+    expect(avulso.spec).toBeNull()
+    expect(avulso.problemas[0]).toMatch(/id só vale com herdaDe: headline \("titulo"\)/)
+    const voz2 = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['A'] }], camadasExtras: [{ id: 'headline2', linhas: ['x'], herdaDe: 'apoio' }] })
+    expect(voz2.problemas[0]).toMatch(/reservado.*headline2/)
+    const segundo = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['A'] }, { papel: 'servico', linhas: ['x'], herdaDe: 'apoio', id: 'servico-2' }] })
+    expect(segundo.problemas[0]).toMatch(/reservado.*servico-2/)
+    // A última porta, na resolução: o id reservado fica de fora com aviso, nunca colide em silêncio.
+    const r = resolverCamadasExtras({ blocos: [{ papel: 'headline', linhas: ['A'] }], camadasExtras: [{ id: 'headline2', linhas: ['x'], herdaDe: 'apoio' }] }, { papeis: assinatura.papeis })
+    expect(r.blocos).toHaveLength(1)
+    expect(r.avisos[0]).toMatch(/reservado/)
+  })
+
+  it('R03: extra cuja origem de estilo a variante não tem é DECLARADO na medição pelo id e derruba cabeTudo — a mesma recusa da composição', () => {
+    const args = { assinatura, medir: medirFalso, familias: ['Bevan', 'Barlow'], fonteCarregada: () => true, formato: 'story' as const }
+    const livre = medirCopy({ ...args, spec: { ...base, blocos: [{ papel: 'headline' as const, linhas: ['Oi'] }], camadasExtras: [{ id: 'nota', linhas: ['vale hoje'], herdaDe: 'cta' as const }] } })
+    expect(livre.cabeTudo).toBe(false)
+    const m = livre.blocos.find((b) => b.id === 'nota')!
+    expect(m.situacao).toBe('papel-ausente')
+    expect(m.extra).toEqual({ funcao: 'livre', herdaDe: 'cta', grupoVisual: 'principal' })
+    expect(m.avisos[0]).toMatch(/não tem o papel "cta", de que "nota" herdaria/)
+    const repetido = medirCopy({ ...args, spec: { ...base, blocos: [{ papel: 'headline' as const, linhas: ['Oi'] }, { papel: 'apoio' as const, linhas: ['a'] }, { papel: 'apoio' as const, linhas: ['b'], herdaDe: 'cta' as const, id: 'apoio-forte' }] } })
+    expect(repetido.cabeTudo).toBe(false)
+    expect(repetido.blocos.find((b) => b.id === 'apoio-forte')!.situacao).toBe('papel-ausente')
+    expect(repetido.papeisAusentes).toEqual([])
+  })
+
+  it('R04: o extra com função leva grupo de leitura e ordem; extras mistos no mesmo grupo visual saem na ordem do autor (livre 1 antes de servico 2)', () => {
+    const v = validarSpec({ ...base, copyAutoral: {
+      versao: 'copy-autoral-v1', origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['vale hoje'], grupoDeLeitura: 'frase', estilo: { herdaDe: 'apoio', grupoVisual: 'principal' } },
+        { id: 'hora', funcao: 'servico', ordem: 2, linhas: ['11h às 15h'], grupoDeLeitura: 'frase', estilo: { herdaDe: 'apoio', grupoVisual: 'principal' } },
+      ],
+    } })
+    expect(v.problemas).toEqual([])
+    expect(v.spec!.blocos!.find((b) => b.papel === 'servico')).toMatchObject({ id: 'hora', herdaDe: 'apoio', grupoDeLeitura: 'frase', ordem: 2 })
+    const r = resolverCamadasExtras({ blocos: v.spec!.blocos, camadasExtras: v.spec!.camadasExtras }, { papeis: assinatura.papeis })
+    expect(r.blocos.map((b) => b.extra?.id ?? b.papel)).toEqual(['headline', 'nota', 'hora'])
+    expect(r.blocos[2].extra).toEqual({ id: 'hora', funcao: 'servico', herdaDe: 'apoio', grupoVisual: 'principal', grupoDeLeitura: 'frase', ordem: 2 })
+    const p = prepararBlocos({ ...comum, spec: v.spec! })
+    const ids = p.montados.map((b) => b.layer.id)
+    expect(ids.indexOf('nota')).toBeLessThan(ids.indexOf('hora'))
+    expect(p.montados.find((b) => b.layer.id === 'hora')!.layer.metadata?.compositor).toMatchObject({ papel: 'servico', extra: { grupoDeLeitura: 'frase', ordem: 2 } })
+  })
+
+  it('R05: o contrato é canônico — blocos ou camadasExtras que divergem dele em QUALQUER campo (herdaDe, grupoVisual, grupoDeLeitura, ordem) ou sem correspondente são recusados', () => {
+    const copy = {
+      versao: 'copy-autoral-v1', origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'hora', funcao: 'servico', ordem: 1, linhas: ['11h às 15h'], estilo: { herdaDe: 'apoio' } },
+      ],
+    }
+    const iguais = validarSpec({ ...base, copyAutoral: copy, blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'], id: 'hora', herdaDe: 'apoio', ordem: 1 }] })
+    expect(iguais.problemas).toEqual([])
+    const semHeranca = validarSpec({ ...base, copyAutoral: copy, blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'] }] })
+    expect(semHeranca.spec).toBeNull()
+    expect(semHeranca.problemas[0]).toMatch(/`blocos` não bate com o contrato/)
+    const outroGrupo = validarSpec({ ...base, copyAutoral: copy, blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'], id: 'hora', herdaDe: 'apoio', ordem: 1, grupoVisual: 'topo' }] })
+    expect(outroGrupo.spec).toBeNull()
+    const extraSemContrato = validarSpec({ ...base, copyAutoral: copy, camadasExtras: [{ id: 'nota', linhas: ['x'], herdaDe: 'apoio' }] })
+    expect(extraSemContrato.spec).toBeNull()
+    expect(extraSemContrato.problemas[0]).toMatch(/`camadasExtras` não bate/)
+  })
+
+  it('R06: validarSpec(validarSpec(x).spec) continua válido e preserva o conteúdo — linha vazia (respiro), sete linhas e mais de cinco extras, como o contrato permite', () => {
+    const extras = Array.from({ length: 6 }, (_, i) => ({ id: `n${i}`, funcao: 'livre' as const, ordem: i + 1, linhas: i === 0 ? ['A', '', 'B', 'C', 'D', 'E', 'F'] : [`nota ${i}`], estilo: { herdaDe: 'apoio' as const } }))
+    const v1 = validarSpec({ ...base, copyAutoral: {
+      versao: 'copy-autoral-v1', origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+      blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }, ...extras],
+    } })
+    expect(v1.problemas).toEqual([])
+    expect(v1.spec!.camadasExtras).toHaveLength(6)
+    expect(v1.spec!.camadasExtras![0].linhas).toEqual(['A', '', 'B', 'C', 'D', 'E', 'F'])
+    const v2 = validarSpec(JSON.parse(JSON.stringify(v1.spec)))
+    expect(v2.problemas).toEqual([])
+    expect(v2.spec).toEqual(v1.spec)
+  })
+
+  it('R07: sem copyAutoral, o ORIGINAL persistido nasce da spec inteira — o extra livre e o serviço herdado entram com id, herança, grupo visual e ordem, autoria desconhecida', () => {
+    const v = validarSpec({ ...base,
+      blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'], herdaDe: 'apoio', id: 'hora', grupoVisual: 'rodape' }],
+      camadasExtras: [{ id: 'nota', linhas: ['vale hoje'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }],
+    })
+    expect(v.problemas).toEqual([])
+    const original = copyAutoralDaSpec(v.spec!)
+    expect(original.origem.autor).toBe('desconhecido')
+    expect(original.blocos.map((b) => [b.id, b.funcao, b.ordem])).toEqual([['headline', 'headline', 0], ['hora', 'servico', 1], ['nota', 'livre', 2]])
+    expect(original.blocos[1].estilo).toEqual({ herdaDe: 'apoio', grupoVisual: 'rodape' })
+    expect(original.blocos[2]).toMatchObject({ grupoDeLeitura: 'frase', estilo: { herdaDe: 'apoio' } })
+    expect(original.lacunas).toContain('ordem de leitura inferida pela posição no array')
   })
 })

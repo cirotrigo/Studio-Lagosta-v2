@@ -9,10 +9,11 @@
  */
 
 import { z } from 'zod'
-import { copyAutoralSchema } from '@/lib/copy-autoral/contrato'
+import { MAX_LINHAS, copyAutoralSchema } from '@/lib/copy-autoral/contrato'
 import { blocosParaOCompositor } from '@/lib/copy-autoral/legado'
 import { canonico } from '@/lib/copy-autoral/revisao'
 import { problemasDeCoerencia } from '@/lib/copy-autoral/validar'
+import { idReservado } from './camadas-extras'
 
 export const PAPEIS = ['pre', 'headline', 'apoio', 'cta', 'servico'] as const
 /**
@@ -45,20 +46,31 @@ export type GrupoVisual = (typeof GRUPOS_VISUAIS)[number]
 
 const idDeCamadaSchema = z.string().min(1).max(60).regex(/^[a-z0-9][a-z0-9._-]*$/i)
 
+/**
+ * As linhas de um bloco: os MESMOS limites do contrato autoral (R06) — linha
+ * vazia é respiro permitido, e o teto de linhas é `MAX_LINHAS`. Com limites
+ * mais estreitos aqui, uma spec derivada do contrato passava na primeira
+ * validação e falhava na segunda (o worker da fila revalida a spec gravada).
+ */
+const linhasSchema = z.array(z.string().max(300)).min(1).max(MAX_LINHAS)
+
 export const blocoSchema = z.object({
   papel: z.enum(PAPEIS),
-  linhas: z.array(z.string().min(1)).min(1).max(6),
-  /** Id próprio da camada — obrigatório quando o papel se repete (função ≠ estilo, F3). */
+  linhas: linhasSchema,
+  /** Id próprio da camada — só com `herdaDe` (função ≠ estilo, F3); sem herança a camada se chama pelo papel, e `validarSpec` recusa id avulso (R02). */
   id: idDeCamadaSchema.optional(),
   /** O papel da assinatura de que este texto HERDA o estilo, sem virar esse papel (F3): a linha de horário em variante sem `servico`. */
   herdaDe: z.enum(PAPEIS).optional(),
   grupoVisual: z.enum(GRUPOS_VISUAIS).optional(),
+  /** R04: o extra com função também carrega o grupo de leitura e a ordem do autor (só valem com `herdaDe`). */
+  grupoDeLeitura: z.string().min(1).max(60).optional(),
+  ordem: z.number().int().min(0).max(99).optional(),
 })
 
 /** Texto sem função do compositor (`livre` no contrato) que veste o estilo de um papel — a camada extra da F3. */
 export const camadaExtraSchema = z.object({
   id: idDeCamadaSchema,
-  linhas: z.array(z.string().min(1)).min(1).max(6),
+  linhas: linhasSchema,
   herdaDe: z.enum(PAPEIS),
   grupoVisual: z.enum(GRUPOS_VISUAIS).optional(),
   grupoDeLeitura: z.string().min(1).max(60).optional(),
@@ -139,9 +151,9 @@ export const specSchema = z.object({
    * A copy por papel. Dispensável quando `copyAutoral` vem: `validarSpec`
    * deriva os blocos do contrato (F1) — e recusa quando os dois vêm e não batem.
    */
-  blocos: z.array(blocoSchema).max(10).optional(),
-  /** As camadas extras (F3) — os blocos `livre` do contrato com `estilo.herdaDe`; até 5. */
-  camadasExtras: z.array(camadaExtraSchema).max(5).optional(),
+  blocos: z.array(blocoSchema).max(40).optional(),
+  /** As camadas extras (F3) — os blocos `livre` do contrato com `estilo.herdaDe`. O teto é o do contrato (40 blocos), pela mesma razão de R06. */
+  camadasExtras: z.array(camadaExtraSchema).max(40).optional(),
   preferencias: preferenciasSchema.optional(),
   nome: z.string().max(120).optional(),
   /** Vínculos frouxos com o plano — sem FK, como todo vínculo da casa. */
@@ -189,12 +201,20 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
         ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
         ordem: b.ordem,
       }))
-      if (extrasDoContrato.length > 0) {
-        const declaradas = r.data.camadasExtras ?? []
-        if (declaradas.length === 0) r.data.camadasExtras = extrasDoContrato
-        else if (canonico(declaradas.map((c) => ({ id: c.id, linhas: c.linhas }))) !== canonico(extrasDoContrato.map((c) => ({ id: c.id, linhas: c.linhas })))) {
-          return { spec: null, problemas: ['copyAutoral: `camadasExtras` não bate com os blocos livres do contrato — mande só o contrato (as camadas extras saem dele)'] }
-        }
+      // O contrato é CANÔNICO (R05): quem manda `camadasExtras` ou `blocos` junto
+      // dele tem de dizer o MESMO em TODOS os campos — herança, grupo visual,
+      // grupo de leitura e ordem incluídos —, e um extra declarado sem
+      // correspondente no contrato também diverge. Comparar só id e linhas
+      // deixava a versão sem herança prevalecer e a composição recusar uma
+      // variante que o contrato resolvia.
+      const formaDaExtra = (c: { id?: string; linhas?: string[]; herdaDe?: string; grupoVisual?: string; grupoDeLeitura?: string; ordem?: number }) => ({
+        id: c.id ?? null, linhas: c.linhas ?? [], herdaDe: c.herdaDe ?? null, grupoVisual: c.grupoVisual ?? null, grupoDeLeitura: c.grupoDeLeitura ?? null, ordem: c.ordem ?? null,
+      })
+      const declaradas = r.data.camadasExtras ?? []
+      if (declaradas.length === 0) {
+        if (extrasDoContrato.length > 0) r.data.camadasExtras = extrasDoContrato
+      } else if (canonico(declaradas.map(formaDaExtra)) !== canonico(extrasDoContrato.map(formaDaExtra))) {
+        return { spec: null, problemas: ['copyAutoral: `camadasExtras` não bate com os blocos livres do contrato (id, linhas, herdaDe, grupoVisual, grupoDeLeitura e ordem) — mande só o contrato (as camadas extras saem dele)'] }
       }
       // Os blocos DERIVADOS passam pelo mesmo schema dos explícitos (PR3-R8-03, 18/09/2026): o contrato aceita linha
       // vazia e até 12 linhas, o compositor não — e sem isto a porta gravava o job que o worker recusava ao revalidar
@@ -209,11 +229,20 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
           }),
         }
       }
-      const soPapelELinhas = (lista: Array<{ papel: string; linhas: string[] }>) => lista.map((b) => ({ papel: b.papel, linhas: b.linhas }))
+      const formaDoBloco = (b: { papel?: string; linhas?: string[]; id?: string; herdaDe?: string; grupoVisual?: string; grupoDeLeitura?: string; ordem?: number }) => ({
+        papel: b.papel ?? null, linhas: b.linhas ?? [], id: b.id ?? null, herdaDe: b.herdaDe ?? null, grupoVisual: b.grupoVisual ?? null, grupoDeLeitura: b.grupoDeLeitura ?? null, ordem: b.ordem ?? null,
+      })
       if (!r.data.blocos || r.data.blocos.length === 0) {
         r.data.blocos = derivados as unknown as NonNullable<typeof r.data.blocos>
-      } else if (canonico(soPapelELinhas(r.data.blocos as Array<{ papel: string; linhas: string[] }>)) !== canonico(soPapelELinhas(derivados))) {
-        return { spec: null, problemas: ['copyAutoral: `blocos` não bate com o contrato — mande só o contrato (os blocos saem dele) ou faça os dois dizerem o mesmo'] }
+      } else if (canonico((r.data.blocos as Array<Parameters<typeof formaDoBloco>[0]>).map(formaDoBloco)) !== canonico(derivados.map(formaDoBloco))) {
+        return { spec: null, problemas: ['copyAutoral: `blocos` não bate com o contrato (papel, linhas, id, herdaDe, grupoVisual, grupoDeLeitura e ordem) — mande só o contrato (os blocos saem dele) ou faça os dois dizerem o mesmo'] }
+      }
+      // R06: a forma DERIVADA tem de passar no mesmo schema — o que sai daqui é
+      // revalidado pela fila, e `validarSpec(validarSpec(x).spec)` não pode
+      // falhar. Os limites estão alinhados ao contrato; isto é a rede.
+      const derivada = specSchema.safeParse(r.data)
+      if (!derivada.success) {
+        return { spec: null, problemas: derivada.error.issues.map((p) => `copyAutoral (forma derivada): ${p.path.join('.') || '(raiz)'}: ${p.message}`) }
       }
     }
     if (!r.data.blocos || r.data.blocos.length === 0) return { spec: null, problemas: ['blocos: pelo menos um bloco (ou copyAutoral)'] }
@@ -226,6 +255,15 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     const papeis = r.data.blocos.map((b) => b.papel)
     const repetidosSemId = r.data.blocos.filter((b, i) => papeis.indexOf(b.papel) !== i && !(b.herdaDe && b.id)).map((b) => b.papel)
     if (repetidosSemId.length > 0) return { spec: null, problemas: [`papel repetido: ${[...new Set(repetidosSemId)].join(', ')} — a segunda ocorrência precisa de \`id\` próprio e \`herdaDe\``] }
+    // R02: a unicidade é conferida contra os ids que a PREPARAÇÃO produz. Bloco
+    // sem herança se chama pelo PAPEL — um `id` avulso nele seria ignorado na
+    // composição e só enganaria a conferência, então é recusado; e nenhum extra
+    // pode tomar um id que a preparação gera sozinha (`headline2`, `servico-2`).
+    const idAvulso = r.data.blocos.filter((b) => b.id && !b.herdaDe).map((b) => `${b.papel} ("${b.id}")`)
+    if (idAvulso.length > 0) return { spec: null, problemas: [`id só vale com herdaDe: ${idAvulso.join(', ')} — sem herança a camada se chama pelo papel`] }
+    const idsDeExtras = [...r.data.blocos.filter((b) => b.herdaDe && b.id).map((b) => b.id!), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
+    const reservados = idsDeExtras.filter(idReservado)
+    if (reservados.length > 0) return { spec: null, problemas: [`id de camada reservado pela composição: ${[...new Set(reservados)].join(', ')} — headline2 e <papel>-N são gerados pela preparação`] }
     const ids = [...r.data.blocos.map((b) => b.id ?? b.papel), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
     const idsRepetidos = ids.filter((id, i) => ids.indexOf(id) !== i)
     if (idsRepetidos.length > 0) return { spec: null, problemas: [`id de camada repetido: ${[...new Set(idsRepetidos)].join(', ')}`] }

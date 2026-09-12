@@ -225,13 +225,23 @@ export function medirCopy(args: {
   // F3: o papel que HERDA estilo (camada extra) não está ausente — a mesma
   // resolução da composição (`resolverCamadasExtras`, dentro da preparação) diz
   // o que falta de verdade; e o bloco montado conta pela FUNÇÃO que cumpre.
-  const papeisPedidos = [...new Set((args.spec.blocos ?? []).map((b) => b.papel as Papel))]
+  // Quem HERDA estilo não é "papel ausente" por si: a falha dele é por bloco (abaixo, R03).
+  const papeisPedidos = [...new Set((args.spec.blocos ?? []).filter((b) => !b.herdaDe).map((b) => b.papel as Papel))]
   const faltamNaAssinatura = new Set(preparados.faltam)
   const preparadosPorPapel = new Set([...preparados.montados, ...preparados.recusas].map((b) => b.funcao))
   const papeisAusentes = papeisPedidos.filter((p) => faltamNaAssinatura.has(p) || (!preparadosPorPapel.has(p) && !(p === 'headline' && preparadosPorPapel.has('headline2' as Papel))))
   for (const papel of papeisAusentes) {
     const linhas = (args.spec.blocos ?? []).find((b) => (b.papel as Papel) === papel)?.linhas ?? []
     medidas.push({ papel, id: papel, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: linhas.length, naoMedido: false, aproximado: false, linhasMedidas: [], avisos: [`a variante não tem o papel "${papel}"`] })
+  }
+
+  // R03: o extra cuja origem de estilo a variante não tem (o livre herdando um
+  // `cta` ausente, o serviço repetido herdando de papel ausente) não vira medida
+  // pela preparação — e sumia do resultado com `cabeTudo` verdadeiro enquanto
+  // `comporPeca` recusava a mesma entrada. Cada falha é declarada pelo id do
+  // bloco afetado e entra em `cabeTudo`.
+  for (const f of preparados.falhas) {
+    medidas.push({ papel: f.herdaDe, id: f.id, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: f.linhas, naoMedido: false, aproximado: false, linhasMedidas: [], extra: { funcao: f.funcao, herdaDe: f.herdaDe, grupoVisual: f.grupoVisual }, avisos: [`a variante não tem o papel "${f.herdaDe}", de que "${f.id}" herdaria o estilo`] })
   }
 
   const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean, destaque: EstiloDeDestaque | null): MedidaDeLinha[] => {
@@ -325,7 +335,7 @@ export function medirCopy(args: {
   return {
     areaUtil: area,
     blocos: medidas,
-    cabeTudo: papeisAusentes.length === 0 && medidas.every((m) => m.situacao === 'cabe' || m.situacao === 'cabe-reduzido'),
+    cabeTudo: papeisAusentes.length === 0 && preparados.falhas.length === 0 && medidas.every((m) => m.situacao === 'cabe' || m.situacao === 'cabe-reduzido'),
     papeisAusentes,
     naoMedido: medidas.some((m) => m.naoMedido),
     aproximado: medidas.some((m) => m.aproximado),

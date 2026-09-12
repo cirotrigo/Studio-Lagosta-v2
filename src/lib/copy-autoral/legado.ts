@@ -44,6 +44,9 @@ export interface BlocoLegado {
   id?: string
   herdaDe?: string
   grupoVisual?: 'principal' | 'topo' | 'rodape'
+  /** R04: o extra com função leva também o grupo de leitura e a ordem do autor — só com `herdaDe`. */
+  grupoDeLeitura?: string
+  ordem?: number
 }
 
 /** O resultado de converter o legado: contrato válido, ou `copy: null` com os problemas e o original intacto. */
@@ -232,8 +235,91 @@ export function blocosParaOCompositor(copy: CopyAutoral): { blocos: BlocoLegado[
     blocos.push({
       papel: b.funcao,
       linhas: [...b.linhas],
-      ...(b.estilo?.herdaDe ? { id: b.id, herdaDe: b.estilo.herdaDe, ...(b.estilo.grupoVisual ? { grupoVisual: b.estilo.grupoVisual } : {}) } : {}),
+      ...(b.estilo?.herdaDe
+        ? {
+            id: b.id,
+            herdaDe: b.estilo.herdaDe,
+            ...(b.estilo.grupoVisual ? { grupoVisual: b.estilo.grupoVisual } : {}),
+            ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
+            ordem: b.ordem,
+          }
+        : {}),
     })
   }
   return { blocos, semPapel }
+}
+
+/**
+ * A spec SEM contrato (`blocos` + `camadasExtras`, F3) → contrato, para a
+ * persistência (R07): o extra fornecido na entrada — a nota livre, o serviço
+ * que herda do apoio — entra no ORIGINAL com o id, a herança, o grupo visual,
+ * o grupo de leitura e a ordem que o autor deu, em vez de aparecer só na
+ * efetiva como texto a mais do sistema. A ordem de leitura é a declarada
+ * (`ordem`) e, sem ela, a posição (blocos antes de camadasExtras), renumerada
+ * do zero porque o contrato exige ordem contígua. Autoria `desconhecido`,
+ * como todo adaptador do legado.
+ */
+export function copyDaSpecSemContrato(
+  spec: { blocos?: BlocoLegado[]; camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string; grupoVisual?: 'principal' | 'topo' | 'rodape'; grupoDeLeitura?: string; ordem?: number }> },
+  opcoes: { em?: string; superficie?: string } = {},
+): CopyAutoral {
+  const usados = new Set<string>()
+  const lacunas = ['autoria desconhecida: a copy veio de blocos por papel (spec) sem registro de quem escreveu']
+  type Item = { chave: number; bloco: Omit<BlocoAutoral, 'ordem'>; ordemDeclarada: number | undefined }
+  const itens: Item[] = []
+  let seq = 0
+  let temGrupo = false
+  let semOrdem = false
+  let comHeadline2 = false
+  for (const b of spec.blocos ?? []) {
+    seq++
+    const funcao = PAPEIS_LEGADOS[b.papel]
+    if (!funcao) lacunas.push(`bloco ${seq - 1} com papel desconhecido "${b.papel}" tratado como livre`)
+    if (b.papel === 'headline2') comHeadline2 = true
+    if (b.grupoDeLeitura) temGrupo = true
+    if (b.ordem === undefined) semOrdem = true
+    const estilo: BlocoAutoral['estilo'] = b.herdaDe
+      ? { herdaDe: b.herdaDe as FuncaoDoBloco, ...(b.grupoVisual ? { grupoVisual: b.grupoVisual } : {}) }
+      : b.papel === 'headline2'
+        ? { herdaDe: 'headline' as const }
+        : undefined
+    itens.push({
+      chave: b.ordem ?? 1000 + seq,
+      ordemDeclarada: b.ordem,
+      bloco: {
+        id: idUnico(b.herdaDe && b.id ? b.id : b.papel, usados),
+        funcao: funcao ?? 'livre',
+        linhas: [...b.linhas],
+        ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
+        ...(estilo ? { estilo } : {}),
+      },
+    })
+  }
+  for (const e of spec.camadasExtras ?? []) {
+    seq++
+    if (e.grupoDeLeitura) temGrupo = true
+    if (e.ordem === undefined) semOrdem = true
+    itens.push({
+      chave: e.ordem ?? 1000 + seq,
+      ordemDeclarada: e.ordem,
+      bloco: {
+        id: idUnico(e.id, usados),
+        funcao: 'livre',
+        linhas: [...e.linhas],
+        ...(e.grupoDeLeitura ? { grupoDeLeitura: e.grupoDeLeitura } : {}),
+        estilo: { herdaDe: e.herdaDe as FuncaoDoBloco, ...(e.grupoVisual ? { grupoVisual: e.grupoVisual } : {}) },
+      },
+    })
+  }
+  itens.sort((a, z) => a.chave - z.chave)
+  if (semOrdem) lacunas.push('ordem de leitura inferida pela posição no array')
+  if (!temGrupo) lacunas.push('sem grupos de leitura: o legado não declara que blocos formam uma frase')
+  if (comHeadline2) lacunas.push('headline2 veio como bloco próprio: a segunda voz não foi declarada por linha')
+  return {
+    versao: VERSAO_DO_CONTRATO,
+    origem: { autor: 'desconhecido', ...(opcoes.em ? { em: opcoes.em } : {}), ...(opcoes.superficie ? { superficie: opcoes.superficie } : {}) },
+    blocos: itens.map((it, i) => ({ ...it.bloco, ordem: i })),
+    revisoes: [],
+    lacunas,
+  }
 }
