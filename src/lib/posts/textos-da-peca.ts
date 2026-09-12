@@ -88,7 +88,11 @@ export interface SlideDaPeca {
     /** A copy com que a arte foi desenhada (`fieldValues.slotValues`), quando a procedência a carrega. */
     slotValues?: unknown
   } | null
-  /** `Page.layers` ATUAL da página daquela arte — vale só na peça viva. */
+  /**
+   * `Page.layers` ATUAL da página daquela arte — o texto dela vale só na peça viva. Na arte de MODELO
+   * (`post-schedule`) vale também na entregue, mas só como ESTRUTURA: quais valores da copy registrada o render
+   * aplicou (id antes de nome), nunca o texto do modelo (R46).
+   */
   camadasDaPagina?: unknown
 }
 
@@ -138,6 +142,18 @@ function camadaDeTexto(c: PageLayer): boolean {
 }
 
 /**
+ * A ORDEM do render (`render-engine.ts`: `(order ?? 0)`, sort estável): a persistência aceita o array fora de
+ * ordem, e a sequência dos textos tem de ser a que a arte desenha (R23).
+ */
+function emOrdemDoRender(camadas: PageLayer[]): PageLayer[] {
+  return [...camadas].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+}
+
+function caixaDaCamada(camada: PageLayer): string | undefined {
+  return (camada.style as { textTransform?: string } | undefined)?.textTransform
+}
+
+/**
  * Os textos das camadas, na ordem e na multiplicidade em que existem — com a
  * copy própria do post aplicada por cima quando ela vem (a função do render).
  * `null` quando as camadas são ilegíveis; `[]` é leitura que DEU CERTO e não
@@ -148,17 +164,38 @@ function textosDasCamadas(camadas: unknown, slots?: Record<string, unknown>): st
   const lidas = lerCamadas(camadas)
   if (!lidas.legivel) return null
   const out: string[] = []
-  // A ORDEM é a do render (`render-engine.ts`: `(order ?? 0)`, sort estável): a
-  // persistência aceita o array fora de ordem, e a sequência dos textos tem de
-  // ser a que a arte desenha (R23).
-  const ordenadas = [...lidas.camadas].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
-  for (const camada of ordenadas) {
+  for (const camada of emOrdemDoRender(lidas.camadas)) {
     if (!camadaDeTexto(camada)) continue
     const efetiva = slots ? aplicarSlotNaCamada(camada, slots) : camada
     const bruto = typeof efetiva.content === 'string' ? efetiva.content : ''
     // A CAIXA é a do render (`textTransform`), aplicada DEPOIS do slot — a
     // camada guarda "Almoço executivo" e a arte mostra "ALMOÇO EXECUTIVO".
-    const texto = aplicarCaixa(bruto, (efetiva.style as { textTransform?: string } | undefined)?.textTransform).trim()
+    const texto = aplicarCaixa(bruto, caixaDaCamada(efetiva)).trim()
+    if (texto) out.push(texto)
+  }
+  return out
+}
+
+/** Marca NÃO-string no lugar do conteúdo da camada: o que sair string da função do render veio do slot. */
+const SEM_CONTEUDO_DA_CAMADA: unknown = Symbol('sem-conteudo-da-camada')
+
+/**
+ * R46: só os valores da copy registrada que o render APLICOU às camadas de texto visíveis — pela MESMA função
+ * (`aplicarSlotNaCamada`: id vence nome; slot "" mantém a camada; `{ content }` troca), na ordem (`order`) e na
+ * caixa (`textTransform`) das camadas. O conteúdo da camada é trocado por uma marca não-string antes de aplicar:
+ * o texto cru do modelo nunca sai daqui (R36), e o valor que o render descartou (a chave pelo NOME quando o id
+ * já casou) também não. `null` = camadas ilegíveis.
+ */
+function textosAplicadosAoModelo(camadas: unknown, slots: Record<string, unknown>): string[] | null {
+  const lidas = lerCamadas(camadas)
+  if (!lidas.legivel) return null
+  const out: string[] = []
+  for (const camada of emOrdemDoRender(lidas.camadas)) {
+    if (!camadaDeTexto(camada)) continue
+    const efetiva = aplicarSlotNaCamada({ ...camada, content: SEM_CONTEUDO_DA_CAMADA }, slots)
+    const conteudo: unknown = efetiva.content
+    if (typeof conteudo !== 'string') continue
+    const texto = aplicarCaixa(conteudo, caixaDaCamada(efetiva)).trim()
     if (texto) out.push(texto)
   }
   return out
@@ -182,14 +219,16 @@ function textosDaCopiaRegistrada(slotValues: unknown): string[] {
   return Object.values(textosDoSlot(slotValues) ?? {}).map((t) => t.trim()).filter(Boolean)
 }
 const NOTA_DA_COPIA_REGISTRADA = 'cópia da página registrada no agendamento: o texto das camadas ANTES da caixa do render (textTransform) e sem a ordem em que foram desenhadas — não prova a arte inteira.'
-const NOTA_DA_ARTE_DE_MODELO = 'arte desenhada de um MODELO com a copy do post por cima: só a copy registrada na arte; o que o modelo trazia fora dela (e a caixa do render) não tem registro — o texto cru do modelo não é o desta mídia.'
+const NOTA_DA_ARTE_DE_MODELO = 'arte desenhada de um MODELO com a copy do post por cima: só os valores da copy registrada que o render aplicou às camadas do modelo (id antes de nome, na ordem e na caixa delas); o que o modelo trazia fora dela não tem registro — o texto cru do modelo não é o desta mídia.'
+const NOTA_DO_MODELO_SEM_CAMADAS = 'sem elas não há como saber quais valores da copy registrada o render aplicou (o id da camada vence o nome) — a copy registrada não é atribuída à mídia, nada a afirmar'
 
 /**
  * A arte de `post-schedule` desenhou um MODELO com copy por cima (a via de
  * template): devolve essa copy quando ela é copy PRÓPRIA (não a cópia da
  * página, que aponta para a página da peça e cai na leitura normal). Ler a
  * página dessa arte entregaria "Título do modelo" por uma mídia que mostra
- * "Costela no bafo" (R36 da revisão final de bf4650f2).
+ * "Costela no bafo" (R36 da revisão final de bf4650f2). E a copy devolvida aqui ainda
+ * não é o texto da mídia: quem decide o que foi desenhado é `textosAplicadosAoModelo` (R46).
  */
 function copyDaArteDeModelo(arte: NonNullable<SlideDaPeca['arte']>): Record<string, unknown> | null {
   if (arte.source !== 'post-schedule') return null
@@ -211,11 +250,28 @@ function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide
     const slide = i + 1
     // R36: procedência antes da página — a página de uma arte de modelo é o MODELO, não a peça.
     const copyDoModelo = s.arte ? copyDaArteDeModelo(s.arte) : null
-    if (copyDoModelo) {
-      const daCopy = textosDoPost(copyDoModelo)
-      return daCopy.length > 0
-        ? { slide, textos: daCopy, origem: 'arte', parcial: true, nota: NOTA_DA_ARTE_DE_MODELO }
-        : { slide, textos: [], indisponiveis: 'arte desenhada de um modelo sem copy registrada: o texto cru do modelo não é o desta mídia — nada a afirmar' }
+    if (s.arte && copyDoModelo) {
+      if (!textosDoSlot(copyDoModelo)) {
+        return { slide, textos: [], indisponiveis: 'arte desenhada de um modelo sem copy registrada: o texto cru do modelo não é o desta mídia — nada a afirmar' }
+      }
+      // R46: a copy registrada pode trazer a MESMA camada por id e por nome, e o render aplica só a do id — os
+      // valores brutos não são os textos da mídia. Vale o que a função do render aplica às camadas daquela versão:
+      // o snapshot confiável da arte, senão a página do modelo. Sem camadas legíveis, nada se afirma.
+      const estruturas = [snapshotConfiavel(s.arte) ? s.arte.layersSnapshot : undefined, s.camadasDaPagina].filter((c) => c !== undefined)
+      if (estruturas.length === 0) {
+        return { slide, textos: [], indisponiveis: `arte desenhada de um modelo cuja página não foi carregada (fora deste projeto, ou apagada) e que não guardou as camadas: ${NOTA_DO_MODELO_SEM_CAMADAS}` }
+      }
+      let aplicados: string[] | null = null
+      for (const estrutura of estruturas) {
+        aplicados = textosAplicadosAoModelo(estrutura, copyDoModelo)
+        if (aplicados !== null) break
+      }
+      if (aplicados === null) {
+        return { slide, textos: [], indisponiveis: `as camadas do modelo desta arte não puderam ser lidas: ${NOTA_DO_MODELO_SEM_CAMADAS}` }
+      }
+      return aplicados.length > 0
+        ? { slide, textos: aplicados, origem: 'arte', parcial: true, nota: NOTA_DA_ARTE_DE_MODELO }
+        : { slide, textos: [], indisponiveis: 'arte desenhada de um modelo: nenhum valor da copy registrada chega a uma camada de texto visível do modelo, e o texto cru do modelo não é o desta mídia — nada a afirmar' }
     }
     if (!entregue && s.camadasDaPagina !== undefined) {
       const daPagina = textosDasCamadas(s.camadasDaPagina)

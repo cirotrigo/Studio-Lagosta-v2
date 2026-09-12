@@ -6537,6 +6537,14 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   copiada. Quando a recuperação passar a REGRAVAR a copy visual junto do PNG
   (REV-127-F02 do PR 0), o marcador dessa regravação é o que deve reabilitar a
   cópia — não a ausência da marca de re-render.
+- 🔴 **Na arte de `post-schedule`, o id vence o nome também na LEITURA** (R46
+  da revisão final de b90b4335): a copy registrada na arte pode endereçar a
+  mesma camada por id e por nome, e o render aplica só a do id. Enumerar os
+  valores brutos devolvia o valor descartado como texto da mídia. Hoje só entra
+  o que `aplicarSlotNaCamada` aplica às camadas de texto visíveis (snapshot
+  confiável da arte, senão a página do modelo — que o handler agora carrega
+  também na peça ENTREGUE), na ordem e na caixa delas. Sem camadas legíveis, a
+  arte se declara indisponível: a copy bruta nunca é atribuída à mídia.
 - 🔴 **Prova que agenda pelo serviço tem de apagar os SINAIS dos posts que
   criou** (R39 da revisão de 03c279ff): `agendarPost` registra sinal de slot e
   de copy por post (`escolha-propria`), e `LearningSignal.postId` não tem FK —

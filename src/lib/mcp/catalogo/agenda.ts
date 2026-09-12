@@ -146,10 +146,18 @@ export const toolsDeAgenda = [
         if (g.resultUrl && !artePorUrl.has(g.resultUrl)) artePorUrl.set(g.resultUrl, arteDe(g))
       }
       const arteDoSlide = (_post: (typeof posts)[number], url: string) => artePorUrl.get(url) ?? null
-      // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê.
+      // Na peça VIVA, o slide é desenhado da PÁGINA daquela arte: é ela que se lê. Na arte de MODELO
+      // (`post-schedule`), viva ou ENTREGUE, a página do modelo vem também — não para ler o texto dele, só para
+      // saber quais valores da copy registrada o render aplicou, id antes de nome (R46).
       const idsDePaginaDosSlides = [
         ...new Set(
-          vivas.flatMap((p) => (p.mediaUrls ?? []).map((u) => arteDoSlide(p, u)?.pageId).filter((id): id is string => !!id)),
+          posts.flatMap((p) =>
+            (p.mediaUrls ?? [])
+              .map((u) => arteDoSlide(p, u))
+              .filter((a) => !!a && (!arteEntregue(p) || a.source === 'post-schedule'))
+              .map((a) => a?.pageId)
+              .filter((id): id is string => !!id),
+          ),
         ),
       ]
       const todasAsPaginas = [...new Set([...idsDePagina, ...idsDePaginaDosSlides])]

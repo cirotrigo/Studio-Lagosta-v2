@@ -256,6 +256,71 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(semCopy).toEqual({ textos: ['Título do modelo', 'Apoio do modelo'], origem: 'pagina' })
   })
 
+  it('R46: na arte de `post-schedule` o id vence o nome como no render — valor que o render descartou nunca é texto da mídia (viva, entregue, carrossel); sem camadas legíveis do modelo, indisponível sem a copy bruta', () => {
+    const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: 'g1', slotValues: null }
+    // a fixture de R36 com id e nome CONFLITANTES: a camada `l1` se chama "headline" — o render aplica `l1` e descarta `headline`;
+    // fora de ordem no array (vale `order`), com caixa do render no apoio e uma camada oculta que também recebe slot
+    const modelo = [
+      { id: 'l2', name: 'apoio', type: 'text', content: 'Apoio do modelo', order: 2, style: { textTransform: 'uppercase' } },
+      { id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', order: 1 },
+      { id: 'l3', name: 'oculta', type: 'text', content: 'Placeholder escondido', order: 3, visible: false },
+    ]
+    const slots = { l1: 'Picanha', headline: 'Costela', apoio: 'sexta é dia', oculta: 'Não desenhado' }
+    const arte = { pageId: 'tpl', source: 'post-schedule', slotValues: slots }
+    // o que o render desenha, pela MESMA função
+    expect(aplicarSlotNaCamada(modelo[1], slots).content).toBe('Picanha')
+    const esperado = ['Picanha', aplicarCaixa('sexta é dia', 'uppercase')]
+    const semDescartado = (r: unknown) => {
+      const j = JSON.stringify(r)
+      for (const proibido of ['Costela', 'Não desenhado', 'Título do modelo', 'Apoio do modelo', 'Placeholder escondido']) expect(j).not.toContain(proibido)
+    }
+    // peça VIVA e ENTREGUE (publicada e no publicador), com a página do modelo
+    for (const peca of [{ status: 'DRAFT' }, { status: 'POSTED' }, { status: 'SCHEDULED', laterPostId: 'zernio-1' }]) {
+      const r = textosDaPeca({ ...base, ...peca }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }] })
+      expect(r).toMatchObject({ textos: esperado, origem: 'arte', parcial: true })
+      semDescartado(r)
+    }
+    // entregue sem a página, mas com o snapshot confiável da arte: a mesma precedência sobre ele
+    const peloSnapshot = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte: { ...arte, layersSnapshot: modelo } }] })
+    expect(peloSnapshot).toMatchObject({ textos: esperado, origem: 'arte', parcial: true })
+    semDescartado(peloSnapshot)
+    // CARROSSEL vivo e entregue: `textosPorSlide` slide a slide, sem o valor descartado
+    const outra = { ...arte, slotValues: { headline: 'Linguiça da casa' } }
+    for (const status of ['DRAFT', 'POSTED']) {
+      const r = textosDaPeca({ ...base, mediaUrls: ['u1', 'u2'], status }, { slides: [{ url: 'u1', arte, camadasDaPagina: modelo }, { url: 'u2', arte: outra, camadasDaPagina: modelo }] })
+      expect(r.slides?.map((s) => s.textos)).toEqual([esperado, ['Linguiça da casa']])
+      expect(r.slides?.every((s) => s.origem === 'arte' && s.parcial === true)).toBe(true)
+      expect(r.textos).toEqual([...esperado, 'Linguiça da casa'])
+      semDescartado(r)
+    }
+
+    // SEM camadas legíveis do modelo (página fora do projeto/apagada e sem snapshot; ou ilegível): indisponível, e a copy bruta NÃO vai à mídia
+    const semValores = (r: unknown) => {
+      semDescartado(r)
+      expect(JSON.stringify(r)).not.toContain('Picanha')
+      expect(JSON.stringify(r)).not.toContain('sexta é dia')
+    }
+    const vivaSemPagina = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte }] })
+    expect(vivaSemPagina.textos).toEqual([])
+    expect(vivaSemPagina.origem).toBeUndefined()
+    expect(vivaSemPagina.indisponiveis).toMatch(/a arte desta peça não afirma texto \(arte desenhada de um modelo cuja página não foi carregada.*id da camada vence o nome/)
+    semValores(vivaSemPagina)
+    const entregueSemPagina = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte }] })
+    expect(entregueSemPagina.textos).toEqual([])
+    expect(entregueSemPagina.indisponiveis).toBeTruthy()
+    semValores(entregueSemPagina)
+    const ilegivel = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte, camadasDaPagina: '{nao é json' }] })
+    expect(ilegivel.textos).toEqual([])
+    expect(ilegivel.indisponiveis).toMatch(/as camadas do modelo desta arte não puderam ser lidas/)
+    semValores(ilegivel)
+    // carrossel com um slide sem página: aquele slide declara, o outro responde, a leitura é parcial
+    const carrosselSemPagina = textosDaPeca({ ...base, mediaUrls: ['u1', 'u2'], status: 'POSTED' }, { slides: [{ url: 'u1', arte }, { url: 'u2', arte: outra, camadasDaPagina: modelo }] })
+    expect(carrosselSemPagina.slides?.[0]).toMatchObject({ textos: [], indisponiveis: expect.stringMatching(/página não foi carregada/) })
+    expect(carrosselSemPagina.slides?.[1].textos).toEqual(['Linguiça da casa'])
+    expect(carrosselSemPagina).toMatchObject({ textos: ['Linguiça da casa'], origem: 'arte', parcial: true })
+    semValores(carrosselSemPagina)
+  })
+
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
     expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['P'], origem: 'pagina' })
