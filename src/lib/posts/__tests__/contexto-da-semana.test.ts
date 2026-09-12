@@ -205,4 +205,3 @@ describe('chaveDaPropostaDeSlot — o formato é parte da identidade da proposta
     expect(chaveDaPropostaDeSlot(8, '2026-09-21 19:00', 'grade-v1', 'story')).not.toBe(story)
   })
 })
-
