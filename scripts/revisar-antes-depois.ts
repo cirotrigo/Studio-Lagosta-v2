@@ -24,6 +24,7 @@ import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { revisarArte } from '@/lib/creatives/revisao/revisar-arte'
 import { aplicarAjustes } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 
 function argumento(nome: string): string | null {
   const i = process.argv.indexOf(nome)
@@ -64,7 +65,10 @@ async function main() {
   }
   const camadas = lerCamadas(page.layers).camadas as unknown as Layer[]
   const canvas = { width: page.width, height: page.height }
-  const background = page.background ?? '#000000'
+  // O MESMO fundo que a revisão e o render de publicação usam (o conversor
+  // compartilhado): página sem fundo explícito é BRANCA lá, e a prova em preto
+  // compararia outra aparência (REV-F04 da revisão FINAL do Codex, 12/09/2026).
+  const background = convertPageToDesignData({ id: page.id, name: page.name, width: page.width, height: page.height, layers: page.layers, background: page.background }).canvas.backgroundColor
 
   await registerProjectFonts(projectId)
   const antes = await renderizar(camadas, canvas, background)

@@ -521,6 +521,19 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     expect(escuro.ajustes).toEqual([])
   })
 
+  it('"menos gradiente" NUNCA é proposto sobre gradiente DESENHADO À MÃO, mesmo com a régua satisfeita — a visão fica como observação (REV-F03)', () => {
+    const manual = { ...gradienteDoRodape, id: 'gradiente-manual', metadata: { forca: 0.6 } } as Layer
+    const sobra = medida({ camadas: ['servico'], gradiente: null, tinta: 0, p98ComHalo: 60, ok: true })
+    const vistos: AchadoVisto[] = [
+      { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa escura pesa sobre a foto no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'medio' },
+    ]
+    const r = avaliarPeca(entrada({ camadas: [manual, servico], metricas: [metrica(servico)], contraste: [sobra], vistos }))
+    expect(r.ajustes.filter((a) => a.tipo === 'gradiente')).toHaveLength(0)
+    const escuro = r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!
+    expect(escuro).toBeDefined()
+    expect(escuro.ajustes).toEqual([])
+  })
+
   it('visão que voltou SEM a lista (inconclusiva) não rebaixa a leitura medida nem marca a visão como avaliada (REV-02)', () => {
     const falta = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, tintaCorrigida: 0.8, p98ComHalo: 120, ok: true, antesDaCorrecao: { p98: 180, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' } })
     const base = { camadas: [rodapeA06, servico], metricas: [metrica(servico)], contraste: [falta] }

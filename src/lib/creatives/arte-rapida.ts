@@ -1066,6 +1066,22 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     await db.page.update({ where: { id: page.id }, data: dadosDaPagina })
   }
 
+  /**
+   * A página JÁ carrega o ajuste do revisor; a arte do compositor (spec e
+   * snapshot) não o conhece. Se o render abaixo e todas as recuperações
+   * falharem, a próxima edição de texto reabriria o job NORMAL e a
+   * recomposição refaria a peça pela spec antiga, desfazendo o ajuste. A
+   * trava (`somenteReRender`) nasce AQUI, junto da gravação do ajuste — não
+   * do desfecho do render (REV-F01 da revisão FINAL do Codex, 12/09/2026).
+   * Falhar em travar não derruba o ajuste: fica no log.
+   */
+  if (revisao && revisao.aplicados.length > 0) {
+    const { travarRecomposicaoDaArte } = await import('@/lib/compositor/recompor')
+    await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página').catch((falha) =>
+      console.warn('[ajustar-arte] não deu para travar a recomposição da arte:', falha),
+    )
+  }
+
   // Textos FINAIS da arte, por nome de camada — é o que alimenta a verificação
   // por visão do conferir-arte e do melhorar-arte (extractExpectedTexts lê
   // slotValues), então precisa refletir a página como ficou, não só o patch.

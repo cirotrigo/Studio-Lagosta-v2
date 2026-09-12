@@ -44,7 +44,7 @@ import { del, put } from '@vercel/blob'
 
 import { db } from '@/lib/db'
 import { marcarForcaAtendida, marcarForcaEmExecucao, pedirNovaTentativa } from '@/lib/ai/generation-queue'
-import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
 import { renderPageAndRegister } from '@/lib/creatives/persist'
@@ -223,6 +223,14 @@ export interface ResultadoDaRecomposicao {
   /** Posts devolvidos à fila de render (os de imagem única desta página). */
   invalidados: number
   avisos: string[]
+  /**
+   * A VERSÃO VISUAL da página que esta arte reflete (hash de dimensões, fundo e
+   * camadas — `versaoDaPagina`): a que foi gravada pela recomposição, ou a que
+   * foi lida para o re-render. O runner compara com a página DEPOIS e devolve
+   * o job à fila quando divergem — inclusive numa mudança sem copy, como só a
+   * força de um gradiente (REV-F02 da revisão FINAL do Codex, 12/09/2026).
+   */
+  versaoGravada: string | null
 }
 
 export interface RecomporInput {
@@ -245,6 +253,8 @@ export interface RecomporInput {
    * recompostas, para simular a edição concorrente. Nunca vem do payload.
    */
   antesDeGravar?: () => Promise<void>
+  /** Só para a prova: roda ANTES do re-render (o ramo que não recompõe), depois de a versão visual ser lida. */
+  antesDeRenderizar?: () => Promise<void>
   /** SÓ PARA PROVA: roda entre o levantamento (que decide a defasagem) e a leitura da página que vai ser composta. */
   depoisDoLevantamento?: () => Promise<void>
 }
@@ -272,6 +282,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     congelados: levantamento.congelados,
     invalidados: 0,
     avisos: [],
+    versaoGravada: null,
   }
 
   if (levantamento.slides.length === 0) return vazio
@@ -358,6 +369,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   let novaUrl: string
   let recomposta = false
   let invalidados = 0
+  let versaoGravada: string | null = null
 
   if (podeRecompor) {
     const { spec: specComCopy, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
@@ -400,6 +412,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       await del(blob.url).catch(() => undefined)
       throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada enquanto a arte era refeita; a composição foi descartada e a arte será refeita a partir da página nova.', 409)
     }
+    versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: camadas.camadas })
     await db.generation.update({
       where: { id: arte.generationId },
       data: {
@@ -422,6 +435,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * válido. `sourcePageId` e `authorName` vão de volta porque a rota os
      * SOBRESCREVE, e um deles nulo apagaria de qual modelo a arte nasceu.
      */
+    // O re-render desenha a página COMO FOI LIDA: é esta a versão que a arte
+    // vai refletir, e é contra ela que o runner confere a página depois.
+    versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: page.layers })
+    if (input.antesDeRenderizar) await input.antesDeRenderizar()
     const registrada = await renderPageAndRegister({
       project: projeto,
       templateId: page.Template.id,
@@ -480,7 +497,40 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     congelados: levantamento.congelados,
     invalidados,
     avisos,
+    versaoGravada,
   }
+}
+
+/**
+ * TRAVA a recomposição da arte desta página — chamada por `ajustarArte` ANTES
+ * do render de um ajuste do revisor. A arte mais recente com `resultUrl` (a
+ * que `levantarPagina` escolhe para recompor) recebe `somenteReRender` por
+ * merge. Até aqui a marca só era gravada pelo re-render FORÇADO bem-sucedido:
+ * com o render do ajuste e todas as recuperações falhando, a edição de texto
+ * seguinte reabria o job NORMAL, `soTexto` era verdadeiro e a recomposição
+ * refazia a peça pela spec antiga — desfazendo o ajuste (REV-F01 da revisão
+ * FINAL do Codex, 12/09/2026). A proteção nasce junto da gravação do ajuste,
+ * não do desfecho do render. Idempotente; nunca lança para quem chama.
+ */
+export async function travarRecomposicaoDaArte(pageId: string, motivo: string): Promise<boolean> {
+  const geracoes = await db.generation.findMany({
+    where: { fieldValues: { path: ['pageId'], equals: pageId } },
+    select: { id: true, resultUrl: true, fieldValues: true },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  })
+  const primeira = geracoes.find((g) => !!g.resultUrl)
+  if (!primeira) return false
+  const fv =
+    primeira.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)
+      ? (primeira.fieldValues as Record<string, unknown>)
+      : {}
+  if (fv.somenteReRender) return true
+  await db.generation.update({
+    where: { id: primeira.id },
+    data: { fieldValues: { ...fv, somenteReRender: { desde: new Date().toISOString(), motivo } } as never },
+  })
+  return true
 }
 
 /** O que fica gravado em `Generation.fieldValues.recomposicao`. */
@@ -676,6 +726,8 @@ export async function processarRecomposicaoEmBackground(args: {
   recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean; forcaPedidaEm?: string }
   decididoPor?: string | null
   queueJobId?: string | null
+  /** Só para a prova de integração: as costuras de `RecomporInput`. */
+  seams?: Pick<RecomporInput, 'antesDeGravar' | 'depoisDoLevantamento' | 'antesDeRenderizar'>
 }): Promise<void> {
   const { pageId, origem } = args.recompor
   const t0 = Date.now()
@@ -683,10 +735,9 @@ export async function processarRecomposicaoEmBackground(args: {
   // job antes de começar, para uma falha dela não voltar à fila como se fosse
   // força nova (REV-09).
   if (args.recompor.forcar === true) await marcarForcaEmExecucao(args.queueJobId, args.recompor.forcaPedidaEm)
-  const copyAntes = await copyDaPagina(pageId)
 
   try {
-    const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, decididoPor: args.decididoPor ?? null })
+    const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, decididoPor: args.decididoPor ?? null, ...(args.seams ?? {}) })
     console.log(
       `[recompor] ${pageId} em ${Math.round((Date.now() - t0) / 1000)}s — ${r.recomposta ? 'recomposta' : 're-renderizada'}, ` +
         `${r.trocados.length} slide(s) trocado(s)` +
@@ -697,15 +748,23 @@ export async function processarRecomposicaoEmBackground(args: {
 
     /**
      * A página mudou DE NOVO enquanto a arte era refeita — alguém continuou
-     * digitando. Sem isto a última edição ficaria de fora em silêncio, que é
-     * o defeito de origem com outra roupa. `pedirNovaTentativa` respeita o
-     * teto de tentativas do job, então o laço é limitado por construção; a
-     * edição seguinte reabre o job do zero.
+     * digitando, ou salvou só outra força de gradiente. Sem isto a última
+     * edição ficaria de fora em silêncio, que é o defeito de origem com outra
+     * roupa. A comparação é pela VERSÃO VISUAL (dimensões, fundo e camadas —
+     * `versaoDaPagina`), nunca só pela copy: o re-render forçado que lia G1
+     * enquanto o editor gravava G2 fechava DONE com o slide em G1 e a página
+     * em G2, e o diff geométrico não enxerga força de gradiente (REV-F02 da
+     * revisão FINAL do Codex, 12/09/2026). Ilegível nunca é "a mesma versão".
+     * `pedirNovaTentativa` respeita o teto de tentativas do job, então o laço
+     * é limitado por construção; a edição seguinte reabre o job do zero.
      */
-    const copyDepois = await copyDaPagina(pageId)
-    if (copyAntes && copyDepois && JSON.stringify(copyAntes) !== JSON.stringify(copyDepois)) {
-      const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
-      if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
+    if (r.versaoGravada) {
+      const atual = await db.page.findUnique({ where: { id: pageId }, select: { width: true, height: true, background: true, layers: true } })
+      const versaoAtual = atual ? versaoDaPagina(atual) : null
+      if (versaoAtual !== r.versaoGravada) {
+        const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
+        if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição (${r.versaoGravada} → ${versaoAtual ?? 'ilegível'})`)
+      }
     }
     /**
      * Esta execução HONROU a recuperação forçada com que partiu: marca no job,
@@ -749,11 +808,6 @@ export async function processarRecomposicaoEmBackground(args: {
 }
 
 /** A copy da página hoje — `null` quando ela sumiu ou está ilegível. */
-async function copyDaPagina(pageId: string): Promise<Record<string, string> | null> {
-  const page = await db.page.findUnique({ where: { id: pageId }, select: { layers: true } })
-  return page ? copyDeCamadas(page.layers) : null
-}
-
 /**
  * A RECUSA do compositor chega a quem editou.
  *

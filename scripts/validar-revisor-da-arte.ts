@@ -103,7 +103,8 @@ let ok = 0
 let mau = 0
 function conferir(titulo: string, condicao: boolean, detalhe = '') {
   console.log(`  ${condicao ? '✓' : '✗'} ${titulo}${detalhe ? ` — ${detalhe}` : ''}`)
-  condicao ? ok++ : mau++
+  if (condicao) ok++
+  else mau++
 }
 /**
  * O domínio público do Blob levanta o "Vercel Security Checkpoint" (403 para
@@ -468,6 +469,13 @@ async function main() {
     const gen6g = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
     const job6g = jobId2 ? await db.generationJob.findUnique({ where: { id: jobId2 }, select: { status: true, payload: true, attempts: true, maxAttempts: true } }) : null
     conferir('o ajuste do revisor gravou a página e o render falhou (como no passo 6)', !!erroDoAjuste6g && erroDoAjuste6g.code !== 'VERSAO_DIVERGENTE', erroDoAjuste6g?.message.slice(0, 60))
+    // REV-F01 (revisão FINAL): a trava `somenteReRender` nasce JUNTO da gravação
+    // do ajuste — antes de qualquer render bem-sucedido. Sem ela, com o render e
+    // as recuperações falhando, a edição de texto seguinte recomporia pela spec
+    // antiga e desfaria o ajuste. O passo 6h prova o outro lado (trava ⇒ re-render).
+    const genTravada6g = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { fieldValues: true } })
+    const trava6g = (genTravada6g?.fieldValues as Record<string, any>)?.somenteReRender
+    conferir('a trava somenteReRender foi gravada na arte JUNTO do ajuste, com o render falhando (REV-F01)', /ajuste do revisor/.test(String(trava6g?.motivo ?? '')), JSON.stringify(trava6g))
     conferir('a recomposição recusou gravar por cima (PAGINA_MUDOU_DURANTE 409)', e6g?.code === 'PAGINA_MUDOU_DURANTE' && e6g.status === 409, e6g?.message.slice(0, 80))
     conferir('a página ficou com o ajuste concorrente E o texto editado (nada foi sobrescrito)', forcaDe(pagina6g) === forcaNova2 && String(pagina6g.find((c) => c.id === headline2?.id)?.content) === textoDo6g, `força ${forcaDe(pagina6g)} (esperava ${forcaNova2})`)
     conferir('a arte não trocou (a composição foi descartada)', gen6g?.resultUrl === persistido2.url)
@@ -600,6 +608,51 @@ async function main() {
       const j = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { payload: true } })
       const rec = (j?.payload as Record<string, any>)?.recompor ?? {}
       await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...((j?.payload as object) ?? {}), recompor: { ...rec, forcaAtendida: rec.forcaPedidaEm ?? '' } } as never } })
+    }
+
+    // ── 6m. a página muda ENQUANTO o re-render FORÇADO desenha (REV-F02, revisão FINAL) ──
+    await pausaParaOBlob(45_000, 'dois renders no Blob (6m)')
+    console.log('6m) só a força do gradiente muda ENQUANTO o re-render forçado desenha: o job volta à fila em vez de fechar DONE com o slide velho (REV-F02)')
+    const camadas6m = await camadasDaPagina(pageId2)
+    const forcaAntes6m = forcaDe(camadas6m)
+    const forcaDurante6m = Math.max(0.45, Math.round((forcaAntes6m - 0.1) * 1000) / 1000)
+    const pedido6m = await pedirRecomposicaoDaArteCongelada([pageId2], 'editor', { forcar: true })
+    const jobId6m = pedido6m[0]?.jobId ?? null
+    conferir('há job FORÇADO na fila para a segunda peça', !!jobId6m && Number.isFinite(forcaAntes6m) && forcaDurante6m !== forcaAntes6m, JSON.stringify({ job: jobId6m, forcaAntes: forcaAntes6m, forcaDurante: forcaDurante6m }))
+    if (jobId6m) {
+      const reservado6m = await reservarJob(jobId6m)
+      const rec6m = (reservado6m?.payload as Record<string, any>)?.recompor
+      const genAntes6m = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+      await processarRecomposicaoEmBackground({
+        generationId: persistido2.generationId,
+        projectId: PROJETO,
+        recompor: rec6m,
+        queueJobId: jobId6m,
+        seams: {
+          // o editor salva OUTRA força de gradiente (sem mudar copy) enquanto o render desenha
+          antesDeRenderizar: async () => {
+            const c = await camadasDaPagina(pageId2)
+            await db.page.update({ where: { id: pageId2 }, data: { layers: c.map((l) => (l.id === gradiente2?.id ? { ...l, metadata: { ...(l.metadata ?? {}), forca: forcaDurante6m } } : l)) as never } })
+          },
+        },
+      })
+      const job6m = await db.generationJob.findUnique({ where: { id: jobId6m }, select: { status: true, lastError: true, attempts: true, maxAttempts: true, payload: true } })
+      const gen6m = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+      if (gen6m?.resultUrl) blobs.add(gen6m.resultUrl)
+      const rec6mDepois = (job6m?.payload as Record<string, any>)?.recompor ?? {}
+      conferir('o re-render desenhou a versão lida, mas a página mudou durante (só a força): o job VOLTOU À FILA com o motivo, em vez de DONE', gen6m?.resultUrl !== genAntes6m?.resultUrl && job6m?.status === 'PENDING' && /editada de novo/.test(String(job6m.lastError)), `${job6m?.status} ${job6m?.attempts}/${job6m?.maxAttempts}: ${String(job6m?.lastError).slice(0, 60)}`)
+      conferir('a força NÃO foi marcada como atendida (a execução não refletiu a página nova)', rec6mDepois.forcaAtendida !== rec6mDepois.forcaPedidaEm, JSON.stringify({ pedida: rec6mDepois.forcaPedidaEm, atendida: rec6mDepois.forcaAtendida }))
+      const d6m = await fecharJob(jobId6m, persistido2.generationId)
+      conferir('o fechamento devolve REENFILEIRADO', d6m === 'REENFILEIRADO', d6m)
+      // a execução seguinte (ainda forçada) desenha a página COMO ESTÁ AGORA
+      const reservado6mB = await reservarJob(jobId6m)
+      await processarRecomposicaoEmBackground({ generationId: persistido2.generationId, projectId: PROJETO, recompor: (reservado6mB?.payload as Record<string, any>)?.recompor, queueJobId: jobId6m })
+      const d6mB = await fecharJob(jobId6m, persistido2.generationId)
+      const gen6mB = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true } })
+      if (gen6mB?.resultUrl) blobs.add(gen6mB.resultUrl)
+      const carrossel6m = await db.socialPost.findUnique({ where: { id: carrossel2.id }, select: { mediaUrls: true } })
+      const pagina6mB = await camadasDaPagina(pageId2)
+      conferir('a execução seguinte fecha DONE, o slide carrega a arte da página ATUAL e a força gravada durante o render ficou', d6mB === 'DONE' && gen6mB?.resultUrl !== gen6m?.resultUrl && carrossel6m?.mediaUrls[1] === gen6mB?.resultUrl && carrossel6m.mediaUrls.length === 2 && forcaDe(pagina6mB) === forcaDurante6m, `${d6mB}; força ${forcaDe(pagina6mB)} (esperava ${forcaDurante6m}); slide=${carrossel6m?.mediaUrls[1] === gen6mB?.resultUrl}`)
     }
 
     // a copy de referência do passo 7 passa a ser a da página como está agora

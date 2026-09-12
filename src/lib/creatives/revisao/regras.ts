@@ -30,7 +30,7 @@ import { TEXT_DRAW_PADDING, type TextGeometryIssue, type TextLayerMetrics } from
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import type { ContrasteMedido } from '@/lib/compositor/regua'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
-import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
+import { alcanceDoGrupo, alturaDaFaixa, bordaDoGrupo, ehGradienteDeLeitura, forcaDaCamada, GRADIENTE_PADRAO, type Borda } from '@/lib/compositor/gradiente-de-leitura'
 import { uniao, type Rect } from '@/lib/creatives/halo/halo'
 import { bordaDaLeitura } from './aplicar-ajustes'
 import {
@@ -1122,6 +1122,13 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
           const passo = [0.08, 0.15, 0.25][i]
           if (v.correcao === 'menos-gradiente') {
             if (!gradiente || atual <= faixa[0] + 0.01) return []
+            // Gradiente desenhado À MÃO pela equipe nunca recebe proposta de
+            // redução automática — só o de LEITURA (com a marca do compositor).
+            // A proteção por borda abaixo olha a falta de leitura; esta olha a
+            // ORIGEM, e vale mesmo com a régua satisfeita: o apontamento da
+            // visão fica como observação (REV-F03 da revisão FINAL do Codex,
+            // 12/09/2026; regra registrada no CLAUDE.md).
+            if (!ehGradienteDeLeitura(gradiente)) return []
             // Tirar gradiente onde a régua mede falta de leitura pioraria o texto.
             // Vale pela borda, não só pelo id: a régua só associa o gradiente DE
             // LEITURA (com a marca do compositor); um gradiente desenhado à mão

@@ -5644,3 +5644,33 @@ Codex antes de ser escrito.
   copy.
 - ⚠️ Rich text é medido como texto simples (a largura dos trechos destacados é
   aproximada, cobertura "parcial").
+- **A recuperação da arte CONGELADA depois de um ajuste** (rodadas da revisão
+  do Codex em 12/09/2026, REV-01 a REV-11 e a revisão FINAL, prova em
+  `scripts/validar-revisor-da-arte.ts`, passos 6a–6m): quando o render do ajuste
+  falha, `ajustarArte` pede a recomposição FORÇADA — re-render da página como
+  está, nunca pela spec. O pedido vive no payload do job (`recompor.forcar`,
+  `forcaPedidaEm`, `forcaTentada`, `forcaAtendida`), promovido por
+  compare-and-set num job PENDING/RUNNING (com orçamento próprio), e
+  `fecharJob`/`falharJob` devolvem o job à fila enquanto houver força NOVA por
+  atender — nunca DONE nem FAILED com pedido pendente; a própria forçada que
+  falha em 3/3 é FAILED terminal, reabrível pela edição seguinte.
+- 🔴 **A trava `somenteReRender` nasce JUNTO da gravação do ajuste**
+  (`travarRecomposicaoDaArte`, chamada por `ajustarArte` antes do render): a
+  arte do compositor (spec e snapshot) não conhece o ajuste, e uma recomposição
+  pela spec o desfaria. Até a revisão FINAL a marca só era gravada pelo
+  re-render forçado bem-sucedido — com o render e as recuperações falhando, a
+  edição de texto seguinte reabria o job normal e recompunha (REV-F01).
+- 🔴 **O runner confere a VERSÃO VISUAL da página depois de refazer a arte**
+  (`versaoGravada`, o hash de `versaoDaPagina`), nunca só a copy: só a força de
+  um gradiente salva durante o render não muda copy nem diff geométrico, e o
+  re-render forçado fechava DONE com o slide em G1 e a página em G2 (REV-F02).
+  Divergiu → `pedirNovaTentativa`, e a execução seguinte desenha a página atual.
+- **A recomposição RECUSA (`PAGINA_MUDOU_DURANTE`) quando a página mudou entre o
+  levantamento e a leitura que compõe, ou entre a composição e a gravação**
+  (compare-and-set em `updatedAt`; o PNG é apagado). O executor lê o job FRESCO
+  ao reservar (`reservarJob`), porque a força pode chegar entre a varredura e a
+  reserva.
+- **"Menos gradiente" nunca é proposto sobre gradiente desenhado à mão** — nem
+  com a régua satisfeita (`ehGradienteDeLeitura` na regra; o apontamento da
+  visão fica como observação). E `revisar-antes-depois.ts` renderiza sobre o
+  MESMO fundo do serviço (`convertPageToDesignData`): página sem fundo é branca.
