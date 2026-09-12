@@ -193,6 +193,11 @@ const NOTA_DA_ARTE_DE_MODELO = 'arte desenhada de um MODELO com a copy do post p
  */
 function copyDaArteDeModelo(arte: NonNullable<SlideDaPeca['arte']>): Record<string, unknown> | null {
   if (arte.source !== 'post-schedule') return null
+  // R37: a arte RE-RENDERIZADA como a página estava (`recomposicao.estado`) preserva `source` e `slotValues`
+  // antigos no `fieldValues`, mas o PNG novo é a página atual, desenhada SEM essa copy — afirmá-la seria atribuir
+  // o texto de outra versão à mídia, contornando R13. Vale o tratamento de sempre: página atual na peça viva;
+  // registro confiável ou indisponibilidade na entregue.
+  if (arte.reRenderizada === true) return null
   return slotValuesParaRender(arte.slotValues)
 }
 

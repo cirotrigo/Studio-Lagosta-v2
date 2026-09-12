@@ -369,7 +369,11 @@ async function main() {
       const copyA = `${MARCA} copy A do reagendado`, copyB = `${MARCA} copy B do reagendado`
       const genModA = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-A.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyA } } as never }, select: { id: true } })
       const genModB = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-B.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: copyB } } as never }, select: { id: true } })
-      geracoes.push(genModA.id, genModB.id)
+      // R37: a arte de post-schedule RE-RENDERIZADA (o PNG novo é a página atual) não afirma mais a copy antiga.
+      const genModRR = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${marcaUrl}/modelo-rerender.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy ANTIGA do re-render` }, recomposicao: { estado: 're-renderizada' } } as never }, select: { id: true } })
+      geracoes.push(genModA.id, genModB.id, genModRR.id)
+      const reagendadoRR = await criar('10:00', { scheduledDatetime: new Date(`${dia3f}T10:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-rerender.png`], generationId: genModRR.id, slotValues: null })
+      posts.push(reagendadoRR.id)
       const reagendado = await criar('11:00', { scheduledDatetime: new Date(`${dia3f}T11:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-A.png`], generationId: genModA.id, slotValues: null })
       const carrosselDeModelo = await criar('12:00', { postType: 'POST', scheduledDatetime: new Date(`${dia3f}T12:00:00-03:00`), pageId: null, mediaUrls: [`${marcaUrl}/modelo-A.png`, `${marcaUrl}/modelo-B.png`], generationId: genModA.id, slotValues: null })
       posts.push(reagendado.id, carrosselDeModelo.id)
@@ -378,6 +382,8 @@ async function main() {
       const i36 = itens3f.find((i) => i.postId === reagendado.id), i36c = itens3f.find((i) => i.postId === carrosselDeModelo.id)
       conferir('R36: post VIVO reagendado por generationId de uma arte post-schedule volta com a copy registrada na arte (parcial, origem "arte"), NUNCA o texto cru do modelo', !!i36 && JSON.stringify(i36.textos) === JSON.stringify([copyA]) && i36.textosOrigem === 'arte' && i36.textosParciais === true && !temSemCaixa(i36.textos, textoDoModelo) && !JSON.stringify(i36).includes(textoDoModelo), JSON.stringify({ textos: i36?.textos, origem: i36?.textosOrigem, parcial: i36?.textosParciais }).slice(0, 220))
       conferir('R36: duas mídias com copies DISTINTAS sobre o MESMO modelo voltam cada uma com a sua, slide a slide, sem o texto do modelo', !!i36c && JSON.stringify((i36c.textosPorSlide as Array<{ textos: string[] }> | undefined)?.map((s) => s.textos)) === JSON.stringify([[copyA], [copyB]]) && i36c.textosParciais === true && !JSON.stringify(i36c).includes(textoDoModelo), JSON.stringify(i36c?.textosPorSlide).slice(0, 220))
+      const i37 = itens3f.find((i) => i.postId === reagendadoRR.id)
+      conferir('R37: arte de post-schedule RE-RENDERIZADA num post vivo volta com a PÁGINA atual (origem "pagina"), nunca a copy antiga preservada no fieldValues', !!i37 && i37.textosOrigem === 'pagina' && temSemCaixa(i37.textos, textoDoModelo) && !JSON.stringify(i37).includes('copy ANTIGA'), JSON.stringify({ textos: i37?.textos, origem: i37?.textosOrigem }).slice(0, 220))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3f.json'), JSON.stringify(agenda3f, null, 2))
 
       // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.

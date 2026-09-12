@@ -236,6 +236,21 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     // procedência que NÃO é post-schedule com slotValues (o compositor grava a copy também): a página/snapshot continuam mandando
     const compositor = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { pageId: 'p1', source: 'compositor', slotValues: { headline: 'Costela no bafo' }, layersSnapshot: snap('S') }, camadasDaPagina: snap('P') }] })
     expect(compositor).toEqual({ textos: ['P'], origem: 'pagina' })
+    // R37: a arte de post-schedule RE-RENDERIZADA não afirma a copy antiga (o PNG novo é a página atual, sem ela):
+    // viva → a página B; entregue → o fallback permitido (cópia registrada) ou indisponível — nunca A. Mídia única e carrossel.
+    const reRender = { ...arte, slotValues: { headline: 'Copy A antiga' }, reRenderizada: true }
+    const paginaB = [{ id: 'l1', name: 'headline', type: 'text', content: 'Texto B da página' }]
+    expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: reRender, camadasDaPagina: paginaB }] })).toEqual({ textos: ['Texto B da página'], origem: 'pagina' })
+    const entregueRR = textosDaPeca({ ...base, status: 'POSTED', slotValues: { headline: 'B registrado', _copiaDaPagina: true } }, { slides: [{ url: 'u1', arte: reRender, camadasDaPagina: paginaB }] })
+    expect(entregueRR).toMatchObject({ textos: ['B registrado'], origem: 'copy-registrada-na-entrega', parcial: true })
+    expect(JSON.stringify(entregueRR)).not.toContain('Copy A antiga')
+    const entregueSemRegistro = textosDaPeca({ ...base, status: 'POSTED' }, { slides: [{ url: 'u1', arte: reRender, camadasDaPagina: paginaB }] })
+    expect(entregueSemRegistro.textos).toEqual([])
+    expect(entregueSemRegistro.indisponiveis).toBeTruthy()
+    expect(JSON.stringify(entregueSemRegistro)).not.toContain('Copy A antiga')
+    const carrosselRR = textosDaPeca({ ...base, mediaUrls: ['u1', 'u2'], status: 'DRAFT' }, { slides: [{ url: 'u1', arte: reRender, camadasDaPagina: paginaB }, { url: 'u2', arte, camadasDaPagina: modelo }] })
+    expect(carrosselRR.slides?.map((s) => s.textos)).toEqual([['Texto B da página'], ['Costela no bafo']])
+    expect(JSON.stringify(carrosselRR)).not.toContain('Copy A antiga')
     // arte de modelo SEM copy registrada: declarada, nunca o texto do modelo
     const semCopy = textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { pageId: 'tpl', source: 'post-schedule', slotValues: {} }, camadasDaPagina: modelo }] })
     expect(semCopy).toEqual({ textos: ['Título do modelo', 'Apoio do modelo'], origem: 'pagina' })

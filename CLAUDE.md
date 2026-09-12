@@ -6483,6 +6483,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   e a caixa do render não têm registro), viva ou entregue; a cópia da página
   (`_copiaDaPagina`) e as outras procedências (compositor, com snapshot) caem
   na leitura de sempre. O `arteDe` do handler leva `source` e `slotValues`.
+  🔴 E a arte de `post-schedule` RE-RENDERIZADA não afirma a copy antiga
+  (R37): o re-render como a página estava preserva `source` e `slotValues`
+  no `fieldValues` e grava um PNG que é a página atual, desenhada SEM essa
+  copy — afirmá-la seria atribuir texto de outra versão à mídia, contornando
+  R13. Com `reRenderizada`, vale o tratamento de sempre: página atual na peça
+  viva; cópia registrada ou indisponível na entregue.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito
