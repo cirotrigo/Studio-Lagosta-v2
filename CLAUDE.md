@@ -8895,7 +8895,7 @@ esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
 |---|---|---|
 | identidade do extra (`metadata.compositor.extra.id`) | sim: o bloco sai vazio | a própria metadata |
 | id do bloco = id físico (comum: com o papel; livre: id ou nome) | sim: o bloco sai vazio | `metadata.compositor.bloco` (novo) |
-| id inferido `extra-<camada>` (formas atual e antiga) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
+| id inferido `extra-<camada>` (formas atual e antiga) — **só o livre SEM herança** (R25) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
 | marca `linhasDoBloco` / `parte` | as partes visíveis seguem do bloco único | a própria metadata |
 | id reservado `<papel>` / `<papel>-N` | as partes visíveis seguem do bloco único | `parte` (R22) |
 | papel reconhecido só pelo id | — | `metadata.compositor.papel` |
@@ -8938,3 +8938,43 @@ esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
   oculta; livre `nota` pelo id físico duplicado (id, texto e histórico, e
   oculto no original → reexibido na cópia); dois comuns duplicados; papel só
   pelo id duplicado; "Nota"/"nota" com uma oculta. Mutação por regra (M1–M6).
+
+**Da revisão FINAL do Codex sobre 01786a00 (BLOQUEADO, R25, 12/09/2026):**
+
+- 🔴 **Colisão de NAMESPACE: um id autoral pode ser igual ao id que a leitura
+  INFERE de outra camada.** A spec com o extra livre `extra-servico` (herda do
+  apoio) é aceita e compõe certo; excluída só a camada dele, o livre ficava sem
+  a identidade explícita, e `idDeExtra('servico') === 'extra-servico'` o
+  reassociava à camada do serviço comum — `servico` saía `[]`, `extra-servico`
+  levava "11h às 15h", o autosave gravava a troca como revisão da equipe, e a
+  duplicação renomeava o id autoral para `extra-<uuid>` por achar o vínculo
+  inferido.
+- **A regra: o namespace inferido é definido pela HERANÇA, não pelo prefixo.**
+  `casaPeloIdInferido` — só o bloco livre SEM `estilo.herdaDe` (o que a própria
+  leitura criou para texto solto) é casado pelo id inferido, nas formas atual e
+  antiga (`extra-x-2`). O extra autoral só é lido pela identidade. A leitura
+  nunca grava `herdaDe` num bloco que ela criou, então a marca é exata. A
+  duplicação herda a distinção por construção: `renomearExtrasDuplicados` tira
+  os vínculos de `vincularExtras`, e o autoral nunca chega lá ligado a outra
+  camada.
+- 🔴 **Reservar o prefixo `extra-` na spec foi avaliado e RECUSADO.**
+  `idReservado` guarda as DUAS portas — `validarSpec` e a preparação
+  (`resolverCamadasExtras`). Reservá-lo recusaria a entrada que a própria
+  revisão declara válida, faria a preparação pular em silêncio o extra de uma
+  spec gravada, e a recomposição (que revalida a spec) recusaria todo contrato
+  já gravado com esse id. Os ids que a leitura cria sem herança (`extra-<uuid>`)
+  não passam por essa porta: livre com texto sem herança já é recusado antes, e
+  o vazio fica fora das camadas extras.
+- **A varredura do resto do namespace**: `headline2`, `<papel>-N`, `bg-foto`,
+  `logo`, `gradiente-leitura-*` e `<texto>-elemento-N` já são reservados (R02,
+  R10); o papel nu (`servico`) só colide com a camada comum do mesmo papel, e a
+  unicidade de id da spec já recusa; o valor da marca `bloco` sai dos ids do
+  próprio contrato (únicos); e o `extra-<id>` que a leitura cria para texto
+  solto desvia de id autoral existente com o sufixo `-N`.
+- Testes: validação → preparação → persistência → exclusão → revisão →
+  duplicação com `extra-servico` (só ele muda, serviço intacto, id autoral
+  preservado, releitura estável, spec derivada válida); ocultar e reexibir, no
+  original e na cópia (controle); a forma antiga `extra-servico-2`; o autoral
+  `extra-nota` excluído com texto solto novo `nota` (o solto vira `extra-nota-2`
+  inferido e só ele é renomeado na duplicação); o inferido `extra-solta` de
+  sempre; e a varredura dos ids gerados na spec. Mutação M1–M2.

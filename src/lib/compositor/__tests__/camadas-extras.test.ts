@@ -1198,4 +1198,108 @@ describe('correção da revisão FINAL do Codex sobre 838bde61 (R23–R24): iden
     expect(rev.blocos).toEqual(['extra-nota'])
     expect(linhasPorId(rev.copy!)).toEqual([['h', ['Costela']], ['extra-nota', []], ['extra-nota-2', ['B']]])
   })
+
+  // R25: o id AUTORAL de um extra livre pode ser igual ao id INFERIDO de outra camada (`idDeExtra('servico') === 'extra-servico'`).
+  const preparar = (spec: Parameters<typeof prepararBlocos>[0]['spec']) => prepararBlocos({ ...comum, spec }).montados.map((b) => b.layer)
+  const conteudoPorId = (camadas: Layer[]) => Object.fromEntries(camadas.map((l) => [l.id, l.content]))
+  const comExtraLivre = (idDoExtra: string) => {
+    const v = validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'] }], camadasExtras: [{ id: idDoExtra, linhas: ['Somente no salão'], herdaDe: 'apoio' }] })
+    expect(v.problemas).toEqual([])
+    const camadas = preparar(v.spec!)
+    expect(conteudoPorId(camadas)).toEqual({ headline: 'Costela', servico: '11h às 15h', [idDoExtra]: 'Somente no salão' })
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    expect(linhasPorId(efetiva)).toEqual([['headline', ['Costela']], ['servico', ['11h às 15h']], [idDoExtra, ['Somente no salão']]])
+    expect(efetiva.revisoes).toEqual([])
+    return { spec: v.spec!, camadas, efetiva }
+  }
+
+  it('R25: extra livre autoral `extra-servico` — validação → preparação → persistência → exclusão → revisão → duplicação: muda só `extra-servico`, o serviço fica intacto, o id autoral é preservado e a releitura é estável', () => {
+    expect(idDeExtra('servico')).toBe('extra-servico')
+    const { spec, camadas, efetiva } = comExtraLivre('extra-servico')
+    const excluida = camadas.filter((l) => !ehDoExtra('extra-servico')(l))
+    const rev = revisaoDaPaginaComCamadas(efetiva, excluida, equipe)
+    expect(rev.estado).toBe('registrada')
+    expect(rev.blocos).toEqual(['extra-servico'])
+    const esperado = [['headline', ['Costela']], ['servico', ['11h às 15h']], ['extra-servico', []]]
+    expect(linhasPorId(rev.copy!)).toEqual(esperado)
+    expect(copyEfetivaDasCamadas(rev.copy!, excluida, { superficie: 'editor' }).mudancas).toEqual([])
+    expect(validarSpec(specDaRecomposicao(spec, rev.copy!)).problemas).toEqual([])
+
+    const dup = duplicar(excluida, rev.copy!)
+    expect(dup.contrato.blocos.map((b) => b.id)).toEqual(['headline', 'servico', 'extra-servico'])
+    expect(dup.contrato.revisoes.map((r) => r.blocos)).toEqual(rev.copy!.revisoes.map((r) => r.blocos))
+    const lida = copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(linhasPorId(lida.efetiva)).toEqual(esperado)
+  })
+
+  it('R25 (controle): ocultar e reexibir `extra-servico`, também na página duplicada — muda só ele, o serviço fica intacto', () => {
+    const { camadas, efetiva } = comExtraLivre('extra-servico')
+    const oculta = camadas.map((l) => (ehDoExtra('extra-servico')(l) ? { ...l, visible: false } : l)) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(efetiva, oculta, equipe)
+    expect(rev.blocos).toEqual(['extra-servico'])
+    expect(linhasPorId(rev.copy!)).toEqual([['headline', ['Costela']], ['servico', ['11h às 15h']], ['extra-servico', []]])
+    const volta = revisaoDaPaginaComCamadas(rev.copy!, camadas, equipe)
+    expect(volta.blocos).toEqual(['extra-servico'])
+    expect(linhasPorId(volta.copy!)).toEqual(linhasPorId(efetiva))
+
+    const dup = duplicar(oculta, rev.copy!)
+    expect(dup.contrato.blocos.map((b) => b.id)).toEqual(['headline', 'servico', 'extra-servico'])
+    const reexibida = dup.camadas.map((l) => ({ ...l, visible: true })) as Layer[]
+    const voltaNaCopia = revisaoDaPaginaComCamadas(dup.contrato, reexibida, equipe)
+    expect(voltaNaCopia.blocos).toEqual(['extra-servico'])
+    expect(linhasPorId(voltaNaCopia.copy!)).toEqual(linhasPorId(efetiva))
+  })
+
+  it('R25 (variante, forma antiga do id inferido): o autoral `extra-servico-2` excluído não toma a camada `servico` pelo sufixo de colisão', () => {
+    const { camadas, efetiva } = comExtraLivre('extra-servico-2')
+    const excluida = camadas.filter((l) => !ehDoExtra('extra-servico-2')(l))
+    const rev = revisaoDaPaginaComCamadas(efetiva, excluida, equipe)
+    expect(rev.blocos).toEqual(['extra-servico-2'])
+    expect(linhasPorId(rev.copy!)).toEqual([['headline', ['Costela']], ['servico', ['11h às 15h']], ['extra-servico-2', []]])
+    const dup = duplicar(excluida, rev.copy!)
+    expect(dup.contrato.blocos.map((b) => b.id)).toEqual(['headline', 'servico', 'extra-servico-2'])
+    expect(copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' }).mudancas).toEqual([])
+  })
+
+  it('R25 (variante, o registro inferido continua funcionando): o autoral `extra-nota` excluído e um texto solto novo `nota` — o solto vira `extra-nota-2` (inferido), a releitura é estável, e a duplicação renomeia só o inferido', () => {
+    const { camadas, efetiva } = comExtraLivre('extra-nota')
+    const solta = texto('nota', { fontFamily: 'Barlow', fontSize: 40 }, 'Pergunte pelo vinho', { position: { x: 92, y: 1000 }, metadata: {} })
+    const restantes = [...camadas.filter((l) => !ehDoExtra('extra-nota')(l)), solta]
+    const rev = revisaoDaPaginaComCamadas(efetiva, restantes, equipe)
+    expect(linhasPorId(rev.copy!)).toEqual([['headline', ['Costela']], ['servico', ['11h às 15h']], ['extra-nota', []], ['extra-nota-2', ['Pergunte pelo vinho']]])
+    expect(copyEfetivaDasCamadas(rev.copy!, restantes, { superficie: 'editor' }).mudancas).toEqual([])
+
+    const dup = duplicar(restantes, rev.copy!)
+    const copiaDaSolta = dup.camadas.find((l) => l.content === 'Pergunte pelo vinho')!
+    expect(dup.contrato.blocos.map((b) => b.id)).toEqual(['headline', 'servico', 'extra-nota', idDeExtra(copiaDaSolta)])
+    const lida = copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' })
+    expect(lida.mudancas).toEqual([])
+    expect(lida.efetiva.blocos.map((b) => b.linhas)).toEqual([['Costela'], ['11h às 15h'], [], ['Pergunte pelo vinho']])
+  })
+
+  it('R25 (namespace): o id inferido segue valendo para o livre SEM herança que a leitura criou — `extra-solta` casa com a camada `solta` e a duplicação o renomeia', () => {
+    const contrato: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+      blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }, { id: 'extra-solta', funcao: 'livre', ordem: 1, linhas: ['texto solto'] }],
+    }
+    const camadas: Layer[] = [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } }),
+      texto('solta', { fontFamily: 'Barlow', fontSize: 40 }, 'texto solto', { position: { x: 92, y: 900 } }),
+    ]
+    expect(copyEfetivaDasCamadas(contrato, camadas, { superficie: 'editor' }).mudancas).toEqual([])
+    const dup = duplicar(camadas, contrato)
+    const copiaDaSolta = dup.camadas.find((l) => l.content === 'texto solto')!
+    expect(dup.contrato.blocos.map((b) => b.id)).toEqual(['h', idDeExtra(copiaDaSolta)])
+    expect(copyEfetivaDasCamadas(dup.contrato, dup.camadas, { superficie: 'editor' }).mudancas).toEqual([])
+  })
+
+  it('R25 (varredura do namespace): todo id que a composição ou a leitura GERA, como id autoral de extra — os de camada são recusados pela spec; `extra-*` é aceito, porque o namespace inferido é o do livre SEM herança', () => {
+    const pedir = (id: string) => validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'servico', linhas: ['11h às 15h'] }], camadasExtras: [{ id, linhas: ['x'], herdaDe: 'apoio' }] })
+    // o papel nu que já nomeia uma camada comum, a 2ª voz, a numeração do papel e as camadas internas
+    for (const id of ['servico', 'headline', 'headline2', 'servico-2', 'apoio-3', 'bg-foto', 'logo', 'gradiente-leitura-topo', 'servico-elemento-1']) {
+      expect(pedir(id).spec, id).toBeNull()
+    }
+    for (const id of ['extra-servico', 'extra-servico-2', 'extra-headline']) expect(pedir(id).problemas, id).toEqual([])
+  })
 })
