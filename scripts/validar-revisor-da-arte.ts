@@ -838,6 +838,74 @@ async function main() {
       }
     }
 
+    // ── 6q. a trava gravada ENQUANTO o worker RECOMPÕE (job NORMAL, não forçado) sobrevive à escrita dele (REV-S01) ──
+    await pausaParaOBlob(45_000, 'um render no Blob (6q)')
+    console.log('6q) job NORMAL — a execução RECOMPÕE pela spec, não re-renderiza: o revisor grava a trava entre o CAS da página e a escrita da arte; a arte termina `feita` COM a trava do revisor (a mesma, não uma recriada) e o job volta à fila (REV-S01)')
+    await limparTrava()
+    const genBase6q = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+    const fvBase6q = (genBase6q?.fieldValues ?? {}) as Record<string, any>
+    const snapshot6q = lerCamadas(fvBase6q.layersSnapshot).camadas as Array<Record<string, any>>
+    const headlineSnap6q = snapshot6q.find((c) => c.type === 'text' && c.metadata?.compositor?.papel === 'headline')
+    const textoDo6q = 'Segunda peça\nrecomposta 6q'
+    // A página volta ao que o compositor pousou (o snapshot da arte) com SÓ o
+    // texto da manchete mudado: defasagem só de texto, sem ajuste manual —
+    // é o que faz a execução RECOMPOR em vez de re-renderizar.
+    await db.page.update({ where: { id: pageId2 }, data: { layers: snapshot6q.map((c) => (c.id === headlineSnap6q?.id ? { ...c, content: textoDo6q } : c)) as never } })
+    const lev6q = await levantarPagina(pageId2)
+    const temSpec6q = !!(lev6q as unknown as { arte?: { spec?: unknown } } | null)?.arte?.spec
+    const travas6qPre = (await gensDaPagina2()).map((g) => travaDe(g.fieldValues))
+    conferir('precondição 6q: peça SEM trava, com spec, e a defasagem é SÓ de texto (a execução vai RECOMPOR, não re-renderizar)', travas6qPre.every((t) => !t) && temSpec6q && lev6q?.defasagem.soTexto === true && !lev6q.defasagem.ilegivel && lev6q.defasagem.defasada === true, JSON.stringify({ travas: travas6qPre, spec: temSpec6q, soTexto: lev6q?.defasagem.soTexto, defasada: lev6q?.defasagem.defasada, mexido: lev6q?.defasagem.mexidoNaMao }))
+    const pedido6q = await pedirRecomposicaoDaArteCongelada([pageId2], 'editor')
+    const jobId6q = pedido6q[0]?.jobId ?? null
+    conferir('há job NORMAL (não forçado) na fila para a segunda peça (6q)', !!jobId6q, String(jobId6q))
+    if (jobId6q) {
+      const reservado6q = await reservarJob(jobId6q)
+      const rec6q = (reservado6q?.payload as Record<string, any>)?.recompor
+      conferir('o payload do job 6q NÃO é forçado', !!rec6q && rec6q.forcar !== true, JSON.stringify(rec6q))
+      let travaDurante6q: unknown = null
+      let erroDoAjuste6q: { code?: string; message: string } | null = null
+      let correu6q = 0
+      const revisorDurante6q = async () => {
+        correu6q++
+        if (correu6q > 1) return
+        const c = await camadasDaPagina(pageId2)
+        // A recomposição acabou de reescrever as camadas: o gradiente é o da
+        // página COMO ESTÁ agora (o id de antes pode ter mudado).
+        const grad = c.find((l) => (l.type === 'gradient' || l.type === 'gradient2') && l.metadata?.tratamentoDeTexto)
+        const forca = Math.min(0.9, Math.round((Number(grad?.metadata?.forca ?? 0.5) + 0.06) * 1000) / 1000)
+        const ajuste = { tipo: 'gradiente' as const, borda: (grad?.metadata?.borda === 'topo' ? 'topo' : 'rodape') as 'topo' | 'rodape', forca, ...(grad ? { camadas: [String(grad.id)] } : {}) }
+        const rv = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
+        process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+        erroDoAjuste6q = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId2, versaoEsperada: rv.versao, ajustes: [ajuste], canal: 'claude-code' }))
+        process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+        travaDurante6q = travaDe((await gensDaPagina2())[0]?.fieldValues)
+      }
+      await processarRecomposicaoEmBackground({
+        generationId: persistido2.generationId,
+        projectId: PROJETO,
+        recompor: rec6q,
+        queueJobId: jobId6q,
+        // SÓ a costura da RECOMPOSIÇÃO: se a execução caísse no re-render, o
+        // revisor não rodaria e as conferências abaixo FALHAM — e é assim que
+        // esta prova falha com a escrita antiga (`{ ...fieldValues }` capturado)
+        // e passa com o merge no banco.
+        seams: { entreGravarPaginaEArte: revisorDurante6q },
+      })
+      const gen6q = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { resultUrl: true, fieldValues: true } })
+      if (gen6q?.resultUrl) blobs.add(gen6q.resultUrl)
+      const fv6q = (gen6q?.fieldValues ?? {}) as Record<string, any>
+      const job6q = await db.generationJob.findUnique({ where: { id: jobId6q }, select: { status: true, lastError: true } })
+      const eAj6q = erroDoAjuste6q as unknown as { code?: string; message: string } | null
+      conferir('a costura da RECOMPOSIÇÃO rodou UMA vez e o revisor gravou página + trava ali (o render dele falhou, como no passo 6)', correu6q === 1 && !!eAj6q && eAj6q.code !== 'VERSAO_DIVERGENTE' && !!travaDurante6q && /ajuste do revisor/.test(String((travaDurante6q as Record<string, unknown> | null)?.motivo ?? '')), `${correu6q}x; ${eAj6q?.code} ${String(eAj6q?.message ?? '').slice(0, 60)}; trava durante: ${JSON.stringify(travaDurante6q).slice(0, 120)}`)
+      conferir('a arte foi RECOMPOSTA (URL nova e `recomposicao.estado === "feita"`), não re-renderizada', gen6q?.resultUrl !== genBase6q?.resultUrl && fv6q?.recomposicao?.estado === 'feita', JSON.stringify({ estado: fv6q?.recomposicao?.estado, mudouUrl: gen6q?.resultUrl !== genBase6q?.resultUrl }))
+      conferir('a trava que sobreviveu é EXATAMENTE a do revisor (`desde` e motivo iguais aos capturados logo após o ajuste): o worker não a apagou nem a recriou', !!fv6q?.somenteReRender && JSON.stringify(fv6q.somenteReRender) === JSON.stringify(travaDurante6q), JSON.stringify({ final: fv6q?.somenteReRender, durante: travaDurante6q }).slice(0, 240))
+      conferir('a página mudou durante (o ajuste do revisor): o runner devolveu o job à fila em vez de fechar DONE', job6q?.status === 'PENDING' && /editada de novo/.test(String(job6q?.lastError)), `${job6q?.status}: ${String(job6q?.lastError).slice(0, 60)}`)
+      const d6q = await fecharJob(jobId6q, persistido2.generationId)
+      conferir('o fechamento devolve REENFILEIRADO (6q)', d6q === 'REENFILEIRADO', d6q)
+      // O que faltava provar já foi provado; o job fecha à mão para não gastar outro render.
+      await db.generationJob.update({ where: { id: jobId6q }, data: { status: 'DONE', finishedAt: new Date() } })
+    }
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))
