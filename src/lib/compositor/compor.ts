@@ -1181,6 +1181,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     // é a ordem em que foi composta, não a posição no Instagram.
     ...(spec.carrossel ? {} : { peca: repeticao > 0 ? repeticao + 1 : null }),
   })
+  // PR 15: o carimbo da voz em vigor quando a copy foi escrita. A peça de item
+  // de plano foi escrita no `criar-plano` (o `createdAt` do item é o instante);
+  // best-effort — sem carimbo a peça sai do mesmo jeito.
+  // Import dinâmico: `voz-service` puxa o `Prisma` do client em runtime, e o
+  // compositor é carregado em testes que só dublam `@/lib/db`.
+  const vozNaEscrita = await import('@/lib/brand/voz-service')
+    .then((m) => m.carimboDaVozAgora(spec.projectId, { itemDePlanoId: spec.itemDePlanoId ?? null }))
+    .catch(() => null)
   // A entrada do persist é montada num módulo PURO (`persistencia.ts`): é lá
   // que mora a regra de que a Generation da FILA (`opcoes.generationId`) é
   // FECHADA em vez de nascer outra — o defeito de 04/09/2026 (Espeto).
@@ -1199,6 +1207,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     fundo: assinatura.numeros.fundo,
     diagnostico,
     fotoUrl: foto?.url ?? null,
+    vozNaEscrita,
   })
   // A peça sem contrato por recusa (legado que não cabe, histórico cheio) AVISA quem pediu — nunca em silêncio.
   // `diagnostico` é o mesmo objeto gravado em `fieldValues.composicao`.

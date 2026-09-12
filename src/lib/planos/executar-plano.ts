@@ -472,6 +472,8 @@ async function enfileirarItemDeIA(item: ItemDoPlano, input: ExecutarPlanoInput):
     // Mesma janela de `gerar-imagem`: o modelo repetindo a tool no chat não
     // pode virar segunda cobrança.
     dedupeWindowMinutes: 10,
+    // PR 15: a copy do item foi escrita no criar-plano, não agora.
+    escritaEm: item.createdAt ?? null,
   })
 
   if (!started.reused && started.runnerArgs) {
