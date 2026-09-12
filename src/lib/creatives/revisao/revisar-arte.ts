@@ -511,7 +511,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     motivoSemMedida,
     textosSemMetrica,
     vistos,
-    ...insumosDaVisao(visao),
+    ...insumosDaVisao(visao, marcas),
   })
 
   // A prévia é conveniência: falhar aqui não pode descartar um relatório pronto.

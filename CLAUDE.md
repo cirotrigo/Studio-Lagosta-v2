@@ -5940,3 +5940,44 @@ Codex antes de ser escrito.
   leitura em 7º: parcial e `problema`; controle dentro do teto: avaliada) e
   `limpeza-de-blobs-da-prova.test.ts` (rejeição com mensagem vazia e o gate
   `limpezaFalhou`). Cada correção desfeita por mutação faz a sua prova falhar.
+
+**Da pré-revisão do commit 65b40096 (BLOQUEADO, C0-01…02, 12/09/2026):**
+
+- 🔴 **A visão só rebaixa o achado MEDIDO que ela RECEBEU marcado** (C0-01).
+  O laço que manda "texto sem leitura" para sugestão, e tira o assunto
+  estimado, rodava ANTES de a revisão saber que a visão não teve marca daquele
+  texto. Duas variantes, as duas com a régua medindo o horário fora do alvo e
+  a visão devolvendo lista vazia: (A) o horário é texto sem métrica (curvo,
+  fitty, auto-resize), que não ganha marca T, e era rebaixado dizendo que "a
+  visão olhou e não viu", enquanto a cobertura, logo depois, virava parcial
+  porque a visão não o recebeu (relatório contraditório); (B) a medição dos
+  textos falhou, nenhum texto ganhou marca, TODA leitura medida descia e a
+  visão ficava "avaliada". Hoje a cobertura é decidida antes: achado com
+  alguma camada fora de `visaoCamadasMarcadas` (que `insumosDaVisao(visao,
+  marcas)` preenche; sem o campo, a regra deriva de `blocosDeTexto`, a mesma
+  conta de `marcasDaPeca`) continua medido e deixa a visão parcial, com os
+  ids. Com `motivoSemMedida`, a visão nunca sai "avaliada".
+- 🔴 **Confirmação da visão vale para TODOS os achados a que se aplica, nunca
+  só ao primeiro** (C0-02). "Gradiente claro demais" apontado para a peça
+  inteira (sem marca) confirmava, por `find`, só o primeiro `texto-sem-leitura`
+  da lista; o horário ficava sem a confirmação e descia com a nota falsa de
+  que a visão não viu problema de leitura. Hoje é `filter`: cada irmão recebe
+  o olhar. Item com marca continua confirmando só o que cruza a marca.
+- Varredura em `regras.ts` dos pontos em que a presença da visão muda a classe
+  de um achado medido: o laço de arbitragem (leitura → sugestão; assunto
+  estimado → sai) passa pela checagem de marca, e a confirmação por irmão
+  (que protege do rebaixamento) é por `filter`. `contradicaoDaMedida` só anota
+  o achado da própria visão, e os desmentidos descartam apontamentos DA
+  visão, não achados medidos.
+- **O cleanup do banco e a exclusão do Blob da prova são passos independentes**
+  (nota não bloqueante da mesma pré-revisão): `limparBancoEBlobs`
+  (`scripts/lib/limpeza-de-blobs.ts`) roda o banco num `try`, apaga o Blob
+  mesmo que ele lance (com as URLs juntadas até ali) e devolve `erroDoBanco`,
+  nunca vazio, que a prova conta como falha.
+- Provas: `regras.test.ts` (texto sem métrica e medição que falhou, os dois
+  mantendo `problema` e a visão parcial, com o controle marcado que ainda
+  desce; o assunto estimado sem marca que fica; a peça inteira confirmando as
+  duas leituras, com o controle só em T1), `visao.test.ts` (`insumosDaVisao`
+  leva as camadas marcadas) e `limpeza-de-blobs-da-prova.test.ts` (banco que
+  lança não impede o Blob). Cada correção desfeita por mutação faz a sua prova
+  falhar.

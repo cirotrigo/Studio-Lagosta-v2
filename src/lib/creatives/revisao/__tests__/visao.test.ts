@@ -91,5 +91,8 @@ describe('a reconciliação do que a visão devolveu', () => {
     expect(insumosDaVisao({ estado: 'feita', descartados: 0, truncados: 1 })).toEqual({ visaoConclusiva: true, visaoTruncados: 1, motivoSemVisao: undefined })
     expect(insumosDaVisao({ estado: 'feita', descartados: 2, truncados: 0 })).toEqual({ visaoConclusiva: false, visaoTruncados: 0, motivoSemVisao: undefined })
     expect(insumosDaVisao({ estado: 'falhou', truncados: 3, motivo: 'timeout' })).toEqual({ visaoConclusiva: false, visaoTruncados: 0, motivoSemVisao: 'timeout' })
+    // as camadas que a visão recebeu marcadas vão junto (C0-01); visão que não rodou não recebeu nenhuma
+    expect(insumosDaVisao({ estado: 'feita' }, marcas).visaoCamadasMarcadas).toEqual(['headline', 'logo'])
+    expect(insumosDaVisao({ estado: 'falhou' }, marcas).visaoCamadasMarcadas).toBeUndefined()
   })
 })

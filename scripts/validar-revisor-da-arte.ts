@@ -42,7 +42,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { apagarBlobsDaRodada, limpezaFalhou } from './lib/limpeza-de-blobs'
+import { limparBancoEBlobs, limpezaFalhou } from './lib/limpeza-de-blobs'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -1578,71 +1578,83 @@ async function main() {
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
     console.log('\ncleanup (só os ids criados por esta prova)')
     const criados = { posts: posts.length, generations: 0, generationsAlheias: 0, jobs: 0, sinais: 0, pages: pageId ? 1 : 0, templates: 0, blobs: blobs.size }
-    // As Generations de prova criadas em OUTRO projeto (6s): pelo id exato,
-    // independentemente do projeto, e a que não sumir CONTA como falha (REV-052-01).
-    if (generationsAlheias.length) {
-      const r = await apagarGenerationsPorId(generationsAlheias)
-      criados.generationsAlheias = r.apagadas.length
-      conferir(`cleanup: as ${generationsAlheias.length} Generation(s) de prova criadas em outro projeto foram apagadas pelo id (nenhuma faltou)`, r.faltaram.length === 0, JSON.stringify(r.faltaram))
-    }
-    // Falha no meio da composição deixa Page (e às vezes Generation) sem que
-    // `pageId` tenha sido preenchido: o que foi criado com a MARCA desta rodada
-    // entra no cleanup do mesmo jeito (achado R2 da revisão do Codex).
-    // TODAS as páginas da rodada: as que a prova registrou (1ª e 2ª peça) e o
-    // que nasceu com a MARCA sem chegar a um id (falha no meio da composição —
-    // achado R2 e, na 2ª peça, REV-08 da revisão do Codex).
-    const idsDePagina = new Set<string>(paginasCriadas)
-    if (pageId) idsDePagina.add(pageId)
-    for (const p of await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })) idsDePagina.add(p.id)
-    // Toda URL que a arte já teve: `resultUrl` e o rastro `recomposicao.urlsAnteriores` (o re-render sobrescreve
-    // a URL, e um PNG que saiu da coluna sem entrar no conjunto ficaria no Blob de produção — REV-9E-02).
-    const urlsDaGeneration = (g: { resultUrl: string | null; fieldValues: unknown }): string[] => {
-      const fv = (g.fieldValues ?? {}) as Record<string, any>
-      const anteriores = Array.isArray(fv.recomposicao?.urlsAnteriores) ? (fv.recomposicao.urlsAnteriores as unknown[]).filter((u): u is string => typeof u === 'string') : []
-      return [...(g.resultUrl ? [g.resultUrl] : []), ...anteriores]
-    }
-    const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], string_contains: MARCA } }, select: { id: true, resultUrl: true, fieldValues: true } })
-    for (const g of gensSemPagina) for (const u of urlsDaGeneration(g)) blobs.add(u)
-    if (gensSemPagina.length) {
-      await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
-      criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
-    }
-    const postsOrfaos = await db.socialPost.findMany({ where: { projectId: PROJETO, caption: { contains: MARCA } }, select: { id: true } })
-    for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
-    criados.pages = 0
-    for (const id of idsDePagina) {
-      const gens = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: id } }, select: { id: true, resultUrl: true, fieldValues: true } })
-      for (const g of gens) for (const u of urlsDaGeneration(g)) blobs.add(u)
-      criados.jobs += (await db.generationJob.deleteMany({ where: { generationId: { in: gens.map((g) => g.id) } } })).count
-      criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId: id, createdAt: { gte: inicio } } })).count
-      criados.generations += (await db.generation.deleteMany({ where: { id: { in: gens.map((g) => g.id) } } })).count
-      const pagina = await db.page.findUnique({ where: { id }, select: { templateId: true } })
-      if (!pagina) continue
-      await db.page.delete({ where: { id } })
-      criados.pages++
-      // A pasta da semana só sai se nasceu nesta prova e ficou vazia.
-      if (!templatesAntes.has(pagina.templateId)) {
-        const restam = await db.page.count({ where: { templateId: pagina.templateId } })
-        const gensNoTemplate = await db.generation.count({ where: { templateId: pagina.templateId } })
-        if (restam === 0 && gensNoTemplate === 0) {
-          await db.template.delete({ where: { id: pagina.templateId } })
-          criados.templates++
+    // O banco e o Blob são passos INDEPENDENTES (nota da pré-revisão de 65b40096): se um delete do banco lançar,
+    // a exclusão do Blob roda mesmo assim, com o que já foi juntado, e lista as URLs que ficaram.
+    const cleanup = await limparBancoEBlobs(
+      blobs,
+      async () => {
+        // As Generations de prova criadas em OUTRO projeto (6s): pelo id exato,
+        // independentemente do projeto, e a que não sumir CONTA como falha (REV-052-01).
+        if (generationsAlheias.length) {
+          const r = await apagarGenerationsPorId(generationsAlheias)
+          criados.generationsAlheias = r.apagadas.length
+          conferir(`cleanup: as ${generationsAlheias.length} Generation(s) de prova criadas em outro projeto foram apagadas pelo id (nenhuma faltou)`, r.faltaram.length === 0, JSON.stringify(r.faltaram))
         }
-      }
-    }
-    if (plano9Id) {
-      await db.itemDePlano.deleteMany({ where: { planoId: plano9Id } })
-      await db.planoDeConteudo.deleteMany({ where: { id: plano9Id } })
-    }
-    if (sinaisDaProva.length) criados.sinais += (await db.learningSignal.deleteMany({ where: { id: { in: sinaisDaProva } } })).count
-    if (posts.length) {
-      criados.posts = posts.length
-      criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
-      await db.socialPost.deleteMany({ where: { id: { in: posts } } })
+        // Falha no meio da composição deixa Page (e às vezes Generation) sem que
+        // `pageId` tenha sido preenchido: o que foi criado com a MARCA desta rodada
+        // entra no cleanup do mesmo jeito (achado R2 da revisão do Codex).
+        // TODAS as páginas da rodada: as que a prova registrou (1ª e 2ª peça) e o
+        // que nasceu com a MARCA sem chegar a um id (falha no meio da composição —
+        // achado R2 e, na 2ª peça, REV-08 da revisão do Codex).
+        const idsDePagina = new Set<string>(paginasCriadas)
+        if (pageId) idsDePagina.add(pageId)
+        for (const p of await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })) idsDePagina.add(p.id)
+        // Toda URL que a arte já teve: `resultUrl` e o rastro `recomposicao.urlsAnteriores` (o re-render sobrescreve
+        // a URL, e um PNG que saiu da coluna sem entrar no conjunto ficaria no Blob de produção — REV-9E-02).
+        const urlsDaGeneration = (g: { resultUrl: string | null; fieldValues: unknown }): string[] => {
+          const fv = (g.fieldValues ?? {}) as Record<string, any>
+          const anteriores = Array.isArray(fv.recomposicao?.urlsAnteriores) ? (fv.recomposicao.urlsAnteriores as unknown[]).filter((u): u is string => typeof u === 'string') : []
+          return [...(g.resultUrl ? [g.resultUrl] : []), ...anteriores]
+        }
+        const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], string_contains: MARCA } }, select: { id: true, resultUrl: true, fieldValues: true } })
+        for (const g of gensSemPagina) for (const u of urlsDaGeneration(g)) blobs.add(u)
+        if (gensSemPagina.length) {
+          await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
+          criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
+        }
+        const postsOrfaos = await db.socialPost.findMany({ where: { projectId: PROJETO, caption: { contains: MARCA } }, select: { id: true } })
+        for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
+        criados.pages = 0
+        for (const id of idsDePagina) {
+          const gens = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: id } }, select: { id: true, resultUrl: true, fieldValues: true } })
+          for (const g of gens) for (const u of urlsDaGeneration(g)) blobs.add(u)
+          criados.jobs += (await db.generationJob.deleteMany({ where: { generationId: { in: gens.map((g) => g.id) } } })).count
+          criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId: id, createdAt: { gte: inicio } } })).count
+          criados.generations += (await db.generation.deleteMany({ where: { id: { in: gens.map((g) => g.id) } } })).count
+          const pagina = await db.page.findUnique({ where: { id }, select: { templateId: true } })
+          if (!pagina) continue
+          await db.page.delete({ where: { id } })
+          criados.pages++
+          // A pasta da semana só sai se nasceu nesta prova e ficou vazia.
+          if (!templatesAntes.has(pagina.templateId)) {
+            const restam = await db.page.count({ where: { templateId: pagina.templateId } })
+            const gensNoTemplate = await db.generation.count({ where: { templateId: pagina.templateId } })
+            if (restam === 0 && gensNoTemplate === 0) {
+              await db.template.delete({ where: { id: pagina.templateId } })
+              criados.templates++
+            }
+          }
+        }
+        if (plano9Id) {
+          await db.itemDePlano.deleteMany({ where: { planoId: plano9Id } })
+          await db.planoDeConteudo.deleteMany({ where: { id: plano9Id } })
+        }
+        if (sinaisDaProva.length) criados.sinais += (await db.learningSignal.deleteMany({ where: { id: { in: sinaisDaProva } } })).count
+        if (posts.length) {
+          criados.posts = posts.length
+          criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
+          await db.socialPost.deleteMany({ where: { id: { in: posts } } })
+        }
+      },
+      (urls) => del(urls),
+    )
+    if (cleanup.erroDoBanco !== null) {
+      console.error('  ✗ cleanup do banco NÃO terminou (conta como falha da prova; o Blob foi apagado mesmo assim):', cleanup.erroDoBanco)
+      mau++
     }
     // Falha ao apagar o Blob é FALHA da prova (REV-9E-03): resíduo no Blob de produção não pode passar no gate.
     // "encontrados" e "apagados" são contados em separado; o conjunto inclui o PNG que o persist descartou (REV-90AA-01).
-    const limpezaDeBlobs = await apagarBlobsDaRodada(blobs, (urls) => del(urls))
+    const limpezaDeBlobs = cleanup.blobs
     // `limpezaFalhou`, nunca `if (erro)`: erro '' é falsy e passava no gate (REV-0352-01).
     if (limpezaFalhou(limpezaDeBlobs)) {
       console.error('  ✗ blob NÃO apagado (conta como falha da prova):', limpezaDeBlobs.erro ?? 'restaram URLs no Blob')

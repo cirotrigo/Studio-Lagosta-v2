@@ -123,6 +123,14 @@ export interface EntradaDaRevisao {
    * medida (REV-127-INTEGRAL-02). Use `insumosDaVisao` para preencher os dois.
    */
   visaoTruncados?: number
+  /**
+   * As camadas de texto que a visão RECEBEU marcadas (T1, T2…). Achado medido
+   * só é rebaixado pelo olhar quando TODAS as camadas dele tinham marca: texto
+   * sem métrica (curvo, fitty, auto-resize) e a peça inteira quando a medição
+   * falha não recebem marca, e a visão não tinha como confirmá-los (C0-01).
+   * Sem o campo, deriva de `blocosDeTexto` — a mesma conta de `marcasDaPeca`.
+   */
+  visaoCamadasMarcadas?: string[]
 }
 
 export const LIMITES_DA_REVISAO = {
@@ -1022,11 +1030,15 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       }
       const camadasDaMarca = v.marca?.camadas ?? []
       const irmas = REGRAS_DO_PROBLEMA[v.problema] ?? []
-      const irmao = achados.find(
+      // TODOS os irmãos recebem a confirmação, nunca só o primeiro: item da peça
+      // inteira (sem marca) confirma cada leitura medida a que se aplica — com
+      // `find`, o horário ficava sem ela e era rebaixado dizendo que a visão não
+      // viu problema, logo depois de ela dizer que faltava sombra (C0-02).
+      const irmaos = achados.filter(
         (a) => irmas.includes(a.regra) && (camadasDaMarca.length === 0 || a.camadas.some((c) => camadasDaMarca.includes(c))),
       )
-      if (irmao) {
-        irmao.visao = olhar
+      if (irmaos.length > 0) {
+        for (const irmao of irmaos) irmao.visao = olhar
         continue
       }
       // Corte de linha ou de letra a medida vê EXATO (linha truncada, tinta além
@@ -1242,11 +1254,23 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     // A visão ARBITRA o que a medida aproxima. Leitura que a régua acusou e a
     // visão, olhando a peça, não viu vira sugestão; assunto só estimado pela
     // textura que ela não confirmou é ruído e sai.
+    // A cobertura é decidida ANTES do rebaixamento (C0-01): só se rebaixa pelo
+    // olhar o achado cujas camadas a visão recebeu marcadas. O que ficou sem
+    // marca continua medido e deixa a visão parcial.
     const visaoTruncados = Math.max(0, e.visaoTruncados ?? 0)
     const visaoParcial = e.visaoConclusiva === false || visaoTruncados > 0
-    for (let i = achados.length - 1; i >= 0 && !visaoParcial; i--) {
+    const camadasMarcadas = new Set(e.visaoCamadasMarcadas ?? blocos.flatMap((b) => b.textos.map((t) => t.camada.id)))
+    const naoVistas = new Set<string>()
+    for (let i = achados.length - 1; i >= 0; i--) {
       const a = achados[i]
       if (a.visao) continue
+      if (a.regra !== 'texto-sem-leitura' && !(a.regra === 'texto-sobre-assunto' && a.certeza === 'estimada')) continue
+      const semMarca = a.camadas.filter((id) => !camadasMarcadas.has(id))
+      if (a.camadas.length === 0 || semMarca.length > 0) {
+        for (const id of semMarca) naoVistas.add(id)
+        continue
+      }
+      if (visaoParcial) continue
       if (a.regra === 'texto-sem-leitura') {
         a.severidade = 'sugestao'
         a.observacao = [a.observacao, 'A visão olhou a peça e não viu problema de leitura neste bloco: aplique só se concordar.'].filter(Boolean).join(' ')
@@ -1260,6 +1284,10 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       cortesDesmentidos ? `${cortesDesmentidos} de corte (a medida não acha linha nem letra cortada)` : null,
     ].filter(Boolean)
     const motivos = [
+      e.motivoSemMedida ? 'a medição dos textos falhou e a visão não recebeu marca de nenhum texto, então nada medido foi rebaixado por ela' : null,
+      naoVistas.size > 0
+        ? `a visão não recebeu marca de ${[...naoVistas].join(', ')}, então o que a medida achou ${naoVistas.size === 1 ? 'nesse texto' : 'nesses textos'} não foi rebaixado por ela`
+        : null,
       e.visaoConclusiva === false ? 'parte da resposta da visão não pôde ser lida (item sem marca válida ou incompleto), então nada foi rebaixado por ela' : null,
       visaoTruncados > 0
         ? `a visão devolveu mais achados do que o teto aceita e ${visaoTruncados} ${visaoTruncados === 1 ? 'ficou' : 'ficaram'} de fora sem ser ${visaoTruncados === 1 ? 'examinado' : 'examinados'}, então nada foi rebaixado por ela`
@@ -1267,7 +1295,7 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       desmentidos.length ? `apontamentos da visão descartados pela medida: ${desmentidos.join('; ')}` : null,
     ].filter(Boolean)
     cobertura.visao = {
-      estado: visaoParcial ? 'parcial' : 'avaliada',
+      estado: visaoParcial || naoVistas.size > 0 || e.motivoSemMedida ? 'parcial' : 'avaliada',
       ...(motivos.length ? { motivo: `${motivos.join('. ')}.` } : {}),
     }
   } else {

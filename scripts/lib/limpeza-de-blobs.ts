@@ -40,9 +40,9 @@ export async function apagarBlobsDaRodada(urls: Iterable<unknown>, apagar: (urls
  * e o `if (erro)` da prova passava com URLs no Blob de produção
  * (REV-0352-01).
  */
-function mensagemDaFalha(e: unknown): string {
+function mensagemDaFalha(e: unknown, padrao = 'a exclusão do Blob falhou sem mensagem'): string {
   const texto = (e instanceof Error ? e.message : String(e ?? '')).trim()
-  return texto || 'a exclusão do Blob falhou sem mensagem'
+  return texto || padrao
 }
 
 /**
@@ -52,4 +52,32 @@ function mensagemDaFalha(e: unknown): string {
  */
 export function limpezaFalhou(r: Pick<ResultadoDaLimpezaDeBlobs, 'erro' | 'restantes'>): boolean {
   return r.erro !== null || r.restantes.length > 0
+}
+
+export interface ResultadoDoCleanup {
+  /** Mensagem da falha do cleanup do banco — `null` quando ele terminou. Nunca vazia. */
+  erroDoBanco: string | null
+  blobs: ResultadoDaLimpezaDeBlobs
+}
+
+/**
+ * O cleanup do banco e a exclusão do Blob são passos INDEPENDENTES (nota da
+ * pré-revisão do commit 65b40096): um `delete` do banco que lança não pode
+ * impedir o Blob de ser apagado nem as URLs restantes de serem listadas. `urls`
+ * é lida só DEPOIS do banco — o cleanup do banco acrescenta ao conjunto as URLs
+ * que ainda acha nas Generations, e o que ele já tinha juntado antes de lançar
+ * entra do mesmo jeito.
+ */
+export async function limparBancoEBlobs(
+  urls: Iterable<unknown>,
+  limparBanco: () => Promise<void>,
+  apagar: (urls: string[]) => Promise<unknown>,
+): Promise<ResultadoDoCleanup> {
+  let erroDoBanco: string | null = null
+  try {
+    await limparBanco()
+  } catch (e) {
+    erroDoBanco = mensagemDaFalha(e, 'o cleanup do banco falhou sem mensagem')
+  }
+  return { erroDoBanco, blobs: await apagarBlobsDaRodada(urls, apagar) }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { apagarBlobsDaRodada, limpezaFalhou, urlsDoBlob } from '../../../scripts/lib/limpeza-de-blobs'
+import { apagarBlobsDaRodada, limparBancoEBlobs, limpezaFalhou, urlsDoBlob } from '../../../scripts/lib/limpeza-de-blobs'
 
 /**
  * REV-90AA-01 (revisão do commit 90aa3739): o PNG que o ajuste A subiu e que o `persist` descartou tem de estar no
@@ -49,5 +49,39 @@ describe('apagarBlobsDaRodada — a limpeza de Blob da prova (REV-90AA-01)', () 
     expect(limpezaFalhou({ erro: null, restantes: [A] })).toBe(true)
     expect(limpezaFalhou(await apagarBlobsDaRodada([A], async () => undefined))).toBe(false)
     expect(limpezaFalhou(await apagarBlobsDaRodada([], async () => undefined))).toBe(false)
+  })
+
+  it('cleanup do banco que LANÇA não impede a exclusão do Blob: o que foi juntado antes do erro é apagado, e o que fica é listado (nota da pré-revisão de 65b40096)', async () => {
+    const blobs = new Set<string>([A])
+    const apagar = vi.fn(async (_: string[]) => undefined)
+    const r = await limparBancoEBlobs(
+      blobs,
+      async () => {
+        blobs.add(B) // URL achada numa Generation antes do delete que falhou
+        throw new Error('conexão caiu no deleteMany')
+      },
+      apagar,
+    )
+    expect(r.erroDoBanco).toBe('conexão caiu no deleteMany')
+    expect(apagar).toHaveBeenCalledTimes(1)
+    expect(apagar.mock.calls[0][0]).toEqual([A, B])
+    expect(r.blobs).toEqual({ encontrados: 2, apagados: 2, erro: null, restantes: [] })
+
+    // banco e Blob falhando: as duas falhas voltam, nenhuma mensagem vazia, e as URLs que ficaram são listadas
+    const r2 = await limparBancoEBlobs(
+      new Set([A]),
+      async () => {
+        throw ''
+      },
+      async () => {
+        throw new Error('503 do Blob')
+      },
+    )
+    expect(r2.erroDoBanco).not.toBeNull()
+    expect(r2.erroDoBanco!.trim().length).toBeGreaterThan(0)
+    expect(r2.blobs).toMatchObject({ erro: '503 do Blob', restantes: [A] })
+    expect(limpezaFalhou(r2.blobs)).toBe(true)
+
+    expect((await limparBancoEBlobs([A], async () => undefined, async () => undefined)).erroDoBanco).toBeNull()
   })
 })

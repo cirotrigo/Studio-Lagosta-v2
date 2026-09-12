@@ -220,17 +220,26 @@ export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { visto
  * `avaliarPeca` não esquecer o corte: `visaoConclusiva` diz que nada foi
  * descartado; `visaoTruncados`, que nada ficou além do teto. Qualquer um dos
  * dois deixa a cobertura parcial e desliga o rebaixamento (REV-127-INTEGRAL-02).
+ * Com as `marcas`, leva também as camadas marcadas: achado medido em texto sem
+ * marca nunca é rebaixado pelo olhar (C0-01).
  */
-export function insumosDaVisao(visao: { estado: string; descartados?: number; truncados?: number; motivo?: string }): {
+export function insumosDaVisao(
+  visao: { estado: string; descartados?: number; truncados?: number; motivo?: string },
+  marcas?: MarcaDaPeca[],
+): {
   visaoConclusiva: boolean
   visaoTruncados: number
   motivoSemVisao: string | undefined
+  visaoCamadasMarcadas: string[] | undefined
 } {
   const feita = visao.estado === 'feita'
   return {
     visaoConclusiva: feita && (visao.descartados ?? 0) === 0,
     visaoTruncados: feita ? Math.max(0, visao.truncados ?? 0) : 0,
     motivoSemVisao: feita ? undefined : visao.motivo,
+    // As camadas que a visão recebeu marcadas: é o que diz se ela podia ter
+    // visto o bloco que a medida acusou (C0-01).
+    visaoCamadasMarcadas: feita && marcas ? [...new Set(marcas.flatMap((m) => m.camadas))] : undefined,
   }
 }
 
