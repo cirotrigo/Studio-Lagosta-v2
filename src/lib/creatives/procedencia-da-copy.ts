@@ -22,6 +22,8 @@
  * `sourcePageId`: a coluna vence; o Json só é lido para linhas antigas e nunca
  * para `ajuste-arte`, em que aponta para a própria cópia ajustada.
  */
+import { lerCamadas } from '@/lib/posts/page-layers'
+
 function objeto(v: unknown): Record<string, unknown> | null {
   return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null
 }
@@ -34,11 +36,20 @@ function objeto(v: unknown): Record<string, unknown> | null {
  * sem isso o PNG deixava de mostrar um texto escondido e a copy visual da
  * Generation continuava afirmando-o (REV-127-F02 da revisão FINAL do Codex,
  * 12/09/2026). A copy de APRENDIZADO é outra coisa e não passa por aqui.
+ *
+ * Recebe `Page.layers` COMO ESTÁ NO BANCO e decodifica por `lerCamadas` — a
+ * rota de edição de camada grava a lista como STRING JSON (e há página com a
+ * string duplamente codificada), e o render desenha essas páginas normalmente.
+ * Lendo o valor bruto, toda string virava `{}` e a recuperação apagava a copy
+ * visual de uma arte cujo PNG tem texto (REV-93D-01 da revisão do Codex,
+ * 12/09/2026). `null` = camadas ILEGÍVEIS (quem chama mantém o que tinha);
+ * `{}` = página legível sem texto visível.
  */
-export function copyVisualDasCamadas(layers: unknown): Record<string, string> {
-  if (!Array.isArray(layers)) return {}
+export function copyVisualDasCamadas(layers: unknown): Record<string, string> | null {
+  const { camadas, legivel } = lerCamadas(layers)
+  if (!legivel) return null
   return Object.fromEntries(
-    layers
+    (camadas as unknown[])
       .filter((l): l is Record<string, unknown> => !!l && typeof l === 'object' && !Array.isArray(l))
       .filter((l) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false && typeof l.content === 'string' && (l.content as string).trim())
       .map((l) => [String(l.name ?? l.id), l.content as string]),

@@ -5627,6 +5627,23 @@ Codex antes de ser escrito.
   `slotValuesFinais` do ajuste, e entra no patch do re-render só quando a arte
   JÁ carrega copy visual (a arte do compositor não ganha uma inventada); a
   copy de APRENDIZADO e a trava ficam como estão (merge no banco). Prova 9i.
+- 🔴 **`copyVisualDasCamadas` recebe `Page.layers` COMO ESTÁ NO BANCO e
+  decodifica por `lerCamadas`** (REV-93D-01, 12/09/2026): a rota de edição
+  de camada grava a lista como STRING JSON (há página duplamente codificada)
+  e o render desenha essas páginas normalmente — lendo o valor bruto, toda
+  string virava `{}` e a recuperação apagava a copy visual de uma arte cujo
+  PNG tem texto. `null` = ilegível (o re-render mantém a copy que tinha e
+  avisa); `{}` = legível sem texto visível. Prova 9j, em JSON simples e duplo.
+- 🔴 **Antes de SUBSTITUIR a copy visual, a copy anterior vira proposta de
+  aprendizado quando a arte não tem uma** (`preservarPropostaDeAprendizado`,
+  REV-93D-02): `lerProcedencia` usa `slotValues` como `copyProposta` sem
+  `copyDeAprendizado` (a arte rápida grava só `slotValues`), e a recuperação
+  forçada que regrava a copy visual sem o texto que o revisor escondeu fazia
+  a proposta perder esse texto — ao agendar com página e Generation,
+  `copyParaDecisao` (que conta a camada escondida pelo revisor) voltava a
+  acusar uma ADIÇÃO humana. É UMA instrução condicional no Postgres (só com
+  `slotValues` objeto e `copyDeAprendizado` não-objeto): um ajuste
+  concorrente, que grava a proposta certa, nunca é sobrescrito. Prova 9j.
 - **No chat** (instruções do conector): compor → `revisar-arte` → `ajustar-arte`
   com os ajustes → revisar de novo, no máximo DUAS rodadas; o que sobrar vira
   observação para a pessoa, e a revisão nunca trava a agenda. `ARTE_REVISAO_VISAO=off`

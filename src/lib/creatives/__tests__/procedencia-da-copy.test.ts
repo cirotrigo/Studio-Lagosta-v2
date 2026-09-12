@@ -17,7 +17,7 @@ describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-
     expect(lerProcedencia({ slotValues: ['x'], copyDeAprendizado: 'y' }, null).copyProposta).toBeNull()
     expect(lerProcedencia(null, null).copyProposta).toBeNull()
   })
-  it('copyVisualDasCamadas (REV-127-F02): só texto e rich text VISÍVEIS, por nome (ou id), sem vazio; lixo vira {}', () => {
+  it('copyVisualDasCamadas (REV-127-F02/REV-93D-01): só texto e rich text VISÍVEIS, por nome (ou id), sem vazio; string JSON decodifica; ilegível é null', () => {
     const camadas = [
       { id: 'l1', name: 'pre', type: 'text', content: 'Pré-título', visible: false },
       { id: 'l2', name: 'headline', type: 'text', content: 'Título' },
@@ -27,7 +27,15 @@ describe('lerProcedencia — o lado "antes" do diff de copy do agendamento (REV-
       null,
     ]
     expect(copyVisualDasCamadas(camadas)).toEqual({ headline: 'Título', l3: 'Apoio rico' })
-    expect(copyVisualDasCamadas('nada')).toEqual({})
+    // REV-93D-01: `Page.layers` chega COMO ESTÁ NO BANCO — a rota de camada grava string JSON, e há página
+    // duplamente codificada; as duas leem igual à lista. Ilegível é `null` (quem chama mantém o que tinha);
+    // legível sem texto é `{}`.
+    expect(copyVisualDasCamadas(JSON.stringify(camadas))).toEqual({ headline: 'Título', l3: 'Apoio rico' })
+    expect(copyVisualDasCamadas(JSON.stringify(JSON.stringify(camadas)))).toEqual({ headline: 'Título', l3: 'Apoio rico' })
+    expect(copyVisualDasCamadas('nada')).toBeNull()
+    expect(copyVisualDasCamadas({ id: 'x' })).toBeNull()
+    expect(copyVisualDasCamadas([])).toEqual({})
+    expect(copyVisualDasCamadas([{ id: 'l1', type: 'text', content: 'oculto', visible: false }])).toEqual({})
     expect(lerProcedencia({ slotValues: copyVisualDasCamadas(camadas), copyDeAprendizado: { pre: 'Pré-título', headline: 'Título' } }, null).copyVisual).toEqual({ headline: 'Título', l3: 'Apoio rico' })
   })
 

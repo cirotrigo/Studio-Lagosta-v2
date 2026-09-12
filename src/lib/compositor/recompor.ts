@@ -48,7 +48,8 @@ import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedir
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
-import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
+import { mesclarFieldValuesDaArte, preservarPropostaDeAprendizado } from '@/lib/creatives/mesclar-field-values'
+import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderPageAndRegister } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
@@ -480,6 +481,26 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     // O re-render desenha a página COMO FOI LIDA: é esta a versão que a arte
     // vai refletir, e é contra ela que o runner confere a página depois.
     versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: page.layers })
+    /**
+     * A copy VISUAL acompanha o PNG (REV-127-F02): a Generation reutilizada
+     * aqui pode ser a de um ajuste anterior, cujos `slotValues` afirmavam um
+     * texto que o ajuste seguinte escondeu — o render falhou, a recuperação
+     * trocou a URL e `lerProcedencia` seguia devolvendo o texto ausente como
+     * `copyVisual`. Só quando a arte JÁ carrega copy visual (não se inventa
+     * uma para a arte do compositor). As camadas vão decodificadas por
+     * `lerCamadas` (a rota de camada grava string JSON — REV-93D-01); página
+     * ILEGÍVEL mantém a copy que tinha, com aviso, em vez de virar `{}`.
+     * E ANTES de substituir, a copy anterior vira proposta de aprendizado
+     * quando a arte não tem uma (REV-93D-02): sem isso a proposta perdia o
+     * texto escondido pelo revisor e o agendamento o acusava como adição
+     * humana. Condicional e atômica no banco — nunca por cima de um
+     * `copyDeAprendizado` gravado por um ajuste concorrente.
+     */
+    const fvDaArte = (arte.fieldValues && typeof arte.fieldValues === 'object' ? arte.fieldValues : {}) as Record<string, unknown>
+    const temCopyVisual = typeof fvDaArte.slotValues === 'object' && fvDaArte.slotValues !== null && !Array.isArray(fvDaArte.slotValues)
+    const copyVisualNova = temCopyVisual ? copyVisualDasCamadas(page.layers) : null
+    if (temCopyVisual && copyVisualNova === null) avisos.push('Camadas da página ilegíveis: a copy visual da arte foi mantida como estava.')
+    if (copyVisualNova) await preservarPropostaDeAprendizado(db, arte.generationId)
     if (input.antesDeRenderizar) await input.antesDeRenderizar()
     const registrada = await renderPageAndRegister({
       project: projeto,
@@ -501,14 +522,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       // apagaria a trava que o revisor gravou durante o render (REV-R01).
       fieldValues: {
         recomposicao: registro('re-renderizada', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
-        // A copy VISUAL acompanha o PNG (REV-127-F02): a Generation reutilizada aqui pode ser a de um ajuste
-        // anterior, cujos `slotValues` afirmavam um texto que o ajuste seguinte escondeu — o render falhou, a
-        // recuperação trocou a URL e `lerProcedencia` seguia devolvendo o texto ausente como `copyVisual`. Só
-        // quando a arte JÁ carrega copy visual (não se inventa uma para a arte do compositor); a copy de
-        // APRENDIZADO fica como está (o merge não a toca).
-        ...(arte.fieldValues && typeof (arte.fieldValues as Record<string, unknown>).slotValues === 'object' && (arte.fieldValues as Record<string, unknown>).slotValues !== null
-          ? { slotValues: copyVisualDasCamadas(page.layers) }
-          : {}),
+        // A copy VISUAL nova (ver acima); a copy de APRENDIZADO fica como está (o merge não a toca).
+        ...(copyVisualNova ? { slotValues: copyVisualNova } : {}),
         // A recuperação forçada preservou um ajuste que a spec não conhece:
         // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
         ...(forcar ? { somenteReRender: { desde: new Date().toISOString(), motivo: 'recuperação forçada preservou ajuste manual (revisor)' } } : {}),

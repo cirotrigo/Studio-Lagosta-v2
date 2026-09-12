@@ -1109,7 +1109,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // slotValues), então precisa refletir a página como ficou, não só o patch.
   // Rich text é copy (o executor dos ajustes mexe nele), e camada escondida não
   // aparece na arte — exigi-la na conferência reprovaria a peça certa.
-  const slotValuesFinais = copyVisualDasCamadas(layers)
+  // `layers` aqui é a lista em memória, já decodificada: nunca ilegível.
+  const slotValuesFinais = copyVisualDasCamadas(layers) ?? {}
 
   const avisarAgenda = async (opcoes: { renderFalhou?: boolean } = {}) => {
     // Page.layers mudou: posts da agenda que usam esta página precisam voltar à

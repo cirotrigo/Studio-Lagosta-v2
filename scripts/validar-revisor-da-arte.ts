@@ -1354,6 +1354,105 @@ async function main() {
       const valores9iC = Object.entries(((await db.socialPost.findUnique({ where: { id: post9iC.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
       conferir('agendar por mediaUrls casada pela URL nova: idem, sem o pré-título', !valores9iC.includes(textoPre9i), JSON.stringify(valores9iC).slice(0, 160))
     }
+
+    // ── 9j. REV-93D-01 / REV-93D-02: a recuperação com `Page.layers` em STRING e sem `copyDeAprendizado` ──
+    // A rota de edição de camada grava a lista como STRING JSON (há página duplamente codificada), e a arte
+    // rápida grava só `slotValues` (a proposta de aprendizado cai neles). Em cada formato: a Generation do
+    // ajuste perde `copyDeAprendizado` (como a da arte rápida), o revisor esconde o pré-título com o render
+    // FALHANDO, a página é regravada no formato em teste, e a recuperação forçada reusa a Generation. Esperado:
+    // PNG novo, copy visual COM texto e SEM o pré-título (nunca `{}`), a proposta de aprendizado PRESERVADA (a
+    // copy visual anterior), e o agendamento com página + Generation sem adição nem remoção humana.
+    console.log('9j) REV-93D-01/02: camadas em string JSON (simples e dupla) e Generation sem copyDeAprendizado → recuperação forçada mantém texto na copy visual, preserva a proposta e o sinal sai limpo')
+    for (const formato of ['json', 'json2'] as const) {
+      const quando9j = `${daqui7.toISOString().slice(0, 10)} ${formato === 'json' ? '21:00' : '22:00'}`
+      const composta9j = await comporPeca(
+        {
+          projectId: PROJETO,
+          formato: 'story',
+          foto: { url: fotoUrl },
+          blocos: [
+            { papel: 'pre', linhas: [`Pré-título do 9j ${formato}`] },
+            { papel: 'headline', linhas: [`Título do 9j ${formato}`, 'segunda linha'] },
+            { papel: 'apoio', linhas: [`Apoio do 9j ${formato}, com acento e ç.`] },
+            { papel: 'cta', linhas: ['Chame agora'] },
+          ],
+          nome: `${MARCA} peça 9j ${formato}`,
+          quando: quando9j,
+          tema: `${MARCA} teste`,
+        },
+        { canal: 'claude-code' },
+      )
+      const persistido9j = composta9j.persistido
+      if (!persistido9j) throw new Error(`a peça do 9j (${formato}) não foi persistida: ${JSON.stringify(composta9j).slice(0, 200)}`)
+      const pageId9j = persistido9j.pageId
+      paginasCriadas.push(pageId9j)
+      blobs.add(persistido9j.url)
+      const camadas9j = await camadasDaPagina(pageId9j)
+      const textoDe9j = (c: Record<string, any>) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false && typeof c.content === 'string' && c.content.trim()
+      const pre9j = camadas9j.find((c) => textoDe9j(c) && /^pre$/i.test(String(c.name ?? c.id)))
+      const apoio9j = camadas9j.find((c) => textoDe9j(c) && /^apoio$/i.test(String(c.name ?? c.id)))
+      if (!pre9j || !apoio9j) throw new Error(`a peça do 9j (${formato}) não tem pre/apoio com texto`)
+      const textoPre9j = String(pre9j.content).trim()
+      const textoApoio9j = String(apoio9j.content).trim()
+      // (a) um ajuste que NÃO esconde nada, com o render OK: G nasce com copy visual = proposta (as duas iguais)
+      const r9jA = await revisarArte({ projectId: PROJETO, pageId: pageId9j, visao: false, previa: false })
+      const g9j = await ajustarArte({ projectId: PROJETO, pageId: pageId9j, versaoEsperada: r9jA.versao, ajustes: [{ tipo: 'mover', camadas: [String(pre9j.id)], dy: -8 }], canal: 'claude-code' })
+      if (g9j.url) blobs.add(g9j.url)
+      // como a arte rápida: SÓ `slotValues` — a proposta de aprendizado cai neles (`lerProcedencia`)
+      await db.$executeRaw`UPDATE "Generation" SET "fieldValues" = "fieldValues" - 'copyDeAprendizado' WHERE "id" = ${g9j.generationId}`
+      const gAntes9j = await db.generation.findUnique({ where: { id: g9j.generationId }, select: { fieldValues: true, sourcePageId: true } })
+      const procAntes9j = lerProcedencia(gAntes9j?.fieldValues, gAntes9j?.sourcePageId ?? null)
+      conferir(`[${formato}] sem copyDeAprendizado a proposta É a copy visual, e ela carrega o pré-título e o apoio (com acento)`, !!procAntes9j.copyVisual && procAntes9j.copyProposta === procAntes9j.copyVisual && Object.values(procAntes9j.copyVisual).includes(textoPre9j) && Object.values(procAntes9j.copyVisual).includes(textoApoio9j), JSON.stringify(Object.values(procAntes9j.copyVisual ?? {})).slice(0, 160))
+      const postG9j = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: quando9j, generationId: g9j.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-93d ${formato} antes` })
+      posts.push(postG9j.postId)
+      // (b) o revisor esconde o pré-título com o render FALHANDO → recuperação FORÇADA enfileirada para G
+      const r9jB = await revisarArte({ projectId: PROJETO, pageId: pageId9j, visao: false, previa: false })
+      process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+      const e9j = await erroDe(ajustarArte({ projectId: PROJETO, pageId: pageId9j, versaoEsperada: r9jB.versao, ajustes: [{ tipo: 'visibilidade', camadas: [String(pre9j.id)], visivel: false }], canal: 'claude-code' }))
+      process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+      const camadasOcultas9j = await camadasDaPagina(pageId9j)
+      conferir(`[${formato}] o ajuste gravou a página (pré-título oculto pelo revisor) e o render falhou`, !!e9j && e9j.code !== 'VERSAO_DIVERGENTE' && camadasOcultas9j.find((c) => c.id === pre9j.id)?.visible === false, e9j?.message.slice(0, 60))
+      // (c) a página é regravada COMO A ROTA DE CAMADA grava: string JSON (e, no 2º formato, duplamente codificada)
+      const serializadas = formato === 'json' ? JSON.stringify(camadasOcultas9j) : JSON.stringify(JSON.stringify(camadasOcultas9j))
+      await db.page.update({ where: { id: pageId9j }, data: { layers: serializadas } })
+      const brutas9j = (await db.page.findUnique({ where: { id: pageId9j }, select: { layers: true } }))?.layers
+      conferir(`[${formato}] Page.layers está em STRING no banco e continua legível por lerCamadas`, typeof brutas9j === 'string' && lerCamadas(brutas9j).legivel && lerCamadas(brutas9j).camadas.length === camadasOcultas9j.length, typeof brutas9j)
+      const job9j = await db.generationJob.findFirst({ where: { generationId: g9j.generationId, kind: 'COMPOR' }, orderBy: { createdAt: 'desc' }, select: { id: true, status: true, payload: true } })
+      conferir(`[${formato}] a recuperação FORÇADA foi enfileirada para G`, !!job9j && (job9j.payload as Record<string, any>).recompor?.forcar === true, JSON.stringify(job9j?.payload).slice(0, 140))
+      if (job9j) {
+        await db.generationJob.update({ where: { id: job9j.id }, data: { status: 'RUNNING', attempts: { increment: 1 }, startedAt: new Date() } })
+        await processarRecomposicaoEmBackground({ generationId: g9j.generationId, projectId: PROJETO, recompor: (job9j.payload as Record<string, any>).recompor, queueJobId: job9j.id })
+        await fecharJob(job9j.id, g9j.generationId)
+      }
+      const gDepois9j = await db.generation.findUnique({ where: { id: g9j.generationId }, select: { resultUrl: true, fieldValues: true, sourcePageId: true } })
+      if (gDepois9j?.resultUrl) blobs.add(gDepois9j.resultUrl)
+      const fvDepois9j = (gDepois9j?.fieldValues ?? {}) as Record<string, any>
+      const procDepois9j = lerProcedencia(gDepois9j?.fieldValues, gDepois9j?.sourcePageId ?? null)
+      const visualDepois9j = Object.values(procDepois9j.copyVisual ?? {})
+      conferir(`[${formato}] REV-93D-01: o PNG foi refeito e a copy VISUAL tem texto (nunca {}), com o apoio acentuado e SEM o pré-título`, gDepois9j?.resultUrl !== g9j.url && fvDepois9j.recomposicao?.estado === 're-renderizada' && visualDepois9j.length >= 2 && visualDepois9j.includes(textoApoio9j) && !visualDepois9j.includes(textoPre9j), JSON.stringify({ estado: fvDepois9j.recomposicao?.estado, visual: visualDepois9j.slice(0, 4) }).slice(0, 220))
+      const propostaDepois9j = Object.values((fvDepois9j.copyDeAprendizado ?? {}) as Record<string, unknown>)
+      conferir(`[${formato}] REV-93D-02: a proposta de aprendizado foi PRESERVADA (a copy visual anterior, com o pré-título) e é a que a procedência lê`, propostaDepois9j.includes(textoPre9j) && propostaDepois9j.includes(textoApoio9j) && Object.values(procDepois9j.copyProposta ?? {}).includes(textoPre9j), JSON.stringify(propostaDepois9j).slice(0, 160))
+      const postDoG9j = await db.socialPost.findUnique({ where: { id: postG9j.postId }, select: { mediaUrls: true } })
+      conferir(`[${formato}] o post sem página que carregava G recebeu a URL nova`, !!gDepois9j?.resultUrl && postDoG9j?.mediaUrls[0] === gDepois9j.resultUrl)
+      // (d) agendar com página + Generation: a proposta preservada casa com a página lida para decisão → sem adição nem remoção humana
+      const postPG9j = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} ${formato === 'json' ? '21:30' : '22:30'}`, pageId: pageId9j, generationId: g9j.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-93d ${formato} pagina` })
+      posts.push(postPG9j.postId)
+      const sinal9j = await db.learningSignal.findFirst({ where: { projectId: PROJETO, chave: `copy:post:${postPG9j.postId}` }, select: { desfecho: true, diff: true, escolhido: true } })
+      const diff9j = (sinal9j?.diff ?? {}) as Record<string, any>
+      const versus9j = (sinal9j?.escolhido as Record<string, any> | null)?.versusProposta
+      conferir(`[${formato}] o sinal de copy (página + Generation) NÃO acusa adição nem remoção humana; versusProposta é aceita-como-veio`, !!sinal9j && (diff9j.adicionados ?? []).length === 0 && (diff9j.removidos ?? []).length === 0 && versus9j === 'aceita-como-veio', JSON.stringify({ adicionados: diff9j.adicionados, removidos: diff9j.removidos, versus: versus9j }))
+      // (e) agendar SÓ pela Generation e pela URL nova: cópia textual com texto, acento e quebra preservados, sem o pré-título
+      const postGen9j = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} ${formato === 'json' ? '21:40' : '22:40'}`, generationId: g9j.generationId, situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-93d ${formato} gen` })
+      posts.push(postGen9j.postId)
+      const valoresGen9j = Object.entries(((await db.socialPost.findUnique({ where: { id: postGen9j.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+      conferir(`[${formato}] agendar por generationId: a cópia textual tem o apoio acentuado e a manchete com a quebra, e NÃO o pré-título`, valoresGen9j.includes(textoApoio9j) && valoresGen9j.some((v) => typeof v === 'string' && v.includes('\n')) && !valoresGen9j.includes(textoPre9j), JSON.stringify(valoresGen9j).slice(0, 160))
+      if (gDepois9j?.resultUrl) {
+        const postUrl9j = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${daqui7.toISOString().slice(0, 10)} ${formato === 'json' ? '21:50' : '22:50'}`, mediaUrls: [gDepois9j.resultUrl], situacao: 'rascunho', lembrete: true, caption: `${MARCA} rev-93d ${formato} url` })
+        posts.push(postUrl9j.postId)
+        const valoresUrl9j = Object.entries(((await db.socialPost.findUnique({ where: { id: postUrl9j.postId }, select: { slotValues: true } }))?.slotValues ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith('_')).map(([, v]) => v)
+        conferir(`[${formato}] agendar por mediaUrls casada pela URL nova: idem`, valoresUrl9j.includes(textoApoio9j) && !valoresUrl9j.includes(textoPre9j), JSON.stringify(valoresUrl9j).slice(0, 160))
+      }
+    }
   } catch (erro) {
     // O erro da prova é impresso ANTES do cleanup: sem isto uma falha no
     // cleanup engoliria a causa (aconteceu na primeira rodada).

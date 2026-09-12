@@ -40,3 +40,24 @@ export function mesclarFieldValuesDaArte(
   }
   return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${json}::jsonb WHERE "id" = ${generationId}`
 }
+
+/**
+ * Antes de o re-render SUBSTITUIR a copy visual (`slotValues`) de uma arte,
+ * guarda a copy anterior como proposta de aprendizado quando a arte ainda não
+ * tem uma válida. `lerProcedencia` usa `slotValues` como `copyProposta` na
+ * ausência de `copyDeAprendizado` (a arte rápida grava só `slotValues`): a
+ * recuperação forçada que regrava a copy visual sem o texto que o revisor
+ * escondeu fazia a proposta perder esse texto, e ao agendar com página e
+ * Generation `copyParaDecisao` (que conta a camada escondida pelo revisor)
+ * voltava a acusar uma ADIÇÃO humana (REV-93D-02 da revisão do Codex,
+ * 12/09/2026).
+ *
+ * Uma instrução condicional no Postgres: só escreve quando `slotValues` é
+ * objeto E `copyDeAprendizado` NÃO é — uma gravação concorrente do ajuste
+ * (que grava a proposta certa, com as ocultações contadas) nunca é
+ * sobrescrita: se ela chegou antes, a condição falha; se chega depois, o
+ * merge dela vence. Devolve quantas linhas mudaram (0 ou 1).
+ */
+export function preservarPropostaDeAprendizado(client: ClienteDoBanco, generationId: string) {
+  return client.$executeRaw`UPDATE "Generation" SET "fieldValues" = "fieldValues" || jsonb_build_object('copyDeAprendizado', "fieldValues"->'slotValues') WHERE "id" = ${generationId} AND jsonb_typeof("fieldValues") = 'object' AND jsonb_typeof("fieldValues"->'slotValues') = 'object' AND jsonb_typeof("fieldValues"->'copyDeAprendizado') IS DISTINCT FROM 'object'`
+}
