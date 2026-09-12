@@ -6848,6 +6848,24 @@ Da segunda revisão (BLOQUEADO, PR13-09…12, complementos dos anteriores):
   na prévia com tipo `condicao` e podem ser citados no manifesto — o que sai
   da voz por ser condição precisa ter porta de entrada na base (PR13-12).
 
+Da terceira revisão (BLOQUEADO, PR13-13…15):
+
+- 🔴 **A trava só vale no MESMO banco das escritas.** `resolverBanco` nunca
+  preserva `DIRECT_URL` de outro ambiente (em dev, sem ela no arquivo vale a
+  própria `DATABASE_URL` do dev) e aborta se `DIRECT_URL` e `DATABASE_URL`
+  forem computes diferentes; `travaPorProjeto` confere `mesmoBanco` antes de
+  conectar — trava em outro compute não exclui ninguém (PR13-13).
+- 🔴 **A linha com a chave só é reutilizada se ainda for o fato APROVADO**
+  (`divergenciasDoFato`: conteúdo, categoria, `ACTIVE`, validade em Brasília).
+  Editada ou arquivada, a aplicação BLOQUEIA para decisão antes de qualquer
+  escrita — nem reutiliza, nem reindexa por cima (PR13-14). A conferência é
+  uma 1ª passada sem escritas; a 2ª passada escreve.
+- 🔴 **Toda escrita do corpo confere que a trava continua viva**
+  (`trava.conferir()` = `SELECT 1` na transação da trava, antes de cada fato,
+  do `gravarVoz` e da ativação): transação expirada lança e a aplicação para
+  ali, em vez de continuar por outras conexões sem exclusão (PR13-15). O
+  timeout padrão é 60 min; a prova o encurta para 2 s.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

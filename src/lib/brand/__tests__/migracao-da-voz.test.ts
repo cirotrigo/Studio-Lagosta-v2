@@ -6,6 +6,9 @@ import {
   chaveDoFato,
   classificarFato,
   coberturaDasRegrasLegadas,
+  computeDe,
+  divergenciasDoFato,
+  mesmoBanco,
   condicoesOperacionais,
   fatosNaVoz,
   fatosNoDna,
@@ -367,6 +370,31 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(classificarFato({ metadata: null })).toBe('incompleto')
     expect(classificarFato({ metadata: { chaveDoFato: 'x', indexadoEm: '' } })).toBe('incompleto')
     expect(classificarFato({ metadata: { chaveDoFato: 'x', indexadoEm: '2026-09-12T10:00:00.000Z' } })).toBe('completo')
+  })
+
+  it('PR13-13: a trava só vale no MESMO compute das escritas (pooler e direto são o mesmo); URL ilegível nunca é o mesmo banco', () => {
+    expect(computeDe('postgresql://u:p@ep-winter-lake-admt6duq-pooler.sa-east-1.aws.neon.tech/neondb')).toBe('ep-winter-lake-admt6duq')
+    expect(computeDe('postgresql://u:p@ep-winter-lake-admt6duq.sa-east-1.aws.neon.tech/neondb')).toBe('ep-winter-lake-admt6duq')
+    expect(computeDe('nada')).toBeNull()
+    expect(mesmoBanco('postgresql://u:p@ep-a-pooler.x.neon.tech/db', 'postgresql://u:p@ep-a.x.neon.tech/db')).toBe(true)
+    expect(mesmoBanco('postgresql://u:p@ep-a.x.neon.tech/db', 'postgresql://u:p@ep-b.x.neon.tech/db')).toBe(false)
+    expect(mesmoBanco(undefined, 'postgresql://u:p@ep-a.x.neon.tech/db')).toBe(false)
+    expect(mesmoBanco('nada', 'nada')).toBe(false)
+  })
+
+  it('PR13-14: a linha com a chave só é o fato aprovado se conteúdo, categoria, status ACTIVE e validade (em Brasília) batem — cada divergência é dita', () => {
+    const fato = { trecho: 'Happy hour das 17h às 19h.', categoria: 'HORARIOS', validaAte: '2026-12-31' }
+    const linha = { content: 'Happy hour das 17h às 19h.', category: 'HORARIOS', status: 'ACTIVE', expiresAt: new Date('2026-12-31T23:59:59-03:00') }
+    expect(divergenciasDoFato(linha, fato)).toEqual([])
+    expect(divergenciasDoFato({ ...linha, content: 'Happy hour das 17h às 20h.' }, fato)).toEqual(['conteúdo editado'])
+    expect(divergenciasDoFato({ ...linha, category: 'CAMPANHAS' }, fato)).toEqual(['categoria CAMPANHAS (aprovada HORARIOS)'])
+    expect(divergenciasDoFato({ ...linha, status: 'ARCHIVED' }, fato)).toEqual(['status ARCHIVED (a busca só lê ACTIVE)'])
+    expect(divergenciasDoFato({ ...linha, expiresAt: null }, fato)).toEqual(['validade sem prazo (aprovada 2026-12-31)'])
+    // sem prazo aprovado, linha com prazo diverge; o dia é lido em Brasília (a validade grava 23:59:59-03:00, que já é 1º/01 em UTC)
+    expect(divergenciasDoFato({ ...linha, expiresAt: null }, { ...fato, validaAte: null })).toEqual([])
+    expect(divergenciasDoFato(linha, { ...fato, validaAte: null })).toEqual(['validade 2026-12-31 (aprovada sem prazo)'])
+    // tudo errado ao mesmo tempo: todas as divergências, não só a primeira
+    expect(divergenciasDoFato({ content: 'x', category: 'CARDAPIO', status: 'ARCHIVED', expiresAt: null }, fato)).toHaveLength(4)
   })
 
   it('PR13-02: dnaDiverge aponta os campos que mudaram; null e undefined são a mesma ausência', () => {

@@ -113,7 +113,7 @@ async function main() {
   const inicio = new Date(Date.now() - 1000)
 
   const { db } = await import('../src/lib/db')
-  const { aplicarManifesto, bancoSemTabelaDeVoz, chaveDaTrava, estadoDoFatoNaBase, gerarPrevias, lerEstadoDoCliente, marcarFatoIndexado } = await import('./migrar-voz-da-marca')
+  const { aplicarManifesto, bancoSemTabelaDeVoz, chaveDaTrava, estadoDoFatoNaBase, gerarPrevias, lerEstadoDoCliente, marcarFatoIndexado, travaPorProjeto } = await import('./migrar-voz-da-marca')
   type FatoACriar = import('./migrar-voz-da-marca').FatoACriar
   const { chaveDoFato, isolamentoDoIndexador, lerManifesto, manifestoEmBranco, previaParaMarkdown, VERSAO_DO_MANIFESTO } = await import('../src/lib/brand/migracao-da-voz')
   const { VOZES_PROPOSTAS } = await import('./lib/vozes-propostas')
@@ -137,7 +137,11 @@ async function main() {
     fatosAnotados.push({ fato, autor })
   }
   // O estado do fato para a prova: o que o stub anotou é "completo"; o resto vem da base (a consulta padrão do script).
-  const estadoDoFato = async (chave: string, projectId: number) => (fatosAnotados.some((a) => a.fato.chave === chave) ? ({ estado: 'completo' as const, entryId: 'stub' }) : estadoDoFatoNaBase(db, chave, projectId))
+  const estadoDoFato = async (chave: string, projectId: number) => {
+    const anotado = fatosAnotados.find((a) => a.fato.chave === chave)
+    if (anotado) return { estado: 'completo' as const, entryId: 'stub', linha: { content: anotado.fato.trecho, category: anotado.fato.categoria, status: 'ACTIVE', expiresAt: anotado.fato.validaAte ? new Date(`${anotado.fato.validaAte}T12:00:00-03:00`) : null } }
+    return estadoDoFatoNaBase(db, chave, projectId)
+  }
   // O reindexador da prova: anota e grava a marca durável (o que o padrão faz depois do `reindexEntry`).
   const reindexados: Array<{ entryId: string; chave: string }> = []
   const reindexarFato = async (entryId: string, fato: FatoACriar) => {
@@ -209,7 +213,7 @@ async function main() {
     // ── 4a. falha parcial e a chave durável (PR13-03) ──────────────────────
     console.log('4a) falha parcial: uma linha REAL na base carrega a chave do 1º fato SEM a marca de indexado (reindexada pelo mesmo id, PR13-11); o registrador quebra na 2ª criação — erro com as contagens, voz não gravada')
     const linha4a = await db.knowledgeBaseEntry.create({
-      data: { projectId: PROJETO, category: fatosDaPrevia[0].categoria, title: `${fatosDaPrevia[0].titulo} [linha da prova]`, content: fatosDaPrevia[0].trecho, tags: [TAG_DA_PROVA], status: 'ARCHIVED', metadata: { origem: 'migracao-da-voz', versaoDaPrevia: previa.versaoDaPrevia, chaveDoFato: chaves[0], prova: true }, createdBy: projeto.userId, userId: projeto.userId },
+      data: { projectId: PROJETO, category: fatosDaPrevia[0].categoria, title: `${fatosDaPrevia[0].titulo} [linha da prova]`, content: fatosDaPrevia[0].trecho, tags: [TAG_DA_PROVA], status: 'ACTIVE', metadata: { origem: 'migracao-da-voz', versaoDaPrevia: previa.versaoDaPrevia, chaveDoFato: chaves[0], prova: true }, createdBy: projeto.userId, userId: projeto.userId },
       select: { id: true },
     })
     linhasDeBaseDaProva.push(linha4a.id)
@@ -223,6 +227,15 @@ async function main() {
     const r4a = await aplicarManifesto(db, aprovado.manifesto, { criarFato: criarFatoQueQuebra, reindexarFato })
     conferir('erro dito, com fatosReindexados 1 (a linha real, pelo id dela), fatosCriados 1 (o 2º fato), 0 já existentes; o 3º não foi tentado; voz NÃO gravada', /quebrou no 2º fato/.test(r4a[0]?.erro ?? '') && r4a[0]?.fatosReindexados === 1 && reindexados.length === 1 && reindexados[0].entryId === linha4a.id && reindexados[0].chave === chaves[0] && r4a[0]?.fatosJaExistentes === 0 && r4a[0]?.fatosCriados === 1 && chamadas4a === 2 && fatosAnotados.length === 1 && fatosAnotados[0].fato.chave === chaves[1] && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, JSON.stringify(r4a[0]))
     conferir('a linha reindexada ficou com a marca durável (agora é "completo")', (await estadoDoFatoNaBase(db, chaves[0], PROJETO)).estado === 'completo')
+
+    // ── 4c. a linha da chave não é mais o fato aprovado (PR13-14) ─────────
+    console.log('4c) a linha com a chave do 1º fato foi EDITADA e, depois, ARQUIVADA: a aplicação bloqueia para decisão, sem escrever nada')
+    await db.knowledgeBaseEntry.update({ where: { id: linha4a.id }, data: { content: `${fatosDaPrevia[0].trecho} — editado por alguém depois` } })
+    const r4cEditada = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
+    await db.knowledgeBaseEntry.update({ where: { id: linha4a.id }, data: { content: fatosDaPrevia[0].trecho, status: 'ARCHIVED' } })
+    const r4cArquivada = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
+    await db.knowledgeBaseEntry.update({ where: { id: linha4a.id }, data: { status: 'ACTIVE' } })
+    conferir('editada → bloqueado ("conteúdo editado"); arquivada → bloqueado ("status ARCHIVED"); nenhuma voz gravada, registrador e reindexador quietos', r4cEditada[0]?.acao === 'bloqueado' && /conteúdo editado/.test(r4cEditada[0].motivo ?? '') && r4cArquivada[0]?.acao === 'bloqueado' && /status ARCHIVED/.test(r4cArquivada[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0 && fatosAnotados.length === 1 && reindexados.length === 1, `${r4cEditada[0]?.motivo?.slice(0, 120)} || ${r4cArquivada[0]?.motivo?.slice(0, 120)}`)
 
     // ── 4b. a trava por projeto (PR13-10) ──────────────────────────────────
     console.log('4b) com a trava do projeto tomada por OUTRA transação (outra aplicação em andamento), a aplicação é bloqueada sem escrever nada')
@@ -244,6 +257,10 @@ async function main() {
       await outraAplicacao.$disconnect().catch(() => undefined)
     }
     conferir('bloqueado pela trava por projeto; nenhuma voz gravada; registrador e reindexador quietos', r4b[0]?.acao === 'bloqueado' && /trava por projeto/.test(r4b[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0 && fatosAnotados.length === 1 && reindexados.length === 1, r4b[0]?.motivo)
+    // 4b'. a trava apontada para OUTRO banco não vale (PR13-13): bloqueado antes de conectar, nada escrito
+    const urlDeOutroBanco = String(process.env.DATABASE_URL).replace(/\/\/([^@]*@)?([^./]+)/, (m, cred, host) => `//${cred ?? ''}${host}-x-outro-compute`)
+    const r4bOutro = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, comTrava: travaPorProjeto(urlDeOutroBanco) })
+    conferir('trava em OUTRO compute: bloqueado ("não é o banco das escritas"), nenhuma voz gravada', r4bOutro[0]?.acao === 'bloqueado' && /não é o banco das escritas/.test(r4bOutro[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, r4bOutro[0]?.motivo)
 
     // ── 4. aplicar de verdade (com o stub de fatos) — a retomada ──────────
     console.log('4) aplicar o manifesto aprovado (retomada): só o fato que falta é criado, a voz é gravada (v1), a migração liga a precedência e o DNA fica arquivado')
@@ -297,14 +314,30 @@ async function main() {
     const reg6d = await lerRegistroDaVoz(PROJETO)
     conferir('com o DNA restaurado migra: voz v4 (CAS sobre a v3), migradaEm gravada, nenhum fato recriado', r6d[0]?.acao === 'migrar' && !r6d[0].erro && r6d[0].vozVersao === 4 && r6d[0].fatosCriados === 0 && reg6d?.versao === 4 && reg6d.migradaEm !== null, JSON.stringify(r6d[0]))
 
+    // ── 6e. a trava EXPIRA enquanto o corpo trabalha (PR13-15) ────────────
+    console.log('6e) a transação da trava expira (timeout curto) enquanto a costura antesDeAtivar demora: a ativação NÃO acontece, a aplicação para com o erro da trava')
+    const d6e = await desfazerMigracao({ projectId: PROJETO })
+    const r6e = await aplicarManifesto(db, aprovado.manifesto, {
+      criarFato,
+      estadoDoFato,
+      reindexarFato,
+      comTrava: travaPorProjeto(undefined, { timeoutMs: 2_000 }),
+      seams: { antesDeAtivar: async () => { await new Promise((r) => setTimeout(r, 4_000)) } },
+    })
+    const reg6e = await lerRegistroDaVoz(PROJETO)
+    conferir('desfeita; a trava expirou durante a costura: erro "a trava por projeto expirou", voz gravada (v5) mas NÃO migrada', d6e.desfeita && /trava por projeto expirou/.test(r6e[0]?.erro ?? '') && reg6e?.versao === 5 && reg6e.migradaEm === null, JSON.stringify({ erro: r6e[0]?.erro?.slice(0, 120), versao: reg6e?.versao, migradaEm: reg6e?.migradaEm }))
+    const r6f = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
+    const reg6f = await lerRegistroDaVoz(PROJETO)
+    conferir('com a trava normal migra de novo: voz v6, migradaEm gravada', r6f[0]?.acao === 'migrar' && !r6f[0].erro && reg6f?.versao === 6 && reg6f.migradaEm !== null, JSON.stringify(r6f[0]))
+
     // ── 7. manter-legado e pendente não escrevem ───────────────────────────
     console.log('7) "manter-legado" e "pendente" não escrevem nada')
     const antes7 = fatosAnotados.length
-    const migradaEm7 = reg6d?.migradaEm?.toISOString()
+    const migradaEm7 = reg6f?.migradaEm?.toISOString()
     const r7a = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'manter-legado', ...APROVACAO })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const r7b = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'pendente' })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const reg7 = await lerRegistroDaVoz(PROJETO)
-    conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v4 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 4 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
+    conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v6 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 6 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
 
     // ── 8. nada além de BrandVoice ─────────────────────────────────────────
     console.log('8) nada além de BrandVoice (e da linha de base da própria prova) foi criado desde o início da prova')

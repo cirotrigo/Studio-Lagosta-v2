@@ -526,6 +526,52 @@ export function classificarFato(linha: { metadata?: unknown } | null | undefined
   return typeof indexadoEm === 'string' && indexadoEm.length > 0 ? 'completo' : 'incompleto'
 }
 
+/** O compute de uma URL do Neon (`ep-x-pooler.…` e `ep-x.…` são a mesma instância); `null` quando ilegível. */
+export function computeDe(url: string | null | undefined): string | null {
+  if (!url) return null
+  try {
+    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
+  } catch {
+    return null
+  }
+}
+
+/** A conexão da TRAVA e a das escritas têm de ser o MESMO banco: trava em outro banco não exclui nada (PR13-13). */
+export function mesmoBanco(urlDaTrava: string | null | undefined, urlDasEscritas: string | null | undefined): boolean {
+  const a = computeDe(urlDaTrava)
+  const b = computeDe(urlDasEscritas)
+  return a !== null && b !== null && a === b
+}
+
+/** A linha da base que carrega a chave de um fato — os campos que a retomada CONFERE antes de reutilizá-la (PR13-14). */
+export interface LinhaDoFato {
+  content: string
+  category: string
+  status: string
+  expiresAt: Date | string | null
+}
+
+/**
+ * A linha encontrada pela chave ainda é o fato APROVADO? Editada (conteúdo,
+ * categoria, validade) ou arquivada, ela não pode ser reutilizada nem
+ * reindexada como se fosse ele — a decisão volta para a pessoa (PR13-14).
+ */
+export function divergenciasDoFato(linha: LinhaDoFato, fato: { trecho: string; categoria: string; validaAte: string | null }): string[] {
+  const d: string[] = []
+  if (linha.content.trim() !== fato.trecho.trim()) d.push('conteúdo editado')
+  if (linha.category !== fato.categoria) d.push(`categoria ${linha.category} (aprovada ${fato.categoria})`)
+  if (linha.status !== 'ACTIVE') d.push(`status ${linha.status} (a busca só lê ACTIVE)`)
+  const validadeDaLinha = linha.expiresAt ? diaEmBrasilia(linha.expiresAt) : null
+  if (validadeDaLinha !== (fato.validaAte ?? null)) d.push(`validade ${validadeDaLinha ?? 'sem prazo'} (aprovada ${fato.validaAte ?? 'sem prazo'})`)
+  return d
+}
+
+function diaEmBrasilia(d: Date | string): string | null {
+  const data = d instanceof Date ? d : new Date(d)
+  if (Number.isNaN(data.getTime())) return null
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(data)
+}
+
 export interface EstadoDoCliente {
   /** A versão da prévia CALCULADA AGORA (DNA atual + voz proposta atual). */
   versaoDaPreviaAtual: string

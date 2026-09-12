@@ -51,6 +51,9 @@ import {
   type DestinoDaAplicacao,
   classificarFato,
   MARCA_DE_INDEXADO,
+  divergenciasDoFato,
+  mesmoBanco,
+  type LinhaDoFato,
 } from '../src/lib/brand/migracao-da-voz'
 
 const ROOT = process.cwd()
@@ -98,7 +101,13 @@ export function resolverBanco(opcoes: { dev: boolean }): { endpoint: string; pro
   if (opcoes.dev) {
     const dev = parseEnvFile(resolve(ROOT, '.env.development.local'))
     if (!dev.DATABASE_URL) abortar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
-    for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
+    // DIRECT_URL nunca é preservada de outro ambiente: sem ela no arquivo de dev, vale a própria DATABASE_URL
+    // (a trava por projeto usa DIRECT_URL, e trava em outro banco não exclui nada — PR13-13).
+    process.env.DATABASE_URL = dev.DATABASE_URL
+    process.env.DIRECT_URL = dev.DIRECT_URL || dev.DATABASE_URL
+  }
+  if (!mesmoBanco(process.env.DIRECT_URL, process.env.DATABASE_URL)) {
+    abortar('DIRECT_URL e DATABASE_URL apontam para bancos diferentes: as escritas iriam para um e a trava por projeto para outro.', [`DATABASE_URL → ${endpointDe(process.env.DATABASE_URL)}`, `DIRECT_URL → ${endpointDe(process.env.DIRECT_URL)}`])
   }
   // O indexador de vetores da base é ATRIBUÍDO, nunca herdado: em produção o do .env, por cima do que o processo
   // trouxe do ambiente (um UPSTASH_VECTOR_* exportado antes mandaria os vetores para outro índice com o SQL em
@@ -209,7 +218,7 @@ export interface AplicarOpcoes {
    * sem a marca `indexadoEm` — o processo caiu entre o SQL e o vetor) ou
    * `completo`. O padrão consulta `metadata`; a prova injeta o próprio registro.
    */
-  estadoDoFato?: (chave: string, projectId: number) => Promise<{ estado: 'ausente' } | { estado: 'incompleto' | 'completo'; entryId: string }>
+  estadoDoFato?: (chave: string, projectId: number) => Promise<EstadoDoFatoNaBase>
   /** Reindexa a linha incompleta e a marca como indexada. O padrão é `reindexEntry` + `marcarFatoIndexado`; a prova injeta. */
   reindexarFato?: (entryId: string, fato: FatoACriar, autor: string) => Promise<void>
   /**
@@ -225,11 +234,13 @@ export interface AplicarOpcoes {
   seams?: { antesDeAtivar?: (projectId: number) => Promise<void> }
 }
 
-/** O estado do fato com esta chave na base deste projeto (consulta por `metadata.chaveDoFato`; `classificarFato` decide). */
-export async function estadoDoFatoNaBase(db: Db, chave: string, projectId: number): Promise<{ estado: 'ausente' } | { estado: 'incompleto' | 'completo'; entryId: string }> {
-  const linha = await db.knowledgeBaseEntry.findFirst({ where: { projectId, metadata: { path: ['chaveDoFato'], equals: chave } }, select: { id: true, metadata: true }, orderBy: { createdAt: 'asc' } })
+export type EstadoDoFatoNaBase = { estado: 'ausente' } | { estado: 'incompleto' | 'completo'; entryId: string; linha: LinhaDoFato }
+
+/** O estado do fato com esta chave na base deste projeto (consulta por `metadata.chaveDoFato`; `classificarFato` decide), COM a linha para conferir (PR13-14). */
+export async function estadoDoFatoNaBase(db: Db, chave: string, projectId: number): Promise<EstadoDoFatoNaBase> {
+  const linha = await db.knowledgeBaseEntry.findFirst({ where: { projectId, metadata: { path: ['chaveDoFato'], equals: chave } }, select: { id: true, metadata: true, content: true, category: true, status: true, expiresAt: true }, orderBy: { createdAt: 'asc' } })
   const estado = classificarFato(linha)
-  return estado === 'ausente' || !linha ? { estado: 'ausente' } : { estado, entryId: linha.id }
+  return estado === 'ausente' || !linha ? { estado: 'ausente' } : { estado, entryId: linha.id, linha: { content: linha.content, category: linha.category, status: linha.status, expiresAt: linha.expiresAt } }
 }
 
 /** A marca durável de indexação concluída, gravada DEPOIS de o vetor existir — a linha existir não prova o vetor (PR13-11). */
@@ -244,7 +255,11 @@ export function chaveDaTrava(projectId: number): string {
   return `migracao-da-voz:${projectId}`
 }
 
-export type ComTrava = <T>(projectId: number, corpo: () => Promise<T>) => Promise<T | { bloqueado: string }>
+/** O que o corpo recebe: `conferir()` confirma que a transação da trava continua viva — e LANÇA se ela expirou (PR13-15). */
+export interface TravaViva {
+  conferir: () => Promise<void>
+}
+export type ComTrava = <T>(projectId: number, corpo: (trava: TravaViva) => Promise<T>) => Promise<T | { bloqueado: string }>
 
 /**
  * A trava é um advisory lock de TRANSAÇÃO numa CONEXÃO PRÓPRIA (`DIRECT_URL`,
@@ -257,8 +272,12 @@ export type ComTrava = <T>(projectId: number, corpo: () => Promise<T>) => Promis
  * de sempre; a transação da trava só existe para segurar a exclusão até a
  * ativação terminar. Quem não consegue a trava é `bloqueado` na hora.
  */
-export function travaPorProjeto(url = process.env.DIRECT_URL ?? process.env.DATABASE_URL): ComTrava {
+export function travaPorProjeto(url = process.env.DIRECT_URL ?? process.env.DATABASE_URL, opcoes: { timeoutMs?: number } = {}): ComTrava {
   return async (projectId, corpo) => {
+    // A trava só vale no MESMO banco das escritas (PR13-13): em outro compute ela não exclui ninguém.
+    if (!mesmoBanco(url, process.env.DATABASE_URL)) {
+      return { bloqueado: `a conexão da trava por projeto (${endpointDe(url) ?? 'ilegível'}) não é o banco das escritas (${endpointDe(process.env.DATABASE_URL) ?? 'ilegível'}); confira DIRECT_URL/DATABASE_URL antes de aplicar` }
+    }
     const { PrismaClient } = await import('@prisma/client')
     const cliente = new PrismaClient({ datasources: { db: { url } } })
     try {
@@ -266,9 +285,18 @@ export function travaPorProjeto(url = process.env.DIRECT_URL ?? process.env.DATA
         async (tx) => {
           const trava = await tx.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_xact_lock(hashtext(${chaveDaTrava(projectId)})) AS ok`
           if (!trava[0]?.ok) return { bloqueado: 'outra aplicação da migração deste cliente está em andamento (trava por projeto); tente de novo quando ela terminar' }
-          return corpo()
+          // A transação da trava pode EXPIRAR enquanto o corpo escreve por outras conexões; o corpo confere a trava
+          // antes de cada escrita e para na primeira conferência que falha (PR13-15).
+          const conferir = async () => {
+            try {
+              await tx.$queryRaw`SELECT 1`
+            } catch (e) {
+              throw new Error(`a trava por projeto expirou ou se perdeu antes desta escrita — a aplicação parou aqui para não concorrer com outra: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+            }
+          }
+          return corpo({ conferir })
         },
-        { maxWait: 30_000, timeout: 10 * 60_000 },
+        { maxWait: 30_000, timeout: opcoes.timeoutMs ?? 60 * 60_000 },
       )
     } finally {
       await cliente.$disconnect().catch(() => undefined)
@@ -351,15 +379,25 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
       // do mesmo manifesto ao mesmo tempo leriam "chave ausente" as duas e criariam o fato (e os vetores) duas
       // vezes — a chave em JSON não tem unicidade (PR13-10). Quem não consegue a trava é bloqueado, sem esperar.
       const comTrava = opcoes.comTrava ?? travaPorProjeto()
-      const desfecho = await comTrava(acao.projectId, async () => {
-          for (const f of acao.fatos) {
+      const desfecho = await comTrava(acao.projectId, async (trava) => {
+          // 1ª passada, SEM escrever: o estado de cada fato e a conferência da linha encontrada. Linha editada ou
+          // arquivada não é o fato aprovado — nem se reutiliza, nem se reindexa: bloqueia para decisão (PR13-14).
+          const fatos = acao.fatos.map((f) => {
             const chave = chaveDoFato({ projectId: acao.projectId, versaoDaPrevia: cliente.versaoDaPrevia, trecho: f.trecho })
             const fato: FatoACriar = { projectId: acao.projectId, categoria: f.categoria, titulo: f.titulo, trecho: f.trecho, validaAte: f.validaAte ?? null, versaoDaPrevia: cliente.versaoDaPrevia, chave }
-            const estado = await estadoDoFato(chave, acao.projectId)
+            return fato
+          })
+          const estados = await Promise.all(fatos.map((f) => estadoDoFato(f.chave, acao.projectId)))
+          const divergentes = estados.flatMap((e, i) => (e.estado === 'ausente' ? [] : divergenciasDoFato(e.linha, fatos[i]).map((d) => `"${fatos[i].trecho.slice(0, 60)}" (${e.entryId}): ${d}`)))
+          if (divergentes.length > 0) return { bloqueado: `linha da base com a chave do fato não é mais o fato aprovado — decida antes de aplicar: ${divergentes.join('; ')}` }
+          // 2ª passada: as escritas, cada uma depois de conferir que a trava continua viva (PR13-15).
+          for (const [i, fato] of fatos.entries()) {
+            const estado = estados[i]
             if (estado.estado === 'completo') {
               fatosJaExistentes++
               continue
             }
+            await trava.conferir()
             if (estado.estado === 'incompleto') {
               // A linha existe sem a marca: o processo anterior caiu entre o SQL e o vetor. Reindexar pelo MESMO id.
               await reindexarFato(estado.entryId, fato, autor)
@@ -369,8 +407,10 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
             await criarFato(fato, autor)
             fatosCriados++
           }
+          await trava.conferir()
           const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
           await opcoes.seams?.antesDeAtivar?.(acao.projectId)
+          await trava.conferir()
           // A ativação confere, na mesma transação dela, que o DNA de texto ainda é o que a prévia aprovada leu (PR13-02).
           const migrada = await migrarParaVoz({ projectId: acao.projectId, versaoEsperada: gravada.versao, em: opcoes.agora, dnaEsperado: { toneOfVoice: dna.toneOfVoice, contentRules: dna.contentRules } })
           return { vozVersao: gravada.versao, migradaEm: migrada.migradaEm.toISOString() }
