@@ -73,8 +73,8 @@ describe('o contrato da copy autoral — ida e volta EXATA', () => {
       ...copy,
       blocos: [
         // Grupo declarado com o MESMO nome que o id de um bloco independente:
-        // a chave interna separa os dois (e "_aviso", que começava com "_",
-        // deixou de ser aceito — grupo tem o alfabeto do id).
+        // a chave interna (prefixos "g" e "solo") separa os dois. O nome do
+        // grupo é livre — "_aviso" também vale (teste R01).
         { id: 'a', funcao: 'pre', grupoDeLeitura: 'aviso', ordem: 0, linhas: ['a'] },
         { id: 'b', funcao: 'headline', grupoDeLeitura: 'aviso', ordem: 1, linhas: ['b'] },
         { id: 'aviso', funcao: 'apoio', ordem: 2, linhas: ['c'] },

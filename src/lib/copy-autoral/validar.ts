@@ -114,9 +114,10 @@ export function blocosEmOrdem(copy: CopyAutoral): BlocoAutoral[] {
 
 /** Os grupos de leitura, cada um com os blocos em ordem; bloco sem grupo é um grupo de si mesmo. */
 export function gruposDeLeitura(copy: CopyAutoral): Array<{ grupo: string; blocos: BlocoAutoral[]; declarado: boolean }> {
-  // A chave interna do bloco SEM grupo usa um separador que o alfabeto do id
-  // e do grupo não permitem ("\u0000"): um grupo declarado "_aviso" nunca
-  // engole o bloco independente "aviso".
+  // Os prefixos distintos das chaves internas ("g" para grupo declarado,
+  // "solo" para bloco sem grupo, separados por "\u0000", que o alfabeto do id
+  // não permite) isolam os dois: um grupo declarado "_aviso" ou "aviso" nunca
+  // engole o bloco independente "aviso". O NOME do grupo é livre (1–60).
   const saida = new Map<string, { grupo: string; blocos: BlocoAutoral[]; declarado: boolean }>()
   for (const b of blocosEmOrdem(copy)) {
     const chave = b.grupoDeLeitura ? `g\u0000${b.grupoDeLeitura}` : `solo\u0000${b.id}`

@@ -94,7 +94,7 @@ export const blocoAutoralSchema = z
   .object({
     id: idDeBlocoSchema,
     funcao: z.enum(FUNCOES),
-    /** Os blocos que se leem como UMA frase. Um id de grupo, do autor (mesmo alfabeto do id). Sem grupo = frase própria. */
+    /** Os blocos que se leem como UMA frase. Um nome de grupo, do autor. Sem grupo = frase própria. */
     /**
      * Nome livre (1–60): o leitor v1 sempre aceitou qualquer string aqui, e
      * restringir o alfabeto rejeitaria copy já gravada (R01 da revisão do
