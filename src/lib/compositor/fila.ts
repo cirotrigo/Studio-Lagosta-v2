@@ -28,6 +28,8 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import { enfileirarComposicao, pedirNovaTentativa, type ComposicaoJobArgs } from '@/lib/ai/generation-queue'
 import { caminhoAte } from '@/lib/planos/execucao'
 import { normalizarStatusDoItem, type StatusDoItem } from '@/lib/planos/vocabulario'
+import { payloadParaHash, validarIdentidadeDeLote, type DesfechoDoItemDeLote, type IdentidadeDeLote, type SituacaoDaPecaDoLote } from '@/lib/lotes/identidade'
+import { reservarItemDeLote } from '@/lib/lotes/reserva'
 
 import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
@@ -37,30 +39,68 @@ export interface PecaEnfileirada {
   generationId: string
   jobId: string
   spec: SpecDePeca
+  /**
+   * Presente quando a peça veio com identidade de lote (`opcoes.lote`): o que
+   * a chamada fez com o item e como a peça dele está agora. O conflito não
+   * aparece aqui — ele LANÇA `LOTE_ITEM_CONFLITO` (409) sem escrever nada.
+   */
+  lote?: { loteId: string; itemId: string; desfecho: DesfechoDoItemDeLote; situacao: SituacaoDaPecaDoLote }
 }
 
-/** Cria a Generation PROCESSING e o job. Idempotente por Generation. */
-export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: string | null; canal?: CanalDaArte | null; autor?: string | null; itemAtualizadoEm?: Date | string } = {}): Promise<PecaEnfileirada> {
+export interface OpcoesDeEnfileirar {
+  decididoPor?: string | null
+  canal?: CanalDaArte | null
+  autor?: string | null
+  itemAtualizadoEm?: Date | string
+  /**
+   * A identidade durável do item (PR 11): `loteId` + `itemId` vindos de quem
+   * chama, estáveis entre retentativas. Com ela a peça passa pela reserva de
+   * `src/lib/lotes/reserva.ts` — repetir a chamada devolve a MESMA Generation
+   * e o MESMO job; outro conteúdo sob a mesma chave é conflito. Sem ela, o
+   * comportamento de sempre.
+   */
+  lote?: { loteId: string; itemId: string } | null
+}
+
+type ProjetoDaPeca = { id: number; name: string; userId: string }
+type Pasta = Awaited<ReturnType<typeof garantirPasta>>
+
+/** A Generation PROCESSING que a fila fecha — a mesma com e sem identidade de lote. */
+function dadosDaGeracao(spec: SpecDePeca, projeto: ProjetoDaPeca, coletor: Pasta, opcoes: OpcoesDeEnfileirar) {
+  return {
+    status: 'PROCESSING' as const,
+    templateId: coletor.id,
+    projectId: spec.projectId,
+    createdBy: opcoes.autor ?? projeto.userId,
+    authorName: 'compositor',
+    canal: opcoes.canal ?? null,
+    templateName: coletor.name,
+    projectName: projeto.name,
+    fieldValues: { source: 'compositor', spec, fila: 'aguardando' } as never,
+  }
+}
+
+/** Cria a Generation PROCESSING e o job. Idempotente por Generation (e, com `opcoes.lote`, por item do lote). */
+export async function enfileirarPeca(entrada: unknown, opcoes: OpcoesDeEnfileirar = {}): Promise<PecaEnfileirada> {
   const v = validarSpec(entrada)
   if (!v.spec) throw new CreativeError('SPEC_INVALIDA', `Spec inválida — ${v.problemas.join('; ')}`, 400, { problemas: v.problemas })
   const spec = v.spec
 
+  let identidade: IdentidadeDeLote | null = null
+  if (opcoes.lote != null) {
+    const r = validarIdentidadeDeLote(opcoes.lote)
+    if (!r.identidade) throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade de lote inválida — ${r.problemas.join('; ')}`, 400, { problemas: r.problemas })
+    identidade = r.identidade
+  }
+
   const projeto = await db.project.findUnique({ where: { id: spec.projectId }, select: { id: true, name: true, userId: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${spec.projectId} não encontrado`, 404)
 
+  if (identidade) return enfileirarPecaDoLote(spec, projeto, identidade, opcoes)
+
   const coletor = await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato)
 
-  const data = {
-      status: 'PROCESSING' as const,
-      templateId: coletor.id,
-      projectId: spec.projectId,
-      createdBy: opcoes.autor ?? projeto.userId,
-      authorName: 'compositor',
-      canal: opcoes.canal ?? null,
-      templateName: coletor.name,
-      projectName: projeto.name,
-      fieldValues: { source: 'compositor', spec, fila: 'aguardando' } as never,
-    }
+  const data = dadosDaGeracao(spec, projeto, coletor, opcoes)
   if (spec.itemDePlanoId) {
     const { enfileirarComposicaoDoPlano } = await import('@/lib/planos/enfileirar-composicao')
     return enfileirarComposicaoDoPlano(spec, data, opcoes.decididoPor ?? null, opcoes.autor ?? null, opcoes.itemAtualizadoEm)
@@ -70,6 +110,55 @@ export async function enfileirarPeca(entrada: unknown, opcoes: { decididoPor?: s
   const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor: opcoes.decididoPor ?? null, autor: opcoes.autor ?? null })
   await reapontarItemDoPlano(spec, 'na-fila', { generationId: generation.id, decididoPor: opcoes.decididoPor ?? null })
   return { generationId: generation.id, jobId, spec }
+}
+
+/**
+ * O caminho COM identidade de lote. A pasta só é garantida quando é preciso
+ * criar (a repetição de uma leva viva não escreve nada), e Generation + job
+ * nascem dentro da transação que segura a linha do item — ver `reserva.ts`.
+ *
+ * Com `itemDePlanoId`, quem cria é o caminho do plano (na mesma transação), e
+ * ele pode devolver a Generation que o item já tinha na mesma revisão. Mas a
+ * repetição de uma chave VIVA é decidida pela identidade de lote antes de
+ * chegar ao plano: mesma chave e mesmo payload são a mesma peça, mesmo que o
+ * item tenha sido revisado fora da spec (campanha, escopo) — revisão nova pede
+ * lote ou item novo.
+ */
+async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, identidade: IdentidadeDeLote, opcoes: OpcoesDeEnfileirar): Promise<PecaEnfileirada> {
+  const decididoPor = opcoes.decididoPor ?? null
+  const autor = opcoes.autor ?? null
+  let coletor: Pasta | null = null
+  const pasta = async () => (coletor ??= await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato))
+
+  const r = await reservarItemDeLote({
+    projectId: spec.projectId,
+    identidade,
+    payload: payloadParaHash(spec),
+    preparar: async () => {
+      await pasta()
+    },
+    criar: async (tx) => {
+      const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
+      if (spec.itemDePlanoId) {
+        const { enfileirarComposicaoDoPlanoEm } = await import('@/lib/planos/enfileirar-composicao')
+        const p = await enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm)
+        return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado }
+      }
+      const generation = await tx.generation.create({ data, select: { id: true } })
+      const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor, autor }, tx)
+      return { generationId: generation.id, jobId }
+    },
+    // O job do item de plano carrega a revisão do item: só o caminho do plano o monta.
+    ...(spec.itemDePlanoId
+      ? {}
+      : { criarJob: (tx, generationId) => enfileirarComposicao({ generationId, projectId: spec.projectId, spec, decididoPor, autor }, tx) }),
+  })
+  return {
+    generationId: r.generationId,
+    jobId: r.jobId,
+    spec,
+    lote: { loteId: r.loteId, itemId: r.itemId, desfecho: r.desfecho, situacao: r.situacao },
+  }
 }
 
 /** O runner do job COMPOR. Nunca lança: o desfecho fica na Generation. */
