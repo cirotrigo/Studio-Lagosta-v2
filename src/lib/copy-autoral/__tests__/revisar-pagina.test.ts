@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
-import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, lerCopyAutoral, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
+import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
 
 function texto(id: string, y: number, content: string, extra: Partial<Layer> = {}): Layer {
   return { id, name: id, type: 'text', visible: true, locked: false, order: 1, content, position: { x: 100, y }, size: { width: 800, height: 60 }, style: { fontSize: 40 }, metadata: { compositor: { papel: id.replace(/-\d+$/, '') } }, ...extra } as Layer
@@ -50,11 +50,34 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(r.estado).toBe('sem-mudanca')
   })
 
-  it('duas camadas soltas com o mesmo apelido ganham ids únicos', () => {
-    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('Nota!', 500, 'a', { metadata: {} } as Partial<Layer>), texto('nota', 560, 'b', { metadata: {} } as Partial<Layer>)]
-    const r = copyEfetivaDasCamadas(contrato, camadas, { superficie: 'compositor' })
-    const ids = r.efetiva.blocos.map((b) => b.id)
+  it('R04: camadas soltas cujo id saneado COLIDE ("nota!" e "nota?") ganham ids distintos e REPRODUTÍVEIS — três leituras iguais', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('nota!', 500, 'a', { metadata: {} } as Partial<Layer>), texto('nota?', 560, 'b', { metadata: {} } as Partial<Layer>), texto('Nota', 620, 'c', { metadata: {} } as Partial<Layer>)]
+    const l1 = copyEfetivaDasCamadas(contrato, camadas, { superficie: 'compositor' })
+    const ids = l1.efetiva.blocos.map((b) => b.id)
     expect(new Set(ids).size).toBe(ids.length)
-    expect(lerCopyAutoral(serializarCopyAutoral(r.efetiva)).problemas).toEqual([])
+    expect(ids.slice(2)).toEqual([idDeExtra('nota!'), idDeExtra('nota?'), 'extra-Nota'])
+    const l2 = copyEfetivaDasCamadas(l1.efetiva, camadas, { superficie: 'compositor' })
+    const l3 = copyEfetivaDasCamadas(l2.efetiva, camadas, { superficie: 'compositor' })
+    expect(l2.mudancas).toEqual([])
+    expect(l3.mudancas).toEqual([])
+    expect(l3.efetiva.blocos).toEqual(l1.efetiva.blocos)
+    expect(l3.efetiva.revisoes).toEqual(l1.efetiva.revisoes)
+    expect(lerCopyAutoral(serializarCopyAutoral(l3.efetiva)).problemas).toEqual([])
+  })
+
+  it('R03: duplicar a página regenera os ids das camadas e os blocos extra acompanham, no bloco e no histórico', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes'), texto('aviso', 500, 'Só hoje', { metadata: {} } as Partial<Layer>)]
+    const original = copyEfetivaDasCamadas(contrato, camadas, { superficie: 'compositor' }).efetiva
+    const editada = copyEfetivaDasCamadas(original, camadas.map((c) => (c.id === 'aviso' ? { ...c, content: 'Só amanhã' } : c)), { superficie: 'editor' }).efetiva
+    const mapa = new Map([['headline', 'uuid-1'], ['cta', 'uuid-2'], ['aviso', 'uuid-3']])
+    const copia = renomearExtrasDuplicados(editada, mapa)
+    expect(copia.blocos.map((b) => b.id)).toEqual(['headline', 'cta', 'extra-uuid-3'])
+    expect(copia.revisoes.every((r) => !r.blocos.includes('extra-aviso'))).toBe(true)
+    expect(copia.revisoes.some((r) => r.blocos.includes('extra-uuid-3'))).toBe(true)
+    expect(lerCopyAutoral(serializarCopyAutoral(copia)).problemas).toEqual([])
+    // na página duplicada, a leitura com as camadas de ids novos NÃO muda nada
+    const camadasDaCopia = camadas.map((c) => ({ ...c, id: mapa.get(c.id)!, name: mapa.get(c.id)!, content: c.id === 'aviso' ? 'Só amanhã' : c.content })) as Layer[]
+    const camadasComPapel = camadasDaCopia.map((c) => ({ ...c, metadata: c.id === 'uuid-3' ? {} : { compositor: { papel: c.id === 'uuid-1' ? 'headline' : 'cta' } } })) as Layer[]
+    expect(copyEfetivaDasCamadas(copia, camadasComPapel, { superficie: 'editor' }).mudancas).toEqual([])
   })
 })

@@ -191,10 +191,6 @@ export async function PATCH(
      * página com as camadas B e o contrato de A. Página sem contrato fica
      * como está — não se inventa histórico.
      */
-    if (layersChanged) {
-      const revisao = revisaoDaPaginaComCamadas(existingPage.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
-      if (revisao.estado === 'registrada' && revisao.copy) updateData.copyAutoral = revisao.copy
-    }
 
     let page
     let invalidated = 0
@@ -202,10 +198,30 @@ export async function PATCH(
     if (visualChanged) {
       ;({ page, invalidated, congelados } = await db.$transaction(
         async (tx) => {
-          const updated = await tx.page.update({
-            where: { id: pageId },
-            data: updateData,
-          })
+          /**
+           * A escrita das camadas e a revisão do contrato saem JUNTAS, por
+           * compare-and-set na versão LIDA AGORA (não na leitura do começo do
+           * handler): dois PATCHes concorrentes — um só de geometria, outro
+           * de texto — não podem deixar as camadas de um com o contrato do
+           * outro, nem apagar a revisão um do outro (R01 e R02 da revisão do
+           * Codex sobre o PR 3, 12/09/2026). Perdeu a corrida → relê, refaz a
+           * revisão contra o contrato novo e tenta de novo; a escrita das
+           * camadas continua sendo a do cliente (último a gravar vence, como
+           * sempre foi), mas o contrato descreve o que ficou gravado.
+           */
+          let updated: NonNullable<typeof existingPage> | null = null
+          for (let volta = 0; volta < 4 && !updated; volta++) {
+            const fresca = await tx.page.findUnique({ where: { id: pageId }, select: { updatedAt: true, copyAutoral: true } })
+            if (!fresca) throw new Error('page_not_found')
+            const dados: Record<string, unknown> = { ...updateData }
+            if (layersChanged) {
+              const revisao = revisaoDaPaginaComCamadas(fresca.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+              if (revisao.estado === 'registrada' && revisao.copy) dados.copyAutoral = revisao.copy
+            }
+            const gravada = await tx.page.updateMany({ where: { id: pageId, updatedAt: fresca.updatedAt }, data: dados })
+            if (gravada.count > 0) updated = await tx.page.findUnique({ where: { id: pageId } })
+          }
+          if (!updated) throw new Error('page_write_conflict')
           const r = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
           return { page: updated, invalidated: r.invalidados, congelados: r.congelados }
         },

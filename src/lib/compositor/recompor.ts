@@ -463,6 +463,9 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * recuperação forçada que viesse depois protegeria a página ERRADA
      * (REV-05 da revisão do Codex, 12/09/2026). Mudou → a composição e o PNG
      * são descartados e o job volta à fila: a próxima execução lê a página nova.
+     * A mesma regra protege o contrato da copy: a edição salva no meio levou a
+     * revisão dela no contrato, e gravar por cima a apagaria (R02 da revisão do
+     * Codex sobre o PR 3, 12/09/2026).
      */
     const gravada = await db.page.updateMany({
       where: { id: page.id, updatedAt: page.updatedAt },

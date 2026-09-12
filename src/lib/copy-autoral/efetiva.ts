@@ -30,9 +30,51 @@ import { VERSAO_DO_CONTRATO, type BlocoAutoral, type CopyAutoral, type FuncaoDoB
 import { blocosEmOrdem } from './validar'
 import { aplicarRevisao, type MudancaDeBloco } from './revisao'
 
-/** O id do bloco `extra-…` que uma camada solta gera — estável entre leituras. */
-function idDeExtra(camada: Layer): string {
-  return `extra-${String(camada.id).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[^a-z0-9]+/, '') || 'camada'}`
+/** Hash curto e determinístico (FNV-1a) — só para desempatar ids saneados. */
+function hashCurto(texto: string): string {
+  let h = 2166136261
+  for (let i = 0; i < texto.length; i++) {
+    h ^= texto.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return (h >>> 0).toString(36).slice(0, 5)
+}
+
+/**
+ * O id do bloco `extra-…` que uma camada solta gera — REPRODUTÍVEL entre
+ * leituras e DISTINTO para camadas distintas: preserva a caixa do id da
+ * camada (o alfabeto do bloco aceita) e, quando o saneamento mudou o id
+ * ("nota!" e "nota?" colapsariam em "nota-"), acrescenta um hash do id
+ * original (R04 da revisão do Codex sobre o PR 3, 12/09/2026).
+ */
+export function idDeExtra(camadaOuId: Pick<Layer, 'id'> | string): string {
+  const cru = String(typeof camadaOuId === 'string' ? camadaOuId : camadaOuId.id)
+  const saneado = cru.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^[^A-Za-z0-9]+/, '').slice(0, 40)
+  const base = saneado || 'camada'
+  return saneado === cru ? `extra-${base}` : `extra-${base}-${hashCurto(cru)}`
+}
+
+/**
+ * Duplicar página regenera os ids das camadas; os blocos `extra-…` do contrato
+ * (nomeados pelo id da camada solta) acompanham a troca — nos blocos e no
+ * histórico (`revisoes[].blocos`, `campos`, `removidos`) —, senão a próxima
+ * leitura esvaziaria o bloco antigo e criaria outro, com autoria falsa (R03).
+ */
+export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: ReadonlyMap<string, string>): CopyAutoral {
+  const mapa = new Map<string, string>()
+  for (const [antigo, novo] of idsDeCamada) mapa.set(idDeExtra(antigo), idDeExtra(novo))
+  if (!copy.blocos.some((b) => mapa.has(b.id))) return copy
+  const troca = (id: string) => mapa.get(id) ?? id
+  return {
+    ...copy,
+    blocos: copy.blocos.map((b) => ({ ...b, id: troca(b.id) })),
+    revisoes: copy.revisoes.map((r) => ({
+      ...r,
+      blocos: r.blocos.map(troca),
+      ...(r.campos ? { campos: Object.fromEntries(Object.entries(r.campos).map(([k, v]) => [troca(k), v])) } : {}),
+      ...(r.removidos ? { removidos: r.removidos.map((x) => ({ ...x, id: troca(x.id) })) } : {}),
+    })),
+  }
 }
 
 function ehTextoVisivel(l: Layer): boolean {
@@ -116,7 +158,8 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   for (const c of restantes) {
     const papel = papelDaCamada(c)
     let id = idDeExtra(c)
-    // Id único mesmo quando duas camadas soltas dão o mesmo apelido.
+    // Id único mesmo quando duas camadas soltas dão o mesmo apelido (só se o
+    // hash colidir — o desempate reproduzível mora em `idDeExtra`).
     for (let n = 2; blocos.some((x) => x.id === id); n++) id = `${idDeExtra(c)}-${n}`
     blocos.push({
       id,
