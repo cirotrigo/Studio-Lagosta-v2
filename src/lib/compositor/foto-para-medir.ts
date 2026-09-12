@@ -43,8 +43,14 @@ export async function carregarFotoParaMedir(spec: Pick<SpecDePeca, 'foto'>): Pro
       return { foto: null, aviso: `Falha ao resolver a imagem no Drive: ${(error as Error).message}` }
     }
   }
-  const bytes = await fetchBuffer(origem)
-  const sharp = (await import('sharp')).default
-  const meta = await sharp(bytes).metadata()
-  return { foto: { url, bytes, largura: meta.width ?? 0, altura: meta.height ?? 0 }, aviso: null }
+  // Download e decodificação também podem falhar (403/503 do lh3, conexão, bytes que não são imagem): a medição
+  // continua SEM a foto, com aviso — a escolha fica provisória (R13/R16). Nada é publicado no Blob.
+  try {
+    const bytes = await fetchBuffer(origem)
+    const sharp = (await import('sharp')).default
+    const meta = await sharp(bytes).metadata()
+    return { foto: { url, bytes, largura: meta.width ?? 0, altura: meta.height ?? 0 }, aviso: null }
+  } catch (error) {
+    return { foto: null, aviso: `Falha ao baixar/ler a foto para medir (${(error as Error).message}) — a medição seguiu sem ela` }
+  }
 }

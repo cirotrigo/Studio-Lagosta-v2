@@ -7537,3 +7537,7 @@ que NADA é gravado e que a medida é a da composição).
   e a `fixacao` da medição carregam o par, e o schema público declara o campo
   (fixture do registro atualizada de propósito). Teste do parse pela porta em
   `src/lib/mcp/__tests__/compositor-preferencias-arranjos.test.ts`.
+- **Download ou decodificação da foto falhando NÃO aborta a medição** (R16 da
+  revisão de 5d628520): `carregarFotoParaMedir` devolve `{ foto: null, aviso }`
+  também quando `fetchBuffer` rejeita (403/503 do lh3, conexão) ou o sharp não
+  lê os bytes — a medição segue provisória, como sem foto, sem publicar nada.
