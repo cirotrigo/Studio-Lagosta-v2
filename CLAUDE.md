@@ -6353,6 +6353,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   sem conferir o dono), e a consulta pelo id nu entregava os textos de B pela
   agenda de A. A busca das páginas leva `Template: { projectId }`; página de
   fora fica sem camadas e a peça segue como fonte indisponível.
+  🔴 **`pageId` preenchido e página NÃO carregada não é "peça sem página"**
+  (R30): a fonte principal está indisponível — a copy do post volta parcial
+  com a nota, a cópia registrada parcial, e sem copy é `textosIndisponiveis`.
+  E a prova escolhe a página de outro projeto lendo as camadas de verdade
+  (`textosDaPagina`), não com `LIKE` no JSONB (R31), e exercita os dois
+  caminhos: `SocialPost.pageId` e `Generation.fieldValues.pageId`.
   **A cópia registrada é PARCIAL por natureza**: `textosDaPagina` guarda o
   texto das camadas ANTES da caixa do render e sem a ordem em que são
   desenhadas — quem a devolve (`copy-registrada-na-entrega`) declara

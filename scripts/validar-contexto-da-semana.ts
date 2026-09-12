@@ -134,6 +134,7 @@ async function main() {
   if (!projeto) abortar(`projeto ${PROJETO} não existe no banco de dev`)
   console.log(`projeto da prova: ${PROJETO} (${projeto.name}) — ${escolha.sugestoes.length} sugestão(ões) na semana ${segunda}..${domingo}`)
   const posts: string[] = []
+  const generationsDaProva: string[] = []
   const entradas: string[] = []
   const sinaisDaProva = new Set<string>()
   const geracoes: string[] = []
@@ -221,29 +222,47 @@ async function main() {
       posts.push(comPagina.id)
     }
     // R29: post deste projeto apontando para uma PÁGINA DE OUTRO PROJETO — a agenda não pode entregar os textos dela.
-    const paginaDeOutro = await db.$queryRaw<Array<{ id: string; layers: unknown }>>`
-      SELECT p.id, p.layers FROM "Page" p JOIN "Template" t ON t.id = p."templateId"
-      WHERE t."projectId" <> ${PROJETO} AND p.layers::text LIKE '%"type":"text"%'
-      ORDER BY p."updatedAt" DESC LIMIT 1`
+    // R31: a candidata é escolhida lendo as camadas de verdade (`textosDaPagina`, que aceita array, string JSON e
+    // dupla codificação) — um LIKE no texto do JSONB pulava páginas válidas e a prova era dada como não exercitada.
+    const { textosDaPagina: textosDePagina } = await import('../src/lib/posts/page-layers')
+    const candidatasDeOutro = await db.page.findMany({ where: { Template: { projectId: { not: PROJETO } } }, select: { id: true, layers: true }, orderBy: { updatedAt: 'desc' }, take: 40 })
+    const paginaDeOutro = candidatasDeOutro.map((c) => ({ id: c.id, layers: c.layers, textos: Object.values(textosDePagina(c.layers)) })).filter((c) => c.textos.length > 0).slice(0, 1)
     let deOutroProjeto: { id: string } | null = null
+    let porGeneracaoDeOutro: { id: string; url: string } | null = null
     if (paginaDeOutro[0]) {
       deOutroProjeto = await db.socialPost.create({
         data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} página de outro projeto`, mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3}T17:30:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', pageId: paginaDeOutro[0].id },
         select: { id: true },
       })
       posts.push(deOutroProjeto.id)
+      // e o outro caminho: a ARTE (Generation deste projeto) cujo fieldValues.pageId aponta para a página de B
+      const templateDaqui = await db.template.findFirst({ where: { projectId: PROJETO }, select: { id: true } })
+      if (templateDaqui) {
+        const url = `https://exemplo.invalid/${MARCA}-r29-${Date.now()}.png`
+        const gen = await db.generation.create({ data: { projectId: PROJETO, templateId: templateDaqui.id, status: 'COMPLETED', resultUrl: url, fieldValues: { pageId: paginaDeOutro[0].id, prova: MARCA }, createdBy: projeto.userId }, select: { id: true } })
+        generationsDaProva.push(gen.id)
+        const postVivo = await db.socialPost.create({
+          data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} arte com página de outro projeto`, mediaUrls: [url], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3}T17:45:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', generationId: gen.id },
+          select: { id: true },
+        })
+        posts.push(postVivo.id)
+        porGeneracaoDeOutro = { id: postVivo.id, url }
+      }
     }
     const agenda = await tool('ver-agenda', { projectId: PROJETO, from: dia3, to: dia3 })
     const itens = (agenda.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
     const itemSlots = itens.find((i) => i.postId === comSlots.id)
     if (deOutroProjeto) {
-      const { textosDaPagina } = await import('../src/lib/posts/page-layers')
-      const textosDeB = Object.values(textosDaPagina(paginaDeOutro[0].layers))
+      const textosDeB = paginaDeOutro[0].textos
+      const vazouEm = (item: Record<string, any> | undefined) => (item?.textos as string[] | undefined)?.some((t) => textosDeB.includes(t)) || JSON.stringify(item?.textosPorSlide ?? []).split('"').some((t) => textosDeB.includes(t))
       const itemB = itens.find((i) => i.postId === deOutroProjeto!.id)
-      const vazou = (itemB?.textos as string[] | undefined)?.some((t) => textosDeB.includes(t)) || JSON.stringify(itemB?.textosPorSlide ?? []).split('"').some((t) => textosDeB.includes(t))
-      conferir('R29: post com pageId de OUTRO projeto volta SEM os textos daquela página (nem em textos nem em textosPorSlide) — a página de fora é fonte indisponível', !!itemB && !vazou && !(itemB.textos as string[] | undefined)?.length, JSON.stringify({ textos: itemB?.textos, origem: itemB?.textosOrigem, indisponiveis: itemB?.textosIndisponiveis, deB: textosDeB.length }).slice(0, 200))
+      conferir('R29/R30: post com pageId de OUTRO projeto volta SEM os textos daquela página e a fonte é declarada INDISPONÍVEL (não "sem página")', !!itemB && !vazouEm(itemB) && !(itemB.textos as string[] | undefined)?.length && /não pôde ser carregada/.test(String(itemB.textosIndisponiveis ?? '')), JSON.stringify({ textos: itemB?.textos, origem: itemB?.textosOrigem, indisponiveis: itemB?.textosIndisponiveis, deB: textosDeB.length }).slice(0, 220))
+      if (porGeneracaoDeOutro) {
+        const itemG = itens.find((i) => i.postId === porGeneracaoDeOutro!.id)
+        conferir('R29 pela ARTE: post vivo cuja Generation aponta (fieldValues.pageId) para página de OUTRO projeto volta sem os textos dela, com o slide declarado', !!itemG && !vazouEm(itemG), JSON.stringify({ textos: itemG?.textos, porSlide: itemG?.textosPorSlide, indisponiveis: itemG?.textosIndisponiveis }).slice(0, 220))
+      }
     } else {
-      console.log('  ○ R29: nenhuma página com texto em outro projeto do dev — fica registrado como não exercitado')
+      conferir('R29: há página com texto em outro projeto do dev para exercitar o isolamento', false, `nenhuma entre ${candidatasDeOutro.length} candidatas`)
     }
     // jsonb não guarda a ordem das chaves: compara como conjunto
     conferir('post sem página: `textos` vêm do slotValues (sem as chaves _), formato feed e legendaCompleta', !!itemSlots && JSON.stringify([...(itemSlots.textos as string[])].sort()) === JSON.stringify(['Segunda linha B', 'Texto de prova A']) && itemSlots.formato === 'feed' && itemSlots.legendaCompleta === legendaLonga && itemSlots.legenda.length === 140, JSON.stringify({ textos: itemSlots?.textos, formato: itemSlots?.formato, legenda: itemSlots?.legenda?.length }))
@@ -423,6 +442,7 @@ async function main() {
     mau++
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou)')
+    if (generationsDaProva.length) await db.generation.deleteMany({ where: { id: { in: generationsDaProva }, projectId: PROJETO } })
     const falhas: string[] = []
     const apagados = { posts: 0, entradas: 0, sinais: 0, geracoes: 0, usos: 0 }
     try {

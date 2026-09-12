@@ -215,6 +215,9 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     if (daPagina !== null) return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
     paginaIlegivel = true
   }
+  // `pageId` preenchido e a página NÃO carregada (de outro projeto, ou apagada) não é "peça sem página": a
+  // fonte principal está indisponível, e a copy do post é parcial como no ilegível (R30 da revisão de 5e483ec4).
+  if (!entregue && !carrossel && post.pageId && fontes.camadas === undefined) paginaIlegivel = true
 
   // 2. Pelas ARTES do post, slide a slide (carrossel, peça sem página, peça
   //    entregue). Um slide conta como resolvido quando a FONTE dele é legível,
@@ -284,7 +287,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
         textos: registrada,
         origem: 'copy-registrada',
         parcial: true,
-        nota: paginaIlegivel ? `as camadas da página não puderam ser lidas; ${NOTA_DA_COPIA_REGISTRADA}` : NOTA_DA_COPIA_REGISTRADA,
+        nota: paginaIlegivel ? `${fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada)' : 'as camadas da página não puderam ser lidas'}; ${NOTA_DA_COPIA_REGISTRADA}` : NOTA_DA_COPIA_REGISTRADA,
       }
     }
   }
@@ -295,11 +298,11 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
         textos: doPost,
         origem: 'copy-do-post',
         parcial: true,
-        nota: 'as camadas da página não puderam ser lidas: estes são só os campos que o post sobrescreveu, e o resto do texto da peça não tem registro aqui.',
+        nota: `${fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada)' : 'as camadas da página não puderam ser lidas'}: estes são só os campos que o post sobrescreveu, e o resto do texto da peça não tem registro aqui.`,
       }
     }
     return { textos: doPost, origem: 'copy-do-post' }
   }
-  if (paginaIlegivel) return { textos: [], indisponiveis: 'as camadas da página não puderam ser lidas.' }
+  if (paginaIlegivel) return { textos: [], indisponiveis: fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada): não há texto a afirmar.' : 'as camadas da página não puderam ser lidas.' }
   return { textos: [] }
 }

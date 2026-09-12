@@ -80,6 +80,15 @@ describe('textosDaPeca — a mesma precedência do render', () => {
     expect(semPagina).toMatchObject({ textos: ['Da cópia'], origem: 'copy-registrada', parcial: true })
     expect(semPagina.nota).not.toMatch(/não puderam ser lidas/)
   })
+  it('R30: pageId preenchido e página NÃO carregada (de outro projeto, ou apagada) não é "sem página": copy do post parcial com a nota; cópia registrada parcial; sem copy, indisponível', () => {
+    const soHeadline = textosDaPeca({ ...viva, slotValues: { headline: 'Da copy' } })
+    expect(soHeadline).toEqual({ textos: ['Da copy'], origem: 'copy-do-post', parcial: true, nota: expect.stringMatching(/não pôde ser carregada.*só os campos/) })
+    const registrada = textosDaPeca({ ...viva, slotValues: { _copiaDaPagina: true, headline: 'Da cópia' } })
+    expect(registrada).toMatchObject({ origem: 'copy-registrada', parcial: true, nota: expect.stringMatching(/não pôde ser carregada/) })
+    expect(textosDaPeca({ ...viva, slotValues: null }).indisponiveis).toMatch(/não pôde ser carregada/)
+    // peça realmente SEM página continua sendo a leitura inteira do que existe
+    expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta' } })).toEqual({ textos: ['Solta'], origem: 'copy-do-post' })
+  })
 })
 
 describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia é (R8)', () => {
