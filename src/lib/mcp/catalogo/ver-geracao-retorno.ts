@@ -12,6 +12,42 @@
  * retorno. É o que deixa o contrato ser testado sem banco.
  */
 
+import { diferencasDeBlocos, lerCopyAutoral, type CopyAutoral } from '../../copy-autoral'
+
+/** A copy da arte, comparável INTEIRA com o que o autor escreveu (F1). */
+export interface CopyDaArte {
+  /** Só é comparável quando a autoria do original é conhecida (legado adaptado não conta como fidelidade comprovada). */
+  comparavel: boolean
+  original: Array<{ id: string; funcao: string; linhas: string[] }>
+  desenhada: Array<{ id: string; funcao: string; linhas: string[] }>
+  /** Os blocos cujo texto exato (caixa, acento, quebra, colchetes) difere entre o escrito e o desenhado. */
+  blocosDiferentes: string[]
+  /** O que o contrato NÃO conseguiu conferir (bloco não desenhado, texto a mais na arte…). */
+  lacunas: string[]
+}
+
+function resumoDosBlocos(copy: CopyAutoral) {
+  return [...copy.blocos].sort((a, b) => a.ordem - b.ordem).map((b) => ({ id: b.id, funcao: b.funcao, linhas: b.linhas }))
+}
+
+/** Lê `fieldValues.copyAutoral` ({ original, efetiva, comparavel, lacunas }) sem confiar na forma. */
+export function copyDaArte(fieldValues: Record<string, unknown> | null | undefined): CopyDaArte | null {
+  const registro = fieldValues?.copyAutoral
+  if (!registro || typeof registro !== 'object' || Array.isArray(registro)) return null
+  const r = registro as Record<string, unknown>
+  const original = lerCopyAutoral(r.original).copy
+  if (!original) return null
+  const efetiva = lerCopyAutoral(r.efetiva).copy
+  const lacunas = Array.isArray(r.lacunas) ? r.lacunas.filter((l): l is string => typeof l === 'string') : []
+  return {
+    comparavel: r.comparavel === true && !!efetiva,
+    original: resumoDosBlocos(original),
+    desenhada: efetiva ? resumoDosBlocos(efetiva) : [],
+    blocosDiferentes: efetiva ? diferencasDeBlocos(original, efetiva).filter((m) => !m.campos || m.campos.includes('linhas')).map((m) => m.id) : [],
+    lacunas: efetiva ? lacunas : [...lacunas, 'a copy desenhada não foi registrada nesta arte'],
+  }
+}
+
 export interface PaginaDaGeracao {
   id: string
   name: string
@@ -27,6 +63,8 @@ export interface RetornoDaPagina {
   paginaApagada?: true
   /** Avisos do compositor (`fieldValues.composicao.avisos`), quando houver. */
   avisosDoCompositor?: string[]
+  /** A copy escrita × a desenhada, quando a arte carrega o contrato (F1). */
+  copy?: CopyDaArte
   comoAgendar?: string
 }
 
@@ -61,6 +99,8 @@ export function montarRetornoDaPagina(args: {
   }
   const avisos = avisosDoCompositor(fv)
   if (avisos.length > 0) saida.avisosDoCompositor = avisos
+  const copy = copyDaArte(fv)
+  if (copy) saida.copy = copy
   return saida
 }
 

@@ -392,94 +392,170 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
     required: ['projectId'],
     additionalProperties: false,
   },
-  'criar-plano': {
-    type: 'object',
-    properties: {
-      projectId: { type: 'number', description: 'ID do cliente.' },
-      titulo: { type: 'string', description: 'Como a pessoa chama esta leva ("Semana de 17 a 23/08").' },
-      inicio: { type: 'string', description: 'Primeiro dia da leva ("AAAA-MM-DD"). Obrigatório, a não ser com anexarAoAtivo.' },
-      fim: {
-        type: 'string',
-        description: 'Último dia da leva ("AAAA-MM-DD"), incluído por inteiro. Obrigatório, a não ser com anexarAoAtivo.',
+  "criar-plano": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
       },
-      anexarAoAtivo: {
-        type: 'boolean',
-        description:
-          'true = acrescenta os itens à leva em aberto (a que a bancada mostra) em vez de criar outra. Use para pôr mais peças numa semana que já está na bancada.',
+      "titulo": {
+        "type": "string",
+        "description": "Como a pessoa chama esta leva (\"Semana de 17 a 23/08\")."
       },
-      itens: {
-        type: 'array',
-        description: 'Os posts pretendidos, na ordem. Máximo 60.',
-        items: {
-          type: 'object',
-          properties: {
-            quando: { type: 'string', description: 'Dia e hora de Brasília ("AAAA-MM-DD HH:mm"). Pode ficar vazio se ainda não foi decidido.' },
-            tema: { type: 'string', description: 'Do que é o post ("almoço executivo", "happy hour").' },
-            texto: {
-              type: 'array',
-              items: { type: 'string' },
-              description:
-                'Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: "Desacelere e desfrute", nunca "DESACELERE E DESFRUTE". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor ("50% OFF") e o nome da marca. DESTAQUE: marque com [colchetes] 1 ou 2 palavras da peça que decidem a leitura ("Terça é dia de [rodízio]") — na arte do editor elas saem na cor e no peso de destaque da marca; sem colchetes, sem destaque.',
+      "inicio": {
+        "type": "string",
+        "description": "Primeiro dia da leva (\"AAAA-MM-DD\"). Obrigatório, a não ser com anexarAoAtivo."
+      },
+      "fim": {
+        "type": "string",
+        "description": "Último dia da leva (\"AAAA-MM-DD\"), incluído por inteiro. Obrigatório, a não ser com anexarAoAtivo."
+      },
+      "anexarAoAtivo": {
+        "type": "boolean",
+        "description": "true = acrescenta os itens à leva em aberto (a que a bancada mostra) em vez de criar outra. Use para pôr mais peças numa semana que já está na bancada."
+      },
+      "itens": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "quando": {
+              "type": "string",
+              "description": "Dia e hora de Brasília (\"AAAA-MM-DD HH:mm\"). Pode ficar vazio se ainda não foi decidido."
             },
-            legenda: { type: 'string', description: 'A legenda do Instagram, quando houver.' },
-            fotoDriveId: { type: 'string', description: 'A foto do acervo (de buscar-fotos).' },
-            fotoUrl: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
-            formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Obrigatório.' },
-            via: {
-              type: 'string',
-              enum: ['template', 'ia', 'compor'],
-              description: 'Por onde a arte nasce: "compor" (pelo editor, sem custo — o padrão para cliente com página de assinatura: texto na área livre da foto, peça editável), "template" (modelo do cliente, sem custo) ou "ia" (gasta crédito).',
+            "tema": {
+              "type": "string",
+              "description": "Do que é o post (\"almoço executivo\", \"happy hour\")."
             },
-            modeloId: {
-              type: 'string',
-              description: 'O modelo do cliente que vira a arte — o mesmo id que criar-arte-de-modelo recebe em sourcePageId, vindo de escolher-modelo.',
-            },
-            direcao: {
-              type: 'string',
-              description:
-                'Via "ia": direção adicional para o modelo de imagem, além do tema — onde a foto é a cena, como tratar um print (ex.: "o print entra como mockup de celular sobre fundo preto, fiel e legível"), o clima da peça. Máx 1200.',
-            },
-            ajusteDaFoto: {
-              type: 'string',
-              description: 'Via "ia": ajuste autorizado na FOTO desta peça (ex.: "escurecer o fundo atrás do texto"). Sem isto a foto vai intocada, que é o padrão. ⚠️ Presente, a geração sai no tier caro e lento — dirigir a composição é papel da direção, não deste campo.',
-            },
-            referencias: {
-              type: 'array',
-              description:
-                'Via "ia": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato, até 2 de estilo e até 1 "documento" (print colado TAL E QUAL depois da geração — avaliação do Google, cartaz, QR). Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo.',
-              items: {
-                type: 'object',
-                properties: {
-                  role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'], description: 'Papel da foto na geração.' },
-                  driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
-                  url: { type: 'string', description: 'Alternativa: imagem já no Studio.' },
-                  label: { type: 'string', description: 'Rótulo curto ("salão principal", "picanha na tábua").' },
-                },
-                required: ['role'],
-                additionalProperties: false,
+            "texto": {
+              "type": "array",
+              "items": {
+                "type": "string"
               },
+              "description": "Os blocos de texto da arte, na ordem de leitura (título, apoio, chamada). ESCREVA EM CAIXA NATURAL, como uma frase: \"Desacelere e desfrute\", nunca \"DESACELERE E DESFRUTE\". A caixa alta da manchete é decisão de tipografia e quem a toma é a identidade da marca na hora de desenhar a arte — não o texto que você digita. Deixe em maiúsculas só o que é maiúsculo de verdade: sigla, unidade, valor (\"50% OFF\") e o nome da marca. DESTAQUE: marque com [colchetes] 1 ou 2 palavras da peça que decidem a leitura (\"Terça é dia de [rodízio]\") — na arte do editor elas saem na cor e no peso de destaque da marca; sem colchetes, sem destaque."
             },
-            clienteCitadoId: {
-              type: 'number',
-              description:
-                'Co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte, no canto oposto ao da marca da casa. Use sempre que a peça falar do trabalho feito para um cliente.',
+            "copyAutoral": {
+              "type": "object",
+              "additionalProperties": {},
+              "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `texto` é dispensável (vira o espelho posicional). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao)."
             },
-            motivoDoSlot: { type: 'string', description: 'Por que este horário — a frase que a pessoa lê ao revisar.' },
-            escopo: {
-              type: 'string',
-              enum: ['rotina', 'campanha', 'pontual'],
-              description: 'O que o sistema pode aprender com este post. Mesma escolha de colocar-na-agenda.',
+            "legenda": {
+              "type": "string",
+              "description": "A legenda do Instagram, quando houver."
             },
-            campanhaId: { type: 'string', description: 'Entrada de CAMPANHAS da base a que este item pertence.' },
-            sugestaoId: { type: 'string', description: 'Se o horário veio de sugerir-posts, devolva o sugestaoId dele aqui.' },
+            "fotoDriveId": {
+              "type": "string",
+              "description": "A foto do acervo (de buscar-fotos)."
+            },
+            "fotoUrl": {
+              "type": "string",
+              "description": "Alternativa: imagem já no Studio."
+            },
+            "formato": {
+              "type": "string",
+              "enum": [
+                "story",
+                "feed",
+                "quadrado"
+              ],
+              "description": "Obrigatório."
+            },
+            "via": {
+              "type": "string",
+              "enum": [
+                "template",
+                "ia",
+                "compor"
+              ],
+              "description": "Por onde a arte nasce: \"compor\" (pelo editor, sem custo — o padrão para cliente com página de assinatura: texto na área livre da foto, peça editável), \"template\" (modelo do cliente, sem custo) ou \"ia\" (gasta crédito)."
+            },
+            "modeloId": {
+              "type": "string",
+              "description": "O modelo do cliente que vira a arte — o mesmo id que criar-arte-de-modelo recebe em sourcePageId, vindo de escolher-modelo."
+            },
+            "direcao": {
+              "type": "string",
+              "description": "Via \"ia\": direção adicional para o modelo de imagem, além do tema — onde a foto é a cena, como tratar um print (ex.: \"o print entra como mockup de celular sobre fundo preto, fiel e legível\"), o clima da peça. Máx 1200."
+            },
+            "ajusteDaFoto": {
+              "type": "string",
+              "description": "Via \"ia\": ajuste autorizado na FOTO desta peça (ex.: \"escurecer o fundo atrás do texto\"). Sem isto a foto vai intocada, que é o padrão. ⚠️ Presente, a geração sai no tier caro e lento — dirigir a composição é papel da direção, não deste campo."
+            },
+            "referencias": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "subject",
+                      "anchor-ambient",
+                      "anchor-dish",
+                      "style",
+                      "documento"
+                    ],
+                    "description": "Papel da foto na geração."
+                  },
+                  "driveFileId": {
+                    "type": "string",
+                    "description": "Foto do acervo (de buscar-fotos)."
+                  },
+                  "url": {
+                    "type": "string",
+                    "description": "Alternativa: imagem já no Studio."
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Rótulo curto (\"salão principal\", \"picanha na tábua\")."
+                  }
+                },
+                "required": [
+                  "role"
+                ],
+                "additionalProperties": false
+              },
+              "description": "Via \"ia\": as fotos da peça, cada uma com o papel dela — a cena (subject, obrigatória quando há texto), até 3 âncoras de ambiente/prato, até 2 de estilo e até 1 \"documento\" (print colado TAL E QUAL depois da geração — avaliação do Google, cartaz, QR). Presente, vence fotoDriveId/fotoUrl. Uma foto só? Use fotoDriveId, que continua valendo."
+            },
+            "clienteCitadoId": {
+              "type": "number",
+              "description": "Co-branding: o ID do cliente CITADO na peça (de listar-clientes). A logomarca oficial dele é composta na arte, no canto oposto ao da marca da casa. Use sempre que a peça falar do trabalho feito para um cliente."
+            },
+            "motivoDoSlot": {
+              "type": "string",
+              "description": "Por que este horário — a frase que a pessoa lê ao revisar."
+            },
+            "escopo": {
+              "type": "string",
+              "enum": [
+                "rotina",
+                "campanha",
+                "pontual"
+              ],
+              "description": "O que o sistema pode aprender com este post. Mesma escolha de colocar-na-agenda."
+            },
+            "campanhaId": {
+              "type": "string",
+              "description": "Entrada de CAMPANHAS da base a que este item pertence."
+            },
+            "sugestaoId": {
+              "type": "string",
+              "description": "Se o horário veio de sugerir-posts, devolva o sugestaoId dele aqui."
+            }
           },
-          required: ['formato'],
-          additionalProperties: false,
+          "required": [
+            "formato"
+          ],
+          "additionalProperties": false
         },
-      },
+        "description": "Os posts pretendidos, na ordem. Máximo 60."
+      }
     },
-    required: ['projectId'],
-    additionalProperties: false,
+    "required": [
+      "projectId"
+    ],
+    "additionalProperties": false
   },
   'ver-plano': {
     type: 'object',
@@ -490,62 +566,146 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
     required: ['projectId'],
     additionalProperties: false,
   },
-  'editar-item-do-plano': {
-    type: 'object',
-    properties: {
-      projectId: { type: 'number', description: 'ID do cliente.' },
-      planoId: { type: 'string', description: 'A leva. Sem isto, a que está em aberto.' },
-      itemId: { type: 'string', description: 'O item (de ver-plano).' },
-      generationId: {
-        type: 'string',
-        description:
-          '"Usa esta arte": uma arte que já existe na galeria (de upload-creative, criar-arte ou melhorar-arte) passa a ser a arte deste item, que vai para "pronto" na bancada. É a porta da bancada para arte pronta feita fora do Studio. Pode vir sozinho.',
+  "editar-item-do-plano": {
+    "type": "object",
+    "properties": {
+      "projectId": {
+        "type": "number",
+        "description": "ID do cliente."
       },
-      quando: { type: 'string', description: 'Novo dia e hora de Brasília ("AAAA-MM-DD HH:mm").' },
-      tema: { type: 'string', description: 'Novo tema.' },
-      texto: {
-        type: 'array',
-        items: { type: 'string' },
-        description:
-          'Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui. Marque com [colchetes] 1 ou 2 palavras de destaque — na arte do editor elas saem na cor e no peso de destaque da marca.',
+      "planoId": {
+        "type": "string",
+        "description": "A leva. Sem isto, a que está em aberto."
       },
-      legenda: { type: 'string', description: 'Nova legenda.' },
-      fotoDriveId: { type: 'string', description: 'Outra foto do acervo.' },
-      fotoUrl: { type: 'string', description: 'Outra imagem já no Studio.' },
-      referencias: {
-        type: 'array',
-        description:
-          'Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo + o print "documento", colado tal e qual). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo.',
-        items: {
-          type: 'object',
-          properties: {
-            role: { type: 'string', enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style', 'documento'] },
-            driveFileId: { type: 'string' },
-            url: { type: 'string' },
-            label: { type: 'string' },
-          },
-          required: ['role'],
-          additionalProperties: false,
+      "itemId": {
+        "type": "string",
+        "description": "O item (de ver-plano)."
+      },
+      "generationId": {
+        "type": "string",
+        "description": "\"Usa esta arte\": uma arte que já existe na galeria (de upload-creative, criar-arte ou melhorar-arte) passa a ser a arte deste item, que vai para \"pronto\" na bancada. É a porta da bancada para arte pronta feita fora do Studio. Pode vir sozinho."
+      },
+      "quando": {
+        "type": "string",
+        "description": "Novo dia e hora de Brasília (\"AAAA-MM-DD HH:mm\")."
+      },
+      "tema": {
+        "type": "string",
+        "description": "Novo tema."
+      },
+      "texto": {
+        "type": "array",
+        "items": {
+          "type": "string"
         },
+        "description": "Novos blocos de texto da arte (substituem todos). Em caixa natural, como uma frase — a caixa alta da manchete quem decide é a identidade da marca ao desenhar, não o texto digitado aqui. Marque com [colchetes] 1 ou 2 palavras de destaque — na arte do editor elas saem na cor e no peso de destaque da marca."
       },
-      formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'Novo formato.' },
-      via: { type: 'string', enum: ['template', 'ia', 'compor'], description: 'Troca a via de criação da arte.' },
-      modeloId: { type: 'string', description: 'Outro modelo do cliente (de escolher-modelo).' },
-      direcao: {
-        type: 'string',
-        description: 'Via "ia": nova direção adicional para o modelo de imagem (como tratar a foto ou o print, o clima da peça). String vazia limpa.',
+      "copyAutoral": {
+        "type": "object",
+        "additionalProperties": {},
+        "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu (substitui o contrato do item por inteiro) — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `texto` é dispensável (vira o espelho posicional). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao)."
       },
-      ajusteDaFoto: { type: 'string', description: 'Via "ia": novo ajuste autorizado na foto. String vazia limpa (foto intocada).' },
-      clienteCitadoId: {
-        type: 'number',
-        description: 'Co-branding: ID do cliente citado na peça, cuja logomarca é composta na arte. 0 remove.',
+      "legenda": {
+        "type": "string",
+        "description": "Nova legenda."
       },
-      motivoDoSlot: { type: 'string', description: 'Nova explicação do horário.' },
-      escopo: { type: 'string', enum: ['rotina', 'campanha', 'pontual'], description: 'Novo escopo de aprendizado.' },
-      campanhaId: { type: 'string', description: 'Campanha a que o item passa a pertencer.' },
+      "fotoDriveId": {
+        "type": "string",
+        "description": "Outra foto do acervo."
+      },
+      "fotoUrl": {
+        "type": "string",
+        "description": "Outra imagem já no Studio."
+      },
+      "referencias": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "role": {
+              "type": "string",
+              "enum": [
+                "subject",
+                "anchor-ambient",
+                "anchor-dish",
+                "style",
+                "documento"
+              ]
+            },
+            "driveFileId": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "role"
+          ],
+          "additionalProperties": false
+        },
+        "description": "Substitui a lista INTEIRA de fotos da peça, cada uma com papel (a cena + âncoras + estilo + o print \"documento\", colado tal e qual). Lista vazia tira todas. Para trocar só a cena, fotoDriveId continua valendo."
+      },
+      "formato": {
+        "type": "string",
+        "enum": [
+          "story",
+          "feed",
+          "quadrado"
+        ],
+        "description": "Novo formato."
+      },
+      "via": {
+        "type": "string",
+        "enum": [
+          "template",
+          "ia",
+          "compor"
+        ],
+        "description": "Troca a via de criação da arte."
+      },
+      "modeloId": {
+        "type": "string",
+        "description": "Outro modelo do cliente (de escolher-modelo)."
+      },
+      "direcao": {
+        "type": "string",
+        "description": "Via \"ia\": nova direção adicional para o modelo de imagem (como tratar a foto ou o print, o clima da peça). String vazia limpa."
+      },
+      "ajusteDaFoto": {
+        "type": "string",
+        "description": "Via \"ia\": novo ajuste autorizado na foto. String vazia limpa (foto intocada)."
+      },
+      "clienteCitadoId": {
+        "type": "number",
+        "description": "Co-branding: ID do cliente citado na peça, cuja logomarca é composta na arte. 0 remove."
+      },
+      "motivoDoSlot": {
+        "type": "string",
+        "description": "Nova explicação do horário."
+      },
+      "escopo": {
+        "type": "string",
+        "enum": [
+          "rotina",
+          "campanha",
+          "pontual"
+        ],
+        "description": "Novo escopo de aprendizado."
+      },
+      "campanhaId": {
+        "type": "string",
+        "description": "Campanha a que o item passa a pertencer."
+      }
     },
-    required: ['projectId', 'itemId'],
-    additionalProperties: false,
+    "required": [
+      "projectId",
+      "itemId"
+    ],
+    "additionalProperties": false
   },
   'regenerar-item': {
     type: 'object',
@@ -1357,6 +1517,20 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
         "type": "string",
         "description": "A foto do acervo (driveFileId de buscar-fotos). Preferido: liga a peça ao rodízio de fotos."
       },
+      "selecaoExperimental": {
+        "type": "boolean",
+        "description": "Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática."
+      },
+      "fotosCandidatas": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1,
+        "maxItems": 3,
+        "description": "Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy."
+      },
       "fotoUrl": {
         "type": "string",
         "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
@@ -1394,13 +1568,26 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
           ],
           "additionalProperties": false
         },
-        "minItems": 1,
         "maxItems": 5,
-        "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura."
+        "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura. Dispensável quando copyAutoral vem — aí os blocos saem do contrato."
+      },
+      "copyAutoral": {
+        "type": "object",
+        "additionalProperties": {},
+        "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` é dispensável (os blocos saem do contrato, sem transformar texto). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
       },
       "preferencias": {
         "type": "object",
         "properties": {
+          "tratamentoDeTexto": {
+            "type": "string",
+            "enum": [
+              "gradiente",
+              "assinatura",
+              "gradiente-suave-topo"
+            ],
+            "description": "Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado."
+          },
           "ancora": {
             "type": "string",
             "enum": [
@@ -1444,15 +1631,6 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
           "variante": {
             "type": "string",
             "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
-          },
-          "tratamentoDeTexto": {
-            "description": "Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado.",
-            "enum": [
-              "gradiente",
-              "assinatura",
-              "gradiente-suave-topo"
-            ],
-            "type": "string"
           }
         },
         "additionalProperties": false
@@ -1501,26 +1679,11 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
       "provar": {
         "type": "boolean",
         "description": "true = só a prova (PNG + diagnóstico), nada gravado. Default false: grava a peça na galeria como página editável."
-      },
-      "selecaoExperimental": {
-        "description": "Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.",
-        "type": "boolean"
-      },
-      "fotosCandidatas": {
-        "description": "Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.",
-        "items": {
-          "minLength": 1,
-          "type": "string"
-        },
-        "maxItems": 3,
-        "minItems": 1,
-        "type": "array"
       }
     },
     "required": [
       "projectId",
-      "formato",
-      "blocos"
+      "formato"
     ],
     "additionalProperties": false
   },
@@ -1552,6 +1715,20 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             "fotoUrl": {
               "type": "string",
               "description": "URL pública da foto, quando ela não está no acervo (ex.: fotoUrl de ver-foto-enviada)."
+            },
+            "fotosCandidatas": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
+              "minItems": 1,
+              "maxItems": 3,
+              "description": "Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy."
+            },
+            "selecaoExperimental": {
+              "type": "boolean",
+              "description": "Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática."
             },
             "blocos": {
               "type": "array",
@@ -1586,13 +1763,26 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                 ],
                 "additionalProperties": false
               },
-              "minItems": 1,
               "maxItems": 5,
-              "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura."
+              "description": "A copy por papel. Um bloco por papel; a ordem dos papéis é a ordem de leitura. Dispensável quando copyAutoral vem — aí os blocos saem do contrato."
+            },
+            "copyAutoral": {
+              "type": "object",
+              "additionalProperties": {},
+              "description": "O CONTRATO da copy autoral (F1): a copy inteira como você a escreveu — {versao: \"copy-autoral-v1\", origem: {autor: \"claude\", superficie: \"chat\"}, blocos: [{id, funcao (pre|headline|apoio|cta|servico), grupoDeLeitura?, ordem, linhas (EXATAS: caixa, acento e [colchetes] como escritos), fatos?: [{entradaId, trecho}], estilo?: {linhasNaVoz2?: [índices]}}], revisoes: []}. Com ele, `blocos` é dispensável (os blocos saem do contrato, sem transformar texto). É o que deixa a copy inteira ser comparada com a arte depois (ver-geracao). O contrato é gravado ANTES de qualquer adaptação (página, arte e item)."
             },
             "preferencias": {
               "type": "object",
               "properties": {
+                "tratamentoDeTexto": {
+                  "type": "string",
+                  "enum": [
+                    "gradiente",
+                    "assinatura",
+                    "gradiente-suave-topo"
+                  ],
+                  "description": "Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado."
+                },
                 "ancora": {
                   "type": "string",
                   "enum": [
@@ -1636,15 +1826,6 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                 "variante": {
                   "type": "string",
                   "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
-                },
-                "tratamentoDeTexto": {
-                  "description": "Legado — não precisa mandar. Todo texto ganha o gradiente de leitura na borda onde pousa (topo, rodapé ou os dois, em camadas independentes); os valores antigos dão o mesmo resultado.",
-                  "enum": [
-                    "gradiente",
-                    "assinatura",
-                    "gradiente-suave-topo"
-                  ],
-                  "type": "string"
                 }
               },
               "additionalProperties": false
@@ -1689,25 +1870,10 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               ],
               "additionalProperties": false,
               "description": "Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta (\"slide 2/5\") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar."
-            },
-            "selecaoExperimental": {
-              "description": "Opt-in explícito para comparar variantes com o baseline. Default false: candidatas presentes não ativam seleção nem alteram o layout. Comparação técnica, sem aprovação estética automática.",
-              "type": "boolean"
-            },
-            "fotosCandidatas": {
-              "description": "Só com selecaoExperimental: true. Até 3 driveFileIds já curados por buscar-fotos, em ordem de relevância. Avalia até 6 combinações com variantes, sem geração paga. Foto explícita prevalece. Sem combinação utilizável retorna diagnóstico; não remove copy.",
-              "items": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "maxItems": 3,
-              "minItems": 1,
-              "type": "array"
             }
           },
           "required": [
-            "formato",
-            "blocos"
+            "formato"
           ],
           "additionalProperties": false
         },
@@ -1721,7 +1887,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
       "itens"
     ],
     "additionalProperties": false
-  }
+  },
 }
 
 for (const [nome, literal] of Object.entries(LITERAIS_COMPOSITOR)) {

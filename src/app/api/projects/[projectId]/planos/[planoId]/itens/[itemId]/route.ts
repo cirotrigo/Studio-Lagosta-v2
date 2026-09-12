@@ -28,6 +28,8 @@ const patchSchema = z.object({
   quando: z.string().min(1).max(40).nullable().optional(),
   tema: z.string().max(200).nullable().optional(),
   copyProposta: z.array(z.string().max(2000)).max(12).nullable().optional(),
+  /** F1: o contrato da copy autoral (substitui o inteiro; `null` limpa). */
+  copyAutoral: z.record(z.string(), z.unknown()).nullable().optional(),
   legenda: z.string().max(2200).nullable().optional(),
   fotoUrl: z.string().max(2000).nullable().optional(),
   fotoDriveId: z.string().max(200).nullable().optional(),
@@ -70,6 +72,7 @@ const CAMPOS_DE_CONTEUDO = [
   'quando',
   'tema',
   'copyProposta',
+  'copyAutoral',
   'legenda',
   'fotoUrl',
   'fotoDriveId',

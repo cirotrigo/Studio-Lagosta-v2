@@ -24,6 +24,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { diaBRTDe, diasAteDomingoBRT, lerFotoCandidatas } from './proposta-de-semana'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
+import { CopyAutoralInvalida, copyDoItemNoPatch, copyDoItemNovo, type CopyDoItem } from './copy-do-item'
 import {
   cenaDasReferencias,
   validarReferencias,
@@ -64,6 +65,8 @@ export interface ItemDePlanoInput {
   quando?: string | Date | null
   tema?: string | null
   copyProposta?: string[] | null
+  /** F1: o CONTRATO da copy autoral (`src/lib/copy-autoral`). Quando vem, manda; `copyProposta` vira só o espelho posicional dele. `null` no patch limpa. */
+  copyAutoral?: unknown
   legenda?: string | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
@@ -127,6 +130,8 @@ export interface PatchDeItem {
   quando?: string | Date | null
   tema?: string | null
   copyProposta?: string[] | null
+  /** F1: o CONTRATO da copy autoral (`src/lib/copy-autoral`). Quando vem, manda; `copyProposta` vira só o espelho posicional dele. `null` no patch limpa. */
+  copyAutoral?: unknown
   legenda?: string | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
@@ -423,10 +428,19 @@ function normalizarItem(
     )
   }
 
-  const copy = (entrada.copyProposta ?? [])
-    .filter((bloco): bloco is string => typeof bloco === 'string')
-    .map((bloco) => bloco.trim())
-    .filter(Boolean)
+  // F1: o contrato da copy autoral, quando vem, manda; `copyProposta` é o
+  // espelho posicional dele. Contrato que não passa no leitor recusa o item —
+  // nunca é gravado pela metade.
+  let copyDoItem: CopyDoItem
+  try {
+    copyDoItem = copyDoItemNovo(entrada)
+  } catch (erro) {
+    if (erro instanceof CopyAutoralInvalida) {
+      throw new CreativeError('COPY_AUTORAL_INVALIDA', `A copy autoral do item ${posicao} não passou no contrato: ${erro.problemas.join('; ')}.`, 400, { problemas: erro.problemas })
+    }
+    throw erro
+  }
+  const copy = copyDoItem.copyProposta
 
   // Referências com papel: presentes, elas VENCEM os campos soltos — o espelho
   // fotoUrl/fotoDriveId passa a ser a CENA da lista, e é dele que a capa do
@@ -443,6 +457,7 @@ function normalizarItem(
     quando,
     tema: entrada.tema?.trim() || null,
     copyProposta: copy,
+    ...(copyDoItem.copyAutoral ? { copyAutoral: copyDoItem.copyAutoral as unknown as Prisma.InputJsonValue } : {}),
     legenda: entrada.legenda?.trim() || null,
     fotoUrl: referencias ? (cena?.url ?? null) : entrada.fotoUrl?.trim() || null,
     fotoDriveId: referencias ? (cena?.driveFileId ?? null) : entrada.fotoDriveId?.trim() || null,
@@ -667,6 +682,8 @@ export async function atualizarItem(input: {
   itemId: string
   patch: PatchDeItem
   decididoPor?: string | null
+  /** Quem assina a revisão da copy quando o patch mexe no texto: o chat (`claude`) ou a bancada/app (`equipe`, o default). */
+  autorDaCopy?: 'claude' | 'equipe'
 }) {
   const item = await buscarItem(input.projectId, input.planoId, input.itemId)
 
@@ -721,11 +738,24 @@ export async function atualizarItem(input: {
   if (patch.campaignId !== undefined) data.campaignId = patch.campaignId?.trim() || null
   if (patch.slides !== undefined) data.slides = patch.slides as Prisma.InputJsonValue
 
-  if (patch.copyProposta !== undefined) {
-    data.copyProposta = (patch.copyProposta ?? [])
-      .filter((bloco): bloco is string => typeof bloco === 'string')
-      .map((bloco) => bloco.trim())
-      .filter(Boolean)
+  // F1: o contrato da copy do item. Edição só da lista posicional vira REVISÃO
+  // do contrato (autor de quem mexeu) — ou o descarta com aviso quando não dá
+  // para casar bloco a bloco. Contrato inválido recusa o patch inteiro.
+  try {
+    const copyPatch = copyDoItemNoPatch(item.copyAutoral, patch, {
+      autor: input.autorDaCopy ?? 'equipe',
+      superficie: input.autorDaCopy === 'claude' ? 'chat' : 'bancada',
+    })
+    if (copyPatch) {
+      data.copyProposta = copyPatch.copyProposta
+      data.copyAutoral = copyPatch.copyAutoral ? (copyPatch.copyAutoral as unknown as Prisma.InputJsonValue) : Prisma.DbNull
+      avisos.push(...copyPatch.avisos)
+    }
+  } catch (erro) {
+    if (erro instanceof CopyAutoralInvalida) {
+      throw new CreativeError('COPY_AUTORAL_INVALIDA', `A copy autoral não passou no contrato: ${erro.problemas.join('; ')}.`, 400, { problemas: erro.problemas })
+    }
+    throw erro
   }
 
   if (patch.formato !== undefined) {
