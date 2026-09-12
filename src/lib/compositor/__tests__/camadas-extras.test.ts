@@ -628,6 +628,42 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     expect(recomposta.spec!.blocos!.map((b) => [b.papel, b.linhas])).toEqual([['headline', ['Costela']], ['servico', [HORARIO, ENDERECO]]])
   })
 
+  it('R26: o livre VAZIO com id de parte (`servico-2`, e o nome simples `servico`) — a spec recusa antes da composição; num contrato já gravado a leitura não deixa o livre capturar a parte, nem ocultando, nem duplicando', () => {
+    const livreVazio = (id: string, estilo?: { herdaDe: 'headline' }) => ({ id, funcao: 'livre' as const, ordem: 2, linhas: [], ...(estilo ? { estilo } : {}) })
+    const comLivre = (id: string, estilo?: { herdaDe: 'headline' }): CopyAutoral => ({ ...copy(ENDERECO), blocos: [...copy(ENDERECO).blocos, livreVazio(id, estilo)] })
+    // 1. a porta: o id do livre vazio disputa o namespace da página
+    for (const [id, estilo, motivo] of [['servico-2', { herdaDe: 'headline' as const }, /reservado.*servico-2/], ['servico-2', undefined, /reservado.*servico-2/], ['servico', { herdaDe: 'headline' as const }, /repetido: servico/]] as const) {
+      const r = validarSpec({ ...base, copyAutoral: comLivre(id, estilo) })
+      expect(r.spec, id).toBeNull()
+      expect(r.problemas.join(' '), id).toMatch(motivo)
+    }
+
+    // 2. contrato já gravado (anterior à porta): as camadas são as da peça do R18, e a leitura mantém os vínculos
+    const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    expect(camadas.map((l) => l.id).sort()).toEqual(['headline', 'servico', 'servico-2'])
+    for (const id of ['servico-2', 'servico']) {
+      const gravado = comLivre(id, { herdaDe: 'headline' })
+      const esperado = [['h', ['Costela']], ['svc', [HORARIO, ENDERECO]], [id, []]]
+      const lida = copyEfetivaDasCamadas(gravado, camadas, { superficie: 'editor' })
+      expect(lida.efetiva.blocos.map((b) => [b.id, b.linhas]), id).toEqual(esperado)
+      expect(lida.mudancas, id).toEqual([])
+      // ocultar o horário: a parte que sobrou continua de `svc`, o livre continua vazio
+      const oculto = camadas.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
+      expect(copyEfetivaDasCamadas(gravado, oculto, { superficie: 'editor' }).efetiva.blocos.map((b) => [b.id, b.linhas]), `${id} oculto`).toEqual([['h', ['Costela']], ['svc', [ENDERECO]], [id, []]])
+      // duplicar: a cópia se lê como a original
+      let n = 0
+      const dup = duplicarCamadasDaPagina(camadas, () => `uuid-r26-${++n}`, gravado)
+      const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, dup.camadas as Layer[], { superficie: 'editor' })
+      expect(lidaCopia.mudancas, `${id} duplicado`).toEqual([])
+      expect(lidaCopia.efetiva.blocos.map((b) => [b.id, b.linhas]), `${id} duplicado`).toEqual(esperado)
+      // o contrato intermediário (livre com o endereço) nunca nasce; a recomposição recusa na porta, com o motivo do id
+      const recomposta = validarSpec(specDaRecomposicao(v.spec!, lida.efetiva))
+      expect(recomposta.spec, `${id} recomposição`).toBeNull()
+      expect(recomposta.problemas.join(' '), `${id} recomposição`).not.toMatch(/livre\(s\) com texto/)
+    }
+  })
+
   it('R18: o extra com identidade explícita (serviço herdando a manchete) continua bloco próprio, mesmo com um serviço comum repartido', () => {
     const contrato: CopyAutoral = {
       versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
@@ -1301,5 +1337,93 @@ describe('correção da revisão FINAL do Codex sobre 838bde61 (R23–R24): iden
       expect(pedir(id).spec, id).toBeNull()
     }
     for (const id of ['extra-servico', 'extra-servico-2', 'extra-headline']) expect(pedir(id).problemas, id).toEqual([])
+  })
+})
+
+describe('correção da revisão FINAL do Codex sobre 5d5d378e (R27): a segunda voz repartida em dois textos', () => {
+  const base = { projectId: 8, formato: 'story' as const }
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+  const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
+  const VOZ2 = { fontFamily: 'Bevan', fontSize: 70, color: '#F4301A', lineHeight: 1 }
+  const pagina: Layer[] = [
+    texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { position: { x: 92, y: 300 }, metadata: { groupId: 'g-topo' } }),
+    texto('headline2', VOZ2, 'Voz', { position: { x: 92, y: 410 }, metadata: { groupId: 'g-topo' } }),
+    texto('headline2', VOZ2, 'Voz', { id: 'headline2-b', position: { x: 92, y: 500 }, metadata: { groupId: 'g-topo' } }),
+    texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 620 }, metadata: { groupId: 'g-topo' } }),
+  ]
+  const a = montarAssinatura({ pagina: { id: 'p-r27', width: 1080, height: 1920, layers: pagina }, formatoDaPagina: 'story', numerosDoProjeto: null })
+  a.camadasDaPagina = pagina
+  const comum = { assinatura: a, colunaUtil: 1080 - 2 * a.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [] }
+  const preparar = (spec: Parameters<typeof prepararBlocos>[0]['spec']) => prepararBlocos({ ...comum, spec }).montados.map((b) => b.layer)
+  const persistir = (spec: Parameters<typeof entradaDePersistencia>[0]['spec'], layers: Layer[]) =>
+    entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
+  const contrato: CopyAutoral = {
+    versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
+    blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela', 'na brasa', 'hoje'], estilo: { linhasNaVoz2: [1, 2] } }],
+  }
+  const manchete = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.linhas, b.estilo?.linhasNaVoz2 ?? null])
+  const marca = (l: Layer | undefined) => (l?.metadata?.compositor as { linhasDoBloco?: number[] } | undefined)?.linhasDoBloco
+
+  it('R27: preparação real → persistência → edição da última parte → recomposição: UM bloco autoral com as três linhas, a voz 2 declarada nas duas últimas', () => {
+    const v = validarSpec({ ...base, copyAutoral: contrato })
+    expect(v.problemas).toEqual([])
+    const camadas = preparar(v.spec!)
+    const porId = Object.fromEntries(camadas.map((l) => [l.id, l]))
+    expect([porId.headline?.content, porId.headline2?.content, porId['headline2-2']?.content]).toEqual(['Costela', 'na brasa', 'hoje'])
+    expect([marca(porId.headline2), marca(porId['headline2-2'])]).toEqual([[1], [2]])
+
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    expect(manchete(efetiva)).toEqual([['h', ['Costela', 'na brasa', 'hoje'], [1, 2]]])
+    expect(efetiva.revisoes).toEqual([])
+    expect(validarCopyAutoral(efetiva).problemas).toEqual([])
+
+    const editadas = camadas.map((l) => (l.id === 'headline2-2' ? { ...l, content: 'hoje à noite' } : l))
+    const rev = revisaoDaPaginaComCamadas(efetiva, editadas, equipe)
+    expect(rev.blocos).toEqual(['h'])
+    expect(manchete(rev.copy!)).toEqual([['h', ['Costela', 'na brasa', 'hoje à noite'], [1, 2]]])
+    expect(rev.copy!.blocos.some((b) => b.id.startsWith('extra-'))).toBe(false)
+
+    const recomposta = validarSpec(specDaRecomposicao(v.spec!, rev.copy!))
+    expect(recomposta.problemas).toEqual([])
+    const denovo = preparar(recomposta.spec!)
+    expect(Object.fromEntries(denovo.map((l) => [l.id, l.content]))).toEqual({ headline: 'Costela', headline2: 'na brasa', 'headline2-2': 'hoje à noite' })
+    expect(copyEfetivaDasCamadas(rev.copy!, denovo, { superficie: 'recomposicao' }).mudancas).toEqual([])
+  })
+
+  it('R27: duplicar a página e ocultar UMA das partes da voz 2 — a cópia se lê sem mudança; oculta a do meio, a manchete fica [Costela, hoje] com a voz 2 na última linha, e reexibir devolve as três', () => {
+    const v = validarSpec({ ...base, copyAutoral: contrato })
+    const camadas = preparar(v.spec!)
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    let n = 0
+    const dup = duplicarCamadasDaPagina(camadas, () => `uuid-r27-${++n}`, efetiva)
+    const copia = dup.camadas as Layer[]
+    const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, copia, { superficie: 'editor' })
+    expect(lidaCopia.mudancas).toEqual([])
+    expect(manchete(lidaCopia.efetiva)).toEqual(manchete(efetiva))
+
+    for (const [nome, lista] of [['original', camadas], ['cópia', copia]] as const) {
+      const base2 = nome === 'original' ? efetiva : dup.contrato!
+      const oculta = lista.map((l) => (l.content === 'na brasa' ? { ...l, visible: false } : l)) as Layer[]
+      const rev = revisaoDaPaginaComCamadas(base2, oculta, equipe)
+      expect(rev.blocos, nome).toEqual(['h'])
+      expect(manchete(rev.copy!), nome).toEqual([['h', ['Costela', 'hoje'], [1]]])
+      expect(validarCopyAutoral(rev.copy!).problemas, nome).toEqual([])
+      expect(rev.copy!.blocos.some((b) => b.id.startsWith('extra-')), nome).toBe(false)
+      const volta = revisaoDaPaginaComCamadas(rev.copy!, lista, equipe)
+      expect(manchete(volta.copy!), nome).toEqual([['h', ['Costela', 'na brasa', 'hoje'], [1, 2]]])
+    }
+  })
+
+  it('R27 (achado do invariante): a manchete INTEIRA na voz 2 com a camada dela oculta sai vazia SEM `linhasNaVoz2` — o contrato continua válido', () => {
+    const inteira: CopyAutoral = { ...contrato, blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'], estilo: { linhasNaVoz2: [0] } }] }
+    const v = validarSpec({ ...base, copyAutoral: inteira })
+    expect(v.problemas).toEqual([])
+    const camadas = preparar(v.spec!)
+    expect(camadas.map((l) => l.id)).toEqual(['headline2'])
+    const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
+    const oculta = camadas.map((l) => ({ ...l, visible: false })) as Layer[]
+    const rev = revisaoDaPaginaComCamadas(efetiva, oculta, equipe)
+    expect(manchete(rev.copy!)).toEqual([['h', [], null]])
+    expect(validarCopyAutoral(rev.copy!).problemas).toEqual([])
   })
 })

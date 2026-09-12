@@ -177,6 +177,12 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
   const r = specSchema.safeParse(entrada)
   if (r.success) {
     if (!r.data.selecaoExperimental) delete r.data.selecaoExperimental
+    // R26 (revisão FINAL do Codex sobre 5d5d378e, 12/09/2026): o livre VAZIO fica
+    // fora de `camadasExtras` (não há o que desenhar), mas o id dele continua
+    // disputando o namespace da página — `servico-2` é o id que a composição dá à
+    // segunda parte do serviço. Sem conferir, o contrato passava e a leitura
+    // tinha um bloco com o id físico de uma parte alheia.
+    let idsDeLivresVazios: string[] = []
     if (r.data.copyAutoral) {
       const problemas = problemasDeCoerencia(r.data.copyAutoral)
       if (problemas.length > 0) return { spec: null, problemas: problemas.map((p) => `copyAutoral: ${p.mensagem}`) }
@@ -184,6 +190,7 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
       // sancionada. Bloco `livre` COM texto não tem para onde ir até a camada
       // extra da F3 — recusar é o oposto de sumir em silêncio.
       const { blocos: derivados, semPapel } = blocosParaOCompositor(r.data.copyAutoral)
+      idsDeLivresVazios = semPapel.filter((b) => b.linhas.length === 0).map((b) => b.id)
       // F3: bloco `livre` COM texto entra como camada EXTRA, vestindo o estilo do
       // papel que o autor declarou em `estilo.herdaDe`. Sem herança declarada não
       // há de onde tirar fonte, corpo e cor — recusar continua sendo o oposto de
@@ -268,10 +275,10 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     // pode tomar um id que a preparação gera sozinha (`headline2`, `servico-2`).
     const idAvulso = r.data.blocos.filter((b) => b.id && !b.herdaDe).map((b) => `${b.papel} ("${b.id}")`)
     if (idAvulso.length > 0) return { spec: null, problemas: [`id só vale com herdaDe: ${idAvulso.join(', ')} — sem herança a camada se chama pelo papel`] }
-    const idsDeExtras = [...r.data.blocos.filter((b) => b.herdaDe && b.id).map((b) => b.id!), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
+    const idsDeExtras = [...r.data.blocos.filter((b) => b.herdaDe && b.id).map((b) => b.id!), ...(r.data.camadasExtras ?? []).map((c) => c.id), ...idsDeLivresVazios]
     const reservados = idsDeExtras.filter(idReservado)
     if (reservados.length > 0) return { spec: null, problemas: [`id de camada reservado pela composição: ${[...new Set(reservados)].join(', ')} — headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* e <texto>-elemento-N são gerados pela composição`] }
-    const ids = [...r.data.blocos.map((b) => b.id ?? b.papel), ...(r.data.camadasExtras ?? []).map((c) => c.id)]
+    const ids = [...r.data.blocos.map((b) => b.id ?? b.papel), ...(r.data.camadasExtras ?? []).map((c) => c.id), ...idsDeLivresVazios]
     const idsRepetidos = ids.filter((id, i) => ids.indexOf(id) !== i)
     if (idsRepetidos.length > 0) return { spec: null, problemas: [`id de camada repetido: ${[...new Set(idsRepetidos)].join(', ')}`] }
     // R11: sem contrato, o ORIGINAL persistido nasce da spec

@@ -8894,12 +8894,12 @@ esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
 | Vínculo | Vale oculta? | Sobrevive à duplicação por |
 |---|---|---|
 | identidade do extra (`metadata.compositor.extra.id`) | sim: o bloco sai vazio | a própria metadata |
-| id do bloco = id físico (comum: com o papel; livre: id ou nome) | sim: o bloco sai vazio | `metadata.compositor.bloco` (novo) |
-| id inferido `extra-<camada>` (formas atual e antiga) — **só o livre SEM herança** (R25) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
-| marca `linhasDoBloco` / `parte` | as partes visíveis seguem do bloco único | a própria metadata |
+| id do bloco = id físico (comum: com o papel; livre: id ou nome, **só em texto SEM papel** — R26) | sim: o bloco sai vazio | `metadata.compositor.bloco` (novo) |
+| id inferido `extra-<camada>` (formas atual e antiga) — **só o livre SEM herança** (R25), **só em texto SEM papel** (R26) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
+| marca `linhasDoBloco` / `parte` — **inclusive as partes da voz 2 da manchete** (R27) | as partes visíveis seguem do bloco único | a própria metadata |
 | id reservado `<papel>` / `<papel>-N` | as partes visíveis seguem do bloco único | `parte` (R22) |
 | papel reconhecido só pelo id | — | `metadata.compositor.papel` |
-| posição (fila por função, voz 2) | **não é identidade**: só decide o que nada acima decidiu | — |
+| posição (fila por função; voz 2 sem marca, pela altura) | **não é identidade**: só decide o que nada acima decidiu | — |
 
 - 🔴 **Identidade vence posição, inclusive oculta.** A identidade é procurada
   também nas camadas ocultas (a visível primeiro); o bloco vinculado a uma
@@ -8978,3 +8978,57 @@ esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
   `extra-nota` excluído com texto solto novo `nota` (o solto vira `extra-nota-2`
   inferido e só ele é renomeado na duplicação); o inferido `extra-solta` de
   sempre; e a varredura dos ids gerados na spec. Mutação M1–M2.
+
+**Da revisão FINAL do Codex sobre 5d5d378e (BLOQUEADO, R26…R27, 12/09/2026):**
+
+Sexta rodada na mesma família. Além das duas correções, um teste INVARIANTE
+passou a enumerar os casos em vez de escolhê-los à mão
+(`src/lib/compositor/__tests__/invariante-copy-autoral.test.ts`).
+
+- 🔴 **R26 — o livre só alcança texto SEM papel.** O livre vazio `servico-2`
+  (herda da manchete) ficava fora de `camadasExtras` e escapava da conferência
+  de ids; na leitura, reservava pelo id físico a segunda parte do serviço
+  repartido antes da reunião das partes de `svc` — o endereço ia para o livre,
+  e a recomposição seguinte recusava o livre que ganhou texto
+  (`SPEC_INVALIDA`). O invariante mostrou que a família era maior que o
+  relatado: o livre `servico`, `headline` ou `extra-headline2` capturava do
+  mesmo jeito a camada comum, a manchete ou a voz 2 — pelo id físico, pelo nome
+  ou pelo id inferido. Hoje, fora da identidade explícita (passo 0), os
+  fallbacks do livre (`livreParaFallback`) só alcançam camada cujo
+  `papelDaCamada` é nulo: texto com papel é lido pela cascata das funções. E
+  `validarSpec` passa os ids dos livres VAZIOS pelas mesmas conferências
+  (reservado e repetido) dos outros ids.
+  ⚠️ Contrato já gravado com esse livre é LIDO sem capturar nada, mas a
+  recomposição dele é recusada na porta pelo id — recusa com motivo, nunca o
+  contrato intermediário. Como o contrato não está na main, só dev tem registro.
+- 🔴 **R27 — a segunda voz também é repartida.** Um arranjo com dois textos
+  `headline2` recebe as linhas 1 e 2 da manchete (marcas `linhasDoBloco` [1] e
+  [2]); a leitura pegava só a primeira voz 2 livre e `hoje` virava
+  `extra-headline2-2` (livre sem herança): revisão fictícia e recomposição
+  recusada. `partesDaVoz2` reúne todas as vozes 2 livres na ordem autoral, com a
+  MESMA ordenação de `partesDoBloco` (`ordenarPartes`: marca, depois número
+  legado e altura), e `linhasNaVoz2` são as últimas linhas.
+- 🔴 **Achado do invariante, anterior a R27**: manchete INTEIRA na voz 2 com a
+  camada dela oculta ou excluída saía `linhas: []` com `linhasNaVoz2: [0]` —
+  contrato inválido que o autosave gravaria e a leitura seguinte recusaria.
+  Bloco não desenhado agora sai sem `linhasNaVoz2`.
+- **O invariante**: 708 contratos enumerados (A: manchete de 1 a 3 linhas com e
+  sem voz 2 declarada × serviço de 0 a 3 linhas × 0 a 2 extras com herança ×
+  quatro arranjos — um texto por papel, serviço em dois grupos (R18), serviço
+  num grupo (R20), voz 2 em dois textos (R27); B: ids autorais do namespace que
+  colide — papel nu, `<papel>-N`, `extra-<papel>`, `headline2` — num livre com e
+  sem herança, vazio ou não). Para cada caso aceito: persistência com os mesmos
+  ids e linhas e sem `extra-*`; releitura, duplicação e recomposição montada de
+  novo sem mudança; e, texto a texto, ocultar, excluir, ocultar e reexibir, e
+  duplicar e ocultar mudando SÓ o bloco dono, que perde exatamente as linhas
+  daquele texto. Hoje: 243 aceitos, 3.266 operações, 0 falhas, menos de 1s.
+  Antes das correções (mesmo oráculo): 310 aceitos e **88 casos falhando** — 45
+  de captura pelo livre nos quatro arranjos, 37 da voz 2 repartida e 6 da
+  manchete inteira na voz 2.
+- 🔴 **O oráculo do invariante também erra, e errou na primeira rodada**:
+  recompor sem nenhum bloco COM função e com texto é recusa legítima ("pelo
+  menos um bloco"), não defeito. Falha de invariante nova se lê pela amostra
+  antes de virar correção.
+- Mutação por regra: M0 (tudo desfeito) 88 casos; M1 (livre alcança texto com
+  papel) 16; M2 (spec sem o id do livre vazio) pego pelo teste R26; M3 (só a
+  primeira voz 2) 15; M4 (bloco vazio com `linhasNaVoz2`) 6.
