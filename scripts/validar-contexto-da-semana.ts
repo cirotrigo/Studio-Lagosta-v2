@@ -283,6 +283,19 @@ async function main() {
       conferir('R12: mídia B publicada com generationId da versão A (URL não casa): volta a cópia registrada B, NUNCA o snapshot A', !!i12 && JSON.stringify(i12.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i12.textosOrigem === 'copy-registrada-na-entrega' && !JSON.stringify(i12).includes('texto A antigo'), JSON.stringify({ textos: i12?.textos, origem: i12?.textosOrigem }).slice(0, 200))
       conferir('R13: URL casa, mas a arte foi RE-RENDERIZADA por cima do snapshot: volta a cópia registrada B, NUNCA o snapshot A', !!i13 && JSON.stringify(i13.textos) === JSON.stringify([`${MARCA} texto B registrado`]) && i13.textosOrigem === 'copy-registrada-na-entrega' && !JSON.stringify(i13).includes('texto A antigo'), JSON.stringify({ textos: i13?.textos, origem: i13?.textosOrigem }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3d.json'), JSON.stringify(agenda3d, null, 2))
+
+      // R15 (revisão de 3f784e1a): carrossel entregue sem slide confiável — a cópia da página no post NÃO prova o que foi ao ar.
+      console.log('3e) carrossel PUBLICADO com cópia A no post, slide re-renderizado e slide sem arte: nada é afirmado — indisponível, slide a slide')
+      const dia3e = somarDias(hoje, 8)
+      const carrosselA = await db.socialPost.create({
+        data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} 3e carrossel`, mediaUrls: [`${marcaUrl}/re-render.png`, `${marcaUrl}/sem-arte.png`], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3e}T09:00:00-03:00`), status: 'POSTED', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', generationId: genReRender.id, slotValues: { [chaveDoTexto]: `${MARCA} cópia A da página`, _copiaDaPagina: true } as never },
+        select: { id: true },
+      })
+      posts.push(carrosselA.id)
+      const agenda3e = await tool('ver-agenda', { projectId: PROJETO, from: dia3e, to: dia3e })
+      const i3e = (agenda3e.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === carrosselA.id)
+      conferir('R15: nem "cópia A" nem "texto A antigo" aparecem; `textosIndisponiveis` declara o carrossel e `textosPorSlide` diz o porquê de cada mídia', !!i3e && !('textos' in i3e) && /carrossel já entregue/.test(i3e.textosIndisponiveis ?? '') && Array.isArray(i3e.textosPorSlide) && i3e.textosPorSlide.length === 2 && i3e.textosPorSlide.every((sl: any) => sl.textos.length === 0 && typeof sl.indisponiveis === 'string') && !JSON.stringify(i3e).includes('cópia A') && !JSON.stringify(i3e).includes('texto A antigo'), JSON.stringify({ indisponiveis: i3e?.textosIndisponiveis?.slice(0, 60), slides: i3e?.textosPorSlide?.map((sl: any) => sl.indisponiveis?.slice(0, 40)) }))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3e.json'), JSON.stringify(agenda3e, null, 2))
     } else {
       conferir('projeto sem página com texto para exercitar `textos` pela página', false)
     }

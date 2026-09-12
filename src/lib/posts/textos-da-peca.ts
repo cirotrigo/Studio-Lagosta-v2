@@ -33,6 +33,7 @@
 import { lerCamadas, type PageLayer } from '@/lib/posts/page-layers'
 import { aplicarSlotNaCamada } from '@/lib/posts/page-to-design-data'
 import { ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
+import { aplicarCaixa } from '@/lib/posts/caixa-do-texto'
 
 export type OrigemDosTextos =
   /** As camadas de texto visíveis da página (o post não tem copy própria). */
@@ -136,7 +137,10 @@ function textosDasCamadas(camadas: unknown, slots?: Record<string, unknown>): st
   for (const camada of lidas.camadas) {
     if (!camadaDeTexto(camada)) continue
     const efetiva = slots ? aplicarSlotNaCamada(camada, slots) : camada
-    const texto = typeof efetiva.content === 'string' ? efetiva.content.trim() : ''
+    const bruto = typeof efetiva.content === 'string' ? efetiva.content : ''
+    // A CAIXA é a do render (`textTransform`), aplicada DEPOIS do slot — a
+    // camada guarda "Almoço executivo" e a arte mostra "ALMOÇO EXECUTIVO".
+    const texto = aplicarCaixa(bruto, (efetiva.style as { textTransform?: string } | undefined)?.textTransform).trim()
     if (texto) out.push(texto)
   }
   return out
@@ -214,6 +218,20 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
+    /**
+     * CARROSSEL entregue sem slide confiável: nem a cópia da página nem a copy
+     * própria provam o que foi ao ar — o re-render de slide troca só
+     * `mediaUrls` (`recompor.ts`), e `slotValues` do carrossel fica como
+     * estava (a cópia A sobrevive à mídia B). Aqui só se declara, slide a
+     * slide; nada se afirma (R15 da revisão de 3f784e1a).
+     */
+    if (carrossel && slides.length > 0) {
+      return {
+        textos: [],
+        indisponiveis: 'carrossel já entregue sem registro confiável das artes por slide: a cópia gravada no post não prova o que foi ao ar (o re-render de slide troca só a mídia).',
+        slides: textosPorSlide(slides, true),
+      }
+    }
     if (textosProprios.length > 0) {
       return {
         textos: textosProprios,

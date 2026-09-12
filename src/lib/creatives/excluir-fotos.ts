@@ -9,7 +9,8 @@
  * isso fica declarada na resposta (`excluidas`), nunca escondida no score.
  */
 
-import { dataValida } from '@/lib/posts/contexto-da-semana'
+import { createHash } from 'node:crypto'
+import { dataBRT, dataValida } from '@/lib/posts/contexto-da-semana'
 
 export interface ExclusaoDeFotos {
   /** Ids (driveFileId) já escolhidos nesta leva — saem da lista. */
@@ -34,6 +35,34 @@ export interface ResumoDaExclusao {
  * (com e sem exclusão) são propostas diferentes — a lista que a pessoa viu é
  * outra, e o topo dela também.
  */
+/**
+ * O DIA (em Brasília) de um registro de uso: timestamp ISO vira a data em
+ * Brasília — um uso às 02:30Z de segunda é domingo à noite aqui, e
+ * `evitarUsadasDesde: segunda` não pode excluí-lo (R18 da revisão de
+ * 3f784e1a); a data pura do catálogo legado ("AAAA-MM-DD") fica como está.
+ */
+export function diaDoUso(uso: string | null | undefined): string | null {
+  if (!uso) return null
+  const t = uso.trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t
+  const d = new Date(t)
+  return Number.isNaN(d.getTime()) ? t.slice(0, 10) : dataBRT(d)
+}
+
+/**
+ * A identidade da exclusão para a CHAVE da proposta de fotos: ids normalizados
+ * (ordem, duplicata e espaço externo não contam) com a CAIXA preservada — a
+ * filtragem distingue "AbC" de "abc", e `resumoEstavel` passa strings por
+ * minúsculas (R17 da revisão de 3f784e1a: duas listas diferentes ganhavam a
+ * mesma chave). `null` sem exclusão, para a chave de quem nunca excluiu não
+ * mudar.
+ */
+export function identidadeDaExclusao(exclusao: ExclusaoDeFotos): string | null {
+  const { ids, desde } = normalizarExclusao(exclusao)
+  if (ids.length === 0 && !desde) return null
+  return createHash('sha1').update(JSON.stringify({ ids, desde })).digest('hex').slice(0, 12)
+}
+
 export function normalizarExclusao(exclusao: ExclusaoDeFotos): { ids: string[]; desde: string | null } {
   const ids = [...new Set((exclusao.ids ?? []).map((i) => i.trim()).filter(Boolean))].sort()
   const bruto = exclusao.usadasDesde?.trim() ?? ''
@@ -68,7 +97,7 @@ export function excluirFotos<T extends { imagem: { driveFileId: string } }>(
       return false
     }
     if (desde) {
-      const uso = ultimoUso.get(id)?.slice(0, 10)
+      const uso = diaDoUso(ultimoUso.get(id))
       if (uso && uso >= desde) {
         porUso++
         return false

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { arteEntregue, textosDaPeca } from '../textos-da-peca'
 import { aplicarSlotNaCamada } from '../page-to-design-data'
+import { aplicarCaixa } from '../caixa-do-texto'
 
 const camadas = [
   { id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', visible: true },
@@ -120,6 +121,33 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(r13SemRegistro.textos).toEqual(['C'])
     expect(r13SemRegistro.parcial).toBe(true)
     expect(r13SemRegistro.slides?.[0].indisponiveis).toMatch(/re-renderizada/)
+  })
+  it('CARROSSEL entregue sem slide confiável: nem a cópia da página nem a copy própria provam o que foi ao ar — indisponível, slide a slide (R15)', () => {
+    const post = { pageId: null, status: 'POSTED', laterPostId: null, mediaUrls: ['https://blob/B-re-render.png', 'https://blob/C.png'], generationId: 'gA', slotValues: { headline: 'Cópia A da página', _copiaDaPagina: true } }
+    const r = textosDaPeca(post, { slides: [{ url: 'https://blob/B-re-render.png', arte: { layersSnapshot: snap('A antigo'), pageId: 'p1', reRenderizada: true } }, { url: 'https://blob/C.png', arte: null }] })
+    expect(r.textos).toEqual([])
+    expect(r.origem).toBeUndefined()
+    expect(r.indisponiveis).toMatch(/carrossel já entregue/)
+    expect(JSON.stringify(r)).not.toContain('Cópia A')
+    expect(r.slides?.map((s) => [s.slide, s.indisponiveis?.slice(0, 20)])).toEqual([[1, 'a arte desta mídia f'], [2, 'nenhuma arte registr']])
+    // mídia ÚNICA entregue continua com a cópia registrada (o render de post a mantém em dia)
+    const unica = textosDaPeca({ ...post, mediaUrls: ['https://blob/B.png'] }, { slides: [{ url: 'https://blob/B.png', arte: null }] })
+    expect(unica).toEqual({ textos: ['Cópia A da página'], origem: 'copy-registrada-na-entrega' })
+  })
+  it('a CAIXA é a do render (textTransform), aplicada depois do slot: uppercase, lowercase, capitalize e none, com acento e quebra de linha (R16)', () => {
+    const pagina = [
+      { id: 'a', name: 'headline', type: 'text', content: 'Almoço executivo', style: { textTransform: 'uppercase' } },
+      { id: 'b', name: 'apoio', type: 'text', content: 'De SEGUNDA a Sexta', style: { textTransform: 'lowercase' } },
+      { id: 'c', name: 'cta', type: 'text', content: 'vem pra cá\nhoje', style: { textTransform: 'capitalize' } },
+      { id: 'd', name: 'servico', type: 'text', content: 'Rua Ação, 12', style: { textTransform: 'none' } },
+      { id: 'e', name: 'pre', type: 'text', content: 'Sem estilo' },
+    ]
+    expect(textosDaPeca({ ...viva, slotValues: null }, { camadas: pagina }).textos).toEqual(['ALMOÇO EXECUTIVO', 'de segunda a sexta', 'Vem Pra Cá\nHoje', 'Rua Ação, 12', 'Sem estilo'])
+    expect(textosDaPeca({ ...viva, slotValues: { headline: 'costela no bafo' } }, { camadas: pagina }).textos[0]).toBe('COSTELA NO BAFO')
+    // a MESMA função do render
+    expect(aplicarCaixa('Almoço executivo', 'uppercase')).toBe('ALMOÇO EXECUTIVO')
+    expect(aplicarCaixa('vem pra cá\nhoje', 'capitalize')).toBe('Vem Pra Cá\nHoje')
+    expect(aplicarCaixa('X', undefined)).toBe('X')
   })
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }

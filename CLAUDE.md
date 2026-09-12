@@ -6312,6 +6312,14 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   definitiva (`textos: []` com `textosOrigem`): a única camada apagada pelo
   slot ou todas ocultas não são motivo para buscar em outra fonte um texto
   que o render removeu.
+  🔴 **Carrossel entregue sem slide confiável não cai em fallback nenhum**: a
+  cópia da página gravada no post (`_copiaDaPagina`) e a copy própria só
+  provam o que foi ao ar em MÍDIA ÚNICA (o render de post as mantém em dia);
+  o re-render de slide troca só `mediaUrls` e o `slotValues` do carrossel
+  fica como estava — a cópia A sobrevive à mídia B. Declara-se, slide a slide.
+  **A CAIXA é a do render** (`aplicarCaixa` em `posts/caixa-do-texto.ts`, a
+  MESMA função que `render-engine.ts` usa, aplicada depois do slot): a camada
+  guarda "Almoço executivo" e a arte mostra "ALMOÇO EXECUTIVO".
   🔴 **Arte já ENTREGUE não segue a página** (`arteEntregue`: `laterPostId`,
   publicado, publicando ou falhou): a página pode ter sido editada DEPOIS da
   entrega, e a invalidação não alcança o post — atribuir-lhe o texto atual da
@@ -6354,6 +6362,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   reutilizava a proposta anterior e escolher B contava como troca humana. Os
   mesmos ids em outra ordem continuam sendo o mesmo pedido; quem nunca
   excluiu mantém a chave de sempre (os campos só entram quando pedidos).
+  🔴 **A identidade da exclusão preserva a CAIXA dos ids** (`identidadeDaExclusao`,
+  parte própria da chave): `resumoEstavel` passa strings por minúsculas e
+  "AbC"/"abc" — que a filtragem distingue — colidiam na mesma proposta. E o
+  corte de uso compara o DIA EM BRASÍLIA (`diaDoUso`): um uso às 02:30Z de
+  segunda é domingo à noite aqui, e `evitarUsadasDesde: segunda` não pode
+  excluí-lo; a data pura do catálogo legado fica como está.
 - 🔴 **`prisma/generated/` no `.gitignore` ignora a PASTA, não o symlink** que
   os worktrees usam: `git status` o lista como `??` e a prova imprimia
   "pendente: 1 arquivo(s)" numa árvore que estava limpa (foi o que a revisão

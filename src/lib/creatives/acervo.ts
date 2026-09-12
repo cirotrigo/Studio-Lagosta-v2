@@ -20,7 +20,7 @@ import {
   type PilarParaBusca,
   type PreferenciasDeFoto,
 } from '@/lib/creatives/ranquear-acervo'
-import { excluirFotos, normalizarExclusao } from '@/lib/creatives/excluir-fotos'
+import { excluirFotos, identidadeDaExclusao, normalizarExclusao } from '@/lib/creatives/excluir-fotos'
 import { dataValida } from '@/lib/posts/contexto-da-semana'
 import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
@@ -549,6 +549,10 @@ async function registrarProposta(
       input.projectId,
       resumoEstavel(criterios),
       diaBRT(),
+      // A exclusão com a CAIXA dos ids preservada (`resumoEstavel` passa
+      // strings por minúsculas e "AbC"/"abc" colidiam — R17). Só entra quando
+      // há exclusão: a chave de quem nunca excluiu é a de sempre.
+      ...(identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }) ? [identidadeDaExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde })] : []),
     ),
     sugerido: {
       criterios,

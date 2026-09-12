@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { excluirFotos, normalizarExclusao } from '../excluir-fotos'
+import { diaDoUso, excluirFotos, identidadeDaExclusao, normalizarExclusao } from '../excluir-fotos'
 
 const lista = ['a', 'b', 'c', 'd'].map((id) => ({ imagem: { driveFileId: id }, score: 1 }))
 const usos = new Map([
@@ -36,6 +36,23 @@ describe('a exclusão de fotos da lista ranqueada', () => {
     expect(normalizarExclusao({ usadasDesde: '2026-02-31' })).toEqual({ ids: [], desde: null })
     expect(normalizarExclusao({ usadasDesde: '01/09/2026' }).desde).toBeNull()
     expect(normalizarExclusao({})).toEqual({ ids: [], desde: null })
+  })
+  it('o corte de uso compara o DIA EM BRASÍLIA (R18): 02:30Z de segunda é domingo à noite aqui — não sai com "desde segunda"; 03:30Z já é segunda; data pura do legado fica', () => {
+    expect(diaDoUso('2026-09-14T02:30:00.000Z')).toBe('2026-09-13')
+    expect(diaDoUso('2026-09-14T03:30:00.000Z')).toBe('2026-09-14')
+    expect(diaDoUso('2026-09-01')).toBe('2026-09-01')
+    expect(diaDoUso(null)).toBeNull()
+    const usosNaVirada = new Map([['a', '2026-09-14T02:30:00.000Z'], ['b', '2026-09-14T03:30:00.000Z']])
+    const r = excluirFotos(lista, { usadasDesde: '2026-09-14' }, usosNaVirada)
+    expect(r.mantidas.map((m) => m.imagem.driveFileId)).toEqual(['a', 'c', 'd'])
+    expect(r.resumo.porUso).toBe(1)
+  })
+  it('a identidade da exclusão preserva a CAIXA dos ids (R17): "AbC" ≠ "abc"; ordem, duplicata e espaço externo não contam; sem exclusão é nula', () => {
+    expect(identidadeDaExclusao({ ids: ['AbC'] })).not.toBe(identidadeDaExclusao({ ids: ['abc'] }))
+    expect(identidadeDaExclusao({ ids: ['b', ' a ', 'a'] })).toBe(identidadeDaExclusao({ ids: ['a', 'b'] }))
+    expect(identidadeDaExclusao({ ids: ['a'], usadasDesde: '2026-09-01' })).not.toBe(identidadeDaExclusao({ ids: ['a'] }))
+    expect(identidadeDaExclusao({})).toBeNull()
+    expect(identidadeDaExclusao({ ids: [], usadasDesde: '2026-02-31' })).toBeNull()
   })
   it('data inválida não exclui nada (quem chama avisa)', () => {
     expect(excluirFotos(lista, { usadasDesde: '15/09/2026' }, usos).mantidas).toHaveLength(4)
