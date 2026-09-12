@@ -54,6 +54,15 @@ import type { AchadoVisto, ProblemaVisto } from './visao'
  * régua mede texto a texto e o grupo vale o pior, e o pior texto pode ser
  * outro depois que a força muda (11/09/2026). Sem correção, é a medida atual.
  */
+/**
+ * As leituras texto a texto de um grupo medido. Medida anterior a 12/09/2026
+ * (sem `textos`) volta como um texto só — o representante do grupo.
+ */
+export function leiturasDoGrupo(m: ContrasteMedido): Array<{ camada: string; sentido: 'claro' | 'escuro'; alvo: number; p98SemHalo: number; p98ComHalo: number; ok: boolean }> {
+  if (m.textos && m.textos.length > 0) return m.textos
+  return [{ camada: m.camadas[0] ?? m.grupo, sentido: m.sentido, alvo: m.alvo, p98SemHalo: m.p98SemHalo, p98ComHalo: m.p98ComHalo, ok: m.ok }]
+}
+
 export function leituraDecisiva(m: ContrasteMedido): { p98: number; ok: boolean; tinta: number; alvo: number; sentido: 'claro' | 'escuro' } {
   const a = m.antesDaCorrecao
   return a
@@ -84,6 +93,12 @@ export interface EntradaDaRevisao {
   fontesAusentes: Array<{ familia: string; peso: number | null; camadas: string[] }>
   /** Camadas medidas por aproximação (rich text). */
   medidasAproximadas: string[]
+  /**
+   * A medição dos textos NÃO rodou (fonte, medidor ou geometria falharam):
+   * toda regra que depende de `metricas` sai "não avaliada" com este motivo.
+   * Métrica ausente nunca vira avaliação positiva (R4, 12/09/2026).
+   */
+  motivoSemMedida?: string
   /** O que a visão viu, já reconciliado. `undefined` = a visão não rodou. */
   vistos?: AchadoVisto[]
   motivoSemVisao?: string
@@ -742,8 +757,11 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       if (gradiente) {
         const registro = sobrandoPorGradiente.get(gradiente.id) ?? { medidas: [], todosSobrando: true }
         registro.medidas.push(m)
-        // A sobra se lê no estado ATUAL da peça (m.*): é a força que está lá que pode baixar.
-        if (!okAntes || m.sentido !== 'claro' || !(m.p98ComHalo < m.alvo - L.gradienteSobra)) registro.todosSobrando = false
+        // A sobra se lê no estado ATUAL da peça e em CADA texto do grupo: o
+        // grupo é resumido pelo pior texto na força atual, mas o texto que
+        // limita a redução pode ser outro (R1 da revisão do merge, 12/09/2026).
+        const sobra = leiturasDoGrupo(m).every((t) => t.sentido === 'claro' && t.p98ComHalo < t.alvo - L.gradienteSobra)
+        if (!okAntes || !sobra) registro.todosSobrando = false
         sobrandoPorGradiente.set(gradiente.id, registro)
       }
     }
@@ -754,10 +772,12 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
       const gradiente = porId.get(gradienteId)!
       const tinta = medidas[0].tinta
       if (tinta <= forcaMinima + 0.02) continue
-      const necessarias = medidas.map((m) => {
-        const alvoFolgado = m.alvo - 15
-        if (m.p98SemHalo <= alvoFolgado) return forcaMinima
-        return (tinta * (m.p98SemHalo - alvoFolgado)) / Math.max(1, m.p98SemHalo - m.p98ComHalo)
+      // A força necessária é conferida texto a texto e vale a MAIOR: reduzir
+      // pelo representante do grupo tirava a leitura do vizinho.
+      const necessarias = medidas.flatMap((m) => leiturasDoGrupo(m)).map((t) => {
+        const alvoFolgado = t.alvo - 15
+        if (t.p98SemHalo <= alvoFolgado) return forcaMinima
+        return (tinta * (t.p98SemHalo - alvoFolgado)) / Math.max(1, t.p98SemHalo - t.p98ComHalo)
       })
       const forca = arred(Math.min(tinta, Math.max(forcaMinima, ...necessarias)), 3)
       if (tinta - forca < L.gradienteReducaoMinima) continue
@@ -1103,7 +1123,18 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
           if (v.correcao === 'menos-gradiente') {
             if (!gradiente || atual <= faixa[0] + 0.01) return []
             // Tirar gradiente onde a régua mede falta de leitura pioraria o texto.
-            if ((e.contraste ?? []).some((c) => c.gradiente === gradiente.id && !leituraDecisiva(c).ok)) return []
+            // Vale pela borda, não só pelo id: a régua só associa o gradiente DE
+            // LEITURA (com a marca do compositor); um gradiente desenhado à mão
+            // fica com `gradiente: null` na medida, e o texto sem leitura naquela
+            // borda protegia nada. Achado REV-03 da revisão do Codex (12/09/2026).
+            const semLeituraNaBorda = (e.contraste ?? []).some((c) => {
+              if (leituraDecisiva(c).ok) return false
+              if (c.gradiente === gradiente.id) return true
+              const rects = c.camadas.map((id) => porId.get(id)).filter((l): l is Layer => !!l).map(rectDaCamada)
+              const rect = uniao(rects)
+              return !!rect && bordaDoGrupo(rect, null, H) === borda
+            })
+            if (semLeituraNaBorda) return []
             return [{ tipo: 'gradiente', borda, camadas: [gradiente.id], forca: arred(Math.max(faixa[0], atual - passo), 3) }]
           }
           const medida = e.contraste?.find((c) => textos.some((id) => c.camadas.includes(id)))
@@ -1180,6 +1211,14 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
   }
 
   for (const regra of REGRAS_DA_REVISAO) if (!cobertura[regra]) cobertura[regra] = { estado: 'avaliada' }
+  if (e.motivoSemMedida) {
+    // Sem métricas só valem as regras que não medem texto: fonte ausente (do
+    // registro), a régua (do render) e a visão.
+    for (const regra of REGRAS_DA_REVISAO) {
+      if (regra === 'fonte-nao-carregada' || regra === 'texto-sem-leitura' || regra === 'gradiente-forte-demais' || regra === 'visao') continue
+      cobertura[regra] = { estado: 'nao-avaliada', motivo: e.motivoSemMedida }
+    }
+  }
   if (e.medidasAproximadas.length > 0) {
     for (const regra of ['texto-cortado', 'colisao', 'palavra-orfa'] as RegraDaRevisao[]) {
       if (cobertura[regra]?.estado === 'avaliada') cobertura[regra] = { estado: 'parcial', motivo: 'rich text medido como texto simples (a largura dos trechos destacados é aproximada)' }

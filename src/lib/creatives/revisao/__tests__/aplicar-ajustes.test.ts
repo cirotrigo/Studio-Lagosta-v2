@@ -43,6 +43,18 @@ const fotoDeFundo = {
 } as Layer
 
 describe('aplicarAjustes — corpo e pilha', () => {
+  it('só a MESMA COLUNA é empurrada: texto abaixo noutra coluna fica parado (REV-01)', () => {
+    const g = { groupId: 'g1' }
+    const a = texto('a', 300, 100, { metadata: g, position: { x: 100, y: 300 }, size: { width: 200, height: 132 } } as Partial<Layer>)
+    const b = texto('b', 450, 30, { metadata: g, position: { x: 700, y: 450 }, size: { width: 200, height: 48 } } as Partial<Layer>)
+    const c = texto('c', 500, 30, { metadata: g, position: { x: 100, y: 500 }, size: { width: 200, height: 48 } } as Partial<Layer>)
+    const r = aplicarAjustes([fotoDeFundo, a, b, c], [{ tipo: 'fonte', camadas: ['a'], fontSize: 80 }], { canvas, medir })
+    const depois = new Map(r.camadas.map((l) => [l.id, l]))
+    expect(depois.get('a')!.size.height).toBe(108)
+    expect(depois.get('b')!.position.y).toBe(450)
+    expect(depois.get('c')!.position.y).toBe(476)
+  })
+
   it('encolher o título de um bloco de rodapé mantém a BASE do bloco, e o ícone acompanha', () => {
     const g = { groupId: 'g1' }
     const titulo = texto('headline', 1500, 100, { metadata: g })

@@ -27,6 +27,7 @@ import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { fetchBuffer, registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { checkTextGeometry } from '@/lib/creatives/text-geometry'
@@ -356,17 +357,32 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
   const camadas = lidas.camadas as unknown as Layer[]
   const canvas = { width: page.width, height: page.height }
   const formato = formatoDaPagina({ name: page.name, tags: page.tags, width: page.width, height: page.height })
-  const background = page.background ?? '#000000'
+  // O MESMO fundo que o render de publicação usa (`renderPageAndRegister` passa
+  // pelo mesmo conversor): revisar sobre outro fundo julgaria outra peça (R3).
+  const designData = convertPageToDesignData({ id: page.id, name: page.name, width: page.width, height: page.height, layers: page.layers, background: page.background })
+  const background = designData.canvas.backgroundColor
 
-  await registerProjectFonts(projectId)
-  const medir = await createServerTextBoxMeasurer()
+  // Toda etapa de MEDIDA é opcional: falhar em registrar fonte, criar o
+  // medidor ou medir a geometria vira cobertura "não avaliada" nas regras que
+  // dependem dela — nunca derruba a revisão (R4). Métrica ausente não é
+  // avaliação positiva: `motivoSemMedida` é o que `avaliarPeca` lê.
   const medidasAproximadas: string[] = []
-  const paraMedir = camadas.map((l) => {
-    if (l.type !== 'rich-text' || l.visible === false) return l
-    medidasAproximadas.push(l.id)
-    return { ...l, type: 'text', richTextStyles: undefined } as Layer
-  })
-  const { issues, metricas } = checkTextGeometry(paraMedir, canvas, medir)
+  let issues: ReturnType<typeof checkTextGeometry>['issues'] = []
+  let metricas: ReturnType<typeof checkTextGeometry>['metricas'] = []
+  let motivoSemMedida: string | undefined
+  try {
+    await registerProjectFonts(projectId)
+    const medir = await createServerTextBoxMeasurer()
+    const paraMedir = camadas.map((l) => {
+      if (l.type !== 'rich-text' || l.visible === false) return l
+      medidasAproximadas.push(l.id)
+      return { ...l, type: 'text', richTextStyles: undefined } as Layer
+    })
+    ;({ issues, metricas } = checkTextGeometry(paraMedir, canvas, medir))
+  } catch (erro) {
+    motivoSemMedida = `a medição dos textos falhou: ${(erro instanceof Error ? erro.message : String(erro)).slice(0, 160)}`
+    console.warn('[revisar-arte]', motivoSemMedida)
+  }
 
   const [fontesAusentes, projeto, geracoes] = await Promise.all([
     fontesQueFaltam(camadas),
@@ -405,10 +421,7 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
   if (querVisao || querPrevia) {
     try {
       const { CanvasRenderer } = await import('@/lib/canvas-renderer')
-      png = await new CanvasRenderer(canvas.width, canvas.height).renderDesign(
-        { canvas: { ...canvas, backgroundColor: background }, layers: camadas } as never,
-        {},
-      )
+      png = await new CanvasRenderer(canvas.width, canvas.height).renderDesign(designData, {})
     } catch (erro) {
       console.warn('[revisar-arte] render da peça falhou:', erro instanceof Error ? erro.message : erro)
     }
@@ -478,15 +491,21 @@ export async function revisarArte(input: RevisarArteInput): Promise<RevisaoDaArt
     assunto,
     fontesAusentes,
     medidasAproximadas,
+    motivoSemMedida,
     vistos,
     visaoConclusiva: visao.estado === 'feita' && (visao.descartados ?? 0) === 0,
     motivoSemVisao: visao.estado === 'feita' ? undefined : visao.motivo,
   })
 
+  // A prévia é conveniência: falhar aqui não pode descartar um relatório pronto.
   let previa: Buffer | null = null
   if (querPrevia && (marcada || png)) {
-    const sharp = (await import('sharp')).default
-    previa = await sharp(marcada ?? png!).resize({ width: 720 }).jpeg({ quality: 80 }).toBuffer()
+    try {
+      const sharp = (await import('sharp')).default
+      previa = await sharp(marcada ?? png!).resize({ width: 720 }).jpeg({ quality: 80 }).toBuffer()
+    } catch (erro) {
+      console.warn('[revisar-arte] prévia não gerada:', erro instanceof Error ? erro.message : erro)
+    }
   }
 
   return {

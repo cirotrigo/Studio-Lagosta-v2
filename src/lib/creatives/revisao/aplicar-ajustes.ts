@@ -151,8 +151,12 @@ function refluir(camadas: Layer[], novas: Map<string, Layer>, canvas: Canvas): L
       let dy = 0
       for (const d of deltas) {
         if (d.id === m.id) continue
-        const inteiramenteAbaixo = m.position.y >= d.base - 0.5
-        const encaixadoAbaixo = m.position.y > d.topo + 0.5 && sobreposicaoHorizontal(m, d.x0, d.x1) > 0
+        // Só a MESMA COLUNA empurra: um texto abaixo mas noutra coluna (o
+        // serviço à direita, a manchete à esquerda) não desce porque a manchete
+        // mudou de altura. Achado REV-01 da revisão do Codex (12/09/2026).
+        const mesmaColuna = sobreposicaoHorizontal(m, d.x0, d.x1) > 0
+        const inteiramenteAbaixo = m.position.y >= d.base - 0.5 && mesmaColuna
+        const encaixadoAbaixo = m.position.y > d.topo + 0.5 && mesmaColuna
         if (inteiramenteAbaixo || encaixadoAbaixo) dy += d.diff
       }
       return dy

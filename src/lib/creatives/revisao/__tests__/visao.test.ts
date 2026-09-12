@@ -62,6 +62,11 @@ describe('a reconciliação do que a visão devolveu', () => {
     expect(vistos[0].intensidade).toBe('pouco')
   })
 
+  it('resposta SEM a lista é incompleta (descartados 1); `achados: []` é conclusão válida (REV-02)', () => {
+    expect(reconciliarVisao({}, marcas)).toEqual({ vistos: [], descartados: 1 })
+    expect(reconciliarVisao({ achados: [] }, marcas)).toEqual({ vistos: [], descartados: 0 })
+  })
+
   it('repetição do mesmo problema na mesma marca conta uma vez; resposta fora do schema vira zero achados', () => {
     expect(reconciliarVisao({ achados: [bom, bom] }, marcas).vistos).toHaveLength(1)
     expect(reconciliarVisao('lixo', marcas)).toEqual({ vistos: [], descartados: 1 })

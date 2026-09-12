@@ -23,6 +23,7 @@ import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { revisarArte } from '@/lib/creatives/revisao/revisar-arte'
 import { aplicarAjustes } from '@/lib/creatives/revisao/aplicar-ajustes'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 
 function argumento(nome: string): string | null {
   const i = process.argv.indexOf(nome)
@@ -53,6 +54,14 @@ async function main() {
   if (r.previa) await fs.writeFile(path.join(saida, 'marcada.jpg'), r.previa)
 
   const page = await db.page.findUniqueOrThrow({ where: { id: pageId } })
+  // A página relida tem de ser a MESMA que a revisão mediu: se alguém editou
+  // no meio (a visão leva segundos), aplicar os ajustes antigos sobre a versão
+  // nova compararia versões diferentes (achado R3 da revisão do Codex).
+  const versaoRelida = versaoDaPagina(page)
+  if (!versaoRelida || versaoRelida !== r.versao) {
+    console.error(`A página mudou durante a revisão (revisada ${r.versao}, relida ${versaoRelida ?? 'ilegível'}): rode de novo.`)
+    process.exit(3)
+  }
   const camadas = lerCamadas(page.layers).camadas as unknown as Layer[]
   const canvas = { width: page.width, height: page.height }
   const background = page.background ?? '#000000'

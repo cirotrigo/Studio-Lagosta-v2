@@ -542,12 +542,20 @@ export interface PedidoDeRecomposicao {
 export async function enfileirarRecomposicaoDaPagina(args: {
   pageId: string
   origem: 'editor' | 'varredura'
+  /**
+   * Enfileira mesmo quando o diff não vê defasagem. É o caso do ajuste do
+   * revisor cujo render FALHOU: `Page.layers` já mudou (força do gradiente,
+   * por exemplo — que o diff geométrico não compara) e nenhuma Generation
+   * nova existe para a URL denunciar; sem forçar, o slide ficaria com a arte
+   * velha e sem job de recuperação (achado R2 da revisão do Codex, 12/09/2026).
+   */
+  forcar?: boolean
 }): Promise<PedidoDeRecomposicao | null> {
   const levantamento = await levantarPagina(args.pageId)
   if (!levantamento?.arte || levantamento.slides.length === 0) return null
   // A MESMA pergunta que o serviço faz, feita antes de criar o job: sem isto
   // toda mexida sem consequência acordaria o cron para não fazer nada.
-  if (!precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return null
+  if (!args.forcar && !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return null
 
   const { enfileirarRecomposicao } = await import('@/lib/ai/generation-queue')
   const jobId = await enfileirarRecomposicao({
@@ -576,11 +584,12 @@ export async function enfileirarRecomposicaoDaPagina(args: {
 export async function pedirRecomposicaoDaArteCongelada(
   pageIds: string[],
   origem: 'editor' | 'varredura' = 'editor',
+  opcoes: { forcar?: boolean } = {},
 ): Promise<PedidoDeRecomposicao[]> {
   const pedidos: PedidoDeRecomposicao[] = []
   for (const pageId of [...new Set(pageIds)]) {
     try {
-      const pedido = await enfileirarRecomposicaoDaPagina({ pageId, origem })
+      const pedido = await enfileirarRecomposicaoDaPagina({ pageId, origem, forcar: opcoes.forcar })
       if (!pedido) continue
       pedidos.push(pedido)
       console.log(`[recompor] página ${pageId}: ${pedido.slides} arte(s) congelada(s) na fila (job ${pedido.jobId})`)

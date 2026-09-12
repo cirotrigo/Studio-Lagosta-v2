@@ -1083,7 +1083,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       .map((l) => [l.name ?? l.id, l.content]),
   )
 
-  const avisarAgenda = async () => {
+  const avisarAgenda = async (opcoes: { renderFalhou?: boolean } = {}) => {
     // Page.layers mudou: posts da agenda que usam esta página precisam voltar à
     // fila de render, senão publicam a arte antiga em silêncio.
     const resultado = await invalidateScheduledRenders(db, { pageIds: [page.id] })
@@ -1091,10 +1091,12 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
      * O outro lado da invalidação: a arte CONGELADA desta página — o slide de
      * carrossel, que é `NOT_NEEDED` e fica FORA do alcance do re-render. Sem
      * isto, ajustar a arte de um slide não mudava nada no post. Ver
-     * `recompor.ts`.
+     * `recompor.ts`. Quando o render FALHOU não há Generation nova para a URL
+     * denunciar a defasagem, e um ajuste só de força do gradiente nem aparece
+     * no diff geométrico: a recomposição é FORÇADA.
      */
     const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
-    await pedirRecomposicaoDaArteCongelada([page.id])
+    await pedirRecomposicaoDaArteCongelada([page.id], 'editor', { forcar: opcoes.renderFalhou === true })
     return resultado
   }
 
@@ -1131,7 +1133,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       },
     })
   } catch (erro) {
-    await avisarAgenda().catch((falha) => console.warn('[ajustar-arte] invalidação depois da falha do render:', falha))
+    await avisarAgenda({ renderFalhou: true }).catch((falha) => console.warn('[ajustar-arte] invalidação depois da falha do render:', falha))
     throw erro
   }
 

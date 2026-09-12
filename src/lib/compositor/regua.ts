@@ -66,6 +66,23 @@ export interface ContrasteMedido {
    * força X passa a dar" a partir de UMA rodada de render.
    */
   antesDaCorrecao?: { p98: number; ok: boolean; tinta: number; alvo: number; sentido: 'claro' | 'escuro' }
+  /**
+   * A leitura de CADA texto do grupo (desde 12/09/2026). O grupo é resumido
+   * pelo pior texto, mas quem calcula uma redução de força precisa conferir
+   * TODOS: o texto que limita a redução pode não ser o que limita a leitura na
+   * força atual (achado R1 da revisão do Codex sobre o merge da régua texto a
+   * texto). Ausente em medidas anteriores.
+   */
+  textos?: LeituraDeTexto[]
+}
+
+export interface LeituraDeTexto {
+  camada: string
+  sentido: 'claro' | 'escuro'
+  alvo: number
+  p98SemHalo: number
+  p98ComHalo: number
+  ok: boolean
 }
 
 export interface IntervencaoDeTexto {
@@ -274,6 +291,17 @@ export async function medirContrasteDaPeca(args: {
       }
     }
     const k = pior(indicesDoGrupo[i], comP98)
+    const leituraDe = (j: number, valores: number[]): LeituraDeTexto => {
+      const idx = indicesDoGrupo[i][j]
+      return {
+        camada: e.camadas[j].id,
+        sentido: leituras[idx].escuro ? 'escuro' : 'claro',
+        alvo: Math.round(leituras[idx].alvo),
+        p98SemHalo: semP98[idx],
+        p98ComHalo: valores[idx],
+        ok: folga(idx, valores) >= 0,
+      }
+    }
     medidas.push({
       grupo: e.grupo,
       camadas: e.camadas.map((c) => c.id),
@@ -285,6 +313,7 @@ export async function medirContrasteDaPeca(args: {
       tintaCorrigida,
       gradiente: e.gradiente?.id ?? null,
       ok: folga(k, comP98) >= 0,
+      textos: e.camadas.map((_, j) => leituraDe(j, comP98)),
     })
   })
 
@@ -307,6 +336,14 @@ export async function medirContrasteDaPeca(args: {
         m.p98ComHalo = depois[k]
         m.tinta = correcoes.get(m.gradiente)!
         m.ok = folga(k, depois) >= 0
+        m.textos = indicesDoGrupo[i].map((idx, j) => ({
+          camada: entradas[i].camadas[j].id,
+          sentido: leituras[idx].escuro ? 'escuro' : 'claro',
+          alvo: Math.round(leituras[idx].alvo),
+          p98SemHalo: semP98[idx],
+          p98ComHalo: depois[idx],
+          ok: folga(idx, depois) >= 0,
+        }))
       }
     })
   }

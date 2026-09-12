@@ -425,6 +425,15 @@ describe('o que a visão viu', () => {
     expect(r.ajustes).toHaveLength(1)
   })
 
+  it('medição que não rodou vira cobertura "não avaliada" nas regras de texto — nunca aprovação (R4)', () => {
+    const r = avaliarPeca(entrada({ camadas: [titulo], metricas: [], motivoSemMedida: 'a medição dos textos falhou: fonte' }))
+    for (const regra of ['texto-cortado', 'colisao', 'titulo-grande', 'palavra-orfa'] as const) {
+      expect(r.cobertura[regra]).toEqual({ estado: 'nao-avaliada', motivo: 'a medição dos textos falhou: fonte' })
+    }
+    expect(r.cobertura['fonte-nao-carregada']?.estado).toBe('avaliada')
+    expect(r.resumo).not.toMatch(/nada a corrigir/i)
+  })
+
   it('sem visão, a cobertura diz que ela não rodou', () => {
     const r = avaliarPeca(entrada({ camadas: [titulo], metricas: [metrica(titulo)], motivoSemVisao: 'visão desligada' }))
     expect(r.cobertura.visao).toEqual({ estado: 'nao-avaliada', motivo: 'visão desligada' })
@@ -464,6 +473,64 @@ describe('a medida arbitra a visão (calibração de 11/09/2026)', () => {
     const escuro = r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!
     expect(escuro.ajustes).toEqual([])
     expect(escuro.observacao).toContain('pioraria')
+  })
+
+  it('a redução do gradiente confere CADA texto do grupo, não só o representante (R1 do merge)', () => {
+    // Cenário da revisão do Codex: A é o pior na força atual (folga 55 × 59),
+    // mas B é quem limita a redução — a 0,45 o fundo de B iria a ~140, acima do
+    // alvo 110 + 12. A força proposta tem de preservar B.
+    const a = camada('apoio', { x: 100, y: 1500, width: 880, height: 60 }, 40)
+    const b = camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, 30)
+    const rodapeA08 = { ...gradienteDoRodape, metadata: { ...gradienteDoRodape.metadata, forca: 0.8 } } as Layer
+    const grupo = medida({
+      grupo: 'g',
+      camadas: ['apoio', 'servico'],
+      gradiente: rodapeA08.id,
+      tinta: 0.8,
+      sentido: 'claro',
+      alvo: 65,
+      p98SemHalo: 50,
+      p98ComHalo: 10,
+      ok: true,
+      textos: [
+        { camada: 'apoio', sentido: 'claro', alvo: 65, p98SemHalo: 50, p98ComHalo: 10, ok: true },
+        { camada: 'servico', sentido: 'claro', alvo: 110, p98SemHalo: 255, p98ComHalo: 51, ok: true },
+      ],
+    })
+    const r = avaliarPeca(entrada({ camadas: [rodapeA08, a, b], metricas: [metrica(a), metrica(b)], contraste: [grupo] }))
+    const sobra = r.achados.find((x) => x.regra === 'gradiente-forte-demais')
+    expect(sobra).toBeDefined()
+    const ajuste = r.ajustes[sobra!.ajustes[0]]
+    expect(ajuste.tipo).toBe('gradiente')
+    // 0,8 × (255 − 95) / (255 − 51) ≈ 0,627 — nunca o piso 0,45 que o representante A sugeriria.
+    expect(ajuste.forca).toBeGreaterThan(0.6)
+    expect(ajuste.forca).toBeLessThan(0.8)
+  })
+
+  it('"menos gradiente" também não é proposto sobre gradiente DESENHADO À MÃO quando a régua mede falta de leitura na borda (REV-03)', () => {
+    // Gradiente sem a marca do compositor: a régua não o associa (gradiente: null
+    // na medida). A proteção tem de olhar a BORDA, não o id.
+    const manual = { ...gradienteDoRodape, id: 'gradiente-manual', metadata: { forca: 0.6 } } as Layer
+    const falta = medida({ camadas: ['servico'], gradiente: null, tinta: 0, p98ComHalo: 180, ok: false })
+    const vistos: AchadoVisto[] = [
+      { marca: marcaServico, problema: 'gradiente-escuro-demais', evidencia: 'a faixa escura pesa sobre a foto no rodapé', confianca: 'alta', correcao: 'menos-gradiente', intensidade: 'medio' },
+    ]
+    const r = avaliarPeca(entrada({ camadas: [manual, servico], metricas: [metrica(servico)], contraste: [falta], vistos }))
+    expect(r.ajustes.filter((a) => a.tipo === 'gradiente' && (a.forca ?? 1) < 0.6)).toHaveLength(0)
+    const escuro = r.achados.find((a) => a.evidencia.problema === 'gradiente-escuro-demais')!
+    expect(escuro.ajustes).toEqual([])
+  })
+
+  it('visão que voltou SEM a lista (inconclusiva) não rebaixa a leitura medida nem marca a visão como avaliada (REV-02)', () => {
+    const falta = medida({ camadas: ['servico'], gradiente: rodapeA06.id, tinta: 0.6, tintaCorrigida: 0.8, p98ComHalo: 120, ok: true, antesDaCorrecao: { p98: 180, ok: false, tinta: 0.6, alvo: 139, sentido: 'claro' } })
+    const base = { camadas: [rodapeA06, servico], metricas: [metrica(servico)], contraste: [falta] }
+    const inconclusiva = avaliarPeca(entrada({ ...base, vistos: [], visaoConclusiva: false }))
+    expect(inconclusiva.achados.find((a) => a.regra === 'texto-sem-leitura')!.severidade).toBe('problema')
+    expect(inconclusiva.cobertura.visao?.estado).toBe('parcial')
+    // `achados: []` de verdade continua arbitrando: a leitura que a visão não viu desce para sugestão.
+    const vazia = avaliarPeca(entrada({ ...base, vistos: [], visaoConclusiva: true }))
+    expect(vazia.achados.find((a) => a.regra === 'texto-sem-leitura')!.severidade).toBe('sugestao')
+    expect(vazia.cobertura.visao?.estado).toBe('avaliada')
   })
 
   it('"sem leitura" onde a régua mede folga clara é descartado; no limite do alvo, fica', () => {

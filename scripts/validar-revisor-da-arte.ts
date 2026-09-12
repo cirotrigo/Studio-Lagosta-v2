@@ -17,11 +17,12 @@
  *   4. página-modelo → revisão só leitura (`aplicavel: false`) e
  *      PAGINA_E_MODELO no ajuste;
  *   5. autosave no meio → VERSAO_DIVERGENTE (409) e nada gravado;
- *   6. ajuste aplicado: versão nova, copy intacta, o rascunho de imagem única
- *      volta a PENDING e o slide de carrossel entra na fila de recomposição
- *      (job COMPOR com `recompor`), sem perder mídia;
- *   7. render falhando (Blob recusa o token): a página fica gravada E a agenda
- *      é avisada do mesmo jeito;
+ *   6. render falhando (Blob recusa o token) num ajuste SÓ de força do
+ *      gradiente, antes de qualquer ajuste bem-sucedido: a página fica gravada,
+ *      a agenda é avisada e o slide de carrossel entra na fila pela
+ *      recomposição FORÇADA (R2 — sem Generation nova e sem diff geométrico);
+ *   7. ajuste aplicado: versão nova, copy intacta, o rascunho de imagem única
+ *      volta a PENDING e o slide volta à fila (job reaberto), sem perder mídia;
  *   8. (opcional, `--com-visao`) uma revisão com a visão, para a evidência.
  *
  * EFEITOS FORA DO BANCO DE DEV, declarados: os renders sobem PNG ao Blob de
@@ -78,6 +79,10 @@ function apontarParaODev(): string {
   for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
   const alvo = endpointDe(process.env.DATABASE_URL)
   const producao = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
+  // 🔴 Falha FECHADA também aqui: `.env` sem URL de banco reconhecível deixaria
+  // o conjunto de produção vazio e QUALQUER destino passaria — inclusive a
+  // produção (achado R1 da revisão do Codex, 12/09/2026).
+  if (producao.size === 0) abortar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')
   if (!alvo || producao.has(alvo)) abortar('O banco resolvido é o de PRODUÇÃO.', [`DATABASE_URL aponta para ${alvo ?? '(ilegível)'}.`])
   return alvo
 }
@@ -111,7 +116,11 @@ async function erroDe(p: Promise<unknown>): Promise<{ code?: string; status?: nu
 async function main() {
   mkdirSync(SAIDA, { recursive: true })
   const inicio = new Date()
-  console.log(`\nbanco: ${ENDPOINT} (desenvolvimento) | projeto ${PROJETO} | ${MARCA}\n`)
+  // A prova diz qual CÓDIGO rodou: SHA, worktree e sujeira pendente vão para o log.
+  const { execSync } = await import('node:child_process')
+  const git = (cmd: string) => { try { return execSync(cmd, { cwd: ROOT, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch { return '(indisponível)' } }
+  console.log(`\nbanco: ${ENDPOINT} (desenvolvimento) | projeto ${PROJETO} | ${MARCA}`)
+  console.log(`código: ${git('git rev-parse HEAD')} (${git('git branch --show-current')}) em ${ROOT}; pendente: ${git('git status --short | grep -v prisma/generated | wc -l | tr -d " "')} arquivo(s) | render: napi-rs local | node ${process.version}\n`)
 
   const { db } = await import('../src/lib/db')
   const { comporPeca } = await import('../src/lib/compositor/compor')
@@ -234,45 +243,64 @@ async function main() {
     conferir('nada foi gravado por cima do autosave', JSON.stringify(lerCamadas(depoisDo5!.layers).camadas) === JSON.stringify(autosave))
     const geracoesAntesDo6 = await db.generation.count({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } } })
 
-    // ── 6. ajuste aplicado ─────────────────────────────────────────────────
-    console.log('6) revisar de novo e aplicar um ajuste')
+    // ── 6. render falhando, ANTES de qualquer ajuste bem-sucedido ───────────
+    // Ajuste SÓ de força do gradiente: não muda a copy nem a geometria, então o
+    // diff de defasagem não vê nada, e sem Generation nova não há URL que
+    // denuncie — o job de recomposição só pode nascer pela recomposição FORÇADA
+    // do catch (achado R2 da revisão do Codex). O carrossel aponta para a arte
+    // atual (U0), que é a `urlAtual` do levantamento.
+    console.log('6) render falhando (Blob recusa o token) num ajuste só de gradiente: página gravada e agenda avisada')
     const r6 = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
-    const headline = (lerCamadas(depoisDo5!.layers).camadas as Array<Record<string, any>>).find((c) => c.type === 'text' && /headline/i.test(String(c.name ?? c.id)))
-    const ajustes = r6.relatorio.ajustes.length > 0 ? r6.relatorio.ajustes : [{ tipo: 'mover' as const, camadas: [String(headline?.id)], dy: -10 }]
-    const a6 = await ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: r6.versao, ajustes, canal: 'claude-code' })
-    blobs.add(a6.url)
+    const camadasDo6 = lerCamadas(depoisDo5!.layers).camadas as Array<Record<string, any>>
+    const gradienteDeLeitura = camadasDo6.find((c) => (c.type === 'gradient' || c.type === 'gradient2') && c.metadata?.tratamentoDeTexto)
+    const bordaDo6 = (gradienteDeLeitura?.metadata?.borda === 'topo' ? 'topo' : 'rodape') as 'topo' | 'rodape'
+    const forcaAtual = Number(gradienteDeLeitura?.metadata?.forca ?? 0.5)
+    const ajusteDeForca = { tipo: 'gradiente' as const, borda: bordaDo6, forca: Math.min(0.9, Math.round((forcaAtual + 0.1) * 1000) / 1000), ...(gradienteDeLeitura ? { camadas: [String(gradienteDeLeitura.id)] } : {}) }
+    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
+    const e6 = await erroDe(ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: r6.versao, ajustes: [ajusteDeForca], canal: 'claude-code' }))
+    process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+    const { versaoDaPagina } = await import('../src/lib/creatives/revisao/versao')
+    const paginaDo6 = await db.page.findUnique({ where: { id: pageId } })
+    const unicoDo6 = await db.socialPost.findUnique({ where: { id: unico.postId }, select: { renderStatus: true } })
+    const idsDaPaginaDo6 = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
+    const jobDo6 = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPaginaDo6 }, kind: 'COMPOR' }, select: { id: true, status: true, payload: true } })
+    conferir('o render falhou (erro subiu)', !!e6 && e6.code !== 'VERSAO_DIVERGENTE', e6?.message.slice(0, 80))
+    conferir('nenhuma Generation nova nasceu', idsDaPaginaDo6.length === geracoesAntesDo6, `${idsDaPaginaDo6.length}`)
+    conferir('a página ficou gravada com o ajuste (versão nova)', !!paginaDo6 && versaoDaPagina(paginaDo6) !== r6.versao)
+    conferir('imagem única voltou a PENDING mesmo com o render falhando', unicoDo6?.renderStatus === 'PENDING', String(unicoDo6?.renderStatus))
+    conferir(
+      'slide de carrossel entrou na fila pela recomposição FORÇADA (R2: sem Generation nova e sem diff, só o forçar enfileira)',
+      !!jobDo6 && jobDo6.status === 'PENDING' && (jobDo6.payload as Record<string, any>).recompor?.pageId === pageId,
+      jobDo6 ? `job ${jobDo6.id} ${jobDo6.status}` : 'sem job',
+    )
+    await db.socialPost.update({ where: { id: unico.postId }, data: { renderStatus: 'RENDERED' } })
+    await db.generationJob.updateMany({ where: { generationId: { in: idsDaPaginaDo6 }, kind: 'COMPOR' }, data: { status: 'DONE', finishedAt: new Date() } })
+
+    // ── 7. ajuste aplicado ─────────────────────────────────────────────────
+    console.log('7) revisar de novo e aplicar um ajuste')
+    const r7 = await revisarArte({ projectId: PROJETO, pageId, visao: false, previa: false })
+    const headline = camadasDo6.find((c) => c.type === 'text' && /headline/i.test(String(c.name ?? c.id)))
+    const ajustes = r7.relatorio.ajustes.length > 0 ? r7.relatorio.ajustes : [{ tipo: 'mover' as const, camadas: [String(headline?.id)], dy: -10 }]
+    const a7 = await ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: r7.versao, ajustes, canal: 'claude-code' })
+    blobs.add(a7.url)
     const paginaDepois = await db.page.findUnique({ where: { id: pageId }, select: { layers: true } })
     const copyDepois = copyDeCamadas(lerCamadas(paginaDepois!.layers).camadas as never)
-    conferir('versão mudou depois do ajuste', !!a6.versao && a6.versao !== r6.versao, `${r6.versao} → ${a6.versao}`)
-    conferir('algum ajuste aplicado', (a6.ajustesAplicados?.length ?? 0) > 0, `${a6.ajustesAplicados?.length ?? 0} aplicado(s), ${a6.ajustesRecusados?.length ?? 0} recusado(s)`)
+    conferir('versão mudou depois do ajuste', !!a7.versao && a7.versao !== r7.versao, `${r7.versao} → ${a7.versao}`)
+    conferir('algum ajuste aplicado', (a7.ajustesAplicados?.length ?? 0) > 0, `${a7.ajustesAplicados?.length ?? 0} aplicado(s), ${a7.ajustesRecusados?.length ?? 0} recusado(s)`)
     conferir('a copy ficou intacta', JSON.stringify(copyDepois) === JSON.stringify(copyOriginal))
-    const geracoesDepoisDo6 = await db.generation.count({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } } })
-    conferir('uma Generation nova de ajuste-arte', geracoesDepoisDo6 === geracoesAntesDo6 + 1, `${geracoesAntesDo6} → ${geracoesDepoisDo6}`)
+    const geracoesDepoisDo7 = await db.generation.count({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } } })
+    conferir('uma Generation nova de ajuste-arte', geracoesDepoisDo7 === geracoesAntesDo6 + 1, `${geracoesAntesDo6} → ${geracoesDepoisDo7}`)
     const unicoDepois = await db.socialPost.findUnique({ where: { id: unico.postId }, select: { renderStatus: true } })
     conferir('imagem única voltou à fila de render (PENDING)', unicoDepois?.renderStatus === 'PENDING', String(unicoDepois?.renderStatus))
     const idsDaPagina = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
-    const job = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPagina }, kind: 'COMPOR' }, select: { id: true, status: true, payload: true } })
+    // O ajuste criou uma Generation nova, e a fila é por generationId: o job
+    // PENDENTE é o da arte mais nova (o do passo 6 ficou DONE de propósito).
+    const job = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPagina }, kind: 'COMPOR', status: 'PENDING' }, select: { id: true, status: true, payload: true } })
     const payload = (job?.payload ?? {}) as Record<string, any>
-    conferir('slide de carrossel entrou na fila de recomposição (job COMPOR com recompor)', !!job && payload.recompor?.pageId === pageId, job ? `job ${job.id} ${job.status}` : 'sem job')
+    conferir('slide de carrossel voltou à fila de recomposição (job COMPOR pendente com recompor)', !!job && payload.recompor?.pageId === pageId, job ? `job ${job.id} ${job.status}` : 'sem job pendente')
     const carrosselDepois = await db.socialPost.findUnique({ where: { id: carrossel.id }, select: { mediaUrls: true } })
     conferir('o carrossel não perdeu mídia', (carrosselDepois?.mediaUrls.length ?? 0) === 2)
-    writeFileSync(resolve(SAIDA, 'ajuste-6.json'), JSON.stringify({ ajustes, aplicados: a6.ajustesAplicados, recusados: a6.ajustesRecusados, versao: a6.versao }, null, 2))
-
-    // ── 7. render falhando ─────────────────────────────────────────────────
-    console.log('7) render falhando (Blob recusa o token): página gravada e agenda avisada')
-    await db.socialPost.update({ where: { id: unico.postId }, data: { renderStatus: 'RENDERED' } })
-    await db.generationJob.updateMany({ where: { generationId: { in: idsDaPagina }, kind: 'COMPOR' }, data: { status: 'DONE', finishedAt: new Date() } })
-    process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
-    const e7 = await erroDe(ajustarArte({ projectId: PROJETO, pageId, versaoEsperada: a6.versao, ajustes: [{ tipo: 'mover', camadas: [String(headline?.id)], dy: 4 }], canal: 'claude-code' }))
-    process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
-    const { versaoDaPagina } = await import('../src/lib/creatives/revisao/versao')
-    const paginaDo7 = await db.page.findUnique({ where: { id: pageId } })
-    const unicoDo7 = await db.socialPost.findUnique({ where: { id: unico.postId }, select: { renderStatus: true } })
-    const jobDo7 = await db.generationJob.findFirst({ where: { generationId: { in: idsDaPagina }, kind: 'COMPOR' }, select: { status: true } })
-    conferir('o render falhou (erro subiu)', !!e7 && e7.code !== 'VERSAO_DIVERGENTE', e7?.message.slice(0, 80))
-    conferir('a página ficou gravada com o ajuste (versão nova)', !!paginaDo7 && versaoDaPagina(paginaDo7) !== a6.versao)
-    conferir('imagem única voltou a PENDING mesmo com o render falhando', unicoDo7?.renderStatus === 'PENDING', String(unicoDo7?.renderStatus))
-    conferir('o job de recomposição foi reaberto mesmo com o render falhando', jobDo7?.status === 'PENDING', String(jobDo7?.status))
+    writeFileSync(resolve(SAIDA, 'ajuste-7.json'), JSON.stringify({ ajusteDeForca, ajustes, aplicados: a7.ajustesAplicados, recusados: a7.ajustesRecusados, versao: a7.versao }, null, 2))
 
     // ── 8. visão (opcional) ────────────────────────────────────────────────
     if (COM_VISAO) {
@@ -291,9 +319,29 @@ async function main() {
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
     console.log('\ncleanup (só os ids criados por esta prova)')
     const criados = { posts: posts.length, generations: 0, jobs: 0, sinais: 0, pages: pageId ? 1 : 0, templates: 0, blobs: blobs.size }
-    if (posts.length) {
-      criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
-      await db.socialPost.deleteMany({ where: { id: { in: posts } } })
+    // Falha no meio da composição deixa Page (e às vezes Generation) sem que
+    // `pageId` tenha sido preenchido: o que foi criado com a MARCA desta rodada
+    // entra no cleanup do mesmo jeito (achado R2 da revisão do Codex).
+    if (!pageId) {
+      const orfas = await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })
+      if (orfas.length === 1) pageId = orfas[0].id
+      else if (orfas.length > 1) console.warn(`  ${orfas.length} páginas com a marca desta rodada — apagando todas`)
+      for (const extra of orfas.slice(1)) {
+        const gensExtra = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: extra.id } }, select: { id: true, resultUrl: true } })
+        for (const g of gensExtra) if (g.resultUrl) blobs.add(g.resultUrl)
+        await db.generationJob.deleteMany({ where: { generationId: { in: gensExtra.map((g) => g.id) } } })
+        criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensExtra.map((g) => g.id) } } })).count
+        await db.page.delete({ where: { id: extra.id } })
+        criados.pages++
+      }
+      const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], equals: `${MARCA} peça` } }, select: { id: true, resultUrl: true } })
+      for (const g of gensSemPagina) if (g.resultUrl) blobs.add(g.resultUrl)
+      if (gensSemPagina.length) {
+        await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
+        criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
+      }
+      const postsOrfaos = await db.socialPost.findMany({ where: { projectId: PROJETO, caption: { contains: MARCA } }, select: { id: true } })
+      for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
     }
     if (pageId) {
       const gens = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true, resultUrl: true } }))
@@ -312,6 +360,11 @@ async function main() {
           criados.templates++
         }
       }
+    }
+    if (posts.length) {
+      criados.posts = posts.length
+      criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
+      await db.socialPost.deleteMany({ where: { id: { in: posts } } })
     }
     const urls = [...blobs].filter((u): u is string => typeof u === 'string' && u.includes('blob.vercel-storage.com'))
     try {

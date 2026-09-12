@@ -152,11 +152,16 @@ function slug(v: unknown): string {
 /** Cada campo é suspeito: o que não casa com o vocabulário ou com uma marca da peça é descartado. */
 export function reconciliarVisao(bruto: unknown, marcas: MarcaDaPeca[]): { vistos: AchadoVisto[]; descartados: number } {
   const lido = respostaDaVisaoSchema.safeParse(bruto)
-  const itens = lido.success ? (lido.data.achados ?? []) : []
+  // Resposta SEM a lista não é "nenhum achado": é resposta incompleta, e conta
+  // como item descartado para a cobertura sair parcial e nada ser rebaixado por
+  // ela. `achados: []` continua sendo a conclusão válida "não vi nada". Achado
+  // REV-02 da revisão do Codex (12/09/2026).
+  const listaVeio = lido.success && Array.isArray(lido.data.achados)
+  const itens = listaVeio ? lido.data.achados! : []
   const porMarca = new Map(marcas.map((m) => [m.marca.toUpperCase(), m]))
   const vistos: AchadoVisto[] = []
   const vistas = new Set<string>()
-  let descartados = lido.success ? 0 : 1
+  let descartados = listaVeio ? 0 : 1
   for (const item of itens) {
     const problema = slug(item.problema) as ProblemaVisto
     if (!PROBLEMAS_VISTOS.includes(problema)) {
