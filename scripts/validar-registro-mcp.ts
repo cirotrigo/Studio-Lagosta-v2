@@ -1579,11 +1579,11 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "array",
               "items": {
                 "type": "string",
-                "minLength": 1
+                "maxLength": 300
               },
               "minItems": 1,
-              "maxItems": 6,
-              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+              "maxItems": 12,
+              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia (\"\") é respiro e fica onde está; até 12 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
             },
             "herdaDe": {
               "type": "string",
@@ -1650,11 +1650,11 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "array",
               "items": {
                 "type": "string",
-                "minLength": 1
+                "maxLength": 300
               },
               "minItems": 1,
-              "maxItems": 6,
-              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+              "maxItems": 12,
+              "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia (\"\") é respiro e fica onde está; até 12 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
             },
             "herdaDe": {
               "type": "string",
@@ -1909,11 +1909,11 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1
+                      "maxLength": 300
                     },
                     "minItems": 1,
-                    "maxItems": 6,
-                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+                    "maxItems": 12,
+                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia (\"\") é respiro e fica onde está; até 12 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
                   },
                   "herdaDe": {
                     "type": "string",
@@ -1980,11 +1980,11 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "type": "array",
                     "items": {
                       "type": "string",
-                      "minLength": 1
+                      "maxLength": 300
                     },
                     "minItems": 1,
-                    "maxItems": 6,
-                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
+                    "maxItems": 12,
+                    "description": "As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia (\"\") é respiro e fica onde está; até 12 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: \"Seu milk-shake vem [em dobro]\") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque."
                   },
                   "herdaDe": {
                     "type": "string",

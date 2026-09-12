@@ -7,28 +7,33 @@
 
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
+// Módulos PUROS (zod + tipos): o catálogo continua carregando sem env.
+import { GRUPOS_VISUAIS, PAPEIS, blocoSchema } from '../../compositor/spec'
+import { MAX_LINHAS } from '../../copy-autoral/contrato'
 
-const papelDaAssinatura = z.enum(['pre', 'headline', 'apoio', 'cta', 'servico'])
-const linhasDoBloco = z
-  .array(z.string().min(1))
-  .min(1)
-  .max(6)
-  .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.')
-/** O mesmo alfabeto do id de camada da spec (`idDeCamadaSchema`). */
-const idDaCamadaExtra = z.string().min(1).max(60).regex(/^[a-z0-9][a-z0-9._-]*$/i)
+/**
+ * 🔴 Os limites do bloco vêm do schema da SPEC, nunca redeclarados aqui (R02 da
+ * revisão dos patches do PR 10, 12/09/2026). O schema público exigia linha não
+ * vazia e até 6 linhas, e `compor-arte`, `compor-leva` e `medir-copy` recusavam
+ * na porta o respiro ("") e as 7 a 12 linhas que `validarSpec` e o contrato
+ * aceitam. O id, o grupo de leitura e a ordem saem da mesma fonte, e os tetos
+ * que ficam literais (40 blocos, 3 candidatas, 20 slides, 8 arranjos) têm teste
+ * de paridade com a spec.
+ */
+const papelDaAssinatura = z.enum(PAPEIS)
+const linhasDoBloco = blocoSchema.shape.linhas.describe(
+  `As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Linha vazia ("") é respiro e fica onde está; até ${MAX_LINHAS} linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.`,
+)
+/** O id de camada da spec (`idDeCamadaSchema`). */
+const idDaCamadaExtra = blocoSchema.shape.id.unwrap()
 const grupoVisual = z
-  .enum(['principal', 'topo', 'rodape'])
+  .enum(GRUPOS_VISUAIS)
   .describe('Onde a camada extra POUSA: principal (junto do bloco da manchete, depois dele), topo ou rodape (grupo próprio naquela borda). Padrão: servico vai ao rodape; o resto, ao principal. Nunca o lugar do papel de que ela herda o estilo.')
-const grupoDeLeitura = z
-  .string()
-  .min(1)
-  .max(60)
+const grupoDeLeitura = blocoSchema.shape.grupoDeLeitura
+  .unwrap()
   .describe('Os blocos que se leem como UMA frase têm o mesmo nome (pelo menos dois). É do autor: não muda posição — posição é o grupoVisual.')
-const ordemDeLeitura = z
-  .number()
-  .int()
-  .min(0)
-  .max(99)
+const ordemDeLeitura = blocoSchema.shape.ordem
+  .unwrap()
   .describe('A ordem de leitura da camada extra: os extras dos blocos e os de camadasExtras são ordenados JUNTOS por ela; sem ordem, vale a posição (blocos antes de camadasExtras).')
 
 const bloco = z.object({

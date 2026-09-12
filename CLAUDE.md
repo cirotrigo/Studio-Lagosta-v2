@@ -9359,3 +9359,59 @@ herdando do apoio, os dois tipos de post).
   apenas dentro do contrato, e quem lê `fieldValues.spec.camadasExtras` a
   perdia depois da primeira recomposição. Teste: o consumidor R15 em
   `recompor-camadas-extras.test.ts` confere a spec gravada.
+
+**Da revisão dos patches do PR 10 (commit cb3e951e, BLOQUEADO, R01…R04, 12/09/2026):**
+
+- 🔴 **R01 — o job que está RODANDO não é reaberto pelo enfileiramento, então
+  a conferência do FIM do job tem de olhar tudo o que a recomposição consome.**
+  Causa: o runner comparava só a COPY antes × depois; a foto trocada (ou o
+  corte mexido) depois da gravação condicional da página e antes do fim do job
+  terminava com o slide mostrando B e a página mostrando C — o compare-and-set
+  da página não cobre essa janela. Regra: `paginaMudouDesde(referencia, agora)`
+  (`defasagem.ts`) faz a MESMA pergunta que a próxima execução faz
+  (`medirDefasagem`: texto de toda camada visível, extras inclusive; foto;
+  enquadramento; geometria; tipo; camada acrescentada ou removida), e a
+  referência são as camadas que a ARTE reflete
+  (`ResultadoDaRecomposicao.camadasDaArte`: as gravadas, ou as da página lida
+  para o re-render) — nunca a página de antes do job, senão a gravação da
+  própria recomposição viraria tentativa inútil. Ilegível não pede tentativa.
+  Testes: consumidor do runner em `ciclo-extras-revisao.test.ts` (troca só de
+  foto na janela → nova tentativa → a segunda execução recompõe com C e o slide
+  mostra C; só o corte → nova tentativa; sem edição → nenhuma).
+- 🔴 **R02 — schema público que espelha validador interno usa os limites DELE.**
+  Causa: `linhasDoBloco` do conector exigia string não vazia e até 6 linhas, e
+  `compor-arte`, `compor-leva` e `medir-copy` recusavam na porta o respiro ("")
+  e as 7 a 12 linhas que `validarSpec` e o contrato aceitam. Regra: as linhas,
+  o id, o grupo de leitura, a ordem e os enums vêm de `blocoSchema`/`PAPEIS`/
+  `GRUPOS_VISUAIS` (`compositor/spec.ts`, módulo puro — o catálogo continua
+  carregando sem env); os tetos que ficaram literais (40 blocos, 3 candidatas,
+  20 slides, 8 arranjos) têm teste de PARIDADE do JSON Schema com a spec.
+  Snapshots do registro atualizados de propósito. ⚠️ Campos públicos MAIS
+  FROUXOS que a spec (`nome` sem o teto de 120, `preferencias.variante` sem o de
+  80, `projectId` sem inteiro positivo, `fotoUrl` sem formato de URL) ficaram
+  como estão: a recusa acontece em `validarSpec`, POR ITEM — apertar na porta
+  faria um item ruim recusar a `compor-leva` inteira. Testes: as três tools com
+  respiro inicial/interno/final e 7–12 linhas preservados, 13 linhas e linha de
+  301 caracteres recusados, em `compositor-camadas-extras.test.ts`.
+- 🔴 **R03 — na recomposição, decidir AUSÊNCIA de texto é separado de
+  TRANSFORMAR as linhas.** Causa: `copyDaPaginaPorIdentidade` fazia `trim()`
+  antes de separar as linhas (["", "vale só no almoço", ""] voltava como uma
+  linha só) e `specComACopyDaPagina` filtrava linha vazia do bloco comum —
+  mudando copy e espaçamento em silêncio na recomposição SEM contrato. Regra: o
+  conteúdo volta BRUTO, como o contrato já lê a camada (`linhasDaCamada`), e
+  `temTexto` só decide se a camada tem texto. Testes: ida e volta pela
+  preparação e pelo consumidor, extra de bloco, extra livre em rich text
+  (`[colchetes]`) e bloco comum, com os arrays comparados inteiros.
+  ⚠️ Fica aberto (fora do PR 10): a DETECÇÃO lê `textosDaPagina`, que apara —
+  editar SÓ o respiro (ou só o destaque de um rich text) não conta como
+  defasagem, e o slide só pega a mudança na próxima edição que conte.
+- 🔴 **R04 — mapa chaveado por id do autor é sem protótipo.** Causa: o mapa de
+  extras era `{}`; "constructor" e "toString" são ids permitidos, e o extra
+  esvaziado na página (texto vazio não entra no mapa) achava a propriedade
+  HERDADA — valor verdadeiro, `texto.split is not a function`, a recomposição
+  falhava e o slide ficava velho, com ou sem contrato (a leitura roda antes de
+  adotar o contrato). Regra: `Object.create(null)` e leitura só por
+  `textoDoExtraNaPagina` (propriedade própria e string). Testes: os dois ids,
+  com e sem contrato, pelo consumidor da recomposição — sem exceção, extra
+  tirado com aviso, slide trocado. (`textosDaPagina` usa `in` e renomeia a
+  chave para "constructor#2": cosmético, sem exceção.)

@@ -62,6 +62,7 @@ import { comporPeca } from './compor'
 import { specTemExtra } from './camadas-extras'
 import {
   medirDefasagem,
+  paginaMudouDesde,
   precisaRefazer,
   slidesDaPagina,
   specComACopyDaPagina,
@@ -234,6 +235,12 @@ export interface ResultadoDaRecomposicao {
   recomposta: boolean
   /** A arte nova, quando houve. */
   url: string | null
+  /**
+   * As camadas que a arte nova REFLETE — as gravadas na recomposição, ou as da
+   * página lida para o re-render —, `null` quando nada foi refeito. É contra
+   * elas que o runner confere se a página mudou durante o job (R01).
+   */
+  camadasDaArte: unknown | null
   trocados: TrocaDeSlide[]
   naoTrocados: Array<{ postId: string; indice: number; motivo: string }>
   congelados: string[]
@@ -304,6 +311,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     generationId: levantamento.arte?.generationId ?? null,
     recomposta: false,
     url: null,
+    camadasDaArte: null,
     trocados: [],
     naoTrocados: [],
     congelados: levantamento.congelados,
@@ -443,6 +451,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   }
 
   let novaUrl: string
+  let camadasDaArte: unknown
   let recomposta = false
   let invalidados = 0
   let versaoGravada: string | null = null
@@ -473,6 +482,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       contentType: 'image/png',
     })
     novaUrl = blob.url
+    camadasDaArte = camadas.camadas
     recomposta = true
 
     if (input.antesDeGravar) await input.antesDeGravar()
@@ -644,6 +654,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       },
     })
     novaUrl = registrada.url
+    camadasDaArte = page.layers
   }
 
   const { trocados, naoTrocados } = await trocarNosPosts({
@@ -673,6 +684,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     generationId: arte.generationId,
     recomposta,
     url: novaUrl,
+    camadasDaArte,
     trocados,
     naoTrocados,
     congelados: levantamento.congelados,
@@ -934,6 +946,8 @@ export async function processarRecomposicaoEmBackground(args: {
   // job antes de começar, para uma falha dela não voltar à fila como se fosse
   // força nova (REV-09).
   if (args.recompor.forcar === true) await marcarForcaEmExecucao(args.queueJobId, args.recompor.forcaPedidaEm)
+  // Sem arte refeita, a conferência do fim do job compara com a página lida AQUI (R01 do PR 10).
+  const camadasAntes = await camadasDaPagina(pageId)
 
   // O que esta execução JÁ gravou antes de falhar: com ela, a recusa sabe se o PNG foi trocado (C6-12).
   let resultado: ResultadoDaRecomposicao | null = null
@@ -950,9 +964,10 @@ export async function processarRecomposicaoEmBackground(args: {
 
     /**
      * A página mudou DE NOVO enquanto a arte era refeita — alguém continuou
-     * digitando, ou salvou só outra força de gradiente. Sem isto a última
-     * edição ficaria de fora em silêncio, que é o defeito de origem com outra
-     * roupa. A comparação é pela VERSÃO VISUAL (dimensões, fundo e camadas —
+     * digitando, trocou a foto, mexeu no corte, ou salvou só outra força de
+     * gradiente. Sem isto a última edição ficaria de fora em silêncio, que é o
+     * defeito de origem com outra roupa: o job em andamento não é reaberto pelo
+     * enfileiramento. A comparação é pela VERSÃO VISUAL (dimensões, fundo e camadas —
      * `versaoDaPagina`), nunca só pela copy: o re-render forçado que lia G1
      * enquanto o editor gravava G2 fechava DONE com o slide em G1 e a página
      * em G2, e o diff geométrico não enxerga força de gradiente (REV-F02 da
@@ -993,6 +1008,21 @@ export async function processarRecomposicaoEmBackground(args: {
           409,
           { versaoGravada: r.versaoGravada, versaoAtual },
         )
+      }
+    } else if (camadasAntes != null) {
+      /**
+       * Nada foi refeito (a página estava em dia no levantamento): não há versão
+       * gravada para comparar, e a referência é a página lida ANTES do job. A
+       * pergunta é a de `medirDefasagem` sobre tudo o que a recomposição consome
+       * (`paginaMudouDesde`: copy, foto e corte) — sem isto a edição feita nessa
+       * janela ficava de fora, porque o job em andamento não é reaberto (R01 da
+       * revisão dos patches do PR 10). Com arte refeita, a versão visual acima
+       * já enxerga foto e corte: eles vivem nas camadas.
+       */
+      const camadasDepois = await camadasDaPagina(pageId)
+      if (camadasDepois != null && paginaMudouDesde(camadasAntes, camadasDepois)) {
+        const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
+        if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
       }
     }
     /**
@@ -1042,7 +1072,12 @@ export async function processarRecomposicaoEmBackground(args: {
   }
 }
 
-/** A copy da página hoje — `null` quando ela sumiu ou está ilegível. */
+/** As camadas da página hoje — `null` quando ela sumiu. */
+async function camadasDaPagina(pageId: string): Promise<unknown | null> {
+  const page = await db.page.findUnique({ where: { id: pageId }, select: { layers: true } })
+  return page ? page.layers : null
+}
+
 /**
  * A mensagem da recusa no histórico de UM post, dita pelo que aconteceu com a
  * imagem dele (C6-12): quando a mesma rodada já trocou o PNG, dizer que "a

@@ -69,9 +69,29 @@ export function idDoExtraDaCamada(camada: Layer): string | null {
 export interface CopyPorIdentidade {
   /** O texto por PAPEL, só das camadas comuns — a camada extra nunca entra no papel da função dela. */
   papeis: Record<string, string>
-  /** O texto de cada camada EXTRA, pelo id do bloco que ela declara. */
+  /**
+   * O texto de cada camada EXTRA, pelo id do bloco que ela declara. Objeto SEM
+   * protótipo (R04 da revisão dos patches do PR 10): o id é do autor, e
+   * "constructor" ou "toString" são ids permitidos — num `{}` a leitura do
+   * extra esvaziado achava a propriedade herdada. Leia por
+   * `textoDoExtraNaPagina`, que confere existência e tipo.
+   */
   extras: Record<string, string>
 }
+
+/** O texto BRUTO do extra `id` na página, ou null — só propriedade PRÓPRIA e string (R04). */
+export function textoDoExtraNaPagina(lida: CopyPorIdentidade, id: string): string | null {
+  if (!Object.prototype.hasOwnProperty.call(lida.extras, id)) return null
+  const texto = lida.extras[id]
+  return typeof texto === 'string' ? texto : null
+}
+
+/**
+ * A camada tem TEXTO — decisão separada da transformação das linhas (R03 da
+ * revisão dos patches do PR 10). Só espaço e quebra é ausência; o conteúdo que
+ * volta à spec é o BRUTO, com os respiros de borda.
+ */
+const temTexto = (conteudo: string): boolean => conteudo.trim().length > 0
 
 /**
  * A copy da página separada por IDENTIDADE (PR 10): as camadas comuns por
@@ -89,18 +109,24 @@ export function copyDaPaginaPorIdentidade(camadas: unknown): CopyPorIdentidade |
   const { camadas: lidas, legivel } = lerCamadas(camadas)
   if (!legivel) return null
   const itens: TextoDePapel[] = []
-  const extras: Record<string, string> = {}
+  // Sem protótipo: o id do extra é do autor (R04).
+  const extras: Record<string, string> = Object.create(null)
   for (const bruta of lidas as Layer[]) {
     if ((bruta?.type !== 'text' && bruta?.type !== 'rich-text') || bruta.visible === false) continue
     const marcadas = linhasComColchetes(bruta)
-    const conteudo = marcadas ? marcadas.join('\n').trim() : typeof bruta.content === 'string' ? bruta.content.trim() : ''
+    // O conteúdo BRUTO (R03): `trim()` aqui apagava o respiro inicial e o final
+    // ("\nvale só no almoço\n" voltava como uma linha só) e mudava a copy em
+    // silêncio na recomposição sem contrato. O contrato já lê a camada assim
+    // (`linhasDaCamada`, em `efetiva.ts`).
+    const conteudo = marcadas ? marcadas.join('\n') : typeof bruta.content === 'string' ? bruta.content : ''
+    if (!temTexto(conteudo)) continue
     const idDoExtra = idDoExtraDaCamada(bruta)
     if (idDoExtra) {
-      if (conteudo) extras[idDoExtra] = conteudo
+      extras[idDoExtra] = conteudo
       continue
     }
     const papel = papelDaCamada(bruta)
-    if (papel && conteudo) itens.push({ papel, y: bruta.position?.y ?? 0, conteudo })
+    if (papel) itens.push({ papel, y: bruta.position?.y ?? 0, conteudo })
   }
   return { papeis: juntarPorPapel(itens), extras }
 }
@@ -327,6 +353,30 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
   }
 }
 
+/**
+ * A página mudou desde `referencia` — as camadas que a arte reflete — no que a
+ * recomposição CONSOME? É a pergunta do fim do job (R01 da revisão dos patches
+ * do PR 10, 12/09/2026).
+ *
+ * O job de recomposição que está RODANDO não é reaberto pelo enfileiramento:
+ * a edição salva depois da gravação da página e antes do fim do job só chega à
+ * arte se o próprio job pedir outra tentativa. A conferência antiga comparava
+ * só a COPY — a foto trocada nessa janela terminava o job com o slide
+ * mostrando B e a página mostrando C. Aqui a pergunta é a MESMA que a próxima
+ * execução faz (`medirDefasagem` contra as camadas da arte): texto de toda
+ * camada visível (extras inclusive), foto de fundo, enquadramento
+ * (`crop`/`cropPosition`/`objectFit`), geometria, tipo e camada acrescentada ou
+ * removida. Perguntar outra coisa geraria tentativa que não acha trabalho — ou
+ * trabalho que ninguém tenta.
+ *
+ * Ilegível responde `false`, como a conferência antiga: tentar de novo sobre
+ * camadas que não se leem não converge, e a próxima escrita reenfileira.
+ */
+export function paginaMudouDesde(referencia: unknown, camadasAgora: unknown): boolean {
+  const d = medirDefasagem(camadasAgora, referencia)
+  return !d.ilegivel && (d.defasada || d.mexidoNaMao.length > 0)
+}
+
 export interface SpecRecomposta {
   spec: SpecDePeca
   avisos: string[]
@@ -368,8 +418,8 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
    * como o papel apagado.
    */
   const textoDoExtra = (id: string, rotulo: string): string[] | null => {
-    const texto = lida.extras[id]
-    if (!texto) {
+    const texto = textoDoExtraNaPagina(lida, id)
+    if (texto === null || !temTexto(texto)) {
       avisos.push(`o texto da camada extra "${id}" (${rotulo}) não está mais na página; a peça foi refeita sem ele`)
       return null
     }
@@ -384,11 +434,13 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
         return linhas ? { ...b, linhas } : null
       }
       const texto = b.papel === 'headline' ? manchete : copy[b.papel]
-      if (!texto) {
+      if (!texto || !temTexto(texto)) {
         avisos.push(`o texto de "${b.papel}" não está mais na página; a peça foi refeita sem ele`)
         return null
       }
-      return { papel: b.papel, linhas: texto.split('\n').filter((l) => l.trim().length > 0) }
+      // As linhas como estão na camada, respiro incluído (R03): o `filter` de
+      // linha vazia mudava o espaçamento do bloco comum na primeira recomposição.
+      return { papel: b.papel, linhas: texto.split('\n') }
     })
     // O cast existe porque, com `strict: false`, `z.infer` marca toda chave do
     // bloco como opcional — um type predicate sobre ele não é assinalável.
