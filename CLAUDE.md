@@ -7526,3 +7526,14 @@ que NADA é gravado e que a medida é a da composição).
   foto definitiva ou passar os DOIS em `preferencias` ao compor (o compositor
   honra `preferencias.arranjos` como "mantido"). Prova 3c: a medição COM a
   foto e a fixação da medição sem foto reproduz variante e arranjos.
+- 🔴 **A fixação é POR GRUPO e tem de passar pela porta pública** (R14 e R15 da
+  revisão de 4413e0a1). `preferencias.arranjos` não estava no schema público de
+  `compor-arte`/`compor-leva`: a porta faz `safeParse` e o zod aninhado
+  DESCARTA a chave desconhecida — `comoFixar` mandava um campo que nunca
+  chegava ao compositor. E a lista `[A, B]` sem grupo colapsava dois grupos de
+  serviço com combinações distintas no primeiro id da lista. Hoje o arranjo
+  fixado é `{ grupo, arranjo }` (`arranjoFixadoSchema`; a string nua é legado e
+  vale para qualquer grupo), `escolherArranjo` recebe o `grupo`, a spec gravada
+  e a `fixacao` da medição carregam o par, e o schema público declara o campo
+  (fixture do registro atualizada de propósito). Teste do parse pela porta em
+  `src/lib/mcp/__tests__/compositor-preferencias-arranjos.test.ts`.

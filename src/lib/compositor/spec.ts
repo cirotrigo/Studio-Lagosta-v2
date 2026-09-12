@@ -57,6 +57,14 @@ export const carrosselSchema = z.object({
 })
 export type CarrosselDaPeca = z.infer<typeof carrosselSchema>
 
+/**
+ * Um arranjo fixado. A forma nova guarda o GRUPO: duas combinações salvas
+ * elegíveis para o mesmo papel em grupos diferentes não podem colapsar na
+ * primeira da lista (R15 da revisão de 4413e0a1). A string nua é o legado
+ * (ids sem grupo), aceita para qualquer grupo.
+ */
+export const arranjoFixadoSchema = z.union([z.string().max(160), z.object({ grupo: z.string().max(80), arranjo: z.string().max(160) })])
+
 export const preferenciasSchema = z.object({
   /**
    * LEGADO desde 11/09/2026: todo texto ganha o gradiente de leitura na borda
@@ -84,9 +92,11 @@ export const preferenciasSchema = z.object({
    * salva, ver `combinacoes.ts`). O compositor grava ao persistir, e a
    * recomposição os mantém — refazer a peça não pode sortear outra combinação.
    */
-  arranjos: z.array(z.string().max(160)).max(8).optional(),
+  arranjos: z.array(arranjoFixadoSchema).max(8).optional(),
 })
 export type Preferencias = z.infer<typeof preferenciasSchema>
+/** Um arranjo fixado: `{ grupo, arranjo }` (o id do arranjo DAQUELE grupo — R15) ou, no legado, só o id, para qualquer grupo. */
+export type ArranjoFixado = z.infer<typeof arranjoFixadoSchema>
 
 export const specSchema = z.object({
   projectId: z.number().int().positive(),

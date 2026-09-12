@@ -135,7 +135,7 @@ describe('medirCopyDoProjeto com fotoDriveId — leitura que NÃO publica no Blo
     expect(r.escolhaProvisoria).toBe(true)
     expect(r.motivosDaProvisoriedade.join(' ')).toMatch(/não pôde ser medida/)
     expect(r.medicao.avisos.some((a) => /PROVISÓRIA/.test(a))).toBe(true)
-    expect(r.fixacao).toEqual({ variante: 'p6', arranjos: r.medicao.arranjos.map((a) => a.id) })
+    expect(r.fixacao).toEqual({ variante: 'p6', arranjos: r.medicao.arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })) })
     expect(mocks.put).not.toHaveBeenCalled()
   })
   it('R12: com a foto medida e a variante fixada, mas um arranjo escolhido por rodízio e sem `preferencias.arranjos`, a escolha NÃO é provisória (há luz) e a fixação devolve os arranjos para a composição repetir', async () => {
@@ -148,7 +148,7 @@ describe('medirCopyDoProjeto com fotoDriveId — leitura que NÃO publica no Blo
     expect(r.escolhaProvisoria).toBe(false)
     expect(r.motivosDaProvisoriedade).toEqual([])
     expect(r.fixacao.variante).toBe('p6')
-    expect(r.fixacao.arranjos).toEqual(r.medicao.arranjos.map((a) => a.id))
+    expect(r.fixacao.arranjos).toEqual(r.medicao.arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })))
   })
   it('falha DEPOIS de a foto ter sido lida (a assinatura não carrega): o erro sobe e continua sem nenhuma escrita no Blob', async () => {
     mocks.driveMeta.mockResolvedValue({ thumbnailLink: 'https://lh3.example/foto=s220' })

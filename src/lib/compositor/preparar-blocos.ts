@@ -40,7 +40,7 @@ export interface PecaParaBlocos {
   tema?: string | null
   foto?: { driveFileId?: string; url?: string } | null
   copyAutoral?: { blocos?: Array<{ id?: string; funcao?: string; linhas?: string[]; estilo?: { linhasNaVoz2?: number[] | null } | null }> } | null
-  preferencias?: { arranjos?: string[] } | null
+  preferencias?: { arranjos?: Array<string | { grupo?: string; arranjo?: string }> } | null
 }
 
 /**
@@ -192,6 +192,7 @@ export function prepararBlocos(args: {
       papeis: blocosDoGrupo.map((b) => b.papel),
       tema: spec.tema ?? spec.nome ?? null,
       chave: `${chave}|${chaveDoGrupoAtual}`,
+      grupo: chaveDoGrupoAtual,
       preferidos: spec.preferencias?.arranjos,
     })
     const arranjo = escolha?.arranjo ?? null

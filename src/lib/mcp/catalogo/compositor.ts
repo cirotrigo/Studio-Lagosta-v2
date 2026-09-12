@@ -30,6 +30,11 @@ const preferencias = z
       .describe('Canto da logo. "auto" (default) escolhe o canto mais calmo e escuro que não encosta no texto; "nenhum" tira a logo.'),
     enquadramento: z.enum(['auto', 'fixo']).optional().describe('"auto" (default) deixa o compositor deslocar o corte da foto para abrir área livre; "fixo" mantém o centro.'),
     variante: z.string().optional().describe('A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu.'),
+    arranjos: z
+      .array(z.union([z.string().max(160), z.object({ grupo: z.string().max(80), arranjo: z.string().max(160) })]))
+      .max(8)
+      .optional()
+      .describe('Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como "cabe" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.'),
   })
   .optional()
 

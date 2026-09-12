@@ -29,7 +29,7 @@ export interface PedidoDeMedicao {
   /** A foto da peça: entra na escolha da variante (luz clara/escura) e na chave do rodízio — como na composição. */
   fotoDriveId?: string | null
   fotoUrl?: string | null
-  preferencias?: { arranjos?: string[] } | null
+  preferencias?: { arranjos?: Array<string | { grupo?: string; arranjo?: string }> } | null
 }
 
 export interface VarianteMedida {
@@ -56,7 +56,7 @@ export interface ResultadoDaMedicao {
   /** Por que é provisória (vazio quando não é). */
   motivosDaProvisoriedade: string[]
   /** O que fixar ao compor para reproduzir ESTA medição: `preferencias.variante` e `preferencias.arranjos`. */
-  fixacao: { variante: string | null; arranjos: string[] }
+  fixacao: { variante: string | null; arranjos: Array<{ grupo: string; arranjo: string }> }
   medicao: MedicaoDaCopy
   /** As outras variantes do formato, medidas com a mesma copy — para escolher pela capacidade, não só pelo nome. */
   outrasVariantes: VarianteMedida[]
@@ -146,7 +146,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     variante: { id: assinatura.origem.pageId, nome: assinatura.origem.variante, formatoDaPagina: assinatura.origem.formatoDaPagina, motivo: assinatura.origem.motivoDaVariante ?? null },
     escolhaProvisoria: motivosDaProvisoriedade.length > 0,
     motivosDaProvisoriedade,
-    fixacao: { variante: assinatura.origem.pageId, arranjos: medicao.arranjos.map((a) => a.id) },
+    fixacao: { variante: assinatura.origem.pageId, arranjos: medicao.arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })) },
     medicao,
     outrasVariantes,
   }

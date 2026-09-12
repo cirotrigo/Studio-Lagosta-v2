@@ -1167,7 +1167,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // FECHADA em vez de nascer outra — o defeito de 04/09/2026 (Espeto).
   // Os arranjos usados ficam gravados na spec: a recomposição refaz A MESMA
   // peça, sem sortear outra combinação.
-  const specGravada: SpecDePeca = arranjos.length > 0 ? { ...spec, preferencias: { ...spec.preferencias, arranjos: arranjos.map((a) => a.id) } } : spec
+  const specGravada: SpecDePeca = arranjos.length > 0 ? { ...spec, preferencias: { ...spec.preferencias, arranjos: arranjos.map((a) => ({ grupo: a.grupo, arranjo: a.id })) } } : spec
   const entradaDoPersist = entradaDePersistencia({
     spec: specGravada,
     opcoes,
