@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chaveDoSlot, dataValida, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, montarGradeDaSemana, slotOcupado, slotsParaAPeca, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
+import { chaveDoSlot, dataValida, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, montarGradeDaSemana, quandoDaPeca, reconciliarSlot, slotOcupado, slotsParaAPeca, slotValido, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
 import { fundirGradeComCadencia } from '../grade-da-base'
 
 // quinta 17/09/2026, 10:00 em Brasília
@@ -95,6 +95,43 @@ describe('formato e ocupação por formato', () => {
     expect(slotsParaAPeca(sugestoes, 'story', reservados).map((s) => s.scheduledDatetime)).toEqual(['2026-09-22 09:00'])
     expect(slotsParaAPeca([{ scheduledDatetime: '2026-09-21 19:00', formato: 'feed' as const }], 'feed', reservados)).toHaveLength(1)
   })
+  it('a seleção é RECONCILIADA quando a lista muda (R25): story pré-selecionado → peça vira feed com outro slot disponível → o slot troca; vira carrossel sem slot → limpa; o slot que segue na lista fica', () => {
+    // um FEED já agendado às 19h: o story das 19h segue livre; para o feed só sobra terça 18h
+    const sugestoes = [
+      { scheduledDatetime: '2026-09-21 19:00', formato: 'story' as const, sugestaoId: 'sug-story' },
+      { scheduledDatetime: '2026-09-22 18:00', formato: 'feed' as const, sugestaoId: 'sug-feed' },
+    ]
+    const reservados = new Set<string>()
+    const paraStory = slotsParaAPeca(sugestoes, 'story', reservados)
+    // pré-seleção de sempre: sem slot, o primeiro disponível entra
+    const selecionado = reconciliarSlot('', paraStory)
+    expect(selecionado).toBe('2026-09-21 19:00')
+    // a peça vira FEED: as 19h saem da lista e há outro slot → SUBSTITUI
+    const paraFeed = slotsParaAPeca(sugestoes, 'feed', reservados)
+    expect(reconciliarSlot(selecionado, paraFeed)).toBe('2026-09-22 18:00')
+    // a peça vira CARROSSEL (feed) e a fila já reservou o único feed → LIMPA
+    const reservadoOFeed = new Set([chaveDoSlot('2026-09-22 18:00', 'feed')])
+    const paraCarrossel = slotsParaAPeca(sugestoes, 'carrossel', reservadoOFeed)
+    expect(paraCarrossel).toEqual([])
+    expect(reconciliarSlot(selecionado, paraCarrossel)).toBe('')
+    // o slot que segue na lista não muda (o efeito não regrava estado)
+    expect(reconciliarSlot(selecionado, paraStory)).toBe(selecionado)
+    expect(slotValido(selecionado, paraFeed)).toBeNull()
+    expect(slotValido(selecionado, paraStory)?.sugestaoId).toBe('sug-story')
+  })
+
+  it('a inclusão deriva o horário automático de uma proposta ainda VÁLIDA (R25): slot que saiu da lista não vira horário; o manual vence e a proposta continua sendo a do slot (é ela que recebe "editada")', () => {
+    const disponiveis = [{ scheduledDatetime: '2026-09-21 19:00', sugestaoId: 'sug-story' }]
+    // slot válido, sem manual: o horário é o do slot e a proposta é ela
+    expect(quandoDaPeca({ quandoManual: '', slot: '2026-09-21 19:00', disponiveis })).toEqual({ quando: '2026-09-21 19:00', proposta: disponiveis[0] })
+    // o slot saiu da lista (formato trocado, lista agora vazia): NENHUM horário — nunca as 19h antigas
+    expect(quandoDaPeca({ quandoManual: '', slot: '2026-09-21 19:00', disponiveis: [] })).toEqual({ quando: null, proposta: null })
+    // horário manual vence; a proposta do slot válido volta (o desfecho "editada" é dela)
+    expect(quandoDaPeca({ quandoManual: '2026-09-25 10:00', slot: '2026-09-21 19:00', disponiveis })).toEqual({ quando: '2026-09-25 10:00', proposta: disponiveis[0] })
+    // sem slot e sem manual: sem horário
+    expect(quandoDaPeca({ quandoManual: '', slot: '', disponiveis })).toEqual({ quando: null, proposta: null })
+  })
+
   it('um feed às 19h NÃO ocupa o story das 19h; o mesmo formato a 45 min ocupa', () => {
     const t = new Date('2026-09-24T19:00:00-03:00').getTime()
     const ocupados = [{ t, formato: 'feed' as const }]

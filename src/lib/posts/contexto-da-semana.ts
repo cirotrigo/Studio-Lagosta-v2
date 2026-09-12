@@ -56,6 +56,39 @@ export function slotsParaAPeca<T extends { scheduledDatetime: string; formato?: 
   return sugestoes.filter((s) => (s.formato ?? 'story') === alvo && !reservados.has(chaveDoSlot(s.scheduledDatetime, s.formato ?? 'story')))
 }
 
+/** A proposta que o slot selecionado ainda é: só vale se está na lista disponível AGORA (R25). */
+export function slotValido<T extends { scheduledDatetime: string }>(slot: string | null | undefined, disponiveis: T[]): T | null {
+  if (!slot) return null
+  return disponiveis.find((s) => s.scheduledDatetime === slot) ?? null
+}
+
+/**
+ * A seleção de slot RECONCILIADA com a lista disponível (R25 da revisão de
+ * fde1fb73): o slot que saiu da lista — mudou o formato da peça, o tipo
+ * (carrossel) ou a disponibilidade (outro item da fila reservou o horário) — é
+ * SUBSTITUÍDO pelo primeiro disponível, ou LIMPO quando não há nenhum; o slot
+ * que segue na lista fica; sem seleção, o primeiro disponível entra (a
+ * pré-seleção de sempre). Sem isso a bancada trocava o story pré-selecionado
+ * das 19h por um feed e incluía a peça nas mesmas 19h — em cima do feed que
+ * ocupava o horário e tinha tirado o slot da lista.
+ */
+export function reconciliarSlot<T extends { scheduledDatetime: string }>(slot: string, disponiveis: T[]): string {
+  if (slotValido(slot, disponiveis)) return slot
+  return disponiveis[0]?.scheduledDatetime ?? ''
+}
+
+/**
+ * O horário com que a peça é INCLUÍDA e a proposta que ele carrega: o horário
+ * digitado à mão vence; o automático só existe enquanto o slot selecionado é
+ * uma proposta VÁLIDA (na lista) — um slot que saiu da lista entre a troca de
+ * formato e a reconciliação não vira horário da peça. A proposta volta mesmo
+ * com horário manual, porque é ela que recebe o desfecho "editada".
+ */
+export function quandoDaPeca<T extends { scheduledDatetime: string }>(args: { quandoManual: string; slot: string; disponiveis: T[] }): { quando: string | null; proposta: T | null } {
+  const proposta = slotValido(args.slot, args.disponiveis)
+  return { quando: args.quandoManual || proposta?.scheduledDatetime || null, proposta }
+}
+
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/
 
 /**

@@ -6273,6 +6273,14 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   conversão. A peça só vê os slots do formato dela (feed, quadrado e carrossel
   = feed), a fila reserva por horário E formato, e a leva do plano filtra
   pelo formato do plano (R22 da revisão de 386118cc).
+  🔴 **A seleção da bancada é RECONCILIADA com a lista, nunca mantida**
+  (`reconciliarSlot`, `quandoDaPeca`, puros; R25 da revisão de fde1fb73): o
+  slot pré-selecionado que SAI da lista — a peça mudou de formato ou virou
+  carrossel, outro item da fila reservou o horário — é substituído pelo
+  primeiro disponível ou limpo; e o horário automático da inclusão só existe
+  enquanto o slot é uma proposta VÁLIDA (o manual vence). Antes o efeito só
+  preenchia `!slot`: o story das 19h pré-selecionado sobrevivia à troca para
+  feed e a peça entrava nas mesmas 19h, em cima do feed que ocupava o horário.
 - 🔴 **A grade aprovada tem precedência por dia E FORMATO**
   (`fundirGradeComCadencia(…, { formatoDe })`): ela é de story, então
   substitui os horários de STORY do dia que cobre e mantém o FEED que o

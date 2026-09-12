@@ -10,7 +10,7 @@
  */
 
 import * as React from 'react'
-import { chaveDoSlot, formatoDoSlotDaPeca, slotsParaAPeca } from '@/lib/posts/contexto-da-semana'
+import { chaveDoSlot, formatoDoSlotDaPeca, quandoDaPeca, reconciliarSlot, slotsParaAPeca } from '@/lib/posts/contexto-da-semana'
 import Image from 'next/image'
 import { useQuery } from '@tanstack/react-query'
 import { Plus, ChevronDown, Image as ImageIcon, X } from 'lucide-react'
@@ -218,13 +218,20 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
     [slots, reservados, formatoDaPeca],
   )
 
-  // O próximo slot livre já vem escolhido; a cada item adicionado, avança.
+  // O próximo slot livre já vem escolhido; a cada item adicionado, avança — e
+  // o slot que SAIU da lista (a peça mudou de formato ou de tipo, ou outro item
+  // reservou o horário) é substituído ou limpo, nunca mantido (R25): o story
+  // das 19h pré-selecionado não pode virar o horário de um feed em cima do feed
+  // que ocupa as 19h.
   React.useEffect(() => {
-    if (!slot && disponiveis.length > 0) setSlot(disponiveis[0].scheduledDatetime)
+    const proximo = reconciliarSlot(slot, disponiveis)
+    if (proximo !== slot) setSlot(proximo)
   }, [disponiveis, slot])
 
   const quandoManual = dataManual && horaManual ? `${dataManual} ${horaManual}` : ''
-  const quando = quandoManual || slot || null
+  // O horário automático só existe enquanto o slot é uma proposta VÁLIDA (na
+  // lista); o manual vence. `propostaDoSlot` é quem recebe o desfecho.
+  const { quando, proposta: propostaDoSlot } = React.useMemo(() => quandoDaPeca({ quandoManual, slot, disponiveis }), [quandoManual, slot, disponiveis])
 
   const impedimento = (() => {
     if (ehCarrossel) {
@@ -270,7 +277,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
    */
   const executarAdicao = () => {
     if (impedimento) return
-    const proposta = disponiveis.find((s) => s.scheduledDatetime === slot)
+    const proposta = propostaDoSlot
     const motivo = proposta?.motivo
 
     /**
