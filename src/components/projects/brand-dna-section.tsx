@@ -60,7 +60,7 @@ interface PromptSection {
 
 const MAX_CHARS = 10_000
 
-const SECOES: Array<{
+const TODAS_AS_SECOES: Array<{
   key: keyof BrandDNASections
   label: string
   usadoEm: string
@@ -118,8 +118,31 @@ const ORIGIN_LABEL: Record<PromptSection['origin'], { label: string; className: 
   runtime: { label: 'Na hora', className: 'bg-amber-500/15 text-amber-600 dark:text-amber-400' },
 }
 
-export function BrandDnaSection({ projectId }: { projectId: number }) {
+export interface BrandDnaSectionProps {
+  projectId: number
+  /** Quais seções esta instância edita (a aba Marca em três áreas espalhou o DNA por lugares diferentes). */
+  secoes?: Array<keyof BrandDNASections>
+  titulo?: string
+  descricao?: React.ReactNode
+  /** Mostra a prévia do prompt de "Melhorar com IA" logo abaixo (só faz sentido junto das seções de ARTE). */
+  mostrarPrevia?: boolean
+  /** O aviso de importação do TOM_DE_VOZ da base (só faz sentido com `toneOfVoice` entre as seções). */
+  mostrarImportacaoDoTom?: boolean
+  /** Só leitura: o texto aparece, o Salvar não (o DNA de texto ARQUIVADO do cliente migrado). */
+  somenteLeitura?: boolean
+}
+
+export function BrandDnaSection({
+  projectId,
+  secoes,
+  titulo = 'DNA da Marca',
+  descricao,
+  mostrarPrevia = true,
+  mostrarImportacaoDoTom = true,
+  somenteLeitura = false,
+}: BrandDnaSectionProps) {
   const queryClient = useQueryClient()
+  const SECOES = React.useMemo(() => (secoes ? TODAS_AS_SECOES.filter((x) => secoes.includes(x.key)) : TODAS_AS_SECOES), [secoes])
 
   const { data: brand, isLoading } = useQuery<BrandContextResponse>({
     queryKey: ['brand-dna', projectId],
@@ -199,15 +222,19 @@ export function BrandDnaSection({ projectId }: { projectId: number }) {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <Dna className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">DNA da Marca</h3>
+                <h3 className="text-lg font-semibold">{titulo}</h3>
               </div>
               <p className="text-sm text-muted-foreground">
-                Identidade que entra em <strong>toda</strong> geração de copy e arte, sempre.
-                Conteúdo pesquisável (horários, cardápio, campanhas) fica na{' '}
-                <Link href="/knowledge" className="underline underline-offset-2">
-                  base de conhecimento
-                </Link>
-                .
+                {descricao ?? (
+                  <>
+                    Identidade que entra em <strong>toda</strong> geração de copy e arte, sempre.
+                    Conteúdo pesquisável (horários, cardápio, campanhas) fica na{' '}
+                    <Link href="/knowledge" className="underline underline-offset-2">
+                      base de conhecimento
+                    </Link>
+                    .
+                  </>
+                )}
               </p>
             </div>
             <Button asChild variant="outline" size="sm">
@@ -218,7 +245,7 @@ export function BrandDnaSection({ projectId }: { projectId: number }) {
             </Button>
           </div>
 
-          {tomDaBase.length > 0 && !brand.dna.toneOfVoice && (
+          {mostrarImportacaoDoTom && SECOES.some((x) => x.key === 'toneOfVoice') && tomDaBase.length > 0 && !brand.dna.toneOfVoice && (
             <div className="flex items-center justify-between gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
               <span>
                 Você tem <strong>{tomDaBase.length}</strong> entrada(s) de tom de voz na base de
@@ -258,12 +285,14 @@ export function BrandDnaSection({ projectId }: { projectId: number }) {
                   placeholder={secao.placeholder}
                   rows={3}
                   className="resize-y text-sm"
-                  disabled={salvar.isPending}
+                  disabled={salvar.isPending || somenteLeitura}
+                  readOnly={somenteLeitura}
                 />
               </div>
             ))}
           </div>
 
+          {!somenteLeitura && (
           <div className="flex justify-end pt-1">
             <Button onClick={() => salvar.mutate()} disabled={!houveMudanca || salvar.isPending}>
               {salvar.isPending ? (
@@ -277,10 +306,11 @@ export function BrandDnaSection({ projectId }: { projectId: number }) {
               )}
             </Button>
           </div>
+          )}
         </div>
       </Card>
 
-      <PromptPreviewCard projectId={projectId} />
+      {mostrarPrevia && <PromptPreviewCard projectId={projectId} />}
     </div>
   )
 }

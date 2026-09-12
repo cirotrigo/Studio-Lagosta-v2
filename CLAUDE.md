@@ -6720,6 +6720,62 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   (mesmo id), a presente volta campo a campo, e a conferência cobre todos os
   campos menos `updatedAt`.
 
+### A aba Marca em três áreas (PR 14 de "Marca simples, copy melhor", 12/09/2026)
+
+A aba Marca (`?tab=assets`) deixou de ser a pilha DNA → pilares → prompt de
+melhoria → assets e virou TRÊS áreas (plano §8): **Como a marca fala** (a voz
+compacta do PR 7, editável), **Identidade visual** (as assinaturas com atalho ao
+editor + logo, cores, fontes e elementos) e **Fatos da casa** (o RESUMO da base,
+com atalhos — nunca uma cópia). Serviço em `src/lib/brand/aba-marca.ts` (a
+única casa com Prisma), rotas finas `GET|PUT /api/projects/[id]/voz`,
+`GET …/fatos`, `GET …/assinatura`, hooks em `src/hooks/use-aba-marca.ts`,
+formulário PURO em `src/lib/brand/voz-formulario.ts` (com teste de ida e volta
+exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
+
+- **O que SAIU da aba e para onde foi**: pilares de conteúdo → bancada
+  (planejamento, recolhidos em "Planejamento · pilares"); composição, estilo
+  visual, direção fotográfica e o prompt de melhoria → Configurações,
+  recolhidos em "Avançado · direção de arte"; crivo de aprovação →
+  Configurações, "Arquivo · crivo". `BrandDnaSection` virou parametrizável
+  (`secoes`, `titulo`, `descricao`, `mostrarPrevia`, `somenteLeitura`) e é a
+  MESMA nas quatro casas — não duplique o editor de DNA.
+- 🔴 **A tela grava a voz com a versão que LEU** (`PUT` com `versaoEsperada`;
+  `gravarVoz` faz o CAS): a versão velha volta `VOZ_DIVERGENTE` 409 e a tela
+  recarrega e pede para refazer por cima; sem versão com voz existente é
+  `VOZ_VERSAO_OBRIGATORIA`. Voz que não passa no contrato é recusada ANTES de
+  escrever (`VOZ_INVALIDA`, com TODOS os problemas) — e o formulário mostra os
+  problemas em tempo real (`lerVoz` sobre o formulário) antes de deixar salvar.
+- 🔴 **Gravar a voz NÃO muda quem manda na copy.** A precedência é a de sempre
+  (`precedenciaDaVoz`): o topo da área diz "manda na copy" (migrado), "prévia —
+  o DNA legado ainda manda" (voz gravada, cliente não migrado) ou "sem voz
+  ainda". Migrar é o manifesto do PR 13, decisão do Ciro por cliente. O DNA de
+  texto continua editável na própria área, recolhido, enquanto o cliente não
+  migrou (é o que a copy lê hoje); migrado, aparece só para leitura
+  ("arquivado").
+- **A consulta seguinte do CONECTOR traz a alteração da tela**: `consultar-voz`
+  e o loader único leem `BrandVoice` sem cache — a prova grava pela camada da
+  tela e confere versão e conteúdo em `consultar-voz` e `vozPendente` no
+  `loadBrandContext`. Editar a voz e mandar o DNA inteiro para o modelo era o
+  defeito que o plano queria evitar.
+- **Regra recente com SUBSTITUIÇÃO no formulário** (`substituirRegraNoFormulario`):
+  a antiga fica inativa (histórico, recolhido, com "reativar"), a nova nasce com
+  `substitui` e id novo — a mesma semântica de `aplicarRegraNaVoz`, sem o
+  detector de conflito, porque a pessoa está decidindo à vista. `vozParaPrompt`
+  só carrega as ativas.
+- **"Fatos da casa" é contagem e prazo, nunca conteúdo** (`resumoDosFatos`:
+  `groupBy` por categoria das ACTIVE, o que vence em 14 dias e o que já venceu e
+  o cron ainda não arquivou, atalhos para `/projects/[id]/base` e `/knowledge`).
+  A prova confere que a resposta não carrega nenhum `content`.
+- **As assinaturas listadas são as páginas do template "Assinatura"**
+  (`paginasDeAssinatura`, a mesma leitura de `ver-assinatura`), com a miniatura
+  só quando ela é publicável — `Page.thumbnail` vira `data:` assim que a página
+  é aberta no editor e fica de fora — e o `editorUrl` com o `pageId`.
+- ⚠️ **Não há teste de UI neste repo** (vitest só em node): a prova cobre a
+  camada que a tela chama e o conector; a tela em si é o critério do Ciro (uma
+  edição feita por ele, plano §11). O `prisma/generated` deste worktree é
+  GERADO LOCALMENTE (não o symlink para o repo principal): o schema daqui tem
+  `BrandVoice` e `copyAutoral` (PRs 7 e 3), e o client do repo principal não.
+
 ### A migração da voz, por manifesto (PR 13 de "Marca simples, copy melhor", 12/09/2026)
 
 A troca do DNA de texto (5–12 mil caracteres por cliente) pela voz compacta
