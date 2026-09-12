@@ -262,6 +262,10 @@ async function main() {
     const r4bOutro = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, comTrava: travaPorProjeto(urlDeOutroBanco) })
     const urlDeOutroNome = String(process.env.DATABASE_URL).replace(/\/([^/?]+)(\?|$)/, '/outro_banco_da_prova$2')
     const r4bNome = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, comTrava: travaPorProjeto(urlDeOutroNome) })
+    // PR13-19: a URL do POOLER (é a própria DATABASE_URL do dev, com -pooler) é recusada para a trava — mesmo compute, mesmo banco
+    const urlDoPooler = String(process.env.DATABASE_URL)
+    const r4bPooler = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato, comTrava: travaPorProjeto(urlDoPooler) })
+    conferir('PR13-19: trava pela URL do POOLER → bloqueado ("exige conexão DIRETA"), nenhuma voz gravada; a DIRECT_URL do dev é direta', /-pooler\./.test(urlDoPooler) && r4bPooler[0]?.acao === 'bloqueado' && /exige conexão DIRETA/.test(r4bPooler[0].motivo ?? '') && !/-pooler\./.test(String(process.env.DIRECT_URL)) && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, `${r4bPooler[0]?.motivo?.slice(0, 120)}`)
     conferir('trava em OUTRO compute, ou em outro BANCO do mesmo compute (PR13-16): bloqueado ("não é o banco das escritas"), nenhuma voz gravada', r4bOutro[0]?.acao === 'bloqueado' && /não é o banco das escritas/.test(r4bOutro[0].motivo ?? '') && r4bNome[0]?.acao === 'bloqueado' && /não é o banco das escritas/.test(r4bNome[0].motivo ?? '') && (await db.brandVoice.count({ where: { projectId: PROJETO } })) === 0, `${r4bOutro[0]?.motivo?.slice(0, 90)} || ${r4bNome[0]?.motivo?.slice(0, 90)}`)
 
     // ── 4. aplicar de verdade (com o stub de fatos) — a retomada ──────────
@@ -326,13 +330,22 @@ async function main() {
     const fatoNovo6e = previa.fatos.noLegado.slice(3, 4).map((f) => ({ trecho: f.trecho, categoria: 'ESTABELECIMENTO_INFO' as const, titulo: 'Fato 4 da prévia (prova, lento)' }))
     if (fatoNovo6e.length < 1) throw new Error('a prévia precisa de um 4º fato para o 6e')
     const manifesto6e = lerManifesto(manifestoCom({ versaoDaPrevia: previa.versaoDaPrevia, decisao: 'migrar', ...APROVACAO, fatosParaABase: [...fatosDaPrevia, ...fatoNovo6e, ...previa.fatos.noLegado.slice(4, 5).map((f) => ({ trecho: f.trecho, categoria: 'ESTABELECIMENTO_INFO' as const, titulo: 'Fato 5 da prévia (prova)' }))] })).manifesto!
-    let viva6e = true
     let lentosIniciados = 0
-    // a conexão da trava "cai" 300 ms DEPOIS de o 1º fato lento começar — no meio da escrita, não antes dela
-    const criarFatoLento = async (fato: FatoACriar, autor: string) => {
+    let pidDaTrava6e = 0
+    let executarNaTrava6e: ((sql: string) => Promise<void>) | null = null
+    let sinalAbortado6e: boolean | null = null
+    let sinalAbortadoAntesDeGravar6e = false
+    // A sessão da trava é DERRUBADA DE VERDADE pelo SERVIDOR: 300 ms depois de o 1º fato lento começar, a prova
+    // manda `SET idle_session_timeout = '200ms'` nessa sessão (o papel do Neon não tem `pg_terminate_backend`), e
+    // com a vigilância a cada 600 ms o Postgres encerra a conexão ociosa antes da conferência seguinte — no meio
+    // da escrita, não antes dela. A conferência falha (a conexão caiu) e o sinal aborta a escrita (PR13-20/21).
+    const criarFatoLento = async (fato: FatoACriar, autor: string, signal?: AbortSignal) => {
       lentosIniciados++
-      setTimeout(() => { viva6e = false }, 300)
+      setTimeout(() => { void executarNaTrava6e?.(`SET idle_session_timeout = '200ms'`).catch(() => undefined) }, 300)
       await new Promise((r) => setTimeout(r, 2_500))
+      // como `criarEntradaBase` faz: o sinal é conferido ANTES de escrever — abortado, nada é anotado (PR13-20)
+      sinalAbortado6e = signal?.aborted ?? null
+      if (signal?.aborted) { sinalAbortadoAntesDeGravar6e = true; return }
       fatosAnotados.push({ fato, autor })
     }
     const anotadosAntes6e = fatosAnotados.length
@@ -340,11 +353,12 @@ async function main() {
       criarFato: criarFatoLento,
       estadoDoFato,
       reindexarFato,
-      comTrava: travaPorProjeto(undefined, { travaViva: () => viva6e, vigiaMs: 200 }),
+      comTrava: travaPorProjeto(undefined, { vigiaMs: 600, aoTravar: (sessao) => { pidDaTrava6e = sessao.pid; executarNaTrava6e = sessao.executar } }),
     })
     await new Promise((r) => setTimeout(r, 2_600))
     const reg6e = await lerRegistroDaVoz(PROJETO)
-    conferir('desfeita; a trava se perdeu no meio do 1º fato novo: erro "a trava por projeto se perdeu", só UM fato lento iniciado (o 2º nunca começou), voz continua v4 e NÃO migrada', d6e.desfeita && /trava por projeto se perdeu/.test(r6e[0]?.erro ?? '') && lentosIniciados === 1 && reg6e?.versao === 4 && reg6e.migradaEm === null, JSON.stringify({ erro: r6e[0]?.erro?.slice(0, 140), lentos: lentosIniciados, versao: reg6e?.versao, anotados: fatosAnotados.length - anotadosAntes6e }))
+    conferir('desfeita; a sessão da trava foi DERRUBADA pelo servidor no meio do 1º fato novo: erro "a trava por projeto se perdeu", só UM fato lento iniciado (o 2º nunca começou), voz continua v4 e NÃO migrada', d6e.desfeita && /trava por projeto se perdeu/.test(r6e[0]?.erro ?? '') && lentosIniciados === 1 && reg6e?.versao === 4 && reg6e.migradaEm === null && pidDaTrava6e > 0, JSON.stringify({ erro: r6e[0]?.erro?.slice(0, 160), lentos: lentosIniciados, versao: reg6e?.versao, pid: pidDaTrava6e }))
+    conferir('PR13-20: o AbortSignal da escrita foi disparado pela perda da posse e a escrita lenta parou ANTES de gravar (nada anotado)', sinalAbortado6e === true && sinalAbortadoAntesDeGravar6e && fatosAnotados.length - anotadosAntes6e === 0, JSON.stringify({ abortado: sinalAbortado6e, antesDeGravar: sinalAbortadoAntesDeGravar6e, anotados: fatosAnotados.length - anotadosAntes6e }))
     // PR13-17 (com a migração ainda desfeita): trecho repetido é recusado por lerManifesto e, se passasse, pela aplicação — antes de qualquer escrita
     const repetido = lerManifesto(manifestoCom({ versaoDaPrevia: previa.versaoDaPrevia, decisao: 'migrar', ...APROVACAO, fatosParaABase: [fatosDaPrevia[0], { ...fatosDaPrevia[0], categoria: 'HORARIOS' as const }] }))
     const r6g = await aplicarManifesto(db, { ...aprovado.manifesto, clientes: aprovado.manifesto.clientes.map((c) => ({ ...c, fatosParaABase: [fatosDaPrevia[1], fatosDaPrevia[1]] })) }, { criarFato, estadoDoFato, reindexarFato })

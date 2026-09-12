@@ -7,6 +7,7 @@ import { db } from '@/lib/db'
 import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
+import { lancarSeAbortado } from './aborto'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
 export interface IndexEntryInput {
@@ -144,7 +145,14 @@ export async function indexFile(input: IndexFileInput) {
  * @param entryId Entry ID to reindex
  * @param tenant Tenant keys
  */
-export async function reindexEntry(entryId: string, tenant: TenantKey) {
+/**
+ * `opcoes.signal`: aborto cooperativo — conferido antes de cada escrita
+ * (apagar chunks/vetores, gravar chunks, subir vetores). Quem segura uma
+ * exclusão externa (a migração da voz) dispara o sinal ao perdê-la, e a
+ * reindexação para sem tocar em nada que outra aplicação possa ter retomado.
+ */
+export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: { signal?: AbortSignal } = {}) {
+  const { signal } = opcoes
   // Get entry
   const entry = await db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
@@ -161,6 +169,7 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
   }
 
   // Delete old chunks and vectors
+  lancarSeAbortado(signal, 'apagar chunks e vetores antigos')
   await db.knowledgeChunk.deleteMany({
     where: { entryId },
   })
@@ -177,6 +186,8 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
   // Generate new embeddings
   const embeddings = await generateEmbeddings(chunks.map(c => c.content))
 
+  // Os embeddings demoram: é AQUI que a posse externa costuma ter se perdido (PR13-20).
+  lancarSeAbortado(signal, 'gravar chunks')
   // Create new chunks
   const createdChunks = await Promise.all(
     chunks.map((chunk) =>
@@ -193,6 +204,7 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
   )
 
   // Upsert new vectors
+  lancarSeAbortado(signal, 'subir vetores')
   await upsertVectors(
     createdChunks.map((chunk, index) => ({
       id: chunk.vectorId,

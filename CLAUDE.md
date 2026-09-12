@@ -6884,6 +6884,34 @@ Da quarta revisão (BLOQUEADO, PR13-16…18):
   indexador não recebe sinal de aborto — o que já está em voo termina; o que
   se garante é que a aplicação PARA (nenhum fato seguinte, nenhuma voz).
 
+Da quinta revisão (BLOQUEADO, PR13-19…21):
+
+- 🔴 **A trava de sessão exige conexão DIRETA** (`ehPooler`: `-pooler` no host é
+  o PgBouncer em modo transação, que não fixa um backend — duas aplicações
+  podiam "reentrar" na mesma trava e o unlock rodar em outro backend). URL do
+  pooler para a trava é `bloqueado` antes de escrever (PR13-19). A `DIRECT_URL`
+  dos dois arquivos de ambiente é direta.
+- 🔴 **Conferir a POSSE, nunca "tentar pegar de novo"**: depois de uma reconexão
+  a chave pode estar livre, `pg_try_advisory_lock` devolveria `true` por
+  ADQUIRIR uma trava nova e a leitura como reentrância seguiria sem exclusão
+  (PR13-21). `conferir` compara o `pg_backend_pid()` com o da sessão que tomou
+  a trava e confere em `pg_locks` que ela ainda a detém; sessão trocada ou
+  conexão caída invalidam a execução.
+- 🔴 **A perda da posse ABORTA as escritas internas, e sem compensar**
+  (PR13-20): `trava.vigiar(escrita)` entrega um `AbortSignal`; `criarEntradaBase`
+  e `reindexEntry` (`src/lib/knowledge/aborto.ts`, puro) o conferem antes de
+  cada etapa — apagar chunks/vetores, gravar chunks depois dos embeddings,
+  subir vetores — e, abortada, a criação NÃO apaga a entrada (outra aplicação
+  pode ter retomado a mesma linha pela chave do fato; ela fica sem a marca de
+  indexado, para ser reindexada pelo mesmo id). A marca de indexado nunca é
+  gravada por uma execução que perdeu a posse.
+- **A prova derruba a sessão da trava DE VERDADE**: o papel do Neon não tem
+  `pg_terminate_backend`, então a costura `aoTravar` entrega um `executar` na
+  sessão da trava e a prova manda `SET idle_session_timeout = '200ms'` no meio
+  da escrita lenta; o servidor encerra a conexão ociosa antes da conferência
+  seguinte (o Prisma NÃO reconecta sozinho — a consulta falha), a escrita
+  recebe o aborto e nada é anotado. Trava pelo pooler é coberta na 4b'.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

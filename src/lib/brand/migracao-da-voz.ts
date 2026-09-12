@@ -568,6 +568,20 @@ export function mesmoBanco(urlDaTrava: string | null | undefined, urlDasEscritas
 }
 
 /** Trechos repetidos em `fatosParaABase` de um cliente: a mesma identidade de fato duas vezes criaria duas linhas numa só aplicação (PR13-17). */
+/**
+ * A URL passa pelo POOLER do Neon (`-pooler` no host = PgBouncer em modo transação)? Trava de SESSÃO por trás dele
+ * não fixa um backend: duas aplicações podem cair no mesmo backend e "reentrar" na mesma trava, e o unlock pode
+ * rodar em outro (PR13-19). A conexão da trava tem de ser DIRETA.
+ */
+export function ehPooler(url: string | undefined | null): boolean {
+  if (!url) return false
+  try {
+    return /-pooler(\.|$)/i.test(new URL(url).hostname)
+  } catch {
+    return /-pooler\./i.test(url)
+  }
+}
+
 export function trechosRepetidos(fatos: Array<{ trecho?: string }>): Array<{ trecho: string; posicoes: number[] }> {
   const porTrecho = new Map<string, number[]>()
   fatos.forEach((f, i) => {

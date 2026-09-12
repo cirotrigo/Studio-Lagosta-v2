@@ -56,6 +56,7 @@ import {
   type LinhaDoFato,
   nomeDoBancoDe,
   trechosRepetidos,
+  ehPooler,
 } from '../src/lib/brand/migracao-da-voz'
 
 const ROOT = process.cwd()
@@ -214,7 +215,7 @@ export interface ResultadoDaAplicacao {
 
 export interface AplicarOpcoes {
   /** Quem grava o fato na base. O padrão é `criarEntradaBase` (indexa na busca); a prova injeta um registrador. */
-  criarFato?: (fato: FatoACriar, autor: string) => Promise<void>
+  criarFato?: (fato: FatoACriar, autor: string, signal?: AbortSignal) => Promise<void>
   /**
    * O estado do fato com esta chave na base: `ausente`, `incompleto` (linha
    * sem a marca `indexadoEm` — o processo caiu entre o SQL e o vetor) ou
@@ -222,7 +223,7 @@ export interface AplicarOpcoes {
    */
   estadoDoFato?: (chave: string, projectId: number) => Promise<EstadoDoFatoNaBase>
   /** Reindexa a linha incompleta e a marca como indexada. O padrão é `reindexEntry` + `marcarFatoIndexado`; a prova injeta. */
-  reindexarFato?: (entryId: string, fato: FatoACriar, autor: string) => Promise<void>
+  reindexarFato?: (entryId: string, fato: FatoACriar, autor: string, signal?: AbortSignal) => Promise<void>
   /**
    * Onde o registrador PADRÃO vai escrever (o de `resolverBanco`). Sem
    * `criarFato` injetado ele é obrigatório, e dev com indexador de produção
@@ -269,7 +270,14 @@ export function chaveDaTrava(projectId: number): string {
  */
 export interface TravaViva {
   conferir: () => Promise<void>
-  vigiar: <T>(promessa: Promise<T>) => Promise<T>
+  /**
+   * Embrulha uma escrita LONGA: `escrita(signal)` recebe um `AbortSignal` que é DISPARADO quando a vigilância
+   * constata a perda da posse (PR13-20) — as escritas da base (`criarEntradaBase`/`reindexEntry`) conferem o sinal
+   * antes de cada etapa e param sem compensar. A promessa é abandonada com erro.
+   */
+  vigiar: <T>(escrita: (signal: AbortSignal) => Promise<T>) => Promise<T>
+  /** O `pg_backend_pid()` da sessão que detém a trava — a prova usa para derrubá-la de verdade. */
+  pid: number
 }
 export type ComTrava = <T>(projectId: number, corpo: (trava: TravaViva) => Promise<T>) => Promise<T | { bloqueado: string }>
 
@@ -296,6 +304,11 @@ export function travaPorProjeto(
   opcoes: {
     /** Costura da prova: devolve `false` para simular a perda da conexão da trava. Nunca usada pelo script. */
     travaViva?: () => boolean
+    /**
+     * Costura da prova: recebe o pid da sessão da trava assim que ela é tomada e um `executar` que roda SQL NESSA
+     * sessão — é como a prova a derruba de verdade pelo servidor (`SET idle_session_timeout`), sem privilégio.
+     */
+    aoTravar?: (sessao: { pid: number; executar: (sql: string) => Promise<void> }) => void
     /** Intervalo da vigilância durante uma escrita longa (ms). */
     vigiaMs?: number
   } = {},
@@ -306,6 +319,11 @@ export function travaPorProjeto(
     if (!url || !mesmoBanco(url, process.env.DATABASE_URL)) {
       return { bloqueado: `a conexão da trava por projeto (${endpointDe(url) ?? 'ilegível'}/${nomeDoBancoDe(url) ?? '?'}) não é o banco das escritas (${endpointDe(process.env.DATABASE_URL) ?? 'ilegível'}/${nomeDoBancoDe(process.env.DATABASE_URL) ?? '?'}); confira DIRECT_URL/DATABASE_URL antes de aplicar` }
     }
+    // Trava de sessão por trás do POOLER (PgBouncer em modo transação) não fixa um backend: duas aplicações podem
+    // "reentrar" na mesma trava e o unlock pode rodar em outro backend. Só conexão DIRETA (PR13-19).
+    if (ehPooler(url)) {
+      return { bloqueado: `a trava por projeto exige conexão DIRETA ao Postgres, e a URL da trava passa pelo pooler (${endpointDe(url) ?? 'ilegível'}-pooler): defina DIRECT_URL com o endpoint direto (sem "-pooler") antes de aplicar` }
+    }
     const { PrismaClient } = await import('@prisma/client')
     // Trava de SESSÃO (`pg_try_advisory_lock`) numa conexão própria e ÚNICA — não de transação: transação tem
     // timeout, e uma que expirasse liberaria a exclusão com o corpo ainda escrevendo (PR13-15). A trava de sessão
@@ -313,28 +331,54 @@ export function travaPorProjeto(
     const cliente = new PrismaClient({ datasources: { db: { url: comUmaConexao(url) } } })
     const chave = chaveDaTrava(projectId)
     let travada = false
+    let pid = 0
     try {
-      const trava = await cliente.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_lock(hashtext(${chave})) AS ok`
+      // A trava e o pid da sessão que a detém, na MESMA consulta: é a identidade que `conferir` exige de volta.
+      const trava = await cliente.$queryRaw<Array<{ ok: boolean; pid: number }>>`SELECT pg_try_advisory_lock(hashtext(${chave})) AS ok, pg_backend_pid() AS pid`
       if (!trava[0]?.ok) return { bloqueado: 'outra aplicação da migração deste cliente está em andamento (trava por projeto); tente de novo quando ela terminar' }
       travada = true
+      pid = Number(trava[0].pid)
+      opcoes.aoTravar?.({ pid, executar: async (sql) => { await cliente.$executeRawUnsafe(sql) } })
+      /**
+       * Conferir a POSSE, nunca "tentar pegar de novo": depois de uma reconexão do client a chave pode estar livre,
+       * `pg_try_advisory_lock` devolveria `true` por ADQUIRIR uma trava nova, e a leitura como reentrância seguiria
+       * sem exclusão (PR13-21). O que se confere é: a sessão ainda é a original (`pg_backend_pid()` igual) e ela
+       * detém a trava em `pg_locks`. Sessão trocada invalida a execução para sempre.
+       */
       const conferir = async () => {
         try {
           if (opcoes.travaViva && !opcoes.travaViva()) throw new Error('conexão da trava perdida (simulada pela prova)')
-          const viva = await cliente.$queryRaw<Array<{ ok: boolean }>>`SELECT pg_try_advisory_lock(hashtext(${chave})) AS ok`
-          // A sessão que já tem a trava consegue "pegá-la" de novo (reentrante) — e aí soltamos a repetição.
-          if (viva[0]?.ok) await cliente.$queryRaw`SELECT pg_advisory_unlock(hashtext(${chave}))`
-          else throw new Error('a sessão da trava não a detém mais')
+          const posse = await cliente.$queryRaw<Array<{ pid: number; detida: boolean }>>`
+            SELECT pg_backend_pid() AS pid,
+                   EXISTS (
+                     SELECT 1 FROM pg_locks
+                      WHERE locktype = 'advisory' AND granted AND pid = pg_backend_pid() AND objsubid = 1
+                        AND classid = ((hashtext(${chave})::bigint >> 32) & 4294967295)::oid
+                        AND objid = (hashtext(${chave})::bigint & 4294967295)::oid
+                   ) AS detida`
+          const agora = posse[0]
+          if (!agora || Number(agora.pid) !== pid) throw new Error(`a sessão da trava trocou (pid ${pid} → ${agora ? agora.pid : '?'}): a conexão original caiu`)
+          if (!agora.detida) throw new Error('a sessão da trava não a detém mais')
         } catch (e) {
-          throw new Error(`a trava por projeto se perdeu antes desta escrita — a aplicação parou aqui para não concorrer com outra: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`)
+          const detalhe = e instanceof Error ? e.message.split('\n')[0].trim() : String(e)
+          throw new Error(`a trava por projeto se perdeu antes desta escrita — a aplicação parou aqui para não concorrer com outra: ${detalhe || 'a conexão da trava caiu (o servidor a encerrou)'}`)
         }
       }
-      const vigiar = async <T,>(promessa: Promise<T>): Promise<T> => {
+      const vigiar = async <T,>(escrita: (signal: AbortSignal) => Promise<T>): Promise<T> => {
+        const controlador = new AbortController()
         let parar = false
+        const promessa = escrita(controlador.signal)
         const vigia = (async () => {
           while (!parar) {
             await new Promise((r) => setTimeout(r, opcoes.vigiaMs ?? 1000))
             if (parar) return undefined as never
-            await conferir()
+            try {
+              await conferir()
+            } catch (e) {
+              // Perdida a posse: o sinal manda a escrita parar antes da próxima etapa (e sem compensar) — PR13-20.
+              controlador.abort(e instanceof Error ? e : new Error(String(e)))
+              throw e
+            }
           }
           return undefined as never
         })()
@@ -342,9 +386,11 @@ export function travaPorProjeto(
           return await Promise.race([promessa, vigia])
         } finally {
           parar = true
+          // A promessa abandonada não pode virar "unhandled rejection" quando terminar sozinha.
+          promessa.catch(() => undefined)
         }
       }
-      return await corpo({ conferir, vigiar })
+      return await corpo({ conferir, vigiar, pid })
     } finally {
       if (travada) await cliente.$queryRaw`SELECT pg_advisory_unlock(hashtext(${chave}))`.catch(() => undefined)
       await cliente.$disconnect().catch(() => undefined)
@@ -367,7 +413,7 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
   const indexacao: ReturnType<typeof podeIndexar> = opcoes.criarFato ? { ok: true } : podeIndexar(opcoes.destino, { url: process.env.UPSTASH_VECTOR_REST_URL ?? null })
   const criarFato =
     opcoes.criarFato ??
-    (async (fato: FatoACriar, autor: string) => {
+    (async (fato: FatoACriar, autor: string, signal?: AbortSignal) => {
       const { criarEntradaBase } = await import('../src/lib/knowledge/entries')
       const entrada = await criarEntradaBase({
         projectId: fato.projectId,
@@ -378,16 +424,18 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
         expiresAt: fato.validaAte ? new Date(`${fato.validaAte}T23:59:59-03:00`) : null,
         metadata: { origem: 'migracao-da-voz', versaoDaPrevia: fato.versaoDaPrevia, chaveDoFato: fato.chave },
         autor,
-      })
+      }, { signal })
       // `criarEntradaBase` só devolve depois de indexar; a marca durável é o que a retomada lê (PR13-11).
+      if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de indexar: a marca de indexado não é gravada por esta execução')
       await marcarFatoIndexado(db, entrada.id)
     })
   const estadoDoFato = opcoes.estadoDoFato ?? ((chave: string, projectId: number) => estadoDoFatoNaBase(db, chave, projectId))
   const reindexarFato =
     opcoes.reindexarFato ??
-    (async (entryId: string, fato: FatoACriar, autor: string) => {
+    (async (entryId: string, fato: FatoACriar, autor: string, signal?: AbortSignal) => {
       const { reindexEntry } = await import('../src/lib/knowledge/indexer')
-      await reindexEntry(entryId, { projectId: fato.projectId, userId: autor })
+      await reindexEntry(entryId, { projectId: fato.projectId, userId: autor }, { signal })
+      if (signal?.aborted) throw new Error('a posse da trava se perdeu depois de reindexar: a marca de indexado não é gravada por esta execução')
       await marcarFatoIndexado(db, entryId)
     })
   const estados = new Map<number, EstadoDoCliente>()
@@ -452,11 +500,11 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
             await trava.conferir()
             if (estado.estado === 'incompleto') {
               // A linha existe sem a marca: o processo anterior caiu entre o SQL e o vetor. Reindexar pelo MESMO id.
-              await trava.vigiar(reindexarFato(estado.entryId, fato, autor))
+              await trava.vigiar((signal) => reindexarFato(estado.entryId, fato, autor, signal))
               fatosReindexados++
               continue
             }
-            await trava.vigiar(criarFato(fato, autor))
+            await trava.vigiar((signal) => criarFato(fato, autor, signal))
             fatosCriados++
           }
           await trava.conferir()

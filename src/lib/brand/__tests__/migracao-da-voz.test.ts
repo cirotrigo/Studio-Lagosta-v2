@@ -8,6 +8,7 @@ import {
   coberturaDasRegrasLegadas,
   computeDe,
   divergenciasDoFato,
+  ehPooler,
   mesmoBanco,
   nomeDoBancoDe,
   trechosRepetidos,
@@ -388,6 +389,11 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(mesmoBanco('postgresql://u:p@ep-a.x.neon.tech/neondb', 'postgresql://u:p@ep-a.x.neon.tech/outro_banco')).toBe(false)
     expect(mesmoBanco('postgresql://u:p@ep-a-pooler.x.neon.tech/neondb?pgbouncer=true', 'postgresql://u:p@ep-a.x.neon.tech/neondb?sslmode=require')).toBe(true)
     expect(mesmoBanco('postgresql://u:p@ep-a.x.neon.tech/', 'postgresql://u:p@ep-a.x.neon.tech/neondb')).toBe(false)
+    // PR13-19: a trava de sessão exige conexão DIRETA — `-pooler` no host é o PgBouncer em modo transação
+    expect(ehPooler('postgresql://u:p@ep-a-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require')).toBe(true)
+    expect(ehPooler('postgresql://u:p@ep-a.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require')).toBe(false)
+    expect(ehPooler('postgresql://u:p@ep-a-pooler.x/neondb?pgbouncer=true')).toBe(true)
+    expect(ehPooler(undefined)).toBe(false)
   })
 
   it('PR13-17: trecho repetido em fatosParaABase é recusado por lerManifesto com as posições; trechosRepetidos lista cada repetição', () => {

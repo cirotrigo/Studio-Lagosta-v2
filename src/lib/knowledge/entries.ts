@@ -10,6 +10,7 @@
 
 import { db } from '@/lib/db'
 import { reindexEntry } from '@/lib/knowledge/indexer'
+import { foiAbortada, lancarSeAbortado } from '@/lib/knowledge/aborto'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { CreativeError } from '@/lib/creatives/errors'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
@@ -32,7 +33,9 @@ export interface CriarEntradaBaseArgs {
  * desfeita. Sem isso, o erro voltaria a quem chamou enquanto a entrada já
  * estaria valendo — e o retry natural criaria uma duplicata.
  */
-export async function criarEntradaBase(args: CriarEntradaBaseArgs) {
+export async function criarEntradaBase(args: CriarEntradaBaseArgs, opcoes: { signal?: AbortSignal } = {}) {
+  const { signal } = opcoes
+  lancarSeAbortado(signal, 'criar a entrada')
   const entry = await db.knowledgeBaseEntry.create({
     data: {
       projectId: args.projectId,
@@ -50,8 +53,12 @@ export async function criarEntradaBase(args: CriarEntradaBaseArgs) {
   })
 
   try {
-    await reindexEntry(entry.id, { projectId: args.projectId, userId: args.autor })
+    await reindexEntry(entry.id, { projectId: args.projectId, userId: args.autor }, { signal })
   } catch (erro) {
+    // Abortada por quem PERDEU a posse (a migração da voz): a compensação NÃO roda — outra aplicação pode ter
+    // retomado esta mesma linha (a chave do fato) e apagá-la agora destruiria o trabalho dela (PR13-20). A linha
+    // fica como o retomador a encontrar: sem a marca de indexado, ele a reindexa pelo mesmo id.
+    if (foiAbortada(erro) || signal?.aborted) throw erro
     await db.knowledgeBaseEntry.delete({ where: { id: entry.id } }).catch(() => {})
     console.error('[knowledge] indexação falhou ao criar entrada — entrada desfeita:', erro)
     throw new CreativeError(
