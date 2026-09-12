@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dataValida, diaDaSemanaDe, formatoDoBloco, formatoDoTipo, historicoParaFormato, janelaDaSugestao, montarGradeDaSemana, slotOcupado, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
+import { chaveDoSlot, dataValida, diaDaSemanaDe, formatoDoBloco, formatoDoSlotDaPeca, formatoDoTipo, historicoParaFormato, janelaDaSugestao, montarGradeDaSemana, slotOcupado, slotsParaAPeca, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
 import { fundirGradeComCadencia } from '../grade-da-base'
 
 // quinta 17/09/2026, 10:00 em Brasília
@@ -75,6 +75,25 @@ describe('formato e ocupação por formato', () => {
     expect(formatoDoBloco(historicoParaFormato(historico, new Set(['camp-x'])), 4, 12 * 60)).toBe('story')
     expect(formatoDoBloco(historicoParaFormato(historico, new Set()), 4, 12 * 60)).toBe('feed')
     expect(historicoParaFormato(historico, new Set(['camp-x']))).toHaveLength(2)
+  })
+  it('a peça vê só os slots do SEU formato, e a reserva é por horário E formato (R22): story existente + slot livre de feed no mesmo horário não vira sugestão para outro story', () => {
+    const sugestoes = [
+      { scheduledDatetime: '2026-09-21 18:00', formato: 'feed' as const },
+      { scheduledDatetime: '2026-09-21 19:00', formato: 'story' as const },
+      { scheduledDatetime: '2026-09-22 09:00' }, // resposta antiga, sem formato = story
+    ]
+    expect(formatoDoSlotDaPeca('story')).toBe('story')
+    expect(formatoDoSlotDaPeca('feed')).toBe('feed')
+    expect(formatoDoSlotDaPeca('quadrado')).toBe('feed')
+    expect(formatoDoSlotDaPeca('carrossel')).toBe('feed')
+    // peça story: o feed das 18h não aparece; o story das 19h e o slot antigo sim
+    expect(slotsParaAPeca(sugestoes, 'story', new Set()).map((s) => s.scheduledDatetime)).toEqual(['2026-09-21 19:00', '2026-09-22 09:00'])
+    // peça feed/carrossel: só o feed das 18h
+    expect(slotsParaAPeca(sugestoes, 'quadrado', new Set()).map((s) => s.scheduledDatetime)).toEqual(['2026-09-21 18:00'])
+    // a fila com um STORY às 19h não reserva o feed das 19h — e reserva o story
+    const reservados = new Set([chaveDoSlot('2026-09-21 19:00', 'story')])
+    expect(slotsParaAPeca(sugestoes, 'story', reservados).map((s) => s.scheduledDatetime)).toEqual(['2026-09-22 09:00'])
+    expect(slotsParaAPeca([{ scheduledDatetime: '2026-09-21 19:00', formato: 'feed' as const }], 'feed', reservados)).toHaveLength(1)
   })
   it('um feed às 19h NÃO ocupa o story das 19h; o mesmo formato a 45 min ocupa', () => {
     const t = new Date('2026-09-24T19:00:00-03:00').getTime()

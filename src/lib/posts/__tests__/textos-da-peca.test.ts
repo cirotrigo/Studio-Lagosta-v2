@@ -52,6 +52,17 @@ describe('textosDaPeca — a mesma precedência do render', () => {
     // só o fallback por slotValues (sem tipo de camada) descarta valor com cara de URL
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta', _imageUrl: 'https://x/y.png', foto: 'https://x/z.png', outro: 'Solta' } })).toEqual({ textos: ['Solta', 'Solta'], origem: 'copy-do-post' })
   })
+  it('a SEQUÊNCIA é a do render (R23): as camadas saem pelo `order` (ausente = 0), empate mantém a ordem do array — na página viva e no snapshot, com duplicatas', () => {
+    const foraDeOrdem = [
+      { id: 'a', name: 'apoio', type: 'text', content: 'segundo', order: 2 },
+      { id: 'b', name: 'headline', type: 'text', content: 'primeiro', order: 1 },
+      { id: 'c', name: 'cta', type: 'text', content: 'sem order' },
+      { id: 'd', name: 'servico', type: 'text', content: 'segundo' , order: 2 },
+    ]
+    expect(textosDaPeca({ ...viva, slotValues: null }, { camadas: foraDeOrdem }).textos).toEqual(['sem order', 'primeiro', 'segundo', 'segundo'])
+    const entregueSnap = textosDaPeca({ pageId: null, status: 'POSTED', laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }, { slides: [{ url: 'u1', arte: { layersSnapshot: foraDeOrdem } }] })
+    expect(entregueSnap.textos).toEqual(['sem order', 'primeiro', 'segundo', 'segundo'])
+  })
   it('sem página nem arte: a copy do post; sem nada, lista vazia sem alegação', () => {
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta' } })).toEqual({ textos: ['Solta'], origem: 'copy-do-post' })
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: null })).toEqual({ textos: [] })

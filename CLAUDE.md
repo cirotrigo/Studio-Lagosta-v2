@@ -6265,6 +6265,14 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   passa por `historicoParaFormato`, que tira a campanha encerrada como a
   cadência já tira — senão uma campanha de feed já encerrada transformava o
   story de rotina daquele bloco em feed, e a ocupação junto.
+  🔴 **Quem CONSOME os slots escolhe por horário E formato** (`slotsParaAPeca`,
+  `formatoDoSlotDaPeca`, `chaveDoSlot`): com a ocupação por formato, um
+  horário com story agendado passou a aparecer como slot livre de FEED — e a
+  bancada, que filtrava e pré-selecionava por horário, oferecia esse slot para
+  OUTRO story em cima do existente; `propor-semana` descartava o formato na
+  conversão. A peça só vê os slots do formato dela (feed, quadrado e carrossel
+  = feed), a fila reserva por horário E formato, e a leva do plano filtra
+  pelo formato do plano (R22 da revisão de 386118cc).
 - 🔴 **A grade aprovada tem precedência por dia E FORMATO**
   (`fundirGradeComCadencia(…, { formatoDe })`): ela é de story, então
   substitui os horários de STORY do dia que cobre e mantém o FEED que o
@@ -6326,6 +6334,9 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   **A CAIXA é a do render** (`aplicarCaixa` em `posts/caixa-do-texto.ts`, a
   MESMA função que `render-engine.ts` usa, aplicada depois do slot): a camada
   guarda "Almoço executivo" e a arte mostra "ALMOÇO EXECUTIVO".
+  **A SEQUÊNCIA é a do render**: as camadas saem pelo `order` (`(order ?? 0)`,
+  sort estável — a mesma conta de `render-engine.ts`); a persistência aceita o
+  array fora de ordem, e a agenda devolvia a ordem do array (R23).
   🔴 **Arte já ENTREGUE não segue a página** (`arteEntregue`: `laterPostId`,
   publicado, publicando ou falhou): a página pode ter sido editada DEPOIS da
   entrega, e a invalidação não alcança o post — atribuir-lhe o texto atual da
@@ -6379,6 +6390,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   lista que a pessoa vê muda quando uma foto do topo é usada no meio do dia,
   e o `upsert` reutilizaria a proposta com o topo antigo — escolher o novo
   topo viraria "troca" atribuída à pessoa. Nada mudou → a mesma proposta.
+  🔴 **"Ninguém usou" e "não consegui ler os usos" são fatos diferentes**
+  (`lerUsosDeFotoComEstado`, R24): `lerUsosDeFoto` engolia a falha do
+  `groupBy` e devolvia mapa vazio — com `evitarUsadasDesde`, toda foto voltava
+  elegível e a resposta dizia `porUso: 0` como exclusão cumprida. Agora o
+  estado viaja (`usosLidos`), a busca continua, e a exclusão por uso é
+  declarada INCOMPLETA (aviso + `excluidas.porUsoIncompleta`).
 - 🔴 **`prisma/generated/` no `.gitignore` ignora a PASTA, não o symlink** que
   os worktrees usam: `git status` o lista como `??` e a prova imprimia
   "pendente: 1 arquivo(s)" numa árvore que estava limpa (foi o que a revisão

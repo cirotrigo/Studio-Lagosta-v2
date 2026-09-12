@@ -26,6 +26,36 @@ export function formatoDoTipo(postType: string | null | undefined): FormatoDaPec
   return postType === 'STORY' ? 'story' : 'feed'
 }
 
+/**
+ * O formato de SLOT que uma peça ocupa, pelo formato em que ela nasce
+ * (bancada, plano): story é story; feed, quadrado e carrossel disputam o feed.
+ * É o par de `formatoDoTipo` para quem ainda não é post — a bancada e o
+ * `propor-semana` escolhem o slot por horário E formato (R22 da revisão de
+ * 386118cc): um horário livre para FEED não é um horário livre para outro
+ * STORY sobre o que já existe.
+ */
+export function formatoDoSlotDaPeca(formatoDaPeca: string | null | undefined): FormatoDaPeca {
+  return formatoDaPeca === 'story' ? 'story' : 'feed'
+}
+
+/** A chave de ocupação de um slot: horário E formato — é assim que a fila da bancada reserva e que a disponibilidade se confere. */
+export function chaveDoSlot(quando: string, formato: FormatoDaPeca): string {
+  return `${quando}|${formato}`
+}
+
+/**
+ * Os slots que servem a uma peça: só os do formato dela, fora os já reservados
+ * (por horário E formato). `formato` ausente no slot (resposta antiga) é story.
+ */
+export function slotsParaAPeca<T extends { scheduledDatetime: string; formato?: FormatoDaPeca | null }>(
+  sugestoes: T[],
+  formatoDaPeca: string | null | undefined,
+  reservados: ReadonlySet<string>,
+): T[] {
+  const alvo = formatoDoSlotDaPeca(formatoDaPeca)
+  return sugestoes.filter((s) => (s.formato ?? 'story') === alvo && !reservados.has(chaveDoSlot(s.scheduledDatetime, s.formato ?? 'story')))
+}
+
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/
 
 /**

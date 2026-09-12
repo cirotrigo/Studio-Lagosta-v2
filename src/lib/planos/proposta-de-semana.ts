@@ -75,6 +75,8 @@ export const ROTULO_DE_COMPLEMENTO =
   'completei para o ritmo de 3 por dia — este cliente vem postando menos que isso'
 
 export interface SlotParaProposta {
+  /** story × feed — o formato do slot (PR 6); ausente na semente. */
+  formato?: 'story' | 'feed'
   /** "AAAA-MM-DD HH:mm" em Brasília, pronto para `criarPlano`. */
   scheduledDatetime: string
   /** "AAAA-MM-DD" em Brasília — a chave do espalhamento por dia. */

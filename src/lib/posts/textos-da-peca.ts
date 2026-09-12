@@ -134,7 +134,11 @@ function textosDasCamadas(camadas: unknown, slots?: Record<string, unknown>): st
   const lidas = lerCamadas(camadas)
   if (!lidas.legivel) return null
   const out: string[] = []
-  for (const camada of lidas.camadas) {
+  // A ORDEM é a do render (`render-engine.ts`: `(order ?? 0)`, sort estável): a
+  // persistência aceita o array fora de ordem, e a sequência dos textos tem de
+  // ser a que a arte desenha (R23).
+  const ordenadas = [...lidas.camadas].sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+  for (const camada of ordenadas) {
     if (!camadaDeTexto(camada)) continue
     const efetiva = slots ? aplicarSlotNaCamada(camada, slots) : camada
     const bruto = typeof efetiva.content === 'string' ? efetiva.content : ''

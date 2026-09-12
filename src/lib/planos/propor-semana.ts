@@ -32,6 +32,7 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { buscarNoAcervo } from '@/lib/creatives/acervo'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { sugerirPosts, type SugestaoSlot } from '@/lib/posts/sugerir-posts'
+import { slotsParaAPeca } from '@/lib/posts/contexto-da-semana'
 import { taxonomiaAprovada } from '@/lib/aprendizado/pilares-service'
 import { montarPerfil } from '@/lib/aprendizado/perfil'
 import type { Pilar } from '@/lib/aprendizado/pilares'
@@ -150,6 +151,7 @@ function diaCurto(dataISO: string): string {
 function slotDaCadencia(s: SugestaoSlot): SlotParaProposta {
   return {
     scheduledDatetime: s.scheduledDatetime,
+    formato: s.formato,
     data: s.data,
     hora: s.hora,
     diaSemana: s.diaSemana,
@@ -383,7 +385,10 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   let temRotinaConhecida = false
   try {
     const r = await sugerirPosts({ projectId, dias })
-    daCadencia = r.sugestoes
+    // Só os slots do FORMATO do plano (R22): um horário livre para feed não
+    // serve a uma leva de stories — e vice-versa.
+    daCadencia = slotsParaAPeca(r.sugestoes, formato, new Set())
+    if (daCadencia.length < r.sugestoes.length) avisos.push(`${r.sugestoes.length - daCadencia.length} horário(s) livre(s) de outro formato ficaram de fora desta leva de ${formato}.`)
     temRotinaConhecida = r.cadencia.some((d) => d.horariosTipicos.length > 0)
     avisos.push(...r.avisos)
   } catch (erro) {

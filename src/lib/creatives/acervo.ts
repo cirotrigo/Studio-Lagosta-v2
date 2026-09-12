@@ -9,7 +9,7 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
-import { lerUsosDeFoto, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
+import { lerUsosDeFotoComEstado, mesclarUsos, type UsoDaFoto } from '@/lib/creatives/uso-de-foto'
 import {
   filtrarAcervo,
   calcularIdf,
@@ -268,14 +268,17 @@ export async function montarInsumosDeRanking(projectId: number): Promise<{
   destaques: Set<string>
   pilares: PilarParaBusca[]
   usos: Map<string, UsoDaFoto>
+  /** A leitura dos usos deu certo? `false` = mapa vazio por FALHA, não por ausência de uso (R24). */
+  usosLidos: boolean
+  erroDosUsos: string | null
 }> {
-  const [preferencias, destaques, pilares, usos] = await Promise.all([
+  const [preferencias, destaques, pilares, leituraDosUsos] = await Promise.all([
     lerPreferenciasDeFoto(projectId),
     lerDestaques(projectId),
     lerPilaresAprovados(projectId),
-    lerUsosDeFoto(projectId),
+    lerUsosDeFotoComEstado(projectId),
   ])
-  return { preferencias, destaques, pilares, usos }
+  return { preferencias, destaques, pilares, usos: leituraDosUsos.usos, usosLidos: leituraDosUsos.ok, erroDosUsos: leituraDosUsos.erro }
 }
 
 /**
@@ -293,7 +296,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * deles: a expansão de sinônimo (F2) usa os pilares aprovados do cliente.
    * São todos por projeto — nada aqui depende do resultado do filtro.
    */
-  const { preferencias, destaques, pilares, usos } = await montarInsumosDeRanking(input.projectId)
+  const { preferencias, destaques, pilares, usos, usosLidos, erroDosUsos } = await montarInsumosDeRanking(input.projectId)
 
   // Catálogos regerados (taxonomia v2) não trazem qualidade/tags/bestFor — só a
   // pasta. Aplicar o filtro nesse caso zeraria o acervo inteiro em silêncio;
@@ -410,6 +413,16 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
   if (input.evitarUsadasDesde && !dataValida(input.evitarUsadasDesde)) {
     avisos.push(`evitarUsadasDesde ignorado: "${input.evitarUsadasDesde}" não é uma data AAAA-MM-DD que exista no calendário.`)
   }
+  /**
+   * A leitura dos usos FALHOU e a pessoa pediu corte por uso: a exclusão saiu
+   * só com o legado do catálogo e fotos usadas podem ter voltado à lista. Isso
+   * é dito — `porUso: 0` sem aviso pareceria exclusão cumprida (R24 da
+   * revisão de 386118cc). A busca segue disponível.
+   */
+  const usoIncompleto = Boolean(input.evitarUsadasDesde && dataValida(input.evitarUsadasDesde) && !usosLidos)
+  if (usoIncompleto) {
+    avisos.push(`a exclusão por uso ficou INCOMPLETA: não consegui ler os usos registrados (${erroDosUsos ?? 'falha na consulta'}) — fotos usadas desde ${input.evitarUsadasDesde} podem ter voltado à lista; confira antes de escolher.`)
+  }
   const ranqueadas = exclusao.mantidas
 
   // As pastas são a espinha semântica destes catálogos: sem elas, quem busca
@@ -426,7 +439,7 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
 
   return {
     total: ranqueadas.length,
-    ...(exclusao.pedida ? { excluidas: exclusao.resumo } : {}),
+    ...(exclusao.pedida ? { excluidas: { ...exclusao.resumo, ...(usoIncompleto ? { porUsoIncompleta: true } : {}) } } : {}),
     /** Quantas candidatas entraram só pela semelhança (sem casar palavra). */
     viaSemantica,
     acervoCompleto: todas.length,
