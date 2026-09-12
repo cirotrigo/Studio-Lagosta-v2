@@ -521,7 +521,25 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       // linha atual — mandar `{ ...arte.fieldValues }` capturado no começo
       // apagaria a trava que o revisor gravou durante o render (REV-R01).
       fieldValues: {
-        recomposicao: registro('re-renderizada', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        /**
+         * `copyVisualRegravada` é o MARCADOR de que os `slotValues` gravados
+         * neste mesmo patch são a copy visual DESTE PNG. Mora DENTRO do
+         * registro (merge raso: a próxima escrita de `recomposicao` — outro
+         * re-render sem regravação, recomposição feita, recusa — o substitui
+         * inteiro, e o marcador nunca sobrevive à versão a que pertence).
+         * Sem ele, uma arte re-renderizada carrega `slotValues` de OUTRA versão
+         * da mídia: a de antes deste código, a de página ilegível (copy mantida
+         * como estava, com aviso) e a que não tinha copy visual. Quem invalida
+         * a copy de arte re-renderizada (R38/R42 do PR 6) reabilita SÓ com ele.
+         * Nunca gravado sem `slotValues` no mesmo patch.
+         */
+        recomposicao: registro('re-renderizada', {
+          origem,
+          papeis: defasagem.papeis,
+          avisos,
+          urlsAnteriores: rastro,
+          ...(copyVisualNova ? { copyVisualRegravada: true } : {}),
+        }),
         // A copy VISUAL nova (ver acima); a copy de APRENDIZADO fica como está (o merge não a toca).
         ...(copyVisualNova ? { slotValues: copyVisualNova } : {}),
         // A recuperação forçada preservou um ajuste que a spec não conhece:

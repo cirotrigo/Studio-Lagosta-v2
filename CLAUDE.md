@@ -5627,6 +5627,16 @@ Codex antes de ser escrito.
   `slotValuesFinais` do ajuste, e entra no patch do re-render só quando a arte
   JÁ carrega copy visual (a arte do compositor não ganha uma inventada); a
   copy de APRENDIZADO e a trava ficam como estão (merge no banco). Prova 9i.
+  🔴 **E a regravação deixa MARCA** (integração com o R38/R42 do PR 6,
+  12/09/2026): `recomposicao.copyVisualRegravada: true`, DENTRO do registro do
+  re-render e só quando os `slotValues` do mesmo patch foram regravados. Sem
+  a marca, `re-renderizada` + `slotValues` não diz se a copy é deste PNG ou de
+  outra versão da mídia (página ilegível mantém a copy, arte re-renderizada
+  antes deste código também) — e o PR 6 invalida essa copy. Como o merge é
+  raso, a próxima escrita de `recomposicao` apaga a marca junto com o registro
+  antigo. ⚠️ Este trecho entrou por um commit de integração no branch do PR 6
+  (`feat/f2-contexto-da-semana`) e **deve descer para o PR 0** quando ele for
+  mergeado (ou ser revisado junto do PR 6).
 - 🔴 **`copyVisualDasCamadas` recebe `Page.layers` COMO ESTÁ NO BANCO e
   decodifica por `lerCamadas`** (REV-93D-01, 12/09/2026): a rota de edição
   de camada grava a lista como STRING JSON (há página duplamente codificada)
