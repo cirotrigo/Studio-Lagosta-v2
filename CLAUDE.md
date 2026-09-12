@@ -6308,6 +6308,20 @@ dev: `scripts/validar-copy-autoral.ts`.
   mão + `db:deploy`, com o OK do Ciro); no branch de dev está aplicada. O código
   sem a coluna falha na leitura de `Page.copyAutoral` — não subir o código antes
   do schema.
+- 🔴 **A camada escondida pelo REVISOR não é remoção autoral** (rebase do PR 3
+  sobre o PR 0, 12/09/2026). O ajuste `visibilidade` do revisor grava na camada
+  `metadata.revisao.ocultaPeloRevisor`; `revisaoDaPaginaComCamadas` lê as
+  camadas por `camadasParaDecisao` (a escondida pelo revisor conta como
+  presente), então o PATCH do editor, `ajustarArte` (`claude`/`equipe`),
+  `reverterCamadasDaArte` e `registrarRevisaoDaPagina` não assinam o bloco
+  vazio como edição de quem pediu — nem mostrar a camada de novo vira adição.
+  Camada escondida SEM a marca continua sendo remoção autoral. A efetiva da
+  ARTE (`copyEfetivaDasCamadas` sobre as camadas cruas: Generation do ajuste,
+  recomposição, compositor) segue dizendo o que foi DESENHADO, como revisão do
+  sistema — a marca nunca muda o que a arte mostra. Leitor novo que decida
+  AUTORIA a partir de camadas precisa do mesmo `camadasParaDecisao`. Teste em
+  `revisar-pagina.test.ts` (com a marca: sem revisão; edição em outro bloco:
+  só aquele bloco; controle sem a marca: revisão da equipe).
 
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 

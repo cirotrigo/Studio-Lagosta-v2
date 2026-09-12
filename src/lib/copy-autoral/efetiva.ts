@@ -188,6 +188,12 @@ export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], o
   return { vinculos, ambiguos }
 }
 
+/**
+ * O que foi DESENHADO: camada com `visible: false` não entra — inclusive a que o
+ * revisor escondeu. Quem decide AUTORIA (`revisaoDaPaginaComCamadas`) passa as
+ * camadas por `camadasParaDecisao` antes, e aí a escondida pelo revisor conta
+ * como presente: ajuste mecânico não é remoção autoral.
+ */
 function ehTextoVisivel(l: Layer): boolean {
   return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
 }

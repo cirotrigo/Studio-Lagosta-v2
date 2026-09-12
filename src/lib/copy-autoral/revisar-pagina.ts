@@ -13,11 +13,20 @@
  *    não há revisão (`sem-mudanca`);
  *  - a revisão é assinada por quem escreveu as camadas (`quem`), nunca pelo
  *    sistema — a leitura das camadas assina como sistema por padrão e aqui a
- *    autoria é trocada.
+ *    autoria é trocada;
+ *  - 🔴 a camada que o REVISOR escondeu (ajuste `visibilidade`, marca
+ *    `metadata.revisao.ocultaPeloRevisor` gravada pelo PR 0) é lida como
+ *    PRESENTE (`camadasParaDecisao`): esconder por ajuste mecânico não é quem
+ *    assina a revisão (`claude`/`equipe`) apagando o texto. Sem isso o bloco
+ *    saía vazio numa revisão AUTORAL, e mostrar a camada de novo virava uma
+ *    adição autoral. Camada escondida SEM a marca continua sendo remoção de
+ *    quem escreveu. A copy EFETIVA da arte (`copyEfetivaDasCamadas` sobre as
+ *    camadas cruas) segue dizendo o que foi DESENHADO — revisão do sistema.
  */
 
 import type { Layer } from '@/types/template'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Autor, CopyAutoral } from './contrato'
 import { copyEfetivaDasCamadas } from './efetiva'
 import { lerCopyAutoral } from './serializar'
@@ -28,6 +37,15 @@ export interface RevisaoDaPagina {
   copy: CopyAutoral | null
   blocos: string[]
   lacunas: string[]
+}
+
+/**
+ * As camadas como a AUTORIA as lê: a escondida pelo revisor conta como presente
+ * (ver o cabeçalho). Nunca use para medir o que a arte mostra.
+ */
+function lerCamadasParaAutoria(cru: unknown): ReturnType<typeof lerCamadas> {
+  const lidas = lerCamadas(cru)
+  return lidas.legivel ? { ...lidas, camadas: camadasParaDecisao(lidas.camadas as Array<{ visible?: unknown; metadata?: unknown; [chave: string]: unknown }>) as typeof lidas.camadas } : lidas
 }
 
 /** O contrato gravado na página, validado; `null` quando não há ou não passa. */
@@ -43,7 +61,7 @@ export function revisaoDaPaginaComCamadas(
 ): RevisaoDaPagina {
   const atual = copyAutoralDaPagina(gravado)
   if (!atual) return { estado: 'sem-contrato', copy: null, blocos: [], lacunas: [] }
-  const lidas = lerCamadas(camadas)
+  const lidas = lerCamadasParaAutoria(camadas)
   if (!lidas.legivel) return { estado: 'ilegivel', copy: null, blocos: [], lacunas: [] }
   const { efetiva, mudancas, lacunas } = copyEfetivaDasCamadas(atual, lidas.camadas as unknown as Layer[], { superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
   if (mudancas.length === 0) return { estado: 'sem-mudanca', copy: atual, blocos: [], lacunas }

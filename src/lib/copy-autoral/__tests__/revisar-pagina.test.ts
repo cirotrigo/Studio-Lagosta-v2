@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
+import { comVisibilidadeDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, idDeExtraLegado, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
 
 function texto(id: string, y: number, content: string, extra: Partial<Layer> = {}): Layer {
@@ -34,6 +35,42 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     expect(r.blocos).toEqual(['cta'])
     expect(r.copy!.revisoes).toEqual([{ em: '2026-09-12T11:00:00.000Z', autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', blocos: ['cta'], campos: { cta: ['linhas'] } }])
     expect(lerCopyAutoral(serializarCopyAutoral(r.copy!)).problemas).toEqual([])
+  })
+
+  it('ocultaPeloRevisor: a camada escondida pelo AJUSTE do revisor não é remoção autoral — sem revisão de quem pediu; a efetiva da arte segue dizendo o que foi desenhado', () => {
+    const marca = { em: '2026-09-12T12:00:00.000Z', ajuste: 0 }
+    const camadas = [texto('headline', 100, 'Milk-shake'), comVisibilidadeDoRevisor(texto('cta', 300, 'Conheça nossos pacotes'), false, marca)]
+    expect(camadas[1].visible).toBe(false)
+    const r = revisaoDaPaginaComCamadas(contrato, camadas, { autor: 'claude', motivo: 'ajuste de diagramação (revisor)', superficie: 'chat' })
+    expect(r.estado).toBe('sem-mudanca')
+    expect(r.blocos).toEqual([])
+    expect(r.copy!.revisoes).toEqual([])
+    expect(r.copy!.blocos.find((b) => b.id === 'cta')!.linhas).toEqual(['Conheça nossos pacotes'])
+    // Mostrar a camada de novo (a marca sai) também não é mudança autoral.
+    const mostrada = [camadas[0], comVisibilidadeDoRevisor(camadas[1], true, marca)]
+    expect(revisaoDaPaginaComCamadas(r.copy, mostrada, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' }).estado).toBe('sem-mudanca')
+    // O que a ARTE mostra continua medido sobre as camadas cruas: o CTA não foi desenhado, e quem assina é o sistema.
+    const efetiva = copyEfetivaDasCamadas(contrato, camadas, { superficie: 'ajuste-arte' })
+    expect(efetiva.efetiva.blocos.find((b) => b.id === 'cta')!.linhas).toEqual([])
+    expect(efetiva.efetiva.revisoes.at(-1)!.autor).toBe('sistema')
+  })
+
+  it('ocultaPeloRevisor: com a camada escondida pelo revisor, a edição de texto em OUTRO bloco é revisão só daquele bloco', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake duplo'), comVisibilidadeDoRevisor(texto('cta', 300, 'Conheça nossos pacotes'), false, { em: '2026-09-12T12:00:00.000Z', ajuste: 1 })]
+    const r = revisaoDaPaginaComCamadas(contrato, camadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', em: '2026-09-12T13:00:00.000Z' })
+    expect(r.estado).toBe('registrada')
+    expect(r.blocos).toEqual(['headline'])
+    expect(r.copy!.blocos.find((b) => b.id === 'cta')!.linhas).toEqual(['Conheça nossos pacotes'])
+    expect(r.copy!.revisoes).toEqual([{ em: '2026-09-12T13:00:00.000Z', autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', blocos: ['headline'], campos: { headline: ['linhas'] } }])
+  })
+
+  it('controle: camada escondida SEM a marca do revisor é a pessoa apagando — revisão autoral com o bloco vazio', () => {
+    const camadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes', { visible: false })]
+    const r = revisaoDaPaginaComCamadas(contrato, camadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', em: '2026-09-12T13:00:00.000Z' })
+    expect(r.estado).toBe('registrada')
+    expect(r.blocos).toEqual(['cta'])
+    expect(r.copy!.blocos.find((b) => b.id === 'cta')!.linhas).toEqual([])
+    expect(r.copy!.revisoes.at(-1)!.autor).toBe('equipe')
   })
 
   it('R03: texto solto lido como bloco extra é RELIDO estável — segunda leitura sem mudança, sem id duplicado, contrato válido', () => {
