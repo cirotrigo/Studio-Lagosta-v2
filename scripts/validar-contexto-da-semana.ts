@@ -239,7 +239,10 @@ async function main() {
     // R31: a candidata é escolhida lendo as camadas de verdade (`textosDaPagina`, que aceita array, string JSON e
     // dupla codificação) — um LIKE no texto do JSONB pulava páginas válidas e a prova era dada como não exercitada.
     const { textosDaPagina: textosDePagina } = await import('../src/lib/posts/page-layers')
-    const candidatasDeOutro = await db.page.findMany({ where: { Template: { projectId: { not: PROJETO } } }, select: { id: true, layers: true }, orderBy: { updatedAt: 'desc' }, take: 40 })
+    // A página de OUTRO projeto tem de ser uma página PARADA (mexida há mais de 1 h): a mais recente do dev costuma
+    // ser a de outra prova em andamento (a do revisor da arte, no projeto 8), que muda e some no meio — e a
+    // Generation que criamos apontando para ela também sequestrava a recomposição de lá (REV-2CEB-02 do PR 0).
+    const candidatasDeOutro = await db.page.findMany({ where: { Template: { projectId: { not: PROJETO } }, updatedAt: { lt: new Date(Date.now() - 3_600_000) }, NOT: { name: { contains: 'PR0-REVISOR' } } }, select: { id: true, layers: true }, orderBy: { updatedAt: 'desc' }, take: 40 })
     const paginaDeOutro = candidatasDeOutro.map((c) => ({ id: c.id, layers: c.layers, textos: Object.values(textosDePagina(c.layers)) })).filter((c) => c.textos.length > 0).slice(0, 1)
     let deOutroProjeto: { id: string } | null = null
     let porGeneracaoDeOutro: { id: string; url: string } | null = null
