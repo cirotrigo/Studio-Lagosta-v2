@@ -407,7 +407,7 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
    * únicos registrados aqui como sugestão.
    */
   const leva = montarSlotsDaLeva({ daCadencia: daCadencia.map(slotDaCadencia), ocupacao, formato, agora, dias, maxItens, temRotinaConhecida })
-  let slots = leva.slots
+  const slots = leva.slots
   const coldStart = leva.coldStart
   let itensSemeados = 0
   if (leva.semeados.length > 0) {
