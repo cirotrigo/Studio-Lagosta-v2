@@ -539,6 +539,11 @@ export async function aplicarManifesto(db: Db, manifesto: Manifesto, opcoes: Apl
             if (estado.estado === 'ausente') throw new Error(`o fato "${fato.trecho.slice(0, 60)}" não está na base depois da escrita — nada foi ativado`)
             fatosEsperados.push({ entryId: estado.entryId, trecho: fato.trecho, categoria: fato.categoria, validaAte: fato.validaAte })
           }
+          // A releitura acima são consultas por OUTRA conexão, e a sessão da trava pode ter caído enquanto elas
+          // esperavam: a posse é conferida de novo IMEDIATAMENTE antes de gravar a voz — quem a perdeu não cria
+          // nem incrementa a voz pendente (outra aplicação que tomou a trava e leu a versão anterior falharia no
+          // CAS por causa dessa escrita) (PR13-37).
+          await trava.conferir()
           const gravada = await gravarVoz({ projectId: acao.projectId, voz: VOZES_PROPOSTAS[acao.projectId].voz, ...(acao.versaoEsperadaDaVoz > 0 ? { versaoEsperada: acao.versaoEsperadaDaVoz } : {}) })
           await opcoes.seams?.antesDeAtivar?.(acao.projectId)
           await trava.conferir()

@@ -7083,6 +7083,40 @@ Da sexta revisão FINAL (BLOQUEADO, PR13-34…35):
   prova que o cleanup apaga): com o stub que só anotava, a ativação não teria
   linha para conferir — e o antigo `entryId: 'stub'` derrubaria a migração.
 
+Da sétima revisão FINAL (BLOQUEADO, PR13-36…37):
+
+- 🔴 **A marca de indexado vale só enquanto os chunks e os vetores que ela
+  atesta existem — e a REINDEXAÇÃO os apaga antes de refazê-los** (PR13-36).
+  `reindexEntry` (a API administrativa, a edição pela `atualizar-entrada-base`,
+  os scripts de reindex) apagava chunks e vetores, e uma falha depois das
+  exclusões (embeddings fora do ar) deixava a linha SEM vetor e COM
+  `indexadoEm`: a retomada da migração lia `completo`, pulava a recuperação, e
+  `conferirFatosEsperados` deixava a voz ativar sem os chunks da busca. Hoje o
+  reindexador INVALIDA a marca antes de apagar (preservando `chaveDoFato` e o
+  resto do metadata) e só a REPÕE depois de subir os vetores, sobre o metadata
+  como está naquele momento e conferindo o sinal de aborto (PR13-23) — quem
+  perdeu a posse não a repõe. Entrada SEM a marca não ganha marca ali: quem a
+  grava é quem sabe que a indexação inteira fechou (`marcarFatoIndexado`). A
+  marca mora em módulo puro da base (`src/lib/knowledge/marca-de-indexado.ts`:
+  `temMarcaDeIndexado`, `semMarcaDeIndexado`, `comMarcaDeIndexado`), reexportada
+  por `migracao-da-voz.ts`. Teste com o `db` e o indexador mockados (falha de
+  embeddings depois das exclusões deixa a linha incompleta; reindexação
+  completa repõe a marca com instante novo; aborto durante os vetores não
+  repõe) e prova 6w (a marca cai entre a 2ª passada e a ativação → a ativação
+  recusa citando "indexação não concluída"; a retomada reindexa pelo MESMO id e
+  então ativa).
+- 🔴 **A posse é conferida IMEDIATAMENTE antes de `gravarVoz`** (PR13-37): o
+  commit O pôs a releitura dos fatos (consultas por OUTRA conexão) entre a
+  conferência da 2ª passada e a gravação da voz, e a sessão da trava podia cair
+  enquanto elas esperavam — a execução que perdeu a posse ainda criava ou
+  incrementava a voz pendente, e outra aplicação que tomou a trava e leu a
+  versão anterior falharia no CAS por causa dessa escrita. Prova 6z: a sessão
+  da trava é derrubada pelo servidor na 4ª leitura (a 1ª da releitura), a
+  conferência antes de gravar falha, a voz não é criada nem incrementada,
+  nada é ativado. Regra que fica: **toda escrita do corpo confere a posse
+  DEPOIS da última espera e ANTES de escrever** — conferir cedo e escrever
+  tarde é o mesmo que não conferir.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

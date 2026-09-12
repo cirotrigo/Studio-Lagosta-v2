@@ -8,6 +8,7 @@ import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
 import { lancarSeAbortado } from './aborto'
+import { comMarcaDeIndexado, semMarcaDeIndexado, temMarcaDeIndexado } from './marca-de-indexado'
 import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
 export interface IndexEntryInput {
@@ -168,6 +169,18 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
     throw new Error('Unauthorized access to entry')
   }
 
+  // A marca durável de indexado (`metadata.indexadoEm`, a que a migração da voz lê) atesta chunks e vetores que
+  // vão ser APAGADOS já já. Se a reindexação cair depois das exclusões (embeddings fora do ar) e a marca ficar, a
+  // retomada da migração lê `completo` e a voz é ativada sem os chunks da busca (PR13-36). Por isso ela é
+  // INVALIDADA antes de apagar — preservando `chaveDoFato` e o resto do metadata — e REPOSTA só depois de subir os
+  // vetores. Entrada sem a marca (a criação normal, ou a retomada de uma linha incompleta) não ganha marca aqui:
+  // quem a grava é quem sabe que a indexação inteira fechou (`marcarFatoIndexado`, depois deste retorno).
+  const tinhaMarcaDeIndexado = temMarcaDeIndexado(entry.metadata)
+  if (tinhaMarcaDeIndexado) {
+    lancarSeAbortado(signal, 'invalidar a marca de indexado')
+    await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: semMarcaDeIndexado(entry.metadata) as Prisma.InputJsonValue } })
+  }
+
   // Delete old chunks and vectors
   lancarSeAbortado(signal, 'apagar chunks antigos')
   await db.knowledgeChunk.deleteMany({
@@ -223,6 +236,16 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
       },
     }))
   )
+
+  // Chunks e vetores novos no lugar: a marca volta, sobre o metadata COMO ESTÁ AGORA (outra escrita pode ter
+  // mexido nele no meio). Quem perdeu a posse externa não a repõe (PR13-23): a marca de uma execução abortada
+  // faria a retomada ler `completo` uma linha que outra aplicação ainda reindexa.
+  if (tinhaMarcaDeIndexado) {
+    lancarSeAbortado(signal, 'repor a marca de indexado')
+    const atual = await db.knowledgeBaseEntry.findUnique({ where: { id: entryId }, select: { metadata: true } })
+    lancarSeAbortado(signal, 'repor a marca de indexado')
+    await db.knowledgeBaseEntry.update({ where: { id: entryId }, data: { metadata: comMarcaDeIndexado(atual?.metadata, new Date()) as Prisma.InputJsonValue } })
+  }
 
   return {
     entry,

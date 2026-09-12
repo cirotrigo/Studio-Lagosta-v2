@@ -29,6 +29,7 @@
  */
 
 import { createHash } from 'node:crypto'
+import { temMarcaDeIndexado } from '../knowledge/marca-de-indexado'
 import { z } from 'zod'
 import { dadosProibidos, type TipoProibido } from '@/lib/aprendizado/causa-do-diff'
 import { lerVoz, LIMIAR_DE_CONFLITO, semelhancaDeRegras, TETO_DO_PROMPT_DA_VOZ, vozParaPrompt, type ProblemaDaVoz, type VozCompacta } from './voz'
@@ -615,15 +616,18 @@ export function podeIndexar(destino: DestinoDaAplicacao | undefined, efetivo?: {
   return { ok: true }
 }
 
-/** A marca DURÁVEL de que o fato foi indexado por completo (metadata da entrada). A linha existir não prova indexação (PR13-11). */
-export const MARCA_DE_INDEXADO = 'indexadoEm'
+/**
+ * A marca DURÁVEL de que o fato foi indexado por completo (metadata da entrada).
+ * A linha existir não prova indexação (PR13-11). Mora em módulo próprio da base
+ * (`knowledge/marca-de-indexado.ts`) porque quem a INVALIDA e REPÕE é o
+ * reindexador (PR13-36); aqui só é lida.
+ */
+export { MARCA_DE_INDEXADO } from '../knowledge/marca-de-indexado'
 export type EstadoDoFato = 'ausente' | 'incompleto' | 'completo'
-/** Pela linha da base: sem linha `ausente`; linha sem `indexadoEm` (interrompida entre o SQL e o vetor) `incompleto`; com a marca `completo`. */
+/** Pela linha da base: sem linha `ausente`; linha sem `indexadoEm` (interrompida entre o SQL e o vetor, ou reindexação que caiu depois das exclusões) `incompleto`; com a marca `completo`. */
 export function classificarFato(linha: { metadata?: unknown } | null | undefined): EstadoDoFato {
   if (!linha) return 'ausente'
-  const m = linha.metadata
-  const indexadoEm = m && typeof m === 'object' && !Array.isArray(m) ? (m as Record<string, unknown>)[MARCA_DE_INDEXADO] : undefined
-  return typeof indexadoEm === 'string' && indexadoEm.length > 0 ? 'completo' : 'incompleto'
+  return temMarcaDeIndexado(linha.metadata) ? 'completo' : 'incompleto'
 }
 
 /** O compute de uma URL do Neon (`ep-x-pooler.…` e `ep-x.…` são a mesma instância); `null` quando ilegível. */

@@ -33,6 +33,13 @@
  *  6c. DNA editado ENTRE a leitura e a ativação (costura `antesDeAtivar`): a
  *     ativação recusa (`VOZ_DNA_DIVERGENTE`), o legado continua mandando;
  *     restaurado o DNA, migra (PR13-02);
+ *  6w. um fato já conferido PERDE A MARCA de indexado entre a 2ª passada e a
+ *     ativação (o que uma reindexação que caiu depois das exclusões deixa): a
+ *     ativação recusa; na retomada ele é REINDEXADO pelo mesmo id antes de
+ *     ativar (PR13-36);
+ *  6z. a sessão da trava é derrubada DURANTE a releitura final dos fatos
+ *     (entre a última escrita e `gravarVoz`): a posse é conferida antes de
+ *     gravar, a voz não é criada nem incrementada, nada é ativado (PR13-37);
  *  7. `manter-legado` e `pendente` não escrevem nada;
  *  8. nada além de BrandVoice (e da linha de base da prova, apagada no
  *     cleanup) foi criado desde o início (base, sinais, páginas, artes).
@@ -42,6 +49,7 @@
  * USO: npx tsx scripts/validar-migracao-da-voz.ts [--saida <pasta>]
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
+import { semMarcaDeIndexado } from '../src/lib/knowledge/marca-de-indexado'
 import { resolve } from 'node:path'
 
 const ROOT = process.cwd()
@@ -425,14 +433,61 @@ async function main() {
     const reg6y = await lerRegistroDaVoz(PROJETO)
     conferir('restaurada a linha, migra: voz v7 (CAS sobre a v6), migradaEm gravada, os 3 fatos já existentes, nenhum recriado', r6y[0]?.acao === 'migrar' && !r6y[0].erro && r6y[0].vozVersao === 7 && r6y[0].fatosCriados === 0 && r6y[0].fatosJaExistentes === 3 && reg6y?.versao === 7 && reg6y.migradaEm !== null, JSON.stringify(r6y[0]))
 
+    // ── 6w. a marca de indexado cai entre a conferência e a ativação (PR13-36) ──
+    console.log('6w) um fato já conferido perde a MARCA de indexado entre a 2ª passada e a ativação (o que uma reindexação que caiu depois das exclusões deixa): a ativação recusa; na retomada o fato é REINDEXADO pelo mesmo id antes de ativar')
+    const d6w = await desfazerMigracao({ projectId: PROJETO })
+    const fato6w = await estadoDoFatoNaBase(db, chaves[1], PROJETO)
+    if (fato6w.estado !== 'completo') throw new Error('6w: o 2º fato da prévia deveria estar completo na base')
+    const reindexadosAntes6w = reindexados.length
+    const r6w = await aplicarManifesto(db, aprovado.manifesto, {
+      criarFato, estadoDoFato, reindexarFato,
+      // o que `reindexEntry` faz ao começar: invalida a marca preservando o resto do metadata (PR13-36)
+      seams: { antesDeAtivar: async () => { const l = await db.knowledgeBaseEntry.findUnique({ where: { id: fato6w.entryId }, select: { metadata: true } }); await db.knowledgeBaseEntry.update({ where: { id: fato6w.entryId }, data: { metadata: semMarcaDeIndexado(l?.metadata) as never } }) } },
+    })
+    const reg6w = await lerRegistroDaVoz(PROJETO)
+    const linha6w = await estadoDoFatoNaBase(db, chaves[1], PROJETO)
+    conferir('desfeita; a ativação recusou com VOZ_FATOS_DIVERGENTES citando "indexação não concluída"; voz gravada (v8) e NÃO migrada; a linha continua INCOMPLETA (a chave do fato preservada); nada reindexado nesta rodada', d6w.desfeita && /fatos aprovados mudaram/.test(r6w[0]?.erro ?? '') && /indexação não concluída/.test(r6w[0]?.erro ?? '') && reg6w?.versao === 8 && reg6w.migradaEm === null && linha6w.estado === 'incompleto' && reindexados.length === reindexadosAntes6w, JSON.stringify({ r: r6w[0], versao: reg6w?.versao, migradaEm: reg6w?.migradaEm, estado: linha6w.estado }))
+    const r6w2 = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
+    const reg6w2 = await lerRegistroDaVoz(PROJETO)
+    const linha6w2 = await estadoDoFatoNaBase(db, chaves[1], PROJETO)
+    conferir('na retomada o fato incompleto é REINDEXADO pelo MESMO id antes de ativar (fatosReindexados 1, os outros 2 já existentes, nenhum criado), volta a completo, e migra: v9', r6w2[0]?.acao === 'migrar' && !r6w2[0].erro && r6w2[0].fatosReindexados === 1 && r6w2[0].fatosJaExistentes === 2 && r6w2[0].fatosCriados === 0 && reindexados.length === reindexadosAntes6w + 1 && reindexados[reindexados.length - 1]?.entryId === fato6w.entryId && linha6w2.estado === 'completo' && reg6w2?.versao === 9 && reg6w2.migradaEm !== null, JSON.stringify({ r: r6w2[0], versao: reg6w2?.versao, estado: linha6w2.estado, ultimoReindexado: reindexados[reindexados.length - 1] }))
+
+    // ── 6z. a trava cai durante a RELEITURA final dos fatos (PR13-37) ──
+    console.log('6z) a sessão da trava é derrubada DURANTE a releitura final dos fatos (entre a última escrita e gravarVoz): a conferência antes de gravar falha, a voz NÃO é criada nem incrementada, nada é ativado')
+    const d6z = await desfazerMigracao({ projectId: PROJETO })
+    let executarNaTrava6z: ((sql: string) => Promise<void>) | null = null
+    let leituras6z = 0
+    // A 1ª passada lê os 3 fatos (chamadas 1-3, em paralelo); com todos completos não há escrita, e a releitura
+    // final começa na 4ª chamada — é AÍ que o servidor derruba a sessão da trava (`SET idle_session_timeout`, como
+    // em 6e). As leituras seguem por outra conexão; a conferência da posse antes de `gravarVoz` é o que tem de parar.
+    const estadoDoFatoQueDerrubaATrava = async (chave: string, projectId: number) => {
+      leituras6z++
+      if (leituras6z === 4) {
+        await executarNaTrava6z?.(`SET idle_session_timeout = '200ms'`).catch(() => undefined)
+        await new Promise((r) => setTimeout(r, 1_500))
+      }
+      return estadoDoFato(chave, projectId)
+    }
+    const anotadosAntes6z = fatosAnotados.length
+    const reindexadosAntes6z = reindexados.length
+    const r6z = await aplicarManifesto(db, aprovado.manifesto, {
+      criarFato, estadoDoFato: estadoDoFatoQueDerrubaATrava, reindexarFato,
+      comTrava: travaPorProjeto(undefined, { aoTravar: (sessao) => { executarNaTrava6z = sessao.executar } }),
+    })
+    const reg6z = await lerRegistroDaVoz(PROJETO)
+    conferir('desfeita; 6 leituras (3 da 1ª passada + 3 da releitura, nenhuma escrita); erro "a trava por projeto se perdeu"; a voz continua v9 e NÃO migrada (nem criada nem incrementada); registrador e reindexador quietos', d6z.desfeita && leituras6z === 6 && /a trava por projeto se perdeu/.test(r6z[0]?.erro ?? '') && reg6z?.versao === 9 && reg6z.migradaEm === null && fatosAnotados.length === anotadosAntes6z && reindexados.length === reindexadosAntes6z, JSON.stringify({ r: r6z[0], leituras: leituras6z, versao: reg6z?.versao, migradaEm: reg6z?.migradaEm }))
+    const r6z2 = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
+    const reg6z2 = await lerRegistroDaVoz(PROJETO)
+    conferir('com a trava normal migra de novo: v10, migradaEm gravada, os 3 fatos já existentes', r6z2[0]?.acao === 'migrar' && !r6z2[0].erro && reg6z2?.versao === 10 && reg6z2.migradaEm !== null && r6z2[0].fatosJaExistentes === 3, JSON.stringify(r6z2[0]))
+
     // ── 7. manter-legado e pendente não escrevem ───────────────────────────
     console.log('7) "manter-legado" e "pendente" não escrevem nada')
     const antes7 = fatosAnotados.length
-    const migradaEm7 = reg6y?.migradaEm?.toISOString()
+    const migradaEm7 = reg6z2?.migradaEm?.toISOString()
     const r7a = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'manter-legado', ...APROVACAO })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const r7b = await aplicarManifesto(db, lerManifesto(manifestoCom({ versaoDaPrevia: 'qualquer-coisa-16', decisao: 'pendente' })).manifesto!, { criarFato, estadoDoFato, reindexarFato })
     const reg7 = await lerRegistroDaVoz(PROJETO)
-    conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v7 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 7 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
+    conferir('manter-legado e pendente voltam como tal (sem olhar a versão da prévia), a voz fica v10 migrada, registrador quieto', r7a[0]?.acao === 'manter-legado' && r7b[0]?.acao === 'pendente' && reg7?.versao === 10 && reg7.migradaEm?.toISOString() === migradaEm7 && fatosAnotados.length === antes7)
 
     // ── 8. nada além de BrandVoice ─────────────────────────────────────────
     console.log('8) nada além de BrandVoice (e da linha de base da própria prova) foi criado desde o início da prova')
