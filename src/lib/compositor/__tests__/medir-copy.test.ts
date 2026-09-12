@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { montarAssinatura } from '../assinatura'
-import { AMOSTRA_DO_ORCAMENTO, areaUtilDe, medirCopy, orcamentoDaVariante } from '../medir-copy'
+import { AMOSTRA_DO_ORCAMENTO, areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante } from '../medir-copy'
 
 /** Régua falsa: cada letra mede 0,55 × corpo; uma linha por \n; altura = linhas × corpo × entrelinha. */
 const medirFalso = (layer: Layer) => {
@@ -217,6 +217,72 @@ describe('medirCopy — a mesma régua da composição, dita pelo que é', () =>
     const fechadoSemPar = 'a'.repeat(18) + ']'
     const r2 = medirCopy({ ...base, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: [fechadoSemPar] }] } })
     expect(r2.blocos[0].linhasMedidas[0]).toMatchObject({ linha: fechadoSemPar, largura: 18 * 55, cabe: true })
+  })
+
+  it('a medida por linha e o orçamento da recusa somam a largura do DESTAQUE como a montagem (R08): família pesada mais larga, fontes disponíveis — bloco, linha e orçamento dizem o mesmo', () => {
+    // Régua sensível à FAMÍLIA: 0,55 × corpo na base, 1,10 × corpo na família pesada do destaque.
+    const medirPorFamilia = (layer: Layer) => {
+      const fontSize = Number(layer.style?.fontSize ?? 16)
+      const fator = layer.style?.fontFamily === 'Bevan Bold' ? 1.1 : 0.55
+      const linhas = (layer.content ?? '').split('\n')
+      const largura = Math.max(...linhas.map((l) => l.length * fontSize * fator))
+      return { width: layer.size.width, height: linhas.length * fontSize * Number(layer.style?.lineHeight ?? 1.1), maxLineWidth: largura, lineCount: linhas.length }
+    }
+    const comDestaque = montarAssinatura({
+      pagina: { id: 'p9', width: 1080, height: 1920, layers: [texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#fff', lineHeight: 1 })] },
+      formatoDaPagina: 'story',
+      numerosDoProjeto: { destaque: { fontFamily: 'Bevan Bold', pesado: false } },
+    })
+    const linha = 'Costela no bafo!'
+    expect(linha.length).toBe(16)
+    // A coluna desta assinatura sai das margens da página (896 px): 16 × 55 = 880 px cabe SEM destaque;
+    // a linha inteira destacada mede 16 × 110 = 1.760 px (extra de 880), e a 80% ainda 1.408 px — não cabe.
+    const coluna = areaUtilDe(comDestaque, 'story').colunaUtil
+    expect(16 * 55).toBeLessThanOrEqual(coluna)
+    expect(16 * 110 * 0.8).toBeGreaterThan(coluna)
+    const r = medirCopy({ ...base, assinatura: comDestaque, medir: medirPorFamilia, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: [`[${linha}]`] }] } })
+    const bloco = r.blocos[0]
+    expect(bloco.situacao).toBe('nao-cabe')
+    expect(bloco.naoMedido).toBe(false)
+    expect(bloco.aproximado).toBe(true)
+    expect(bloco.linhasMedidas[0].coluna).toBe(coluna)
+    expect(bloco.linhasMedidas[0].largura).toBe(1760)
+    expect(bloco.linhasMedidas[0].cabe).toBe(false)
+    const cabem = Math.floor((16 * coluna) / 1760)
+    expect(bloco.linhasMedidas[0].caracteresQueCabem).toBe(cabem)
+    // o orçamento da recusa NÃO vem vazio: a mesma linha, a mesma largura, o mesmo orçamento
+    expect(bloco.orcamento).toHaveLength(1)
+    expect(bloco.orcamento![0]).toMatchObject({ linha, largura: 1760, coluna, caracteresQueCabem: cabem })
+    // a MESMA linha sem colchetes cabe em escala 1: o extra é só do destaque
+    const semColchetes = medirCopy({ ...base, assinatura: comDestaque, medir: medirPorFamilia, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: [linha] }] } })
+    expect(semColchetes.blocos[0].situacao).toBe('cabe')
+    expect(semColchetes.blocos[0].linhasMedidas[0].largura).toBe(880)
+    expect(semColchetes.blocos[0].linhasMedidas[0].cabe).toBe(true)
+    // destaque só na COR (a assinatura base, coluna 1.000): mesma família, nenhum extra — cabe, e é aproximado
+    const soCor = medirCopy({ ...base, medir: medirPorFamilia, formato: 'story', spec: { blocos: [{ papel: 'headline', linhas: [`[${linha}]`] }] } })
+    expect(soCor.blocos[0].situacao).toBe('cabe')
+    expect(soCor.blocos[0].linhasMedidas[0].largura).toBe(880)
+    expect(soCor.blocos[0].aproximado).toBe(true)
+  })
+
+  it('as famílias da variante são as de TODOS os textos reconhecidos (R09): o segundo serviço com fonte própria entra, camada oculta e camada sem papel não', () => {
+    const camadas: Layer[] = [
+      { ...texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#fff', lineHeight: 1 }, 'Título'), metadata: { groupId: 'g-topo' } },
+      { ...texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#fff', lineHeight: 1.2 }, 'Seg a sex, das 11h às 15h'), position: { x: 92, y: 1600 }, metadata: { groupId: 'g-rodape' } },
+      { ...texto('info', { fontFamily: 'Fonte Rara', fontSize: 24, color: '#ddd', lineHeight: 1.2 }, 'Rua das Flores, 12 — Centro'), id: 'servico-endereco', position: { x: 92, y: 1650 }, metadata: { groupId: 'g-rodape' } },
+      { ...texto('apoio', { fontFamily: 'Fonte Oculta', fontSize: 40, color: '#fff', lineHeight: 1.2 }), visible: false },
+      texto('decoracao', { fontFamily: 'Fonte Sem Papel', fontSize: 40, color: '#fff', lineHeight: 1.2 }),
+    ]
+    const a = montarAssinatura({ pagina: { id: 'p10', width: 1080, height: 1920, layers: camadas }, formatoDaPagina: 'story', numerosDoProjeto: { destaque: { fontFamily: 'Bevan Bold', pesado: false } } })
+    // `papeis` guarda só o PRIMEIRO estilo de cada papel: a "Fonte Rara" do segundo serviço não está lá
+    expect(Object.values(a.papeis).map((e) => e.fontFamily)).not.toContain('Fonte Rara')
+    const familias = familiasUsadasNaVariante(a, camadas)
+    expect(familias).toEqual(expect.arrayContaining(['Bevan', 'Barlow', 'Fonte Rara', 'Bevan Bold']))
+    expect(familias).not.toContain('Fonte Oculta')
+    expect(familias).not.toContain('Fonte Sem Papel')
+    // sem a lista explícita, lê `camadasDaPagina` da própria assinatura (como o serviço a carrega)
+    a.camadasDaPagina = camadas
+    expect(familiasUsadasNaVariante(a)).toContain('Fonte Rara')
   })
 
   it('o orçamento antes do texto: caracteres por linha pela amostra em português e linhas na altura útil, por papel; sem fonte, nulo', () => {

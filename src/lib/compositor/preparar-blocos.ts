@@ -64,6 +64,8 @@ export interface BlocoPreparado extends BlocoMontado {
   linhasDaCopy: string[]
   /** O estilo com que o texto foi medido (do arranjo ou da assinatura). */
   estilo: EstiloDePapel
+  /** O estilo de destaque com que a montagem mediu os [colchetes] (null = sem estilo na marca). */
+  destaque: EstiloDeDestaque | null
 }
 
 export interface RecusaPreparada {
@@ -73,6 +75,8 @@ export interface RecusaPreparada {
   estilo: EstiloDePapel
   /** As famílias que ENTRARAM na medição — a resposta de quem mediu (PR4-R2-01). */
   familiasMedidas: string[]
+  /** O estilo de destaque com que a montagem mediu os [colchetes] (null = sem estilo na marca). */
+  destaque: EstiloDeDestaque | null
   orcamento: OrcamentoDeLinha[]
 }
 
@@ -249,7 +253,7 @@ export function prepararBlocos(args: {
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, orcamento: r.recusa.orcamento })
+        recusas.push({ papel: r.recusa.papel, id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento })
         continue
       }
       if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
@@ -272,6 +276,7 @@ export function prepararBlocos(args: {
         chave: chaveDoGrupoAtual,
         linhasDaCopy: p.linhas,
         estilo,
+        destaque,
         ...(vaoAntes !== null ? { vaoAntes } : {}),
         ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),

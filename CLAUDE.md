@@ -7459,6 +7459,22 @@ que NADA é gravado e que a medida é a da composição).
   **`aproximado` = há destaque entre [colchetes]**: o trecho ganha outra
   família e a largura extra é estimada trecho a trecho (o medidor do servidor
   não mede rich text).
+- 🔴 **O destaque alarga a linha na MESMA conta da montagem, nos três lugares**
+  (`larguraExtraDoDestaque`, exportada de `blocos.ts`): a montagem, a medida
+  por linha e o orçamento da recusa somam o quanto os trechos entre
+  [colchetes] crescem na família pesada. Sem isso, com destaque em família mais
+  larga e fontes disponíveis, o bloco dizia `nao-cabe` enquanto a única linha
+  dele dizia `cabe` e o orçamento vinha VAZIO (R08 da revisão de fd82505c). O
+  destaque só conta como na montagem: [colchetes] na copy E estilo na marca; o
+  bloco preparado carrega o `destaque` com que foi medido. Teste com régua
+  sensível à família.
+- 🔴 **`ver-assinatura` declara as fontes ausentes de TODOS os textos
+  reconhecidos da variante** (`familiasUsadasNaVariante`, puro): `montarAssinatura`
+  guarda só o PRIMEIRO estilo de cada papel, e a família própria do segundo
+  serviço (o endereço em "Fonte Rara") sumia de `fontesNaoCarregadas` mesmo
+  detectada entre as cadastradas — o texto era medido em fallback sem aviso
+  (R09). Camada oculta e camada sem papel ficam de fora. `descreverVariantes` é
+  testado com o serviço mockado (Prisma, medidor e registro de fontes).
 - **O orçamento ANTES do texto** (`orcamentoDaVariante`) é medido com uma
   amostra em português (`AMOSTRA_DO_ORCAMENTO`) na fonte real de cada papel:
   caracteres por linha e linhas na altura útil, por variante. É aproximado por

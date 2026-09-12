@@ -14,20 +14,8 @@ import type { Layer } from '@/types/template'
 import { formatoDaPagina, montarAssinatura, NOME_DO_TEMPLATE_DE_ASSINATURA, papelDoNome, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
 import { arranjosDasCombinacoes, carregarAssinatura, carregarFoto, familiasDoProjeto, luzMediaDaFoto } from './compor'
 import { chaveDaPeca } from './preparar-blocos'
-import { areaUtilDe, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
+import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
 import { DIMENSOES, validarSpec, type Formato, type Papel, type SpecDePeca } from './spec'
-
-
-/** As famílias que uma assinatura pode pedir: a de cada papel, a do destaque desenhado na página e a do destaque padrão. */
-function familiasDaAssinatura(a: AssinaturaDaMarca): string[] {
-  const out = new Set<string>()
-  for (const e of Object.values(a.papeis) as EstiloDePapel[]) {
-    if (e.fontFamily) out.add(e.fontFamily)
-    if (e.destaque?.fontFamily) out.add(e.destaque.fontFamily)
-  }
-  if (a.numeros.destaque.fontFamily) out.add(a.numeros.destaque.fontFamily)
-  return [...out]
-}
 
 export interface PedidoDeMedicao {
   projectId: number
@@ -217,7 +205,10 @@ export async function descreverVariantes(projectId: number, formato: Formato): P
       numerosDoProjeto: projeto.assinatura,
       logoDoProjeto: projeto.Logo[0] ? { url: projeto.Logo[0].fileUrl } : null,
     })
-    const naoCarregadas = await familiasNaoCarregadas([...familiasDaAssinatura(a), ...familias])
+    // As famílias de TODOS os textos reconhecidos da variante (o segundo serviço
+    // com fonte própria incluído), não só o primeiro estilo de cada papel (R09).
+    const familiasDaVariante = familiasUsadasNaVariante(a, camadas)
+    const naoCarregadas = await familiasNaoCarregadas([...familiasDaVariante, ...familias])
     const papeis = [...new Set(camadas.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.visible !== false).map((c) => papelDoNome(c.name) ?? papelDoNome(c.id)).filter((x): x is Papel => !!x))]
     const area = areaUtilDe(a, formato)
     const estilos: Partial<Record<Papel, EstiloDescrito>> = {}
@@ -247,7 +238,7 @@ export async function descreverVariantes(projectId: number, formato: Formato): P
       estilos,
       areaUtil: area,
       orcamento: orcamentoDaVariante({ assinatura: a, formato, medir, fontesNaoCarregadas: naoCarregadas }),
-      fontesNaoCarregadas: [...naoCarregadas].filter((f) => familiasDaAssinatura(a).includes(f)),
+      fontesNaoCarregadas: [...naoCarregadas].filter((f) => familiasDaVariante.includes(f)),
       logo: a.logo ? { largura: a.logo.largura } : null,
       gradienteDaPagina: Boolean(a.gradienteDaPagina),
     })

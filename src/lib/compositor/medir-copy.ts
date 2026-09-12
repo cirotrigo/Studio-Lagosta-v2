@@ -24,10 +24,11 @@
  */
 
 import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
-import { papeisQueFaltam, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
-import { aplicarPrefixo, camadaDoPapel, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
+import type { Layer } from '@/types/template'
+import { estiloDaCamada, papeisQueFaltam, papelDoNome, type AssinaturaDaMarca, type EstiloDePapel } from './assinatura'
+import { aplicarPrefixo, camadaDoPapel, larguraExtraDoDestaque, medirLinha, PISO_DE_ESCALA, type OrcamentoDeLinha } from './blocos'
 import type { ArranjoDeGrupo } from './combinacoes'
-import { lerDestaques } from './destaques'
+import { lerDestaques, type EstiloDeDestaque } from './destaques'
 import { prepararBlocos, type PecaParaBlocos } from './preparar-blocos'
 import { DIMENSOES, type Formato, type Papel } from './spec'
 
@@ -187,9 +188,9 @@ export function medirCopy(args: {
   familias: string[]
   /**
    * A família está carregada no servidor de render? Consultada sobre as
-   * famílias que a montagem PEDIU em cada bloco (`familiasPedidas`) — não sobre
-   * uma lista prévia: o segundo texto de serviço pode ter família própria, e a
-   * combinação salva também (R04).
+   * famílias que a montagem MEDIU em cada bloco (`familiasMedidas`, a resposta
+   * de quem mediu) — não sobre uma lista prévia: o segundo texto de serviço
+   * pode ter família própria, e a combinação salva também (R04).
    */
   fonteCarregada: (familia: string) => boolean
   /** As combinações salvas do projeto, já como arranjos (a composição também as considera). */
@@ -228,25 +229,34 @@ export function medirCopy(args: {
     medidas.push({ papel, id: papel, situacao: 'papel-ausente', fonte: null, escala: null, fontSize: null, width: null, height: null, linhas: linhas.length, naoMedido: false, aproximado: false, linhasMedidas: [], avisos: [`a variante não tem o papel "${papel}"`] })
   }
 
-  const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean): MedidaDeLinha[] => {
+  const medirLinhas = (papel: Papel, estilo: EstiloDePapel, linhasDaCopy: string[], naoMedido: boolean, destaque: EstiloDeDestaque | null): MedidaDeLinha[] => {
     const coluna = Math.floor(area.colunaUtil * (estilo.larguraMaxima ?? 1))
     // O texto EFETIVO da linha é o que `montarBloco` mede: `lerDestaques` tira
     // os colchetes — inclusive o colchete sem par, que a montagem remove com
     // aviso (R07). `linha` continua sendo a string do autor.
-    const limpas = linhasDaCopy.map((l) => lerDestaques(l).texto)
+    const lidas = linhasDaCopy.map(lerDestaques)
+    const limpas = lidas.map((l) => l.texto)
     const base = camadaDoPapel({ papel, linhas: limpas, estilo, escala: area.escalaDoFormato, width: coluna, textAlign: 'left', groupId: 'medicao', corDaMancha: args.assinatura.numeros.mancha })
     // A linha EFETIVA leva o prefixo da assinatura (o "→ " do CTA) como a
     // montagem a mede; `linha` continua sendo a string do autor (R06).
     const efetivas = aplicarPrefixo(limpas, estilo.prefixo)
+    // O destaque só vale como na montagem: [colchetes] na copy E estilo na marca
+    // (`montarBloco`: `pediuDestaque && temEstilo`). Aí cada trecho ganha a
+    // família pesada e alarga a linha — a MESMA conta (`larguraExtraDoDestaque`)
+    // entra na medida por linha, senão o bloco diz "não cabe" e a linha "cabe" (R08).
+    const temEstilo = Boolean(destaque && Object.values(destaque).some(Boolean))
+    const ativo = lidas.some((l) => l.trechos.length > 0) && temEstilo ? destaque : null
     return linhasDaCopy.map((linha, i) => {
       const efetiva = efetivas[i]
       const m = naoMedido ? null : medirLinha(args.medir, base, efetiva, coluna)
+      const extra = m && ativo ? larguraExtraDoDestaque(args.medir, base, limpas[i], lidas[i].trechos, ativo.fontFamily, coluna) : 0
+      const largura = m ? m.largura + extra : null
       return {
         linha,
-        largura: m ? Math.round(m.largura) : null,
+        largura: largura !== null ? Math.round(largura) : null,
         coluna,
-        cabe: m ? m.largura <= coluna : null,
-        caracteresQueCabem: m && m.largura > 0 ? Math.max(1, Math.floor((efetiva.length * coluna) / m.largura) - (efetiva.length - limpas[i].length)) : null,
+        cabe: largura !== null ? largura <= coluna : null,
+        caracteresQueCabem: largura !== null && largura > 0 ? Math.max(1, Math.floor((efetiva.length * coluna) / largura) - (efetiva.length - limpas[i].length)) : null,
       }
     })
   }
@@ -258,7 +268,7 @@ export function medirCopy(args: {
 
   for (const b of preparados.montados) {
     if (faltamNaAssinatura.has(b.papel)) continue
-    const naoMedido = naoCarregou(b.familiasPedidas)
+    const naoMedido = naoCarregou(b.familiasMedidas)
     medidas.push({
       papel: b.papel,
       id: b.layer.id,
@@ -271,13 +281,13 @@ export function medirCopy(args: {
       linhas: b.linhasDaCopy.length,
       naoMedido,
       aproximado: Boolean(b.destacado),
-      linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido),
+      linhasMedidas: medirLinhas(b.papel, b.estilo, b.linhasDaCopy, naoMedido, b.destaque),
       avisos: [...avisosDoPapel(b.papel), ...(b.escala < 1 ? [`fonte reduzida a ${Math.round(b.escala * 100)}% para caber na coluna (piso ${Math.round(PISO_DE_ESCALA * 100)}%)`] : [])],
     })
   }
   for (const r of preparados.recusas) {
     if (faltamNaAssinatura.has(r.papel)) continue
-    const naoMedido = naoCarregou(r.familiasPedidas)
+    const naoMedido = naoCarregou(r.familiasMedidas)
     const coluna = Math.floor(area.colunaUtil * (r.estilo.larguraMaxima ?? 1))
     medidas.push({
       papel: r.papel,
@@ -291,12 +301,12 @@ export function medirCopy(args: {
       linhas: r.linhasDaCopy.length,
       naoMedido,
       aproximado: r.linhasDaCopy.some((l) => lerDestaques(l).trechos.length > 0),
-      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido),
+      linhasMedidas: medirLinhas(r.papel, r.estilo, r.linhasDaCopy, naoMedido, r.destaque),
       orcamento: r.orcamento,
       avisos: [
         ...avisosDoPapel(r.papel),
         naoMedido
-          ? `a fonte de "${r.papel}" (${r.familiasPedidas.filter((f) => !args.fonteCarregada(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
+          ? `a fonte de "${r.papel}" (${r.familiasMedidas.filter((f) => !args.fonteCarregada(f)).join(', ')}) não está no servidor: a recusa foi medida na fonte de fallback e NÃO vale — cadastre a fonte antes de reescrever`
           : `linha maior que a coluna (${coluna}px) mesmo a ${Math.round(PISO_DE_ESCALA * 100)}% da fonte: reescreva com o orçamento`,
       ],
     })
@@ -317,4 +327,31 @@ export function medirCopy(args: {
     arranjos: preparados.arranjos,
     avisos,
   }
+}
+
+/**
+ * As famílias que a variante efetivamente USA: a de cada papel, a de TODO texto
+ * reconhecido da página (o segundo serviço com fonte própria, que
+ * `montarAssinatura` não guarda em `papeis` — só o primeiro estilo de cada
+ * papel), a do destaque desenhado na página e a do destaque padrão. É contra
+ * esta lista que `ver-assinatura` declara as fontes ausentes (R09 da revisão de
+ * fd82505c): pela lista de `papeis`, a "Fonte Rara" do segundo serviço sumia da
+ * resposta e o texto era medido em fallback sem aviso.
+ */
+export function familiasUsadasNaVariante(a: AssinaturaDaMarca, camadas: Layer[] = a.camadasDaPagina ?? []): string[] {
+  const out = new Set<string>()
+  for (const e of Object.values(a.papeis) as EstiloDePapel[]) {
+    if (e.fontFamily) out.add(e.fontFamily)
+    if (e.destaque?.fontFamily) out.add(e.destaque.fontFamily)
+  }
+  for (const c of camadas) {
+    if ((c.type !== 'text' && c.type !== 'rich-text') || c.visible === false) continue
+    if (!papelDoNome(c.name) && !papelDoNome(c.id)) continue
+    const e = estiloDaCamada(c, camadas)
+    if (!e) continue
+    out.add(e.fontFamily)
+    if (e.destaque?.fontFamily) out.add(e.destaque.fontFamily)
+  }
+  if (a.numeros.destaque.fontFamily) out.add(a.numeros.destaque.fontFamily)
+  return [...out]
 }

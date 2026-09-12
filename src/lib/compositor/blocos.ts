@@ -233,8 +233,13 @@ export function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, co
   return m ? { largura: m.maxLineWidth, altura: m.height, linhas: m.lineCount } : null
 }
 
-/** Quanto os trechos destacados alargam a linha quando ganham a família mais pesada. */
-function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: string, trechos: TrechoDestacado[], familia: string | undefined, colunaUtil: number): number {
+/**
+ * Quanto os trechos destacados alargam a linha quando ganham a família mais
+ * pesada. Exportada para o `medir-copy` medir a linha com a MESMA conta da
+ * montagem (R08 da revisão de fd82505c): a medida por linha e o orçamento da
+ * recusa somam este extra, senão o bloco diz "não cabe" e a linha diz "cabe".
+ */
+export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: string, trechos: TrechoDestacado[], familia: string | undefined, colunaUtil: number): number {
   if (!familia || familia === base.style?.fontFamily || trechos.length === 0) return 0
   const pesada: Layer = { ...base, style: { ...(base.style ?? {}), fontFamily: familia, fontWeight: undefined } }
   let extra = 0
@@ -337,15 +342,20 @@ export function montarBloco(args: {
   // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
   const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
   const orcamento: OrcamentoDeLinha[] = linhas
-    .map((linha) => {
+    .map((linha, i) => {
       const m = medirLinha(args.medir, base, linha, coluna)
-      if (!m || m.largura <= coluna) return null
+      if (!m) return null
+      // O destaque alarga a linha também aqui: sem o extra, a linha que só
+      // estourou pela família pesada saía do orçamento e a recusa vinha vazia (R08).
+      const extra = destaque ? larguraExtraDoDestaque(args.medir, base, linhasLimpas[i], destaque.trechosPorLinha[i] ?? [], destaque.estilo.fontFamily, coluna) : 0
+      const largura = m.largura + extra
+      if (largura <= coluna) return null
       return {
         papel: args.papel,
         linha,
-        largura: Math.round(m.largura),
+        largura: Math.round(largura),
         coluna,
-        caracteresQueCabem: Math.max(1, Math.floor((linha.length * coluna) / m.largura)),
+        caracteresQueCabem: Math.max(1, Math.floor((linha.length * coluna) / largura)),
       }
     })
     .filter((o): o is OrcamentoDeLinha => o !== null)
