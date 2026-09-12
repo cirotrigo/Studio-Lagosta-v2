@@ -147,7 +147,11 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
     )
   }
 
-  if (isError) {
+  // PR14-14: o cartão EXCLUSIVO de erro é só para a carga inicial, sem dado nenhum. Com dados já carregados, uma
+  // releitura que falha (o GET da invalidação depois de salvar a voz) aparece como aviso JUNTO do conteúdo — trocar a
+  // árvore inteira pelo cartão desmontava o DNA legado (`BrandDnaSection`) e descartava o rascunho de Tom de voz e
+  // Regras que a pessoa estava escrevendo; o `forceMount` do PR14-11 protege o recolhimento, não este retorno.
+  if (isError && !data) {
     return (
       <Card className="flex flex-wrap items-center justify-between gap-3 border-destructive/40 p-6 text-sm">
         <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Não consegui ler a voz da marca: {(error as Error)?.message || 'erro ao consultar'}.</span>
@@ -173,6 +177,12 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-4">
+      {isError ? (
+        <Card className="flex flex-wrap items-center justify-between gap-3 border-destructive/40 p-3 text-sm" data-testid="voz-releitura-falhou">
+          <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-destructive" /> Não consegui reler a voz da marca ({(error as Error)?.message || 'erro ao consultar'}). O que está na tela continua editável; a versão mostrada pode estar atrasada.</span>
+          <Button size="sm" variant="outline" onClick={() => void refetch()}><RefreshCw className="mr-2 h-3.5 w-3.5" /> Tentar de novo</Button>
+        </Card>
+      ) : null}
       <Card className="p-6">
         <fieldset disabled={salvando} className="space-y-5 disabled:opacity-80">
           <div className="flex flex-wrap items-start justify-between gap-3">

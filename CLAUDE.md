@@ -6808,6 +6808,13 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   marca fala"): os editores movidos guardam rascunho em
   estado local, e `{aberto && children}` descartava a edição ao recolher;
   `forceMount` + `hidden`, montando na primeira abertura.
+  **E a releitura que FALHA com dados já carregados não troca a árvore pelo
+  cartão de erro** (PR14-14): salvar a voz invalida a consulta, e um GET que
+  falha depois disso punha `isError` verdadeiro — o retorno exclusivo de erro
+  desmontava o `BrandDnaSection` e o rascunho de Tom de voz e Regras que a
+  pessoa estava escrevendo no DNA legado sumia; "Tentar de novo" voltava com
+  os valores do servidor. O cartão exclusivo é só da carga inicial sem dado;
+  com dado, a falha vira aviso acima do conteúdo, e tudo continua montado.
 - **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
   as três áreas distinguem erro (mensagem + tentar de novo), carregando e
   resultado vazio — "este cliente não tem página de assinatura" só é dito com a
