@@ -259,7 +259,7 @@ async function main() {
       conferir('R29/R30: post com pageId de OUTRO projeto volta SEM os textos daquela página e a fonte é declarada INDISPONÍVEL (não "sem página")', !!itemB && !vazouEm(itemB) && !(itemB.textos as string[] | undefined)?.length && /não pôde ser carregada/.test(String(itemB.textosIndisponiveis ?? '')), JSON.stringify({ textos: itemB?.textos, origem: itemB?.textosOrigem, indisponiveis: itemB?.textosIndisponiveis, deB: textosDeB.length }).slice(0, 220))
       if (porGeneracaoDeOutro) {
         const itemG = itens.find((i) => i.postId === porGeneracaoDeOutro!.id)
-        conferir('R29 pela ARTE: post vivo cuja Generation aponta (fieldValues.pageId) para página de OUTRO projeto volta sem os textos dela, com o slide declarado', !!itemG && !vazouEm(itemG), JSON.stringify({ textos: itemG?.textos, porSlide: itemG?.textosPorSlide, indisponiveis: itemG?.textosIndisponiveis }).slice(0, 220))
+        conferir('R29/R32 pela ARTE: post vivo de MÍDIA ÚNICA cuja Generation aponta (fieldValues.pageId) para página de OUTRO projeto volta sem os textos dela E com a fonte declarada INDISPONÍVEL ("a arte desta peça não afirma texto"), sem `textos`', !!itemG && !vazouEm(itemG) && !(itemG.textos as string[] | undefined)?.length && /a arte desta peça não afirma texto/.test(String(itemG.textosIndisponiveis ?? '')), JSON.stringify({ textos: itemG?.textos, porSlide: itemG?.textosPorSlide, indisponiveis: itemG?.textosIndisponiveis }).slice(0, 220))
       }
     } else {
       conferir('R29: há página com texto em outro projeto do dev para exercitar o isolamento', false, `nenhuma entre ${candidatasDeOutro.length} candidatas`)

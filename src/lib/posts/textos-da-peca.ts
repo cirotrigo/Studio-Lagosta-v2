@@ -218,6 +218,10 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   // `pageId` preenchido e a página NÃO carregada (de outro projeto, ou apagada) não é "peça sem página": a
   // fonte principal está indisponível, e a copy do post é parcial como no ilegível (R30 da revisão de 5e483ec4).
   if (!entregue && !carrossel && post.pageId && fontes.camadas === undefined) paginaIlegivel = true
+  // A fonte que ficou indisponível: a página do post, ou a arte da mídia única (R32 abaixo).
+  let fonteIndisponivel: string | null = paginaIlegivel
+    ? fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada)' : 'as camadas da página não puderam ser lidas'
+    : null
 
   // 2. Pelas ARTES do post, slide a slide (carrossel, peça sem página, peça
   //    entregue). Um slide conta como resolvido quando a FONTE dele é legível,
@@ -226,6 +230,13 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   if (slides.length > 0) {
     const porSlide = textosPorSlide(slides, entregue)
     const resolvidos = porSlide.filter((s) => s.origem !== undefined)
+    // MÍDIA ÚNICA cuja arte não afirma texto (página da arte fora deste projeto ou apagada, sem snapshot
+    // confiável): a fonte é INDISPONÍVEL, como a página ilegível — a copy do post volta PARCIAL e sem copy
+    // se declara. Antes só o carrossel preservava a declaração (R32 da revisão de d871673c).
+    if (!carrossel && !entregue && resolvidos.length === 0 && porSlide[0]?.indisponiveis) {
+      paginaIlegivel = true
+      fonteIndisponivel = `a arte desta peça não afirma texto (${porSlide[0].indisponiveis})`
+    }
     if (resolvidos.length > 0) {
       const faltam = porSlide.length - resolvidos.length
       return {
@@ -287,7 +298,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
         textos: registrada,
         origem: 'copy-registrada',
         parcial: true,
-        nota: paginaIlegivel ? `${fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada)' : 'as camadas da página não puderam ser lidas'}; ${NOTA_DA_COPIA_REGISTRADA}` : NOTA_DA_COPIA_REGISTRADA,
+        nota: fonteIndisponivel ? `${fonteIndisponivel}; ${NOTA_DA_COPIA_REGISTRADA}` : NOTA_DA_COPIA_REGISTRADA,
       }
     }
   }
@@ -298,11 +309,11 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
         textos: doPost,
         origem: 'copy-do-post',
         parcial: true,
-        nota: `${fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada)' : 'as camadas da página não puderam ser lidas'}: estes são só os campos que o post sobrescreveu, e o resto do texto da peça não tem registro aqui.`,
+        nota: `${fonteIndisponivel}: estes são só os campos que o post sobrescreveu, e o resto do texto da peça não tem registro aqui.`,
       }
     }
     return { textos: doPost, origem: 'copy-do-post' }
   }
-  if (paginaIlegivel) return { textos: [], indisponiveis: fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada): não há texto a afirmar.' : 'as camadas da página não puderam ser lidas.' }
+  if (fonteIndisponivel) return { textos: [], indisponiveis: `${fonteIndisponivel}: não há texto a afirmar.` }
   return { textos: [] }
 }

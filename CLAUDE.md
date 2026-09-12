@@ -6359,6 +6359,16 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   E a prova escolhe a página de outro projeto lendo as camadas de verdade
   (`textosDaPagina`), não com `LIKE` no JSONB (R31), e exercita os dois
   caminhos: `SocialPost.pageId` e `Generation.fieldValues.pageId`.
+  🔴 **Mídia ÚNICA cuja arte não afirma texto também é fonte INDISPONÍVEL**
+  (R32 da revisão de d871673c): post vivo sem `pageId` e uma mídia cuja
+  Generation aponta para página de outro projeto (ou apagada), sem snapshot
+  confiável — `textosPorSlide` já dizia o motivo, mas só o carrossel
+  preservava a declaração; a mídia única caía no retorno vazio e, com copy
+  própria, voltava sem `parcial`. Hoje o motivo do slide vira
+  `fonteIndisponivel` ("a arte desta peça não afirma texto (…)"), e vale o
+  mesmo tratamento da página ilegível: copy própria e cópia registrada
+  PARCIAIS com a nota; sem copy, `textosIndisponiveis`. A prova exige a
+  declaração no caminho pela arte (antes só conferia "não vazou").
   **A cópia registrada é PARCIAL por natureza**: `textosDaPagina` guarda o
   texto das camadas ANTES da caixa do render e sem a ordem em que são
   desenhadas — quem a devolve (`copy-registrada-na-entrega`) declara

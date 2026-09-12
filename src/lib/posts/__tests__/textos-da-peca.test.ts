@@ -89,6 +89,20 @@ describe('textosDaPeca — a mesma precedência do render', () => {
     // peça realmente SEM página continua sendo a leitura inteira do que existe
     expect(textosDaPeca({ ...viva, pageId: null, slotValues: { headline: 'Solta' } })).toEqual({ textos: ['Solta'], origem: 'copy-do-post' })
   })
+  it('R32: MÍDIA ÚNICA (sem pageId) cuja arte não afirma texto — página da arte fora do projeto/apagada, sem snapshot — é fonte INDISPONÍVEL, não "sem página": sem copy declara; copy própria e cópia registrada voltam PARCIAIS com a nota', () => {
+    const unica = { ...viva, pageId: null, mediaUrls: ['u1'] }
+    const slides = [{ url: 'u1', arte: { pageId: 'pagina-de-outro', layersSnapshot: null } }]
+    expect(textosDaPeca({ ...unica, slotValues: null }, { slides })).toEqual({ textos: [], indisponiveis: expect.stringMatching(/a arte desta peça não afirma texto \(a arte desta mídia não guardou as camadas/) })
+    const propria = textosDaPeca({ ...unica, slotValues: { headline: 'Da copy' } }, { slides })
+    expect(propria).toEqual({ textos: ['Da copy'], origem: 'copy-do-post', parcial: true, nota: expect.stringMatching(/a arte desta peça não afirma texto.*só os campos que o post sobrescreveu/) })
+    const registrada = textosDaPeca({ ...unica, slotValues: { _copiaDaPagina: true, headline: 'Da cópia' } }, { slides })
+    expect(registrada).toMatchObject({ textos: ['Da cópia'], origem: 'copy-registrada', parcial: true, nota: expect.stringMatching(/a arte desta peça não afirma texto/) })
+    // sem arte NENHUMA registrada para a mídia, a mesma declaração; e a arte que AFIRMA (snapshot legível) continua definitiva
+    expect(textosDaPeca({ ...unica, slotValues: null }, { slides: [{ url: 'u1', arte: null }] }).indisponiveis).toMatch(/nenhuma arte registrada/)
+    expect(textosDaPeca({ ...unica, slotValues: { headline: 'Da copy' } }, { slides: [{ url: 'u1', arte: { layersSnapshot: [{ id: 'l1', type: 'text', content: 'Do snapshot' }] } }] })).toEqual({ textos: ['Do snapshot'], origem: 'arte' })
+    // peça ENTREGUE de mídia única continua no caminho de entregue (passo 3), sem a declaração da viva
+    expect(textosDaPeca({ ...unica, status: 'POSTED', slotValues: null }, { slides }).indisponiveis).toMatch(/já foi entregue/)
+  })
 })
 
 describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia é (R8)', () => {
