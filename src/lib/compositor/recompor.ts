@@ -227,6 +227,15 @@ export interface RecomporInput {
   decididoPor?: string | null
   /** De onde veio o pedido — `editor` (o PATCH) ou `varredura`. */
   origem?: 'editor' | 'varredura'
+  /**
+   * Recuperação FORÇADA: a página foi gravada e o render que a seguiria
+   * falhou (ajuste do revisor com o Blob fora do ar). Não há Generation nova
+   * para a URL denunciar e o diff pode não ver nada (força do gradiente), então
+   * a checagem de defasagem é pulada — e a arte é RE-RENDERIZADA como a página
+   * está, nunca recomposta pela spec, que desfaria o ajuste (REV-01 da revisão
+   * do Codex, 12/09/2026).
+   */
+  forcar?: boolean
 }
 
 /**
@@ -259,7 +268,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
 
   // Nada a fazer — ver `precisaRefazer`. É o que evita gastar um render num
   // empurrãozinho de 1px, e o que faz reverter uma peça já em dia sair calado.
-  if (!precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return vazio
+  const forcar = input.forcar === true
+  if (!forcar && !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return vazio
 
   const page = await db.page.findUnique({
     where: { id: pageId },
@@ -300,14 +310,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
    * como está: a edição chega ao post do mesmo jeito (que é o defeito), e a
    * geometria fica por conta de quem mexeu.
    */
-  const podeRecompor = !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
-  if (!podeRecompor && defasagem.mexidoNaMao.length > 0) {
+  // Forçado = re-render como está: recompor pela spec desfaria o ajuste que
+  // acabou de ser gravado na página.
+  const podeRecompor = !forcar && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  if (forcar) avisos.push('Recuperação forçada: a página foi re-renderizada como está, sem medir a diagramação de novo.')
+  if (!podeRecompor && !forcar && defasagem.mexidoNaMao.length > 0) {
     avisos.push(
       `A arte foi refeita SEM medir a diagramação de novo, porque a página foi ajustada à mão (${defasagem.mexidoNaMao.join('; ')}). ` +
         'Confira se algum texto ficou por cima de outro.',
     )
   }
-  if (!podeRecompor && !arte.spec) {
+  if (!podeRecompor && !forcar && !arte.spec) {
     avisos.push('Esta arte não guardou a spec do compositor; ela foi re-renderizada como a página está.')
   }
 
@@ -561,7 +574,9 @@ export async function enfileirarRecomposicaoDaPagina(args: {
   const jobId = await enfileirarRecomposicao({
     generationId: levantamento.arte.generationId,
     projectId: levantamento.projectId,
-    recompor: { pageId: args.pageId, origem: args.origem },
+    // `forcar` viaja no payload: sem isto o executor repetia a checagem e
+    // terminava o job sem renderizar nada (REV-01, 12/09/2026).
+    recompor: { pageId: args.pageId, origem: args.origem, ...(args.forcar ? { forcar: true } : {}) },
   })
   return { jobId, generationId: levantamento.arte.generationId, slides: levantamento.slides.length }
 }
@@ -611,7 +626,7 @@ export async function pedirRecomposicaoDaArteCongelada(
 export async function processarRecomposicaoEmBackground(args: {
   generationId: string
   projectId: number
-  recompor: { pageId: string; origem: 'editor' | 'varredura' }
+  recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean }
   decididoPor?: string | null
   queueJobId?: string | null
 }): Promise<void> {
@@ -620,7 +635,7 @@ export async function processarRecomposicaoEmBackground(args: {
   const copyAntes = await copyDaPagina(pageId)
 
   try {
-    const r = await recomporPaginaDefasada({ pageId, origem, decididoPor: args.decididoPor ?? null })
+    const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, decididoPor: args.decididoPor ?? null })
     console.log(
       `[recompor] ${pageId} em ${Math.round((Date.now() - t0) / 1000)}s — ${r.recomposta ? 'recomposta' : 're-renderizada'}, ` +
         `${r.trocados.length} slide(s) trocado(s)` +

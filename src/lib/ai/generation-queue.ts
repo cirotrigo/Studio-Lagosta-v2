@@ -161,7 +161,16 @@ export interface RecomposicaoJobArgs {
   /** A Generation da arte que já existe — a mesma linha é atualizada. */
   generationId: string
   projectId: number
-  recompor: { pageId: string; origem: OrigemDaRecomposicao }
+  recompor: {
+    pageId: string
+    origem: OrigemDaRecomposicao
+    /**
+     * Recuperação FORÇADA (ajuste do revisor cujo render falhou): o executor
+     * pula a checagem de defasagem e re-renderiza a página COMO ESTÁ — nunca
+     * recompõe pela spec, que desfaria o ajuste. Ver `recompor.ts`.
+     */
+    forcar?: boolean
+  }
   decididoPor?: string | null
 }
 

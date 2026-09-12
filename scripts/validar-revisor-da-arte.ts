@@ -20,7 +20,9 @@
  *   6. render falhando (Blob recusa o token) num ajuste SÓ de força do
  *      gradiente, antes de qualquer ajuste bem-sucedido: a página fica gravada,
  *      a agenda é avisada e o slide de carrossel entra na fila pela
- *      recomposição FORÇADA (R2 — sem Generation nova e sem diff geométrico);
+ *      recomposição FORÇADA (R2 — sem Generation nova e sem diff geométrico),
+ *      e o job forçado EXECUTA: re-render como está, só o slide certo troca e a
+ *      força do gradiente ajustada fica (REV-01);
  *   7. ajuste aplicado: versão nova, copy intacta, o rascunho de imagem única
  *      volta a PENDING e o slide volta à fila (job reaberto), sem perder mídia;
  *   8. (opcional, `--com-visao`) uma revisão com a visão, para a evidência.
@@ -163,9 +165,12 @@ async function main() {
           { papel: 'cta', linhas: ['Conheça nossos pacotes'] },
           { papel: 'servico', linhas: ['Seg a sex · 9h às 18h'] },
         ],
+        // A MARCA vai no TEMA: `nomeDaPagina` prioriza o tema sobre o nome, e é
+        // pelo nome da página que o cleanup recupera o que a composição criou
+        // antes de falhar (REV-02 da revisão do Codex).
         nome: `${MARCA} peça`,
         quando,
-        tema: 'teste',
+        tema: `${MARCA} teste`,
       },
       { canal: 'claude-code' },
     )
@@ -273,6 +278,31 @@ async function main() {
       !!jobDo6 && jobDo6.status === 'PENDING' && (jobDo6.payload as Record<string, any>).recompor?.pageId === pageId,
       jobDo6 ? `job ${jobDo6.id} ${jobDo6.status}` : 'sem job',
     )
+    // ── 6b. o job forçado EXECUTA e troca só o slide certo ──────────────────
+    // REV-01 da revisão do Codex: enfileirar não bastava — o executor repetia a
+    // checagem de defasagem e terminava sem renderizar. Aqui o job roda de
+    // verdade (com o Blob de volta), a página é re-renderizada COMO ESTÁ (com a
+    // força nova do gradiente) e só o slide da arte troca de URL.
+    console.log('6b) o job de recuperação forçada roda: re-render como está, só o slide certo troca')
+    const { processarRecomposicaoEmBackground } = await import('../src/lib/compositor/recompor')
+    const payloadDo6 = (jobDo6?.payload ?? {}) as Record<string, any>
+    conferir('o payload do job carrega forcar: true', payloadDo6.recompor?.forcar === true, JSON.stringify(payloadDo6.recompor))
+    const forcaGravada = (camadas: Array<Record<string, any>>) => Number(camadas.find((c) => c.id === gradienteDeLeitura?.id)?.metadata?.forca ?? NaN)
+    const antesDo6b = (await db.page.findUnique({ where: { id: pageId }, select: { layers: true } }))!
+    const forcaAntesDo6b = forcaGravada(lerCamadas(antesDo6b.layers).camadas as Array<Record<string, any>>)
+    if (jobDo6) {
+      await processarRecomposicaoEmBackground({ generationId: persistido.generationId, projectId: PROJETO, recompor: payloadDo6.recompor, queueJobId: jobDo6.id })
+    }
+    const carrosselDo6b = await db.socialPost.findUnique({ where: { id: carrossel.id }, select: { mediaUrls: true } })
+    const genDo6b = await db.generation.findUnique({ where: { id: persistido.generationId }, select: { resultUrl: true, fieldValues: true } })
+    const depoisDo6b = (await db.page.findUnique({ where: { id: pageId }, select: { layers: true } }))!
+    if (genDo6b?.resultUrl) blobs.add(genDo6b.resultUrl)
+    conferir('o slide da arte trocou de URL e a capa (foto) ficou', !!carrosselDo6b && carrosselDo6b.mediaUrls[0] === fotoUrl && carrosselDo6b.mediaUrls[1] !== persistido.url && carrosselDo6b.mediaUrls.length === 2, JSON.stringify(carrosselDo6b?.mediaUrls.map((u) => u.slice(-40))))
+    conferir('a arte foi RE-RENDERIZADA (não recomposta): a mesma Generation, marcada "re-renderizada"', genDo6b?.resultUrl === carrosselDo6b?.mediaUrls[1] && (genDo6b?.fieldValues as Record<string, any>)?.recomposicao?.estado === 're-renderizada', String((genDo6b?.fieldValues as Record<string, any>)?.recomposicao?.estado))
+    conferir('a força do gradiente ajustada continua na página (o forçado não recompôs pela spec)', Number.isFinite(forcaAntesDo6b) && forcaGravada(lerCamadas(depoisDo6b.layers).camadas as Array<Record<string, any>>) === forcaAntesDo6b && forcaAntesDo6b === ajusteDeForca.forca, `${forcaAntesDo6b}`)
+    const idsDaPaginaDo6b = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
+    conferir('nenhuma Generation nova nasceu no re-render forçado', idsDaPaginaDo6b.length === geracoesAntesDo6, `${idsDaPaginaDo6b.length}`)
+
     await db.socialPost.update({ where: { id: unico.postId }, data: { renderStatus: 'RENDERED' } })
     await db.generationJob.updateMany({ where: { generationId: { in: idsDaPaginaDo6 }, kind: 'COMPOR' }, data: { status: 'DONE', finishedAt: new Date() } })
 
@@ -290,6 +320,7 @@ async function main() {
     conferir('a copy ficou intacta', JSON.stringify(copyDepois) === JSON.stringify(copyOriginal))
     const geracoesDepoisDo7 = await db.generation.count({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } } })
     conferir('uma Generation nova de ajuste-arte', geracoesDepoisDo7 === geracoesAntesDo6 + 1, `${geracoesAntesDo6} → ${geracoesDepoisDo7}`)
+    conferir('a conferência 6b não deixou a copy diferente', JSON.stringify(copyDepois) === JSON.stringify(copyOriginal))
     const unicoDepois = await db.socialPost.findUnique({ where: { id: unico.postId }, select: { renderStatus: true } })
     conferir('imagem única voltou à fila de render (PENDING)', unicoDepois?.renderStatus === 'PENDING', String(unicoDepois?.renderStatus))
     const idsDaPagina = (await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: pageId } }, select: { id: true } })).map((g) => g.id)
