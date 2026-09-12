@@ -20,6 +20,8 @@ import {
   completarAteOAlvo,
   diasAteDomingoBRT,
   gradeSemente,
+  montarSlotsDaLeva,
+  semOcupados,
   horaMinimaHoje,
   POSTS_POR_DIA_ALVO,
   ROTULO_DE_COLD_START,
@@ -616,5 +618,53 @@ describe('horaMinimaHoje e diasAteDomingoBRT', () => {
    */
   it('a virada do dia é a de Brasília, não a UTC', () => {
     expect(diasAteDomingoBRT(new Date('2026-08-12T02:00:00.000Z'))).toBe(6) // ainda terça em BRT
+  })
+})
+
+describe('R34 — a grade-semente e a complementação não caem em cima de post já agendado do MESMO formato', () => {
+  // Relógio fixo: 12/09/2026 08:00 em Brasília (11:00Z).
+  const agora = new Date('2026-09-12T11:00:00.000Z')
+  const hoje = '2026-09-12'
+  it('semOcupados tira o horário a menos de 45 min de um post do mesmo formato e mantém o de outro formato', () => {
+    const semente = gradeSemente({ agora, dias: 1, maxItens: 3 })
+    expect(semente.map((s) => s.hora)).toEqual(['11:30', '15:00', '18:30'])
+    const comStory = semOcupados(semente, [{ data: hoje, hora: '11:30', formato: 'story' }], 'story')
+    expect(comStory.map((s) => s.hora)).toEqual(['15:00', '18:30'])
+    const comStoryPerto = semOcupados(semente, [{ data: hoje, hora: '15:40', formato: 'story' }], 'story')
+    expect(comStoryPerto.map((s) => s.hora)).toEqual(['11:30', '18:30'])
+    // o CONTROLE: só um FEED ocupa 11h30 — o story continua elegível
+    const comFeed = semOcupados(semente, [{ data: hoje, hora: '11:30', formato: 'feed' }], 'story')
+    expect(comFeed.map((s) => s.hora)).toEqual(['11:30', '15:00', '18:30'])
+    // ocupação de outro dia não conta
+    expect(semOcupados(semente, [{ data: '2026-09-13', hora: '11:30', formato: 'story' }], 'story')).toHaveLength(3)
+  })
+  it('o cenário do R34: às 8h, story das 11h30 já agendado e só o feed das 19h livre → a leva de story (dias 1, maxItens 1) NÃO propõe 11h30', () => {
+    // `sugerirPosts` devolveu só o feed livre das 19h; o filtro por formato (R22) já o tirou → daCadencia vazia → cold start
+    const leva = montarSlotsDaLeva({ daCadencia: [], ocupacao: [{ data: hoje, hora: '11:30', formato: 'story' }], formato: 'story', agora, dias: 1, maxItens: 1, temRotinaConhecida: true })
+    expect(leva.coldStart).toBe(true)
+    expect(leva.slots.map((s) => s.scheduledDatetime)).toEqual([`${hoje} 15:00`])
+    expect(leva.semeados).toEqual(leva.slots)
+    expect(leva.avisos.some((a) => /não tem horário típico nos dias pedidos/.test(a))).toBe(true)
+  })
+  it('o controle: só um FEED ocupa 11h30 → o story das 11h30 continua elegível', () => {
+    const leva = montarSlotsDaLeva({ daCadencia: [], ocupacao: [{ data: hoje, hora: '11:30', formato: 'feed' }], formato: 'story', agora, dias: 1, maxItens: 1, temRotinaConhecida: false })
+    expect(leva.slots.map((s) => s.scheduledDatetime)).toEqual([`${hoje} 11:30`])
+    expect(leva.avisos.some((a) => /começo para ajustar/.test(a))).toBe(true)
+  })
+  it('a leva de FEED confere a ocupação no formato do slot dela (carrossel e quadrado = feed)', () => {
+    const leva = montarSlotsDaLeva({ daCadencia: [], ocupacao: [{ data: hoje, hora: '11:30', formato: 'feed' }], formato: 'carrossel', agora, dias: 1, maxItens: 1, temRotinaConhecida: false })
+    expect(leva.slots.map((s) => s.hora)).toEqual(['15:00'])
+  })
+  it('a complementação também respeita a ocupação: um story real às 11h30 e outro já agendado às 15h → completa só com 18h30', () => {
+    const real = { scheduledDatetime: `${hoje} 11:30`, data: hoje, hora: '11:30', motivo: 'rotina', formato: 'story' as const }
+    const leva = montarSlotsDaLeva({ daCadencia: [real], ocupacao: [{ data: hoje, hora: '15:05', formato: 'story' }], formato: 'story', agora, dias: 1, maxItens: 3, temRotinaConhecida: true })
+    expect(leva.coldStart).toBe(false)
+    expect(leva.slots.map((s) => s.hora)).toEqual(['11:30', '18:30'])
+    expect(leva.semeados.map((s) => s.hora)).toEqual(['18:30'])
+    expect(leva.semeados.every((s) => s.semente)).toBe(true)
+  })
+  it('sem ocupação nada muda: cold start dá os três horários de sempre', () => {
+    const leva = montarSlotsDaLeva({ daCadencia: [], ocupacao: [], formato: 'story', agora, dias: 1, maxItens: 3, temRotinaConhecida: false })
+    expect(leva.slots.map((s) => s.hora)).toEqual(['11:30', '15:00', '18:30'])
   })
 })

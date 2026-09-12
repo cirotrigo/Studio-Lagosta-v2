@@ -6459,6 +6459,18 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   "pendente: 1 arquivo(s)" numa árvore que estava limpa (foi o que a revisão
   cobrou). Está em `.git/info/exclude` (compartilhado por todos os
   worktrees), não no `.gitignore` — o symlink é artefato de máquina.
+- 🔴 **A grade-semente e a complementação conferem a OCUPAÇÃO do formato da
+  leva no PREENCHIMENTO** (R34 da revisão final, `montarSlotsDaLeva` em
+  `proposta-de-semana.ts`, puro): `sugerirPosts` só devolve horário livre, mas
+  a semente INVENTA horários (11:30, 15:00, 18:30) sem olhar a agenda, e o
+  filtro por formato (R22) podia esvaziar a cadência e cair justamente nela —
+  às 8h, com o story das 11h30 já agendado e só o feed das 19h livre, a leva
+  de story propunha OUTRO story às 11h30. `gradeSemente`/`completarAteOAlvo`
+  recebem `ocupado(data, hora)` (mesma régua de 45 min, mesmo formato do
+  slot) e PULAM para o próximo horário — filtrar depois deixava um teto baixo
+  sem nada. Só um FEED às 11h30 não tira o story das 11h30 (controle no
+  teste). O orquestrador não decide horário: registra como sugestão o que a
+  função devolve em `semeados`.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito

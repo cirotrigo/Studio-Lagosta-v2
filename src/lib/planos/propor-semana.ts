@@ -52,15 +52,12 @@ import {
   escolherFotoSemRepetir,
   montarCandidatasDeFoto,
   tipoDaPasta,
-  completarAteOAlvo,
   diasAteDomingoBRT,
-  espalharPorDia,
-  gradeSemente,
-  ROTULO_DE_COMPLEMENTO,
   POSTS_POR_DIA_ALVO,
-  ROTULO_DE_COLD_START,
   type SlotParaProposta,
   type TipoDeFoto,
+  montarSlotsDaLeva,
+  type OcupacaoParaALeva,
 } from '@/lib/planos/proposta-de-semana'
 
 /**
@@ -383,6 +380,8 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   // `sugestaoId` de cada um — não há nada a registrar aqui.
   let daCadencia: SugestaoSlot[] = []
   let temRotinaConhecida = false
+  // O que JÁ está na agenda na janela (por formato): a grade-semente e a complementação não podem cair em cima (R34).
+  let ocupacao: OcupacaoParaALeva[] = []
   try {
     const r = await sugerirPosts({ projectId, dias })
     // Só os slots do FORMATO do plano (R22): um horário livre para feed não
@@ -390,6 +389,7 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
     daCadencia = slotsParaAPeca(r.sugestoes, formato, new Set())
     if (daCadencia.length < r.sugestoes.length) avisos.push(`${r.sugestoes.length - daCadencia.length} horário(s) livre(s) de outro formato ficaram de fora desta leva de ${formato}.`)
     temRotinaConhecida = r.cadencia.some((d) => d.horariosTipicos.length > 0)
+    ocupacao = r.ocupacao.map((o) => ({ data: o.data, hora: o.hora, formato: o.formato }))
     avisos.push(...r.avisos)
   } catch (erro) {
     if (erro instanceof CreativeError && erro.code === 'PROJECT_NOT_FOUND') throw erro
@@ -397,47 +397,24 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
     avisos.push('Não consegui ler a cadência deste cliente agora — usei uma grade de partida.')
   }
 
-  let slots = espalharPorDia(daCadencia.map(slotDaCadencia), maxItens)
-  const coldStart = slots.length === 0
-  let itensSemeados = 0
-
   /**
-   * O ritmo é PUXADO, não espelhado. A cadência aprendida reflete o que o
-   * cliente fez; para quem andou postando pouco, espelhar é ajudá-lo a
-   * continuar pouco. Os slots completados carregam rótulo próprio — nunca o
-   * motivo estatístico dos reais.
+   * Os horários da leva saem de uma função PURA (`montarSlotsDaLeva`): espalha
+   * por dia, completa até o alvo ou cai na grade-semente — e em todos os
+   * caminhos o horário INVENTADO passa pela ocupação do formato da leva (R34:
+   * o filtro por formato podia esvaziar a cadência e a semente propunha um
+   * story às 11h30 em cima do story já agendado às 11h30). O ritmo é PUXADO,
+   * não espelhado; os slots inventados carregam rótulo próprio e são os
+   * únicos registrados aqui como sugestão.
    */
-  if (!coldStart) {
-    const antes = slots.length
-    slots = completarAteOAlvo(slots, { agora, dias, maxItens })
-    const completados = slots.filter((s) => s.semente)
-    if (completados.length > 0) {
-      itensSemeados = completados.length
-      await registrarSemente(projectId, completados)
-      avisos.push(
-        `Este cliente vem publicando menos que ${POSTS_POR_DIA_ALVO} por dia; completei ${slots.length - antes} horário(s) para fechar o ritmo. Eles vêm marcados — ajuste ou tire o que não fizer sentido.`,
-      )
-    }
+  const leva = montarSlotsDaLeva({ daCadencia: daCadencia.map(slotDaCadencia), ocupacao, formato, agora, dias, maxItens, temRotinaConhecida })
+  let slots = leva.slots
+  const coldStart = leva.coldStart
+  let itensSemeados = 0
+  if (leva.semeados.length > 0) {
+    itensSemeados = leva.semeados.length
+    await registrarSemente(projectId, leva.semeados)
   }
-
-  if (coldStart) {
-    /**
-     * Janela sem NENHUM slot da cadência tem duas causas, e o rótulo muda:
-     * cliente que o sistema ainda não conhece (cold start de verdade) e
-     * cliente COM rotina cujos dias típicos só não caem nesta janela — dizer
-     * "não conheço a rotina" para o segundo seria falso.
-     */
-    const rotulo = temRotinaConhecida ? ROTULO_DE_COMPLEMENTO : ROTULO_DE_COLD_START
-    const semente = gradeSemente({ agora, dias, maxItens, rotulo })
-    await registrarSemente(projectId, semente)
-    slots = semente
-    itensSemeados = semente.length
-    avisos.push(
-      temRotinaConhecida
-        ? `A rotina deste cliente não tem horário típico nos dias pedidos — montei a grade no ritmo de ${POSTS_POR_DIA_ALVO} por dia para você ajustar.`
-        : `${ROTULO_DE_COLD_START}. Os horários abaixo são um começo para ajustar com ele, não uma leitura do que ele já faz.`,
-    )
-  }
+  avisos.push(...leva.avisos)
 
   if (slots.length === 0) {
     throw new CreativeError(
