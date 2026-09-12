@@ -6499,6 +6499,15 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   copiada. Quando a recuperação passar a REGRAVAR a copy visual junto do PNG
   (REV-127-F02 do PR 0), o marcador dessa regravação é o que deve reabilitar a
   cópia — não a ausência da marca de re-render.
+- 🔴 **Prova que agenda pelo serviço tem de apagar os SINAIS dos posts que
+  criou** (R39 da revisão de 03c279ff): `agendarPost` registra sinal de slot e
+  de copy por post (`escolha-propria`), e `LearningSignal.postId` não tem FK —
+  o `deleteMany` dos posts os deixava para trás, e cada rodada da prova
+  acumulava sinais sintéticos no dev anunciando cleanup completo. O cleanup
+  identifica os posts da rodada ANTES de apagar (ids coletados + os recuperados
+  pela marca na legenda, para a falha parcial antes do `push`), apaga os sinais
+  deles restritos por projeto, post e início da rodada, e confere que nenhum
+  sobrou — sobra é falha do cleanup, não aviso.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito

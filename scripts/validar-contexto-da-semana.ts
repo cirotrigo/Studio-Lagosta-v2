@@ -518,9 +518,17 @@ async function main() {
     console.log('\ncleanup (só o que ESTA rodada criou)')
     if (generationsDaProva.length) await db.generation.deleteMany({ where: { id: { in: generationsDaProva }, projectId: PROJETO } })
     const falhas: string[] = []
-    const apagados = { posts: 0, entradas: 0, sinais: 0, sinaisDeSlot: 0, geracoes: 0, usos: 0 }
+    const apagados = { posts: 0, sinaisDePost: 0, entradas: 0, sinais: 0, sinaisDeSlot: 0, geracoes: 0, usos: 0 }
+    // R39 (revisão de 03c279ff): `agendarPost` registra sinais de slot e de copy POR POST (`escolha-propria`), e
+    // `LearningSignal.postId` não tem FK — apagar o post não os leva, e cada rodada acumulava sinais sintéticos no
+    // dev anunciando cleanup completo. Os posts desta rodada são identificados ANTES de apagar (os ids coletados
+    // + os recuperados pela marca na legenda, que cobrem a falha parcial antes do `posts.push`), e os sinais
+    // deles saem restritos por projeto, post e início da rodada; o que sobrar depois é falha do cleanup.
+    let postsDaRodada: string[] = []
     try {
-      apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] } })).count
+      postsDaRodada = (await db.socialPost.findMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] }, select: { id: true } })).map((p) => p.id)
+      if (postsDaRodada.length) apagados.sinaisDePost = (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: postsDaRodada }, createdAt: { gte: inicioDaProva } } })).count
+      apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, id: { in: postsDaRodada } } })).count
     } catch (e) { falhas.push(`posts: ${e instanceof Error ? e.message : String(e)}`) }
     try {
       apagados.entradas = (await db.knowledgeBaseEntry.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: entradas } }, { title: { contains: MARCA } }] } })).count
@@ -536,6 +544,12 @@ async function main() {
       apagados.sinais = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDaProva] }, projectId: PROJETO, tipo: 'foto', createdAt: { gte: inicioDaProva } } })).count
       apagados.sinaisDeSlot = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDeSlotDaProva] }, projectId: PROJETO, tipo: 'slot', createdAt: { gte: inicioDaProva } } })).count
     } catch (e) { falhas.push(`sinais: ${e instanceof Error ? e.message : String(e)}`) }
+    try {
+      // A conferência do R39: nenhum sinal amarrado a um post desta rodada pode sobrar (o post é novo — não há
+      // sinal legítimo anterior a ela com esse id).
+      const sobraram = postsDaRodada.length ? await db.learningSignal.count({ where: { projectId: PROJETO, postId: { in: postsDaRodada } } }) : 0
+      if (sobraram > 0) falhas.push(`R39: ${sobraram} sinal(is) de aprendizado ainda amarrado(s) aos posts desta rodada`)
+    } catch (e) { falhas.push(`conferência R39: ${e instanceof Error ? e.message : String(e)}`) }
     if (falhas.length) {
       console.error('  ✗ cleanup incompleto:', falhas.join(' | '))
       mau += falhas.length
