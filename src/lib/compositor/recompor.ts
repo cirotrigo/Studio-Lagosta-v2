@@ -512,13 +512,27 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
  * FINAL do Codex, 12/09/2026). A proteção nasce junto da gravação do ajuste,
  * não do desfecho do render. Idempotente; nunca lança para quem chama.
  */
-export async function travarRecomposicaoDaArte(pageId: string, motivo: string, client: Prisma.TransactionClient | typeof db = db): Promise<boolean> {
+export async function travarRecomposicaoDaArte(
+  pageId: string,
+  motivo: string,
+  opcoes: { projectId?: number; client?: Prisma.TransactionClient | typeof db } = {},
+): Promise<boolean> {
   // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
   // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
   // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
   // já ajustada com a arte ainda sem trava e recompunha por cima).
+  // 🔴 DENTRO da transação NADA pode usar `db`: no pool do dev (medido em
+  // 12/09/2026) uma leitura pelo cliente raiz com a transação aberta fica
+  // presa até o timeout dela (P2028 aos 20s) — por isso o `projectId` entra
+  // no filtro (a busca por JSON path sem ele varria a tabela inteira: 1,9s
+  // contra 0,75s com o índice do projeto) e tudo aqui passa por `client`.
+  const client = opcoes.client ?? db
   const geracoes = await client.generation.findMany({
-    where: { fieldValues: { path: ['pageId'], equals: pageId } },
+    where: {
+      ...(opcoes.projectId ? { projectId: opcoes.projectId } : {}),
+      resultUrl: { not: null },
+      fieldValues: { path: ['pageId'], equals: pageId },
+    },
     select: { id: true, resultUrl: true, fieldValues: true },
     orderBy: { createdAt: 'desc' },
     take: 20,

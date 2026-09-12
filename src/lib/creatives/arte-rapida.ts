@@ -1084,7 +1084,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       }
       if (travarRecomposicaoDaArte) {
         if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
-        await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página', tx)
+        await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página', { projectId: input.projectId, client: tx })
       }
     },
     { maxWait: 10_000, timeout: 20_000 },

@@ -706,6 +706,12 @@ async function main() {
     const forcaDo6o = Math.max(0.45, Math.round((forcaDe(camadas6o) - 0.05) * 1000) / 1000)
     const ajuste6o = { ...ajuste2, forca: forcaDo6o }
     let dentro6o: { updatedAt: Date } | null = null
+    // 🔴 O leitor externo precisa de um cliente PRÓPRIO: no pool do dev uma
+    // leitura pelo `db` com a transação aberta no MESMO cliente fica presa até
+    // o timeout dela (P2028 aos 20s) — foi o que derrubou a rodada 14 (medido
+    // por sonda isolada em 12/09/2026). Em produção o worker é OUTRO processo.
+    const { PrismaClient } = await import('../prisma/generated/client')
+    const leitor6o = new PrismaClient()
     const rv6o = await revisarArte({ projectId: PROJETO, pageId: pageId2, visao: false, previa: false })
     process.env.BLOB_READ_WRITE_TOKEN = 'vercel_blob_rw_INVALIDO_prova'
     const e6o = await erroDe(
@@ -717,15 +723,16 @@ async function main() {
         canal: 'claude-code',
         _prova: {
           entreGravarETravar: async () => {
-            dentro6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
+            dentro6o = await leitor6o.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
           },
         },
       }),
     )
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
+    await leitor6o.$disconnect().catch(() => undefined)
     const depois6o = await db.page.findUnique({ where: { id: pageId2 }, select: { updatedAt: true } })
     const pagina6o = await camadasDaPagina(pageId2)
-    conferir('o ajuste gravou a página (render falhou, como no passo 6)', !!e6o && e6o.code !== 'VERSAO_DIVERGENTE' && forcaDe(pagina6o) === forcaDo6o, `${e6o?.code}; força ${forcaDe(pagina6o)} (esperava ${forcaDo6o})`)
+    conferir('o ajuste gravou a página (render falhou, como no passo 6)', !!e6o && e6o.code !== 'VERSAO_DIVERGENTE' && forcaDe(pagina6o) === forcaDo6o, `${e6o?.code} ${String(e6o?.message ?? '').slice(0, 120)}; força ${forcaDe(pagina6o)} (esperava ${forcaDo6o})`)
     conferir('DENTRO da transação (página escrita, trava ainda não) outro leitor viu a página ANTERIOR — página e trava só aparecem juntas', !!dentro6o && (dentro6o as { updatedAt: Date }).updatedAt.getTime() === antes6o!.updatedAt.getTime() && depois6o!.updatedAt.getTime() !== antes6o!.updatedAt.getTime(), JSON.stringify({ antes: antes6o?.updatedAt, dentro: (dentro6o as { updatedAt: Date } | null)?.updatedAt, depois: depois6o?.updatedAt }))
 
     // a copy de referência do passo 7 passa a ser a da página como está agora

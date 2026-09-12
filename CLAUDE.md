@@ -5662,7 +5662,13 @@ Codex antes de ser escrito.
   render e as recuperações falhando, a edição de texto seguinte reabria o job
   normal e recompunha (REV-F01); e fora da transação um worker lia a página já
   ajustada com a arte ainda sem trava e recompunha por cima (REV-D01). Se a
-  trava falhar, a página não é gravada.
+  trava falhar, a página não é gravada. 🔴 **Dentro da transação nada usa
+  `db`**: medido em 12/09/2026 no pool do dev, uma leitura pelo cliente raiz
+  com a transação interativa aberta no MESMO cliente fica presa até o
+  timeout dela (P2028 aos 20s) — a prova de dev (6o) lê a página por um
+  `PrismaClient` próprio, e a busca da arte da página filtra por
+  `projectId` (JSON path sem o índice do projeto varria a tabela: 1,9s
+  contra 0,75s).
 - 🔴 **O runner confere a VERSÃO VISUAL da página depois de refazer a arte**
   (`versaoGravada`, o hash de `versaoDaPagina`), nunca só a copy: só a força de
   um gradiente salva durante o render não muda copy nem diff geométrico, e o
