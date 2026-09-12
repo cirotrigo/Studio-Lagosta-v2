@@ -6590,3 +6590,13 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   estado. Teste: `R49` em `textos-da-peca.test.ts` (DRAFT, POSTED, no
   publicador, FAILED; sem valor aplicado e ilegível; controle com valor
   aplicado).
+- 🔴 **O post que MANTÉM `pageId` também não afirma a copy bruta pelo
+  fallback** (R50, nona revisão FINAL sobre a6fc900e). O post de template cuja
+  arte entregue é `post-schedule` guarda os mesmos slots que o render recebeu
+  (`later-scheduler` preserva id e nome endereçando a mesma camada; o render
+  aplica só o do id). Sem a leitura do slide — sem registro, registro ilegível
+  ou nenhum valor aplicado —, a copy do post é o registro NÃO validado do
+  pedido: indisponível em todo estado entregue. A peça viva com a página
+  legível responde no passo 1 e não chega ao fallback. Teste: `R50` em
+  `textos-da-peca.test.ts` (POSTED, POSTING, FAILED, no publicador × três
+  cenários; controles viva legível e registro válido).

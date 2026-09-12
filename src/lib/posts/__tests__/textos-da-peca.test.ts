@@ -408,6 +408,34 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
     expect(JSON.stringify(c)).not.toContain('Costela')
   })
 
+  it('R50: o post que MANTÉM pageId e cuja arte entregue é de modelo sem leitura do slide não devolve a copy bruta pelo fallback — sem registro, ilegível ou nenhum valor aplicado; controles: página viva legível e registro válido', () => {
+    const base = { pageId: 'tpl', mediaUrls: ['u1'], generationId: 'g1' }
+    const renderizado = [{ id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', order: 1 }]
+    const slots = { l1: 'Picanha', headline: 'Costela' }
+    expect(aplicarSlotNaCamada(renderizado[0], slots).content).toBe('Picanha')
+    const semRegistro = { pageId: 'tpl', source: 'post-schedule', slotValues: slots }
+    const ilegivel = { ...semRegistro, layersSnapshot: '{nao é json' }
+    const vazioPeloId = { pageId: 'tpl', source: 'post-schedule', slotValues: { l1: { content: '' }, headline: 'Costela' }, layersSnapshot: renderizado }
+    const entregues = [{ status: 'POSTED', laterPostId: null }, { status: 'POSTING', laterPostId: null }, { status: 'FAILED', laterPostId: null }, { status: 'SCHEDULED', laterPostId: 'zernio-1' }]
+    for (const peca of entregues) {
+      for (const [arte, sv] of [[semRegistro, slots], [ilegivel, slots], [vazioPeloId, { headline: 'Costela' }]] as const) {
+        const r = textosDaPeca({ ...base, ...peca, slotValues: sv }, { slides: [{ url: 'u1', arte, camadasDaPagina: renderizado }] })
+        expect(r.textos).toEqual([])
+        expect(r.origem).toBeUndefined()
+        expect(r.indisponiveis).toMatch(/nada a afirmar/)
+        expect(JSON.stringify(r)).not.toContain('Costela')
+      }
+    }
+    // controle: peça VIVA com a página legível responde pela página, aplicando os slots como o render (id vence nome)
+    const viva = textosDaPeca({ ...base, status: 'DRAFT', laterPostId: null, slotValues: slots }, { camadas: renderizado, slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: renderizado }] })
+    expect(viva.textos).toEqual(['Picanha'])
+    expect(JSON.stringify(viva)).not.toContain('Costela')
+    // controle: entregue com registro válido responde pelo registro
+    const comRegistro = textosDaPeca({ ...base, status: 'POSTED', laterPostId: null, slotValues: slots }, { slides: [{ url: 'u1', arte: { ...semRegistro, layersSnapshot: renderizado } }] })
+    expect(comRegistro).toMatchObject({ textos: ['Picanha'], origem: 'arte', parcial: true })
+    expect(JSON.stringify(comRegistro)).not.toContain('Costela')
+  })
+
   it('mídia única sem página: a arte casada pela URL responde (peça viva pela página da arte; entregue pelo snapshot)', () => {
     const base = { pageId: null, laterPostId: null, mediaUrls: ['u1'], generationId: null, slotValues: null }
     expect(textosDaPeca({ ...base, status: 'DRAFT' }, { slides: [{ url: 'u1', arte: { layersSnapshot: snap('S'), pageId: 'p1' }, camadasDaPagina: snap('P') }] })).toEqual({ textos: ['P'], origem: 'pagina' })

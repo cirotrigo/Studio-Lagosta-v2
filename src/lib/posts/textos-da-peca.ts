@@ -386,14 +386,20 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    arte de modelo significa que a leitura do slide NÃO resolveu — nenhum valor aplicado (o slot pelo id vazio
   //    descarta o do nome, e `agendarPost` grava só o que não é vazio) ou registro ilegível — e a copy herdada é a
   //    mesma bruta, com o valor descartado. Só a leitura do slide afirma; o fallback nunca.
+  //    R50 (revisão FINAL sobre a6fc900e): o mesmo vale para o post que MANTÉM `pageId` — o post de template cuja arte
+  //    entregue é `post-schedule` com os slots dele. A copy gravada no post é a mesma bruta (id e nome endereçando a
+  //    mesma camada; o render aplica só o do id), e sem a leitura do slide ela não diz o que chegou à mídia. A peça viva
+  //    com a página legível já respondeu no passo 1 e não chega aqui.
   const arteUnica = !carrossel ? slides[0]?.arte : undefined
-  const copyHerdadaDeModelo = !post.pageId && !!arteUnica && copyDaArteDeModelo(arteUnica) !== null
+  const copyHerdadaDeModelo = !!arteUnica && copyDaArteDeModelo(arteUnica) !== null
   const NOTA_R47 =
     'a arte desta peça foi desenhada de um modelo sem registro das camadas que o render usou, e a copy que o post (sem página própria) herdou dela não diz quais valores chegaram à mídia — o id da camada vence o nome, e a estrutura atual do modelo pode ser outra: nada a afirmar.'
   const NOTA_R49 =
     'a arte desta peça foi desenhada de um modelo e o registro das camadas que o render usou não resolve o texto da mídia (nenhum valor aplicado, ou registro ilegível); a copy que o post (sem página própria) herdou dela inclui o que o render descartou: nada a afirmar.'
   const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModelo
-  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : arteUnica && snapshotConfiavel(arteUnica) ? NOTA_R49 : NOTA_R47
+  const NOTA_R50 =
+    'a arte desta peça foi desenhada do modelo com a copy do post por cima, e o registro das camadas que o render usou falta ou não resolve o texto da mídia: a copy gravada no post é o registro NÃO validado do que foi pedido (o id da camada vence o nome, e um valor dela pode não ter sido aplicado) — nada a afirmar sobre a mídia.'
+  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : post.pageId ? NOTA_R50 : arteUnica && snapshotConfiavel(arteUnica) ? NOTA_R49 : NOTA_R47
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
