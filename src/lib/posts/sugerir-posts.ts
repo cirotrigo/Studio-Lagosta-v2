@@ -45,6 +45,7 @@ import { fundirGradeComCadencia, lerGradeDasEntradas, VERSAO_DA_GRADE } from '@/
 import {
   diaDaSemanaDe,
   formatoDoBloco,
+  historicoParaFormato,
   formatoDoTipo,
   janelaDaSugestao,
   montarGradeDaSemana,
@@ -313,17 +314,31 @@ export async function sugerirPosts(params: {
       }),
   ])
 
+  // ── O formato de cada horário ─────────────────────────────────────────────
+  //
+  // Grade aprovada é de STORY por construção (o parser deixa feed e carrossel
+  // de fora); horário do histórico leva o formato da MAIORIA do que o cliente
+  // publicou naquele bloco — a MESMA população da cadência (sem campanha
+  // encerrada) e o MESMO bloco (arredondado ao mais próximo). É o formato que
+  // decide a ocupação: um feed às 19h não ocupa o story das 19h.
+  const historicoComFormato = historicoParaFormato(historico, encerradas)
+  const formatoDoSlot = (dia: number, slot: { minutosDoDia: number; origem: 'grade' | 'cadencia' }): FormatoDaPeca =>
+    slot.origem === 'grade' ? 'story' : formatoDoBloco(historicoComFormato, dia, slot.minutosDoDia)
+
   /**
-   * Onde a grade cobre o dia, os slots fixos SUBSTITUEM os horários típicos
-   * do histórico; onde não cobre, a cadência continua. `fundirGradeComCadencia`
+   * Onde a grade cobre o dia, os slots fixos SUBSTITUEM os horários de STORY
+   * do histórico; o feed que o histórico sustenta no mesmo dia continua, e nos
+   * dias que ela não cobre a cadência inteira continua. `fundirGradeComCadencia`
    * é puro e com grade vazia é a identidade — um caminho só.
    */
   const grade = lerGradeDasEntradas(entradasDaGrade)
-  const slotsFinais = fundirGradeComCadencia(slotsPorDia, grade)
+  const slotsFinais = fundirGradeComCadencia(slotsPorDia, grade, {
+    formatoDe: (dia, t) => formatoDoBloco(historicoComFormato, dia, t.minutosDoDia),
+  })
   if (grade.length > 0) {
     const diasCobertos = new Set(grade.flatMap((s) => s.dias)).size
     avisos.push(
-      `Grade aprovada do cliente encontrada na base (${grade.length} horário(s) fixo(s), ${diasCobertos} dia(s) da semana) — ela substitui a cadência do histórico nos dias que cobre.`,
+      `Grade aprovada do cliente encontrada na base (${grade.length} horário(s) fixo(s), ${diasCobertos} dia(s) da semana) — ela substitui os horários de story do histórico nos dias que cobre; a cadência de feed continua.`,
     )
   }
 
@@ -365,17 +380,7 @@ export async function sugerirPosts(params: {
     return titulos.length > 0 ? titulos : undefined
   }
 
-  // ── O formato de cada horário e a grade completa ─────────────────────────
-  //
-  // Grade aprovada é de STORY por construção (o parser deixa feed e carrossel
-  // de fora); horário do histórico leva o formato da MAIORIA do que o cliente
-  // publicou naquele bloco. É o formato que decide a ocupação: um feed às 19h
-  // não ocupa o story das 19h.
-  const historicoComFormato = historico
-    .filter((p) => p.scheduledDatetime)
-    .map((p) => ({ quando: p.scheduledDatetime!, postType: p.postType }))
-  const formatoDoSlot = (dia: number, slot: { minutosDoDia: number; origem: 'grade' | 'cadencia' }): FormatoDaPeca =>
-    slot.origem === 'grade' ? 'story' : formatoDoBloco(historicoComFormato, dia, slot.minutosDoDia)
+  // ── A grade completa ─────────────────────────────────────────────────────
   const { grade: gradeDaSemana, excecoes } = montarGradeDaSemana(slotsFinais, formatoDoSlot)
 
   // ── O que já ocupa a janela, por formato ─────────────────────────────────

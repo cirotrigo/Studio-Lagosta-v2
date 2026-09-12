@@ -20,7 +20,8 @@ import {
   type PilarParaBusca,
   type PreferenciasDeFoto,
 } from '@/lib/creatives/ranquear-acervo'
-import { excluirFotos } from '@/lib/creatives/excluir-fotos'
+import { excluirFotos, normalizarExclusao } from '@/lib/creatives/excluir-fotos'
+import { dataValida } from '@/lib/posts/contexto-da-semana'
 import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
@@ -406,8 +407,8 @@ export async function buscarNoAcervo(input: BuscarAcervoInput) {
    * `evitarUsadasDesde` não exclui nada e vira aviso.
    */
   const exclusao = excluirFotos(ranqueadasTodas, { ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde }, ultimoUso)
-  if (input.evitarUsadasDesde && !/^\d{4}-\d{2}-\d{2}$/.test(input.evitarUsadasDesde.trim())) {
-    avisos.push(`evitarUsadasDesde ignorado: "${input.evitarUsadasDesde}" não é uma data AAAA-MM-DD.`)
+  if (input.evitarUsadasDesde && !dataValida(input.evitarUsadasDesde)) {
+    avisos.push(`evitarUsadasDesde ignorado: "${input.evitarUsadasDesde}" não é uma data AAAA-MM-DD que exista no calendário.`)
   }
   const ranqueadas = exclusao.mantidas
 
@@ -518,12 +519,23 @@ async function registrarProposta(
    * `agregarSinaisDeFoto` nem `fecharSugestaoDeFoto` têm o que fechar, e a
    * expiração é neutra.
    */
+  /**
+   * A EXCLUSÃO entra na identidade da proposta (PR 6): a lista que a pessoa
+   * viu com a foto A excluída é OUTRA lista — o topo mudou — e não pode
+   * reutilizar a proposta registrada sem exclusão no mesmo dia (o `upsert`
+   * preservaria o topo antigo e a escolha de B viraria "troca"). Normalizada,
+   * para que os mesmos ids em outra ordem continuem sendo o mesmo pedido; só
+   * entra quando pedida, para não mudar a chave de quem nunca excluiu.
+   */
+  const exclusao = normalizarExclusao({ ids: input.excluirDriveFileIds, usadasDesde: input.evitarUsadasDesde })
   const criterios = {
     theme: input.theme,
     folder: input.folder,
     menuCategory: input.menuCategory,
     tags: input.tags,
     quality: input.quality,
+    ...(exclusao.ids.length > 0 ? { excluir: exclusao.ids } : {}),
+    ...(exclusao.desde ? { evitarUsadasDesde: exclusao.desde } : {}),
   }
 
   return registrarSugestao({

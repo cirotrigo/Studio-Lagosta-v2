@@ -135,6 +135,8 @@ async function main() {
   console.log(`projeto da prova: ${PROJETO} (${projeto.name}) — ${escolha.sugestoes.length} sugestão(ões) na semana ${segunda}..${domingo}`)
   const posts: string[] = []
   const entradas: string[] = []
+  const sinaisDaProva = new Set<string>()
+  const inicioDaProva = new Date()
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT }
 
   try {
@@ -209,7 +211,35 @@ async function main() {
     conferir('post sem página: `textos` vêm do slotValues (sem as chaves _), formato feed e legendaCompleta', !!itemSlots && JSON.stringify([...(itemSlots.textos as string[])].sort()) === JSON.stringify(['Segunda linha B', 'Texto de prova A']) && itemSlots.formato === 'feed' && itemSlots.legendaCompleta === legendaLonga && itemSlots.legenda.length === 140, JSON.stringify({ textos: itemSlots?.textos, formato: itemSlots?.formato, legenda: itemSlots?.legenda?.length }))
     if (comPagina) {
       const itemPagina = itens.find((i) => i.postId === comPagina!.id)
-      conferir('post com página: `textos` são as camadas de texto da página (não vazios), formato story', !!itemPagina && Array.isArray(itemPagina.textos) && itemPagina.textos.length > 0 && itemPagina.formato === 'story', JSON.stringify(itemPagina?.textos).slice(0, 160))
+      conferir('post com página: `textos` são as camadas de texto da página (não vazios), origem "pagina", formato story', !!itemPagina && Array.isArray(itemPagina.textos) && itemPagina.textos.length > 0 && itemPagina.textosOrigem === 'pagina' && itemPagina.formato === 'story', JSON.stringify(itemPagina?.textos).slice(0, 160))
+
+      // R1/R3 (revisão de 619e7877): a mesma precedência do render, e a arte entregue não segue a página.
+      console.log('3b) ver-agenda: copy PRÓPRIA por cima da página; cópia da página não sobrepõe; arte entregue não segue a página')
+      const { textosDaPagina } = await import('../src/lib/posts/page-layers')
+      const pagina = await db.page.findUnique({ where: { id: paginaComTexto[0].id }, select: { layers: true } })
+      const textosDoModelo = Object.entries(textosDaPagina(pagina!.layers))
+      const [chaveDoTexto, textoDoModelo] = textosDoModelo.find(([k]) => !k.includes('#')) ?? textosDoModelo[0]
+      const dia3b = somarDias(hoje, 4)
+      const criar = (hora: string, extra: Record<string, unknown>) =>
+        db.socialPost.create({
+          data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} 3b`, mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3b}T${hora}:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', pageId: paginaComTexto[0].id, ...(extra as object) },
+          select: { id: true },
+        })
+      const propriaA = await criar('09:00', { slotValues: { [chaveDoTexto]: `${MARCA} headline A` } })
+      const propriaB = await criar('10:00', { slotValues: { [chaveDoTexto]: { content: `${MARCA} headline B` } } })
+      const copiaDaPagina = await criar('11:00', { slotValues: { [chaveDoTexto]: 'texto velho da cópia', _copiaDaPagina: true } })
+      const entregueComRegistro = await criar('12:00', { status: 'POSTED', slotValues: { [chaveDoTexto]: 'o que foi ao ar', _copiaDaPagina: true } })
+      const entregueSemNada = await criar('13:00', { status: 'SCHEDULED', laterPostId: `prova-${Date.now()}`, slotValues: null as never })
+      posts.push(propriaA.id, propriaB.id, copiaDaPagina.id, entregueComRegistro.id, entregueSemNada.id)
+      const agenda3b = await tool('ver-agenda', { projectId: PROJETO, from: dia3b, to: dia3b })
+      const itens3b = (agenda3b.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const item = (id: string) => itens3b.find((i) => i.postId === id)
+      const iA = item(propriaA.id), iB = item(propriaB.id), iC = item(copiaDaPagina.id), iD = item(entregueComRegistro.id), iE = item(entregueSemNada.id)
+      conferir('dois posts sobre a MESMA página com copy própria voltam cada um com a SUA headline (não o texto do modelo), origem "pagina-com-copy-do-post"', !!iA && !!iB && iA.textos.includes(`${MARCA} headline A`) && !iA.textos.includes(textoDoModelo) && iB.textos.includes(`${MARCA} headline B`) && !iB.textos.includes(textoDoModelo) && iA.textosOrigem === 'pagina-com-copy-do-post' && iB.textosOrigem === 'pagina-com-copy-do-post', JSON.stringify({ chave: chaveDoTexto, a: iA?.textos?.[0], b: iB?.textos?.[0] }).slice(0, 200))
+      conferir('a cópia da página (_copiaDaPagina) NÃO sobrepõe: os textos são os da página, origem "pagina"', !!iC && iC.textos.includes(textoDoModelo) && !iC.textos.includes('texto velho da cópia') && iC.textosOrigem === 'pagina', JSON.stringify(iC?.textos).slice(0, 160))
+      conferir('post PUBLICADO com cópia registrada: volta o que foi registrado na entrega, NÃO o texto atual da página', !!iD && JSON.stringify(iD.textos) === JSON.stringify(['o que foi ao ar']) && iD.textosOrigem === 'copy-registrada-na-entrega', JSON.stringify({ textos: iD?.textos, origem: iD?.textosOrigem }))
+      conferir('post no publicador (laterPostId) sem registro nenhum: `textosIndisponiveis` declarado e nenhum texto da página atribuído', !!iE && !('textos' in iE) && typeof iE.textosIndisponiveis === 'string' && /entregue/.test(iE.textosIndisponiveis), JSON.stringify({ textos: iE?.textos, indisponiveis: iE?.textosIndisponiveis }).slice(0, 200))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3b.json'), JSON.stringify(agenda3b, null, 2))
     } else {
       conferir('projeto sem página com texto para exercitar `textos` pela página', false)
     }
@@ -232,6 +262,8 @@ async function main() {
     conferir('sem `em`: vale hoje — a campanha entra e a referência é hoje', !!tem(semEm) && semEm.referencia === hoje)
     const e4 = await (async () => { try { await tool('consultar-base', { projectId: PROJETO, em: '31/12/2026' }); return null } catch (e) { return e instanceof Error ? e.message : String(e) } })()
     conferir('data inválida em `em` é recusada com mensagem', !!e4 && /Data inválida/.test(e4), String(e4).slice(0, 80))
+    const e5 = await (async () => { try { await tool('consultar-base', { projectId: PROJETO, em: '2026-02-31' }); return null } catch (e) { return e instanceof Error ? e.message : String(e) } })()
+    conferir('dia que NÃO existe (2026-02-31) em `em` é recusado, não normalizado para março (R7)', !!e5 && /Data inválida/.test(e5), String(e5).slice(0, 80))
 
     // ── 5. buscar-fotos com exclusão ────────────────────────────────────────
     console.log('5) buscar-fotos: excluir a foto já escolhida e evitar as usadas desde uma data')
@@ -248,6 +280,20 @@ async function main() {
       conferir('data inválida em evitarUsadasDesde não exclui nada e vira aviso', r4.total === r1.total && (r4.avisos ?? []).some((a) => /evitarUsadasDesde ignorado/.test(a)))
       const semPedido = await buscarNoAcervo({ projectId: PROJETO, limit: 3, registrarSugestao: false })
       conferir('sem pedido de exclusão a resposta não traz `excluidas`', !('excluidas' in semPedido))
+      const r5 = await buscarNoAcervo({ projectId: PROJETO, limit: 3, registrarSugestao: false, evitarUsadasDesde: '2026-02-31' })
+      conferir('dia que NÃO existe em evitarUsadasDesde não exclui nada e vira aviso (R7)', r5.total === r1.total && (r5.avisos ?? []).some((a) => /evitarUsadasDesde ignorado/.test(a)), JSON.stringify(r5.avisos))
+
+      // R2 (revisão de 619e7877): a exclusão entra na identidade da proposta registrada.
+      console.log('5b) a proposta de fotos COM exclusão é outra proposta; a mesma exclusão em outra ordem é a mesma')
+      const pasta = r1.images[0].folder
+      const p1 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta })
+      const p2 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, excluir: [escolhida, 'id-que-nao-existe'] })
+      const p3 = await tool('buscar-fotos', { projectId: PROJETO, limit: 3, folder: pasta, excluir: ['id-que-nao-existe', ` ${escolhida} `] })
+      for (const id of [p1.sugestaoId, p2.sugestaoId, p3.sugestaoId]) if (typeof id === 'string') sinaisDaProva.add(id)
+      const sinalP2 = p2.sugestaoId ? await db.learningSignal.findUnique({ where: { id: p2.sugestaoId }, select: { sugerido: true, createdAt: true } }) : null
+      const criteriosP2 = (sinalP2?.sugerido as { criterios?: { excluir?: string[] } } | null)?.criterios
+      conferir('com exclusão a proposta é OUTRA (sugestaoId diferente) e o topo registrado já não é a foto excluída', typeof p1.sugestaoId === 'string' && typeof p2.sugestaoId === 'string' && p1.sugestaoId !== p2.sugestaoId && p2.propostaTopo !== escolhida && p2.propostaTopo !== p1.propostaTopo, JSON.stringify({ p1: p1.sugestaoId, p2: p2.sugestaoId, topo1: p1.propostaTopo, topo2: p2.propostaTopo }))
+      conferir('a mesma exclusão em outra ordem (e com espaço) REUTILIZA a proposta; os critérios registrados trazem `excluir` normalizado', p3.sugestaoId === p2.sugestaoId && JSON.stringify(criteriosP2?.excluir) === JSON.stringify([escolhida, 'id-que-nao-existe'].sort()) && !!sinalP2, JSON.stringify({ p3: p3.sugestaoId, excluir: criteriosP2?.excluir }))
     }
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
@@ -255,13 +301,17 @@ async function main() {
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou)')
     const falhas: string[] = []
-    const apagados = { posts: 0, entradas: 0 }
+    const apagados = { posts: 0, entradas: 0, sinais: 0 }
     try {
       apagados.posts = (await db.socialPost.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: posts } }, { caption: { contains: MARCA } }] } })).count
     } catch (e) { falhas.push(`posts: ${e instanceof Error ? e.message : String(e)}`) }
     try {
       apagados.entradas = (await db.knowledgeBaseEntry.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: entradas } }, { title: { contains: MARCA } }] } })).count
     } catch (e) { falhas.push(`entradas: ${e instanceof Error ? e.message : String(e)}`) }
+    try {
+      // Só o sinal que ESTA rodada criou: proposta reutilizada de antes da prova (createdAt anterior) fica.
+      apagados.sinais = (await db.learningSignal.deleteMany({ where: { id: { in: [...sinaisDaProva] }, projectId: PROJETO, tipo: 'foto', createdAt: { gte: inicioDaProva } } })).count
+    } catch (e) { falhas.push(`sinais: ${e instanceof Error ? e.message : String(e)}`) }
     if (falhas.length) {
       console.error('  ✗ cleanup incompleto:', falhas.join(' | '))
       mau += falhas.length

@@ -13,7 +13,7 @@
  */
 
 import { CreativeError } from '@/lib/creatives/errors'
-import { BLOCO_MIN, emBRT } from '@/lib/posts/cadencia'
+import { blocoDeMinutos, emBRT } from '@/lib/posts/cadencia'
 import { DIAS_SEMANA } from '@/lib/posts/dia-semana'
 
 /** Teto da janela: três semanas. Mais que isso é planejamento de mês, que a proposta por slot não serve. */
@@ -27,6 +27,20 @@ export function formatoDoTipo(postType: string | null | undefined): FormatoDaPec
 }
 
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/
+
+/**
+ * "AAAA-MM-DD" que EXISTE no calendário. `new Date('2026-02-31')` não recusa:
+ * normaliza para 3 de março em silêncio — e a base seria consultada para outro
+ * dia, a foto excluída por uma data que não existe. A prova é a ida e volta:
+ * o ISO da data lida tem de ser o texto que entrou.
+ */
+export function dataValida(texto: string | null | undefined): boolean {
+  if (typeof texto !== 'string') return false
+  const t = texto.trim()
+  if (!RE_DATA.test(t)) return false
+  const d = new Date(`${t}T12:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === t
+}
 
 /** "AAAA-MM-DD" do instante em Brasília. */
 export function dataBRT(d: Date): string {
@@ -46,7 +60,7 @@ function somarDias(dataISO: string, n: number): string {
 }
 function conferirData(valor: string, campo: string): string {
   const texto = valor.trim()
-  if (!RE_DATA.test(texto) || Number.isNaN(new Date(`${texto}T12:00:00Z`).getTime()) || new Date(`${texto}T12:00:00Z`).toISOString().slice(0, 10) !== texto) {
+  if (!dataValida(texto)) {
     throw new CreativeError('JANELA_INVALIDA', `${campo} inválido: "${valor}". Use AAAA-MM-DD (data em Brasília).`, 400)
   }
   return texto
@@ -104,17 +118,35 @@ export interface PostComFormato {
 }
 
 /**
+ * O histórico que dá FORMATO aos horários: a mesma população que dá origem a
+ * eles na cadência — sem campanha encerrada. A cadência já a descarta
+ * (`campanhaEncerrada`); se o formato olhasse o histórico bruto, uma campanha
+ * de feed já encerrada transformaria o story de rotina daquele bloco em feed,
+ * e mudaria também a ocupação.
+ */
+export function historicoParaFormato<T extends { scheduledDatetime: Date | null; postType: string; campaignId?: string | null }>(
+  historico: T[],
+  campanhasEncerradas: ReadonlySet<string>,
+): PostComFormato[] {
+  return historico
+    .filter((p) => p.scheduledDatetime && !(p.campaignId && campanhasEncerradas.has(p.campaignId)))
+    .map((p) => ({ quando: p.scheduledDatetime!, postType: p.postType }))
+}
+
+/**
  * O formato de um horário TÍPICO do histórico: a maioria do que o cliente
- * publicou naquele dia da semana, naquele bloco de meia hora. Empate e bloco
- * vazio caem em story — é o formato de 92% do que a carteira publica.
+ * publicou naquele dia da semana, naquele bloco de meia hora — o MESMO bloco
+ * que a cadência usou para criar o horário (`blocoDeMinutos`, arredondamento
+ * ao mais próximo). Empate e bloco vazio caem em story — é o formato de 92%
+ * do que a carteira publica.
  */
 export function formatoDoBloco(historico: PostComFormato[], dia: number, minutosDoDia: number): FormatoDaPeca {
-  const bloco = Math.floor(minutosDoDia / BLOCO_MIN) * BLOCO_MIN
+  const bloco = blocoDeMinutos(minutosDoDia)
   let story = 0
   let feed = 0
   for (const p of historico) {
     const b = emBRT(p.quando)
-    if (b.dia !== dia || Math.floor(b.minutos / BLOCO_MIN) * BLOCO_MIN !== bloco) continue
+    if (b.dia !== dia || blocoDeMinutos(b.minutos) !== bloco) continue
     if (formatoDoTipo(p.postType) === 'story') story++
     else feed++
   }

@@ -9,6 +9,8 @@
  * isso fica declarada na resposta (`excluidas`), nunca escondida no score.
  */
 
+import { dataValida } from '@/lib/posts/contexto-da-semana'
+
 export interface ExclusaoDeFotos {
   /** Ids (driveFileId) já escolhidos nesta leva — saem da lista. */
   ids?: string[] | null
@@ -23,21 +25,36 @@ export interface ResumoDaExclusao {
   naoEncontrados: string[]
 }
 
-const RE_DATA = /^\d{4}-\d{2}-\d{2}$/
+/**
+ * A exclusão NORMALIZADA: ids únicos, sem espaço, em ordem; a data só se
+ * EXISTE no calendário (`dataValida` — "2026-02-31" passa num regex e o
+ * `Date` a normaliza para março em silêncio). É esta forma que entra na
+ * identidade da proposta de fotos (`registrarProposta`): pedidos equivalentes
+ * (os mesmos ids em outra ordem) reutilizam a proposta; pedidos diferentes
+ * (com e sem exclusão) são propostas diferentes — a lista que a pessoa viu é
+ * outra, e o topo dela também.
+ */
+export function normalizarExclusao(exclusao: ExclusaoDeFotos): { ids: string[]; desde: string | null } {
+  const ids = [...new Set((exclusao.ids ?? []).map((i) => i.trim()).filter(Boolean))].sort()
+  const bruto = exclusao.usadasDesde?.trim() ?? ''
+  const desde = dataValida(bruto) ? bruto : null
+  return { ids, desde }
+}
 
 /**
  * Aplica a exclusão sobre a lista JÁ ranqueada, mantendo a ordem. `ultimoUso`
  * é o mapa driveFileId → data ISO do último uso (banco + legado). Data
- * inválida em `usadasDesde` não exclui nada — e é declarada no resumo por quem
- * chama, não aqui.
+ * inválida em `usadasDesde` (formato errado OU dia que não existe) não exclui
+ * nada — e é declarada no resumo por quem chama, não aqui.
  */
 export function excluirFotos<T extends { imagem: { driveFileId: string } }>(
   ranqueadas: T[],
   exclusao: ExclusaoDeFotos,
   ultimoUso: Map<string, string>,
 ): { mantidas: T[]; resumo: ResumoDaExclusao; pedida: boolean } {
-  const ids = new Set((exclusao.ids ?? []).map((i) => i.trim()).filter(Boolean))
-  const desde = exclusao.usadasDesde && RE_DATA.test(exclusao.usadasDesde.trim()) ? exclusao.usadasDesde.trim() : null
+  const normalizada = normalizarExclusao(exclusao)
+  const ids = new Set(normalizada.ids)
+  const desde = normalizada.desde
   const pedida = ids.size > 0 || !!desde
   if (!pedida) return { mantidas: ranqueadas, resumo: { porId: 0, porUso: 0, naoEncontrados: [] }, pedida }
   const vistos = new Set<string>()

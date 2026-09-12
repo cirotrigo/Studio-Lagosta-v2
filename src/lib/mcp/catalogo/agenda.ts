@@ -38,14 +38,14 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPagina }] =
+      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue }] =
         await Promise.all([
           import('../../db'),
           import('../../posts/campanha-vigencia'),
           import('../../posts/agenda-acoes'),
           import('../../posts/freeze-window'),
           import('../../posts/learning-scope'),
-          import('../../posts/page-layers'),
+          import('../../posts/textos-da-peca'),
         ])
       const projectId = args.projectId as number
 
@@ -100,39 +100,43 @@ export const toolsDeAgenda = [
       })
 
       /**
-       * Os TEXTOS COMPLETOS de cada peça (PR 6): a página do post (as camadas
-       * de texto visíveis, como o editor as mostra) e, sem página, a copy
-       * gravada em `slotValues`. É o que permite revisar repetição entre os
-       * dias — a legenda cortada em 140 caracteres não dizia o que a arte diz.
-       * Camadas ilegíveis viram lista vazia, nunca erro.
+       * Os TEXTOS COMPLETOS de cada peça (PR 6), como a ARTE os mostra: a
+       * mesma precedência do render — a copy PRÓPRIA do post por cima da
+       * página; a cópia que o agendamento grava não volta para a arte. Peça
+       * cuja arte já foi ENTREGUE não segue a página: vale o snapshot da arte
+       * que o post carrega, a copy própria ou a cópia registrada na entrega —
+       * e, sem nenhuma delas, a indisponibilidade é declarada. Ver
+       * `textos-da-peca.ts`. É o que permite revisar repetição entre os dias —
+       * a legenda cortada em 140 caracteres não dizia o que a arte diz.
        */
-      const idsDePagina = [...new Set(posts.map((p) => p.pageId).filter((id): id is string => !!id))]
+      const idsDePagina = [...new Set(posts.filter((p) => !arteEntregue(p)).map((p) => p.pageId).filter((id): id is string => !!id))]
       const paginas = idsDePagina.length
         ? await db.page.findMany({ where: { id: { in: idsDePagina } }, select: { id: true, layers: true } })
         : []
       const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
-      const textosDe = (post: { pageId: string | null; slotValues: unknown }): string[] => {
-        const layers = post.pageId ? camadasPorPagina.get(post.pageId) : undefined
-        if (layers !== undefined) {
-          try {
-            const lidos = Object.values(textosDaPagina(layers)).map((t) => t.trim()).filter(Boolean)
-            if (lidos.length > 0) return [...new Set(lidos)]
-          } catch {
-            // camadas ilegíveis: cai na copy do post
-          }
-        }
-        const sv = post.slotValues
-        if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
-          const out: string[] = []
-          for (const [chave, valor] of Object.entries(sv as Record<string, unknown>)) {
-            if (chave.startsWith('_')) continue
-            const texto = typeof valor === 'string' ? valor : typeof (valor as { content?: unknown } | null)?.content === 'string' ? String((valor as { content: string }).content) : null
-            if (texto && texto.trim() && !/^(https?:\/\/|data:)/i.test(texto.trim())) out.push(texto.trim())
-          }
-          return [...new Set(out)]
-        }
-        return []
-      }
+      const idsDeArte = [...new Set(posts.filter((p) => arteEntregue(p) && p.generationId).map((p) => p.generationId as string))]
+      const artes = idsDeArte.length
+        ? await db.generation.findMany({ where: { id: { in: idsDeArte } }, select: { id: true, resultUrl: true, fieldValues: true } })
+        : []
+      const artePorId = new Map(
+        artes.map((g) => [
+          g.id,
+          {
+            resultUrl: g.resultUrl,
+            layersSnapshot: (g.fieldValues && typeof g.fieldValues === 'object' && !Array.isArray(g.fieldValues)
+              ? (g.fieldValues as Record<string, unknown>).layersSnapshot
+              : undefined),
+          },
+        ]),
+      )
+      const textosDe = (post: (typeof posts)[number]) =>
+        textosDaPeca(
+          { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId },
+          {
+            ...(post.pageId && camadasPorPagina.has(post.pageId) ? { camadas: camadasPorPagina.get(post.pageId) } : {}),
+            ...(post.generationId && artePorId.has(post.generationId) ? { arte: artePorId.get(post.generationId) } : {}),
+          },
+        )
 
       // Post de campanha marcado para depois do fim dela: aviso por post, com
       // o texto pronto para o modelo repassar. Nunca esconde nem bloqueia.
@@ -158,8 +162,11 @@ export const toolsDeAgenda = [
           legenda: post.caption ? post.caption.slice(0, 140) : null,
           ...(post.caption && post.caption.length > 140 ? { legendaCompleta: post.caption } : {}),
           ...((() => {
-            const textos = textosDe(post)
-            return textos.length > 0 ? { textos } : {}
+            const t = textosDe(post)
+            return {
+              ...(t.textos.length > 0 ? { textos: t.textos, textosOrigem: t.origem } : {}),
+              ...(t.indisponiveis ? { textosIndisponiveis: t.indisponiveis } : {}),
+            }
           })()),
           capa: post.mediaUrls?.[0] ?? null,
           publicacao: post.publishType === 'REMINDER' ? 'manual (lembrete no WhatsApp)' : 'automática',

@@ -68,8 +68,11 @@ export const toolsDeBaseEDna = [
       let referencia = new Date()
       if (typeof args.em === 'string' && args.em.trim()) {
         const texto = args.em.trim()
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(texto) || Number.isNaN(new Date(`${texto}T12:00:00Z`).getTime())) {
-          throw new Error(`Data inválida em "em": "${texto}". Use AAAA-MM-DD.`)
+        // Dia que não existe ("2026-02-31") é recusado, não normalizado: o
+        // `Date` o levaria para março e a base seria lida para outro dia.
+        const { dataValida } = await import('../../posts/contexto-da-semana')
+        if (!dataValida(texto)) {
+          throw new Error(`Data inválida em "em": "${texto}". Use AAAA-MM-DD (um dia que exista no calendário).`)
         }
         referencia = new Date(`${texto}T00:00:00-03:00`)
       }

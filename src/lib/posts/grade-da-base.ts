@@ -180,12 +180,20 @@ export interface SlotFundido {
  * histórico; nos dias que ela não cobre, a cadência continua valendo. A grade
  * é o combinado; o histórico, o hábito — e onde há combinado, ele manda.
  *
+ * A precedência é por dia E FORMATO (PR 6): a grade aprovada é de STORY por
+ * construção (o parser deixa feed e carrossel de fora), então ela substitui
+ * os horários de story do dia e NÃO o feed que o histórico sustenta no mesmo
+ * dia — o combinado das 10h não apaga o feed das 18h de segunda. Quem chama
+ * diz o formato de cada horário típico por `formatoDe`; sem ele vale o
+ * comportamento antigo (a grade substitui o dia inteiro).
+ *
  * Com grade vazia é a identidade (só troca o formato), então `sugerir-posts`
  * chama sempre e não precisa de dois caminhos.
  */
 export function fundirGradeComCadencia<T extends SlotDeCadenciaMinimo>(
   slotsPorDia: Map<number, T[]>,
   grade: SlotFixo[],
+  opcoes: { formatoDe?: (dia: number, slot: T) => 'story' | 'feed' } = {},
 ): Map<number, SlotFundido[]> {
   const porDia = new Map<number, SlotFundido[]>()
 
@@ -207,21 +215,31 @@ export function fundirGradeComCadencia<T extends SlotDeCadenciaMinimo>(
   }
   for (const lista of porDia.values()) lista.sort((a, b) => a.minutosDoDia - b.minutosDoDia)
 
+  // A evidência viaja junto (PR 6): quem lê a grade completa precisa saber
+  // se o horário é rotina, novidade ou se apoia em evidência fraca.
+  const daCadencia = (t: T): SlotFundido => ({
+    minutosDoDia: t.minutosDoDia,
+    hora: t.hora,
+    motivo: t.motivo,
+    origem: 'cadencia' as const,
+    ...(t.picoRecente ? { novidade: true } : {}),
+    ...(t.apoioFraco ? { evidenciaFraca: true } : {}),
+  })
+
   for (const [dia, tipicos] of slotsPorDia) {
-    if (porDia.has(dia)) continue
-    porDia.set(
-      dia,
-      // A evidência viaja junto (PR 6): quem lê a grade completa precisa saber
-      // se o horário é rotina, novidade ou se apoia em evidência fraca.
-      tipicos.map((t) => ({
-        minutosDoDia: t.minutosDoDia,
-        hora: t.hora,
-        motivo: t.motivo,
-        origem: 'cadencia' as const,
-        ...(t.picoRecente ? { novidade: true } : {}),
-        ...(t.apoioFraco ? { evidenciaFraca: true } : {}),
-      })),
-    )
+    if (!porDia.has(dia)) {
+      porDia.set(dia, tipicos.map(daCadencia))
+      continue
+    }
+    if (!opcoes.formatoDe) continue
+    // Dia coberto pela grade: só o STORY do histórico é substituído; o feed
+    // continua, no horário dele, ao lado do combinado.
+    const lista = porDia.get(dia)!
+    for (const t of tipicos) {
+      if (opcoes.formatoDe(dia, t) !== 'feed') continue
+      lista.push(daCadencia(t))
+    }
+    lista.sort((a, b) => a.minutosDoDia - b.minutosDoDia)
   }
 
   return porDia

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { diaDaSemanaDe, formatoDoBloco, formatoDoTipo, janelaDaSugestao, montarGradeDaSemana, slotOcupado, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
+import { dataValida, diaDaSemanaDe, formatoDoBloco, formatoDoTipo, historicoParaFormato, janelaDaSugestao, montarGradeDaSemana, slotOcupado, TETO_DE_DIAS_DA_JANELA } from '../contexto-da-semana'
 import { fundirGradeComCadencia } from '../grade-da-base'
 
 // quinta 17/09/2026, 10:00 em Brasília
@@ -30,6 +30,17 @@ describe('a janela da sugestão (início e fim em Brasília)', () => {
     expect(longa.avisos[0]).toMatch(/cortada/)
     expect(() => janelaDaSugestao({ agora: AGORA, inicio: '2026-02-31' })).toThrow(/inválido/)
   })
+  it('dia que NÃO existe é recusado, não normalizado: 31/02, 31/04 e 29/02 fora de bissexto', () => {
+    expect(dataValida('2026-02-31')).toBe(false)
+    expect(dataValida('2026-04-31')).toBe(false)
+    expect(dataValida('2027-02-29')).toBe(false)
+    expect(dataValida('2028-02-29')).toBe(true)
+    expect(dataValida('2026-09-21')).toBe(true)
+    expect(dataValida('21/09/2026')).toBe(false)
+    expect(dataValida(null)).toBe(false)
+    expect(() => janelaDaSugestao({ agora: AGORA, inicio: '2026-02-31' })).toThrow(/inválido/)
+    expect(() => janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-09-31' })).toThrow(/inválido/)
+  })
   it('dias é ignorado quando fim vem; sem fim, dias conta a partir do início', () => {
     expect(janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', dias: 3 }).datas).toEqual(['2026-09-21', '2026-09-22', '2026-09-23'])
     expect(janelaDaSugestao({ agora: AGORA, inicio: '2026-09-21', fim: '2026-09-22', dias: 10 }).datas).toHaveLength(2)
@@ -50,6 +61,20 @@ describe('formato e ocupação por formato', () => {
     expect(formatoDoBloco(historico, 4, 12 * 60)).toBe('story')
     expect(formatoDoBloco(historico, 4, 8 * 60)).toBe('story')
     expect(formatoDoBloco([quinta19(19 * 60, 'POST'), quinta19(19 * 60 + 5, 'STORY')], 4, 19 * 60)).toBe('story')
+  })
+  it('o formato olha o MESMO bloco que criou o horário: feeds às 19h20 formam o horário das 19h30 (round), e é feed', () => {
+    const quinta = (min: number, postType: string) => ({ quando: new Date(`2026-09-10T${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}:00-03:00`), postType })
+    const historico = [quinta(19 * 60 + 20, 'POST'), quinta(19 * 60 + 20, 'POST'), quinta(19 * 60 + 25, 'CAROUSEL')]
+    // a cadência arredonda 19h20 para o bloco das 19h30 (blocoDeMinutos); com floor o bloco das 19h30 estaria vazio e cairia em story
+    expect(formatoDoBloco(historico, 4, 19 * 60 + 30)).toBe('feed')
+    expect(formatoDoBloco(historico, 4, 19 * 60)).toBe('story')
+  })
+  it('campanha encerrada NÃO decide o formato: os feeds dela saem da população antes da contagem', () => {
+    const quinta = (min: number, postType: string, campaignId: string | null = null) => ({ scheduledDatetime: new Date(`2026-09-10T${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}:00-03:00`), postType, campaignId })
+    const historico = [quinta(12 * 60, 'STORY'), quinta(12 * 60 + 5, 'STORY'), quinta(12 * 60, 'POST', 'camp-x'), quinta(12 * 60 + 10, 'POST', 'camp-x'), quinta(12 * 60 + 12, 'POST', 'camp-x'), { scheduledDatetime: null, postType: 'POST', campaignId: null }]
+    expect(formatoDoBloco(historicoParaFormato(historico, new Set(['camp-x'])), 4, 12 * 60)).toBe('story')
+    expect(formatoDoBloco(historicoParaFormato(historico, new Set()), 4, 12 * 60)).toBe('feed')
+    expect(historicoParaFormato(historico, new Set(['camp-x']))).toHaveLength(2)
   })
   it('um feed às 19h NÃO ocupa o story das 19h; o mesmo formato a 45 min ocupa', () => {
     const t = new Date('2026-09-24T19:00:00-03:00').getTime()

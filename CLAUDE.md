@@ -6257,6 +6257,20 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   horário do histórico leva o formato da MAIORIA do bloco (`formatoDoBloco`;
   empate e bloco vazio caem em story — 92% do que a carteira publica). Cada
   `sugestao` e cada item de `ocupacao` dizem o `formato`.
+  🔴 **O formato olha o MESMO bloco e a MESMA população da cadência**
+  (revisão de 619e7877): o bloco de meia hora é `blocoDeMinutos` (arredonda
+  ao mais próximo — publicações às 19h20 formam o horário das 19h30 e são
+  contadas nele; com `floor` de um lado e `round` do outro, o horário nascia
+  num bloco e era classificado noutro, vazio, virando story), e o histórico
+  passa por `historicoParaFormato`, que tira a campanha encerrada como a
+  cadência já tira — senão uma campanha de feed já encerrada transformava o
+  story de rotina daquele bloco em feed, e a ocupação junto.
+- 🔴 **A grade aprovada tem precedência por dia E FORMATO**
+  (`fundirGradeComCadencia(…, { formatoDe })`): ela é de story, então
+  substitui os horários de STORY do dia que cobre e mantém o FEED que o
+  histórico sustenta no mesmo dia — o story combinado das 10h não apaga o
+  feed das 18h de segunda. Sem `formatoDe` vale o comportamento antigo (a
+  grade substitui o dia inteiro), que é o que os chamadores antigos esperam.
 - **A GRADE COMPLETA sai sempre** (`montarGradeDaSemana`): os 7 dias, cada
   horário com `origem` (`combinado` = grade aprovada na base; `historico` =
   rotina medida; `nova` = só nas últimas duas semanas), `formato`, `tema` e
@@ -6270,14 +6284,30 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   cada slot emitido é uma proposta no KPI, e prova que emite contamina o
   denominador — a regra de 11/08 ("script NUNCA chama o que registra sinal")
   ganhou a alavanca em vez de um caminho paralelo.
-- **`ver-agenda` traz `textos`** (as camadas de texto visíveis da página do
-  post via `textosDaPagina`; sem página, a copy gravada em `slotValues`),
-  `formato` e `legendaCompleta` quando a legenda passa de 140 caracteres. É
-  por eles que se revisa repetição de tema e frase entre os dias. Camadas
-  ilegíveis viram lista vazia, nunca erro.
+- **`ver-agenda` traz `textos`** como a ARTE os mostra (`textos-da-peca.ts`,
+  puro), `textosOrigem`, `formato` e `legendaCompleta` quando a legenda passa
+  de 140 caracteres. É por eles que se revisa repetição de tema e frase entre
+  os dias.
+  🔴 **A precedência é a do render, não "a página"** (revisão de 619e7877): a
+  página é o MODELO — dois posts sobre a mesma página com copy própria em
+  `slotValues` voltavam com o texto de exemplo do modelo. A copy PRÓPRIA do
+  post sobrepõe a página camada a camada (por id ou nome, como
+  `applySlotValues`); a cópia que o agendamento grava (`_copiaDaPagina`) não
+  sobrepõe (`slotValuesParaRender`); camada oculta fica de fora.
+  🔴 **Arte já ENTREGUE não segue a página** (`arteEntregue`: `laterPostId`,
+  publicado, publicando ou falhou): a página pode ter sido editada DEPOIS da
+  entrega, e a invalidação não alcança o post — atribuir-lhe o texto atual da
+  página seria mentir sobre o que foi ao ar. Vale, nesta ordem, o snapshot da
+  arte que o post carrega (`layersSnapshot`, só se a `resultUrl` está em
+  `mediaUrls`), a copy própria do post e a cópia registrada no último render
+  antes da entrega; sem nenhuma, `textosIndisponiveis` DECLARA, e `textos`
+  não sai. Camadas ilegíveis também declaram, nunca erro.
 - **`consultar-base` recebe `em`** (a data em que a peça VAI AO AR):
   `vigenteEm(início daquele dia em Brasília)` — o que vence durante o dia
-  ainda vale para a peça que sai nele. A resposta diz `referencia` e traz
+  ainda vale para a peça que sai nele. 🔴 Só dia que EXISTE (`dataValida`,
+  ida e volta pelo ISO): `new Date('2026-02-31')` não recusa, normaliza para
+  3 de março em silêncio, e a base seria lida para outro dia — vale também
+  para `evitarUsadasDesde` e para `inicio`/`fim` da janela. A resposta diz `referencia` e traz
   `dados` (o `metadata` estruturado da entrada, sem os carimbos `origem`/
   `revisao`). A descrição separa os três horários que se confundiam: o de
   PUBLICAÇÃO (grade), o do SERVIÇO (funcionamento, na copy) e a VIGÊNCIA da
@@ -6286,9 +6316,21 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   `evitarUsadasDesde`** ("AAAA-MM-DD", por `PhotoUsage` + legado): a exclusão
   é aplicada sobre a lista JÁ ranqueada, ANTES de a proposta ser registrada (o
   que se registra é o que a pessoa viu), e declarada em `excluidas` (`porId`,
-  `porUso`, `naoEncontrados`). Data inválida não exclui nada e vira aviso. O
-  rodízio continua empurrando a usada para baixo; excluir é decisão de quem
-  busca.
+  `porUso`, `naoEncontrados`). Data inválida (formato errado ou dia que não
+  existe) não exclui nada e vira aviso. O rodízio continua empurrando a usada
+  para baixo; excluir é decisão de quem busca.
+  🔴 **A exclusão entra na IDENTIDADE da proposta registrada**
+  (`normalizarExclusao` → `criterios.excluir`/`evitarUsadasDesde` na chave de
+  `registrarProposta`; revisão de 619e7877): a lista vista com a foto A
+  excluída é OUTRA lista, com outro topo — sem isso o `upsert` do mesmo dia
+  reutilizava a proposta anterior e escolher B contava como troca humana. Os
+  mesmos ids em outra ordem continuam sendo o mesmo pedido; quem nunca
+  excluiu mantém a chave de sempre (os campos só entram quando pedidos).
+- 🔴 **`prisma/generated/` no `.gitignore` ignora a PASTA, não o symlink** que
+  os worktrees usam: `git status` o lista como `??` e a prova imprimia
+  "pendente: 1 arquivo(s)" numa árvore que estava limpa (foi o que a revisão
+  cobrou). Está em `.git/info/exclude` (compartilhado por todos os
+  worktrees), não no `.gitignore` — o symlink é artefato de máquina.
 - ⚠️ **A grade de FEED não é lida da base**: a entrada com a cadência de feed
   (o Bacana tem uma, com tag `cadencia`) traz linhas DATADAS ("qui 03/09
   18h30"), não uma grade semanal — o parser a deixa de fora de propósito

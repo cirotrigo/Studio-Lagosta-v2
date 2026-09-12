@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { excluirFotos } from '../excluir-fotos'
+import { excluirFotos, normalizarExclusao } from '../excluir-fotos'
 
 const lista = ['a', 'b', 'c', 'd'].map((id) => ({ imagem: { driveFileId: id }, score: 1 }))
 const usos = new Map([
@@ -24,6 +24,18 @@ describe('a exclusão de fotos da lista ranqueada', () => {
     expect(r.resumo.porUso).toBe(1)
     expect(excluirFotos(lista, { usadasDesde: '2026-09-15' }, usos).resumo.porUso).toBe(1)
     expect(excluirFotos(lista, { usadasDesde: '2026-09-16' }, usos).resumo.porUso).toBe(0)
+  })
+  it('dia que NÃO existe no calendário também não exclui (2026-02-31 passa no regex e o Date levaria para março)', () => {
+    const r = excluirFotos(lista, { usadasDesde: '2026-02-31' }, usos)
+    expect(r.mantidas).toHaveLength(lista.length)
+    expect(r.pedida).toBe(false)
+  })
+  it('a exclusão normalizada (a que entra na chave da proposta): ids únicos em ordem, data só se existe', () => {
+    expect(normalizarExclusao({ ids: [' b ', 'a', 'b', ''], usadasDesde: '2026-09-01' })).toEqual({ ids: ['a', 'b'], desde: '2026-09-01' })
+    expect(normalizarExclusao({ ids: ['a', 'b'] })).toEqual(normalizarExclusao({ ids: ['b', 'a'] }))
+    expect(normalizarExclusao({ usadasDesde: '2026-02-31' })).toEqual({ ids: [], desde: null })
+    expect(normalizarExclusao({ usadasDesde: '01/09/2026' }).desde).toBeNull()
+    expect(normalizarExclusao({})).toEqual({ ids: [], desde: null })
   })
   it('data inválida não exclui nada (quem chama avisa)', () => {
     expect(excluirFotos(lista, { usadasDesde: '15/09/2026' }, usos).mantidas).toHaveLength(4)
