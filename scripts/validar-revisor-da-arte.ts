@@ -575,6 +575,33 @@ async function main() {
       await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...((fresco?.payload as object) ?? {}), recompor: { ...rec, forcaAtendida: rec.forcaPedidaEm ?? '' } } as never } })
     }
 
+    // ── 6l. a PRÓPRIA execução forçada falha na última tentativa: FAILED terminal, reabrível (REV-09) ──
+    console.log('6l) a execução FORÇADA falha na última tentativa: FAILED (não PENDING sem orçamento) e a próxima edição reabre o job')
+    const { marcarForcaEmExecucao } = await import('../src/lib/ai/generation-queue')
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'PENDING', attempts: 2, maxAttempts: 3, nextAttemptAt: new Date(), payload: payloadNormal as never } })
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const reservado6l = await reservarJob(jobId6d)
+    const pedida6l = String((reservado6l?.payload as Record<string, any>)?.recompor?.forcaPedidaEm ?? '')
+    // como o executor faz ao começar uma execução forçada:
+    await marcarForcaEmExecucao(jobId6d, pedida6l)
+    const desfecho6l = await falharJob(jobId6d, 'render falhou na execução forçada (simulado)')
+    const job6l = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, attempts: true, maxAttempts: true, lastError: true, payload: true } })
+    conferir('a força que a própria execução tentava atender e falhou NÃO reabre: FAILED terminal, com o motivo', desfecho6l === 'FAILED' && job6l?.status === 'FAILED' && /simulado/.test(String(job6l.lastError)) && (job6l.payload as Record<string, any>).recompor?.forcaTentada === pedida6l, `${desfecho6l}; ${job6l?.status} ${job6l?.attempts}/${job6l?.maxAttempts}`)
+    const reaberto = await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor' } })
+    const job6lB = await db.generationJob.findUnique({ where: { id: reaberto }, select: { status: true, attempts: true, maxAttempts: true, payload: true } })
+    conferir('a próxima edição reabre o MESMO job do zero (PENDING 0/3, payload normal)', reaberto === jobId6d && job6lB?.status === 'PENDING' && job6lB.attempts === 0 && job6lB.maxAttempts === 3 && (job6lB.payload as Record<string, any>).recompor?.forcar !== true, `${job6lB?.status} ${job6lB?.attempts}/${job6lB?.maxAttempts}`)
+    // e força NOVA chegando durante uma execução forçada que falha continua voltando à fila
+    await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'RUNNING', attempts: 3, maxAttempts: 3, startedAt: new Date(), payload: { ...payloadNormal, recompor: { ...payloadNormal.recompor, forcar: true, forcaPedidaEm: '2026-09-12T00:00:00.000Z', forcaTentada: '2026-09-12T00:00:00.000Z' } } as never } })
+    await enfileirarRecomposicao({ generationId: persistido.generationId, projectId: PROJETO, recompor: { pageId, origem: 'editor', forcar: true } })
+    const desfecho6lC = await falharJob(jobId6d, 'render falhou (simulado) com força nova a caminho')
+    const job6lC = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { status: true, attempts: true, maxAttempts: true } })
+    conferir('força NOVA durante a execução forçada que falha: volta à fila COM orçamento', desfecho6lC === 'REENFILEIRADO' && job6lC?.status === 'PENDING' && job6lC.attempts < job6lC.maxAttempts, `${desfecho6lC}; ${job6lC?.status} ${job6lC?.attempts}/${job6lC?.maxAttempts}`)
+    {
+      const j = await db.generationJob.findUnique({ where: { id: jobId6d }, select: { payload: true } })
+      const rec = (j?.payload as Record<string, any>)?.recompor ?? {}
+      await db.generationJob.update({ where: { id: jobId6d }, data: { status: 'DONE', finishedAt: new Date(), payload: { ...((j?.payload as object) ?? {}), recompor: { ...rec, forcaAtendida: rec.forcaPedidaEm ?? '' } } as never } })
+    }
+
     // a copy de referência do passo 7 passa a ser a da página como está agora
     for (const k of Object.keys(copyOriginal)) delete (copyOriginal as Record<string, unknown>)[k]
     Object.assign(copyOriginal, copyDeCamadas(paginaDo6c.layers))

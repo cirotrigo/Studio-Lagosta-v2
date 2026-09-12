@@ -43,7 +43,7 @@
 import { del, put } from '@vercel/blob'
 
 import { db } from '@/lib/db'
-import { marcarForcaAtendida, pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { marcarForcaAtendida, marcarForcaEmExecucao, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
@@ -679,6 +679,10 @@ export async function processarRecomposicaoEmBackground(args: {
 }): Promise<void> {
   const { pageId, origem } = args.recompor
   const t0 = Date.now()
+  // Esta execução vai TENTAR atender a força com que partiu: fica marcado no
+  // job antes de começar, para uma falha dela não voltar à fila como se fosse
+  // força nova (REV-09).
+  if (args.recompor.forcar === true) await marcarForcaEmExecucao(args.queueJobId, args.recompor.forcaPedidaEm)
   const copyAntes = await copyDaPagina(pageId)
 
   try {

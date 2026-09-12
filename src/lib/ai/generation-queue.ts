@@ -199,7 +199,7 @@ export async function marcarForcaAtendida(queueJobId: string | null | undefined,
   return r.count > 0
 }
 
-type RecomporNoPayload = { forcar?: boolean; forcaPedidaEm?: string; forcaAtendida?: string; [k: string]: unknown }
+type RecomporNoPayload = { forcar?: boolean; forcaPedidaEm?: string; forcaTentada?: string; forcaAtendida?: string; [k: string]: unknown }
 function recomporDoPayload(payload: unknown): RecomporNoPayload {
   const r = payload && typeof payload === 'object' ? (payload as { recompor?: unknown }).recompor : null
   return r && typeof r === 'object' ? (r as RecomporNoPayload) : {}
@@ -208,6 +208,34 @@ function recomporDoPayload(payload: unknown): RecomporNoPayload {
 function forcaPendente(payload: unknown): boolean {
   const r = recomporDoPayload(payload)
   return (r.forcaPedidaEm ?? '') !== (r.forcaAtendida ?? '')
+}
+/**
+ * Há força NOVA — pedida DEPOIS de a execução em curso começar? É a única que
+ * justifica devolver à fila um job cuja execução FALHOU: a força que a própria
+ * execução tentava atender e não conseguiu não é "pendente", é falha
+ * (REV-09 da revisão do Codex, 12/09/2026 — sem isso a forçada que falhava na
+ * última tentativa voltava PENDING sem orçamento, inalcançável para sempre).
+ */
+function forcaNovaDesdeOInicio(payload: unknown): boolean {
+  const r = recomporDoPayload(payload)
+  const pedida = r.forcaPedidaEm ?? ''
+  return pedida !== (r.forcaAtendida ?? '') && pedida !== (r.forcaTentada ?? '')
+}
+
+/**
+ * O executor COMEÇOU a atender a força `pedidaEm`: grava `forcaTentada` por
+ * compare-and-set. Se essa execução falhar, `falharJob` sabe que não é força
+ * nova e fecha FAILED (terminal, reabrível pela próxima edição).
+ */
+export async function marcarForcaEmExecucao(queueJobId: string | null | undefined, pedidaEm: string | null | undefined): Promise<boolean> {
+  if (!queueJobId) return false
+  const atual = await db.generationJob.findUnique({ where: { id: queueJobId }, select: { status: true, payload: true } })
+  if (!atual || atual.status !== 'RUNNING') return false
+  const recompor = recomporDoPayload(atual.payload)
+  if ((recompor.forcaPedidaEm ?? '') !== (pedidaEm ?? '')) return false
+  const novo = { ...(atual.payload as Record<string, unknown>), recompor: { ...recompor, forcaTentada: pedidaEm ?? '' } }
+  const r = await db.generationJob.updateMany({ where: { id: queueJobId, status: 'RUNNING', payload: { equals: atual.payload as never } }, data: { payload: novo as never } })
+  return r.count > 0
 }
 
 /** O payload de um job COMPOR — o que `processarComposicaoEmBackground` recebe. */
@@ -242,6 +270,8 @@ export interface RecomposicaoJobArgs {
     forcar?: boolean
     /** Carimbo (ISO) da força pedida — posto por `enfileirarRecomposicao`; `forcaAtendida` recebe o mesmo valor quando o executor a honra. */
     forcaPedidaEm?: string
+    /** O carimbo da força que a execução em curso está TENTANDO atender (posto ao começar) — a que falhar não volta à fila como se fosse nova. */
+    forcaTentada?: string
     forcaAtendida?: string
   }
   decididoPor?: string | null
@@ -424,9 +454,17 @@ export async function fecharJob(id: string, generationId: string): Promise<'DONE
     if (job.status === 'PENDING') return 'REENFILEIRADO'
     if (job.status !== 'RUNNING') return ok ? 'DONE' : 'FAILED'
     if (forcaPendente(job.payload)) {
+      const orcamento = await db.generationJob.findUnique({ where: { id }, select: { attempts: true, maxAttempts: true } })
       const devolvido = await db.generationJob.updateMany({
         where: { id, status: 'RUNNING', payload: { equals: job.payload as never } },
-        data: { status: 'PENDING', nextAttemptAt: new Date(), leaseExpiresAt: null, lastError: 'recuperação forçada chegou durante a execução' },
+        data: {
+          status: 'PENDING',
+          nextAttemptAt: new Date(),
+          leaseExpiresAt: null,
+          // Nunca PENDING sem orçamento (REV-09).
+          ...(orcamento ? { maxAttempts: Math.max(orcamento.maxAttempts, orcamento.attempts + 1) } : {}),
+          lastError: 'recuperação forçada chegou durante a execução',
+        },
       })
       if (devolvido.count > 0) {
         console.log(`[fila-arte] job ${id} devolvido à fila: recuperação forçada chegou durante a execução`)
@@ -458,16 +496,26 @@ export async function falharJob(id: string, motivo: string): Promise<'FAILED' | 
    * dois casos.
    */
   for (let volta = 0; volta < 4; volta++) {
-    const job = await db.generationJob.findUnique({ where: { id }, select: { status: true, payload: true } })
+    const job = await db.generationJob.findUnique({ where: { id }, select: { status: true, payload: true, attempts: true, maxAttempts: true } })
     if (!job || job.status !== 'RUNNING') return job?.status === 'PENDING' ? 'REENFILEIRADO' : 'FAILED'
-    const pendente = forcaPendente(job.payload)
+    // Só força NOVA (chegada depois de esta execução começar) reabre; a força
+    // que esta execução tentava atender e falhou é falha terminal — a próxima
+    // edição reabre o job do zero (REV-09).
+    const nova = forcaNovaDesdeOInicio(job.payload)
     const r = await db.generationJob.updateMany({
       where: { id, status: 'RUNNING', payload: { equals: job.payload as never } },
-      data: pendente
-        ? { status: 'PENDING', nextAttemptAt: new Date(), leaseExpiresAt: null, lastError: `${motivo.slice(0, 400)} — recuperação forçada pendente: volta à fila` }
+      data: nova
+        ? {
+            status: 'PENDING',
+            nextAttemptAt: new Date(),
+            leaseExpiresAt: null,
+            // Nunca PENDING sem orçamento: a re-execução precisa caber.
+            maxAttempts: Math.max(job.maxAttempts, job.attempts + 1),
+            lastError: `${motivo.slice(0, 400)} — recuperação forçada nova pendente: volta à fila`,
+          }
         : { status: 'FAILED', finishedAt: new Date(), leaseExpiresAt: null, lastError: motivo.slice(0, 500) },
     })
-    if (r.count > 0) return pendente ? 'REENFILEIRADO' : 'FAILED'
+    if (r.count > 0) return nova ? 'REENFILEIRADO' : 'FAILED'
   }
   return 'FAILED'
 }
