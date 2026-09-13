@@ -8,7 +8,13 @@
  *    posicional dela durante a transição (um item por bloco com texto, linhas
  *    unidas por "\n") — é o que a bancada, `executar-plano` e as vias de
  *    template/IA continuam lendo até o PR 5.
- *  - Contrato que não passa no leitor é RECUSADO (nunca gravado pela metade).
+ *  - Contrato que não passa no leitor é RECUSADO (nunca gravado pela metade),
+ *    com a ORIENTAÇÃO do que fazer quando o problema é de limite
+ *    (`orientacaoDosProblemas`: "quebre a linha").
+ *  - Edição posicional num contrato com o histórico CHEIO propaga
+ *    `HistoricoDaCopyCheio` (PR2-02): nada é gravado, e `plano-service` a
+ *    devolve como 409 dizendo o que fazer — descartar o contrato em silêncio
+ *    apagaria a autoria que o histórico guarda.
  *  - Edição SÓ da lista posicional num item que tem contrato vira REVISÃO do
  *    contrato quando dá para casar posição a posição (mesmo número de blocos
  *    com texto). Quando não dá, o contrato é DESCARTADO COM AVISO — manter um
@@ -20,6 +26,8 @@ import {
   blocosEmOrdem,
   espelhoPosicional,
   lerCopyAutoral,
+  orientacaoDosProblemas,
+  orientacaoEmFrase,
   validarCopyAutoral,
   type Autor,
   type BlocoAutoral,
@@ -35,8 +43,12 @@ export interface CopyDoItem {
 }
 
 export class CopyAutoralInvalida extends Error {
-  constructor(public readonly problemas: string[]) {
-    super(`a copy autoral não passou no contrato: ${problemas.join('; ')}`)
+  constructor(
+    public readonly problemas: string[],
+    /** O que fazer quando o problema é de limite ("quebre a linha") — pode vir vazio. */
+    public readonly orientacao: string[] = [],
+  ) {
+    super(`a copy autoral não passou no contrato: ${problemas.join('; ')}${orientacaoEmFrase(orientacao)}`)
   }
 }
 
@@ -54,7 +66,7 @@ export function espelhoDoContrato(copy: CopyAutoral): string[] {
 
 function contratoLido(entrada: unknown): CopyAutoral {
   const { copy, problemas } = lerCopyAutoral(entrada)
-  if (!copy) throw new CopyAutoralInvalida(problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem)))
+  if (!copy) throw new CopyAutoralInvalida(problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem)), orientacaoDosProblemas(problemas))
   return copy
 }
 
@@ -121,6 +133,6 @@ export function copyDoItemNoPatch(
     ...(quem.em ? { em: quem.em } : {}),
   })
   const conferida = validarCopyAutoral(copy)
-  if (!conferida.copy) return descartado(`a edição posicional deixou o contrato inválido (${conferida.problemas.map((p) => p.mensagem).join('; ')})`)
+  if (!conferida.copy) return descartado(`a edição posicional deixou o contrato inválido (${conferida.problemas.map((p) => p.mensagem).join('; ')})${orientacaoEmFrase(orientacaoDosProblemas(conferida.problemas)).replace(/\.$/, '')}`)
   return { copyAutoral: conferida.copy, copyProposta: espelhoDoContrato(conferida.copy), avisos: [] }
 }

@@ -6385,6 +6385,22 @@ dev: `scripts/validar-copy-autoral.ts`.
 - **A comparação do contrato na releitura tem teste próprio** (só o contrato
   muda, conteúdo idêntico → 409), embora hoje nenhum escritor mude só o
   contrato: sem o caso, apagar `mesmoContrato` passava por todos os testes.
+- 🔴 **Quem grava camadas TRATA as duas recusas do contrato; nenhuma vira 500
+  nem derruba peça** (restack sobre o PR2-01/PR2-02, `e3c1f75f`, 13/09/2026).
+  `HistoricoDaCopyCheio` chega por `copyEfetivaDasCamadas` a todo caminho que
+  grava camadas: use `tentarCopyEfetivaDasCamadas` (devolve `ok: false` + aviso)
+  e `revisaoDaPaginaComCamadas`, que devolve `estado: 'historico-cheio'`. A
+  regra de produto é uma só: **as camadas e a arte seguem, o contrato fica como
+  estava (nunca a 201ª revisão), e o aviso sai** — no PATCH do editor
+  (`avisoDaCopy` na resposta + log), no `ajustarArte` e no `reverter-arte`
+  (`avisos`), na recomposição (avisos do registro) e no compositor
+  (`fieldValues.avisosDaCopyAutoral` e `diagnostico.avisos`). Na spec sem
+  contrato, que não limita caracteres, o compositor usa `converterBlocosLegados`
+  e segue SEM contrato com aviso quando o legado não cabe. No plano, o erro vira
+  4xx explícito (`COPY_HISTORICO_CHEIO` 409, `COPY_LEGADA_INCOMPATIVEL` 400) com
+  o que fazer; `orientacaoDosProblemas` traduz problema de LIMITE em instrução
+  ("quebre a linha"). ⚠️ Com `strict: false`, `!x.ok` NÃO estreita a união: use
+  `x.ok === false` antes de ler `aviso`.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

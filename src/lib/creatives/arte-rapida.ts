@@ -55,7 +55,7 @@ import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
-import { copyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
+import { tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
@@ -1087,10 +1087,21 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
     superficie: input.canal ?? 'chat',
   })
-  const contratoDaPagina = revisaoDaCopy.copy ?? copyAutoralDaPagina(page.copyAutoral)
+  /**
+   * Histórico da copy CHEIO (PR2-02): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
+   * contrato como estava e a arte nasce SEM registro de copy (a efetiva não cabe no histórico), com o aviso no retorno.
+   */
+  const avisosDaCopy: string[] = []
+  if (revisaoDaCopy.estado === 'historico-cheio') avisosDaCopy.push(revisaoDaCopy.aviso ?? 'o histórico da copy está cheio: o ajuste não entrou no contrato')
+  const contratoDaPagina = revisaoDaCopy.estado === 'historico-cheio' ? null : (revisaoDaCopy.copy ?? copyAutoralDaPagina(page.copyAutoral))
   const copyAutoralDaArte = contratoDaPagina
     ? (() => {
-        const { efetiva, lacunas } = copyEfetivaDasCamadas(contratoDaPagina, layers as Layer[], { superficie: 'ajuste-arte' })
+        const lida = tentarCopyEfetivaDasCamadas(contratoDaPagina, layers as Layer[], { superficie: 'ajuste-arte' })
+        if (lida.ok === false) {
+          avisosDaCopy.push(lida.aviso)
+          return null
+        }
+        const { efetiva, lacunas } = lida.leitura
         return {
           original: contratoDaPagina,
           efetiva,
@@ -1099,6 +1110,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         }
       })()
     : null
+  if (avisosDaCopy.length > 0) console.warn(`[ajustar-arte] ${page.id}: ${avisosDaCopy.join(' ')}`)
   /**
    * A miniatura da página é INVALIDADA junto das camadas (REV-127-F01 da
    * revisão FINAL do Codex, 12/09/2026): ela é o PNG do render ANTERIOR, e
@@ -1376,6 +1388,6 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       ? { postsCongelados: invalidacao.congelados.length }
       : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    ...(fix.avisos.length + avisosDaCopy.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopy] } : {}),
   }
 }

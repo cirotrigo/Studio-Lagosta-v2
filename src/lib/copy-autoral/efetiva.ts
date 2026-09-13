@@ -28,7 +28,7 @@ import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { linhasComColchetes } from '@/lib/compositor/destaques'
 import { VERSAO_DO_CONTRATO, type BlocoAutoral, type CopyAutoral, type FuncaoDoBloco } from './contrato'
 import { blocosEmOrdem } from './validar'
-import { aplicarRevisao, type MudancaDeBloco } from './revisao'
+import { aplicarRevisao, HistoricoDaCopyCheio, type MudancaDeBloco } from './revisao'
 
 /** Hash curto e determinístico (FNV-1a) — só para desempatar ids saneados. */
 function hashCurto(texto: string): string {
@@ -224,6 +224,34 @@ export interface CopyEfetiva {
   efetiva: CopyAutoral
   mudancas: MudancaDeBloco[]
   lacunas: string[]
+}
+
+/**
+ * A leitura da efetiva quando o histórico da copy pode estar CHEIO. Desde o
+ * PR2-02 (`e3c1f75f`), `aplicarRevisao` RECUSA a 201ª revisão com
+ * `HistoricoDaCopyCheio` — e `copyEfetivaDasCamadas` a propaga. Quem grava
+ * camadas não pode deixar essa recusa derrubar a escrita (o autosave do editor,
+ * a peça já composta, a recomposição): `ok: false` diz que a mudança NÃO entra
+ * no contrato, e o chamador segue sem gravar contrato novo, com o aviso.
+ * Nunca se grava um contrato que a releitura rejeita, e nunca se apaga revisão
+ * antiga para abrir espaço.
+ */
+export type LeituraDaEfetiva = { ok: true; leitura: CopyEfetiva } | { ok: false; historicoCheio: HistoricoDaCopyCheio; aviso: string }
+
+/** O aviso em português, com o que aconteceu e o que continua valendo. `onde` completa "a mudança …". */
+export function avisoDeHistoricoCheio(recusa: HistoricoDaCopyCheio, onde: string): string {
+  const blocos = recusa.mudancas.map((m) => `"${m.id}"`).join(', ')
+  return `O histórico da copy autoral chegou ao limite de ${recusa.copy.revisoes.length} revisões: a mudança ${onde}${blocos ? ` (${blocos})` : ''} não foi registrada no contrato, que ficou como estava. O que foi desenhado segue valendo; para voltar a acompanhar a copy, mande-a de novo como contrato novo.`
+}
+
+/** `copyEfetivaDasCamadas` sem deixar o histórico cheio escapar como exceção (ver `LeituraDaEfetiva`). Qualquer outro erro sobe. */
+export function tentarCopyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): LeituraDaEfetiva {
+  try {
+    return { ok: true, leitura: copyEfetivaDasCamadas(original, camadas, opcoes) }
+  } catch (erro) {
+    if (erro instanceof HistoricoDaCopyCheio) return { ok: false, historicoCheio: erro, aviso: avisoDeHistoricoCheio(erro, `lida das camadas (${opcoes.superficie})`) }
+    throw erro
+  }
 }
 
 /**

@@ -46,7 +46,7 @@ import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { blocosParaOCompositor, copyEfetivaDasCamadas, lerCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import { blocosParaOCompositor, lerCopyAutoral, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
@@ -424,9 +424,11 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * Página sem contrato recompõe pelo caminho legado, sem contrato.
      */
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
-    const contratoAtual: CopyAutoral | null = contratoDaPagina
-      ? copyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }).efetiva
-      : null
+    // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — segue pelo caminho sem contrato, a
+    // página mantém o contrato como estava e o motivo entra nos avisos do registro.
+    const leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    if (leituraDoContrato && leituraDoContrato.ok === false) avisos.push(`${leituraDoContrato.aviso} A peça foi recomposta pelo texto da página, sem contrato.`)
+    const contratoAtual: CopyAutoral | null = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
     const { copyAutoral: _contratoVelho, ...specSemContrato } = specPosicionada
     const spec: SpecDePeca = contratoAtual
       ? { ...specSemContrato, copyAutoral: contratoAtual, blocos: blocosParaOCompositor(contratoAtual).blocos as unknown as SpecDePeca['blocos'] }
@@ -454,7 +456,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     // F1: a copy EFETIVA da peça recomposta — o que as camadas novas mostram
     // sobre o contrato atual. Vai para a página (o contrato do que ela mostra)
     // e para a Generation (`copyAutoral.efetiva`); o `original` fica intacto.
-    const efetivaRecomposta = contratoAtual ? copyEfetivaDasCamadas(contratoAtual, camadas.camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    // A peça já está composta e o PNG no Blob: o histórico cheio não a descarta — grava sem contrato novo, com aviso.
+    const leituraRecomposta = contratoAtual ? tentarCopyEfetivaDasCamadas(contratoAtual, camadas.camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    if (leituraRecomposta && leituraRecomposta.ok === false) avisos.push(`${leituraRecomposta.aviso} A página e a arte foram gravadas sem contrato novo.`)
+    const efetivaRecomposta = leituraRecomposta && leituraRecomposta.ok ? leituraRecomposta.leitura : null
     const copyAutoralAnterior = arte.fieldValues.copyAutoral && typeof arte.fieldValues.copyAutoral === 'object' ? (arte.fieldValues.copyAutoral as Record<string, unknown>) : null
     /**
      * Compare-and-set na versão LIDA da página. Enquanto a peça era composta a

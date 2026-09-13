@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { comVisibilidadeDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
-import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, idDeExtra, idDeExtraLegado, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
+import { MAX_REVISOES_DA_COPY, VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, tentarCopyEfetivaDasCamadas, idDeExtra, idDeExtraLegado, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
 
 function texto(id: string, y: number, content: string, extra: Partial<Layer> = {}): Layer {
   return { id, name: id, type: 'text', visible: true, locked: false, order: 1, content, position: { x: 100, y }, size: { width: 800, height: 60 }, style: { fontSize: 40 }, metadata: { compositor: { papel: id.replace(/-\d+$/, '') } }, ...extra } as Layer
@@ -236,5 +236,26 @@ describe('a revisão da página a partir das camadas (puro — entra na MESMA es
     const camadasDaCopia = camadas.map((c) => ({ ...c, id: mapa.get(c.id)!, name: mapa.get(c.id)!, content: c.id === 'aviso' ? 'Só amanhã' : c.content })) as Layer[]
     const camadasComPapel = camadasDaCopia.map((c) => ({ ...c, metadata: c.id === 'uuid-3' ? {} : { compositor: { papel: c.id === 'uuid-1' ? 'headline' : 'cta' } } })) as Layer[]
     expect(copyEfetivaDasCamadas(copia, camadasComPapel, { superficie: 'editor' }).mudancas).toEqual([])
+  })
+})
+
+describe('histórico da copy cheio (PR2-02) — a revisão da página não lança', () => {
+  const cheio = (n: number): CopyAutoral => ({ ...contrato, revisoes: Array.from({ length: n }, () => ({ em: '2026-09-12T11:00:00.000Z', autor: 'equipe' as const, motivo: 'm', superficie: 'editor', blocos: ['cta'] })) })
+  const editadas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Fale com a gente')]
+
+  it('com 200 revisões e mudança: estado historico-cheio, sem copy para gravar, com os blocos e o aviso', () => {
+    const r = revisaoDaPaginaComCamadas(cheio(MAX_REVISOES_DA_COPY), editadas, { autor: 'equipe', motivo: 'edição', superficie: 'editor' })
+    expect(r.estado).toBe('historico-cheio')
+    expect(r.copy).toBeNull()
+    expect(r.blocos).toEqual(['cta'])
+    expect(r.aviso).toMatch(/limite de 200 revisões/)
+  })
+
+  it('tentarCopyEfetivaDasCamadas devolve ok:false no lugar da exceção; com 199 devolve a leitura', () => {
+    const recusa = tentarCopyEfetivaDasCamadas(cheio(MAX_REVISOES_DA_COPY), editadas, { superficie: 'recomposicao' })
+    expect(recusa.ok).toBe(false)
+    const lida = tentarCopyEfetivaDasCamadas(cheio(MAX_REVISOES_DA_COPY - 1), editadas, { superficie: 'recomposicao' })
+    expect(lida.ok && lida.leitura.efetiva.revisoes.length).toBe(MAX_REVISOES_DA_COPY)
+    expect(() => copyEfetivaDasCamadas(cheio(MAX_REVISOES_DA_COPY), editadas, { superficie: 'x' })).toThrow(/histórico da copy está cheio/)
   })
 })

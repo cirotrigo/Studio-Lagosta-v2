@@ -1205,21 +1205,24 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // Os arranjos usados ficam gravados na spec: a recomposição refaz A MESMA
   // peça, sem sortear outra combinação.
   const specGravada: SpecDePeca = arranjos.length > 0 ? { ...spec, preferencias: { ...spec.preferencias, arranjos: arranjos.map((a) => a.id) } } : spec
-  const persistido = await persistAndRenderCreative(
-    entradaDePersistencia({
-      spec: specGravada,
-      opcoes,
-      projeto,
-      pasta,
-      nome,
-      ordem,
-      canvas,
-      layers,
-      fundo: assinatura.numeros.fundo,
-      diagnostico,
-      fotoUrl: foto?.url ?? null,
-    }),
-  )
+  const entradaDoPersist = entradaDePersistencia({
+    spec: specGravada,
+    opcoes,
+    projeto,
+    pasta,
+    nome,
+    ordem,
+    canvas,
+    layers,
+    fundo: assinatura.numeros.fundo,
+    diagnostico,
+    fotoUrl: foto?.url ?? null,
+  })
+  // A peça sem contrato por recusa (legado que não cabe, histórico cheio) AVISA quem pediu — nunca em silêncio.
+  // `diagnostico` é o mesmo objeto gravado em `fieldValues.composicao`.
+  const avisosDaCopy = (entradaDoPersist.fieldValues as { avisosDaCopyAutoral?: string[] }).avisosDaCopyAutoral ?? []
+  if (avisosDaCopy.length > 0) diagnostico.avisos.push(...avisosDaCopy)
+  const persistido = await persistAndRenderCreative(entradaDoPersist)
 
   if (spec.foto?.driveFileId) {
     await registrarUsoDeFoto({

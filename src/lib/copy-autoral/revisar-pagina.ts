@@ -28,15 +28,23 @@ import type { Layer } from '@/types/template'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Autor, CopyAutoral } from './contrato'
-import { copyEfetivaDasCamadas } from './efetiva'
+import { tentarCopyEfetivaDasCamadas } from './efetiva'
 import { lerCopyAutoral } from './serializar'
 
 export interface RevisaoDaPagina {
-  estado: 'registrada' | 'sem-mudanca' | 'sem-contrato' | 'ilegivel'
+  /**
+   * `historico-cheio`: as camadas mudaram a copy, mas o contrato já tem o
+   * máximo de revisões (`HistoricoDaCopyCheio`, PR2-02) — a mudança NÃO entra
+   * no contrato. Quem grava as camadas grava-as mesmo assim, mantém o contrato
+   * como estava (nunca grava `copy`, que é `null`) e repassa `aviso`.
+   */
+  estado: 'registrada' | 'sem-mudanca' | 'sem-contrato' | 'ilegivel' | 'historico-cheio'
   /** O contrato que a página deve passar a ter (`registrada`) ou tem (`sem-mudanca`); `null` nos outros estados. */
   copy: CopyAutoral | null
   blocos: string[]
   lacunas: string[]
+  /** Só em `historico-cheio`: o que aconteceu, em português, para a resposta e o log. */
+  aviso?: string
 }
 
 /**
@@ -63,7 +71,11 @@ export function revisaoDaPaginaComCamadas(
   if (!atual) return { estado: 'sem-contrato', copy: null, blocos: [], lacunas: [] }
   const lidas = lerCamadasParaAutoria(camadas)
   if (!lidas.legivel) return { estado: 'ilegivel', copy: null, blocos: [], lacunas: [] }
-  const { efetiva, mudancas, lacunas } = copyEfetivaDasCamadas(atual, lidas.camadas as unknown as Layer[], { superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
+  const lida = tentarCopyEfetivaDasCamadas(atual, lidas.camadas as unknown as Layer[], { superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
+  if (lida.ok === false) {
+    return { estado: 'historico-cheio', copy: null, blocos: lida.historicoCheio.mudancas.map((m) => m.id), lacunas: [], aviso: lida.aviso }
+  }
+  const { efetiva, mudancas, lacunas } = lida.leitura
   if (mudancas.length === 0) return { estado: 'sem-mudanca', copy: atual, blocos: [], lacunas }
   const ultima = efetiva.revisoes[efetiva.revisoes.length - 1]
   const revisada: CopyAutoral = {

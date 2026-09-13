@@ -25,6 +25,7 @@ import { diaBRTDe, diasAteDomingoBRT, lerFotoCandidatas } from './proposta-de-se
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { CopyAutoralInvalida, copyDoItemNoPatch, copyDoItemNovo, type CopyDoItem } from './copy-do-item'
+import { CopyLegadaIncompativel, HistoricoDaCopyCheio, MAX_REVISOES_DA_COPY, orientacaoDosProblemas, orientacaoEmFrase } from '@/lib/copy-autoral'
 import {
   cenaDasReferencias,
   validarReferencias,
@@ -435,10 +436,7 @@ function normalizarItem(
   try {
     copyDoItem = copyDoItemNovo(entrada)
   } catch (erro) {
-    if (erro instanceof CopyAutoralInvalida) {
-      throw new CreativeError('COPY_AUTORAL_INVALIDA', `A copy autoral do item ${posicao} não passou no contrato: ${erro.problemas.join('; ')}.`, 400, { problemas: erro.problemas })
-    }
-    throw erro
+    throw erroDaCopyDoItem(erro, `do item ${posicao}`) ?? erro
   }
   const copy = copyDoItem.copyProposta
 
@@ -644,6 +642,36 @@ export async function arquivarPlano(projectId: number, planoId: string) {
 
 // ── Edição do item ──────────────────────────────────────────────────────────
 
+/**
+ * As recusas do contrato da copy viram erro 4xx explícito, em português e com o
+ * que fazer — nunca 500. `null` quando o erro não é do contrato (sobe como veio).
+ *  - `CopyAutoralInvalida` (400): o contrato mandado não passa no leitor;
+ *  - `CopyLegadaIncompativel` (400): a copy legada não cabe no contrato — nada
+ *    foi cortado nem redistribuído (PR2-01);
+ *  - `HistoricoDaCopyCheio` (409): o contrato do item já tem o máximo de
+ *    revisões e a edição não foi registrada — nada foi gravado (PR2-02).
+ */
+function erroDaCopyDoItem(erro: unknown, qual: string | null): CreativeError | null {
+  const daCopy = qual ? ` ${qual}` : ''
+  if (erro instanceof CopyAutoralInvalida) {
+    return new CreativeError('COPY_AUTORAL_INVALIDA', `A copy autoral${daCopy} não passou no contrato: ${erro.problemas.join('; ')}.${orientacaoEmFrase(erro.orientacao)}`, 400, { problemas: erro.problemas, orientacao: erro.orientacao })
+  }
+  if (erro instanceof CopyLegadaIncompativel) {
+    const problemas = erro.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem))
+    const orientacao = orientacaoDosProblemas(erro.problemas)
+    return new CreativeError('COPY_LEGADA_INCOMPATIVEL', `A copy${daCopy} não cabe no contrato da copy autoral (nada foi cortado nem redistribuído): ${problemas.join('; ')}.${orientacaoEmFrase(orientacao)}`, 400, { problemas, orientacao })
+  }
+  if (erro instanceof HistoricoDaCopyCheio) {
+    return new CreativeError(
+      'COPY_HISTORICO_CHEIO',
+      `O histórico da copy${daCopy} chegou ao limite de ${MAX_REVISOES_DA_COPY} revisões, e esta edição do texto não foi registrada — nada foi gravado. Para seguir editando, mande a copy inteira como contrato novo (copyAutoral), que recomeça o histórico, ou remova o contrato (copyAutoral: null) e edite só a lista.`,
+      409,
+      { revisoes: erro.copy.revisoes.length, blocos: erro.mudancas.map((m) => m.id) },
+    )
+  }
+  return null
+}
+
 async function buscarItem(projectId: number, planoId: string, itemId: string) {
   const item = await db.itemDePlano.findFirst({
     where: { id: itemId, planoId, projectId },
@@ -752,10 +780,7 @@ export async function atualizarItem(input: {
       avisos.push(...copyPatch.avisos)
     }
   } catch (erro) {
-    if (erro instanceof CopyAutoralInvalida) {
-      throw new CreativeError('COPY_AUTORAL_INVALIDA', `A copy autoral não passou no contrato: ${erro.problemas.join('; ')}.`, 400, { problemas: erro.problemas })
-    }
-    throw erro
+    throw erroDaCopyDoItem(erro, null) ?? erro
   }
 
   if (patch.formato !== undefined) {

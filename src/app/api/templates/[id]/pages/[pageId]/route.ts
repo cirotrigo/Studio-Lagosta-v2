@@ -236,8 +236,10 @@ export async function PATCH(
     let page
     let invalidated = 0
     let congelados: string[] = []
+    /** A edição mexeu na copy e o contrato não a registrou (histórico cheio) — vai na resposta e no log. */
+    let avisoDaCopy: string | null = null
     if (previa.visualChanged) {
-      ;({ page, invalidated, congelados, layersChanged, visualChanged, baseGravada } = await db.$transaction(
+      ;({ page, invalidated, congelados, layersChanged, visualChanged, baseGravada, avisoDaCopy } = await db.$transaction(
         async (tx) => {
           /**
            * A escrita das camadas e a revisão do contrato saem JUNTAS, por
@@ -255,6 +257,7 @@ export async function PATCH(
           let updated: NonNullable<typeof existingPage> | null = null
           let efetiva = previa
           let base: BaseVisual = baseGravada
+          let aviso: string | null = null
           for (let volta = 0; volta < 4 && !updated; volta++) {
             const fresca = await tx.page.findUnique({ where: { id: pageId }, select: selecaoDaBase })
             if (!fresca) throw new Error('page_not_found')
@@ -262,20 +265,26 @@ export async function PATCH(
             reconciliarContra(fresca.layers)
             const m = mudancasContra(fresca)
             const dados = dadosContra(fresca)
+            let avisoDestaVolta: string | null = null
             if (m.layersChanged) {
               const revisao = revisaoDaPaginaComCamadas(fresca.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
               if (revisao.estado === 'registrada' && revisao.copy) dados.copyAutoral = revisao.copy
+              // 🔴 Histórico da copy CHEIO (PR2-02): o autosave NUNCA falha nem perde o que a pessoa
+              // editou — as camadas vão, o contrato fica como estava (sem a revisão, que o leitor
+              // rejeitaria) e a resposta avisa.
+              if (revisao.estado === 'historico-cheio') avisoDestaVolta = revisao.aviso ?? 'o histórico da copy está cheio: esta edição não entrou no contrato'
             }
             const gravada = await tx.page.updateMany({ where: { id: pageId, updatedAt: fresca.updatedAt }, data: dados })
             if (gravada.count > 0) {
               updated = await tx.page.findUnique({ where: { id: pageId } })
               efetiva = m
               base = fresca
+              aviso = avisoDestaVolta
             }
           }
           if (!updated) throw new Error('page_write_conflict')
           const r = efetiva.visualChanged ? await invalidateScheduledRenders(tx, { pageIds: [pageId] }) : { invalidados: 0, congelados: [] as string[] }
-          return { page: updated, invalidated: r.invalidados, congelados: r.congelados, layersChanged: efetiva.layersChanged, visualChanged: efetiva.visualChanged, baseGravada: base }
+          return { page: updated, invalidated: r.invalidados, congelados: r.congelados, layersChanged: efetiva.layersChanged, visualChanged: efetiva.visualChanged, baseGravada: base, avisoDaCopy: aviso }
         },
         // Accelerate: o maxWait default (2s) estourava com autosaves em
         // sequência — "Unable to start a transaction in the given time"
@@ -312,6 +321,9 @@ export async function PATCH(
       console.warn(
         `[API] Page ${pageId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
       )
+    }
+    if (avisoDaCopy) {
+      console.warn(`[API] Page ${pageId}: camadas gravadas sem revisão do contrato da copy — ${avisoDaCopy}`)
     }
 
     /**
@@ -457,6 +469,8 @@ export async function PATCH(
       // O autosave do editor bate aqui a cada pausa: é o ponto natural para
       // avisar que a edição não alcança mais um post já entregue.
       ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
+      // As camadas foram gravadas e o contrato da copy ficou como estava (histórico cheio).
+      ...(avisoDaCopy ? { avisoDaCopy } : {}),
     }
 
     return NextResponse.json(pageWithParsedLayers)

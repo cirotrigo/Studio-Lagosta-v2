@@ -16,6 +16,8 @@ export interface ReversaoDeArte {
   camadas: number
   invalidados: number
   congelados: string[]
+  /** As camadas voltaram, mas o contrato da copy não registrou a volta (histórico cheio) — ficou como estava. */
+  avisos?: string[]
 }
 
 export async function reverterCamadasDaArte(generationId: string, opts: { projectId?: number } = {}): Promise<ReversaoDeArte> {
@@ -38,6 +40,9 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   // isso a próxima edição levaria a culpa pelo que a reversão desfez (R09).
   const { revisaoDaPaginaComCamadas } = await import('@/lib/copy-autoral/revisar-pagina')
   const revisao = revisaoDaPaginaComCamadas(page.copyAutoral, v.camadas, { autor: 'sistema', motivo: 'reverter-arte (camadas do snapshot)', superficie: 'reverter-arte' })
+  // Histórico da copy cheio (PR2-02): a reversão segue, o contrato fica como estava e o motivo sai no retorno.
+  const avisos = revisao.estado === 'historico-cheio' && revisao.aviso ? [revisao.aviso] : []
+  if (avisos.length > 0) console.warn(`[reverter-arte] ${pageId}: ${avisos[0]}`)
   const r = await db.$transaction(async (tx) => {
     await tx.page.update({ where: { id: pageId }, data: { layers: JSON.stringify(v.camadas), ...(revisao.estado === 'registrada' && revisao.copy ? { copyAutoral: revisao.copy as never } : {}) } })
     return invalidateScheduledRenders(tx, { pageIds: [pageId] })
@@ -50,5 +55,5 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
    */
   const { pedirRecomposicaoDaArteCongelada } = await import('./recompor')
   await pedirRecomposicaoDaArteCongelada([pageId])
-  return { generationId, pageId, camadas: v.camadas.length, invalidados: r.invalidados, congelados: r.congelados }
+  return { generationId, pageId, camadas: v.camadas.length, invalidados: r.invalidados, congelados: r.congelados, ...(avisos.length > 0 ? { avisos } : {}) }
 }
