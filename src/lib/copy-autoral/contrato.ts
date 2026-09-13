@@ -47,6 +47,24 @@ export const VERSAO_DO_CONTRATO = 'copy-autoral-v1' as const
 /** Teto de linhas por bloco — e, por consequência, do índice que a voz 2 pode apontar. */
 export const MAX_LINHAS = 12
 
+/** Teto de blocos numa copy. */
+export const MAX_BLOCOS_NA_COPY = 40
+
+/**
+ * Teto de ids tocados numa revisão. Trocar TODOS os blocos por outros toca os
+ * que saem e os que entram — até `2 × MAX_BLOCOS_NA_COPY`. Com o teto igual ao
+ * de blocos, `aplicarRevisao` produzia uma revisão que o próprio leitor
+ * recusava (PR2-02 da revisão final do Codex, 13/09/2026).
+ */
+export const MAX_BLOCOS_TOCADOS_POR_REVISAO = 2 * MAX_BLOCOS_NA_COPY
+
+/**
+ * Teto do histórico. Chegando nele, `aplicarRevisao` RECUSA a mudança
+ * (`HistoricoDaCopyCheio`) — nunca apaga revisão antiga para abrir espaço:
+ * autoria e registro de remoção não se descartam.
+ */
+export const MAX_REVISOES_DA_COPY = 200
+
 /** O que o texto FAZ. `livre` é o bloco sem papel de assinatura (camada extra, F3). */
 export const FUNCOES = ['pre', 'headline', 'apoio', 'cta', 'servico', 'livre'] as const
 export type FuncaoDoBloco = (typeof FUNCOES)[number]
@@ -123,15 +141,15 @@ export const revisaoDaCopySchema = z
     autor: z.enum(AUTORES),
     /** Por que mudou, em uma frase ("a Roberta trocou o CTA", "acento corrigido pelo revisor"). */
     motivo: z.string().min(1).max(300),
-    /** Os ids dos blocos tocados nesta revisão (alterados, acrescentados e removidos). */
-    blocos: z.array(idDeBlocoSchema).max(40),
+    /** Os ids dos blocos tocados nesta revisão (alterados, acrescentados e removidos — até o dobro do teto de blocos). */
+    blocos: z.array(idDeBlocoSchema).max(MAX_BLOCOS_TOCADOS_POR_REVISAO),
     /**
      * Os blocos REMOVIDOS nesta revisão, com o que diziam — é o que deixa o
      * histórico citar um id que não está mais na copy sem inventar bloco.
      */
     removidos: z
       .array(z.object({ id: idDeBlocoSchema, funcao: z.enum(FUNCOES), linhas: z.array(z.string().max(300)).max(MAX_LINHAS) }).strict())
-      .max(40)
+      .max(MAX_BLOCOS_NA_COPY)
       .optional(),
     /** O que mudou em cada bloco alterado, por campo (`linhas`, `ordem`, `estilo`…). */
     campos: z.record(idDeBlocoSchema, z.array(z.string().min(1).max(30)).max(10)).optional(),
@@ -152,9 +170,9 @@ export const copyAutoralSchema = z
         superficie: z.string().min(1).max(40).optional(),
       })
       .strict(),
-    blocos: z.array(blocoAutoralSchema).min(1).max(40),
+    blocos: z.array(blocoAutoralSchema).min(1).max(MAX_BLOCOS_NA_COPY),
     /** Histórico das mudanças DEPOIS da origem, do mais antigo ao mais novo. */
-    revisoes: z.array(revisaoDaCopySchema).max(200),
+    revisoes: z.array(revisaoDaCopySchema).max(MAX_REVISOES_DA_COPY),
     /**
      * O que o contrato NÃO sabe sobre esta copy — preenchido pelo adaptador do
      * legado (grupo de leitura inferido pela posição, autoria ausente…). Quem

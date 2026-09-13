@@ -14,16 +14,55 @@
  *    o papel de cada um era atribuído pela posição DEPOIS (`copyParaBlocos`) e
  *    esse mapeamento é justamente a transformação silenciosa que o contrato
  *    existe para expor; quem souber o papel passa `funcoes` por posição;
- *  - as linhas são copiadas EXATAMENTE (caixa, acento, quebra, colchetes).
+ *  - as linhas são copiadas EXATAMENTE (caixa, acento, quebra, colchetes);
+ *  - a saída é CONFERIDA pelo mesmo leitor que a copy gravada vai enfrentar
+ *    (`validarCopyAutoral`). O que o legado aceitava e o contrato não comporta
+ *    — linha acima de 300 caracteres (a API de itens aceita 2.000), mais de
+ *    12 linhas num bloco, lista vazia, mais de 40 blocos — é INCOMPATIBILIDADE
+ *    explícita, com o original preservado: `converter*` devolve
+ *    `{ copy: null, problemas, original }` e `copyDe*` lança
+ *    `CopyLegadaIncompativel`. Nunca se corta nem se redistribui texto para
+ *    caber, e nunca se devolve contrato que o leitor rejeita (PR2-01 da
+ *    revisão final do Codex, 13/09/2026).
  *
  * Módulo PURO.
  */
 
 import { VERSAO_DO_CONTRATO, type BlocoAutoral, type CopyAutoral, type FuncaoDoBloco } from './contrato'
+import { validarCopyAutoral, type ProblemaDaCopy } from './validar'
 
 export interface BlocoLegado {
   papel: string
   linhas: string[]
+}
+
+/** O resultado de converter o legado: contrato válido, ou `copy: null` com os problemas e o original intacto. */
+export interface ConversaoDoLegado<T> {
+  copy: CopyAutoral | null
+  problemas: ProblemaDaCopy[]
+  original: T
+}
+
+/** O legado não tem representação válida no contrato. Nada foi cortado nem redistribuído; `original` é a entrada. */
+export class CopyLegadaIncompativel extends Error {
+  constructor(
+    readonly problemas: ProblemaDaCopy[],
+    readonly original: unknown,
+  ) {
+    super(`a copy do legado não cabe no contrato (nada foi cortado nem redistribuído): ${problemas.map((p) => p.mensagem).join('; ')}`)
+    this.name = 'CopyLegadaIncompativel'
+  }
+}
+
+/** Confere a copy montada contra o leitor; só a devolve quando ele a aceitaria. */
+function conferida<T>(copy: CopyAutoral, original: T): ConversaoDoLegado<T> {
+  const { problemas } = validarCopyAutoral(copy)
+  return problemas.length === 0 ? { copy, problemas: [], original } : { copy: null, problemas, original }
+}
+
+function exigirCompativel<T>(conversao: ConversaoDoLegado<T>): CopyAutoral {
+  if (!conversao.copy) throw new CopyLegadaIncompativel(conversao.problemas, conversao.original)
+  return conversao.copy
 }
 
 const PAPEIS_LEGADOS: Record<string, FuncaoDoBloco> = {
@@ -50,10 +89,10 @@ function idUnico(base: string, usados: Set<string>): string {
  * o chamador pedir por `fundirHeadline2` (o padrão mantém como bloco próprio
  * de função `headline`, e a lacuna diz isso).
  */
-export function copyDeBlocosLegados(
+export function converterBlocosLegados(
   blocos: BlocoLegado[],
   opcoes: { em?: string; superficie?: string } = {},
-): CopyAutoral {
+): ConversaoDoLegado<BlocoLegado[]> {
   const usados = new Set<string>()
   const lacunas = [
     'autoria desconhecida: a copy veio de blocos por papel (spec) sem registro de quem escreveu',
@@ -72,13 +111,21 @@ export function copyDeBlocosLegados(
     }
   })
   if (blocos.some((b) => b.papel === 'headline2')) lacunas.push('headline2 veio como bloco próprio: a segunda voz não foi declarada por linha')
-  return {
-    versao: VERSAO_DO_CONTRATO,
-    origem: { autor: 'desconhecido', ...(opcoes.em ? { em: opcoes.em } : {}), ...(opcoes.superficie ? { superficie: opcoes.superficie } : {}) },
-    blocos: saida,
-    revisoes: [],
-    lacunas,
-  }
+  return conferida(
+    {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'desconhecido', ...(opcoes.em ? { em: opcoes.em } : {}), ...(opcoes.superficie ? { superficie: opcoes.superficie } : {}) },
+      blocos: saida,
+      revisoes: [],
+      lacunas,
+    },
+    blocos.map((b) => ({ ...b, linhas: [...b.linhas] })),
+  )
+}
+
+/** Como `converterBlocosLegados`, mas LANÇA `CopyLegadaIncompativel` quando não há contrato válido. */
+export function copyDeBlocosLegados(blocos: BlocoLegado[], opcoes: { em?: string; superficie?: string } = {}): CopyAutoral {
+  return exigirCompativel(converterBlocosLegados(blocos, opcoes))
 }
 
 /**
@@ -87,10 +134,10 @@ export function copyDeBlocosLegados(
  * todos saem `livre` — atribuir papel pela posição seria repetir o
  * `copyParaBlocos`, que é a perda posicional que o contrato expõe.
  */
-export function copyDeListaLegada(
+export function converterListaLegada(
   itens: string[],
   opcoes: { funcoes?: Array<FuncaoDoBloco | null | undefined>; em?: string; superficie?: string } = {},
-): CopyAutoral {
+): ConversaoDoLegado<string[]> {
   const usados = new Set<string>()
   const lacunas = [
     'autoria desconhecida: a copy veio como lista posicional (copyProposta) sem registro de quem escreveu',
@@ -108,13 +155,24 @@ export function copyDeListaLegada(
       linhas: texto.split('\n'),
     }
   })
-  return {
-    versao: VERSAO_DO_CONTRATO,
-    origem: { autor: 'desconhecido', ...(opcoes.em ? { em: opcoes.em } : {}), ...(opcoes.superficie ? { superficie: opcoes.superficie } : {}) },
-    blocos,
-    revisoes: [],
-    lacunas,
-  }
+  return conferida(
+    {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'desconhecido', ...(opcoes.em ? { em: opcoes.em } : {}), ...(opcoes.superficie ? { superficie: opcoes.superficie } : {}) },
+      blocos,
+      revisoes: [],
+      lacunas,
+    },
+    [...itens],
+  )
+}
+
+/** Como `converterListaLegada`, mas LANÇA `CopyLegadaIncompativel` quando não há contrato válido. */
+export function copyDeListaLegada(
+  itens: string[],
+  opcoes: { funcoes?: Array<FuncaoDoBloco | null | undefined>; em?: string; superficie?: string } = {},
+): CopyAutoral {
+  return exigirCompativel(converterListaLegada(itens, opcoes))
 }
 
 /**

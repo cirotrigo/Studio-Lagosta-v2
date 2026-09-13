@@ -6114,6 +6114,24 @@ PURO (zod), sem Prisma, com teste de ida e volta exata.
   transformação silenciosa (`copyParaBlocos`) que o contrato existe para
   expor. `copyComparavel()` é falso para autoria desconhecida: legado entra
   na métrica como "não comparável", nunca como fidelidade comprovada.
+- 🔴 **Adaptador nunca devolve contrato que o leitor rejeita** (PR2-01 da
+  revisão final do Codex, 13/09/2026). O legado aceita o que o contrato não
+  comporta — a API de itens aceita 2.000 caracteres por item, o contrato 300
+  por linha e 12 linhas por bloco —, e a primeira versão devolvia sucesso que
+  voltava `copy: null` na releitura. Hoje a saída passa por
+  `validarCopyAutoral`: `converterListaLegada`/`converterBlocosLegados`
+  devolvem `{ copy: null, problemas, original }` e `copyDeListaLegada`/
+  `copyDeBlocosLegados` LANÇAM `CopyLegadaIncompativel`. **Nunca truncar nem
+  redistribuir texto para caber** — é a transformação silenciosa que o
+  contrato existe para expor.
+- 🔴 **Histórico cheio é RECUSA, nunca compactação** (PR2-02). A revisão
+  aceita até 80 ids tocados (trocar 40 blocos por 40 novos toca os dois lados),
+  e com 200 revisões `aplicarRevisao` lança `HistoricoDaCopyCheio` (com a copy
+  intacta e as mudanças pendentes). Não há saída sem perda: toda remoção
+  precisa ficar registrada e revisão tem um autor só, então apagar ou fundir
+  revisão antiga descarta autoria. **Quem chama `aplicarRevisao` num caminho
+  que não pode falhar (autosave do editor) precisa tratar a recusa** —
+  `historicoCheio(copy)` responde antes, sem exceção.
 - **A única conversão de saída é `blocosParaOCompositor`** (contrato →
   `Bloco[]` por papel, em ordem), e ela não transforma texto: bloco `livre`
   volta em `semPapel` em vez de sumir — quem chama decide (recusa, camada

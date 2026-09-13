@@ -1,19 +1,26 @@
 import { describe, expect, it } from 'vitest'
 import {
+  CopyLegadaIncompativel,
+  HistoricoDaCopyCheio,
+  MAX_REVISOES_DA_COPY,
   VERSAO_DO_CONTRATO,
   aplicarRevisao,
   autorDoBloco,
   blocosEmOrdem,
   blocosParaOCompositor,
+  converterBlocosLegados,
+  converterListaLegada,
   copyComparavel,
   copyDeBlocosLegados,
   copyDeListaLegada,
   diferencasDeBlocos,
   gruposDeLeitura,
+  historicoCheio,
   lerCopyAutoral,
   mesmaCopy,
   serializarCopyAutoral,
   validarCopyAutoral,
+  type BlocoAutoral,
   type CopyAutoral,
 } from '..'
 
@@ -276,5 +283,137 @@ describe('adaptadores do legado: declaram o que não sabem, não inventam autori
     const lida = lerCopyAutoral(torta)
     expect(lida.copy).toBeNull()
     expect(lida.problemas.some((p) => /remoção do bloco "servico"/.test(p.mensagem))).toBe(true)
+  })
+})
+
+describe('PR2-01: o adaptador do legado nunca devolve contrato que o leitor rejeita', () => {
+  /** Toda conversão bem-sucedida tem de sobreviver à ida e volta com o conteúdo EXATO. */
+  function relidaIgual(copy: CopyAutoral) {
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(copy))
+    expect(problemas).toEqual([])
+    expect(lida).toEqual(copy)
+  }
+
+  it('lista: 301 caracteres numa linha é incompatibilidade explícita, com o original intacto; 300 converte exato', () => {
+    const itens = ['x'.repeat(301)]
+    const r = converterListaLegada(itens)
+    expect(r.copy).toBeNull()
+    expect(r.problemas.some((p) => p.tipo === 'schema' && p.mensagem.startsWith('blocos.0.linhas.0'))).toBe(true)
+    expect(r.original).toEqual(['x'.repeat(301)])
+    expect(itens).toEqual(['x'.repeat(301)])
+    let erro: unknown
+    try {
+      copyDeListaLegada(itens)
+    } catch (e) {
+      erro = e
+    }
+    expect(erro).toBeInstanceOf(CopyLegadaIncompativel)
+    expect((erro as CopyLegadaIncompativel).original).toEqual(itens)
+    expect((erro as CopyLegadaIncompativel).problemas.length).toBeGreaterThan(0)
+
+    const cabe = converterListaLegada(['x'.repeat(300)])
+    expect(cabe.problemas).toEqual([])
+    expect(cabe.copy!.blocos[0].linhas).toEqual(['x'.repeat(300)])
+    relidaIgual(cabe.copy!)
+  })
+
+  it('lista: 13 linhas num item é incompatível (nada é cortado nem vira outro bloco); 12 converte exato', () => {
+    const treze = Array.from({ length: 13 }, (_, i) => `linha ${i + 1}`).join('\n')
+    const r = converterListaLegada(['Manchete', treze])
+    expect(r.copy).toBeNull()
+    expect(r.problemas.some((p) => p.mensagem.startsWith('blocos.1.linhas'))).toBe(true)
+    expect(r.original).toEqual(['Manchete', treze])
+    expect(() => copyDeListaLegada(['Manchete', treze])).toThrow(CopyLegadaIncompativel)
+
+    const doze = Array.from({ length: 12 }, (_, i) => `linha ${i + 1}`).join('\n')
+    const ok = converterListaLegada(['Manchete', doze])
+    expect(ok.problemas).toEqual([])
+    expect(ok.copy!.blocos).toHaveLength(2)
+    expect(ok.copy!.blocos[1].linhas).toEqual(doze.split('\n'))
+    relidaIgual(ok.copy!)
+  })
+
+  it('lista vazia é incompatível: o contrato exige um bloco, e o adaptador não inventa um', () => {
+    const r = converterListaLegada([])
+    expect(r.copy).toBeNull()
+    expect(r.problemas.some((p) => p.mensagem.startsWith('blocos'))).toBe(true)
+    expect(r.original).toEqual([])
+    expect(() => copyDeListaLegada([])).toThrow(CopyLegadaIncompativel)
+  })
+
+  it('blocos por papel: linha longa, 13 linhas e lista vazia são incompatíveis; o que cabe volta exato', () => {
+    const longa = [{ papel: 'headline', linhas: ['Sexta', 'y'.repeat(301)] }]
+    const r1 = converterBlocosLegados(longa)
+    expect(r1.copy).toBeNull()
+    expect(r1.problemas.some((p) => p.mensagem.startsWith('blocos.0.linhas.1'))).toBe(true)
+    expect(r1.original).toEqual(longa)
+    expect(() => copyDeBlocosLegados(longa)).toThrow(CopyLegadaIncompativel)
+
+    const treze = [{ papel: 'apoio', linhas: Array.from({ length: 13 }, (_, i) => String(i)) }]
+    expect(converterBlocosLegados(treze).copy).toBeNull()
+    expect(() => copyDeBlocosLegados(treze)).toThrow(CopyLegadaIncompativel)
+
+    expect(converterBlocosLegados([]).copy).toBeNull()
+    expect(() => copyDeBlocosLegados([])).toThrow(CopyLegadaIncompativel)
+
+    const cabe = copyDeBlocosLegados([{ papel: 'headline', linhas: ['y'.repeat(300)] }, { papel: 'apoio', linhas: Array.from({ length: 12 }, (_, i) => `l${i}`) }])
+    expect(cabe.blocos[0].linhas).toEqual(['y'.repeat(300)])
+    relidaIgual(cabe)
+  })
+})
+
+describe('PR2-02: a revisão que aplicarRevisao acrescenta sempre passa no leitor', () => {
+  const blocosCom = (prefixo: string, n: number): BlocoAutoral[] => Array.from({ length: n }, (_, i) => ({ id: `${prefixo}-${i}`, funcao: 'livre' as const, ordem: i, linhas: [`${prefixo} ${i}`] }))
+
+  it('trocar 40 blocos por 40 novos registra os 80 ids tocados, e a copy relida mantém todos e as 40 remoções', () => {
+    const c40: CopyAutoral = { versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude' }, blocos: blocosCom('a', 40), revisoes: [] }
+    expect(validarCopyAutoral(c40).problemas).toEqual([])
+    const { copy: revisada } = aplicarRevisao(c40, blocosCom('b', 40), { autor: 'equipe', motivo: 'troca tudo', em: '2026-09-13T10:00:00.000Z' })
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(revisada))
+    expect(problemas).toEqual([])
+    const tocados = [...lida!.revisoes[0].blocos].sort()
+    expect(tocados).toEqual([...blocosCom('a', 40), ...blocosCom('b', 40)].map((b) => b.id).sort())
+    expect(lida!.revisoes[0].removidos).toHaveLength(40)
+    expect(lida!.revisoes[0].removidos![39]).toEqual({ id: 'a-39', funcao: 'livre', linhas: ['a 39'] })
+    expect(autorDoBloco(lida!, 'a-0').autor).toBe('equipe')
+    expect(autorDoBloco(lida!, 'b-39').autor).toBe('equipe')
+  })
+
+  const comHistorico = (n: number): CopyAutoral => ({
+    ...copy,
+    revisoes: Array.from({ length: n }, (_, i) => ({ em: `2026-09-12T10:${String(i % 60).padStart(2, '0')}:00.000Z`, autor: i % 2 ? ('equipe' as const) : ('claude' as const), motivo: `r${i}`, blocos: ['apoio'] })),
+  })
+  const mudaManchete = (c: CopyAutoral) => c.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['Outra', 'manchete'] } : b))
+
+  it('com 199 revisões a mudança entra como a 200ª e a copy relida é válida', () => {
+    const c199 = comHistorico(MAX_REVISOES_DA_COPY - 1)
+    const { copy: revisada } = aplicarRevisao(c199, mudaManchete(c199), { autor: 'sistema', motivo: 'a 200ª' })
+    expect(revisada.revisoes).toHaveLength(MAX_REVISOES_DA_COPY)
+    expect(historicoCheio(revisada)).toBe(true)
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(revisada))
+    expect(problemas).toEqual([])
+    expect(autorDoBloco(lida!, 'headline').autor).toBe('sistema')
+  })
+
+  it('com 200 revisões a mudança é RECUSADA explicitamente — nenhuma revisão apagada, a original intacta', () => {
+    const c200 = comHistorico(MAX_REVISOES_DA_COPY)
+    expect(validarCopyAutoral(c200).problemas).toEqual([])
+    expect(historicoCheio(c200)).toBe(true)
+    let erro: unknown
+    try {
+      aplicarRevisao(c200, mudaManchete(c200), { autor: 'equipe', motivo: 'a 201ª' })
+    } catch (e) {
+      erro = e
+    }
+    expect(erro).toBeInstanceOf(HistoricoDaCopyCheio)
+    const recusa = erro as HistoricoDaCopyCheio
+    expect(recusa.copy).toBe(c200)
+    expect(recusa.copy.revisoes).toHaveLength(MAX_REVISOES_DA_COPY)
+    expect(recusa.copy.revisoes[0].motivo).toBe('r0')
+    expect(recusa.mudancas.map((m) => m.id)).toEqual(['headline'])
+    expect(recusa.problemas[0].tipo).toBe('revisao')
+    expect(c200.blocos.find((b) => b.id === 'headline')!.linhas).toEqual(['Milk-shake', 'vem [em dobro]'])
+    // sem mudança nenhuma não há o que recusar
+    expect(aplicarRevisao(c200, c200.blocos, { autor: 'equipe', motivo: 'nada' }).copy).toBe(c200)
   })
 })

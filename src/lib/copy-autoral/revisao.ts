@@ -9,10 +9,18 @@
  * acento, quebra e colchetes contam. É por isso que a correção de acento e a
  * mudança de caixa aparecem como revisão, e não somem.
  *
+ * O que `aplicarRevisao` ACRESCENTA sempre passa no leitor: a revisão aceita
+ * até o dobro do teto de blocos em ids tocados (trocar 40 blocos por 40 novos
+ * toca 80), e o histórico cheio é RECUSA explícita (`HistoricoDaCopyCheio`),
+ * nunca uma 201ª revisão que faria o leitor rejeitar a copy inteira. A
+ * validade dos blocos NOVOS continua sendo de quem os manda
+ * (`validarCopyAutoral`).
+ *
  * Módulo PURO.
  */
 
-import type { Autor, BlocoAutoral, CopyAutoral, RevisaoDaCopy } from './contrato'
+import { MAX_REVISOES_DA_COPY, type Autor, type BlocoAutoral, type CopyAutoral, type RevisaoDaCopy } from './contrato'
+import type { ProblemaDaCopy } from './validar'
 
 export interface MudancaDeBloco {
   id: string
@@ -67,10 +75,41 @@ export function diferencasDeBlocos(antes: CopyAutoral, depois: CopyAutoral): Mud
 }
 
 /**
+ * A mudança não cabe no histórico: a copy já tem `MAX_REVISOES_DA_COPY`
+ * revisões (PR2-02 da revisão final do Codex, 13/09/2026). É RECUSA explícita
+ * porque não há saída sem perda: o contrato é limitado, toda remoção precisa
+ * ficar registrada com o que o bloco dizia, e revisão tem um autor só — não
+ * existe compactação que preserve autoria e remoções. Apagar revisão antiga
+ * descartaria exatamente o que o histórico guarda; registrar a 201ª produziria
+ * uma copy que o leitor rejeita inteira. Quem chama decide (o editor, por
+ * exemplo, grava as camadas e mantém o contrato como está, avisando).
+ * `copy` é a original, intacta; `mudancas` é o que a revisão registraria.
+ */
+export class HistoricoDaCopyCheio extends Error {
+  readonly problemas: ProblemaDaCopy[]
+  constructor(
+    readonly copy: CopyAutoral,
+    readonly mudancas: MudancaDeBloco[],
+  ) {
+    super(
+      `o histórico da copy está cheio (${copy.revisoes.length} de ${MAX_REVISOES_DA_COPY} revisões): a mudança em ${mudancas.map((m) => `"${m.id}"`).join(', ')} não foi registrada`,
+    )
+    this.name = 'HistoricoDaCopyCheio'
+    this.problemas = [{ tipo: 'revisao', mensagem: this.message }]
+  }
+}
+
+/** A copy já tem o máximo de revisões: a próxima mudança seria recusada. */
+export function historicoCheio(copy: CopyAutoral): boolean {
+  return copy.revisoes.length >= MAX_REVISOES_DA_COPY
+}
+
+/**
  * Aplica uma mudança de blocos como REVISÃO registrada. `blocosNovos` substitui
  * a lista inteira (é assim que o editor e o chat mandam a copy de volta); os
  * blocos tocados saem do diff. Sem mudança nenhuma, devolve a copy como está,
- * sem registrar revisão vazia.
+ * sem registrar revisão vazia. Com mudança e histórico cheio, LANÇA
+ * `HistoricoDaCopyCheio` — nada é registrado nem descartado.
  */
 export function aplicarRevisao(
   copy: CopyAutoral,
@@ -80,6 +119,7 @@ export function aplicarRevisao(
   const candidata: CopyAutoral = { ...copy, blocos: blocosNovos.map((b) => ({ ...b, linhas: [...b.linhas] })) }
   const mudancas = diferencasDeBlocos(copy, candidata)
   if (mudancas.length === 0) return { copy, mudancas }
+  if (historicoCheio(copy)) throw new HistoricoDaCopyCheio(copy, mudancas)
   const porIdAntes = new Map(copy.blocos.map((b) => [b.id, b]))
   const removidos = mudancas
     .filter((m) => m.tipo === 'removido')
