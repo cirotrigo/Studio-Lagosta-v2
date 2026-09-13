@@ -5,10 +5,11 @@ import { validarCopyAutoral } from '@/lib/copy-autoral/validar'
 import {
   LIMIAR_DE_AMOSTRA,
   MOTIVO_DO_AJUSTE_DO_REVISOR,
+  ajustesDeVisibilidade,
   blocoDaQualidadeDaCopy,
+  cancelamentoPorTempo,
   causaDaRevisao,
   faltaDeEsquema,
-  funcoesOcultasPeloRevisor,
   linhaDaCopyDoCliente,
   medirPeca,
   medirQualidadeDaCopy,
@@ -92,6 +93,7 @@ function medida(over: Partial<MedidaDaPeca>): MedidaDaPeca {
     sistemaMudouLinhas: false,
     correcoes: { redacao: 0, compositor: 0, foto: 0, design: 0, revisor: 0, indeterminada: 0 },
     indevidas: [],
+    visibilidadeDoRevisor: { aceitos: 0, desfeitos: 0, removidas: 0 },
     minutosAteRascunho: null,
     voz: null,
     avisosDoSistema: 0,
@@ -181,12 +183,27 @@ describe('o revisor nunca vira preferência da equipe', () => {
     expect(m.correcoes.redacao).toBe(0)
   })
 
-  it('pela arte do ajuste na mesma janela, sem texto trocado: revisor', () => {
-    const final = revisar(original, { cta: [] }, { autor: 'claude', motivo: 'outro motivo', superficie: 'chat', em: T(5) })
-    const ajuste = arte('gen-aj', { source: 'ajuste-arte', createdAt: T(5.5), revisao: { ajustes: [{ tipo: 'visibilidade' }] }, ajustes: {}, copyAutoral: { original: final, efetiva: final, comparavel: true } })
-    const { medida: m } = pecaSimples({ original, final, artesExtras: [ajuste] })
-    expect(m.correcoes.revisor).toBe(1)
-    expect(m.correcoes.redacao).toBe(0)
+  // C15-01: a janela de tempo NÃO classifica. A chamada só de ajustes grava o
+  // motivo em toda revisão; o que só uma janela alcançaria é de OUTRA chamada.
+  const ajusteDeMover = (em: string, copy: CopyAutoral) =>
+    arte('gen-aj', {
+      source: 'ajuste-arte',
+      createdAt: em,
+      revisao: { versaoAntes: 'v1', ajustes: [{ tipo: 'mover', camadas: ['cta'], dy: -20 }], aplicados: [{ indice: 0, tipo: 'mover', camadas: ['cta'], detalhe: 'subiu 20px' }], recusados: [] },
+      ajustes: {},
+      copyAutoral: { original: copy, efetiva: copy, comparavel: true },
+    })
+
+  it('correção de texto numa OUTRA chamada, um minuto DEPOIS do ajuste do revisor, é redação (C15-01)', () => {
+    const final = revisar(original, { cta: ['Chega mais'] }, { autor: 'claude', motivo: 'ajustar-arte', superficie: 'chat', em: T(6) })
+    const { medida: m } = pecaSimples({ original, final, artesExtras: [ajusteDeMover(T(5), original)] })
+    expect(m.correcoes).toMatchObject({ redacao: 1, revisor: 1 })
+  })
+
+  it('e um minuto ANTES do ajuste também (C15-01)', () => {
+    const final = revisar(original, { cta: ['Chega mais'] }, { autor: 'equipe', motivo: 'ajustar-arte', superficie: 'studio', em: T(6) })
+    const { medida: m } = pecaSimples({ original, final, artesExtras: [ajusteDeMover(T(7), final)] })
+    expect(m.correcoes).toMatchObject({ redacao: 1, revisor: 1 })
   })
 
   it('a MESMA autoria sem a arte do ajuste é redação (a causa não sai do autor)', () => {
@@ -211,17 +228,6 @@ describe('o revisor nunca vira preferência da equipe', () => {
     expect(m.correcoes.redacao).toBe(1)
   })
 
-  it('pela marca do PR 0 (metadata.revisao.ocultaPeloRevisor), lida defensivamente', () => {
-    const final = revisar(original, { cta: [] }, { autor: 'equipe', motivo: 'ajustar-arte', superficie: 'studio', em: T(5) })
-    const layers = JSON.stringify([
-      { id: 'headline', type: 'text', content: 'Sexta é dia' },
-      { id: 'cta', type: 'text', content: 'Vem pra cá', visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: T(5) } } } },
-    ])
-    expect(pecaSimples({ original, final, layers }).medida.correcoes.revisor).toBe(1)
-    // Sem a marca, a mesma revisão é redação.
-    expect(pecaSimples({ original, final }).medida.correcoes.redacao).toBe(1)
-  })
-
   it('ajuste do revisor que não mexeu na copy (só corpo, gradiente) conta como revisor', () => {
     const ajuste = arte('gen-aj', { source: 'ajuste-arte', createdAt: T(5), revisao: { ajustes: [{ tipo: 'fonte' }] }, ajustes: {}, copyAutoral: { original, efetiva: original, comparavel: true } })
     const { medida: m } = pecaSimples({ original, artesExtras: [ajuste] })
@@ -229,41 +235,112 @@ describe('o revisor nunca vira preferência da equipe', () => {
     expect(m.correcoes.redacao).toBe(0)
   })
 
-  it('ajuste do revisor DESFEITO pela equipe: indevida própria', () => {
-    const aposRevisor = revisar(original, { cta: [] }, { autor: 'equipe', motivo: MOTIVO_DO_AJUSTE_DO_REVISOR, superficie: 'studio', em: T(5) })
-    const final = revisar(aposRevisor, { cta: ['Vem pra cá'] }, noEditor(T(9)))
-    const ajuste = arte('gen-aj', { source: 'ajuste-arte', createdAt: T(5), revisao: { ajustes: [{ tipo: 'visibilidade' }] }, ajustes: {}, copyAutoral: { original: aposRevisor, efetiva: aposRevisor, comparavel: true } })
-    const { medida: m } = pecaSimples({ original, final, artesExtras: [ajuste] })
-    expect(m.indevidas.map((i) => i.tipo)).toEqual(['ajuste-do-revisor-revertido'])
-    expect(m.correcoes).toMatchObject({ revisor: 1, redacao: 1 })
+})
+
+// ─── C15-02: o desfecho do esconder do revisor sai das CAMADAS ─────────────
+
+describe('o desfecho do ajuste de visibilidade do revisor, no formato que o PR 0 grava (C15-02)', () => {
+  const original = copiaOriginal()
+  // A efetiva da arte do ajuste é lida das camadas CRUAS: o bloco escondido sai vazio.
+  const desenhadaSemCta = revisar(original, { cta: [] }, { autor: 'sistema', motivo: 'o que foi desenhado (ajuste-arte)', superficie: 'ajuste-arte', em: T(5) })
+  const visibilidade = (id: string, em: string, escondeu: boolean) =>
+    arte(id, {
+      source: 'ajuste-arte',
+      createdAt: em,
+      revisao: {
+        versaoAntes: 'v1',
+        ajustes: [{ tipo: 'visibilidade', camadas: ['cta'], visivel: !escondeu }],
+        aplicados: [{ indice: 0, tipo: 'visibilidade', camadas: ['cta'], detalhe: escondeu ? 'escondidas' : 'mostradas' }],
+        recusados: [],
+      },
+      ajustes: {},
+      // O contrato da PÁGINA não muda: a camada marcada é lida como presente (camadasParaDecisao).
+      copyAutoral: { original, efetiva: escondeu ? desenhadaSemCta : original, comparavel: true },
+    })
+  const camadas = (cta: Record<string, unknown> | null) =>
+    JSON.stringify([{ id: 'headline', type: 'text', content: 'Sexta é dia\nde churrasco' }, ...(cta ? [{ id: 'cta', type: 'text', content: 'Vem pra cá', ...cta }] : [])])
+  const MARCA = { revisao: { ocultaPeloRevisor: { em: T(5), ajuste: 0 } } }
+
+  it('a equipe MOSTROU de novo a camada (visível, marca retirada pelo editor): ajuste do revisor desfeito', () => {
+    const { medida: m } = pecaSimples({ original, layers: camadas({ visible: true }), artesExtras: [visibilidade('gen-aj', T(5), true)] })
+    expect(m.indevidas).toEqual([{ tipo: 'ajuste-do-revisor-revertido', bloco: null, camada: 'cta' }])
+    expect(m.visibilidadeDoRevisor).toEqual({ aceitos: 0, desfeitos: 1, removidas: 0 })
+    expect(m.correcoes).toMatchObject({ revisor: 1, redacao: 0 })
+    expect(m.preservada).toBe(true)
   })
 
-  it('funcoesOcultasPeloRevisor: string dupla, headline2 vira headline, sem marca nada', () => {
-    const camadas = [
-      { id: 'x', name: 'headline2', type: 'text', metadata: { revisao: { ocultaPeloRevisor: true } } },
-      { id: 'cta', type: 'text', metadata: { revisao: { ocultaPeloRevisor: false } } },
-    ]
-    expect(funcoesOcultasPeloRevisor(JSON.stringify(JSON.stringify(camadas)))).toEqual(['headline'])
-    expect(funcoesOcultasPeloRevisor('lixo{')).toEqual([])
+  it('a camada continua escondida com a marca: aceito, e a efetiva vazia do ajuste não vira indevida de texto', () => {
+    const { medida: m } = pecaSimples({ original, layers: camadas({ visible: false, metadata: MARCA }), artesExtras: [visibilidade('gen-aj', T(5), true)] })
+    expect(m.indevidas).toEqual([])
+    expect(m.visibilidadeDoRevisor).toEqual({ aceitos: 1, desfeitos: 0, removidas: 0 })
+  })
+
+  it('visível com a marca esquecida também é desfeito; escondida SEM marca (a pessoa reescondeu) é aceito', () => {
+    const aj = [visibilidade('gen-aj', T(5), true)]
+    expect(pecaSimples({ original, layers: camadas({ visible: true, metadata: MARCA }), artesExtras: aj }).medida.visibilidadeDoRevisor?.desfeitos).toBe(1)
+    expect(pecaSimples({ original, layers: camadas({ visible: false }), artesExtras: aj }).medida.visibilidadeDoRevisor?.aceitos).toBe(1)
+  })
+
+  it('vale a ÚLTIMA decisão do revisor: ele mesmo mostrou depois → visível é aceito; escondida depois disso é desfeito', () => {
+    const aj = [visibilidade('gen-aj', T(5), true), visibilidade('gen-aj2', T(7), false)]
+    const aceito = pecaSimples({ original, layers: camadas({ visible: true }), artesExtras: aj }).medida
+    expect(aceito.indevidas).toEqual([])
+    expect(aceito.visibilidadeDoRevisor?.aceitos).toBe(1)
+    const desfeito = pecaSimples({ original, layers: camadas({ visible: false }), artesExtras: aj }).medida
+    expect(desfeito.indevidas.map((i) => i.camada)).toEqual(['cta'])
+  })
+
+  it('camada apagada não é aceito nem desfeito; camadas ilegíveis não viram desfecho', () => {
+    const aj = [visibilidade('gen-aj', T(5), true)]
+    expect(pecaSimples({ original, layers: camadas(null), artesExtras: aj }).medida.visibilidadeDoRevisor).toEqual({ aceitos: 0, desfeitos: 0, removidas: 1 })
+    const ilegivel = pecaSimples({ original, layers: 'lixo{', artesExtras: aj }).medida
+    expect(ilegivel.visibilidadeDoRevisor).toBeNull()
+    expect(ilegivel.indevidas).toEqual([])
+    expect(medirQualidadeDaCopy([ilegivel]).visibilidadeDoRevisor.ilegiveis).toBe(1)
+  })
+
+  it('ZERAR o texto (slotValues vazio) de uma camada marcada é redação de quem pediu, não revisor', () => {
+    const final = revisar(original, { cta: [] }, { autor: 'claude', motivo: 'ajustar-arte', superficie: 'chat', em: T(8) })
+    const { medida: m } = pecaSimples({ original, final, layers: camadas({ visible: false, metadata: MARCA }) })
+    expect(m.correcoes).toMatchObject({ redacao: 1, revisor: 0 })
+    expect(m.indevidas).toEqual([])
+  })
+
+  it('a pessoa editando o texto da camada ainda escondida e voltando ao original NÃO desfaz o ajuste do revisor', () => {
+    const meio = revisar(original, { cta: ['Chega mais'] }, { autor: 'claude', motivo: 'ajustar-arte', superficie: 'chat', em: T(8) })
+    const final = revisar(meio, { cta: ['Vem pra cá'] }, { autor: 'claude', motivo: 'ajustar-arte', superficie: 'chat', em: T(9) })
+    const { medida: m } = pecaSimples({ original, final, layers: camadas({ visible: false, metadata: MARCA }), artesExtras: [visibilidade('gen-aj', T(5), true)] })
+    expect(m.indevidas).toEqual([])
+    expect(m.visibilidadeDoRevisor?.aceitos).toBe(1)
+  })
+
+  it('ajustesDeVisibilidade: só visibilidade aplicada, com camadas e detalhe conhecidos', () => {
+    const lidas = ajustesDeVisibilidade([
+      arte('a', { source: 'ajuste-arte', createdAt: T(2), revisao: { aplicados: [{ tipo: 'mover', camadas: ['cta'], detalhe: 'x' }, { tipo: 'visibilidade', camadas: ['cta', 7], detalhe: 'escondidas' }, { tipo: 'visibilidade', camadas: [], detalhe: 'mostradas' }, 'lixo'] } }),
+      arte('b', { source: 'compositor', createdAt: T(1), revisao: { aplicados: [{ tipo: 'visibilidade', camadas: ['x'], detalhe: 'escondidas' }] } }),
+      arte('c', { source: 'ajuste-arte', createdAt: T(1), revisao: { aplicados: [{ tipo: 'visibilidade', camadas: ['logo'], detalhe: 'mostradas' }] } }),
+    ])
+    expect(lidas).toEqual([
+      { em: Date.parse(T(1)), camadas: ['logo'], escondeu: false },
+      { em: Date.parse(T(2)), camadas: ['cta'], escondeu: true },
+    ])
   })
 })
 
 describe('causaDaRevisao — outras classes', () => {
-  const copy = copiaOriginal()
-  const ctx = { ajustesDoRevisor: [], funcoesOcultasPeloRevisor: [], copy }
   const r = (over: Partial<Parameters<typeof causaDaRevisao>[0]>) => ({ em: T(3), autor: 'sistema' as const, motivo: 'x', blocos: ['cta'], ...over })
 
   it('reverter-arte do sistema é design; sistema fora das superfícies conhecidas é indeterminada', () => {
-    expect(causaDaRevisao(r({ superficie: 'reverter-arte' }), ctx)).toBe('design')
-    expect(causaDaRevisao(r({ superficie: 'outra' }), ctx)).toBe('indeterminada')
-    expect(causaDaRevisao(r({ superficie: 'recomposicao' }), ctx)).toBe('compositor')
+    expect(causaDaRevisao(r({ superficie: 'reverter-arte' }))).toBe('design')
+    expect(causaDaRevisao(r({ superficie: 'outra' }))).toBe('indeterminada')
+    expect(causaDaRevisao(r({ superficie: 'recomposicao' }))).toBe('compositor')
   })
   it('autoria desconhecida é indeterminada', () => {
-    expect(causaDaRevisao(r({ autor: 'desconhecido' }), ctx)).toBe('indeterminada')
+    expect(causaDaRevisao(r({ autor: 'desconhecido' }))).toBe('indeterminada')
   })
   it('humano mexendo só em estilo é design', () => {
-    expect(causaDaRevisao(r({ autor: 'equipe', superficie: 'editor', campos: { cta: ['estilo'] } }), ctx)).toBe('design')
-    expect(causaDaRevisao(r({ autor: 'equipe', superficie: 'editor', campos: { cta: ['estilo', 'linhas'] } }), ctx)).toBe('redacao')
+    expect(causaDaRevisao(r({ autor: 'equipe', superficie: 'editor', campos: { cta: ['estilo'] } }))).toBe('design')
+    expect(causaDaRevisao(r({ autor: 'equipe', superficie: 'editor', campos: { cta: ['estilo', 'linhas'] } }))).toBe('redacao')
   })
   it('revisaoMudaLinhas: linhas, bloco acrescentado (sem campos) e removido mudam; estilo não', () => {
     expect(revisaoMudaLinhas(r({ campos: { cta: ['estilo'] } }))).toBe(false)
@@ -464,6 +541,15 @@ describe('faltaDeEsquema', () => {
   })
 })
 
+describe('cancelamentoPorTempo', () => {
+  it('reconhece o statement_timeout do servidor e mais nada', () => {
+    expect(cancelamentoPorTempo({ code: 'P2010', meta: { code: '57014' }, message: 'raw query failed' })).toBe(true)
+    expect(cancelamentoPorTempo(new Error('canceling statement due to statement timeout'))).toBe(true)
+    expect(cancelamentoPorTempo({ code: 'P2022', meta: { column: 'x' } })).toBe(false)
+    expect(cancelamentoPorTempo(null)).toBe(false)
+  })
+})
+
 describe('o texto do relatório', () => {
   it('sem peça e sem problema: nenhum bloco', () => {
     expect(blocoDaQualidadeDaCopy({ carteira: null, indisponiveis: [], foraDoOrcamento: [] })).toBeNull()
@@ -487,6 +573,11 @@ describe('o texto do relatório', () => {
     expect(texto).toMatch(/ajuste do revisor desfeito 1/)
     expect(texto).toMatch(/TERO: medida indisponível/)
     expect(texto).toMatch(/fora do tempo do relatório: By Rock/)
+  })
+
+  it('o desfecho do esconder do revisor aparece quando existe', () => {
+    const q = medirQualidadeDaCopy([medida({ visibilidadeDoRevisor: { aceitos: 2, desfeitos: 1, removidas: 0 } })], { limiar: 1 })
+    expect(blocoDaQualidadeDaCopy({ carteira: q, indisponiveis: [], foraDoOrcamento: [] })).toMatch(/revisor escondeu\/mostrou: 2 aceito\(s\) · 1 desfeito\(s\)/)
   })
 
   it('linha por cliente', () => {

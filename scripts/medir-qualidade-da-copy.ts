@@ -4,9 +4,12 @@
  * numa janela de datas — para comparar "antes" e "depois" das mudanças da F1
  * à F5 sem esperar domingos.
  *
- * SOMENTE LEITURA, SEMPRE: não há modo de escrita. Toda a leitura roda numa
- * transação `SET TRANSACTION READ ONLY` — uma escrita acidental aqui dentro é
- * recusada pelo próprio Postgres.
+ * SOMENTE LEITURA, SEMPRE: não há modo de escrita. Cada cliente é lido numa
+ * transação PRÓPRIA `SET TRANSACTION READ ONLY` (o executor do serviço) — uma
+ * escrita acidental é recusada pelo próprio Postgres, e um erro num cliente não
+ * envenena a transação dos seguintes (C15-04). O esquema (`Page.copyAutoral`,
+ * `BrandVoice`) é conferido antes por `information_schema`: rodar antes de a
+ * pilha chegar à produção mede o que dá e DIZ o que falta.
  *
  * 🔴 **Recusa a PRODUÇÃO** a menos que venha `--producao-somente-leitura`. A
  * produção é reconhecida pelo COMPUTE do Neon (o primeiro rótulo do host, sem
@@ -19,7 +22,8 @@
  *   npx tsx scripts/dev-db.ts npx tsx scripts/medir-qualidade-da-copy.ts --desde 2026-08-01 --ate 2026-09-12 --projeto 6
  *   … --json            (a medida inteira, por cliente e da carteira)
  *
- * Em produção (só com decisão explícita):
+ * Em produção (só com decisão explícita): com a flag, e sem `DATABASE_URL` no
+ * ambiente, o script lê a URL do `.env` (o `tsx` não carrega arquivo nenhum):
  *   npx tsx scripts/medir-qualidade-da-copy.ts --producao-somente-leitura --desde 2026-09-01
  *
  * Sem datas: a última semana COMPLETA (seg–dom, BRT).
@@ -44,16 +48,19 @@ function computeDe(url: string | undefined): string | null {
   }
 }
 
-function computesDaProducao(): Set<string> | null {
+function urlsDoEnv(): Record<string, string> | null {
   const arquivo = resolve(process.cwd(), '.env')
   if (!existsSync(arquivo)) return null
-  const computes = new Set<string>()
+  const urls: Record<string, string> = {}
   for (const linha of readFileSync(arquivo, 'utf8').split('\n')) {
     const m = linha.trim().match(/^(DATABASE_URL|DIRECT_URL)=(.*)$/)
-    if (!m) continue
-    const c = computeDe(m[2].trim().replace(/^["']|["']$/g, ''))
-    if (c) computes.add(c)
+    if (m) urls[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
   }
+  return urls
+}
+
+function computesDaProducao(): Set<string> | null {
+  const computes = new Set(Object.values(urlsDoEnv() ?? {}).map(computeDe).filter((c): c is string => !!c))
   return computes.size ? computes : null
 }
 
@@ -71,6 +78,10 @@ function meiaNoiteBrt(data: string): Date {
 async function main() {
   const producao = computesDaProducao()
   if (!producao) sair('não há .env legível: sem ele não dá para saber se o banco é a PRODUÇÃO, e o guard falha fechado. Rode na raiz do repositório (ou com o symlink do .env no worktree).')
+  if (!process.env.DATABASE_URL && flag('--producao-somente-leitura')) {
+    const doEnv = urlsDoEnv() ?? {}
+    for (const chave of ['DATABASE_URL', 'DIRECT_URL'] as const) if (doEnv[chave]) process.env[chave] = doEnv[chave]
+  }
   const compute = computeDe(process.env.DATABASE_URL)
   if (!compute) sair('DATABASE_URL ausente ou ilegível.')
   const ehProducao = producao.has(compute)
@@ -80,7 +91,7 @@ async function main() {
 
   const { db } = await import('../src/lib/db')
   const { janelaDaSemanaAnterior } = await import('../src/lib/relatorios/semanal')
-  const { medirQualidadeDaCarteira } = await import('../src/lib/relatorios/qualidade-da-copy')
+  const { executarEmLeitura, medirQualidadeDaCarteira } = await import('../src/lib/relatorios/qualidade-da-copy')
   const { blocoDaQualidadeDaCopy, linhaDaCopyDoCliente } = await import('../src/lib/relatorios/qualidade-da-copy-contrato')
 
   const semana = janelaDaSemanaAnterior(new Date())
@@ -92,22 +103,22 @@ async function main() {
 
   console.log(`[medir-qualidade-da-copy] banco ${compute} (${ehProducao ? 'PRODUÇÃO — somente leitura' : 'não-produção'}) · ${inicio.toISOString()} → ${fim.toISOString()}${projeto ? ` · projeto ${projeto}` : ''}`)
 
-  const resultado = await db.$transaction(
-    async (tx) => {
-      await tx.$executeRawUnsafe('SET TRANSACTION READ ONLY')
-      const clientes = await tx.project.findMany({
+  // A lista de clientes também sai de uma transação READ ONLY; cada cliente
+  // é medido na SUA (o executor padrão do serviço).
+  const clientes = await executarEmLeitura(
+    (leitor) =>
+      leitor.project.findMany({
         where: projeto ? { id: projeto } : { status: 'ACTIVE' },
         select: { id: true, name: true },
         orderBy: { id: 'asc' },
-      })
-      // Sem o relógio do cron: a janela do script pode ser longa; o teto por cliente continua.
-      return medirQualidadeDaCarteira(
-        clientes.map((c) => ({ projectId: c.id, nome: c.name })),
-        { inicio, fim },
-        { prazo: Date.now() + 15 * 60_000, tetoPorClienteMs: 120_000, leitor: tx },
-      )
-    },
-    { timeout: 16 * 60_000, maxWait: 30_000 },
+      }),
+    { tetoMs: 30_000 },
+  )
+  // Sem o relógio do cron: a janela do script pode ser longa; o teto por cliente continua.
+  const resultado = await medirQualidadeDaCarteira(
+    clientes.map((c) => ({ projectId: c.id, nome: c.name })),
+    { inicio, fim },
+    { prazo: Date.now() + 15 * 60_000, tetoPorClienteMs: 120_000 },
   )
 
   if (flag('--json')) {

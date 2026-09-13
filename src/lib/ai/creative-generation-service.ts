@@ -40,6 +40,7 @@ import type {
 import type { TemplateType } from '@prisma/client'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { identidadeDoContrato, LACUNA_PROMPT_AINDA_NAO_MONTADO, lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
+import { carimboDaGeracao } from '@/lib/brand/voz-na-escrita'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -136,6 +137,12 @@ export interface StartArtGenerationInput {
    * não sabe. Ausente = a copy chegou nesta mesma chamada.
    */
   escritaEm?: Date | string | null
+  /**
+   * PR 15 (C15-05): o carimbo HERDADO de quando a copy foi escrita — "Gerar de
+   * novo" e os slides irmãos do carrossel reproduzem copy antiga. Válido, ele
+   * vence o cálculo pela voz de agora (`carimboDaGeracao`).
+   */
+  vozNaEscrita?: unknown
 }
 
 export interface StartArtGenerationResult {
@@ -492,9 +499,9 @@ export async function startArtGeneration(
   // PR 15: a voz em vigor quando a copy foi escrita — best-effort, nunca
   // derruba a geração (sem carimbo, o relatório conta "sem carimbo").
   // Import dinâmico, como no compositor: `voz-service` puxa o `Prisma` em runtime.
-  const vozNaEscrita = await import('@/lib/brand/voz-service')
-    .then((m) => m.carimboDaVozAgora(project.id, { escritaEm: input.escritaEm ?? null }))
-    .catch(() => null)
+  const vozNaEscrita = await carimboDaGeracao({ vozNaEscrita: input.vozNaEscrita, escritaEm: input.escritaEm }, (escritaEm) =>
+    import('@/lib/brand/voz-service').then((m) => m.carimboDaVozAgora(project.id, { escritaEm })),
+  )
 
   // Copy vira slotValues: é a forma que extractExpectedTexts lê — a conferência
   // de texto desta geração E de melhorias futuras desta arte dependem disso.

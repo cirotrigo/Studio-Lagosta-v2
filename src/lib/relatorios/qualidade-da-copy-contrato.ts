@@ -20,10 +20,18 @@
  *
  * - 🔴 **A causa NUNCA sai só do autor.** `autor: 'equipe'` pode ser a pessoa
  *   corrigindo o texto (redação) ou o ajuste do REVISOR aplicado pelo app; o
- *   que separa é o motivo gravado (`MOTIVO_DO_AJUSTE_DO_REVISOR`), a arte do
- *   ajuste na mesma janela (`fieldValues.revisao`) e a marca
- *   `metadata.revisao.ocultaPeloRevisor` na camada. `sistema` na superfície do
- *   compositor é compositor; em `reverter-arte` é design.
+ *   que separa é o motivo que `ajustarArte` grava em TODA chamada só de
+ *   ajustes (`MOTIVO_DO_AJUSTE_DO_REVISOR`). Proximidade no tempo NÃO separa
+ *   (C15-01): a correção de texto numa OUTRA chamada, um minuto depois do
+ *   ajuste, é de quem a pediu. `sistema` na superfície do compositor é
+ *   compositor; em `reverter-arte` é design.
+ * - 🔴 **O esconder do revisor não passa pelo contrato** (C15-02): a camada
+ *   escondida com a marca do PR 0 é lida como PRESENTE pela autoria
+ *   (`camadasParaDecisao`), então nem o esconder nem a reexibição pela equipe
+ *   geram revisão. O desfecho do ajuste de `visibilidade` se mede pelas
+ *   CAMADAS — `revisao.aplicados` da arte do ajuste contra `Page.layers` de
+ *   hoje, com `marcaDoRevisor`/`ocultaPeloRevisor` do PR 0 —, casado pelo id
+ *   da camada, nunca pela função.
  * - 🔴 **O ajuste do revisor é classe PRÓPRIA e nunca vira preferência da
  *   equipe** — nem conta como redação. É a mesma regra do aprendizado ("a
  *   correção do revisor não pode virar preferência da equipe").
@@ -44,6 +52,7 @@ import type { CopyAutoral, RevisaoDaCopy } from '@/lib/copy-autoral/contrato'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
+import { marcaDoRevisor, ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
 export const VERSAO_DA_METRICA = 'qualidade-da-copy-v1' as const
 
@@ -60,14 +69,14 @@ export const LIMIAR_DE_AMOSTRA_DA_CARTEIRA = 15
 export const MOTIVO_DO_AJUSTE_DO_REVISOR = 'ajuste de diagramação (revisor)'
 
 /**
- * Janela entre a revisão da copy e a arte do ajuste (`fieldValues.revisao`). A
- * revisão entra na MESMA escrita das camadas e a Generation nasce logo depois
- * do render — segundos, não minutos.
+ * Janela que casa a arte de um ajuste do revisor com a revisão da copy que a
+ * MESMA chamada gravou (a revisão entra na escrita das camadas e a Generation
+ * nasce logo depois do render — segundos). Serve SÓ para não contar o mesmo
+ * ajuste duas vezes; nunca para classificar uma revisão (C15-01).
  */
-export const JANELA_DO_AJUSTE_DO_REVISOR_MS = 2 * 60_000
+export const JANELA_DO_MESMO_AJUSTE_MS = 2 * 60_000
 
 const SUPERFICIES_DO_COMPOSITOR = new Set(['compositor', 'recomposicao'])
-const PAPEIS = new Set(['pre', 'headline', 'headline2', 'apoio', 'cta', 'servico'])
 
 export const CAUSAS = ['redacao', 'compositor', 'foto', 'design', 'revisor', 'indeterminada'] as const
 export type CausaDaCorrecao = (typeof CAUSAS)[number]
@@ -171,7 +180,7 @@ function soEstilo(r: RevisaoDaCopy): boolean {
   return r.blocos.length > 0 && r.blocos.every((id) => (r.campos?.[id] ?? []).length > 0 && r.campos![id].every((c) => c === 'estilo'))
 }
 
-// ─── o revisor, lido defensivamente ───────────────────────────────────────
+// ─── o revisor ────────────────────────────────────────────────────────────
 
 export interface AjusteDoRevisor {
   em: Instante
@@ -180,70 +189,81 @@ export interface AjusteDoRevisor {
 }
 
 /**
- * As funções dos blocos cujas camadas o revisor escondeu, pela marca
- * `metadata.revisao.ocultaPeloRevisor` do PR 0.
- *
- * ⚠️ **Dependência de pilha**: a marca nasceu no fechamento do revisor
- * (`8ad936ee`/`2ceb25fc`) e ESTE ramo (3 → 7 → 13 → 14) foi aberto antes dela —
- * aqui ninguém a grava. A leitura é defensiva: sem marca, a classificação cai
- * no motivo gravado e na arte do ajuste, que existem nesta pilha.
- */
-export function funcoesOcultasPeloRevisor(layers: unknown): string[] {
-  const { camadas, legivel } = lerCamadas(layers)
-  if (!legivel) return []
-  const funcoes = new Set<string>()
-  for (const c of camadas) {
-    const meta = objeto(c.metadata)
-    const marca = objeto(meta?.revisao)?.ocultaPeloRevisor
-    if (marca == null || marca === false) continue
-    const papel = [objeto(meta?.compositor)?.papel, c.id, c.name].map(String).find((p) => PAPEIS.has(p))
-    if (papel) funcoes.add(papel === 'headline2' ? 'headline' : papel)
-  }
-  return [...funcoes]
-}
-
-export interface ContextoDaRevisao {
-  ajustesDoRevisor: AjusteDoRevisor[]
-  funcoesOcultasPeloRevisor: string[]
-  /** A copy onde a revisão está (para ler a função e as linhas finais de cada bloco). */
-  copy: CopyAutoral
-}
-
-/**
  * A CAUSA de uma revisão da copy. Nunca pelo autor sozinho — ver o cabeçalho.
- * A ordem das regras importa: o revisor é reconhecido ANTES de o autor humano
- * virar "redação".
+ * O revisor é reconhecido pelo MOTIVO que a chamada só de ajustes grava, antes
+ * de o autor humano virar "redação". Não há regra de proximidade no tempo: toda
+ * revisão que só uma janela alcançaria é, por construção, de OUTRA chamada — a
+ * de quem pediu o texto (C15-01).
  */
-export function causaDaRevisao(r: RevisaoDaCopy, ctx: ContextoDaRevisao): CausaDaCorrecao {
+export function causaDaRevisao(r: RevisaoDaCopy): CausaDaCorrecao {
   if (r.motivo === MOTIVO_DO_AJUSTE_DO_REVISOR) return 'revisor'
-
-  if (r.autor === 'equipe' || r.autor === 'claude') {
-    // A arte do ajuste do revisor na mesma janela, sem texto trocado: a
-    // revisão da copy é consequência do ajuste (a camada escondida), não a
-    // pessoa reescrevendo. O editor fica fora: autosave é gesto humano.
-    const t = tempo(r.em)
-    if (r.superficie !== 'editor' && ctx.ajustesDoRevisor.some((a) => a.soDiagramacao && Math.abs(tempo(a.em) - t) <= JANELA_DO_AJUSTE_DO_REVISOR_MS)) {
-      return 'revisor'
-    }
-    // A marca do PR 0: todo bloco tocado ficou vazio e a camada dele está
-    // marcada como escondida pelo revisor.
-    if (ctx.funcoesOcultasPeloRevisor.length > 0 && r.blocos.length > 0) {
-      const porId = new Map(ctx.copy.blocos.map((b) => [b.id, b]))
-      const todosOcultos = r.blocos.every((id) => {
-        const b = porId.get(id)
-        return !!b && b.linhas.length === 0 && ctx.funcoesOcultasPeloRevisor.includes(b.funcao)
-      })
-      if (todosOcultos) return 'revisor'
-    }
-    return soEstilo(r) ? 'design' : 'redacao'
-  }
-
+  if (r.autor === 'equipe' || r.autor === 'claude') return soEstilo(r) ? 'design' : 'redacao'
   if (r.autor === 'sistema') {
     if (r.superficie && SUPERFICIES_DO_COMPOSITOR.has(r.superficie)) return 'compositor'
     if (r.superficie === 'reverter-arte') return 'design'
     return 'indeterminada'
   }
   return 'indeterminada'
+}
+
+/** Um ajuste de `visibilidade` que o revisor APLICOU (`fieldValues.revisao.aplicados` da arte do ajuste). */
+export interface AjusteDeVisibilidade {
+  em: number
+  camadas: string[]
+  /** `true` = escondeu (`detalhe: 'escondidas'`); `false` = mostrou. */
+  escondeu: boolean
+}
+
+/** Os ajustes de visibilidade das artes do ajuste, em ordem. Forma inesperada é ignorada. */
+export function ajustesDeVisibilidade(artes: ArteLida[]): AjusteDeVisibilidade[] {
+  const saida: AjusteDeVisibilidade[] = []
+  for (const a of artes) {
+    if (a.source !== 'ajuste-arte') continue
+    const aplicados = objeto(a.revisao)?.aplicados
+    if (!Array.isArray(aplicados)) continue
+    for (const x of aplicados) {
+      const o = objeto(x)
+      if (!o || o.tipo !== 'visibilidade' || !Array.isArray(o.camadas)) continue
+      if (o.detalhe !== 'escondidas' && o.detalhe !== 'mostradas') continue
+      const camadas = o.camadas.filter((c): c is string => typeof c === 'string' && c.length > 0)
+      if (camadas.length) saida.push({ em: tempo(a.createdAt), camadas, escondeu: o.detalhe === 'escondidas' })
+    }
+  }
+  return saida.sort((x, y) => x.em - y.em)
+}
+
+export type DesfechoDaVisibilidade = 'aceito' | 'desfeito' | 'camada-removida'
+
+/**
+ * O DESFECHO de cada camada que o revisor escondeu ou mostrou, pelas camadas
+ * de HOJE (C15-02). Vale a ÚLTIMA decisão do revisor sobre a camada:
+ *  - escondeu e ela continua escondida com a marca (`ocultaPeloRevisor`) → aceito;
+ *  - escondeu e ela está VISÍVEL (com ou sem a marca esquecida) → desfeito: alguém a mostrou;
+ *  - escondeu e ela está escondida SEM a marca → aceito: o editor tirou a marca
+ *    porque a pessoa a escondeu de novo (`reconciliarMarcasDoRevisor`), e o
+ *    estado final é o do ajuste;
+ *  - mostrou e ela está escondida → desfeito; visível → aceito;
+ *  - a camada não existe mais → `camada-removida` (nem aceito nem desfeito).
+ * Camadas ilegíveis devolvem `null`: ilegível nunca vira desfecho.
+ */
+export function desfechosDaVisibilidade(ajustes: AjusteDeVisibilidade[], layersDeHoje: unknown): Array<{ camada: string; desfecho: DesfechoDaVisibilidade }> | null {
+  if (ajustes.length === 0) return []
+  const { camadas, legivel } = lerCamadas(layersDeHoje)
+  if (!legivel) return null
+  const porId = new Map(camadas.map((c) => [String(c.id), c]))
+  const ultima = new Map<string, boolean>()
+  for (const a of ajustes) for (const c of a.camadas) ultima.set(c, a.escondeu)
+  return [...ultima].map(([camada, escondeu]) => {
+    const l = porId.get(camada)
+    if (!l) return { camada, desfecho: 'camada-removida' as const }
+    if (escondeu) {
+      if (ocultaPeloRevisor(l)) return { camada, desfecho: 'aceito' as const }
+      if (l.visible !== false) return { camada, desfecho: 'desfeito' as const }
+      // Escondida e sem a marca (marcaDoRevisor nulo): a pessoa a escondeu de novo.
+      return { camada, desfecho: marcaDoRevisor(l) ? ('desfeito' as const) : ('aceito' as const) }
+    }
+    return { camada, desfecho: l.visible === false ? ('desfeito' as const) : ('aceito' as const) }
+  })
 }
 
 /** A origem da mudança que uma revisão representa, por bloco. */
@@ -270,10 +290,10 @@ export interface PecaParaMedir {
   postIds: string[]
   original: CopyAutoral | null
   final: CopyAutoral | null
-  /** A copy da origem gravou `comparavel` explícito (a arte do compositor grava). */
   exclusao: 'sem-contrato' | 'autoria-desconhecida' | 'sem-copy-final' | null
   estados: EstadoDaCopy[]
-  contexto: Omit<ContextoDaRevisao, 'copy'>
+  /** O desfecho dos ajustes de visibilidade do revisor, pelas camadas de hoje. `null` = camadas ilegíveis. */
+  visibilidade: Array<{ camada: string; desfecho: DesfechoDaVisibilidade }> | null
   evidencias: { trocasDeArte: number; fotosTrocadas: number; geometria: number; recusasDoCompositor: number; avisosDoSistema: number; ajustesDoRevisorSemRevisaoDeCopy: number }
   tempo: { inicioEm: number | null; rascunhoEm: number | null }
   voz: CarimboDaVoz | null
@@ -348,19 +368,26 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     const ajustesDoRevisor: AjusteDoRevisor[] = artes
       .filter((a) => a.source === 'ajuste-arte' && objeto(a.revisao))
       .map((a) => ({ em: a.createdAt, soDiagramacao: !objeto(a.ajustes) || Object.keys(objeto(a.ajustes)!).length === 0 }))
-    const contexto = { ajustesDoRevisor, funcoesOcultasPeloRevisor: pagina ? funcoesOcultasPeloRevisor(pagina.layers) : [] }
+    const visibilidade = pagina ? desfechosDaVisibilidade(ajustesDeVisibilidade(artes), pagina.layers) : []
 
     // A linha do tempo: o original, as efetivas das artes, e a página hoje.
     const estados: EstadoDaCopy[] = []
     if (original && arteDoOriginal) estados.push({ em: tempo(arteDoOriginal.createdAt) - 1, linhas: linhasPorBloco(original), origem: 'autor' })
     for (const a of artes) {
       const efetiva = copyLida(objeto(a.copyAutoral)?.efetiva)
-      if (efetiva) estados.push({ em: tempo(a.createdAt), linhas: linhasPorBloco(efetiva), origem: origemDoEstadoDaArte(a, efetiva) })
+      if (!efetiva) continue
+      const origem = origemDoEstadoDaArte(a, efetiva)
+      // A arte do ajuste SÓ do revisor fica fora da linha do tempo: a efetiva
+      // dela é lida das camadas cruas, e o bloco que o revisor escondeu sai
+      // `linhas: []` — um "texto mudado" que a copy nunca teve. O desfecho do
+      // esconder se mede pelas camadas (`visibilidade`, C15-02).
+      if (origem === 'revisor') continue
+      estados.push({ em: tempo(a.createdAt), linhas: linhasPorBloco(efetiva), origem })
     }
     if (final && pagina) {
       const origem: Record<string, OrigemDaMudanca> = {}
       for (const r of final.revisoes) {
-        const o = origemDaRevisao(r, causaDaRevisao(r, { ...contexto, copy: final }))
+        const o = origemDaRevisao(r, causaDaRevisao(r))
         for (const id of r.blocos) origem[id] = o
       }
       const ultimaEm = final.revisoes.length ? Math.max(...final.revisoes.map((r) => tempo(r.em)).filter(Number.isFinite)) : -Infinity
@@ -378,8 +405,8 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     const avisosDoSistema = artes.reduce((t, a) => t + (a.source === 'compositor' && Array.isArray(a.avisos) ? a.avisos.length : 0), 0)
     // Ajuste do revisor que não deixou revisão de copy (mexeu só em corpo,
     // posição, gradiente): é correção de classe revisor mesmo assim.
-    const revisoesDoRevisor = (final?.revisoes ?? []).filter((r) => causaDaRevisao(r, { ...contexto, copy: final! }) === 'revisor')
-    const ajustesDoRevisorSemRevisaoDeCopy = ajustesDoRevisor.filter((a) => !revisoesDoRevisor.some((r) => Math.abs(tempo(r.em) - tempo(a.em)) <= JANELA_DO_AJUSTE_DO_REVISOR_MS)).length
+    const revisoesDoRevisor = (final?.revisoes ?? []).filter((r) => causaDaRevisao(r) === 'revisor')
+    const ajustesDoRevisorSemRevisaoDeCopy = ajustesDoRevisor.filter((a) => !revisoesDoRevisor.some((r) => Math.abs(tempo(r.em) - tempo(a.em)) <= JANELA_DO_MESMO_AJUSTE_MS)).length
 
     const itens = l.itens.filter((it) => (it.postId != null && postIds.includes(it.postId)) || (g.pageId != null && it.pageId === g.pageId) || (it.generationId != null && ids.has(it.generationId)))
     const inicios = [...itens.map((it) => tempo(it.createdAt)), ...(itens.length ? [] : artes.map((a) => tempo(a.createdAt)))].filter(Number.isFinite)
@@ -395,7 +422,7 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
       final,
       exclusao,
       estados,
-      contexto,
+      visibilidade,
       evidencias: {
         trocasDeArte: sinais.filter((s) => s.tipo === 'troca-de-arte').length,
         fotosTrocadas: sinais.filter((s) => s.tipo === 'foto' && s.desfecho === 'trocada').length,
@@ -422,7 +449,10 @@ export interface MedidaDaPeca {
   /** Alguma revisão do SISTEMA (compositor/recomposição) mudou o texto. */
   sistemaMudouLinhas: boolean
   correcoes: Record<CausaDaCorrecao, number>
-  indevidas: Array<{ tipo: TipoDeIndevida; bloco: string | null }>
+  /** `bloco` quando a indevida é de texto; `camada` quando é de visibilidade (C15-02). */
+  indevidas: Array<{ tipo: TipoDeIndevida; bloco: string | null; camada?: string }>
+  /** O desfecho dos ajustes de visibilidade do revisor. `null` = camadas ilegíveis. */
+  visibilidadeDoRevisor: { aceitos: number; desfeitos: number; removidas: number } | null
   minutosAteRascunho: number | null
   voz: CarimboDaVoz | null
   avisosDoSistema: number
@@ -470,13 +500,14 @@ export function medirPeca(p: PecaParaMedir): MedidaDaPeca {
     preservada = [...new Set([...Object.keys(o), ...Object.keys(f)])].every((id) => mesmasLinhas(o[id], f[id]))
 
     for (const r of p.final.revisoes) {
-      const causa = causaDaRevisao(r, { ...p.contexto, copy: p.final })
+      const causa = causaDaRevisao(r)
       correcoes[causa]++
       if (causa === 'compositor' && revisaoMudaLinhas(r)) sistemaMudouLinhas = true
     }
     // Sem página, a efetiva da arte guarda a revisão do compositor.
     if (sistemaMudouLinhas) indevidas.push({ tipo: 'sistema-mudou-linhas', bloco: null })
     indevidas.push(...reversoesIndevidas(p.estados, p.original))
+    for (const v of p.visibilidade ?? []) if (v.desfecho === 'desfeito') indevidas.push({ tipo: 'ajuste-do-revisor-revertido', bloco: null, camada: v.camada })
 
     correcoes.revisor += p.evidencias.ajustesDoRevisorSemRevisaoDeCopy
     correcoes.compositor += p.evidencias.recusasDoCompositor
@@ -487,7 +518,15 @@ export function medirPeca(p: PecaParaMedir): MedidaDaPeca {
   const { inicioEm, rascunhoEm } = p.tempo
   const minutos = inicioEm != null && rascunhoEm != null && rascunhoEm >= inicioEm ? (rascunhoEm - inicioEm) / 60_000 : null
 
-  return { chave: p.chave, comparavel, exclusao: p.exclusao, preservada, sistemaMudouLinhas, correcoes, indevidas, minutosAteRascunho: minutos, voz: p.voz, avisosDoSistema: p.evidencias.avisosDoSistema }
+  const visibilidadeDoRevisor = p.visibilidade
+    ? {
+        aceitos: p.visibilidade.filter((v) => v.desfecho === 'aceito').length,
+        desfeitos: p.visibilidade.filter((v) => v.desfecho === 'desfeito').length,
+        removidas: p.visibilidade.filter((v) => v.desfecho === 'camada-removida').length,
+      }
+    : null
+
+  return { chave: p.chave, comparavel, exclusao: p.exclusao, preservada, sistemaMudouLinhas, correcoes, indevidas, visibilidadeDoRevisor, minutosAteRascunho: minutos, voz: p.voz, avisosDoSistema: p.evidencias.avisosDoSistema }
 }
 
 // ─── agregação ────────────────────────────────────────────────────────────
@@ -520,6 +559,8 @@ export interface QualidadeDaCopy {
   fidelidade: { mensagemPreservada: Proporcao; sistemaSemMudarTexto: Proporcao }
   correcoes: { porCausa: Record<CausaDaCorrecao, number>; pecasPorCausa: Record<CausaDaCorrecao, number> }
   indevidas: { pecas: Proporcao; porTipo: Record<TipoDeIndevida, number> }
+  /** O desfecho dos ajustes de visibilidade do revisor nas peças comparáveis; `ilegiveis` = peças cujas camadas não deu para ler. */
+  visibilidadeDoRevisor: { aceitos: number; desfeitos: number; removidas: number; ilegiveis: number }
   avisosDoSistema: number
   tempoAteRascunho:
     | { estado: 'medida'; n: number; medianaMin: number; p90Min: number; proxy: true; definicao: string }
@@ -576,6 +617,12 @@ export function medirQualidadeDaCopy(medidas: MedidaDaPeca[], opcoes: { limiar?:
     },
     correcoes: { porCausa, pecasPorCausa },
     indevidas: { pecas: proporcao(comparaveis.filter((m) => m.indevidas.length > 0).length, comparaveis.length, limiar), porTipo },
+    visibilidadeDoRevisor: {
+      aceitos: comparaveis.reduce((t, m) => t + (m.visibilidadeDoRevisor?.aceitos ?? 0), 0),
+      desfeitos: comparaveis.reduce((t, m) => t + (m.visibilidadeDoRevisor?.desfeitos ?? 0), 0),
+      removidas: comparaveis.reduce((t, m) => t + (m.visibilidadeDoRevisor?.removidas ?? 0), 0),
+      ilegiveis: comparaveis.filter((m) => m.visibilidadeDoRevisor === null).length,
+    },
     avisosDoSistema: comparaveis.reduce((t, m) => t + m.avisosDoSistema, 0),
     tempoAteRascunho,
     voz: {
@@ -606,6 +653,19 @@ export function faltaDeEsquema(erro: unknown): string | null {
   if (pg === '42703' || /column .* does not exist/i.test(mensagem)) return `coluna ausente (${mensagem.slice(0, 120)})`
   if (pg === '42P01' || /relation .* does not exist/i.test(mensagem)) return `tabela ausente (${mensagem.slice(0, 120)})`
   return null
+}
+
+/**
+ * O erro é o `statement_timeout` do servidor cancelando a consulta (57014)? É
+ * como o teto por cliente se cumpre de verdade (C15-03): a consulta é cancelada
+ * no Postgres, e a conexão volta ao pool.
+ */
+export function cancelamentoPorTempo(erro: unknown): boolean {
+  const e = objeto(erro)
+  if (!e) return false
+  const meta = objeto(e.meta)
+  const mensagem = typeof e.message === 'string' ? e.message : ''
+  return e.code === '57014' || meta?.code === '57014' || /statement timeout/i.test(mensagem)
 }
 
 // ─── o texto do relatório ─────────────────────────────────────────────────
@@ -663,6 +723,8 @@ export function blocoDaQualidadeDaCopy(b: BlocoDaCopy): string | null {
       partes.push(`  correções: ${causas.length ? causas.join(' · ') : 'nenhuma'}`)
       const tipos = TIPOS_DE_INDEVIDA.filter((t) => q.indevidas.porTipo[t] > 0).map((t) => `${ROTULO_DA_INDEVIDA[t]} ${q.indevidas.porTipo[t]}`)
       partes.push(`  indevidas: ${textoDaProporcao(q.indevidas.pecas)}${tipos.length ? ` — ${tipos.join(' · ')}` : ''}`)
+      const vis = q.visibilidadeDoRevisor
+      if (vis.aceitos + vis.desfeitos + vis.removidas > 0) partes.push(`  revisor escondeu/mostrou: ${vis.aceitos} aceito(s) · ${vis.desfeitos} desfeito(s)${vis.removidas ? ` · ${vis.removidas} camada(s) removida(s)` : ''}`)
     }
     const t = q.tempoAteRascunho
     partes.push(t.estado === 'medida' ? `  até o rascunho (proxy): mediana ${duracao(t.medianaMin)} · p90 ${duracao(t.p90Min)}` : `  até o rascunho (proxy): amostra insuficiente (${t.n}, mínimo ${t.limiar})`)

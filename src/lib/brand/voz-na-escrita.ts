@@ -101,3 +101,39 @@ export function lerCarimboDaVoz(gravado: unknown): CarimboDaVoz | null {
     ...(typeof g.incerto === 'string' ? { incerto: g.incerto } : {}),
   }
 }
+
+/**
+ * De onde herdar o carimbo quando a peça REPRODUZ uma copy escrita antes —
+ * "Gerar de novo" (a copy sai do `slotValues` da arte antiga) e os slides
+ * irmãos do carrossel (a copy foi escrita quando a série começou). O carimbo
+ * da origem vence; sem ele, o instante da escrita é o `escritaEm` que a origem
+ * registrou ou, na falta, o `createdAt` dela (C15-05). Carimbar a voz do
+ * momento da REPRODUÇÃO inflaria "voz refletida" com copy antiga.
+ */
+export function origemDoCarimbo(origem: { fieldValues: unknown; createdAt: Date | string } | null | undefined): {
+  vozNaEscrita: CarimboDaVoz | null
+  escritaEm: string | null
+} {
+  if (!origem) return { vozNaEscrita: null, escritaEm: null }
+  const fv = origem.fieldValues && typeof origem.fieldValues === 'object' && !Array.isArray(origem.fieldValues) ? (origem.fieldValues as Record<string, unknown>) : {}
+  const vozNaEscrita = lerCarimboDaVoz(fv.vozNaEscrita)
+  return { vozNaEscrita, escritaEm: vozNaEscrita?.escritaEm ?? iso(origem.createdAt) }
+}
+
+/**
+ * O carimbo de uma geração nova: o HERDADO (válido) vence; sem ele, calcula
+ * pela voz de agora com o `escritaEm`. Nunca lança — falhar ao ler a voz deixa
+ * a peça sem carimbo.
+ */
+export async function carimboDaGeracao(
+  entrada: { vozNaEscrita?: unknown; escritaEm?: Date | string | null },
+  calcular: (escritaEm: Date | string | null) => Promise<CarimboDaVoz | null>,
+): Promise<CarimboDaVoz | null> {
+  const herdado = lerCarimboDaVoz(entrada.vozNaEscrita)
+  if (herdado) return herdado
+  try {
+    return await calcular(entrada.escritaEm ?? null)
+  } catch {
+    return null
+  }
+}

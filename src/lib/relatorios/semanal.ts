@@ -379,22 +379,11 @@ export async function gerarRelatorioSemanal(opts?: {
     if (linha) linhas.push(linha)
   }
 
-  // A qualidade da copy (PR 15): só leitura, com prazo próprio. Falha geral
-  // degrada para a ausência do bloco — nunca derruba o relatório.
-  const qualidadeDaCopy = await medirQualidadeDaCarteira(
-    linhas.map((l) => ({ projectId: l.projectId, nome: l.nome })),
-    janela,
-    { prazo: Math.min(Date.now() + ORCAMENTO_DA_COPY_MS, inicioDoRelatorio + PRAZO_DA_COPY_DESDE_O_INICIO_MS) },
-  ).catch((erro) => {
-    console.error('[relatorio-semanal] qualidade da copy falhou (seguindo sem ela):', erro)
-    return null
-  })
-  for (const l of linhas) {
-    const r = qualidadeDaCopy?.porCliente.get(l.projectId)
-    l.copy = r ? { qualidade: r.qualidade, indisponivel: r.indisponivel, avisos: r.avisos } : null
-  }
-
+  // A gravação vem ANTES da medida da copy (C15-03): o relatório da semana é o
+  // que não pode se perder. A medida entra depois, num update best-effort do
+  // `metricsJson` — ela nunca disputa a conexão com esta gravação.
   let gravados = 0
+  const gravadosIds = new Set<number>()
   for (const l of linhas) {
     const projeto = projetos.find((p) => p.id === l.projectId)!
     try {
@@ -439,8 +428,33 @@ export async function gerarRelatorioSemanal(opts?: {
         },
       })
       gravados++
+      gravadosIds.add(l.projectId)
     } catch (erro) {
       console.error(`[relatorio-semanal] falha ao gravar projeto ${l.projectId}:`, erro)
+    }
+  }
+
+  // A qualidade da copy (PR 15): só leitura, com prazo próprio. Falha geral
+  // degrada para a ausência do bloco — nunca derruba o relatório.
+  const qualidadeDaCopy = await medirQualidadeDaCarteira(
+    linhas.map((l) => ({ projectId: l.projectId, nome: l.nome })),
+    janela,
+    { prazo: Math.min(Date.now() + ORCAMENTO_DA_COPY_MS, inicioDoRelatorio + PRAZO_DA_COPY_DESDE_O_INICIO_MS) },
+  ).catch((erro) => {
+    console.error('[relatorio-semanal] qualidade da copy falhou (seguindo sem ela):', erro)
+    return null
+  })
+  for (const l of linhas) {
+    const r = qualidadeDaCopy?.porCliente.get(l.projectId)
+    l.copy = r ? { qualidade: r.qualidade, indisponivel: r.indisponivel, avisos: r.avisos } : null
+    if (!l.copy || !gravadosIds.has(l.projectId)) continue
+    try {
+      await db.instagramWeeklyReport.update({
+        where: { projectId_weekStart: { projectId: l.projectId, weekStart: janela.inicio } },
+        data: { metricsJson: linhaParaJson(l) },
+      })
+    } catch (erro) {
+      console.error(`[relatorio-semanal] a medida da copy do projeto ${l.projectId} não foi gravada (o relatório segue):`, erro)
     }
   }
 

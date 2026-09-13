@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { carimboDaVoz, lerCarimboDaVoz } from '../voz-na-escrita'
+import { describe, expect, it, vi } from 'vitest'
+import { carimboDaGeracao, carimboDaVoz, lerCarimboDaVoz, origemDoCarimbo } from '../voz-na-escrita'
 
 const lidoEm = new Date('2026-09-13T20:00:00Z')
 
@@ -57,5 +57,40 @@ describe('lerCarimboDaVoz', () => {
   })
   it('fonte null (incerta) é lida', () => {
     expect(lerCarimboDaVoz({ fonte: null, versao: null, lidoEm: 'x', incerto: 'motivo' })).toEqual({ fonte: null, versao: null, lidoEm: 'x', incerto: 'motivo' })
+  })
+})
+
+describe('C15-05 · a copy reproduzida herda o carimbo de quando foi escrita', () => {
+  const herdado = { fonte: 'legado' as const, versao: null, lidoEm: '2026-09-01T10:00:00.000Z' }
+
+  it('origemDoCarimbo: o carimbo da origem e o createdAt dela como instante da escrita', () => {
+    expect(origemDoCarimbo({ fieldValues: { vozNaEscrita: herdado }, createdAt: new Date('2026-09-01T10:00:00Z') })).toEqual({
+      vozNaEscrita: herdado,
+      escritaEm: '2026-09-01T10:00:00.000Z',
+    })
+  })
+
+  it('origemDoCarimbo: a origem que já registrava a escrita (item de plano) passa ESSE instante adiante', () => {
+    const doItem = { ...herdado, escritaEm: '2026-08-30T09:00:00.000Z' }
+    expect(origemDoCarimbo({ fieldValues: { vozNaEscrita: doItem }, createdAt: '2026-09-01T10:00:00Z' }).escritaEm).toBe('2026-08-30T09:00:00.000Z')
+  })
+
+  it('origemDoCarimbo: arte antiga sem carimbo ainda leva o createdAt (a voz de hoje sai incerta se mudou depois)', () => {
+    expect(origemDoCarimbo({ fieldValues: { source: 'arte-ia' }, createdAt: '2026-09-01T10:00:00Z' })).toEqual({ vozNaEscrita: null, escritaEm: '2026-09-01T10:00:00.000Z' })
+    expect(origemDoCarimbo({ fieldValues: null, createdAt: 'lixo' })).toEqual({ vozNaEscrita: null, escritaEm: null })
+    expect(origemDoCarimbo(null)).toEqual({ vozNaEscrita: null, escritaEm: null })
+  })
+
+  it('carimboDaGeracao: o herdado vence e a voz de agora nem é lida', async () => {
+    const calcular = vi.fn(async () => ({ fonte: 'voz' as const, versao: 1, lidoEm: 'agora' }))
+    expect(await carimboDaGeracao({ vozNaEscrita: herdado, escritaEm: '2026-09-01T10:00:00Z' }, calcular)).toEqual(herdado)
+    expect(calcular).not.toHaveBeenCalled()
+  })
+
+  it('carimboDaGeracao: sem herdado válido, calcula com o instante da escrita; falha vira null', async () => {
+    const calcular = vi.fn(async (escritaEm: Date | string | null) => ({ fonte: 'voz' as const, versao: null, lidoEm: 'agora', escritaEm: String(escritaEm) }))
+    expect((await carimboDaGeracao({ vozNaEscrita: { fonte: 'outra' }, escritaEm: '2026-09-01T10:00:00.000Z' }, calcular))?.escritaEm).toBe('2026-09-01T10:00:00.000Z')
+    expect(calcular).toHaveBeenCalledWith('2026-09-01T10:00:00.000Z')
+    expect(await carimboDaGeracao({}, async () => { throw new Error('BrandVoice ausente') })).toBeNull()
   })
 })
