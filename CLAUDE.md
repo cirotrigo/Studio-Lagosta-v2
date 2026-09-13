@@ -6575,9 +6575,20 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
     `update({ ...anterior, feedback })`; um re-render no meio ressuscitava o
     marcador e a copy da versão anterior por cima do `resultUrl` novo (copy B
     afirmada pela mídia C). Hoje é `mesclarFieldValuesDaArte` só com a chave
-    `feedback`. ⚠️ `crivo-avaliacao.ts` (≈ :471-495) tem o mesmo padrão e NÃO
-    foi mexido nesta leva (as Generations dele não passam pela recomposição
-    hoje) — é o próximo da fila.
+    `feedback`.
+  - 🔴 **C6-13 (P3): o registro do crivo também é merge no banco.**
+    `registrarNaGeneration` (`crivo-avaliacao.ts`) fazia o mesmo
+    `findUnique` + `update({ ...anterior, crivo })` do C6-02; hoje é
+    `mesclarFieldValuesDaArte` só com `crivo`. Só era alcançável chamando
+    `POST /crivo/avaliar` direto (o `BancadaCrivo` não está montado), mas a
+    rota aceita `generationId` de arte recomponível. Os outros dois escritores
+    de `fieldValues` inteiro foram conferidos e ficam como estão, porque só
+    alcançam Generation da própria rodada: `fila.ts` (falha da composição) só
+    roda para a Generation PROCESSING que `enfileirarPeca` /
+    `enfileirarComposicaoDoPlano` acabaram de criar (a recomposição sai antes,
+    para `recompor.ts`), e `carousel-service.ts` grava na capa recém-criada
+    (ou na PROCESSING reaproveitada pelo dedupe da trilha arte-ia, sem página
+    e fora do alcance da recomposição).
   - 🔴 **C6-03 (P3, pré-existente): todo caminho que deriva a cópia textual
     de um post de uma Generation passa por `lerProcedencia`.** A troca de arte
     pela galeria copiava `slotValues` cru; agora segue o R38 + marcador como

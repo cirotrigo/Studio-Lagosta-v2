@@ -38,6 +38,7 @@ import { generateObject } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { loadBrandContext, type BrandContext } from '@/lib/brand/brand-context'
 import {
   agendamentoEmBrasilia,
@@ -467,6 +468,15 @@ export async function avaliarCrivo(
  *
  * Telemetria não derruba fluxo: qualquer erro aqui vira log. A avaliação já
  * está na mão de quem está agendando — perdê-la no banco é o menor dos males.
+ *
+ * 🔴 O merge é feito NO BANCO (`mesclarFieldValuesDaArte`, só a chave `crivo`),
+ * nunca por ler-e-regravar (C6-13 da pré-revisão do HEAD a821c0aa, 12/09/2026 —
+ * a mesma classe do C6-02 no feedback de arte). O `findUnique` + `update` com
+ * `{ ...anterior, crivo }` perdia qualquer escrita que caísse entre os dois: um
+ * re-render da mesma arte nesse intervalo tinha o registro novo, o marcador
+ * `copyVisualRegravada`, os `slotValues` e a trava `somenteReRender` trocados
+ * pelo que tinha sido lido antes, por cima do `resultUrl` novo (R13/R38 e
+ * REV-R01 reabertos). Generation inexistente: o UPDATE não toca linha nenhuma.
  */
 async function registrarNaGeneration(
   generationId: string | null | undefined,
@@ -474,32 +484,19 @@ async function registrarNaGeneration(
 ): Promise<void> {
   if (!generationId) return
   try {
-    const atual = await db.generation.findUnique({
-      where: { id: generationId },
-      select: { fieldValues: true },
-    })
-    if (!atual) return
-
-    const anterior = (atual.fieldValues ?? {}) as Record<string, unknown>
-    await db.generation.update({
-      where: { id: generationId },
-      data: {
-        fieldValues: {
-          ...anterior,
-          crivo: {
-            avaliadoEm: resultado.avaliadoEm,
-            degradado: resultado.degradado,
-            // O resumo é o que se consulta depois; a lista inteira fica junto
-            // para ninguém precisar reconstruir o "por quê" de cabeça.
-            resumo: resumirVereditos(resultado),
-            itens: resultado.itens.map((i) => ({
-              indice: i.indice,
-              pergunta: i.pergunta,
-              veredito: i.veredito,
-              evidencia: i.evidencia,
-            })),
-          },
-        } as never,
+    await mesclarFieldValuesDaArte(db, generationId, {
+      crivo: {
+        avaliadoEm: resultado.avaliadoEm,
+        degradado: resultado.degradado,
+        // O resumo é o que se consulta depois; a lista inteira fica junto
+        // para ninguém precisar reconstruir o "por quê" de cabeça.
+        resumo: resumirVereditos(resultado),
+        itens: resultado.itens.map((i) => ({
+          indice: i.indice,
+          pergunta: i.pergunta,
+          veredito: i.veredito,
+          evidencia: i.evidencia,
+        })),
       },
     })
   } catch (error) {
