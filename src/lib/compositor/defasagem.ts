@@ -377,6 +377,22 @@ export function paginaMudouDesde(referencia: unknown, camadasAgora: unknown): bo
   return !d.ilegivel && (d.defasada || d.mexidoNaMao.length > 0)
 }
 
+/**
+ * O que mudou na página, em português da equipe — o motivo que vai para o job
+ * e para o histórico do post quando a edição feita durante a recomposição não
+ * chega à arte (C10-11 da pré-revisão do commit 3fad6ba2). Diz texto e foto
+ * quando a defasagem os distingue; o resto (caixa movida, corte, camada) é
+ * "a página foi alterada". Sem jargão de fila nem de levantamento.
+ */
+export function edicaoDuranteOJob(defasagem: Defasagem): string {
+  const texto = defasagem.papeis.length > 0
+  const foto = defasagem.fotoTrocada === true
+  if (texto && foto) return 'o texto e a foto da página foram alterados enquanto a arte era atualizada'
+  if (foto) return 'a foto da página foi trocada enquanto a arte era atualizada'
+  if (texto) return 'o texto da página foi alterado enquanto a arte era atualizada'
+  return 'a página foi alterada enquanto a arte era atualizada'
+}
+
 export interface SpecRecomposta {
   spec: SpecDePeca
   avisos: string[]
@@ -401,8 +417,9 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
 
   /**
    * A segunda voz da manchete não existe na spec: `comporPeca` a cria quando
-   * a assinatura a tem e a manchete vem com 2+ linhas, pondo nela a ÚLTIMA
-   * linha. Na volta as duas camadas viram de novo UMA manchete — deixar
+   * a assinatura a tem e a manchete vem com 2+ linhas com texto, pondo nela a
+   * ÚLTIMA linha COM TEXTO e os respiros que a seguem (`dividirManchete`). Na
+   * volta as duas camadas viram de novo UMA manchete — deixar
    * `headline2` na spec faria `validarSpec` recusar a peça inteira.
    */
   const manchete = [

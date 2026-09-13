@@ -258,7 +258,7 @@ export function prepararBlocos(args: {
     // A manchete com segunda voz vira DOIS papéis no mesmo grupo (o que o
     // Quintal, o TERO e o By Rock fazem à mão). Quem diz QUAIS linhas vão na
     // voz 2 é o AUTOR, no contrato (`estilo.linhasNaVoz2`); sem contrato vale a
-    // regra legada (a última linha) — ver `segunda-voz.ts`.
+    // regra legada (a última linha COM TEXTO, com os respiros que a seguem) — ver `segunda-voz.ts`.
     const temSegundaVoz = arranjo ? arranjo.papeis.includes('headline2') : Boolean(assinatura.papeis.headline2)
     const comSegundaVoz = blocosDoGrupo.flatMap((b) => {
       if (b.papel !== 'headline' || b.extra) return [b]

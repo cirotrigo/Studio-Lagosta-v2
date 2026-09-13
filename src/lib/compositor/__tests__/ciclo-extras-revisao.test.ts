@@ -27,7 +27,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Layer } from '@/types/template'
 import { montarAssinatura } from '../assinatura'
-import { copyDaPaginaPorIdentidade, specComACopyDaPagina, textoDoExtraNaPagina } from '../defasagem'
+import { copyDaPaginaPorIdentidade, edicaoDuranteOJob, specComACopyDaPagina, textoDoExtraNaPagina, type Defasagem } from '../defasagem'
 import { dividirManchete } from '../segunda-voz'
 import { entradaDePersistencia } from '../persistencia'
 import { prepararBlocos } from '../preparar-blocos'
@@ -443,7 +443,52 @@ describe('C10-01 e C10-03 — nada foi refeito (a página estava em dia no levan
     expect(estado.specsCompostas).toHaveLength(0)
     expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
     expect((estado.generation!.fieldValues as { recomposicao?: unknown }).recomposicao).toMatchObject({ estado: 'recusada', errorCode: 'PAGINA_MUDOU_DURANTE' })
-    expect(estado.logs.join(' ')).toMatch(/A arte NÃO foi atualizada: .*não há mais tentativas/)
+    // O motivo em português da equipe, dizendo que foi a FOTO (C10-11): sem jargão de fila.
+    expect(estado.logs).toHaveLength(1)
+    expect(estado.logs[0]).toMatch(/^A arte NÃO foi atualizada: a foto da página foi trocada enquanto a arte era atualizada, e as tentativas automáticas acabaram\. /)
+    expect(estado.logs[0]).not.toMatch(/em dia|recomposição/)
+  })
+
+  it('sem orçamento e edição de TEXTO: o motivo diz que foi o texto', async () => {
+    montarCenario(entrada, (camadas) => camadas, { comContrato: false })
+    estado.orcamento = false
+    estado.aposLevantamento = () => {
+      estado.page = { ...estado.page!, layers: trocar(estado.page!.layers, 'apoio', { content: 'no bafo e na lenha' }), updatedAt: new Date(Date.UTC(2026, 8, 12, 23, 30, ++estado.relogio)) }
+    }
+    const { processarRecomposicaoEmBackground } = await import('../recompor')
+    await expect(processarRecomposicaoEmBackground(jobAtual())).rejects.toMatchObject({ code: 'PAGINA_MUDOU_DURANTE' })
+    expect(estado.logs[0]).toMatch(/^A arte NÃO foi atualizada: o texto da página foi alterado enquanto a arte era atualizada, e as tentativas automáticas acabaram\. /)
+  })
+
+  for (const orcamento of [false, true]) {
+    it(`C10-11 — ${orcamento ? 'com' : 'sem'} orçamento, o post foi CONGELADO e a página editada no levantamento: não há slide a atualizar, o job fecha sem erro, sem tentativa e sem recusa`, async () => {
+      montarCenario(entrada, (camadas) => camadas, { comContrato: true })
+      estado.orcamento = orcamento
+      estado.aposLevantamento = () => {
+        estado.page = { ...estado.page!, layers: trocar(estado.page!.layers, 'bg-foto', { fileUrl: FOTO_C }), updatedAt: new Date(Date.UTC(2026, 8, 12, 23, 45, ++estado.relogio)) }
+        // Entregue ao publicador: sai dos slides que a recomposição alcança.
+        estado.posts.set('post-carrossel', { ...estado.posts.get('post-carrossel')!, laterPostId: 'zernio-1' })
+      }
+      const fieldValuesAntes = JSON.stringify(estado.generation!.fieldValues)
+      const { processarRecomposicaoEmBackground } = await import('../recompor')
+
+      await expect(processarRecomposicaoEmBackground(jobAtual())).resolves.toBeUndefined()
+      expect(pedirNovaTentativa).not.toHaveBeenCalled()
+      expect(estado.specsCompostas).toHaveLength(0)
+      expect(estado.renders).toHaveLength(0)
+      expect(estado.logs).toEqual([])
+      // Nenhuma recusa gravada: o registro da arte fica intocado.
+      expect(JSON.stringify(estado.generation!.fieldValues)).toBe(fieldValuesAntes)
+      expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
+    })
+  }
+
+  it('edicaoDuranteOJob: texto, foto, os dois, e o resto sem jargão', () => {
+    const d = (parcial: Partial<Defasagem>): Defasagem => ({ ilegivel: false, defasada: true, fotoTrocada: false, papeis: [], soTexto: true, mexidoNaMao: [], ...parcial })
+    expect(edicaoDuranteOJob(d({ papeis: ['apoio'] }))).toBe('o texto da página foi alterado enquanto a arte era atualizada')
+    expect(edicaoDuranteOJob(d({ fotoTrocada: true }))).toBe('a foto da página foi trocada enquanto a arte era atualizada')
+    expect(edicaoDuranteOJob(d({ papeis: ['hora'], fotoTrocada: true }))).toBe('o texto e a foto da página foram alterados enquanto a arte era atualizada')
+    expect(edicaoDuranteOJob(d({ defasada: false, soTexto: false, mexidoNaMao: ['"apoio" foi movida (+0, +40px)'] }))).toBe('a página foi alterada enquanto a arte era atualizada')
   })
 
   it('sem edição na janela: nada refeito, nenhuma tentativa, nenhum erro', async () => {

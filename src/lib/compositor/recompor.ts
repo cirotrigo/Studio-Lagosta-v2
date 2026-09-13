@@ -61,6 +61,7 @@ import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 import { comporPeca } from './compor'
 import { specTemExtra } from './camadas-extras'
 import {
+  edicaoDuranteOJob,
   medirDefasagem,
   paginaMudouDesde,
   precisaRefazer,
@@ -1010,24 +1011,35 @@ export async function processarRecomposicaoEmBackground(args: {
        */
       const camadasDepois = await camadasDaPagina(pageId)
       if (camadasDepois != null && paginaMudouDesde(camadasAntes, camadasDepois)) {
-        const motivo = 'a página foi editada durante a recomposição, que a encontrou em dia'
-        const voltou = await pedirNovaTentativa(args.queueJobId, motivo)
-        if (voltou) {
-          console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
-          return
-        }
         /**
-         * Sem orçamento, a MESMA regra do ramo de cima (REV-D02): a divergência
-         * não vira sucesso. Seguir fechava DONE com o slide velho diante da foto
-         * ou do texto novo — sem `lastError`, sem recusa no histórico —, e o
-         * enfileiramento não reabre job em andamento (C10-01 da pré-revisão do
-         * HEAD 8b8e801f, 12/09/2026).
+         * Mudou — mas ainda há o que refazer? A MESMA pergunta que o
+         * enfileiramento faria se o job não estivesse em andamento (arte
+         * registrada, slide que a carrega e `precisaRefazer`, ou força): o post
+         * pode ter sido congelado (entregue ao publicador) e saído dos slides, ou
+         * a edição pode ter devolvido a página à arte. Sem essa conferência o
+         * job falhava dizendo que o slide ficou com a versão anterior quando
+         * nenhum slide existe, e a recusa sobrescrevia o registro do último
+         * render (C10-11 da pré-revisão do commit 3fad6ba2, 12/09/2026).
          */
-        throw new CreativeError(
-          'PAGINA_MUDOU_DURANTE',
-          `${motivo}, e não há mais tentativas: a arte do slide reflete a versão anterior. Edite a página de novo para refazer.`,
-          409,
-        )
+        const agora = await levantarPagina(pageId)
+        if (agora?.arte && agora.slides.length > 0 && (args.recompor.forcar === true || precisaRefazer(agora.defasagem, agora.slides, agora.arte.resultUrl))) {
+          // Em português da equipe, e dizendo o que mudou quando se sabe (texto, foto).
+          const motivo = edicaoDuranteOJob(agora.defasagem)
+          const voltou = await pedirNovaTentativa(args.queueJobId, motivo)
+          if (voltou) {
+            console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
+            return
+          }
+          /**
+           * Sem orçamento, a MESMA regra do ramo de cima (REV-D02): a divergência
+           * não vira sucesso. Seguir fechava DONE com o slide velho diante da foto
+           * ou do texto novo — sem `lastError`, sem recusa no histórico —, e o
+           * enfileiramento não reabre job em andamento (C10-01 da pré-revisão do
+           * HEAD 8b8e801f, 12/09/2026).
+           */
+          throw new CreativeError('PAGINA_MUDOU_DURANTE', `${motivo}, e as tentativas automáticas acabaram.`, 409)
+        }
+        console.log(`[recompor] ${pageId}: a página mudou durante o job, mas não há slide a atualizar — encerrado sem nova tentativa`)
       }
     }
     /**

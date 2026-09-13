@@ -9473,3 +9473,33 @@ herdando do apoio, os dois tipos de post).
     `TEXTO_NAO_CABE_NA_COLUNA` → FAILED, com a recusa gravada nos posts, e a
     edição que resolveria não reabre o job em andamento. A recusa fica
     desatualizada até a próxima edição.
+
+**Da pré-revisão do commit 3fad6ba2 (APTO COM NOTAS, C10-11, 12/09/2026):**
+
+- 🔴 **C10-11 — antes de falhar (ou pedir tentativa) no ramo "nada foi refeito",
+  confira se AINDA HÁ o que refazer.** Causa: o throw da C10-01 decidia só por
+  `paginaMudouDesde` (página antes × depois). Com o post congelado
+  (`laterPostId`) no meio do caminho, ele saía dos slides, a edição feita no
+  levantamento disparava o throw, e o job fechava FAILED dizendo que "o slide"
+  ficou com a versão anterior quando slide nenhum existia — e a recusa, por
+  merge raso, apagava o registro do último render (a C6-01, que o PR 6
+  conserta). Antes da C10-01 esse caso fechava DONE, o desfecho certo. Regra:
+  mudou → `levantarPagina` de novo e a MESMA pergunta do enfileiramento (arte
+  registrada, `slides.length > 0` e `precisaRefazer`, ou força); sem o que
+  refazer, fecha normalmente, sem tentativa e sem recusa. A conferência vale
+  para os dois desfechos (com e sem orçamento): tentativa que não acha trabalho
+  só gasta orçamento. Testes: post congelado + foto trocada no levantamento,
+  com e sem orçamento → resolve, `pedirNovaTentativa` não chamado, histórico
+  vazio, `fieldValues` da arte idêntico byte a byte.
+- **O motivo da falha é em português da equipe e diz o que mudou**
+  (`edicaoDuranteOJob`, `defasagem.ts`, pela defasagem do novo levantamento):
+  "a foto da página foi trocada…", "o texto da página foi alterado…", os dois,
+  ou "a página foi alterada…" (caixa, corte, camada). Saíram o jargão ("que a
+  encontrou em dia") e a redundância com o modelo do histórico. ⚠️ **O sufixo
+  do histórico continua dizendo "ajuste o texto na página e salve de novo"
+  também para edição de foto**: ele vem de `registrarRecusa`, e mexer ali
+  colidiria com o conserto da C6-01 no PR 6, que reescreve a mesma função.
+  Fica para depois do PR 6: o modelo deve dizer "salve a página de novo".
+- Comentários que ainda diziam "a última linha" (`preparar-blocos.ts`,
+  `defasagem.ts#specComACopyDaPagina`) passaram a dizer "a última linha COM
+  TEXTO, com os respiros que a seguem", como `segunda-voz.ts`.
