@@ -183,7 +183,7 @@ export async function lerEstadoDoCliente(db: Db, projectId: number): Promise<{ n
   if (!projeto) return null
   const dnaDeTexto: DnaDeTexto = { toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }
   const previa = montarPrevia({ projectId, nome: proposta.nome, dna: dnaDeTexto, voz: proposta.voz })
-  const problemasDaVoz = problemasParaMigrar(proposta.voz)
+  const problemasDaVoz = problemasParaMigrar(proposta.voz, dnaDeTexto)
   const estado: EstadoDoCliente = {
     versaoDaPreviaAtual: versaoDaPrevia({ dna: dnaDeTexto, voz: proposta.voz }),
     trechosDeFato: fatosNoDna(dnaDeTexto).map((f) => f.trecho),

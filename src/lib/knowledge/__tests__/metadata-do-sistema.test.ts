@@ -46,11 +46,21 @@ beforeEach(() => {
 
 describe('PR13-47 — a identidade do fato sobrevive à edição pela confirmação: a reaplicação não duplica, e a correção da pessoa bloqueia', () => {
   const DNA = {
-    toneOfVoice: null,
+    // O texto de marca que a voz do Espeto cita (CTAs e pré-títulos, verbatim): sem ele a voz proposta não passa na
+    // conferência de exemplos e CTAs contra o DNA e o cliente é bloqueado antes de chegar aos fatos (13/09/2026).
+    toneOfVoice: '**CTAs Aprovados:**\n- Chama a piazada!, Vem pra resenha!, Partiu Espeto!, Vem pro fogo!, Garanta seu lugar!, Vem curtir o sabor!, Vem aproveitar!, Vem matar a fome!, Vem se servir!, Vem pro Espeto!, Sente esse sabor!, Bora pro Espeto!, Vem saborear!, Chama o pessoal!, Experimente esse sabor!, Chama a galera!, Vem provar!, Vem petiscar!, Garanta o seu!, Vem pro boteco do Espeto!, Vem viver esse sabor!\n\nPré-títulos: SEXTOU COM ESPETO · DOMINGO EM FAMÍLIA',
     contentRules: 'Happy hour das 17h às 19h, com petiscos da casa e música ao vivo no salão principal.\nO gelato custa R$ 25 hoje, em qualquer sabor da vitrine, na casquinha ou no copo.',
     updatedAt: new Date('2026-09-10T12:00:00Z'),
   }
   const PARADA = 'parada da prova depois dos fatos, antes da voz'
+
+  it('o estado lido pelo script confere a voz contra o DNA ATUAL: sem o texto de marca que ela cita, o cliente não pode migrar (13/09/2026)', async () => {
+    base.dna = { ...DNA, toneOfVoice: null }
+    const lido = await lerEstadoDoCliente(dbFalso as never, 6)
+    expect(lido?.estado.vozValida).toBe(false)
+    expect(lido?.estado.problemasDaVoz).toEqual(expect.arrayContaining([expect.stringMatching(/não está no DNA/)]))
+    expect(lido?.previa.avisos).toEqual(expect.arrayContaining([expect.stringMatching(/^⛔ .*bloqueia a migração/)]))
+  })
 
   async function manifestoAprovado(): Promise<Manifesto> {
     base.dna = DNA

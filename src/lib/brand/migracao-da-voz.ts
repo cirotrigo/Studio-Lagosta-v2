@@ -114,6 +114,8 @@ export interface PreviaDaMigracao {
   }
   /** A voz proposta não passa no contrato — a prévia sai mesmo assim, para a pessoa ver por quê. */
   problemasDaVoz: ProblemaDaVoz[]
+  /** Exemplo e CTA da voz × o DNA atual (`conferirTextoDeMarca`); null quando a voz não passa no contrato. Divergência BLOQUEIA a migração. */
+  textoDeMarca: ConferenciaDeMarca | null
   avisos: string[]
 }
 
@@ -319,6 +321,209 @@ export function fatosNaVoz(voz: VozCompacta): FatoNaVoz[] {
   return achados
 }
 
+// ── o texto de marca: voz × DNA ─────────────────────────────────────────────
+
+/**
+ * A conferência do TEXTO DE MARCA (13/09/2026): exemplo e CTA da voz vêm do
+ * DNA, verbatim — nunca inventados —, e a lista de CTAs do DNA entra INTEIRA
+ * na voz. Uma conferência de 13/09 achou, nas dez propostas, frases que o DNA
+ * não tem ("Vem de happy hour", "SEXTA NO QUINTAL", "CHURRASCO DE VERDADE") e
+ * listas de CTA pela metade (o Espeto com 10 de 20), com a prévia muda. Lista
+ * fechada pela metade é pior que lista nenhuma: o gerador completa inventando.
+ *
+ * A única normalização é a de ESPAÇOS: caixa, acento e pontuação contam. A
+ * exceção declarada é o ponto final que fecha o item na PROSA do DNA
+ * ("CTA: Reserve sua mesa. Faça sua reserva.") — ele é separador, não parte do
+ * CTA, e sai dos dois lados só na comparação de CTA com CTA.
+ *
+ * A voz não tem campo de CTA: a lista mora nos exemplos (ou numa regra) no
+ * MESMO formato em que o DNA a escreve — um rótulo que começa por "CTAs" e os
+ * itens depois dos dois-pontos ("CTAs (lista fechada): A · B · C"). O mesmo
+ * extrator lê os dois lados.
+ */
+function soEspacos(texto: string): string {
+  return texto.replace(/\s+/g, ' ').trim()
+}
+
+function semPontoFinal(texto: string): string {
+  return soEspacos(texto).replace(/\.$/, '').trim()
+}
+
+/** Uma lista de CTAs encontrada num texto (do DNA ou da voz). */
+export interface ListaDeCtas {
+  itens: string[]
+  /** O texto declara a lista FECHADA ("lista fechada", "cópia literal", ou a lista vem sob "LISTAS FECHADAS"). */
+  fechada: boolean
+  /** A linha do rótulo, para a prévia mostrar de onde a lista saiu. */
+  rotulo: string
+}
+
+/** Rótulo de lista de CTA: a linha COMEÇA por "CTA"/"CTAs", ou fala da "lista fechada de CTAs". */
+const ROTULO_DE_CTA = /^CTAs?\b|\blista\s+fechada\s+de\s+CTAs\b/i
+/** Rótulo que VETA um CTA ("CTA de deslizar … está VETADO: …") não abre lista de CTA aprovado. */
+const ROTULO_QUE_VETA = /\bvetad|\bproibid|\bnunca\b|\brevogad/i
+const DECLARA_FECHADA = /listas?\s+fechadas?|c[óo]pia\s+literal/i
+
+function limparLinhaDeLista(linha: string): string {
+  return linha.replace(RODAPE_DA_LINHA, '').replace(MARCADOR_DE_LISTA, '').replace(/\*\*/g, '').trim()
+}
+
+function itemDeCta(bruto: string): string {
+  return bruto
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/`/g, '')
+    .trim()
+    .replace(/^["“']+|["”']+$/g, '')
+    .replace(/\.$/, '')
+    .trim()
+}
+
+/**
+ * Os itens de uma lista escrita em prosa. Com separador " · " ou ", " a lista
+ * termina no primeiro ponto final seguido de frase nova ("… · Te esperamos
+ * aqui. CTA novo não entra sem aprovação."); sem separador, a lista é de
+ * frases ("Reserve sua mesa. Faça sua reserva.").
+ */
+function itensDaLista(conteudo: string): string[] {
+  let c = conteudo.trim()
+  let partes: string[]
+  if (c.includes(' · ') || c.includes(', ')) {
+    const fim = c.search(/\.\s+(?=[A-ZÀ-Ú"“])/)
+    if (fim >= 0) c = c.slice(0, fim)
+    partes = c.split(c.includes(' · ') ? ' · ' : ', ')
+  } else {
+    partes = c.split(/(?<=\.)\s+/)
+  }
+  return partes.map(itemDeCta).filter((i) => i.length >= 2)
+}
+
+/**
+ * As listas de CTA de um texto. Uma lista começa num rótulo (`ROTULO_DE_CTA`)
+ * que termina em dois-pontos: os itens vêm na mesma linha ou, com o rótulo
+ * sozinho, nos itens de lista logo abaixo (ou na linha seguinte inteira).
+ * Rótulo que veta ("está VETADO") não é lista de aprovados.
+ */
+export function listasDeCtas(texto: string | null | undefined): ListaDeCtas[] {
+  if (!texto) return []
+  const linhas = texto.split('\n')
+  const listas: ListaDeCtas[] = []
+  let sobListasFechadas = false
+  for (let i = 0; i < linhas.length; i++) {
+    const linha = limparLinhaDeLista(linhas[i])
+    if (/listas?\s+fechadas?/i.test(linha)) sobListasFechadas = true
+    const doisPontos = linha.indexOf(':')
+    if (doisPontos < 0) continue
+    const rotulo = linha.slice(0, doisPontos).trim()
+    if (!ROTULO_DE_CTA.test(rotulo) || ROTULO_QUE_VETA.test(rotulo)) continue
+    let itens: string[] = []
+    const naLinha = linha.slice(doisPontos + 1).trim()
+    if (naLinha) {
+      itens = itensDaLista(naLinha)
+    } else {
+      let j = i + 1
+      while (j < linhas.length && !linhas[j].trim()) j++
+      if (j < linhas.length && MARCADOR_DE_LISTA.test(linhas[j])) {
+        for (; j < linhas.length && MARCADOR_DE_LISTA.test(linhas[j]); j++) itens.push(...itensDaLista(limparLinhaDeLista(linhas[j])))
+      } else if (j < linhas.length && !limparLinhaDeLista(linhas[j]).endsWith(':')) {
+        itens = itensDaLista(limparLinhaDeLista(linhas[j]))
+      }
+    }
+    if (itens.length === 0) continue
+    listas.push({ itens: [...new Set(itens)], fechada: sobListasFechadas || DECLARA_FECHADA.test(rotulo), rotulo })
+  }
+  return listas
+}
+
+/** Uma frase de texto de marca da voz: um exemplo, ou um item de lista de CTA (nos exemplos ou numa regra ativa). */
+export interface FraseDeMarcaDaVoz {
+  caminho: string
+  frase: string
+  cta: boolean
+}
+
+export function frasesDeMarcaDaVoz(voz: VozCompacta): FraseDeMarcaDaVoz[] {
+  const frases: FraseDeMarcaDaVoz[] = []
+  voz.exemplos.forEach((e, i) => {
+    const listas = listasDeCtas(e)
+    if (listas.length === 0) frases.push({ caminho: `exemplos.${i}`, frase: e, cta: false })
+    for (const l of listas) for (const item of l.itens) frases.push({ caminho: `exemplos.${i}`, frase: item, cta: true })
+  })
+  voz.regras.forEach((r, i) => {
+    if (!r.ativa) return
+    for (const l of listasDeCtas(r.texto)) for (const item of l.itens) frases.push({ caminho: `regras.${i}.texto`, frase: item, cta: true })
+  })
+  return frases
+}
+
+/** Voz que diz que a lista de CTA é fechada: lista rotulada fechada, ou proibição/regra ativa que fala de CTA e de lista fechada/cópia literal. */
+export function vozDeclaraCtaFechado(voz: VozCompacta): boolean {
+  const textos = [...voz.exemplos, ...voz.proibicoes, ...voz.regras.filter((r) => r.ativa).map((r) => r.texto)]
+  return textos.some((t) => listasDeCtas(t).some((l) => l.fechada) || (/\bCTAs?\b/.test(t) && DECLARA_FECHADA.test(t)))
+}
+
+/** CTAs que a voz RETIRA explicitamente: citados entre aspas numa proibição ou numa regra ativa que veta, ou no "antes" de uma reescrita. */
+function ctasRetiradosPelaVoz(voz: VozCompacta): Set<string> {
+  const retirados = new Set<string>()
+  const citacoes = (t: string) => [...t.matchAll(/["“]([^"”]+)["”]/g)].map((m) => m[1])
+  const guardar = (t: string) => retirados.add(soEspacos(t).replace(/[.!?]+$/, '').trim())
+  for (const p of voz.proibicoes) citacoes(p).forEach(guardar)
+  for (const r of voz.regras) if (r.ativa && ROTULO_QUE_VETA.test(r.texto)) citacoes(r.texto).forEach(guardar)
+  for (const ad of voz.antesDepois) ad.antes.split(/\s+\/\s+/).forEach(guardar)
+  return retirados
+}
+
+export type TipoDeDivergenciaDeMarca = 'fora-do-dna' | 'cta-ausente-na-voz' | 'lista-fechada-sem-aviso'
+
+export interface DivergenciaDeMarca {
+  tipo: TipoDeDivergenciaDeMarca
+  /** Onde, na voz (vazio quando a divergência é do DNA). */
+  caminho: string | null
+  frase: string
+  mensagem: string
+}
+
+export interface ConferenciaDeMarca {
+  divergencias: DivergenciaDeMarca[]
+  /** Os CTAs das listas do DNA, na ordem em que aparecem. */
+  ctasDoDna: string[]
+  /** CTAs do DNA que a voz retira de propósito (proibidos por regra posterior) — informativo, não bloqueia. */
+  retiradosPelaVoz: string[]
+}
+
+/**
+ * Exemplo e CTA da voz × o DNA de texto atual. Três divergências, todas
+ * bloqueiam a migração daquele cliente (`problemasParaMigrar`):
+ * - `fora-do-dna`: frase da voz que não está no DNA (espaços normalizados; caixa e acento contam);
+ * - `cta-ausente-na-voz`: CTA de lista do DNA que a voz não traz — salvo o que ela retira de propósito, citando-o numa proibição, numa regra que veta ou no "antes" de uma reescrita;
+ * - `lista-fechada-sem-aviso`: o DNA fecha a lista de CTAs e a voz não diz que é fechada.
+ */
+export function conferirTextoDeMarca(voz: VozCompacta, dna: DnaDeTexto): ConferenciaDeMarca {
+  const dnaPlano = soEspacos([dna.toneOfVoice, dna.contentRules].filter((t): t is string => !!t).join('\n'))
+  const frases = frasesDeMarcaDaVoz(voz)
+  const divergencias: DivergenciaDeMarca[] = []
+  for (const f of frases) {
+    if (dnaPlano.includes(soEspacos(f.frase))) continue
+    divergencias.push({ tipo: 'fora-do-dna', caminho: f.caminho, frase: f.frase, mensagem: `${f.caminho}: "${f.frase}" não está no DNA — ${f.cta ? 'CTA' : 'exemplo'} da voz vem do DNA, verbatim (caixa e acento contam)` })
+  }
+  const listasDoDna = [...listasDeCtas(dna.toneOfVoice), ...listasDeCtas(dna.contentRules)]
+  const ctasDoDna = [...new Set(listasDoDna.flatMap((l) => l.itens))]
+  const naVoz = new Set(frases.map((f) => semPontoFinal(f.frase)))
+  const retirados = ctasRetiradosPelaVoz(voz)
+  const retiradosPelaVoz: string[] = []
+  for (const cta of ctasDoDna) {
+    if (naVoz.has(semPontoFinal(cta))) continue
+    if (retirados.has(soEspacos(cta).replace(/[.!?]+$/, '').trim())) {
+      retiradosPelaVoz.push(cta)
+      continue
+    }
+    divergencias.push({ tipo: 'cta-ausente-na-voz', caminho: null, frase: cta, mensagem: `CTA do DNA ausente na voz: "${cta}" — a lista de CTAs do DNA entra inteira` })
+  }
+  if (listasDoDna.some((l) => l.fechada) && !vozDeclaraCtaFechado(voz)) {
+    divergencias.push({ tipo: 'lista-fechada-sem-aviso', caminho: null, frase: '', mensagem: 'o DNA fecha a lista de CTAs e a voz não diz que ela é fechada' })
+  }
+  return { divergencias, ctasDoDna, retiradosPelaVoz }
+}
+
 /** Cada linha legada, coberta ou não por regra/proibição da voz que fale do mesmo assunto. */
 export function coberturaDasRegrasLegadas(dna: DnaDeTexto, voz: VozCompacta): RegraLegada[] {
   const saida: RegraLegada[] = []
@@ -367,6 +572,8 @@ export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDe
   const naVoz = voz ? fatosNaVoz(voz) : []
   const noLegado = fatosNoDna(args.dna)
   const prompt = voz ? vozParaPrompt(voz, { escopo: 'copy' }) : ''
+  const textoDeMarca = voz ? conferirTextoDeMarca(voz, args.dna) : null
+  for (const d of textoDeMarca?.divergencias ?? []) avisos.push(`⛔ ${d.mensagem} (bloqueia a migração deste cliente)`)
   const semCorrespondente = regrasLegadas.filter((r) => r.situacao === 'sem-correspondente')
   if (semCorrespondente.length > 0) avisos.push(`${semCorrespondente.length} regra(s) aprendida(s) do DNA sem correspondente na voz — confira se foram absorvidas na descrição/exemplos ou se ficaram de fora de propósito.`)
   if (naVoz.length > 0) avisos.push(`a voz proposta carrega DADO (${naVoz.map((f) => f.caminho).join(', ')}): fato vai para a base, nunca para a voz.`)
@@ -398,6 +605,7 @@ export function montarPrevia(args: { projectId: number; nome: string; dna: DnaDe
     regrasLegadas,
     fatos: { noLegado, naVoz },
     problemasDaVoz: lida.problemas,
+    textoDeMarca,
     avisos,
   }
 }
@@ -434,6 +642,16 @@ export function previaParaMarkdown(p: PreviaDaMigracao): string {
     L.push('## ⚠️ A voz proposta NÃO passa no contrato')
     L.push('')
     for (const pr of p.problemasDaVoz) L.push(`- \`${pr.caminho}\`: ${pr.mensagem}`)
+    L.push('')
+  }
+  if (p.textoDeMarca) {
+    const m = p.textoDeMarca
+    L.push('## Texto de marca: exemplos e CTAs da voz × o DNA')
+    L.push('')
+    L.push(`- CTAs nas listas do DNA: ${m.ctasDoDna.length}${m.ctasDoDna.length > 0 ? ` (${m.ctasDoDna.map((c) => `"${c}"`).join(', ')})` : ''}`)
+    if (m.retiradosPelaVoz.length > 0) L.push(`- retirados de propósito pela voz (proibidos por regra posterior): ${m.retiradosPelaVoz.map((c) => `"${c}"`).join(', ')}`)
+    if (m.divergencias.length === 0) L.push('- ✓ todo exemplo e CTA da voz está no DNA, verbatim, e toda lista de CTAs do DNA está inteira na voz')
+    for (const d of m.divergencias) L.push(`- ⚠️ ${d.mensagem}`)
     L.push('')
   }
   L.push('## Regras aprendidas no DNA × a voz')
@@ -769,11 +987,18 @@ export interface EstadoDoCliente {
   problemasDaVoz?: string[]
 }
 
-/** O que impede a voz proposta de migrar: problemas do contrato + fato/condição dentro dela. Vazio = pode. */
-export function problemasParaMigrar(voz: unknown): string[] {
+/**
+ * O que impede a voz proposta de migrar: problemas do contrato + fato/condição
+ * dentro dela e, com o DNA atual em mãos, exemplo ou CTA fora do DNA e lista
+ * de CTAs do DNA incompleta na voz (`conferirTextoDeMarca`). Vazio = pode.
+ * Sem `dna`, só o contrato e os fatos — quem decide migrar (o script) passa o DNA.
+ */
+export function problemasParaMigrar(voz: unknown, dna?: DnaDeTexto): string[] {
   const lida = lerVoz(voz)
   if (!lida.voz) return lida.problemas.map((p) => `${p.caminho}: ${p.mensagem}`)
-  return fatosNaVoz(lida.voz).map((f) => `${f.caminho} carrega ${f.tipos.join('/')}: "${f.trecho.slice(0, 80)}"`)
+  const fatos = fatosNaVoz(lida.voz).map((f) => `${f.caminho} carrega ${f.tipos.join('/')}: "${f.trecho.slice(0, 80)}"`)
+  const marca = dna ? conferirTextoDeMarca(lida.voz, dna).divergencias.map((d) => d.mensagem) : []
+  return [...fatos, ...marca]
 }
 
 export type AcaoDoPlano =

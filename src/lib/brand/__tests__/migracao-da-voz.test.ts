@@ -13,6 +13,9 @@ import {
   nomeDoBancoDe,
   trechosRepetidos,
   condicoesOperacionais, conferirFatosEsperados,
+  conferirTextoDeMarca,
+  listasDeCtas,
+  vozDeclaraCtaFechado,
   fatosNaVoz,
   fatosNoDna,
   frasesDoDna,
@@ -34,6 +37,7 @@ import {
 } from '../migracao-da-voz'
 import { dnaDiverge } from '../voz'
 import { PROJETOS_COM_VOZ_PROPOSTA, VOZES_PROPOSTAS } from '../../../../scripts/lib/vozes-propostas'
+import { DNA_DA_CARTEIRA } from './fixtures/dna-de-texto-da-carteira'
 
 const regra = (id: string, texto: string, extra: Partial<VozCompacta['regras'][number]> = {}): VozCompacta['regras'][number] => ({ id, texto, motivo: 'motivo de teste', em: '2026-09-01', escopo: 'copy', ativa: true, ...extra })
 const vozDeTeste = (parcial: Partial<VozCompacta> = {}): VozCompacta => ({ ...vozVazia('Voz de prova, direta e acolhedora.'), ...parcial })
@@ -619,5 +623,108 @@ describe('os consertos da revisão do Codex (PR13-01/02/03/05/06/07/08)', () => 
     expect(dnaDiverge({ toneOfVoice: 'a', contentRules: 'b' }, { toneOfVoice: 'A', contentRules: 'b' })).toEqual(['toneOfVoice'])
     expect(dnaDiverge({ toneOfVoice: null, contentRules: 'b ' }, { toneOfVoice: null, contentRules: 'b' })).toEqual(['contentRules'])
     expect(dnaDiverge({}, { toneOfVoice: 'x', contentRules: 'y' })).toEqual(['toneOfVoice', 'contentRules'])
+  })
+})
+
+describe('o texto de marca: exemplos e CTAs da voz × o DNA (13/09/2026)', () => {
+  it('listasDeCtas lê os formatos reais: itens abaixo do rótulo, lista na mesma linha (· , ou frases), rótulo "lista fechada de CTAs"; tira parêntese, crase e o ponto que fecha a frase', () => {
+    expect(listasDeCtas('**LISTAS FECHADAS:**\n\n**CTAs aprovados:**\n- Reserve sua mesa\n- `Vem pro By Rock`\n\n**Pré-títulos aprovados:**\n- SÁBADO NO TERO')).toEqual([{ itens: ['Reserve sua mesa', 'Vem pro By Rock'], fechada: true, rotulo: 'CTAs aprovados' }])
+    expect(listasDeCtas('**CTAs aprovados:**\nDesacelere e desfrute · Viva o Extraordinário · Vem provar (sazonal, com data: "Vem provar! Só até 09 de julho").')[0].itens).toEqual(['Desacelere e desfrute', 'Viva o Extraordinário', 'Vem provar'])
+    expect(listasDeCtas('- CTAs aprovados, lista fechada de sete, usar cópia literal: Bora pro quintal? · Chega mais · Te esperamos aqui. CTA novo não entra sem aprovação.')).toEqual([{ itens: ['Bora pro quintal?', 'Chega mais', 'Te esperamos aqui'], fechada: true, rotulo: 'CTAs aprovados, lista fechada de sete, usar cópia literal' }])
+    expect(listasDeCtas('- A lista fechada de CTAs passa a ter OITO opções, com a inclusão de "Vem pra cá": Chega mais · Vem pra cá. Continua valendo.')[0].itens).toEqual(['Chega mais', 'Vem pra cá'])
+    expect(listasDeCtas('**CTAs Aprovados:**\n- Chama a piazada!, Vem pra resenha!, Vem pro boteco do Espeto!')[0].itens).toEqual(['Chama a piazada!', 'Vem pra resenha!', 'Vem pro boteco do Espeto!'])
+    expect(listasDeCtas('CTA: Reserve sua mesa. Faça sua reserva. Da nossa curadoria para a sua mesa.')[0].itens).toEqual(['Reserve sua mesa', 'Faça sua reserva', 'Da nossa curadoria para a sua mesa'])
+    expect(listasDeCtas('CTAs — SEMPRE IMPERATIVOS, falando COM o dono (padrão de 23/08/2026): Conheça a metodologia · Quer saber mais? Fale no direct. NUNCA na primeira pessoa.')).toEqual([{ itens: ['Conheça a metodologia', 'Quer saber mais? Fale no direct'], fechada: false, rotulo: 'CTAs — SEMPRE IMPERATIVOS, falando COM o dono (padrão de 23/08/2026)' }])
+  })
+
+  it('listasDeCtas não abre lista num rótulo que VETA, no cabeçalho de pré-título + CTA, nem em frase sobre CTA sem dois-pontos', () => {
+    expect(listasDeCtas('- CTA de deslizar ("Deslize e conheça", "arrasta pra ver") está VETADO: deslizar só existe em anúncio, e no stories orgânico a opção nem aparece.')).toEqual([])
+    expect(listasDeCtas('**LISTAS FECHADAS de pré-título e CTA aprovados:**\n\n**Pré-títulos aprovados:**\n- SEG COMEÇA COM GOSTO')).toEqual([])
+    expect(listasDeCtas('8. CTA deve ser da lista fechada.\nO CTA é cópia literal de um dos sete?')).toEqual([])
+    expect(listasDeCtas(null)).toEqual([])
+  })
+
+  it('conferirTextoDeMarca: exemplo que não está no DNA é divergência — caixa e acento contam, só os espaços são normalizados', () => {
+    const dna = { toneOfVoice: 'Pré-títulos: SEXTA É DIA DE QUINTAL · DOMINGOU NO QUINTAL · HORA DO   ALMOÇO', contentRules: null }
+    const c = conferirTextoDeMarca(vozDeTeste({ exemplos: ['SEXTA NO QUINTAL', 'Domingou no quintal', 'HORA DO ALMOCO', 'HORA DO ALMOÇO', 'DOMINGOU NO QUINTAL'] }), dna)
+    expect(c.divergencias.map((d) => [d.tipo, d.caminho, d.frase])).toEqual([
+      ['fora-do-dna', 'exemplos.0', 'SEXTA NO QUINTAL'],
+      ['fora-do-dna', 'exemplos.1', 'Domingou no quintal'],
+      ['fora-do-dna', 'exemplos.2', 'HORA DO ALMOCO'],
+    ])
+    expect(c.divergencias[0].mensagem).toMatch(/não está no DNA/)
+  })
+
+  it('conferirTextoDeMarca: CTA do DNA ausente na voz é divergência; o item de uma lista rotulada da voz conta, e o ponto final da prosa não', () => {
+    const dna = { toneOfVoice: '**LISTAS FECHADAS**\n\nCTA: Reserve sua mesa. Faça sua reserva. Aguardamos você.', contentRules: null }
+    const incompleta = conferirTextoDeMarca(vozDeTeste({ exemplos: ['CTAs (lista fechada, cópia literal): Reserve sua mesa · Aguardamos você'] }), dna)
+    expect(incompleta.divergencias.map((d) => [d.tipo, d.frase])).toEqual([['cta-ausente-na-voz', 'Faça sua reserva']])
+    expect(incompleta.divergencias[0].mensagem).toMatch(/CTA do DNA ausente na voz/)
+    const inteira = conferirTextoDeMarca(vozDeTeste({ exemplos: ['Reserve sua mesa.', 'Faça sua reserva.', 'Aguardamos você.'], proibicoes: ['CTA fora da lista fechada (cópia literal)'] }), dna)
+    expect(inteira.divergencias).toEqual([])
+    expect(inteira.ctasDoDna).toEqual(['Reserve sua mesa', 'Faça sua reserva', 'Aguardamos você'])
+  })
+
+  it('conferirTextoDeMarca: lista FECHADA no DNA exige a voz dizer que é fechada; lista aberta não exige', () => {
+    const fechada = { toneOfVoice: '**Listas Fechadas:**\n\n**CTAs Aprovados:**\n- Bora!', contentRules: null }
+    expect(conferirTextoDeMarca(vozDeTeste({ exemplos: ['Bora!'] }), fechada).divergencias.map((d) => d.tipo)).toEqual(['lista-fechada-sem-aviso'])
+    expect(conferirTextoDeMarca(vozDeTeste({ exemplos: ['CTAs (lista fechada, cópia literal): Bora!'] }), fechada).divergencias).toEqual([])
+    const aberta = { toneOfVoice: 'CTAs — sempre imperativos: Bora! · Vem', contentRules: null }
+    expect(conferirTextoDeMarca(vozDeTeste({ exemplos: ['CTAs: Bora! · Vem'] }), aberta).divergencias).toEqual([])
+    expect(vozDeclaraCtaFechado(vozDeTeste({ proibicoes: ['CTA fora da lista fechada de oito'] }))).toBe(true)
+    expect(vozDeclaraCtaFechado(vozDeTeste({ proibicoes: ['imperdível, corre'] }))).toBe(false)
+  })
+
+  it('conferirTextoDeMarca: CTA do DNA que a voz RETIRA de propósito (citado numa proibição, numa regra que veta ou no "antes" de uma reescrita) não bloqueia e aparece como retirado; citado numa regra que APROVA não retira nada', () => {
+    const dna = { toneOfVoice: '**CTAs Aprovados:**\n- Chama a piazada!, Vem pro fogo!, Vem pra brasa!', contentRules: null }
+    const base = { exemplos: ['CTAs: Chama a piazada!'] }
+    const pelaProibicao = conferirTextoDeMarca(vozDeTeste({ ...base, proibicoes: ['"Vem pro fogo" como CTA'], antesDepois: [{ antes: 'Vem pra brasa!', depois: 'Chama a piazada!', motivo: 'decisão do Ciro' }] }), dna)
+    expect(pelaProibicao.divergencias).toEqual([])
+    expect(pelaProibicao.retiradosPelaVoz).toEqual(['Vem pro fogo!', 'Vem pra brasa!'])
+    const pelaRegraQueVeta = conferirTextoDeMarca(vozDeTeste({ ...base, regras: [regra('r1', 'Nunca usar "Vem pro fogo" como CTA.'), regra('r2', 'Nunca "Vem pra brasa".')] }), dna)
+    expect(pelaRegraQueVeta.divergencias).toEqual([])
+    const regraQueAprova = conferirTextoDeMarca(vozDeTeste({ ...base, regras: [regra('r1', 'CTA de peça é imperativo ("Vem pro fogo", "Vem pra brasa").')] }), dna)
+    expect(regraQueAprova.divergencias.map((d) => d.frase)).toEqual(['Vem pro fogo!', 'Vem pra brasa!'])
+  })
+
+  it('problemasParaMigrar com o DNA BLOQUEIA exemplo fora do DNA e CTA faltando; sem o DNA fica só no contrato e nos fatos', () => {
+    const dna = { toneOfVoice: '**Listas Fechadas:**\n\n**CTAs Aprovados:**\n- `Reserve já`\n- `Bora!`', contentRules: null }
+    const voz = vozDeTeste({ exemplos: ['CTAs (lista fechada, cópia literal): Reserve já', 'Vem de happy hour'] })
+    expect(problemasParaMigrar(voz)).toEqual([])
+    expect(problemasParaMigrar(voz, dna)).toEqual([expect.stringMatching(/^exemplos\.1: "Vem de happy hour" não está no DNA/), expect.stringMatching(/^CTA do DNA ausente na voz: "Bora!"/)])
+    expect(problemasParaMigrar(vozDeTeste({ exemplos: ['CTAs (lista fechada, cópia literal): Reserve já · Bora!'] }), dna)).toEqual([])
+  })
+
+  it('a prévia AVISA a divergência de texto de marca (e bloqueia), e diz quando está tudo no DNA', () => {
+    const dna = { toneOfVoice: '**CTAs aprovados:**\n- Reserve sua mesa\n- Vem provar', contentRules: null }
+    const ruim = montarPrevia({ projectId: 3, nome: 'TERO', dna, voz: vozDeTeste({ exemplos: ['CTAs: Reserve sua mesa', 'Seu fim de semana começa aqui'] }) })
+    expect(ruim.textoDeMarca?.divergencias.map((d) => d.tipo)).toEqual(['fora-do-dna', 'cta-ausente-na-voz'])
+    expect(ruim.avisos).toEqual(expect.arrayContaining([expect.stringMatching(/⛔ exemplos\.1: "Seu fim de semana começa aqui" não está no DNA.*bloqueia a migração/), expect.stringMatching(/⛔ CTA do DNA ausente na voz: "Vem provar".*bloqueia a migração/)]))
+    const md = previaParaMarkdown(ruim)
+    expect(md).toContain('## Texto de marca: exemplos e CTAs da voz × o DNA')
+    expect(md).toContain('CTA do DNA ausente na voz: "Vem provar"')
+    const boa = montarPrevia({ projectId: 3, nome: 'TERO', dna, voz: vozDeTeste({ exemplos: ['CTAs: Reserve sua mesa · Vem provar'] }) })
+    expect(boa.textoDeMarca?.divergencias).toEqual([])
+    expect(previaParaMarkdown(boa)).toContain('✓ todo exemplo e CTA da voz está no DNA')
+  })
+
+  it('as dez vozes propostas × os excertos verbatim do DNA de produção: zero divergência, a lista de CTAs do DNA inteira, e as frases inventadas de antes seriam pegas', () => {
+    const ctasEsperados: Record<number, number> = { 1: 7, 2: 8, 3: 7, 4: 10, 5: 7, 6: 21, 7: 10, 8: 6, 11: 6, 12: 7 }
+    for (const id of PROJETOS_COM_VOZ_PROPOSTA) {
+      const { nome, voz } = VOZES_PROPOSTAS[id]
+      const c = conferirTextoDeMarca(voz, DNA_DA_CARTEIRA[id])
+      expect(c.divergencias, `${id} ${nome}`).toEqual([])
+      expect(c.ctasDoDna.length, `${id} ${nome}`).toBe(ctasEsperados[id])
+      expect(problemasParaMigrar(voz, DNA_DA_CARTEIRA[id]), `${id} ${nome}`).toEqual([])
+    }
+    expect(conferirTextoDeMarca(VOZES_PROPOSTAS[6].voz, DNA_DA_CARTEIRA[6]).retiradosPelaVoz).toEqual(['Vem pro fogo!'])
+    const inventadas: Array<[number, string]> = [[7, 'Vem de happy hour'], [7, 'Chama pro vinho'], [2, 'SEXTA NO QUINTAL'], [4, 'QUARTA NO BOTECO'], [6, 'CHURRASCO DE VERDADE']]
+    for (const [id, frase] of inventadas) {
+      const voz = { ...VOZES_PROPOSTAS[id].voz, exemplos: [...VOZES_PROPOSTAS[id].voz.exemplos.slice(0, 11), frase] }
+      expect(conferirTextoDeMarca(voz, DNA_DA_CARTEIRA[id]).divergencias.map((d) => [d.tipo, d.frase]), `${id} ${frase}`).toEqual([['fora-do-dna', frase]])
+    }
+    // tirar UM CTA de uma lista da voz faz o CTA do DNA faltar
+    const semVemProvar = { ...VOZES_PROPOSTAS[3].voz, exemplos: VOZES_PROPOSTAS[3].voz.exemplos.map((e) => e.replace(' · Vem provar', '')) }
+    expect(conferirTextoDeMarca(semVemProvar, DNA_DA_CARTEIRA[3]).divergencias.map((d) => [d.tipo, d.frase])).toEqual([['cta-ausente-na-voz', 'Vem provar']])
   })
 })
