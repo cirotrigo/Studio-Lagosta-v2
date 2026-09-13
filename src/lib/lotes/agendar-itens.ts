@@ -48,6 +48,7 @@ import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { formatoDaPagina, refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { normalizarStatusDoItem, transicaoPermitida } from '@/lib/planos/vocabulario'
+import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
@@ -55,7 +56,10 @@ import {
   decidirItemDoPlano,
   decidirMidiaEmOutroPost,
   decidirPostsDaPagina,
+  descreverRascunhoApagado,
   hashDoAgendamento,
+  mancheteDaSpec,
+  MOTIVO_RECRIAR_COM_OUTRO_PEDIDO,
   pedidoDoAgendamento,
   resumirAgendamento,
   thumbnailEhAtual,
@@ -65,6 +69,7 @@ import {
   type FormatoDaPeca,
   type ItemDoAgendamento,
   type PedidoDeAgendamento,
+  type RascunhoApagado,
   type SituacaoDoItemAgendado,
 } from './agendamento'
 
@@ -94,6 +99,10 @@ export interface ItemAgendadoDoLote {
   codigo?: string
   motivo?: string
   avisos?: string[]
+  /** Com `POST_REMOVIDO`: o rascunho que a equipe apagou, para o chat contar à pessoa (Ciro, 13/09/2026). */
+  rascunhoApagado?: RascunhoApagado
+  /** Com `PECA_SUPERADA_NO_PLANO`: a arte que o item do plano aponta agora (Ciro, 13/09/2026). */
+  arteAtualDoItem?: ArteAtualDoItem
 }
 
 export interface ResultadoDoAgendamentoDoLote {
@@ -135,6 +144,8 @@ interface Peca {
   formato: FormatoDaPeca | null
   itemDePlanoId: string | null
   planoId: string | null
+  tema: string | null
+  manchete: string | null
 }
 
 interface Pagina {
@@ -165,6 +176,8 @@ async function lerPeca(cliente: Cliente, generationId: string, projectId: number
     formato: typeof spec.formato === 'string' && FORMATOS.has(spec.formato) ? (spec.formato as FormatoDaPeca) : null,
     itemDePlanoId: typeof spec.itemDePlanoId === 'string' ? spec.itemDePlanoId : null,
     planoId: typeof spec.planoId === 'string' ? spec.planoId : null,
+    tema: typeof spec.tema === 'string' && spec.tema.trim() ? spec.tema.trim() : null,
+    manchete: mancheteDaSpec(spec),
   }
 }
 
@@ -177,14 +190,23 @@ async function lerPagina(cliente: Cliente, pageId: string, projectId: number): P
   return { id: p.id, templateId: p.templateId, ehModelo: p.isTemplate, formato: formatoDaPagina(p) }
 }
 
-type ItemDoPlanoLido = { id: string; status: string; generationId: string | null; postId: string | null; updatedAt: Date }
+type ItemDoPlanoLido = { id: string; status: string; generationId: string | null; postId: string | null; pageId: string | null; updatedAt: Date }
 
 async function lerItemDoPlano(cliente: Cliente, peca: Peca, projectId: number): Promise<ItemDoPlanoLido | null> {
   if (!peca.itemDePlanoId) return null
   return (await cliente.itemDePlano.findFirst({
     where: { id: peca.itemDePlanoId, projectId, ...(peca.planoId ? { planoId: peca.planoId } : {}) },
-    select: { id: true, status: true, generationId: true, postId: true, updatedAt: true },
+    select: { id: true, status: true, generationId: true, postId: true, pageId: true, updatedAt: true },
   })) as ItemDoPlanoLido | null
+}
+
+/** A arte que o item do plano aponta agora, descrita para o chat — só leitura. */
+async function lerArteAtualDoItem(cliente: Cliente, generationId: string, pageIdDoItem: string | null, projectId: number): Promise<ArteAtualDoItem | null> {
+  const g = (await cliente.generation.findFirst({
+    where: { id: generationId, projectId },
+    select: { status: true, resultUrl: true, createdAt: true, fieldValues: true },
+  })) as { status: string; resultUrl: string | null; createdAt: Date | null; fieldValues: unknown } | null
+  return descreverArteAtualDoItem({ generationId, pageIdDoItem, geracao: g ? { ...g, status: String(g.status) } : null })
 }
 
 function editUrlDe(templateId: number | null | undefined, pageId: string | null | undefined): string | undefined {
@@ -257,7 +279,7 @@ type Escrita =
  *
  * A linha deve estar SEM post (a linha ligada é respondida por `responderLigado`).
  */
-async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, linha: Linha, pedido: { hash: string } | { falha: FalhaDoItem }): Promise<Escrita> {
+async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, linha: Linha, pedido: { hash: string } | { falha: FalhaDoItem }, postApagado: string | null): Promise<Escrita> {
   const { projectId } = ctx
   const peca = linha.generationId ? await lerPeca(cliente, linha.generationId, projectId) : null
   const pagina = peca?.pageId ? await lerPagina(cliente, peca.pageId, projectId) : null
@@ -296,11 +318,15 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
     item: itemDoPlano,
     pecaId: peca.id,
     postQueSeraLigado: daPagina.acao === 'adotar' ? daPagina.postId : null,
+    postApagado,
   })
   if (doPlano?.pendente) {
     return { acao: 'recusar', resposta: { itemId, situacao: 'pendente', codigo: doPlano.codigo, motivo: doPlano.motivo, ...vinculos } }
   }
-  if (doPlano) return { acao: 'recusar', resposta: falhou(itemId, doPlano, vinculos) }
+  if (doPlano) {
+    const arteAtualDoItem = doPlano.superadaPor ? await lerArteAtualDoItem(cliente, doPlano.superadaPor, itemDoPlano?.pageId ?? null, projectId) : null
+    return { acao: 'recusar', resposta: falhou(itemId, doPlano, { ...vinculos, ...(arteAtualDoItem ? { arteAtualDoItem } : {}) }) }
+  }
 
   return daPagina.acao === 'adotar'
     ? { acao: 'adotar', postId: daPagina.postId, peca, pagina, itemDoPlano }
@@ -413,14 +439,22 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   const hash = pedido ? hashDoAgendamento(pedido) : null
   const pedidoParaDecidir = pedido && hash ? { hash } : { falha: (resultadoDoPedido as { falha: FalhaDoItem }).falha }
 
-  const responderLigado = async (atual: Linha): Promise<ItemAgendadoDoLote> => {
+  /**
+   * A linha já aponta um post. Devolve a resposta do item — ou, quando o post
+   * foi APAGADO e a pessoa confirmou (`recriarRascunhoApagado: true`), o id do
+   * post apagado, para o caminho de escrita recriar o rascunho (Ciro, 13/09/2026).
+   */
+  const responderLigado = async (atual: Linha): Promise<ItemAgendadoDoLote | { recriar: string }> => {
     const post = (await db.socialPost.findUnique({ where: { id: atual.postId! }, select: SELECAO_DO_POST })) as Post | null
-    const decisao = decidirAgendamento({ registro: atual, postLigadoExiste: !!post, pedido: pedidoParaDecidir, peca, pagina })
+    const decisao = decidirAgendamento({ registro: atual, postLigadoExiste: !!post, pedido: pedidoParaDecidir, peca, pagina, recriarApagado: item.recriarRascunhoApagado })
+    if (decisao.acao === 'recriar') return { recriar: decisao.postApagado }
     if (decisao.acao !== 'reaproveitar') {
       const falha = decisao as FalhaDoItem
       // O rascunho existe: a falha do pedido nunca pode soar como "nada na agenda" (C12-1x3).
       const motivo = post && falha.codigo !== 'LOTE_AGENDAMENTO_CONFLITO' ? `${falha.motivo} O rascunho que este item já tinha continua na agenda, intacto.` : falha.motivo
-      return falhou(itemId, { codigo: falha.codigo, motivo }, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}) })
+      // Sem o post, o chat precisa dizer à pessoa QUAL rascunho sumiu (Ciro, 13/09/2026).
+      const apagado = !post ? { rascunhoApagado: descreverRascunhoApagado({ pedido, quandoDaSpec: peca?.quandoDaSpec ?? null, tema: peca?.tema ?? null, manchete: peca?.manchete ?? null }) } : {}
+      return falhou(itemId, { codigo: falha.codigo, motivo }, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}), ...apagado })
     }
     const avisos = [...avisosDoPedido]
     if (decisao.efeitosPendentes) {
@@ -431,10 +465,22 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     return concluido(itemId, 'reaproveitado', fresco, peca, pagina, avisos)
   }
 
-  if (linha.postId) return responderLigado(linha)
+  // A resposta de uma linha que outra chamada ligou: o pedido de recriar não
+  // cabe aí (o post que ela apontava já não é o apagado que esta chamada viu).
+  const responderJaLigado = async (atual: Linha): Promise<ItemAgendadoDoLote> => {
+    const r = await responderLigado(atual)
+    return 'recriar' in r ? falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O item mudou durante o agendamento. Repita a chamada.' }) : r
+  }
+
+  let postApagado: string | null = null
+  if (linha.postId) {
+    const ligado = await responderLigado(linha)
+    if (!('recriar' in ligado)) return ligado
+    postApagado = ligado.recriar
+  }
 
   // 1. Decisão sem trava.
-  const antes = await decidirEscrita(db, ctx, itemId, linha, pedidoParaDecidir)
+  const antes = await decidirEscrita(db, ctx, itemId, linha, pedidoParaDecidir, postApagado)
   if (antes.acao === 'recusar') return antes.resposta
   const pedidoValido = pedido!
   const pageId = antes.pagina.id
@@ -450,7 +496,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     return {
       itemId,
       situacao: 'concluido',
-      desfecho: 'criado',
+      desfecho: postApagado ? 'recriado' : 'criado',
       pageId,
       generationId: antes.peca.id,
       quando: formatarBRT(new Date(pedidoValido.quando)),
@@ -478,10 +524,15 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       if (!atual) {
         throw new CreativeError('LOTE_ITEM_SUMIU', `O item "${itemId}" do lote "${loteId}" foi apagado durante o agendamento. Repita a chamada.`, 409, { loteId, itemId })
       }
-      // Outra chamada ligou o item enquanto esta esperava a trava.
-      if (atual.postId) return { tipo: 'ja-ligado', linha: atual }
+      // Outra chamada ligou o item enquanto esta esperava a trava — inclusive a
+      // outra confirmação que já recriou o rascunho apagado.
+      if (atual.postId !== postApagado) {
+        if (atual.postId) return { tipo: 'ja-ligado', linha: atual }
+        return { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O item mudou durante o agendamento. Repita a chamada.' }) }
+      }
+      if (postApagado && (await tx.socialPost.findUnique({ where: { id: postApagado }, select: { id: true } }))) return { tipo: 'ja-ligado', linha: atual }
 
-      const sob = await decidirEscrita(tx, ctx, itemId, atual, pedidoParaDecidir)
+      const sob = await decidirEscrita(tx, ctx, itemId, atual, pedidoParaDecidir, postApagado)
       if (sob.acao === 'recusar') return { tipo: 'recusado', resposta: sob.resposta }
       // As travas são da página e do item de plano que a decisão sem trava leu:
       // a peça não pode ter trocado — nem de Generation, nem de página, nem de item.
@@ -493,6 +544,10 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       const pedidoSob = pedidoDoAgendamento(item, { quandoDaSpec: sob.peca.quandoDaSpec, formato: sob.peca.formato ?? sob.pagina.formato })
       if ('falha' in pedidoSob) return { tipo: 'recusado', resposta: falhou(itemId, pedidoSob.falha, { generationId: sob.peca.id, pageId }) }
       const hashSob = hashDoAgendamento(pedidoSob.pedido)
+      // O rascunho apagado só volta com o pedido de antes, relido sob a trava.
+      if (postApagado && hashSob !== atual.hashDoAgendamento) {
+        return { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONFLITO', motivo: MOTIVO_RECRIAR_COM_OUTRO_PEDIDO }, { generationId: sob.peca.id, pageId }) }
+      }
       const input = entradaDoPost(projectId, sob.peca, pedidoSob.pedido, ctx)
 
       let postId: string
@@ -509,11 +564,13 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         })
         const criado = await criarPostDoAgendamento(tx, resolucao)
         postId = criado.id
-        desfecho = 'criado'
+        desfecho = postApagado ? 'recriado' : 'criado'
       }
 
+      // Compare-and-set no post que a linha apontava: nenhum, ou o APAGADO que a
+      // pessoa mandou recriar. É o que faz a segunda confirmação não criar outro.
       const ligado = await tx.itemDeLote.updateMany({
-        where: { id: atual.id, postId: null },
+        where: { id: atual.id, postId: postApagado },
         data: { postId, hashDoAgendamento: hashSob, agendadoEm: new Date(), efeitosDoAgendamentoEm: null },
       })
       // Com a trava isto não acontece; se acontecer, a transação volta atrás
@@ -528,13 +585,24 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       // CAS deixava o item `pronto` — com o "Agendar" da bancada criando um
       // segundo rascunho da mesma página. Se não pegar, tudo volta atrás.
       const doPlano = sob.itemDoPlano
-      if (doPlano && normalizarStatusDoItem(doPlano.status) === 'pronto') {
+      const statusDoPlano = doPlano ? normalizarStatusDoItem(doPlano.status) : null
+      if (doPlano && statusDoPlano === 'pronto') {
         const movido = await tx.itemDePlano.updateMany({
           where: { id: doPlano.id, projectId, status: doPlano.status, generationId: sob.peca.id, updatedAt: doPlano.updatedAt },
           data: { status: 'agendado', postId, ...(sob.peca.pageId ? { pageId: sob.peca.pageId } : {}) },
         })
         if (movido.count !== 1) {
           throw new RecusaSobTrava({ codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano mudou enquanto a peça ia para a agenda — nada foi agendado. Confira o plano e repita.' })
+        }
+      } else if (doPlano && postApagado && statusDoPlano === 'agendado' && doPlano.postId === postApagado) {
+        // O item continua `agendado` (terminal): só o post que ele aponta muda,
+        // do apagado para o recriado — no mesmo commit, por compare-and-set.
+        const repontado = await tx.itemDePlano.updateMany({
+          where: { id: doPlano.id, projectId, status: doPlano.status, postId: postApagado, generationId: sob.peca.id, updatedAt: doPlano.updatedAt },
+          data: { postId, ...(sob.peca.pageId ? { pageId: sob.peca.pageId } : {}) },
+        })
+        if (repontado.count !== 1) {
+          throw new RecusaSobTrava({ codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano mudou enquanto o rascunho apagado voltava para a agenda — nada foi criado. Confira o plano e repita.' })
         }
       }
       return { tipo: 'ligado', postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina, pedido: pedidoSob.pedido, avisos: pedidoSob.avisos, input }
@@ -544,7 +612,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { generationId: antes.peca.id, pageId }) }
   }
 
-  if (escrita.tipo === 'ja-ligado') return responderLigado(escrita.linha)
+  if (escrita.tipo === 'ja-ligado') return responderJaLigado(escrita.linha)
   if (escrita.tipo === 'recusado') return escrita.resposta
 
   // 3. Efeitos depois do commit.
@@ -552,6 +620,9 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   const avisos = [...escrita.avisos, ...(escrita.resolucao?.avisos ?? [])]
   avisos.push(...(await executarEfeitos(ctx, linha.id, post, escrita.peca, escrita.input, escrita.resolucao)))
   const fresco = ((await db.socialPost.findUnique({ where: { id: post.id }, select: SELECAO_DO_POST })) as Post | null) ?? post
+  if (escrita.desfecho === 'recriado') {
+    avisos.push('O rascunho que a equipe tinha apagado voltou para a agenda, com a mesma arte da leva, porque a pessoa confirmou.')
+  }
   if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== escrita.pedido.quando) {
     avisos.push(`Já havia um rascunho desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
   }

@@ -2220,7 +2220,8 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             "caption": { "type": "string", "description": "Legenda do post, até 2200 caracteres (acima disso o item volta com erro, sem derrubar a leva). Story costuma ir sem." },
             "lembrete": { "type": "boolean", "description": "true = lembrete de publicação manual: o sistema não publica, o grupo do WhatsApp recebe a arte no horário." },
             "escopo": { "type": "string", "enum": ["rotina", "campanha", "pontual"], "description": "O que o sistema pode aprender com o post — a mesma escolha de colocar-na-agenda (padrão rotina)." },
-            "campanhaId": { "type": "string", "description": "Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base)." }
+            "campanhaId": { "type": "string", "description": "Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base)." },
+            "recriarRascunhoApagado": { "type": "boolean", "description": "true SÓ depois de a pessoa confirmar que quer de volta o rascunho deste item que a equipe apagou (o item veio como POST_REMOVIDO). Recria o rascunho com a mesma arte da leva e o pedido original; repetir não cria outro. Omita em qualquer outro caso." }
           },
           "required": ["itemId"],
           "additionalProperties": false

@@ -15,7 +15,12 @@
  *    pedido devolve o rascunho que existe MESMO que a equipe o tenha remarcado
  *    ou editado depois: a edição da equipe vence e nunca é revertida. Outro
  *    pedido sob a mesma chave é `LOTE_AGENDAMENTO_CONFLITO`, item a item.
- *  - **Post apagado não volta**: quem apagou decidiu (`POST_REMOVIDO`).
+ *  - **Post apagado não volta SOZINHO** (decisão do Ciro, 13/09/2026): o item
+ *    responde `POST_REMOVIDO` com o que o chat precisa para contar à pessoa
+ *    (`rascunhoApagado`: dia e horário, tema, manchete), e o rascunho só volta
+ *    quando ela confirma — `recriarRascunhoApagado: true` NAQUELE item, com o
+ *    pedido original. Repetir a confirmação não cria um segundo rascunho: a
+ *    linha passa a apontar o recriado.
  *  - **Só se ADOTA rascunho ou agendado** que já tenha a mesma página. Página
  *    que já foi a um post em outra situação (publicando, publicado, falhou) não
  *    ganha segundo post — isso seria publicar duas vezes (`PAGINA_JA_EM_POST`).
@@ -24,7 +29,7 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import { canonico } from '@/lib/copy-autoral/revisao'
-import { parseBRT } from '@/lib/creatives/data-brt'
+import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { ROTULO_DO_STATUS, normalizarStatusDoItem } from '@/lib/planos/vocabulario'
@@ -52,6 +57,12 @@ export const itemDoAgendamentoSchema = z
     lembrete: z.boolean().optional(),
     escopo: z.enum(['rotina', 'campanha', 'pontual']).optional(),
     campanhaId: z.string().trim().min(1).max(120).optional(),
+    /**
+     * A CONFIRMAÇÃO da pessoa para recriar o rascunho que a equipe apagou
+     * (decisão do Ciro, 13/09/2026). Não é pedido — fica fora do hash — e só
+     * vale o booleano `true` literal: qualquer outra coisa não recria.
+     */
+    recriarRascunhoApagado: z.boolean().optional(),
   })
   .strict()
 export type ItemDoAgendamento = z.infer<typeof itemDoAgendamentoSchema>
@@ -198,8 +209,57 @@ export function hashDoAgendamento(pedido: PedidoDeAgendamento): string {
   return `${VERSAO_DO_AGENDAMENTO}:${createHash('sha256').update(canonico(pedido)).digest('hex')}`
 }
 
+/**
+ * O rascunho que a equipe apagou, como o chat o descreve à pessoa (decisão do
+ * Ciro, 13/09/2026): dia e horário em Brasília, o tema e a manchete da peça.
+ */
+export interface RascunhoApagado {
+  /** "dd/mm/aaaa, hh:mm" em Brasília — o horário do pedido original; nulo quando não dá para montar. */
+  quando: string | null
+  tema: string | null
+  manchete: string | null
+}
+
+const texto = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null)
+const semColchetes = (linha: string) => linha.replace(/[[\]]/g, '')
+
+/**
+ * A manchete da peça, lida da SPEC: os blocos por papel e, sem eles, o contrato
+ * da copy autoral. Os colchetes de destaque saem — é o texto como a pessoa o lê.
+ */
+export function mancheteDaSpec(spec: unknown): string | null {
+  const s = spec && typeof spec === 'object' ? (spec as Record<string, unknown>) : {}
+  const daLista = (blocos: unknown, chave: 'papel' | 'funcao') => {
+    if (!Array.isArray(blocos)) return null
+    const bloco = blocos.find((b) => b && typeof b === 'object' && (b as Record<string, unknown>)[chave] === 'headline') as { linhas?: unknown } | undefined
+    const linhas = Array.isArray(bloco?.linhas) ? bloco!.linhas.filter((l): l is string => typeof l === 'string') : []
+    return texto(linhas.map(semColchetes).join(' ').replace(/\s+/g, ' '))
+  }
+  const autoral = s.copyAutoral && typeof s.copyAutoral === 'object' ? (s.copyAutoral as Record<string, unknown>).blocos : undefined
+  return daLista(s.blocos, 'papel') ?? daLista(autoral, 'funcao')
+}
+
+export function descreverRascunhoApagado(entrada: { pedido: PedidoDeAgendamento | null; quandoDaSpec: string | null; tema: string | null; manchete: string | null }): RascunhoApagado {
+  let quando: string | null = null
+  try {
+    const bruto = entrada.pedido?.quando ?? entrada.quandoDaSpec
+    if (bruto) quando = formatarBRT(entrada.pedido ? new Date(bruto) : parseBRT(bruto))
+  } catch {
+    quando = null
+  }
+  return { quando, tema: texto(entrada.tema), manchete: texto(entrada.manchete) }
+}
+
+/** Decisão do Ciro (13/09/2026): avisar e perguntar — nunca recriar em silêncio. */
+export const MOTIVO_POST_REMOVIDO =
+  'O rascunho que esta leva tinha posto na agenda para este item foi apagado pela equipe — nada foi recriado. Conte à pessoa qual era (em rascunhoApagado: dia e horário, tema ou manchete) e pergunte se ela quer esse rascunho de volta. Só se ela confirmar, repita a chamada com recriarRascunhoApagado: true neste item: ele volta como rascunho, com a mesma arte da leva.'
+
+export const MOTIVO_RECRIAR_COM_OUTRO_PEDIDO =
+  'O rascunho apagado deste item só volta com o pedido original (o mesmo horário, tipo, legenda, lembrete, escopo e campanha), e esta chamada pede outro — nada foi criado. Repita com o pedido original e recriarRascunhoApagado: true; depois de ele voltar, a equipe muda o que quiser na agenda.'
+
 export type DecisaoDoAgendamento =
   | { acao: 'reaproveitar'; efeitosPendentes: boolean }
+  | { acao: 'recriar'; postApagado: string }
   | { acao: 'agendar' }
   | { acao: 'pendente'; codigo: string; motivo: string }
   | { acao: 'falhar'; codigo: string; motivo: string }
@@ -217,11 +277,18 @@ export function decidirAgendamento(entrada: {
   pedido: { hash: string } | { falha: FalhaDoItem }
   peca: { status: string | null; pageId: string | null; slide: boolean } | null
   pagina: { ehModelo: boolean } | null
+  /** A confirmação da pessoa para recriar o rascunho apagado. Só o booleano `true` vale. */
+  recriarApagado?: unknown
 }): DecisaoDoAgendamento {
   const { registro, pedido, peca, pagina } = entrada
   if (registro.postId) {
     if (!entrada.postLigadoExiste) {
-      return { acao: 'falhar', codigo: 'POST_REMOVIDO', motivo: 'O rascunho deste item foi apagado da agenda — não recrio o que alguém removeu. Para voltar, agende a peça à mão.' }
+      if (entrada.recriarApagado !== true) return { acao: 'falhar', codigo: 'POST_REMOVIDO', motivo: MOTIVO_POST_REMOVIDO }
+      // Confirmado: o rascunho volta, mas só com o pedido de antes — a mesma
+      // chave com outro pedido continua conflito, apagado ou não.
+      if ('falha' in pedido) return { acao: 'falhar', ...pedido.falha }
+      if (pedido.hash !== registro.hashDoAgendamento) return { acao: 'falhar', codigo: 'LOTE_AGENDAMENTO_CONFLITO', motivo: MOTIVO_RECRIAR_COM_OUTRO_PEDIDO }
+      return { acao: 'recriar', postApagado: registro.postId }
     }
     if ('falha' in pedido) return { acao: 'falhar', ...pedido.falha }
     if (pedido.hash !== registro.hashDoAgendamento) {
@@ -289,6 +356,14 @@ export interface ItemDoPlanoDaPeca {
 }
 
 /**
+ * Peça superada no plano (decisão do Ciro, 13/09/2026): continua sem criar
+ * nada, e a resposta diz qual é a arte atual (o serviço preenche
+ * `arteAtualDoItem`) e manda o chat perguntar.
+ */
+export const MOTIVO_ARTE_MAIS_NOVA =
+  'O item do plano desta peça já tem outra arte, mais recente (em arteAtualDoItem: quando foi feita e se está pronta ou em produção) — esta não vai para a agenda e nada foi criado. Conte à pessoa e pergunte o que ela quer: manter a arte atual (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (releia com ver-plano, componha com outro itemId e a itemRevisao atual, e agende essa peça). Não agende nem refaça sem ela pedir.'
+
+/**
  * A peça ainda é a que o PLANO quer na agenda? (pré-revisão C12-1)
  *
  * A peça de lote nascida de um item de plano só vai para a agenda quando o item
@@ -313,19 +388,26 @@ export function decidirItemDoPlano(entrada: {
   pecaId: string
   /** O post que esta chamada vai ligar: o adotado, ou `null` quando vai criar. */
   postQueSeraLigado: string | null
-}): (FalhaDoItem & { pendente?: true }) | null {
+  /**
+   * Recriando o rascunho apagado (confirmado pela pessoa): o item `agendado`
+   * que ainda aponta o post APAGADO é o mesmo agendamento voltando, não outro.
+   */
+  postApagado?: string | null
+}): (FalhaDoItem & { pendente?: true; superadaPor?: string }) | null {
   if (!entrada.itemDePlanoId) return null
   const { item } = entrada
   if (!item) {
     return { codigo: 'ITEM_DO_PLANO_AUSENTE', motivo: 'O item do plano desta peça não existe mais — confira o plano antes de agendar.' }
   }
   if (item.generationId !== entrada.pecaId) {
-    return { codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano desta peça já aponta para outra arte (refeita ou em produção) — agendar esta publicaria a versão superada. Agende a arte nova quando ela ficar pronta.' }
+    if (item.generationId) return { codigo: 'PECA_SUPERADA_NO_PLANO', superadaPor: item.generationId, motivo: MOTIVO_ARTE_MAIS_NOVA }
+    return { codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano desta peça foi reaberto e não aponta mais arte nenhuma — esta não vai para a agenda e nada foi criado. Confira o plano com a pessoa antes de agendar.' }
   }
   const status = normalizarStatusDoItem(item.status)
   if (status === 'pronto') return null
   if (status === 'agendado') {
     if (item.postId && item.postId === entrada.postQueSeraLigado) return null
+    if (item.postId && entrada.postApagado && item.postId === entrada.postApagado) return null
     return { codigo: 'ITEM_DO_PLANO_JA_AGENDADO', motivo: 'O item do plano desta peça já foi para a agenda por outro post — não crio um segundo.' }
   }
   if (status === 'reprovado') {
@@ -361,7 +443,8 @@ export function thumbnailEhAtual(entrada: { thumbnail: string | null; resultUrl:
 }
 
 export type SituacaoDoItemAgendado = 'concluido' | 'pendente' | 'falhou'
-export type DesfechoDoItemAgendado = 'criado' | 'adotado' | 'reaproveitado'
+/** `recriado`: o rascunho que a equipe apagou voltou, com a confirmação da pessoa (Ciro, 13/09/2026). */
+export type DesfechoDoItemAgendado = 'criado' | 'adotado' | 'reaproveitado' | 'recriado'
 
 export function resumirAgendamento(itens: Array<{ situacao: SituacaoDoItemAgendado }>): { concluidos: number; pendentes: number; falhas: number } {
   return {

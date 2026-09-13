@@ -10342,16 +10342,17 @@ aplicada**.
   contexto)`. Quem agenda DENTRO de uma transação passa a transação como
   `leitor`/`client` — nunca o `db` global (pooler com uma conexão). `parseBRT`
   mudou para o módulo puro `creatives/data-brt.ts` e segue re-exportado.
-- **Decisões de produto (defaults do PR, a revisar com o Ciro):**
+- **Decisões de produto (revisadas pelo Ciro em 13/09/2026 — ver o bloco no fim desta seção):**
   - **O hash é do PEDIDO efetivo, como feito na primeira vez**
     (`agendamento-v1`): o instante (Brasília e ISO do mesmo minuto são o mesmo
     pedido), o tipo, a legenda, o lembrete, o escopo normalizado e a campanha.
   - **O mesmo pedido devolve o rascunho que existe MESMO que a equipe o tenha
     remarcado ou editado depois** — a edição da equipe vence e nunca é
-    revertida. Outro pedido sob o mesmo item é `LOTE_AGENDAMENTO_CONFLITO`,
+    revertida. **Confirmado pelo Ciro em 13/09/2026.** Outro pedido sob o mesmo item é `LOTE_AGENDAMENTO_CONFLITO`,
     item a item; os outros itens seguem.
-  - **Post apagado da agenda não volta** (`POST_REMOVIDO`), e isso é decidido
-    ANTES do conflito: quem apagou decidiu.
+  - **Post apagado da agenda não volta SOZINHO** (`POST_REMOVIDO`), e isso é
+    decidido ANTES do conflito — mas desde 13/09/2026 o item AVISA e o
+    rascunho volta com a confirmação da pessoa (bloco no fim desta seção).
   - Composição que falhou sob o `itemId` continua na regra do PR 11 (conteúdo
     novo sob a mesma chave é conflito).
 - 🔴 **Só se ADOTA rascunho ou agendado.** Post DRAFT/SCHEDULED que já tenha a
@@ -10503,3 +10504,60 @@ aplicada**.
   merge. Mesmo SQL, idempotente: onde o nome antigo já rodou (o branch de dev), a
   nova vira no-op, mas o `_prisma_migrations` fica com as duas linhas — quem
   cuida do dev decide se apaga a antiga.
+
+**Decisões do Ciro (13/09/2026) sobre repetir uma leva no agendamento:**
+
+- **Repetição mantém a edição da equipe: MANTIDO.** Hora, texto e tipo mexidos
+  no rascunho não são desfeitos pelo mesmo pedido.
+- 🔴 **Rascunho apagado pela equipe: não é recriado em silêncio — o item AVISA e
+  só volta com a confirmação da PESSOA.**
+  - Sem confirmação, o item volta `falhou` com `POST_REMOVIDO` e
+    **`rascunhoApagado: { quando, tema, manchete }`** — o horário do pedido
+    original em Brasília ("dd/mm/aaaa, hh:mm"), o tema da spec e a manchete
+    (`mancheteDaSpec`, blocos ou contrato, sem os colchetes de destaque). O
+    motivo, a nota da tool, a descrição e as INSTRUCTIONS mandam contar à pessoa
+    qual era e perguntar. Nada é criado.
+  - **O caminho de confirmação é `recriarRascunhoApagado: true` POR ITEM.** Por
+    item, e não por chamada, porque a pessoa confirma rascunhos específicos, e
+    uma leva repetida pode ter vários apagados que ela não quer de volta. Só o
+    booleano `true` literal vale (`recriarApagado !== true` → aviso), mesmo
+    molde do `confirmar === true` de `executar-plano`: na porta, `"true"` em texto
+    é recusado pelo zod e, no serviço, vira `PEDIDO_INVALIDO` só daquele item. A
+    confirmação **não entra no hash** (é autorização, não pedido).
+  - **Recriar exige o pedido ORIGINAL** (o mesmo hash): outro horário, tipo,
+    legenda, lembrete, escopo ou campanha continua `LOTE_AGENDAMENTO_CONFLITO`,
+    agora com o motivo "só volta com o pedido original". Depois de voltar, a
+    equipe muda o que quiser na agenda.
+  - **Recriar é o MESMO caminho de criar, sob as mesmas travas**, com três
+    diferenças: sob a trava a linha tem de apontar ainda o post APAGADO (outra
+    chamada que já recriou → `ja-ligado` → `reaproveitado`), o hash é conferido de
+    novo contra a linha, e o vínculo é **compare-and-set em `postId: <o
+    apagado>`** em vez de `postId: null`. É isso que faz a segunda confirmação
+    (em série ou concorrente) não criar outro rascunho. Post rascunho que a
+    equipe tenha recriado à mão com a página é ADOTADO, como sempre.
+  - **Item do plano `agendado` apontando o post apagado não é "outro
+    agendamento"**: `decidirItemDoPlano` recebe `postApagado` e deixa passar, e a
+    transação reaponta o `postId` do item para o recriado por compare-and-set
+    (status, `postId` apagado, `generationId`, `updatedAt`), no MESMO commit —
+    `agendado` continua terminal, só o post muda.
+  - Desfecho novo: **`recriado`** (com aviso "voltou para a agenda… porque a
+    pessoa confirmou"); `simular` com a confirmação devolve `recriado` sem
+    escrever nada.
+  - O schema público de `agendar-leva` ganhou o campo, e o fixture de
+    `validar-registro-mcp.ts` foi atualizado no mesmo commit, de propósito.
+  - ⚠️ `scripts/validar-lote-ate-rascunhos.ts` continua conferindo só o
+    `POST_REMOVIDO` (código inalterado) e **não exercita a confirmação** — a prova
+    no dev fica para a próxima rodada.
+- 🔴 **Peça superada no plano: continua sem criar nada, INFORMA a arte atual e o
+  chat PERGUNTA.** Quando o item já aponta OUTRA arte (`item.generationId` ≠ a
+  peça), `decidirItemDoPlano` devolve `superadaPor` e o serviço lê a arte
+  (`descreverArteAtualDoItem`, do PR 11): **`arteAtualDoItem: { generationId,
+  pageId, feitaEm, feitaEmBrasilia, situacao }`**. O motivo manda contar à
+  pessoa qual é e quando foi feita e perguntar: manter essa arte (agendá-la pela
+  página dela quando estiver pronta) ou refazer com o conteúdo atual do item
+  (ver-plano, `compor-leva` com outro itemId e a itemRevisao atual). Item
+  reaberto SEM arte nenhuma não inventa uma: motivo próprio, sem
+  `arteAtualDoItem`. Reprovado e reaberto com a MESMA peça seguem com os motivos
+  de antes.
+- **Pedido desatualizado (`chamada-vencida`) e campanha/escopo fora do token**:
+  mantidos, no PR 11.

@@ -53,6 +53,37 @@ describe('agendar-leva: o registro', () => {
   })
 })
 
+describe('agendar-leva: decisões do Ciro (13/09/2026)', () => {
+  it('recriarRascunhoApagado: a porta aceita só booleano, e só no item', () => {
+    expect(tool.schema.safeParse({ projectId: 8, loteId: 'l', itens: [{ itemId: 'a', recriarRascunhoApagado: true }] }).success).toBe(true)
+    expect(tool.schema.safeParse({ projectId: 8, loteId: 'l', itens: [{ itemId: 'a', recriarRascunhoApagado: 'true' }] }).success).toBe(false)
+    expect(tool.schema.safeParse({ projectId: 8, loteId: 'l', itens: [{ itemId: 'a' }], recriarRascunhoApagado: true }).success).toBe(false)
+    expect(tool.descricao).toContain('recriarRascunhoApagado: true')
+    expect(tool.descricao).toContain('arteAtualDoItem')
+  })
+
+  it('a confirmação chega ao serviço no item, e a nota manda avisar e perguntar quando há rascunho apagado ou peça superada — em simulação também', async () => {
+    mocks.agendarItensDoLote.mockImplementationOnce(async (e: { loteId: string; simular: boolean }) => ({
+      loteId: e.loteId,
+      simulado: e.simular,
+      resumo: { concluidos: 0, pendentes: 0, falhas: 2 },
+      itens: [
+        { itemId: 'seg', situacao: 'falhou', codigo: 'POST_REMOVIDO', rascunhoApagado: { quando: '14/09/2026, 19:00', tema: 'Rodízio', manchete: 'Rodízio em dobro' } },
+        { itemId: 'ter', situacao: 'falhou', codigo: 'PECA_SUPERADA_NO_PLANO', arteAtualDoItem: { generationId: 'g2', pageId: null, feitaEm: null, feitaEmBrasilia: null, situacao: 'pronta' } },
+      ],
+    }))
+    const r = (await tool.handler({ projectId: 8, loteId: 'l', itens: [{ itemId: 'seg', recriarRascunhoApagado: true }, { itemId: 'ter' }], simular: true }, principal)) as Record<string, unknown>
+    expect(mocks.agendarItensDoLote.mock.calls[0][0].itens).toEqual([{ itemId: 'seg', recriarRascunhoApagado: true }, { itemId: 'ter' }])
+    expect(r.nota).toContain('Simulação')
+    expect(r.nota).toContain('recriarRascunhoApagado: true')
+    expect(r.nota).toContain('Peça superada no plano')
+    expect(r.nota).toContain('pergunte')
+    // Sem esses casos, a nota não fala deles.
+    const comum = (await tool.handler({ projectId: 8, loteId: 'l', itens: [{ itemId: 'seg' }] }, principal)) as Record<string, unknown>
+    expect(comum.nota).not.toContain('recriarRascunhoApagado')
+  })
+})
+
 describe('agendar-leva: a porta', () => {
   it('repassa a leva ao serviço com quem decidiu, superfície chat e simular explícito', async () => {
     const r = (await tool.handler({ projectId: 8, loteId: 'semana-2026-09-14', itens: [{ itemId: 'seg' }, { itemId: 'ter', quando: '2026-09-15 12:00' }] }, principal)) as Record<string, unknown>

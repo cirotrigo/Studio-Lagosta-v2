@@ -195,7 +195,7 @@ async function contarProducao() {
               pagina: pagina ? { ehModelo: pagina.isTemplate } : null,
             })
             if (decisao.acao !== 'agendar') {
-              conta.push({ itemId, situacao: decisao.acao === 'reaproveitar' ? 'concluido' : decisao.acao === 'pendente' ? 'pendente' : 'falhou', ...(decisao.acao === 'reaproveitar' ? { desfecho: 'reaproveitado' } : { codigo: decisao.codigo }) })
+              conta.push({ itemId, situacao: decisao.acao === 'reaproveitar' ? 'concluido' : decisao.acao === 'pendente' ? 'pendente' : 'falhou', ...(decisao.acao === 'reaproveitar' ? { desfecho: 'reaproveitado' } : { codigo: 'codigo' in decisao ? decisao.codigo : decisao.acao }) })
               continue
             }
             const posts = await tx.$queryRaw<Array<{ id: string; status: string }>>`

@@ -227,7 +227,7 @@ const PROJETO = 6
 const LOTE = 'semana-2026-09-14'
 const BLOB = 'https://loja.public.blob.vercel-storage.com'
 
-function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'feed'; quando?: string | null; slide?: boolean; itemDoPlano?: { status: string; generationId?: string | null; postId?: string | null } | 'ausente' } = {}) {
+function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'feed'; quando?: string | null; slide?: boolean; itemDoPlano?: { status: string; generationId?: string | null; postId?: string | null; pageId?: string } | 'ausente' } = {}) {
   const formato = opcoes.formato ?? 'story'
   const camadas = [{ id: 'headline', type: 'text', content: `Manchete ${n}`, position: { x: 10, y: 20 } }]
   const url = `${BLOB}/page-${n}-1757700000000.png`
@@ -256,6 +256,8 @@ function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'fe
       spec: {
         projectId: PROJETO,
         formato,
+        tema: `Tema ${n}`,
+        blocos: [{ papel: 'headline', linhas: [`Manchete ${n}`] }],
         ...(opcoes.quando !== null ? { quando: opcoes.quando ?? `2026-09-1${n} 19:00` } : {}),
         ...(opcoes.itemDoPlano ? { itemDePlanoId: `plano-item-${n}`, planoId: 'plano-1' } : {}),
       },
@@ -442,12 +444,66 @@ describe('idempotência e concorrência', () => {
     expect(banco.posts.size).toBe(1)
   })
 
-  it('post apagado da agenda não é recriado', async () => {
+  it('post apagado da agenda (Ciro, 13/09/2026): não volta sozinho — o item avisa QUAL rascunho era; só a confirmação da pessoa o recria, com a mesma arte, e repetir a confirmação não cria outro', async () => {
     criarPeca(1)
     const r = await agendar([item(1)])
-    banco.posts.delete(r.itens[0].postId!)
+    const apagado = r.itens[0].postId!
+    banco.posts.delete(apagado)
+
     const depois = await agendar([item(1)])
-    expect(depois.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'POST_REMOVIDO' })
+    expect(depois.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'POST_REMOVIDO', rascunhoApagado: { quando: '11/09/2026, 19:00', tema: 'Tema 1', manchete: 'Manchete 1' } })
+    expect(depois.itens[0].motivo).toContain('pergunte')
+    expect(banco.posts.size).toBe(0)
+    // "true" em texto não é confirmação: falha só o item, nada é criado.
+    expect((await agendar([item(1, { recriarRascunhoApagado: 'true' })])).itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PEDIDO_INVALIDO' })
+    expect(banco.posts.size).toBe(0)
+
+    const antes = fotoDoBanco()
+    const simulada = await agendar([item(1, { recriarRascunhoApagado: true })], { simular: true })
+    expect(simulada.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'recriado' })
+    expect(fotoDoBanco()).toEqual(antes)
+
+    const recriada = await agendar([item(1, { recriarRascunhoApagado: true })])
+    expect(recriada.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'recriado', generationId: 'gen-1', pageId: 'page-1', quando: '11/09/2026, 19:00' })
+    expect(recriada.itens[0].avisos).toEqual([expect.stringContaining('voltou para a agenda')])
+    expect(recriada.itens[0].postId).not.toBe(apagado)
+    expect(banco.posts.size).toBe(1)
+    expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId: recriada.itens[0].postId })
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+
+    const deNovo = await agendar([item(1, { recriarRascunhoApagado: true })])
+    expect(deNovo.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'reaproveitado', postId: recriada.itens[0].postId })
+    expect(banco.posts.size).toBe(1)
+  })
+
+  it('duas confirmações ao mesmo tempo: UM rascunho recriado, e as duas respostas apontam o mesmo post', async () => {
+    criarPeca(1)
+    banco.posts.delete((await agendar([item(1)])).itens[0].postId!)
+    const [a, b] = await Promise.all([agendar([item(1, { recriarRascunhoApagado: true })]), agendar([item(1, { recriarRascunhoApagado: true })])])
+    expect(banco.posts.size).toBe(1)
+    expect(a.itens[0].postId).toBe(b.itens[0].postId)
+    expect([a.itens[0].desfecho, b.itens[0].desfecho].sort()).toEqual(['reaproveitado', 'recriado'])
+  })
+
+  it('recriar é compare-and-set no post APAGADO: se a linha foi religada por outro caminho durante a recriação, tudo volta atrás e nenhum post órfão fica', async () => {
+    criarPeca(1)
+    banco.posts.delete((await agendar([item(1)])).itens[0].postId!)
+    banco.aoCriarPostNaTransacao = () => {
+      banco.aoCriarPostNaTransacao = null
+      escreverPorFora('itensDeLote', 'lote-1', { ...banco.itensDeLote.get('lote-1')!, postId: 'post-de-fora' })
+    }
+    const r = await agendar([item(1, { recriarRascunhoApagado: true })])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'LOTE_AGENDAMENTO_CONCORRENTE' })
+    expect(banco.posts.size).toBe(0)
+    expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId: 'post-de-fora' })
+  })
+
+  it('confirmação com OUTRO pedido não recria: o rascunho apagado só volta com o pedido original', async () => {
+    criarPeca(1)
+    banco.posts.delete((await agendar([item(1)])).itens[0].postId!)
+    const r = await agendar([item(1, { recriarRascunhoApagado: true, quando: '2026-09-11 21:00' })])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'LOTE_AGENDAMENTO_CONFLITO' })
+    expect(r.itens[0].motivo).toContain('pedido original')
     expect(banco.posts.size).toBe(0)
   })
 
@@ -511,6 +567,35 @@ describe('o item do plano manda na peça (C12-1)', () => {
     expect(postsDaPagina(1)).toHaveLength(0)
     expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId: null, hashDoAgendamento: null })
     expect(banco.itensDePlano.get('plano-item-1')).toEqual(antes.itensDePlano.get('plano-item-1'))
+  })
+
+  it('recriando o rascunho apagado de peça com item do plano (Ciro, 13/09/2026): o item continua agendado e passa a apontar o recriado, no mesmo commit', async () => {
+    criarPeca(1, { itemDoPlano: { status: 'pronto' } })
+    const apagado = (await agendar([item(1)])).itens[0].postId!
+    expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'agendado', postId: apagado })
+    banco.posts.delete(apagado)
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'POST_REMOVIDO' })
+
+    const recriada = await agendar([item(1, { recriarRascunhoApagado: true })])
+    expect(recriada.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'recriado' })
+    expect(recriada.itens[0].avisos).toEqual([expect.stringContaining('voltou para a agenda')])
+    expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'agendado', postId: recriada.itens[0].postId, generationId: 'gen-1' })
+    expect(banco.posts.size).toBe(1)
+  })
+
+  it('peça superada no plano (Ciro, 13/09/2026): com arte mais recente no item, a falha traz arteAtualDoItem e manda perguntar — e simular diz o mesmo', async () => {
+    criarPeca(1, { itemDoPlano: { status: 'pronto', generationId: 'gen-nova', pageId: 'page-nova' } })
+    banco.generations.set('gen-nova', { id: 'gen-nova', projectId: PROJETO, status: 'COMPLETED', resultUrl: `${BLOB}/nova.png`, createdAt: new Date('2026-09-12T13:00:00.000Z'), slideOrder: null, fieldValues: {} })
+    for (const simular of [true, false]) {
+      const r = await agendar([item(1)], { simular })
+      expect(r.itens[0]).toMatchObject({
+        situacao: 'falhou',
+        codigo: 'PECA_SUPERADA_NO_PLANO',
+        arteAtualDoItem: { generationId: 'gen-nova', pageId: 'page-nova', feitaEm: '2026-09-12T13:00:00.000Z', feitaEmBrasilia: '12/09/2026, 10:00', situacao: 'pronta' },
+      })
+      expect(r.itens[0].motivo).toContain('pergunte')
+    }
+    expect(banco.posts.size).toBe(0)
   })
 
   it('item do plano apagado: ITEM_DO_PLANO_AUSENTE, sem post', async () => {

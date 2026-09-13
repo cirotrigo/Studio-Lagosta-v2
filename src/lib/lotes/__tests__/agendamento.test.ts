@@ -9,7 +9,9 @@ import {
   decidirItemDoPlano,
   decidirMidiaEmOutroPost,
   decidirPostsDaPagina,
+  descreverRascunhoApagado,
   hashDoAgendamento,
+  mancheteDaSpec,
   pedidoDoAgendamento,
   resumirAgendamento,
   thumbnailEhAtual,
@@ -181,4 +183,63 @@ describe('thumbnailEhAtual', () => {
 
 it('resumirAgendamento conta por situação', () => {
   expect(resumirAgendamento([{ situacao: 'concluido' }, { situacao: 'falhou' }, { situacao: 'pendente' }, { situacao: 'concluido' }])).toEqual({ concluidos: 2, pendentes: 1, falhas: 1 })
+})
+
+describe('decisões do Ciro (13/09/2026): rascunho apagado pela equipe e peça superada no plano', () => {
+  const ligado = { postId: 'post-1', hashDoAgendamento: 'h1', efeitosDoAgendamentoEm: new Date() }
+  const pronta = { status: 'COMPLETED', pageId: 'p1', slide: false }
+  const apagado = (extra: Partial<Parameters<typeof decidirAgendamento>[0]> = {}) =>
+    decidirAgendamento({ registro: ligado, postLigadoExiste: false, pedido: { hash: 'h1' }, peca: pronta, pagina: { ehModelo: false }, ...extra })
+
+  it('post apagado: sem a confirmação AVISA e não recria; só o booleano true recria, e só com o pedido original', () => {
+    const aviso = apagado()
+    expect(aviso).toMatchObject({ acao: 'falhar', codigo: 'POST_REMOVIDO' })
+    expect((aviso as { motivo: string }).motivo).toContain('pergunte')
+    expect((aviso as { motivo: string }).motivo).toContain('recriarRascunhoApagado: true')
+    for (const quase of [false, 'true', 1, 'sim', null, undefined]) expect(apagado({ recriarApagado: quase })).toMatchObject({ codigo: 'POST_REMOVIDO' })
+    expect(apagado({ recriarApagado: true })).toEqual({ acao: 'recriar', postApagado: 'post-1' })
+    expect(apagado({ recriarApagado: true, pedido: { hash: 'h2' } })).toMatchObject({ acao: 'falhar', codigo: 'LOTE_AGENDAMENTO_CONFLITO' })
+    expect(apagado({ recriarApagado: true, pedido: { falha: { codigo: 'SEM_HORARIO', motivo: 'x' } } })).toMatchObject({ acao: 'falhar', codigo: 'SEM_HORARIO' })
+    // Post vivo: a confirmação não muda nada.
+    expect(apagado({ postLigadoExiste: true, recriarApagado: true })).toEqual({ acao: 'reaproveitar', efeitosPendentes: false })
+  })
+
+  it('a confirmação é do ITEM e fica fora do hash; valor que não é booleano falha só aquele item', () => {
+    const v = validarAgendamentoDoLote('l', [{ itemId: 'a', recriarRascunhoApagado: true }, { itemId: 'b', recriarRascunhoApagado: 'true' }])
+    expect(v.problemas).toEqual([])
+    expect(v.itens?.map((i) => [i.item.itemId, i.falha?.codigo ?? null])).toEqual([['a', null], ['b', 'PEDIDO_INVALIDO']])
+    const base = { quandoDaSpec: '2026-09-14 19:00', formato: 'story' as const }
+    expect(hashDoAgendamento(pedidoDe(pedidoDoAgendamento({ itemId: 'a', recriarRascunhoApagado: true }, base)))).toBe(hashDoAgendamento(pedidoDe(pedidoDoAgendamento({ itemId: 'a' }, base))))
+  })
+
+  it('recriando: o item agendado que ainda aponta o post APAGADO passa; sem recriar, ou agendado com outro post, continua recusado', () => {
+    const base = { itemDePlanoId: 'item-1', pecaId: 'g1', postQueSeraLigado: null }
+    expect(decidirItemDoPlano({ ...base, item: { status: 'agendado', generationId: 'g1', postId: 'post-apagado' }, postApagado: 'post-apagado' })).toBeNull()
+    expect(decidirItemDoPlano({ ...base, item: { status: 'agendado', generationId: 'g1', postId: 'post-apagado' } })).toMatchObject({ codigo: 'ITEM_DO_PLANO_JA_AGENDADO' })
+    expect(decidirItemDoPlano({ ...base, item: { status: 'agendado', generationId: 'g1', postId: 'outro' }, postApagado: 'post-apagado' })).toMatchObject({ codigo: 'ITEM_DO_PLANO_JA_AGENDADO' })
+  })
+
+  it('peça superada: com arte mais recente no item a falha diz QUAL (superadaPor) e manda perguntar; sem arte nenhuma no item não inventa uma', () => {
+    const base = { itemDePlanoId: 'item-1', pecaId: 'g1', postQueSeraLigado: null }
+    for (const status of ['pronto', 'na-fila', 'gerando', 'agendado']) {
+      const mais = decidirItemDoPlano({ ...base, item: { status, generationId: 'g2', postId: null } })
+      expect(mais).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO', superadaPor: 'g2' })
+      expect(mais?.motivo).toContain('pergunte')
+      expect(mais?.motivo).toContain('ver-plano')
+    }
+    const sem = decidirItemDoPlano({ ...base, item: { status: 'editado', generationId: null, postId: null } })
+    expect(sem).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
+    expect(sem?.superadaPor).toBeUndefined()
+  })
+
+  it('mancheteDaSpec (blocos ou contrato, sem os colchetes de destaque) e descreverRascunhoApagado (horário em Brasília)', () => {
+    expect(mancheteDaSpec({ blocos: [{ papel: 'pre', linhas: ['Hoje'] }, { papel: 'headline', linhas: ['Rodízio', 'em [dobro]'] }] })).toBe('Rodízio em dobro')
+    expect(mancheteDaSpec({ copyAutoral: { blocos: [{ funcao: 'headline', linhas: ['Costela no bafo'] }] } })).toBe('Costela no bafo')
+    expect(mancheteDaSpec({})).toBeNull()
+    expect(mancheteDaSpec(null)).toBeNull()
+    const pedido = pedidoDe(pedidoDoAgendamento({ itemId: 'a' }, { quandoDaSpec: '2026-09-14 19:00', formato: 'story' }))
+    expect(descreverRascunhoApagado({ pedido, quandoDaSpec: null, tema: ' Rodízio ', manchete: 'Rodízio em dobro' })).toEqual({ quando: '14/09/2026, 19:00', tema: 'Rodízio', manchete: 'Rodízio em dobro' })
+    expect(descreverRascunhoApagado({ pedido: null, quandoDaSpec: '2026-09-15 12:00', tema: null, manchete: null })).toEqual({ quando: '15/09/2026, 12:00', tema: null, manchete: null })
+    expect(descreverRascunhoApagado({ pedido: null, quandoDaSpec: 'lixo', tema: '', manchete: null })).toEqual({ quando: null, tema: null, manchete: null })
+  })
 })
