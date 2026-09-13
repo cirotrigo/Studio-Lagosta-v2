@@ -924,6 +924,21 @@ export interface AjustarArteResult {
  * futuras daquele tema e os posts agendados que as referenciam — modelo se
  * edita no editor, com a invalidação por mudança visual real do PATCH.
  */
+/**
+ * A recusa de página-MODELO de `ajustarArte` — a MESMA na leitura inicial e na
+ * escrita: a página pode ser promovida a modelo ("Marcar modelo" no editor)
+ * enquanto o ajuste resolve a foto e roda o autofix, e a releitura que confere
+ * conteúdo e contrato não enxergava isso (C3-12 da pré-revisão do commit
+ * 046d2a5e, 12/09/2026).
+ */
+function erroDePaginaModelo(): CreativeError {
+  return new CreativeError(
+    'PAGINA_E_MODELO',
+    'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
+    400,
+  )
+}
+
 export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteResult> {
   const { projectId, pageId } = input
   const slotValues = input.slotValues ?? {}
@@ -974,13 +989,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   if (!page || page.Template.projectId !== projectId) {
     throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
   }
-  if (page.isTemplate) {
-    throw new CreativeError(
-      'PAGINA_E_MODELO',
-      'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
-      400,
-    )
-  }
+  if (page.isTemplate) throw erroDePaginaModelo()
 
   // A revisão calcula os ajustes sobre UMA versão da página: se ela mudou (a
   // equipe editou, outro ajuste já entrou), os deltas iriam para o lugar errado.
@@ -1123,8 +1132,11 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       if (input.versaoEsperada) {
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
         // não são atômicas, e o autosave do editor pode cair no meio.
-        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt }, data: dadosDaPagina })
+        // `isTemplate: false` também na escrita: a página promovida a modelo no meio do ajuste não é gravada (C3-12).
+        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt, isTemplate: false }, data: dadosDaPagina })
         if (gravada.count === 0) {
+          const agora = await tx.page.findUnique({ where: { id: page.id }, select: { isTemplate: true } })
+          if (agora?.isTemplate) throw erroDePaginaModelo()
           throw new CreativeError(
             'VERSAO_DIVERGENTE',
             'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.',
@@ -1150,23 +1162,31 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
          * valendo — o mesmo CONTEÚDO (`versaoDaPagina`) e o mesmo contrato;
          * então tudo o que foi decidido contra a leitura (bake, revisão da
          * copy, aprendizado) segue exato. Mudou o conteúdo ou o contrato: nada
-         * é gravado e o ajuste volta com 409 para ser pedido de novo sobre a
-         * página como ela está. Vale para página com e sem contrato: sem
-         * contrato, gravar por cima apagava em silêncio a edição da equipe e o
-         * diff do aprendizado ainda saía contra a leitura velha.
+         * é gravado e o ajuste volta com 409. A mensagem manda o chat REVER a
+         * arte e confirmar com a pessoa antes de repetir — repetir na hora
+         * regravaria o texto que a equipe acabou de editar. Vale para página
+         * com e sem contrato: sem contrato, gravar por cima apagava em
+         * silêncio a edição da equipe e o diff do aprendizado ainda saía
+         * contra a leitura velha.
+         *
+         * A releitura confere também se a página continua sendo ARTE: virou
+         * modelo no meio do ajuste → a recusa de modelo, como na leitura
+         * inicial; e `isTemplate: false` vai no `where` da escrita, para que
+         * nem um escritor que não move o carimbo passe (C3-12).
          */
         let carimbo = page.updatedAt
         let gravou = false
         for (let volta = 0; volta < 3 && !gravou; volta++) {
-          const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: carimbo }, data: dadosDaPagina })
+          const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: carimbo, isTemplate: false }, data: dadosDaPagina })
           if (gravada.count > 0) {
             gravou = true
             break
           }
           const fresca = await tx.page.findUnique({
             where: { id: page.id },
-            select: { updatedAt: true, width: true, height: true, background: true, layers: true, copyAutoral: true },
+            select: { updatedAt: true, width: true, height: true, background: true, layers: true, copyAutoral: true, isTemplate: true },
           })
+          if (fresca?.isTemplate) throw erroDePaginaModelo()
           const mesmoConteudo = !!fresca && versaoAntes !== null && versaoDaPagina(fresca) === versaoAntes
           const mesmoContrato = !!fresca && JSON.stringify(fresca.copyAutoral ?? null) === JSON.stringify(page.copyAutoral ?? null)
           if (!mesmoConteudo || !mesmoContrato) break
@@ -1175,7 +1195,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         if (!gravou) {
           throw new CreativeError(
             'PAGINA_MUDOU_DURANTE_O_AJUSTE',
-            'A página mudou enquanto o ajuste era aplicado (alguém editou no editor ou outro ajuste entrou). Nada foi gravado — peça o ajuste de novo sobre a página como ela está.',
+            'A arte foi editada enquanto o ajuste era aplicado (no editor ou por outro ajuste) e NADA foi gravado. Não repita o ajuste direto: veja a arte como ela está agora (conferir-arte), conte à pessoa que ela mudou e confirme o que ainda precisa ajustar — repetir sem olhar regravaria o que a equipe acabou de editar.',
             409,
             { ajusteGravado: false },
           )

@@ -40,9 +40,10 @@ vi.mock('@/lib/db', () => {
         tocar(data)
         return comTemplate()
       },
-      updateMany: async ({ where, data }: { where: { id: string; updatedAt?: Date }; data: Record<string, unknown> }) => {
+      updateMany: async ({ where, data }: { where: { id: string; updatedAt?: Date; isTemplate?: boolean }; data: Record<string, unknown> }) => {
         if (!banco.pagina || where.id !== banco.pagina.id) return { count: 0 }
         if (where.updatedAt && where.updatedAt.getTime() !== banco.pagina.updatedAt.getTime()) return { count: 0 }
+        if (where.isTemplate !== undefined && banco.pagina.isTemplate !== where.isTemplate) return { count: 0 }
         tocar(data)
         return { count: 1 }
       },
@@ -100,6 +101,7 @@ vi.mock('@/lib/aprendizado/captura', () => ({ registrarDecisaoSemSugestao: vi.fn
 
 import { ajustarArte } from '../arte-rapida'
 import { CreativeError } from '../errors'
+import { versaoDaPagina } from '../revisao/versao'
 import { copyAutoralDaPagina, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { VERSAO_DO_CONTRATO, serializarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
@@ -172,6 +174,9 @@ describe('C3-01 — ajustarArte sem versaoEsperada não grava por cima de uma ed
     expect((erro as CreativeError).code).toBe('PAGINA_MUDOU_DURANTE_O_AJUSTE')
     expect((erro as CreativeError).status).toBe(409)
     expect((erro as CreativeError).details).toMatchObject({ ajusteGravado: false })
+    // A mensagem não convida a repetir na hora: manda rever a arte e confirmar com a pessoa.
+    expect((erro as CreativeError).message).toMatch(/Não repita o ajuste direto/)
+    expect((erro as CreativeError).message).toMatch(/confirme/)
 
     // A edição da equipe ficou inteira: camadas Y, contrato Y, e nada do ajuste (nem o nome).
     expect(manchete()).toBe('Almoço executivo de sexta')
@@ -194,6 +199,18 @@ describe('C3-01 — ajustarArte sem versaoEsperada não grava por cima de uma ed
     expect(banco.pagina.copyAutoral).toBeNull()
   })
 
+  it('só o CONTRATO muda no meio (conteúdo idêntico): 409 — o que foi decidido contra a leitura não vale mais', async () => {
+    const contratoNovo = serializarCopyAutoral({ ...contratoX, origem: { ...contratoX.origem, em: '2026-09-12T11:00:00.000Z' } })
+    banco.duranteOAjuste = () => {
+      banco.pagina = { ...banco.pagina, copyAutoral: contratoNovo, updatedAt: new Date(++banco.relogio) }
+    }
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', name: 'Novo nome' }))
+    expect((erro as CreativeError).code).toBe('PAGINA_MUDOU_DURANTE_O_AJUSTE')
+    expect(banco.pagina.name).toBe('Peça do chat')
+    expect(banco.pagina.copyAutoral).toBe(contratoNovo)
+    expect(banco.generations).toHaveLength(0)
+  })
+
   it('controle: a escrita concorrente que só troca a MINIATURA (autosave do editor aberto) não derruba o ajuste — o conteúdo lido continua valendo', async () => {
     banco.duranteOAjuste = () => {
       banco.pagina = { ...banco.pagina, thumbnail: 'data:image/jpeg;base64,AAAA', updatedAt: new Date(++banco.relogio) }
@@ -211,5 +228,52 @@ describe('C3-01 — ajustarArte sem versaoEsperada não grava por cima de uma ed
     expect(banco.pagina.name).toBe('Novo nome')
     expect(banco.pagina.thumbnail).toBe(r.url)
     expect(banco.generations).toHaveLength(1)
+  })
+})
+
+describe('C3-12 — a página promovida a MODELO durante o ajuste não é gravada', () => {
+  /** "Marcar modelo" no editor (`db.page.update`, move o carimbo) — ou um escritor que NÃO o move. */
+  const promover = (moverCarimbo: boolean) => () => {
+    banco.pagina = { ...banco.pagina, isTemplate: true, ...(moverCarimbo ? { updatedAt: new Date(++banco.relogio) } : {}) }
+  }
+
+  function esperarNadaGravado() {
+    expect(banco.pagina.isTemplate).toBe(true)
+    expect(banco.pagina.name).toBe('Peça do chat')
+    expect(banco.pagina.thumbnail).toBe('https://blob.test/render-anterior.png')
+    expect((banco.pagina.layers as Array<Record<string, any>>).find((l) => l.id === 'headline')!.position.y).toBe(1500)
+    expect(banco.generations).toHaveLength(0)
+  }
+
+  it.each([
+    ['move o carimbo (a releitura enxerga)', true],
+    ['não move o carimbo (o `where` da escrita segura)', false],
+  ])('sem versaoEsperada, a promoção %s: PAGINA_E_MODELO, nada gravado', async (_rotulo, moverCarimbo) => {
+    banco.duranteOAjuste = promover(moverCarimbo)
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', name: 'Novo nome' }))
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect((erro as CreativeError).code).toBe('PAGINA_E_MODELO')
+    expect((erro as CreativeError).status).toBe(400)
+    esperarNadaGravado()
+  })
+
+  it.each([
+    ['move o carimbo', true],
+    ['não move o carimbo', false],
+  ])('com versaoEsperada (ajuste do revisor), a promoção %s: PAGINA_E_MODELO, nada gravado', async (_rotulo, moverCarimbo) => {
+    const v0 = versaoDaPagina(banco.pagina)!
+    banco.duranteOAjuste = promover(moverCarimbo)
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', versaoEsperada: v0, ajustes: [{ tipo: 'mover', camadas: ['headline'], dy: -10 }] }))
+    expect(erro).toBeInstanceOf(CreativeError)
+    expect((erro as CreativeError).code).toBe('PAGINA_E_MODELO')
+    esperarNadaGravado()
+  })
+
+  it('controle: com versaoEsperada e uma edição comum no meio, a recusa continua sendo VERSAO_DIVERGENTE', async () => {
+    const v0 = versaoDaPagina(banco.pagina)!
+    banco.duranteOAjuste = () => editarNoEditor('Almoço executivo de sexta')
+    const erro = await erroDe(ajustarArte({ projectId: 8, pageId: 'p1', versaoEsperada: v0, ajustes: [{ tipo: 'mover', camadas: ['headline'], dy: -10 }] }))
+    expect((erro as CreativeError).code).toBe('VERSAO_DIVERGENTE')
+    expect(manchete()).toBe('Almoço executivo de sexta')
   })
 })

@@ -6356,6 +6356,35 @@ dev: `scripts/validar-copy-autoral.ts`.
   o compare-and-set protege, e as do PATCH são a `fresca` contra a qual a marca
   foi reconciliada. Leitura nova de "como a página estava" que entre numa decisão
   de autoria precisa ser a mesma que a escrita substitui.
+
+**Da pré-revisão do commit 046d2a5e (BLOQUEADO, C3-11…12, 12/09/2026):**
+
+- 🔴 **A marca do revisor só sobrevive se a BASE também a tem** (C3-11, P2).
+  O editor nunca recebe a remoção da marca feita no servidor (o `design` só é
+  recarregado quando muda o id da página), então depois de mostrar e esconder de
+  novo uma camada que o revisor ocultou, QUALQUER autosave seguinte reenviava a
+  marca; como a base estava escondida SEM marca, a regra antiga ("tira a marca
+  só se a base estava visível") a mantinha, e o contrato ganhava uma revisão da
+  `equipe` devolvendo o bloco sobre uma camada que a página mostra escondida —
+  mais uma decisão falsa de copy no corpus. A regra passa a ser `a &&
+  !ocultaPeloRevisor(a)` → sem marca. **A correção mora em
+  `src/lib/creatives/revisao/oculta-pelo-revisor.ts`, que é código do PR 0: foi
+  aplicada lá e chega ao PR 3 pelo rebase** — não se mexe nesse módulo no PR 3.
+- **`ajustarArte` recusa a página promovida a MODELO no meio do ajuste**
+  (C3-12, P3). A releitura do compare-and-set conferia conteúdo e contrato, mas
+  não `isTemplate`: "Marcar modelo" durante os segundos do ajuste deixava gravar
+  camadas e criar Generation numa página-modelo. Hoje as DUAS escritas
+  protegidas (com e sem `versaoEsperada`) levam `isTemplate: false` no `where`,
+  e quem perde a corrida relê a página e lança a MESMA recusa da leitura inicial
+  (`PAGINA_E_MODELO`, 400, `erroDePaginaModelo`). O `where` cobre o escritor que
+  não move o carimbo; o toggle do editor move, e aí quem pega é a releitura.
+- **O 409 `PAGINA_MUDOU_DURANTE_O_AJUSTE` não convida a repetir**: a mensagem
+  manda rever a arte como ela está (conferir-arte), contar à pessoa que ela mudou
+  e confirmar antes de ajustar de novo. Repetir na hora regravaria o texto que a
+  equipe acabou de editar. O código do erro ficou o mesmo.
+- **A comparação do contrato na releitura tem teste próprio** (só o contrato
+  muda, conteúdo idêntico → 409), embora hoje nenhum escritor mude só o
+  contrato: sem o caso, apagar `mesmoContrato` passava por todos os testes.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
