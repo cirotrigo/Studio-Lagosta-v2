@@ -39,6 +39,7 @@ import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
+import { CreativeError } from '@/lib/creatives/errors'
 import { loadBrandContext, type BrandContext } from '@/lib/brand/brand-context'
 import {
   agendamentoEmBrasilia,
@@ -389,6 +390,27 @@ export async function avaliarCrivo(
   projectId: number,
   peca: PecaParaCrivo,
 ): Promise<ResultadoDaAvaliacao> {
+  /**
+   * 🔴 A arte informada TEM de ser deste projeto, e isso é conferido ANTES de
+   * avaliar qualquer coisa (12/09/2026, visto na pré-revisão do C6-13): a
+   * avaliação termina gravando `fieldValues.crivo` na Generation, e a rota só
+   * confere acesso de LEITURA ao `projectId` da URL — com o `generationId` de
+   * outro projeto, quem lê um cliente escrevia na arte de outro. A conferência
+   * mora no SERVIÇO, onde a escrita mora: qualquer porta que venha a embrulhar
+   * a avaliação (MCP, outra rota) herda a trava. Arte inexistente ou de outro
+   * projeto dão o MESMO 404 (não se revela que a arte existe em outro lugar),
+   * e nada é avaliado nem gravado. Sem `generationId`, nada muda.
+   */
+  if (peca.generationId) {
+    const arte = await db.generation.findFirst({
+      where: { id: peca.generationId, projectId },
+      select: { id: true },
+    })
+    if (!arte) {
+      throw new CreativeError('GENERATION_NOT_FOUND', 'Criativo não encontrado neste projeto.', 404)
+    }
+  }
+
   // As duas leituras correm juntas: a base só precisa do `projectId`, e
   // esperar o DNA para só então consultá-la somava dois tempos de rede na cara
   // de quem está parado olhando o spinner.

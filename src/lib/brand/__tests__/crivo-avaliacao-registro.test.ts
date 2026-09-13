@@ -13,8 +13,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const banco = vi.hoisted(() => ({
   generations: new Map<string, Record<string, unknown>>(),
+  /** O projeto dono de cada Generation (a coluna `projectId`). */
+  donos: new Map<string, number>(),
   merges: [] as Array<Record<string, unknown>>,
   escritaConcorrente: null as null | (() => void),
+  generateObject: vi.fn(async () => ({ object: { itens: [] } })),
 }))
 
 function dispararEscritaConcorrente() {
@@ -26,6 +29,8 @@ function dispararEscritaConcorrente() {
 vi.mock('@/lib/db', () => ({
   db: {
     generation: {
+      findFirst: async ({ where }: { where: { id: string; projectId?: number } }) =>
+        banco.donos.has(where.id) && (where.projectId === undefined || banco.donos.get(where.id) === where.projectId) ? { id: where.id } : null,
       findUnique: async ({ where }: { where: { id: string } }) => {
         const fv = banco.generations.get(where.id)
         const lido = fv ? { id: where.id, fieldValues: structuredClone(fv) } : null
@@ -51,7 +56,7 @@ vi.mock('@/lib/db', () => ({
     },
   },
 }))
-vi.mock('ai', () => ({ generateObject: async () => ({ object: { itens: [] } }) }))
+vi.mock('ai', () => ({ generateObject: banco.generateObject }))
 vi.mock('@ai-sdk/openai', () => ({ openai: () => 'modelo-falso' }))
 vi.mock('@/lib/knowledge/search', () => ({ getProjectPromptKnowledgeContext: async () => ({ context: '', warnings: [] }) }))
 vi.mock('@/lib/brand/brand-context', () => ({
@@ -76,6 +81,8 @@ const ARTE = 'gen-crivo'
 
 beforeEach(() => {
   banco.generations = new Map()
+  banco.donos = new Map([[ARTE, 8], ['gen-de-outro-projeto', 9]])
+  banco.generateObject.mockClear()
   banco.merges = []
   banco.escritaConcorrente = null
 })
@@ -119,6 +126,23 @@ describe('crivo — o registro na Generation é merge no banco (C6-13)', () => {
 
     banco.merges = []
     await avaliarCrivo(8, { copy: ['Almoço executivo'], generationId: null })
+    expect(banco.merges).toHaveLength(0)
+  })
+})
+
+describe('crivo — a avaliação só grava na arte do PRÓPRIO projeto', () => {
+  it('generationId de OUTRO projeto: 404 antes de avaliar — nem o modelo é chamado, nem a arte do outro recebe `crivo`', async () => {
+    banco.generations.set('gen-de-outro-projeto', { source: 'ajuste-arte', prompt: 'do projeto 9' })
+    await expect(avaliarCrivo(8, { copy: ['Almoço executivo'], generationId: 'gen-de-outro-projeto' })).rejects.toMatchObject({
+      code: 'GENERATION_NOT_FOUND',
+    })
+    expect(banco.generateObject).not.toHaveBeenCalled()
+    expect(banco.merges).toHaveLength(0)
+    expect(banco.generations.get('gen-de-outro-projeto')).toEqual({ source: 'ajuste-arte', prompt: 'do projeto 9' })
+  })
+
+  it('generationId inexistente dá o MESMO erro (não se revela se a arte existe em outro projeto)', async () => {
+    await expect(avaliarCrivo(8, { copy: ['Almoço executivo'], generationId: 'nao-existe' })).rejects.toMatchObject({ code: 'GENERATION_NOT_FOUND' })
     expect(banco.merges).toHaveLength(0)
   })
 })

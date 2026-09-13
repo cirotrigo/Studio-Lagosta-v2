@@ -6589,6 +6589,7 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
     para `recompor.ts`), e `carousel-service.ts` grava na capa recém-criada
     (ou na PROCESSING reaproveitada pelo dedupe da trilha arte-ia, sem página
     e fora do alcance da recomposição).
+  - 🔴 **A avaliação do crivo só grava na arte do PRÓPRIO projeto**: `avaliarCrivo` confere `generation.findFirst({ id, projectId })` ANTES de avaliar — arte de outro projeto ou inexistente dá o mesmo 404 (`GENERATION_NOT_FOUND`), sem chamar o modelo nem gravar, e a rota `/crivo/avaliar` devolve 404 em vez do crivo manual; a trava mora no serviço, onde a escrita mora, e porta nova que embrulhe a avaliação a herda.
   - 🔴 **C6-03 (P3, pré-existente): todo caminho que deriva a cópia textual
     de um post de uma Generation passa por `lerProcedencia`.** A troca de arte
     pela galeria copiava `slotValues` cru; agora segue o R38 + marcador como
