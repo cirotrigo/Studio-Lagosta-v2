@@ -20,7 +20,17 @@
  *     por item, o item de plano ligado à sua peça;
  *  7. a fila REAL compõe as peças (`dispararJobAgora`): cada Generation fica
  *     COMPLETED com página e imagem; e a repetição da leva devolve as peças
- *     prontas sem enfileirar de novo.
+ *     prontas sem enfileirar de novo;
+ *  8. controle positivo (decisões do Ciro, 13/09/2026): o item do plano é
+ *     reaberto e editado, e o caminho recomendado — reler a revisão do item
+ *     (o `itemRevisao` do ver-plano), itemId NOVO, itemRevisao atual — PRODUZ
+ *     a arte nova pelo `compor-leva` de verdade, e a fila a compõe;
+ *  9. peça superada no plano (decisões do Ciro, 13/09/2026): a leva antiga
+ *     repetida pelo `compor-leva` depois de o item ganhar a arte nova não
+ *     cria nada — a peça vai para `superadas`, com `arteAtualDoItem` (arte,
+ *     página, data e situação) e a nota que manda contar e perguntar; nenhuma
+ *     Generation, job ou página nova, e linhas do lote e item do plano
+ *     intocados.
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
  * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
@@ -116,6 +126,9 @@ async function main() {
   const { dispararJobAgora } = await import('../src/lib/ai/generation-queue-executor')
   const { criarPlano } = await import('../src/lib/planos/plano-service')
   const { CreativeError } = await import('../src/lib/creatives/errors')
+  const { atualizarItem, transicionarItem } = await import('../src/lib/planos/plano-service')
+  const { toolsDoCompositor } = await import('../src/lib/mcp/catalogo/compositor')
+  const { CLIENT_ID_LOCAL } = await import('../src/lib/mcp/tools')
   const { del } = await import('@vercel/blob')
   type Peca = Awaited<ReturnType<typeof enfileirarPeca>>
 
@@ -164,6 +177,29 @@ async function main() {
       }
     }
     return saida
+  }
+  // O `compor-leva` DE VERDADE (schema + handler), como o conector o chama — é
+  // ele que separa `superadas` de `pecas` e `falhas` (decisões do Ciro, 13/09/2026).
+  const comporLeva = toolsDoCompositor.find((t) => t.nome === 'compor-leva')
+  if (!comporLeva) abortar('compor-leva não está no catálogo de tools')
+  const principalLocal = { kind: 'service' as const, clientId: CLIENT_ID_LOCAL }
+  type ArteAtual = { generationId?: string; pageId?: string | null; feitaEm?: string | null; feitaEmBrasilia?: string | null; situacao?: string }
+  type RespostaDaLeva = {
+    pecas: Array<{ indice: number; itemId: string | null; generationId: string; desfecho: string; situacao: string }>
+    falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }>
+    conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[] }>
+    superadas: Array<{ indice: number; itemId: string | null; arteDestePedido: string | null; arteAtualDoItem: ArteAtual | null }>
+    nota: string
+  }
+  /** A spec da prova como item do `compor-leva`: sem o projectId (vai na raiz) e com a foto como `fotoUrl`. */
+  const itemDaLeva = (spec: Record<string, unknown>, itemId: string, extra: Record<string, unknown> = {}) => {
+    const foto = spec.foto as { url?: string } | undefined
+    const campos = Object.fromEntries(Object.entries(spec).filter(([chave]) => chave !== 'projectId' && chave !== 'foto'))
+    return { ...campos, itemId, ...(foto?.url ? { fotoUrl: foto.url } : {}), ...extra }
+  }
+  async function comporLevaPeloConector(loteId: string, itens: Array<Record<string, unknown>>): Promise<RespostaDaLeva> {
+    const args = comporLeva!.schema.parse({ projectId: PROJETO, loteId, itens })
+    return (await comporLeva!.handler(args as never, principalLocal as never)) as RespostaDaLeva
   }
   const desfechos = (s: Awaited<ReturnType<typeof leva>>) => s.map((x) => (x.erro ? `erro:${x.erro instanceof CreativeError ? x.erro.code : String(x.erro)}` : x.r!.lote!.desfecho))
 
@@ -267,6 +303,53 @@ async function main() {
     const depoisDePronta = await leva(LOTE_A, itensA)
     conferir('repetição depois de pronta: reaproveitado e PRONTA, nos 3 itens', depoisDePronta.every((d, i) => d.r?.lote?.desfecho === 'reaproveitado' && d.r.lote.situacao === 'pronta' && d.r.generationId === primeira[i].r!.generationId), JSON.stringify(depoisDePronta.map((d) => d.r?.lote)))
     conferir('nenhum job novo', (await db.generationJob.count({ where: { generationId: { in: geracoes.map((g) => g.id) } } })) === jobsAntes)
+
+    // ── 8. controle positivo: o caminho recomendado produz ──────────────────
+    console.log('8) o item é reaberto e editado; o caminho recomendado (reler a revisão, itemId novo, itemRevisao atual) produz a arte nova')
+    const arteAntigaDoItem = retomada[1].r!.generationId
+    // A pessoa quer refazer: reprova a arte pronta e edita a copy (reprovado → editado).
+    await transicionarItem({ projectId: PROJETO, planoId: plano.id, itemId: itemDoPlano.id, para: 'reprovado', motivo: `${MARCA} reaberto pela prova` })
+    const COPY_V2 = 'Lote durável do plano, revisto'
+    await atualizarItem({ projectId: PROJETO, planoId: plano.id, itemId: itemDoPlano.id, patch: { copyProposta: [COPY_V2] } })
+    // O que o ver-plano devolveria agora: a revisão do item RELIDO.
+    const itemRelido = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id } })
+    const itemRevisaoAtual = itemRelido ? revisaoDoItem(itemRelido) : ''
+    conferir('o item editado é executável, ainda aponta a arte antiga, e a revisão mudou', itemRelido?.status === 'editado' && itemRelido.generationId === arteAntigaDoItem && !!itemRevisaoAtual && itemRevisaoAtual !== itemRevisao, JSON.stringify({ status: itemRelido?.status, generationId: itemRelido?.generationId, revisaoMudou: itemRevisaoAtual !== itemRevisao }))
+    const specV2 = peca(6, { itemDePlanoId: itemDoPlano.id, planoId: plano.id, blocos: [{ papel: 'headline', linhas: [COPY_V2] }] })
+    const pecasAntesDoCaminho = await contarPecasDaMarca()
+    const caminho = await comporLevaPeloConector(LOTE_B, [itemDaLeva(specV2, 'b-2-v2', { itemRevisao: itemRevisaoAtual })])
+    const pecaNova = caminho.pecas[0]
+    conferir('produz: a peça nova vai para pecas como criada, nada em superadas, falhas ou conflitos', caminho.pecas.length === 1 && pecaNova.itemId === 'b-2-v2' && pecaNova.desfecho === 'criado' && pecaNova.generationId !== arteAntigaDoItem && caminho.superadas.length === 0 && caminho.falhas.length === 0 && caminho.conflitos.length === 0, JSON.stringify({ pecas: caminho.pecas, superadas: caminho.superadas, falhas: caminho.falhas, conflitos: caminho.conflitos }))
+    const linhaV2 = (await linhasDoLote(LOTE_B)).find((l) => l.itemId === 'b-2-v2')
+    conferir('uma Generation nova e um job, e a linha nova ligada a eles com a revisão atual', !!pecaNova && (await contarPecasDaMarca()) === pecasAntesDoCaminho + 1 && (await jobsPorGeracao([pecaNova.generationId])).get(pecaNova.generationId) === 1 && linhaV2?.generationId === pecaNova.generationId && linhaV2.situacao === 'enfileirado' && linhaV2.planoRevisao === itemRevisaoAtual, JSON.stringify({ linha: linhaV2?.situacao, revisao: linhaV2?.planoRevisao === itemRevisaoAtual }))
+    const itemNaFila = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true } })
+    conferir('o item de plano está na fila, ligado à peça nova', itemNaFila?.status === 'na-fila' && itemNaFila.generationId === pecaNova?.generationId, JSON.stringify(itemNaFila))
+    if (linhaV2?.jobId) await dispararJobAgora(linhaV2.jobId)
+    const itemComArteNova = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true, pageId: true, postId: true, updatedAt: true } })
+    const arteNova = pecaNova ? await db.generation.findUnique({ where: { id: pecaNova.generationId }, select: { status: true, resultUrl: true, createdAt: true } }) : null
+    conferir('a fila compôs a arte nova: o item saiu pronto com ela e com página', itemComArteNova?.status === 'pronto' && itemComArteNova.generationId === pecaNova?.generationId && !!itemComArteNova.pageId && arteNova?.status === 'COMPLETED' && !!arteNova.resultUrl, JSON.stringify({ item: itemComArteNova, arte: arteNova?.status }))
+
+    // ── 9. peça superada no plano ───────────────────────────────────────────
+    console.log('9) a leva antiga repetida depois de o item ganhar a arte nova: superada, com a arte atual do item, e nada é criado')
+    const camposDaLinha = async () => JSON.stringify((await linhasDoLote(LOTE_B)).map((l) => [l.itemId, l.situacao, l.generationId, l.jobId, l.tentativas, l.hashDoPayload, l.planoRevisao]))
+    const retratoDoProjeto = async () => ({
+      generations: await db.generation.count({ where: { projectId: PROJETO } }),
+      jobs: await db.generationJob.count({ where: { projectId: PROJETO } }),
+      paginas: await db.page.count({ where: { Template: { projectId: PROJETO } } }),
+      linhas: await camposDaLinha(),
+      item: JSON.stringify(await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true, pageId: true, postId: true, updatedAt: true } })),
+    })
+    const antesDaRepeticao = await retratoDoProjeto()
+    // A leva antiga, exatamente como foi pedida: mesma loteId, mesmos itemId, mesma copy e a itemRevisao ANTIGA do b-2.
+    const repeticao = await comporLevaPeloConector(LOTE_B, itensB.map((i) => itemDaLeva(i.spec, i.itemId, i.itemId === 'b-2' ? { itemRevisao } : {})))
+    const superada = repeticao.superadas[0]
+    conferir('b-2 vai para superadas (fora de pecas e de falhas), com a peça deste pedido', repeticao.superadas.length === 1 && superada.itemId === 'b-2' && superada.indice === 1 && superada.arteDestePedido === arteAntigaDoItem && !repeticao.pecas.some((p) => p.itemId === 'b-2') && repeticao.falhas.length === 0 && repeticao.conflitos.length === 0, JSON.stringify({ superadas: repeticao.superadas, falhas: repeticao.falhas, conflitos: repeticao.conflitos }))
+    const arteAtual = superada?.arteAtualDoItem ?? null
+    conferir('arteAtualDoItem é a arte nova do item: arte, página, data e situação', arteAtual?.generationId === pecaNova?.generationId && arteAtual?.pageId === itemComArteNova?.pageId && arteAtual?.feitaEm === arteNova?.createdAt.toISOString() && !!arteAtual?.feitaEmBrasilia && arteAtual?.situacao === 'pronta', JSON.stringify(arteAtual))
+    conferir('os outros itens da leva antiga seguem reaproveitados e prontos', JSON.stringify(repeticao.pecas.map((p) => `${p.itemId}:${p.desfecho}:${p.situacao}`)) === JSON.stringify(['b-1:reaproveitado:pronta', 'b-3:reaproveitado:pronta']), JSON.stringify(repeticao.pecas))
+    conferir('a nota manda contar à pessoa e perguntar, sem refazer sozinho', repeticao.nota.includes('Superadas') && repeticao.nota.includes('pergunte') && repeticao.nota.includes('Não refaça sem ela pedir'), repeticao.nota.slice(0, 160))
+    const depoisDaRepeticao = await retratoDoProjeto()
+    conferir('nenhuma Generation, job ou página nova; linhas do lote e item do plano intocados', JSON.stringify(depoisDaRepeticao) === JSON.stringify(antesDaRepeticao), JSON.stringify({ antes: { g: antesDaRepeticao.generations, j: antesDaRepeticao.jobs, p: antesDaRepeticao.paginas }, depois: { g: depoisDaRepeticao.generations, j: depoisDaRepeticao.jobs, p: depoisDaRepeticao.paginas } }))
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
