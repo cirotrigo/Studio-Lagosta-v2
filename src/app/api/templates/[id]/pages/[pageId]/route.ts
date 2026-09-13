@@ -139,12 +139,24 @@ export async function PATCH(
 
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }
-    if (validatedData.layers !== undefined) {
-      // Escrita HUMANA: a camada que a pessoa escondeu agora (estava visível) perde a marca de "escondida pelo
-      // revisor" que porventura carregasse — senão o esconder dela seria lido como mecânico (REV-9E-01).
-      const canonicas = canonicalizeLayersForPersistence(validatedData.layers)
+    const canonicas = validatedData.layers !== undefined ? canonicalizeLayersForPersistence(validatedData.layers) : undefined
+    /**
+     * Escrita HUMANA: a camada que a pessoa escondeu agora (estava visível) perde a marca de "escondida pelo
+     * revisor" que porventura carregasse — senão o esconder dela seria lido como mecânico (REV-9E-01).
+     *
+     * 🔴 "Estava visível" se mede contra a página que ESTA escrita substitui — a leitura protegida, refeita a
+     * cada volta do compare-and-set —, nunca contra `existingPage`, lida no começo do handler (C3-02 da
+     * pré-revisão do commit bf85cb26, 12/09/2026). O autosave não espera o PATCH em voo: a pessoa mostra a
+     * camada (P1), esconde de novo, e P2 sai com a marca antiga lendo a página de antes de P1 — contra ela a
+     * marca ficava, P2 gravava por cima de P1 a camada escondida COM a marca, e a remoção nunca entrava no
+     * contrato nem no aprendizado. Troca consciente: uma aba desatualizada que regrave escondida e marcada
+     * uma camada que outra aba mostrou passa a contar como remoção de quem gravou por último — coerente com
+     * a regra deste PATCH de que o contrato descreve o que ficou gravado em relação à base.
+     */
+    const reconciliarContra = (camadasDaBase: unknown) => {
+      if (canonicas === undefined) return
       const reconciliadas = Array.isArray(canonicas)
-        ? reconciliarMarcasDoRevisor(lerCamadas(existingPage.layers).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
+        ? reconciliarMarcasDoRevisor(lerCamadas(camadasDaBase).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
         : canonicas
       updateData.layers = JSON.stringify(reconciliadas)
     }
@@ -204,6 +216,7 @@ export async function PATCH(
     if (payloadVisual && !baseFresca) {
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
+    reconciliarContra((baseFresca ?? existingPage).layers)
     const previa = mudancasContra(baseFresca ?? existingPage)
     /** A base contra a qual a mudança foi de fato medida e gravada (a leitura protegida). */
     let baseGravada: BaseVisual = baseFresca ?? existingPage
@@ -245,6 +258,8 @@ export async function PATCH(
           for (let volta = 0; volta < 4 && !updated; volta++) {
             const fresca = await tx.page.findUnique({ where: { id: pageId }, select: selecaoDaBase })
             if (!fresca) throw new Error('page_not_found')
+            // A marca do revisor é reconciliada contra ESTA leitura, antes de medir e revisar (C3-02).
+            reconciliarContra(fresca.layers)
             const m = mudancasContra(fresca)
             const dados = dadosContra(fresca)
             if (m.layersChanged) {

@@ -6323,6 +6323,39 @@ dev: `scripts/validar-copy-autoral.ts`.
   `revisar-pagina.test.ts` (com a marca: sem revisão; edição em outro bloco:
   só aquele bloco; controle sem a marca: revisão da equipe).
 
+**Da pré-revisão do commit bf85cb26 (BLOQUEADO, C3-01…02, 12/09/2026):**
+
+- 🔴 **`ajustarArte` SEM `versaoEsperada` também grava por compare-and-set**
+  (C3-01, P2). O ajuste só de foto ou de nome, vindo do chat, lia a página,
+  levava segundos resolvendo imagem, medindo e rodando o autofix, e gravava com
+  `update` cru: se o editor salvasse texto novo no meio, a revisão calculada
+  contra a leitura antiga saía `sem-mudanca`, as camadas velhas iam por cima e a
+  página ficava **camadas X, contrato Y** — e a próxima edição no editor
+  assinava como `equipe` a volta do texto. Hoje, perdida a corrida, a página é
+  RELIDA e o ajuste só segue se o CONTEÚDO (`versaoDaPagina`) e o contrato
+  continuam os que ele leu; senão nada é gravado e volta 409
+  `PAGINA_MUDOU_DURANTE_O_AJUSTE` (`ajusteGravado: false`), que o conector
+  devolve como erro, sem retentar. **Não troque a releitura por um
+  compare-and-set puro em `updatedAt`**: o carimbo muda em qualquer escrita, e
+  com o editor aberto o autosave grava miniatura e camadas idênticas a cada
+  pausa — todo ajuste do chat tomaria 409 falso. Vale para página com e sem
+  contrato (sem contrato, gravar por cima apagava a edição da equipe em
+  silêncio). O ramo COM `versaoEsperada` ficou como estava (compare-and-set
+  estrito). Teste em `ajustar-arte-concorrencia.test.ts`.
+- **No PATCH, a marca `ocultaPeloRevisor` é reconciliada contra a leitura
+  PROTEGIDA** (C3-02, P3): contra a base fresca antes da prévia e de novo contra
+  `fresca` a cada volta do compare-and-set, antes de medir a diferença e revisar
+  o contrato — nunca contra `existingPage`. O autosave não espera o PATCH em voo:
+  mostrar a camada (P1) e escondê-la de novo fazia P2 manter a marca antiga lida
+  antes de P1, e a remoção humana nunca entrava no contrato nem no aprendizado.
+  Troca consciente: aba desatualizada que regrave escondida e marcada uma camada
+  que outra aba mostrou conta como remoção de quem gravou por último. Teste em
+  `src/app/api/templates/[id]/pages/[pageId]/__tests__/patch-marca-do-revisor.test.ts`.
+- **As duas regras cobrem também a reconciliação com as camadas ANTERIORES do
+  PR 5** (`camadasAnteriores`): as anteriores de `ajustarArte` são a leitura que
+  o compare-and-set protege, e as do PATCH são a `fresca` contra a qual a marca
+  foi reconciliada. Leitura nova de "como a página estava" que entre numa decisão
+  de autoria precisa ser a mesma que a escrita substitui.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

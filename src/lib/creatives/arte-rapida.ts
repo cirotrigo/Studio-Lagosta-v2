@@ -1133,7 +1133,53 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           )
         }
       } else {
-        await tx.page.update({ where: { id: page.id }, data: dadosDaPagina })
+        /**
+         * 🔴 SEM `versaoEsperada` a escrita também é protegida (C3-01 da
+         * pré-revisão do commit bf85cb26, 12/09/2026). O ajuste só de foto ou
+         * de nome, vindo do chat, lia a página, levava segundos resolvendo a
+         * imagem, medindo e rodando o autofix, e gravava com `update` cru: se o
+         * editor salvasse texto novo no meio (camadas Y com o contrato Y), a
+         * revisão calculada contra a leitura antiga saía `sem-mudanca`, as
+         * camadas X iam por cima e o contrato ficava o de Y — e a próxima
+         * edição no editor assinava como `equipe` a volta de Y para X.
+         *
+         * O carimbo `updatedAt` sozinho NÃO é a versão: ele muda em qualquer
+         * escrita, e com o editor aberto o autosave grava a miniatura e
+         * camadas idênticas a cada pausa. Por isso, perdida a corrida, a
+         * página é RELIDA e o ajuste só segue se o que ele leu continua
+         * valendo — o mesmo CONTEÚDO (`versaoDaPagina`) e o mesmo contrato;
+         * então tudo o que foi decidido contra a leitura (bake, revisão da
+         * copy, aprendizado) segue exato. Mudou o conteúdo ou o contrato: nada
+         * é gravado e o ajuste volta com 409 para ser pedido de novo sobre a
+         * página como ela está. Vale para página com e sem contrato: sem
+         * contrato, gravar por cima apagava em silêncio a edição da equipe e o
+         * diff do aprendizado ainda saía contra a leitura velha.
+         */
+        let carimbo = page.updatedAt
+        let gravou = false
+        for (let volta = 0; volta < 3 && !gravou; volta++) {
+          const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: carimbo }, data: dadosDaPagina })
+          if (gravada.count > 0) {
+            gravou = true
+            break
+          }
+          const fresca = await tx.page.findUnique({
+            where: { id: page.id },
+            select: { updatedAt: true, width: true, height: true, background: true, layers: true, copyAutoral: true },
+          })
+          const mesmoConteudo = !!fresca && versaoAntes !== null && versaoDaPagina(fresca) === versaoAntes
+          const mesmoContrato = !!fresca && JSON.stringify(fresca.copyAutoral ?? null) === JSON.stringify(page.copyAutoral ?? null)
+          if (!mesmoConteudo || !mesmoContrato) break
+          carimbo = fresca!.updatedAt
+        }
+        if (!gravou) {
+          throw new CreativeError(
+            'PAGINA_MUDOU_DURANTE_O_AJUSTE',
+            'A página mudou enquanto o ajuste era aplicado (alguém editou no editor ou outro ajuste entrou). Nada foi gravado — peça o ajuste de novo sobre a página como ela está.',
+            409,
+            { ajusteGravado: false },
+          )
+        }
       }
       if (travarRecomposicaoDaArte) {
         if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
