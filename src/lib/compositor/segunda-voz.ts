@@ -12,8 +12,9 @@
  *    manchete inteira sai na voz 1 — mesmo que a variante tenha `headline2`.
  *    Declaração numa variante SEM voz 2 não é honrada e vira aviso (nunca
  *    some em silêncio).
- *  - SEM contrato (spec legada, só `blocos`): vale a regra antiga — última
- *    linha na voz 2 quando a variante tem `headline2` e há 2+ linhas. É uma
+ *  - SEM contrato (spec legada, só `blocos`): vale a regra antiga — a última
+ *    linha COM TEXTO (e os respiros depois dela) na voz 2 quando a variante tem
+ *    `headline2` e há 2+ linhas com texto; nunca uma voz 2 vazia. É uma
  *    transformação do sistema, e a copy efetiva a registra como tal.
  *  - A voz 2 é sempre o FIM da manchete (as duas vozes são duas camadas
  *    empilhadas): a validação do contrato já recusa índice fora do fim.
@@ -63,8 +64,19 @@ export function dividirManchete(
     }
     return { voz1: linhas.slice(0, corte), voz2: linhas.slice(corte), origem: 'contrato', aviso: null }
   }
-  if (args.temSegundaVoz && linhas.length >= 2) {
-    return { voz1: linhas.slice(0, -1), voz2: linhas.slice(-1), origem: 'legado', aviso: null }
+  /**
+   * Legado: a voz 2 é a ÚLTIMA linha COM TEXTO, com os respiros que a seguem.
+   * Desde que linha vazia é conteúdo (R02/R03 do PR 10) a manchete pode chegar
+   * com respiro no fim — "na brasa\n" digitado no editor (Shift+Enter) volta
+   * como ['Costela', 'na brasa', ''] na recomposição sem contrato —, e a última
+   * linha crua pôs uma voz 2 VAZIA: "na brasa" perdia cor e fonte da segunda
+   * voz numa edição de OUTRO texto (C10-02 da pré-revisão do HEAD 8b8e801f).
+   * Com menos de duas linhas com texto não há segunda voz.
+   */
+  const comTexto = linhas.flatMap((l, i) => (l.trim().length > 0 ? [i] : []))
+  if (args.temSegundaVoz && comTexto.length >= 2) {
+    const corte = comTexto[comTexto.length - 1]
+    return { voz1: linhas.slice(0, corte), voz2: linhas.slice(corte), origem: 'legado', aviso: null }
   }
   return { voz1: linhas, voz2: [], origem: 'nenhuma', aviso: null }
 }

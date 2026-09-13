@@ -9,6 +9,16 @@
  * - R04: extra com id "constructor"/"toString" esvaziado na página lançava
  *   `texto.split is not a function` — o mapa de extras herdava do protótipo.
  *
+ * Da pré-revisão do HEAD 8b8e801f (BLOQUEADO, 12/09/2026):
+ *
+ * - C10-01: sem nada refeito e sem orçamento, a edição feita durante o job era
+ *   descartada e o job fechava DONE — agora `PAGINA_MUDOU_DURANTE`.
+ * - C10-02: com o respiro preservado, "na brasa\n" na voz 2 punha uma segunda
+ *   voz VAZIA na recomposição sem contrato.
+ * - C10-03: nenhum teste passava pelo ramo "nada foi refeito", e a fila falsa
+ *   ignorava o "renderizar como está" — agora ela o grava e a execução
+ *   seguinte o recebe.
+ *
  * Banco, Blob, render e fila são falsos, no molde de
  * `recompor-camadas-extras.test.ts`; `comporPeca` é falso com a primeira linha
  * real (`validarSpec` → SPEC_INVALIDA) e monta a foto da spec + a PREPARAÇÃO
@@ -18,6 +28,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Layer } from '@/types/template'
 import { montarAssinatura } from '../assinatura'
 import { copyDaPaginaPorIdentidade, specComACopyDaPagina, textoDoExtraNaPagina } from '../defasagem'
+import { dividirManchete } from '../segunda-voz'
 import { entradaDePersistencia } from '../persistencia'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec, type SpecDePeca } from '../spec'
@@ -37,10 +48,19 @@ const estado = vi.hoisted(() => ({
   comporCamadas: null as null | ((spec: unknown) => unknown[]),
   /** Roda logo depois da gravação condicional da página — a janela do R01. */
   aposGravarPagina: null as null | (() => void),
+  /** Roda logo depois de o levantamento ler a página — a janela do ramo "nada foi refeito" (C10-01). */
+  aposLevantamento: null as null | (() => void),
+  /** O que a fila devolve em `pedirNovaTentativa`: há orçamento para outra tentativa? */
+  orcamento: true,
+  /** O marcador "renderizar como está" que a fila grava no payload do job (REV-FINAL-01). */
+  renderizarComoEsta: false,
+  /** As camadas de cada re-render como está. */
+  renders: [] as unknown[],
+  logs: [] as string[],
   blobs: 0,
   relogio: 0,
 }))
-const pedirNovaTentativa = vi.hoisted(() => vi.fn(async (_jobId: unknown, _motivo: unknown) => true))
+const pedirNovaTentativa = vi.hoisted(() => vi.fn(async (_jobId: unknown, _motivo: unknown) => estado.orcamento))
 
 vi.mock('@/lib/db', () => ({
   db: {
@@ -68,7 +88,13 @@ vi.mock('@/lib/db', () => ({
       },
     },
     generation: {
-      findMany: async () => (estado.generation ? [estado.generation] : []),
+      findMany: async () => {
+        const achadas = estado.generation ? [estado.generation] : []
+        const depois = estado.aposLevantamento
+        estado.aposLevantamento = null
+        depois?.()
+        return achadas
+      },
       findUnique: async () => estado.generation,
       update: async ({ data }: { data: Record<string, unknown> }) => {
         estado.generation = { ...estado.generation, ...data }
@@ -86,13 +112,30 @@ vi.mock('@/lib/db', () => ({
         return { count: 1 }
       },
     },
-    postLog: { create: async () => ({}) },
+    postLog: { create: async ({ data }: { data: { message: string } }) => { estado.logs.push(data.message); return {} } },
   },
 }))
 vi.mock('@vercel/blob', () => ({ put: async () => ({ url: `https://blob.exemplo/arte-rapida/8/pg-1-nova-${++estado.blobs}.png` }), del: async () => undefined }))
 // A fila do PR 0 também marca a força em execução/atendida e o "renderizar como está" (REV-09, REV-FINAL-01).
-vi.mock('@/lib/ai/generation-queue', () => ({ pedirNovaTentativa, marcarForcaAtendida: async () => undefined, marcarForcaEmExecucao: async () => undefined, marcarRenderComoEsta: async () => undefined }))
-vi.mock('@/lib/creatives/persist', () => ({ renderPageAndRegister: async () => { throw new Error('não deveria re-renderizar: a página só teve texto ou foto trocados') } }))
+// A fila falsa HONRA o "renderizar como está": grava o marcador, e `jobAtual()` o entrega à execução seguinte (C10-03).
+vi.mock('@/lib/ai/generation-queue', () => ({
+  pedirNovaTentativa,
+  marcarForcaAtendida: async () => undefined,
+  marcarForcaEmExecucao: async () => undefined,
+  marcarRenderComoEsta: async (_jobId: unknown, ligar: boolean) => {
+    estado.renderizarComoEsta = ligar
+    return true
+  },
+}))
+// O re-render falso REGISTRA como o persist faz com `generationId`: nova URL e MERGE do patch de fieldValues.
+vi.mock('@/lib/creatives/persist', () => ({
+  renderPageAndRegister: async (entrada: { page: { layers: unknown }; fieldValues: Record<string, unknown> }) => {
+    estado.renders.push(entrada.page.layers)
+    const url = `https://blob.exemplo/arte-rapida/8/pg-1-nova-${++estado.blobs}.png`
+    estado.generation = { ...estado.generation, resultUrl: url, fieldValues: { ...((estado.generation?.fieldValues ?? {}) as Record<string, unknown>), ...entrada.fieldValues } }
+    return { url }
+  },
+}))
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 vi.mock('../../../../prisma/generated/client', () => ({ PostLogEvent: { EDITED: 'EDITED' } }))
 vi.mock('../compor', async () => {
@@ -132,8 +175,22 @@ const assinatura = montarAssinatura({
   formatoDaPagina: 'story',
   numerosDoProjeto: null,
 })
+// A variante COM segunda voz da manchete (C10-02).
+const comVoz2 = montarAssinatura({
+  pagina: {
+    id: 'p-voz2', name: 'Story com voz 2', width: 1080, height: 1920,
+    layers: [
+      texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+      texto('headline2', { fontFamily: 'Bevan', fontSize: 100, color: '#F4301A', lineHeight: 1 }, 'Voz 2', { position: { x: 92, y: 300 }, metadata: { groupId: 'g1' } }),
+      texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 420 }, metadata: { groupId: 'g1' } }),
+    ],
+  },
+  formatoDaPagina: 'story',
+  numerosDoProjeto: null,
+})
+let assinaturaAtual = assinatura
 const textos = (spec: SpecDePeca) =>
-  prepararBlocos({ assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec })
+  prepararBlocos({ assinatura: assinaturaAtual, colunaUtil: 1080 - 2 * assinaturaAtual.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec })
 /**
  * A camada extra com [colchetes] vira RICH TEXT com o trecho numa cor diferente
  * da base — como a composição a entrega quando a marca tem destaque (esta
@@ -167,7 +224,13 @@ const trocar = (camadas: unknown, id: string, parcial: Partial<Layer>) => (camad
  * Cria a peça, "persiste" (fieldValues com spec e snapshot, contrato da página) e agenda o slide 2/3 de um carrossel.
  * `editar` recebe as camadas persistidas e devolve as que estão na página no momento da recomposição.
  */
-function montarCenario(entrada: Record<string, unknown>, editar: (camadas: Layer[]) => Layer[], opcoes: { comContrato: boolean }) {
+function montarCenario(entrada: Record<string, unknown>, editar: (camadas: Layer[]) => Layer[], opcoes: { comContrato: boolean; assinatura?: typeof assinatura }) {
+  assinaturaAtual = opcoes.assinatura ?? assinatura
+  estado.aposLevantamento = null
+  estado.orcamento = true
+  estado.renderizarComoEsta = false
+  estado.renders = []
+  estado.logs = []
   estado.page = null
   estado.generation = null
   estado.posts.clear()
@@ -195,9 +258,12 @@ function montarCenario(entrada: Record<string, unknown>, editar: (camadas: Layer
 }
 const fotoDaPaginaGravada = () => (estado.page!.layers as Layer[]).find((c) => c.id === 'bg-foto')
 const job = { generationId: 'gen-1', projectId: 8, recompor: { pageId: 'pg-1', origem: 'editor' as const }, queueJobId: 'job-1' }
+/** O job como a fila o entrega à PRÓXIMA execução: com o marcador "renderizar como está", quando gravado. */
+const jobAtual = () => ({ ...job, recompor: { ...job.recompor, ...(estado.renderizarComoEsta ? { renderizarComoEsta: true } : {}) } })
 
 beforeEach(() => {
   vi.spyOn(console, 'log').mockImplementation(() => undefined)
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
 })
 
 describe('R01 — a página mudou DEPOIS da gravação e antes do fim do job: o runner pede nova tentativa e o slide converge', () => {
@@ -207,7 +273,7 @@ describe('R01 — a página mudou DEPOIS da gravação e antes do fim do job: o 
     camadasExtras: [{ id: 'nota', linhas: ['vale só no almoço'], herdaDe: 'apoio' }],
   }
 
-  it('troca SÓ de foto (B → C) na janela: nova tentativa pedida; a segunda execução recompõe com C e o slide mostra C', async () => {
+  it('troca SÓ de foto (B → C) na janela: nova tentativa pedida com "renderizar como está"; a segunda execução re-renderiza a página com C e o slide mostra C', async () => {
     montarCenario(entrada, (camadas) => trocar(camadas, 'bg-foto', { fileUrl: FOTO_B }), { comContrato: true })
     // O editor salva a foto C logo depois de a recomposição gravar a página com B.
     estado.aposGravarPagina = () => {
@@ -222,16 +288,19 @@ describe('R01 — a página mudou DEPOIS da gravação e antes do fim do job: o 
     expect(fotoDaPaginaGravada()?.fileUrl).toBe(FOTO_C)
     expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
     expect(pedirNovaTentativa.mock.calls[0][0]).toBe('job-1')
+    expect(estado.renderizarComoEsta).toBe(true)
 
-    // A nova tentativa: recompõe com a foto da página (C), troca o slide e termina sem pedir outra.
-    await processarRecomposicaoEmBackground(job)
-    expect(estado.specsCompostas).toHaveLength(2)
-    expect((estado.specsCompostas[1] as SpecDePeca).foto).toEqual({ url: FOTO_C })
+    // A nova tentativa, com o marcador que a fila gravou: RE-RENDERIZA a página como está (C), como em
+    // produção — nada de recompor pela spec —, troca o slide, consome o marcador e não pede outra.
+    await processarRecomposicaoEmBackground(jobAtual())
+    expect(estado.specsCompostas).toHaveLength(1)
+    expect(estado.renders).toHaveLength(1)
+    expect((estado.renders[0] as Layer[]).find((c) => c.id === 'bg-foto')?.fileUrl).toBe(FOTO_C)
+    // O extra continua na página re-renderizada, com o texto e a identidade.
+    expect((estado.renders[0] as Layer[]).find((c) => c.id === 'hora')?.content).toBe('11h às 15h')
     expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.exemplo/arte-rapida/8/pg-1-nova-2.png', SLIDE_3])
     expect(estado.generation!.resultUrl).toBe('https://blob.exemplo/arte-rapida/8/pg-1-nova-2.png')
-    expect(fotoDaPaginaGravada()?.fileUrl).toBe(FOTO_C)
-    // Os extras continuam com a identidade na peça recomposta.
-    expect((estado.specsCompostas[1] as SpecDePeca).blocos!.find((b) => b.id === 'hora')).toMatchObject({ herdaDe: 'apoio', linhas: ['11h às 15h'] })
+    expect(estado.renderizarComoEsta).toBe(false)
     expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
   })
 
@@ -330,5 +399,90 @@ describe('R04 — extra com id "constructor"/"toString" esvaziado na página nã
         }
       })
     }
+  }
+})
+
+describe('C10-01 e C10-03 — nada foi refeito (a página estava em dia no levantamento) e a página mudou durante o job', () => {
+  const entrada = {
+    projectId: 8, formato: 'story', foto: { url: FOTO_A },
+    blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'apoio', linhas: ['no bafo'] }, { papel: 'servico', linhas: ['11h às 15h'], herdaDe: 'apoio', id: 'hora' }],
+    camadasExtras: [{ id: 'nota', linhas: ['vale só no almoço'], herdaDe: 'apoio' }],
+  }
+  const editorTrocaAFotoNaJanela = () => {
+    estado.aposLevantamento = () => {
+      estado.page = { ...estado.page!, layers: trocar(estado.page!.layers, 'bg-foto', { fileUrl: FOTO_C }), updatedAt: new Date(Date.UTC(2026, 8, 12, 23, 0, ++estado.relogio)) }
+    }
+  }
+
+  it('com orçamento: nova tentativa sem compor nem renderizar; a tentativa seguinte recompõe com C e o slide mostra C', async () => {
+    montarCenario(entrada, (camadas) => camadas, { comContrato: true })
+    editorTrocaAFotoNaJanela()
+    const { processarRecomposicaoEmBackground } = await import('../recompor')
+
+    await processarRecomposicaoEmBackground(jobAtual())
+    expect(estado.specsCompostas).toHaveLength(0)
+    expect(estado.renders).toHaveLength(0)
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
+    expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
+    expect(pedirNovaTentativa.mock.calls[0][0]).toBe('job-1')
+
+    await processarRecomposicaoEmBackground(jobAtual())
+    expect(estado.specsCompostas).toHaveLength(1)
+    expect((estado.specsCompostas[0] as SpecDePeca).foto).toEqual({ url: FOTO_C })
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.exemplo/arte-rapida/8/pg-1-nova-1.png', SLIDE_3])
+    expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
+  })
+
+  it('sem orçamento: PAGINA_MUDOU_DURANTE (o job falha com motivo) e a recusa chega à arte e ao histórico do post — nunca DONE com o slide velho', async () => {
+    montarCenario(entrada, (camadas) => camadas, { comContrato: true })
+    estado.orcamento = false
+    editorTrocaAFotoNaJanela()
+    const { processarRecomposicaoEmBackground } = await import('../recompor')
+
+    await expect(processarRecomposicaoEmBackground(jobAtual())).rejects.toMatchObject({ code: 'PAGINA_MUDOU_DURANTE' })
+    expect(estado.specsCompostas).toHaveLength(0)
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
+    expect((estado.generation!.fieldValues as { recomposicao?: unknown }).recomposicao).toMatchObject({ estado: 'recusada', errorCode: 'PAGINA_MUDOU_DURANTE' })
+    expect(estado.logs.join(' ')).toMatch(/A arte NÃO foi atualizada: .*não há mais tentativas/)
+  })
+
+  it('sem edição na janela: nada refeito, nenhuma tentativa, nenhum erro', async () => {
+    montarCenario(entrada, (camadas) => camadas, { comContrato: false })
+    const { processarRecomposicaoEmBackground } = await import('../recompor')
+    await processarRecomposicaoEmBackground(jobAtual())
+    expect(estado.specsCompostas).toHaveLength(0)
+    expect(estado.renders).toHaveLength(0)
+    expect(pedirNovaTentativa).not.toHaveBeenCalled()
+  })
+})
+
+describe('C10-02 — a voz 2 legada é a última linha COM TEXTO; o respiro não vira segunda voz vazia', () => {
+  it('dividirManchete sem contrato: normal, "\\n" no fim, linha só de espaços no fim, respiro interno e uma só linha com texto', () => {
+    const legado = (linhas: string[]) => dividirManchete(linhas, { temSegundaVoz: true, comContrato: false })
+    expect(legado(['Costela', 'na brasa'])).toEqual({ voz1: ['Costela'], voz2: ['na brasa'], origem: 'legado', aviso: null })
+    expect(legado(['Costela', 'na brasa', ''])).toEqual({ voz1: ['Costela'], voz2: ['na brasa', ''], origem: 'legado', aviso: null })
+    expect(legado(['Costela', 'na brasa', '   '])).toEqual({ voz1: ['Costela'], voz2: ['na brasa', '   '], origem: 'legado', aviso: null })
+    expect(legado(['Costela', '', 'na brasa'])).toEqual({ voz1: ['Costela', ''], voz2: ['na brasa'], origem: 'legado', aviso: null })
+    expect(legado(['Costela', ''])).toEqual({ voz1: ['Costela', ''], voz2: [], origem: 'nenhuma', aviso: null })
+  })
+
+  it('com contrato nada muda: a declaração do autor manda, respiro incluído', () => {
+    expect(dividirManchete(['Costela', 'na brasa', ''], { temSegundaVoz: true, comContrato: true, declaradas: [1, 2] })).toEqual({ voz1: ['Costela'], voz2: ['na brasa', ''], origem: 'contrato', aviso: null })
+    expect(dividirManchete(['Costela', 'na brasa', ''], { temSegundaVoz: true, comContrato: true, declaradas: null })).toEqual({ voz1: ['Costela', 'na brasa', ''], voz2: [], origem: 'nenhuma', aviso: null })
+  })
+
+  for (const [rotulo, voz2] of [['normal', 'na brasa'], ['"\\n" no fim', 'na brasa\n'], ['linha só de espaços no fim', 'na brasa\n   ']] as const) {
+    it(`pelo consumidor, página SEM contrato (${rotulo}): editar o APOIO recompõe com "na brasa" na segunda voz, e a primeira voz fica "Costela"`, async () => {
+      const entrada = { projectId: 8, formato: 'story', foto: { url: FOTO_A }, blocos: [{ papel: 'headline', linhas: ['Costela', 'na brasa'] }, { papel: 'apoio', linhas: ['no bafo'] }] }
+      montarCenario(entrada, (camadas) => trocar(trocar(camadas, 'headline2', { content: voz2 }), 'apoio', { content: 'no bafo e na lenha' }), { comContrato: false, assinatura: comVoz2 })
+      const { recomporPaginaDefasada } = await import('../recompor')
+      const r = await recomporPaginaDefasada({ pageId: 'pg-1' })
+      expect(r.recomposta).toBe(true)
+      expect((estado.specsCompostas[0] as SpecDePeca).blocos!.find((b) => b.papel === 'headline')!.linhas).toEqual(['Costela', ...voz2.split('\n')])
+      const gravadas = estado.page!.layers as Layer[]
+      expect(gravadas.find((c) => c.id === 'headline')?.content).toBe('Costela')
+      expect(gravadas.find((c) => c.id === 'headline2')?.content).toBe(voz2)
+      expect(gravadas.find((c) => c.id === 'apoio')?.content).toBe('no bafo e na lenha')
+    })
   }
 })

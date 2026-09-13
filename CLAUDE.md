@@ -9367,17 +9367,21 @@ herdando do apoio, os dois tipos de post).
   Causa: o runner comparava só a COPY antes × depois; a foto trocada (ou o
   corte mexido) depois da gravação condicional da página e antes do fim do job
   terminava com o slide mostrando B e a página mostrando C — o compare-and-set
-  da página não cobre essa janela. Regra: `paginaMudouDesde(referencia, agora)`
-  (`defasagem.ts`) faz a MESMA pergunta que a próxima execução faz
-  (`medirDefasagem`: texto de toda camada visível, extras inclusive; foto;
-  enquadramento; geometria; tipo; camada acrescentada ou removida), e a
-  referência são as camadas que a ARTE reflete
-  (`ResultadoDaRecomposicao.camadasDaArte`: as gravadas, ou as da página lida
-  para o re-render) — nunca a página de antes do job, senão a gravação da
-  própria recomposição viraria tentativa inútil. Ilegível não pede tentativa.
-  Testes: consumidor do runner em `ciclo-extras-revisao.test.ts` (troca só de
-  foto na janela → nova tentativa → a segunda execução recompõe com C e o slide
-  mostra C; só o corte → nova tentativa; sem edição → nenhuma).
+  da página não cobre essa janela. Regra (reescrita pela C10-04, depois do
+  rebase sobre o PR 0): **com arte refeita**, a referência é o que o job GRAVOU
+  — a versão visual `versaoGravada` do PR 0 (dimensões, fundo e camadas: foto e
+  corte vivem nas camadas); **sem nada refeito** não houve gravação, e a
+  referência é a página lida ANTES do job, perguntada por
+  `paginaMudouDesde(camadasAntes, agora)` (`defasagem.ts`, a pergunta de
+  `medirDefasagem`: texto de toda camada visível, extras inclusive; foto;
+  enquadramento; geometria; tipo; camada acrescentada ou removida). Nos dois
+  ramos, sem orçamento para outra tentativa o job LANÇA `PAGINA_MUDOU_DURANTE`
+  (C10-01). Ilegível não pede tentativa. Não existe `camadasDaArte` no resultado
+  — o campo foi removido por não ter leitor. Testes: consumidor do runner em
+  `ciclo-extras-revisao.test.ts` (arte refeita: troca só de foto na janela →
+  nova tentativa com "renderizar como está" → a segunda execução re-renderiza
+  com C e o slide mostra C; só o corte → nova tentativa; sem edição → nenhuma.
+  Nada refeito: ver a pré-revisão abaixo).
 - 🔴 **R02 — schema público que espelha validador interno usa os limites DELE.**
   Causa: `linhasDoBloco` do conector exigia string não vazia e até 6 linhas, e
   `compor-arte`, `compor-leva` e `medir-copy` recusavam na porta o respiro ("")
@@ -9415,3 +9419,57 @@ herdando do apoio, os dois tipos de post).
   com e sem contrato, pelo consumidor da recomposição — sem exceção, extra
   tirado com aviso, slide trocado. (`textosDaPagina` usa `in` e renomeia a
   chave para "constructor#2": cosmético, sem exceção.)
+
+**Da pré-revisão do HEAD 8b8e801f (BLOQUEADO, C10-01…04, 12/09/2026):**
+
+- 🔴 **C10-01 — sem nada refeito e sem orçamento, a edição feita durante o job
+  NÃO pode virar sucesso.** Causa: a união do rebase trouxe o ramo "nada foi
+  refeito" (`paginaMudouDesde`) sem a metade do REV-D02: com `pedirNovaTentativa`
+  devolvendo `false` o runner seguia, `fecharJob` lia a Generation COMPLETED e
+  fechava DONE — a página com a foto ou o texto novo, o slide com a arte velha,
+  sem `lastError` nem recusa. Regra: os dois ramos da conferência final lançam
+  `PAGINA_MUDOU_DURANTE` quando não há mais tentativa; o `catch` grava a recusa
+  na arte e no histórico do post e relança (o job fica FAILED com motivo).
+  Teste: página em dia no levantamento, foto trocada logo depois dele,
+  orçamento esgotado → rejeita com `PAGINA_MUDOU_DURANTE`, `recomposicao.estado
+  = 'recusada'` e histórico "A arte NÃO foi atualizada".
+- 🔴 **C10-02 — a voz 2 legada é a última linha COM TEXTO, com os respiros que
+  a seguem, e nunca uma voz 2 vazia** (`dividirManchete`, `segunda-voz.ts`).
+  Causa: o R03 passou a preservar o respiro, e a regra legada "última linha na
+  voz 2" pegava a linha VAZIA de "na brasa\n": numa página sem contrato (todas
+  as de produção hoje) uma edição em OUTRO texto recompunha a peça com "na
+  brasa" na voz 1 (sem a cor e a fonte da segunda voz) e reescrevia as camadas.
+  O R02 abriu a mesma porta pela composição do chat (linha "" aceita na porta).
+  Com contrato nada muda: manda `linhasNaVoz2`. Menos de duas linhas com texto
+  = sem segunda voz. Testes: unidade (normal, "\n" no fim, linha só de espaços
+  no fim, respiro interno, uma linha com texto, controle com contrato) e
+  consumidor sem contrato, variante com `headline2`, apoio editado → `headline2`
+  mantém "na brasa" exatamente como estava. **Como o editor grava o "\n" final:**
+  lido no código, não medido no navegador — `konva-editable-text.tsx` põe a
+  quebra com Shift+Enter (Enter confirma) e confirma com `onChange({ content:
+  finalValue })`, o valor cru do textarea, sem `trim`; o PATCH da página aceita
+  `layers` como `z.array(z.unknown())` e não normaliza `content`.
+- **C10-03 — o teste do fim do job tem de ALCANÇAR o ramo que prova.** Causa:
+  os três casos do R01 partiam de arte que precisava ser refeita, então o ramo
+  "nada foi refeito" não era alcançado (apagá-lo deixava a suíte verde), e a
+  fila falsa ignorava o "renderizar como está": a 2ª execução recompunha pela
+  spec, caminho que a produção não segue. Regra: a fila falsa grava o marcador
+  e `jobAtual()` o entrega à execução seguinte; o re-render falso registra (nova
+  URL e merge do patch). Testes novos no ramo "nada foi refeito": com orçamento
+  → tentativa sem compor nem renderizar, e a seguinte recompõe com C; sem
+  orçamento → `PAGINA_MUDOU_DURANTE`; sem edição → nada.
+- **C10-04 — documentação e código dizem a mesma regra**: o parágrafo do R01
+  acima foi reescrito com os dois ramos, e `ResultadoDaRecomposicao.camadasDaArte`
+  (preenchido e sem leitor) saiu. Comparar com o que o job gravou é a regra
+  certa — e é o que a `versaoGravada` do PR 0 já faz no ramo em que houve
+  gravação.
+- ⚠️ **Limites conhecidos, herdados do PR 0 e NÃO mexidos aqui:**
+  - edição salva DEPOIS da leitura final da conferência e antes de `fecharJob`
+    também encontra o job `RUNNING` e não o reabre: o job fecha DONE com a arte
+    anterior, até a próxima edição ou a varredura. Fechar isso exige marcar no
+    job uma "edição pendente" no enfileiramento, como já se faz com a força;
+  - recusa determinística desatualizada: se a equipe encurta o texto enquanto o
+    job refaz a peça com o texto longo, o job termina
+    `TEXTO_NAO_CABE_NA_COLUNA` → FAILED, com a recusa gravada nos posts, e a
+    edição que resolveria não reabre o job em andamento. A recusa fica
+    desatualizada até a próxima edição.

@@ -235,12 +235,6 @@ export interface ResultadoDaRecomposicao {
   recomposta: boolean
   /** A arte nova, quando houve. */
   url: string | null
-  /**
-   * As camadas que a arte nova REFLETE — as gravadas na recomposição, ou as da
-   * página lida para o re-render —, `null` quando nada foi refeito. É contra
-   * elas que o runner confere se a página mudou durante o job (R01).
-   */
-  camadasDaArte: unknown | null
   trocados: TrocaDeSlide[]
   naoTrocados: Array<{ postId: string; indice: number; motivo: string }>
   congelados: string[]
@@ -311,7 +305,6 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     generationId: levantamento.arte?.generationId ?? null,
     recomposta: false,
     url: null,
-    camadasDaArte: null,
     trocados: [],
     naoTrocados: [],
     congelados: levantamento.congelados,
@@ -451,7 +444,6 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   }
 
   let novaUrl: string
-  let camadasDaArte: unknown
   let recomposta = false
   let invalidados = 0
   let versaoGravada: string | null = null
@@ -482,7 +474,6 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       contentType: 'image/png',
     })
     novaUrl = blob.url
-    camadasDaArte = camadas.camadas
     recomposta = true
 
     if (input.antesDeGravar) await input.antesDeGravar()
@@ -654,7 +645,6 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       },
     })
     novaUrl = registrada.url
-    camadasDaArte = page.layers
   }
 
   const { trocados, naoTrocados } = await trocarNosPosts({
@@ -684,7 +674,6 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     generationId: arte.generationId,
     recomposta,
     url: novaUrl,
-    camadasDaArte,
     trocados,
     naoTrocados,
     congelados: levantamento.congelados,
@@ -1021,8 +1010,24 @@ export async function processarRecomposicaoEmBackground(args: {
        */
       const camadasDepois = await camadasDaPagina(pageId)
       if (camadasDepois != null && paginaMudouDesde(camadasAntes, camadasDepois)) {
-        const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
-        if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
+        const motivo = 'a página foi editada durante a recomposição, que a encontrou em dia'
+        const voltou = await pedirNovaTentativa(args.queueJobId, motivo)
+        if (voltou) {
+          console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
+          return
+        }
+        /**
+         * Sem orçamento, a MESMA regra do ramo de cima (REV-D02): a divergência
+         * não vira sucesso. Seguir fechava DONE com o slide velho diante da foto
+         * ou do texto novo — sem `lastError`, sem recusa no histórico —, e o
+         * enfileiramento não reabre job em andamento (C10-01 da pré-revisão do
+         * HEAD 8b8e801f, 12/09/2026).
+         */
+        throw new CreativeError(
+          'PAGINA_MUDOU_DURANTE',
+          `${motivo}, e não há mais tentativas: a arte do slide reflete a versão anterior. Edite a página de novo para refazer.`,
+          409,
+        )
       }
     }
     /**
