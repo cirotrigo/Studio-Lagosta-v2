@@ -27,6 +27,7 @@ import { canonico } from '@/lib/copy-autoral/revisao'
 import { parseBRT } from '@/lib/creatives/data-brt'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { lerCamadas } from '@/lib/posts/page-layers'
+import { ROTULO_DO_STATUS, normalizarStatusDoItem } from '@/lib/planos/vocabulario'
 import { validarIdentidadeDeLote } from './identidade'
 
 /** Mudou a normalização do pedido? Suba a versão — e trate o hash antigo como o PR 11 trata o dele. */
@@ -55,48 +56,80 @@ export const itemDoAgendamentoSchema = z
   .strict()
 export type ItemDoAgendamento = z.infer<typeof itemDoAgendamentoSchema>
 
+const CHAVES_DO_ITEM = new Set(Object.keys(itemDoAgendamentoSchema.shape))
+
+/** Um item da leva: o pedido, e a falha DELE quando um campo do pedido é inválido. */
+export interface ItemValidado {
+  item: ItemDoAgendamento
+  falha: FalhaDoItem | null
+}
+
 /**
- * A leva inteira validada, ou a lista de problemas. Conferida ANTES de tocar
- * qualquer item — mesma regra de `compor-leva`: metade agendada e metade
- * recusada é a retomada que a identidade existe para evitar.
+ * A leva validada. Duas camadas, de propósito (pré-revisão C12-1c):
+ *  - **a IDENTIDADE da leva é conferida inteira antes de tocar qualquer item** —
+ *    loteId, itemId válido e único, nenhuma chave desconhecida, 1 a 60 itens.
+ *    Qualquer problema aqui recusa a chamada (mesma regra de `compor-leva`:
+ *    metade agendada e metade recusada é a retomada que a identidade evita);
+ *  - **campo do PEDIDO inválido é problema DO ITEM** (`quando` vazio ou
+ *    ilegível, legenda longa demais, campanha vazia): o item volta `falhou` e os
+ *    outros seguem. Antes, um `quando: ""` recusava a leva INTEIRA com um erro
+ *    que falava em "identidade".
  */
 export function validarAgendamentoDoLote(
   loteId: unknown,
   itens: unknown,
-): { loteId: string; itens: ItemDoAgendamento[]; problemas: [] } | { loteId: null; itens: null; problemas: string[] } {
+): { loteId: string; itens: ItemValidado[]; problemas: [] } | { loteId: null; itens: null; problemas: string[] } {
   const problemas: string[] = []
   if (!Array.isArray(itens) || itens.length === 0) problemas.push('itens: mande pelo menos um item')
   else if (itens.length > MAX_ITENS_DO_AGENDAMENTO) problemas.push(`itens: no máximo ${MAX_ITENS_DO_AGENDAMENTO} por chamada`)
-  const validos: ItemDoAgendamento[] = []
+  const validos: ItemValidado[] = []
   let loteNormalizado: string | null = null
   const vistos = new Map<string, number>()
   for (const [indice, bruto] of (Array.isArray(itens) ? itens : []).entries()) {
-    const r = itemDoAgendamentoSchema.safeParse(bruto)
-    if (!r.success) {
-      for (const p of r.error.issues) problemas.push(`itens.${indice}.${p.path.join('.') || '(item)'}: ${p.message}`)
+    if (!bruto || typeof bruto !== 'object' || Array.isArray(bruto)) {
+      problemas.push(`itens.${indice}: cada item é um objeto com itemId`)
       continue
     }
-    const id = validarIdentidadeDeLote({ loteId, itemId: r.data.itemId })
+    const campos = bruto as Record<string, unknown>
+    const desconhecidas = Object.keys(campos).filter((k) => !CHAVES_DO_ITEM.has(k))
+    if (desconhecidas.length > 0) {
+      problemas.push(`itens.${indice}: chave desconhecida (${desconhecidas.join(', ')})`)
+      continue
+    }
+    const id = validarIdentidadeDeLote({ loteId, itemId: campos.itemId })
     if (!id.identidade) {
       for (const p of id.problemas) problemas.push(p.startsWith('itemId') ? `itens.${indice}.${p}` : p)
       continue
     }
     loteNormalizado = id.identidade.loteId
-    const anterior = vistos.get(id.identidade.itemId)
+    const itemId = id.identidade.itemId
+    const anterior = vistos.get(itemId)
     if (anterior !== undefined) {
-      problemas.push(`itens.${indice}.itemId: "${id.identidade.itemId}" repete o item ${anterior} — cada peça é agendada uma vez por chamada`)
+      problemas.push(`itens.${indice}.itemId: "${itemId}" repete o item ${anterior} — cada peça é agendada uma vez por chamada`)
       continue
     }
-    vistos.set(id.identidade.itemId, indice)
+    vistos.set(itemId, indice)
+
+    const r = itemDoAgendamentoSchema.safeParse({ ...campos, itemId })
+    if (!r.success) {
+      const doQuando = r.error.issues.some((p) => p.path[0] === 'quando')
+      validos.push({
+        item: { itemId },
+        falha: doQuando
+          ? { codigo: 'DATA_INVALIDA', motivo: `O horário deste item veio vazio ou ilegível — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso, ou omita o quando para valer o horário da composição. Nada foi agendado para ele.` }
+          : { codigo: 'PEDIDO_INVALIDO', motivo: `Pedido inválido para este item — ${r.error.issues.map((p) => `${p.path.join('.') || '(item)'}: ${p.message}`).join('; ')}. Nada foi agendado para ele.` },
+      })
+      continue
+    }
     if (r.data.quando !== undefined) {
       try {
         parseBRT(r.data.quando)
       } catch {
-        problemas.push(`itens.${indice}.quando: "${r.data.quando}" não é data — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso`)
+        validos.push({ item: r.data, falha: { codigo: 'DATA_INVALIDA', motivo: `O horário "${r.data.quando}" não é data — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso. Nada foi agendado para este item.` } })
         continue
       }
     }
-    validos.push({ ...r.data, itemId: id.identidade.itemId })
+    validos.push({ item: r.data, falha: null })
   }
   if (problemas.length > 0 || !loteNormalizado) {
     return { loteId: null, itens: null, problemas: Array.from(new Set(problemas.length ? problemas : ['loteId: inválido'])) }
@@ -246,6 +279,57 @@ export function decidirPostsDaPagina(
     return { acao: 'falhar', postId: deOutro.id, codigo: 'POST_DE_OUTRO_ITEM', motivo: 'A página desta peça já está num rascunho que pertence a outro item do lote.' }
   }
   return { acao: 'falhar', postId: posts[0].id, codigo: 'PAGINA_JA_EM_POST', motivo: 'A página desta peça já foi a um post que está publicando, publicado ou falhou — não crio outro para não publicar duas vezes.' }
+}
+
+/** O item do plano ligado à peça, como a decisão precisa dele. */
+export interface ItemDoPlanoDaPeca {
+  status: string
+  generationId: string | null
+  postId: string | null
+}
+
+/**
+ * A peça ainda é a que o PLANO quer na agenda? (pré-revisão C12-1)
+ *
+ * A peça de lote nascida de um item de plano só vai para a agenda quando o item
+ * aponta ESTA peça (`generationId`) e está `pronto` — ou já está `agendado` com
+ * o MESMO post que esta chamada liga (repetição, adoção). Qualquer outro estado
+ * quer dizer que a pessoa mexeu no item depois da peça: reprovou (`reprovado`),
+ * reabriu para editar (`editado`/`aprovado`, que mantêm o `generationId` antigo)
+ * ou mandou refazer (outra Generation, ou `na-fila`/`gerando`). Agendar aí
+ * publicaria a arte superada e fecharia o item em `agendado`, que é TERMINAL —
+ * a reprovação sumiria do plano e a refação em voo ficaria órfã.
+ *
+ * Peça sem item de plano: nada a conferir.
+ */
+export function decidirItemDoPlano(entrada: {
+  itemDePlanoId: string | null
+  item: ItemDoPlanoDaPeca | null
+  pecaId: string
+  /** O post que esta chamada vai ligar: o adotado, ou `null` quando vai criar. */
+  postQueSeraLigado: string | null
+}): FalhaDoItem | null {
+  if (!entrada.itemDePlanoId) return null
+  const { item } = entrada
+  if (!item) {
+    return { codigo: 'ITEM_DO_PLANO_AUSENTE', motivo: 'O item do plano desta peça não existe mais — confira o plano antes de agendar.' }
+  }
+  if (item.generationId !== entrada.pecaId) {
+    return { codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano desta peça já aponta para outra arte (refeita ou em produção) — agendar esta publicaria a versão superada. Agende a arte nova quando ela ficar pronta.' }
+  }
+  const status = normalizarStatusDoItem(item.status)
+  if (status === 'pronto') return null
+  if (status === 'agendado') {
+    if (item.postId && item.postId === entrada.postQueSeraLigado) return null
+    return { codigo: 'ITEM_DO_PLANO_JA_AGENDADO', motivo: 'O item do plano desta peça já foi para a agenda por outro post — não crio um segundo.' }
+  }
+  if (status === 'reprovado') {
+    return { codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'A arte desta peça foi reprovada no plano — ela não vai para a agenda. Refaça o item antes de agendar.' }
+  }
+  return {
+    codigo: 'PECA_SUPERADA_NO_PLANO',
+    motivo: `O item do plano desta peça foi reaberto depois dela (está "${status ? ROTULO_DO_STATUS[status] : item.status}") — agende quando a arte nova estiver pronta.`,
+  }
 }
 
 /**

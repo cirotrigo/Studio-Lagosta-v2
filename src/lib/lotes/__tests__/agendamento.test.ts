@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   decidirAgendamento,
+  decidirItemDoPlano,
   decidirMidiaEmOutroPost,
   decidirPostsDaPagina,
   hashDoAgendamento,
@@ -26,15 +27,56 @@ describe('validarAgendamentoDoLote', () => {
     const v = validarAgendamentoDoLote(' semana-1 ', [{ itemId: ' seg ' }, { itemId: 'ter', quando: '2026-09-15 19:00' }])
     expect(v.problemas).toEqual([])
     expect(v.loteId).toBe('semana-1')
-    expect(v.itens?.map((i) => i.itemId)).toEqual(['seg', 'ter'])
+    expect(v.itens?.map((i) => [i.item.itemId, i.falha])).toEqual([['seg', null], ['ter', null]])
   })
 
-  it('recusa itemId repetido depois de aparar, data ilegível, chave desconhecida e leva vazia', () => {
+  it('a IDENTIDADE da leva recusa a chamada: itemId repetido depois de aparar, chave desconhecida, leva vazia, loteId vazio', () => {
     expect(validarAgendamentoDoLote('l', [{ itemId: 'a' }, { itemId: 'a ' }]).problemas.join()).toContain('repete o item 0')
-    expect(validarAgendamentoDoLote('l', [{ itemId: 'a', quando: 'amanhã' }]).problemas.join()).toContain('não é data')
     expect(validarAgendamentoDoLote('l', [{ itemId: 'a', status: 'agendado' }]).problemas.join()).toContain('status')
     expect(validarAgendamentoDoLote('l', []).problemas.join()).toContain('pelo menos um')
     expect(validarAgendamentoDoLote('', [{ itemId: 'a' }]).loteId).toBeNull()
+  })
+})
+
+it('campo do PEDIDO inválido é falha DO ITEM, e os outros itens seguem (C12-1c)', () => {
+  const v = validarAgendamentoDoLote('l', [
+    { itemId: 'vazio', quando: '' },
+    { itemId: 'espacos', quando: '   ' },
+    { itemId: 'ilegivel', quando: 'amanhã' },
+    { itemId: 'campanha', campanhaId: '' },
+    { itemId: 'legenda', caption: 'x'.repeat(2201) },
+    { itemId: 'ok', quando: '2026-09-14 19:00' },
+  ])
+  expect(v.problemas).toEqual([])
+  expect(v.itens?.map((i) => [i.item.itemId, i.falha?.codigo ?? null])).toEqual([
+    ['vazio', 'DATA_INVALIDA'],
+    ['espacos', 'DATA_INVALIDA'],
+    ['ilegivel', 'DATA_INVALIDA'],
+    ['campanha', 'PEDIDO_INVALIDO'],
+    ['legenda', 'PEDIDO_INVALIDO'],
+    ['ok', null],
+  ])
+})
+
+describe('decidirItemDoPlano (C12-1)', () => {
+  const base = { itemDePlanoId: 'item-1', pecaId: 'g1', postQueSeraLigado: null as string | null }
+  const d = (item: Parameters<typeof decidirItemDoPlano>[0]['item'], extra: Partial<typeof base> = {}) => decidirItemDoPlano({ ...base, ...extra, item })
+
+  it('só passa item PRONTO que aponta ESTA peça, ou agendado com o mesmo post; peça sem item não confere nada', () => {
+    expect(decidirItemDoPlano({ ...base, itemDePlanoId: null, item: null })).toBeNull()
+    expect(d({ status: 'pronto', generationId: 'g1', postId: null })).toBeNull()
+    expect(d({ status: 'agendado', generationId: 'g1', postId: 'p1' }, { postQueSeraLigado: 'p1' })).toBeNull()
+    expect(d({ status: 'agendado', generationId: 'g1', postId: 'p1' })).toMatchObject({ codigo: 'ITEM_DO_PLANO_JA_AGENDADO' })
+  })
+
+  it('reprovado, reaberto, refeito ou em voo com a refação é PECA_SUPERADA_NO_PLANO; item sumido é ITEM_DO_PLANO_AUSENTE', () => {
+    expect(d(null)).toMatchObject({ codigo: 'ITEM_DO_PLANO_AUSENTE' })
+    for (const status of ['reprovado', 'editado', 'aprovado', 'proposto', 'erro', 'na-fila', 'gerando']) {
+      expect(d({ status, generationId: 'g1', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
+    }
+    expect(d({ status: 'pronto', generationId: 'g2', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
+    expect(d({ status: 'na-fila', generationId: 'g2', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
+    expect(d({ status: 'reprovado', generationId: 'g1', postId: null })?.motivo).toContain('reprovada')
   })
 })
 

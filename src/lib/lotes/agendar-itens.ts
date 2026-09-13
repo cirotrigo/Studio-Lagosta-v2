@@ -4,19 +4,24 @@
  * módulo puro `agendamento.ts`; aqui, a ordem das escritas.
  *
  * Item a item, em SÉRIE (a falha de um não derruba os outros):
- * 1. **Decisão sem trava** sobre a linha do `ItemDeLote`, a peça, a página e o
- *    post que a linha aponta. Toda repetição de um item já agendado para aqui:
+ * 1. **Decisão sem trava** (`decidirEscrita` pelo `db`) sobre a linha do
+ *    `ItemDeLote`, a peça, a página, o item do plano, a mídia em outros posts e
+ *    os posts da página. Toda repetição de um item já agendado para antes disso:
  *    reaproveita (ou conflita) sem escrever nada — salvo refazer efeitos que
  *    ficaram pendentes.
- * 2. **Escrever sob duas travas**: `SELECT … FOR UPDATE` na linha do item E na
- *    página, relê a linha, relê os posts da página e decide DE NOVO. Um post
- *    rascunho/agendado que já tenha a página é ADOTADO; senão o post é criado
- *    PELA TRANSAÇÃO e a linha é ligada a ele com compare-and-set em
- *    `postId: null`. Post e vínculo são um commit só.
+ * 2. **Escrever sob as travas**: `SELECT … FOR UPDATE` na linha do item, no
+ *    item do plano (quando há) e na página — a ordem do PR 11 (`ItemDeLote` →
+ *    `ItemDePlano`) seguida da página —, relê a linha e roda `decidirEscrita`
+ *    DE NOVO pela transação (pré-revisão C12-1: página que virou modelo, mídia
+ *    que entrou noutro post e item de plano reprovado enquanto esta chamada
+ *    esperava a trava). Um post rascunho/agendado que já tenha a página é
+ *    ADOTADO; senão o post é criado PELA TRANSAÇÃO e a linha é ligada a ele com
+ *    compare-and-set em `postId: null`. Post e vínculo são um commit só.
  * 3. **Efeitos depois do commit** (sinais, artes, pasta, remarcação, item de
- *    plano → agendado), e só então `efeitosDoAgendamentoEm`. Todos são
- *    idempotentes pelo id do post; a chamada que cair entre o commit e o fim dos
- *    efeitos deixa o carimbo nulo, e a repetição os refaz.
+ *    plano `pronto` → `agendado` por compare-and-set), e só então
+ *    `efeitosDoAgendamentoEm`. Todos são idempotentes pelo id do post; a chamada
+ *    que cair entre o commit e o fim dos efeitos deixa o carimbo nulo, e a
+ *    repetição os refaz.
  *
  * `simular: true` toma as MESMAS decisões e devolve a mesma conta sem escrever
  * nada — é o que roda em produção antes de agendar de verdade.
@@ -39,13 +44,12 @@ import {
 import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { formatoDaPagina, refilarPaginasDoPost } from '@/lib/compositor/pastas'
-import { caminhoAte } from '@/lib/planos/execucao'
-import { transicionarItem } from '@/lib/planos/plano-service'
-import { normalizarStatusDoItem } from '@/lib/planos/vocabulario'
+import { normalizarStatusDoItem, transicaoPermitida } from '@/lib/planos/vocabulario'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
   decidirAgendamento,
+  decidirItemDoPlano,
   decidirMidiaEmOutroPost,
   decidirPostsDaPagina,
   hashDoAgendamento,
@@ -96,13 +100,19 @@ export interface ResultadoDoAgendamentoDoLote {
   itens: ItemAgendadoDoLote[]
 }
 
-type Cliente = Pick<Prisma.TransactionClient, 'generation' | 'page' | 'socialPost' | 'itemDeLote'>
+type Cliente = Pick<Prisma.TransactionClient, 'generation' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano'>
 
 const SELECAO_DA_LINHA = { id: true, generationId: true, postId: true, hashDoAgendamento: true, efeitosDoAgendamentoEm: true } as const
-const SELECAO_DO_POST = { id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true, renderStatus: true, pageId: true, templateId: true } as const
+const SELECAO_DO_POST = {
+  id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true, renderStatus: true, pageId: true, templateId: true,
+  caption: true, campaignId: true, sugestaoId: true, origem: true,
+} as const
 
 type Linha = { id: string; generationId: string | null; postId: string | null; hashDoAgendamento: string | null; efeitosDoAgendamentoEm: Date | null }
-type Post = { id: string; status: string; postType: string; scheduledDatetime: Date | null; mediaUrls: string[]; renderStatus: string; pageId: string | null; templateId: number | null }
+type Post = {
+  id: string; status: string; postType: string; scheduledDatetime: Date | null; mediaUrls: string[]; renderStatus: string; pageId: string | null; templateId: number | null
+  caption: string | null; campaignId: string | null; sugestaoId: string | null; origem: string | null
+}
 
 interface Peca {
   id: string
@@ -155,6 +165,16 @@ async function lerPagina(cliente: Cliente, pageId: string, projectId: number): P
   })
   if (!p || p.Template.projectId !== projectId) return null
   return { id: p.id, templateId: p.templateId, ehModelo: p.isTemplate, formato: formatoDaPagina(p) }
+}
+
+type ItemDoPlanoLido = { id: string; status: string; generationId: string | null; postId: string | null; updatedAt: Date }
+
+async function lerItemDoPlano(cliente: Cliente, peca: Peca, projectId: number): Promise<ItemDoPlanoLido | null> {
+  if (!peca.itemDePlanoId) return null
+  return (await cliente.itemDePlano.findFirst({
+    where: { id: peca.itemDePlanoId, projectId, ...(peca.planoId ? { planoId: peca.planoId } : {}) },
+    select: { id: true, status: true, generationId: true, postId: true, updatedAt: true },
+  })) as ItemDoPlanoLido | null
 }
 
 function editUrlDe(templateId: number | null | undefined, pageId: string | null | undefined): string | undefined {
@@ -214,34 +234,87 @@ interface Contexto {
   superficie: Superficie
 }
 
+type Escrita =
+  | { acao: 'recusar'; resposta: ItemAgendadoDoLote }
+  | { acao: 'adotar'; postId: string; peca: Peca; pagina: Pagina }
+  | { acao: 'criar'; postId: null; peca: Peca; pagina: Pagina }
+
 /**
- * Leva o item do plano ligado à peça para `agendado`, com o post — pelas
- * transições válidas (`caminhoAte`, nunca uma cópia da tabela). Best-effort:
- * devolve um aviso em vez de lançar.
+ * TUDO que decide se o item vira post, lido pelo cliente que se passa: o `db`
+ * na decisão sem trava, a transação sob as travas. É a mesma função nas duas
+ * vezes justamente para a segunda não herdar nada da primeira (C12-1: a
+ * decisão tomada antes da trava fica velha enquanto a chamada espera).
+ *
+ * A linha deve estar SEM post (a linha ligada é respondida por `responderLigado`).
+ */
+async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, linha: Linha, pedido: { hash: string } | { falha: FalhaDoItem }): Promise<Escrita> {
+  const { projectId } = ctx
+  const peca = linha.generationId ? await lerPeca(cliente, linha.generationId, projectId) : null
+  const pagina = peca?.pageId ? await lerPagina(cliente, peca.pageId, projectId) : null
+  const vinculos = { ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}) }
+
+  const decisao = decidirAgendamento({ registro: { ...linha, postId: null }, postLigadoExiste: false, pedido, peca, pagina })
+  if (decisao.acao === 'pendente') {
+    return { acao: 'recusar', resposta: { itemId, situacao: 'pendente', codigo: decisao.codigo, motivo: decisao.motivo, ...(peca ? { generationId: peca.id } : {}) } }
+  }
+  if (decisao.acao === 'falhar') return { acao: 'recusar', resposta: falhou(itemId, decisao, vinculos) }
+  if (decisao.acao !== 'agendar' || !peca || !pagina) {
+    return { acao: 'recusar', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O item mudou durante o agendamento. Repita a chamada.' }, vinculos) }
+  }
+  const pageId = pagina.id
+
+  if (peca.resultUrl) {
+    const comAMidia = (await cliente.socialPost.findMany({
+      where: { projectId, mediaUrls: { has: peca.resultUrl }, OR: [{ pageId: null }, { pageId: { not: pageId } }] },
+      select: { id: true, mediaUrls: true },
+      take: 5,
+    })) as Array<{ id: string; mediaUrls: string[] }>
+    const midia = decidirMidiaEmOutroPost(comAMidia)
+    if (midia) return { acao: 'recusar', resposta: falhou(itemId, midia, { postId: midia.postId, ...vinculos }) }
+  }
+
+  const posts = (await cliente.socialPost.findMany({ where: { projectId, pageId }, select: { id: true, status: true }, orderBy: { createdAt: 'asc' } })) as Array<{ id: string; status: string }>
+  const ligados = posts.length
+    ? ((await cliente.itemDeLote.findMany({ where: { postId: { in: posts.map((p) => p.id) }, NOT: { id: linha.id } }, select: { postId: true } })) as Array<{ postId: string | null }>)
+    : []
+  const daPagina = decidirPostsDaPagina(posts, new Set(ligados.map((l) => l.postId).filter((p): p is string => !!p)))
+  if (daPagina.acao === 'falhar') return { acao: 'recusar', resposta: falhou(itemId, daPagina, { postId: daPagina.postId, ...vinculos }) }
+
+  const itemDoPlano = await lerItemDoPlano(cliente, peca, projectId)
+  const doPlano = decidirItemDoPlano({
+    itemDePlanoId: peca.itemDePlanoId,
+    item: itemDoPlano,
+    pecaId: peca.id,
+    postQueSeraLigado: daPagina.acao === 'adotar' ? daPagina.postId : null,
+  })
+  if (doPlano) return { acao: 'recusar', resposta: falhou(itemId, doPlano, vinculos) }
+
+  return daPagina.acao === 'adotar' ? { acao: 'adotar', postId: daPagina.postId, peca, pagina } : { acao: 'criar', postId: null, peca, pagina }
+}
+
+/**
+ * Leva o item do plano ligado à peça de `pronto` para `agendado`, com o post —
+ * por compare-and-set no estado LIDO (status, `generationId` e `updatedAt`),
+ * nunca atravessando transições: `caminhoAte` fabricaria `gerando`/`pronto`
+ * para um item reaberto, e `agendado` é terminal (C12-1). `pronto` é a ÚNICA
+ * origem que a tabela de transições aceita para `agendado`. Divergência vira
+ * aviso; o rascunho fica.
  */
 async function levarItemDoPlanoParaAgendado(ctx: Contexto, peca: Peca, postId: string): Promise<string | null> {
   if (!peca.itemDePlanoId) return null
   try {
-    const item = await db.itemDePlano.findFirst({
-      where: { id: peca.itemDePlanoId, projectId: ctx.projectId, ...(peca.planoId ? { planoId: peca.planoId } : {}) },
-      select: { id: true, planoId: true, status: true, postId: true },
-    })
+    const item = await lerItemDoPlano(db, peca, ctx.projectId)
     if (!item) return 'O item do plano desta peça não existe mais — o rascunho ficou só na agenda.'
-    const de = normalizarStatusDoItem(item.status) ?? 'proposto'
-    if (de === 'agendado') return item.postId && item.postId !== postId ? `O item do plano já estava na agenda por outro post (${item.postId}).` : null
-    const passos = caminhoAte(de, 'agendado')
-    if (!passos) return `O item do plano está em "${de}" e não pode ir para a agenda — o rascunho foi criado, confira o plano.`
-    for (const passo of passos) {
-      await transicionarItem({
-        projectId: ctx.projectId,
-        planoId: item.planoId,
-        itemId: item.id,
-        para: passo,
-        decididoPor: ctx.decididoPor ?? undefined,
-        ...(passo === 'agendado' ? { postId, generationId: peca.id, ...(peca.pageId ? { pageId: peca.pageId } : {}) } : {}),
-      })
+    const de = normalizarStatusDoItem(item.status)
+    if (de === 'agendado' && item.postId === postId && item.generationId === peca.id) return null
+    if (de !== 'pronto' || item.generationId !== peca.id || !transicaoPermitida(de, 'agendado')) {
+      return `O item do plano mudou depois da peça (está "${item.status}") — não o marquei como agendado. O rascunho está na agenda; confira o plano.`
     }
-    return null
+    const movido = await db.itemDePlano.updateMany({
+      where: { id: item.id, projectId: ctx.projectId, status: item.status, generationId: peca.id, updatedAt: item.updatedAt },
+      data: { status: 'agendado', postId, ...(peca.pageId ? { pageId: peca.pageId } : {}) },
+    })
+    return movido.count === 1 ? null : 'O item do plano mudou enquanto a peça ia para a agenda — não o marquei como agendado. O rascunho está na agenda; confira o plano.'
   } catch (erro) {
     return `Não deu para marcar o item do plano como agendado (${erro instanceof Error ? erro.message : String(erro)}).`
   }
@@ -249,17 +322,29 @@ async function levarItemDoPlanoParaAgendado(ctx: Contexto, peca: Peca, postId: s
 
 /**
  * Os efeitos pós-commit de um item: os mesmos de `agendarPost` sobre o post
- * como ele ESTÁ (a equipe pode tê-lo remarcado), a remarcação da página quando
- * o horário não é o da composição, e o item de plano. Só marca
- * `efeitosDoAgendamentoEm` quando tudo rodou; o que lançar fica pendente para a
- * repetição.
+ * como ele ESTÁ, a remarcação da página quando o horário não é o da composição,
+ * e o item de plano. Só marca `efeitosDoAgendamentoEm` quando tudo rodou; o que
+ * lançar fica pendente para a repetição.
+ *
+ * Os sinais descrevem o POST que existe (C12-1b): horário, situação, legenda,
+ * campanha e sugestão saem dele. No post criado por esta chamada são os valores
+ * do pedido; no ADOTADO (criado à mão, pelo editor, por colocar-na-agenda) são
+ * os que a equipe gravou — o pedido do lote não entra no corpus no lugar deles.
  */
 async function executarEfeitos(ctx: Contexto, linhaId: string, post: Post, peca: Peca, input: AgendarPostInput, resolucao: AgendamentoResolvido | null): Promise<string[]> {
   const avisos: string[] = []
   try {
     const r = resolucao ?? (await resolverAgendamento(input, { ingerir: false }))
     const quando = post.scheduledDatetime ?? r.quando
-    const contexto: ContextoDosEfeitos = { ...contextoDosEfeitos(r), quando, situacao: post.status === 'SCHEDULED' ? 'agendado' : 'rascunho' }
+    const contexto: ContextoDosEfeitos = {
+      ...contextoDosEfeitos(r),
+      quando,
+      situacao: post.status === 'SCHEDULED' ? 'agendado' : 'rascunho',
+      caption: post.caption ? post.caption : undefined,
+      campaignId: post.campaignId ?? null,
+      sugestaoId: post.sugestaoId ?? null,
+      origem: (post.origem as ContextoDosEfeitos['origem']) ?? null,
+    }
     await efeitosDoAgendamento(post, contexto)
     // O horário do rascunho não é o que a composição previu: a página vai
     // junto para a pasta (e o nome) do dia certo — a regra da remarcação.
@@ -324,62 +409,42 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
 
   if (linha.postId) return responderLigado(linha)
 
-  const decisao = decidirAgendamento({ registro: linha, postLigadoExiste: false, pedido: pedidoParaDecidir, peca, pagina })
-  if (decisao.acao === 'pendente') return { itemId, situacao: 'pendente', codigo: decisao.codigo, motivo: decisao.motivo, ...(peca ? { generationId: peca.id } : {}) }
-  if (decisao.acao === 'falhar') return falhou(itemId, decisao, { ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}) })
-  // Daqui para baixo: peça pronta, página editável, pedido válido.
-  const pecaPronta = peca!
-  const paginaPronta = pagina!
+  // 1. Decisão sem trava.
+  const antes = await decidirEscrita(db, ctx, itemId, linha, pedidoParaDecidir)
+  if (antes.acao === 'recusar') return antes.resposta
   const pedidoValido = pedido!
-  const pageId = paginaPronta.id
-
-  if (pecaPronta.resultUrl) {
-    const comAMidia = (await db.socialPost.findMany({
-      where: { projectId, mediaUrls: { has: pecaPronta.resultUrl }, OR: [{ pageId: null }, { pageId: { not: pageId } }] },
-      select: { id: true, mediaUrls: true },
-      take: 5,
-    })) as Array<{ id: string; mediaUrls: string[] }>
-    const midia = decidirMidiaEmOutroPost(comAMidia)
-    if (midia) return falhou(itemId, midia, { postId: midia.postId, generationId: pecaPronta.id, pageId })
-  }
-
-  const decidirPosts = async (cliente: Cliente) => {
-    const posts = (await cliente.socialPost.findMany({ where: { projectId, pageId }, select: { id: true, status: true }, orderBy: { createdAt: 'asc' } })) as Array<{ id: string; status: string }>
-    const ligados = posts.length
-      ? ((await cliente.itemDeLote.findMany({ where: { postId: { in: posts.map((p) => p.id) }, NOT: { id: linha.id } }, select: { postId: true } })) as Array<{ postId: string | null }>)
-      : []
-    return decidirPostsDaPagina(posts, new Set(ligados.map((l) => l.postId).filter((p): p is string => !!p)))
-  }
-
-  const input = entradaDoPost(projectId, pecaPronta, pedidoValido, ctx)
+  const pageId = antes.pagina.id
+  const input = entradaDoPost(projectId, antes.peca, pedidoValido, ctx)
 
   if (ctx.simular) {
-    const posts = await decidirPosts(db)
-    if (posts.acao === 'falhar') return falhou(itemId, posts, { postId: posts.postId, generationId: pecaPronta.id, pageId })
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
-    if (posts.acao === 'adotar') {
-      const existente = (await db.socialPost.findUnique({ where: { id: posts.postId }, select: SELECAO_DO_POST })) as Post | null
-      if (existente) return concluido(itemId, 'adotado', existente, pecaPronta, paginaPronta, avisos)
+    if (antes.acao === 'adotar') {
+      const existente = (await db.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
+      if (existente) return concluido(itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
     }
     const paginaCrua = await db.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true } })
-    const atual = thumbnailEhAtual({ thumbnail: paginaCrua?.thumbnail ?? null, resultUrl: pecaPronta.resultUrl, camadasDaPagina: paginaCrua?.layers, snapshot: pecaPronta.snapshot })
+    const atual = thumbnailEhAtual({ thumbnail: paginaCrua?.thumbnail ?? null, resultUrl: antes.peca.resultUrl, camadasDaPagina: paginaCrua?.layers, snapshot: antes.peca.snapshot })
     return {
       itemId,
       situacao: 'concluido',
       desfecho: 'criado',
       pageId,
-      generationId: pecaPronta.id,
+      generationId: antes.peca.id,
       quando: formatarBRT(new Date(pedidoValido.quando)),
       imagem: atual ? (paginaCrua?.thumbnail ?? null) : null,
       renderStatus: atual ? 'RENDERED' : 'PENDING',
-      ...(editUrlDe(paginaPronta.templateId, pageId) ? { editUrl: editUrlDe(paginaPronta.templateId, pageId) } : {}),
+      ...(editUrlDe(antes.pagina.templateId, pageId) ? { editUrl: editUrlDe(antes.pagina.templateId, pageId) } : {}),
       avisos,
     }
   }
 
+  // 2. Escrever sob as travas, decidindo DE NOVO.
   const escrita = await db.$transaction(
     async (tx) => {
       await tx.$queryRaw`SELECT id FROM "ItemDeLote" WHERE id = ${linha.id} FOR UPDATE`
+      if (antes.peca.itemDePlanoId) {
+        await tx.$queryRaw`SELECT id FROM "ItemDePlano" WHERE id = ${antes.peca.itemDePlanoId} AND "projectId" = ${projectId} FOR UPDATE`
+      }
       await tx.$queryRaw`SELECT id FROM "Page" WHERE id = ${pageId} FOR UPDATE`
       const atual = (await tx.itemDeLote.findUnique({ where: { id: linha.id }, select: SELECAO_DA_LINHA })) as Linha | null
       if (!atual) {
@@ -388,21 +453,24 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       // Outra chamada ligou o item enquanto esta esperava a trava.
       if (atual.postId) return { tipo: 'ja-ligado' as const, linha: atual }
 
-      const posts = await decidirPosts(tx)
-      if (posts.acao === 'falhar') return { tipo: 'falhou' as const, falha: posts }
+      const sob = await decidirEscrita(tx, ctx, itemId, atual, pedidoParaDecidir)
+      if (sob.acao === 'recusar') return { tipo: 'recusado' as const, resposta: sob.resposta }
+      // A trava é da página que a decisão sem trava leu; a peça não pode ter trocado de página.
+      if (sob.pagina.id !== pageId || sob.peca.itemDePlanoId !== antes.peca.itemDePlanoId) {
+        return { tipo: 'recusado' as const, resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'A peça mudou durante o agendamento. Repita a chamada.' }, { generationId: sob.peca.id, pageId: sob.pagina.id }) }
+      }
 
       let postId: string
       let desfecho: DesfechoDoItemAgendado
       let resolucao: AgendamentoResolvido | null = null
-      if (posts.acao === 'adotar') {
-        postId = posts.postId
+      if (sob.acao === 'adotar') {
+        postId = sob.postId
         desfecho = 'adotado'
       } else {
-        const pecaAtual = await lerPeca(tx, pecaPronta.id, projectId)
         resolucao = await resolverAgendamento(input, {
           leitor: tx,
           ingerir: false,
-          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, camadasDaPagina: p.layers, resultUrl: pecaAtual?.resultUrl ?? null, snapshot: pecaAtual?.snapshot }),
+          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, camadasDaPagina: p.layers, resultUrl: sob.peca.resultUrl, snapshot: sob.peca.snapshot }),
         })
         const criado = await criarPostDoAgendamento(tx, resolucao)
         postId = criado.id
@@ -418,33 +486,35 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       if (ligado.count !== 1) {
         throw new CreativeError('LOTE_AGENDAMENTO_CONCORRENTE', `O item "${itemId}" do lote "${loteId}" mudou durante o agendamento. Repita a chamada.`, 409, { loteId, itemId })
       }
-      return { tipo: 'ligado' as const, postId, desfecho, resolucao }
+      return { tipo: 'ligado' as const, postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina }
     },
     { maxWait: 10_000, timeout: 20_000 },
   )
 
   if (escrita.tipo === 'ja-ligado') return responderLigado(escrita.linha)
-  if (escrita.tipo === 'falhou') return falhou(itemId, escrita.falha, { postId: escrita.falha.postId, generationId: pecaPronta.id, pageId })
+  if (escrita.tipo === 'recusado') return escrita.resposta
 
+  // 3. Efeitos depois do commit.
   const post = (await db.socialPost.findUnique({ where: { id: escrita.postId }, select: SELECAO_DO_POST })) as Post
   const avisos = [...avisosDoPedido, ...(escrita.resolucao?.avisos ?? [])]
-  avisos.push(...(await executarEfeitos(ctx, linha.id, post, pecaPronta, input, escrita.resolucao)))
+  avisos.push(...(await executarEfeitos(ctx, linha.id, post, escrita.peca, input, escrita.resolucao)))
   const fresco = ((await db.socialPost.findUnique({ where: { id: post.id }, select: SELECAO_DO_POST })) as Post | null) ?? post
   if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== pedidoValido.quando) {
     avisos.push(`Já havia um rascunho desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
   }
-  return concluido(itemId, escrita.desfecho, fresco, pecaPronta, paginaPronta, avisos)
+  return concluido(itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos)
 }
 
 /**
  * Agenda os itens de um lote como RASCUNHOS, pela página de cada peça.
- * Lança só o que invalida a chamada inteira (identidade, projeto); o resto
- * volta por item: concluído, pendente ou falhou.
+ * Lança só o que invalida a chamada inteira (identidade da leva, projeto); o
+ * resto — inclusive campo do pedido inválido — volta por item: concluído,
+ * pendente ou falhou.
  */
 export async function agendarItensDoLote(entrada: EntradaDoAgendamentoDoLote): Promise<ResultadoDoAgendamentoDoLote> {
   const v = validarAgendamentoDoLote(entrada.loteId, entrada.itens)
   if (!v.loteId) {
-    throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Pedido de agendamento inválido — ${v.problemas.join('; ')}. Nada foi agendado.`, 400, { problemas: v.problemas })
+    throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade da leva inválida — ${v.problemas.join('; ')}. Nada foi agendado.`, 400, { problemas: v.problemas })
   }
   const projeto = await db.project.findUnique({ where: { id: entrada.projectId }, select: { id: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${entrada.projectId} não encontrado`, 404)
@@ -457,7 +527,11 @@ export async function agendarItensDoLote(entrada: EntradaDoAgendamentoDoLote): P
     superficie: entrada.superficie ?? 'chat',
   }
   const itens: ItemAgendadoDoLote[] = []
-  for (const item of v.itens) {
+  for (const { item, falha } of v.itens) {
+    if (falha) {
+      itens.push(falhou(item.itemId, falha))
+      continue
+    }
     try {
       itens.push(await agendarItem(ctx, item))
     } catch (erro) {

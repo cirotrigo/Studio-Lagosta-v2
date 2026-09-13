@@ -2201,7 +2201,9 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
     "additionalProperties": false
   },
   // Tool NOVA (12/09/2026, PR 12 — do lote até os rascunhos): o fixture nasce
-  // com ela, como manda a regra do registro.
+  // com ela, como manda a regra do registro. Mudado DE PROPÓSITO na pré-revisão
+  // C12-1c: `caption` perdeu o maxLength público (o limite de 2200 virou erro do
+  // item, sem derrubar a leva) e `quando`/`caption` dizem isso na descrição.
   "agendar-leva": {
     "type": "object",
     "properties": {
@@ -2213,9 +2215,9 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
           "type": "object",
           "properties": {
             "itemId": { "type": "string", "minLength": 1, "maxLength": 120, "description": "O MESMO itemId da peça em compor-leva." },
-            "quando": { "type": "string", "description": "Horário do rascunho: \"AAAA-MM-DD HH:mm\" (Brasília) ou ISO. Sem ele, vale o horário previsto na composição." },
+            "quando": { "type": "string", "description": "Horário do rascunho: \"AAAA-MM-DD HH:mm\" (Brasília) ou ISO. Sem ele, vale o horário previsto na composição. Vazio ou ilegível volta como erro DESTE item, sem derrubar a leva." },
             "postType": { "type": "string", "enum": ["STORY", "POST"], "description": "Só para contrariar o formato da peça (story vira STORY; feed e quadrado viram POST). Normalmente omita." },
-            "caption": { "type": "string", "maxLength": 2200, "description": "Legenda do post. Story costuma ir sem." },
+            "caption": { "type": "string", "description": "Legenda do post, até 2200 caracteres (acima disso o item volta com erro, sem derrubar a leva). Story costuma ir sem." },
             "lembrete": { "type": "boolean", "description": "true = lembrete de publicação manual: o sistema não publica, o grupo do WhatsApp recebe a arte no horário." },
             "escopo": { "type": "string", "enum": ["rotina", "campanha", "pontual"], "description": "O que o sistema pode aprender com o post — a mesma escolha de colocar-na-agenda (padrão rotina)." },
             "campanhaId": { "type": "string", "description": "Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base)." }

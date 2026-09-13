@@ -47,6 +47,10 @@ describe('agendar-leva: o registro', () => {
     expect(tool.schema.safeParse({ projectId: 8, loteId: 'l', itens: Array.from({ length: 61 }, (_, i) => ({ itemId: `i${i}` })) }).success).toBe(false)
     expect(tool.schema.safeParse({ projectId: 8, loteId: 'l', itens: [{ itemId: 'a', postType: 'CAROUSEL' }] }).success).toBe(false)
   })
+
+  it('campo do pedido que o serviço recusa POR ITEM passa pela porta: quando vazio e legenda longa não derrubam a leva (C12-1c)', () => {
+    expect(tool.schema.safeParse({ projectId: 8, loteId: 'l', itens: [{ itemId: 'a', quando: '' }, { itemId: 'b', caption: 'x'.repeat(3000) }, { itemId: 'c', campanhaId: '' }] }).success).toBe(true)
+  })
 })
 
 describe('agendar-leva: a porta', () => {

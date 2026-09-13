@@ -10410,3 +10410,53 @@ aplicada**.
   continuam sem idempotência nem trava da página; carrossel montado a partir
   do lote não é agrupado (o slide é recusado); e sem a migration aplicada
   cada item de `agendar-leva` cai em falha — aplicar antes de expor.
+
+**Da pré-revisão do HEAD 137616ac (BLOQUEADO, C12-1, 12/09/2026):**
+
+- 🔴 **C12-1 — a peça de lote só vai à agenda quando o ITEM DO PLANO ainda a
+  quer.** `agendar-leva` não olhava o item do plano da peça: agendava a arte que
+  a pessoa tinha reprovado (ou já mandado refazer) e levava o item a `agendado`
+  atravessando `na-fila → gerando → pronto` por `caminhoAte`, sem
+  compare-and-set. Como `agendado` é terminal, a reprovação sumia do plano e a
+  refação em voo ficava órfã (`reapontarItemDoPlano` recusa item que não está
+  mais em voo). Hoje `decidirItemDoPlano` (puro) só deixa passar item que aponta
+  ESTA peça (`generationId`) e está `pronto` — ou `agendado` com o MESMO post
+  que a chamada liga. Reprovado, reaberto (`editado`/`aprovado` mantêm o
+  `generationId` antigo), refeito ou em voo com outra peça é
+  `PECA_SUPERADA_NO_PLANO`; item apagado é `ITEM_DO_PLANO_AUSENTE`; já agendado
+  por outro post é `ITEM_DO_PLANO_JA_AGENDADO`. Tudo por item, antes de criar o
+  post, e os outros itens seguem.
+- 🔴 **O item do plano vai de `pronto` para `agendado` por compare-and-set no
+  estado LIDO** (`status`, `generationId` e `updatedAt`), nunca por
+  `caminhoAte`/`transicionarItem`: para um item reaberto, o caminho encontrado é
+  justamente a fabricação de `gerando`/`pronto`. `pronto` é a única origem que a
+  tabela aceita para `agendado`. O CAS que não pega vira aviso e o rascunho
+  fica; o teste deixa `transicionarItem` lançando de propósito.
+- 🔴 **A decisão sob a trava é a MESMA função da decisão sem trava**
+  (`decidirEscrita`, recebe o cliente): peça, página (virou modelo?), mídia já
+  em outro post, posts da página e item do plano são relidos pela transação.
+  Antes só a linha e os posts da página eram relidos, e a mídia que entrasse
+  noutro post (por `colocar-na-agenda` com `generationId`) durante a espera
+  virava dois posts com a mesma arte. Travas na ordem do PR 11: `ItemDeLote` →
+  `ItemDePlano` (quando há) → `Page`.
+- **Os sinais dos efeitos descrevem o POST que existe**: legenda, campanha,
+  sugestão e origem saem do post, não do pedido do lote. No post criado pela
+  chamada dá no mesmo; no ADOTADO, o corpus recebe o que a equipe gravou, e não
+  a legenda do lote. ⚠️ Na repetição com efeitos pendentes, se a equipe editou a
+  legenda nesse meio-tempo, é a editada que entra — é o post como ele está.
+- **Identidade da leva recusa a chamada; campo do pedido falha só o item.**
+  `quando` vazio ou ilegível é `DATA_INVALIDA` daquele item; campanha vazia e
+  legenda acima de 2200 caracteres são `PEDIDO_INVALIDO`. O schema público de
+  `agendar-leva` perdeu o `maxLength` da legenda para isso chegar ao serviço
+  (fixture atualizado de propósito). Continuam recusando a leva: `loteId`,
+  `itemId` inválido ou repetido, chave desconhecida, 0 ou mais de 60 itens, e
+  enum fora do contrato (`postType`, `escopo`) na porta.
+- **`idempotentHint: true` fica**, com a razão da pré-revisão: a mesma chamada
+  nunca duplica, e a peça que estava pendente e ficou pronta vira rascunho na
+  repetição — é o que faltava, não um segundo post. A descrição agora diz isso.
+- ⚠️ **Ficaram como estavam, registrados**: a linha já ligada cuja Generation
+  foi apagada pela galeria volta `SEM_HORARIO`/`SEM_FORMATO` em vez de
+  reaproveitado (nada é escrito, só a mensagem engana); `VERSAO_DO_AGENDAMENTO`
+  não tem como recalcular hash antigo (a linha guarda só o hash) — subir a
+  versão transforma repetição antiga em conflito; e `registrarArtesDoPost` na
+  repetição dos efeitos sobre um post já renderizado não foi conferido.
