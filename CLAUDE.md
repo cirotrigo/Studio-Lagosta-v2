@@ -6132,6 +6132,41 @@ PURO (zod), sem Prisma, com teste de ida e volta exata.
   revisão antiga descarta autoria. **Quem chama `aplicarRevisao` num caminho
   que não pode falhar (autosave do editor) precisa tratar a recusa** —
   `historicoCheio(copy)` responde antes, sem exceção.
+- 🔴 **As DUAS INVARIANTES do módulo são testadas por varredura de fronteira,
+  não caso a caso** (auditoria do PR 2, 13/09/2026, depois de quatro rodadas
+  do Codex achando um teto por vez — PR2-01 a PR2-04). (1) **Tudo que o
+  módulo PRODUZ o leitor ACEITA, com conteúdo idêntico**; quando não dá, a
+  recusa é explícita e a entrada fica intacta. (2) **Validar a parte concorda
+  com validar o todo nas regras LOCAIS.** `__tests__/invariantes.test.ts` lê
+  os tetos do PRÓPRIO zod e gera teto-1 · teto · teto+1 · vazio · omitido ·
+  duplicado · fora do alfabeto em todo campo; tipo de schema que ela não
+  conhece quebra o teste. Campo novo com limite entra sozinho — função
+  produtora nova entra na varredura no mesmo commit.
+- 🔴 **`aplicarRevisao` confere o RESULTADO inteiro no leitor antes de
+  devolver.** Conferir campo a campo deixou escapar um teto por rodada:
+  ids tocados (PR2-02), histórico (PR2-02), metadados (PR2-03 — motivo vazio
+  ou de 301, `em`/`superficie` acima de 40). Hoje metadado fora do teto ou
+  bloco novo que o contrato não comporta lança `RevisaoDaCopyInvalida`
+  (original intacta, `problemas` completos; os de metadado começam por
+  "revisão nova:"), e `tentarAplicarRevisao` devolve a mesma decisão sem
+  exceção. **Mudança de comportamento para quem chama**: bloco inválido
+  deixou de voltar como copy que o leitor rejeita — quem conferia DEPOIS
+  (`copy-do-item.ts`, na F4) precisa trocar para `tentarAplicarRevisao`, e
+  quem não pode falhar (autosave do editor via `copyEfetivaDasCamadas`) trata
+  as duas exceções. Metadado vazio é RECUSADO, nunca omitido em silêncio
+  (`superficie: ''` sumia; `em: ''` virava inválido).
+- 🔴 **Regra LOCAL mora uma vez só**: `problemasLocaisDoBloco` (segunda voz só
+  na manchete, só em linha que existe) e `problemasLocaisDaRevisao` (campos e
+  remoções listados em `blocos`) são chamadas por `problemasDeCoerencia` E por
+  `validarBlocoAutoral`/`validarRevisaoDaCopy`. Regra local nova entra nelas —
+  escrita só em `problemasDeCoerencia`, o validador do elemento solto volta a
+  aprovar o que a copy recusa (PR2-04). Regra de CONJUNTO (id repetido, ordem,
+  grupo, revisão citando bloco que não existe) fica só na copy.
+- **O que o ADAPTADOR inventa cabe no contrato por construção**: o id nascido
+  do papel tem teto (56 + sufixo), a lacuna cita no máximo 60 caracteres do
+  papel (com "…") e papéis desconhecidos além das vagas viram UMA lacuna de
+  resumo. Antes, papel de 61+ caracteres ou 18 papéis desconhecidos viravam
+  `CopyLegadaIncompativel` de um texto que cabia — recusa espúria.
 - **A única conversão de saída é `blocosParaOCompositor`** (contrato →
   `Bloco[]` por papel, em ordem), e ela não transforma texto: bloco `livre`
   volta em `semPapel` em vez de sumir — quem chama decide (recusa, camada

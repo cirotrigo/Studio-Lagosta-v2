@@ -7,13 +7,24 @@
  *  - grupo de leitura com um bloco só (grupo é frase entre blocos);
  *  - `linhasNaVoz2` apontando para linha que não existe, ou em bloco que não
  *    é manchete;
- *  - revisão citando bloco inexistente.
+ *  - revisão citando bloco inexistente, detalhando campos ou registrando
+ *    remoção de bloco que ela mesma não lista.
+ *
+ * As regras se dividem em LOCAIS (dependem só do elemento: um bloco, uma
+ * revisão) e de CONJUNTO (dependem dos outros: id repetido, ordem, grupo,
+ * revisão citando bloco que não existe). As locais moram UMA vez
+ * (`problemasLocaisDoBloco`, `problemasLocaisDaRevisao`) e são as MESMAS na
+ * validação do elemento solto e na da copy inteira — um validador parcial que
+ * aprova o que a copy recusa por regra local é o defeito PR2-04 da revisão
+ * final do Codex (13/09/2026). Regra local nova entra nessas funções, nunca só
+ * em `problemasDeCoerencia`.
  *
  * Devolve TODOS os problemas, nunca só o primeiro — quem escreve a copy corrige
  * de uma vez. Módulo PURO.
  */
 
-import { blocoAutoralSchema, copyAutoralSchema, type BlocoAutoral, type CopyAutoral } from './contrato'
+import type { ZodIssue } from 'zod'
+import { blocoAutoralSchema, copyAutoralSchema, revisaoDaCopySchema, type BlocoAutoral, type CopyAutoral, type RevisaoDaCopy } from './contrato'
 
 export interface ProblemaDaCopy {
   /** `schema` (forma), `id`, `ordem`, `grupo`, `estilo`, `revisao`. */
@@ -27,18 +38,52 @@ export interface ResultadoDaValidacao {
   problemas: ProblemaDaCopy[]
 }
 
+function problemasDoSchema(issues: ZodIssue[]): ProblemaDaCopy[] {
+  return issues.map((i) => ({ tipo: 'schema', mensagem: `${i.path.join('.') || '(raiz)'}: ${i.message}` }))
+}
+
 /** Valida forma E coerência. `copy` só volta quando não há problema nenhum. */
 export function validarCopyAutoral(entrada: unknown): ResultadoDaValidacao {
   const lido = copyAutoralSchema.safeParse(entrada)
-  if (!lido.success) {
-    return {
-      copy: null,
-      problemas: lido.error.issues.map((i) => ({ tipo: 'schema', mensagem: `${i.path.join('.') || '(raiz)'}: ${i.message}` })),
-    }
-  }
+  if (!lido.success) return { copy: null, problemas: problemasDoSchema(lido.error.issues) }
   const copy = lido.data
   const problemas = problemasDeCoerencia(copy)
   return { copy: problemas.length === 0 ? copy : null, problemas }
+}
+
+/**
+ * As regras LOCAIS de um bloco (não dependem dos outros blocos): a segunda voz
+ * só existe na manchete e só aponta para linha que o bloco tem.
+ */
+export function problemasLocaisDoBloco(b: BlocoAutoral): ProblemaDaCopy[] {
+  const problemas: ProblemaDaCopy[] = []
+  const voz2 = b.estilo?.linhasNaVoz2
+  if (voz2 && voz2.length > 0) {
+    if (b.funcao !== 'headline') problemas.push({ tipo: 'estilo', bloco: b.id, mensagem: `segunda voz só existe na manchete (bloco "${b.id}" é ${b.funcao})` })
+    for (const i of voz2) {
+      if (i >= b.linhas.length) problemas.push({ tipo: 'estilo', bloco: b.id, mensagem: `linhasNaVoz2 aponta para a linha ${i}, e o bloco "${b.id}" tem ${b.linhas.length}` })
+    }
+  }
+  return problemas
+}
+
+/**
+ * As regras LOCAIS de uma revisão (não dependem da copy): o que ela detalha em
+ * `campos` e o que registra em `removidos` precisa estar listado em `blocos`.
+ * `rotulo` só muda a mensagem ("revisão 3" na copy, "a revisão" solta).
+ */
+export function problemasLocaisDaRevisao(r: RevisaoDaCopy, rotulo = 'a revisão'): ProblemaDaCopy[] {
+  const problemas: ProblemaDaCopy[] = []
+  for (const id of Object.keys(r.campos ?? {})) {
+    if (!r.blocos.includes(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `${rotulo} detalha campos do bloco "${id}" sem listá-lo em blocos` })
+  }
+  // Remoção é mudança do bloco: quem a registra lista o id em `blocos`,
+  // senão `autorDoBloco` (que anda pelas revisões por `blocos`) devolveria o
+  // autor da edição anterior (R02 da revisão do Codex, 12/09/2026).
+  for (const x of r.removidos ?? []) {
+    if (!r.blocos.includes(x.id)) problemas.push({ tipo: 'revisao', bloco: x.id, mensagem: `${rotulo} registra a remoção do bloco "${x.id}" sem listá-lo em blocos` })
+  }
+  return problemas
 }
 
 /** Só a coerência (para quem já tem o objeto tipado). */
@@ -58,13 +103,7 @@ export function problemasDeCoerencia(copy: CopyAutoral): ProblemaDaCopy[] {
 
     if (b.grupoDeLeitura) porGrupo.set(b.grupoDeLeitura, [...(porGrupo.get(b.grupoDeLeitura) ?? []), b.id])
 
-    const voz2 = b.estilo?.linhasNaVoz2
-    if (voz2 && voz2.length > 0) {
-      if (b.funcao !== 'headline') problemas.push({ tipo: 'estilo', bloco: b.id, mensagem: `segunda voz só existe na manchete (bloco "${b.id}" é ${b.funcao})` })
-      for (const i of voz2) {
-        if (i >= b.linhas.length) problemas.push({ tipo: 'estilo', bloco: b.id, mensagem: `linhasNaVoz2 aponta para a linha ${i}, e o bloco "${b.id}" tem ${b.linhas.length}` })
-      }
-    }
+    problemas.push(...problemasLocaisDoBloco(b))
   }
 
   for (const [grupo, membros] of porGrupo) {
@@ -80,31 +119,35 @@ export function problemasDeCoerencia(copy: CopyAutoral): ProblemaDaCopy[] {
 
   // Um id citado no histórico existe HOJE ou foi REMOVIDO por alguma revisão
   // (a remoção fica registrada com o que o bloco dizia). Id sem lastro nenhum
-  // continua sendo problema.
+  // continua sendo problema — regra de CONJUNTO.
   const removidos = new Set(copy.revisoes.flatMap((r) => (r.removidos ?? []).map((x) => x.id)))
   copy.revisoes.forEach((r, i) => {
     for (const id of r.blocos) {
       if (!ids.has(id) && !removidos.has(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `revisão ${i} cita o bloco "${id}", que não existe na copy nem consta como removido` })
     }
-    for (const id of Object.keys(r.campos ?? {})) {
-      if (!r.blocos.includes(id)) problemas.push({ tipo: 'revisao', bloco: id, mensagem: `revisão ${i} detalha campos do bloco "${id}" sem listá-lo em blocos` })
-    }
-    // Remoção é mudança do bloco: quem a registra lista o id em `blocos`,
-    // senão `autorDoBloco` (que anda pelas revisões por `blocos`) devolveria o
-    // autor da edição anterior (R02 da revisão do Codex, 12/09/2026).
-    for (const x of r.removidos ?? []) {
-      if (!r.blocos.includes(x.id)) problemas.push({ tipo: 'revisao', bloco: x.id, mensagem: `revisão ${i} registra a remoção do bloco "${x.id}" sem listá-lo em blocos` })
-    }
+    problemas.push(...problemasLocaisDaRevisao(r, `revisão ${i}`))
   })
 
   return problemas
 }
 
-/** Valida UM bloco solto (a camada extra da F3 chega assim). */
+/**
+ * Valida UM bloco solto (a camada extra da F3 chega assim): forma e as regras
+ * LOCAIS — as mesmas que a copy aplica a ele. `bloco` só volta sem problema.
+ */
 export function validarBlocoAutoral(entrada: unknown): { bloco: BlocoAutoral | null; problemas: ProblemaDaCopy[] } {
   const lido = blocoAutoralSchema.safeParse(entrada)
-  if (!lido.success) return { bloco: null, problemas: lido.error.issues.map((i) => ({ tipo: 'schema', mensagem: `${i.path.join('.') || '(raiz)'}: ${i.message}` })) }
-  return { bloco: lido.data, problemas: [] }
+  if (!lido.success) return { bloco: null, problemas: problemasDoSchema(lido.error.issues) }
+  const problemas = problemasLocaisDoBloco(lido.data)
+  return { bloco: problemas.length === 0 ? lido.data : null, problemas }
+}
+
+/** Valida UMA revisão solta: forma e as regras LOCAIS — as mesmas que a copy aplica a ela. */
+export function validarRevisaoDaCopy(entrada: unknown): { revisao: RevisaoDaCopy | null; problemas: ProblemaDaCopy[] } {
+  const lido = revisaoDaCopySchema.safeParse(entrada)
+  if (!lido.success) return { revisao: null, problemas: problemasDoSchema(lido.error.issues) }
+  const problemas = problemasLocaisDaRevisao(lido.data)
+  return { revisao: problemas.length === 0 ? lido.data : null, problemas }
 }
 
 /** Os blocos na ORDEM DE LEITURA declarada (nunca a ordem do array). */

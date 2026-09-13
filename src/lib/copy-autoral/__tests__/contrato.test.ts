@@ -3,6 +3,7 @@ import {
   CopyLegadaIncompativel,
   HistoricoDaCopyCheio,
   MAX_REVISOES_DA_COPY,
+  RevisaoDaCopyInvalida,
   VERSAO_DO_CONTRATO,
   aplicarRevisao,
   autorDoBloco,
@@ -19,7 +20,10 @@ import {
   lerCopyAutoral,
   mesmaCopy,
   serializarCopyAutoral,
+  tentarAplicarRevisao,
+  validarBlocoAutoral,
   validarCopyAutoral,
+  validarRevisaoDaCopy,
   type BlocoAutoral,
   type CopyAutoral,
 } from '..'
@@ -415,5 +419,104 @@ describe('PR2-02: a revisão que aplicarRevisao acrescenta sempre passa no leito
     expect(c200.blocos.find((b) => b.id === 'headline')!.linhas).toEqual(['Milk-shake', 'vem [em dobro]'])
     // sem mudança nenhuma não há o que recusar
     expect(aplicarRevisao(c200, c200.blocos, { autor: 'equipe', motivo: 'nada' }).copy).toBe(c200)
+  })
+})
+
+describe('PR2-03: os metadados da revisão passam no leitor ou a revisão é recusada, sem truncar', () => {
+  const mudaManchete = (c: CopyAutoral) => c.blocos.map((b) => (b.id === 'headline' ? { ...b, linhas: ['Outra', 'manchete'] } : b))
+  const quem = { autor: 'equipe' as const, motivo: 'trocou a manchete', em: '2026-09-13T10:00:00.000Z', superficie: 'editor' }
+
+  it('motivo de 300, `em` e `superficie` de 40 sobrevivem à releitura exatamente como vieram', () => {
+    const noTeto = { ...quem, motivo: 'm'.repeat(300), em: 'e'.repeat(40), superficie: 's'.repeat(40) }
+    const { copy: revisada } = aplicarRevisao(copy, mudaManchete(copy), noTeto)
+    const { copy: lida, problemas } = lerCopyAutoral(serializarCopyAutoral(revisada))
+    expect(problemas).toEqual([])
+    expect(lida!.revisoes[0]).toMatchObject({ motivo: 'm'.repeat(300), em: 'e'.repeat(40), superficie: 's'.repeat(40) })
+  })
+
+  it('motivo vazio ou de 301, `em`/`superficie` vazios ou de 41 são recusados explicitamente — a original intacta, nada cortado', () => {
+    for (const ruim of [{ motivo: '' }, { motivo: 'm'.repeat(301) }, { em: '' }, { em: 'e'.repeat(41) }, { superficie: '' }, { superficie: 's'.repeat(41) }]) {
+      const rotulo = JSON.stringify(ruim).slice(0, 40)
+      const antes = structuredClone(copy)
+      const erro = (() => {
+        try {
+          aplicarRevisao(copy, mudaManchete(copy), { ...quem, ...ruim })
+        } catch (e) {
+          return e
+        }
+      })()
+      expect(erro, rotulo).toBeInstanceOf(RevisaoDaCopyInvalida)
+      const recusa = erro as RevisaoDaCopyInvalida
+      expect(recusa.copy, rotulo).toBe(copy)
+      expect(copy, rotulo).toEqual(antes)
+      expect(recusa.mudancas.map((m) => m.id), rotulo).toEqual(['headline'])
+      expect(recusa.problemas.some((p) => p.tipo === 'revisao' && p.mensagem.startsWith(`revisão nova: ${Object.keys(ruim)[0]}`)), rotulo).toBe(true)
+      // a mesma decisão, sem exceção
+      const tentativa = tentarAplicarRevisao(copy, mudaManchete(copy), { ...quem, ...ruim })
+      expect(tentativa.copy, rotulo).toBeNull()
+      expect(tentativa.original, rotulo).toBe(copy)
+      // sem mudança, o metadado ruim também é recusado: a chamada não passa ou falha conforme o diff
+      expect(() => aplicarRevisao(copy, copy.blocos, { ...quem, ...ruim }), rotulo).toThrow(RevisaoDaCopyInvalida)
+    }
+  })
+
+  it('bloco novo que o contrato não comporta também é recusa explícita (antes voltava copy que o leitor rejeitava)', () => {
+    const longa = copy.blocos.map((b) => (b.id === 'apoio' ? { ...b, linhas: ['x'.repeat(301)] } : b))
+    expect(() => aplicarRevisao(copy, longa, quem)).toThrow(RevisaoDaCopyInvalida)
+    const semLinhas = copy.blocos.map((b) => (b.id === 'apoio' ? ({ id: 'apoio', funcao: 'apoio', ordem: 2 } as unknown as BlocoAutoral) : b))
+    const r = tentarAplicarRevisao(copy, semLinhas, quem)
+    expect(r.copy).toBeNull()
+    expect(r.problemas.some((p) => p.mensagem.startsWith('blocos.2.linhas'))).toBe(true)
+  })
+})
+
+describe('PR2-04: validar o bloco solto concorda com validar a copy nas regras locais', () => {
+  const naCopy = (b: BlocoAutoral) => validarCopyAutoral({ versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude' }, blocos: [{ ...b, ordem: 0 }], revisoes: [] })
+
+  it('segunda voz num bloco livre e voz 2 numa linha que a manchete não tem: os dois validadores recusam, com o mesmo motivo', () => {
+    const livre: BlocoAutoral = { id: 'aviso', funcao: 'livre', ordem: 0, linhas: ['Só hoje'], estilo: { linhasNaVoz2: [0] } }
+    const umaLinha: BlocoAutoral = { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Rodízio'], estilo: { linhasNaVoz2: [1] } }
+    for (const b of [livre, umaLinha]) {
+      const solto = validarBlocoAutoral(b)
+      expect(solto.bloco, b.id).toBeNull()
+      expect(solto.problemas.map((p) => p.tipo), b.id).toEqual(['estilo'])
+      expect(naCopy(b).problemas.map((p) => p.mensagem), b.id).toEqual(solto.problemas.map((p) => p.mensagem))
+    }
+  })
+
+  it('manchete com a voz 2 em [0] é aprovada pelos dois', () => {
+    const ok: BlocoAutoral = { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Rodízio'], estilo: { linhasNaVoz2: [0] } }
+    expect(validarBlocoAutoral(ok)).toEqual({ bloco: ok, problemas: [] })
+    expect(naCopy(ok).problemas).toEqual([])
+  })
+
+  it('a revisão solta segue a mesma regra: campos e remoção fora de `blocos` são recusados sozinhos e na copy', () => {
+    const torta = { em: '2026-09-13T10:00:00.000Z', autor: 'equipe' as const, motivo: 'x', blocos: ['headline'], campos: { apoio: ['linhas'] }, removidos: [{ id: 'velho', funcao: 'apoio' as const, linhas: ['a'] }] }
+    const solta = validarRevisaoDaCopy(torta)
+    expect(solta.revisao).toBeNull()
+    expect(solta.problemas.map((p) => p.mensagem)).toEqual(['a revisão detalha campos do bloco "apoio" sem listá-lo em blocos', 'a revisão registra a remoção do bloco "velho" sem listá-lo em blocos'])
+    const naCopia = validarCopyAutoral({ ...copy, revisoes: [torta] }).problemas.filter((p) => p.tipo === 'revisao').map((p) => p.mensagem)
+    expect(naCopia).toEqual(['revisão 0 detalha campos do bloco "apoio" sem listá-lo em blocos', 'revisão 0 registra a remoção do bloco "velho" sem listá-lo em blocos'])
+  })
+})
+
+describe('auditoria: o que o adaptador inventa cabe no contrato por construção', () => {
+  it('papel de 250 caracteres e 40 papéis desconhecidos convertem — id ≤ 60, lacuna ≤ 200, no máximo 20 lacunas', () => {
+    const longo = copyDeBlocosLegados([{ papel: 'p'.repeat(250), linhas: ['Texto'] }, { papel: 'p'.repeat(250), linhas: ['Outro'] }])
+    expect(longo.blocos.every((b) => b.id.length <= 60)).toBe(true)
+    expect(new Set(longo.blocos.map((b) => b.id)).size).toBe(2)
+    expect(longo.lacunas!.every((l) => l.length <= 200)).toBe(true)
+    expect(longo.lacunas!.some((l) => l.includes(`"${'p'.repeat(60)}…"`))).toBe(true)
+
+    const muitos = copyDeBlocosLegados(Array.from({ length: 40 }, (_, i) => ({ papel: `antigo-${i}`, linhas: [`t${i}`] })))
+    expect(muitos.lacunas!.length).toBeLessThanOrEqual(20)
+    expect(muitos.lacunas!.at(-1)).toMatch(/^mais \d+ bloco\(s\) com papel desconhecido/)
+    expect(lerCopyAutoral(serializarCopyAutoral(muitos)).copy).toEqual(muitos)
+  })
+
+  it('`em`/`superficie` vazios no adaptador são incompatibilidade explícita, nunca omitidos em silêncio', () => {
+    expect(converterListaLegada(['Texto'], { superficie: '' }).copy).toBeNull()
+    expect(() => copyDeBlocosLegados([{ papel: 'headline', linhas: ['x'] }], { em: '' })).toThrow(CopyLegadaIncompativel)
+    expect(copyDeListaLegada(['Texto'], { superficie: 'bancada' }).origem.superficie).toBe('bancada')
   })
 })
