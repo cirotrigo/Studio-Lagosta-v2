@@ -6663,3 +6663,9 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   legível responde no passo 1 e não chega ao fallback. Teste: `R50` em
   `textos-da-peca.test.ts` (POSTED, POSTING, FAILED, no publicador × três
   cenários; controles viva legível e registro válido).
+- 🔴 **Página do post `NOT_NEEDED` cuja mídia é OUTRA arte é vínculo HISTÓRICO, não fonte** (R51 da revisão FINAL
+  sobre 16af4e20, 13/09/2026). Trocar a arte pela GALERIA passa o post a `NOT_NEEDED` e CONSERVA `pageId`; ler a página
+  ali devolvia os textos da arte anterior com origem `pagina`, antes da procedência da mídia atual (C6-03 contornado).
+  `paginaDoPostEHistorica(post, arteDaMidia)` decide pelo estado que todo post já tem (`renderStatus` + a arte da mídia
+  única não ser daquela página) — vale para registro antigo. Com ela a peça se resolve pela mídia, e o post conta como
+  "sem página própria" para R42/R50. Leitor novo de textos de post passa `renderStatus`.
