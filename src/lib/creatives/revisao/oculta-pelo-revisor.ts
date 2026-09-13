@@ -90,12 +90,14 @@ export function camadasParaDecisao<L extends CamadaComMarca>(camadas: L[]): L[] 
 
 /**
  * Depois de uma escrita HUMANA das camadas (o editor), a marca só sobrevive
- * na camada que continua escondida desde o ajuste. Camada que estava VISÍVEL
- * antes desta escrita e chega escondida foi a pessoa escondendo — a marca
- * antiga sai, e a remoção passa a contar como dela.
+ * na camada que continua escondida desde o ajuste — a BASE gravada tem de
+ * estar escondida e marcada (C3-11). Camada que estava VISÍVEL antes desta
+ * escrita e chega escondida foi a pessoa escondendo, e camada que a base já
+ * tinha escondida SEM marca é escolha dela: a marca reenviada pelo editor
+ * sai, e a remoção passa a contar como dela.
  */
 export function reconciliarMarcasDoRevisor<L extends CamadaComMarca & { id: string }>(
-  antes: Array<{ id: string; visible?: unknown }> | null | undefined,
+  antes: Array<{ id: string; visible?: unknown; metadata?: unknown }> | null | undefined,
   depois: L[],
 ): L[] {
   const antesPorId = new Map((antes ?? []).map((l) => [l.id, l]))
@@ -105,7 +107,11 @@ export function reconciliarMarcasDoRevisor<L extends CamadaComMarca & { id: stri
     // esconder humano posterior por outro caminho (`hidden: true` do chat), REV-8AD-02.
     if (l.visible !== false) return semMarcaDoRevisor(l)
     const a = antesPorId.get(l.id)
-    if (a && a.visible !== false) return semMarcaDoRevisor(l)
+    // A marca só sobrevive se a BASE também está escondida COM ela (C3-11 da pré-revisão do PR 3). O editor
+    // guarda a camada no estado local e reenvia a marca que o servidor já tirou: mostrar → esconder de novo →
+    // qualquer edição depois, e a base escondida SEM marca ganhava a marca de volta — o esconder humano virava
+    // mecânico e o contrato recebia depois uma revisão `equipe` restaurando o bloco. Base visível cai aqui também.
+    if (a && !ocultaPeloRevisor(a)) return semMarcaDoRevisor(l)
     return l
   })
 }

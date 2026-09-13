@@ -4381,10 +4381,13 @@ O conserto é `src/lib/compositor/recompor.ts` (serviço) e `defasagem.ts`
   texto velho.
 - **A RECUSA (`TEXTO_NAO_CABE_NA_COLUNA`) não vira log.** Ela é correta — a
   linha não cabe na coluna nem a 80% da fonte —, e fica gravada em
-  `Generation.fieldValues.recomposicao` (merge, nunca substituição) **e** no
-  histórico de cada post afetado, com o orçamento de caracteres. A arte
-  continua sendo a antiga; quem editou decide. Nada regenera sozinho além
-  disso.
+  `Generation.fieldValues.recusaDaRecomposicao` (chave própria, por merge,
+  nunca substituição — ver abaixo) **e** no histórico de cada post afetado,
+  com o orçamento de caracteres. Em geral a arte continua sendo a antiga, e
+  quem editou decide; quando a MESMA rodada já trocou o PNG antes de falhar (a
+  página mudou durante o render), a recusa grava `arteTrocada: true` e o
+  histórico do post diz que a imagem já foi trocada. Nada regenera sozinho
+  além disso.
   🔴 **E a recusa NÃO substitui o registro do re-render** (C6-01 da
   pré-revisão do HEAD f0eee811, 12/09/2026): ela mora em
   `fieldValues.recusaDaRecomposicao` (`em`, `erro`, `errorCode`, `detalhes`),
@@ -4396,8 +4399,9 @@ O conserto é `src/lib/compositor/recompor.ts` (serviço) e `defasagem.ts`
   OUTRA versão da mídia (R13/R37/R38/R42 do PR 6). Recusa é comum (texto que
   não cabe, página que virou modelo, tentativas esgotadas com o Blob fora). O
   próximo registro de sucesso (`feita` ou `re-renderizada`) grava
-  `recusaDaRecomposicao: null`. ⚠️ Commit de integração no branch do PR 6:
-  **desce para o PR 0 no merge ou é revisado junto com o PR 6**. Linha que já
+  `recusaDaRecomposicao: null`. Nasceu num commit de integração no branch do
+  PR 6 e **desceu para o PR 0 por cherry-pick em 12/09/2026** — o PR 0 é o
+  dono. Linha que já
   foi recusada antes disso perdeu o registro do re-render, e ele não se
   reconstrói.
 - **A fila é a de sempre (`kind: COMPOR`), com o `generationId` da arte que já
@@ -5649,9 +5653,9 @@ Codex antes de ser escrito.
   outra versão da mídia (página ilegível mantém a copy, arte re-renderizada
   antes deste código também) — e o PR 6 invalida essa copy. Como o merge é
   raso, a próxima escrita de `recomposicao` apaga a marca junto com o registro
-  antigo. ⚠️ Este trecho entrou por um commit de integração no branch do PR 6
-  (`feat/f2-contexto-da-semana`) e **deve descer para o PR 0** quando ele for
-  mergeado (ou ser revisado junto do PR 6).
+  antigo. Nasceu num commit de integração no branch do PR 6
+  (`feat/f2-contexto-da-semana`) e **desceu para o PR 0 por cherry-pick em
+  12/09/2026** — o PR 0 é o dono.
 - 🔴 **`copyVisualDasCamadas` recebe `Page.layers` COMO ESTÁ NO BANCO e
   decodifica por `lerCamadas`** (REV-93D-01, 12/09/2026): a rota de edição
   de camada grava a lista como STRING JSON (há página duplamente codificada)
@@ -6006,3 +6010,60 @@ Codex antes de ser escrito.
   leva as camadas marcadas) e `limpeza-de-blobs-da-prova.test.ts` (banco que
   lança não impede o Blob). Cada correção desfeita por mutação faz a sua prova
   falhar.
+
+**Da pré-revisão do commit 400277a5 (APTO COM NOTAS, C0-11) e da pré-revisão do PR 3 (C3-11), 12/09/2026:**
+
+- **Texto VAZIO não entra em achado de leitura** (C0-11). O medidor devolve
+  `null` para conteúdo vazio (sem métrica, sem marca), `textosSemMetrica` exige
+  conteúdo, mas a régua mede a CAIXA de todo texto visível. Num grupo
+  `{cta: "Reserve já", servico: ""}` sobre foto clara, o achado nascia com
+  `['cta', 'servico']`, severidade de serviço e "o horário não dá leitura", e a
+  regra do C0-01 bloqueava o rebaixamento dizendo que a visão "não recebeu
+  marca" de uma camada sem nada para ver. Hoje a seção 6 tira do achado todo
+  texto sem conteúdo (`textoSemConteudo`, o mesmo critério de
+  `textosSemMetrica`), e grupo só de textos vazios não gera achado. A
+  checagem de marca não precisou de filtro próprio: o único produtor de
+  `texto-sem-leitura` é a seção 6. ⚠️ A régua continua medindo a caixa vazia
+  no p98 do GRUPO — isso é anterior e fica fora deste conserto.
+- **Lacuna de teste fechada**: a regra "medição falhou ⇒ visão parcial" agora
+  tem prova SEM achado de leitura (antes a mesma prova tinha `naoVistas`
+  preenchido, e tirar `|| e.motivoSemMedida` não quebrava nada).
+- 🔴 **A marca do revisor só sobrevive se a BASE também está escondida COM
+  ela** (C3-11). O editor guarda a camada no estado local e reenvia a marca
+  que o servidor já tirou: mostrar → esconder de novo → qualquer edição, e
+  `reconciliarMarcasDoRevisor` mantinha a marca porque só olhava se a base
+  estava escondida. O esconder humano virava mecânico e o contrato recebia
+  depois uma revisão `equipe` restaurando o bloco. Hoje é
+  `if (a && !ocultaPeloRevisor(a))` — base visível cai no mesmo ramo; camada
+  nova (sem base) mantém a marca; o autosave logo depois do ajuste também.
+- **As mensagens do cleanup da prova dizem o que aconteceu**: tudo em
+  `criados` começa em zero e cresce com a contagem de cada delete (o resumo
+  afirmava uma página que não tinha sido apagada); a linha do banco só diz que
+  o Blob foi apagado quando foi; e cada consulta que descobre URL é anunciada
+  antes de rodar (`descoberta.pendente/feita`), então as que não rodaram saem
+  listadas como "URLs NÃO descobertas". Tudo em `falhasDoCleanup`, testado sem
+  banco.
+- **Dois commits do PR 0 que nasceram no branch do PR 6 desceram por
+  cherry-pick**: `copyVisualRegravada` (o marcador da copy visual regravada no
+  re-render) e `recusaDaRecomposicao` (a recusa em chave própria, C6-01), com
+  os testes do harness do PR 0 passando aqui sem nada do PR 6.
+- 🔴 **A prova 6n lê a recusa em `recusaDaRecomposicao`** (C6-11 da
+  pré-revisão do PR 6): ela lia `recomposicao` e ficaria vermelha em toda
+  rodada com o C6-01 — e o conserto tentador seria reverter o C6-01. Agora ela
+  exige também `recomposicao.estado === 're-renderizada'` (o registro do
+  re-render que a mesma rodada gravou antes de lançar) e `arteTrocada: true`.
+- **A recusa sabe se a imagem já foi trocada** (C6-12): o runner guarda o
+  resultado da recomposição antes das checagens seguintes e passa
+  `arteTrocada` e os posts trocados a `registrarRecusa`; o histórico usa
+  `mensagemDaRecusaNoHistorico` e o conselho é neutro ("confira a página e
+  salve de novo" — a mudança pode ter sido a foto). O docstring deixou de
+  dizer que a galeria e `ver-geracao` leem a recusa: hoje só o histórico do
+  post avisa, e a chave na arte é diagnóstico.
+- Provas: `regras.test.ts` (grupo com texto vazio: achado só com o CTA,
+  sugestão e visão avaliada; só vazio: sem achado; controle curvo: problema e
+  parcial; medição que falhou sem achado: parcial),
+  `oculta-pelo-revisor.test.ts` e `patch-da-pagina-marca-do-revisor.test.ts`
+  (mostrar → esconder → editar, na função pura e pelo PATCH real da página),
+  `limpeza-de-blobs-da-prova.test.ts` (mensagens e consultas não rodadas) e
+  `copy-visual-regravada-marcador.test.ts` (histórico por post e
+  `arteTrocada`). A 6n da prova foi só tipada, não rodada aqui.

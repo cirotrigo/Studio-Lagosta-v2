@@ -843,8 +843,11 @@ export async function processarRecomposicaoEmBackground(args: {
   // força nova (REV-09).
   if (args.recompor.forcar === true) await marcarForcaEmExecucao(args.queueJobId, args.recompor.forcaPedidaEm)
 
+  // O que esta execução JÁ gravou antes de falhar: com ela, a recusa sabe se o PNG foi trocado (C6-12).
+  let resultado: ResultadoDaRecomposicao | null = null
   try {
     const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, renderizarComoEsta: args.recompor.renderizarComoEsta === true, decididoPor: args.decididoPor ?? null, ...(args.seams ?? {}) })
+    resultado = r
     console.log(
       `[recompor] ${pageId} em ${Math.round((Date.now() - t0) / 1000)}s — ${r.recomposta ? 'recomposta' : 're-renderizada'}, ` +
         `${r.trocados.length} slide(s) trocado(s)` +
@@ -937,6 +940,10 @@ export async function processarRecomposicaoEmBackground(args: {
       generationId: levantamento?.arte?.generationId ?? null,
       postIds: [...new Set(slides.map((s) => s.postId))],
       erro,
+      // A página mudou DURANTE a rodada (ou algo lançou depois do merge de sucesso): o PNG novo já está na arte e
+      // nos slides trocados, e a recusa não pode afirmar que a imagem continua sendo a anterior (C6-12).
+      arteTrocada: !!resultado?.url,
+      postsComArteNova: resultado?.trocados.map((t) => t.postId) ?? [],
     })
     // Relança: é o que faz `executarJob` marcar o job FAILED com o motivo.
     throw erro
@@ -945,19 +952,38 @@ export async function processarRecomposicaoEmBackground(args: {
 
 /** A copy da página hoje — `null` quando ela sumiu ou está ilegível. */
 /**
+ * A mensagem da recusa no histórico de UM post, dita pelo que aconteceu com a
+ * imagem dele (C6-12): quando a mesma rodada já trocou o PNG, dizer que "a
+ * imagem continua sendo a anterior" é mentira. E o conselho é neutro — a
+ * mudança pode ter sido a foto, não o texto (quem chama passa o próprio motivo).
+ */
+export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boolean): string {
+  return imagemTrocada
+    ? `A imagem deste post já foi trocada pela arte refeita nesta rodada, mas a atualização terminou com erro: ${mensagem} Confira a página e salve de novo.`
+    : `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — confira a página e salve de novo.`
+}
+
+/**
  * A RECUSA do compositor chega a quem editou.
  *
  * `TEXTO_NAO_CABE_NA_COLUNA` é uma resposta correta — a linha digitada não
- * cabe na coluna nem a 80% da fonte —, e ela não pode virar log. Fica gravada
- * na Generation (que a galeria e `ver-geracao` leem) e no histórico de cada
- * post afetado, com o orçamento de caracteres, dizendo que a arte continua
- * sendo a antiga.
+ * cabe na coluna nem a 80% da fonte —, e ela não pode virar log. Quem editou
+ * é avisado pelo HISTÓRICO de cada post afetado (`PostLog`, e só quando há
+ * slides), com o orçamento de caracteres. Na Generation ela fica em
+ * `fieldValues.recusaDaRecomposicao` como DIAGNÓSTICO: hoje nenhuma tela nem
+ * tool a lê (a prova e os scripts de operação, sim) — C6-12 da pré-revisão do
+ * PR 6. `arteTrocada` diz se a mesma rodada já tinha trocado o PNG antes de
+ * falhar; `recomposicao` continua sendo o registro do último render.
  */
 export async function registrarRecusa(args: {
   pageId: string
   generationId: string | null
   postIds: string[]
   erro: unknown
+  /** A mesma rodada já gravou o PNG novo na arte antes de falhar. */
+  arteTrocada?: boolean
+  /** Os posts cuja mídia já recebeu o PNG novo nesta rodada. */
+  postsComArteNova?: string[]
 }): Promise<void> {
   const erro = args.erro
   const code = erro instanceof CreativeError ? erro.code : 'ERRO'
@@ -980,16 +1006,17 @@ export async function registrarRecusa(args: {
        * registro de sucesso limpa esta chave.
        */
       await mesclarFieldValuesDaArte(db, args.generationId, {
-        recusaDaRecomposicao: { em: new Date().toISOString(), erro: mensagem, errorCode: code, detalhes: detalhes ?? null },
+        recusaDaRecomposicao: { em: new Date().toISOString(), erro: mensagem, errorCode: code, detalhes: detalhes ?? null, arteTrocada: args.arteTrocada === true },
       })
     } catch (falha) {
       console.error('[recompor] não deu para registrar a recusa na arte:', falha)
     }
   }
 
+  const comArteNova = new Set(args.postsComArteNova ?? [])
   for (const postId of args.postIds) {
     await registrarNoHistorico(postId, {
-      message: `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — ajuste o texto na página e salve de novo.`,
+      message: mensagemDaRecusaNoHistorico(mensagem, comArteNova.has(postId)),
       metadata: { pageId: args.pageId, errorCode: code, detalhes: detalhes ?? null },
     })
   }

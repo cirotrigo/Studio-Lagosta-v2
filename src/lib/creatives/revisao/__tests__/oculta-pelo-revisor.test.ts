@@ -59,4 +59,22 @@ describe('a marca da camada escondida pelo revisor (REV-9E-01)', () => {
     expect(ocultaPeloRevisor(reconciliarMarcasDoRevisor([], [escondidaPeloRevisor])[0])).toBe(true)
     expect(ocultaPeloRevisor(reconciliarMarcasDoRevisor(null, [escondidaPeloRevisor])[0])).toBe(true)
   })
+
+  it('mostrar → esconder de novo → outra edição, com o editor reenviando a marca antiga: ela NÃO ressuscita na base escondida sem marca (C3-11)', () => {
+    const marcada = comVisibilidadeDoRevisor({ id: 'cta', visible: true, content: 'Vem' }, false, marca)
+    // o autosave logo depois do ajuste do revisor: a base está escondida e marcada — a marca fica
+    let base = reconciliarMarcasDoRevisor([marcada], [marcada])
+    expect(ocultaPeloRevisor(base[0])).toBe(true)
+    // a pessoa mostra (o estado local do editor ainda tem a marca)
+    base = reconciliarMarcasDoRevisor(base, [{ ...marcada, visible: true }])
+    expect(marcaDoRevisor(base[0])).toBeNull()
+    // a pessoa esconde de novo (o editor reenvia a marca)
+    base = reconciliarMarcasDoRevisor(base, [{ ...marcada, visible: false }])
+    expect(marcaDoRevisor(base[0])).toBeNull()
+    // qualquer edição depois, ainda com a marca no estado do editor: a base escondida SEM marca não a recebe de volta
+    base = reconciliarMarcasDoRevisor(base, [{ ...marcada, visible: false, content: 'Vem pra cá' }])
+    expect(marcaDoRevisor(base[0])).toBeNull()
+    expect(ocultaPeloRevisor(base[0])).toBe(false)
+    expect(base[0].content).toBe('Vem pra cá')
+  })
 })

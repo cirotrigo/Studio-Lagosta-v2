@@ -189,6 +189,11 @@ function corSaturada(hex: string): boolean {
 }
 const pct = (v: number) => `${Math.round(v * 100)}%`
 
+/** Texto sem conteúdo (`content` vazio ou só espaço): o mesmo critério de `textosSemMetrica` em `revisar-arte`. */
+export function textoSemConteudo(l: Layer): boolean {
+  return (l.type === 'text' || l.type === 'rich-text') && String(l.content ?? '').trim() === ''
+}
+
 export function ehTextoVisivel(l: Layer): boolean {
   return (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
 }
@@ -714,7 +719,10 @@ export function avaliarPeca(e: EntradaDaRevisao): RelatorioDaRevisao {
     const sobrandoPorGradiente = new Map<string, { medidas: ContrasteMedido[]; todosSobrando: boolean }>()
     for (const m of e.contraste) {
       const { p98, ok: okAntes, tinta, alvo, sentido } = leituraDecisiva(m)
-      const ids = m.camadas.filter((id) => porId.has(id))
+      // Texto VAZIO não tem tinta: a régua mede a caixa dele, mas não há o que ler nem o que a visão veja. Ele não
+      // entra no achado de leitura (nem na severidade de serviço, nem no "não recebeu marca" da cobertura), e
+      // grupo só de textos vazios não gera achado (C0-11 da pré-revisão de 400277a5).
+      const ids = m.camadas.filter((id) => porId.has(id) && !textoSemConteudo(porId.get(id)!))
       if (ids.length === 0) continue
       const nomes = ids.map((id) => nomeDaCamada(porId.get(id))).join(' + ')
       const servico = ids.some((id) => papelDaCamada(porId.get(id)!) === 'servico')

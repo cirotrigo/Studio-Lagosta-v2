@@ -42,7 +42,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { limparBancoEBlobs, limpezaFalhou } from './lib/limpeza-de-blobs'
+import { falhasDoCleanup, limparBancoEBlobs } from './lib/limpeza-de-blobs'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -775,8 +775,15 @@ async function main() {
       const job6n = await db.generationJob.findUnique({ where: { id: jobId6n }, select: { status: true, lastError: true, attempts: true, maxAttempts: true } })
       conferir('o executor fecha FAILED terminal com o motivo — nunca DONE; a próxima edição reabre o job', d6n === 'FAILED' && job6n?.status === 'FAILED' && /editada de novo/.test(String(job6n.lastError)), `${d6n}; ${job6n?.status} ${job6n?.attempts}/${job6n?.maxAttempts}: ${String(job6n?.lastError).slice(0, 60)}`)
       const gen6nRegistro = await db.generation.findUnique({ where: { id: persistido2.generationId }, select: { fieldValues: true } })
-      const recusa6n = (gen6nRegistro?.fieldValues as Record<string, any>)?.recomposicao
-      conferir('a recusa ficou registrada na arte (fieldValues.recomposicao) com o código', recusa6n?.codigo === 'PAGINA_MUDOU_DURANTE' || /PAGINA_MUDOU_DURANTE/.test(JSON.stringify(recusa6n ?? {})), JSON.stringify(recusa6n).slice(0, 120))
+      // A recusa mora em CHAVE PRÓPRIA desde C6-01 (`recusaDaRecomposicao`), e o registro do re-render que ESTA rodada
+      // gravou antes de lançar tem de sobreviver — a asserção antiga lia `recomposicao` e ficava vermelha (C6-11).
+      // Não "conserte" isto voltando a recusa para `recomposicao`: é justamente o defeito de C6-01.
+      const fv6n = (gen6nRegistro?.fieldValues ?? {}) as Record<string, any>
+      conferir(
+        'a recusa ficou em fieldValues.recusaDaRecomposicao com o código e arteTrocada, e o registro re-renderizada desta rodada continua em recomposicao (C6-01, C6-11, C6-12)',
+        fv6n.recusaDaRecomposicao?.errorCode === 'PAGINA_MUDOU_DURANTE' && fv6n.recusaDaRecomposicao?.arteTrocada === true && fv6n.recomposicao?.estado === 're-renderizada',
+        JSON.stringify({ recusa: fv6n.recusaDaRecomposicao, estado: fv6n.recomposicao?.estado }).slice(0, 180),
+      )
     }
 
     // ── 6o. página e trava numa transação (REV-D01), em peça SEM trava, lendo página E arte (REV-R02) ──
@@ -1577,12 +1584,21 @@ async function main() {
   } finally {
     process.env.BLOB_READ_WRITE_TOKEN = tokenDoBlob
     console.log('\ncleanup (só os ids criados por esta prova)')
-    const criados = { posts: posts.length, generations: 0, generationsAlheias: 0, jobs: 0, sinais: 0, pages: pageId ? 1 : 0, templates: 0, blobs: blobs.size }
+    // Só o que de FATO foi apagado entra no resumo: tudo começa em zero e cresce com a contagem de cada delete (pré-revisão de 400277a5).
+    const criados = { posts: 0, generations: 0, generationsAlheias: 0, jobs: 0, sinais: 0, pages: 0, templates: 0, blobs: blobs.size }
     // O banco e o Blob são passos INDEPENDENTES (nota da pré-revisão de 65b40096): se um delete do banco lançar,
     // a exclusão do Blob roda mesmo assim, com o que já foi juntado, e lista as URLs que ficaram.
     const cleanup = await limparBancoEBlobs(
       blobs,
-      async () => {
+      async (descoberta) => {
+        // Toda consulta que descobre URL é anunciada ANTES de rodar: se o banco lançar, o relatório lista o que
+        // ficou sem descobrir em vez de parecer completo (pré-revisão de 400277a5).
+        const SEM_PAGINA = 'Generations de prova sem página (spec.nome com a marca da rodada)'
+        const PAGINAS_DA_MARCA = 'páginas com a marca da rodada'
+        const daPagina = (id: string) => `Generations da página ${id}`
+        descoberta.pendente(SEM_PAGINA)
+        descoberta.pendente(PAGINAS_DA_MARCA)
+        for (const id of new Set([...paginasCriadas, ...(pageId ? [pageId] : [])])) descoberta.pendente(daPagina(id))
         // As Generations de prova criadas em OUTRO projeto (6s): pelo id exato,
         // independentemente do projeto, e a que não sumir CONTA como falha (REV-052-01).
         if (generationsAlheias.length) {
@@ -1599,6 +1615,8 @@ async function main() {
         const idsDePagina = new Set<string>(paginasCriadas)
         if (pageId) idsDePagina.add(pageId)
         for (const p of await db.page.findMany({ where: { name: { contains: MARCA }, Template: { projectId: PROJETO } }, select: { id: true } })) idsDePagina.add(p.id)
+        for (const id of idsDePagina) descoberta.pendente(daPagina(id))
+        descoberta.feita(PAGINAS_DA_MARCA)
         // Toda URL que a arte já teve: `resultUrl` e o rastro `recomposicao.urlsAnteriores` (o re-render sobrescreve
         // a URL, e um PNG que saiu da coluna sem entrar no conjunto ficaria no Blob de produção — REV-9E-02).
         const urlsDaGeneration = (g: { resultUrl: string | null; fieldValues: unknown }): string[] => {
@@ -1608,16 +1626,17 @@ async function main() {
         }
         const gensSemPagina = await db.generation.findMany({ where: { projectId: PROJETO, createdAt: { gte: inicio }, fieldValues: { path: ['spec', 'nome'], string_contains: MARCA } }, select: { id: true, resultUrl: true, fieldValues: true } })
         for (const g of gensSemPagina) for (const u of urlsDaGeneration(g)) blobs.add(u)
+        descoberta.feita(SEM_PAGINA)
         if (gensSemPagina.length) {
           await db.generationJob.deleteMany({ where: { generationId: { in: gensSemPagina.map((g) => g.id) } } })
           criados.generations += (await db.generation.deleteMany({ where: { id: { in: gensSemPagina.map((g) => g.id) } } })).count
         }
         const postsOrfaos = await db.socialPost.findMany({ where: { projectId: PROJETO, caption: { contains: MARCA } }, select: { id: true } })
         for (const p of postsOrfaos) if (!posts.includes(p.id)) posts.push(p.id)
-        criados.pages = 0
         for (const id of idsDePagina) {
           const gens = await db.generation.findMany({ where: { projectId: PROJETO, fieldValues: { path: ['pageId'], equals: id } }, select: { id: true, resultUrl: true, fieldValues: true } })
           for (const g of gens) for (const u of urlsDaGeneration(g)) blobs.add(u)
+          descoberta.feita(daPagina(id))
           criados.jobs += (await db.generationJob.deleteMany({ where: { generationId: { in: gens.map((g) => g.id) } } })).count
           criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, pageId: id, createdAt: { gte: inicio } } })).count
           criados.generations += (await db.generation.deleteMany({ where: { id: { in: gens.map((g) => g.id) } } })).count
@@ -1641,27 +1660,20 @@ async function main() {
         }
         if (sinaisDaProva.length) criados.sinais += (await db.learningSignal.deleteMany({ where: { id: { in: sinaisDaProva } } })).count
         if (posts.length) {
-          criados.posts = posts.length
           criados.sinais += (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, postId: { in: posts }, createdAt: { gte: inicio } } })).count
-          await db.socialPost.deleteMany({ where: { id: { in: posts } } })
+          criados.posts = (await db.socialPost.deleteMany({ where: { id: { in: posts } } })).count
         }
       },
       (urls) => del(urls),
     )
-    if (cleanup.erroDoBanco !== null) {
-      console.error('  ✗ cleanup do banco NÃO terminou (conta como falha da prova; o Blob foi apagado mesmo assim):', cleanup.erroDoBanco)
-      mau++
-    }
-    // Falha ao apagar o Blob é FALHA da prova (REV-9E-03): resíduo no Blob de produção não pode passar no gate.
-    // "encontrados" e "apagados" são contados em separado; o conjunto inclui o PNG que o persist descartou (REV-90AA-01).
+    // Cada linha diz o que de FATO aconteceu (pré-revisão de 400277a5): o Blob só é dado por apagado quando foi, a
+    // consulta que não rodou é listada, e as URLs que ficaram também — e cada uma conta como falha da prova.
+    // Nunca `if (erro)`: erro '' é falsy e passava no gate (REV-0352-01). Falha ao apagar o Blob é FALHA (REV-9E-03).
+    const falhasDaLimpeza = falhasDoCleanup(cleanup)
+    for (const falha of falhasDaLimpeza) console.error(`  ✗ ${falha}`)
+    mau += falhasDaLimpeza.length
     const limpezaDeBlobs = cleanup.blobs
-    // `limpezaFalhou`, nunca `if (erro)`: erro '' é falsy e passava no gate (REV-0352-01).
-    if (limpezaFalhou(limpezaDeBlobs)) {
-      console.error('  ✗ blob NÃO apagado (conta como falha da prova):', limpezaDeBlobs.erro ?? 'restaram URLs no Blob')
-      mau++
-    }
-    console.log(`  apagados: ${JSON.stringify({ ...criados, blobs: `${limpezaDeBlobs.apagados} de ${limpezaDeBlobs.encontrados} encontrados` })}`)
-    if (limpezaDeBlobs.restantes.length) console.error(`  ✗ ${limpezaDeBlobs.restantes.length} blob(s) ficaram no Blob: ${limpezaDeBlobs.restantes.join(' ')}`)
+    console.log(`  apagados${cleanup.erroDoBanco !== null ? ' (até o cleanup do banco parar)' : ''}: ${JSON.stringify({ ...criados, blobs: `${limpezaDeBlobs.apagados} de ${limpezaDeBlobs.encontrados} encontrados` })}`)
     await db.$disconnect()
   }
 

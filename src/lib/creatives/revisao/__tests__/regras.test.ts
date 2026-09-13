@@ -398,6 +398,35 @@ describe('calibração contra peças reais (11/09/2026)', () => {
     expect(r.resumo).toContain('a visão concluiu só em parte')
   })
 
+  it('texto VAZIO visível num grupo não vira leitura medida nem "a visão não recebeu marca" (C0-11)', () => {
+    const cta = camada('cta', { x: 100, y: 1600, width: 880, height: 60 }, 40, { content: 'Reserve já', metadata: { groupId: 'g1', compositor: { papel: 'cta' } } } as Partial<Layer>)
+    const vazio = camada('servico', { x: 100, y: 1700, width: 880, height: 48 }, 30, { content: '', metadata: { groupId: 'g1', compositor: { papel: 'servico' } } } as Partial<Layer>)
+    const grupo = { ...semLeitura, camadas: ['cta', 'servico'] }
+    const r = avaliarPeca(entrada({ camadas: [gradienteDoRodape, cta, vazio], metricas: [metrica(cta)], contraste: [grupo], vistos: [], visaoConclusiva: true, visaoCamadasMarcadas: ['cta'] }))
+    const leitura = r.achados.find((a) => a.regra === 'texto-sem-leitura')!
+    expect(leitura.camadas).toEqual(['cta'])
+    expect(leitura.mensagem).not.toMatch(/horário\/serviço/)
+    // a visão viu todo o conteúdo do bloco (o CTA) e não viu problema: a leitura desce, e a visão fica avaliada
+    expect(leitura.severidade).toBe('sugestao')
+    expect(r.cobertura.visao?.estado).toBe('avaliada')
+    // grupo só com o texto vazio: nenhum achado de leitura
+    const soVazio = avaliarPeca(entrada({ camadas: [gradienteDoRodape, vazio], metricas: [], contraste: [{ ...semLeitura, camadas: ['servico'] }], vistos: [], visaoConclusiva: true, visaoCamadasMarcadas: [] }))
+    expect(soVazio.achados.some((a) => a.regra === 'texto-sem-leitura')).toBe(false)
+    expect(soVazio.cobertura.visao?.estado).toBe('avaliada')
+    // controle: o mesmo placeholder COM conteúdo e sem métrica (curvo) segue problema, e a visão parcial
+    const curvo = { ...vazio, content: 'Das 11h às 15h' } as Layer
+    const r3 = avaliarPeca(entrada({ camadas: [gradienteDoRodape, cta, curvo], metricas: [metrica(cta)], textosSemMetrica: ['servico'], contraste: [grupo], vistos: [], visaoConclusiva: true, visaoCamadasMarcadas: ['cta'] }))
+    expect(r3.achados.find((a) => a.regra === 'texto-sem-leitura')!.severidade).toBe('problema')
+    expect(r3.cobertura.visao?.estado).toBe('parcial')
+  })
+
+  it('medição que FALHOU sem NENHUM achado de leitura: a visão sai parcial só pela regra da medição (lacuna da pré-revisão de 400277a5)', () => {
+    const r = avaliarPeca(entrada({ camadas: [servico], metricas: [], motivoSemMedida: 'a medição dos textos falhou: fonte', contraste: [], vistos: [], visaoConclusiva: true, visaoCamadasMarcadas: ['logo'] }))
+    expect(r.achados.some((a) => a.regra === 'texto-sem-leitura')).toBe(false)
+    expect(r.cobertura.visao?.estado).toBe('parcial')
+    expect(r.cobertura.visao?.motivo).toMatch(/medição dos textos falhou/)
+  })
+
   it('a varredura do C0-01 alcança o assunto ESTIMADO: sem marca do bloco, a visão calada não o tira; com marca, tira (e rebaixa a leitura)', () => {
     const base = {
       camadas: [gradienteDoRodape, servico],

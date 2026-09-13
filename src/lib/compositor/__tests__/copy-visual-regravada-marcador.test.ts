@@ -18,6 +18,7 @@ const banco = vi.hoisted(() => ({
   slides: [] as Array<Record<string, any>>,
   renders: [] as Array<Record<string, any>>,
   sql: [] as Array<{ sql: string; valores: unknown[] }>,
+  logs: [] as Array<Record<string, any>>,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -33,6 +34,12 @@ vi.mock('@/lib/db', () => {
         banco.generations.filter((g) => (where.id ? g.id === where.id : true) && (where.resultUrl ? g.resultUrl === where.resultUrl : true)).at(-1) ?? null,
     },
     socialPost: { findMany: async () => banco.slides },
+    postLog: {
+      create: async ({ data }: { data: Record<string, any> }) => {
+        banco.logs.push(data)
+        return data
+      },
+    },
     $executeRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
       banco.sql.push({ sql: partes.join('?'), valores })
       return 1
@@ -61,7 +68,7 @@ vi.mock('@/lib/ai/generation-queue', () => ({
 }))
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 
-import { recomporPaginaDefasada, registrarRecusa } from '@/lib/compositor/recompor'
+import { mensagemDaRecusaNoHistorico, recomporPaginaDefasada, registrarRecusa } from '@/lib/compositor/recompor'
 import { CreativeError } from '@/lib/creatives/errors'
 
 const CAMADAS = [
@@ -85,6 +92,7 @@ async function patchDoReRender(layers: unknown, fieldValues: Record<string, unkn
 beforeEach(() => {
   banco.renders = []
   banco.sql = []
+  banco.logs = []
   banco.slides = [{ id: 'post-carrossel', pageId: null, renderStatus: 'NOT_NEEDED', mediaUrls: ['https://blob.test/capa.png', URL_ANTIGA], laterPostId: null }]
 })
 
@@ -149,5 +157,31 @@ describe('recompor — a recusa não apaga o registro do re-render (C6-01 da pr�
     expect(depois.recomposicao.estado).toBe('re-renderizada')
     expect('copyVisualRegravada' in depois.recomposicao).toBe(false)
     expect(depois.slotValues).toEqual(comMarca.slotValues)
+  })
+})
+
+describe('recompor — a recusa no histórico diz o que aconteceu com a imagem (C6-12 da pré-revisão do PR 6)', () => {
+  it('post cujo slide JÁ recebeu o PNG desta rodada não ouve "a imagem continua sendo a anterior"; o outro ouve; a arte guarda `arteTrocada`', async () => {
+    await registrarRecusa({
+      pageId: 'p9',
+      generationId: 'gen-antiga',
+      postIds: ['post-trocado', 'post-parado'],
+      erro: new CreativeError('PAGINA_MUDOU_DURANTE', 'a página foi editada de novo enquanto a arte era refeita.', 409),
+      arteTrocada: true,
+      postsComArteNova: ['post-trocado'],
+    })
+    const porPost = new Map(banco.logs.map((l) => [l.postId, String(l.message)]))
+    expect(porPost.get('post-trocado')).toMatch(/já foi trocada/)
+    expect(porPost.get('post-trocado')).not.toMatch(/continua sendo a anterior/)
+    expect(porPost.get('post-parado')).toMatch(/continua sendo a anterior/)
+    // o conselho é neutro: a mudança pode ter sido a foto, não o texto
+    for (const m of porPost.values()) {
+      expect(m).not.toMatch(/ajuste o texto/)
+      expect(m).toMatch(/confira a página e salve de novo/i)
+    }
+    const patch = JSON.parse(String(banco.sql.filter((q) => q.sql.includes('||'))[0].valores[0])) as Record<string, any>
+    expect(patch.recusaDaRecomposicao.arteTrocada).toBe(true)
+    // recusa sem troca: `arteTrocada` false, e a mensagem pura segue o mesmo contrato
+    expect(mensagemDaRecusaNoHistorico('x.', false)).toMatch(/continua sendo a anterior — confira a página e salve de novo/)
   })
 })

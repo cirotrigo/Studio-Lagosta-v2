@@ -57,7 +57,19 @@ export function limpezaFalhou(r: Pick<ResultadoDaLimpezaDeBlobs, 'erro' | 'resta
 export interface ResultadoDoCleanup {
   /** Mensagem da falha do cleanup do banco — `null` quando ele terminou. Nunca vazia. */
   erroDoBanco: string | null
+  /**
+   * As consultas que descobririam URLs e NÃO chegaram a rodar (o banco lançou
+   * antes): o que elas achariam não foi apagado nem listado, e o relatório
+   * precisa dizer isso em vez de parecer completo.
+   */
+  naoDescobertas: string[]
   blobs: ResultadoDaLimpezaDeBlobs
+}
+
+/** Quem limpa o banco anuncia cada consulta que descobre URL antes de rodá-la, e a dá por feita depois. */
+export interface RegistroDeDescoberta {
+  pendente(rotulo: string): void
+  feita(rotulo: string): void
 }
 
 /**
@@ -70,14 +82,48 @@ export interface ResultadoDoCleanup {
  */
 export async function limparBancoEBlobs(
   urls: Iterable<unknown>,
-  limparBanco: () => Promise<void>,
+  limparBanco: (descoberta: RegistroDeDescoberta) => Promise<void>,
   apagar: (urls: string[]) => Promise<unknown>,
 ): Promise<ResultadoDoCleanup> {
+  const pendentes = new Set<string>()
+  const descoberta: RegistroDeDescoberta = {
+    pendente: (rotulo) => void pendentes.add(rotulo),
+    feita: (rotulo) => void pendentes.delete(rotulo),
+  }
   let erroDoBanco: string | null = null
   try {
-    await limparBanco()
+    await limparBanco(descoberta)
   } catch (e) {
     erroDoBanco = mensagemDaFalha(e, 'o cleanup do banco falhou sem mensagem')
   }
-  return { erroDoBanco, blobs: await apagarBlobsDaRodada(urls, apagar) }
+  return { erroDoBanco, naoDescobertas: [...pendentes], blobs: await apagarBlobsDaRodada(urls, apagar) }
+}
+
+/**
+ * As linhas de FALHA do cleanup, cada uma dizendo o que de fato aconteceu
+ * (pré-revisão do commit 400277a5): a do banco só afirma que o Blob foi
+ * apagado quando ele foi; a das consultas que não rodaram lista o que ficou
+ * sem descobrir; a do Blob lista as URLs que ficaram. Vazio = cleanup completo.
+ */
+export function falhasDoCleanup(r: ResultadoDoCleanup): string[] {
+  const falhas: string[] = []
+  const blobOk = !limpezaFalhou(r.blobs)
+  if (r.erroDoBanco !== null) {
+    falhas.push(
+      `cleanup do banco NÃO terminou (conta como falha da prova): ${r.erroDoBanco} — a exclusão do Blob rodou mesmo assim com as URLs já descobertas${
+        blobOk ? ` e apagou ${r.blobs.apagados} de ${r.blobs.encontrados}` : ', e também falhou (ver abaixo)'
+      }`,
+    )
+  }
+  if (r.naoDescobertas.length > 0) {
+    falhas.push(`URLs NÃO descobertas — estas consultas não rodaram, e o que elas achariam não foi apagado nem listado: ${r.naoDescobertas.join('; ')}`)
+  }
+  if (!blobOk) {
+    falhas.push(
+      `blob NÃO apagado (conta como falha da prova): ${r.blobs.erro ?? 'restaram URLs no Blob'}${
+        r.blobs.restantes.length ? ` — ${r.blobs.restantes.length} ficaram no Blob: ${r.blobs.restantes.join(' ')}` : ''
+      }`,
+    )
+  }
+  return falhas
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { apagarBlobsDaRodada, limparBancoEBlobs, limpezaFalhou, urlsDoBlob } from '../../../scripts/lib/limpeza-de-blobs'
+import { apagarBlobsDaRodada, falhasDoCleanup, limparBancoEBlobs, limpezaFalhou, urlsDoBlob } from '../../../scripts/lib/limpeza-de-blobs'
 
 /**
  * REV-90AA-01 (revisão do commit 90aa3739): o PNG que o ajuste A subiu e que o `persist` descartou tem de estar no
@@ -83,5 +83,44 @@ describe('apagarBlobsDaRodada — a limpeza de Blob da prova (REV-90AA-01)', () 
     expect(limpezaFalhou(r2.blobs)).toBe(true)
 
     expect((await limparBancoEBlobs([A], async () => undefined, async () => undefined)).erroDoBanco).toBeNull()
+  })
+
+  it('as mensagens do cleanup dizem o que ACONTECEU: o Blob só é dado por apagado quando foi, e a consulta que não rodou é listada (pré-revisão de 400277a5)', async () => {
+    // o banco lança no meio: a página p2 ainda não teve as Generations lidas
+    const blobs = new Set<string>([A])
+    const r = await limparBancoEBlobs(
+      blobs,
+      async (descoberta) => {
+        descoberta.pendente('Generations da página p1')
+        descoberta.pendente('Generations da página p2')
+        blobs.add(B)
+        descoberta.feita('Generations da página p1')
+        throw new Error('FK inesperada')
+      },
+      async () => undefined,
+    )
+    expect(r.naoDescobertas).toEqual(['Generations da página p2'])
+    const falhas = falhasDoCleanup(r)
+    expect(falhas).toHaveLength(2)
+    expect(falhas[0]).toMatch(/cleanup do banco NÃO terminou.*FK inesperada.*apagou 2 de 2/)
+    expect(falhas[1]).toMatch(/NÃO descobertas.*Generations da página p2/)
+
+    // banco E Blob falhando: a linha do banco NÃO afirma que o Blob foi apagado, e a do Blob lista o que ficou
+    const r2 = await limparBancoEBlobs(
+      new Set([A, B]),
+      async () => {
+        throw new Error('conexão caiu')
+      },
+      async () => {
+        throw new Error('503 do Blob')
+      },
+    )
+    const falhas2 = falhasDoCleanup(r2)
+    expect(falhas2[0]).not.toMatch(/apagou/)
+    expect(falhas2[0]).toMatch(/também falhou/)
+    expect(falhas2[1]).toMatch(/blob NÃO apagado.*503 do Blob — 2 ficaram no Blob: .*pagina-a-1\.png .*pagina-b-2\.png/)
+
+    // tudo certo: nenhuma linha de falha
+    expect(falhasDoCleanup(await limparBancoEBlobs([A], async (d) => { d.pendente('x'); d.feita('x') }, async () => undefined))).toEqual([])
   })
 })
