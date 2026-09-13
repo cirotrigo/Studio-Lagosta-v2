@@ -28,7 +28,9 @@ import {
   blocosParaOCompositor,
   converterBlocosLegados,
   converterListaLegada,
+  converterSpecSemContrato,
   copyAutoralSchema,
+  copyDaSpecSemContrato,
   copyDeBlocosLegados,
   copyDeListaLegada,
   diferencasDeBlocos,
@@ -452,6 +454,45 @@ describe('invariante 1 — adaptadores do legado', () => {
           expect(copyDeBlocosLegados(blocos, meta), rotulo).toEqual(r.copy)
         } else {
           expect(capturar(() => copyDeBlocosLegados(blocos, meta)), rotulo).toBeInstanceOf(CopyLegadaIncompativel)
+        }
+      }
+    }
+  })
+
+  it('spec sem contrato (PR 9): blocos + camadasExtras nas fronteiras de contagem, linha e linhas; papéis desconhecidos nunca recusam', () => {
+    const extra = (i: number, linhas: string[]) => ({ id: `nota-${i}`, linhas, herdaDe: 'apoio' })
+    const specs: Array<[string, { blocos?: BlocoLegado[]; camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string }> }]> = [
+      ['vazia', {}],
+      ...([[1, 0], [0, 1], [MAX_BLOCOS - 1, 1], [MAX_BLOCOS, 1], [20, 20], [20, 21]] as Array<[number, number]>).map(([n, m]): [string, { blocos: BlocoLegado[]; camadasExtras: Array<{ id: string; linhas: string[]; herdaDe: string }> }] => [
+        `${n} blocos + ${m} extras`,
+        { blocos: Array.from({ length: n }, (_, i) => ({ papel: 'apoio', linhas: [`t${i}`] })), camadasExtras: Array.from({ length: m }, (_, i) => extra(i, [`e${i}`])) },
+      ]),
+      ...[15, 18, MAX_BLOCOS].map((n): [string, { blocos: BlocoLegado[] }] => [`${n} papéis desconhecidos`, { blocos: Array.from({ length: n }, (_, i) => ({ papel: `rodape-${'z'.repeat(80)}-${i}`, linhas: [`t${i}`] })) }]),
+      ...[MAX_LINHA - 1, MAX_LINHA, MAX_LINHA + 1].flatMap((n): Array<[string, { blocos: BlocoLegado[]; camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string }> }]> => [
+        [`linha de ${n} no bloco`, { blocos: [{ papel: 'headline', linhas: ['x'.repeat(n)] }] }],
+        [`linha de ${n} no extra`, { blocos: [{ papel: 'headline', linhas: ['Manchete'] }], camadasExtras: [extra(0, ['x'.repeat(n)])] }],
+      ]),
+      ...[MAX_LINHAS - 1, MAX_LINHAS, MAX_LINHAS + 1].map((n): [string, { blocos: BlocoLegado[]; camadasExtras: Array<{ id: string; linhas: string[]; herdaDe: string }> }] => [
+        `extra de ${n} linhas`,
+        { blocos: [{ papel: 'headline', linhas: ['Manchete'] }], camadasExtras: [extra(0, Array.from({ length: n }, (_, i) => `l${i}`))] },
+      ]),
+    ]
+    for (const [nome, entrada] of specs) {
+      for (const meta of metas) {
+        const rotulo = `${nome} · ${JSON.stringify(meta)}`
+        const antes = clonar(entrada)
+        const todas = [...(entrada.blocos ?? []).map((b) => b.linhas), ...(entrada.camadasExtras ?? []).map((e) => e.linhas)]
+        const deveAceitar = todas.length >= 1 && todas.length <= MAX_BLOCOS && todas.every(linhasCabem) && metaCabe(meta.em) && metaCabe(meta.superficie)
+        const r = converterSpecSemContrato(entrada, meta)
+        expect(r.copy !== null, `${rotulo} (${r.problemas.map((p) => p.mensagem).join(' | ')})`).toBe(deveAceitar)
+        expect(entrada, rotulo).toEqual(antes)
+        expect(r.original, rotulo).toEqual(antes)
+        if (r.copy) {
+          expect(blocosEmOrdem(r.copy).map((b) => b.linhas), rotulo).toEqual(todas)
+          relidaIdentica(r.copy, rotulo)
+          expect(copyDaSpecSemContrato(entrada, meta), rotulo).toEqual(r.copy)
+        } else {
+          expect(capturar(() => copyDaSpecSemContrato(entrada, meta)), rotulo).toBeInstanceOf(CopyLegadaIncompativel)
         }
       }
     }

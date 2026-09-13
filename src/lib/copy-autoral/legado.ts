@@ -259,10 +259,20 @@ export function blocosParaOCompositor(copy: CopyAutoral): { blocos: BlocoLegado[
  * do zero porque o contrato exige ordem contígua. Autoria `desconhecido`,
  * como todo adaptador do legado.
  */
-export function copyDaSpecSemContrato(
-  spec: { blocos?: BlocoLegado[]; camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string; grupoVisual?: 'principal' | 'topo' | 'rodape'; grupoDeLeitura?: string; ordem?: number }> },
-  opcoes: { em?: string; superficie?: string } = {},
-): CopyAutoral {
+export interface SpecSemContrato {
+  blocos?: BlocoLegado[]
+  camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string; grupoVisual?: 'principal' | 'topo' | 'rodape'; grupoDeLeitura?: string; ordem?: number }>
+}
+
+/**
+ * Como `converterBlocosLegados`, para a spec inteira: a saída passa pelo leitor
+ * (`conferida`) e, quando não há contrato válido — linha acima de 300, bloco de
+ * mais de 12 linhas, mais de 40 blocos somando `blocos` e `camadasExtras`,
+ * grupo de leitura de um bloco só, metadado vazio —, devolve
+ * `{ copy: null, problemas, original }`. O que o adaptador inventa (lacunas,
+ * id nascido do papel) cabe por construção (restack sobre 9238098f, 13/09/2026).
+ */
+export function converterSpecSemContrato(spec: SpecSemContrato, opcoes: { em?: string; superficie?: string } = {}): ConversaoDoLegado<SpecSemContrato> {
   // R08: o id EXPLÍCITO (o do extra, já validado pela spec) é do autor e viaja
   // EXATO — caixa inclusive. Só a identidade INFERIDA do legado (o papel) passa
   // por `idUnico`, e nunca toma um id explícito. Normalizar "Nota" para "nota"
@@ -271,7 +281,7 @@ export function copyDaSpecSemContrato(
     ...(spec.blocos ?? []).filter((b) => b.herdaDe && b.id).map((b) => b.id!),
     ...(spec.camadasExtras ?? []).map((e) => e.id),
   ])
-  const lacunas = ['autoria desconhecida: a copy veio de blocos por papel (spec) sem registro de quem escreveu']
+  const desconhecidos: Array<{ i: number; papel: string }> = []
   type Item = { chave: number; bloco: Omit<BlocoAutoral, 'ordem'>; ordemDeclarada: number | undefined }
   const itens: Item[] = []
   let seq = 0
@@ -281,7 +291,7 @@ export function copyDaSpecSemContrato(
   for (const b of spec.blocos ?? []) {
     seq++
     const funcao = PAPEIS_LEGADOS[b.papel]
-    if (!funcao) lacunas.push(`bloco ${seq - 1} com papel desconhecido "${b.papel}" tratado como livre`)
+    if (!funcao) desconhecidos.push({ i: seq - 1, papel: b.papel })
     if (b.papel === 'headline2') comHeadline2 = true
     if (b.grupoDeLeitura) temGrupo = true
     if (b.ordem === undefined) semOrdem = true
@@ -319,14 +329,33 @@ export function copyDaSpecSemContrato(
     })
   }
   itens.sort((a, z) => a.chave - z.chave)
-  if (semOrdem) lacunas.push('ordem de leitura inferida pela posição no array')
-  if (!temGrupo) lacunas.push('sem grupos de leitura: o legado não declara que blocos formam uma frase')
-  if (comHeadline2) lacunas.push('headline2 veio como bloco próprio: a segunda voz não foi declarada por linha')
-  return {
-    versao: VERSAO_DO_CONTRATO,
-    origem: { autor: 'desconhecido', ...(opcoes.em ? { em: opcoes.em } : {}), ...(opcoes.superficie ? { superficie: opcoes.superficie } : {}) },
-    blocos: itens.map((it, i) => ({ ...it.bloco, ordem: i })),
-    revisoes: [],
-    lacunas,
-  }
+  const finais = [
+    ...(semOrdem ? ['ordem de leitura inferida pela posição no array'] : []),
+    ...(!temGrupo ? ['sem grupos de leitura: o legado não declara que blocos formam uma frase'] : []),
+    ...(comHeadline2 ? ['headline2 veio como bloco próprio: a segunda voz não foi declarada por linha'] : []),
+  ]
+  // A lacuna por papel desconhecido cabe no teto de lacunas por construção (a mesma regra de `converterBlocosLegados`).
+  const lacunas = [
+    'autoria desconhecida: a copy veio de blocos por papel (spec) sem registro de quem escreveu',
+    ...lacunasDePapelDesconhecido(desconhecidos, MAX_LACUNAS - 1 - finais.length),
+    ...finais,
+  ]
+  return conferida(
+    {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'desconhecido', ...(opcoes.em !== undefined ? { em: opcoes.em } : {}), ...(opcoes.superficie !== undefined ? { superficie: opcoes.superficie } : {}) },
+      blocos: itens.map((it, i) => ({ ...it.bloco, ordem: i })),
+      revisoes: [],
+      lacunas,
+    },
+    {
+      ...(spec.blocos ? { blocos: spec.blocos.map((b) => ({ ...b, linhas: [...b.linhas] })) } : {}),
+      ...(spec.camadasExtras ? { camadasExtras: spec.camadasExtras.map((e) => ({ ...e, linhas: [...e.linhas] })) } : {}),
+    },
+  )
+}
+
+/** Como `converterSpecSemContrato`, mas LANÇA `CopyLegadaIncompativel` quando não há contrato válido. */
+export function copyDaSpecSemContrato(spec: SpecSemContrato, opcoes: { em?: string; superficie?: string } = {}): CopyAutoral {
+  return exigirCompativel(converterSpecSemContrato(spec, opcoes))
 }

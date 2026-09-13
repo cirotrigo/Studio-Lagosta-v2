@@ -291,7 +291,7 @@ describe('correções da revisão do Codex sobre 53ce6340 (R01–R07)', () => {
       camadasExtras: [{ id: 'nota', linhas: ['vale hoje'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }, { id: 'nota-2b', linhas: ['só no almoço'], herdaDe: 'apoio', grupoDeLeitura: 'frase' }],
     })
     expect(v.problemas).toEqual([])
-    const original = copyAutoralDaSpec(v.spec!)
+    const original = copyAutoralDaSpec(v.spec!).copy!
     expect(validarCopyAutoral(JSON.parse(JSON.stringify(original))).problemas).toEqual([])
     expect(original.origem.autor).toBe('desconhecido')
     expect(original.blocos.map((b) => [b.id, b.funcao, b.ordem])).toEqual([['headline', 'headline', 0], ['hora', 'servico', 1], ['nota', 'livre', 2], ['nota-2b', 'livre', 3]])
@@ -315,7 +315,7 @@ describe('correções da revisão do Codex sobre 9a03c12c (R08–R11)', () => {
       { id: 'nota', linhas: ['só no almoço'], herdaDe: 'apoio', grupoVisual: 'rodape' },
     ] })
     expect(v.problemas).toEqual([])
-    const original = copyAutoralDaSpec(v.spec!)
+    const original = copyAutoralDaSpec(v.spec!).copy!
     expect(original.blocos.map((b) => [b.id, b.linhas])).toEqual([['headline', ['Costela']], ['Nota', ['vale hoje']], ['nota', ['só no almoço']]])
     const layers = [
       camada('headline', 800, 'Costela', { papel: 'headline' }),
@@ -366,11 +366,11 @@ describe('correções da revisão do Codex sobre 9a03c12c (R08–R11)', () => {
       { id: 'nota-b', linhas: ['só no almoço'], herdaDe: 'apoio', grupoDeLeitura: 'frase' },
     ] })
     expect(dois.problemas).toEqual([])
-    expect(validarCopyAutoral(JSON.parse(JSON.stringify(copyAutoralDaSpec(dois.spec!)))).problemas).toEqual([])
+    expect(validarCopyAutoral(JSON.parse(JSON.stringify(copyAutoralDaSpec(dois.spec!).copy!))).problemas).toEqual([])
     const comExtras = (n: number) => validarSpec({ ...base, blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: Array.from({ length: n }, (_, i) => ({ id: `n${i}`, linhas: [`nota ${i}`], herdaDe: 'apoio' as const })) })
     const quarenta = comExtras(39)
     expect(quarenta.problemas).toEqual([])
-    expect(validarCopyAutoral(JSON.parse(JSON.stringify(copyAutoralDaSpec(quarenta.spec!)))).problemas).toEqual([])
+    expect(validarCopyAutoral(JSON.parse(JSON.stringify(copyAutoralDaSpec(quarenta.spec!).copy!))).problemas).toEqual([])
     const quarentaEUm = comExtras(40)
     expect(quarentaEUm.spec).toBeNull()
     expect(quarentaEUm.problemas[0]).toMatch(/^copy derivada da spec: blocos/)

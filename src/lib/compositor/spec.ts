@@ -10,7 +10,7 @@
 
 import { z } from 'zod'
 import { MAX_LINHAS, copyAutoralSchema } from '@/lib/copy-autoral/contrato'
-import { blocosParaOCompositor, copyDaSpecSemContrato, type BlocoLegado } from '@/lib/copy-autoral/legado'
+import { blocosParaOCompositor, converterSpecSemContrato, type BlocoLegado, type SpecSemContrato } from '@/lib/copy-autoral/legado'
 import { canonico } from '@/lib/copy-autoral/revisao'
 import { problemasDeCoerencia, validarCopyAutoral } from '@/lib/copy-autoral/validar'
 import { idReservado } from './camadas-extras'
@@ -282,13 +282,13 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
     const idsRepetidos = ids.filter((id, i) => ids.indexOf(id) !== i)
     if (idsRepetidos.length > 0) return { spec: null, problemas: [`id de camada repetido: ${[...new Set(idsRepetidos)].join(', ')}`] }
     // R11: sem contrato, o ORIGINAL persistido nasce da spec
-    // (`copyDaSpecSemContrato`), e ele tem de passar no MESMO contrato que o
+    // (`converterSpecSemContrato`, que confere a própria saída), e ele tem de passar no MESMO contrato que o
     // leitor exige — senão a persistência grava uma copy que `lerCopyAutoral`
     // devolve inválida (grupo de leitura de um bloco só, mais de 40 blocos
     // somados entre blocos e camadasExtras) e a edição seguinte cai em
     // `sem-contrato`, perdendo o acompanhamento autoral.
     if (!r.data.copyAutoral) {
-      const derivada = validarCopyAutoral(copyDaSpecSemContrato({ blocos: r.data.blocos as BlocoLegado[], camadasExtras: r.data.camadasExtras as Parameters<typeof copyDaSpecSemContrato>[0]['camadasExtras'] }))
+      const derivada = converterSpecSemContrato({ blocos: r.data.blocos as BlocoLegado[], camadasExtras: r.data.camadasExtras as SpecSemContrato['camadasExtras'] })
       if (derivada.problemas.length > 0) return { spec: null, problemas: derivada.problemas.map((p) => `copy derivada da spec: ${p.mensagem}`) }
     }
     const c = r.data.carrossel

@@ -15,7 +15,7 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import type { PersistCreativeInput } from '@/lib/creatives/persist'
 
 import type { SpecDePeca } from './spec'
-import { copyDaSpecSemContrato, orientacaoDosProblemas, orientacaoEmFrase, tentarCopyEfetivaDasCamadas, validarCopyAutoral, type CopyAutoral, type BlocoLegado } from '@/lib/copy-autoral'
+import { converterSpecSemContrato, orientacaoDosProblemas, orientacaoEmFrase, tentarCopyEfetivaDasCamadas, type BlocoLegado, type CopyAutoral, type SpecSemContrato } from '@/lib/copy-autoral'
 
 /** Tag que marca a página nascida do compositor (é o que liga o sinal `geometria`). */
 export const TAG_DA_PECA_COMPOSTA = 'compositor'
@@ -67,7 +67,7 @@ export function copyAutoralDaSpec(spec: SpecDePeca): CopyAutoralDaSpec {
   // R07: sem contrato, a spec INTEIRA vira o original — extras, ids e herança
   // preservados, autoria `desconhecido`. A saída passa pelo leitor: sem contrato
   // válido a peça segue SEM contrato, com o aviso (restack sobre e3c1f75f).
-  const conversao = validarCopyAutoral(copyDaSpecSemContrato({ blocos: spec.blocos as BlocoLegado[], camadasExtras: spec.camadasExtras as Parameters<typeof copyDaSpecSemContrato>[0]['camadasExtras'] }, { superficie: 'compositor' }))
+  const conversao = converterSpecSemContrato({ blocos: spec.blocos as BlocoLegado[], camadasExtras: spec.camadasExtras as SpecSemContrato['camadasExtras'] }, { superficie: 'compositor' })
   if (conversao.copy) return { copy: conversao.copy, aviso: null }
   return {
     copy: null,

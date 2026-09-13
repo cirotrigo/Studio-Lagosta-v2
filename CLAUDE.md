@@ -9167,3 +9167,9 @@ passou a enumerar os casos em vez de escolhê-los à mão
   teste dela: o helper ignorando a opção (3 testes), `duplicateLayer` e
   `pasteLayers` copiando a camada inteira, o contexto sem `temCopyAutoral`, o
   painel substituindo o compositor e `comPapelNoCompositor` substituindo.
+- 🔴 **`copyDaSpecSemContrato` confere a própria saída** (restack sobre o PR 2, `9238098f`/`493e8d6a`,
+  13/09/2026): `converterSpecSemContrato` devolve `{ copy: null, problemas, original }` quando a spec sem
+  contrato não cabe no leitor, e `copyDaSpecSemContrato` LANÇA `CopyLegadaIncompativel` — a mesma forma dos
+  adaptadores do PR 2, que também valem aqui (lacuna de resumo para papéis desconhecidos, `em`/`superficie`
+  vazios recusados, nunca omitidos). `validarSpec` e a persistência do compositor usam o `converter*`; e a
+  função entrou na varredura de fronteira de `invariantes.test.ts`, como o PR 2 manda para produtora nova.
