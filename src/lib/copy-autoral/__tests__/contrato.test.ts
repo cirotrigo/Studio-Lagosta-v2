@@ -208,7 +208,9 @@ describe('revisões: autor, data e motivo em toda mudança', () => {
       expect(validarCopyAutoral(revisada).problemas, nome).toEqual([])
     }
     // combinada com texto noutro bloco: os dois ids ficam registrados
-    const combinada = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { linhasNaVoz2: [0] } } : b.id === 'apoio' ? { ...b, linhas: ['outro apoio'] } : b))
+    // a voz 2 só pode ser o FIM contíguo da manchete (PR 4), e desde 9238098f `aplicarRevisao` confere o resultado:
+    // a mudança de estilo combinada é a herança, como no caso de cima
+    const combinada = copy.blocos.map((b) => (b.id === 'headline' ? { ...b, estilo: { ...b.estilo, herdaDe: 'apoio' as const } } : b.id === 'apoio' ? { ...b, linhas: ['outro apoio'] } : b))
     const { copy: r2 } = aplicarRevisao(copy, combinada, { autor: 'equipe', motivo: 'duas' })
     expect(r2.revisoes[0].blocos.sort()).toEqual(['apoio', 'headline'])
     expect(r2.revisoes[0].campos).toEqual({ headline: ['estilo'], apoio: ['linhas'] })
