@@ -11,7 +11,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Consulta = { projectId: number }
+type ArteNoBanco = { id: string; pageId: string | null; [chave: string]: unknown }
 interface Comportamento {
+  /** As linhas de "Generation" que a consulta crua das artes filtra (ids, páginas, ids a excluir, limite). */
+  generations: ArteNoBanco[]
+  paginas: Array<{ id: string; copyAutoral: unknown; layers: unknown }>
   esquema: { copyAutoralDaPagina: boolean; vozDaMarca: boolean }
   /** Quanto a leitura das artes (a consulta crua em "Generation") demora, por projeto. */
   artesMs: (projectId: number) => number
@@ -39,6 +43,8 @@ function erroPrisma(code: string, meta: Record<string, unknown>, message = `Pris
 function criarBanco(parcial: Partial<Comportamento> = {}) {
   const comp: Comportamento = {
     esquema: ESQUEMA_COMPLETO,
+    generations: [],
+    paginas: [],
     artesMs: () => 0,
     postsDe: (projectId) => [{ id: `post-${projectId}`, pageId: `page-${projectId}`, generationId: null, createdAt: new Date('2026-09-08T12:00:00Z') }],
     vozDe: async () => null,
@@ -46,6 +52,7 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
     ...parcial,
   }
   const transacoes: string[][] = []
+  const consultasDeArtes: Array<{ ids: string[]; paginas: string[]; excluir: string[] }> = []
   const chamadas: Record<string, number> = {}
   const conta = (nome: string) => (chamadas[nome] = (chamadas[nome] ?? 0) + 1)
   let conexao: Promise<void> = Promise.resolve()
@@ -104,10 +111,18 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
               ...(comp.esquema.vozDaMarca ? [{ table_name: 'BrandVoice', column_name: 'versao' }] : []),
             ])
           }
-          return comando('artes', () => (conta(`artes-${valores[0]}`), demora(comp.artesMs(valores[0] as number), [])))
+          return comando('artes', () => {
+            conta(`artes-${valores[0]}`)
+            const [, , ids, paginas, excluir, limite] = valores as [number, Date, string[], string[], string[], number]
+            consultasDeArtes.push({ ids, paginas, excluir })
+            const linhas = comp.generations
+              .filter((g) => (ids.includes(g.id) || (g.pageId != null && paginas.includes(g.pageId))) && !excluir.includes(g.id))
+              .slice(0, limite)
+            return demora(comp.artesMs(valores[0] as number), linhas)
+          })
         },
         socialPost: { findMany: (a: { where: Consulta }) => comando('posts', async () => (conta('posts'), await comp.posts(a.where.projectId), comp.postsDe(a.where.projectId))) },
-        page: { findMany: () => comando('paginas', async () => []) },
+        page: { findMany: (a: { where: { id: { in: string[] } } }) => comando('paginas', async () => comp.paginas.filter((p) => a.where.id.in.includes(p.id))) },
         itemDePlano: { findMany: () => comando('itens', async () => []) },
         learningSignal: { findMany: () => comando('sinais', async () => []) },
         brandVoice: { findUnique: (a: { where: Consulta }) => comando('voz', () => (conta('voz'), comp.vozDe(a.where.projectId))) },
@@ -117,7 +132,7 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
     })
   }
 
-  return { transacao, comConexao, transacoes, chamadas }
+  return { transacao, comConexao, transacoes, chamadas, consultasDeArtes }
 }
 
 beforeEach(() => {
@@ -229,5 +244,105 @@ describe('C15-04 · uma transação READ ONLY por cliente, esquema conferido ant
     const r = await medirQualidadeDaCarteira([espeto, byRock], janela, { prazo: Date.now() + 5_000, tetoPorClienteMs: 1_000 })
     expect(r.bloco.indisponiveis).toHaveLength(2)
     expect(r.bloco.indisponiveis[0].motivo).toMatch(/banco fora do ar/)
+  })
+})
+
+describe('C15-11 · post agendado por generationId (sem pageId)', () => {
+  const original = {
+    versao: 'copy-autoral-v1',
+    origem: { autor: 'claude', em: '2026-09-08T10:00:00.000Z', superficie: 'chat' },
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Sexta é dia', 'de churrasco'] },
+      { id: 'cta', funcao: 'cta', ordem: 1, linhas: ['Vem pra cá'] },
+    ],
+    revisoes: [],
+  }
+  const gen = (id: string, over: Partial<ArteNoBanco>): ArteNoBanco => ({
+    id,
+    createdAt: new Date('2026-09-08T10:00:00Z'),
+    canal: null,
+    pageId: 'p',
+    source: 'compositor',
+    copyAutoral: { original, efetiva: original, comparavel: true },
+    revisao: null,
+    ajustes: null,
+    avisos: [],
+    recomposicao: null,
+    vozNaEscrita: null,
+    modo: null,
+    ...over,
+  })
+  // O formato que o PR 0 grava na arte do ajuste (`ajustarArte` → `fieldValues.revisao`).
+  const ajusteQueEscondeCta = gen('g2', {
+    createdAt: new Date('2026-09-08T10:05:00Z'),
+    source: 'ajuste-arte',
+    ajustes: {},
+    revisao: {
+      versaoAntes: 'v1',
+      ajustes: [{ tipo: 'visibilidade', camadas: ['cta'], visivel: false }],
+      aplicados: [{ indice: 0, tipo: 'visibilidade', camadas: ['cta'], detalhe: 'escondidas' }],
+      recusados: [],
+    },
+  })
+  // A equipe mostrou o CTA de novo no editor: visível e sem a marca.
+  const pagina = {
+    id: 'p',
+    copyAutoral: original,
+    layers: JSON.stringify([
+      { id: 'headline', type: 'text', content: 'Sexta é dia\nde churrasco' },
+      { id: 'cta', type: 'text', content: 'Vem pra cá', visible: true },
+    ]),
+  }
+  const postPelaArte = (generationId: string) => () => [{ id: 'post-g', pageId: null, generationId, createdAt: new Date('2026-09-08T12:00:00Z') }]
+
+  it('a página vem pela arte, as OUTRAS artes dela são lidas, e o ajuste do revisor desfeito aparece', async () => {
+    const banco = criarBanco({ postsDe: postPelaArte('g1'), generations: [gen('g1', {}), ajusteQueEscondeCta], paginas: [pagina] })
+    estado.banco = banco
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.indisponivel).toBeNull()
+    expect(banco.consultasDeArtes).toEqual([
+      { ids: ['g1'], paginas: [], excluir: [] },
+      { ids: [], paginas: ['p'], excluir: ['g1'] },
+    ])
+    expect(r.medidas).toHaveLength(1)
+    expect(r.medidas[0]).toMatchObject({ chave: 'page:p', semPagina: false, visibilidadeDoRevisor: { aceitos: 0, desfeitos: 1, removidas: 0 } })
+    expect(r.medidas[0].correcoes.revisor).toBe(1)
+    expect(r.medidas[0].indevidas).toEqual([{ tipo: 'ajuste-do-revisor-revertido', bloco: null, camada: 'cta' }])
+    expect(r.qualidade?.visibilidadeDoRevisor).toMatchObject({ desfeitos: 1, semPagina: 0 })
+  })
+
+  it('a arte não aponta página: a peça sai SEM PÁGINA na contagem, nunca zerada em silêncio', async () => {
+    const banco = criarBanco({ postsDe: postPelaArte('g9'), generations: [gen('g9', { pageId: null, source: 'arte-ia' })] })
+    estado.banco = banco
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(banco.consultasDeArtes).toHaveLength(1)
+    expect(r.medidas).toHaveLength(1)
+    expect(r.medidas[0]).toMatchObject({ comparavel: true, semPagina: true })
+    expect(r.qualidade?.visibilidadeDoRevisor.semPagina).toBe(1)
+  })
+
+  it('a página que a arte aponta não veio do banco: também sem página', async () => {
+    const banco = criarBanco({ postsDe: postPelaArte('g1'), generations: [gen('g1', {})], paginas: [] })
+    estado.banco = banco
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.medidas[0]).toMatchObject({ chave: 'page:p', semPagina: true })
+    expect(r.qualidade?.visibilidadeDoRevisor.semPagina).toBe(1)
+  })
+})
+
+describe('C15-13 · o Prisma desistindo do tempo também é o teto por cliente', () => {
+  it.each([
+    ['P2028', 'Transaction API error: Transaction already closed: A query cannot be executed on an expired transaction.'],
+    ['P2024', 'Timed out fetching a new connection from the connection pool.'],
+  ])('%s sai "passou do teto de tempo por cliente", não "erro na leitura"', async (code, message) => {
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, {
+      esquema: ESQUEMA_COMPLETO,
+      executar: async () => {
+        throw Object.assign(new Error(message), { code })
+      },
+    })
+    expect(r.indisponivel).toBe('passou do teto de tempo por cliente')
+    expect(log).not.toHaveBeenCalled()
   })
 })

@@ -94,6 +94,7 @@ function medida(over: Partial<MedidaDaPeca>): MedidaDaPeca {
     correcoes: { redacao: 0, compositor: 0, foto: 0, design: 0, revisor: 0, indeterminada: 0 },
     indevidas: [],
     visibilidadeDoRevisor: { aceitos: 0, desfeitos: 0, removidas: 0 },
+    semPagina: false,
     minutosAteRascunho: null,
     voz: null,
     avisosDoSistema: 0,
@@ -281,6 +282,14 @@ describe('o desfecho do ajuste de visibilidade do revisor, no formato que o PR 0
     expect(pecaSimples({ original, layers: camadas({ visible: false }), artesExtras: aj }).medida.visibilidadeDoRevisor?.aceitos).toBe(1)
   })
 
+  it('escondida com marca MALFORMADA (sem `ajuste`) é aceito: a decisão sobreviveu (C15-12)', () => {
+    const aj = [visibilidade('gen-aj', T(5), true)]
+    const malformada = { revisao: { ocultaPeloRevisor: { em: T(5) } } }
+    const { medida: m } = pecaSimples({ original, layers: camadas({ visible: false, metadata: malformada }), artesExtras: aj })
+    expect(m.visibilidadeDoRevisor).toEqual({ aceitos: 1, desfeitos: 0, removidas: 0 })
+    expect(m.indevidas).toEqual([])
+  })
+
   it('vale a ÚLTIMA decisão do revisor: ele mesmo mostrou depois → visível é aceito; escondida depois disso é desfeito', () => {
     const aj = [visibilidade('gen-aj', T(5), true), visibilidade('gen-aj2', T(7), false)]
     const aceito = pecaSimples({ original, layers: camadas({ visible: true }), artesExtras: aj }).medida
@@ -324,6 +333,43 @@ describe('o desfecho do ajuste de visibilidade do revisor, no formato que o PR 0
       { em: Date.parse(T(1)), camadas: ['logo'], escondeu: false },
       { em: Date.parse(T(2)), camadas: ['cta'], escondeu: true },
     ])
+  })
+})
+
+describe('peça sem página lida: o desfecho do revisor é CONTADO como não medido (C15-11)', () => {
+  const original = copiaOriginal()
+  const comparavel = { copyAutoral: { original, efetiva: original, comparavel: true } }
+
+  it('post por generationId cuja arte não aponta página: semPagina, e a carteira diz quantas', () => {
+    const l = leitura({
+      posts: [{ id: 'post-x', pageId: null, generationId: 'gen-x', createdAt: T(30) }],
+      artes: [arte('gen-x', { pageId: null, source: 'arte-ia', ...comparavel })],
+    })
+    const [peca] = montarPecas(l)
+    expect(peca).toMatchObject({ chave: 'gen:gen-x', pageId: null, semPagina: true })
+    const m = medirPeca(peca)
+    expect(m).toMatchObject({ comparavel: true, semPagina: true, visibilidadeDoRevisor: { aceitos: 0, desfeitos: 0, removidas: 0 } })
+    const q = medirQualidadeDaCopy([m], { limiar: 1 })
+    expect(q.visibilidadeDoRevisor).toEqual({ aceitos: 0, desfeitos: 0, removidas: 0, ilegiveis: 0, semPagina: 1 })
+    expect(blocoDaQualidadeDaCopy({ carteira: q, indisponiveis: [], foraDoOrcamento: [] })).toMatch(/revisor escondeu\/mostrou: 0 aceito\(s\) · 0 desfeito\(s\) · 1 peça\(s\) sem página, não medida\(s\)/)
+  })
+
+  it('a página resolvida pela arte (post sem pageId) é lida como página; a que não veio conta sem página', () => {
+    const lida = montarPecas(
+      leitura({
+        posts: [{ id: 'post-x', pageId: null, generationId: 'gen-1', createdAt: T(30) }],
+        artes: [arte('gen-1', comparavel)],
+        paginas: [{ id: 'page-1', copyAutoral: original, layers: '[]' }],
+      }),
+    )[0]
+    expect(lida).toMatchObject({ chave: 'page:page-1', semPagina: false })
+    const perdida = montarPecas(leitura({ artes: [arte('gen-1', comparavel)], paginas: [] }))[0]
+    expect(perdida).toMatchObject({ chave: 'page:page-1', semPagina: true })
+  })
+
+  it('camadas ilegíveis também aparecem na linha do revisor', () => {
+    const q = medirQualidadeDaCopy([medida({ visibilidadeDoRevisor: null })], { limiar: 1 })
+    expect(blocoDaQualidadeDaCopy({ carteira: q, indisponiveis: [], foraDoOrcamento: [] })).toMatch(/1 peça\(s\) com camadas ilegíveis/)
   })
 })
 
@@ -546,6 +592,10 @@ describe('cancelamentoPorTempo', () => {
     expect(cancelamentoPorTempo({ code: 'P2010', meta: { code: '57014' }, message: 'raw query failed' })).toBe(true)
     expect(cancelamentoPorTempo(new Error('canceling statement due to statement timeout'))).toBe(true)
     expect(cancelamentoPorTempo({ code: 'P2022', meta: { column: 'x' } })).toBe(false)
+    // C15-13: o Prisma fechando a transação pelo timeout dela e desistindo de esperar a conexão.
+    expect(cancelamentoPorTempo({ code: 'P2028', message: 'Transaction API error: Transaction already closed' })).toBe(true)
+    expect(cancelamentoPorTempo({ code: 'P2024', message: 'Timed out fetching a new connection from the connection pool.' })).toBe(true)
+    expect(cancelamentoPorTempo({ code: 'P2025', message: 'Record not found' })).toBe(false)
     expect(cancelamentoPorTempo(null)).toBe(false)
   })
 })

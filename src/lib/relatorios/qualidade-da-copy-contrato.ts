@@ -52,7 +52,7 @@ import type { CopyAutoral, RevisaoDaCopy } from '@/lib/copy-autoral/contrato'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
-import { marcaDoRevisor, ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
 export const VERSAO_DA_METRICA = 'qualidade-da-copy-v1' as const
 
@@ -239,9 +239,11 @@ export type DesfechoDaVisibilidade = 'aceito' | 'desfeito' | 'camada-removida'
  * de HOJE (C15-02). Vale a ÚLTIMA decisão do revisor sobre a camada:
  *  - escondeu e ela continua escondida com a marca (`ocultaPeloRevisor`) → aceito;
  *  - escondeu e ela está VISÍVEL (com ou sem a marca esquecida) → desfeito: alguém a mostrou;
- *  - escondeu e ela está escondida SEM a marca → aceito: o editor tirou a marca
- *    porque a pessoa a escondeu de novo (`reconciliarMarcasDoRevisor`), e o
- *    estado final é o do ajuste;
+ *  - escondeu e ela está escondida SEM marca válida → aceito: o estado final é
+ *    o do ajuste. É o caso de o editor tirar a marca porque a pessoa a escondeu
+ *    de novo (`reconciliarMarcasDoRevisor`) e, também, o da marca MALFORMADA
+ *    (`marcaDoRevisor` nulo): o que se mede é se a decisão sobreviveu, e a
+ *    camada escondida é a decisão sobrevivendo (C15-12);
  *  - mostrou e ela está escondida → desfeito; visível → aceito;
  *  - a camada não existe mais → `camada-removida` (nem aceito nem desfeito).
  * Camadas ilegíveis devolvem `null`: ilegível nunca vira desfecho.
@@ -259,8 +261,10 @@ export function desfechosDaVisibilidade(ajustes: AjusteDeVisibilidade[], layersD
     if (escondeu) {
       if (ocultaPeloRevisor(l)) return { camada, desfecho: 'aceito' as const }
       if (l.visible !== false) return { camada, desfecho: 'desfeito' as const }
-      // Escondida e sem a marca (marcaDoRevisor nulo): a pessoa a escondeu de novo.
-      return { camada, desfecho: marcaDoRevisor(l) ? ('desfeito' as const) : ('aceito' as const) }
+      // Escondida sem marca válida (`ocultaPeloRevisor` exige a marca, então aqui
+      // `marcaDoRevisor(l)` é sempre nulo): reescondida pela pessoa ou marca
+      // malformada — o estado é o do ajuste (C15-12).
+      return { camada, desfecho: 'aceito' as const }
     }
     return { camada, desfecho: l.visible === false ? ('desfeito' as const) : ('aceito' as const) }
   })
@@ -294,6 +298,12 @@ export interface PecaParaMedir {
   estados: EstadoDaCopy[]
   /** O desfecho dos ajustes de visibilidade do revisor, pelas camadas de hoje. `null` = camadas ilegíveis. */
   visibilidade: Array<{ camada: string; desfecho: DesfechoDaVisibilidade }> | null
+  /**
+   * A peça não tem PÁGINA lida (C15-11): a arte não aponta página, ou a página
+   * não veio. Sem as camadas não há como medir o esconder do revisor — e isso é
+   * contado, nunca um zero calado.
+   */
+  semPagina: boolean
   evidencias: { trocasDeArte: number; fotosTrocadas: number; geometria: number; recusasDoCompositor: number; avisosDoSistema: number; ajustesDoRevisorSemRevisaoDeCopy: number }
   tempo: { inicioEm: number | null; rascunhoEm: number | null }
   voz: CarimboDaVoz | null
@@ -423,6 +433,7 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
       exclusao,
       estados,
       visibilidade,
+      semPagina: !pagina,
       evidencias: {
         trocasDeArte: sinais.filter((s) => s.tipo === 'troca-de-arte').length,
         fotosTrocadas: sinais.filter((s) => s.tipo === 'foto' && s.desfecho === 'trocada').length,
@@ -453,6 +464,8 @@ export interface MedidaDaPeca {
   indevidas: Array<{ tipo: TipoDeIndevida; bloco: string | null; camada?: string }>
   /** O desfecho dos ajustes de visibilidade do revisor. `null` = camadas ilegíveis. */
   visibilidadeDoRevisor: { aceitos: number; desfeitos: number; removidas: number } | null
+  /** Sem página lida: o desfecho da visibilidade do revisor NÃO foi medido (C15-11). */
+  semPagina: boolean
   minutosAteRascunho: number | null
   voz: CarimboDaVoz | null
   avisosDoSistema: number
@@ -526,7 +539,7 @@ export function medirPeca(p: PecaParaMedir): MedidaDaPeca {
       }
     : null
 
-  return { chave: p.chave, comparavel, exclusao: p.exclusao, preservada, sistemaMudouLinhas, correcoes, indevidas, visibilidadeDoRevisor, minutosAteRascunho: minutos, voz: p.voz, avisosDoSistema: p.evidencias.avisosDoSistema }
+  return { chave: p.chave, comparavel, exclusao: p.exclusao, preservada, sistemaMudouLinhas, correcoes, indevidas, visibilidadeDoRevisor, semPagina: p.semPagina, minutosAteRascunho: minutos, voz: p.voz, avisosDoSistema: p.evidencias.avisosDoSistema }
 }
 
 // ─── agregação ────────────────────────────────────────────────────────────
@@ -559,8 +572,12 @@ export interface QualidadeDaCopy {
   fidelidade: { mensagemPreservada: Proporcao; sistemaSemMudarTexto: Proporcao }
   correcoes: { porCausa: Record<CausaDaCorrecao, number>; pecasPorCausa: Record<CausaDaCorrecao, number> }
   indevidas: { pecas: Proporcao; porTipo: Record<TipoDeIndevida, number> }
-  /** O desfecho dos ajustes de visibilidade do revisor nas peças comparáveis; `ilegiveis` = peças cujas camadas não deu para ler. */
-  visibilidadeDoRevisor: { aceitos: number; desfeitos: number; removidas: number; ilegiveis: number }
+  /**
+   * O desfecho dos ajustes de visibilidade do revisor nas peças comparáveis;
+   * `ilegiveis` = peças cujas camadas não deu para ler; `semPagina` = peças sem
+   * página lida, em que o desfecho não foi medido (C15-11).
+   */
+  visibilidadeDoRevisor: { aceitos: number; desfeitos: number; removidas: number; ilegiveis: number; semPagina: number }
   avisosDoSistema: number
   tempoAteRascunho:
     | { estado: 'medida'; n: number; medianaMin: number; p90Min: number; proxy: true; definicao: string }
@@ -622,6 +639,7 @@ export function medirQualidadeDaCopy(medidas: MedidaDaPeca[], opcoes: { limiar?:
       desfeitos: comparaveis.reduce((t, m) => t + (m.visibilidadeDoRevisor?.desfeitos ?? 0), 0),
       removidas: comparaveis.reduce((t, m) => t + (m.visibilidadeDoRevisor?.removidas ?? 0), 0),
       ilegiveis: comparaveis.filter((m) => m.visibilidadeDoRevisor === null).length,
+      semPagina: comparaveis.filter((m) => m.semPagina).length,
     },
     avisosDoSistema: comparaveis.reduce((t, m) => t + m.avisosDoSistema, 0),
     tempoAteRascunho,
@@ -656,15 +674,22 @@ export function faltaDeEsquema(erro: unknown): string | null {
 }
 
 /**
- * O erro é o `statement_timeout` do servidor cancelando a consulta (57014)? É
- * como o teto por cliente se cumpre de verdade (C15-03): a consulta é cancelada
- * no Postgres, e a conexão volta ao pool.
+ * O erro é o TEMPO acabando? Três portas, e as três são o teto por cliente:
+ *  - o `statement_timeout` do servidor cancelando a consulta (57014) — é como
+ *    o teto se cumpre de verdade (C15-03): a consulta é cancelada no Postgres,
+ *    e a conexão volta ao pool;
+ *  - o Prisma fechando a transação interativa pelo `timeout` dela (P2028), que
+ *    pode chegar antes de qualquer 57014 quando a ida e volta pelo pooler soma;
+ *  - o Prisma desistindo de esperar a conexão (`maxWait`, P2024).
+ * Sem as duas últimas, o relatório dizia "erro na leitura: Transaction API
+ * error…" para o mesmo teto (C15-13).
  */
 export function cancelamentoPorTempo(erro: unknown): boolean {
   const e = objeto(erro)
   if (!e) return false
   const meta = objeto(e.meta)
   const mensagem = typeof e.message === 'string' ? e.message : ''
+  if (e.code === 'P2028' || e.code === 'P2024') return true
   return e.code === '57014' || meta?.code === '57014' || /statement timeout/i.test(mensagem)
 }
 
@@ -724,7 +749,10 @@ export function blocoDaQualidadeDaCopy(b: BlocoDaCopy): string | null {
       const tipos = TIPOS_DE_INDEVIDA.filter((t) => q.indevidas.porTipo[t] > 0).map((t) => `${ROTULO_DA_INDEVIDA[t]} ${q.indevidas.porTipo[t]}`)
       partes.push(`  indevidas: ${textoDaProporcao(q.indevidas.pecas)}${tipos.length ? ` — ${tipos.join(' · ')}` : ''}`)
       const vis = q.visibilidadeDoRevisor
-      if (vis.aceitos + vis.desfeitos + vis.removidas > 0) partes.push(`  revisor escondeu/mostrou: ${vis.aceitos} aceito(s) · ${vis.desfeitos} desfeito(s)${vis.removidas ? ` · ${vis.removidas} camada(s) removida(s)` : ''}`)
+      if (vis.aceitos + vis.desfeitos + vis.removidas + vis.ilegiveis + vis.semPagina > 0) {
+        const semMedida = [vis.ilegiveis ? `${vis.ilegiveis} peça(s) com camadas ilegíveis` : '', vis.semPagina ? `${vis.semPagina} peça(s) sem página, não medida(s)` : ''].filter(Boolean)
+        partes.push(`  revisor escondeu/mostrou: ${vis.aceitos} aceito(s) · ${vis.desfeitos} desfeito(s)${vis.removidas ? ` · ${vis.removidas} camada(s) removida(s)` : ''}${semMedida.length ? ` · ${semMedida.join(' · ')}` : ''}`)
+      }
     }
     const t = q.tempoAteRascunho
     partes.push(t.estado === 'medida' ? `  até o rascunho (proxy): mediana ${duracao(t.medianaMin)} · p90 ${duracao(t.p90Min)}` : `  até o rascunho (proxy): amostra insuficiente (${t.n}, mínimo ${t.limiar})`)

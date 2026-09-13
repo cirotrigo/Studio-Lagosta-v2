@@ -148,8 +148,10 @@ export async function lerSemanaDoCliente(
 
   // Json sem índice: só as chaves que a medida usa (o `layersSnapshot` e a spec
   // não viajam). Id da arte OU página da arte — é a deduplicação por página.
-  const artes = await comPrazo(
-    () => leitor.$queryRaw<Array<Omit<ArteLida, 'createdAt'> & { createdAt: Date }>>`
+  // A MESMA consulta serve às duas leituras (ids e páginas pedidos, ids a excluir).
+  const lerArtes = (ids: string[], paginas: string[], excluir: string[], limite: number) =>
+    comPrazo(
+      () => leitor.$queryRaw<Array<Omit<ArteLida, 'createdAt'> & { createdAt: Date }>>`
       SELECT id, "createdAt", canal,
         "fieldValues"->>'pageId' AS "pageId",
         "fieldValues"->>'source' AS source,
@@ -163,12 +165,25 @@ export async function lerSemanaDoCliente(
       FROM "Generation"
       WHERE "projectId" = ${projectId}
         AND "createdAt" >= ${desde}
-        AND (id = ANY(${genIds}::text[]) OR "fieldValues"->>'pageId' = ANY(${pageIdsDosPosts}::text[]))
+        AND (id = ANY(${ids}::text[]) OR "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
+        AND NOT (id = ANY(${excluir}::text[]))
       ORDER BY "createdAt" ASC
-      LIMIT ${TETO_DE_ARTES}
+      LIMIT ${limite}
     `,
-  )
-  if (artes.length === TETO_DE_ARTES) avisos.push(`mais de ${TETO_DE_ARTES} artes ligadas — a medida olhou as primeiras`)
+    )
+  const artes = await lerArtes(genIds, pageIdsDosPosts, [], TETO_DE_ARTES)
+
+  // C15-11: post agendado por `generationId` nasce SEM `pageId`, e a página só
+  // aparece no `fieldValues.pageId` da arte. Sem ler as OUTRAS artes dessa
+  // página (o ajuste do revisor é uma Generation nova), o desfecho da
+  // visibilidade e a correção do revisor saíam zerados em silêncio.
+  const paginasPelaArte = [
+    ...new Set(artes.filter((a) => genIds.includes(a.id) && a.pageId && !pageIdsDosPosts.includes(a.pageId)).map((a) => a.pageId as string)),
+  ]
+  if (paginasPelaArte.length && artes.length < TETO_DE_ARTES) {
+    artes.push(...(await lerArtes([], paginasPelaArte, artes.map((a) => a.id), TETO_DE_ARTES - artes.length)))
+  }
+  if (artes.length >= TETO_DE_ARTES) avisos.push(`mais de ${TETO_DE_ARTES} artes ligadas — a medida olhou as primeiras`)
 
   const pageIds = [...new Set([...pageIdsDosPosts, ...artes.filter((a) => genIds.includes(a.id) && a.pageId).map((a) => a.pageId as string)])]
   const arteIds = artes.map((a) => a.id)

@@ -11062,3 +11062,33 @@ A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
   com teste.
 - **O comentário e este arquivo diziam que a marca do PR 0 não estava na pilha**
   (C15-06): estava, desde o rebase. Comentário e bullet atualizados.
+
+**Da pré-revisão de 560292a1..f813f787 (APTO COM NOTAS, C15-11…13, 12/09/2026):**
+
+- 🔴 **Post agendado por `generationId` nasce SEM `pageId`, e a página só existe
+  no `fieldValues.pageId` da arte** (C15-11). A consulta das artes pedia os ids
+  dos posts e as páginas DOS POSTS; a página resolvida pela arte entrava na
+  peça, mas as OUTRAS artes dela (o ajuste do revisor é uma Generation nova, e
+  `trocarNosPosts` não muda `SocialPost.generationId`) nunca eram lidas — o
+  desfecho da visibilidade e a correção do revisor saíam zerados, em silêncio.
+  Hoje `lerSemanaDoCliente` faz uma segunda leitura, com a MESMA consulta
+  (ids, páginas, ids a excluir, limite), para as páginas vindas pela arte.
+- **Peça sem página lida é CONTADA, nunca um zero calado** (`semPagina` em
+  `PecaParaMedir`/`MedidaDaPeca` e `visibilidadeDoRevisor.semPagina` na
+  carteira): a arte não aponta página (arte-ia), ou a página não veio do banco.
+  O relatório diz "N peça(s) sem página, não medida(s)" na linha do revisor, ao
+  lado das camadas ilegíveis.
+- **Escondida sem marca VÁLIDA é aceito, e o código diz isso** (C15-12): o
+  ternário em `desfechosDaVisibilidade` era morto (`ocultaPeloRevisor` exige a
+  marca, então ali `marcaDoRevisor` é sempre nulo). Reescondida pela pessoa ou
+  marca malformada, o estado é o do ajuste — o que se mede é se a decisão
+  sobreviveu.
+- **P2028 (transação interativa expirada) e P2024 (espera de conexão) são o
+  teto por cliente** (C15-13), como o 57014: `cancelamentoPorTempo` os
+  reconhece, e o relatório diz "passou do teto de tempo por cliente" em vez de
+  "erro na leitura: Transaction API error…".
+- **A fiação do carimbo herdado tem teste de rota** (lacuna da revisão): "Gerar
+  de novo" (`refazer/__tests__/route.test.ts`) e os slides irmãos do carrossel
+  (`carousel-carimbo.test.ts`) passam `origemDoCarimbo` a `startArtGeneration`
+  — com carimbo, o mesmo; sem, `vozNaEscrita: null` e a escrita na criação da
+  origem. Os helpers sozinhos não provavam que os dois pontos os usam.
