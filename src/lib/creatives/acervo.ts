@@ -22,6 +22,11 @@ import {
 } from '@/lib/creatives/ranquear-acervo'
 import { lerPreferenciasDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { googleDriveService } from '@/server/google-drive-service'
+import {
+  PASTAS_DA_LISTAGEM_MAX,
+  PROFUNDIDADE_DA_LISTAGEM,
+  varrerArvoreDePastas,
+} from '@/lib/creatives/varredura-de-pastas'
 import { registrarSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, diaBRT, resumoEstavel } from '@/lib/aprendizado/chaves'
 import { buscarSemelhantes, embedarConsulta, normalizarPorRank } from '@/lib/creatives/embeddings-de-foto'
@@ -533,67 +538,51 @@ async function registrarProposta(
   })
 }
 
-/** Listagem crua da pasta, para projetos sem catálogo. */
-/**
- * Até onde a listagem crua desce.
- *
- * Eram 2, e não bastava: o Wine Vix guarda o almoço executivo em
- * `Executivo/Principais/Ancho` — TRÊS níveis —, e as 77 fotos de lá eram
- * invisíveis no seletor com a pasta configurada certa. Medido nos 8 clientes:
- * 5 têm pasta de 3º nível (Seu Quinto 17, TERO 11, Quintal 8, Wine Vix 7,
- * Real Gelateria 5). 4 níveis cobre todos com folga.
- */
-const PROFUNDIDADE_MAXIMA = 4
-/**
- * Teto de pastas visitadas — cada uma é uma chamada ao Drive.
- *
- * Eram 60, abaixo do acervo real: O Quintal tem 61 pastas e já era cortado, e
- * By Rock (161) e Seu Quinto (155) seriam truncados pela metade se caíssem no
- * fallback. 250 cobre o maior de hoje com margem.
- */
-const PASTAS_VISITADAS_MAX = 250
-
 /**
  * Listagem crua da pasta, para projetos sem catálogo.
  *
- * ⚠️ DESCE NAS SUBPASTAS. `listFolderFiles` lista só os filhos DIRETOS e exclui
- * pastas (`mimeType != folder`), então uma varredura de um nível só devolve
- * zero para todo cliente que organiza o acervo em pastas por assunto — que é
- * como todos organizam. Era o caso do Bacana (27 subpastas, nenhum arquivo
- * solto na raiz) e do Quintal: pasta configurada, seletor vazio, e a mensagem
- * dizendo que "só a listagem da pasta" funcionava — quando ela não funcionava.
- * Achado em 10/08/2026.
+ * ⚠️ DESCE EM TODAS AS SUBPASTAS. Uma varredura de um nível só devolve zero
+ * para todo cliente que organiza o acervo em pastas por assunto — que é como
+ * todos organizam. Era o caso do Bacana (27 subpastas, nenhum arquivo solto na
+ * raiz) e do Quintal: pasta configurada, seletor vazio, e a mensagem dizendo
+ * que "só a listagem da pasta" funcionava — quando ela não funcionava. Achado
+ * em 10/08/2026.
  *
- * Devolve também a pasta de cada imagem e a lista de pastas, para o seletor da
- * bancada mostrar os mesmos chips que mostra em projeto catalogado.
+ * Desde 13/09/2026 a varredura é por NÍVEL e em lote (`varredura-de-pastas.ts`).
+ * Antes era uma pasta por chamada — até 326 chamadas e 89s no By Rock —, com
+ * as subpastas lidas por `listFiles` (`pageSize: 50` fixo, sem paginar) e teto
+ * de 4 níveis e 250 pastas. O teto de níveis escondia em silêncio 35 fotos do
+ * Seu Quinto, em duas pastas de 6º nível de `14_programacao/almoco-domingo`.
+ *
+ * Devolve também a pasta de cada imagem (caminho relativo, como no catálogo) e
+ * a lista de pastas, para o seletor da bancada mostrar os mesmos chips que
+ * mostra em projeto catalogado.
  */
 export async function listarImagensDoDrive(projectId: number, limit = 30, folder?: string) {
   const raiz = await pastaDeImagens(projectId)
 
-  const imagens: Array<{ driveFileId: string; fileName: string; mimeType: string; folder: string }> = []
-  const pastas = new Set<string>()
-  let visitadas = 0
+  const varredura = await varrerArvoreDePastas({
+    raiz,
+    profundidadeMaxima: PROFUNDIDADE_DA_LISTAGEM,
+    maxPastas: PASTAS_DA_LISTAGEM_MAX,
+    listarArquivos: (pastas) => googleDriveService.listChildrenOfFolders(pastas, 'images'),
+    listarSubpastas: (pastas) => googleDriveService.listChildrenOfFolders(pastas, 'folders'),
+  })
 
-  const varrer = async (folderId: string, caminho: string, profundidade: number): Promise<void> => {
-    if (visitadas >= PASTAS_VISITADAS_MAX) return
-    visitadas++
-
-    const arquivos = await googleDriveService.listFolderFiles(folderId)
-    for (const f of arquivos) {
-      if (!(f.mimeType ?? '').startsWith('image/')) continue
-      if (caminho) pastas.add(caminho)
-      imagens.push({ driveFileId: f.id, fileName: f.name, mimeType: f.mimeType, folder: caminho })
-    }
-
-    if (profundidade >= PROFUNDIDADE_MAXIMA) return
-    const sub = await googleDriveService.listFiles({ folderId, mode: 'folders' })
-    for (const pasta of sub.items ?? []) {
-      if (visitadas >= PASTAS_VISITADAS_MAX) break
-      await varrer(pasta.id, caminho ? `${caminho}/${pasta.name}` : pasta.name, profundidade + 1)
-    }
-  }
-
-  await varrer(raiz, '', 0)
+  // Ordem estável (pasta, nome, id): o "Carregar mais" do seletor pede a mesma
+  // lista com um limite maior, e a varredura em lote não devolve ordem nenhuma.
+  const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+  const imagens = varredura.arquivos
+    .map(({ arquivo, pasta }) => ({
+      driveFileId: arquivo.id,
+      fileName: arquivo.name,
+      mimeType: arquivo.mimeType,
+      folder: pasta,
+    }))
+    .sort(
+      (a, b) =>
+        comparar(a.folder, b.folder) || comparar(a.fileName, b.fileName) || comparar(a.driveFileId, b.driveFileId),
+    )
 
   // Filtro por pasta é PREFIXO, como no catálogo: "07_bebidas" traz
   // "07_bebidas/chopp" junto. As pastas oferecidas são sempre as do acervo
@@ -608,8 +597,8 @@ export async function listarImagensDoDrive(projectId: number, limit = 30, folder
     /** O acervo inteiro, sem filtro de pasta. */
     acervoCompleto: imagens.length,
     images: filtradas.slice(0, limit),
-    pastasDisponiveis: Array.from(pastas).sort(),
-    /** Verdadeiro quando o teto de pastas cortou a varredura. */
-    parcial: visitadas >= PASTAS_VISITADAS_MAX,
+    pastasDisponiveis: [...new Set(imagens.map((i) => i.folder).filter(Boolean))].sort(),
+    /** Verdadeiro quando sobrou pasta além da profundidade ou do teto de pastas. */
+    parcial: varredura.parcial,
   }
 }

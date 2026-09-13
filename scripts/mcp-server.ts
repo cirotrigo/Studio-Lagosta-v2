@@ -29,6 +29,12 @@ import * as path from 'path'
 import * as https from 'https'
 import * as http from 'http'
 import { prepararCamadasParaGravar } from '../src/lib/creatives/layer-contract'
+import {
+  PASTAS_DA_LISTAGEM_MAX,
+  PROFUNDIDADE_DA_LISTAGEM,
+  consultasDeFilhos,
+  varrerArvoreDePastas,
+} from '../src/lib/creatives/varredura-de-pastas'
 
 // ─── Clients ─────────────────────────────────────────────────────────
 
@@ -1404,15 +1410,15 @@ toolEstrita(
 
 toolEstrita(
   'list-drive-images',
-  'List images from a project\'s Google Drive folder. The response reports `pastasDisponiveis`, so a first call without filters shows what exists.',
+  'List images from a project\'s Google Drive folder, descending into ALL nested subfolders. Each image carries `folder`, its path relative to the images folder ("07_ambiente/salao"; "" when it sits directly in it) — the same format as the catalog. The response reports `pastasDisponiveis`, so a first call without filters shows what exists, and `parcial: true` when the tree was too deep or too large to list whole.',
   {
     projectId: z.number().describe('Project ID'),
     folder: z
       .string()
       .optional()
-      .describe('Subfolder by NAME, exact or prefix ("09_ambiente"). Use this when you know the folder but not its id.'),
-    folderId: z.string().optional().describe('Specific subfolder ID (default: project imagesFolderId)'),
-    includeSubfolders: z.boolean().optional().describe('Include subfolder images (default: true)'),
+      .describe('Subfolder PATH, exact or prefix: "07_ambiente" also brings "07_ambiente/salao". See pastasDisponiveis. Use this when you know the folder but not its id.'),
+    folderId: z.string().optional().describe('Specific subfolder ID (default: project imagesFolderId); paths become relative to it'),
+    includeSubfolders: z.boolean().optional().describe('Include images from subfolders at any depth (default: true)'),
     limit: z.number().optional().describe('Max results (default: all images)'),
   },
   async ({ projectId, folder, folderId, includeSubfolders, limit }) => {
@@ -1428,62 +1434,74 @@ toolEstrita(
 
       const drive = getDrive()
 
-      // List ALL images in a folder with pagination
-      const listAllImages = async (parentId: string, folderName: string) => {
-        const allFiles: any[] = []
-        let pageToken: string | undefined
-        do {
-          const res = await drive.files.list({
-            q: `'${parentId}' in parents and mimeType contains 'image/' and trashed = false`,
-            fields: 'nextPageToken, files(id,name,mimeType,thumbnailLink,createdTime,size)',
-            pageSize: 1000,
-            orderBy: 'createdTime desc',
-            pageToken,
-          })
-          for (const f of res.data.files ?? []) {
-            allFiles.push({
-              driveFileId: f.id,
-              fileName: f.name,
-              folder: folderName,
-              mimeType: f.mimeType,
-              thumbnailLink: f.thumbnailLink,
-              createdTime: f.createdTime,
-              sizeBytes: f.size,
+      /**
+       * Filhos de um LOTE de pastas, com paginação completa — a varredura é
+       * por nível (`varredura-de-pastas.ts`). Até 13/09/2026 esta tool descia
+       * UM nível só: no TERO devolvia 116 fotos contra 1.467 do catálogo,
+       * porque o acervo mora em `07_ambiente/salao`, `01_parrilla/t-bone-angus`…,
+       * e um agente concluiu que a pasta configurada estava errada.
+       */
+      const listarFilhos = async (pastas: string[], filtroDeTipo: string, campos: string) => {
+        const itens: Array<Record<string, any> & { id: string; name: string }> = []
+        for (const q of consultasDeFilhos(pastas, filtroDeTipo)) {
+          let pageToken: string | undefined
+          do {
+            const res = await drive.files.list({
+              q,
+              fields: `nextPageToken, files(${campos})`,
+              pageSize: 1000,
+              pageToken,
+              supportsAllDrives: true,
+              includeItemsFromAllDrives: true,
             })
-          }
-          pageToken = res.data.nextPageToken ?? undefined
-        } while (pageToken)
-        return allFiles
+            for (const f of res.data.files ?? []) {
+              if (f.id) itens.push({ ...f, id: f.id, name: f.name ?? 'Sem nome' })
+            }
+            pageToken = res.data.nextPageToken ?? undefined
+          } while (pageToken)
+        }
+        return itens
       }
 
-      let images = await listAllImages(rootFolderId, '(root)')
+      const varredura = await varrerArvoreDePastas({
+        raiz: rootFolderId,
+        profundidadeMaxima: includeSubfolders === false ? 0 : PROFUNDIDADE_DA_LISTAGEM,
+        maxPastas: PASTAS_DA_LISTAGEM_MAX,
+        listarArquivos: (pastas) =>
+          listarFilhos(pastas, "mimeType contains 'image/'", 'id,name,mimeType,thumbnailLink,createdTime,size,parents'),
+        listarSubpastas: (pastas) =>
+          includeSubfolders === false
+            ? Promise.resolve([])
+            : listarFilhos(pastas, "mimeType = 'application/vnd.google-apps.folder'", 'id,name,parents'),
+      })
 
-      // Include subfolders (paginated too)
-      if (includeSubfolders !== false) {
-        let folderPageToken: string | undefined
-        do {
-          const foldersRes = await drive.files.list({
-            q: `'${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-            fields: 'nextPageToken, files(id,name)',
-            pageSize: 100,
-            pageToken: folderPageToken,
-          })
-          for (const folder of foldersRes.data.files ?? []) {
-            const subImages = await listAllImages(folder.id!, folder.name!)
-            images = images.concat(subImages)
-          }
-          folderPageToken = foldersRes.data.nextPageToken ?? undefined
-        } while (folderPageToken)
-      }
+      // Pasta por pasta, na ordem de `pastasDisponiveis`; dentro dela, a mais recente primeiro.
+      const comparar = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0)
+      const images = varredura.arquivos
+        .map(({ arquivo: f, pasta }) => ({
+          driveFileId: f.id,
+          fileName: f.name,
+          folder: pasta,
+          mimeType: f.mimeType,
+          thumbnailLink: f.thumbnailLink,
+          createdTime: f.createdTime,
+          sizeBytes: f.size,
+        }))
+        .sort(
+          (a, b) =>
+            comparar(a.folder, b.folder) ||
+            comparar(String(b.createdTime ?? ''), String(a.createdTime ?? '')) ||
+            comparar(a.driveFileId, b.driveFileId),
+        )
 
       /**
-       * Filtro por NOME da pasta (B3). O nome é o que a pessoa conhece — o id
-       * só aparece em outra tool —, e antes do schema estrito passá-lo aqui era
-       * descartado em silêncio: voltava o acervo inteiro misturado com cara de
-       * resultado válido. Prefixo, como no catálogo.
+       * Filtro por CAMINHO da pasta (B3). O caminho é o que a pessoa conhece — o
+       * id só aparece em outra tool —, e antes do schema estrito passá-lo aqui
+       * era descartado em silêncio: voltava o acervo inteiro misturado com cara
+       * de resultado válido. Prefixo, como no catálogo.
        */
       const normalizar = (v: string) => v.trim().toLowerCase()
-      const pastasDisponiveis = [...new Set(images.map((i) => i.folder))].sort()
+      const pastasDisponiveis = [...new Set(images.map((i) => i.folder).filter(Boolean))].sort()
       const filtradas = folder
         ? images.filter((i) => normalizar(i.folder ?? '').startsWith(normalizar(folder)))
         : images
@@ -1500,6 +1518,7 @@ toolEstrita(
                 total: filtradas.length,
                 acervoCompleto: images.length,
                 pastasDisponiveis,
+                parcial: varredura.parcial,
                 images: finalImages,
               },
               null,
