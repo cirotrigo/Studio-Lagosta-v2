@@ -10332,7 +10332,7 @@ vai à agenda por **`agendar-leva`** (catálogo `compositor.ts`) →
 `agendarItensDoLote` (`src/lib/lotes/agendar-itens.ts`), com a decisão no
 módulo puro `src/lib/lotes/agendamento.ts`. `ItemDeLote` ganhou `postId`
 (+índice), `hashDoAgendamento`, `agendadoEm` e `efeitosDoAgendamentoEm` —
-migration `20260913090000_lote_ate_rascunhos`, escrita à mão e **NÃO
+migration `20260913130000_lote_ate_rascunhos` (era `20260913090000`), escrita à mão e **NÃO
 aplicada**.
 
 - 🔴 **`agendarPost` virou TRÊS funções compostas sobre o `db`**, com o
@@ -10460,3 +10460,46 @@ aplicada**.
   não tem como recalcular hash antigo (a linha guarda só o hash) — subir a
   versão transforma repetição antiga em conflito; e `registrarArtesDoPost` na
   repetição dos efeitos sobre um post já renderizado não foi conferido.
+
+**Da pré-revisão do commit b63edfb3 (APTO COM NOTAS, C12-1x1…x4, 12/09/2026):**
+
+- 🔴 **C12-1x2 — o item do plano vai a `agendado` NO MESMO commit que cria o
+  post, sob a trava do `ItemDePlano`.** Com o compare-and-set nos efeitos,
+  depois do commit e fora da trava que decidiu `pronto`: uma reprovação durante
+  os efeitos deixava a arte reprovada na agenda só com um aviso, e a invocação
+  que morresse antes do CAS deixava o item `pronto` — com o "Agendar" da bancada
+  (`/agendar`, sem guarda) criando um segundo rascunho da mesma página. Hoje o
+  CAS (status, `generationId`, `updatedAt` lidos sob a trava) roda logo depois
+  do vínculo da linha; se não pegar, a transação LANÇA (`RecusaSobTrava`), o
+  post e o vínculo voltam atrás e o item recusa com `PECA_SUPERADA_NO_PLANO`.
+  "Post, vínculo e item do plano são um commit só." O fechamento da dica de copy
+  não quebra com a ordem nova: `fecharDicaDeCopyDoItem` acha o item por id e
+  projeto, sem filtro de status. `levarItemDoPlanoParaAgendado` ficou só como
+  reconciliação da linha ligada antes disto, com efeitos pendentes.
+- 🔴 **Sob a trava vale a peça RELIDA, inteira.** O hash e a entrada do post
+  vinham da peça lida antes da trava, e a guarda não comparava o id da peça. A
+  guarda agora compara `peca.id`, página e item do plano, e o pedido, o hash e a
+  entrada do post são refeitos da peça relida.
+- **C12-1x1 — item `na-fila`/`gerando` que já aponta esta peça pronta é
+  `pendente`** (`ITEM_DO_PLANO_EM_VOO`, "repita em alguns minutos"), nunca
+  falha dizendo que foi reaberto: a fila fecha a Generation dentro da composição
+  e só DEPOIS reaponta o item. Em voo com OUTRA peça continua
+  `PECA_SUPERADA_NO_PLANO`.
+- **C12-1x3 — falha de campo do pedido nunca afirma que nada está na agenda.**
+  A mensagem passou a "Nada foi alterado para este item", e a linha do lote é
+  lida: com rascunho vivo de uma chamada anterior, a resposta traz o `postId` e
+  diz que ele continua na agenda, intacto. O mesmo vale para a linha ligada cujo
+  pedido não pôde ser montado (Generation apagada: `SEM_HORARIO`/`SEM_FORMATO`).
+- **C12-1x4 — a repetição não recataloga a mídia do post que já tem Generation.**
+  Chamada que cai antes dos efeitos + cron `render-stories` desenhando o post
+  antes da repetição = `mediaUrls` com o PNG do render, sem Generation, e
+  `registrarArtesDoPost` criava uma segunda arte `post-midia` da mesma peça.
+  `efeitosDoAgendamento` ganhou `{ registrarArtes }` (padrão `true`: `agendarPost`
+  segue igual), e o lote passa `!post.generationId`. O post do lote sempre nasce
+  com a Generation da peça; só o post ADOTADO sem Generation ainda é catalogado.
+- **A migration foi renomeada para `20260913130000_lote_ate_rascunhos`**: o PR 11
+  entra antes e trouxe `20260913120000_lote_revisao_do_item`, e o nome antigo
+  (`20260913090000`) ordenava antes dela — a produção aplicaria fora da ordem do
+  merge. Mesmo SQL, idempotente: onde o nome antigo já rodou (o branch de dev), a
+  nova vira no-op, mas o `_prisma_migrations` fica com as duas linhas — quem
+  cuida do dev decide se apaga a antiga.

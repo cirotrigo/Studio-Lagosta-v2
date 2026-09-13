@@ -116,8 +116,8 @@ export function validarAgendamentoDoLote(
       validos.push({
         item: { itemId },
         falha: doQuando
-          ? { codigo: 'DATA_INVALIDA', motivo: `O horário deste item veio vazio ou ilegível — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso, ou omita o quando para valer o horário da composição. Nada foi agendado para ele.` }
-          : { codigo: 'PEDIDO_INVALIDO', motivo: `Pedido inválido para este item — ${r.error.issues.map((p) => `${p.path.join('.') || '(item)'}: ${p.message}`).join('; ')}. Nada foi agendado para ele.` },
+          ? { codigo: 'DATA_INVALIDA', motivo: `O horário deste item veio vazio ou ilegível — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso, ou omita o quando para valer o horário da composição. Nada foi alterado para este item.` }
+          : { codigo: 'PEDIDO_INVALIDO', motivo: `Pedido inválido para este item — ${r.error.issues.map((p) => `${p.path.join('.') || '(item)'}: ${p.message}`).join('; ')}. Nada foi alterado para este item.` },
       })
       continue
     }
@@ -125,7 +125,7 @@ export function validarAgendamentoDoLote(
       try {
         parseBRT(r.data.quando)
       } catch {
-        validos.push({ item: r.data, falha: { codigo: 'DATA_INVALIDA', motivo: `O horário "${r.data.quando}" não é data — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso. Nada foi agendado para este item.` } })
+        validos.push({ item: r.data, falha: { codigo: 'DATA_INVALIDA', motivo: `O horário "${r.data.quando}" não é data — use "AAAA-MM-DD HH:mm" (Brasília) ou ISO com fuso. Nada foi alterado para este item.` } })
         continue
       }
     }
@@ -301,6 +301,11 @@ export interface ItemDoPlanoDaPeca {
  * a reprovação sumiria do plano e a refação em voo ficaria órfã.
  *
  * Peça sem item de plano: nada a conferir.
+ *
+ * Item `na-fila`/`gerando` que JÁ aponta esta peça pronta é `pendente`
+ * (`ITEM_DO_PLANO_EM_VOO`), nunca falha (pré-revisão C12-1x1): a fila fecha a
+ * Generation dentro da composição e só DEPOIS reaponta o item para `pronto` —
+ * nesse meio-tempo ninguém reabriu nada, e repetir a chamada resolve.
  */
 export function decidirItemDoPlano(entrada: {
   itemDePlanoId: string | null
@@ -308,7 +313,7 @@ export function decidirItemDoPlano(entrada: {
   pecaId: string
   /** O post que esta chamada vai ligar: o adotado, ou `null` quando vai criar. */
   postQueSeraLigado: string | null
-}): FalhaDoItem | null {
+}): (FalhaDoItem & { pendente?: true }) | null {
   if (!entrada.itemDePlanoId) return null
   const { item } = entrada
   if (!item) {
@@ -325,6 +330,9 @@ export function decidirItemDoPlano(entrada: {
   }
   if (status === 'reprovado') {
     return { codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'A arte desta peça foi reprovada no plano — ela não vai para a agenda. Refaça o item antes de agendar.' }
+  }
+  if (status === 'na-fila' || status === 'gerando') {
+    return { codigo: 'ITEM_DO_PLANO_EM_VOO', pendente: true, motivo: 'A peça está pronta, mas o item do plano ainda não saiu da fila — repita esta chamada em alguns minutos.' }
   }
   return {
     codigo: 'PECA_SUPERADA_NO_PLANO',

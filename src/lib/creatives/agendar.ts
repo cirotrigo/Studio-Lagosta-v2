@@ -551,6 +551,14 @@ export function contextoDosEfeitos(r: AgendamentoResolvido): ContextoDosEfeitos 
 export async function efeitosDoAgendamento(
   post: { id: string; postType: PostType | string },
   contexto: ContextoDosEfeitos,
+  /**
+   * `registrarArtes: false` pula o catálogo das mídias do post. O padrão é o de
+   * sempre (`agendarPost` não passa nada). O lote passa `false` quando o post já
+   * tem Generation: na repetição que refaz efeitos pendentes, o cron pode já ter
+   * trocado a mídia pelo PNG do render, que não tem Generation — e registrá-lo
+   * criaria uma segunda arte da mesma peça na galeria (pré-revisão C12-1x4).
+   */
+  opcoes: { registrarArtes?: boolean } = {},
 ): Promise<{ generationDoPost: string | null }> {
   /**
    * A arte que chegou PRONTA vira Generation aqui.
@@ -568,8 +576,8 @@ export async function efeitosDoAgendamento(
    * precisa ser a URL FINAL, senão o resolvedor por índice não casaria depois.
    * Nunca lança (contrato de `artes-do-post.ts`).
    */
-  const registroDeArtes = await registrarArtesDoPost(post.id)
-  const generationDoPost = contexto.generationId ?? registroDeArtes.artes[0]?.generationId ?? null
+  const registroDeArtes = opcoes.registrarArtes === false ? null : await registrarArtesDoPost(post.id)
+  const generationDoPost = contexto.generationId ?? registroDeArtes?.artes[0]?.generationId ?? null
 
   /**
    * Sinais do agendamento. Depois do create, de propósito: a chave de

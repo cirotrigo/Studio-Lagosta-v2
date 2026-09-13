@@ -17,8 +17,11 @@
  *    esperava a trava). Um post rascunho/agendado que já tenha a página é
  *    ADOTADO; senão o post é criado PELA TRANSAÇÃO e a linha é ligada a ele com
  *    compare-and-set em `postId: null`. Post e vínculo são um commit só.
- * 3. **Efeitos depois do commit** (sinais, artes, pasta, remarcação, item de
- *    plano `pronto` → `agendado` por compare-and-set), e só então
+ *    O item do plano vai de `pronto` a `agendado` NO MESMO commit, por
+ *    compare-and-set sob a trava dele (pré-revisão C12-1x2): se não pegar, a
+ *    transação volta atrás e o item recusa.
+ * 3. **Efeitos depois do commit** (sinais, artes, pasta, remarcação, e a
+ *    reconciliação do item de plano de linha ligada antes disso), e só então
  *    `efeitosDoAgendamentoEm`. Todos são idempotentes pelo id do post; a chamada
  *    que cair entre o commit e o fim dos efeitos deixa o carimbo nulo, e a
  *    repetição os refaz.
@@ -105,13 +108,20 @@ type Cliente = Pick<Prisma.TransactionClient, 'generation' | 'page' | 'socialPos
 const SELECAO_DA_LINHA = { id: true, generationId: true, postId: true, hashDoAgendamento: true, efeitosDoAgendamentoEm: true } as const
 const SELECAO_DO_POST = {
   id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true, renderStatus: true, pageId: true, templateId: true,
-  caption: true, campaignId: true, sugestaoId: true, origem: true,
+  caption: true, campaignId: true, sugestaoId: true, origem: true, generationId: true,
 } as const
 
 type Linha = { id: string; generationId: string | null; postId: string | null; hashDoAgendamento: string | null; efeitosDoAgendamentoEm: Date | null }
 type Post = {
   id: string; status: string; postType: string; scheduledDatetime: Date | null; mediaUrls: string[]; renderStatus: string; pageId: string | null; templateId: number | null
-  caption: string | null; campaignId: string | null; sugestaoId: string | null; origem: string | null
+  caption: string | null; campaignId: string | null; sugestaoId: string | null; origem: string | null; generationId: string | null
+}
+
+/** Recusa decidida DENTRO da transação que já escreveu: lançar é o que desfaz o post e o vínculo. */
+class RecusaSobTrava extends Error {
+  constructor(readonly falha: FalhaDoItem) {
+    super(falha.motivo)
+  }
 }
 
 interface Peca {
@@ -236,8 +246,8 @@ interface Contexto {
 
 type Escrita =
   | { acao: 'recusar'; resposta: ItemAgendadoDoLote }
-  | { acao: 'adotar'; postId: string; peca: Peca; pagina: Pagina }
-  | { acao: 'criar'; postId: null; peca: Peca; pagina: Pagina }
+  | { acao: 'adotar'; postId: string; peca: Peca; pagina: Pagina; itemDoPlano: ItemDoPlanoLido | null }
+  | { acao: 'criar'; postId: null; peca: Peca; pagina: Pagina; itemDoPlano: ItemDoPlanoLido | null }
 
 /**
  * TUDO que decide se o item vira post, lido pelo cliente que se passa: o `db`
@@ -287,18 +297,27 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
     pecaId: peca.id,
     postQueSeraLigado: daPagina.acao === 'adotar' ? daPagina.postId : null,
   })
+  if (doPlano?.pendente) {
+    return { acao: 'recusar', resposta: { itemId, situacao: 'pendente', codigo: doPlano.codigo, motivo: doPlano.motivo, ...vinculos } }
+  }
   if (doPlano) return { acao: 'recusar', resposta: falhou(itemId, doPlano, vinculos) }
 
-  return daPagina.acao === 'adotar' ? { acao: 'adotar', postId: daPagina.postId, peca, pagina } : { acao: 'criar', postId: null, peca, pagina }
+  return daPagina.acao === 'adotar'
+    ? { acao: 'adotar', postId: daPagina.postId, peca, pagina, itemDoPlano }
+    : { acao: 'criar', postId: null, peca, pagina, itemDoPlano }
 }
 
 /**
- * Leva o item do plano ligado à peça de `pronto` para `agendado`, com o post —
- * por compare-and-set no estado LIDO (status, `generationId` e `updatedAt`),
- * nunca atravessando transições: `caminhoAte` fabricaria `gerando`/`pronto`
- * para um item reaberto, e `agendado` é terminal (C12-1). `pronto` é a ÚNICA
- * origem que a tabela de transições aceita para `agendado`. Divergência vira
- * aviso; o rascunho fica.
+ * RECONCILIAÇÃO do item do plano de uma linha JÁ ligada (efeitos pendentes).
+ * Desde a pré-revisão C12-1x2 a transição acontece no commit que cria o post,
+ * sob a trava do item; aqui só chega a linha ligada antes disso, e o post já
+ * existe, então divergência vira aviso e o rascunho fica.
+ *
+ * Mesma regra do commit: de `pronto` para `agendado` por compare-and-set no
+ * estado LIDO (status, `generationId` e `updatedAt`), nunca atravessando
+ * transições — `caminhoAte` fabricaria `gerando`/`pronto` para um item
+ * reaberto, e `agendado` é terminal (C12-1). `pronto` é a ÚNICA origem que a
+ * tabela de transições aceita para `agendado`.
  */
 async function levarItemDoPlanoParaAgendado(ctx: Contexto, peca: Peca, postId: string): Promise<string | null> {
   if (!peca.itemDePlanoId) return null
@@ -345,7 +364,9 @@ async function executarEfeitos(ctx: Contexto, linhaId: string, post: Post, peca:
       sugestaoId: post.sugestaoId ?? null,
       origem: (post.origem as ContextoDosEfeitos['origem']) ?? null,
     }
-    await efeitosDoAgendamento(post, contexto)
+    // Post que já tem Generation não recataloga a mídia: depois do render do cron
+    // ela é o PNG do post, sem Generation, e viraria arte duplicada (C12-1x4).
+    await efeitosDoAgendamento(post, contexto, { registrarArtes: !post.generationId })
     // O horário do rascunho não é o que a composição previu: a página vai
     // junto para a pasta (e o nome) do dia certo — a regra da remarcação.
     const doSpec = peca.quandoDaSpec ? instanteDe(peca.quandoDaSpec) : null
@@ -396,7 +417,10 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     const post = (await db.socialPost.findUnique({ where: { id: atual.postId! }, select: SELECAO_DO_POST })) as Post | null
     const decisao = decidirAgendamento({ registro: atual, postLigadoExiste: !!post, pedido: pedidoParaDecidir, peca, pagina })
     if (decisao.acao !== 'reaproveitar') {
-      return falhou(itemId, decisao as FalhaDoItem, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}) })
+      const falha = decisao as FalhaDoItem
+      // O rascunho existe: a falha do pedido nunca pode soar como "nada na agenda" (C12-1x3).
+      const motivo = post && falha.codigo !== 'LOTE_AGENDAMENTO_CONFLITO' ? `${falha.motivo} O rascunho que este item já tinha continua na agenda, intacto.` : falha.motivo
+      return falhou(itemId, { codigo: falha.codigo, motivo }, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}) })
     }
     const avisos = [...avisosDoPedido]
     if (decisao.efeitosPendentes) {
@@ -414,7 +438,6 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   if (antes.acao === 'recusar') return antes.resposta
   const pedidoValido = pedido!
   const pageId = antes.pagina.id
-  const input = entradaDoPost(projectId, antes.peca, pedidoValido, ctx)
 
   if (ctx.simular) {
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
@@ -439,8 +462,13 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   }
 
   // 2. Escrever sob as travas, decidindo DE NOVO.
-  const escrita = await db.$transaction(
-    async (tx) => {
+  type Escrito =
+    | { tipo: 'ja-ligado'; linha: Linha }
+    | { tipo: 'recusado'; resposta: ItemAgendadoDoLote }
+    | { tipo: 'ligado'; postId: string; desfecho: DesfechoDoItemAgendado; resolucao: AgendamentoResolvido | null; peca: Peca; pagina: Pagina; pedido: PedidoDeAgendamento; avisos: string[]; input: AgendarPostInput }
+  let escrita: Escrito
+  try {
+  escrita = await db.$transaction(async (tx): Promise<Escrito> => {
       await tx.$queryRaw`SELECT id FROM "ItemDeLote" WHERE id = ${linha.id} FOR UPDATE`
       if (antes.peca.itemDePlanoId) {
         await tx.$queryRaw`SELECT id FROM "ItemDePlano" WHERE id = ${antes.peca.itemDePlanoId} AND "projectId" = ${projectId} FOR UPDATE`
@@ -451,14 +479,21 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         throw new CreativeError('LOTE_ITEM_SUMIU', `O item "${itemId}" do lote "${loteId}" foi apagado durante o agendamento. Repita a chamada.`, 409, { loteId, itemId })
       }
       // Outra chamada ligou o item enquanto esta esperava a trava.
-      if (atual.postId) return { tipo: 'ja-ligado' as const, linha: atual }
+      if (atual.postId) return { tipo: 'ja-ligado', linha: atual }
 
       const sob = await decidirEscrita(tx, ctx, itemId, atual, pedidoParaDecidir)
-      if (sob.acao === 'recusar') return { tipo: 'recusado' as const, resposta: sob.resposta }
-      // A trava é da página que a decisão sem trava leu; a peça não pode ter trocado de página.
-      if (sob.pagina.id !== pageId || sob.peca.itemDePlanoId !== antes.peca.itemDePlanoId) {
-        return { tipo: 'recusado' as const, resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'A peça mudou durante o agendamento. Repita a chamada.' }, { generationId: sob.peca.id, pageId: sob.pagina.id }) }
+      if (sob.acao === 'recusar') return { tipo: 'recusado', resposta: sob.resposta }
+      // As travas são da página e do item de plano que a decisão sem trava leu:
+      // a peça não pode ter trocado — nem de Generation, nem de página, nem de item.
+      if (sob.peca.id !== antes.peca.id || sob.pagina.id !== pageId || sob.peca.itemDePlanoId !== antes.peca.itemDePlanoId) {
+        return { tipo: 'recusado', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'A peça mudou durante o agendamento. Repita a chamada.' }, { generationId: sob.peca.id, pageId: sob.pagina.id }) }
       }
+      // O pedido, o hash e a entrada do post saem da peça RELIDA sob a trava —
+      // nunca da leitura de antes dela.
+      const pedidoSob = pedidoDoAgendamento(item, { quandoDaSpec: sob.peca.quandoDaSpec, formato: sob.peca.formato ?? sob.pagina.formato })
+      if ('falha' in pedidoSob) return { tipo: 'recusado', resposta: falhou(itemId, pedidoSob.falha, { generationId: sob.peca.id, pageId }) }
+      const hashSob = hashDoAgendamento(pedidoSob.pedido)
+      const input = entradaDoPost(projectId, sob.peca, pedidoSob.pedido, ctx)
 
       let postId: string
       let desfecho: DesfechoDoItemAgendado
@@ -479,30 +514,64 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
 
       const ligado = await tx.itemDeLote.updateMany({
         where: { id: atual.id, postId: null },
-        data: { postId, hashDoAgendamento: hash!, agendadoEm: new Date(), efeitosDoAgendamentoEm: null },
+        data: { postId, hashDoAgendamento: hashSob, agendadoEm: new Date(), efeitosDoAgendamentoEm: null },
       })
       // Com a trava isto não acontece; se acontecer, a transação volta atrás
       // inteira e nenhum post fica sem a linha apontando para ele.
       if (ligado.count !== 1) {
         throw new CreativeError('LOTE_AGENDAMENTO_CONCORRENTE', `O item "${itemId}" do lote "${loteId}" mudou durante o agendamento. Repita a chamada.`, 409, { loteId, itemId })
       }
-      return { tipo: 'ligado' as const, postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina }
-    },
-    { maxWait: 10_000, timeout: 20_000 },
-  )
+
+      // O item do plano vai a `agendado` NESTE commit, sob a trava dele (C12-1x2).
+      // Depois do commit, uma reprovação durante os efeitos deixava a arte
+      // reprovada na agenda só com um aviso, e a invocação que morresse antes do
+      // CAS deixava o item `pronto` — com o "Agendar" da bancada criando um
+      // segundo rascunho da mesma página. Se não pegar, tudo volta atrás.
+      const doPlano = sob.itemDoPlano
+      if (doPlano && normalizarStatusDoItem(doPlano.status) === 'pronto') {
+        const movido = await tx.itemDePlano.updateMany({
+          where: { id: doPlano.id, projectId, status: doPlano.status, generationId: sob.peca.id, updatedAt: doPlano.updatedAt },
+          data: { status: 'agendado', postId, ...(sob.peca.pageId ? { pageId: sob.peca.pageId } : {}) },
+        })
+        if (movido.count !== 1) {
+          throw new RecusaSobTrava({ codigo: 'PECA_SUPERADA_NO_PLANO', motivo: 'O item do plano mudou enquanto a peça ia para a agenda — nada foi agendado. Confira o plano e repita.' })
+        }
+      }
+      return { tipo: 'ligado', postId, desfecho, resolucao, peca: sob.peca, pagina: sob.pagina, pedido: pedidoSob.pedido, avisos: pedidoSob.avisos, input }
+  }, { maxWait: 10_000, timeout: 20_000 })
+  } catch (erro) {
+    if (!(erro instanceof RecusaSobTrava)) throw erro
+    escrita = { tipo: 'recusado', resposta: falhou(itemId, erro.falha, { generationId: antes.peca.id, pageId }) }
+  }
 
   if (escrita.tipo === 'ja-ligado') return responderLigado(escrita.linha)
   if (escrita.tipo === 'recusado') return escrita.resposta
 
   // 3. Efeitos depois do commit.
   const post = (await db.socialPost.findUnique({ where: { id: escrita.postId }, select: SELECAO_DO_POST })) as Post
-  const avisos = [...avisosDoPedido, ...(escrita.resolucao?.avisos ?? [])]
-  avisos.push(...(await executarEfeitos(ctx, linha.id, post, escrita.peca, input, escrita.resolucao)))
+  const avisos = [...escrita.avisos, ...(escrita.resolucao?.avisos ?? [])]
+  avisos.push(...(await executarEfeitos(ctx, linha.id, post, escrita.peca, escrita.input, escrita.resolucao)))
   const fresco = ((await db.socialPost.findUnique({ where: { id: post.id }, select: SELECAO_DO_POST })) as Post | null) ?? post
-  if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== pedidoValido.quando) {
+  if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== escrita.pedido.quando) {
     avisos.push(`Já havia um rascunho desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
   }
   return concluido(itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos)
+}
+
+/**
+ * Campo do pedido inválido falha o item — mas a resposta não pode afirmar que
+ * nada está na agenda quando o item JÁ tem rascunho de uma chamada anterior
+ * (pré-revisão C12-1x3): lê a linha e, com post vivo, devolve o `postId` e diz
+ * que ele continua lá. Só leitura; vale também em `simular`.
+ */
+async function falhaDoPedido(ctx: Contexto, itemId: string, falha: FalhaDoItem): Promise<ItemAgendadoDoLote> {
+  const linha = await db.itemDeLote.findUnique({
+    where: { projectId_loteId_itemId: { projectId: ctx.projectId, loteId: ctx.loteId, itemId } },
+    select: { postId: true },
+  })
+  const post = linha?.postId ? await db.socialPost.findUnique({ where: { id: linha.postId }, select: { id: true } }) : null
+  if (!post) return falhou(itemId, falha)
+  return falhou(itemId, { codigo: falha.codigo, motivo: `${falha.motivo} O rascunho que este item já tinha continua na agenda, intacto.` }, { postId: post.id })
 }
 
 /**
@@ -528,12 +597,8 @@ export async function agendarItensDoLote(entrada: EntradaDoAgendamentoDoLote): P
   }
   const itens: ItemAgendadoDoLote[] = []
   for (const { item, falha } of v.itens) {
-    if (falha) {
-      itens.push(falhou(item.itemId, falha))
-      continue
-    }
     try {
-      itens.push(await agendarItem(ctx, item))
+      itens.push(falha ? await falhaDoPedido(ctx, item.itemId, falha) : await agendarItem(ctx, item))
     } catch (erro) {
       const codigo = erro instanceof CreativeError ? erro.code : 'ERRO'
       itens.push(falhou(item.itemId, { codigo, motivo: erro instanceof Error ? erro.message : String(erro) }))

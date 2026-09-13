@@ -33,6 +33,8 @@ const banco = vi.hoisted(() => ({
 const efeitos = vi.hoisted(() => ({
   sinais: new Map<string, Record<string, unknown>>(),
   chamadasDeArtes: 0,
+  /** Uma por chamada de `registrarSlotDoPost` — o primeiro efeito; é onde a queda é simulada. */
+  chamadasDeSlot: 0,
   movimentos: 0,
   refilagens: [] as Array<{ postId: string; quando: string }>,
   /** Quantas vezes o primeiro efeito deve lançar — a queda entre o commit e os efeitos. */
@@ -179,7 +181,14 @@ const registrarSinal = (chave: string, dados: Record<string, unknown>) => {
   if (!efeitos.sinais.has(chave)) efeitos.sinais.set(chave, dados)
 }
 vi.mock('@/lib/aprendizado/sinal-de-agendamento', () => ({
-  registrarSlotDoPost: async (e: { postId: string }) => registrarSinal(`slot:post:${e.postId}`, e),
+  registrarSlotDoPost: async (e: { postId: string }) => {
+    efeitos.chamadasDeSlot++
+    if (efeitos.derrubar > 0) {
+      efeitos.derrubar--
+      throw new Error('a invocação morreu entre o commit e os efeitos')
+    }
+    registrarSinal(`slot:post:${e.postId}`, e)
+  },
   registrarCopyDoPost: async (e: { postId: string; copyFinal: unknown }) => {
     if (e.copyFinal) registrarSinal(`copy:post:${e.postId}`, e)
   },
@@ -189,10 +198,6 @@ vi.mock('@/lib/aprendizado/sinal-de-legenda', () => ({ registrarLegendaDoPost: a
 vi.mock('@/lib/posts/artes-do-post', () => ({
   registrarArtesDoPost: async () => {
     efeitos.chamadasDeArtes++
-    if (efeitos.derrubar > 0) {
-      efeitos.derrubar--
-      throw new Error('a invocação morreu entre o commit e os efeitos')
-    }
     return { registradas: 0, colunaVinculada: false, artes: [] }
   },
 }))
@@ -273,7 +278,7 @@ const agendar = (itens: Array<Record<string, unknown>>, extra: Record<string, un
 const item = (n: number, extra: Record<string, unknown> = {}) => ({ itemId: `item-${n}`, ...extra })
 const postsDaPagina = (n: number) => [...banco.posts.values()].filter((p) => p.pageId === `page-${n}`)
 /** Uma escrita que outra chamada já COMMITOU: vale mesmo que a transação desta volte atrás. */
-const escreverPorFora = (tabela: 'pages' | 'posts' | 'itensDePlano', id: string, linha: Record<string, unknown>) => {
+const escreverPorFora = (tabela: 'pages' | 'posts' | 'itensDePlano' | 'itensDeLote', id: string, linha: Record<string, unknown>) => {
   banco[tabela].set(id, linha)
   banco.foraDaTransacao.push(() => banco[tabela].set(id, structuredClone(linha)))
 }
@@ -290,6 +295,7 @@ beforeEach(() => {
   banco.aoLerItemDoPlano = null
   banco.leiturasDoItemDoPlano = 0
   efeitos.chamadasDeArtes = 0
+  efeitos.chamadasDeSlot = 0
   efeitos.movimentos = 0
   efeitos.refilagens = []
   efeitos.derrubar = 0
@@ -324,7 +330,8 @@ describe('do lote até os rascunhos — a semana', () => {
     expect(repetida.itens.map((i) => i.desfecho ?? i.codigo)).toEqual(['reaproveitado', 'reaproveitado', 'PECA_FALHOU', 'reaproveitado', 'reaproveitado'])
     expect(repetida.itens.map((i) => i.postId)).toEqual(primeira.itens.map((i) => i.postId))
     expect(banco.posts.size).toBe(4)
-    expect(efeitos.chamadasDeArtes).toBe(4) // nenhum efeito refeito: os carimbos estavam gravados
+    expect(efeitos.chamadasDeSlot).toBe(4) // nenhum efeito refeito: os carimbos estavam gravados
+    expect(efeitos.chamadasDeArtes).toBe(0) // o post do lote já nasce com a Generation da peça (C12-1x4)
 
     // A composição do item 3 foi refeita (PR 11): a próxima repetição completa a semana.
     criarPeca(3)
@@ -394,7 +401,7 @@ describe('idempotência e concorrência', () => {
     expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
 
     await agendar([item(1)])
-    expect(efeitos.chamadasDeArtes).toBe(2) // a terceira não refaz nada
+    expect(efeitos.chamadasDeSlot).toBe(2) // a terceira não refaz nada
   })
 
   it('vínculo por compare-and-set: se a linha foi ligada por outro caminho durante a criação, a transação volta atrás e nenhum post órfão fica', async () => {
@@ -422,6 +429,8 @@ describe('idempotência e concorrência', () => {
     expect(efeitos.sinais.get('slot:post:post-manual')).toMatchObject({ campaignId: 'camp-da-equipe' })
     expect(banco.posts.size).toBe(1)
     expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId: 'post-manual' })
+    // Post adotado SEM Generation continua sendo catalogado, como em agendarPost.
+    expect(efeitos.chamadasDeArtes).toBe(1)
     expect((await agendar([item(1, { caption: 'Legenda do lote', campanhaId: 'camp-do-lote' })])).itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: 'post-manual' })
   })
 
@@ -510,14 +519,98 @@ describe('o item do plano manda na peça (C12-1)', () => {
     expect(banco.posts.size).toBe(0)
   })
 
-  it('o item muda entre a leitura dos efeitos e o vínculo: o compare-and-set recusa, o item fica como a pessoa deixou e o aviso diz', async () => {
+  it('C12-1x2: o item vai a agendado NO MESMO commit — a invocação que morre antes dos efeitos já deixa o item agendado com o post', async () => {
     criarPeca(1, { itemDoPlano: { status: 'pronto' } })
-    // Leituras fora da transação: 1 = decisão sem trava, 2 = efeitos. Logo depois da 2ª a pessoa reprova.
-    banco.aoLerItemDoPlano = { depoisDaLeitura: 2, fazer: () => banco.itensDePlano.set('plano-item-1', { ...banco.itensDePlano.get('plano-item-1')!, status: 'reprovado', updatedAt: new Date('2026-09-12T15:00:00.000Z') }) }
+    efeitos.derrubar = 1
     const r = await agendar([item(1)])
     expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
-    expect(r.itens[0].avisos?.join()).toContain('mudou enquanto')
+    expect(r.itens[0].avisos?.join()).toContain('não terminou')
+    expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId: r.itens[0].postId, efeitosDoAgendamentoEm: null })
+    expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'agendado', postId: r.itens[0].postId, pageId: 'page-1' })
+    // Nenhuma leitura do item fora da transação foi preciso para levá-lo a agendado.
+    expect(banco.leiturasDoItemDoPlano).toBe(1)
+  })
+
+  it('C12-1x2: se o compare-and-set do item não pega DENTRO da transação, o post e o vínculo voltam atrás e o item recusa', async () => {
+    criarPeca(1, { itemDoPlano: { status: 'pronto' } })
+    // Outro escritor (que não respeita a trava) reprova o item enquanto o post é criado.
+    banco.aoCriarPostNaTransacao = () => {
+      banco.aoCriarPostNaTransacao = null
+      escreverPorFora('itensDePlano', 'plano-item-1', { ...banco.itensDePlano.get('plano-item-1')!, status: 'reprovado', updatedAt: new Date('2026-09-12T15:00:00.000Z') })
+    }
+    const r = await agendar([item(1)])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PECA_SUPERADA_NO_PLANO' })
+    expect(banco.posts.size).toBe(0)
+    expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId: null, hashDoAgendamento: null })
     expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'reprovado', postId: null })
+    expect(efeitos.chamadasDeSlot).toBe(0)
+  })
+
+  it('reconciliação de linha ligada ANTES do commit único: efeitos pendentes levam o item pronto a agendado; se ele mudar no meio, o compare-and-set recusa e avisa', async () => {
+    const ligarLegado = (n: number) => {
+      criarPeca(n, { itemDoPlano: { status: 'pronto' } })
+      banco.posts.set(`post-legado-${n}`, { id: `post-legado-${n}`, projectId: PROJETO, pageId: `page-${n}`, templateId: 42, generationId: `gen-${n}`, status: 'DRAFT', postType: 'STORY', scheduledDatetime: new Date(`2026-09-1${n}T22:00:00.000Z`), mediaUrls: [], renderStatus: 'PENDING', createdAt: 0, caption: '' })
+    }
+    ligarLegado(1)
+    ligarLegado(2)
+    // As linhas nascem ligadas pelo pedido de hoje, com os efeitos pendentes.
+    for (const n of [1, 2]) {
+      const simulada = await agendar([item(n)], { simular: true })
+      expect(simulada.itens[0]).toMatchObject({ desfecho: 'adotado' })
+    }
+    const { hashDoAgendamento: hashDe, pedidoDoAgendamento: pedidoDe } = await import('../agendamento')
+    for (const n of [1, 2]) {
+      const p = pedidoDe({ itemId: `item-${n}` }, { quandoDaSpec: `2026-09-1${n} 19:00`, formato: 'story' })
+      if (!('pedido' in p)) throw new Error('pedido')
+      banco.itensDeLote.set(`lote-${n}`, { ...banco.itensDeLote.get(`lote-${n}`)!, postId: `post-legado-${n}`, hashDoAgendamento: hashDe(p.pedido), efeitosDoAgendamentoEm: null })
+    }
+
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: 'post-legado-1' })
+    expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'agendado', postId: 'post-legado-1' })
+
+    // Na linha 2 a pessoa reprova logo depois da leitura da reconciliação.
+    banco.leiturasDoItemDoPlano = 0
+    banco.aoLerItemDoPlano = { depoisDaLeitura: 1, fazer: () => banco.itensDePlano.set('plano-item-2', { ...banco.itensDePlano.get('plano-item-2')!, status: 'reprovado', updatedAt: new Date('2026-09-12T15:00:00.000Z') }) }
+    const r = await agendar([item(2)])
+    expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'reaproveitado' })
+    expect(r.itens[0].avisos?.join()).toContain('mudou enquanto')
+    expect(banco.itensDePlano.get('plano-item-2')).toMatchObject({ status: 'reprovado', postId: null })
+  })
+
+  it.each(['na-fila', 'gerando'])('C12-1x1: item "%s" que já aponta ESTA peça pronta é PENDENTE, sem escrever nada', async (status) => {
+    criarPeca(1, { itemDoPlano: { status } })
+    const antes = fotoDoBanco()
+    const r = await agendar([item(1)])
+    expect(r.itens[0]).toMatchObject({ situacao: 'pendente', codigo: 'ITEM_DO_PLANO_EM_VOO' })
+    expect(r.resumo).toEqual({ concluidos: 0, pendentes: 1, falhas: 0 })
+    expect(fotoDoBanco()).toEqual(antes)
+  })
+
+  it('C12-1x4: repetição com efeitos pendentes depois de o cron renderizar o post não cataloga o PNG do render como arte nova', async () => {
+    criarPeca(1)
+    efeitos.derrubar = 1
+    const caiu = await agendar([item(1)])
+    const id = caiu.itens[0].postId!
+    // O cron render-stories desenhou o post: a mídia virou o PNG dele, sem Generation.
+    banco.posts.set(id, { ...banco.posts.get(id)!, renderStatus: 'RENDERED', mediaUrls: [`${BLOB}/${id}-1757700099999.png`] })
+    const repetida = await agendar([item(1)])
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: id })
+    expect(efeitos.chamadasDeArtes).toBe(0)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+  })
+
+  it('C12-1x3: campo inválido num item que JÁ tem rascunho devolve o postId e não diz que nada está na agenda; sem rascunho, diz que nada foi alterado', async () => {
+    criarPeca(1)
+    criarPeca(2)
+    const primeira = await agendar([item(1)])
+    const r = await agendar([item(1, { quando: '' }), item(2, { caption: 'x'.repeat(2201) })])
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'DATA_INVALIDA', postId: primeira.itens[0].postId })
+    expect(r.itens[0].motivo).toContain('continua na agenda')
+    expect(r.itens[0].motivo).not.toContain('Nada foi agendado')
+    expect(r.itens[1]).toMatchObject({ situacao: 'falhou', codigo: 'PEDIDO_INVALIDO' })
+    expect(r.itens[1].postId).toBeUndefined()
+    expect(r.itens[1].motivo).toContain('Nada foi alterado')
+    expect(banco.posts.size).toBe(1)
   })
 })
 
@@ -535,6 +628,33 @@ describe('rechecagem SOB a trava (C12-1a)', () => {
     banco.aoTravar = () => escreverPorFora('posts', 'post-por-generation', { id: 'post-por-generation', projectId: PROJETO, pageId: null, status: 'DRAFT', mediaUrls: [`${BLOB}/page-1-1757700000000.png`], createdAt: 0 })
     expect((await agendar([item(1)])).itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PECA_JA_NA_AGENDA', postId: 'post-por-generation' })
     expect(banco.posts.size).toBe(1)
+  })
+
+  it('a linha passou a apontar OUTRA peça (mesma página) enquanto esperava: LOTE_AGENDAMENTO_CONCORRENTE e nenhum post', async () => {
+    criarPeca(1)
+    banco.aoTravar = () => {
+      const g = structuredClone(banco.generations.get('gen-1')!)
+      banco.generations.set('gen-9', { ...g, id: 'gen-9' })
+      banco.foraDaTransacao.push(() => banco.generations.set('gen-9', { ...g, id: 'gen-9' }))
+      escreverPorFora('itensDeLote', 'lote-1', { ...banco.itensDeLote.get('lote-1')!, generationId: 'gen-9' })
+    }
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', generationId: 'gen-9' })
+    expect(banco.posts.size).toBe(0)
+  })
+
+  it('o pedido e a entrada do post saem da peça RELIDA sob a trava: o horário previsto mudou enquanto esperava', async () => {
+    criarPeca(1)
+    banco.aoTravar = () => {
+      const g = banco.generations.get('gen-1')! as { fieldValues: { spec: Record<string, unknown> } }
+      g.fieldValues.spec.quando = '2026-09-18 21:00'
+    }
+    const r = await agendar([item(1)])
+    expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+    expect(postsDaPagina(1)[0].scheduledDatetime).toEqual(new Date('2026-09-19T00:00:00.000Z'))
+    const { hashDoAgendamento: hashDe, pedidoDoAgendamento: pedidoDe } = await import('../agendamento')
+    const p = pedidoDe({ itemId: 'item-1' }, { quandoDaSpec: '2026-09-18 21:00', formato: 'story' })
+    if (!('pedido' in p)) throw new Error('pedido')
+    expect(banco.itensDeLote.get('lote-1')!.hashDoAgendamento).toBe(hashDe(p.pedido))
   })
 
   it('o item do plano foi reprovado enquanto a chamada esperava: PECA_SUPERADA_NO_PLANO, nenhum post, item reprovado', async () => {
@@ -571,6 +691,7 @@ describe('imagem atual', () => {
     const r = await agendarPost({ projectId: PROJETO, pageId: 'page-1', scheduledDatetime: '2026-09-11 19:00', postType: 'STORY' })
     expect(banco.posts.get(r.postId)).toMatchObject({ renderStatus: 'RENDERED', mediaUrls: [`${BLOB}/outro-render.png`], pageId: 'page-1', templateId: 42 })
     expect(r).toMatchObject({ situacao: 'rascunho', tipo: 'story', quando: '11/09/2026, 19:00' })
+    expect(efeitos.chamadasDeArtes).toBe(1) // o padrão de efeitosDoAgendamento continua registrando as artes
   })
 })
 
@@ -586,7 +707,7 @@ describe('simular', () => {
     const simulada = await agendar(semana, { simular: true })
     expect(simulada.simulado).toBe(true)
     expect(fotoDoBanco()).toEqual(antes)
-    expect(efeitos.chamadasDeArtes + efeitos.movimentos + efeitos.refilagens.length).toBe(0)
+    expect(efeitos.chamadasDeArtes + efeitos.chamadasDeSlot + efeitos.movimentos + efeitos.refilagens.length).toBe(0)
 
     const deVerdade = await agendar(semana)
     expect(simulada.resumo).toEqual(deVerdade.resumo)

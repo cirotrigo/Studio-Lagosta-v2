@@ -71,12 +71,20 @@ describe('decidirItemDoPlano (C12-1)', () => {
 
   it('reprovado, reaberto, refeito ou em voo com a refação é PECA_SUPERADA_NO_PLANO; item sumido é ITEM_DO_PLANO_AUSENTE', () => {
     expect(d(null)).toMatchObject({ codigo: 'ITEM_DO_PLANO_AUSENTE' })
-    for (const status of ['reprovado', 'editado', 'aprovado', 'proposto', 'erro', 'na-fila', 'gerando']) {
+    for (const status of ['reprovado', 'editado', 'aprovado', 'proposto', 'erro']) {
       expect(d({ status, generationId: 'g1', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
     }
     expect(d({ status: 'pronto', generationId: 'g2', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
     expect(d({ status: 'na-fila', generationId: 'g2', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
     expect(d({ status: 'reprovado', generationId: 'g1', postId: null })?.motivo).toContain('reprovada')
+  })
+
+  it('C12-1x1: em voo com ESTA peça é pendente (a fila ainda não reapontou o item), em voo com outra continua superada', () => {
+    for (const status of ['na-fila', 'gerando']) {
+      expect(d({ status, generationId: 'g1', postId: null })).toMatchObject({ codigo: 'ITEM_DO_PLANO_EM_VOO', pendente: true })
+      expect(d({ status, generationId: 'g2', postId: null })).toMatchObject({ codigo: 'PECA_SUPERADA_NO_PLANO' })
+      expect(d({ status, generationId: 'g2', postId: null })?.pendente).toBeUndefined()
+    }
   })
 })
 
