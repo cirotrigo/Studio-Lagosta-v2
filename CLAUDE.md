@@ -5521,3 +5521,35 @@ Lagosta +20 pela margem do grupo); as 3 recusas antigas do Wine Vix nos dois
 lados; nenhum aviso novo e 12 a menos (invasão de margem e "foto clara demais"
 falsos). ⚠️ Sobra um aviso real: o dourado da segunda voz do Dia dos Pais sobre o
 creme fica abaixo de 3:1 onde a foto escurece — é o desenho do modelo.
+
+### O acervo se lista por NÍVEL, em todas as subpastas (13/09/2026)
+
+As duas listagens cruas do Drive — `list-drive-images` (servidor MCP local) e
+`listar-fotos-da-pasta` (`listarImagensDoDrive`, que também é o fallback do
+seletor da bancada para projeto sem catálogo) — passam por
+`src/lib/creatives/varredura-de-pastas.ts`: módulo puro que desce por nível,
+consulta os filhos de até 20 pastas de uma vez e grava o `folder` como caminho
+relativo (`07_ambiente/salao`), no formato do catálogo.
+
+- 🔴 **`list-drive-images` descia UM nível só.** No TERO devolvia 116 fotos — só
+  as soltas numa pasta de primeiro nível — contra 1.467 do catálogo, e um agente
+  disse ao usuário que a pasta configurada estava errada. Ela estava certa.
+  **Listagem que devolve pouco não prova pasta errada**: compare com
+  `buscar-fotos` antes de concluir.
+- **O conector remoto descia, mas escondia o fundo e custava caro**: uma
+  consulta por pasta, subpastas lidas por `listFiles` (`pageSize: 50` fixo, sem
+  paginar) e teto de 4 níveis. Medido nos 11 projetos: 10 com o mesmo conjunto
+  de fotos, o Seu Quinto perdendo 35 em duas pastas de 6º nível, e cada listagem
+  caindo de 11–89s para 2,5–9s.
+- **O limite agora é 10 níveis e 2.000 pastas, e `parcial: true` diz quando
+  sobrou algo** — a consulta de subpastas roda também no último nível justamente
+  para isso. Mais fundo que a catalogação (4) de propósito: a listagem mostra a
+  foto que o catálogo ainda não alcança.
+- **Atalho de imagem não entra mais na listagem remota**: `listFolderFiles` o
+  trazia, `listChildrenOfFolders` filtra por `mimeType contains 'image/'`, como a
+  reconciliação. Nos 11 projetos nenhuma foto sumiu (−0 em todos).
+- **Foto solta na raiz tem `folder: ''`** e fica fora de `pastasDisponiveis`
+  (o servidor local usava `'(root)'`).
+- ⚠️ **O projeto 9 (Ciro Trigo) não tem pasta de imagens** e cai na pasta geral,
+  que é a árvore da agência inteira: 28.614 fotos em 693 pastas, ~74s. Antes a
+  listagem parava no teto de 250 pastas com 3.318.
