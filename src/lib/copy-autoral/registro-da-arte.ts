@@ -34,7 +34,7 @@ import type { CopyAutoral } from './contrato'
 import { tentarCopyEfetivaDasCamadas } from './efetiva'
 import { lerCopyAutoral } from './serializar'
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
-import { aplicarRevisao, blocosEmOrdem, copyComparavel, validarCopyAutoral, type Autor, type BlocoAutoral } from '.'
+import { blocosEmOrdem, copyComparavel, HistoricoDaCopyCheio, orientacaoDosProblemas, orientacaoEmFrase, tentarAplicarRevisao, type Autor, type BlocoAutoral } from '.'
 
 export interface RegistroDaCopyDaArte {
   original: CopyAutoral
@@ -207,10 +207,12 @@ export function revisaoDoRefino(
     const estilo = { ...restoDoEstilo, ...(voz2.length > 0 ? { linhasNaVoz2: voz2 } : {}) }
     return { ...semEstilo, linhas, ...(Object.keys(estilo).length > 0 ? { estilo } : {}) }
   })
-  const { copy } = aplicarRevisao(contrato, blocos, { autor: quem.autor, motivo, superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
-  const conferida = validarCopyAutoral(copy)
-  if (!conferida.copy) return { descartado: `a revisão do refino deixou o contrato inválido (${conferida.problemas.map((p) => p.mensagem).join('; ')})` }
-  return { copy: conferida.copy, mudou: conferida.copy.revisoes.length !== contrato.revisoes.length }
+  // `tentarAplicarRevisao` confere o RESULTADO inteiro (9238098f). Nenhuma recusa derruba a melhoria: histórico cheio
+  // ou contrato que não cabe voltam `descartado` com o motivo (vira lacuna no registro da run).
+  const revisada = tentarAplicarRevisao(contrato, blocos, { autor: quem.autor, motivo, superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
+  if (revisada.historicoCheio) return { descartado: `o histórico da copy chegou ao limite de ${contrato.revisoes.length} revisões e a troca pedida não foi registrada no contrato` }
+  if (!revisada.copy) return { descartado: `a revisão do refino deixou o contrato inválido (${revisada.problemas.map((p) => p.mensagem).join('; ')})${orientacaoEmFrase(orientacaoDosProblemas(revisada.problemas)).replace(/\.$/, '')}` }
+  return { copy: revisada.copy, mudou: revisada.copy.revisoes.length !== contrato.revisoes.length }
 }
 
 /**
@@ -243,8 +245,11 @@ export function revisaoPosicional(
     const estilo = { ...restoDoEstilo, ...(voz2.length > 0 ? { linhasNaVoz2: voz2 } : {}) }
     return { ...semEstilo, linhas, ...(Object.keys(estilo).length > 0 ? { estilo } : {}) }
   })
-  const { copy } = aplicarRevisao(contrato, novos, { autor: quem.autor, motivo, superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
-  const conferida = validarCopyAutoral(copy)
-  if (!conferida.copy) return { descartado: `a edição posicional deixou o contrato inválido (${conferida.problemas.map((p) => p.mensagem).join('; ')})` }
-  return { copy: conferida.copy, mudou: conferida.copy.revisoes.length !== contrato.revisoes.length }
+  // Histórico CHEIO PROPAGA de propósito: a edição posicional é do item de plano, e `plano-service` a devolve como 409
+  // dizendo o que fazer — descartar o contrato aqui apagaria a autoria que o histórico guarda. O resultado que o leitor
+  // recusaria (`tentarAplicarRevisao`, 9238098f) é descartado com o motivo e a orientação, como no PR 3.
+  const revisada = tentarAplicarRevisao(contrato, novos, { autor: quem.autor, motivo, superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
+  if (revisada.historicoCheio) throw new HistoricoDaCopyCheio(contrato, revisada.mudancas)
+  if (!revisada.copy) return { descartado: `a edição posicional deixou o contrato inválido (${revisada.problemas.map((p) => p.mensagem).join('; ')})${orientacaoEmFrase(orientacaoDosProblemas(revisada.problemas)).replace(/\.$/, '')}` }
+  return { copy: revisada.copy, mudou: revisada.copy.revisoes.length !== contrato.revisoes.length }
 }

@@ -56,7 +56,7 @@ import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
-import { copyEfetivaDasCamadas, lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
+import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
@@ -792,9 +792,17 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
    * mesma forma do compositor (`persistencia.ts`). Os [colchetes] que o modelo
    * não desenha aparecem como revisão do SISTEMA, nunca como edição de alguém.
    */
+  // Recusa do contrato na copy lida das camadas finais (histórico cheio no contrato recebido, ou a leitura que não cabe):
+  // a arte segue SEM registro de copy, e o aviso vai no retorno.
+  const avisosDaCopyDoModelo: string[] = []
   const registroDaCopy = contratoRecebido
     ? (() => {
-        const { efetiva, lacunas } = copyEfetivaDasCamadas(contratoRecebido, layers as Layer[], { superficie: 'modelo' })
+        const lida = tentarCopyEfetivaDasCamadas(contratoRecebido, layers as Layer[], { superficie: 'modelo' })
+        if (lida.ok === false) {
+          avisosDaCopyDoModelo.push(`${lida.aviso} A arte foi gravada sem contrato na página.`)
+          return null
+        }
+        const { efetiva, lacunas } = lida.leitura
         return { efetiva, registro: { original: contratoRecebido, efetiva, comparavel: contratoRecebido.origem.autor !== 'desconhecido', ...(lacunas.length ? { lacunas } : {}) } }
       })()
     : null
@@ -900,7 +908,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    ...(fix.avisos.length + avisosDaCopyDoModelo.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopyDoModelo] } : {}),
     halo: { aplicado: halo.aplicado, blocos: halo.blocos, avisos: halo.avisos },
     ...(layoutEscolhido ? { layoutEscolhido } : {}),
   }

@@ -35,7 +35,7 @@ import type { Layer } from '@/types/template'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Autor, CopyAutoral } from './contrato'
-import { copyEfetivaDasCamadas, tentarCopyEfetivaDasCamadas } from './efetiva'
+import { tentarCopyEfetivaDasCamadas } from './efetiva'
 import { HistoricoDaCopyCheio } from './revisao'
 import { lerCopyAutoral } from './serializar'
 
@@ -97,7 +97,14 @@ export function revisaoDaPaginaComCamadas(
   if (opcoes.camadasAnteriores !== undefined) {
     const anteriores = lerCamadasParaAutoria(opcoes.camadasAnteriores)
     if (anteriores.legivel) {
-      const r = copyEfetivaDasCamadas(atual, anteriores.camadas as unknown as Layer[], { superficie: 'reconciliacao', ...(quem.em ? { em: quem.em } : {}) })
+      const lidaAntes = tentarCopyEfetivaDasCamadas(atual, anteriores.camadas as unknown as Layer[], { superficie: 'reconciliacao', ...(quem.em ? { em: quem.em } : {}) })
+      // Recusa do contrato já na RECONCILIAÇÃO — histórico cheio, ou a copy lida das camadas anteriores não cabe
+      // (`RevisaoDaCopyInvalida`): nem ela nem a edição cabem no contrato — as camadas seguem, o contrato fica como
+      // estava e o aviso sai (a mesma regra do passo 2).
+      if (lidaAntes.ok === false) {
+        return { estado: lidaAntes.recusa instanceof HistoricoDaCopyCheio ? 'historico-cheio' : 'copy-invalida', copy: null, blocos: lidaAntes.recusa.mudancas.map((m) => m.id), lacunas, aviso: lidaAntes.aviso }
+      }
+      const r = lidaAntes.leitura
       if (r.mudancas.length > 0) {
         const ultima = r.efetiva.revisoes[r.efetiva.revisoes.length - 1]
         base = { ...r.efetiva, revisoes: [...r.efetiva.revisoes.slice(0, -1), { ...ultima, autor: 'sistema', motivo: 'reconciliação da leitura com as camadas anteriores à edição', superficie: quem.superficie }] }

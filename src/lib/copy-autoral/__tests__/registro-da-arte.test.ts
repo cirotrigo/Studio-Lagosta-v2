@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { comConferencia, conferenciaDoCheck, identidadeDoContrato, LACUNA_SEM_CAMADAS, registroParaIA, revisaoDoRefino, revisaoPosicional, textoEnviadoDoContrato, type CopyAutoral } from '..'
+import { MAX_REVISOES_DA_COPY, ORIENTACAO_LINHA_LONGA, VERSAO_DO_CONTRATO, comConferencia, conferenciaDoCheck, identidadeDoContrato, LACUNA_SEM_CAMADAS, registroParaIA, revisaoDoRefino, revisaoPosicional, textoEnviadoDoContrato, type CopyAutoral } from '..'
 
 const contrato: CopyAutoral = {
   versao: 'copy-autoral-v1',
@@ -119,5 +119,28 @@ describe('o registro da copy numa arte SEM camadas (via de IA e melhoria)', () =
     const revEquipe = { ...contrato, revisoes: [{ autor: 'equipe' as const, em: '2026-09-12T11:00:00.000Z', motivo: 'ajuste', superficie: 'editor', blocos: ['headline'] }] }
     expect(identidadeDoContrato(revClaude)).not.toBe(identidadeDoContrato(revEquipe))
     expect(identidadeDoContrato(revClaude)).toBe(identidadeDoContrato({ ...revClaude }))
+  })
+})
+
+describe('recusas do contrato no refino e na edição posicional (PR 5 × PR 2)', () => {
+  const base: CopyAutoral = {
+    versao: VERSAO_DO_CONTRATO,
+    origem: { autor: 'claude', superficie: 'chat' },
+    blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Almoço em família'] }],
+    revisoes: [],
+  }
+  const cheio: CopyAutoral = { ...base, revisoes: Array.from({ length: MAX_REVISOES_DA_COPY }, () => ({ em: '2026-09-12T11:00:00.000Z', autor: 'equipe' as const, motivo: 'm', superficie: 'bancada', blocos: ['headline'] })) }
+  it('refino com o histórico CHEIO: devolve descartado com o motivo, sem lançar', () => {
+    const r = revisaoDoRefino(cheio, ['Almoço em família'], ['Almoço de domingo'], { autor: 'claude', superficie: 'melhoria' }, 'pedido de refino')
+    expect('descartado' in r && r.descartado).toMatch(/limite de 200 revisões/)
+  })
+  it('refino que produziria linha de 301 caracteres: descartado com a orientação, sem lançar', () => {
+    const r = revisaoDoRefino(base, ['Almoço em família'], ['x'.repeat(301)], { autor: 'claude', superficie: 'melhoria' }, 'pedido de refino')
+    expect('descartado' in r && r.descartado).toContain(ORIENTACAO_LINHA_LONGA.replace(/\.$/, ''))
+  })
+  it('edição posicional com o histórico CHEIO PROPAGA (o plano a devolve como 409); a que não cabe é descartada', () => {
+    expect(() => revisaoPosicional(cheio, ['Almoço de domingo'], { autor: 'equipe', superficie: 'bancada' }, 'edição')).toThrow(/histórico da copy está cheio/)
+    const r = revisaoPosicional(base, ['x'.repeat(301)], { autor: 'equipe', superficie: 'bancada' }, 'edição')
+    expect('descartado' in r && r.descartado).toContain(ORIENTACAO_LINHA_LONGA.replace(/\.$/, ''))
   })
 })

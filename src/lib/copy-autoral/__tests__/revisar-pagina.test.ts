@@ -339,3 +339,21 @@ describe('a leitura das camadas nunca produz contrato que o leitor recusa (resta
     expect(lacunasQueCabem([], ['x'.repeat(250)])[0]).toHaveLength(200)
   })
 })
+
+describe('recusa do contrato na RECONCILIAÇÃO com as camadas anteriores (PR 5 × PR 2)', () => {
+  const novas = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Fale com a gente')]
+  it('as camadas anteriores já divergem do contrato de 200 revisões: historico-cheio, sem lançar e sem copy para gravar', () => {
+    const cheio: CopyAutoral = { ...contrato, revisoes: Array.from({ length: MAX_REVISOES_DA_COPY }, () => ({ em: '2026-09-12T11:00:00.000Z', autor: 'equipe' as const, motivo: 'm', superficie: 'editor', blocos: ['cta'] })) }
+    const anteriores = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Texto que o contrato não tem')]
+    const r = revisaoDaPaginaComCamadas(cheio, novas, { autor: 'equipe', motivo: 'edição', superficie: 'editor' }, { camadasAnteriores: anteriores })
+    expect(r.estado).toBe('historico-cheio')
+    expect(r.copy).toBeNull()
+    expect(r.aviso).toMatch(/limite de 200 revisões/)
+  })
+  it('as camadas anteriores têm uma linha de 301 caracteres: copy-invalida, sem lançar, com a orientação', () => {
+    const anteriores = [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'x'.repeat(301))]
+    const r = revisaoDaPaginaComCamadas(contrato, novas, { autor: 'equipe', motivo: 'edição', superficie: 'editor' }, { camadasAnteriores: anteriores })
+    expect(r.estado).toBe('copy-invalida')
+    expect(recusaDaRevisao(r)).toContain(ORIENTACAO_LINHA_LONGA)
+  })
+})
