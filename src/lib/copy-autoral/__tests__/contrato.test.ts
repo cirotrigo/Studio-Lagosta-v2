@@ -520,3 +520,44 @@ describe('auditoria: o que o adaptador inventa cabe no contrato por construção
     expect(copyDeListaLegada(['Texto'], { superficie: 'bancada' }).origem.superficie).toBe('bancada')
   })
 })
+
+describe('PR2-05: copy recebida inválida nunca volta como sucesso', () => {
+  const b: BlocoAutoral = { id: 'a', funcao: 'livre', ordem: 0, linhas: ['Texto'] }
+  const base = { ...copy, blocos: [b, b], revisoes: [] } as CopyAutoral
+  const quem = { autor: 'equipe' as const, motivo: 'nada', em: '2026-09-13T10:00:00.000Z' }
+
+  it('com id duplicado, sem mudança e com mudança: recusa com os problemas da base, original intacta', () => {
+    expect(validarCopyAutoral(base).problemas.length).toBeGreaterThan(0)
+    const antes = structuredClone(base)
+    const casos: Array<[string, BlocoAutoral[]]> = [
+      ['sem mudança', [b]],
+      ['com mudança', [b, { ...b, id: 'c', ordem: 1 }]],
+    ]
+    for (const [rotulo, novos] of casos) {
+      const r = tentarAplicarRevisao(base, novos, quem)
+      expect(r.copy, rotulo).toBeNull()
+      expect(r.original, rotulo).toBe(base)
+      expect(r.problemas.some((p) => p.mensagem.startsWith('copy recebida:')), rotulo).toBe(true)
+      expect(() => aplicarRevisao(base, novos, quem), rotulo).toThrow(RevisaoDaCopyInvalida)
+    }
+    expect(base).toEqual(antes)
+  })
+
+  it('copy válida sem mudança continua devolvendo a mesma copy', () => {
+    expect(aplicarRevisao(copy, copy.blocos, quem).copy).toBe(copy)
+  })
+})
+
+describe('PR2-06: papel com nome de propriedade herdada é papel desconhecido', () => {
+  it('constructor, toString, __proto__ e hasOwnProperty viram livre, com lacuna e texto idêntico na releitura', () => {
+    for (const papel of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const r = converterBlocosLegados([{ papel, linhas: ['Texto'] }], { em: '2026-09-13T10:00:00.000Z' })
+      expect(r.copy, papel).not.toBeNull()
+      expect(r.copy!.blocos[0].funcao, papel).toBe('livre')
+      expect(r.copy!.lacunas?.some((l) => /papel desconhecido/.test(l)), papel).toBe(true)
+      const lida = lerCopyAutoral(serializarCopyAutoral(r.copy!))
+      expect(lida.problemas, papel).toEqual([])
+      expect(lida.copy!.blocos[0].linhas, papel).toEqual(['Texto'])
+    }
+  })
+})

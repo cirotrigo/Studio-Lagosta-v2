@@ -427,7 +427,7 @@ describe('invariante 1 — adaptadores do legado', () => {
   })
 
   it('blocos por papel: papel longo, esquisito ou desconhecido nunca vira recusa; só o conteúdo e os metadados recusam', () => {
-    const papeis = ['pre', 'headline', 'headline2', 'apoio', 'cta', 'servico', 'rodape', 'a'.repeat(59), 'a'.repeat(60), 'a'.repeat(61), 'b'.repeat(250), 'Pré Título!', '---', '']
+    const papeis = ['pre', 'headline', 'headline2', 'apoio', 'cta', 'servico', 'rodape', 'a'.repeat(59), 'a'.repeat(60), 'a'.repeat(61), 'b'.repeat(250), 'Pré Título!', '---', '', 'constructor', 'toString', '__proto__', 'hasOwnProperty']
     const conjuntos: Array<[string, BlocoLegado[]]> = [
       ...papeis.map((p): [string, BlocoLegado[]] => [`papel "${p.slice(0, 12)}"(${p.length})`, [{ papel: p, linhas: ['Texto'] }, { papel: p, linhas: ['Outro'] }]]),
       ...[0, 1, MAX_BLOCOS, MAX_BLOCOS + 1].map((n): [string, BlocoLegado[]] => [`${n} blocos`, Array.from({ length: n }, (_, i) => ({ papel: 'apoio', linhas: [`t${i}`] }))]),

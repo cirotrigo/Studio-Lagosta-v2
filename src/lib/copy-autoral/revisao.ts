@@ -172,6 +172,13 @@ export function tentarAplicarRevisao(copy: CopyAutoral, blocosNovos: BlocoAutora
   const mudancas = diferencasDeBlocos(copy, candidata)
   const recusa = (problemas: ProblemaDaCopy[], cheio = false): ResultadoDaRevisao => ({ copy: null, mudancas, problemas, original: copy, historicoCheio: cheio })
 
+  // A copy RECEBIDA também passa pelo leitor. Com base inválida (id ou ordem
+  // repetidos) o diff por id colapsa, e o ramo "sem mudança" devolvia a
+  // original ilegível como sucesso (PR2-05, 13/09/2026). Recusa explícita, com
+  // os problemas da base e a original intacta — com ou sem mudança.
+  const problemasDaBase = validarCopyAutoral(copy).problemas
+  if (problemasDaBase.length > 0) return recusa(problemasDaBase.map((p) => ({ ...p, mensagem: `copy recebida: ${p.mensagem}` })))
+
   if (mudancas.length > 0 && historicoCheio(copy)) return recusa(new HistoricoDaCopyCheio(copy, mudancas).problemas, true)
 
   // Os metadados entram EXATAMENTE como vieram: vazio não vira "agora" nem

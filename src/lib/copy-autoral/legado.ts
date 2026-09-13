@@ -128,7 +128,9 @@ export function converterBlocosLegados(
   ]
   const desconhecidos: Array<{ i: number; papel: string }> = []
   const saida: BlocoAutoral[] = blocos.map((b, i) => {
-    const funcao = PAPEIS_LEGADOS[b.papel]
+    // Só propriedade PRÓPRIA do mapa: `constructor`, `toString` e `__proto__`
+    // são papéis desconhecidos, não funções herdadas de Object (PR2-06).
+    const funcao = Object.prototype.hasOwnProperty.call(PAPEIS_LEGADOS, b.papel) ? PAPEIS_LEGADOS[b.papel] : undefined
     if (!funcao) desconhecidos.push({ i, papel: b.papel })
     return {
       id: idUnico(b.papel, usados),
