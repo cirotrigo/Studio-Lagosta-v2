@@ -38,12 +38,37 @@ describe('diffDeCopy — comparação por campo', () => {
     expect(d.alterados).toHaveLength(0)
   })
 
-  // Caixa, acento e separador de lista somem na normalização da casa. É edição
-  // de diagramação, e a F2 vai querer pesá-la diferente de uma reescrita.
+  // Caixa e separador de lista somem na normalização da casa. É edição de
+  // diagramação, e a F2 vai querer pesá-la diferente de uma reescrita.
   it('marca a edição que é só formatação', () => {
     const d = diffDeCopy({ titulo: 'Happy Hour · Quinta' }, { titulo: 'HAPPY HOUR   QUINTA' })
     expect(d.mudou).toBe(true)
-    expect(d.alterados[0].apenasFormatacao).toBe(true)
+    expect(d.alterados[0]).toMatchObject({ apenasFormatacao: true, diferenca: 'formatacao' })
+  })
+
+  // Acento, caixa, espaço e palavra são QUATRO coisas diferentes (12/09/2026):
+  // correção de acento é correção de redação e NÃO pode sumir na métrica.
+  describe('separa acento, caixa, espaço e troca de palavra', () => {
+    const casos: Array<[string, string, string, 'formatacao' | 'acento' | 'conteudo', boolean]> = [
+      ['caixa', 'Almoço executivo', 'ALMOÇO EXECUTIVO', 'formatacao', true],
+      ['espaço e separador', 'Seg a sex · 11h às 15h', 'Seg a sex  |  11h às 15h', 'formatacao', true],
+      ['espaço do R$', 'R$ 49,90', 'R$49,90', 'formatacao', true],
+      ['acento corrigido', 'Almoco em familia', 'Almoço em família', 'acento', false],
+      ['cedilha corrigida', 'Comeca a semana bem', 'Começa a semana bem', 'acento', false],
+      ['acento E caixa ao mesmo tempo', 'almoco executivo', 'ALMOÇO EXECUTIVO', 'acento', false],
+      ['palavra trocada', 'Almoço executivo', 'Almoço em família', 'conteudo', false],
+      ['acento errado posto', 'Voce merece', 'Vocé merece', 'acento', false],
+      ['mesmo acento em outra forma Unicode (NFC × NFD) é formatação, não correção', 'Caf\u00e9 da manh\u00e3', 'Cafe\u0301 da manha\u0303', 'formatacao', true],
+      ['NFD com caixa trocada continua formatação', 'Caf\u00e9', 'CAFE\u0301', 'formatacao', true],
+    ]
+    for (const [nome, antes, depois, esperado, formatacao] of casos) {
+      it(nome, () => {
+        const d = diffDeCopy({ t: antes }, { t: depois })
+        expect(d.mudou).toBe(true)
+        expect(d.alterados[0].diferenca).toBe(esperado)
+        expect(d.alterados[0].apenasFormatacao).toBe(formatacao)
+      })
+    }
   })
 
   it('ignora as chaves reservadas do slotValues', () => {

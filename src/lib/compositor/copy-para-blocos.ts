@@ -68,10 +68,14 @@ const PARECE_SERVICO =
 
 export interface OpcoesDeCopyParaBlocos {
   /**
-   * Os papéis que a página de assinatura do formato TEM. A copy é distribuída
-   * só sobre eles (Ciro, 04/09/2026: "a copy para cada arte deve ser feita em
-   * cima dos campos que existem no template" — nunca acrescentar campo).
-   * Sem a lista, vale a distribuição por contagem.
+   * Os papéis que a página de assinatura do formato TEM. A copy do item de
+   * plano é distribuída sobre eles. No modo `estrito` (o executor semanal) o
+   * que não couber LANÇA; no modo legado (sem `estrito`) o excedente é CORTADO
+   * pelo `slice`, sem aviso — é a perda posicional que o contrato da copy (F1)
+   * expõe e que o PR 5 fecha. A regra de 04/09/2026 ("só os campos do
+   * template") foi substituída em 11/09/2026 por "copy primeiro, campos
+   * depois" — os campos são opcionais, e a camada extra (F3) é o que vai
+   * acomodar o que sobra. Sem a lista, vale a distribuição por contagem.
    */
   papeis?: PapelDaSpec[]
   /** Executor semanal: nenhuma condição recebida pode desaparecer no mapeamento. */

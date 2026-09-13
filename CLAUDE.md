@@ -1935,6 +1935,13 @@ assunto por slot → `buscarNoAcervo` → `montarDicasDeCopy` → `criarPlano`. 
 **monta e persiste; nunca gera, nunca cobra, nunca agenda** — quem produz é
 `executar-plano`, com o gate de confirmação.
 
+- 🔴 **Desde 12/09/2026 `propor-semana` é automação SÓ QUANDO PEDIDA** (decisão
+  do Ciro em 11/09, plano "Marca simples, copy melhor"): quem escreve a copy da
+  semana é o Claude, no chat, pelas 4 etapas da programação semanal, e a
+  descrição da tool deixou de dizer "é por onde começar". Ela só entra quando a
+  pessoa pede com todas as letras a proposta automática do Studio. O código e
+  as regras abaixo continuam valendo para quando ela roda.
+
 - 🔴 **A F2 NÃO dá tema por slot.** `SugestaoSlot` não tem campo de pilar, e
   `modeloSugerido.temas` são as TAGS da página, não assunto. Quem escolhe o
   assunto é `propor-semana`, cruzando `taxonomiaAprovada` com a distribuição
@@ -4079,18 +4086,25 @@ e o sinal `geometria`. Regras que valem para código novo:
   A sombra segue a mesma lei: camada sem sombra na página = peça sem sombra.
   `Page.background` NÃO é mais lido (o editor grava `#ffffff` ao pôr foto de
   referência na página); fundo liso e mancha da logo vêm de `Project.assinatura`.
-- 🔴 **A página do formato é a verdade INTEIRA daquele formato — nunca
-  acrescentar campo** (Ciro, 04/09/2026: "respeite os templates que eu defini,
-  não adicione campos; a copy é feita em cima dos campos que existem no
-  template"). O `completarComStory` (feed herdando papel da story) foi
-  REMOVIDO: papel que a página não tem sai da peça com aviso, em qualquer
-  formato. `copyParaBlocos(copy, { papeis })` distribui a copy do item de
-  plano só sobre os papéis da assinatura do formato (prioridade headline >
-  apoio > cta > pre; serviço só se a página tem `servico`), e `ver-assinatura`
-  lista os papéis por variante para a copy nascer certa. O alinhamento da
-  headline na página vira PREFERÊNCIA do rodízio (a foto ainda manda). O
-  serviço reserva a própria altura quando o bloco principal também vai ao
-  rodapé.
+- 🔴 **COPY PRIMEIRO, CAMPOS DEPOIS** (Ciro, 11/09/2026; substitui a regra de
+  04/09 "não adicione campos; a copy é feita em cima dos campos que existem no
+  template"). A redação aprovada: *A assinatura define a identidade visual e oferece composições iniciais. Os campos são opcionais. A mensagem determina quais blocos e grupos de leitura a peça precisa. O Claude pode escolher outra variante, acrescentar camadas com estilos da assinatura e reorganizar a composição. Nenhum texto é descartado por ausência de campo. Fatos vêm da base; a caixa vem da string; safe area e avatar permanecem respeitados. O verificador informa problemas e não veta a peça.* Nada é escrito para
+  preencher espaço. Até a camada extra (F3) existir, o que já dá é deixar o
+  campo vazio, escolher a variante que tem o campo (`ver-assinatura` lista os
+  papéis por variante) ou `criar-arte` com `textosLivres`; papel que a variante
+  não tem volta como `PAPEIS_INCOMPATIVEIS` — nunca some em silêncio. A regra
+  nova entrou de uma vez em todos os lugares onde a antiga estava ativa
+  (CLAUDE.md, `docs/FORMAS-DE-ARTE.md`, `instrucoes.ts`, descrição de
+  `compor-arte`, comentários do compositor): regra velha e nova convivendo era
+  o defeito. O que continua: a página do formato é a verdade daquele formato
+  (o `completarComStory` segue removido — papel de feed não vem da story);
+  `copyParaBlocos(copy, { papeis })` distribui a copy do item de plano sobre os
+  papéis do formato — no modo `estrito` (o executor semanal) o que não cabe
+  LANÇA `PAPEIS_INCOMPATIVEIS` (com `textosSemPapel`); no modo legado o excedente ainda é CORTADO
+  sem aviso, que é a perda posicional que o PR 5 da F1 vai fechar; o
+  alinhamento da headline na
+  página é PREFERÊNCIA do rodízio (a foto ainda manda); o serviço reserva a
+  própria altura quando o bloco principal também vai ao rodapé.
 - **A régua entende texto ESCURO**: para cor de texto com luz < 128 a
   pergunta inverte (p2 do fundo ≥ alvo claro) e ela só confere, nunca corrige
   — mancha clara é desenho da equipe (Real: apoio verde sobre creme).
@@ -4103,8 +4117,11 @@ e o sinal `geometria`. Regras que valem para código novo:
   serve para a peça de funcionamento — aconteceu na sexta da Real), −1 por
   papel que sobra, +3 por palavra do tema no nome/tags da página, ±2 pela tag
   `clara`/`escura` contra a luz da foto; empate → rodízio pela chave da peça.
-  Papel pedido que a variante escolhida não tem sai da peça com aviso (só a
-  manchete é obrigatória). `ver-assinatura` lista as variantes com os papéis
+  Papel pedido que a variante escolhida não tem é RECUSADO antes de gravar
+  (`PAPEIS_INCOMPATIVEIS`, com a lista do que falta) — nunca sai da peça em
+  silêncio; a saída é outra variante ou `criar-arte` com `textosLivres`, com a
+  copy preservada (só a manchete é obrigatória para compor). `ver-assinatura`
+  lista as variantes com os papéis
   e `aceitaServico`. Nome/tag da página é o que faz o tema casar: vale nomear
   as variantes pelo que elas servem. O compositor NÃO varia cor de fonte nem
   cor do halo por conta própria — variação de estilo é página nova; o que ele
