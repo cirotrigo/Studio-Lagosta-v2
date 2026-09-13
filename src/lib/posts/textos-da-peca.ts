@@ -332,6 +332,34 @@ function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide
   })
 }
 
+/**
+ * A arte de uma mídia como `ver-agenda` a monta a partir de `Generation.fieldValues` — módulo puro, para que o teste
+ * leia a MESMA coisa que a agenda lê.
+ *
+ *  - `reRenderizada`: o re-render como a página estava grava URL nova e PRESERVA o snapshot da composição anterior —
+ *    o snapshot não afirma texto (R13).
+ *  - `copyVisualRegravada`: o re-render regravou a copy visual junto do PNG (marcador do PR 0).
+ *  - `source` e `slotValues`: a arte de `post-schedule` é um MODELO com a copy do post por cima (R36).
+ *
+ * 🔴 A RECUSA de uma recomposição posterior não entra aqui e não apaga nada disso: ela mora em
+ * `fieldValues.recusaDaRecomposicao`, e `recomposicao` continua sendo o registro do render que produziu o PNG atual
+ * (C6-01 da pré-revisão do HEAD f0eee811, 12/09/2026).
+ */
+export function arteDosFieldValues(fieldValues: unknown): NonNullable<SlideDaPeca['arte']> {
+  const objeto = (v: unknown) => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {})
+  const fv = objeto(fieldValues)
+  const recomposicao = objeto(fv.recomposicao)
+  const reRenderizada = recomposicao.estado === 're-renderizada'
+  return {
+    layersSnapshot: fv.layersSnapshot,
+    pageId: typeof fv.pageId === 'string' ? fv.pageId : null,
+    reRenderizada,
+    copyVisualRegravada: reRenderizada && recomposicao.copyVisualRegravada === true,
+    source: typeof fv.source === 'string' ? fv.source : null,
+    slotValues: fv.slotValues,
+  }
+}
+
 export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): TextosDaPeca {
   const sv = post.slotValues
   const entregue = arteEntregue(post)

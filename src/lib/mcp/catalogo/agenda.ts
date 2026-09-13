@@ -38,7 +38,7 @@ export const toolsDeAgenda = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, _principal) => {
-      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue }] =
+      const [{ db }, { avisosDeCampanhaVencida }, { formatarBRT }, { descreverJanela }, { escopoEmPortugues }, { textosDaPeca, arteEntregue, arteDosFieldValues }] =
         await Promise.all([
           import('../../db'),
           import('../../posts/campanha-vigencia'),
@@ -124,25 +124,9 @@ export const toolsDeAgenda = [
             orderBy: { createdAt: 'desc' },
           })
         : []
-      const fvDe = (fv: unknown) => (fv && typeof fv === 'object' && !Array.isArray(fv) ? (fv as Record<string, unknown>) : {})
-      const arteDe = (g: (typeof artes)[number]) => {
-        const fv = fvDe(g.fieldValues)
-        const recomposicao = fvDe(fv.recomposicao)
-        return {
-          layersSnapshot: fv.layersSnapshot,
-          pageId: typeof fv.pageId === 'string' ? fv.pageId : null,
-          // Re-render como a página estava: a URL é nova e o snapshot é o da
-          // composição anterior — não afirma texto (R13).
-          reRenderizada: recomposicao.estado === 're-renderizada',
-          // ...e o re-render REGRAVOU a copy visual junto do PNG (marcador do PR 0): os `slotValues` são desta mídia.
-          copyVisualRegravada: recomposicao.estado === 're-renderizada' && recomposicao.copyVisualRegravada === true,
-          // Procedência e a copy com que a arte foi desenhada: a arte de `post-schedule` é um MODELO com a copy
-          // do post por cima, e a página dela não é a peça — ler a página entregaria o texto cru do modelo por
-          // uma mídia que mostra outra coisa (R36 da revisão final de bf4650f2).
-          source: typeof fv.source === 'string' ? fv.source : null,
-          slotValues: fv.slotValues,
-        }
-      }
+      // A leitura da arte mora no módulo puro (`arteDosFieldValues`): R13, R36, o marcador da copy visual regravada e
+      // a recusa que não apaga o registro do re-render (C6-01) — o teste lê exatamente o que a agenda lê.
+      const arteDe = (g: (typeof artes)[number]) => arteDosFieldValues(g.fieldValues)
       const artePorUrl = new Map<string, ReturnType<typeof arteDe>>()
       for (const g of artes) {
         if (g.resultUrl && !artePorUrl.has(g.resultUrl)) artePorUrl.set(g.resultUrl, arteDe(g))
