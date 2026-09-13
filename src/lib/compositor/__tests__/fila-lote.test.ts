@@ -15,6 +15,9 @@
  * trava a linha dele (`ItemDeLote` ou `ItemDePlano`) até o fim da transação, e o
  * rollback desfaz só o que ELA escreveu (diário de imagens anteriores).
  * `antesDaTravaDoPlano` é a barreira: roda antes de disputar a trava do item.
+ *
+ * Pré-revisão C11-1: `aposLer` roda depois de cada leitura de Generation ou de
+ * job — é como o teste põe o runner terminando a peça ENTRE as duas leituras.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -34,6 +37,7 @@ const banco = vi.hoisted(() => ({
   travasPorLinha: false,
   travas: new Map<string, Promise<void>>(),
   antesDaTravaDoPlano: null as null | (() => Promise<void>),
+  aposLer: null as null | ((tabela: 'generations' | 'jobs') => void),
 }))
 
 vi.mock('@/lib/db', () => {
@@ -78,7 +82,9 @@ vi.mock('@/lib/db', () => {
         },
         findUnique: async ({ where, select }: { where: { id: string }; select?: Record<string, boolean> }) => {
           const g = banco.generations.get(where.id)
-          return g ? escolher(g, select) : null
+          const lida = g ? escolher(g, select) : null
+          banco.aposLer?.('generations')
+          return lida
         },
         update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
           gravar('generations', where.id, { ...banco.generations.get(where.id), ...data }, naTransacao, diario)
@@ -93,7 +99,9 @@ vi.mock('@/lib/db', () => {
         },
         findUnique: async ({ where, select }: { where: { id?: string; generationId?: string }; select?: Record<string, boolean> }) => {
           const j = where.id ? banco.jobs.get(where.id) : [...banco.jobs.values()].find((x) => x.generationId === where.generationId)
-          return j ? escolher(j, select) : null
+          const lido = j ? escolher(j, select) : null
+          banco.aposLer?.('jobs')
+          return lido
         },
         updateMany: async ({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
           const j = banco.jobs.get(where.id)
@@ -133,7 +141,9 @@ vi.mock('@/lib/db', () => {
           return i && i.projectId === where.projectId && (!where.planoId || i.planoId === where.planoId) ? i : null
         },
         update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
-          gravar('itensDePlano', where.id, { ...banco.itensDePlano.get(where.id), ...data }, naTransacao, diario)
+          const linha = { ...banco.itensDePlano.get(where.id), ...data }
+          gravar('itensDePlano', where.id, linha, naTransacao, diario)
+          return linha
         },
         updateMany: async () => ({ count: 0 }),
       },
@@ -275,6 +285,7 @@ beforeEach(() => {
   banco.travasPorLinha = false
   banco.travas.clear()
   banco.antesDaTravaDoPlano = null
+  banco.aposLer = null
   compositor.chamadas = 0
   vi.spyOn(console, 'log').mockImplementation(() => {})
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -900,5 +911,203 @@ describe('correção da revisão final (R05, R06): a tabela única sob a trava d
     expect(banco.jobs.get(segunda.jobId)).toMatchObject({ status: 'PENDING', generationId: segunda.generationId })
     expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: segunda.generationId })
     expect(linhaDoLote()).toMatchObject({ generationId: segunda.generationId, jobId: segunda.jobId, tentativas: 2 })
+  })
+})
+
+describe('pré-revisão C11-1: a revisão do item gravada na linha do lote, pelo caminho real com travas por linha', () => {
+  const L = 'semana-2026-09-07'
+  const L2 = 'semana-2026-09-07-v2'
+  const chave = (loteId: string) => ({ lote: { loteId, itemId: 'seg' } })
+  const specV1 = { ...peca(1), itemDePlanoId: 'item-1', planoId: 'plano-1' }
+  const specV2 = { ...specV1, blocos: [{ papel: 'headline', linhas: ['Costela no bafo'] }, { papel: 'cta', linhas: ['Vem pra cá'] }] }
+  const criarItem = () =>
+    banco.itensDePlano.set('item-1', {
+      id: 'item-1', planoId: 'plano-1', projectId: 6, status: 'proposto', ordem: 0, updatedAt: new Date('2026-09-08'),
+      copyProposta: ['Manchete 1', 'Vem pra cá'],
+      plano: { id: 'plano-1', status: 'ativo', inicio: new Date('2026-09-07'), fim: new Date('2026-09-13') },
+    })
+  const marcar = (tabela: 'generations' | 'jobs' | 'itensDePlano', id: string, extra: Record<string, unknown>) => banco[tabela].set(id, { ...banco[tabela].get(id), ...extra })
+  const retrato = () => structuredClone({ generations: banco.generations, jobs: banco.jobs, itensDeLote: banco.itensDeLote, itensDePlano: banco.itensDePlano })
+  const linha = (loteId: string) => [...banco.itensDeLote.values()].find((l) => l.loteId === loteId)
+  const revisaoDoJob = (jobId: string) => (banco.jobs.get(jobId)!.payload as { planoRevisao: string }).planoRevisao
+  const linhasDoJob = (jobId: string) => (banco.jobs.get(jobId)!.payload as { spec: { blocos: Array<{ linhas: string[] }> } }).spec.blocos.map((b) => b.linhas)
+  /** A fila: Generation e job FAILED, item em `erro` apontando a mesma peça. */
+  const falhar = (p: { generationId: string; jobId: string }) => {
+    marcar('generations', p.generationId, { status: 'FAILED' })
+    marcar('jobs', p.jobId, { status: 'FAILED' })
+    marcar('itensDePlano', 'item-1', { status: 'erro' })
+  }
+  const editar = async (patch: Record<string, unknown>) => {
+    const { atualizarItem } = await import('@/lib/planos/plano-service')
+    await atualizarItem({ projectId: 6, planoId: 'plano-1', itemId: 'item-1', patch })
+  }
+  const recusada = { code: 'ITEM_EXECUCAO_CONCORRENTE', status: 409, details: { motivo: 'revisado' } }
+
+  beforeEach(() => {
+    banco.travasPorLinha = true
+  })
+
+  it('a linha nasce com a revisão do item e fica com ela no vínculo da primeira peça', async () => {
+    criarItem()
+    const g1 = await enfileirarPeca(specV1, chave(L))
+    expect(linha(L)).toMatchObject({ generationId: g1.generationId, planoRevisao: revisaoDoJob(g1.jobId) })
+  })
+
+  it('C11-1 (5a, a peça nova sai SEM lote): G1 do lote L falha, a copy é editada, G2 sai pela bancada e falha, e a leva L repetida com a copy antiga é 409 sem escrever nada', async () => {
+    criarItem()
+    const g1 = await enfileirarPeca(specV1, chave(L)) // 1
+    const r1 = revisaoDoJob(g1.jobId)
+    falhar(g1) // 2
+    await editar({ copyProposta: ['Costela no bafo', 'Vem pra cá'] }) // 3
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'editado', generationId: g1.generationId })
+    const g2 = await enfileirarPeca(specV2) // 4
+    expect(g2.generationId).not.toBe(g1.generationId)
+    expect(revisaoDoJob(g2.jobId)).not.toBe(r1)
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: g2.generationId })
+    falhar(g2) // 5a
+
+    const antes = retrato()
+    await expect(enfileirarPeca(specV1, chave(L))).rejects.toMatchObject(recusada) // 6
+    expect(retrato()).toEqual(antes)
+    expect(linha(L)).toMatchObject({ generationId: g1.generationId, planoRevisao: r1 })
+    expect(banco.travas.size).toBe(0)
+  })
+
+  it('C11-1 (5a, a peça nova sai por OUTRA chave): a leva L vencida é 409 e as duas linhas ficam como estão; o controle — repetir L2 com a copy nova — produz com a revisão de agora', async () => {
+    criarItem()
+    const g1 = await enfileirarPeca(specV1, chave(L))
+    const r1 = revisaoDoJob(g1.jobId)
+    falhar(g1)
+    await editar({ copyProposta: ['Costela no bafo', 'Vem pra cá'] })
+    const g2 = await enfileirarPeca(specV2, chave(L2))
+    const r2 = revisaoDoJob(g2.jobId)
+    expect(r2).not.toBe(r1)
+    expect(linha(L2)).toMatchObject({ generationId: g2.generationId, planoRevisao: r2 })
+    falhar(g2)
+
+    const antes = retrato()
+    await expect(enfileirarPeca(specV1, chave(L))).rejects.toMatchObject(recusada)
+    expect(retrato()).toEqual(antes)
+
+    const g3 = await enfileirarPeca(specV2, chave(L2))
+    expect(g3.generationId).not.toBe(g2.generationId)
+    expect(g3.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(g3.jobId)).toMatchObject({ status: 'PENDING', generationId: g3.generationId, payload: { planoRevisao: r2 } })
+    expect(linhasDoJob(g3.jobId)).toEqual([['Costela no bafo'], ['Vem pra cá']])
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: g3.generationId })
+    expect(linha(L2)).toMatchObject({ generationId: g3.generationId, planoRevisao: r2, tentativas: 2 })
+    expect(linha(L)).toMatchObject({ generationId: g1.generationId, planoRevisao: r1, tentativas: 1 })
+  })
+
+  it('C11-1 (5b): G2 fica pronta e é reprovada por regenerarItem (volta aprovada, mantendo G2); a leva L vencida continua 409 sem escrever nada', async () => {
+    criarItem()
+    const g1 = await enfileirarPeca(specV1, chave(L))
+    falhar(g1)
+    await editar({ copyProposta: ['Costela no bafo', 'Vem pra cá'] })
+    const g2 = await enfileirarPeca(specV2, chave(L2))
+    expect(await rodarComoOCron(g2.jobId)).toBe('DONE')
+    expect(banco.generations.get(g2.generationId)).toMatchObject({ status: 'COMPLETED' })
+    // A fila reaponta o item para `pronto` com a peça (o banco falso não aplica o updateMany condicional dela).
+    marcar('itensDePlano', 'item-1', { status: 'pronto', generationId: g2.generationId, pageId: 'page-1' })
+    const { regenerarItem } = await import('@/lib/planos/regenerar')
+    await regenerarItem({ projectId: 6, planoId: 'plano-1', itemId: 'item-1', motivo: 'A foto não combina com a copy.', voltarPara: 'aprovado' })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'aprovado', generationId: g2.generationId })
+
+    const antes = retrato()
+    await expect(enfileirarPeca(specV1, chave(L))).rejects.toMatchObject(recusada)
+    expect(retrato()).toEqual(antes)
+    expect(banco.travas.size).toBe(0)
+  })
+
+  it('resíduo fechado: a reserva ÓRFÃ de um item editado depois dela é 409 sem escrever nada; sem a edição, a mesma repetição cria a peça', async () => {
+    criarItem()
+    banco.falharJobs = 1
+    await expect(enfileirarPeca(specV1, chave(L))).rejects.toThrow('queda do banco ao criar o job')
+    const orfa = linha(L)!
+    expect(orfa).toMatchObject({ generationId: null, situacao: 'reservado' })
+    expect(typeof orfa.planoRevisao).toBe('string')
+    expect(banco.generations.size).toBe(0)
+
+    await editar({ copyProposta: ['Costela no bafo', 'Vem pra cá'] })
+    const antes = retrato()
+    await expect(enfileirarPeca(specV1, chave(L))).rejects.toMatchObject(recusada)
+    expect(retrato()).toEqual(antes)
+
+    // O controle, noutra linha órfã do mesmo item sem edição depois dela.
+    banco.falharJobs = 1
+    await expect(enfileirarPeca(specV2, chave(L2))).rejects.toThrow('queda do banco ao criar o job')
+    const r = await enfileirarPeca(specV2, chave(L2))
+    expect(r.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(revisaoDoJob(r.jobId)).not.toBe(orfa.planoRevisao)
+    expect(linha(L2)).toMatchObject({ generationId: r.generationId, planoRevisao: revisaoDoJob(r.jobId) })
+  })
+
+  it('linha sem revisão gravada (anterior à coluna) nunca vale igual: a retomada é recusada sem escrever nada', async () => {
+    criarItem()
+    const g1 = await enfileirarPeca(specV1, chave(L))
+    falhar(g1)
+    const l = linha(L)!
+    banco.itensDeLote.set(l.id as string, { ...l, planoRevisao: null })
+    const antes = retrato()
+    await expect(enfileirarPeca(specV1, chave(L))).rejects.toMatchObject(recusada)
+    expect(retrato()).toEqual(antes)
+  })
+
+  it('o vínculo regrava a revisão: a linha antiga que reaproveita a peça da revisão nova (o MESMO pedido) passa a valer por ela, e retoma quando essa peça falha', async () => {
+    criarItem()
+    const g1 = await enfileirarPeca(specV1, chave(L))
+    const r1 = revisaoDoJob(g1.jobId)
+    falhar(g1)
+    await editar({ tema: 'rodízio' }) // revisão do item FORA da spec: o pedido é o mesmo
+    const g2 = await enfileirarPeca(specV1) // a bancada, sob a revisão nova
+    const r2 = revisaoDoJob(g2.jobId)
+    expect(r2).not.toBe(r1)
+
+    const reaproveitada = await enfileirarPeca(specV1, chave(L))
+    expect(reaproveitada).toMatchObject({ generationId: g2.generationId, jobId: g2.jobId, lote: { desfecho: 'reaproveitado', situacao: 'pendente' } })
+    expect(linha(L)).toMatchObject({ generationId: g2.generationId, jobId: g2.jobId, planoRevisao: r2 })
+
+    falhar(g2)
+    const g3 = await enfileirarPeca(specV1, chave(L))
+    expect(g3.generationId).not.toBe(g2.generationId)
+    expect(banco.jobs.get(g3.jobId)).toMatchObject({ status: 'PENDING', generationId: g3.generationId, payload: { planoRevisao: r2 } })
+    expect(linha(L)).toMatchObject({ generationId: g3.generationId, planoRevisao: r2 })
+  })
+
+  it('o job é lido ANTES da Generation no caminho do plano: a peça que o runner fecha entre as duas leituras é reaproveitada, nunca refeita como "job terminado"', async () => {
+    criarItem()
+    const g = await enfileirarPeca(specV1)
+    marcar('jobs', g.jobId, { status: 'RUNNING' })
+    let terminou = false
+    banco.aposLer = () => {
+      if (terminou) return
+      terminou = true
+      // O runner: fecha a Generation e só depois o job.
+      marcar('generations', g.generationId, { status: 'COMPLETED', resultUrl: 'https://blob/peca.png' })
+      marcar('jobs', g.jobId, { status: 'DONE' })
+    }
+    const r = await enfileirarPeca(specV1)
+    expect(terminou).toBe(true)
+    expect(r).toMatchObject({ generationId: g.generationId, jobId: g.jobId })
+    expect(banco.generations.size).toBe(1)
+    expect(banco.jobs.size).toBe(1)
+  })
+
+  it('e na decisão sem trava da reserva: a repetição de uma peça que fica pronta entre as duas leituras é reaproveitada sem escrever nada (nem a pasta)', async () => {
+    const r = await enfileirarPeca(peca(1), lote('seg-19h'))
+    marcar('jobs', r.jobId, { status: 'RUNNING' })
+    const pastas = banco.pastas
+    let terminou = false
+    banco.aposLer = () => {
+      if (terminou) return
+      terminou = true
+      marcar('generations', r.generationId, { status: 'COMPLETED', resultUrl: 'https://blob/peca.png' })
+      marcar('jobs', r.jobId, { status: 'DONE' })
+    }
+    const repetida = await enfileirarPeca(peca(1), lote('seg-19h'))
+    expect(terminou).toBe(true)
+    expect(repetida).toMatchObject({ generationId: r.generationId, jobId: r.jobId, lote: { desfecho: 'reaproveitado', situacao: 'pronta' } })
+    expect(banco.pastas).toBe(pastas)
+    expect(banco.generations.size).toBe(1)
   })
 })

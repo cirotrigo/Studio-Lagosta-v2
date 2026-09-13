@@ -5,6 +5,7 @@ import { normalizarStatusDoItem } from './vocabulario'
 import {
   classificarPecaDoItem,
   confrontarComOGravado,
+  confrontarRevisaoDaLinha,
   decidirNoItemDoPlano,
   type FichaDoItem,
   type MotivoDaRecusaDoItem,
@@ -23,7 +24,7 @@ export async function enfileirarComposicaoDoPlano(
   autor: string | null,
   itemAtualizadoEm?: Date | string,
 ) {
-  const { reaproveitado: _reaproveitado, retomado: _retomado, ...peca } = await db.$transaction((tx) => enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, itemAtualizadoEm))
+  const { reaproveitado: _reaproveitado, retomado: _retomado, planoRevisao: _planoRevisao, ...peca } = await db.$transaction((tx) => enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, itemAtualizadoEm))
   return peca
 }
 
@@ -49,6 +50,20 @@ function revisaoDoItem(item: {
   })
 }
 
+/**
+ * A revisão do item AGORA, lida sem trava — a reserva do lote a grava na linha
+ * quando ela nasce (C11-1): é a revisão sob a qual o pedido chegou. Quem decide
+ * é a trava do item, que confere de novo. Item que não existe devolve `null` (o
+ * caminho do plano recusa com 404 sob a trava).
+ */
+export async function revisaoDoItemParaAReserva(spec: SpecDePeca): Promise<string | null> {
+  const item = await db.itemDePlano.findFirst({ where: {
+    id: spec.itemDePlanoId, projectId: spec.projectId,
+    ...(spec.planoId ? { planoId: spec.planoId } : {}),
+  } })
+  return item ? revisaoDoItem(item) : null
+}
+
 function fichaDoItem(itemAtualizadoEm: Date | string | undefined, atualizadoEm: unknown): FichaDoItem {
   if (!itemAtualizadoEm) return 'ausente'
   return new Date(itemAtualizadoEm).getTime() === new Date(atualizadoEm as Date).getTime() ? 'confere' : 'diverge'
@@ -60,13 +75,17 @@ function fichaDoItem(itemAtualizadoEm: Date | string | undefined, atualizadoEm: 
  *
  * Toda entrada passa pela MESMA decisão (`decidirNoItemDoPlano`, revisão final
  * R05–R06), tomada sob a trava do item sobre o estado relido: com ou sem lote,
- * com ou sem a linha do lote ligada à peça. `lote` só liga as comparações do
- * lote; `lote.recuperacao` (o que a linha decidiu antes desta trava) não entra
- * na decisão — a linha fresca que adota uma peça sem job (R05) e a linha
+ * com ou sem a linha do lote ligada à peça. `lote` liga as comparações do
+ * lote e traz `revisaoDaLinha`, a revisão do item gravada na linha (lida sob a
+ * trava DELA): com lote, só se produz quando ela é a revisão do item agora
+ * (C11-1). `lote.recuperacao` (o que a linha decidiu antes desta trava) não
+ * entra na decisão — a linha fresca que adota uma peça sem job (R05) e a linha
  * ligada que a declarou morta chegam à mesma resposta pelo estado.
  *
  * `reaproveitado` diz se a peça devolvida já existia; `retomado`, se a peça
- * que o item tinha foi refeita (job novo, ou Generation nova no lugar dela).
+ * que o item tinha foi refeita (job novo, ou Generation nova no lugar dela);
+ * `planoRevisao`, a revisão do item sob a qual a peça vale — a reserva a grava
+ * na linha junto do vínculo.
  */
 export async function enfileirarComposicaoDoPlanoEm(
   tx: Prisma.TransactionClient,
@@ -75,7 +94,7 @@ export async function enfileirarComposicaoDoPlanoEm(
   decididoPor: string | null,
   autor: string | null,
   itemAtualizadoEm?: Date | string,
-  lote?: { recuperacao: RecuperacaoDaReserva | null } | null,
+  lote?: { recuperacao: RecuperacaoDaReserva | null; revisaoDaLinha?: string | null } | null,
 ) {
   const comLote = !!lote
   // Serializa reenvios do mesmo item, inclusive de invocações diferentes.
@@ -86,9 +105,12 @@ export async function enfileirarComposicaoDoPlanoEm(
   } })
   if (!item) throw new CreativeError('ITEM_NAO_ENCONTRADO', 'Item não encontrado neste plano.', 404)
   const status = normalizarStatusDoItem(item.status) ?? 'proposto'
+  // O job ANTES da Generation: o runner fecha a Generation e só depois o job,
+  // então ler nesta ordem nunca vê "Generation aberta com job já terminado" de
+  // uma peça que acabou de ficar pronta entre as duas leituras.
+  const jobAnterior = item.generationId ? await tx.generationJob.findUnique({ where: { generationId: item.generationId } }) : null
   const anterior = item.generationId
     ? await tx.generation.findUnique({ where: { id: item.generationId } }) : null
-  const jobAnterior = item.generationId ? await tx.generationJob.findUnique({ where: { generationId: item.generationId } }) : null
   const revisao = revisaoDoItem(item)
   const peca = classificarPecaDoItem({ generationId: item.generationId, geracao: anterior, job: jobAnterior })
 
@@ -97,22 +119,22 @@ export async function enfileirarComposicaoDoPlanoEm(
     ficha: fichaDoItem(itemAtualizadoEm, item.updatedAt),
     peca,
     ...confrontarComOGravado({ spec, revisao, comLote, geracao: anterior, job: jobAnterior }),
-    comLote,
+    linha: confrontarRevisaoDaLinha({ comLote, revisaoDaLinha: lote?.revisaoDaLinha, revisao }),
   })
 
   switch (decisao.acao) {
     case 'reaproveitar':
-      return { generationId: anterior!.id, jobId: jobAnterior?.id ?? '', spec, reaproveitado: true, retomado: false }
+      return { generationId: anterior!.id, jobId: jobAnterior?.id ?? '', spec, reaproveitado: true, retomado: false, planoRevisao: revisao }
     case 'refazer-job': {
       // A MESMA Generation, um job novo com a revisão do item; o item fica onde está.
       const jobId = await criarJobDoItem(tx, anterior!.id, spec, revisao, decididoPor, autor)
-      return { generationId: anterior!.id, jobId, spec, reaproveitado: false, retomado: true }
+      return { generationId: anterior!.id, jobId, spec, reaproveitado: false, retomado: true, planoRevisao: revisao }
     }
     case 'nova-peca': {
       // A tabela só produz peça nova onde o item tem caminho até `na-fila`
       // (executável, ou em voo) — o teste da tabela confere isso.
       const criada = await criarPecaDoItem(tx, item.id, spec, data, revisao, decididoPor, autor)
-      return { ...criada, retomado: peca !== 'nenhuma' }
+      return { ...criada, retomado: peca !== 'nenhuma', planoRevisao: revisao }
     }
     default:
       throw new CreativeError('ITEM_EXECUCAO_CONCORRENTE', MENSAGEM_DA_RECUSA[decisao.motivo], 409, { motivo: decisao.motivo })

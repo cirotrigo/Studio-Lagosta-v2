@@ -9,8 +9,9 @@
  * parte das guardas, e a decisão do LOTE (tomada antes da trava do item)
  * decidindo se a guarda de revisão rodava. Aqui a decisão é UMA, tomada sob a
  * trava do item, sobre o estado RELIDO, para toda entrada no caminho do plano —
- * com ou sem lote, com ou sem a linha do lote já ligada à peça. O vínculo da
- * linha não é entrada: o que decide é o item e a peça dele agora.
+ * com ou sem lote, com ou sem a linha do lote já ligada à peça. O VÍNCULO da
+ * linha (a peça que ela aponta) não é entrada: o que decide é o item e a peça
+ * dele agora — e, com lote, a REVISÃO gravada na linha (pré-revisão C11-1).
  *
  * Entradas (todas lidas sob a trava):
  *  - `status` do item;
@@ -21,16 +22,21 @@
  *    GRAVADAS com a peça — no payload do job e, sem ele, nos `fieldValues` da
  *    Generation (`confrontarComOGravado`); com lote, a spec pela normalização
  *    do hash do lote;
- *  - `comLote`.
+ *  - `linha`: a revisão do item GRAVADA na linha do lote — quando ela nasceu e
+ *    a cada peça ligada — contra a do item agora (`confrontarRevisaoDaLinha`);
+ *    sem lote, `sem-lote`.
  * Saída: reaproveitar, refazer só o job, peça nova, ou recusar (409, sem
  * escrever nada).
  *
- * Por que `comLote` muda uma linha só (item executável cuja peça não serve):
- * sem lote a spec é montada DO ITEM ATUAL por quem chama (a bancada, o
- * `executar-plano`), então peça de outra revisão significa "produza a nova".
- * Com lote a spec é o payload da chamada ORIGINAL que o hash aceitou; se o
- * pedido é o mesmo da peça e a revisão do item divergiu (ou não dá para
- * conferir), produzir agora reproduz a copy antiga sob o item editado (R06).
+ * Por que a linha do lote é entrada: sem lote a spec é montada DO ITEM ATUAL
+ * por quem chama (a bancada, o `executar-plano`), então peça de outra revisão
+ * significa "produza a nova". Com lote a spec é o payload da chamada ORIGINAL
+ * que o hash aceitou, e comparar com a peça ATUAL do item não distingue o lote
+ * mais NOVO que ela (chave nova depois da edição: legítimo) do lote mais VELHO
+ * (a leva vencida repetida): com pedido diferente da peça, a leva vencida saía
+ * como peça nova com a copy antiga (C11-1); com pedido igual e revisão
+ * divergente, idem (R06). A revisão sob a qual a linha foi pedida distingue:
+ * com lote, produzir exige que ela seja a revisão do item agora.
  */
 
 import stableStringify from 'json-stable-stringify'
@@ -58,6 +64,13 @@ export const CONFRONTOS: Confronto[] = ['igual', 'diferente', 'desconhecido']
 export const CONFRONTOS_DO_PROJETO: ConfrontoDoProjeto[] = ['confere', 'diverge', 'desconhecido']
 export const FICHAS_DO_ITEM: FichaDoItem[] = ['ausente', 'confere', 'diverge']
 
+/**
+ * A revisão do item gravada na LINHA do lote contra a do item agora (C11-1).
+ * `desconhecido` é a linha sem revisão gravada — nunca vale "igual".
+ */
+export type RevisaoDaLinha = 'sem-lote' | 'igual' | 'diferente' | 'desconhecido'
+export const REVISOES_DA_LINHA: RevisaoDaLinha[] = ['sem-lote', 'igual', 'diferente', 'desconhecido']
+
 export interface EntradaDaDecisaoDoItem {
   status: StatusDoItem
   ficha: FichaDoItem
@@ -65,7 +78,7 @@ export interface EntradaDaDecisaoDoItem {
   pedido: Confronto
   projeto: ConfrontoDoProjeto
   revisao: Confronto
-  comLote: boolean
+  linha: RevisaoDaLinha
 }
 
 export type MotivoDaRecusaDoItem = 'reprovado' | 'ficha' | 'avancou' | 'revisado'
@@ -139,6 +152,13 @@ export function confrontarComOGravado(entrada: {
   return { pedido, projeto, revisao }
 }
 
+/** A revisão gravada na linha do lote contra a do item agora. Sem lote não há linha; sem revisão gravada, desconhecido. */
+export function confrontarRevisaoDaLinha(entrada: { comLote: boolean; revisaoDaLinha: string | null | undefined; revisao: string }): RevisaoDaLinha {
+  if (!entrada.comLote) return 'sem-lote'
+  if (typeof entrada.revisaoDaLinha !== 'string') return 'desconhecido'
+  return entrada.revisaoDaLinha === entrada.revisao ? 'igual' : 'diferente'
+}
+
 const EM_VOO: StatusDoItem[] = ['na-fila', 'gerando']
 
 /**
@@ -156,17 +176,24 @@ export function decidirNoItemDoPlano(e: EntradaDaDecisaoDoItem): DecisaoDoItem {
   const pecaViva = e.peca === 'viva' || e.peca === 'pronta'
   if (pecaViva && mesmoPedido && e.revisao === 'igual') return { acao: 'reaproveitar' }
 
+  // Com lote, PRODUZIR (peça nova ou job novo) exige que a linha tenha sido
+  // pedida sob a revisão do item agora (C11-1). O reaproveitamento acima não
+  // produz nada: a peça devolvida é o pedido e a revisão de agora.
+  const comLote = e.linha !== 'sem-lote'
+  const linhaVencida = comLote && e.linha !== 'igual'
+
   if (EM_VOO.includes(e.status)) {
     // Em voo o item não é editável: só se retoma a PRÓPRIA peça, e só quando
     // ela está morta ou sem job e nada gravado contradiz o pedido e a revisão.
     if (e.peca === 'nenhuma' || pecaViva) return { acao: 'recusar', motivo: 'avancou' }
-    if (outroPedido || e.revisao === 'diferente') return { acao: 'recusar', motivo: 'revisado' }
+    if (outroPedido || e.revisao === 'diferente' || linhaVencida) return { acao: 'recusar', motivo: 'revisado' }
     return e.peca === 'sem-job' ? { acao: 'refazer-job' } : { acao: 'nova-peca' }
   }
 
   // `pronto` e `agendado`: só o reaproveitamento acima.
   if (!executavel) return { acao: 'recusar', motivo: 'avancou' }
 
-  if (e.peca === 'nenhuma' || !e.comLote || outroPedido || e.revisao === 'igual') return { acao: 'nova-peca' }
+  if (linhaVencida) return { acao: 'recusar', motivo: 'revisado' }
+  if (e.peca === 'nenhuma' || !comLote || outroPedido || e.revisao === 'igual') return { acao: 'nova-peca' }
   return { acao: 'recusar', motivo: 'revisado' }
 }

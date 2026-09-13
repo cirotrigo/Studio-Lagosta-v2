@@ -129,22 +129,25 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
   const autor = opcoes.autor ?? null
   let coletor: Pasta | null = null
   const pasta = async () => (coletor ??= await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato))
+  const plano = spec.itemDePlanoId ? await import('@/lib/planos/enfileirar-composicao') : null
 
   const r = await reservarItemDeLote({
     projectId: spec.projectId,
     identidade,
     payload: payloadParaHash(spec),
+    // A revisão do item agora, sem trava: a linha a grava ao nascer (C11-1).
+    planoRevisao: plano ? await plano.revisaoDoItemParaAReserva(spec) : undefined,
     preparar: async () => {
       await pasta()
     },
-    criar: async (tx, { recuperacao }) => {
+    criar: async (tx, { recuperacao, revisaoDaLinha }) => {
       const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
-      if (spec.itemDePlanoId) {
+      if (plano) {
         // Com `lote`, o caminho do plano compara as specs como o lote (R03) e
-        // decide pela tabela única sob a trava do item (revisão final R05–R06).
-        const { enfileirarComposicaoDoPlanoEm } = await import('@/lib/planos/enfileirar-composicao')
-        const p = await enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao })
-        return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado, retomado: p.retomado }
+        // decide pela tabela única sob a trava do item (revisão final R05–R06),
+        // que só produz quando a revisão gravada na linha é a do item (C11-1).
+        const p = await plano.enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao, revisaoDaLinha })
+        return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado, retomado: p.retomado, planoRevisao: p.planoRevisao }
       }
       const generation = await tx.generation.create({ data, select: { id: true } })
       const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor, autor }, tx)

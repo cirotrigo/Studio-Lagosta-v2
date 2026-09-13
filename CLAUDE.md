@@ -9875,7 +9875,8 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   `planoRevisao` gravada contra a do item); `comLote`. **Nada gravado vale
   `desconhecido`, nunca "igual".** O job vem antes da Generation porque a
   Generation COMPLETED pode guardar a spec RESOLVIDA.
-- **A tabela** (em ordem; a primeira linha que casa vence; coluna ausente vale
+- **A tabela** (superada pela do bloco C11-1 abaixo, que acrescenta as linhas
+  7b e 9b; em ordem; a primeira linha que casa vence; coluna ausente vale
   qualquer valor; EXECUTÁVEL = proposto/editado/aprovado/erro, EM VOO =
   na-fila/gerando, FINAL = pronto/agendado):
 
@@ -9896,7 +9897,7 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   | 13 | EXECUTÁVEL e revisão igual | peça nova |
   | 14 | EXECUTÁVEL (com lote, pedido igual ou desconhecido, revisão diferente ou desconhecida) | recusar |
 
-- **O teste enumera as 11.664 combinações** (`__tests__/decisao-do-item.test.ts`):
+- **O teste enumerava as 11.664 combinações** (23.328 desde C11-1; `__tests__/decisao-do-item.test.ts`):
   a tabela escrita (colunas cruas, `pedido` e `projeto` separados — derivar "o
   mesmo pedido" no teste repetiria o código) contra a função em código corrido,
   com nenhuma combinação sem linha e nenhuma linha morta; e as invariantes
@@ -9931,7 +9932,106 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   `fieldValues`. Se o item volta a ser executável e alguém repete sob uma chave
   de lote o MESMO pedido daquela peça, a revisão é desconhecida e a linha 14
   recusa; com pedido diferente (a copy editada), sai peça nova normalmente.
-- ⚠️ **Resíduo conhecido**: reserva ÓRFÃ (linha sem Generation) de um item
+- ~~⚠️ **Resíduo conhecido**: reserva ÓRFÃ (linha sem Generation) de um item
   editado depois dela não é detectável — a linha do lote não grava
   `planoRevisao`, e sem peça não há revisão gravada para conferir. Fechar isso
-  pede a revisão na linha, que é migration.
+  pede a revisão na linha, que é migration.~~ — **fechado na pré-revisão
+  C11-1** (bloco abaixo): a linha grava a revisão do item ao nascer.
+
+**Da pré-revisão do HEAD 50cb40b4 (BLOQUEADO, C11-1, 12/09/2026):**
+
+- 🔴 **C11-1 — a leva VENCIDA repetida saía como peça nova com a copy antiga,
+  pela linha 12.** Cenário real, sem corrida: `compor-leva` com o lote L produz
+  G1 para um item de plano (copy v1); G1 falha; a pessoa edita a copy (v2); sai
+  G2 pela bancada ou por outra chave (L2), e G2 também não serve (falha, ou fica
+  pronta e é reprovada por `regenerar-item`, que mantém o vínculo); o chat
+  repete a leva L original (a própria tool manda repetir a chamada inteira). A
+  reserva retoma a partir de G1 e, sob a trava do item, a tabela confrontava o
+  pedido do lote com a peça ATUAL do item (G2): pedido diferente → linha 12 →
+  peça nova com a copy v1, gravada com a revisão ATUAL. Comparar com a peça
+  atual não distingue o lote mais NOVO que ela (chave pedida depois da edição:
+  legítimo) do lote mais VELHO (a leva vencida). Não era o resíduo declarado:
+  a linha estava ligada.
+- **A revisão do item mora na LINHA do lote**: `ItemDeLote.planoRevisao`,
+  migration aditiva `20260913120000_lote_revisao_do_item`
+  (`ADD COLUMN IF NOT EXISTS`; a migration do PR 11 não foi editada, por causa do
+  checksum no dev). Gravada quando a linha NASCE — `reservarItemDeLote` recebe
+  `planoRevisao`, lido do item sem trava por `revisaoDoItemParaAReserva`: é a
+  revisão sob a qual o pedido chegou, e a linha que já existia não é reescrita —
+  e junto de CADA vínculo: o caminho do plano devolve a revisão sob a qual a
+  peça vale, e o `updateMany` do vínculo a grava no mesmo commit.
+- 🔴 **Com lote, PRODUZIR exige a linha pedida sob a revisão do item AGORA.** A
+  tabela ganhou a entrada `linha` (`confrontarRevisaoDaLinha`: `sem-lote` |
+  `igual` | `diferente` | `desconhecido`), que substitui `comLote`. A revisão
+  gravada é lida sob a trava da LINHA e usada sob a trava do ITEM; só a própria
+  transação regrava a linha. Peça nova e job novo saem só com `sem-lote` ou
+  `igual`; o resto é 409 (`revisado`) sem escrever nada. **Linha sem revisão
+  gravada vale `desconhecido`, nunca igual**: só existe no branch de dev
+  (linhas anteriores à coluna) e é recusada.
+- **Reaproveitar NÃO depende da linha**: não produz nada, e a peça devolvida já
+  confere com o pedido e com a revisão de agora (linha 3). O vínculo que
+  reaproveita regrava a revisão da linha com a da peça — é o que deixa a linha
+  antiga retomar DEPOIS a peça da revisão nova que ela adotou.
+- **A tabela agora** (em ordem; a primeira linha que casa vence; coluna ausente
+  vale qualquer valor; EXECUTÁVEL = proposto/editado/aprovado/erro, EM VOO =
+  na-fila/gerando, FINAL = pronto/agendado). Acrescentadas 7b e 9b; a 11 passou
+  a ler `linha: sem-lote`; o resto como estava, e as linhas 10 a 14 agora só
+  alcançam `linha` igual ou `sem-lote`:
+
+  | # | condição | saída |
+  |---|---|---|
+  | 1 | status reprovado | recusar |
+  | 2 | EXECUTÁVEL e ficha diverge | recusar |
+  | 3 | peça viva ou pronta, pedido igual, projeto não diverge, revisão igual | reaproveitar |
+  | 4 | FINAL | recusar |
+  | 5 | EM VOO e peça nenhuma, viva ou pronta | recusar |
+  | 6 | EM VOO e (pedido diferente ou projeto diverge) | recusar |
+  | 7 | EM VOO e revisão diferente | recusar |
+  | **7b** | EM VOO e linha diferente ou desconhecida | recusar |
+  | 8 | EM VOO e peça sem job | refazer só o job |
+  | 9 | EM VOO (peça sumiu, falhou, job terminal, pronta sem arquivo) | peça nova |
+  | **9b** | EXECUTÁVEL e linha diferente ou desconhecida | recusar |
+  | 10 | EXECUTÁVEL e peça nenhuma | peça nova |
+  | 11 | EXECUTÁVEL sem lote | peça nova |
+  | 12 | EXECUTÁVEL e (pedido diferente ou projeto diverge) | peça nova |
+  | 13 | EXECUTÁVEL e revisão igual | peça nova |
+  | 14 | EXECUTÁVEL (com lote, pedido igual ou desconhecido, revisão diferente ou desconhecida) | recusar |
+
+- **O teste enumera as 23.328 combinações** (9 × 3 × 8 × 3 × 3 × 3 × 4) contra a
+  tabela escrita, sem combinação sem linha nem linha morta, com a invariante
+  nova "com lote, produzir só com a linha igual". Oráculo da tabela de 50cb40b4
+  contra esta, nas mesmas combinações: **2.976 mudam de saída, todas de
+  produzir para recusar, todas com a linha diferente ou desconhecida** (2.496
+  executáveis de peça nova, 384 em voo de peça nova, 96 em voo de job novo);
+  nenhuma com `sem-lote` ou `igual`. Delas, 840 são a linha 12 com a ficha
+  ausente — a forma exata do C11-1.
+- **O job é lido ANTES da Generation** onde a tabela junta as entradas
+  (`enfileirarComposicaoDoPlanoEm`) e na decisão da reserva (`lerVinculo`). O
+  runner fecha a Generation e só depois o job: nesta ordem a peça que fica pronta
+  entre as duas leituras não aparece como "job terminado com a Generation
+  aberta", que virava peça nova duplicada. No caminho do plano a trava do item
+  já bloqueava na prática; na reserva sem plano, nada bloqueava.
+- **Resíduo FECHADO**: a reserva órfã (linha sem Generation) de um item editado
+  depois dela é recusada — a linha lembra a revisão sob a qual nasceu.
+- **O banco falso ganhou `aposLer`** (roda depois de cada leitura de Generation ou
+  de job — é o runner terminando entre as duas leituras), e `itemDePlano.update`
+  devolve a linha, porque `transicionarItem` (e por ele `regenerarItem`) usa o
+  retorno.
+- **Provas** em `fila-lote.test.ts`, pelo caminho real com travas por linha: os
+  5 passos com a peça nova saindo SEM lote e por OUTRA chave (com o controle:
+  repetir L2 com a copy nova produz), a variante 5b com `regenerarItem` de
+  verdade, a órfã editada (e o controle sem edição), a linha sem revisão, o
+  vínculo que regrava a revisão, e a ordem job → Generation nos dois lugares.
+  Mutações sob `scratchpad/pr11-c11/`: tirar a 9b, tirar a 7b, `desconhecido`
+  valendo igual, o vínculo sem gravar, a reserva sem gravar, a fila sem repassar
+  a revisão e as duas ordens de leitura invertidas — cada uma derruba teste.
+- ⚠️ **Pré-existente, NÃO mudado**: o "Gerar" da bancada (`comporItemAgora`,
+  `executar-plano.ts`) lê o item fora de trava, compõe sem job nem
+  `planoRevisao` e move o item por `transicionarItem` sem compare-and-set;
+  concorrendo com uma repetição de `compor-leva` do mesmo item, saem duas peças.
+  Fechar exige pôr esse caminho sob a trava do item e pela tabela — não é
+  ajuste pequeno. O resíduo do bloco anterior (peça da bancada sem revisão
+  gravada) continua como estava.
+- ⚠️ **A migration nova vai junto do código**: o `SELECAO` da reserva lê
+  `planoRevisao` em toda chamada com lote. No dev, aplicar depois da do PR 11;
+  em produção, as duas juntas.
