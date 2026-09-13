@@ -83,6 +83,14 @@ export function copyVisualDasCamadas(layers: unknown): Record<string, string> | 
   return out
 }
 
+/**
+ * O aviso de quem deriva a cópia textual de um post de uma Generation cuja copy
+ * está invalidada (R38): `agendarPost` e a troca de arte (C6-03) — o MESMO texto
+ * nos dois caminhos.
+ */
+export const AVISO_COPY_DE_ARTE_RE_RENDERIZADA =
+  'A arte desta Generation foi re-renderizada depois da copy registrada nela: o post fica SEM cópia textual (a copy registrada é de outra versão da mídia) — a agenda vai declarar os textos indisponíveis até um render com registro.'
+
 export function lerProcedencia(
   fieldValues: unknown,
   colunaSourcePageId: string | null,

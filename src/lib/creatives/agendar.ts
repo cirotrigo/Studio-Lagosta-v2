@@ -17,7 +17,7 @@ import {
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
 import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
-import { lerProcedencia } from '@/lib/creatives/procedencia-da-copy'
+import { lerProcedencia, AVISO_COPY_DE_ARTE_RE_RENDERIZADA } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
   registrarCopyDoPost,
@@ -271,7 +271,7 @@ export async function agendarPost(input: AgendarPostInput) {
    */
   const avisos: string[] = []
   if (copyInvalidada && !input.pageId) {
-    avisos.push('A arte desta Generation foi re-renderizada depois da copy registrada nela: o post nasce SEM cópia textual (a copy registrada é de outra versão da mídia) — a agenda vai declarar os textos indisponíveis até um render com registro.')
+    avisos.push(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
   }
   if (mediaUrls.length > 0) {
     const ingestao = await ingerirMidiaExterna(mediaUrls, project.id)

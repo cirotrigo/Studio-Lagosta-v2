@@ -26,6 +26,7 @@ import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { getPublicAppUrl, renderPageAndRegister } from '@/lib/creatives/persist'
 import { ingerirMidiaExterna } from '@/lib/creatives/ingerir-midia'
+import { AVISO_COPY_DE_ARTE_RE_RENDERIZADA, lerProcedencia } from '@/lib/creatives/procedencia-da-copy'
 import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao, resumoEstavel } from '@/lib/aprendizado/chaves'
@@ -140,6 +141,8 @@ export async function trocarArteDoPost(
   let novaGenerationId: string | null = null
   let novoTemplateId: number | null = null
   let novosTextos: Record<string, string> | null = null
+  /** A copy da arte da galeria está invalidada (re-renderizada sem a copy visual regravada — R38): o post fica sem cópia. */
+  let copyDaArteInvalidada = false
 
   if (generationId) {
     const gen = await db.generation.findFirst({
@@ -162,7 +165,20 @@ export async function trocarArteDoPost(
     }
     url = gen.resultUrl
     novaGenerationId = gen.id
-    novosTextos = textosDaGeneration(gen.fieldValues)
+    /**
+     * A copy do post segue a PROCEDÊNCIA da arte, pela MESMA regra de
+     * `agendarPost` (C6-03 da pré-revisão do HEAD f0eee811, 12/09/2026): arte
+     * re-renderizada sem a copy visual regravada no mesmo re-render (marcador do
+     * PR 0) carrega `slotValues` de OUTRA versão da mídia, e copiá-los fazia o
+     * post afirmar um texto que o PNG não tem (R38). Com o marcador, a copy
+     * regravada vale. Invalidada, o post fica SEM cópia textual e com o aviso de
+     * `agendarPost` — nunca com a cópia da arte anterior, que o contrato
+     * "null = não apaga" deixaria no lugar.
+     */
+    const procedencia = lerProcedencia(gen.fieldValues, null)
+    copyDaArteInvalidada = procedencia.copyInvalidada
+    if (copyDaArteInvalidada) avisos.push(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
+    novosTextos = textosDaGeneration({ slotValues: procedencia.copyVisual })
   } else {
     const page = await db.page.findUnique({
       where: { id: pageId! },
@@ -299,7 +315,7 @@ export async function trocarArteDoPost(
   const trocaDePagina = decisao.vinculaPagina && pageId !== post.pageId
   const slotValuesNovo = novosTextos
     ? { slotValues: (origem === 'pagina' ? comoCopiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
-    : trocaDePagina
+    : copyDaArteInvalidada || trocaDePagina
       ? { slotValues: Prisma.DbNull }
       : {}
 
