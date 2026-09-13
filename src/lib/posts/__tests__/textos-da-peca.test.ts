@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { arteEntregue, textosDaPeca } from '../textos-da-peca'
+import { arteEntregue, paginaDoPostEHistorica, textosDaPeca } from '../textos-da-peca'
 import { aplicarSlotNaCamada } from '../page-to-design-data'
 import { aplicarCaixa } from '../caixa-do-texto'
 
@@ -599,5 +599,22 @@ describe('copy visual REGRAVADA no re-render (marcador do PR 0): vale para a mí
   it('o marcador sem `reRenderizada` não muda nada: a arte não re-renderizada segue pelo snapshot confiável', () => {
     const r = textosDaPeca({ ...semPagina, status: 'POSTED', laterPostId: null }, { slides: [{ url: 'https://blob/B.png', arte: { ...regravada, reRenderizada: false } }] })
     expect(r).toEqual({ textos: ['Copy A antiga'], origem: 'arte' })
+  })
+})
+
+describe('R51 — página do post que ficou só como vínculo histórico', () => {
+  const pagina = [{ id: 'l1', name: 'headline', type: 'text', content: 'Texto da página A' }]
+  const B = 'https://blob/B.png'
+  it('NOT_NEEDED com a mídia de OUTRA arte: a página não é lida — a peça se resolve pela mídia', () => {
+    const post = { ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [B], slotValues: null }
+    const r = textosDaPeca(post, { camadas: pagina, slides: [{ url: B, arte: { pageId: 'pB', reRenderizada: true } }] })
+    expect(r.textos).toEqual([])
+    expect(r.origem).toBeUndefined()
+    expect(r.indisponiveis).toBeTruthy()
+    expect(paginaDoPostEHistorica(post, { pageId: 'pB' })).toBe(true)
+  })
+  it('NOT_NEEDED com a mídia que É a arte da própria página, e RENDERED: a página continua sendo a fonte', () => {
+    expect(textosDaPeca({ ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [B], slotValues: null }, { camadas: pagina, slides: [{ url: B, arte: { pageId: 'pA' } }] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
+    expect(textosDaPeca({ ...viva, pageId: 'pA', renderStatus: 'RENDERED', mediaUrls: [B], slotValues: null }, { camadas: pagina, slides: [{ url: B, arte: null }] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
   })
 })

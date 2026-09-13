@@ -94,6 +94,8 @@ export const toolsDeAgenda = [
           campaignId: true,
           pageId: true,
           slotValues: true,
+          // R51: `NOT_NEEDED` com a mídia de outra arte = a página do post é só vínculo histórico.
+          renderStatus: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: typeof args.limit === 'number' ? Math.min(args.limit, 200) : 50,
@@ -157,7 +159,7 @@ export const toolsDeAgenda = [
       const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
       const textosDe = (post: (typeof posts)[number]) =>
         textosDaPeca(
-          { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId },
+          { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId, renderStatus: post.renderStatus },
           {
             ...(post.pageId && camadasPorPagina.has(post.pageId) ? { camadas: camadasPorPagina.get(post.pageId) } : {}),
             slides: (post.mediaUrls ?? []).map((url) => {

@@ -61,6 +61,11 @@ export interface PecaParaTextos {
   laterPostId: string | null
   mediaUrls: string[]
   generationId: string | null
+  /**
+   * `SocialPost.renderStatus`. `NOT_NEEDED` = a mídia do post NÃO vem do render da página dele (R51): trocar a arte
+   * pela galeria mantém `pageId` como vínculo HISTÓRICO. Ausente = como antes (a página do post é a fonte ativa).
+   */
+  renderStatus?: string | null
 }
 
 /** Uma mídia do post e o que se sabe da arte que ela é. */
@@ -360,24 +365,40 @@ export function arteDosFieldValues(fieldValues: unknown): NonNullable<SlideDaPec
   }
 }
 
+/**
+ * 🔴 R51 (revisão FINAL sobre 16af4e20, 13/09/2026): a página do post é só um VÍNCULO HISTÓRICO — e não a fonte ativa
+ * do render — quando o post é `NOT_NEEDED` e a mídia única não é a arte daquela página. É o estado que a troca de
+ * arte pela GALERIA deixa (`decidirRender` passa a `NOT_NEEDED` sem vincular página, e o update conserva `pageId`):
+ * ler a página ali devolvia os textos da arte ANTERIOR, com origem `pagina`, antes de olhar a mídia atual e a
+ * procedência dela (C6-03). Inferido do estado que todo post já tem — vale para registro antigo, sem campo novo.
+ * Carrossel não passa por aqui: ele sempre se lê slide a slide.
+ */
+export function paginaDoPostEHistorica(post: Pick<PecaParaTextos, 'pageId' | 'renderStatus'>, arteDaMidia?: SlideDaPeca['arte']): boolean {
+  if (!post.pageId || post.renderStatus !== 'NOT_NEEDED') return false
+  return arteDaMidia?.pageId !== post.pageId
+}
+
 export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): TextosDaPeca {
   const sv = post.slotValues
   const entregue = arteEntregue(post)
   const carrossel = post.mediaUrls.length > 1
   const proprios = slotValuesParaRender(sv)
   const textosProprios = textosDoPost(proprios ?? null)
+  // R51: a página do post que ficou só como vínculo histórico não é lida — a peça se resolve pela mídia atual.
+  const paginaHistorica = !carrossel && paginaDoPostEHistorica(post, fontes.slides?.[0]?.arte)
+  const semPaginaPropria = !post.pageId || paginaHistorica
 
   // 1. Peça VIVA com página: a mesma precedência do render. Legível é
   //    definitivo — inclusive vazio (a única camada apagada pelo slot).
   let paginaIlegivel = false
-  if (!entregue && !carrossel && fontes.camadas !== undefined) {
+  if (!entregue && !carrossel && !paginaHistorica && fontes.camadas !== undefined) {
     const daPagina = textosDasCamadas(fontes.camadas, proprios)
     if (daPagina !== null) return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
     paginaIlegivel = true
   }
   // `pageId` preenchido e a página NÃO carregada (de outro projeto, ou apagada) não é "peça sem página": a
   // fonte principal está indisponível, e a copy do post é parcial como no ilegível (R30 da revisão de 5e483ec4).
-  if (!entregue && !carrossel && post.pageId && fontes.camadas === undefined) paginaIlegivel = true
+  if (!entregue && !carrossel && post.pageId && !paginaHistorica && fontes.camadas === undefined) paginaIlegivel = true
   // A fonte que ficou indisponível: a página do post, ou a arte da mídia única (R32 abaixo).
   let fonteIndisponivel: string | null = paginaIlegivel
     ? fontes.camadas === undefined ? 'a página desta peça não pôde ser carregada (fora deste projeto, ou apagada)' : 'as camadas da página não puderam ser lidas'
@@ -442,7 +463,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    legível e a peça viva, o passo 2 já devolveu a página (que É a mídia).
   //    O marcador da copy visual REGRAVADA (PR 0) valida a copy da ARTE, lida no passo 2 — nunca a que o post herdou
   //    antes do re-render. Com ele o slide já resolveu e não chega aqui; esta regra fica como era.
-  const copyHerdadaInvalidada = !carrossel && !post.pageId && slides[0]?.arte?.reRenderizada === true
+  const copyHerdadaInvalidada = !carrossel && semPaginaPropria && slides[0]?.arte?.reRenderizada === true
   const NOTA_R42 =
     'a arte desta peça foi re-renderizada e o post (sem página própria) não guarda registro textual confiável da mídia atual: o texto que está na arte não tem registro aqui.'
   // 🔴 R47: o post sem página própria cuja mídia é uma arte de MODELO sem o registro das camadas desenhadas
@@ -466,7 +487,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModelo
   const NOTA_R50 =
     'a arte desta peça foi desenhada do modelo com a copy do post por cima, e o registro das camadas que o render usou falta ou não resolve o texto da mídia: a copy gravada no post é o registro NÃO validado do que foi pedido (o id da camada vence o nome, e um valor dela pode não ter sido aplicado) — nada a afirmar sobre a mídia.'
-  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : post.pageId ? NOTA_R50 : arteUnica && snapshotConfiavel(arteUnica) ? NOTA_R49 : NOTA_R47
+  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : !semPaginaPropria ? NOTA_R50 : arteUnica && snapshotConfiavel(arteUnica) ? NOTA_R49 : NOTA_R47
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
