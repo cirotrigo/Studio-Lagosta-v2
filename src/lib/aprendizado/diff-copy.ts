@@ -25,6 +25,7 @@
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
+import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Desfecho } from './vocabulario'
 
 /**
@@ -268,6 +269,24 @@ export function copyDeCamadas(layers: unknown): Record<string, string> | null {
   const { legivel } = lerCamadas(layers)
   if (!legivel) return null
   return textosDaPagina(layers)
+}
+
+/**
+ * A copy da página como o APRENDIZADO a compara: igual a `copyDeCamadas`, mas
+ * a camada que o REVISOR escondeu (ajuste mecânico de visibilidade, marcada
+ * em `metadata.revisao.ocultaPeloRevisor`) conta como presente — esconder por
+ * ajuste não é a pessoa apagando o texto, e lê-lo como remoção no agendamento
+ * contaminava o corpus com `editada` e ainda substituía um aceite anterior
+ * (REV-9E-01 da revisão do Codex, 12/09/2026). Camada escondida SEM a marca
+ * (editor, ajuste sem revisão) continua fora: é decisão humana.
+ *
+ * Só para o diff/fechamento de dica e a decisão sem sugestão. O render, a
+ * cópia que o post carrega e a defasagem continuam em `copyDeCamadas`.
+ */
+export function copyParaDecisao(layers: unknown): Record<string, string> | null {
+  const { camadas, legivel } = lerCamadas(layers)
+  if (!legivel) return null
+  return textosDaPagina(camadasParaDecisao(camadas))
 }
 
 /**

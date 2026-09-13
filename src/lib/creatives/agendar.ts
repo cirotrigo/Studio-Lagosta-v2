@@ -16,7 +16,8 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
-import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { lerProcedencia } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
   registrarCopyDoPost,
@@ -71,30 +72,7 @@ function apenasTextos(valores: Record<string, unknown> | null): Record<string, s
   return Object.keys(out).length > 0 ? out : null
 }
 
-/**
- * Copy proposta e modelo de origem, a partir da Generation que virou o post.
- *
- * ⚠️ `fieldValues.sourcePageId` é AMBÍGUO: em `source: 'ajuste-arte'` ele
- * aponta para a própria cópia ajustada, não para um modelo. A coluna
- * `Generation.sourcePageId` (espelho novo) não tem esse vício e por isso vem
- * primeiro; o Json só é consultado quando a coluna está vazia — o caso das
- * linhas anteriores a 11/08/2026 — e nunca para arte ajustada.
- */
-function lerProcedencia(
-  fieldValues: unknown,
-  colunaSourcePageId: string | null,
-): { copyProposta: Record<string, unknown> | null; sourcePageId: string | null } {
-  const fv = (fieldValues ?? {}) as Record<string, unknown>
-  const slotValues =
-    fv.slotValues && typeof fv.slotValues === 'object' && !Array.isArray(fv.slotValues)
-      ? (fv.slotValues as Record<string, unknown>)
-      : null
-
-  const doJson =
-    fv.source !== 'ajuste-arte' && typeof fv.sourcePageId === 'string' ? fv.sourcePageId : null
-
-  return { copyProposta: slotValues, sourcePageId: colunaSourcePageId ?? doJson }
-}
+// `lerProcedencia` mora em `procedencia-da-copy.ts` (puro, com teste): copyDeAprendizado vence slotValues (REV-8AD-01).
 
 export interface AgendarPostInput {
   projectId: number
@@ -237,6 +215,8 @@ export async function agendarPost(input: AgendarPostInput) {
    * o que sobrou depois de todo mundo mexer.
    */
   let copyProposta: Record<string, unknown> | null = null
+  /** Os `slotValues` da Generation como a ARTE os mostra — a cópia que o post carrega quando não há página (REV-2CEB-01). */
+  let copyVisual: Record<string, unknown> | null = null
   let sourcePageId: string | null = null
 
   if (input.generationId) {
@@ -252,7 +232,7 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     generationId = gen.id
-    ;({ copyProposta, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    ;({ copyProposta, copyVisual, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
     // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
     // própria Generation — é o caso da arte MELHORADA (que não tem página) e
     // poupa o chat de copiar URL à mão, com os erros que isso traz.
@@ -273,7 +253,7 @@ export async function agendarPost(input: AgendarPostInput) {
       orderBy: { createdAt: 'desc' },
     })
     generationId = gen?.id ?? null
-    if (gen) ({ copyProposta, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (gen) ({ copyProposta, copyVisual, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
   }
 
   /**
@@ -365,7 +345,18 @@ export async function agendarPost(input: AgendarPostInput) {
    */
   const copyDaPagina = copyDeCamadas(camadasDaPagina)
   const copyPropostaTexto = apenasTextos(copyProposta)
-  const copyFinal = copyDaPagina ?? copyPropostaTexto
+  // Sem página, a cópia do post é a copy VISUAL da Generation (o que o PNG mostra) — nunca a de aprendizado,
+  // que conta como presente a camada que o revisor escondeu (REV-2CEB-01).
+  const copyFinal = copyDaPagina ?? apenasTextos(copyVisual)
+  /**
+   * O lado FINAL do APRENDIZADO é outro: a camada que o REVISOR escondeu por
+   * ajuste mecânico conta como presente (`copyParaDecisao`) — senão o
+   * fechamento da dica lia o esconder como a pessoa apagando o texto e
+   * registrava `editada` em nome dela (REV-9E-01). A cópia que o post carrega
+   * (`slotValues`) segue a página como está: ela é o que a arte mostra.
+   */
+  const copyDaDecisao = copyParaDecisao(camadasDaPagina)
+  const copyDoCorpus = copyDaDecisao ?? copyPropostaTexto
 
   /**
    * O diff que interessa: o que a IA propôs na criação × o que de fato está na
@@ -374,7 +365,7 @@ export async function agendarPost(input: AgendarPostInput) {
    * sabe nada.
    */
   const diffDaCopy =
-    copyPropostaTexto && copyDaPagina ? diffDeCopy(copyPropostaTexto, copyDaPagina) : null
+    copyPropostaTexto && copyDaDecisao ? diffDeCopy(copyPropostaTexto, copyDaDecisao) : null
 
   const post = await db.socialPost.create({
     data: {
@@ -475,7 +466,7 @@ export async function agendarPost(input: AgendarPostInput) {
   await registrarCopyDoPost({
     projectId: project.id,
     postId: post.id,
-    copyFinal,
+    copyFinal: copyDoCorpus,
     diff: diffDaCopy,
     pageId: input.pageId ?? null,
     generationId: generationDoPost,

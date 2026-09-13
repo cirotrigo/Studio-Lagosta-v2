@@ -60,6 +60,29 @@ export interface ContrasteMedido {
   /** O id da camada de gradiente que cobre o bloco (ausente em medidas anteriores a 11/09/2026). */
   gradiente?: string | null
   ok: boolean
+  /**
+   * A medida ANTES da correção desta chamada — presente só quando a régua
+   * corrigiu a força. É o que deixa o revisor dizer "não dava leitura, e com a
+   * força X passa a dar" a partir de UMA rodada de render.
+   */
+  antesDaCorrecao?: { p98: number; ok: boolean; tinta: number; alvo: number; sentido: 'claro' | 'escuro' }
+  /**
+   * A leitura de CADA texto do grupo (desde 12/09/2026). O grupo é resumido
+   * pelo pior texto, mas quem calcula uma redução de força precisa conferir
+   * TODOS: o texto que limita a redução pode não ser o que limita a leitura na
+   * força atual (achado R1 da revisão do Codex sobre o merge da régua texto a
+   * texto). Ausente em medidas anteriores.
+   */
+  textos?: LeituraDeTexto[]
+}
+
+export interface LeituraDeTexto {
+  camada: string
+  sentido: 'claro' | 'escuro'
+  alvo: number
+  p98SemHalo: number
+  p98ComHalo: number
+  ok: boolean
 }
 
 export interface IntervencaoDeTexto {
@@ -268,6 +291,17 @@ export async function medirContrasteDaPeca(args: {
       }
     }
     const k = pior(indicesDoGrupo[i], comP98)
+    const leituraDe = (j: number, valores: number[]): LeituraDeTexto => {
+      const idx = indicesDoGrupo[i][j]
+      return {
+        camada: e.camadas[j].id,
+        sentido: leituras[idx].escuro ? 'escuro' : 'claro',
+        alvo: Math.round(leituras[idx].alvo),
+        p98SemHalo: semP98[idx],
+        p98ComHalo: valores[idx],
+        ok: folga(idx, valores) >= 0,
+      }
+    }
     medidas.push({
       grupo: e.grupo,
       camadas: e.camadas.map((c) => c.id),
@@ -279,6 +313,7 @@ export async function medirContrasteDaPeca(args: {
       tintaCorrigida,
       gradiente: e.gradiente?.id ?? null,
       ok: folga(k, comP98) >= 0,
+      textos: e.camadas.map((_, j) => leituraDe(j, comP98)),
     })
   })
 
@@ -289,6 +324,11 @@ export async function medirContrasteDaPeca(args: {
     const depois = await medirTodos(pngCorrigido)
     medidas.forEach((m, i) => {
       if (m.gradiente && correcoes.has(m.gradiente)) {
+        // A medida de ANTES sai do texto que decidiu a medida antes da correção
+        // — p98, ok, força, alvo e sentido juntos —, porque o pior texto do grupo
+        // pode ser outro depois que a força muda (a régua da main mede texto a
+        // texto e o grupo vale o pior).
+        m.antesDaCorrecao = { p98: m.p98ComHalo, ok: m.ok, tinta: m.tinta, alvo: m.alvo, sentido: m.sentido }
         const k = pior(indicesDoGrupo[i], depois)
         m.sentido = leituras[k].escuro ? 'escuro' : 'claro'
         m.alvo = Math.round(leituras[k].alvo)
@@ -296,6 +336,14 @@ export async function medirContrasteDaPeca(args: {
         m.p98ComHalo = depois[k]
         m.tinta = correcoes.get(m.gradiente)!
         m.ok = folga(k, depois) >= 0
+        m.textos = indicesDoGrupo[i].map((idx, j) => ({
+          camada: entradas[i].camadas[j].id,
+          sentido: leituras[idx].escuro ? 'escuro' : 'claro',
+          alvo: Math.round(leituras[idx].alvo),
+          p98SemHalo: semP98[idx],
+          p98ComHalo: depois[idx],
+          ok: folga(idx, depois) >= 0,
+        }))
       }
     })
   }

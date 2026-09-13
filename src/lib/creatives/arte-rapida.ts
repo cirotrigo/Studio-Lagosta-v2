@@ -15,6 +15,7 @@
  *      render to PNG and register it in the Criativos gallery.
  */
 
+import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
 import type { CanalDaArte } from './canal'
 import { db } from '@/lib/db'
 import { KnowledgeCategory } from '@prisma/client'
@@ -29,7 +30,7 @@ import {
 } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
-import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { lerCamadas, parsePageLayers } from '@/lib/posts/page-layers'
 import {
   caiNaEscolhaPropria,
@@ -52,6 +53,10 @@ import {
 import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
+import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
+import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -596,8 +601,10 @@ function bakeLayers(
         explicitFileUrl.add(layer.id)
       }
       // O render pula `visible === false` — e o editor mostra a camada como
-      // oculta, então quem abrir a arte consegue religá-la.
-      if (slotObj.hidden === true) updated.visible = false
+      // oculta, então quem abrir a arte consegue religá-la. `hidden: true` é
+      // instrução HUMANA explícita: uma marca antiga de "escondida pelo
+      // revisor" não pode encobri-la (REV-8AD-02).
+      if (slotObj.hidden === true) Object.assign(updated, semMarcaDoRevisor({ ...updated, visible: false }))
     }
     return updated
   })
@@ -852,10 +859,31 @@ export interface AjustarArteInput {
   decididoPor?: string | null
   /** Ver `CreateArteRapidaInput.canal`. */
   canal?: CanalDaArte | null
+  /**
+   * Ajustes de diagramação (os que `revisar-arte` devolve): corpo, entrelinha,
+   * posição, gradiente de leitura, visibilidade, caixa. Aplicados DEPOIS dos
+   * textos e da foto, antes do autofix — ver `revisao/aplicar-ajustes.ts`.
+   */
+  ajustes?: Ajuste[]
+  /** A `versao` da revisão: página que mudou desde então recusa o ajuste (VERSAO_DIVERGENTE). */
+  versaoEsperada?: string | null
+  /** Só para a prova de integração: costura que roda DENTRO da transação, entre a escrita da página e a trava. */
+  _prova?: {
+    entreGravarETravar?: () => Promise<void>
+    /**
+     * Depois de o PNG deste ajuste subir ao Blob e antes da publicação condicionada pela versão (REV-FINAL-01). Recebe
+     * a URL do PNG: a prova a registra para a limpeza antes de tudo (REV-90AA-01).
+     */
+    antesDePublicar?: (png: { url: string }) => Promise<void>
+  }
 }
 
 export interface AjustarArteResult {
   ajustada: true
+  /** A versão da página depois deste ajuste — a próxima revisão parte dela. */
+  versao?: string | null
+  ajustesAplicados?: AjusteAplicado[]
+  ajustesRecusados?: AjusteRecusado[]
   generationId: string
   pageId: string
   templateId: number
@@ -898,12 +926,33 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   const { projectId, pageId } = input
   const slotValues = input.slotValues ?? {}
 
+  const ajustes = input.ajustes ?? []
   const temAjuste =
-    Object.keys(slotValues).length > 0 || input.imageUrl || input.driveImageId || input.name
+    Object.keys(slotValues).length > 0 || input.imageUrl || input.driveImageId || input.name || ajustes.length > 0
   if (!temAjuste) {
     throw new CreativeError(
       'SEM_AJUSTE',
-      'Nada para ajustar: envie slotValues, imageUrl/driveImageId ou name.',
+      'Nada para ajustar: envie slotValues, imageUrl/driveImageId, name ou ajustes.',
+      400,
+    )
+  }
+  const ajustesIncompletos = ajustes
+    .map((a, i) => {
+      const problema = problemaDoAjuste(a)
+      return problema ? `ajuste ${i}: ${problema}` : null
+    })
+    .filter((p): p is string => !!p)
+  if (ajustesIncompletos.length > 0) {
+    throw new CreativeError('AJUSTE_INVALIDO', `Ajustes incompletos — ${ajustesIncompletos.join('; ')}.`, 400)
+  }
+  // Ajuste CALCULADO (pelo revisor) só se aplica sobre a versão em que foi
+  // calculado: sem `versaoEsperada` os deltas iriam para o lugar errado se a
+  // página tivesse mudado. Chamada sem `ajustes` (texto, foto, nome) continua
+  // como sempre foi.
+  if (ajustes.length > 0 && !input.versaoEsperada) {
+    throw new CreativeError(
+      'VERSAO_OBRIGATORIA',
+      'Ajustes de diagramação exigem `versaoEsperada` — a `versao` que revisar-arte devolveu. Rode revisar-arte e mande a versão junto.',
       400,
     )
   }
@@ -931,6 +980,18 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     )
   }
 
+  // A revisão calcula os ajustes sobre UMA versão da página: se ela mudou (a
+  // equipe editou, outro ajuste já entrou), os deltas iriam para o lugar errado.
+  const versaoAntes = versaoDaPagina(page)
+  if (input.versaoEsperada && versaoAntes !== input.versaoEsperada) {
+    throw new CreativeError(
+      'VERSAO_DIVERGENTE',
+      'A página mudou desde a revisão (alguém editou ou outro ajuste já entrou). Rode revisar-arte de novo e use a versão nova.',
+      409,
+      { versaoEsperada: input.versaoEsperada, versaoAtual: versaoAntes },
+    )
+  }
+
   const driveImageId =
     input.driveImageId ??
     (typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null)
@@ -945,7 +1006,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * o diff falsamente vazio, ao contrário. `null` = ilegível, e ilegível não
    * vira sinal.
    */
-  const copyAntes = copyDeCamadas(page.layers)
+  // Lado do APRENDIZADO: a camada escondida por ajuste anterior do revisor conta como presente (REV-9E-01).
+  const copyAntes = copyParaDecisao(page.layers)
 
   const sourceLayers = camadasParaBake(page.layers, page)
   const baked = bakeLayers(sourceLayers, slotValues, resolved.url)
@@ -965,13 +1027,32 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   await registerProjectFonts(projectId)
   const measure = await createServerTextMeasurer()
-  const reflowed = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+  // Com ajustes do revisor e nenhum texto trocado, não há preenchimento para
+  // refluir: normalizar a pilha antes deslocaria a base do grupo que o executor
+  // precisa preservar. Sem ajustes, o comportamento de sempre.
+  const reflowed =
+    changedTextIds.length > 0 || ajustes.length === 0
+      ? reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+      : (bakedLayers as Layer[])
+
+  const revisao =
+    ajustes.length > 0
+      ? aplicarAjustes(reflowed, ajustes, { canvas: { width: page.width, height: page.height }, medir: measure })
+      : null
+  if (revisao && revisao.aplicados.length === 0 && Object.keys(slotValues).length === 0 && !resolved.url && !input.name) {
+    throw new CreativeError(
+      'AJUSTE_SEM_EFEITO',
+      `Nenhum ajuste pôde ser aplicado — ${revisao.recusados.map((r) => `ajuste ${r.indice}: ${r.motivo}`).join('; ')}.`,
+      422,
+      { recusados: revisao.recusados },
+    )
+  }
 
   const fix = await aplicarAutofixOuFalhar({
     projectId,
-    layers: reflowed,
+    layers: revisao?.camadas ?? reflowed,
     canvas: { width: page.width, height: page.height },
-    changedLayerIds: changedTextIds,
+    changedLayerIds: [...changedTextIds, ...(revisao?.alteradas ?? [])],
   })
   const layers = fix.layers
 
@@ -982,58 +1063,143 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       : undefined)
 
   const pageName = input.name ?? page.name
-  await db.page.update({
-    where: { id: page.id },
-    data: { layers: layers as any, ...(input.name ? { name: input.name } : {}) },
-  })
+  /**
+   * A miniatura da página é INVALIDADA junto das camadas (REV-127-F01 da
+   * revisão FINAL do Codex, 12/09/2026): ela é o PNG do render ANTERIOR, e
+   * `agendarPost` a reutiliza como mídia quando a página ainda não tem post —
+   * se o render abaixo falhar, o post nasceria RENDERED com a versão velha e
+   * fora do cron de renders pendentes (a invalidação não acha post nenhum e a
+   * recuperação sai sem slide). Nula, o agendamento nasce PENDING e o cron
+   * desenha a página ajustada; o render bem-sucedido a regrava.
+   */
+  const dadosDaPagina = { layers: layers as any, thumbnail: null as string | null, ...(input.name ? { name: input.name } : {}) }
+  /**
+   * A página passa a carregar o ajuste do revisor; a arte do compositor (spec
+   * e snapshot) não o conhece. Se o render abaixo e todas as recuperações
+   * falharem, a próxima edição de texto reabriria o job NORMAL e a
+   * recomposição refaria a peça pela spec antiga, desfazendo o ajuste. A
+   * trava (`somenteReRender`) nasce junto da gravação do ajuste — não do
+   * desfecho do render (REV-F01) — e NA MESMA TRANSAÇÃO: fora dela um worker
+   * podia ler a página já ajustada com a arte ainda sem trava e recompor por
+   * cima (REV-D01 da revisão do Codex, 12/09/2026). Se a trava falhar, a
+   * página não é gravada: ajuste sem proteção é ajuste que a fila desfaz.
+   */
+  const travar = !!revisao && revisao.aplicados.length > 0
+  const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
+  await db.$transaction(
+    async (tx) => {
+      if (input.versaoEsperada) {
+        // Compare-and-set: a conferência de versão lá em cima e esta escrita
+        // não são atômicas, e o autosave do editor pode cair no meio.
+        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt }, data: dadosDaPagina })
+        if (gravada.count === 0) {
+          throw new CreativeError(
+            'VERSAO_DIVERGENTE',
+            'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.',
+            409,
+            { versaoEsperada: input.versaoEsperada },
+          )
+        }
+      } else {
+        await tx.page.update({ where: { id: page.id }, data: dadosDaPagina })
+      }
+      if (travarRecomposicaoDaArte) {
+        if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
+        await travarRecomposicaoDaArte(page.id, 'ajuste do revisor gravado na página', { projectId: input.projectId, client: tx })
+      }
+    },
+    { maxWait: 10_000, timeout: 20_000 },
+  )
 
   // Textos FINAIS da arte, por nome de camada — é o que alimenta a verificação
   // por visão do conferir-arte e do melhorar-arte (extractExpectedTexts lê
   // slotValues), então precisa refletir a página como ficou, não só o patch.
-  const slotValuesFinais = Object.fromEntries(
-    (layers as any[])
-      .filter((l) => l.type === 'text' && typeof l.content === 'string' && l.content.trim())
-      .map((l) => [l.name ?? l.id, l.content]),
-  )
+  // Rich text é copy (o executor dos ajustes mexe nele), e camada escondida não
+  // aparece na arte — exigi-la na conferência reprovaria a peça certa.
+  // `layers` aqui é a lista em memória, já decodificada: nunca ilegível.
+  const slotValuesFinais = copyVisualDasCamadas(layers) ?? {}
 
-  const persisted = await renderPageAndRegister({
-    project,
-    templateId: page.Template.id,
-    templateName: page.Template.name,
-    page: {
-      id: page.id,
-      name: pageName,
-      width: page.width,
-      height: page.height,
-      layers,
-      background: page.background,
-    },
-    authorName: 'ajuste-arte',
-    canal: input.canal ?? null,
-    fieldValues: {
-      source: 'ajuste-arte',
-      sourcePageId: page.id,
-      ajustes: slotValues,
-      slotValues: slotValuesFinais,
-      driveImageId,
-      imageUrl: resolved.url ?? directUrl ?? null,
-      autocorrecao: fix.autocorrecao,
-    },
-  })
-
-  // Page.layers mudou: posts da agenda que usam esta página precisam voltar à
-  // fila de render, senão publicam a arte antiga em silêncio.
-  const invalidacao = await invalidateScheduledRenders(db, { pageIds: [page.id] })
-  const postsInvalidados = invalidacao.invalidados
+  const avisarAgenda = async (opcoes: { renderFalhou?: boolean } = {}) => {
+    // Page.layers mudou: posts da agenda que usam esta página precisam voltar à
+    // fila de render, senão publicam a arte antiga em silêncio.
+    const resultado = await invalidateScheduledRenders(db, { pageIds: [page.id] })
+    /**
+     * O outro lado da invalidação: a arte CONGELADA desta página — o slide de
+     * carrossel, que é `NOT_NEEDED` e fica FORA do alcance do re-render. Sem
+     * isto, ajustar a arte de um slide não mudava nada no post. Ver
+     * `recompor.ts`. Quando o render FALHOU não há Generation nova para a URL
+     * denunciar a defasagem, e um ajuste só de força do gradiente nem aparece
+     * no diff geométrico: a recomposição é FORÇADA.
+     */
+    const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
+    await pedirRecomposicaoDaArteCongelada([page.id], 'editor', { forcar: opcoes.renderFalhou === true })
+    return resultado
+  }
 
   /**
-   * O outro lado da invalidação: a arte CONGELADA desta página — o slide de
-   * carrossel, que é `NOT_NEEDED` e fica FORA do alcance do re-render. Sem
-   * isto, ajustar a arte de um slide não mudava nada no post. Ver
-   * `recompor.ts`.
+   * A versão que ESTE ajuste gravou e que o render abaixo desenha. A miniatura
+   * e a Generation só são publicadas se a página ainda estiver nela
+   * (REV-FINAL-01 da revisão FINAL do Codex sobre 618e45f7, 12/09/2026): a
+   * proteção de versão acima cobre a escrita das CAMADAS, e o render de A que
+   * terminava depois do ajuste B (que leu a versão de A e já publicou a sua)
+   * regravava a miniatura e virava a Generation mais recente com a versão
+   * velha — o agendamento seguinte pela página nascia RENDERED com ela.
    */
-  const { pedirRecomposicaoDaArteCongelada } = await import('@/lib/compositor/recompor')
-  await pedirRecomposicaoDaArteCongelada([page.id])
+  const versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers })
+
+  // A página JÁ foi gravada: se o render falhar (Blob fora do ar), a invalidação
+  // e a recomposição acontecem do mesmo jeito — senão a agenda segue com a arte
+  // antiga e o retry com a versão anterior toma VERSAO_DIVERGENTE.
+  let persisted: Awaited<ReturnType<typeof renderPageAndRegister>>
+  try {
+    persisted = await renderPageAndRegister({
+      versaoEsperada: versaoGravada,
+      antesDePublicar: input._prova?.antesDePublicar,
+      project,
+      templateId: page.Template.id,
+      templateName: page.Template.name,
+      page: {
+        id: page.id,
+        name: pageName,
+        width: page.width,
+        height: page.height,
+        layers,
+        background: page.background,
+      },
+      authorName: 'ajuste-arte',
+      canal: input.canal ?? null,
+      fieldValues: {
+        source: 'ajuste-arte',
+        sourcePageId: page.id,
+        ajustes: slotValues,
+        ...(revisao
+          ? { revisao: { versaoAntes, ajustes, aplicados: revisao.aplicados, recusados: revisao.recusados } }
+          : {}),
+        slotValues: slotValuesFinais,
+        // A copy como o APRENDIZADO a lê (a camada escondida pelo revisor conta): é o lado "antes" do diff no
+        // agendamento — os `slotValues` visuais acima acusariam essa camada como ADICIONADA (REV-8AD-01).
+        copyDeAprendizado: copyParaDecisao(layers) ?? undefined,
+        driveImageId,
+        imageUrl: resolved.url ?? directUrl ?? null,
+        autocorrecao: fix.autocorrecao,
+      },
+    })
+  } catch (erro) {
+    await avisarAgenda({ renderFalhou: true }).catch((falha) => console.warn('[ajustar-arte] invalidação depois da falha do render:', falha))
+    if (erro instanceof CreativeError && erro.code === 'PAGINA_MUDOU_DURANTE') {
+      // O render desta versão foi DESCARTADO (a página já está na seguinte): o ajuste está gravado, a arte não.
+      throw new CreativeError(
+        'PAGINA_MUDOU_DURANTE',
+        'O ajuste foi gravado na página, mas ela mudou de novo enquanto a arte era renderizada (outro ajuste ou uma edição): a arte desta versão foi descartada — não virou miniatura nem entrou na galeria. A versão atual da página é a que vale; rode revisar-arte de novo sobre ela.',
+        409,
+        { ...(erro.details ?? {}), ajusteGravado: true },
+      )
+    }
+    throw erro
+  }
+
+  const invalidacao = await avisarAgenda()
+  const postsInvalidados = invalidacao.invalidados
 
   /**
    * A CORREÇÃO EXPLÍCITA — o sinal mais limpo que existe aqui.
@@ -1065,7 +1231,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * Sem mudança de texto (ajuste só de foto ou de nome) não há sinal de copy:
    * gravar linha vazia só diluiria o corpus.
    */
-  const copyDepois = copyDeCamadas(layers)
+  // Com ajustes do revisor, a copy da DECISÃO é a de antes deles: esconder uma
+  // camada por ajuste mecânico não é a pessoa apagando o texto.
+  const copyDepois = copyParaDecisao(revisao ? reflowed : layers)
   const diffDaCorrecao = diffDeCopy(copyAntes, copyDepois)
   if (!diffDaCorrecao.ilegivel && diffDaCorrecao.mudou) {
     const fechamento = await fecharDicaDeCopyDaPagina({
@@ -1099,6 +1267,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   return {
     ajustada: true,
     ...persisted,
+    versao: versaoGravada,
+    ...(revisao ? { ajustesAplicados: revisao.aplicados, ajustesRecusados: revisao.recusados } : {}),
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,

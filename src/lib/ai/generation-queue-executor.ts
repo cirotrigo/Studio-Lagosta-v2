@@ -89,13 +89,17 @@ type Desfecho = 'DONE' | 'FAILED' | 'REENFILEIRADO' | 'ocupado'
  * Reserva e executa UM job. A reserva é compare-and-set: perder a corrida para
  * outra varredura não é erro, é o mecanismo funcionando.
  */
-async function executarJob(job: JobParaExecutar): Promise<Desfecho> {
-  const pegou = await reservarJob(job.id)
-  if (!pegou) return 'ocupado'
+async function executarJob(jobDaVarredura: JobParaExecutar): Promise<Desfecho> {
+  const reservado = await reservarJob(jobDaVarredura.id)
+  if (!reservado) return 'ocupado'
+  // O payload é o do banco DEPOIS da reserva (ver `reservarJob`): uma força
+  // promovida entre a varredura e a reserva é executada nesta tentativa.
+  const job = reservado
 
   const t0 = Date.now()
   console.log(
-    `[fila-arte] executando ${job.kind} ${job.id} (generation ${job.generationId}, tentativa ${job.attempts + 1}/${job.maxAttempts})`,
+    // `job` é o fresco, já com a tentativa desta reserva contada (REV-11).
+    `[fila-arte] executando ${job.kind} ${job.id} (generation ${job.generationId}, tentativa ${job.attempts}/${job.maxAttempts})`,
   )
 
   try {
@@ -105,8 +109,9 @@ async function executarJob(job: JobParaExecutar): Promise<Desfecho> {
     // aqui significa erro ANTES do pipeline (payload corrompido, import).
     const msg = erro instanceof Error ? erro.message : String(erro)
     console.error(`[fila-arte] job ${job.id} estourou fora do pipeline:`, msg)
-    await falharJob(job.id, msg)
-    return 'FAILED'
+    // Com força nova pendente `falharJob` devolve o job à fila — e é isso
+    // que os contadores da varredura têm de contar (REV-10).
+    return falharJob(job.id, msg)
   }
 
   const desfecho = await fecharJob(job.id, job.generationId)

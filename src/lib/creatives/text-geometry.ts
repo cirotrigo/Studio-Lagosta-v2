@@ -30,6 +30,8 @@ export type MeasureTextBox = (layer: Layer) => {
   /** Folga entre a caixa-fórmula e a tinta real dos glifos (borda de cima/baixo). */
   inkTopSlack?: number
   inkBottomSlack?: number
+  /** As linhas como o desenho as quebra (o revisor lê a palavra órfã daqui). */
+  linhas?: Array<{ texto: string; largura: number }>
 } | null
 
 export interface TextGeometryIssue {
@@ -59,6 +61,8 @@ export interface TextLayerMetrics {
   lineBox: number
   /** Com autoExpand o render desenha além da caixa; sem, trunca por linhas inteiras. */
   autoExpand: boolean
+  /** As linhas desenhadas, com a largura de cada uma (ausente quando o medidor não as devolve). */
+  linhas?: Array<{ texto: string; largura: number }>
 }
 
 /** Padding interno do desenho de texto do render-engine. */
@@ -98,6 +102,7 @@ export function measureTextLayers(layers: Layer[], measure: MeasureTextBox): Tex
         ((layer.style?.fontSize as number | undefined) ?? 16) *
         (layer.textboxConfig?.autoWrap?.lineHeight ?? layer.style?.lineHeight ?? 1.2),
       autoExpand: layer.textboxConfig?.autoWrap?.autoExpand === true,
+      ...(measured.linhas ? { linhas: measured.linhas } : {}),
     })
   }
   return metrics

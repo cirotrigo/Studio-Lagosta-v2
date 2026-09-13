@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { copyDeCamadas, desfechoPeloDiff, diffDeCopy, semelhanca } from '../diff-copy'
+import { copyDeCamadas, copyParaDecisao, desfechoPeloDiff, diffDeCopy, semelhanca } from '../diff-copy'
 
 const SUGERIDA = {
   titulo: 'HAPPY HOUR',
@@ -130,6 +130,28 @@ describe('copyDeCamadas', () => {
   it('null no ilegível, {} na página sem texto', () => {
     expect(copyDeCamadas('quebrado')).toBeNull()
     expect(copyDeCamadas([{ id: 'l2', type: 'image' }])).toEqual({})
+  })
+})
+
+describe('copyParaDecisao — a camada escondida pelo REVISOR conta; a escondida pela pessoa não (REV-9E-01)', () => {
+  const marca = { em: '2026-09-12T10:00:00.000Z', ajuste: 0 }
+  const camadas = [
+    { id: 'headline', name: 'headline', type: 'text', content: 'Título' },
+    { id: 'cta', name: 'cta', type: 'text', content: 'Vem pra cá', visible: false, metadata: { revisao: { ocultaPeloRevisor: marca } } },
+    { id: 'pre', name: 'pre', type: 'text', content: 'Pré', visible: false },
+  ]
+  it('o render/cópia do post (copyDeCamadas) segue a arte; o aprendizado (copyParaDecisao) vê o CTA escondido pelo revisor e não vê o pré escondido pela pessoa', () => {
+    expect(copyDeCamadas(camadas)).toEqual({ headline: 'Título' })
+    expect(copyParaDecisao(camadas)).toEqual({ headline: 'Título', cta: 'Vem pra cá' })
+    // o diff contra a proposta: esconder pelo revisor não é remoção; esconder pela pessoa é
+    const proposta = { headline: 'Título', cta: 'Vem pra cá', pre: 'Pré' }
+    const d = diffDeCopy(proposta, copyParaDecisao(camadas))
+    expect(d.removidos.map((r) => r.texto)).toEqual(['Pré'])
+    expect(desfechoPeloDiff(diffDeCopy({ headline: 'Título', cta: 'Vem pra cá' }, copyParaDecisao(camadas)))).toBe('aceita-como-veio')
+  })
+  it('ilegível continua null; string dupla-codificada é lida', () => {
+    expect(copyParaDecisao('isto não é json')).toBeNull()
+    expect(copyParaDecisao(JSON.stringify(JSON.stringify(camadas)))).toEqual({ headline: 'Título', cta: 'Vem pra cá' })
   })
 })
 
