@@ -372,9 +372,14 @@ export function arteDosFieldValues(fieldValues: unknown): NonNullable<SlideDaPec
  * ler a página ali devolvia os textos da arte ANTERIOR, com origem `pagina`, antes de olhar a mídia atual e a
  * procedência dela (C6-03). Inferido do estado que todo post já tem — vale para registro antigo, sem campo novo.
  * Carrossel não passa por aqui: ele sempre se lê slide a slide.
+ *
+ * 🔴 Só existe "outra arte" quando há UMA mídia (regressão pega pela prova-dev-36, 13/09/2026). Sem mídia nenhuma o
+ * post não trocou arte por nada: a página continua sendo a fonte — legível, é lida; de OUTRO projeto (ou apagada), é
+ * declarada INDISPONÍVEL (R29/R30). Tratar o post sem mídia como histórico calava essa declaração e fazia o post
+ * `NOT_NEEDED` com página do próprio projeto voltar sem texto nenhum.
  */
-export function paginaDoPostEHistorica(post: Pick<PecaParaTextos, 'pageId' | 'renderStatus'>, arteDaMidia?: SlideDaPeca['arte']): boolean {
-  if (!post.pageId || post.renderStatus !== 'NOT_NEEDED') return false
+export function paginaDoPostEHistorica(post: Pick<PecaParaTextos, 'pageId' | 'renderStatus' | 'mediaUrls'>, arteDaMidia?: SlideDaPeca['arte']): boolean {
+  if (!post.pageId || post.renderStatus !== 'NOT_NEEDED' || post.mediaUrls.length !== 1) return false
   return arteDaMidia?.pageId !== post.pageId
 }
 

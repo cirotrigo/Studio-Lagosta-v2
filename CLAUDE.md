@@ -6669,3 +6669,8 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   `paginaDoPostEHistorica(post, arteDaMidia)` decide pelo estado que todo post já tem (`renderStatus` + a arte da mídia
   única não ser daquela página) — vale para registro antigo. Com ela a peça se resolve pela mídia, e o post conta como
   "sem página própria" para R42/R50. Leitor novo de textos de post passa `renderStatus`.
+  🔴 **Só com UMA mídia.** Post sem mídia nenhuma não trocou arte por nada: a página segue sendo a fonte (legível, é lida;
+  de OUTRO projeto ou apagada, INDISPONÍVEL — R29/R30). A 1ª versão tratava o post sem mídia como histórico, calava a
+  declaração do R30 e zerava os textos do post `NOT_NEEDED` com página do próprio projeto; a prova-dev-36 pegou (sem
+  vazamento: páginas e artes já são carregadas filtradas por projeto). Teste pelo caminho real:
+  `ver-agenda-isolamento-por-projeto.test.ts`.

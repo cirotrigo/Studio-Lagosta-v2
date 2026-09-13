@@ -617,4 +617,12 @@ describe('R51 — página do post que ficou só como vínculo histórico', () =>
     expect(textosDaPeca({ ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [B], slotValues: null }, { camadas: pagina, slides: [{ url: B, arte: { pageId: 'pA' } }] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
     expect(textosDaPeca({ ...viva, pageId: 'pA', renderStatus: 'RENDERED', mediaUrls: [B], slotValues: null }, { camadas: pagina, slides: [{ url: B, arte: null }] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
   })
+  it('SEM mídia não há "outra arte": NOT_NEEDED segue lendo a página, e a página não carregada (outro projeto) é declarada indisponível (R29/R30)', () => {
+    const semMidia = { ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [] as string[], slotValues: null }
+    expect(paginaDoPostEHistorica(semMidia)).toBe(false)
+    expect(textosDaPeca(semMidia, { camadas: pagina, slides: [] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
+    const r = textosDaPeca(semMidia, { slides: [] })
+    expect(r.textos).toEqual([])
+    expect(r.indisponiveis).toMatch(/não pôde ser carregada/)
+  })
 })
