@@ -10087,7 +10087,8 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   (`docs/RETOMADA-PLANO-SEMANAL-2026-09-09.md`, commit 6892e362), que cobria
   também legenda, via, modelo, direção, referências, ajuste, cliente, escopo e
   campanha, e tinha o teste "mudança de campanha exige outra revisão mesmo com a
-  mesma spec". Campanha e escopo são lidos do ITEM na hora de agendar, não da
+  mesma spec". **Decisão CONFIRMADA pelo Ciro em 13/09/2026**: campanha e escopo
+  continuam fora do token (mudar só a campanha reaproveita a arte). Campanha e escopo são lidos do ITEM na hora de agendar, não da
   peça: a peça reaproveitada é agendada com a campanha de agora. O teste de
   `fila.test.ts` passou a provar a regra nova — só a campanha reaproveita a peça
   pronta; o tema (que vira spec) pede peça nova. O caminho de composição só roda
@@ -10104,8 +10105,9 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   | 1 | status reprovado | recusar |
   | 2 | EXECUTÁVEL e ficha diverge | recusar |
   | 3 | peça viva ou pronta, pedido igual, projeto não diverge, revisão igual | reaproveitar |
-  | 4 | FINAL | recusar |
-  | 5 | EM VOO e peça nenhuma, viva ou pronta | recusar |
+  | **4a** | (FINAL ou EM VOO) e peça viva ou pronta | recusar (`superada`) — decisão do Ciro, 13/09/2026 |
+  | 4 | FINAL | recusar (`avancou`) |
+  | 5 | EM VOO e peça nenhuma | recusar (`avancou`) |
   | 6 | EM VOO e (pedido diferente ou projeto diverge) | recusar (`revisado`) |
   | 7 | EM VOO e revisão da peça diferente | recusar (`revisado`) |
   | **7b** | EM VOO e chamada diferente ou desconhecida | recusar (`chamada-vencida`) |
@@ -10159,3 +10161,48 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   sem lote, pré-existente: sem identidade, a chamada vale como pedido novo); a
   bancada e o `executar-plano` montam a spec do item na hora. `comporItemAgora`
   segue pré-existente.
+
+**Decisões do Ciro (13/09/2026) sobre a repetição de uma leva:**
+
+- **Pedido desatualizado (`chamada-vencida`): MANTIDO.** Item editado depois da
+  leitura que montou a peça continua recusado, com o caminho de saída (reler com
+  ver-plano, outro itemId, a itemRevisao nova).
+- **Campanha e escopo fora do token de revisão do item: MANTIDO** (reaproveita a
+  arte) — ver o bloco C11-1a…1b acima.
+- 🔴 **Peça superada no plano: continua sem criar nada, mas a resposta INFORMA e
+  o chat PERGUNTA.** "Superada" é o item do plano já ter OUTRA arte, mais recente
+  que o pedido que chegou. Duas portas, as duas só de leitura:
+  - **pela tabela** — linha nova **4a**: item pronto, agendado ou em voo cuja
+    peça viva ou pronta não é este pedido (a linha 3 não casou) recusa com o
+    motivo `superada` em vez do genérico `avancou`. Os detalhes da recusa trazem
+    `arteAtualDoItem` (`descreverArteAtualDoItem`, puro: `generationId`, a página
+    — do item, senão da peça —, `feitaEm` e `feitaEmBrasilia`, e a situação em
+    palavras: pronta, em produção, falhou, sem arquivo, apagada). Com lote a
+    mensagem é a do chat (contar e perguntar); sem lote, a curta.
+  - **pela reserva** — a repetição que a RESERVA reaproveita decide pela linha
+    do lote e nunca olhava o item: o pedido antigo repetido depois de o item ser
+    refeito (pela bancada, por outra leva) devolvia a peça antiga como se fosse a
+    do plano. `enfileirarPeca` agora confere o item quando o desfecho é
+    `reaproveitado` e devolve `lote.superada` com a arte atual (`fila.ts`,
+    `arteQueSuperaAPeca`, leitura sem trava; falha dela vira `null` e a repetição
+    segue).
+  - `compor-leva` põe as duas em **`superadas`** (`{ indice, itemId,
+    arteDestePedido, arteAtualDoItem }`) — nunca em `pecas`, que o chat leria
+    como a arte do plano, nem em `falhas`. A nota, a descrição e as INSTRUCTIONS
+    mandam contar à pessoa qual é a arte atual e quando foi feita e perguntar:
+    manter essa arte, ou refazer com o conteúdo atual do item (ver-plano, outro
+    itemId e a itemRevisao atual). Nunca refazer sem ela pedir.
+  - **O código continua `ITEM_EXECUCAO_CONCORRENTE`** de propósito:
+    `executar-plano.ts` trata esse código, e o motivo novo não muda o que a
+    bancada faz.
+  - **O que mudou na tabela**: oráculo do HEAD `ca59c39b` contra esta, nas 23.328
+    combinações — **2.400 saídas mudam, todas `avancou` → `superada`**, zero
+    produção nova. O teste enumera a linha 4a e ganhou a invariante "superada só
+    em item final ou em voo com peça viva ou pronta".
+  - Provas pelo caminho real (`fila-lote.test.ts`, travas por linha): a recusa
+    pela tabela (peça do lote falhou, item refeito com a copy editada e pronto,
+    leva antiga repetida → `superada` com a arte atual, nada escrito) e o aviso da
+    reserva (peça pronta reaproveitada, item refeito pela bancada →
+    `lote.superada`, nada escrito; o controle sem refação não avisa).
+- A repetição que mantém a edição da equipe e o rascunho apagado pela equipe são
+  do agendamento (PR 12).

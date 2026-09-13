@@ -30,6 +30,7 @@ import { caminhoAte } from '@/lib/planos/execucao'
 import { normalizarStatusDoItem, type StatusDoItem } from '@/lib/planos/vocabulario'
 import { payloadParaHash, validarIdentidadeDeLote, type DesfechoDoItemDeLote, type IdentidadeDeLote, type SituacaoDaPecaDoLote } from '@/lib/lotes/identidade'
 import { reservarItemDeLote } from '@/lib/lotes/reserva'
+import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
 
 import { comporPeca } from './compor'
 import { garantirPasta } from './pastas'
@@ -43,8 +44,12 @@ export interface PecaEnfileirada {
    * Presente quando a peça veio com identidade de lote (`opcoes.lote`): o que
    * a chamada fez com o item e como a peça dele está agora. O conflito não
    * aparece aqui — ele LANÇA `LOTE_ITEM_CONFLITO` (409) sem escrever nada.
+   *
+   * `superada` (decisão do Ciro, 13/09/2026): a repetição reaproveitou a peça
+   * deste pedido, mas o item do plano já aponta OUTRA arte — a descrita aqui.
+   * Nada foi criado nem mudado; quem chama conta à pessoa e pergunta.
    */
-  lote?: { loteId: string; itemId: string; desfecho: DesfechoDoItemDeLote; situacao: SituacaoDaPecaDoLote }
+  lote?: { loteId: string; itemId: string; desfecho: DesfechoDoItemDeLote; situacao: SituacaoDaPecaDoLote; superada?: ArteAtualDoItem }
 }
 
 export interface OpcoesDeEnfileirar {
@@ -177,11 +182,36 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
       ? {}
       : { criarJob: (tx, generationId) => enfileirarComposicao({ generationId, projectId: spec.projectId, spec, decididoPor, autor }, tx) }),
   })
+  // A reserva reaproveita pela LINHA do lote, sem olhar o item do plano: o
+  // pedido antigo repetido depois de o item ganhar outra arte devolveria a peça
+  // antiga como se ela fosse a do plano. Só leitura — nada muda (Ciro, 13/09).
+  const superada = plano && r.desfecho === 'reaproveitado' ? await arteQueSuperaAPeca(spec, r.generationId) : null
   return {
     generationId: r.generationId,
     jobId: r.jobId,
     spec,
-    lote: { loteId: r.loteId, itemId: r.itemId, desfecho: r.desfecho, situacao: r.situacao },
+    lote: { loteId: r.loteId, itemId: r.itemId, desfecho: r.desfecho, situacao: r.situacao, ...(superada ? { superada } : {}) },
+  }
+}
+
+/**
+ * A arte que o item do plano aponta AGORA, quando ela não é a peça que a
+ * repetição reaproveitou — "peça superada no plano" (decisão do Ciro,
+ * 13/09/2026). Informativo: leitura sem trava, e a falha dela vira `null` (a
+ * repetição idempotente não pode quebrar por causa do aviso).
+ */
+async function arteQueSuperaAPeca(spec: SpecDePeca, generationId: string): Promise<ArteAtualDoItem | null> {
+  try {
+    const item = await db.itemDePlano.findFirst({
+      where: { id: spec.itemDePlanoId, projectId: spec.projectId, ...(spec.planoId ? { planoId: spec.planoId } : {}) },
+      select: { generationId: true, pageId: true },
+    })
+    if (!item?.generationId || item.generationId === generationId) return null
+    const geracao = await db.generation.findUnique({ where: { id: item.generationId }, select: { status: true, resultUrl: true, createdAt: true, fieldValues: true } })
+    return descreverArteAtualDoItem({ generationId: item.generationId, pageIdDoItem: item.pageId, geracao: geracao ? { ...geracao, status: String(geracao.status) } : null })
+  } catch (erro) {
+    console.warn(`[lote] não deu para conferir se a peça ${generationId} foi superada no plano: ${erro instanceof Error ? erro.message : String(erro)}`)
+    return null
   }
 }
 

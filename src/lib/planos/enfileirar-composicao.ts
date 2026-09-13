@@ -6,6 +6,7 @@ import {
   confrontarComOGravado,
   confrontarRevisaoDaChamada,
   decidirNoItemDoPlano,
+  descreverArteAtualDoItem,
   type FichaDoItem,
   type MotivoDaRecusaDoItem,
 } from './decisao-do-item'
@@ -32,9 +33,23 @@ const MENSAGEM_DA_RECUSA: Record<MotivoDaRecusaDoItem, string> = {
   reprovado: 'O item foi reprovado. Devolva-o à fila antes de produzir.',
   ficha: 'O item foi alterado durante a preparação. Releia o plano.',
   avancou: 'O item já avançou. Releia o plano antes de continuar.',
+  superada: 'O item do plano já tem outra arte, mais recente que este pedido (pronta ou em produção). Nada foi criado.',
   revisado: 'O item está na fila com uma peça de outro pedido ou de outra revisão. Acompanhe pelo ver-plano e produza de novo quando ele sair da fila, a partir do conteúdo atual.',
   // C11-1b: a recusa diz como sair — a mesma chamada seria recusada para sempre.
   'chamada-vencida': 'O item mudou depois da leitura que montou esta peça: a itemRevisao enviada não é a revisão atual dele. Releia o item com ver-plano, remonte a peça com o conteúdo atual e mande com um itemId NOVO e a itemRevisao nova — repetir esta mesma chamada será recusado de novo.',
+}
+
+/**
+ * A peça superada no plano (decisão do Ciro, 13/09/2026). Com lote a recusa
+ * chega ao CHAT, e diz o próximo passo: contar à pessoa qual é a arte atual e
+ * perguntar — manter essa, ou refazer com o conteúdo atual do item pelo
+ * caminho que já existe. Nada é refeito sozinho.
+ */
+const SUPERADA_NO_CHAT =
+  'O item do plano já tem outra arte, mais recente que este pedido (a arte atual, com a data em que foi feita, vai em arteAtualDoItem) — nada foi criado. Conte à pessoa qual é a arte atual e quando ela foi feita, e pergunte o que ela quer: manter essa arte, ou refazer com o conteúdo atual do item (releia o item com ver-plano, remonte a peça e mande com um itemId NOVO e a itemRevisao atual). Não refaça sem ela pedir.'
+
+function mensagemDaRecusa(motivo: MotivoDaRecusaDoItem, comLote: boolean): string {
+  return motivo === 'superada' && comLote ? SUPERADA_NO_CHAT : MENSAGEM_DA_RECUSA[motivo]
 }
 
 function fichaDoItem(itemAtualizadoEm: Date | string | undefined, atualizadoEm: unknown): FichaDoItem {
@@ -108,8 +123,10 @@ export async function enfileirarComposicaoDoPlanoEm(
       const criada = await criarPecaDoItem(tx, item.id, spec, data, revisao, decididoPor, autor)
       return { ...criada, retomado: peca !== 'nenhuma' }
     }
-    default:
-      throw new CreativeError('ITEM_EXECUCAO_CONCORRENTE', MENSAGEM_DA_RECUSA[decisao.motivo], 409, { motivo: decisao.motivo })
+    default: {
+      const arteAtualDoItem = decisao.motivo === 'superada' ? descreverArteAtualDoItem({ generationId: item.generationId, pageIdDoItem: item.pageId, geracao: anterior }) : null
+      throw new CreativeError('ITEM_EXECUCAO_CONCORRENTE', mensagemDaRecusa(decisao.motivo, comLote), 409, { motivo: decisao.motivo, ...(arteAtualDoItem ? { arteAtualDoItem } : {}) })
+    }
   }
 }
 

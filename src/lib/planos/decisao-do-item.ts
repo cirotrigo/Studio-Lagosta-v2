@@ -39,6 +39,13 @@
  * montou a spec declara a revisão, e com lote produzir exige que ela seja a do
  * item agora — e, com a declaração certa, produzir não depende mais da revisão
  * gravada na peça (a antiga linha 14, que recusava a saída do C11-1b).
+ *
+ * Decisão do Ciro (13/09/2026) — "peça superada no plano": quando o item já
+ * tem OUTRA arte, viva ou pronta, que não é este pedido, a recusa tem motivo
+ * próprio (`superada`) em vez do genérico `avancou`. Nada muda no que se
+ * produz — continua não criando nada —, só o que a resposta diz: qual é a arte
+ * atual do item (`arteAtualDoItem`) e que o chat conta à pessoa e pergunta se
+ * ela quer manter essa arte ou refazer com o conteúdo atual do item.
  */
 
 import stableStringify from 'json-stable-stringify'
@@ -84,7 +91,7 @@ export interface EntradaDaDecisaoDoItem {
   chamada: RevisaoDaChamada
 }
 
-export type MotivoDaRecusaDoItem = 'reprovado' | 'ficha' | 'avancou' | 'revisado' | 'chamada-vencida'
+export type MotivoDaRecusaDoItem = 'reprovado' | 'ficha' | 'avancou' | 'superada' | 'revisado' | 'chamada-vencida'
 
 export type DecisaoDoItem =
   | { acao: 'reaproveitar' }
@@ -106,6 +113,50 @@ export function classificarPecaDoItem(entrada: {
   if (!job) return 'sem-job'
   if (job.status === 'DONE' || job.status === 'FAILED') return 'job-terminal'
   return 'viva'
+}
+
+/** Como a arte atual do item está, em palavras de quem cuida da agenda — nunca o enum do banco. */
+export type SituacaoDaArteAtual = 'pronta' | 'em produção' | 'falhou' | 'sem arquivo' | 'apagada'
+
+/** A arte que o item do plano aponta AGORA, como a resposta a mostra ao chat (decisão do Ciro, 13/09/2026). */
+export interface ArteAtualDoItem {
+  generationId: string
+  pageId: string | null
+  /** ISO; nulo quando não se sabe. */
+  feitaEm: string | null
+  /** "dd/mm/aaaa, hh:mm" em Brasília; nulo quando não se sabe. */
+  feitaEmBrasilia: string | null
+  situacao: SituacaoDaArteAtual
+}
+
+const FORMATO_BRASILIA = new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
+
+/**
+ * A arte atual do item, descrita. Sem `generationId` não há arte para mostrar
+ * (`null`). A página vem do item e, sem ela, dos `fieldValues` da peça pronta.
+ */
+export function descreverArteAtualDoItem(entrada: {
+  generationId: string | null
+  pageIdDoItem?: string | null
+  geracao: { status: string; resultUrl?: string | null; createdAt?: Date | string | null; fieldValues?: unknown } | null
+}): ArteAtualDoItem | null {
+  if (!entrada.generationId) return null
+  const { geracao } = entrada
+  const quando = geracao?.createdAt ? new Date(geracao.createdAt) : null
+  const valida = quando && !Number.isNaN(quando.getTime()) ? quando : null
+  const pageIdDaPeca = objeto(geracao?.fieldValues)?.pageId
+  const situacao: SituacaoDaArteAtual = !geracao
+    ? 'apagada'
+    : geracao.status === 'COMPLETED'
+      ? geracao.resultUrl ? 'pronta' : 'sem arquivo'
+      : geracao.status === 'FAILED' ? 'falhou' : 'em produção'
+  return {
+    generationId: entrada.generationId,
+    pageId: entrada.pageIdDoItem ?? (typeof pageIdDaPeca === 'string' ? pageIdDaPeca : null),
+    feitaEm: valida ? valida.toISOString() : null,
+    feitaEmBrasilia: valida ? FORMATO_BRASILIA.format(valida) : null,
+    situacao,
+  }
 }
 
 const objeto = (v: unknown): Record<string, unknown> | null => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null)
@@ -189,14 +240,18 @@ export function decidirNoItemDoPlano(e: EntradaDaDecisaoDoItem): DecisaoDoItem {
   if (EM_VOO.includes(e.status)) {
     // Em voo o item não é editável: só se retoma a PRÓPRIA peça, e só quando
     // ela está morta ou sem job e nada gravado contradiz o pedido e a revisão.
-    if (e.peca === 'nenhuma' || pecaViva) return { acao: 'recusar', motivo: 'avancou' }
+    // O item já tem OUTRA arte, viva ou pronta, que não é este pedido (linha 3
+    // não casou): a peça deste pedido foi superada no plano (Ciro, 13/09/2026).
+    if (pecaViva) return { acao: 'recusar', motivo: 'superada' }
+    if (e.peca === 'nenhuma') return { acao: 'recusar', motivo: 'avancou' }
     if (outroPedido || e.revisao === 'diferente') return { acao: 'recusar', motivo: 'revisado' }
     if (chamadaVencida) return { acao: 'recusar', motivo: 'chamada-vencida' }
     return e.peca === 'sem-job' ? { acao: 'refazer-job' } : { acao: 'nova-peca' }
   }
 
-  // `pronto` e `agendado`: só o reaproveitamento acima.
-  if (!executavel) return { acao: 'recusar', motivo: 'avancou' }
+  // `pronto` e `agendado`: só o reaproveitamento acima. Com outra arte viva ou
+  // pronta no item, a recusa diz que este pedido foi superado.
+  if (!executavel) return { acao: 'recusar', motivo: pecaViva ? 'superada' : 'avancou' }
 
   // Executável: sem lote a spec é do item atual; com lote, a chamada declarou a
   // revisão de agora. Nos dois casos a peça nova é o pedido certo — inclusive

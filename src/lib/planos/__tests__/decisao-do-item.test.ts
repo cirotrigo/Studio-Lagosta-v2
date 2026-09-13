@@ -24,6 +24,7 @@ import {
   confrontarComOGravado,
   confrontarRevisaoDaChamada,
   decidirNoItemDoPlano,
+  descreverArteAtualDoItem,
   type Confronto,
   type ConfrontoDoProjeto,
   type DecisaoDoItem,
@@ -40,7 +41,7 @@ const FINAL: StatusDoItem[] = ['pronto', 'agendado']
 const reaproveitar: DecisaoDoItem = { acao: 'reaproveitar' }
 const refazerJob: DecisaoDoItem = { acao: 'refazer-job' }
 const novaPeca: DecisaoDoItem = { acao: 'nova-peca' }
-const recusar = (motivo: 'reprovado' | 'ficha' | 'avancou' | 'revisado' | 'chamada-vencida'): DecisaoDoItem => ({ acao: 'recusar', motivo })
+const recusar = (motivo: 'reprovado' | 'ficha' | 'avancou' | 'superada' | 'revisado' | 'chamada-vencida'): DecisaoDoItem => ({ acao: 'recusar', motivo })
 
 interface Linha {
   n: string
@@ -58,8 +59,10 @@ const TABELA: Linha[] = [
   { n: '1', status: ['reprovado'], saida: recusar('reprovado') },
   { n: '2', status: EXECUTAVEL, ficha: ['diverge'], saida: recusar('ficha') },
   { n: '3', peca: ['viva', 'pronta'], pedido: ['igual'], projeto: ['confere', 'desconhecido'], revisao: ['igual'], saida: reaproveitar },
+  // Decisão do Ciro (13/09/2026): o item já tem OUTRA arte viva ou pronta que não é este pedido — a peça foi superada no plano.
+  { n: '4a', status: [...FINAL, ...EM_VOO], peca: ['viva', 'pronta'], saida: recusar('superada') },
   { n: '4', status: FINAL, saida: recusar('avancou') },
-  { n: '5', status: EM_VOO, peca: ['nenhuma', 'viva', 'pronta'], saida: recusar('avancou') },
+  { n: '5', status: EM_VOO, peca: ['nenhuma'], saida: recusar('avancou') },
   { n: '6a', status: EM_VOO, pedido: ['diferente'], saida: recusar('revisado') },
   { n: '6b', status: EM_VOO, projeto: ['diverge'], saida: recusar('revisado') },
   { n: '7', status: EM_VOO, revisao: ['diferente'], saida: recusar('revisado') },
@@ -120,6 +123,10 @@ describe('a tabela de decisão do item de plano', () => {
       if (d.acao === 'nova-peca' || d.acao === 'refazer-job') expect([...EXECUTAVEL, ...EM_VOO]).toContain(e.status)
       if (d.acao === 'nova-peca' || d.acao === 'refazer-job') expect(['sem-lote', 'igual']).toContain(e.chamada)
       if (d.acao === 'refazer-job') expect(e.peca).toBe('sem-job')
+      if (d.acao === 'recusar' && d.motivo === 'superada') {
+        expect([...FINAL, ...EM_VOO]).toContain(e.status)
+        expect(['viva', 'pronta']).toContain(e.peca)
+      }
       if (d.acao === 'reaproveitar') {
         expect(['viva', 'pronta']).toContain(e.peca)
         expect([e.pedido, e.projeto, e.revisao]).toEqual(['igual', e.projeto === 'diverge' ? 'nunca' : e.projeto, 'igual'])
@@ -160,6 +167,40 @@ describe('a tabela de decisão do item de plano', () => {
     expect(decidirNoItemDoPlano({ ...emVoo, chamada: 'igual' })).toEqual(refazerJob)
     // Reaproveitar não produz nada: a peça devolvida é o pedido e a revisão de agora.
     expect(decidirNoItemDoPlano({ status: 'aprovado', ficha: 'ausente', peca: 'pronta', pedido: 'igual', projeto: 'confere', revisao: 'igual', chamada: 'diferente' })).toEqual(reaproveitar)
+  })
+})
+
+describe('peça superada no plano (decisão do Ciro, 13/09/2026)', () => {
+  it('o item pronto, agendado ou em voo que já tem OUTRA arte viva ou pronta recusa com motivo próprio; nada passa a ser produzido, e a peça do mesmo pedido continua reaproveitada', () => {
+    const base: EntradaDaDecisaoDoItem = { status: 'pronto', ficha: 'ausente', peca: 'pronta', pedido: 'diferente', projeto: 'confere', revisao: 'diferente', chamada: 'diferente' }
+    for (const status of [...FINAL, ...EM_VOO]) {
+      for (const peca of ['viva', 'pronta'] as EstadoDaPecaDoItem[]) {
+        expect(decidirNoItemDoPlano({ ...base, status, peca })).toEqual(recusar('superada'))
+        expect(decidirNoItemDoPlano({ ...base, status, peca, chamada: 'igual' })).toEqual(recusar('superada'))
+        expect(decidirNoItemDoPlano({ ...base, status, peca, pedido: 'igual', revisao: 'igual' })).toEqual(reaproveitar)
+      }
+    }
+    // Sem outra arte viva ou pronta, as recusas de antes.
+    expect(decidirNoItemDoPlano({ ...base, peca: 'falhou' })).toEqual(recusar('avancou'))
+    expect(decidirNoItemDoPlano({ ...base, status: 'na-fila', peca: 'nenhuma' })).toEqual(recusar('avancou'))
+    expect(decidirNoItemDoPlano({ ...base, status: 'na-fila', peca: 'falhou' })).toEqual(recusar('revisado'))
+    // Item executável com a chamada vencida é o "pedido desatualizado" — mantido.
+    expect(decidirNoItemDoPlano({ ...base, status: 'editado' })).toEqual(recusar('chamada-vencida'))
+  })
+
+  it('descreverArteAtualDoItem: a arte, a página (do item, senão da peça), quando foi feita e a situação em palavras — nunca o enum do banco', () => {
+    expect(descreverArteAtualDoItem({ generationId: null, geracao: null })).toBeNull()
+    expect(descreverArteAtualDoItem({ generationId: 'g2', pageIdDoItem: 'p-item', geracao: { status: 'COMPLETED', resultUrl: 'https://x', createdAt: new Date('2026-09-12T13:00:00.000Z'), fieldValues: { pageId: 'p-peca' } } })).toEqual({
+      generationId: 'g2',
+      pageId: 'p-item',
+      feitaEm: '2026-09-12T13:00:00.000Z',
+      feitaEmBrasilia: '12/09/2026, 10:00',
+      situacao: 'pronta',
+    })
+    expect(descreverArteAtualDoItem({ generationId: 'g2', geracao: { status: 'COMPLETED', resultUrl: null, fieldValues: { pageId: 'p-peca' } } })).toMatchObject({ pageId: 'p-peca', feitaEm: null, feitaEmBrasilia: null, situacao: 'sem arquivo' })
+    expect(descreverArteAtualDoItem({ generationId: 'g2', geracao: { status: 'PROCESSING', createdAt: 'lixo' } })).toMatchObject({ situacao: 'em produção', feitaEm: null })
+    expect(descreverArteAtualDoItem({ generationId: 'g2', geracao: { status: 'FAILED' } })?.situacao).toBe('falhou')
+    expect(descreverArteAtualDoItem({ generationId: 'g2', geracao: null })).toMatchObject({ situacao: 'apagada', pageId: null })
   })
 })
 

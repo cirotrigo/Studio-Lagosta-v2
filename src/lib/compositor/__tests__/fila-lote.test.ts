@@ -1147,6 +1147,51 @@ describe('pré-revisões C11-1 e C11-1a…1b: a revisão declarada pela chamada,
     expect(linha(L, 'seg-2')).toMatchObject({ generationId: nova.generationId, planoRevisao: t2 })
   })
 
+  it('Ciro 13/09 — peça superada no plano pela TABELA: a peça do lote falhou, o item foi refeito com a copy editada e ficou pronto, e a leva antiga repetida é recusada como superada, com a arte atual e o próximo passo, sem escrever nada', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g1 = await enfileirarPeca(specV1, chave(L, t1))
+    falhar(g1)
+    await editar({ copyProposta: COPY_V2 })
+    const t2 = leitura()
+    const g2 = await enfileirarPeca(specV2, chave(L, t2, 'seg-v2'))
+    marcar('generations', g2.generationId, { status: 'COMPLETED', resultUrl: 'https://blob/v2.png', createdAt: new Date('2026-09-12T13:00:00.000Z') })
+    marcar('jobs', g2.jobId, { status: 'DONE' })
+    marcar('itensDePlano', 'item-1', { status: 'pronto', pageId: 'page-v2' })
+
+    const antes = retrato()
+    const erro = await enfileirarPeca(specV1, chave(L, t1)).catch((e: unknown) => e)
+    expect(erro).toMatchObject({
+      code: 'ITEM_EXECUCAO_CONCORRENTE',
+      status: 409,
+      details: { motivo: 'superada', arteAtualDoItem: { generationId: g2.generationId, pageId: 'page-v2', feitaEm: '2026-09-12T13:00:00.000Z', feitaEmBrasilia: '12/09/2026, 10:00', situacao: 'pronta' } },
+    })
+    expect((erro as Error).message).toContain('Conte à pessoa')
+    expect((erro as Error).message).toContain('pergunte')
+    expect((erro as Error).message).toContain('ver-plano')
+    expect(retrato()).toEqual(antes)
+  })
+
+  it('Ciro 13/09 — peça superada no plano pela RESERVA: a repetição reaproveita a peça pronta deste pedido, mas o item já aponta outra arte (refeita pela bancada) — lote.superada diz qual, e nada muda', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g1 = await enfileirarPeca(specV1, chave(L, t1))
+    marcar('generations', g1.generationId, { status: 'COMPLETED', resultUrl: 'https://blob/v1.png' })
+    marcar('jobs', g1.jobId, { status: 'DONE' })
+    // O controle: sem outra arte no item, a repetição reaproveitada não avisa nada.
+    expect((await enfileirarPeca(specV1, chave(L, t1))).lote).toEqual({ loteId: L, itemId: 'seg', desfecho: 'reaproveitado', situacao: 'pronta' })
+
+    marcar('itensDePlano', 'item-1', { status: 'aprovado' }) // reaberto para refazer
+    const g2 = await enfileirarPeca(specV2) // a bancada refaz, sem lote
+    expect(g2.generationId).not.toBe(g1.generationId)
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: g2.generationId })
+
+    const antes = retrato()
+    const r = await enfileirarPeca(specV1, chave(L, t1))
+    expect(r).toMatchObject({ generationId: g1.generationId, lote: { desfecho: 'reaproveitado', situacao: 'pronta', superada: { generationId: g2.generationId, situacao: 'em produção', pageId: null } } })
+    expect(retrato()).toEqual(antes)
+  })
+
   it('C11-1b: a legenda não entra na revisão — a equipe muda só a legenda e a leva repetida retoma a peça pela MESMA chave', async () => {
     criarItem()
     const t1 = leitura()

@@ -455,7 +455,7 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-leva',
     descricao:
-      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.\n\nIDEMPOTÊNCIA: mande `loteId` (a leva) e, em cada item, `itemId` (a peça), estáveis e iguais em qualquer retentativa. Repetir a chamada inteira (timeout, erro no meio) devolve as peças que já existem e cria só as que faltaram; nada duplica. Mudou o conteúdo de um item? É outra peça: use outro itemId. O mesmo itemId com outro conteúdo volta em `conflitos`, sem alterar nada.\n\nITEM DA LEVA DE CONTEÚDO: peça que sai de um item de plano (itemDePlanoId) numa leva com loteId leva também `itemRevisao`, a revisão que o ver-plano devolveu para o item, lida ANTES de montar a copy; sem ela o item volta em `falhas`. Se o item mudou depois dessa leitura, a peça volta recusada em `falhas` (motivo chamada-vencida) em vez de sair com o conteúdo antigo: releia o item com ver-plano, remonte a peça com o conteúdo atual e mande com OUTRO itemId e a itemRevisao nova.',
+      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.\n\nIDEMPOTÊNCIA: mande `loteId` (a leva) e, em cada item, `itemId` (a peça), estáveis e iguais em qualquer retentativa. Repetir a chamada inteira (timeout, erro no meio) devolve as peças que já existem e cria só as que faltaram; nada duplica. Mudou o conteúdo de um item? É outra peça: use outro itemId. O mesmo itemId com outro conteúdo volta em `conflitos`, sem alterar nada.\n\nITEM DA LEVA DE CONTEÚDO: peça que sai de um item de plano (itemDePlanoId) numa leva com loteId leva também `itemRevisao`, a revisão que o ver-plano devolveu para o item, lida ANTES de montar a copy; sem ela o item volta em `falhas`. Se o item mudou depois dessa leitura, a peça volta recusada em `falhas` (motivo chamada-vencida) em vez de sair com o conteúdo antigo: releia o item com ver-plano, remonte a peça com o conteúdo atual e mande com OUTRO itemId e a itemRevisao nova.\n\nARTE MAIS NOVA NO PLANO: se o item do plano já tem outra arte, mais recente que o pedido que chegou (a pessoa refez pela bancada ou por outra leva), a peça volta em `superadas` e NADA é criado — nem a peça antiga é devolvida como se fosse a do plano. Cada uma traz `arteAtualDoItem` (a arte, a página, quando foi feita e se está pronta ou em produção). Conte isso à pessoa e pergunte o que ela quer: manter a arte atual, ou refazer com o conteúdo atual do item — aí releia o item com ver-plano, remonte a peça e mande com OUTRO itemId e a itemRevisao atual. Nunca refaça sem ela pedir.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       loteId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta leva (ex.: "semana-2026-09-14"). A MESMA em toda retentativa da leva.'),
@@ -511,6 +511,10 @@ export const toolsDoCompositor = [
       const pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: 'criado' | 'reaproveitado' | 'retomado'; situacao: 'pendente' | 'pronta' | 'falhou' }> = []
       const falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }> = []
       const conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }> = []
+      // "Peça superada no plano" (decisão do Ciro, 13/09/2026): o item já tem
+      // outra arte, mais recente que este pedido. Nada foi criado — nem vai para
+      // `pecas`, que o chat leria como a arte do plano.
+      const superadas: Array<{ indice: number; itemId: string | null; arteDestePedido: string | null; arteAtualDoItem: unknown }> = []
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
         const itemId = (item.itemId as string | undefined) ?? null
@@ -535,6 +539,10 @@ export const toolsDoCompositor = [
             ...(loteId !== undefined ? { lote: { loteId, itemId: itemId as string } } : {}),
             ...(doPlano ? { itemRevisao } : {}),
           })
+          if (r.lote?.superada) {
+            superadas.push({ indice, itemId, arteDestePedido: r.generationId, arteAtualDoItem: r.lote.superada })
+            continue
+          }
           pecas.push({ indice, itemId, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null, desfecho: r.lote?.desfecho ?? 'criado', situacao: r.lote?.situacao ?? 'pendente' })
         } catch (erro) {
           const e = erro as { code?: unknown; details?: Record<string, unknown> }
@@ -546,6 +554,10 @@ export const toolsDoCompositor = [
           }
           const codigo = typeof e?.code === 'string' ? e.code : undefined
           const motivo = typeof e?.details?.motivo === 'string' ? e.details.motivo : undefined
+          if (motivo === 'superada') {
+            superadas.push({ indice, itemId, arteDestePedido: null, arteAtualDoItem: e.details?.arteAtualDoItem ?? null })
+            continue
+          }
           falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro), ...(codigo ? { codigo } : {}), ...(motivo ? { motivo } : {}) })
         }
       }
@@ -558,11 +570,15 @@ export const toolsDoCompositor = [
         retomadas,
         falhas,
         conflitos,
+        superadas,
         pecas,
         nota: [
           'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
           ...(reaproveitadas + retomadas > 0 ? ['Reaproveitadas já existiam nesta leva com o mesmo conteúdo e não foram duplicadas; retomadas tinham falhado ou se perdido e voltaram à fila.'] : []),
           ...(falhas.some((f) => f.motivo === 'chamada-vencida') ? ['Recusadas por chamada vencida: o item mudou depois da leitura que montou a peça — releia com ver-plano, remonte a peça com o conteúdo atual e mande com outro itemId e a itemRevisao nova.'] : []),
+          ...(superadas.length > 0
+            ? ['Superadas: o item do plano já tem outra arte, mais recente que o pedido que chegou — nada foi criado. Conte à pessoa qual é a arte atual (arteAtualDoItem: quando foi feita e se está pronta ou em produção) e pergunte o que ela quer: manter essa arte, ou refazer com o conteúdo atual do item (releia com ver-plano, remonte a peça e mande com outro itemId e a itemRevisao atual). Não refaça sem ela pedir.']
+            : []),
           ...(conflitos.length > 0 ? ['Conflitos: o itemId já foi pedido com outro conteúdo e nada foi alterado — repita o conteúdo original para reaproveitar a peça, ou use outro itemId para uma peça nova.'] : []),
         ].join(' '),
       }

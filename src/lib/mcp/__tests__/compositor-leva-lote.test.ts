@@ -29,6 +29,7 @@ type Resultado = {
   retomadas: number
   falhas: Array<{ indice: number; erro: string }>
   conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }>
+  superadas: Array<{ indice: number; itemId: string | null; arteDestePedido: string | null; arteAtualDoItem: unknown }>
   pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: string; situacao: string }>
   nota: string
 }
@@ -167,6 +168,7 @@ describe('compor-leva: a identidade de lote na porta', () => {
       retomadas: 0,
       falhas: [{ indice: 1, erro: 'Projeto 8 não encontrado' }],
       conflitos: [],
+      superadas: [],
       pecas: [{ indice: 0, itemId: null, generationId: 'g1', nome: 'A', desfecho: 'criado', situacao: 'pendente' }],
       nota: 'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
     })
@@ -218,6 +220,28 @@ describe('compor-leva: a revisão do item de plano (pré-revisão C11-1a…1b)',
     expect(erro.code).toBe('LOTE_IDENTIDADE_INVALIDA')
     expect((erro.details?.problemas as string[]).join(' ')).toContain('itemRevisao sem loteId')
     expect(mocks.enfileirarPeca).not.toHaveBeenCalled()
+  })
+
+  it('peça superada no plano (Ciro, 13/09/2026): a recusa da tabela e a repetição reaproveitada vão para superadas com a arte atual — nunca para pecas nem falhas —, e a nota manda contar e perguntar', async () => {
+    const arte = { generationId: 'g-nova', pageId: 'p-nova', feitaEm: '2026-09-12T13:00:00.000Z', feitaEmBrasilia: '12/09/2026, 10:00', situacao: 'pronta' }
+    mocks.enfileirarPeca.mockImplementationOnce(async () => {
+      throw new CreativeError('ITEM_EXECUCAO_CONCORRENTE', 'O item do plano já tem outra arte, mais recente que este pedido.', 409, { motivo: 'superada', arteAtualDoItem: arte })
+    })
+    mocks.enfileirarPeca.mockImplementationOnce(async (_s: unknown, o: { lote: { loteId: string; itemId: string } }) => ({
+      generationId: 'g-antiga', jobId: 'j-antigo', spec: {}, lote: { ...o.lote, desfecho: 'reaproveitado', situacao: 'pronta', superada: arte },
+    }))
+    const r = await chamar({ loteId: 'semana', itens: [doPlano('seg', 'A', REV), doPlano('ter', 'B', REV), item('qua', 'C')] })
+    expect(r.superadas).toEqual([
+      { indice: 0, itemId: 'seg', arteDestePedido: null, arteAtualDoItem: arte },
+      { indice: 1, itemId: 'ter', arteDestePedido: 'g-antiga', arteAtualDoItem: arte },
+    ])
+    expect(r.pecas.map((p) => p.itemId)).toEqual(['qua'])
+    expect(r.falhas).toEqual([])
+    expect(r).toMatchObject({ enfileiradas: 1, reaproveitadas: 0, retomadas: 0 })
+    expect(r.nota).toContain('Superadas')
+    expect(r.nota).toContain('pergunte')
+    expect(r.nota).toContain('ver-plano')
+    expect(leva.descricao).toContain('superadas')
   })
 
   it('a recusa por chamada vencida volta em falhas com o código, o motivo e a mensagem de saída, e a nota diz o caminho', async () => {
