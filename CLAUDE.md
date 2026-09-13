@@ -10946,22 +10946,21 @@ em `semanal.ts`, carimbo da voz em `src/lib/brand/voz-na-escrita.ts`. Sem migrat
 A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
 
 - 🔴 **A causa NUNCA sai só do autor.** `autor: 'equipe'` tanto é a pessoa
-  reescrevendo quanto o ajuste do REVISOR aplicado pelo app. O que separa, nesta
-  ordem: o motivo gravado (`MOTIVO_DO_AJUSTE_DO_REVISOR`, a MESMA constante que
-  `ajustarArte` grava — não reescreva a string em outro lugar), a arte do ajuste
-  com `fieldValues.revisao` e sem texto trocado na mesma janela de 2 min (fora o
-  autosave do `editor`, que é gesto humano), e a marca
-  `metadata.revisao.ocultaPeloRevisor` na camada. `sistema` em
-  `compositor`/`recomposicao` é compositor; em `reverter-arte`, design; mexer só
-  em `estilo` é design, nunca redação.
+  reescrevendo quanto o ajuste do REVISOR aplicado pelo app. O que separa é o
+  motivo que `ajustarArte` grava em TODA chamada só de ajustes
+  (`MOTIVO_DO_AJUSTE_DO_REVISOR`, a MESMA constante — não reescreva a string em
+  outro lugar); proximidade no tempo não classifica nada (C15-01, abaixo).
+  `sistema` em `compositor`/`recomposicao` é compositor; em `reverter-arte`,
+  design; mexer só em `estilo` é design, nunca redação.
 - 🔴 **O revisor é classe PRÓPRIA e nunca vira preferência da equipe** — nem
   redação, nem design. Ajuste do revisor que não deixou revisão de copy (corpo,
   gradiente) conta como revisor pela arte do ajuste.
-- **Indevidas** saem da LINHA DO TEMPO dos estados da copy (o original, as
-  efetivas das artes da página em ordem e o contrato da página hoje), bloco a
-  bloco: o sistema mudou linhas; um ajuste do revisor foi desfeito; equipe ou
+- **Indevidas de TEXTO** saem da LINHA DO TEMPO dos estados da copy (o original,
+  as efetivas das artes da página em ordem — menos a do ajuste só do revisor — e
+  o contrato da página hoje), bloco a bloco: o sistema mudou linhas; equipe ou
   Claude devolveram ao original o texto que o compositor mudou; um refino foi
-  desfeito. A equipe indo e voltando no próprio texto NÃO é indevida.
+  desfeito. A equipe indo e voltando no próprio texto NÃO é indevida. **O ajuste
+  do revisor desfeito sai das CAMADAS** (C15-02, abaixo), por id de camada.
 - 🔴 **Amostra abaixo do limiar declarado não vira percentual** (`LIMIAR_DE_AMOSTRA`
   = 5 por cliente, 15 na carteira): a proporção sai `amostraInsuficiente` com
   `n`/`de`, e o texto do relatório não imprime "%".
@@ -10978,11 +10977,13 @@ A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
   arte da peça, até o primeiro post; post anterior à arte fica fora) e é medido
   sobre TODAS as peças, legado incluído — ele não depende do contrato. Mediana e
   p90 só com amostra acima do limiar.
-- **Esquema ausente degrada, nunca derruba**: sem `Page.copyAutoral` (PR 3) a
-  medida do cliente sai `indisponivel` DIZENDO a coluna (P2022/42703); sem a
-  tabela `BrandVoice` (PR 7) só a versão da voz fica de fora. A carteira tem
-  PRAZO (até 180 s e nunca além de 240 s do início do relatório) e teto de 25 s
-  por cliente; quem não coube sai em "fora do tempo do relatório".
+- **Esquema ausente degrada, nunca derruba**: conferido ANTES por
+  `information_schema` (`lerEsquemaDaCopy`) — sem `Page.copyAutoral` (PR 3) o
+  cliente sai `indisponivel` DIZENDO a coluna, sem emitir a consulta; sem a
+  tabela `BrandVoice` (PR 7) a consulta da voz nem é feita e só a versão fica de
+  fora. A carteira tem PRAZO (até 180 s e nunca além de 240 s do início do
+  relatório) e teto de 25 s por cliente, cumprido NO SERVIDOR; quem não coube
+  sai em "fora do tempo do relatório".
 - **O carimbo da voz** (`fieldValues.vozNaEscrita = { fonte, versao, lidoEm,
   escritaEm?, incerto? }`) fica FORA do contrato estrito da copy (uma chave a
   mais recusaria a copy na leitura) e é gravado por `comporPeca` e
@@ -10990,21 +10991,74 @@ A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
   (`ItemDePlano` não tem `fieldValues`, e o PR 15 é sem migration): quem produz
   passa `escritaEm` (o `createdAt` do item — `executar-plano` e, no compositor,
   pelo `itemDePlanoId`) e o carimbo NÃO chuta: voz migrada ou regravada depois da
-  escrita sai com `fonte`/`versao` nulas e o motivo em `incerto`. Sem o carimbo o
-  relatório só conta.
+  escrita sai com `fonte`/`versao` nulas e o motivo em `incerto`. Copy
+  REPRODUZIDA ("Gerar de novo", slides irmãos do carrossel) HERDA o carimbo da
+  origem (C15-05). Sem o carimbo o relatório só conta.
 - 🔴 **`voz-service` puxa o `Prisma` do client em RUNTIME**: importado
   estaticamente em `compor.ts`, derrubou o `compor-avaliacao.test.ts` (que só
   dubla `@/lib/db`) com `Cannot find module '.prisma/client/default'`. O carimbo
   entra por `await import()` nos dois produtores.
-- ⚠️ **Dependência de pilha**: a marca `ocultaPeloRevisor` nasceu no fechamento
-  do revisor (`8ad936ee`/`2ceb25fc`) e esta pilha (3 → 7 → 13 → 14) não a tem —
-  a leitura é defensiva. E o `refino` é aceito no contrato mas não tem produtor
-  nesta pilha (a melhoria ainda não grava contrato). Nenhum código de
-  `copy-autoral` foi mexido aqui.
+- **A pilha contém o PR 0** desde o rebase sobre o PR 14 integrado (`003717db`):
+  a marca `ocultaPeloRevisor` é GRAVADA pelo executor dos ajustes e lida pelos
+  helpers do próprio PR 0 (`marcaDoRevisor`/`ocultaPeloRevisor`), nunca por
+  leitura própria. O `refino` é aceito no contrato mas não tem produtor nesta
+  pilha (a melhoria ainda não grava contrato). Nenhum código de `copy-autoral`
+  foi mexido aqui.
 - **A medida de partida** (`scripts/medir-qualidade-da-copy.ts`) é SEMPRE só
-  leitura, numa transação `READ ONLY`; recusa a produção sem
+  leitura, com uma transação `READ ONLY` POR CLIENTE; recusa a produção sem
   `--producao-somente-leitura` (produção reconhecida pelo COMPUTE contra o
-  `.env`) e falha FECHADA sem `.env` legível. Rodada no branch de dev em
+  `.env`; com a flag e sem `DATABASE_URL` no ambiente, ela lê a URL do `.env`,
+  porque o `tsx` não carrega arquivo nenhum) e falha FECHADA sem `.env` legível. Rodada no branch de dev em
   12/09/2026 (15/08 a 12/09, dev em dia com a produção): **761 peças em 10
   clientes, todas sem contrato** — o esperado com o PR 3 fora de produção; a
   primeira medida comparável vem depois do deploy dos PRs 3 e 7.
+
+**Da pré-revisão do HEAD 560292a1 (BLOQUEADO, C15-01…06, 12/09/2026):**
+
+- 🔴 **Proximidade no tempo não classifica revisão** (C15-01). A regra "arte do
+  ajuste do revisor a até 2 min" rotulava como `revisor` a correção de texto que
+  a pessoa ou o Claude fazia numa OUTRA chamada de `ajustar-arte` logo depois
+  (ou antes): redação subcontada, revisor inflado, e a reversão da mudança do
+  revisor ficava invisível. Toda revisão de uma chamada só de ajustes já carrega
+  `MOTIVO_DO_AJUSTE_DO_REVISOR`; o que só a janela alcança é, por construção, de
+  outra chamada. A janela sobrevive só como `JANELA_DO_MESMO_AJUSTE_MS`, para não
+  contar o mesmo ajuste duas vezes. O teste antigo que esperava `revisor` para
+  uma remoção pelo `claude` com "outro motivo" codificava o defeito e saiu.
+- 🔴 **O esconder do revisor não passa pelo contrato — o desfecho se mede nas
+  CAMADAS** (C15-02). Pelo PR 0, a camada escondida com a marca é lida como
+  PRESENTE pela autoria (`camadasParaDecisao`): nem o esconder nem a reexibição
+  pela equipe geram revisão, e a leitura por revisão nunca via o ajuste desfeito
+  (os testes fabricavam uma revisão `{ cta: [] }` que o caminho real não grava).
+  Hoje `ajustesDeVisibilidade` lê `revisao.aplicados` das artes do ajuste e
+  `desfechosDaVisibilidade` compara a ÚLTIMA decisão do revisor por camada com
+  `Page.layers` de hoje: escondida com a marca (`ocultaPeloRevisor`) = aceito;
+  VISÍVEL = desfeito (vira a indevida `ajuste-do-revisor-revertido` com
+  `camada`); escondida sem a marca = a pessoa reescondeu, aceito; camada apagada
+  = nem um nem outro; camadas ilegíveis = sem desfecho. A arte do ajuste só do
+  revisor saiu da linha do tempo de texto — a efetiva dela, lida das camadas
+  cruas, mostrava o bloco escondido como texto apagado. O ramo que casava a
+  marca por FUNÇÃO saiu: zerar o texto de uma camada marcada é redação.
+- 🔴 **Teto que abandona a promessa não é teto** (C15-03). A consulta abandonada
+  seguia no servidor segurando a ÚNICA conexão do pooler (`connection_limit=1`),
+  e o cliente seguinte e a gravação do relatório esperavam por ela até o
+  `pool_timeout`. Hoje, antes de CADA consulta, o que resta do prazo do cliente
+  vira `SET LOCAL statement_timeout` numa transação própria: o Postgres cancela
+  (57014, `cancelamentoPorTempo`) e a conexão volta. E a gravação do
+  `InstagramWeeklyReport` vem ANTES da medida da copy; a medida entra depois,
+  num `update` best-effort do `metricsJson`. O teste usa um banco falso de UMA
+  conexão que honra o `statement_timeout`.
+- 🔴 **Uma transação READ ONLY para a carteira inteira fica ENVENENADA** (C15-04):
+  no Postgres, depois do primeiro erro tolerado (P2021 da `BrandVoice`, P2022 da
+  `Page.copyAutoral`) a transação só aceita rollback, e todo cliente seguinte
+  saía "erro na leitura" — exatamente a medida de partida planejada em produção
+  antes de a pilha chegar. Hoje o esquema é conferido antes (`information_schema`)
+  e cada cliente tem a SUA transação `READ ONLY` (`executarEmLeitura`, o mesmo
+  executor no cron e no script). O teste simula a transação abortada.
+- **Copy reproduzida herda o carimbo** (C15-05): "Gerar de novo" e os slides
+  irmãos do carrossel carimbavam a voz do momento da REPRODUÇÃO, inflando "voz
+  refletida" com copy antiga. `origemDoCarimbo` (o carimbo da origem, senão o
+  instante da escrita — o `escritaEm` que ela registrou ou o `createdAt`) e
+  `carimboDaGeracao` (o herdado vence o cálculo) moram em `voz-na-escrita.ts`,
+  com teste.
+- **O comentário e este arquivo diziam que a marca do PR 0 não estava na pilha**
+  (C15-06): estava, desde o rebase. Comentário e bullet atualizados.
