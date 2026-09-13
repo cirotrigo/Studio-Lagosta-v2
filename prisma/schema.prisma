@@ -250,9 +250,9 @@ model ItemDeLote {
   situacao      String   @default("reservado")
   generationId  String?
   jobId         String?
-  /// A revisão do item de plano sob a qual a linha foi reservada (ao nascer) e ligada (a
-  /// cada peça). Com lote, peça nova só sai quando ela é a revisão do item agora (C11-1);
-  /// nula (linha anterior à coluna, ou sem item de plano) conta como desconhecida.
+  /// A revisão do item de plano (`itemRevisao` do ver-plano) que a CHAMADA declarou ter lido
+  /// ao montar a spec — gravada ao nascer e a cada vínculo, nunca lida do servidor (C11-1a).
+  /// Nula: linha sem item de plano, ou anterior à coluna.
   planoRevisao  String?
   /// Quantas Generations este item já criou (a retomada depois de falha cria outra).
   tentativas    Int      @default(0)

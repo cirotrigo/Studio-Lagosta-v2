@@ -47,9 +47,10 @@ export interface EntradaDaReserva {
   /** O payload canônico (`payloadParaHash(spec)`) — vira o hash e fica guardado na linha. */
   payload: Record<string, unknown>
   /**
-   * A revisão do item de plano na hora de reservar, gravada na linha quando ela
-   * NASCE (pré-revisão C11-1) — é a revisão sob a qual o pedido chegou. Sem item
-   * de plano, ausente. A linha que já existia não é reescrita por ela.
+   * A revisão do item de plano que a CHAMADA declara ter lido ao montar a spec
+   * (o `itemRevisao` do `ver-plano`; pré-revisões C11-1 e C11-1a). Gravada na
+   * linha quando ela nasce e junto de cada vínculo — nunca lida do servidor,
+   * que não sabe de qual leitura a spec saiu. Sem item de plano, ausente.
    */
   planoRevisao?: string | null
   /** Trabalho FORA da transação, só quando é preciso criar (a pasta da semana, por exemplo). */
@@ -64,13 +65,8 @@ export interface EntradaDaReserva {
    * specs com `mesmoPedidoDoLote`, nunca cru (R03). `retomado` diz que a peça
    * que o item JÁ tinha foi refeita — inclusive quando esta linha acabou de
    * nascer e adotou a peça (R05).
-   *
-   * `revisaoDaLinha` é a revisão do item gravada na linha, lida sob a trava
-   * dela; o caminho do plano só produz quando ela é a do item agora (C11-1).
-   * `planoRevisao` devolvido é a revisão sob a qual a peça vale, e é gravado na
-   * linha junto do vínculo.
    */
-  criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null; revisaoDaLinha: string | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean; retomado?: boolean; planoRevisao?: string }>
+  criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean; retomado?: boolean }>
   /**
    * Cria só o job para uma Generation PROCESSING que ficou sem ele. Ausente,
    * a retomada cai em `criar` COM `recuperacao.falta === 'job'` (é o caso do
@@ -89,7 +85,7 @@ export interface ResultadoDaReserva {
   situacao: SituacaoDaPecaDoLote
 }
 
-const SELECAO = { id: true, hashDoPayload: true, payload: true, generationId: true, jobId: true, planoRevisao: true } as const
+const SELECAO = { id: true, hashDoPayload: true, payload: true, generationId: true, jobId: true } as const
 
 type LeitorDoVinculo = Pick<ClienteDaTransacao, 'generation' | 'generationJob'>
 
@@ -135,7 +131,7 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
 
   // 1. A reserva.
   let criadaAgora = false
-  let registro: { id: string; hashDoPayload: string; payload: unknown; generationId: string | null; jobId: string | null; planoRevisao: string | null } | null
+  let registro: { id: string; hashDoPayload: string; payload: unknown; generationId: string | null; jobId: string | null } | null
   try {
     registro = await db.itemDeLote.create({
       data: { projectId, loteId, itemId, hashDoPayload: hash, payload: payload as never, situacao: 'reservado', planoRevisao: entrada.planoRevisao ?? null },
@@ -182,28 +178,26 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
       let jobId: string
       let reaproveitado = false
       let retomado = false
-      let planoRevisao: string | undefined
       const recuperacao = recuperacaoDaDecisao(decisao, atual.generationId)
       if (recuperacao?.falta === 'job' && entrada.criarJob) {
         generationId = recuperacao.generationId
         jobId = await entrada.criarJob(tx, generationId)
       } else {
-        const criado = await entrada.criar(tx, { recuperacao, revisaoDaLinha: atual.planoRevisao ?? null })
+        const criado = await entrada.criar(tx, { recuperacao })
         generationId = criado.generationId
         jobId = criado.jobId
         reaproveitado = criado.reaproveitado === true
         retomado = criado.retomado === true
-        planoRevisao = criado.planoRevisao
       }
 
       const novaGeracao = generationId !== atual.generationId
       const ligado = await tx.itemDeLote.updateMany({
         where: { id: atual.id, generationId: atual.generationId },
         // Peça pronta reaproveitada sem job devolve jobId vazio: grava nulo, nunca ''.
-        // A revisão do item sob a qual a peça vale vai junto do vínculo (C11-1).
+        // A revisão declarada pela chamada que ligou a peça vai junto (C11-1a).
         data: {
           generationId, jobId: jobId || null, situacao: 'enfileirado',
-          ...(planoRevisao !== undefined ? { planoRevisao } : {}),
+          ...(entrada.planoRevisao != null ? { planoRevisao: entrada.planoRevisao } : {}),
           ...(novaGeracao && !reaproveitado ? { tentativas: { increment: 1 } } : {}),
         },
       })

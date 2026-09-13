@@ -229,10 +229,13 @@ async function main() {
     planos.push(plano.id)
     const itemDoPlano = plano.itens[0]
     const specDoItem = peca(6, { itemDePlanoId: itemDoPlano.id, planoId: plano.id, blocos: [{ papel: 'headline', linhas: ['Lote durável do plano'] }] })
+    // A revisão que o ver-plano devolveria para o item: peça de item de plano com lote exige (C11-1a).
+    const { revisaoDoItem } = await import('../src/lib/planos/revisao-do-item')
+    const itemRevisao = revisaoDoItem(itemDoPlano)
     const itensB = [
       { itemId: 'b-1', spec: peca(7) },
       // Revisão que não confere: o caminho do plano recusa DENTRO da transação, depois da reserva.
-      { itemId: 'b-2', spec: specDoItem, opcoes: { itemAtualizadoEm: new Date(0) } },
+      { itemId: 'b-2', spec: specDoItem, opcoes: { itemAtualizadoEm: new Date(0), itemRevisao } },
       { itemId: 'b-3', spec: peca(8) },
     ]
     const passadaComFalha = await leva(LOTE_B, itensB)
@@ -241,7 +244,7 @@ async function main() {
     const itemDepoisDaFalha = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true } })
     conferir('o item 2 ficou reservado SEM Generation, e o item de plano intocado (a transação voltou atrás)', linhaB2?.situacao === 'reservado' && linhaB2.generationId === null && itemDepoisDaFalha?.status === 'proposto' && itemDepoisDaFalha.generationId === null, JSON.stringify({ linha: linhaB2?.situacao, item: itemDepoisDaFalha }))
     // O item foi relido: a ficha de concorrência não entra no hash, então a repetição é o mesmo pedido.
-    const retomada = await leva(LOTE_B, itensB.map((i) => ({ ...i, opcoes: undefined })))
+    const retomada = await leva(LOTE_B, itensB.map((i) => ({ ...i, opcoes: i.itemId === 'b-2' ? { itemRevisao } : undefined })))
     conferir('repetição: reaproveitado, retomado, reaproveitado', JSON.stringify(desfechos(retomada)) === JSON.stringify(['reaproveitado', 'retomado', 'reaproveitado']), JSON.stringify(desfechos(retomada)))
     const linhasB = await linhasDoLote(LOTE_B)
     const idsB = linhasB.map((l) => l.generationId).filter((g): g is string => !!g)

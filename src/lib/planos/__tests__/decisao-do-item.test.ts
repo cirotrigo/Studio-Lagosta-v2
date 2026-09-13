@@ -1,6 +1,7 @@
 /**
  * A tabela de decisão do item de plano (revisão final R05–R06 do PR 11, com a
- * revisão da linha do lote da pré-revisão C11-1), combinação a combinação.
+ * revisão declarada pela chamada das pré-revisões C11-1 e C11-1a…1b),
+ * combinação a combinação.
  *
  * `TABELA` abaixo é a forma ESCRITA da decisão — linhas em ordem, a primeira
  * que casa vence, colunas ausentes valem qualquer valor —, a mesma do
@@ -18,10 +19,10 @@ import {
   CONFRONTOS_DO_PROJETO,
   ESTADOS_DA_PECA_DO_ITEM,
   FICHAS_DO_ITEM,
-  REVISOES_DA_LINHA,
+  REVISOES_DA_CHAMADA,
   classificarPecaDoItem,
   confrontarComOGravado,
-  confrontarRevisaoDaLinha,
+  confrontarRevisaoDaChamada,
   decidirNoItemDoPlano,
   type Confronto,
   type ConfrontoDoProjeto,
@@ -29,7 +30,7 @@ import {
   type EntradaDaDecisaoDoItem,
   type EstadoDaPecaDoItem,
   type FichaDoItem,
-  type RevisaoDaLinha,
+  type RevisaoDaChamada,
 } from '../decisao-do-item'
 
 const EXECUTAVEL: StatusDoItem[] = ['proposto', 'editado', 'aprovado', 'erro']
@@ -39,7 +40,7 @@ const FINAL: StatusDoItem[] = ['pronto', 'agendado']
 const reaproveitar: DecisaoDoItem = { acao: 'reaproveitar' }
 const refazerJob: DecisaoDoItem = { acao: 'refazer-job' }
 const novaPeca: DecisaoDoItem = { acao: 'nova-peca' }
-const recusar = (motivo: 'reprovado' | 'ficha' | 'avancou' | 'revisado'): DecisaoDoItem => ({ acao: 'recusar', motivo })
+const recusar = (motivo: 'reprovado' | 'ficha' | 'avancou' | 'revisado' | 'chamada-vencida'): DecisaoDoItem => ({ acao: 'recusar', motivo })
 
 interface Linha {
   n: string
@@ -49,7 +50,7 @@ interface Linha {
   pedido?: Confronto[]
   projeto?: ConfrontoDoProjeto[]
   revisao?: Confronto[]
-  linha?: RevisaoDaLinha[]
+  chamada?: RevisaoDaChamada[]
   saida: DecisaoDoItem
 }
 
@@ -62,22 +63,18 @@ const TABELA: Linha[] = [
   { n: '6a', status: EM_VOO, pedido: ['diferente'], saida: recusar('revisado') },
   { n: '6b', status: EM_VOO, projeto: ['diverge'], saida: recusar('revisado') },
   { n: '7', status: EM_VOO, revisao: ['diferente'], saida: recusar('revisado') },
-  // C11-1: com lote, produzir exige a linha pedida sob a revisão do item agora.
-  { n: '7b', status: EM_VOO, linha: ['diferente', 'desconhecido'], saida: recusar('revisado') },
+  // C11-1a: com lote, produzir exige a chamada montada a partir da revisão do item agora.
+  { n: '7b', status: EM_VOO, chamada: ['diferente', 'desconhecido'], saida: recusar('chamada-vencida') },
   { n: '8', status: EM_VOO, peca: ['sem-job'], saida: refazerJob },
   { n: '9', status: EM_VOO, saida: novaPeca },
-  { n: '9b', status: EXECUTAVEL, linha: ['diferente', 'desconhecido'], saida: recusar('revisado') },
-  { n: '10', status: EXECUTAVEL, peca: ['nenhuma'], saida: novaPeca },
-  { n: '11', status: EXECUTAVEL, linha: ['sem-lote'], saida: novaPeca },
-  { n: '12a', status: EXECUTAVEL, pedido: ['diferente'], saida: novaPeca },
-  { n: '12b', status: EXECUTAVEL, projeto: ['diverge'], saida: novaPeca },
-  { n: '13', status: EXECUTAVEL, revisao: ['igual'], saida: novaPeca },
-  { n: '14', status: EXECUTAVEL, saida: recusar('revisado') },
+  { n: '9b', status: EXECUTAVEL, chamada: ['diferente', 'desconhecido'], saida: recusar('chamada-vencida') },
+  // C11-1b: as antigas 10 a 14 — sem lote, ou com a chamada na revisão de agora, a peça nova é o pedido certo.
+  { n: '10', status: EXECUTAVEL, saida: novaPeca },
 ]
 
 const casa = <T>(permitidos: T[] | undefined, valor: T) => !permitidos || permitidos.includes(valor)
 const linhaDa = (e: EntradaDaDecisaoDoItem) =>
-  TABELA.find((l) => casa(l.status, e.status) && casa(l.ficha, e.ficha) && casa(l.peca, e.peca) && casa(l.pedido, e.pedido) && casa(l.projeto, e.projeto) && casa(l.revisao, e.revisao) && casa(l.linha, e.linha))
+  TABELA.find((l) => casa(l.status, e.status) && casa(l.ficha, e.ficha) && casa(l.peca, e.peca) && casa(l.pedido, e.pedido) && casa(l.projeto, e.projeto) && casa(l.revisao, e.revisao) && casa(l.chamada, e.chamada))
 
 function* todasAsCombinacoes(): Generator<EntradaDaDecisaoDoItem> {
   for (const status of STATUS_DO_ITEM)
@@ -86,7 +83,7 @@ function* todasAsCombinacoes(): Generator<EntradaDaDecisaoDoItem> {
         for (const pedido of CONFRONTOS)
           for (const projeto of CONFRONTOS_DO_PROJETO)
             for (const revisao of CONFRONTOS)
-              for (const linha of REVISOES_DA_LINHA) yield { status, ficha, peca, pedido, projeto, revisao, linha }
+              for (const chamada of REVISOES_DA_CHAMADA) yield { status, ficha, peca, pedido, projeto, revisao, chamada }
 }
 
 describe('a tabela de decisão do item de plano', () => {
@@ -116,12 +113,12 @@ describe('a tabela de decisão do item de plano', () => {
     expect(TABELA.map((l) => l.n).filter((n) => !usadas.has(n))).toEqual([])
   })
 
-  it('invariantes das saídas: peça nova só onde o item tem caminho até na-fila; refazer o job só sem job; reaproveitar só peça viva ou pronta; com lote, produzir só com a linha na revisão do item; nada se produz de item reprovado, pronto ou agendado', () => {
+  it('invariantes das saídas: peça nova só onde o item tem caminho até na-fila; refazer o job só sem job; reaproveitar só peça viva ou pronta; com lote, produzir só com a chamada na revisão do item; nada se produz de item reprovado, pronto ou agendado', () => {
     for (const e of todasAsCombinacoes()) {
       const d = decidirNoItemDoPlano(e)
       if (d.acao === 'nova-peca') expect(caminhoAte(e.status, 'na-fila')).not.toBeNull()
       if (d.acao === 'nova-peca' || d.acao === 'refazer-job') expect([...EXECUTAVEL, ...EM_VOO]).toContain(e.status)
-      if (d.acao === 'nova-peca' || d.acao === 'refazer-job') expect(['sem-lote', 'igual']).toContain(e.linha)
+      if (d.acao === 'nova-peca' || d.acao === 'refazer-job') expect(['sem-lote', 'igual']).toContain(e.chamada)
       if (d.acao === 'refazer-job') expect(e.peca).toBe('sem-job')
       if (d.acao === 'reaproveitar') {
         expect(['viva', 'pronta']).toContain(e.peca)
@@ -130,51 +127,51 @@ describe('a tabela de decisão do item de plano', () => {
     }
   })
 
-  it('os dois cenários da revisão final na tabela: R05 retoma (refaz o job) e R06 recusa, e as linhas vizinhas continuam', () => {
-    const base: EntradaDaDecisaoDoItem = { status: 'na-fila', ficha: 'ausente', peca: 'sem-job', pedido: 'igual', projeto: 'confere', revisao: 'igual', linha: 'igual' }
+  it('os dois cenários da revisão final na tabela: R05 retoma (refaz o job); R06 — a chamada ORIGINAL repetida depois da edição — recusa pela revisão da chamada, e a chamada na revisão atual produz', () => {
+    const base: EntradaDaDecisaoDoItem = { status: 'na-fila', ficha: 'ausente', peca: 'sem-job', pedido: 'igual', projeto: 'confere', revisao: 'igual', chamada: 'igual' }
     expect(decidirNoItemDoPlano(base)).toEqual(refazerJob) // R05, com a linha fresca ou ligada — o vínculo não é entrada
-    expect(decidirNoItemDoPlano({ ...base, linha: 'sem-lote' })).toEqual(refazerJob)
-    const r06: EntradaDaDecisaoDoItem = { status: 'editado', ficha: 'ausente', peca: 'falhou', pedido: 'igual', projeto: 'confere', revisao: 'diferente', linha: 'igual' }
-    expect(decidirNoItemDoPlano(r06)).toEqual(recusar('revisado'))
-    expect(decidirNoItemDoPlano({ ...r06, revisao: 'desconhecido' })).toEqual(recusar('revisado'))
-    expect(decidirNoItemDoPlano({ ...r06, status: 'erro', revisao: 'igual' })).toEqual(novaPeca) // a retomada que continua
-    expect(decidirNoItemDoPlano({ ...r06, linha: 'sem-lote' })).toEqual(novaPeca) // a bancada monta a spec do item atual
-    expect(decidirNoItemDoPlano({ ...r06, pedido: 'diferente' })).toEqual(novaPeca) // outro pedido sob outra chave, pedida na revisão de agora
-    expect(decidirNoItemDoPlano({ ...r06, revisao: 'igual', linha: 'diferente' })).toEqual(recusar('revisado')) // e a linha antiga, mesmo com a peça na revisão de agora
+    expect(decidirNoItemDoPlano({ ...base, chamada: 'sem-lote' })).toEqual(refazerJob)
+    const r06: EntradaDaDecisaoDoItem = { status: 'editado', ficha: 'ausente', peca: 'falhou', pedido: 'igual', projeto: 'confere', revisao: 'diferente', chamada: 'diferente' }
+    expect(decidirNoItemDoPlano(r06)).toEqual(recusar('chamada-vencida'))
+    expect(decidirNoItemDoPlano({ ...r06, chamada: 'desconhecido' })).toEqual(recusar('chamada-vencida'))
+    expect(decidirNoItemDoPlano({ ...r06, status: 'erro', revisao: 'igual', chamada: 'igual' })).toEqual(novaPeca) // a retomada que continua
+    expect(decidirNoItemDoPlano({ ...r06, chamada: 'sem-lote' })).toEqual(novaPeca) // a bancada monta a spec do item atual
+    expect(decidirNoItemDoPlano({ ...r06, chamada: 'igual' })).toEqual(novaPeca) // C11-1b: relida na revisão de agora — a antiga linha 14 recusava
+    expect(decidirNoItemDoPlano({ ...r06, pedido: 'diferente', chamada: 'igual' })).toEqual(novaPeca) // outro pedido, montado da revisão de agora
   })
 
-  it('C11-1 na tabela: com lote, peça nova e job novo exigem a linha pedida sob a revisão do item agora; reaproveitar não depende dela', () => {
-    // A leva vencida repetida: a peça ATUAL do item é de revisão mais nova (falhou,
-    // ou ficou pronta e foi reprovada), o pedido do lote difere dela, e a linha foi
-    // pedida sob a revisão antiga. Antes: linha 12, peça nova com a copy antiga.
-    const vencida: EntradaDaDecisaoDoItem = { status: 'erro', ficha: 'ausente', peca: 'falhou', pedido: 'diferente', projeto: 'confere', revisao: 'igual', linha: 'diferente' }
-    expect(decidirNoItemDoPlano(vencida)).toEqual(recusar('revisado'))
-    expect(decidirNoItemDoPlano({ ...vencida, revisao: 'diferente' })).toEqual(recusar('revisado')) // editado de novo depois de G2
-    expect(decidirNoItemDoPlano({ ...vencida, status: 'aprovado', peca: 'pronta' })).toEqual(recusar('revisado')) // G2 pronta, reprovada e liberada
-    expect(decidirNoItemDoPlano({ ...vencida, linha: 'desconhecido' })).toEqual(recusar('revisado')) // linha sem revisão gravada nunca vale igual
-    expect(decidirNoItemDoPlano({ ...vencida, linha: 'igual' })).toEqual(novaPeca) // o controle: a chave pedida DEPOIS da edição
-    // A reserva órfã de um item editado depois dela: sem peça, só a linha sabe.
-    const orfa: EntradaDaDecisaoDoItem = { status: 'editado', ficha: 'ausente', peca: 'nenhuma', pedido: 'desconhecido', projeto: 'desconhecido', revisao: 'desconhecido', linha: 'diferente' }
-    expect(decidirNoItemDoPlano(orfa)).toEqual(recusar('revisado'))
-    expect(decidirNoItemDoPlano({ ...orfa, linha: 'igual' })).toEqual(novaPeca)
-    // Em voo: a leva vencida não refaz o job nem a peça de outra linha.
-    const emVoo: EntradaDaDecisaoDoItem = { status: 'na-fila', ficha: 'ausente', peca: 'sem-job', pedido: 'igual', projeto: 'confere', revisao: 'igual', linha: 'diferente' }
-    expect(decidirNoItemDoPlano(emVoo)).toEqual(recusar('revisado'))
-    expect(decidirNoItemDoPlano({ ...emVoo, peca: 'falhou' })).toEqual(recusar('revisado'))
-    expect(decidirNoItemDoPlano({ ...emVoo, linha: 'igual' })).toEqual(refazerJob)
+  it('C11-1 e C11-1a na tabela: com lote, peça nova e job novo exigem a chamada montada a partir da revisão do item agora; reaproveitar não depende dela', () => {
+    // A leva vencida repetida (C11-1, e o cenário B do C11-1a): a peça ATUAL do item é de
+    // revisão mais nova, o pedido do lote difere dela, e a chamada é a da leitura antiga.
+    const vencida: EntradaDaDecisaoDoItem = { status: 'erro', ficha: 'ausente', peca: 'falhou', pedido: 'diferente', projeto: 'confere', revisao: 'igual', chamada: 'diferente' }
+    expect(decidirNoItemDoPlano(vencida)).toEqual(recusar('chamada-vencida'))
+    expect(decidirNoItemDoPlano({ ...vencida, revisao: 'diferente' })).toEqual(recusar('chamada-vencida')) // editado de novo depois de G2
+    expect(decidirNoItemDoPlano({ ...vencida, status: 'aprovado', peca: 'pronta' })).toEqual(recusar('chamada-vencida')) // G2 pronta, reprovada e liberada
+    expect(decidirNoItemDoPlano({ ...vencida, chamada: 'desconhecido' })).toEqual(recusar('chamada-vencida')) // chamada sem revisão nunca vale igual
+    expect(decidirNoItemDoPlano({ ...vencida, chamada: 'igual' })).toEqual(novaPeca) // o controle: montada DEPOIS da edição
+    // Cenário A do C11-1a: sem peça ainda, a edição chegou antes da chamada — só a chamada sabe.
+    const semPeca: EntradaDaDecisaoDoItem = { status: 'editado', ficha: 'ausente', peca: 'nenhuma', pedido: 'desconhecido', projeto: 'desconhecido', revisao: 'desconhecido', chamada: 'diferente' }
+    expect(decidirNoItemDoPlano(semPeca)).toEqual(recusar('chamada-vencida'))
+    expect(decidirNoItemDoPlano({ ...semPeca, chamada: 'igual' })).toEqual(novaPeca)
+    // Em voo: a chamada vencida não refaz o job nem a peça.
+    const emVoo: EntradaDaDecisaoDoItem = { status: 'na-fila', ficha: 'ausente', peca: 'sem-job', pedido: 'igual', projeto: 'confere', revisao: 'igual', chamada: 'diferente' }
+    expect(decidirNoItemDoPlano(emVoo)).toEqual(recusar('chamada-vencida'))
+    expect(decidirNoItemDoPlano({ ...emVoo, peca: 'falhou' })).toEqual(recusar('chamada-vencida'))
+    expect(decidirNoItemDoPlano({ ...emVoo, chamada: 'igual' })).toEqual(refazerJob)
     // Reaproveitar não produz nada: a peça devolvida é o pedido e a revisão de agora.
-    expect(decidirNoItemDoPlano({ status: 'aprovado', ficha: 'ausente', peca: 'pronta', pedido: 'igual', projeto: 'confere', revisao: 'igual', linha: 'diferente' })).toEqual(reaproveitar)
+    expect(decidirNoItemDoPlano({ status: 'aprovado', ficha: 'ausente', peca: 'pronta', pedido: 'igual', projeto: 'confere', revisao: 'igual', chamada: 'diferente' })).toEqual(reaproveitar)
   })
 })
 
 describe('as entradas da tabela', () => {
-  it('confrontarRevisaoDaLinha: sem lote não há linha; sem revisão gravada é desconhecido; igual só com a mesma revisão', () => {
-    expect(confrontarRevisaoDaLinha({ comLote: false, revisaoDaLinha: 'r1', revisao: 'r1' })).toBe('sem-lote')
-    expect(confrontarRevisaoDaLinha({ comLote: false, revisaoDaLinha: null, revisao: 'r1' })).toBe('sem-lote')
-    expect(confrontarRevisaoDaLinha({ comLote: true, revisaoDaLinha: 'r1', revisao: 'r1' })).toBe('igual')
-    expect(confrontarRevisaoDaLinha({ comLote: true, revisaoDaLinha: 'r1', revisao: 'r2' })).toBe('diferente')
-    expect(confrontarRevisaoDaLinha({ comLote: true, revisaoDaLinha: null, revisao: 'r1' })).toBe('desconhecido')
-    expect(confrontarRevisaoDaLinha({ comLote: true, revisaoDaLinha: undefined, revisao: 'r1' })).toBe('desconhecido')
+  it('confrontarRevisaoDaChamada: sem lote não há declaração; sem revisão (ou vazia) é desconhecido; igual só com a mesma revisão', () => {
+    expect(confrontarRevisaoDaChamada({ comLote: false, revisaoDaChamada: 'r1', revisao: 'r1' })).toBe('sem-lote')
+    expect(confrontarRevisaoDaChamada({ comLote: false, revisaoDaChamada: null, revisao: 'r1' })).toBe('sem-lote')
+    expect(confrontarRevisaoDaChamada({ comLote: true, revisaoDaChamada: 'r1', revisao: 'r1' })).toBe('igual')
+    expect(confrontarRevisaoDaChamada({ comLote: true, revisaoDaChamada: 'r1', revisao: 'r2' })).toBe('diferente')
+    expect(confrontarRevisaoDaChamada({ comLote: true, revisaoDaChamada: null, revisao: 'r1' })).toBe('desconhecido')
+    expect(confrontarRevisaoDaChamada({ comLote: true, revisaoDaChamada: undefined, revisao: 'r1' })).toBe('desconhecido')
+    expect(confrontarRevisaoDaChamada({ comLote: true, revisaoDaChamada: '', revisao: '' })).toBe('desconhecido')
   })
 
   it('classificarPecaDoItem', () => {

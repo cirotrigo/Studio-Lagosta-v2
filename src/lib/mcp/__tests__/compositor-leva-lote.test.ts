@@ -172,3 +172,62 @@ describe('compor-leva: a identidade de lote na porta', () => {
     })
   })
 })
+
+describe('compor-leva: a revisão do item de plano (pré-revisão C11-1a…1b)', () => {
+  const REV = 'rev1:0123456789abcdef0123456789abcdef'
+  const doPlano = (itemId: string | undefined, texto: string, itemRevisao?: string) => ({
+    ...item(itemId, texto),
+    itemDePlanoId: `item-${texto}`,
+    planoId: 'plano-1',
+    ...(itemRevisao !== undefined ? { itemRevisao } : {}),
+  })
+
+  it('o schema aceita itemRevisao até 200 caracteres no item e recusa vazia', () => {
+    expect(leva.schema.safeParse({ projectId: 8, loteId: 'l', itens: [doPlano('a', 'A', REV)] }).success).toBe(true)
+    expect(leva.schema.safeParse({ projectId: 8, loteId: 'l', itens: [doPlano('a', 'A', 'x'.repeat(201))] }).success).toBe(false)
+    expect(leva.schema.safeParse({ projectId: 8, loteId: 'l', itens: [doPlano('a', 'A', '')] }).success).toBe(false)
+  })
+
+  it('com loteId, a itemRevisao do item de plano vai para enfileirarPeca — nunca para a spec, que é o que entra no hash', async () => {
+    const r = await chamar({ loteId: 'semana', itens: [doPlano('seg', 'A', REV), item('ter', 'B')] })
+    const [spec0, opcoes0] = mocks.enfileirarPeca.mock.calls[0]
+    expect(opcoes0).toMatchObject({ lote: { loteId: 'semana', itemId: 'seg' }, itemRevisao: REV })
+    expect(spec0).toMatchObject({ itemDePlanoId: 'item-A', planoId: 'plano-1' })
+    expect(JSON.stringify(spec0)).not.toContain(REV)
+    expect(mocks.enfileirarPeca.mock.calls[1][1]).not.toHaveProperty('itemRevisao')
+    expect(r.falhas).toEqual([])
+  })
+
+  it('item de plano SEM itemRevisao (ou só com espaços) numa leva com loteId: erro DESTE item em falhas, sem chamar a fila para ele; os outros seguem', async () => {
+    const r = await chamar({ loteId: 'semana', itens: [item('abre', 'A'), doPlano('seg', 'B'), doPlano('ter', 'C', '   '), doPlano('qua', 'D', REV)] })
+    expect(mocks.enfileirarPeca.mock.calls.map((c) => c[1].lote.itemId)).toEqual(['abre', 'qua'])
+    expect(r.falhas.map((f) => [f.indice, (f as { codigo?: string }).codigo])).toEqual([
+      [1, 'ITEM_REVISAO_OBRIGATORIA'],
+      [2, 'ITEM_REVISAO_OBRIGATORIA'],
+    ])
+    expect(r.falhas[0].erro).toContain('ver-plano')
+    expect(r.pecas.map((p) => p.itemId)).toEqual(['abre', 'qua'])
+  })
+
+  it('sem loteId a peça de item de plano segue como antes (sem revisão), e itemRevisao sem loteId é recusada antes de enfileirar', async () => {
+    await chamar({ itens: [doPlano(undefined, 'A')] })
+    expect(mocks.enfileirarPeca).toHaveBeenCalledTimes(1)
+    expect(mocks.enfileirarPeca.mock.calls[0][1]).toEqual({ decididoPor: 'u1', autor: 'u1', canal: 'claude-ai' })
+    mocks.enfileirarPeca.mockClear()
+    const erro = await recusa({ itens: [doPlano(undefined, 'A', REV)] })
+    expect(erro.code).toBe('LOTE_IDENTIDADE_INVALIDA')
+    expect((erro.details?.problemas as string[]).join(' ')).toContain('itemRevisao sem loteId')
+    expect(mocks.enfileirarPeca).not.toHaveBeenCalled()
+  })
+
+  it('a recusa por chamada vencida volta em falhas com o código, o motivo e a mensagem de saída, e a nota diz o caminho', async () => {
+    mocks.enfileirarPeca.mockImplementationOnce(async () => {
+      throw new CreativeError('ITEM_EXECUCAO_CONCORRENTE', 'O item mudou depois da leitura que montou esta peça: releia com ver-plano e mande um itemId NOVO.', 409, { motivo: 'chamada-vencida' })
+    })
+    const r = await chamar({ loteId: 'semana', itens: [doPlano('seg', 'A', REV), item('ter', 'B')] })
+    expect(r.falhas).toEqual([{ indice: 0, erro: 'O item mudou depois da leitura que montou esta peça: releia com ver-plano e mande um itemId NOVO.', codigo: 'ITEM_EXECUCAO_CONCORRENTE', motivo: 'chamada-vencida' }])
+    expect(r.pecas.map((p) => p.itemId)).toEqual(['ter'])
+    expect(r.nota).toContain('chamada vencida')
+    expect(r.nota).toContain('ver-plano')
+  })
+})

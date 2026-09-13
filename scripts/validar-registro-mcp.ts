@@ -1870,6 +1870,12 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "maxLength": 120,
               "description": "Identidade ESTÁVEL desta peça na leva (ex.: \"seg-19h-happy\"). Obrigatório quando loteId vem; único na chamada."
             },
+            "itemRevisao": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "A revisão do item de plano que o ver-plano devolveu para ele (itemRevisao), lida ANTES de montar a copy desta peça. Obrigatória quando o item traz itemDePlanoId e a leva tem loteId: se o item mudou depois dessa leitura, a peça é recusada em vez de sair com o conteúdo antigo."
+            },
             "formato": {
               "type": "string",
               "enum": [

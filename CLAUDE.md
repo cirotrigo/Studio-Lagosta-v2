@@ -9940,6 +9940,12 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
 
 **Da pré-revisão do HEAD 50cb40b4 (BLOQUEADO, C11-1, 12/09/2026):**
 
+> ⚠️ **Superado em parte pelo bloco C11-1a…1b logo abaixo**: a revisão gravada
+> na linha deixou de ser lida do servidor e vem da CHAMADA (`itemRevisao`), a
+> entrada `linha` virou `chamada`, as linhas 10 a 14 viraram uma só, a reserva
+> não lê mais a coluna e a linha sem revisão não é mais recusada. O diagnóstico
+> do C11-1 e a ordem job → Generation continuam valendo.
+
 - 🔴 **C11-1 — a leva VENCIDA repetida saía como peça nova com a copy antiga,
   pela linha 12.** Cenário real, sem corrida: `compor-leva` com o lote L produz
   G1 para um item de plano (copy v1); G1 falha; a pessoa edita a copy (v2); sai
@@ -9952,7 +9958,8 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   atual não distingue o lote mais NOVO que ela (chave pedida depois da edição:
   legítimo) do lote mais VELHO (a leva vencida). Não era o resíduo declarado:
   a linha estava ligada.
-- **A revisão do item mora na LINHA do lote**: `ItemDeLote.planoRevisao`,
+- ~~**A revisão do item mora na LINHA do lote**~~ (a origem do valor foi
+  superada em C11-1a — vem da chamada, não do servidor): `ItemDeLote.planoRevisao`,
   migration aditiva `20260913120000_lote_revisao_do_item`
   (`ADD COLUMN IF NOT EXISTS`; a migration do PR 11 não foi editada, por causa do
   checksum no dev). Gravada quando a linha NASCE — `reservarItemDeLote` recebe
@@ -10035,3 +10042,120 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
 - ⚠️ **A migration nova vai junto do código**: o `SELECAO` da reserva lê
   `planoRevisao` em toda chamada com lote. No dev, aplicar depois da do PR 11;
   em produção, as duas juntas.
+
+**Da pré-revisão do commit 2c1dfba8 (BLOQUEADO, C11-1a…1b, 12/09/2026):**
+
+- 🔴 **C11-1a — a revisão gravada na linha era a do SERVIDOR na hora da
+  reserva, não a de quem montou a spec.** `fila.ts` lia o item ao reservar, e a
+  janela entre o chat ler o plano e a `compor-leva` chegar é de MINUTOS (a leva
+  inteira é montada no chat enquanto a equipe mexe na bancada).
+  - **Cenário A**: o chat lê o item v1, a equipe edita para v2, a chamada chega
+    com a spec v1 — a linha nascia com v2, a tabela via `igual` e a linha 10
+    produzia a peça v1 carimbada v2.
+  - **Cenário B**: essa peça falha, a bancada faz a v2 que também falha ou é
+    reprovada, e o chat repete a chamada original — `igual` e pedido diferente
+    da peça atual → linha 12 → outra peça v1: o C11-1 de volta.
+  - **Variante sem concorrência nenhuma**: a primeira `compor-leva` acaba antes
+    de reservar o item, a equipe edita, e a repetição cria a linha já com a
+    revisão nova.
+  - Os testes do bloco anterior criavam a linha sempre ANTES da edição — por
+    isso não viam.
+- **A revisão vem de quem montou a spec.** `revisaoDoItem` foi para o módulo
+  PURO `src/lib/planos/revisao-do-item.ts` e virou token curto (`rev1:<32 hex>`,
+  sha256 do conteúdo canônico). `ver-plano` — e toda tool que devolve item por
+  `itemParaChat` (`criar-plano`, `propor-semana`, `editar-item-do-plano`) — traz
+  `itemRevisao` por item. `compor-leva` aceita `itemRevisao` por item e a EXIGE
+  quando o item tem `itemDePlanoId` e a leva tem `loteId`: a falta é erro DESTE
+  item (`falhas`, `codigo: ITEM_REVISAO_OBRIGATORIA`), e os outros seguem;
+  `itemRevisao` sem `loteId` é recusada com a identidade (400, como `itemId`).
+  `enfileirarPeca` recebe `opcoes.itemRevisao` e, com lote e item de plano,
+  recusa sem ela ANTES de reservar (400, nada escrito).
+- 🔴 **A linha grava o token DA CHAMADA** — ao nascer e a cada vínculo —, nunca
+  uma leitura do servidor. A tabela compara o token da chamada com a revisão do
+  item sob a trava; o valor gravado na linha é registro e não entra na decisão
+  (a linha antiga sem revisão não trava mais nada). A leitura extra por item
+  (`revisaoDoItemParaAReserva`) saiu.
+- 🔴 **O token só cobre o que vira spec** (C11-1b): a copy (a lista e o contrato
+  sem `origem` e `revisoes`), a foto e as candidatas, o formato, o horário e o
+  tema. Legenda, via, direção, ajuste da foto, referências, cliente citado,
+  escopo, campanha, status, vínculos e `updatedAt` ficam de fora — mudar só a
+  legenda não recusa mais a retomada, e `updatedAt` nunca serviria (muda nas
+  transições). É o MESMO valor que o caminho do plano grava no job e na
+  Generation (`planoRevisao`): peças do dev gravadas no formato velho contam como
+  revisão diferente. Mudou o conjunto de campos, suba a versão do token.
+  🔴 **Isto estreita, de propósito, a revisão de 09/09**
+  (`docs/RETOMADA-PLANO-SEMANAL-2026-09-09.md`, commit 6892e362), que cobria
+  também legenda, via, modelo, direção, referências, ajuste, cliente, escopo e
+  campanha, e tinha o teste "mudança de campanha exige outra revisão mesmo com a
+  mesma spec". Campanha e escopo são lidos do ITEM na hora de agendar, não da
+  peça: a peça reaproveitada é agendada com a campanha de agora. O teste de
+  `fila.test.ts` passou a provar a regra nova — só a campanha reaproveita a peça
+  pronta; o tema (que vira spec) pede peça nova. O caminho de composição só roda
+  para item de via `compor`, por isso via, modelo, direção, referências, ajuste
+  e cliente (que mandam nas vias de IA e de modelo) também não entram.
+- **A tabela** (entrada `chamada` no lugar de `linha`, com os mesmos quatro
+  valores). 7b e 9b recusam com o motivo NOVO `chamada-vencida`, e as antigas
+  10 a 14 viraram UMA linha. A linha 14 recusava o pedido IGUAL ao da peça de
+  outra revisão mesmo quando quem chamava tinha relido o item — era o travamento
+  do C11-1b —, e com a declaração da chamada ela não protegia mais nada.
+
+  | # | condição | saída |
+  |---|---|---|
+  | 1 | status reprovado | recusar |
+  | 2 | EXECUTÁVEL e ficha diverge | recusar |
+  | 3 | peça viva ou pronta, pedido igual, projeto não diverge, revisão igual | reaproveitar |
+  | 4 | FINAL | recusar |
+  | 5 | EM VOO e peça nenhuma, viva ou pronta | recusar |
+  | 6 | EM VOO e (pedido diferente ou projeto diverge) | recusar (`revisado`) |
+  | 7 | EM VOO e revisão da peça diferente | recusar (`revisado`) |
+  | **7b** | EM VOO e chamada diferente ou desconhecida | recusar (`chamada-vencida`) |
+  | 8 | EM VOO e peça sem job | refazer só o job |
+  | 9 | EM VOO (peça sumiu, falhou, job terminal, pronta sem arquivo) | peça nova |
+  | **9b** | EXECUTÁVEL e chamada diferente ou desconhecida | recusar (`chamada-vencida`) |
+  | **10** | EXECUTÁVEL (sem lote, ou com a chamada na revisão de agora) | peça nova |
+
+  Continuam 23.328 combinações (9 × 3 × 8 × 3 × 3 × 3 × 4), sem linha morta.
+  Oráculo da tabela de 2c1dfba8 contra esta: **4.320 saídas mudam — 448 de
+  recusa para peça nova** (a antiga linha 14, com a chamada igual) **e 3.872 só
+  no motivo** (`revisado` → `chamada-vencida`, com a chamada diferente ou
+  desconhecida). Nenhuma recusa nova.
+- **A recusa diz como sair** (C11-1b). `chamada-vencida` manda reler o item com
+  ver-plano, remontar a peça com o conteúdo atual e mandar com um itemId NOVO e
+  a itemRevisao nova, e avisa que repetir a mesma chamada é recusado de novo;
+  `revisado` (item em voo com peça de outro pedido) manda acompanhar e produzir
+  de novo quando ele sair da fila. Em `compor-leva` a falha traz `codigo` e
+  `motivo`, e a nota repete o caminho. O caminho indicado PRODUZ — inclusive com
+  o pedido igual ao da peça antiga —, e a mesma chave relida com o token novo e o
+  MESMO pedido também segue.
+- **Reaproveitar continua sem depender da chamada**: a chamada vencida adota a
+  peça viva que já é o pedido e a revisão de agora (o vínculo grava o token
+  dela); quando essa peça falha, a mesma chamada vencida é recusada.
+- **Instruções e registro**: `instrucoes.ts` (leva inteira e etapa 3) manda ler o
+  ver-plano ANTES de montar a copy e mandar a itemRevisao; as descrições de
+  `ver-plano` e `compor-leva` dizem o mesmo; o fixture de `compor-leva` em
+  `validar-registro-mcp.ts` ganhou `itemRevisao` (mudança deliberada). A prova
+  do dev (`validar-lote-duravel.ts`) passa a mandar o token (não rodada).
+- **Provas**: em `fila-lote.test.ts`, pelo caminho real com travas por linha —
+  cenário A (a linha nasce com o token da chamada e nenhuma peça sai; relida, a
+  peça v2 com outro itemId sai), cenário B com o estado que a revisão do servidor
+  deixava (falha, e reprovação por `regenerarItem`), a variante sem concorrência
+  (leva que acaba antes do item), token ausente e só com espaços, a órfã, o
+  C11-1b (mensagem, a mesma chamada de novo, itemId novo com o pedido igual), só
+  a legenda editada, a linha sem revisão e o vínculo com o token declarado.
+  `revisao-do-item.test.ts` (campos dentro e fora), `ver-plano-revisao.test.ts`
+  (o token do `itemParaChat` é o da trava) e o handler em
+  `compositor-leva-lote.test.ts`.
+- ⚠️ **Deploy** (nota da revisão, nada mudado): o `vercel-build` roda
+  `prisma migrate deploy || echo ATENCAO…` e SEGUE o build quando a migration
+  falha. Sem as migrations, toda `compor-leva` com `loteId` quebra (sem a tabela
+  do PR 11 não há reserva; sem a coluna, a reserva não grava `planoRevisao`) —
+  as sem lote seguem normais. Aplicar `20260912210000_lote_de_composicao` e
+  `20260913120000_lote_revisao_do_item` e CONFERIR o log do build antes de expor
+  lotes.
+- ⚠️ **O que a declaração não segura**: a chamada que manda o token NOVO com a
+  spec montada da leitura VELHA (relê o plano só para pegar o token) produz a
+  copy antiga — o contrato é que o token é o da leitura de onde a copy saiu.
+  `compor-leva` SEM `loteId` com `itemDePlanoId` não confere nada (é o cenário A
+  sem lote, pré-existente: sem identidade, a chamada vale como pedido novo); a
+  bancada e o `executar-plano` montam a spec do item na hora. `comporItemAgora`
+  segue pré-existente.

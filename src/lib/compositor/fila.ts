@@ -60,6 +60,13 @@ export interface OpcoesDeEnfileirar {
    * comportamento de sempre.
    */
   lote?: { loteId: string; itemId: string } | null
+  /**
+   * A revisão do item de plano (`itemRevisao` do `ver-plano`) que quem montou a
+   * spec declara ter lido — OBRIGATÓRIA com `lote` e `itemDePlanoId` (pré-revisão
+   * C11-1a). Com lote, o caminho do plano só produz quando ela é a revisão do
+   * item agora, e a linha do lote a grava. Sem lote não é usada.
+   */
+  itemRevisao?: string | null
 }
 
 type ProjetoDaPeca = { id: number; name: string; userId: string }
@@ -129,25 +136,36 @@ async function enfileirarPecaDoLote(spec: SpecDePeca, projeto: ProjetoDaPeca, id
   const autor = opcoes.autor ?? null
   let coletor: Pasta | null = null
   const pasta = async () => (coletor ??= await garantirPasta(spec.projectId, projeto.userId, spec.quando ?? null, spec.formato))
+  // A revisão do item que QUEM MONTOU a spec declara (o `itemRevisao` do
+  // ver-plano), nunca lida do servidor: a leitura de agora não sabe de qual
+  // leitura a spec saiu (C11-1a). Sem ela a peça de item de plano não reserva nada.
+  const itemRevisao = typeof opcoes.itemRevisao === 'string' ? opcoes.itemRevisao.trim() : ''
+  if (spec.itemDePlanoId && !itemRevisao) {
+    throw new CreativeError(
+      'ITEM_REVISAO_OBRIGATORIA',
+      'Peça de item de plano com identidade de lote precisa da itemRevisao que o ver-plano devolve para o item — é a revisão de onde a copy foi montada. Releia o item e mande a revisão junto.',
+      400,
+      { itemDePlanoId: spec.itemDePlanoId, loteId: identidade.loteId, itemId: identidade.itemId },
+    )
+  }
   const plano = spec.itemDePlanoId ? await import('@/lib/planos/enfileirar-composicao') : null
 
   const r = await reservarItemDeLote({
     projectId: spec.projectId,
     identidade,
     payload: payloadParaHash(spec),
-    // A revisão do item agora, sem trava: a linha a grava ao nascer (C11-1).
-    planoRevisao: plano ? await plano.revisaoDoItemParaAReserva(spec) : undefined,
+    planoRevisao: plano ? itemRevisao : undefined,
     preparar: async () => {
       await pasta()
     },
-    criar: async (tx, { recuperacao, revisaoDaLinha }) => {
+    criar: async (tx, { recuperacao }) => {
       const data = dadosDaGeracao(spec, projeto, await pasta(), opcoes)
       if (plano) {
         // Com `lote`, o caminho do plano compara as specs como o lote (R03) e
         // decide pela tabela única sob a trava do item (revisão final R05–R06),
-        // que só produz quando a revisão gravada na linha é a do item (C11-1).
-        const p = await plano.enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao, revisaoDaLinha })
-        return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado, retomado: p.retomado, planoRevisao: p.planoRevisao }
+        // que só produz quando a revisão declarada pela chamada é a do item (C11-1a).
+        const p = await plano.enfileirarComposicaoDoPlanoEm(tx, spec, data, decididoPor, autor, opcoes.itemAtualizadoEm, { recuperacao, revisaoDaChamada: itemRevisao })
+        return { generationId: p.generationId, jobId: p.jobId, reaproveitado: p.reaproveitado, retomado: p.retomado }
       }
       const generation = await tx.generation.create({ data, select: { id: true } })
       const jobId = await enfileirarComposicao({ generationId: generation.id, projectId: spec.projectId, spec, decididoPor, autor }, tx)
