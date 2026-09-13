@@ -34,6 +34,14 @@ const banco = {
   generations: new Map<string, Record<string, unknown>>(),
   usuarios: [] as Array<{ id: string; name: string | null; email: string | null }>,
   relogio: 0,
+  /** Uma escrita de OUTRO processo (o worker de re-render) que cai no meio do espelho — roda uma vez só. */
+  escritaConcorrente: null as null | (() => void),
+}
+
+function dispararEscritaConcorrente() {
+  const escrever = banco.escritaConcorrente
+  banco.escritaConcorrente = null
+  escrever?.()
 }
 
 function agora(): Date {
@@ -98,7 +106,10 @@ vi.mock('@/lib/db', () => ({
     generation: {
       findUnique: async ({ where }: { where: { id: string } }) => {
         const fv = banco.generations.get(where.id)
-        return fv ? { id: where.id, fieldValues: fv } : null
+        const lido = fv ? { id: where.id, fieldValues: structuredClone(fv) } : null
+        // A escrita concorrente chega DEPOIS desta leitura (quem lê-e-regrava fica com o valor velho na mão).
+        dispararEscritaConcorrente()
+        return lido
       },
       update: async ({ where, data }: { where: { id: string }; data: { fieldValues: Record<string, unknown> } }) => {
         banco.generations.set(where.id, data.fieldValues)
@@ -115,6 +126,17 @@ vi.mock('@/lib/db', () => ({
             fieldValues: banco.generations.get(id),
             createdAt: new Date(2026, 7, 10, 9, 0, 0),
           })),
+    },
+    $executeRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+      // O merge raso de `mesclarFieldValuesDaArte`: `fieldValues || patch`, aplicado sobre o valor ATUAL da linha.
+      const sql = partes.join('?')
+      if (!sql.includes('||')) throw new Error(`SQL inesperado no teste: ${sql}`)
+      dispararEscritaConcorrente()
+      const id = String(valores[valores.length - 1])
+      const atual = banco.generations.get(id)
+      if (!atual) return 0
+      banco.generations.set(id, { ...atual, ...(JSON.parse(String(valores[0])) as Record<string, unknown>) })
+      return 1
     },
     user: {
       findMany: async ({ where }: { where: { id: { in: string[] } } }) =>
@@ -141,6 +163,7 @@ beforeEach(() => {
   banco.generations = new Map([[ARTE, { prompt: 'foto do prato', refs: ['a', 'b'], source: 'geracao-ia' }]])
   banco.usuarios = [{ id: 'user-interno', name: 'Ciro', email: 'ciro@exemplo.com' }]
   banco.relogio = 0
+  banco.escritaConcorrente = null
 })
 
 describe('vocabulário', () => {
@@ -350,5 +373,31 @@ describe('listarFeedbacks', () => {
 
   it('não devolve sinal de outro cliente', async () => {
     expect(await listarFeedbacks({ projectId: 999 })).toHaveLength(0)
+  })
+})
+
+describe('C6-02 — o espelho não ressuscita o registro de outra versão da mídia', () => {
+  it('um re-render que chega no meio do espelho sobrevive: o marcador e a copy da versão anterior NÃO voltam', async () => {
+    const DEPOIS_DO_RE_RENDER = { estado: 're-renderizada', em: 'C', avisos: ['Camadas da página ilegíveis: a copy visual da arte foi mantida como estava.'] }
+    banco.generations.set(ARTE, {
+      source: 'ajuste-arte',
+      slotValues: { headline: 'Copy B' },
+      recomposicao: { estado: 're-renderizada', em: 'B', copyVisualRegravada: true },
+      somenteReRender: { desde: 'B', motivo: 'trava do revisor' },
+    })
+    banco.escritaConcorrente = () => {
+      const fv = banco.generations.get(ARTE) as Record<string, unknown>
+      banco.generations.set(ARTE, { ...fv, recomposicao: DEPOIS_DO_RE_RENDER, somenteReRender: { desde: 'C', motivo: 'trava nova' } })
+    }
+
+    await registrarFeedbackDeArte({ generationId: ARTE, projectId: PROJETO, veredito: 'melhorar', comentario: 'o texto sumiu' })
+
+    expect(banco.escritaConcorrente).toBeNull()
+    const fv = banco.generations.get(ARTE) as Record<string, any>
+    expect(fv.recomposicao).toEqual(DEPOIS_DO_RE_RENDER)
+    expect('copyVisualRegravada' in fv.recomposicao).toBe(false)
+    expect(fv.somenteReRender).toEqual({ desde: 'C', motivo: 'trava nova' })
+    expect(fv.feedback).toMatchObject({ veredito: 'melhorar', comentario: 'o texto sumiu' })
+    expect(fv.slotValues).toEqual({ headline: 'Copy B' })
   })
 })

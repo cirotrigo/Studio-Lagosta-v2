@@ -30,6 +30,7 @@
  */
 
 import { db } from '@/lib/db'
+import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { registrarDecisaoSemSugestao } from './captura'
 import { normalizarSuperficie, type Superficie } from './vocabulario'
 
@@ -385,30 +386,27 @@ export async function lerFeedbackDeArte(generationId: string): Promise<FeedbackD
  * A verdade do sinal é o `LearningSignal`; isto é conveniência de leitura, para
  * quem já tem a Generation na mão não precisar de segunda consulta. Falhar aqui
  * é log, nunca erro.
+ *
+ * 🔴 O merge é feito NO BANCO (`mesclarFieldValuesDaArte`, só a chave
+ * `feedback`), nunca por ler-e-regravar (C6-02 da pré-revisão do HEAD
+ * f0eee811, 12/09/2026). O `findUnique` + `update` com `{ ...anterior,
+ * feedback }` perdia qualquer escrita que caísse entre os dois — e um
+ * re-render nesse intervalo tinha a pior consequência: o `recomposicao` com o
+ * marcador `copyVisualRegravada` e os `slotValues` da versão ANTERIOR voltavam
+ * por cima do `resultUrl` novo, e os leitores afirmavam a copy B pela mídia C
+ * (o mesmo apagava a trava `somenteReRender`, a classe REV-R01).
  */
 async function mesclarNaGeneration(generationId: string, feedback: FeedbackDeArte | null): Promise<void> {
   if (!feedback) return
   try {
-    const atual = await db.generation.findUnique({
-      where: { id: generationId },
-      select: { fieldValues: true },
-    })
-    if (!atual) return
-    const anterior = (atual.fieldValues ?? {}) as Record<string, unknown>
-    await db.generation.update({
-      where: { id: generationId },
-      data: {
-        fieldValues: {
-          ...anterior,
-          feedback: {
-            veredito: feedback.veredito,
-            comentario: feedback.comentario,
-            pedidos: feedback.pedidos,
-            em: feedback.em,
-            superficie: feedback.superficie,
-            revisoes: feedback.revisoes,
-          },
-        } as never,
+    await mesclarFieldValuesDaArte(db, generationId, {
+      feedback: {
+        veredito: feedback.veredito,
+        comentario: feedback.comentario,
+        pedidos: feedback.pedidos,
+        em: feedback.em,
+        superficie: feedback.superficie,
+        revisoes: feedback.revisoes,
       },
     })
   } catch (erro) {
