@@ -17,6 +17,7 @@ const banco = vi.hoisted(() => ({
   generations: [] as Array<Record<string, any>>,
   slides: [] as Array<Record<string, any>>,
   renders: [] as Array<Record<string, any>>,
+  sql: [] as Array<{ sql: string; valores: unknown[] }>,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -32,7 +33,10 @@ vi.mock('@/lib/db', () => {
         banco.generations.filter((g) => (where.id ? g.id === where.id : true) && (where.resultUrl ? g.resultUrl === where.resultUrl : true)).at(-1) ?? null,
     },
     socialPost: { findMany: async () => banco.slides },
-    $executeRaw: async () => 1,
+    $executeRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+      banco.sql.push({ sql: partes.join('?'), valores })
+      return 1
+    },
     $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
   }
   return { db }
@@ -57,7 +61,8 @@ vi.mock('@/lib/ai/generation-queue', () => ({
 }))
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 
-import { recomporPaginaDefasada } from '@/lib/compositor/recompor'
+import { recomporPaginaDefasada, registrarRecusa } from '@/lib/compositor/recompor'
+import { CreativeError } from '@/lib/creatives/errors'
 
 const CAMADAS = [
   { id: 'l-titulo', name: 'Título', type: 'text', content: 'Almoço executivo', visible: true, order: 1, position: { x: 100, y: 1400 }, size: { width: 880, height: 120 }, style: { fontSize: 80 } },
@@ -79,6 +84,7 @@ async function patchDoReRender(layers: unknown, fieldValues: Record<string, unkn
 
 beforeEach(() => {
   banco.renders = []
+  banco.sql = []
   banco.slides = [{ id: 'post-carrossel', pageId: null, renderStatus: 'NOT_NEEDED', mediaUrls: ['https://blob.test/capa.png', URL_ANTIGA], laterPostId: null }]
 })
 
@@ -109,5 +115,39 @@ describe('recompor — o marcador `recomposicao.copyVisualRegravada` acompanha a
     expect('slotValues' in patch).toBe(false)
     expect(patch.recomposicao.estado).toBe('re-renderizada')
     expect('copyVisualRegravada' in patch.recomposicao).toBe(false)
+  })
+})
+
+describe('recompor — a recusa não apaga o registro do re-render (C6-01 da pré-revisão do HEAD f0eee811)', () => {
+  const REGISTRO = { estado: 're-renderizada', em: '2026-09-12T20:00:00.000Z', copyVisualRegravada: true, urlsAnteriores: [URL_ANTIGA], avisos: [] }
+
+  it('a RECUSA grava só `recusaDaRecomposicao` (merge raso no banco): o merge preserva estado, marcador, rastro e a copy visual', async () => {
+    const antes = { source: 'ajuste-arte', pageId: 'p9', slotValues: { Título: 'Almoço executivo' }, recomposicao: REGISTRO }
+    await registrarRecusa({ pageId: 'p9', generationId: 'gen-antiga', postIds: [], erro: new CreativeError('TEXTO_NAO_CABE_NA_COLUNA', 'A linha não cabe na coluna.', 422) })
+    const merges = banco.sql.filter((q) => q.sql.includes('||'))
+    expect(merges).toHaveLength(1)
+    expect(merges[0].valores.at(-1)).toBe('gen-antiga')
+    const patch = JSON.parse(String(merges[0].valores[0])) as Record<string, any>
+    expect(Object.keys(patch)).toEqual(['recusaDaRecomposicao'])
+    expect(patch.recusaDaRecomposicao).toMatchObject({ erro: 'A linha não cabe na coluna.', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA' })
+    expect(typeof patch.recusaDaRecomposicao.em).toBe('string')
+    const depois = { ...antes, ...patch }
+    expect(depois.recomposicao).toEqual(REGISTRO)
+    expect(depois.slotValues).toEqual(antes.slotValues)
+  })
+
+  it('o re-render seguinte que dá certo limpa a recusa anterior (`recusaDaRecomposicao: null` no mesmo patch)', async () => {
+    const patch = await patchDoReRender(CAMADAS, { source: 'ajuste-arte', pageId: 'p9', slotValues: { Título: 'Texto antigo' }, recusaDaRecomposicao: { errorCode: 'TEXTO_NAO_CABE_NA_COLUNA' } })
+    expect('recusaDaRecomposicao' in patch).toBe(true)
+    expect(patch.recusaDaRecomposicao).toBeNull()
+  })
+
+  it('merge raso: um re-render SEM regravação (página ilegível) depois de um com marcador tira o marcador do registro', async () => {
+    const comMarca = { source: 'ajuste-arte', pageId: 'p9', slotValues: { Título: 'Almoço executivo' }, recomposicao: REGISTRO }
+    const patch = await patchDoReRender('{{ilegível', comMarca)
+    const depois = { ...comMarca, ...patch } as Record<string, any>
+    expect(depois.recomposicao.estado).toBe('re-renderizada')
+    expect('copyVisualRegravada' in depois.recomposicao).toBe(false)
+    expect(depois.slotValues).toEqual(comMarca.slotValues)
   })
 })

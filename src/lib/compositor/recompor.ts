@@ -467,6 +467,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         layersSnapshot: camadas.camadas,
         thumbnailUrl: blob.url,
         recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        // A recusa de uma rodada anterior fica superada por esta (C6-01).
+        recusaDaRecomposicao: null,
       },
       { resultUrl: blob.url },
     )
@@ -540,6 +542,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
           urlsAnteriores: rastro,
           ...(copyVisualNova ? { copyVisualRegravada: true } : {}),
         }),
+        // A recusa de uma rodada anterior fica superada por este re-render (C6-01).
+        recusaDaRecomposicao: null,
         // A copy VISUAL nova (ver acima); a copy de APRENDIZADO fica como está (o merge não a toca).
         ...(copyVisualNova ? { slotValues: copyVisualNova } : {}),
         // A recuperação forçada preservou um ajuste que a spec não conhece:
@@ -965,8 +969,18 @@ export async function registrarRecusa(args: {
       // MERGE NO BANCO, nunca substituição: `fieldValues` é o registro atômico
       // da run, e ler-e-regravar aqui apagaria a trava que o revisor gravasse
       // entre a leitura e a escrita (REV-R01).
+      /**
+       * E a recusa NÃO toca `recomposicao` (C6-01 da pré-revisão do HEAD
+       * f0eee811, 12/09/2026): ela mora em chave própria. Com
+       * `recomposicao: registro('recusada')` o merge raso trocava o registro
+       * INTEIRO enquanto o PNG re-renderizado ficava — sumiam
+       * `estado: 're-renderizada'`, o marcador `copyVisualRegravada` e
+       * `urlsAnteriores`, e os leitores voltavam a confiar no snapshot e na
+       * copy de OUTRA versão da mídia (R13/R37/R38/R42 do PR 6). O próximo
+       * registro de sucesso limpa esta chave.
+       */
       await mesclarFieldValuesDaArte(db, args.generationId, {
-        recomposicao: registro('recusada', { erro: mensagem, errorCode: code, detalhes }),
+        recusaDaRecomposicao: { em: new Date().toISOString(), erro: mensagem, errorCode: code, detalhes: detalhes ?? null },
       })
     } catch (falha) {
       console.error('[recompor] não deu para registrar a recusa na arte:', falha)

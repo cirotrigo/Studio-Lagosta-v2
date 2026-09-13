@@ -4385,6 +4385,21 @@ O conserto é `src/lib/compositor/recompor.ts` (serviço) e `defasagem.ts`
   histórico de cada post afetado, com o orçamento de caracteres. A arte
   continua sendo a antiga; quem editou decide. Nada regenera sozinho além
   disso.
+  🔴 **E a recusa NÃO substitui o registro do re-render** (C6-01 da
+  pré-revisão do HEAD f0eee811, 12/09/2026): ela mora em
+  `fieldValues.recusaDaRecomposicao` (`em`, `erro`, `errorCode`, `detalhes`),
+  gravada pelo merge raso de `mesclarFieldValuesDaArte`, e não toca
+  `recomposicao`. Gravar `recomposicao: registro('recusada')` trocava o
+  registro INTEIRO enquanto o PNG re-renderizado ficava — apagava
+  `estado: 're-renderizada'`, o marcador `copyVisualRegravada` e
+  `urlsAnteriores`, e os leitores voltavam a confiar no snapshot e na copy de
+  OUTRA versão da mídia (R13/R37/R38/R42 do PR 6). Recusa é comum (texto que
+  não cabe, página que virou modelo, tentativas esgotadas com o Blob fora). O
+  próximo registro de sucesso (`feita` ou `re-renderizada`) grava
+  `recusaDaRecomposicao: null`. ⚠️ Commit de integração no branch do PR 6:
+  **desce para o PR 0 no merge ou é revisado junto com o PR 6**. Linha que já
+  foi recusada antes disso perdeu o registro do re-render, e ele não se
+  reconstrói.
 - **A fila é a de sempre (`kind: COMPOR`), com o `generationId` da arte que já
   existe** — uma peça tem uma arte, e a fila tem um job por arte.
   `enfileirarRecomposicao` REABRE job já terminado (diferente de
