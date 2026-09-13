@@ -6555,6 +6555,39 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   pela arte, ela simplesmente não aparece). Só `true` estrito reabilita.
   ⚠️ O commit que GRAVA o marcador (`recompor.ts`, 5cc62726 no branch do PR 6)
   é código do PR 0 e deve descer para o PR 0 quando ele for mergeado.
+  **Da pré-revisão do HEAD f0eee811 (BLOQUEADO, C6-01…03, 12/09/2026):**
+  - 🔴 **C6-01 (P2, pré-existente): a RECUSA da recomposição não pode apagar o
+    registro do re-render.** `registrarRecusa` gravava
+    `recomposicao: registro('recusada')` por merge raso e o PNG re-renderizado
+    ficava: sumiam `estado`, o marcador e `urlsAnteriores`, e R13/R37/R38/R42
+    reabriam em silêncio (o slide entregue mostrava o snapshot antigo como
+    texto da arte nova; `agendarPost` copiava a copy antiga). Hoje a recusa
+    mora em `fieldValues.recusaDaRecomposicao` e `recomposicao` segue sendo o
+    registro do render que produziu o PNG atual; o próximo sucesso grava
+    `recusaDaRecomposicao: null`. ⚠️ Esse commit (513890a8) é código do PR 0:
+    **desce para o PR 0 no merge ou é revisado junto com o PR 6**. A leitura
+    da arte da agenda virou `arteDosFieldValues` (módulo puro), para o teste
+    ler o mesmo que `ver-agenda`. **Quem escrever em `recomposicao` precisa
+    escrever o registro de um render que produziu o `resultUrl` atual** —
+    qualquer outro estado (recusa, aviso, tentativa) vai em chave própria.
+  - 🔴 **C6-02 (P3): espelho em `fieldValues` é MERGE NO BANCO, nunca
+    ler-e-regravar.** O espelho do feedback de arte fazia `findUnique` +
+    `update({ ...anterior, feedback })`; um re-render no meio ressuscitava o
+    marcador e a copy da versão anterior por cima do `resultUrl` novo (copy B
+    afirmada pela mídia C). Hoje é `mesclarFieldValuesDaArte` só com a chave
+    `feedback`. ⚠️ `crivo-avaliacao.ts` (≈ :471-495) tem o mesmo padrão e NÃO
+    foi mexido nesta leva (as Generations dele não passam pela recomposição
+    hoje) — é o próximo da fila.
+  - 🔴 **C6-03 (P3, pré-existente): todo caminho que deriva a cópia textual
+    de um post de uma Generation passa por `lerProcedencia`.** A troca de arte
+    pela galeria copiava `slotValues` cru; agora segue o R38 + marcador como
+    `agendarPost`, e invalidada grava `slotValues: DbNull` com o MESMO aviso
+    (`AVISO_COPY_DE_ARTE_RE_RENDERIZADA`) — não o "null = não apaga", que
+    deixaria a copy da arte anterior no post. Caminho novo que copie
+    `slotValues` de Generation para post precisa do mesmo tratamento.
+  - A prova ganhou a seção 3j (marcador + recusa no agendamento, na troca e
+    na agenda entregue, com o controle sem marcador). Não foi rodada nesta
+    leva — quem roda prova é o orquestrador, em série.
 - 🔴 **Na arte de `post-schedule`, o id vence o nome também na LEITURA** (R46
   da revisão final de b90b4335): a copy registrada na arte pode endereçar a
   mesma camada por id e por nome, e o render aplica só a do id. Enumerar os

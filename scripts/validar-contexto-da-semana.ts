@@ -19,6 +19,11 @@
  *  5. `buscar-fotos` com `excluir` tira da lista a foto já escolhida e declara
  *     `excluidas`; `evitarUsadasDesde` tira as usadas a partir da data.
  *
+ * Seção 3j (C6-01/C6-03 da pré-revisão do HEAD f0eee811): a copy visual
+ * regravada no re-render vale no agendamento, na troca de arte e na agenda
+ * entregue, mesmo depois de uma recusa da recomposição; sem o marcador, segue
+ * invalidada.
+ *
  * Só roda contra o branch de dev (guard por compute, falha fechada).
  *
  * USO: npx tsx scripts/validar-contexto-da-semana.ts [--saida <pasta>]
@@ -462,6 +467,68 @@ async function main() {
       conferir('R42: entregue, a copy A herdada NÃO é atribuída à mídia B — `textosIndisponiveis` diz que a arte foi re-renderizada e que não há registro textual confiável (sem afirmar cronologia — R45)', !!iH && !('textos' in iH) && /re-renderizada .*não guarda registro textual confiável/.test(iH.textosIndisponiveis ?? '') && !/DEPOIS do agendamento/.test(iH.textosIndisponiveis ?? '') && !JSON.stringify(iH).includes('copy A herdada 3h'), JSON.stringify(iH).slice(0, 300))
       conferir('controle 3h: a mesma arte NÃO re-renderizada volta com a copy legítima (parcial, origem "arte")', !!iHCtl && mesmaSequenciaSemCaixa(iHCtl.textos, [`${MARCA} copy A legítima 3h`]) && iHCtl.textosParciais === true && iHCtl.textosOrigem === 'arte', JSON.stringify(iHCtl).slice(0, 300))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3h.json'), JSON.stringify(agenda3h, null, 2))
+
+      // C6-01 e C6-03 (pré-revisão do HEAD f0eee811) + o marcador do PR 0: a copy VISUAL regravada no re-render
+      // (`recomposicao.copyVisualRegravada`) vale no agendamento, na troca de arte e na agenda entregue — e uma RECUSA
+      // posterior da recomposição não apaga o registro do re-render nem o marcador (a recusa mora em
+      // `recusaDaRecomposicao`). O controle é a mesma arte re-renderizada SEM o marcador, que segue invalidada (R38/R42).
+      console.log('3j) arte re-renderizada COM a copy visual regravada vale para o post e para a agenda mesmo depois de uma recusa; sem o marcador, segue invalidada (C6-01, C6-03)')
+      const { registrarRecusa } = await import('../src/lib/compositor/recompor')
+      const { trocarArteDoPost } = await import('../src/lib/posts/trocar-arte-do-post')
+      const { CreativeError } = await import('../src/lib/creatives/errors')
+      const dia3j = somarDias(hoje, 15)
+      const fvReRender3j = (copy: string, comMarcador: boolean) => ({
+        source: 'ajuste-arte',
+        pageId: paginaComTexto[0].id,
+        slotValues: { [chaveDoTexto]: copy },
+        recomposicao: { estado: 're-renderizada', em: new Date().toISOString(), urlsAnteriores: [`${blobHost}/3j-anterior.png`], ...(comMarcador ? { copyVisualRegravada: true } : {}) },
+      })
+      const genJ = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3j-regravada.png`, fieldValues: fvReRender3j(`${MARCA} copy B regravada 3j`, true) as never }, select: { id: true, resultUrl: true } })
+      geracoes.push(genJ.id) // R44: coletado ANTES do próximo await
+      const genJSem = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3j-sem-marcador.png`, fieldValues: fvReRender3j(`${MARCA} copy A sem marcador 3j`, false) as never }, select: { id: true, resultUrl: true } })
+      geracoes.push(genJSem.id)
+      const genJBase = await db.generation.create({ data: { projectId: PROJETO, templateId: paginaDoTemplate!.templateId, createdBy: projeto.userId, status: 'COMPLETED', resultUrl: `${blobHost}/${Date.now()}-3j-base.png`, fieldValues: { source: 'post-schedule', pageId: paginaComTexto[0].id, slotValues: { [chaveDoTexto]: `${MARCA} copy base 3j` }, layersSnapshot: pagina!.layers } as never }, select: { id: true } })
+      geracoes.push(genJBase.id)
+      // A recusa da recomposição seguinte, como o runner a grava (sem posts: a prova não precisa de histórico).
+      for (const id of [genJ.id, genJSem.id]) {
+        await registrarRecusa({ pageId: paginaComTexto[0].id, generationId: id, postIds: [], erro: new CreativeError('TEXTO_NAO_CABE_NA_COLUNA', `${MARCA} a linha não cabe (prova 3j)`, 422) })
+      }
+      const fvJ = (await db.generation.findUnique({ where: { id: genJ.id }, select: { fieldValues: true } }))?.fieldValues as Record<string, any> | undefined
+      const fvJSem = (await db.generation.findUnique({ where: { id: genJSem.id }, select: { fieldValues: true } }))?.fieldValues as Record<string, any> | undefined
+      conferir(
+        'C6-01: a recusa grava `recusaDaRecomposicao` e NÃO troca o registro do re-render — estado, marcador e rastro ficam',
+        fvJ?.recomposicao?.estado === 're-renderizada' && fvJ.recomposicao.copyVisualRegravada === true && Array.isArray(fvJ.recomposicao.urlsAnteriores) && fvJ.recusaDaRecomposicao?.errorCode === 'TEXTO_NAO_CABE_NA_COLUNA' && fvJSem?.recomposicao?.estado === 're-renderizada' && !('copyVisualRegravada' in (fvJSem.recomposicao ?? {})) && fvJSem.recusaDaRecomposicao?.errorCode === 'TEXTO_NAO_CABE_NA_COLUNA',
+        JSON.stringify({ comMarcador: fvJ?.recomposicao, recusa: fvJ?.recusaDaRecomposicao?.errorCode, semMarcador: fvJSem?.recomposicao?.estado }).slice(0, 260),
+      )
+      const agJ = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3j} 10:00`, generationId: genJ.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3j regravada` })
+      posts.push(agJ.postId)
+      const agJSem = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3j} 11:00`, generationId: genJSem.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3j sem marcador` })
+      posts.push(agJSem.postId)
+      const postJ = await db.socialPost.findUnique({ where: { id: agJ.postId }, select: { slotValues: true } })
+      const postJSem = await db.socialPost.findUnique({ where: { id: agJSem.postId }, select: { slotValues: true } })
+      const avisoJ = String((agJ as { aviso?: string }).aviso ?? ''), avisoJSem = String((agJSem as { aviso?: string }).aviso ?? '')
+      conferir('marcador + recusa: o post agendado pela arte herda a copy B regravada, sem o aviso do R38', JSON.stringify(postJ?.slotValues ?? {}).includes('copy B regravada 3j') && !/re-renderizada/.test(avisoJ), JSON.stringify({ slot: postJ?.slotValues, aviso: avisoJ }).slice(0, 220))
+      conferir('controle (sem marcador + recusa): o post NÃO herda a copy A e o serviço avisa — o R38 continua de pé depois da recusa', !JSON.stringify(postJSem?.slotValues ?? {}).includes('copy A sem marcador 3j') && /re-renderizada/.test(avisoJSem), JSON.stringify({ slot: postJSem?.slotValues, aviso: avisoJSem }).slice(0, 220))
+      // C6-03: trocar a arte de um rascunho pelas duas artes da galeria.
+      const agT = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3j} 12:00`, generationId: genJBase.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3j troca com marcador` })
+      posts.push(agT.postId)
+      const agTSem = await agendarPost({ projectId: PROJETO, postType: 'STORY', scheduledDatetime: `${dia3j} 13:00`, generationId: genJBase.id, situacao: 'rascunho', lembrete: true, caption: `${MARCA} 3j troca sem marcador` })
+      posts.push(agTSem.postId)
+      const tJ = await trocarArteDoPost({ projectId: PROJETO, postId: agT.postId, generationId: genJ.id })
+      const tJSem = await trocarArteDoPost({ projectId: PROJETO, postId: agTSem.postId, generationId: genJSem.id })
+      const postT = await db.socialPost.findUnique({ where: { id: agT.postId }, select: { slotValues: true, mediaUrls: true } })
+      const postTSem = await db.socialPost.findUnique({ where: { id: agTSem.postId }, select: { slotValues: true, mediaUrls: true } })
+      conferir('C6-03: trocar pela arte COM o marcador leva a copy B regravada para o post, sem aviso', postT?.mediaUrls[0] === genJ.resultUrl && JSON.stringify(postT.slotValues ?? {}).includes('copy B regravada 3j') && !(tJ.avisos ?? []).some((a) => /re-renderizada/.test(a)), JSON.stringify({ slot: postT?.slotValues, avisos: tJ.avisos }).slice(0, 220))
+      conferir('C6-03: trocar pela arte SEM o marcador deixa o post SEM cópia textual (nem a copy A, nem a da arte anterior) e avisa', postTSem?.mediaUrls[0] === genJSem.resultUrl && postTSem.slotValues === null && (tJSem.avisos ?? []).some((a) => /re-renderizada/.test(a)), JSON.stringify({ slot: postTSem?.slotValues, avisos: tJSem.avisos }).slice(0, 220))
+      // Entregue: a agenda afirma a copy regravada da arte; sem o marcador, indisponível — nunca a copy A.
+      await db.socialPost.update({ where: { id: agJ.postId }, data: { status: 'POSTED' } })
+      await db.socialPost.update({ where: { id: agJSem.postId }, data: { status: 'POSTED' } })
+      const agenda3j = await tool('ver-agenda', { projectId: PROJETO, from: dia3j, to: dia3j })
+      const itens3j = (agenda3j.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts)
+      const iJ = itens3j.find((i) => i.postId === agJ.postId), iJSem = itens3j.find((i) => i.postId === agJSem.postId)
+      conferir('marcador + recusa, publicada: a agenda afirma a copy B regravada pela mídia (origem "arte", parcial)', !!iJ && mesmaSequenciaSemCaixa(iJ.textos, [`${MARCA} copy B regravada 3j`]) && iJ.textosOrigem === 'arte' && iJ.textosParciais === true, JSON.stringify({ textos: iJ?.textos, origem: iJ?.textosOrigem, parcial: iJ?.textosParciais }).slice(0, 220))
+      conferir('controle (sem marcador + recusa), publicada: indisponível, sem a copy A — R13/R42 continuam de pé depois da recusa', !!iJSem && !('textos' in iJSem) && !!iJSem.textosIndisponiveis && !JSON.stringify(iJSem).includes('copy A sem marcador 3j'), JSON.stringify({ ind: iJSem?.textosIndisponiveis, textos: iJSem?.textos }).slice(0, 220))
+      writeFileSync(resolve(SAIDA, 'ver-agenda-3j.json'), JSON.stringify(agenda3j, null, 2))
 
       // R47 (oitava revisão final de 74afb769): a arte de modelo só afirma com o REGISTRO das camadas desenhadas. A de
       // `post-schedule` sem ele (a do serviço de post guarda slots e pageId, sem camadas) não pode ser lida pela página de
