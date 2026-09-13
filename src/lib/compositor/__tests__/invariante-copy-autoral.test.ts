@@ -7,7 +7,7 @@ import { entradaDePersistencia } from '../persistencia'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
 import { specDaRecomposicao } from '../spec-da-recomposicao'
-import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, validarCopyAutoral, type BlocoAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, revisaoDaPaginaComCamadas, validarCopyAutoral, type BlocoAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
 /**
  * INVARIANTE da copy autoral nas camadas (pedido depois da 6ª rodada de revisão
@@ -42,6 +42,15 @@ import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, val
  * Regra DIFERENCIAL, em toda variante: releitura estável, a cópia duplicada se
  * lê como a original, ocultar e reexibir devolve a leitura, e ocultar um texto
  * na cópia dá a mesma leitura que ocultá-lo na original.
+ *
+ * C9-01 (pré-revisão do HEAD 980eea2a, 12/09/2026): a variante `legada` ganhou
+ * ORÁCULO de correção — a leitura que o leitor LEGADO fazia (`leituraLegada`:
+ * as partes pela numeração dos ids, a voz 2 depois da manchete), e o dono de
+ * cada texto nessa leitura. Só ids que NÃO estão no contrato autoral são
+ * mascarados como inferidos. E dois roteiros ENCADEADOS rodam por texto:
+ * excluir → salvar (a revisão que o autosave grava) → reler → duplicar →
+ * validar a spec da recomposição; e duplicar → ocultar → salvar → reler →
+ * reexibir → salvar.
  *
  * Determinístico (produto enumerado, ids em rodízio por aritmética), limitado a
  * poucos segundos. Com `INVARIANTE_RELATORIO=<arquivo>` grava a lista de casos
@@ -114,7 +123,8 @@ const LINHAS_DA_MANCHETE = ['Costela', 'na brasa', 'hoje']
 const MANCHETES: Array<[number, number[]]> = [[1, []], [1, [0]], [2, []], [2, [1]], [2, [0, 1]], [3, []], [3, [2]], [3, [1, 2]]]
 const LINHAS_DE_SERVICO = ['Ter a dom, das 18h às 23h', 'Av. Beira Mar, 100', 'Reserve pelo direct']
 // Ids autorais tirados do namespace que colide: papel nu, `<papel>-N`, `extra-<papel>`, `headline2`.
-const IDS = ['nota', 'servico', 'servico-2', 'extra-servico', 'headline2', 'apoio', 'extra-headline2', 'headline', 'extra-apoio']
+// C9-01: os ids autorais `extra-*` (o namespace do R25) também, inclusive na forma com sufixo.
+const IDS = ['nota', 'servico', 'servico-2', 'extra-servico', 'headline2', 'apoio', 'extra-headline2', 'headline', 'extra-apoio', 'extra-nota', 'extra-servico-2']
 type Extra = { funcao: 'servico' | 'apoio'; herdaDe: 'apoio' | 'servico' | 'headline'; linhas: string[] }
 const EXTRAS: Extra[][] = [
   [],
@@ -219,8 +229,6 @@ function permutarY(camadas: Layer[], ordem: OrdemY): Layer[] {
   return camadas.map((l, i) => (altura.has(i) ? { ...l, position: { ...l.position, y: altura.get(i)! } } : l)) as Layer[]
 }
 
-/** A leitura sem os ids inferidos (`extra-<camada>` muda de nome na cópia, por construção). */
-const formaSemInferidos = (c: CopyAutoral) => c.blocos.map((b) => [b.id.startsWith('extra-') ? 'extra' : b.id, b.linhas])
 const meta = (l: Layer) => (l.metadata?.compositor ?? {}) as { extra?: { id?: string }; linhasDoBloco?: number[] }
 const forma = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.linhas])
 
@@ -244,11 +252,52 @@ function donoDoTexto(l: Layer, contrato: CopyAutoral, camadas: Layer[]): { id: s
   return { id: dono.id, posicoes: linhas.map((_, k) => k) }
 }
 
+/**
+ * A leitura que o leitor LEGADO fazia de uma página sem marcas (C9-01): cada bloco comum ÚNICO da sua função junta
+ * os textos daquele papel pela numeração do id (`<papel>` → 1, `<papel>-N` → N) — a manchete com a voz 2 depois
+ * (`headline2`, `headline2-N`) —, e o extra com identidade explícita é o próprio texto. Devolve também o dono de cada
+ * texto e as posições das linhas dele nessa leitura.
+ */
+function leituraLegada(contrato: CopyAutoral, preparadas: Layer[]): { esperado: Array<[string, string[]]>; donos: Array<{ id: string; posicoes: number[] } | null> } {
+  const numero = (l: Layer, papel: string) => {
+    const id = String(l.id)
+    if (id === papel) return 1
+    const m = /^([a-z0-9]+)-(\d+)$/.exec(id)
+    return m && m[1] === papel ? Number(m[2]) : Number.POSITIVE_INFINITY
+  }
+  const donos: Array<{ id: string; posicoes: number[] } | null> = preparadas.map(() => null)
+  const linhasDoBloco = new Map(contrato.blocos.map((b) => [b.id, [...b.linhas]]))
+  preparadas.forEach((l, i) => {
+    const extraId = meta(l).extra?.id
+    if (ehTexto(l) && extraId) donos[i] = { id: extraId, posicoes: String(l.content ?? '').split('\n').map((_, k) => k) }
+  })
+  for (const b of contrato.blocos) {
+    if (b.funcao === 'livre' || b.estilo?.herdaDe) continue
+    if (contrato.blocos.filter((x) => x.funcao === b.funcao && !x.estilo?.herdaDe).length !== 1) continue
+    const papeis = b.funcao === 'headline' ? ['headline', 'headline2'] : [b.funcao]
+    const linhas: string[] = []
+    for (const papel of papeis) {
+      const partes = preparadas
+        .map((l, i) => ({ l, i }))
+        .filter(({ l }) => ehTexto(l) && !meta(l).extra && papelDaCamada(l) === papel)
+        .sort((x, y) => numero(x.l, papel) - numero(y.l, papel) || x.i - y.i)
+      for (const { l, i } of partes) {
+        const daCamada = String(l.content ?? '').split('\n')
+        donos[i] = { id: b.id, posicoes: daCamada.map((_, k) => linhas.length + k) }
+        linhas.push(...daCamada)
+      }
+    }
+    if (linhas.length > 0) linhasDoBloco.set(b.id, linhas)
+  }
+  return { esperado: contrato.blocos.map((b) => [b.id, linhasDoBloco.get(b.id)!]), donos }
+}
+
 describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler, duplicar, ocultar, excluir e recompor', () => {
   it('todo contrato aceito × arranjo × operação mantém ids, linhas e dono', () => {
     const casos = enumerarCasos()
     const falhas: string[] = []
-    const contagem = { casos: casos.length, recusadosPelaSpec: 0, recusadosNaPreparacao: 0, aceitos: 0, variantes: 0, operacoes: 0 }
+    const contagem = { casos: casos.length, recusadosPelaSpec: 0, recusadosNaPreparacao: 0, aceitos: 0, variantes: 0, operacoes: 0, encadeadas: 0 }
+    const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
     const cobertura = { r26: false, r27: false, r28: false }
 
     for (const caso of casos) {
@@ -273,8 +322,16 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
 
       try {
         const preparadas = preparados.montados.map((m) => m.layer)
-        // O dono de cada texto é decidido na página PREPARADA (com as marcas), pelo índice: as variantes só mexem em marcas e alturas.
-        const donos = preparadas.map((l) => (ehTexto(l) ? donoDoTexto(l, caso.contrato, preparadas) : null))
+        // Oráculo e donos são decididos na página PREPARADA, pelo índice: as variantes só mexem em marcas e alturas.
+        // Preparada: o contrato autoral e as marcas. Legada: a leitura que o leitor LEGADO fazia (C9-01).
+        const donosDaPreparada = preparadas.map((l) => (ehTexto(l) ? donoDoTexto(l, caso.contrato, preparadas) : null))
+        const legado = leituraLegada(caso.contrato, preparadas)
+        // Só o id que NÃO é do autor é inferido (C9-01): o `extra-*` autoral fica visível em toda comparação. A exceção é
+        // a regra do R25: o livre SEM herança com id `extra-*` É o namespace inferido (a leitura casa por ele e a duplicação
+        // o renomeia), então ele é mascarado como os que a leitura cria. Medido na 1ª rodada: sem esta exceção, 2 casos da
+        // página artificial sem papel acusavam a renomeação que a regra manda fazer.
+        const autorais = new Set(caso.contrato.blocos.filter((x) => !(x.funcao === 'livre' && !x.estilo?.herdaDe && x.id.startsWith('extra-'))).map((x) => x.id))
+        const formaSemInferidos = (c: CopyAutoral) => c.blocos.map((x) => [autorais.has(x.id) ? x.id : 'extra', x.linhas])
         const repartida = familiasRepartidas(preparadas).length > 0
         if (caso.pagina === 'voz2-dois-textos' && repartida && b.some((x) => x.funcao === 'headline' && x.linhas.length === 3 && x.estilo?.linhasNaVoz2?.length === 2)) cobertura.r28 = true
 
@@ -286,13 +343,14 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
             const falharV = (onde: string, detalhe: unknown) => falhar(`${rotulo} ${onde}`, detalhe)
             const alturas = permutarY(preparadas, ordem)
             const camadas = marcas === 'preparada' ? alturas : tirarMarcas(alturas, marcas === 'legada-sem-papel')
-            // O contrato AUTORAL é oráculo só da página preparada. A página legada foi persistida pela leitura legada
-            // (as partes pela numeração dos ids), e o contrato dela É essa leitura: ali vale preservá-la em toda operação.
-            const absoluta = marcas === 'preparada'
+            // Correção vale na preparada (contrato autoral) e na legada (leitura legada); a sem papel só tem a regra diferencial.
+            const absoluta = marcas !== 'legada-sem-papel'
+            const oraculo = marcas === 'preparada' ? forma(caso.contrato) : legado.esperado
+            const donos = marcas === 'preparada' ? donosDaPreparada : legado.donos
             const efetiva = entradaDePersistencia({ spec: v.spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas, fundo: '#000', diagnostico: {}, fotoUrl: null }).copyAutoral as CopyAutoral
             if (absoluta) {
-              // 1. a persistência preserva ids e linhas, sem bloco inventado
-              if (JSON.stringify(forma(efetiva)) !== JSON.stringify(forma(caso.contrato))) falharV('persistência', { esperado: forma(caso.contrato), obtido: forma(efetiva) })
+              // 1. a persistência reproduz o oráculo, sem bloco inventado
+              if (JSON.stringify(forma(efetiva)) !== JSON.stringify(oraculo)) falharV('persistência', { esperado: oraculo, obtido: forma(efetiva) })
               if (validarCopyAutoral(efetiva).problemas.length > 0) falharV('contrato persistido inválido', validarCopyAutoral(efetiva).problemas)
             }
             // 2. releitura estável
@@ -320,33 +378,72 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
             // 4. um texto por vez
             const tocarUm = (lista: Layer[], k: number, modo: 'ocultar' | 'excluir') =>
               (modo === 'ocultar' ? lista.map((l, j) => (j === k ? { ...l, visible: false } : l)) : lista.filter((_, j) => j !== k)) as Layer[]
+            const temBlocoParaCompor = (c: CopyAutoral) => c.blocos.some((x) => x.funcao !== 'livre' && x.linhas.length > 0)
             const conferirToque = (onde: string, base: CopyAutoral, lista: Layer[], k: number, modo: 'ocultar' | 'excluir') => {
-              const dono = donos[k]
               contagem.operacoes++
               const lida = copyEfetivaDasCamadas(base, tocarUm(lista, k, modo), { superficie: 'editor' }).efetiva
-              if (marcas === 'legada-sem-papel') return lida
-              if (lida.blocos.some((x) => x.id.startsWith('extra-') && !base.blocos.some((y) => y.id === x.id))) falharV(`${onde}: bloco inventado`, forma(lida))
-              if (!absoluta || !dono) return lida
+              if (!absoluta) return lida
+              if (lida.blocos.some((x) => !autorais.has(x.id) && !base.blocos.some((y) => y.id === x.id))) falharV(`${onde}: bloco inventado`, forma(lida))
+              const dono = donos[k]
+              if (!dono) return lida
               const esperado = base.blocos.map((x) => [x.id, x.id === dono.id ? x.linhas.filter((_, p) => !dono.posicoes.includes(p)) : x.linhas])
               if (JSON.stringify(forma(lida)) !== JSON.stringify(esperado)) falharV(`${onde} ${String(preparadas[k].id)} (dono ${dono.id})`, { esperado, obtido: forma(lida) })
               if (validarCopyAutoral(lida).problemas.length > 0) falharV(`${onde}: contrato inválido`, validarCopyAutoral(lida).problemas)
               // Sem bloco COM função e com texto não há o que compor ("pelo menos um bloco"): a recusa é legítima.
-              if (marcas === 'preparada' && ordem === 'identidade' && lida.blocos.some((x) => x.funcao !== 'livre' && x.linhas.length > 0)) {
+              if (ordem === 'identidade' && temBlocoParaCompor(lida)) {
                 const r = validarSpec(specDaRecomposicao(v.spec!, lida))
                 if (!r.spec) falharV(`${onde}: spec da recomposição`, r.problemas)
               }
               return lida
             }
+            // O que o autosave grava: a revisão da equipe sobre o contrato atual, ou o mesmo contrato quando nada mudou.
+            const salvar = (onde: string, base: CopyAutoral, lista: Layer[]) => {
+              contagem.operacoes++
+              const r = revisaoDaPaginaComCamadas(base, lista, equipe)
+              if (r.estado === 'ilegivel' || r.estado === 'sem-contrato') falharV(`${onde}: salvar`, r.estado)
+              if (r.copy && validarCopyAutoral(r.copy).problemas.length > 0) falharV(`${onde}: salvo inválido`, validarCopyAutoral(r.copy).problemas)
+              return r.copy ?? base
+            }
+            const iguais = (a: CopyAutoral, c: CopyAutoral) => JSON.stringify(formaSemInferidos(a)) === JSON.stringify(formaSemInferidos(c))
             camadas.forEach((l, k) => {
               if (!ehTexto(l)) return
+              const id = String(preparadas[k].id)
               const oculta = conferirToque('ocultar', efetiva, camadas, k, 'ocultar')
-              conferirToque('excluir', efetiva, camadas, k, 'excluir')
+              const excluida = conferirToque('excluir', efetiva, camadas, k, 'excluir')
               contagem.operacoes++
               const volta = copyEfetivaDasCamadas(oculta, camadas, { superficie: 'editor' }).efetiva
-              if (JSON.stringify(formaSemInferidos(volta)) !== JSON.stringify(formaSemInferidos(efetiva))) falharV(`ocultar e reexibir ${String(preparadas[k].id)}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })
+              if (!iguais(volta, efetiva)) falharV(`ocultar e reexibir ${id}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })
               const ocultaNaCopia = conferirToque('duplicar e ocultar', dup.contrato!, camadasDaCopia, k, 'ocultar')
               // DIFERENCIAL: ocultar na cópia dá a mesma leitura que ocultar na original.
-              if (JSON.stringify(formaSemInferidos(ocultaNaCopia)) !== JSON.stringify(formaSemInferidos(oculta))) falharV(`diferencial: ocultar ${String(preparadas[k].id)} na cópia`, { original: formaSemInferidos(oculta), copia: formaSemInferidos(ocultaNaCopia) })
+              if (!iguais(ocultaNaCopia, oculta)) falharV(`diferencial: ocultar ${id} na cópia`, { original: formaSemInferidos(oculta), copia: formaSemInferidos(ocultaNaCopia) })
+
+              // 5. ENCADEADAS (C9-01)
+              contagem.encadeadas += 2
+              // 5a. excluir → salvar → reler → duplicar → spec da recomposição (o formato do R23 e do R25)
+              const semK = tocarUm(camadas, k, 'excluir')
+              const salvo = salvar(`excluir ${id}`, efetiva, semK)
+              if (!iguais(salvo, excluida)) falharV(`excluir ${id} → salvar`, { esperado: formaSemInferidos(excluida), obtido: formaSemInferidos(salvo) })
+              contagem.operacoes++
+              const relidaSalva = copyEfetivaDasCamadas(salvo, semK, { superficie: 'editor' })
+              if (relidaSalva.mudancas.length > 0) falharV(`excluir ${id} → salvar → reler`, relidaSalva.mudancas.map((m) => m.id))
+              let m = 0
+              const dupSalva = duplicarCamadasDaPagina(semK, () => `uuid-e${k}-${++m}`, salvo)
+              contagem.operacoes++
+              const lidaDupSalva = copyEfetivaDasCamadas(dupSalva.contrato!, dupSalva.camadas as Layer[], { superficie: 'editor' })
+              if (lidaDupSalva.mudancas.length > 0 || !iguais(lidaDupSalva.efetiva, salvo)) falharV(`excluir ${id} → salvar → duplicar`, { mudancas: lidaDupSalva.mudancas.map((x) => x.id), esperado: formaSemInferidos(salvo), obtido: formaSemInferidos(lidaDupSalva.efetiva) })
+              if (absoluta && temBlocoParaCompor(salvo)) {
+                const r = validarSpec(specDaRecomposicao(v.spec!, salvo))
+                if (!r.spec) falharV(`excluir ${id} → salvar → spec da recomposição`, r.problemas)
+              }
+              // 5b. duplicar → ocultar → salvar → reler → reexibir → salvar
+              const ocultaCopia = tocarUm(camadasDaCopia, k, 'ocultar')
+              const salvoCopia = salvar(`duplicar e ocultar ${id}`, dup.contrato!, ocultaCopia)
+              if (!iguais(salvoCopia, ocultaNaCopia)) falharV(`duplicar → ocultar ${id} → salvar`, { esperado: formaSemInferidos(ocultaNaCopia), obtido: formaSemInferidos(salvoCopia) })
+              contagem.operacoes++
+              const relidaCopia = copyEfetivaDasCamadas(salvoCopia, ocultaCopia, { superficie: 'editor' })
+              if (relidaCopia.mudancas.length > 0) falharV(`duplicar → ocultar ${id} → salvar → reler`, relidaCopia.mudancas.map((x) => x.id))
+              const reexibidoSalvo = salvar(`duplicar e reexibir ${id}`, salvoCopia, camadasDaCopia)
+              if (!iguais(reexibidoSalvo, efetiva)) falharV(`duplicar → ocultar ${id} → salvar → reexibir → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(reexibidoSalvo) })
             })
           }
       } catch (erro) {

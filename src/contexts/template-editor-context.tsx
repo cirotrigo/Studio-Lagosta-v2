@@ -6,8 +6,8 @@ import type Konva from 'konva'
 import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradiente-suave'
-import { camadaClonada } from '@/lib/compositor/marca-do-compositor'
 import { createId } from '@/lib/id'
+import { semIdentidadeAutoral } from '@/lib/copy-autoral/camada-copiada'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
@@ -450,17 +450,18 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (id: string) => {
       const source = design.layers.find((layer) => layer.id === id)
       if (!source) return
-      // A cópia não é a camada do compositor: `camadaClonada` solta a marca
-      // (`metadata.compositor`), senão o texto novo entraria no bloco autoral
-      // da original (PR3-R14-01).
-      const newLayer: Layer = camadaClonada(source, {
+      // C9-02: a cópia é texto NOVO — sem a identidade autoral da original (extra, bloco, parte, linhas do bloco e papel),
+      // senão só a altura desempata e mover a cópia para cima troca os textos dos blocos do contrato.
+      const newLayer: Layer = {
+        ...semIdentidadeAutoral(source),
         id: createId(),
         name: `${source.name} Copy`,
         position: {
           x: (source.position?.x ?? 0) + 16,
           y: (source.position?.y ?? 0) + 16,
         },
-      })
+        locked: false,
+      }
       addLayer(newLayer)
     },
     [addLayer, design.layers],
@@ -547,16 +548,19 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           return JSON.parse(JSON.stringify(layer)) as Layer
         }
       })()
-      // Colar é clonar: a marca do compositor fica com a original (PR3-R14-01).
-      return camadaClonada(cloned, {
-        id: createId(),
+      const newId = createId()
+      return {
+        // C9-02: colar é duplicar — a cópia não leva a identidade autoral da original.
+        ...semIdentidadeAutoral(cloned),
+        id: newId,
         name: `${cloned.name ?? cloned.type} Copy`,
+        locked: false,
         order: 0,
         position: {
           x: Math.round((cloned.position?.x ?? 0) + 24 + index * 12),
           y: Math.round((cloned.position?.y ?? 0) + 24 + index * 12),
         },
-      })
+      }
     })
 
     applyDesign((prev) => {

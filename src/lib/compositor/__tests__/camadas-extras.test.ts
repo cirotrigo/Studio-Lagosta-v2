@@ -9,6 +9,7 @@ import { specDaRecomposicao } from '../spec-da-recomposicao'
 import { copyAutoralDaSpec, entradaDePersistencia } from '../persistencia'
 import { VERSAO_DO_CONTRATO, blocosParaOCompositor, copyEfetivaDasCamadas, duplicarCamadasDaPagina, idDeExtra, renomearExtrasDuplicados, validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
+import { semIdentidadeAutoral } from '@/lib/copy-autoral/camada-copiada'
 
 /**
  * F3 / PR 9 — a camada EXTRA: texto que veste o estilo de um papel SEM ser
@@ -1452,5 +1453,73 @@ describe('correção da revisão FINAL do Codex sobre 5d5d378e (R27): a segunda 
     const rev = revisaoDaPaginaComCamadas(efetiva, oculta, equipe)
     expect(manchete(rev.copy!)).toEqual([['h', [], null]])
     expect(validarCopyAutoral(rev.copy!).problemas).toEqual([])
+  })
+})
+
+describe('pré-revisão do HEAD 980eea2a (C9-02): a camada DUPLICADA ou COLADA no editor é texto novo, sem a identidade da original', () => {
+  const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
+  const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
+  const HORARIO = 'Ter a dom, das 18h às 23h'
+  const ENDERECO = 'Av. Beira Mar, 100'
+  const contrato = (blocos: CopyAutoral['blocos']): CopyAutoral => ({ versao: VERSAO_DO_CONTRATO, origem, revisoes: [], blocos })
+  const linhas = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.funcao, b.linhas])
+  // `duplicateLayer`: id novo, nome "Copy", 16px abaixo — pela MESMA função que o editor passa a usar.
+  const duplicarNoEditor = (l: Layer, id: string): Layer =>
+    semIdentidadeAutoral({ ...l, id, name: `${l.name} Copy`, position: { x: (l.position?.x ?? 0) + 16, y: (l.position?.y ?? 0) + 16 }, locked: false }) as Layer
+  const manchete = texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } })
+  const servico = (id: string, content: string, y: number, compositor: Record<string, unknown>) =>
+    texto(id, { fontFamily: 'Barlow', fontSize: 30 }, content, { position: { x: 160, y }, metadata: { groupId: 'g', compositor: { papel: 'servico', ...compositor } } })
+
+  // O roteiro da pré-revisão: duplicar → editar a cópia → salvar → mover a cópia para CIMA da original → salvar.
+  const roteiro = (nome: string, gravado: CopyAutoral, camadas: Layer[], alvoId: string) => {
+    expect(copyEfetivaDasCamadas(gravado, camadas, { superficie: 'editor' }).mudancas, nome).toEqual([])
+    const alvo = camadas.find((l) => l.id === alvoId)!
+    const copia = { ...duplicarNoEditor(alvo, 'uuid-copia'), content: 'Texto novo da equipe' } as Layer
+    const passo1 = [...camadas, copia]
+    const rev1 = revisaoDaPaginaComCamadas(gravado, passo1, equipe)
+    expect(rev1.estado, `${nome}: editar a cópia`).toBe('registrada')
+    expect(rev1.blocos, `${nome}: editar a cópia`).toEqual([idDeExtra('uuid-copia')])
+    expect(linhas(rev1.copy!), `${nome}: editar a cópia`).toEqual([...linhas(gravado), [idDeExtra('uuid-copia'), 'livre', ['Texto novo da equipe']]])
+    const acima = passo1.map((l) => (l.id === 'uuid-copia' ? { ...l, position: { ...l.position, y: 10 } } : l)) as Layer[]
+    const rev2 = revisaoDaPaginaComCamadas(rev1.copy!, acima, equipe)
+    expect(rev2.estado, `${nome}: mover a cópia para cima`).toBe('sem-mudanca')
+  }
+
+  it('C9-02: o extra livre `nota` (identidade na metadata) duplicado e movido para cima — só nasce o bloco da cópia; `nota` não muda e não há revisão no movimento', () => {
+    const gravado = contrato([
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['Somente no salão'], estilo: { herdaDe: 'apoio' } },
+    ])
+    const nota = texto('nota', { fontFamily: 'Barlow', fontSize: 40 }, 'Somente no salão', { position: { x: 92, y: 700 }, metadata: { groupId: 'g', compositor: { extra: { id: 'nota', funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'principal' } } } })
+    roteiro('extra', gravado, [manchete, nota], 'nota')
+  })
+
+  it('C9-02: a parte MARCADA do serviço repartido (`linhasDoBloco`) duplicada e movida para cima — `svc` continua com as duas linhas', () => {
+    const gravado = contrato([{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }, { id: 'svc', funcao: 'servico', ordem: 1, linhas: [HORARIO, ENDERECO] }])
+    roteiro('parte marcada', gravado, [manchete, servico('servico', HORARIO, 1200, { linhasDoBloco: [0] }), servico('servico-2', ENDERECO, 1650, { linhasDoBloco: [1] })], 'servico-2')
+  })
+
+  it('C9-02: a manchete de UM texto (só o papel) duplicada e movida para cima — `h` não muda; a cópia é texto solto, não uma segunda manchete', () => {
+    roteiro('só papel', contrato([{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }]), [manchete], 'headline')
+  })
+
+  it('C9-02: a parte com a marca `parte` (a página foi duplicada antes) duplicada e movida para cima — `svc` continua com as duas linhas', () => {
+    const gravado = contrato([{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }, { id: 'svc', funcao: 'servico', ordem: 1, linhas: [HORARIO, ENDERECO] }])
+    roteiro('parte legada', gravado, [manchete, servico('uuid-s1', HORARIO, 1200, { parte: 1 }), servico('uuid-s2', ENDERECO, 1650, { parte: 2 })], 'uuid-s2')
+  })
+
+  it('C9-02: o livre `nota` ligado pela marca `bloco` (a página foi duplicada antes) duplicado e movido para cima — `nota` não muda', () => {
+    const gravado = contrato([{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] }, { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['vale hoje'] }])
+    const nota = texto('uuid-n', { fontFamily: 'Barlow', fontSize: 40 }, 'vale hoje', { name: 'Nota da casa', position: { x: 92, y: 700 }, metadata: { compositor: { bloco: 'nota' } } })
+    roteiro('bloco', gravado, [manchete, nota], 'uuid-n')
+  })
+
+  it('C9-02: `semIdentidadeAutoral` (a mesma de duplicar e de colar) tira extra, bloco, parte, linhasDoBloco e papel, e mantém o resto (grupo, prefixo, encaixe)', () => {
+    const cheia = texto('x', {}, 'a', { metadata: { groupId: 'g1', compositor: { papel: 'cta', extra: { id: 'x' }, bloco: 'x', parte: 2, linhasDoBloco: [1], prefixo: '→ ', encaixe: 12 } } })
+    const limpa = semIdentidadeAutoral(cheia)
+    expect(limpa.metadata).toEqual({ groupId: 'g1', compositor: { prefixo: '→ ', encaixe: 12 } })
+    expect(cheia.metadata?.compositor).toMatchObject({ papel: 'cta', extra: { id: 'x' } })
+    const semNada = texto('y', {}, 'b', { metadata: { groupId: 'g2' } })
+    expect(semIdentidadeAutoral(semNada)).toBe(semNada)
   })
 })

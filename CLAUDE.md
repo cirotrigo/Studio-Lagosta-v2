@@ -9069,3 +9069,48 @@ passou a enumerar os casos em vez de escolhê-los à mão
   Teste do R28 em `camadas-extras.test.ts` (leituras original e duplicada
   idênticas, sem revisão, `parte` 1 e 2 na cópia). Mutação: devolver a exclusão
   da `headline2` derruba o teste R28 e os mesmos 15 casos.
+
+**Da pré-revisão do HEAD 980eea2a (APTO COM NOTAS, C9-01…02, 12/09/2026):**
+
+- 🔴 **C9-02 — a camada DUPLICADA ou COLADA no editor não leva a identidade
+  da original.** `duplicateLayer` e `pasteLayers` copiavam a metadata inteira: a
+  cópia do extra `nota` nascia declarando `extra.id = 'nota'`, e com duas camadas
+  no mesmo bloco só a altura desempatava — arrastar a cópia para cima trocava
+  três blocos do contrato e o autosave assinava como edição da equipe, sem texto
+  editado. Hoje as duas ações passam por `semIdentidadeAutoral`
+  (`src/lib/copy-autoral/camada-copiada.ts`, puro): a cópia sai sem `extra`,
+  `bloco`, `parte`, `linhasDoBloco` **e sem `papel`**. O papel sai também porque
+  uma segunda camada do mesmo papel vira um segundo bloco COMUM daquela função
+  — e com dois comuns o bloco repartido deixa de reunir as partes e a leitura
+  volta a ser por posição. Sem papel a cópia é texto solto, com o próprio bloco
+  inferido ligado a ela pelo id. Grupo, prefixo e encaixe ficam.
+  ⚠️ Custo aceito: a cópia de um texto do compositor perde o papel e, com ele,
+  o que o painel de combinações lê dele; quem quiser a cópia num papel o
+  atribui de novo. `parte` e `linhasDoBloco` sozinhos não mudam a leitura de
+  uma camada SEM papel — a mutação que os mantém é pega só pelo teste do helper,
+  e eles saem para a cópia não voltar a ser parte se alguém lhe der o papel
+  depois.
+- 🔴 **C9-01 — o invariante passou a provar CORREÇÃO também na página legada,
+  e a encadear operações.**
+  - **Oráculo da legada** (`leituraLegada`): a leitura que o leitor LEGADO fazia —
+    as partes de cada bloco comum pela numeração dos ids (`<papel>`,
+    `<papel>-N`, e a voz 2 depois da manchete) — e o dono de cada texto nessa
+    leitura. Persistência, ocultar e excluir comparam com ele, não só a cópia
+    com a original. A página artificial sem papel continua só na regra
+    diferencial.
+  - **Só o id que não é do autor é mascarado**: o `extra-*` autoral (com herança)
+    fica visível em toda comparação; o livre SEM herança com id `extra-*` segue
+    mascarado, porque pela regra do R25 ele É o namespace inferido (a primeira
+    rodada acusou 2 casos da página sem papel exatamente por essa renomeação).
+    Os ids enumerados ganharam `extra-nota` e `extra-servico-2`.
+  - **Roteiros encadeados por texto**: excluir → salvar (a revisão que o
+    autosave grava) → reler → duplicar → validar a spec da recomposição; e
+    duplicar → ocultar → salvar → reler → reexibir → salvar.
+- Números: **780 contratos, 229 aceitos, 1.167 variantes de página, 40.644
+  operações (7.662 encadeadas), 0 falhas**. Antes das correções: as 6 variantes
+  do C9-02 falhavam, e o invariante estendido não achou defeito novo no leitor.
+  Mutação: a leitura legada só pela altura (a prova sugerida pela pré-revisão)
+  derruba **80 casos** na legada e o teste R28; o id inferido casando livre com
+  herança derruba 5 casos, entre eles os roteiros encadeados; cada marca mantida
+  na cópia derruba o cenário dela (`extra` → o extra, `bloco` → o livre ligado por
+  bloco, `papel` → manchete, parte marcada e parte legada).
