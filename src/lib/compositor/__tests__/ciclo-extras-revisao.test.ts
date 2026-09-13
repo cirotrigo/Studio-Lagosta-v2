@@ -442,7 +442,11 @@ describe('C10-01 e C10-03 — nada foi refeito (a página estava em dia no levan
     await expect(processarRecomposicaoEmBackground(jobAtual())).rejects.toMatchObject({ code: 'PAGINA_MUDOU_DURANTE' })
     expect(estado.specsCompostas).toHaveLength(0)
     expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
-    expect((estado.generation!.fieldValues as { recomposicao?: unknown }).recomposicao).toMatchObject({ estado: 'recusada', errorCode: 'PAGINA_MUDOU_DURANTE' })
+    // A recusa mora em chave própria (C6-01 do PR 0): nunca substitui o registro `recomposicao` do último render,
+    // e nada foi refeito nesta rodada, então a imagem continua sendo a anterior (C6-12).
+    const fv = estado.generation!.fieldValues as { recomposicao?: { estado?: string }; recusaDaRecomposicao?: unknown }
+    expect(fv.recusaDaRecomposicao).toMatchObject({ errorCode: 'PAGINA_MUDOU_DURANTE', arteTrocada: false })
+    expect(fv.recomposicao?.estado).not.toBe('recusada')
     // O motivo em português da equipe, dizendo que foi a FOTO (C10-11): sem jargão de fila.
     expect(estado.logs).toHaveLength(1)
     expect(estado.logs[0]).toMatch(/^A arte NÃO foi atualizada: a foto da página foi trocada enquanto a arte era atualizada, e as tentativas automáticas acabaram\. /)
