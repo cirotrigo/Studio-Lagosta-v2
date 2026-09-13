@@ -22,13 +22,13 @@
  */
 
 import {
-  aplicarRevisao,
+  HistoricoDaCopyCheio,
   blocosEmOrdem,
   espelhoPosicional,
   lerCopyAutoral,
   orientacaoDosProblemas,
   orientacaoEmFrase,
-  validarCopyAutoral,
+  tentarAplicarRevisao,
   type Autor,
   type BlocoAutoral,
   type CopyAutoral,
@@ -126,13 +126,15 @@ export function copyDoItemNoPatch(
     const estilo = { ...restoDoEstilo, ...(voz2.length > 0 ? { linhasNaVoz2: voz2 } : {}) }
     return { ...semEstilo, linhas, ...(Object.keys(estilo).length > 0 ? { estilo } : {}) }
   })
-  const { copy } = aplicarRevisao(contrato, novos, {
+  // `tentarAplicarRevisao` (9238098f): a revisão confere o RESULTADO inteiro. Histórico cheio PROPAGA (plano-service →
+  // 409); resultado que o leitor recusaria é descartado com o motivo e a orientação, como sempre foi.
+  const revisada = tentarAplicarRevisao(contrato, novos, {
     autor: quem.autor,
     motivo: 'edição posicional do texto do item',
     superficie: quem.superficie,
     ...(quem.em ? { em: quem.em } : {}),
   })
-  const conferida = validarCopyAutoral(copy)
-  if (!conferida.copy) return descartado(`a edição posicional deixou o contrato inválido (${conferida.problemas.map((p) => p.mensagem).join('; ')})${orientacaoEmFrase(orientacaoDosProblemas(conferida.problemas)).replace(/\.$/, '')}`)
-  return { copyAutoral: conferida.copy, copyProposta: espelhoDoContrato(conferida.copy), avisos: [] }
+  if (revisada.historicoCheio) throw new HistoricoDaCopyCheio(contrato, revisada.mudancas)
+  if (!revisada.copy) return descartado(`a edição posicional deixou o contrato inválido (${revisada.problemas.map((p) => p.mensagem).join('; ')})${orientacaoEmFrase(orientacaoDosProblemas(revisada.problemas)).replace(/\.$/, '')}`)
+  return { copyAutoral: revisada.copy, copyProposta: espelhoDoContrato(revisada.copy), avisos: [] }
 }

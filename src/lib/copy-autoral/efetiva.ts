@@ -26,9 +26,10 @@
 import type { Layer } from '@/types/template'
 import { papelDaCamada } from '@/lib/compositor/defasagem'
 import { linhasComColchetes } from '@/lib/compositor/destaques'
-import { VERSAO_DO_CONTRATO, type BlocoAutoral, type CopyAutoral, type FuncaoDoBloco } from './contrato'
+import { VERSAO_DO_CONTRATO, copyAutoralSchema, type BlocoAutoral, type CopyAutoral, type FuncaoDoBloco } from './contrato'
 import { blocosEmOrdem } from './validar'
-import { aplicarRevisao, HistoricoDaCopyCheio, type MudancaDeBloco } from './revisao'
+import { aplicarRevisao, HistoricoDaCopyCheio, RevisaoDaCopyInvalida, type MudancaDeBloco } from './revisao'
+import { orientacaoDosProblemas, orientacaoEmFrase } from './orientacao'
 
 /** Hash curto e determinístico (FNV-1a) — só para desempatar ids saneados. */
 function hashCurto(texto: string): string {
@@ -229,27 +230,39 @@ export interface CopyEfetiva {
 /**
  * A leitura da efetiva quando o histórico da copy pode estar CHEIO. Desde o
  * PR2-02 (`e3c1f75f`), `aplicarRevisao` RECUSA a 201ª revisão com
- * `HistoricoDaCopyCheio` — e `copyEfetivaDasCamadas` a propaga. Quem grava
+ * `HistoricoDaCopyCheio`, e desde `9238098f` também o resultado que o leitor
+ * recusaria (`RevisaoDaCopyInvalida`: a camada com linha acima de 300, mais de
+ * 12 linhas, mais de 40 blocos) — e `copyEfetivaDasCamadas` propaga as duas. Quem grava
  * camadas não pode deixar essa recusa derrubar a escrita (o autosave do editor,
  * a peça já composta, a recomposição): `ok: false` diz que a mudança NÃO entra
  * no contrato, e o chamador segue sem gravar contrato novo, com o aviso.
  * Nunca se grava um contrato que a releitura rejeita, e nunca se apaga revisão
  * antiga para abrir espaço.
  */
-export type LeituraDaEfetiva = { ok: true; leitura: CopyEfetiva } | { ok: false; historicoCheio: HistoricoDaCopyCheio; aviso: string }
+export type LeituraDaEfetiva = { ok: true; leitura: CopyEfetiva } | { ok: false; recusa: HistoricoDaCopyCheio | RevisaoDaCopyInvalida; aviso: string }
 
-/** O aviso em português, com o que aconteceu e o que continua valendo. `onde` completa "a mudança …". */
-export function avisoDeHistoricoCheio(recusa: HistoricoDaCopyCheio, onde: string): string {
+/**
+ * O aviso em português, com o que aconteceu, o que continua valendo e — quando a copy lida não cabe nos limites do
+ * contrato (`RevisaoDaCopyInvalida`: linha acima de 300, mais de 12 linhas, mais de 40 blocos) — o que fazer.
+ * `onde` completa "a mudança …".
+ */
+export function avisoDaRecusaDaCopy(recusa: HistoricoDaCopyCheio | RevisaoDaCopyInvalida, onde: string): string {
   const blocos = recusa.mudancas.map((m) => `"${m.id}"`).join(', ')
-  return `O histórico da copy autoral chegou ao limite de ${recusa.copy.revisoes.length} revisões: a mudança ${onde}${blocos ? ` (${blocos})` : ''} não foi registrada no contrato, que ficou como estava. O que foi desenhado segue valendo; para voltar a acompanhar a copy, mande-a de novo como contrato novo.`
+  const mudanca = `a mudança ${onde}${blocos ? ` (${blocos})` : ''} não foi registrada no contrato, que ficou como estava. O que foi desenhado segue valendo`
+  if (recusa instanceof HistoricoDaCopyCheio) {
+    return `O histórico da copy autoral chegou ao limite de ${recusa.copy.revisoes.length} revisões: ${mudanca}; para voltar a acompanhar a copy, mande-a de novo como contrato novo.`
+  }
+  return `A copy lida das camadas não cabe no contrato da copy autoral (${recusa.problemas.map((p) => p.mensagem).join('; ')}): ${mudanca}.${orientacaoEmFrase(orientacaoDosProblemas(recusa.problemas))}`
 }
 
-/** `copyEfetivaDasCamadas` sem deixar o histórico cheio escapar como exceção (ver `LeituraDaEfetiva`). Qualquer outro erro sobe. */
+/** `copyEfetivaDasCamadas` sem deixar as recusas do contrato escaparem como exceção (ver `LeituraDaEfetiva`). Qualquer outro erro sobe. */
 export function tentarCopyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): LeituraDaEfetiva {
   try {
     return { ok: true, leitura: copyEfetivaDasCamadas(original, camadas, opcoes) }
   } catch (erro) {
-    if (erro instanceof HistoricoDaCopyCheio) return { ok: false, historicoCheio: erro, aviso: avisoDeHistoricoCheio(erro, `lida das camadas (${opcoes.superficie})`) }
+    if (erro instanceof HistoricoDaCopyCheio || erro instanceof RevisaoDaCopyInvalida) {
+      return { ok: false, recusa: erro, aviso: avisoDaRecusaDaCopy(erro, `lida das camadas (${opcoes.superficie})`) }
+    }
     throw erro
   }
 }
@@ -327,7 +340,29 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     superficie: opcoes.superficie,
     ...(opcoes.em ? { em: opcoes.em } : {}),
   })
-  return { efetiva: lacunas.length ? { ...efetiva, lacunas: [...(efetiva.lacunas ?? []), ...lacunas] } : efetiva, mudancas, lacunas }
+  // As lacunas entram DEPOIS da revisão, e o leitor tem teto para elas: o contrato leva só as que cabem (com uma de
+  // resumo), e `lacunas` devolve a lista inteira para o registro da arte (restack sobre 9238098f, 13/09/2026).
+  return { efetiva: lacunas.length ? { ...efetiva, lacunas: lacunasQueCabem(efetiva.lacunas ?? [], lacunas) } : efetiva, mudancas, lacunas }
+}
+
+const LACUNAS_DO_SCHEMA = copyAutoralSchema.shape.lacunas.unwrap()
+/** Tetos lidos do PRÓPRIO schema, como no adaptador do legado. */
+const MAX_LACUNAS_NA_COPY = LACUNAS_DO_SCHEMA._def.maxLength?.value ?? 20
+const MAX_CARACTERES_DA_LACUNA = LACUNAS_DO_SCHEMA.element.maxLength ?? 200
+
+/**
+ * As lacunas que CABEM no contrato: as que a copy já tinha, mais as novas enquanto houver vaga — o que passar vira
+ * UMA lacuna de resumo; lacuna acima do teto de caracteres é citada até ele, com "…". Lacuna é metadado da leitura,
+ * nunca conteúdo: o texto dos blocos não passa por aqui.
+ */
+export function lacunasQueCabem(existentes: string[], novas: string[]): string[] {
+  const citar = (l: string) => (l.length > MAX_CARACTERES_DA_LACUNA ? `${l.slice(0, MAX_CARACTERES_DA_LACUNA - 1)}…` : l)
+  const vagas = MAX_LACUNAS_NA_COPY - existentes.length
+  if (vagas <= 0) return existentes
+  const citadas = novas.map(citar)
+  if (citadas.length <= vagas) return [...existentes, ...citadas]
+  const individuais = citadas.slice(0, vagas - 1)
+  return [...existentes, ...individuais, `mais ${citadas.length - individuais.length} lacuna(s) da leitura das camadas`]
 }
 
 /**

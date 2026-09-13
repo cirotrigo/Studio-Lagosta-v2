@@ -29,6 +29,7 @@ import { lerCamadas } from '@/lib/posts/page-layers'
 import { camadasParaDecisao } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import type { Autor, CopyAutoral } from './contrato'
 import { tentarCopyEfetivaDasCamadas } from './efetiva'
+import { HistoricoDaCopyCheio } from './revisao'
 import { lerCopyAutoral } from './serializar'
 
 export interface RevisaoDaPagina {
@@ -38,13 +39,23 @@ export interface RevisaoDaPagina {
    * no contrato. Quem grava as camadas grava-as mesmo assim, mantém o contrato
    * como estava (nunca grava `copy`, que é `null`) e repassa `aviso`.
    */
-  estado: 'registrada' | 'sem-mudanca' | 'sem-contrato' | 'ilegivel' | 'historico-cheio'
+  estado: 'registrada' | 'sem-mudanca' | 'sem-contrato' | 'ilegivel' | 'historico-cheio' | 'copy-invalida'
   /** O contrato que a página deve passar a ter (`registrada`) ou tem (`sem-mudanca`); `null` nos outros estados. */
   copy: CopyAutoral | null
   blocos: string[]
   lacunas: string[]
-  /** Só em `historico-cheio`: o que aconteceu, em português, para a resposta e o log. */
+  /** Só em `historico-cheio` e `copy-invalida`: o que aconteceu (e o que fazer), em português, para a resposta e o log. */
   aviso?: string
+}
+
+/**
+ * A revisão foi RECUSADA pelo contrato — `historico-cheio` (200 revisões) ou `copy-invalida` (a copy lida das camadas
+ * não cabe: linha acima de 300, mais de 12 linhas, mais de 40 blocos — `RevisaoDaCopyInvalida`, `9238098f`)? Devolve o
+ * aviso; `null` quando não houve recusa. Quem grava as camadas grava-as mesmo assim e mantém o contrato como estava.
+ */
+export function recusaDaRevisao(r: RevisaoDaPagina): string | null {
+  if (r.estado !== 'historico-cheio' && r.estado !== 'copy-invalida') return null
+  return r.aviso ?? 'a mudança não entrou no contrato da copy, que ficou como estava'
 }
 
 /**
@@ -73,7 +84,7 @@ export function revisaoDaPaginaComCamadas(
   if (!lidas.legivel) return { estado: 'ilegivel', copy: null, blocos: [], lacunas: [] }
   const lida = tentarCopyEfetivaDasCamadas(atual, lidas.camadas as unknown as Layer[], { superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
   if (lida.ok === false) {
-    return { estado: 'historico-cheio', copy: null, blocos: lida.historicoCheio.mudancas.map((m) => m.id), lacunas: [], aviso: lida.aviso }
+    return { estado: lida.recusa instanceof HistoricoDaCopyCheio ? 'historico-cheio' : 'copy-invalida', copy: null, blocos: lida.recusa.mudancas.map((m) => m.id), lacunas: [], aviso: lida.aviso }
   }
   const { efetiva, mudancas, lacunas } = lida.leitura
   if (mudancas.length === 0) return { estado: 'sem-mudanca', copy: atual, blocos: [], lacunas }

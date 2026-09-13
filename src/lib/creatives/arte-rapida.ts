@@ -54,7 +54,7 @@ import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
-import { copyAutoralDaPagina, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
+import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
@@ -1088,12 +1088,12 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     superficie: input.canal ?? 'chat',
   })
   /**
-   * Histórico da copy CHEIO (PR2-02): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
+   * Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida que não cabe (`RevisaoDaCopyInvalida`): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
    * contrato como estava e a arte nasce SEM registro de copy (a efetiva não cabe no histórico), com o aviso no retorno.
    */
-  const avisosDaCopy: string[] = []
-  if (revisaoDaCopy.estado === 'historico-cheio') avisosDaCopy.push(revisaoDaCopy.aviso ?? 'o histórico da copy está cheio: o ajuste não entrou no contrato')
-  const contratoDaPagina = revisaoDaCopy.estado === 'historico-cheio' ? null : (revisaoDaCopy.copy ?? copyAutoralDaPagina(page.copyAutoral))
+  const recusaDaCopy = recusaDaRevisao(revisaoDaCopy)
+  const avisosDaCopy: string[] = recusaDaCopy ? [recusaDaCopy] : []
+  const contratoDaPagina = recusaDaCopy ? null : (revisaoDaCopy.copy ?? copyAutoralDaPagina(page.copyAutoral))
   const copyAutoralDaArte = contratoDaPagina
     ? (() => {
         const lida = tentarCopyEfetivaDasCamadas(contratoDaPagina, layers as Layer[], { superficie: 'ajuste-arte' })

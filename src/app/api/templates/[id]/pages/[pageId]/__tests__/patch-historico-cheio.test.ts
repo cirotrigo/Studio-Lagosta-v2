@@ -55,7 +55,7 @@ vi.mock('@/lib/db', () => {
 })
 
 import { PATCH } from '../route'
-import { MAX_REVISOES_DA_COPY, VERSAO_DO_CONTRATO, lerCopyAutoral, serializarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
+import { MAX_REVISOES_DA_COPY, ORIENTACAO_LINHA_LONGA, VERSAO_DO_CONTRATO, lerCopyAutoral, serializarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
 type Camada = Record<string, any>
 
@@ -121,5 +121,18 @@ describe('PR2-02 no PATCH da página — histórico da copy cheio no autosave', 
     const r = await patch([texto('headline', 120, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes')])
     expect(r.status).toBe(200)
     expect(r.body.avisoDaCopy).toBeUndefined()
+  })
+
+  it('RevisaoDaCopyInvalida (9238098f): camada com linha de 301 caracteres — 200, a camada é gravada como veio, o contrato fica idêntico e o aviso manda quebrar a linha', async () => {
+    banco.pagina = paginaCom(contratoCom(3))
+    const contratoAntes = banco.pagina.copyAutoral
+    const longa = 'x'.repeat(301)
+    const r = await patch([texto('headline', 100, 'Milk-shake'), texto('cta', 300, longa)])
+    expect(r.status).toBe(200)
+    expect((JSON.parse(banco.pagina.layers) as Camada[]).find((c) => c.id === 'cta')!.content).toBe(longa)
+    expect(banco.pagina.copyAutoral).toEqual(contratoAntes)
+    expect(lerCopyAutoral(banco.pagina.copyAutoral).problemas).toEqual([])
+    expect(r.body.avisoDaCopy).toMatch(/não cabe no contrato/)
+    expect(r.body.avisoDaCopy).toContain(ORIENTACAO_LINHA_LONGA)
   })
 })

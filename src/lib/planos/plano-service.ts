@@ -25,7 +25,7 @@ import { diaBRTDe, diasAteDomingoBRT, lerFotoCandidatas } from './proposta-de-se
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { CopyAutoralInvalida, copyDoItemNoPatch, copyDoItemNovo, type CopyDoItem } from './copy-do-item'
-import { CopyLegadaIncompativel, HistoricoDaCopyCheio, MAX_REVISOES_DA_COPY, orientacaoDosProblemas, orientacaoEmFrase } from '@/lib/copy-autoral'
+import { CopyLegadaIncompativel, HistoricoDaCopyCheio, MAX_REVISOES_DA_COPY, RevisaoDaCopyInvalida, orientacaoDosProblemas, orientacaoEmFrase } from '@/lib/copy-autoral'
 import {
   cenaDasReferencias,
   validarReferencias,
@@ -649,7 +649,9 @@ export async function arquivarPlano(projectId: number, planoId: string) {
  *  - `CopyLegadaIncompativel` (400): a copy legada não cabe no contrato — nada
  *    foi cortado nem redistribuído (PR2-01);
  *  - `HistoricoDaCopyCheio` (409): o contrato do item já tem o máximo de
- *    revisões e a edição não foi registrada — nada foi gravado (PR2-02).
+ *    revisões e a edição não foi registrada — nada foi gravado (PR2-02);
+ *  - `RevisaoDaCopyInvalida` (400): a revisão produziria uma copy que o leitor
+ *    recusa — nada foi gravado (9238098f).
  */
 function erroDaCopyDoItem(erro: unknown, qual: string | null): CreativeError | null {
   const daCopy = qual ? ` ${qual}` : ''
@@ -660,6 +662,11 @@ function erroDaCopyDoItem(erro: unknown, qual: string | null): CreativeError | n
     const problemas = erro.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem))
     const orientacao = orientacaoDosProblemas(erro.problemas)
     return new CreativeError('COPY_LEGADA_INCOMPATIVEL', `A copy${daCopy} não cabe no contrato da copy autoral (nada foi cortado nem redistribuído): ${problemas.join('; ')}.${orientacaoEmFrase(orientacao)}`, 400, { problemas, orientacao })
+  }
+  if (erro instanceof RevisaoDaCopyInvalida) {
+    const problemas = erro.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem))
+    const orientacao = orientacaoDosProblemas(erro.problemas)
+    return new CreativeError('COPY_REVISAO_INVALIDA', `A edição da copy${daCopy} não cabe no contrato da copy autoral e não foi registrada — nada foi gravado: ${problemas.join('; ')}.${orientacaoEmFrase(orientacao)}`, 400, { problemas, orientacao })
   }
   if (erro instanceof HistoricoDaCopyCheio) {
     return new CreativeError(

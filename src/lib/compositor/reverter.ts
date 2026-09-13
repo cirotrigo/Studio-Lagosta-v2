@@ -38,10 +38,11 @@ export async function reverterCamadasDaArte(generationId: string, opts: { projec
   // F1: o contrato da página acompanha as camadas restauradas — a reversão é
   // uma revisão do SISTEMA (motivo `reverter-arte`), na mesma transação; sem
   // isso a próxima edição levaria a culpa pelo que a reversão desfez (R09).
-  const { revisaoDaPaginaComCamadas } = await import('@/lib/copy-autoral/revisar-pagina')
+  const { recusaDaRevisao, revisaoDaPaginaComCamadas } = await import('@/lib/copy-autoral/revisar-pagina')
   const revisao = revisaoDaPaginaComCamadas(page.copyAutoral, v.camadas, { autor: 'sistema', motivo: 'reverter-arte (camadas do snapshot)', superficie: 'reverter-arte' })
-  // Histórico da copy cheio (PR2-02): a reversão segue, o contrato fica como estava e o motivo sai no retorno.
-  const avisos = revisao.estado === 'historico-cheio' && revisao.aviso ? [revisao.aviso] : []
+  // Recusa do contrato (histórico cheio, copy que não cabe): a reversão segue, o contrato fica como estava e o motivo sai no retorno.
+  const recusa = recusaDaRevisao(revisao)
+  const avisos = recusa ? [recusa] : []
   if (avisos.length > 0) console.warn(`[reverter-arte] ${pageId}: ${avisos[0]}`)
   const r = await db.$transaction(async (tx) => {
     await tx.page.update({ where: { id: pageId }, data: { layers: JSON.stringify(v.camadas), ...(revisao.estado === 'registrada' && revisao.copy ? { copyAutoral: revisao.copy as never } : {}) } })

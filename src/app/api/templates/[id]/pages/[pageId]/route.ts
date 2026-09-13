@@ -6,7 +6,7 @@ import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { reconciliarMarcasDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
-import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
+import { recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { descreverDiff, diffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import {
   caiNaEscolhaPropria,
@@ -269,10 +269,11 @@ export async function PATCH(
             if (m.layersChanged) {
               const revisao = revisaoDaPaginaComCamadas(fresca.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
               if (revisao.estado === 'registrada' && revisao.copy) dados.copyAutoral = revisao.copy
-              // 🔴 Histórico da copy CHEIO (PR2-02): o autosave NUNCA falha nem perde o que a pessoa
-              // editou — as camadas vão, o contrato fica como estava (sem a revisão, que o leitor
-              // rejeitaria) e a resposta avisa.
-              if (revisao.estado === 'historico-cheio') avisoDestaVolta = revisao.aviso ?? 'o histórico da copy está cheio: esta edição não entrou no contrato'
+              // 🔴 Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida das camadas que não cabe
+              // (`RevisaoDaCopyInvalida`): o autosave NUNCA falha nem perde o que a pessoa editou — as
+              // camadas vão, o contrato fica como estava (sem a revisão, que o leitor rejeitaria) e a
+              // resposta avisa.
+              avisoDestaVolta = recusaDaRevisao(revisao)
             }
             const gravada = await tx.page.updateMany({ where: { id: pageId, updatedAt: fresca.updatedAt }, data: dados })
             if (gravada.count > 0) {

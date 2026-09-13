@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { comVisibilidadeDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
-import { MAX_REVISOES_DA_COPY, VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, tentarCopyEfetivaDasCamadas, idDeExtra, idDeExtraLegado, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
+import { MAX_REVISOES_DA_COPY, ORIENTACAO_LINHA_LONGA, VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, lacunasQueCabem, recusaDaRevisao, tentarCopyEfetivaDasCamadas, idDeExtra, idDeExtraLegado, lerCopyAutoral, renomearExtrasDuplicados, revisaoDaPaginaComCamadas, serializarCopyAutoral, type CopyAutoral } from '..'
 
 function texto(id: string, y: number, content: string, extra: Partial<Layer> = {}): Layer {
   return { id, name: id, type: 'text', visible: true, locked: false, order: 1, content, position: { x: 100, y }, size: { width: 800, height: 60 }, style: { fontSize: 40 }, metadata: { compositor: { papel: id.replace(/-\d+$/, '') } }, ...extra } as Layer
@@ -257,5 +257,26 @@ describe('histórico da copy cheio (PR2-02) — a revisão da página não lanç
     const lida = tentarCopyEfetivaDasCamadas(cheio(MAX_REVISOES_DA_COPY - 1), editadas, { superficie: 'recomposicao' })
     expect(lida.ok && lida.leitura.efetiva.revisoes.length).toBe(MAX_REVISOES_DA_COPY)
     expect(() => copyEfetivaDasCamadas(cheio(MAX_REVISOES_DA_COPY), editadas, { superficie: 'x' })).toThrow(/histórico da copy está cheio/)
+  })
+})
+
+describe('a leitura das camadas nunca produz contrato que o leitor recusa (restack sobre 9238098f)', () => {
+  it('camada com linha de 301 caracteres: estado copy-invalida, sem copy para gravar, com o aviso que manda quebrar a linha', () => {
+    const r = revisaoDaPaginaComCamadas(contrato, [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'x'.repeat(301))], { autor: 'equipe', motivo: 'edição', superficie: 'editor' })
+    expect(r.estado).toBe('copy-invalida')
+    expect(r.copy).toBeNull()
+    expect(recusaDaRevisao(r)).toContain(ORIENTACAO_LINHA_LONGA)
+    expect(recusaDaRevisao(revisaoDaPaginaComCamadas(contrato, [texto('headline', 100, 'Milk-shake'), texto('cta', 300, 'Conheça nossos pacotes')], { autor: 'equipe', motivo: 'm', superficie: 'editor' }))).toBeNull()
+  })
+
+  it('25 blocos não desenhados: o contrato leva só as lacunas que cabem (20, a última de resumo) e continua legível; a lista inteira volta em lacunas', () => {
+    const grande: CopyAutoral = { ...contrato, blocos: Array.from({ length: 25 }, (_, i) => ({ id: `apoio-${i}`, funcao: 'apoio' as const, ordem: i, linhas: [`Texto ${i}`] })) }
+    const { efetiva, lacunas } = copyEfetivaDasCamadas(grande, [], { superficie: 'compositor' })
+    expect(lacunas).toHaveLength(25)
+    expect(efetiva.lacunas).toHaveLength(20)
+    expect(efetiva.lacunas!.at(-1)).toMatch(/^mais 6 lacuna/)
+    expect(lerCopyAutoral(efetiva).problemas).toEqual([])
+    expect(lacunasQueCabem(Array.from({ length: 20 }, (_, i) => `l${i}`), ['nova'])).toHaveLength(20)
+    expect(lacunasQueCabem([], ['x'.repeat(250)])[0]).toHaveLength(200)
   })
 })
