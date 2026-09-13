@@ -57,9 +57,15 @@ vi.mock('@/lib/db', () => {
         return { id }
       },
       findUnique: async ({ where }: { where: { id?: string; generationId?: string } }) => where.id ? banco.jobs.get(where.id) ?? null : [...banco.jobs.values()].find((j) => j.generationId === where.generationId) ?? null,
-      updateMany: async ({ where, data }: { where: { id: string; status?: string }; data: Record<string, unknown> }) => {
+      updateMany: async ({ where, data }: { where: { id: string; status?: string | { in: string[] }; payload?: { equals: unknown } }; data: Record<string, unknown> }) => {
         const j = banco.jobs.get(where.id)
-        if (!j || (where.status && j.status !== where.status)) return { count: 0 }
+        if (!j) return { count: 0 }
+        if (typeof where.status === 'string' && j.status !== where.status) return { count: 0 }
+        if (where.status && typeof where.status === 'object' && !where.status.in.includes(j.status as string)) return { count: 0 }
+        // `payload: { equals }` é o compare-and-set da fila: igualdade jsonb,
+        // insensível à ordem das chaves — como o Postgres compara.
+        const canon = (v: unknown): unknown => (Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map((k) => [k, canon((v as Record<string, unknown>)[k])])) : v)
+        if (where.payload && JSON.stringify(canon(where.payload.equals)) !== JSON.stringify(canon(j.payload))) return { count: 0 }
         banco.jobs.set(where.id, { ...j, ...data })
         return { count: 1 }
       },

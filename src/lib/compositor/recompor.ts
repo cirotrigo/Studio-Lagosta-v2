@@ -40,17 +40,20 @@
  * recomposição roda depois dele, e a arte que publica está sempre certa.
  */
 
-import { put } from '@vercel/blob'
+import { copyVisualDasCamadas } from '@/lib/creatives/procedencia-da-copy'
+import { del, put } from '@vercel/blob'
 
 import { db } from '@/lib/db'
-import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
-import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
+import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
+import { mesclarFieldValuesDaArte, preservarPropostaDeAprendizado } from '@/lib/creatives/mesclar-field-values'
+import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderPageAndRegister } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
-import { PostLogEvent } from '../../../prisma/generated/client'
+import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
 import {
@@ -100,6 +103,8 @@ export interface LevantamentoDaPagina {
   slides: SlideDefasado[]
   /** Posts já entregues ao publicador: a edição não os alcança mais. */
   congelados: string[]
+  /** `Page.updatedAt` da leitura que decidiu a defasagem — a versão que a recomposição tem de reencontrar. */
+  versaoDaPagina: Date
 }
 
 /**
@@ -114,6 +119,7 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
       name: true,
       layers: true,
       isTemplate: true,
+      updatedAt: true,
       Template: { select: { projectId: true } },
     },
   })
@@ -126,8 +132,17 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
    * (melhoria, refazer) não entra: medido em 04/09/2026, 0 de 300 Generations
    * recentes com `sourceGenerationId` carregam `pageId`.
    */
+  //
+  // 🔴 E só do PROJETO da página (REV-2CEB-02, 12/09/2026): `fieldValues.pageId`
+  // é gravado sem conferir o dono (o `konva-export` aceita `body.pageId`), e uma
+  // Generation de OUTRO projeto apontando para esta página seria a "arte mais
+  // recente" — o job de recomposição nascia preso a ela, a arte deste projeto
+  // ficava sem refazer e a alheia era reescrita a partir desta página. Medido:
+  // a prova do PR 6 cria exatamente essa linha (Generation em B com o pageId de
+  // uma página de A) e, rodando ao mesmo tempo, derrubou a prova deste PR em
+  // 2 de 3 rodadas — o "flake" era isolamento por projeto.
   const geracoes = await db.generation.findMany({
-    where: { fieldValues: { path: ['pageId'], equals: pageId } },
+    where: { projectId: page.Template.projectId, fieldValues: { path: ['pageId'], equals: pageId } },
     select: { id: true, resultUrl: true, fieldValues: true, authorName: true, sourcePageId: true },
     orderBy: { createdAt: 'desc' },
     take: 20,
@@ -187,6 +202,7 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
     nome: page.name,
     arte,
     urlsConhecidas,
+    versaoDaPagina: page.updatedAt,
     defasagem: medirDefasagem(page.layers, arte?.snapshot),
     slides: slidesDaPagina(
       candidatos.filter((p) => !p.laterPostId),
@@ -219,6 +235,14 @@ export interface ResultadoDaRecomposicao {
   /** Posts devolvidos à fila de render (os de imagem única desta página). */
   invalidados: number
   avisos: string[]
+  /**
+   * A VERSÃO VISUAL da página que esta arte reflete (hash de dimensões, fundo e
+   * camadas — `versaoDaPagina`): a que foi gravada pela recomposição, ou a que
+   * foi lida para o re-render. O runner compara com a página DEPOIS e devolve
+   * o job à fila quando divergem — inclusive numa mudança sem copy, como só a
+   * força de um gradiente (REV-F02 da revisão FINAL do Codex, 12/09/2026).
+   */
+  versaoGravada: string | null
 }
 
 export interface RecomporInput {
@@ -227,6 +251,34 @@ export interface RecomporInput {
   decididoPor?: string | null
   /** De onde veio o pedido — `editor` (o PATCH) ou `varredura`. */
   origem?: 'editor' | 'varredura'
+  /**
+   * Recuperação FORÇADA: a página foi gravada e o render que a seguiria
+   * falhou (ajuste do revisor com o Blob fora do ar). Não há Generation nova
+   * para a URL denunciar e o diff pode não ver nada (força do gradiente), então
+   * a checagem de defasagem é pulada — e a arte é RE-RENDERIZADA como a página
+   * está, nunca recomposta pela spec, que desfaria o ajuste (REV-01 da revisão
+   * do Codex, 12/09/2026).
+   */
+  forcar?: boolean
+  /**
+   * A execução anterior detectou que a página mudou DEPOIS da recomposição
+   * (só de gradiente, por exemplo) e devolveu o job à fila: esta execução
+   * re-renderiza a página COMO ESTÁ mesmo que a defasagem por conteúdo diga
+   * "em dia" — sem isto o retry saía sem renderizar e o job fechava DONE com o
+   * slide velho (REV-FINAL-01). Não escreve a trava `somenteReRender`.
+   */
+  renderizarComoEsta?: boolean
+  /**
+   * SÓ PARA PROVA: roda entre a leitura da página e a gravação das camadas
+   * recompostas, para simular a edição concorrente. Nunca vem do payload.
+   */
+  antesDeGravar?: () => Promise<void>
+  /** Só para a prova: roda ANTES do re-render (o ramo que não recompõe), depois de a versão visual ser lida. */
+  antesDeRenderizar?: () => Promise<void>
+  /** SÓ PARA PROVA: roda DEPOIS do CAS da página recomposta e ANTES da escrita da arte — a janela em que a trava do revisor pode nascer (REV-R01). */
+  entreGravarPaginaEArte?: () => Promise<void>
+  /** SÓ PARA PROVA: roda entre o levantamento (que decide a defasagem) e a leitura da página que vai ser composta. */
+  depoisDoLevantamento?: () => Promise<void>
 }
 
 /**
@@ -252,6 +304,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     congelados: levantamento.congelados,
     invalidados: 0,
     avisos: [],
+    versaoGravada: null,
   }
 
   if (levantamento.slides.length === 0) return vazio
@@ -259,8 +312,22 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
 
   // Nada a fazer — ver `precisaRefazer`. É o que evita gastar um render num
   // empurrãozinho de 1px, e o que faz reverter uma peça já em dia sair calado.
-  if (!precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return vazio
+  const forcar = input.forcar === true
+  const emDia = !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)
+  /**
+   * "Renderizar como está" (REV-FINAL-01) vale SEMPRE que o marcador vier, em
+   * dia ou não. O marcador diz que a página mudou enquanto a arte anterior
+   * era refeita — e a mudança pode ter sido de gradiente (que o diff não vê)
+   * E de texto, quando o editor continua digitando antes do retry.
+   * Condicioná-lo a "em dia" deixava exatamente esse caso recompor pela
+   * spec: `soTexto` verdadeiro, a spec sem o gradiente salvo, e o gradiente
+   * ia embora em silêncio (REV-C19-01 da revisão do Codex, 12/09/2026). Com
+   * o marcador a página é desenhada como está — copy, paradas e força.
+   */
+  const renderComoEsta = input.renderizarComoEsta === true
+  if (!forcar && emDia && !renderComoEsta) return vazio
 
+  if (input.depoisDoLevantamento) await input.depoisDoLevantamento()
   const page = await db.page.findUnique({
     where: { id: pageId },
     select: {
@@ -272,10 +339,22 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       background: true,
       isTemplate: true,
       templateId: true,
+      updatedAt: true,
       Template: { select: { id: true, name: true, projectId: true } },
     },
   })
   if (!page) throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada: ${pageId}`, 404)
+  /**
+   * A decisão (defasagem, `podeRecompor`) saiu do LEVANTAMENTO; a composição e
+   * o compare-and-set da gravação usam ESTA leitura. Se a página mudou entre
+   * as duas — o revisor gravou um ajuste e o render falhou —, a decisão não
+   * vale mais para esta versão: parar aqui, antes de compor, e deixar a
+   * próxima execução decidir sobre a página nova (REV-05, segunda rodada da
+   * revisão do Codex, 12/09/2026).
+   */
+  if (page.updatedAt.getTime() !== levantamento.versaoDaPagina.getTime()) {
+    throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada entre o levantamento e a composição; a arte será refeita a partir da página nova.', 409)
+  }
   /**
    * Mesma recusa de `ajustarArte` e `reverterCamadasDaArte`: modelo é o layout
    * reutilizável do cliente, e reescrever as camadas dele apagaria curadoria.
@@ -300,20 +379,32 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
    * como está: a edição chega ao post do mesmo jeito (que é o defeito), e a
    * geometria fica por conta de quem mexeu.
    */
-  const podeRecompor = !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
-  if (!podeRecompor && defasagem.mexidoNaMao.length > 0) {
+  // Forçado = re-render como está: recompor pela spec desfaria o ajuste que
+  // acabou de ser gravado na página. E a página que JÁ passou por uma
+  // recuperação forçada fica marcada na arte (`somenteReRender`): a spec e o
+  // snapshot dela não conhecem o ajuste, então recompor por eles numa edição
+  // de texto posterior desfaria o ajuste do mesmo jeito (REV-04, 12/09/2026).
+  const travada = !!(arte.fieldValues as Record<string, unknown> | undefined)?.somenteReRender
+  const podeRecompor = !forcar && !renderComoEsta && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  if (forcar) avisos.push('Recuperação forçada: a página foi re-renderizada como está, sem medir a diagramação de novo.')
+  if (renderComoEsta) avisos.push('A página mudou enquanto a arte anterior era refeita: re-renderizada como está (copy, paradas e força do gradiente como o editor gravou), sem medir a diagramação de novo.')
+  else if (travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto) {
+    avisos.push('A página carrega um ajuste que a spec não conhece (recuperação anterior): a arte foi re-renderizada como está, sem medir a diagramação de novo.')
+  }
+  if (!podeRecompor && !forcar && defasagem.mexidoNaMao.length > 0) {
     avisos.push(
       `A arte foi refeita SEM medir a diagramação de novo, porque a página foi ajustada à mão (${defasagem.mexidoNaMao.join('; ')}). ` +
         'Confira se algum texto ficou por cima de outro.',
     )
   }
-  if (!podeRecompor && !arte.spec) {
+  if (!podeRecompor && !forcar && !arte.spec) {
     avisos.push('Esta arte não guardou a spec do compositor; ela foi re-renderizada como a página está.')
   }
 
   let novaUrl: string
   let recomposta = false
   let invalidados = 0
+  let versaoGravada: string | null = null
 
   if (podeRecompor) {
     const { spec: specComCopy, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
@@ -339,24 +430,48 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     novaUrl = blob.url
     recomposta = true
 
-    await db.page.update({
-      where: { id: page.id },
+    if (input.antesDeGravar) await input.antesDeGravar()
+    /**
+     * Compare-and-set na versão LIDA da página. Enquanto a peça era composta a
+     * página pode ter mudado — o revisor gravou um ajuste cujo render falhou,
+     * alguém digitou. Gravar por cima apagaria essa edição em silêncio, e a
+     * recuperação forçada que viesse depois protegeria a página ERRADA
+     * (REV-05 da revisão do Codex, 12/09/2026). Mudou → a composição e o PNG
+     * são descartados e o job volta à fila: a próxima execução lê a página nova.
+     */
+    const gravada = await db.page.updateMany({
+      where: { id: page.id, updatedAt: page.updatedAt },
       data: { layers: camadas.camadas as never, thumbnail: blob.url },
     })
-    await db.generation.update({
-      where: { id: arte.generationId },
-      data: {
-        resultUrl: blob.url,
-        fieldValues: {
-          ...arte.fieldValues,
-          spec,
-          composicao: composicao.diagnostico,
-          layersSnapshot: camadas.camadas,
-          thumbnailUrl: blob.url,
-          recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
-        } as never,
+    if (gravada.count === 0) {
+      await del(blob.url).catch(() => undefined)
+      throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada enquanto a arte era refeita; a composição foi descartada e a arte será refeita a partir da página nova.', 409)
+    }
+    versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: camadas.camadas })
+    if (input.entreGravarPaginaEArte) await input.entreGravarPaginaEArte()
+    /**
+     * MERGE no banco, nunca `{ ...arte.fieldValues, … }`: `arte.fieldValues`
+     * foi lido no começo da execução, e entre o CAS da página e esta escrita
+     * o revisor pode ter gravado a trava `somenteReRender` na arte (REV-R01
+     * da revisão do Codex, 12/09/2026). O objeto capturado não a tem, e
+     * gravá-lo inteiro a apagaria — a edição de texto seguinte recomporia pela
+     * spec e desfaria o ajuste. O Postgres aplica só estas chaves sobre o
+     * valor atual.
+     */
+    await mesclarFieldValuesDaArte(
+      db,
+      arte.generationId,
+      {
+        spec,
+        composicao: composicao.diagnostico,
+        layersSnapshot: camadas.camadas,
+        thumbnailUrl: blob.url,
+        recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        // A recusa de uma rodada anterior fica superada por esta (C6-01).
+        recusaDaRecomposicao: null,
       },
-    })
+      { resultUrl: blob.url },
+    )
   } else {
     /**
      * O re-render passa por `renderPageAndRegister` com o `generationId` da
@@ -365,6 +480,30 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * válido. `sourcePageId` e `authorName` vão de volta porque a rota os
      * SOBRESCREVE, e um deles nulo apagaria de qual modelo a arte nasceu.
      */
+    // O re-render desenha a página COMO FOI LIDA: é esta a versão que a arte
+    // vai refletir, e é contra ela que o runner confere a página depois.
+    versaoGravada = versaoDaPagina({ width: page.width, height: page.height, background: page.background, layers: page.layers })
+    /**
+     * A copy VISUAL acompanha o PNG (REV-127-F02): a Generation reutilizada
+     * aqui pode ser a de um ajuste anterior, cujos `slotValues` afirmavam um
+     * texto que o ajuste seguinte escondeu — o render falhou, a recuperação
+     * trocou a URL e `lerProcedencia` seguia devolvendo o texto ausente como
+     * `copyVisual`. Só quando a arte JÁ carrega copy visual (não se inventa
+     * uma para a arte do compositor). As camadas vão decodificadas por
+     * `lerCamadas` (a rota de camada grava string JSON — REV-93D-01); página
+     * ILEGÍVEL mantém a copy que tinha, com aviso, em vez de virar `{}`.
+     * E ANTES de substituir, a copy anterior vira proposta de aprendizado
+     * quando a arte não tem uma (REV-93D-02): sem isso a proposta perdia o
+     * texto escondido pelo revisor e o agendamento o acusava como adição
+     * humana. Condicional e atômica no banco — nunca por cima de um
+     * `copyDeAprendizado` gravado por um ajuste concorrente.
+     */
+    const fvDaArte = (arte.fieldValues && typeof arte.fieldValues === 'object' ? arte.fieldValues : {}) as Record<string, unknown>
+    const temCopyVisual = typeof fvDaArte.slotValues === 'object' && fvDaArte.slotValues !== null && !Array.isArray(fvDaArte.slotValues)
+    const copyVisualNova = temCopyVisual ? copyVisualDasCamadas(page.layers) : null
+    if (temCopyVisual && copyVisualNova === null) avisos.push('Camadas da página ilegíveis: a copy visual da arte foi mantida como estava.')
+    if (copyVisualNova) await preservarPropostaDeAprendizado(db, arte.generationId)
+    if (input.antesDeRenderizar) await input.antesDeRenderizar()
     const registrada = await renderPageAndRegister({
       project: projeto,
       templateId: page.Template.id,
@@ -380,9 +519,36 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       authorName: arte.authorName ?? 'compositor',
       sourcePageId: arte.sourcePageId,
       generationId: arte.generationId,
+      // Só o PATCH: com `generationId` o persist faz MERGE no banco sobre a
+      // linha atual — mandar `{ ...arte.fieldValues }` capturado no começo
+      // apagaria a trava que o revisor gravou durante o render (REV-R01).
       fieldValues: {
-        ...arte.fieldValues,
-        recomposicao: registro('re-renderizada', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
+        /**
+         * `copyVisualRegravada` é o MARCADOR de que os `slotValues` gravados
+         * neste mesmo patch são a copy visual DESTE PNG. Mora DENTRO do
+         * registro (merge raso: a próxima escrita de `recomposicao` — outro
+         * re-render sem regravação, recomposição feita, recusa — o substitui
+         * inteiro, e o marcador nunca sobrevive à versão a que pertence).
+         * Sem ele, uma arte re-renderizada carrega `slotValues` de OUTRA versão
+         * da mídia: a de antes deste código, a de página ilegível (copy mantida
+         * como estava, com aviso) e a que não tinha copy visual. Quem invalida
+         * a copy de arte re-renderizada (R38/R42 do PR 6) reabilita SÓ com ele.
+         * Nunca gravado sem `slotValues` no mesmo patch.
+         */
+        recomposicao: registro('re-renderizada', {
+          origem,
+          papeis: defasagem.papeis,
+          avisos,
+          urlsAnteriores: rastro,
+          ...(copyVisualNova ? { copyVisualRegravada: true } : {}),
+        }),
+        // A recusa de uma rodada anterior fica superada por este re-render (C6-01).
+        recusaDaRecomposicao: null,
+        // A copy VISUAL nova (ver acima); a copy de APRENDIZADO fica como está (o merge não a toca).
+        ...(copyVisualNova ? { slotValues: copyVisualNova } : {}),
+        // A recuperação forçada preservou um ajuste que a spec não conhece:
+        // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
+        ...(forcar ? { somenteReRender: { desde: new Date().toISOString(), motivo: 'recuperação forçada preservou ajuste manual (revisor)' } } : {}),
       },
     })
     novaUrl = registrada.url
@@ -420,7 +586,58 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     congelados: levantamento.congelados,
     invalidados,
     avisos,
+    versaoGravada,
   }
+}
+
+/**
+ * TRAVA a recomposição da arte desta página — chamada por `ajustarArte` ANTES
+ * do render de um ajuste do revisor. A arte mais recente com `resultUrl` (a
+ * que `levantarPagina` escolhe para recompor) recebe `somenteReRender` por
+ * merge. Até aqui a marca só era gravada pelo re-render FORÇADO bem-sucedido:
+ * com o render do ajuste e todas as recuperações falhando, a edição de texto
+ * seguinte reabria o job NORMAL, `soTexto` era verdadeiro e a recomposição
+ * refazia a peça pela spec antiga — desfazendo o ajuste (REV-F01 da revisão
+ * FINAL do Codex, 12/09/2026). A proteção nasce junto da gravação do ajuste,
+ * não do desfecho do render. Idempotente; nunca lança para quem chama.
+ */
+export async function travarRecomposicaoDaArte(
+  pageId: string,
+  motivo: string,
+  opcoes: { projectId?: number; client?: Prisma.TransactionClient | typeof db } = {},
+): Promise<boolean> {
+  // `client` é a TRANSAÇÃO de quem grava a página: página ajustada e trava
+  // aparecem JUNTAS para qualquer leitor, ou nenhuma das duas (REV-D01 da
+  // revisão do Codex, 12/09/2026 — fora da transação um worker lia a página
+  // já ajustada com a arte ainda sem trava e recompunha por cima).
+  // 🔴 DENTRO da transação NADA pode usar `db`: no pool do dev (medido em
+  // 12/09/2026) uma leitura pelo cliente raiz com a transação aberta fica
+  // presa até o timeout dela (P2028 aos 20s) — por isso o `projectId` entra
+  // no filtro (a busca por JSON path sem ele varria a tabela inteira: 1,9s
+  // contra 0,75s com o índice do projeto) e tudo aqui passa por `client`.
+  const client = opcoes.client ?? db
+  const geracoes = await client.generation.findMany({
+    where: {
+      ...(opcoes.projectId ? { projectId: opcoes.projectId } : {}),
+      resultUrl: { not: null },
+      fieldValues: { path: ['pageId'], equals: pageId },
+    },
+    select: { id: true, resultUrl: true, fieldValues: true },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  })
+  const primeira = geracoes.find((g) => !!g.resultUrl)
+  if (!primeira) return false
+  const fv =
+    primeira.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)
+      ? (primeira.fieldValues as Record<string, unknown>)
+      : {}
+  if (fv.somenteReRender) return true
+  // MERGE no banco: um worker pode estar gravando a MESMA arte neste instante
+  // (spec, snapshot, recomposição) — `{ ...fv, trava }` com o `fv` lido acima
+  // apagaria o que ele acabou de escrever (a outra face do REV-R01).
+  await mesclarFieldValuesDaArte(client, primeira.id, { somenteReRender: { desde: new Date().toISOString(), motivo } })
+  return true
 }
 
 /** O que fica gravado em `Generation.fieldValues.recomposicao`. */
@@ -542,18 +759,28 @@ export interface PedidoDeRecomposicao {
 export async function enfileirarRecomposicaoDaPagina(args: {
   pageId: string
   origem: 'editor' | 'varredura'
+  /**
+   * Enfileira mesmo quando o diff não vê defasagem. É o caso do ajuste do
+   * revisor cujo render FALHOU: `Page.layers` já mudou (força do gradiente,
+   * por exemplo — que o diff geométrico não compara) e nenhuma Generation
+   * nova existe para a URL denunciar; sem forçar, o slide ficaria com a arte
+   * velha e sem job de recuperação (achado R2 da revisão do Codex, 12/09/2026).
+   */
+  forcar?: boolean
 }): Promise<PedidoDeRecomposicao | null> {
   const levantamento = await levantarPagina(args.pageId)
   if (!levantamento?.arte || levantamento.slides.length === 0) return null
   // A MESMA pergunta que o serviço faz, feita antes de criar o job: sem isto
   // toda mexida sem consequência acordaria o cron para não fazer nada.
-  if (!precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return null
+  if (!args.forcar && !precisaRefazer(levantamento.defasagem, levantamento.slides, levantamento.arte.resultUrl)) return null
 
   const { enfileirarRecomposicao } = await import('@/lib/ai/generation-queue')
   const jobId = await enfileirarRecomposicao({
     generationId: levantamento.arte.generationId,
     projectId: levantamento.projectId,
-    recompor: { pageId: args.pageId, origem: args.origem },
+    // `forcar` viaja no payload: sem isto o executor repetia a checagem e
+    // terminava o job sem renderizar nada (REV-01, 12/09/2026).
+    recompor: { pageId: args.pageId, origem: args.origem, ...(args.forcar ? { forcar: true } : {}) },
   })
   return { jobId, generationId: levantamento.arte.generationId, slides: levantamento.slides.length }
 }
@@ -576,11 +803,12 @@ export async function enfileirarRecomposicaoDaPagina(args: {
 export async function pedirRecomposicaoDaArteCongelada(
   pageIds: string[],
   origem: 'editor' | 'varredura' = 'editor',
+  opcoes: { forcar?: boolean } = {},
 ): Promise<PedidoDeRecomposicao[]> {
   const pedidos: PedidoDeRecomposicao[] = []
   for (const pageId of [...new Set(pageIds)]) {
     try {
-      const pedido = await enfileirarRecomposicaoDaPagina({ pageId, origem })
+      const pedido = await enfileirarRecomposicaoDaPagina({ pageId, origem, forcar: opcoes.forcar })
       if (!pedido) continue
       pedidos.push(pedido)
       console.log(`[recompor] página ${pageId}: ${pedido.slides} arte(s) congelada(s) na fila (job ${pedido.jobId})`)
@@ -602,16 +830,24 @@ export async function pedirRecomposicaoDaArteCongelada(
 export async function processarRecomposicaoEmBackground(args: {
   generationId: string
   projectId: number
-  recompor: { pageId: string; origem: 'editor' | 'varredura' }
+  recompor: { pageId: string; origem: 'editor' | 'varredura'; forcar?: boolean; forcaPedidaEm?: string; renderizarComoEsta?: boolean }
   decididoPor?: string | null
   queueJobId?: string | null
+  /** Só para a prova de integração: as costuras de `RecomporInput`. */
+  seams?: Pick<RecomporInput, 'antesDeGravar' | 'depoisDoLevantamento' | 'antesDeRenderizar' | 'entreGravarPaginaEArte'>
 }): Promise<void> {
   const { pageId, origem } = args.recompor
   const t0 = Date.now()
-  const copyAntes = await copyDaPagina(pageId)
+  // Esta execução vai TENTAR atender a força com que partiu: fica marcado no
+  // job antes de começar, para uma falha dela não voltar à fila como se fosse
+  // força nova (REV-09).
+  if (args.recompor.forcar === true) await marcarForcaEmExecucao(args.queueJobId, args.recompor.forcaPedidaEm)
 
+  // O que esta execução JÁ gravou antes de falhar: com ela, a recusa sabe se o PNG foi trocado (C6-12).
+  let resultado: ResultadoDaRecomposicao | null = null
   try {
-    const r = await recomporPaginaDefasada({ pageId, origem, decididoPor: args.decididoPor ?? null })
+    const r = await recomporPaginaDefasada({ pageId, origem, forcar: args.recompor.forcar === true, renderizarComoEsta: args.recompor.renderizarComoEsta === true, decididoPor: args.decididoPor ?? null, ...(args.seams ?? {}) })
+    resultado = r
     console.log(
       `[recompor] ${pageId} em ${Math.round((Date.now() - t0) / 1000)}s — ${r.recomposta ? 'recomposta' : 're-renderizada'}, ` +
         `${r.trocados.length} slide(s) trocado(s)` +
@@ -622,16 +858,61 @@ export async function processarRecomposicaoEmBackground(args: {
 
     /**
      * A página mudou DE NOVO enquanto a arte era refeita — alguém continuou
-     * digitando. Sem isto a última edição ficaria de fora em silêncio, que é
-     * o defeito de origem com outra roupa. `pedirNovaTentativa` respeita o
-     * teto de tentativas do job, então o laço é limitado por construção; a
-     * edição seguinte reabre o job do zero.
+     * digitando, ou salvou só outra força de gradiente. Sem isto a última
+     * edição ficaria de fora em silêncio, que é o defeito de origem com outra
+     * roupa. A comparação é pela VERSÃO VISUAL (dimensões, fundo e camadas —
+     * `versaoDaPagina`), nunca só pela copy: o re-render forçado que lia G1
+     * enquanto o editor gravava G2 fechava DONE com o slide em G1 e a página
+     * em G2, e o diff geométrico não enxerga força de gradiente (REV-F02 da
+     * revisão FINAL do Codex, 12/09/2026). Ilegível nunca é "a mesma versão".
+     * `pedirNovaTentativa` respeita o teto de tentativas do job, então o laço
+     * é limitado por construção; a edição seguinte reabre o job do zero.
      */
-    const copyDepois = await copyDaPagina(pageId)
-    if (copyAntes && copyDepois && JSON.stringify(copyAntes) !== JSON.stringify(copyDepois)) {
-      const voltou = await pedirNovaTentativa(args.queueJobId, 'a página foi editada de novo enquanto a arte era refeita')
-      if (voltou) console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição`)
+    if (r.versaoGravada) {
+      const atual = await db.page.findUnique({ where: { id: pageId }, select: { width: true, height: true, background: true, layers: true } })
+      const versaoAtual = atual ? versaoDaPagina(atual) : null
+      if (versaoAtual !== r.versaoGravada) {
+        const motivo = 'a página foi editada de novo enquanto a arte era refeita'
+        /**
+         * A próxima execução tem de RENDERIZAR a página como está, mesmo que a
+         * defasagem por conteúdo a considere em dia (a mudança pode ser só de
+         * gradiente): marcado no payload ANTES de devolver à fila
+         * (REV-FINAL-01). Sem orçamento, o marcador fica sem efeito e a falha
+         * explícita abaixo é o que vale.
+         */
+        await marcarRenderComoEsta(args.queueJobId, true)
+        const voltou = await pedirNovaTentativa(args.queueJobId, motivo)
+        if (voltou) {
+          console.log(`[recompor] ${pageId} voltou à fila: a página mudou durante a recomposição (${r.versaoGravada} → ${versaoAtual ?? 'ilegível'})`)
+          // Reenfileirado: esta execução acabou aqui — nada de marcar a força
+          // como atendida com o slide refletindo a versão velha.
+          return
+        }
+        /**
+         * Sem orçamento para outra tentativa, a divergência NÃO pode virar
+         * sucesso: seguir até `marcarForcaAtendida` fechava DONE com o slide
+         * velho diante da página nova (REV-D02 da revisão do Codex, 12/09/2026).
+         * Falha explícita, pelo tratamento de sempre (`falharJob` grava o
+         * motivo; força NOVA pendente ainda devolve o job à fila).
+         */
+        throw new CreativeError(
+          'PAGINA_MUDOU_DURANTE',
+          `${motivo}, e não há mais tentativas: a arte do slide reflete a versão anterior. Edite a página de novo para refazer.`,
+          409,
+          { versaoGravada: r.versaoGravada, versaoAtual },
+        )
+      }
     }
+    /**
+     * Esta execução HONROU a recuperação forçada com que partiu: marca no job,
+     * por compare-and-set — se uma força mais nova chegou no meio, o carimbo
+     * não casa, nada é marcado, e `fecharJob` devolve o job à fila em vez de
+     * DONE (REV-03, REV-06, REV-07). Execução SEM força não marca nada: força
+     * que chegou durante ela fica pendente no payload e `fecharJob` a enxerga.
+     */
+    if (args.recompor.forcar === true) await marcarForcaAtendida(args.queueJobId, args.recompor.forcaPedidaEm)
+    // O "renderizar como está" foi consumido por esta execução (a página não mudou durante ela): sai do payload.
+    if (args.recompor.renderizarComoEsta === true) await marcarRenderComoEsta(args.queueJobId, false)
   } catch (erro) {
     const msg = erro instanceof Error ? erro.message : String(erro)
     const code = erro instanceof CreativeError ? erro.code : 'ERRO'
@@ -659,6 +940,10 @@ export async function processarRecomposicaoEmBackground(args: {
       generationId: levantamento?.arte?.generationId ?? null,
       postIds: [...new Set(slides.map((s) => s.postId))],
       erro,
+      // A página mudou DURANTE a rodada (ou algo lançou depois do merge de sucesso): o PNG novo já está na arte e
+      // nos slides trocados, e a recusa não pode afirmar que a imagem continua sendo a anterior (C6-12).
+      arteTrocada: !!resultado?.url,
+      postsComArteNova: resultado?.trocados.map((t) => t.postId) ?? [],
     })
     // Relança: é o que faz `executarJob` marcar o job FAILED com o motivo.
     throw erro
@@ -666,25 +951,39 @@ export async function processarRecomposicaoEmBackground(args: {
 }
 
 /** A copy da página hoje — `null` quando ela sumiu ou está ilegível. */
-async function copyDaPagina(pageId: string): Promise<Record<string, string> | null> {
-  const page = await db.page.findUnique({ where: { id: pageId }, select: { layers: true } })
-  return page ? copyDeCamadas(page.layers) : null
+/**
+ * A mensagem da recusa no histórico de UM post, dita pelo que aconteceu com a
+ * imagem dele (C6-12): quando a mesma rodada já trocou o PNG, dizer que "a
+ * imagem continua sendo a anterior" é mentira. E o conselho é neutro — a
+ * mudança pode ter sido a foto, não o texto (quem chama passa o próprio motivo).
+ */
+export function mensagemDaRecusaNoHistorico(mensagem: string, imagemTrocada: boolean): string {
+  return imagemTrocada
+    ? `A imagem deste post já foi trocada pela arte refeita nesta rodada, mas a atualização terminou com erro: ${mensagem} Confira a página e salve de novo.`
+    : `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — confira a página e salve de novo.`
 }
 
 /**
  * A RECUSA do compositor chega a quem editou.
  *
  * `TEXTO_NAO_CABE_NA_COLUNA` é uma resposta correta — a linha digitada não
- * cabe na coluna nem a 80% da fonte —, e ela não pode virar log. Fica gravada
- * na Generation (que a galeria e `ver-geracao` leem) e no histórico de cada
- * post afetado, com o orçamento de caracteres, dizendo que a arte continua
- * sendo a antiga.
+ * cabe na coluna nem a 80% da fonte —, e ela não pode virar log. Quem editou
+ * é avisado pelo HISTÓRICO de cada post afetado (`PostLog`, e só quando há
+ * slides), com o orçamento de caracteres. Na Generation ela fica em
+ * `fieldValues.recusaDaRecomposicao` como DIAGNÓSTICO: hoje nenhuma tela nem
+ * tool a lê (a prova e os scripts de operação, sim) — C6-12 da pré-revisão do
+ * PR 6. `arteTrocada` diz se a mesma rodada já tinha trocado o PNG antes de
+ * falhar; `recomposicao` continua sendo o registro do último render.
  */
 export async function registrarRecusa(args: {
   pageId: string
   generationId: string | null
   postIds: string[]
   erro: unknown
+  /** A mesma rodada já gravou o PNG novo na arte antes de falhar. */
+  arteTrocada?: boolean
+  /** Os posts cuja mídia já recebeu o PNG novo nesta rodada. */
+  postsComArteNova?: string[]
 }): Promise<void> {
   const erro = args.erro
   const code = erro instanceof CreativeError ? erro.code : 'ERRO'
@@ -693,32 +992,31 @@ export async function registrarRecusa(args: {
 
   if (args.generationId) {
     try {
-      const atual = await db.generation.findUnique({
-        where: { id: args.generationId },
-        select: { fieldValues: true },
-      })
-      const fv =
-        atual?.fieldValues && typeof atual.fieldValues === 'object' && !Array.isArray(atual.fieldValues)
-          ? (atual.fieldValues as Record<string, unknown>)
-          : {}
-      // MERGE, nunca substituição: `fieldValues` é o registro atômico da run.
-      await db.generation.update({
-        where: { id: args.generationId },
-        data: {
-          fieldValues: {
-            ...fv,
-            recomposicao: registro('recusada', { erro: mensagem, errorCode: code, detalhes }),
-          } as never,
-        },
+      // MERGE NO BANCO, nunca substituição: `fieldValues` é o registro atômico
+      // da run, e ler-e-regravar aqui apagaria a trava que o revisor gravasse
+      // entre a leitura e a escrita (REV-R01).
+      /**
+       * E a recusa NÃO toca `recomposicao` (C6-01 da pré-revisão do HEAD
+       * f0eee811, 12/09/2026): ela mora em chave própria. Com
+       * `recomposicao: registro('recusada')` o merge raso trocava o registro
+       * INTEIRO enquanto o PNG re-renderizado ficava — sumiam
+       * `estado: 're-renderizada'`, o marcador `copyVisualRegravada` e
+       * `urlsAnteriores`, e os leitores voltavam a confiar no snapshot e na
+       * copy de OUTRA versão da mídia (R13/R37/R38/R42 do PR 6). O próximo
+       * registro de sucesso limpa esta chave.
+       */
+      await mesclarFieldValuesDaArte(db, args.generationId, {
+        recusaDaRecomposicao: { em: new Date().toISOString(), erro: mensagem, errorCode: code, detalhes: detalhes ?? null, arteTrocada: args.arteTrocada === true },
       })
     } catch (falha) {
       console.error('[recompor] não deu para registrar a recusa na arte:', falha)
     }
   }
 
+  const comArteNova = new Set(args.postsComArteNova ?? [])
   for (const postId of args.postIds) {
     await registrarNoHistorico(postId, {
-      message: `A arte NÃO foi atualizada: ${mensagem} A imagem continua sendo a anterior — ajuste o texto na página e salve de novo.`,
+      message: mensagemDaRecusaNoHistorico(mensagem, comArteNova.has(postId)),
       metadata: { pageId: args.pageId, errorCode: code, detalhes: detalhes ?? null },
     })
   }

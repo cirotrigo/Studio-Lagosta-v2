@@ -18,6 +18,7 @@
 import { z } from 'zod'
 import { definirTool } from '../registro/definir'
 import { ErroDeTool } from '../registro/tipos'
+import { ajusteSchema, type Ajuste } from '../../creatives/revisao/contrato'
 import type { ArtGenerationReference } from '../../ai/creative-generation-runner'
 import { MODOS_DA_MELHORIA, type ModoDaMelhoria } from '../../ai/modo-da-melhoria'
 
@@ -166,7 +167,7 @@ export const toolsDeArteIA = [
   definirTool({
     nome: 'ajustar-arte',
     descricao:
-      'Ajusta uma arte já criada aqui: troca textos e/ou a foto na MESMA página e re-renderiza. Use depois de conferir-arte, quando algo saiu errado — texto estourando a caixa, foto ruim, erro de digitação. As chaves de slotValues são as mesmas da criação (id ou nome da camada; conferir-arte e o retorno da criação mostram os nomes).\n\nNão serve para páginas-modelo do cliente (essas se editam no editor). Se a arte já estiver em algum post da agenda, a arte do post é atualizada junto (re-render automático em alguns minutos).\n\nATENÇÃO: post agendado é enviado para publicação 5 minutos antes do horário, e a partir daí a arte dele NÃO muda mais. Se a resposta trouxer `aviso`, repita-o para a pessoa — o ajuste valeu para a página, mas aquele post vai ao ar com a arte anterior. Para trocar mesmo: voltar-para-rascunho, ajustar, e agendar de novo.',
+      'Ajusta uma arte já criada aqui: troca textos e/ou a foto na MESMA página e re-renderiza. Use depois de conferir-arte, quando algo saiu errado — texto estourando a caixa, foto ruim, erro de digitação. As chaves de slotValues são as mesmas da criação (id ou nome da camada; conferir-arte e o retorno da criação mostram os nomes).\n\nAJUSTES DE DIAGRAMAÇÃO: com `ajustes` + `versaoEsperada` (obrigatória junto com os ajustes) aplica os comandos que revisar-arte devolveu — corpo e entrelinha, mover um bloco, força do gradiente de leitura, visibilidade, largura da caixa — na mesma página, e devolve `ajustesAplicados`, `ajustesRecusados` e a `versao` nova. Depois de aplicar, revise de novo com revisar-arte; no máximo duas rodadas por peça.\n\nNão serve para páginas-modelo do cliente (essas se editam no editor). Se a arte já estiver em algum post da agenda, a arte do post é atualizada junto (re-render automático em alguns minutos).\n\nATENÇÃO: post agendado é enviado para publicação 5 minutos antes do horário, e a partir daí a arte dele NÃO muda mais. Se a resposta trouxer `aviso`, repita-o para a pessoa — o ajuste valeu para a página, mas aquele post vai ao ar com a arte anterior. Para trocar mesmo: voltar-para-rascunho, ajustar, e agendar de novo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       pageId: z.string().describe('A arte a ajustar (pageId devolvido por criar-arte ou criar-arte-de-modelo).'),
@@ -177,6 +178,15 @@ export const toolsDeArteIA = [
       imageUrl: z.string().optional().describe('Nova foto de fundo (URL pública).'),
       driveImageId: z.string().optional().describe('Nova foto de fundo pelo id do Drive (de buscar-fotos).'),
       name: z.string().optional().describe('Novo nome da página (opcional).'),
+      ajustes: z
+        .array(ajusteSchema)
+        .max(30)
+        .optional()
+        .describe('Ajustes de diagramação — a lista `ajustes` que revisar-arte devolve (mande todos ou só os que decidir aplicar). Aplicados depois dos textos e da foto.'),
+      versaoEsperada: z
+        .string()
+        .optional()
+        .describe('A `versao` que revisar-arte devolveu. OBRIGATÓRIA quando vierem `ajustes` (VERSAO_OBRIGATORIA sem ela). Se a página mudou desde a revisão, nada é aplicado (VERSAO_DIVERGENTE) — revise de novo.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -196,6 +206,8 @@ export const toolsDeArteIA = [
         name: typeof args.name === 'string' ? args.name : undefined,
         decididoPor: await quemDecidiu(projectId, principal),
         canal: canalDoPrincipal(principal),
+        ajustes: Array.isArray(args.ajustes) ? (args.ajustes as Ajuste[]) : undefined,
+        versaoEsperada: typeof args.versaoEsperada === 'string' ? args.versaoEsperada : undefined,
       })
 
       /**

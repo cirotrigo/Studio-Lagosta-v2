@@ -853,6 +853,8 @@ export class RenderEngine {
     lineCount: number
     inkTopSlack: number
     inkBottomSlack: number
+    /** As linhas como o desenho as quebra, com a largura de cada uma — o revisor lê a palavra órfã daqui. */
+    linhas: Array<{ texto: string; largura: number }>
   } | null {
     if (layer.type !== 'text') return null
     if (layer.effects?.curved?.enabled) return null
@@ -885,9 +887,11 @@ export class RenderEngine {
     // Largura medida com a MESMA fonte/letterSpacing da quebra — precisa
     // acontecer antes do restore.
     let maxLineWidth = 0
+    const linhas: Array<{ texto: string; largura: number }> = []
     for (const line of lines) {
       if (!line) continue
       const w = ctx.measureText(line).width
+      linhas.push({ texto: line, largura: Math.ceil(w) })
       if (w > maxLineWidth) maxLineWidth = w
     }
 
@@ -930,6 +934,7 @@ export class RenderEngine {
       lineCount: Math.max(1, lines.length),
       inkTopSlack: Math.round(inkTopSlack * 10) / 10,
       inkBottomSlack: Math.round(inkBottomSlack * 10) / 10,
+      linhas,
     }
   }
 

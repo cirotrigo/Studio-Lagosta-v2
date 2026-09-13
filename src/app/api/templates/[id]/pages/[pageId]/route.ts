@@ -3,7 +3,9 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
-import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { lerCamadas } from '@/lib/posts/page-layers'
+import { reconciliarMarcasDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { descreverDiff, diffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import {
   caiNaEscolhaPropria,
@@ -137,7 +139,13 @@ export async function PATCH(
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }
     if (validatedData.layers !== undefined) {
-      updateData.layers = JSON.stringify(canonicalizeLayersForPersistence(validatedData.layers))
+      // Escrita HUMANA: a camada que a pessoa escondeu agora (estava visível) perde a marca de "escondida pelo
+      // revisor" que porventura carregasse — senão o esconder dela seria lido como mecânico (REV-9E-01).
+      const canonicas = canonicalizeLayersForPersistence(validatedData.layers)
+      const reconciliadas = Array.isArray(canonicas)
+        ? reconciliarMarcasDoRevisor(lerCamadas(existingPage.layers).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
+        : canonicas
+      updateData.layers = JSON.stringify(reconciliadas)
     }
     // Prisma não aceita null literal em coluna Json — limpar exige DbNull
     if (validatedData.audio === null) {
@@ -168,8 +176,10 @@ export async function PATCH(
      * remendo que fazia a cópia "seguir" a página só neste PATCH era o que
      * deixava de funcionar quando outro caminho escrevia as camadas.
      */
-    const copyAntes = layersChanged ? copyDeCamadas(existingPage.layers) : null
-    const copyDepois = layersChanged ? copyDeCamadas(updateData.layers) : null
+    // `copyParaDecisao`: a camada escondida por ajuste do revisor conta como presente dos dois lados — o
+    // autosave depois de um ajuste mecânico não pode registrar remoção em nome de quem edita (REV-9E-01).
+    const copyAntes = layersChanged ? copyParaDecisao(existingPage.layers) : null
+    const copyDepois = layersChanged ? copyParaDecisao(updateData.layers) : null
 
     let page
     let invalidated = 0
