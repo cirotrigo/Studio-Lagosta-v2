@@ -9114,3 +9114,56 @@ passou a enumerar os casos em vez de escolhê-los à mão
   herança derruba 5 casos, entre eles os roteiros encadeados; cada marca mantida
   na cópia derruba o cenário dela (`extra` → o extra, `bloco` → o livre ligado por
   bloco, `papel` → manchete, parte marcada e parte legada).
+
+**Da pré-revisão do commit 099818b0 (BLOQUEADO, C9-11…13, 12/09/2026):**
+
+- 🔴 **C9-11 — o `papel` só sai da camada copiada quando a página TEM contrato
+  da copy.** O C9-02 tirava o papel em qualquer página, e na página SEM contrato
+  (a assinatura, a de combinação) o papel é justamente o que o COMPOSITOR lê:
+  duplicar o texto de serviço para fazer a linha do endereço gerava uma cópia
+  sem papel, `arranjoDasCamadas` a descartava junto com o ícone preso a ela, e
+  toda peça seguinte daquela variante punha horário e endereço no mesmo texto,
+  em silêncio. Lá não há leitura de autoria a proteger (`revisar-pagina` devolve
+  `sem-contrato`). Hoje `semIdentidadeAutoral(camada, { paginaTemContrato })`
+  tira SEMPRE `extra`, `bloco`, `parte` e `linhasDoBloco` e o `papel` só com
+  contrato — a nota do C9-02 sobre "sem papel" vale só para essas páginas.
+  - **Os dois callbacks do editor chamam funções PURAS** (`camadaDuplicadaNoEditor`,
+    `camadasColadasNoEditor`, em `camada-copiada.ts`), e um teste lê a fonte de
+    `template-editor-context.tsx`: antes, voltar `duplicateLayer` ou
+    `pasteLayers` a copiar a camada inteira não derrubava teste nenhum, porque
+    o teste refazia o spread por conta própria.
+  - 🔴 **O `MultiPageProvider` mapeia os campos da página UM A UM** e descartava
+    `copyAutoral`, que a rota `GET /api/templates/[id]/pages` já devolve. O
+    editor lê `Page.temCopyAutoral` (boolean derivado no mapeamento) por
+    `useMultiPageOpcional()` — o `useMultiPage()` lança fora do provider. Campo
+    novo de `Page` que o editor precise ler tem de entrar nesse mapeamento,
+    senão some sem erro.
+- **`definirPapel` (painel de combinações) passou a MESCLAR**
+  (`comPapelNoCompositor`, `font-combinations-capture.ts`): substituía
+  `metadata.compositor` por `{ papel }` e, numa página composta, apagava `extra`,
+  `bloco`, `parte`, `linhasDoBloco` e `encaixe`. Tirar o papel remove só o papel.
+- 🔴 **C9-12 — o invariante ganhou o eixo da ORDEM DO ARRAY** (textos invertidos
+  e rotacionados no array, alturas na numeração, donos procurados pelo ID da
+  camada). Na página preparada a ordem do array coincide sempre com a numeração
+  dos ids, e o painel de camadas muda o array. Medido contra o invariante do
+  HEAD 099818b0: tirar o `sort` do ramo legado de `ordenarPartes` derrubava 196
+  casos, **todos** em `voz2-dois-textos` (pelas permutações de Y) — e **zero**
+  nas páginas de serviço. Com o eixo: 714 falhas, 322 delas em
+  `servico-dois-grupos` e `servico-mesmo-grupo` (74 de persistência). Trocar a
+  numeração pela posição no array dá o mesmo placar. A mesma troca no ramo das
+  partes MARCADAS é mutante equivalente (as linhas vão pela posição autoral de
+  `linhasDoBloco`, não pela ordem das camadas).
+- 🔴 **C9-13 — os dois primeiros passos dos roteiros encadeados eram f(x) contra
+  f(x)** (`salvar` é a leitura crua quando não há camada escondida pelo revisor)
+  e saíram, junto com a contagem deles. Entraram: excluir → salvar → reler →
+  duplicar → spec da recomposição → **desfazer** → salvar (devolve a leitura
+  original), e a camada escondida pelo **REVISOR** (`comVisibilidadeDoRevisor`):
+  salvar é `sem-mudanca`, a leitura da arte é igual a ocultar, e desfazer segue
+  `sem-mudanca`. Mutações: `camadasParaDecisao` como identidade derruba 11.226
+  verificações (o roteiro do revisor); a revisão que só registra remoção derruba
+  o desfazer e o reexibir.
+- Números: **780 contratos, 229 aceitos, 1.647 variantes, 74.354 operações
+  (16.839 encadeadas), 0 falhas**. Mutações do editor, cada uma derrubando o
+  teste dela: o helper ignorando a opção (3 testes), `duplicateLayer` e
+  `pasteLayers` copiando a camada inteira, o contexto sem `temCopyAutoral`, o
+  painel substituindo o compositor e `comPapelNoCompositor` substituindo.

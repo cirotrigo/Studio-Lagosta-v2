@@ -39,6 +39,8 @@ interface PageResponse {
   /** Temas do modelo. É por elas que `prepareCreative` acha a página a partir
    *  de uma frase — ver src/lib/creatives/arte-rapida.ts. */
   tags?: string[]
+  /** O contrato da copy (F1). A rota devolve o registro inteiro; o editor só pergunta se existe. */
+  copyAutoral?: unknown
   createdAt: string
   updatedAt: string
 }

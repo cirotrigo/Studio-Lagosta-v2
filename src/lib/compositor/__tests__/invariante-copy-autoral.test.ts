@@ -7,6 +7,7 @@ import { entradaDePersistencia } from '../persistencia'
 import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
 import { specDaRecomposicao } from '../spec-da-recomposicao'
+import { comVisibilidadeDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, revisaoDaPaginaComCamadas, validarCopyAutoral, type BlocoAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
 /**
@@ -42,6 +43,15 @@ import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, rev
  * Regra DIFERENCIAL, em toda variante: releitura estável, a cópia duplicada se
  * lê como a original, ocultar e reexibir devolve a leitura, e ocultar um texto
  * na cópia dá a mesma leitura que ocultá-lo na original.
+ *
+ * C9-12 e C9-13 (pré-revisão do commit 099818b0, 12/09/2026): um eixo de ORDEM
+ * DO ARRAY (textos invertidos e rotacionados no array, com as alturas na
+ * numeração — o que a equipe faz ao reordenar camadas no painel), os donos
+ * procurados pelo id da camada, os dois passos tautológicos dos roteiros
+ * tirados (comparar o salvo com a leitura crua é f(x) com f(x)), o DESFAZER
+ * depois de salvar, e a camada escondida pelo REVISOR (a marca do PR 0): salvar
+ * é "sem mudança", a leitura da arte diz que o texto não foi desenhado, e
+ * desfazer volta sem mudança.
  *
  * C9-01 (pré-revisão do HEAD 980eea2a, 12/09/2026): a variante `legada` ganhou
  * ORÁCULO de correção — a leitura que o leitor LEGADO fazia (`leituraLegada`:
@@ -185,6 +195,22 @@ type Marcas = 'preparada' | 'legada' | 'legada-sem-papel'
 type OrdemY = 'identidade' | 'invertida' | 'troca-no-grupo'
 const MARCAS: Marcas[] = ['preparada', 'legada', 'legada-sem-papel']
 const ORDENS: OrdemY[] = ['identidade', 'invertida', 'troca-no-grupo']
+// C9-12 (pré-revisão do commit 099818b0): na página preparada a ordem do ARRAY é sempre a da numeração dos ids (a
+// montagem numera), então uma leitura que ordenasse pela ordem do array passava. Reordenar camadas no painel muda o array.
+type OrdemArray = 'original' | 'invertida' | 'rotacionada'
+const ORDENS_DO_ARRAY: OrdemArray[] = ['original', 'invertida', 'rotacionada']
+const MARCA_DO_REVISOR = { em: '2026-09-12T12:00:00.000Z', ajuste: 0 }
+
+/** Reordena só os TEXTOS no array (nos lugares que os textos ocupam), mantendo ids, alturas e as outras camadas. */
+function reordenarArray(camadas: Layer[], ordem: OrdemArray): Layer[] {
+  if (ordem === 'original') return camadas
+  const lugares = camadas.map((l, i) => (ehTexto(l) ? i : -1)).filter((i) => i >= 0)
+  const textos = lugares.map((i) => camadas[i])
+  const novos = ordem === 'invertida' ? [...textos].reverse() : [...textos.slice(1), textos[0]]
+  const saida = [...camadas]
+  lugares.forEach((i, k) => (saida[i] = novos[k]))
+  return saida
+}
 
 /** A página LEGADA: sem as marcas de parte e de vínculo (e, na forma artificial, sem o papel); id físico, nome e identidade de extra ficam. */
 function tirarMarcas(camadas: Layer[], semPapel: boolean): Layer[] {
@@ -322,130 +348,148 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
 
       try {
         const preparadas = preparados.montados.map((m) => m.layer)
-        // Oráculo e donos são decididos na página PREPARADA, pelo índice: as variantes só mexem em marcas e alturas.
-        // Preparada: o contrato autoral e as marcas. Legada: a leitura que o leitor LEGADO fazia (C9-01).
-        const donosDaPreparada = preparadas.map((l) => (ehTexto(l) ? donoDoTexto(l, caso.contrato, preparadas) : null))
+        // Oráculo e donos são decididos na página PREPARADA e procurados pelo ID da camada: as variantes mexem em marcas,
+        // alturas e ordem do array, nunca nos ids. Preparada: o contrato autoral e as marcas. Legada: a leitura legada (C9-01).
+        const donosDaPreparada = new Map(preparadas.map((l) => [String(l.id), ehTexto(l) ? donoDoTexto(l, caso.contrato, preparadas) : null]))
         const legado = leituraLegada(caso.contrato, preparadas)
+        const donosDaLegada = new Map(preparadas.map((l, i) => [String(l.id), legado.donos[i]]))
         // Só o id que NÃO é do autor é inferido (C9-01): o `extra-*` autoral fica visível em toda comparação. A exceção é
         // a regra do R25: o livre SEM herança com id `extra-*` É o namespace inferido (a leitura casa por ele e a duplicação
-        // o renomeia), então ele é mascarado como os que a leitura cria. Medido na 1ª rodada: sem esta exceção, 2 casos da
-        // página artificial sem papel acusavam a renomeação que a regra manda fazer.
+        // o renomeia), então ele é mascarado como os que a leitura cria.
         const autorais = new Set(caso.contrato.blocos.filter((x) => !(x.funcao === 'livre' && !x.estilo?.herdaDe && x.id.startsWith('extra-'))).map((x) => x.id))
         const formaSemInferidos = (c: CopyAutoral) => c.blocos.map((x) => [autorais.has(x.id) ? x.id : 'extra', x.linhas])
         const repartida = familiasRepartidas(preparadas).length > 0
         if (caso.pagina === 'voz2-dois-textos' && repartida && b.some((x) => x.funcao === 'headline' && x.linhas.length === 3 && x.estilo?.linhasNaVoz2?.length === 2)) cobertura.r28 = true
 
         for (const marcas of MARCAS)
-          for (const ordem of ORDENS) {
-            if (ordem !== 'identidade' && !repartida) continue
-            contagem.variantes++
-            const rotulo = `[${marcas}/${ordem}]`
-            const falharV = (onde: string, detalhe: unknown) => falhar(`${rotulo} ${onde}`, detalhe)
-            const alturas = permutarY(preparadas, ordem)
-            const camadas = marcas === 'preparada' ? alturas : tirarMarcas(alturas, marcas === 'legada-sem-papel')
-            // Correção vale na preparada (contrato autoral) e na legada (leitura legada); a sem papel só tem a regra diferencial.
-            const absoluta = marcas !== 'legada-sem-papel'
-            const oraculo = marcas === 'preparada' ? forma(caso.contrato) : legado.esperado
-            const donos = marcas === 'preparada' ? donosDaPreparada : legado.donos
-            const efetiva = entradaDePersistencia({ spec: v.spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas, fundo: '#000', diagnostico: {}, fotoUrl: null }).copyAutoral as CopyAutoral
-            if (absoluta) {
-              // 1. a persistência reproduz o oráculo, sem bloco inventado
-              if (JSON.stringify(forma(efetiva)) !== JSON.stringify(oraculo)) falharV('persistência', { esperado: oraculo, obtido: forma(efetiva) })
-              if (validarCopyAutoral(efetiva).problemas.length > 0) falharV('contrato persistido inválido', validarCopyAutoral(efetiva).problemas)
-            }
-            // 2. releitura estável
-            contagem.operacoes++
-            const relida = copyEfetivaDasCamadas(efetiva, camadas, { superficie: 'editor' })
-            if (relida.mudancas.length > 0) falharV('releitura', relida.mudancas.map((m) => m.id))
-            if (marcas === 'preparada' && ordem === 'identidade') {
-              if (validarSpec(v.spec).problemas.length > 0) falharV('spec derivada', validarSpec(v.spec).problemas)
-              const recomposta = validarSpec(specDaRecomposicao(v.spec, efetiva))
-              if (!recomposta.spec) falharV('spec da recomposição', recomposta.problemas)
-              else {
-                const denovo = prepararBlocos({ ...COMUNS[caso.pagina], spec: recomposta.spec }).montados.map((m) => m.layer)
-                const lidaDenovo = copyEfetivaDasCamadas(efetiva, denovo, { superficie: 'recomposicao' })
-                if (lidaDenovo.mudancas.length > 0) falharV('recomposição relida', lidaDenovo.mudancas.map((m) => m.id))
+          for (const ordem of ORDENS)
+            for (const ordemDoArray of ORDENS_DO_ARRAY) {
+              if ((ordem !== 'identidade' || ordemDoArray !== 'original') && !repartida) continue
+              // O eixo do array roda com as alturas na numeração: é ele sozinho que separa "número" de "ordem do array".
+              if (ordemDoArray !== 'original' && ordem !== 'identidade') continue
+              contagem.variantes++
+              const rotulo = `[${marcas}/${ordem}/${ordemDoArray}]`
+              const falharV = (onde: string, detalhe: unknown) => falhar(`${rotulo} ${onde}`, detalhe)
+              const alturas = permutarY(preparadas, ordem)
+              const camadas = reordenarArray(marcas === 'preparada' ? alturas : tirarMarcas(alturas, marcas === 'legada-sem-papel'), ordemDoArray)
+              // Correção vale na preparada (contrato autoral) e na legada (leitura legada); a sem papel só tem a regra diferencial.
+              const absoluta = marcas !== 'legada-sem-papel'
+              const oraculo = marcas === 'preparada' ? forma(caso.contrato) : legado.esperado
+              const donoPorId = marcas === 'preparada' ? donosDaPreparada : donosDaLegada
+              const efetiva = entradaDePersistencia({ spec: v.spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas, fundo: '#000', diagnostico: {}, fotoUrl: null }).copyAutoral as CopyAutoral
+              if (absoluta) {
+                // 1. a persistência reproduz o oráculo, sem bloco inventado
+                if (JSON.stringify(forma(efetiva)) !== JSON.stringify(oraculo)) falharV('persistência', { esperado: oraculo, obtido: forma(efetiva) })
+                if (validarCopyAutoral(efetiva).problemas.length > 0) falharV('contrato persistido inválido', validarCopyAutoral(efetiva).problemas)
               }
-            }
-            // 3. duplicar não muda a leitura
-            let n = 0
-            const dup = duplicarCamadasDaPagina(camadas, () => `uuid-${++n}`, efetiva)
-            const camadasDaCopia = dup.camadas as Layer[]
-            contagem.operacoes++
-            const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, camadasDaCopia, { superficie: 'editor' })
-            if (lidaCopia.mudancas.length > 0 || JSON.stringify(formaSemInferidos(lidaCopia.efetiva)) !== JSON.stringify(formaSemInferidos(efetiva))) falharV('duplicação', { mudancas: lidaCopia.mudancas.map((m) => m.id), esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(lidaCopia.efetiva) })
+              // 2. releitura estável
+              contagem.operacoes++
+              const relida = copyEfetivaDasCamadas(efetiva, camadas, { superficie: 'editor' })
+              if (relida.mudancas.length > 0) falharV('releitura', relida.mudancas.map((m) => m.id))
+              if (marcas === 'preparada' && ordem === 'identidade' && ordemDoArray === 'original') {
+                if (validarSpec(v.spec).problemas.length > 0) falharV('spec derivada', validarSpec(v.spec).problemas)
+                const recomposta = validarSpec(specDaRecomposicao(v.spec, efetiva))
+                if (!recomposta.spec) falharV('spec da recomposição', recomposta.problemas)
+                else {
+                  const denovo = prepararBlocos({ ...COMUNS[caso.pagina], spec: recomposta.spec }).montados.map((m) => m.layer)
+                  const lidaDenovo = copyEfetivaDasCamadas(efetiva, denovo, { superficie: 'recomposicao' })
+                  if (lidaDenovo.mudancas.length > 0) falharV('recomposição relida', lidaDenovo.mudancas.map((m) => m.id))
+                }
+              }
+              // 3. duplicar não muda a leitura
+              let n = 0
+              const dup = duplicarCamadasDaPagina(camadas, () => `uuid-${++n}`, efetiva)
+              const camadasDaCopia = dup.camadas as Layer[]
+              contagem.operacoes++
+              const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, camadasDaCopia, { superficie: 'editor' })
+              if (lidaCopia.mudancas.length > 0 || JSON.stringify(formaSemInferidos(lidaCopia.efetiva)) !== JSON.stringify(formaSemInferidos(efetiva))) falharV('duplicação', { mudancas: lidaCopia.mudancas.map((m) => m.id), esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(lidaCopia.efetiva) })
 
-            // 4. um texto por vez
-            const tocarUm = (lista: Layer[], k: number, modo: 'ocultar' | 'excluir') =>
-              (modo === 'ocultar' ? lista.map((l, j) => (j === k ? { ...l, visible: false } : l)) : lista.filter((_, j) => j !== k)) as Layer[]
-            const temBlocoParaCompor = (c: CopyAutoral) => c.blocos.some((x) => x.funcao !== 'livre' && x.linhas.length > 0)
-            const conferirToque = (onde: string, base: CopyAutoral, lista: Layer[], k: number, modo: 'ocultar' | 'excluir') => {
-              contagem.operacoes++
-              const lida = copyEfetivaDasCamadas(base, tocarUm(lista, k, modo), { superficie: 'editor' }).efetiva
-              if (!absoluta) return lida
-              if (lida.blocos.some((x) => !autorais.has(x.id) && !base.blocos.some((y) => y.id === x.id))) falharV(`${onde}: bloco inventado`, forma(lida))
-              const dono = donos[k]
-              if (!dono) return lida
-              const esperado = base.blocos.map((x) => [x.id, x.id === dono.id ? x.linhas.filter((_, p) => !dono.posicoes.includes(p)) : x.linhas])
-              if (JSON.stringify(forma(lida)) !== JSON.stringify(esperado)) falharV(`${onde} ${String(preparadas[k].id)} (dono ${dono.id})`, { esperado, obtido: forma(lida) })
-              if (validarCopyAutoral(lida).problemas.length > 0) falharV(`${onde}: contrato inválido`, validarCopyAutoral(lida).problemas)
-              // Sem bloco COM função e com texto não há o que compor ("pelo menos um bloco"): a recusa é legítima.
-              if (ordem === 'identidade' && temBlocoParaCompor(lida)) {
-                const r = validarSpec(specDaRecomposicao(v.spec!, lida))
-                if (!r.spec) falharV(`${onde}: spec da recomposição`, r.problemas)
+              // 4. um texto por vez
+              const tocarUm = (lista: Layer[], k: number, modo: 'ocultar' | 'excluir') =>
+                (modo === 'ocultar' ? lista.map((l, j) => (j === k ? { ...l, visible: false } : l)) : lista.filter((_, j) => j !== k)) as Layer[]
+              const temBlocoParaCompor = (c: CopyAutoral) => c.blocos.some((x) => x.funcao !== 'livre' && x.linhas.length > 0)
+              const conferirToque = (onde: string, base: CopyAutoral, lista: Layer[], k: number, modo: 'ocultar' | 'excluir', idOriginal: string) => {
+                contagem.operacoes++
+                const lida = copyEfetivaDasCamadas(base, tocarUm(lista, k, modo), { superficie: 'editor' }).efetiva
+                if (!absoluta) return lida
+                if (lida.blocos.some((x) => !autorais.has(x.id) && !base.blocos.some((y) => y.id === x.id))) falharV(`${onde}: bloco inventado`, forma(lida))
+                const dono = donoPorId.get(idOriginal)
+                if (!dono) return lida
+                const esperado = base.blocos.map((x) => [x.id, x.id === dono.id ? x.linhas.filter((_, p) => !dono.posicoes.includes(p)) : x.linhas])
+                if (JSON.stringify(forma(lida)) !== JSON.stringify(esperado)) falharV(`${onde} ${idOriginal} (dono ${dono.id})`, { esperado, obtido: forma(lida) })
+                if (validarCopyAutoral(lida).problemas.length > 0) falharV(`${onde}: contrato inválido`, validarCopyAutoral(lida).problemas)
+                // Sem bloco COM função e com texto não há o que compor ("pelo menos um bloco"): a recusa é legítima.
+                if (ordem === 'identidade' && ordemDoArray === 'original' && temBlocoParaCompor(lida)) {
+                  const r = validarSpec(specDaRecomposicao(v.spec!, lida))
+                  if (!r.spec) falharV(`${onde}: spec da recomposição`, r.problemas)
+                }
+                return lida
               }
-              return lida
-            }
-            // O que o autosave grava: a revisão da equipe sobre o contrato atual, ou o mesmo contrato quando nada mudou.
-            const salvar = (onde: string, base: CopyAutoral, lista: Layer[]) => {
-              contagem.operacoes++
-              const r = revisaoDaPaginaComCamadas(base, lista, equipe)
-              if (r.estado === 'ilegivel' || r.estado === 'sem-contrato') falharV(`${onde}: salvar`, r.estado)
-              if (r.copy && validarCopyAutoral(r.copy).problemas.length > 0) falharV(`${onde}: salvo inválido`, validarCopyAutoral(r.copy).problemas)
-              return r.copy ?? base
-            }
-            const iguais = (a: CopyAutoral, c: CopyAutoral) => JSON.stringify(formaSemInferidos(a)) === JSON.stringify(formaSemInferidos(c))
-            camadas.forEach((l, k) => {
-              if (!ehTexto(l)) return
-              const id = String(preparadas[k].id)
-              const oculta = conferirToque('ocultar', efetiva, camadas, k, 'ocultar')
-              const excluida = conferirToque('excluir', efetiva, camadas, k, 'excluir')
-              contagem.operacoes++
-              const volta = copyEfetivaDasCamadas(oculta, camadas, { superficie: 'editor' }).efetiva
-              if (!iguais(volta, efetiva)) falharV(`ocultar e reexibir ${id}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })
-              const ocultaNaCopia = conferirToque('duplicar e ocultar', dup.contrato!, camadasDaCopia, k, 'ocultar')
-              // DIFERENCIAL: ocultar na cópia dá a mesma leitura que ocultar na original.
-              if (!iguais(ocultaNaCopia, oculta)) falharV(`diferencial: ocultar ${id} na cópia`, { original: formaSemInferidos(oculta), copia: formaSemInferidos(ocultaNaCopia) })
+              // O que o autosave grava: a revisão da equipe sobre o contrato atual, ou o mesmo contrato quando nada mudou.
+              // É o INSUMO dos roteiros, não uma conferência: comparar o salvo com a leitura crua seria f(x) com f(x) (C9-13).
+              const salvar = (onde: string, base: CopyAutoral, lista: Layer[]) => {
+                const r = revisaoDaPaginaComCamadas(base, lista, equipe)
+                if (r.estado === 'ilegivel' || r.estado === 'sem-contrato') falharV(`${onde}: salvar`, r.estado)
+                if (r.copy && validarCopyAutoral(r.copy).problemas.length > 0) falharV(`${onde}: salvo inválido`, validarCopyAutoral(r.copy).problemas)
+                return r.copy ?? base
+              }
+              const iguais = (a: CopyAutoral, c: CopyAutoral) => JSON.stringify(formaSemInferidos(a)) === JSON.stringify(formaSemInferidos(c))
+              camadas.forEach((l, k) => {
+                if (!ehTexto(l)) return
+                const id = String(l.id)
+                const oculta = conferirToque('ocultar', efetiva, camadas, k, 'ocultar', id)
+                conferirToque('excluir', efetiva, camadas, k, 'excluir', id)
+                contagem.operacoes++
+                const volta = copyEfetivaDasCamadas(oculta, camadas, { superficie: 'editor' }).efetiva
+                if (!iguais(volta, efetiva)) falharV(`ocultar e reexibir ${id}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })
+                const ocultaNaCopia = conferirToque('duplicar e ocultar', dup.contrato!, camadasDaCopia, k, 'ocultar', id)
+                // DIFERENCIAL: ocultar na cópia dá a mesma leitura que ocultar na original.
+                if (!iguais(ocultaNaCopia, oculta)) falharV(`diferencial: ocultar ${id} na cópia`, { original: formaSemInferidos(oculta), copia: formaSemInferidos(ocultaNaCopia) })
 
-              // 5. ENCADEADAS (C9-01)
-              contagem.encadeadas += 2
-              // 5a. excluir → salvar → reler → duplicar → spec da recomposição (o formato do R23 e do R25)
-              const semK = tocarUm(camadas, k, 'excluir')
-              const salvo = salvar(`excluir ${id}`, efetiva, semK)
-              if (!iguais(salvo, excluida)) falharV(`excluir ${id} → salvar`, { esperado: formaSemInferidos(excluida), obtido: formaSemInferidos(salvo) })
-              contagem.operacoes++
-              const relidaSalva = copyEfetivaDasCamadas(salvo, semK, { superficie: 'editor' })
-              if (relidaSalva.mudancas.length > 0) falharV(`excluir ${id} → salvar → reler`, relidaSalva.mudancas.map((m) => m.id))
-              let m = 0
-              const dupSalva = duplicarCamadasDaPagina(semK, () => `uuid-e${k}-${++m}`, salvo)
-              contagem.operacoes++
-              const lidaDupSalva = copyEfetivaDasCamadas(dupSalva.contrato!, dupSalva.camadas as Layer[], { superficie: 'editor' })
-              if (lidaDupSalva.mudancas.length > 0 || !iguais(lidaDupSalva.efetiva, salvo)) falharV(`excluir ${id} → salvar → duplicar`, { mudancas: lidaDupSalva.mudancas.map((x) => x.id), esperado: formaSemInferidos(salvo), obtido: formaSemInferidos(lidaDupSalva.efetiva) })
-              if (absoluta && temBlocoParaCompor(salvo)) {
-                const r = validarSpec(specDaRecomposicao(v.spec!, salvo))
-                if (!r.spec) falharV(`excluir ${id} → salvar → spec da recomposição`, r.problemas)
-              }
-              // 5b. duplicar → ocultar → salvar → reler → reexibir → salvar
-              const ocultaCopia = tocarUm(camadasDaCopia, k, 'ocultar')
-              const salvoCopia = salvar(`duplicar e ocultar ${id}`, dup.contrato!, ocultaCopia)
-              if (!iguais(salvoCopia, ocultaNaCopia)) falharV(`duplicar → ocultar ${id} → salvar`, { esperado: formaSemInferidos(ocultaNaCopia), obtido: formaSemInferidos(salvoCopia) })
-              contagem.operacoes++
-              const relidaCopia = copyEfetivaDasCamadas(salvoCopia, ocultaCopia, { superficie: 'editor' })
-              if (relidaCopia.mudancas.length > 0) falharV(`duplicar → ocultar ${id} → salvar → reler`, relidaCopia.mudancas.map((x) => x.id))
-              const reexibidoSalvo = salvar(`duplicar e reexibir ${id}`, salvoCopia, camadasDaCopia)
-              if (!iguais(reexibidoSalvo, efetiva)) falharV(`duplicar → ocultar ${id} → salvar → reexibir → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(reexibidoSalvo) })
-            })
-          }
+                // 5. ENCADEADAS (C9-01, sem os passos tautológicos — C9-13)
+                contagem.encadeadas += 3
+                // 5a. excluir → salvar → reler → duplicar → spec da recomposição → DESFAZER (o snapshot volta) → salvar
+                const semK = tocarUm(camadas, k, 'excluir')
+                const salvo = salvar(`excluir ${id}`, efetiva, semK)
+                contagem.operacoes++
+                const relidaSalva = copyEfetivaDasCamadas(salvo, semK, { superficie: 'editor' })
+                if (relidaSalva.mudancas.length > 0) falharV(`excluir ${id} → salvar → reler`, relidaSalva.mudancas.map((m) => m.id))
+                let m = 0
+                const dupSalva = duplicarCamadasDaPagina(semK, () => `uuid-e${k}-${++m}`, salvo)
+                contagem.operacoes++
+                const lidaDupSalva = copyEfetivaDasCamadas(dupSalva.contrato!, dupSalva.camadas as Layer[], { superficie: 'editor' })
+                if (lidaDupSalva.mudancas.length > 0 || !iguais(lidaDupSalva.efetiva, salvo)) falharV(`excluir ${id} → salvar → duplicar`, { mudancas: lidaDupSalva.mudancas.map((x) => x.id), esperado: formaSemInferidos(salvo), obtido: formaSemInferidos(lidaDupSalva.efetiva) })
+                if (absoluta && temBlocoParaCompor(salvo)) {
+                  contagem.operacoes++
+                  const r = validarSpec(specDaRecomposicao(v.spec!, salvo))
+                  if (!r.spec) falharV(`excluir ${id} → salvar → spec da recomposição`, r.problemas)
+                }
+                contagem.operacoes++
+                const desfeito = salvar(`desfazer a exclusão de ${id}`, salvo, camadas)
+                if (!iguais(desfeito, efetiva)) falharV(`excluir ${id} → salvar → desfazer → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(desfeito) })
+                // 5b. duplicar → ocultar → salvar → reler → reexibir → salvar
+                const ocultaCopia = tocarUm(camadasDaCopia, k, 'ocultar')
+                const salvoCopia = salvar(`duplicar e ocultar ${id}`, dup.contrato!, ocultaCopia)
+                contagem.operacoes++
+                const relidaCopia = copyEfetivaDasCamadas(salvoCopia, ocultaCopia, { superficie: 'editor' })
+                if (relidaCopia.mudancas.length > 0) falharV(`duplicar → ocultar ${id} → salvar → reler`, relidaCopia.mudancas.map((x) => x.id))
+                contagem.operacoes++
+                const reexibidoSalvo = salvar(`duplicar e reexibir ${id}`, salvoCopia, camadasDaCopia)
+                if (!iguais(reexibidoSalvo, efetiva)) falharV(`duplicar → ocultar ${id} → salvar → reexibir → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(reexibidoSalvo) })
+                // 5c. o REVISOR esconde o texto (marca do PR 0) → salvar é "sem mudança" (não é remoção autoral); a leitura da
+                // arte diz que o texto não foi desenhado (igual a ocultar); desfazer → salvar continua sem mudança.
+                const peloRevisor = camadas.map((c, j) => (j === k ? comVisibilidadeDoRevisor(c, false, MARCA_DO_REVISOR) : c)) as Layer[]
+                contagem.operacoes++
+                const revisaoDoRevisor = revisaoDaPaginaComCamadas(efetiva, peloRevisor, equipe)
+                if (revisaoDoRevisor.estado !== 'sem-mudanca') falharV(`revisor esconde ${id} → salvar`, { estado: revisaoDoRevisor.estado, blocos: revisaoDoRevisor.blocos })
+                contagem.operacoes++
+                const lidaDoRevisor = copyEfetivaDasCamadas(efetiva, peloRevisor, { superficie: 'revisor' }).efetiva
+                if (!iguais(lidaDoRevisor, oculta)) falharV(`revisor esconde ${id}: a leitura da arte`, { esperado: formaSemInferidos(oculta), obtido: formaSemInferidos(lidaDoRevisor) })
+                contagem.operacoes++
+                const reexibidaPeloRevisor = revisaoDaPaginaComCamadas(revisaoDoRevisor.copy ?? efetiva, camadas, equipe)
+                if (reexibidaPeloRevisor.estado !== 'sem-mudanca') falharV(`revisor esconde ${id} → salvar → desfazer → salvar`, { estado: reexibidaPeloRevisor.estado, blocos: reexibidaPeloRevisor.blocos })
+              })
+            }
       } catch (erro) {
         falhar('exceção', String(erro))
       }

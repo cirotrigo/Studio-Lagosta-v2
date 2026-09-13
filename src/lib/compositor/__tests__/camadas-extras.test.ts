@@ -9,7 +9,9 @@ import { specDaRecomposicao } from '../spec-da-recomposicao'
 import { copyAutoralDaSpec, entradaDePersistencia } from '../persistencia'
 import { VERSAO_DO_CONTRATO, blocosParaOCompositor, copyEfetivaDasCamadas, duplicarCamadasDaPagina, idDeExtra, renomearExtrasDuplicados, validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
-import { semIdentidadeAutoral } from '@/lib/copy-autoral/camada-copiada'
+import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato, semIdentidadeAutoral } from '@/lib/copy-autoral/camada-copiada'
+import { arranjosDaPagina } from '../combinacoes'
+import { readFileSync } from 'node:fs'
 
 /**
  * F3 / PR 9 — a camada EXTRA: texto que veste o estilo de um papel SEM ser
@@ -1463,9 +1465,8 @@ describe('pré-revisão do HEAD 980eea2a (C9-02): a camada DUPLICADA ou COLADA n
   const ENDERECO = 'Av. Beira Mar, 100'
   const contrato = (blocos: CopyAutoral['blocos']): CopyAutoral => ({ versao: VERSAO_DO_CONTRATO, origem, revisoes: [], blocos })
   const linhas = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.funcao, b.linhas])
-  // `duplicateLayer`: id novo, nome "Copy", 16px abaixo — pela MESMA função que o editor passa a usar.
-  const duplicarNoEditor = (l: Layer, id: string): Layer =>
-    semIdentidadeAutoral({ ...l, id, name: `${l.name} Copy`, position: { x: (l.position?.x ?? 0) + 16, y: (l.position?.y ?? 0) + 16 }, locked: false }) as Layer
+  // `duplicateLayer` numa página COM contrato — a MESMA função pura que o callback do editor chama.
+  const duplicarNoEditor = (l: Layer, id: string): Layer => camadaDuplicadaNoEditor(l, { novoId: id, paginaTemContrato: true })
   const manchete = texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } })
   const servico = (id: string, content: string, y: number, compositor: Record<string, unknown>) =>
     texto(id, { fontFamily: 'Barlow', fontSize: 30 }, content, { position: { x: 160, y }, metadata: { groupId: 'g', compositor: { papel: 'servico', ...compositor } } })
@@ -1514,12 +1515,71 @@ describe('pré-revisão do HEAD 980eea2a (C9-02): a camada DUPLICADA ou COLADA n
     roteiro('bloco', gravado, [manchete, nota], 'uuid-n')
   })
 
-  it('C9-02: `semIdentidadeAutoral` (a mesma de duplicar e de colar) tira extra, bloco, parte, linhasDoBloco e papel, e mantém o resto (grupo, prefixo, encaixe)', () => {
+  it('C9-02/C9-11: `semIdentidadeAutoral` tira SEMPRE extra, bloco, parte e linhasDoBloco; o papel só na página COM contrato; o resto fica', () => {
     const cheia = texto('x', {}, 'a', { metadata: { groupId: 'g1', compositor: { papel: 'cta', extra: { id: 'x' }, bloco: 'x', parte: 2, linhasDoBloco: [1], prefixo: '→ ', encaixe: 12 } } })
-    const limpa = semIdentidadeAutoral(cheia)
-    expect(limpa.metadata).toEqual({ groupId: 'g1', compositor: { prefixo: '→ ', encaixe: 12 } })
+    expect(semIdentidadeAutoral(cheia, { paginaTemContrato: true }).metadata).toEqual({ groupId: 'g1', compositor: { prefixo: '→ ', encaixe: 12 } })
+    expect(semIdentidadeAutoral(cheia, { paginaTemContrato: false }).metadata).toEqual({ groupId: 'g1', compositor: { papel: 'cta', prefixo: '→ ', encaixe: 12 } })
     expect(cheia.metadata?.compositor).toMatchObject({ papel: 'cta', extra: { id: 'x' } })
     const semNada = texto('y', {}, 'b', { metadata: { groupId: 'g2' } })
-    expect(semIdentidadeAutoral(semNada)).toBe(semNada)
+    expect(semIdentidadeAutoral(semNada, { paginaTemContrato: true })).toBe(semNada)
+    const soPapel = texto('z', {}, 'c', { metadata: { compositor: { papel: 'servico', linhasDoBloco: [1] } } })
+    expect(semIdentidadeAutoral(soPapel, { paginaTemContrato: false }).metadata).toEqual({ compositor: { papel: 'servico' } })
+  })
+
+  it('C9-11: `paginaTemContrato` lê a resposta crua da rota (`copyAutoral`) e a página do contexto (`temCopyAutoral`)', () => {
+    expect([paginaTemContrato(null), paginaTemContrato({}), paginaTemContrato({ copyAutoral: null }), paginaTemContrato({ temCopyAutoral: false })]).toEqual([false, false, false, false])
+    expect([paginaTemContrato({ copyAutoral: { versao: 'x' } }), paginaTemContrato({ temCopyAutoral: true })]).toEqual([true, true])
+  })
+
+  it('C9-11: colar (`camadasColadasNoEditor`) faz a mesma limpeza que duplicar, com clone profundo, id novo por item e a cascata de 24px', () => {
+    const origem = [
+      texto('a', {}, 'um', { position: { x: 10, y: 20 }, metadata: { groupId: 'g', compositor: { papel: 'servico', extra: { id: 'a' }, linhasDoBloco: [0] } } }),
+      texto('b', {}, 'dois', { position: { x: 10, y: 80 }, metadata: { compositor: { papel: 'apoio', parte: 2 } } }),
+    ]
+    let n = 0
+    const comContrato = camadasColadasNoEditor(origem, { novoId: () => `c${++n}`, paginaTemContrato: true })
+    expect(comContrato.map((l) => [l.id, l.name, l.position, l.order, l.metadata])).toEqual([
+      ['c1', 'a Copy', { x: 34, y: 44 }, 0, { groupId: 'g', compositor: {} }],
+      ['c2', 'b Copy', { x: 46, y: 116 }, 0, { compositor: {} }],
+    ])
+    const semContrato = camadasColadasNoEditor(origem, { novoId: () => `d${++n}`, paginaTemContrato: false })
+    expect(semContrato.map((l) => l.metadata)).toEqual([{ groupId: 'g', compositor: { papel: 'servico' } }, { compositor: { papel: 'apoio' } }])
+    expect(origem[0].metadata?.compositor).toMatchObject({ extra: { id: 'a' } })
+    expect(comContrato[0].style).not.toBe(origem[0].style)
+  })
+
+  it('C9-11: na página SEM contrato (assinatura), duplicar o texto de serviço MANTÉM o papel — o arranjo do grupo segue com dois textos de serviço (horário e endereço)', () => {
+    const imagem = (id: string, y: number): Layer => ({ id, name: id, type: 'image', visible: true, locked: false, order: 0, rotation: 0, fileUrl: `https://exemplo.com/${id}.png`, position: { x: 120, y }, size: { width: 26, height: 26 }, metadata: { groupId: 'g-rodape' } }) as Layer
+    const horario = texto('t-servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2, textAlign: 'left' }, 'Seg a sex, das 11h às 15h', { name: 'Combinação - Serviço', position: { x: 160, y: 1580 }, size: { width: 700, height: 40 }, metadata: { groupId: 'g-rodape', compositor: { papel: 'servico' } } })
+    const assinaturaSemContrato = { id: 'p-assinatura', copyAutoral: null }
+    const copia = { ...camadaDuplicadaNoEditor(horario, { novoId: 't-endereco', paginaTemContrato: paginaTemContrato(assinaturaSemContrato) }), content: 'Rua das Flores, 12', position: { x: 160, y: 1650 } } as Layer
+    expect(copia.name).toBe('Combinação - Serviço Copy')
+    const arranjos = [...arranjosDaPagina({ pageId: 'p-assinatura', nome: 'Assinatura', camadas: [horario, imagem('relogio', 1584), copia, imagem('pin', 1652)], medir: medirFalso }).values()]
+    const doRodape = arranjos.find((ar) => ar.textos.some((t) => t.papel === 'servico'))!
+    expect(doRodape.textos.filter((t) => t.papel === 'servico')).toHaveLength(2)
+    // Controle: a mesma duplicação numa página COM contrato tira o papel, e o arranjo perde a cópia.
+    const copiaComContrato = { ...camadaDuplicadaNoEditor(horario, { novoId: 't-endereco', paginaTemContrato: true }), content: 'Rua das Flores, 12', position: { x: 160, y: 1650 } } as Layer
+    const arranjosComContrato = [...arranjosDaPagina({ pageId: 'p-peca', nome: 'Peça', camadas: [horario, imagem('relogio', 1584), copiaComContrato, imagem('pin', 1652)], medir: medirFalso }).values()]
+    expect(arranjosComContrato.find((ar) => ar.textos.some((t) => t.papel === 'servico'))!.textos.filter((t) => t.papel === 'servico')).toHaveLength(1)
+  })
+
+  it('C9-11: os DOIS callbacks do editor (`duplicateLayer` e `pasteLayers`) chamam as funções puras com o contrato da página aberta — nenhum copia a camada inteira', () => {
+    const fonte = readFileSync(new URL('../../../contexts/template-editor-context.tsx', import.meta.url), 'utf8')
+    const corpo = (inicio: string, fim: string) => {
+      const i = fonte.indexOf(inicio)
+      expect(i, inicio).toBeGreaterThan(-1)
+      const j = fonte.indexOf(fim, i + inicio.length)
+      expect(j, fim).toBeGreaterThan(i)
+      return fonte.slice(i, j)
+    }
+    const duplicar = corpo('const duplicateLayer = React.useCallback(', 'const removeLayer = React.useCallback(')
+    expect(duplicar).toMatch(/camadaDuplicadaNoEditor\(source, \{ novoId: createId\(\), paginaTemContrato: temCopyAutoral \}\)/)
+    expect(duplicar).not.toMatch(/\.\.\.source\b/)
+    const colar = corpo('const pasteLayers = React.useCallback(', 'const undo = React.useCallback(')
+    expect(colar).toMatch(/camadasColadasNoEditor\(clipboard, \{ novoId: createId, paginaTemContrato: temCopyAutoral \}\)/)
+    expect(colar).not.toMatch(/\.\.\.cloned\b|structuredClone\(/)
+    expect(fonte).toMatch(/const temCopyAutoral = paginaTemContrato\(multiPage\?\.currentPage \?\? null\)/)
+    const contexto = readFileSync(new URL('../../../contexts/multi-page-context.tsx', import.meta.url), 'utf8')
+    expect(contexto).toMatch(/temCopyAutoral: p\.copyAutoral !== undefined && p\.copyAutoral !== null/)
   })
 })
