@@ -21,7 +21,18 @@
  *  9. outro pedido sob o mesmo item é LOTE_AGENDAMENTO_CONFLITO;
  * 10. camada editada depois da composição (sem refazer o thumbnail) → o
  *     rascunho nasce PENDING, sem o PNG velho;
- * 11. peça de feed vira POST.
+ * 11. peça de feed vira POST;
+ * 12. rascunho apagado pela equipe (decisões do Ciro, 13/09/2026), numa peça
+ *     de ITEM DE PLANO: a repetição sem confirmação é `POST_REMOVIDO` com
+ *     `rascunhoApagado { quando, tema, manchete }`, e nenhum post nasce;
+ * 13. `simular` com `recriarRascunhoApagado: true` dá a conta (recriado) e não
+ *     escreve nada;
+ * 14. a confirmação com OUTRO horário é conflito (só o pedido original
+ *     recria), e nada é criado;
+ * 15. `"true"` em texto não é confirmação: o item é recusado, nada é criado;
+ * 16. com a confirmação (`true` literal): UM rascunho novo, com a mesma arte,
+ *     desfecho `recriado`, a linha e o item do plano reapontados;
+ * 17. a segunda confirmação devolve `reaproveitado` e continua um post só.
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
  * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
@@ -235,6 +246,8 @@ async function main() {
   const { dispararJobAgora } = await import('../src/lib/ai/generation-queue-executor')
   const { agendarItensDoLote } = await import('../src/lib/lotes/agendar-itens')
   const { agendarPost } = await import('../src/lib/creatives/agendar')
+  const { criarPlano } = await import('../src/lib/planos/plano-service')
+  const { revisaoDoItem } = await import('../src/lib/planos/revisao-do-item')
   const { del } = await import('@vercel/blob')
   type Resultado = Awaited<ReturnType<typeof agendarItensDoLote>>
 
@@ -262,9 +275,12 @@ async function main() {
     ...extra,
   })
   const itemIds: string[] = []
-  async function compor(itemId: string, spec: unknown) {
+  const planos: string[] = []
+  // Posts que a prova apaga "como a equipe": os sinais deles ficam no banco e o cleanup os procura por aqui.
+  const postsApagados: string[] = []
+  async function compor(itemId: string, spec: unknown, opcoes: { itemRevisao?: string } = {}) {
     itemIds.push(itemId)
-    const r = await enfileirarPeca(spec, { lote: { loteId: LOTE, itemId }, canal: 'claude-code' })
+    const r = await enfileirarPeca(spec, { lote: { loteId: LOTE, itemId }, canal: 'claude-code', ...opcoes })
     await dispararJobAgora(r.jobId)
     return r
   }
@@ -345,6 +361,7 @@ async function main() {
 
     // ── 8. post apagado ─────────────────────────────────────────────────────
     console.log('8) post apagado da agenda não é recriado')
+    postsApagados.push(primeira.itens[1].postId!)
     await db.socialPost.delete({ where: { id: primeira.itens[1].postId! } })
     const apagado = await agendar([{ itemId: 'item-2' }])
     conferir('POST_REMOVIDO e nenhum post na página', apagado.itens[0].codigo === 'POST_REMOVIDO' && (await postsDaPagina(await pageIdDo('item-2'))).length === 0, JSON.stringify(apagado.itens[0]))
@@ -373,12 +390,92 @@ async function main() {
     const feed = await agendar([{ itemId: 'item-9' }])
     const [post9] = await postsDaPagina(await pageIdDo('item-9'))
     conferir('POST', feed.itens[0].desfecho === 'criado' && post9?.postType === 'POST', post9?.postType ?? '(sem post)')
+
+    // ── 12. rascunho de item de plano apagado pela equipe ───────────────────
+    console.log('12) rascunho de peça de item de plano apagado pela equipe: sem confirmação, POST_REMOVIDO avisa qual era e nada é recriado')
+    const MANCHETE_DO_PLANO = 'Rascunho do plano'
+    const { plano } = await criarPlano({
+      projectId: PROJETO,
+      titulo: `${MARCA} plano`,
+      inicio: dia(10),
+      fim: dia(10),
+      origem: 'chat',
+      itens: [{ quando: `${dia(10)} 19:00`, tema: `${MARCA} teste`, formato: 'story', via: 'compor', copyProposta: [MANCHETE_DO_PLANO] }],
+    } as never)
+    planos.push(plano.id)
+    const itemDoPlano = plano.itens[0]
+    // Peça de item de plano com lote leva a revisão que o ver-plano devolveria (C11-1a).
+    await compor('item-10', peca(10, { itemDePlanoId: itemDoPlano.id, planoId: plano.id, blocos: [{ papel: 'headline', linhas: [MANCHETE_DO_PLANO] }] }), { itemRevisao: revisaoDoItem(itemDoPlano) })
+    const pagina10 = (await pageIdDo('item-10'))!
+    const linha10 = (await linhaDo('item-10'))!
+    const arte10 = await db.generation.findUnique({ where: { id: linha10.generationId! }, select: { status: true, resultUrl: true } })
+    const itemDoPlanoPronto = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true } })
+    conferir('a peça do item de plano ficou pronta, e o item do plano também', arte10?.status === 'COMPLETED' && itemDoPlanoPronto?.status === 'pronto' && itemDoPlanoPronto.generationId === linha10.generationId, JSON.stringify({ arte: arte10?.status, item: itemDoPlanoPronto }))
+    const agendada10 = await agendar([{ itemId: 'item-10' }])
+    const postApagado = agendada10.itens[0].postId
+    if (!postApagado) throw new Error(`o item-10 não foi agendado: ${JSON.stringify(agendada10.itens[0])}`)
+    const itemAgendado = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, postId: true } })
+    conferir('agendado: criado, e o item do plano agendado com o post', agendada10.itens[0].desfecho === 'criado' && itemAgendado?.status === 'agendado' && itemAgendado.postId === postApagado, JSON.stringify({ desfecho: agendada10.itens[0].desfecho, item: itemAgendado }))
+    // A equipe apaga o rascunho na agenda.
+    postsApagados.push(postApagado)
+    await db.socialPost.delete({ where: { id: postApagado } })
+    const retratoDoRascunho = async () =>
+      JSON.stringify({
+        postsDoProjeto: await db.socialPost.count({ where: { projectId: PROJETO } }),
+        postsDaPagina: (await postsDaPagina(pagina10)).length,
+        linha: await linhaDo('item-10'),
+        itemDoPlano: await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id } }),
+      })
+    const postsDoProjetoSemORascunho = await db.socialPost.count({ where: { projectId: PROJETO } })
+    const antesDoAviso = await retratoDoRascunho()
+    const semConfirmacao = (await agendar([{ itemId: 'item-10' }])).itens[0]
+    const [ano, mes, diaDoMes] = dia(10).split('-')
+    const quandoDoRascunho = `${diaDoMes}/${mes}/${ano}, 19:00`
+    conferir('POST_REMOVIDO com rascunhoApagado (dia e horário, tema, manchete), e o motivo manda perguntar', semConfirmacao.situacao === 'falhou' && semConfirmacao.codigo === 'POST_REMOVIDO' && semConfirmacao.rascunhoApagado?.quando === quandoDoRascunho && semConfirmacao.rascunhoApagado?.tema === `${MARCA} teste` && semConfirmacao.rascunhoApagado?.manchete === MANCHETE_DO_PLANO && !!semConfirmacao.motivo?.includes('pergunte'), JSON.stringify(semConfirmacao))
+    conferir('nenhum post novo, e a linha e o item do plano ainda apontam o rascunho apagado', (await retratoDoRascunho()) === antesDoAviso && (await postsDaPagina(pagina10)).length === 0 && (await linhaDo('item-10'))?.postId === postApagado && (await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { postId: true } }))?.postId === postApagado)
+
+    // ── 13. simular com a confirmação ───────────────────────────────────────
+    console.log('13) simular com recriarRascunhoApagado: true dá a conta e não escreve nada')
+    const simuladaRecriar = await agendar([{ itemId: 'item-10', recriarRascunhoApagado: true }], true)
+    conferir('conta: concluído, recriado', simuladaRecriar.simulado && simuladaRecriar.itens[0].situacao === 'concluido' && simuladaRecriar.itens[0].desfecho === 'recriado', JSON.stringify(simuladaRecriar.itens[0]))
+    conferir('nada foi escrito', (await retratoDoRascunho()) === antesDoAviso)
+
+    // ── 14. confirmação com outro horário ───────────────────────────────────
+    console.log('14) confirmação com outro horário é conflito: o rascunho só volta com o pedido original')
+    const outroHorario = (await agendar([{ itemId: 'item-10', recriarRascunhoApagado: true, quando: `${dia(10)} 21:00` }])).itens[0]
+    conferir('LOTE_AGENDAMENTO_CONFLITO, citando o pedido original', outroHorario.situacao === 'falhou' && outroHorario.codigo === 'LOTE_AGENDAMENTO_CONFLITO' && !!outroHorario.motivo?.includes('pedido original'), JSON.stringify(outroHorario))
+    conferir('nada foi criado', (await retratoDoRascunho()) === antesDoAviso)
+
+    // ── 15. "true" em texto ─────────────────────────────────────────────────
+    console.log('15) "true" em texto não é confirmação')
+    const emTexto = (await agendar([{ itemId: 'item-10', recriarRascunhoApagado: 'true' }])).itens[0]
+    conferir('recusado (PEDIDO_INVALIDO)', emTexto.situacao === 'falhou' && emTexto.codigo === 'PEDIDO_INVALIDO', JSON.stringify(emTexto))
+    conferir('nada foi criado', (await retratoDoRascunho()) === antesDoAviso)
+
+    // ── 16. confirmação ─────────────────────────────────────────────────────
+    console.log('16) com a confirmação da pessoa: um rascunho novo, com a mesma arte, e o item do plano reapontado')
+    const recriada = (await agendar([{ itemId: 'item-10', recriarRascunhoApagado: true }])).itens[0]
+    conferir('recriado, com o aviso de que voltou para a agenda', recriada.situacao === 'concluido' && recriada.desfecho === 'recriado' && !!recriada.postId && recriada.postId !== postApagado && recriada.generationId === linha10.generationId && recriada.pageId === pagina10 && !!recriada.avisos?.some((a) => a.includes('voltou para a agenda')), JSON.stringify(recriada))
+    const postsRecriados = await postsDaPagina(pagina10)
+    const postRecriado = postsRecriados[0]
+    conferir('um post só na página: rascunho STORY com página editável e a imagem da peça', postsRecriados.length === 1 && postRecriado.id === recriada.postId && postRecriado.status === 'DRAFT' && postRecriado.postType === 'STORY' && postRecriado.templateId != null && postRecriado.mediaUrls[0] === arte10?.resultUrl, JSON.stringify({ n: postsRecriados.length, s: postRecriado?.status, t: postRecriado?.postType, r: postRecriado?.renderStatus }))
+    conferir('exatamente um post novo no projeto', (await db.socialPost.count({ where: { projectId: PROJETO } })) === postsDoProjetoSemORascunho + 1)
+    const linhaRecriada = await linhaDo('item-10')
+    conferir('a linha aponta o recriado e os efeitos terminaram', linhaRecriada?.postId === recriada.postId && !!linhaRecriada?.efeitosDoAgendamentoEm, JSON.stringify({ postId: linhaRecriada?.postId, efeitos: linhaRecriada?.efeitosDoAgendamentoEm }))
+    const itemReapontado = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, postId: true, generationId: true, updatedAt: true } })
+    conferir('o item do plano continua agendado e aponta o recriado, com a mesma arte', itemReapontado?.status === 'agendado' && itemReapontado.postId === recriada.postId && itemReapontado.generationId === linha10.generationId, JSON.stringify(itemReapontado))
+
+    // ── 17. segunda confirmação ─────────────────────────────────────────────
+    console.log('17) a segunda confirmação reaproveita: continua um post só')
+    const deNovo = (await agendar([{ itemId: 'item-10', recriarRascunhoApagado: true }])).itens[0]
+    conferir('reaproveitado, o mesmo post', deNovo.situacao === 'concluido' && deNovo.desfecho === 'reaproveitado' && deNovo.postId === recriada.postId, JSON.stringify(deNovo))
+    conferir('continua um post só na página e no projeto, e o item do plano igual', (await postsDaPagina(pagina10)).length === 1 && (await db.socialPost.count({ where: { projectId: PROJETO } })) === postsDoProjetoSemORascunho + 1 && JSON.stringify(await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, postId: true, generationId: true, updatedAt: true } })) === JSON.stringify(itemReapontado))
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou, no projeto da prova)')
-    const apagados = { posts: 0, sinais: 0, jobs: 0, generations: 0, pages: 0, lotes: 0, blobs: 0 }
+    const apagados = { posts: 0, sinais: 0, jobs: 0, generations: 0, pages: 0, planos: 0, lotes: 0, blobs: 0 }
     const falhasDoCleanup: string[] = []
     const passo = async (nome: string, fn: () => Promise<void>) => {
       try {
@@ -404,12 +501,14 @@ async function main() {
       idsDePost = posts.map((p) => p.id)
       for (const p of posts) for (const u of p.mediaUrls) if (u.includes('blob.vercel-storage.com')) blobs.add(u)
     })
-    await passo('sinais', async () => { apagados.sinais = (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, OR: [{ postId: { in: idsDePost } }, { pageId: { in: idsDePagina } }, { generationId: { in: idsDeGeracao } }] } })).count })
+    await passo('sinais', async () => { apagados.sinais = (await db.learningSignal.deleteMany({ where: { projectId: PROJETO, OR: [{ postId: { in: [...idsDePost, ...postsApagados] } }, { pageId: { in: idsDePagina } }, { generationId: { in: idsDeGeracao } }] } })).count })
     await passo('posts', async () => { apagados.posts = (await db.socialPost.deleteMany({ where: { id: { in: idsDePost } } })).count })
     await passo('jobs', async () => { apagados.jobs = (await db.generationJob.deleteMany({ where: { generationId: { in: idsDeGeracao } } })).count })
     // As artes que `registrarArtesDoPost` catalogou a partir dos posts (source post-midia) apontam para os mesmos blobs.
     await passo('generations', async () => { apagados.generations = (await db.generation.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: idsDeGeracao } }, { resultUrl: { in: [...blobs] } }] } })).count })
     await passo('páginas', async () => { apagados.pages = (await db.page.deleteMany({ where: { id: { in: idsDePagina } } })).count })
+    // Os itens do plano vão junto (FK com cascade).
+    await passo('planos', async () => { apagados.planos = (await db.planoDeConteudo.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: planos } }, { titulo: { contains: MARCA } }] } })).count })
     await passo('lotes', async () => { apagados.lotes = (await db.itemDeLote.deleteMany({ where: { projectId: PROJETO, loteId: { startsWith: LOTE } } })).count })
     for (const url of blobs) {
       await passo(`blob ${url.slice(-40)}`, async () => {
