@@ -31,6 +31,7 @@ import { db } from '@/lib/db'
 import { CAIXA_DA_MANCHETE } from '@/lib/ai/caixa-da-copy'
 import { carregarAssinatura, paginasDeAssinatura } from '@/lib/compositor/compor'
 import { destaqueDoPapel } from '@/lib/compositor/destaques'
+import { FONT_CONFIG } from '@/lib/font-config'
 import type { Papel } from '@/lib/compositor/spec'
 import { fetchBuffer } from '@/lib/posts/register-project-fonts'
 import { googleDriveService } from '@/server/google-drive-service'
@@ -177,6 +178,18 @@ async function logoDePrevia(url: string): Promise<string> {
   return `data:image/png;base64,${png.toString('base64')}`
 }
 
+/**
+ * A Montserrat vem com o repositório (assets/fonts/montserrat, um arquivo por peso) e o render a registra
+ * sempre: sem CustomFont ela NÃO está faltando. Devolve o nome CSS da face do peso que o render usa
+ * (sem peso, 400), ou null quando a família é do projeto ou não vem com o repositório.
+ */
+function fonteDoRepositorio(familia: string, peso: number | undefined, cadastradas: string[]): string | null {
+  if (cadastradas.includes(familia) || familia.toLowerCase() !== 'montserrat') return null
+  const alvo = peso ?? 400
+  const maisPerto = FONT_CONFIG.BUNDLED_MONTSERRAT_WEIGHTS.map(Number).reduce((a, b) => (Math.abs(b - alvo) < Math.abs(a - alvo) ? b : a))
+  return `repo-Montserrat-${maisPerto}`
+}
+
 async function montarVariante(
   projectId: number,
   pagina: { id: string; nome: string },
@@ -190,9 +203,10 @@ async function montarVariante(
     const e = a.papeis[papel]
     if (!e) continue
     const destaque = destaqueDoPapel({ daPagina: e.destaque, padrao: a.numeros.destaque, corDoPapel: e.color, familiaDoPapel: e.fontFamily, familias })
+    const doRepositorio = fonteDoRepositorio(e.fontFamily, e.fontWeight, familias)
     papeis[papel] = {
       familia: e.fontFamily,
-      css: `p${projectId}-${e.fontFamily}`,
+      css: doRepositorio ?? `p${projectId}-${e.fontFamily}`,
       tamanho: e.fontSize,
       entrelinha: e.lineHeight,
       tracking: e.letterSpacing,
@@ -204,7 +218,7 @@ async function montarVariante(
       grupo: e.caixa && e.caixa.y + e.caixa.height / 2 >= H / 2 ? 'rodape' : 'topo',
       ordem: e.caixa?.y ?? PAPEIS.indexOf(papel),
       vao: 0,
-      faltando: !familias.includes(e.fontFamily),
+      faltando: !familias.includes(e.fontFamily) && !doRepositorio,
     }
   }
   // O vão entre papéis do mesmo lugar é o da página, como no compositor. Sobreposição de
@@ -255,6 +269,7 @@ async function main() {
 
   const imagens: Record<string, string> = {}
   const fontesCss: string[] = []
+  const fontesDoRepositorio = new Set<string>()
   const clientes: unknown[] = []
   const stories: unknown[] = []
 
@@ -303,7 +318,14 @@ async function main() {
       fontesCss.push(`@font-face{font-family:"p${projectId}-${f.fontFamily}";src:url(data:${mime};base64,${bytes.toString('base64')}) format("${formato}");font-display:swap}`)
       embutidas.add(f.fontFamily)
     }
-    const faltando = [...usadas].filter((f) => !embutidas.has(f))
+    const papeisUsados = [...variantes.values()].flatMap((v) => Object.values(v.papeis))
+    for (const css of new Set(papeisUsados.map((e) => e.css).filter((c) => c.startsWith('repo-')))) {
+      if (fontesDoRepositorio.has(css)) continue
+      const bytes = await fs.readFile(path.resolve(process.cwd(), FONT_CONFIG.BUNDLED_MONTSERRAT_DIR, `${css.slice('repo-'.length)}.ttf`))
+      fontesCss.push(`@font-face{font-family:"${css}";src:url(data:font/ttf;base64,${bytes.toString('base64')}) format("truetype");font-display:swap}`)
+      fontesDoRepositorio.add(css)
+    }
+    const faltando = [...new Set(papeisUsados.filter((e) => e.faltando).map((e) => e.familia))]
 
     let logo: string | null = null
     const urlDaLogo = projeto.Logo[0]?.fileUrl

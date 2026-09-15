@@ -261,7 +261,7 @@ function avisosDa(s) {
     el.medidas[p].className = "medida" + (maior * ESCALA_MINIMA > v.coluna ? " passa" : maior > v.coluna ? " encolhe" : "");
     if (maior * ESCALA_MINIMA > v.coluna) avisos.push(`${NOME[p]}: não cabe na coluna nem a 80% da fonte (${maior} de ${v.coluna} px). Encurte ou quebre a linha.`);
     else if (maior > v.coluna) avisos.push(`${NOME[p]}: passa da coluna (${maior} de ${v.coluna} px); a fonte sai a ${Math.round((v.coluna / maior) * 100)}%.`);
-    if (e.faltando) avisos.push(`${NOME[p]}: a fonte "${e.familia}" não está cadastrada no projeto. A prévia usa outra, e o render do Studio pode sair sem este texto.`);
+    if (e.faltando) avisos.push(`${NOME[p]}: a fonte "${e.familia}" não está cadastrada no projeto nem vem com o repositório. A prévia usa outra, e o render do Studio pode sair sem este texto.`);
     for (const w of vetadas) {
       const n = norm(w);
       const achou = n ? new RegExp(`(^| )${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}( |$)`, "u").test(norm(semColchetes(txt))) : txt.includes(w);

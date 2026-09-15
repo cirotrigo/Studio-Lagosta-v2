@@ -75,8 +75,9 @@ npx tsx scripts/revisao-de-copy/montar-pagina.ts <propostas.json> --saida <scrat
 ```
 
 Só leitura: o gerador lê a assinatura, as fontes, a logo e as miniaturas do Drive e não grava nada. Ele
-imprime, por cliente, as variantes, as fontes embutidas e a fonte que a assinatura usa sem arquivo
-cadastrado (em 15/09/2026, o pré-título do Bacana pede Montserrat). O teto é 16 MB. Uma página com a carteira
+imprime, por cliente, as variantes, as fontes embutidas e a fonte que a assinatura usa sem arquivo nenhum:
+nem cadastrado no projeto, nem no repositório. A Montserrat de `assets/fonts/montserrat` é registrada pelo
+render em toda peça, então o gerador a embute no peso pedido e não a acusa. O teto é 16 MB. Uma página com a carteira
 inteira e 21 stories deu 7,8 MB. Passou disso, faça uma página por cliente.
 
 Conferência: o painel Browser não abre `file://`. Use o Chrome headless, uma captura só:
@@ -105,6 +106,6 @@ documento: sem documento, vale a proposta do JSON e ela continua pendente.
 - `set` substitui o documento inteiro, e `update` exige que ele exista. A página grava uma escrita por vez por
   documento, com pausa de 700 ms. `onSnapshot` só preenche o campo que não está em foco.
 - Fonte entra como data URI, porque o artifact só aceita folha de estilo do Google Fonts. As famílias levam o
-  prefixo do projeto (`p5-Montserrat`), senão a Montserrat do TERO mascararia a que falta no Bacana.
+  prefixo do projeto (`p3-Montserrat`), senão a fonte de um cliente mascararia a de outro na mesma página.
 - A miniatura do Drive é assinada e expira. O gerador a baixa e embute, nunca passa a URL para a página.
 - O Blob responde 403 com desafio anti-bot quando recebe idas demais seguidas. O gerador espera e tenta de novo uma vez.
