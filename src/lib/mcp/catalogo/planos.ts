@@ -81,12 +81,24 @@ export const toolsDePlanos = [
   definirTool({
     nome: 'criar-plano',
     descricao:
-      'Guarda no Studio a LEVA que você acabou de montar com a pessoa — a semana de posts, com o horário, o tema, o texto e a foto de cada um. A partir daí a leva existe fora da conversa: some do chat e continua lá, e a bancada do Studio mostra a mesma fila.\n\nNÃO produz arte nenhuma e NÃO gasta crédito: aqui só fica registrado o que se pretende fazer. Quem produz é executar-plano, e só depois de a pessoa ver a conta e dizer sim.\n\nMonte os itens com o que você já apurou: sugerir-posts dá os horários e o motivo de cada um, consultar-base e consultar-dna dão o que pode ser dito, buscar-fotos dá as fotos e escolher-modelo dá o modelo do cliente para o tema. Cada item nasce pela via "template" (montado num modelo do cliente, sem custo de imagem) — só marque "ia" quando nenhum modelo servir.',
+      'Guarda no Studio a LEVA que você acabou de montar com a pessoa — a semana de posts, com o horário, o tema, o texto e a foto de cada um. A partir daí a leva existe fora da conversa: some do chat e continua lá, e a bancada do Studio mostra a mesma fila.\n\nCADA CHAMADA CRIA UMA LEVA NOVA, e a bancada mostra só a mais recente: criar outra tira da bancada a que está em andamento (ela não é apagada, mas some da tela). Para ACRESCENTAR peças à semana que já está na bancada, passe `anexarAoAtivo: true` — os itens entram na leva em aberto (sem nenhuma, nasce uma de hoje até domingo) e `inicio`, `fim` e `titulo` são ignorados. Na dúvida, confira com ver-plano antes.\n\nNÃO produz arte nenhuma e NÃO gasta crédito: aqui só fica registrado o que se pretende fazer. Quem produz é executar-plano, e só depois de a pessoa ver a conta e dizer sim.\n\nMonte os itens com o que você já apurou: sugerir-posts dá os horários e o motivo de cada um, consultar-base e consultar-dna dão o que pode ser dito, buscar-fotos dá as fotos e escolher-modelo dá o modelo do cliente para o tema. Cada item nasce pela via "template" (montado num modelo do cliente, sem custo de imagem) — só marque "ia" quando nenhum modelo servir.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       titulo: z.string().optional().describe('Como a pessoa chama esta leva ("Semana de 17 a 23/08").'),
-      inicio: z.string().describe('Primeiro dia da leva ("AAAA-MM-DD").'),
-      fim: z.string().describe('Último dia da leva ("AAAA-MM-DD"), incluído por inteiro.'),
+      inicio: z
+        .string()
+        .optional()
+        .describe('Primeiro dia da leva ("AAAA-MM-DD"). Obrigatório, a não ser com anexarAoAtivo.'),
+      fim: z
+        .string()
+        .optional()
+        .describe('Último dia da leva ("AAAA-MM-DD"), incluído por inteiro. Obrigatório, a não ser com anexarAoAtivo.'),
+      anexarAoAtivo: z
+        .boolean()
+        .optional()
+        .describe(
+          'true = acrescenta os itens à leva em aberto (a que a bancada mostra) em vez de criar outra. Use para pôr mais peças numa semana que já está na bancada.',
+        ),
       itens: z
         .array(
           z
@@ -170,41 +182,75 @@ export const toolsDePlanos = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ criarPlano }, { quemDecidiu, itemParaChat }] = await Promise.all([
-        import('../../planos/plano-service'),
-        import('../tools'),
-      ])
+      const [{ criarPlano, anexarItensAoPlanoAtivo }, { quemDecidiu, itemParaChat }, { CreativeError }] =
+        await Promise.all([
+          import('../../planos/plano-service'),
+          import('../tools'),
+          import('../../creatives/errors'),
+        ])
       const projectId = args.projectId as number
+      const anexar = args.anexarAoAtivo === true
+      if (!anexar && (typeof args.inicio !== 'string' || typeof args.fim !== 'string')) {
+        throw new CreativeError(
+          'JANELA_INVALIDA',
+          'Informe inicio e fim da leva — ou anexarAoAtivo: true para acrescentar as peças à leva que já está na bancada.',
+          400,
+        )
+      }
+      const criadoPor = await quemDecidiu(projectId, principal)
 
       const entradas = (args.itens ?? []) as Array<Record<string, any>>
+      const itens = entradas.map((i) => ({
+        quando: typeof i.quando === 'string' ? i.quando : null,
+        tema: typeof i.tema === 'string' ? i.tema : null,
+        copyProposta: Array.isArray(i.texto)
+          ? i.texto.filter((b: unknown): b is string => typeof b === 'string')
+          : null,
+        legenda: typeof i.legenda === 'string' ? i.legenda : null,
+        fotoDriveId: typeof i.fotoDriveId === 'string' ? i.fotoDriveId : null,
+        fotoUrl: typeof i.fotoUrl === 'string' ? i.fotoUrl : null,
+        formato: typeof i.formato === 'string' ? i.formato : null,
+        via: typeof i.via === 'string' ? i.via : null,
+        sourcePageId: typeof i.modeloId === 'string' ? i.modeloId : null,
+        direcao: typeof i.direcao === 'string' ? i.direcao : null,
+        ajusteDaFoto: typeof i.ajusteDaFoto === 'string' ? i.ajusteDaFoto : null,
+        ...(Array.isArray(i.referencias) ? { referencias: i.referencias } : {}),
+        clienteProjectId: typeof i.clienteCitadoId === 'number' ? i.clienteCitadoId : null,
+        motivoDoSlot: typeof i.motivoDoSlot === 'string' ? i.motivoDoSlot : null,
+        escopo: typeof i.escopo === 'string' ? i.escopo : null,
+        campaignId: typeof i.campanhaId === 'string' ? i.campanhaId : null,
+        sugestaoId: typeof i.sugestaoId === 'string' ? i.sugestaoId : null,
+      }))
+
+      // A bancada mostra só a leva ativa mais recente: acrescentar criando outra
+      // tiraria da tela a semana em andamento.
+      if (anexar) {
+        const { plano, criados, avisos } = await anexarItensAoPlanoAtivo({
+          projectId,
+          itens,
+          criadoPor,
+          origem: 'chat',
+        })
+        const novos = new Set(criados)
+        return {
+          planoId: plano.id,
+          titulo: plano.titulo,
+          itens: plano.itens.filter((item) => novos.has(item.id)).map((item) => itemParaChat(item)),
+          totalNaLeva: plano.itens.length,
+          progresso: plano.progresso.frase,
+          ...(avisos.length > 0 ? { avisos } : {}),
+          mensagem: `${criados.length === 1 ? 'A peça entrou' : `As ${criados.length} peças entraram`} na leva em aberto, a mesma da bancada. Nada foi produzido e nada foi cobrado — quando estiver combinada, use executar-plano.`,
+        }
+      }
+
       const { plano, avisos } = await criarPlano({
         projectId,
         titulo: typeof args.titulo === 'string' ? args.titulo : null,
         inicio: args.inicio as string,
         fim: args.fim as string,
         origem: 'chat',
-        criadoPor: await quemDecidiu(projectId, principal),
-        itens: entradas.map((i) => ({
-          quando: typeof i.quando === 'string' ? i.quando : null,
-          tema: typeof i.tema === 'string' ? i.tema : null,
-          copyProposta: Array.isArray(i.texto)
-            ? i.texto.filter((b: unknown): b is string => typeof b === 'string')
-            : null,
-          legenda: typeof i.legenda === 'string' ? i.legenda : null,
-          fotoDriveId: typeof i.fotoDriveId === 'string' ? i.fotoDriveId : null,
-          fotoUrl: typeof i.fotoUrl === 'string' ? i.fotoUrl : null,
-          formato: typeof i.formato === 'string' ? i.formato : null,
-          via: typeof i.via === 'string' ? i.via : null,
-          sourcePageId: typeof i.modeloId === 'string' ? i.modeloId : null,
-          direcao: typeof i.direcao === 'string' ? i.direcao : null,
-          ajusteDaFoto: typeof i.ajusteDaFoto === 'string' ? i.ajusteDaFoto : null,
-          ...(Array.isArray(i.referencias) ? { referencias: i.referencias } : {}),
-          clienteProjectId: typeof i.clienteCitadoId === 'number' ? i.clienteCitadoId : null,
-          motivoDoSlot: typeof i.motivoDoSlot === 'string' ? i.motivoDoSlot : null,
-          escopo: typeof i.escopo === 'string' ? i.escopo : null,
-          campaignId: typeof i.campanhaId === 'string' ? i.campanhaId : null,
-          sugestaoId: typeof i.sugestaoId === 'string' ? i.sugestaoId : null,
-        })),
+        criadoPor,
+        itens,
       })
 
       return {

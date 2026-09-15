@@ -1858,6 +1858,12 @@ enxergasse. Serviço em `src/lib/planos/`, rotas
 `/api/projects/[projectId]/planos*`, tools `criar-plano`, `ver-plano`,
 `editar-item-do-plano`, `regenerar-item`, `executar-plano`.
 
+- 🔴 **`criar-plano` cria leva NOVA, e a bancada mostra só a ativa mais
+  recente** (`planoAtivo`, `createdAt desc`): criar outra para acrescentar peças
+  a uma semana em andamento TIRA a anterior da tela. Para acrescentar,
+  `anexarAoAtivo: true` (o mesmo `anexarItensAoPlanoAtivo` da rota web; `inicio`
+  e `fim` deixam de ser obrigatórios). Até 15/09/2026 o conector não tinha essa
+  porta, e anexar 4 flyers do By Rock exigiu script tsx.
 - **O plano registra INTENÇÃO; só `executar-plano` gasta.** Montar, editar e
   reprovar são de graça por contrato. É a mesma regra que já valia para
   sugestão: proposta nunca agenda nem cobra sozinha.

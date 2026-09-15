@@ -384,8 +384,16 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
     properties: {
       projectId: { type: 'number', description: 'ID do cliente.' },
       titulo: { type: 'string', description: 'Como a pessoa chama esta leva ("Semana de 17 a 23/08").' },
-      inicio: { type: 'string', description: 'Primeiro dia da leva ("AAAA-MM-DD").' },
-      fim: { type: 'string', description: 'Último dia da leva ("AAAA-MM-DD"), incluído por inteiro.' },
+      inicio: { type: 'string', description: 'Primeiro dia da leva ("AAAA-MM-DD"). Obrigatório, a não ser com anexarAoAtivo.' },
+      fim: {
+        type: 'string',
+        description: 'Último dia da leva ("AAAA-MM-DD"), incluído por inteiro. Obrigatório, a não ser com anexarAoAtivo.',
+      },
+      anexarAoAtivo: {
+        type: 'boolean',
+        description:
+          'true = acrescenta os itens à leva em aberto (a que a bancada mostra) em vez de criar outra. Use para pôr mais peças numa semana que já está na bancada.',
+      },
       itens: {
         type: 'array',
         description: 'Os posts pretendidos, na ordem. Máximo 60.',
@@ -457,7 +465,7 @@ const LITERAIS_PLANOS: Record<string, unknown> = {
         },
       },
     },
-    required: ['projectId', 'inicio', 'fim'],
+    required: ['projectId'],
     additionalProperties: false,
   },
   'ver-plano': {
