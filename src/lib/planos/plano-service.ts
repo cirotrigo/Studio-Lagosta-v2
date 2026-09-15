@@ -537,7 +537,9 @@ export async function anexarItensAoPlanoAtivo(input: {
   projectId: number
   itens: ItemDePlanoInput[]
   criadoPor?: string | null
-}): Promise<{ plano: NonNullable<Awaited<ReturnType<typeof planoAtivo>>>; criados: string[] }> {
+  /** Quem monta a leva quando não há nenhuma em aberto ('bancada' | 'chat'). */
+  origem?: string | null
+}): Promise<{ plano: NonNullable<Awaited<ReturnType<typeof planoAtivo>>>; criados: string[]; avisos: string[] }> {
   const projectId = Number(input.projectId)
   if (!Number.isInteger(projectId) || projectId <= 0) {
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto inválido: ${input.projectId}`, 400)
@@ -556,7 +558,7 @@ export async function anexarItensAoPlanoAtivo(input: {
       titulo: `Bancada — semana de ${inicio.slice(8, 10)}/${inicio.slice(5, 7)}`,
       inicio,
       fim,
-      origem: 'bancada',
+      origem: input.origem ?? 'bancada',
       criadoPor: input.criadoPor ?? null,
       itens: [],
     })
@@ -585,7 +587,7 @@ export async function anexarItensAoPlanoAtivo(input: {
   }
 
   const plano = await lerPlano(projectId, alvo.id)
-  return { plano: { ...plano, avisos } as never, criados }
+  return { plano: { ...plano, avisos } as never, criados, avisos }
 }
 
 // ── Edição do plano ─────────────────────────────────────────────────────────
