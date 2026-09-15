@@ -3382,6 +3382,33 @@ holes; o do By Rock é 1080x1350 e é estático). **A foto do render vem de
 `fotos/` (original), nunca da versão comprimida que o canvas embute** — no
 canvas ela cabe em ~50 KB, que serve para revisar layout e não para publicar.
 
+Medido em 09-10/09/2026 (§7 do doc), ao gerar 3 stories de teste do Espeto:
+
+- 🔴 **O aviso de "título não cabe" só valia para a ÚLTIMA peça da leva.** A
+  sonda do halo roda o layout duas vezes, então havia um `del AVISOS[:]` por
+  passada — que zerava também os avisos da peça ANTERIOR. Duas das três peças
+  do teste estouravam a largura e **zero avisos saíram**. Consertado com um
+  acumulador (`TODOS_AVISOS`) em `espeto-semana1` e no teste; os outros 22
+  geradores não têm o defeito (não fazem a passada dupla). Gerador novo que
+  copie o do Espeto herda a sonda: `del AVISOS[:]` exige o acumulador junto.
+- **A colisão da headline com a marca NÃO é falta de conta.**
+  `UTIL_STORY_COM_MARCA = UTIL - 210` existe e já é aplicada em `split` e
+  `topo`. Faltava o aviso chegar — não mexa na constante.
+- **Tempo, nas MESMAS 3 peças**: Pillow 9,5s (~3,2s/peça) × compositor 33-41s
+  (~11-14s/peça). Mas o Pillow exclui montar a pasta e baixar as fotos, e só
+  foi rápido porque o cliente já tinha gerador; o compositor inclui tudo e não
+  exige preparo. Primeira peça de um cliente → compositor; vigésima de uma
+  leva montada → Pillow. O cronômetro é o menor pedaço: a copy levou ~20 min
+  nos dois.
+- 🔴 **O gerador não OLHA as artes com estrela — ele CARREGA o padrão delas.**
+  É código determinístico; a referência entra por DESTILAÇÃO, quando alguém lê
+  as artes aprovadas e escreve o sistema no `gerar.py` (o da Real declara as
+  fontes no docstring: manual do designer, DNA, 6 `styleRefAt` + 6 "gostei" +
+  5 publicadas, 29/08/2026). O preço é que a destilação **tem data e
+  envelhece**: marcar arte nova com estrela não muda o gerador. Antes de usar
+  um, compare o sinal aprovado mais recente do cliente com a data no
+  docstring. Na Real, em 10/09: 28/08 contra 29/08 — em dia.
+
 ### A melhoria de artes na carteira inteira (02/09/2026)
 
 Plano em `docs/PLANO-2026-09-01-MELHORIA-DE-ARTES.md` (F0–F6), executado em
