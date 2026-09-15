@@ -20,6 +20,12 @@ jobs:
           node-version: 22
           cache: npm
 
+      # Sem dependências de propósito: roda antes do npm ci e falha em segundos.
+      # Acusa "arquivo 2.ts" versionado ao lado de "arquivo.ts" — cópia do
+      # iCloud Drive (26 entraram na main no #104). Ver o cabeçalho do script.
+      - name: Cópias do iCloud versionadas
+        run: node scripts/verificar-copias-do-icloud.mjs
+
       - name: Instalar dependências
         run: npm ci
 
