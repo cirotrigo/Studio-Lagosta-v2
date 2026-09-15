@@ -1,0 +1,300 @@
+{
+  "pagina": {
+    "titulo": "Revisão de Copy da Carteira",
+    "subtitulo": "Cada story mostra a prévia com a fonte, a cor, a margem e a logo da marca, mede cada linha contra a coluna do compositor e avisa quando a copy fura uma regra do DNA. Edite, marque aprovar, pedir mudança ou descartar: tudo é salvo sozinho.",
+    "exemplo": "A copy usa só pré-títulos, frases e CTAs aprovados no DNA de cada cliente, e nenhum preço, horário ou promoção sem entrada na base. Não é leva para produção: é o gabarito das próximas páginas de revisão."
+  },
+  "clientes": {
+    "1": {
+      "proibidas": ["promoção", "sorvete", "chantilly", "creme de leite", "corre", "imperdível", "última chance", "barato", "galera", "bora", "yummy", "deliciaaa", "muito gostoso", "vamos estar", "chave de ouro", "click", "clique", "quentinho", "peça pelo link", "compre 1", "leve 2"],
+      "ctas": ["Desacelere e desfrute", "Porque hoje é dia de se permitir", "Viva o Extraordinário", "Il vero gelato onde você estiver", "Experimente o sabor do dia", "Sua próxima parada do Passaporte Real", "Vem provar"],
+      "preTitulos": ["Sua pausa com sabores Real", "Pausa da tarde merece sabores Real", "Sua semana começa aqui", "Aqueça seu dia com sabores Real", "Sábado doce com sabores Real", "Domingo doce com Il Vero Gelato", "Para aquecer sua tarde", "Para elevar sua tarde", "Viva o Extraordinário", "Porque hoje é dia de se permitir", "Desacelere e desfrute", "Pausa para um café especial", "Vocês pediram, ele voltou!", "Il vero gelato onde você estiver"]
+    },
+    "2": {
+      "proibidas": ["imperdível", "corre", "últimas unidades", "aproveita agora", "maravilhoso", "incrível", "perfeito", "demais", "top", "delícia", "sensacional", "simplesmente", "que tal", "gourmet", "requintado", "refinado", "experiência gastronômica", "vamos estar", "chave de ouro", "prezados", "venha conhecer", "hoje vai bombar", "esquenta", "canequinha", "delivery", "whatsapp", "—"],
+      "ctas": ["Bora pro quintal?", "A brasa tá acesa", "Chega mais", "Reserva sua mesa", "Vem que tem", "Junta a galera", "Te esperamos aqui", "Vem pra cá"],
+      "preTitulos": ["SEGUNDA NA BRASA", "COMEÇA A SEMANA BEM", "TERÇA COM HAPPY HOUR", "BRASA E RESENHA", "QUARTA NO QUINTAL", "A SEMANA TÁ ESQUENTANDO", "QUINTA DE PARRILLA", "QUASE FIM DE SEMANA", "SEXTA É DIA DE QUINTAL", "FIM DE SEMANA COMEÇA AGORA", "SÁBADO DE BRASA", "A GALERA TÁ CHEGANDO", "DOMINGOU NO QUINTAL", "DOMINGO DE PARRILLA E RESENHA", "HAPPY HOUR", "CHOPE EM DOBRO", "HH DO QUINTAL", "ALMOÇO EXECUTIVO", "ALMOÇO NA BRASA", "HORA DO ALMOÇO", "NA PARRILLA", "BRASA ACESA", "CORTES DO QUINTAL", "PRA PETISCAR", "ABRE O APETITE", "TEM PETISCO PRA TODO MUNDO", "DRINKS DO QUINTAL", "GELADO É ASSIM", "TÔ COM SEDE", "BORA PRO QUINTAL", "A BRASA TÁ ACESA", "CHEGA MAIS", "TÁBUA PRA GALERA", "CHEGA PRA DIVIDIR", "PRA TODO MUNDO"]
+    },
+    "3": {
+      "proibidas": ["imperdível", "corre", "últimas unidades", "aproveita agora", "maravilhoso", "incrível", "perfeito", "demais", "top", "delícia", "sensacional", "simplesmente", "que tal", "bora", "galera", "vamos estar", "chave de ouro", "brasa", "parrilla", "HH", "50% off", "delivery", "whatsapp", "estacionamento", "deslize", "arrasta pra ver", "—"],
+      "ctas": ["Reserve sua mesa", "Venha para o Tero", "Faça sua reserva", "Escolha seu vinho", "Vem provar", "Uma experiência para os sentidos", "Fale com a gente", "Solicite pelo Direct"],
+      "preTitulos": ["SEGUNDA COM JANTAR ESPECIAL", "JANTAR DE SEGUNDA", "COMEÇA A SEMANA COM SABOR", "TERÇA NO TERO", "QUARTA COM VINHO", "JANTAR DE QUINTA", "SEXTA É DIA DE COMEMORAR", "FIM DE SEMANA COMEÇA AGORA", "SÁBADO NO TERO", "O MELHOR DIA DA SEMANA", "DOMINGO EM FAMÍLIA", "ALMOÇO DE DOMINGO NO TERO", "HAPPY WINE", "VINHOS À VONTADE", "HORA DO VINHO", "HAPPY HOUR", "ALMOÇO EXECUTIVO", "CARDÁPIO DE ALMOÇO", "ALMOÇO DO SEU JEITO", "CORTES ESPECIAIS", "GRELHADOS DA CASA", "PARA COMPARTILHAR", "CARTA DE VINHOS", "HARMONIZE COM TERO", "SELEÇÃO DA CASA", "FINALIZE COM ESTILO", "SOBREMESAS ESPECIAIS", "DOCE ENCERRAMENTO", "VENHA PARA O TERO", "O LUGAR DO ENCONTRO", "EXPERIÊNCIA COMPLETA"]
+    },
+    "4": {
+      "proibidas": ["imperdível", "incrível", "gourmet", "copo gelado", "petisco da casa", "cachaça boa", "ambiente aconchegante", "convivência", "até tarde", "delivery", "cep"],
+      "ctas": ["Venha pro boteco", "Seu boteco favorito", "Venha para seu boteco favorito", "Vem pro Seu Quinto", "Chega no Seu Quinto", "Já estamos abertos", "Segue o @seuquinto", "Domingou no boteco favorito", "A mesa tá reservada pra você", "Hoje tem Seu Quinto"],
+      "preTitulos": ["SEG COMEÇA COM GOSTO", "TERÇA DE PETISCO", "CHEGOU TERÇA", "QUARTA É DIA DE CHOPP", "QUINTA DE CACHAÇA", "QUASE NO FIM DE SEMANA", "SEXTA QUE É SEXTA", "FIM DE SEMANA COMEÇA AGORA", "SÁBADO DE BOTECO", "ALMOÇO AO VIVO", "DOMINGO É DE BOTECO", "ALMOÇO NO SEU QUINTO"]
+    },
+    "5": {
+      "proibidas": ["imperdível", "corre", "últimas unidades", "aproveita agora", "top", "delícia", "sensacional", "demais", "incrível", "perfeito", "maravilhoso", "que tal", "bora", "galera", "vamos estar", "chave de ouro", "gourmet", "dry-aged", "mise en place", "degustação", "harmonização", "rodízio", "você merece", "venha conferir", "o sabor que você procurava", "aquele momento especial", "saiba mais", "clique aqui", "whatsapp", "delivery"],
+      "ctas": ["Reserve sua mesa", "Faça sua reserva pelo WhatsApp", "Monte seu prato", "Peça mal passado ou ao ponto", "Fale com o gerente para encomendar", "Te esperamos na brasa", "Esperamos você"],
+      "preTitulos": ["[DIA] PEDE AQUELE [REFEIÇÃO] BACANA", "[REFEIÇÃO] COM SABORES BACANA", "[REFEIÇÃO] DO JEITO BACANA", "[REFEIÇÃO] SEMPRE BACANA", "[PRATO] NO PONTO PERFEITO", "HOJE É DIA DAQUELE [PRATO]", "[OCASIÃO] TEM QUE SER BACANA"]
+    },
+    "6": {
+      "proibidas": ["porteiras", "galpão", "delivery", "entrega", "imperdível", "promoção relâmpago", "qualidade inigualável", "acabamos de abrir", "estamos abrindo agora", "hoje tem brasa", "desmancha no garfo", "vem pro fogo", "vem pra brasa", "whatsapp", "estacionamento"],
+      "ctas": ["Chama a piazada!", "Vem pra resenha!", "Partiu Espeto!", "Garanta seu lugar!", "Vem curtir o sabor!", "Vem aproveitar!", "Vem matar a fome!", "Vem se servir!", "Vem pro Espeto!", "Sente esse sabor!", "Bora pro Espeto!", "Vem saborear!", "Chama o pessoal!", "Experimente esse sabor!", "Chama a galera!", "Vem provar!", "Vem petiscar!", "Garanta o seu!", "Vem pro boteco do Espeto!", "Vem viver esse sabor!"],
+      "preTitulos": ["SEGUNDOU COM CHURRASCO", "TERÇA DE ESPETO CAPRICHADO", "QUARTA DE ESPETO", "SEXTOU COM ESPETO", "SÁBADO DE ESPETO", "DOMINGO EM FAMÍLIA", "CHURRASCO TODO DIA", "DESTAQUE DA CASA", "PROMOÇÃO DO DIA", "TRADIÇÃO GAÚCHA"]
+    },
+    "7": {
+      "proibidas": ["imperdível", "delícia", "top", "sensacional", "gourmet", "requintado", "corre", "últimas unidades", "aproveita agora", "incrível", "perfeito", "simplesmente", "demais", "que tal", "sofisticado", "refinado", "heavy metal", "underground", "vamos estar", "chave de ouro", "brasa", "defumação", "forno"],
+      "ctas": ["Reserve já", "Peça no delivery", "Vem pro By Rock", "Bora!", "Garanta sua mesa", "Chama a galera", "No volume máximo", "Liga o som e abre o apetite", "Vem almoçar", "Chama a família e vem"],
+      "preTitulos": ["HAPPY HOUR TODO DIA", "ALMOÇO COM 25% OFF", "A CHAPA CHEGOU", "QUINTA É DIA DE VINHO", "AS RIBS VÃO ATÉ VOCÊ"]
+    },
+    "8": {
+      "proibidas": ["top", "sensacional", "incrível", "demais", "delícia", "perfeito", "maravilhoso", "simplesmente", "imperdível", "corre", "últimas unidades", "aproveita agora", "que tal", "bah", "tchê", "galera", "resenha", "fast", "barato", "promo", "queima", "liquida", "nosso cardápio", "venha provar", "nossa cozinha", "studio lagosta", "plataforma exclusiva", "tecnologia própria"],
+      "ctas": ["Conheça a metodologia", "Conheça nossos pacotes", "Fale com a gente no direct", "Agendar conversa", "Ver resultados reais", "Quer saber mais? Fale no direct."],
+      "preTitulos": ["PRODUÇÃO AUDIOVISUAL", "GESTÃO DE REDES", "ATENDIMENTO COM IA", "SITES E CARDÁPIO DIGITAL", "TRÁFEGO PAGO"]
+    },
+    "11": {
+      "proibidas": ["bora", "galera", "barato", "vamos estar", "chave de ouro", "imperdível", "corre", "últimas unidades", "aproveita agora", "incrível", "perfeito", "top", "delícia", "sensacional", "simplesmente", "que tal", "demais", "ao vivo", "começa em", "já começou", "daqui a pouco", "—"],
+      "ctas": ["Reserve no direct", "Sua mesa já sente sua falta", "A adega tem o rótulo certo para você", "winevix.com.br", "Venha nos visitar", "A gente vai até você"],
+      "preTitulos": ["SEGUNDA NA WINE VIX", "COMEÇA A SEMANA COM ESTILO", "TERÇA COM BOAS HISTÓRIAS", "A SEMANA PEDE UMA BOA TAÇA", "QUARTA NA ADEGA", "NO MEIO DA SEMANA, UMA BOA PAUSA", "QUINTA É QUASE SEXTA", "JÁ PENSOU NO SEU FIM DE SEMANA?", "SEXTA NA WINE VIX", "O FIM DE SEMANA COMEÇA AQUI", "SÁBADO ESPECIAL", "SÁBADO PARA CELEBRAR", "EM DESTAQUE", "ESCOLHA DO SOMMELIER", "DESCOBERTA DA SEMANA", "DA ADEGA PARA VOCÊ", "COMBINAÇÃO PERFEITA", "HARMONIZAÇÃO", "VINHO & MESA", "COZINHA AUTORAL", "NA COZINHA", "HOJE NO BISTRÔ", "ALMOÇO EXECUTIVO", "HORA DO ALMOÇO", "PAUSA PARA ALMOÇAR BEM", "HAPPY HOUR", "FIM DE TARDE NA WINE VIX", "O TEMPO PASSA MAIS DEVAGAR AQUI", "LEVA PRA CASA", "NO SEU ENDEREÇO", "ENTREGA EM VITÓRIA", "VOCÊ SABIA?", "DO VINHO, COM AMOR", "APRENDA COM A WINE VIX", "VENHA NOS VISITAR"]
+    },
+    "12": {
+      "proibidas": ["imperdível", "corre", "últimas unidades", "aproveita agora", "top", "delícia", "sensacional", "simplesmente", "demais", "que tal", "incrível", "perfeito", "maravilhoso", "gourmet", "bora", "galera", "vamos estar", "chave de ouro", "quinta do espumante", "dose dupla", "telefone"],
+      "ctas": ["Reserve sua mesa", "Faça sua reserva", "Venha viver a experiência", "Venha conhecer", "Desfrute essa experiência", "Aguardamos você", "Da nossa curadoria para a sua mesa"],
+      "preTitulos": ["A semana começa com", "Fim de semana com", "Domingo merece", "Sábado para"]
+    }
+  },
+  "campanhas": [
+    {
+      "slug": "tero-happy-hour",
+      "projectId": 3,
+      "titulo": "Happy hour em dobro",
+      "resumo": "Pela base (entrada \"Happy Wine e Happy Hour — TERO\", atualizada em 17/08): chopp e drinks selecionados em dobro, de terça a sábado. É em dobro, nunca desconto, e a peça não diz quais drinks entram.",
+      "perguntas": [
+        "A seleção de drinks segue em dobro na semana desta peça?",
+        "Algum dia da semana fica de fora, por feriado ou evento fechado?"
+      ]
+    }
+  ],
+  "stories": [
+    {
+      "id": "real-il-vero-gelato",
+      "projectId": 1,
+      "titulo": "Il vero gelato · na vitrine",
+      "uso": "Produto em destaque",
+      "variante": "cmtm64ckl000bl2044uij1amu",
+      "foto": { "driveFileId": "1C_qNCYnkJ5t6gWesL-EXZ1IGXZM1mI5x", "rotulo": "_Organizar/Organizar-cmt09110.jpg" },
+      "copy": { "pre": "PARA ELEVAR SUA TARDE", "headline": "Il Vero Gelato", "apoio": "Experimente o sabor do dia" },
+      "origem": { "pre": "frase-assinatura do DNA", "headline": "assinatura da marca no DNA", "apoio": "CTA aprovado do DNA" },
+      "nota": "Foto clara da vitrine: o bloco inteiro fica no rodapé, sobre o gradiente, e a mão com o gelato segue livre."
+    },
+    {
+      "id": "real-pausa-da-tarde",
+      "projectId": 1,
+      "titulo": "Pausa da tarde · panini doce",
+      "uso": "Convite do dia",
+      "variante": "cmtlonjfs0001jv047xrji2nr",
+      "foto": { "driveFileId": "18yW9z_qi0AfyWFCpgWr7_zVnBwFoWkiA", "rotulo": "Panini/Panini-cmt00071.jpg" },
+      "copy": { "pre": "PAUSA DA TARDE MERECE", "headline": "Sabores Real", "apoio": "Desacelere e desfrute", "servico": "" },
+      "origem": { "pre": "frase-assinatura do DNA, dividida em dois blocos", "headline": "frase-assinatura do DNA", "apoio": "CTA aprovado do DNA", "servico": "vazio: unidade e horário só com a base" },
+      "nota": "Pré-título e manchete se leem como uma frase só. O serviço fica vazio de propósito: nome da unidade e horário entram com a entrada da base."
+    },
+    {
+      "id": "quintal-tabua",
+      "projectId": 2,
+      "titulo": "Tábua O Quintal · pra dividir",
+      "uso": "Produto em destaque",
+      "variante": "9d449c7d-0b59-4e02-adfe-cc82ea67c572",
+      "foto": { "driveFileId": "1q-BuPiTQ1vWxHL99Ub_v7IvJJSgU5eYS", "rotulo": "Tábuas/Tábua O Quintal-cmt07972.jpg" },
+      "copy": { "headline": "Tábua pra", "headline2": "galera", "apoio": "A [Tábua O Quintal] no centro da mesa", "servico": "", "cta": "Chega mais" },
+      "origem": { "headline": "pré-título aprovado (Tábua) em duas vozes", "headline2": "pré-título aprovado (Tábua)", "apoio": "nome do cardápio, do catálogo da foto", "cta": "CTA aprovado do DNA" },
+      "nota": "A variante não tem pré-título: o pré-título aprovado vira a manchete de duas vozes, com o script do Quintal na segunda."
+    },
+    {
+      "id": "quintal-sexta",
+      "projectId": 2,
+      "titulo": "Sexta é dia de quintal · a fachada",
+      "uso": "Convite do dia",
+      "variante": "e543493d-62eb-46e5-ad23-08a85284cf73",
+      "foto": { "driveFileId": "1bb6WyAztEBCtrRrwmCSwXbUelhrJxk1-", "rotulo": "Ambiente e Pessoas/Usadas/Ambiente e Pessoas-cmt08300.jpg" },
+      "copy": { "headline": "Sexta é dia de", "headline2": "quintal", "servico": "" },
+      "origem": { "headline": "pré-título aprovado (sexta)", "headline2": "pré-título aprovado (sexta)", "servico": "vazio: horário e endereço só com a base" },
+      "ficha": [{ "rotulo": "Quando", "valor": "sexta, fim de tarde" }],
+      "nota": "Serviço vazio de propósito: horário em numerais e endereço entram só com a entrada HORARIOS da base."
+    },
+    {
+      "id": "tero-sabado",
+      "projectId": 3,
+      "titulo": "Sábado no TERO · almoço servido",
+      "uso": "Convite do dia",
+      "variante": "b4b74fcb-5226-49e0-84e5-7847c85cab3a",
+      "foto": { "driveFileId": "1q-FU9ngfMICGJI4LzfQ0WVkHJe2J3c_2", "rotulo": "Sessoes/2026-07-05 Almoço de Sábado/CMT03617.jpg" },
+      "copy": { "headline": "Sábado no TERO", "apoio": "Seu fim de semana começa aqui", "servico": "" },
+      "origem": { "headline": "regra do DNA: o dia da semana como convite", "apoio": "frase aprovada pelo Ciro (DNA, 31/08)", "servico": "vazio: horário completo, de início e fim, só com a base" },
+      "ficha": [{ "rotulo": "Quando", "valor": "sábado" }]
+    },
+    {
+      "id": "tero-desejo-de-cacau",
+      "projectId": 3,
+      "titulo": "Desejo de cacau · para finalizar",
+      "uso": "Produto em destaque",
+      "variante": "a5490296-9fad-412a-951b-21b6a4f44049",
+      "foto": { "driveFileId": "1-FcBigK_Bfos4M3ryFiFgWEX3nNQ1dna", "rotulo": "04_sobremesas/desejo-de-cacau/desejo-de-cacau-cmt04189.jpg" },
+      "copy": { "pre": "FINALIZE COM ESTILO", "headline": "Desejo\nde Cacau","apoio": "", "servico": "", "cta": "Vem provar" },
+      "origem": { "pre": "pré-título aprovado (Sobremesa)", "headline": "nome do cardápio, do catálogo da foto", "cta": "CTA aprovado do DNA" },
+      "nota": "Sobremesa da carta, não do executivo: o nome pode aparecer. Sem descrição de ingredientes na arte."
+    },
+    {
+      "id": "tero-happy-hour",
+      "projectId": 3,
+      "titulo": "Happy hour · em dobro",
+      "uso": "Campanha",
+      "variante": "a7b9edf9-99e1-4bcf-bd1a-1b1e57b531ee",
+      "foto": { "driveFileId": "1l2WdUei_zWkClFVnQbXyTOW9aJIGJmK1", "rotulo": "05_drinks/classicos-bar/classicos-bar-cmt01896.jpg" },
+      "copy": { "headline": "Happy", "headline2": "hour", "apoio": "Chopp e drinks selecionados [em dobro]", "servico": "" },
+      "origem": { "headline": "pré-título aprovado (Happy hour), por extenso", "headline2": "pré-título aprovado (Happy hour)", "apoio": "mecânica da base, com a oferta em destaque", "servico": "vazio: dias e horário entram quando a peça tiver data" },
+      "fatos": ["CAMPANHAS · Happy Wine e Happy Hour — TERO"],
+      "campanha": "tero-happy-hour",
+      "nota": "A mecânica tem lastro na base, mas a peça só vai para produção depois de confirmada no quadro da campanha."
+    },
+    {
+      "id": "seuquinto-sexta",
+      "projectId": 4,
+      "titulo": "Sexta que é sexta · aipim e chopp",
+      "uso": "Convite do dia",
+      "variante": "cmtkwogkt000bswfof18lkbxs",
+      "foto": { "driveFileId": "1tfO_PXPH3zw1dHhFFSYhlQ68TTezxKru", "rotulo": "_ARQUIVO/13_pessoas/CARDÁPIO-_f3a7084.jpg" },
+      "copy": { "pre": "Sexta que é", "headline": "sexta", "apoio": "Venha pro boteco", "servico": "" },
+      "origem": { "pre": "pré-título aprovado (sexta), em dois blocos", "headline": "pré-título aprovado (sexta)", "apoio": "CTA da lista fechada", "servico": "vazio: o horário muda por dia e vem da base" },
+      "nota": "O pré-título sai no script da casa e emenda na manchete: uma ideia concreta por peça."
+    },
+    {
+      "id": "seuquinto-sabado",
+      "projectId": 4,
+      "titulo": "Sábado de boteco · na calçada",
+      "uso": "Convite do dia",
+      "variante": "cmtkwogkt000bswfof18lkbxs",
+      "foto": { "driveFileId": "1Y_e4dskftLrrnAS6fZ2JLN1TVU6-cO0C", "rotulo": "13_pessoas/turma/PESSOAS-_f3a7041.jpg" },
+      "copy": { "pre": "Sábado de", "headline": "boteco", "apoio": "A mesa tá reservada pra você", "servico": "" },
+      "origem": { "pre": "pré-título aprovado (sábado), em dois blocos", "headline": "pré-título aprovado (sábado)", "apoio": "CTA da lista fechada", "servico": "vazio: programação só a confirmada na base" }
+    },
+    {
+      "id": "bacana-t-bone",
+      "projectId": 5,
+      "titulo": "T-Bone · hoje é dia daquele",
+      "uso": "Produto em destaque",
+      "foto": { "driveFileId": "1Za-Ct3bGcoypqAj29QMJpN0Li-ldMY72", "rotulo": "T-bone/T-bone-cmt03052.jpg" },
+      "copy": { "pre": "HOJE É DIA DAQUELE", "headline": "T-Bone", "apoio": "Peça mal passado ou ao ponto", "servico": "" },
+      "origem": { "pre": "pré-título aprovado: HOJE É DIA DAQUELE [PRATO]", "headline": "nome do cardápio, do catálogo da foto", "apoio": "CTA aprovado do DNA" }
+    },
+    {
+      "id": "bacana-sabado",
+      "projectId": 5,
+      "titulo": "Sábado em família · área kids",
+      "uso": "Convite do dia",
+      "foto": { "driveFileId": "1iybb_vwNms02NJcT0vRIE8RQZxtbf7np", "rotulo": "Area Kids/Area Kids-_f3a8848.jpg" },
+      "copy": { "pre": "SÁBADO PEDE AQUELE", "headline": "almoço Bacana", "apoio": "Esperamos você", "servico": "" },
+      "origem": { "pre": "pré-título aprovado: [DIA] PEDE AQUELE [REFEIÇÃO] BACANA", "headline": "pré-título aprovado, continuação", "apoio": "CTA aprovado do DNA" },
+      "nota": "Foto da área kids: a peça fala com a família sem prometer programação."
+    },
+    {
+      "id": "espeto-picanha",
+      "projectId": 6,
+      "titulo": "Picanha · destaque da casa",
+      "uso": "Produto em destaque",
+      "variante": "cmtmfgbfu0003swd02gtu6qfs",
+      "foto": { "driveFileId": "12yLOnQ5WvDY6W86XAVdno3MGZ9u3uIcz", "rotulo": "01_cortes/picanha-bovina/picanha-bovina-u3uicz.jpg" },
+      "copy": { "pre": "DESTAQUE DA CASA", "headline": "Picanha", "headline2": "", "apoio": "", "servico": "", "cta": "Sente esse sabor!" },
+      "origem": { "pre": "pré-título aprovado", "headline": "nome do cardápio, do catálogo da foto", "cta": "CTA aprovado do DNA" },
+      "nota": "Variante Rodapé: o garçom e o espeto ficam livres no topo da foto."
+    },
+    {
+      "id": "espeto-domingo",
+      "projectId": 6,
+      "titulo": "Domingo em família · no salão",
+      "uso": "Convite do dia",
+      "variante": "cmtkwor2i000jswfo39u5dwet",
+      "foto": { "driveFileId": "1Qf4UH6qA0yLhJKu14jxu4HnZrJ8p-6pk", "rotulo": "01_cortes/maminha/maminha-8p-6pk.jpg" },
+      "copy": { "pre": "TRADIÇÃO GAÚCHA NO", "headline": "Domingo\nem família", "apoio": "", "servico": "", "cta": "Chama a piazada!" },
+      "origem": { "pre": "pré-título aprovado com o conector que puxa a manchete (DNA, 04/09)", "headline": "pré-título aprovado (DOMINGO EM FAMÍLIA)", "cta": "CTA aprovado do DNA" },
+      "ficha": [{ "rotulo": "Quando", "valor": "domingo" }],
+      "nota": "Lida em voz alta: tradição gaúcha no domingo em família. Chama a piazada!"
+    },
+    {
+      "id": "byrock-quinta-vinho",
+      "projectId": 7,
+      "titulo": "Quinta é dia de vinho · carpaccio e brinde",
+      "uso": "Convite do dia",
+      "variante": "cmtmgdf7u0079swumpn5i9s6c",
+      "foto": { "driveFileId": "1_sdcxD36YJLNU6rUUcEiRQazF5yZial9", "rotulo": "15_quinta-do-vinho/CMT05941.jpg" },
+      "copy": { "headline": "Quinta é dia", "headline2": "de vinho", "apoio": "", "cta": "Garanta sua mesa", "servico": "" },
+      "origem": { "headline": "preâmbulo aprovado em duas vozes", "headline2": "preâmbulo aprovado (QUINTA É DIA DE VINHO)", "cta": "CTA aprovado do DNA", "servico": "vazio: horário só com a base" },
+      "ficha": [{ "rotulo": "Quando", "valor": "quinta" }],
+      "nota": "O aviso da cauda do Q é de propósito: a assinatura do By Rock tem entrelinha 0,94 e a segunda voz encosta na primeira. É o caso que se confere na prévia antes de aprovar."
+    },
+    {
+      "id": "byrock-happy-hour",
+      "projectId": 7,
+      "titulo": "Happy hour todo dia · chopp gelado",
+      "uso": "Convite do dia",
+      "variante": "cmtkwow9o000nswfo64q0q76d",
+      "foto": { "driveFileId": "1QiQUwKKgxOgfuwvY8Z5tgyJp4I1SWvGp", "rotulo": "07_bebidas/chopp/chopp-cmt02947.jpg" },
+      "copy": { "headline": "Happy hour\ntodo dia", "apoio": "", "cta": "Chama a galera", "servico": "" },
+      "origem": { "headline": "preâmbulo aprovado (HAPPY HOUR TODO DIA)", "cta": "CTA aprovado do DNA", "servico": "vazio: a condição do happy hour vem da base" },
+      "nota": "O DNA pede condição explícita no happy hour (horário e itens com o selo HH): ela entra da base quando a peça tiver data."
+    },
+    {
+      "id": "lagosta-fotos-reais",
+      "projectId": 8,
+      "titulo": "Fotos reais vendem mais · bastidores",
+      "uso": "Agência",
+      "foto": { "driveFileId": "1L7dIPgVhgaZh8eydEFMURmvHRXlgFQWz", "rotulo": "Farofa/_F3A5073.jpg" },
+      "copy": { "pre": "PRODUÇÃO AUDIOVISUAL", "headline": "Fotos reais\nvendem mais", "apoio": "", "cta": "Conheça nossos pacotes", "servico": "" },
+      "origem": { "pre": "frente do portfólio no DNA", "headline": "frase de apoio da casa (DNA)", "cta": "CTA aprovado do DNA" },
+      "nota": "A Lagosta não é restaurante: a peça fala com o dono, e a comida da foto não é oferecida como da casa."
+    },
+    {
+      "id": "lagosta-fama",
+      "projectId": 8,
+      "titulo": "Você faz a comida · sessão de fotos",
+      "uso": "Agência",
+      "foto": { "driveFileId": "1xt94V5O_Aa1kQRaN9T_HO48ycuvaLiyz", "rotulo": "Ilha do Caranguejo/_F3A5081.jpg" },
+      "copy": { "pre": "", "headline": "Você faz a comida.", "apoio": "A gente faz a fama.", "cta": "Fale com a gente no direct", "servico": "" },
+      "origem": { "headline": "assinatura geral da casa (DNA)", "apoio": "assinatura geral da casa (DNA)", "cta": "CTA aprovado do DNA" }
+    },
+    {
+      "id": "winevix-quarta",
+      "projectId": 11,
+      "titulo": "Quarta na adega · o salão",
+      "uso": "Convite do dia",
+      "variante": "cmtkwp66m000rswfooncun9sb",
+      "foto": { "driveFileId": "1UMxjOse3rumaBXDHfpT3n86pGqEw39zg", "rotulo": "Ambiente e Pessoas/Ambiente e Pessoas-_f3a8800.jpg" },
+      "copy": { "pre": "QUARTA NA ADEGA", "headline": "No meio da semana,\numa boa pausa", "cta": "Sua mesa já sente sua falta", "servico": "" },
+      "origem": { "pre": "pré-título aprovado (quarta)", "headline": "pré-título aprovado (quarta) como manchete", "cta": "CTA aprovado do DNA", "servico": "vazio: horário fixo só com a base" },
+      "ficha": [{ "rotulo": "Quando", "valor": "quarta" }]
+    },
+    {
+      "id": "winevix-vinho-e-mesa",
+      "projectId": 11,
+      "titulo": "Vinho e mesa · filé com gorgonzola",
+      "uso": "Produto em destaque",
+      "variante": "cmtkwp66m000rswfooncun9sb",
+      "foto": { "driveFileId": "1qy6oBHLY2DSFeo5WQCA4F87Mld9P6_r6", "rotulo": "Entradas/Filé/Filé-cmt01576.jpg" },
+      "copy": { "pre": "VINHO & MESA", "headline": "O vinho\ncompleta o prato", "cta": "A adega tem o rótulo certo para você", "servico": "" },
+      "origem": { "pre": "pré-título aprovado (Harmonização)", "headline": "tom do DNA para gastronomia: o vinho completa o prato", "cta": "CTA aprovado do DNA" },
+      "nota": "Sem rótulo, safra nem preço: a foto mostra as taças, a copy fala da combinação."
+    },
+    {
+      "id": "emporio-sabado",
+      "projectId": 12,
+      "titulo": "Sábado para desfrutar · mesa posta",
+      "uso": "Convite do dia",
+      "foto": { "driveFileId": "1VMHT_vvZkW5owg7GmWmeszZDKm4c1Tc0", "rotulo": "Espaço Eventos/Ambiente/Espaço Eventos-dsc00461.jpg" },
+      "copy": { "pre": "Sábado para", "headline": "desfrutar à mesa", "apoio": "", "servico": "" },
+      "origem": { "pre": "pré-título aprovado (sábado)", "headline": "vocabulário da casa (desfrute) emendado no pré-título" },
+      "nota": "Duas linhas, como pede o DNA para a arte; o CTA fica na legenda."
+    },
+    {
+      "id": "emporio-file-alfredo",
+      "projectId": 12,
+      "titulo": "Filé Alfredo · a semana começa",
+      "uso": "Produto em destaque",
+      "foto": { "driveFileId": "1_BjS5Ok__q8rdnunIJYZIfdECLYq2ohg", "rotulo": "Pratos/Filé Alfredo/Organizar-cmt08261.jpg" },
+      "copy": { "pre": "A semana começa com", "headline": "Filé Alfredo", "apoio": "", "servico": "" },
+      "origem": { "pre": "pré-título aprovado", "headline": "nome do cardápio, do catálogo da foto" },
+      "ficha": [{ "rotulo": "Quando", "valor": "terça (a casa fecha na segunda)" }]
+    }
+  ]
+}
