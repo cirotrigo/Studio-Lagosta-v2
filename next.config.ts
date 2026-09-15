@@ -111,6 +111,12 @@ const nextConfig: NextConfig = {
     // Artes pedidas de fora (Claudinho, conector do claude.ai) renderizam aqui
     '/api/external/creatives': montserratFontGlobs,
     '/api/mcp': montserratFontGlobs,
+    // O compositor também renderiza na fila (compor-leva, recomposição), no
+    // Gerar da bancada e no executar-plano. Em 15/09/2026 a fonte apareceu na
+    // fila mesmo sem estar listada, sem motivo conhecido: aqui vira garantia.
+    '/api/cron/generation-jobs': montserratFontGlobs,
+    '/api/projects/[projectId]/planos/[planoId]/itens/[itemId]/gerar-modelo': montserratFontGlobs,
+    '/api/projects/[projectId]/executar-plano': montserratFontGlobs,
   },
 
   // Descoberta OAuth do conector MCP. Os caminhos /.well-known/* são fixados
