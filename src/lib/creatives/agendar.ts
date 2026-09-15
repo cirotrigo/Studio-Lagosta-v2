@@ -105,6 +105,11 @@ export interface AgendarPostInput {
    */
   lembrete?: boolean
   /**
+   * Observação que o lembrete do WhatsApp leva (`reminderExtraInfo`). Só é
+   * enviada com `lembrete`; em post automático fica guardada e ninguém a lê.
+   */
+  observacao?: string
+  /**
    * O que o sistema pode aprender com este post: ROTINA (padrão) sempre,
    * CAMPANHA com escopo temporal, PONTUAL nunca. Ver `learning-scope.ts` —
    * a captura é sempre; isto é o filtro da AGREGAÇÃO.
@@ -367,6 +372,13 @@ export async function agendarPost(input: AgendarPostInput) {
   const diffDaCopy =
     copyPropostaTexto && copyDaDecisao ? diffDeCopy(copyPropostaTexto, copyDaDecisao) : null
 
+  const observacao = input.observacao?.trim() || null
+  // Guardada mesmo assim (quem trocar para manual na agenda a encontra), mas o
+  // chat não pode dizer que ela vai no WhatsApp.
+  if (observacao && !input.lembrete) {
+    avisos.push('A observação só vai no lembrete de publicação manual; neste post, que publica sozinho, ela fica guardada e ninguém a recebe.')
+  }
+
   const post = await db.socialPost.create({
     data: {
       projectId: project.id,
@@ -380,6 +392,7 @@ export async function agendarPost(input: AgendarPostInput) {
       // REMINDER tira o post do alcance do executor e o entrega ao cron de
       // lembretes; DIRECT é o default do schema e fica implícito.
       ...(input.lembrete ? { publishType: 'REMINDER' as const } : {}),
+      reminderExtraInfo: observacao,
       pageId: input.pageId ?? null,
       templateId,
       generationId,

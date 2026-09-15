@@ -230,7 +230,7 @@ export const toolsDeAgenda = [
     nome: 'colocar-na-agenda',
     apelidos: ['agendar-post'],
     descricao:
-      'Coloca a arte na agenda do cliente, na data e hora escolhidas.\n\nPor padrão entra como RASCUNHO: aparece na agenda e NÃO publica. Só vira publicação de verdade com situacao="agendado", e isso sai para o Instagram real do cliente na hora marcada.\n\nNunca use "agendado" por conta própria. Mostre antes a arte, a data e o horário, e pergunte de forma direta — "isso vai publicar no Instagram na segunda às 16h, confirma?". Rascunho primeiro é sempre o caminho seguro.',
+      'Coloca a arte na agenda do cliente, na data e hora escolhidas.\n\nPor padrão entra como RASCUNHO: aparece na agenda e NÃO publica. Só vira publicação de verdade com situacao="agendado", e isso sai para o Instagram real do cliente na hora marcada.\n\nNunca use "agendado" por conta própria. Mostre antes a arte, a data e o horário, e pergunte de forma direta — "isso vai publicar no Instagram na segunda às 16h, confirma?". Rascunho primeiro é sempre o caminho seguro.\n\nPublicação manual (publicacao="manual") é para story com figurinha interativa — enquete, contagem regressiva, quiz, "Adicione o seu" —, que a publicação automática não coloca. O sistema não publica: no horário, o grupo do WhatsApp recebe a arte, a legenda e a observação, e alguém publica à mão. O lembrete só sai com situacao="agendado"; rascunho não avisa ninguém.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       postType: z.enum(TIPOS_DE_POST).optional().describe('Tipo de publicação (padrão STORY).'),
@@ -249,6 +249,18 @@ export const toolsDeAgenda = [
         .optional()
         .describe(
           'rascunho (padrão) só aparece na agenda; agendado publica de verdade no Instagram do cliente. Use "agendado" apenas após confirmação explícita da pessoa.',
+        ),
+      publicacao: z
+        .enum(['automatica', 'manual'])
+        .optional()
+        .describe(
+          'automatica (padrão) publica sozinha no horário. manual NÃO publica: manda lembrete no grupo do WhatsApp para alguém da equipe publicar à mão. Use manual para story com figurinha — enquete, contagem regressiva, quiz, "Adicione o seu" —, que a publicação automática não consegue colocar.',
+        ),
+      observacao: z
+        .string()
+        .optional()
+        .describe(
+          'Recado para quem vai publicar à mão: vai no lembrete do WhatsApp junto com a arte e a legenda (ex.: a pergunta e as opções da enquete, a data da contagem regressiva). Só é enviado com publicacao "manual".',
         ),
       escopo: z
         .enum(['rotina', 'campanha', 'pontual'])
@@ -307,6 +319,8 @@ export const toolsDeAgenda = [
         mediaUrls: args.mediaUrls,
         generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
         situacao,
+        lembrete: args.publicacao === 'manual',
+        observacao: typeof args.observacao === 'string' ? args.observacao : undefined,
         // Escopo desconhecido cai no padrão do serviço (ROTINA) em vez de
         // derrubar o agendamento: marca errada se conserta, post perdido não.
         learningScope: normalizarEscopo(args.escopo),

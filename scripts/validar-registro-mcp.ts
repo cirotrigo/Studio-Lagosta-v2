@@ -222,6 +222,17 @@ const LITERAIS_AGENDA: Record<string, unknown> = {
         enum: ['rascunho', 'agendado'],
         description: 'rascunho (padrão) só aparece na agenda; agendado publica de verdade no Instagram do cliente. Use "agendado" apenas após confirmação explícita da pessoa.',
       },
+      publicacao: {
+        type: 'string',
+        enum: ['automatica', 'manual'],
+        description:
+          'automatica (padrão) publica sozinha no horário. manual NÃO publica: manda lembrete no grupo do WhatsApp para alguém da equipe publicar à mão. Use manual para story com figurinha — enquete, contagem regressiva, quiz, "Adicione o seu" —, que a publicação automática não consegue colocar.',
+      },
+      observacao: {
+        type: 'string',
+        description:
+          'Recado para quem vai publicar à mão: vai no lembrete do WhatsApp junto com a arte e a legenda (ex.: a pergunta e as opções da enquete, a data da contagem regressiva). Só é enviado com publicacao "manual".',
+      },
       escopo: {
         type: 'string',
         enum: ['rotina', 'campanha', 'pontual'],
