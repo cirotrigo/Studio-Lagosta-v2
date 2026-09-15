@@ -1,0 +1,23 @@
+{
+  "skill_name": "content-planner",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Planeje o conteudo de happy hour do By Rock pra proxima segunda (07/04). Quero 3 stories com imagens boas, copies criativas e tudo agendado.",
+      "expected_output": "Deve executar as 4 fases em sequencia: buscar imagens no catalogo, gerar copies com texto fluido nos campos, criar posts DRAFT com slotValues, renderizar, e propor horarios organicos. Deve pedir aprovacao entre fases.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Ja escolhi as imagens pro Espeto Gaucho (1FWp2FwDVy8kCfWC574Jhg3hIDSENyhi8 e 1V3cSnfqAc4ZUT02LZh3p1RqCVUjSJAA-). Sao de almoco. Cria os textos, monta os criativos e agenda pra quarta 09/04.",
+      "expected_output": "Deve pular Fase 1 (imagens ja escolhidas), carregar KB do Espeto Gaucho, gerar copies de almoco para quarta com tom gaucho, criar posts com templates, renderizar, e agendar.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "Preciso de stories de desejo pro By Rock pro domingo. Smash Burger. Faz tudo — imagem, texto, criativo, agenda.",
+      "expected_output": "Deve executar fluxo completo para 1 story: buscar imagem do Smash Burger, gerar copy sensorial de desejo para domingo, criar post DRAFT, renderizar preview, e propor horario.",
+      "files": []
+    }
+  ]
+}
