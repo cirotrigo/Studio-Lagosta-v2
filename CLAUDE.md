@@ -3320,6 +3320,15 @@ gate → handler. O desenho nasceu da análise do framework Invokta (24/08);
   do parse (23/08 — estritar sem coerção recusaria chamada que funciona).
   Chave desconhecida ANINHADA aponta o caminho (`"itens.0" não aceita…`),
   nunca os parâmetros da raiz.
+- 🔴 **O construtor fecha só a RAIZ; objeto aninhado se fecha na declaração.**
+  Sem `.strict()`, o zod aninhado DESCARTA a chave desconhecida em silêncio, e
+  o JSON publicado não denuncia: o zod-to-json-schema emite
+  `additionalProperties: false` para objeto "strip" igual ao "strict". Assim
+  `compor-arte`/`compor-leva` perdiam um `total` no carrossel ou um `provar` no
+  item da leva, que então era composto de verdade (R12-03, 18/09/2026). Todo
+  objeto aninhado é `.strict()`, ou `.passthrough()` quando a chave extra é
+  repassada DE PROPÓSITO (`textosLivres` de criar-arte); a seção A de
+  `validar-registro-mcp.ts` recusa o resto no CI.
 - **Vocabulário que não pode entrar estático vira espelho + sentinela**:
   `CATEGORIAS_DA_BASE`/`SECOES_DO_DNA` (base-e-dna.ts) e o "Máximo 60" de
   criar-plano são cravados no catálogo e conferidos no load de

@@ -3,6 +3,10 @@
  *
  * Mesma regra de clientes.ts: import estático só de módulo puro; serviço e
  * helpers por `await import()` relativo dentro do handler.
+ *
+ * 🔴 Todo objeto aninhado é `.strict()`: `definirTool` fecha só a raiz, e o zod
+ * aninhado sem ele descarta chave desconhecida em silêncio (R12-03). A seção A
+ * de `scripts/validar-registro-mcp.ts` recusa isso no CI.
  */
 
 import { z } from 'zod'
@@ -17,7 +21,7 @@ const bloco = z.object({
     .min(1)
     .max(6)
     .describe('As linhas do bloco, JÁ quebradas como devem aparecer (uma string por linha). Headline em 1-2 linhas curtas; apoio em 1-2 linhas. Palavra-chave entre [colchetes] sai DESTACADA na cor e no peso de destaque da marca (ex.: "Seu milk-shake vem [em dobro]") — marque 1 ou 2 por peça, só o que decide a leitura (preço, dia, a oferta); sem colchetes, sem destaque.'),
-})
+}).strict()
 
 const preferencias = z
   .object({
@@ -31,6 +35,7 @@ const preferencias = z
     enquadramento: z.enum(['auto', 'fixo']).optional().describe('"auto" (default) deixa o compositor deslocar o corte da foto para abrir área livre; "fixo" mantém o centro.'),
     variante: z.string().optional().describe('Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais.'),
   })
+  .strict()
   .optional()
 
 const spec = {
@@ -55,6 +60,7 @@ const spec = {
       slide: z.number().int().min(1).max(20).describe('A posição desta peça no carrossel como ele sai no Instagram — 1 é a capa. Carrossel cuja capa é foto do acervo começa as peças compostas no 2.'),
       de: z.number().int().min(2).max(20).optional().describe('Quantas mídias o carrossel tem no total.'),
     })
+    .strict()
     .optional()
     .describe('Só quando a peça é SLIDE de um carrossel. É o que dá nome próprio a cada slide na pasta ("slide 2/5") e mantém a ordem deles — sem isso os irmãos ficam com nomes idênticos e a equipe não sabe qual é qual ao aprovar.'),
 }
@@ -290,7 +296,7 @@ export const toolsDoCompositor = [
             planoId: spec.planoId,
             quando: spec.quando,
             carrossel: spec.carrossel,
-          }),
+          }).strict(),
         )
         .min(1)
         .max(60)
