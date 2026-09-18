@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { lerVoz, type VozCompacta } from '../voz'
 import {
+  ESTADO_INICIAL_DA_VOZ,
   formularioParaVoz,
   formulariosIguais,
+  reconciliarComServidor,
+  registroParaFormulario,
   podeReativar,
   podeRemoverRegra,
   removerRegraNoFormulario,
@@ -171,5 +174,29 @@ describe('voz-formulario — ida e volta EXATA entre o contrato e os campos da t
     const a = vozParaFormulario(voz)
     expect(formulariosIguais(a, { ...a, descricao: `  ${a.descricao}  ` })).toBe(true)
     expect(formulariosIguais(a, { ...a, termos: [...a.termos, 'chimarrão'] })).toBe(false)
+  })
+})
+
+describe('reconciliarComServidor — o que chega do servidor nunca apaga edição local (PR14-02, PR14-15)', () => {
+  const v1 = registroParaFormulario({ versao: 1, voz })
+  const lida = reconciliarComServidor(ESTADO_INICIAL_DA_VOZ, v1, { enviado: null, substituindo: false })
+  const a = { ...v1.form, descricao: 'A — direta e quente.' }
+  const b = { ...v1.form, descricao: 'B — direta, quente e curta.' }
+
+  it('leitura que confirmou ausência vira versão 0 (PR14-09); a primeira leitura adota o servidor', () => {
+    expect(registroParaFormulario(null)).toEqual({ form: vozParaFormulario(null), versao: 0 })
+    expect(lida).toEqual({ form: v1.form, base: v1.form, versaoLida: 1, divergente: null })
+  })
+  it('PR14-15: a resposta da PRÓPRIA gravação avança base e versão e mantém o rascunho posterior — não é conflito', () => {
+    const comRascunho = { ...lida, form: b }
+    const depois = reconciliarComServidor(comRascunho, registroParaFormulario({ versao: 2, voz: lerVoz(formularioParaVoz(a)).voz }), { enviado: a, substituindo: false })
+    expect(depois.form).toBe(b)
+    expect(formulariosIguais(depois.base, a)).toBe(true)
+    expect(depois).toMatchObject({ versaoLida: 2, divergente: null })
+  })
+  it('o que OUTRA pessoa salvou por baixo marca a divergência e não descarta nada', () => {
+    const comRascunho = { ...lida, form: b }
+    const depois = reconciliarComServidor(comRascunho, registroParaFormulario({ versao: 2, voz: lerVoz(formularioParaVoz(a)).voz }), { enviado: null, substituindo: false })
+    expect(depois).toEqual({ ...comRascunho, divergente: 2 })
   })
 })

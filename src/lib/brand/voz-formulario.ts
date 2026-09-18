@@ -178,4 +178,46 @@ export function formulariosIguais(a: FormularioDaVoz, b: FormularioDaVoz): boole
   return JSON.stringify(formularioParaVoz(a)) === JSON.stringify(formularioParaVoz(b))
 }
 
+/** O estado da tela "Como a marca fala": o que se edita, a base que o servidor confirmou e a versão lida (o CAS). */
+export interface EstadoDaVozNaTela {
+  form: FormularioDaVoz
+  base: FormularioDaVoz
+  versaoLida: number | null
+  /** O servidor tem uma versão que não é a que este formulário partiu, e há edição local não salva. */
+  divergente: number | null
+}
+
+export const ESTADO_INICIAL_DA_VOZ: EstadoDaVozNaTela = { form: FORMULARIO_VAZIO, base: FORMULARIO_VAZIO, versaoLida: null, divergente: null }
+
+/**
+ * O registro do servidor como a tela o compara. Leitura que CONFIRMOU ausência
+ * vira versão 0 (o serviço aceita): se outra pessoa criou a v1 no meio, o
+ * conflito volta como VOZ_DIVERGENTE e cai no caminho tratado — com null vinha
+ * VOZ_VERSAO_OBRIGATORIA sem saída (PR14-09).
+ */
+export function registroParaFormulario(registro: { versao: number; voz: VozCompacta | null } | null | undefined): { form: FormularioDaVoz; versao: number } {
+  return { form: vozParaFormulario(registro?.voz ?? null), versao: registro?.versao ?? 0 }
+}
+
+/**
+ * O que chega do servidor — a releitura OU a resposta da própria gravação
+ * (PR14-15) — aplicado ao estado da tela, sem nunca apagar edição local não
+ * salva (PR14-02): sem edição local, adota o servidor; se o que chegou é o
+ * NOSSO salvamento, a base e a versão avançam e o rascunho posterior fica; se
+ * nada mudou lá, só a versão se confirma; se OUTRA pessoa salvou por baixo,
+ * marca a divergência e a pessoa decide. A substituição de regra em andamento
+ * conta como edição local (PR14-12).
+ */
+export function reconciliarComServidor(
+  e: EstadoDaVozNaTela,
+  servidor: { form: FormularioDaVoz; versao: number | null },
+  pendente: { enviado: FormularioDaVoz | null; substituindo: boolean },
+): EstadoDaVozNaTela {
+  const semEdicaoLocal = formulariosIguais(e.form, e.base) && !pendente.substituindo
+  if (semEdicaoLocal) return { form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null }
+  if (pendente.enviado && formulariosIguais(servidor.form, pendente.enviado)) return { ...e, base: servidor.form, versaoLida: servidor.versao, divergente: null }
+  if (formulariosIguais(servidor.form, e.base)) return { ...e, versaoLida: servidor.versao, divergente: null }
+  return { ...e, divergente: servidor.versao }
+}
+
 export type { RegraDaVoz }

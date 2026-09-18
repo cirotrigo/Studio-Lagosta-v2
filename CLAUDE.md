@@ -6815,6 +6815,32 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   pessoa estava escrevendo no DNA legado sumia; "Tentar de novo" voltava com
   os valores do servidor. O cartão exclusivo é só da carga inicial sem dado;
   com dado, a falha vira aviso acima do conteúdo, e tudo continua montado.
+- 🔴 **A resposta CONFIRMADA de uma gravação vira o dado da consulta ANTES da
+  releitura** (PR14-15 da revisão final do Codex, 18/09/2026). O PUT da voz
+  devolve a leitura depois da escrita (versão nova incluída), e o hook a
+  descartava: a tela só reconciliava pelo GET da invalidação. Com esse GET
+  falhando, `base` e `versaoLida` ficavam na versão anterior, a edição
+  seguinte ia com a versão velha e tomava `VOZ_DIVERGENTE` de um salvamento que
+  era dela — e, quando a releitura enfim chegava, o próprio salvamento era lido
+  como mudança de terceiros e a saída oferecida era descartar o rascunho. Hoje
+  `gravacaoDaVozDaMarca` põe a resposta no cache (`setQueryData`) e só então
+  relê; a reconciliação mora em `reconciliarComServidor` (puro, em
+  `voz-formulario.ts`), a mesma para a releitura e para a resposta.
+  🔴 **O mesmo defeito, pior, estava no `BrandDnaSection`** (varredura por
+  classe): o `onSuccess` do PATCH invalidava SEM aguardar e reiniciava os campos
+  (`setCarregado(false)`) na mesma hora — do cache ANTERIOR à gravação, mesmo
+  com a releitura dando certo. O texto salvo voltava ao antigo na tela, com o
+  Salvar aceso para regravá-lo por cima; o componente está nas três casas do DNA
+  que o PR 14 criou (DNA legado, DNA visual, crivo). Hoje
+  `confirmarGravacaoDoDna` põe no cache as seções do patch com o valor que o
+  servidor confirmou (só elas: a resposta traz a linha crua, e o `visualStyle`
+  da consulta pode vir do `brandStyleDescription` legado), AGUARDA a releitura,
+  e só então os campos reiniciam. Regra para tela nova: gravação confirmada
+  nunca pode depender da releitura para a tela saber o que foi gravado.
+  Provas em `src/hooks/__tests__/use-aba-marca.test.ts` (QueryClient de
+  verdade, as opções do próprio hook, servidor em memória no `fetch` fazendo o
+  CAS) e em `voz-formulario.test.ts`. A amarração do efeito `[data]` e o
+  `setCarregado(false)` depois do `await` ficam por inspeção.
 - **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
   as três áreas distinguem erro (mensagem + tentar de novo), carregando e
   resultado vazio — "este cliente não tem página de assinatura" só é dito com a

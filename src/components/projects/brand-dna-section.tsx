@@ -13,6 +13,7 @@ import {
   Save,
 } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { confirmarGravacaoDoDna } from '@/hooks/use-aba-marca'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
@@ -174,13 +175,16 @@ export function BrandDnaSection({
           patch[s.key] = valores[s.key] || null
         }
       }
-      return api.patch(`/api/projects/${projectId}/brand-dna`, patch)
+      const r = await api.patch<{ dna: BrandDNASections }>(`/api/projects/${projectId}/brand-dna`, patch)
+      return { patch, dna: r.dna }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['brand-dna', projectId] })
-      queryClient.invalidateQueries({ queryKey: ['prompt-preview', projectId] })
-      setCarregado(false)
+    onSuccess: async ({ patch, dna }) => {
       toast.success('DNA da marca salvo — vale a partir da próxima geração.')
+      // Os campos só se reiniciam DEPOIS de o cache ter o que a gravação confirmou (e da releitura, aguardada — os
+      // campos seguem desabilitados até lá): reiniciar antes lia o cache anterior à gravação e devolvia o texto antigo
+      // à tela, com o Salvar aceso para regravá-lo por cima (varredura do PR14-15).
+      await confirmarGravacaoDoDna(queryClient, projectId, patch, { ...dna })
+      setCarregado(false)
     },
     onError: (e: Error) => toast.error(e.message || 'Erro ao salvar o DNA'),
   })

@@ -12,26 +12,27 @@ import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { ESCOPOS_DA_REGRA, TETO_DO_PROMPT_DA_VOZ, lerVoz, vozParaPrompt, type EscopoDaRegra } from '@/lib/brand/voz'
 import {
-  FORMULARIO_VAZIO,
+  ESTADO_INICIAL_DA_VOZ,
   REESCRITA_VAZIA,
   formularioParaVoz,
   formulariosIguais,
   podeReativar,
   podeRemoverRegra,
   reativarRegraNoFormulario,
+  reconciliarComServidor,
   regraEmBranco,
+  registroParaFormulario,
   removerRegraNoFormulario,
   substituidaPor,
   substituirRegraNoFormulario,
   sucessoraAtiva,
-  vozParaFormulario,
+  type EstadoDaVozNaTela,
   type FormularioDaVoz,
   type ReescritaNoFormulario,
   type RegraNoFormulario,
 } from '@/lib/brand/voz-formulario'
 import { useSalvarVozDaMarca, useVozDaMarca } from '@/hooks/use-aba-marca'
 import { BrandDnaSection } from '@/components/projects/brand-dna-section'
-import type { VozDaMarca } from '@/lib/brand/aba-marca'
 
 /**
  * "Como a marca fala" — a primeira das três áreas da aba Marca (plano "Marca
@@ -58,26 +59,10 @@ function hojeEmBrasilia(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date())
 }
 
-interface Estado {
-  form: FormularioDaVoz
-  base: FormularioDaVoz
-  versaoLida: number | null
-  /** O servidor tem uma versão que não é a que este formulário partiu, e há edição local não salva. */
-  divergente: number | null
-}
-
-const ESTADO_INICIAL: Estado = { form: FORMULARIO_VAZIO, base: FORMULARIO_VAZIO, versaoLida: null, divergente: null }
-
-function formDoServidor(d: VozDaMarca): { form: FormularioDaVoz; versao: number | null } {
-  // Leitura que CONFIRMOU ausência envia 0 na gravação (o serviço aceita): se outra pessoa criou a v1 no meio, o
-  // conflito volta como VOZ_DIVERGENTE e cai no caminho tratado — com null vinha VOZ_VERSAO_OBRIGATORIA sem saída (PR14-09).
-  return { form: vozParaFormulario(d.registro?.voz ?? null), versao: d.registro?.versao ?? 0 }
-}
-
 export function ComoAMarcaFala({ projectId }: { projectId: number }) {
   const { data, isLoading, isError, error, refetch } = useVozDaMarca(projectId)
   const salvar = useSalvarVozDaMarca(projectId)
-  const [estado, setEstado] = React.useState<Estado>(ESTADO_INICIAL)
+  const [estado, setEstado] = React.useState<EstadoDaVozNaTela>(ESTADO_INICIAL_DA_VOZ)
   const enviadoRef = React.useRef<FormularioDaVoz | null>(null)
   const [substituindo, setSubstituindo] = React.useState<{ id: string; texto: string; motivo: string; escopo: EscopoDaRegra } | null>(null)
   // A substituição em andamento é RASCUNHO fora de `form`: conta como edição local para a releitura não a apagar (PR14-12).
@@ -90,19 +75,12 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
     if (v) setLegadoJaAbriu(true)
   }
 
+  // `data` muda com a releitura E com a resposta da própria gravação, que o hook põe no cache antes de reler (PR14-15):
+  // uma releitura que falha não faz a tela esquecer a versão que o servidor acabou de confirmar.
   React.useEffect(() => {
     if (!data) return
-    const servidor = formDoServidor(data)
-    setEstado((e) => {
-      const semEdicaoLocal = formulariosIguais(e.form, e.base) && !substituindoRef.current
-      if (semEdicaoLocal) return { form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null }
-      // Há edição local não salva. O que chegou é o NOSSO salvamento? Então a base avança e o rascunho fica.
-      if (enviadoRef.current && formulariosIguais(servidor.form, enviadoRef.current)) return { ...e, base: servidor.form, versaoLida: servidor.versao, divergente: null }
-      // Nada mudou no servidor (releitura de fundo): só a versão se confirma.
-      if (formulariosIguais(servidor.form, e.base)) return { ...e, versaoLida: servidor.versao, divergente: null }
-      // Outra pessoa salvou por baixo: não descartar nada; a pessoa decide.
-      return { ...e, divergente: servidor.versao }
-    })
+    const servidor = registroParaFormulario(data.registro)
+    setEstado((e) => reconciliarComServidor(e, servidor, { enviado: enviadoRef.current, substituindo: !!substituindoRef.current }))
   }, [data])
 
   const { form, base, versaoLida, divergente } = estado
@@ -116,7 +94,7 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
 
   const adotarServidor = () => {
     if (!data) return
-    const servidor = formDoServidor(data)
+    const servidor = registroParaFormulario(data.registro)
     enviadoRef.current = null
     setSubstituindo(null)
     setEstado({ form: servidor.form, base: servidor.form, versaoLida: servidor.versao, divergente: null })
