@@ -96,7 +96,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     if (luzDaFoto === null) avisosDaFoto.push('a foto não pôde ser lida/medida: a escolha da variante e dos arranjos ficou PROVISÓRIA — repita a medição quando ela carregar, ou fixe `preferencias.variante` e `preferencias.arranjos` ao compor')
   }
   const criterios = { papeis, tema: spec.tema ?? spec.nome ?? null, luzDaFoto, chave: chaveDaPeca(spec) }
-  const assinatura = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: spec.preferencias?.variante ?? null, ...criterios })
+  const assinatura = await carregarAssinatura(pedido.projectId, pedido.formato, { variante: spec.preferencias?.variante ?? null, varianteOriginal: spec.preferencias?.varianteOriginal ?? null, ...criterios })
   if (!assinatura.origem.pageId) {
     throw new CreativeError('ASSINATURA_INCOMPLETA', 'O projeto não tem página de assinatura (template "Assinatura"): sem ela não há fonte, tamanho nem cor para medir.', 422)
   }

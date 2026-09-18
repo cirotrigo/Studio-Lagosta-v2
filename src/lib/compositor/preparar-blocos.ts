@@ -186,6 +186,12 @@ export function prepararBlocos(args: {
 
   const montados: BlocoPreparado[] = []
   let segundaVoz: BlocosPreparados['segundaVoz'] = 'nenhuma'
+  // O contador de ids é da PEÇA, não do grupo: o serviço repartido entre dois
+  // grupos (horário junto da oferta, endereço no pé) saía com DUAS camadas
+  // `servico` — e ajuste por id (revisor, `ajustar-arte`) atingia as duas, e
+  // `elementosPorTexto` (chaveado pelo id) perdia o ícone do primeiro grupo
+  // (varredura do PR 3, 18/09/2026).
+  const repeticoes = new Map<Papel, number>()
   for (const [chaveDoGrupoAtual, blocosDoGrupo] of blocosPorGrupo) {
     const daPagina = gruposDaPagina.get(chaveDoGrupoAtual)
     const escolha = escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
@@ -225,7 +231,6 @@ export function prepararBlocos(args: {
     const preenchidos = arranjo
       ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
       : comSegundaVoz.map((b) => ({ ...b, texto: null }))
-    const repeticoes = new Map<Papel, number>()
     for (const p of preenchidos) {
       const estilo = p.texto?.estilo ?? assinatura.papeis[p.papel]
       if (!estilo) continue
