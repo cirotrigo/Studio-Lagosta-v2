@@ -1,4 +1,7 @@
 import type { BrandContext } from '@/lib/brand/brand-context';
+import type { LogoCorner } from './logo-compositor';
+import { montarPromptDaReferencia } from './prompt-da-referencia';
+import { montarPromptDoManual } from './prompt-do-manual';
 
 export const VERSAO_DO_CONTEXTO_VISUAL = '2026-09-08.1';
 
@@ -135,4 +138,49 @@ export function portaDoFallback(
   referenciaSoParaODiretor: boolean
 ): 'manual' | 'referencia' {
   return porta === 'referencia' && referenciaSoParaODiretor ? 'manual' : porta;
+}
+
+/**
+ * O corpo do MOLDE da porta — o caminho de volta quando o diretor de arte não
+ * respondeu. Mora aqui (puro) e não inline no runner para o fallback poder ser
+ * conferido sem gerar nada: as regras de ARTE da voz compacta
+ * (`brand.voz.regrasDeArte`) sumiam justamente neste caminho, porque só o
+ * `buildArtePrompt` as lia (PR7-FINAL-03 da revisão do Codex, 18/09/2026).
+ */
+export function corpoDoMoldeDaPorta(args: {
+  porta: 'manual' | 'referencia';
+  referenciaSoParaODiretor: boolean;
+  brand: BrandContext | null;
+  /** Já na caixa da marca (`copyComCaixaDaMarca`). */
+  copy: string[];
+  formato?: 'story' | 'feed' | 'quadrado';
+  /** Canto da logo colada pelo sistema; ausente = o modelo desenha a logo. */
+  cantoDaLogoColada: LogoCorner | null;
+  layoutLivre: boolean;
+  instrucaoImagem?: string | null;
+  pedido?: string | null;
+}): { fallbackPorta: 'manual' | 'referencia'; corpo: string } {
+  const fallbackPorta = portaDoFallback(args.porta, args.referenciaSoParaODiretor);
+  const corpo =
+    fallbackPorta === 'referencia'
+      ? montarPromptDaReferencia({
+          marca: args.brand?.projectName ?? 'the brand',
+          copy: args.copy,
+          formato: args.formato,
+          logoColadaDepois: !!args.cantoDaLogoColada,
+          layoutLivre: args.layoutLivre,
+          instrucaoImagem: args.instrucaoImagem,
+          pedido: args.pedido,
+          regrasDeArte: args.brand?.voz?.regrasDeArte ?? null,
+        })
+      : montarPromptDoManual({
+          brand: args.brand!,
+          estilo: args.brand?.estiloDasReferencias ?? null,
+          copy: args.copy,
+          formato: args.formato,
+          instrucaoImagem: args.instrucaoImagem,
+          pedido: args.pedido,
+          logo: args.cantoDaLogoColada ? { modo: 'compor', canto: args.cantoDaLogoColada } : { modo: 'modelo' },
+        });
+  return { fallbackPorta, corpo };
 }

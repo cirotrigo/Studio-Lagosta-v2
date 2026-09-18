@@ -4,6 +4,7 @@ import { formatarValidade } from '@/lib/knowledge/vigencia'
 import { lerEstiloDasReferencias, type EstiloDasReferenciasGravado } from '@/lib/brand/estilo-das-referencias'
 import { conflitosNoTextoLegado, precedenciaDaVoz, type ContextoDeVoz, type EscopoDaRegra } from '@/lib/brand/voz'
 import { virarRegraNaVoz, type VirarRegraNaVozResult } from '@/lib/brand/voz-service'
+import { CreativeError } from '@/lib/creatives/errors'
 
 /**
  * Fonte única da identidade da marca para TODO prompt de geração.
@@ -170,6 +171,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
 export async function updateBrandDNA(
   projectId: number,
   patch: Partial<Record<BrandDNAField, string | null>>,
+  cliente: Pick<typeof db, 'brandDNA'> = db,
 ): Promise<BrandDNASections> {
   const data: Record<string, string | null> = {}
   for (const field of BRAND_DNA_FIELDS) {
@@ -178,7 +180,7 @@ export async function updateBrandDNA(
     }
   }
 
-  const saved = await db.brandDNA.upsert({
+  const saved = await cliente.brandDNA.upsert({
     where: { projectId },
     create: { projectId, ...data },
     update: data,
@@ -297,7 +299,8 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
    * no DNA: a voz não as substitui.
    */
   const registroVoz = await db.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { migradaEm: true } })
-  if (registroVoz?.migradaEm && (!secao || secao === 'toneOfVoice' || secao === 'contentRules')) {
+  const secaoDeTexto = !secao || secao === 'toneOfVoice' || secao === 'contentRules'
+  if (registroVoz?.migradaEm && secaoDeTexto) {
     return virarRegraNaVoz({
       projectId: args.projectId,
       texto: regra,
@@ -309,6 +312,20 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
       confirmado: args.confirmado,
       versaoEsperada: args.versaoDaVoz,
     })
+  }
+  /**
+   * `versaoDaVoz`, `substitui` e `conviver` só existem numa proposta da VOZ.
+   * Chegando aqui (DNA), a migração foi desfeita entre a prévia e a
+   * confirmação: gravar no DNA seria outra operação que a aprovada — acrescenta
+   * em vez de substituir, e a proibição antiga continua (PR7-FINAL-01 da
+   * revisão do Codex, 18/09/2026). Recusa; a pessoa pede a proposta de novo.
+   */
+  if (secaoDeTexto && (args.versaoDaVoz != null || !!args.substitui || args.conviver === true)) {
+    throw new CreativeError(
+      'REGRA_DESTINO_MUDOU',
+      'Esta regra foi proposta para a voz compacta, mas o cliente não está mais migrado: o DNA de texto voltou a mandar. Nada foi gravado — peça a proposta de novo.',
+      409,
+    )
   }
   if (!secao) {
     throw new Error(
@@ -341,7 +358,28 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
   }
 
   if (args.confirmado) {
-    await updateBrandDNA(args.projectId, { [secao]: depois })
+    if (secaoDeTexto) {
+      /**
+       * A migração pode ser LIGADA entre a escolha deste ramo e a escrita: a
+       * regra cairia no DNA de texto que já não manda na copy. A linha da voz
+       * é travada e relida na mesma transação da escrita — `migrarParaVoz`
+       * escreve nela e espera. ponytail: sem linha de voz não há o que travar;
+       * migrar exige gravar a voz antes (outra chamada), janela desprezível.
+       */
+      await db.$transaction(async (tx) => {
+        const [voz] = await tx.$queryRaw<Array<{ migradaEm: Date | null }>>`SELECT "migradaEm" FROM "BrandVoice" WHERE "projectId" = ${args.projectId} FOR UPDATE`
+        if (voz?.migradaEm) {
+          throw new CreativeError(
+            'REGRA_DESTINO_MUDOU',
+            'O cliente foi migrado para a voz compacta enquanto a regra era confirmada: o DNA de texto não manda mais na copy. Nada foi gravado — peça a proposta de novo.',
+            409,
+          )
+        }
+        await updateBrandDNA(args.projectId, { [secao]: depois }, tx)
+      })
+    } else {
+      await updateBrandDNA(args.projectId, { [secao]: depois })
+    }
   }
 
   return { destino: 'dna', secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado, conflitos }

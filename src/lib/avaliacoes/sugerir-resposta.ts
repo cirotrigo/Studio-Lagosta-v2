@@ -18,6 +18,7 @@ import { generateObject } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { loadBrandContext } from '@/lib/brand/brand-context'
+import { textoDaVozParaPrompt } from '@/lib/brand/voz'
 
 const MODELO = 'gpt-4o-mini'
 
@@ -37,7 +38,7 @@ export interface PedidoDeRascunho {
 export async function sugerirRespostaDeAvaliacao(pedido: PedidoDeRascunho): Promise<string | null> {
   try {
     const brand = await loadBrandContext(pedido.projectId).catch(() => null)
-    const tom = brand?.voz?.texto ?? null
+    const tom = textoDaVozParaPrompt(brand?.voz, 1200)
 
     const negativa = pedido.estrelas <= 3
     const primeiroNome = (pedido.autor ?? '').trim().split(/\s+/)[0] || null
@@ -61,7 +62,7 @@ export async function sugerirRespostaDeAvaliacao(pedido: PedidoDeRascunho): Prom
         primeiroNome ? `- Comece dirigindo-se a ${primeiroNome}.` : '- Não invente nome para o avaliador.',
         `- No máximo 400 caracteres. Assine "Equipe ${pedido.nomeCliente}".`,
         '- No máximo 1 emoji, ou nenhum.',
-        tom ? `\nTom de voz da marca (siga-o):\n${tom.slice(0, 1200)}` : '',
+        tom ? `\nTom de voz da marca (siga-o):\n${tom}` : '',
       ].join('\n'),
     })
 
@@ -100,7 +101,7 @@ export async function sugerirRespostaDeComentario(pedido: PedidoDeRascunhoDeCome
         )
         .catch(() => []),
     ])
-    const tom = brand?.voz?.texto ?? null
+    const tom = textoDaVozParaPrompt(brand?.voz, 1200)
     const primeiroNome = (pedido.autor ?? '').trim().split(/\s+/)[0] || null
     const baseDeFatos = fatos.map((f) => `- ${f.content.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')
 
@@ -123,7 +124,7 @@ export async function sugerirRespostaDeComentario(pedido: PedidoDeRascunhoDeCome
         primeiroNome ? `- Pode se dirigir a ${primeiroNome}.` : '- Não invente nome.',
         '- Sem assinatura (comentário de Instagram não se assina).',
         baseDeFatos ? `\nFATOS confirmados da casa (única fonte permitida para dado factual):\n${baseDeFatos}` : '\nFATOS confirmados da casa: (nenhum encontrado — não afirme nenhum dado factual)',
-        tom ? `\nTom de voz da marca (siga-o):\n${tom.slice(0, 1200)}` : '',
+        tom ? `\nTom de voz da marca (siga-o):\n${tom}` : '',
       ].join('\n'),
     })
 

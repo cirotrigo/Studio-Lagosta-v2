@@ -120,6 +120,8 @@ async function main() {
   const projeto = await db.project.findUnique({ where: { id: PROJETO }, select: { id: true, userId: true, name: true } })
   if (!projeto) abortar(`projeto ${PROJETO} não existe no banco de dev`)
   const dnaAntes = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { toneOfVoice: true, contentRules: true } })
+  // O snapshot INTEIRO: é dele que o cleanup recria a linha se ela sumir no passo 8b (PR7-F-01).
+  const dnaSnapshot = await db.brandDNA.findUnique({ where: { projectId: PROJETO } })
   const vozAntes = await db.brandVoice.findUnique({ where: { projectId: PROJETO } })
   if (vozAntes) await db.brandVoice.delete({ where: { projectId: PROJETO } })
   const registro: Record<string, unknown> = { sha, branch, banco: ENDPOINT }
@@ -299,6 +301,12 @@ async function main() {
     const r10 = await lerRegistroDaVoz(PROJETO)
     conferir(`desfeita: fonte volta a "${esperadoSemVoz}" com vozPendente, e a voz (versão 4) e o dnaArquivado continuam gravados`, d10.desfeita && c10.fonte === esperadoSemVoz && c10.vozPendente === true && r10?.migradaEm === null && r10.versao === 4 && !!r10.dnaArquivado, JSON.stringify({ fonte: c10.fonte, versao: r10?.versao }))
     conferir('desfazer de novo não desfaz nada', (await desfazerMigracao({ projectId: PROJETO })).desfeita === false)
+    // PR7-FINAL-01: a proposta nasceu na VOZ (substitui + versaoDaVoz) e a migração foi desfeita antes da confirmação —
+    // o ramo legado não pode acrescentar a regra ao DNA (seria outra operação que a aprovada). Recusa, nada gravado.
+    const dnaAntesDaConfirmacao = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { contentRules: true, toneOfVoice: true } })
+    const e10 = await erroDe(virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, secao: 'contentRules', escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: true, versaoDaVoz: 4 }))
+    const dnaDepoisDaConfirmacao = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { contentRules: true, toneOfVoice: true } })
+    conferir('confirmação de proposta da voz com a migração desfeita: REGRA_DESTINO_MUDOU (409), DNA e voz intactos', e10?.code === 'REGRA_DESTINO_MUDOU' && e10?.status === 409 && JSON.stringify(dnaAntesDaConfirmacao) === JSON.stringify(dnaDepoisDaConfirmacao) && (await lerRegistroDaVoz(PROJETO))?.versao === 4, JSON.stringify(e10))
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
     mau++
@@ -324,9 +332,10 @@ async function main() {
         await db.brandVoice.create({ data: resto as never })
       })
     }
-    await passo('DNA restaurado', async () => { await db.brandDNA.update({ where: { projectId: PROJETO }, data: { contentRules: dnaAntes?.contentRules ?? null } }) })
-    const dnaDepois = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { toneOfVoice: true, contentRules: true } })
-    if (dnaDepois?.contentRules !== (dnaAntes?.contentRules ?? null) || dnaDepois?.toneOfVoice !== (dnaAntes?.toneOfVoice ?? null)) falhasDoCleanup.push('o DNA não voltou ao que era')
+    await passo('DNA restaurado', async () => {
+      const { restaurarDna } = await import('./lib/restaurar-dna')
+      falhasDoCleanup.push(...(await restaurarDna(db as never, PROJETO, dnaSnapshot as never)))
+    })
     if ((await db.brandVoice.count({ where: { projectId: PROJETO } })) !== (vozAntes ? 1 : 0)) falhasDoCleanup.push('BrandVoice não voltou ao estado anterior')
     if (falhasDoCleanup.length) {
       console.error('  ✗ cleanup incompleto:', falhasDoCleanup.join(' | '))

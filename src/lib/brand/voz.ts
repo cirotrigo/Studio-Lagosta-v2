@@ -330,6 +330,18 @@ export interface ContextoDeVoz {
   vocabulario: string | null
 }
 
+/**
+ * O texto de identidade de COPY para um prompt com orçamento curto. A voz
+ * compacta VALIDADA vai INTEIRA: o contrato já a limita a
+ * `TETO_DO_PROMPT_DA_VOZ`, e as regras recentes moram no FIM — cortar por
+ * tamanho apagava justamente elas (PR7-FINAL-02, 18/09/2026). O corte continua
+ * valendo só para o legado, cujo `toneOfVoice` não tem esse teto.
+ */
+export function textoDaVozParaPrompt(voz: ContextoDeVoz | null | undefined, tetoDoLegado: number): string | null {
+  if (!voz?.texto) return null
+  return voz.fonte === 'voz' ? voz.texto : voz.texto.slice(0, tetoDoLegado)
+}
+
 /** O contexto de quem não tem voz nem DNA de texto — para fixtures de teste e páginas sem identidade. */
 export const SEM_VOZ: ContextoDeVoz = { fonte: 'nenhuma', texto: null, regrasDaMarca: null, versao: null, migradaEm: null, vozPendente: false, regrasDeArte: null, vocabulario: null }
 

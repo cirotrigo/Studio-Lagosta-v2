@@ -52,6 +52,12 @@ export interface PromptDaReferenciaArgs {
   instrucaoImagem?: string | null
   /** Observação livre de quem pediu a peça. */
   pedido?: string | null
+  /**
+   * As regras ATIVAS de arte da voz compacta (`brand.voz.regrasDeArte`) — o
+   * molde é o fallback do diretor, e sem isto a regra sumia justamente nele
+   * (PR7-FINAL-03). Vão antes da copy, que continua sendo a última linha.
+   */
+  regrasDeArte?: string | null
   /** Índice (1-based) da imagem em que a FOTO chega ao modelo. */
   indiceDaFoto?: number
   /** Índice (1-based) da imagem em que a REFERÊNCIA chega ao modelo. */
@@ -72,6 +78,7 @@ export function montarPromptDaReferencia({
   layoutLivre = false,
   instrucaoImagem,
   pedido,
+  regrasDeArte,
   indiceDaFoto = 1,
   indiceDaReferencia = 2,
 }: PromptDaReferenciaArgs): string {
@@ -103,10 +110,11 @@ export function montarPromptDaReferencia({
       : '')
 
   const observacao = nota ? `Note from the client, to honour without breaking the model: ${nota}` : null
+  const regras = regrasDeArte?.trim() || null
 
   const copyBloco =
     `Render exactly ${blocos.length === 1 ? 'this copy block' : `these ${blocos.length} copy blocks`}, each once, and nothing else — the piece letters EXCLUSIVELY these lines:\n` +
     blocos.map((b) => `"${b}"`).join('\n')
 
-  return [foto, referencia, trava, observacao, copyBloco].filter((s): s is string => !!s).join('\n')
+  return [foto, referencia, trava, regras, observacao, copyBloco].filter((s): s is string => !!s).join('\n')
 }

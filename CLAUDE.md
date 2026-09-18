@@ -6676,6 +6676,33 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   escrita à mão + `db:deploy` com o OK do Ciro. O loader seleciona
   `brandVoice` em todo projeto: código sem a tabela FALHA em toda leitura de
   identidade — não subir o código antes do schema.
+- 🔴 **A confirmação do "virar regra" não troca de destino no meio do
+  caminho** (PR7-FINAL-01 da revisão final do Codex, 18/09/2026). `versaoDaVoz`,
+  `substitui` e `conviver` só existem numa proposta da VOZ: chegando ao ramo do
+  DNA (migração desfeita entre a prévia e a confirmação), a confirmação é
+  RECUSADA com `REGRA_DESTINO_MUDOU` (409) — acrescentar ao DNA seria outra
+  operação que a aprovada, e a proibição antiga continuaria. A mudança DURANTE a
+  requisição também é travada nos dois sentidos: a gravação na voz exige
+  `migradaEm` no MESMO `updateMany` do CAS (`gravarVoz({ exigirMigrada })`), e a
+  gravação no DNA de texto trava a linha da voz (`SELECT … FOR UPDATE`) e relê
+  `migradaEm` na mesma transação da escrita (`updateBrandDNA(…, tx)`).
+- 🔴 **Voz compacta VALIDADA entra INTEIRA em prompt de orçamento curto**
+  (PR7-FINAL-02): `textoDaVozParaPrompt(voz, teto)` corta só o LEGADO. O
+  contrato já limita a voz a 4.000 caracteres e as regras recentes moram no FIM
+  — `tom.slice(0, 1200)` nos rascunhos de avaliação/comentário (e na revisão
+  ortográfica) apagava justamente elas. Consumidor novo com teto próprio usa o
+  helper, nunca `slice` direto em `voz.texto`.
+- 🔴 **O molde da porta leva `voz.regrasDeArte`** (PR7-FINAL-03): o fallback do
+  diretor de arte (`prompt-do-manual` / `prompt-da-referencia`) não lia as
+  regras de arte da voz — só `buildArtePrompt` lia —, e a regra sumia
+  justamente quando o diretor estava fora. O corpo do molde mora em
+  `corpoDoMoldeDaPorta` (`contexto-visual-da-geracao.ts`, puro, testado); a
+  copy exata continua sendo a última seção. Prompt de imagem novo que leia
+  `dna.contentRules` precisa ler `voz.regrasDeArte` junto.
+- **O cleanup da prova da voz restaura o BrandDNA pelo SNAPSHOT inteiro**
+  (`scripts/lib/restaurar-dna.ts`, nota PR7-F-01): linha ausente é recriada
+  (mesmo id), a presente volta campo a campo, e a conferência cobre todos os
+  campos menos `updatedAt`.
 
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 

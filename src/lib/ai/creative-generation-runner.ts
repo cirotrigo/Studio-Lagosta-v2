@@ -13,7 +13,7 @@
  * em fieldValues — o registro atômico que permite aprender com cada run.
  */
 
-import { portaDoFallback } from './contexto-visual-da-geracao'
+import { corpoDoMoldeDaPorta } from './contexto-visual-da-geracao'
 import { criarControleDoDiretor, RESERVA_PARA_GERAR_MS, tempoParaGerar } from './controle-do-diretor'
 
 import sharp from 'sharp'
@@ -74,8 +74,7 @@ import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { qualidadePadraoPara, type QualidadeArte } from '@/lib/ai/qualidade-arte'
 import { modeloLivre } from '@/lib/ai/modelo-livre'
-import { montarPromptDaReferencia } from '@/lib/ai/prompt-da-referencia'
-import { cantoDaLogoDoEstilo, montarPromptDoManual } from '@/lib/ai/prompt-do-manual'
+import { cantoDaLogoDoEstilo } from '@/lib/ai/prompt-do-manual'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -926,27 +925,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           cantoParaCompor =
             (porta === 'manual' ? cantoDaLogoDoEstilo(brand?.estiloDasReferencias ?? null) : null) ?? LOGO_CORNER
         }
-        const fallbackPorta = portaDoFallback(porta, referenciaSoParaODiretor)
-        const corpoDaPorta =
-          fallbackPorta === 'referencia'
-            ? montarPromptDaReferencia({
-                marca: brand?.projectName ?? 'the brand',
-                copy: copyDaPorta,
-                formato: args.formato,
-                logoColadaDepois: !!logoParaCompor,
-                layoutLivre: modeloLivre(args.projectId),
-                instrucaoImagem: args.instrucaoImagem,
-                pedido: args.pedido,
-              })
-            : montarPromptDoManual({
-                brand: brand!,
-                estilo: brand?.estiloDasReferencias ?? null,
-                copy: copyDaPorta,
-                formato: args.formato,
-                instrucaoImagem: args.instrucaoImagem,
-                pedido: args.pedido,
-                logo: logoParaCompor ? { modo: 'compor', canto: cantoParaCompor ?? LOGO_CORNER } : { modo: 'modelo' },
-              })
+        const { fallbackPorta, corpo: corpoDaPorta } = corpoDoMoldeDaPorta({
+          porta,
+          referenciaSoParaODiretor,
+          brand,
+          copy: copyDaPorta,
+          formato: args.formato,
+          cantoDaLogoColada: logoParaCompor ? (cantoParaCompor ?? LOGO_CORNER) : null,
+          layoutLivre: modeloLivre(args.projectId),
+          instrucaoImagem: args.instrucaoImagem,
+          pedido: args.pedido,
+        })
         plannerGeracaoInfo = { ...plannerGeracaoInfo, porta, fallbackPorta, planejador: 'fallback' }
         // O que é MECÂNICO vai colado ao fim, onde pesa mais — o canto da
         // marca (quem cola é o código) e a safe area em PIXEL da peça real.

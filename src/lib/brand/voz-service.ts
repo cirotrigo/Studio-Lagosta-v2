@@ -65,6 +65,13 @@ export interface GravarVozArgs {
   voz: unknown
   /** A versão que quem grava LEU. Obrigatória quando já existe registro (CAS). */
   versaoEsperada?: number
+  /**
+   * Só grava se o cliente AINDA estiver migrado, no mesmo UPDATE do CAS. É o
+   * "virar regra" na voz: desfazer a migração entre a leitura e a escrita
+   * faria a regra aprovada cair numa voz que não manda mais na copy
+   * (PR7-FINAL-01). Recusa com `REGRA_DESTINO_MUDOU`.
+   */
+  exigirMigrada?: boolean
 }
 
 export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; voz: VozCompacta; criada: boolean }> {
@@ -84,9 +91,13 @@ export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; 
     throw new CreativeError('VOZ_VERSAO_OBRIGATORIA', `Já existe uma voz gravada (versão ${atual.versao}): mande a versão que você leu para não sobrescrever a edição de outra pessoa.`, 400, { versaoAtual: atual.versao })
   }
   const gravada = await db.brandVoice.updateMany({
-    where: { projectId: args.projectId, versao: args.versaoEsperada },
+    where: { projectId: args.projectId, versao: args.versaoEsperada, ...(args.exigirMigrada ? { migradaEm: { not: null } } : {}) },
     data: { voz: voz as never, versao: { increment: 1 } },
   })
+  if (gravada.count === 0 && args.exigirMigrada) {
+    const agora = await db.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { migradaEm: true } })
+    if (!agora?.migradaEm) throw erroDeDestinoMudou()
+  }
   if (gravada.count === 0) {
     throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou enquanto você editava (versão esperada ${args.versaoEsperada}, atual ${atual.versao}). Leia de novo antes de gravar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: atual.versao })
   }
@@ -120,6 +131,10 @@ export async function migrarParaVoz(args: { projectId: number; versaoEsperada: n
 export async function desfazerMigracao(args: { projectId: number }): Promise<{ desfeita: boolean }> {
   const r = await db.brandVoice.updateMany({ where: { projectId: args.projectId, migradaEm: { not: null } }, data: { migradaEm: null } })
   return { desfeita: r.count > 0 }
+}
+
+function erroDeDestinoMudou(): CreativeError {
+  return new CreativeError('REGRA_DESTINO_MUDOU', 'A migração da voz foi desfeita enquanto a regra era confirmada: o DNA de texto voltou a mandar na copy. Nada foi gravado — peça a proposta de novo.', 409)
 }
 
 export interface VirarRegraNaVozArgs extends NovaRegra {
@@ -174,7 +189,7 @@ export async function virarRegraNaVoz(args: VirarRegraNaVozArgs): Promise<VirarR
   const texto = (v: VozCompacta) => [...regrasAtivas(v, 'copy'), ...regrasAtivas(v, 'arte').filter((r) => r.escopo === 'arte')].map((r) => `${r.texto} [${r.escopo}]`)
   let versaoGravada: number | null = null
   if (args.confirmado) {
-    const g = await gravarVoz({ projectId: args.projectId, voz: resultado.voz, versaoEsperada: registro.versao })
+    const g = await gravarVoz({ projectId: args.projectId, voz: resultado.voz, versaoEsperada: registro.versao, exigirMigrada: true })
     versaoGravada = g.versao
   }
   return {
