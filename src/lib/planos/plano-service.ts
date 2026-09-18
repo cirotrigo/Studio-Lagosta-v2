@@ -711,7 +711,28 @@ async function buscarItem(projectId: number, planoId: string, itemId: string) {
  * plano vira sinal de `copy` junto com as tools da fatia seguinte. Está aqui
  * para que os chamadores nasçam passando o campo certo.
  */
-export async function atualizarItem(input: {
+export async function atualizarItem(input: EntradaDeAtualizacaoDoItem) {
+  /**
+   * A escrita é condicionada à VERSÃO LIDA do item (`updatedAt`) — PR3-F04 da
+   * revisão FINAL do Codex sobre abac9b34, 18/09/2026. A revisão da copy é
+   * calculada sobre o contrato lido e grava o histórico INTEIRO: duas edições
+   * concorrentes que gravassem por `id` deixavam a última apagar a revisão da
+   * primeira. Perdida a corrida, o item é RELIDO e a edição recalculada sobre
+   * ele (a lista de quem grava por último continua valendo, como sempre foi,
+   * mas o histórico guarda as duas); depois de insistir, 409 explícito.
+   */
+  for (let volta = 0; volta < 3; volta++) {
+    const r = await tentarAtualizarItem(input)
+    if (r) return r
+  }
+  throw new CreativeError(
+    'ITEM_MUDOU_DURANTE',
+    'O item foi editado por outra pessoa (ou pelo chat) enquanto esta edição era gravada, e ela NÃO foi gravada. Veja o item como está agora e refaça a edição se ainda fizer sentido.',
+    409,
+  )
+}
+
+interface EntradaDeAtualizacaoDoItem {
   projectId: number
   planoId: string
   itemId: string
@@ -719,7 +740,10 @@ export async function atualizarItem(input: {
   decididoPor?: string | null
   /** Quem assina a revisão da copy quando o patch mexe no texto: o chat (`claude`) ou a bancada/app (`equipe`, o default). */
   autorDaCopy?: 'claude' | 'equipe'
-}) {
+}
+
+/** Uma volta de `atualizarItem`: `null` quando o item mudou entre a leitura e a escrita (nada foi gravado). */
+async function tentarAtualizarItem(input: EntradaDeAtualizacaoDoItem) {
   const item = await buscarItem(input.projectId, input.planoId, input.itemId)
 
   if (item.plano.status !== 'ativo') {
@@ -848,11 +872,12 @@ export async function atualizarItem(input: {
     data.status = 'editado'
   }
 
-  const atualizado = await db.itemDePlano.update({
-    where: { id: input.itemId },
-    data,
-    include: { plano: { select: { id: true, status: true, inicio: true, fim: true } } },
+  const gravada = await db.itemDePlano.updateMany({
+    where: { id: input.itemId, updatedAt: item.updatedAt },
+    data: data as Prisma.ItemDePlanoUpdateManyMutationInput,
   })
+  if (gravada.count === 0) return null
+  const atualizado = await buscarItem(input.projectId, input.planoId, input.itemId)
   return { item: atualizado, avisos }
 }
 

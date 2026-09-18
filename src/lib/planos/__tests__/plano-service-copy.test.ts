@@ -22,6 +22,11 @@ vi.mock('@/lib/db', () => ({
         banco.updates.push(data)
         return { ...banco.item, ...data }
       },
+      // A escrita do item é condicionada à versão lida (PR3-F04): `updateMany` com `updatedAt`.
+      updateMany: async ({ data }: { data: Record<string, unknown> }) => {
+        banco.updates.push(data)
+        return { count: 1 }
+      },
     },
   },
 }))
