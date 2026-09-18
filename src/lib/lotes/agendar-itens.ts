@@ -57,6 +57,7 @@ import {
   decidirMidiaEmOutroPost,
   decidirPostsDaPagina,
   descreverRascunhoApagado,
+  estadoDoPost,
   hashDoAgendamento,
   mancheteDaSpec,
   MOTIVO_RECRIAR_COM_OUTRO_PEDIDO,
@@ -65,6 +66,7 @@ import {
   thumbnailEhAtual,
   validarAgendamentoDoLote,
   type DesfechoDoItemAgendado,
+  type EstadoDoPost,
   type FalhaDoItem,
   type FormatoDaPeca,
   type ItemDoAgendamento,
@@ -79,6 +81,13 @@ export interface EntradaDoAgendamentoDoLote {
   itens: unknown[]
   /** Toma as decisões e devolve a conta, sem escrever nada. */
   simular?: boolean
+  /**
+   * Só com `simular: true`: o cliente por onde as LEITURAS passam — a
+   * transação `READ ONLY` da prova de produção, para a conta ser a decisão do
+   * serviço e a garantia de só-leitura ser do banco (R12-04). A escrita nunca
+   * passa por ele.
+   */
+  leitor?: Cliente
   /** `User.id` INTERNO (cuid), NUNCA o clerkId. */
   decididoPor?: string | null
   superficie?: Superficie
@@ -95,6 +104,10 @@ export interface ItemAgendadoDoLote {
   quando?: string
   imagem?: string | null
   renderStatus?: string
+  /** O que o post é AGORA (R12-06): só `rascunho` espera aprovar-rascunhos. */
+  estadoDoPost?: EstadoDoPost
+  /** O post já foi entregue para publicar: a arte que vai ao ar é a entregue, e mexer na página não a muda mais. */
+  entregueParaPublicar?: true
   editUrl?: string
   codigo?: string
   motivo?: string
@@ -112,18 +125,19 @@ export interface ResultadoDoAgendamentoDoLote {
   itens: ItemAgendadoDoLote[]
 }
 
-type Cliente = Pick<Prisma.TransactionClient, 'generation' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano'>
+type Cliente = Pick<Prisma.TransactionClient, 'project' | 'generation' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano'>
 
 const SELECAO_DA_LINHA = { id: true, generationId: true, postId: true, hashDoAgendamento: true, efeitosDoAgendamentoEm: true } as const
 const SELECAO_DO_POST = {
   id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true, renderStatus: true, pageId: true, templateId: true,
-  caption: true, campaignId: true, sugestaoId: true, origem: true, generationId: true,
+  caption: true, campaignId: true, sugestaoId: true, origem: true, generationId: true, laterPostId: true,
 } as const
 
 type Linha = { id: string; generationId: string | null; postId: string | null; hashDoAgendamento: string | null; efeitosDoAgendamentoEm: Date | null }
 type Post = {
   id: string; status: string; postType: string; scheduledDatetime: Date | null; mediaUrls: string[]; renderStatus: string; pageId: string | null; templateId: number | null
   caption: string | null; campaignId: string | null; sugestaoId: string | null; origem: string | null; generationId: string | null
+  laterPostId: string | null
 }
 
 /** Recusa decidida DENTRO da transação que já escreveu: lançar é o que desfaz o post e o vínculo. */
@@ -138,7 +152,8 @@ interface Peca {
   status: string
   resultUrl: string | null
   pageId: string | null
-  snapshot: unknown
+  /** A versão visual que o PNG da peça desenhou, gravada junto dele (R12-01). */
+  versaoRenderizada: unknown
   slide: boolean
   quandoDaSpec: string | null
   formato: FormatoDaPeca | null
@@ -170,7 +185,7 @@ async function lerPeca(cliente: Cliente, generationId: string, projectId: number
     status: String(g.status),
     resultUrl: g.resultUrl ?? null,
     pageId: typeof fv.pageId === 'string' ? fv.pageId : null,
-    snapshot: fv.layersSnapshot,
+    versaoRenderizada: fv.versaoRenderizada,
     slide: g.slideOrder != null || (spec.carrossel != null && typeof spec.carrossel === 'object'),
     quandoDaSpec: typeof spec.quando === 'string' && spec.quando.trim() ? spec.quando : null,
     formato: typeof spec.formato === 'string' && FORMATOS.has(spec.formato) ? (spec.formato as FormatoDaPeca) : null,
@@ -235,6 +250,8 @@ function concluido(itemId: string, desfecho: DesfechoDoItemAgendado, post: Post,
     ...(post.scheduledDatetime ? { quando: formatarBRT(post.scheduledDatetime) } : {}),
     imagem: post.mediaUrls[0] ?? null,
     renderStatus: post.renderStatus,
+    ...(estadoDoPost(post.status) ? { estadoDoPost: estadoDoPost(post.status)! } : {}),
+    ...(post.laterPostId && post.status !== 'DRAFT' ? { entregueParaPublicar: true as const } : {}),
     ...(editUrlDe(post.templateId ?? pagina?.templateId, pageId) ? { editUrl: editUrlDe(post.templateId ?? pagina?.templateId, pageId) } : {}),
     ...comAvisos(avisos),
   }
@@ -262,6 +279,8 @@ interface Contexto {
   projectId: number
   loteId: string
   simular: boolean
+  /** Por onde as leituras da DECISÃO passam: o `db`, ou o leitor da simulação (R12-04). */
+  leitor: Cliente
   decididoPor: string | null
   superficie: Superficie
 }
@@ -344,32 +363,35 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
  * transições — `caminhoAte` fabricaria `gerando`/`pronto` para um item
  * reaberto, e `agendado` é terminal (C12-1). `pronto` é a ÚNICA origem que a
  * tabela de transições aceita para `agendado`.
+ *
+ * Erro do banco LANÇA (R12-02): quem chama deixa os efeitos pendentes, e a
+ * repetição tenta de novo. Engolido, ele virava aviso e o carimbo dos efeitos
+ * era gravado — o item ficava `pronto` para sempre, e a bancada o oferecia para
+ * agendar outra vez.
  */
 async function levarItemDoPlanoParaAgendado(ctx: Contexto, peca: Peca, postId: string): Promise<string | null> {
   if (!peca.itemDePlanoId) return null
-  try {
-    const item = await lerItemDoPlano(db, peca, ctx.projectId)
-    if (!item) return 'O item do plano desta peça não existe mais — o rascunho ficou só na agenda.'
-    const de = normalizarStatusDoItem(item.status)
-    if (de === 'agendado' && item.postId === postId && item.generationId === peca.id) return null
-    if (de !== 'pronto' || item.generationId !== peca.id || !transicaoPermitida(de, 'agendado')) {
-      return `O item do plano mudou depois da peça (está "${item.status}") — não o marquei como agendado. O rascunho está na agenda; confira o plano.`
-    }
-    const movido = await db.itemDePlano.updateMany({
-      where: { id: item.id, projectId: ctx.projectId, status: item.status, generationId: peca.id, updatedAt: item.updatedAt },
-      data: { status: 'agendado', postId, ...(peca.pageId ? { pageId: peca.pageId } : {}) },
-    })
-    return movido.count === 1 ? null : 'O item do plano mudou enquanto a peça ia para a agenda — não o marquei como agendado. O rascunho está na agenda; confira o plano.'
-  } catch (erro) {
-    return `Não deu para marcar o item do plano como agendado (${erro instanceof Error ? erro.message : String(erro)}).`
+  const item = await lerItemDoPlano(db, peca, ctx.projectId)
+  if (!item) return 'O item do plano desta peça não existe mais — o rascunho ficou só na agenda.'
+  const de = normalizarStatusDoItem(item.status)
+  if (de === 'agendado' && item.postId === postId && item.generationId === peca.id) return null
+  if (de !== 'pronto' || item.generationId !== peca.id || !transicaoPermitida(de, 'agendado')) {
+    return `O item do plano mudou depois da peça (está "${item.status}") — não o marquei como agendado. O rascunho está na agenda; confira o plano.`
   }
+  const movido = await db.itemDePlano.updateMany({
+    where: { id: item.id, projectId: ctx.projectId, status: item.status, generationId: peca.id, updatedAt: item.updatedAt },
+    data: { status: 'agendado', postId, ...(peca.pageId ? { pageId: peca.pageId } : {}) },
+  })
+  return movido.count === 1 ? null : 'O item do plano mudou enquanto a peça ia para a agenda — não o marquei como agendado. O rascunho está na agenda; confira o plano.'
 }
 
 /**
  * Os efeitos pós-commit de um item: os mesmos de `agendarPost` sobre o post
  * como ele ESTÁ, a remarcação da página quando o horário não é o da composição,
- * e o item de plano. Só marca `efeitosDoAgendamentoEm` quando tudo rodou; o que
- * lançar fica pendente para a repetição.
+ * e o item de plano. Só marca `efeitosDoAgendamentoEm` quando tudo rodou: o que
+ * lançar E o que um efeito disser que não terminou (a captura e a pasta engolem
+ * o erro do banco e o devolvem em `falhas`/`falhou`, R12-02) ficam pendentes
+ * para a repetição.
  *
  * Os sinais descrevem o POST que existe (C12-1b): horário, situação, legenda,
  * campanha e sugestão saem dele. No post criado por esta chamada são os valores
@@ -392,16 +414,21 @@ async function executarEfeitos(ctx: Contexto, linhaId: string, post: Post, peca:
     }
     // Post que já tem Generation não recataloga a mídia: depois do render do cron
     // ela é o PNG do post, sem Generation, e viraria arte duplicada (C12-1x4).
-    await efeitosDoAgendamento(post, contexto, { registrarArtes: !post.generationId })
+    const { falhas } = await efeitosDoAgendamento(post, contexto, { registrarArtes: !post.generationId })
     // O horário do rascunho não é o que a composição previu: a página vai
     // junto para a pasta (e o nome) do dia certo — a regra da remarcação.
     const doSpec = peca.quandoDaSpec ? instanteDe(peca.quandoDaSpec) : null
     if (doSpec !== null && doSpec !== quando.getTime()) {
       const refilagem = await refilarPaginasDoPost(post.id, quando, r.project.userId)
       avisos.push(...refilagem.avisos)
+      if (refilagem.falhou === true) falhas.push('a página na pasta do dia')
     }
     const doPlano = await levarItemDoPlanoParaAgendado(ctx, peca, post.id)
     if (doPlano) avisos.push(doPlano)
+    if (falhas.length > 0) {
+      avisos.push(`O rascunho existe, mas parte do registro do agendamento não terminou (${falhas.join(', ')}). Repita a chamada com o mesmo pedido para completar.`)
+      return avisos
+    }
     await db.itemDeLote.updateMany({
       where: { id: linhaId, postId: post.id, efeitosDoAgendamentoEm: null },
       data: { efeitosDoAgendamentoEm: new Date() },
@@ -423,7 +450,7 @@ function instanteDe(texto: string): number | null {
 async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<ItemAgendadoDoLote> {
   const { projectId, loteId } = ctx
   const itemId = item.itemId
-  const linha = (await db.itemDeLote.findUnique({
+  const linha = (await ctx.leitor.itemDeLote.findUnique({
     where: { projectId_loteId_itemId: { projectId, loteId, itemId } },
     select: SELECAO_DA_LINHA,
   })) as Linha | null
@@ -431,8 +458,8 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     return falhou(itemId, { codigo: 'ITEM_NAO_ENCONTRADO', motivo: `O item "${itemId}" não existe no lote "${loteId}" — componha com compor-leva (mesmo loteId e itemId) antes de agendar.` })
   }
 
-  const peca = linha.generationId ? await lerPeca(db, linha.generationId, projectId) : null
-  const pagina = peca?.pageId ? await lerPagina(db, peca.pageId, projectId) : null
+  const peca = linha.generationId ? await lerPeca(ctx.leitor, linha.generationId, projectId) : null
+  const pagina = peca?.pageId ? await lerPagina(ctx.leitor, peca.pageId, projectId) : null
   const resultadoDoPedido = pedidoDoAgendamento(item, { quandoDaSpec: peca?.quandoDaSpec ?? null, formato: peca?.formato ?? pagina?.formato ?? null })
   const pedido = 'pedido' in resultadoDoPedido ? resultadoDoPedido.pedido : null
   const avisosDoPedido = 'pedido' in resultadoDoPedido ? resultadoDoPedido.avisos : []
@@ -445,7 +472,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
    * post apagado, para o caminho de escrita recriar o rascunho (Ciro, 13/09/2026).
    */
   const responderLigado = async (atual: Linha): Promise<ItemAgendadoDoLote | { recriar: string }> => {
-    const post = (await db.socialPost.findUnique({ where: { id: atual.postId! }, select: SELECAO_DO_POST })) as Post | null
+    const post = (await ctx.leitor.socialPost.findUnique({ where: { id: atual.postId! }, select: SELECAO_DO_POST })) as Post | null
     const decisao = decidirAgendamento({ registro: atual, postLigadoExiste: !!post, pedido: pedidoParaDecidir, peca, pagina, recriarApagado: item.recriarRascunhoApagado })
     if (decisao.acao === 'recriar') return { recriar: decisao.postApagado }
     if (decisao.acao !== 'reaproveitar') {
@@ -453,7 +480,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       // O rascunho existe: a falha do pedido nunca pode soar como "nada na agenda" (C12-1x3).
       const motivo = post && falha.codigo !== 'LOTE_AGENDAMENTO_CONFLITO' ? `${falha.motivo} O rascunho que este item já tinha continua na agenda, intacto.` : falha.motivo
       // Sem o post, o chat precisa dizer à pessoa QUAL rascunho sumiu (Ciro, 13/09/2026).
-      const apagado = !post ? { rascunhoApagado: descreverRascunhoApagado({ pedido, quandoDaSpec: peca?.quandoDaSpec ?? null, tema: peca?.tema ?? null, manchete: peca?.manchete ?? null }) } : {}
+      const apagado = !post ? { rascunhoApagado: descreverRascunhoApagado({ pedido, hashDoOriginal: atual.hashDoAgendamento, tema: peca?.tema ?? null, manchete: peca?.manchete ?? null }) } : {}
       return falhou(itemId, { codigo: falha.codigo, motivo }, { postId: atual.postId!, ...(peca ? { generationId: peca.id } : {}), ...(peca?.pageId ? { pageId: peca.pageId } : {}), ...apagado })
     }
     const avisos = [...avisosDoPedido]
@@ -461,7 +488,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       if (ctx.simular) avisos.push('O registro do agendamento deste item ficou incompleto; a chamada de verdade o completa.')
       else if (peca && pedido) avisos.push(...(await executarEfeitos(ctx, atual.id, post!, peca, entradaDoPost(projectId, peca, pedido, ctx), null)))
     }
-    const fresco = ((await db.socialPost.findUnique({ where: { id: post!.id }, select: SELECAO_DO_POST })) as Post | null) ?? post!
+    const fresco = ((await ctx.leitor.socialPost.findUnique({ where: { id: post!.id }, select: SELECAO_DO_POST })) as Post | null) ?? post!
     return concluido(itemId, 'reaproveitado', fresco, peca, pagina, avisos)
   }
 
@@ -480,7 +507,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   }
 
   // 1. Decisão sem trava.
-  const antes = await decidirEscrita(db, ctx, itemId, linha, pedidoParaDecidir, postApagado)
+  const antes = await decidirEscrita(ctx.leitor, ctx, itemId, linha, pedidoParaDecidir, postApagado)
   if (antes.acao === 'recusar') return antes.resposta
   const pedidoValido = pedido!
   const pageId = antes.pagina.id
@@ -488,11 +515,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   if (ctx.simular) {
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
     if (antes.acao === 'adotar') {
-      const existente = (await db.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
+      const existente = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
       if (existente) return concluido(itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
     }
-    const paginaCrua = await db.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true } })
-    const atual = thumbnailEhAtual({ thumbnail: paginaCrua?.thumbnail ?? null, resultUrl: antes.peca.resultUrl, camadasDaPagina: paginaCrua?.layers, snapshot: antes.peca.snapshot })
+    const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, width: true, height: true, background: true } })
+    const atual = !!paginaCrua && thumbnailEhAtual({ thumbnail: paginaCrua.thumbnail ?? null, resultUrl: antes.peca.resultUrl, pagina: paginaCrua, versaoRenderizada: antes.peca.versaoRenderizada })
     return {
       itemId,
       situacao: 'concluido',
@@ -502,6 +529,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       quando: formatarBRT(new Date(pedidoValido.quando)),
       imagem: atual ? (paginaCrua?.thumbnail ?? null) : null,
       renderStatus: atual ? 'RENDERED' : 'PENDING',
+      estadoDoPost: 'rascunho',
       ...(editUrlDe(antes.pagina.templateId, pageId) ? { editUrl: editUrlDe(antes.pagina.templateId, pageId) } : {}),
       avisos,
     }
@@ -560,7 +588,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
         resolucao = await resolverAgendamento(input, {
           leitor: tx,
           ingerir: false,
-          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, camadasDaPagina: p.layers, resultUrl: sob.peca.resultUrl, snapshot: sob.peca.snapshot }),
+          aceitarThumbnail: (p) => thumbnailEhAtual({ thumbnail: p.thumbnail, resultUrl: sob.peca.resultUrl, pagina: p, versaoRenderizada: sob.peca.versaoRenderizada }),
         })
         const criado = await criarPostDoAgendamento(tx, resolucao)
         postId = criado.id
@@ -624,7 +652,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     avisos.push('O rascunho que a equipe tinha apagado voltou para a agenda, com a mesma arte da leva, porque a pessoa confirmou.')
   }
   if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== escrita.pedido.quando) {
-    avisos.push(`Já havia um rascunho desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
+    avisos.push(`Já havia ${fresco.status === 'DRAFT' ? 'um rascunho' : 'um post agendado'} desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
   }
   return concluido(itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos)
 }
@@ -636,11 +664,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
  * que ele continua lá. Só leitura; vale também em `simular`.
  */
 async function falhaDoPedido(ctx: Contexto, itemId: string, falha: FalhaDoItem): Promise<ItemAgendadoDoLote> {
-  const linha = await db.itemDeLote.findUnique({
+  const linha = await ctx.leitor.itemDeLote.findUnique({
     where: { projectId_loteId_itemId: { projectId: ctx.projectId, loteId: ctx.loteId, itemId } },
     select: { postId: true },
   })
-  const post = linha?.postId ? await db.socialPost.findUnique({ where: { id: linha.postId }, select: { id: true } }) : null
+  const post = linha?.postId ? await ctx.leitor.socialPost.findUnique({ where: { id: linha.postId }, select: { id: true } }) : null
   if (!post) return falhou(itemId, falha)
   return falhou(itemId, { codigo: falha.codigo, motivo: `${falha.motivo} O rascunho que este item já tinha continua na agenda, intacto.` }, { postId: post.id })
 }
@@ -656,13 +684,18 @@ export async function agendarItensDoLote(entrada: EntradaDoAgendamentoDoLote): P
   if (!v.loteId) {
     throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade da leva inválida — ${v.problemas.join('; ')}. Nada foi agendado.`, 400, { problemas: v.problemas })
   }
-  const projeto = await db.project.findUnique({ where: { id: entrada.projectId }, select: { id: true } })
+  if (entrada.leitor && entrada.simular !== true) {
+    throw new CreativeError('LEITOR_SO_EM_SIMULACAO', 'O leitor externo só vale com simular: true — a escrita passa pelo banco de sempre. Nada foi agendado.', 400)
+  }
+  const leitor: Cliente = entrada.leitor ?? db
+  const projeto = await leitor.project.findUnique({ where: { id: entrada.projectId }, select: { id: true } })
   if (!projeto) throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${entrada.projectId} não encontrado`, 404)
 
   const ctx: Contexto = {
     projectId: entrada.projectId,
     loteId: v.loteId,
     simular: entrada.simular === true,
+    leitor,
     decididoPor: entrada.decididoPor ?? null,
     superficie: entrada.superficie ?? 'chat',
   }

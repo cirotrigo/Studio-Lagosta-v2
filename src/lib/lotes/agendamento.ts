@@ -31,7 +31,7 @@ import { z } from 'zod'
 import { canonico } from '@/lib/copy-autoral/revisao'
 import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
-import { lerCamadas } from '@/lib/posts/page-layers'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { ROTULO_DO_STATUS, normalizarStatusDoItem } from '@/lib/planos/vocabulario'
 import { validarIdentidadeDeLote } from './identidade'
 
@@ -239,11 +239,22 @@ export function mancheteDaSpec(spec: unknown): string | null {
   return daLista(s.blocos, 'papel') ?? daLista(autoral, 'funcao')
 }
 
-export function descreverRascunhoApagado(entrada: { pedido: PedidoDeAgendamento | null; quandoDaSpec: string | null; tema: string | null; manchete: string | null }): RascunhoApagado {
+/**
+ * O rascunho que a equipe apagou, para o chat contar à pessoa qual era.
+ *
+ * 🔴 O horário é o do agendamento ORIGINAL, e a linha do lote guarda dele só o
+ * HASH (R12-05 da revisão final do PR 12). O pedido desta chamada só
+ * serve quando o hash dele É o da linha — a repetição do mesmo pedido. Pedido
+ * diferente (a pessoa pediu 21h para o que estava às 19h), ilegível ou ausente
+ * não prova nada, e o horário sai `null`: anunciar o horário da tentativa como
+ * o do rascunho apagado identifica o rascunho errado. O `quando` da spec também
+ * não serve — o pedido original pode tê-lo trocado.
+ */
+export function descreverRascunhoApagado(entrada: { pedido: PedidoDeAgendamento | null; hashDoOriginal: string | null; tema: string | null; manchete: string | null }): RascunhoApagado {
   let quando: string | null = null
   try {
-    const bruto = entrada.pedido?.quando ?? entrada.quandoDaSpec
-    if (bruto) quando = formatarBRT(entrada.pedido ? new Date(bruto) : parseBRT(bruto))
+    const original = entrada.pedido && entrada.hashDoOriginal && hashDoAgendamento(entrada.pedido) === entrada.hashDoOriginal ? entrada.pedido : null
+    if (original) quando = formatarBRT(new Date(original.quando))
   } catch {
     quando = null
   }
@@ -343,7 +354,7 @@ export function decidirPostsDaPagina(
   if (livre) return { acao: 'adotar', postId: livre.id }
   const deOutro = posts.find((p) => ADOTAVEIS.has(p.status))
   if (deOutro) {
-    return { acao: 'falhar', postId: deOutro.id, codigo: 'POST_DE_OUTRO_ITEM', motivo: 'A página desta peça já está num rascunho que pertence a outro item do lote.' }
+    return { acao: 'falhar', postId: deOutro.id, codigo: 'POST_DE_OUTRO_ITEM', motivo: 'A página desta peça já está num post da agenda (rascunho ou agendado) que pertence a outro item do lote.' }
   }
   return { acao: 'falhar', postId: posts[0].id, codigo: 'PAGINA_JA_EM_POST', motivo: 'A página desta peça já foi a um post que está publicando, publicado ou falhou — não crio outro para não publicar duas vezes.' }
 }
@@ -425,24 +436,43 @@ export function decidirItemDoPlano(entrada: {
 /**
  * "Imagem atual": o PNG em `Page.thumbnail` só serve como a arte do rascunho
  * quando é a PEÇA que o lote produziu — o `resultUrl` da Generation — E a
- * página ainda é a que o compositor pousou (as camadas iguais ao
- * `layersSnapshot`). O PATCH de camada avulsa grava camadas sem refazer o
- * thumbnail, e aí o rascunho nasceria RENDERED com o PNG velho. Qualquer dúvida
- * (sem snapshot, página ilegível) vira `false`: o post nasce PENDING e o cron
- * de render desenha a página como ela está — refazer é barato, publicar a arte
- * velha não.
+ * página ainda está na VERSÃO VISUAL que esse PNG desenhou: dimensões, fundo e
+ * camadas (`versaoDaPagina`), gravada junto do PNG em
+ * `fieldValues.versaoRenderizada` por quem o renderizou
+ * (`renderPageAndRegister`, a recomposição). Comparar só as camadas com o
+ * `layersSnapshot` aceitava a página redimensionada ou com outro fundo pelo
+ * PATCH, e o rascunho nascia RENDERED com o PNG velho (R12-01). Qualquer
+ * dúvida (arte sem o registro, página ilegível) vira `false`: o post nasce
+ * PENDING e o cron de render desenha a página como ela está — refazer é
+ * barato, publicar a arte velha não.
  */
-export function thumbnailEhAtual(entrada: { thumbnail: string | null; resultUrl: string | null; camadasDaPagina: unknown; snapshot: unknown }): boolean {
+export function thumbnailEhAtual(entrada: {
+  thumbnail: string | null
+  resultUrl: string | null
+  pagina: { width: number; height: number; background?: string | null; layers: unknown }
+  versaoRenderizada: unknown
+}): boolean {
   const { thumbnail, resultUrl } = entrada
   if (!thumbnail || thumbnail.startsWith('data:') || !resultUrl || thumbnail !== resultUrl) return false
-  if (entrada.snapshot === undefined || entrada.snapshot === null) return false
-  const pagina = lerCamadas(entrada.camadasDaPagina)
-  const snapshot = lerCamadas(entrada.snapshot)
-  if (!pagina.legivel || !snapshot.legivel) return false
-  return canonico(pagina.camadas) === canonico(snapshot.camadas)
+  if (typeof entrada.versaoRenderizada !== 'string' || !entrada.versaoRenderizada) return false
+  // Ilegível devolve null, que nunca é igual a uma versão gravada.
+  return versaoDaPagina(entrada.pagina) === entrada.versaoRenderizada
 }
 
 export type SituacaoDoItemAgendado = 'concluido' | 'pendente' | 'falhou'
+
+/**
+ * O que o post do item É AGORA, em português (R12-06). O lote cria rascunho,
+ * mas ADOTA post agendado e, na repetição, devolve o post como a equipe o
+ * deixou — aprovado, publicado ou que falhou. Chamar tudo de "rascunho" dizia
+ * à pessoa que nada publicaria antes de aprovar-rascunhos, com o post já
+ * programado.
+ */
+export type EstadoDoPost = 'rascunho' | 'agendado' | 'publicando' | 'publicado' | 'falha-na-publicacao'
+const ESTADO_DO_POST: Record<string, EstadoDoPost> = { DRAFT: 'rascunho', SCHEDULED: 'agendado', POSTING: 'publicando', POSTED: 'publicado', FAILED: 'falha-na-publicacao' }
+export function estadoDoPost(status: string): EstadoDoPost | null {
+  return ESTADO_DO_POST[status] ?? null
+}
 /** `recriado`: o rascunho que a equipe apagou voltou, com a confirmação da pessoa (Ciro, 13/09/2026). */
 export type DesfechoDoItemAgendado = 'criado' | 'adotado' | 'reaproveitado' | 'recriado'
 

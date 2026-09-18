@@ -133,7 +133,7 @@ export interface OpcoesDaResolucao {
    * de sempre (qualquer thumbnail que não seja `data:`). O lote só aceita o
    * thumbnail que É a peça que ele produziu — ver `thumbnailEhAtual`.
    */
-  aceitarThumbnail?: (pagina: { thumbnail: string; layers: unknown }) => boolean
+  aceitarThumbnail?: (pagina: { thumbnail: string; layers: unknown; width: number; height: number; background: string | null }) => boolean
   /** `false` pula a ingestão de mídia externa (o lote só usa o render da própria página). */
   ingerir?: boolean
 }
@@ -212,6 +212,10 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
         templateId: true,
         thumbnail: true,
         layers: true,
+        // A versão visual da página (R12-01): quem aceita o thumbnail confere dimensões e fundo, não só as camadas.
+        width: true,
+        height: true,
+        background: true,
         Template: { select: { projectId: true } },
       },
     })
@@ -238,7 +242,9 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
       mediaUrls.length === 0 &&
       page.thumbnail &&
       !page.thumbnail.startsWith('data:') &&
-      (opcoes.aceitarThumbnail ? opcoes.aceitarThumbnail({ thumbnail: page.thumbnail, layers: page.layers }) : true)
+      (opcoes.aceitarThumbnail
+        ? opcoes.aceitarThumbnail({ thumbnail: page.thumbnail, layers: page.layers, width: page.width, height: page.height, background: page.background })
+        : true)
     ) {
       mediaUrls = [page.thumbnail]
       midiaVeioDaPagina = true
@@ -547,6 +553,13 @@ export function contextoDosEfeitos(r: AgendamentoResolvido): ContextoDosEfeitos 
  * sinais de aprendizado e a pasta da semana. Todos idempotentes pelo id do
  * post (sinais por chave única, artes por URL, pasta por categoria) — é o que
  * deixa o lote refazê-los numa repetição sem duplicar nada. Nenhum lança.
+ *
+ * Como nenhum lança, a falha de cada um volta em `falhas` (o que ficou por
+ * fazer, em português): a captura engole o erro do banco e devolve `false`, a
+ * pasta e o catálogo devolvem `falhou`. Sem isso o lote carimbava
+ * `efeitosDoAgendamentoEm` com trabalho incompleto, e a repetição que deveria
+ * completá-lo não tentava mais (R12-02). `agendarPost` ignora a lista: lá não
+ * há repetição a orientar, e agendar vale mais que registrar.
  */
 export async function efeitosDoAgendamento(
   post: { id: string; postType: PostType | string },
@@ -559,7 +572,8 @@ export async function efeitosDoAgendamento(
    * criaria uma segunda arte da mesma peça na galeria (pré-revisão C12-1x4).
    */
   opcoes: { registrarArtes?: boolean } = {},
-): Promise<{ generationDoPost: string | null }> {
+): Promise<{ generationDoPost: string | null; falhas: string[] }> {
+  const falhas: string[] = []
   /**
    * A arte que chegou PRONTA vira Generation aqui.
    *
@@ -577,6 +591,7 @@ export async function efeitosDoAgendamento(
    * Nunca lança (contrato de `artes-do-post.ts`).
    */
   const registroDeArtes = opcoes.registrarArtes === false ? null : await registrarArtesDoPost(post.id)
+  if (registroDeArtes?.falhou === true) falhas.push('as artes do post')
   const generationDoPost = contexto.generationId ?? registroDeArtes?.artes[0]?.generationId ?? null
 
   /**
@@ -591,8 +606,9 @@ export async function efeitosDoAgendamento(
    * `fecharSugestaoDeSlot` (logo abaixo), que já grava o proposto E o
    * comprometido; sem proposta, é escolha absoluta e entra por aqui.
    */
+  // Só o `true` afirmado conta como registrado: qualquer outra resposta fica por fazer.
   if (!contexto.sugestaoId) {
-    await registrarSlotDoPost({
+    const registrado = await registrarSlotDoPost({
       projectId: contexto.projectId,
       postId: post.id,
       quando: contexto.quando,
@@ -605,8 +621,9 @@ export async function efeitosDoAgendamento(
       decididoPor: contexto.decididoPor,
       superficie,
     })
+    if (registrado !== true) falhas.push('o horário')
   }
-  await registrarCopyDoPost({
+  const copyRegistrada = await registrarCopyDoPost({
     projectId: contexto.projectId,
     postId: post.id,
     copyFinal: contexto.copyFinal,
@@ -617,9 +634,10 @@ export async function efeitosDoAgendamento(
     decididoPor: contexto.decididoPor,
     superficie,
   })
+  if (copyRegistrada !== true) falhas.push('a copy')
   // A LEGENDA tem sinal próprio: o post do fluxo de canvas nasce sem
   // slotValues e escapava do corpus inteiro (ver sinal-de-legenda.ts).
-  await registrarLegendaDoPost({
+  const legendaRegistrada = await registrarLegendaDoPost({
     projectId: contexto.projectId,
     postId: post.id,
     legenda: contexto.caption,
@@ -629,8 +647,9 @@ export async function efeitosDoAgendamento(
     decididoPor: contexto.decididoPor,
     superficie,
   })
+  if (legendaRegistrada !== true) falhas.push('a legenda')
   if (contexto.sugestaoId) {
-    await fecharSugestaoDeSlot({
+    const fechada = await fecharSugestaoDeSlot({
       sugestaoId: contexto.sugestaoId,
       postId: post.id,
       quando: contexto.quando,
@@ -649,16 +668,18 @@ export async function efeitosDoAgendamento(
       decididoPor: contexto.decididoPor,
       superficie,
     })
+    if (fechada !== true) falhas.push('a sugestão de horário')
   }
 
   // Peça composta que estava nas AVULSAS (sem data) ganhou data: vai para a
   // pasta da semana na aba de templates. Nunca derruba o agendamento.
   if (contexto.pageId) {
     const { moverPaginaParaSemana } = await import('@/lib/compositor/pastas')
-    await moverPaginaParaSemana(contexto.pageId, contexto.quando, contexto.userId)
+    const movimentacao = await moverPaginaParaSemana(contexto.pageId, contexto.quando, contexto.userId)
+    if (movimentacao.falhou === true) falhas.push('a pasta da semana')
   }
 
-  return { generationDoPost }
+  return { generationDoPost, falhas }
 }
 
 export async function agendarPost(input: AgendarPostInput) {

@@ -28,6 +28,16 @@ const banco = vi.hoisted(() => ({
   /** Chamado depois da N-ésima leitura do item do plano FORA da transação (a leitura dos efeitos). */
   aoLerItemDoPlano: null as null | { depoisDaLeitura: number; fazer: () => void },
   leiturasDoItemDoPlano: 0,
+  /** Os sinais gravados pela captura REAL (`registrarDecisaoSemSugestao` → upsert por chave). */
+  sinais: new Map<string, Record<string, unknown>>(),
+  /** Prefixos de chave cujo PRÓXIMO upsert cai no banco (R12-02): a captura real engole o erro. */
+  falharSinais: [] as string[],
+  /** A próxima escrita no item do plano cai no banco (R12-02, reconciliação da linha legada). */
+  falharEscritaDoItemDoPlano: 0,
+  /** Quantas buscas da pasta da semana caem no banco (R12-02): a pasta de verdade engole o erro. */
+  falharPasta: 0,
+  /** R12-04: a conta pelo leitor não pode tocar o `db` global — tocar lança. */
+  dbGlobalBloqueado: false,
 }))
 
 const efeitos = vi.hoisted(() => ({
@@ -39,6 +49,11 @@ const efeitos = vi.hoisted(() => ({
   refilagens: [] as Array<{ postId: string; quando: string }>,
   /** Quantas vezes o primeiro efeito deve lançar — a queda entre o commit e os efeitos. */
   derrubar: 0,
+  /** R12-02: os efeitos de VERDADE (a captura que engole o erro, a refilagem e a pasta da semana), não os falsos. */
+  sinaisReais: false,
+  pastasReais: false,
+  /** R12-02: o catálogo de artes que engoliu a queda do banco (a prova do real mora em `artes-do-post-falha.test.ts`). */
+  artesFalham: false,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -82,10 +97,37 @@ vi.mock('@/lib/db', () => {
   const delegados = (naTransacao: boolean) => ({
     project: { findUnique: async ({ where }: { where: { id: number } }) => (where.id === 404 ? null : { id: where.id, name: 'Espeto Gaúcho', userId: 'dono-interno', instagramAccountId: null }) },
     knowledgeBaseEntry: { findFirst: async () => null },
+    learningSignal: {
+      upsert: async ({ where, create }: { where: { chave: string }; create: Record<string, unknown> }) => {
+        const i = banco.falharSinais.findIndex((prefixo) => where.chave.startsWith(prefixo))
+        if (i >= 0) {
+          banco.falharSinais.splice(i, 1)
+          throw new Error('a conexão com o banco caiu no meio do upsert')
+        }
+        if (!banco.sinais.has(where.chave)) banco.sinais.set(where.chave, { id: `sinal-${++banco.seq}`, ...create })
+        return { id: banco.sinais.get(where.chave)!.id }
+      },
+    },
+    // Só as funções REAIS de pastas chegam aqui (R12-02): a pasta da semana, que o banco pode derrubar.
+    template: {
+      findFirst: async () => {
+        if (banco.falharPasta > 0) {
+          banco.falharPasta--
+          throw new Error('a conexão com o banco caiu ao procurar a pasta da semana')
+        }
+        return { id: 42, name: 'Stories · Semana 14 a 20/09' }
+      },
+    },
     page: {
       findUnique: async ({ where, select }: { where: { id: string }; select?: Record<string, unknown> }) => {
         const p = banco.pages.get(where.id)
         return p ? escolher(p, select) : null
+      },
+      findMany: async ({ where }: { where: Record<string, unknown> }) => [...banco.pages.values()].filter((p) => casa(p, where)),
+      update: async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
+        const linha = { ...banco.pages.get(where.id)!, ...data }
+        gravar('pages', where.id, linha, naTransacao)
+        return linha
       },
     },
     generation: {
@@ -136,7 +178,14 @@ vi.mock('@/lib/db', () => {
         }
         return lido
       },
-      updateMany: atualizarMuitos('itensDePlano', naTransacao),
+      findMany: async ({ where }: { where: Record<string, unknown> }) => [...banco.itensDePlano.values()].filter((i) => casa(i, where)),
+      updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        if (!naTransacao && banco.falharEscritaDoItemDoPlano > 0) {
+          banco.falharEscritaDoItemDoPlano--
+          throw new Error('a conexão com o banco caiu ao marcar o item do plano')
+        }
+        return atualizarMuitos('itensDePlano', naTransacao)(args)
+      },
     },
   })
 
@@ -170,49 +219,92 @@ vi.mock('@/lib/db', () => {
       liberar()
     }
   }
-  return { db: { ...delegados(false), $transaction } }
+  const global: Record<string, unknown> = { ...delegados(false), $transaction }
+  /** R12-04: o leitor da conta de produção — as mesmas tabelas, e qualquer escrita lança (é o READ ONLY do banco). */
+  const leitorSomenteLeitura = () =>
+    Object.fromEntries(
+      Object.entries(delegados(false)).map(([tabela, metodos]) => [
+        tabela,
+        new Proxy(metodos as Record<string, unknown>, {
+          get: (alvo, metodo) => {
+            if (typeof metodo === 'string' && /^(create|update|upsert|delete)/.test(metodo)) throw new Error(`escrita num leitor somente leitura: ${tabela}.${metodo}`)
+            return alvo[metodo as string]
+          },
+        }),
+      ]),
+    )
+  return {
+    db: new Proxy(global, {
+      get: (alvo, chave) => {
+        if (banco.dbGlobalBloqueado) throw new Error(`a conta devia passar pelo leitor e usou o db global (${String(chave)})`)
+        return alvo[chave as string]
+      },
+    }),
+    leitorSomenteLeitura,
+  }
 })
 
 vi.mock('@/lib/creatives/persist', () => ({ getPublicAppUrl: () => 'https://studio.test' }))
 vi.mock('@/lib/creatives/ingerir-midia', () => ({ ingerirMidiaExterna: vi.fn(async (urls: string[]) => ({ urls, falhas: [], importadas: 0 })) }))
 
 // Os sinais são upsert por chave no código de produção: aqui também — a segunda escrita da mesma chave não muda nada.
-const registrarSinal = (chave: string, dados: Record<string, unknown>) => {
-  if (!efeitos.sinais.has(chave)) efeitos.sinais.set(chave, dados)
+const registrarSinal = (chave: string, dados: object) => {
+  if (!efeitos.sinais.has(chave)) efeitos.sinais.set(chave, dados as Record<string, unknown>)
 }
-vi.mock('@/lib/aprendizado/sinal-de-agendamento', () => ({
-  registrarSlotDoPost: async (e: { postId: string }) => {
-    efeitos.chamadasDeSlot++
-    if (efeitos.derrubar > 0) {
-      efeitos.derrubar--
-      throw new Error('a invocação morreu entre o commit e os efeitos')
-    }
-    registrarSinal(`slot:post:${e.postId}`, e)
-  },
-  registrarCopyDoPost: async (e: { postId: string; copyFinal: unknown }) => {
-    if (e.copyFinal) registrarSinal(`copy:post:${e.postId}`, e)
-  },
-  fecharSugestaoDeSlot: async () => undefined,
-}))
-vi.mock('@/lib/aprendizado/sinal-de-legenda', () => ({ registrarLegendaDoPost: async (e: { postId: string }) => registrarSinal(`legenda:post:${e.postId}`, e) }))
+vi.mock('@/lib/aprendizado/sinal-de-agendamento', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/aprendizado/sinal-de-agendamento')>()
+  return {
+    registrarSlotDoPost: async (e: Parameters<typeof real.registrarSlotDoPost>[0]) => {
+      efeitos.chamadasDeSlot++
+      if (efeitos.derrubar > 0) {
+        efeitos.derrubar--
+        throw new Error('a invocação morreu entre o commit e os efeitos')
+      }
+      if (efeitos.sinaisReais) return real.registrarSlotDoPost(e)
+      registrarSinal(`slot:post:${e.postId}`, e)
+      return true
+    },
+    registrarCopyDoPost: async (e: Parameters<typeof real.registrarCopyDoPost>[0]) => {
+      if (efeitos.sinaisReais) return real.registrarCopyDoPost(e)
+      if (e.copyFinal) registrarSinal(`copy:post:${e.postId}`, e)
+      return true
+    },
+    fecharSugestaoDeSlot: async (e: Parameters<typeof real.fecharSugestaoDeSlot>[0]) => (efeitos.sinaisReais ? real.fecharSugestaoDeSlot(e) : true),
+  }
+})
+vi.mock('@/lib/aprendizado/sinal-de-legenda', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/aprendizado/sinal-de-legenda')>()
+  return {
+    registrarLegendaDoPost: async (e: Parameters<typeof real.registrarLegendaDoPost>[0]) => {
+      if (efeitos.sinaisReais) return real.registrarLegendaDoPost(e)
+      registrarSinal(`legenda:post:${e.postId}`, e)
+      return true
+    },
+  }
+})
 vi.mock('@/lib/posts/artes-do-post', () => ({
   registrarArtesDoPost: async () => {
     efeitos.chamadasDeArtes++
-    return { registradas: 0, colunaVinculada: false, artes: [] }
+    return { registradas: 0, colunaVinculada: false, artes: [], ...(efeitos.artesFalham ? { falhou: true } : {}) }
   },
 }))
-vi.mock('@/lib/compositor/pastas', () => ({
-  formatoDaPagina: (p: { tags?: string[]; width: number; height: number }) =>
-    (p.tags ?? []).includes('feed') ? 'feed' : p.width === p.height ? 'quadrado' : p.height > p.width * 1.6 ? 'story' : 'feed',
-  moverPaginaParaSemana: async () => {
-    efeitos.movimentos++
-    return { moveu: false, de: null, para: null }
-  },
-  refilarPaginasDoPost: async (postId: string, quando: Date) => {
-    efeitos.refilagens.push({ postId, quando: new Date(quando).toISOString() })
-    return { refiladas: 1, avisos: [] }
-  },
-}))
+vi.mock('@/lib/compositor/pastas', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/compositor/pastas')>()
+  return {
+    formatoDaPagina: (p: { tags?: string[]; width: number; height: number }) =>
+      (p.tags ?? []).includes('feed') ? 'feed' : p.width === p.height ? 'quadrado' : p.height > p.width * 1.6 ? 'story' : 'feed',
+    moverPaginaParaSemana: async (pageId: string, quando: Date, userId: string) => {
+      efeitos.movimentos++
+      if (efeitos.pastasReais) return real.moverPaginaParaSemana(pageId, quando, userId)
+      return { moveu: false, de: null, para: null }
+    },
+    refilarPaginasDoPost: async (postId: string, quando: Date, userId: string) => {
+      efeitos.refilagens.push({ postId, quando: new Date(quando).toISOString() })
+      if (efeitos.pastasReais) return real.refilarPaginasDoPost(postId, quando, userId)
+      return { refiladas: 1, avisos: [] }
+    },
+  }
+})
 // C12-1: o item do plano vai de `pronto` para `agendado` por compare-and-set, nunca atravessando transições.
 vi.mock('@/lib/planos/plano-service', () => ({
   transicionarItem: async () => {
@@ -222,6 +314,7 @@ vi.mock('@/lib/planos/plano-service', () => ({
 
 import { agendarItensDoLote } from '../agendar-itens'
 import { agendarPost } from '@/lib/creatives/agendar'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 
 const PROJETO = 6
 const LOTE = 'semana-2026-09-14'
@@ -252,7 +345,8 @@ function criarPeca(n: number, opcoes: { status?: string; formato?: 'story' | 'fe
     sourcePageId: null,
     fieldValues: {
       source: 'compositor',
-      ...(status === 'COMPLETED' ? { pageId: `page-${n}`, layersSnapshot: camadas } : {}),
+      // A versão visual que o render grava junto do PNG (`renderPageAndRegister`) — é contra ela que a imagem é conferida (R12-01).
+      ...(status === 'COMPLETED' ? { pageId: `page-${n}`, layersSnapshot: camadas, versaoRenderizada: versaoDaPagina({ width: 1080, height: formato === 'story' ? 1920 : 1350, background: null, layers: camadas }) } : {}),
       spec: {
         projectId: PROJETO,
         formato,
@@ -301,6 +395,14 @@ beforeEach(() => {
   efeitos.movimentos = 0
   efeitos.refilagens = []
   efeitos.derrubar = 0
+  efeitos.sinaisReais = false
+  efeitos.pastasReais = false
+  banco.sinais.clear()
+  banco.falharSinais = []
+  banco.falharEscritaDoItemDoPlano = 0
+  banco.falharPasta = 0
+  banco.dbGlobalBloqueado = false
+  efeitos.artesFalham = false
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
@@ -375,6 +477,39 @@ describe('do lote até os rascunhos — a semana', () => {
   })
 })
 
+describe('R12-04 — a conta pela transação READ ONLY é a decisão do serviço', () => {
+  it('reprovação, peça superada, mídia já usada e post de outro item: o leitor somente leitura dá as MESMAS decisões da simulação, sem tocar o db global nem escrever', async () => {
+    criarPeca(1, { itemDoPlano: { status: 'reprovado' } })
+    criarPeca(2, { itemDoPlano: { status: 'pronto', generationId: 'gen-outra' } })
+    banco.generations.set('gen-outra', { id: 'gen-outra', projectId: PROJETO, status: 'COMPLETED', resultUrl: `${BLOB}/outra.png`, createdAt: new Date('2026-09-12T10:00:00.000Z'), fieldValues: { pageId: 'page-outra' } })
+    criarPeca(3)
+    banco.posts.set('post-com-a-midia', { id: 'post-com-a-midia', projectId: PROJETO, pageId: null, status: 'DRAFT', postType: 'STORY', mediaUrls: [`${BLOB}/page-3-1757700000000.png`], createdAt: 0 })
+    criarPeca(4)
+    banco.posts.set('post-do-outro', { id: 'post-do-outro', projectId: PROJETO, pageId: 'page-4', status: 'DRAFT', postType: 'STORY', mediaUrls: [], createdAt: 0 })
+    banco.itensDeLote.set('lote-outro', { id: 'lote-outro', projectId: PROJETO, loteId: LOTE, itemId: 'item-outro', generationId: null, postId: 'post-do-outro' })
+    criarPeca(5)
+    const itens = [1, 2, 3, 4, 5].map((n) => item(n))
+
+    const pelaSimulacao = await agendar(itens, { simular: true })
+    const antes = fotoDoBanco()
+    const { leitorSomenteLeitura } = (await import('@/lib/db')) as unknown as { leitorSomenteLeitura: () => Record<string, unknown> }
+    banco.dbGlobalBloqueado = true
+    const peloLeitor = await agendar(itens, { simular: true, leitor: leitorSomenteLeitura() }).finally(() => {
+      banco.dbGlobalBloqueado = false
+    })
+    expect(peloLeitor.itens.map((i) => i.desfecho ?? i.codigo)).toEqual(['PECA_SUPERADA_NO_PLANO', 'PECA_SUPERADA_NO_PLANO', 'PECA_JA_NA_AGENDA', 'POST_DE_OUTRO_ITEM', 'criado'])
+    expect(peloLeitor.itens[1].arteAtualDoItem).toMatchObject({ generationId: 'gen-outra' })
+    expect(peloLeitor).toEqual(pelaSimulacao)
+    expect(fotoDoBanco()).toEqual(antes)
+  })
+
+  it('o leitor só vale em simulação: sem simular, a chamada é recusada antes de ler ou escrever', async () => {
+    criarPeca(1)
+    await expect(agendar([item(1)], { leitor: {} })).rejects.toMatchObject({ code: 'LEITOR_SO_EM_SIMULACAO' })
+    expect(banco.posts.size).toBe(0)
+  })
+})
+
 describe('idempotência e concorrência', () => {
   it('par concorrente no mesmo item: UM post, as duas chamadas devolvem o mesmo', async () => {
     criarPeca(1)
@@ -406,6 +541,107 @@ describe('idempotência e concorrência', () => {
     expect(efeitos.chamadasDeSlot).toBe(2) // a terceira não refaz nada
   })
 
+  // R12-02: efeito que o banco derruba NÃO lança — a captura, a pasta e o catálogo engolem o erro. O carimbo tem de ficar nulo.
+  it.each([
+    ['slot:post:', 'o horário', {}],
+    ['copy:post:', 'a copy', {}],
+    ['legenda:post:', 'a legenda', { caption: 'Hoje tem happy hour.' }],
+  ] as const)('R12-02: a captura REAL engole a queda do banco em "%s" — o carimbo fica nulo, o aviso diz o que faltou, e a repetição completa e carimba uma vez', async (prefixo, oQue, extra) => {
+    efeitos.sinaisReais = true
+    criarPeca(1)
+    banco.falharSinais = [prefixo]
+    const caiu = await agendar([item(1, extra)])
+    const postId = caiu.itens[0].postId!
+    expect(caiu.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+    expect(caiu.itens[0].avisos?.join(' ')).toContain(`parte do registro do agendamento não terminou (${oQue})`)
+    expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId, efeitosDoAgendamentoEm: null })
+    expect(banco.sinais.has(`${prefixo}${postId}`)).toBe(false)
+    // Os outros sinais do mesmo post gravaram: a falha é do efeito que caiu, não do post.
+    expect(banco.sinais.size).toBe(Object.keys(extra).length > 0 ? 2 : 1)
+
+    const repetida = await agendar([item(1, extra)])
+    expect(repetida.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'reaproveitado', postId })
+    expect(repetida.itens[0].avisos).toBeUndefined()
+    expect(banco.posts.size).toBe(1)
+    expect(banco.sinais.has(`${prefixo}${postId}`)).toBe(true)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+    const chamadas = efeitos.chamadasDeSlot
+    await agendar([item(1, extra)])
+    expect(efeitos.chamadasDeSlot).toBe(chamadas) // carimbado: a terceira não refaz nada
+  })
+
+  it('R12-02: a refilagem REAL engole a queda do banco na pasta do dia — o carimbo fica nulo e a repetição leva a página', async () => {
+    efeitos.pastasReais = true
+    criarPeca(1)
+    banco.pages.set('page-1', { ...banco.pages.get('page-1')!, name: 'Sex 11/09 · 19:00 · Tema 1', order: 0, Template: { id: 42, category: 'programacao', projectId: PROJETO } })
+    banco.falharPasta = 1
+    const caiu = await agendar([item(1, { quando: '2026-09-20 12:00' })])
+    const postId = caiu.itens[0].postId!
+    expect(caiu.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado' })
+    expect(caiu.itens[0].avisos?.join(' ')).toContain('não terminou (a página na pasta do dia)')
+    expect(banco.itensDeLote.get('lote-1')).toMatchObject({ postId, efeitosDoAgendamentoEm: null })
+    expect(banco.pages.get('page-1')!.name).toBe('Sex 11/09 · 19:00 · Tema 1')
+
+    const repetida = await agendar([item(1, { quando: '2026-09-20 12:00' })])
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId })
+    expect(repetida.itens[0].avisos).toBeUndefined()
+    expect(banco.pages.get('page-1')!.name).toContain('20/09 · 12:00')
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+    expect(banco.posts.size).toBe(1)
+  })
+
+  it('R12-02: a pasta da semana REAL engole a queda do banco ao mover a página das avulsas — o carimbo fica nulo e a repetição move', async () => {
+    efeitos.pastasReais = true
+    criarPeca(1)
+    banco.pages.set('page-1', { ...banco.pages.get('page-1')!, name: 'Avulsa · Tema 1', order: 0, templateId: 77, Template: { id: 77, name: 'Avulsas · setembro', category: 'avulsas', projectId: PROJETO } })
+    banco.falharPasta = 1
+    const caiu = await agendar([item(1)])
+    expect(caiu.itens[0].avisos?.join(' ')).toContain('não terminou (a pasta da semana)')
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
+    expect(banco.pages.get('page-1')).toMatchObject({ templateId: 77 })
+
+    const repetida = await agendar([item(1)])
+    expect(repetida.itens[0].avisos).toBeUndefined()
+    expect(banco.pages.get('page-1')).toMatchObject({ templateId: 42 })
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+  })
+
+  it('R12-02: o catálogo das artes do post ADOTADO que não terminou deixa os efeitos pendentes', async () => {
+    criarPeca(1)
+    banco.posts.set('post-manual', { id: 'post-manual', projectId: PROJETO, pageId: 'page-1', templateId: 42, status: 'DRAFT', postType: 'STORY', scheduledDatetime: new Date('2026-09-11T22:00:00.000Z'), mediaUrls: [], renderStatus: 'PENDING', createdAt: 0, caption: '', sugestaoId: null, origem: null })
+    efeitos.artesFalham = true
+    const caiu = await agendar([item(1)])
+    expect(caiu.itens[0]).toMatchObject({ desfecho: 'adotado', postId: 'post-manual' })
+    expect(caiu.itens[0].avisos?.join(' ')).toContain('não terminou (as artes do post)')
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
+
+    efeitos.artesFalham = false
+    await agendar([item(1)])
+    expect(efeitos.chamadasDeArtes).toBe(2)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+  })
+
+  it('R12-02: a reconciliação do item do plano que o banco derruba fica PENDENTE (antes virava aviso e o carimbo era gravado); a repetição leva o item a agendado', async () => {
+    criarPeca(1, { itemDoPlano: { status: 'pronto' } })
+    banco.posts.set('post-legado-1', { id: 'post-legado-1', projectId: PROJETO, pageId: 'page-1', templateId: 42, generationId: 'gen-1', status: 'DRAFT', postType: 'STORY', scheduledDatetime: new Date('2026-09-11T22:00:00.000Z'), mediaUrls: [], renderStatus: 'PENDING', createdAt: 0, caption: '' })
+    const { hashDoAgendamento: hashDe, pedidoDoAgendamento: pedidoDe } = await import('../agendamento')
+    const p = pedidoDe({ itemId: 'item-1' }, { quandoDaSpec: '2026-09-11 19:00', formato: 'story' })
+    if (!('pedido' in p)) throw new Error('pedido')
+    banco.itensDeLote.set('lote-1', { ...banco.itensDeLote.get('lote-1')!, postId: 'post-legado-1', hashDoAgendamento: hashDe(p.pedido), efeitosDoAgendamentoEm: null })
+    banco.falharEscritaDoItemDoPlano = 1
+
+    const caiu = await agendar([item(1)])
+    expect(caiu.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'reaproveitado', postId: 'post-legado-1' })
+    expect(caiu.itens[0].avisos?.join(' ')).toContain('não terminou')
+    expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'pronto', postId: null })
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
+
+    const repetida = await agendar([item(1)])
+    expect(repetida.itens[0].avisos).toBeUndefined()
+    expect(banco.itensDePlano.get('plano-item-1')).toMatchObject({ status: 'agendado', postId: 'post-legado-1' })
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+  })
+
   it('vínculo por compare-and-set: se a linha foi ligada por outro caminho durante a criação, a transação volta atrás e nenhum post órfão fica', async () => {
     criarPeca(1)
     banco.aoCriarPostNaTransacao = () => {
@@ -434,6 +670,31 @@ describe('idempotência e concorrência', () => {
     // Post adotado SEM Generation continua sendo catalogado, como em agendarPost.
     expect(efeitos.chamadasDeArtes).toBe(1)
     expect((await agendar([item(1, { caption: 'Legenda do lote', campanhaId: 'camp-do-lote' })])).itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: 'post-manual' })
+  })
+
+  it('R12-06: post ADOTADO já agendado (e já entregue para publicar) volta com o estado dele e nada muda nele; o criado é rascunho; a repetição depois de a equipe aprovar diz agendado', async () => {
+    criarPeca(1)
+    criarPeca(2)
+    banco.posts.set('post-agendado', { id: 'post-agendado', projectId: PROJETO, pageId: 'page-1', templateId: 42, generationId: 'gen-1', status: 'SCHEDULED', postType: 'STORY', scheduledDatetime: new Date('2026-09-11T22:00:00.000Z'), mediaUrls: [`${BLOB}/page-1-1757700000000.png`], renderStatus: 'RENDERED', createdAt: 0, caption: '', sugestaoId: null, origem: null, campaignId: null, laterPostId: 'zernio-1' })
+    const antes = structuredClone(banco.posts.get('post-agendado'))
+
+    const simulada = await agendar([item(1), item(2)], { simular: true })
+    expect(simulada.itens.map((i) => [i.desfecho, i.estadoDoPost, i.entregueParaPublicar])).toEqual([['adotado', 'agendado', true], ['criado', 'rascunho', undefined]])
+
+    const r = await agendar([item(1), item(2)])
+    expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'adotado', postId: 'post-agendado', estadoDoPost: 'agendado', entregueParaPublicar: true })
+    expect(r.itens[1]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', estadoDoPost: 'rascunho' })
+    expect(r.itens[1].entregueParaPublicar).toBeUndefined()
+    expect(banco.posts.get('post-agendado')).toEqual(antes)
+
+    // A equipe aprovou o rascunho do item 2: a repetição devolve o post como ele está, sem mexer nele.
+    const id2 = r.itens[1].postId!
+    banco.posts.set(id2, { ...banco.posts.get(id2)!, status: 'SCHEDULED' })
+    const antes2 = structuredClone(banco.posts.get(id2))
+    const repetida = await agendar([item(1), item(2)])
+    expect(repetida.itens.map((i) => [i.desfecho, i.estadoDoPost])).toEqual([['reaproveitado', 'agendado'], ['reaproveitado', 'agendado']])
+    expect(banco.posts.get('post-agendado')).toEqual(antes)
+    expect(banco.posts.get(id2)).toEqual(antes2)
   })
 
   it('página já publicada não ganha segundo post', async () => {
@@ -474,6 +735,19 @@ describe('idempotência e concorrência', () => {
     const deNovo = await agendar([item(1, { recriarRascunhoApagado: true })])
     expect(deNovo.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'reaproveitado', postId: recriada.itens[0].postId })
     expect(banco.posts.size).toBe(1)
+  })
+
+  it('R12-05: rascunho apagado das 19h repetido com 21h — o horário da tentativa NÃO é apresentado como o do rascunho apagado', async () => {
+    criarPeca(1)
+    banco.posts.delete((await agendar([item(1)])).itens[0].postId!)
+    for (const extra of [{}, { recriarRascunhoApagado: true }]) {
+      const r = await agendar([item(1, { quando: '2026-09-11 21:00', ...extra })])
+      expect(r.itens[0]).toMatchObject({ situacao: 'falhou', rascunhoApagado: { quando: null, tema: 'Tema 1', manchete: 'Manchete 1' } })
+      expect(JSON.stringify(r.itens[0])).not.toContain('21:00')
+    }
+    // A repetição com o pedido original prova o horário.
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ codigo: 'POST_REMOVIDO', rascunhoApagado: { quando: '11/09/2026, 19:00' } })
+    expect(banco.posts.size).toBe(0)
   })
 
   it('duas confirmações ao mesmo tempo: UM rascunho recriado, e as duas respostas apontam o mesmo post', async () => {
@@ -761,6 +1035,39 @@ describe('imagem atual', () => {
     const [post] = postsDaPagina(1)
     expect(post).toMatchObject({ renderStatus: 'PENDING', mediaUrls: [], pageId: 'page-1', templateId: 42 })
     expect(post.nextRenderAt).toBeInstanceOf(Date)
+  })
+
+  it.each([
+    ['a largura', { width: 1000 }],
+    ['a altura', { height: 1800 }],
+    ['o fundo', { background: '#1a1a1a' }],
+  ])('R12-01 — o PATCH mudou só %s da página (camadas e thumbnail iguais): o rascunho nasce PENDING, sem o PNG velho, e simular diz o mesmo', async (_campo, mudanca) => {
+    criarPeca(1)
+    banco.pages.set('page-1', { ...banco.pages.get('page-1')!, ...mudanca })
+    expect((await agendar([item(1)], { simular: true })).itens[0]).toMatchObject({ renderStatus: 'PENDING', imagem: null })
+    const r = await agendar([item(1)])
+    expect(r.itens[0]).toMatchObject({ situacao: 'concluido', desfecho: 'criado', renderStatus: 'PENDING', imagem: null })
+    const [post] = postsDaPagina(1)
+    expect(post).toMatchObject({ renderStatus: 'PENDING', mediaUrls: [], pageId: 'page-1' })
+    expect(post.nextRenderAt).toBeInstanceOf(Date)
+  })
+
+  it('R12-01, controle: a versão visual INTEIRA igual à registrada junto do PNG (fundo inclusive) reaproveita o PNG', async () => {
+    criarPeca(1)
+    const pagina = banco.pages.get('page-1')!
+    banco.pages.set('page-1', { ...pagina, background: '#1a1a1a' })
+    const g = banco.generations.get('gen-1')! as { fieldValues: Record<string, unknown> }
+    g.fieldValues.versaoRenderizada = versaoDaPagina({ width: 1080, height: 1920, background: '#1a1a1a', layers: pagina.layers })
+    const r = await agendar([item(1)])
+    expect(r.itens[0]).toMatchObject({ renderStatus: 'RENDERED', imagem: pagina.thumbnail })
+    expect(postsDaPagina(1)[0]).toMatchObject({ renderStatus: 'RENDERED', mediaUrls: [pagina.thumbnail] })
+  })
+
+  it('R12-01: arte SEM o registro da versão (renderizada antes dele) não prova que o PNG é o da página — PENDING', async () => {
+    criarPeca(1)
+    const g = banco.generations.get('gen-1')! as { fieldValues: Record<string, unknown> }
+    delete g.fieldValues.versaoRenderizada
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ renderStatus: 'PENDING', imagem: null })
   })
 
   it('thumbnail que não é a peça do lote (outro render gravado na página) também vira PENDING', async () => {

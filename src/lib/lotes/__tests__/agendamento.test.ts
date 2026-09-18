@@ -4,6 +4,7 @@
  * atual". Sem banco.
  */
 import { describe, expect, it } from 'vitest'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import {
   decidirAgendamento,
   decidirItemDoPlano,
@@ -165,19 +166,31 @@ describe('posts da página e mídia em outro post', () => {
 
 describe('thumbnailEhAtual', () => {
   const camadas = [{ id: 'headline', type: 'text', content: 'Manchete', position: { x: 10, y: 20 } }]
-  const base = { thumbnail: 'https://x.public.blob.vercel-storage.com/p.png', resultUrl: 'https://x.public.blob.vercel-storage.com/p.png', camadasDaPagina: camadas, snapshot: camadas }
+  const pagina = { width: 1080, height: 1920, background: null, layers: camadas }
+  const base = {
+    thumbnail: 'https://x.public.blob.vercel-storage.com/p.png',
+    resultUrl: 'https://x.public.blob.vercel-storage.com/p.png',
+    pagina,
+    versaoRenderizada: versaoDaPagina(pagina),
+  }
 
-  it('é atual quando o thumbnail é a peça e as camadas são as da composição (inclusive dupla-codificadas)', () => {
+  it('é atual quando o thumbnail é a peça e a página está na versão que o PNG desenhou (camadas inclusive dupla-codificadas)', () => {
     expect(thumbnailEhAtual(base)).toBe(true)
-    expect(thumbnailEhAtual({ ...base, camadasDaPagina: JSON.stringify(JSON.stringify(camadas)) })).toBe(true)
+    expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, layers: JSON.stringify(JSON.stringify(camadas)) } })).toBe(true)
   })
 
-  it('não é atual com PNG de outra arte, camada editada depois, sem snapshot ou thumbnail base64', () => {
+  it('não é atual com PNG de outra arte, camada editada depois, sem a versão gravada, thumbnail base64 ou página ilegível', () => {
     expect(thumbnailEhAtual({ ...base, resultUrl: 'https://x.public.blob.vercel-storage.com/outra.png' })).toBe(false)
-    expect(thumbnailEhAtual({ ...base, camadasDaPagina: [{ ...camadas[0], content: 'Editada' }] })).toBe(false)
-    expect(thumbnailEhAtual({ ...base, snapshot: undefined })).toBe(false)
+    expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, layers: [{ ...camadas[0], content: 'Editada' }] } })).toBe(false)
+    expect(thumbnailEhAtual({ ...base, versaoRenderizada: undefined })).toBe(false)
     expect(thumbnailEhAtual({ ...base, thumbnail: 'data:image/jpeg;base64,xx' })).toBe(false)
-    expect(thumbnailEhAtual({ ...base, camadasDaPagina: '{ilegível' })).toBe(false)
+    expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, layers: '{ilegível' } })).toBe(false)
+  })
+
+  it('R12-01 — dimensões e fundo são a versão também: só a largura, só a altura ou só o fundo mudados não servem', () => {
+    expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, width: 1000 } })).toBe(false)
+    expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, height: 1350 } })).toBe(false)
+    expect(thumbnailEhAtual({ ...base, pagina: { ...pagina, background: '#ffffff' } })).toBe(false)
   })
 })
 
@@ -232,14 +245,18 @@ describe('decisões do Ciro (13/09/2026): rascunho apagado pela equipe e peça s
     expect(sem?.superadaPor).toBeUndefined()
   })
 
-  it('mancheteDaSpec (blocos ou contrato, sem os colchetes de destaque) e descreverRascunhoApagado (horário em Brasília)', () => {
+  it('mancheteDaSpec (blocos ou contrato, sem os colchetes de destaque) e descreverRascunhoApagado (horário em Brasília, só do pedido ORIGINAL)', () => {
     expect(mancheteDaSpec({ blocos: [{ papel: 'pre', linhas: ['Hoje'] }, { papel: 'headline', linhas: ['Rodízio', 'em [dobro]'] }] })).toBe('Rodízio em dobro')
     expect(mancheteDaSpec({ copyAutoral: { blocos: [{ funcao: 'headline', linhas: ['Costela no bafo'] }] } })).toBe('Costela no bafo')
     expect(mancheteDaSpec({})).toBeNull()
     expect(mancheteDaSpec(null)).toBeNull()
     const pedido = pedidoDe(pedidoDoAgendamento({ itemId: 'a' }, { quandoDaSpec: '2026-09-14 19:00', formato: 'story' }))
-    expect(descreverRascunhoApagado({ pedido, quandoDaSpec: null, tema: ' Rodízio ', manchete: 'Rodízio em dobro' })).toEqual({ quando: '14/09/2026, 19:00', tema: 'Rodízio', manchete: 'Rodízio em dobro' })
-    expect(descreverRascunhoApagado({ pedido: null, quandoDaSpec: '2026-09-15 12:00', tema: null, manchete: null })).toEqual({ quando: '15/09/2026, 12:00', tema: null, manchete: null })
-    expect(descreverRascunhoApagado({ pedido: null, quandoDaSpec: 'lixo', tema: '', manchete: null })).toEqual({ quando: null, tema: null, manchete: null })
+    const original = hashDoAgendamento(pedido)
+    expect(descreverRascunhoApagado({ pedido, hashDoOriginal: original, tema: ' Rodízio ', manchete: 'Rodízio em dobro' })).toEqual({ quando: '14/09/2026, 19:00', tema: 'Rodízio', manchete: 'Rodízio em dobro' })
+    // R12-05: o pedido desta chamada que NÃO é o original não prova o horário do rascunho apagado — nem cai no da spec.
+    const outro = pedidoDe(pedidoDoAgendamento({ itemId: 'a', quando: '2026-09-14 21:00' }, { quandoDaSpec: '2026-09-14 19:00', formato: 'story' }))
+    expect(descreverRascunhoApagado({ pedido: outro, hashDoOriginal: original, tema: 'Rodízio', manchete: null })).toEqual({ quando: null, tema: 'Rodízio', manchete: null })
+    expect(descreverRascunhoApagado({ pedido: null, hashDoOriginal: original, tema: null, manchete: null })).toEqual({ quando: null, tema: null, manchete: null })
+    expect(descreverRascunhoApagado({ pedido, hashDoOriginal: null, tema: '', manchete: null })).toEqual({ quando: null, tema: null, manchete: null })
   })
 })

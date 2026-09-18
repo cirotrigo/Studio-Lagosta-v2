@@ -121,6 +121,8 @@ export interface Movimentacao {
   moveu: boolean
   de: { id: number; name: string } | null
   para: { id: number; name: string } | null
+  /** O banco falhou no meio: nada foi movido, e chamar de novo pode completar. */
+  falhou?: boolean
 }
 
 /**
@@ -150,7 +152,7 @@ export async function moverPaginaParaSemana(pageId: string, quando: string | Dat
     return { moveu: true, de: page.Template, para: { id: destino.id, name: destino.name } }
   } catch (erro) {
     console.warn('[compositor] não deu para mover a página para a semana:', (erro as Error).message)
-    return { moveu: false, de: null, para: null }
+    return { moveu: false, de: null, para: null, falhou: true }
   }
 }
 
@@ -173,6 +175,8 @@ export interface Refilagem {
   refiladas: number
   /** O que foi pulado e por quê — para quem chama poder contar a quem editou. */
   avisos: string[]
+  /** O banco falhou no meio: parte das páginas pode ter ficado para trás, e chamar de novo completa. */
+  falhou?: boolean
 }
 
 /**
@@ -258,7 +262,7 @@ export async function refilarPaginasDoPost(postId: string, quando: string | Date
     return { refiladas, avisos }
   } catch (erro) {
     console.warn('[compositor] não deu para refilar as páginas do post:', (erro as Error).message)
-    return { refiladas: 0, avisos }
+    return { refiladas: 0, avisos, falhou: true }
   }
 }
 

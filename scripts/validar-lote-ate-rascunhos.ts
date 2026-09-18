@@ -43,9 +43,12 @@
  * `SET TRANSACTION READ ONLY` — o Postgres recusa qualquer escrita. Conta os
  * itens de lote (com e sem rascunho, efeitos pendentes) e páginas com mais de
  * um rascunho/agendado; com `--projeto <id> --lote <loteId> [--itens a,b]`,
- * faz a conta das operações daquele lote com as MESMAS decisões puras do
- * serviço. Não chama o serviço (que usa o `db` global) justamente para a
- * garantia de só-leitura ser do banco, não da disciplina.
+ * faz a conta das operações daquele lote chamando o SERVIÇO em simulação com
+ * as leituras pela transação READ ONLY (`leitor`, R12-04): a conta é a decisão
+ * inteira dele — item do plano, mídia em outro post, post de outro item — e a
+ * garantia de só-leitura continua sendo do banco, não da disciplina. Sem a
+ * migration do PR 12 aplicada a conta por item não é feita (a decisão lê as
+ * colunas dela).
  *
  * Cleanup (modo de dev): SÓ o que esta rodada criou (a MARCA e o lote desta
  * rodada, no projeto da prova). Passos independentes; falha de cleanup conta
@@ -130,6 +133,7 @@ function conferir(titulo: string, condicao: boolean, detalhe = '') {
 async function contarProducao() {
   const { db } = await import('../src/lib/db')
   const agendamento = await import('../src/lib/lotes/agendamento')
+  const { agendarItensDoLote } = await import('../src/lib/lotes/agendar-itens')
   const projeto = argumento('--projeto')
   const lote = argumento('--lote')
   const itensPedidos = argumento('--itens')?.split(',').map((s) => s.trim()).filter(Boolean) ?? null
@@ -173,49 +177,22 @@ async function contarProducao() {
 
         if (projeto && lote && saida.tabelaItemDeLote) {
           const projectId = Number(projeto)
-          const registros = saida.migrationDoPr12
-            ? await tx.$queryRaw<Array<{ id: string; itemId: string; generationId: string | null; postId: string | null; hashDoAgendamento: string | null; efeitosDoAgendamentoEm: Date | null }>>`
-                SELECT id, "itemId", "generationId", "postId", "hashDoAgendamento", "efeitosDoAgendamentoEm"
-                FROM "ItemDeLote" WHERE "projectId" = ${projectId} AND "loteId" = ${lote}`
-            : (await tx.$queryRaw<Array<{ id: string; itemId: string; generationId: string | null }>>`
-                SELECT id, "itemId", "generationId" FROM "ItemDeLote" WHERE "projectId" = ${projectId} AND "loteId" = ${lote}`).map((l) => ({ ...l, postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null }))
-          const alvo = itensPedidos ?? registros.map((r) => r.itemId)
-          const conta: Array<Record<string, unknown>> = []
-          for (const itemId of alvo) {
-            const linha = registros.find((r) => r.itemId === itemId)
-            if (!linha) {
-              conta.push({ itemId, situacao: 'falhou', codigo: 'ITEM_NAO_ENCONTRADO' })
-              continue
+          if (!saida.migrationDoPr12) {
+            // O serviço lê as colunas da migration do PR 12: sem elas não há decisão a reproduzir.
+            saida.lote = { projectId, loteId: lote, conta: 'não feita — a migration do PR 12 não está aplicada, e a decisão do serviço lê as colunas dela' }
+            console.log('  conta do lote: não feita — a migration do PR 12 não está aplicada')
+          } else {
+            // R12-04: a conta É a decisão do serviço (simulação), com as leituras pela transação READ ONLY.
+            const ids = itensPedidos ?? (await tx.$queryRaw<Array<{ itemId: string }>>`
+              SELECT "itemId" FROM "ItemDeLote" WHERE "projectId" = ${projectId} AND "loteId" = ${lote} ORDER BY "itemId"`).map((l) => l.itemId)
+            const conta: unknown[] = []
+            for (let k = 0; k < ids.length; k += agendamento.MAX_ITENS_DO_AGENDAMENTO) {
+              const parte = await agendarItensDoLote({ projectId, loteId: lote, itens: ids.slice(k, k + agendamento.MAX_ITENS_DO_AGENDAMENTO).map((itemId) => ({ itemId })), simular: true, leitor: tx })
+              conta.push(...parte.itens)
             }
-            const [g] = linha.generationId
-              ? await tx.$queryRaw<Array<{ status: string; resultUrl: string | null; slideOrder: number | null; pageId: string | null; quando: string | null; formato: string | null; carrossel: boolean }>>`
-                  SELECT status::text AS status, "resultUrl", "slideOrder", "fieldValues"->>'pageId' AS "pageId",
-                         "fieldValues"->'spec'->>'quando' AS quando, "fieldValues"->'spec'->>'formato' AS formato,
-                         ("fieldValues"->'spec'->'carrossel') IS NOT NULL AS carrossel
-                  FROM "Generation" WHERE id = ${linha.generationId} AND "projectId" = ${projectId}`
-              : []
-            const [pagina] = g?.pageId ? await tx.$queryRaw<Array<{ isTemplate: boolean }>>`SELECT "isTemplate" FROM "Page" WHERE id = ${g.pageId}` : []
-            const formato = g?.formato === 'story' || g?.formato === 'feed' || g?.formato === 'quadrado' ? g.formato : null
-            const pedido = agendamento.pedidoDoAgendamento({ itemId }, { quandoDaSpec: g?.quando ?? null, formato })
-            const [postLigado] = linha.postId ? await tx.$queryRaw<Array<{ id: string }>>`SELECT id FROM "SocialPost" WHERE id = ${linha.postId}` : []
-            const decisao = agendamento.decidirAgendamento({
-              registro: linha,
-              postLigadoExiste: !!postLigado,
-              pedido: 'pedido' in pedido ? { hash: agendamento.hashDoAgendamento(pedido.pedido) } : { falha: pedido.falha },
-              peca: g ? { status: g.status, pageId: g.pageId, slide: g.slideOrder != null || g.carrossel } : null,
-              pagina: pagina ? { ehModelo: pagina.isTemplate } : null,
-            })
-            if (decisao.acao !== 'agendar') {
-              conta.push({ itemId, situacao: decisao.acao === 'reaproveitar' ? 'concluido' : decisao.acao === 'pendente' ? 'pendente' : 'falhou', ...(decisao.acao === 'reaproveitar' ? { desfecho: 'reaproveitado' } : { codigo: 'codigo' in decisao ? decisao.codigo : decisao.acao }) })
-              continue
-            }
-            const posts = await tx.$queryRaw<Array<{ id: string; status: string }>>`
-              SELECT id, status::text AS status FROM "SocialPost" WHERE "projectId" = ${projectId} AND "pageId" = ${g!.pageId} ORDER BY "createdAt" ASC`
-            const daPagina = agendamento.decidirPostsDaPagina(posts, new Set())
-            conta.push({ itemId, situacao: daPagina.acao === 'falhar' ? 'falhou' : 'concluido', ...(daPagina.acao === 'falhar' ? { codigo: daPagina.codigo } : { desfecho: daPagina.acao === 'adotar' ? 'adotado' : 'criado' }) })
+            saida.lote = { projectId, loteId: lote, resumo: agendamento.resumirAgendamento(conta as never), itens: conta }
+            console.log(`  conta do lote ${lote}: ${JSON.stringify((saida.lote as { resumo: unknown }).resumo)}`)
           }
-          saida.lote = { projectId, loteId: lote, resumo: agendamento.resumirAgendamento(conta as never), itens: conta }
-          console.log(`  conta do lote ${lote}: ${JSON.stringify((saida.lote as { resumo: unknown }).resumo)}`)
         }
       },
       { maxWait: 10_000, timeout: 60_000 },
@@ -249,6 +226,9 @@ async function main() {
   const { criarPlano } = await import('../src/lib/planos/plano-service')
   const { revisaoDoItem } = await import('../src/lib/planos/revisao-do-item')
   const { del } = await import('@vercel/blob')
+  // O desafio anti-bot do Blob (403) sobre a logo derrubou a composição da prova-dev-4 do PR 11: cada imagem uma vez por URL, com nova tentativa espaçada.
+  const { lerOBlobUmaVezPorUrl } = await import('./lib/leitura-do-blob')
+  await lerOBlobUmaVezPorUrl('validar-lote-ate-rascunhos')
   type Resultado = Awaited<ReturnType<typeof agendarItensDoLote>>
 
   const projeto = await db.project.findUnique({ where: { id: PROJETO }, select: { id: true } })
@@ -444,6 +424,8 @@ async function main() {
     console.log('14) confirmação com outro horário é conflito: o rascunho só volta com o pedido original')
     const outroHorario = (await agendar([{ itemId: 'item-10', recriarRascunhoApagado: true, quando: `${dia(10)} 21:00` }])).itens[0]
     conferir('LOTE_AGENDAMENTO_CONFLITO, citando o pedido original', outroHorario.situacao === 'falhou' && outroHorario.codigo === 'LOTE_AGENDAMENTO_CONFLITO' && !!outroHorario.motivo?.includes('pedido original'), JSON.stringify(outroHorario))
+    // R12-05: o horário DESTA chamada (21h) não é o do rascunho apagado — sem prova do original, vai nulo.
+    conferir('o rascunho apagado não é apresentado com o horário da tentativa', outroHorario.rascunhoApagado?.quando === null && outroHorario.rascunhoApagado?.manchete === MANCHETE_DO_PLANO, JSON.stringify(outroHorario.rascunhoApagado))
     conferir('nada foi criado', (await retratoDoRascunho()) === antesDoAviso)
 
     // ── 15. "true" em texto ─────────────────────────────────────────────────

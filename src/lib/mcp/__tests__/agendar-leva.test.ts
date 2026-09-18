@@ -14,6 +14,7 @@ vi.mock('@/lib/lotes/agendar-itens', () => ({ agendarItensDoLote: mocks.agendarI
 vi.mock('@/lib/mcp/tools', () => ({ quemDecidiu: vi.fn(async () => 'u1'), canalDoPrincipal: vi.fn(() => 'claude-ai') }))
 
 import { toolsDoCompositor } from '../catalogo/compositor'
+import { executarTool } from '../registro/porta'
 
 const tool = toolsDoCompositor.find((t) => t.nome === 'agendar-leva')!
 const principal = { kind: 'user' } as never
@@ -25,10 +26,45 @@ beforeEach(() => {
     simulado: e.simular,
     resumo: { concluidos: 1, pendentes: 1, falhas: 0 },
     itens: [
-      { itemId: 'seg', situacao: 'concluido', desfecho: 'criado', postId: 'p1' },
+      { itemId: 'seg', situacao: 'concluido', desfecho: 'criado', postId: 'p1', estadoDoPost: 'rascunho' },
       { itemId: 'ter', situacao: 'pendente', codigo: 'PECA_EM_ANDAMENTO' },
     ],
   }))
+})
+
+describe('agendar-leva: o que cada post É (R12-06)', () => {
+  const comItens = (itens: Array<Record<string, unknown>>) =>
+    mocks.agendarItensDoLote.mockImplementationOnce(async (e: { loteId: string; simular: boolean }) => ({
+      loteId: e.loteId,
+      simulado: e.simular,
+      resumo: { concluidos: itens.length, pendentes: 0, falhas: 0 },
+      itens,
+    }))
+
+  it('só o que É rascunho ganha "nada publica até aprovar-rascunhos"; o agendado (e o já entregue) é dito como é', async () => {
+    comItens([
+      { itemId: 'seg', situacao: 'concluido', desfecho: 'criado', postId: 'p1', estadoDoPost: 'rascunho' },
+      { itemId: 'ter', situacao: 'concluido', desfecho: 'adotado', postId: 'p2', estadoDoPost: 'agendado', entregueParaPublicar: true },
+    ])
+    const misto = (await tool.handler({ projectId: 8, loteId: 'l', itens: [{ itemId: 'seg' }, { itemId: 'ter' }] }, principal)) as { nota: string }
+    expect(misto.nota).toContain('1 dos concluídos está na agenda como rascunho — nada publica até aprovar-rascunhos.')
+    expect(misto.nota).toContain('1 concluído NÃO é rascunho')
+    expect(misto.nota).toContain('entregueParaPublicar')
+
+    comItens([{ itemId: 'ter', situacao: 'concluido', desfecho: 'reaproveitado', postId: 'p2', estadoDoPost: 'agendado' }])
+    const soAgendado = (await tool.handler({ projectId: 8, loteId: 'l', itens: [{ itemId: 'ter' }] }, principal)) as { nota: string }
+    expect(soAgendado.nota).not.toContain('aprovar-rascunhos')
+    expect(soAgendado.nota).not.toContain('como rascunho')
+    expect(soAgendado.nota).toContain('NÃO é rascunho')
+    expect(soAgendado.nota).not.toContain('entregueParaPublicar')
+  })
+
+  it('controle: todos rascunho — a frase de sempre', async () => {
+    comItens([{ itemId: 'seg', situacao: 'concluido', desfecho: 'criado', postId: 'p1', estadoDoPost: 'rascunho' }])
+    const r = (await tool.handler({ projectId: 8, loteId: 'l', itens: [{ itemId: 'seg' }] }, principal)) as { nota: string }
+    expect(r.nota).toContain('Os concluídos estão na agenda como rascunho — nada publica até aprovar-rascunhos.')
+    expect(r.nota).not.toContain('NÃO é rascunho')
+  })
 })
 
 describe('agendar-leva: o registro', () => {
@@ -81,6 +117,25 @@ describe('agendar-leva: decisões do Ciro (13/09/2026)', () => {
     // Sem esses casos, a nota não fala deles.
     const comum = (await tool.handler({ projectId: 8, loteId: 'l', itens: [{ itemId: 'seg' }] }, principal)) as Record<string, unknown>
     expect(comum.nota).not.toContain('recriarRascunhoApagado')
+  })
+})
+
+describe('agendar-leva: chave desconhecida DENTRO do item (R12-03)', () => {
+  const indice = new Map(toolsDoCompositor.map((t) => [t.nome, t]))
+  const gates = { projeto: async () => undefined, curador: async () => undefined }
+  const pela = (args: Record<string, unknown>) => executarTool(indice, 'remoto', 'agendar-leva', args, principal, { gates })
+
+  it('pela porta REAL, `horario` num item recusa a leva inteira, aponta o item, e o serviço não é chamado', async () => {
+    const r = await pela({ projectId: 8, loteId: 'semana-2026-09-14', itens: [{ itemId: 'seg' }, { itemId: 'ter', horario: '2026-09-14 21:00' }] })
+    expect(r.isError).toBe(true)
+    expect(r.content[0].text).toContain('"itens.1" não aceita "horario"')
+    expect(mocks.agendarItensDoLote).not.toHaveBeenCalled()
+  })
+
+  it('controle: o mesmo item com o campo certo (`quando`) chega ao serviço como veio', async () => {
+    const r = await pela({ projectId: 8, loteId: 'semana-2026-09-14', itens: [{ itemId: 'seg' }, { itemId: 'ter', quando: '2026-09-14 21:00' }] })
+    expect(r.isError).toBeUndefined()
+    expect(mocks.agendarItensDoLote.mock.calls[0][0].itens).toEqual([{ itemId: 'seg' }, { itemId: 'ter', quando: '2026-09-14 21:00' }])
   })
 })
 

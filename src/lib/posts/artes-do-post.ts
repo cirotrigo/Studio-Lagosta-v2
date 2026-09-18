@@ -173,6 +173,8 @@ export interface RegistroDeArtes {
   /** `true` quando a coluna `generationId` do post foi preenchida nesta chamada. */
   colunaVinculada: boolean
   artes: ArteDoPost[]
+  /** O banco falhou no meio: o catálogo pode ter ficado incompleto, e chamar de novo completa. */
+  falhou?: boolean
 }
 
 /**
@@ -300,6 +302,6 @@ export async function registrarArtesDoPost(postId: string): Promise<RegistroDeAr
   } catch (erro) {
     // Nunca derruba quem chamou — agendar vale mais que catalogar.
     console.error(`[artes-do-post] falha ao registrar as artes do post ${postId}:`, erro)
-    return vazio
+    return { ...vazio, falhou: true }
   }
 }

@@ -70,6 +70,7 @@ vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: a
 import { recomporPaginaDefasada } from '@/lib/compositor/recompor'
 import { copyDaArte } from '@/lib/mcp/catalogo/ver-geracao-retorno'
 import { MAX_REVISOES_DA_COPY, VERSAO_DO_CONTRATO, type CopyAutoral } from '@/lib/copy-autoral'
+import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 
 function texto(id: string, y: number, content: string) {
   return { id: `l-${id}`, name: id, type: 'text', content, visible: true, order: y, position: { x: 100, y }, size: { width: 880, height: 80 }, style: { fontSize: 60 }, metadata: { compositor: { papel: id } } }
@@ -159,6 +160,9 @@ describe('recomposição que troca a imagem sem medir a copy (PR3-F02)', () => {
     await recomporPaginaDefasada({ pageId: 'p9' }).catch(() => undefined)
     const patch = patchDoMerge()
     expect(patch.layersSnapshot[0].content).toBe('Milk-shake →')
+    // R12-01: a versão visual que o PNG novo desenhou vai no mesmo merge que a URL dele — a da página como ficou gravada.
+    expect(patch.versaoRenderizada).toEqual(expect.stringMatching(/^v1:/))
+    expect(patch.versaoRenderizada).toBe(versaoDaPagina(banco.pagina as never))
     expect(patch.copyAutoral).toMatchObject({ efetiva: null, comparavel: false })
     expect(copyDaArte({ ...banco.generations[0].fieldValues, ...patch })!.desenhada).toEqual([])
   })

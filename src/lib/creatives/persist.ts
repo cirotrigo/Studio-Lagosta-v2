@@ -308,7 +308,11 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
 
   // pageId entra sempre: é como conferir-arte localiza as camadas da arte
   // para o diagnóstico geométrico (sobreposição vs texto faltando).
-  const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url }
+  // `versaoRenderizada`: a versão VISUAL (dimensões, fundo e camadas) que ESTE
+  // PNG desenhou, gravada no mesmo patch da URL. É a prova de que a miniatura
+  // da página ainda é a arte da página — o agendamento do lote só a reaproveita
+  // quando a página continua nessa versão (R12-01; `thumbnailEhAtual`).
+  const fieldValues = { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url, versaoRenderizada: versaoDaPagina(page) }
 
   const dadosDaArteQueFecha = {
     status: 'COMPLETED' as any,
