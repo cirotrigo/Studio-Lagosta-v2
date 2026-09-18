@@ -6674,3 +6674,12 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   declaração do R30 e zerava os textos do post `NOT_NEEDED` com página do próprio projeto; a prova-dev-36 pegou (sem
   vazamento: páginas e artes já são carregadas filtradas por projeto). Teste pelo caminho real:
   `ver-agenda-isolamento-por-projeto.test.ts`.
+  🔴 **A igualdade de `pageId` não prova que a página seja a fonte** (R52 da revisão FINAL sobre 7e96c643, 18/09/2026).
+  A arte de MODELO (`post-schedule`) aponta para a página do modelo — que pode ser a mesma do post — e o render aplicou
+  só o valor do id quando id e nome endereçam a mesma camada; a troca pela galeria descarta o valor vazio e o post fica
+  com o do nome. Com o post `NOT_NEEDED` e a mídia única numa arte de modelo, a página é histórica e vale a procedência
+  da mídia (R36/R46/R47), com ou sem registro das camadas.
+  🔴 **Os slots do post só entram na página quando ela RENDERIZA a mídia do post.** Com `NOT_NEEDED` e uma mídia que é
+  a arte da própria página, o PNG é o da arte (mantido em dia pela recomposição); os slots que o post herdou na troca não
+  são entrada de render, e aplicá-los à página editada depois devolvia o texto de antes. Sem mídia, eles SÃO a entrada
+  do render que ainda vai acontecer. Testes: `ver-agenda-troca-pela-galeria.test.ts` (R52 e varredura).
