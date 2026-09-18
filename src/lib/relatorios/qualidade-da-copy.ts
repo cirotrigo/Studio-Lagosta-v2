@@ -133,7 +133,9 @@ export async function lerSemanaDoCliente(
   const posts = await comPrazo(() =>
     leitor.socialPost.findMany({
       where: { projectId, createdAt: { gte: janela.inicio, lt: janela.fim } },
-      select: { id: true, pageId: true, generationId: true, createdAt: true },
+      // As mídias casam cada slide com a sua arte (PR15-01); status, `laterPostId` e
+      // a cópia do texto desenhado dizem se a mídia ainda segue a página (PR15-02).
+      select: { id: true, pageId: true, generationId: true, createdAt: true, mediaUrls: true, status: true, laterPostId: true, slotValues: true },
       orderBy: { createdAt: 'asc' },
       take: TETO_DE_POSTS,
     }),
@@ -144,15 +146,18 @@ export async function lerSemanaDoCliente(
   const postIds = posts.map((p) => p.id)
   const genIds = [...new Set(posts.map((p) => p.generationId).filter((x): x is string => !!x))]
   const pageIdsDosPosts = [...new Set(posts.map((p) => p.pageId).filter((x): x is string => !!x))]
+  const urls = [...new Set(posts.flatMap((p) => p.mediaUrls).filter((u): u is string => !!u))]
   const desde = new Date(janela.inicio.getTime() - HISTORICO_DAS_ARTES_MS)
 
   // Json sem índice: só as chaves que a medida usa (o `layersSnapshot` e a spec
-  // não viajam). Id da arte OU página da arte — é a deduplicação por página.
-  // A MESMA consulta serve às duas leituras (ids e páginas pedidos, ids a excluir).
-  const lerArtes = (ids: string[], paginas: string[], excluir: string[], limite: number) =>
+  // não viajam). Id da arte, URL da mídia (cada slide do carrossel acha a sua
+  // arte pela URL exata — PR15-01) OU página da arte — é a deduplicação por
+  // página. A MESMA consulta serve às duas leituras (ids, URLs e páginas
+  // pedidos, ids a excluir).
+  const lerArtes = (ids: string[], urlsDasMidias: string[], paginas: string[], excluir: string[], limite: number) =>
     comPrazo(
       () => leitor.$queryRaw<Array<Omit<ArteLida, 'createdAt'> & { createdAt: Date }>>`
-      SELECT id, "createdAt", canal,
+      SELECT id, "createdAt", canal, "resultUrl",
         "fieldValues"->>'pageId' AS "pageId",
         "fieldValues"->>'source' AS source,
         "fieldValues"->'copyAutoral' AS "copyAutoral",
@@ -160,32 +165,35 @@ export async function lerSemanaDoCliente(
         "fieldValues"->'ajustes' AS ajustes,
         "fieldValues"->'composicao'->'avisos' AS avisos,
         "fieldValues"->'recomposicao' AS recomposicao,
+        "fieldValues"->'recusaDaRecomposicao' AS "recusaDaRecomposicao",
         "fieldValues"->'vozNaEscrita' AS "vozNaEscrita",
         "fieldValues"->>'modo' AS modo
       FROM "Generation"
       WHERE "projectId" = ${projectId}
         AND "createdAt" >= ${desde}
-        AND (id = ANY(${ids}::text[]) OR "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
+        AND (id = ANY(${ids}::text[]) OR "resultUrl" = ANY(${urlsDasMidias}::text[]) OR "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
         AND NOT (id = ANY(${excluir}::text[]))
       ORDER BY "createdAt" ASC
       LIMIT ${limite}
     `,
     )
-  const artes = await lerArtes(genIds, pageIdsDosPosts, [], TETO_DE_ARTES)
+  const artes = await lerArtes(genIds, urls, pageIdsDosPosts, [], TETO_DE_ARTES)
 
   // C15-11: post agendado por `generationId` nasce SEM `pageId`, e a página só
   // aparece no `fieldValues.pageId` da arte. Sem ler as OUTRAS artes dessa
   // página (o ajuste do revisor é uma Generation nova), o desfecho da
-  // visibilidade e a correção do revisor saíam zerados em silêncio.
-  const paginasPelaArte = [
-    ...new Set(artes.filter((a) => genIds.includes(a.id) && a.pageId && !pageIdsDosPosts.includes(a.pageId)).map((a) => a.pageId as string)),
-  ]
+  // visibilidade e a correção do revisor saíam zerados em silêncio. Vale para
+  // a arte casada pela coluna e para a casada pela URL de qualquer slide.
+  const pedidas = new Set(genIds)
+  const midias = new Set(urls)
+  const diretas = artes.filter((a) => pedidas.has(a.id) || (a.resultUrl != null && midias.has(a.resultUrl)))
+  const paginasPelaArte = [...new Set(diretas.map((a) => a.pageId).filter((p): p is string => !!p && !pageIdsDosPosts.includes(p)))]
   if (paginasPelaArte.length && artes.length < TETO_DE_ARTES) {
-    artes.push(...(await lerArtes([], paginasPelaArte, artes.map((a) => a.id), TETO_DE_ARTES - artes.length)))
+    artes.push(...(await lerArtes([], [], paginasPelaArte, artes.map((a) => a.id), TETO_DE_ARTES - artes.length)))
   }
   if (artes.length >= TETO_DE_ARTES) avisos.push(`mais de ${TETO_DE_ARTES} artes ligadas — a medida olhou as primeiras`)
 
-  const pageIds = [...new Set([...pageIdsDosPosts, ...artes.filter((a) => genIds.includes(a.id) && a.pageId).map((a) => a.pageId as string)])]
+  const pageIds = [...new Set([...pageIdsDosPosts, ...paginasPelaArte])]
   const arteIds = artes.map((a) => a.id)
   const ligado = { OR: [{ postId: { in: postIds } }, { pageId: { in: pageIds } }, { generationId: { in: arteIds } }] }
 
@@ -199,7 +207,7 @@ export async function lerSemanaDoCliente(
   const sinais = await comPrazo(() =>
     leitor.learningSignal.findMany({
       where: { projectId, tipo: { in: ['troca-de-arte', 'geometria', 'foto'] }, ...ligado },
-      select: { tipo: true, desfecho: true, postId: true, pageId: true, generationId: true },
+      select: { tipo: true, desfecho: true, postId: true, pageId: true, generationId: true, createdAt: true },
       take: TETO_DE_SINAIS,
     }),
   )

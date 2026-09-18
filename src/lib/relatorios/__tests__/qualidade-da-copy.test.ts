@@ -11,15 +11,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Consulta = { projectId: number }
-type ArteNoBanco = { id: string; pageId: string | null; [chave: string]: unknown }
+type ArteNoBanco = { id: string; pageId: string | null; resultUrl?: string | null; [chave: string]: unknown }
+type PostNoBanco = { id: string; pageId: string | null; generationId: string | null; createdAt: Date; mediaUrls: string[]; status: string; laterPostId: string | null; slotValues: unknown }
 interface Comportamento {
-  /** As linhas de "Generation" que a consulta crua das artes filtra (ids, páginas, ids a excluir, limite). */
+  /** As linhas de "Generation" que a consulta crua das artes filtra (ids, URLs das mídias, páginas, ids a excluir, limite). */
   generations: ArteNoBanco[]
   paginas: Array<{ id: string; copyAutoral: unknown; layers: unknown }>
+  /** As linhas de "LearningSignal" (o serviço filtra pelo vínculo; o banco falso devolve todas). */
+  sinais: Array<Record<string, unknown>>
   esquema: { copyAutoralDaPagina: boolean; vozDaMarca: boolean }
   /** Quanto a leitura das artes (a consulta crua em "Generation") demora, por projeto. */
   artesMs: (projectId: number) => number
-  postsDe: (projectId: number) => Array<{ id: string; pageId: string | null; generationId: string | null; createdAt: Date }>
+  postsDe: (projectId: number) => PostNoBanco[]
   vozDe: (projectId: number) => Promise<unknown>
   posts: (projectId: number) => Promise<void>
 }
@@ -30,14 +33,45 @@ vi.mock('@/lib/db', () => ({
 }))
 
 import { medirQualidadeDaCarteira, medirQualidadeDaCopyDoCliente, type EsquemaDaCopy } from '../qualidade-da-copy'
+import { aplicarRevisao } from '@/lib/copy-autoral/revisao'
 
 const janela = { inicio: new Date('2026-09-07T03:00:00Z'), fim: new Date('2026-09-14T03:00:00Z') }
 const espeto = { projectId: 6, nome: 'Espeto Gaúcho' }
 const byRock = { projectId: 7, nome: 'By Rock' }
 const ESQUEMA_COMPLETO: EsquemaDaCopy = { copyAutoralDaPagina: true, vozDaMarca: true }
 
+/** Post agendado e ainda não entregue ao publicador (segue a página), sem mídia. */
+function postNoBanco(over: Partial<PostNoBanco> & Pick<PostNoBanco, 'id'>): PostNoBanco {
+  return { pageId: null, generationId: null, createdAt: new Date('2026-09-08T12:00:00Z'), mediaUrls: [], status: 'SCHEDULED', laterPostId: null, slotValues: null, ...over }
+}
+
 function erroPrisma(code: string, meta: Record<string, unknown>, message = `Prisma ${code}`) {
   return Object.assign(new Error(message), { code, meta })
+}
+
+/** O `select` do Prisma: só as chaves pedidas voltam (o banco não inventa coluna que a consulta não leu). */
+function selecionar<T extends Record<string, unknown>>(linha: T, select?: Record<string, boolean>): Partial<T> {
+  if (!select) return linha
+  return Object.fromEntries(Object.entries(linha).filter(([k]) => select[k])) as Partial<T>
+}
+
+/**
+ * A linha de "Generation" como a consulta crua a PROJETA: só as colunas e os
+ * caminhos de `fieldValues` que o SELECT pede (linha com `fieldValues`; a linha
+ * já projetada dos testes antigos volta como está).
+ */
+function projetar(sql: string, g: ArteNoBanco): Record<string, unknown> {
+  const fv = g.fieldValues as Record<string, unknown> | undefined
+  if (!fv) return g
+  const selecao = sql.slice(sql.indexOf('SELECT'), sql.indexOf('FROM'))
+  const linha: Record<string, unknown> = { id: g.id, createdAt: g.createdAt, canal: g.canal ?? null }
+  if (selecao.includes('"resultUrl"')) linha.resultUrl = g.resultUrl ?? null
+  for (const m of selecao.matchAll(/"fieldValues"((?:->>?'[^']+')+)\s+AS\s+"?(\w+)"?/g)) {
+    let v: unknown = fv
+    for (const [, chave] of m[1].matchAll(/->>?'([^']+)'/g)) v = v && typeof v === 'object' ? (v as Record<string, unknown>)[chave] : undefined
+    linha[m[2]] = v ?? null
+  }
+  return linha
 }
 
 function criarBanco(parcial: Partial<Comportamento> = {}) {
@@ -45,14 +79,15 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
     esquema: ESQUEMA_COMPLETO,
     generations: [],
     paginas: [],
+    sinais: [],
     artesMs: () => 0,
-    postsDe: (projectId) => [{ id: `post-${projectId}`, pageId: `page-${projectId}`, generationId: null, createdAt: new Date('2026-09-08T12:00:00Z') }],
+    postsDe: (projectId) => [postNoBanco({ id: `post-${projectId}`, pageId: `page-${projectId}` })],
     vozDe: async () => null,
     posts: async () => {},
     ...parcial,
   }
   const transacoes: string[][] = []
-  const consultasDeArtes: Array<{ ids: string[]; paginas: string[]; excluir: string[] }> = []
+  const consultasDeArtes: Array<{ ids: string[]; urls: string[]; paginas: string[]; excluir: string[] }> = []
   const chamadas: Record<string, number> = {}
   const conta = (nome: string) => (chamadas[nome] = (chamadas[nome] ?? 0) + 1)
   let conexao: Promise<void> = Promise.resolve()
@@ -113,18 +148,22 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
           }
           return comando('artes', () => {
             conta(`artes-${valores[0]}`)
-            const [, , ids, paginas, excluir, limite] = valores as [number, Date, string[], string[], string[], number]
-            consultasDeArtes.push({ ids, paginas, excluir })
+            const [, , ids, urls, paginas, excluir, limite] = valores as [number, Date, string[], string[], string[], string[], number]
+            consultasDeArtes.push({ ids, urls, paginas, excluir })
             const linhas = comp.generations
-              .filter((g) => (ids.includes(g.id) || (g.pageId != null && paginas.includes(g.pageId))) && !excluir.includes(g.id))
+              .filter((g) => (ids.includes(g.id) || (g.resultUrl != null && urls.includes(g.resultUrl)) || (g.pageId != null && paginas.includes(g.pageId))) && !excluir.includes(g.id))
               .slice(0, limite)
+              .map((g) => projetar(sql, g))
             return demora(comp.artesMs(valores[0] as number), linhas)
           })
         },
-        socialPost: { findMany: (a: { where: Consulta }) => comando('posts', async () => (conta('posts'), await comp.posts(a.where.projectId), comp.postsDe(a.where.projectId))) },
+        socialPost: {
+          findMany: (a: { where: Consulta; select?: Record<string, boolean> }) =>
+            comando('posts', async () => (conta('posts'), await comp.posts(a.where.projectId), comp.postsDe(a.where.projectId).map((p) => selecionar(p, a.select)))),
+        },
         page: { findMany: (a: { where: { id: { in: string[] } } }) => comando('paginas', async () => comp.paginas.filter((p) => a.where.id.in.includes(p.id))) },
         itemDePlano: { findMany: () => comando('itens', async () => []) },
-        learningSignal: { findMany: () => comando('sinais', async () => []) },
+        learningSignal: { findMany: (a: { select?: Record<string, boolean> }) => comando('sinais', async () => comp.sinais.map((s) => selecionar(s, a.select))) },
         brandVoice: { findUnique: (a: { where: Consulta }) => comando('voz', () => (conta('voz'), comp.vozDe(a.where.projectId))) },
         project: { findMany: () => comando('projetos', async () => []) },
       }
@@ -262,12 +301,14 @@ describe('C15-11 · post agendado por generationId (sem pageId)', () => {
     createdAt: new Date('2026-09-08T10:00:00Z'),
     canal: null,
     pageId: 'p',
+    resultUrl: null,
     source: 'compositor',
     copyAutoral: { original, efetiva: original, comparavel: true },
     revisao: null,
     ajustes: null,
     avisos: [],
     recomposicao: null,
+    recusaDaRecomposicao: null,
     vozNaEscrita: null,
     modo: null,
     ...over,
@@ -293,7 +334,7 @@ describe('C15-11 · post agendado por generationId (sem pageId)', () => {
       { id: 'cta', type: 'text', content: 'Vem pra cá', visible: true },
     ]),
   }
-  const postPelaArte = (generationId: string) => () => [{ id: 'post-g', pageId: null, generationId, createdAt: new Date('2026-09-08T12:00:00Z') }]
+  const postPelaArte = (generationId: string) => () => [postNoBanco({ id: 'post-g', generationId })]
 
   it('a página vem pela arte, as OUTRAS artes dela são lidas, e o ajuste do revisor desfeito aparece', async () => {
     const banco = criarBanco({ postsDe: postPelaArte('g1'), generations: [gen('g1', {}), ajusteQueEscondeCta], paginas: [pagina] })
@@ -301,8 +342,8 @@ describe('C15-11 · post agendado por generationId (sem pageId)', () => {
     const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
     expect(r.indisponivel).toBeNull()
     expect(banco.consultasDeArtes).toEqual([
-      { ids: ['g1'], paginas: [], excluir: [] },
-      { ids: [], paginas: ['p'], excluir: ['g1'] },
+      { ids: ['g1'], urls: [], paginas: [], excluir: [] },
+      { ids: [], urls: [], paginas: ['p'], excluir: ['g1'] },
     ])
     expect(r.medidas).toHaveLength(1)
     expect(r.medidas[0]).toMatchObject({ chave: 'page:p', semPagina: false, visibilidadeDoRevisor: { aceitos: 0, desfeitos: 1, removidas: 0 } })
@@ -344,5 +385,90 @@ describe('C15-13 · o Prisma desistindo do tempo também é o teto por cliente',
     })
     expect(r.indisponivel).toBe('passou do teto de tempo por cliente')
     expect(log).not.toHaveBeenCalled()
+  })
+})
+
+// ─── revisão final do Codex sobre ff2baaf0 (18/09/2026), pelo caminho real ──
+
+describe('revisão final · a leitura do serviço alimenta as quatro correções', () => {
+  const original = {
+    versao: 'copy-autoral-v1',
+    origem: { autor: 'claude', em: '2026-09-08T10:00:00.000Z', superficie: 'chat' },
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Sexta é dia', 'de churrasco'] },
+      { id: 'cta', funcao: 'cta', ordem: 1, linhas: ['Vem pra cá'] },
+    ],
+    revisoes: [],
+  } as const
+  const revisada = (mudancas: Record<string, string[]>, quem: { autor: 'sistema' | 'equipe'; motivo: string; superficie: string; em: string }) =>
+    aplicarRevisao(original as never, original.blocos.map((b) => ({ ...b, linhas: mudancas[b.id] ?? [...b.linhas] })) as never, quem).copy
+  const doCompositor = revisada({ cta: ['Vem pra cá →'] }, { autor: 'sistema', motivo: 'o que foi desenhado (compositor)', superficie: 'compositor', em: '2026-09-08T10:01:00.000Z' })
+  const daEquipe = revisada({ headline: ['Sexta tem', 'churrasco'] }, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor', em: '2026-09-08T11:30:00.000Z' })
+  const camadas = (c: { blocos?: ReadonlyArray<{ id?: string; linhas?: readonly string[] }> }) =>
+    JSON.stringify((c.blocos ?? []).map((b) => ({ id: b.id, name: b.id, type: 'text', content: (b.linhas ?? []).join('\n') })))
+  /** A linha de "Generation" como está no banco: `fieldValues` inteiro, projetado pela consulta. */
+  const linha = (id: string, pageId: string | null, resultUrl: string, fieldValues: Record<string, unknown>): ArteNoBanco => ({
+    id,
+    pageId,
+    resultUrl,
+    createdAt: new Date('2026-09-08T10:00:00Z'),
+    canal: null,
+    fieldValues: { pageId, source: 'compositor', ...fieldValues },
+  })
+  const peca = (efetiva: unknown = original) => ({ copyAutoral: { original, efetiva, comparavel: true } })
+
+  it('PR15-01 · carrossel de três páginas: três peças, a mudança do terceiro slide contada', async () => {
+    const banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'carrossel', generationId: 'g1', mediaUrls: ['u1', 'u2', 'u3'] })],
+      generations: [linha('g1', 'p1', 'u1', peca()), linha('g2', 'p2', 'u2', peca()), linha('g3', 'p3', 'u3', peca(doCompositor))],
+      paginas: [
+        { id: 'p1', copyAutoral: original, layers: camadas(original) },
+        { id: 'p2', copyAutoral: original, layers: camadas(original) },
+        { id: 'p3', copyAutoral: doCompositor, layers: camadas(doCompositor) },
+      ],
+    })
+    estado.banco = banco
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.indisponivel).toBeNull()
+    expect(banco.consultasDeArtes[0]).toMatchObject({ ids: ['g1'], urls: ['u1', 'u2', 'u3'] })
+    expect(r.medidas.map((m) => m.chave).sort()).toEqual(['page:p1', 'page:p2', 'page:p3'])
+    expect(r.medidas.find((m) => m.chave === 'page:p3')).toMatchObject({ comparavel: true, sistemaMudouLinhas: true })
+    expect(r.qualidade?.indevidas.porTipo['sistema-mudou-linhas']).toBe(1)
+  })
+
+  it('PR15-02 · post congelado com A, página editada depois para B: a medida é A, e o que veio depois não conta', async () => {
+    const congelado = (status: string, laterPostId: string | null) =>
+      criarBanco({
+        postsDe: () => [postNoBanco({ id: 'slide', generationId: 'g1', mediaUrls: ['u1'], status, laterPostId })],
+        generations: [linha('g1', 'p', 'u1', peca())],
+        paginas: [{ id: 'p', copyAutoral: daEquipe, layers: camadas(daEquipe) }],
+        // A edição de geometria veio DEPOIS do PNG publicado.
+        sinais: [{ tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'p', generationId: null, createdAt: new Date('2026-09-08T11:31:00Z') }],
+      })
+    estado.banco = congelado('POSTED', 'zernio-1')
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.medidas[0]).toMatchObject({ comparavel: true, preservada: true })
+    expect(r.medidas[0].correcoes).toMatchObject({ redacao: 0, design: 0 })
+    // Controle: o mesmo post ainda vivo segue a página — a edição e a geometria contam.
+    estado.banco = congelado('SCHEDULED', null)
+    const vivo = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(vivo.medidas[0]).toMatchObject({ preservada: false })
+    expect(vivo.medidas[0].correcoes).toMatchObject({ redacao: 1, design: 1 })
+  })
+
+  it('PR15-04 · a recusa gravada em `recusaDaRecomposicao` chega à contagem do compositor', async () => {
+    estado.banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'slide', generationId: 'g1', mediaUrls: ['u1'] })],
+      generations: [
+        linha('g1', 'p', 'u1', {
+          ...peca(),
+          recomposicao: { estado: 're-renderizada', em: '2026-09-08T10:30:00.000Z', urlsAnteriores: [] },
+          recusaDaRecomposicao: { em: '2026-09-08T10:40:00.000Z', erro: 'A linha não cabe na coluna.', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', detalhes: null, arteTrocada: false },
+        }),
+      ],
+      paginas: [{ id: 'p', copyAutoral: original, layers: camadas(original) }],
+    })
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.medidas[0].correcoes.compositor).toBe(1)
   })
 })

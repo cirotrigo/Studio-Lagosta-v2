@@ -11092,3 +11092,62 @@ A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
   (`carousel-carimbo.test.ts`) passam `origemDoCarimbo` a `startArtGeneration`
   — com carimbo, o mesmo; sem, `vozNaEscrita: null` e a escrita na criação da
   origem. Os helpers sozinhos não provavam que os dois pontos os usam.
+
+**Da revisão FINAL do Codex sobre ff2baaf0 (BLOQUEADO, PR15-01…04, 18/09/2026):**
+
+- 🔴 **Cada MÍDIA do post acha a sua peça** (PR15-01). O serviço lia só
+  `pageId` e `generationId` do post, e `SocialPost.generationId` é UM ponteiro
+  que responde pelo slide 1 (a regra de `artes-do-post.ts`): o carrossel de três
+  páginas do compositor virava uma peça só, e o que acontecia nos slides 2 e 3
+  sumia sem exclusão nem aviso. Hoje o serviço seleciona `mediaUrls` e pede
+  também as artes cuja `resultUrl` é uma das mídias (a MESMA consulta, no mesmo
+  prazo e na mesma transação); `montarPecas` casa cada mídia com a sua arte pela
+  URL EXATA (a mais recente vence), a coluna e o `pageId` do post respondem só
+  pelo slide 1, e a deduplicação por página continua. Slide sem arte nem página
+  (a foto do acervo) não é peça de copy. Sinal e item de plano vão a UMA peça —
+  a da página, a da arte, ou a primeira peça do post —, senão o sinal que só diz
+  o post contaria uma vez por slide.
+- 🔴 **A página de hoje só é a copy do post que ainda a SEGUE** (PR15-02).
+  `invalidateScheduledRenders` e a recomposição só alcançam `DRAFT`/`SCHEDULED`
+  com `laterPostId` nulo (`postVivo`); o post congelado (publicado, entregue ao
+  publicador) mantém a mídia antiga, e a medida usava `Page.copyAutoral` de
+  hoje — atribuía ao post uma edição que não chegou à imagem dele. `finalDaPeca`
+  decide: (1) todos congelados mostrando a MESMA arte pela URL → o SNAPSHOT: a
+  `efetiva` dela (quem troca o PNG regrava o registro, PR3-F02), com as
+  evidências cortadas no instante do PNG (`recomposicao.em` quando `feita` ou
+  `re-renderizada`) — arte, geometria e sinal de depois não chegaram à mídia;
+  não vale com ajuste de visibilidade do revisor até ali (a efetiva lida das
+  camadas cruas contaria o bloco escondido como apagado); (2) senão, a página
+  com PROVA, para cada mídia congelada, de que ela mostra a mesma mensagem de
+  hoje — a efetiva da arte casada pela URL contra a que as camadas de hoje
+  dariam (`registroDaCopyDaArte` sobre as camadas CRUAS, o que o revisor
+  escondeu sai dos dois lados), ou o story de uma mídia com `_copiaDaPagina`
+  igual ao texto da página; (3) sem snapshot nem prova, `congelada-sem-prova`:
+  fora do denominador e contada no relatório. Limite declarado: peça com post
+  vivo e post congelado PROVADO segue contando as evidências posteriores ao
+  congelamento (a peça é uma só).
+- 🔴 **A mensagem é linhas E ordem de leitura** (PR15-03). `preservada`
+  comparava um mapa `id → linhas` e descartava a ordem; inverter a `ordem` de
+  dois blocos (revisão válida do contrato) seguia "mensagem preservada".
+  `mesmaMensagem` compara também a sequência dos ids com texto pela `ordem`
+  (`blocosEmOrdem`); reordenar só o ARRAY continua fiel. `revisaoMudaLinhas`
+  passou a contar o campo `ordem` — sem isso a peça que o compositor reordenou
+  saía "não preservada" sem a mudança do sistema que a explicasse.
+- 🔴 **A recusa do compositor é lida onde `registrarRecusa` a grava** (PR15-04).
+  Desde C6-01 a recusa mora em `fieldValues.recusaDaRecomposicao` e
+  `recomposicao` fica com o último render; a medida procurava
+  `recomposicao.estado === 'recusada'`, e a recusa atual nunca entrava em
+  `correcoes.compositor`. `recusouPorTextoQueNaoCabe` lê as duas formas, uma vez
+  por arte, e o serviço projeta a chave nova no SQL. O teste chama a função
+  REAL (`qualidade-da-copy-recusa.test.ts`, com o dublê do harness de
+  `copy-visual-regravada-marcador.test.ts`) em vez de fabricar a estrutura antiga.
+- **O banco falso do teste do serviço honra o `select` e projeta o
+  `fieldValues` pelo SELECT do SQL**: o dublê que devolvia a linha inteira
+  deixava passar campo novo esquecido na consulta. 15 mutações conferidas
+  (mídias ignoradas, URL fora do SQL, sinal em todo slide, URL mais antiga
+  vencendo, congelado lido como vivo, status fora do select, sinal sem
+  `createdAt`, sem corte das evidências, snapshot sem a guarda de visibilidade,
+  prova contra o contrato em vez das camadas, sem a prova pela cópia desenhada,
+  mensagem sem ordem, revisão sem ordem, recusa só no formato antigo, SQL sem a
+  chave nova): cada uma derruba ao menos um teste. A medida de partida de
+  produção (13/09, 917 peças sem contrato) NÃO foi refeita.

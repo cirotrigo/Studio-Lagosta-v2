@@ -42,15 +42,25 @@
  *   excluída, e a contagem das excluídas sai junto.
  * - **Uma peça por página**: ajustar a arte cria Generation nova para a MESMA
  *   página; contar cada uma inflaria tudo. A peça é a página (ou a arte, quando
- *   o post não tem página).
+ *   a mídia não tem página) — e cada MÍDIA do post acha a sua pela URL exata
+ *   (PR15-01): o carrossel de três páginas são três peças.
+ * - 🔴 **A página de hoje só vale para o post que ainda a segue** (PR15-02):
+ *   o congelado (publicado, entregue ao publicador) precisa de prova de que a
+ *   mídia mostra o que a página mostra; sem prova, o snapshot da arte que ele
+ *   publicou; sem snapshot, `congelada-sem-prova` — fora do denominador.
+ * - **A mensagem é linhas E ordem de leitura** (PR15-03): trocar a `ordem` de
+ *   dois blocos não é "mensagem preservada".
  *
  * Módulo PURO (tipos do contrato e leitores puros), sem Prisma: os testes rodam
  * sem banco e o script de medida o reusa.
  */
 
 import type { CopyAutoral, RevisaoDaCopy } from '@/lib/copy-autoral/contrato'
+import { registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
-import { lerCamadas } from '@/lib/posts/page-layers'
+import { blocosEmOrdem } from '@/lib/copy-autoral/validar'
+import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
+import { copyIgual, ehCopiaDaPagina, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
 import { ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
@@ -98,12 +108,25 @@ export interface PostLido {
   pageId: string | null
   generationId: string | null
   createdAt: Instante
+  /**
+   * As mídias, na ordem dos slides. `generationId` é UM ponteiro e responde só
+   * pelo primeiro slide (PR15-01): cada mídia se casa com a sua arte pela URL.
+   */
+  mediaUrls: string[]
+  /** `SocialPost.status` — com `laterPostId`, diz se a mídia ainda segue a página (PR15-02). */
+  status: string
+  /** Não nulo = entregue ao publicador: a mídia está congelada. */
+  laterPostId: string | null
+  /** A cópia do texto DESENHADO na mídia, quando marcada `_copiaDaPagina` (o render a regrava). */
+  slotValues: unknown
 }
 
 export interface ArteLida {
   id: string
   /** `fieldValues.pageId`. */
   pageId: string | null
+  /** A imagem ATUAL da arte — é pela URL exata que a mídia de um post se casa com ela. */
+  resultUrl: string | null
   createdAt: Instante
   /** `fieldValues.source` (`compositor`, `ajuste-arte`, `arte-ia`…). */
   source: string | null
@@ -116,8 +139,10 @@ export interface ArteLida {
   ajustes: unknown
   /** `fieldValues.composicao.avisos`. */
   avisos: unknown
-  /** `fieldValues.recomposicao` (`{ estado, errorCode? }`). */
+  /** `fieldValues.recomposicao` — o registro do último render; até C6-01 a recusa também morava aqui (`estado: 'recusada'`). */
   recomposicao: unknown
+  /** `fieldValues.recusaDaRecomposicao` (`{ em, errorCode, … }`) — onde `registrarRecusa` grava a recusa desde C6-01 (PR15-04). */
+  recusaDaRecomposicao: unknown
   /** `fieldValues.vozNaEscrita`. */
   vozNaEscrita: unknown
   /** `fieldValues.modo` (melhoria: `rediagramar` | `redesenhar` | `refinar`). */
@@ -144,6 +169,8 @@ export interface SinalLido {
   postId: string | null
   pageId: string | null
   generationId: string | null
+  /** Para cortar o que veio depois da imagem que foi publicada (PR15-02). */
+  createdAt?: Instante
 }
 
 export interface LeituraDaSemana {
@@ -168,10 +195,36 @@ function copyLida(v: unknown): CopyAutoral | null {
   return lerCopyAutoral(v).copy
 }
 
-/** A revisão muda o TEXTO de algum bloco (linhas, bloco acrescentado ou removido)? */
+/**
+ * A revisão muda a MENSAGEM de algum bloco — as linhas, a ordem de leitura,
+ * bloco acrescentado ou removido? A ordem entra pelo mesmo motivo que em
+ * `mesmaMensagem` (PR15-03): sem ela, a peça reordenada pelo sistema saía
+ * "não preservada" sem nenhuma mudança do sistema que a explicasse.
+ */
 export function revisaoMudaLinhas(r: RevisaoDaCopy): boolean {
   if (r.removidos?.length) return true
-  return r.blocos.some((id) => !r.campos?.[id] || r.campos[id].includes('linhas'))
+  return r.blocos.some((id) => !r.campos?.[id] || r.campos[id].includes('linhas') || r.campos[id].includes('ordem'))
+}
+
+/** A ordem de LEITURA: os ids dos blocos com texto, pela `ordem` do contrato — a ordem do array não é contrato. */
+function ordemDeLeitura(copy: CopyAutoral): string[] {
+  return blocosEmOrdem(copy)
+    .filter((b) => b.linhas.length > 0)
+    .map((b) => b.id)
+}
+
+/**
+ * As duas copies dizem a MESMA mensagem: as mesmas linhas em cada bloco, literais,
+ * E a mesma ordem de leitura (PR15-03 da revisão final do Codex, 18/09/2026: o
+ * mapa id → linhas descartava a ordem, e trocar a `ordem` de dois blocos seguia
+ * "mensagem preservada"). Função, grupo de leitura, estilo e fatos são COMO a
+ * mensagem é desenhada — mudam a causa da correção, não a fidelidade.
+ */
+export function mesmaMensagem(a: CopyAutoral, b: CopyAutoral): boolean {
+  const la = linhasPorBloco(a)
+  const lb = linhasPorBloco(b)
+  if (![...new Set([...Object.keys(la), ...Object.keys(lb)])].every((id) => mesmasLinhas(la[id], lb[id]))) return false
+  return JSON.stringify(ordemDeLeitura(a)) === JSON.stringify(ordemDeLeitura(b))
 }
 
 /** A revisão mexe só em ESTILO (a segunda voz, a herança de estilo)? */
@@ -294,7 +347,8 @@ export interface PecaParaMedir {
   postIds: string[]
   original: CopyAutoral | null
   final: CopyAutoral | null
-  exclusao: 'sem-contrato' | 'autoria-desconhecida' | 'sem-copy-final' | null
+  /** `congelada-sem-prova`: há post congelado e nada prova que a mídia dele mostra a copy medida (PR15-02). */
+  exclusao: 'sem-contrato' | 'autoria-desconhecida' | 'congelada-sem-prova' | 'sem-copy-final' | null
   estados: EstadoDaCopy[]
   /** O desfecho dos ajustes de visibilidade do revisor, pelas camadas de hoje. `null` = camadas ilegíveis. */
   visibilidade: Array<{ camada: string; desfecho: DesfechoDaVisibilidade }> | null
@@ -328,32 +382,194 @@ function origemNoEstado(e: EstadoDaCopy, id: string): OrigemDaMudanca {
 }
 
 /**
- * Agrupa o que foi lido em PEÇAS: uma por página (ou por arte, quando o post
+ * O post ainda SEGUE a página: rascunho ou agendado, ainda não entregue ao
+ * publicador. É o alcance de `invalidateScheduledRenders` e da recomposição
+ * (`SITUACOES_ALCANCADAS` com `laterPostId: null`, em `recompor.ts`): editar a
+ * página refaz a mídia desses posts e de nenhum outro. Publicado, publicando,
+ * falho ou já entregue ao Zernio, a mídia está CONGELADA (PR15-02).
+ */
+export function postVivo(p: Pick<PostLido, 'status' | 'laterPostId'>): boolean {
+  return (p.status === 'DRAFT' || p.status === 'SCHEDULED') && !p.laterPostId
+}
+
+/** A recomposição recusou a linha que não cabe — na chave própria desde C6-01, ou no registro antigo. Uma por arte (PR15-04). */
+export function recusouPorTextoQueNaoCabe(a: ArteLida): boolean {
+  const naoCabe = (v: unknown) => typeof v === 'string' && v.startsWith('TEXTO_NAO_CABE')
+  if (naoCabe(objeto(a.recusaDaRecomposicao)?.errorCode)) return true
+  const antiga = objeto(a.recomposicao)
+  return antiga?.estado === 'recusada' && naoCabe(antiga.errorCode)
+}
+
+/** Uma mídia de um post na peça, e a arte que a descreve. */
+interface Ocorrencia {
+  post: PostLido
+  indice: number
+  arte: ArteLida | null
+  /** A arte casou pela URL EXATA da mídia — só então a efetiva dela descreve ESTA imagem. */
+  porUrl: boolean
+}
+
+/** O instante do PNG ATUAL da arte: a recomposição e o re-render em lugar registram `recomposicao.em`. */
+function instanteDoPng(a: ArteLida): number {
+  const r = objeto(a.recomposicao)
+  const refeita = r && (r.estado === 'feita' || r.estado === 're-renderizada') && typeof r.em === 'string' ? Date.parse(r.em) : NaN
+  return Math.max(tempo(a.createdAt), Number.isFinite(refeita) ? refeita : -Infinity)
+}
+
+interface FinalDaPeca {
+  final: CopyAutoral | null
+  /** O final é o contrato da PÁGINA hoje (e entra na linha do tempo como o último estado). */
+  daPagina: boolean
+  /** Snapshot: o instante do PNG congelado — o que veio depois não chegou à mídia. */
+  corte: number | null
+  congeladaSemProva: boolean
+}
+
+/**
+ * A copy final da peça (PR15-02 da revisão final do Codex, 18/09/2026). A
+ * PÁGINA de hoje só vale quando representa a mídia de CADA post da peça: o post
+ * vivo a segue (a edição refaz a mídia dele); o congelado não.
+ *  1. Só congelados, todos mostrando a MESMA arte pela URL exata: o SNAPSHOT —
+ *     a efetiva dela É a copy daquela imagem (quem troca o PNG regrava o
+ *     registro, PR3-F02), com a história até ali; o que veio depois do PNG sai
+ *     da medida (a edição de depois não chegou à mídia, nem como texto, nem
+ *     como geometria). Não vale com ajuste de VISIBILIDADE do revisor até a
+ *     arte: a efetiva lida das camadas cruas contaria o bloco escondido como
+ *     texto apagado.
+ *  2. Senão, a página (ou a arte mais nova) com PROVA para cada mídia
+ *     congelada de que ela mostra a mesma mensagem de hoje: a arte casada pela
+ *     URL exata tem a mensagem que as camadas de hoje desenhariam (a conta do
+ *     registro da arte, `registroDaCopyDaArte`, sobre as camadas CRUAS — o que
+ *     o revisor escondeu sai dos dois lados); ou o post de uma mídia só carrega
+ *     a cópia do texto DESENHADO (`_copiaDaPagina`, regravada a cada render) e
+ *     ela é o texto de hoje.
+ *  3. Sem snapshot nem prova, a peça sai do denominador
+ *     (`congelada-sem-prova`) — nunca a página de hoje atribuída a um post que
+ *     ela não alcançou.
+ */
+function finalDaPeca(ocorrencias: Ocorrencia[], artes: ArteLida[], pagina: PaginaLida | undefined): FinalDaPeca {
+  const daPagina = pagina ? copyLida(pagina.copyAutoral) : null
+  let candidato = daPagina
+  for (let i = artes.length - 1; i >= 0 && !candidato; i--) candidato = copyLida(objeto(artes[i].copyAutoral)?.efetiva)
+  const semCorte: FinalDaPeca = { final: candidato, daPagina: !!daPagina, corte: null, congeladaSemProva: false }
+  const congeladas = ocorrencias.filter((o) => !postVivo(o.post))
+  if (congeladas.length === 0) return semCorte
+
+  const x = congeladas[0].arte
+  if (x && congeladas.length === ocorrencias.length && congeladas.every((o) => o.porUrl && o.arte?.id === x.id)) {
+    const efetiva = copyLida(objeto(x.copyAutoral)?.efetiva)
+    const corte = instanteDoPng(x)
+    if (efetiva && ajustesDeVisibilidade(artes.filter((a) => tempo(a.createdAt) <= corte)).length === 0) {
+      return { final: efetiva, daPagina: false, corte, congeladaSemProva: false }
+    }
+  }
+
+  const provada = (o: Ocorrencia): boolean => {
+    const desenhada = o.arte && o.porUrl ? copyLida(objeto(o.arte.copyAutoral)?.efetiva) : null
+    if (desenhada) {
+      const hoje = pagina
+        ? (registroDaCopyDaArte({ anterior: o.arte!.copyAutoral, contratoDaPagina: pagina.copyAutoral, camadas: pagina.layers, superficie: 'metrica' }).registro?.efetiva ?? null)
+        : candidato
+      if (hoje && mesmaMensagem(desenhada, hoje)) return true
+    }
+    return (
+      !!pagina &&
+      o.indice === 0 &&
+      o.post.mediaUrls.length <= 1 &&
+      o.post.pageId === pagina.id &&
+      ehCopiaDaPagina(o.post.slotValues) &&
+      lerCamadas(pagina.layers).legivel &&
+      copyIgual(textosDoSlot(o.post.slotValues), textosDaPagina(pagina.layers))
+    )
+  }
+  if (congeladas.every(provada)) return semCorte
+  return { final: null, daPagina: false, corte: null, congeladaSemProva: true }
+}
+
+/**
+ * Agrupa o que foi lido em PEÇAS: uma por página (ou por arte, quando a mídia
  * não tem página), com o original do autor, a copy final, a linha do tempo dos
  * estados e as evidências de correção fora da copy.
+ *
+ * 🔴 Cada MÍDIA do post acha a sua peça (PR15-01 da revisão final do Codex,
+ * 18/09/2026): `SocialPost.generationId` é UM ponteiro e responde só pelo slide
+ * 1 — o carrossel de três páginas do compositor virava uma peça só, e o que
+ * acontecia nos slides 2 e 3 sumia sem exclusão nem aviso. A mídia casa com a
+ * arte pela URL EXATA (a mais recente vence, a regra de `artes-do-post.ts`); a
+ * coluna e o `pageId` do post respondem só pelo slide 1. Slide sem arte nem
+ * página (a foto do acervo, o vídeo) não é peça de copy. Sinal e item de plano
+ * vão a UMA peça só — a da página, a da arte, ou a primeira peça do post —,
+ * senão o sinal que só diz o post contaria uma vez por slide.
  */
 export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
   const artePorId = new Map(l.artes.map((a) => [a.id, a]))
+  const artePorUrl = new Map<string, ArteLida>()
+  for (const a of [...l.artes].sort((x, y) => tempo(x.createdAt) - tempo(y.createdAt))) if (a.resultUrl) artePorUrl.set(a.resultUrl, a)
   const paginaPorId = new Map(l.paginas.map((p) => [p.id, p]))
-  const grupos = new Map<string, { pageId: string | null; posts: PostLido[]; arteDireta: ArteLida | null }>()
-  for (const post of l.posts) {
-    const arte = post.generationId ? (artePorId.get(post.generationId) ?? null) : null
-    const pageId = post.pageId ?? arte?.pageId ?? null
-    const chave = pageId ? `page:${pageId}` : post.generationId ? `gen:${post.generationId}` : `post:${post.id}`
-    const g = grupos.get(chave) ?? { pageId, posts: [], arteDireta: null }
-    g.posts.push(post)
-    if (!pageId && arte) g.arteDireta = arte
+
+  const grupos = new Map<string, { pageId: string | null; ocorrencias: Ocorrencia[]; arteDireta: ArteLida | null }>()
+  const primeiraPecaDoPost = new Map<string, string>()
+  const adicionar = (chave: string, pageId: string | null, o: Ocorrencia) => {
+    const g = grupos.get(chave) ?? { pageId, ocorrencias: [], arteDireta: null }
+    g.ocorrencias.push(o)
+    if (!pageId && o.arte) g.arteDireta = o.arte
     grupos.set(chave, g)
+    if (!primeiraPecaDoPost.has(o.post.id)) primeiraPecaDoPost.set(o.post.id, chave)
   }
+  for (const post of l.posts) {
+    const daColuna = post.generationId ? (artePorId.get(post.generationId) ?? null) : null
+    const midias: Array<string | null> = post.mediaUrls.length ? post.mediaUrls : [null]
+    let achou = false
+    midias.forEach((url, indice) => {
+      const porUrl = url ? (artePorUrl.get(url) ?? null) : null
+      const arte = porUrl ?? (indice === 0 ? daColuna : null)
+      const pageId = porUrl ? porUrl.pageId : indice === 0 ? (post.pageId ?? daColuna?.pageId ?? null) : null
+      if (!arte && !pageId) return
+      achou = true
+      adicionar(pageId ? `page:${pageId}` : `gen:${arte!.id}`, pageId, { post, indice, arte, porUrl: !!porUrl })
+    })
+    // Nada resolvido (render ainda pendente, mídia de fora sem ponteiro): o post é a sua própria peça.
+    if (!achou) adicionar(`post:${post.id}`, null, { post, indice: 0, arte: null, porUrl: false })
+  }
+
+  // As artes de cada peça — deduplicação por página: TODAS as da página numa peça só.
+  const artesPorPagina = new Map<string, ArteLida[]>()
+  for (const a of l.artes) if (a.pageId) (artesPorPagina.get(a.pageId) ?? artesPorPagina.set(a.pageId, []).get(a.pageId)!).push(a)
+  const artesDaPeca = new Map<string, ArteLida[]>()
+  const pecaPorPagina = new Map<string, string>()
+  const pecaPorArte = new Map<string, string>()
+  for (const [chave, g] of grupos) {
+    const artes = (g.pageId ? (artesPorPagina.get(g.pageId) ?? []) : g.arteDireta ? [g.arteDireta] : [])
+      .filter((a, i, xs) => xs.findIndex((x) => x.id === a.id) === i)
+      .sort((a, b) => tempo(a.createdAt) - tempo(b.createdAt))
+    artesDaPeca.set(chave, artes)
+    if (g.pageId) pecaPorPagina.set(g.pageId, chave)
+    for (const a of artes) if (!pecaPorArte.has(a.id)) pecaPorArte.set(a.id, chave)
+  }
+  const pecaDoVinculo = (v: { postId: string | null; pageId: string | null; generationId: string | null }): string | undefined =>
+    (v.pageId != null ? pecaPorPagina.get(v.pageId) : undefined) ??
+    (v.generationId != null ? pecaPorArte.get(v.generationId) : undefined) ??
+    (v.postId != null ? primeiraPecaDoPost.get(v.postId) : undefined)
+  const porPeca = <T extends { postId: string | null; pageId: string | null; generationId: string | null }>(xs: T[]) => {
+    const m = new Map<string, T[]>()
+    for (const x of xs) {
+      const chave = pecaDoVinculo(x)
+      if (chave) (m.get(chave) ?? m.set(chave, []).get(chave)!).push(x)
+    }
+    return m
+  }
+  const sinaisPorPeca = porPeca(l.sinais)
+  const itensPorPeca = porPeca(l.itens)
 
   const pecas: PecaParaMedir[] = []
   for (const [chave, g] of grupos) {
-    // Deduplicação por página: TODAS as artes da página entram numa peça só.
-    const artes = (g.pageId ? l.artes.filter((a) => a.pageId === g.pageId) : g.arteDireta ? [g.arteDireta] : [])
-      .filter((a, i, xs) => xs.findIndex((x) => x.id === a.id) === i)
-      .sort((a, b) => tempo(a.createdAt) - tempo(b.createdAt))
-    const ids = new Set(artes.map((a) => a.id))
-    const postIds = g.posts.map((p) => p.id)
+    const pagina = g.pageId ? paginaPorId.get(g.pageId) : undefined
+    const todas = artesDaPeca.get(chave)!
+    const { final, daPagina, corte, congeladaSemProva } = finalDaPeca(g.ocorrencias, todas, pagina)
+    // Snapshot: a arte que veio depois do PNG congelado não chegou à mídia.
+    const artes = corte == null ? todas : todas.filter((a) => tempo(a.createdAt) <= corte)
+    const posts = [...new Map(g.ocorrencias.map((o) => [o.post.id, o.post])).values()]
+    const postIds = posts.map((p) => p.id)
 
     // O original do AUTOR: o da primeira arte que o gravou.
     let original: CopyAutoral | null = null
@@ -366,19 +582,21 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
         break
       }
     }
-    // A copy final: o contrato da página hoje; sem página, a efetiva da arte mais nova.
-    const pagina = g.pageId ? paginaPorId.get(g.pageId) : undefined
-    let final = pagina ? copyLida(pagina.copyAutoral) : null
-    if (!final) {
-      for (let i = artes.length - 1; i >= 0 && !final; i--) final = copyLida(objeto(artes[i].copyAutoral)?.efetiva)
-    }
 
-    const exclusao: PecaParaMedir['exclusao'] = !original ? 'sem-contrato' : original.origem.autor === 'desconhecido' ? 'autoria-desconhecida' : !final ? 'sem-copy-final' : null
+    const exclusao: PecaParaMedir['exclusao'] = !original
+      ? 'sem-contrato'
+      : original.origem.autor === 'desconhecido'
+        ? 'autoria-desconhecida'
+        : congeladaSemProva
+          ? 'congelada-sem-prova'
+          : !final
+            ? 'sem-copy-final'
+            : null
 
     const ajustesDoRevisor: AjusteDoRevisor[] = artes
       .filter((a) => a.source === 'ajuste-arte' && objeto(a.revisao))
       .map((a) => ({ em: a.createdAt, soDiagramacao: !objeto(a.ajustes) || Object.keys(objeto(a.ajustes)!).length === 0 }))
-    const visibilidade = pagina ? desfechosDaVisibilidade(ajustesDeVisibilidade(artes), pagina.layers) : []
+    const visibilidade = pagina && corte == null ? desfechosDaVisibilidade(ajustesDeVisibilidade(artes), pagina.layers) : []
 
     // A linha do tempo: o original, as efetivas das artes, e a página hoje.
     const estados: EstadoDaCopy[] = []
@@ -394,7 +612,7 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
       if (origem === 'revisor') continue
       estados.push({ em: tempo(a.createdAt), linhas: linhasPorBloco(efetiva), origem })
     }
-    if (final && pagina) {
+    if (final && daPagina) {
       const origem: Record<string, OrigemDaMudanca> = {}
       for (const r of final.revisoes) {
         const o = origemDaRevisao(r, causaDaRevisao(r))
@@ -406,21 +624,17 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     estados.sort((a, b) => a.em - b.em)
 
     // Evidências fora da copy.
-    const ligado = (s: SinalLido) => (s.postId != null && postIds.includes(s.postId)) || (g.pageId != null && s.pageId === g.pageId) || (s.generationId != null && ids.has(s.generationId))
-    const sinais = l.sinais.filter(ligado)
-    const recusasDoCompositor = artes.filter((a) => {
-      const r = objeto(a.recomposicao)
-      return r?.estado === 'recusada' && typeof r.errorCode === 'string' && r.errorCode.startsWith('TEXTO_NAO_CABE')
-    }).length
+    const sinais = (sinaisPorPeca.get(chave) ?? []).filter((s) => corte == null || s.createdAt == null || tempo(s.createdAt) <= corte)
+    const recusasDoCompositor = artes.filter(recusouPorTextoQueNaoCabe).length
     const avisosDoSistema = artes.reduce((t, a) => t + (a.source === 'compositor' && Array.isArray(a.avisos) ? a.avisos.length : 0), 0)
     // Ajuste do revisor que não deixou revisão de copy (mexeu só em corpo,
     // posição, gradiente): é correção de classe revisor mesmo assim.
     const revisoesDoRevisor = (final?.revisoes ?? []).filter((r) => causaDaRevisao(r) === 'revisor')
     const ajustesDoRevisorSemRevisaoDeCopy = ajustesDoRevisor.filter((a) => !revisoesDoRevisor.some((r) => Math.abs(tempo(r.em) - tempo(a.em)) <= JANELA_DO_MESMO_AJUSTE_MS)).length
 
-    const itens = l.itens.filter((it) => (it.postId != null && postIds.includes(it.postId)) || (g.pageId != null && it.pageId === g.pageId) || (it.generationId != null && ids.has(it.generationId)))
+    const itens = itensPorPeca.get(chave) ?? []
     const inicios = [...itens.map((it) => tempo(it.createdAt)), ...(itens.length ? [] : artes.map((a) => tempo(a.createdAt)))].filter(Number.isFinite)
-    const rascunhos = g.posts.map((p) => tempo(p.createdAt)).filter(Number.isFinite)
+    const rascunhos = posts.map((p) => tempo(p.createdAt)).filter(Number.isFinite)
 
     const arteDaVoz = arteDoOriginal ?? artes.find((a) => a.vozNaEscrita != null) ?? null
 
@@ -508,9 +722,7 @@ export function medirPeca(p: PecaParaMedir): MedidaDaPeca {
   let preservada: boolean | null = null
 
   if (comparavel && p.original && p.final) {
-    const o = linhasPorBloco(p.original)
-    const f = linhasPorBloco(p.final)
-    preservada = [...new Set([...Object.keys(o), ...Object.keys(f)])].every((id) => mesmasLinhas(o[id], f[id]))
+    preservada = mesmaMensagem(p.original, p.final)
 
     for (const r of p.final.revisoes) {
       const causa = causaDaRevisao(r)
@@ -567,8 +779,8 @@ export interface QualidadeDaCopy {
   limiar: number
   pecas: number
   comparaveis: number
-  /** Fora do denominador — legado e peça sem copy final. Nunca some. */
-  foraDoDenominador: { semContrato: number; autoriaDesconhecida: number; semCopyFinal: number }
+  /** Fora do denominador — legado, peça congelada sem prova da mídia (PR15-02) e peça sem copy final. Nunca some. */
+  foraDoDenominador: { semContrato: number; autoriaDesconhecida: number; congeladaSemProva: number; semCopyFinal: number }
   fidelidade: { mensagemPreservada: Proporcao; sistemaSemMudarTexto: Proporcao }
   correcoes: { porCausa: Record<CausaDaCorrecao, number>; pecasPorCausa: Record<CausaDaCorrecao, number> }
   indevidas: { pecas: Proporcao; porTipo: Record<TipoDeIndevida, number> }
@@ -626,6 +838,7 @@ export function medirQualidadeDaCopy(medidas: MedidaDaPeca[], opcoes: { limiar?:
     foraDoDenominador: {
       semContrato: medidas.filter((m) => m.exclusao === 'sem-contrato').length,
       autoriaDesconhecida: medidas.filter((m) => m.exclusao === 'autoria-desconhecida').length,
+      congeladaSemProva: medidas.filter((m) => m.exclusao === 'congelada-sem-prova').length,
       semCopyFinal: medidas.filter((m) => m.exclusao === 'sem-copy-final').length,
     },
     fidelidade: {
@@ -718,7 +931,7 @@ function duracao(min: number): string {
 export function linhaDaCopyDoCliente(q: QualidadeDaCopy | null): string | null {
   if (!q || q.pecas === 0) return null
   const fora = q.pecas - q.comparaveis
-  if (q.comparaveis === 0) return `  copy: ${q.pecas} peça(s), todas fora da medida (legado ou sem copy final)`
+  if (q.comparaveis === 0) return `  copy: ${q.pecas} peça(s), todas fora da medida (legado, congelada sem prova ou sem copy final)`
   const indevidas = q.indevidas.porTipo
   const nIndevidas = Object.values(indevidas).reduce((t, n) => t + n, 0)
   return `  copy: fidelidade ${textoDaProporcao(q.fidelidade.mensagemPreservada)}${nIndevidas ? ` · ${nIndevidas} indevida(s)` : ''}${fora ? ` · ${fora} fora da medida` : ''}`
@@ -739,8 +952,9 @@ export function blocoDaQualidadeDaCopy(b: BlocoDaCopy): string | null {
   const partes = ['\n✍️ *Copy da semana* — fidelidade até a agenda']
   if (q && q.pecas > 0) {
     const fora = q.foraDoDenominador
-    const nFora = fora.semContrato + fora.autoriaDesconhecida + fora.semCopyFinal
-    partes.push(`${q.comparaveis} peça(s) comparável(is)${nFora ? ` · ${nFora} fora da medida (${fora.semContrato} sem contrato, ${fora.autoriaDesconhecida} autoria desconhecida, ${fora.semCopyFinal} sem copy final)` : ''}`)
+    const nFora = fora.semContrato + fora.autoriaDesconhecida + fora.congeladaSemProva + fora.semCopyFinal
+    const congeladas = fora.congeladaSemProva ? `, ${fora.congeladaSemProva} congelada(s) sem prova da mídia` : ''
+    partes.push(`${q.comparaveis} peça(s) comparável(is)${nFora ? ` · ${nFora} fora da medida (${fora.semContrato} sem contrato, ${fora.autoriaDesconhecida} autoria desconhecida${congeladas}, ${fora.semCopyFinal} sem copy final)` : ''}`)
     if (q.comparaveis > 0) {
       partes.push(`  mensagem preservada: ${textoDaProporcao(q.fidelidade.mensagemPreservada)}`)
       partes.push(`  sistema sem mudar o texto: ${textoDaProporcao(q.fidelidade.sistemaSemMudarTexto)}`)
