@@ -72,7 +72,9 @@ function fichaDoItem(itemAtualizadoEm: Date | string | undefined, atualizadoEm: 
  * mesma resposta pelo estado.
  *
  * `reaproveitado` diz se a peça devolvida já existia; `retomado`, se a peça
- * que o item tinha foi refeita (job novo, ou Generation nova no lugar dela).
+ * que o item tinha MORREU e foi refeita (job novo, ou Generation nova no lugar
+ * dela) — a que estava viva ou pronta e foi substituída por outro pedido não é
+ * retomada.
  */
 export async function enfileirarComposicaoDoPlanoEm(
   tx: Prisma.TransactionClient,
@@ -121,7 +123,12 @@ export async function enfileirarComposicaoDoPlanoEm(
       // A tabela só produz peça nova onde o item tem caminho até `na-fila`
       // (executável, ou em voo) — o teste da tabela confere isso.
       const criada = await criarPecaDoItem(tx, item.id, spec, data, revisao, decididoPor, autor)
-      return { ...criada, retomado: peca !== 'nenhuma' }
+      // `retomado` só quando a peça que o item tinha MORREU (sumiu, falhou,
+      // job terminal, pronta sem arquivo). Peça viva ou pronta de outro pedido
+      // é SUBSTITUÍDA, não retomada: é a saída recomendada da peça superada e
+      // da chamada vencida, e `compor-leva` diz das retomadas que "tinham
+      // falhado ou se perdido" e não as conta em `enfileiradas` (prova-dev-4).
+      return { ...criada, retomado: peca !== 'nenhuma' && peca !== 'viva' && peca !== 'pronta' }
     }
     default: {
       const arteAtualDoItem = decisao.motivo === 'superada' ? descreverArteAtualDoItem({ generationId: item.generationId, pageIdDoItem: item.pageId, geracao: anterior }) : null

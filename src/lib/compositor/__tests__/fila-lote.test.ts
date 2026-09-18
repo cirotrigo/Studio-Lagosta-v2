@@ -1200,6 +1200,41 @@ describe('pré-revisões C11-1 e C11-1a…1b: a revisão declarada pela chamada,
     expect(retrato()).toEqual(antes)
   })
 
+  it('prova-dev-4, passo 8 — a saída recomendada da peça superada: item PRONTO reprovado e editado pelos serviços de verdade; a peça com itemId NOVO e a itemRevisao atual é CRIADA, não "retomada" (a arte anterior não falhou nem se perdeu)', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g1 = await enfileirarPeca(specV1, chave(L, t1))
+    expect(await rodarComoOCron(g1.jobId)).toBe('DONE')
+    // A fila reaponta o item para `pronto` com a peça (o banco falso não aplica o updateMany condicional dela).
+    marcar('itensDePlano', 'item-1', { status: 'pronto', generationId: g1.generationId, pageId: 'page-1' })
+    const { transicionarItem } = await import('@/lib/planos/plano-service')
+    await transicionarItem({ projectId: 6, planoId: 'plano-1', itemId: 'item-1', para: 'reprovado', motivo: 'Refazer com a copy nova.' })
+    await editar({ copyProposta: COPY_V2 })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'editado', generationId: g1.generationId })
+    const t2 = leitura()
+    expect(t2).not.toBe(t1)
+
+    const nova = await enfileirarPeca(specV2, chave(L, t2, 'seg-v2'))
+    expect(nova.generationId).not.toBe(g1.generationId)
+    // `compor-leva` conta em `enfileiradas` só o `criado`, e diz das `retomadas` que "tinham falhado ou se perdido".
+    expect(nova.lote).toEqual({ loteId: L, itemId: 'seg-v2', desfecho: 'criado', situacao: 'pendente' })
+    expect(banco.jobs.get(nova.jobId)).toMatchObject({ status: 'PENDING', generationId: nova.generationId, payload: { planoRevisao: t2 } })
+    expect(linhasDoJob(nova.jobId)).toEqual([['Costela no bafo'], ['Vem pra cá']])
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: nova.generationId })
+    expect(linha(L, 'seg-v2')).toMatchObject({ generationId: nova.generationId, planoRevisao: t2, tentativas: 1 })
+  })
+
+  it('controle do passo 8: a linha NOVA sobre a peça do item que FALHOU continua "retomada" — a peça que o item tinha morreu e voltou à fila', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g1 = await enfileirarPeca(specV1, chave(L, t1))
+    falhar(g1)
+    await editar({ copyProposta: COPY_V2 })
+    const g2 = await enfileirarPeca(specV2, chave(L, leitura(), 'seg-v2'))
+    expect(g2.generationId).not.toBe(g1.generationId)
+    expect(g2.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+  })
+
   it('C11-1b: a legenda não entra na revisão — a equipe muda só a legenda e a leva repetida retoma a peça pela MESMA chave', async () => {
     criarItem()
     const t1 = leitura()

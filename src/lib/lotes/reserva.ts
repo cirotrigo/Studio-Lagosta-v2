@@ -63,8 +63,9 @@ export interface EntradaDaReserva {
    * plano) decide de novo sobre o que relê sob ela (R04; desde a revisão final,
    * pela tabela `decidirNoItemDoPlano`, que nem usa a `recuperacao`), e compara
    * specs com `mesmoPedidoDoLote`, nunca cru (R03). `retomado` diz que a peça
-   * que o item JÁ tinha foi refeita — inclusive quando esta linha acabou de
-   * nascer e adotou a peça (R05).
+   * que o item JÁ tinha MORREU e foi refeita — inclusive quando esta linha
+   * acabou de nascer e adotou a peça (R05). Peça viva ou pronta substituída por
+   * outro pedido não é retomada: a linha nova que a substitui é `criado`.
    */
   criar: (tx: ClienteDaTransacao, contexto: { recuperacao: RecuperacaoDaReserva | null }) => Promise<{ generationId: string; jobId: string; reaproveitado?: boolean; retomado?: boolean }>
   /**
