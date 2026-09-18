@@ -10561,3 +10561,66 @@ aplicada**.
   de antes.
 - **Pedido desatualizado (`chamada-vencida`) e campanha/escopo fora do token**:
   mantidos, no PR 11.
+
+**Da revisão FINAL do Codex sobre 7755e7e9 (BLOQUEADO, R12-01…R12-06, 18/09/2026):**
+
+- 🔴 **R12-01 — a miniatura só é a arte da página na VERSÃO VISUAL que o PNG
+  desenhou.** `thumbnailEhAtual` comparava só as camadas com o
+  `layersSnapshot`; o PATCH que muda só a largura, a altura ou o fundo (camadas
+  e miniatura iguais) passava, e o rascunho nascia RENDERED com o PNG velho.
+  Hoje quem renderiza a página (`renderPageAndRegister` e a recomposição) grava
+  `fieldValues.versaoRenderizada` (o `versaoDaPagina`: dimensões, fundo e
+  camadas) no MESMO patch da URL, e o lote compara com a versão da página agora.
+  Arte sem o registro (renderizada antes disto) sai PENDING e o cron redesenha —
+  refazer é barato. **Escritor novo de PNG de página grava a versão junto.**
+- 🔴 **R12-02 — efeito que "nunca lança" precisa DIZER que não terminou.** A
+  captura engole o erro do banco e devolve `null`; a pasta da semana, a
+  refilagem e o catálogo das artes engolem e devolvem vazio — e o lote
+  carimbava `efeitosDoAgendamentoEm` por cima, então a repetição nunca mais
+  refazia o sinal, a pasta ou a arte que faltou. Hoje os sinais devolvem
+  `true`/`false` (só o `true` afirmado conta), `Movimentacao`, `Refilagem` e
+  `RegistroDeArtes` trazem `falhou`, `efeitosDoAgendamento` devolve `falhas`
+  (`agendarPost` ignora — lá não há repetição a orientar), e o lote só carimba
+  com a lista vazia, avisando o que faltou. A reconciliação do item do plano
+  deixa o erro do banco subir (engolido, virava aviso e carimbo, e o item ficava
+  `pronto` para sempre). E `fecharDicaDeCopyDoItem` devolve `erro` quando o
+  desfecho da dica não foi gravado — antes voltava `fechada`, e a rota de
+  desfecho respondia `ok: true`. **Quem carimba "terminou" sobre funções que
+  engolem erro lê o retorno delas.**
+  ⚠️ Fica sem cobertura, por degradar sem perder: `slideDaPagina` e
+  `temaDaPagina` (a ordem e o nome caem no fallback) e o `ensurePostGeneration`
+  dentro do catálogo (cai no registro `post-midia`).
+- **R12-03 — objeto aninhado no catálogo MCP é `.strict()` onde a chave errada
+  muda o resultado.** `definirTool` fecha só a raiz, e o zod aninhado DESCARTA a
+  chave desconhecida: `horario` num item de `agendar-leva` sumia e o rascunho
+  nascia no horário da composição. Varredura: no diff deste PR só os itens de
+  `agendar-leva`. ⚠️ Fora dele continuam descartando em silêncio: `bloco`,
+  `camadaExtra`, `preferencias` e o arranjo fixado de `compor-arte`, e os itens
+  de `compor-leva`.
+- **R12-04 — a conta de produção da prova É a decisão do serviço.** Ela
+  reimplementava a decisão pela metade (sem item do plano, sem mídia em outro
+  post, sem post de outro item). `agendarItensDoLote` aceita `leitor` — só com
+  `simular: true` (`LEITOR_SO_EM_SIMULACAO`, 400) — e a prova passa a transação
+  `READ ONLY`: a garantia de só-leitura continua sendo do banco. Sem a migration
+  do PR 12 aplicada, a conta por item não é feita.
+- **R12-05 — o horário do rascunho apagado é o do pedido ORIGINAL, ou nenhum.**
+  A linha guarda só o hash do pedido; o pedido desta chamada só prova o horário
+  quando tem o MESMO hash. Com outro horário (19h apagado, 21h pedido) saía o
+  21h como identificação do rascunho removido; hoje sai `quando: null`, e o
+  `quando` da spec também não serve.
+- **R12-06 — o post que o lote devolve nem sempre é rascunho.** O lote adota
+  post agendado, e a repetição devolve o post como a equipe o deixou
+  (aprovado, publicado). Cada item concluído traz `estadoDoPost` (`rascunho`,
+  `agendado`, `publicando`, `publicado`, `falha-na-publicacao`) e
+  `entregueParaPublicar` quando o post já tem `laterPostId`; a nota de
+  `agendar-leva` só promete "nada publica até aprovar-rascunhos" para o que é
+  rascunho. O aviso de adoção e o `POST_DE_OUTRO_ITEM` deixaram de chamar post
+  agendado de rascunho.
+- Provas: `agendar-itens.test.ts` (as capturas, a refilagem e a pasta REAIS com
+  o banco falso caindo; o catálogo; o item do plano; o leitor somente leitura
+  que lança em escrita e no `db` global; o rascunho apagado com outro horário;
+  o post agendado adotado e aprovado), `efeitos-do-agendamento-falha.test.ts`
+  (a dica de copy até o `registrarDesfecho`), `artes-do-post-falha.test.ts`,
+  `versao-renderizada.test.ts`, `agendamento.test.ts` e `agendar-leva.test.ts`
+  (a porta real e a nota). Cada correção desfeita por mutação faz a sua prova
+  falhar.
