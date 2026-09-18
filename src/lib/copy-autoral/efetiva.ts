@@ -7,9 +7,10 @@
  *
  * Como as camadas viram blocos:
  *  - o papel de cada camada sai de `papelDaCamada` (metadata do compositor,
- *    id ou nome); camadas do mesmo papel se atribuem aos blocos daquela
- *    função na ORDEM vertical (o serviço com duas linhas vira `servico` e
- *    `servico-2` na página, e volta para os dois blocos de serviço em ordem);
+ *    id ou nome); com UM bloco da função no original, ele leva TODAS as camadas
+ *    dela, juntas de cima para baixo (o compositor reparte o serviço em
+ *    `servico` e `servico-2`, e ele volta a ser um bloco só — PR3-R8-02); com
+ *    vários, uma camada por bloco na ORDEM vertical;
  *  - `headline2` é a SEGUNDA VOZ da manchete (o compositor tira a última linha
  *    do bloco para ela): as linhas dela voltam ao bloco `headline`, e a
  *    posição vira `estilo.linhasNaVoz2` — declarada, como o contrato pede;
@@ -205,6 +206,20 @@ function linhasDaCamada(l: Layer): string[] {
   return String(l.content ?? '').split('\n')
 }
 
+/**
+ * As linhas de um bloco desenhado em VÁRIAS camadas, juntas de cima para baixo.
+ * Quando são exatamente as linhas do bloco em outra ordem, vale a ordem do
+ * bloco: quem reordenou foi o arranjo (o horário vai ao grupo do relógio, o
+ * endereço ao do alfinete), não quem escreveu. Numa camada só a ordem é a da
+ * camada — ali reordenar é edição.
+ */
+function linhasRepartidas(doBloco: string[], porCamada: string[][]): string[] {
+  const juntas = porCamada.flat()
+  if (porCamada.length < 2) return juntas
+  const ordenar = (l: string[]) => JSON.stringify([...l].sort())
+  return ordenar(juntas) === ordenar(doBloco) ? [...doBloco] : juntas
+}
+
 /** As camadas de texto agrupadas por função, de cima para baixo. */
 function camadasPorFuncao(camadas: Layer[], opcoes: { incluirOcultas?: boolean } = {}): { porFuncao: Map<FuncaoDoBloco, Layer[]>; voz2: Layer[]; soltas: Layer[] } {
   const porFuncao = new Map<FuncaoDoBloco, Layer[]>()
@@ -290,13 +305,17 @@ export function tentarCopyEfetivaDasCamadas(original: CopyAutoral, camadas: Laye
 export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): CopyEfetiva {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
   const lacunas: string[] = []
-  const usadas = new Set<string>()
+  // Por OBJETO, não por id: o compositor pode gravar duas camadas com o mesmo id (o contador de
+  // `${papel}-${n}` recomeça em cada grupo), e por id a segunda sumia da leitura.
+  const usadas = new Set<Layer>()
   // Os blocos livres são vinculados em CONJUNTO (ver `vincularExtras`), antes
   // de qualquer leitura por papel — e as camadas que eles tomam ficam
   // reservadas para eles.
   const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas)
   lacunas.push(...extras.ambiguos)
-  for (const c of extras.vinculos.values()) usadas.add(c.id)
+  for (const c of extras.vinculos.values()) usadas.add(c)
+  const blocosPorFuncao = new Map<FuncaoDoBloco, number>()
+  for (const b of original.blocos) blocosPorFuncao.set(b.funcao, (blocosPorFuncao.get(b.funcao) ?? 0) + 1)
   const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
     if (b.funcao === 'livre') {
       // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id
@@ -310,19 +329,22 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
       }
       return { ...b, linhas: linhasDaCamada(camada) }
     }
-    const fila = porFuncao.get(b.funcao) ?? []
-    const camada = fila.find((c) => !usadas.has(c.id))
-    if (!camada) {
+    const livres = (porFuncao.get(b.funcao) ?? []).filter((c) => !usadas.has(c))
+    // Bloco ÚNICO da função leva TODAS as camadas dela (PR3-R8-02): o compositor
+    // reparte um bloco em `servico` e `servico-2` (um texto por linha do arranjo),
+    // e a 2ª virava outro bloco `servico` — a recomposição morria em "papel repetido".
+    const camadas = (blocosPorFuncao.get(b.funcao) ?? 0) === 1 ? livres : livres.slice(0, 1)
+    if (camadas.length === 0) {
       lacunas.push(`o bloco "${b.id}" (${b.funcao}) não foi desenhado`)
       return comSegundaVoz({ ...b, linhas: [] }, [])
     }
-    usadas.add(camada.id)
-    let linhas = linhasDaCamada(camada)
+    for (const c of camadas) usadas.add(c)
+    let linhas = linhasRepartidas(b.linhas, camadas.map(linhasDaCamada))
     let naVoz2: number[] = []
     if (b.funcao === 'headline') {
-      const segunda = voz2.find((c) => !usadas.has(c.id))
+      const segunda = voz2.find((c) => !usadas.has(c))
       if (segunda) {
-        usadas.add(segunda.id)
+        usadas.add(segunda)
         const daVoz2 = linhasDaCamada(segunda)
         const inicio = linhas.length
         linhas = [...linhas, ...daVoz2]
@@ -332,7 +354,7 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     return comSegundaVoz({ ...b, linhas }, naVoz2)
   })
 
-  const restantes = [...soltas, ...[...porFuncao.values()].flat(), ...voz2].filter((c) => !usadas.has(c.id))
+  const restantes = [...soltas, ...[...porFuncao.values()].flat(), ...voz2].filter((c) => !usadas.has(c))
   let ordem = blocos.reduce((m, b) => Math.max(m, b.ordem), -1) + 1
   for (const c of restantes) {
     const papel = papelDaCamada(c)
