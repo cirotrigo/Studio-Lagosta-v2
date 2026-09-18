@@ -296,12 +296,15 @@ export function revisaoPosicional(
   motivo: string,
 ): ResultadoDaRevisaoPosicional {
   const emOrdem = blocosEmOrdem(contrato)
-  const comTexto = emOrdem.filter((b) => b.linhas.length > 0)
+  // "Com texto" é o MESMO critério do espelho do item (`espelhoDoContrato`, PR3-F06):
+  // bloco de linhas só em branco fica fora da lista e fica intacto no contrato.
+  const temTexto = (b: BlocoAutoral) => b.linhas.join('\n').trim() !== ''
+  const comTexto = emOrdem.filter(temTexto)
   if (comTexto.length !== lista.length) {
     return { descartado: `a edição posicional mudou o número de blocos com texto (${comTexto.length} → ${lista.length}) e não há como saber qual bloco é qual` }
   }
   const novos: BlocoAutoral[] = emOrdem.map((b) => {
-    if (b.linhas.length === 0) return b
+    if (!temTexto(b)) return b
     const linhas = lista[comTexto.indexOf(b)].split('\n')
     const { estilo: estiloAntigo, ...semEstilo } = b
     const voz2 = estiloAntigo?.linhasNaVoz2?.filter((i) => i < linhas.length) ?? []
