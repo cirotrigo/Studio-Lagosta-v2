@@ -823,13 +823,16 @@ export function copyComCaixaDaMarca(copy: string[], brand: BrandContext | null):
   const nomesDaMarca = brand?.projectName ? [brand.projectName] : []
   // A QUEBRA escrita pelo autor é contrato (F1): o colapso de espaços vale
   // dentro de cada linha, nunca sobre o "\n" — antes ele apagava a quebra
-  // antes de a copy chegar ao prompt.
+  // antes de a copy chegar ao prompt. A linha VAZIA interna também é do autor
+  // (o respiro de "Almoço\n\nem família", que o contrato permite): ela passa
+  // intacta (PR5-09 da revisão final do Codex, 18/09/2026). As bordas do bloco
+  // já chegam aparadas por quem monta a copy (`startArtGeneration`).
   return copy.map((b, i) =>
     b
       .split('\n')
       .map((linha) => linha.replace(/[ \t]+/g, ' ').trim())
-      .filter((linha) => linha.length > 0)
       .map((limpo) => {
+        if (!limpo) return limpo
         if (caixaDaMarca === 'natural') return paraCaixaNatural(limpo, nomesDaMarca)
         if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(limpo)
         return limpo

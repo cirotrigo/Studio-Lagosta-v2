@@ -93,8 +93,13 @@ export interface ConferenciaDaCopy {
 
 export interface RegistroDaCopyNaArte {
   original: CopyAutoral
-  /** Os blocos como foram ENVIADOS ao modelo de imagem (caixa da marca aplicada, colchetes fora). */
-  enviada: string[]
+  /**
+   * Os blocos como foram ENVIADOS ao modelo de imagem, lidos do PROMPT que
+   * saiu (`enviadaNoPrompt`). Ausente quando o prompt não permite dizer — o
+   * prompt pronto de quem chamou, um molde que reescreve o bloco, a geração
+   * que nem chegou a montar o prompt —, e a lacuna diz por quê.
+   */
+  enviada?: string[]
   comparavel: boolean
   lacunas: string[]
   conferencia?: ConferenciaDaCopy
@@ -107,8 +112,67 @@ export function textoEnviadoDoContrato(copy: CopyAutoral): string[] {
     .map((b) => b.linhas.join('\n'))
 }
 
-export function registroParaIA(original: CopyAutoral, enviada: string[], lacunas: string[] = []): RegistroDaCopyNaArte {
-  return { original, enviada, comparavel: copyComparavel(original), lacunas: [LACUNA_SEM_CAMADAS, ...lacunas] }
+export function registroParaIA(original: CopyAutoral, enviada: string[] | null, lacunas: string[] = []): RegistroDaCopyNaArte {
+  return { original, ...(enviada ? { enviada } : {}), comparavel: copyComparavel(original), lacunas: [LACUNA_SEM_CAMADAS, ...lacunas] }
+}
+
+/** A lacuna do registro criado ANTES de o prompt existir (na criação da Generation, antes do runner). */
+export const LACUNA_PROMPT_AINDA_NAO_MONTADO = 'o texto enviado ao modelo só é conhecido quando o prompt é montado'
+
+/**
+ * O que o prompt que SAIU carrega de cada bloco (PR5-10 da revisão final do
+ * Codex, 18/09/2026): `enviada` era gravada como a transformação que o
+ * sistema APLICARIA à copy, mas nem todo caminho a aplica — o prompt pronto de
+ * quem chamou vai verbatim, e os moldes e o prompt montado por código colapsam
+ * espaços (e com eles a quebra). A comparação escrita × enviada × lida
+ * atribuía ao gerador uma diferença que nasceu no registro.
+ *
+ * `formas` são as grafias possíveis de cada bloco, em ordem de preferência
+ * (a da caixa da marca, a crua…); cada uma vale também com os espaços
+ * colapsados. O primeiro que o prompt CONTÉM é o enviado. Bloco que não
+ * aparece em forma nenhuma torna o conjunto indeterminável: `enviada` fica
+ * `null` e a lacuna diz qual bloco — nunca se grava um palpite.
+ */
+export function enviadaNoPrompt(prompt: string | null | undefined, formas: string[][]): { enviada: string[] | null; lacuna: string | null } {
+  if (!prompt) return { enviada: null, lacuna: 'o prompt enviado não foi registrado: o texto enviado ao modelo não é determinável' }
+  const total = Math.max(0, ...formas.map((f) => f.length))
+  const enviada: string[] = []
+  for (let i = 0; i < total; i++) {
+    const candidatas = formas.flatMap((f) => (typeof f[i] === 'string' ? [f[i], f[i].replace(/\s+/g, ' ').trim()] : [])).filter((c) => c.length > 0)
+    const achada = candidatas.find((c) => prompt.includes(c))
+    if (achada === undefined) {
+      const exemplo = (formas.find((f) => typeof f[i] === 'string')?.[i] ?? '').replace(/\s+/g, ' ').slice(0, 40)
+      return { enviada: null, lacuna: `o bloco ${i + 1} ("${exemplo}") não aparece no prompt enviado como veio: o texto enviado ao modelo não é determinável` }
+    }
+    enviada.push(achada)
+  }
+  return { enviada, lacuna: null }
+}
+
+/** O registro com o `enviada` lido do prompt (ou a lacuna, quando não dá para dizer). */
+export function comEnviada(registro: RegistroDaCopyNaArte, lido: { enviada: string[] | null; lacuna: string | null }): RegistroDaCopyNaArte {
+  const { enviada: _antes, ...resto } = registro
+  const lacunas = resto.lacunas.filter((l) => l !== LACUNA_PROMPT_AINDA_NAO_MONTADO)
+  return { ...resto, ...(lido.enviada ? { enviada: lido.enviada } : {}), lacunas: lido.lacuna ? [...lacunas, lido.lacuna] : lacunas }
+}
+
+/**
+ * O contrato da Generation de ORIGEM de uma melhoria — só quando a imagem
+ * melhorada É a arte daquela Generation (PR5-08 da revisão final do Codex,
+ * 18/09/2026). Melhorar o slide 2 pela agenda manda o `generationId` do post
+ * (a arte do slide 1) com a URL do slide 2; o serviço já marca
+ * `skipTextVerification` e descarta os textos esperados, e o contrato tem de
+ * cair junto — senão a melhoria de B gravava a copy autoral de A como a sua,
+ * e ela seguia pela cadeia. Sem o contrato certo, a ausência é DITA.
+ */
+export function contratoDaOrigemDaMelhoria(fieldValues: unknown, opcoes: { outraImagem: boolean }): { contrato: CopyAutoral | null; aviso: string | null } {
+  const r = fieldValues && typeof fieldValues === 'object' && !Array.isArray(fieldValues) ? (fieldValues as Record<string, unknown>).copyAutoral : null
+  const contrato = r && typeof r === 'object' && !Array.isArray(r) ? lerCopyAutoral((r as Record<string, unknown>).original).copy : null
+  if (!contrato) return { contrato: null, aviso: null }
+  if (opcoes.outraImagem) {
+    return { contrato: null, aviso: 'a imagem melhorada é outro slide do post: o contrato da copy da Generation de origem descreve outra imagem e não foi herdado' }
+  }
+  return { contrato, aviso: null }
 }
 
 export function comConferencia(registro: RegistroDaCopyNaArte, conferencia: ConferenciaDaCopy): RegistroDaCopyNaArte {

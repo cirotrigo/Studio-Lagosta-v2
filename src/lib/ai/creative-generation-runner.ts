@@ -27,7 +27,7 @@ import { loadBrandContext } from '@/lib/brand/brand-context'
 import { getBrandReferenceCard } from '@/lib/ai/brand-reference-card'
 import { renderTypeSpecimen } from '@/lib/ai/type-specimen'
 import { verifyImageTexts, type TextCheckResult } from '@/lib/ai/creative-text-verification'
-import { comConferencia, conferenciaDoCheck, registroParaIA, type CopyAutoral } from '@/lib/copy-autoral'
+import { comConferencia, comEnviada, conferenciaDoCheck, enviadaNoPrompt, registroParaIA, type CopyAutoral } from '@/lib/copy-autoral'
 import {
   buildArtePrompt,
   buildImagePromptViaLLM,
@@ -1524,8 +1524,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       // registro diz isso em vez de fingir uma efetiva.
       ...(args.copyAutoral
         ? {
+            // `enviada` é lida do PROMPT que saiu (PR5-10): o prompt pronto de
+            // quem chamou vai verbatim, e os moldes colapsam espaços — gravar a
+            // caixa da marca como enviada atribuía ao gerador uma diferença que
+            // nasceu no registro.
             copyAutoral: comConferencia(
-              registroParaIA(args.copyAutoral, copyComCaixaDaMarca(args.copy, brand)),
+              comEnviada(registroParaIA(args.copyAutoral, null), enviadaNoPrompt(promptUsado, [copyComCaixaDaMarca(args.copy, brand), args.copy])),
               conferenciaDoCheck(ultimoCheck, ultimoCheck ? 'copy' : `nenhuma (${String(textCheckInfo.textCheckReason ?? 'a conferência não rodou')})`),
             ),
           }

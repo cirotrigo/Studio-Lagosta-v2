@@ -90,7 +90,7 @@ async function main() {
   const { mapearContratoParaCampos } = await import('../src/lib/planos/execucao')
   const { camposDeTextoDaPagina } = await import('../src/lib/planos/executar-plano')
   const { startArtGeneration } = await import('../src/lib/ai/creative-generation-service')
-  const { lerCopyAutoral, copyEfetivaDasCamadas, VERSAO_DO_CONTRATO, LACUNA_SEM_CAMADAS } = await import('../src/lib/copy-autoral')
+  const { lerCopyAutoral, copyEfetivaDasCamadas, VERSAO_DO_CONTRATO, LACUNA_SEM_CAMADAS, LACUNA_PROMPT_AINDA_NAO_MONTADO } = await import('../src/lib/copy-autoral')
   const { copyDaArte } = await import('../src/lib/mcp/catalogo/ver-geracao-retorno')
   const { lerCamadas } = await import('../src/lib/posts/page-layers')
   const { del } = await import('@vercel/blob')
@@ -217,10 +217,11 @@ async function main() {
     const fvIA = (genIA.fieldValues ?? {}) as Record<string, unknown>
     const regIA = (fvIA.copyAutoral ?? null) as Record<string, unknown> | null
     conferir('a Generation de IA nasce PROCESSING (não enfileirada pela prova) com o registro do contrato', genIA.status === 'PROCESSING' && !!regIA && JSON.stringify(lerCopyAutoral(regIA.original).copy) === JSON.stringify(contrato2), regIA ? Object.keys(regIA).join(',') : 'sem registro')
-    conferir('a copy ENVIADA é derivada do contrato: blocos com texto, em ordem, quebra do autor preservada, colchetes fora', JSON.stringify(regIA?.enviada) === JSON.stringify(['Milk-shake\nem dobro', 'Peça criada pela prova de integração.', 'Vem pra cá', 'Ter a dom · 11h às 23h']), JSON.stringify(regIA?.enviada))
+    // A copy derivada do contrato é a régua (slotValues); o `enviada` só existe depois que o runner monta o prompt (PR5-10).
+    conferir('a copy derivada do contrato vai para a régua (blocos com texto, em ordem, quebra do autor, colchetes fora) e o registro da CRIAÇÃO não declara enviada', JSON.stringify(Object.values((fvIA.slotValues ?? {}) as Record<string, string>)) === JSON.stringify(['Milk-shake\nem dobro', 'Peça criada pela prova de integração.', 'Vem pra cá', 'Ter a dom · 11h às 23h']) && !('enviada' in (regIA ?? {})) && (regIA?.lacunas as string[] | undefined)?.includes(LACUNA_PROMPT_AINDA_NAO_MONTADO) === true, JSON.stringify({ slot: fvIA.slotValues, enviada: regIA?.enviada }))
     conferir('a lacuna das camadas é DITA e o slotValues (régua) leva a quebra', Array.isArray(regIA?.lacunas) && (regIA!.lacunas as string[])[0] === LACUNA_SEM_CAMADAS && (fvIA.slotValues as Record<string, string>)?.bloco1 === 'Milk-shake\nem dobro', JSON.stringify(regIA?.lacunas).slice(0, 120))
     const lidaIA = copyDaArte(fvIA)
-    conferir('ver-geracao: comparado por VISÃO e ainda NÃO comparável (a conferência não rodou)', !!lidaIA && lidaIA.comparadoPor === 'visao' && lidaIA.comparavel === false && JSON.stringify(lidaIA.enviada) === JSON.stringify(regIA?.enviada), JSON.stringify({ por: lidaIA?.comparadoPor, comparavel: lidaIA?.comparavel }))
+    conferir('ver-geracao: ainda NÃO comparável (nem prompt nem conferência)', !!lidaIA && lidaIA.comparavel === false && lidaIA.enviada === undefined, JSON.stringify({ por: lidaIA?.comparadoPor, comparavel: lidaIA?.comparavel }))
     const erroDe = async (fn: () => Promise<unknown>): Promise<{ code?: string; message: string } | null> => { try { await fn(); return null } catch (e) { return e as { code?: string; message: string } } }
     const antesDaRecusa = await db.generation.count({ where: { projectId: PROJETO } })
     const div = await erroDe(() => startArtGeneration({ projectId: PROJETO, track: 'arte', copy: ['outro texto'], copyAutoral: contrato2, formato: 'story', referencias: [{ role: 'subject', url: arte.url } as never], actorClerkId: dono.clerkId, canal: 'claude-code' }))

@@ -39,7 +39,7 @@ import type {
 } from '@/lib/ai/creative-generation-runner'
 import type { TemplateType } from '@prisma/client'
 import { semColchetes } from '@/lib/compositor/destaques'
-import { identidadeDoContrato, lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
+import { identidadeDoContrato, LACUNA_PROMPT_AINDA_NAO_MONTADO, lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -503,7 +503,10 @@ export async function startArtGeneration(
         slotValues,
         // F1: o contrato do autor e o que vai ao modelo, lado a lado; a
         // conferência por visão entra como `conferencia` quando o runner termina.
-        ...(contrato ? { copyAutoral: registroParaIA(contrato, copy) } : {}),
+        // O `enviada` NÃO entra aqui: o prompt ainda não existe, e o runner o lê
+        // do prompt que sair (PR5-10). A lacuna fica até lá — inclusive se a
+        // geração falhar antes de montar o prompt.
+        ...(contrato ? { copyAutoral: registroParaIA(contrato, null, [LACUNA_PROMPT_AINDA_NAO_MONTADO]) } : {}),
         pedidoHash,
         formato: input.formato,
         referencias,

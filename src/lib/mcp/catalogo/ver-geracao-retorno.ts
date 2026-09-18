@@ -21,7 +21,7 @@ export interface CopyDaArte {
   /** Por onde a comparação é possível: `camadas` (a efetiva lida da página) ou `visao` (a transcrição da arte de IA). */
   comparadoPor?: 'camadas' | 'visao'
   original: Array<{ id: string; funcao: string; linhas: string[] }>
-  /** Via de IA/melhoria: o texto como FOI ao modelo de imagem (caixa da marca aplicada). */
+  /** Via de IA/melhoria: o texto como FOI ao modelo de imagem, lido do prompt que saiu; ausente quando o prompt não deixa dizer (a lacuna explica). */
   enviada?: string[]
   desenhada: Array<{ id: string; funcao: string; linhas: string[] }>
   /** Via de IA/melhoria: o que a visão leu, o que faltou, se passou. */
@@ -56,7 +56,9 @@ export function copyDaArte(fieldValues: Record<string, unknown> | null | undefin
         ...(Array.isArray(c.grafiaDivergente) && c.grafiaDivergente.length > 0 ? { grafiaDivergente: c.grafiaDivergente as Array<{ esperado: string; lido: string }> } : {}),
       }
     : null
-  const porVisao = !efetiva && !!enviada
+  // Sem `enviada` (o prompt não deixou dizer o que foi — PR5-10) a comparação
+  // continua sendo por visão quando a conferência rodou.
+  const porVisao = !efetiva && (!!enviada || !!conferencia)
   return {
     comparavel: r.comparavel === true && (!!efetiva || (porVisao && !!conferencia && conferencia.passou !== null)),
     ...(efetiva ? { comparadoPor: 'camadas' as const } : porVisao ? { comparadoPor: 'visao' as const } : {}),

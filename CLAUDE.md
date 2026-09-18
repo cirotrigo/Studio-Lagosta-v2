@@ -8236,10 +8236,23 @@ teste: `planos/execucao.ts` (`mapearContratoParaCampos`, `papelDoCampo`),
   efetiva, comparavel, lacunas }`. `ver-geracao` mostra.
 - 🔴 **Na via de IA não há camada, e o registro DIZ isso em vez de fingir uma
   efetiva** (`registro-da-arte.ts`): `original` (o contrato), `enviada` (os
-  blocos como FORAM ao modelo de imagem — caixa da marca aplicada, colchetes
-  fora), `conferencia` (o que a visão leu, o que faltou, se passou, a régua) e a
-  lacuna `LACUNA_SEM_CAMADAS`. `ver-geracao` devolve `comparadoPor: 'visao'` e
-  a arte só é `comparavel` quando a conferência RODOU (`passou !== null`).
+  blocos como FORAM ao modelo de imagem), `conferencia` (o que a visão leu, o
+  que faltou, se passou, a régua) e a lacuna `LACUNA_SEM_CAMADAS`.
+  `ver-geracao` devolve `comparadoPor: 'visao'` e a arte só é `comparavel`
+  quando a conferência RODOU (`passou !== null`).
+  🔴 **`enviada` é LIDA do prompt que saiu, nunca a transformação que o sistema
+  aplicaria** (`enviadaNoPrompt`, PR5-10 da revisão final do Codex, 18/09/2026):
+  o `finalPrompt` de quem chamou vai verbatim, e o prompt montado por código
+  (`buildArtePrompt`, os moldes das portas, o `[TEXTO EXATO]` da melhoria)
+  colapsa espaços — e com eles a quebra. Gravar a caixa da marca como enviada
+  punha na conta do gerador uma diferença nascida no registro. Cada bloco é
+  procurado no prompt (forma da marca, forma crua, cada uma também com espaços
+  colapsados); bloco que não aparece deixa `enviada` AUSENTE com a lacuna
+  dizendo qual. A criação da Generation não conhece o prompt: grava o registro
+  sem `enviada` e com `LACUNA_PROMPT_AINDA_NAO_MONTADO`, que o runner troca
+  (`comEnviada`); na melhoria o prompt exato chega por
+  `improveCreative.aoMontarPrompt`. Sem `enviada`, `ver-geracao` segue
+  comparando por visão quando a conferência rodou.
 - **Com `copyAutoral`, `startArtGeneration` deriva a copy do contrato** (blocos
   com texto, em ordem, linhas do autor unidas por quebra) e RECUSA `copy` que
   divirja dele (`COPY_DIVERGE_DO_CONTRATO`). O contrato viaja nos args do
@@ -8247,7 +8260,12 @@ teste: `planos/execucao.ts` (`mapearContratoParaCampos`, `papelDoCampo`),
   criação (`fieldValuesPreservando`).
 - 🔴 **`copyComCaixaDaMarca` preserva a QUEBRA do autor**: o colapso de espaços
   vale dentro de cada linha, nunca sobre o "\n" — antes ele apagava a quebra
-  antes de a copy chegar ao prompt.
+  antes de a copy chegar ao prompt. A linha VAZIA interna ("Almoço", "", "em
+  família" — o contrato permite) também passa: o filtro de linha vazia apagava
+  o respiro do autor antes do diretor de arte (PR5-09). ⚠️ Os caminhos de
+  FALLBACK (`buildArtePrompt`, os moldes das portas, o `[TEXTO EXATO]` da
+  melhoria) continuam colapsando a quebra — o prompt deles não foi mexido; o
+  registro diz isso em `enviada`.
 - **A melhoria PROPAGA o contrato pela cadeia como a régua** (`copyAutoral.original`
   da arte de origem). Em `refinar`, copy trocada pelo pedido vira REVISÃO
   EXPLÍCITA de `claude` com o pedido como motivo (`revisaoPosicional`, a mesma
@@ -8256,6 +8274,14 @@ teste: `planos/execucao.ts` (`mapearContratoParaCampos`, `papelDoCampo`),
   (`aplicarCaixaDaOrigem`) NÃO conta como revisão: bloco igual ao do contrato a
   menos de caixa/acento mantém as linhas do autor. Gravado no sucesso, na falha
   de cobrança e na falha.
+  🔴 **Só quando a imagem melhorada É a arte daquela Generation**
+  (`contratoDaOrigemDaMelhoria`, PR5-08): melhorar o slide 2 pela agenda manda o
+  `generationId` do post (a arte do slide 1) com a URL do slide 2 — o serviço
+  marca `skipTextVerification` e descarta os textos esperados, e o contrato cai
+  junto. Sem isso a melhoria de B gravava a copy autoral de A como a sua e a
+  levava pela cadeia. A ausência é dita (`fieldValues.copyAutoralNaoHerdada`).
+  Tudo que se lê da Generation de origem é de UMA imagem: dado novo que a
+  melhoria herde dela passa pelo mesmo portão.
 - **`conferir-arte` devolve a metade que faltava**: `textoAMais` (com dado é
   alerta), `grafiaDivergente` e a `copy` da arte quando ela tem contrato —
   avisa, nunca veta.

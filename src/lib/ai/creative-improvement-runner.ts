@@ -52,7 +52,7 @@ import {
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
 import type { TextCheckResult } from '@/lib/ai/creative-text-verification'
-import { comConferencia, conferenciaDoCheck, lerCopyAutoral, registroParaIA, revisaoDoRefino, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
+import { comConferencia, comEnviada, conferenciaDoCheck, contratoDaOrigemDaMelhoria, enviadaNoPrompt, LACUNA_PROMPT_AINDA_NAO_MONTADO, registroParaIA, revisaoDoRefino, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
@@ -285,6 +285,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
   let registroDaCopy: RegistroDaCopyNaArte | null = null
   /** A última conferência por visão desta run. */
   let ultimoCheck: TextCheckResult | null = null
+  /** O prompt EXATO que foi ao modelo na última tentativa (`improveCreative.aoMontarPrompt`). */
+  let promptEnviado: string | null = null
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
   // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
@@ -301,11 +303,15 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       loadExpectedTextsForGeneration(args.originalGenerationId),
       // O contrato PROPAGA pela cadeia como a régua: a origem (arte de IA, de
       // modelo, do compositor ou outra melhoria) carrega `copyAutoral.original`.
+      // Só quando a imagem melhorada É a arte daquela Generation: o slide 2
+      // do carrossel chega com o `generationId` do slide 1 (`skipTextVerification`),
+      // e o contrato de A não pode virar o de B (PR5-08).
       db.generation
         .findUnique({ where: { id: args.originalGenerationId }, select: { fieldValues: true } })
         .then((g) => {
-          const r = (g?.fieldValues as Record<string, unknown> | null)?.copyAutoral
-          return r && typeof r === 'object' && !Array.isArray(r) ? lerCopyAutoral((r as Record<string, unknown>).original).copy : null
+          const r = contratoDaOrigemDaMelhoria(g?.fieldValues, { outraImagem: !!args.skipTextVerification })
+          if (r.aviso) registroDaRun.copyAutoralNaoHerdada = r.aviso
+          return r.contrato
         })
         .catch(() => null),
     ])
@@ -740,7 +746,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         if ('copy' in r) original = r.copy
         else lacunas.push(`o pedido trocou o texto e a revisão não casou com o contrato (${r.descartado}); o texto enviado é o do pedido`)
       }
-      registroDaCopy = registroParaIA(original, textosParaPrompt, lacunas)
+      // O `enviada` é lido do prompt que SAIR (PR5-10): o diretor escreve o
+      // dele e o prompt montado por código colapsa espaços na seção de texto.
+      registroDaCopy = registroParaIA(original, null, [...lacunas, LACUNA_PROMPT_AINDA_NAO_MONTADO])
       registroDaRun.copyAutoral = registroDaCopy
     }
 
@@ -780,6 +788,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           arteSemTexto: arteSemTexto || raizSemTexto,
           logoCompor: !!logoParaCompor,
           promptPronto,
+          aoMontarPrompt: (p) => {
+            promptEnviado = p
+          },
           quality: tier,
           timeoutMs: tempoParaGerar(deadlineDaGeracao),
         })
@@ -914,6 +925,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     }
 
     if (registroDaCopy) {
+      // Sem prompt montado (a geração nem chegou ao modelo) a lacuna fica.
+      if (promptEnviado) registroDaCopy = comEnviada(registroDaCopy, enviadaNoPrompt(promptEnviado, [textosParaPrompt]))
       registroDaCopy = comConferencia(
         registroDaCopy,
         conferenciaDoCheck(ultimoCheck, ultimoCheck ? origemDaRegua : `nenhuma (${String(textCheckInfo.textCheckReason ?? 'a conferência não rodou')})`),
