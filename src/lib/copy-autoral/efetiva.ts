@@ -221,6 +221,21 @@ function camadasPorFuncao(camadas: Layer[], opcoes: { incluirOcultas?: boolean }
   return { porFuncao, voz2, soltas }
 }
 
+/**
+ * A segunda voz da manchete é RECONSTRUÍDA das camadas presentes, nunca herdada
+ * do contrato (PR3-F05 da revisão FINAL do Codex sobre abac9b34, 18/09/2026):
+ * sem `headline2` na peça o índice antigo apontava para linha que podia não
+ * existir (a revisão válida era recusada e o contrato ficava velho) ou
+ * sobrevivia às linhas reunidas na primeira voz (a mudança passava sem
+ * registro). O resto do estilo (`herdaDe`) fica como o autor declarou.
+ */
+function comSegundaVoz(b: BlocoAutoral, naVoz2: number[]): BlocoAutoral {
+  const { estilo: antigo, ...semEstilo } = b
+  const { linhasNaVoz2: _antiga, ...resto } = antigo ?? {}
+  const estilo = { ...resto, ...(naVoz2.length > 0 ? { linhasNaVoz2: naVoz2 } : {}) }
+  return Object.keys(estilo).length > 0 ? { ...semEstilo, estilo } : semEstilo
+}
+
 export interface CopyEfetiva {
   efetiva: CopyAutoral
   mudancas: MudancaDeBloco[]
@@ -299,22 +314,22 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     const camada = fila.find((c) => !usadas.has(c.id))
     if (!camada) {
       lacunas.push(`o bloco "${b.id}" (${b.funcao}) não foi desenhado`)
-      return { ...b, linhas: [] }
+      return comSegundaVoz({ ...b, linhas: [] }, [])
     }
     usadas.add(camada.id)
     let linhas = linhasDaCamada(camada)
-    let estilo = b.estilo
-    if (b.funcao === 'headline' && voz2.length > 0) {
+    let naVoz2: number[] = []
+    if (b.funcao === 'headline') {
       const segunda = voz2.find((c) => !usadas.has(c.id))
       if (segunda) {
         usadas.add(segunda.id)
         const daVoz2 = linhasDaCamada(segunda)
         const inicio = linhas.length
         linhas = [...linhas, ...daVoz2]
-        estilo = { ...(estilo ?? {}), linhasNaVoz2: daVoz2.map((_, i) => inicio + i) }
+        naVoz2 = daVoz2.map((_, i) => inicio + i)
       }
     }
-    return { ...b, linhas, ...(estilo ? { estilo } : {}) }
+    return comSegundaVoz({ ...b, linhas }, naVoz2)
   })
 
   const restantes = [...soltas, ...[...porFuncao.values()].flat(), ...voz2].filter((c) => !usadas.has(c.id))
