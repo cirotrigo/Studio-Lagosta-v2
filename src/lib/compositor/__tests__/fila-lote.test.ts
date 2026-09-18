@@ -145,7 +145,15 @@ vi.mock('@/lib/db', () => {
           gravar('itensDePlano', where.id, linha, naTransacao, diario)
           return linha
         },
-        updateMany: async () => ({ count: 0 }),
+        // A edição do item (`atualizarItem`) grava por compare-and-set na versão lida (PR3-F04): `{ id, updatedAt }`.
+        // Os outros CAS do item (o reapontar condicional da fila) seguem sem efeito aqui, como o teste sempre supôs.
+        updateMany: async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+          const i = banco.itensDePlano.get(String(where.id))
+          const soVersao = Object.keys(where).every((k) => k === 'id' || k === 'updatedAt') && where.updatedAt instanceof Date
+          if (!i || !soVersao || (i.updatedAt as Date | undefined)?.getTime() !== (where.updatedAt as Date).getTime()) return { count: 0 }
+          gravar('itensDePlano', String(where.id), { ...i, ...data }, naTransacao, diario)
+          return { count: 1 }
+        },
       },
     }
   }
