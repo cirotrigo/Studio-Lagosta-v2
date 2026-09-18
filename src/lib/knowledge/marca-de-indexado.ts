@@ -190,6 +190,19 @@ export function indexacaoPendenteDe(erro: unknown): IndexacaoPendente | null {
 }
 
 /**
+ * O aviso de uma resposta 202 de edição da base (`indexacao: 'pendente'`), para a TELA mostrar sem bloquear — a
+ * edição vale e o fluxo segue (PR13-50 da revisão final do Codex, 18/09/2026: o chat e a página de edição do admin
+ * liam o JSON só no erro e engoliam o aviso). `null` quando a indexação não ficou pendente.
+ */
+export function avisoDaIndexacaoPendente(resposta: unknown): string | null {
+  const r = resposta as { indexacao?: unknown; aviso?: unknown } | null | undefined
+  if (r?.indexacao !== 'pendente') return null
+  return typeof r.aviso === 'string' && r.aviso.trim()
+    ? r.aviso
+    : 'A edição foi salva, mas a busca pode continuar desatualizada até a entrada ser reindexada.'
+}
+
+/**
  * Os campos da linha que ENTRAM no índice (PR13-42): `content` vira os chunks; `category` e `status` vão no metadata
  * de cada vetor (a busca filtra por eles). O título não entra em nenhum dos dois.
  */
@@ -231,13 +244,23 @@ function semAsChaves(metadata: unknown, chaves: readonly string[]): Record<strin
   for (const k of chaves) delete resto[k]
   return resto
 }
-/** A identidade do sistema presente no metadata (`chaveDoFato`, `origem`, `versaoDaPrevia`). */
+/**
+ * A identidade do sistema presente no metadata (`chaveDoFato`, `origem`, `versaoDaPrevia`) — e SÓ num fato da
+ * migração, isto é, com `chaveDoFato`. Sem ela, `origem` e `versaoDaPrevia` são da pessoa: uma entrada comum
+ * com `origem: 'importacao-planilha'` a preserva na criação e a edita como qualquer campo (C13-01 da revisão final
+ * do Codex, 18/09/2026 — a proteção valia para toda entrada e descartava a procedência de quem não é fato).
+ */
 export function identidadeDo(metadata: unknown): Record<string, unknown> {
-  return soAsChaves(metadata, CHAVES_DE_IDENTIDADE)
+  return CHAVE_DO_FATO in metadataComoObjeto(metadata) ? soAsChaves(metadata, CHAVES_DE_IDENTIDADE) : {}
 }
-/** O que é da PESSOA: o metadata sem nenhuma chave do sistema — é o que um pedido externo pode escrever. */
+/**
+ * O que é da PESSOA: o metadata sem as chaves do sistema — é o que um pedido externo pode escrever. `chaveDoFato`
+ * e as marcas transitórias saem sempre; `origem`/`versaoDaPrevia` saem só quando o pedido traz `chaveDoFato` (é a
+ * identidade de um fato sendo FORJADA). Num fato de verdade a identidade da linha vence de todo jeito.
+ */
 export function metadataDaPessoa(metadata: unknown): Record<string, unknown> {
-  return semAsChaves(metadata, CHAVES_DO_SISTEMA)
+  const forjaIdentidade = CHAVE_DO_FATO in metadataComoObjeto(metadata)
+  return semAsChaves(metadata, forjaIdentidade ? CHAVES_DO_SISTEMA : [CHAVE_DO_FATO, ...CHAVES_TRANSITORIAS])
 }
 /** O metadata sem as marcas transitórias da indexação: quem CRIA nunca chega com marca, token ou prazo prontos. */
 export function semChavesTransitorias(metadata: unknown): Record<string, unknown> {

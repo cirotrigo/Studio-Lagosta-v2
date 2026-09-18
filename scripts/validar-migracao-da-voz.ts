@@ -50,6 +50,7 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { semMarcaDeIndexado } from '../src/lib/knowledge/marca-de-indexado'
+import { isolamentoDoCache, isolamentoDoIndexador } from '../src/lib/brand/migracao-da-voz'
 import { resolve } from 'node:path'
 
 const ROOT = process.cwd()
@@ -105,7 +106,8 @@ function apontarParaODev(): string {
   // PR13-30: o cache de busca (Redis) e o indexador (Vector) herdados do .env seriam os de PRODUÇÃO — em dev só o
   // isolado do .env.development.local, senão nenhum (a invalidação do cache vira no-op).
   for (const [urlKey, tokenKey] of [['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'], ['UPSTASH_VECTOR_REST_URL', 'UPSTASH_VECTOR_REST_TOKEN']] as const) {
-    const isolado = dev[urlKey]?.trim() && dev[tokenKey]?.trim() && dev[urlKey].trim() !== prod[urlKey]?.trim()
+    // A mesma régua da aplicação: identidade do endpoint, nunca comparação textual (PR13-49).
+    const isolado = (urlKey === 'UPSTASH_REDIS_REST_URL' ? isolamentoDoCache : isolamentoDoIndexador)(prod, dev) === 'isolado'
     for (const k of [urlKey, tokenKey]) {
       if (isolado) process.env[k] = dev[k]
       else delete process.env[k]

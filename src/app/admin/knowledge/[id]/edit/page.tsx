@@ -16,6 +16,7 @@ import {
   useUpdateKnowledgeEntry,
 } from '@/hooks/admin/use-admin-knowledge'
 import { useToast } from '@/hooks/use-toast'
+import { avisoDaIndexacaoPendente } from '@/lib/knowledge/marca-de-indexado'
 import { ArrowLeft } from 'lucide-react'
 
 interface PageProps {
@@ -39,10 +40,12 @@ export default function EditKnowledgeEntryPage({ params }: PageProps) {
     status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   }) => {
     try {
-      await updateMutation.mutateAsync(data)
+      const resposta = await updateMutation.mutateAsync(data)
+      // 202 com indexação pendente: a edição vale, mas a busca pode ficar desatualizada — avisa sem bloquear (PR13-50).
+      const aviso = avisoDaIndexacaoPendente(resposta)
       toast({
         title: 'Entrada atualizada',
-        description: 'As alterações foram salvas com sucesso',
+        description: aviso ?? 'As alterações foram salvas com sucesso',
       })
       router.push(`/admin/knowledge/${id}`)
     } catch (error) {

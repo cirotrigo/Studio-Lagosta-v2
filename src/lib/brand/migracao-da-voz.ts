@@ -810,7 +810,38 @@ function isolamentoDoServico(prod: Record<string, string | undefined>, alvo: Rec
   const url = alvo[urlKey]?.trim()
   const token = alvo[tokenKey]?.trim()
   if (!url || !token) return 'ausente'
-  return url === prod[urlKey]?.trim() ? 'producao' : 'isolado'
+  return podeSerOMesmoServico(url, prod[urlKey]) ? 'producao' : 'isolado'
+}
+
+/**
+ * A IDENTIDADE de um endpoint: o hostname normalizado (o `URL` já põe em
+ * minúsculas e converte IDN; o ponto final é tirado). Porta, esquema e raiz
+ * ficam de fora de propósito — o mesmo host é o mesmo serviço do Upstash, e
+ * errar para "é produção" só bloqueia o dev. `null` quando ilegível.
+ */
+export function identidadeDoEndpoint(url: string | null | undefined): string | null {
+  const bruto = url?.trim()
+  if (!bruto) return null
+  try {
+    const host = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(bruto) ? bruto : `https://${bruto}`).hostname.replace(/\.$/, '')
+    return host || null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pode ser o MESMO serviço? Compara a IDENTIDADE, nunca a string
+ * (PR13-49 da revisão final do Codex, 18/09/2026): `https://PROD.upstash.io`
+ * contra `https://prod.upstash.io` dava "isolado" por comparação textual, e
+ * `--dev` escrevia vetores de dev no índice de produção. URL ilegível de
+ * qualquer lado conta como o mesmo serviço — isolamento só se afirma provado.
+ */
+export function podeSerOMesmoServico(alvo: string | null | undefined, producao: string | null | undefined): boolean {
+  const a = identidadeDoEndpoint(alvo)
+  if (!producao?.trim()) return false
+  const p = identidadeDoEndpoint(producao)
+  return !a || !p || a === p
 }
 
 /**

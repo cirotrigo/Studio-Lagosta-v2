@@ -7324,6 +7324,30 @@ Da décima revisão FINAL (BLOQUEADO, PR13-42…43):
   anterior derruba 9 testes, `marcarFatoIndexado` antigo 1, o aviso antigo 1,
   `criarEntradaBase` sem o filtro 1, `indexEntry` sem o filtro 1.
 
+Da revisão FINAL do Codex sobre 852cf9e9 (BLOQUEADO, PR13-49…50 + C13-01, 18/09/2026):
+
+- 🔴 **Isolamento do Upstash se decide pela IDENTIDADE do endpoint, nunca pela
+  string** (PR13-49, P1). `https://PROD.upstash.io` no dev contra
+  `https://prod.upstash.io` na produção dava "isolado" por comparação textual, e
+  `--dev` escreveria vetores de dev no índice de produção (ou invalidaria o cache
+  dela). `podeSerOMesmoServico` compara o hostname normalizado
+  (`identidadeDoEndpoint`: minúsculas, IDN, sem ponto final, esquema ausente vira
+  https); porta, esquema e raiz ficam fora de propósito — mesmo host é o mesmo
+  serviço. URL ilegível de qualquer lado conta como PRODUÇÃO: isolamento só se
+  afirma provado. A prova (`validar-migracao-da-voz.ts`) passou a usar a MESMA
+  régua (`isolamentoDoCache`/`isolamentoDoIndexador`), em vez de repetir a
+  comparação textual.
+- **O 202 com `indexacao: 'pendente'` chega à TELA** (PR13-50): os dois chats
+  (`/ai-chat` e o chat do template) e a edição do admin liam o JSON só no erro e
+  engoliam o aviso. Todos leem a resposta de SUCESSO por
+  `avisoDaIndexacaoPendente` (`marca-de-indexado.ts`, puro) e mostram sem
+  bloquear — mensagem do assistente no chat, descrição do toast no admin.
+- **A identidade de fato só existe em FATO** (C13-01): `origem` e
+  `versaoDaPrevia` são do sistema só com `chaveDoFato` na mesma metadata. Entrada
+  comum preserva `origem` na criação pela pessoa e a edita como qualquer campo;
+  pedido que traz `chaveDoFato` (identidade FORJADA) perde as três chaves; no fato
+  de verdade a identidade da linha continua vencendo.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
