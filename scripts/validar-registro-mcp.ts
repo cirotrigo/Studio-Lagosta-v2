@@ -1600,7 +1600,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "string",
               "minLength": 1,
               "maxLength": 60,
-              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
               "description": "Só com herdaDe: o id da camada extra, do autor e único na peça — obrigatório quando o papel se repete. Sem herdaDe a camada se chama pelo papel e um id é recusado. Não pode ser headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* nem <texto>-elemento-N (a composição gera esses)."
             },
             "grupoVisual": {
@@ -1643,7 +1643,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
               "type": "string",
               "minLength": 1,
               "maxLength": 60,
-              "pattern": "^[a-z0-9][a-z0-9._-]*$",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
               "description": "O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco)."
             },
             "linhas": {
@@ -1930,7 +1930,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 60,
-                    "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
                     "description": "Só com herdaDe: o id da camada extra, do autor e único na peça — obrigatório quando o papel se repete. Sem herdaDe a camada se chama pelo papel e um id é recusado. Não pode ser headline2, <papel>-N, bg-foto, logo, gradiente-leitura-* nem <texto>-elemento-N (a composição gera esses)."
                   },
                   "grupoVisual": {
@@ -1973,7 +1973,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 60,
-                    "pattern": "^[a-z0-9][a-z0-9._-]*$",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
                     "description": "O id da camada extra, do autor e único na peça (mesmas proibições do id do bloco)."
                   },
                   "linhas": {

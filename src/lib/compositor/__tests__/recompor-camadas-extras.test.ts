@@ -11,7 +11,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import type { Layer } from '@/types/template'
-import { VERSAO_DO_CONTRATO, type CopyAutoral } from '@/lib/copy-autoral'
+import { copyEfetivaDasCamadas, VERSAO_DO_CONTRATO, type CopyAutoral } from '@/lib/copy-autoral'
 import { montarAssinatura } from '../assinatura'
 import { entradaDePersistencia } from '../persistencia'
 import { prepararBlocos } from '../preparar-blocos'
@@ -440,15 +440,17 @@ describe('recomporPaginaDefasada — R21: spec sem contrato com o extra de servi
  * está: as camadas e o contrato ficam, o aviso sai e só o slide troca.
  */
 describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa peça com camada extra', () => {
-  const casos: Array<[string, string, (c: CopyAutoral) => CopyAutoral]> = [
+  // PR 10: com histórico cheio os extras são reconstruídos pela IDENTIDADE da camada (`specComACopyDaPagina`),
+  // então a peça é RECOMPOSTA com o texto novo; com bloco que o contrato não comporta, re-render como está.
+  const casos: Array<[string, string, (c: CopyAutoral) => CopyAutoral, 'recompoe' | 're-renderiza']> = [
     ['histórico cheio (200 revisões)', 'Amanhã', (c) => ({
       ...c,
       revisoes: Array.from({ length: 200 }, (_, i) => ({ em: '2026-09-12T13:00:00.000Z', autor: 'equipe' as const, motivo: `revisão ${i}`, blocos: ['h'] })),
-    })],
-    ['bloco novo que o contrato não comporta (RevisaoDaCopyInvalida)', 'A'.repeat(301), (c) => c],
+    }), 'recompoe'],
+    ['bloco novo que o contrato não comporta (RevisaoDaCopyInvalida)', 'A'.repeat(301), (c) => c, 're-renderiza'],
   ]
-  for (const [nome, textoNovo, ajustarContrato] of casos) {
-    it(`${nome}: re-renderiza como está, sem gravar o texto antigo do extra; contrato intacto, aviso e só o slide troca`, async () => {
+  for (const [nome, textoNovo, ajustarContrato, desfecho] of casos) {
+    it(`${nome}: ${desfecho === 'recompoe' ? 'recompõe com o texto NOVO do extra' : 're-renderiza como está'}, sem gravar o texto antigo; contrato intacto, aviso e só o slide troca`, async () => {
       estado.page = null
       estado.generation = null
       estado.posts.clear()
@@ -507,15 +509,25 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
       const reRenderizadas = estado.reRenderizadas
       estado.reRenderizadas = null
 
-      expect(estado.specsCompostas).toEqual([])
-      expect(estado.paginaGravada).toBeNull()
-      expect(r.recomposta).toBe(false)
-      expect(reRenderizadas).toHaveLength(1)
-      expect((reRenderizadas[0].layers as Layer[]).find((l) => l.id === nota.id)?.content).toBe(textoNovo)
-      expect(r.avisos.some((a) => /camada extra/i.test(a))).toBe(true)
+      const urlNova = desfecho === 'recompoe' ? URL_NOVA : URL_RERENDER
+      if (desfecho === 'recompoe') {
+        expect(r.recomposta).toBe(true)
+        expect(reRenderizadas).toEqual([])
+        expect((estado.specsCompostas as SpecDePeca[]).map((sp) => sp.camadasExtras?.map((c) => [c.id, c.linhas]))).toEqual([[['nota', [textoNovo]]]])
+        // A página mantém o contrato como estava (sem efetiva nova: o histórico está cheio).
+        expect(estado.paginaGravada?.copyAutoral).toBeUndefined()
+        expect(r.avisos.some((a) => /sem contrato/i.test(a))).toBe(true)
+      } else {
+        expect(estado.specsCompostas).toEqual([])
+        expect(estado.paginaGravada).toBeNull()
+        expect(r.recomposta).toBe(false)
+        expect(reRenderizadas).toHaveLength(1)
+        expect((reRenderizadas[0].layers as Layer[]).find((l) => l.id === nota.id)?.content).toBe(textoNovo)
+        expect(r.avisos.some((a) => /camada extra/i.test(a))).toBe(true)
+      }
       expect(estado.page.copyAutoral).toBe(contrato)
       expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
-      expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_RERENDER, slide3])
+      expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, urlNova, slide3])
       expect(estado.posts.get('post-entregue')!.mediaUrls).toEqual([URL_ANTIGA, slide3])
     })
   }
@@ -531,14 +543,26 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
  *
  * Todo caso roda nas duas formas da página: como a preparação grava e LEGADA (sem `bloco`/`linhas`) — a decisão do
  * re-render é da spec, e a marca não pode mudá-la.
+ *
+ * PR 10 (R1, 21/09/2026): no ciclo os extras voltam pela IDENTIDADE da camada, nas duas formas. Com o HISTÓRICO CHEIO a
+ * leitura do contrato recusa, mas o texto da página cabe na spec: a peça pode ser RECOMPOSTA com o texto da equipe (o
+ * que o PR 10 faz) ou re-renderizada como está (o que o PR 9 fazia) — as duas são corretas, e o teste afirma o DESFECHO
+ * que a pessoa vê, não o mecanismo. Com a LEITURA INVÁLIDA o texto não cabe nem na spec (os limites de linha são os do
+ * contrato, R06): recompor só pode terminar em SPEC_INVALIDA, então re-renderizar é a ÚNICA saída correta, e ali as
+ * asserções do PR 9 ficam como estavam.
+ *
+ * Desfechos errados que o teste reprova: o slide com a arte antiga — inclusive quando a recomposição REJEITA
+ * (SPEC_INVALIDA, `papel repetido`), o que derruba o teste no `await` —, o extra sem a herança (desenhado no estilo do
+ * serviço), um segundo serviço comum, o texto de antes da edição, o contrato reescrito e o post entregue tocado.
  */
 describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa peça com extra COM FUNÇÃO', () => {
-  const recusas: Array<[string, string, (c: CopyAutoral) => CopyAutoral]> = [
+  type Saida = 'recompoe' | 're-renderiza'
+  const recusas: Array<[string, string, (c: CopyAutoral) => CopyAutoral, Saida[]]> = [
     ['histórico cheio (200 revisões)', 'Retirada até 22h', (c) => ({
       ...c,
       revisoes: Array.from({ length: 200 }, (_, i) => ({ em: '2026-09-12T13:00:00.000Z', autor: 'equipe' as const, motivo: `revisão ${i}`, blocos: ['h'] })),
-    })],
-    ['leitura inválida (RevisaoDaCopyInvalida)', 'A'.repeat(301), (c) => c],
+    }), ['recompoe', 're-renderiza']],
+    ['leitura inválida (RevisaoDaCopyInvalida)', 'A'.repeat(301), (c) => c, ['re-renderiza']],
   ]
   const contratos: Array<[string, CopyAutoral['blocos']]> = [
     ['com serviço comum da mesma função', [
@@ -555,10 +579,17 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
     const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
     return { ...l, metadata: { ...l.metadata, compositor } } as Layer
   }
+  const idDoExtra = (l: Layer) => (l.metadata?.compositor as { extra?: { id?: string } } | undefined)?.extra?.id
+  // O que a herança decide no desenho: fonte, corpo, cor e entrelinha do papel de onde o estilo vem.
+  const estiloDesenhado = (l: Layer) => {
+    const s = (l.style ?? {}) as Record<string, unknown>
+    return { fontFamily: s.fontFamily, fontSize: s.fontSize, fill: s.fill, color: s.color, lineHeight: s.lineHeight }
+  }
+  const ehTexto = (l: Layer) => (l.type === 'text' || l.type === 'rich-text') && l.visible !== false
   for (const [nomeDoContrato, blocos] of contratos)
-    for (const [nomeDaRecusa, textoNovo, ajustarContrato] of recusas)
+    for (const [nomeDaRecusa, textoNovo, ajustarContrato, saidasCorretas] of recusas)
       for (const forma of ['preparada', 'legada'] as const)
-        it(`${nomeDoContrato} · ${nomeDaRecusa} · página ${forma}: re-renderiza como está; camadas e contrato intactos, só o slide troca`, async () => {
+        it(`${nomeDoContrato} · ${nomeDaRecusa} · página ${forma}: a arte troca com o texto e a herança da equipe (${saidasCorretas.join(' ou ')}); contrato intacto, só o slide troca, post entregue intocado`, async () => {
           estado.page = null
           estado.generation = null
           estado.posts.clear()
@@ -567,6 +598,7 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
           estado.generationGravada = null
           estado.comporCamadas = null
           estado.reRenderizadas = []
+          const temServicoComum = blocos.some((b) => b.id === 'svc')
           const assinatura = montarAssinatura({
             pagina: {
               id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
@@ -579,6 +611,11 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
             formatoDaPagina: 'story',
             numerosDoProjeto: null,
           })
+          const preparar = (spec: SpecDePeca) =>
+            prepararBlocos({
+              assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+              medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec,
+            }).montados.map((b) => b.layer)
           const copy: CopyAutoral = { versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [], blocos }
           const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy })
           expect(v.problemas).toEqual([])
@@ -586,12 +623,12 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
           // O extra COM FUNÇÃO está em `blocos`, não em `camadasExtras` — é essa a representação que a guarda não via.
           expect(specPersistida.camadasExtras ?? []).toEqual([])
           expect(specPersistida.blocos.some((b) => b.herdaDe === 'apoio' && b.id === 'hora-extra')).toBe(true)
-          const preparadas = prepararBlocos({
-            assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
-            medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: specPersistida,
-          }).montados.map((b) => b.layer)
+          const preparadas = preparar(specPersistida)
           const camadasHoje = forma === 'legada' ? preparadas.map(semVinculo) : preparadas
           const doExtra = camadasHoje.find((l) => l.content === 'Delivery até 22h')!
+          // Premissa: a herança se VÊ — o extra nasce no estilo do apoio, que não é o do serviço. Sem isso, comparar o
+          // estilo do extra regravado com o de antes não distinguiria herança preservada de herança perdida.
+          expect(estiloDesenhado(doExtra)).toMatchObject({ fontFamily: 'Barlow', fontSize: 40 })
           const entrada = entradaDePersistencia({
             spec: specPersistida, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
             nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: preparadas, fundo: '#000', diagnostico: {}, fotoUrl: null,
@@ -608,6 +645,8 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
             fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-f01b' },
           }
           estado.camadasDaComposicao = preparadas
+          // A composição falsa refaz a PREPARAÇÃO sobre a spec que recebeu: a página regravada é a que a peça nova desenha.
+          estado.comporCamadas = (spec) => preparar(spec as SpecDePeca)
           const capa = 'https://blob.exemplo/capa.png'
           const slide3 = 'https://blob.exemplo/slide-3.png'
           estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [capa, URL_ANTIGA, slide3] })
@@ -617,18 +656,60 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
           const r = await recomporPaginaDefasada({ pageId: 'pg-f01b' })
           const reRenderizadas = estado.reRenderizadas
           estado.reRenderizadas = null
+          estado.comporCamadas = null
 
-          // Nada é recomposto: sem contrato legível, a spec antiga não sabe o texto novo do extra, e o caminho por papel
-          // descartaria a herança (e, com o serviço comum, recusaria por papel repetido).
-          expect(estado.specsCompostas).toEqual([])
-          expect(estado.paginaGravada).toBeNull()
-          expect(r.recomposta).toBe(false)
-          expect(reRenderizadas).toHaveLength(1)
-          expect((reRenderizadas[0].layers as Layer[]).find((l) => l.id === doExtra.id)?.content).toBe(textoNovo)
-          expect(r.avisos.some((a) => /camada extra/i.test(a))).toBe(true)
-          expect(estado.page.copyAutoral).toBe(contrato)
+          const saida: Saida = r.recomposta ? 'recompoe' : 're-renderiza'
+          expect(saidasCorretas).toContain(saida)
+          // O que a pessoa vê no post: só o slide desta arte trocou, e não pela arte antiga; a capa e o slide 3 ficam.
           expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
-          expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_RERENDER, slide3])
+          expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, saida === 'recompoe' ? URL_NOVA : URL_RERENDER, slide3])
+          // O post já entregue ao publicador não é tocado — nem chega a ser tentado (nenhum "não trocado").
+          expect(r.congelados).toEqual(['post-entregue'])
+          expect(r.naoTrocados).toEqual([])
           expect(estado.posts.get('post-entregue')!.mediaUrls).toEqual([URL_ANTIGA, slide3])
+          // O contrato fica como estava: nenhuma escrita da página o leva.
+          expect(estado.page.copyAutoral).toBe(contrato)
+          expect(estado.paginaGravada?.copyAutoral).toBeUndefined()
+
+          if (saida === 're-renderiza') {
+            // As asserções do PR 9: nada é recomposto, e a página é desenhada EXATAMENTE como a equipe a gravou.
+            expect(estado.specsCompostas).toEqual([])
+            expect(estado.paginaGravada).toBeNull()
+            expect(reRenderizadas).toHaveLength(1)
+            expect((reRenderizadas[0].layers as Layer[]).find((l) => l.id === doExtra.id)?.content).toBe(textoNovo)
+            expect(reRenderizadas[0].layers).toEqual(camadasEditadas)
+            expect(r.avisos.some((a) => /camada extra/i.test(a))).toBe(true)
+            return
+          }
+          expect(reRenderizadas).toEqual([])
+          // A spec que chegou ao compositor passou pelo `validarSpec` real (o falso de `comporPeca` o chama antes de
+          // tudo) e leva o extra pela IDENTIDADE — id, função, herança — com o texto NOVO; ao lado, só o serviço comum
+          // que o contrato tem (nenhum segundo serviço comum).
+          expect(estado.specsCompostas).toHaveLength(1)
+          const composta = estado.specsCompostas[0] as SpecDePeca
+          expect(composta.blocos.filter((b) => b.herdaDe).map((b) => [b.id, b.papel, b.herdaDe, b.linhas])).toEqual([['hora-extra', 'servico', 'apoio', [textoNovo]]])
+          expect(composta.blocos.filter((b) => !b.herdaDe).map((b) => [b.papel, b.linhas])).toEqual([
+            ['headline', ['Costela']],
+            ...(temServicoComum ? [['servico', ['11h às 16h']]] : []),
+          ])
+          // A página regravada é a peça nova: o texto que a equipe gravou, cada um na sua camada, e o extra continua
+          // sendo o extra — desenhado no estilo do APOIO, como antes da edição.
+          const gravadas = estado.paginaGravada!.layers as Layer[]
+          expect(gravadas.filter(ehTexto).map((l) => l.content).sort()).toEqual(['Costela', textoNovo, ...(temServicoComum ? ['11h às 16h'] : [])].sort())
+          const extraGravado = gravadas.find((l) => idDoExtra(l) === 'hora-extra')!
+          expect(extraGravado.content).toBe(textoNovo)
+          expect(extraGravado.metadata?.compositor).toMatchObject({ papel: 'servico', extra: { id: 'hora-extra', funcao: 'servico', herdaDe: 'apoio' } })
+          expect(estiloDesenhado(extraGravado)).toEqual(estiloDesenhado(doExtra))
+          // Relida no contrato da peça, a página regravada põe cada texto no seu bloco — nenhum `extra-*`, nenhum
+          // serviço a mais: a edição seguinte não herda uma atribuição errada.
+          const relida = copyEfetivaDasCamadas(entrada.copyAutoral as CopyAutoral, gravadas, { superficie: 'teste' })
+          expect(relida.efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual(blocos.map((b) => [b.id, b.id === 'hora-extra' ? [textoNovo] : b.linhas]))
+          // A arte gravada: a spec válida, com o extra e a herança; e o registro da copy NÃO afirma a efetiva desta
+          // imagem, que não pôde ser medida contra o contrato cheio (PR3-F02).
+          const fv = estado.generationGravada!.fieldValues as Record<string, unknown>
+          expect(validarSpec(fv.spec).problemas).toEqual([])
+          expect((fv.spec as SpecDePeca).blocos.find((b) => b.id === 'hora-extra')).toMatchObject({ papel: 'servico', herdaDe: 'apoio', linhas: [textoNovo] })
+          expect(fv.copyAutoral).toMatchObject({ efetiva: null, comparavel: false })
+          expect(r.avisos.some((a) => /sem contrato/i.test(a))).toBe(true)
         })
 })

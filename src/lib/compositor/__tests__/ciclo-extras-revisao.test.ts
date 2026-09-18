@@ -59,6 +59,8 @@ const estado = vi.hoisted(() => ({
   logs: [] as string[],
   blobs: 0,
   relogio: 0,
+  /** PR10-01: quantas leituras SÓ das camadas (`camadasDaPagina`) ainda falham com erro transitório. */
+  falharLeiturasDeCamadas: 0,
 }))
 const pedirNovaTentativa = vi.hoisted(() => vi.fn(async (_jobId: unknown, _motivo: unknown) => estado.orcamento))
 
@@ -79,7 +81,14 @@ vi.mock('@/lib/db', () => ({
       return 1
     },
     page: {
-      findUnique: async () => estado.page,
+      findUnique: async (args?: { select?: Record<string, unknown> }) => {
+        const soCamadas = !!args?.select && Object.keys(args.select).join() === 'layers'
+        if (soCamadas && estado.falharLeiturasDeCamadas > 0) {
+          estado.falharLeiturasDeCamadas--
+          throw new Error('timeout transitório do banco')
+        }
+        return estado.page
+      },
       updateMany: async ({ where, data }: { where: { id: string; updatedAt: Date }; data: Record<string, unknown> }) => {
         if (!estado.page || where.id !== estado.page.id || (estado.page.updatedAt as Date).getTime() !== where.updatedAt.getTime()) return { count: 0 }
         estado.page = { ...estado.page, ...data, updatedAt: new Date(Date.UTC(2026, 8, 12, 20, 0, ++estado.relogio)) }
@@ -237,6 +246,7 @@ function montarCenario(entrada: Record<string, unknown>, editar: (camadas: Layer
   estado.specsCompostas = []
   estado.aposGravarPagina = null
   estado.blobs = 0
+  estado.falharLeiturasDeCamadas = 0
   estado.comporCamadas = (spec) => camadasDaPeca(spec as SpecDePeca)
   pedirNovaTentativa.mockClear()
   const v = validarSpec(entrada)
@@ -323,6 +333,47 @@ describe('R01 — a página mudou DEPOIS da gravação e antes do fim do job: o 
     expect(estado.specsCompostas).toHaveLength(1)
     expect(estado.posts.get('post-carrossel')!.mediaUrls[1]).toBe('https://blob.exemplo/arte-rapida/8/pg-1-nova-1.png')
     expect(pedirNovaTentativa).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * PR10-01 (revisão FINAL do Codex sobre 75301ff0, 18/09/2026): a leitura inicial
+ * das camadas (`camadasAntes`) ficava FORA do `try` do runner. Um timeout
+ * transitório nela atravessava o dispatch, `falharJob` gravava FAILED com
+ * tentativas sobrando, e o slide ficava antigo, sem recusa no histórico.
+ */
+describe('PR10-01 — a leitura inicial das camadas que falha é tratada como qualquer erro de infra do job', () => {
+  const entrada = {
+    projectId: 8, formato: 'story', foto: { url: FOTO_A },
+    blocos: [{ papel: 'headline', linhas: ['Costela'] }, { papel: 'apoio', linhas: ['no bafo'] }],
+    camadasExtras: [{ id: 'nota', linhas: ['vale só no almoço'], herdaDe: 'apoio' }],
+  }
+  const editar = (camadas: Layer[]) => camadas.map((c) => (c.content === 'vale só no almoço' ? { ...c, content: 'vale no jantar' } : c))
+
+  it('com orçamento: devolve o job à fila sem lançar, e a tentativa seguinte converge', async () => {
+    montarCenario(entrada, editar, { comContrato: true })
+    estado.falharLeiturasDeCamadas = 1
+    const { processarRecomposicaoEmBackground } = await import('../recompor')
+    await processarRecomposicaoEmBackground(job)
+    expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
+    expect(String(pedirNovaTentativa.mock.calls[0][1])).toMatch(/timeout transitório/)
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
+
+    await processarRecomposicaoEmBackground(job)
+    expect(estado.specsCompostas).toHaveLength(1)
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.exemplo/arte-rapida/8/pg-1-nova-1.png', SLIDE_3])
+    expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
+  })
+
+  it('sem orçamento: registra a recusa no histórico do post e lança (falha terminal com motivo)', async () => {
+    montarCenario(entrada, editar, { comContrato: true })
+    estado.falharLeiturasDeCamadas = 1
+    estado.orcamento = false
+    const { processarRecomposicaoEmBackground } = await import('../recompor')
+    await expect(processarRecomposicaoEmBackground(job)).rejects.toThrow(/timeout transitório/)
+    expect(pedirNovaTentativa).toHaveBeenCalledTimes(1)
+    expect(estado.logs.some((m) => /timeout transitório/.test(m))).toBe(true)
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, URL_ANTIGA, SLIDE_3])
   })
 })
 

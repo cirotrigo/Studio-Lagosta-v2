@@ -121,6 +121,30 @@ describe('R02: as linhas do bloco e da camada extra têm os limites da spec nas 
     })
   }
 
+  /**
+   * PR10-02 (revisão FINAL do Codex sobre 75301ff0, 18/09/2026): o `pattern` ANUNCIADO perdia a flag `i` do regex
+   * do id — um cliente que valide o inputSchema recusava `Nota`, que o zod do servidor aceita. A paridade acima
+   * compara duas conversões que perdiam a flag igual; aqui o id é validado contra o schema que o `tools/list` publica.
+   */
+  it('PR10-02: `Nota` e `nota` passam no JSON Schema ANUNCIADO das três tools, em blocos e em camadasExtras, e no zod', () => {
+    type No = { properties?: Record<string, No>; items?: No; pattern?: string }
+    for (const nomeDaTool of ['compor-arte', 'compor-leva', 'medir-copy']) {
+      const raiz = tool(nomeDaTool).schemaJson as No
+      const peca = nomeDaTool === 'compor-leva' ? raiz.properties!.itens.items! : raiz
+      for (const campo of ['blocos', 'camadasExtras']) {
+        const pattern = peca.properties![campo].items!.properties!.id.pattern!
+        expect(pattern, `${nomeDaTool}.${campo}`).toBeTruthy()
+        for (const id of ['Nota', 'nota']) expect(new RegExp(pattern).test(id), `${nomeDaTool}.${campo} ${id}`).toBe(true)
+        expect(new RegExp(pattern).test('-nota'), `${nomeDaTool}.${campo} -nota`).toBe(false)
+      }
+      for (const id of ['Nota', 'nota']) {
+        const extras = [{ id, linhas: ['vale só no almoço'], herdaDe: 'apoio' }]
+        const entrada = nomeDaTool === 'compor-leva' ? { projectId: 8, itens: [{ formato: 'story', blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: extras }] } : { projectId: 8, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Costela'] }], camadasExtras: extras }
+        expect(tool(nomeDaTool).schema.safeParse(entrada).success, `${nomeDaTool} zod ${id}`).toBe(true)
+      }
+    }
+  })
+
   it('paridade: o JSON Schema público de blocos, camadasExtras, fotosCandidatas, carrossel e preferencias.arranjos tem os MESMOS limites da spec', () => {
     const semDescricao = (v: unknown): unknown => {
       if (Array.isArray(v)) return v.map(semDescricao)

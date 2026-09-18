@@ -44,7 +44,9 @@ export type Canto = (typeof CANTOS)[number]
 export const GRUPOS_VISUAIS = ['principal', 'topo', 'rodape'] as const
 export type GrupoVisual = (typeof GRUPOS_VISUAIS)[number]
 
-const idDeCamadaSchema = z.string().min(1).max(60).regex(/^[a-z0-9][a-z0-9._-]*$/i)
+// Maiúsculas EXPLÍCITAS, sem a flag `i` (PR10-02): o schema publicado no conector — o remoto e o servidor stdio,
+// que converte o zod pelo SDK — carrega só o `pattern`, e a flag se perdia nessa conversão.
+const idDeCamadaSchema = z.string().min(1).max(60).regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/)
 
 /**
  * As linhas de um bloco: os MESMOS limites do contrato autoral (R06) — linha

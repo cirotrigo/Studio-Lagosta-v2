@@ -9431,8 +9431,10 @@ herdando do apoio, os dois tipos de post).
   `PAGINA_MUDOU_DURANTE` quando não há mais tentativa; o `catch` grava a recusa
   na arte e no histórico do post e relança (o job fica FAILED com motivo).
   Teste: página em dia no levantamento, foto trocada logo depois dele,
-  orçamento esgotado → rejeita com `PAGINA_MUDOU_DURANTE`, `recomposicao.estado
-  = 'recusada'` e histórico "A arte NÃO foi atualizada".
+  orçamento esgotado → rejeita com `PAGINA_MUDOU_DURANTE`, a recusa gravada em
+  `fieldValues.recusaDaRecomposicao` (chave própria, C6-01 do PR 0 — o registro
+  `recomposicao` do último render fica como estava) e histórico "A arte NÃO foi
+  atualizada: … confira a página e salve de novo".
 - 🔴 **C10-02 — a voz 2 legada é a última linha COM TEXTO, com os respiros que
   a seguem, e nunca uma voz 2 vazia** (`dividirManchete`, `segunda-voz.ts`).
   Causa: o R03 passou a preservar o respiro, e a regra legada "última linha na
@@ -9495,11 +9497,38 @@ herdando do apoio, os dois tipos de post).
   (`edicaoDuranteOJob`, `defasagem.ts`, pela defasagem do novo levantamento):
   "a foto da página foi trocada…", "o texto da página foi alterado…", os dois,
   ou "a página foi alterada…" (caixa, corte, camada). Saíram o jargão ("que a
-  encontrou em dia") e a redundância com o modelo do histórico. ⚠️ **O sufixo
-  do histórico continua dizendo "ajuste o texto na página e salve de novo"
-  também para edição de foto**: ele vem de `registrarRecusa`, e mexer ali
-  colidiria com o conserto da C6-01 no PR 6, que reescreve a mesma função.
-  Fica para depois do PR 6: o modelo deve dizer "salve a página de novo".
+  encontrou em dia") e a redundância com o modelo do histórico. O sufixo do
+  histórico é neutro — "confira a página e salve de novo" —, vale para texto e
+  para foto, e sai de `mensagemDaRecusaNoHistorico` (C6-12, descido com o PR 0):
+  quando a mesma rodada já trocou o PNG, a mensagem diz que a imagem foi
+  trocada em vez de afirmar que continua a anterior.
 - Comentários que ainda diziam "a última linha" (`preparar-blocos.ts`,
   `defasagem.ts#specComACopyDaPagina`) passaram a dizer "a última linha COM
   TEXTO, com os respiros que a seguem", como `segunda-voz.ts`.
+
+**Da revisão FINAL do Codex sobre 75301ff0 (BLOQUEADO, PR10-01…03, 18/09/2026):**
+
+- **PR9-F01 no PR 10**: com histórico cheio, a recomposição SEM contrato segue —
+  `specComACopyDaPagina` reconstrói cada extra pela identidade da camada, então
+  o texto novo chega à spec. Com `RevisaoDaCopyInvalida` (o texto da página não
+  cabe no contrato, e pelos mesmos limites não cabe na spec) a peça com extra é
+  re-renderizada como está, como no PR 9.
+- 🔴 **PR10-01 — toda leitura do runner da recomposição mora DENTRO do `try`.**
+  `camadasAntes` era lida antes dele: um timeout transitório atravessava o
+  dispatch e `falharJob` gravava FAILED com tentativas sobrando, sem recusa no
+  histórico. Agora ela passa por `pedirNovaTentativa`/`registrarRecusa` como
+  qualquer erro de infra. ⚠️ `marcarForcaEmExecucao` (PR 0) continua ANTES do
+  `try`, com a mesma forma — não mexido aqui por ser do PR 0.
+- 🔴 **PR10-02 — o `pattern` publicado no conector perdia a flag do regex.**
+  `idDeCamadaSchema` era `/…/i` e o `zodToJsonSchema` anunciava `^[a-z0-9]…$`:
+  cliente que valide o inputSchema recusava `Nota`, que o zod aceita. O regex
+  passou a declarar as maiúsculas EXPLICITAMENTE (vale também para o servidor
+  stdio, que converte o zod pelo SDK), e `derivarSchemaJson` usa
+  `applyRegexFlags: true` como guarda para qualquer regex com flag no catálogo.
+  O teste valida `Nota`/`nota` contra o `schemaJson` ANUNCIADO — a paridade
+  zod × zod comparava duas conversões que perdiam a flag igual.
+  ⚠️ `idDeBlocoSchema` (contrato, PR 2) ainda usa `/i`; hoje não é publicado
+  em nenhuma tool.
+- PR10-03: as duas passagens deste arquivo que descreviam a recusa em
+  `recomposicao.estado = 'recusada'` e o sufixo antigo do histórico foram
+  corrigidas para `recusaDaRecomposicao` e "confira a página e salve de novo".
