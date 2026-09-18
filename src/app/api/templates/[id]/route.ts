@@ -7,6 +7,7 @@ import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { PostStatus } from '../../../../../prisma/generated/client'
+import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
 
 export const runtime = 'nodejs'
 
@@ -208,6 +209,28 @@ export async function PUT(
             paginasAlteradas.add(pageId)
           }
         }
+        /**
+         * 🔴 A página existente é gravada COM a revisão do contrato da copy,
+         * sobre a página relida e por compare-and-set
+         * (`gravarCamadasComRevisao`, PR3-F03 da revisão FINAL do Codex sobre
+         * abac9b34, 18/09/2026). Antes este PUT ("Salvar e Voltar", sync do
+         * desktop) escrevia `layers` sem revisar `copyAutoral`: a página
+         * mostrava um texto e o contrato outro, e a próxima edição assinava a
+         * mudança com a autoria errada. Escrita humana: a marca do revisor é
+         * reconciliada contra a mesma base. Recusa do contrato não derruba o
+         * salvamento — as camadas vão e o contrato fica como estava.
+         */
+        const gravarPagina = async (pageId: string, pageData: { layers: string; [campo: string]: unknown }) => {
+          const { layers, ...dados } = pageData
+          const g = await gravarCamadasComRevisao(tx, {
+            pageId,
+            humana: true,
+            dados,
+            quem: { autor: 'equipe', motivo: 'edição no editor (salvar o template)', superficie: 'editor' },
+            camadas: () => layers,
+          })
+          if (g?.aviso) console.warn(`[API] Template ${templateId}, página ${pageId}: camadas gravadas sem revisão do contrato da copy — ${g.aviso}`)
+        }
         const existingPageIds = new Set(existingPages.map((p) => p.id))
         const incomingPageIds = Array.from(
           new Set(designData.pages.map((p) => p.id).filter((pageId): pageId is string => typeof pageId === 'string' && pageId.length > 0))
@@ -258,10 +281,7 @@ export async function PUT(
 
           if (requestedPageId && existingPageIds.has(requestedPageId)) {
             marcarSeMudou(requestedPageId, pageData)
-            await tx.page.update({
-              where: { id: requestedPageId },
-              data: pageData,
-            })
+            await gravarPagina(requestedPageId, pageData)
             matchedExistingPageIds.add(requestedPageId)
             resolvedCurrentPageIds.add(requestedPageId)
           } else {
@@ -270,10 +290,7 @@ export async function PUT(
 
             if (fallbackPage) {
               marcarSeMudou(fallbackPage.id, pageData)
-              await tx.page.update({
-                where: { id: fallbackPage.id },
-                data: pageData,
-              })
+              await gravarPagina(fallbackPage.id, pageData)
               matchedExistingPageIds.add(fallbackPage.id)
               resolvedCurrentPageIds.add(fallbackPage.id)
             } else {
