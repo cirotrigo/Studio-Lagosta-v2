@@ -44,7 +44,41 @@ Cada fase depende da anterior. Peca aprovacao do usuario antes de avancar — na
 
 ## Fase 0: Setup do Projeto
 
-Antes de tudo, entenda o que o usuario quer:
+**Comece pela pesquisa, nao pelo calendario** (regra do Ciro, 18/09/2026, vale
+para todo cliente). Antes de propor "segunda, terca, quarta...":
+
+- **Base do cliente** (`get-knowledge`): campanhas, cardapio, funcionamento.
+- **O que ja saiu**: `list-posts` dos ultimos 14 dias — temas, produtos,
+  abordagens e CTAs. A mesma frase-convite, abordagem ou produto nao volta
+  dentro dessa janela.
+- **Ocasioes reais da semana** na cidade do cliente (feriado, data
+  gastronomica, evento). So entram com ligacao real com a marca, nunca para
+  preencher calendario.
+- **Avaliacoes recentes** (Google, Tripadvisor), quando der para ler: elogio,
+  historia, prato e pessoa da equipe citada pelo nome viram pauta de prova
+  social; o atributo que aparece sozinho com mais frequencia vira tema; critica
+  nunca vira conteudo (se ela se repete, evite promessa absoluta sobre aquele
+  ponto e avise). Nota, ranking, numero de avaliacoes e premios mudam: confira
+  na fonte antes de escrever.
+
+### Como pensar a semana
+
+- **Equilibrio, nao so oferta**: produto, preparo, ambiente, pessoas,
+  convivencia, prova social e ocasioes de consumo. Semana so de ofertas,
+  pratos e convites genericos e defeito.
+- **Conversao x marca**: nem toda peca pede reserva ou chama para a casa.
+- **Feed x stories**: feed e posicionamento, desejo, produto forte e prova
+  social; stories sao o movimento da casa, a ocasiao, a sequencia, a
+  informacao, a lembranca e a conversao. Story nao e feed na vertical.
+- **Stories em sequencia** quando houver conteudo: ocasiao, depois produto,
+  ambiente ou pessoa, depois a informacao, e por fim o convite. Nao termine
+  todos com o mesmo CTA.
+- **Motivo especifico para ir** (reunir a galera, dividir a mesa, o fim de
+  tarde, uma comemoracao), nao so "sexta", "sabado" e "fim de semana".
+- **Historias, nao assuntos**: "ancho" e assunto; "a peca saindo da parrilla
+  para dividir no meio da mesa" e conteudo.
+
+Depois da pesquisa, entenda o que o usuario quer:
 
 1. **Projeto:** `list-projects` → qual projeto?
 2. **Knowledge base:** `get-knowledge(projectId)` → tom de voz, cardapio, horarios, campanhas
