@@ -676,7 +676,8 @@ export async function efeitosDoAgendamento(
   if (contexto.pageId) {
     const { moverPaginaParaSemana } = await import('@/lib/compositor/pastas')
     const movimentacao = await moverPaginaParaSemana(contexto.pageId, contexto.quando, contexto.userId)
-    if (movimentacao.falhou === true) falhas.push('a pasta da semana')
+    // `?.`: o contrato é nunca lançar — um retorno fora dele não pode derrubar o agendamento.
+    if (movimentacao?.falhou === true) falhas.push('a pasta da semana')
   }
 
   return { generationDoPost, falhas }
