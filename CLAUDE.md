@@ -6407,6 +6407,56 @@ dev: `scripts/validar-copy-autoral.ts`.
   o teto do schema** (`lacunasQueCabem`, com uma de resumo); a lista inteira
   segue em `CopyEfetiva.lacunas` para o registro da arte. ⚠️ Com `strict:
   false`, `!x.ok` NÃO estreita a união: use `x.ok === false` antes de ler `aviso`.
+
+**Da revisão FINAL do Codex sobre abac9b34 (BLOQUEADO, PR3-F01…F07, 18/09/2026):**
+
+- 🔴 **Toda escrita de `Page.layers` em página que pode ter contrato passa por
+  `gravarCamadasComRevisao`** (`src/lib/copy-autoral/persistir.ts`) ou tem o
+  mesmo laço escrito no lugar (PATCH do editor, `ajustarArte`, recomposição):
+  relê a página, calcula as camadas SOBRE ela, revisa o contrato sobre ela e
+  grava por compare-and-set em `updatedAt` (4 voltas, depois 409
+  `PAGINA_MUDOU_DURANTE`). Escrita humana passa `humana: true` (a marca do
+  revisor é reconciliada contra a mesma base). Faltava em três portas: a
+  reversão (F01 — lia o contrato fora da escrita; um PATCH no meio deixava
+  camadas X com contrato Y, e no ramo com revisão apagava a revisão
+  concorrente), o PATCH de CAMADA (`use-auto-save-layer`) e o PUT do TEMPLATE
+  (F03 — gravavam camadas sem revisar o contrato; a edição seguinte levava a
+  autoria errada). O PATCH de camada funde a camada na página RELIDA: o
+  autosave de outra camada no meio não é desfeito. Porta nova que grave
+  camadas usa a função — `tx.page.update({ data: { layers } })` cru é o
+  defeito de volta.
+- 🔴 **Quem troca o PNG de uma arte que carrega `fieldValues.copyAutoral` grava
+  o registro de novo** (`registroDaCopyDaArte`, puro, em
+  `src/lib/copy-autoral/registro-da-arte.ts`; F02). O re-render da recomposição
+  (página ajustada à mão, recuperação forçada) trocava o PNG e mantinha a
+  `efetiva` antiga, que `ver-geracao` mostrava como `desenhada` com
+  `comparavel: true`. A efetiva é medida nas camadas que o PNG desenha, sobre o
+  contrato da página; sem como medir (histórico cheio, copy que não cabe,
+  camadas ilegíveis), `efetiva: null`, `comparavel: false` e o motivo em
+  `lacunas` — **nunca a efetiva antiga como se fosse a da imagem nova**. Arte
+  sem registro não ganha um. Vale também para a recomposição que troca a
+  imagem sem conseguir ler o contrato (`copyDaArteIndisponivel`).
+- 🔴 **A segunda voz da manchete é RECONSTRUÍDA das camadas presentes**
+  (`comSegundaVoz` em `efetiva.ts`; F05): `linhasNaVoz2` nunca é herdado do
+  contrato na leitura das camadas. Sem `headline2` visível o índice sai; manchete
+  não desenhada sai sem ele. Herdado, o índice apontava para linha inexistente
+  (revisão válida recusada, contrato velho) ou sobrevivia às linhas reunidas na
+  primeira voz (mudança sem registro). `herdaDe` fica.
+- **O espelho posicional do item leva as strings EXATAS do contrato** (F06):
+  `espelhoDoContrato` não apara nada, e só o bloco sem texto (vazio ou só
+  linhas em branco — o que a bancada já filtra) fica de fora. A lista
+  posicional num item COM contrato é comparada como veio. Aparar convertia a
+  normalização do sistema em revisão da `equipe` quando a bancada reenviava o
+  espelho ao salvar outro campo.
+- **Campo omitido não é campo vazio** (F07): `{ copyAutoral: null }` sem
+  `copyProposta` remove só o contrato — a lista fica (`CopyDoItem.copyProposta`
+  `undefined` = não mexe). Limpar a lista é pedir `copyProposta: []`.
+- 🔴 **`atualizarItem` grava condicionado à versão lida** (F04): `updateMany`
+  com `updatedAt`; perdida a corrida o item é relido e a edição recalculada (as
+  duas revisões ficam no histórico; a lista de quem grava por último vale, como
+  sempre valeu); depois de 3 voltas, 409 `ITEM_MUDOU_DURANTE` com nada gravado.
+  Harness de teste que mocke `itemDePlano.update` para `atualizarItem` precisa
+  de `updateMany`.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
