@@ -6486,6 +6486,12 @@ dev: `scripts/validar-copy-autoral.ts`.
   só, reordenar continua sendo edição. Com vários blocos da função, uma camada
   por bloco na ordem vertical, como antes. `copyDosPapeis` passou a juntar o
   papel repetido como `copyDosPapeisComDestaque` já fazia.
+  ⚠️ **Com o PR 9 por baixo** (restack de 18/09/2026) a leitura das partes é
+  a do PR 9 (R18–R28): a marca `linhasDoBloco` põe cada linha na posição
+  autoral, e a página legada se lê pelo id `<papel>-N` e pela altura. A
+  varredura ampla ("leva TODAS as camadas", que engolia a caixa posta à mão) e
+  a reordenação pelo conjunto saíram — as provas deste bullet passam pela regra
+  do PR 9, e o invariante do PR 9 recusa reordenar página legada editada.
 - 🔴 **Camada "usada" se marca por OBJETO, nunca por id** (varredura do R8-02).
   O contador `${papel}-${n}` de `compor.ts` recomeça em CADA grupo: o serviço
   repartido entre dois grupos da página (Happy wine do TERO) sai com duas
@@ -6498,6 +6504,10 @@ dev: `scripts/validar-copy-autoral.ts`.
   e o worker recusava com `SPEC_INVALIDA` ao revalidar a spec expandida — o
   mesmo conteúdo com dois destinos. A recusa é na porta, sem cortar texto, e
   toda spec aceita revalida igual depois da ida e volta do payload.
+  ⚠️ **Com o PR 9 por baixo** (restack de 18/09/2026) os limites de linha da
+  spec são os do contrato (R06): linha vazia e até 12 linhas são aceitas na
+  porta E na revalidação. A conferência segue com os limites da própria spec
+  (`specSchema.shape.blocos`) e recusa o que passa do teto do contrato.
 - Provas: `atualizar-item-copy.test.ts` (o modal real, legenda só e uma linha
   editada), `recompor-servico-repartido.test.ts` (spec → persistência →
   edição da manchete → recomposição, com o `validarSpec` real, a troca do
@@ -8187,6 +8197,16 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   `blocoDaCopy`**: duas marcas para o mesmo fato é como a junção `c35c2918` foi
   necessária da primeira vez. `validarSpec` já recusa papel repetido, então
   cada função tem no máximo um bloco no compositor.
+  🔴 **E o PR 9 teve a MESMA marca retirada pelo mesmo motivo** (rebase sobre a
+  main de 21/09/2026): a camada extra chegou com `metadata.compositor.parte` e
+  `linhasDoBloco` (R18/R19/R20/R27), que são a posição autoral de cada linha —
+  a MESMA ideia do `linhas` do PR 3, deduzida do id da montagem (`<papel>-N`)
+  em vez de declarada. Ficou a do PR 3, e o extra passou a CARIMBÁ-LA como
+  qualquer outra camada (`bloco` = o id que o AUTOR deu ao bloco, nunca o do
+  papel de que ele só herda o estilo). **Não reintroduza `linhasDoBloco` nem
+  `parte`**, pela razão escrita acima: quem grava a marca é quem DESENHA, e
+  duas marcas para o mesmo fato é a segunda fonte de verdade que os dois lados
+  fecharam uma por rodada.
 - 🔴 **Id de camada é único na PEÇA inteira, nunca por grupo** (varredura do PR
   3, 18/09/2026): o contador de repetição de papel recomeçava a cada grupo, e o
   serviço repartido entre dois grupos (horário junto da oferta, endereço no pé)

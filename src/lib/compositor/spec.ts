@@ -227,16 +227,16 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
       } else if (canonico(declaradas.map(formaDaExtra)) !== canonico(extrasDoContrato.map(formaDaExtra))) {
         return { spec: null, problemas: ['copyAutoral: `camadasExtras` não bate com os blocos livres do contrato (id, linhas, herdaDe, grupoVisual, grupoDeLeitura e ordem) — mande só o contrato (as camadas extras saem dele)'] }
       }
-      // Os blocos DERIVADOS passam pelo mesmo schema dos explícitos (PR3-R8-03, 18/09/2026): o contrato aceita linha
-      // vazia e até 12 linhas, o compositor não — e sem isto a porta gravava o job que o worker recusava ao revalidar
-      // a spec expandida. Recusa aqui, sem cortar texto.
-      const derivadosOk = z.array(blocoSchema).max(5).safeParse(derivados)
+      // Os blocos DERIVADOS passam pelo mesmo schema dos explícitos (PR3-R8-03, 18/09/2026): sem isto a porta gravava
+      // o job que o worker recusava ao revalidar a spec expandida. Recusa aqui, sem cortar texto. Os limites são os
+      // da spec (`blocos` até 40, linhas no teto do contrato — R06 do PR 9), nunca um teto próprio.
+      const derivadosOk = specSchema.shape.blocos.safeParse(derivados)
       if (!derivadosOk.success) {
         return {
           spec: null,
           problemas: derivadosOk.error.issues.map((p) => {
             const papel = typeof p.path[0] === 'number' ? derivados[p.path[0]]?.papel : undefined
-            return `copyAutoral: o bloco ${papel ? `"${papel}" ` : ''}não cabe no compositor (${p.path.slice(1).join('.') || 'blocos'}: ${p.message}) — o compositor não desenha linha vazia nem mais de 6 linhas por bloco; ajuste o contrato (nada foi cortado)`
+            return `copyAutoral: o bloco ${papel ? `"${papel}" ` : ''}não cabe no compositor (${p.path.slice(1).join('.') || 'blocos'}: ${p.message}) — ajuste o contrato (nada foi cortado)`
           }),
         }
       }

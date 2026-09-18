@@ -408,10 +408,12 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
    */
   let contratoAtual: CopyAutoral | null = null
   let semContratoComExtras = false
+  // Fora do bloco: o registro da copy da arte (PR3-F02) diz, na recomposição sem leitura, por que a efetiva não foi medida.
+  let leituraDoContrato: ReturnType<typeof tentarCopyEfetivaDasCamadas> | null = null
   if (candidataARecompor) {
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
     // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — a página mantém o contrato como estava e o motivo entra nos avisos do registro.
-    const leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
     contratoAtual = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
     semContratoComExtras = !contratoAtual && (arte.spec!.camadasExtras?.length ?? 0) > 0
     const motivo = leituraDoContrato && leituraDoContrato.ok === false ? `${leituraDoContrato.aviso} ` : ''
