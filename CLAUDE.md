@@ -10162,6 +10162,29 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   bancada e o `executar-plano` montam a spec do item na hora. `comporItemAgora`
   segue pré-existente.
 
+**Da prova-dev-4 (18/09/2026): a saída recomendada saía como "retomada", e o Blob derrubou a fila**
+
+- 🔴 **`retomado` é só para a peça que MORREU** (sumiu, falhou, job terminal,
+  pronta sem arquivo, sem job). A saída recomendada da peça superada e da
+  chamada vencida — item reaberto (`reprovado` → `editado`) ainda apontando a
+  arte PRONTA, com itemId novo e a itemRevisao atual — cria peça nova pela
+  linha 10, e `enfileirarComposicaoDoPlanoEm` devolvia
+  `retomado: peca !== 'nenhuma'`: `compor-leva` respondia `enfileiradas: 0,
+  retomadas: 1`, com a nota dizendo que as retomadas "tinham falhado ou se
+  perdido" — falso para essa saída. Hoje a peça viva ou pronta SUBSTITUÍDA por
+  outro pedido sai `criado`. O caminho sempre produziu (Generation nova, job,
+  linha nova com a revisão atual, item `na-fila`); o que mentia era o relato.
+  Prova em `fila-lote.test.ts` pelo caminho real (`transicionarItem` e
+  `atualizarItem` de verdade), com o controle: a linha NOVA sobre a peça que
+  FALHOU continua `retomado`.
+- **O resto da prova-dev-4 era o Blob, não o código**: a composição do passo 8
+  parou em "Failed to load image" da logo com 403 (o desafio anti-bot), o job
+  voltou à fila (tentativa 1/3) e o item ficou `na-fila`; o passo 9 herdou a
+  arte "em produção". `validar-lote-duravel.ts` lê cada imagem do Blob uma vez
+  por URL, com nova tentativa espaçada (`scripts/lib/leitura-do-blob.ts`, o
+  desenho da prova do revisor), e o passo 8 confere também `enfileiradas: 1`,
+  `retomadas: 0`.
+
 **Decisões do Ciro (13/09/2026) sobre a repetição de uma leva:**
 
 - **Pedido desatualizado (`chamada-vencida`): MANTIDO.** Item editado depois da

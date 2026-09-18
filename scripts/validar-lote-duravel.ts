@@ -34,6 +34,9 @@
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
  * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
+ * Lê cada imagem do Blob UMA vez por URL, com nova tentativa espaçada em
+ * 403/429/5xx (`scripts/lib/leitura-do-blob.ts`): na prova-dev-4 o desafio
+ * anti-bot do Blob derrubou a composição do passo 8, e a prova acusou o código.
  * A pasta da semana criada por `garantirPasta` fica (é reutilizada, como na
  * prova da copy autoral).
  *
@@ -130,6 +133,8 @@ async function main() {
   const { toolsDoCompositor } = await import('../src/lib/mcp/catalogo/compositor')
   const { CLIENT_ID_LOCAL } = await import('../src/lib/mcp/tools')
   const { del } = await import('@vercel/blob')
+  const { lerOBlobUmaVezPorUrl } = await import('./lib/leitura-do-blob')
+  await lerOBlobUmaVezPorUrl('validar-lote-duravel')
   type Peca = Awaited<ReturnType<typeof enfileirarPeca>>
 
   const planos: string[] = []
@@ -185,6 +190,8 @@ async function main() {
   const principalLocal = { kind: 'service' as const, clientId: CLIENT_ID_LOCAL }
   type ArteAtual = { generationId?: string; pageId?: string | null; feitaEm?: string | null; feitaEmBrasilia?: string | null; situacao?: string }
   type RespostaDaLeva = {
+    enfileiradas: number
+    retomadas: number
     pecas: Array<{ indice: number; itemId: string | null; generationId: string; desfecho: string; situacao: string }>
     falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }>
     conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[] }>
@@ -319,7 +326,8 @@ async function main() {
     const pecasAntesDoCaminho = await contarPecasDaMarca()
     const caminho = await comporLevaPeloConector(LOTE_B, [itemDaLeva(specV2, 'b-2-v2', { itemRevisao: itemRevisaoAtual })])
     const pecaNova = caminho.pecas[0]
-    conferir('produz: a peça nova vai para pecas como criada, nada em superadas, falhas ou conflitos', caminho.pecas.length === 1 && pecaNova.itemId === 'b-2-v2' && pecaNova.desfecho === 'criado' && pecaNova.generationId !== arteAntigaDoItem && caminho.superadas.length === 0 && caminho.falhas.length === 0 && caminho.conflitos.length === 0, JSON.stringify({ pecas: caminho.pecas, superadas: caminho.superadas, falhas: caminho.falhas, conflitos: caminho.conflitos }))
+    // `criado`, não `retomado`: a arte antiga não falhou nem se perdeu, e o chat lê em `enfileiradas`/`retomadas` o que aconteceu (prova-dev-4).
+    conferir('produz: a peça nova vai para pecas como criada (1 enfileirada, 0 retomadas), nada em superadas, falhas ou conflitos', caminho.pecas.length === 1 && pecaNova.itemId === 'b-2-v2' && pecaNova.desfecho === 'criado' && caminho.enfileiradas === 1 && caminho.retomadas === 0 && pecaNova.generationId !== arteAntigaDoItem && caminho.superadas.length === 0 && caminho.falhas.length === 0 && caminho.conflitos.length === 0, JSON.stringify({ enfileiradas: caminho.enfileiradas, retomadas: caminho.retomadas, pecas: caminho.pecas, superadas: caminho.superadas, falhas: caminho.falhas, conflitos: caminho.conflitos }))
     const linhaV2 = (await linhasDoLote(LOTE_B)).find((l) => l.itemId === 'b-2-v2')
     conferir('uma Generation nova e um job, e a linha nova ligada a eles com a revisão atual', !!pecaNova && (await contarPecasDaMarca()) === pecasAntesDoCaminho + 1 && (await jobsPorGeracao([pecaNova.generationId])).get(pecaNova.generationId) === 1 && linhaV2?.generationId === pecaNova.generationId && linhaV2.situacao === 'enfileirado' && linhaV2.planoRevisao === itemRevisaoAtual, JSON.stringify({ linha: linhaV2?.situacao, revisao: linhaV2?.planoRevisao === itemRevisaoAtual }))
     const itemNaFila = await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true } })
