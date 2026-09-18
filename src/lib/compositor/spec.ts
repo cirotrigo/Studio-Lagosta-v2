@@ -131,6 +131,19 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
       if (livresComTexto.length > 0) {
         return { spec: null, problemas: [`copyAutoral: bloco(s) sem papel do compositor com texto (${livresComTexto.map((b) => `"${b.id}"`).join(', ')}) — a camada livre chega na F3; até lá, dê a eles uma função (pre, headline, apoio, cta, servico)`] }
       }
+      // Os blocos DERIVADOS passam pelo mesmo schema dos explícitos (PR3-R8-03, 18/09/2026): o contrato aceita linha
+      // vazia e até 12 linhas, o compositor não — e sem isto a porta gravava o job que o worker recusava ao revalidar
+      // a spec expandida. Recusa aqui, sem cortar texto.
+      const derivadosOk = z.array(blocoSchema).max(5).safeParse(derivados)
+      if (!derivadosOk.success) {
+        return {
+          spec: null,
+          problemas: derivadosOk.error.issues.map((p) => {
+            const papel = typeof p.path[0] === 'number' ? derivados[p.path[0]]?.papel : undefined
+            return `copyAutoral: o bloco ${papel ? `"${papel}" ` : ''}não cabe no compositor (${p.path.slice(1).join('.') || 'blocos'}: ${p.message}) — o compositor não desenha linha vazia nem mais de 6 linhas por bloco; ajuste o contrato (nada foi cortado)`
+          }),
+        }
+      }
       const soPapelELinhas = (lista: Array<{ papel: string; linhas: string[] }>) => lista.map((b) => ({ papel: b.papel, linhas: b.linhas }))
       if (!r.data.blocos || r.data.blocos.length === 0) {
         r.data.blocos = derivados as unknown as NonNullable<typeof r.data.blocos>
