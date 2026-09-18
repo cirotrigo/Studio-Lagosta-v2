@@ -6457,6 +6457,54 @@ dev: `scripts/validar-copy-autoral.ts`.
   sempre valeu); depois de 3 voltas, 409 `ITEM_MUDOU_DURANTE` com nada gravado.
   Harness de teste que mocke `itemDePlano.update` para `atualizarItem` precisa
   de `updateMany`.
+
+**Da revisão FINAL do Codex sobre cc14f30a (BLOQUEADO, PR3-R8-01…03, 18/09/2026):**
+
+- 🔴 **Superfície que edita copy de um item com contrato edita BLOCO a BLOCO,
+  nunca um texto concatenado** (R8-01). O modal "Editar a peça" da bancada
+  juntava os blocos num textarea e separava por quebra de linha: bloco de duas
+  linhas virava dois, linhas vazias sumiam, e salvar SÓ a legenda descartava o
+  contrato (mudou o número de blocos) ou registrava a normalização como revisão
+  da `equipe`. Hoje é um campo por bloco (`blocosParaEdicao`), a copy volta
+  como a lista ORIGINAL quando não foi editada (`copyDaEdicao`) e o patch só
+  leva `copyProposta` quando ela mudou (`patchDaEdicaoDoItem`, em
+  `para-bancada.ts`). O teste segue o caminho real — item do servidor → card →
+  modal → patch → `atualizarItem`; testar só a hidratação pulava justamente a
+  transformação do modal. Varredura: o compositor da bancada e o
+  `gerar-arte-ia-modal` ainda usam "um bloco por linha", mas criam item/arte
+  NOVOS (sem contrato a preservar); duplicar card e duplicar da galeria copiam
+  o espelho exato e o item novo nasce sem contrato.
+- 🔴 **Bloco ÚNICO da função leva TODAS as camadas dela** (R8-02,
+  `copyEfetivaDasCamadas`). O compositor reparte um bloco em várias camadas do
+  mesmo papel (`servico` e `servico-2` pelo arranjo; `distribuirLinhas` faz o
+  mesmo com qualquer papel), e a leitura dava a 1ª camada ao bloco e criava
+  OUTRO bloco `servico` com a 2ª: `Page.copyAutoral` ficava com dois serviços
+  e a recomposição seguinte morria em `papel repetido`, com o slide preso na
+  imagem velha. As linhas voltam juntas de cima para baixo; quando são as
+  MESMAS do bloco em outra ordem, fica a ordem do autor (quem reordenou foi o
+  arranjo — horário no grupo do relógio, endereço no do alfinete). Numa camada
+  só, reordenar continua sendo edição. Com vários blocos da função, uma camada
+  por bloco na ordem vertical, como antes. `copyDosPapeis` passou a juntar o
+  papel repetido como `copyDosPapeisComDestaque` já fazia.
+- 🔴 **Camada "usada" se marca por OBJETO, nunca por id** (varredura do R8-02).
+  O contador `${papel}-${n}` de `compor.ts` recomeça em CADA grupo: o serviço
+  repartido entre dois grupos da página (Happy wine do TERO) sai com duas
+  camadas de id `servico`, e com `usadas` por id a segunda sumia da leitura —
+  o endereço deixava o contrato e a recomposição o apagava. ⚠️ O id duplicado
+  continua nascendo no compositor (é do PR 4); aqui só a leitura ficou imune.
+- 🔴 **Os blocos DERIVADOS do contrato passam pelo mesmo schema dos
+  explícitos** (R8-03, `validarSpec`). O contrato aceita linha vazia e até 12
+  linhas; o compositor não. Sem a conferência, `enfileirarPeca` gravava o job
+  e o worker recusava com `SPEC_INVALIDA` ao revalidar a spec expandida — o
+  mesmo conteúdo com dois destinos. A recusa é na porta, sem cortar texto, e
+  toda spec aceita revalida igual depois da ida e volta do payload.
+- Provas: `atualizar-item-copy.test.ts` (o modal real, legenda só e uma linha
+  editada), `recompor-servico-repartido.test.ts` (spec → persistência →
+  edição da manchete → recomposição, com o `validarSpec` real, a troca do
+  slide e a capa; o arranjo que inverte as linhas; os dois grupos com id
+  repetido; dois blocos da função) e `spec-blocos-derivados.test.ts` (linha
+  vazia e sete linhas recusadas antes do banco). Cada correção desfeita por
+  mutação faz a sua prova falhar.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
