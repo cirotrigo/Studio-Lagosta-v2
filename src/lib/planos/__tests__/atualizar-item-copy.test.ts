@@ -53,6 +53,7 @@ vi.mock('@prisma/client', async () => await import('../../../../prisma/generated
 import { VERSAO_DO_CONTRATO, lerCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 import { copyDoItemNovo } from '../copy-do-item'
 import { atualizarItem } from '../plano-service'
+import { blocosParaEdicao, copyDaEdicao, paraItemDaBancada, patchDaEdicaoDoItem } from '../para-bancada'
 
 const contrato: CopyAutoral = {
   versao: VERSAO_DO_CONTRATO,
@@ -114,5 +115,50 @@ describe('remover só o contrato não apaga a copy (PR3-F07)', () => {
     await editar({ copyAutoral: null, copyProposta: [] })
     expect(banco.item.copyAutoral).toBeNull()
     expect(banco.item.copyProposta).toEqual([])
+  })
+})
+
+/**
+ * PR3-R8-01 (revisão FINAL do Codex sobre cc14f30a, 18/09/2026): o caminho REAL
+ * do modal "Editar a peça" — o item do servidor vira card (`paraItemDaBancada`),
+ * o modal abre com um campo por bloco (`blocosParaEdicao`), a pessoa mexe, o
+ * modal devolve (`copyDaEdicao`), a fila monta o patch (`patchDaEdicaoDoItem`) e
+ * o serviço grava (`atualizarItem`). O teste anterior pulava a transformação do
+ * modal, que juntava tudo e separava por quebra de linha.
+ */
+describe('o modal da bancada preserva os blocos (PR3-R8-01)', () => {
+  const multilinha: CopyAutoral = {
+    ...contrato,
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Olá', 'mundo'] },
+      { id: 'apoio', funcao: 'apoio', ordem: 1, linhas: ['', 'Sexta é dia', ''] },
+    ],
+  }
+  const doModal = (editar: (campos: string[]) => string[], legenda: string | null) => {
+    const card = paraItemDaBancada({ ...banco.item, id: 'item-1', formato: 'story', via: 'ia' } as never, { id: 'plano-1', projectId: 8 } as never)
+    const campos = editar(blocosParaEdicao(card.copy))
+    const { copy, editada } = copyDaEdicao(card.copy, campos)
+    return patchDaEdicaoDoItem({ copy, copyEditada: editada, legenda, pedido: '', instrucaoImagem: null, referencias: card.referencias })
+  }
+
+  it('salvar SÓ a legenda: contrato, lista e histórico intactos (e a copy nem viaja)', async () => {
+    const criado = copyDoItemNovo({ copyAutoral: multilinha })
+    banco.item = itemCom(criado.copyAutoral, criado.copyProposta)
+    const patch = doModal((c) => c, 'nova legenda')
+    expect('copyProposta' in patch).toBe(false)
+    await editar(patch)
+    expect(banco.item.copyAutoral).toEqual(multilinha)
+    expect(banco.item.copyProposta).toEqual(criado.copyProposta)
+    expect(banco.item.legenda).toBe('nova legenda')
+  })
+
+  it('editar UMA linha de um bloco: o bloco continua com as linhas internas (vazias inclusive) e só ele é revisado', async () => {
+    const criado = copyDoItemNovo({ copyAutoral: multilinha })
+    banco.item = itemCom(criado.copyAutoral, criado.copyProposta)
+    await editar(doModal((c) => [c[0], c[1].replace('Sexta', 'Sábado')], null))
+    const lido = lerCopyAutoral(banco.item.copyAutoral).copy!
+    expect(lido.blocos.map((b) => b.linhas)).toEqual([['Olá', 'mundo'], ['', 'Sábado é dia', '']])
+    expect(lido.revisoes).toHaveLength(1)
+    expect(lido.revisoes[0]).toMatchObject({ autor: 'equipe', blocos: ['apoio'] })
   })
 })

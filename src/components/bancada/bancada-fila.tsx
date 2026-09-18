@@ -39,6 +39,7 @@ import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-
 import {
   formatarQuandoBR,
   ordenarPorDataDesc,
+  patchDaEdicaoDoItem,
   referenciasParaServidor,
   situacaoParaExibir,
   type BancadaItemComCandidatas,
@@ -282,22 +283,9 @@ export function BancadaFila({ projectId }: { projectId: number }) {
         referencias: e.referencias,
       })
       if (item.itemDePlanoId && item.planoId && itemEditavel(item.situacaoNoPlano ?? 'proposto')) {
-        const cena = e.referencias.find((r) => r.papel === 'subject')
-        // A lista inteira viaja; o espelho fotoDriveId/fotoUrl vai junto para o
-        // caso de lista vazia (o serviço deriva o espelho da lista quando ela
-        // existe, então mandar os dois nunca diverge).
+        // A copy só viaja quando foi editada (PR3-R8-01, `patchDaEdicaoDoItem`).
         patchDoPlano.mutate(
-          {
-            planoId: item.planoId,
-            itemId: item.itemDePlanoId,
-            copyProposta: e.copy,
-            legenda: e.legenda,
-            fotoDriveId: cena?.driveFileId ?? null,
-            fotoUrl: cena?.url ?? null,
-            referencias: referenciasParaServidor(e.referencias),
-            direcao: e.pedido?.trim() || null,
-            ajusteDaFoto: e.instrucaoImagem?.trim() || null,
-          },
+          { planoId: item.planoId, itemId: item.itemDePlanoId, ...patchDaEdicaoDoItem(e) },
           {
             // Sem isto a falha era MUDA: a tela de quem editou mostrava a
             // mudança (o store local já tinha gravado) e a equipe continuava
