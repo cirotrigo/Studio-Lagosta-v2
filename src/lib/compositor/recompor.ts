@@ -48,6 +48,7 @@ import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedir
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { blocosParaOCompositor, lerCopyAutoral, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
 import type { Layer } from '@/types/template'
+import { copyDaArteIndisponivel, registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
 import { mesclarFieldValuesDaArte, preservarPropostaDeAprendizado } from '@/lib/creatives/mesclar-field-values'
@@ -508,7 +509,16 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
                 ...(efetivaRecomposta.lacunas.length ? { lacunas: efetivaRecomposta.lacunas } : {}),
               },
             }
-          : {}),
+          : (() => {
+              // O PNG é novo e a efetiva não pôde ser medida: a antiga NÃO pode seguir como se fosse a desta
+              // imagem (PR3-F02) — `efetiva: null`, não comparável, com o motivo.
+              const motivo =
+                (leituraRecomposta && leituraRecomposta.ok === false ? leituraRecomposta.aviso : null) ??
+                (leituraDoContrato && leituraDoContrato.ok === false ? leituraDoContrato.aviso : null) ??
+                'a página não tem contrato da copy'
+              const indisponivel = copyDaArteIndisponivel(copyAutoralAnterior, motivo)
+              return indisponivel ? { copyAutoral: indisponivel } : {}
+            })()),
         recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
         // A recusa de uma rodada anterior fica superada por esta (C6-01).
         recusaDaRecomposicao: null,
@@ -546,6 +556,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     const copyVisualNova = temCopyVisual ? copyVisualDasCamadas(page.layers) : null
     if (temCopyVisual && copyVisualNova === null) avisos.push('Camadas da página ilegíveis: a copy visual da arte foi mantida como estava.')
     if (copyVisualNova) await preservarPropostaDeAprendizado(db, arte.generationId)
+    /**
+     * O registro da copy AUTORAL acompanha o PNG também aqui (PR3-F02 da
+     * revisão FINAL do Codex sobre abac9b34, 18/09/2026): a página ajustada à
+     * mão (texto e posição) cai neste ramo, o PNG é trocado e a `efetiva`
+     * antiga seguia apresentada por `ver-geracao` como a desenhada, com
+     * `comparavel: true`. Medida nas camadas que ESTE render desenha, sobre o
+     * contrato da página; sem como medir, `efetiva: null` e o motivo. Só na
+     * arte que já carrega o registro (não se inventa um).
+     */
+    const daCopy = registroDaCopyDaArte({ anterior: fvDaArte.copyAutoral, contratoDaPagina: page.copyAutoral, camadas: page.layers, superficie: 'recomposicao' })
+    if (daCopy.aviso) avisos.push(daCopy.aviso)
     if (input.antesDeRenderizar) await input.antesDeRenderizar()
     const registrada = await renderPageAndRegister({
       project: projeto,
@@ -589,6 +610,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         recusaDaRecomposicao: null,
         // A copy VISUAL nova (ver acima); a copy de APRENDIZADO fica como está (o merge não a toca).
         ...(copyVisualNova ? { slotValues: copyVisualNova } : {}),
+        // O registro da copy autoral deste PNG (ver acima).
+        ...(daCopy.registro ? { copyAutoral: daCopy.registro } : {}),
         // A recuperação forçada preservou um ajuste que a spec não conhece:
         // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
         ...(forcar ? { somenteReRender: { desde: new Date().toISOString(), motivo: 'recuperação forçada preservou ajuste manual (revisor)' } } : {}),
