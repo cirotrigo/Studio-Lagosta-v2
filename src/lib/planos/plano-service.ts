@@ -438,7 +438,7 @@ function normalizarItem(
   } catch (erro) {
     throw erroDaCopyDoItem(erro, `do item ${posicao}`) ?? erro
   }
-  const copy = copyDoItem.copyProposta
+  const copy = copyDoItem.copyProposta ?? []
 
   // Referências com papel: presentes, elas VENCEM os campos soltos — o espelho
   // fotoUrl/fotoDriveId passa a ser a CENA da lista, e é dele que a capa do
@@ -782,7 +782,7 @@ export async function atualizarItem(input: {
       superficie: input.autorDaCopy === 'claude' ? 'chat' : 'bancada',
     })
     if (copyPatch) {
-      data.copyProposta = copyPatch.copyProposta
+      if (copyPatch.copyProposta !== undefined) data.copyProposta = copyPatch.copyProposta
       data.copyAutoral = copyPatch.copyAutoral ? (copyPatch.copyAutoral as unknown as Prisma.InputJsonValue) : Prisma.DbNull
       avisos.push(...copyPatch.avisos)
     }

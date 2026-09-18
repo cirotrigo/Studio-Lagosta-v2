@@ -24,7 +24,6 @@
 import {
   HistoricoDaCopyCheio,
   blocosEmOrdem,
-  espelhoPosicional,
   lerCopyAutoral,
   orientacaoDosProblemas,
   orientacaoEmFrase,
@@ -37,8 +36,12 @@ import {
 export interface CopyDoItem {
   /** O contrato a gravar; `null` = o item fica (ou passa a ficar) sem contrato. */
   copyAutoral: CopyAutoral | null
-  /** O espelho posicional (`ItemDePlano.copyProposta`), sem blocos vazios. */
-  copyProposta: string[]
+  /**
+   * O espelho posicional (`ItemDePlano.copyProposta`), sem blocos vazios.
+   * `undefined` (só no patch) = a lista fica como está: remover só o contrato
+   * não apaga a copy (PR3-F07).
+   */
+  copyProposta?: string[]
   avisos: string[]
 }
 
@@ -59,9 +62,29 @@ function listaLimpa(lista: unknown): string[] {
     .filter(Boolean)
 }
 
-/** O espelho posicional que o item grava: bloco vazio fica de fora (o contrato o guarda). */
+/**
+ * O bloco entra no espelho posicional? Só quando tem texto — o bloco vazio (e o
+ * de linhas só em branco) fica de fora, como a bancada já filtra
+ * (`para-bancada.ts`); o contrato o guarda intacto.
+ */
+function temTexto(b: BlocoAutoral): boolean {
+  return b.linhas.join('\n').trim() !== ''
+}
+
+/**
+ * O espelho posicional que o item grava: um item por bloco COM TEXTO, as
+ * strings EXATAS do contrato (linhas unidas por "\n", sem `trim`). Aparar
+ * aqui mudava o texto: a bancada reenviava o espelho ao salvar outro campo e a
+ * normalização do sistema virava edição da equipe (PR3-F06 da revisão FINAL
+ * do Codex sobre abac9b34, 18/09/2026).
+ */
 export function espelhoDoContrato(copy: CopyAutoral): string[] {
-  return espelhoPosicional(copy).map((s) => s.trim()).filter(Boolean)
+  return blocosEmOrdem(copy).filter(temTexto).map((b) => b.linhas.join('\n'))
+}
+
+/** A lista posicional num item COM contrato: as strings como vieram (só o vazio sai, como no espelho). */
+function listaExata(lista: unknown): string[] {
+  return (Array.isArray(lista) ? lista : []).filter((b): b is string => typeof b === 'string' && b.trim() !== '')
 }
 
 function contratoLido(entrada: unknown): CopyAutoral {
@@ -92,7 +115,8 @@ export function copyDoItemNoPatch(
   if (patch.copyAutoral === null) {
     return {
       copyAutoral: null,
-      copyProposta: listaLimpa(patch.copyProposta),
+      // Só o contrato foi removido: a lista fica como está, a não ser que venha junto (PR3-F07).
+      ...(patch.copyProposta !== undefined ? { copyProposta: listaLimpa(patch.copyProposta) } : {}),
       avisos: ['O contrato da copy do item foi removido a pedido; a copy passa a valer só pela lista posicional.'],
     }
   }
@@ -102,12 +126,12 @@ export function copyDoItemNoPatch(
   }
 
   // Só a lista posicional mudou.
-  const lista = listaLimpa(patch.copyProposta)
   const contrato = atual == null ? null : lerCopyAutoral(atual).copy
-  if (!contrato) return { copyAutoral: null, copyProposta: lista, avisos: [] }
+  if (!contrato) return { copyAutoral: null, copyProposta: listaLimpa(patch.copyProposta), avisos: [] }
+  const lista = listaExata(patch.copyProposta)
 
   const emOrdem = blocosEmOrdem(contrato)
-  const comTexto = emOrdem.filter((b) => b.linhas.length > 0)
+  const comTexto = emOrdem.filter(temTexto)
   const descartado = (motivo: string): CopyDoItem => ({
     copyAutoral: null,
     copyProposta: lista,
@@ -117,7 +141,7 @@ export function copyDoItemNoPatch(
     return descartado(`a edição posicional mudou o número de blocos com texto (${comTexto.length} → ${lista.length}) e não há como saber qual bloco é qual`)
   }
   const novos: BlocoAutoral[] = emOrdem.map((b) => {
-    if (b.linhas.length === 0) return b
+    if (!temTexto(b)) return b
     const linhas = lista[comTexto.indexOf(b)].split('\n')
     // A segunda voz aponta para linhas por índice; linha que sumiu leva o índice junto.
     const { estilo: estiloAntigo, ...semEstilo } = b
