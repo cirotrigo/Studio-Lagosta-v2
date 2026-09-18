@@ -104,9 +104,9 @@ describe('a variante fixada por id', () => {
   it('a recomposição fixa a variante pelo pageId da composição original, sem mexer em quem já pediu', () => {
     const spec = { projectId: 8, formato: 'story', blocos: [{ papel: 'headline', linhas: ['x'] }] } as unknown as SpecDePeca
     const fv = { composicao: { posicao: { ancora: 'topo', alinha: 'esquerda' }, assinatura: { pageId: 'pg-b' } } }
-    expect(specComAPosicaoOriginal(spec, fv).preferencias).toEqual({ variante: 'pg-b', ancora: 'topo', alinha: 'esquerda' })
+    expect(specComAPosicaoOriginal(spec, fv).preferencias).toEqual({ varianteOriginal: 'pg-b', ancora: 'topo', alinha: 'esquerda' })
     expect(specComAPosicaoOriginal({ ...spec, preferencias: { variante: 'pg-a' } }, fv).preferencias?.variante).toBe('pg-a')
-    expect(specComAPosicaoOriginal(spec, { composicao: { assinatura: { pageId: 'pg-b' } } }).preferencias).toEqual({ variante: 'pg-b' })
+    expect(specComAPosicaoOriginal(spec, { composicao: { assinatura: { pageId: 'pg-b' } } }).preferencias).toEqual({ varianteOriginal: 'pg-b' })
     expect(validarSpec(specComAPosicaoOriginal(spec, fv)).problemas).toEqual([])
   })
 })

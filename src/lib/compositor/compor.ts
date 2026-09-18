@@ -174,6 +174,8 @@ export interface OpcoesDeAssinatura {
   paginas?: string[]
   /** Nome/tag da variante pedida na spec. */
   variante?: string | null
+  /** O id da página com que a peça nasceu (a recomposição fixa) — ver `CriteriosDeVariante.varianteOriginal`. */
+  varianteOriginal?: string | null
   /** Os papéis que a peça pede: variante que os tem vence a que não os tem. */
   papeis?: Papel[]
   /** O assunto da peça — casa com nome/tags da página ("funcionamento", "cafés"). */
@@ -247,6 +249,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   const { pagina: escolhida, formatoDaPagina: fmt, motivo } = escolherVariante(comPapeis, {
     formato,
     variante: opcoes.variante ?? null,
+    varianteOriginal: opcoes.varianteOriginal ?? null,
     papeis: opcoes.papeis,
     tema: opcoes.tema ?? null,
     luzDaFoto: opcoes.luzDaFoto ?? null,
@@ -561,6 +564,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const assinatura = await carregarAssinatura(spec.projectId, spec.formato, {
     paginas: opcoes.paginasDeAssinatura,
     variante: spec.preferencias?.variante ?? null,
+    varianteOriginal: spec.preferencias?.varianteOriginal ?? null,
     papeis: spec.blocos.map((b) => b.papel),
     tema: spec.tema ?? spec.nome ?? null,
     luzDaFoto,
@@ -819,7 +823,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       blocos,
       pilha: empilhar(blocos, g.gap),
       ...(ladoDoRecuo && blocos.some((b) => (b.recuo ?? 0) > 0) ? { pilhaRecuada: empilhar(blocos, g.gap, ladoDoRecuo) } : {}),
-      principal: papeis.includes('headline'),
+      // A manchete inteira na voz 2 só desenha `headline2` — e o grupo dela
+      // continua sendo o principal (PR4-02 da revisão final do Codex).
+      principal: papeis.includes('headline') || papeis.includes('headline2'),
       ancora,
       temCaixa: caixas.length > 0,
       // O alinhamento preferido é o do arranjo: é o que a combinação desenhou.

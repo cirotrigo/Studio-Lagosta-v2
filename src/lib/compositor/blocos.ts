@@ -334,9 +334,11 @@ export function montarBloco(args: {
 /** Vão vertical entre dois papéis consecutivos (o ritmo do `gerar.py`). */
 export function vaoEntre(anterior: Papel | null, proximo: Papel, gapPadrao: number): number {
   if (!anterior) return 0
-  // A segunda voz encosta na primeira: é o mesmo lockup.
-  if (proximo === 'headline2') return 0
-  if (proximo === 'headline') return Math.round(gapPadrao * 0.5)
+  // A segunda voz encosta na primeira (ou na outra caixa da voz 2): é o mesmo
+  // lockup. Manchete INTEIRA na voz 2 começa em `headline2` e leva o vão de
+  // manchete, não o de lockup — senão encostava no pré-título (PR4-02).
+  if (proximo === 'headline2' && (anterior === 'headline' || anterior === 'headline2')) return 0
+  if (proximo === 'headline' || proximo === 'headline2') return Math.round(gapPadrao * 0.5)
   if (proximo === 'cta') return Math.round(gapPadrao * 1.3)
   if (proximo === 'servico') return Math.round(gapPadrao * 1.6)
   return gapPadrao

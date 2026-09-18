@@ -320,11 +320,13 @@ export function specComAPosicaoOriginal(spec: SpecDePeca, fieldValues: unknown):
   // peça foi composta (PR 4, 12/09/2026). Sem isso, uma edição de texto
   // podia cair noutra variante (o rodízio, a tag clara/escura de outra foto) e
   // trocar fonte, cor e arranjo de uma peça que só mudou uma palavra. Spec
-  // que já pede variante fica como está.
+  // que já pede variante fica como está. Vai em `varianteOriginal`, não em
+  // `variante`: a página pode ter sido arquivada, e aí a recomposição escolhe
+  // outra em vez de recusar a peça (varredura do PR4-03, 18/09/2026).
   const pageId = typeof composicao?.assinatura?.pageId === 'string' ? composicao.assinatura.pageId : null
   let mudou = false
-  if (pageId && !pref.variante) {
-    pref = { ...pref, variante: pageId }
+  if (pageId && !pref.variante && !pref.varianteOriginal) {
+    pref = { ...pref, varianteOriginal: pageId }
     mudou = true
   }
   const comPref = () => (mudou ? { ...spec, preferencias: pref } : spec)

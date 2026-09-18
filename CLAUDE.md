@@ -7313,9 +7313,36 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   (do `autoWrap`), caixa arredondada, número de linhas e prefixo de cada texto
   COMO FOI GRAVADO, depois do autofix — é o que `ver-geracao` e a métrica da F2
   leem. A prova casa cada medida com a camada final por id.
+- 🔴 **Um bloco espalhado por várias caixas do mesmo papel volta a UM bloco**
+  (PR4-01 da revisão final do Codex, 18/09/2026). `distribuirLinhas` põe uma
+  linha por caixa quando o arranjo tem mais de um texto do papel (duas caixas
+  de voz 2, Local + Horário), e a efetiva lia só a primeira: a segunda virava
+  `extra-…`, com revisão falsa, e o bloco `livre` com texto travava a
+  recomposição em `validarSpec`. Hoje o compositor DECLARA a origem de cada
+  camada (`metadata.compositor.blocoDaCopy` = índice em `spec.blocos`,
+  rastreado LINHA a linha por `juntarNoGrupo`/`distribuirLinhas` e só gravado
+  quando todas as linhas da camada vêm do mesmo bloco), e
+  `copyEfetivaDasCamadas` junta as camadas livres da mesma declaração, em ordem
+  de leitura. Camada sem a marca (posta à mão no editor) continua lida como
+  antes — nada é juntado por palpite. `validarSpec` já recusa papel repetido,
+  então cada função tem no máximo um bloco no compositor.
+- 🔴 **Manchete só na voz 2 continua sendo a manchete no LAYOUT** (PR4-02): o
+  grupo principal é o que tem `headline` OU `headline2` (sem isso o pré-título
+  em grupo separado herdava a posição pedida e o mapa da foto), e `vaoEntre`
+  dá vão de manchete antes de `headline2` que não segue outra voz da manchete
+  (antes encostava no pré-título como se fosse lockup). Estado novo que o PR
+  cria precisa ser conferido em todo consumidor que perguntava pelo papel antigo.
 - **A recomposição fixa a VARIANTE pelo id da página** da composição original
-  (`preferencias.variante = composicao.assinatura.pageId`; motivo
+  (`preferencias.varianteOriginal = composicao.assinatura.pageId`; motivo
   `fixada por id`; o id vence o nome que o contém em `escolherVariante`) — a
   edição de texto não pode trocar a peça de variante.
+  🔴 O id é procurado ANTES do filtro por formato (PR4-03): a peça de feed que
+  nasceu na assinatura de STORY (o fallback quando não havia a de feed)
+  continua com ela depois que o projeto ganha uma de feed — antes a
+  recomposição recusava com `ASSINATURA_INCOMPLETA`. E a fixação da
+  recomposição vai em `varianteOriginal`, não em `variante`: a página pode ter
+  sido arquivada (as stories do Quintal e do TERO foram, em 11/09), e aí a
+  escolha automática segue, com o motivo dizendo que a original não existe
+  mais. `variante` continua sendo o pedido explícito — ausente é recusa.
 - `PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3): papel que a variante
   não tem recusa, nunca some.
