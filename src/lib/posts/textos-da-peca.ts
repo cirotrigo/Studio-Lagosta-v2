@@ -380,6 +380,11 @@ export function arteDosFieldValues(fieldValues: unknown): NonNullable<SlideDaPec
  */
 export function paginaDoPostEHistorica(post: Pick<PecaParaTextos, 'pageId' | 'renderStatus' | 'mediaUrls'>, arteDaMidia?: SlideDaPeca['arte']): boolean {
   if (!post.pageId || post.renderStatus !== 'NOT_NEEDED' || post.mediaUrls.length !== 1) return false
+  // R52 (revisão FINAL sobre 7e96c643, 18/09/2026): a igualdade de `pageId` não prova que a página seja a fonte. A arte
+  // de MODELO (`post-schedule`) aponta para a página do modelo com a copy por cima, e o render aplica só o valor do id
+  // quando id e nome endereçam a mesma camada; aplicar à página os slots que o post herdou (sem o `l1` vazio) afirmava
+  // o texto descartado. Com o post `NOT_NEEDED` a página não renderiza de novo: vale a procedência da mídia (R36).
+  if (arteDaMidia && copyDaArteDeModelo(arteDaMidia) !== null) return true
   return arteDaMidia?.pageId !== post.pageId
 }
 
@@ -396,9 +401,14 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   // 1. Peça VIVA com página: a mesma precedência do render. Legível é
   //    definitivo — inclusive vazio (a única camada apagada pelo slot).
   let paginaIlegivel = false
+  //    🔴 Os slots do post só entram quando a página RENDERIZA a mídia do post. Com `NOT_NEEDED` e uma mídia, o PNG é o
+  //    de uma arte (a da própria página, mantida em dia pela recomposição): os slots que o post herdou na troca pela
+  //    galeria não são entrada de render nenhum, e aplicá-los à página editada depois devolvia o texto de antes
+  //    (varredura da classe do R52, 18/09/2026). Sem mídia, eles são a entrada do render que ainda vai acontecer.
+  const slotsDoRender = post.renderStatus === 'NOT_NEEDED' && post.mediaUrls.length === 1 ? null : proprios
   if (!entregue && !carrossel && !paginaHistorica && fontes.camadas !== undefined) {
-    const daPagina = textosDasCamadas(fontes.camadas, proprios)
-    if (daPagina !== null) return { textos: daPagina, origem: proprios ? 'pagina-com-copy-do-post' : 'pagina' }
+    const daPagina = textosDasCamadas(fontes.camadas, slotsDoRender)
+    if (daPagina !== null) return { textos: daPagina, origem: slotsDoRender ? 'pagina-com-copy-do-post' : 'pagina' }
     paginaIlegivel = true
   }
   // `pageId` preenchido e a página NÃO carregada (de outro projeto, ou apagada) não é "peça sem página": a

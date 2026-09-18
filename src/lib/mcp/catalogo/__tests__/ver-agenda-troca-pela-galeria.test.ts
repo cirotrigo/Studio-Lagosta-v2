@@ -137,4 +137,51 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
     expect(JSON.stringify(item)).not.toContain('página A')
     expect(JSON.stringify(item)).not.toContain('Apoio de A')
   })
+
+  /**
+   * R52 (revisão FINAL sobre 7e96c643, 18/09/2026): a arte B da galeria é de MODELO (`post-schedule`) e aponta para a
+   * MESMA página do post. O render aplicou `{ l1: '' , headline: 'Costela' }` — o id vence o nome, e o PNG não tem
+   * "Costela". A troca descarta o `l1` vazio e grava `{ headline: 'Costela' }` no post; a igualdade de `pageId` fazia
+   * a agenda aplicar isso à página e afirmar "Costela". A procedência da mídia manda, com ou sem registro das camadas.
+   */
+  describe('R52 — B de modelo apontando para a MESMA página do post, com id e nome endereçando a mesma camada', () => {
+    const paginaDoModelo = [{ id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo', visible: true, order: 1 }]
+    for (const [caso, snapshot] of [['sem registro das camadas', undefined], ['com registro das camadas', paginaDoModelo]] as const) {
+      it(`${caso}: "Costela" não é afirmado`, async () => {
+        banco.paginas = [{ id: 'pag-A', projectId: 8, layers: JSON.stringify(paginaDoModelo) }]
+        banco.generations.push(arteB({ source: 'post-schedule', pageId: 'pag-A', slotValues: { l1: { content: '' }, headline: 'Costela' }, ...(snapshot ? { layersSnapshot: snapshot } : {}) }))
+        await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+        expect(banco.post!.pageId).toBe('pag-A')
+        expect(banco.post!.renderStatus).toBe('NOT_NEEDED')
+        expect(banco.post!.slotValues).toEqual({ headline: 'Costela' })
+
+        const item = await itemDaAgenda()
+        expect(JSON.stringify(item)).not.toContain('Costela')
+        expect(item.textosOrigem).not.toBe('pagina-com-copy-do-post')
+        expect(item.textos ?? []).toEqual([])
+        expect(item.textosIndisponiveis).toBeTruthy()
+      })
+    }
+  })
+
+  /**
+   * Varredura da classe do R52 (18/09/2026): com a arte da PRÓPRIA página (não de modelo), a página segue sendo a
+   * fonte — mas os slots que o post herdou na troca NÃO são entrada de render nenhum (`NOT_NEEDED`: o PNG é o da arte,
+   * mantido em dia com a página pela recomposição). Depois de editar a página, aplicá-los devolvia o texto de antes.
+   */
+  it('arte da própria página, página editada depois da troca: vale a página como está, nunca os slots herdados', async () => {
+    const pagina = (texto: string) => JSON.stringify([{ id: 'h', name: 'headline', type: 'text', content: texto, visible: true, order: 1 }])
+    banco.paginas = [{ id: 'pag-A', projectId: 8, layers: pagina('Copy X') }]
+    banco.generations.push(arteB({ source: 'ajuste-arte', pageId: 'pag-A', slotValues: { headline: 'Copy X' }, layersSnapshot: JSON.parse(pagina('Copy X')) }))
+    await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+    expect(banco.post!.slotValues).toEqual({ headline: 'Copy X' })
+    // a página é editada e a arte B é re-renderizada como a página ficou, com a copy visual regravada
+    banco.paginas = [{ id: 'pag-A', projectId: 8, layers: pagina('Copy Y') }]
+    banco.generations[1].fieldValues = { ...banco.generations[1].fieldValues, slotValues: { headline: 'Copy Y' }, recomposicao: { estado: 're-renderizada', copyVisualRegravada: true } }
+
+    const item = await itemDaAgenda()
+    expect(item.textos).toEqual(['Copy Y'])
+    expect(item.textosOrigem).toBe('pagina')
+    expect(JSON.stringify(item)).not.toContain('Copy X')
+  })
 })

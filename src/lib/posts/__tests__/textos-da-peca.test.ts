@@ -617,6 +617,20 @@ describe('R51 — página do post que ficou só como vínculo histórico', () =>
     expect(textosDaPeca({ ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [B], slotValues: null }, { camadas: pagina, slides: [{ url: B, arte: { pageId: 'pA' } }] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
     expect(textosDaPeca({ ...viva, pageId: 'pA', renderStatus: 'RENDERED', mediaUrls: [B], slotValues: null }, { camadas: pagina, slides: [{ url: B, arte: null }] })).toEqual({ textos: ['Texto da página A'], origem: 'pagina' })
   })
+  it('R52: NOT_NEEDED com a mídia numa arte de MODELO que aponta para a MESMA página: a página não é lida (procedência antes do vínculo)', () => {
+    const post = { ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [B], slotValues: { headline: 'Costela' } }
+    const modelo = { pageId: 'pA', source: 'post-schedule', slotValues: { l1: { content: '' }, headline: 'Costela' } }
+    expect(paginaDoPostEHistorica(post, modelo)).toBe(true)
+    for (const arte of [modelo, { ...modelo, layersSnapshot: pagina }]) {
+      const r = textosDaPeca(post, { camadas: pagina, slides: [{ url: B, arte }] })
+      expect(JSON.stringify(r)).not.toContain('Costela')
+      expect(r.origem).toBeUndefined()
+      expect(r.indisponiveis).toBeTruthy()
+    }
+    // controles: RENDERED (a página renderiza de novo com os slots do post) e a arte de modelo RE-RENDERIZADA como a página estava
+    expect(paginaDoPostEHistorica({ ...post, renderStatus: 'RENDERED' }, modelo)).toBe(false)
+    expect(paginaDoPostEHistorica(post, { ...modelo, reRenderizada: true })).toBe(false)
+  })
   it('SEM mídia não há "outra arte": NOT_NEEDED segue lendo a página, e a página não carregada (outro projeto) é declarada indisponível (R29/R30)', () => {
     const semMidia = { ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [] as string[], slotValues: null }
     expect(paginaDoPostEHistorica(semMidia)).toBe(false)
