@@ -18,6 +18,7 @@ vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextBoxMeas
 vi.mock('@/lib/creatives/text-autofix', () => ({ aplicarAutofixOuFalhar: async (args: { layers: Layer[] }) => ({ layers: args.layers, avisos: [] }) }))
 vi.mock('../regua', async (original) => ({ ...await original<typeof import('../regua')>(), medirContrasteDaPeca: mocks.regua }))
 import { comporPeca } from '../compor'
+import { aplicarAjustes } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { vaoEntre } from '../blocos'
 import { escolherVariante } from '../assinatura'
 import { specComAPosicaoOriginal } from '../defasagem'
@@ -125,5 +126,33 @@ describe('PR4-03 — a variante com que a peça nasceu é resolvida antes do fil
   it('o id pedido explicitamente também alcança a de story; ausente continua sendo recusa', () => {
     expect(escolherVariante([story, feed] as never[], { formato: 'feed', variante: 'pg-story' }).pagina).toMatchObject({ id: 'pg-story' })
     expect(escolherVariante([story, feed] as never[], { formato: 'feed', variante: 'pg-x' }).pagina).toBeNull()
+  })
+})
+
+describe('ids de camada únicos na peça inteira (varredura do PR 3, 18/09/2026)', () => {
+  it('serviço repartido entre dois grupos: duas camadas de ids distintos, e o ajuste por id toca uma só', async () => {
+    mocks.paginas.mockResolvedValue([pagina('pg', [
+      texto('headline', 'headline', 230, { metadata: { groupId: 'oferta' } } as Partial<Layer>),
+      texto('servico', 'servico', 400, { content: 'das 11h às 15h', metadata: { groupId: 'oferta' } } as Partial<Layer>),
+      texto('servico-2', 'servico', 1600, { content: 'Rua Aleixo Netto, 1158', metadata: { groupId: 'pe' } } as Partial<Layer>),
+    ])])
+    const r = await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Almoço'] }, { papel: 'servico', linhas: ['das 11h às 15h', 'Rua Aleixo Netto, 1158'] }] }, { somenteAvaliar: true })
+    const servicos = r.layers.filter((l) => (l.metadata as { compositor?: { papel?: string } })?.compositor?.papel === 'servico')
+    expect(servicos.map((l) => l.content).sort()).toEqual(['Rua Aleixo Netto, 1158', 'das 11h às 15h'])
+    expect(new Set(r.layers.map((l) => l.id)).size).toBe(r.layers.length)
+    const alvo = servicos[0].id
+    const ajuste = aplicarAjustes(r.layers, [{ tipo: 'visibilidade', camadas: [alvo], visivel: false } as never], { canvas: { width: 1080, height: 1920 }, medir: () => 100 } as never)
+    expect(ajuste.camadas.filter((l) => l.visible === false).map((l) => l.id)).toEqual([alvo])
+  })
+  it('a logo presa a DOIS grupos sai com ids distintos', async () => {
+    const logo = (y: number, grupo: string) => ({ id: `logo-${grupo}`, name: 'Logo', type: 'logo', visible: true, locked: false, order: 1, position: { x: 800, y }, size: { width: 150, height: 100 }, style: {}, fileUrl: 'https://example.com/logo.png', metadata: { groupId: grupo } }) as unknown as Layer
+    mocks.paginas.mockResolvedValue([pagina('pg', [
+      texto('headline', 'headline', 230, { metadata: { groupId: 'oferta' } } as Partial<Layer>), logo(230, 'oferta'),
+      texto('servico', 'servico', 1600, { content: 'Rua Aleixo Netto, 1158', metadata: { groupId: 'pe' } } as Partial<Layer>), logo(1600, 'pe'),
+    ])])
+    const r = await comporPeca({ projectId: 3, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Almoço'] }, { papel: 'servico', linhas: ['Rua Aleixo Netto, 1158'] }] }, { somenteAvaliar: true })
+    const logos = r.layers.filter((l) => l.type === 'logo' || String(l.id).startsWith('logo'))
+    expect(logos.length).toBe(2)
+    expect(new Set(r.layers.map((l) => l.id)).size).toBe(r.layers.length)
   })
 })

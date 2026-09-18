@@ -662,6 +662,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const montados: Array<BlocoMontado & { chave: string }> = []
   const familias = await familiasDoProjeto(spec.projectId)
   let segundaVoz: NonNullable<DiagnosticoDaComposicao['segundaVoz']> = 'nenhuma'
+  // O contador de ids é da PEÇA, não do grupo: o serviço repartido entre dois
+  // grupos (horário junto da oferta, endereço no pé) saía com DUAS camadas
+  // `servico` — e ajuste por id (revisor, `ajustar-arte`) atingia as duas, e
+  // `elementosPorTexto` (chaveado pelo id) perdia o ícone do primeiro grupo
+  // (varredura do PR 3, 18/09/2026).
+  const repeticoes = new Map<Papel, number>()
   for (const [chave, blocosDoGrupo] of blocosPorGrupo) {
     const daPagina = gruposDaPagina.get(chave)
     const escolha = escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
@@ -701,7 +707,6 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const preenchidos = arranjo
       ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
       : comSegundaVoz.map((b) => ({ ...b, texto: null }))
-    const repeticoes = new Map<Papel, number>()
     for (const p of preenchidos) {
       const estilo = p.texto?.estilo ?? assinatura.papeis[p.papel]
       if (!estilo) continue
@@ -1107,10 +1112,20 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // 7a. Os ELEMENTOS presos aos textos (ícone, filete, selo, a logo do
   //     arranjo), na tinta FINAL — o autofix pode ter encolhido a fonte. Entram
   //     logo acima dos textos, antes da logo do canto.
-  const camadasDeElementos = layers.flatMap((l) => {
-    const presos = elementosPorTexto.get(l.id)
-    return presos && l.visible !== false ? camadasDosElementos(l, presos.elementos, presos.escala) : []
-  })
+  // Id único na peça inteira: a logo presa a um grupo se chama `logo`, e dois
+  // grupos com ela dariam duas camadas de mesmo id (mesma varredura).
+  const idsNaPeca = new Set(layers.map((l) => l.id))
+  const camadasDeElementos = layers
+    .flatMap((l) => {
+      const presos = elementosPorTexto.get(l.id)
+      return presos && l.visible !== false ? camadasDosElementos(l, presos.elementos, presos.escala) : []
+    })
+    .map((c) => {
+      let id = c.id
+      for (let n = 2; idsNaPeca.has(id); n++) id = `${c.id}-${n}`
+      idsNaPeca.add(id)
+      return id === c.id ? c : { ...c, id }
+    })
   if (camadasDeElementos.length > 0) {
     const ondeALogo = layers.findIndex((l) => l.id === 'logo')
     const antes = ondeALogo >= 0 ? layers.slice(0, ondeALogo) : layers

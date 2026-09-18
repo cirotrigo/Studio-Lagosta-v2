@@ -7326,6 +7326,14 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   de leitura. Camada sem a marca (posta à mão no editor) continua lida como
   antes — nada é juntado por palpite. `validarSpec` já recusa papel repetido,
   então cada função tem no máximo um bloco no compositor.
+- 🔴 **Id de camada é único na PEÇA inteira, nunca por grupo** (varredura do PR
+  3, 18/09/2026): o contador de repetição de papel recomeçava a cada grupo, e o
+  serviço repartido entre dois grupos (horário junto da oferta, endereço no pé)
+  saía com duas camadas `servico` — ajuste por id (revisor, `ajustar-arte`)
+  atingia as duas, e `elementosPorTexto`, chaveado pelo id, perdia o ícone do
+  primeiro grupo. A logo presa a um grupo (`logo`) também ganha sufixo quando
+  outro grupo já a tem. Gerador novo de camada no compositor confere contra os
+  ids que a peça já tem.
 - 🔴 **Manchete só na voz 2 continua sendo a manchete no LAYOUT** (PR4-02): o
   grupo principal é o que tem `headline` OU `headline2` (sem isso o pré-título
   em grupo separado herdava a posição pedida e o mapa da foto), e `vaoEntre`
