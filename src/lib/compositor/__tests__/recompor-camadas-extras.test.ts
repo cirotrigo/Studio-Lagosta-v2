@@ -19,6 +19,7 @@ import { validarSpec, type SpecDePeca } from '../spec'
 
 const URL_ANTIGA = 'https://blob.exemplo/arte-rapida/8/pg-1-antiga.png'
 const URL_NOVA = 'https://blob.exemplo/arte-rapida/8/pg-1-nova.png'
+const URL_RERENDER = 'https://blob.exemplo/arte-rapida/8/pg-1-como-esta.png'
 
 const estado = vi.hoisted(() => ({
   page: null as Record<string, unknown> | null,
@@ -30,6 +31,8 @@ const estado = vi.hoisted(() => ({
   comporCamadas: null as null | ((spec: unknown) => unknown[]),
   paginaGravada: null as Record<string, unknown> | null,
   generationGravada: null as Record<string, unknown> | null,
+  /** PR9-F01: quando presente, o re-render como está é permitido e registra a página que recebeu. */
+  reRenderizadas: null as null | Record<string, unknown>[],
 }))
 
 vi.mock('@/lib/db', () => ({
@@ -79,7 +82,13 @@ vi.mock('@/lib/db', () => ({
 }))
 vi.mock('@vercel/blob', () => ({ put: async () => ({ url: URL_NOVA }), del: async () => undefined }))
 vi.mock('@/lib/ai/generation-queue', () => ({ pedirNovaTentativa: async () => undefined }))
-vi.mock('@/lib/creatives/persist', () => ({ renderPageAndRegister: async () => { throw new Error('não deveria re-renderizar: a página só teve texto editado') } }))
+vi.mock('@/lib/creatives/persist', () => ({
+  renderPageAndRegister: async (entrada: { page: Record<string, unknown> }) => {
+    if (!estado.reRenderizadas) throw new Error('não deveria re-renderizar: a página só teve texto editado')
+    estado.reRenderizadas.push(entrada.page)
+    return { url: URL_RERENDER }
+  },
+}))
 vi.mock('@/lib/posts/invalidate-renders', () => ({ invalidateScheduledRenders: async () => ({ invalidados: 0, congelados: [] }) }))
 vi.mock('../../../../prisma/generated/client', () => ({ PostLogEvent: { EDITED: 'EDITED' } }))
 vi.mock('../compor', async () => {
@@ -416,4 +425,95 @@ describe('recomporPaginaDefasada — R21: spec sem contrato com o extra de servi
     expect(efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual([['hora-extra', ['Delivery até 22h']], ['headline', ['Costela']], ['servico', ['11h às 16h']]])
     expect(validarSpec((estado.generationGravada?.fieldValues as Record<string, unknown>).spec).problemas).toEqual([])
   })
+})
+
+/**
+ * PR9-F01 (revisão FINAL do Codex sobre o PR 9, 18/09/2026): a leitura do
+ * contrato RECUSA a edição (histórico com 200 revisões, ou bloco novo que o
+ * contrato não comporta). O caminho sem contrato atualiza só os blocos por
+ * papel, e `specDaRecomposicao` conservava as `camadasExtras` da spec antiga —
+ * com o texto de ANTES. A recomposição gravava "Hoje" sobre o "Amanhã" que a
+ * equipe tinha salvo. Peça com extra e contrato ilegível é RE-RENDERIZADA como
+ * está: as camadas e o contrato ficam, o aviso sai e só o slide troca.
+ */
+describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa peça com camada extra', () => {
+  const casos: Array<[string, string, (c: CopyAutoral) => CopyAutoral]> = [
+    ['histórico cheio (200 revisões)', 'Amanhã', (c) => ({
+      ...c,
+      revisoes: Array.from({ length: 200 }, (_, i) => ({ em: '2026-09-12T13:00:00.000Z', autor: 'equipe' as const, motivo: `revisão ${i}`, blocos: ['h'] })),
+    })],
+    ['bloco novo que o contrato não comporta (RevisaoDaCopyInvalida)', 'A'.repeat(301), (c) => c],
+  ]
+  for (const [nome, textoNovo, ajustarContrato] of casos) {
+    it(`${nome}: re-renderiza como está, sem gravar o texto antigo do extra; contrato intacto, aviso e só o slide troca`, async () => {
+      estado.page = null
+      estado.generation = null
+      estado.posts.clear()
+      estado.specsCompostas = []
+      estado.paginaGravada = null
+      estado.generationGravada = null
+      estado.comporCamadas = null
+      estado.reRenderizadas = []
+      const assinatura = montarAssinatura({
+        pagina: {
+          id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
+          layers: [
+            texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+            texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 320 }, metadata: { groupId: 'g1' } }),
+          ],
+        },
+        formatoDaPagina: 'story',
+        numerosDoProjeto: null,
+      })
+      const copy: CopyAutoral = {
+        versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+        blocos: [
+          { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+          { id: 'nota', funcao: 'livre', ordem: 1, linhas: ['Hoje'], estilo: { herdaDe: 'apoio' } },
+        ],
+      }
+      const specPersistida = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy }).spec as SpecDePeca
+      const camadasHoje = prepararBlocos({
+        assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+        medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: specPersistida,
+      }).montados.map((b) => b.layer)
+      const nota = camadasHoje.find((l) => (l.metadata?.compositor as { extra?: { id?: string } } | undefined)?.extra?.id === 'nota')!
+      const entrada = entradaDePersistencia({
+        spec: specPersistida, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+        nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadasHoje, fundo: '#000', diagnostico: {}, fotoUrl: null,
+      })
+      const contrato = ajustarContrato(entrada.copyAutoral as CopyAutoral)
+      const camadasEditadas = camadasHoje.map((l) => (l.id === nota.id ? { ...l, content: textoNovo } : l))
+      estado.page = {
+        id: 'pg-f01', name: 'Sex 18/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: camadasEditadas, background: '#000',
+        isTemplate: false, templateId: 't-1', copyAutoral: contrato, updatedAt: new Date('2026-09-18T15:00:00.000Z'),
+        Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
+      }
+      estado.generation = {
+        id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null,
+        fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-f01' },
+      }
+      estado.camadasDaComposicao = camadasHoje
+      const capa = 'https://blob.exemplo/capa.png'
+      const slide3 = 'https://blob.exemplo/slide-3.png'
+      estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [capa, URL_ANTIGA, slide3] })
+      estado.posts.set('post-entregue', { id: 'post-entregue', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: 'zernio-1', mediaUrls: [URL_ANTIGA, slide3] })
+
+      const { recomporPaginaDefasada } = await import('../recompor')
+      const r = await recomporPaginaDefasada({ pageId: 'pg-f01' })
+      const reRenderizadas = estado.reRenderizadas
+      estado.reRenderizadas = null
+
+      expect(estado.specsCompostas).toEqual([])
+      expect(estado.paginaGravada).toBeNull()
+      expect(r.recomposta).toBe(false)
+      expect(reRenderizadas).toHaveLength(1)
+      expect((reRenderizadas[0].layers as Layer[]).find((l) => l.id === nota.id)?.content).toBe(textoNovo)
+      expect(r.avisos.some((a) => /camada extra/i.test(a))).toBe(true)
+      expect(estado.page.copyAutoral).toBe(contrato)
+      expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
+      expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_RERENDER, slide3])
+      expect(estado.posts.get('post-entregue')!.mediaUrls).toEqual([URL_ANTIGA, slide3])
+    })
+  }
 })

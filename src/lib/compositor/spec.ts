@@ -190,7 +190,11 @@ export function validarSpec(entrada: unknown): { spec: SpecDePeca; problemas: []
       // sancionada. Bloco `livre` COM texto não tem para onde ir até a camada
       // extra da F3 — recusar é o oposto de sumir em silêncio.
       const { blocos: derivados, semPapel } = blocosParaOCompositor(r.data.copyAutoral)
-      idsDeLivresVazios = semPapel.filter((b) => b.linhas.length === 0).map((b) => b.id)
+      // PR9-F02 (revisão FINAL do Codex sobre o PR 9, 18/09/2026): o extra VAZIO
+      // COM FUNÇÃO e herança (serviço herdando o apoio) também fica fora dos
+      // blocos derivados e também disputa o namespace — conferir só os livres
+      // deixava `servico-2` passar e, na leitura, tomar a parte do serviço comum.
+      idsDeLivresVazios = r.data.copyAutoral.blocos.filter((b) => b.linhas.length === 0 && (b.funcao === 'livre' || !!b.estilo?.herdaDe)).map((b) => b.id)
       // F3: bloco `livre` COM texto entra como camada EXTRA, vestindo o estilo do
       // papel que o autor declarou em `estilo.herdaDe`. Sem herança declarada não
       // há de onde tirar fonte, corpo e cor — recusar continua sendo o oposto de

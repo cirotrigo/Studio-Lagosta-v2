@@ -667,6 +667,38 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     }
   })
 
+  it('PR9-F02: o extra VAZIO COM FUNÇÃO e herança (`servico-2` e `servico`, serviço herdando o apoio) — a spec recusa na porta; num contrato já gravado a leitura não deixa o extra capturar a parte do serviço comum, nem ocultando, nem duplicando', () => {
+    const extraVazio = (id: string) => ({ id, funcao: 'servico' as const, ordem: 2, linhas: [], estilo: { herdaDe: 'apoio' as const } })
+    const comExtra = (id: string): CopyAutoral => ({ ...copy(ENDERECO), blocos: [...copy(ENDERECO).blocos, extraVazio(id)] })
+    // 1. a porta: o id do extra vazio disputa o namespace da página, como o do livre vazio (R26)
+    for (const [id, motivo] of [['servico-2', /reservado.*servico-2/], ['servico', /repetido: servico/]] as const) {
+      const r = validarSpec({ ...base, copyAutoral: comExtra(id) })
+      expect(r.spec, id).toBeNull()
+      expect(r.problemas.join(' '), id).toMatch(motivo)
+    }
+    // 2. contrato já gravado: a preparação reparte o serviço comum em `servico` e `servico-2`
+    const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
+    const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
+    expect(camadas.map((l) => l.id).sort()).toEqual(['headline', 'servico', 'servico-2'])
+    for (const id of ['servico-2', 'servico']) {
+      const gravado = comExtra(id)
+      const esperado = [['h', ['Costela']], ['svc', [HORARIO, ENDERECO]], [id, []]]
+      const lida = copyEfetivaDasCamadas(gravado, camadas, { superficie: 'editor' })
+      expect(lida.efetiva.blocos.map((b) => [b.id, b.linhas]), id).toEqual(esperado)
+      expect(lida.mudancas, id).toEqual([])
+      const oculto = camadas.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
+      expect(copyEfetivaDasCamadas(gravado, oculto, { superficie: 'editor' }).efetiva.blocos.map((b) => [b.id, b.linhas]), `${id} oculto`).toEqual([['h', ['Costela']], ['svc', [ENDERECO]], [id, []]])
+      let n = 0
+      const dup = duplicarCamadasDaPagina(camadas, () => `uuid-f02-${++n}`, gravado)
+      const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, dup.camadas as Layer[], { superficie: 'editor' })
+      expect(lidaCopia.mudancas, `${id} duplicado`).toEqual([])
+      expect(lidaCopia.efetiva.blocos.map((b) => [b.id, b.linhas]), `${id} duplicado`).toEqual(esperado)
+      // o contrato intermediário (extra com o endereço) nunca nasce; a recomposição recusa na porta pelo id
+      const recomposta = validarSpec(specDaRecomposicao(v.spec!, lida.efetiva))
+      expect(recomposta.spec, `${id} recomposição`).toBeNull()
+    }
+  })
+
   it('R18: o extra com identidade explícita (serviço herdando a manchete) continua bloco próprio, mesmo com um serviço comum repartido', () => {
     const contrato: CopyAutoral = {
       versao: VERSAO_DO_CONTRATO, origem, revisoes: [],

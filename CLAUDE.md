@@ -9173,3 +9173,31 @@ passou a enumerar os casos em vez de escolhê-los à mão
   adaptadores do PR 2, que também valem aqui (lacuna de resumo para papéis desconhecidos, `em`/`superficie`
   vazios recusados, nunca omitidos). `validarSpec` e a persistência do compositor usam o `converter*`; e a
   função entrou na varredura de fronteira de `invariantes.test.ts`, como o PR 2 manda para produtora nova.
+
+**Da revisão FINAL do Codex sobre a0b2cdcc (BLOQUEADO, PR9-F01…F02, 18/09/2026):**
+
+- 🔴 **PR9-F01 — sem contrato legível, peça com camada extra NÃO se recompõe.**
+  Com o histórico cheio (200 revisões) ou um bloco novo que o contrato não
+  comporta, `tentarCopyEfetivaDasCamadas` recusa e a recomposição caía no
+  caminho sem contrato — que atualiza só os blocos por papel (`specComACopyDaPagina`)
+  e deixa `specDaRecomposicao` conservar as `camadasExtras` da spec ANTIGA. O
+  compositor recebia "Hoje" e gravava sobre o "Amanhã" que a equipe tinha
+  salvo, e o slide ia junto. A leitura do contrato passou para ANTES da
+  decisão (`recomporPaginaDefasada`): sem contrato legível e com extra na spec
+  (inclusive página legada sem contrato), a arte é **re-renderizada como a
+  página está** — camadas e contrato intactos, aviso no registro, só o slide
+  troca. Regra geral: caminho de fallback que usa dado DERIVADO de outra versão
+  (a spec antiga) não pode escrever por cima da página; re-renderizar o que está
+  gravado é o fallback seguro.
+- 🔴 **PR9-F02 — o extra VAZIO COM FUNÇÃO e herança também disputa o
+  namespace.** `blocosParaOCompositor` omite bloco com função vazio dos blocos
+  derivados, e a conferência de ids só recuperava os vazios de `semPapel`
+  (livres): `servico-2` (serviço herdando o apoio, `linhas: []`) passava, e na
+  leitura tomava pelo id físico a segunda parte do serviço comum repartido —
+  `svc` perdia o endereço e a recomposição seguinte caía em SPEC_INVALIDA.
+  `validarSpec` confere todo bloco vazio que vira camada própria (livre ou com
+  herança), e a leitura (`copyEfetivaDasCamadas`, 2º passo do vínculo por id
+  físico) nunca entrega a um bloco com herança uma camada que é PARTE da
+  composição (`parte`, `linhasDoBloco` ou id `<funcao>`/`<funcao>-N`) — é o que
+  protege contrato já gravado antes da porta. O invariante enumera o extra vazio
+  com função (cobertura `f02`).

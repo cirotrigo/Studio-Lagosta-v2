@@ -390,7 +390,36 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   // snapshot dela não conhecem o ajuste, então recompor por eles numa edição
   // de texto posterior desfaria o ajuste do mesmo jeito (REV-04, 12/09/2026).
   const travada = !!(arte.fieldValues as Record<string, unknown> | undefined)?.somenteReRender
-  const podeRecompor = !forcar && !renderComoEsta && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  const candidataARecompor = !forcar && !renderComoEsta && !travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto
+  /**
+   * F1: a spec da recomposição leva o CONTRATO da página como ele está —
+   * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
+   * pela equipe, e o que algum caminho gravou sem revisar entra como revisão
+   * do sistema, superfície `recomposicao`) — e os blocos saem DELE. Sem
+   * isso `validarSpec` recusava a spec (blocos novos × contrato velho) e o
+   * slide ficava com o texto antigo (R01 da revisão do Codex, 12/09/2026).
+   * Página sem contrato recompõe pelo caminho legado, sem contrato.
+   *
+   * Lido ANTES da decisão (PR9-F01, revisão FINAL do Codex sobre o PR 9,
+   * 18/09/2026): sem contrato legível, o caminho legado só atualiza os blocos
+   * por papel — as `camadasExtras` da spec antiga seguem com o texto de ANTES
+   * da edição, e recompor gravaria esse texto por cima do que a equipe salvou.
+   * Peça com extra e sem contrato legível é re-renderizada como está.
+   */
+  let contratoAtual: CopyAutoral | null = null
+  let semContratoComExtras = false
+  if (candidataARecompor) {
+    const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
+    // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — a página mantém o contrato como estava e o motivo entra nos avisos do registro.
+    const leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    contratoAtual = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
+    semContratoComExtras = !contratoAtual && (arte.spec!.camadasExtras?.length ?? 0) > 0
+    const motivo = leituraDoContrato && leituraDoContrato.ok === false ? `${leituraDoContrato.aviso} ` : ''
+    if (semContratoComExtras) {
+      avisos.push(`${motivo}A peça tem camada extra e a página não tem contrato da copy legível: a arte foi re-renderizada como a página está, sem medir a diagramação de novo (recompor gravaria o texto antigo do extra).`)
+    } else if (motivo) avisos.push(`${motivo}A peça foi recomposta pelo texto da página, sem contrato.`)
+  }
+  const podeRecompor = candidataARecompor && !semContratoComExtras
   if (forcar) avisos.push('Recuperação forçada: a página foi re-renderizada como está, sem medir a diagramação de novo.')
   if (renderComoEsta) avisos.push('A página mudou enquanto a arte anterior era refeita: re-renderizada como está (copy, paradas e força do gradiente como o editor gravou), sem medir a diagramação de novo.')
   else if (travada && !!arte.spec && !defasagem.ilegivel && defasagem.soTexto) {
@@ -416,21 +445,6 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     avisos.push(...avisosDaSpec)
     // O lado do bloco é o da composição original: só a copy muda (ver `specComAPosicaoOriginal`).
     const specPosicionada = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
-    /**
-     * F1: a spec da recomposição leva o CONTRATO da página como ele está —
-     * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
-     * pela equipe, e o que algum caminho gravou sem revisar entra como revisão
-     * do sistema, superfície `recomposicao`) — e os blocos saem DELE. Sem
-     * isso `validarSpec` recusava a spec (blocos novos × contrato velho) e o
-     * slide ficava com o texto antigo (R01 da revisão do Codex, 12/09/2026).
-     * Página sem contrato recompõe pelo caminho legado, sem contrato.
-     */
-    const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
-    // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — segue pelo caminho sem contrato, a
-    // página mantém o contrato como estava e o motivo entra nos avisos do registro.
-    const leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
-    if (leituraDoContrato && leituraDoContrato.ok === false) avisos.push(`${leituraDoContrato.aviso} A peça foi recomposta pelo texto da página, sem contrato.`)
-    const contratoAtual: CopyAutoral | null = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
     // R15 (revisão do Codex sobre o PR 9): com contrato, os blocos E as camadas
     // extras saem dele — os extras da spec antiga carregavam o texto de antes
     // da edição e faziam `validarSpec` recusar a recomposição.

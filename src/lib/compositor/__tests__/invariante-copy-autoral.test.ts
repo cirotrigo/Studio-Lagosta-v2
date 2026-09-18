@@ -140,6 +140,8 @@ const EXTRAS: Extra[][] = [
   [],
   [{ funcao: 'servico', herdaDe: 'apoio', linhas: ['Delivery até 22h'] }],
   [{ funcao: 'apoio', herdaDe: 'servico', linhas: ['Só hoje'] }, { funcao: 'servico', herdaDe: 'headline', linhas: ['Retirada no balcão'] }],
+  // PR9-F02: o extra VAZIO com função e herança — o id dele disputa o namespace como o do livre vazio.
+  [{ funcao: 'servico', herdaDe: 'apoio', linhas: [] }],
 ]
 type Livre = { herdaDe?: 'apoio' | 'headline'; linhas: string[] }
 const LIVRES: Array<Livre | null> = [null, { herdaDe: 'apoio', linhas: ['Somente no salão'] }, { herdaDe: 'headline', linhas: [] }, { linhas: [] }, { linhas: ['Sem herança'] }]
@@ -324,7 +326,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
     const falhas: string[] = []
     const contagem = { casos: casos.length, recusadosPelaSpec: 0, recusadosNaPreparacao: 0, aceitos: 0, variantes: 0, operacoes: 0, encadeadas: 0 }
     const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
-    const cobertura = { r26: false, r27: false, r28: false }
+    const cobertura = { r26: false, r27: false, r28: false, f02: false }
 
     for (const caso of casos) {
       const falhar = (onde: string, detalhe: unknown) => {
@@ -333,6 +335,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
       const b = caso.contrato.blocos
       // R26 conta como coberto quando é ENUMERADO: o desfecho aceito é "recusado pela spec" ou "vínculos mantidos".
       if (caso.pagina === 'servico-dois-grupos' && b.some((x) => x.funcao === 'servico' && x.linhas.length === 2) && b.some((x) => x.id === 'servico-2' && x.funcao === 'livre' && x.linhas.length === 0)) cobertura.r26 = true
+      if (caso.pagina === 'servico-dois-grupos' && b.some((x) => x.funcao === 'servico' && x.linhas.length === 2 && !x.estilo?.herdaDe) && b.some((x) => x.id === 'servico-2' && x.funcao === 'servico' && x.estilo?.herdaDe && x.linhas.length === 0)) cobertura.f02 = true
       const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: caso.contrato })
       if (!v.spec) {
         contagem.recusadosPelaSpec++
@@ -497,7 +500,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
 
     const relatorio = process.env.INVARIANTE_RELATORIO
     if (relatorio) writeFileSync(relatorio, `${JSON.stringify(contagem)}\n${JSON.stringify(cobertura)}\n${falhas.join('\n')}\n`)
-    expect(cobertura).toEqual({ r26: true, r27: true, r28: true })
+    expect(cobertura).toEqual({ r26: true, r27: true, r28: true, f02: true })
     expect(contagem.aceitos).toBeGreaterThan(200)
     expect(falhas.slice(0, 15), `${falhas.length} falhas em ${contagem.aceitos} casos aceitos (${JSON.stringify(contagem)})`).toEqual([])
   })
