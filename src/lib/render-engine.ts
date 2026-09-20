@@ -27,6 +27,7 @@ import {
   type FundoResolvido,
 } from './creatives/halo/fundo-de-texto'
 import { papelNoBloco, retanguloDoBloco } from './creatives/halo/bloco-de-fundo'
+import { aplicarCaixa } from './posts/caixa-do-texto'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -2039,18 +2040,10 @@ export class RenderEngine {
     ctx.closePath()
   }
 
+  // A caixa mora em `posts/caixa-do-texto.ts`, compartilhada com quem LÊ a peça
+  // (`textos-da-peca.ts`): a agenda devolve o que o render desenha.
   private static applyTextTransform(text: string, style: LayerStyle): string {
-    const transform = style.textTransform ?? 'none'
-    switch (transform) {
-      case 'uppercase':
-        return text.toUpperCase()
-      case 'lowercase':
-        return text.toLowerCase()
-      case 'capitalize':
-        return text.replace(/(^|\s)\S/g, (c) => c.toUpperCase())
-      default:
-        return text
-    }
+    return aplicarCaixa(text, style.textTransform)
   }
 
   private static buildFontString(size: number, style: LayerStyle): string {

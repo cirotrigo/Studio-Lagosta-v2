@@ -37,6 +37,14 @@ export const toolsDeFotos = [
         .boolean()
         .optional()
         .describe('Só olhando — não conta como proposta. Use quando estiver conhecendo o acervo ou conferindo o que existe, sem escolher foto para uma peça. Sem isso, cada busca vira uma sugestão registrada, e explorar sem decidir infla a conta.'),
+      excluir: z
+        .array(z.string())
+        .optional()
+        .describe('Fotos (driveFileId) JÁ ESCOLHIDAS nesta leva: saem da lista. Ao montar a semana, passe aqui as que você já usou nas peças anteriores — é o que garante "sem repetir na semana". A resposta diz quantas saíram (`excluidas`).'),
+      evitarUsadasDesde: z
+        .string()
+        .optional()
+        .describe('"AAAA-MM-DD": foto com uso registrado a partir dessa data sai da lista (a que foi ao ar esta semana, por exemplo). O rodízio já empurra a usada para baixo; isto é para tirá-la de vista.'),
     }),
     // NÃO é readOnly: a lista ranqueada é registrada como sugestão de foto
     // (LearningSignal, F1) — idempotente pela chave (projeto, critérios, dia).
@@ -57,6 +65,8 @@ export const toolsDeFotos = [
         offset: args.offset,
         // Exploração não é decisão: só a busca que pode virar escolha registra.
         registrarSugestao: args.explorando !== true,
+        excluirDriveFileIds: Array.isArray(args.excluir) ? (args.excluir as string[]) : undefined,
+        evitarUsadasDesde: typeof args.evitarUsadasDesde === 'string' ? args.evitarUsadasDesde : undefined,
       })
     },
   }),

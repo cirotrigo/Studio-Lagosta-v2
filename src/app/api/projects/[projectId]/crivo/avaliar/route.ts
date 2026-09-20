@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import { avaliarCrivo } from '@/lib/brand/crivo-avaliacao'
 import { crivoManual } from '@/lib/brand/approval-checklist'
+import { CreativeError } from '@/lib/creatives/errors'
 
 export const runtime = 'nodejs'
 
@@ -28,6 +29,11 @@ export const maxDuration = 60
  * **Só LÊ.** A única escrita é a do registro em `Generation.fieldValues.crivo`,
  * feita dentro do serviço e engolindo o próprio erro. Por isso o acesso pedido
  * é de LEITURA: conferir uma peça não altera o projeto.
+ *
+ * 🔴 E essa escrita só alcança arte DESTE projeto: o serviço confere o
+ * `generationId` contra o `projectId` antes de avaliar, e arte de outro projeto
+ * (ou inexistente) volta 404 — sem avaliação, sem gravação e sem revelar se a
+ * arte existe em outro lugar. Sem `generationId`, nada muda.
  */
 
 const schema = z.object({
@@ -78,6 +84,11 @@ export async function POST(
 
     return NextResponse.json(avaliacao)
   } catch (error) {
+    // A arte informada não é deste projeto (ou não existe): 404, não o crivo manual — cair no manual
+    // esconderia que o pedido apontou para a arte errada.
+    if (error instanceof CreativeError && error.status === 404) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: 404 })
+    }
     // Erro aqui NÃO pode virar 500 na cara de quem está agendando: a tela cai
     // no crivo manual e a pessoa segue. É a mesma escolha do serviço, repetida
     // na borda para cobrir também o que acontece ANTES dele (body ilegível).

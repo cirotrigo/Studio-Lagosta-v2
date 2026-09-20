@@ -17,7 +17,7 @@ import {
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
 import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
-import { lerProcedencia } from '@/lib/creatives/procedencia-da-copy'
+import { lerProcedencia, AVISO_COPY_DE_ARTE_RE_RENDERIZADA } from '@/lib/creatives/procedencia-da-copy'
 import {
   fecharSugestaoDeSlot,
   registrarCopyDoPost,
@@ -223,6 +223,7 @@ export async function agendarPost(input: AgendarPostInput) {
   /** Os `slotValues` da Generation como a ARTE os mostra — a cópia que o post carrega quando não há página (REV-2CEB-01). */
   let copyVisual: Record<string, unknown> | null = null
   let sourcePageId: string | null = null
+  let copyInvalidada = false
 
   if (input.generationId) {
     const gen = await db.generation.findFirst({
@@ -237,7 +238,7 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     generationId = gen.id
-    ;({ copyProposta, copyVisual, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    ;({ copyProposta, copyVisual, sourcePageId, copyInvalidada } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
     // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
     // própria Generation — é o caso da arte MELHORADA (que não tem página) e
     // poupa o chat de copiar URL à mão, com os erros que isso traz.
@@ -258,7 +259,7 @@ export async function agendarPost(input: AgendarPostInput) {
       orderBy: { createdAt: 'desc' },
     })
     generationId = gen?.id ?? null
-    if (gen) ({ copyProposta, copyVisual, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (gen) ({ copyProposta, copyVisual, sourcePageId, copyInvalidada } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
   }
 
   /**
@@ -269,6 +270,9 @@ export async function agendarPost(input: AgendarPostInput) {
    * publicação passa a depender de um link de terceiro sobreviver até a hora.
    */
   const avisos: string[] = []
+  if (copyInvalidada && !input.pageId) {
+    avisos.push(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
+  }
   if (mediaUrls.length > 0) {
     const ingestao = await ingerirMidiaExterna(mediaUrls, project.id)
     mediaUrls = ingestao.urls

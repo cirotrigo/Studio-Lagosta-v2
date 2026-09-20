@@ -259,7 +259,20 @@ export interface UsoDaFoto {
  * as duas perguntas de uma vez e o índice `(projectId, driveFileId)` cobre.
  */
 export async function lerUsosDeFoto(projectId: number): Promise<Map<string, UsoDaFoto>> {
+  return (await lerUsosDeFotoComEstado(projectId)).usos
+}
+
+/**
+ * A mesma leitura, dizendo se DEU CERTO: quem exclui por uso
+ * (`evitarUsadasDesde`) precisa distinguir "ninguém usou" de "não consegui
+ * ler" — com o mapa vazio por falha, toda foto voltava elegível e a resposta
+ * dizia `porUso: 0` como se a exclusão tivesse sido cumprida (R24 da revisão
+ * de 386118cc). A busca continua disponível nos dois casos.
+ */
+export async function lerUsosDeFotoComEstado(projectId: number): Promise<{ usos: Map<string, UsoDaFoto>; ok: boolean; erro: string | null }> {
   const mapa = new Map<string, UsoDaFoto>()
+  let ok = true
+  let erroLido: string | null = null
   try {
     const linhas = await db.photoUsage.groupBy({
       by: ['driveFileId'],
@@ -276,10 +289,12 @@ export async function lerUsosDeFoto(projectId: number): Promise<Map<string, UsoD
     }
   } catch (erro) {
     // Sem o registro, a ordenação cai no comportamento antigo — degradação
-    // honesta, e não tela vazia.
+    // honesta, e não tela vazia. Quem exclui por uso lê `ok` e declara.
     console.warn('[uso-de-foto] não consegui ler os usos:', erro)
+    ok = false
+    erroLido = erro instanceof Error ? erro.message : String(erro)
   }
-  return mapa
+  return { usos: mapa, ok, erro: erroLido }
 }
 
 /**

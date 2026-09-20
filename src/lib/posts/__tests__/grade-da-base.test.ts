@@ -157,6 +157,19 @@ describe('fundirGradeComCadencia', () => {
     expect(fundido.has(0)).toBe(false)
   })
 
+  it('a precedência é por dia E FORMATO: o story combinado das 10h não apaga o feed histórico das 18h de segunda', () => {
+    const grade = lerGradeDaBase('story 10h de segunda a sexta')
+    const porDia = new Map([
+      [1, [{ minutosDoDia: 600, hora: '10:00', motivo: 'story de segunda', formato: 'story' as const }, { minutosDoDia: 1080, hora: '18:00', motivo: 'feed de segunda', formato: 'feed' as const }, { minutosDoDia: 720, hora: '12:00', motivo: 'story do meio-dia', formato: 'story' as const }]],
+    ])
+    const fundido = fundirGradeComCadencia(porDia, grade, { formatoDe: (_dia, t) => t.formato })
+    expect(fundido.get(1)?.map((s) => `${s.hora} ${s.origem}`)).toEqual(['10:00 grade', '18:00 cadencia'])
+    expect(fundido.get(1)?.[1].motivo).toBe('feed de segunda')
+    // sem `formatoDe` vale o comportamento antigo: a grade substitui o dia inteiro
+    expect(fundirGradeComCadencia(porDia, grade).get(1)?.map((s) => `${s.hora} ${s.origem}`)).toEqual(['10:00 grade'])
+    // dia que a grade não cobre continua inteiro
+    expect(fundirGradeComCadencia(new Map([[6, porDia.get(1)!]]), grade, { formatoDe: (_d, t) => t.formato }).get(6)?.length).toBe(3)
+  })
   it('com grade vazia é a identidade', () => {
     const fundido = fundirGradeComCadencia(cadencia, [])
     expect(fundido.get(4)?.map((s) => `${s.hora} ${s.origem}`)).toEqual(['10:00 cadencia', '13:00 cadencia'])

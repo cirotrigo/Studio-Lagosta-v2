@@ -42,6 +42,21 @@ import { calcularCadencia, type PostDoHistorico } from '@/lib/posts/cadencia'
 import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
 import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 import { fundirGradeComCadencia, lerGradeDasEntradas, VERSAO_DA_GRADE } from '@/lib/posts/grade-da-base'
+import {
+  diaDaSemanaDe,
+  formatoDoBloco,
+  historicoParaFormato,
+  formatoDoTipo,
+  janelaDaSugestao,
+  montarGradeDaSemana,
+  slotOcupado,
+  janelaDeConsultaDeOcupacao,
+  dentroDaJanela,
+  type DiaDaGrade,
+  type FormatoDaPeca,
+  type Ocupante,
+  chaveDaPropostaDeSlot,
+} from '@/lib/posts/contexto-da-semana'
 
 const JANELA_HISTORICO_DIAS = 56
 
@@ -66,8 +81,9 @@ const SERVICO = 'sugerir-posts'
  * Com ela, recarregar a tela não cria nada: o mesmo slot devolve o mesmo id, e
  * o desfecho continua sendo um só.
  */
-function chaveDoSlot(projectId: number, scheduledDatetime: string, versao = VERSAO_DA_CADENCIA): string {
-  return chaveDeSugestao('slot', versao, projectId, scheduledDatetime)
+function chaveDoSlot(projectId: number, scheduledDatetime: string, versao = VERSAO_DA_CADENCIA, formato?: FormatoDaPeca | null): string {
+  // O formato faz parte da identidade da proposta (R33): a mesma conta de `chaveDeSugestao`, com o formato no fim.
+  return formato ? chaveDaPropostaDeSlot(projectId, scheduledDatetime, versao, formato) : chaveDeSugestao('slot', versao, projectId, scheduledDatetime)
 }
 
 /**
@@ -88,6 +104,8 @@ export interface SugestaoSlot {
   quandoBRT: string
   /** "YYYY-MM-DD HH:mm" pronto para colocar-na-agenda. */
   scheduledDatetime: string
+  /** story × feed — a ocupação é conferida só contra posts do MESMO formato (PR 6). */
+  formato: FormatoDaPeca
   motivo: string
   /**
    * De onde veio o horário: `grade` = slot fixo da entrada "Padrões de
@@ -115,22 +133,55 @@ export interface SugestaoSlot {
   sugestaoId?: string
 }
 
+export interface OcupacaoDaJanela {
+  postId: string
+  data: string
+  hora: string
+  quandoBRT: string
+  formato: FormatoDaPeca
+  tipo: string
+  situacao: 'rascunho' | 'agendado'
+}
+
 export interface SugerirPostsResult {
+  /** A janela considerada (Brasília), depois de saneada. */
+  janela: { inicio: string; fim: string; dias: number }
   diasAnalisados: number
   postsNoHistorico: number
   cadencia: Array<{ diaSemana: string; horariosTipicos: string[]; postsPorSemana: number }>
+  /**
+   * A GRADE COMPLETA da semana (os 7 dias), com a origem de cada horário
+   * (combinado · histórico · nova), o formato e a evidência — é o que se
+   * apresenta à pessoa UMA vez; só a divergência volta à conversa.
+   */
+  grade: DiaDaGrade[]
+  /** Dias da semana sem horário nenhum. */
+  excecoes: string[]
+  /** O que JÁ ocupa a janela (rascunho e agendado), por formato. */
+  ocupacao: OcupacaoDaJanela[]
   jaNaAgenda: number
   sugestoes: SugestaoSlot[]
+  /** false quando a chamada pediu para não registrar as propostas (prova, medição). */
+  sinaisRegistrados: boolean
   avisos: string[]
 }
 
 export async function sugerirPosts(params: {
   projectId: number
-  /** Quantos dias à frente olhar (default 7, teto 14). */
+  /** Quantos dias a partir do início (default 7, teto 21). Ignorado quando `fim` vem. */
   dias?: number
+  /** Início da janela, "AAAA-MM-DD" em Brasília. Default: hoje. Início no passado vira hoje. */
+  inicio?: string | null
+  /** Fim da janela (inclusivo), "AAAA-MM-DD". Default: início + dias − 1. */
+  fim?: string | null
+  /**
+   * false = NÃO registra as propostas como LearningSignal. É para prova e
+   * medição: cada slot emitido é uma proposta no KPI, e uma prova que emite
+   * sinal contamina o denominador. O padrão (true) é o comportamento da F1.
+   */
+  registrarSugestoes?: boolean
 }): Promise<SugerirPostsResult> {
   const { projectId } = params
-  const dias = Math.min(Math.max(params.dias ?? 7, 1), 14)
   const avisos: string[] = []
 
   const project = await db.project.findUnique({ where: { id: projectId }, select: { id: true } })
@@ -139,8 +190,9 @@ export async function sugerirPosts(params: {
   }
 
   const agora = new Date()
+  const janela = janelaDaSugestao({ agora, inicio: params.inicio, fim: params.fim, dias: params.dias })
+  avisos.push(...janela.avisos)
   const inicioHistorico = new Date(agora.getTime() - JANELA_HISTORICO_DIAS * 24 * 3600_000)
-  const fimJanela = new Date(agora.getTime() + dias * 24 * 3600_000)
 
   const [historico, futuros] = await Promise.all([
     db.socialPost.findMany({
@@ -164,17 +216,24 @@ export async function sugerirPosts(params: {
         origem: true,
         learningScope: true,
         campaignId: true,
+        postType: true,
       },
     }),
     db.socialPost.findMany({
       where: {
         projectId,
         status: { in: ['DRAFT', 'SCHEDULED'] },
-        scheduledDatetime: { gte: agora, lte: fimJanela },
+        // A CONSULTA vai além da janela pela tolerância do slot (45 min) dos
+        // dois lados: o story de domingo 23h45 ocupa o slot de segunda 0h, e
+        // uma consulta que começava na segunda não o via (R27). O que a
+        // resposta LISTA (`ocupacao`, `jaNaAgenda`) continua sendo só o que
+        // cai dentro da janela pedida — ver `naJanela` abaixo.
+        scheduledDatetime: { gte: janelaDeConsultaDeOcupacao(janela, TOLERANCIA_SLOT_MIN).inicio, lte: janelaDeConsultaDeOcupacao(janela, TOLERANCIA_SLOT_MIN).fim },
         // Sem filtro de escopo: um post pontual OCUPA o horário do mesmo
         // jeito, e sugerir em cima dele empilharia dois posts.
       },
-      select: { scheduledDatetime: true },
+      select: { id: true, scheduledDatetime: true, postType: true, status: true },
+      orderBy: { scheduledDatetime: 'asc' },
     }),
   ])
 
@@ -264,17 +323,31 @@ export async function sugerirPosts(params: {
       }),
   ])
 
+  // ── O formato de cada horário ─────────────────────────────────────────────
+  //
+  // Grade aprovada é de STORY por construção (o parser deixa feed e carrossel
+  // de fora); horário do histórico leva o formato da MAIORIA do que o cliente
+  // publicou naquele bloco — a MESMA população da cadência (sem campanha
+  // encerrada) e o MESMO bloco (arredondado ao mais próximo). É o formato que
+  // decide a ocupação: um feed às 19h não ocupa o story das 19h.
+  const historicoComFormato = historicoParaFormato(historico, encerradas)
+  const formatoDoSlot = (dia: number, slot: { minutosDoDia: number; origem: 'grade' | 'cadencia' }): FormatoDaPeca =>
+    slot.origem === 'grade' ? 'story' : formatoDoBloco(historicoComFormato, dia, slot.minutosDoDia)
+
   /**
-   * Onde a grade cobre o dia, os slots fixos SUBSTITUEM os horários típicos
-   * do histórico; onde não cobre, a cadência continua. `fundirGradeComCadencia`
+   * Onde a grade cobre o dia, os slots fixos SUBSTITUEM os horários de STORY
+   * do histórico; o feed que o histórico sustenta no mesmo dia continua, e nos
+   * dias que ela não cobre a cadência inteira continua. `fundirGradeComCadencia`
    * é puro e com grade vazia é a identidade — um caminho só.
    */
   const grade = lerGradeDasEntradas(entradasDaGrade)
-  const slotsFinais = fundirGradeComCadencia(slotsPorDia, grade)
+  const slotsFinais = fundirGradeComCadencia(slotsPorDia, grade, {
+    formatoDe: (dia, t) => formatoDoBloco(historicoComFormato, dia, t.minutosDoDia),
+  })
   if (grade.length > 0) {
     const diasCobertos = new Set(grade.flatMap((s) => s.dias)).size
     avisos.push(
-      `Grade aprovada do cliente encontrada na base (${grade.length} horário(s) fixo(s), ${diasCobertos} dia(s) da semana) — ela substitui a cadência do histórico nos dias que cobre.`,
+      `Grade aprovada do cliente encontrada na base (${grade.length} horário(s) fixo(s), ${diasCobertos} dia(s) da semana) — ela substitui os horários de story do histórico nos dias que cobre; a cadência de feed continua.`,
     )
   }
 
@@ -316,28 +389,44 @@ export async function sugerirPosts(params: {
     return titulos.length > 0 ? titulos : undefined
   }
 
-  // ── Buracos nos próximos dias ────────────────────────────────────────────
-  const ocupados = futuros
-    .filter((p) => p.scheduledDatetime)
-    .map((p) => p.scheduledDatetime!.getTime())
+  // ── A grade completa ─────────────────────────────────────────────────────
+  const { grade: gradeDaSemana, excecoes } = montarGradeDaSemana(slotsFinais, formatoDoSlot)
 
+  // ── O que já ocupa a janela, por formato ─────────────────────────────────
+  // O que a resposta lista é o que está DENTRO da janela pedida; os posts da
+  // borda (até 45 min fora) só servem à detecção de conflito (R27).
+  const naJanela = futuros.filter((p) => dentroDaJanela(p.scheduledDatetime, janela))
+  const ocupacao: OcupacaoDaJanela[] = naJanela
+    .filter((p) => p.scheduledDatetime)
+    .map((p) => {
+      const brt = new Date(p.scheduledDatetime!.getTime() - 3 * 3600_000)
+      return {
+        postId: p.id,
+        data: brt.toISOString().slice(0, 10),
+        hora: `${String(brt.getUTCHours()).padStart(2, '0')}:${String(brt.getUTCMinutes()).padStart(2, '0')}`,
+        quandoBRT: formatarBRT(p.scheduledDatetime!),
+        formato: formatoDoTipo(p.postType),
+        tipo: p.postType === 'STORY' ? 'story' : p.postType.toLowerCase(),
+        situacao: p.status === 'SCHEDULED' ? ('agendado' as const) : ('rascunho' as const),
+      }
+    })
+  const ocupados: Ocupante[] = futuros
+    .filter((p) => p.scheduledDatetime)
+    .map((p) => ({ t: p.scheduledDatetime!.getTime(), formato: formatoDoTipo(p.postType) }))
+
+  // ── Buracos na janela ────────────────────────────────────────────────────
   const sugestoes: SugestaoSlot[] = []
-  for (let offset = 0; offset < dias; offset++) {
-    // Meia-noite BRT do dia alvo, reconstruída em UTC
-    const base = new Date(agora.getTime() + offset * 24 * 3600_000)
-    const brtBase = new Date(base.getTime() - 3 * 3600_000)
-    const dataISO = brtBase.toISOString().slice(0, 10)
-    const dia = brtBase.getUTCDay()
+  for (const dataISO of janela.datas) {
+    const dia = diaDaSemanaDe(dataISO)
     const tipicos = slotsFinais.get(dia)
     if (!tipicos) continue
 
     for (const slot of tipicos) {
       const quandoUTC = new Date(`${dataISO}T00:00:00-03:00`).getTime() + slot.minutosDoDia * 60_000
       if (quandoUTC <= agora.getTime() + 30 * 60_000) continue // já passou (ou colado)
-      const ocupado = ocupados.some(
-        (t) => Math.abs(t - quandoUTC) <= TOLERANCIA_SLOT_MIN * 60_000,
-      )
-      if (ocupado) continue
+      if (quandoUTC < janela.inicio.getTime() || quandoUTC > janela.fim.getTime()) continue
+      const formato = formatoDoSlot(dia, slot)
+      if (slotOcupado(ocupados, quandoUTC, formato, TOLERANCIA_SLOT_MIN)) continue
 
       const campanhasDoSlot = campanhasDoDia(dia, quandoUTC)
 
@@ -347,6 +436,7 @@ export async function sugerirPosts(params: {
         hora: slot.hora,
         quandoBRT: formatarBRT(new Date(quandoUTC)),
         scheduledDatetime: `${dataISO} ${slot.hora}`,
+        formato,
         // O motivo é escrito por `cadencia.ts`, que é quem sabe se o horário é
         // rotina antiga ou novidade das últimas duas semanas — a distinção que
         // a bancada precisa mostrar para a pessoa não confundir uma coisa com a
@@ -360,14 +450,20 @@ export async function sugerirPosts(params: {
     }
   }
 
-  await registrarEmissao(projectId, sugestoes)
+  const registrar = params.registrarSugestoes !== false
+  if (registrar) await registrarEmissao(projectId, sugestoes)
 
   return {
+    janela: { inicio: janela.inicioISO, fim: janela.fimISO, dias: janela.datas.length },
     diasAnalisados: JANELA_HISTORICO_DIAS,
     postsNoHistorico: historico.length,
     cadencia,
-    jaNaAgenda: futuros.length,
+    grade: gradeDaSemana,
+    excecoes,
+    ocupacao,
+    jaNaAgenda: naJanela.length,
     sugestoes,
+    sinaisRegistrados: registrar,
     avisos,
   }
 }
@@ -413,7 +509,7 @@ export async function campanhasEncerradas(
 async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): Promise<void> {
   if (sugestoes.length === 0) return
 
-  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime, versaoDoSlot(s)))
+  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime, versaoDoSlot(s), s.formato))
   const jaEmitidas = await sugestoesJaEmitidas(chaves)
 
   const novas: number[] = []
@@ -441,6 +537,8 @@ async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): P
           data: s.data,
           hora: s.hora,
           diaSemana: s.diaSemana,
+          // O formato é PARTE da proposta (R33): um story e um feed no mesmo horário são propostas diferentes.
+          ...(s.formato ? { formato: s.formato } : {}),
           motivo: s.motivo,
           ...(s.origem ? { origem: s.origem } : {}),
           ...(s.temaDaGrade ? { temaDaGrade: s.temaDaGrade } : {}),

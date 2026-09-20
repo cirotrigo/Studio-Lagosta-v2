@@ -83,10 +83,26 @@ export function slotValuesParaRender(
   slotValues: unknown,
   paginaEhModelo: boolean,
 ): Record<string, unknown> | undefined {
-  if (!slotValues || typeof slotValues !== 'object' || Array.isArray(slotValues)) return undefined
-  if (ehCopiaDaPagina(slotValues)) return undefined
   // A página é a peça: nada dela vem do post.
   if (!paginaEhModelo) return undefined
+  return copyPropriaDoPost(slotValues)
+}
+
+/**
+ * A copy PRÓPRIA do post: o que ele carrega e NÃO é cópia do texto da página
+ * (nem objeto vazio). É outra pergunta que `slotValuesParaRender`, e por isso
+ * tem nome próprio — quem a faz não está perguntando o que o render aplica.
+ *
+ * Quem lê a peça DEPOIS de pronta (a agenda) precisa das duas, separadas: "o
+ * que o render vai desenhar por cima desta página" depende de a página ser
+ * modelo; "esta cópia é do post ou é cópia da página" é do `slotValues` e vale
+ * mesmo quando não há página nenhuma para perguntar — que é o caso do post
+ * cuja página virou vínculo histórico. Passar `true` ali só para reaproveitar
+ * a função afirmaria que a página é modelo sem saber.
+ */
+export function copyPropriaDoPost(slotValues: unknown): Record<string, unknown> | undefined {
+  if (!slotValues || typeof slotValues !== 'object' || Array.isArray(slotValues)) return undefined
+  if (ehCopiaDaPagina(slotValues)) return undefined
   return Object.keys(slotValues).length > 0 ? (slotValues as Record<string, unknown>) : undefined
 }
 
