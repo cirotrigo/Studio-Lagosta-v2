@@ -93,9 +93,13 @@ describe('textosDaPeca — a mesma precedência do render', () => {
     const unica = { ...viva, pageId: null, mediaUrls: ['u1'] }
     const slides = [{ url: 'u1', arte: { pageId: 'pagina-de-outro', layersSnapshot: null } }]
     expect(textosDaPeca({ ...unica, slotValues: null }, { slides })).toEqual({ textos: [], indisponiveis: expect.stringMatching(/a arte desta peça não afirma texto \(a arte desta mídia não guardou as camadas/) })
-    const propria = textosDaPeca({ ...unica, slotValues: { headline: 'Da copy' } }, { slides })
+    // 🔴 A copy de um post SEM página vem da arte: `agendarPost` grava `apenasTextos(copyVisual)`, os `slotValues`
+    //    da própria Generation. Por isso a arte aqui carrega a MESMA copy — a combinação "post com copy, arte sem
+    //    copy registrada" não sai de `agendarPost`: é troca pela galeria, e cai em R54.
+    const comACopy = (copy: Record<string, string>) => [{ url: 'u1', arte: { pageId: 'pagina-de-outro', layersSnapshot: null, slotValues: copy } }]
+    const propria = textosDaPeca({ ...unica, slotValues: { headline: 'Da copy' } }, { slides: comACopy({ headline: 'Da copy' }) })
     expect(propria).toEqual({ textos: ['Da copy'], origem: 'copy-do-post', parcial: true, nota: expect.stringMatching(/a arte desta peça não afirma texto.*só os campos que o post sobrescreveu/) })
-    const registrada = textosDaPeca({ ...unica, slotValues: { _copiaDaPagina: true, headline: 'Da cópia' } }, { slides })
+    const registrada = textosDaPeca({ ...unica, slotValues: { _copiaDaPagina: true, headline: 'Da cópia' } }, { slides: comACopy({ headline: 'Da cópia' }) })
     expect(registrada).toMatchObject({ textos: ['Da cópia'], origem: 'copy-registrada', parcial: true, nota: expect.stringMatching(/a arte desta peça não afirma texto/) })
     // sem arte NENHUMA registrada para a mídia, a mesma declaração; e a arte que AFIRMA (snapshot legível) continua definitiva
     expect(textosDaPeca({ ...unica, slotValues: null }, { slides: [{ url: 'u1', arte: null }] }).indisponiveis).toMatch(/nenhuma arte registrada/)

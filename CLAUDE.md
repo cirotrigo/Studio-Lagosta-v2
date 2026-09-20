@@ -6709,9 +6709,23 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   `fieldValues.textos` (a régua), nunca `slotValues`, e nunca reescreve a cópia do post. A leitura dele passa de
   "copy do post, parcial" para indisponível. É o certo pelo contrato da casa (declarar, nunca afirmar sem prova) e
   em `refinar` a copy muda mesmo; fechar isso de verdade é a melhoria gravar a copy visual no post.
-  ⚠️ **Residual conhecido, da mesma classe**: o post SEM página própria (`pageId` nulo) cuja arte é trocada pela
-  galeria por uma sem copy registrada guarda o mesmo texto velho, e R32 (decisão deste PR) afirma essa copy como
-  PARCIAL — em R32 a copy É da arte do post, cuja página só não pôde ser lida, e os dois estados são
-  indistinguíveis na leitura (a arte não tem `slotValues` em nenhum dos dois). Fechar exigiria o lado da ESCRITA
-  (limpar os slots na troca pela galeria sem texto legível), que hoje é contrato testado em
-  `trocar-arte-do-post-copy.test.ts`.
+  🔴 **A evidência de troca vale para `semPaginaPropria`, não só para a página HISTÓRICA** (R54 da revisão FINAL
+  sobre a996a082, 20/09/2026). O rascunho criado por `generationId` nasce com `pageId` NULO, e a MESMA troca pela
+  galeria o deixava de fora do guard: "Oferta A" voltava como `copy-do-post` pela mídia B, vivo e depois da entrega.
+  O residual que a 1ª rodada registrou como "decisão de produto" — "os dois estados são indistinguíveis" — valia
+  contra o critério ANTIGO, o da igualdade. Com `midiaEDeOutraArte` eles se distinguem, e a prova está na ESCRITA:
+  a copy de um post SEM página vem da arte (`agendarPost` grava `apenasTextos(copyVisual)`, os `slotValues` da
+  própria Generation), então divergir É evidência de troca. Com página PRÓPRIA ativa (`RENDERED`) a copy continua
+  legítima — o render desenha dela e `renderPostArt` regrava a cópia a cada render.
+  🔴 **Post SEM cópia textual não invalida mídia nenhuma** (`if (!doPost) return false` em `midiaEDeOutraArte`):
+  `copyIgual(null, null)` é FALSO, então sem essa guarda todo post entregue com `slotValues` nulo voltava com a
+  ressalva de R53 no lugar do motivo REAL ("já foi entregue"). Pego pelo teste de R32.
+  ⚠️ **O que muda em R32**: post sem página própria cuja arte não tem copy registrada e que CARREGA copy passa a ser
+  indisponível — esse estado é o da troca, não sai de `agendarPost`. O caminho legítimo continua lido, porque a copy
+  gravada no agendamento É a da arte (as duas batem); a fixture de R32 foi ajustada para a forma real.
+  **Varredura da classe com `pageId: null` em mente** (os pontos que condicionam proteção à existência de página
+  própria): `paginaDoPostEHistorica` (definicional — sem página não há vínculo histórico), a leitura da página viva
+  (o handler só passa `camadas` com `post.pageId`, `agenda.ts:164`), `paginaIlegivel` (sem página própria quem
+  declara a fonte é R32, pela mídia), R42 e R53/R54 (os dois em `semPaginaPropria`), R47/R49/R50 (sem gate de
+  página) e `textosPorSlide` (dirigido pela arte, nunca por `post.pageId`). O guard de R53 era o único preso a
+  `paginaHistorica`.

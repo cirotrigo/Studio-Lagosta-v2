@@ -215,6 +215,75 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
   })
 
   /**
+   * R54 (revisão FINAL sobre a996a082, 20/09/2026): o MESMO defeito no post que nunca teve página — o rascunho criado
+   * por `generationId` nasce com `pageId` nulo. O guard do R53 exigia `paginaHistorica`, que é falso aí, então a
+   * evidência de troca nem era avaliada e "Oferta A" voltava como `copy-do-post`, vivo e depois da entrega.
+   *
+   * 🔴 A copy de um post SEM página vem da ARTE: `agendarPost` grava `apenasTextos(copyVisual)`, os `slotValues` da
+   *    própria Generation. É por isso que a divergência PROVA troca — e é o que separa este caso do R32, em que a
+   *    arte é a do post e só a página dela não pôde ser lida.
+   */
+  describe('R54 — post SEM página própria: a mesma troca, o mesmo defeito', () => {
+    const copyDeA = { headline: 'Oferta A', apoio: 'Só nesta semana' }
+    // o estado real de quem agendou por `generationId`: sem página, a copy do post é a copy registrada na arte A
+    const semPagina = () => {
+      banco.paginas = []
+      banco.generations = [{ id: 'gen-a', projectId: 8, resultUrl: URL_A, fieldValues: { source: 'geracao-ia', slotValues: { ...copyDeA } } }]
+      banco.post = { ...banco.post, pageId: null, templateId: null, renderStatus: 'NOT_NEEDED', slotValues: { ...copyDeA } }
+    }
+
+    for (const [estado, status] of [['rascunho', 'DRAFT'], ['entregue', 'POSTED']] as const) {
+      it(`${estado}: B de IA sem copy registrada — nada de A, a fonte é declarada indisponível dizendo que o texto é de outra arte`, async () => {
+        semPagina()
+        banco.generations.push(arteB({ source: 'geracao-ia', track: 'arte' }))
+        await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+        // a troca PRESERVA a copy (contrato testado em trocar-arte-do-post-copy.test.ts) — é a LEITURA que recusa
+        expect(banco.post!.pageId).toBeNull()
+        expect(banco.post!.slotValues).toEqual(copyDeA)
+        banco.post!.status = status
+
+        const item = await itemDaAgenda()
+        expect(JSON.stringify(item)).not.toContain('Oferta A')
+        expect(JSON.stringify(item)).not.toContain('Só nesta semana')
+        expect(item.textos).toBeUndefined()
+        expect(item.textosIndisponiveis).toMatch(/de OUTRA arte/)
+      })
+    }
+
+    it('controle: B COM copy registrada — a troca regrava o post e é a copy DELA que volta', async () => {
+      semPagina()
+      banco.generations.push(arteB({ source: 'geracao-ia', slotValues: { bloco1: 'Oferta B' } }))
+      await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+      expect(banco.post!.slotValues).toEqual({ bloco1: 'Oferta B' })
+      const item = await itemDaAgenda()
+      expect(item.textos).toEqual(['Oferta B'])
+      expect(JSON.stringify(item)).not.toContain('Oferta A')
+    })
+
+    it('controle R12 — nenhuma arte casada com a mídia: a copy do post continua valendo, PARCIAL', async () => {
+      semPagina()
+      banco.post!.mediaUrls = ['https://blob.test/arte-rapida/8/sem-arte.png']
+      const item = await itemDaAgenda()
+      expect(item.textos).toEqual(['Oferta A', 'Só nesta semana'])
+      expect(item.textosParciais).toBe(true)
+    })
+
+    it('controle R13 — a arte da mídia foi RE-RENDERIZADA (mesma peça refeita): a copy do post não vira "de outra arte"', async () => {
+      semPagina()
+      banco.generations[0].fieldValues = { ...banco.generations[0].fieldValues, recomposicao: { estado: 're-renderizada' } }
+      const item = await itemDaAgenda()
+      expect(item.textosIndisponiveis ?? '').not.toMatch(/de OUTRA arte/)
+    })
+
+    it('controle: a arte casada CONFERE com a copy do post (o estado normal de quem agendou por generationId)', async () => {
+      semPagina()
+      const item = await itemDaAgenda()
+      expect(item.textos).toEqual(['Oferta A', 'Só nesta semana'])
+      expect(item.textosIndisponiveis).toBeUndefined()
+    })
+  })
+
+  /**
    * Varredura da classe do R52 (18/09/2026): com a arte da PRÓPRIA página (não de modelo), a página segue sendo a
    * fonte — mas os slots que o post herdou na troca NÃO são entrada de render nenhum (`NOT_NEEDED`: o PNG é o da arte,
    * mantido em dia com a página pela recomposição). Depois de editar a página, aplicá-los devolvia o texto de antes.
