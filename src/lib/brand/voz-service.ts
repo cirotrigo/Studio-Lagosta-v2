@@ -44,8 +44,30 @@ export interface RegistroDaVoz {
   updatedAt: Date
 }
 
-export async function lerRegistroDaVoz(projectId: number): Promise<RegistroDaVoz | null> {
-  const r = await db.brandVoice.findUnique({ where: { projectId } })
+/**
+ * A trava que EXISTE SEMPRE: a linha do `Project`.
+ *
+ * A confirmação de uma regra no DNA de texto e a MIGRAÇÃO para a voz decidem
+ * coisas opostas sobre o mesmo cliente, e quem as serializava era um
+ * `SELECT … FOR UPDATE` na linha de `BrandVoice` — que pode NÃO EXISTIR. No
+ * cliente sem voz esse lock não trava nada: a consulta volta vazia, outra
+ * execução cria a voz e conclui `migrarParaVoz`, e a primeira grava no DNA que
+ * já deixou de governar a copy (PR7-R9-01 da revisão final do Codex,
+ * 20/09/2026). `Project` existe sempre — é o alvo da FK dos dois lados.
+ *
+ * Quem decide pelo estado da migração toma ESTA trava e RELÊ o estado dentro
+ * dela; decidir por leitura feita antes da trava é o defeito, não o detalhe.
+ */
+export async function travarProjeto(tx: Pick<typeof db, '$queryRaw'>, projectId: number): Promise<void> {
+  const linhas = await tx.$queryRaw<Array<{ id: number }>>`SELECT "id" FROM "Project" WHERE "id" = ${projectId} FOR UPDATE`
+  // Trava que não travou nada é exatamente o defeito que esta função fecha.
+  if (linhas.length === 0) {
+    throw new CreativeError('PROJECT_NOT_FOUND', `Projeto ${projectId} não existe: não há o que travar, nada foi gravado.`, 404)
+  }
+}
+
+export async function lerRegistroDaVoz(projectId: number, cliente: Pick<typeof db, 'brandVoice'> = db): Promise<RegistroDaVoz | null> {
+  const r = await cliente.brandVoice.findUnique({ where: { projectId } })
   if (!r) return null
   const { voz, problemas } = lerVoz(r.voz)
   return { id: r.id, projectId: r.projectId, versao: r.versao, voz, problemas, migradaEm: r.migradaEm, dnaArquivado: r.dnaArquivado, updatedAt: r.updatedAt }
@@ -110,21 +132,31 @@ export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; 
  * dele vai para `dnaArquivado`, para o registro do que valia até aqui.
  */
 export async function migrarParaVoz(args: { projectId: number; versaoEsperada: number; em?: Date }): Promise<{ migradaEm: Date; jaEstava: boolean; versao: number }> {
-  const registro = await lerRegistroDaVoz(args.projectId)
-  if (!registro) throw new CreativeError('VOZ_INEXISTENTE', 'Não há voz gravada para migrar: grave a voz primeiro.', 404)
-  if (!registro.voz) throw new CreativeError('VOZ_INVALIDA', `A voz gravada não passa no contrato: ${registro.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`, 400, { problemas: registro.problemas })
-  if (registro.migradaEm) return { migradaEm: registro.migradaEm, jaEstava: true, versao: registro.versao }
-  if (registro.versao !== args.versaoEsperada) {
-    throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou (versão esperada ${args.versaoEsperada}, atual ${registro.versao}). Releia a voz antes de migrar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: registro.versao })
-  }
-  const dna = await db.brandDNA.findUnique({ where: { projectId: args.projectId }, select: { toneOfVoice: true, contentRules: true, updatedAt: true } })
-  const em = args.em ?? new Date()
-  const gravada = await db.brandVoice.updateMany({
-    where: { projectId: args.projectId, versao: args.versaoEsperada, migradaEm: null },
-    data: { migradaEm: em, dnaArquivado: arquivoDoDna({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }, em) as never },
+  return db.$transaction(async (tx) => {
+    /**
+     * A trava vem ANTES de qualquer leitura: quem confirma regra no DNA de
+     * texto espera aqui. E tudo é lido DENTRO dela — o snapshot lido antes
+     * arquivaria um DNA que uma confirmação em curso ainda ia alterar, e o
+     * histórico deixaria de representar o DNA vigente na transição
+     * (PR7-R9-02).
+     */
+    await travarProjeto(tx, args.projectId)
+    const registro = await lerRegistroDaVoz(args.projectId, tx)
+    if (!registro) throw new CreativeError('VOZ_INEXISTENTE', 'Não há voz gravada para migrar: grave a voz primeiro.', 404)
+    if (!registro.voz) throw new CreativeError('VOZ_INVALIDA', `A voz gravada não passa no contrato: ${registro.problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`, 400, { problemas: registro.problemas })
+    if (registro.migradaEm) return { migradaEm: registro.migradaEm, jaEstava: true, versao: registro.versao }
+    if (registro.versao !== args.versaoEsperada) {
+      throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou (versão esperada ${args.versaoEsperada}, atual ${registro.versao}). Releia a voz antes de migrar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: registro.versao })
+    }
+    const dna = await tx.brandDNA.findUnique({ where: { projectId: args.projectId }, select: { toneOfVoice: true, contentRules: true, updatedAt: true } })
+    const em = args.em ?? new Date()
+    const gravada = await tx.brandVoice.updateMany({
+      where: { projectId: args.projectId, versao: args.versaoEsperada, migradaEm: null },
+      data: { migradaEm: em, dnaArquivado: arquivoDoDna({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }, em) as never },
+    })
+    if (gravada.count === 0) throw new CreativeError('VOZ_DIVERGENTE', 'A voz mudou enquanto a migração era gravada. Releia e tente de novo.', 409)
+    return { migradaEm: em, jaEstava: false, versao: args.versaoEsperada }
   })
-  if (gravada.count === 0) throw new CreativeError('VOZ_DIVERGENTE', 'A voz mudou enquanto a migração era gravada. Releia e tente de novo.', 409)
-  return { migradaEm: em, jaEstava: false, versao: args.versaoEsperada }
 }
 
 /** Desliga a precedência da voz: o DNA de texto volta a mandar na copy. A voz e o snapshot ficam. */

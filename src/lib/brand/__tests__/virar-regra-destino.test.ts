@@ -58,9 +58,12 @@ vi.mock('@/lib/db', () => {
   }
   const tx = {
     brandDNA,
+    brandVoice,
+    // A trava é a linha do PROJECT (PR7-R9-01): ela existe mesmo sem voz. O
+    // estado da migração é RELIDO depois dela, por `tx.brandVoice`.
     $queryRaw: vi.fn(async () => {
       if (estado.antesDaTrava) { estado.antesDaTrava(); estado.antesDaTrava = null }
-      return estado.voz ? [{ migradaEm: estado.voz.migradaEm }] : []
+      return [{ id: 7 }]
     }),
   }
   return {

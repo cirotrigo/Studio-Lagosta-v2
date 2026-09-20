@@ -6684,8 +6684,24 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   operação que a aprovada, e a proibição antiga continuaria. A mudança DURANTE a
   requisição também é travada nos dois sentidos: a gravação na voz exige
   `migradaEm` no MESMO `updateMany` do CAS (`gravarVoz({ exigirMigrada })`), e a
-  gravação no DNA de texto trava a linha da voz (`SELECT … FOR UPDATE`) e relê
-  `migradaEm` na mesma transação da escrita (`updateBrandDNA(…, tx)`).
+  gravação no DNA de texto trava e relê `migradaEm` na mesma transação da
+  escrita (`updateBrandDNA(…, tx)`).
+- 🔴 **A trava é a linha do `Project`, nunca a de `BrandVoice`** (PR7-R9-01/02
+  da revisão final, 20/09/2026). `SELECT … FOR UPDATE` numa linha que pode NÃO
+  EXISTIR não trava nada: no cliente sem voz a consulta voltava vazia, outra
+  execução criava a voz e concluía `migrarParaVoz`, e a confirmação seguia e
+  gravava no DNA que já tinha deixado de governar a copy. `travarProjeto`
+  (`voz-service.ts`) trava o `Project` — que existe sempre, é o alvo da FK dos
+  dois lados — e a confirmação do DNA e `migrarParaVoz` tomam a MESMA trava,
+  relendo o estado dentro dela. Trava que não travou nada (projeto inexistente)
+  RECUSA com `PROJECT_NOT_FOUND` em vez de seguir. Pelo mesmo motivo
+  `migrarParaVoz` virou transação e lê o snapshot do DNA DEPOIS da trava: lido
+  antes, o `dnaArquivado` guardava um DNA que uma confirmação em curso ainda ia
+  alterar. **Serializou escrita por uma linha? Confira se ela existe sempre.**
+  O teste que prova isto começa SEM voz (`voz-trava-do-projeto.test.ts`, com
+  trava de verdade no banco em memória): os testes de destino sempre
+  inicializam uma voz, inclusive o controle legado, e foi por isso que o
+  defeito passou.
 - 🔴 **Voz compacta VALIDADA entra INTEIRA em prompt de orçamento curto**
   (PR7-FINAL-02): `textoDaVozParaPrompt(voz, teto)` corta só o LEGADO. O
   contrato já limita a voz a 4.000 caracteres e as regras recentes moram no FIM

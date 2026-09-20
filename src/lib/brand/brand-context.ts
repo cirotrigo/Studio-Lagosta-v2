@@ -3,7 +3,7 @@ import { criarEntradaBase } from '@/lib/knowledge/entries'
 import { formatarValidade } from '@/lib/knowledge/vigencia'
 import { lerEstiloDasReferencias, type EstiloDasReferenciasGravado } from '@/lib/brand/estilo-das-referencias'
 import { conflitosNoTextoLegado, precedenciaDaVoz, type ContextoDeVoz, type EscopoDaRegra } from '@/lib/brand/voz'
-import { virarRegraNaVoz, type VirarRegraNaVozResult } from '@/lib/brand/voz-service'
+import { travarProjeto, virarRegraNaVoz, type VirarRegraNaVozResult } from '@/lib/brand/voz-service'
 import { CreativeError } from '@/lib/creatives/errors'
 
 /**
@@ -361,13 +361,16 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
     if (secaoDeTexto) {
       /**
        * A migração pode ser LIGADA entre a escolha deste ramo e a escrita: a
-       * regra cairia no DNA de texto que já não manda na copy. A linha da voz
-       * é travada e relida na mesma transação da escrita — `migrarParaVoz`
-       * escreve nela e espera. ponytail: sem linha de voz não há o que travar;
-       * migrar exige gravar a voz antes (outra chamada), janela desprezível.
+       * regra cairia no DNA de texto que já não manda na copy. Quem trava é a
+       * linha do PROJETO (`travarProjeto`), não a da voz: sem voz gravada o
+       * `FOR UPDATE` em `BrandVoice` não travava nada, e a voz podia ser
+       * criada e migrada nessa janela (PR7-R9-01 da revisão final do Codex,
+       * 20/09/2026). `migrarParaVoz` toma a MESMA trava, então as duas se
+       * serializam; o estado da migração é RELIDO dentro dela.
        */
       await db.$transaction(async (tx) => {
-        const [voz] = await tx.$queryRaw<Array<{ migradaEm: Date | null }>>`SELECT "migradaEm" FROM "BrandVoice" WHERE "projectId" = ${args.projectId} FOR UPDATE`
+        await travarProjeto(tx, args.projectId)
+        const voz = await tx.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { migradaEm: true } })
         if (voz?.migradaEm) {
           throw new CreativeError(
             'REGRA_DESTINO_MUDOU',

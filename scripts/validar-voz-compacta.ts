@@ -22,7 +22,12 @@
  *     com `substitui` sem gravar, gravação com CAS (versão sobe, a antiga fica
  *     inativa e fora do prompt); seção de ARTE continua indo ao DNA;
  *  9. a tool `consultar-voz` do catálogo responde com a precedência;
- * 10. desfazer a migração devolve o legado; voz e snapshot ficam.
+ * 10. desfazer a migração devolve o legado; voz e snapshot ficam;
+ * 11. a CONFIRMAÇÃO no DNA roda de verdade contra o Postgres (transação com
+ *     `SELECT … FOR UPDATE` na linha do Project + releitura da migração):
+ *     grava a linha; numa corrida real com a criação+migração da voz o
+ *     desfecho é sempre uma ordem serial válida; e projeto inexistente é
+ *     recusado porque a trava não travaria nada (PR7-R9-01/02).
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada). O DNA
  * do projeto tem `contentRules` trocado durante a prova e RESTAURADO no
@@ -307,6 +312,45 @@ async function main() {
     const e10 = await erroDe(virarRegra({ projectId: PROJETO, regra: 'Pode usar "Vem pro fogo" só em post de churrasco ao vivo', motivo: `${MARCA} o Ciro liberou para o evento`, secao: 'contentRules', escopo: 'copy', substitui: 'regra-2026-09-06-1', confirmado: true, versaoDaVoz: 4 }))
     const dnaDepoisDaConfirmacao = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { contentRules: true, toneOfVoice: true } })
     conferir('confirmação de proposta da voz com a migração desfeita: REGRA_DESTINO_MUDOU (409), DNA e voz intactos', e10?.code === 'REGRA_DESTINO_MUDOU' && e10?.status === 409 && JSON.stringify(dnaAntesDaConfirmacao) === JSON.stringify(dnaDepoisDaConfirmacao) && (await lerRegistroDaVoz(PROJETO))?.versao === 4, JSON.stringify(e10))
+
+    // ── 11. a transação da confirmação, contra o Postgres (PR7-R9-01/02) ────
+    // Até aqui nenhum passo CHEGAVA a ela: o 5 usa `confirmado: false` e o 10 é
+    // recusado antes de abrir a transação (lacuna apontada na revisão final).
+    console.log('11) a confirmação no DNA roda a transação com a trava do Project contra o banco')
+    const REGRA_11 = `${MARCA} confirmação real no DNA`
+    const dna11Antes = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { contentRules: true } })
+    const v11 = await virarRegra({ projectId: PROJETO, regra: REGRA_11, motivo: `${MARCA} prova da transação`, secao: 'contentRules', confirmado: true })
+    const dna11 = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { contentRules: true } })
+    conferir('confirmação REAL: a transação (SELECT … FOR UPDATE no Project + releitura da migração) grava a linha no DNA', v11.destino === 'dna' && v11.gravado === true && !!dna11?.contentRules?.includes(REGRA_11) && dna11.contentRules.startsWith(String(dna11Antes?.contentRules ?? '').trimEnd().slice(0, 40)), JSON.stringify({ gravado: v11.gravado, chars: dna11?.contentRules?.length }))
+
+    // A corrida que o defeito produzia: SEM linha de BrandVoice, a confirmação
+    // no DNA e a criação+migração da voz disputam a MESMA trava. Só há duas
+    // ordens seriais válidas; a terceira (DNA gravado depois de a migração ter
+    // arquivado) é o defeito.
+    await db.brandVoice.deleteMany({ where: { projectId: PROJETO } })
+    const REGRA_11B = `${MARCA} corrida com a migração`
+    const [confirmacao11, migracao11] = await Promise.allSettled([
+      virarRegra({ projectId: PROJETO, regra: REGRA_11B, motivo: `${MARCA} prova da corrida`, secao: 'contentRules', confirmado: true }),
+      (async () => {
+        await gravarVoz({ projectId: PROJETO, voz })
+        return migrarParaVoz({ projectId: PROJETO, versaoEsperada: 1 })
+      })(),
+    ])
+    const dna11b = await db.brandDNA.findUnique({ where: { projectId: PROJETO }, select: { contentRules: true } })
+    const reg11b = await lerRegistroDaVoz(PROJETO)
+    const arquivo11b = (reg11b?.dnaArquivado as { contentRules?: string | null } | null)?.contentRules ?? ''
+    const codigo11b = confirmacao11.status === 'rejected' ? String((confirmacao11.reason as { code?: string }).code) : null
+    const gravouNoDna = !!dna11b?.contentRules?.includes(REGRA_11B)
+    const migrou = !!reg11b?.migradaEm
+    // (a) confirmação primeiro: o DNA foi escrito E a migração arquivou a regra junto — ela valia quando foi gravada.
+    // (b) migração primeiro: a confirmação foi recusada (relê dentro da trava, ou já cai no ramo da voz) e nada foi gravado.
+    const ordemA = gravouNoDna && migrou && arquivo11b.includes(REGRA_11B)
+    const ordemB = !gravouNoDna && (codigo11b === 'REGRA_DESTINO_MUDOU' || codigo11b === 'VOZ_VERSAO_OBRIGATORIA')
+    registro.corridaDaTrava = { ordem: ordemA ? 'confirmacao-depois-migracao' : ordemB ? 'migracao-depois-recusa' : 'INVÁLIDA', gravouNoDna, migrou, arquivoTemARegra: arquivo11b.includes(REGRA_11B), codigo: codigo11b }
+    conferir('corrida real sem voz gravada: ordem serial válida — ou o DNA foi escrito e a migração o arquivou com a regra, ou a confirmação foi recusada sem gravar', (ordemA || ordemB) && migracao11.status === 'fulfilled', JSON.stringify(registro.corridaDaTrava))
+
+    const e11c = await erroDe(virarRegra({ projectId: 999_999_999, regra: `${MARCA} projeto que não existe`, motivo: 'm', secao: 'contentRules', confirmado: true }))
+    conferir('projeto inexistente: a trava não travaria nada, então a transação recusa (PROJECT_NOT_FOUND, 404) em vez de gravar', e11c?.code === 'PROJECT_NOT_FOUND' && e11c.status === 404 && (await db.brandDNA.count({ where: { projectId: 999_999_999 } })) === 0, `${e11c?.code}`)
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro instanceof Error ? erro.stack ?? erro.message : erro)
     mau++
