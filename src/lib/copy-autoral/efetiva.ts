@@ -10,7 +10,9 @@
  *    id ou nome); com UM bloco da função no original, ele leva TODAS as camadas
  *    dela, juntas de cima para baixo (o compositor reparte o serviço em
  *    `servico` e `servico-2`, e ele volta a ser um bloco só — PR3-R8-02); com
- *    vários, uma camada por bloco na ORDEM vertical;
+ *    vários, uma camada por bloco na ORDEM vertical. Quem conta aqui são os
+ *    blocos COM texto: o bloco explicitamente vazio não originou camada e não
+ *    consome nenhuma (PR3-R10-01);
  *  - `headline2` é a SEGUNDA VOZ da manchete (o compositor tira a última linha
  *    do bloco para ela): as linhas dela voltam ao bloco `headline`, e a
  *    posição vira `estilo.linhasNaVoz2` — declarada, como o contrato pede;
@@ -334,8 +336,22 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas)
   lacunas.push(...extras.ambiguos)
   for (const c of extras.vinculos.values()) usadas.add(c)
-  const blocosPorFuncao = new Map<FuncaoDoBloco, number>()
-  for (const b of original.blocos) blocosPorFuncao.set(b.funcao, (blocosPorFuncao.get(b.funcao) ?? 0) + 1)
+  // Quem DISPUTA as camadas de uma função são os blocos COM texto. Bloco
+  // explicitamente vazio (`linhas: []`) é "esta camada fica sem texto": a
+  // conversão para a spec o OMITE (`blocosParaOCompositor`), então ele nunca
+  // originou camada nenhuma e não pode consumir uma — senão o texto do bloco
+  // preenchido migrava de id sem ninguém ter editado nada, a página ficava com
+  // dois serviços e a recomposição seguinte morria em `papel repetido`
+  // (PR3-R10-01 da revisão do Codex sobre 89930e44, 20/09/2026).
+  // Quando NENHUM bloco da função tem texto, os vazios voltam a disputar: aí a
+  // camada com texto é a de um bloco que alguém preencheu no editor, e
+  // mandá-la para um `extra-…` trocaria o id do mesmo jeito.
+  const cheiosPorFuncao = new Map<FuncaoDoBloco, number>()
+  const vaziosPorFuncao = new Map<FuncaoDoBloco, number>()
+  for (const b of original.blocos) {
+    const conta = b.linhas.length > 0 ? cheiosPorFuncao : vaziosPorFuncao
+    conta.set(b.funcao, (conta.get(b.funcao) ?? 0) + 1)
+  }
   const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
     if (b.funcao === 'livre') {
       // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id
@@ -349,11 +365,17 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
       }
       return { ...b, linhas: linhasDaCamada(camada) }
     }
+    const cheios = cheiosPorFuncao.get(b.funcao) ?? 0
+    // Bloco vazio de propósito com irmão preenchido na mesma função: fica
+    // vazio, sem consumir camada — e sem lacuna, porque a arte mostra
+    // exatamente o que o autor pediu (nada).
+    if (b.linhas.length === 0 && cheios > 0) return comSegundaVoz({ ...b, linhas: [] }, [])
     const livres = (porFuncao.get(b.funcao) ?? []).filter((c) => !usadas.has(c))
     // Bloco ÚNICO da função leva TODAS as camadas dela (PR3-R8-02): o compositor
     // reparte um bloco em `servico` e `servico-2` (um texto por linha do arranjo),
     // e a 2ª virava outro bloco `servico` — a recomposição morria em "papel repetido".
-    const camadas = (blocosPorFuncao.get(b.funcao) ?? 0) === 1 ? livres : livres.slice(0, 1)
+    const concorrentes = cheios > 0 ? cheios : (vaziosPorFuncao.get(b.funcao) ?? 0)
+    const camadas = concorrentes === 1 ? livres : livres.slice(0, 1)
     if (camadas.length === 0) {
       lacunas.push(`o bloco "${b.id}" (${b.funcao}) não foi desenhado`)
       return comSegundaVoz({ ...b, linhas: [] }, [])

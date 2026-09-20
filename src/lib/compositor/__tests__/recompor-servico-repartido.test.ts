@@ -86,7 +86,7 @@ import { recomporPaginaDefasada } from '@/lib/compositor/recompor'
 import { entradaDePersistencia } from '@/lib/compositor/persistencia'
 import { revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { VERSAO_DO_CONTRATO, lerCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
-import type { SpecDePeca } from '@/lib/compositor/spec'
+import { validarSpec, type SpecDePeca } from '@/lib/compositor/spec'
 import type { Layer } from '@/types/template'
 
 function texto(id: string, papel: string, y: number, content: string) {
@@ -208,6 +208,88 @@ describe('serviço repartido entre DOIS GRUPOS da página (PR3-R8-02, varredura)
     const doisGrupos = [texto('headline', 'headline', 300, 'Almoço executivo'), texto('servico', 'servico', 900, 'Das 11h às 15h'), texto('servico', 'servico', 1700, 'Rua Aleixo Netto, 1158')]
     const r = revisaoDaPaginaComCamadas(original, doisGrupos, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
     expect(r.estado).toBe('sem-mudanca')
+  })
+})
+
+/**
+ * PR3-R10-01 (revisão do Codex sobre 89930e44, 20/09/2026): bloco
+ * explicitamente VAZIO (`linhas: []`) é "esta camada fica sem texto". A
+ * conversão para a spec o OMITE, então ele nunca originou camada — mas a
+ * leitura efetiva o CONTAVA entre os blocos da função e entregava uma camada a
+ * cada um: o horário migrava para o bloco vazio e o endereço ficava sozinho no
+ * preenchido. A página passava a guardar dois serviços com texto, e editar só a
+ * manchete levava a recomposição a `papel repetido: servico` — o slide ficava
+ * com a imagem antiga.
+ */
+describe('bloco VAZIO de propósito não consome camada do irmão preenchido (PR3-R10-01)', () => {
+  const comVazio: CopyAutoral = {
+    ...original,
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Almoço executivo'] },
+      { id: 'servico-vazio', funcao: 'servico', ordem: 1, linhas: [] },
+      { id: 'servico-info', funcao: 'servico', ordem: 2, linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] },
+    ],
+  }
+  const specComVazio = { ...spec, copyAutoral: comVazio } as unknown as SpecDePeca
+
+  it('spec válida → duas camadas de serviço → edição só da manchete → recomposição com as duas linhas no bloco preenchido', async () => {
+    // 0. a premissa do cenário: com o vazio omitido, a spec tem UM serviço e é aceita
+    const naPorta = validarSpec(specComVazio)
+    expect(naPorta.problemas).toEqual([])
+    expect(naPorta.spec!.blocos).toEqual([
+      { papel: 'headline', linhas: ['Almoço executivo'] },
+      { papel: 'servico', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] },
+    ])
+
+    // 1. a persistência lê as duas camadas de serviço do arranjo
+    const camadas = repartidas('Almoço executivo')
+    const entrada = entradaDePersistencia({ spec: specComVazio, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Sexta', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas as unknown as Layer[], fundo: '#000', diagnostico: {}, fotoUrl: 'https://blob.test/foto.png' })
+    const daPagina = lerCopyAutoral(entrada.copyAutoral).copy!
+    expect(daPagina.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico-vazio', linhas: [] }),
+      expect.objectContaining({ id: 'servico-info', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] }),
+    ])
+    // nenhuma revisão artificial: o texto não migrou de id
+    expect(daPagina.revisoes).toEqual([])
+
+    // 2. a equipe edita só a manchete
+    const editadas = repartidas('Almoço de sexta')
+    const revisao = revisaoDaPaginaComCamadas(daPagina, editadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(revisao.estado).toBe('registrada')
+    expect(revisao.blocos).toEqual(['headline'])
+
+    // 3. a recomposição: um serviço só na spec, slide trocado, capa intacta
+    banco.pagina = { id: 'p9', name: 'Sexta', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: editadas, copyAutoral: revisao.copy }
+    banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
+    banco.composta = repartidas('Almoço de sexta')
+    await recomporPaginaDefasada({ pageId: 'p9' })
+
+    const recebida = banco.specsRecebidas.at(-1) as SpecDePeca
+    expect(recebida.blocos).toEqual([
+      { papel: 'headline', linhas: ['Almoço de sexta'] },
+      { papel: 'servico', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] },
+    ])
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.test/arte-rapida/8/p9-nova.png'])
+    const final = lerCopyAutoral(banco.pagina!.copyAutoral).copy!
+    expect(final.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico-vazio', linhas: [] }),
+      expect.objectContaining({ id: 'servico-info', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] }),
+    ])
+  })
+
+  it('controle: com TODOS os blocos da função vazios, a camada desenhada continua indo para o bloco (alguém a preencheu no editor)', () => {
+    const soVazio: CopyAutoral = {
+      ...original,
+      blocos: [
+        { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Almoço executivo'] },
+        { id: 'servico-vazio', funcao: 'servico', ordem: 1, linhas: [] },
+      ],
+    }
+    const comTexto = [texto('headline', 'headline', 300, 'Almoço executivo'), texto('servico', 'servico', 1600, 'Das 11h às 15h')]
+    const r = revisaoDaPaginaComCamadas(soVazio, comTexto, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(r.estado).toBe('registrada')
+    expect(r.blocos).toEqual(['servico-vazio'])
+    expect(r.copy!.blocos.find((b) => b.id === 'servico-vazio')!.linhas).toEqual(['Das 11h às 15h'])
   })
 })
 
