@@ -58,8 +58,14 @@ export type ClienteDaPagina = Pick<typeof db, 'page'>
 export interface CamadasGravadas {
   /** As camadas gravadas (string JSON, a forma da coluna). */
   camadas: string
-  /** A página COMO ESTAVA no banco quando a escrita valeu — contra ela a diferença e a revisão foram medidas. */
-  base: { updatedAt: Date; layers: unknown; copyAutoral: unknown }
+  /**
+   * A página COMO ESTAVA no banco quando a escrita valeu — contra ela a
+   * diferença e a revisão foram medidas. Os campos VISUAIS (`background`,
+   * `width`, `height`) vêm junto porque quem decide efeito colateral ("o visual
+   * mudou?") tem de comparar com a base EFETIVAMENTE substituída, nunca com a
+   * leitura do começo do handler (PR3-R9-01).
+   */
+  base: { updatedAt: Date; layers: unknown; copyAutoral: unknown; background: string | null; width: number; height: number }
   revisao: RevisaoDaPagina
   /** Recusa do contrato (histórico cheio, copy que não cabe): as camadas foram gravadas e o contrato ficou como estava. */
   aviso: string | null
@@ -95,7 +101,7 @@ export async function gravarCamadasComRevisao(
   },
 ): Promise<CamadasGravadas | null> {
   for (let volta = 0; volta < (args.voltas ?? 4); volta++) {
-    const base = await cliente.page.findUnique({ where: { id: args.pageId }, select: { updatedAt: true, layers: true, copyAutoral: true } })
+    const base = await cliente.page.findUnique({ where: { id: args.pageId }, select: { updatedAt: true, layers: true, copyAutoral: true, background: true, width: true, height: true } })
     if (!base) return null
     let camadas = args.camadas(base)
     if (args.humana) {

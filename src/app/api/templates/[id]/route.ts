@@ -157,29 +157,12 @@ export async function PUT(
         // fall back to matching the current template page by order/name.
         const existingPages = await tx.page.findMany({
           where: { templateId },
-          // layers/background/width/height entram para permitir comparar o
-          // que mudou de VERDADE — ver `paginasAlteradas` mais abaixo.
           select: {
             id: true,
             name: true,
             order: true,
-            layers: true,
-            background: true,
-            width: true,
-            height: true,
           },
         })
-        const estadoVisualAnterior = new Map(
-          existingPages.map((p) => [
-            p.id,
-            {
-              layers: normalizeLayersString(p.layers),
-              background: p.background,
-              width: p.width,
-              height: p.height,
-            },
-          ]),
-        )
         /**
          * Só as páginas cujo VISUAL mudou voltam para a fila de render.
          *
@@ -191,24 +174,6 @@ export async function PUT(
          * `visualChanged` de lá); aqui ela faltava.
          */
         const paginasAlteradas = new Set<string>()
-        const marcarSeMudou = (
-          pageId: string,
-          novo: { layers: string; background: string; width: number; height: number },
-        ) => {
-          const anterior = estadoVisualAnterior.get(pageId)
-          if (!anterior) {
-            paginasAlteradas.add(pageId)
-            return
-          }
-          if (
-            normalizeLayersString(novo.layers) !== anterior.layers ||
-            novo.background !== anterior.background ||
-            novo.width !== anterior.width ||
-            novo.height !== anterior.height
-          ) {
-            paginasAlteradas.add(pageId)
-          }
-        }
         /**
          * 🔴 A página existente é gravada COM a revisão do contrato da copy,
          * sobre a página relida e por compare-and-set
@@ -219,8 +184,18 @@ export async function PUT(
          * mudança com a autoria errada. Escrita humana: a marca do revisor é
          * reconciliada contra a mesma base. Recusa do contrato não derruba o
          * salvamento — as camadas vão e o contrato fica como estava.
+         *
+         * 🔴 E a decisão de "o visual mudou?" sai da base EFETIVAMENTE
+         * SUBSTITUÍDA (`g.base`) contra as camadas EFETIVAMENTE GRAVADAS
+         * (`g.camadas`, já com a marca do revisor reconciliada) — nunca contra
+         * a leitura do começo do handler (PR3-R9-01 da revisão do Codex sobre
+         * cd98cd6d, 20/09/2026). O helper relê a página a cada volta: um PATCH
+         * concorrente gravava Y, este PUT escrevia X por cima, e a comparação
+         * com a leitura inicial (também X) concluía "nada mudou" — a página ia
+         * de Y para X sem invalidar a imagem única nem pedir a recomposição do
+         * slide. É a MESMA lição do REV-01 da 3ª rodada no PATCH da página.
          */
-        const gravarPagina = async (pageId: string, pageData: { layers: string; [campo: string]: unknown }) => {
+        const gravarPagina = async (pageId: string, pageData: { layers: string; background: string; width: number; height: number; [campo: string]: unknown }) => {
           const { layers, ...dados } = pageData
           const g = await gravarCamadasComRevisao(tx, {
             pageId,
@@ -229,7 +204,16 @@ export async function PUT(
             quem: { autor: 'equipe', motivo: 'edição no editor (salvar o template)', superficie: 'editor' },
             camadas: () => layers,
           })
-          if (g?.aviso) console.warn(`[API] Template ${templateId}, página ${pageId}: camadas gravadas sem revisão do contrato da copy — ${g.aviso}`)
+          if (!g) return
+          if (g.aviso) console.warn(`[API] Template ${templateId}, página ${pageId}: camadas gravadas sem revisão do contrato da copy — ${g.aviso}`)
+          if (
+            normalizeLayersString(g.camadas) !== normalizeLayersString(g.base.layers) ||
+            pageData.background !== g.base.background ||
+            pageData.width !== g.base.width ||
+            pageData.height !== g.base.height
+          ) {
+            paginasAlteradas.add(pageId)
+          }
         }
         const existingPageIds = new Set(existingPages.map((p) => p.id))
         const incomingPageIds = Array.from(
@@ -280,7 +264,6 @@ export async function PUT(
           }
 
           if (requestedPageId && existingPageIds.has(requestedPageId)) {
-            marcarSeMudou(requestedPageId, pageData)
             await gravarPagina(requestedPageId, pageData)
             matchedExistingPageIds.add(requestedPageId)
             resolvedCurrentPageIds.add(requestedPageId)
@@ -289,7 +272,6 @@ export async function PUT(
             const hasForeignIdConflict = requestedPageId ? foreignPageIds.has(requestedPageId) : false
 
             if (fallbackPage) {
-              marcarSeMudou(fallbackPage.id, pageData)
               await gravarPagina(fallbackPage.id, pageData)
               matchedExistingPageIds.add(fallbackPage.id)
               resolvedCurrentPageIds.add(fallbackPage.id)
