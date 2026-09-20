@@ -1287,11 +1287,12 @@ toolEstrita(
         background: page.background,
       })
 
-      // 5. Apply slot values — só a copy PRÓPRIA do post. A cópia que o
-      // agendamento grava da página (`_copiaDaPagina`) nunca volta para a arte.
+      // 5. Apply slot values — só a copy PRÓPRIA do post, e só em página
+      // MODELO. Em página de conteúdo a página é a peça: o que está em
+      // `slotValues` é cópia do texto dela e nunca volta para a arte.
       const slotValues = (post.slotValues as Record<string, unknown>) ?? {}
       const { slotValuesParaRender } = await import('../src/lib/posts/copy-segue-a-pagina')
-      const slots = slotValuesParaRender(slotValues)
+      const slots = slotValuesParaRender(slotValues, page.isTemplate)
       if (slots) {
         designData = applySlotValues(designData, slots)
       }

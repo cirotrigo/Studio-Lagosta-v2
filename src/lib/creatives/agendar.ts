@@ -27,7 +27,7 @@ import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
 import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
-import { PostType, PostStatus } from '@prisma/client'
+import { PostType, PostStatus, Prisma } from '@prisma/client'
 
 /**
  * Aceita "YYYY-MM-DD HH:mm" em horário de Brasília (o jeito que a agenda é
@@ -418,7 +418,13 @@ export async function agendarPost(input: AgendarPostInput) {
       // volta para a arte. Sem a marca ela era aplicada por cima e desfazia a
       // edição feita no editor (Real Gelateria, 10/09/2026) — ver
       // copy-segue-a-pagina.ts.
-      ...(copyFinal ? { slotValues: copyDaPagina ? comoCopiaDaPagina(copyDaPagina) : copyFinal } : {}),
+      ...(copyFinal
+        ? {
+            slotValues: (copyDaPagina
+              ? comoCopiaDaPagina(copyDaPagina)
+              : copyFinal) as Prisma.InputJsonValue,
+          }
+        : {}),
     },
     select: {
       id: true,

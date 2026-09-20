@@ -20,10 +20,17 @@ export interface RenderStoryResult {
   width: number
   height: number
   /**
-   * O texto da PÁGINA que foi desenhada. Quem carrega uma cópia dela
-   * (`_copiaDaPagina`) grava isto de volta, para a cópia não envelhecer.
+   * O texto da PÁGINA que foi desenhada. Quem carrega uma cópia dela grava
+   * isto de volta, para a cópia não envelhecer.
    */
   copyDaPagina: Record<string, string>
+  /**
+   * A copy do POST foi aplicada por cima (via de template)? Quando não, a
+   * página é a peça — e é isto, não a marca no `slotValues`, que diz a quem
+   * grava o resultado se a cópia do post acompanha o que acabou de ser
+   * desenhado. A decisão mora num lugar só: `slotValuesParaRender`.
+   */
+  aplicouSlots: boolean
 }
 
 /**
@@ -59,11 +66,12 @@ export async function renderStoryImage(
     background: page.background,
   })
 
-  // 3. Slots por cima da página — só a copy PRÓPRIA do post (via de template).
-  // A cópia que o agendamento grava da página nunca volta para a arte: era ela
-  // que desfazia, no re-render, toda edição feita no editor. Ver
+  // 3. Slots por cima da página — só a copy PRÓPRIA do post, e só quando a
+  // página é um MODELO (layout compartilhado). Em página de conteúdo a página
+  // é a peça e manda: o que está em `slotValues` é cópia do texto dela, e era
+  // ela que desfazia, no re-render, toda edição feita no editor. Ver
   // copy-segue-a-pagina.ts.
-  const slots = slotValuesParaRender(slotValues)
+  const slots = slotValuesParaRender(slotValues, page.isTemplate)
   if (slots) {
     designData = applySlotValues(designData, slots)
   }
@@ -118,5 +126,6 @@ export async function renderStoryImage(
     width: designData.canvas.width,
     height: designData.canvas.height,
     copyDaPagina: textosDaPagina(page.layers),
+    aplicouSlots: Boolean(slots),
   }
 }

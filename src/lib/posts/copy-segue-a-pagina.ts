@@ -24,15 +24,19 @@
  *
  * Por isso a semântica é gravada NA ESCRITA, por quem sabe: quem copia o texto
  * da página marca a cópia com `_copiaDaPagina` (chave de controle — os leitores
- * de copy já ignoram o prefixo `_`), e o render desenha a página como ela
- * está. Sem a marca vale a regra antiga: `slotValues` sobrepõe a página.
+ * de copy já ignoram o prefixo `_`), e o render desenha a página como ela está.
+ *
+ * 🔴 E a marca não é o ÚNICO guarda-costas, desde 20/09/2026: um `true`
+ * esquecido em um dos seis escritores de `slotValues` reintroduzia o defeito
+ * inteiro, em silêncio. Quem decide sem depender dela é `slotValuesParaRender`,
+ * pelo que a página É — modelo ou peça. Leia o comentário dela.
  */
 
 /** Chave de controle: este `slotValues` é uma cópia do texto da página, não copy própria do post. */
 export const COPIA_DA_PAGINA = '_copiaDaPagina'
 
 /** A copy da página, marcada como cópia — o formato que o agendamento grava. */
-export function comoCopiaDaPagina(copy: Record<string, string>): Record<string, string | boolean> {
+export function comoCopiaDaPagina(copy: Record<string, unknown>): Record<string, unknown> {
   return { ...copy, [COPIA_DA_PAGINA]: true }
 }
 
@@ -47,12 +51,42 @@ export function ehCopiaDaPagina(slotValues: unknown): boolean {
 }
 
 /**
- * O que o render aplica por cima da página: nada quando o post carrega uma
- * cópia dela (a página é a peça), nem quando não há slot nenhum.
+ * O que o render aplica por cima da página.
+ *
+ * 🔴 A MARCA NÃO BASTA, e isso foi medido. `slotValues` é escrito por seis
+ * caminhos, e o que ficou de 10/09/2026 era "sem a marca, os slots vencem a
+ * página" — ou seja, um `true` esquecido em QUALQUER um deles volta a publicar
+ * o texto velho, em silêncio, que é o defeito que a marca veio corrigir. Em
+ * 20/09/2026 a Real Gelateria editou o feed do Dia Nacional do Sorvete
+ * (template 466), salvou, a invalidação funcionou, o cron re-renderizou — e a
+ * arte saiu com a manchete anterior, porque aquele post estava sem a marca.
+ * Varredura da carteira no mesmo dia: 35 posts com página PRÓPRIA e sem marca,
+ * 7 deles já com a copy divergindo da página (2 ainda por publicar).
+ *
+ * Por isso a decisão passou a ser ESTRUTURAL, derivada do que a página É:
+ *
+ * - Página MODELO (`isTemplate`) é layout compartilhado — N posts saem dela e
+ *   cada um carrega a sua copy. Ali os slots vencem, como sempre venceram.
+ * - Página de CONTEÚDO é a peça, de um post só. Ali a página manda, marca ou
+ *   não: o que estiver em `slotValues` é cópia do texto dela.
+ *
+ * Confere com os dados: dos 90 posts com página e `slotValues` em produção,
+ * os 9 da via de template são todos `isTemplate` (abril/2026, `plan-week`) e
+ * os 81 da via de conteúdo, nenhum. `applySlotValues` só troca o conteúdo de
+ * camada que já existe, então página sem camada de texto renderiza igual dos
+ * dois lados — não há caso em que ignorar os slots apague texto da arte.
+ *
+ * A marca continua valendo e é o sinal mais forte: ela recusa os slots até em
+ * página modelo. O que ela deixou de ser é OBRIGATÓRIA.
  */
-export function slotValuesParaRender(slotValues: unknown): Record<string, unknown> | undefined {
+export function slotValuesParaRender(
+  slotValues: unknown,
+  paginaEhModelo: boolean,
+): Record<string, unknown> | undefined {
   if (!slotValues || typeof slotValues !== 'object' || Array.isArray(slotValues)) return undefined
   if (ehCopiaDaPagina(slotValues)) return undefined
+  // A página é a peça: nada dela vem do post.
+  if (!paginaEhModelo) return undefined
   return Object.keys(slotValues).length > 0 ? (slotValues as Record<string, unknown>) : undefined
 }
 

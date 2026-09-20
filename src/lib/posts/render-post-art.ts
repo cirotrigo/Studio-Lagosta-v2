@@ -15,7 +15,7 @@
 import { db } from '@/lib/db'
 import { renderStoryImage } from '@/lib/posts/story-renderer'
 import { ensurePostGeneration } from './ensure-post-generation'
-import { ehCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
+import { comoCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
@@ -87,9 +87,19 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
          * corpus e a conferência de texto da melhoria leem; sem isto ficaria
          * com o texto do dia do agendamento — justamente o que o render
          * deixou de aplicar.
+         *
+         * Quem decide é o RENDER (`aplicouSlots`), não a marca no `slotValues`:
+         * a marca falta em 35 posts de página própria medidos em 20/09/2026, e
+         * era isso que deixava a cópia envelhecer justamente nos posts em que o
+         * defeito aparecia. Sai daqui já MARCADA — o re-render cura a marca que
+         * faltou, sem backfill.
          */
-        ...(ehCopiaDaPagina(post.slotValues)
-          ? { slotValues: slotValuesSeguindo(post.slotValues, result.copyDaPagina) as Prisma.InputJsonValue }
+        ...(!result.aplicouSlots && post.slotValues
+          ? {
+              slotValues: comoCopiaDaPagina(
+                slotValuesSeguindo(post.slotValues, result.copyDaPagina),
+              ) as Prisma.InputJsonValue,
+            }
           : {}),
       },
     })
