@@ -6683,3 +6683,26 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   a arte da própria página, o PNG é o da arte (mantido em dia pela recomposição); os slots que o post herdou na troca não
   são entrada de render, e aplicá-los à página editada depois devolvia o texto de antes. Sem mídia, eles SÃO a entrada
   do render que ainda vai acontecer. Testes: `ver-agenda-troca-pela-galeria.test.ts` (R52 e varredura).
+  🔴 **A cópia textual que o post carrega só vale pela mídia quando é COMPROVADAMENTE daquela arte** (R53 da revisão
+  FINAL sobre f96820bf, 20/09/2026). Com a página histórica, trocar a arte pela galeria por uma arte de IA SEM copy
+  registrada (sem página, sem snapshot, não re-renderizada) não dispara nenhuma das duas invalidações do PR
+  (`reRenderizada` e `post-schedule`) — e `trocar-arte-do-post` PRESERVA os slots nesse caso, por contrato ("null =
+  não apaga", testado). O fallback devolvia "Oferta A" como `copy-do-post`/`copy-registrada` pela mídia B, com uma
+  ressalva que só falava em leitura parcial. Hoje a prova do vínculo é a IGUALDADE com a copy registrada da arte
+  atual (`copyDoPostEDaArteAtual`, comparando os textos NÃO VAZIOS pelos dois lados — é assim que a troca os deriva);
+  sem prova, `indisponiveis` dizendo que o texto é de OUTRA arte. 🔴 Inferir pelo caminho da escrita não serve: são
+  vários (troca pela galeria, melhoria com IA) e nenhum deixa marca.
+  🔴 **A cópia MARCADA (`_copiaDaPagina`) entra na invalidação só por R53**, nunca pelas outras: em R37/R42/R50 a
+  página do post ainda renderiza a mídia e `renderPostArt` regrava a cópia a cada render — num post `NOT_NEEDED` isso
+  não acontece. Gatear as quatro portas com o `copyDoPostNaoAfirmavel` inteiro derrubaria as decisões testadas de
+  R37/R42 (`copy-registrada-na-entrega` é o fallback permitido ali).
+  ⚠️ **Consequência medida**: o post MELHORADO com IA que mantém `pageId` cai nesta regra — a melhoria grava
+  `fieldValues.textos` (a régua), nunca `slotValues`, e nunca reescreve a cópia do post. A leitura dele passa de
+  "copy do post, parcial" para indisponível. É o certo pelo contrato da casa (declarar, nunca afirmar sem prova) e
+  em `refinar` a copy muda mesmo; fechar isso de verdade é a melhoria gravar a copy visual no post.
+  ⚠️ **Residual conhecido, da mesma classe**: o post SEM página própria (`pageId` nulo) cuja arte é trocada pela
+  galeria por uma sem copy registrada guarda o mesmo texto velho, e R32 (decisão deste PR) afirma essa copy como
+  PARCIAL — em R32 a copy É da arte do post, cuja página só não pôde ser lida, e os dois estados são
+  indistinguíveis na leitura (a arte não tem `slotValues` em nenhum dos dois). Fechar exigiria o lado da ESCRITA
+  (limpar os slots na troca pela galeria sem texto legível), que hoje é contrato testado em
+  `trocar-arte-do-post-copy.test.ts`.

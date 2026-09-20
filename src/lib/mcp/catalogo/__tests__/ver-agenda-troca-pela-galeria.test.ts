@@ -165,6 +165,56 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
   })
 
   /**
+   * R53 (revisão FINAL sobre f96820bf, 20/09/2026): a arte B é de IA — não é de modelo, não foi re-renderizada e não
+   * guarda camadas. R51 descarta a página A (certo), B não resolve texto nenhum e as duas invalidações do PR não
+   * disparam: o fallback devolvia a copy de A gravada no post como se fosse o texto da mídia nova, dizendo apenas que
+   * a leitura era parcial. A troca só REGRAVA os textos do post quando a arte nova carrega copy registrada.
+   */
+  describe('R53 — B de IA sem copy registrada: a copy de A que ficou no post não é da mídia nova', () => {
+    const copyDeA = { headline: 'Oferta A', apoio: 'Só nesta semana' }
+    for (const [caso, slotValuesDoPost] of [
+      ['copy própria', copyDeA],
+      ['cópia da página (_copiaDaPagina)', { ...copyDeA, _copiaDaPagina: true }],
+    ] as const) {
+      it(`${caso}: nada de A — a fonte é declarada indisponível, dizendo que o texto é de outra arte`, async () => {
+        banco.post!.slotValues = { ...slotValuesDoPost }
+        banco.generations.push(arteB({ source: 'geracao-ia', track: 'arte' }))
+        await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+        // a troca PRESERVA o que estava lá: é esse estado que a leitura precisa recusar
+        expect(banco.post!.renderStatus).toBe('NOT_NEEDED')
+        expect(banco.post!.pageId).toBe('pag-A')
+        expect(banco.post!.slotValues).toEqual(slotValuesDoPost)
+
+        const item = await itemDaAgenda()
+        expect(JSON.stringify(item)).not.toContain('Oferta A')
+        expect(JSON.stringify(item)).not.toContain('Só nesta semana')
+        expect(JSON.stringify(item)).not.toContain('página A')
+        expect(item.textos).toBeUndefined()
+        expect(item.textosIndisponiveis).toMatch(/de OUTRA arte/)
+      })
+    }
+
+    it('controle: B de IA COM copy registrada — a troca regrava o post com a copy DELA, e é ela que volta', async () => {
+      banco.post!.slotValues = { ...copyDeA }
+      banco.generations.push(arteB({ source: 'geracao-ia', slotValues: { bloco1: 'Oferta B', bloco2: '  ' } }))
+      await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+      expect(banco.post!.slotValues).toEqual({ bloco1: 'Oferta B' })
+
+      const item = await itemDaAgenda()
+      expect(item.textos).toEqual(['Oferta B'])
+      expect(JSON.stringify(item)).not.toContain('Oferta A')
+      expect(JSON.stringify(item)).not.toContain('página A')
+    })
+
+    it('controle: o post que continua renderizando da SUA página devolve a página, mesmo com copy própria gravada', async () => {
+      banco.post!.slotValues = { headline: 'Copy própria do post' }
+      const item = await itemDaAgenda()
+      expect(item.textos).toEqual(['Copy própria do post', 'Apoio de A'])
+      expect(item.textosOrigem).toBe('pagina-com-copy-do-post')
+    })
+  })
+
+  /**
    * Varredura da classe do R52 (18/09/2026): com a arte da PRÓPRIA página (não de modelo), a página segue sendo a
    * fonte — mas os slots que o post herdou na troca NÃO são entrada de render nenhum (`NOT_NEEDED`: o PNG é o da arte,
    * mantido em dia com a página pela recomposição). Depois de editar a página, aplicá-los devolvia o texto de antes.

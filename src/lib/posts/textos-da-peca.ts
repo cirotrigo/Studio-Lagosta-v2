@@ -27,7 +27,11 @@
  *    camadas que o render desenhou (o snapshot confiável da arte) diz quais
  *    valores chegaram à mídia, em qualquer estado — a estrutura atual do
  *    modelo pode ser outra (R46, R47). Sem registro, nada se afirma, nem a
- *    copy que o post herdou dessa arte.
+ *    copy que o post herdou dessa arte;
+ *  - e a cópia textual que o post carrega só vale pela mídia quando ela é
+ *    COMPROVADAMENTE daquela arte: com a página como vínculo histórico
+ *    (R51/R52) a mídia veio de fora, e o que está no post foi escrito para a
+ *    arte anterior (R53).
  *
  * O texto de camada volta INTEIRO e na multiplicidade em que existe: uma URL
  * numa camada de texto é texto da peça, duas camadas com a mesma frase são
@@ -37,7 +41,7 @@
 
 import { lerCamadas, type PageLayer } from '@/lib/posts/page-layers'
 import { aplicarSlotNaCamada } from '@/lib/posts/page-to-design-data'
-import { ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
+import { copyIgual, ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
 import { aplicarCaixa } from '@/lib/posts/caixa-do-texto'
 
 export type OrigemDosTextos =
@@ -278,6 +282,38 @@ function copyVisualRegravadaDaArte(arte: NonNullable<SlideDaPeca['arte']>): Reco
   return sv && typeof sv === 'object' && !Array.isArray(sv) ? (sv as Record<string, unknown>) : null
 }
 
+/**
+ * Só os textos NÃO VAZIOS de um `slotValues`, como quem grava a cópia textual
+ * do post os deriva (`textosDaGeneration`, na troca de arte): chave de controle
+ * (`_…`) fora, valor em branco fora. É o que torna as duas pontas comparáveis.
+ */
+function textosNaoVazios(slotValues: unknown): Record<string, string> | null {
+  const t = textosDoSlot(slotValues)
+  if (!t) return null
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(t)) if (v.trim()) out[k] = v
+  return Object.keys(out).length > 0 ? out : null
+}
+
+/**
+ * 🔴 R53: a cópia textual que o post carrega descreve a MÍDIA ATUAL?
+ *
+ * Com a página só como VÍNCULO HISTÓRICO (R51/R52) a mídia é uma arte de FORA,
+ * e a cópia do post foi escrita para a arte ANTERIOR: a troca pela galeria só a
+ * REGRAVA quando a arte nova carrega copy registrada e PRESERVA o que estava lá
+ * quando não carrega (`trocar-arte-do-post`), e a melhoria com IA nem a toca.
+ *
+ * O que prova o vínculo é a IGUALDADE com a copy registrada da arte atual —
+ * inferir pelo caminho da escrita não serve, porque são vários e nenhum deixa
+ * marca. Sem prova, o texto é de OUTRA arte: nada a afirmar.
+ */
+function copyDoPostEDaArteAtual(slotValuesDoPost: unknown, arte?: SlideDaPeca['arte']): boolean {
+  if (!arte) return false
+  // A arte RE-RENDERIZADA só afirma a própria copy com o marcador da regravação (R37/R38/R42).
+  if (arte.reRenderizada === true && arte.copyVisualRegravada !== true) return false
+  return copyIgual(textosNaoVazios(slotValuesDoPost), textosNaoVazios(arte.slotValues))
+}
+
 function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide[] {
   return slides.map((s, i) => {
     const slide = i + 1
@@ -499,10 +535,27 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     'a arte desta peça foi desenhada de um modelo sem registro das camadas que o render usou, e a copy que o post (sem página própria) herdou dela não diz quais valores chegaram à mídia — o id da camada vence o nome, e a estrutura atual do modelo pode ser outra: nada a afirmar.'
   const NOTA_R49 =
     'a arte desta peça foi desenhada de um modelo e o registro das camadas que o render usou não resolve o texto da mídia (nenhum valor aplicado, ou registro ilegível); a copy que o post (sem página própria) herdou dela inclui o que o render descartou: nada a afirmar.'
-  const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModelo
   const NOTA_R50 =
     'a arte desta peça foi desenhada do modelo com a copy do post por cima, e o registro das camadas que o render usou falta ou não resolve o texto da mídia: a copy gravada no post é o registro NÃO validado do que foi pedido (o id da camada vence o nome, e um valor dela pode não ter sido aplicado) — nada a afirmar sobre a mídia.'
-  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada ? NOTA_R42 : !semPaginaPropria ? NOTA_R50 : arteUnica && snapshotConfiavel(arteUnica) ? NOTA_R49 : NOTA_R47
+  /**
+   * 🔴 R53 (revisão FINAL sobre f96820bf, 20/09/2026): a mídia desta peça não vem do render da página do post — ela
+   * ficou só como VÍNCULO HISTÓRICO (R51/R52) — e a copy gravada no post não confere com a copy registrada da arte
+   * atual. Trocar a arte pela galeria por uma arte SEM copy registrada preserva o que estava no post, e o fallback
+   * devolvia o texto da arte ANTERIOR como se fosse o desta mídia, com uma ressalva que só falava em leitura parcial.
+   */
+  const copyHerdadaDeOutraArte = paginaHistorica && !copyDoPostEDaArteAtual(sv, arteUnica)
+  const NOTA_R53 =
+    'a mídia desta peça não é o render da página do post (ela ficou só como vínculo histórico) e a copy gravada no post não confere com a copy registrada da arte atual: esse texto é de OUTRA arte — nada a afirmar sobre esta mídia.'
+  const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModelo || copyHerdadaDeOutraArte
+  const notaDaCopyNaoAfirmavel = copyHerdadaInvalidada
+    ? NOTA_R42
+    : copyHerdadaDeModelo
+      ? !semPaginaPropria
+        ? NOTA_R50
+        : arteUnica && snapshotConfiavel(arteUnica)
+          ? NOTA_R49
+          : NOTA_R47
+      : NOTA_R53
 
   // 3. Arte entregue sem registro da arte: o que o post guarda, dito pelo que é.
   if (entregue) {
@@ -514,7 +567,10 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
         nota: 'só os campos que o post sobrescreveu: o resto veio da página no render e não tem registro — a página pode ter mudado depois da entrega.',
       }
     }
-    if (ehCopiaDaPagina(sv)) {
+    // 🔴 R53: a cópia MARCADA também é da arte anterior quando a página virou vínculo histórico. Ela continua
+    //    valendo nos outros casos invalidados (R37/R42/R50): ali a página do post ainda renderiza a mídia, e
+    //    `renderPostArt` regrava a cópia a cada render — o que não acontece num post `NOT_NEEDED`.
+    if (!copyHerdadaDeOutraArte && ehCopiaDaPagina(sv)) {
       const registrada = textosDaCopiaRegistrada(sv)
       if (registrada.length > 0) return { textos: registrada, origem: 'copy-registrada-na-entrega', parcial: true, nota: NOTA_DA_COPIA_REGISTRADA }
     }
@@ -533,7 +589,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    sem ordem) — devolvê-las como leitura completa escondia preço, serviço
   //    ou CTA na revisão semanal. E a cópia registrada passa pela leitura que
   //    PRESERVA URL de camada (a mesma de R19), não pelo filtro genérico.
-  if (ehCopiaDaPagina(sv)) {
+  if (!copyHerdadaDeOutraArte && ehCopiaDaPagina(sv)) {
     const registrada = textosDaCopiaRegistrada(sv)
     if (registrada.length > 0) {
       return {
