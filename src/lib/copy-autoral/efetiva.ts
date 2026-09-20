@@ -207,17 +207,37 @@ function linhasDaCamada(l: Layer): string[] {
 }
 
 /**
- * As linhas de um bloco desenhado em VÁRIAS camadas, juntas de cima para baixo.
- * Quando são exatamente as linhas do bloco em outra ordem, vale a ordem do
- * bloco: quem reordenou foi o arranjo (o horário vai ao grupo do relógio, o
+ * As linhas de um bloco desenhado em VÁRIAS camadas, na ordem DO AUTOR.
+ * Quem reordenou as partes foi o arranjo (o horário vai ao grupo do relógio, o
  * endereço ao do alfinete), não quem escreveu. Numa camada só a ordem é a da
  * camada — ali reordenar é edição.
+ *
+ * 🔴 Cada linha desenhada volta à POSIÇÃO AUTORAL da linha igual a ela; a que
+ * mudou fica com a vaga que sobrou, na ordem visual (PR3-R9-02 da revisão do
+ * Codex sobre cd98cd6d, 20/09/2026). Antes a decisão era tudo-ou-nada — mesmo
+ * conjunto de linhas: ordem do autor; qualquer diferença: ordem visual —, e
+ * então editar SÓ o horário num arranjo que põe o endereço acima também
+ * INVERTIA as linhas do contrato, sem ninguém ter movido camada. A revisão
+ * atribuía a inversão à equipe e a recomposição recebia a ordem trocada. Com
+ * as mesmas linhas o resultado é idêntico ao de antes (a ordem do bloco).
  */
 function linhasRepartidas(doBloco: string[], porCamada: string[][]): string[] {
   const juntas = porCamada.flat()
   if (porCamada.length < 2) return juntas
-  const ordenar = (l: string[]) => JSON.stringify([...l].sort())
-  return ordenar(juntas) === ordenar(doBloco) ? [...doBloco] : juntas
+  const casadas = new Set<number>()
+  const posicoes = juntas.map((linha) => {
+    const i = doBloco.findIndex((b, j) => !casadas.has(j) && b === linha)
+    if (i >= 0) casadas.add(i)
+    return i
+  })
+  const vagas = doBloco.map((_, j) => j).filter((j) => !casadas.has(j))
+  let proxima = 0
+  // Posição única para toda linha: casada → a do autor; editada → a vaga que
+  // sobrou; acrescentada → depois do fim, na ordem visual.
+  return juntas
+    .map((linha, k) => ({ linha, pos: posicoes[k] >= 0 ? posicoes[k] : (vagas[proxima++] ?? doBloco.length + k) }))
+    .sort((a, b) => a.pos - b.pos)
+    .map((o) => o.linha)
 }
 
 /** As camadas de texto agrupadas por função, de cima para baixo. */

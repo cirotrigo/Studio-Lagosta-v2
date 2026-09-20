@@ -157,10 +157,48 @@ describe('serviço repartido em duas camadas volta a UM bloco (PR3-R8-02)', () =
 })
 
 describe('o arranjo que pôs o endereço ACIMA do horário (PR3-R8-02)', () => {
+  /** O arranjo inverte: o endereço no grupo do alfinete (em cima), o horário no do relógio. */
+  const invertidas = (horario: string) => [texto('headline', 'headline', 300, 'Almoço executivo'), texto('servico-2', 'servico', 1600, 'Rua Aleixo Netto, 1158'), texto('servico', 'servico', 1680, horario)]
+
   it('as mesmas linhas em outra ordem entre camadas: o bloco mantém a ordem do autor, sem revisão', () => {
-    const invertidas = [texto('headline', 'headline', 300, 'Almoço executivo'), texto('servico-2', 'servico', 1600, 'Rua Aleixo Netto, 1158'), texto('servico', 'servico', 1680, 'Das 11h às 15h')]
-    const r = revisaoDaPaginaComCamadas(original, invertidas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    const r = revisaoDaPaginaComCamadas(original, invertidas('Das 11h às 15h'), { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
     expect(r.estado).toBe('sem-mudanca')
+  })
+
+  /**
+   * PR3-R9-02: editar SÓ o horário não pode inverter as linhas do contrato. A
+   * parte que continua igual guarda a posição do autor, e a editada fica com a
+   * vaga que sobrou — nada de cair para a ordem visual porque um texto mudou.
+   */
+  it('editar só o horário: um bloco só, com o MESMO id, na ordem do autor — e a recomposição recebe essa ordem', async () => {
+    const camadas = invertidas('Das 11h às 15h')
+    const entrada = entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Sexta', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas as unknown as Layer[], fundo: '#000', diagnostico: {}, fotoUrl: 'https://blob.test/foto.png' })
+    const daPagina = lerCopyAutoral(entrada.copyAutoral).copy!
+    expect(daPagina.blocos.find((b) => b.id === 'servico')!.linhas).toEqual(['Das 11h às 15h', 'Rua Aleixo Netto, 1158'])
+
+    const editadas = invertidas('Das 11h às 16h')
+    const revisao = revisaoDaPaginaComCamadas(daPagina, editadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(revisao.estado).toBe('registrada')
+    expect(revisao.blocos).toEqual(['servico'])
+    const contratoEditado = revisao.copy!
+    expect(contratoEditado.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico', linhas: ['Das 11h às 16h', 'Rua Aleixo Netto, 1158'] }),
+    ])
+
+    banco.pagina = { id: 'p9', name: 'Sexta', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: editadas, copyAutoral: contratoEditado }
+    banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
+    banco.composta = invertidas('Das 11h às 16h')
+    await recomporPaginaDefasada({ pageId: 'p9' })
+
+    const recebida = banco.specsRecebidas.at(-1) as SpecDePeca
+    expect(recebida.blocos).toEqual([
+      { papel: 'headline', linhas: ['Almoço executivo'] },
+      { papel: 'servico', linhas: ['Das 11h às 16h', 'Rua Aleixo Netto, 1158'] },
+    ])
+    const final = lerCopyAutoral(banco.pagina!.copyAutoral).copy!
+    expect(final.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico', linhas: ['Das 11h às 16h', 'Rua Aleixo Netto, 1158'] }),
+    ])
   })
 })
 
