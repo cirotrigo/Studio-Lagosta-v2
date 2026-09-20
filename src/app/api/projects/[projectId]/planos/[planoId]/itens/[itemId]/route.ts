@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { atualizarItem, removerItem, transicionarItem } from '@/lib/planos/plano-service'
+import { MAX_CARACTERES_DO_ESPELHO, MAX_ITENS_DO_ESPELHO } from '@/lib/planos/copy-do-item'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -27,7 +28,7 @@ const patchSchema = z.object({
   ordem: z.number().int().min(0).max(999).optional(),
   quando: z.string().min(1).max(40).nullable().optional(),
   tema: z.string().max(200).nullable().optional(),
-  copyProposta: z.array(z.string().max(2000)).max(12).nullable().optional(),
+  copyProposta: z.array(z.string().max(MAX_CARACTERES_DO_ESPELHO)).max(MAX_ITENS_DO_ESPELHO).nullable().optional(),
   /** F1: o contrato da copy autoral (substitui o inteiro; `null` limpa). */
   copyAutoral: z.record(z.string(), z.unknown()).nullable().optional(),
   legenda: z.string().max(2200).nullable().optional(),

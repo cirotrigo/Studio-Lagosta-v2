@@ -23,6 +23,8 @@
 
 import {
   HistoricoDaCopyCheio,
+  MAX_BLOCOS_NA_COPY,
+  blocoAutoralSchema,
   blocosEmOrdem,
   lerCopyAutoral,
   orientacaoDosProblemas,
@@ -32,6 +34,22 @@ import {
   type BlocoAutoral,
   type CopyAutoral,
 } from '@/lib/copy-autoral'
+
+const LINHAS_DO_BLOCO = blocoAutoralSchema.shape.linhas
+/**
+ * 🔴 Os tetos do ESPELHO, lidos do PRÓPRIO contrato (PR3-R9-03 da revisão do
+ * Codex sobre cd98cd6d, 20/09/2026). A API do item aceitava 12 strings de 2.000
+ * caracteres — menos do que o contrato comporta —, então um item criado com um
+ * `copyAutoral` VÁLIDO de 13 blocos (ou com um bloco de 7 linhas de 300) tinha
+ * o espelho recusado com 400 assim que alguém editava um caractere no modal: a
+ * edição de um contrato que o próprio sistema aceitou não chegava ao serviço.
+ * Quem produz o espelho é `espelhoDoContrato`; quem o recebe usa estes tetos.
+ * Nada de truncar para caber — é a transformação silenciosa que o contrato
+ * existe para expor.
+ */
+export const MAX_ITENS_DO_ESPELHO = MAX_BLOCOS_NA_COPY
+export const MAX_CARACTERES_DO_ESPELHO =
+  (LINHAS_DO_BLOCO._def.maxLength?.value ?? 12) * ((LINHAS_DO_BLOCO.element.maxLength ?? 300) + 1) - 1
 
 export interface CopyDoItem {
   /** O contrato a gravar; `null` = o item fica (ou passa a ficar) sem contrato. */
