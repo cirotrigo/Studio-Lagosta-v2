@@ -25,7 +25,10 @@
  *    (PR3-R10-01);
  *  - `headline2` é a SEGUNDA VOZ da manchete (o compositor tira a última linha
  *    do bloco para ela): as linhas dela voltam ao bloco `headline`, e a
- *    posição vira `estilo.linhasNaVoz2` — declarada, como o contrato pede;
+ *    posição vira `estilo.linhasNaVoz2` — declarada, como o contrato pede. Ela
+ *    entra pelo MESMO vínculo declarado e é somada ANTES de o bloco ser dado
+ *    como não desenhado: com a primeira voz escondida, a manchete continua
+ *    sendo a manchete, com uma linha só (PR3-R12-01);
  *  - rich text volta com os [colchetes] nos trechos destacados
  *    (`linhasComColchetes`); texto simples volta como está;
  *  - bloco do original que NÃO foi desenhado volta com `linhas: []` e uma
@@ -387,28 +390,40 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   // Por OBJETO, não por id: o compositor pode gravar duas camadas com o mesmo id (o contador de
   // `${papel}-${n}` recomeça em cada grupo), e por id a segunda sumia da leitura.
   const usadas = new Set<Layer>()
-  // Os blocos livres são vinculados em CONJUNTO (ver `vincularExtras`), antes
-  // de qualquer leitura por papel — e as camadas que eles tomam ficam
-  // reservadas para eles.
-  const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas)
-  lacunas.push(...extras.ambiguos)
-  for (const c of extras.vinculos.values()) usadas.add(c)
-  // 🔴 O vínculo que o COMPOSITOR gravou na camada, antes de qualquer reserva:
-  // a camada volta para o bloco que ela declara, e fica RESERVADA para ele —
-  // nenhum outro bloco a alcança, venha antes ou depois na ordem. Declaração de
-  // bloco que não está no contrato, ou de função diferente da do papel
-  // desenhado, é descartada (a camada segue pela reserva).
+  // 🔴 A RESERVA PELO VÍNCULO DECLARADO vem ANTES de qualquer outra regra e
+  // vale para TODA camada de texto — principal, SEGUNDA VOZ e solta. A camada
+  // volta para o bloco que ela declara e fica reservada para ele: nenhum outro
+  // bloco a alcança, venha antes ou depois na ordem, e nenhuma outra regra
+  // (identidade dos extras, contagem por função, ordem visual) a disputa.
+  // A segunda voz entrava aqui por fora (ela vive na lista `voz2`, à parte), e
+  // por isso esconder SÓ a primeira voz jogava a `headline2` para um bloco
+  // `extra-…` de função `livre` — e a leitura seguinte a prendia lá pelo id,
+  // com a recomposição recusada em `blocos sem papel do compositor com texto`
+  // (PR3-R12-01 da revisão FINAL do Codex sobre 927d57b5, 20/09/2026).
+  // Declaração de bloco fora do contrato, ou de papel incompatível com a função
+  // dele, é descartada em silêncio (a camada segue pela reserva de sempre).
   const porId = new Map(original.blocos.map((b) => [b.id, b]))
   const declaradasDoBloco = new Map<string, Layer[]>()
-  for (const [papel, lista] of porFuncao) {
-    for (const c of lista) {
-      if (usadas.has(c)) continue
-      const v = vinculoDaCamada(c)
-      if (!v || porId.get(v.bloco)?.funcao !== papel) continue
-      declaradasDoBloco.set(v.bloco, [...(declaradasDoBloco.get(v.bloco) ?? []), c])
-      usadas.add(c)
-    }
+  const vozesDoBloco = new Map<string, Layer[]>()
+  for (const c of [...soltas, ...[...porFuncao.values()].flat(), ...voz2]) {
+    const v = vinculoDaCamada(c)
+    const bloco = v ? porId.get(v.bloco) : undefined
+    if (!bloco) continue
+    const papel = papelDaCamada(c)
+    // `headline2` é a segunda voz da MANCHETE, não uma função própria; camada
+    // que perdeu o papel (`null`) vale pelo que declara.
+    const daVoz2 = papel === 'headline2' && bloco.funcao === 'headline'
+    if (!daVoz2 && papel !== null && papel !== bloco.funcao) continue
+    const destino = daVoz2 ? vozesDoBloco : declaradasDoBloco
+    destino.set(v!.bloco, [...(destino.get(v!.bloco) ?? []), c])
+    usadas.add(c)
   }
+  // Os blocos livres são vinculados em CONJUNTO (ver `vincularExtras`) sobre o
+  // que SOBROU da reserva declarada, antes de qualquer leitura por papel — e as
+  // camadas que eles tomam ficam reservadas para eles.
+  const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas.filter((c) => !usadas.has(c)))
+  lacunas.push(...extras.ambiguos)
+  for (const c of extras.vinculos.values()) usadas.add(c)
   // Quem DISPUTA as camadas SEM vínculo de uma função são os blocos COM texto e
   // SEM camada declarada. Bloco explicitamente vazio (`linhas: []`) é "esta
   // camada fica sem texto": a conversão para a spec o OMITE
@@ -425,7 +440,7 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     for (const b of original.blocos) if (filtro(b)) conta.set(b.funcao, (conta.get(b.funcao) ?? 0) + 1)
     return conta
   }
-  const temDeclarada = (b: BlocoAutoral) => (declaradasDoBloco.get(b.id)?.length ?? 0) > 0
+  const temDeclarada = (b: BlocoAutoral) => (declaradasDoBloco.get(b.id)?.length ?? 0) + (vozesDoBloco.get(b.id)?.length ?? 0) > 0
   // O bloco que o desenho SERVE — por texto no original ou por camada
   // declarada. Enquanto houver um irmão servido, o bloco vazio fica vazio e
   // calado: a arte mostra o que o autor pediu (nada), e a lacuna seria falsa.
@@ -438,12 +453,16 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
       // do bloco) — ou pelo id `extra-…` que uma leitura anterior deu à camada
       // solta: sem isso a segunda leitura esvaziava o bloco e criava outro com o
       // mesmo id (R03 da revisão do Codex, 12/09/2026).
-      const camada = extras.vinculos.get(b.id)
-      if (!camada) {
+      // O vínculo declarado vem primeiro aqui também (hoje ninguém DESENHA
+      // bloco `livre` — `validarSpec` o recusa com texto —, mas a regra é a
+      // mesma para todo bloco: quem declara, leva).
+      const declaradasLivres = declaradasDoBloco.get(b.id) ?? []
+      const camadasDoLivre = declaradasLivres.length > 0 ? declaradasLivres : [extras.vinculos.get(b.id)].filter(Boolean)
+      if (camadasDoLivre.length === 0) {
         lacunas.push(`o bloco "${b.id}" (livre) não foi desenhado`)
         return { ...b, linhas: [] }
       }
-      return { ...b, linhas: linhasDaCamada(camada) }
+      return { ...b, linhas: linhasRepartidas(b.linhas, camadasDoLivre.map(linhasDaCamada), camadasDoLivre.map((c) => vinculoDaCamada(c)?.linhas ?? null)) }
     }
     const declaradas = declaradasDoBloco.get(b.id) ?? []
     const cheios = cheiosPorFuncao.get(b.funcao) ?? 0
@@ -457,22 +476,28 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     // e a 2ª virava outro bloco `servico` — a recomposição morria em "papel repetido".
     const concorrentes = cheios > 0 ? cheios : (vaziosPorFuncao.get(b.funcao) ?? 0)
     const camadas = declaradas.length > 0 ? declaradas : concorrentes === 1 ? livres : livres.slice(0, 1)
-    if (camadas.length === 0) {
+    for (const c of camadas) usadas.add(c)
+    let linhas = camadas.length > 0 ? linhasRepartidas(b.linhas, camadas.map(linhasDaCamada), camadas.map((c) => vinculoDaCamada(c)?.linhas ?? null)) : []
+    let naVoz2: number[] = []
+    // A SEGUNDA VOZ é parte da MANCHETE, e por isso entra ANTES de concluir que
+    // o bloco não foi desenhado: com a primeira voz escondida, o bloco continua
+    // sendo a manchete com uma linha só — na voz 2 (PR3-R12-01). Sem vínculo,
+    // vale a reserva de sempre: a primeira `headline2` livre da peça.
+    const vozes = vozesDoBloco.get(b.id) ?? []
+    const segundas = vozes.length > 0 ? vozes : b.funcao === 'headline' ? [voz2.find((c) => !usadas.has(c))].filter(Boolean) : []
+    if (segundas.length > 0) {
+      const daVoz2: string[] = []
+      for (const c of segundas) {
+        usadas.add(c)
+        daVoz2.push(...linhasDaCamada(c))
+      }
+      const inicio = linhas.length
+      linhas = [...linhas, ...daVoz2]
+      naVoz2 = daVoz2.map((_, i) => inicio + i)
+    }
+    if (linhas.length === 0) {
       lacunas.push(`o bloco "${b.id}" (${b.funcao}) não foi desenhado`)
       return comSegundaVoz({ ...b, linhas: [] }, [])
-    }
-    for (const c of camadas) usadas.add(c)
-    let linhas = linhasRepartidas(b.linhas, camadas.map(linhasDaCamada), camadas.map((c) => vinculoDaCamada(c)?.linhas ?? null))
-    let naVoz2: number[] = []
-    if (b.funcao === 'headline') {
-      const segunda = voz2.find((c) => !usadas.has(c))
-      if (segunda) {
-        usadas.add(segunda)
-        const daVoz2 = linhasDaCamada(segunda)
-        const inicio = linhas.length
-        linhas = [...linhas, ...daVoz2]
-        naVoz2 = daVoz2.map((_, i) => inicio + i)
-      }
     }
     return comSegundaVoz({ ...b, linhas }, naVoz2)
   })

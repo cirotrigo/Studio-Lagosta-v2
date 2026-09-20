@@ -476,3 +476,87 @@ describe('editar as DUAS partes do serviço mantém a ordem do autor (PR3-R11-02
     expect(r.copy!.blocos.find((b) => b.id === 'servico')!.linhas).toEqual(['Das 11h às 15h', 'Rua Aleixo Netto, 1158', 'Reserve pelo direct'])
   })
 })
+
+/**
+ * PR3-R12-01 (revisão FINAL do Codex sobre 927d57b5, 20/09/2026): a SEGUNDA VOZ
+ * da manchete vive numa lista à parte (`voz2`) e ficava FORA da reserva de
+ * vínculos declarados. Esconder só a primeira voz esvaziava o bloco antes de
+ * olhar a segunda, que sobrava e virava `extra-headline2` de função `livre` —
+ * e a leitura seguinte a prendia lá pelo id, então reexibir NÃO restaurava o
+ * contrato. Com uma edição de texto depois, a recomposição recebia o extra
+ * preenchido e era recusada em `validarSpec` ("bloco sem papel do compositor
+ * com texto").
+ */
+describe('esconder só a PRIMEIRA voz não tira a manchete do bloco do autor (PR3-R12-01)', () => {
+  const comVoz2: CopyAutoral = {
+    ...original,
+    blocos: [
+      { id: 'manchete', funcao: 'headline', ordem: 0, linhas: ['Milk-shake', 'em dobro'], estilo: { linhasNaVoz2: [1] } },
+      { id: 'servico', funcao: 'servico', ordem: 1, linhas: ['Das 11h às 15h'] },
+    ],
+  }
+  const specComVoz2 = {
+    ...spec,
+    copyAutoral: comVoz2,
+    blocos: [{ papel: 'headline', linhas: ['Milk-shake', 'em dobro'] }, { papel: 'servico', linhas: ['Das 11h às 15h'] }],
+  } as unknown as SpecDePeca
+  const duasVozes = (voz1: string, voz1Visivel = true) => [
+    { ...texto('headline', 'headline', 300, voz1, { bloco: 'manchete', linhas: [0] }), visible: voz1Visivel },
+    texto('headline2', 'headline2', 420, 'em dobro', { bloco: 'manchete', linhas: [1] }),
+    texto('servico', 'servico', 1600, 'Das 11h às 15h', { bloco: 'servico', linhas: [0] }),
+  ]
+
+  it('composição → esconder a voz 1 → salvar → reexibir → editar o texto → recompor: mesmo id, sem bloco extra, voz 2 válida', async () => {
+    const entrada = entradaDePersistencia({ spec: specComVoz2, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Sexta', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: duasVozes('Milk-shake') as unknown as Layer[], fundo: '#000', diagnostico: {}, fotoUrl: 'https://blob.test/foto.png' })
+    const daPagina = lerCopyAutoral(entrada.copyAutoral).copy!
+    expect(daPagina.blocos.find((b) => b.id === 'manchete')).toEqual(expect.objectContaining({ linhas: ['Milk-shake', 'em dobro'], estilo: { linhasNaVoz2: [1] } }))
+    expect(daPagina.revisoes).toEqual([])
+
+    // 1. a equipe esconde SÓ a primeira voz e salva
+    const escondida = revisaoDaPaginaComCamadas(daPagina, duasVozes('Milk-shake', false), { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(escondida.estado).toBe('registrada')
+    expect(escondida.blocos).toEqual(['manchete'])
+    const oculta = escondida.copy!
+    expect(oculta.blocos.map((b) => b.id)).toEqual(['manchete', 'servico'])
+    expect(oculta.blocos.find((b) => b.id === 'manchete')).toEqual(expect.objectContaining({ linhas: ['em dobro'], estilo: { linhasNaVoz2: [0] } }))
+
+    // 2. reexibir devolve o contrato do autor
+    const reexibida = revisaoDaPaginaComCamadas(oculta, duasVozes('Milk-shake'), { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    const voltou = reexibida.copy!
+    expect(voltou.blocos.find((b) => b.id === 'manchete')).toEqual(expect.objectContaining({ linhas: ['Milk-shake', 'em dobro'], estilo: { linhasNaVoz2: [1] } }))
+    expect(voltou.blocos.map((b) => b.id)).toEqual(['manchete', 'servico'])
+
+    // 3. a edição de texto depois, e a recomposição
+    const editadas = duasVozes('Milk-shake de sexta')
+    const revisao = revisaoDaPaginaComCamadas(voltou, editadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(revisao.blocos).toEqual(['manchete'])
+    banco.pagina = { id: 'p9', name: 'Sexta', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: editadas, copyAutoral: revisao.copy }
+    banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
+    banco.composta = editadas
+    await recomporPaginaDefasada({ pageId: 'p9' })
+
+    const recebida = banco.specsRecebidas.at(-1) as SpecDePeca
+    expect(recebida.blocos).toEqual([
+      { papel: 'headline', linhas: ['Milk-shake de sexta', 'em dobro'] },
+      { papel: 'servico', linhas: ['Das 11h às 15h'] },
+    ])
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.test/arte-rapida/8/p9-nova.png'])
+    const final = lerCopyAutoral(banco.pagina!.copyAutoral).copy!
+    expect(final.blocos.map((b) => b.id)).toEqual(['manchete', 'servico'])
+    expect(final.blocos.find((b) => b.id === 'manchete')).toEqual(expect.objectContaining({ linhas: ['Milk-shake de sexta', 'em dobro'], estilo: { linhasNaVoz2: [1] } }))
+  })
+
+  it('controle: SEM a marca (página antiga), esconder a voz 1 continua no comportamento de hoje', () => {
+    const semMarca = [
+      { ...texto('headline', 'headline', 300, 'Milk-shake'), visible: false },
+      texto('headline2', 'headline2', 420, 'em dobro'),
+      texto('servico', 'servico', 1600, 'Das 11h às 15h'),
+    ]
+    const r = revisaoDaPaginaComCamadas(comVoz2, semMarca, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(r.estado).toBe('registrada')
+    // A reserva de sempre: sem a primeira voz visível, a `headline2` é a única
+    // camada da manchete e entra nela (a lista `voz2` é procurada pelo papel).
+    expect(r.copy!.blocos.find((b) => b.id === 'manchete')!.linhas).toEqual(['em dobro'])
+    expect(r.copy!.blocos.some((b) => b.id.startsWith('extra-'))).toBe(false)
+  })
+})

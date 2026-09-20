@@ -95,8 +95,19 @@ async function main() {
   const { execSync } = await import('node:child_process')
   const sha = execSync('git rev-parse HEAD', { cwd: ROOT }).toString().trim()
   const branch = execSync('git branch --show-current', { cwd: ROOT }).toString().trim()
-  const pendentes = execSync('git status --porcelain', { cwd: ROOT }).toString().trim().split('\n').filter(Boolean).length
-  console.log(`código: ${sha} (${branch}) em ${ROOT}; pendente: ${pendentes} arquivo(s) | banco: ${ENDPOINT} | node ${process.version}`)
+  // O cabeçalho NOMEIA o que está pendente: "pendente: 1 arquivo(s)" fazia toda
+  // revisão registrar "não dá para casar exatamente com o HEAD" sem ninguém
+  // poder decidir se importava — e era, sempre, a própria pasta de saída desta
+  // prova, que ela cria ao rodar. Ela sai contada à parte, por nome.
+  const daSaidaDaProva = SAIDA.replace(/^\.\//, '').replace(/\/+$/, '')
+  const linhas = execSync('git status --porcelain', { cwd: ROOT }).toString().trim().split('\n').filter(Boolean)
+  const caminho = (l: string) => l.slice(3).replace(/^"|"$/g, '')
+  const pendentes = linhas.map(caminho).filter((p) => p !== daSaidaDaProva && !p.startsWith(`${daSaidaDaProva}/`))
+  const daProva = linhas.length - pendentes.length
+  const resumoDosPendentes = pendentes.length ? pendentes.join(', ') : 'nada'
+  console.log(
+    `código: ${sha} (${branch}) em ${ROOT}; pendente: ${resumoDosPendentes}${daProva ? ` (+ a saída desta prova, ${daSaidaDaProva})` : ''} | banco: ${ENDPOINT} | node ${process.version}`,
+  )
   mkdirSync(SAIDA, { recursive: true })
 
   const { db } = await import('../src/lib/db')
@@ -337,7 +348,7 @@ async function main() {
       mau += falhasDoCleanup.length
     }
     console.log('  apagados:', JSON.stringify(apagados))
-    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ sha, branch, pendentes, banco: ENDPOINT, ok, falhas: mau, apagados, falhasDoCleanup }, null, 2))
+    writeFileSync(resolve(SAIDA, 'resultado.json'), JSON.stringify({ sha, branch, pendentes, pendentesDaProva: daProva, banco: ENDPOINT, ok, falhas: mau, apagados, falhasDoCleanup }, null, 2))
     console.log(`\n${ok} ok, ${mau} falha(s). Saída em ${resolve(SAIDA)}`)
     await db.$disconnect()
     process.exit(mau > 0 ? 1 : 0)
