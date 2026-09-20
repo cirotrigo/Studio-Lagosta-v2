@@ -6754,3 +6754,19 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   ⚠️ **Depois da correção na escrita, a matriz não exercita mais o guard da LEITURA** — ela nunca chega ao estado
   que ele protege. Mutação nele (`semPaginaPropria → paginaHistorica`) só é pega pelos testes que reinjetam a cópia
   velha como linha legada. Teste de guard de leitura nesta classe precisa montar o estado à mão.
+  🔴 **Correção na ESCRITA exige comprovar o LEGADO, e isso se conta em produção — por leitura pura**
+  (PR6-F01, 20/09/2026). A regra de escrita só alcança a linha NOVA; a linha gravada antes do deploy fica, e
+  nenhum teste responde se ela existe. `scripts/contar-copia-de-outra-arte.ts` (somente leitura, sem `update` e
+  sem migration) classifica os candidatos com os MESMOS predicados exportados que `ver-agenda` usa
+  (`arteDosFieldValues`, `paginaDoPostEHistorica`, `arteEntregue`) — medir com uma cópia das regras mede outra
+  coisa. Medido em 20/09/2026 contra o endpoint `ep-fragrant-term-adnufsao-pooler`: **290 candidatos**
+  (`NOT_NEEDED` + 1 mídia + `slotValues::text <> 'null'`), 284 com arte casada pela URL, e **ZERO** em F01; as
+  12 com cópia marcada e arte íntegra são o caso que R53/R54 já comparam.
+  🔴 **Conte pelos DOIS lados.** F01 exige arte RE-RENDERIZADA, e pelo lado da ARTE existem **5** em toda a base
+  (`recomposicao.estado = 're-renderizada'`, criadas em 09–10/09/2026, nenhuma com `slotValues`), usadas por **1**
+  post — um carrossel de 4 slides, sem página e sem cópia textual, que nem candidato é. Uma direção confirma a
+  outra; o script faz as duas numa rodada.
+  ⚠️ **A contagem tem DATA.** Até o deploy a escrita antiga segue em produção e pode criar a linha — mesmo
+  precedente de `scripts/marcar-copia-da-pagina.ts` ("rode de novo depois dele"). Rodar o contador de novo custa
+  uma leitura; aparecendo linha, o caminho é saneamento com dry-run (`--confirmar` para escrever, **sem backfill
+  de texto inventado**: o que não se sustenta vira ausência, nunca palpite), nunca guarda nova na leitura.
