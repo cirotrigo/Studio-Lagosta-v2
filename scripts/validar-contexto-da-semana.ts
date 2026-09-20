@@ -347,6 +347,19 @@ async function main() {
         posts.push(noModelo.id)
         const agendaM = await tool('ver-agenda', { projectId: PROJETO, from: dia3bm, to: dia3bm })
         const iM = (agendaM.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === noModelo.id)
+        const vazioM = await db.socialPost.create({
+          data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} 3b modelo vazio`, mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3bm}T10:00:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', pageId: paginaModelo[0].id, slotValues: { [chaveM]: '' } as never },
+          select: { id: true },
+        })
+        const apagaM = await db.socialPost.create({
+          data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} 3b modelo apaga`, mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3bm}T11:00:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', pageId: paginaModelo[0].id, slotValues: { [chaveM]: { content: '' } } as never },
+          select: { id: true },
+        })
+        posts.push(vazioM.id, apagaM.id)
+        const itensM = (await tool('ver-agenda', { projectId: PROJETO, from: dia3bm, to: dia3bm })).dias as Array<{ posts: Array<Record<string, any>> }>
+        const acharM = (id: string) => itensM.flatMap((d) => d.posts).find((i) => i.postId === id)
+        const iVazM = acharM(vazioM.id), iApaM = acharM(apagaM.id)
+        conferir('em página MODELO a semântica de slot é a do render: "" MANTÉM o texto da camada; { content: "" } o APAGA', !!iVazM && temSemCaixa(iVazM.textos, textoM) && !!iApaM && Array.isArray(iApaM.textos) && !temSemCaixa(iApaM.textos, textoM), JSON.stringify({ vazio: iVazM?.textos?.[0], apaga: iApaM?.textos }).slice(0, 200))
         conferir('post sobre página MODELO: a copy PRÓPRIA dele vence a página (é o que o render faz — #142), origem "pagina-com-copy-do-post"', !!iM && temSemCaixa(iM.textos, `${MARCA} copy no modelo`) && !temSemCaixa(iM.textos, textoM) && iM.textosOrigem === 'pagina-com-copy-do-post', JSON.stringify({ chave: chaveM, textos: iM?.textos, origem: iM?.textosOrigem }).slice(0, 200))
       } else {
         console.log('  · sem página MODELO com texto neste projeto — o lado "os slots vencem" do #142 não foi exercitado aqui')
@@ -382,7 +395,10 @@ async function main() {
       const iCar = item3c(carrossel.id), iPar = item3c(parcialPropria.id), iVaz = item3c(slotVazio.id), iApa = item3c(slotApaga.id)
       conferir('carrossel PUBLICADO com 3 mídias: os textos dos slides 1 e 2 em ordem (pela URL, não só pelo generationId; dentro do slide 1 na ordem do RENDER, não do array), o 3º declarado sem arte, leitura parcial', !!iCar && JSON.stringify(iCar.textos) === JSON.stringify([`${MARCA} slide um`, `${MARCA} slide um — linha 2`, `${MARCA} slide dois`]) && iCar.textosOrigem === 'arte' && iCar.textosParciais === true && Array.isArray(iCar.textosPorSlide) && iCar.textosPorSlide.length === 3 && iCar.textosPorSlide[2].textos.length === 0 && /nenhuma arte/.test(iCar.textosPorSlide[2].indisponiveis ?? ''), JSON.stringify({ textos: iCar?.textos, slides: iCar?.textosPorSlide?.map((s: any) => s.origem ?? s.indisponiveis) }).slice(0, 260))
       conferir('post PUBLICADO com copy própria e sem snapshot: só o título sobrescrito, marcado PARCIAL (não completa pela página atual)', !!iPar && JSON.stringify(iPar.textos) === JSON.stringify([`${MARCA} só o título`]) && iPar.textosOrigem === 'copy-do-post' && iPar.textosParciais === true && /sobrescreveu/.test(iPar.textosNota ?? ''), JSON.stringify({ textos: iPar?.textos, parciais: iPar?.textosParciais }).slice(0, 200))
-      conferir('slot "" mantém o texto da página (como o render); slot { content: "" } o apaga (como o render) — e a leitura vazia é definitiva (textos sai, mesmo vazio)', !!iVaz && temSemCaixa(iVaz.textos, textoDoModelo) && !!iApa && Array.isArray(iApa.textos) && !temSemCaixa(iApa.textos, textoDoModelo) && typeof iApa.textosOrigem === 'string', JSON.stringify({ vazio: iVaz?.textos?.[0], apaga: iApa?.textos, origem: iApa?.textosOrigem }).slice(0, 200))
+      // #142: em página de CONTEÚDO o render não aplica slot NENHUM — nem o que mantém, nem o que apaga. A
+      // semântica de slot ("" mantém, { content: "" } apaga) só existe em página MODELO, e é lá que ela é
+      // conferida (bloco 3b) e no teste unitário R11.
+      conferir('em página de CONTEÚDO nenhum slot entra: "" e { content: "" } devolvem a PÁGINA inteira, origem "pagina" (#142)', !!iVaz && temSemCaixa(iVaz.textos, textoDoModelo) && iVaz.textosOrigem === 'pagina' && !!iApa && temSemCaixa(iApa.textos, textoDoModelo) && iApa.textosOrigem === 'pagina', JSON.stringify({ vazio: iVaz?.textos?.[0], apaga: iApa?.textos?.[0], origem: iApa?.textosOrigem }).slice(0, 200))
       writeFileSync(resolve(SAIDA, 'ver-agenda-3c.json'), JSON.stringify(agenda3c, null, 2))
 
       // R12/R13 (revisão de 6ad711bd): o snapshot de OUTRA versão da mídia nunca é atribuído à publicação.
