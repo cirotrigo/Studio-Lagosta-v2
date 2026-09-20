@@ -154,14 +154,19 @@ export const toolsDeAgenda = [
       // sem conferir o dono —, e a leitura pelo id nu entregaria os textos de B pela agenda de A. Página de fora
       // fica sem camadas, e a peça segue como fonte indisponível.
       const paginas = todasAsPaginas.length
-        ? await db.page.findMany({ where: { id: { in: todasAsPaginas }, Template: { projectId } }, select: { id: true, layers: true } })
+        ? await db.page.findMany({ where: { id: { in: todasAsPaginas }, Template: { projectId } }, select: { id: true, layers: true, isTemplate: true } })
         : []
       const camadasPorPagina = new Map(paginas.map((p) => [p.id, p.layers]))
+      // Página MODELO: é o que decide se o render aplica os slots do post por cima dela (#142). Em página de
+      // CONTEÚDO a página é a peça e manda — ler com os slots aplicados mostraria texto que a arte não tem.
+      const modeloPorPagina = new Map(paginas.map((p) => [p.id, p.isTemplate]))
       const textosDe = (post: (typeof posts)[number]) =>
         textosDaPeca(
           { pageId: post.pageId, slotValues: post.slotValues, status: post.status, laterPostId: post.laterPostId, mediaUrls: post.mediaUrls ?? [], generationId: post.generationId, renderStatus: post.renderStatus },
           {
-            ...(post.pageId && camadasPorPagina.has(post.pageId) ? { camadas: camadasPorPagina.get(post.pageId) } : {}),
+            ...(post.pageId && camadasPorPagina.has(post.pageId)
+              ? { camadas: camadasPorPagina.get(post.pageId), paginaEhModelo: modeloPorPagina.get(post.pageId) === true }
+              : {}),
             slides: (post.mediaUrls ?? []).map((url) => {
               const arte = arteDoSlide(post, url)
               return {

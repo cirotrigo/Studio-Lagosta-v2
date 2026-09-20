@@ -6770,3 +6770,27 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   precedente de `scripts/marcar-copia-da-pagina.ts` ("rode de novo depois dele"). Rodar o contador de novo custa
   uma leitura; aparecendo linha, o caminho é saneamento com dry-run (`--confirmar` para escrever, **sem backfill
   de texto inventado**: o que não se sustenta vira ausência, nunca palpite), nunca guarda nova na leitura.
+  🔴 **O PR 6 LÊ a vizinhança que o #142 mudou, e a leitura tem de seguir o render** (rebase de 20/09/2026,
+  `origin/main` em 17ff3e1a). `slotValuesParaRender` ganhou o parâmetro `paginaEhModelo` e passou a devolver
+  NADA em página de CONTEÚDO — o render deixou de aplicar os slots do post ali. `textos-da-peca.ts` chamava a
+  função em DOIS lugares, e o `tsc` acusou os dois (arity), mas **a resposta certa é diferente em cada um**,
+  porque são PERGUNTAS diferentes:
+  - `copyDaArteDeModelo` e o fallback `copy-do-post` perguntam "esta cópia é PRÓPRIA do post, ou é cópia da
+    página?" — quem responde é a marca `_copiaDaPagina`, e a pergunta vale mesmo quando não há página nenhuma
+    (post cuja página virou vínculo histórico). Passar `true` ali só para reaproveitar a função AFIRMARIA que a
+    página é modelo sem saber. Por isso a pergunta ganhou nome próprio: `copyPropriaDoPost`, e
+    `slotValuesParaRender` passou a delegar a ela (comportamento da main preservado, byte a byte).
+  - `slotsDoRender` (a peça VIVA lida com os slots por cima da página) pergunta "o que o render vai desenhar?",
+    e essa É a do #142: hoje chama `slotValuesParaRender(sv, fontes.paginaEhModelo === true)` — a MESMA função
+    que `story-renderer` chama, para os dois não divergirem. `FontesDaPeca.paginaEhModelo` vem do handler
+    (`Page.isTemplate`, no mesmo `select` das camadas); ausente = NÃO é modelo, que é o lado conservador.
+  **Nenhuma célula da matriz de R53/R55 muda de desfecho**: as 72 são `NOT_NEEDED` com uma mídia, e ali
+  `slotsDoRender` já era forçado a `null` (os slots herdados na troca não são entrada de render nenhum). Quem
+  muda é a peça VIVA com página PRÓPRIA — fora da matriz e coberta pelo controle da galeria, que passou a
+  esperar `origem: 'pagina'` com os textos da página. As 6 fixtures de `textos-da-peca.test.ts` que exercitam
+  o caminho de template passaram a declarar `paginaEhModelo: true`: o intento delas sempre foi o MODELO
+  ("texto do modelo", "Título do modelo"), e agora isso está escrito em vez de implícito.
+  **Mutação** (o que cada metade guarda): `slotsDoRender` de volta a `proprios` → 1 falha (o controle da página
+  de conteúdo); `proprios` trocado por `slotValuesParaRender(...)` → 6 falhas (o fallback some em toda peça sem
+  página). A prova de integração cobre os DOIS lados no caminho real — página de conteúdo devolvendo a página, e
+  uma página MODELO (quando o projeto tem uma com texto) em que os slots continuam vencendo.

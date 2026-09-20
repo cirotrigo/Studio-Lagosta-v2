@@ -13,8 +13,8 @@ const viva = { pageId: 'p1', status: 'DRAFT', laterPostId: null, mediaUrls: [] a
 
 describe('textosDaPeca — a mesma precedência do render', () => {
   it('dois posts sobre a MESMA página com copy própria voltam com as suas headlines, não com o texto do modelo', () => {
-    const a = textosDaPeca({ ...viva, slotValues: { headline: 'Costela no bafo' } }, { camadas })
-    const b = textosDaPeca({ ...viva, slotValues: { l1: { content: 'Picanha na brasa' }, apoio: 'Sexta é dia' } }, { camadas })
+    const a = textosDaPeca({ ...viva, slotValues: { headline: 'Costela no bafo' } }, { camadas, paginaEhModelo: true })
+    const b = textosDaPeca({ ...viva, slotValues: { l1: { content: 'Picanha na brasa' }, apoio: 'Sexta é dia' } }, { camadas, paginaEhModelo: true })
     expect(a).toEqual({ textos: ['Costela no bafo', 'Apoio do modelo'], origem: 'pagina-com-copy-do-post' })
     expect(b).toEqual({ textos: ['Picanha na brasa', 'Sexta é dia'], origem: 'pagina-com-copy-do-post' })
   })
@@ -27,10 +27,10 @@ describe('textosDaPeca — a mesma precedência do render', () => {
       { id: 'l1', name: 'headline', type: 'text', content: 'Preço sob consulta' },
       { id: 'l2', name: 'apoio', type: 'text', content: 'Apoio' },
     ]
-    expect(textosDaPeca({ ...viva, slotValues: { headline: '' } }, { camadas: pagina }).textos).toEqual(['Preço sob consulta', 'Apoio'])
-    expect(textosDaPeca({ ...viva, slotValues: { headline: { content: '' } } }, { camadas: pagina }).textos).toEqual(['Apoio'])
-    expect(textosDaPeca({ ...viva, slotValues: { l1: '', headline: 'pelo nome' } }, { camadas: pagina }).textos).toEqual(['Preço sob consulta', 'Apoio'])
-    expect(textosDaPeca({ ...viva, slotValues: { l1: 'pelo id', headline: 'pelo nome' } }, { camadas: pagina }).textos).toEqual(['pelo id', 'Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { headline: '' } }, { paginaEhModelo: true, camadas: pagina }).textos).toEqual(['Preço sob consulta', 'Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { headline: { content: '' } } }, { paginaEhModelo: true, camadas: pagina }).textos).toEqual(['Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { l1: '', headline: 'pelo nome' } }, { paginaEhModelo: true, camadas: pagina }).textos).toEqual(['Preço sob consulta', 'Apoio'])
+    expect(textosDaPeca({ ...viva, slotValues: { l1: 'pelo id', headline: 'pelo nome' } }, { paginaEhModelo: true, camadas: pagina }).textos).toEqual(['pelo id', 'Apoio'])
     // a MESMA função do render, com o mesmo resultado
     expect(aplicarSlotNaCamada(pagina[0], { headline: '' }).content).toBe('Preço sob consulta')
     expect(aplicarSlotNaCamada(pagina[0], { headline: { content: '' } }).content).toBe('')
@@ -143,7 +143,7 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
   })
   it('leitura legível VAZIA é definitiva (R14): a única camada apagada pelo slot, todas as camadas ocultas num slide, snapshot válido sem texto — nada ressuscita copy antiga', () => {
     const umaSo = [{ id: 'l1', name: 'headline', type: 'text', content: 'Texto antigo' }]
-    const apagada = textosDaPeca({ ...viva, mediaUrls: ['u1'], slotValues: { headline: { content: '' } } }, { camadas: umaSo, slides: [{ url: 'u1', arte: { layersSnapshot: snap('Texto antigo'), pageId: 'p1' } }] })
+    const apagada = textosDaPeca({ ...viva, mediaUrls: ['u1'], slotValues: { headline: { content: '' } } }, { paginaEhModelo: true, camadas: umaSo, slides: [{ url: 'u1', arte: { layersSnapshot: snap('Texto antigo'), pageId: 'p1' } }] })
     expect(apagada).toEqual({ textos: [], origem: 'pagina-com-copy-do-post' })
     const ocultas = textosDaPeca({ pageId: null, status: 'DRAFT', laterPostId: null, mediaUrls: ['u1', 'u2'], generationId: null, slotValues: null }, {
       slides: [
@@ -189,8 +189,8 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
       { id: 'd', name: 'servico', type: 'text', content: 'Rua Ação, 12', style: { textTransform: 'none' } },
       { id: 'e', name: 'pre', type: 'text', content: 'Sem estilo' },
     ]
-    expect(textosDaPeca({ ...viva, slotValues: null }, { camadas: pagina }).textos).toEqual(['ALMOÇO EXECUTIVO', 'de segunda a sexta', 'Vem Pra Cá\nHoje', 'Rua Ação, 12', 'Sem estilo'])
-    expect(textosDaPeca({ ...viva, slotValues: { headline: 'costela no bafo' } }, { camadas: pagina }).textos[0]).toBe('COSTELA NO BAFO')
+    expect(textosDaPeca({ ...viva, slotValues: null }, { paginaEhModelo: true, camadas: pagina }).textos).toEqual(['ALMOÇO EXECUTIVO', 'de segunda a sexta', 'Vem Pra Cá\nHoje', 'Rua Ação, 12', 'Sem estilo'])
+    expect(textosDaPeca({ ...viva, slotValues: { headline: 'costela no bafo' } }, { paginaEhModelo: true, camadas: pagina }).textos[0]).toBe('COSTELA NO BAFO')
     // a MESMA função do render
     expect(aplicarCaixa('Almoço executivo', 'uppercase')).toBe('ALMOÇO EXECUTIVO')
     expect(aplicarCaixa('vem pra cá\nhoje', 'capitalize')).toBe('Vem Pra Cá\nHoje')
@@ -431,7 +431,7 @@ describe('textosDaPeca — carrossel: slide a slide, pela arte que cada mídia �
       }
     }
     // controle: peça VIVA com a página legível responde pela página, aplicando os slots como o render (id vence nome)
-    const viva = textosDaPeca({ ...base, status: 'DRAFT', laterPostId: null, slotValues: slots }, { camadas: renderizado, slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: renderizado }] })
+    const viva = textosDaPeca({ ...base, status: 'DRAFT', laterPostId: null, slotValues: slots }, { paginaEhModelo: true, camadas: renderizado, slides: [{ url: 'u1', arte: semRegistro, camadasDaPagina: renderizado }] })
     expect(viva.textos).toEqual(['Picanha'])
     expect(JSON.stringify(viva)).not.toContain('Costela')
     // controle: entregue com registro válido responde pelo registro
@@ -471,9 +471,9 @@ describe('textosDaPeca — arte já entregue não segue a página', () => {
       { id: 'l1', name: 'headline', type: 'text', content: 'Título do modelo' },
       { id: 'l2', name: 'preco', type: 'text', content: 'R$ 39,90' },
     ]
-    const antes = textosDaPeca({ ...entregue, status: 'DRAFT', laterPostId: null, slotValues: { headline: 'Meu título' } }, { camadas: paginaComPreco })
+    const antes = textosDaPeca({ ...entregue, status: 'DRAFT', laterPostId: null, slotValues: { headline: 'Meu título' } }, { paginaEhModelo: true, camadas: paginaComPreco })
     expect(antes).toEqual({ textos: ['Meu título', 'R$ 39,90'], origem: 'pagina-com-copy-do-post' })
-    const depois = textosDaPeca({ ...entregue, status: 'POSTED', laterPostId: null, slotValues: { headline: 'Meu título' } }, { camadas: paginaComPreco, slides: [{ url: 'https://blob/arte-1.png', arte: { pageId: 'p1' } }] })
+    const depois = textosDaPeca({ ...entregue, status: 'POSTED', laterPostId: null, slotValues: { headline: 'Meu título' } }, { paginaEhModelo: true, camadas: paginaComPreco, slides: [{ url: 'https://blob/arte-1.png', arte: { pageId: 'p1' } }] })
     expect(depois.textos).toEqual(['Meu título'])
     expect(depois.origem).toBe('copy-do-post')
     expect(depois.parcial).toBe(true)

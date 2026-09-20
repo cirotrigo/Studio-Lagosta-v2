@@ -325,7 +325,32 @@ async function main() {
       const iA = item(propriaA.id), iB = item(propriaB.id), iC = item(copiaDaPagina.id), iD = item(entregueComRegistro.id), iE = item(entregueSemNada.id)
       // A CAIXA é a do render (R16): a camada pode ter textTransform, então a comparação ignora caixa — o teste unitário confere a caixa exata.
       const temSemCaixa = (lista: string[] | undefined, alvo: string) => (lista ?? []).some((t) => t.toUpperCase() === alvo.toUpperCase())
-      conferir('dois posts sobre a MESMA página com copy própria voltam cada um com a SUA headline (não o texto do modelo), origem "pagina-com-copy-do-post"', !!iA && !!iB && temSemCaixa(iA.textos, `${MARCA} headline A`) && !temSemCaixa(iA.textos, textoDoModelo) && temSemCaixa(iB.textos, `${MARCA} headline B`) && !temSemCaixa(iB.textos, textoDoModelo) && iA.textosOrigem === 'pagina-com-copy-do-post' && iB.textosOrigem === 'pagina-com-copy-do-post', JSON.stringify({ chave: chaveDoTexto, a: iA?.textos?.[0], b: iB?.textos?.[0] }).slice(0, 200))
+      // #142 (20/09/2026): em página de CONTEÚDO o render IGNORA os slots do post e desenha a página — a agenda
+      // espelha isso. Devolver a copy do post aqui seria afirmar um texto que a arte não tem. O caso de MODELO,
+      // em que os slots continuam vencendo, é a conferência seguinte.
+      conferir('dois posts sobre a mesma página de CONTEÚDO devolvem a PÁGINA (os slots deles não entram no render — #142), origem "pagina"', !!iA && !!iB && temSemCaixa(iA.textos, textoDoModelo) && !temSemCaixa(iA.textos, `${MARCA} headline A`) && temSemCaixa(iB.textos, textoDoModelo) && !temSemCaixa(iB.textos, `${MARCA} headline B`) && iA.textosOrigem === 'pagina' && iB.textosOrigem === 'pagina', JSON.stringify({ chave: chaveDoTexto, a: iA?.textos?.[0], b: iB?.textos?.[0] }).slice(0, 200))
+
+      // O outro lado do #142: em página MODELO (layout compartilhado, N posts com a sua copy) os slots VENCEM.
+      const paginaModelo = await db.$queryRaw<Array<{ id: string }>>`
+        SELECT p.id FROM "Page" p JOIN "Template" t ON t.id = p."templateId"
+        WHERE t."projectId" = ${PROJETO} AND p."isTemplate" = true AND p.layers::text LIKE '%text%'
+        ORDER BY p."updatedAt" DESC LIMIT 1`
+      if (paginaModelo[0]) {
+        const pgModelo = await db.page.findUnique({ where: { id: paginaModelo[0].id }, select: { layers: true } })
+        const textosDoM = Object.entries(textosDaPagina(pgModelo!.layers))
+        const [chaveM, textoM] = textosDoM.find(([k]) => !k.includes('#')) ?? textosDoM[0]
+        const dia3bm = somarDias(hoje, 12)
+        const noModelo = await db.socialPost.create({
+          data: { projectId: PROJETO, userId: projeto.userId, postType: 'STORY', caption: `${MARCA} 3b modelo`, mediaUrls: [], scheduleType: 'SCHEDULED', scheduledDatetime: new Date(`${dia3bm}T09:00:00-03:00`), status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED', pageId: paginaModelo[0].id, slotValues: { [chaveM]: `${MARCA} copy no modelo` } as never },
+          select: { id: true },
+        })
+        posts.push(noModelo.id)
+        const agendaM = await tool('ver-agenda', { projectId: PROJETO, from: dia3bm, to: dia3bm })
+        const iM = (agendaM.dias as Array<{ posts: Array<Record<string, any>> }>).flatMap((d) => d.posts).find((i) => i.postId === noModelo.id)
+        conferir('post sobre página MODELO: a copy PRÓPRIA dele vence a página (é o que o render faz — #142), origem "pagina-com-copy-do-post"', !!iM && temSemCaixa(iM.textos, `${MARCA} copy no modelo`) && !temSemCaixa(iM.textos, textoM) && iM.textosOrigem === 'pagina-com-copy-do-post', JSON.stringify({ chave: chaveM, textos: iM?.textos, origem: iM?.textosOrigem }).slice(0, 200))
+      } else {
+        console.log('  · sem página MODELO com texto neste projeto — o lado "os slots vencem" do #142 não foi exercitado aqui')
+      }
       conferir('a cópia da página (_copiaDaPagina) NÃO sobrepõe: os textos são os da página, origem "pagina"', !!iC && temSemCaixa(iC.textos, textoDoModelo) && !temSemCaixa(iC.textos, 'texto velho da cópia') && iC.textosOrigem === 'pagina', String(JSON.stringify(iC?.textos)).slice(0, 160))
       conferir('post PUBLICADO com cópia registrada: volta o que foi registrado na entrega, NÃO o texto atual da página — e declarado PARCIAL (sem a caixa do render nem a ordem)', !!iD && JSON.stringify(iD.textos) === JSON.stringify(['o que foi ao ar']) && iD.textosOrigem === 'copy-registrada-na-entrega' && iD.textosParciais === true && /ANTES da caixa/.test(iD.textosNota ?? ''), JSON.stringify({ textos: iD?.textos, origem: iD?.textosOrigem, parciais: iD?.textosParciais }))
       conferir('post no publicador (laterPostId) sem registro nenhum: `textosIndisponiveis` declarado e nenhum texto da página atribuído', !!iE && !('textos' in iE) && typeof iE.textosIndisponiveis === 'string' && /entregue/.test(iE.textosIndisponiveis), JSON.stringify({ textos: iE?.textos, indisponiveis: iE?.textosIndisponiveis }).slice(0, 200))

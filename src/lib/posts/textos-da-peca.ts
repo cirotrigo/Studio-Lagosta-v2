@@ -43,7 +43,7 @@
 
 import { lerCamadas, type PageLayer } from '@/lib/posts/page-layers'
 import { aplicarSlotNaCamada } from '@/lib/posts/page-to-design-data'
-import { copyIgual, ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
+import { copyIgual, copyPropriaDoPost, ehCopiaDaPagina, slotValuesParaRender, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
 import { aplicarCaixa } from '@/lib/posts/caixa-do-texto'
 
 export type OrigemDosTextos =
@@ -124,6 +124,12 @@ export interface SlideDaPeca {
 export interface FontesDaPeca {
   /** `Page.layers` da página do post (`pageId`); `undefined` quando não há página (ou não foi carregada). */
   camadas?: unknown
+  /**
+   * A página do post é um MODELO (`Page.isTemplate`)? É o que decide se o render aplica os slots do post por
+   * cima dela (#142, 20/09/2026): em página de CONTEÚDO a página é a peça e manda. Ausente = não é modelo —
+   * quem não sabe dizer não deve fazer a agenda afirmar um texto que o render não desenha.
+   */
+  paginaEhModelo?: boolean
   /** As mídias do post, na ordem, com a arte de cada uma. */
   slides?: SlideDaPeca[]
 }
@@ -262,7 +268,10 @@ function copyDaArteDeModelo(arte: NonNullable<SlideDaPeca['arte']>): Record<stri
   // o texto de outra versão à mídia, contornando R13. Vale o tratamento de sempre: página atual na peça viva;
   // registro confiável ou indisponibilidade na entregue.
   if (arte.reRenderizada === true) return null
-  return slotValuesParaRender(arte.slotValues)
+  // A pergunta aqui é "esta arte carrega copy PRÓPRIA do post?", não "o que o render aplicaria hoje": a página
+  // que esta arte desenhou era um MODELO (é o que `post-schedule` + copy não-marcada significa desde o #142 —
+  // em página de conteúdo o render não aplica slots e grava a cópia MARCADA). Ver `copyPropriaDoPost`.
+  return copyPropriaDoPost(arte.slotValues)
 }
 
 /** O snapshot afirma texto só quando é o registro do que foi desenhado: existe e a arte não foi re-renderizada por cima dele. */
@@ -437,7 +446,7 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   const sv = post.slotValues
   const entregue = arteEntregue(post)
   const carrossel = post.mediaUrls.length > 1
-  const proprios = slotValuesParaRender(sv)
+  const proprios = copyPropriaDoPost(sv)
   const textosProprios = textosDoPost(proprios ?? null)
   // R51: a página do post que ficou só como vínculo histórico não é lida — a peça se resolve pela mídia atual.
   const paginaHistorica = !carrossel && paginaDoPostEHistorica(post, fontes.slides?.[0]?.arte)
@@ -450,7 +459,14 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
   //    de uma arte (a da própria página, mantida em dia pela recomposição): os slots que o post herdou na troca pela
   //    galeria não são entrada de render nenhum, e aplicá-los à página editada depois devolvia o texto de antes
   //    (varredura da classe do R52, 18/09/2026). Sem mídia, eles são a entrada do render que ainda vai acontecer.
-  const slotsDoRender = post.renderStatus === 'NOT_NEEDED' && post.mediaUrls.length === 1 ? null : proprios
+  //    🔴 E, desde o #142 (20/09/2026), só quando a página é um MODELO: em página de CONTEÚDO o render IGNORA os
+  //    slots e desenha a página, marca ou não (`slotValuesParaRender`). Espelhamos pela MESMA função que o render
+  //    chama, para os dois não divergirem — ler com os slots aplicados mostraria na agenda um texto que a arte
+  //    não tem, que é o defeito que este módulo existe para impedir.
+  const slotsDoRender =
+    post.renderStatus === 'NOT_NEEDED' && post.mediaUrls.length === 1
+      ? null
+      : slotValuesParaRender(sv, fontes.paginaEhModelo === true)
   if (!entregue && !carrossel && !paginaHistorica && fontes.camadas !== undefined) {
     const daPagina = textosDasCamadas(fontes.camadas, slotsDoRender)
     if (daPagina !== null) return { textos: daPagina, origem: slotsDoRender ? 'pagina-com-copy-do-post' : 'pagina' }

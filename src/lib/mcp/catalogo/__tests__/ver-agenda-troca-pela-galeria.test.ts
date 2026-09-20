@@ -209,11 +209,14 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
       expect(JSON.stringify(item)).not.toContain('página A')
     })
 
-    it('controle: o post que continua renderizando da SUA página devolve a página, mesmo com copy própria gravada', async () => {
+    it('controle: o post que continua renderizando da SUA página de CONTEÚDO devolve a PÁGINA — os slots dele não entram (#142)', async () => {
+      // A página do post é de conteúdo (`isTemplate` falso): desde o #142 o render IGNORA os slots e desenha a
+      // página, marca ou não. A agenda espelha isso — devolver "Copy própria do post" seria afirmar um texto que
+      // a arte não tem. Em página MODELO os slots continuam vencendo (é o que `textos-da-peca.test.ts` cobre).
       banco.post!.slotValues = { headline: 'Copy própria do post' }
       const item = await itemDaAgenda()
-      expect(item.textos).toEqual(['Copy própria do post', 'Apoio de A'])
-      expect(item.textosOrigem).toBe('pagina-com-copy-do-post')
+      expect(item.textos).toEqual(['Copy da página A', 'Apoio de A'])
+      expect(item.textosOrigem).toBe('pagina')
     })
   })
 
