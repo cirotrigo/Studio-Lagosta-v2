@@ -474,6 +474,14 @@ export interface TextoPreenchido {
   indice: number
   texto: TextoDoArranjo
   linhas: string[]
+  /**
+   * As posições, no bloco do AUTOR, das linhas que este texto recebeu — é o que
+   * vai para `metadata.compositor.linhas` da camada e o que devolve a ordem do
+   * autor na leitura da copy efetiva. O arranjo reordena (o horário vai ao
+   * grupo do relógio, o endereço ao do alfinete), então a ordem visual não
+   * serve; deduzi-la depois pelo texto igual errou em PR3-R9-02 e R11-02.
+   */
+  indicesDoBloco: number[]
 }
 
 /**
@@ -483,42 +491,51 @@ export interface TextoPreenchido {
  * senão o relógio vai parar ao lado do endereço. Linha que sobra entra no último
  * texto usado; texto sem linha some da peça com os seus elementos.
  */
-export function distribuirLinhas(arranjo: ArranjoDeGrupo, blocos: Array<{ papel: Papel; linhas: string[] }>): TextoPreenchido[] {
+export function distribuirLinhas(
+  arranjo: ArranjoDeGrupo,
+  blocos: Array<{ papel: Papel; linhas: string[]; indicesDoBloco?: number[] }>,
+): TextoPreenchido[] {
   const saida: TextoPreenchido[] = []
   for (const bloco of blocos) {
+    // A posição de cada linha no bloco do AUTOR viaja junto: quem chama pode já
+    // ter repartido o bloco entre grupos (compor.ts) ou tirado a última linha
+    // para a segunda voz, e aí a posição não é mais o índice local.
+    const posicaoDe = (i: number) => bloco.indicesDoBloco?.[i] ?? i
     const alvos = arranjo.textos.map((texto, indice) => ({ texto, indice })).filter((a) => a.texto.papel === bloco.papel)
     if (alvos.length === 0 || bloco.linhas.length === 0) continue
     if (alvos.length === 1) {
-      saida.push({ indice: alvos[0].indice, texto: alvos[0].texto, linhas: bloco.linhas })
+      saida.push({ indice: alvos[0].indice, texto: alvos[0].texto, linhas: bloco.linhas, indicesDoBloco: bloco.linhas.map((_, i) => posicaoDe(i)) })
       continue
     }
 
     const tipos = new Map<number, 'horario' | 'endereco'>()
     for (const b of blocosDeServico(bloco.linhas)) tipos.set(b.indice, b.papel === 'horário' ? 'horario' : 'endereco')
     const livres = new Set(alvos.map((a) => a.indice))
-    const porAlvo = new Map<number, string[]>()
-    const sobras: string[] = []
+    const porAlvo = new Map<number, Array<{ linha: string; pos: number }>>()
+    const sobras: Array<{ linha: string; pos: number }> = []
     bloco.linhas.forEach((linha, i) => {
       const tipo = tipos.get(i)
       const alvo = tipo ? alvos.find((a) => livres.has(a.indice) && a.texto.tipo === tipo) : undefined
       if (alvo) {
         livres.delete(alvo.indice)
-        porAlvo.set(alvo.indice, [linha])
+        porAlvo.set(alvo.indice, [{ linha, pos: posicaoDe(i) }])
       } else {
-        sobras.push(linha)
+        sobras.push({ linha, pos: posicaoDe(i) })
       }
     })
-    for (const linha of sobras) {
+    for (const item of sobras) {
       const alvo = alvos.find((a) => livres.has(a.indice))
       if (alvo) {
         livres.delete(alvo.indice)
-        porAlvo.set(alvo.indice, [linha])
+        porAlvo.set(alvo.indice, [item])
         continue
       }
       const ultimo = Math.max(...porAlvo.keys())
-      porAlvo.get(ultimo)?.push(linha)
+      porAlvo.get(ultimo)?.push(item)
     }
-    for (const [indice, linhas] of porAlvo) saida.push({ indice, texto: arranjo.textos[indice], linhas })
+    for (const [indice, itens] of porAlvo) {
+      saida.push({ indice, texto: arranjo.textos[indice], linhas: itens.map((x) => x.linha), indicesDoBloco: itens.map((x) => x.pos) })
+    }
   }
   return saida.sort((a, b) => a.indice - b.indice)
 }

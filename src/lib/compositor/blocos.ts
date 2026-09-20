@@ -88,11 +88,33 @@ export interface DestaqueDoBloco {
   trechosPorLinha: TrechoDestacado[][]
 }
 
+/**
+ * 🔴 O VÍNCULO com a copy do autor, gravado na camada por quem a DESENHA.
+ * `bloco` é o id do bloco do contrato que a originou; `linhas`, as posições
+ * (0-based) daquele bloco que esta camada desenha — o arranjo reparte o serviço
+ * em duas camadas e pode pôr o endereço acima do horário, então a ordem visual
+ * não é a do autor.
+ *
+ * Existe porque deduzir isso DEPOIS, na leitura da copy efetiva (por texto
+ * igual, por bloco vazio ou por ordem visual), errou uma vez por rodada de
+ * revisão: PR3-R8-02, R9-02, R10-01 e R11-01/02. Mesmo precedente de
+ * `spec.carrossel` → `Generation.slideOrder`: quem compõe REGISTRA. A leitura
+ * (`vinculoDaCamada`, em `copy-autoral/efetiva.ts`) usa a marca quando existe e
+ * cai na reserva quando não — página composta antes de 20/09/2026 e camada
+ * criada à mão no editor não têm marca, e continuam valendo.
+ */
+export interface VinculoComACopy {
+  bloco?: string
+  linhas?: number[]
+}
+
 /** A camada de texto de um papel, ainda sem posição (x/y = 0). */
 export function camadaDoPapel(args: {
   papel: Papel
   /** Id e nome da camada — o papel, ou `servico-2` quando o arranjo tem dois textos do mesmo papel. */
   id?: string
+  /** O bloco do contrato que originou esta camada e as linhas dele que ela desenha. */
+  origem?: VinculoComACopy | null
   /** As linhas JÁ sem colchetes. */
   linhas: string[]
   estilo: EstiloDePapel
@@ -150,7 +172,15 @@ export function camadaDoPapel(args: {
           },
         }
       : {},
-    metadata: { groupId: args.groupId, compositor: { papel: args.papel } },
+    metadata: {
+      groupId: args.groupId,
+      // As posições só valem COM o bloco (a leitura as ignora sem ele): sem
+      // contrato na spec, a camada sai como sempre saiu.
+      compositor: {
+        papel: args.papel,
+        ...(args.origem?.bloco ? { bloco: args.origem.bloco, ...(args.origem.linhas ? { linhas: [...args.origem.linhas] } : {}) } : {}),
+      },
+    },
   }
 
   const trechosPorLinha = args.destaque?.trechosPorLinha ?? []
@@ -220,6 +250,8 @@ export function montarBloco(args: {
   medir: MeasureTextBox
   /** O estilo de destaque da marca para este papel; sem ele, [colchetes] saem como texto comum. */
   destaque?: EstiloDeDestaque | null
+  /** O vínculo com a copy do autor (ver `VinculoComACopy`) — vai para `metadata.compositor` das camadas. */
+  origem?: VinculoComACopy | null
 }): ResultadoDoBloco {
   const avisos: string[] = []
   const lidas = args.linhas.map(lerDestaques)

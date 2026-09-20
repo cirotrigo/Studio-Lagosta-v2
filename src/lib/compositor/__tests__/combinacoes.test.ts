@@ -148,6 +148,18 @@ describe('linhas da copy nos textos', () => {
       [1, ['das 11h às 15h']],
       [2, ['Rua Aleixo Netto, 1158']],
     ])
+    // PR3-R11-02: cada texto diz QUAIS posições do bloco do autor ele desenha.
+    // Aqui o arranjo INVERTE (o endereço é a linha 0 do autor e vai para o
+    // texto de baixo), e é esta lista que devolve a ordem do autor na leitura
+    // da copy efetiva — sem ela, editar as duas linhas invertia o contrato.
+    expect(r.map((p) => p.indicesDoBloco)).toEqual([[0], [1], [0]])
+  })
+
+  it('a posição do autor viaja quando quem chama já repartiu o bloco (segunda voz, grupos)', () => {
+    // `compor.ts` tira a última linha da manchete para a voz 2 e reparte o
+    // serviço entre grupos: o índice local deixa de ser a posição no bloco.
+    const r = distribuirLinhas(arranjoDoGrupo(), [{ papel: 'servico', linhas: ['Rua Aleixo Netto, 1158'], indicesDoBloco: [3] }])
+    expect(r.map((p) => [p.indice, p.indicesDoBloco])).toEqual([[2, [3]]])
   })
 
   it('linha que sobra entra no último texto usado; texto sem linha some', () => {
@@ -156,6 +168,7 @@ describe('linhas da copy nos textos', () => {
       [1, ['das 11h às 15h']],
       [2, ['Rua Aleixo Netto, 1158', 'Reserve pelo direct']],
     ])
+    expect(tres.map((p) => p.indicesDoBloco)).toEqual([[0], [1, 2]])
     const uma = distribuirLinhas(arranjoDoGrupo(), [{ papel: 'servico', linhas: ['das 11h às 15h'] }])
     expect(uma.map((p) => p.indice)).toEqual([1])
   })

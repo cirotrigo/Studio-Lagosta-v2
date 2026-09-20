@@ -10,6 +10,7 @@ import type { FotoCinza } from '@/lib/creatives/halo/halo-medicao'
 import { validarSpec } from '../spec'
 import { estiloDaCamada, montarAssinatura, papelDoNome, papeisQueFaltam, NUMEROS_PADRAO } from '../assinatura'
 import { empilhar, montarBloco, vaoEntre } from '../blocos'
+import { vinculoDaCamada } from '@/lib/copy-autoral'
 import { estimarAssunto, lerMapaSob, mapaDeCalma, pontuarCandidatos } from '../mapa-de-calma'
 
 const texto = (id: string, name: string, style: Record<string, unknown>, content = 'x'): Layer => ({
@@ -105,6 +106,26 @@ describe('blocos', () => {
     expect(r.bloco!.width).toBeLessThan(896)
     expect(r.bloco!.layer.content).toBe('Foto Nova\na Cada Dia')
     expect(r.bloco!.layer.metadata?.groupId).toBe('g')
+    // Sem contrato na spec não há vínculo a gravar: a camada sai como sempre saiu.
+    expect(r.bloco!.layer.metadata?.compositor).toEqual({ papel: 'headline' })
+  })
+
+  /**
+   * PR3-R11-01/02: quem DESENHA grava na camada o bloco do contrato que a
+   * originou e as posições dele que ela desenha. É essa marca que a leitura da
+   * copy efetiva lê (`vinculoDaCamada`) — deduzir depois, por texto igual, por
+   * bloco vazio ou por ordem visual, errou uma vez por rodada de revisão.
+   */
+  it('grava o vínculo com a copy do autor na camada — e as posições só com o bloco', () => {
+    const base = { papel: 'servico' as const, id: 'servico-2', estilo: { ...estilo, fontSize: 30 }, escalaDoFormato: 1, colunaUtil: 896, textAlign: 'left' as const, groupId: 'g', corDaMancha: '#0B0B0B', medir: medirFalso }
+    const com = montarBloco({ ...base, linhas: ['Rua Aleixo Netto, 1158'], origem: { bloco: 'servico-info', linhas: [1] } })
+    expect(com.bloco!.layer.metadata?.compositor).toEqual({ papel: 'servico', bloco: 'servico-info', linhas: [1] })
+    expect(vinculoDaCamada(com.bloco!.layer)).toEqual({ bloco: 'servico-info', linhas: [1] })
+    // Posição sem bloco não vira marca: a leitura a ignoraria, e gravá-la só
+    // mudaria a versão da página de toda peça sem contrato.
+    const semBloco = montarBloco({ ...base, linhas: ['Rua Aleixo Netto, 1158'], origem: { linhas: [1] } })
+    expect(semBloco.bloco!.layer.metadata?.compositor).toEqual({ papel: 'servico' })
+    expect(vinculoDaCamada(semBloco.bloco!.layer)).toBeNull()
   })
 
   it('encolhe até 80% antes de recusar, e recusa com orçamento', () => {

@@ -21,6 +21,7 @@ const banco = vi.hoisted(() => ({
   posts: new Map<string, Record<string, any>>(),
   specsRecebidas: [] as unknown[],
   composta: [] as Array<Record<string, any>>,
+  sql: [] as unknown[][],
 }))
 
 vi.mock('@/lib/db', () => {
@@ -49,7 +50,10 @@ vi.mock('@/lib/db', () => {
       },
     },
     postLog: { create: async ({ data }: { data: unknown }) => data },
-    $executeRaw: async () => 1,
+    $executeRaw: async (_partes: TemplateStringsArray, ...valores: unknown[]) => {
+      banco.sql.push(valores)
+      return 1
+    },
     $transaction: async (arg: unknown) => (typeof arg === 'function' ? (arg as (tx: unknown) => unknown)(db) : Promise.all(arg as unknown[])),
   }
   return { db }
@@ -89,8 +93,20 @@ import { VERSAO_DO_CONTRATO, lerCopyAutoral, type CopyAutoral } from '@/lib/copy
 import { validarSpec, type SpecDePeca } from '@/lib/compositor/spec'
 import type { Layer } from '@/types/template'
 
-function texto(id: string, papel: string, y: number, content: string) {
-  return { id, name: id, type: 'text', content, visible: true, order: y, position: { x: 100, y }, size: { width: 880, height: 60 }, style: { fontSize: 40 }, metadata: { compositor: { papel } } }
+function texto(id: string, papel: string, y: number, content: string, vinculo?: { bloco: string; linhas: number[] }) {
+  return {
+    id,
+    name: id,
+    type: 'text',
+    content,
+    visible: true,
+    order: y,
+    position: { x: 100, y },
+    size: { width: 880, height: 60 },
+    style: { fontSize: 40 },
+    // A marca que `montarBloco` grava (ver a prova em `compositor.test.ts`).
+    metadata: { compositor: { papel, ...(vinculo ? { bloco: vinculo.bloco, linhas: vinculo.linhas } : {}) } },
+  }
 }
 
 const original: CopyAutoral = {
@@ -110,7 +126,15 @@ const repartidas = (manchete: string) => [texto('headline', 'headline', 300, man
 const CAPA = 'https://blob.test/capa.png'
 const URL_ANTIGA = 'https://blob.test/arte-rapida/8/p9-antiga.png'
 
+/** A `copyAutoral` do último merge da arte (a recomposição grava por `$executeRaw`). */
+function copyDaArteGravada(): Record<string, any> {
+  const patches = banco.sql.map((v) => { try { return JSON.parse(String(v[0])) } catch { return null } }).filter((p) => p && p.copyAutoral)
+  expect(patches.length).toBeGreaterThan(0)
+  return patches.at(-1)!.copyAutoral
+}
+
 beforeEach(() => {
+  banco.sql = []
   banco.specsRecebidas = []
   banco.posts = new Map([['post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'DRAFT', pageId: null, renderStatus: 'NOT_NEEDED', mediaUrls: [CAPA, URL_ANTIGA], laterPostId: null }]])
 })
@@ -298,5 +322,157 @@ describe('camadas com o MESMO id, dois blocos da função (varredura do PR3-R8-0
     const dois: CopyAutoral = { ...original, blocos: [{ id: 'a1', funcao: 'apoio', ordem: 0, linhas: ['Primeiro'] }, { id: 'a2', funcao: 'apoio', ordem: 1, linhas: ['Segundo'] }] }
     const r = revisaoDaPaginaComCamadas(dois, [texto('apoio', 'apoio', 400, 'Primeiro'), texto('apoio', 'apoio', 500, 'Segundo')], { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
     expect(r.estado).toBe('sem-mudanca')
+  })
+})
+
+/**
+ * PR3-R11-01 (revisão FINAL do Codex sobre 61de523f, 20/09/2026): esconder as
+ * DUAS camadas do serviço repartido e reexibi-las numa única escrita passava o
+ * horário para o bloco que o autor deixou VAZIO — com os dois blocos vazios,
+ * `vaziosPorFuncao` contava dois concorrentes e a ordem visual decidia. O texto
+ * mudava de id sem decisão autoral, a página ficava com dois serviços
+ * preenchidos, a recomposição seguinte morria em `papel repetido: servico` e a
+ * reexibição ainda atribuía a redistribuição à EQUIPE.
+ *
+ * O vínculo é gravado por quem DESENHA (`metadata.compositor.bloco`), e por
+ * isso sobrevive ao esconder: a camada oculta não é lida, mas volta com a marca.
+ */
+describe('esconder e reexibir o serviço repartido não move texto para o bloco vazio (PR3-R11-01)', () => {
+  const comVazio: CopyAutoral = {
+    ...original,
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Almoço executivo'] },
+      { id: 'servico-vazio', funcao: 'servico', ordem: 1, linhas: [] },
+      { id: 'servico-info', funcao: 'servico', ordem: 2, linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] },
+    ],
+  }
+  const specComVazio = { ...spec, copyAutoral: comVazio } as unknown as SpecDePeca
+  /** As camadas como o compositor as desenha: cada uma declarando o bloco e a posição que desenha. */
+  const comVinculo = (manchete: string, visivel = true) =>
+    [
+      texto('headline', 'headline', 300, manchete, { bloco: 'headline', linhas: [0] }),
+      { ...texto('servico', 'servico', 1600, 'Das 11h às 15h', { bloco: 'servico-info', linhas: [0] }), visible: visivel },
+      { ...texto('servico-2', 'servico', 1680, 'Rua Aleixo Netto, 1158', { bloco: 'servico-info', linhas: [1] }), visible: visivel },
+    ]
+
+  it('composição → esconder as duas → reexibir juntas → editar a manchete → recompor: o vazio intacto e as duas linhas no bloco do autor', async () => {
+    // 1. composição: o vazio fica vazio e calado; as duas linhas no bloco preenchido
+    const entrada = entradaDePersistencia({ spec: specComVazio, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Sexta', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: comVinculo('Almoço executivo') as unknown as Layer[], fundo: '#000', diagnostico: {}, fotoUrl: 'https://blob.test/foto.png' })
+    const daPagina = lerCopyAutoral(entrada.copyAutoral).copy!
+    expect(daPagina.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico-vazio', linhas: [] }),
+      expect.objectContaining({ id: 'servico-info', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] }),
+    ])
+    expect(daPagina.revisoes).toEqual([])
+    expect(daPagina.lacunas ?? []).toEqual([])
+
+    // 2. a equipe esconde as DUAS camadas do serviço e salva: o bloco desenhado
+    // fica sem texto (com a lacuna), e o vazio do autor continua vazio e calado
+    const escondidas = revisaoDaPaginaComCamadas(daPagina, comVinculo('Almoço executivo', false), { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(escondidas.estado).toBe('registrada')
+    expect(escondidas.blocos).toEqual(['servico-info'])
+    const ocultas = escondidas.copy!
+    expect(ocultas.blocos.filter((b) => b.funcao === 'servico').map((b) => b.linhas)).toEqual([[], []])
+    expect(ocultas.lacunas ?? []).toEqual(['o bloco "servico-info" (servico) não foi desenhado'])
+
+    // 3. reexibir AS DUAS numa escrita só: o texto volta para o bloco de onde saiu
+    const reexibidas = revisaoDaPaginaComCamadas(ocultas, comVinculo('Almoço executivo'), { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(reexibidas.estado).toBe('registrada')
+    expect(reexibidas.blocos).toEqual(['servico-info'])
+    const voltou = reexibidas.copy!
+    expect(voltou.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico-vazio', linhas: [] }),
+      expect.objectContaining({ id: 'servico-info', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] }),
+    ])
+
+    // 4. a equipe edita a manchete e a peça é recomposta
+    const editadas = comVinculo('Almoço de sexta')
+    const revisao = revisaoDaPaginaComCamadas(voltou, editadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(revisao.blocos).toEqual(['headline'])
+    banco.pagina = { id: 'p9', name: 'Sexta', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: editadas, copyAutoral: revisao.copy }
+    banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
+    banco.composta = comVinculo('Almoço de sexta')
+    await recomporPaginaDefasada({ pageId: 'p9' })
+
+    const recebida = banco.specsRecebidas.at(-1) as SpecDePeca
+    expect(recebida.blocos).toEqual([
+      { papel: 'headline', linhas: ['Almoço de sexta'] },
+      { papel: 'servico', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] },
+    ])
+    expect(banco.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.test/arte-rapida/8/p9-nova.png'])
+    const final = lerCopyAutoral(banco.pagina!.copyAutoral).copy!
+    expect(final.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico-vazio', linhas: [] }),
+      expect.objectContaining({ id: 'servico-info', linhas: ['Das 11h às 15h', 'Rua Aleixo Netto, 1158'] }),
+    ])
+  })
+
+  it('controle: SEM a marca (página composta antes de 20/09/2026) vale a reserva de sempre', () => {
+    // A reserva não distingue o vazio do autor do bloco temporariamente oculto —
+    // é a limitação declarada, e é por isso que o vínculo é gravado no desenho.
+    const semMarca = [texto('headline', 'headline', 300, 'Almoço executivo'), texto('servico', 'servico', 1600, 'Das 11h às 15h'), texto('servico-2', 'servico', 1680, 'Rua Aleixo Netto, 1158')]
+    const primeira = revisaoDaPaginaComCamadas(comVazio, semMarca, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(primeira.estado).toBe('sem-mudanca')
+  })
+})
+
+/**
+ * PR3-R11-02 (mesma revisão): com o endereço desenhado ACIMA do horário, editar
+ * AS DUAS partes no MESMO salvamento deixava todas as correspondências de texto
+ * em -1, e as vagas eram preenchidas pela ordem VISUAL — o contrato saía
+ * `[endereço novo, horário novo]`, invertido, assinado pela equipe e entregue
+ * assim à recomposição. A correção do R9-02 só valia enquanto uma das linhas
+ * continuasse igual; a marca da camada diz a posição, mude o texto ou não.
+ */
+describe('editar as DUAS partes do serviço mantém a ordem do autor (PR3-R11-02)', () => {
+  /** O arranjo inverte: o endereço no grupo do alfinete (em cima), o horário no do relógio. */
+  const invertidas = (horario: string, endereco: string) => [
+    texto('headline', 'headline', 300, 'Almoço executivo', { bloco: 'headline', linhas: [0] }),
+    texto('servico-2', 'servico', 1600, endereco, { bloco: 'servico', linhas: [1] }),
+    texto('servico', 'servico', 1680, horario, { bloco: 'servico', linhas: [0] }),
+  ]
+
+  it('horário E endereço trocados na mesma escrita: a Page, a spec recomposta e a efetiva da arte na ordem do autor', async () => {
+    const camadas = invertidas('Das 11h às 15h', 'Rua Aleixo Netto, 1158')
+    const entrada = entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono-interno' }, pasta: { id: 77, name: 'Programação' }, nome: 'Sexta', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas as unknown as Layer[], fundo: '#000', diagnostico: {}, fotoUrl: 'https://blob.test/foto.png' })
+    const daPagina = lerCopyAutoral(entrada.copyAutoral).copy!
+    expect(daPagina.blocos.find((b) => b.id === 'servico')!.linhas).toEqual(['Das 11h às 15h', 'Rua Aleixo Netto, 1158'])
+
+    const editadas = invertidas('Das 11h às 16h', 'Rua Aleixo Netto, 1200')
+    const revisao = revisaoDaPaginaComCamadas(daPagina, editadas, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(revisao.estado).toBe('registrada')
+    expect(revisao.blocos).toEqual(['servico'])
+    const contratoEditado = revisao.copy!
+    expect(contratoEditado.blocos.filter((b) => b.funcao === 'servico')).toEqual([
+      expect.objectContaining({ id: 'servico', linhas: ['Das 11h às 16h', 'Rua Aleixo Netto, 1200'] }),
+    ])
+
+    banco.pagina = { id: 'p9', name: 'Sexta', width: 1080, height: 1920, background: null, isTemplate: false, templateId: 77, updatedAt: new Date(5_000), layers: editadas, copyAutoral: contratoEditado }
+    banco.generations = [{ id: 'gen-antiga', projectId: 8, resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...entrada.fieldValues, pageId: 'p9' } }]
+    banco.composta = invertidas('Das 11h às 16h', 'Rua Aleixo Netto, 1200')
+    await recomporPaginaDefasada({ pageId: 'p9' })
+
+    const recebida = banco.specsRecebidas.at(-1) as SpecDePeca
+    expect(recebida.blocos).toEqual([
+      { papel: 'headline', linhas: ['Almoço executivo'] },
+      { papel: 'servico', linhas: ['Das 11h às 16h', 'Rua Aleixo Netto, 1200'] },
+    ])
+    const naPagina = lerCopyAutoral(banco.pagina!.copyAutoral).copy!
+    expect(naPagina.blocos.find((b) => b.id === 'servico')!.linhas).toEqual(['Das 11h às 16h', 'Rua Aleixo Netto, 1200'])
+    const naArte = copyDaArteGravada()
+    expect(lerCopyAutoral(naArte.efetiva).copy!.blocos.find((b) => b.id === 'servico')!.linhas).toEqual(['Das 11h às 16h', 'Rua Aleixo Netto, 1200'])
+  })
+
+  it('a camada que ganhou uma linha desalinha a marca e cai na reserva — declaração incompleta não reordena meio bloco', () => {
+    const comLinhaNova = [
+      texto('headline', 'headline', 300, 'Almoço executivo', { bloco: 'headline', linhas: [0] }),
+      texto('servico-2', 'servico', 1600, 'Rua Aleixo Netto, 1158', { bloco: 'servico', linhas: [1] }),
+      texto('servico', 'servico', 1680, 'Das 11h às 15h\nReserve pelo direct', { bloco: 'servico', linhas: [0] }),
+    ]
+    const r = revisaoDaPaginaComCamadas(original, comLinhaNova, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+    expect(r.estado).toBe('registrada')
+    // A reserva ancora pelas linhas IGUAIS (R9-02): as duas do autor voltam às
+    // posições delas e a acrescentada entra depois.
+    expect(r.copy!.blocos.find((b) => b.id === 'servico')!.linhas).toEqual(['Das 11h às 15h', 'Rua Aleixo Netto, 1158', 'Reserve pelo direct'])
   })
 })

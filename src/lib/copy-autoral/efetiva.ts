@@ -6,13 +6,23 @@
  * bloco, sem OCR.
  *
  * Como as camadas viram blocos:
- *  - o papel de cada camada sai de `papelDaCamada` (metadata do compositor,
- *    id ou nome); com UM bloco da função no original, ele leva TODAS as camadas
- *    dela, juntas de cima para baixo (o compositor reparte o serviço em
- *    `servico` e `servico-2`, e ele volta a ser um bloco só — PR3-R8-02); com
- *    vários, uma camada por bloco na ORDEM vertical. Quem conta aqui são os
- *    blocos COM texto: o bloco explicitamente vazio não originou camada e não
- *    consome nenhuma (PR3-R10-01);
+ *  - 🔴 o VÍNCULO DECLARADO vence tudo: a camada que o compositor desenhou
+ *    carrega, em `metadata.compositor`, o `bloco` do contrato que a originou e
+ *    as `linhas` dele que ela desenha (`vinculoDaCamada`). Ela volta para ESSE
+ *    bloco, e as linhas voltam para ESSAS posições — esconder, reexibir e
+ *    editar o texto não mudam nada disso, porque a marca é da camada. Quem
+ *    grava a marca é quem DESENHA (`montarBloco`), nunca esta leitura: deduzir
+ *    depois é o que produziu PR3-R8-02, R9-02, R10-01 e R11-01/02, um por
+ *    rodada (mesmo precedente de `spec.carrossel` → `Generation.slideOrder`);
+ *  - sem a marca (página anterior a 20/09/2026, camada criada à mão no editor,
+ *    arte de outra via) vale a RESERVA de sempre: o papel sai de
+ *    `papelDaCamada` (metadata do compositor, id ou nome); com UM bloco da
+ *    função no original, ele leva TODAS as camadas dela, juntas de cima para
+ *    baixo (o compositor reparte o serviço em `servico` e `servico-2`, e ele
+ *    volta a ser um bloco só — PR3-R8-02); com vários, uma camada por bloco na
+ *    ORDEM vertical. Quem conta aqui são os blocos COM texto: o bloco
+ *    explicitamente vazio não originou camada e não consome nenhuma
+ *    (PR3-R10-01);
  *  - `headline2` é a SEGUNDA VOZ da manchete (o compositor tira a última linha
  *    do bloco para ela): as linhas dela voltam ao bloco `headline`, e a
  *    posição vira `estilo.linhasNaVoz2` — declarada, como o contrato pede;
@@ -209,23 +219,70 @@ function linhasDaCamada(l: Layer): string[] {
 }
 
 /**
+ * O VÍNCULO que o compositor gravou na camada: o bloco do contrato que a
+ * originou e as posições (0-based) das linhas dele que ela desenha. É a única
+ * fonte de verdade sobre "de quem é esta camada" — texto igual, bloco vazio e
+ * ordem visual são reserva, e foram justamente elas que erraram em PR3-R9-02
+ * (editar as duas partes invertia a ordem), PR3-R10-01 e PR3-R11-01 (esconder e
+ * reexibir passava o texto para o bloco vazio).
+ *
+ * Marca ausente ou com forma errada é DESCARTADA em silêncio (nunca recusa):
+ * página anterior a 20/09/2026, camada criada à mão e arte de outra via seguem
+ * pela reserva. `linhas` só vale como lista de inteiros não-negativos.
+ */
+export function vinculoDaCamada(l: Layer): { bloco: string; linhas: number[] | null } | null {
+  const meta = (l.metadata as { compositor?: { bloco?: unknown; linhas?: unknown } } | undefined)?.compositor
+  const bloco = typeof meta?.bloco === 'string' && meta.bloco.length > 0 ? meta.bloco : null
+  if (!bloco) return null
+  const linhas = Array.isArray(meta?.linhas) && meta.linhas.every((n) => Number.isInteger(n) && (n as number) >= 0) ? (meta.linhas as number[]) : null
+  return { bloco, linhas }
+}
+
+/**
+ * As linhas na ordem que as camadas DECLARAM, ou `null` quando a declaração não
+ * cobre o desenho de hoje: camada sem marca, contagem que não bate (alguém
+ * acrescentou ou apagou uma linha DENTRO da camada) ou posição repetida entre
+ * camadas. Nesses casos vale a reserva — declaração incompleta não pode
+ * reordenar meio bloco.
+ */
+function ordemDeclarada(porCamada: string[][], declaradas?: Array<number[] | null>): string[] | null {
+  if (!declaradas || declaradas.length !== porCamada.length) return null
+  const postas: Array<{ linha: string; pos: number }> = []
+  const vistas = new Set<number>()
+  for (let k = 0; k < porCamada.length; k++) {
+    const pos = declaradas[k]
+    if (!pos || pos.length !== porCamada[k].length) return null
+    for (let i = 0; i < pos.length; i++) {
+      if (vistas.has(pos[i])) return null
+      vistas.add(pos[i])
+      postas.push({ linha: porCamada[k][i], pos: pos[i] })
+    }
+  }
+  return postas.sort((a, b) => a.pos - b.pos).map((o) => o.linha)
+}
+
+/**
  * As linhas de um bloco desenhado em VÁRIAS camadas, na ordem DO AUTOR.
  * Quem reordenou as partes foi o arranjo (o horário vai ao grupo do relógio, o
  * endereço ao do alfinete), não quem escreveu. Numa camada só a ordem é a da
  * camada — ali reordenar é edição.
  *
- * 🔴 Cada linha desenhada volta à POSIÇÃO AUTORAL da linha igual a ela; a que
- * mudou fica com a vaga que sobrou, na ordem visual (PR3-R9-02 da revisão do
- * Codex sobre cd98cd6d, 20/09/2026). Antes a decisão era tudo-ou-nada — mesmo
- * conjunto de linhas: ordem do autor; qualquer diferença: ordem visual —, e
- * então editar SÓ o horário num arranjo que põe o endereço acima também
- * INVERTIA as linhas do contrato, sem ninguém ter movido camada. A revisão
- * atribuía a inversão à equipe e a recomposição recebia a ordem trocada. Com
- * as mesmas linhas o resultado é idêntico ao de antes (a ordem do bloco).
+ * 🔴 O VÍNCULO DECLARADO manda: cada camada diz quais posições do bloco do
+ * autor ela desenha, e as linhas voltam para elas — tenham mudado ou não
+ * (PR3-R11-02, 20/09/2026). Sem a marca (ou com a camada ganhando/perdendo
+ * linha, que a desalinha) vale a reserva: cada linha volta à POSIÇÃO AUTORAL da
+ * linha IGUAL a ela, e a que mudou fica com a vaga que sobrou, na ordem visual
+ * (PR3-R9-02). Antes a decisão era tudo-ou-nada — mesmo conjunto de linhas:
+ * ordem do autor; qualquer diferença: ordem visual —, e então editar SÓ o
+ * horário num arranjo que põe o endereço acima também INVERTIA as linhas do
+ * contrato, sem ninguém ter movido camada; editar AS DUAS partes invertia
+ * mesmo com a reserva, porque não sobrava nenhuma linha igual para ancorar.
  */
-function linhasRepartidas(doBloco: string[], porCamada: string[][]): string[] {
+function linhasRepartidas(doBloco: string[], porCamada: string[][], declaradas?: Array<number[] | null>): string[] {
   const juntas = porCamada.flat()
   if (porCamada.length < 2) return juntas
+  const porDeclaracao = ordemDeclarada(porCamada, declaradas)
+  if (porDeclaracao) return porDeclaracao
   const casadas = new Set<number>()
   const posicoes = juntas.map((linha) => {
     const i = doBloco.findIndex((b, j) => !casadas.has(j) && b === linha)
@@ -336,22 +393,45 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas)
   lacunas.push(...extras.ambiguos)
   for (const c of extras.vinculos.values()) usadas.add(c)
-  // Quem DISPUTA as camadas de uma função são os blocos COM texto. Bloco
-  // explicitamente vazio (`linhas: []`) é "esta camada fica sem texto": a
-  // conversão para a spec o OMITE (`blocosParaOCompositor`), então ele nunca
-  // originou camada nenhuma e não pode consumir uma — senão o texto do bloco
-  // preenchido migrava de id sem ninguém ter editado nada, a página ficava com
-  // dois serviços e a recomposição seguinte morria em `papel repetido`
-  // (PR3-R10-01 da revisão do Codex sobre 89930e44, 20/09/2026).
-  // Quando NENHUM bloco da função tem texto, os vazios voltam a disputar: aí a
-  // camada com texto é a de um bloco que alguém preencheu no editor, e
-  // mandá-la para um `extra-…` trocaria o id do mesmo jeito.
-  const cheiosPorFuncao = new Map<FuncaoDoBloco, number>()
-  const vaziosPorFuncao = new Map<FuncaoDoBloco, number>()
-  for (const b of original.blocos) {
-    const conta = b.linhas.length > 0 ? cheiosPorFuncao : vaziosPorFuncao
-    conta.set(b.funcao, (conta.get(b.funcao) ?? 0) + 1)
+  // 🔴 O vínculo que o COMPOSITOR gravou na camada, antes de qualquer reserva:
+  // a camada volta para o bloco que ela declara, e fica RESERVADA para ele —
+  // nenhum outro bloco a alcança, venha antes ou depois na ordem. Declaração de
+  // bloco que não está no contrato, ou de função diferente da do papel
+  // desenhado, é descartada (a camada segue pela reserva).
+  const porId = new Map(original.blocos.map((b) => [b.id, b]))
+  const declaradasDoBloco = new Map<string, Layer[]>()
+  for (const [papel, lista] of porFuncao) {
+    for (const c of lista) {
+      if (usadas.has(c)) continue
+      const v = vinculoDaCamada(c)
+      if (!v || porId.get(v.bloco)?.funcao !== papel) continue
+      declaradasDoBloco.set(v.bloco, [...(declaradasDoBloco.get(v.bloco) ?? []), c])
+      usadas.add(c)
+    }
   }
+  // Quem DISPUTA as camadas SEM vínculo de uma função são os blocos COM texto e
+  // SEM camada declarada. Bloco explicitamente vazio (`linhas: []`) é "esta
+  // camada fica sem texto": a conversão para a spec o OMITE
+  // (`blocosParaOCompositor`), então ele nunca originou camada nenhuma e não
+  // pode consumir uma — senão o texto do bloco preenchido migrava de id sem
+  // ninguém ter editado nada, a página ficava com dois serviços e a recomposição
+  // seguinte morria em `papel repetido` (PR3-R10-01, 20/09/2026).
+  // Quando NENHUM bloco da função tem texto nem camada declarada, os vazios
+  // voltam a disputar: aí a camada com texto é a de um bloco que alguém
+  // preencheu no editor, e mandá-la para um `extra-…` trocaria o id do mesmo
+  // jeito.
+  const porFuncaoOnde = (filtro: (b: BlocoAutoral) => boolean) => {
+    const conta = new Map<FuncaoDoBloco, number>()
+    for (const b of original.blocos) if (filtro(b)) conta.set(b.funcao, (conta.get(b.funcao) ?? 0) + 1)
+    return conta
+  }
+  const temDeclarada = (b: BlocoAutoral) => (declaradasDoBloco.get(b.id)?.length ?? 0) > 0
+  // O bloco que o desenho SERVE — por texto no original ou por camada
+  // declarada. Enquanto houver um irmão servido, o bloco vazio fica vazio e
+  // calado: a arte mostra o que o autor pediu (nada), e a lacuna seria falsa.
+  const servidosPorFuncao = porFuncaoOnde((b) => b.linhas.length > 0 || temDeclarada(b))
+  const cheiosPorFuncao = porFuncaoOnde((b) => b.linhas.length > 0 && !temDeclarada(b))
+  const vaziosPorFuncao = porFuncaoOnde((b) => b.linhas.length === 0 && !temDeclarada(b))
   const blocos: BlocoAutoral[] = blocosEmOrdem(original).map((b) => {
     if (b.funcao === 'livre') {
       // Bloco livre casa pelo ID da camada (a camada extra da F3 nasce com o id
@@ -365,23 +445,24 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
       }
       return { ...b, linhas: linhasDaCamada(camada) }
     }
+    const declaradas = declaradasDoBloco.get(b.id) ?? []
     const cheios = cheiosPorFuncao.get(b.funcao) ?? 0
-    // Bloco vazio de propósito com irmão preenchido na mesma função: fica
-    // vazio, sem consumir camada — e sem lacuna, porque a arte mostra
-    // exatamente o que o autor pediu (nada).
-    if (b.linhas.length === 0 && cheios > 0) return comSegundaVoz({ ...b, linhas: [] }, [])
+    // Bloco vazio de propósito com irmão SERVIDO na mesma função: fica vazio,
+    // sem consumir camada — e sem lacuna, porque a arte mostra exatamente o que
+    // o autor pediu (nada).
+    if (declaradas.length === 0 && b.linhas.length === 0 && (servidosPorFuncao.get(b.funcao) ?? 0) > 0) return comSegundaVoz({ ...b, linhas: [] }, [])
     const livres = (porFuncao.get(b.funcao) ?? []).filter((c) => !usadas.has(c))
     // Bloco ÚNICO da função leva TODAS as camadas dela (PR3-R8-02): o compositor
     // reparte um bloco em `servico` e `servico-2` (um texto por linha do arranjo),
     // e a 2ª virava outro bloco `servico` — a recomposição morria em "papel repetido".
     const concorrentes = cheios > 0 ? cheios : (vaziosPorFuncao.get(b.funcao) ?? 0)
-    const camadas = concorrentes === 1 ? livres : livres.slice(0, 1)
+    const camadas = declaradas.length > 0 ? declaradas : concorrentes === 1 ? livres : livres.slice(0, 1)
     if (camadas.length === 0) {
       lacunas.push(`o bloco "${b.id}" (${b.funcao}) não foi desenhado`)
       return comSegundaVoz({ ...b, linhas: [] }, [])
     }
     for (const c of camadas) usadas.add(c)
-    let linhas = linhasRepartidas(b.linhas, camadas.map(linhasDaCamada))
+    let linhas = linhasRepartidas(b.linhas, camadas.map(linhasDaCamada), camadas.map((c) => vinculoDaCamada(c)?.linhas ?? null))
     let naVoz2: number[] = []
     if (b.funcao === 'headline') {
       const segunda = voz2.find((c) => !usadas.has(c))
