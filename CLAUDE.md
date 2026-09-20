@@ -5253,11 +5253,32 @@ gerar o criativo, apagar o post e agendar o criativo.
   página — grava `slotValues` com `_copiaDaPagina: true`. `slotValuesParaRender`
   devolve nada para post marcado, e `renderStoryImage` desenha a página como
   está: sem aplicar slot e sem refluir, então o espaçamento acertado à mão
-  sobrevive. Sem a marca vale a regra antiga (via de template: página-modelo
-  com a copy de cada post em `slotValues`). O remendo do PATCH saiu.
+  sobrevive. O remendo do PATCH saiu.
+- 🔴 **A MARCA NÃO BASTA — quem decide é o que a página É (20/09/2026).** Até
+  aqui, "sem a marca vale a regra antiga" significava que um `true` esquecido
+  em QUALQUER um dos seis escritores de `slotValues` reintroduzia o defeito
+  inteiro, em silêncio. E aconteceu: a Real Gelateria editou o feed do Dia
+  Nacional do Sorvete (template 466), salvou, a invalidação funcionou, o cron
+  re-renderizou — e a arte saiu com a manchete anterior ("Amanhã, Seu Gelato /
+  Vem em Dobro"), porque aquele post estava sem a marca. **Qual escritor a
+  perdeu continua sem explicação**: a leva inteira da semana da Real (12 posts
+  de 15/09) saiu sem marca, com o código de marcação em produção desde 10/09 e
+  marcando em 15/09 de manhã e em 16/09. Varredura da carteira: 35 posts com
+  página PRÓPRIA e sem marca, 7 deles já com a copy divergindo da página.
+  Hoje `slotValuesParaRender(slotValues, paginaEhModelo)` decide pelo que a
+  página é: **modelo (`isTemplate`) → os slots vencem** (layout compartilhado,
+  N posts, cada um com a sua copy); **página de conteúdo → a página manda**,
+  marca ou não. Confere com os dados: dos 90 posts com página e `slotValues`,
+  os 9 da via de template são todos `isTemplate` (abril/2026, `plan-week`) e
+  os 81 da via de conteúdo, nenhum. `applySlotValues` só troca o conteúdo de
+  camada que já existe, então página sem camada de texto renderiza igual dos
+  dois lados. A marca continua valendo e é o sinal mais forte (recusa os slots
+  até em página modelo); o que ela deixou de ser é obrigatória.
 - **A cópia acompanha o que foi DESENHADO**: `renderPostArt` regrava o
-  `slotValues` do post marcado com `RenderStoryResult.copyDaPagina`. É o que o
-  corpus e a conferência de texto da melhoria leem.
+  `slotValues` com `RenderStoryResult.copyDaPagina` — e quem decide é o
+  RENDER (`aplicouSlots`), não a marca, pelo mesmo motivo; sai já MARCADA, de
+  modo que o re-render cura a marca que faltou, sem backfill. É o que o corpus
+  e a conferência de texto da melhoria leem.
 - 🔴 **Rich text é copy.** `textosDaPagina` e `copyDosPapeis` liam só
   `type: 'text'`: converter uma linha fazia o bloco sumir da copy — do corpus,
   da conferência e da recomposição, que refaria o slide sem ele e reescreveria
