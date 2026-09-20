@@ -469,7 +469,13 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     // Bloco vazio de propósito com irmão SERVIDO na mesma função: fica vazio,
     // sem consumir camada — e sem lacuna, porque a arte mostra exatamente o que
     // o autor pediu (nada).
-    if (declaradas.length === 0 && b.linhas.length === 0 && (servidosPorFuncao.get(b.funcao) ?? 0) > 0) return comSegundaVoz({ ...b, linhas: [] }, [])
+    // 🔴 A saída olha QUALQUER camada declarada do bloco (`temDeclarada`), nunca
+    // só a principal: ocultar as duas vozes e reexibir SÓ a `headline2` deixava
+    // o bloco vazio aqui — antes de a segunda voz ser incorporada — e a camada
+    // já estava reservada, então o texto sumia do contrato inteiro enquanto a
+    // arte o mostrava (PR3-R13-01, revisão FINAL do Codex sobre 32f2256e,
+    // 20/09/2026).
+    if (!temDeclarada(b) && b.linhas.length === 0 && (servidosPorFuncao.get(b.funcao) ?? 0) > 0) return comSegundaVoz({ ...b, linhas: [] }, [])
     const livres = (porFuncao.get(b.funcao) ?? []).filter((c) => !usadas.has(c))
     // Bloco ÚNICO da função leva TODAS as camadas dela (PR3-R8-02): o compositor
     // reparte um bloco em `servico` e `servico-2` (um texto por linha do arranjo),

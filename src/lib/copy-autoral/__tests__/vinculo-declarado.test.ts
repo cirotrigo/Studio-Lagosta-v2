@@ -31,6 +31,7 @@
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
 import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, type CopyAutoral } from '..'
+import { registroDaCopyDaArte } from '../registro-da-arte'
 
 const EM = '2026-09-20T12:00:00.000Z'
 
@@ -88,6 +89,87 @@ describe('o vínculo declarado vale para TODO caminho de camada (PR3-R12-01)', (
   it('a leitura da peça inteira não mexe em nada: os mesmos blocos do autor', () => {
     expect(resumo(base)).toEqual(resumo(original))
     expect(copyEfetivaDasCamadas(original, TODAS, { superficie: 'compositor', em: EM }).mudancas).toEqual([])
+  })
+
+  /**
+   * 🔴 A RESTAURAÇÃO PARCIAL entre estados SALVOS (PR3-R13-01). A invariante de
+   * cima sempre volta direto para TODAS as camadas visíveis, e por isso não
+   * enxergava o caso em que uma parte do que foi escondido volta e o resto
+   * continua fora: lida a partir do contrato JÁ ESVAZIADO, a camada que volta
+   * era reservada pelo vínculo e o bloco saía vazio antes de ela ser
+   * incorporada — a arte mostrava o texto e o contrato dizia que não havia.
+   *
+   * Duas exigências, em toda transição:
+   *  1. **o contrato descreve EXATAMENTE o que está visível** — as linhas dos
+   *     blocos, juntas, são as linhas das camadas visíveis, juntas;
+   *  2. **o caminho não importa**: ler encadeado (base → esconder A → reexibir
+   *     B) dá o MESMO contrato que ler o estado final direto da base. É o que
+   *     garante que nenhum estado intermediário deixa resíduo.
+   */
+  it('INVARIANTE: reexibir PARTE do que foi escondido — o contrato descreve o visível, e o caminho não importa', () => {
+    const falhas: Array<Record<string, unknown>> = []
+    const visiveis = (fora: number) => PECA.filter((_, i) => !((fora >> i) & 1))
+    const comEscondidas = (fora: number) => [...PECA.map((p, i) => ((fora >> i) & 1 ? ({ ...p.camada, visible: false } as Layer) : p.camada)), ICONE]
+    const linhasVisiveis = (fora: number) => visiveis(fora).flatMap((p) => String(p.camada.content ?? '').split('\n')).sort()
+    const linhasDoContrato = (c: CopyAutoral) => c.blocos.flatMap((b) => b.linhas).sort()
+    const nomes = (fora: number) => PECA.filter((_, i) => (fora >> i) & 1).map((p) => p.nome)
+
+    for (let a = 1; a < 1 << PECA.length; a++) {
+      const estado1 = ler(base, comEscondidas(a))
+      // B = o que VOLTA (subconjunto próprio e não vazio de A); o resto de A
+      // continua escondido. `b !== a` tira o "voltou tudo", que é a invariante
+      // anterior, e `b !== 0` tira o "não voltou nada", que é o mesmo estado.
+      for (let b = a & (a - 1); b > 0; b = (b - 1) & a) {
+        const fora = a & ~b
+        const encadeado = ler(estado1, comEscondidas(fora))
+        const direto = ler(base, comEscondidas(fora))
+        const descreveOVisivel = JSON.stringify(linhasDoContrato(encadeado)) === JSON.stringify(linhasVisiveis(fora))
+        const mesmoCaminho = JSON.stringify(resumo(encadeado)) === JSON.stringify(resumo(direto))
+        const idsIguais = JSON.stringify(encadeado.blocos.map((x) => x.id)) === JSON.stringify(base.blocos.map((x) => x.id))
+        if (!descreveOVisivel || !mesmoCaminho || !idsIguais) {
+          falhas.push({
+            escondi: nomes(a),
+            reexibi: nomes(a & ~fora),
+            aindaEscondidas: nomes(fora),
+            contrato: linhasDoContrato(encadeado),
+            visivel: linhasVisiveis(fora),
+            ...(mesmoCaminho ? {} : { direto: resumo(direto), encadeado: resumo(encadeado) }),
+          })
+        }
+      }
+    }
+    // 602 transições (todo A não vazio × todo B próprio não vazio dele): a
+    // varredura exaustiva É a cobertura de classe, e roda em milissegundos.
+    expect(falhas).toEqual([])
+  })
+
+  it('o caso que abriu o R13-01, por extenso: esconder as DUAS vozes e reexibir só a segunda', () => {
+    const soAVoz1 = TODAS.map((c) => (c.id === 'headline' || c.id === 'headline2' ? ({ ...c, visible: false } as Layer) : c))
+    const soAVoz2 = TODAS.map((c) => (c.id === 'headline' ? ({ ...c, visible: false } as Layer) : c))
+    // 1. as duas escondidas: a manchete fica vazia, com a lacuna
+    const vazia = ler(base, soAVoz1)
+    expect(vazia.blocos.find((x) => x.id === 'manchete')!.linhas).toEqual([])
+    // 2. volta SÓ a segunda voz: a manchete é a linha que está na arte, na voz 2
+    const r = copyEfetivaDasCamadas(vazia, soAVoz2, { superficie: 'editor', em: EM })
+    expect(r.efetiva.blocos.find((x) => x.id === 'manchete')).toEqual(
+      expect.objectContaining({ id: 'manchete', linhas: ['em dobro'], estilo: { linhasNaVoz2: [0] } }),
+    )
+    expect(r.mudancas.map((m) => m.id)).toEqual(['manchete'])
+    expect(r.efetiva.blocos.some((x) => x.id.startsWith('extra-'))).toBe(false)
+    // 3. releitura estável: nada muda de novo
+    expect(copyEfetivaDasCamadas(r.efetiva, soAVoz2, { superficie: 'editor', em: EM }).mudancas).toEqual([])
+
+    // 4. e o registro da copy do PNG re-renderizado (a arte que a recomposição
+    // grava) diz o mesmo: a imagem nova mostra a segunda voz. Com o contrato
+    // VAZIO como base, era ele que declarava o bloco sem texto.
+    const { registro } = registroDaCopyDaArte({
+      anterior: { original, efetiva: original, comparavel: true },
+      contratoDaPagina: vazia,
+      camadas: soAVoz2,
+      superficie: 'recomposicao',
+    })
+    expect(registro!.efetiva!.blocos.find((x) => x.id === 'manchete')!.linhas).toEqual(['em dobro'])
+    expect(registro!.comparavel).toBe(true)
   })
 
   it('INVARIANTE: esconder QUALQUER subconjunto e reexibir devolve o contrato ao que era, sem bloco a mais', () => {
