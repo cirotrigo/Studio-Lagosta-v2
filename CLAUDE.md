@@ -6688,10 +6688,19 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   registrada (sem página, sem snapshot, não re-renderizada) não dispara nenhuma das duas invalidações do PR
   (`reRenderizada` e `post-schedule`) — e `trocar-arte-do-post` PRESERVA os slots nesse caso, por contrato ("null =
   não apaga", testado). O fallback devolvia "Oferta A" como `copy-do-post`/`copy-registrada` pela mídia B, com uma
-  ressalva que só falava em leitura parcial. Hoje a prova do vínculo é a IGUALDADE com a copy registrada da arte
-  atual (`copyDoPostEDaArteAtual`, comparando os textos NÃO VAZIOS pelos dois lados — é assim que a troca os deriva);
-  sem prova, `indisponiveis` dizendo que o texto é de OUTRA arte. 🔴 Inferir pelo caminho da escrita não serve: são
-  vários (troca pela galeria, melhoria com IA) e nenhum deixa marca.
+  ressalva que só falava em leitura parcial. Hoje o que derruba a cópia é a EVIDÊNCIA DE TROCA
+  (`midiaEDeOutraArte`): existe arte casada pela URL, ela está íntegra, e a copy registrada dela não é a do post
+  (comparando os textos NÃO VAZIOS pelos dois lados — é assim que a troca os deriva); sem evidência,
+  `indisponiveis` não; com ela, `indisponiveis` dizendo que o texto é de OUTRA arte. 🔴 Inferir pelo caminho da
+  escrita não serve: são vários (troca pela galeria, melhoria com IA) e nenhum deixa marca.
+  🔴 **O critério é EVIDÊNCIA DE TROCA, nunca "consegui conferir" — e essa distinção é o conserto de uma primeira
+  versão que reprovou na prova de integração** (prova-dev-40 sobre 5058f94a, R12 e R13 em vermelho, 20/09/2026).
+  Exigir a igualdade derrubava junto os dois casos em que NÃO há testemunha da mídia: sem arte casada pela URL
+  (R12 — o `generationId` do post é de outra versão) e com a arte apenas RE-RENDERIZADA (R13 — é a MESMA peça
+  refeita, e `renderPostArt` regrava a cópia a cada render). Nos dois, a cópia registrada no post é o registro da
+  entrega daquela mídia e continua valendo, PARCIAL, como valia. Ausência de prova não é prova: só a arte
+  PRESENTE e íntegra cuja copy diverge diz que houve troca. Testes por guarda em `textos-da-peca.test.ts`
+  (describe R53) — cada uma desfeita por mutação derruba a sua.
   🔴 **A cópia MARCADA (`_copiaDaPagina`) entra na invalidação só por R53**, nunca pelas outras: em R37/R42/R50 a
   página do post ainda renderiza a mídia e `renderPostArt` regrava a cópia a cada render — num post `NOT_NEEDED` isso
   não acontece. Gatear as quatro portas com o `copyDoPostNaoAfirmavel` inteiro derrubaria as decisões testadas de

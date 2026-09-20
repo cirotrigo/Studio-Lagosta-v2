@@ -640,3 +640,34 @@ describe('R51 — página do post que ficou só como vínculo histórico', () =>
     expect(r.indisponiveis).toMatch(/não pôde ser carregada/)
   })
 })
+
+describe('R53 — a cópia do post cai por EVIDÊNCIA de troca, nunca por falta de conferência', () => {
+  const pagina = [{ id: 'l1', name: 'headline', type: 'text', content: 'Texto da página A' }]
+  const B = 'https://blob/B.png'
+  // A forma que a troca pela galeria deixa: post NOT_NEEDED, página histórica, cópia da entrega no post.
+  const post = { ...viva, pageId: 'pA', renderStatus: 'NOT_NEEDED', mediaUrls: [B], status: 'POSTED', slotValues: { headline: 'Oferta A', _copiaDaPagina: true } }
+
+  it('arte PRESENTE e íntegra cuja copy registrada não é a do post: é OUTRA arte — nada a afirmar', () => {
+    const r = textosDaPeca(post, { camadas: pagina, slides: [{ url: B, arte: { source: 'geracao-ia' } }] })
+    expect(r.textos).toEqual([])
+    expect(r.origem).toBeUndefined()
+    expect(r.indisponiveis).toMatch(/de OUTRA arte/)
+  })
+
+  it('SEM arte casada para a mídia (R12): a cópia registrada é o registro da entrega e continua valendo, PARCIAL', () => {
+    const r = textosDaPeca(post, { camadas: pagina, slides: [{ url: B, arte: null }] })
+    expect(r).toEqual({ textos: ['Oferta A'], origem: 'copy-registrada-na-entrega', parcial: true, nota: expect.any(String) })
+  })
+
+  it('arte RE-RENDERIZADA (R13): é a MESMA peça refeita, não uma troca — a cópia registrada vale, PARCIAL', () => {
+    const r = textosDaPeca(post, { camadas: pagina, slides: [{ url: B, arte: { reRenderizada: true, layersSnapshot: pagina } }] })
+    expect(r).toEqual({ textos: ['Oferta A'], origem: 'copy-registrada-na-entrega', parcial: true, nota: expect.any(String) })
+  })
+
+  it('arte presente cuja copy registrada CONFERE com a do post: o vínculo está provado', () => {
+    const arte = { source: 'geracao-ia', slotValues: { headline: 'Oferta A' } }
+    const r = textosDaPeca(post, { camadas: pagina, slides: [{ url: B, arte }] })
+    expect(r.textos).toEqual(['Oferta A'])
+    expect(r.indisponiveis).toBeUndefined()
+  })
+})

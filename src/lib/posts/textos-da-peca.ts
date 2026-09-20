@@ -28,10 +28,11 @@
  *    valores chegaram à mídia, em qualquer estado — a estrutura atual do
  *    modelo pode ser outra (R46, R47). Sem registro, nada se afirma, nem a
  *    copy que o post herdou dessa arte;
- *  - e a cópia textual que o post carrega só vale pela mídia quando ela é
- *    COMPROVADAMENTE daquela arte: com a página como vínculo histórico
- *    (R51/R52) a mídia veio de fora, e o que está no post foi escrito para a
- *    arte anterior (R53).
+ *  - e a cópia textual que o post carrega cai quando há EVIDÊNCIA de que a
+ *    mídia é outra arte: com a página só como vínculo histórico (R51/R52) e
+ *    uma arte casada, íntegra, cuja copy registrada não é a do post, o que
+ *    está ali foi escrito para a arte anterior (R53). Sem arte casada, ou com
+ *    a arte apenas re-renderizada, não há troca a declarar.
  *
  * O texto de camada volta INTEIRO e na multiplicidade em que existe: uma URL
  * numa camada de texto é texto da peça, duas camadas com a mesma frase são
@@ -296,22 +297,25 @@ function textosNaoVazios(slotValues: unknown): Record<string, string> | null {
 }
 
 /**
- * 🔴 R53: a cópia textual que o post carrega descreve a MÍDIA ATUAL?
+ * 🔴 R53: há EVIDÊNCIA de que a mídia atual é OUTRA arte?
  *
- * Com a página só como VÍNCULO HISTÓRICO (R51/R52) a mídia é uma arte de FORA,
- * e a cópia do post foi escrita para a arte ANTERIOR: a troca pela galeria só a
- * REGRAVA quando a arte nova carrega copy registrada e PRESERVA o que estava lá
- * quando não carrega (`trocar-arte-do-post`), e a melhoria com IA nem a toca.
+ * Com a página só como VÍNCULO HISTÓRICO (R51/R52) a mídia pode ter vindo de
+ * FORA: a troca pela galeria REGRAVA a cópia do post quando a arte nova carrega
+ * copy registrada e PRESERVA o que estava lá quando não carrega
+ * (`trocar-arte-do-post`), e a melhoria com IA nem a toca — então o texto que
+ * ficou no post descreve a arte ANTERIOR.
  *
- * O que prova o vínculo é a IGUALDADE com a copy registrada da arte atual —
- * inferir pelo caminho da escrita não serve, porque são vários e nenhum deixa
- * marca. Sem prova, o texto é de OUTRA arte: nada a afirmar.
+ * O que prova a troca é a arte casada pela URL EXISTIR, estar íntegra e a copy
+ * registrada dela NÃO ser a do post; inferir pelo caminho da escrita não serve,
+ * porque são vários e nenhum deixa marca. Ausência de prova não é prova: sem
+ * arte casada (a Generation sumiu, a URL não bate) e com a arte apenas
+ * RE-RENDERIZADA — que é a MESMA peça, e cujo render regrava a cópia — não há
+ * troca a declarar, e a cópia do post continua valendo como sempre valeu.
  */
-function copyDoPostEDaArteAtual(slotValuesDoPost: unknown, arte?: SlideDaPeca['arte']): boolean {
+function midiaEDeOutraArte(slotValuesDoPost: unknown, arte?: SlideDaPeca['arte']): boolean {
   if (!arte) return false
-  // A arte RE-RENDERIZADA só afirma a própria copy com o marcador da regravação (R37/R38/R42).
-  if (arte.reRenderizada === true && arte.copyVisualRegravada !== true) return false
-  return copyIgual(textosNaoVazios(slotValuesDoPost), textosNaoVazios(arte.slotValues))
+  if (arte.reRenderizada === true) return false
+  return !copyIgual(textosNaoVazios(slotValuesDoPost), textosNaoVazios(arte.slotValues))
 }
 
 function textosPorSlide(slides: SlideDaPeca[], entregue: boolean): TextosDeSlide[] {
@@ -539,11 +543,18 @@ export function textosDaPeca(post: PecaParaTextos, fontes: FontesDaPeca = {}): T
     'a arte desta peça foi desenhada do modelo com a copy do post por cima, e o registro das camadas que o render usou falta ou não resolve o texto da mídia: a copy gravada no post é o registro NÃO validado do que foi pedido (o id da camada vence o nome, e um valor dela pode não ter sido aplicado) — nada a afirmar sobre a mídia.'
   /**
    * 🔴 R53 (revisão FINAL sobre f96820bf, 20/09/2026): a mídia desta peça não vem do render da página do post — ela
-   * ficou só como VÍNCULO HISTÓRICO (R51/R52) — e a copy gravada no post não confere com a copy registrada da arte
-   * atual. Trocar a arte pela galeria por uma arte SEM copy registrada preserva o que estava no post, e o fallback
-   * devolvia o texto da arte ANTERIOR como se fosse o desta mídia, com uma ressalva que só falava em leitura parcial.
+   * ficou só como VÍNCULO HISTÓRICO (R51/R52) — e a arte casada pela URL PROVA que a mídia é outra (existe, está
+   * íntegra, e a copy registrada dela não é a do post). Trocar a arte pela galeria por uma arte SEM copy registrada
+   * preserva o que estava no post, e o fallback devolvia o texto da arte ANTERIOR como se fosse o desta mídia, com
+   * uma ressalva que só falava em leitura parcial.
+   *
+   * 🔴 Sem arte casada (R12: a Generation vinculada não é a da mídia) e com a arte apenas RE-RENDERIZADA (R13: a
+   *    MESMA peça, refeita) NÃO há prova de troca — e a cópia registrada no post é o registro da entrega daquela
+   *    mídia, que `renderPostArt` mantém em dia. Exigir a conferência nesses dois casos derrubava a única descrição
+   *    que existe da mídia (prova de integração, prova-dev-40). O critério é EVIDÊNCIA DE TROCA, nunca "consegui
+   *    conferir".
    */
-  const copyHerdadaDeOutraArte = paginaHistorica && !copyDoPostEDaArteAtual(sv, arteUnica)
+  const copyHerdadaDeOutraArte = paginaHistorica && midiaEDeOutraArte(sv, arteUnica)
   const NOTA_R53 =
     'a mídia desta peça não é o render da página do post (ela ficou só como vínculo histórico) e a copy gravada no post não confere com a copy registrada da arte atual: esse texto é de OUTRA arte — nada a afirmar sobre esta mídia.'
   const copyDoPostNaoAfirmavel = copyHerdadaInvalidada || copyHerdadaDeModelo || copyHerdadaDeOutraArte
