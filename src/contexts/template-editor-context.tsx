@@ -6,6 +6,7 @@ import type Konva from 'konva'
 import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradiente-suave'
+import { camadaClonada } from '@/lib/compositor/marca-do-compositor'
 import { createId } from '@/lib/id'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
@@ -449,16 +450,17 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (id: string) => {
       const source = design.layers.find((layer) => layer.id === id)
       if (!source) return
-      const newLayer: Layer = {
-        ...source,
+      // A cópia não é a camada do compositor: `camadaClonada` solta a marca
+      // (`metadata.compositor`), senão o texto novo entraria no bloco autoral
+      // da original (PR3-R14-01).
+      const newLayer: Layer = camadaClonada(source, {
         id: createId(),
         name: `${source.name} Copy`,
         position: {
           x: (source.position?.x ?? 0) + 16,
           y: (source.position?.y ?? 0) + 16,
         },
-        locked: false,
-      }
+      })
       addLayer(newLayer)
     },
     [addLayer, design.layers],
@@ -545,18 +547,16 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           return JSON.parse(JSON.stringify(layer)) as Layer
         }
       })()
-      const newId = createId()
-      return {
-        ...cloned,
-        id: newId,
+      // Colar é clonar: a marca do compositor fica com a original (PR3-R14-01).
+      return camadaClonada(cloned, {
+        id: createId(),
         name: `${cloned.name ?? cloned.type} Copy`,
-        locked: false,
         order: 0,
         position: {
           x: Math.round((cloned.position?.x ?? 0) + 24 + index * 12),
           y: Math.round((cloned.position?.y ?? 0) + 24 + index * 12),
         },
-      }
+      })
     })
 
     applyDesign((prev) => {

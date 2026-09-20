@@ -30,8 +30,9 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { Layer } from '@/types/template'
-import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, type CopyAutoral } from '..'
+import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, renomearExtrasDuplicados, type CopyAutoral } from '..'
 import { registroDaCopyDaArte } from '../registro-da-arte'
+import { camadaClonada } from '@/lib/compositor/marca-do-compositor'
 
 const EM = '2026-09-20T12:00:00.000Z'
 
@@ -224,6 +225,87 @@ describe('o vínculo declarado vale para TODO caminho de camada (PR3-R12-01)', (
     expect(r.efetiva.blocos.find((b) => b.id === 'manchete')).toEqual(
       expect.objectContaining({ linhas: ['Milk-shake', 'em dobro'], estilo: { linhasNaVoz2: [1] } }),
     )
+  })
+
+  /**
+   * 🔴 O EIXO DA CLONAGEM (PR3-R14-01). As 602 transições acima variam
+   * VISIBILIDADE — nenhuma COPIA camada, e o vínculo declarado criou
+   * justamente esse perímetro: todo gesto que duplica uma camada tem de dizer
+   * se a marca viaja junto. Duplicar e colar preservavam `metadata.compositor`
+   * inteiro, então a cópia editada entrava no bloco do AUTOR (`apoio.linhas`
+   * virava `['Sexta', 'Domingo']`) e nenhum bloco livre nascia.
+   *
+   * O eixo é o produto GESTO × CAMADA DE ORIGEM: os dois caminhos de clonagem
+   * do editor (duplicar, colar — as identidades que cada um monta) contra uma
+   * camada de cada classe da peça (voz 1, voz 2, rich text, as duas partes do
+   * serviço repartido e a livre sem marca). Não cruzo com o eixo de
+   * visibilidade: a pergunta aqui é de IDENTIDADE (de quem é o texto da
+   * cópia), e ela não muda com o que está escondido — o que muda é a reserva,
+   * já exaustiva no outro eixo. Fica um caso de cruzamento, que é o único com
+   * pergunta nova: com a ORIGINAL escondida, o bloco dela é que poderia
+   * adotar a cópia.
+   */
+  it('INVARIANTE: clonar uma camada e editar a cópia não mexe no bloco do autor', () => {
+    const falhas: Array<Record<string, unknown>> = []
+    const gestos = [
+      { nome: 'duplicar', ident: (o: Layer) => ({ id: `dup-${o.id}`, name: `${o.name} Copy`, position: { x: o.position.x + 16, y: o.position.y + 16 } }) },
+      { nome: 'colar', ident: (o: Layer) => ({ id: `col-${o.id}`, name: `${o.name} Copy`, order: 0, position: { x: o.position.x + 24, y: o.position.y + 24 } }) },
+    ]
+    for (const gesto of gestos) {
+      for (const p of PECA) {
+        const copia = { ...camadaClonada(p.camada, gesto.ident(p.camada)), content: 'Texto da cópia' } as Layer
+        const r = copyEfetivaDasCamadas(base, [...TODAS, copia], { superficie: 'editor', em: EM })
+        const novos = r.efetiva.blocos.filter((b) => !base.blocos.some((x) => x.id === b.id))
+        const doAutorIntacto = JSON.stringify(resumo(r.efetiva).slice(0, base.blocos.length)) === JSON.stringify(resumo(base))
+        const umBlocoLivreNovo = novos.length === 1 && novos[0].funcao === 'livre' && JSON.stringify(novos[0].linhas) === JSON.stringify(['Texto da cópia'])
+        const soAAdicao = JSON.stringify(r.mudancas.map((m) => m.id)) === JSON.stringify(novos.map((b) => b.id))
+        const estavel = copyEfetivaDasCamadas(r.efetiva, [...TODAS, copia], { superficie: 'editor', em: EM }).mudancas.length === 0
+        if (!doAutorIntacto || !umBlocoLivreNovo || !soAAdicao || !estavel) {
+          falhas.push({ gesto: gesto.nome, origem: p.nome, doAutor: resumo(r.efetiva).slice(0, base.blocos.length), novos, mudancas: r.mudancas.map((m) => m.id), estavel })
+        }
+      }
+    }
+    expect(falhas).toEqual([])
+  })
+
+  it('a cópia não adota o bloco da original nem quando a original está ESCONDIDA', () => {
+    const apoio = PECA[2].camada
+    const copia = { ...camadaClonada(apoio, { id: 'dup-apoio', name: 'apoio Copy', position: { x: 116, y: 416 } }), content: 'Domingo é dia' } as Layer
+    const semOriginal = [...TODAS.map((c) => (c.id === apoio.id ? ({ ...c, visible: false } as Layer) : c)), copia]
+    const r = copyEfetivaDasCamadas(base, semOriginal, { superficie: 'editor', em: EM })
+    // O bloco do autor fica VAZIO (a camada dele saiu da arte) e a cópia é um
+    // bloco livre novo — nunca o texto da cópia ocupando a vaga do autor.
+    expect(r.efetiva.blocos.find((b) => b.id === 'apoio-da-peca')!.linhas).toEqual([])
+    expect(r.efetiva.blocos.filter((b) => b.id.startsWith('extra-')).map((b) => ({ funcao: b.funcao, linhas: b.linhas }))).toEqual([
+      { funcao: 'livre', linhas: ['Domingo é dia'] },
+    ])
+  })
+
+  it('o gesto solta SÓ a marca do compositor: o resto do metadata da camada fica', () => {
+    const origem = { ...PECA[1].camada, metadata: { ...PECA[1].camada.metadata, groupId: 'g1', presetId: 'combo-7' } } as Layer
+    const copia = camadaClonada(origem, { id: 'dup-x', name: 'x Copy', position: { x: 0, y: 0 } })
+    expect(copia.metadata).toEqual({ groupId: 'g1', presetId: 'combo-7' })
+    expect(copia.locked).toBe(false)
+    // Camada sem marca nenhuma passa inteira (só a identidade muda).
+    const semMarca = camadaClonada({ ...PECA[5].camada, metadata: undefined } as Layer, { id: 'dup-y', name: 'y Copy', position: { x: 0, y: 0 } })
+    expect(semMarca.metadata).toBeUndefined()
+  })
+
+  /**
+   * CONTROLE do eixo: duplicar a PÁGINA é outro gesto — a peça inteira é
+   * copiada com o contrato junto, e a marca VIAJA. A rota só regenera os ids
+   * das camadas (preservando `metadata`) e reaponta os blocos `extra-…` pelos
+   * ids novos; a leitura seguinte tem de devolver o contrato gravado, sem
+   * mudança nenhuma.
+   */
+  it('CONTROLE: duplicar a PÁGINA inteira preserva o vínculo — nada muda de dono', () => {
+    const idsNovos = new Map(TODAS.map((c) => [c.id, `copia-${c.id}`]))
+    const camadasDaCopia = TODAS.map((c) => ({ ...c, id: idsNovos.get(c.id)! }) as Layer)
+    const contratoDaCopia = renomearExtrasDuplicados(base, idsNovos, TODAS)
+    const r = copyEfetivaDasCamadas(contratoDaCopia, camadasDaCopia, { superficie: 'editor', em: EM })
+    expect(r.mudancas).toEqual([])
+    expect(resumo(r.efetiva)).toEqual(resumo(contratoDaCopia))
+    expect(r.efetiva.blocos.map((b) => b.linhas)).toEqual(base.blocos.map((b) => b.linhas))
   })
 
   it('o ícone preso ao texto nunca vira bloco, com o texto dele visível ou escondido', () => {
