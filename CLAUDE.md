@@ -6564,6 +6564,34 @@ dev: `scripts/validar-copy-autoral.ts`.
   handler HTTP → serviço, nos dois limites, com o controle acima do que o
   contrato comporta ainda em 400). Cada correção desfeita por mutação faz a
   sua prova falhar.
+
+**Da revisão FINAL do Codex sobre 89930e44 (BLOQUEADO, PR3-R10-01, 20/09/2026):**
+
+- 🔴 **Quem DISPUTA as camadas de uma função são os blocos COM texto**
+  (`copyEfetivaDasCamadas`). O bloco explicitamente vazio (`linhas: []`) é
+  "esta camada fica sem texto": `blocosParaOCompositor` o OMITE da spec, então
+  ele nunca originou camada e não pode consumir uma. Contando-o, um contrato
+  com `servico-vazio` + `servico-info` sobre um arranjo que reparte o serviço
+  em duas camadas dava uma a cada bloco — o horário migrava de id sem ninguém
+  ter editado nada, a página guardava dois serviços com texto, e a edição
+  seguinte levava a recomposição a `papel repetido`, deixando o slide na
+  imagem antiga. Ele também não vira lacuna: a arte mostra exatamente o que o
+  autor pediu. É a regra "campo OMITIDO ≠ bloco VAZIO" do lado da LEITURA.
+- **Quando NENHUM bloco da função tem texto, os vazios voltam a disputar**: aí
+  a camada com texto é a de um bloco que alguém preencheu no editor, e
+  mandá-la para um `extra-…` trocaria o id do mesmo jeito.
+- Varredura da classe "distribuir camadas desenhadas contando bloco que a
+  conversão omitiu": era o único ponto. `vincularExtras` (blocos `livre`) casa
+  por identidade (nome/id/`extra-…`/texto), nunca por contagem;
+  `distribuirLinhas` e `blocosParaOCompositor` vão no sentido contrário e já
+  pulam bloco sem linhas; `specComACopyDaPagina` mapeia por papel sobre blocos
+  de spec (sem vazios); `copy-do-item` preserva o vazio fora do casamento
+  posicional.
+- Prova no mesmo `recompor-servico-repartido.test.ts`: `validarSpec` aceita →
+  persistência (vazio preservado, as duas linhas no preenchido, sem revisão) →
+  edição só da manchete → recomposição com UM serviço, slide trocado e capa
+  intacta; mais o controle com todos os blocos da função vazios. As duas
+  mutações (contagem antiga; vazio nunca disputando) derrubam uma prova cada.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
