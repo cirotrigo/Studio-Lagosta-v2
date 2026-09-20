@@ -180,10 +180,13 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
         banco.post!.slotValues = { ...slotValuesDoPost }
         banco.generations.push(arteB({ source: 'geracao-ia', track: 'arte' }))
         await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
-        // a troca PRESERVA o que estava lá: é esse estado que a leitura precisa recusar
         expect(banco.post!.renderStatus).toBe('NOT_NEEDED')
         expect(banco.post!.pageId).toBe('pag-A')
-        expect(banco.post!.slotValues).toEqual(slotValuesDoPost)
+        // 🔴 A troca de HOJE APAGA a cópia (R55) — quem ainda carrega o texto de A é a linha LEGADA, gravada
+        //    antes daquele conserto. O write fix não alcança o que já está no banco, então a leitura continua
+        //    sendo a guarda dessa população: é esse estado que ela precisa recusar.
+        expect(banco.post!.slotValues).toBe(Prisma.DbNull)
+        banco.post!.slotValues = { ...slotValuesDoPost }
 
         const item = await itemDaAgenda()
         expect(JSON.stringify(item)).not.toContain('Oferta A')
@@ -237,9 +240,11 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
         semPagina()
         banco.generations.push(arteB({ source: 'geracao-ia', track: 'arte' }))
         await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
-        // a troca PRESERVA a copy (contrato testado em trocar-arte-do-post-copy.test.ts) — é a LEITURA que recusa
         expect(banco.post!.pageId).toBeNull()
-        expect(banco.post!.slotValues).toEqual(copyDeA)
+        // 🔴 Linha LEGADA, como no R53 acima: a troca de hoje apaga a cópia (R55) e a leitura guarda o que já
+        //    está gravado no banco.
+        expect(banco.post!.slotValues).toBe(Prisma.DbNull)
+        banco.post!.slotValues = { ...copyDeA }
         banco.post!.status = status
 
         const item = await itemDaAgenda()
@@ -303,4 +308,85 @@ describe('R51 — ver-agenda depois de trocar a arte pela galeria', () => {
     expect(item.textosOrigem).toBe('pagina')
     expect(JSON.stringify(item)).not.toContain('Copy X')
   })
+})
+
+/**
+ * 🔴 A INVARIANTE da classe, testada de uma vez (R53 → R54 → R55, 20/09/2026).
+ *
+ * **O texto que a agenda devolve descreve a mídia ATUAL do post, ou é declarado
+ * indisponível — nunca o texto de outra arte.**
+ *
+ * As três rodadas acharam três células da MESMA família (página histórica; sem
+ * página; cópia marcada + arte re-renderizada sem slots). A matriz cruza os
+ * eixos que apareceram nelas — o que o post carregava antes × o que a arte NOVA
+ * é × vivo ou entregue — e roda o caminho REAL (`trocarArteDoPost` → handler de
+ * `ver-agenda`). Célula nova da família passa a nascer coberta.
+ *
+ * O que a matriz NÃO cruza, e por quê: CARROSSEL (a leitura é slide a slide e
+ * nenhum fallback do post a alcança — R15/R20, testados na prova 3e) e a troca
+ * pela PÁGINA (ali a mídia volta a sair do render da página do post, que
+ * `renderPostArt` mantém em dia — é o único ramo em que a cópia anterior
+ * sobrevive, e de propósito).
+ */
+describe('INVARIANTE: depois da troca, o texto é o da mídia ATUAL ou é declarado', () => {
+  const COPY_B = 'Copy registrada de B'
+  const camadasDeB = JSON.stringify([{ id: 'h', name: 'headline', type: 'text', content: COPY_B, visible: true, order: 1 }])
+
+  // O que a arte NOVA é. `texto` = o que a agenda PODE afirmar por ela; null = nada a afirmar.
+  const artes = [
+    { nome: 'íntegra com copy registrada', fv: { source: 'arte-rapida', slotValues: { headline: COPY_B } }, texto: COPY_B },
+    { nome: 'íntegra sem copy nenhuma', fv: { source: 'geracao-ia' }, texto: null },
+    { nome: 're-renderizada SEM slotValues (peça do compositor refeita)', fv: { source: 'compositor', recomposicao: { estado: 're-renderizada' } }, texto: null },
+    { nome: 're-renderizada com slots e SEM marcador', fv: { source: 'ajuste-arte', slotValues: { headline: 'Copy de outra versão de B' }, recomposicao: { estado: 're-renderizada' } }, texto: null },
+    { nome: 're-renderizada COM a copy visual regravada', fv: { source: 'ajuste-arte', slotValues: { headline: COPY_B }, recomposicao: { estado: 're-renderizada', copyVisualRegravada: true } }, texto: COPY_B },
+    { nome: 'de MODELO com copy e registro das camadas', fv: { source: 'post-schedule', pageId: 'pag-A', slotValues: { headline: COPY_B }, layersSnapshot: camadasDeB }, texto: COPY_B },
+  ] as const
+
+  // O que o post carregava ANTES da troca — os três produtores reais de cópia textual.
+  const anteriores = [
+    { nome: 'cópia MARCADA da página (agendarPost/render)', sv: { headline: 'Oferta A', _copiaDaPagina: true } },
+    { nome: 'copy PRÓPRIA do post', sv: { headline: 'Oferta A' } },
+    { nome: 'sem cópia nenhuma', sv: null },
+  ] as const
+
+  // Tem página própria? A troca pela galeria CONSERVA o `pageId` (vínculo histórico, R51) e o
+  // rascunho nascido por `generationId` nunca teve um (R54) — o guard tem de valer nos dois.
+  const paginas = [
+    { nome: 'página histórica', post: { pageId: 'pag-A', templateId: 77, renderStatus: 'RENDERED' } },
+    { nome: 'sem página', post: { pageId: null, templateId: null, renderStatus: 'NOT_NEEDED' } },
+  ] as const
+
+  for (const pagina of paginas) {
+  for (const anterior of anteriores) {
+    for (const arte of artes) {
+      for (const entregue of [false, true]) {
+        it(`${pagina.nome} + ${anterior.nome} + arte ${arte.nome} + ${entregue ? 'entregue' : 'rascunho'}`, async () => {
+          Object.assign(banco.post!, pagina.post)
+          banco.post!.slotValues = anterior.sv
+          banco.generations.push(arteB(arte.fv as Record<string, unknown>))
+
+          await trocarArteDoPost({ projectId: 8, postId: 'post-1', generationId: 'gen-b' })
+          // O que o banco devolve de um DbNull é `null`.
+          if (banco.post!.slotValues === Prisma.DbNull) banco.post!.slotValues = null
+          if (entregue) banco.post!.status = 'POSTED'
+
+          const item = await itemDaAgenda()
+          const json = JSON.stringify(item)
+          // 1. Nada da arte ANTERIOR: nem a cópia que o post carregava, nem a página que ele renderizava.
+          expect(json).not.toContain('Oferta A')
+          expect(json).not.toContain('Copy da página A')
+          expect(json).not.toContain('Apoio de A')
+          expect(json).not.toContain('outra versão')
+          // 2. Ou o texto da mídia atual, ou a declaração — nunca silêncio.
+          if (arte.texto) {
+            expect(item.textos).toContain(arte.texto)
+          } else {
+            expect(item.textos).toBeUndefined()
+            expect(typeof item.textosIndisponiveis).toBe('string')
+          }
+        })
+      }
+    }
+  }
+  }
 })

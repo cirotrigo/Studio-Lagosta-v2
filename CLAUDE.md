@@ -6728,4 +6728,29 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   (o handler só passa `camadas` com `post.pageId`, `agenda.ts:164`), `paginaIlegivel` (sem página própria quem
   declara a fonte é R32, pela mídia), R42 e R53/R54 (os dois em `semPaginaPropria`), R47/R49/R50 (sem gate de
   página) e `textosPorSlide` (dirigido pela arte, nunca por `post.pageId`). O guard de R53 era o único preso a
-  `paginaHistorica`.
+  `paginaHistorica`.  🔴 **A cópia anterior só sobrevive quando a arte nova a SUSTENTA — e isso se resolve na ESCRITA** (R55 da revisão
+  FINAL sobre d95de3e6, 20/09/2026, a terceira variante da mesma família). **A invariante da classe: o texto que a
+  agenda devolve descreve a mídia ATUAL do post, ou é declarado indisponível; nunca o texto de outra arte.**
+  `trocar-arte-do-post` preservava os slots quando não sabia ler a arte nova ("`null` = não apaga"), e com uma peça
+  do compositor RE-RENDERIZADA e sem `slotValues` isso produzia o estado que a leitura não tem como desfazer:
+  `lerProcedencia` exige `slotValues !== null` para invalidar (`procedencia-da-copy.ts:101`), e na agenda a arte cai
+  na exceção de R13 (re-render é a MESMA peça refeita) — "Oferta A" voltava pela mídia B nas duas portas
+  `_copiaDaPagina`. Hoje a troca pela GALERIA apaga (`copyDaArteInvalidada || trocaDePagina || origem === 'galeria'`);
+  o contrato "não apaga" fica só no ramo da PÁGINA, onde a mídia sai do render dela e `renderPostArt` regrava a cópia
+  a cada render.
+  🔴 **Não tente fechar isto pela leitura.** Do lado dela os dois estados são o MESMO objeto (post `NOT_NEEDED`,
+  mídia única, arte re-renderizada, cópia que não confere), e a prova de integração OCUPA esse estado exigindo o
+  desfecho oposto — as fixtures de R12/R13 gravam `NOT_NEEDED` + `pageId` e esperam `copy-registrada-na-entrega`.
+  Foi o que a `prova-dev-40` mediu quando R53 nasceu por igualdade. Regra de leitura que feche R55 reabre R12/R13.
+  **A leitura continua sendo a guarda da população LEGADA** (linha trocada antes do deploy) e do post melhorado com
+  IA, que a escrita não alcança.
+  🔴 **A classe é testada por MATRIZ no caminho real** (`trocarArteDoPost → handler de ver-agenda`, banco falso,
+  serviço e handler reais): página própria (histórica · nenhuma) × cópia anterior (marcada · própria · nenhuma) ×
+  arte nova (íntegra com copy · íntegra sem copy · re-renderizada sem slots · re-renderizada com slots e sem
+  marcador · re-renderizada com `copyVisualRegravada` · de modelo com registro) × rascunho/entregue = 72 células,
+  cada uma exigindo as duas metades da invariante. Célula nova da família nasce coberta. **Carrossel fica de fora**
+  (leitura slide a slide, nenhum fallback do post a alcança — R15/R20) e a troca pela PÁGINA também (é o único ramo
+  em que a cópia sobrevive, de propósito).
+  ⚠️ **Depois da correção na escrita, a matriz não exercita mais o guard da LEITURA** — ela nunca chega ao estado
+  que ele protege. Mutação nele (`semPaginaPropria → paginaHistorica`) só é pega pelos testes que reinjetam a cópia
+  velha como linha legada. Teste de guard de leitura nesta classe precisa montar o estado à mão.

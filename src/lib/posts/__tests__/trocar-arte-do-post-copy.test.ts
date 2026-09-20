@@ -89,9 +89,23 @@ describe('trocarArteDoPost pela galeria — a copy do post segue a procedência 
     expect(r.avisos ?? []).not.toContain(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
   })
 
-  it('controle: arte sem texto conhecido (não invalidada) mantém o contrato "null = não apaga" — o update não mexe em slotValues', async () => {
+  /**
+   * 🔴 R55: pela GALERIA a cópia anterior NUNCA sobrevive. Antes, arte nova sem
+   * texto legível caía no "null = não apaga" e o post ficava descrevendo a arte
+   * ANTERIOR — e quando a arte nova é uma peça do compositor RE-RENDERIZADA (sem
+   * `slotValues`, logo sem `copyInvalidada`) a leitura não tem como perceber: ela
+   * cai na exceção de R13. O contrato "não apaga" fica só no ramo da PÁGINA.
+   */
+  it('arte sem texto conhecido: a cópia anterior é APAGADA — pela galeria a mídia é outra, e o que estava lá descrevia a anterior (R55)', async () => {
     const { r, data } = await trocarPor({ source: 'geracao-ia' })
-    expect('slotValues' in data).toBe(false)
+    expect(data.slotValues).toBe(Prisma.DbNull)
+    expect(JSON.stringify(data)).not.toContain('Copy da arte anterior')
     expect(r.avisos ?? []).not.toContain(AVISO_COPY_DE_ARTE_RE_RENDERIZADA)
+  })
+
+  it('arte do compositor RE-RENDERIZADA sem slotValues (o estado que a leitura não distingue): a cópia anterior também é apagada', async () => {
+    const { data } = await trocarPor({ source: 'compositor', layersSnapshot: '[]', recomposicao: { estado: 're-renderizada' } })
+    expect(data.slotValues).toBe(Prisma.DbNull)
+    expect(JSON.stringify(data)).not.toContain('Copy da arte anterior')
   })
 })

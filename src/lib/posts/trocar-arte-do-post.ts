@@ -307,15 +307,27 @@ export async function trocarArteDoPost(
    * cópia nunca volta para a arte (copy-segue-a-pagina.ts). Vindos da galeria
    * são a copy daquela arte, que não renderiza de página nenhuma.
    *
-   * `null` aqui significa "não sei ler os textos desta arte", não "não tem":
-   * nesse caso o que já estava gravado é preservado quando a página continua a
-   * mesma, e apagado quando ela muda (slot velho em página nova é pior que
-   * slot nenhum).
+   * 🔴 **A cópia anterior só sobrevive quando a arte nova a SUSTENTA** (R55 da
+   * revisão FINAL sobre d95de3e6, 20/09/2026). Pela GALERIA a mídia passa a ser
+   * OUTRA arte, e o que estava gravado descreve a anterior: sem texto legível
+   * na arte nova, a cópia é APAGADA, nunca preservada. O contrato antigo
+   * ("`null` = não sei ler, então não apaga") valia para o ramo da PÁGINA, onde
+   * a mídia continua saindo do render dela e `renderPostArt` mantém a cópia em
+   * dia — ali ele fica, e só a troca de página apaga (slot velho em página nova
+   * é pior que slot nenhum).
+   *
+   * Era esta preservação que produzia o estado que a LEITURA não tem como
+   * desfazer: arte nova re-renderizada SEM `slotValues` (a peça do compositor
+   * refeita) não dispara `copyInvalidada` — `lerProcedencia` exige
+   * `slotValues !== null` —, e na agenda ela cai na exceção de R13 (arte
+   * re-renderizada é a MESMA peça refeita), devolvendo a copy da arte ANTERIOR
+   * como se fosse desta mídia. Do lado da leitura os dois estados são o MESMO;
+   * quem pode não criá-lo é quem escreve.
    */
   const trocaDePagina = decisao.vinculaPagina && pageId !== post.pageId
   const slotValuesNovo = novosTextos
     ? { slotValues: (origem === 'pagina' ? comoCopiaDaPagina(novosTextos) : novosTextos) as Prisma.InputJsonValue }
-    : copyDaArteInvalidada || trocaDePagina
+    : copyDaArteInvalidada || trocaDePagina || origem === 'galeria'
       ? { slotValues: Prisma.DbNull }
       : {}
 
