@@ -6505,6 +6505,65 @@ dev: `scripts/validar-copy-autoral.ts`.
   repetido; dois blocos da função) e `spec-blocos-derivados.test.ts` (linha
   vazia e sete linhas recusadas antes do banco). Cada correção desfeita por
   mutação faz a sua prova falhar.
+
+**Da revisão do Codex sobre cd98cd6d (BLOQUEADO, PR3-R9-01…03, 20/09/2026):**
+
+- 🔴 **Efeito colateral se decide pela base EFETIVAMENTE SUBSTITUÍDA, nunca
+  pela leitura do começo do handler** (PR3-R9-01). É a TERCEIRA rodada desta
+  mesma classe (REV-01 da 3ª rodada no PATCH da página; PR3-F01/F03 nas portas
+  de escrita), agora no PUT do template: ele lia X em `existingPages`, um PATCH
+  concorrente gravava Y, `gravarCamadasComRevisao` relia Y e gravava X por
+  compare-and-set — e `marcarSeMudou`, comparando X com X, deixava a gravação
+  FORA de `paginasAlteradas`. A página ia de Y para X sem invalidar a imagem
+  única nem pedir a recomposição do slide, e uma mídia já produzida com Y
+  seguia divergente. Hoje `gravarCamadasComRevisao` devolve em `base` também
+  `background`/`width`/`height`, e a decisão é `g.camadas` (as camadas
+  EFETIVAMENTE gravadas, já com a marca do revisor reconciliada) contra
+  `g.base` — os três campos visuais na MESMA comparação protegida.
+  **A regra geral**: a leitura que decide o efeito colateral tem de ser a
+  MESMA que a escrita protegida substitui. Se a leitura não é o predicado do
+  compare-and-set, ela não serve para decidir nada depois dele.
+- 🔴 **Editar uma parte do bloco REPARTIDO não reordena o contrato**
+  (PR3-R9-02, `linhasRepartidas` em `efetiva.ts`). A decisão era tudo-ou-nada:
+  mesmo conjunto de linhas → ordem do autor; qualquer diferença → ordem
+  VISUAL. Num arranjo que põe o endereço acima do horário, editar só o horário
+  fazia a comparação de conjuntos falhar e o bloco voltava `[endereço, horário
+  editado]` — uma inversão que ninguém pediu, assinada pela `equipe` e levada
+  à recomposição. Hoje cada linha desenhada volta à POSIÇÃO AUTORAL da linha
+  igual a ela, e a editada fica com a vaga que sobrou (ordem visual entre as
+  vagas). Com as mesmas linhas o resultado é idêntico ao de antes; numa camada
+  só, reordenar continua sendo edição.
+  ⚠️ Linha ACRESCENTADA numa das camadas vai para o fim, não para dentro da
+  fatia daquela camada — a correspondência é por LINHA, não por camada.
+- 🔴 **O schema HTTP que recebe o espelho lê os tetos do PRÓPRIO contrato**
+  (PR3-R9-03, `MAX_ITENS_DO_ESPELHO`/`MAX_CARACTERES_DO_ESPELHO` em
+  `copy-do-item.ts`, ao lado de `espelhoDoContrato`). A API do item aceitava 12
+  strings de 2.000 caracteres e o contrato comporta 40 blocos de 3.611 (12
+  linhas de 300 + as quebras): item criado com um `copyAutoral` VÁLIDO de 13
+  blocos — ou com um bloco de 7 linhas cheias — voltava 400 assim que alguém
+  mexia num caractere no modal. Aceitar na criação e recusar na edição é o
+  mesmo conteúdo com dois destinos (irmão do R8-03). As duas rotas de plano
+  (POST e PATCH do item) usam os mesmos tetos; **nada de truncar para caber**.
+- **Varredura da classe (3ª vez), CAS a CAS**: PUT do template (corrigido);
+  PATCH da página (`efetiva`/`baseGravada` da volta vencedora, inclusive
+  `copyParaDecisao` e `diffDeGeometria` — ✅); PATCH de camada (`layerChanged`
+  é calculado DENTRO do `camadas(base)`, sobre a base relida — ✅);
+  `reverterCamadasDaArte` e `ajustarArte` (invalidam sempre, sem portão — ✅);
+  `recomporPaginaDefasada` (decide por `versaoGravada`, escrita pela própria
+  rodada — ✅); `atualizarItem` (relê o item a cada volta e recalcula copy e
+  avisos contra ela — ✅); `trocarArteDoPost` (o sinal usa `midiasAtuais`, que
+  É o predicado do CAS — ✅); `registrarFeedbackDeArte` (CAS na linha lida;
+  perdeu a corrida, relê — ✅); `reapontarItemDoPlano`, `executar-plano` e
+  `artes-do-post` (CAS sobre o que leram; o efeito sai do `count` — ✅);
+  `marcarForcaEmExecucao`/`marcarRenderComoEsta` (só promovem payload — ✅).
+- Provas: `put-efeito-por-base-gravada.test.ts` (Y intercalado entre a leitura
+  inicial e a gravação, por camadas e por fundo; congelados; dois controles),
+  `recompor-servico-repartido.test.ts` (o arranjo invertido com o horário
+  editado, até a recomposição, mantendo o id do bloco) e
+  `patch-espelho-do-contrato.test.ts` (criação com contrato → card → modal →
+  handler HTTP → serviço, nos dois limites, com o controle acima do que o
+  contrato comporta ainda em 400). Cada correção desfeita por mutação faz a
+  sua prova falhar.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
