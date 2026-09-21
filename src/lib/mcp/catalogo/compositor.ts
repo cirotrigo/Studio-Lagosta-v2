@@ -29,7 +29,7 @@ const preferencias = z
       .optional()
       .describe('Canto da logo. "auto" (default) escolhe o canto mais calmo e escuro que não encosta no texto; "nenhum" tira a logo.'),
     enquadramento: z.enum(['auto', 'fixo']).optional().describe('"auto" (default) deixa o compositor deslocar o corte da foto para abrir área livre; "fixo" mantém o centro.'),
-    variante: z.string().optional().describe('Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais.'),
+    variante: z.string().optional().describe('A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu.'),
   })
   .optional()
 

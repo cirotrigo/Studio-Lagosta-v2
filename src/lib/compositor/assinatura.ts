@@ -491,8 +491,14 @@ export interface CandidataAVariante {
 
 export interface CriteriosDeVariante {
   formato: Formato
-  /** Variante pedida pelo nome, tag ou id — vence tudo. */
+  /** Variante pedida pelo ID da página (vence nome e tag), pelo nome ou pela tag — vence tudo. */
   variante?: string | null
+  /**
+   * O id da página com que a peça NASCEU (a recomposição o fixa). Diferente de
+   * `variante`, não é pedido de ninguém: existindo, vence; tendo sumido (a
+   * página foi arquivada), a escolha automática segue — sem recusar a peça.
+   */
+  varianteOriginal?: string | null
   /** Os papéis que a PEÇA pede. Variante que os tem vence a que não os tem. */
   papeis?: Papel[]
   /** O assunto da peça: casa com o nome e as tags da página ("funcionamento", "cafés"). */
@@ -594,21 +600,35 @@ export function escolherVariante<T extends CandidataAVariante>(
   if (base.length === 0) return { pagina: null, formatoDaPagina: null, motivo: 'sem página' }
   const fmt = (p: T) => formatoDaPagina(p)
 
+  // O id é procurado ANTES do filtro por formato: a peça de feed que nasceu na
+  // assinatura de STORY (fallback quando não havia a de feed) continua com ela
+  // depois que o projeto ganha uma de feed (PR4-03 da revisão final do Codex,
+  // 18/09/2026). Vale a página do formato, a de story (o único fallback que a
+  // composição usa) ou qualquer uma quando é a base inteira.
+  const porId = (id: string) => {
+    const alvo = id.toLowerCase().trim()
+    return paginas.find((p) => `${p.id ?? ''}`.toLowerCase() === alvo && (base.includes(p) || fmt(p) === 'story' || fmt(p) === args.formato)) ?? null
+  }
+  let motivoDaOriginal = ''
   if (args.variante) {
     const alvo = args.variante.toLowerCase().trim()
-    const achada = base.find(
-      (p) =>
-        `${p.name ?? ''}`.toLowerCase().includes(alvo) ||
-        (p.tags ?? []).some((t) => t.toLowerCase() === alvo) ||
-        `${p.id ?? ''}`.toLowerCase() === alvo,
-    )
+    // O ID da página vence nome e tag: é como o chat pede uma variante sem
+    // ambiguidade (ver-assinatura lista o `id`).
+    const pedidaPorId = porId(alvo)
+    if (pedidaPorId) return { pagina: pedidaPorId, formatoDaPagina: fmt(pedidaPorId), motivo: 'fixada por id' }
+    const achada = base.find((p) => `${p.name ?? ''}`.toLowerCase().includes(alvo) || (p.tags ?? []).some((t) => t.toLowerCase() === alvo))
     if (achada) return { pagina: achada, formatoDaPagina: fmt(achada), motivo: 'pedida' }
     return { pagina: null, formatoDaPagina: null, motivo: 'variante pedida não encontrada' }
+  }
+  if (args.varianteOriginal) {
+    const original = porId(args.varianteOriginal)
+    if (original) return { pagina: original, formatoDaPagina: fmt(original), motivo: 'fixada por id' }
+    motivoDaOriginal = 'a variante com que a peça nasceu não existe mais; '
   }
 
   const avaliadas = avaliarVariantes(base, args)
   const melhor = avaliadas[0].pontos
   const empatadas = avaliadas.filter((a) => a.pontos === melhor)
   const escolhida = empatadas[hashDe(args.chave ?? '') % empatadas.length]
-  return { pagina: escolhida.pagina, formatoDaPagina: fmt(escolhida.pagina), motivo: `${escolhida.motivo}${empatadas.length > 1 ? ` (rodízio entre ${empatadas.length})` : ''}` }
+  return { pagina: escolhida.pagina, formatoDaPagina: fmt(escolhida.pagina), motivo: `${motivoDaOriginal}${escolhida.motivo}${empatadas.length > 1 ? ` (rodízio entre ${empatadas.length})` : ''}` }
 }

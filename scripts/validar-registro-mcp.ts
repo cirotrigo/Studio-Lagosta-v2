@@ -1640,7 +1640,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
           },
           "variante": {
             "type": "string",
-            "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
+            "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
           }
         },
         "additionalProperties": false
@@ -1835,7 +1835,7 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                 },
                 "variante": {
                   "type": "string",
-                  "description": "Nome (ou tag) de uma variante da assinatura, quando o cliente tem mais de uma página no formato (ver-assinatura lista). Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais."
+                  "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
                 }
               },
               "additionalProperties": false

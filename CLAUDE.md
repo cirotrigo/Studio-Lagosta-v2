@@ -7279,3 +7279,143 @@ Sem migration. Prova no branch de dev: `scripts/validar-contexto-da-semana.ts`.
   de conteúdo); `proprios` trocado por `slotValuesParaRender(...)` → 6 falhas (o fallback some em toda peça sem
   página). A prova de integração cobre os DOIS lados no caminho real — página de conteúdo devolvendo a página, e
   uma página MODELO (quando o projeto tem uma com texto) em que os slots continuam vencendo.
+### O compositor consome o contrato sem conversão implícita (PR 4 de "Marca simples, copy melhor", 12/09/2026)
+
+Até aqui o compositor recebia `Bloco[]` por papel e TRANSFORMAVA texto sem
+registro: a última linha da manchete virava voz 2 sozinha, o CTA ganhava uma
+seta que a copy não tinha, fonte que não carregou no servidor saía medida na
+fonte de fallback como se a medida valesse, e a recomposição podia trocar de
+variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
+`scripts/validar-compositor-fiel.ts` é a prova de integração no branch de dev.
+
+- **A segunda voz da manchete é do AUTOR** (`estilo.linhasNaVoz2` no contrato,
+  `dividirManchete`): com contrato, só as linhas DECLARADAS vão para
+  `headline2` — e têm de ser o fim contíguo da manchete (`validarCopyAutoral`
+  recusa o resto); sem declaração, a manchete inteira fica na voz 1 mesmo com
+  `headline2` na variante; declaração numa variante SEM voz 2 vira aviso e a
+  efetiva registra o estilo como revisão do sistema — nunca some em silêncio.
+  Sem contrato (legado) vale a regra antiga: a última linha.
+  🔴 Manchete INTEIRA na voz 2 não gera camada de voz 1 vazia, e a efetiva lê
+  a `headline2` como a própria manchete (id preservado, índices do zero) — sem
+  isso o bloco saía vazio com índice para linha inexistente e a camada virava
+  `extra-headline2` (R01 da revisão do Codex).
+- **O prefixo que a assinatura desenha antes do texto (o "→ " do CTA) é
+  DECLARADO** em `metadata.compositor.prefixo` e descontado por
+  `copyEfetivaDasCamadas`; prefixo sem declaração conta como diferença entre o
+  escrito e o desenhado — `ver-geracao` mostra, ninguém "corrige" a efetiva.
+- 🔴 **Fonte que não carregou no servidor é "não medido", nunca medida.**
+  `familiasNaoCarregadas` (`GlobalFonts.has`) confere TODAS as famílias que a
+  camada usa — a do estilo E as dos trechos de rich text (`familiasDaCamada`; o
+  destaque costuma estar na versão pesada, e é com ela que a largura extra é
+  medida). Ausente → aviso, `composicao.fontesNaoCarregadas`,
+  `blocos[].naoMedido` e `medidasFinais[].naoMedido` (R02).
+- **`composicao.medidasFinais`** (`medidasFinaisDasCamadas`): corpo, entrelinha
+  (do `autoWrap`), caixa arredondada, número de linhas e prefixo de cada texto
+  COMO FOI GRAVADO, depois do autofix — é o que `ver-geracao` e a métrica da F2
+  leem. A prova casa cada medida com a camada final por id.
+- 🔴 **Um bloco espalhado por várias caixas do mesmo papel volta a UM bloco**
+  (PR4-01 da revisão final do Codex, 18/09/2026). `distribuirLinhas` põe uma
+  linha por caixa quando o arranjo tem mais de um texto do papel (duas caixas
+  de voz 2, Local + Horário), e a efetiva lia só a primeira: a segunda virava
+  `extra-…`, com revisão falsa, e o bloco `livre` com texto travava a
+  recomposição em `validarSpec`. Quem resolve isso é a marca do VÍNCULO do
+  PR 3 (`metadata.compositor.bloco` = o **id** do bloco do contrato, com as
+  posições em `linhas`, rastreadas por `juntarNoGrupo`/`distribuirLinhas`): a
+  camada volta ao bloco que declara e fica RESERVADA para ele, então as duas
+  caixas do mesmo papel voltam juntas. Camada sem a marca (posta à mão no
+  editor) continua lida como antes — nada é juntado por palpite.
+  🔴 **O PR 4 chegou a ter a sua própria marca** (`blocoDaCopy` = índice em
+  `spec.blocos`, com `continuacoes`/`tomar` em `efetiva.ts`); no rebase sobre a
+  main de 20/09/2026 ela foi RETIRADA em favor da do PR 3, que é a mesma ideia
+  pelo id do contrato — estável através da conversão spec↔contrato — e mais
+  ampla (reserva a camada, trata a voz 2 declarada, a voz 1 escondida e o bloco
+  vazio: PR3-R9-02, R10-01, R11-01/02, R12-01, R13-01). **Não reintroduza
+  `blocoDaCopy`**: duas marcas para o mesmo fato é como a junção `c35c2918` foi
+  necessária da primeira vez. `validarSpec` já recusa papel repetido, então
+  cada função tem no máximo um bloco no compositor.
+- 🔴 **Id de camada é único na PEÇA inteira, nunca por grupo** (varredura do PR
+  3, 18/09/2026): o contador de repetição de papel recomeçava a cada grupo, e o
+  serviço repartido entre dois grupos (horário junto da oferta, endereço no pé)
+  saía com duas camadas `servico` — ajuste por id (revisor, `ajustar-arte`)
+  atingia as duas, e `elementosPorTexto`, chaveado pelo id, perdia o ícone do
+  primeiro grupo. A logo presa a um grupo (`logo`) também ganha sufixo quando
+  outro grupo já a tem. Gerador novo de camada no compositor confere contra os
+  ids que a peça já tem.
+- 🔴 **Manchete só na voz 2 continua sendo a manchete no LAYOUT** (PR4-02): o
+  grupo principal é o que tem `headline` OU `headline2` (sem isso o pré-título
+  em grupo separado herdava a posição pedida e o mapa da foto), e `vaoEntre`
+  dá vão de manchete antes de `headline2` que não segue outra voz da manchete
+  (antes encostava no pré-título como se fosse lockup). Estado novo que o PR
+  cria precisa ser conferido em todo consumidor que perguntava pelo papel antigo.
+- **A recomposição fixa a VARIANTE pelo id da página** da composição original
+  (`preferencias.varianteOriginal = composicao.assinatura.pageId`; motivo
+  `fixada por id`; o id vence o nome que o contém em `escolherVariante`) — a
+  edição de texto não pode trocar a peça de variante.
+  🔴 O id é procurado ANTES do filtro por formato (PR4-03): a peça de feed que
+  nasceu na assinatura de STORY (o fallback quando não havia a de feed)
+  continua com ela depois que o projeto ganha uma de feed — antes a
+  recomposição recusava com `ASSINATURA_INCOMPLETA`. E a fixação da
+  recomposição vai em `varianteOriginal`, não em `variante`: a página pode ter
+  sido arquivada (as stories do Quintal e do TERO foram, em 11/09), e aí a
+  escolha automática segue, com o motivo dizendo que a original não existe
+  mais. `variante` continua sendo o pedido explícito — ausente é recusa.
+- `PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3): papel que a variante
+  não tem recusa, nunca some.
+
+**Da revisão FINAL do Codex sobre b5c2bd5b (BLOQUEADO, PR4-FINAL-01…02, 21/09/2026).**
+Os dois são a MESMA forma: uma decisão tomada por PROXY (o primeiro bloco do
+papel; a medida de fallback) em vez de pela identidade ou pelo fato já resolvido.
+
+- 🔴 **A declaração da segunda voz vem do bloco que ORIGINOU a manchete — o id
+  já resolvido em `blocoDoPapel` —, nunca do primeiro `headline` do contrato**
+  (PR4-FINAL-01). O contrato aceita um bloco `headline` VAZIO ao lado do
+  preenchido: `blocosParaOCompositor` omite o vazio (`legado.ts:227`), então
+  `validarSpec` não vê papel repetido e a entrada passa. Pelo primeiro, a busca
+  caía no vazio e recebia `null`: a manchete saía inteira na voz 1 **mesmo com
+  `headline2` na assinatura**, sem o aviso de voz 2 indisponível, e a leitura
+  seguinte registrava a mudança de estilo como decisão do compositor. É a mesma
+  identidade que vincula as camadas (`metadata.compositor.bloco`) — decidir por
+  proxy foi o defeito.
+- 🔴 **As fontes são conferidas ANTES das decisões de encaixe, e a RECUSA diz
+  quando a medida não vale** (PR4-FINAL-02). Família que não carregou faz o
+  medidor cair no FALLBACK, e é dessa medida que saem a escada de encolhimento e
+  o ORÇAMENTO de caracteres. `familiasNaoCarregadas` era consultada só no fim,
+  depois do `throw` de `TEXTO_NAO_CABE_NA_COLUNA`: a recusa mandava reescrever a
+  copy por um número que este mesmo PR declara inválido. Hoje o conjunto é
+  calculado antes do laço (superconjunto: estilo de cada papel da assinatura e de
+  cada arranjo candidato, mais a família do trecho DESTACADO — R02), a recusa do
+  bloco cuja família falta sai com `naoMedido: true` + `fontesNaoCarregadas` e
+  **sem orçamento**, e a mensagem manda cadastrar a fonte. O diagnóstico do fim
+  filtra o superconjunto pelo que as camadas FINAIS usam, para o aviso não citar
+  fonte de arranjo que não foi escolhido.
+  🔴 **Quais famílias a recusa cita vem da PRÓPRIA recusa (`familiasMedidas`),
+  nunca de uma releitura dos colchetes em quem chama** (PR4-R2-01 da segunda
+  revisão FINAL, 21/09/2026). A 1ª correção somava `destaqueDoBloco?.fontFamily`
+  INCONDICIONALMENTE, mas `montarBloco` só ativa o destaque com trecho entre
+  `[colchetes]` **e** estilo de destaque cadastrado (`blocos.ts`), e só então
+  mede a largura extra: marca configurada com fonte de destaque ausente e copy
+  SEM colchetes teve tudo medido na base — que está carregada — e ainda assim
+  perdia o `caracteresQueCabem`, com a recusa mandando cadastrar uma fonte que
+  aquele bloco não usa. O inverso do defeito que o FINAL-02 veio consertar.
+  `RecusaDeBloco.familiasMedidas` é a resposta de quem MEDIU (estilo sempre;
+  destaque só quando participou), e `compor.ts` a intersecta com `semFonte`.
+  **Não copie a regra dos colchetes para fora de `montarBloco`** — a divergência
+  entre as duas leituras é como o defeito volta. O superconjunto continua largo
+  de propósito: ele é só o cache de "esta família carregou?", e o que a recusa
+  DIZ é sempre a interseção com as famílias daquele bloco — família de outro
+  papel ou de arranjo não escolhido não tem como chegar nela.
+- **Varredura das duas formas** (pedida com os consertos): *escolha por papel em
+  vez do id* — os únicos consumidores de `copyAutoral.blocos` no compositor são
+  `blocoDoPapel` (filtra `linhas.length > 0`, e `validarSpec` recusa papel
+  repetido entre os blocos COM texto, então é 1:1) e a linha corrigida;
+  `combinacoes.ts:279` (`find(papel === 'headline') ?? itens[0]`) lê o ARRANJO da
+  página de assinatura para escolher a referência de alinhamento — não há id de
+  contrato ali, é o template; `efetiva.ts:499` (primeira `headline2` livre) é a
+  RESERVA documentada do PR 3, que só roda quando não há marca. *Medida de
+  fallback virando número* — `medidasFinais[]` e `diagnostico.blocos[]` já
+  carregam `naoMedido` (R02); o único número que mandava AGIR era o orçamento da
+  recusa, agora coberto. ⚠️ Fica o aviso "fonte reduzida a N% para caber na
+  coluna", que também nasce da medida de fallback: ele descreve o que a
+  composição FEZ (a escala está mesmo gravada na camada) e não pede ação, e o
+  mesmo bloco já sai com `naoMedido` e com o aviso de que a medida não vale —
+  acrescentar ressalva ali seria ruído.

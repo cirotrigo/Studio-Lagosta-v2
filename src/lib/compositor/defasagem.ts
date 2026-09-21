@@ -313,12 +313,27 @@ const ehAlinhamento = (v: unknown): v is 'esquerda' | 'centro' | 'direita' => v 
  * original, só a copy muda. Spec que já pede posição fica como está.
  */
 export function specComAPosicaoOriginal(spec: SpecDePeca, fieldValues: unknown): SpecDePeca {
-  const posicao = (fieldValues as { composicao?: { posicao?: { ancora?: unknown; alinha?: unknown } } } | null | undefined)?.composicao?.posicao
-  if (!posicao || !ehAncora(posicao.ancora) || !ehAlinhamento(posicao.alinha)) return spec
-  const pref = spec.preferencias ?? {}
+  const composicao = (fieldValues as { composicao?: { posicao?: { ancora?: unknown; alinha?: unknown }; assinatura?: { pageId?: unknown } } } | null | undefined)?.composicao
+  const posicao = composicao?.posicao
+  let pref = spec.preferencias ?? {}
+  // A VARIANTE também é fixada — pelo ID da página de assinatura com que a
+  // peça foi composta (PR 4, 12/09/2026). Sem isso, uma edição de texto
+  // podia cair noutra variante (o rodízio, a tag clara/escura de outra foto) e
+  // trocar fonte, cor e arranjo de uma peça que só mudou uma palavra. Spec
+  // que já pede variante fica como está. Vai em `varianteOriginal`, não em
+  // `variante`: a página pode ter sido arquivada, e aí a recomposição escolhe
+  // outra em vez de recusar a peça (varredura do PR4-03, 18/09/2026).
+  const pageId = typeof composicao?.assinatura?.pageId === 'string' ? composicao.assinatura.pageId : null
+  let mudou = false
+  if (pageId && !pref.variante && !pref.varianteOriginal) {
+    pref = { ...pref, varianteOriginal: pageId }
+    mudou = true
+  }
+  const comPref = () => (mudou ? { ...spec, preferencias: pref } : spec)
+  if (!posicao || !ehAncora(posicao.ancora) || !ehAlinhamento(posicao.alinha)) return comPref()
   const pedeAncora = pref.ancora && pref.ancora !== 'auto'
   const pedeAlinha = pref.alinha && pref.alinha !== 'auto'
-  if (pedeAncora || pedeAlinha) return spec
+  if (pedeAncora || pedeAlinha) return comPref()
   return { ...spec, preferencias: { ...pref, ancora: posicao.ancora, alinha: posicao.alinha } }
 }
 

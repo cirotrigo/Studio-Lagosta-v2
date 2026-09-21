@@ -20,7 +20,9 @@ import { db } from '@/lib/db'
 import type { Layer } from '@/types/template'
 import { CreativeError } from '@/lib/creatives/errors'
 import { persistAndRenderCreative, resolveImageUrl, type PersistCreativeResult } from '@/lib/creatives/persist'
-import { registerProjectFonts, fetchBuffer } from '@/lib/posts/register-project-fonts'
+import { registerProjectFonts, fetchBuffer, familiasNaoCarregadas } from '@/lib/posts/register-project-fonts'
+import { dividirManchete } from './segunda-voz'
+import { familiasDaCamada, medidasFinaisDasCamadas, type MedidaFinal } from './medidas'
 import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar } from '@/lib/creatives/text-autofix'
 import { normalizarCamadas } from '@/lib/creatives/layer-contract'
@@ -109,7 +111,17 @@ export interface DiagnosticoDaComposicao {
   gradientes?: Array<{ borda: Borda; forca: number; altura: number; cor: string; necessidade: number }>
   /** `tinta` é legado (sempre 0): a logo não ganha mais halo. */
   logo: { canto: Canto; tinta: number } | null
-  blocos: Array<{ papel: Papel; escala: number; width: number; height: number; destacado?: boolean }>
+  blocos: Array<{ papel: Papel; escala: number; width: number; height: number; destacado?: boolean; naoMedido?: boolean }>
+  /**
+   * As medidas FINAIS de cada texto, depois do autofix (corpo, entrelinha,
+   * caixa, linhas) e se a medida vale — `naoMedido` quando a fonte do papel não
+   * carregou no servidor. Ausente em diagnósticos anteriores ao PR 4 (12/09/2026).
+   */
+  medidasFinais?: MedidaFinal[]
+  /** As famílias de fonte pedidas pela assinatura que NÃO carregaram no servidor. */
+  fontesNaoCarregadas?: string[]
+  /** De onde saiu a divisão da manchete em duas vozes: do contrato do autor, da regra legada, ou nenhuma. */
+  segundaVoz?: 'contrato' | 'legado' | 'nenhuma'
   /** O arranjo de texto usado em cada grupo: o da página ou uma combinação salva. Ausente em diagnósticos antigos. */
   arranjos?: Array<{ grupo: string; id: string; nome: string; origem: ArranjoDeGrupo['origem']; motivo: string }>
   contraste: ContrasteMedido[] | null
@@ -162,6 +174,8 @@ export interface OpcoesDeAssinatura {
   paginas?: string[]
   /** Nome/tag da variante pedida na spec. */
   variante?: string | null
+  /** O id da página com que a peça nasceu (a recomposição fixa) — ver `CriteriosDeVariante.varianteOriginal`. */
+  varianteOriginal?: string | null
   /** Os papéis que a peça pede: variante que os tem vence a que não os tem. */
   papeis?: Papel[]
   /** O assunto da peça — casa com nome/tags da página ("funcionamento", "cafés"). */
@@ -235,6 +249,7 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   const { pagina: escolhida, formatoDaPagina: fmt, motivo } = escolherVariante(comPapeis, {
     formato,
     variante: opcoes.variante ?? null,
+    varianteOriginal: opcoes.varianteOriginal ?? null,
     papeis: opcoes.papeis,
     tema: opcoes.tema ?? null,
     luzDaFoto: opcoes.luzDaFoto ?? null,
@@ -549,6 +564,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const assinatura = await carregarAssinatura(spec.projectId, spec.formato, {
     paginas: opcoes.paginasDeAssinatura,
     variante: spec.preferencias?.variante ?? null,
+    varianteOriginal: spec.preferencias?.varianteOriginal ?? null,
     papeis: spec.blocos.map((b) => b.papel),
     tema: spec.tema ?? spec.nome ?? null,
     luzDaFoto,
@@ -592,7 +608,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   //    (ícone, filete, selo). Pedido do Ciro: o compositor aproveitar da
   //    assinatura também os ícones e os filetes, que até aqui ficavam para trás.
   const colunaUtil = g.W - 2 * g.margemH
-  const recusas: Array<{ papel: Papel; orcamento: unknown }> = []
+  // `naoMedido` = a família do bloco não carregou: não há orçamento, porque o
+  // que o medidor devolveu é a caixa da fonte de FALLBACK (PR4-FINAL-02).
+  const recusas: Array<{ papel: Papel; orcamento?: unknown; naoMedido?: boolean; fontesNaoCarregadas?: string[] }> = []
   const chaveDoGrupo = (papel: Papel) => assinatura.papeis[papel]?.grupo ?? (papel === 'headline2' ? assinatura.papeis.headline?.grupo ?? 'solo:headline' : `solo:${papel}`)
   const gruposDaPagina = arranjosDaPagina({
     pageId: assinatura.origem.pageId ?? 'assinatura',
@@ -613,6 +631,17 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   for (const b of spec.copyAutoral?.blocos ?? []) {
     if (b.funcao !== 'livre' && b.linhas.length > 0 && !blocoDoPapel.has(b.funcao as Papel)) blocoDoPapel.set(b.funcao as Papel, b.id)
   }
+  // 🔴 A declaração da segunda voz vem do bloco que ORIGINOU a manchete — o id
+  // já resolvido acima —, nunca do primeiro `headline` do contrato. O contrato
+  // aceita um bloco `headline` VAZIO ao lado do preenchido (`blocosParaOCompositor`
+  // omite o vazio, então `validarSpec` não vê papel repetido), e pelo primeiro
+  // a busca caía no vazio: `linhasNaVoz2` do autor era ignorada em silêncio, a
+  // manchete saía inteira na voz 1 mesmo com `headline2` na assinatura, sem o
+  // aviso de voz 2 indisponível, e a leitura seguinte registrava a mudança de
+  // estilo como decisão do compositor (PR4-FINAL-01, 21/09/2026). É a MESMA
+  // identidade que vincula as camadas — decidir por proxy foi o defeito.
+  const idDaManchete = blocoDoPapel.get('headline')
+  const declaradasNaVoz2 = idDaManchete ? spec.copyAutoral?.blocos.find((b) => b.id === idDaManchete)?.estilo?.linhasNaVoz2 ?? null : null
   const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[] }>>()
   const juntarNoGrupo = (chave: string, papel: Papel, linhas: string[], indices: number[]) => {
     const lista = blocosPorGrupo.get(chave) ?? []
@@ -645,6 +674,33 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
 
   const montados: Array<BlocoMontado & { chave: string }> = []
   const familias = await familiasDoProjeto(spec.projectId)
+  // 🔴 As fontes são conferidas ANTES das decisões de encaixe. Família que não
+  // carregou no servidor faz o medidor cair no FALLBACK — e é dessa medida que
+  // saem a escada de encolhimento e o ORÇAMENTO de caracteres. Recusar a peça
+  // com um número tirado dali manda reescrever a copy por uma medida que este
+  // mesmo PR declara inválida (PR4-FINAL-02, 21/09/2026): é a medida de
+  // fallback virando número apresentado como medido.
+  // O conjunto aqui é o SUPERCONJUNTO do que a peça pode usar (o estilo de cada
+  // papel da assinatura e de cada arranjo candidato, mais a família do trecho
+  // destacado, que costuma ser a versão pesada — R02); o diagnóstico no fim
+  // filtra pelo que as camadas FINAIS realmente usam.
+  const familiasDaPeca = new Set<string>()
+  for (const e of [
+    ...Object.values(assinatura.papeis).filter((x): x is EstiloDePapel => Boolean(x)),
+    ...[...gruposDaPagina.values(), ...combinacoesSalvas].flatMap((a) => a.textos.map((t) => t.estilo)),
+  ]) {
+    for (const f of [e.fontFamily, estiloDeDestaqueDoPapel(e, assinatura.numeros.destaque, familias)?.fontFamily]) {
+      if (typeof f === 'string' && f.trim()) familiasDaPeca.add(f)
+    }
+  }
+  const semFonte = await familiasNaoCarregadas([...familiasDaPeca])
+  let segundaVoz: NonNullable<DiagnosticoDaComposicao['segundaVoz']> = 'nenhuma'
+  // O contador de ids é da PEÇA, não do grupo: o serviço repartido entre dois
+  // grupos (horário junto da oferta, endereço no pé) saía com DUAS camadas
+  // `servico` — e ajuste por id (revisor, `ajustar-arte`) atingia as duas, e
+  // `elementosPorTexto` (chaveado pelo id) perdia o ícone do primeiro grupo
+  // (varredura do PR 3, 18/09/2026).
+  const repeticoes = new Map<Papel, number>()
   for (const [chave, blocosDoGrupo] of blocosPorGrupo) {
     const daPagina = gruposDaPagina.get(chave)
     const escolha = escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
@@ -658,25 +714,38 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       arranjoPorGrupo.set(chave, escolha.arranjo)
       arranjos.push({ grupo: chave, id: escolha.arranjo.id, nome: escolha.arranjo.nome, origem: escolha.arranjo.origem, motivo: escolha.motivo })
     }
-    // A manchete com segunda voz vira DOIS papéis no mesmo grupo: as linhas de
-    // cima na voz 1 e a última na voz 2 (o que o Quintal, o TERO e o By Rock
-    // fazem à mão). Sem `headline2` no arranjo (ou na assinatura), nada muda.
+    // A manchete com segunda voz vira DOIS papéis no mesmo grupo (o que o
+    // Quintal, o TERO e o By Rock fazem à mão). Quem diz QUAIS linhas vão na
+    // voz 2 é o AUTOR, no contrato (`estilo.linhasNaVoz2`); sem contrato vale a
+    // regra legada (a última linha) — ver `segunda-voz.ts`.
     const temSegundaVoz = arranjo ? arranjo.papeis.includes('headline2') : Boolean(assinatura.papeis.headline2)
-    const comSegundaVoz = blocosDoGrupo.flatMap((b) =>
-      b.papel === 'headline' && temSegundaVoz && b.linhas.length >= 2
-        ? [
-            { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1), indicesDoBloco: b.indicesDoBloco.slice(0, -1) },
-            { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1), indicesDoBloco: b.indicesDoBloco.slice(-1) },
-          ]
-        : [b],
-    )
+    const comSegundaVoz = blocosDoGrupo.flatMap((b) => {
+      if (b.papel !== 'headline') return [b]
+      const d = dividirManchete(b.linhas, { temSegundaVoz, comContrato: Boolean(spec.copyAutoral), declaradas: declaradasNaVoz2 })
+      if (d.aviso) avisos.push(`headline: ${d.aviso}`)
+      segundaVoz = d.origem
+      if (d.voz2.length === 0) return [b]
+      // A voz 2 é sempre o FIM da manchete, então o corte das LINHAS vale para
+      // os índices do bloco — é isso que deixa cada camada declarar quais
+      // linhas do bloco do autor ela desenha (PR 3).
+      // E voz 1 vazia (manchete INTEIRA na voz 2) não vira camada: um texto sem
+      // linha seria lido depois como bloco vazio e viraria revisão falsa (R01).
+      const corte = d.voz1.length
+      const partes: Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[] }> = []
+      if (corte > 0) partes.push({ papel: 'headline' as Papel, linhas: d.voz1, indicesDoBloco: b.indicesDoBloco.slice(0, corte) })
+      partes.push({ papel: 'headline2' as Papel, linhas: d.voz2, indicesDoBloco: b.indicesDoBloco.slice(corte) })
+      return partes
+    })
     const preenchidos = arranjo
       ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
       : comSegundaVoz.map((b) => ({ ...b, texto: null }))
-    const repeticoes = new Map<Papel, number>()
     for (const p of preenchidos) {
       const estilo = p.texto?.estilo ?? assinatura.papeis[p.papel]
       if (!estilo) continue
+      // Palavra entre [colchetes] na copy sai destacada no estilo da marca. Fica
+      // em variável porque a RECUSA precisa saber a família do trecho para dizer
+      // se a medida valeu (PR4-FINAL-02).
+      const destaqueDoBloco = estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias)
       const n = (repeticoes.get(p.papel) ?? 0) + 1
       repeticoes.set(p.papel, n)
       const r = montarBloco({
@@ -696,11 +765,18 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         // bloco, com a posição que a linha tem lá.
         origem: { bloco: blocoDoPapel.get(p.papel === 'headline2' ? 'headline' : p.papel), linhas: p.indicesDoBloco },
         // Palavra entre [colchetes] na copy sai destacada no estilo da marca.
-        destaque: estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias),
+        destaque: destaqueDoBloco,
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, orcamento: r.recusa.orcamento })
+        // Com uma família do bloco ausente no servidor, a caixa foi medida no
+        // fallback: o orçamento não vale, e a recusa diz o que faltou em vez de
+        // devolver um número (PR4-FINAL-02). As famílias vêm da RECUSA — só as
+        // que entraram na medição —, nunca de uma releitura dos colchetes aqui:
+        // fonte de destaque configurada mas não usada (copy sem [colchetes])
+        // invalidava um orçamento bom (PR4-R2-01).
+        const faltando = [...new Set(r.recusa.familiasMedidas.filter((f) => semFonte.has(f)))]
+        recusas.push(faltando.length > 0 ? { papel: r.recusa.papel, naoMedido: true, fontesNaoCarregadas: faltando } : { papel: r.recusa.papel, orcamento: r.recusa.orcamento })
         continue
       }
       if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
@@ -728,11 +804,21 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     }
   }
   if (recusas.length > 0) {
+    // 🔴 A recusa de quem não pôde ser MEDIDO não vira "reescreva com o
+    // orçamento": o número seria o da fonte de fallback (PR4-FINAL-02).
+    const semMedida = recusas.filter((r) => r.naoMedido)
+    const medidas = recusas.filter((r) => !r.naoMedido)
+    const fontes = [...new Set(semMedida.flatMap((r) => r.fontesNaoCarregadas ?? []))]
     throw new CreativeError(
       'TEXTO_NAO_CABE_NA_COLUNA',
-      `Linha maior que a coluna útil (${colunaUtil}px) mesmo a 80% da fonte: ${recusas.map((r) => r.papel).join(', ')}. Reescreva com o orçamento devolvido.`,
+      [
+        ...(medidas.length > 0 ? [`Linha maior que a coluna útil (${colunaUtil}px) mesmo a 80% da fonte: ${medidas.map((r) => r.papel).join(', ')}. Reescreva com o orçamento devolvido.`] : []),
+        ...(semMedida.length > 0
+          ? [`Em ${semMedida.map((r) => r.papel).join(', ')} a fonte ${fontes.map((f) => `"${f}"`).join(', ')} não está carregada no servidor: a caixa saiu medida na fonte de fallback, então NÃO há orçamento de caracteres para esses papéis — cadastre a fonte (ou confira o arquivo) antes de mexer na copy.`]
+          : []),
+      ].join(' '),
       422,
-      { orcamento: recusas },
+      { orcamento: recusas, ...(fontes.length > 0 ? { fontesNaoCarregadas: fontes } : {}) },
     )
   }
   if (montados.length === 0) throw new CreativeError('SPEC_INVALIDA', 'Nenhum bloco de texto', 400)
@@ -795,7 +881,9 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       blocos,
       pilha: empilhar(blocos, g.gap),
       ...(ladoDoRecuo && blocos.some((b) => (b.recuo ?? 0) > 0) ? { pilhaRecuada: empilhar(blocos, g.gap, ladoDoRecuo) } : {}),
-      principal: papeis.includes('headline'),
+      // A manchete inteira na voz 2 só desenha `headline2` — e o grupo dela
+      // continua sendo o principal (PR4-02 da revisão final do Codex).
+      principal: papeis.includes('headline') || papeis.includes('headline2'),
       ancora,
       temCaixa: caixas.length > 0,
       // O alinhamento preferido é o do arranjo: é o que a combinação desenhou.
@@ -1052,6 +1140,20 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       ]
     : []
 
+  // 6c. As fontes que NÃO carregaram no servidor: o texto nelas foi medido e
+  //     vai ser desenhado na fonte de fallback — a medida não vale, e isso
+  //     precisa ficar dito ("não medido"), nunca parecer medida (PR 4).
+  // A família do TRECHO destacado (rich text) conta também: o destaque pode
+  // estar noutra família (a versão pesada), e é com ela que a largura extra é
+  // medida — ausente, a medida do bloco não vale (R02 da revisão do Codex).
+  // A conferência já rodou ANTES do encaixe (PR4-FINAL-02) sobre o
+  // superconjunto do que a peça podia usar; aqui só se filtra pelo que as
+  // camadas FINAIS realmente usam, para o aviso não citar fonte de um arranjo
+  // que não foi escolhido.
+  const usadasNaPeca = new Set(montados.flatMap((b) => familiasDaCamada(b.layer as Layer)))
+  const fontesNaoCarregadas = new Set([...semFonte].filter((f) => usadasNaPeca.has(f)))
+  for (const f of fontesNaoCarregadas) avisos.push(`a fonte "${f}" não está carregada no servidor: o texto nela saiu na fonte de fallback e a medida não vale (não medido)`)
+
   // 7. Contrato + autofix geométrico (colisão, transbordo, safe area). O fundo
   //    de texto que viria da página de assinatura não entra: a peça nasce sem halo.
   const textosSemHalo = camadasDeTexto.map((c) => (c.effects?.background ? { ...c, effects: { ...c.effects, background: undefined } } : c))
@@ -1068,10 +1170,20 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // 7a. Os ELEMENTOS presos aos textos (ícone, filete, selo, a logo do
   //     arranjo), na tinta FINAL — o autofix pode ter encolhido a fonte. Entram
   //     logo acima dos textos, antes da logo do canto.
-  const camadasDeElementos = layers.flatMap((l) => {
-    const presos = elementosPorTexto.get(l.id)
-    return presos && l.visible !== false ? camadasDosElementos(l, presos.elementos, presos.escala) : []
-  })
+  // Id único na peça inteira: a logo presa a um grupo se chama `logo`, e dois
+  // grupos com ela dariam duas camadas de mesmo id (mesma varredura).
+  const idsNaPeca = new Set(layers.map((l) => l.id))
+  const camadasDeElementos = layers
+    .flatMap((l) => {
+      const presos = elementosPorTexto.get(l.id)
+      return presos && l.visible !== false ? camadasDosElementos(l, presos.elementos, presos.escala) : []
+    })
+    .map((c) => {
+      let id = c.id
+      for (let n = 2; idsNaPeca.has(id); n++) id = `${c.id}-${n}`
+      idsNaPeca.add(id)
+      return id === c.id ? c : { ...c, id }
+    })
   if (camadasDeElementos.length > 0) {
     const ondeALogo = layers.findIndex((l) => l.id === 'logo')
     const antes = ondeALogo >= 0 ? layers.slice(0, ondeALogo) : layers
@@ -1167,7 +1279,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       }
     }),
     logo: logoDiag,
-    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado })),
+    blocos: montados.map((b) => ({ papel: b.papel, escala: b.escala, width: b.width, height: b.height, destacado: b.destacado, ...(familiasDaCamada(b.layer as Layer).some((f) => fontesNaoCarregadas.has(f)) ? { naoMedido: true } : {}) })),
+    // As medidas FINAIS, depois do autofix — é o que vale para quem for ler a
+    // peça (ver-geracao, medir-copy): o bloco montado acima ainda pode encolher.
+    medidasFinais: medidasFinaisDasCamadas(layers, fontesNaoCarregadas),
+    ...(fontesNaoCarregadas.size > 0 ? { fontesNaoCarregadas: [...fontesNaoCarregadas] } : {}),
+    segundaVoz,
     arranjos,
     contraste,
     assinatura: assinatura.origem,

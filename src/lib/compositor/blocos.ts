@@ -70,6 +70,14 @@ export interface OrcamentoDeLinha {
 export interface RecusaDeBloco {
   papel: Papel
   orcamento: OrcamentoDeLinha[]
+  /**
+   * As famílias que ENTRARAM na medição deste bloco — a do estilo sempre, a do
+   * destaque só quando a copy tem trecho entre [colchetes] E a marca tem estilo
+   * de destaque. Quem decide se o orçamento vale lê daqui, nunca reinterpreta
+   * os colchetes por fora: a divergência entre as duas leituras é como o
+   * defeito volta (PR4-R2-01).
+   */
+  familiasMedidas: string[]
 }
 
 export type ResultadoDoBloco =
@@ -172,6 +180,10 @@ export function camadaDoPapel(args: {
           },
         }
       : {},
+    // O prefixo que a assinatura desenha ("→ " no CTA) fica DECLARADO: é uma
+    // transformação do sistema sobre o texto do autor, e quem lê a copy
+    // efetiva da peça (`copyEfetivaDasCamadas`) a desconta em vez de atribuí-la
+    // a quem escreveu (PR 4 de "Marca simples, copy melhor", 12/09/2026).
     metadata: {
       groupId: args.groupId,
       // As posições só valem COM o bloco (a leitura as ignora sem ele): sem
@@ -179,6 +191,7 @@ export function camadaDoPapel(args: {
       compositor: {
         papel: args.papel,
         ...(args.origem?.bloco ? { bloco: args.origem.bloco, ...(args.origem.linhas ? { linhas: [...args.origem.linhas] } : {}) } : {}),
+        ...(linhasFinais[0] !== args.linhas[0] && estilo.prefixo ? { prefixo: estilo.prefixo } : {}),
       },
     },
   }
@@ -323,15 +336,27 @@ export function montarBloco(args: {
       }
     })
     .filter((o): o is OrcamentoDeLinha => o !== null)
-  return { bloco: null, recusa: { papel: args.papel, orcamento }, avisos }
+  return {
+    bloco: null,
+    recusa: {
+      papel: args.papel,
+      orcamento,
+      familiasMedidas: [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
+        (f): f is string => typeof f === 'string' && f.trim() !== '',
+      ),
+    },
+    avisos,
+  }
 }
 
 /** Vão vertical entre dois papéis consecutivos (o ritmo do `gerar.py`). */
 export function vaoEntre(anterior: Papel | null, proximo: Papel, gapPadrao: number): number {
   if (!anterior) return 0
-  // A segunda voz encosta na primeira: é o mesmo lockup.
-  if (proximo === 'headline2') return 0
-  if (proximo === 'headline') return Math.round(gapPadrao * 0.5)
+  // A segunda voz encosta na primeira (ou na outra caixa da voz 2): é o mesmo
+  // lockup. Manchete INTEIRA na voz 2 começa em `headline2` e leva o vão de
+  // manchete, não o de lockup — senão encostava no pré-título (PR4-02).
+  if (proximo === 'headline2' && (anterior === 'headline' || anterior === 'headline2')) return 0
+  if (proximo === 'headline' || proximo === 'headline2') return Math.round(gapPadrao * 0.5)
   if (proximo === 'cta') return Math.round(gapPadrao * 1.3)
   if (proximo === 'servico') return Math.round(gapPadrao * 1.6)
   return gapPadrao

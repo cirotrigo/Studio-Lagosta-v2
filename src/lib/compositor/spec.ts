@@ -73,6 +73,13 @@ export const preferenciasSchema = z.object({
   /** Nome (ou tag) da página de assinatura a usar, quando o cliente tem mais de uma no formato. */
   variante: z.string().max(80).optional(),
   /**
+   * O id da página de assinatura com que a peça NASCEU — gravado pela
+   * recomposição (`specComAPosicaoOriginal`), nunca pedido por ninguém. Vence
+   * enquanto a página existir; se ela sumiu (arquivada), a escolha automática
+   * segue em vez de recusar a peça, como `arranjos`.
+   */
+  varianteOriginal: z.string().max(80).optional(),
+  /**
    * Os arranjos de texto que esta peça já usou (grupo da página ou combinação
    * salva, ver `combinacoes.ts`). O compositor grava ao persistir, e a
    * recomposição os mantém — refazer a peça não pode sortear outra combinação.
