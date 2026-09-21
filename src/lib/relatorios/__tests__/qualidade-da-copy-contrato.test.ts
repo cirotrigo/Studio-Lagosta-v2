@@ -977,12 +977,22 @@ describe('PR15-07 · a recusa entra no congelado pelo instante DELA, não pelo d
     expect(peca({ recusaDaRecomposicao: recusa(T(10)) }, { vivo: true }).correcoes.compositor).toBe(1)
   })
 
+  // A arte mais velha da página: registro antigo E chave nova, os dois antes do PNG publicado → uma.
+  const velha = arte('g0', { createdAt: T(0), copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: { estado: 'recusada', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', em: T(0.3) }, recusaDaRecomposicao: recusa(T(0.6)) })
+
   it('o formato antigo também é cortado pelo `em` dele, e cada arte conta uma vez', () => {
-    // A arte mais velha da página: registro antigo E chave nova, os dois antes do PNG publicado → uma.
-    const velha = arte('g0', { createdAt: T(0), copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: { estado: 'recusada', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', em: T(0.3) }, recusaDaRecomposicao: recusa(T(0.6)) })
-    // A publicada: a recusa antiga apagou o registro do render (o PNG volta à criação) e veio depois dele.
+    // Outra arte da página com a recusa no formato antigo DEPOIS do PNG publicado (aos 20 min): no congelado, fora.
+    const tardia = arte('g0b', { createdAt: T(5), copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: { estado: 'recusada', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', em: T(60) } })
+    expect(peca({}, { extras: [velha, tardia] }).correcoes.compositor).toBe(1)
+    expect(peca({}, { extras: [velha, tardia], vivo: true }).correcoes.compositor).toBe(2)
+  })
+
+  it('a recusa antiga NA arte publicada apagou o registro do render: o PNG não volta à criação — sem prova (PR15-10-R2)', () => {
+    // Até C6-01 a recusa SUBSTITUÍA `recomposicao`: o `em` do render dos 20 min sumiu, e o PNG pode ser de depois da criação.
     const publicada = { recomposicao: { estado: 'recusada', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', em: T(60) } }
-    expect(peca(publicada, { extras: [velha] }).correcoes.compositor).toBe(1)
+    expect(peca(publicada, { extras: [velha] })).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+    expect(peca(publicada, { extras: [velha] }).correcoes.compositor).toBe(0)
+    // No vivo não há corte nem prova da mídia: as duas recusas contam.
     expect(peca(publicada, { extras: [velha], vivo: true }).correcoes.compositor).toBe(2)
   })
 
@@ -990,6 +1000,51 @@ describe('PR15-07 · a recusa entra no congelado pelo instante DELA, não pelo d
     const semData = { ...recusa(T(10)), em: 'ontem' }
     expect(peca({ recusaDaRecomposicao: semData }).correcoes.compositor).toBe(0)
     expect(peca({ recusaDaRecomposicao: semData }, { vivo: true }).correcoes.compositor).toBe(1)
+  })
+})
+
+// ─── FINAL do Codex sobre 9648f441 (21/09/2026) ───────────────────────────
+
+describe('PR15-10-R2 · registro de render que não diz quando o PNG ficou pronto: instante DESCONHECIDO', () => {
+  const original = copiaOriginal()
+  const recusa = { erro: 'A linha não cabe na coluna.', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', detalhes: null }
+  /** Criada aos 0 min; a equipe mexe na geometria aos 10; o PNG é refeito aos 20 (a geometria chega a ele); publicado. */
+  const medir = (registro: Partial<ArteLida>) =>
+    medirPeca(
+      montarPecas(
+        leitura({
+          posts: [post({ id: 'slide', generationId: 'g1', mediaUrls: ['u1'], ...CONGELADO })],
+          artes: [arte('g1', { createdAt: T(0), resultUrl: 'u1', copyAutoral: peca(original), ...registro })],
+          paginas: [{ id: 'page-1', copyAutoral: original, layers: camadasDa(original) }],
+          sinais: [{ tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-1', generationId: null, createdAt: T(10) }],
+        }),
+      )[0],
+    )
+
+  it('criação → geometria → PNG novo → recusa LEGADA: congelada sem prova, nunca cortada na criação', () => {
+    // A recusa antiga substituiu `recomposicao` inteiro: o `em` dos 20 min sumiu, e a criação cortaria a geometria dos 10.
+    const m = medir({ recomposicao: { estado: 'recusada', em: T(30), ...recusa } })
+    expect(m).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+    expect(Object.values(m.correcoes).every((n) => n === 0)).toBe(true)
+  })
+
+  it('controle: a recusa na chave NOVA preserva o registro do render — o corte fica no PNG dos 20 min', () => {
+    const m = medir({ recomposicao: { estado: 'feita', em: T(20) }, recusaDaRecomposicao: { em: T(30), ...recusa, arteTrocada: false } })
+    expect(m).toMatchObject({ comparavel: true, exclusao: null, preservada: true })
+    // A geometria dos 10 min chegou ao PNG; a recusa dos 30 veio depois dele.
+    expect(m.correcoes).toMatchObject({ design: 1, compositor: 0 })
+  })
+
+  it('controle: sem registro de render nenhum, o PNG é o da criação', () => {
+    const m = medir({})
+    expect(m).toMatchObject({ comparavel: true, exclusao: null })
+    expect(m.correcoes.design).toBe(0)
+  })
+
+  it('registro em forma que nenhum escritor grava também não vira a criação', () => {
+    for (const recomposicao of [{ estado: 'refeita', em: T(20) }, { em: T(20) }, 'feita', [{ estado: 'feita', em: T(20) }]]) {
+      expect(medir({ recomposicao })).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    }
   })
 })
 

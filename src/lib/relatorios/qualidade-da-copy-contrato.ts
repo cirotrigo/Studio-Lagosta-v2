@@ -419,11 +419,22 @@ interface Ocorrencia {
  * registram `recomposicao.em`. PNG refeito com `em` ilegível devolve `NaN` —
  * o instante da criação seria CEDO demais e cortaria o que chegou à mídia; sem
  * instante confiável não há prova temporal (2ª FINAL sobre ede56191, PR15-10).
+ *
+ * A criação só vale quando NÃO HÁ registro de render. Registro que não é
+ * `feita`/`re-renderizada` não diz quando o PNG atual ficou pronto, e devolve
+ * `NaN` — nunca a criação no lugar (FINAL sobre 9648f441, PR15-10-R2). O caso
+ * real é a RECUSA LEGADA (`estado: 'recusada'`, até C6-01): o merge raso
+ * SUBSTITUÍA o registro inteiro, e o `em` do render que a precedeu sumiu — o
+ * PNG pode ter sido refeito depois da criação, com uma correção incorporada, e
+ * cortar na criação tiraria essa correção da medida. Nada na arte registra à
+ * parte o instante do último PNG; forma que nenhum escritor grava cai no mesmo
+ * lugar.
  */
 function instanteDoPng(a: ArteLida): number {
   const criada = tempo(a.createdAt)
+  if (a.recomposicao == null) return criada
   const r = objeto(a.recomposicao)
-  if (!r || (r.estado !== 'feita' && r.estado !== 're-renderizada')) return criada
+  if (!r || (r.estado !== 'feita' && r.estado !== 're-renderizada')) return NaN
   const refeita = typeof r.em === 'string' ? Date.parse(r.em) : NaN
   return Number.isFinite(refeita) ? Math.max(criada, refeita) : NaN
 }
