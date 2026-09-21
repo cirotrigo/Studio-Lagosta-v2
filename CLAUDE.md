@@ -10624,3 +10624,51 @@ aplicada**.
   `versao-renderizada.test.ts`, `agendamento.test.ts` e `agendar-leva.test.ts`
   (a porta real e a nota). Cada correção desfeita por mutação faz a sua prova
   falhar.
+
+**Do restack sobre o PR 11 (21/09/2026): o laço `superada` → `PECA_AUSENTE`, e a observação que a leva não leva:**
+
+- 🔴 **A linha cuja peça não serve (não existe, sumiu ou falhou) e cujo pedido
+  nasceu de item de plano pergunta ao ITEM antes de mandar compor.** A
+  compor-leva repetida recusa como `superada` (linha 4a da tabela do PR 11)
+  quando o item já está pronto, agendado ou em voo com OUTRA arte viva ou
+  pronta — e o agendar-leva respondia `PECA_AUSENTE` ("componha com compor-leva
+  antes de agendar") ou `PECA_FALHOU` ("repita compor-leva"): instrução que
+  levava de volta à mesma recusa. Hoje `superadaNoPlanoSemPeca` (puro,
+  `agendamento.ts`) espelha a 4a, e o item volta `PECA_SUPERADA_NO_PLANO` com
+  `arteAtualDoItem` e o motivo que manda contar à pessoa e perguntar (decisão do
+  Ciro, 13/09/2026) — nada é criado. A nota de `agendar-leva` já dispara por esse
+  par; a descrição da tool já prometia "refeito volta como
+  PECA_SUPERADA_NO_PLANO", então o schema e o fixture não mudaram.
+- **O item vem do PAYLOAD da linha, não da Generation**: a linha que a
+  compor-leva recusou não tem peça nenhuma, mas o pedido (com `itemDePlanoId` e
+  `planoId`) está gravado nela. E o job é lido ANTES da Generation, como na
+  tabela do plano — o runner fecha a Generation e só depois o job; na ordem
+  inversa, a arte que fica pronta entre as duas leituras parece "job terminado
+  com a Generation aberta" e a resposta volta a mandar compor.
+- `PECA_AUSENTE`/`PECA_FALHOU` continuam valendo para a peça que de fato não
+  existe ou falhou num item que a compor-leva ainda PRODUZ (executável, ou sem
+  item de plano) — aí "componha de novo" leva a algum lugar. A paridade com a
+  tabela é enumerada no teste: o espaço inteiro de `decidirNoItemDoPlano`, menos
+  a linha 3.
+- ⚠️ **Simplificação declarada**: o agendamento não compara o pedido da linha
+  com o da arte do item. Quando é o MESMO pedido (a linha 3, em que a compor-leva
+  reaproveitaria), a resposta diz "superada" e aponta a arte atual — que tem a
+  mesma copy; "manter a arte atual" é o desfecho certo do mesmo jeito.
+- ⚠️ **Residuais, com a saída na própria recusa da compor-leva**: item
+  reprovado (`reprovado`), item pronto, agendado ou em voo cuja arte já não está
+  viva nem pronta (`avancou`, `revisado`), chamada vencida (`chamada-vencida`) e
+  item de plano apagado seguem com `PECA_AUSENTE`/`PECA_FALHOU` — a compor-leva
+  repetida recusa com o motivo e o caminho de saída dela.
+- 🔴 **Lacuna conhecida: lembrete criado pela leva sai sem observação.**
+  `agendar-leva` não aceita `observacao` (decisão de 21/09/2026: não entra
+  agora), e é ela que o lembrete de publicação manual manda no WhatsApp. Para
+  lembrete com observação, `colocar-na-agenda` ou editar o post depois.
+- Provas: `agendar-leva-peca-superada.test.ts` (o caminho real — `enfileirarPeca`
+  do PR 11 com a reserva e a tabela, depois `agendarItensDoLote` na MESMA linha:
+  linha sem peça, peça que falhou com o item refeito, arte em produção lida pelo
+  job, a ordem job → Generation, e os três controles de peça ausente ou falha de
+  verdade), a paridade em `agendamento.test.ts` e o passo 18 da prova de
+  integração (escrito, ainda não rodado). Mutações: sem o gancho derruba 4
+  testes; só pelo vínculo, 5; o item lido da Generation, 1; sem o job, 1; a
+  Generation antes do job, 1; reprovado tratado como superado, 1; só
+  `PECA_AUSENTE`, 3.
