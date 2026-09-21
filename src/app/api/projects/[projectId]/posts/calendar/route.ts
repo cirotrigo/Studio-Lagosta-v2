@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
 import type { PostType } from '../../../../../../../prisma/generated/client'
 
 export async function GET(
@@ -92,6 +93,8 @@ export async function GET(
         // Template-based scheduling fields
         pageId: true,
         templateId: true,
+        // O template ATUAL da página, para o "Editar Template" (comTemplateDaPagina).
+        PageRef: { select: { templateId: true } },
         renderStatus: true,
         renderedImageUrl: true,
         // Só para derivar `congelado` abaixo — o id do publicador externo não
@@ -165,6 +168,8 @@ export async function GET(
         // Template-based scheduling fields
         pageId: true,
         templateId: true,
+        // O template ATUAL da página, para o "Editar Template" (comTemplateDaPagina).
+        PageRef: { select: { templateId: true } },
         renderStatus: true,
         renderedImageUrl: true,
         // Só para derivar `congelado` abaixo — o id do publicador externo não
@@ -231,7 +236,7 @@ export async function GET(
      * trafegar para o cliente (mesma regra do `hasInstagramToken`).
      */
     const resposta = allPosts.map(({ laterPostId, ...post }) => ({
-      ...post,
+      ...comTemplateDaPagina(post),
       congelado: laterPostId != null,
     }))
 
