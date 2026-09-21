@@ -468,6 +468,8 @@ export const toolsDeBaseEDna = [
         { reindexEntry },
         { invalidateProjectCache },
         { resolverAutor },
+        { editarEntradaCoordenada },
+        { ehIndexacaoEmAndamento },
       ] = await Promise.all([
         import('../../db'),
         import('../../creatives/errors'),
@@ -475,6 +477,8 @@ export const toolsDeBaseEDna = [
         import('../../knowledge/indexer'),
         import('../../knowledge/cache'),
         import('../tools'),
+        import('../../knowledge/arrendamento'),
+        import('../../knowledge/marca-de-indexado'),
       ])
       const projectId = args.projectId as number
       const entradaId = args.entradaId as string
@@ -522,24 +526,36 @@ export const toolsDeBaseEDna = [
         throw new Error('Nada para atualizar: envie title, content, tags, category ou validade.')
       }
 
-      await db.knowledgeBaseEntry.update({
-        where: { id: entradaId },
-        data: {
+      // Coordenada com o arrendamento da indexação (PR13-42): texto ou categoria
+      // novos enquanto outra execução indexa a entrada são recusados ANTES de
+      // salvar — senão o texto novo ficava no cadastro e o antigo na busca.
+      let antes: { content: string; title: string; category: string }
+      try {
+        ;({ antes } = await editarEntradaCoordenada(entradaId, {
           ...(title !== undefined ? { title } : {}),
           ...(content !== undefined ? { content } : {}),
           ...(tags !== undefined ? { tags } : {}),
           ...(category !== undefined ? { category: category as never } : {}),
           ...(expiresAt !== undefined ? { expiresAt } : {}),
           updatedBy: autor,
-        },
-      })
+        }))
+      } catch (erro) {
+        if (ehIndexacaoEmAndamento(erro)) {
+          throw new CreativeError(
+            'INDEXACAO_EM_ANDAMENTO',
+            'Esta entrada está sendo indexada para a busca agora. Nada foi salvo: tente de novo em alguns minutos.',
+            409,
+          )
+        }
+        throw erro
+      }
 
       // Texto ou categoria novos exigem reindexar: os vetores carregam o texto
       // E a categoria nos metadados, e a busca filtra por eles.
       const mudouIndice =
-        (content !== undefined && content !== existente.content) ||
-        (title !== undefined && title !== existente.title) ||
-        (category !== undefined && category !== existente.category)
+        (content !== undefined && content !== antes.content) ||
+        (title !== undefined && title !== antes.title) ||
+        (category !== undefined && category !== antes.category)
 
       let avisoBusca: string | undefined
       if (mudouIndice) {
@@ -551,7 +567,9 @@ export const toolsDeBaseEDna = [
           // salvo está correto, então não desfazemos — mas quem chamou precisa
           // saber, senão a falha morre no log.
           console.error('[mcp] reindexEntry falhou após atualizar a entrada:', erro)
-          avisoBusca =
+          // Indexação em andamento aqui foi adquirida DEPOIS da edição gravada
+          // (a edição que muda o índice é recusada antes): ela leu o texto novo.
+          if (!ehIndexacaoEmAndamento(erro)) avisoBusca =
             'O texto foi salvo, mas a indexação da busca falhou — a entrada pode não aparecer em buscas até ser reindexada pela interface do Studio (avise a pessoa).'
         }
       }

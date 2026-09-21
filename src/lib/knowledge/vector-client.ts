@@ -4,6 +4,7 @@
  */
 
 import { Index } from '@upstash/vector'
+import { lancarSeAbortado } from './aborto'
 
 type VectorStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
 
@@ -29,23 +30,33 @@ export interface VectorMetadata extends TenantKey {
 
 let _vectorIndex: Index | null = null
 
+function credenciaisDoIndice(): { url: string; token: string } {
+  if (!process.env.UPSTASH_VECTOR_REST_URL) {
+    throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
+  }
+
+  if (!process.env.UPSTASH_VECTOR_REST_TOKEN) {
+    throw new Error('UPSTASH_VECTOR_REST_TOKEN is not defined')
+  }
+
+  return { url: process.env.UPSTASH_VECTOR_REST_URL, token: process.env.UPSTASH_VECTOR_REST_TOKEN }
+}
+
 export function getVectorClient(): Index {
   if (!_vectorIndex) {
-    if (!process.env.UPSTASH_VECTOR_REST_URL) {
-      throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
-    }
-
-    if (!process.env.UPSTASH_VECTOR_REST_TOKEN) {
-      throw new Error('UPSTASH_VECTOR_REST_TOKEN is not defined')
-    }
-
-    _vectorIndex = new Index({
-      url: process.env.UPSTASH_VECTOR_REST_URL,
-      token: process.env.UPSTASH_VECTOR_REST_TOKEN,
-    })
+    _vectorIndex = new Index(credenciaisDoIndice())
   }
 
   return _vectorIndex
+}
+
+/**
+ * Um cliente cujas requisições são ABORTADAS com o sinal (PR13-41): a escrita
+ * que passa do prazo do passo é cancelada em vez de terminar depois de outra
+ * execução já ter tomado a entrada. O singleton não serve — o sinal é da config.
+ */
+function clienteComSinal(signal: AbortSignal | undefined): Index {
+  return signal ? new Index({ ...credenciaisDoIndice(), signal }) : getVectorClient()
 }
 
 /**
@@ -57,9 +68,10 @@ export async function upsertVectors(
     id: string
     vector: number[]
     metadata: VectorMetadata
-  }>
+  }>,
+  opcoes: { signal?: AbortSignal } = {}
 ) {
-  const index = getVectorClient()
+  const index = clienteComSinal(opcoes.signal)
 
   for (const vec of vectors) {
     if (!vec.metadata.projectId) {
@@ -131,7 +143,21 @@ export async function queryVectors(
  * @param tenant Tenant isolation keys (requires projectId)
  * @returns Number of vectors deleted
  */
-export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey): Promise<number> {
+/**
+ * `opcoes.signal`: aborto cooperativo (PR13-20/22) — conferido DEPOIS da consulta
+ * e ANTES do `index.delete`: quem perdeu a posse externa não pode apagar vetores
+ * que outra aplicação já recuperou. O mesmo sinal cancela a requisição do delete.
+ *
+ * `opcoes.antesDeApagar` (PR13-41): roda entre a consulta dos ids e o delete —
+ * é onde a reindexação RENOVA o arrendamento da entrada. A consulta pode ter
+ * esperado o bastante para o arrendamento vencer e outra execução recuperar os
+ * MESMOS ids; renovação que falha lança, e o delete não começa.
+ */
+export async function deleteVectorsByEntry(
+  entryId: string,
+  tenant: TenantKey,
+  opcoes: { signal?: AbortSignal; antesDeApagar?: () => Promise<void> } = {}
+): Promise<number> {
   if (!tenant?.projectId) {
     throw new Error('projectId is required to delete vectors')
   }
@@ -148,7 +174,14 @@ export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey): 
 
   if (results.length > 0) {
     const idsToDelete = results.map(r => String(r.id))
-    await index.delete(idsToDelete)
+    lancarSeAbortado(opcoes.signal, 'apagar vetores')
+    if (opcoes.antesDeApagar) {
+      await opcoes.antesDeApagar()
+      lancarSeAbortado(opcoes.signal, 'apagar vetores')
+    }
+    await clienteComSinal(opcoes.signal).delete(idsToDelete)
+    // Abortada no meio, a resposta do cliente não prova nada: quem chamou precisa saber que o delete ficou incerto.
+    lancarSeAbortado(opcoes.signal, 'confirmar a exclusão de vetores')
     return results.length
   }
 

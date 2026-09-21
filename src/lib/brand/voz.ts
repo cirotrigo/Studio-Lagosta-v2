@@ -390,6 +390,21 @@ export function precedenciaDaVoz(args: {
   }
 }
 
+/**
+ * Os campos do DNA de texto que MUDARAM em relação ao que a prévia aprovada
+ * leu (PR13-02). Vazio = o DNA atual é o aprovado. `null` e `undefined` são
+ * a mesma ausência.
+ */
+export function dnaDiverge(
+  atual: { toneOfVoice?: string | null; contentRules?: string | null },
+  esperado: { toneOfVoice?: string | null; contentRules?: string | null },
+): Array<'toneOfVoice' | 'contentRules'> {
+  const campos: Array<'toneOfVoice' | 'contentRules'> = []
+  if ((atual.toneOfVoice ?? null) !== (esperado.toneOfVoice ?? null)) campos.push('toneOfVoice')
+  if ((atual.contentRules ?? null) !== (esperado.contentRules ?? null)) campos.push('contentRules')
+  return campos
+}
+
 /** O snapshot SOMENTE LEITURA do DNA de texto no momento da migração — o caminho de volta. */
 export function arquivoDoDna(dna: { toneOfVoice: string | null; contentRules: string | null; updatedAt?: Date | null }, em: Date = new Date()) {
   return {

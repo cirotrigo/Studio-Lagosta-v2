@@ -51,6 +51,7 @@ import { ChatEmptyState } from '@/components/chat/chat-empty-state'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
+import { avisoDaIndexacaoPendente } from '@/lib/knowledge/marca-de-indexado'
 import {
   isDisambiguationResponse,
   handleDisambiguationChoice,
@@ -833,6 +834,11 @@ export default function AIChatPage() {
       if (!response.ok) {
         const data = await response.json().catch(() => ({}))
         throw new Error(data?.error || 'Não foi possível salvar o conhecimento.')
+      }
+      // 202 com indexação pendente: salvo, mas a busca pode ficar desatualizada — avisa sem bloquear (PR13-50).
+      const aviso = avisoDaIndexacaoPendente(await response.json().catch(() => null))
+      if (aviso) {
+        setMessages(prev => [...prev, { id: `aviso-${Date.now()}`, role: 'assistant', parts: [{ type: 'text', text: aviso }] }])
       }
 
       setPendingPreview(null)

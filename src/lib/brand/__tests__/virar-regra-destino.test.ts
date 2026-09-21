@@ -33,6 +33,8 @@ const estado = vi.hoisted(() => ({
 }))
 
 vi.mock('@/lib/knowledge/entries', () => ({ criarEntradaBase: vi.fn() }))
+// O serviço da voz importa `Prisma` do client gerado (PR 13); o teste não precisa dele.
+vi.mock('@prisma/client', () => ({ Prisma: { TransactionIsolationLevel: { Serializable: 'Serializable' }, PrismaClientKnownRequestError: class PrismaClientKnownRequestError extends Error { code = '' } } }))
 vi.mock('@/lib/db', () => {
   let leiturasDaVoz = 0
   const brandVoice = {

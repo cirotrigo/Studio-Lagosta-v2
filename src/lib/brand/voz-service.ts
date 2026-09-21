@@ -19,9 +19,11 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
+import { conferirFatosEsperados, type FatoEsperado } from './migracao-da-voz'
 import {
   aplicarRegraNaVoz,
   arquivoDoDna,
+  dnaDiverge,
   lerVoz,
   precedenciaDaVoz,
   regrasAtivas,
@@ -94,6 +96,11 @@ export interface GravarVozArgs {
    * (PR7-FINAL-01). Recusa com `REGRA_DESTINO_MUDOU`.
    */
   exigirMigrada?: boolean
+  /**
+   * Conferência de POSSE de uma trava externa (PR13-38): roda depois da leitura da versão e imediatamente antes
+   * de `create`/`updateMany`. Lança para abortar — a escrita não acontece.
+   */
+  antesDeEscrever?: () => Promise<void>
 }
 
 export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; voz: VozCompacta; criada: boolean }> {
@@ -102,6 +109,9 @@ export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; 
     throw new CreativeError('VOZ_INVALIDA', `A voz não passa no contrato (${problemas.length} problema${problemas.length === 1 ? '' : 's'}): ${problemas.map((p) => `${p.caminho}: ${p.mensagem}`).join(' · ')}`, 400, { problemas })
   }
   const atual = await db.brandVoice.findUnique({ where: { projectId: args.projectId }, select: { versao: true } })
+  // PR13-38: quem detém uma trava externa (a migração por manifesto) confere a POSSE aqui — depois da leitura,
+  // que espera, e imediatamente antes de escrever. Conferir antes de entrar no serviço não cobre esta janela.
+  await args.antesDeEscrever?.()
   if (!atual) {
     if (args.versaoEsperada != null && args.versaoEsperada !== 0) {
       throw new CreativeError('VOZ_DIVERGENTE', 'Ainda não há voz gravada para este cliente; a versão esperada não bate.', 409, { versaoEsperada: args.versaoEsperada, versaoAtual: null })
@@ -131,15 +141,59 @@ export async function gravarVoz(args: GravarVozArgs): Promise<{ versao: number; 
  * texto. O DNA fica intacto (a arte continua lendo `contentRules`); o snapshot
  * dele vai para `dnaArquivado`, para o registro do que valia até aqui.
  */
-export async function migrarParaVoz(args: { projectId: number; versaoEsperada: number; em?: Date }): Promise<{ migradaEm: Date; jaEstava: boolean; versao: number }> {
+export async function migrarParaVoz(args: {
+  projectId: number
+  versaoEsperada: number
+  em?: Date
+  /**
+   * O DNA de texto que a prévia APROVADA leu. Conferido na MESMA transação em
+   * que a precedência é ligada: DNA que mudou entre a aprovação e a ativação
+   * (outro cliente sendo processado, alguém editando a aba Marca) recusa com
+   * `VOZ_DNA_DIVERGENTE` (409) e o legado continua mandando (PR13-02 da
+   * revisão do Codex, 12/09/2026). Sem ele, a ativação não olha o DNA.
+   */
+  dnaEsperado?: { toneOfVoice: string | null; contentRules: string | null }
+  /**
+   * Os fatos aprovados que a aplicação escreveu ou encontrou na base, conferidos
+   * na MESMA transação: existência, conteúdo, categoria, status ACTIVE, validade
+   * e indexação concluída (`metadata.indexadoEm`). Divergência recusa com
+   * `VOZ_FATOS_DIVERGENTES` (409): a voz fica gravada e NÃO migrada, o legado
+   * segue mandando, e a edição concorrente da linha é preservada (PR13-35).
+   */
+  fatosEsperados?: readonly FatoEsperado[]
+  /**
+   * Conferência de POSSE de uma trava externa (PR13-38): roda DENTRO da transação, depois das leituras do DNA e
+   * dos fatos e imediatamente antes de ligar a precedência. Lança para abortar.
+   */
+  antesDeEscrever?: () => Promise<void>
+}): Promise<{ migradaEm: Date; jaEstava: boolean; versao: number }> {
+  /**
+   * A trava da linha do `Project` serializa esta ativação contra a confirmação
+   * de regra no DNA de texto (`virarRegra`), que toma a MESMA trava. Ela vem
+   * ANTES de qualquer leitura, e tudo é lido DENTRO dela — decidir por leitura
+   * feita antes da trava é o defeito (PR7-R9-01/02).
+   *
+   * 🔴 E a transação é READ COMMITTED (o padrão) DE PROPÓSITO: **esperar por
+   * uma trava não renova o snapshot**. Em REPEATABLE READ/SERIALIZABLE o
+   * snapshot é congelado no PRIMEIRO comando — que é justamente o
+   * `SELECT … FOR UPDATE` —, então a transação acorda com a trava na mão e o
+   * mundo de ANTES nos olhos. Como `virarRegra` só BLOQUEIA a linha de
+   * `Project` (não a atualiza) e não pede serializável, não há erro de
+   * atualização concorrente para avisar: a migração arquivaria o DNA velho e
+   * ativaria a voz sem enxergar a regra recém-confirmada — exatamente o que a
+   * trava existe para impedir (PR13-51 da revisão final do Codex, 21/09/2026).
+   * Medido no Postgres de dev, mesma intercalação: READ COMMITTED enxerga a
+   * regra; SERIALIZABLE não. Em READ COMMITTED cada comando DEPOIS da trava
+   * tira snapshot novo, que é o que faz o protocolo funcionar.
+   *
+   * O serializável estava aqui para pegar quem NÃO toma a trava
+   * (`updateBrandDNA` direto, da aba Marca). **Não pegava**: medido no mesmo
+   * banco, a edição solta commita no meio e a transação serializável segue e
+   * commita — um upsert que não LÊ nada não fecha ciclo para o SSI. Quem
+   * protege esse caso é `dnaEsperado`, comparado logo abaixo, e não o nível de
+   * isolamento. Não reintroduza o isolamento aqui sem repetir as duas medições.
+   */
   return db.$transaction(async (tx) => {
-    /**
-     * A trava vem ANTES de qualquer leitura: quem confirma regra no DNA de
-     * texto espera aqui. E tudo é lido DENTRO dela — o snapshot lido antes
-     * arquivaria um DNA que uma confirmação em curso ainda ia alterar, e o
-     * histórico deixaria de representar o DNA vigente na transição
-     * (PR7-R9-02).
-     */
     await travarProjeto(tx, args.projectId)
     const registro = await lerRegistroDaVoz(args.projectId, tx)
     if (!registro) throw new CreativeError('VOZ_INEXISTENTE', 'Não há voz gravada para migrar: grave a voz primeiro.', 404)
@@ -149,7 +203,24 @@ export async function migrarParaVoz(args: { projectId: number; versaoEsperada: n
       throw new CreativeError('VOZ_DIVERGENTE', `A voz mudou (versão esperada ${args.versaoEsperada}, atual ${registro.versao}). Releia a voz antes de migrar.`, 409, { versaoEsperada: args.versaoEsperada, versaoAtual: registro.versao })
     }
     const dna = await tx.brandDNA.findUnique({ where: { projectId: args.projectId }, select: { toneOfVoice: true, contentRules: true, updatedAt: true } })
+    if (args.dnaEsperado) {
+      const campos = dnaDiverge({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null }, args.dnaEsperado)
+      if (campos.length > 0) {
+        throw new CreativeError('VOZ_DNA_DIVERGENTE', `O DNA de texto mudou desde a prévia aprovada (${campos.join(', ')}). A voz NÃO foi ativada e o legado continua mandando: gere a prévia de novo e aprove o que está no banco.`, 409, { campos })
+      }
+    }
+    if (args.fatosEsperados && args.fatosEsperados.length > 0) {
+      const linhas = await tx.knowledgeBaseEntry.findMany({
+        where: { projectId: args.projectId, id: { in: args.fatosEsperados.map((f) => f.entryId) } },
+        select: { id: true, content: true, category: true, status: true, expiresAt: true, metadata: true },
+      })
+      const problemas = conferirFatosEsperados(args.fatosEsperados, new Map(linhas.map((l) => [l.id, l])))
+      if (problemas.length > 0) {
+        throw new CreativeError('VOZ_FATOS_DIVERGENTES', `Os fatos aprovados mudaram na base entre a conferência e a ativação (${problemas.join('; ')}). A voz NÃO foi ativada e o legado continua mandando: decida sobre as linhas e aplique de novo.`, 409, { problemas })
+      }
+    }
     const em = args.em ?? new Date()
+    await args.antesDeEscrever?.()
     const gravada = await tx.brandVoice.updateMany({
       where: { projectId: args.projectId, versao: args.versaoEsperada, migradaEm: null },
       data: { migradaEm: em, dnaArquivado: arquivoDoDna({ toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null, updatedAt: dna?.updatedAt ?? null }, em) as never },

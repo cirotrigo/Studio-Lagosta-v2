@@ -6720,6 +6720,671 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   (mesmo id), a presente volta campo a campo, e a conferência cobre todos os
   campos menos `updatedAt`.
 
+### A migração da voz, por manifesto (PR 13 de "Marca simples, copy melhor", 12/09/2026)
+
+A troca do DNA de texto (5–12 mil caracteres por cliente) pela voz compacta
+do PR 7 é decisão do Ciro, cliente a cliente, sobre uma PRÉVIA que ele viu.
+Contrato PURO em `src/lib/brand/migracao-da-voz.ts` (com teste); as dez vozes
+propostas em `scripts/lib/vozes-propostas.ts`; o script em
+`scripts/migrar-voz-da-marca.ts` (dry-run por padrão; `--aplicar --manifesto`
+escreve; `--dev` para o branch; em produção exige `--producao`). Prova de
+integração no branch de dev: `scripts/validar-migracao-da-voz.ts` (projeto 6;
+o registrador de fatos é um stub — `criarEntradaBase` indexa no vetor de
+produção). **Nenhum cliente foi migrado**: as prévias reais estão em
+`~/Documents/Studio-Lagosta-execucao/marca-e-copy/PR-13/previa-producao/`
+com o manifesto em branco, à espera das decisões.
+
+- **A prévia tem VERSÃO de conteúdo** (`versaoDaPrevia`: hash estável do DNA
+  de texto + da voz proposta). O manifesto cita a versão aprovada e a
+  aplicação BLOQUEIA quando ela mudou por baixo (DNA editado, voz retocada) —
+  prévia refeita pede aprovação nova. Nada é adaptado por quem aplica.
+- 🔴 **O manifesto é FECHADO e silêncio não é aprovação**: todo cliente é
+  `migrar`, `manter-legado` ou `pendente`; `migrar` e `manter-legado` exigem
+  `aprovadoPor` + `aprovadoEm`; `lerManifesto` devolve TODOS os problemas.
+  `pendente` e `manter-legado` não escrevem nada; cliente já migrado é
+  `ja-migrado`.
+- 🔴 **Fato vai para a BASE, nunca para a voz.** `fatosNoDna` lista as frases
+  do DNA com preço, horário, data ou promoção; só entra na base o que o
+  manifesto listar POR EXTENSO (trecho exato da prévia + categoria + título +
+  validade), e trecho que a prévia não lista bloqueia. `fatosNaVoz` tem de dar
+  VAZIO na voz proposta (é problema, não aviso). Em PROIBIÇÃO e REGRA a palavra
+  nua "promoção"/"desconto"/"grátis" é vocabulário proibido, não dado;
+  percentual e "leve X pague Y" são dado em qualquer campo; o motivo da regra
+  só é lido para preço e horário (ele carrega a data em que a regra nasceu).
+  🔴 O rodapé "(AAAA-MM-DD — motivo)" de uma regra aprendida é METADADO e sai
+  antes da leitura — lido como frase, toda regra legada virava "fato de data".
+- **Cobertura das "Regras aprendidas na prática" é APROXIMAÇÃO declarada**
+  (`semelhancaDeRegras` ≥ `LIMIAR_DE_CONFLITO`, o mesmo detector de conflito
+  da voz): a prévia diz qual regra/proibição/reescrita da voz fala do mesmo
+  assunto e marca o que ficou "sem correspondente" — para a pessoa ver, nunca
+  para decidir sozinha.
+- **Aplicar**: fatos ANTES da voz (um fato perdido depois de a voz assumir é
+  pior que um fato duplicado do DNA), `gravarVoz` com a versão lida (CAS),
+  `migrarParaVoz` amarrada a essa versão; erro por cliente volta no resultado,
+  sem derrubar os outros. `CATEGORIAS_DE_FATO` é subconjunto de
+  `CATEGORIAS_DA_BASE` sem `TOM_DE_VOZ` (identidade nunca volta para a base).
+- **A prévia sai de produção ANTES da migration do PR 7 chegar lá**: o script
+  tolera a tabela `BrandVoice` ausente (P2021 → sem registro, com aviso); a
+  aplicação nesse banco falha em `gravarVoz`, por cliente. A migration entra
+  por `db:deploy` com o OK do Ciro — nunca antes do código do PR 7 e nunca o
+  código antes do schema.
+
+Da revisão FINAL do Codex sobre o rebase na main de 21/09 (BLOQUEADO, PR13-51,
+PR13-52) — as duas com a mesma forma de fundo: **um sinal de exclusão que não
+cobre a janela inteira**:
+
+- 🔴 **ESPERAR POR UMA TRAVA NÃO RENOVA O SNAPSHOT.** Em REPEATABLE READ e em
+  SERIALIZABLE o snapshot é congelado no PRIMEIRO comando da transação — que num
+  protocolo "trava primeiro, lê depois" é o próprio `SELECT … FOR UPDATE`. A
+  transação dorme na trava e acorda com ela na mão e o mundo de ANTES nos olhos.
+  Foi o que reabriu o PR7-R9-02 quando `migrarParaVoz` ganhou
+  `isolationLevel: Serializable` no rebase: `virarRegra` commitava a regra no
+  DNA, a migração pegava a trava logo depois e arquivava o DNA VELHO, ativando a
+  voz sem enxergar a regra — e como `virarRegra` só BLOQUEIA a linha de
+  `Project` (não a atualiza) e não pede serializável, não há erro de atualização
+  concorrente para avisar. **O protocolo do PR 7 exige READ COMMITTED**, onde
+  cada comando depois da trava tira snapshot novo. Medido no Postgres de dev, a
+  mesma intercalação: READ COMMITTED enxerga a regra, SERIALIZABLE não.
+  🔴 **E o serializável não substitui a conferência explícita**: ele estava ali
+  para pegar quem NÃO toma a trava (`updateBrandDNA` direto, da aba Marca) e
+  **não pega** — medido no mesmo banco, a edição solta commita no meio e a
+  transação serializável segue e commita, porque um upsert que não LÊ nada não
+  fecha ciclo para o SSI. Quem protege é o `dnaEsperado`. Nível de isolamento
+  não é trava, e trava não é conferência: se o valor importa, releia-o e
+  compare-o sob a trava. A prova é o passo 6v de `validar-migracao-da-voz.ts`,
+  com duas conexões reais e a barreira dada pelo BANCO (`pg_blocking_pids`
+  confirmando o bloqueio antes de a regra ser commitada) — dublê de teste
+  serializa chamadas e **não reproduz snapshot MVCC**.
+- 🔴 **`Promise.all` rejeita no PRIMEIRO erro e deixa os outros EM VOO.** Quando
+  o que vem depois é soltar uma exclusão, a rejeição não significa que o
+  trabalho acabou: em `reindexEntry` um `create` de chunk falhando com erro
+  COMUM não marcava `emVoo` (nada foi abortado), o `finally` LIBERAVA o
+  arrendamento, e outra execução podia reconstruir a entrada enquanto um insert
+  antigo — que não confere o token do ciclo — ainda chegava, deixando chunk
+  velho ou estourando a unicidade de `vectorId`. `Promise.allSettled` espera
+  TODOS encerrarem e só então propaga a falha. O teto por TEMPO continua sendo
+  quem cobre o que trava de vez (`passoArrendado` marca `emVoo` e não libera).
+  Vale para qualquer lote de escritas sob arrendamento, trava ou transação.
+
+Da revisão do Codex sobre o primeiro commit (BLOQUEADO, PR13-01…08, 12/09/2026):
+
+- 🔴 **`--dev` trocava só o SQL; o índice de vetores continuava o de PRODUÇÃO**
+  (`criarEntradaBase` indexa em `UPSTASH_VECTOR_*`, que vem do `.env`). Hoje
+  `resolverBanco` devolve o `destino` (banco + `indexador`: `isolado` só quando
+  o `.env.development.local` declara URL e token PRÓPRIOS e a URL é outra;
+  `producao`; `ausente`), e `aplicarManifesto` sem registrador injetado BLOQUEIA
+  o cliente antes de qualquer escrita quando o indexador não é o do banco
+  (`podeIndexar`). Em dev o processo fica SEM `UPSTASH_VECTOR_*` a menos que
+  seja isolado. A prova chama o caminho real e confere o bloqueio (PR13-01).
+- 🔴 **A ativação confere o DNA na MESMA transação em que liga a precedência**
+  (`migrarParaVoz({ dnaEsperado })`, serializável): DNA que mudou entre a
+  leitura da prévia e a ativação recusa com `VOZ_DNA_DIVERGENTE` (409), a voz
+  fica gravada e NÃO migrada, o legado segue mandando. O `dnaArquivado` é
+  exatamente o DNA comparado. Uma edição do DNA que commite depois é, na ordem
+  serial, posterior à migração — o mesmo que editar a aba Marca com a voz já
+  valendo. Costura `seams.antesDeAtivar` só para a prova (PR13-02).
+- 🔴 **Todo fato criado pela migração carrega `metadata.chaveDoFato`**
+  (`sha1(projectId|versaoDaPrevia|trecho)`), e `aplicarManifesto` pula o que já
+  existe (`fatoJaExiste`, padrão por consulta ao `metadata`): retomar depois de
+  uma falha parcial (registrador quebrou no 2º fato, CAS perdido) cria só o que
+  falta. O resultado traz `fatosCriados`/`fatosJaExistentes` também no `erro`
+  (PR13-03). Reaplicar a mesma prévia depois de `desfazerMigracao` NÃO recria
+  fato — é a base datada por prévia, não pelo manifesto.
+- **A prévia carrega o `toneOfVoice` e o `contentRules` INTEGRAIS** (`antes`),
+  e o markdown os reproduz verbatim em blocos de código: vocabulário, exemplos
+  e instruções fora das seções reconhecidas só são revisáveis com o texto
+  inteiro ao lado (PR13-05).
+- 🔴 **O marcador de lista sai; o número que é conteúdo FICA.** A expressão
+  antiga (`^\s*[-*•\d.)]+`) comia "20" de "20% de desconto" e "10" de "10h às
+  22h" — o trecho mutilado ia para a prévia como "exato". Hoje só `-`, `*`, `•`
+  e `1.`/`1)` com espaço depois (PR13-06). E o rodapé `(data — motivo)` sai POR
+  LINHA, antes da divisão em frases, com captura gulosa até o último parêntese
+  (motivo com duas frases, aspas e parênteses internos — os três formatos reais
+  do Espeto viravam "fato de data" mesmo depois do primeiro conserto, PR13-08).
+- 🔴 **Condição operacional é fato, e voz com fato NÃO migra.** `fatosNaVoz`
+  passou a pegar a mecânica ("em dobro", "leve X pague Y"), a janela de dias
+  ("de segunda a quinta") e o período ("no jantar") em copy e regras — não no
+  motivo (história) nem nos TERMOS ("happy em dobro" é o NOME da mecânica, não a
+  promessa). `problemasParaMigrar` = problemas do contrato + fatos na voz, e é
+  isso que `vozValida` do plano lê: a proposta do TERO perdeu as duas condições
+  que carregava (PR13-07). Nunca reintroduza dado numa regra "para explicar".
+- **PR13-04 (a regra de 04/09 do Espeto), respondido sem mudar a proposta**: a
+  regra que o plano substituiu em 11/09 é "não adicione campos; a copy é feita
+  em cima dos campos do template" (compositor); a `regra-2026-09-04-1` da voz é
+  a LEITURA CONTÍNUA entre pré-título, manchete e apoio (feedback do Ciro em
+  03/09), que o próprio plano formaliza como "grupo de leitura" no PR 1. Ela
+  fica ativa; o motivo diz a diferença, e há teste que recusa uma regra ativa
+  de "campos do template" na proposta do Espeto.
+
+Da segunda revisão (BLOQUEADO, PR13-09…12, complementos dos anteriores):
+
+- 🔴 **O indexador é ATRIBUÍDO, nunca herdado do ambiente.** `resolverBanco`
+  escreve `UPSTASH_VECTOR_*` no `process.env` nos dois modos (produção: o do
+  `.env`, por cima do que o processo trouxe; dev: só o isolado, senão apaga),
+  guarda a URL validada em `destino.indexadorUrl`, e `podeIndexar` confere na
+  hora de aplicar que a URL em uso pelo processo é a validada — um
+  `UPSTASH_VECTOR_*` exportado antes mandaria os vetores para outro índice
+  com o SQL em produção (PR13-09).
+- 🔴 **Uma aplicação por projeto de cada vez**: `aplicarManifesto` toma
+  `pg_try_advisory_xact_lock(hashtext('migracao-da-voz:<projectId>'))` numa
+  transação que dura até a ativação; quem não consegue é `bloqueado` na hora
+  ("trava por projeto"), sem esperar. A chave do fato vive em JSON, sem
+  unicidade — duas aplicações simultâneas liam "ausente" as duas e criavam o
+  fato e os vetores duas vezes (PR13-10). Os serviços de voz e da base
+  escrevem por outras conexões; a transação só segura a exclusão.
+- 🔴 **A linha existir não prova o vetor.** `criarEntradaBase` grava a linha e
+  indexa depois; interrompido no meio, sobra linha sem vetor. Por isso o fato
+  só é `completo` com `metadata.indexadoEm`, gravado DEPOIS de indexar
+  (`marcarFatoIndexado`); `estadoDoFato` distingue `ausente` / `incompleto` /
+  `completo`, e o incompleto é REINDEXADO pelo mesmo id (`reindexEntry`, que
+  apaga chunks e vetores antigos antes de refazer) antes de a voz ser ativada
+  (PR13-11). `fatosReindexados` sai no resultado.
+- **Condição operacional é fato do DNA também**: `fatosNoDna` usa os MESMOS
+  detectores da voz (`dadosProibidos` + `condicoesOperacionais`), então "chopp
+  e drinks selecionados em dobro" e "de segunda a quinta, no jantar" aparecem
+  na prévia com tipo `condicao` e podem ser citados no manifesto — o que sai
+  da voz por ser condição precisa ter porta de entrada na base (PR13-12).
+
+Da terceira revisão (BLOQUEADO, PR13-13…15):
+
+- 🔴 **A trava só vale no MESMO banco das escritas.** `resolverBanco` nunca
+  preserva `DIRECT_URL` de outro ambiente (em dev, sem ela no arquivo vale a
+  própria `DATABASE_URL` do dev) e aborta se `DIRECT_URL` e `DATABASE_URL`
+  forem computes diferentes; `travaPorProjeto` confere `mesmoBanco` antes de
+  conectar — trava em outro compute não exclui ninguém (PR13-13).
+- 🔴 **A linha com a chave só é reutilizada se ainda for o fato APROVADO**
+  (`divergenciasDoFato`: conteúdo, categoria, `ACTIVE`, validade em Brasília).
+  Editada ou arquivada, a aplicação BLOQUEIA para decisão antes de qualquer
+  escrita — nem reutiliza, nem reindexa por cima (PR13-14). A conferência é
+  uma 1ª passada sem escritas; a 2ª passada escreve.
+- 🔴 **Toda escrita do corpo confere que a trava continua viva**
+  (`trava.conferir()` = `SELECT 1` na transação da trava, antes de cada fato,
+  do `gravarVoz` e da ativação): transação expirada lança e a aplicação para
+  ali, em vez de continuar por outras conexões sem exclusão (PR13-15). O
+  timeout padrão é 60 min; a prova o encurta para 2 s.
+
+Da quarta revisão (BLOQUEADO, PR13-16…18):
+
+- 🔴 **"Mesmo banco" é mesmo compute E mesmo nome de banco** (`nomeDoBancoDe`):
+  advisory lock é por banco, e `/neondb` e `/outro_banco` no mesmo compute
+  travam coisas diferentes (PR13-16).
+- 🔴 **Trecho repetido em `fatosParaABase` é recusado** por `lerManifesto`
+  (com as posições) e, como última porta, por `aplicarManifesto` antes de
+  escrever: a mesma identidade de fato duas vezes criava duas linhas numa só
+  aplicação, com a trava funcionando (PR13-17).
+- 🔴 **A trava virou de SESSÃO, sem timeout** (`pg_try_advisory_lock` numa
+  conexão própria com `connection_limit=1`, liberada no fim): transação
+  expirando liberava a exclusão com o corpo ainda escrevendo. E toda escrita
+  LONGA (criar/reindexar fato, que espera embeddings) roda em `trava.vigiar()`,
+  uma corrida com a vigilância da conexão: perdida a trava no meio, a escrita
+  é abandonada com erro e nada novo começa (PR13-18). Limite declarado: o
+  indexador não recebe sinal de aborto — o que já está em voo termina; o que
+  se garante é que a aplicação PARA (nenhum fato seguinte, nenhuma voz).
+
+Da quinta revisão (BLOQUEADO, PR13-19…21):
+
+- 🔴 **A trava de sessão exige conexão DIRETA** (`ehPooler`: `-pooler` no host é
+  o PgBouncer em modo transação, que não fixa um backend — duas aplicações
+  podiam "reentrar" na mesma trava e o unlock rodar em outro backend). URL do
+  pooler para a trava é `bloqueado` antes de escrever (PR13-19). A `DIRECT_URL`
+  dos dois arquivos de ambiente é direta.
+- 🔴 **Conferir a POSSE, nunca "tentar pegar de novo"**: depois de uma reconexão
+  a chave pode estar livre, `pg_try_advisory_lock` devolveria `true` por
+  ADQUIRIR uma trava nova e a leitura como reentrância seguiria sem exclusão
+  (PR13-21). `conferir` compara o `pg_backend_pid()` com o da sessão que tomou
+  a trava e confere em `pg_locks` que ela ainda a detém; sessão trocada ou
+  conexão caída invalidam a execução.
+- 🔴 **A perda da posse ABORTA as escritas internas, e sem compensar**
+  (PR13-20): `trava.vigiar(escrita)` entrega um `AbortSignal`; `criarEntradaBase`
+  e `reindexEntry` (`src/lib/knowledge/aborto.ts`, puro) o conferem antes de
+  cada etapa — apagar chunks/vetores, gravar chunks depois dos embeddings,
+  subir vetores — e, abortada, a criação NÃO apaga a entrada (outra aplicação
+  pode ter retomado a mesma linha pela chave do fato; ela fica sem a marca de
+  indexado, para ser reindexada pelo mesmo id). A marca de indexado nunca é
+  gravada por uma execução que perdeu a posse.
+- **A prova derruba a sessão da trava DE VERDADE**: o papel do Neon não tem
+  `pg_terminate_backend`, então a costura `aoTravar` entrega um `executar` na
+  sessão da trava e a prova manda `SET idle_session_timeout = '200ms'` no meio
+  da escrita lenta; o servidor encerra a conexão ociosa antes da conferência
+  seguinte (o Prisma NÃO reconecta sozinho — a consulta falha), a escrita
+  recebe o aborto e nada é anotado. Trava pelo pooler é coberta na 4b'.
+
+Da sexta revisão (BLOQUEADO, PR13-22…23):
+
+- 🔴 **O sinal é conferido ANTES de cada escrita, inclusive as que vêm depois
+  de uma espera**: `reindexEntry` confere de novo depois do `deleteMany` (o
+  sinal pode ter disparado enquanto ele esperava) e `deleteVectorsByEntry`
+  confere entre a consulta e o `index.delete` — uma execução que perdeu a posse
+  não pode apagar vetores que outra aplicação já recuperou (PR13-22). Teste com
+  o `Index` do Upstash mockado: aborto durante a consulta, zero deletes.
+- 🔴 **A marca de indexado confere o sinal DEPOIS da leitura, antes do
+  `update`** (`marcarFatoIndexado(db, id, em, signal)`, PR13-23): a marca
+  gravada por quem perdeu a trava faria a retomada ler `completo` uma linha que
+  outra aplicação ainda reindexa.
+
+Da sétima revisão (APTO COM NOTAS, PR13-24):
+
+- **Data do manifesto é dia que EXISTE** (`diaExiste`, ida e volta pelo ISO
+  em UTC — o mesmo cuidado do PR 6 com `dataValida`): `validaAte` e
+  `aprovadoEm` aceitavam "2026-13-01" e "2026-02-29" pela expressão regular, e
+  a conversão para `Date` só falhava no script, depois de fatos anteriores já
+  gravados. `lerManifesto` recusa antes de qualquer escrita.
+
+Da revisão FINAL do PR (BLOQUEADO, PR13-25…26):
+
+- 🔴 **Disponibilidade, programa fixo do dia e dia fechado são CONDIÇÃO da
+  casa, não voz** (PR13-25): "HAPPY HOUR TODO DIA" e "QUINTA É DIA DE VINHO"
+  (By Rock), "convidar para segunda-feira (a casa está fechada)" (Empório)
+  passavam pelos detectores e entravam no prompt — uma mudança de
+  funcionamento na base deixava a identidade contradizendo a base.
+  `condicoesOperacionais` pega "todo dia"/"diariamente", "<dia> é dia de X" e
+  "a casa está fechada"/"não abre"/"fechado aos domingos" ("lista fechada" e
+  "menu fechado" não são dia fechado); as propostas trocaram essas frases por
+  editorial que só CITA o dia ("Vem de happy hour", "SEXTA NO QUINTAL",
+  "QUARTA NO BOTECO", "CHURRASCO DE VERDADE") ou pela regra sem o dado ("dia
+  sem funcionamento: os dias em que a casa recebe vêm da base"); as prévias de
+  produção foram regeradas e o fato correspondente do DNA aparece nelas com
+  tipo `condicao`. O teste das dez propostas roda o detector novo: proposta
+  com condição não passa.
+- **A retomada por reindexação invalida o cache de busca do projeto**
+  (PR13-26), como a criação normal já fazia: sem isso uma busca cacheada no
+  intervalo da falha devolvia o resultado sem o fato até o TTL. Best-effort
+  (erro vira log), e só quando a posse da trava continua.
+
+Da segunda revisão FINAL (BLOQUEADO, PR13-27…28):
+
+- 🔴 **Refeição ou período AMARRADOS a um dia também são condição da casa**
+  (PR13-27): "sugerir jantar de domingo (a casa fecha cedo); prova social de
+  domingo sai com a casa fechada" (Seu Quinto), "domingo nada noturno; segunda
+  nada de almoço" (TERO), "programação noturna em domingo e segunda" (Quintal)
+  e "programação em domingo" (Empório) passavam pelos detectores de PR13-25 e
+  iam para o prompt — uma mudança de funcionamento na base deixava a voz
+  contradizendo a base. `condicoesOperacionais` pega `<refeição> de <dia>`,
+  `<período> em/aos <dia>`, `<dia> nada/sem <período>`, `programação em <dia>`,
+  "fecha cedo" e "casa fechada"; as quatro propostas trocaram a frase pela
+  regra sem o dado ("período sem funcionamento — dia e horário vêm da base");
+  o dia SOZINHO ("SEXTA NO QUINTAL", "Domingou no boteco") continua editorial.
+  O teste roda as quatro frases reais (detectadas no DNA como `condicao`,
+  recusadas na voz) e a lista de editoriais que têm de passar. As prévias de
+  produção foram regeradas.
+- 🔴 **O script de prova só encerra o processo DEPOIS do cleanup** (PR13-28):
+  `abortar` era `process.exit(1)`, e chamado depois de apagar a `BrandVoice`
+  anterior do projeto 6 (pré-requisito de três fatos, trava da concorrência)
+  pulava o `finally` que a restaurava. Hoje todo pré-requisito de banco é
+  conferido ANTES da primeira mutação (`sairAntesDeComecar`, que ainda pode
+  encerrar porque nada foi tocado), e `abortar` LANÇA `ProvaAbortada` — o
+  `finally` restaura voz e DNA, e o `main().catch` encerra com o motivo.
+
+Da terceira revisão FINAL (BLOQUEADO, PR13-29…30):
+
+- 🔴 **DISPONIBILIDADE de item, canal e preparo também é condição da casa**
+  (PR13-29): "Assunto exclusivo da Praia do Canto (Semifreddo de Pistache…)"
+  (Real), "cervejas além da IPA, bebida sem álcool além do café expresso"
+  (Wine Vix), "WhatsApp, link de pedido ou botão de compra: não existem"
+  (Real), "encomenda só com garçom ou gerente, sem site ou app; sem delivery"
+  (Bacana), "(retirada sim)" (Espeto) e "a casa não tem brasa, os cortes são
+  grelhados" (By Rock) passavam pelos detectores — cadastrar o item em outra
+  unidade, ampliar o cardápio ou abrir um canal na base deixava a voz impondo
+  a restrição velha. `condicoesOperacionais` pega exclusividade de unidade
+  (`exclusivo da <Nome>`), cardápio restrito a item (`<bebida> além da`),
+  canal/serviço afirmado (`<canal>… não existem`, `sem site/app/delivery`,
+  `só com garçom`, `retirada sim`) e preparo afirmado (`a casa não tem
+  brasa`, `são grelhados`). As seis propostas trocaram a frase pela
+  orientação editorial com a condição devolvida à base ("item fora do
+  cardápio da base", "canal que a base não registra", "quais itens são
+  exclusivos, e de qual unidade, vem da base na data da peça"); o teste roda
+  as seis frases reais e as seis redações corrigidas; prévias regeradas.
+  A régua que fica: **a voz diz COMO falar; TUDO o que pode mudar com a
+  operação (dia, período, item, unidade, canal, preparo, preço) é fato da
+  base, e a proposta só pode apontar para a base.**
+- 🔴 **O CACHE de busca (Redis) segue a régua do indexador** (PR13-30,
+  `isolamentoDoCache`): `--dev` trocava SQL e Vector e herdava o
+  `UPSTASH_REDIS_*` do `.env` — criar ou reindexar um fato no dev chamava
+  `invalidateProjectCache` e incrementava a versão do cache de PRODUÇÃO. Em
+  dev só o Redis PRÓPRIO do `.env.development.local` (URL e token, URL
+  diferente da de produção); sem ele as variáveis saem do processo e o cache
+  vira no-op limpo. A prova (`apontarParaODev`) faz o mesmo com Redis e Vector.
+
+Da quarta revisão FINAL (BLOQUEADO, PR13-31…32):
+
+- 🔴 **Os detectores são AJUDA de leitura, não o limite do que pode ir para a
+  base** (PR13-32): "Aniversário só com bolo próprio… e brinde à escolha" e
+  "Todo o cardápio disponível para retirada no balcão" estão no DNA do Espeto,
+  nenhum detector os pegava, e o plano recusava o manifesto que os citasse —
+  fato literalmente no DNA aprovado sem porta de entrada na base. Hoje
+  `EstadoDoCliente.frasesDoDna` traz TODAS as frases do DNA integral da prévia
+  (`frasesDoDna`, a mesma leitura de `frasesDe`), e `planoDeAplicacao` aceita
+  o trecho que é fato detectado OU frase inteira do DNA; o que não está no
+  DNA continua bloqueando. A prévia diz isso no rodapé da lista de fatos.
+- 🔴 **Programação em lista fechada, cadastro afirmado e serviço/cortesia
+  afirmados também são condição** (PR13-31): "inventar programação além de
+  Samba do Canto e Almoço ao vivo" (Seu Quinto) e "telefone (não está
+  cadastrado); inventar número" (Empório) foram trocados pela orientação
+  ("a programação da casa vem da base", "telefone ou número que a base não
+  registra"); `condicoesOperacionais` pega `programação além de`, `além de
+  <Nome> e <Nome>`, `não está cadastrado`/`inventar número`, `retirada no
+  balcão`/`disponível para retirada`/`brinde`/`cortesia de`. Prévias
+  regeradas (Espeto 13 → 16 fatos).
+
+Da quinta revisão FINAL (BLOQUEADO, PR13-33):
+
+- 🔴 **O ESTADO de confirmação de um dado e o CONJUNTO FIXO de unidades também
+  são condição da casa** (PR13-33): "os números do site não estão confirmados"
+  (Lagosta) e "as DUAS lojas (Praia do Canto e Shopping Vitória)… ambas as
+  unidades" (Real) passavam pelos detectores e iam para o prompt — confirmar o
+  número na entrada "Provas e números reais" ou abrir/fechar uma loja deixava a
+  voz afirmando o estado anterior. `condicoesOperacionais` pega `(não) está/
+  estão/foi/foram confirmado(s)` e `já confirmado`, `<número> lojas/unidades/
+  casas/endereços/filiais`, `ambas as unidades` e `unidades (Nome e Nome)`. A
+  Lagosta ficou só com a EXIGÊNCIA de confirmação na base (número tirado do
+  site incluído); a Real, com "todas as unidades vigentes, uma em cada linha;
+  quais são as unidades vem da base, na data da peça". "últimas unidades",
+  "uma unidade", "essa unidade" e "não confirmado na entrada X da base"
+  (exigência, não estado) passam. Teste com as duas frases reais (detectadas
+  no DNA — a leitura divide a regra da Real em DUAS frases, e as duas são
+  condição — e recusadas na voz) e as redações corrigidas; prévias de produção
+  regeradas (Real 11 → 17 fatos, Lagosta 15).
+
+Da sexta revisão FINAL (BLOQUEADO, PR13-34…35):
+
+- 🔴 **SERVIÇO e PREPARO afirmados como identidade também são condição da
+  casa** (PR13-34): a reescrita da Bacana ("rodízio" → "no kilo", motivo "a
+  Bacana é no kilo, não rodízio") e as do By Rock ("Grelhado na hora, com a
+  combinação do dia", "os cortes grelhados") iam para o prompt afirmando o
+  serviço e a técnica — mudar isso na base deixava a voz contradizendo a base.
+  `condicoesOperacionais` pega `é/somos no kilo|quilo`, `não (é|tem) rodízio`,
+  `grelhado na hora` e `cortes grelhados`; as três reescritas viraram
+  orientação de linguagem sem o dado ("Monte seu prato do jeito Bacana", "O
+  prato com a combinação do dia. É o Roberto Carlos.", "a seção do cardápio
+  (os Rock Steaks)"), com "rodízio" mantido nas PROIBIÇÕES (palavra nua é
+  vocabulário proibido) e "no kilo" nos TERMOS (nome do serviço). 🔴 **O motivo
+  da REESCRITA vai ao prompt e passou a ser lido** — para preço, horário e
+  CONDIÇÃO, como o motivo da regra (ele carrega a data em que a reescrita
+  nasceu; lido inteiro, TERO e Lagosta viravam "fato de data"). ⚠️ `\b` do JS
+  não enxerga acento: detector que começa em "é" ou "não" entra por
+  `(?:^|\s)`, nunca por `\b` — com `\b` a frase real da Bacana passava.
+- 🔴 **A ativação confere os FATOS aprovados dentro da transação que liga a
+  precedência** (PR13-35, `migrarParaVoz({ fatosEsperados })` +
+  `conferirFatosEsperados`, puro): a 2ª passada conferia e escrevia as linhas,
+  mas entre ela e a ativação a linha podia ser arquivada, editada ou perder a
+  indexação — e a voz assumia com a base que a sustenta fora do lugar. Hoje o
+  script relê os ids POR CHAVE depois das escritas (o registrador padrão não
+  devolve id) e a ativação confere existência, conteúdo, categoria, `ACTIVE`,
+  validade e `indexadoEm` na MESMA transação serializável do DNA; divergência
+  é `VOZ_FATOS_DIVERGENTES` (409): a voz fica gravada e NÃO migrada, o legado
+  segue mandando, e a edição concorrente da linha é PRESERVADA (nada é
+  compensado). A prova arquiva um fato já conferido em `antesDeAtivar` e
+  confere erro explícito citando a linha, `migradaEm` nulo, precedência legada
+  e a linha ainda arquivada. 🔴 **O registrador da prova passou a gravar a
+  LINHA REAL** (com a chave e a marca de indexado, sem indexar, com a tag da
+  prova que o cleanup apaga): com o stub que só anotava, a ativação não teria
+  linha para conferir — e o antigo `entryId: 'stub'` derrubaria a migração.
+
+Da sétima revisão FINAL (BLOQUEADO, PR13-36…37):
+
+- 🔴 **A marca de indexado vale só enquanto os chunks e os vetores que ela
+  atesta existem — e a REINDEXAÇÃO os apaga antes de refazê-los** (PR13-36).
+  `reindexEntry` (a API administrativa, a edição pela `atualizar-entrada-base`,
+  os scripts de reindex) apagava chunks e vetores, e uma falha depois das
+  exclusões (embeddings fora do ar) deixava a linha SEM vetor e COM
+  `indexadoEm`: a retomada da migração lia `completo`, pulava a recuperação, e
+  `conferirFatosEsperados` deixava a voz ativar sem os chunks da busca. Hoje o
+  reindexador INVALIDA a marca antes de apagar (preservando `chaveDoFato` e o
+  resto do metadata) e só a REPÕE depois de subir os vetores, sobre o metadata
+  como está naquele momento e conferindo o sinal de aborto (PR13-23) — quem
+  perdeu a posse não a repõe. Entrada SEM a marca não ganha marca ali: quem a
+  grava é quem sabe que a indexação inteira fechou (`marcarFatoIndexado`). A
+  marca mora em módulo puro da base (`src/lib/knowledge/marca-de-indexado.ts`:
+  `temMarcaDeIndexado`, `semMarcaDeIndexado`, `comMarcaDeIndexado`), reexportada
+  por `migracao-da-voz.ts`. Teste com o `db` e o indexador mockados (falha de
+  embeddings depois das exclusões deixa a linha incompleta; reindexação
+  completa repõe a marca com instante novo; aborto durante os vetores não
+  repõe) e prova 6w (a marca cai entre a 2ª passada e a ativação → a ativação
+  recusa citando "indexação não concluída"; a retomada reindexa pelo MESMO id e
+  então ativa).
+- 🔴 **A posse é conferida IMEDIATAMENTE antes de `gravarVoz`** (PR13-37): o
+  commit O pôs a releitura dos fatos (consultas por OUTRA conexão) entre a
+  conferência da 2ª passada e a gravação da voz, e a sessão da trava podia cair
+  enquanto elas esperavam — a execução que perdeu a posse ainda criava ou
+  incrementava a voz pendente, e outra aplicação que tomou a trava e leu a
+  versão anterior falharia no CAS por causa dessa escrita. Prova 6z: a sessão
+  da trava é derrubada pelo servidor na 4ª leitura (a 1ª da releitura), a
+  conferência antes de gravar falha, a voz não é criada nem incrementada,
+  nada é ativado. Regra que fica: **toda escrita do corpo confere a posse
+  DEPOIS da última espera e ANTES de escrever** — conferir cedo e escrever
+  tarde é o mesmo que não conferir.
+
+Da oitava revisão FINAL (BLOQUEADO, PR13-38…39):
+
+- 🔴 **A posse da trava é conferida DENTRO dos serviços de voz, depois das
+  leituras deles e imediatamente antes de escrever** (PR13-38):
+  `gravarVoz({ antesDeEscrever })` roda a conferência depois do
+  `brandVoice.findUnique` e antes de `create`/`updateMany`;
+  `migrarParaVoz({ antesDeEscrever })` a roda DENTRO da transação
+  serializável, depois das leituras do DNA e dos fatos e antes de ligar
+  `migradaEm`. O script passa `() => trava.conferir()` nas duas chamadas. A
+  conferência que ficava só do lado de fora não cobria a janela em que a
+  leitura interna espera — a sessão da trava caía ali e o serviço seguia
+  escrevendo. Teste em `voz-service-posse.test.ts` (o `Prisma` mockado: o
+  client gerado do worktree não resolve em teste).
+- 🔴 **A marca de indexado só é publicada por compare-and-set no CICLO**
+  (PR13-39, `metadata.cicloDeIndexacao`): quem começa a indexar — a criação
+  do fato pela migração (o token vai no `metadata` de `criarEntradaBase`) e
+  `reindexEntry` (SEMPRE carimba, com ou sem marca anterior) — grava um token
+  próprio; `marcarFatoIndexado(…, ciclo)` e a reposição da marca em
+  `reindexEntry` são `updateMany` onde `cicloDeIndexacao = <meu token>`, e
+  `count 0` LANÇA ("outra indexação assumiu a entrada"). A API administrativa
+  de reindex não participa da trava por projeto: sem o token, ela apagava
+  chunks e vetores no meio, a migração atrasada gravava a marca por cima, e
+  `classificarFato` lia `completo` uma linha vazia — a voz ativava sem a
+  busca. Limite declarado: os vetores da execução perdedora podem subir
+  depois (mesmo `vectorId` por chunk — o upsert sobrescreve, não duplica); o
+  que a marca atesta continua sendo o ciclo que fechou por último.
+
+Da nona revisão FINAL (BLOQUEADO, PR13-40…41):
+
+- 🔴 **O ciclo que a indexação carimba é o MESMO que quem chama publica**
+  (PR13-40): o registrador padrão da migração punha o token A no `metadata`,
+  `criarEntradaBase` chamava `reindexEntry` só com o sinal, o indexador gerava
+  B, sobrescrevia e devolvia B — descartado — e a marca com A caía no CAS:
+  falso "outra indexação assumiu" em TODO fato novo, sem concorrência nenhuma.
+  Hoje `criarEntradaBase(…, { ciclo })` entrega o token a `reindexEntry` e
+  devolve o ciclo EFETIVO; `criarFatoPeloIndexador` (o registrador padrão,
+  exportado e testado com banco e Upstash falsos) publica com ele. Token
+  gerado fora e não repassado é o mesmo defeito com outra roupa.
+- 🔴 **O token protegia a PUBLICAÇÃO; o ciclo inteiro precisa de EXCLUSÃO**
+  (PR13-41): a execução que perdia o ciclo ainda apagava chunks e vetores que a
+  seguinte tinha recuperado, e sobrava marca válida sem vetor. A entrada é
+  ARRENDADA no próprio `metadata` (`cicloDeIndexacao` + `cicloExpiraEm`,
+  `src/lib/knowledge/arrendamento.ts`, sem migration): adquirir é
+  compare-and-set no `updatedAt` lido; arrendamento vigente de outro token →
+  `IndexacaoEmAndamento` sem tocar em nada (API admin 409, migração
+  `bloqueado`); cada passo destrutivo ou de publicação (apagar chunks, o
+  `index.delete` DEPOIS da consulta dos ids, gravar chunks, subir vetores, repor
+  a marca) RENOVA com o próprio token antes e roda com prazo de 60 s contra 5 min
+  de arrendamento — renovação que falha é `ArrendamentoPerdido` e nada mais é
+  escrito; o `deleteMany` dos chunks ainda confere o token no próprio DELETE.
+  Liberar tira só o prazo (o token fica: é contra ele que `marcarFatoIndexado`
+  publica depois do retorno), e passo abortado com a chamada em voo NÃO libera —
+  o arrendamento vence sozinho. Limite declarado: a exclusão vale para relógios
+  com desvio menor que a folga (~4 min) e para chamadas que respeitam o aborto;
+  uma execução morta segura a entrada por até 5 min.
+
+Da décima revisão FINAL (BLOQUEADO, PR13-42…43):
+
+- 🔴 **A edição de campo INDEXADO é coordenada com o arrendamento e recusada
+  ANTES de salvar** (PR13-42): `PUT /api/knowledge/[id]` gravava o texto novo e
+  só depois chamava `reindexEntry`; com outra indexação em curso, a
+  reindexação tomava `INDEXACAO_EM_ANDAMENTO`, a rota engolia e respondia
+  sucesso, e o ciclo em curso publicava chunks, vetores e marca do texto
+  ANTIGO. Hoje toda porta de edição (a rota, a tool `atualizar-entrada-base`,
+  `updateEntry` — rota admin e `confirm`) passa por `editarEntradaCoordenada`
+  (`arrendamento.ts`): troca de `content`, `category` ou `status` com
+  arrendamento vigente → `IndexacaoEmAndamento` sem escrita (409 legível; na
+  tool, `CreativeError` 409). A escrita é compare-and-set no `updatedAt` lido:
+  arrendamento adquirido entre a leitura e a escrita faz a edição reler e ser
+  recusada. Edição só de etiquetas, validade ou metadata da pessoa continua
+  valendo durante o arrendamento.
+- **Campo indexado é o que ENTRA no índice**: `content` (chunks), `category` e
+  `status` (metadata do vetor). O título não entra em nenhum dos dois — trocar
+  só o título durante a indexação passa.
+- 🔴 **O metadata da pessoa nunca apaga nem forja o arrendamento**
+  (`metadataDaEdicao`): a rota substitui o metadata inteiro, e um PUT com
+  metadata no meio de um ciclo apagava `cicloDeIndexacao`/`cicloExpiraEm` —
+  outra execução adquiria e PR13-41 voltava. As chaves do sistema vêm sempre da
+  linha lida; quando a edição muda o índice, marca, token e prazo SAEM (a marca
+  atestava os chunks do texto anterior, e sem o token a `marcarFatoIndexado`
+  atrasada de um ciclo anterior é recusada).
+- 🔴 **O ciclo indexa o conteúdo lido NA AQUISIÇÃO e confere a versão antes de
+  publicar**: `ArrendamentoDaEntrada.indexada` sai da mesma leitura cujo
+  `updatedAt` a aquisição carimbou, nunca do `findUnique` anterior; `renovar` e
+  `publicarMarca` comparam `versaoIndexadaDe` com a linha e, se uma escrita que
+  não passou pelo serviço (SQL direto, script) a mudou, lançam
+  `IndexacaoSuperada` (`INDEXACAO_SUPERADA`) antes de gravar chunks, subir
+  vetores ou repor a marca. `perdeuOArrendamento` reconhece os dois códigos
+  (API admin 409, migração bloqueia, criação não compensa). `liberar` NÃO
+  confere a versão: o ciclo superado ainda solta a entrada, senão a
+  reindexação da edição esperaria o prazo. Limite: para chunks e vetores a
+  conferência é antes do passo, não no próprio write — a proteção primária é a
+  recusa da edição; só a marca é atômica (CAS no `updatedAt` da leitura que
+  conferiu).
+- ⚠️ **Fora da coordenação**: as escritas que apagam vetores e arquivam direto
+  (cron `archive-expired-knowledge`, `arquivar-entrada-base`, o DELETE do
+  `confirm`) e os scripts com `db.knowledgeBaseEntry.update`. No meio de um
+  ciclo, a indexação em curso para por `IndexacaoSuperada` e não ressuscita
+  vetores; fora de um ciclo, nada mudou.
+- 🔴 **O token da criação é RETIDO desde a própria criação, e a compensação é
+  condicionada a ele** (PR13-43): `criarEntradaBase` deixava o ciclo nascer no
+  indexador e desfazia por `id`. Com os embeddings de A demorando até o
+  arrendamento vencer, B (a reindexação administrativa) assumia e recuperava a
+  linha; depois os embeddings de A rejeitavam com erro COMUM — que não passa
+  pela renovação e não vira `ArrendamentoPerdido` —, o `finally` ignorava o
+  `false` de `liberar()` e a compensação apagava a linha e, em cascata, os
+  chunks de B (vetores órfãos). Hoje o ciclo nasce em `criarEntradaBase`, vai
+  carimbado no `metadata` da própria criação, e a compensação é `deleteMany`
+  onde `cicloDeIndexacao = <meu token>`: `count 0` preserva a linha e lança
+  `ArrendamentoPerdido` ("antes de desfazer a entrada…"), com o erro original
+  no log. **Erro comum não prova posse; só o DELETE condicionado prova.**
+- Testes com banco e Upstash falsos: `edicao-durante-indexacao.test.ts` (chama
+  a rota REAL com Clerk mockado) e `indexacao-arrendada.test.ts`. A prova de
+  integração (`validar-migracao-da-voz.ts`) não mudou: as edições diretas
+  dela rodam fora de ciclo.
+
+**Da revisão do commit b5647079 (BLOQUEADO, PR13-44…45, 12/09/2026):**
+
+- 🔴 **A versão indexada é conferida DEPOIS dos vetores também na entrada sem
+  marca prévia** (PR13-44): a conferência posterior ao `upsert` só existia
+  dentro de `publicarMarca`, que roda apenas quando `tinhaMarcaDeIndexado`. Na
+  entrada nova (`criarEntradaBase`) ou incompleta (retomada da migração), uma
+  escrita direta que trocasse o conteúdo ENQUANTO os vetores subiam passava:
+  `reindexEntry` devolvia sucesso, `liberar()` não olha a versão, e
+  `marcarFatoIndexado` — que confere só o token — publicava a marca sobre um
+  cadastro com texto novo e chunks/vetores do antigo. Hoje o ramo sem marca faz
+  `arrendamento.renovar('confirmar a versão indexada')`, que confere token e
+  versão por compare-and-set, e lança `IndexacaoSuperada` antes de retornar; a
+  liberação continua possível com a versão superada. Limite: entre `liberar()`
+  e a `marcarFatoIndexado` do chamador não há conferência de versão — a edição
+  coordenada tira o token (e a marca é recusada), a escrita por fora não.
+- 🔴 **Conflito DEPOIS de salvar não é "Nada foi salvo"** (PR13-45):
+  `updateEntry` salvava por `editarEntradaCoordenada` e só então chamava
+  `reindexEntry`; outra execução que adquirisse a entrada no intervalo fazia a
+  reindexação lançar `INDEXACAO_EM_ANDAMENTO`, e as rotas `confirm` e admin
+  respondiam 409 "Nada foi salvo" com a edição GRAVADA — e pulavam a
+  invalidação do cache. Hoje `updateEntry` devolve `{ entry, indexacaoPendente }`:
+  o único `IndexacaoEmAndamento` lançado é a recusa ANTERIOR à escrita; o
+  conflito posterior (`INDEXACAO_EM_ANDAMENTO`/`PERDIDA` — a outra execução leu o
+  texto novo —, ou `SUPERADA`) volta em `indexacaoPendente`
+  (`indexacaoPendenteDe`, `marca-de-indexado.ts`), e as rotas invalidam o cache
+  e respondem **202** com `indexacao: 'pendente'`, `code` e `aviso` ("A edição
+  foi salva…"). Os clientes (`ai-chat`, `template-ai-chat`, `useUpdateKnowledgeEntry`)
+  tratam 2xx como sucesso. `PUT /api/knowledge/[id]` e a tool
+  `atualizar-entrada-base` já separavam as duas etapas (a reindexação pós-edição
+  não derruba a resposta) e não mudaram. Erro comum da reindexação segue lançado.
+- Testes em `edicao-durante-indexacao.test.ts`: o `aoSubir` sem `indexadoEm`
+  pelos registradores reais (`reindexarFatoPeloIndexador` e
+  `criarFatoPeloIndexador`) exige `INDEXACAO_SUPERADA` e nenhuma marca; a rota
+  real de `confirm` suspensa depois da edição, com outro arrendamento adquirido
+  no meio, exige 202, conteúdo novo persistido, o arrendamento alheio intacto e
+  o cache invalidado (e o mesmo pela rota admin); a recusa antes da edição
+  continua 409 "Nada foi salvo" sem invalidar. Mutação conferida: sem a
+  conferência, os dois testes do PR13-44 resolvem; com `updateEntry` e as rotas
+  do commit anterior, os dois do PR13-45 recebem 409.
+
+**Da revisão FINAL do Codex sobre 82b763a8 (BLOQUEADO, PR13-46…48, 12/09/2026):**
+
+- 🔴 **O `metadata` de uma entrada da base tem TRÊS donos, e todo escritor mexe
+  só no seu** (PR13-47). A confirmação do chat manda `metadata: null` quando a
+  prévia não traz metadata, e `metadataDaEdicao` preservava só marca, token e
+  prazo — apagava `chaveDoFato`. Como a retomada da migração acha o fato SÓ por
+  essa chave (`estadoDoFatoNaBase`), uma edição comum entre a falha parcial e a
+  reaplicação fazia o fato ser lido como ausente: outra entrada criada, ou o
+  texto anterior à correção da pessoa recriado em vez de bloqueio por
+  divergência. Hoje a partição mora em `marca-de-indexado.ts`:
+  `CHAVES_DE_IDENTIDADE` (`chaveDoFato`, `origem`, `versaoDaPrevia` — nasce
+  com a entrada, vem sempre da linha, SOBREVIVE a toda edição inclusive a que
+  troca o conteúdo, e não se forja pelo pedido), `CHAVES_TRANSITORIAS` (marca,
+  token, prazo — só o ciclo escreve, e a edição que muda o índice as tira) e o
+  resto, que é da pessoa (`metadataDaPessoa`). Os escritores, varridos um a um:
+  `editarEntradaCoordenada` (PUT `/api/knowledge/[id]`, `updateEntry` da rota
+  admin e do `confirm`, tool `atualizar-entrada-base`) por `metadataDaEdicao`,
+  com CAS no `updatedAt`; `indexEntry` (criação pela PESSOA: `confirm` CREATE,
+  POST da base e do admin) grava só `metadataDaPessoa`; `criarEntradaBase`
+  aceita a identidade de quem cria mas descarta marca e prazo prontos (um
+  `cicloExpiraEm` futuro no metadata fazia a própria indexação da criação ser
+  recusada); `adquirir`/`renovar`/`publicarMarca`/`liberar` já eram
+  leitura-derivação-CAS tocando só as chaves transitórias; `marcarFatoIndexado`
+  ver abaixo. Não escrevem metadata: arquivamento (cron, tool, DELETE do
+  `confirm`), `migrate-workspace` e os scripts de uma vez só.
+- 🔴 **A marca de indexado toca SÓ a própria chave, por compare-and-set no
+  `updatedAt` lido** (PR13-48): `marcarFatoIndexado` lia o metadata, conferia
+  só o token na escrita e gravava o objeto capturado. Uma edição coordenada de
+  metadata no meio não troca o token (não muda o índice), então a marca passava
+  e a nota que a pessoa acabara de salvar sumia. Hoje é um laço de até 5
+  tentativas: relê, confere aborto e token na leitura, e grava com `updatedAt`
+  lido + token no `where`, reconstruindo o metadata a cada conflito.
+- **`INDEXACAO_PERDIDA` não promete recuperação** (PR13-46): `ArrendamentoPerdido`
+  também sai de cinco conflitos seguidos de CAS com o token AINDA desta
+  execução (edições de etiqueta no meio), sem outra execução nenhuma. O aviso
+  diz que a edição foi salva e a indexação não concluiu; só
+  `INDEXACAO_EM_ANDAMENTO`, que prova arrendamento vigente alheio, fala em
+  outra execução indexando o texto novo.
+- Testes em `metadata-do-sistema.test.ts`: a migração REAL (`aplicarManifesto`
+  com `lerEstadoDoCliente`, `estadoDoFatoNaBase` e o registrador padrão sobre o
+  banco falso) falha no 2º fato, a confirmação real edita o 1º com metadata
+  omitido, nulo e substituído, e a reaplicação cria só o que faltava; com o
+  conteúdo corrigido, bloqueia por "conteúdo editado". Cada escritor contra a
+  partição (PUT da base, PUT admin, tool, `confirm` CREATE, `criarEntradaBase`,
+  o ciclo no meio e no fim); a marca suspensa depois da leitura com edição de
+  metadata no meio preserva a nota, e com troca de ciclo continua recusada; e
+  cinco conflitos pela confirmação real respondem 202, invalidam o cache e não
+  prometem outra execução. Mutações conferidas: `metadataDaEdicao` do commit
+  anterior derruba 9 testes, `marcarFatoIndexado` antigo 1, o aviso antigo 1,
+  `criarEntradaBase` sem o filtro 1, `indexEntry` sem o filtro 1.
+
+Da revisão FINAL do Codex sobre 852cf9e9 (BLOQUEADO, PR13-49…50 + C13-01, 18/09/2026):
+
+- 🔴 **Isolamento do Upstash se decide pela IDENTIDADE do endpoint, nunca pela
+  string** (PR13-49, P1). `https://PROD.upstash.io` no dev contra
+  `https://prod.upstash.io` na produção dava "isolado" por comparação textual, e
+  `--dev` escreveria vetores de dev no índice de produção (ou invalidaria o cache
+  dela). `podeSerOMesmoServico` compara o hostname normalizado
+  (`identidadeDoEndpoint`: minúsculas, IDN, sem ponto final, esquema ausente vira
+  https); porta, esquema e raiz ficam fora de propósito — mesmo host é o mesmo
+  serviço. URL ilegível de qualquer lado conta como PRODUÇÃO: isolamento só se
+  afirma provado. A prova (`validar-migracao-da-voz.ts`) passou a usar a MESMA
+  régua (`isolamentoDoCache`/`isolamentoDoIndexador`), em vez de repetir a
+  comparação textual.
+- **O 202 com `indexacao: 'pendente'` chega à TELA** (PR13-50): os dois chats
+  (`/ai-chat` e o chat do template) e a edição do admin liam o JSON só no erro e
+  engoliam o aviso. Todos leem a resposta de SUCESSO por
+  `avisoDaIndexacaoPendente` (`marca-de-indexado.ts`, puro) e mostram sem
+  bloquear — mensagem do assistente no chat, descrição do toast no admin.
+- **A identidade de fato só existe em FATO** (C13-01): `origem` e
+  `versaoDaPrevia` são do sistema só com `chaveDoFato` na mesma metadata. Entrada
+  comum preserva `origem` na criação pela pessoa e a edita como qualquer campo;
+  pedido que traz `chaveDoFato` (identidade FORJADA) perde as três chaves; no fato
+  de verdade a identidade da linha continua vencendo.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o
