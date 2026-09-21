@@ -24,6 +24,8 @@ import { CreativeError } from '@/lib/creatives/errors'
 import { diaBRTDe, diasAteDomingoBRT, lerFotoCandidatas } from './proposta-de-semana'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
+import { CopyAutoralInvalida, copyDoItemNoPatch, copyDoItemNovo, type CopyDoItem } from './copy-do-item'
+import { CopyLegadaIncompativel, HistoricoDaCopyCheio, MAX_REVISOES_DA_COPY, RevisaoDaCopyInvalida, orientacaoDosProblemas, orientacaoEmFrase } from '@/lib/copy-autoral'
 import {
   cenaDasReferencias,
   validarReferencias,
@@ -64,6 +66,8 @@ export interface ItemDePlanoInput {
   quando?: string | Date | null
   tema?: string | null
   copyProposta?: string[] | null
+  /** F1: o CONTRATO da copy autoral (`src/lib/copy-autoral`). Quando vem, manda; `copyProposta` vira só o espelho posicional dele. `null` no patch limpa. */
+  copyAutoral?: unknown
   legenda?: string | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
@@ -127,6 +131,8 @@ export interface PatchDeItem {
   quando?: string | Date | null
   tema?: string | null
   copyProposta?: string[] | null
+  /** F1: o CONTRATO da copy autoral (`src/lib/copy-autoral`). Quando vem, manda; `copyProposta` vira só o espelho posicional dele. `null` no patch limpa. */
+  copyAutoral?: unknown
   legenda?: string | null
   fotoUrl?: string | null
   fotoDriveId?: string | null
@@ -423,10 +429,16 @@ function normalizarItem(
     )
   }
 
-  const copy = (entrada.copyProposta ?? [])
-    .filter((bloco): bloco is string => typeof bloco === 'string')
-    .map((bloco) => bloco.trim())
-    .filter(Boolean)
+  // F1: o contrato da copy autoral, quando vem, manda; `copyProposta` é o
+  // espelho posicional dele. Contrato que não passa no leitor recusa o item —
+  // nunca é gravado pela metade.
+  let copyDoItem: CopyDoItem
+  try {
+    copyDoItem = copyDoItemNovo(entrada)
+  } catch (erro) {
+    throw erroDaCopyDoItem(erro, `do item ${posicao}`) ?? erro
+  }
+  const copy = copyDoItem.copyProposta ?? []
 
   // Referências com papel: presentes, elas VENCEM os campos soltos — o espelho
   // fotoUrl/fotoDriveId passa a ser a CENA da lista, e é dele que a capa do
@@ -443,6 +455,7 @@ function normalizarItem(
     quando,
     tema: entrada.tema?.trim() || null,
     copyProposta: copy,
+    ...(copyDoItem.copyAutoral ? { copyAutoral: copyDoItem.copyAutoral as unknown as Prisma.InputJsonValue } : {}),
     legenda: entrada.legenda?.trim() || null,
     fotoUrl: referencias ? (cena?.url ?? null) : entrada.fotoUrl?.trim() || null,
     fotoDriveId: referencias ? (cena?.driveFileId ?? null) : entrada.fotoDriveId?.trim() || null,
@@ -549,15 +562,55 @@ export async function anexarItensAoPlanoAtivo(input: {
   }
 
   let alvo = await planoAtivo(projectId)
-  if (!alvo) {
+
+  /**
+   * 🔴 O LOTE INTEIRO é normalizado ANTES de qualquer escrita (RB-01 da revisão
+   * do rebase, 21/09/2026) — como `criarPlano` sempre fez, e o que faltava aqui.
+   * `normalizarItem` recusa por ITEM em quatro famílias (formato, via, escopo e
+   * a copy: `COPY_AUTORAL_INVALIDA`, `COPY_HISTORICO_CHEIO`,
+   * `COPY_LEGADA_INCOMPATIVEL`, `COPY_REVISAO_INVALIDA`), e normalizar dentro do
+   * laço de gravação fazia o item 2 recusado deixar o item 1 no banco: a chamada
+   * falhava sem devolver os ids, e reenviar a leva corrigida DUPLICAVA o item 1.
+   * A mesma armadilha valia para a criação automática do plano — um lote todo
+   * recusado deixava para trás uma leva vazia.
+   *
+   * Por isso a janela e o offset são calculados sem escrever: com leva em aberto
+   * saem dela; sem nenhuma, são os que a leva nova terá (a janela é só o texto do
+   * aviso de item fora do período, mas sai idêntica de propósito).
+   */
+  const base = alvo ? alvo.itens.length : 0
+  let janela: { inicio: Date; fim: Date }
+  let levaNova: { inicio: string; fim: string; titulo: string } | null = null
+  if (alvo) {
+    janela = { inicio: alvo.inicio, fim: alvo.fim }
+  } else {
     const agora = new Date()
     const inicio = diaBRTDe(agora)
     const fim = diaBRTDe(new Date(agora.getTime() + (diasAteDomingoBRT(agora) - 1) * 24 * 3_600_000))
+    levaNova = { inicio, fim, titulo: `Bancada — semana de ${inicio.slice(8, 10)}/${inicio.slice(5, 7)}` }
+    janela = { inicio: paraInstanteDoPlano(inicio, 'início', false), fim: paraInstanteDoPlano(fim, 'fim', true) }
+  }
+
+  if (base + input.itens.length > MAX_ITENS_POR_PLANO) {
+    throw new CreativeError(
+      'PLANO_GRANDE_DEMAIS',
+      `O plano já tem ${base} itens; anexar ${input.itens.length} passaria do teto de ${MAX_ITENS_POR_PLANO}.`,
+      400,
+    )
+  }
+
+  const avisos: string[] = []
+  const prontos = input.itens.map((entrada, i) =>
+    normalizarItem({ ...entrada, ordem: entrada.ordem ?? base + i }, base + i, janela, avisos),
+  )
+
+  // ── Daqui para baixo, ESCRITA. Nada acima dela grava. ──
+  if (!alvo) {
     const criado = await criarPlano({
       projectId,
-      titulo: `Bancada — semana de ${inicio.slice(8, 10)}/${inicio.slice(5, 7)}`,
-      inicio,
-      fim,
+      titulo: levaNova.titulo,
+      inicio: levaNova.inicio,
+      fim: levaNova.fim,
       origem: input.origem ?? 'bancada',
       criadoPor: input.criadoPor ?? null,
       itens: [],
@@ -565,20 +618,8 @@ export async function anexarItensAoPlanoAtivo(input: {
     alvo = criado.plano
   }
 
-  if (alvo.itens.length + input.itens.length > MAX_ITENS_POR_PLANO) {
-    throw new CreativeError(
-      'PLANO_GRANDE_DEMAIS',
-      `O plano já tem ${alvo.itens.length} itens; anexar ${input.itens.length} passaria do teto de ${MAX_ITENS_POR_PLANO}.`,
-      400,
-    )
-  }
-
-  const avisos: string[] = []
-  const base = alvo.itens.length
-  const janela = { inicio: alvo.inicio, fim: alvo.fim }
   const criados: string[] = []
-  for (const [i, entrada] of input.itens.entries()) {
-    const dados = normalizarItem({ ...entrada, ordem: entrada.ordem ?? base + i }, base + i, janela, avisos)
+  for (const dados of prontos) {
     const linha = await db.itemDePlano.create({
       data: { ...dados, planoId: alvo.id, projectId },
       select: { id: true },
@@ -629,6 +670,43 @@ export async function arquivarPlano(projectId: number, planoId: string) {
 
 // ── Edição do item ──────────────────────────────────────────────────────────
 
+/**
+ * As recusas do contrato da copy viram erro 4xx explícito, em português e com o
+ * que fazer — nunca 500. `null` quando o erro não é do contrato (sobe como veio).
+ *  - `CopyAutoralInvalida` (400): o contrato mandado não passa no leitor;
+ *  - `CopyLegadaIncompativel` (400): a copy legada não cabe no contrato — nada
+ *    foi cortado nem redistribuído (PR2-01);
+ *  - `HistoricoDaCopyCheio` (409): o contrato do item já tem o máximo de
+ *    revisões e a edição não foi registrada — nada foi gravado (PR2-02);
+ *  - `RevisaoDaCopyInvalida` (400): a revisão produziria uma copy que o leitor
+ *    recusa — nada foi gravado (9238098f).
+ */
+function erroDaCopyDoItem(erro: unknown, qual: string | null): CreativeError | null {
+  const daCopy = qual ? ` ${qual}` : ''
+  if (erro instanceof CopyAutoralInvalida) {
+    return new CreativeError('COPY_AUTORAL_INVALIDA', `A copy autoral${daCopy} não passou no contrato: ${erro.problemas.join('; ')}.${orientacaoEmFrase(erro.orientacao)}`, 400, { problemas: erro.problemas, orientacao: erro.orientacao })
+  }
+  if (erro instanceof CopyLegadaIncompativel) {
+    const problemas = erro.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem))
+    const orientacao = orientacaoDosProblemas(erro.problemas)
+    return new CreativeError('COPY_LEGADA_INCOMPATIVEL', `A copy${daCopy} não cabe no contrato da copy autoral (nada foi cortado nem redistribuído): ${problemas.join('; ')}.${orientacaoEmFrase(orientacao)}`, 400, { problemas, orientacao })
+  }
+  if (erro instanceof RevisaoDaCopyInvalida) {
+    const problemas = erro.problemas.map((p) => (p.bloco ? `${p.bloco}: ${p.mensagem}` : p.mensagem))
+    const orientacao = orientacaoDosProblemas(erro.problemas)
+    return new CreativeError('COPY_REVISAO_INVALIDA', `A edição da copy${daCopy} não cabe no contrato da copy autoral e não foi registrada — nada foi gravado: ${problemas.join('; ')}.${orientacaoEmFrase(orientacao)}`, 400, { problemas, orientacao })
+  }
+  if (erro instanceof HistoricoDaCopyCheio) {
+    return new CreativeError(
+      'COPY_HISTORICO_CHEIO',
+      `O histórico da copy${daCopy} chegou ao limite de ${MAX_REVISOES_DA_COPY} revisões, e esta edição do texto não foi registrada — nada foi gravado. Para seguir editando, mande a copy inteira como contrato novo (copyAutoral), que recomeça o histórico, ou remova o contrato (copyAutoral: null) e edite só a lista.`,
+      409,
+      { revisoes: erro.copy.revisoes.length, blocos: erro.mudancas.map((m) => m.id) },
+    )
+  }
+  return null
+}
+
 async function buscarItem(projectId: number, planoId: string, itemId: string) {
   const item = await db.itemDePlano.findFirst({
     where: { id: itemId, planoId, projectId },
@@ -661,13 +739,39 @@ async function buscarItem(projectId: number, planoId: string, itemId: string) {
  * plano vira sinal de `copy` junto com as tools da fatia seguinte. Está aqui
  * para que os chamadores nasçam passando o campo certo.
  */
-export async function atualizarItem(input: {
+export async function atualizarItem(input: EntradaDeAtualizacaoDoItem) {
+  /**
+   * A escrita é condicionada à VERSÃO LIDA do item (`updatedAt`) — PR3-F04 da
+   * revisão FINAL do Codex sobre abac9b34, 18/09/2026. A revisão da copy é
+   * calculada sobre o contrato lido e grava o histórico INTEIRO: duas edições
+   * concorrentes que gravassem por `id` deixavam a última apagar a revisão da
+   * primeira. Perdida a corrida, o item é RELIDO e a edição recalculada sobre
+   * ele (a lista de quem grava por último continua valendo, como sempre foi,
+   * mas o histórico guarda as duas); depois de insistir, 409 explícito.
+   */
+  for (let volta = 0; volta < 3; volta++) {
+    const r = await tentarAtualizarItem(input)
+    if (r) return r
+  }
+  throw new CreativeError(
+    'ITEM_MUDOU_DURANTE',
+    'O item foi editado por outra pessoa (ou pelo chat) enquanto esta edição era gravada, e ela NÃO foi gravada. Veja o item como está agora e refaça a edição se ainda fizer sentido.',
+    409,
+  )
+}
+
+interface EntradaDeAtualizacaoDoItem {
   projectId: number
   planoId: string
   itemId: string
   patch: PatchDeItem
   decididoPor?: string | null
-}) {
+  /** Quem assina a revisão da copy quando o patch mexe no texto: o chat (`claude`) ou a bancada/app (`equipe`, o default). */
+  autorDaCopy?: 'claude' | 'equipe'
+}
+
+/** Uma volta de `atualizarItem`: `null` quando o item mudou entre a leitura e a escrita (nada foi gravado). */
+async function tentarAtualizarItem(input: EntradaDeAtualizacaoDoItem) {
   const item = await buscarItem(input.projectId, input.planoId, input.itemId)
 
   if (item.plano.status !== 'ativo') {
@@ -721,11 +825,21 @@ export async function atualizarItem(input: {
   if (patch.campaignId !== undefined) data.campaignId = patch.campaignId?.trim() || null
   if (patch.slides !== undefined) data.slides = patch.slides as Prisma.InputJsonValue
 
-  if (patch.copyProposta !== undefined) {
-    data.copyProposta = (patch.copyProposta ?? [])
-      .filter((bloco): bloco is string => typeof bloco === 'string')
-      .map((bloco) => bloco.trim())
-      .filter(Boolean)
+  // F1: o contrato da copy do item. Edição só da lista posicional vira REVISÃO
+  // do contrato (autor de quem mexeu) — ou o descarta com aviso quando não dá
+  // para casar bloco a bloco. Contrato inválido recusa o patch inteiro.
+  try {
+    const copyPatch = copyDoItemNoPatch(item.copyAutoral, patch, {
+      autor: input.autorDaCopy ?? 'equipe',
+      superficie: input.autorDaCopy === 'claude' ? 'chat' : 'bancada',
+    })
+    if (copyPatch) {
+      if (copyPatch.copyProposta !== undefined) data.copyProposta = copyPatch.copyProposta
+      data.copyAutoral = copyPatch.copyAutoral ? (copyPatch.copyAutoral as unknown as Prisma.InputJsonValue) : Prisma.DbNull
+      avisos.push(...copyPatch.avisos)
+    }
+  } catch (erro) {
+    throw erroDaCopyDoItem(erro, null) ?? erro
   }
 
   if (patch.formato !== undefined) {
@@ -786,11 +900,12 @@ export async function atualizarItem(input: {
     data.status = 'editado'
   }
 
-  const atualizado = await db.itemDePlano.update({
-    where: { id: input.itemId },
-    data,
-    include: { plano: { select: { id: true, status: true, inicio: true, fim: true } } },
+  const gravada = await db.itemDePlano.updateMany({
+    where: { id: input.itemId, updatedAt: item.updatedAt },
+    data: data as Prisma.ItemDePlanoUpdateManyMutationInput,
   })
+  if (gravada.count === 0) return null
+  const atualizado = await buscarItem(input.projectId, input.planoId, input.itemId)
   return { item: atualizado, avisos }
 }
 

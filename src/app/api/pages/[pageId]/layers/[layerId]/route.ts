@@ -7,6 +7,11 @@ import {
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
 import { canonicalizeShapeLayerForPersistence } from '@/lib/shape-style'
+import { lerCamadas } from '@/lib/posts/page-layers'
+import { gravarCamadasComRevisao } from '@/lib/copy-autoral/persistir'
+import { CreativeError } from '@/lib/creatives/errors'
+
+class CamadaNaoEncontrada extends Error {}
 
 // PATCH - Atualizar uma layer específica em uma página
 export async function PATCH(
@@ -46,52 +51,60 @@ export async function PATCH(
     // Obter os updates do body
     const updates = await request.json()
 
-    // Deserializar layers
-    const layers = typeof page.layers === 'string' ? JSON.parse(page.layers) : page.layers
+    /** A camada editada fundida numa lista de camadas (a da página COMO ESTÁ no banco). */
+    const fundir = (camada: Record<string, unknown>) =>
+      canonicalizeShapeLayerForPersistence({
+        ...camada,
+        ...updates,
+        // Manter text e content sincronizados para layers de texto
+        ...(updates.content !== undefined && {
+          text: updates.content,
+          content: updates.content,
+        }),
+        ...(updates.text !== undefined && {
+          text: updates.text,
+          content: updates.text,
+        }),
+      })
 
-    // Encontrar e atualizar a layer específica
-    const layerIndex = (layers as any[]).findIndex((layer) => layer.id === layerId)
-
-    if (layerIndex === -1) {
-      return NextResponse.json({ error: 'Layer not found' }, { status: 404 })
-    }
-
-    // Atualizar a layer com os novos valores
-    const updatedLayer = canonicalizeShapeLayerForPersistence({
-      ...(layers as any[])[layerIndex],
-      ...updates,
-      // Manter text e content sincronizados para layers de texto
-      ...(updates.content !== undefined && {
-        text: updates.content,
-        content: updates.content,
-      }),
-      ...(updates.text !== undefined && {
-        text: updates.text,
-        content: updates.text,
-      }),
-    })
-
-    // Mudança real? O mesmo endpoint recebe autosave; layer idêntica não pode
-    // invalidar o render dos posts agendados desta página
-    const layerChanged = JSON.stringify((layers as any[])[layerIndex]) !== JSON.stringify(updatedLayer)
-
-    // Substituir a layer atualizada no array
-    ;(layers as any[])[layerIndex] = updatedLayer
-
-    // Salvar de volta no banco (e invalidar renders na mesma transação)
+    /**
+     * 🔴 A camada é fundida na página RELIDA e gravada COM a revisão do
+     * contrato da copy, por compare-and-set (`gravarCamadasComRevisao`, PR3-F03
+     * da revisão FINAL do Codex sobre abac9b34, 18/09/2026). Antes este
+     * endpoint (autosave de camada, `use-auto-save-layer`) escrevia `layers`
+     * sem revisar `copyAutoral`: a página mostrava um texto e o contrato outro,
+     * e a próxima edição no editor assinava a mudança com a autoria errada.
+     */
+    let updatedLayer: Record<string, unknown> | null = null
+    let layerChanged = false
+    let avisoDaCopy: string | null = null
     const { updatedPage, invalidated, congelados } = await db.$transaction(async (tx) => {
-      const saved = await tx.page.update({
-        where: { id: pageId },
-        data: {
-          layers: JSON.stringify(layers),
-          updatedAt: new Date(),
+      const g = await gravarCamadasComRevisao(tx, {
+        pageId,
+        humana: true,
+        quem: { autor: 'equipe', motivo: 'edição de camada no editor', superficie: 'editor' },
+        camadas: (base) => {
+          const lidas = lerCamadas(base.layers)
+          if (!lidas.legivel) throw new Error('camadas ilegíveis')
+          const layers = lidas.camadas as Array<Record<string, unknown>>
+          const i = layers.findIndex((layer) => layer.id === layerId)
+          if (i === -1) throw new CamadaNaoEncontrada()
+          updatedLayer = fundir(layers[i])
+          // Mudança real? O mesmo endpoint recebe autosave; layer idêntica não pode
+          // invalidar o render dos posts agendados desta página
+          layerChanged = JSON.stringify(layers[i]) !== JSON.stringify(updatedLayer)
+          return JSON.stringify(layers.map((l, j) => (j === i ? updatedLayer : l)))
         },
       })
+      if (!g) throw new CamadaNaoEncontrada()
+      avisoDaCopy = g.aviso
+      const saved = await tx.page.findUnique({ where: { id: pageId } })
       const r = layerChanged
         ? await invalidateScheduledRenders(tx, { pageIds: [pageId] })
         : { invalidados: 0, congelados: [] as string[] }
-      return { updatedPage: saved, invalidated: r.invalidados, congelados: r.congelados }
+      return { updatedPage: saved!, invalidated: r.invalidados, congelados: r.congelados }
     })
+    if (avisoDaCopy) console.warn(`[API] Layer ${layerId}: camada gravada sem revisão do contrato da copy — ${avisoDaCopy}`)
 
     if (invalidated > 0) {
       console.log(`[API] Layer ${layerId} changed — invalidated ${invalidated} scheduled render(s)`)
@@ -123,8 +136,16 @@ export async function PATCH(
         layers: typeof updatedPage.layers === 'string' ? JSON.parse(updatedPage.layers) : updatedPage.layers,
       },
       ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
+      // A camada foi gravada e o contrato da copy ficou como estava (histórico cheio, copy que não cabe).
+      ...(avisoDaCopy ? { avisoDaCopy } : {}),
     })
   } catch (error) {
+    if (error instanceof CamadaNaoEncontrada) {
+      return NextResponse.json({ error: 'Layer not found' }, { status: 404 })
+    }
+    if (error instanceof CreativeError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
     console.error('Error updating layer:', error)
     return NextResponse.json(
       { error: 'Failed to update layer' },

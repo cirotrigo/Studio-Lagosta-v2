@@ -6231,10 +6231,367 @@ PURO (zod), sem Prisma, com teste de ida e volta exata.
 - **Validação devolve TODOS os problemas** (id repetido, ordem repetida ou
   com buraco, grupo de um bloco só, voz 2 fora da manchete ou em linha
   inexistente, revisão citando bloco que não existe), nunca só o primeiro.
-- Nada persiste ainda: o PR 3 grava o contrato ANTES de qualquer adaptação
-  (Page, ItemDePlano, Generation.fieldValues) e nenhum backfill inventa copy
-  original para o histórico.
+- ~~Nada persiste ainda~~ — **o PR 3 gravou o contrato** (seção seguinte). Nenhum
+  backfill inventa copy original para o histórico: página, item e arte antigos
+  ficam sem contrato, e o adaptador do legado só entra quando uma spec nova
+  chega só com `blocos`.
 
+### A persistência do contrato da copy (PR 3 de "Marca simples, copy melhor", 12/09/2026)
+
+Migration aditiva `20260912120000_copy_autoral`: `Page.copyAutoral` e
+`ItemDePlano.copyAutoral` (JSONB, nulos). Na arte, `Generation.fieldValues.copyAutoral
+= { original, efetiva, comparavel, lacunas? }`. Módulos: `src/lib/copy-autoral/efetiva.ts`
+(camadas → contrato, puro), `persistir.ts` (a única casa do módulo que importa o
+Prisma), `src/lib/planos/copy-do-item.ts` (puro). Prova de integração no branch de
+dev: `scripts/validar-copy-autoral.ts`.
+
+- 🔴 **A PÁGINA guarda a EFETIVA, a GENERATION guarda o ORIGINAL.** A efetiva é o
+  original + a revisão do SISTEMA com o que o compositor mudou ao desenhar
+  (`copyEfetivaDasCamadas`, superfície `compositor`). Medido na primeira rodada da
+  prova: com a página guardando o original, a primeira edição da EQUIPE levava a
+  culpa pela seta que o compositor põe no CTA e pelo destaque `[]` que ele não
+  desenhou sem estilo cadastrado. O contrato da página descreve o que a página
+  MOSTRA; a edição seguinte é diferenciada contra ele, e cada bloco tem o autor
+  certo (`autorDoBloco`). O texto verbatim do autor está em
+  `fieldValues.copyAutoral.original` (e em `ItemDePlano.copyAutoral`).
+- **`comparavel` só é verdadeiro com autoria conhecida.** Spec que chega só com
+  `blocos` (legado) vira contrato ADAPTADO com `origem.autor: 'desconhecido'` e
+  entra na métrica como "não comparável" — nunca como fidelidade comprovada.
+- 🔴 **Quem grava camadas grava a revisão do contrato NA MESMA ESCRITA**
+  (`revisaoDaPaginaComCamadas`, puro, em `revisar-pagina.ts`): o PATCH do editor
+  (`equipe`, `editor` — disparado por QUALQUER mudança de camadas, e o diff
+  exato decide se há revisão: só o destaque do rich text, ou uma quebra, revisa;
+  autosave idêntico não), `ajustarArte` (`equipe` com `canal: 'studio'`, `claude`
+  no resto), `reverterCamadasDaArte` (`sistema`, `reverter-arte`) e a
+  recomposição. Calculada num `after()`, dois autosaves fora de ordem deixavam
+  a página com as camadas B e o contrato de A (R02 da revisão do Codex). Página
+  SEM contrato fica sem (`sem-contrato`), nunca lança. A Generation do ajuste
+  leva `original` (o contrato da página, já revisado) e `efetiva` (as camadas
+  finais). `registrarRevisaoDaPagina` (com Prisma, compare-and-set no contrato
+  lido) é só o caminho tardio para quem tem o `pageId` e camadas já gravadas.
+- **A recomposição leva à spec o contrato DA PÁGINA como ela está** (lido das
+  camadas atuais sobre o contrato gravado) e tira os blocos dele; ao terminar,
+  grava a efetiva recomposta na página e em `fieldValues.copyAutoral.efetiva`
+  (o `original` fica). Manter o contrato velho na spec fazia `validarSpec`
+  recusar a recomposição e o slide ficava com o texto antigo (R01).
+- **Bloco VAZIO de propósito não vira bloco do compositor**
+  (`blocosParaOCompositor` o pula; ele continua no contrato): o schema exige
+  linha, e o item de plano com `cta: []` caía em `SPEC_INVALIDA` na fila.
+- **Texto solto lido como bloco `extra-<id>` é relido ESTÁVEL** (o bloco casa
+  também pelo id que a leitura anterior deu à camada; ids únicos) — antes a
+  segunda leitura esvaziava o bloco e criava outro com o mesmo id, e o
+  contrato deixava de ser lido (R03). Duplicar página leva o contrato (R08).
+- **O compositor ainda transforma texto, e o contrato EXPÕE isso em vez de
+  esconder**: a seta no CTA e o destaque não desenhado saem em `ver-geracao`
+  como `copy.blocosDiferentes` e na revisão do sistema. Tirar as transformações
+  é o PR 4 — não "corrija" a efetiva para bater com o original.
+- 🔴 **`validarSpec` deriva `blocos` de `copyAutoral`** (a única conversão
+  sancionada, `blocosParaOCompositor`) e recusa: bloco `livre` COM texto (a camada
+  livre chega na F3 — recusar é o oposto de sumir em silêncio) e `blocos` que não
+  batem com o contrato quando os dois vêm. `blocos` passou a ser opcional na spec;
+  sem contrato continua obrigatório.
+- **Item de plano: o contrato manda, `copyProposta` é o ESPELHO posicional**
+  (um item por bloco com texto, linhas unidas por `\n`) — é o que a bancada,
+  `executar-plano` e as vias de template/IA leem até o PR 5. Contrato inválido
+  recusa o item (`COPY_AUTORAL_INVALIDA`, 400). Edição só da lista (bancada) vira
+  revisão da `equipe` quando casa posição a posição (mesmo número de blocos com
+  texto; a segunda voz por índice acompanha a linha que sumiu); quando não casa,
+  o contrato é DESCARTADO COM AVISO — manter um contrato que não descreve mais o
+  texto seria mentir para a métrica. `montarSpecDoItem` leva o contrato à spec.
+- **No conector**: `compor-arte`, `compor-leva`, `criar-plano` e
+  `editar-item-do-plano` aceitam `copyAutoral` (com ele `blocos`/`texto` são
+  dispensáveis); `editar-item-do-plano` assina a revisão como `claude`;
+  `ver-geracao` devolve `copy` (escrita × desenhada, `comparavel`,
+  `blocosDiferentes`, `lacunas`). Os quatro snapshots do registro foram atualizados
+  no mesmo commit.
+- ⚠️ **A migration ainda não foi aplicada em produção** (regra da casa: escrita à
+  mão + `db:deploy`, com o OK do Ciro); no branch de dev está aplicada. O código
+  sem a coluna falha na leitura de `Page.copyAutoral` — não subir o código antes
+  do schema.
+- 🔴 **A camada escondida pelo REVISOR não é remoção autoral** (rebase do PR 3
+  sobre o PR 0, 12/09/2026). O ajuste `visibilidade` do revisor grava na camada
+  `metadata.revisao.ocultaPeloRevisor`; `revisaoDaPaginaComCamadas` lê as
+  camadas por `camadasParaDecisao` (a escondida pelo revisor conta como
+  presente), então o PATCH do editor, `ajustarArte` (`claude`/`equipe`),
+  `reverterCamadasDaArte` e `registrarRevisaoDaPagina` não assinam o bloco
+  vazio como edição de quem pediu — nem mostrar a camada de novo vira adição.
+  Camada escondida SEM a marca continua sendo remoção autoral. A efetiva da
+  ARTE (`copyEfetivaDasCamadas` sobre as camadas cruas: Generation do ajuste,
+  recomposição, compositor) segue dizendo o que foi DESENHADO, como revisão do
+  sistema — a marca nunca muda o que a arte mostra. Leitor novo que decida
+  AUTORIA a partir de camadas precisa do mesmo `camadasParaDecisao`. Teste em
+  `revisar-pagina.test.ts` (com a marca: sem revisão; edição em outro bloco:
+  só aquele bloco; controle sem a marca: revisão da equipe).
+
+**Da pré-revisão do commit bf85cb26 (BLOQUEADO, C3-01…02, 12/09/2026):**
+
+- 🔴 **`ajustarArte` SEM `versaoEsperada` também grava por compare-and-set**
+  (C3-01, P2). O ajuste só de foto ou de nome, vindo do chat, lia a página,
+  levava segundos resolvendo imagem, medindo e rodando o autofix, e gravava com
+  `update` cru: se o editor salvasse texto novo no meio, a revisão calculada
+  contra a leitura antiga saía `sem-mudanca`, as camadas velhas iam por cima e a
+  página ficava **camadas X, contrato Y** — e a próxima edição no editor
+  assinava como `equipe` a volta do texto. Hoje, perdida a corrida, a página é
+  RELIDA e o ajuste só segue se o CONTEÚDO (`versaoDaPagina`) e o contrato
+  continuam os que ele leu; senão nada é gravado e volta 409
+  `PAGINA_MUDOU_DURANTE_O_AJUSTE` (`ajusteGravado: false`), que o conector
+  devolve como erro, sem retentar. **Não troque a releitura por um
+  compare-and-set puro em `updatedAt`**: o carimbo muda em qualquer escrita, e
+  com o editor aberto o autosave grava miniatura e camadas idênticas a cada
+  pausa — todo ajuste do chat tomaria 409 falso. Vale para página com e sem
+  contrato (sem contrato, gravar por cima apagava a edição da equipe em
+  silêncio). O ramo COM `versaoEsperada` ficou como estava (compare-and-set
+  estrito). Teste em `ajustar-arte-concorrencia.test.ts`.
+- **No PATCH, a marca `ocultaPeloRevisor` é reconciliada contra a leitura
+  PROTEGIDA** (C3-02, P3): contra a base fresca antes da prévia e de novo contra
+  `fresca` a cada volta do compare-and-set, antes de medir a diferença e revisar
+  o contrato — nunca contra `existingPage`. O autosave não espera o PATCH em voo:
+  mostrar a camada (P1) e escondê-la de novo fazia P2 manter a marca antiga lida
+  antes de P1, e a remoção humana nunca entrava no contrato nem no aprendizado.
+  Troca consciente: aba desatualizada que regrave escondida e marcada uma camada
+  que outra aba mostrou conta como remoção de quem gravou por último. Teste em
+  `src/app/api/templates/[id]/pages/[pageId]/__tests__/patch-marca-do-revisor.test.ts`.
+- **As duas regras cobrem também a reconciliação com as camadas ANTERIORES do
+  PR 5** (`camadasAnteriores`): as anteriores de `ajustarArte` são a leitura que
+  o compare-and-set protege, e as do PATCH são a `fresca` contra a qual a marca
+  foi reconciliada. Leitura nova de "como a página estava" que entre numa decisão
+  de autoria precisa ser a mesma que a escrita substitui.
+
+**Da pré-revisão do commit 046d2a5e (BLOQUEADO, C3-11…12, 12/09/2026):**
+
+- 🔴 **A marca do revisor só sobrevive se a BASE também a tem** (C3-11, P2).
+  O editor nunca recebe a remoção da marca feita no servidor (o `design` só é
+  recarregado quando muda o id da página), então depois de mostrar e esconder de
+  novo uma camada que o revisor ocultou, QUALQUER autosave seguinte reenviava a
+  marca; como a base estava escondida SEM marca, a regra antiga ("tira a marca
+  só se a base estava visível") a mantinha, e o contrato ganhava uma revisão da
+  `equipe` devolvendo o bloco sobre uma camada que a página mostra escondida —
+  mais uma decisão falsa de copy no corpus. A regra passa a ser `a &&
+  !ocultaPeloRevisor(a)` → sem marca. **A correção mora em
+  `src/lib/creatives/revisao/oculta-pelo-revisor.ts`, que é código do PR 0: foi
+  aplicada lá e chega ao PR 3 pelo rebase** — não se mexe nesse módulo no PR 3.
+- **`ajustarArte` recusa a página promovida a MODELO no meio do ajuste**
+  (C3-12, P3). A releitura do compare-and-set conferia conteúdo e contrato, mas
+  não `isTemplate`: "Marcar modelo" durante os segundos do ajuste deixava gravar
+  camadas e criar Generation numa página-modelo. Hoje as DUAS escritas
+  protegidas (com e sem `versaoEsperada`) levam `isTemplate: false` no `where`,
+  e quem perde a corrida relê a página e lança a MESMA recusa da leitura inicial
+  (`PAGINA_E_MODELO`, 400, `erroDePaginaModelo`). O `where` cobre o escritor que
+  não move o carimbo; o toggle do editor move, e aí quem pega é a releitura.
+- **O 409 `PAGINA_MUDOU_DURANTE_O_AJUSTE` não convida a repetir**: a mensagem
+  manda rever a arte como ela está (conferir-arte), contar à pessoa que ela mudou
+  e confirmar antes de ajustar de novo. Repetir na hora regravaria o texto que a
+  equipe acabou de editar. O código do erro ficou o mesmo.
+- **A comparação do contrato na releitura tem teste próprio** (só o contrato
+  muda, conteúdo idêntico → 409), embora hoje nenhum escritor mude só o
+  contrato: sem o caso, apagar `mesmoContrato` passava por todos os testes.
+- 🔴 **Quem grava camadas TRATA as duas recusas do contrato; nenhuma vira 500
+  nem derruba peça** (restack sobre o PR 2, `e3c1f75f` e `9238098f`, 13/09/2026).
+  `HistoricoDaCopyCheio` e `RevisaoDaCopyInvalida` (camada com linha acima de
+  300, mais de 12 linhas, mais de 40 blocos) chegam por `copyEfetivaDasCamadas`
+  a todo caminho que grava camadas: use `tentarCopyEfetivaDasCamadas` (devolve
+  `ok: false` + aviso com o que fazer) e `revisaoDaPaginaComCamadas`, que devolve
+  `historico-cheio`/`copy-invalida` — `recusaDaRevisao(r)` dá o aviso. A
+  regra de produto é uma só: **as camadas e a arte seguem, o contrato fica como
+  estava (nunca a 201ª revisão), e o aviso sai** — no PATCH do editor
+  (`avisoDaCopy` na resposta + log), no `ajustarArte` e no `reverter-arte`
+  (`avisos`), na recomposição (avisos do registro) e no compositor
+  (`fieldValues.avisosDaCopyAutoral` e `diagnostico.avisos`). Na spec sem
+  contrato, que não limita caracteres, o compositor usa `converterBlocosLegados`
+  e segue SEM contrato com aviso quando o legado não cabe. No plano, o erro vira
+  4xx explícito (`COPY_HISTORICO_CHEIO` 409, `COPY_LEGADA_INCOMPATIVEL` e
+  `COPY_REVISAO_INVALIDA` 400) com o que fazer; `orientacaoDosProblemas` traduz
+  problema de LIMITE em instrução ("quebre a linha"). Quem descarta a revisão
+  inválida usa `tentarAplicarRevisao`, nunca confere DEPOIS de `aplicarRevisao`
+  (ela já lança). **As lacunas da leitura das camadas entram no contrato só até
+  o teto do schema** (`lacunasQueCabem`, com uma de resumo); a lista inteira
+  segue em `CopyEfetiva.lacunas` para o registro da arte. ⚠️ Com `strict:
+  false`, `!x.ok` NÃO estreita a união: use `x.ok === false` antes de ler `aviso`.
+
+**Da revisão FINAL do Codex sobre abac9b34 (BLOQUEADO, PR3-F01…F07, 18/09/2026):**
+
+- 🔴 **Toda escrita de `Page.layers` em página que pode ter contrato passa por
+  `gravarCamadasComRevisao`** (`src/lib/copy-autoral/persistir.ts`) ou tem o
+  mesmo laço escrito no lugar (PATCH do editor, `ajustarArte`, recomposição):
+  relê a página, calcula as camadas SOBRE ela, revisa o contrato sobre ela e
+  grava por compare-and-set em `updatedAt` (4 voltas, depois 409
+  `PAGINA_MUDOU_DURANTE`). Escrita humana passa `humana: true` (a marca do
+  revisor é reconciliada contra a mesma base). Faltava em três portas: a
+  reversão (F01 — lia o contrato fora da escrita; um PATCH no meio deixava
+  camadas X com contrato Y, e no ramo com revisão apagava a revisão
+  concorrente), o PATCH de CAMADA (`use-auto-save-layer`) e o PUT do TEMPLATE
+  (F03 — gravavam camadas sem revisar o contrato; a edição seguinte levava a
+  autoria errada). O PATCH de camada funde a camada na página RELIDA: o
+  autosave de outra camada no meio não é desfeito. Porta nova que grave
+  camadas usa a função — `tx.page.update({ data: { layers } })` cru é o
+  defeito de volta.
+- 🔴 **Quem troca o PNG de uma arte que carrega `fieldValues.copyAutoral` grava
+  o registro de novo** (`registroDaCopyDaArte`, puro, em
+  `src/lib/copy-autoral/registro-da-arte.ts`; F02). O re-render da recomposição
+  (página ajustada à mão, recuperação forçada) trocava o PNG e mantinha a
+  `efetiva` antiga, que `ver-geracao` mostrava como `desenhada` com
+  `comparavel: true`. A efetiva é medida nas camadas que o PNG desenha, sobre o
+  contrato da página; sem como medir (histórico cheio, copy que não cabe,
+  camadas ilegíveis), `efetiva: null`, `comparavel: false` e o motivo em
+  `lacunas` — **nunca a efetiva antiga como se fosse a da imagem nova**. Arte
+  sem registro não ganha um. Vale também para a recomposição que troca a
+  imagem sem conseguir ler o contrato (`copyDaArteIndisponivel`).
+- 🔴 **A segunda voz da manchete é RECONSTRUÍDA das camadas presentes**
+  (`comSegundaVoz` em `efetiva.ts`; F05): `linhasNaVoz2` nunca é herdado do
+  contrato na leitura das camadas. Sem `headline2` visível o índice sai; manchete
+  não desenhada sai sem ele. Herdado, o índice apontava para linha inexistente
+  (revisão válida recusada, contrato velho) ou sobrevivia às linhas reunidas na
+  primeira voz (mudança sem registro). `herdaDe` fica.
+- **O espelho posicional do item leva as strings EXATAS do contrato** (F06):
+  `espelhoDoContrato` não apara nada, e só o bloco sem texto (vazio ou só
+  linhas em branco — o que a bancada já filtra) fica de fora. A lista
+  posicional num item COM contrato é comparada como veio. Aparar convertia a
+  normalização do sistema em revisão da `equipe` quando a bancada reenviava o
+  espelho ao salvar outro campo.
+- **Campo omitido não é campo vazio** (F07): `{ copyAutoral: null }` sem
+  `copyProposta` remove só o contrato — a lista fica (`CopyDoItem.copyProposta`
+  `undefined` = não mexe). Limpar a lista é pedir `copyProposta: []`.
+- 🔴 **`atualizarItem` grava condicionado à versão lida** (F04): `updateMany`
+  com `updatedAt`; perdida a corrida o item é relido e a edição recalculada (as
+  duas revisões ficam no histórico; a lista de quem grava por último vale, como
+  sempre valeu); depois de 3 voltas, 409 `ITEM_MUDOU_DURANTE` com nada gravado.
+  Harness de teste que mocke `itemDePlano.update` para `atualizarItem` precisa
+  de `updateMany`.
+
+**Da revisão FINAL do Codex sobre cc14f30a (BLOQUEADO, PR3-R8-01…03, 18/09/2026):**
+
+- 🔴 **Superfície que edita copy de um item com contrato edita BLOCO a BLOCO,
+  nunca um texto concatenado** (R8-01). O modal "Editar a peça" da bancada
+  juntava os blocos num textarea e separava por quebra de linha: bloco de duas
+  linhas virava dois, linhas vazias sumiam, e salvar SÓ a legenda descartava o
+  contrato (mudou o número de blocos) ou registrava a normalização como revisão
+  da `equipe`. Hoje é um campo por bloco (`blocosParaEdicao`), a copy volta
+  como a lista ORIGINAL quando não foi editada (`copyDaEdicao`) e o patch só
+  leva `copyProposta` quando ela mudou (`patchDaEdicaoDoItem`, em
+  `para-bancada.ts`). O teste segue o caminho real — item do servidor → card →
+  modal → patch → `atualizarItem`; testar só a hidratação pulava justamente a
+  transformação do modal. Varredura: o compositor da bancada e o
+  `gerar-arte-ia-modal` ainda usam "um bloco por linha", mas criam item/arte
+  NOVOS (sem contrato a preservar); duplicar card e duplicar da galeria copiam
+  o espelho exato e o item novo nasce sem contrato.
+- 🔴 **Bloco ÚNICO da função leva TODAS as camadas dela** (R8-02,
+  `copyEfetivaDasCamadas`). O compositor reparte um bloco em várias camadas do
+  mesmo papel (`servico` e `servico-2` pelo arranjo; `distribuirLinhas` faz o
+  mesmo com qualquer papel), e a leitura dava a 1ª camada ao bloco e criava
+  OUTRO bloco `servico` com a 2ª: `Page.copyAutoral` ficava com dois serviços
+  e a recomposição seguinte morria em `papel repetido`, com o slide preso na
+  imagem velha. As linhas voltam juntas de cima para baixo; quando são as
+  MESMAS do bloco em outra ordem, fica a ordem do autor (quem reordenou foi o
+  arranjo — horário no grupo do relógio, endereço no do alfinete). Numa camada
+  só, reordenar continua sendo edição. Com vários blocos da função, uma camada
+  por bloco na ordem vertical, como antes. `copyDosPapeis` passou a juntar o
+  papel repetido como `copyDosPapeisComDestaque` já fazia.
+- 🔴 **Camada "usada" se marca por OBJETO, nunca por id** (varredura do R8-02).
+  O contador `${papel}-${n}` de `compor.ts` recomeça em CADA grupo: o serviço
+  repartido entre dois grupos da página (Happy wine do TERO) sai com duas
+  camadas de id `servico`, e com `usadas` por id a segunda sumia da leitura —
+  o endereço deixava o contrato e a recomposição o apagava. ⚠️ O id duplicado
+  continua nascendo no compositor (é do PR 4); aqui só a leitura ficou imune.
+- 🔴 **Os blocos DERIVADOS do contrato passam pelo mesmo schema dos
+  explícitos** (R8-03, `validarSpec`). O contrato aceita linha vazia e até 12
+  linhas; o compositor não. Sem a conferência, `enfileirarPeca` gravava o job
+  e o worker recusava com `SPEC_INVALIDA` ao revalidar a spec expandida — o
+  mesmo conteúdo com dois destinos. A recusa é na porta, sem cortar texto, e
+  toda spec aceita revalida igual depois da ida e volta do payload.
+- Provas: `atualizar-item-copy.test.ts` (o modal real, legenda só e uma linha
+  editada), `recompor-servico-repartido.test.ts` (spec → persistência →
+  edição da manchete → recomposição, com o `validarSpec` real, a troca do
+  slide e a capa; o arranjo que inverte as linhas; os dois grupos com id
+  repetido; dois blocos da função) e `spec-blocos-derivados.test.ts` (linha
+  vazia e sete linhas recusadas antes do banco). Cada correção desfeita por
+  mutação faz a sua prova falhar.
+
+**Da revisão do Codex sobre cd98cd6d (BLOQUEADO, PR3-R9-01…03, 20/09/2026):**
+
+- 🔴 **Efeito colateral se decide pela base EFETIVAMENTE SUBSTITUÍDA, nunca
+  pela leitura do começo do handler** (PR3-R9-01). É a TERCEIRA rodada desta
+  mesma classe (REV-01 da 3ª rodada no PATCH da página; PR3-F01/F03 nas portas
+  de escrita), agora no PUT do template: ele lia X em `existingPages`, um PATCH
+  concorrente gravava Y, `gravarCamadasComRevisao` relia Y e gravava X por
+  compare-and-set — e `marcarSeMudou`, comparando X com X, deixava a gravação
+  FORA de `paginasAlteradas`. A página ia de Y para X sem invalidar a imagem
+  única nem pedir a recomposição do slide, e uma mídia já produzida com Y
+  seguia divergente. Hoje `gravarCamadasComRevisao` devolve em `base` também
+  `background`/`width`/`height`, e a decisão é `g.camadas` (as camadas
+  EFETIVAMENTE gravadas, já com a marca do revisor reconciliada) contra
+  `g.base` — os três campos visuais na MESMA comparação protegida.
+  **A regra geral**: a leitura que decide o efeito colateral tem de ser a
+  MESMA que a escrita protegida substitui. Se a leitura não é o predicado do
+  compare-and-set, ela não serve para decidir nada depois dele.
+- 🔴 **Editar uma parte do bloco REPARTIDO não reordena o contrato**
+  (PR3-R9-02, `linhasRepartidas` em `efetiva.ts`). A decisão era tudo-ou-nada:
+  mesmo conjunto de linhas → ordem do autor; qualquer diferença → ordem
+  VISUAL. Num arranjo que põe o endereço acima do horário, editar só o horário
+  fazia a comparação de conjuntos falhar e o bloco voltava `[endereço, horário
+  editado]` — uma inversão que ninguém pediu, assinada pela `equipe` e levada
+  à recomposição. Hoje cada linha desenhada volta à POSIÇÃO AUTORAL da linha
+  igual a ela, e a editada fica com a vaga que sobrou (ordem visual entre as
+  vagas). Com as mesmas linhas o resultado é idêntico ao de antes; numa camada
+  só, reordenar continua sendo edição.
+  ⚠️ Linha ACRESCENTADA numa das camadas vai para o fim, não para dentro da
+  fatia daquela camada — a correspondência é por LINHA, não por camada.
+- 🔴 **O schema HTTP que recebe o espelho lê os tetos do PRÓPRIO contrato**
+  (PR3-R9-03, `MAX_ITENS_DO_ESPELHO`/`MAX_CARACTERES_DO_ESPELHO` em
+  `copy-do-item.ts`, ao lado de `espelhoDoContrato`). A API do item aceitava 12
+  strings de 2.000 caracteres e o contrato comporta 40 blocos de 3.611 (12
+  linhas de 300 + as quebras): item criado com um `copyAutoral` VÁLIDO de 13
+  blocos — ou com um bloco de 7 linhas cheias — voltava 400 assim que alguém
+  mexia num caractere no modal. Aceitar na criação e recusar na edição é o
+  mesmo conteúdo com dois destinos (irmão do R8-03). As duas rotas de plano
+  (POST e PATCH do item) usam os mesmos tetos; **nada de truncar para caber**.
+- **Varredura da classe (3ª vez), CAS a CAS**: PUT do template (corrigido);
+  PATCH da página (`efetiva`/`baseGravada` da volta vencedora, inclusive
+  `copyParaDecisao` e `diffDeGeometria` — ✅); PATCH de camada (`layerChanged`
+  é calculado DENTRO do `camadas(base)`, sobre a base relida — ✅);
+  `reverterCamadasDaArte` e `ajustarArte` (invalidam sempre, sem portão — ✅);
+  `recomporPaginaDefasada` (decide por `versaoGravada`, escrita pela própria
+  rodada — ✅); `atualizarItem` (relê o item a cada volta e recalcula copy e
+  avisos contra ela — ✅); `trocarArteDoPost` (o sinal usa `midiasAtuais`, que
+  É o predicado do CAS — ✅); `registrarFeedbackDeArte` (CAS na linha lida;
+  perdeu a corrida, relê — ✅); `reapontarItemDoPlano`, `executar-plano` e
+  `artes-do-post` (CAS sobre o que leram; o efeito sai do `count` — ✅);
+  `marcarForcaEmExecucao`/`marcarRenderComoEsta` (só promovem payload — ✅).
+- Provas: `put-efeito-por-base-gravada.test.ts` (Y intercalado entre a leitura
+  inicial e a gravação, por camadas e por fundo; congelados; dois controles),
+  `recompor-servico-repartido.test.ts` (o arranjo invertido com o horário
+  editado, até a recomposição, mantendo o id do bloco) e
+  `patch-espelho-do-contrato.test.ts` (criação com contrato → card → modal →
+  handler HTTP → serviço, nos dois limites, com o controle acima do que o
+  contrato comporta ainda em 400). Cada correção desfeita por mutação faz a
+  sua prova falhar.
+
+**Da revisão FINAL do Codex sobre 89930e44 (BLOQUEADO, PR3-R10-01, 20/09/2026):**
+
+- 🔴 **Quem DISPUTA as camadas de uma função são os blocos COM texto**
+  (`copyEfetivaDasCamadas`). O bloco explicitamente vazio (`linhas: []`) é
+  "esta camada fica sem texto": `blocosParaOCompositor` o OMITE da spec, então
+  ele nunca originou camada e não pode consumir uma. Contando-o, um contrato
+  com `servico-vazio` + `servico-info` sobre um arranjo que reparte o serviço
+  em duas camadas dava uma a cada bloco — o horário migrava de id sem ninguém
+  ter editado nada, a página guardava dois serviços com texto, e a edição
+  seguinte levava a recomposição a `papel repetido`, deixando o slide na
+  imagem antiga. Ele também não vira lacuna: a arte mostra exatamente o que o
+  autor pediu. É a regra "campo OMITIDO ≠ bloco VAZIO" do lado da LEITURA.
+- **Quando NENHUM bloco da função tem texto, os vazios voltam a disputar**: aí
+  a camada com texto é a de um bloco que alguém preencheu no editor, e
+  mandá-la para um `extra-…` trocaria o id do mesmo jeito.
+- Varredura da classe "distribuir camadas desenhadas contando bloco que a
+  conversão omitiu": era o único ponto. `vincularExtras` (blocos `livre`) casa
+  por identidade (nome/id/`extra-…`/texto), nunca por contagem;
+  `distribuirLinhas` e `blocosParaOCompositor` vão no sentido contrário e já
+  pulam bloco sem linhas; `specComACopyDaPagina` mapeia por papel sobre blocos
+  de spec (sem vazios); `copy-do-item` preserva o vazio fora do casamento
+  posicional.
+- Prova no mesmo `recompor-servico-repartido.test.ts`: `validarSpec` aceita →
+  persistência (vazio preservado, as duas linhas no preenchido, sem revisão) →
+  edição só da manchete → recomposição com UM serviço, slide trocado e capa
+  intacta; mais o controle com todos os blocos da função vazios. As duas
+  mutações (contagem antiga; vazio nunca disputando) derrubam uma prova cada.
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

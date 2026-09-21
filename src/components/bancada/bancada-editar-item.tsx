@@ -10,7 +10,8 @@
  * então a revisão mora aqui.
  *
  * O que cada campo é:
- *  - **copy**: um bloco por linha — a mesma convenção do compositor;
+ *  - **copy**: um campo por BLOCO; as quebras e as linhas vazias dentro do
+ *    bloco ficam como estão (PR3-R8-01 — ver `copyDaEdicao`);
  *  - **legenda**: o texto do post (carrossel/feed);
  *  - **direção adicional** (`pedido`): o que dizer ao modelo além do assunto;
  *  - **ajuste da foto** (`instrucaoImagem`): opt-in de retoque — sem ele a
@@ -42,9 +43,12 @@ import {
   type ReferenciaSelecionada,
 } from '@/components/creatives/arte-ia-image-picker'
 import type { BancadaItem } from '@/stores/bancada-store'
+import { blocosParaEdicao, copyDaEdicao } from '@/lib/planos/para-bancada'
 
 export interface EdicaoDoItem {
   copy: string[]
+  /** A copy mudou? Sem mudança, `copy` é a lista original e o servidor não a recebe. */
+  copyEditada: boolean
   legenda: string | null
   pedido: string
   instrucaoImagem: string | null
@@ -77,7 +81,7 @@ export function BancadaEditarItem({
   onSalvar: (edicao: EdicaoDoItem) => void
   salvando?: boolean
 }) {
-  const [copyTexto, setCopyTexto] = React.useState('')
+  const [blocos, setBlocos] = React.useState<string[]>([''])
   const [legenda, setLegenda] = React.useState('')
   const [pedido, setPedido] = React.useState('')
   const [instrucao, setInstrucao] = React.useState('')
@@ -87,7 +91,7 @@ export function BancadaEditarItem({
   // componente: o mesmo modal serve cards diferentes ao longo da sessão.
   React.useEffect(() => {
     if (!aberto) return
-    setCopyTexto(item.copy.join('\n'))
+    setBlocos(blocosParaEdicao(item.copy))
     setLegenda(item.legenda ?? '')
     setPedido(item.pedido ?? '')
     setInstrucao(item.instrucaoImagem ?? '')
@@ -104,11 +108,10 @@ export function BancadaEditarItem({
   }, [aberto, item])
 
   const salvar = () => {
+    const { copy, editada } = copyDaEdicao(item.copy, blocos)
     onSalvar({
-      copy: copyTexto
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean),
+      copy,
+      copyEditada: editada,
       legenda: legenda.trim() || null,
       pedido: pedido.trim(),
       instrucaoImagem: instrucao.trim() || null,
@@ -128,14 +131,30 @@ export function BancadaEditarItem({
 
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="edit-copy">Texto da arte (um bloco por linha)</Label>
-            <Textarea
-              id="edit-copy"
-              value={copyTexto}
-              onChange={(e) => setCopyTexto(e.target.value)}
-              rows={4}
-              placeholder={'SEXTA É DIA DE HAPPY HOUR\nchopp em dobro até 20h'}
-            />
+            <Label htmlFor="edit-copy-0">Texto da arte (um campo por bloco; Enter quebra a linha dentro dele)</Label>
+            {blocos.map((b, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <Textarea
+                  id={`edit-copy-${i}`}
+                  value={b}
+                  onChange={(e) => setBlocos((atual) => atual.map((x, j) => (j === i ? e.target.value : x)))}
+                  rows={Math.max(2, b.split('\n').length)}
+                  placeholder={i === 0 ? 'Sexta é dia de happy hour' : 'chopp em dobro até 20h'}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setBlocos((atual) => (atual.length > 1 ? atual.filter((_, j) => j !== i) : ['']))}
+                  aria-label={`Tirar o bloco ${i + 1}`}
+                >
+                  Tirar
+                </Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={() => setBlocos((atual) => [...atual, ''])}>
+              Acrescentar bloco
+            </Button>
           </div>
 
           <div className="space-y-1.5">

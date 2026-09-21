@@ -9,6 +9,7 @@ import {
 } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { anexarItensAoPlanoAtivo, criarPlano, listarPlanos, MAX_ITENS_POR_PLANO } from '@/lib/planos/plano-service'
+import { MAX_CARACTERES_DO_ESPELHO, MAX_ITENS_DO_ESPELHO } from '@/lib/planos/copy-do-item'
 
 export const runtime = 'nodejs'
 /** Só banco: nada aqui chama modelo, gera arte nem fala com o Zernio. */
@@ -62,7 +63,9 @@ const itemSchema = z.object({
   /** "YYYY-MM-DD HH:mm" em BRT, ou ISO com fuso. Nulo = ainda a decidir. */
   quando: z.string().min(1).max(40).nullable().optional(),
   tema: z.string().max(200).nullable().optional(),
-  copyProposta: z.array(z.string().max(2000)).max(12).nullable().optional(),
+  copyProposta: z.array(z.string().max(MAX_CARACTERES_DO_ESPELHO)).max(MAX_ITENS_DO_ESPELHO).nullable().optional(),
+  /** F1: o contrato da copy autoral; quando vem, `copyProposta` é só o espelho dele. */
+  copyAutoral: z.record(z.string(), z.unknown()).nullable().optional(),
   legenda: z.string().max(2200).nullable().optional(),
   fotoUrl: z.string().max(2000).nullable().optional(),
   fotoDriveId: z.string().max(200).nullable().optional(),

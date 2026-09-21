@@ -46,6 +46,9 @@ import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { blocosParaOCompositor, lerCopyAutoral, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
+import type { Layer } from '@/types/template'
+import { copyDaArteIndisponivel, registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { CreativeError } from '@/lib/creatives/errors'
 import { prepararCamadasParaGravar } from '@/lib/creatives/layer-contract'
 import { mesclarFieldValuesDaArte, preservarPropostaDeAprendizado } from '@/lib/creatives/mesclar-field-values'
@@ -340,6 +343,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
       isTemplate: true,
       templateId: true,
       updatedAt: true,
+      copyAutoral: true,
       Template: { select: { id: true, name: true, projectId: true } },
     },
   })
@@ -347,10 +351,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   /**
    * A decisão (defasagem, `podeRecompor`) saiu do LEVANTAMENTO; a composição e
    * o compare-and-set da gravação usam ESTA leitura. Se a página mudou entre
-   * as duas — o revisor gravou um ajuste e o render falhou —, a decisão não
-   * vale mais para esta versão: parar aqui, antes de compor, e deixar a
-   * próxima execução decidir sobre a página nova (REV-05, segunda rodada da
-   * revisão do Codex, 12/09/2026).
+   * as duas — o editor moveu uma caixa, o revisor gravou um ajuste —, a decisão
+   * não vale mais para esta versão: parar aqui, antes de compor, e deixar a
+   * próxima execução decidir sobre a página nova (REV-05 da segunda rodada do
+   * PR 0 e REV-02 da terceira rodada do PR 3, revisão do Codex, 12/09/2026).
    */
   if (page.updatedAt.getTime() !== levantamento.versaoDaPagina.getTime()) {
     throw new CreativeError('PAGINA_MUDOU_DURANTE', 'A página foi editada entre o levantamento e a composição; a arte será refeita a partir da página nova.', 409)
@@ -410,7 +414,26 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     const { spec: specComCopy, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
     avisos.push(...avisosDaSpec)
     // O lado do bloco é o da composição original: só a copy muda (ver `specComAPosicaoOriginal`).
-    const spec = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
+    const specPosicionada = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
+    /**
+     * F1: a spec da recomposição leva o CONTRATO da página como ele está —
+     * lido das camadas atuais sobre o contrato gravado (o que já foi revisado
+     * pela equipe, e o que algum caminho gravou sem revisar entra como revisão
+     * do sistema, superfície `recomposicao`) — e os blocos saem DELE. Sem
+     * isso `validarSpec` recusava a spec (blocos novos × contrato velho) e o
+     * slide ficava com o texto antigo (R01 da revisão do Codex, 12/09/2026).
+     * Página sem contrato recompõe pelo caminho legado, sem contrato.
+     */
+    const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
+    // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — segue pelo caminho sem contrato, a
+    // página mantém o contrato como estava e o motivo entra nos avisos do registro.
+    const leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    if (leituraDoContrato && leituraDoContrato.ok === false) avisos.push(`${leituraDoContrato.aviso} A peça foi recomposta pelo texto da página, sem contrato.`)
+    const contratoAtual: CopyAutoral | null = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
+    const { copyAutoral: _contratoVelho, ...specSemContrato } = specPosicionada
+    const spec: SpecDePeca = contratoAtual
+      ? { ...specSemContrato, copyAutoral: contratoAtual, blocos: blocosParaOCompositor(contratoAtual).blocos as unknown as SpecDePeca['blocos'] }
+      : specSemContrato
     /**
      * `provar: true` é obrigatório — ver a regra 2 do cabeçalho. Ele também
      * evita os efeitos colaterais da persistência do compositor: pasta da
@@ -431,6 +454,14 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     recomposta = true
 
     if (input.antesDeGravar) await input.antesDeGravar()
+    // F1: a copy EFETIVA da peça recomposta — o que as camadas novas mostram
+    // sobre o contrato atual. Vai para a página (o contrato do que ela mostra)
+    // e para a Generation (`copyAutoral.efetiva`); o `original` fica intacto.
+    // A peça já está composta e o PNG no Blob: o histórico cheio não a descarta — grava sem contrato novo, com aviso.
+    const leituraRecomposta = contratoAtual ? tentarCopyEfetivaDasCamadas(contratoAtual, camadas.camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    if (leituraRecomposta && leituraRecomposta.ok === false) avisos.push(`${leituraRecomposta.aviso} A página e a arte foram gravadas sem contrato novo.`)
+    const efetivaRecomposta = leituraRecomposta && leituraRecomposta.ok ? leituraRecomposta.leitura : null
+    const copyAutoralAnterior = arte.fieldValues.copyAutoral && typeof arte.fieldValues.copyAutoral === 'object' ? (arte.fieldValues.copyAutoral as Record<string, unknown>) : null
     /**
      * Compare-and-set na versão LIDA da página. Enquanto a peça era composta a
      * página pode ter mudado — o revisor gravou um ajuste cujo render falhou,
@@ -438,10 +469,13 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
      * recuperação forçada que viesse depois protegeria a página ERRADA
      * (REV-05 da revisão do Codex, 12/09/2026). Mudou → a composição e o PNG
      * são descartados e o job volta à fila: a próxima execução lê a página nova.
+     * A mesma regra protege o contrato da copy: a edição salva no meio levou a
+     * revisão dela no contrato, e gravar por cima a apagaria (R02 da revisão do
+     * Codex sobre o PR 3, 12/09/2026).
      */
     const gravada = await db.page.updateMany({
       where: { id: page.id, updatedAt: page.updatedAt },
-      data: { layers: camadas.camadas as never, thumbnail: blob.url },
+      data: { layers: camadas.camadas as never, thumbnail: blob.url, ...(efetivaRecomposta ? { copyAutoral: efetivaRecomposta.efetiva as never } : {}) },
     })
     if (gravada.count === 0) {
       await del(blob.url).catch(() => undefined)
@@ -466,6 +500,25 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         composicao: composicao.diagnostico,
         layersSnapshot: camadas.camadas,
         thumbnailUrl: blob.url,
+        ...(efetivaRecomposta && contratoAtual
+          ? {
+              copyAutoral: {
+                original: copyAutoralAnterior?.original ?? contratoAtual,
+                efetiva: efetivaRecomposta.efetiva,
+                comparavel: (lerCopyAutoral(copyAutoralAnterior?.original ?? contratoAtual).copy?.origem.autor ?? 'desconhecido') !== 'desconhecido',
+                ...(efetivaRecomposta.lacunas.length ? { lacunas: efetivaRecomposta.lacunas } : {}),
+              },
+            }
+          : (() => {
+              // O PNG é novo e a efetiva não pôde ser medida: a antiga NÃO pode seguir como se fosse a desta
+              // imagem (PR3-F02) — `efetiva: null`, não comparável, com o motivo.
+              const motivo =
+                (leituraRecomposta && leituraRecomposta.ok === false ? leituraRecomposta.aviso : null) ??
+                (leituraDoContrato && leituraDoContrato.ok === false ? leituraDoContrato.aviso : null) ??
+                'a página não tem contrato da copy'
+              const indisponivel = copyDaArteIndisponivel(copyAutoralAnterior, motivo)
+              return indisponivel ? { copyAutoral: indisponivel } : {}
+            })()),
         recomposicao: registro('feita', { origem, papeis: defasagem.papeis, avisos, urlsAnteriores: rastro }),
         // A recusa de uma rodada anterior fica superada por esta (C6-01).
         recusaDaRecomposicao: null,
@@ -503,6 +556,17 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     const copyVisualNova = temCopyVisual ? copyVisualDasCamadas(page.layers) : null
     if (temCopyVisual && copyVisualNova === null) avisos.push('Camadas da página ilegíveis: a copy visual da arte foi mantida como estava.')
     if (copyVisualNova) await preservarPropostaDeAprendizado(db, arte.generationId)
+    /**
+     * O registro da copy AUTORAL acompanha o PNG também aqui (PR3-F02 da
+     * revisão FINAL do Codex sobre abac9b34, 18/09/2026): a página ajustada à
+     * mão (texto e posição) cai neste ramo, o PNG é trocado e a `efetiva`
+     * antiga seguia apresentada por `ver-geracao` como a desenhada, com
+     * `comparavel: true`. Medida nas camadas que ESTE render desenha, sobre o
+     * contrato da página; sem como medir, `efetiva: null` e o motivo. Só na
+     * arte que já carrega o registro (não se inventa um).
+     */
+    const daCopy = registroDaCopyDaArte({ anterior: fvDaArte.copyAutoral, contratoDaPagina: page.copyAutoral, camadas: page.layers, superficie: 'recomposicao' })
+    if (daCopy.aviso) avisos.push(daCopy.aviso)
     if (input.antesDeRenderizar) await input.antesDeRenderizar()
     const registrada = await renderPageAndRegister({
       project: projeto,
@@ -546,6 +610,8 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         recusaDaRecomposicao: null,
         // A copy VISUAL nova (ver acima); a copy de APRENDIZADO fica como está (o merge não a toca).
         ...(copyVisualNova ? { slotValues: copyVisualNova } : {}),
+        // O registro da copy autoral deste PNG (ver acima).
+        ...(daCopy.registro ? { copyAutoral: daCopy.registro } : {}),
         // A recuperação forçada preservou um ajuste que a spec não conhece:
         // daqui para a frente esta arte só se RE-RENDERIZA (REV-04).
         ...(forcar ? { somenteReRender: { desde: new Date().toISOString(), motivo: 'recuperação forçada preservou ajuste manual (revisor)' } } : {}),

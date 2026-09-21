@@ -221,6 +221,10 @@ export function blocosParaOCompositor(copy: CopyAutoral): { blocos: BlocoLegado[
       semPapel.push(b)
       continue
     }
+    // Bloco VAZIO de propósito (`linhas: []`) é "esta camada sem texto": não há
+    // o que desenhar, e o schema do compositor exige linha — ele fica de fora
+    // dos blocos, e continua no contrato (R01 da revisão do Codex, 12/09/2026).
+    if (b.linhas.length === 0) continue
     blocos.push({ papel: b.funcao, linhas: [...b.linhas] })
   }
   return { blocos, semPapel }

@@ -54,6 +54,8 @@ import type { LayoutPelaFoto } from '@/lib/creatives/halo/layout-pela-foto'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
+import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
+import { tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
@@ -922,6 +924,21 @@ export interface AjustarArteResult {
  * futuras daquele tema e os posts agendados que as referenciam — modelo se
  * edita no editor, com a invalidação por mudança visual real do PATCH.
  */
+/**
+ * A recusa de página-MODELO de `ajustarArte` — a MESMA na leitura inicial e na
+ * escrita: a página pode ser promovida a modelo ("Marcar modelo" no editor)
+ * enquanto o ajuste resolve a foto e roda o autofix, e a releitura que confere
+ * conteúdo e contrato não enxergava isso (C3-12 da pré-revisão do commit
+ * 046d2a5e, 12/09/2026).
+ */
+function erroDePaginaModelo(): CreativeError {
+  return new CreativeError(
+    'PAGINA_E_MODELO',
+    'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
+    400,
+  )
+}
+
 export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteResult> {
   const { projectId, pageId } = input
   const slotValues = input.slotValues ?? {}
@@ -972,13 +989,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   if (!page || page.Template.projectId !== projectId) {
     throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
   }
-  if (page.isTemplate) {
-    throw new CreativeError(
-      'PAGINA_E_MODELO',
-      'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
-      400,
-    )
-  }
+  if (page.isTemplate) throw erroDePaginaModelo()
 
   // A revisão calcula os ajustes sobre UMA versão da página: se ela mudou (a
   // equipe editou, outro ajuste já entrou), os deltas iriam para o lugar errado.
@@ -1064,6 +1075,43 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   const pageName = input.name ?? page.name
   /**
+   * F1: o contrato da copy da página. Texto trocado por aqui é REVISÃO de quem
+   * pediu (o app = `equipe`; o chat = `claude`), gravada NA MESMA ESCRITA das
+   * camadas (nada depois da escrita: uma consulta a mais ali ficava fora da
+   * proteção que garante a agenda avisada — R04 da revisão do Codex). Página
+   * sem contrato segue sem — nada é inventado.
+   */
+  const autorDaRevisao = input.canal === 'studio' ? 'equipe' : 'claude'
+  const revisaoDaCopy = revisaoDaPaginaComCamadas(page.copyAutoral, layers, {
+    autor: autorDaRevisao,
+    motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
+    superficie: input.canal ?? 'chat',
+  })
+  /**
+   * Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida que não cabe (`RevisaoDaCopyInvalida`): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
+   * contrato como estava e a arte nasce SEM registro de copy (a efetiva não cabe no histórico), com o aviso no retorno.
+   */
+  const recusaDaCopy = recusaDaRevisao(revisaoDaCopy)
+  const avisosDaCopy: string[] = recusaDaCopy ? [recusaDaCopy] : []
+  const contratoDaPagina = recusaDaCopy ? null : (revisaoDaCopy.copy ?? copyAutoralDaPagina(page.copyAutoral))
+  const copyAutoralDaArte = contratoDaPagina
+    ? (() => {
+        const lida = tentarCopyEfetivaDasCamadas(contratoDaPagina, layers as Layer[], { superficie: 'ajuste-arte' })
+        if (lida.ok === false) {
+          avisosDaCopy.push(lida.aviso)
+          return null
+        }
+        const { efetiva, lacunas } = lida.leitura
+        return {
+          original: contratoDaPagina,
+          efetiva,
+          comparavel: contratoDaPagina.origem.autor !== 'desconhecido',
+          ...(lacunas.length ? { lacunas } : {}),
+        }
+      })()
+    : null
+  if (avisosDaCopy.length > 0) console.warn(`[ajustar-arte] ${page.id}: ${avisosDaCopy.join(' ')}`)
+  /**
    * A miniatura da página é INVALIDADA junto das camadas (REV-127-F01 da
    * revisão FINAL do Codex, 12/09/2026): ela é o PNG do render ANTERIOR, e
    * `agendarPost` a reutiliza como mídia quando a página ainda não tem post —
@@ -1072,7 +1120,12 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * recuperação sai sem slide). Nula, o agendamento nasce PENDING e o cron
    * desenha a página ajustada; o render bem-sucedido a regrava.
    */
-  const dadosDaPagina = { layers: layers as any, thumbnail: null as string | null, ...(input.name ? { name: input.name } : {}) }
+  const dadosDaPagina = {
+    layers: layers as any,
+    thumbnail: null as string | null,
+    ...(input.name ? { name: input.name } : {}),
+    ...(revisaoDaCopy.estado === 'registrada' && revisaoDaCopy.copy ? { copyAutoral: revisaoDaCopy.copy as never } : {}),
+  }
   /**
    * A página passa a carregar o ajuste do revisor; a arte do compositor (spec
    * e snapshot) não o conhece. Se o render abaixo e todas as recuperações
@@ -1091,8 +1144,11 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       if (input.versaoEsperada) {
         // Compare-and-set: a conferência de versão lá em cima e esta escrita
         // não são atômicas, e o autosave do editor pode cair no meio.
-        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt }, data: dadosDaPagina })
+        // `isTemplate: false` também na escrita: a página promovida a modelo no meio do ajuste não é gravada (C3-12).
+        const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: page.updatedAt, isTemplate: false }, data: dadosDaPagina })
         if (gravada.count === 0) {
+          const agora = await tx.page.findUnique({ where: { id: page.id }, select: { isTemplate: true } })
+          if (agora?.isTemplate) throw erroDePaginaModelo()
           throw new CreativeError(
             'VERSAO_DIVERGENTE',
             'A página mudou enquanto o ajuste era aplicado. Rode revisar-arte de novo.',
@@ -1101,7 +1157,61 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
           )
         }
       } else {
-        await tx.page.update({ where: { id: page.id }, data: dadosDaPagina })
+        /**
+         * 🔴 SEM `versaoEsperada` a escrita também é protegida (C3-01 da
+         * pré-revisão do commit bf85cb26, 12/09/2026). O ajuste só de foto ou
+         * de nome, vindo do chat, lia a página, levava segundos resolvendo a
+         * imagem, medindo e rodando o autofix, e gravava com `update` cru: se o
+         * editor salvasse texto novo no meio (camadas Y com o contrato Y), a
+         * revisão calculada contra a leitura antiga saía `sem-mudanca`, as
+         * camadas X iam por cima e o contrato ficava o de Y — e a próxima
+         * edição no editor assinava como `equipe` a volta de Y para X.
+         *
+         * O carimbo `updatedAt` sozinho NÃO é a versão: ele muda em qualquer
+         * escrita, e com o editor aberto o autosave grava a miniatura e
+         * camadas idênticas a cada pausa. Por isso, perdida a corrida, a
+         * página é RELIDA e o ajuste só segue se o que ele leu continua
+         * valendo — o mesmo CONTEÚDO (`versaoDaPagina`) e o mesmo contrato;
+         * então tudo o que foi decidido contra a leitura (bake, revisão da
+         * copy, aprendizado) segue exato. Mudou o conteúdo ou o contrato: nada
+         * é gravado e o ajuste volta com 409. A mensagem manda o chat REVER a
+         * arte e confirmar com a pessoa antes de repetir — repetir na hora
+         * regravaria o texto que a equipe acabou de editar. Vale para página
+         * com e sem contrato: sem contrato, gravar por cima apagava em
+         * silêncio a edição da equipe e o diff do aprendizado ainda saía
+         * contra a leitura velha.
+         *
+         * A releitura confere também se a página continua sendo ARTE: virou
+         * modelo no meio do ajuste → a recusa de modelo, como na leitura
+         * inicial; e `isTemplate: false` vai no `where` da escrita, para que
+         * nem um escritor que não move o carimbo passe (C3-12).
+         */
+        let carimbo = page.updatedAt
+        let gravou = false
+        for (let volta = 0; volta < 3 && !gravou; volta++) {
+          const gravada = await tx.page.updateMany({ where: { id: page.id, updatedAt: carimbo, isTemplate: false }, data: dadosDaPagina })
+          if (gravada.count > 0) {
+            gravou = true
+            break
+          }
+          const fresca = await tx.page.findUnique({
+            where: { id: page.id },
+            select: { updatedAt: true, width: true, height: true, background: true, layers: true, copyAutoral: true, isTemplate: true },
+          })
+          if (fresca?.isTemplate) throw erroDePaginaModelo()
+          const mesmoConteudo = !!fresca && versaoAntes !== null && versaoDaPagina(fresca) === versaoAntes
+          const mesmoContrato = !!fresca && JSON.stringify(fresca.copyAutoral ?? null) === JSON.stringify(page.copyAutoral ?? null)
+          if (!mesmoConteudo || !mesmoContrato) break
+          carimbo = fresca!.updatedAt
+        }
+        if (!gravou) {
+          throw new CreativeError(
+            'PAGINA_MUDOU_DURANTE_O_AJUSTE',
+            'A arte foi editada enquanto o ajuste era aplicado (no editor ou por outro ajuste) e NADA foi gravado. Não repita o ajuste direto: veja a arte como ela está agora (conferir-arte), conte à pessoa que ela mudou e confirme o que ainda precisa ajustar — repetir sem olhar regravaria o que a equipe acabou de editar.',
+            409,
+            { ajusteGravado: false },
+          )
+        }
       }
       if (travarRecomposicaoDaArte) {
         if (input._prova?.entreGravarETravar) await input._prova.entreGravarETravar()
@@ -1182,6 +1292,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
         driveImageId,
         imageUrl: resolved.url ?? directUrl ?? null,
         autocorrecao: fix.autocorrecao,
+        ...(copyAutoralDaArte ? { copyAutoral: copyAutoralDaArte } : {}),
       },
     })
   } catch (erro) {
@@ -1277,6 +1388,6 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       ? { postsCongelados: invalidacao.congelados.length }
       : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    ...(fix.avisos.length + avisosDaCopy.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopy] } : {}),
   }
 }

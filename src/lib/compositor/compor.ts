@@ -604,26 +604,37 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // horário junto da oferta e o endereço sozinho no pé) recebe as linhas pelo
   // tipo: horário no grupo do horário, endereço no do endereço. Sem isso as duas
   // linhas iam para o primeiro grupo e saíam coladas numa caixa só.
-  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[] }>>()
-  const juntarNoGrupo = (chave: string, papel: Papel, linhas: string[]) => {
+  // 🔴 O bloco do CONTRATO que originou cada papel. `validarSpec` recusa papel
+  // repetido, e os blocos da spec saem do contrato por `blocosParaOCompositor`
+  // — então, entre os blocos COM texto, papel e bloco são um para um. É esse id
+  // que vai para a camada (`metadata.compositor.bloco`) e faz a leitura da copy
+  // efetiva saber de quem é a camada sem adivinhar (PR3-R11-01).
+  const blocoDoPapel = new Map<Papel, string>()
+  for (const b of spec.copyAutoral?.blocos ?? []) {
+    if (b.funcao !== 'livre' && b.linhas.length > 0 && !blocoDoPapel.has(b.funcao as Papel)) blocoDoPapel.set(b.funcao as Papel, b.id)
+  }
+  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[] }>>()
+  const juntarNoGrupo = (chave: string, papel: Papel, linhas: string[], indices: number[]) => {
     const lista = blocosPorGrupo.get(chave) ?? []
     const mesmo = lista.find((x) => x.papel === papel)
-    if (mesmo) mesmo.linhas.push(...linhas)
-    else lista.push({ papel, linhas: [...linhas] })
+    if (mesmo) {
+      mesmo.linhas.push(...linhas)
+      mesmo.indicesDoBloco.push(...indices)
+    } else lista.push({ papel, linhas: [...linhas], indicesDoBloco: [...indices] })
     blocosPorGrupo.set(chave, lista)
   }
   for (const b of spec.blocos) {
     const papel = b.papel as Papel
     const chaves = [...gruposDaPagina.entries()].filter(([, a]) => a.papeis.includes(papel)).map(([chave]) => chave)
     if (chaves.length <= 1 || b.linhas.length <= 1) {
-      juntarNoGrupo(chaveDoGrupo(papel), papel, b.linhas)
+      juntarNoGrupo(chaveDoGrupo(papel), papel, b.linhas, b.linhas.map((_, i) => i))
       continue
     }
     const tipos = new Map(blocosDeServico(b.linhas).map((s) => [s.indice, s.papel === 'horário' ? 'horario' : 'endereco'] as const))
     b.linhas.forEach((linha, i) => {
       const tipo = tipos.get(i)
       const doTipo = tipo ? chaves.find((chave) => gruposDaPagina.get(chave)!.textos.some((t) => t.papel === papel && t.tipo === tipo)) : undefined
-      juntarNoGrupo(doTipo ?? chaveDoGrupo(papel), papel, [linha])
+      juntarNoGrupo(doTipo ?? chaveDoGrupo(papel), papel, [linha], [i])
     })
   }
   const combinacoesSalvas = await arranjosDasCombinacoes(spec.projectId, medir)
@@ -654,13 +665,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     const comSegundaVoz = blocosDoGrupo.flatMap((b) =>
       b.papel === 'headline' && temSegundaVoz && b.linhas.length >= 2
         ? [
-            { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1) },
-            { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1) },
+            { papel: 'headline' as Papel, linhas: b.linhas.slice(0, -1), indicesDoBloco: b.indicesDoBloco.slice(0, -1) },
+            { papel: 'headline2' as Papel, linhas: b.linhas.slice(-1), indicesDoBloco: b.indicesDoBloco.slice(-1) },
           ]
         : [b],
     )
     const preenchidos = arranjo
-      ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, texto: p.texto }))
+      ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
       : comSegundaVoz.map((b) => ({ ...b, texto: null }))
     const repeticoes = new Map<Papel, number>()
     for (const p of preenchidos) {
@@ -680,6 +691,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
         groupId: `grupo-${hashDe(chave) % 99991}`,
         corDaMancha: mancha,
         medir,
+        // O vínculo com a copy do autor. A segunda voz é a manchete: as linhas
+        // dela voltam ao bloco `headline` na leitura, então ela declara o mesmo
+        // bloco, com a posição que a linha tem lá.
+        origem: { bloco: blocoDoPapel.get(p.papel === 'headline2' ? 'headline' : p.papel), linhas: p.indicesDoBloco },
         // Palavra entre [colchetes] na copy sai destacada no estilo da marca.
         destaque: estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias),
       })
@@ -1205,21 +1220,24 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   // Os arranjos usados ficam gravados na spec: a recomposição refaz A MESMA
   // peça, sem sortear outra combinação.
   const specGravada: SpecDePeca = arranjos.length > 0 ? { ...spec, preferencias: { ...spec.preferencias, arranjos: arranjos.map((a) => a.id) } } : spec
-  const persistido = await persistAndRenderCreative(
-    entradaDePersistencia({
-      spec: specGravada,
-      opcoes,
-      projeto,
-      pasta,
-      nome,
-      ordem,
-      canvas,
-      layers,
-      fundo: assinatura.numeros.fundo,
-      diagnostico,
-      fotoUrl: foto?.url ?? null,
-    }),
-  )
+  const entradaDoPersist = entradaDePersistencia({
+    spec: specGravada,
+    opcoes,
+    projeto,
+    pasta,
+    nome,
+    ordem,
+    canvas,
+    layers,
+    fundo: assinatura.numeros.fundo,
+    diagnostico,
+    fotoUrl: foto?.url ?? null,
+  })
+  // A peça sem contrato por recusa (legado que não cabe, histórico cheio) AVISA quem pediu — nunca em silêncio.
+  // `diagnostico` é o mesmo objeto gravado em `fieldValues.composicao`.
+  const avisosDaCopy = (entradaDoPersist.fieldValues as { avisosDaCopyAutoral?: string[] }).avisosDaCopyAutoral ?? []
+  if (avisosDaCopy.length > 0) diagnostico.avisos.push(...avisosDaCopy)
+  const persistido = await persistAndRenderCreative(entradaDoPersist)
 
   if (spec.foto?.driveFileId) {
     await registrarUsoDeFoto({

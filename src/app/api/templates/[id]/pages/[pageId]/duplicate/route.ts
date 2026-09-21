@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { lerCopyAutoral, renomearExtrasDuplicados } from '@/lib/copy-autoral'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import {
@@ -73,6 +74,20 @@ export async function POST(
       }))
     }
 
+    const contratoDaCopia = (() => {
+      if (pageToDuplicate.copyAutoral == null) return null
+      const lido = lerCopyAutoral(pageToDuplicate.copyAutoral).copy
+      if (!lido) return pageToDuplicate.copyAutoral
+      const idMap = new Map<string, string>()
+      if (Array.isArray(originalLayers)) {
+        for (const [i, camada] of (originalLayers as Array<{ id?: string }>).entries()) {
+          const novo = (duplicatedLayers as Array<{ id?: string }>)[i]?.id
+          if (camada?.id && novo) idMap.set(String(camada.id), String(novo))
+        }
+      }
+      return renomearExtrasDuplicados(lido, idMap, Array.isArray(originalLayers) ? (originalLayers as never[]) : [])
+    })()
+
     // Criar cópia da página logo após a original
     // IMPORTANTE: Não copiar thumbnail - será gerado automaticamente pelo editor
     const newPage = await db.page.create({
@@ -85,6 +100,11 @@ export async function POST(
         thumbnail: null, // Não copiar thumbnail - será gerado ao abrir a página
         order: newOrder, // Logo após a página original
         templateId,
+        // F1: a cópia leva o contrato da copy (autoria, fatos, histórico) — a
+        // origem é conhecida. Os ids autorais dos blocos não mudam; os blocos
+        // `extra-<id de camada>` (texto solto lido da página) acompanham os ids
+        // regenerados das camadas, no bloco e no histórico.
+        ...(contratoDaCopia != null ? { copyAutoral: contratoDaCopia as never } : {}),
       },
     })
 

@@ -6,6 +6,7 @@ import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { reconciliarMarcasDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 import { copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
 import { descreverDiff, diffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import {
   caiNaEscolhaPropria,
@@ -138,12 +139,24 @@ export async function PATCH(
 
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }
-    if (validatedData.layers !== undefined) {
-      // Escrita HUMANA: a camada que a pessoa escondeu agora (estava visível) perde a marca de "escondida pelo
-      // revisor" que porventura carregasse — senão o esconder dela seria lido como mecânico (REV-9E-01).
-      const canonicas = canonicalizeLayersForPersistence(validatedData.layers)
+    const canonicas = validatedData.layers !== undefined ? canonicalizeLayersForPersistence(validatedData.layers) : undefined
+    /**
+     * Escrita HUMANA: a camada que a pessoa escondeu agora (estava visível) perde a marca de "escondida pelo
+     * revisor" que porventura carregasse — senão o esconder dela seria lido como mecânico (REV-9E-01).
+     *
+     * 🔴 "Estava visível" se mede contra a página que ESTA escrita substitui — a leitura protegida, refeita a
+     * cada volta do compare-and-set —, nunca contra `existingPage`, lida no começo do handler (C3-02 da
+     * pré-revisão do commit bf85cb26, 12/09/2026). O autosave não espera o PATCH em voo: a pessoa mostra a
+     * camada (P1), esconde de novo, e P2 sai com a marca antiga lendo a página de antes de P1 — contra ela a
+     * marca ficava, P2 gravava por cima de P1 a camada escondida COM a marca, e a remoção nunca entrava no
+     * contrato nem no aprendizado. Troca consciente: uma aba desatualizada que regrave escondida e marcada
+     * uma camada que outra aba mostrou passa a contar como remoção de quem gravou por último — coerente com
+     * a regra deste PATCH de que o contrato descreve o que ficou gravado em relação à base.
+     */
+    const reconciliarContra = (camadasDaBase: unknown) => {
+      if (canonicas === undefined) return
       const reconciliadas = Array.isArray(canonicas)
-        ? reconciliarMarcasDoRevisor(lerCamadas(existingPage.layers).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
+        ? reconciliarMarcasDoRevisor(lerCamadas(camadasDaBase).camadas as Array<{ id: string; visible?: unknown }>, canonicas as Array<{ id: string; [chave: string]: unknown }>)
         : canonicas
       updateData.layers = JSON.stringify(reconciliadas)
     }
@@ -156,54 +169,151 @@ export async function PATCH(
     // vale nada. Só campos visuais contam — este mesmo PATCH recebe thumbnail
     // e autosave do PageSync a cada troca de página, e layers idênticas não
     // podem invalidar (senão abrir o editor re-renderiza os agendados à toa).
-    const layersChanged =
-      validatedData.layers !== undefined &&
-      updateData.layers !== normalizeLayersString(existingPage.layers)
-    const visualChanged =
-      layersChanged ||
-      (validatedData.background !== undefined && validatedData.background !== existingPage.background) ||
-      (validatedData.width !== undefined && validatedData.width !== existingPage.width) ||
-      (validatedData.height !== undefined && validatedData.height !== existingPage.height)
+    //
+    // 🔴 A comparação é contra a página COMO ELA ESTÁ NO BANCO NA HORA DE
+    // GRAVAR, nunca contra a leitura do começo do handler: A lia X, recebia
+    // um autosave com X e concluía "nada mudou"; B gravava Y (com o contrato
+    // de Y); A caía no caminho sem proteção e gravava X por cima, deixando as
+    // camadas X com o contrato Y — e sem invalidar imagem única nem pedir a
+    // recomposição do slide (REV-01 da 3ª rodada da revisão do Codex sobre o
+    // PR 3, 12/09/2026). Hoje quem decide é `mudancasContra(base)`, chamada
+    // sobre a leitura protegida pelo compare-and-set; o que NÃO difere da
+    // base não é reescrito (então não há como regredir o que outro gravou),
+    // e invalidação, recomposição e sinais seguem a mudança EFETIVAMENTE
+    // persistida.
+    const payloadVisual =
+      validatedData.layers !== undefined ||
+      validatedData.background !== undefined ||
+      validatedData.width !== undefined ||
+      validatedData.height !== undefined
+    type BaseVisual = { layers: unknown; background: string | null; width: number; height: number }
+    const mudancasContra = (base: BaseVisual) => {
+      const layersChanged = validatedData.layers !== undefined && updateData.layers !== normalizeLayersString(base.layers)
+      const backgroundChanged = validatedData.background !== undefined && validatedData.background !== base.background
+      const widthChanged = validatedData.width !== undefined && validatedData.width !== base.width
+      const heightChanged = validatedData.height !== undefined && validatedData.height !== base.height
+      return { layersChanged, visualChanged: layersChanged || backgroundChanged || widthChanged || heightChanged, backgroundChanged, widthChanged, heightChanged }
+    }
+    /** Os dados a gravar SEM o que é idêntico à base — o idêntico não se reescreve. */
+    const dadosContra = (base: BaseVisual): Record<string, unknown> => {
+      const m = mudancasContra(base)
+      const dados: Record<string, unknown> = { ...updateData }
+      if (validatedData.layers !== undefined && !m.layersChanged) delete dados.layers
+      if (validatedData.background !== undefined && !m.backgroundChanged) delete dados.background
+      if (validatedData.width !== undefined && !m.widthChanged) delete dados.width
+      if (validatedData.height !== undefined && !m.heightChanged) delete dados.height
+      return dados
+    }
 
     // Transação SÓ quando há mudança visual (update + invalidação atômicos).
     // Thumbnail e autosave sem diff visual são a maioria dos PATCHes e abriam
     // transação à toa — com o Accelerate, transações concorrentes estouravam
     // "Unable to start a transaction in the given time" no meio da edição.
+    // A leitura fresca abaixo é o que decide se a transação abre: custa um
+    // SELECT a mais por PATCH com campo visual e nenhuma transação nova.
+    const selecaoDaBase = { updatedAt: true, layers: true, background: true, width: true, height: true, copyAutoral: true } as const
+    const baseFresca = payloadVisual ? await db.page.findUnique({ where: { id: pageId }, select: selecaoDaBase }) : null
+    if (payloadVisual && !baseFresca) {
+      return NextResponse.json({ error: 'Page not found' }, { status: 404 })
+    }
+    reconciliarContra((baseFresca ?? existingPage).layers)
+    const previa = mudancasContra(baseFresca ?? existingPage)
+    /** A base contra a qual a mudança foi de fato medida e gravada (a leitura protegida). */
+    let baseGravada: BaseVisual = baseFresca ?? existingPage
+    let layersChanged = false
+    let visualChanged = false
+
     /**
-     * O texto da página antes e depois — o que a captura de aprendizado abaixo
-     * mede. A cópia da copy que o post carrega não é mais atualizada aqui: o
-     * render desenha a página como ela está (copy-segue-a-pagina.ts), e o
-     * remendo que fazia a cópia "seguir" a página só neste PATCH era o que
-     * deixava de funcionar quando outro caminho escrevia as camadas.
+     * F1: o contrato da copy autoral da página ganha a REVISÃO desta edição
+     * (autor `equipe`, superfície `editor`) NA MESMA ESCRITA das camadas — o
+     * diff é exato e decide sozinho se há revisão (mudou só o destaque do rich
+     * text, ou uma quebra: revisa; autosave idêntico: não). Calculada aqui e
+     * não num `after()`, para dois autosaves fora de ordem não deixarem a
+     * página com as camadas B e o contrato de A. Página sem contrato fica
+     * como está — não se inventa histórico.
      */
-    // `copyParaDecisao`: a camada escondida por ajuste do revisor conta como presente dos dois lados — o
-    // autosave depois de um ajuste mecânico não pode registrar remoção em nome de quem edita (REV-9E-01).
-    const copyAntes = layersChanged ? copyParaDecisao(existingPage.layers) : null
-    const copyDepois = layersChanged ? copyParaDecisao(updateData.layers) : null
 
     let page
     let invalidated = 0
     let congelados: string[] = []
-    if (visualChanged) {
-      ;({ page, invalidated, congelados } = await db.$transaction(
+    /** A edição mexeu na copy e o contrato não a registrou (histórico cheio) — vai na resposta e no log. */
+    let avisoDaCopy: string | null = null
+    if (previa.visualChanged) {
+      ;({ page, invalidated, congelados, layersChanged, visualChanged, baseGravada, avisoDaCopy } = await db.$transaction(
         async (tx) => {
-          const updated = await tx.page.update({
-            where: { id: pageId },
-            data: updateData,
-          })
-          const r = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
-          return { page: updated, invalidated: r.invalidados, congelados: r.congelados }
+          /**
+           * A escrita das camadas e a revisão do contrato saem JUNTAS, por
+           * compare-and-set na versão LIDA AGORA (não na leitura do começo do
+           * handler): dois PATCHes concorrentes — um só de geometria, outro
+           * de texto — não podem deixar as camadas de um com o contrato do
+           * outro, nem apagar a revisão um do outro (R01 e R02 da revisão do
+           * Codex sobre o PR 3, 12/09/2026). Perdeu a corrida → relê, refaz a
+           * DIFERENÇA e a revisão contra a página nova e tenta de novo; a
+           * escrita das camadas continua sendo a do cliente (último a gravar
+           * vence, como sempre foi), mas o contrato descreve o que ficou
+           * gravado — e se a página nova já é igual ao payload, nada visual é
+           * reescrito e nada é invalidado (REV-01, 3ª rodada).
+           */
+          let updated: NonNullable<typeof existingPage> | null = null
+          let efetiva = previa
+          let base: BaseVisual = baseGravada
+          let aviso: string | null = null
+          for (let volta = 0; volta < 4 && !updated; volta++) {
+            const fresca = await tx.page.findUnique({ where: { id: pageId }, select: selecaoDaBase })
+            if (!fresca) throw new Error('page_not_found')
+            // A marca do revisor é reconciliada contra ESTA leitura, antes de medir e revisar (C3-02).
+            reconciliarContra(fresca.layers)
+            const m = mudancasContra(fresca)
+            const dados = dadosContra(fresca)
+            let avisoDestaVolta: string | null = null
+            if (m.layersChanged) {
+              const revisao = revisaoDaPaginaComCamadas(fresca.copyAutoral, updateData.layers, { autor: 'equipe', motivo: 'edição no editor', superficie: 'editor' })
+              if (revisao.estado === 'registrada' && revisao.copy) dados.copyAutoral = revisao.copy
+              // 🔴 Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida das camadas que não cabe
+              // (`RevisaoDaCopyInvalida`): o autosave NUNCA falha nem perde o que a pessoa editou — as
+              // camadas vão, o contrato fica como estava (sem a revisão, que o leitor rejeitaria) e a
+              // resposta avisa.
+              avisoDestaVolta = recusaDaRevisao(revisao)
+            }
+            const gravada = await tx.page.updateMany({ where: { id: pageId, updatedAt: fresca.updatedAt }, data: dados })
+            if (gravada.count > 0) {
+              updated = await tx.page.findUnique({ where: { id: pageId } })
+              efetiva = m
+              base = fresca
+              aviso = avisoDestaVolta
+            }
+          }
+          if (!updated) throw new Error('page_write_conflict')
+          const r = efetiva.visualChanged ? await invalidateScheduledRenders(tx, { pageIds: [pageId] }) : { invalidados: 0, congelados: [] as string[] }
+          return { page: updated, invalidated: r.invalidados, congelados: r.congelados, layersChanged: efetiva.layersChanged, visualChanged: efetiva.visualChanged, baseGravada: base, avisoDaCopy: aviso }
         },
         // Accelerate: o maxWait default (2s) estourava com autosaves em
         // sequência — "Unable to start a transaction in the given time"
         { maxWait: 10_000, timeout: 15_000 },
       ))
     } else {
+      // Nada visual difere da página como está: o que é idêntico sai do
+      // update (uma escrita de camadas iguais às do banco não pode regredir
+      // o que outro PATCH gravou no meio tempo), e o resto — thumbnail,
+      // nome, áudio — grava sem transação, como sempre.
       page = await db.page.update({
         where: { id: pageId },
-        data: updateData,
+        data: dadosContra(baseGravada),
       })
     }
+
+    /**
+     * O texto da página antes e depois — o que a captura de aprendizado abaixo
+     * mede, contra a base que a escrita protegida de fato substituiu. A cópia
+     * da copy que o post carrega não é mais atualizada aqui: o render desenha
+     * a página como ela está (copy-segue-a-pagina.ts), e o remendo que fazia a
+     * cópia "seguir" a página só neste PATCH era o que deixava de funcionar
+     * quando outro caminho escrevia as camadas.
+     */
+    // `copyParaDecisao`: a camada escondida por ajuste do revisor conta como presente dos dois lados — o
+    // autosave depois de um ajuste mecânico não pode registrar remoção em nome de quem edita (REV-9E-01).
+    const copyAntes = layersChanged ? copyParaDecisao(baseGravada.layers) : null
+    const copyDepois = layersChanged ? copyParaDecisao(updateData.layers) : null
 
     if (invalidated > 0) {
       console.log(`[API] Page ${pageId} changed — invalidated ${invalidated} scheduled render(s)`)
@@ -212,6 +322,9 @@ export async function PATCH(
       console.warn(
         `[API] Page ${pageId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
       )
+    }
+    if (avisoDaCopy) {
+      console.warn(`[API] Page ${pageId}: camadas gravadas sem revisão do contrato da copy — ${avisoDaCopy}`)
     }
 
     /**
@@ -331,7 +444,7 @@ export async function PATCH(
      * de 10 minutos por página como a copy. Ilegível nunca vira "não mudou".
      */
     if (layersChanged && Array.isArray(existingPage.tags) && existingPage.tags.includes('compositor')) {
-      const geometria = diffDeGeometria(existingPage.layers, updateData.layers)
+      const geometria = diffDeGeometria(baseGravada.layers, updateData.layers)
       if (!geometria.ilegivel && geometria.mudou) {
         const projectId = template!.Project.id
         after(async () => {
@@ -357,6 +470,8 @@ export async function PATCH(
       // O autosave do editor bate aqui a cada pausa: é o ponto natural para
       // avisar que a edição não alcança mais um post já entregue.
       ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
+      // As camadas foram gravadas e o contrato da copy ficou como estava (histórico cheio).
+      ...(avisoDaCopy ? { avisoDaCopy } : {}),
     }
 
     return NextResponse.json(pageWithParsedLayers)

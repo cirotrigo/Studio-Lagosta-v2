@@ -173,6 +173,12 @@ export interface PersistCreativeInput {
   generationId?: string | null
   /** Ver `RenderPageInput.slideOrder`. */
   slideOrder?: number | null
+  /**
+   * O contrato da copy autoral da peça (`src/lib/copy-autoral`), gravado em
+   * `Page.copyAutoral` como foi RECEBIDO — antes de qualquer adaptação (F1,
+   * 12/09/2026). Ausente = página sem contrato (nunca se inventa).
+   */
+  copyAutoral?: unknown
 }
 
 export interface PersistCreativeResult {
@@ -205,6 +211,7 @@ export async function persistAndRenderCreative(
       templateId,
       isTemplate: false, // arte renderizada, não um modelo reutilizável
       tags: input.pageTags ?? ['arte-rapida'],
+      ...(input.copyAutoral ? { copyAutoral: input.copyAutoral as any } : {}),
     },
   })
 

@@ -15,6 +15,7 @@ import type { CanalDaArte } from '@/lib/creatives/canal'
 import type { PersistCreativeInput } from '@/lib/creatives/persist'
 
 import type { SpecDePeca } from './spec'
+import { converterBlocosLegados, orientacaoDosProblemas, orientacaoEmFrase, tentarCopyEfetivaDasCamadas, type CopyAutoral, type BlocoLegado } from '@/lib/copy-autoral'
 
 /** Tag que marca a página nascida do compositor (é o que liga o sinal `geometria`). */
 export const TAG_DA_PECA_COMPOSTA = 'compositor'
@@ -41,9 +42,57 @@ export interface InsumosDaPersistencia {
   fotoUrl: string | null
 }
 
+export interface CopyAutoralDaSpec {
+  /** O contrato; `null` só quando a spec sem contrato não cabe nele. */
+  copy: CopyAutoral | null
+  /** Por que não há contrato (em português, com o que fazer); `null` quando há. */
+  aviso: string | null
+}
+
+/**
+ * O contrato da copy que a peça grava: o que veio na spec, ou — spec antiga,
+ * só com `blocos` — o adaptador do legado, que declara autoria desconhecida
+ * e não inventa grupo nem ordem. A fidelidade se mede a partir daqui.
+ *
+ * 🔴 Desde o PR2-01 (`e3c1f75f`) o adaptador LANÇA quando o legado não cabe no
+ * contrato, e a spec sem contrato não limita caracteres: uma linha de 301
+ * derrubava a peça já composta. Aqui se usa o `converter*`: sem contrato
+ * válido a peça segue SEM contrato, com o aviso — nunca com um contrato que o
+ * leitor rejeita, e nada é cortado para caber.
+ */
+export function copyAutoralDaSpec(spec: SpecDePeca): CopyAutoralDaSpec {
+  if (spec.copyAutoral) return { copy: spec.copyAutoral, aviso: null }
+  // `z.infer` com strict:false marca `papel` como opcional; `validarSpec` já
+  // garantiu o papel em runtime (ver CLAUDE.md, "Com strict: false, z.infer…").
+  const conversao = converterBlocosLegados(spec.blocos as BlocoLegado[], { superficie: 'compositor' })
+  if (conversao.copy) return { copy: conversao.copy, aviso: null }
+  return {
+    copy: null,
+    aviso: `A copy desta peça não cabe no contrato da copy autoral (${conversao.problemas.map((p) => p.mensagem).join('; ')}): a arte foi gravada SEM contrato, sem cortar nem redistribuir o texto, e a fidelidade da copy não é medida nela.${orientacaoEmFrase(orientacaoDosProblemas(conversao.problemas))}`,
+  }
+}
+
 export function entradaDePersistencia(i: InsumosDaPersistencia): PersistCreativeInput {
   const { spec, opcoes } = i
+  // O ORIGINAL é o que o autor escreveu; a EFETIVA é o que as camadas finais
+  // (depois do autofix) mostram — lida das camadas, bloco a bloco, com o que
+  // o compositor mudou registrado como revisão do SISTEMA. As duas vão para a
+  // Generation (o original fica preservado ali, verbatim). A PÁGINA guarda a
+  // efetiva: é o contrato do que a página MOSTRA, e é sobre ele que a edição
+  // seguinte (editor, ajuste) é diferenciada — se a página guardasse o
+  // original, a primeira edição da equipe levaria a culpa pelo que o
+  // compositor transformou (medido na prova de dev do PR 3, 12/09/2026: a
+  // seta que o compositor põe no CTA e o destaque não desenhado apareciam
+  // como revisão da equipe).
+  const daSpec = copyAutoralDaSpec(spec)
+  const original = daSpec.copy
+  const avisosDaCopy: string[] = daSpec.aviso ? [daSpec.aviso] : []
+  // Histórico cheio na copy da spec (PR2-02): a efetiva não cabe — a peça segue sem contrato novo, com aviso.
+  const lida = original ? tentarCopyEfetivaDasCamadas(original, i.layers, { superficie: 'compositor' }) : null
+  if (lida && lida.ok === false) avisosDaCopy.push(`${lida.aviso} A arte foi gravada sem contrato na página.`)
+  const leitura = lida && lida.ok ? lida.leitura : null
   return {
+    ...(leitura ? { copyAutoral: leitura.efetiva } : {}),
     project: i.projeto,
     templateId: i.pasta.id,
     templateName: i.pasta.name,
@@ -70,6 +119,13 @@ export function entradaDePersistencia(i: InsumosDaPersistencia): PersistCreative
       composicao: i.diagnostico,
       // F4: o snapshot das camadas como nasceram — é o "git" de uma peça.
       layersSnapshot: i.layers,
+      // F1: o contrato da copy — original (do autor) e efetiva (o desenhado).
+      // `comparavel` é falso quando a autoria é desconhecida (legado).
+      ...(leitura
+        ? { copyAutoral: { original, efetiva: leitura.efetiva, comparavel: original.origem.autor !== 'desconhecido', ...(leitura.lacunas.length ? { lacunas: leitura.lacunas } : {}) } }
+        : {}),
+      // Sem contrato por recusa (legado que não cabe, histórico cheio): o motivo fica na arte.
+      ...(avisosDaCopy.length > 0 ? { avisosDaCopyAutoral: avisosDaCopy } : {}),
       ...(spec.foto?.driveFileId ? { driveImageId: spec.foto.driveFileId } : {}),
       imageUrl: i.fotoUrl,
       ...(spec.itemDePlanoId ? { itemDePlanoId: spec.itemDePlanoId } : {}),

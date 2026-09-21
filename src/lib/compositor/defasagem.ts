@@ -110,15 +110,16 @@ export function papelDaCamada(camada: Layer): Papel | 'headline2' | null {
 export function copyDosPapeis(camadas: unknown): Record<string, string> | null {
   const { camadas: lidas, legivel } = lerCamadas(camadas)
   if (!legivel) return null
-  const out: Record<string, string> = {}
+  const itens: TextoDePapel[] = []
   for (const bruta of lidas as Layer[]) {
     if ((bruta?.type !== 'text' && bruta?.type !== 'rich-text') || bruta.visible === false) continue
     const papel = papelDaCamada(bruta)
     if (!papel) continue
     const conteudo = typeof bruta.content === 'string' ? bruta.content.trim() : ''
-    if (conteudo) out[papel] = conteudo
+    // O papel repartido em várias camadas (`servico` e `servico-2`) volta junto, de cima para baixo (PR3-R8-02).
+    if (conteudo) itens.push({ papel, y: bruta.position?.y ?? 0, conteudo })
   }
-  return out
+  return juntarPorPapel(itens)
 }
 
 /**

@@ -181,6 +181,12 @@ describe('copyDosPapeis', () => {
     expect(copy).toEqual({ headline: 'Sexta é dia' })
   })
 
+  it('o papel repartido em duas camadas (servico e servico-2) volta junto, de cima para baixo (PR3-R8-02)', () => {
+    const horario = { ...texto('servico', 'Das 11h às 15h'), position: { x: 100, y: 1600 } }
+    const endereco = { ...texto('servico', 'Rua Aleixo Netto, 1158'), id: 'servico-2', name: 'servico-2', position: { x: 100, y: 1680 } }
+    expect(copyDosPapeis([endereco, horario])).toEqual({ servico: 'Das 11h às 15h\nRua Aleixo Netto, 1158' })
+  })
+
   it('acha o papel mesmo quando a camada foi renomeada no editor', () => {
     const renomeada = { ...texto('apoio', 'x'), id: 'camada-7', name: 'Texto de apoio' }
     expect(copyDosPapeis([renomeada])).toEqual({ apoio: 'x' })
