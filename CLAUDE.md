@@ -10283,16 +10283,38 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
   peça nova; `pronto`/`agendado` recusa `avancou` — e `GeracaoDaPeca` torna o
   `resultUrl` OBRIGATÓRIO no tipo: leitor que volte a pedir só o status não
   compila. `situacaoDaPeca` diz "pronta" só com arquivo.
-- ⚠️ **Da varredura, fora do diff do PR 11 e NÃO mexido (código da main)**:
-  `situacaoPelaArte` (`execucao.ts`, pela reconciliação do `ver-plano`) move o
-  item em voo para `pronto` quando a arte fica COMPLETED sem olhar o arquivo —
-  depois disso a peça sem arquivo não é mais recuperada pelo lote (a recusa
-  `avancou` é honesta, mas não recupera); `fecharJob` espelha COMPLETED em
-  `DONE` sem olhar o arquivo (é a origem do estado do F02); o "usa esta arte" do
-  `editar-item-do-plano` aceita arte COMPLETED sem arquivo; o carrossel confere
-  o guia só pelo status. E a porta `superadas` da reserva
-  (`arteQueSuperaAPeca`) decide pelo vínculo, não pela vida da outra arte (a
-  linha 4a da tabela exige viva ou pronta) — decisão aprovada e mantida.
+- 🔴 **A reconciliação do plano leva a arte COMPLETED SEM ARQUIVO a `erro`, não
+  a `pronto`** (varredura do F02, decidido pelo coordenador em 21/09/2026).
+  `situacaoPelaArte` (`execucao.ts`, rodada pelo `ver-plano` e pelo GET do
+  plano) recebe o `resultUrl` como argumento OBRIGATÓRIO. Sem isso o conserto do
+  F02 só valia se ninguém abrisse o plano antes de repetir a leva: abriu, o item
+  virava `pronto`, e o lote recusava com `avancou` — justamente o caso comum.
+  Vale só nos estados que a reconciliação já move (`na-fila`/`gerando`;
+  `agendado` é terminal e nem entra na busca), e o caminho até `erro` é o da
+  `caminhoAte`. Em `erro` o item é executável: a leva repetida com o token atual
+  (a transição não muda o conteúdo) produz a peça nova. O motivo gravado é "A
+  arte terminou sem o arquivo da imagem. Dá para produzir de novo.".
+- ⚠️ **Classificação pelo status sem o arquivo, FORA deste PR** (código da main,
+  cada um com consequência própria e revisão própria — não mexidos):
+  - `fecharJob` (`generation-queue.ts`) espelha COMPLETED em `DONE` sem olhar o
+    arquivo: o job da peça sem imagem fecha como sucesso.
+  - O "usa esta arte" do `editar-item-do-plano` aceita arte COMPLETED sem
+    arquivo e põe o item `pronto` com ela.
+  - O carrossel (`carousel-service.ts`) confere o guia e os slides só pelo
+    status: o guia COMPLETED sem arquivo libera a confirmação do look, e o
+    `ver-carrossel` diz "pronto".
+  - **De onde vem a Generation COMPLETED sem `resultUrl`: nenhum produtor no
+    código de hoje** — todo caminho que fecha uma Generation como COMPLETED grava
+    o `resultUrl` na mesma escrita (compositor/`persist`, runners de IA e da
+    melhoria, exports, `finalize`, vídeo, arte enviada, posts), não há
+    `updateMany` nem SQL cru pondo COMPLETED, e a limpeza do Blob só troca o
+    arquivo pelo backup do Drive quando ele existe. O estado nasce de linha
+    antiga, de script ou edição manual, ou de regressão futura: os consertos
+    são guarda, não a remoção de um produtor vivo (varredura de 21/09/2026, não
+    exaustiva).
+- A porta `superadas` da reserva (`arteQueSuperaAPeca`) decide pelo vínculo, não
+  pela vida da outra arte (a linha 4a da tabela exige viva ou pronta) — decisão
+  aprovada e mantida pelo Codex.
 - Varredura das comparações contra dado já gravado, o que foi descartado: o
   hash e a revisão de `ItemDeLote` (tabela nova, sem linha legada; `hashConfere`
   já versionado); a spec gravada (mesma régua da main — cru sem lote, e com
