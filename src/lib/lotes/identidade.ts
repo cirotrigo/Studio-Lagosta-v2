@@ -164,14 +164,15 @@ export type DecisaoDaReserva =
  *   ainda aberta → `retomar` tudo: a peça anterior não existe, e repetir a
  *   chamada é pedir de novo (a Generation que falhou fica como histórico).
  * - Generation PROCESSING sem job → `retomar` só o job.
- * - Generation COMPLETED (com ou sem job), ou PROCESSING com job vivo →
- *   `reaproveitar`, sem criar nada.
+ * - Generation COMPLETED COM arquivo (com ou sem job), ou PROCESSING com job
+ *   vivo → `reaproveitar`, sem criar nada. COMPLETED sem `resultUrl` não é peça
+ *   pronta (PR11-F02): `retomar` tudo.
  */
 export function decidirReserva(entrada: {
   registro: RegistroDoItemDeLote | null
   hash: string
   payload: unknown
-  geracao: { status: string } | null
+  geracao: GeracaoDaPeca | null
   job: { status: string } | null
 }): DecisaoDaReserva {
   const { registro, hash, geracao, job } = entrada
@@ -184,17 +185,31 @@ export function decidirReserva(entrada: {
 export type EstadoDaPeca = Extract<DecisaoDaReserva, { acao: 'reaproveitar' | 'retomar' }>
 
 /**
- * O que a peça que EXISTE pede, dado o estado da Generation e do job — a regra
- * única da retomada. `decidirReserva` a aplica sob a trava da LINHA do lote; o
- * caminho do item de plano a aplica DE NOVO sob a trava do ITEM (revisão R04):
- * duas linhas de lote diferentes podem apontar para a mesma Generation, e a
- * decisão tomada antes da trava do item fica velha quando a outra linha já
- * refez o job. Decidir → travar → decidir de novo, nunca reusar a primeira.
+ * O que a Generation da peça precisa mostrar para a decisão. O `resultUrl` é
+ * OBRIGATÓRIO de propósito (PR11-F02): a leitura que pedia só o `status`
+ * devolvia como pronta a peça COMPLETED sem arquivo — e cada repetição
+ * devolvia de novo a mesma peça sem imagem. Quem lê a Generation para decidir
+ * tem de pedir as duas colunas.
  */
-export function estadoDaPeca(entrada: { geracao: { status: string } | null; job: { status: string } | null }): EstadoDaPeca {
+export interface GeracaoDaPeca {
+  status: string
+  resultUrl: string | null
+}
+
+/**
+ * O que a peça que EXISTE pede, dado o estado da Generation e do job — a regra
+ * da retomada sob a trava da LINHA do lote (`decidirReserva`). O caminho do
+ * item de plano decide DE NOVO sob a trava do ITEM, pela tabela e por
+ * `classificarPecaDoItem` (R04; desde R05–R06), que já separa `pronta` de
+ * `pronta-sem-arquivo` — a reserva segue a mesma régua: sem arquivo não é
+ * pronta, e a peça vai à recuperação, onde valem as guardas do plano.
+ */
+export function estadoDaPeca(entrada: { geracao: GeracaoDaPeca | null; job: { status: string } | null }): EstadoDaPeca {
   const { geracao, job } = entrada
   if (!geracao) return { acao: 'retomar', falta: 'geracao-e-job', motivo: 'a geração do item não existe mais' }
-  if (geracao.status === 'COMPLETED') return { acao: 'reaproveitar' }
+  if (geracao.status === 'COMPLETED') {
+    return geracao.resultUrl ? { acao: 'reaproveitar' } : { acao: 'retomar', falta: 'geracao-e-job', motivo: 'a geração terminou sem arquivo' }
+  }
   if (geracao.status === 'FAILED') return { acao: 'retomar', falta: 'geracao-e-job', motivo: 'a geração anterior falhou' }
   if (!job) return { acao: 'retomar', falta: 'job', motivo: 'a geração ficou sem job' }
   if (job.status === 'DONE' || job.status === 'FAILED') return { acao: 'retomar', falta: 'geracao-e-job', motivo: `o job terminou (${job.status}) sem fechar a geração` }
@@ -238,8 +253,9 @@ export function recuperacaoDaDecisao(decisao: DecisaoDaReserva, generationIdDaLi
 /** Como a peça do item está agora, lida da Generation — o retorno individual da F4. */
 export type SituacaoDaPecaDoLote = 'pendente' | 'pronta' | 'falhou'
 
-export function situacaoDaPeca(statusDaGeracao: string | null | undefined): SituacaoDaPecaDoLote {
-  if (statusDaGeracao === 'COMPLETED') return 'pronta'
+/** `pronta` só COM arquivo (PR11-F02): COMPLETED sem `resultUrl` não entregou nada, e dizer "pronta" mentiria. */
+export function situacaoDaPeca(statusDaGeracao: string | null | undefined, resultUrl: string | null | undefined): SituacaoDaPecaDoLote {
+  if (statusDaGeracao === 'COMPLETED') return resultUrl ? 'pronta' : 'falhou'
   if (statusDaGeracao === 'FAILED' || !statusDaGeracao) return 'falhou'
   return 'pendente'
 }

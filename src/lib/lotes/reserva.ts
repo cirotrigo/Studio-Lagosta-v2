@@ -104,7 +104,8 @@ function violouUnicidade(erro: unknown): boolean {
 async function lerVinculo(cliente: LeitorDoVinculo, generationId: string | null) {
   if (!generationId) return { geracao: null, job: null }
   const job = await cliente.generationJob.findUnique({ where: { generationId }, select: { id: true, status: true } })
-  const geracao = await cliente.generation.findUnique({ where: { id: generationId }, select: { status: true } })
+  // `resultUrl` junto do status: COMPLETED sem arquivo não é peça pronta (PR11-F02).
+  const geracao = await cliente.generation.findUnique({ where: { id: generationId }, select: { status: true, resultUrl: true } })
   return { geracao, job }
 }
 
@@ -126,8 +127,8 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
   const { projectId, identidade, payload } = entrada
   const { loteId, itemId } = identidade
   const hash = hashDoPayload(payload)
-  const resultado = (generationId: string, jobId: string, desfecho: DesfechoDoItemDeLote, status: string | null | undefined): ResultadoDaReserva => ({
-    generationId, jobId, loteId, itemId, desfecho, situacao: situacaoDaPeca(status),
+  const resultado = (generationId: string, jobId: string, desfecho: DesfechoDoItemDeLote, geracao: { status: string; resultUrl: string | null } | null | undefined): ResultadoDaReserva => ({
+    generationId, jobId, loteId, itemId, desfecho, situacao: situacaoDaPeca(geracao?.status, geracao?.resultUrl),
   })
 
   // 1. A reserva.
@@ -153,7 +154,7 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
     const decisao = decidirReserva({ registro, hash, payload, ...vinculo })
     if (decisao.acao === 'conflito') throw erroDeConflito(identidade, decisao, registro.generationId)
     if (decisao.acao === 'reaproveitar') {
-      return resultado(registro.generationId!, vinculo.job?.id ?? registro.jobId ?? '', 'reaproveitado', vinculo.geracao?.status)
+      return resultado(registro.generationId!, vinculo.job?.id ?? registro.jobId ?? '', 'reaproveitado', vinculo.geracao)
     }
   }
 
@@ -172,7 +173,7 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
       if (decisao.acao === 'conflito') throw erroDeConflito(identidade, decisao, atual.generationId)
       // Outra chamada criou enquanto esta esperava a trava.
       if (decisao.acao === 'reaproveitar') {
-        return resultado(atual.generationId!, vinculo.job?.id ?? atual.jobId ?? '', 'reaproveitado', vinculo.geracao?.status)
+        return resultado(atual.generationId!, vinculo.job?.id ?? atual.jobId ?? '', 'reaproveitado', vinculo.geracao)
       }
 
       let generationId: string
@@ -213,9 +214,11 @@ export async function reservarItemDeLote(entrada: EntradaDaReserva): Promise<Res
         console.warn(`[lote] ${loteId}/${itemId} (projeto ${projectId}) retomado: a peça que o item de plano já tinha foi refeita`)
       }
 
-      const status = reaproveitado ? (await tx.generation.findUnique({ where: { id: generationId }, select: { status: true } }))?.status : 'PROCESSING'
+      const geracao = reaproveitado
+        ? await tx.generation.findUnique({ where: { id: generationId }, select: { status: true, resultUrl: true } })
+        : { status: 'PROCESSING', resultUrl: null }
       const desfecho: DesfechoDoItemDeLote = reaproveitado ? 'reaproveitado' : criadaAgora && !atual.generationId && !retomado ? 'criado' : 'retomado'
-      return resultado(generationId, jobId, desfecho, status)
+      return resultado(generationId, jobId, desfecho, geracao)
     },
     // A espera pela trava conta no tempo da transação; o trabalho sob ela é curto.
     { maxWait: 10_000, timeout: 20_000 },

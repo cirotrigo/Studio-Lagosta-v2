@@ -150,8 +150,11 @@ describe('decisão da reserva', () => {
   const payload = payloadParaHash(spec)
   const hash = hashDoPayload(payload)
   const registro = (extra: Partial<{ hashDoPayload: string; payload: unknown; generationId: string | null; jobId: string | null }> = {}) => ({ hashDoPayload: hash, payload, generationId: 'g1', jobId: 'j1', ...extra })
-  const decidir = (r: ReturnType<typeof registro> | null, geracao: string | null, job: string | null, h = hash, p: unknown = payload) =>
-    decidirReserva({ registro: r, hash: h, payload: p, geracao: geracao ? { status: geracao } : null, job: job ? { status: job } : null })
+  /** A Generation como a reserva a lê: status E arquivo (PR11-F02) — "pronta" é COMPLETED com `resultUrl`. */
+  const g = (status: string, resultUrl: string | null = null) => ({ status, resultUrl })
+  const ARQUIVO = 'https://blob/peca.png'
+  const decidir = (r: ReturnType<typeof registro> | null, geracao: ReturnType<typeof g> | null, job: string | null, h = hash, p: unknown = payload) =>
+    decidirReserva({ registro: r, hash: h, payload: p, geracao, job: job ? { status: job } : null })
 
   it('sem linha: criar', () => {
     expect(decidir(null, null, null)).toEqual({ acao: 'criar' })
@@ -160,47 +163,57 @@ describe('decisão da reserva', () => {
   it('outro payload é conflito ANTES de qualquer outra coisa, inclusive na reserva órfã e na peça que falhou', () => {
     const outro = payloadParaHash({ ...spec, nome: 'Outro' })
     const h = hashDoPayload(outro)
-    expect(decidir(registro(), 'PROCESSING', 'PENDING', h, outro)).toEqual({ acao: 'conflito', diferencas: ['nome'] })
+    expect(decidir(registro(), g('PROCESSING'), 'PENDING', h, outro)).toEqual({ acao: 'conflito', diferencas: ['nome'] })
     expect(decidir(registro({ generationId: null, jobId: null }), null, null, h, outro).acao).toBe('conflito')
-    expect(decidir(registro(), 'FAILED', 'FAILED', h, outro).acao).toBe('conflito')
+    expect(decidir(registro(), g('FAILED'), 'FAILED', h, outro).acao).toBe('conflito')
   })
 
   it('reserva sem geração: retomar tudo', () => {
     expect(decidir(registro({ generationId: null, jobId: null }), null, null)).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
   })
 
-  it('peça viva ou pronta: reaproveitar', () => {
-    expect(decidir(registro(), 'PROCESSING', 'PENDING').acao).toBe('reaproveitar')
-    expect(decidir(registro(), 'PROCESSING', 'RUNNING').acao).toBe('reaproveitar')
-    expect(decidir(registro(), 'COMPLETED', 'DONE').acao).toBe('reaproveitar')
+  it('peça viva ou pronta (COMPLETED COM arquivo): reaproveitar', () => {
+    expect(decidir(registro(), g('PROCESSING'), 'PENDING').acao).toBe('reaproveitar')
+    expect(decidir(registro(), g('PROCESSING'), 'RUNNING').acao).toBe('reaproveitar')
+    expect(decidir(registro(), g('COMPLETED', ARQUIVO), 'DONE').acao).toBe('reaproveitar')
     // Pronta vale mesmo sem o job (a peça existe; o job é só como ela foi feita).
-    expect(decidir(registro(), 'COMPLETED', null).acao).toBe('reaproveitar')
+    expect(decidir(registro(), g('COMPLETED', ARQUIVO), null).acao).toBe('reaproveitar')
+  })
+
+  // PR11-F02: antes, o status bastava — COMPLETED sem `resultUrl` era reaproveitado e
+  // cada repetição devolvia de novo a peça sem imagem. Depois: não é pronta, retoma.
+  it('COMPLETED SEM arquivo não é peça pronta: retomar tudo, com ou sem job', () => {
+    expect(decidir(registro(), g('COMPLETED'), 'DONE')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job', motivo: 'a geração terminou sem arquivo' })
+    expect(decidir(registro(), g('COMPLETED'), null)).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
+    expect(decidir(registro(), g('COMPLETED', ''), 'DONE')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
+    expect(recuperacaoDaDecisao(decidir(registro(), g('COMPLETED'), 'DONE'), 'g1')).toEqual({ falta: 'geracao-e-job', generationId: 'g1' })
   })
 
   it('geração sumida, falha, ou job terminal com a geração aberta: retomar tudo', () => {
     expect(decidir(registro(), null, null)).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
-    expect(decidir(registro(), 'FAILED', 'FAILED')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
-    expect(decidir(registro(), 'PROCESSING', 'FAILED')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
-    expect(decidir(registro(), 'PROCESSING', 'DONE')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
+    expect(decidir(registro(), g('FAILED'), 'FAILED')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
+    expect(decidir(registro(), g('PROCESSING'), 'FAILED')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
+    expect(decidir(registro(), g('PROCESSING'), 'DONE')).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
   })
 
   it('geração aberta sem job: retomar só o job', () => {
-    expect(decidir(registro(), 'PROCESSING', null)).toMatchObject({ acao: 'retomar', falta: 'job' })
+    expect(decidir(registro(), g('PROCESSING'), null)).toMatchObject({ acao: 'retomar', falta: 'job' })
   })
 
   it('a recuperação que o criador recebe: só quando a linha já apontava uma peça (R01–R02)', () => {
-    expect(recuperacaoDaDecisao(decidir(registro(), 'PROCESSING', 'FAILED'), 'g1')).toEqual({ falta: 'geracao-e-job', generationId: 'g1' })
-    expect(recuperacaoDaDecisao(decidir(registro(), 'PROCESSING', null), 'g1')).toEqual({ falta: 'job', generationId: 'g1' })
+    expect(recuperacaoDaDecisao(decidir(registro(), g('PROCESSING'), 'FAILED'), 'g1')).toEqual({ falta: 'geracao-e-job', generationId: 'g1' })
+    expect(recuperacaoDaDecisao(decidir(registro(), g('PROCESSING'), null), 'g1')).toEqual({ falta: 'job', generationId: 'g1' })
     expect(recuperacaoDaDecisao(decidir(registro({ generationId: null, jobId: null }), null, null), null)).toBeNull()
     expect(recuperacaoDaDecisao({ acao: 'criar' }, null)).toBeNull()
     expect(recuperacaoDaDecisao({ acao: 'reaproveitar' }, 'g1')).toBeNull()
   })
 
-  it('situação da peça lida da Generation', () => {
-    expect(situacaoDaPeca('PROCESSING')).toBe('pendente')
-    expect(situacaoDaPeca('COMPLETED')).toBe('pronta')
-    expect(situacaoDaPeca('FAILED')).toBe('falhou')
-    expect(situacaoDaPeca(null)).toBe('falhou')
+  it('situação da peça lida da Generation: "pronta" só COM arquivo (PR11-F02)', () => {
+    expect(situacaoDaPeca('PROCESSING', null)).toBe('pendente')
+    expect(situacaoDaPeca('COMPLETED', ARQUIVO)).toBe('pronta')
+    expect(situacaoDaPeca('COMPLETED', null)).toBe('falhou')
+    expect(situacaoDaPeca('FAILED', null)).toBe('falhou')
+    expect(situacaoDaPeca(null, null)).toBe('falhou')
   })
 })
 
@@ -208,17 +221,21 @@ describe('as regras que o criador reaplica sob a própria trava (R03, R04)', () 
   it('estadoDaPeca é a MESMA regra de decidirReserva depois das checagens da linha', () => {
     const registro = { hashDoPayload: hashDoPayload(payloadParaHash(spec)), payload: payloadParaHash(spec), generationId: 'g1', jobId: 'j1' }
     const hash = registro.hashDoPayload
-    const casos: Array<[{ status: string } | null, { status: string } | null]> = [
-      [null, null], [null, { status: 'PENDING' }], [{ status: 'COMPLETED' }, null], [{ status: 'COMPLETED' }, { status: 'DONE' }],
-      [{ status: 'FAILED' }, { status: 'FAILED' }], [{ status: 'PROCESSING' }, null], [{ status: 'PROCESSING' }, { status: 'FAILED' }],
-      [{ status: 'PROCESSING' }, { status: 'DONE' }], [{ status: 'PROCESSING' }, { status: 'PENDING' }], [{ status: 'PROCESSING' }, { status: 'RUNNING' }],
+    const arquivo = 'https://blob/peca.png'
+    const g = (status: string, resultUrl: string | null = null) => ({ status, resultUrl })
+    const casos: Array<[ReturnType<typeof g> | null, { status: string } | null]> = [
+      [null, null], [null, { status: 'PENDING' }], [g('COMPLETED', arquivo), null], [g('COMPLETED', arquivo), { status: 'DONE' }],
+      [g('COMPLETED'), null], [g('COMPLETED'), { status: 'DONE' }],
+      [g('FAILED'), { status: 'FAILED' }], [g('PROCESSING'), null], [g('PROCESSING'), { status: 'FAILED' }],
+      [g('PROCESSING'), { status: 'DONE' }], [g('PROCESSING'), { status: 'PENDING' }], [g('PROCESSING'), { status: 'RUNNING' }],
     ]
     for (const [geracao, job] of casos) {
       expect(estadoDaPeca({ geracao, job })).toEqual(decidirReserva({ registro, hash, payload: registro.payload, geracao, job }))
     }
-    expect(estadoDaPeca({ geracao: { status: 'PROCESSING' }, job: null })).toMatchObject({ acao: 'retomar', falta: 'job' })
-    expect(estadoDaPeca({ geracao: { status: 'PROCESSING' }, job: { status: 'PENDING' } })).toEqual({ acao: 'reaproveitar' })
-    expect(estadoDaPeca({ geracao: { status: 'COMPLETED' }, job: { status: 'DONE' } })).toEqual({ acao: 'reaproveitar' })
+    expect(estadoDaPeca({ geracao: g('PROCESSING'), job: null })).toMatchObject({ acao: 'retomar', falta: 'job' })
+    expect(estadoDaPeca({ geracao: g('PROCESSING'), job: { status: 'PENDING' } })).toEqual({ acao: 'reaproveitar' })
+    expect(estadoDaPeca({ geracao: g('COMPLETED', arquivo), job: { status: 'DONE' } })).toEqual({ acao: 'reaproveitar' })
+    expect(estadoDaPeca({ geracao: g('COMPLETED'), job: { status: 'DONE' } })).toMatchObject({ acao: 'retomar', falta: 'geracao-e-job' })
   })
 
   it('mesmoPedidoDoLote: carimbos e ordem das chaves não são diferença; conteúdo é; projectId fica fora', () => {
