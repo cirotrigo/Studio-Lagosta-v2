@@ -11229,3 +11229,54 @@ hoje, evento de depois contado no antes, teto cortando referência direta.
   URL) e avisos do sistema conferidos. (d) teto em referência direta: datas das
   artes (corrigida), sinais (declarados), teto de artes (diretas primeiro, com
   aviso) e posts (já avisado); itens, páginas e voz não têm teto.
+
+**Da 2ª revisão FINAL do Codex sobre ede56191 (BLOQUEADO, PR15-05-R2, 09, 10 e
+11, 21/09/2026).** Cada rodada achava um caso novo num CAMINHO DE PROVA
+diferente da peça congelada — a cópia do post, as camadas visíveis, o snapshot
+—, e a correção foi UMA regra, não mais um remendo por caminho.
+
+- 🔴 **A mídia congelada só entra na medida com prova do TEXTO e prova
+  TEMPORAL, e as duas saem do MESMO registro**: a arte casada pela URL exata
+  (`provaDaMidiaCongelada`). A efetiva dela é o texto daquela imagem, literal
+  (`linhasDaCamada` não apara nada), e `instanteDoPng` é quando ela ficou
+  pronta. Sem essa arte, sem efetiva, sem instante legível ou com ajuste de
+  visibilidade do revisor até o PNG, a peça fica `congelada-sem-prova` —
+  contada e declarada, nunca medida pela página de hoje. Isto supera o item (2)
+  do PR15-02 e o PR15-05 acima.
+- 🔴 **O caminho pela cópia do texto desenhado (`_copiaDaPagina`) SAIU**
+  (PR15-05-R2 e PR15-10). A cópia é ESCRITA por `textosDaPagina`
+  (`story-renderer`), que apara as pontas e pula camada oculta: o registro já
+  nasce sem as linhas literais e sem o que está oculto, e não tem instante.
+  Nenhum leitor da métrica recupera isso — comparar cru, a correção mínima
+  sugerida, fecha as pontas e deixa o PR15-10 aberto (medido por mutação: 2
+  testes caem). `PostLido.slotValues` e a leitura dele no serviço saíram junto.
+- 🔴 **Só congeladas: a medida é a imagem MAIS NOVA, cortada no PNG dela**
+  (PR15-10), e as outras imagens congeladas têm de mostrar a MESMA mensagem.
+  Antes, a peça congelada com imagens diferentes (um repost refeito entre os
+  dois) era medida pela página de hoje, sem corte nenhum.
+- 🔴 **Congelado e vivo na mesma peça: sem corte, e cada imagem congelada tem de
+  mostrar a mensagem INTEIRA que se mede** — o contrato de hoje, com o bloco
+  escondido pelo revisor contando como texto (PR15-09). A comparação antiga com
+  o desenho CRU (o oculto saía dos dois lados) decidia pela parte visível e
+  media o contrato inteiro. A prova temporal da peça mista é o post vivo: o que
+  veio depois do PNG congelado chegou a ele.
+- 🔴 **Bloco escondido pelo revisor até o PNG não tem prova do texto**: a
+  efetiva o lê como apagado e nada registra o texto autoral dele naquele
+  instante. A peça só congelada com esse esconder fica fora, mesmo com a página
+  intacta.
+- **PNG refeito com o instante ilegível não é instante**: `instanteDoPng`
+  devolve `NaN` em vez de cair na criação, que é cedo demais e cortaria o que
+  chegou à mídia.
+- **Os avisos da leitura chegam à mensagem de domingo** (PR15-11): `l.copy.avisos`
+  sai na seção do cliente ("⚠️ copy: …"). E a falha geral da medida DIZ que
+  falhou — sem o bloco, o silêncio leria como "nenhuma peça".
+- **O que mudou na cobertura, contado nos testes**: três casos que eram medidos
+  passam a excluídos, todos por falta de prova do texto — story de um bloco
+  provado só pela cópia; peça só congelada com o CTA escondido pelo revisor
+  antes do PNG, página intacta; e a mesma peça com um post vivo. Um caso passa
+  de excluído a MEDIDO: peça mista cujo esconder veio DEPOIS do congelamento (o
+  contrato confere com a imagem; o desenho cru não conferia). E a peça de duas
+  imagens congeladas da mesma mensagem passa a ser medida com corte.
+- ⚠️ **Limite conhecido**: o esconder do revisor só é visto quando a arte do
+  ajuste está na leitura; ajuste fora da janela de 60 dias do histórico escapa.
+  Impossível antes de ~10/11/2026 (o revisor nasceu em 11/09).
