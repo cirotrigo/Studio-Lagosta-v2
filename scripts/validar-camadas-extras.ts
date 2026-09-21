@@ -57,13 +57,20 @@
  * 14. PR9-F01, leitura inválida no extra COM FUNÇÃO: a arte segue a página como
  *     está — sem recusa, sem virar serviço comum, post congelado intocado;
  * 15. PR9-F01, histórico cheio COM bloco comum: o serviço comum continua comum,
- *     o extra continua extra, o contrato fica intocado.
+ *     o extra continua extra, o contrato fica intocado;
+ * 16. PR10-04 pelo EXECUTOR (job real), nas duas formas de extra: histórico
+ *     cheio + uma linha que o contrato não comporta. A edição do editor
+ *     devolve `historico-cheio` (a recusa do histórico mascara o conteúdo), e o
+ *     job fecha DONE com a página RE-RENDERIZADA como está — nunca
+ *     SPEC_INVALIDA —, página e contrato intocados, post congelado intocado.
  *
  * Os passos 12, 14 e 15 conferem o DESFECHO que a pessoa vê, válido para as
- * duas saídas corretas do fallback sem contrato — recompor lendo cada extra
- * pela identidade da camada, ou re-renderizar a página como está — e reprovam
- * as incorretas (recusa, slide velho, extra fundido no comum, contrato
- * reescrito).
+ * duas saídas corretas do fallback sem contrato legível — recompor (com o
+ * histórico cheio, pelo contrato COMO A PÁGINA O MOSTRA, PR10-04/05; sem
+ * contrato, lendo cada extra pela identidade da camada) ou re-renderizar a
+ * página como está — e reprovam as incorretas (recusa, slide velho, extra
+ * fundido no comum, contrato reescrito). No 16 o texto não cabe nem na spec, e
+ * re-renderizar é a ÚNICA saída correta.
  *
  * ⚠️ O passo 6 depende do R15 do PR 9 (`specDaRecomposicao`: a recomposição com
  * contrato NÃO carrega `camadasExtras` da spec antiga). Sem ele o `validarSpec`
@@ -827,6 +834,57 @@ async function main() {
       comuns: { servico: 'Seg a sex, 11h às 15h' },
       congelado: { id: congelado.id, midias: midiasCongeladas },
     })
+
+    await pausaParaOBlob(30_000, 'mais duas refeituras no Blob')
+    console.log('16) PR10-04 pelo EXECUTOR: histórico CHEIO + uma linha que o contrato não comporta num extra — re-render como a página está, nunca SPEC_INVALIDA')
+    const casos16 = [
+      { rotulo: 'livre (nota), sem bloco comum', slide: slideC, postId: carrosselC.id, extraId: 'nota', funcao: 'livre', inicio: 'vale só amanhã', comuns: {} as Record<string, string>, congelado: null as { id: string; midias: string[] } | null },
+      { rotulo: 'com função (hora-fds), com bloco comum', slide: slideB, postId: carrosselB.id, extraId: 'hora-fds', funcao: 'servico', inicio: 'Sáb e dom, 12h às 18h', comuns: { servico: 'Seg a sex, 11h às 15h' }, congelado: { id: congelado.id, midias: midiasCongeladas } },
+    ]
+    for (const c of casos16) {
+      const rotulo = `16 ${c.rotulo}`
+      const contratoAntes16 = await encherHistorico(c.slide.pageId)
+      const antes16 = await estadoDaPagina(c.slide.pageId)
+      const camada16 = antes16.camadas.find((x) => x.metadata?.compositor?.extra?.id === c.extraId)
+      if (!camada16) throw new Error(`${rotulo}: a camada extra "${c.extraId}" não está na página`)
+      const texto16 = linhaLonga(c.inicio)
+      const rev16 = await gravarComoOEditor(c.slide.pageId, editar(antes16.camadas, { [String(camada16.id)]: { content: texto16 } }))
+      conferir(`${rotulo}: a linha de ${texto16.length} caracteres passa pelo histórico CHEIO — a recusa é do histórico, não do conteúdo (historico-cheio)`, rev16.estado === 'historico-cheio' && texto16.length > 300, `${rev16.estado}; ${texto16.length} caracteres`)
+      // A página como o editor a deixou, lida do banco (a mesma normalização da leitura depois do job).
+      const gravadas16 = (await estadoDaPagina(c.slide.pageId)).camadas
+      const slideAntes16 = (await midiasDo(c.postId))[1]
+      const pedido16 = await pedirRecomposicaoDaArteCongelada([c.slide.pageId])
+      const job16 = pedido16[0]?.jobId ?? null
+      conferir(`${rotulo}: a edição põe a arte do slide na fila`, !!job16 && pedido16[0].generationId === c.slide.generationId, JSON.stringify(pedido16))
+      if (!job16) continue
+      const x16 = await executarComoOExecutor(job16, c.slide.generationId)
+      const arte16 = await arteDa(c.slide.generationId)
+      if (arte16.url) blobs.add(arte16.url)
+      const jobDepois16 = await db.generationJob.findUnique({ where: { id: job16 }, select: { status: true, lastError: true } })
+      conferir(
+        `${rotulo}: o job fecha DONE, sem falha determinística (nada de SPEC_INVALIDA) e sem recusa gravada`,
+        x16.desfecho === 'DONE' && !x16.erro && jobDepois16?.status === 'DONE' && !arte16.fv.recusaDaRecomposicao,
+        JSON.stringify({ desfecho: x16.desfecho, erro: x16.erro?.slice(0, 160) ?? null, status: jobDepois16?.status ?? null, lastError: String(jobDepois16?.lastError ?? '').slice(0, 80), recusa: arte16.fv.recusaDaRecomposicao ?? null }),
+      )
+      conferir(`${rotulo}: RE-RENDERIZADA como a página está (o texto não cabe na spec: é a única saída correta)`, arte16.fv.recomposicao?.estado === 're-renderizada', String(arte16.fv.recomposicao?.estado ?? null))
+      const midias16 = await midiasDo(c.postId)
+      conferir(`${rotulo}: só o slide da arte trocou, pela mídia nova; a capa ficou e a contagem não diminuiu`, midias16.length === 2 && midias16[0] === FOTO_1 && !!arte16.url && midias16[1] === arte16.url && midias16[1] !== slideAntes16, JSON.stringify(midias16.map((u) => u.slice(-30))))
+      const depois16 = await estadoDaPagina(c.slide.pageId)
+      conferir(`${rotulo}: a página não foi regravada — camadas exatamente como o editor as deixou (os blocos comuns intactos)`, JSON.stringify(depois16.camadas) === JSON.stringify(gravadas16))
+      const extra16 = depois16.camadas.find((t) => t.metadata?.compositor?.extra?.id === c.extraId)
+      const ex16 = extra16?.metadata?.compositor?.extra
+      const papelOk16 = c.funcao === 'livre' ? !extra16?.metadata?.compositor?.papel : extra16?.metadata?.compositor?.papel === c.funcao
+      conferir(`${rotulo}: o extra "${c.extraId}" continua na página com id, função (${c.funcao}) e herança do apoio, editável, com o texto longo da equipe`, editavel(extra16) && ex16?.funcao === c.funcao && ex16?.herdaDe === 'apoio' && papelOk16 && semPrefixo(extra16) === texto16, JSON.stringify({ extra: ex16 ?? null, texto: semPrefixo(extra16).slice(0, 40) }))
+      for (const [papel, texto] of Object.entries(c.comuns)) {
+        const cs = depois16.camadas.filter((t) => (t.type === 'text' || t.type === 'rich-text') && t.metadata?.compositor?.papel === papel && !t.metadata?.compositor?.extra && t.visible !== false)
+        conferir(`${rotulo}: o ${papel} COMUM continua comum (uma camada, sem identidade de extra) e com o texto dele`, cs.length === 1 && semPrefixo(cs[0]) === texto, JSON.stringify(cs.map((x) => [x.id, semPrefixo(x).slice(0, 40)])))
+      }
+      conferir(`${rotulo}: o contrato da página ficou INTOCADO`, JSON.stringify(depois16.copy) === JSON.stringify(contratoAntes16), `${depois16.copy?.revisoes.length ?? 'sem contrato'} revisões`)
+      if (c.congelado) {
+        const m16 = await midiasDo(c.congelado.id)
+        conferir(`${rotulo}: o post já entregue ao publicador (congelado) ficou intocado`, JSON.stringify(m16) === JSON.stringify(c.congelado.midias), JSON.stringify(m16.map((u) => u.slice(-30))))
+      }
+    }
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
