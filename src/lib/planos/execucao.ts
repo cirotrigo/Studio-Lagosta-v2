@@ -611,16 +611,24 @@ export type StatusDaArte = 'PROCESSING' | 'COMPLETED' | 'FAILED'
  * `null` significa "nada a fazer": item que não está em voo, arte que sumiu
  * (apagar a arte não pode mover o item para lugar nenhum) ou situação que já
  * é a certa.
+ *
+ * 🔴 Arte COMPLETED SEM `resultUrl` não é peça pronta: vai a `erro`, nunca a
+ * `pronto` (varredura do PR11-F02, 21/09/2026). Pronto é o fim da produção — o
+ * lote repetido recusa item pronto com `avancou` —, então marcar pronta a peça
+ * sem arquivo prendia o item: bastava alguém abrir o plano antes de repetir a
+ * leva. Em `erro` o item é executável e a repetição produz a peça de novo. O
+ * `resultUrl` é OBRIGATÓRIO de propósito: quem esquecer de lê-lo não compila.
  */
 export function situacaoPelaArte(
   situacaoAtual: StatusDoItem,
   statusDaArte: StatusDaArte | null | undefined,
+  resultUrl: string | null | undefined,
 ): StatusDoItem | null {
   if (situacaoAtual !== 'na-fila' && situacaoAtual !== 'gerando') return null
   if (!statusDaArte) return null
 
   const destino: StatusDoItem =
-    statusDaArte === 'COMPLETED' ? 'pronto' : statusDaArte === 'FAILED' ? 'erro' : 'gerando'
+    statusDaArte === 'COMPLETED' ? (resultUrl ? 'pronto' : 'erro') : statusDaArte === 'FAILED' ? 'erro' : 'gerando'
   return destino === situacaoAtual ? null : destino
 }
 

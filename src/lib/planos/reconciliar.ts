@@ -61,6 +61,9 @@ function motivoDaFalha(fieldValues: unknown): string {
   return 'A produção desta arte falhou. Dá para tentar de novo.'
 }
 
+/** A arte fechou COMPLETED sem arquivo (varredura do PR11-F02): não há imagem para mostrar nem publicar. */
+const MOTIVO_SEM_ARQUIVO = 'A arte terminou sem o arquivo da imagem. Dá para produzir de novo.'
+
 
 // ── Carrossel ───────────────────────────────────────────────────────────────
 
@@ -113,8 +116,8 @@ function atualizarSlidesPelasArtes(
 /**
  * Confere as artes dos itens em voo de um plano e move o que já terminou.
  *
- * `PROCESSING` → "gerando a arte"; `COMPLETED` → "arte pronta"; `FAILED` →
- * "falhou", com o motivo.
+ * `PROCESSING` → "gerando a arte"; `COMPLETED` COM arquivo → "arte pronta";
+ * `COMPLETED` sem arquivo e `FAILED` → "falhou", com o motivo.
  */
 export async function reconciliarPlano(
   projectId: number,
@@ -193,10 +196,10 @@ export async function reconciliarPlano(
       }
 
       const arte = porId.get(item.generationId as string)
-      const para = situacaoPelaArte(de, (arte?.status as StatusDaArte | undefined) ?? null)
+      const para = situacaoPelaArte(de, (arte?.status as StatusDaArte | undefined) ?? null, arte?.resultUrl ?? null)
       if (!para) continue
 
-      const erro = para === 'erro' ? motivoDaFalha(arte?.fieldValues) : undefined
+      const erro = para === 'erro' ? (arte?.status === 'COMPLETED' ? MOTIVO_SEM_ARQUIVO : motivoDaFalha(arte?.fieldValues)) : undefined
       const movido = await mover({ projectId, planoId, itemId: item.id, de, para, erro })
       if (movido) movidos.push(movido)
     }

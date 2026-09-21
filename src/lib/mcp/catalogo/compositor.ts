@@ -134,6 +134,47 @@ function specDe(args: Record<string, unknown>) {
   }
 }
 
+/**
+ * Os problemas da identidade de lote de uma chamada de `compor-leva` (vazio =
+ * pode enfileirar). Com `loteId`, todo item precisa de `itemId`, válido pelo
+ * contrato do lote e único na chamada DEPOIS da normalização (o contrato apara
+ * espaços: "a" e "a " são a mesma chave). `itemId` sem `loteId` é recusado, não
+ * ignorado — quem mandou acha que a leva está protegida contra duplicar. Pelo
+ * mesmo motivo, `itemRevisao` sem `loteId` (C11-1a). A FALTA da `itemRevisao`
+ * num item de plano é problema daquele item só, e volta em `falhas`.
+ */
+function identidadeDaLevaComProblemas(
+  loteId: string | undefined,
+  itens: Array<Record<string, unknown>>,
+  // `strict: false` deixa as chaves do z.infer opcionais: o tipo precisa admitir isso.
+  validar: (entrada: unknown) => { identidade: { itemId?: string } | null; problemas: string[] },
+): string[] {
+  const problemas = new Set<string>()
+  if (loteId === undefined) {
+    const comItemId = itens.flatMap((item, indice) => (item.itemId !== undefined ? [indice] : []))
+    if (comItemId.length > 0) problemas.add(`itemId sem loteId (itens ${comItemId.join(', ')}): mande o loteId da leva junto, ou tire os itemId`)
+    const comRevisao = itens.flatMap((item, indice) => (item.itemRevisao !== undefined ? [indice] : []))
+    if (comRevisao.length > 0) problemas.add(`itemRevisao sem loteId (itens ${comRevisao.join(', ')}): a revisão do item só vale numa leva com loteId`)
+    return Array.from(problemas)
+  }
+  const vistos = new Map<string, number>()
+  for (const [indice, item] of itens.entries()) {
+    if (item.itemId === undefined) {
+      problemas.add(`itens.${indice}.itemId: obrigatório quando loteId vem`)
+      continue
+    }
+    const r = validar({ loteId, itemId: item.itemId })
+    if (!r.identidade) {
+      for (const p of r.problemas) problemas.add(p.startsWith('itemId') ? `itens.${indice}.${p}` : p)
+      continue
+    }
+    const anterior = vistos.get(r.identidade.itemId)
+    if (anterior !== undefined) problemas.add(`itens.${indice}.itemId: "${r.identidade.itemId}" repete o itemId do item ${anterior} — cada peça da leva tem o seu`)
+    else vistos.set(r.identidade.itemId, indice)
+  }
+  return Array.from(problemas)
+}
+
 export const toolsDoCompositor = [
   definirTool({
     nome: 'reverter-arte',
@@ -414,12 +455,15 @@ export const toolsDoCompositor = [
   definirTool({
     nome: 'compor-leva',
     descricao:
-      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.',
+      'Compõe VÁRIAS artes pelo editor de uma vez (uma semana, uma sessão de fotos), sem crédito de imagem. Cada item vira uma peça na fila durável — nada espera na conversa: a resposta traz os ids para acompanhar com ver-geracao, e as peças aparecem na galeria em poucos minutos (a fila roda de minuto em minuto, ~12 peças por varredura). Mesmos campos de compor-arte por item, inclusive o destaque com [colchetes] nas linhas. Teto de 60 itens.\n\nUse depois de montar a copy de cada peça (consultar-dna + consultar-base) e de escolher as fotos (buscar-fotos, sem repetir na leva). Antes de uma leva grande, prove UMA peça com compor-arte e mostre à pessoa.\n\nIDEMPOTÊNCIA: mande `loteId` (a leva) e, em cada item, `itemId` (a peça), estáveis e iguais em qualquer retentativa. Repetir a chamada inteira (timeout, erro no meio) devolve as peças que já existem e cria só as que faltaram; nada duplica. Mudou o conteúdo de um item? É outra peça: use outro itemId. O mesmo itemId com outro conteúdo volta em `conflitos`, sem alterar nada.\n\nITEM DA LEVA DE CONTEÚDO: peça que sai de um item de plano (itemDePlanoId) numa leva com loteId leva também `itemRevisao`, a revisão que o ver-plano devolveu para o item, lida ANTES de montar a copy; sem ela o item volta em `falhas`. Se o item mudou depois dessa leitura, a peça volta recusada em `falhas` (motivo chamada-vencida) em vez de sair com o conteúdo antigo: releia o item com ver-plano, remonte a peça com o conteúdo atual e mande com OUTRO itemId e a itemRevisao nova.\n\nARTE MAIS NOVA NO PLANO: se o item do plano já tem outra arte, mais recente que o pedido que chegou (a pessoa refez pela bancada ou por outra leva), a peça volta em `superadas` e NADA é criado — nem a peça antiga é devolvida como se fosse a do plano. Cada uma traz `arteAtualDoItem` (a arte, a página, quando foi feita e se está pronta ou em produção). Conte isso à pessoa e pergunte o que ela quer: manter a arte atual, ou refazer com o conteúdo atual do item — aí releia o item com ver-plano, remonte a peça e mande com OUTRO itemId e a itemRevisao atual. Nunca refaça sem ela pedir.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
+      loteId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta leva (ex.: "semana-2026-09-14"). A MESMA em toda retentativa da leva.'),
       itens: z
         .array(
           z.object({
+            itemId: z.string().min(1).max(120).optional().describe('Identidade ESTÁVEL desta peça na leva (ex.: "seg-19h-happy"). Obrigatório quando loteId vem; único na chamada.'),
+            itemRevisao: z.string().min(1).max(200).optional().describe('A revisão do item de plano que o ver-plano devolveu para ele (itemRevisao), lida ANTES de montar a copy desta peça. Obrigatória quando o item traz itemDePlanoId e a leva tem loteId: se o item mudou depois dessa leitura, a peça é recusada em vez de sair com o conteúdo antigo.'),
             formato: spec.formato,
             fotoDriveId: spec.fotoDriveId,
             fotoUrl: spec.fotoUrl,
@@ -445,26 +489,98 @@ export const toolsDoCompositor = [
     acesso: { tipo: 'projeto' },
     superficies: ['remoto', 'local'],
     handler: async (args, principal) => {
-      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }] = await Promise.all([import('../../compositor/fila'), import('../tools')])
+      const [{ enfileirarPeca }, { quemDecidiu, canalDoPrincipal }, { CreativeError }, { validarIdentidadeDeLote }] = await Promise.all([
+        import('../../compositor/fila'),
+        import('../tools'),
+        import('../../creatives/errors'),
+        import('../../lotes/identidade'),
+      ])
       const projectId = args.projectId as number
-      const decididoPor = await quemDecidiu(projectId, principal)
       const itens = args.itens as Array<Record<string, unknown>>
-      const enfileiradas: Array<{ indice: number; generationId: string; nome: string | null }> = []
-      const falhas: Array<{ indice: number; erro: string }> = []
+      const loteId = args.loteId as string | undefined
+
+      // A identidade da leva é conferida INTEIRA antes de enfileirar qualquer
+      // peça: metade da leva na fila e a outra metade recusada é justamente a
+      // retomada que a identidade existe para tornar segura.
+      const problemas = identidadeDaLevaComProblemas(loteId, itens, validarIdentidadeDeLote)
+      if (problemas.length > 0) {
+        throw new CreativeError('LOTE_IDENTIDADE_INVALIDA', `Identidade de lote inválida — ${problemas.join('; ')}. Nada foi enfileirado.`, 400, { problemas })
+      }
+
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const pecas: Array<{ indice: number; itemId: string | null; generationId: string; nome: string | null; desfecho: 'criado' | 'reaproveitado' | 'retomado'; situacao: 'pendente' | 'pronta' | 'falhou' }> = []
+      const falhas: Array<{ indice: number; erro: string; codigo?: string; motivo?: string }> = []
+      const conflitos: Array<{ indice: number; itemId: string | null; diferencas: string[]; generationId: string | null }> = []
+      // "Peça superada no plano" (decisão do Ciro, 13/09/2026): o item já tem
+      // outra arte, mais recente que este pedido. Nada foi criado — nem vai para
+      // `pecas`, que o chat leria como a arte do plano.
+      const superadas: Array<{ indice: number; itemId: string | null; arteDestePedido: string | null; arteAtualDoItem: unknown }> = []
       // Em SÉRIE, como todo lote da casa: cada item valida e grava sozinho.
       for (const [indice, item] of itens.entries()) {
+        const itemId = (item.itemId as string | undefined) ?? null
+        const itemRevisao = typeof item.itemRevisao === 'string' ? item.itemRevisao.trim() : ''
+        const doPlano = loteId !== undefined && !!item.itemDePlanoId
+        // A revisão lida no ver-plano é obrigatória para peça de item de plano
+        // numa leva com identidade (C11-1a); a falta é problema DESTE item só.
+        if (doPlano && !itemRevisao) {
+          falhas.push({
+            indice,
+            erro: 'ITEM_REVISAO_OBRIGATORIA — peça de item de plano precisa da itemRevisao que o ver-plano devolve para o item, lida antes de montar a copy. Releia o item e mande a revisão junto.',
+            codigo: 'ITEM_REVISAO_OBRIGATORIA',
+          })
+          continue
+        }
         try {
-          const r = await enfileirarPeca(specDe({ ...item, projectId }), { decididoPor, autor: decididoPor, canal: canalDoPrincipal(principal) })
-          enfileiradas.push({ indice, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null })
+          // `specDe` só copia os campos da spec: o itemId nunca entra nela (nem no hash do lote).
+          const r = await enfileirarPeca(specDe({ ...item, projectId }), {
+            decididoPor,
+            autor: decididoPor,
+            canal: canalDoPrincipal(principal),
+            ...(loteId !== undefined ? { lote: { loteId, itemId: itemId as string } } : {}),
+            ...(doPlano ? { itemRevisao } : {}),
+          })
+          if (r.lote?.superada) {
+            superadas.push({ indice, itemId, arteDestePedido: r.generationId, arteAtualDoItem: r.lote.superada })
+            continue
+          }
+          pecas.push({ indice, itemId, generationId: r.generationId, nome: (item.nome as string | undefined) ?? null, desfecho: r.lote?.desfecho ?? 'criado', situacao: r.lote?.situacao ?? 'pendente' })
         } catch (erro) {
-          falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro) })
+          const e = erro as { code?: unknown; details?: Record<string, unknown> }
+          if (e?.code === 'LOTE_ITEM_CONFLITO') {
+            const diferencas = Array.isArray(e.details?.diferencas) ? (e.details.diferencas as string[]) : []
+            const generationId = typeof e.details?.generationId === 'string' ? e.details.generationId : null
+            conflitos.push({ indice, itemId, diferencas, generationId })
+            continue
+          }
+          const codigo = typeof e?.code === 'string' ? e.code : undefined
+          const motivo = typeof e?.details?.motivo === 'string' ? e.details.motivo : undefined
+          if (motivo === 'superada') {
+            superadas.push({ indice, itemId, arteDestePedido: null, arteAtualDoItem: e.details?.arteAtualDoItem ?? null })
+            continue
+          }
+          falhas.push({ indice, erro: erro instanceof Error ? erro.message : String(erro), ...(codigo ? { codigo } : {}), ...(motivo ? { motivo } : {}) })
         }
       }
+      const contar = (d: string) => pecas.filter((p) => p.desfecho === d).length
+      const reaproveitadas = contar('reaproveitado')
+      const retomadas = contar('retomado')
       return {
-        enfileiradas: enfileiradas.length,
+        enfileiradas: contar('criado'),
+        reaproveitadas,
+        retomadas,
         falhas,
-        pecas: enfileiradas,
-        nota: 'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
+        conflitos,
+        superadas,
+        pecas,
+        nota: [
+          'As peças entram na galeria conforme a fila roda (ver-geracao com cada generationId). Nada foi cobrado.',
+          ...(reaproveitadas + retomadas > 0 ? ['Reaproveitadas já existiam nesta leva com o mesmo conteúdo e não foram duplicadas; retomadas tinham falhado ou se perdido e voltaram à fila.'] : []),
+          ...(falhas.some((f) => f.motivo === 'chamada-vencida') ? ['Recusadas por chamada vencida: o item mudou depois da leitura que montou a peça — releia com ver-plano, remonte a peça com o conteúdo atual e mande com outro itemId e a itemRevisao nova.'] : []),
+          ...(superadas.length > 0
+            ? ['Superadas: o item do plano já tem outra arte, mais recente que o pedido que chegou — nada foi criado. Conte à pessoa qual é a arte atual (arteAtualDoItem: quando foi feita e se está pronta ou em produção) e pergunte o que ela quer: manter essa arte, ou refazer com o conteúdo atual do item (releia com ver-plano, remonte a peça e mande com outro itemId e a itemRevisao atual). Não refaça sem ela pedir.']
+            : []),
+          ...(conflitos.length > 0 ? ['Conflitos: o itemId já foi pedido com outro conteúdo e nada foi alterado — repita o conteúdo original para reaproveitar a peça, ou use outro itemId para uma peça nova.'] : []),
+        ].join(' '),
       }
     },
   }),

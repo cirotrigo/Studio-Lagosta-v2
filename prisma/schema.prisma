@@ -225,6 +225,45 @@ model GenerationJob {
 }
 
 /**
+ * Identidade durável de um item de LOTE (PR 11 de "Marca simples, copy melhor",
+ * 12/09/2026). Uma linha = "o item `itemId` do lote `loteId` deste cliente".
+ * `loteId` e `itemId` vêm de QUEM CHAMA (o Claude no chat) e são estáveis entre
+ * retentativas: repetir a chamada devolve a MESMA Generation e o MESMO job.
+ * A reserva é gravada ANTES da Generation e do job (ver `src/lib/lotes/reserva.ts`).
+ * - Sem tabela de lote: o lote não tem estado próprio além dos itens, e a
+ *   retomada é por item.
+ * - `generationId`/`jobId` SEM FK (vínculo frouxo com entidade apagável,
+ *   precedente de `sourceGenerationId`); `projectId` Int solto, como em
+ *   `GenerationJob` e `LearningSignal`.
+ * - `situacao` é TEXT (`reservado` | `enfileirado`): o desfecho da peça mora na
+ *   Generation e no job, nunca numa cópia aqui.
+ */
+model ItemDeLote {
+  id            String   @id @default(cuid())
+  projectId     Int
+  loteId        String
+  itemId        String
+  /// `lote-v1:<sha256>` do payload canônico — mesma chave com hash diferente é conflito.
+  hashDoPayload String
+  /// O payload que produziu o hash (a spec normalizada), para dizer O QUE difere num conflito.
+  payload       Json
+  situacao      String   @default("reservado")
+  generationId  String?
+  jobId         String?
+  /// A revisão do item de plano (`itemRevisao` do ver-plano) que a CHAMADA declarou ter lido
+  /// ao montar a spec — gravada ao nascer e a cada vínculo, nunca lida do servidor (C11-1a).
+  /// Nula: linha sem item de plano, ou anterior à coluna.
+  planoRevisao  String?
+  /// Quantas Generations este item já criou (a retomada depois de falha cria outra).
+  tentativas    Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([projectId, loteId, itemId])
+  @@index([generationId])
+}
+
+/**
  * Sinal de uso (F1) — a unidade do aprendizado por uso.
  * Uma linha = um fato: "isto foi proposto, aquilo foi escolhido". As duas
  * metades convivem na MESMA linha e qualquer uma pode estar vazia:

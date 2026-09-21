@@ -270,7 +270,7 @@ export const toolsDePlanos = [
   definirTool({
     nome: 'ver-plano',
     descricao:
-      'Mostra a leva do cliente como ela está agora: cada item com horário de Brasília, tema, texto, situação em português e a capa da arte quando ela já existe, mais o resumo do todo ("3 prontas, 2 gerando, 1 falhou"). Sem informar a leva, mostra a que está em aberto.\n\nCONSULTE antes e depois de produzir: é aqui que a situação dos itens é atualizada — as artes terminam em segundo plano, e nada avisa o plano quando ficam prontas. Item que aparece como "falhou" traz o motivo e pode ser produzido de novo.',
+      'Mostra a leva do cliente como ela está agora: cada item com horário de Brasília, tema, texto, situação em português e a capa da arte quando ela já existe, mais o resumo do todo ("3 prontas, 2 gerando, 1 falhou"). Sem informar a leva, mostra a que está em aberto.\n\nCONSULTE antes e depois de produzir: é aqui que a situação dos itens é atualizada — as artes terminam em segundo plano, e nada avisa o plano quando ficam prontas. Item que aparece como "falhou" traz o motivo e pode ser produzido de novo.\n\nCada item traz itemRevisao, a revisão do CONTEÚDO dele (texto, foto, formato, horário e tema — a legenda não conta). Leia o plano ANTES de montar a copy de uma peça e mande essa itemRevisao em compor-leva junto do itemDePlanoId: se o item mudar depois da leitura, a peça é recusada em vez de sair com o conteúdo antigo.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       planoId: z.string().optional().describe('A leva (de criar-plano). Sem isto, a que está em aberto.'),

@@ -290,28 +290,40 @@ describe('decidirGeracao', () => {
 })
 
 describe('situacaoPelaArte', () => {
-  it('arte pronta leva o item em voo para "pronto"', () => {
-    expect(situacaoPelaArte('na-fila', 'COMPLETED')).toBe('pronto')
-    expect(situacaoPelaArte('gerando', 'COMPLETED')).toBe('pronto')
+  const ARQUIVO = 'https://blob/peca.png'
+
+  it('arte pronta — COMPLETED COM arquivo — leva o item em voo para "pronto"', () => {
+    expect(situacaoPelaArte('na-fila', 'COMPLETED', ARQUIVO)).toBe('pronto')
+    expect(situacaoPelaArte('gerando', 'COMPLETED', ARQUIVO)).toBe('pronto')
+  })
+
+  // Varredura do PR11-F02: antes, o status bastava — COMPLETED sem `resultUrl` virava
+  // "pronto" e prendia o item (o lote recusa item pronto com `avancou`). Depois: "erro".
+  it('arte COMPLETED SEM arquivo não é pronta: leva o item em voo para "erro"', () => {
+    expect(situacaoPelaArte('na-fila', 'COMPLETED', null)).toBe('erro')
+    expect(situacaoPelaArte('gerando', 'COMPLETED', null)).toBe('erro')
+    expect(situacaoPelaArte('gerando', 'COMPLETED', '')).toBe('erro')
   })
 
   it('arte em produção move da fila para "gerando", e não mexe em quem já está lá', () => {
-    expect(situacaoPelaArte('na-fila', 'PROCESSING')).toBe('gerando')
-    expect(situacaoPelaArte('gerando', 'PROCESSING')).toBeNull()
+    expect(situacaoPelaArte('na-fila', 'PROCESSING', null)).toBe('gerando')
+    expect(situacaoPelaArte('gerando', 'PROCESSING', null)).toBeNull()
   })
 
   it('arte falha leva para "erro"', () => {
-    expect(situacaoPelaArte('na-fila', 'FAILED')).toBe('erro')
+    expect(situacaoPelaArte('na-fila', 'FAILED', null)).toBe('erro')
   })
 
   it('arte que sumiu não move nada — apagar da galeria não é falhar', () => {
-    expect(situacaoPelaArte('na-fila', null)).toBeNull()
+    expect(situacaoPelaArte('na-fila', null, null)).toBeNull()
   })
 
-  it('item que não está em voo é intocado, qualquer que seja a arte', () => {
-    expect(situacaoPelaArte('pronto', 'FAILED')).toBeNull()
-    expect(situacaoPelaArte('agendado', 'COMPLETED')).toBeNull()
-    expect(situacaoPelaArte('proposto', 'COMPLETED')).toBeNull()
+  it('item que não está em voo é intocado, qualquer que seja a arte — inclusive sem arquivo ("agendado" é terminal)', () => {
+    expect(situacaoPelaArte('pronto', 'FAILED', null)).toBeNull()
+    expect(situacaoPelaArte('agendado', 'COMPLETED', ARQUIVO)).toBeNull()
+    expect(situacaoPelaArte('proposto', 'COMPLETED', ARQUIVO)).toBeNull()
+    expect(situacaoPelaArte('agendado', 'COMPLETED', null)).toBeNull()
+    expect(situacaoPelaArte('pronto', 'COMPLETED', null)).toBeNull()
   })
 })
 
