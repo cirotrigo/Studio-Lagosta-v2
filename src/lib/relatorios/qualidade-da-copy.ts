@@ -66,8 +66,14 @@ export interface EsquemaDaCopy {
   vozDaMarca: boolean
 }
 
-/** Artes anteriores à janela entram (a peça agendada nesta semana pode ter nascido antes) — até este teto. */
+/**
+ * O HISTÓRICO das páginas (as outras artes delas: ajustes, recomposições) é
+ * lido até este teto antes da janela. A arte que o post referencia DIRETAMENTE
+ * (a coluna, a URL da mídia) não tem teto nenhum (PR15-08): a peça agendada
+ * nesta semana pode reusar arte de meses atrás.
+ */
 const HISTORICO_DAS_ARTES_MS = 60 * 24 * 3600_000
+const HISTORICO_DAS_ARTES_DIAS = HISTORICO_DAS_ARTES_MS / (24 * 3600_000)
 const TETO_DE_POSTS = 500
 const TETO_DE_ARTES = 2000
 const TETO_DE_SINAIS = 2000
@@ -150,10 +156,14 @@ export async function lerSemanaDoCliente(
   const desde = new Date(janela.inicio.getTime() - HISTORICO_DAS_ARTES_MS)
 
   // Json sem índice: só as chaves que a medida usa (o `layersSnapshot` e a spec
-  // não viajam). Id da arte, URL da mídia (cada slide do carrossel acha a sua
-  // arte pela URL exata — PR15-01) OU página da arte — é a deduplicação por
-  // página. A MESMA consulta serve às duas leituras (ids, URLs e páginas
-  // pedidos, ids a excluir).
+  // não viajam). A MESMA consulta serve às duas leituras, e o limite de data
+  // vale SÓ no histórico (PR15-08 da revisão final do Codex, 21/09/2026):
+  //  - as DIRETAS — id da arte (a coluna) e URL da mídia (cada slide acha a
+  //    sua arte pela URL exata, PR15-01) —, sem teto de data. O limite cortava
+  //    até a arte que o post aponta, e a peça com contrato saía "sem
+  //    contrato" (no carrossel, os slides sumiam);
+  //  - o HISTÓRICO — as outras artes das páginas, a deduplicação por página —,
+  //    limitado a `desde`.
   const lerArtes = (ids: string[], urlsDasMidias: string[], paginas: string[], excluir: string[], limite: number) =>
     comPrazo(
       () => leitor.$queryRaw<Array<Omit<ArteLida, 'createdAt'> & { createdAt: Date }>>`
@@ -170,30 +180,42 @@ export async function lerSemanaDoCliente(
         "fieldValues"->>'modo' AS modo
       FROM "Generation"
       WHERE "projectId" = ${projectId}
-        AND "createdAt" >= ${desde}
-        AND (id = ANY(${ids}::text[]) OR "resultUrl" = ANY(${urlsDasMidias}::text[]) OR "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
+        AND (
+          id = ANY(${ids}::text[])
+          OR "resultUrl" = ANY(${urlsDasMidias}::text[])
+          OR ("createdAt" >= ${desde} AND "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
+        )
         AND NOT (id = ANY(${excluir}::text[]))
       ORDER BY "createdAt" ASC
       LIMIT ${limite}
     `,
     )
-  const artes = await lerArtes(genIds, urls, pageIdsDosPosts, [], TETO_DE_ARTES)
+  // As diretas primeiro, com o teto inteiro: é delas que sai a peça.
+  const diretas = genIds.length || urls.length ? await lerArtes(genIds, urls, [], [], TETO_DE_ARTES) : []
+  const artes = [...diretas]
 
+  // Depois o histórico das páginas — as dos posts e as que só a arte aponta.
   // C15-11: post agendado por `generationId` nasce SEM `pageId`, e a página só
-  // aparece no `fieldValues.pageId` da arte. Sem ler as OUTRAS artes dessa
-  // página (o ajuste do revisor é uma Generation nova), o desfecho da
-  // visibilidade e a correção do revisor saíam zerados em silêncio. Vale para
-  // a arte casada pela coluna e para a casada pela URL de qualquer slide.
-  const pedidas = new Set(genIds)
-  const midias = new Set(urls)
-  const diretas = artes.filter((a) => pedidas.has(a.id) || (a.resultUrl != null && midias.has(a.resultUrl)))
+  // aparece no `fieldValues.pageId` da arte; sem ler as OUTRAS artes dela (o
+  // ajuste do revisor é uma Generation nova), o desfecho da visibilidade e a
+  // correção do revisor saíam zerados em silêncio.
   const paginasPelaArte = [...new Set(diretas.map((a) => a.pageId).filter((p): p is string => !!p && !pageIdsDosPosts.includes(p)))]
-  if (paginasPelaArte.length && artes.length < TETO_DE_ARTES) {
-    artes.push(...(await lerArtes([], [], paginasPelaArte, artes.map((a) => a.id), TETO_DE_ARTES - artes.length)))
+  const paginasDoHistorico = [...pageIdsDosPosts, ...paginasPelaArte]
+  if (paginasDoHistorico.length && artes.length < TETO_DE_ARTES) {
+    artes.push(...(await lerArtes([], [], paginasDoHistorico, artes.map((a) => a.id), TETO_DE_ARTES - artes.length)))
   }
   if (artes.length >= TETO_DE_ARTES) avisos.push(`mais de ${TETO_DE_ARTES} artes ligadas — a medida olhou as primeiras`)
+  // A arte direta de antes do limite prova que a página dela existia antes
+  // dele — e as outras artes dessa época (o original do autor, um ajuste)
+  // ficaram fora da busca limitada. É dito, nunca um zero calado.
+  const antigas = diretas.filter((a) => new Date(a.createdAt).getTime() < desde.getTime())
+  if (antigas.length) {
+    avisos.push(
+      `${antigas.length} arte(s) ligada(s) direto aos posts são de antes do limite de ${HISTORICO_DAS_ARTES_DIAS} dias do histórico: as outras artes das páginas delas, dessa época, não foram lidas — a medida dessas peças pode estar incompleta`,
+    )
+  }
 
-  const pageIds = [...new Set([...pageIdsDosPosts, ...paginasPelaArte])]
+  const pageIds = [...new Set(paginasDoHistorico)]
   const arteIds = artes.map((a) => a.id)
   const ligado = { OR: [{ postId: { in: postIds } }, { pageId: { in: pageIds } }, { generationId: { in: arteIds } }] }
 

@@ -74,6 +74,91 @@ function projetar(sql: string, g: ArteNoBanco): Record<string, unknown> {
   return linha
 }
 
+const criadoEm = (g: ArteNoBanco): number => {
+  if (!(g.createdAt instanceof Date)) throw new Error(`a arte ${g.id} do banco falso precisa de createdAt (Date)`)
+  return g.createdAt.getTime()
+}
+
+/**
+ * Os parâmetros da consulta das artes pelo PAPEL de cada um — o texto do SQL
+ * logo antes do `${}` —, nunca pela posição: o banco falso aplica cada filtro
+ * onde a consulta o põe, inclusive a data (PR15-08: o dublê que ignorava o
+ * limite de data deixava passar a referência direta cortada por ele).
+ */
+function consultaDeArtes(strings: TemplateStringsArray, valores: unknown[]) {
+  const q = { projectId: 0, ids: [] as string[], urls: [] as string[], desde: new Date(0), paginas: [] as string[], excluir: [] as string[], limite: Infinity }
+  valores.forEach((v, i) => {
+    const antes = strings[i].replace(/\s+/g, ' ')
+    if (antes.endsWith('"projectId" = ')) q.projectId = v as number
+    else if (antes.endsWith('NOT (id = ANY(')) q.excluir = v as string[]
+    else if (antes.endsWith('id = ANY(')) q.ids = v as string[]
+    else if (antes.endsWith('"resultUrl" = ANY(')) q.urls = v as string[]
+    else if (antes.endsWith('"createdAt" >= ')) q.desde = v as Date
+    else if (antes.endsWith(`->>'pageId' = ANY(`)) q.paginas = v as string[]
+    else if (antes.endsWith('LIMIT ')) q.limite = v as number
+    else throw new Error(`parâmetro da consulta das artes sem papel conhecido: …${antes.slice(-40)}`)
+  })
+  // O WHERE com cada `${}` trocado por `$i`: é ele que o banco falso AVALIA.
+  const sql = strings.reduce((t, parte, i) => t + parte + (i < valores.length ? `$${i}` : ''), '').replace(/\s+/g, ' ')
+  const onde = sql.slice(sql.indexOf(' WHERE ') + 7, sql.indexOf(' ORDER BY '))
+  return { ...q, onde }
+}
+
+/** Divide `expr` no operador `op` só onde os parênteses estão fechados. */
+function dividirNoNivel(expr: string, op: 'AND' | 'OR'): string[] {
+  const partes: string[] = []
+  let nivel = 0
+  let inicio = 0
+  for (let i = 0; i < expr.length; i++) {
+    const c = expr[i]
+    if (c === '(') nivel++
+    else if (c === ')') nivel--
+    else if (nivel === 0 && expr.startsWith(` ${op} `, i)) {
+      partes.push(expr.slice(inicio, i))
+      inicio = i + op.length + 2
+      i = inicio - 1
+    }
+  }
+  partes.push(expr.slice(inicio))
+  return partes
+}
+
+/** Os parênteses de fora envolvem a expressão INTEIRA? */
+function envolveTudo(expr: string): boolean {
+  if (!expr.startsWith('(') || !expr.endsWith(')')) return false
+  let nivel = 0
+  for (let i = 0; i < expr.length; i++) {
+    if (expr[i] === '(') nivel++
+    else if (expr[i] === ')') nivel--
+    if (nivel === 0 && i < expr.length - 1) return false
+  }
+  return true
+}
+
+/**
+ * O WHERE da consulta das artes avaliado como o Postgres o avaliaria: AND, OR,
+ * NOT e parênteses, com cada condição conhecida sobre a linha. Condição que o
+ * banco falso não conhece LANÇA — um filtro novo esquecido aqui não pode
+ * passar como "tudo casa".
+ */
+function avaliarOnde(expr: string, valores: unknown[], g: ArteNoBanco): boolean {
+  let e = expr.trim()
+  while (envolveTudo(e)) e = e.slice(1, -1).trim()
+  const ou = dividirNoNivel(e, 'OR')
+  if (ou.length > 1) return ou.some((x) => avaliarOnde(x, valores, g))
+  const e_ = dividirNoNivel(e, 'AND')
+  if (e_.length > 1) return e_.every((x) => avaliarOnde(x, valores, g))
+  if (e.startsWith('NOT ')) return !avaliarOnde(e.slice(4), valores, g)
+  const v = (i: string) => valores[Number(i)]
+  let m: RegExpMatchArray | null
+  if ((m = e.match(/^"projectId" = \$(\d+)$/))) return true
+  if ((m = e.match(/^id = ANY\(\$(\d+)::text\[\]\)$/))) return (v(m[1]) as string[]).includes(g.id)
+  if ((m = e.match(/^"resultUrl" = ANY\(\$(\d+)::text\[\]\)$/))) return g.resultUrl != null && (v(m[1]) as string[]).includes(g.resultUrl)
+  if ((m = e.match(/^"createdAt" >= \$(\d+)$/))) return criadoEm(g) >= (v(m[1]) as Date).getTime()
+  if ((m = e.match(/^"fieldValues"->>'pageId' = ANY\(\$(\d+)::text\[\]\)$/))) return g.pageId != null && (v(m[1]) as string[]).includes(g.pageId)
+  throw new Error(`condição da consulta das artes que o banco falso não conhece: ${e}`)
+}
+
 function criarBanco(parcial: Partial<Comportamento> = {}) {
   const comp: Comportamento = {
     esquema: ESQUEMA_COMPLETO,
@@ -147,14 +232,15 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
             ])
           }
           return comando('artes', () => {
-            conta(`artes-${valores[0]}`)
-            const [, , ids, urls, paginas, excluir, limite] = valores as [number, Date, string[], string[], string[], string[], number]
-            consultasDeArtes.push({ ids, urls, paginas, excluir })
+            const q = consultaDeArtes(strings, valores)
+            conta(`artes-${q.projectId}`)
+            consultasDeArtes.push({ ids: q.ids, urls: q.urls, paginas: q.paginas, excluir: q.excluir })
             const linhas = comp.generations
-              .filter((g) => (ids.includes(g.id) || (g.resultUrl != null && urls.includes(g.resultUrl)) || (g.pageId != null && paginas.includes(g.pageId))) && !excluir.includes(g.id))
-              .slice(0, limite)
+              .filter((g) => avaliarOnde(q.onde, valores, g))
+              .sort((a, b) => criadoEm(a) - criadoEm(b))
+              .slice(0, q.limite)
               .map((g) => projetar(sql, g))
-            return demora(comp.artesMs(valores[0] as number), linhas)
+            return demora(comp.artesMs(q.projectId), linhas)
           })
         },
         socialPost: {
@@ -470,5 +556,71 @@ describe('revisão final · a leitura do serviço alimenta as quatro correções
     })
     const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
     expect(r.medidas[0].correcoes.compositor).toBe(1)
+  })
+})
+
+// ─── revisão FINAL do Codex sobre e3486221 (21/09/2026), pelo caminho real ──
+
+describe('PR15-08 · a referência DIRETA do post não cai no limite do histórico', () => {
+  const original = {
+    versao: 'copy-autoral-v1',
+    origem: { autor: 'claude', em: '2026-06-01T10:00:00.000Z', superficie: 'chat' },
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Sexta é dia', 'de churrasco'] },
+      { id: 'cta', funcao: 'cta', ordem: 1, linhas: ['Vem pra cá'] },
+    ],
+    revisoes: [],
+  }
+  const camadas = JSON.stringify(original.blocos.map((b) => ({ id: b.id, name: b.id, type: 'text', content: b.linhas.join('\n') })))
+  // Três meses antes da semana medida: bem antes do limite de 60 dias do histórico.
+  const ANTIGA = new Date('2026-06-01T10:00:00Z')
+  const linha = (id: string, pageId: string, resultUrl: string | null, fieldValues: Record<string, unknown>, createdAt = ANTIGA): ArteNoBanco => ({
+    id,
+    pageId,
+    resultUrl,
+    createdAt,
+    canal: null,
+    fieldValues: { pageId, source: 'compositor', copyAutoral: { original, efetiva: original, comparavel: true }, ...fieldValues },
+  })
+  const paginas = ['p1', 'p2', 'p3'].map((id) => ({ id, copyAutoral: original, layers: camadas }))
+  // Um ajuste do revisor, também antigo, que o post NÃO referencia: é histórico, e o histórico continua limitado.
+  const ajusteAntigo = linha('g1-ajuste', 'p1', null, { source: 'ajuste-arte', ajustes: {}, revisao: { aplicados: [{ indice: 0, tipo: 'corpo', camadas: ['headline'] }] } }, new Date('2026-06-02T10:00:00Z'))
+
+  it('post desta semana com três artes antigas: as três peças existem, com o contrato, e o histórico incompleto é declarado', async () => {
+    estado.banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'carrossel', generationId: 'g1', mediaUrls: ['u1', 'u2', 'u3'] })],
+      generations: [linha('g1', 'p1', 'u1', {}), linha('g2', 'p2', 'u2', {}), linha('g3', 'p3', 'u3', {}), ajusteAntigo],
+      paginas,
+    })
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.indisponivel).toBeNull()
+    expect(r.medidas.map((m) => m.chave).sort()).toEqual(['page:p1', 'page:p2', 'page:p3'])
+    for (const m of r.medidas) expect(m).toMatchObject({ comparavel: true, exclusao: null, preservada: true })
+    // A busca do histórico continua limitada: o ajuste antigo não foi lido — e isso é dito, nunca um zero calado.
+    expect(r.medidas.find((m) => m.chave === 'page:p1')!.correcoes.revisor).toBe(0)
+    expect(r.avisos.join(' ')).toMatch(/3 arte\(s\) ligada\(s\) direto aos posts.*60 dias.*incompleta/)
+  })
+
+  it('story sem mídia que aponta só pela coluna uma arte antiga: a peça é reconhecida pelo contrato dela', async () => {
+    estado.banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'story', generationId: 'g-velha' })],
+      generations: [linha('g-velha', 'p1', 'u-velha', {})],
+      paginas: [paginas[0]],
+    })
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.medidas).toHaveLength(1)
+    expect(r.medidas[0]).toMatchObject({ chave: 'page:p1', comparavel: true, exclusao: null })
+  })
+
+  it('controle: artes recentes, histórico completo — nenhum aviso, e o ajuste recente da página entra', async () => {
+    const RECENTE = new Date('2026-09-08T10:00:00Z')
+    estado.banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'story', generationId: 'g1', mediaUrls: ['u1'] })],
+      generations: [linha('g1', 'p1', 'u1', {}, RECENTE), { ...ajusteAntigo, createdAt: new Date('2026-09-08T10:05:00Z') }],
+      paginas: [paginas[0]],
+    })
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.avisos).toEqual([])
+    expect(r.medidas[0].correcoes.revisor).toBe(1)
   })
 })
