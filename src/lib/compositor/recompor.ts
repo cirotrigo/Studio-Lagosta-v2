@@ -46,7 +46,7 @@ import { del, put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { marcarForcaAtendida, marcarForcaEmExecucao, marcarRenderComoEsta, pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { lerCopyAutoral, RevisaoDaCopyInvalida, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
+import { HistoricoDaCopyCheio, lerCopyAutoral, tentarCopyEfetivaDasCamadas, type CopyAutoral } from '@/lib/copy-autoral'
 import type { Layer } from '@/types/template'
 import { copyDaArteIndisponivel, registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { CreativeError } from '@/lib/creatives/errors'
@@ -72,7 +72,7 @@ import {
   type SlideDefasado,
 } from './defasagem'
 import { validarSpec, type SpecDePeca } from './spec'
-import { specDaRecomposicao } from './spec-da-recomposicao'
+import { contratoLidoParaRecompor, specDaRecomposicao } from './spec-da-recomposicao'
 
 /** As situações de post que a recomposição alcança — as mesmas da invalidação. */
 const SITUACOES_ALCANCADAS = ['DRAFT', 'SCHEDULED'] as const
@@ -404,38 +404,64 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
    * Página sem contrato recompõe pelo caminho legado, sem contrato.
    *
    * PR9-F01 (revisão FINAL do Codex sobre o PR 9, 18/09/2026): sem contrato
-   * legível (histórico cheio, bloco que o contrato não comporta, página
-   * legada), o caminho legado precisa reconstruir as camadas extras pelo texto
+   * legível, o caminho legado precisa reconstruir as camadas extras pelo texto
    * da PÁGINA — senão compõe com as `camadasExtras` da spec antiga e grava o
    * texto de antes sobre a edição da equipe. No PR 9 a saída era re-renderizar
    * como está; aqui `specComACopyDaPagina` lê cada extra pela IDENTIDADE da
    * camada (PR 10), nas DUAS formas — o livre em `camadasExtras` e o extra COM
-   * FUNÇÃO em `blocos` com `herdaDe` —, então com o HISTÓRICO CHEIO a
-   * recomposição segue, com os extras da página. Com `RevisaoDaCopyInvalida` o
-   * texto da página não cabe no contrato, e pelos mesmos limites não cabe na
-   * spec: compor acabaria em SPEC_INVALIDA com o slide antigo. A peça com
-   * extra é re-renderizada como está, como no PR 9.
+   * FUNÇÃO em `blocos` com `herdaDe`. É o caminho da página SEM contrato; o
+   * histórico cheio tem caminho próprio (PR10-04/05, abaixo). Com
+   * `RevisaoDaCopyInvalida` o texto da página não cabe no contrato, e pelos
+   * mesmos limites não cabe na spec: compor acabaria em SPEC_INVALIDA com o
+   * slide antigo. A peça com extra é re-renderizada como está, como no PR 9.
    * "Com extra" é `specTemExtra` (camadas-extras.ts), o detector do PR 9 — nunca
    * um segundo: olhar só `camadasExtras` deixava o extra com função seguir para a
    * recomposição e morrer em SPEC_INVALIDA com o slide antigo (a guarda escrita
    * pelo caso do exemplo, PR9-F01, 2ª metade, 21/09/2026).
+   *
+   * PR10-04 e PR10-05 (revisão FINAL do Codex sobre 1d18e983, 21/09/2026): o
+   * HISTÓRICO CHEIO recusa a revisão, não o conteúdo — `tentarAplicarRevisao`
+   * o confere antes de validar o texto, então uma linha de 301 caracteres
+   * passava a trava acima e morria em SPEC_INVALIDA; e o caminho sem contrato
+   * perdia o que só o contrato carrega (a regra legada punha "na brasa" na voz
+   * 2 de uma manchete que nasceu inteira na voz 1). Com o histórico cheio a peça
+   * é composta com o contrato COMO A PÁGINA O MOSTRA (`contratoLidoParaRecompor`:
+   * a mesma leitura da copy efetiva, sem a revisão que não cabe), e esse
+   * contrato vale só para COMPOR — a página e o registro da arte ficam sem
+   * contrato novo (`contratoAtual` segue nulo). Página que ele não representa
+   * (texto que nenhum bloco originou, spec que não passa em `validarSpec`) é
+   * tratada como a leitura inválida: com extra, re-render como está; sem extra,
+   * o caminho sem contrato de sempre.
    */
   let contratoAtual: CopyAutoral | null = null
+  /** O contrato com que a peça é COMPOSTA; com o histórico cheio, difere do que se GRAVA (`contratoAtual`). */
+  let contratoParaCompor: CopyAutoral | null = null
   let reRenderizarPorRecusa = false
   // Fora do bloco: o registro da copy da arte (PR3-F02) diz, na recomposição sem leitura, por que a efetiva não foi medida.
   let leituraDoContrato: ReturnType<typeof tentarCopyEfetivaDasCamadas> | null = null
+  // A spec reconstruída pela página (foto, posição original) sai ANTES da decisão: com o histórico cheio é ela que
+  // precisa passar em `validarSpec` para a recomposição seguir (PR10-04). Os avisos dela só valem se recompuser.
+  const reconstruida = candidataARecompor ? specComACopyDaPagina(arte.spec!, page.layers) : null
+  const specPosicionada = reconstruida ? specComAPosicaoOriginal(reconstruida.spec, arte.fieldValues) : null
   if (candidataARecompor) {
     const contratoDaPagina = page.copyAutoral == null ? null : lerCopyAutoral(page.copyAutoral).copy
-    // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — segue pelo caminho sem contrato, a
-    // página mantém o contrato como estava e o motivo entra nos avisos do registro.
-    leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
+    const camadasLidas = lerCamadas(page.layers).camadas as unknown as Layer[]
+    leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, camadasLidas, { superficie: 'recomposicao' }) : null
     contratoAtual = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
+    contratoParaCompor = contratoAtual
     if (leituraDoContrato && leituraDoContrato.ok === false) {
-      reRenderizarPorRecusa = leituraDoContrato.recusa instanceof RevisaoDaCopyInvalida && specTemExtra(arte.spec!)
+      const lido = leituraDoContrato.recusa instanceof HistoricoDaCopyCheio ? contratoLidoParaRecompor(contratoDaPagina!, camadasLidas, specPosicionada!) : null
+      if (lido?.contrato) contratoParaCompor = lido.contrato
+      reRenderizarPorRecusa = !contratoParaCompor && specTemExtra(arte.spec!)
+      const aviso = leituraDoContrato.aviso
       avisos.push(
-        reRenderizarPorRecusa
-          ? `${leituraDoContrato.aviso} A peça tem camada extra e o texto da página não cabe no contrato: a arte foi re-renderizada como a página está, sem medir a diagramação de novo.`
-          : `${leituraDoContrato.aviso} A peça foi recomposta pelo texto da página, sem contrato.`,
+        contratoParaCompor
+          ? `${aviso} A peça foi recomposta com o contrato como a página o mostra (segunda voz, ordem das linhas, vínculos e prefixos lidos das camadas); sem espaço no histórico, a página e a arte ficam sem contrato novo.`
+          : reRenderizarPorRecusa
+            ? lido
+              ? `${aviso} A peça tem camada extra e a página não pode ser recomposta com as decisões do contrato (${lido.motivo}): a arte foi re-renderizada como a página está, sem medir a diagramação de novo.`
+              : `${aviso} A peça tem camada extra e o texto da página não cabe no contrato: a arte foi re-renderizada como a página está, sem medir a diagramação de novo.`
+            : `${aviso} A peça foi recomposta pelo texto da página, sem contrato${lido ? ` (as decisões do contrato não puderam ir junto: ${lido.motivo})` : ''}.`,
       )
     }
   }
@@ -461,14 +487,13 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
   let versaoGravada: string | null = null
 
   if (podeRecompor) {
-    const { spec: specComCopy, avisos: avisosDaSpec } = specComACopyDaPagina(arte.spec!, page.layers)
-    avisos.push(...avisosDaSpec)
+    avisos.push(...reconstruida!.avisos)
     // O lado do bloco é o da composição original: só a copy muda (ver `specComAPosicaoOriginal`).
-    const specPosicionada = specComAPosicaoOriginal(specComCopy, arte.fieldValues)
     // R15 (revisão do Codex sobre o PR 9): com contrato, os blocos E as camadas
     // extras saem dele — os extras da spec antiga carregavam o texto de antes
-    // da edição e faziam `validarSpec` recusar a recomposição.
-    const spec: SpecDePeca = specDaRecomposicao(specPosicionada, contratoAtual)
+    // da edição e faziam `validarSpec` recusar a recomposição. Com o histórico
+    // cheio, o contrato é o lido das camadas (PR10-04/05).
+    const spec: SpecDePeca = specDaRecomposicao(specPosicionada!, contratoParaCompor)
     /**
      * `provar: true` é obrigatório — ver a regra 2 do cabeçalho. Ele também
      * evita os efeitos colaterais da persistência do compositor: pasta da

@@ -492,12 +492,41 @@ export function tentarCopyEfetivaDasCamadas(original: CopyAutoral, camadas: Laye
   }
 }
 
+/** O que a LEITURA das camadas dá, antes de virar revisão. */
+export interface LeituraDosBlocos {
+  /** Os blocos do contrato como as camadas os mostram, mais um `extra-…` por texto que nenhum bloco originou. */
+  blocos: BlocoAutoral[]
+  lacunas: string[]
+}
+
 /**
  * Lê a copy efetiva das camadas e a registra como REVISÃO do sistema sobre o
  * original — só quando algo difere. `origemDaLeitura` é a superfície que
  * desenhou (compositor, ajuste-arte, editor…).
  */
 export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): CopyEfetiva {
+  const { blocos, lacunas } = blocosLidosDasCamadas(original, camadas)
+  const { copy: efetiva, mudancas } = aplicarRevisao(original, blocos, {
+    autor: 'sistema',
+    motivo: `o que foi desenhado (${opcoes.superficie})`,
+    superficie: opcoes.superficie,
+    ...(opcoes.em ? { em: opcoes.em } : {}),
+  })
+  // As lacunas entram DEPOIS da revisão, e o leitor tem teto para elas: o contrato leva só as que cabem (com uma de
+  // resumo), e `lacunas` devolve a lista inteira para o registro da arte (restack sobre 9238098f, 13/09/2026).
+  return { efetiva: lacunas.length ? { ...efetiva, lacunas: lacunasQueCabem(efetiva.lacunas ?? [], lacunas) } : efetiva, mudancas, lacunas }
+}
+
+/**
+ * A LEITURA das camadas em blocos do contrato, sem registrar nada — a primeira
+ * metade de `copyEfetivaDasCamadas`. Exportada para a recomposição com o
+ * histórico da copy CHEIO (PR10-04/05, 21/09/2026): lá a revisão não cabe, mas a
+ * leitura é a mesma, e compor com ela preserva o que só o contrato carrega
+ * (segunda voz, ordem das linhas de um bloco repartido, o vínculo de cada camada
+ * com o seu bloco, o prefixo declarado). Nunca a grave como contrato: os blocos
+ * dela mudaram sem revisão.
+ */
+export function blocosLidosDasCamadas(original: CopyAutoral, camadas: Layer[]): LeituraDosBlocos {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
   const lacunas: string[] = []
   // Por OBJETO, não por id: o compositor pode gravar duas camadas com o mesmo id (o contador de
@@ -657,15 +686,7 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     lacunas.push(`a arte tem um texto que a copy não tinha: "${id}" (${String(c.content ?? '').slice(0, 40)})`)
   }
 
-  const { copy: efetiva, mudancas } = aplicarRevisao(original, blocos, {
-    autor: 'sistema',
-    motivo: `o que foi desenhado (${opcoes.superficie})`,
-    superficie: opcoes.superficie,
-    ...(opcoes.em ? { em: opcoes.em } : {}),
-  })
-  // As lacunas entram DEPOIS da revisão, e o leitor tem teto para elas: o contrato leva só as que cabem (com uma de
-  // resumo), e `lacunas` devolve a lista inteira para o registro da arte (restack sobre 9238098f, 13/09/2026).
-  return { efetiva: lacunas.length ? { ...efetiva, lacunas: lacunasQueCabem(efetiva.lacunas ?? [], lacunas) } : efetiva, mudancas, lacunas }
+  return { blocos, lacunas }
 }
 
 const LACUNAS_DO_SCHEMA = copyAutoralSchema.shape.lacunas.unwrap()

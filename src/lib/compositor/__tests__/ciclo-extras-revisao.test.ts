@@ -19,6 +19,16 @@
  *   ignorava o "renderizar como está" — agora ela o grava e a execução
  *   seguinte o recebe.
  *
+ * Da revisão FINAL do Codex sobre 1d18e983 (BLOQUEADO, 21/09/2026):
+ *
+ * - PR10-04: o histórico cheio (200 revisões) é recusado ANTES de o conteúdo
+ *   ser validado, e a guarda do re-render só olhava a leitura inválida — a
+ *   linha de 301 caracteres num extra seguia para a recomposição e morria em
+ *   SPEC_INVALIDA, com o slide preso na arte antiga.
+ * - PR10-05: com o histórico cheio a recomposição caía no caminho SEM
+ *   contrato, e a regra legada punha "na brasa" na voz 2 de uma manchete que
+ *   nasceu inteira na voz 1.
+ *
  * Banco, Blob, render e fila são falsos, no molde de
  * `recompor-camadas-extras.test.ts`; `comporPeca` é falso com a primeira linha
  * real (`validarSpec` → SPEC_INVALIDA) e monta a foto da spec + a PREPARAÇÃO
@@ -26,6 +36,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Layer } from '@/types/template'
+import { MAX_REVISOES_DA_COPY, VERSAO_DO_CONTRATO, type CopyAutoral } from '@/lib/copy-autoral'
 import { montarAssinatura } from '../assinatura'
 import { copyDaPaginaPorIdentidade, edicaoDuranteOJob, specComACopyDaPagina, textoDoExtraNaPagina, type Defasagem } from '../defasagem'
 import { dividirManchete } from '../segunda-voz'
@@ -228,12 +239,28 @@ const camadasDaPeca = (spec: SpecDePeca): Layer[] => {
   return [foto(spec.foto?.url ?? FOTO_A), ...montadas]
 }
 const trocar = (camadas: unknown, id: string, parcial: Partial<Layer>) => (camadas as Layer[]).map((c) => (c.id === id ? { ...c, ...parcial } : c))
+/** A copy como o chat a escreve: contrato de autoria conhecida. */
+const contratoDe = (blocos: CopyAutoral['blocos']): CopyAutoral => ({
+  versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [], blocos,
+})
+/** O contrato da página com o histórico CHEIO: a próxima revisão não cabe. */
+const comHistoricoCheio = (c: CopyAutoral): CopyAutoral => ({
+  ...c,
+  revisoes: [
+    ...c.revisoes,
+    ...Array.from({ length: MAX_REVISOES_DA_COPY - c.revisoes.length }, (_, i) => ({ em: '2026-09-12T13:00:00.000Z', autor: 'equipe' as const, motivo: `ajuste antigo ${i + 1}`, blocos: [c.blocos[0].id] })),
+  ],
+})
 
 /**
  * Cria a peça, "persiste" (fieldValues com spec e snapshot, contrato da página) e agenda o slide 2/3 de um carrossel.
  * `editar` recebe as camadas persistidas e devolve as que estão na página no momento da recomposição.
  */
-function montarCenario(entrada: Record<string, unknown>, editar: (camadas: Layer[]) => Layer[], opcoes: { comContrato: boolean; assinatura?: typeof assinatura }) {
+function montarCenario(
+  entrada: Record<string, unknown>,
+  editar: (camadas: Layer[]) => Layer[],
+  opcoes: { comContrato: boolean; assinatura?: typeof assinatura; contrato?: (c: CopyAutoral) => CopyAutoral },
+) {
   assinaturaAtual = opcoes.assinatura ?? assinatura
   estado.aposLevantamento = null
   estado.orcamento = true
@@ -259,7 +286,7 @@ function montarCenario(entrada: Record<string, unknown>, editar: (camadas: Layer
   })
   estado.page = {
     id: 'pg-1', name: 'Sex 18/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: editar(camadas), background: '#000',
-    isTemplate: false, templateId: 't-1', copyAutoral: opcoes.comContrato ? persistida.copyAutoral : null, updatedAt: new Date('2026-09-12T15:00:00.000Z'),
+    isTemplate: false, templateId: 't-1', copyAutoral: opcoes.comContrato ? (opcoes.contrato ?? ((c) => c))(persistida.copyAutoral as CopyAutoral) : null, updatedAt: new Date('2026-09-12T15:00:00.000Z'),
     Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
   }
   estado.generation = { id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null, fieldValues: { ...(persistida.fieldValues as Record<string, unknown>), pageId: 'pg-1' } }
@@ -585,4 +612,116 @@ describe('C10-02 — a voz 2 legada é a última linha COM TEXTO; o respiro não
       expect(gravadas.find((c) => c.id === 'apoio')?.content).toBe('no bafo e na lenha')
     })
   }
+})
+
+/**
+ * PR10-04 (revisão FINAL do Codex sobre 1d18e983, 21/09/2026): `tentarAplicarRevisao` recusa o histórico CHEIO
+ * antes de validar o conteúdo novo, então a leitura devolvia `HistoricoDaCopyCheio` mesmo com uma linha de 301
+ * caracteres. A guarda do re-render exigia `RevisaoDaCopyInvalida`, ficava falsa, a recomposição reconstruía uma
+ * spec inválida, o compositor lançava SPEC_INVALIDA e o runner, tratando o erro como determinístico, deixava o
+ * slide com a arte antiga. A classe da primeira recusa não prova que o conteúdo seja válido.
+ */
+describe('PR10-04 — histórico cheio + linha de 301 caracteres num extra: re-render como está, pelo runner', () => {
+  const linhaLonga = 'A'.repeat(301)
+  const formas: Array<[string, CopyAutoral['blocos'], string]> = [
+    ['extra livre (nota)', [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'ap', funcao: 'apoio', ordem: 1, linhas: ['no bafo'] },
+      { id: 'nota', funcao: 'livre', ordem: 2, linhas: ['vale só no almoço'], estilo: { herdaDe: 'apoio' } },
+    ], 'nota'],
+    ['extra com função (hora)', [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'ap', funcao: 'apoio', ordem: 1, linhas: ['no bafo'] },
+      { id: 'hora', funcao: 'servico', ordem: 2, linhas: ['11h às 15h'], estilo: { herdaDe: 'apoio' } },
+    ], 'hora'],
+  ]
+  for (const [forma, blocos, idDoExtra] of formas) {
+    it(`${forma}: a mídia é nova, o contrato e a página ficam intactos, nenhuma falha determinística e o post entregue não é tocado`, async () => {
+      montarCenario(
+        { projectId: 8, formato: 'story', foto: { url: FOTO_A }, copyAutoral: contratoDe(blocos) },
+        (camadas) => trocar(camadas, idDoExtra, { content: linhaLonga }),
+        { comContrato: true, contrato: comHistoricoCheio },
+      )
+      estado.posts.set('post-entregue', { id: 'post-entregue', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: 'zernio-9', mediaUrls: [URL_ANTIGA, SLIDE_3] })
+      const contratoAntes = estado.page!.copyAutoral as CopyAutoral
+      expect(contratoAntes.revisoes).toHaveLength(MAX_REVISOES_DA_COPY)
+      const camadasAntes = estado.page!.layers
+      const { processarRecomposicaoEmBackground } = await import('../recompor')
+
+      await expect(processarRecomposicaoEmBackground(job)).resolves.toBeUndefined()
+      expect(pedirNovaTentativa).not.toHaveBeenCalled()
+      // Re-renderizada como a página está: nada foi recomposto, e o texto da equipe está no desenho.
+      expect(estado.specsCompostas).toEqual([])
+      expect(estado.renders).toHaveLength(1)
+      expect((estado.renders[0] as Layer[]).find((c) => c.id === idDoExtra)?.content).toBe(linhaLonga)
+      // Mídia nova no slide da arte; capa e slide 3 intactos; o post entregue ao publicador não é tocado.
+      expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.exemplo/arte-rapida/8/pg-1-nova-1.png', SLIDE_3])
+      expect(estado.posts.get('post-entregue')!.mediaUrls).toEqual([URL_ANTIGA, SLIDE_3])
+      // A página não foi regravada: camadas e contrato como estavam.
+      expect(estado.page!.layers).toBe(camadasAntes)
+      expect(estado.page!.copyAutoral).toBe(contratoAntes)
+      // O registro da arte: re-renderizada, sem recusa, e a copy desta imagem NÃO medida contra o contrato cheio.
+      const fv = estado.generation!.fieldValues as { recomposicao?: { estado?: string; avisos?: string[] }; recusaDaRecomposicao?: unknown; copyAutoral?: unknown }
+      expect(fv.recomposicao?.estado).toBe('re-renderizada')
+      expect(fv.recomposicao?.avisos?.some((a) => /camada extra/.test(a) && /re-renderizada como a página está/.test(a))).toBe(true)
+      expect(fv.recusaDaRecomposicao ?? null).toBeNull()
+      expect(fv.copyAutoral).toMatchObject({ efetiva: null, comparavel: false })
+      expect(estado.logs).toEqual(['Imagem 2/3 atualizada: a página foi editada e a arte foi re-renderizada.'])
+    })
+  }
+})
+
+/**
+ * PR10-05 (revisão FINAL do Codex sobre 1d18e983, 21/09/2026): com o histórico cheio a recomposição tirava o
+ * contrato e `dividirManchete` aplicava a regra LEGADA — "na brasa" ia para a voz 2 de uma manchete que nasceu
+ * inteira na voz 1, e a manchete de três linhas com duas declaradas na voz 2 voltava com uma só. Hoje a peça é
+ * composta com o contrato COMO A PÁGINA O MOSTRA, e o texto de CADA voz sai como estava.
+ *
+ * O caso "sem extra" é a mudança de comportamento declarada: a peça sem camada extra com o histórico cheio também
+ * passa a compor pelo contrato lido, em vez do caminho sem contrato.
+ */
+describe('PR10-05 — histórico cheio + variante com segunda voz: o texto de cada voz da manchete sobrevive à recomposição', () => {
+  const manchetes: Array<[string, CopyAutoral['blocos'][number], { voz1: string; voz2: string | null }]> = [
+    ['(a) manchete sem segunda voz', { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela', 'na brasa'] }, { voz1: 'Costela\nna brasa', voz2: null }],
+    ['(b) várias linhas declaradas na voz 2', { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela', 'na', 'brasa'], estilo: { linhasNaVoz2: [1, 2] } }, { voz1: 'Costela', voz2: 'na\nbrasa' }],
+  ]
+  const ap: CopyAutoral['blocos'][number] = { id: 'ap', funcao: 'apoio', ordem: 1, linhas: ['no bafo'] }
+  const formas: Array<[string, CopyAutoral['blocos'], string, string]> = [
+    ['extra livre (nota) editado', [ap, { id: 'nota', funcao: 'livre', ordem: 2, linhas: ['vale só no almoço'], estilo: { herdaDe: 'apoio' } }], 'nota', 'vale no jantar'],
+    ['extra com função (hora) editado', [ap, { id: 'hora', funcao: 'servico', ordem: 2, linhas: ['11h às 15h'], estilo: { herdaDe: 'apoio' } }], 'hora', '12h às 16h'],
+    ['sem extra, apoio editado (mudança declarada)', [ap], 'apoio', 'no bafo e na lenha'],
+  ]
+  const vozes = (camadas: unknown) => ({
+    voz1: (camadas as Layer[]).find((c) => c.id === 'headline')?.content ?? null,
+    voz2: (camadas as Layer[]).find((c) => c.id === 'headline2')?.content ?? null,
+  })
+  for (const [manchete, blocoDaManchete, esperado] of manchetes)
+    for (const [forma, resto, idEditado, textoNovo] of formas)
+      it(`${manchete} · ${forma}: recompõe, e as duas vozes saem como a página as tinha`, async () => {
+        montarCenario(
+          { projectId: 8, formato: 'story', foto: { url: FOTO_A }, copyAutoral: contratoDe([blocoDaManchete, ...resto]) },
+          (camadas) => trocar(camadas, idEditado, { content: textoNovo }),
+          { comContrato: true, contrato: comHistoricoCheio, assinatura: comVoz2 },
+        )
+        // Premissa: a peça nasceu com a divisão do AUTOR (a variante tem `headline2`).
+        expect(vozes(estado.page!.layers)).toEqual(esperado)
+        const contratoAntes = estado.page!.copyAutoral
+        const { recomporPaginaDefasada } = await import('../recompor')
+        const r = await recomporPaginaDefasada({ pageId: 'pg-1' })
+
+        expect(r.recomposta).toBe(true)
+        expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
+        expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([CAPA, 'https://blob.exemplo/arte-rapida/8/pg-1-nova-1.png', SLIDE_3])
+        // O texto POR VOZ, antes e depois da recomposição: idêntico.
+        const gravadas = estado.page!.layers as Layer[]
+        expect(vozes(gravadas)).toEqual(esperado)
+        expect(gravadas.find((c) => c.id === idEditado)?.content).toBe(textoNovo)
+        // A spec composta levou a divisão do autor no contrato lido da página.
+        const composta = estado.specsCompostas[0] as SpecDePeca
+        expect(composta.copyAutoral!.blocos.find((b) => b.id === 'h')!.estilo?.linhasNaVoz2).toEqual(blocoDaManchete.estilo?.linhasNaVoz2)
+        // O contrato da página e o registro da arte não ganham nada: a revisão não cabe no histórico.
+        expect(estado.page!.copyAutoral).toBe(contratoAntes)
+        expect((estado.generation!.fieldValues as { copyAutoral?: unknown }).copyAutoral).toMatchObject({ efetiva: null, comparavel: false })
+        expect(r.avisos.some((a) => /contrato como a página o mostra/.test(a))).toBe(true)
+      })
 })

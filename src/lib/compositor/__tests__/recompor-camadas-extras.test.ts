@@ -440,8 +440,8 @@ describe('recomporPaginaDefasada — R21: spec sem contrato com o extra de servi
  * está: as camadas e o contrato ficam, o aviso sai e só o slide troca.
  */
 describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa peça com camada extra', () => {
-  // PR 10: com histórico cheio os extras são reconstruídos pela IDENTIDADE da camada (`specComACopyDaPagina`),
-  // então a peça é RECOMPOSTA com o texto novo; com bloco que o contrato não comporta, re-render como está.
+  // PR 10: com histórico cheio a peça é RECOMPOSTA com o texto novo, pelo contrato COMO A PÁGINA O MOSTRA
+  // (`contratoLidoParaRecompor`, PR10-04/05); com bloco que o contrato não comporta, re-render como está.
   const casos: Array<[string, string, (c: CopyAutoral) => CopyAutoral, 'recompoe' | 're-renderiza']> = [
     ['histórico cheio (200 revisões)', 'Amanhã', (c) => ({
       ...c,
@@ -547,7 +547,8 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
  * PR 10 (R1, 21/09/2026): no ciclo os extras voltam pela IDENTIDADE da camada, nas duas formas. Com o HISTÓRICO CHEIO a
  * leitura do contrato recusa, mas o texto da página cabe na spec: a peça pode ser RECOMPOSTA com o texto da equipe (o
  * que o PR 10 faz) ou re-renderizada como está (o que o PR 9 fazia) — as duas são corretas, e o teste afirma o DESFECHO
- * que a pessoa vê, não o mecanismo. Com a LEITURA INVÁLIDA o texto não cabe nem na spec (os limites de linha são os do
+ * que a pessoa vê, não o mecanismo (desde PR10-04/05 a recomposição usa o contrato lido das camadas; a página LEGADA
+ * com o extra com função, que esse contrato não representa, re-renderiza). Com a LEITURA INVÁLIDA o texto não cabe nem na spec (os limites de linha são os do
  * contrato, R06): recompor só pode terminar em SPEC_INVALIDA, então re-renderizar é a ÚNICA saída correta, e ali as
  * asserções do PR 9 ficam como estavam.
  *
