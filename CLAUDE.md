@@ -10229,3 +10229,74 @@ linha do lote ligada à peça. Módulo PURO `src/lib/planos/decisao-do-item.ts`
     `lote.superada`, nada escrito; o controle sem refação não avisa).
 - A repetição que mantém a edição da equipe e o rascunho apagado pela equipe são
   do agendamento (PR 12).
+
+**Da revisão FINAL do Codex sobre ebcebab8 (BLOQUEADO, PR11-F01…F02, 21/09/2026):**
+
+- 🔴 **Teste de compatibilidade começa do estado que a versão ANTERIOR grava —
+  nunca de uma peça criada pelo código novo** (PR11-F01). A main grava
+  `GenerationJob.payload.planoRevisao` como a string do `json-stable-stringify`
+  de 15 campos do item (`enfileirar-composicao.ts`, linhas 32–38 e 49 em
+  6405bfd5 — único escritor, e só no payload do job COMPOR; nunca em
+  `fieldValues`). O HEAD comparava essa string LITERALMENTE com `rev1:<hash>`:
+  sempre "diferente", e o mesmo pedido de um item intocado virava `superada`
+  (peça viva ou pronta) ou `revisado` (job terminal com o item em voo) depois
+  do deploy. O teste de adoção existente criava a peça inicial com o próprio
+  HEAD — o método de medição que não podia dar outro resultado.
+- **`confrontarRevisaoGravada`** (`revisao-do-item.ts`, puro) reconhece o legado
+  SÓ pelos dois conjuntos EXATOS de chaves — o de 15 e o de 14 sem `candidatas`
+  (a do 6892e362; os dois entraram na main no mesmo merge, o #115 de 09/09,
+  então a produção só rodou a de 15) — e compara os campos que o `rev1` trata
+  como conteúdo E o legado capturou (copy, foto, candidatas, formato, quando,
+  tema), cada um pelo `stableStringify` da MESMA expressão da main. Os nove que
+  o `rev1` exclui de propósito (legenda, via, modelo, direção, ajuste,
+  referências, cliente, escopo, campanha) não contam (C11-1b). Qualquer outra
+  forma vale como a ausência ("desconhecido"), nunca "igual" por palpite.
+- 🔴 **Substitui SÓ a comparação de REVISÃO**: a da spec gravada (`pedido`)
+  continua a de sempre, com e sem lote — spec diferente com revisão legada
+  igual continua sem ser reaproveitada. O F01 é deixar de recusar o mesmo
+  pedido, nunca aceitar pedido diferente.
+- 🔴 **Não "resolver" legado transformando toda revisão antiga em
+  "desconhecido"**: o job morto de um item cuja copy mudou seria RECUPERADO em
+  vez de recusado — trocar um defeito por outro (mutação medida: 10 testes
+  caem, inclusive a recusa depois de edição real).
+- ⚠️ **Limites declarados** — o legado não tem testemunha para: (1) o contrato
+  da copy (`copyAutoral`): a main nunca o pôs na revisão; o TEXTO dele segue
+  coberto pelo `copy` (o espelho posicional), e só mudança de ESTRUTURA (voz 2
+  declarada, grupo de leitura, função, fatos) depois de um enfileiramento
+  legado passa. **Medido em 21/09/2026, só leitura: ZERO contratos gravados em
+  produção** (página, arte ou item de plano) — o limite é real, mas vazio.
+  Comparar o contrato atual com o `payload.spec.copyAutoral` foi rejeitado: no
+  caminho do chat a spec traz o contrato DE QUEM CHAMOU, e daria "diferente"
+  falso. (2) as `candidatas`, na versão de 14 chaves: troca só delas passa como
+  "igual".
+- **As fixtures são a string EXATA que a main grava, escrita à mão** — conferida
+  byte a byte contra a expressão da própria main avaliada sobre o mesmo item
+  (6405bfd5 para a de 15; 6892e362 para a de 14). No passo 10 da prova o estado
+  da main é gravado à mão no branch de dev, com uma régua da fixture contra a
+  expressão literal da main.
+- 🔴 **Status sem o arquivo não é "pronta"** (PR11-F02). A reserva lia só o
+  `status` da Generation e devolvia `reaproveitado/pronta` para peça COMPLETED
+  com `resultUrl` nulo: nunca chegava à tabela do plano (que já separa
+  `pronta-sem-arquivo`), e cada repetição devolvia de novo a peça sem imagem.
+  Hoje `lerVinculo` pede `status` E `resultUrl`, `estadoDaPeca` manda a peça sem
+  arquivo à recuperação — onde valem as guardas do plano: item em voo ganha
+  peça nova; `pronto`/`agendado` recusa `avancou` — e `GeracaoDaPeca` torna o
+  `resultUrl` OBRIGATÓRIO no tipo: leitor que volte a pedir só o status não
+  compila. `situacaoDaPeca` diz "pronta" só com arquivo.
+- ⚠️ **Da varredura, fora do diff do PR 11 e NÃO mexido (código da main)**:
+  `situacaoPelaArte` (`execucao.ts`, pela reconciliação do `ver-plano`) move o
+  item em voo para `pronto` quando a arte fica COMPLETED sem olhar o arquivo —
+  depois disso a peça sem arquivo não é mais recuperada pelo lote (a recusa
+  `avancou` é honesta, mas não recupera); `fecharJob` espelha COMPLETED em
+  `DONE` sem olhar o arquivo (é a origem do estado do F02); o "usa esta arte" do
+  `editar-item-do-plano` aceita arte COMPLETED sem arquivo; o carrossel confere
+  o guia só pelo status. E a porta `superadas` da reserva
+  (`arteQueSuperaAPeca`) decide pelo vínculo, não pela vida da outra arte (a
+  linha 4a da tabela exige viva ou pronta) — decisão aprovada e mantida.
+- Varredura das comparações contra dado já gravado, o que foi descartado: o
+  hash e a revisão de `ItemDeLote` (tabela nova, sem linha legada; `hashConfere`
+  já versionado); a spec gravada (mesma régua da main — cru sem lote, e com
+  lote só descarta carimbos, nunca mais estrita); `fieldValues.planoRevisao` (a
+  main nunca o gravou: vale como ausência); `fieldValues.pageId` (lido, não
+  comparado); o token da chamada (os dois lados são do código novo, e antes do
+  deploy o `ver-plano` não o devolvia: `ITEM_REVISAO_OBRIGATORIA`).
