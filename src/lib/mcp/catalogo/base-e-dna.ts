@@ -222,9 +222,50 @@ export const toolsDeBaseEDna = [
   }),
 
   definirTool({
+    nome: 'consultar-voz',
+    descricao:
+      'Mostra a VOZ COMPACTA do cliente (a identidade de TEXTO curta e versionada: descrição, tratamento, termos da casa, proibições, exemplos aprovados, reescritas e as regras recentes com escopo, motivo e data) e diz QUEM MANDA na copy hoje: `fonte: "voz"` (cliente MIGRADO — a voz vence o toneOfVoice/contentRules do DNA), `"legado"` (o DNA de texto ainda manda; a voz, se existir, é prévia) ou `"nenhuma"`. Só leitura.\n\nUse ANTES de escrever copy quando quiser saber se o cliente já está na voz compacta, e antes de virar-regra para saber quais regras ativas existem (o id delas é o que `substitui` recebe). A migração é decisão do Ciro, cliente a cliente — esta tool não migra nada.',
+    schema: z.object({ projectId: z.number().describe('ID do cliente.') }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args) => {
+      const [{ lerRegistroDaVoz, contextoDeVoz }, { db }] = await Promise.all([import('../../brand/voz-service'), import('../../db')])
+      const projectId = args.projectId as number
+      const [registro, contexto, dna] = await Promise.all([
+        lerRegistroDaVoz(projectId),
+        contextoDeVoz(projectId),
+        db.brandDNA.findUnique({ where: { projectId }, select: { toneOfVoice: true, contentRules: true } }),
+      ])
+      const legado = {
+        toneOfVoiceCaracteres: dna?.toneOfVoice?.length ?? 0,
+        contentRulesCaracteres: dna?.contentRules?.length ?? 0,
+      }
+      return {
+        fonte: contexto.fonte,
+        migradaEm: contexto.migradaEm,
+        vozPendente: contexto.vozPendente,
+        versao: registro?.versao ?? null,
+        voz: registro?.voz ?? null,
+        problemasDaVoz: registro?.problemas ?? [],
+        textoNoPromptDeCopy: contexto.texto,
+        caracteresNoPrompt: contexto.texto?.length ?? 0,
+        regrasDeArte: contexto.regrasDeArte,
+        legado,
+        mensagem:
+          contexto.fonte === 'voz'
+            ? `Cliente MIGRADO: a voz compacta (versão ${registro?.versao}) é a lei do TEXTO — ${contexto.texto?.length ?? 0} caracteres no prompt, contra ${legado.toneOfVoiceCaracteres + legado.contentRulesCaracteres} do DNA legado.`
+            : registro
+              ? `A voz existe (versão ${registro.versao}) mas o cliente NÃO foi migrado: o DNA de texto continua mandando. Migrar é decisão do Ciro.`
+              : 'Este cliente não tem voz compacta: o DNA de texto (toneOfVoice + contentRules) é a identidade de copy.',
+      }
+    },
+  }),
+
+  definirTool({
     nome: 'virar-regra',
     descricao:
-      'Transforma uma correção que a pessoa aprovou na conversa numa regra que vale daqui para a frente. Use quando alguém corrigir a arte ou o texto e a correção não for só para aquela peça.\n\n⚖️ TRIAGEM, antes de chamar: **regra temporária ou de campanha → base de conhecimento com validade** (mande `validade`; ex: "durante o Festival Italiano o rótulo aparece na foto"). **Identidade permanente da marca → DNA** (mande `secao`; ex: "a logo sempre no canto direito", "nunca escrever preço em vermelho"). O DNA é eterno e entra em TODO prompt — regra com prazo ali continuaria mandando meses depois do fim da campanha, e ninguém lembraria de tirar. Na dúvida, pergunte à pessoa até quando a regra vale.\n\nNo DNA a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto (diferente de atualizar-dna, que substitui).\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa o que será gravado e só então chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
+      'Transforma uma correção que a pessoa aprovou na conversa numa regra que vale daqui para a frente. Use quando alguém corrigir a arte ou o texto e a correção não for só para aquela peça.\n\n⚖️ TRIAGEM, antes de chamar: **regra temporária ou de campanha → base de conhecimento com validade** (mande `validade`; ex: "durante o Festival Italiano o rótulo aparece na foto"). **Identidade permanente da marca → DNA** (mande `secao`; ex: "a logo sempre no canto direito", "nunca escrever preço em vermelho"). O DNA é eterno e entra em TODO prompt — regra com prazo ali continuaria mandando meses depois do fim da campanha, e ninguém lembraria de tirar. Na dúvida, pergunte à pessoa até quando a regra vale.\n\nNo DNA a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto (diferente de atualizar-dna, que substitui). A resposta traz `conflitos`: linhas da seção que falam do mesmo assunto — no DNA não há substituição mecânica, então mostre-as à pessoa.\n\n🗣️ Cliente MIGRADO para a VOZ COMPACTA (consultar-voz diz): regra de TEXTO (sem `secao`, ou em toneOfVoice/contentRules) vai para a VOZ, com `escopo` (copy · arte · ambas), motivo e data; a proposta devolve `versaoLida`, e a confirmação exige `versaoDaVoz` igual a ela. Se ela fala do mesmo assunto de uma regra ativa, a tool RECUSA com `CONFLITO_DE_REGRA` e lista as regras: pergunte à pessoa e chame de novo com `substitui` (o id da antiga, que sai do prompt e fica no histórico) ou `conviver: true` (as duas ficam). As seções de ARTE do DNA (composition, visualStyle, photoDirection, approvalChecklist) continuam no DNA mesmo no cliente migrado.\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa o que será gravado e só então chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
     schema: z.object({
       projectId: z.number().describe('ID do cliente.'),
       secao: z
@@ -249,6 +290,22 @@ export const toolsDeBaseEDna = [
         .boolean()
         .optional()
         .describe('Só grava com true. Sem isto devolve a proposta para você mostrar à pessoa.'),
+      escopo: z
+        .enum(['copy', 'arte', 'ambas'])
+        .optional()
+        .describe('Voz compacta: onde a regra manda — só na copy, só na arte, ou nas duas (padrão). Ignorado no DNA legado e na base.'),
+      substitui: z
+        .string()
+        .optional()
+        .describe('Voz compacta: id da regra ativa que esta SUBSTITUI (a antiga sai do prompt e fica no histórico). Use quando a tool devolver CONFLITO_DE_REGRA e a pessoa disser que a nova vale no lugar da antiga.'),
+      conviver: z
+        .boolean()
+        .optional()
+        .describe('Voz compacta: manter as duas regras mesmo com conflito apontado — só com a decisão explícita da pessoa.'),
+      versaoDaVoz: z
+        .number()
+        .optional()
+        .describe('Voz compacta: a `versaoLida` que a PROPOSTA devolveu. OBRIGATÓRIA ao confirmar (a gravação é recusada com VOZ_DIVERGENTE se a voz mudou desde a proposta). Ignorado no DNA legado e na base.'),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
     acesso: { tipo: 'projeto' },
@@ -274,7 +331,29 @@ export const toolsDeBaseEDna = [
         // Só o ramo com prazo escreve na base, e só ele precisa de autor.
         autor: validade ? await resolverAutor(projectId, principal) : undefined,
         confirmado: args.confirmado === true,
+        escopo: args.escopo === 'copy' || args.escopo === 'arte' || args.escopo === 'ambas' ? args.escopo : undefined,
+        substitui: typeof args.substitui === 'string' && args.substitui.trim() ? args.substitui.trim() : undefined,
+        conviver: args.conviver === true,
+        versaoDaVoz: typeof args.versaoDaVoz === 'number' ? args.versaoDaVoz : undefined,
       })
+
+      if (resultado.destino === 'voz') {
+        if (resultado.ok === false) {
+          return {
+            ...resultado,
+            mensagem:
+              resultado.erro === 'CONFLITO_DE_REGRA'
+                ? `NADA foi gravado: ${resultado.mensagem} Pergunte à pessoa e chame de novo com \`substitui\` (id da regra antiga) ou \`conviver: true\`.`
+                : `NADA foi gravado: ${resultado.mensagem}`,
+          }
+        }
+        return {
+          ...resultado,
+          mensagem: resultado.gravado
+            ? `Regra gravada na voz compacta (versão ${resultado.versaoGravada}, escopo ${resultado.regra.escopo})${resultado.substituida ? `, substituindo "${resultado.substituida.id}"` : ''}. Vale a partir da próxima copy.`
+            : `Proposta montada, NADA foi gravado ainda. Mostre à pessoa a regra${resultado.substituida ? ` (substitui "${resultado.substituida.id}")` : ''}${resultado.conflitos.length ? ` — convive com ${resultado.conflitos.length} regra(s) sobre o mesmo assunto` : ''} e, com o sim dela, chame de novo com confirmado: true E versaoDaVoz: ${resultado.versaoLida} (a versão desta proposta).`,
+        }
+      }
 
       if (resultado.destino === 'base') {
         return {

@@ -231,8 +231,9 @@ export function montarEvidencias(
     fontes: contexto.fonts,
     cores: contexto.colors,
     dna: {
-      toneOfVoice: contexto.dna.toneOfVoice,
-      contentRules: contexto.dna.contentRules,
+      // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
+      toneOfVoice: contexto.voz.texto,
+      contentRules: contexto.voz.regrasDaMarca,
       composition: contexto.dna.composition,
       visualStyle: contexto.dna.visualStyle,
       photoDirection: contexto.dna.photoDirection,

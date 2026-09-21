@@ -655,6 +655,7 @@ model Project {
   specimenFontFamilies        String[]                @default([])
   chatUploads                 ChatUpload[]
   brandDNA                    BrandDNA?
+  brandVoice                  BrandVoice?
   anchorImages                ProjectAnchorImage[]
   contentPillars              ContentPillar[]
   laterAccountId              String?
@@ -747,6 +748,29 @@ model BrandDNA {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
   Project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/// A VOZ COMPACTA da marca (F2/F5 de "Marca simples, copy melhor", PR 7,
+/// 12/09/2026): como a marca fala, em campos curtos e versionados — o que o
+/// Claude lê antes de escrever. Substitui `BrandDNA.toneOfVoice`/`contentRules`
+/// na COPY quando o cliente foi MIGRADO (`migradaEm`); até lá o legado continua
+/// mandando. A precedência mora num lugar só (`src/lib/brand/voz.ts`).
+/// Migration aditiva; nenhum conteúdo é migrado sozinho (isso é o PR 13, por
+/// manifesto e com o olho do Ciro).
+model BrandVoice {
+  id           Int       @id @default(autoincrement())
+  projectId    Int       @unique
+  /// Versão do CONTEÚDO: sobe a cada gravação. É o que a prévia da migração cita e o que a escrita confere (compare-and-set).
+  versao       Int       @default(1)
+  /// A voz em si — contrato `voz-v1` (descrição, tratamento, exemplos, antes→depois, termos, proibições, regras com escopo e substituição).
+  voz          Json
+  /// Quando a voz nova passou a valer para este cliente. Nula = ainda no legado (o DNA continua mandando na copy).
+  migradaEm    DateTime?
+  /// Snapshot SOMENTE LEITURA do DNA de texto no momento da migração (toneOfVoice, contentRules, versão do DNA) — o caminho de volta.
+  dnaArquivado Json?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  Project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 /// Anchor sheet do projeto: fotos-âncora canônicas por tipo de cena, usadas

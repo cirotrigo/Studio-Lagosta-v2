@@ -255,6 +255,8 @@ function contextoDaMarca(brand: BrandContext | null): string {
   if (brand.dna.visualStyle) linhas.push(`ESTILO VISUAL (DNA): ${brand.dna.visualStyle}`)
   if (brand.dna.composition) linhas.push(`COMPOSIÇÃO (DNA — é o repertório da marca, não ordem para esta peça): ${brand.dna.composition}`)
   if (brand.dna.contentRules) linhas.push(`REGRAS DA MARCA (proibições — valem para o que a peça CRIA): ${brand.dna.contentRules}`)
+  // Regras de ARTE nascidas depois da migração para a voz compacta (o DNA não as tem).
+  if (brand.voz?.regrasDeArte) linhas.push(`REGRAS RECENTES DA MARCA PARA A ARTE (voz compacta — decisão da casa, vencem a prosa do DNA): ${brand.voz.regrasDeArte}`)
   // A assinatura REAL, lida das peças aprovadas. Quando ela e a prosa do DNA
   // divergem (o manual do Espeto dizia Roadhawk; as peças aprovadas usam
   // Bevan), vale o que está nas peças — o DNA descreve intenção, isto mede.

@@ -13,6 +13,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import type { BrandContext } from '@/lib/brand/brand-context'
+import { SEM_VOZ } from '@/lib/brand/voz'
 import { buildArtePrompt } from '../image-prompt-builder'
 
 function marca(projectId: number, projectName: string): BrandContext {
@@ -33,6 +34,7 @@ function marca(projectId: number, projectName: string): BrandContext {
     logoUrl: null,
     brandManualUrl: null,
     artDirection: null,
+    voz: SEM_VOZ,
   }
 }
 

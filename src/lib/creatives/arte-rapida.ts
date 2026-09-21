@@ -41,6 +41,7 @@ import { fecharSugestaoDeFoto } from '@/lib/aprendizado/sinal-de-foto'
 import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import { registrarUsoDeFoto } from '@/lib/creatives/uso-de-foto'
 import { vigenteEm } from '@/lib/knowledge/vigencia'
+import { precedenciaDaVoz, type ContextoDeVoz } from '@/lib/brand/voz'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { casaDiaComNome, casaTemaComTags } from '@/lib/creatives/casar-tema'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
@@ -208,7 +209,14 @@ export interface PrepareCreativeResult {
     logos: unknown[]
     colors: unknown[]
     fonts: unknown[]
-    /** DNA da marca (aba Marca) — identidade que vale para TODA arte/copy. */
+    /**
+     * DNA da marca (aba Marca) — identidade que vale para TODA arte/copy.
+     * `toneOfVoice` e `contentRules` são a identidade de TEXTO EFETIVA pela
+     * precedência (PR 7): no cliente migrado, o texto compacto da voz (e
+     * `contentRules` null — as regras já estão nele); no legado, o DNA como
+     * sempre. É o que mantém os chamadores antigos (skills, API externa)
+     * recebendo a identidade certa sem mudar o contrato (PR7-01).
+     */
     dna: {
       toneOfVoice: string | null
       contentRules: string | null
@@ -216,6 +224,8 @@ export interface PrepareCreativeResult {
       visualStyle: string | null
       photoDirection: string | null
     } | null
+    /** A precedência resolvida (fonte, versão, regras de arte da voz) — para quem quiser mais que os dois campos acima. */
+    voz: ContextoDeVoz
   }
   knowledge: Record<string, string>
 }
@@ -233,6 +243,7 @@ const PROJECT_SELECT = {
   brandStyleDescription: true,
   cuisineType: true,
   brandDNA: true,
+  brandVoice: { select: { voz: true, versao: true, migradaEm: true } },
   BrandColor: { select: { name: true, hexCode: true }, orderBy: { id: 'asc' } },
   CustomFont: { select: { name: true, fontFamily: true, fileUrl: true }, orderBy: { id: 'asc' } },
   Logo: {
@@ -446,6 +457,12 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     orderBy: { category: 'asc' },
   })
 
+  // A identidade de TEXTO pela precedência (voz compacta × DNA legado) — a
+  // mesma conta do loader único, sobre o que este select já traz (PR7-01).
+  const voz = precedenciaDaVoz({
+    registro: project.brandVoice ?? null,
+    dna: { toneOfVoice: project.brandDNA?.toneOfVoice ?? null, contentRules: project.brandDNA?.contentRules ?? null },
+  })
   const knowledge: Record<string, string> = {}
   for (const entry of kbEntries) {
     const key = KB_KEYS[entry.category] ?? entry.category
@@ -483,15 +500,20 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       logos: project.Logo,
       colors: project.BrandColor,
       fonts: project.CustomFont,
-      dna: project.brandDNA
-        ? {
-            toneOfVoice: project.brandDNA.toneOfVoice,
-            contentRules: project.brandDNA.contentRules,
-            composition: project.brandDNA.composition,
-            visualStyle: project.brandDNA.visualStyle,
-            photoDirection: project.brandDNA.photoDirection,
-          }
-        : null,
+      // Com voz MIGRADA o bloco existe mesmo sem BrandDNA (o schema e
+      // `migrarParaVoz` permitem): senão o chamador antigo lia `dna: null` e
+      // ficava sem a identidade efetiva (PR7-01-R da revisão do Codex).
+      dna:
+        project.brandDNA || voz.fonte === 'voz'
+          ? {
+              toneOfVoice: voz.fonte === 'voz' ? voz.texto : (project.brandDNA?.toneOfVoice ?? null),
+              contentRules: voz.fonte === 'voz' ? voz.regrasDaMarca : (project.brandDNA?.contentRules ?? null),
+              composition: project.brandDNA?.composition ?? null,
+              visualStyle: project.brandDNA?.visualStyle ?? null,
+              photoDirection: project.brandDNA?.photoDirection ?? null,
+            }
+          : null,
+      voz,
     },
     knowledge,
   }

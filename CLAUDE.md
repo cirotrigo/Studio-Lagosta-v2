@@ -6592,6 +6592,134 @@ dev: `scripts/validar-copy-autoral.ts`.
   edição só da manchete → recomposição com UM serviço, slide trocado e capa
   intacta; mais o controle com todos os blocos da função vazios. As duas
   mutações (contagem antiga; vazio nunca disputando) derrubam uma prova cada.
+
+### A voz compacta e a precedência da identidade de TEXTO (PR 7 de "Marca simples, copy melhor", 12/09/2026)
+
+`BrandVoice` (1:1 com o projeto; migration aditiva `20260912180000_brand_voice`)
+guarda a voz compacta da marca — `voz` (JSONB, contrato `voz-v1`), `versao`
+(cresce a cada gravação), `migradaEm` (quando a voz passou a valer) e
+`dnaArquivado` (o snapshot do DNA de texto na migração). Contrato, precedência
+e "virar regra" são PUROS em `src/lib/brand/voz.ts`; a única casa com Prisma é
+`voz-service.ts`. **Nenhum conteúdo é migrado por esta fundação**: a voz de
+cada cliente é escrita e aprovada no PR 13, por manifesto. Prova de integração
+no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
+
+- **A voz é SÍNTESE, não arquivo**: descrição, tratamento, termos da casa
+  (grafia exata), proibições, exemplos aprovados, reescritas antes→depois e as
+  REGRAS com `id`, texto, motivo, data, `escopo` (copy · arte · ambas),
+  `substitui` e `ativa`. `lerVoz` devolve TODOS os problemas de uma vez (schema
+  + coerência: id repetido, `substitui` inexistente, prompt acima de
+  `TETO_DO_PROMPT_DA_VOZ` = 4000 caracteres). Voz que passa do teto é recusada
+  na gravação — o DNA de 9 mil caracteres é o que ela veio substituir.
+- 🔴 **A precedência mora num lugar só** (`precedenciaDaVoz` →
+  `BrandContext.voz`, campo OBRIGATÓRIO do loader): `fonte: 'voz'` quando o
+  cliente foi MIGRADO (`migradaEm`), `'legado'` (o `toneOfVoice`/`contentRules`
+  do DNA) enquanto não migrou — mesmo com voz já gravada, que é a prévia e
+  aparece como `vozPendente` —, `'nenhuma'` sem os dois. Voz migrada que não
+  passa mais no contrato NÃO derruba a copy: cai no legado com `vozPendente`.
+- 🔴 **Consumidor de identidade de TEXTO lê `brand.voz.texto` e
+  `brand.voz.regrasDaMarca`, nunca `dna.toneOfVoice`/`dna.contentRules`
+  direto**: chat, `generate-ai-text`, dica de copy, resposta a avaliação,
+  revisão ortográfica e crivo já passaram. Os prompts de IMAGEM continuam
+  lendo `contentRules` do DNA (proibição não é estilo) e SOMAM
+  `brand.voz.regrasDeArte` — as regras de escopo `arte`/`ambas` nascidas na
+  voz, que o DNA não tem. `toneOfVoice` segue fora de prompt de imagem.
+- **`virar-regra` no cliente MIGRADO**: regra de TEXTO (sem `secao`, ou em
+  `toneOfVoice`/`contentRules`) vai para a VOZ, com escopo, motivo e data;
+  fala do mesmo assunto de uma regra ativa → a tool RECUSA com
+  `CONFLITO_DE_REGRA` e lista as regras; a pessoa decide `substitui` (a antiga
+  fica INATIVA, no histórico, fora do prompt) ou `conviver: true`. As seções
+  de ARTE do DNA (composition, visualStyle, photoDirection, approvalChecklist)
+  continuam no DNA. No cliente NÃO migrado o caminho é o de sempre
+  (acrescenta a linha à seção) e a resposta traz `conflitos`, as linhas da
+  seção sobre o mesmo assunto — em prosa não há substituição mecânica, e o
+  aviso é o que a migração vem resolver. Nada grava sem `confirmado`.
+- 🔴 **"Mesmo assunto" se mede com palavras de conteúdo e FRASES CITADAS**
+  (`semelhancaDeRegras`, `LIMIAR_DE_CONFLITO` = 0,4): a lista de palavras
+  vazias sai, e a frase entre aspas em comum ("Vem pro fogo") vale conflito
+  sozinha — só por palavras, a regra que LIBERA a frase que outra PROÍBE dava
+  0,2 e passava sem aviso. Escopo `arte` não conflita com `copy`; `ambas`
+  cruza com tudo.
+- **Escrita com compare-and-set na `versao`**: `gravarVoz` cria na primeira
+  vez; depois exige a versão lida (`VOZ_VERSAO_OBRIGATORIA`, 400) e recusa a
+  que mudou (`VOZ_DIVERGENTE`, 409); voz inválida nunca é gravada
+  (`VOZ_INVALIDA`, 400, com os problemas). `migrarParaVoz` arquiva o DNA de
+  texto e liga a precedência; `desfazerMigracao` só a desliga — voz e snapshot
+  ficam. A gravação da regra pela tool passa pelo mesmo CAS.
+- **A PRÉVIA passa pelo contrato inteiro** (`aplicarRegraNaVoz` valida a voz
+  resultante com `lerVoz`): regra comprida, a 61ª regra ou o prompt acima do
+  teto são recusados ANTES de a pessoa confirmar (`VOZ_RESULTANTE_INVALIDA`) —
+  o que não pode ser gravado não pode ser proposto.
+- 🔴 **Confirmar exige a versão da PRÉVIA** (`versaoDaVoz` = a `versaoLida`
+  que a proposta devolveu; sem ela `VOZ_VERSAO_OBRIGATORIA`, com a versão de
+  uma proposta antiga `VOZ_DIVERGENTE`): entre a prévia e a confirmação outra
+  edição pode ter trocado a regra que seria substituída mantendo o id, e o CAS
+  da gravação sozinho protegia só a janela da própria requisição.
+- 🔴 **O vocabulário da revisão ortográfica vem de `brand.voz.vocabulario`**,
+  nunca de `voz.texto`: o texto do prompt carrega o "antes" das reescritas
+  ("churasco → churrasco") para o modelo NÃO repetir o erro, e posto no
+  vocabulário ele PROTEGIA a grafia errada e engolia a sugestão certa. Só os
+  campos positivos (descrição, tratamento, termos, exemplos, "depois") são
+  grafia aprovada; no legado, o `toneOfVoice`.
+- **`prepareCreative` (escolher-modelo, `create-arte-rapida`, a API externa)
+  entrega a identidade de texto EFETIVA**: `brand.dna.toneOfVoice` é o texto
+  da voz no cliente migrado (e `contentRules` fica null — as regras já estão
+  nele), o DNA no legado; `brand.voz` traz a precedência inteira. Consumidor
+  que monte identidade de texto por `select` próprio de `brandDNA` repete o
+  defeito — passe pela precedência.
+- **No conector**: `consultar-voz` (só leitura) diz QUEM manda na copy hoje,
+  a voz, a versão, os problemas e os caracteres no prompt contra os do DNA;
+  `virar-regra` ganhou `escopo`, `substitui` e `conviver`; as instruções
+  mandam ler a voz antes da primeira copy no cliente migrado. Fixtures do
+  registro atualizados no mesmo commit.
+- ⚠️ **A migration está aplicada só no branch de dev** — em produção é
+  escrita à mão + `db:deploy` com o OK do Ciro. O loader seleciona
+  `brandVoice` em todo projeto: código sem a tabela FALHA em toda leitura de
+  identidade — não subir o código antes do schema.
+- 🔴 **A confirmação do "virar regra" não troca de destino no meio do
+  caminho** (PR7-FINAL-01 da revisão final do Codex, 18/09/2026). `versaoDaVoz`,
+  `substitui` e `conviver` só existem numa proposta da VOZ: chegando ao ramo do
+  DNA (migração desfeita entre a prévia e a confirmação), a confirmação é
+  RECUSADA com `REGRA_DESTINO_MUDOU` (409) — acrescentar ao DNA seria outra
+  operação que a aprovada, e a proibição antiga continuaria. A mudança DURANTE a
+  requisição também é travada nos dois sentidos: a gravação na voz exige
+  `migradaEm` no MESMO `updateMany` do CAS (`gravarVoz({ exigirMigrada })`), e a
+  gravação no DNA de texto trava e relê `migradaEm` na mesma transação da
+  escrita (`updateBrandDNA(…, tx)`).
+- 🔴 **A trava é a linha do `Project`, nunca a de `BrandVoice`** (PR7-R9-01/02
+  da revisão final, 20/09/2026). `SELECT … FOR UPDATE` numa linha que pode NÃO
+  EXISTIR não trava nada: no cliente sem voz a consulta voltava vazia, outra
+  execução criava a voz e concluía `migrarParaVoz`, e a confirmação seguia e
+  gravava no DNA que já tinha deixado de governar a copy. `travarProjeto`
+  (`voz-service.ts`) trava o `Project` — que existe sempre, é o alvo da FK dos
+  dois lados — e a confirmação do DNA e `migrarParaVoz` tomam a MESMA trava,
+  relendo o estado dentro dela. Trava que não travou nada (projeto inexistente)
+  RECUSA com `PROJECT_NOT_FOUND` em vez de seguir. Pelo mesmo motivo
+  `migrarParaVoz` virou transação e lê o snapshot do DNA DEPOIS da trava: lido
+  antes, o `dnaArquivado` guardava um DNA que uma confirmação em curso ainda ia
+  alterar. **Serializou escrita por uma linha? Confira se ela existe sempre.**
+  O teste que prova isto começa SEM voz (`voz-trava-do-projeto.test.ts`, com
+  trava de verdade no banco em memória): os testes de destino sempre
+  inicializam uma voz, inclusive o controle legado, e foi por isso que o
+  defeito passou.
+- 🔴 **Voz compacta VALIDADA entra INTEIRA em prompt de orçamento curto**
+  (PR7-FINAL-02): `textoDaVozParaPrompt(voz, teto)` corta só o LEGADO. O
+  contrato já limita a voz a 4.000 caracteres e as regras recentes moram no FIM
+  — `tom.slice(0, 1200)` nos rascunhos de avaliação/comentário (e na revisão
+  ortográfica) apagava justamente elas. Consumidor novo com teto próprio usa o
+  helper, nunca `slice` direto em `voz.texto`.
+- 🔴 **O molde da porta leva `voz.regrasDeArte`** (PR7-FINAL-03): o fallback do
+  diretor de arte (`prompt-do-manual` / `prompt-da-referencia`) não lia as
+  regras de arte da voz — só `buildArtePrompt` lia —, e a regra sumia
+  justamente quando o diretor estava fora. O corpo do molde mora em
+  `corpoDoMoldeDaPorta` (`contexto-visual-da-geracao.ts`, puro, testado); a
+  copy exata continua sendo a última seção. Prompt de imagem novo que leia
+  `dna.contentRules` precisa ler `voz.regrasDeArte` junto.
+- **O cleanup da prova da voz restaura o BrandDNA pelo SNAPSHOT inteiro**
+  (`scripts/lib/restaurar-dna.ts`, nota PR7-F-01): linha ausente é recriada
+  (mesmo id), a presente volta campo a campo, e a conferência cobre todos os
+  campos menos `updatedAt`.
+
 ### O contexto da semana: janela, formato, grade completa e fatos por data (PR 6 de "Marca simples, copy melhor", 12/09/2026)
 
 Quem monta a semana é o Claude, no chat (decisão de 11/09); o Studio entrega o

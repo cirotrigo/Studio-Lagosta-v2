@@ -186,6 +186,8 @@ function buildBrandIdentitySection(
   if (brand.dna.contentRules) {
     lines.push(`Regras da marca (respeite sempre): ${brand.dna.contentRules}`)
   }
+  // Regras de ARTE nascidas depois da migração para a voz compacta (o DNA não as tem).
+  if (brand.voz?.regrasDeArte) lines.push(brand.voz.regrasDeArte)
   if (brand.cuisineType) {
     lines.push(`Tipo de cozinha: ${brand.cuisineType}`)
   }

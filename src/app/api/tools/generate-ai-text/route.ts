@@ -2004,8 +2004,9 @@ export async function generateAiTextPayload(
     cuisineType: projectMeta?.cuisineType || '',
     instagramUsername: projectMeta?.instagramUsername || '',
     colorPalette: colors.map((item) => item.hexCode),
-    toneOfVoice: brandDna?.dna.toneOfVoice || '',
-    contentRules: brandDna?.dna.contentRules || '',
+    // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
+    toneOfVoice: brandDna?.voz.texto || '',
+    contentRules: brandDna?.voz.regrasDaMarca || '',
   }
   const allTemplates = (((projectMeta?.brandVisualElements as Record<string, unknown> | null)?.artTemplates ?? []) as Array<Record<string, unknown>>)
   const selectedTemplates: TemplateSummary[] = (body.templateIds ?? [])

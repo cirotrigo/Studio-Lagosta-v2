@@ -36,6 +36,7 @@ import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { loadBrandContext } from '@/lib/brand/brand-context'
+import { TETO_DO_PROMPT_DA_VOZ, textoDaVozParaPrompt } from '@/lib/brand/voz'
 import {
   extrairVocabulario,
   reconciliarSuspeitas,
@@ -118,10 +119,21 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
   ])
   if (!contexto) return null
 
+  /**
+   * A identidade de TEXTO entra pela PRECEDÊNCIA: no cliente migrado, só o
+   * vocabulário positivo da voz; o DNA de texto legado (toneOfVoice,
+   * contentRules) fica FORA — ele carrega a grafia que a voz corrigiu ("Nunca
+   * escrever churasco") e, no vocabulário, protegia o erro (PR7-02-R da
+   * revisão do Codex, 12/09/2026). Antes da migração vale o legado, como
+   * sempre. As seções de ARTE do DNA continuam: são vocabulário da casa.
+   */
+  const legadoDeTexto = contexto.voz.fonte === 'voz' ? [] : [contexto.dna.toneOfVoice, contexto.dna.contentRules]
   const fontes: Array<string | null> = [
     contexto.projectName,
-    contexto.dna.toneOfVoice,
-    contexto.dna.contentRules,
+    // Só o vocabulário APROVADO da voz — nunca o "antes" das reescritas nem as
+    // proibições, que protegeriam justamente a grafia que a marca corrigiu.
+    contexto.voz.vocabulario,
+    ...legadoDeTexto,
     contexto.dna.composition,
     contexto.dna.visualStyle,
     contexto.dna.photoDirection,
@@ -135,8 +147,9 @@ export async function carregarMarcaParaRevisao(projectId: number): Promise<Marca
   const marca: MarcaParaRevisao = {
     nome: contexto.projectName,
     vocabulario: extrairVocabulario(fontes),
-    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.dna.toneOfVoice]),
-    tomDeVoz: contexto.dna.toneOfVoice,
+    termos: termosDaMarca([contexto.projectName, ...entradas.map((e) => e.title), ...entradas.map((e) => e.content), contexto.voz.vocabulario, ...(contexto.voz.fonte === 'voz' ? [] : [contexto.dna.toneOfVoice])]),
+    // Identidade de TEXTO pela precedência (voz compacta × DNA legado).
+    tomDeVoz: textoDaVozParaPrompt(contexto.voz, 1_200),
   }
 
   cache.set(projectId, { em: Date.now(), marca })
@@ -233,7 +246,9 @@ export function montarPrompt(marca: MarcaParaRevisao, pedido: PedidoDeRevisao): 
     partes.push(
       '',
       'COMO A MARCA FALA (as palavras e bordões daqui também não são erro):',
-      marca.tomDeVoz.slice(0, 1_200),
+      // Já vem no tamanho certo de `textoDaVozParaPrompt`: a voz migrada inteira
+      // (teto do contrato), o legado cortado. Aqui só o teto de segurança.
+      marca.tomDeVoz.slice(0, TETO_DO_PROMPT_DA_VOZ),
     )
   }
 
