@@ -258,6 +258,9 @@ async function main() {
   const planos: string[] = []
   // Posts que a prova apaga "como a equipe": os sinais deles ficam no banco e o cleanup os procura por aqui.
   const postsApagados: string[] = []
+  // Mídia de post que NÃO é Blob (o slide do passo 20): a arte que o catálogo registra para ela sai pelo resultUrl,
+  // e ela nunca vai para o `del` — só URL do Blob criada pela rodada é apagada lá.
+  const urlsDeMidiaSemBlob: string[] = []
   async function compor(itemId: string, spec: unknown, opcoes: { itemRevisao?: string } = {}) {
     itemIds.push(itemId)
     const r = await enfileirarPeca(spec, { lote: { loteId: LOTE, itemId }, canal: 'claude-code', ...opcoes })
@@ -467,6 +470,50 @@ async function main() {
       conferir(`${simular ? 'simulado' : 'de verdade'}: PECA_SUPERADA_NO_PLANO com a arte atual, sem mandar compor`, r.situacao === 'falhou' && r.codigo === 'PECA_SUPERADA_NO_PLANO' && r.arteAtualDoItem?.generationId === linha10.generationId && r.arteAtualDoItem?.situacao === 'pronta' && !r.motivo?.includes('antes de agendar'), JSON.stringify(r))
     }
     conferir('nenhum post novo', (await db.socialPost.count({ where: { projectId: PROJETO } })) === postsAntesDaSuperada)
+
+    // ── 19. R12-07: o link de edição segue a página que os efeitos movem ───
+    console.log('19) peça remarcada para outra semana: a refilagem leva a página para outra pasta, e o link de edição da PRIMEIRA resposta e da repetição aponta a pasta de destino')
+    // Composta na semana do item-1 e agendada na do item-8: as duas pastas já existem (passos 1 e 10), nenhuma nasce aqui.
+    await compor('item-12', peca(12, { quando: `${dia(1)} 19:00` }))
+    const pagina12 = (await pageIdDo('item-12'))!
+    const pastaDaPagina = async () => (await db.page.findUniqueOrThrow({ where: { id: pagina12 }, select: { templateId: true } })).templateId
+    const pastaDeOrigem = await pastaDaPagina()
+    const pedido12 = [{ itemId: 'item-12', quando: `${dia(8)} 20:00` }]
+    const remarcada = (await agendar(pedido12)).itens[0]
+    const pastaDeDestino = await pastaDaPagina()
+    const linkDa = (templateId: number) => `/templates/${templateId}/editor?pageId=${encodeURIComponent(pagina12)}`
+    conferir('a refilagem levou a página para outra pasta', remarcada.desfecho === 'criado' && pastaDeDestino !== pastaDeOrigem, JSON.stringify({ desfecho: remarcada.desfecho, de: pastaDeOrigem, para: pastaDeDestino }))
+    conferir('a primeira resposta aponta a pasta de destino', !!remarcada.editUrl?.endsWith(linkDa(pastaDeDestino)), remarcada.editUrl ?? '(sem link)')
+    const repeticao12 = (await agendar(pedido12)).itens[0]
+    conferir('a repetição aponta a pasta de destino', repeticao12.desfecho === 'reaproveitado' && !!repeticao12.editUrl?.endsWith(linkDa(pastaDeDestino)), repeticao12.editUrl ?? '(sem link)')
+    const [post12] = await postsDaPagina(pagina12)
+    // O post nasce com a pasta lida antes dos efeitos (comportamento da main); a leva não o reescreve.
+    conferir('o post não é reescrito: guarda a pasta de quando nasceu', post12?.templateId === pastaDeOrigem, String(post12?.templateId))
+
+    // ── 20. R12-08: a capa vinculada não é o catálogo completo ──────────────
+    console.log('20) post adotado com duas mídias: a capa vinculada não prova que o catálogo terminou — a repetição registra a 2ª mídia sem duplicar a capa, e só então carimba')
+    await compor('item-13', peca(13))
+    const pagina13 = (await pageIdDo('item-13'))!
+    const linha13 = (await linhaDo('item-13'))!
+    const capa13 = (await db.generation.findUniqueOrThrow({ where: { id: linha13.generationId! }, select: { resultUrl: true } })).resultUrl!
+    const slide2 = `https://pr12-rascunhos.invalid/slide-2-${encodeURIComponent(CARIMBO)}.png`
+    urlsDeMidiaSemBlob.push(slide2)
+    // O carrossel que a equipe montou com a página da peça, SEM Generation vinculada (o cenário do Codex).
+    const manual13 = await agendarPost({ projectId: PROJETO, pageId: pagina13, scheduledDatetime: `${dia(13)} 19:00`, postType: 'CAROUSEL', superficie: 'editor' })
+    await db.socialPost.update({ where: { id: manual13.postId }, data: { mediaUrls: [capa13, slide2], renderStatus: 'NOT_NEEDED', generationId: null } })
+    const artesDa = (url: string) => db.generation.findMany({ where: { projectId: PROJETO, resultUrl: url }, select: { id: true, fieldValues: true } })
+    const vinculoDoPost13 = async () => (await db.socialPost.findUniqueOrThrow({ where: { id: manual13.postId }, select: { generationId: true } })).generationId
+    const primeira13 = (await agendar([{ itemId: 'item-13' }])).itens[0]
+    conferir('adotado: a capa vinculada à peça e a 2ª mídia registrada', primeira13.desfecho === 'adotado' && primeira13.postId === manual13.postId && (await vinculoDoPost13()) === linha13.generationId && (await artesDa(slide2)).length === 1, JSON.stringify(primeira13))
+    // A queda no MEIO do catálogo não é injetável no banco real: monta-se o estado que ela deixa — a capa vinculada,
+    // a 2ª mídia sem registro e os efeitos pendentes. A queda em si é provada pelo catálogo REAL em agendar-itens.test.ts.
+    await db.generation.deleteMany({ where: { projectId: PROJETO, resultUrl: slide2 } })
+    await db.itemDeLote.update({ where: { id: linha13.id }, data: { efeitosDoAgendamentoEm: null } })
+    const repetida13 = (await agendar([{ itemId: 'item-13' }])).itens[0]
+    const artesDoSlide = await artesDa(slide2)
+    conferir('reaproveitado sem aviso, e a 2ª mídia registrada de novo (uma só, post-midia, índice 1)', repetida13.desfecho === 'reaproveitado' && !repetida13.avisos && artesDoSlide.length === 1 && (artesDoSlide[0]?.fieldValues as Record<string, unknown> | null)?.midiaIndice === 1, JSON.stringify({ item: repetida13, artes: artesDoSlide.length }))
+    conferir('a capa não foi duplicada e continua vinculada', (await artesDa(capa13)).length === 1 && (await vinculoDoPost13()) === linha13.generationId)
+    conferir('só então carimbou', !!(await linhaDo('item-13'))?.efeitosDoAgendamentoEm)
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
@@ -502,7 +549,7 @@ async function main() {
     await passo('posts', async () => { apagados.posts = (await db.socialPost.deleteMany({ where: { id: { in: idsDePost } } })).count })
     await passo('jobs', async () => { apagados.jobs = (await db.generationJob.deleteMany({ where: { generationId: { in: idsDeGeracao } } })).count })
     // As artes que `registrarArtesDoPost` catalogou a partir dos posts (source post-midia) apontam para os mesmos blobs.
-    await passo('generations', async () => { apagados.generations = (await db.generation.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: idsDeGeracao } }, { resultUrl: { in: [...blobs] } }] } })).count })
+    await passo('generations', async () => { apagados.generations = (await db.generation.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: idsDeGeracao } }, { resultUrl: { in: [...blobs, ...urlsDeMidiaSemBlob] } }] } })).count })
     await passo('páginas', async () => { apagados.pages = (await db.page.deleteMany({ where: { id: { in: idsDePagina } } })).count })
     // Os itens do plano vão junto (FK com cascade).
     await passo('planos', async () => { apagados.planos = (await db.planoDeConteudo.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: planos } }, { titulo: { contains: MARCA } }] } })).count })
