@@ -139,9 +139,10 @@ export async function lerSemanaDoCliente(
   const posts = await comPrazo(() =>
     leitor.socialPost.findMany({
       where: { projectId, createdAt: { gte: janela.inicio, lt: janela.fim } },
-      // As mídias casam cada slide com a sua arte (PR15-01); status, `laterPostId` e
-      // a cópia do texto desenhado dizem se a mídia ainda segue a página (PR15-02).
-      select: { id: true, pageId: true, generationId: true, createdAt: true, mediaUrls: true, status: true, laterPostId: true, slotValues: true },
+      // As mídias casam cada slide com a sua arte (PR15-01); status e `laterPostId`
+      // dizem se a mídia ainda segue a página (PR15-02). A cópia do texto desenhado
+      // (`slotValues`) não é lida: ela não prova a mídia congelada (PR15-05-R2).
+      select: { id: true, pageId: true, generationId: true, createdAt: true, mediaUrls: true, status: true, laterPostId: true },
       orderBy: { createdAt: 'asc' },
       take: TETO_DE_POSTS,
     }),

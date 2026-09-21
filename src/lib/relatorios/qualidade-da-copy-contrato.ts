@@ -45,9 +45,10 @@
  *   a mídia não tem página) — e cada MÍDIA do post acha a sua pela URL exata
  *   (PR15-01): o carrossel de três páginas são três peças.
  * - 🔴 **A página de hoje só vale para o post que ainda a segue** (PR15-02):
- *   o congelado (publicado, entregue ao publicador) precisa de prova de que a
- *   mídia mostra o que a página mostra; sem prova, o snapshot da arte que ele
- *   publicou; sem snapshot, `congelada-sem-prova` — fora do denominador.
+ *   a mídia congelada (publicada, entregue ao publicador) só entra na medida
+ *   com prova do TEXTO e prova TEMPORAL, as duas do MESMO registro — a arte
+ *   casada pela URL exata (`provaDaMidiaCongelada`); sem elas,
+ *   `congelada-sem-prova`, fora do denominador e contada.
  * - **A mensagem é linhas E ordem de leitura** (PR15-03): trocar a `ordem` de
  *   dois blocos não é "mensagem preservada".
  *
@@ -56,11 +57,9 @@
  */
 
 import type { CopyAutoral, RevisaoDaCopy } from '@/lib/copy-autoral/contrato'
-import { registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
 import { blocosEmOrdem } from '@/lib/copy-autoral/validar'
-import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
-import { ehCopiaDaPagina, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
+import { lerCamadas } from '@/lib/posts/page-layers'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
 import { ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
@@ -117,8 +116,6 @@ export interface PostLido {
   status: string
   /** Não nulo = entregue ao publicador: a mídia está congelada. */
   laterPostId: string | null
-  /** A cópia do texto DESENHADO na mídia, quando marcada `_copiaDaPagina` (o render a regrava). */
-  slotValues: unknown
 }
 
 export interface ArteLida {
@@ -225,25 +222,6 @@ export function mesmaMensagem(a: CopyAutoral, b: CopyAutoral): boolean {
   const lb = linhasPorBloco(b)
   if (![...new Set([...Object.keys(la), ...Object.keys(lb)])].every((id) => mesmasLinhas(la[id], lb[id]))) return false
   return JSON.stringify(ordemDeLeitura(a)) === JSON.stringify(ordemDeLeitura(b))
-}
-
-/**
- * A cópia do texto DESENHADO (`_copiaDaPagina`, que o render regrava) prova
- * que a mídia mostra a mensagem de `medida`? (PR15-05 da revisão final do
- * Codex, 21/09/2026.) Só com o texto LITERAL — a quebra de linha é mensagem, e
- * o `copyIgual` do render colapsa espaço — e só quando não há ORDEM a provar:
- * um texto na página e no máximo um bloco com texto na copy medida. O registro
- * é um mapa por camada (e o jsonb nem guarda a ordem das chaves): não comprova
- * a ordem de leitura dos blocos, nem a das linhas de um bloco repartido em
- * camadas. Com mais que isso, a exclusão conservadora (`congelada-sem-prova`)
- * fica.
- */
-function copiaProvaAMensagem(slotValues: unknown, layers: unknown, medida: CopyAutoral | null): boolean {
-  const desenhada = textosDoSlot(slotValues)
-  const hoje = Object.entries(textosDaPagina(layers))
-  if (!desenhada || !medida || hoje.length !== 1 || ordemDeLeitura(medida).length > 1) return false
-  const [[camada, texto]] = hoje
-  return Object.keys(desenhada).length === 1 && desenhada[camada] === texto
 }
 
 /** A revisão mexe só em ESTILO (a segunda voz, a herança de estilo)? */
@@ -436,82 +414,96 @@ interface Ocorrencia {
   porUrl: boolean
 }
 
-/** O instante do PNG ATUAL da arte: a recomposição e o re-render em lugar registram `recomposicao.em`. */
+/**
+ * O instante do PNG ATUAL da arte: a recomposição e o re-render em lugar
+ * registram `recomposicao.em`. PNG refeito com `em` ilegível devolve `NaN` —
+ * o instante da criação seria CEDO demais e cortaria o que chegou à mídia; sem
+ * instante confiável não há prova temporal (2ª FINAL sobre ede56191, PR15-10).
+ */
 function instanteDoPng(a: ArteLida): number {
+  const criada = tempo(a.createdAt)
   const r = objeto(a.recomposicao)
-  const refeita = r && (r.estado === 'feita' || r.estado === 're-renderizada') && typeof r.em === 'string' ? Date.parse(r.em) : NaN
-  return Math.max(tempo(a.createdAt), Number.isFinite(refeita) ? refeita : -Infinity)
+  if (!r || (r.estado !== 'feita' && r.estado !== 're-renderizada')) return criada
+  const refeita = typeof r.em === 'string' ? Date.parse(r.em) : NaN
+  return Number.isFinite(refeita) ? Math.max(criada, refeita) : NaN
 }
 
 interface FinalDaPeca {
   final: CopyAutoral | null
   /** O final é o contrato da PÁGINA hoje (e entra na linha do tempo como o último estado). */
   daPagina: boolean
-  /** Snapshot: o instante do PNG congelado — o que veio depois não chegou à mídia. */
+  /** Snapshot: o instante do PNG congelado MAIS NOVO — o que veio depois não chegou a mídia nenhuma. */
   corte: number | null
   congeladaSemProva: boolean
 }
 
+/** A prova de UMA mídia congelada: a copy que a imagem mostra e o instante em que ela ficou pronta. */
+interface ProvaDaMidia {
+  copy: CopyAutoral
+  instante: number
+}
+
 /**
- * A copy final da peça (PR15-02 da revisão final do Codex, 18/09/2026). A
- * PÁGINA de hoje só vale quando representa a mídia de CADA post da peça: o post
- * vivo a segue (a edição refaz a mídia dele); o congelado não.
- *  1. Só congelados, todos mostrando a MESMA arte pela URL exata: o SNAPSHOT —
- *     a efetiva dela É a copy daquela imagem (quem troca o PNG regrava o
- *     registro, PR3-F02), com a história até ali; o que veio depois do PNG sai
- *     da medida (a edição de depois não chegou à mídia, nem como texto, nem
- *     como geometria). Não vale com ajuste de VISIBILIDADE do revisor até a
- *     arte: a efetiva lida das camadas cruas contaria o bloco escondido como
- *     texto apagado.
- *  2. Senão, a página (ou a arte mais nova) com PROVA para cada mídia
- *     congelada de que ela mostra a mesma mensagem de hoje: a arte casada pela
- *     URL exata tem a mensagem que as camadas de hoje desenhariam (a conta do
- *     registro da arte, `registroDaCopyDaArte`, sobre as camadas CRUAS — o que
- *     o revisor escondeu sai dos dois lados); ou o post de uma mídia só carrega
- *     a cópia do texto DESENHADO (`_copiaDaPagina`, regravada a cada render) e
- *     ela é, LITERAL, o texto de hoje de uma peça sem ordem a provar
- *     (`copiaProvaAMensagem`, PR15-05).
- *  3. Sem snapshot nem prova, a peça sai do denominador
- *     (`congelada-sem-prova`) — nunca a página de hoje atribuída a um post que
- *     ela não alcançou.
+ * A REGRA da mídia congelada (2ª FINAL do Codex sobre ede56191, PR15-05-R2,
+ * 09 e 10, 21/09/2026): ela só entra na medida com prova do TEXTO e prova
+ * TEMPORAL, e as duas saem do MESMO registro — a arte casada pela URL EXATA da
+ * mídia. A efetiva dela é o texto daquela imagem, literal (`linhasDaCamada` não
+ * apara nada; quem troca o PNG regrava o registro, PR3-F02), e `instanteDoPng`
+ * é quando a imagem ficou pronta. Sem essa arte, sem efetiva, sem instante
+ * legível, ou com ajuste de VISIBILIDADE do revisor até o PNG (a efetiva lida
+ * das camadas cruas conta o bloco escondido como apagado, e nada registra o
+ * texto autoral dele naquele instante — PR15-09), não há prova.
+ *
+ * O caminho pela cópia do texto desenhado (`_copiaDaPagina`) SAIU: ela é
+ * escrita por `textosDaPagina`, que apara as pontas e pula camada oculta — o
+ * registro já nasce sem as linhas literais (PR15-05-R2) e sem o que está oculto,
+ * e não tem instante (PR15-10). Nenhuma leitura da métrica recupera isso.
+ */
+function provaDaMidiaCongelada(o: Ocorrencia, artes: ArteLida[]): ProvaDaMidia | null {
+  if (!o.arte || !o.porUrl) return null
+  const copy = copyLida(objeto(o.arte.copyAutoral)?.efetiva)
+  const instante = instanteDoPng(o.arte)
+  if (!copy || !Number.isFinite(instante)) return null
+  if (ajustesDeVisibilidade(artes.filter((a) => tempo(a.createdAt) <= instante)).length > 0) return null
+  return { copy, instante }
+}
+
+/**
+ * A copy final da peça (PR15-02). A PÁGINA de hoje só vale quando representa a
+ * mídia de CADA post da peça; toda mídia congelada precisa da sua prova
+ * (`provaDaMidiaCongelada`), senão `congelada-sem-prova` — nunca a página de
+ * hoje atribuída a um post que ela não alcançou.
+ *  1. Só posts vivos: a página de hoje (a edição refaz a mídia deles).
+ *  2. Só congelados: a medida é a imagem MAIS NOVA, cortada no PNG dela — o que
+ *     veio depois não chegou a mídia nenhuma —, e as outras imagens congeladas
+ *     mostram a mesma mensagem. É o SNAPSHOT.
+ *  3. Congelado e vivo juntos: a página de hoje é o que o vivo mostra, e o que
+ *     veio depois do PNG congelado chegou a ELE — a prova temporal da peça é o
+ *     post vivo, e não há corte. Cada imagem congelada tem de mostrar a mensagem
+ *     INTEIRA que se mede: o contrato de hoje, com o bloco escondido pelo
+ *     revisor contando como texto.
  */
 function finalDaPeca(ocorrencias: Ocorrencia[], artes: ArteLida[], pagina: PaginaLida | undefined): FinalDaPeca {
   const daPagina = pagina ? copyLida(pagina.copyAutoral) : null
   let candidato = daPagina
   for (let i = artes.length - 1; i >= 0 && !candidato; i--) candidato = copyLida(objeto(artes[i].copyAutoral)?.efetiva)
-  const semCorte: FinalDaPeca = { final: candidato, daPagina: !!daPagina, corte: null, congeladaSemProva: false }
   const congeladas = ocorrencias.filter((o) => !postVivo(o.post))
-  if (congeladas.length === 0) return semCorte
+  if (congeladas.length === 0) return { final: candidato, daPagina: !!daPagina, corte: null, congeladaSemProva: false }
 
-  const x = congeladas[0].arte
-  if (x && congeladas.length === ocorrencias.length && congeladas.every((o) => o.porUrl && o.arte?.id === x.id)) {
-    const efetiva = copyLida(objeto(x.copyAutoral)?.efetiva)
-    const corte = instanteDoPng(x)
-    if (efetiva && ajustesDeVisibilidade(artes.filter((a) => tempo(a.createdAt) <= corte)).length === 0) {
-      return { final: efetiva, daPagina: false, corte, congeladaSemProva: false }
-    }
+  const semProva: FinalDaPeca = { final: null, daPagina: false, corte: null, congeladaSemProva: true }
+  const provas: ProvaDaMidia[] = []
+  for (const o of congeladas) {
+    const prova = provaDaMidiaCongelada(o, artes)
+    if (!prova) return semProva
+    provas.push(prova)
   }
-
-  const provada = (o: Ocorrencia): boolean => {
-    const desenhada = o.arte && o.porUrl ? copyLida(objeto(o.arte.copyAutoral)?.efetiva) : null
-    if (desenhada) {
-      const hoje = pagina
-        ? (registroDaCopyDaArte({ anterior: o.arte!.copyAutoral, contratoDaPagina: pagina.copyAutoral, camadas: pagina.layers, superficie: 'metrica' }).registro?.efetiva ?? null)
-        : candidato
-      if (hoje && mesmaMensagem(desenhada, hoje)) return true
-    }
-    return (
-      !!pagina &&
-      o.indice === 0 &&
-      o.post.mediaUrls.length <= 1 &&
-      o.post.pageId === pagina.id &&
-      ehCopiaDaPagina(o.post.slotValues) &&
-      lerCamadas(pagina.layers).legivel &&
-      copiaProvaAMensagem(o.post.slotValues, pagina.layers, candidato)
-    )
+  if (congeladas.length === ocorrencias.length) {
+    const maisNova = provas.reduce((a, b) => (b.instante > a.instante ? b : a))
+    if (!provas.every((p) => mesmaMensagem(p.copy, maisNova.copy))) return semProva
+    return { final: maisNova.copy, daPagina: false, corte: maisNova.instante, congeladaSemProva: false }
   }
-  if (congeladas.every(provada)) return semCorte
-  return { final: null, daPagina: false, corte: null, congeladaSemProva: true }
+  if (!candidato || !provas.every((p) => mesmaMensagem(p.copy, candidato))) return semProva
+  return { final: candidato, daPagina: !!daPagina, corte: null, congeladaSemProva: false }
 }
 
 /**

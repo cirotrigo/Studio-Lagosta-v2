@@ -12,7 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Consulta = { projectId: number }
 type ArteNoBanco = { id: string; pageId: string | null; resultUrl?: string | null; [chave: string]: unknown }
-type PostNoBanco = { id: string; pageId: string | null; generationId: string | null; createdAt: Date; mediaUrls: string[]; status: string; laterPostId: string | null; slotValues: unknown }
+type PostNoBanco = { id: string; pageId: string | null; generationId: string | null; createdAt: Date; mediaUrls: string[]; status: string; laterPostId: string | null }
 interface Comportamento {
   /** As linhas de "Generation" que a consulta crua das artes filtra (ids, URLs das mídias, páginas, ids a excluir, limite). */
   generations: ArteNoBanco[]
@@ -42,7 +42,7 @@ const ESQUEMA_COMPLETO: EsquemaDaCopy = { copyAutoralDaPagina: true, vozDaMarca:
 
 /** Post agendado e ainda não entregue ao publicador (segue a página), sem mídia. */
 function postNoBanco(over: Partial<PostNoBanco> & Pick<PostNoBanco, 'id'>): PostNoBanco {
-  return { pageId: null, generationId: null, createdAt: new Date('2026-09-08T12:00:00Z'), mediaUrls: [], status: 'SCHEDULED', laterPostId: null, slotValues: null, ...over }
+  return { pageId: null, generationId: null, createdAt: new Date('2026-09-08T12:00:00Z'), mediaUrls: [], status: 'SCHEDULED', laterPostId: null, ...over }
 }
 
 function erroPrisma(code: string, meta: Record<string, unknown>, message = `Prisma ${code}`) {

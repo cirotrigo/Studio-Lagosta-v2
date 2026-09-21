@@ -75,7 +75,7 @@ function arteLida(fv: Record<string, unknown>): ArteLida {
 function compositorDa(fv: Record<string, unknown>, congelado = false): number {
   const situacao = congelado ? { status: 'POSTED', laterPostId: 'zernio-1' } : { status: 'SCHEDULED', laterPostId: null }
   const [peca] = montarPecas({
-    posts: [{ id: 'slide', pageId: null, generationId: 'g1', createdAt: '2026-09-08T12:00:00.000Z', mediaUrls: ['u1'], ...situacao, slotValues: null }],
+    posts: [{ id: 'slide', pageId: null, generationId: 'g1', createdAt: '2026-09-08T12:00:00.000Z', mediaUrls: ['u1'], ...situacao }],
     artes: [arteLida(fv)],
     paginas: [{ id: 'p', copyAutoral: original, layers: '[]' }],
     itens: [],

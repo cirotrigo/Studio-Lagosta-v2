@@ -63,7 +63,7 @@ function arte(id: string, over: Partial<ArteLida>): ArteLida {
 
 /** Post agendado e ainda não entregue ao publicador (segue a página), sem mídia resolvida. */
 function post(over: Partial<PostLido> & Pick<PostLido, 'id'>): PostLido {
-  return { pageId: null, generationId: null, createdAt: T(30), mediaUrls: [], status: 'SCHEDULED', laterPostId: null, slotValues: null, ...over }
+  return { pageId: null, generationId: null, createdAt: T(30), mediaUrls: [], status: 'SCHEDULED', laterPostId: null, ...over }
 }
 
 function leitura(over: Partial<LeituraDaSemana>): LeituraDaSemana {
@@ -783,27 +783,59 @@ describe('PR15-02 · a página de hoje só vale para o post que ainda a segue', 
     expect(medirPeca(p)).toMatchObject({ comparavel: true, preservada: false })
   })
 
-  describe('story de uma mídia provado pela cópia do texto desenhado (`_copiaDaPagina`) — PR15-05', () => {
+  describe('story de uma mídia com só a cópia do texto desenhado (`_copiaDaPagina`): não é prova — o caminho saiu (PR15-05-R2, PR15-10)', () => {
     const slot = (c: CopyAutoral) => ({ ...Object.fromEntries(c.blocos.map((b) => [b.id, b.linhas.join('\n')])), _copiaDaPagina: true })
-    /** O story congelado cuja página hoje é `pagina`: o render do post nomeia pelo POST, a URL não casa com arte nenhuma; a coluna responde pelo slide 1. */
-    const story = (slotValues: unknown, pagina: CopyAutoral, doAutor: CopyAutoral = original) =>
+    /**
+     * O story congelado cuja página hoje é `pagina`: o render do post nomeia pelo POST, a URL não casa com arte nenhuma; a coluna responde pelo slide 1.
+     * A cópia vai no post como o banco a guarda — o serviço nem a lê mais, e ela continua sem provar nada se alguém voltar a lê-la.
+     */
+    const story = (slotValues: unknown, pagina: CopyAutoral, doAutor: CopyAutoral = original, extras: Partial<LeituraDaSemana> = {}) =>
       leitura({
-        posts: [post({ id: 'story', pageId: 'page-1', generationId: 'g1', mediaUrls: ['story-render.png'], slotValues, ...CONGELADO })],
+        posts: [Object.assign(post({ id: 'story', pageId: 'page-1', generationId: 'g1', mediaUrls: ['story-render.png'], ...CONGELADO }), { slotValues })],
         artes: [arte('g1', { resultUrl: 'u1', copyAutoral: peca(doAutor) })],
         paginas: [{ id: 'page-1', copyAutoral: pagina, layers: camadasDa(pagina) }],
+        ...extras,
       })
     const medir = (l: LeituraDaSemana) => medirPeca(montarPecas(l)[0])
-    // Um bloco só: é o único caso em que o mapa da cópia comprova a mensagem INTEIRA.
     const umBloco: CopyAutoral = { ...original, blocos: original.blocos.filter((b) => b.id === 'headline') }
     const umBlocoDepois = revisar(umBloco, { headline: ['Sexta tem', 'churrasco'] }, noEditor(T(50)))
 
-    it('um bloco, a cópia é o texto de hoje (literal): provado, a página vale; a cópia de A com a página B não prova', () => {
-      expect(medir(story(slot(umBlocoDepois), umBlocoDepois, umBloco))).toMatchObject({ comparavel: true, preservada: false })
-      // A cópia é a de A e a página hoje é B: nada prova, e sem URL casada não há snapshot.
+    it('um bloco, a cópia é o texto de hoje: mesmo assim sem prova — o registro não tem o texto LITERAL nem o INSTANTE da imagem', () => {
+      expect(medir(story(slot(umBlocoDepois), umBlocoDepois, umBloco))).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+      // A cópia é a de A e a página hoje é B: também não.
       expect(medir(story(slot(umBloco), umBlocoDepois, umBloco))).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
     })
 
-    it('só a QUEBRA mudou (a mídia tem duas linhas, a página hoje uma): a comparação é literal, não prova', () => {
+    it('PR15-05-R2 · quebra e espaço nas PONTAS: a cópia é aparada ao ser escrita e não comprova as linhas literais', () => {
+      const sexta: CopyAutoral = { ...umBloco, blocos: [{ ...umBloco.blocos[0], linhas: ['Sexta'] }] }
+      expect(validarCopyAutoral(sexta).problemas).toEqual([])
+      // Depois de congelar, a equipe mexeu só nas pontas; a cópia gravada no render ("Sexta") continua igual ao texto aparado.
+      for (const linhas of [['Sexta', ''], ['', 'Sexta'], ['  Sexta  ']]) {
+        const pontas = revisar(sexta, { headline: linhas }, noEditor(T(50)))
+        const m = medir(story({ headline: 'Sexta', _copiaDaPagina: true }, pontas, sexta))
+        expect(m).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+        expect(m.correcoes.redacao).toBe(0)
+      }
+    })
+
+    it('PR15-10 · recusa, geometria e sinal sem data de DEPOIS não entram nas correções — nem a peça na medida', () => {
+      const recusa = { em: T(60), erro: 'A linha não cabe na coluna.', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', detalhes: null, arteTrocada: false }
+      const l = story(slot(umBlocoDepois), umBlocoDepois, umBloco, {
+        artes: [arte('g1', { resultUrl: 'u1', copyAutoral: peca(umBloco), recusaDaRecomposicao: recusa })],
+        sinais: [
+          { tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-1', generationId: null, createdAt: T(55) },
+          { tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-1', generationId: null },
+        ],
+      })
+      const m = medir(l)
+      expect(m).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+      expect(Object.values(m.correcoes).every((n) => n === 0)).toBe(true)
+      const q = medirQualidadeDaCopy([m], { limiar: 1 })
+      expect(Object.values(q.correcoes.porCausa).every((n) => n === 0)).toBe(true)
+      expect(q.foraDoDenominador.congeladaSemProva).toBe(1)
+    })
+
+    it('só a QUEBRA mudou (a mídia tem duas linhas, a página hoje uma): a cópia não comprova a quebra, não prova', () => {
       const linhaUnica = revisar(umBloco, { headline: ['Sexta é dia de churrasco'] }, noEditor(T(50)))
       const m = medir(story({ headline: 'Sexta é dia\nde churrasco', _copiaDaPagina: true }, linhaUnica, umBloco))
       expect(m).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
@@ -863,38 +895,6 @@ describe('PR15-02 · a página de hoje só vale para o post que ainda a segue', 
       ],
     })
     expect(medirPeca(montarPecas(l)[0]).exclusao).toBe('congelada-sem-prova')
-  })
-
-  it('o revisor escondeu o CTA antes de congelar e a página não mudou: provado pelas camadas CRUAS, a página vale e o esconder é aceito', () => {
-    const semCta = revisar(original, { cta: [] }, { autor: 'sistema', motivo: 'o que foi desenhado (ajuste-arte)', superficie: 'ajuste-arte', em: T(5) })
-    const MARCA = { revisao: { ocultaPeloRevisor: { em: T(5), ajuste: 0 } } }
-    const l = leitura({
-      posts: [post({ id: 'slide', generationId: 'g1', mediaUrls: ['u-aj'], ...CONGELADO })],
-      artes: [
-        arte('g1', { resultUrl: 'u1', copyAutoral: peca(original) }),
-        arte('g-aj', {
-          source: 'ajuste-arte',
-          createdAt: T(5),
-          resultUrl: 'u-aj',
-          ajustes: {},
-          revisao: { aplicados: [{ indice: 0, tipo: 'visibilidade', camadas: ['cta'], detalhe: 'escondidas' }] },
-          copyAutoral: { original, efetiva: semCta, comparavel: true },
-        }),
-      ],
-      // O contrato conta o CTA escondido pelo revisor como presente; as camadas o desenham escondido.
-      paginas: [
-        {
-          id: 'page-1',
-          copyAutoral: original,
-          layers: JSON.stringify([
-            { id: 'headline', name: 'headline', type: 'text', content: 'Sexta é dia\nde churrasco' },
-            { id: 'cta', name: 'cta', type: 'text', content: 'Vem pra cá', visible: false, metadata: MARCA },
-          ]),
-        },
-      ],
-    })
-    const m = medirPeca(montarPecas(l)[0])
-    expect(m).toMatchObject({ comparavel: true, preservada: true, visibilidadeDoRevisor: { aceitos: 1, desfeitos: 0, removidas: 0 } })
   })
 
   it('postVivo: só rascunho e agendado ainda não entregues', () => {
@@ -1047,5 +1047,126 @@ describe('varredura das classes (PR15-07): evento sem instante não entra no sna
   it('congelado: o sinal sem createdAt não prova que veio antes do PNG e fica fora; vivo: conta', () => {
     expect(medirPeca(montarPecas(leva(false))[0]).correcoes.design).toBe(0)
     expect(medirPeca(montarPecas(leva(true))[0]).correcoes.design).toBe(1)
+  })
+})
+
+describe('PR15-09 · o bloco que o revisor escondeu até o PNG congelado não tem prova do TEXTO', () => {
+  const original = copiaOriginal()
+  const semCta = revisar(original, { cta: [] }, { autor: 'sistema', motivo: 'o que foi desenhado (ajuste-arte)', superficie: 'ajuste-arte', em: T(5) })
+  const MARCA = { revisao: { ocultaPeloRevisor: { em: T(5), ajuste: 0 } } }
+  /** O revisor escondeu o CTA aos 5 min e o slide congelou com essa imagem; `contrato`/`cta` são a página de HOJE. */
+  const leva = (contrato: CopyAutoral, cta: string, extras: PostLido[] = []) =>
+    leitura({
+      posts: [post({ id: 'slide', generationId: 'g1', mediaUrls: ['u-aj'], ...CONGELADO }), ...extras],
+      artes: [
+        arte('g1', { resultUrl: 'u1', copyAutoral: peca(original) }),
+        arte('g-aj', {
+          source: 'ajuste-arte',
+          createdAt: T(5),
+          resultUrl: 'u-aj',
+          ajustes: {},
+          revisao: { aplicados: [{ indice: 0, tipo: 'visibilidade', camadas: ['cta'], detalhe: 'escondidas' }] },
+          copyAutoral: { original, efetiva: semCta, comparavel: true },
+        }),
+      ],
+      paginas: [
+        {
+          id: 'page-1',
+          copyAutoral: contrato,
+          layers: JSON.stringify([
+            { id: 'headline', name: 'headline', type: 'text', content: 'Sexta é dia\nde churrasco' },
+            { id: 'cta', name: 'cta', type: 'text', content: cta, visible: false, metadata: MARCA },
+          ]),
+        },
+      ],
+    })
+  const medir = (l: LeituraDaSemana) => medirPeca(montarPecas(l)[0])
+
+  it('a página não mudou: nada registra o texto autoral do CTA naquele PNG — congelada-sem-prova', () => {
+    expect(medir(leva(original, 'Vem pra cá'))).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+  })
+
+  it('a equipe reescreveu SÓ o CTA escondido depois de publicar: a edição não é atribuída ao congelado', () => {
+    const ctaReescrito = revisar(original, { cta: ['Reserve já'] }, noEditor(T(50)))
+    const m = medir(leva(ctaReescrito, 'Reserve já'))
+    expect(m).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+    expect(m.correcoes.redacao).toBe(0)
+    const q = medirQualidadeDaCopy([m], { limiar: 1 })
+    expect(q.correcoes.porCausa.redacao).toBe(0)
+    expect(q.foraDoDenominador.congeladaSemProva).toBe(1)
+  })
+
+  it('com post vivo na peça também: a imagem congelada não mostra a mensagem inteira que se mede', () => {
+    const l = leva(original, 'Vem pra cá', [post({ id: 'repost', generationId: 'g-aj', mediaUrls: ['u-aj'] })])
+    const [p] = montarPecas(l)
+    expect(p.postIds.sort()).toEqual(['repost', 'slide'])
+    expect(medirPeca(p)).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+  })
+
+  it('controle: o revisor escondeu o CTA DEPOIS de congelar, com post vivo — a imagem congelada mostra a mensagem inteira do contrato', () => {
+    // O PNG congelado (aos 1 min) desenhava o CTA; o esconder (aos 60) é da peça viva e mora nas camadas, não no contrato.
+    const l = leitura({
+      posts: [post({ id: 'slide', generationId: 'g1', mediaUrls: ['u1'], ...CONGELADO }), post({ id: 'repost', generationId: 'g-aj', mediaUrls: ['u-aj'] })],
+      artes: [
+        arte('g1', { resultUrl: 'u1', copyAutoral: peca(original) }),
+        arte('g-aj', {
+          source: 'ajuste-arte',
+          createdAt: T(60),
+          resultUrl: 'u-aj',
+          ajustes: {},
+          revisao: { aplicados: [{ indice: 0, tipo: 'visibilidade', camadas: ['cta'], detalhe: 'escondidas' }] },
+          copyAutoral: { original, efetiva: semCta, comparavel: true },
+        }),
+      ],
+      paginas: [
+        {
+          id: 'page-1',
+          copyAutoral: original,
+          layers: JSON.stringify([
+            { id: 'headline', name: 'headline', type: 'text', content: 'Sexta é dia\nde churrasco' },
+            { id: 'cta', name: 'cta', type: 'text', content: 'Vem pra cá', visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: T(60), ajuste: 0 } } } },
+          ]),
+        },
+      ],
+    })
+    expect(medir(l)).toMatchObject({ comparavel: true, preservada: true, visibilidadeDoRevisor: { aceitos: 1, desfeitos: 0, removidas: 0 } })
+  })
+})
+
+describe('PR15-10 · peça só congelada: a medida é a imagem MAIS NOVA, cortada no PNG dela', () => {
+  const original = copiaOriginal()
+  const depois = revisar(original, { headline: ['Sexta tem', 'churrasco'] }, noEditor(T(50)))
+  /** Dois posts congelados da mesma página com PNGs diferentes: o 2º ganhou um ajuste de geometria da equipe aos 20 min. */
+  const reposts = (ajustada: CopyAutoral, over: Partial<ArteLida> = {}) =>
+    leitura({
+      posts: [post({ id: 'a', generationId: 'g1', mediaUrls: ['u1'], ...CONGELADO }), post({ id: 'b', generationId: 'g2', mediaUrls: ['u2'], ...CONGELADO })],
+      artes: [
+        arte('g1', { resultUrl: 'u1', copyAutoral: peca(original) }),
+        arte('g2', { source: 'ajuste-arte', canal: 'studio', createdAt: T(20), resultUrl: 'u2', ajustes: {}, copyAutoral: peca(ajustada), ...over }),
+      ],
+      paginas: [{ id: 'page-1', copyAutoral: original, layers: camadasDa(original) }],
+      sinais: [
+        // Entre os dois PNGs: chegou à mídia do post b.
+        { tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-1', generationId: null, createdAt: T(10) },
+        // Depois do PNG mais novo: não chegou a mídia nenhuma.
+        { tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-1', generationId: null, createdAt: T(55) },
+      ],
+    })
+
+  it('as duas imagens mostram a mesma mensagem: o corte é o PNG mais novo, e o que veio depois dele não conta', () => {
+    const [p] = montarPecas(reposts(original))
+    expect(p.postIds.sort()).toEqual(['a', 'b'])
+    const m = medirPeca(p)
+    expect(m).toMatchObject({ comparavel: true, preservada: true })
+    expect(m.correcoes.design).toBe(1)
+  })
+
+  it('as imagens congeladas mostram mensagens diferentes: sem prova de qual é a da peça', () => {
+    expect(medirPeca(montarPecas(reposts(depois))[0])).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+  })
+
+  it('o instante do PNG refeito precisa ser legível: recomposição sem `em` não corta nada — sem prova', () => {
+    const l = reposts(original, { recomposicao: { estado: 'feita', em: 'ontem' } })
+    expect(medirPeca(montarPecas(l)[0])).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
   })
 })
