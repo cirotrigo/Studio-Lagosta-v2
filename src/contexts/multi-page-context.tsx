@@ -77,6 +77,8 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
       isTemplate: p.isTemplate,
       templateName: p.templateName ?? undefined,
       tags: p.tags ?? [],
+      // C9-11: o editor precisa saber se a página tem contrato da copy (duplicar e colar só tiram o papel quando tem).
+      temCopyAutoral: p.copyAutoral !== undefined && p.copyAutoral !== null,
       createdAt: new Date(p.createdAt),
       updatedAt: new Date(p.updatedAt),
     }))
@@ -191,6 +193,11 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
   )
 
   return <MultiPageContext.Provider value={value}>{children}</MultiPageContext.Provider>
+}
+
+/** O contexto multipágina quando existe — sem lançar fora do provider (C9-11: o editor pergunta se a página aberta tem contrato). */
+export function useMultiPageOpcional() {
+  return React.useContext(MultiPageContext)
 }
 
 export function useMultiPage() {

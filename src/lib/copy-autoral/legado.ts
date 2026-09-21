@@ -40,6 +40,13 @@ import { validarCopyAutoral, type ProblemaDaCopy } from './validar'
 export interface BlocoLegado {
   papel: string
   linhas: string[]
+  /** F3: o id do bloco do contrato e a herança de estilo declarada — a preparação lê; o legado sem contrato não os tem. */
+  id?: string
+  herdaDe?: string
+  grupoVisual?: 'principal' | 'topo' | 'rodape'
+  /** R04: o extra com função leva também o grupo de leitura e a ordem do autor — só com `herdaDe`. */
+  grupoDeLeitura?: string
+  ordem?: number
 }
 
 /** O resultado de converter o legado: contrato válido, ou `copy: null` com os problemas e o original intacto. */
@@ -225,7 +232,130 @@ export function blocosParaOCompositor(copy: CopyAutoral): { blocos: BlocoLegado[
     // o que desenhar, e o schema do compositor exige linha — ele fica de fora
     // dos blocos, e continua no contrato (R01 da revisão do Codex, 12/09/2026).
     if (b.linhas.length === 0) continue
-    blocos.push({ papel: b.funcao, linhas: [...b.linhas] })
+    blocos.push({
+      papel: b.funcao,
+      linhas: [...b.linhas],
+      ...(b.estilo?.herdaDe
+        ? {
+            id: b.id,
+            herdaDe: b.estilo.herdaDe,
+            ...(b.estilo.grupoVisual ? { grupoVisual: b.estilo.grupoVisual } : {}),
+            ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
+            ordem: b.ordem,
+          }
+        : {}),
+    })
   }
   return { blocos, semPapel }
+}
+
+/**
+ * A spec SEM contrato (`blocos` + `camadasExtras`, F3) → contrato, para a
+ * persistência (R07): o extra fornecido na entrada — a nota livre, o serviço
+ * que herda do apoio — entra no ORIGINAL com o id, a herança, o grupo visual,
+ * o grupo de leitura e a ordem que o autor deu, em vez de aparecer só na
+ * efetiva como texto a mais do sistema. A ordem de leitura é a declarada
+ * (`ordem`) e, sem ela, a posição (blocos antes de camadasExtras), renumerada
+ * do zero porque o contrato exige ordem contígua. Autoria `desconhecido`,
+ * como todo adaptador do legado.
+ */
+export interface SpecSemContrato {
+  blocos?: BlocoLegado[]
+  camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: string; grupoVisual?: 'principal' | 'topo' | 'rodape'; grupoDeLeitura?: string; ordem?: number }>
+}
+
+/**
+ * Como `converterBlocosLegados`, para a spec inteira: a saída passa pelo leitor
+ * (`conferida`) e, quando não há contrato válido — linha acima de 300, bloco de
+ * mais de 12 linhas, mais de 40 blocos somando `blocos` e `camadasExtras`,
+ * grupo de leitura de um bloco só, metadado vazio —, devolve
+ * `{ copy: null, problemas, original }`. O que o adaptador inventa (lacunas,
+ * id nascido do papel) cabe por construção (restack sobre 9238098f, 13/09/2026).
+ */
+export function converterSpecSemContrato(spec: SpecSemContrato, opcoes: { em?: string; superficie?: string } = {}): ConversaoDoLegado<SpecSemContrato> {
+  // R08: o id EXPLÍCITO (o do extra, já validado pela spec) é do autor e viaja
+  // EXATO — caixa inclusive. Só a identidade INFERIDA do legado (o papel) passa
+  // por `idUnico`, e nunca toma um id explícito. Normalizar "Nota" para "nota"
+  // desligava o bloco da camada e criava `extra-Nota` com revisão fictícia.
+  const usados = new Set<string>([
+    ...(spec.blocos ?? []).filter((b) => b.herdaDe && b.id).map((b) => b.id!),
+    ...(spec.camadasExtras ?? []).map((e) => e.id),
+  ])
+  const desconhecidos: Array<{ i: number; papel: string }> = []
+  type Item = { chave: number; bloco: Omit<BlocoAutoral, 'ordem'>; ordemDeclarada: number | undefined }
+  const itens: Item[] = []
+  let seq = 0
+  let temGrupo = false
+  let semOrdem = false
+  let comHeadline2 = false
+  for (const b of spec.blocos ?? []) {
+    seq++
+    const funcao = PAPEIS_LEGADOS[b.papel]
+    if (!funcao) desconhecidos.push({ i: seq - 1, papel: b.papel })
+    if (b.papel === 'headline2') comHeadline2 = true
+    if (b.grupoDeLeitura) temGrupo = true
+    if (b.ordem === undefined) semOrdem = true
+    const estilo: BlocoAutoral['estilo'] = b.herdaDe
+      ? { herdaDe: b.herdaDe as FuncaoDoBloco, ...(b.grupoVisual ? { grupoVisual: b.grupoVisual } : {}) }
+      : b.papel === 'headline2'
+        ? { herdaDe: 'headline' as const }
+        : undefined
+    itens.push({
+      chave: b.ordem ?? 1000 + seq,
+      ordemDeclarada: b.ordem,
+      bloco: {
+        id: b.herdaDe && b.id ? b.id : idUnico(b.papel, usados),
+        funcao: funcao ?? 'livre',
+        linhas: [...b.linhas],
+        ...(b.grupoDeLeitura ? { grupoDeLeitura: b.grupoDeLeitura } : {}),
+        ...(estilo ? { estilo } : {}),
+      },
+    })
+  }
+  for (const e of spec.camadasExtras ?? []) {
+    seq++
+    if (e.grupoDeLeitura) temGrupo = true
+    if (e.ordem === undefined) semOrdem = true
+    itens.push({
+      chave: e.ordem ?? 1000 + seq,
+      ordemDeclarada: e.ordem,
+      bloco: {
+        id: e.id,
+        funcao: 'livre',
+        linhas: [...e.linhas],
+        ...(e.grupoDeLeitura ? { grupoDeLeitura: e.grupoDeLeitura } : {}),
+        estilo: { herdaDe: e.herdaDe as FuncaoDoBloco, ...(e.grupoVisual ? { grupoVisual: e.grupoVisual } : {}) },
+      },
+    })
+  }
+  itens.sort((a, z) => a.chave - z.chave)
+  const finais = [
+    ...(semOrdem ? ['ordem de leitura inferida pela posição no array'] : []),
+    ...(!temGrupo ? ['sem grupos de leitura: o legado não declara que blocos formam uma frase'] : []),
+    ...(comHeadline2 ? ['headline2 veio como bloco próprio: a segunda voz não foi declarada por linha'] : []),
+  ]
+  // A lacuna por papel desconhecido cabe no teto de lacunas por construção (a mesma regra de `converterBlocosLegados`).
+  const lacunas = [
+    'autoria desconhecida: a copy veio de blocos por papel (spec) sem registro de quem escreveu',
+    ...lacunasDePapelDesconhecido(desconhecidos, MAX_LACUNAS - 1 - finais.length),
+    ...finais,
+  ]
+  return conferida(
+    {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'desconhecido', ...(opcoes.em !== undefined ? { em: opcoes.em } : {}), ...(opcoes.superficie !== undefined ? { superficie: opcoes.superficie } : {}) },
+      blocos: itens.map((it, i) => ({ ...it.bloco, ordem: i })),
+      revisoes: [],
+      lacunas,
+    },
+    {
+      ...(spec.blocos ? { blocos: spec.blocos.map((b) => ({ ...b, linhas: [...b.linhas] })) } : {}),
+      ...(spec.camadasExtras ? { camadasExtras: spec.camadasExtras.map((e) => ({ ...e, linhas: [...e.linhas] })) } : {}),
+    },
+  )
+}
+
+/** Como `converterSpecSemContrato`, mas LANÇA `CopyLegadaIncompativel` quando não há contrato válido. */
+export function copyDaSpecSemContrato(spec: SpecSemContrato, opcoes: { em?: string; superficie?: string } = {}): CopyAutoral {
+  return exigirCompativel(converterSpecSemContrato(spec, opcoes))
 }

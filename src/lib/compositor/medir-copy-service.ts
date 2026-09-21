@@ -16,12 +16,15 @@ import { arranjosDasCombinacoes, carregarAssinatura, familiasDoProjeto, luzMedia
 import { carregarFotoParaMedir } from './foto-para-medir'
 import { chaveDaPeca } from './preparar-blocos'
 import { areaUtilDe, familiasUsadasNaVariante, medirCopy, orcamentoDaVariante, type AreaUtil, type MedicaoDaCopy, type OrcamentoDoPapel } from './medir-copy'
-import { DIMENSOES, validarSpec, type Formato, type Papel, type SpecDePeca } from './spec'
+import { DIMENSOES, validarSpec, type Formato, type GrupoVisual, type Papel, type SpecDePeca } from './spec'
 
 export interface PedidoDeMedicao {
   projectId: number
   formato: Formato
-  blocos?: Array<{ papel: Papel; linhas: string[] }>
+  /** A copy por papel — o bloco com `herdaDe` é camada extra (PR 9), com id, grupo visual, grupo de leitura e ordem. */
+  blocos?: Array<{ papel: Papel; linhas: string[]; id?: string; herdaDe?: Papel; grupoVisual?: GrupoVisual; grupoDeLeitura?: string; ordem?: number }>
+  /** O texto sem papel que veste o estilo de um papel (PR 10: chega à medição como chega à composição). */
+  camadasExtras?: Array<{ id: string; linhas: string[]; herdaDe: Papel; grupoVisual?: GrupoVisual; grupoDeLeitura?: string; ordem?: number }>
   copyAutoral?: unknown
   variante?: string | null
   tema?: string | null
@@ -71,6 +74,7 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
     projectId: pedido.projectId,
     formato: pedido.formato,
     blocos: pedido.blocos,
+    ...(pedido.camadasExtras ? { camadasExtras: pedido.camadasExtras } : {}),
     copyAutoral: pedido.copyAutoral,
     ...(pedido.fotoDriveId || pedido.fotoUrl ? { foto: { ...(pedido.fotoDriveId ? { driveFileId: pedido.fotoDriveId } : {}), ...(pedido.fotoUrl ? { url: pedido.fotoUrl } : {}) } } : {}),
     ...(pedido.nome ? { nome: pedido.nome } : {}),
@@ -141,7 +145,8 @@ export async function medirCopyDoProjeto(pedido: PedidoDeMedicao): Promise<Resul
   const semLuz = luzDaFoto === null
   const motivosDaProvisoriedade: string[] = []
   if (semLuz && !spec.preferencias?.variante && outrasVariantes.length > 0) motivosDaProvisoriedade.push(spec.foto ? 'a foto não pôde ser medida: a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha' : 'sem a foto, a luz (clara/escura) e a chave do rodízio de variantes mudam a escolha')
-  if (semLuz && !spec.preferencias?.arranjos?.length && medicao.arranjos.some((a) => /rod[ií]zio/.test(a.motivo))) motivosDaProvisoriedade.push('algum arranjo saiu por rodízio, e a chave do rodízio inclui a foto: com ela a composição pode escolher outro arranjo (fonte, tamanho, distribuição das linhas)')
+  // R17 (P3): fixar o arranjo de UM grupo não fixa o do outro — o motivo vale enquanto algum arranjo ainda sai por rodízio.
+  if (semLuz && medicao.arranjos.some((a) => /rod[ií]zio/.test(a.motivo))) motivosDaProvisoriedade.push('algum arranjo saiu por rodízio, e a chave do rodízio inclui a foto: com ela a composição pode escolher outro arranjo (fonte, tamanho, distribuição das linhas)')
   return {
     variante: { id: assinatura.origem.pageId, nome: assinatura.origem.variante, formatoDaPagina: assinatura.origem.formatoDaPagina, motivo: assinatura.origem.motivoDaVariante ?? null },
     escolhaProvisoria: motivosDaProvisoriedade.length > 0,

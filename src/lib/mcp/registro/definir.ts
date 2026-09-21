@@ -79,6 +79,11 @@ function derivarSchemaJson(
   const bruto = zodToJsonSchema(schema, {
     $refStrategy: 'none',
     target: 'jsonSchema7',
+    // PR10-02 (revisão FINAL do Codex sobre o PR 10, 18/09/2026): sem isto o
+    // `pattern` anunciado PERDE a flag do regex — `/^[a-z0-9]…$/i` saía como
+    // `^[a-z0-9]…$`, e um cliente que valide o inputSchema recusava `Nota`,
+    // que o zod do servidor aceita. Com a opção a flag vira classe explícita.
+    applyRegexFlags: true,
   }) as Record<string, unknown>
 
   delete bruto.$schema

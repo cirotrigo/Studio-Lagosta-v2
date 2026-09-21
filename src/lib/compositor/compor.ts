@@ -44,7 +44,6 @@ import {
   formatoDaPagina,
   montarAssinatura,
   papelDoNome,
-  papeisQueFaltam,
   NOME_DO_TEMPLATE_DE_ASSINATURA,
   type AssinaturaDaMarca,
   type EstiloDePapel,
@@ -52,6 +51,7 @@ import {
 } from './assinatura'
 import { empilhar, type BlocoMontado } from './blocos'
 import { prepararBlocos, chaveDaPeca } from './preparar-blocos'
+import { resolverCamadasExtras, idsDeCamadaRepetidos } from './camadas-extras'
 import {
   arranjoDaCombinacao,
   arranjosDaPagina,
@@ -278,8 +278,10 @@ export async function carregarAssinatura(projectId: number, formato: Formato, op
   // A página do formato é a verdade daquele formato: papel que a página de
   // feed não tem NÃO vem da story. Desde 11/09/2026 a regra é "copy primeiro,
   // campos depois" (os campos são opcionais e nenhum texto é descartado por
-  // falta de campo): até a camada extra da F3 existir, papel que a variante não
-  // tem é RECUSADO com PAPEIS_INCOMPATIVEIS — nunca some em silêncio.
+  // falta de campo): o texto cujo papel a variante não tem entra como camada
+  // EXTRA quando declara `herdaDe` (PR 9 e 10, `camadas-extras.ts`); sem a
+  // herança declarada ele é RECUSADO com PAPEIS_INCOMPATIVEIS — nunca some em
+  // silêncio.
   return assinatura
 }
 
@@ -566,7 +568,10 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
     luzDaFoto,
     chave: chaveDaPeca(spec),
   })
-  const faltam = papeisQueFaltam(assinatura, spec.blocos.map((b) => b.papel))
+  // F3: papel que a variante não tem só falta quando nenhuma herança declarada
+  // o salva — o texto com `herdaDe` vira camada EXTRA (a mesma resolução que a
+  // preparação e o `medir-copy` fazem).
+  const faltam = resolverCamadasExtras({ blocos: spec.blocos, camadasExtras: spec.camadasExtras }, assinatura).faltam
   if (!assinatura.origem.pageId || faltam.includes('headline')) {
     throw new CreativeError(
       'ASSINATURA_INCOMPLETA',
@@ -579,7 +584,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   }
   if (faltam.length > 0) {
     throw new CreativeError('PAPEIS_INCOMPATIVEIS',
-      `A variante não tem ${faltam.join(', ')}. Escolha uma variante com todos os papéis; preserve as condições obrigatórias da copy.`,
+      `A variante não tem ${faltam.join(', ')}. Escolha uma variante com todos os papéis, ou declare no bloco de que papel ele herda o estilo (herdaDe) — a camada extra veste esse estilo sem ser esse papel.`,
       422, { faltam, variante: assinatura.origem.variante })
   }
 
@@ -612,7 +617,7 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
   const familias = await familiasDoProjeto(spec.projectId)
   const preparados = prepararBlocos({ spec, assinatura, colunaUtil, escalaDoFormato, mancha, medir, familias, combinacoesSalvas })
   avisos.push(...preparados.avisos)
-  const { montados, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz } = preparados
+  const { montados, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras } = preparados
   // 🔴 As fontes são conferidas ANTES das decisões de encaixe. Família que não
   // carregou no servidor faz o medidor cair no FALLBACK — e é dessa medida que
   // saem a escada de encolhimento e o ORÇAMENTO de caracteres. Recusar a peça
@@ -703,6 +708,12 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       arranjoDoGrupo?.origem === 'pagina' && arranjoDoGrupo.caixa
         ? [arranjoDoGrupo.caixa]
         : papeis.map((p) => assinatura.papeis[p]?.caixa).filter((c): c is NonNullable<typeof c> => !!c)
+    // Grupo só de camadas extras (F3): pousa na borda que o grupo visual diz;
+    // não tem caixa na página (o extra não herda a posição do papel de origem).
+    const bordaDoExtra = gruposExtras.get(chave)
+    if (bordaDoExtra) {
+      return { chave, blocos, pilha: empilhar(blocos, g.gap), principal: false, ancora: bordaDoExtra, temCaixa: false, alinha: null, centro: null }
+    }
     const centro = caixas.length > 0 ? caixas.reduce((acc, c) => acc + (c.y + c.height / 2), 0) / caixas.length / canvas.height : null
     const soServico = papeis.every((p) => p === 'servico')
     const ancora: Ancora = soServico || centro === null ? (soServico ? 'rodape' : 'topo') : centro > 0.55 ? 'rodape' : centro < 0.45 ? 'topo' : 'meio'
@@ -1068,6 +1079,14 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       )
     : []
   if (gradientes.length > 0) layers = inserirAcimaDaFoto(layers, gradientes.map((gr) => gr.layer))
+  // R10: a identidade de cada camada é única no conjunto FINAL. A validação da
+  // spec já recusa os nomes internos; esta é a última porta — id repetido
+  // tornaria ambíguos seleção, ajuste e leitura da copy por id.
+  const idsRepetidosNaPeca = idsDeCamadaRepetidos(layers)
+  if (idsRepetidosNaPeca.length > 0) {
+    const problema = `id de camada repetido na composição: ${idsRepetidosNaPeca.join(', ')}`
+    throw new CreativeError('SPEC_INVALIDA', problema, 400, { problemas: [problema] })
+  }
 
   // 8. A régua (F2): o p98 real sob cada bloco na peça renderizada — corrige a
   //    FORÇA do gradiente uma vez dentro da faixa e AVISA quando a foto não

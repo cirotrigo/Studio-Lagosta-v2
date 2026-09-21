@@ -6,8 +6,9 @@ import type Konva from 'konva'
 import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradiente-suave'
-import { camadaClonada } from '@/lib/compositor/marca-do-compositor'
 import { createId } from '@/lib/id'
+import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } from '@/lib/copy-autoral/camada-copiada'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
@@ -178,6 +179,9 @@ function cloneDesign(design: DesignData): DesignData {
 }
 
 export function TemplateEditorProvider({ template, children }: TemplateEditorProviderProps) {
+  // C9-11: duplicar e colar só tiram o papel da cópia quando a página ABERTA tem contrato da copy.
+  const multiPage = useMultiPageOpcional()
+  const temCopyAutoral = paginaTemContrato(multiPage?.currentPage ?? null)
   const queryClient = useQueryClient()
   const [name, setName] = React.useState(template.name)
   const [design, setDesign] = React.useState<DesignData>(() => ({
@@ -450,20 +454,11 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (id: string) => {
       const source = design.layers.find((layer) => layer.id === id)
       if (!source) return
-      // A cópia não é a camada do compositor: `camadaClonada` solta a marca
-      // (`metadata.compositor`), senão o texto novo entraria no bloco autoral
-      // da original (PR3-R14-01).
-      const newLayer: Layer = camadaClonada(source, {
-        id: createId(),
-        name: `${source.name} Copy`,
-        position: {
-          x: (source.position?.x ?? 0) + 16,
-          y: (source.position?.y ?? 0) + 16,
-        },
-      })
-      addLayer(newLayer)
+      // C9-02/C9-11: a cópia é texto NOVO — sem a identidade autoral da original (e sem o papel, se a página tem
+      // contrato). A transformação é pura e testada em `camada-copiada.ts`.
+      addLayer(camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral }))
     },
-    [addLayer, design.layers],
+    [addLayer, design.layers, temCopyAutoral],
   )
 
   const removeLayer = React.useCallback(
@@ -539,32 +534,15 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     const clipboard = clipboardRef.current
     if (!clipboard || clipboard.length === 0) return
 
-    const clones = clipboard.map((layer, index) => {
-      const cloned = (() => {
-        try {
-          return structuredClone(layer)
-        } catch {
-          return JSON.parse(JSON.stringify(layer)) as Layer
-        }
-      })()
-      // Colar é clonar: a marca do compositor fica com a original (PR3-R14-01).
-      return camadaClonada(cloned, {
-        id: createId(),
-        name: `${cloned.name ?? cloned.type} Copy`,
-        order: 0,
-        position: {
-          x: Math.round((cloned.position?.x ?? 0) + 24 + index * 12),
-          y: Math.round((cloned.position?.y ?? 0) + 24 + index * 12),
-        },
-      })
-    })
+    // C9-02/C9-11: colar é duplicar — a transformação é a mesma, pura e testada em `camada-copiada.ts`.
+    const clones = camadasColadasNoEditor(clipboard, { novoId: createId, paginaTemContrato: temCopyAutoral })
 
     applyDesign((prev) => {
       const nextLayers = normalizeLayerOrder([...prev.layers, ...clones])
       return { ...prev, layers: nextLayers }
     })
     setSelectedLayerIds(clones.map((layer) => layer.id))
-  }, [applyDesign])
+  }, [applyDesign, temCopyAutoral])
 
   const undo = React.useCallback(() => {
     lastCoalesceRef.current = { key: null, time: 0 }

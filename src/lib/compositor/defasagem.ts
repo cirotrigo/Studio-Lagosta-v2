@@ -60,6 +60,77 @@ export function copyDosPapeisComDestaque(camadas: unknown): Record<string, strin
   return juntarPorPapel(itens)
 }
 
+/** O id do bloco que a camada EXTRA declara (`metadata.compositor.extra.id`, PR 9), ou null. */
+export function idDoExtraDaCamada(camada: Layer): string | null {
+  const id = (camada.metadata as { compositor?: { extra?: { id?: unknown } } } | undefined)?.compositor?.extra?.id
+  return typeof id === 'string' && id ? id : null
+}
+
+export interface CopyPorIdentidade {
+  /** O texto por PAPEL, só das camadas comuns — a camada extra nunca entra no papel da função dela. */
+  papeis: Record<string, string>
+  /**
+   * O texto de cada camada EXTRA, pelo id do bloco que ela declara. Objeto SEM
+   * protótipo (R04 da revisão dos patches do PR 10): o id é do autor, e
+   * "constructor" ou "toString" são ids permitidos — num `{}` a leitura do
+   * extra esvaziado achava a propriedade herdada. Leia por
+   * `textoDoExtraNaPagina`, que confere existência e tipo.
+   */
+  extras: Record<string, string>
+}
+
+/** O texto BRUTO do extra `id` na página, ou null — só propriedade PRÓPRIA e string (R04). */
+export function textoDoExtraNaPagina(lida: CopyPorIdentidade, id: string): string | null {
+  if (!Object.prototype.hasOwnProperty.call(lida.extras, id)) return null
+  const texto = lida.extras[id]
+  return typeof texto === 'string' ? texto : null
+}
+
+/**
+ * A camada tem TEXTO — decisão separada da transformação das linhas (R03 da
+ * revisão dos patches do PR 10). Só espaço e quebra é ausência; o conteúdo que
+ * volta à spec é o BRUTO, com os respiros de borda.
+ */
+const temTexto = (conteudo: string): boolean => conteudo.trim().length > 0
+
+/**
+ * A copy da página separada por IDENTIDADE (PR 10): as camadas comuns por
+ * papel, como `copyDosPapeisComDestaque`, e as camadas EXTRAS pelo id que cada
+ * uma declara — com os [colchetes] de volta nas duas.
+ *
+ * 🔴 Ler o extra pelo papel da função dele era o defeito: o serviço que herda o
+ * estilo do apoio tem `metadata.compositor.papel = 'servico'`, e a recomposição
+ * juntava o texto dele ao do serviço comum, tirava o `herdaDe` e o `id`, e a
+ * spec voltava ao compositor sem a camada extra — numa variante sem `servico`
+ * a peça era recusada (`PAPEIS_INCOMPATIVEIS`) e o slide ficava com a arte
+ * antiga; o livre (sem papel) simplesmente não era lido.
+ */
+export function copyDaPaginaPorIdentidade(camadas: unknown): CopyPorIdentidade | null {
+  const { camadas: lidas, legivel } = lerCamadas(camadas)
+  if (!legivel) return null
+  const itens: TextoDePapel[] = []
+  // Sem protótipo: o id do extra é do autor (R04).
+  const extras: Record<string, string> = Object.create(null)
+  for (const bruta of lidas as Layer[]) {
+    if ((bruta?.type !== 'text' && bruta?.type !== 'rich-text') || bruta.visible === false) continue
+    const marcadas = linhasComColchetes(bruta)
+    // O conteúdo BRUTO (R03): `trim()` aqui apagava o respiro inicial e o final
+    // ("\nvale só no almoço\n" voltava como uma linha só) e mudava a copy em
+    // silêncio na recomposição sem contrato. O contrato já lê a camada assim
+    // (`linhasDaCamada`, em `efetiva.ts`).
+    const conteudo = marcadas ? marcadas.join('\n') : typeof bruta.content === 'string' ? bruta.content : ''
+    if (!temTexto(conteudo)) continue
+    const idDoExtra = idDoExtraDaCamada(bruta)
+    if (idDoExtra) {
+      extras[idDoExtra] = conteudo
+      continue
+    }
+    const papel = papelDaCamada(bruta)
+    if (papel) itens.push({ papel, y: bruta.position?.y ?? 0, conteudo })
+  }
+  return { papeis: juntarPorPapel(itens), extras }
+}
+
 interface TextoDePapel {
   papel: string
   y: number
@@ -143,8 +214,16 @@ export function fotoDaPagina(camadas: unknown): string | null {
 export interface Defasagem {
   /** Não deu para ler um dos lados — nunca vira "não mudou nada". */
   ilegivel: boolean
-  /** O texto da página não é mais o texto com que a arte foi feita. */
+  /** O texto — ou a FOTO — da página não é mais o com que a arte foi feita. */
   defasada: boolean
+  /**
+   * A foto de fundo da página não é a da arte (PR 10): trocada no editor. Até
+   * aqui só o texto contava, e a foto trocada num slide de carrossel nunca
+   * chegava ao post — a página parecia "em dia" para `precisaRefazer`.
+   * `medirDefasagem` sempre preenche; opcional só no tipo, para quem monta uma
+   * defasagem à mão (testes) — `defasada` já a inclui.
+   */
+  fotoTrocada?: boolean
   /** Os papéis (ou nomes de camada) cujo texto mudou. */
   papeis: string[]
   /**
@@ -164,13 +243,29 @@ export interface Defasagem {
  * Tudo o mais (posição, largura, corpo da fonte, alinhamento, visibilidade,
  * camada acrescentada ou removida, e qualquer delta em camada que não é
  * texto) é decisão de gente e desliga a recomposição.
+ *
+ * O rótulo é SÓ texto de aviso: toda decisão (`soTexto`, `precisaRefazer`,
+ * `paginaMudouDesde`) lê a CONTAGEM destes motivos, nunca o nome.
+ * `extraDaCamada` (id da camada → id que ela DECLARA como extra) vem de
+ * `medirDefasagem`; sem ele, nenhuma camada é tratada como extra.
  */
-export function mexeuNaMao(diff: DiffDeGeometria): string[] {
+export function mexeuNaMao(diff: DiffDeGeometria, extraDaCamada: ReadonlyMap<string, string> = new Map()): string[] {
   const motivos: string[] = []
   for (const id of diff.adicionadas) motivos.push(`camada "${id}" acrescentada à mão`)
   for (const id of diff.removidas) motivos.push(`camada "${id}" removida à mão`)
   for (const d of diff.deltas) {
-    const quem = d.papel ?? d.id
+    // A camada EXTRA tem o papel da FUNÇÃO (o serviço que herda do apoio diz
+    // `servico`) e um id que não deriva dele: nomeá-la pelo papel diria
+    // "servico foi movida" numa peça que também tem o serviço comum (PR 10).
+    // 🔴 Quem diz que a camada é o extra é a identidade DECLARADA
+    // (`metadata.compositor.extra.id`), nunca o formato do id: `idReservado` só
+    // proíbe `<papel>-N` numérico, então o extra `servico-fds` (id aceito)
+    // começava por `servico-` e saía como "servico" — a inferência pelo id que
+    // o PR9-F02 tirou da duplicação, num lugar novo (varredura do 2º restack
+    // do PR 10, 21/09/2026).
+    const extra = extraDaCamada.get(d.id)
+    const idDoPapel = !extra && !!d.papel && (d.id === d.papel || d.id.startsWith(`${d.papel}-`))
+    const quem = extra ?? (d.papel && idDoPapel ? d.papel : d.id)
     if (d.dx || d.dy) {
       motivos.push(`"${quem}" foi movida (${d.dx >= 0 ? '+' : ''}${d.dx}, ${d.dy >= 0 ? '+' : ''}${d.dy}px)`)
     }
@@ -209,6 +304,31 @@ function mudancasDeTipo(antes: unknown, depois: unknown): string[] {
 }
 
 /**
+ * O ENQUADRAMENTO da foto mudou à mão (PR 10): corte, posição do corte ou modo
+ * de encaixe da camada de imagem, que o diff de geometria não enxerga (ele olha
+ * caixa, fonte, alinhamento e visibilidade). Recompor escolhe o corte de novo
+ * pelo mapa de calma e jogaria fora o que a pessoa acertou — conta como ajuste
+ * manual, e a arte é só re-renderizada como está.
+ */
+function mudancasDeEnquadramento(antes: unknown, depois: unknown): string[] {
+  const a = lerCamadas(antes)
+  const d = lerCamadas(depois)
+  if (!a.legivel || !d.legivel) return []
+  const enquadramento = (c: Layer) => {
+    const estilo = (c.style ?? {}) as { crop?: unknown; cropPosition?: unknown; objectFit?: unknown }
+    return JSON.stringify([estilo.crop ?? null, estilo.cropPosition ?? null, estilo.objectFit ?? null])
+  }
+  const imagensAntes = new Map((a.camadas as Layer[]).filter((c) => c?.type === 'image').map((c) => [c.id, c]))
+  const motivos: string[] = []
+  for (const camada of d.camadas as Layer[]) {
+    if (camada?.type !== 'image') continue
+    const anterior = imagensAntes.get(camada.id)
+    if (anterior && enquadramento(anterior) !== enquadramento(camada)) motivos.push(`o enquadramento da imagem "${camada.id}" foi ajustado à mão`)
+  }
+  return motivos
+}
+
+/**
  * A página de hoje contra o SNAPSHOT do que foi composto
  * (`Generation.fieldValues.layersSnapshot`).
  */
@@ -216,7 +336,7 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
   const agora = copyDeCamadas(camadasDaPagina)
   const antes = copyDeCamadas(snapshot)
   if (!agora || !antes) {
-    return { ilegivel: true, defasada: false, papeis: [], soTexto: false, mexidoNaMao: [] }
+    return { ilegivel: true, defasada: false, fotoTrocada: false, papeis: [], soTexto: false, mexidoNaMao: [] }
   }
 
   const papeis = [...new Set([...Object.keys(antes), ...Object.keys(agora)])]
@@ -224,17 +344,72 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
     .sort()
 
   const diff = diffDeGeometria(snapshot, camadasDaPagina)
+  // A camada que DECLARA ser extra, nos dois lados (a página vence): é por ela, e não pelo formato do id, que o aviso
+  // de ajuste manual nomeia o extra.
+  const extraDaCamada = new Map<string, string>()
+  for (const l of [...lerCamadas(snapshot).camadas, ...lerCamadas(camadasDaPagina).camadas] as Layer[]) {
+    const extra = l && typeof l.id === 'string' ? idDoExtraDaCamada(l) : null
+    if (extra) extraDaCamada.set(l.id, extra)
+  }
   const motivos = diff.ilegivel
     ? ['não deu para comparar a geometria da página com a da arte']
-    : [...mexeuNaMao(diff), ...mudancasDeTipo(snapshot, camadasDaPagina)]
+    : [...mexeuNaMao(diff, extraDaCamada), ...mudancasDeTipo(snapshot, camadasDaPagina), ...mudancasDeEnquadramento(snapshot, camadasDaPagina)]
+
+  // A foto trocada é defasagem como o texto editado (PR 10). Só conta quando a
+  // foto existe dos dois lados: camada de imagem acrescentada ou removida já
+  // aparece no diff de geometria como ajuste manual.
+  const fotoAntes = fotoDaPagina(snapshot)
+  const fotoAgora = fotoDaPagina(camadasDaPagina)
+  const fotoTrocada = !!fotoAntes && !!fotoAgora && fotoAntes !== fotoAgora
 
   return {
     ilegivel: false,
-    defasada: papeis.length > 0,
+    defasada: papeis.length > 0 || fotoTrocada,
+    fotoTrocada,
     papeis,
     soTexto: motivos.length === 0,
     mexidoNaMao: motivos,
   }
+}
+
+/**
+ * A página mudou desde `referencia` — as camadas que a arte reflete — no que a
+ * recomposição CONSOME? É a pergunta do fim do job (R01 da revisão dos patches
+ * do PR 10, 12/09/2026).
+ *
+ * O job de recomposição que está RODANDO não é reaberto pelo enfileiramento:
+ * a edição salva depois da gravação da página e antes do fim do job só chega à
+ * arte se o próprio job pedir outra tentativa. A conferência antiga comparava
+ * só a COPY — a foto trocada nessa janela terminava o job com o slide
+ * mostrando B e a página mostrando C. Aqui a pergunta é a MESMA que a próxima
+ * execução faz (`medirDefasagem` contra as camadas da arte): texto de toda
+ * camada visível (extras inclusive), foto de fundo, enquadramento
+ * (`crop`/`cropPosition`/`objectFit`), geometria, tipo e camada acrescentada ou
+ * removida. Perguntar outra coisa geraria tentativa que não acha trabalho — ou
+ * trabalho que ninguém tenta.
+ *
+ * Ilegível responde `false`, como a conferência antiga: tentar de novo sobre
+ * camadas que não se leem não converge, e a próxima escrita reenfileira.
+ */
+export function paginaMudouDesde(referencia: unknown, camadasAgora: unknown): boolean {
+  const d = medirDefasagem(camadasAgora, referencia)
+  return !d.ilegivel && (d.defasada || d.mexidoNaMao.length > 0)
+}
+
+/**
+ * O que mudou na página, em português da equipe — o motivo que vai para o job
+ * e para o histórico do post quando a edição feita durante a recomposição não
+ * chega à arte (C10-11 da pré-revisão do commit 3fad6ba2). Diz texto e foto
+ * quando a defasagem os distingue; o resto (caixa movida, corte, camada) é
+ * "a página foi alterada". Sem jargão de fila nem de levantamento.
+ */
+export function edicaoDuranteOJob(defasagem: Defasagem): string {
+  const texto = defasagem.papeis.length > 0
+  const foto = defasagem.fotoTrocada === true
+  if (texto && foto) return 'o texto e a foto da página foram alterados enquanto a arte era atualizada'
+  if (foto) return 'a foto da página foi trocada enquanto a arte era atualizada'
+  if (texto) return 'o texto da página foi alterado enquanto a arte era atualizada'
+  return 'a página foi alterada enquanto a arte era atualizada'
 }
 
 export interface SpecRecomposta {
@@ -253,13 +428,17 @@ export interface SpecRecomposta {
 export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown): SpecRecomposta {
   const avisos: string[] = []
   // Com os [colchetes] de volta: o destaque da página sobrevive à recomposição.
-  const copy = copyDosPapeisComDestaque(camadasDaPagina)
-  if (!copy) return { spec, avisos: ['não deu para ler as camadas da página; a spec ficou como estava'] }
+  // Por IDENTIDADE (PR 10): a camada extra é lida pelo id que declara, nunca
+  // pelo papel da função dela — ver `copyDaPaginaPorIdentidade`.
+  const lida = copyDaPaginaPorIdentidade(camadasDaPagina)
+  if (!lida) return { spec, avisos: ['não deu para ler as camadas da página; a spec ficou como estava'] }
+  const copy = lida.papeis
 
   /**
    * A segunda voz da manchete não existe na spec: `comporPeca` a cria quando
-   * a assinatura a tem e a manchete vem com 2+ linhas, pondo nela a ÚLTIMA
-   * linha. Na volta as duas camadas viram de novo UMA manchete — deixar
+   * a assinatura a tem e a manchete vem com 2+ linhas com texto, pondo nela a
+   * ÚLTIMA linha COM TEXTO e os respiros que a seguem (`dividirManchete`). Na
+   * volta as duas camadas viram de novo UMA manchete — deixar
    * `headline2` na spec faria `validarSpec` recusar a peça inteira.
    */
   const manchete = [
@@ -267,18 +446,48 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
     ...(copy.headline2 ? copy.headline2.split('\n') : []),
   ].join('\n')
 
-  const blocos = spec.blocos
+  /**
+   * A camada EXTRA volta com a identidade inteira — id, `herdaDe`, grupo visual,
+   * grupo de leitura e ordem — e só o TEXTO vem da página. As linhas dela são
+   * as da camada, respiro incluído (linha vazia é conteúdo permitido no
+   * contrato, R06); sem a camada na página, o extra sai da spec com aviso,
+   * como o papel apagado.
+   */
+  const textoDoExtra = (id: string, rotulo: string): string[] | null => {
+    const texto = textoDoExtraNaPagina(lida, id)
+    if (texto === null || !temTexto(texto)) {
+      avisos.push(`o texto da camada extra "${id}" (${rotulo}) não está mais na página; a peça foi refeita sem ele`)
+      return null
+    }
+    return texto.split('\n')
+  }
+
+  const blocos = (spec.blocos ?? [])
     .map((b) => {
+      if (b.herdaDe) {
+        // Sem `id` o extra se chama pelo papel (`resolverCamadasExtras`) — é esse o id que a camada declara.
+        const linhas = textoDoExtra(b.id ?? b.papel, b.papel)
+        return linhas ? { ...b, linhas } : null
+      }
       const texto = b.papel === 'headline' ? manchete : copy[b.papel]
-      if (!texto) {
+      if (!texto || !temTexto(texto)) {
         avisos.push(`o texto de "${b.papel}" não está mais na página; a peça foi refeita sem ele`)
         return null
       }
-      return { papel: b.papel, linhas: texto.split('\n').filter((l) => l.trim().length > 0) }
+      // As linhas como estão na camada, respiro incluído (R03): o `filter` de
+      // linha vazia mudava o espaçamento do bloco comum na primeira recomposição.
+      return { papel: b.papel, linhas: texto.split('\n') }
     })
     // O cast existe porque, com `strict: false`, `z.infer` marca toda chave do
     // bloco como opcional — um type predicate sobre ele não é assinalável.
     .filter((b) => b !== null && b.linhas.length > 0) as SpecDePeca['blocos']
+
+  const camadasExtras = (spec.camadasExtras ?? [])
+    .map((e) => {
+      const linhas = textoDoExtra(e.id, 'livre')
+      return linhas ? { ...e, linhas } : null
+    })
+    .filter((e) => e !== null) as NonNullable<SpecDePeca['camadasExtras']>
 
   const url = fotoDaPagina(camadasDaPagina)
   let foto = spec.foto
@@ -297,7 +506,11 @@ export function specComACopyDaPagina(spec: SpecDePeca, camadasDaPagina: unknown)
     foto = { url }
   }
 
-  return { spec: { ...spec, blocos, ...(foto ? { foto } : {}) } as SpecDePeca, avisos }
+  const { camadasExtras: _extrasDaSpec, ...semExtras } = spec
+  return {
+    spec: { ...semExtras, blocos, ...(camadasExtras.length > 0 ? { camadasExtras } : {}), ...(foto ? { foto } : {}) } as SpecDePeca,
+    avisos,
+  }
 }
 
 const ehAncora = (v: unknown): v is 'topo' | 'meio' | 'rodape' => v === 'topo' || v === 'meio' || v === 'rodape'

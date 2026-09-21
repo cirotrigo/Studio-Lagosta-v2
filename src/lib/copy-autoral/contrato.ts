@@ -104,6 +104,12 @@ export const estiloDoBlocoSchema = z
      * e ao passar de duas para três linhas o destaque trocava de trecho.
      */
     linhasNaVoz2: z.array(z.number().int().min(0).max(MAX_LINHAS - 1)).max(MAX_LINHAS).optional(),
+    /**
+     * Onde a camada EXTRA pousa (F3): `principal` (junto do bloco da manchete),
+     * `topo` ou `rodape`. Grupo VISUAL ≠ grupo de LEITURA: este controla posição;
+     * `grupoDeLeitura` liga trechos de uma frase. Só vale com `herdaDe`.
+     */
+    grupoVisual: z.enum(['principal', 'topo', 'rodape']).optional(),
   })
   .strict()
 export type EstiloDoBloco = z.infer<typeof estiloDoBlocoSchema>

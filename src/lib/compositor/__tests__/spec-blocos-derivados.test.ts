@@ -8,6 +8,12 @@
  * Invariante: toda spec aceita continua aceita na revalidação (JSON ida e
  * volta, que é o que o payload da fila faz); a incompatibilidade é recusada
  * NA PORTA, sem cortar texto.
+ *
+ * Restack sobre o PR 9 (18/09/2026): a R06 do PR 9 alinhou os limites da spec
+ * aos do contrato (linha vazia é respiro, até `MAX_LINHAS`), então linha vazia
+ * e sete linhas deixaram de ser incompatíveis — são aceitas na porta E na
+ * revalidação, com o texto inteiro. O que recusa na porta é o que passa do
+ * teto do contrato; o destino é o mesmo nas duas validações.
  */
 import { describe, expect, it, vi } from 'vitest'
 
@@ -40,18 +46,28 @@ describe('os blocos derivados do contrato valem o mesmo que os explícitos (PR3-
     ['linha vazia no meio', ['A', '', 'B']],
     ['sete linhas', ['1', '2', '3', '4', '5', '6', '7']],
   ] as const) {
-    it(`${caso}: recusada na porta, com o contrato intacto (nada cortado)`, async () => {
+    it(`${caso}: aceita na porta E na revalidação, com o texto inteiro (R06 do PR 9)`, () => {
       const entrada = spec([...linhas])
       const r = validarSpec(entrada)
-      expect(r.spec).toBeNull()
-      expect(r.problemas.join(' ')).toMatch(/copyAutoral/)
+      expect(r.problemas).toEqual([])
+      expect(r.spec!.blocos![0].linhas).toEqual(linhas)
       expect(entrada.copyAutoral.blocos[0].linhas).toEqual(linhas)
-
-      tocouNoBanco.n = 0
-      await expect(enfileirarPeca(entrada)).rejects.toMatchObject({ code: 'SPEC_INVALIDA' })
-      expect(tocouNoBanco.n).toBe(0)
+      expect(validarSpec(JSON.parse(JSON.stringify(r.spec))).spec).toEqual(r.spec)
     })
   }
+
+  it('acima do teto do contrato: recusada na porta, sem tocar no banco (nada cortado)', async () => {
+    const linhas = Array.from({ length: 13 }, (_, i) => `linha ${i + 1}`)
+    const entrada = spec(linhas)
+    const r = validarSpec(entrada)
+    expect(r.spec).toBeNull()
+    expect(r.problemas.join(' ')).toMatch(/copyAutoral/)
+    expect(entrada.copyAutoral.blocos[0].linhas).toEqual(linhas)
+
+    tocouNoBanco.n = 0
+    await expect(enfileirarPeca(entrada)).rejects.toMatchObject({ code: 'SPEC_INVALIDA' })
+    expect(tocouNoBanco.n).toBe(0)
+  })
 
   it('controle: spec aceita revalida igual depois da ida e volta do payload (o que o worker faz)', () => {
     const aceita = validarSpec(spec(['Sexta é dia', 'de happy hour']))

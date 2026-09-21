@@ -4122,10 +4122,11 @@ e o sinal `geometria`. Regras que valem para código novo:
 - 🔴 **COPY PRIMEIRO, CAMPOS DEPOIS** (Ciro, 11/09/2026; substitui a regra de
   04/09 "não adicione campos; a copy é feita em cima dos campos que existem no
   template"). A redação aprovada: *A assinatura define a identidade visual e oferece composições iniciais. Os campos são opcionais. A mensagem determina quais blocos e grupos de leitura a peça precisa. O Claude pode escolher outra variante, acrescentar camadas com estilos da assinatura e reorganizar a composição. Nenhum texto é descartado por ausência de campo. Fatos vêm da base; a caixa vem da string; safe area e avatar permanecem respeitados. O verificador informa problemas e não veta a peça.* Nada é escrito para
-  preencher espaço. Até a camada extra (F3) existir, o que já dá é deixar o
-  campo vazio, escolher a variante que tem o campo (`ver-assinatura` lista os
-  papéis por variante) ou `criar-arte` com `textosLivres`; papel que a variante
-  não tem volta como `PAPEIS_INCOMPATIVEIS` — nunca some em silêncio. A regra
+  preencher espaço. Desde o PR 10 (12/09/2026) o texto cujo papel a variante
+  não tem entra como CAMADA EXTRA quando declara `herdaDe` (ver "A camada
+  EXTRA" e "O ciclo da camada extra" no fim deste arquivo); sem a herança
+  declarada, papel que a variante não tem volta como `PAPEIS_INCOMPATIVEIS` —
+  nunca some em silêncio. A regra
   nova entrou de uma vez em todos os lugares onde a antiga estava ativa
   (CLAUDE.md, `docs/FORMAS-DE-ARTE.md`, `instrucoes.ts`, descrição de
   `compor-arte`, comentários do compositor): regra velha e nova convivendo era
@@ -6486,6 +6487,12 @@ dev: `scripts/validar-copy-autoral.ts`.
   só, reordenar continua sendo edição. Com vários blocos da função, uma camada
   por bloco na ordem vertical, como antes. `copyDosPapeis` passou a juntar o
   papel repetido como `copyDosPapeisComDestaque` já fazia.
+  ⚠️ **Com o PR 9 por baixo** (restack de 18/09/2026) a leitura das partes é
+  a do PR 9 (R18–R28): a marca `linhasDoBloco` põe cada linha na posição
+  autoral, e a página legada se lê pelo id `<papel>-N` e pela altura. A
+  varredura ampla ("leva TODAS as camadas", que engolia a caixa posta à mão) e
+  a reordenação pelo conjunto saíram — as provas deste bullet passam pela regra
+  do PR 9, e o invariante do PR 9 recusa reordenar página legada editada.
 - 🔴 **Camada "usada" se marca por OBJETO, nunca por id** (varredura do R8-02).
   O contador `${papel}-${n}` de `compor.ts` recomeça em CADA grupo: o serviço
   repartido entre dois grupos da página (Happy wine do TERO) sai com duas
@@ -6498,6 +6505,10 @@ dev: `scripts/validar-copy-autoral.ts`.
   e o worker recusava com `SPEC_INVALIDA` ao revalidar a spec expandida — o
   mesmo conteúdo com dois destinos. A recusa é na porta, sem cortar texto, e
   toda spec aceita revalida igual depois da ida e volta do payload.
+  ⚠️ **Com o PR 9 por baixo** (restack de 18/09/2026) os limites de linha da
+  spec são os do contrato (R06): linha vazia e até 12 linhas são aceitas na
+  porta E na revalidação. A conferência segue com os limites da própria spec
+  (`specSchema.shape.blocos`) e recusa o que passa do teto do contrato.
 - Provas: `atualizar-item-copy.test.ts` (o modal real, legenda só e uma linha
   editada), `recompor-servico-repartido.test.ts` (spec → persistência →
   edição da manchete → recomposição, com o `validarSpec` real, a troca do
@@ -8187,6 +8198,16 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   `blocoDaCopy`**: duas marcas para o mesmo fato é como a junção `c35c2918` foi
   necessária da primeira vez. `validarSpec` já recusa papel repetido, então
   cada função tem no máximo um bloco no compositor.
+  🔴 **E o PR 9 teve a MESMA marca retirada pelo mesmo motivo** (rebase sobre a
+  main de 21/09/2026): a camada extra chegou com `metadata.compositor.parte` e
+  `linhasDoBloco` (R18/R19/R20/R27), que são a posição autoral de cada linha —
+  a MESMA ideia do `linhas` do PR 3, deduzida do id da montagem (`<papel>-N`)
+  em vez de declarada. Ficou a do PR 3, e o extra passou a CARIMBÁ-LA como
+  qualquer outra camada (`bloco` = o id que o AUTOR deu ao bloco, nunca o do
+  papel de que ele só herda o estilo). **Não reintroduza `linhasDoBloco` nem
+  `parte`**, pela razão escrita acima: quem grava a marca é quem DESENHA, e
+  duas marcas para o mesmo fato é a segunda fonte de verdade que os dois lados
+  fecharam uma por rodada.
 - 🔴 **Id de camada é único na PEÇA inteira, nunca por grupo** (varredura do PR
   3, 18/09/2026): o contador de repetição de papel recomeçava a cada grupo, e o
   serviço repartido entre dois grupos (horário junto da oferta, endereço no pé)
@@ -8213,8 +8234,9 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   sido arquivada (as stories do Quintal e do TERO foram, em 11/09), e aí a
   escolha automática segue, com o motivo dizendo que a original não existe
   mais. `variante` continua sendo o pedido explícito — ausente é recusa.
-- `PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3): papel que a variante
-  não tem recusa, nunca some.
+- ~~`PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3)~~ — **superado pelos
+  PRs 9 e 10**: papel que a variante não tem vira camada extra quando o bloco
+  declara `herdaDe`; sem herança, continua recusando, nunca some.
 
 **Da revisão FINAL do Codex sobre b5c2bd5b (BLOQUEADO, PR4-FINAL-01…02, 21/09/2026).**
 Os dois são a MESMA forma: uma decisão tomada por PROXY (o primeiro bloco do
@@ -8638,3 +8660,986 @@ mesma linha; normalizar para comparar **e** para registrar.
   mas ela é diagnóstico — `passou` e `faltando` vêm do próprio check, então o
   corte não muda veredito nenhum (diferente do teto da visão do PR 0, que
   mudava).
+
+### A camada EXTRA: função separada de estilo (PR 9 de "Marca simples, copy melhor", 12/09/2026)
+
+> 🔴 **Decisão (A) no rebase sobre a main (21/09/2026): a leitura da copy efetiva
+> é a do PR 3, e a inferência pelo id do PR 9 foi APOSENTADA.** Quem arbitra de
+> qual bloco é uma camada é o vínculo DECLARADO (`metadata.compositor.bloco` +
+> `linhas`), não o id da camada. As notas R08–R28, C9 e F01/F02 abaixo descrevem
+> a leitura por id e ficam como registro; onde contradizem este bloco, vale este.
+>
+> - **Saíram** `parteMarcada`, `linhasDoBloco`, `partesDoBloco`, `ordenarPartes`,
+>   `temIdDoBloco`, `declaraOutroBloco` e `extraComIdentidade`. `parte` e
+>   `linhasDoBloco` eram a MESMA informação do `linhas` do PR 3, deduzida do id da
+>   montagem em vez de declarada — o mesmo movimento que tirou o `blocoDaCopy` do
+>   PR 4. **Não reintroduza nenhuma das duas**: duas marcas para o mesmo fato é a
+>   segunda fonte de verdade que os dois lados fecharam uma por rodada.
+> - **Ficou do PR 9**: a resolução e a medição dos extras; o bloco `livre` com
+>   herança; e o **carimbo do extra apontando para o PRÓPRIO bloco** (`bloco` = o
+>   id que o autor deu, nunca o do papel de que ele só herda o estilo).
+>   `blocoDoPapel` (`preparar-blocos.ts`) pula bloco com `estilo.herdaDe`: com a
+>   F3 a premissa "papel e bloco são um para um" vale só entre os comuns.
+>   `materializarVinculosDoIdFisico` ficou reduzido ao PAPEL que só o id dava e ao
+>   BLOCO cujo id é o id físico — este último só quando o contrato tem MAIS DE UM
+>   bloco daquela função; com bloco único a reserva já reúne as partes, e marcar só
+>   a parte cujo id coincide deixava o bloco meio declarado.
+> - **As guardas que RESTRINGEM a regra da main** (readotadas; nenhuma infere):
+>   `casaPeloIdInferido` (bloco com herança nunca casa pelo id inferido
+>   `extra-<camada>` — R25); `incluirOcultas` na leitura (a camada oculta segue
+>   vinculada ao livre dela, que sai vazio, e não fica livre para o vizinho tomar
+>   — R23); o extra com herança só lê a camada que DECLARA, nunca a reserva por
+>   função (oculta ou excluída, ele sai vazio — R23); e `renomearExtrasDuplicados`
+>   só renomeia o id que a LEITURA inventou, nunca o do autor (R14/R25). Os buracos
+>   que elas fecham só existem porque o PR 9 introduz id autoral e camada extra: na
+>   main o livre só tem id inventado pela leitura.
+> - **Dois defeitos da leitura da MAIN apareceram no invariante e foram
+>   corrigidos com o mecanismo dela** (a marca declarada estava sendo ignorada):
+>   a voz 2 repartida em dois textos era concatenada pela ALTURA (R27), e a única
+>   parte que sobrava visível lia em ordem visual contra a própria declaração
+>   (R20). Os dois passam por `ordemDeclarada`, como a voz 1 já passava.
+> - `semIdentidadeAutoral` segue a regra da main (`camadaClonada`, PR3-R14-01): a
+>   marca do compositor sai INTEIRA — o `prefixo` também (PR5-12) —, e só o
+>   `papel` volta, e só na página SEM contrato (C9-11).
+> - **O invariante declara o escopo da página sem marca**: com a marca ele afirma
+>   tudo e passa; sem ela, estados e verificações posicionais que só a inferência
+>   pelo id sustentava saem da afirmação — medidos e contados, nunca escondidos
+>   (ver o cabeçalho de `invariante-copy-autoral.test.ts`). 🔴 **Contrato F3 em
+>   página sem marca EXISTE** — colar ou duplicar um texto e apagar o original o
+>   produz, com blocos vazios e textos novos sem marca (revisão FINAL do Codex
+>   sobre b6980b5b). A leitura acerta nesse caminho, e o oráculo dele é a regra
+>   dura "a cópia tem identidade nova". Só fica fora a camada do PRÓPRIO extra sem
+>   `bloco`, porque nada a grava: o compositor escreve `extra` e `bloco` juntos, e
+>   toda operação que tira a marca tira as duas.
+> - 🔴 **"A peça tem extra" se pergunta às DUAS formas** (`specTemExtra`,
+>   `camadas-extras.ts`): `camadasExtras` (o livre com herança) E `blocos` com
+>   `herdaDe` (o extra COM função). A guarda do re-render da recomposição olhava só
+>   a primeira; sem contrato legível, o extra com função caía em
+>   `specComACopyDaPagina`, que reconstrói o bloco como `{ papel, linhas }` — dois
+>   serviços comuns (`papel repetido`, slide antigo) ou a herança perdida
+>   (PR9-F01, 21/09/2026).
+> - 🔴 **O materializador da duplicação NUNCA carimba bloco com função pelo id**:
+>   a leitura da main atribui bloco com função pela marca ou pela reserva por papel
+>   e posição, e a duplicação preserva as duas coisas. Carimbar pela coincidência
+>   do id inventava atribuição — o extra vazio `servico-2` recebia a parte do
+>   serviço comum cuja camada se chama `servico-2` (PR9-F02, 21/09/2026). Só o
+>   bloco LIVRE ganha `bloco` pelo id, porque essa é a regra 1 de `vincularExtras`.
+>   Teste de marca começa da forma LEGADA: partir de camadas recém-preparadas (já
+>   carimbadas) é o método que não pode dar outro resultado.
+> - ⚠️ **Limitação da main, anterior ao PR 9 e fora do escopo dele**: numa página
+>   SEM marca com duas vozes 2, a reserva documenta "a PRIMEIRA `headline2` livre
+>   da peça" — a outra vira bloco solto e a recomposição seguinte recusa a spec. O
+>   R28 ficou pulado com esse motivo. Tratar é mudança da leitura da main, à parte.
+>   🔴 **É estado SEM produtor**: a voz 2 com várias linhas só nasceu no #146
+>   (antes, `b.linhas.slice(-1)` dava à segunda voz UMA camada `headline2`), e o
+>   carimbo `bloco`/`linhas` já estava no #144 — toda página com duas vozes 2 tem
+>   marca. Medido em produção em 21/09/2026, somente leitura: nenhuma página com
+>   duas camadas `headline2`, nenhum id `headline2-N`, nenhuma recusa gravada.
+
+"Copy primeiro, campos depois" ganhou o mecanismo que faltava: um texto que
+veste o estilo de um papel da assinatura SEM ser esse papel. Até aqui, papel que
+a variante não tinha era `PAPEIS_INCOMPATIVEIS`, e bloco `livre` com texto era
+recusado ("a camada livre chega na F3"). Módulo PURO em
+`src/lib/compositor/camadas-extras.ts` (com teste em `camadas-extras.test.ts`);
+`preparar-blocos.ts`, `compor.ts` e `medir-copy.ts` chamam a MESMA resolução.
+~~Ainda sem anunciar no conector~~ — **anunciada no PR 10** (seção "O ciclo da
+camada extra", no fim deste arquivo), depois que editar, trocar a foto e
+recompor passaram a preservar os extras.
+
+- **Um extra declara `id` + `linhas` + `herdaDe` (o papel de ESTILO) e,
+  opcionalmente, `grupoVisual` (`principal` · `topo` · `rodape`), `grupoDeLeitura`
+  e `ordem`.** Ele herda fonte, peso, corpo (na faixa do papel, com a escala da
+  peça), entrelinha, tracking, caixa alta, cor, sombra e prefixo — é
+  `estiloHerdado(assinatura.papeis[herdaDe])`, que TIRA `caixa`, `grupo` e
+  `alinhamento`: a POSIÇÃO do papel de origem nunca é herdada. Nem o id, nem o
+  grupo: a camada nasce com o id do autor e `metadata.compositor.extra = { id,
+  funcao, herdaDe, grupoVisual, grupoDeLeitura?, ordem? }`.
+- 🔴 **Função ≠ estilo.** `metadata.compositor.papel` do extra é a FUNÇÃO
+  original (`servico` na linha de horário que herda do apoio) — é o que
+  `papelDaCamada`/`copyDosPapeis` e a recomposição leem; `livre` não é papel e
+  fica sem ele. O papel de ESTILO (`herdaDe`) mora só em `extra.herdaDe`. Medir
+  e compor contam o bloco pela `funcao` (`BlocoPreparado.funcao`), nunca pelo
+  papel de estilo: a peça que precisa de horário funciona numa variante sem o
+  campo, e `medir-copy` não a declara `papel-ausente`.
+- **Grupo de LEITURA ≠ grupo VISUAL.** `grupoDeLeitura` é do autor (os blocos
+  que se leem como uma frase) e viaja intacto; `grupoVisual` decide onde o
+  extra POUSA: `principal` junta-se ao grupo da manchete (depois dos textos do
+  arranjo, fora da distribuição de linhas — o extra não é o papel de que
+  herda); `topo`/`rodape` formam grupo só de extras (`extra:<borda>`), sem
+  arranjo da página nem combinação salva, ancorado na borda com `temCaixa:
+  false`. Padrão: `servico` → `rodape`; o resto → `principal`
+  (`grupoVisualPadrao`).
+- **Na spec**: `blocos[].herdaDe` (+ `id` + `grupoVisual`) para papel que a
+  variante não tem, ou para repetir um papel com estilo emprestado — papel
+  repetido só passa quando toda ocorrência além da primeira tem `id` próprio E
+  `herdaDe`; a manchete nunca herda (ela É o papel); ids de camada não se
+  repetem (nem com `camadasExtras`). `camadasExtras[]` (até 5) é o que os
+  blocos `livre` do contrato viram: `validarSpec` exige `estilo.herdaDe` no
+  bloco livre com texto (sem herança não há de onde tirar fonte, corpo e cor —
+  recusar continua sendo o oposto de sumir em silêncio), aceita
+  `estilo.grupoVisual`, e recusa `camadasExtras` que não batam com o contrato.
+  `blocosParaOCompositor` passa `id`/`herdaDe`/`grupoVisual` adiante.
+- 🔴 **`herdaDe` declarado é sempre honrado**, mesmo quando a variante TEM o
+  papel: função ≠ estilo é decisão do autor. `herdaDe` de papel que a variante
+  não tem FALTA (com aviso dizendo qual), e `PAPEIS_INCOMPATIVEIS` passou a
+  sugerir a saída ("declare de que papel ele herda o estilo").
+- **R17 (P3 da revisão do PR 8)**: em `medir-copy-service` o motivo "algum
+  arranjo saiu por rodízio" não depende mais de `preferencias.arranjos` estar
+  vazio — fixar o arranjo de UM grupo não fixa o do outro; o motivo vale
+  enquanto algum arranjo ainda sair por rodízio (teste com dois grupos).
+
+Da revisão do Codex sobre o primeiro commit (BLOQUEADO, R01…R07, 12/09/2026):
+
+- 🔴 **O vínculo por ID vem ANTES da associação por função e posição** (R01,
+  `copyEfetivaDasCamadas`): dois extras de função `servico` herdando `apoio`,
+  um no topo e outro no rodapé, trocavam de texto entre os ids já na
+  persistência inicial — a leitura casava por função + `y`. A camada extra
+  nasce com o id do bloco (`metadata.compositor.extra.id`), e uma camada comum
+  tem o id do papel; esses vínculos são reservados antes da fila por função.
+- 🔴 **A unicidade é conferida contra os ids que a PREPARAÇÃO produz** (R02,
+  `idReservado`): `id` num bloco SEM `herdaDe` é recusado (a camada se chama
+  pelo papel; um id avulso era ignorado na composição e só enganava a
+  conferência), e nenhum extra pode tomar `headline2` nem `<papel>-N` — a
+  segunda voz e o segundo texto do mesmo papel são gerados pela preparação. A
+  resolução repete a porta com aviso.
+- **Extra que não pôde ser resolvido é DECLARADO por bloco** (R03,
+  `ResolucaoDosExtras.falhas` → `MedidaDeBloco` `papel-ausente` com o id do
+  bloco, e `cabeTudo` os conta): o livre herdando um `cta` ausente sumia da
+  medição com `cabeTudo` verdadeiro enquanto `comporPeca` recusava a mesma
+  entrada. `papeisAusentes` passou a olhar só os blocos sem herança.
+- **O extra com função leva `grupoDeLeitura` e `ordem`, e os extras das duas
+  fontes são ordenados JUNTOS pela ordem do autor** (R04): o contrato com nota
+  livre na ordem 1 e serviço na ordem 2 saía com o serviço antes da nota,
+  porque a resolução acrescentava primeiro os por papel e depois os livres. Sem
+  `ordem` (spec legada) vale a posição de declaração, blocos antes de
+  `camadasExtras`. Os campos atravessam `blocoSchema`, `BlocoLegado`,
+  `blocosParaOCompositor` e a identidade do extra até a camada.
+- 🔴 **O contrato é CANÔNICO** (R05): `blocos` e `camadasExtras` mandados
+  junto dele têm de dizer o MESMO em todos os campos (id, herança, grupo
+  visual, grupo de leitura, ordem), e extra declarado sem correspondente no
+  contrato também diverge. Comparar só id e linhas deixava a versão sem
+  herança prevalecer e a composição recusar uma variante que o contrato
+  resolvia.
+- 🔴 **`validarSpec(validarSpec(x).spec)` tem de continuar válido** (R06): os
+  limites de linha da spec são os do contrato (linha vazia é respiro permitido,
+  `MAX_LINHAS`, 40 blocos), e a forma derivada é revalidada pelo schema antes de
+  ser aceita — o worker da fila revalida a spec gravada, e uma spec aceita na
+  porta falhava lá.
+- **Sem contrato, o ORIGINAL persistido nasce da spec INTEIRA** (R07,
+  `copyDaSpecSemContrato`): o extra livre e o serviço herdado entram com id,
+  herança, grupo visual, grupo de leitura e ordem (renumerada do zero, porque o
+  contrato exige ordem contígua), autoria `desconhecido`. Antes só `spec.blocos`
+  virava original e a nota fornecida na entrada aparecia como texto a mais do
+  sistema, com id `extra-…`.
+
+Da revisão do Codex sobre o segundo commit (BLOQUEADO, R08…R11, 12/09/2026):
+
+- 🔴 **O id EXPLÍCITO do extra viaja exato, caixa inclusive** (R08,
+  `copyDaSpecSemContrato`): só a identidade inferida do legado (o papel) passa
+  por `idUnico`, que normaliza; o id do extra, já validado pela spec, entra no
+  `usados` antes e nunca é reescrito. "Nota" virava "nota" no original, a
+  efetiva não achava a camada e criava `extra-Nota` com revisão fictícia.
+- 🔴 **Vínculo por id físico só com a MESMA função** (R09,
+  `copyEfetivaDasCamadas`): primeiro `metadata.compositor.extra.id`; depois
+  `layer.id === bloco.id` apenas quando `papelDaCamada` é a função do bloco. Um
+  contrato com ids trocados entre funções (id "apoio" na manchete) trocava os
+  textos na persistência — e o autosave registrava a troca como edição da equipe.
+- 🔴 **Nenhum extra toma o nome de uma camada interna** (R10, `idReservado`):
+  além de `headline2` e `<papel>-N`, `bg-foto`, `logo`, `gradiente-leitura-*` e
+  `<texto>-elemento-N`; e `comporPeca` confere a unicidade no conjunto FINAL de
+  camadas (`idsDeCamadaRepetidos`, `SPEC_INVALIDA`) — id repetido torna seleção,
+  ajuste e leitura por id ambíguos.
+- 🔴 **Sem contrato, a copy DERIVADA da spec passa no contrato do leitor antes
+  de a spec valer** (R11, `validarSpec` → `validarCopyAutoral(copyDaSpecSemContrato(…))`):
+  grupo de leitura de um bloco só e mais de 40 blocos SOMADOS entre `blocos` e
+  `camadasExtras` são recusados na porta. Antes a persistência gravava um
+  contrato que `lerCopyAutoral` devolvia inválido e a edição seguinte caía em
+  `sem-contrato`.
+
+Da revisão do Codex sobre o terceiro commit (BLOQUEADO, R12…R14, 12/09/2026):
+
+- 🔴 **A identidade EXPLÍCITA vem antes de TODO fallback legado, livres
+  inclusive** (R12, `vincularExtras`): o passo 0 casa o bloco livre pela
+  `metadata.compositor.extra.id` da camada, e camada que declara OUTRO bloco não
+  entra em nenhum fallback (nome, id inferido `extra-<id>`, forma antiga, nem a
+  associação por função). Um livre vazio `extra-hora` tomava a camada `hora` do
+  serviço pelo id inferido e esvaziava o serviço já na persistência inicial.
+- 🔴 **A numeração de textos comuns do mesmo papel é da PEÇA, não do grupo**
+  (R13, `prepararBlocos`): horário num grupo e endereço noutro saíam os dois com
+  id `servico`, a conferência final recusava a composição e os ícones de um
+  texto sobrescreviam os do outro em `elementosPorTexto`. Hoje o segundo é
+  `servico-2`, como no mesmo grupo.
+- 🔴 **Duplicar página não renomeia id AUTORAL** (R14,
+  `renomearExtrasDuplicados`): só o id INFERIDO do id da camada (`extra-<id>`,
+  atual ou antigo) acompanha a camada nova; o bloco que a camada declara em
+  `extra.id`, ou cujo id não é derivado dela, mantém o id e as referências no
+  histórico — senão contrato e metadados divergiam depois de uma operação
+  técnica.
+
+Da revisão do Codex sobre o quarto commit (BLOQUEADO, R15, 12/09/2026):
+
+- 🔴 **Com contrato, a recomposição rederiva do CONTRATO os blocos E as camadas
+  extras** (R15, `specDaRecomposicao` em `spec-da-recomposicao.ts`, puro): o
+  espalhamento da spec antiga preservava `camadasExtras` com o texto de antes da
+  edição, `validarSpec` (contrato canônico, R05) recusava e o slide agendado
+  ficava com a arte antiga em toda tentativa. Quem monta spec a partir de uma
+  spec gravada e de um contrato novo tira da antiga TUDO o que sai do contrato
+  (`copyAutoral`, `blocos`, `camadasExtras`). Sem contrato, a spec legada segue
+  com os extras que tinha. Teste do consumidor com banco falso em
+  `__tests__/recompor-camadas-extras.test.ts`.
+
+Da revisão FINAL do Codex sobre E (BLOQUEADO, R18, 12/09/2026):
+
+- 🔴 **O bloco de um papel que a preparação REPARTE entre textos do arranjo
+  continua sendo UM bloco na copy efetiva.** O horário num grupo e o endereço
+  noutro saem como `servico` e `servico-2`; a efetiva casava só a primeira
+  camada com o bloco autoral e a segunda virava `extra-servico-2`, com função
+  `servico` e SEM herança — revisão fictícia do sistema na persistência e, na
+  edição seguinte, `papel repetido: servico` (SPEC_INVALIDA) na recomposição,
+  com o slide preso na arte antiga. Hoje a preparação marca cada parte
+  (`metadata.compositor.parte`, na ordem das linhas; só quando o papel foi
+  repartido) e `copyEfetivaDasCamadas` reúne as partes no bloco ÚNICO daquela
+  função sem herança, na ordem da numeração, mantendo id e linhas. Página
+  composta antes da marca reúne pelo id `<papel>` / `<papel>-N`, que só a
+  composição gera (reservado na spec); a marca sobrevive à duplicação (o id
+  muda, a metadata vai junto). Camada com identidade explícita de extra nunca
+  é parte, e com dois blocos da mesma função vale a associação por posição.
+- ⚠️ O defeito nasce na efetiva do PR 3 (a leitura por função existe desde
+  lá): o PR 3 não pode ir à main sem esta correção na pilha.
+
+Da revisão do commit F (BLOQUEADO, R19, 12/09/2026):
+
+- 🔴 **A ordem das partes vem da posição AUTORAL de cada linha, nunca do id da
+  montagem.** A montagem segue a ordem dos grupos e do arranjo, não a do autor:
+  com o endereço no grupo da MANCHETE (que já existe quando o serviço é
+  distribuído), o endereço sai `servico` e o horário `servico-2`, e a marca
+  `parte` derivada do id gravava `[endereço, horário]` como revisão do sistema,
+  que a recomposição seguinte adotava. Hoje a distribuição (`juntarNoGrupo`,
+  `dividirManchete`, `distribuirLinhas`) carrega o índice de cada linha no
+  bloco até a camada, e a preparação grava `metadata.compositor.linhasDoBloco`
+  (paralela às linhas do texto; só quando o papel foi repartido). A marca
+  `parte` deixou de ser escrita.
+- 🔴 **Uma camada pode receber linhas NÃO consecutivas** (`[0, 2]` no texto do
+  relógio, `[1]` no do pin), e a sobra entra no último texto DEPOIS das linhas
+  tipadas. A efetiva põe cada linha na sua posição, intercalando as camadas;
+  reunir camada a camada, mesmo na ordem certa das camadas, embaralha o bloco.
+- **Camada editada cuja contagem de linhas já não bate com a marca** entra
+  INTEIRA, como trecho contíguo, no menor índice marcado. Sem a marca em todas
+  as partes (página composta antes dela) vale a ordem do R18: `parte`, depois
+  o id `<papel>-N`, depois a altura.
+
+Da revisão do commit G (BLOQUEADO, R20, 12/09/2026):
+
+- 🔴 **Uma parte marcada que SOBROU continua sendo parte.** Com o serviço
+  `[reserva, horário, endereço]`, a sobra entra depois do endereço (`[2, 0]`) e
+  o horário vai sozinho (`[1]`); ocultado ou excluído o horário, sobrava uma
+  candidata e o retorno antecipado (`< 2`) caía no caminho comum, que lê a
+  ordem do TEXTO — `[endereço, reserva]`, inversão que o autosave atribuía à
+  equipe. Hoje a leitura pela marca vale também com uma única candidata
+  marcada; uma camada só SEM a marca segue o caminho de sempre.
+
+**Da revisão FINAL do Codex sobre e11abce7 (BLOQUEADO, R21…R22, 12/09/2026):**
+
+- 🔴 **R21 — papel repetido se confere pela CONTAGEM de blocos comuns, nunca
+  pela posição do extra.** `validarSpec` exigia id e herança da "segunda
+  ocorrência" do papel. A spec sem contrato
+  `[headline, servico, servico (id hora-extra, herdaDe apoio, ordem 0)]` passava;
+  `copyDaSpecSemContrato` gravava o contrato na ordem AUTORAL
+  `[hora-extra, headline, servico]`; a recomposição derivava os blocos desse
+  contrato, o serviço comum virava a segunda ocorrência e a mesma validação o
+  recusava — `SPEC_INVALIDA` na edição seguinte, slide preso na arte antiga.
+  Hoje cada papel admite no máximo UM bloco comum (sem `id`+`herdaDe`), e todo
+  o resto daquele papel tem de ser extra, em qualquer posição. O mesmo vício de
+  "primeira ocorrência" estava no `medirCopy`: o papel ausente contava as
+  linhas do extra declarado antes do bloco comum (agora `!b.herdaDe`).
+  Testes: o cenário da revisão atravessa validação → preparação → persistência
+  → edição → recomposição (e revalidação), pela spec sem contrato E pela
+  entrada direta do contrato; dois serviços comuns continuam recusados com o
+  extra antes, entre ou depois; e o consumidor `recomporPaginaDefasada` troca
+  só o slide da arte (post entregue intacto), com cada texto no seu id.
+- 🔴 **R22 — duplicar a página tem de levar o vínculo que só o ID dava.** A
+  página legada reúne `servico` e `servico-2` (sem `parte` nem
+  `linhasDoBloco`) pelos ids reservados; a duplicação os troca por UUIDs, e a
+  cópia reunia uma parte só — a outra virava `extra-…` de função `servico` sem
+  herança: alteração técnica que o autosave atribuía à equipe e, de novo, dois
+  serviços comuns que a recomposição recusa. A transformação da rota saiu para
+  `duplicarCamadasDaPagina` (`src/lib/copy-autoral/duplicacao.ts`, pura), que
+  antes de regenerar os ids chama `marcarPartesLegadas`: grava a marca antiga
+  `parte` com o MESMO número que a leitura tiraria do id (`<papel>` → 1,
+  `<papel>-N` → N), só em texto sem `parte` e sem identidade de extra. A cópia
+  se lê exatamente como a original; `linhasDoBloco` nunca é inventado. O
+  reconhecimento pelo id e o da marca são as MESMAS funções no leitor e no
+  duplicador. Teste: o cenário legado do R18 duplicado pela função da rota —
+  um único `svc`, as mesmas linhas, nenhuma revisão, `parte` 1 e 2 sem marca
+  autoral, e a spec derivada válida.
+- **As três correções têm prova por mutação** (arquivo corrigido salvo,
+  correção desfeita, teste falhando, restauro conferido com `cmp`).
+
+**Da revisão FINAL do Codex sobre 838bde61 (BLOQUEADO, R23…R24, 12/09/2026):**
+
+As duas são o MESMO defeito visto de lados opostos, e a revisão vinha achando
+a variante seguinte a cada rodada. R23: um bloco cuja camada própria sumiu
+(oculta ou excluída) tomava uma camada por uma regra MAIS FRACA — o extra
+`hora-extra` levava pela função o texto do serviço comum `svc`, e o autosave
+gravava a troca como revisão da equipe. R24: a duplicação troca o id físico
+por UUID e perdia todo vínculo que a leitura só reconhecia por ele — o bloco
+livre autoral `nota` (camada `id: "nota"`, nome "Nota da casa", sem metadata)
+esvaziava e nascia `extra-<uuid>`. A regra única, na ordem de força:
+
+| Vínculo | Vale oculta? | Sobrevive à duplicação por |
+|---|---|---|
+| identidade do extra (`metadata.compositor.extra.id`) | sim: o bloco sai vazio | a própria metadata |
+| id do bloco = id físico (comum: com o papel; livre: id ou nome, **só em texto SEM papel** — R26) | sim: o bloco sai vazio | `metadata.compositor.bloco` (novo) |
+| id inferido `extra-<camada>` (formas atual e antiga) — **só o livre SEM herança** (R25), **só em texto SEM papel** (R26) | sim, livres resolvidos sobre todas as camadas | renomear o bloco (R03/R14) |
+| marca `linhasDoBloco` / `parte` — **inclusive as partes da voz 2 da manchete** (R27) | as partes visíveis seguem do bloco único | a própria metadata |
+| id reservado `<papel>` / `<papel>-N`, **inclusive `headline2` / `headline2-N`** (R28) | as partes visíveis seguem do bloco único | `parte` (R22; a voz 2 também, R28) |
+| papel reconhecido só pelo id | — | `metadata.compositor.papel` |
+| posição (fila por função; voz 2 sem marca, pela altura) | **não é identidade**: só decide o que nada acima decidiu | — |
+
+- 🔴 **Identidade vence posição, inclusive oculta.** A identidade é procurada
+  também nas camadas ocultas (a visível primeiro); o bloco vinculado a uma
+  camada oculta sai `[]` e NÃO entra no fallback por função — só as partes
+  reconhecidas do mesmo bloco único (id reservado ou marca) ainda contam.
+  Os livres passam a ser vinculados sobre todas as camadas na LEITURA, como já
+  eram na duplicação: as duas pontas discordavam, e ocultar "Nota" fazia
+  `extra-nota` tomar "nota" pela forma atual do id e esvaziar `extra-nota-2`.
+- 🔴 **O extra com identidade (herança em função que não é `livre` nem
+  `headline`) só é lido por ela.** Sem a camada, sai vazio — nem pela função,
+  nem pela sobra. "Resolver os comuns primeiro" foi avaliado e RECUSADO: numa
+  página cujo extra fosse uma camada `servico-2` comum, o bloco único juntaria
+  as duas como partes dele. A compatibilidade que existe de fato é a segunda
+  voz LEGADA (`headline2`: função headline herdando headline, dos
+  adaptadores), que a F3 nunca produz e continua lida pela voz 2. Página
+  composta ANTES da F3 com extra sem metadata não é suportada: o contrato
+  (`copyAutoral`) não está na main, então esse registro só existe em dev.
+- 🔴 **Posição não é identidade — e é por isso que não se ocultam camadas do
+  fallback por posição.** Incluir as ocultas na FILA por função pareceu mais
+  correto (dois blocos comuns, a de cima oculta) e foi recusado: a arte-rápida
+  deixa invisível o campo que a copy não cobre, e a camada oculta de cima
+  tomaria o bloco da visível de baixo. O caso só por posição continua
+  ambíguo por construção.
+- 🔴 **A duplicação materializa TODO vínculo do id físico** antes de trocá-lo
+  (`materializarVinculosDoIdFisico`, com o MESMO valor que a leitura tiraria
+  do id), e `duplicarCamadasDaPagina(camadas, novoId, contrato)` devolve
+  camadas e contrato da cópia numa chamada — a rota não reimplementa nada.
+  Nunca inventa `linhasDoBloco`, não sobrescreve marca, não toca camada com
+  identidade de extra, e só age com contrato legível: página sem contrato
+  duplica exatamente como antes.
+- Testes (`camadas-extras.test.ts`, bloco R23–R24): extra oculto, excluído,
+  oculto e reexibido, e na página duplicada (só `hora-extra` muda, `svc`
+  intacto, releitura estável, recomposição válida); extra excluído com camada
+  nova da equipe (vira `extra-…`, não é tomada); segunda voz legada; dois
+  comuns com a camada do id oculta; parte visível do bloco único com a do id
+  oculta; livre `nota` pelo id físico duplicado (id, texto e histórico, e
+  oculto no original → reexibido na cópia); dois comuns duplicados; papel só
+  pelo id duplicado; "Nota"/"nota" com uma oculta. Mutação por regra (M1–M6).
+
+**Da revisão FINAL do Codex sobre 01786a00 (BLOQUEADO, R25, 12/09/2026):**
+
+- 🔴 **Colisão de NAMESPACE: um id autoral pode ser igual ao id que a leitura
+  INFERE de outra camada.** A spec com o extra livre `extra-servico` (herda do
+  apoio) é aceita e compõe certo; excluída só a camada dele, o livre ficava sem
+  a identidade explícita, e `idDeExtra('servico') === 'extra-servico'` o
+  reassociava à camada do serviço comum — `servico` saía `[]`, `extra-servico`
+  levava "11h às 15h", o autosave gravava a troca como revisão da equipe, e a
+  duplicação renomeava o id autoral para `extra-<uuid>` por achar o vínculo
+  inferido.
+- **A regra: o namespace inferido é definido pela HERANÇA, não pelo prefixo.**
+  `casaPeloIdInferido` — só o bloco livre SEM `estilo.herdaDe` (o que a própria
+  leitura criou para texto solto) é casado pelo id inferido, nas formas atual e
+  antiga (`extra-x-2`). O extra autoral só é lido pela identidade. A leitura
+  nunca grava `herdaDe` num bloco que ela criou, então a marca é exata. A
+  duplicação herda a distinção por construção: `renomearExtrasDuplicados` tira
+  os vínculos de `vincularExtras`, e o autoral nunca chega lá ligado a outra
+  camada.
+- 🔴 **Reservar o prefixo `extra-` na spec foi avaliado e RECUSADO.**
+  `idReservado` guarda as DUAS portas — `validarSpec` e a preparação
+  (`resolverCamadasExtras`). Reservá-lo recusaria a entrada que a própria
+  revisão declara válida, faria a preparação pular em silêncio o extra de uma
+  spec gravada, e a recomposição (que revalida a spec) recusaria todo contrato
+  já gravado com esse id. Os ids que a leitura cria sem herança (`extra-<uuid>`)
+  não passam por essa porta: livre com texto sem herança já é recusado antes, e
+  o vazio fica fora das camadas extras.
+- **A varredura do resto do namespace**: `headline2`, `<papel>-N`, `bg-foto`,
+  `logo`, `gradiente-leitura-*` e `<texto>-elemento-N` já são reservados (R02,
+  R10); o papel nu (`servico`) só colide com a camada comum do mesmo papel, e a
+  unicidade de id da spec já recusa; o valor da marca `bloco` sai dos ids do
+  próprio contrato (únicos); e o `extra-<id>` que a leitura cria para texto
+  solto desvia de id autoral existente com o sufixo `-N`.
+- Testes: validação → preparação → persistência → exclusão → revisão →
+  duplicação com `extra-servico` (só ele muda, serviço intacto, id autoral
+  preservado, releitura estável, spec derivada válida); ocultar e reexibir, no
+  original e na cópia (controle); a forma antiga `extra-servico-2`; o autoral
+  `extra-nota` excluído com texto solto novo `nota` (o solto vira `extra-nota-2`
+  inferido e só ele é renomeado na duplicação); o inferido `extra-solta` de
+  sempre; e a varredura dos ids gerados na spec. Mutação M1–M2.
+
+**Da revisão FINAL do Codex sobre 5d5d378e (BLOQUEADO, R26…R27, 12/09/2026):**
+
+Sexta rodada na mesma família. Além das duas correções, um teste INVARIANTE
+passou a enumerar os casos em vez de escolhê-los à mão
+(`src/lib/compositor/__tests__/invariante-copy-autoral.test.ts`).
+
+- 🔴 **R26 — o livre só alcança texto SEM papel.** O livre vazio `servico-2`
+  (herda da manchete) ficava fora de `camadasExtras` e escapava da conferência
+  de ids; na leitura, reservava pelo id físico a segunda parte do serviço
+  repartido antes da reunião das partes de `svc` — o endereço ia para o livre,
+  e a recomposição seguinte recusava o livre que ganhou texto
+  (`SPEC_INVALIDA`). O invariante mostrou que a família era maior que o
+  relatado: o livre `servico`, `headline` ou `extra-headline2` capturava do
+  mesmo jeito a camada comum, a manchete ou a voz 2 — pelo id físico, pelo nome
+  ou pelo id inferido. Hoje, fora da identidade explícita (passo 0), os
+  fallbacks do livre (`livreParaFallback`) só alcançam camada cujo
+  `papelDaCamada` é nulo: texto com papel é lido pela cascata das funções. E
+  `validarSpec` passa os ids dos livres VAZIOS pelas mesmas conferências
+  (reservado e repetido) dos outros ids.
+  ⚠️ Contrato já gravado com esse livre é LIDO sem capturar nada, mas a
+  recomposição dele é recusada na porta pelo id — recusa com motivo, nunca o
+  contrato intermediário. Como o contrato não está na main, só dev tem registro.
+- 🔴 **R27 — a segunda voz também é repartida.** Um arranjo com dois textos
+  `headline2` recebe as linhas 1 e 2 da manchete (marcas `linhasDoBloco` [1] e
+  [2]); a leitura pegava só a primeira voz 2 livre e `hoje` virava
+  `extra-headline2-2` (livre sem herança): revisão fictícia e recomposição
+  recusada. `partesDaVoz2` reúne todas as vozes 2 livres na ordem autoral, com a
+  MESMA ordenação de `partesDoBloco` (`ordenarPartes`: marca, depois número
+  legado e altura), e `linhasNaVoz2` são as últimas linhas.
+- 🔴 **Achado do invariante, anterior a R27**: manchete INTEIRA na voz 2 com a
+  camada dela oculta ou excluída saía `linhas: []` com `linhasNaVoz2: [0]` —
+  contrato inválido que o autosave gravaria e a leitura seguinte recusaria.
+  Bloco não desenhado agora sai sem `linhasNaVoz2`.
+- **O invariante**: 708 contratos enumerados (A: manchete de 1 a 3 linhas com e
+  sem voz 2 declarada × serviço de 0 a 3 linhas × 0 a 2 extras com herança ×
+  quatro arranjos — um texto por papel, serviço em dois grupos (R18), serviço
+  num grupo (R20), voz 2 em dois textos (R27); B: ids autorais do namespace que
+  colide — papel nu, `<papel>-N`, `extra-<papel>`, `headline2` — num livre com e
+  sem herança, vazio ou não). Para cada caso aceito: persistência com os mesmos
+  ids e linhas e sem `extra-*`; releitura, duplicação e recomposição montada de
+  novo sem mudança; e, texto a texto, ocultar, excluir, ocultar e reexibir, e
+  duplicar e ocultar mudando SÓ o bloco dono, que perde exatamente as linhas
+  daquele texto. Hoje: 243 aceitos, 3.266 operações, 0 falhas, menos de 1s.
+  Antes das correções (mesmo oráculo): 310 aceitos e **88 casos falhando** — 45
+  de captura pelo livre nos quatro arranjos, 37 da voz 2 repartida e 6 da
+  manchete inteira na voz 2.
+- 🔴 **O oráculo do invariante também erra, e errou na primeira rodada**:
+  recompor sem nenhum bloco COM função e com texto é recusa legítima ("pelo
+  menos um bloco"), não defeito. Falha de invariante nova se lê pela amostra
+  antes de virar correção.
+- Mutação por regra: M0 (tudo desfeito) 88 casos; M1 (livre alcança texto com
+  papel) 16; M2 (spec sem o id do livre vazio) pego pelo teste R26; M3 (só a
+  primeira voz 2) 15; M4 (bloco vazio com `linhasNaVoz2`) 6.
+
+**Da revisão do commit 9c96dec9 (BLOQUEADO, R28, 12/09/2026):**
+
+- 🔴 **R28 — a voz 2 também tem número legado, e a duplicação precisa levá-lo.**
+  Página legada (sem `linhasDoBloco` nem `parte`) com a manchete
+  `['Costela', 'na brasa', 'hoje']` em `headline` + `headline2` + `headline2-2`:
+  a leitura original junta as vozes 2 pela numeração dos ids (`partesDaVoz2`,
+  R27), mesmo com as camadas movidas no editor contra ela. Mas
+  `materializarVinculosDoIdFisico` EXCLUÍA a `headline2` da marca `parte`; os ids
+  viravam UUIDs e a cópia ordenava pela altura — `['Costela', 'hoje', 'na brasa']`,
+  com o contrato duplicado dizendo o contrário, e a edição seguinte registrando
+  a inversão como revisão da equipe. Hoje a materialização grava `parte` para
+  todo número que a leitura usa — `<papel>`, `<papel>-N`, `headline2`,
+  `headline2-N` — pela mesma função (`numeroDaPartePeloId`).
+- 🔴 **O invariante só via página PREPARADA, e a preparada carrega a marca.**
+  Ganhou dois eixos de VARIANTE de página: marcas (`preparada`; `legada`, sem
+  `linhasDoBloco`/`parte`/`bloco`; `legada-sem-papel`, sem o papel também) e
+  altura (`identidade`, `invertida`, `troca-no-grupo` nas partes de cada papel
+  repartido). Duas lições de construção do próprio teste:
+  - **a preparação devolve todo texto em y 0** — permutar alturas empatadas não
+    reordena nada, e a primeira versão passou sem enxergar o R28. As alturas
+    distintas são atribuídas na ordem do array (a da numeração) ANTES de
+    permutar;
+  - **o contrato AUTORAL não é oráculo da página legada**: ela foi persistida
+    pela leitura legada, que numa distribuição `[0, 2]` / `[1]` segue a
+    numeração e não a ordem autoral. Na legada vale PRESERVAR a leitura em toda
+    operação (releitura, duplicação, ocultar e reexibir, e ocultar na cópia igual
+    a ocultar na original); o contrato autoral e o dono texto a texto valem só na
+    preparada. `legada-sem-papel` é forma que o compositor nunca gravou (o papel
+    existe desde 02/09, o id numerado desde 11/09) e só entra na regra
+    diferencial.
+- Números: 708 contratos, 243 aceitos, **1.239 variantes de página, 18.042
+  operações, 0 falhas**. Antes da correção: **15 casos falhando**, todos na voz 2
+  em dois textos, página legada com altura invertida ou trocada, na duplicação.
+  Teste do R28 em `camadas-extras.test.ts` (leituras original e duplicada
+  idênticas, sem revisão, `parte` 1 e 2 na cópia). Mutação: devolver a exclusão
+  da `headline2` derruba o teste R28 e os mesmos 15 casos.
+
+**Da pré-revisão do HEAD 980eea2a (APTO COM NOTAS, C9-01…02, 12/09/2026):**
+
+- 🔴 **C9-02 — a camada DUPLICADA ou COLADA no editor não leva a identidade
+  da original.** `duplicateLayer` e `pasteLayers` copiavam a metadata inteira: a
+  cópia do extra `nota` nascia declarando `extra.id = 'nota'`, e com duas camadas
+  no mesmo bloco só a altura desempatava — arrastar a cópia para cima trocava
+  três blocos do contrato e o autosave assinava como edição da equipe, sem texto
+  editado. Hoje as duas ações passam por `semIdentidadeAutoral`
+  (`src/lib/copy-autoral/camada-copiada.ts`, puro): a cópia sai sem `extra`,
+  `bloco`, `parte`, `linhasDoBloco` **e sem `papel`**. O papel sai também porque
+  uma segunda camada do mesmo papel vira um segundo bloco COMUM daquela função
+  — e com dois comuns o bloco repartido deixa de reunir as partes e a leitura
+  volta a ser por posição. Sem papel a cópia é texto solto, com o próprio bloco
+  inferido ligado a ela pelo id. Grupo, prefixo e encaixe ficam.
+  ⚠️ Custo aceito: a cópia de um texto do compositor perde o papel e, com ele,
+  o que o painel de combinações lê dele; quem quiser a cópia num papel o
+  atribui de novo. `parte` e `linhasDoBloco` sozinhos não mudam a leitura de
+  uma camada SEM papel — a mutação que os mantém é pega só pelo teste do helper,
+  e eles saem para a cópia não voltar a ser parte se alguém lhe der o papel
+  depois.
+- 🔴 **C9-01 — o invariante passou a provar CORREÇÃO também na página legada,
+  e a encadear operações.**
+  - **Oráculo da legada** (`leituraLegada`): a leitura que o leitor LEGADO fazia —
+    as partes de cada bloco comum pela numeração dos ids (`<papel>`,
+    `<papel>-N`, e a voz 2 depois da manchete) — e o dono de cada texto nessa
+    leitura. Persistência, ocultar e excluir comparam com ele, não só a cópia
+    com a original. A página artificial sem papel continua só na regra
+    diferencial.
+  - **Só o id que não é do autor é mascarado**: o `extra-*` autoral (com herança)
+    fica visível em toda comparação; o livre SEM herança com id `extra-*` segue
+    mascarado, porque pela regra do R25 ele É o namespace inferido (a primeira
+    rodada acusou 2 casos da página sem papel exatamente por essa renomeação).
+    Os ids enumerados ganharam `extra-nota` e `extra-servico-2`.
+  - **Roteiros encadeados por texto**: excluir → salvar (a revisão que o
+    autosave grava) → reler → duplicar → validar a spec da recomposição; e
+    duplicar → ocultar → salvar → reler → reexibir → salvar.
+- Números: **780 contratos, 229 aceitos, 1.167 variantes de página, 40.644
+  operações (7.662 encadeadas), 0 falhas**. Antes das correções: as 6 variantes
+  do C9-02 falhavam, e o invariante estendido não achou defeito novo no leitor.
+  Mutação: a leitura legada só pela altura (a prova sugerida pela pré-revisão)
+  derruba **80 casos** na legada e o teste R28; o id inferido casando livre com
+  herança derruba 5 casos, entre eles os roteiros encadeados; cada marca mantida
+  na cópia derruba o cenário dela (`extra` → o extra, `bloco` → o livre ligado por
+  bloco, `papel` → manchete, parte marcada e parte legada).
+
+**Da pré-revisão do commit 099818b0 (BLOQUEADO, C9-11…13, 12/09/2026):**
+
+- 🔴 **C9-11 — o `papel` só sai da camada copiada quando a página TEM contrato
+  da copy.** O C9-02 tirava o papel em qualquer página, e na página SEM contrato
+  (a assinatura, a de combinação) o papel é justamente o que o COMPOSITOR lê:
+  duplicar o texto de serviço para fazer a linha do endereço gerava uma cópia
+  sem papel, `arranjoDasCamadas` a descartava junto com o ícone preso a ela, e
+  toda peça seguinte daquela variante punha horário e endereço no mesmo texto,
+  em silêncio. Lá não há leitura de autoria a proteger (`revisar-pagina` devolve
+  `sem-contrato`). Hoje `semIdentidadeAutoral(camada, { paginaTemContrato })`
+  tira SEMPRE `extra`, `bloco`, `parte` e `linhasDoBloco` e o `papel` só com
+  contrato — a nota do C9-02 sobre "sem papel" vale só para essas páginas.
+  - **Os dois callbacks do editor chamam funções PURAS** (`camadaDuplicadaNoEditor`,
+    `camadasColadasNoEditor`, em `camada-copiada.ts`), e um teste lê a fonte de
+    `template-editor-context.tsx`: antes, voltar `duplicateLayer` ou
+    `pasteLayers` a copiar a camada inteira não derrubava teste nenhum, porque
+    o teste refazia o spread por conta própria.
+  - 🔴 **O `MultiPageProvider` mapeia os campos da página UM A UM** e descartava
+    `copyAutoral`, que a rota `GET /api/templates/[id]/pages` já devolve. O
+    editor lê `Page.temCopyAutoral` (boolean derivado no mapeamento) por
+    `useMultiPageOpcional()` — o `useMultiPage()` lança fora do provider. Campo
+    novo de `Page` que o editor precise ler tem de entrar nesse mapeamento,
+    senão some sem erro.
+- **`definirPapel` (painel de combinações) passou a MESCLAR**
+  (`comPapelNoCompositor`, `font-combinations-capture.ts`): substituía
+  `metadata.compositor` por `{ papel }` e, numa página composta, apagava `extra`,
+  `bloco`, `parte`, `linhasDoBloco` e `encaixe`. Tirar o papel remove só o papel.
+- 🔴 **C9-12 — o invariante ganhou o eixo da ORDEM DO ARRAY** (textos invertidos
+  e rotacionados no array, alturas na numeração, donos procurados pelo ID da
+  camada). Na página preparada a ordem do array coincide sempre com a numeração
+  dos ids, e o painel de camadas muda o array. Medido contra o invariante do
+  HEAD 099818b0: tirar o `sort` do ramo legado de `ordenarPartes` derrubava 196
+  casos, **todos** em `voz2-dois-textos` (pelas permutações de Y) — e **zero**
+  nas páginas de serviço. Com o eixo: 714 falhas, 322 delas em
+  `servico-dois-grupos` e `servico-mesmo-grupo` (74 de persistência). Trocar a
+  numeração pela posição no array dá o mesmo placar. A mesma troca no ramo das
+  partes MARCADAS é mutante equivalente (as linhas vão pela posição autoral de
+  `linhasDoBloco`, não pela ordem das camadas).
+- 🔴 **C9-13 — os dois primeiros passos dos roteiros encadeados eram f(x) contra
+  f(x)** (`salvar` é a leitura crua quando não há camada escondida pelo revisor)
+  e saíram, junto com a contagem deles. Entraram: excluir → salvar → reler →
+  duplicar → spec da recomposição → **desfazer** → salvar (devolve a leitura
+  original), e a camada escondida pelo **REVISOR** (`comVisibilidadeDoRevisor`):
+  salvar é `sem-mudanca`, a leitura da arte é igual a ocultar, e desfazer segue
+  `sem-mudanca`. Mutações: `camadasParaDecisao` como identidade derruba 11.226
+  verificações (o roteiro do revisor); a revisão que só registra remoção derruba
+  o desfazer e o reexibir.
+- Números: **780 contratos, 229 aceitos, 1.647 variantes, 74.354 operações
+  (16.839 encadeadas), 0 falhas**. Mutações do editor, cada uma derrubando o
+  teste dela: o helper ignorando a opção (3 testes), `duplicateLayer` e
+  `pasteLayers` copiando a camada inteira, o contexto sem `temCopyAutoral`, o
+  painel substituindo o compositor e `comPapelNoCompositor` substituindo.
+- 🔴 **`copyDaSpecSemContrato` confere a própria saída** (restack sobre o PR 2, `9238098f`/`493e8d6a`,
+  13/09/2026): `converterSpecSemContrato` devolve `{ copy: null, problemas, original }` quando a spec sem
+  contrato não cabe no leitor, e `copyDaSpecSemContrato` LANÇA `CopyLegadaIncompativel` — a mesma forma dos
+  adaptadores do PR 2, que também valem aqui (lacuna de resumo para papéis desconhecidos, `em`/`superficie`
+  vazios recusados, nunca omitidos). `validarSpec` e a persistência do compositor usam o `converter*`; e a
+  função entrou na varredura de fronteira de `invariantes.test.ts`, como o PR 2 manda para produtora nova.
+
+**Da revisão FINAL do Codex sobre a0b2cdcc (BLOQUEADO, PR9-F01…F02, 18/09/2026):**
+
+- 🔴 **PR9-F01 — ~~sem contrato legível, peça com camada extra NÃO se recompõe.~~**
+  **Superado em 21/09/2026 pelo PR 10 (R1, e PR10-04/05):** sem contrato
+  legível, a peça com camada extra RECOMPÕE quando dá e é RE-RENDERIZADA como
+  está quando não dá. Com o HISTÓRICO CHEIO a peça é composta com o contrato
+  COMO A PÁGINA O MOSTRA (`contratoLidoParaRecompor`), e re-renderizada quando
+  ele não representa a página (texto que nenhum bloco originou, conteúdo que não
+  passa em `validarSpec`); na página SEM contrato, `specComACopyDaPagina` lê
+  cada extra pelo `metadata.compositor.extra.id`, com o texto da PÁGINA; com
+  `RevisaoDaCopyInvalida` (o texto da página não cabe no contrato e, pelos
+  mesmos limites, nem na spec), re-render. "A peça tem extra" é
+  `specTemExtra` — as DUAS formas: `camadasExtras` (o livre) e bloco com
+  `herdaDe` (o extra COM função). Ver "PR9-F01 no PR 10", na seção do ciclo.
+  Com o histórico cheio (200 revisões) ou um bloco novo que o contrato não
+  comporta, `tentarCopyEfetivaDasCamadas` recusa e a recomposição caía no
+  caminho sem contrato — que atualiza só os blocos por papel (`specComACopyDaPagina`)
+  e deixa `specDaRecomposicao` conservar as `camadasExtras` da spec ANTIGA. O
+  compositor recebia "Hoje" e gravava sobre o "Amanhã" que a equipe tinha
+  salvo, e o slide ia junto. A leitura do contrato passou para ANTES da
+  decisão (`recomporPaginaDefasada`): ~~sem contrato legível e com extra na spec
+  (inclusive página legada sem contrato), a arte é **re-renderizada como a
+  página está** — camadas e contrato intactos, aviso no registro, só o slide
+  troca.~~ Regra geral: caminho de fallback que usa dado DERIVADO de outra versão
+  (a spec antiga) não pode escrever por cima da página; re-renderizar o que está
+  gravado é o fallback seguro.
+- 🔴 **PR9-F02 — o extra VAZIO COM FUNÇÃO e herança também disputa o
+  namespace.** `blocosParaOCompositor` omite bloco com função vazio dos blocos
+  derivados, e a conferência de ids só recuperava os vazios de `semPapel`
+  (livres): `servico-2` (serviço herdando o apoio, `linhas: []`) passava, e na
+  leitura tomava pelo id físico a segunda parte do serviço comum repartido —
+  `svc` perdia o endereço e a recomposição seguinte caía em SPEC_INVALIDA.
+  `validarSpec` confere todo bloco vazio que vira camada própria (livre ou com
+  herança), e a leitura (`copyEfetivaDasCamadas`, 2º passo do vínculo por id
+  físico) nunca entrega a um bloco com herança uma camada que é PARTE da
+  composição (`parte`, `linhasDoBloco` ou id `<funcao>`/`<funcao>-N`) — é o que
+  protege contrato já gravado antes da porta. O invariante enumera o extra vazio
+  com função (cobertura `f02`).
+### O ciclo da camada extra (PR 10 de "Marca simples, copy melhor", 12/09/2026)
+
+O PR 9 criou a camada extra; este fecha o CICLO dela — criar, editar, trocar a
+foto, re-renderizar, editar a copy e recompor — em imagem única e em slide de
+carrossel, e só então a anuncia no conector. Testes puros em
+`src/lib/compositor/__tests__/ciclo-extras.test.ts`; prova no branch de dev em
+`scripts/validar-camadas-extras.ts` (variante sem `servico`, horário e nota
+herdando do apoio, os dois tipos de post).
+
+- 🔴 **A camada extra se lê pela IDENTIDADE, nunca pelo papel da função dela**
+  (`copyDaPaginaPorIdentidade`, em `defasagem.ts`). O serviço que herda do
+  apoio grava `metadata.compositor.papel = 'servico'`, e a recomposição SEM
+  contrato (`specComACopyDaPagina`) juntava o texto dele ao do serviço comum,
+  tirava `herdaDe` e `id`, e devolvia ao compositor um bloco de papel que a
+  variante não tem: `PAPEIS_INCOMPATIVEIS` (ou "papel repetido"), e o slide
+  ficava com a arte velha. O livre, sem papel, nem era lido. Hoje o extra volta
+  com a identidade da SPEC (id, herança, grupos, ordem) e só o TEXTO vem da
+  página, respiro incluído; extra apagado na página sai da spec com aviso.
+  `copyDosPapeis` continua lendo o extra pela função — é outra pergunta.
+- **Com contrato, os extras saem do CONTRATO**: a spec da recomposição não
+  carrega `camadasExtras` da spec antiga (R15 do PR 9, `specDaRecomposicao`) —
+  com o texto editado, o `validarSpec` a recusava como divergente.
+- 🔴 **Trocar a foto é defasagem** (`Defasagem.fotoTrocada`). `precisaRefazer`
+  só olhava texto e geometria, e a foto trocada no editor num slide de
+  carrossel NUNCA chegava ao post — a página parecia em dia. A peça é
+  RECOMPOSTA com a foto da página (os extras junto). Só conta com foto dos dois
+  lados: imagem acrescentada ou removida já é ajuste manual pelo diff.
+- **O enquadramento da foto mexido à mão é ajuste manual** (`style.crop`,
+  `cropPosition`, `objectFit` da camada de imagem, que o diff de geometria não
+  via): recompor escolheria o corte de novo pelo mapa de calma e apagaria o
+  acerto. Re-renderiza como está.
+- **O aviso de ajuste manual nomeia o extra pelo id que ele DECLARA**
+  (`metadata.compositor.extra.id`), não pelo papel da função ("hora foi movida",
+  nunca "servico foi movida" numa peça que também tem o serviço comum).
+  🔴 Nunca pelo FORMATO do id: `idReservado` só proíbe `<papel>-N` numérico, e o
+  extra `servico-fds` (id aceito) começava por `servico-` — o aviso o chamava de
+  "servico" (varredura do 2º restack, 21/09/2026; a mesma inferência pelo id
+  que o PR9-F02 tirou da duplicação). O rótulo é só texto: toda decisão
+  (`soTexto`, `precisaRefazer`, `paginaMudouDesde`) lê a CONTAGEM de
+  `mexidoNaMao`.
+- **Escritas visuais: nenhuma nova neste PR.** As cinco portas (PATCH da página,
+  PUT do template, PATCH de camada, `ajustarArte`, `reverterCamadasDaArte`) já
+  chamam `invalidateScheduledRenders` + `pedirRecomposicaoDaArteCongelada`, e os
+  dois escritores de cópia da página em `slotValues` (`agendarPost`,
+  `trocar-arte-do-post` por página) já usam `comoCopiaDaPagina` — a cópia leva
+  o extra pelo id da camada, e `renderPostArt` a mantém em dia.
+- ⚠️ **O PATCH de camada avulsa** (`/api/pages/[pageId]/layers/[layerId]`, o
+  autosave do painel do gerador de criativos) **não revisa o contrato** da
+  página: texto de extra mudado por ali entra na próxima leitura como revisão do
+  SISTEMA (superfície da recomposição), não da equipe. Herdado do PR 3.
+- **No conector** (`catalogo/compositor.ts`): `compor-arte`, `compor-leva` e
+  `medir-copy` aceitam `id`, `herdaDe`, `grupoVisual`, `grupoDeLeitura` e `ordem`
+  no bloco, e `camadasExtras`; o teto de blocos é o da spec (40, somados com os
+  extras — `validarSpec` confere a soma). `medir-copy` devolve `extra` em cada
+  bloco medido (o `papel` ali é o de estilo). A regra "até a camada extra
+  existir" saiu de TODOS os lugares no mesmo commit (instruções, descrição,
+  `FORMAS-DE-ARTE.md`, este arquivo, comentários) — regra velha e nova
+  convivendo é defeito. Snapshots do registro atualizados de propósito.
+- ⚠️ **A escolha da VARIANTE ainda pontua pelo papel da FUNÇÃO**
+  (`carregarAssinatura` recebe `spec.blocos.map(b => b.papel)`): o horário que
+  herda do apoio conta como "pede servico" e empurra para a variante que tem o
+  campo, se houver. Não quebra nada — a peça compõe nas duas —, mas quem quer a
+  variante sem o campo fixa `preferencias.variante`.
+- ⚠️ **Arte ajustada por `ajustarArte` deixa de ser recomposta**: a Generation
+  nova não tem spec nem snapshot, e daí em diante a página só re-renderiza como
+  está (os extras continuam na página, editáveis). Herdado do desenho da
+  recomposição, não deste PR.
+- 🔴 **A recomposição grava a spec VALIDADA, com a mesma forma que a
+  composição grava** (prova-dev-1 do PR 10, 12/09/2026). `specDaRecomposicao`
+  tira os extras velhos e deixa só contrato + blocos; `camadasExtras` só é
+  remontado por `validarSpec`. Gravar a entrada deixava a nota (extra `livre`)
+  apenas dentro do contrato, e quem lê `fieldValues.spec.camadasExtras` a
+  perdia depois da primeira recomposição. Teste: o consumidor R15 em
+  `recompor-camadas-extras.test.ts` confere a spec gravada.
+
+**Da revisão dos patches do PR 10 (commit cb3e951e, BLOQUEADO, R01…R04, 12/09/2026):**
+
+- 🔴 **R01 — o job que está RODANDO não é reaberto pelo enfileiramento, então
+  a conferência do FIM do job tem de olhar tudo o que a recomposição consome.**
+  Causa: o runner comparava só a COPY antes × depois; a foto trocada (ou o
+  corte mexido) depois da gravação condicional da página e antes do fim do job
+  terminava com o slide mostrando B e a página mostrando C — o compare-and-set
+  da página não cobre essa janela. Regra (reescrita pela C10-04, depois do
+  rebase sobre o PR 0): **com arte refeita**, a referência é o que o job GRAVOU
+  — a versão visual `versaoGravada` do PR 0 (dimensões, fundo e camadas: foto e
+  corte vivem nas camadas); **sem nada refeito** não houve gravação, e a
+  referência é a página lida ANTES do job, perguntada por
+  `paginaMudouDesde(camadasAntes, agora)` (`defasagem.ts`, a pergunta de
+  `medirDefasagem`: texto de toda camada visível, extras inclusive; foto;
+  enquadramento; geometria; tipo; camada acrescentada ou removida). Nos dois
+  ramos, sem orçamento para outra tentativa o job LANÇA `PAGINA_MUDOU_DURANTE`
+  (C10-01). Ilegível não pede tentativa. Não existe `camadasDaArte` no resultado
+  — o campo foi removido por não ter leitor. Testes: consumidor do runner em
+  `ciclo-extras-revisao.test.ts` (arte refeita: troca só de foto na janela →
+  nova tentativa com "renderizar como está" → a segunda execução re-renderiza
+  com C e o slide mostra C; só o corte → nova tentativa; sem edição → nenhuma.
+  Nada refeito: ver a pré-revisão abaixo).
+- 🔴 **R02 — schema público que espelha validador interno usa os limites DELE.**
+  Causa: `linhasDoBloco` do conector exigia string não vazia e até 6 linhas, e
+  `compor-arte`, `compor-leva` e `medir-copy` recusavam na porta o respiro ("")
+  e as 7 a 12 linhas que `validarSpec` e o contrato aceitam. Regra: as linhas,
+  o id, o grupo de leitura, a ordem e os enums vêm de `blocoSchema`/`PAPEIS`/
+  `GRUPOS_VISUAIS` (`compositor/spec.ts`, módulo puro — o catálogo continua
+  carregando sem env); os tetos que ficaram literais (40 blocos, 3 candidatas,
+  20 slides, 8 arranjos) têm teste de PARIDADE do JSON Schema com a spec.
+  Snapshots do registro atualizados de propósito. ⚠️ Campos públicos MAIS
+  FROUXOS que a spec (`nome` sem o teto de 120, `preferencias.variante` sem o de
+  80, `projectId` sem inteiro positivo, `fotoUrl` sem formato de URL) ficaram
+  como estão: a recusa acontece em `validarSpec`, POR ITEM — apertar na porta
+  faria um item ruim recusar a `compor-leva` inteira. Testes: as três tools com
+  respiro inicial/interno/final e 7–12 linhas preservados, 13 linhas e linha de
+  301 caracteres recusados, em `compositor-camadas-extras.test.ts`.
+- 🔴 **R03 — na recomposição, decidir AUSÊNCIA de texto é separado de
+  TRANSFORMAR as linhas.** Causa: `copyDaPaginaPorIdentidade` fazia `trim()`
+  antes de separar as linhas (["", "vale só no almoço", ""] voltava como uma
+  linha só) e `specComACopyDaPagina` filtrava linha vazia do bloco comum —
+  mudando copy e espaçamento em silêncio na recomposição SEM contrato. Regra: o
+  conteúdo volta BRUTO, como o contrato já lê a camada (`linhasDaCamada`), e
+  `temTexto` só decide se a camada tem texto. Testes: ida e volta pela
+  preparação e pelo consumidor, extra de bloco, extra livre em rich text
+  (`[colchetes]`) e bloco comum, com os arrays comparados inteiros.
+  ⚠️ Fica aberto (fora do PR 10): a DETECÇÃO lê `textosDaPagina`, que apara —
+  editar SÓ o respiro (ou só o destaque de um rich text) não conta como
+  defasagem, e o slide só pega a mudança na próxima edição que conte.
+- 🔴 **R04 — mapa chaveado por id do autor é sem protótipo.** Causa: o mapa de
+  extras era `{}`; "constructor" e "toString" são ids permitidos, e o extra
+  esvaziado na página (texto vazio não entra no mapa) achava a propriedade
+  HERDADA — valor verdadeiro, `texto.split is not a function`, a recomposição
+  falhava e o slide ficava velho, com ou sem contrato (a leitura roda antes de
+  adotar o contrato). Regra: `Object.create(null)` e leitura só por
+  `textoDoExtraNaPagina` (propriedade própria e string). Testes: os dois ids,
+  com e sem contrato, pelo consumidor da recomposição — sem exceção, extra
+  tirado com aviso, slide trocado. (`textosDaPagina` usa `in` e renomeia a
+  chave para "constructor#2": cosmético, sem exceção.)
+
+**Da pré-revisão do HEAD 8b8e801f (BLOQUEADO, C10-01…04, 12/09/2026):**
+
+- 🔴 **C10-01 — sem nada refeito e sem orçamento, a edição feita durante o job
+  NÃO pode virar sucesso.** Causa: a união do rebase trouxe o ramo "nada foi
+  refeito" (`paginaMudouDesde`) sem a metade do REV-D02: com `pedirNovaTentativa`
+  devolvendo `false` o runner seguia, `fecharJob` lia a Generation COMPLETED e
+  fechava DONE — a página com a foto ou o texto novo, o slide com a arte velha,
+  sem `lastError` nem recusa. Regra: os dois ramos da conferência final lançam
+  `PAGINA_MUDOU_DURANTE` quando não há mais tentativa; o `catch` grava a recusa
+  na arte e no histórico do post e relança (o job fica FAILED com motivo).
+  Teste: página em dia no levantamento, foto trocada logo depois dele,
+  orçamento esgotado → rejeita com `PAGINA_MUDOU_DURANTE`, a recusa gravada em
+  `fieldValues.recusaDaRecomposicao` (chave própria, C6-01 do PR 0 — o registro
+  `recomposicao` do último render fica como estava) e histórico "A arte NÃO foi
+  atualizada: … confira a página e salve de novo".
+- 🔴 **C10-02 — a voz 2 legada é a última linha COM TEXTO, com os respiros que
+  a seguem, e nunca uma voz 2 vazia** (`dividirManchete`, `segunda-voz.ts`).
+  Causa: o R03 passou a preservar o respiro, e a regra legada "última linha na
+  voz 2" pegava a linha VAZIA de "na brasa\n": numa página sem contrato (todas
+  as de produção hoje) uma edição em OUTRO texto recompunha a peça com "na
+  brasa" na voz 1 (sem a cor e a fonte da segunda voz) e reescrevia as camadas.
+  O R02 abriu a mesma porta pela composição do chat (linha "" aceita na porta).
+  Com contrato nada muda: manda `linhasNaVoz2`. Menos de duas linhas com texto
+  = sem segunda voz. Testes: unidade (normal, "\n" no fim, linha só de espaços
+  no fim, respiro interno, uma linha com texto, controle com contrato) e
+  consumidor sem contrato, variante com `headline2`, apoio editado → `headline2`
+  mantém "na brasa" exatamente como estava. **Como o editor grava o "\n" final:**
+  lido no código, não medido no navegador — `konva-editable-text.tsx` põe a
+  quebra com Shift+Enter (Enter confirma) e confirma com `onChange({ content:
+  finalValue })`, o valor cru do textarea, sem `trim`; o PATCH da página aceita
+  `layers` como `z.array(z.unknown())` e não normaliza `content`.
+- **C10-03 — o teste do fim do job tem de ALCANÇAR o ramo que prova.** Causa:
+  os três casos do R01 partiam de arte que precisava ser refeita, então o ramo
+  "nada foi refeito" não era alcançado (apagá-lo deixava a suíte verde), e a
+  fila falsa ignorava o "renderizar como está": a 2ª execução recompunha pela
+  spec, caminho que a produção não segue. Regra: a fila falsa grava o marcador
+  e `jobAtual()` o entrega à execução seguinte; o re-render falso registra (nova
+  URL e merge do patch). Testes novos no ramo "nada foi refeito": com orçamento
+  → tentativa sem compor nem renderizar, e a seguinte recompõe com C; sem
+  orçamento → `PAGINA_MUDOU_DURANTE`; sem edição → nada.
+- **C10-04 — documentação e código dizem a mesma regra**: o parágrafo do R01
+  acima foi reescrito com os dois ramos, e `ResultadoDaRecomposicao.camadasDaArte`
+  (preenchido e sem leitor) saiu. Comparar com o que o job gravou é a regra
+  certa — e é o que a `versaoGravada` do PR 0 já faz no ramo em que houve
+  gravação.
+- ⚠️ **Limites conhecidos, herdados do PR 0 e NÃO mexidos aqui:**
+  - edição salva DEPOIS da leitura final da conferência e antes de `fecharJob`
+    também encontra o job `RUNNING` e não o reabre: o job fecha DONE com a arte
+    anterior, até a próxima edição ou a varredura. Fechar isso exige marcar no
+    job uma "edição pendente" no enfileiramento, como já se faz com a força;
+  - recusa determinística desatualizada: se a equipe encurta o texto enquanto o
+    job refaz a peça com o texto longo, o job termina
+    `TEXTO_NAO_CABE_NA_COLUNA` → FAILED, com a recusa gravada nos posts, e a
+    edição que resolveria não reabre o job em andamento. A recusa fica
+    desatualizada até a próxima edição.
+
+**Da pré-revisão do commit 3fad6ba2 (APTO COM NOTAS, C10-11, 12/09/2026):**
+
+- 🔴 **C10-11 — antes de falhar (ou pedir tentativa) no ramo "nada foi refeito",
+  confira se AINDA HÁ o que refazer.** Causa: o throw da C10-01 decidia só por
+  `paginaMudouDesde` (página antes × depois). Com o post congelado
+  (`laterPostId`) no meio do caminho, ele saía dos slides, a edição feita no
+  levantamento disparava o throw, e o job fechava FAILED dizendo que "o slide"
+  ficou com a versão anterior quando slide nenhum existia — e a recusa, por
+  merge raso, apagava o registro do último render (a C6-01, que o PR 6
+  conserta). Antes da C10-01 esse caso fechava DONE, o desfecho certo. Regra:
+  mudou → `levantarPagina` de novo e a MESMA pergunta do enfileiramento (arte
+  registrada, `slides.length > 0` e `precisaRefazer`, ou força); sem o que
+  refazer, fecha normalmente, sem tentativa e sem recusa. A conferência vale
+  para os dois desfechos (com e sem orçamento): tentativa que não acha trabalho
+  só gasta orçamento. Testes: post congelado + foto trocada no levantamento,
+  com e sem orçamento → resolve, `pedirNovaTentativa` não chamado, histórico
+  vazio, `fieldValues` da arte idêntico byte a byte.
+- **O motivo da falha é em português da equipe e diz o que mudou**
+  (`edicaoDuranteOJob`, `defasagem.ts`, pela defasagem do novo levantamento):
+  "a foto da página foi trocada…", "o texto da página foi alterado…", os dois,
+  ou "a página foi alterada…" (caixa, corte, camada). Saíram o jargão ("que a
+  encontrou em dia") e a redundância com o modelo do histórico. O sufixo do
+  histórico é neutro — "confira a página e salve de novo" —, vale para texto e
+  para foto, e sai de `mensagemDaRecusaNoHistorico` (C6-12, descido com o PR 0):
+  quando a mesma rodada já trocou o PNG, a mensagem diz que a imagem foi
+  trocada em vez de afirmar que continua a anterior.
+- Comentários que ainda diziam "a última linha" (`preparar-blocos.ts`,
+  `defasagem.ts#specComACopyDaPagina`) passaram a dizer "a última linha COM
+  TEXTO, com os respiros que a seguem", como `segunda-voz.ts`.
+
+**Da revisão FINAL do Codex sobre 75301ff0 (BLOQUEADO, PR10-01…03, 18/09/2026):**
+
+- **PR9-F01 no PR 10**: ~~com histórico cheio, a recomposição SEM contrato
+  segue — `specComACopyDaPagina` reconstrói cada extra pela identidade da
+  camada, então o texto novo chega à spec~~ — **superado em 21/09/2026 pelos
+  PR10-04/05** (abaixo): com o histórico cheio a peça é composta com o contrato
+  lido das camadas, nunca pelo caminho sem contrato. Com `RevisaoDaCopyInvalida`
+  (o texto da página não cabe no contrato, e pelos mesmos limites não cabe na
+  spec) a peça com extra é re-renderizada como está, como no PR 9.
+  ⚠️ **Peça SEM extra com leitura inválida recompõe e cai em `SPEC_INVALIDA`**
+  (erro determinístico no runner: sem nova tentativa, recusa na arte e no
+  histórico do post, job FAILED, slide com a arte antiga) — a trava só
+  re-renderiza com extra. É igual na regra do PR 9 e na do PR 10 e anterior ao
+  2º restack: comportamento ATUAL, documentado por teste
+  (`recompor-camadas-extras.test.ts`, "COMPORTAMENTO ATUAL"), não defeito novo.
+  Vale também para histórico cheio + conteúdo inválido SEM extra (o contrato
+  lido não passa em `validarSpec`, e sem extra a peça segue pelo caminho sem
+  contrato). "Re-renderizar como está também sem extra?" é pergunta de desenho
+  em aberto.
+- 🔴 **PR10-01 — toda leitura do runner da recomposição mora DENTRO do `try`.**
+  `camadasAntes` era lida antes dele: um timeout transitório atravessava o
+  dispatch e `falharJob` gravava FAILED com tentativas sobrando, sem recusa no
+  histórico. Agora ela passa por `pedirNovaTentativa`/`registrarRecusa` como
+  qualquer erro de infra. ⚠️ `marcarForcaEmExecucao` (PR 0) continua ANTES do
+  `try`, com a mesma forma — não mexido aqui por ser do PR 0.
+- 🔴 **PR10-02 — o `pattern` publicado no conector perdia a flag do regex.**
+  `idDeCamadaSchema` era `/…/i` e o `zodToJsonSchema` anunciava `^[a-z0-9]…$`:
+  cliente que valide o inputSchema recusava `Nota`, que o zod aceita. O regex
+  passou a declarar as maiúsculas EXPLICITAMENTE (vale também para o servidor
+  stdio, que converte o zod pelo SDK), e `derivarSchemaJson` usa
+  `applyRegexFlags: true` como guarda para qualquer regex com flag no catálogo.
+  O teste valida `Nota`/`nota` contra o `schemaJson` ANUNCIADO — a paridade
+  zod × zod comparava duas conversões que perdiam a flag igual.
+  ⚠️ `idDeBlocoSchema` (contrato, PR 2) ainda usa `/i`; hoje não é publicado
+  em nenhuma tool.
+- PR10-03: as duas passagens deste arquivo que descreviam a recusa em
+  `recomposicao.estado = 'recusada'` e o sufixo antigo do histórico foram
+  corrigidas para `recusaDaRecomposicao` e "confira a página e salve de novo".
+
+**Da revisão FINAL do Codex sobre 1d18e983 (BLOQUEADO, PR10-04…05, 21/09/2026):**
+
+- 🔴 **PR10-04 — a classe da PRIMEIRA recusa não prova que o conteúdo seja
+  válido.** `tentarAplicarRevisao` recusa o histórico cheio ANTES de validar o
+  conteúdo novo: com 200 revisões e uma linha de 301 caracteres num extra, a
+  leitura devolvia `HistoricoDaCopyCheio`, a guarda do re-render (que exigia
+  `RevisaoDaCopyInvalida`) ficava falsa, a recomposição reconstruía uma spec
+  inválida, o compositor lançava `SPEC_INVALIDA` e o runner, tratando o erro
+  como determinístico, deixava o slide com a arte antiga. Hoje a spec
+  reconstruída passa por `validarSpec` ANTES de liberar a recomposição; não
+  passando, a peça com extra é re-renderizada como está. O estado é alcançável
+  pelo editor de verdade: o PATCH da página devolve `historico-cheio` para a
+  linha longa, pela mesma máscara (passo 16 da prova).
+- 🔴 **PR10-05 — com o histórico cheio a peça é composta com o contrato COMO A
+  PÁGINA O MOSTRA, nunca pelo caminho sem contrato.** O caminho sem contrato
+  perdia o que só o contrato carrega; o caso medido: a regra legada de
+  `dividirManchete` punha "na brasa" na voz 2 de uma manchete que nasceu inteira
+  na voz 1, e a de três linhas com duas declaradas na voz 2 voltava com uma.
+  `contratoLidoParaRecompor` (`spec-da-recomposicao.ts`) aplica ao contrato
+  gravado a MESMA leitura da copy efetiva (`blocosLidosDasCamadas`, a primeira
+  metade de `copyEfetivaDasCamadas`, extraída sem mudar comportamento) — só a
+  revisão que registraria a mudança fica de fora, porque não cabe.
+- 🔴 **Esse contrato vale só para COMPOR.** Nunca é gravado como contrato da
+  copy — nem na página, nem no `copyAutoral` da arte, que segue `efetiva:
+  null` —: os blocos dele mudaram sem revisão, e contrato com mudança sem autor
+  é o que o histórico existe para impedir. A SPEC gravada na arte o leva, porque
+  ela é o registro do que foi composto; tirá-lo a deixaria inválida (o grupo de
+  leitura entre um comum e um extra só existe com contrato) e a arte nunca mais
+  recomporia.
+- **A classe inteira, item por item** — o que o caminho sem contrato fazia com
+  cada decisão autoral, medido com a preparação real sobre as camadas que ela
+  mesma grava. **6 de 16 se perdiam; um mecanismo só cobre as seis**, e o
+  contrato lido reproduz a página nos 16:
+
+  | Decisão do contrato | Caminho sem contrato | Contrato lido |
+  |---|---|---|
+  | validade do conteúdo | **perdida**: a recusa do histórico a mascarava → `SPEC_INVALIDA` | conferida; não cabendo, re-render |
+  | `linhasNaVoz2` | **perdida**: regra legada (sem voz 2 ganha voz 2; duas linhas na voz 2 viram uma) | preservada |
+  | grupo de leitura entre um comum e um extra | **perdida**: a spec sem contrato não o representa → `SPEC_INVALIDA` | preservada |
+  | ordem autoral das linhas de um bloco repartido | **perdida** na spec (ordem visual); o desenho só se salvava pelo casamento tipado horário/endereço | preservada |
+  | marcas `bloco`/`linhas` nas camadas comuns | **perdidas** (a leitura seguinte volta a inferir) | preservadas |
+  | declaração do prefixo (a seta do CTA) | **perdida**: a seta vira texto do autor | preservada |
+  | caixa exata da string | preservada | preservada |
+  | `[colchetes]` desenhados | preservados (os não desenhados já saíram da efetiva) | preservados |
+  | respiros (linhas vazias) | preservados (R03) | preservados |
+  | bloco vazio como afirmação | igual: omitido da composição nos dois | igual |
+  | ordem entre blocos | preservada | preservada |
+  | função | preservada | preservada |
+  | herança e grupo visual dos extras | preservados (identidade da camada) | preservados |
+  | grupo de leitura entre comuns | não é insumo da composição | idem |
+  | fatos | não é insumo da composição; o contrato não é reescrito | idem |
+  | identidade e texto dos extras | preservados | preservados |
+
+- **Página que o contrato lido NÃO representa não é recomposta com decisão
+  inventada**: texto que nenhum bloco originou — o estado LEGADO do extra com
+  função, sem a marca `bloco`, que a leitura criaria como `extra-…` e viraria
+  serviço comum, sem a herança — e spec que não passa em `validarSpec`. Com
+  extra, re-render como está; sem extra, o caminho sem contrato. A atribuição
+  pela ORDEM de leitura (`vincularExtras`, passo 4) não precisa de guarda
+  própria: ela só alcança bloco livre SEM herança, que `validarSpec` recusa
+  quando tem texto.
+- ⚠️ **Mudanças de comportamento declaradas**: (1) a peça SEM extra com o
+  histórico cheio passa a compor pelo contrato lido (antes: caminho sem
+  contrato, com a voz 2 legada); (2) o extra com função em página LEGADA (sem
+  `bloco`) com o histórico cheio passa a ser re-renderizado (antes: recomposto
+  pela identidade da camada).
+- ⚠️ **Residuais**: página SEM contrato nenhum continua no caminho sem contrato
+  (é o único que ela tem, e ali a voz 2 legada vale — C10-02); histórico cheio +
+  conteúdo inválido SEM extra cai em `SPEC_INVALIDA`, como o item documentado
+  acima.
+- Provas: `ciclo-extras-revisao.test.ts` (PR10-04 pelo runner nas duas formas
+  de extra; PR10-05 pelo consumidor real, manchete sem voz 2 e com duas linhas
+  declaradas, nas duas formas e sem extra, comparando o texto POR VOZ) e o
+  passo 16 da prova de integração. Mutações: sem a conferência de
+  `validarSpec` → 2 testes caem; sem o contrato lido → 7; sem a guarda do texto
+  que nenhum bloco originou → 1; com o `recompor.ts` de 1d18e983 → os 8 novos.

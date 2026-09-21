@@ -49,6 +49,24 @@ export function ehElementoDeCombinacao(layer: Layer): boolean {
  * e o rótulo do elemento — inclusive o "Combinação - Título" que a aplicação dá
  * de nome à camada.
  */
+/**
+ * Grava o papel do texto em `metadata.compositor`, MESCLANDO (nota da pré-revisão do commit 099818b0, 12/09/2026).
+ * `definirPapel` substituía `metadata.compositor` inteiro por `{ papel }`, e dar papel a um texto de página composta
+ * apagava a identidade que a leitura da copy usa (`extra`, `bloco`, `parte`, `linhasDoBloco`) e o `encaixe`. As marcas
+ * de parte ficam mesmo com outro papel: a leitura só as considera quando o papel da camada é o da função do bloco.
+ * Tirar o papel (`null`) remove só o `papel`.
+ */
+export function comPapelNoCompositor<T extends Pick<Layer, 'metadata'>>(layer: T, papel: string | null): T {
+  const metadata = { ...((layer.metadata ?? {}) as Record<string, unknown>) }
+  const atual = metadata.compositor
+  const compositor: Record<string, unknown> = atual && typeof atual === 'object' && !Array.isArray(atual) ? { ...(atual as Record<string, unknown>) } : {}
+  if (papel) compositor.papel = papel
+  else delete compositor.papel
+  if (Object.keys(compositor).length > 0) metadata.compositor = compositor
+  else delete metadata.compositor
+  return { ...layer, metadata: metadata as T['metadata'] }
+}
+
 export function papelDoTexto(layer: Pick<Layer, 'name' | 'metadata'>): PapelDaCombinacao | null {
   const meta = layer.metadata as { compositor?: { papel?: unknown }; elementLabel?: unknown } | undefined
   if (ehPapel(meta?.compositor?.papel)) return meta!.compositor!.papel as PapelDaCombinacao

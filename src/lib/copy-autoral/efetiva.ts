@@ -110,6 +110,17 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
   const { vinculos } = vincularExtras(blocosEmOrdem(copy).filter((b) => b.funcao === 'livre'), camadasOriginais, { incluirOcultas: true })
   const mapa = new Map<string, string>()
   for (const [blocoId, camada] of vinculos) {
+    // 🔴 Só o id que a LEITURA INVENTOU (`extra-<id da camada>`, na forma atual
+    // ou na antiga) acompanha a troca. Com a camada EXTRA da F3 um bloco
+    // `livre` passa a ter id do AUTOR ("nota", "servico", "extra-apoio"), e
+    // renomeá-lo numa operação TÉCNICA deixava o contrato da cópia discordando
+    // da identidade que a própria camada declara — o texto sumia do bloco do
+    // autor e reaparecia num `extra-<uuid>`, com revisão falsa (R14 e R25 do
+    // PR 9, adotados no rebase sobre a main de 21/09/2026; na main o caso não
+    // existia porque `validarSpec` recusava bloco livre com texto).
+    if (vinculoDaCamada(camada)?.bloco === blocoId) continue
+    const inferido = blocoId === idDeExtra(camada) || indiceLegado(blocoId, idDeExtraLegado(camada)) !== null
+    if (!inferido) continue
     const novo = idsDeCamada.get(String(camada.id))
     if (novo) mapa.set(blocoId, idDeExtra(novo))
   }
@@ -173,7 +184,20 @@ export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], o
     const c = emOrdem.find((l) => !usadas.has(l.id) && (l.id === b.id || l.name === b.id || blocoCarimbado(l) === b.id))
     if (c) tomar(b, c)
   }
-  const candidatasDe = (b: BlocoAutoral) => emOrdem.filter((c) => !usadas.has(c.id) && (idDeExtra(c) === b.id || indiceLegado(b.id, idDeExtraLegado(c)) !== null))
+  /**
+   * 🔴 O NAMESPACE do id inferido: `extra-<id da camada>` é o nome que a LEITURA
+   * dá ao texto solto, e só o bloco livre que ELA criou — sem herança de estilo
+   * — é casado por ele. O extra livre AUTORAL (`estilo.herdaDe`) tem identidade
+   * própria e pode ter um id igual ao inferido de OUTRA camada (`extra-servico`
+   * é `idDeExtra('servico')`): sem esta guarda, excluída a camada dele, o id
+   * inferido o reassociava à camada do serviço comum e a duplicação ainda o
+   * renomeava. A marca é a HERANÇA, não o prefixo — a leitura nunca grava
+   * `herdaDe` num bloco que ela criou (R25 do PR 9, readotado no rebase sobre a
+   * main de 21/09/2026: ele RESTRINGE a regra da main, não a substitui).
+   */
+  const casaPeloIdInferido = (b: BlocoAutoral) => !b.estilo?.herdaDe
+  const candidatasDe = (b: BlocoAutoral) =>
+    casaPeloIdInferido(b) ? emOrdem.filter((c) => !usadas.has(c.id) && (idDeExtra(c) === b.id || indiceLegado(b.id, idDeExtraLegado(c)) !== null)) : []
   const mesmoTexto = (b: BlocoAutoral, cs: Layer[]) => cs.filter((c) => JSON.stringify(linhasDaCamada(c)) === JSON.stringify(b.linhas))
   // 2 + 3. até estabilizar: primeiro toda unicidade pelo id; depois UM casamento
   // inequívoco por texto (que cria unicidade nova e volta ao passo 2). Nenhuma
@@ -318,9 +342,17 @@ function ordemDeclarada(porCamada: string[][], declaradas?: Array<number[] | nul
  */
 function linhasRepartidas(doBloco: string[], porCamada: string[][], declaradas?: Array<number[] | null>): string[] {
   const juntas = porCamada.flat()
-  if (porCamada.length < 2) return juntas
+  // 🔴 A declaração vem ANTES do atalho de camada única: quando só UMA parte do
+  // bloco sobrou visível (a outra oculta ou excluída), ela continua declarando as
+  // posições que desenha — e a distribuição põe a sobra DEPOIS das linhas
+  // tipadas (endereço + reserva = [2, 0]). Ler essa camada em ordem visual
+  // invertia o bloco e o autosave gravava a inversão como edição da equipe (R20
+  // do PR 9, reaplicado à marca da main no rebase de 21/09/2026). "Numa camada só
+  // a ordem é a da camada" continua valendo SEM declaração, e com declaração que
+  // já não cobre o desenho (linha acrescentada ou apagada dentro da camada).
   const porDeclaracao = ordemDeclarada(porCamada, declaradas)
   if (porDeclaracao) return porDeclaracao
+  if (porCamada.length < 2) return juntas
   const casadas = new Set<number>()
   const posicoes = juntas.map((linha) => {
     const i = doBloco.findIndex((b, j) => !casadas.has(j) && b === linha)
@@ -366,6 +398,52 @@ function comSegundaVoz(b: BlocoAutoral, naVoz2: number[]): BlocoAutoral {
   const { linhasNaVoz2: _antiga, ...resto } = antigo ?? {}
   const estilo = { ...resto, ...(naVoz2.length > 0 ? { linhasNaVoz2: naVoz2 } : {}) }
   return Object.keys(estilo).length > 0 ? { ...semEstilo, estilo } : semEstilo
+}
+
+/**
+ * Tudo o que a leitura reconhece SÓ pelo id FÍSICO da camada, gravado na camada
+ * ANTES de a duplicação trocar esse id por um UUID — com o MESMO valor que a
+ * leitura tiraria do id, para a cópia se ler exatamente como a original (R22 e
+ * R24 do PR 9):
+ *  - o PAPEL que só o id dava (camada `apoio` de nome "Texto 2", sem metadata)
+ *    → `metadata.compositor.papel`;
+ *  - o vínculo com o bloco LIVRE cujo id é o id físico (o livre autoral
+ *    `nota`) → `metadata.compositor.bloco`, a MESMA marca que `vinculoDaCamada`
+ *    lê. Bloco com função, nunca (ver o corpo: PR9-F02, 2ª metade).
+ *
+ * 🔴 A PARTE legada (`servico-2` → 2) saiu no rebase sobre a main de
+ * 21/09/2026: a ordem das linhas de um bloco repartido é o `linhas` declarado
+ * pelo compositor (PR 3), que é metadata e sobrevive à troca de id sozinho —
+ * não há nada a materializar. Nada é inventado aqui: camada que já declara o
+ * bloco fica como está, e o livre que o NOME vincula (`vincularExtras`, e o
+ * nome sobrevive à duplicação) não precisa de marca. Só vale com contrato:
+ * página sem contrato não é lida, e duplica como sempre duplicou.
+ */
+export function materializarVinculosDoIdFisico(camadas: unknown[], contrato: CopyAutoral): unknown[] {
+  return (camadas as Layer[]).map((l) => {
+    if (!l || (l.type !== 'text' && l.type !== 'rich-text')) return l
+    const id = String(l.id)
+    const papel = papelDaCamada(l)
+    const acrescimos: Record<string, unknown> = {}
+    if (papel && papelDaCamada({ ...l, id: '' } as Layer) !== papel) acrescimos.papel = papel
+    // 🔴 Só o bloco LIVRE ganha `bloco` pelo id: é a regra 1 de `vincularExtras`
+    // (`l.id === b.id`), que a leitura da main aplica de fato — e o UUID da cópia
+    // a perde (o NOME sobrevive, então camada nomeada pelo bloco não precisa).
+    // Bloco COM função (comum ou extra) NUNCA: a leitura da main o atribui pela
+    // marca declarada ou pela reserva por papel e posição, jamais pelo id
+    // físico, e a duplicação preserva papel (acima) e posição — a cópia recebe a
+    // mesma atribuição sem marca nenhuma. Carimbar pela coincidência do id
+    // inventava uma atribuição que a leitura nunca fez: o extra VAZIO de id
+    // `servico-2` recebia a parte do serviço comum cuja camada se chama
+    // `servico-2`, e duplicar virava mudança de copy (PR9-F02, revisão FINAL do
+    // Codex sobre b6980b5b, 21/09/2026). O mesmo ramo, com dois blocos comuns,
+    // podia trocar os textos quando o id e a posição discordavam.
+    if (!vinculoDaCamada(l) && contrato.blocos.some((b) => b.id === id && b.funcao === 'livre' && l.name !== id)) acrescimos.bloco = id
+    if (Object.keys(acrescimos).length === 0) return l
+    const meta = (l.metadata ?? {}) as Record<string, unknown>
+    const compositor = meta.compositor && typeof meta.compositor === 'object' ? (meta.compositor as Record<string, unknown>) : {}
+    return { ...l, metadata: { ...meta, compositor: { ...compositor, ...acrescimos } } }
+  })
 }
 
 export interface CopyEfetiva {
@@ -414,12 +492,41 @@ export function tentarCopyEfetivaDasCamadas(original: CopyAutoral, camadas: Laye
   }
 }
 
+/** O que a LEITURA das camadas dá, antes de virar revisão. */
+export interface LeituraDosBlocos {
+  /** Os blocos do contrato como as camadas os mostram, mais um `extra-…` por texto que nenhum bloco originou. */
+  blocos: BlocoAutoral[]
+  lacunas: string[]
+}
+
 /**
  * Lê a copy efetiva das camadas e a registra como REVISÃO do sistema sobre o
  * original — só quando algo difere. `origemDaLeitura` é a superfície que
  * desenhou (compositor, ajuste-arte, editor…).
  */
 export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], opcoes: { superficie: string; em?: string }): CopyEfetiva {
+  const { blocos, lacunas } = blocosLidosDasCamadas(original, camadas)
+  const { copy: efetiva, mudancas } = aplicarRevisao(original, blocos, {
+    autor: 'sistema',
+    motivo: `o que foi desenhado (${opcoes.superficie})`,
+    superficie: opcoes.superficie,
+    ...(opcoes.em ? { em: opcoes.em } : {}),
+  })
+  // As lacunas entram DEPOIS da revisão, e o leitor tem teto para elas: o contrato leva só as que cabem (com uma de
+  // resumo), e `lacunas` devolve a lista inteira para o registro da arte (restack sobre 9238098f, 13/09/2026).
+  return { efetiva: lacunas.length ? { ...efetiva, lacunas: lacunasQueCabem(efetiva.lacunas ?? [], lacunas) } : efetiva, mudancas, lacunas }
+}
+
+/**
+ * A LEITURA das camadas em blocos do contrato, sem registrar nada — a primeira
+ * metade de `copyEfetivaDasCamadas`. Exportada para a recomposição com o
+ * histórico da copy CHEIO (PR10-04/05, 21/09/2026): lá a revisão não cabe, mas a
+ * leitura é a mesma, e compor com ela preserva o que só o contrato carrega
+ * (segunda voz, ordem das linhas de um bloco repartido, o vínculo de cada camada
+ * com o seu bloco, o prefixo declarado). Nunca a grave como contrato: os blocos
+ * dela mudaram sem revisão.
+ */
+export function blocosLidosDasCamadas(original: CopyAutoral, camadas: Layer[]): LeituraDosBlocos {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas)
   const lacunas: string[] = []
   // Por OBJETO, não por id: o compositor pode gravar duas camadas com o mesmo id (o contador de
@@ -456,7 +563,11 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
   // Os blocos livres são vinculados em CONJUNTO (ver `vincularExtras`) sobre o
   // que SOBROU da reserva declarada, antes de qualquer leitura por papel — e as
   // camadas que eles tomam ficam reservadas para eles.
-  const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas.filter((c) => !usadas.has(c)))
+  // 🔴 `incluirOcultas`: a camada OCULTA continua vinculada ao bloco livre dela (que sai vazio, porque ela não foi
+  // desenhada) e por isso não fica livre para OUTRO bloco tomá-la pelo id inferido — "Nota" oculta deixava `extra-nota`
+  // tomar a camada `nota` do vizinho `extra-nota-2`, e o autosave gravava a troca como revisão da equipe (R23 do PR 9,
+  // readotado no rebase sobre a main de 21/09/2026). A duplicação já passava `incluirOcultas` pelo mesmo motivo (R5-02).
+  const extras = vincularExtras(blocosEmOrdem(original).filter((b) => b.funcao === 'livre'), camadas.filter((c) => !usadas.has(c)), { incluirOcultas: true })
   lacunas.push(...extras.ambiguos)
   for (const c of extras.vinculos.values()) usadas.add(c)
   // Quem DISPUTA as camadas SEM vínculo de uma função são os blocos COM texto e
@@ -492,7 +603,8 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
       // bloco `livre` — `validarSpec` o recusa com texto —, mas a regra é a
       // mesma para todo bloco: quem declara, leva).
       const declaradasLivres = declaradasDoBloco.get(b.id) ?? []
-      const camadasDoLivre = declaradasLivres.length > 0 ? declaradasLivres : [extras.vinculos.get(b.id)].filter(Boolean)
+      // Só o que foi DESENHADO entra: o vínculo com a camada oculta reserva a camada, mas o bloco sai vazio.
+      const camadasDoLivre = (declaradasLivres.length > 0 ? declaradasLivres : [extras.vinculos.get(b.id)].filter(Boolean)).filter(ehTextoVisivel)
       if (camadasDoLivre.length === 0) {
         lacunas.push(`o bloco "${b.id}" (livre) não foi desenhado`)
         return { ...b, linhas: [] }
@@ -516,7 +628,15 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     // reparte um bloco em `servico` e `servico-2` (um texto por linha do arranjo),
     // e a 2ª virava outro bloco `servico` — a recomposição morria em "papel repetido".
     const concorrentes = cheios > 0 ? cheios : (vaziosPorFuncao.get(b.funcao) ?? 0)
-    const camadas = declaradas.length > 0 ? declaradas : concorrentes === 1 ? livres : livres.slice(0, 1)
+    // 🔴 O EXTRA com herança (a camada extra da F3 de função própria) só lê a
+    // camada que DECLARA ser dele — nunca a reserva por função. A camada dele
+    // sempre nasce carimbada; sem ela visível (oculta ou excluída), o bloco sai
+    // vazio em vez de tomar a camada comum ou o texto que a equipe acrescentou
+    // à mão, que viraria revisão atribuída à equipe com o texto do extra (R23 do
+    // PR 9, readotado no rebase sobre a main de 21/09/2026: restringe a reserva
+    // da main para um bloco que só o PR 9 cria).
+    const soPelaMarca = b.funcao !== 'headline' && !!b.estilo?.herdaDe
+    const camadas = declaradas.length > 0 || soPelaMarca ? declaradas : concorrentes === 1 ? livres : livres.slice(0, 1)
     for (const c of camadas) usadas.add(c)
     let linhas = camadas.length > 0 ? linhasRepartidas(b.linhas, camadas.map(linhasDaCamada), camadas.map((c) => vinculoDaCamada(c)?.linhas ?? null)) : []
     let naVoz2: number[] = []
@@ -527,11 +647,17 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     const vozes = vozesDoBloco.get(b.id) ?? []
     const segundas = vozes.length > 0 ? vozes : b.funcao === 'headline' ? [voz2.find((c) => !usadas.has(c))].filter(Boolean) : []
     if (segundas.length > 0) {
-      const daVoz2: string[] = []
-      for (const c of segundas) {
-        usadas.add(c)
-        daVoz2.push(...linhasDaCamada(c))
-      }
+      for (const c of segundas) usadas.add(c)
+      // 🔴 A segunda voz também respeita a POSIÇÃO DECLARADA, como a primeira
+      // (`linhasRepartidas`): o arranjo com dois textos `headline2` reparte a voz
+      // 2 entre eles, cada um com o seu `linhas`, e concatená-los pela ALTURA
+      // invertia a manchete quando alguém trocava as duas caixas de lugar no
+      // editor — "na brasa / Costela" no contrato, gravado como revisão. Sem
+      // declaração que cubra todas, vale a ordem visual de sempre (R27 do PR 9,
+      // que o invariante enumera; o defeito é da leitura da main, que já compõe
+      // duas vozes 2 — rebase sobre a main de 21/09/2026).
+      const porCamada = segundas.map(linhasDaCamada)
+      const daVoz2 = porCamada.length < 2 ? porCamada.flat() : ordemDeclarada(porCamada, segundas.map((c) => vinculoDaCamada(c)?.linhas ?? null)) ?? porCamada.flat()
       const inicio = linhas.length
       linhas = [...linhas, ...daVoz2]
       naVoz2 = daVoz2.map((_, i) => inicio + i)
@@ -560,15 +686,7 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     lacunas.push(`a arte tem um texto que a copy não tinha: "${id}" (${String(c.content ?? '').slice(0, 40)})`)
   }
 
-  const { copy: efetiva, mudancas } = aplicarRevisao(original, blocos, {
-    autor: 'sistema',
-    motivo: `o que foi desenhado (${opcoes.superficie})`,
-    superficie: opcoes.superficie,
-    ...(opcoes.em ? { em: opcoes.em } : {}),
-  })
-  // As lacunas entram DEPOIS da revisão, e o leitor tem teto para elas: o contrato leva só as que cabem (com uma de
-  // resumo), e `lacunas` devolve a lista inteira para o registro da arte (restack sobre 9238098f, 13/09/2026).
-  return { efetiva: lacunas.length ? { ...efetiva, lacunas: lacunasQueCabem(efetiva.lacunas ?? [], lacunas) } : efetiva, mudancas, lacunas }
+  return { blocos, lacunas }
 }
 
 const LACUNAS_DO_SCHEMA = copyAutoralSchema.shape.lacunas.unwrap()

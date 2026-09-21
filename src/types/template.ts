@@ -291,6 +291,8 @@ export type FieldValues = Record<string, unknown>
 
 // Multi-page support interfaces
 export interface Page {
+  /** C9-11: a página tem contrato da copy (`Page.copyAutoral`)? O editor só tira o papel da camada copiada quando tem. */
+  temCopyAutoral?: boolean
   id: string
   name: string
   width: number

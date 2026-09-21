@@ -21,7 +21,8 @@ import { montarBloco, type BlocoMontado, type OrcamentoDeLinha } from './blocos'
 import { arranjosDaPagina, distribuirLinhas, escolherArranjo, type ArranjoDeGrupo, type ElementoDoArranjo } from './combinacoes'
 import { destaqueDoPapel, type EstiloDeDestaque } from './destaques'
 import { dividirManchete } from './segunda-voz'
-import type { Papel } from './spec'
+import type { GrupoVisual, Papel } from './spec'
+import { chaveDoGrupoExtra, estiloHerdado, resolverCamadasExtras, type BlocoResolvido, type CamadaExtraDaSpec, type IdentidadeDoExtra, type FalhaDeResolucao } from './camadas-extras'
 
 export function hashDe(texto: string): number {
   let h = 2166136261
@@ -35,11 +36,13 @@ export function hashDe(texto: string): number {
 /** A copy e o contexto da peça que a preparação lê — o subconjunto da spec. */
 export interface PecaParaBlocos {
   /** Com `strict: false`, `z.infer` marca as chaves como opcionais — a garantia é a validação de runtime (`validarSpec`). */
-  blocos?: Array<{ papel?: Papel; linhas?: string[] }>
+  blocos?: Array<{ papel?: Papel; linhas?: string[]; id?: string; herdaDe?: Papel; grupoVisual?: GrupoVisual }>
+  /** F3: as camadas extras (blocos `livre` do contrato com herança de estilo). */
+  camadasExtras?: CamadaExtraDaSpec[] | null
   nome?: string | null
   tema?: string | null
   foto?: { driveFileId?: string; url?: string } | null
-  copyAutoral?: { blocos?: Array<{ id?: string; funcao?: string; linhas?: string[]; estilo?: { linhasNaVoz2?: number[] | null } | null }> } | null
+  copyAutoral?: { blocos?: Array<{ id?: string; funcao?: string; linhas?: string[]; estilo?: { linhasNaVoz2?: number[] | null; herdaDe?: string | null } | null }> } | null
   preferencias?: { arranjos?: Array<string | { grupo?: string; arranjo?: string }> } | null
 }
 
@@ -66,10 +69,16 @@ export interface BlocoPreparado extends BlocoMontado {
   estilo: EstiloDePapel
   /** O estilo de destaque com que a montagem mediu os [colchetes] (null = sem estilo na marca). */
   destaque: EstiloDeDestaque | null
+  /** F3: a função que o bloco cumpre na copy (o papel, ou a do extra: papel original ou `livre`). */
+  funcao: string
+  /** F3: presente quando o bloco é uma camada extra (o `papel` é só o de estilo). */
+  extra?: IdentidadeDoExtra
 }
 
 export interface RecusaPreparada {
   papel: Papel
+  funcao: string
+  extra?: IdentidadeDoExtra
   id: string
   linhasDaCopy: string[]
   estilo: EstiloDePapel
@@ -87,6 +96,12 @@ export interface BlocosPreparados {
   arranjoPorGrupo: Map<string, ArranjoDeGrupo>
   elementosPorTexto: Map<string, { elementos: ElementoDoArranjo[]; escala: number }>
   segundaVoz: 'contrato' | 'legado' | 'nenhuma'
+  /** F3: os grupos formados só por camadas extras e a borda em que pousam (a chave é `extra:<borda>`). */
+  gruposExtras: Map<string, Exclude<GrupoVisual, 'principal'>>
+  /** F3: os papéis pedidos que a variante não tem e nenhuma herança salvou — a composição recusa. */
+  faltam: Papel[]
+  /** R03: cada extra que não pôde ser resolvido, pelo id — a medição os declara e conta em `cabeTudo`. */
+  falhas: FalhaDeResolucao[]
   avisos: string[]
   /**
    * O SUPERCONJUNTO de famílias que a peça podia usar: o estilo de cada papel
@@ -129,8 +144,14 @@ export function prepararBlocos(args: {
   // — então, entre os blocos COM texto, papel e bloco são um para um. É esse id
   // que vai para a camada (`metadata.compositor.bloco`) e faz a leitura da copy
   // efetiva saber de quem é a camada sem adivinhar (PR3-R11-01).
+  // 🔴 Só os blocos COMUNS entram aqui. Com a F3 a premissa acima ("papel e
+  // bloco são um para um") passa a valer só entre eles: `validarSpec` aceita o
+  // papel repetido quando a segunda ocorrência tem id + `herdaDe`, e contar o
+  // extra pelo papel faria a camada COMUM ser carimbada com o bloco do extra.
+  // O extra declara o próprio bloco (`extra.id`), na montagem.
   const blocoDoPapel = new Map<Papel, string>()
   for (const b of spec.copyAutoral?.blocos ?? []) {
+    if (b.estilo?.herdaDe) continue
     if (b.id && b.funcao && b.funcao !== 'livre' && (b.linhas?.length ?? 0) > 0 && !blocoDoPapel.has(b.funcao as Papel)) blocoDoPapel.set(b.funcao as Papel, b.id)
   }
   // 🔴 A declaração da segunda voz vem do bloco que ORIGINOU a manchete — o id
@@ -144,19 +165,33 @@ export function prepararBlocos(args: {
   // identidade que vincula as camadas — decidir por proxy foi o defeito.
   const idDaManchete = blocoDoPapel.get('headline')
   const declaradasNaVoz2 = idDaManchete ? spec.copyAutoral?.blocos?.find((b) => b.id === idDaManchete)?.estilo?.linhasNaVoz2 ?? null : null
-  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[] }>>()
+  const blocosPorGrupo = new Map<string, Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[]; extra?: IdentidadeDoExtra }>>()
   const juntarNoGrupo = (chave: string, papel: Papel, linhas: string[], indices: number[]) => {
     const lista = blocosPorGrupo.get(chave) ?? []
-    const mesmo = lista.find((x) => x.papel === papel)
+    const mesmo = lista.find((x) => x.papel === papel && !x.extra)
     if (mesmo) {
       mesmo.linhas.push(...linhas)
       mesmo.indicesDoBloco.push(...indices)
     } else lista.push({ papel, linhas: [...linhas], indicesDoBloco: [...indices] })
     blocosPorGrupo.set(chave, lista)
   }
-  for (const b of spec.blocos ?? []) {
-    const papel = b.papel as Papel
-    const linhasDoBloco = b.linhas ?? []
+  // F3: os blocos resolvidos contra a variante — quem tem o papel segue o
+  // caminho de sempre; quem herda estilo vira camada EXTRA com grupo visual
+  // próprio (`principal` = o grupo da manchete; `topo`/`rodape` = grupo só de
+  // extras). O extra nunca entra no grupo do papel de que herda, nem na
+  // distribuição de linhas do arranjo desse papel: ele não é esse papel.
+  const resolvidos = resolverCamadasExtras({ blocos: spec.blocos, camadasExtras: spec.camadasExtras ?? undefined }, assinatura)
+  avisos.push(...resolvidos.avisos)
+  const gruposExtras = new Map<string, Exclude<GrupoVisual, 'principal'>>()
+  const chaveDaManchete = chaveDoGrupo('headline')
+  const extrasResolvidos: BlocoResolvido[] = []
+  for (const b of resolvidos.blocos) {
+    if (!b.extra) continue
+    extrasResolvidos.push(b)
+  }
+  for (const b of resolvidos.blocos.filter((r) => !r.extra)) {
+    const papel = b.papel
+    const linhasDoBloco = b.linhas
     const chaves = [...gruposDaPagina.entries()].filter(([, a]) => a.papeis.includes(papel)).map(([chave]) => chave)
     if (chaves.length <= 1 || linhasDoBloco.length <= 1) {
       juntarNoGrupo(chaveDoGrupo(papel), papel, linhasDoBloco, linhasDoBloco.map((_, i) => i))
@@ -168,6 +203,17 @@ export function prepararBlocos(args: {
       const doTipo = tipo ? chaves.find((chave) => gruposDaPagina.get(chave)!.textos.some((t) => t.papel === papel && t.tipo === tipo)) : undefined
       juntarNoGrupo(doTipo ?? chaveDoGrupo(papel), papel, [linha], [i])
     })
+  }
+  for (const b of extrasResolvidos) {
+    const extra = b.extra!
+    const chaveDoExtra = extra.grupoVisual === 'principal' ? chaveDaManchete : chaveDoGrupoExtra(extra.grupoVisual)
+    if (extra.grupoVisual !== 'principal') gruposExtras.set(chaveDoExtra, extra.grupoVisual)
+    // O extra desenha o bloco INTEIRO do autor (ele fica fora da distribuição
+    // do arranjo), então as linhas que ele declara são todas as do bloco.
+    blocosPorGrupo.set(chaveDoExtra, [
+      ...(blocosPorGrupo.get(chaveDoExtra) ?? []),
+      { papel: b.papel, linhas: [...b.linhas], indicesDoBloco: b.linhas.map((_, i) => i), extra },
+    ])
   }
   // O superconjunto do que a peça pode pedir ao medidor — ver `familiasCandidatas`.
   const familiasCandidatas = new Set<string>()
@@ -186,16 +232,19 @@ export function prepararBlocos(args: {
 
   const montados: BlocoPreparado[] = []
   let segundaVoz: BlocosPreparados['segundaVoz'] = 'nenhuma'
-  // O contador de ids é da PEÇA, não do grupo: o serviço repartido entre dois
-  // grupos (horário junto da oferta, endereço no pé) saía com DUAS camadas
-  // `servico` — e ajuste por id (revisor, `ajustar-arte`) atingia as duas, e
-  // `elementosPorTexto` (chaveado pelo id) perdia o ícone do primeiro grupo
-  // (varredura do PR 3, 18/09/2026).
+  // A numeração dos textos comuns do mesmo papel é da PEÇA inteira, não do
+  // grupo: horário num grupo e endereço noutro saíam os dois com id `servico`,
+  // a conferência final de ids recusava a composição e os elementos de um
+  // texto sobrescreviam os do outro em `elementosPorTexto` (R13 da revisão do
+  // Codex sobre o PR 9, 12/09/2026).
   const repeticoes = new Map<Papel, number>()
   for (const [chaveDoGrupoAtual, blocosDoGrupo] of blocosPorGrupo) {
     const daPagina = gruposDaPagina.get(chaveDoGrupoAtual)
-    const escolha = escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
-      papeis: blocosDoGrupo.map((b) => b.papel),
+    // Grupo só de extras não tem arranjo: nem o da página (ele não mora nela)
+    // nem combinação salva — o extra não é o papel de que herda.
+    const soExtras = blocosDoGrupo.every((b) => b.extra)
+    const escolha = soExtras ? null : escolherArranjo([...(daPagina ? [daPagina] : []), ...combinacoesSalvas], {
+      papeis: blocosDoGrupo.filter((b) => !b.extra).map((b) => b.papel),
       tema: spec.tema ?? spec.nome ?? null,
       chave: `${chave}|${chaveDoGrupoAtual}`,
       grupo: chaveDoGrupoAtual,
@@ -209,10 +258,10 @@ export function prepararBlocos(args: {
     // A manchete com segunda voz vira DOIS papéis no mesmo grupo (o que o
     // Quintal, o TERO e o By Rock fazem à mão). Quem diz QUAIS linhas vão na
     // voz 2 é o AUTOR, no contrato (`estilo.linhasNaVoz2`); sem contrato vale a
-    // regra legada (a última linha) — ver `segunda-voz.ts`.
+    // regra legada (a última linha COM TEXTO, com os respiros que a seguem) — ver `segunda-voz.ts`.
     const temSegundaVoz = arranjo ? arranjo.papeis.includes('headline2') : Boolean(assinatura.papeis.headline2)
     const comSegundaVoz = blocosDoGrupo.flatMap((b) => {
-      if (b.papel !== 'headline') return [b]
+      if (b.papel !== 'headline' || b.extra) return [b]
       const d = dividirManchete(b.linhas, { temSegundaVoz, comContrato: Boolean(spec.copyAutoral), declaradas: declaradasNaVoz2 })
       if (d.aviso) avisos.push(`headline: ${d.aviso}`)
       segundaVoz = d.origem
@@ -223,21 +272,32 @@ export function prepararBlocos(args: {
       // E voz 1 vazia (manchete INTEIRA na voz 2) não vira camada: um texto sem
       // linha seria lido depois como bloco vazio e viraria revisão falsa (R01).
       const corte = d.voz1.length
-      const partes: Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[] }> = []
+      const partes: Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[]; extra?: IdentidadeDoExtra }> = []
       if (corte > 0) partes.push({ papel: 'headline' as Papel, linhas: d.voz1, indicesDoBloco: b.indicesDoBloco.slice(0, corte) })
       partes.push({ papel: 'headline2' as Papel, linhas: d.voz2, indicesDoBloco: b.indicesDoBloco.slice(corte) })
       return partes
     })
-    const preenchidos = arranjo
-      ? distribuirLinhas(arranjo, comSegundaVoz).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
-      : comSegundaVoz.map((b) => ({ ...b, texto: null }))
+    // Os extras ficam FORA da distribuição do arranjo (eles não são o papel de
+    // que herdam) e entram depois dos textos do grupo, na ordem em que vieram.
+    const doArranjo = comSegundaVoz.filter((b) => !b.extra)
+    const extrasDoGrupo = comSegundaVoz.filter((b) => b.extra)
+    const preenchidos: Array<{ papel: Papel; linhas: string[]; indicesDoBloco: number[]; texto: ReturnType<typeof distribuirLinhas>[number]['texto'] | null; extra?: IdentidadeDoExtra }> = [
+      ...(arranjo
+        ? distribuirLinhas(arranjo, doArranjo).map((p) => ({ papel: p.texto.papel, linhas: p.linhas, indicesDoBloco: p.indicesDoBloco, texto: p.texto }))
+        : doArranjo.map((b) => ({ ...b, texto: null }))),
+      ...extrasDoGrupo.map((b) => ({ papel: b.papel, linhas: b.linhas, indicesDoBloco: b.indicesDoBloco, texto: null, extra: b.extra })),
+    ]
     for (const p of preenchidos) {
-      const estilo = p.texto?.estilo ?? assinatura.papeis[p.papel]
-      if (!estilo) continue
-      const n = (repeticoes.get(p.papel) ?? 0) + 1
-      repeticoes.set(p.papel, n)
-      // O segundo texto do mesmo papel (o Local e o Horário) ganha id próprio
-      const id = n > 1 ? `${p.papel}-${n}` : p.papel
+      // O extra veste o estilo do papel de origem SEM a posição dele.
+      const estiloBase = p.texto?.estilo ?? assinatura.papeis[p.papel]
+      if (!estiloBase) continue
+      const estilo = p.extra ? estiloHerdado(estiloBase) : estiloBase
+      const n = p.extra ? 0 : (repeticoes.get(p.papel) ?? 0) + 1
+      if (!p.extra) repeticoes.set(p.papel, n)
+      // O segundo texto do mesmo papel (o Local e o Horário) ganha id próprio;
+      // o extra tem o id do autor.
+      const id = p.extra ? p.extra.id : n > 1 ? `${p.papel}-${n}` : p.papel
+      const funcao = p.extra ? p.extra.funcao : p.papel
       const destaque = estiloDeDestaqueDoPapel(estilo, assinatura.numeros.destaque, familias)
       const r = montarBloco({
         papel: p.papel,
@@ -253,13 +313,18 @@ export function prepararBlocos(args: {
         // O vínculo com a copy do autor. A segunda voz é a manchete: as linhas
         // dela voltam ao bloco `headline` na leitura, então ela declara o mesmo
         // bloco, com a posição que a linha tem lá.
-        origem: { bloco: blocoDoPapel.get(p.papel === 'headline2' ? 'headline' : p.papel), linhas: p.indicesDoBloco },
+        // O EXTRA declara o PRÓPRIO bloco: `extra.id` é o id que o autor deu ao
+        // bloco no contrato, e a camada nasce dele inteiro. Deixá-lo cair no
+        // mapa por papel faria o extra apontar para o bloco do papel de que só
+        // herda o ESTILO — o vínculo declarado passaria a mentir a origem.
+        origem: { bloco: p.extra ? p.extra.id : blocoDoPapel.get(p.papel === 'headline2' ? 'headline' : p.papel), linhas: p.indicesDoBloco },
         // Palavra entre [colchetes] na copy sai destacada no estilo da marca.
         destaque,
+        extra: p.extra ?? null,
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        recusas.push({ papel: r.recusa.papel, id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento })
+        recusas.push({ papel: r.recusa.papel, funcao, ...(p.extra ? { extra: p.extra } : {}), id, linhasDaCopy: p.linhas, estilo, familiasMedidas: r.recusa.familiasMedidas, destaque, orcamento: r.recusa.orcamento })
         continue
       }
       if (r.bloco.escala < 1) avisos.push(`${p.papel}: fonte reduzida a ${Math.round(r.bloco.escala * 100)}% para caber na coluna`)
@@ -283,11 +348,13 @@ export function prepararBlocos(args: {
         linhasDaCopy: p.linhas,
         estilo,
         destaque,
+        funcao,
+        ...(p.extra ? { extra: p.extra } : {}),
         ...(vaoAntes !== null ? { vaoAntes } : {}),
         ...(p.texto?.recuo ? { recuo: Math.round(p.texto.recuo * escalaDoFormato) } : {}),
         ...(p.texto && p.texto.elementos.length > 0 ? { elementos: p.texto.elementos, escalaDosElementos } : {}),
       })
     }
   }
-  return { montados, recusas, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, avisos, familiasCandidatas: [...familiasCandidatas] }
+  return { montados, recusas, arranjos, arranjoPorGrupo, elementosPorTexto, segundaVoz, gruposExtras, faltam: resolvidos.faltam, falhas: resolvidos.falhas, avisos, familiasCandidatas: [...familiasCandidatas] }
 }

@@ -74,9 +74,12 @@ describe('entradaDePersistencia', () => {
 })
 
 describe('entradaDePersistencia — a copy que não cabe no contrato não derruba a peça composta (restack sobre e3c1f75f)', () => {
-  it('spec sem contrato com uma linha de 301 caracteres: validarSpec aceita, a peça segue SEM contrato e o aviso manda quebrar a linha', () => {
+  it('spec sem contrato com uma linha de 301 caracteres: validarSpec recusa (PR 9), e a persistência, se alcançada, segue SEM contrato com o aviso que manda quebrar a linha', () => {
     const longa = { ...spec, blocos: [{ papel: 'headline', linhas: ['x'.repeat(301)] }] } as SpecDePeca
-    expect(validarSpec(longa).spec).not.toBeNull()
+    // Desde o PR 9 a copy derivada da spec passa pelo contrato em `validarSpec`; a persistência continua tolerante.
+    const validada = validarSpec(longa)
+    expect(validada.spec).toBeNull()
+    expect(validada.problemas.join(' ')).toMatch(/blocos\.0\.linhas\.0: .*300/)
     const e = entradaDePersistencia({ ...base, spec: longa, opcoes: {} })
     expect(e.copyAutoral).toBeUndefined()
     const fv = e.fieldValues as Record<string, any>
