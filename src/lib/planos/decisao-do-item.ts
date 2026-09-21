@@ -52,6 +52,7 @@ import stableStringify from 'json-stable-stringify'
 import { itemExecutavel } from './execucao'
 import type { StatusDoItem } from './vocabulario'
 import { mesmoPedidoDoLote } from '@/lib/lotes/identidade'
+import { confrontarRevisaoGravada, type ConteudoDaRevisaoDoItem } from './revisao-do-item'
 
 export type EstadoDaPecaDoItem =
   | 'nenhuma' // o item não aponta Generation
@@ -181,11 +182,17 @@ export function mesmaSpecDaPeca(gravada: unknown, spec: { projectId?: number }, 
  * vem primeiro: é o pedido como foi enfileirado. A Generation COMPLETED pode
  * guardar a spec RESOLVIDA (a foto escolhida entre as candidatas), e só é lida
  * quando não há job. Nada gravado → `desconhecido`, nunca "igual".
+ *
+ * `item` é o conteúdo do item AGORA: é com ele que a revisão LEGADA (a que a
+ * main gravava antes do PR 11) é conferida campo a campo (PR11-F01,
+ * `confrontarRevisaoGravada`). Obrigatório de propósito — sem ele o legado
+ * cairia sempre em "desconhecido".
  */
 export function confrontarComOGravado(entrada: {
   // `strict: false`: o `SpecDePeca` do zod chega com toda chave opcional.
   spec: { projectId?: number }
   revisao: string
+  item: ConteudoDaRevisaoDoItem
   comLote: boolean
   geracao: { fieldValues?: unknown } | null
   job: { payload?: unknown } | null
@@ -202,7 +209,7 @@ export function confrontarComOGravado(entrada: {
       ? 'igual'
       : 'diferente'
   const projeto: ConfrontoDoProjeto = !gravada || gravada.projectId === undefined ? 'desconhecido' : gravada.projectId === entrada.spec.projectId ? 'confere' : 'diverge'
-  const revisao: Confronto = revisaoGravada === undefined ? 'desconhecido' : revisaoGravada === entrada.revisao ? 'igual' : 'diferente'
+  const revisao: Confronto = confrontarRevisaoGravada(revisaoGravada, entrada.revisao, entrada.item)
   return { pedido, projeto, revisao }
 }
 

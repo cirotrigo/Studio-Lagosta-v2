@@ -235,18 +235,24 @@ describe('as entradas da tabela', () => {
     const contrato = (em: string) => ({ versao: 1, origem: { autor: 'claude', em, superficie: 'chat' }, blocos: [{ id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Rodízio'] }], revisoes: [] })
     const spec = { projectId: 6, formato: 'story', copyAutoral: contrato('10:00') }
     const outraHora = { ...spec, copyAutoral: contrato('10:07') }
-    const job = (s: unknown, planoRevisao = 'r1') => ({ payload: { spec: s, planoRevisao } })
+    // Tokens no formato REAL da família nova (`rev1:<32 hex>`): um texto qualquer não é revisão
+    // desde o PR11-F01 — o que não é `revN:` nem legado reconhecido vale como a ausência.
+    const R1 = `rev1:${'a'.repeat(32)}`
+    const R2 = `rev1:${'b'.repeat(32)}`
+    const OUTRA = `rev1:${'c'.repeat(32)}`
+    const item = {}
+    const job = (s: unknown, planoRevisao = R1) => ({ payload: { spec: s, planoRevisao } })
 
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: true, geracao: null, job: job(outraHora) })).toEqual({ pedido: 'igual', projeto: 'confere', revisao: 'igual' })
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: false, geracao: null, job: job(outraHora) }).pedido).toBe('diferente')
-    expect(confrontarComOGravado({ spec, revisao: 'r2', comLote: true, geracao: null, job: job(spec) }).revisao).toBe('diferente')
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: true, geracao: null, job: job({ ...spec, projectId: 7 }) })).toMatchObject({ pedido: 'igual', projeto: 'diverge' })
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: true, geracao: null, job: job(outraHora) })).toEqual({ pedido: 'igual', projeto: 'confere', revisao: 'igual' })
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: false, geracao: null, job: job(outraHora) }).pedido).toBe('diferente')
+    expect(confrontarComOGravado({ spec, revisao: R2, item, comLote: true, geracao: null, job: job(spec) }).revisao).toBe('diferente')
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: true, geracao: null, job: job({ ...spec, projectId: 7 }) })).toMatchObject({ pedido: 'igual', projeto: 'diverge' })
     // A Generation COMPLETED pode guardar a spec resolvida: o job vem primeiro.
-    const geracaoResolvida = { fieldValues: { spec: { ...spec, foto: { driveFileId: 'b' } }, planoRevisao: 'outra' } }
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: true, geracao: geracaoResolvida, job: job(spec) })).toEqual({ pedido: 'igual', projeto: 'confere', revisao: 'igual' })
+    const geracaoResolvida = { fieldValues: { spec: { ...spec, foto: { driveFileId: 'b' } }, planoRevisao: OUTRA } }
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: true, geracao: geracaoResolvida, job: job(spec) })).toEqual({ pedido: 'igual', projeto: 'confere', revisao: 'igual' })
     // Sem job, a Generation; sem os dois, desconhecido.
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: true, geracao: { fieldValues: { spec, planoRevisao: 'r1' } }, job: null })).toEqual({ pedido: 'igual', projeto: 'confere', revisao: 'igual' })
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: true, geracao: { fieldValues: { spec } }, job: null }).revisao).toBe('desconhecido')
-    expect(confrontarComOGravado({ spec, revisao: 'r1', comLote: true, geracao: null, job: null })).toEqual({ pedido: 'desconhecido', projeto: 'desconhecido', revisao: 'desconhecido' })
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: true, geracao: { fieldValues: { spec, planoRevisao: R1 } }, job: null })).toEqual({ pedido: 'igual', projeto: 'confere', revisao: 'igual' })
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: true, geracao: { fieldValues: { spec } }, job: null }).revisao).toBe('desconhecido')
+    expect(confrontarComOGravado({ spec, revisao: R1, item, comLote: true, geracao: null, job: null })).toEqual({ pedido: 'desconhecido', projeto: 'desconhecido', revisao: 'desconhecido' })
   })
 })

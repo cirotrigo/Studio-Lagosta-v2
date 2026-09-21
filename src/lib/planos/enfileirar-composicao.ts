@@ -107,7 +107,7 @@ export async function enfileirarComposicaoDoPlanoEm(
     status,
     ficha: fichaDoItem(itemAtualizadoEm, item.updatedAt),
     peca,
-    ...confrontarComOGravado({ spec, revisao, comLote, geracao: anterior, job: jobAnterior }),
+    ...confrontarComOGravado({ spec, revisao, item, comLote, geracao: anterior, job: jobAnterior }),
     chamada: confrontarRevisaoDaChamada({ comLote, revisaoDaChamada: lote?.revisaoDaChamada, revisao }),
   })
 

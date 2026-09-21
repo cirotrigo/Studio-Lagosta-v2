@@ -1391,3 +1391,120 @@ describe('PR11-F02: peça COMPLETED SEM ARQUIVO não é "pronta" para a reserva 
     expect(banco.itensDePlano.get('item-1')).toEqual(antes.item)
   })
 })
+
+/**
+ * PR11-F01 — o estado que a MAIN anterior ao PR 11 deixa no banco: o item de
+ * plano, a Generation da peça (fieldValues SEM `planoRevisao`) e o job COMPOR
+ * com `payload.planoRevisao` no formato dela. Tudo escrito À MÃO — o método que
+ * pegaria o defeito começa do estado da versão ANTERIOR, nunca de uma peça
+ * criada pelo enfileirador novo (o teste de adoção acima não tinha como pegar).
+ * As duas strings foram conferidas byte a byte contra a expressão da própria
+ * main avaliada sobre este item (origin/main 6405bfd5; 6892e362 para a de 14).
+ */
+describe('PR11-F01: a revisão gravada pela main ANTES do PR 11 — fixture no formato dela, escrita à mão', () => {
+  const LEGADA_15 = '{"ajuste":null,"campanha":null,"candidatas":[{"driveFileId":"drive-1","vaga":"score"}],"cliente":null,"copy":["Manchete 1","Vem pra cá"],"direcao":null,"escopo":"ROTINA","formato":"story","foto":["drive-1",null],"legenda":"Hoje tem happy hour.","modelo":null,"quando":"2026-09-11T18:00:00.000Z","referencias":null,"tema":"Happy hour","via":"compor"}'
+  const LEGADA_14 = '{"ajuste":null,"campanha":null,"cliente":null,"copy":["Manchete 1","Vem pra cá"],"direcao":null,"escopo":"ROTINA","formato":"story","foto":["drive-1",null],"legenda":"Hoje tem happy hour.","modelo":null,"quando":"2026-09-11T18:00:00.000Z","referencias":null,"tema":"Happy hour","via":"compor"}'
+  /** A spec como a main a gravava no job e na Generation: a spec validada, que para esta peça é o objeto que chegou. */
+  const SPEC_GRAVADA = { projectId: 6, formato: 'story', blocos: [{ papel: 'headline', linhas: ['Manchete 1'] }, { papel: 'cta', linhas: ['Vem pra cá'] }], nome: 'Peça 1', itemDePlanoId: 'item-1', planoId: 'plano-1', quando: '2026-09-11T18:00:00.000Z' }
+  const specDoPlano = { ...peca(1), itemDePlanoId: 'item-1', planoId: 'plano-1' }
+  const ARQUIVO = 'https://blob/legado.png'
+  const linhaDoLote = () => [...banco.itensDeLote.values()][0]
+
+  /** A foto do banco depois de a main enfileirar e (conforme o caso) compor a peça. */
+  function legado(o: { statusDoItem: string; geracao: 'PROCESSING' | 'COMPLETED'; job: string | null; planoRevisao?: string; item?: Record<string, unknown> }) {
+    banco.itensDePlano.set('item-1', {
+      id: 'item-1', planoId: 'plano-1', projectId: 6, status: o.statusDoItem, updatedAt: new Date('2026-09-08T12:00:00.000Z'),
+      copyProposta: ['Manchete 1', 'Vem pra cá'], copyAutoral: null,
+      fotoDriveId: 'drive-1', fotoUrl: null, fotoCandidatas: [{ driveFileId: 'drive-1', vaga: 'score' }],
+      formato: 'story', quando: new Date('2026-09-11T18:00:00.000Z'), tema: 'Happy hour',
+      legenda: 'Hoje tem happy hour.', via: 'compor', sourcePageId: null, direcao: null, ajusteDaFoto: null, referencias: null,
+      clienteProjectId: null, escopo: 'ROTINA', campaignId: null,
+      generationId: 'gen-legado', pageId: o.geracao === 'COMPLETED' ? 'page-legado' : null, erro: null,
+      ...o.item,
+    })
+    banco.generations.set('gen-legado', {
+      id: 'gen-legado', status: o.geracao, resultUrl: o.geracao === 'COMPLETED' ? ARQUIVO : null, projectId: 6, templateId: 42, authorName: 'compositor',
+      fieldValues: { source: 'compositor', spec: SPEC_GRAVADA, fila: 'aguardando' },
+    })
+    if (o.job) {
+      banco.jobs.set('job-legado', {
+        id: 'job-legado', generationId: 'gen-legado', projectId: 6, kind: 'COMPOR', status: o.job, attempts: 1, maxAttempts: 3,
+        payload: { generationId: 'gen-legado', projectId: 6, spec: SPEC_GRAVADA, decididoPor: 'u-antigo', autor: null, planoRevisao: o.planoRevisao ?? LEGADA_15 },
+      })
+    }
+  }
+  const nadaNovo = () => {
+    expect([...banco.generations.keys()]).toEqual(['gen-legado'])
+    expect([...banco.jobs.keys()]).toEqual(['job-legado'])
+  }
+
+  it.each([['15 chaves', LEGADA_15], ['14 chaves', LEGADA_14]])('sem lote, peça VIVA com o item na fila: a bancada que repete o mesmo pedido reaproveita a peça legada (%s; antes: superada)', async (_nome, planoRevisao) => {
+    legado({ statusDoItem: 'na-fila', geracao: 'PROCESSING', job: 'RUNNING', planoRevisao })
+    const itemAntes = structuredClone(banco.itensDePlano.get('item-1'))
+    expect(await enfileirarPeca(specDoPlano)).toMatchObject({ generationId: 'gen-legado', jobId: 'job-legado' })
+    nadaNovo()
+    expect(banco.itensDePlano.get('item-1')).toEqual(itemAntes)
+  })
+
+  it.each([['15 chaves', LEGADA_15], ['14 chaves', LEGADA_14]])('com lote, peça PRONTA: a primeira leva com identidade adota a peça legada e diz reaproveitada/pronta (%s; antes: superada)', async (_nome, planoRevisao) => {
+    legado({ statusDoItem: 'pronto', geracao: 'COMPLETED', job: 'DONE', planoRevisao })
+    const r = await enfileirarPeca(specDoPlano, lotePlano('seg-19h', leitura()))
+    expect(r).toMatchObject({ generationId: 'gen-legado', jobId: 'job-legado', lote: { desfecho: 'reaproveitado', situacao: 'pronta' } })
+    expect(r.lote?.superada).toBeUndefined()
+    expect(linhaDoLote()).toMatchObject({ generationId: 'gen-legado', situacao: 'enfileirado' })
+    nadaNovo()
+    // A repetição seguinte já é da linha do lote, e continua a mesma peça.
+    expect(await enfileirarPeca(specDoPlano, lotePlano('seg-19h', leitura()))).toMatchObject({ generationId: 'gen-legado', lote: { desfecho: 'reaproveitado', situacao: 'pronta' } })
+  })
+
+  it.each([
+    ['na-fila', false], ['gerando', false], ['na-fila', true], ['gerando', true],
+  ])('job TERMINAL com o item "%s" (lote: %s): a recuperação produz Generation e job novos e executáveis (antes: revisado)', async (statusDoItem, comLote) => {
+    legado({ statusDoItem, geracao: 'PROCESSING', job: 'FAILED' })
+    const r = await enfileirarPeca(specDoPlano, comLote ? lotePlano('seg-19h', leitura()) : {})
+    expect(r.generationId).not.toBe('gen-legado')
+    expect(r.jobId).not.toBe('job-legado')
+    if (comLote) expect(r.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(r.jobId)).toMatchObject({ status: 'PENDING', generationId: r.generationId, payload: { planoRevisao: leitura() } })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: r.generationId })
+    expect(banco.generations.get('gen-legado')?.status).toBe('PROCESSING')
+    expect(await rodarComoOCron(r.jobId)).toBe('DONE')
+  })
+
+  it('mudança REAL depois do enfileiramento legado continua recusada: tema trocado com a peça pronta (superada) e copy trocada com o job morto (revisado)', async () => {
+    legado({ statusDoItem: 'pronto', geracao: 'COMPLETED', job: 'DONE', item: { tema: 'Almoço executivo' } })
+    let itemAntes = structuredClone(banco.itensDePlano.get('item-1'))
+    await expect(enfileirarPeca(specDoPlano, lotePlano('seg-19h', leitura()))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', details: { motivo: 'superada' } })
+    nadaNovo()
+    expect(banco.itensDePlano.get('item-1')).toEqual(itemAntes)
+
+    banco.itensDeLote.clear()
+    legado({ statusDoItem: 'na-fila', geracao: 'PROCESSING', job: 'FAILED', item: { copyProposta: ['Manchete 1', 'Reserve já'] } })
+    itemAntes = structuredClone(banco.itensDePlano.get('item-1'))
+    await expect(enfileirarPeca(specDoPlano)).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', details: { motivo: 'revisado' } })
+    nadaNovo()
+    expect(banco.itensDePlano.get('item-1')).toEqual(itemAntes)
+  })
+
+  it('spec DIFERENTE com a revisão legada igual continua sem ser reaproveitada como se nada tivesse mudado — sem lote e com lote', async () => {
+    const outra = { ...specDoPlano, nome: 'Outra', blocos: [{ papel: 'headline', linhas: ['Outra manchete'] }, { papel: 'cta', linhas: ['Vem pra cá'] }] }
+    legado({ statusDoItem: 'na-fila', geracao: 'PROCESSING', job: 'RUNNING' })
+    const itemAntes = structuredClone(banco.itensDePlano.get('item-1'))
+    await expect(enfileirarPeca(outra)).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', details: { motivo: 'superada' } })
+    await expect(enfileirarPeca(outra, lotePlano('seg-19h', leitura()))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', details: { motivo: 'superada' } })
+    nadaNovo()
+    expect(banco.itensDePlano.get('item-1')).toEqual(itemAntes)
+  })
+
+  it('controles: só a legenda mudou — reaproveita (C11-1b); candidatas trocadas — a de 15 chaves vê e recusa, a de 14 não vê (limite declarado)', async () => {
+    legado({ statusDoItem: 'pronto', geracao: 'COMPLETED', job: 'DONE', item: { legenda: 'Outra legenda' } })
+    expect(await enfileirarPeca(specDoPlano)).toMatchObject({ generationId: 'gen-legado', jobId: 'job-legado' })
+
+    const trocadas = { fotoCandidatas: [{ driveFileId: 'drive-9', vaga: 'score' }] }
+    legado({ statusDoItem: 'na-fila', geracao: 'PROCESSING', job: 'RUNNING', item: trocadas })
+    await expect(enfileirarPeca(specDoPlano)).rejects.toMatchObject({ details: { motivo: 'superada' } })
+    legado({ statusDoItem: 'na-fila', geracao: 'PROCESSING', job: 'RUNNING', planoRevisao: LEGADA_14, item: trocadas })
+    expect(await enfileirarPeca(specDoPlano)).toMatchObject({ generationId: 'gen-legado', jobId: 'job-legado' })
+    nadaNovo()
+  })
+})
