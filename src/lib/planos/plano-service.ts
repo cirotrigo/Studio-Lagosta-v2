@@ -562,15 +562,55 @@ export async function anexarItensAoPlanoAtivo(input: {
   }
 
   let alvo = await planoAtivo(projectId)
-  if (!alvo) {
+
+  /**
+   * 🔴 O LOTE INTEIRO é normalizado ANTES de qualquer escrita (RB-01 da revisão
+   * do rebase, 21/09/2026) — como `criarPlano` sempre fez, e o que faltava aqui.
+   * `normalizarItem` recusa por ITEM em quatro famílias (formato, via, escopo e
+   * a copy: `COPY_AUTORAL_INVALIDA`, `COPY_HISTORICO_CHEIO`,
+   * `COPY_LEGADA_INCOMPATIVEL`, `COPY_REVISAO_INVALIDA`), e normalizar dentro do
+   * laço de gravação fazia o item 2 recusado deixar o item 1 no banco: a chamada
+   * falhava sem devolver os ids, e reenviar a leva corrigida DUPLICAVA o item 1.
+   * A mesma armadilha valia para a criação automática do plano — um lote todo
+   * recusado deixava para trás uma leva vazia.
+   *
+   * Por isso a janela e o offset são calculados sem escrever: com leva em aberto
+   * saem dela; sem nenhuma, são os que a leva nova terá (a janela é só o texto do
+   * aviso de item fora do período, mas sai idêntica de propósito).
+   */
+  const base = alvo ? alvo.itens.length : 0
+  let janela: { inicio: Date; fim: Date }
+  let levaNova: { inicio: string; fim: string; titulo: string } | null = null
+  if (alvo) {
+    janela = { inicio: alvo.inicio, fim: alvo.fim }
+  } else {
     const agora = new Date()
     const inicio = diaBRTDe(agora)
     const fim = diaBRTDe(new Date(agora.getTime() + (diasAteDomingoBRT(agora) - 1) * 24 * 3_600_000))
+    levaNova = { inicio, fim, titulo: `Bancada — semana de ${inicio.slice(8, 10)}/${inicio.slice(5, 7)}` }
+    janela = { inicio: paraInstanteDoPlano(inicio, 'início', false), fim: paraInstanteDoPlano(fim, 'fim', true) }
+  }
+
+  if (base + input.itens.length > MAX_ITENS_POR_PLANO) {
+    throw new CreativeError(
+      'PLANO_GRANDE_DEMAIS',
+      `O plano já tem ${base} itens; anexar ${input.itens.length} passaria do teto de ${MAX_ITENS_POR_PLANO}.`,
+      400,
+    )
+  }
+
+  const avisos: string[] = []
+  const prontos = input.itens.map((entrada, i) =>
+    normalizarItem({ ...entrada, ordem: entrada.ordem ?? base + i }, base + i, janela, avisos),
+  )
+
+  // ── Daqui para baixo, ESCRITA. Nada acima dela grava. ──
+  if (!alvo) {
     const criado = await criarPlano({
       projectId,
-      titulo: `Bancada — semana de ${inicio.slice(8, 10)}/${inicio.slice(5, 7)}`,
-      inicio,
-      fim,
+      titulo: levaNova.titulo,
+      inicio: levaNova.inicio,
+      fim: levaNova.fim,
       origem: input.origem ?? 'bancada',
       criadoPor: input.criadoPor ?? null,
       itens: [],
@@ -578,20 +618,8 @@ export async function anexarItensAoPlanoAtivo(input: {
     alvo = criado.plano
   }
 
-  if (alvo.itens.length + input.itens.length > MAX_ITENS_POR_PLANO) {
-    throw new CreativeError(
-      'PLANO_GRANDE_DEMAIS',
-      `O plano já tem ${alvo.itens.length} itens; anexar ${input.itens.length} passaria do teto de ${MAX_ITENS_POR_PLANO}.`,
-      400,
-    )
-  }
-
-  const avisos: string[] = []
-  const base = alvo.itens.length
-  const janela = { inicio: alvo.inicio, fim: alvo.fim }
   const criados: string[] = []
-  for (const [i, entrada] of input.itens.entries()) {
-    const dados = normalizarItem({ ...entrada, ordem: entrada.ordem ?? base + i }, base + i, janela, avisos)
+  for (const dados of prontos) {
     const linha = await db.itemDePlano.create({
       data: { ...dados, planoId: alvo.id, projectId },
       select: { id: true },
