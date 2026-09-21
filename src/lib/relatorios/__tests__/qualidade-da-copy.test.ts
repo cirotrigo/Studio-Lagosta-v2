@@ -16,7 +16,11 @@ type PostNoBanco = { id: string; pageId: string | null; generationId: string | n
 interface Comportamento {
   /** As linhas de "Generation" que a consulta crua das artes filtra (ids, URLs das mídias, páginas, ids a excluir, limite). */
   generations: ArteNoBanco[]
-  paginas: Array<{ id: string; copyAutoral: unknown; layers: unknown }>
+  /**
+   * As linhas de "Page". `projectId` é o do template dela; ausente, a página é do projeto que a lê — o
+   * padrão das fixtures, em que toda página é do cliente medido. A de OUTRO cliente o declara (PR15-12).
+   */
+  paginas: Array<{ id: string; projectId?: number; copyAutoral: unknown; layers: unknown }>
   /** As linhas de "LearningSignal" (o serviço filtra pelo vínculo; o banco falso devolve todas). */
   sinais: Array<Record<string, unknown>>
   esquema: { copyAutoralDaPagina: boolean; vozDaMarca: boolean }
@@ -32,7 +36,7 @@ vi.mock('@/lib/db', () => ({
   db: { $transaction: (fn: (tx: unknown) => Promise<unknown>) => estado.banco!.transacao(fn) },
 }))
 
-import { medirQualidadeDaCarteira, medirQualidadeDaCopyDoCliente, type EsquemaDaCopy } from '../qualidade-da-copy'
+import { lerSemanaDoCliente, medirQualidadeDaCarteira, medirQualidadeDaCopyDoCliente, type EsquemaDaCopy, type LeitorDoBanco } from '../qualidade-da-copy'
 import { aplicarRevisao } from '@/lib/copy-autoral/revisao'
 
 const janela = { inicio: new Date('2026-09-07T03:00:00Z'), fim: new Date('2026-09-14T03:00:00Z') }
@@ -166,6 +170,21 @@ function avaliarOnde(expr: string, valores: unknown[], g: ArteNoBanco): boolean 
   throw new Error(`condição da consulta das artes que o banco falso não conhece: ${e}`)
 }
 
+/**
+ * O WHERE da consulta de páginas avaliado de verdade (PR15-12): `id.in` e, quando vem, `Template.projectId`.
+ * Condição que o banco falso não conhece LANÇA — o dublê que ignora um filtro não testa o filtro.
+ */
+function paginaCasa(where: Record<string, unknown>, p: Comportamento['paginas'][number]): boolean {
+  for (const k of Object.keys(where)) if (k !== 'id' && k !== 'Template') throw new Error(`condição da consulta de páginas que o banco falso não conhece: ${k}`)
+  const id = where.id as { in?: unknown }
+  if (!id || Object.keys(id).join() !== 'in' || !Array.isArray(id.in)) throw new Error('a consulta de páginas precisa de id.in')
+  if (!id.in.includes(p.id)) return false
+  if (where.Template === undefined) return true
+  const t = where.Template as Record<string, unknown>
+  if (Object.keys(t).join() !== 'projectId' || typeof t.projectId !== 'number') throw new Error('condição de Template que o banco falso não conhece')
+  return (p.projectId ?? t.projectId) === t.projectId
+}
+
 function criarBanco(parcial: Partial<Comportamento> = {}) {
   const comp: Comportamento = {
     esquema: ESQUEMA_COMPLETO,
@@ -254,7 +273,7 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
           findMany: (a: { where: Consulta; select?: Record<string, boolean> }) =>
             comando('posts', async () => (conta('posts'), await comp.posts(a.where.projectId), comp.postsDe(a.where.projectId).map((p) => selecionar(p, a.select)))),
         },
-        page: { findMany: (a: { where: { id: { in: string[] } } }) => comando('paginas', async () => comp.paginas.filter((p) => a.where.id.in.includes(p.id))) },
+        page: { findMany: (a: { where: Record<string, unknown> }) => comando('paginas', async () => comp.paginas.filter((p) => paginaCasa(a.where, p))) },
         itemDePlano: { findMany: () => comando('itens', async () => []) },
         learningSignal: { findMany: (a: { select?: Record<string, boolean>; take?: number }) => comando('sinais', async () => comp.sinais.slice(0, a.take ?? Infinity).map((s) => selecionar(s, a.select))) },
         brandVoice: { findUnique: (a: { where: Consulta }) => comando('voz', () => (conta('voz'), comp.vozDe(a.where.projectId))) },
@@ -563,6 +582,52 @@ describe('revisão final · a leitura do serviço alimenta as quatro correções
     })
     const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
     expect(r.medidas[0].correcoes.compositor).toBe(1)
+  })
+
+  // ─── FINAL do Codex sobre 9648f441 (21/09/2026) ───────────────────────────
+
+  describe('PR15-12 · a página de OUTRO projeto não é lida, mesmo que a arte aponte para ela', () => {
+    // O konva-export grava `body.pageId` sem conferir o dono: a arte do Espeto (6) pode apontar a página do By Rock (7).
+    // A página de lá foi editada pela equipe dela, e mostra o CTA que o ajuste do revisor do Espeto escondeu.
+    const comAPaginaNoProjeto = (projectId: number) =>
+      criarBanco({
+        postsDe: () => [postNoBanco({ id: 'post', generationId: 'g1', mediaUrls: ['u1'] })],
+        generations: [
+          linha('g1', 'p-alheia', 'u1', peca()),
+          linha('g2', 'p-alheia', 'u-ajuste', {
+            ...peca(),
+            source: 'ajuste-arte',
+            ajustes: {},
+            revisao: { aplicados: [{ indice: 0, tipo: 'visibilidade', camadas: ['cta'], detalhe: 'escondidas' }] },
+          }),
+        ],
+        paginas: [{ id: 'p-alheia', projectId, copyAutoral: daEquipe, layers: camadas(daEquipe) }],
+      })
+
+    it('o contrato e as camadas da página de B não voltam na leitura nem viram a copy final da peça de A', async () => {
+      const banco = comAPaginaNoProjeto(byRock.projectId)
+      estado.banco = banco
+      const lida = (await banco.transacao((tx) =>
+        lerSemanaDoCliente(espeto.projectId, janela, { leitor: tx as LeitorDoBanco, esquema: ESQUEMA_COMPLETO, prazo: Date.now() + 1_000 }),
+      )) as Awaited<ReturnType<typeof lerSemanaDoCliente>>
+      expect(lida.leitura.paginas).toEqual([])
+
+      const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+      expect(r.medidas).toHaveLength(1)
+      // Não resolvida, como a página apagada: nem a edição de B (redação) nem as camadas de B (o CTA visível) contam.
+      expect(r.medidas[0]).toMatchObject({ chave: 'page:p-alheia', semPagina: true, comparavel: true, preservada: true })
+      expect(r.medidas[0].correcoes.redacao).toBe(0)
+      expect(r.medidas[0].visibilidadeDoRevisor).toMatchObject({ desfeitos: 0 })
+      expect(r.qualidade?.visibilidadeDoRevisor.semPagina).toBe(1)
+    })
+
+    it('controle: a mesma página no projeto de A é lida — a edição e o CTA reexibido contam', async () => {
+      estado.banco = comAPaginaNoProjeto(espeto.projectId)
+      const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+      expect(r.medidas[0]).toMatchObject({ semPagina: false, preservada: false })
+      expect(r.medidas[0].correcoes.redacao).toBe(1)
+      expect(r.medidas[0].visibilidadeDoRevisor).toMatchObject({ desfeitos: 1 })
+    })
   })
 })
 

@@ -224,8 +224,13 @@ export async function lerSemanaDoCliente(
   const ligado = { OR: [{ postId: { in: postIds } }, { pageId: { in: pageIds } }, { generationId: { in: arteIds } }] }
 
   // Em série: numa transação as consultas dividem UMA conexão, e cada uma leva o próprio prazo.
+  // Só as páginas DESTE projeto (FINAL sobre 9648f441, PR15-12): o `pageId` do
+  // post e o `fieldValues.pageId` da arte não provam dono — o konva-export grava
+  // `body.pageId` sem conferir —, e a página de outro cliente virava a copy final
+  // e as camadas da peça daqui. A de fora fica NÃO resolvida, como a apagada
+  // (`semPagina`, contada). Mesma régua do R29 do PR 6 no `ver-agenda`.
   const paginas = pageIds.length
-    ? await comPrazo(() => leitor.page.findMany({ where: { id: { in: pageIds } }, select: { id: true, copyAutoral: true, layers: true } }))
+    ? await comPrazo(() => leitor.page.findMany({ where: { id: { in: pageIds }, Template: { projectId } }, select: { id: true, copyAutoral: true, layers: true } }))
     : []
   const itens = await comPrazo(() =>
     leitor.itemDePlano.findMany({ where: { projectId, ...ligado }, select: { id: true, postId: true, pageId: true, generationId: true, createdAt: true } }),
