@@ -317,6 +317,10 @@ function mensagemDaCarteira(janela: JanelaDaSemana, linhas: LinhaDoCliente[]): s
     }
     const linhaDaCopy = linhaDaCopyDoCliente(l.copy?.qualidade ?? null)
     if (linhaDaCopy) partes.push(linhaDaCopy)
+    // A leitura incompleta (teto, arte anterior ao limite do histórico, voz sem
+    // versão) qualifica os números acima: sem ela o WhatsApp mostra contagens
+    // parciais como se fossem inteiras (PR15-11).
+    for (const a of l.copy?.avisos ?? []) partes.push(`  ⚠️ copy: ${a}`)
     for (const a of l.alertas.filter((x) => !x.startsWith('sem token'))) partes.push(`  ⚠️ ${a}`)
   }
 
@@ -461,7 +465,11 @@ export async function gerarRelatorioSemanal(opts?: {
   // Blocos que só o Windsor enxerga (anúncios e Google) — cada um degrada
   // para ausência sozinho; nenhum atrasa nem derruba o relatório.
   const [blocoAds, blocoGoogle] = await Promise.all([blocoAnunciosDaSemana(), blocoAvaliacoesDaSemana()])
-  const blocoCopy = qualidadeDaCopy ? blocoDaQualidadeDaCopy(qualidadeDaCopy.bloco) : null
+  // A falha geral da medida DIZ que falhou: sem o bloco, o silêncio leria como
+  // "nenhuma peça na semana" (varredura do PR15-11).
+  const blocoCopy = qualidadeDaCopy
+    ? blocoDaQualidadeDaCopy(qualidadeDaCopy.bloco)
+    : '\n✍️ *Copy da semana* — medida indisponível: a leitura falhou nesta semana, e o relatório seguiu sem ela'
 
   const mensagem =
     (opts?.teste ? '🧪 *Envio de teste* — o relatório oficial sai todo domingo às 20h.\n\n' : '') +

@@ -29,6 +29,7 @@ vi.mock('@/lib/notifications/evolution', () => ({ isEvolutionConfigured: () => f
 vi.mock('@/lib/relatorios/qualidade-da-copy', () => ({ medirQualidadeDaCarteira: dubles.medir }))
 
 import { gerarRelatorioSemanal } from '../semanal'
+import { medirQualidadeDaCopy } from '../qualidade-da-copy-contrato'
 
 const referencia = new Date('2026-09-13T23:00:00Z')
 
@@ -73,6 +74,8 @@ describe('gerarRelatorioSemanal · a gravação não espera a medida da copy', (
     const r = await gerarRelatorioSemanal({ referencia })
     expect(dubles.ordem).toEqual(['upsert', 'medir'])
     expect(r.gravados).toBe(1)
+    // Varredura (d) do PR15-11: a falha geral não some da mensagem — silêncio leria como "nenhuma peça".
+    expect(r.mensagem).toMatch(/Copy da semana.*medida indisponível/)
   })
 
   it('cliente cuja gravação falhou não recebe o update da copy (não existe linha para atualizar)', async () => {
@@ -86,5 +89,26 @@ describe('gerarRelatorioSemanal · a gravação não espera a medida da copy', (
     dubles.db.instagramWeeklyReport.update.mockRejectedValue(new Error('conexão caiu'))
     const r = await gerarRelatorioSemanal({ referencia })
     expect(r.gravados).toBe(1)
+  })
+
+  it('PR15-11 · os avisos de leitura incompleta da copy chegam à mensagem, na seção do cliente', async () => {
+    const avisos = [
+      '2 arte(s) ligada(s) direto aos posts são de antes do limite de 60 dias do histórico: as outras artes das páginas delas, dessa época, não foram lidas — a medida dessas peças pode estar incompleta',
+      'a leitura parou no teto de 2000 sinais ligados — pode haver mais, e a medida olhou só os primeiros',
+    ]
+    dubles.medir.mockImplementation(async () => ({
+      porCliente: new Map([[6, { projectId: 6, nome: 'Espeto Gaúcho', qualidade: medirQualidadeDaCopy([]), medidas: [], indisponivel: null, avisos }]]),
+      carteira: null,
+      bloco: { carteira: null, indisponiveis: [], foraDoOrcamento: [] },
+    }))
+    const { mensagem } = await gerarRelatorioSemanal({ referencia })
+    const inicioDoCliente = mensagem.indexOf('*Espeto Gaúcho*')
+    const fimDaCarteira = mensagem.indexOf('_Colhido no fecho')
+    expect(inicioDoCliente).toBeGreaterThanOrEqual(0)
+    for (const a of avisos) {
+      const onde = mensagem.indexOf(a)
+      expect(onde).toBeGreaterThan(inicioDoCliente)
+      expect(onde).toBeLessThan(fimDaCarteira)
+    }
   })
 })
