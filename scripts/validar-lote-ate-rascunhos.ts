@@ -33,10 +33,21 @@
  * 16. com a confirmação (`true` literal): UM rascunho novo, com a mesma arte,
  *     desfecho `recriado`, a linha e o item do plano reapontados;
  * 17. a segunda confirmação devolve `reaproveitado` e continua um post só.
+ * 18. peça superada no plano sem peça na linha: a compor-leva recusa como
+ *     superada e o agendar-leva aponta a arte atual, sem mandar compor;
+ * 19. peça remarcada: o link de edição segue a pasta para onde a página foi;
+ * 20. a capa vinculada não prova o catálogo: a repetição registra a 2ª mídia;
+ * 21. retomadas SIMULTÂNEAS (R12-09), com duas conexões reais e a barreira
+ *     dada pelo BANCO (`pg_blocking_pids` confirma que a chamada real está
+ *     bloqueada pela primeira ANTES de a primeira criar): (a) o catálogo das
+ *     artes do post não duplica a 2ª mídia e só carimba depois; (b)
+ *     `garantirPasta` devolve a pasta que a primeira criou; (c)
+ *     `ensurePostGeneration` devolve o vínculo que a primeira gravou.
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
  * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
- * A pasta da semana criada por `garantirPasta` fica (é reutilizada).
+ * A pasta da semana criada por `garantirPasta` fica (é reutilizada); a do
+ * passo 21b, numa semana de 2099 criada só por esta rodada, é apagada.
  *
  * MODO DE PRODUÇÃO, SÓ LEITURA (`--producao-somente-leitura`): aponta para o
  * banco do `.env` e roda SÓ SELECTs dentro de uma transação
@@ -59,6 +70,8 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+// Só tipos (apagados na execução): o cliente de verdade é importado depois de o ambiente apontar para o dev.
+import type { Prisma as PrismaTipos, PrismaClient as ClienteDoBanco } from '../prisma/generated/client'
 
 const ROOT = process.cwd()
 const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
@@ -225,6 +238,10 @@ async function main() {
   const { agendarPost } = await import('../src/lib/creatives/agendar')
   const { criarPlano } = await import('../src/lib/planos/plano-service')
   const { revisaoDoItem } = await import('../src/lib/planos/revisao-do-item')
+  const { chaveDasArtesDoPost, ensurePostGeneration } = await import('../src/lib/posts/ensure-post-generation')
+  const { garantirPasta, chaveDaPasta } = await import('../src/lib/compositor/pastas')
+  const { pastaDaPeca } = await import('../src/lib/compositor/pasta-da-semana')
+  const { PrismaClient } = await import('../prisma/generated/client')
   const { del } = await import('@vercel/blob')
   // O desafio anti-bot do Blob (403) sobre a logo derrubou a composição da prova-dev-4 do PR 11: cada imagem uma vez por URL, com nova tentativa espaçada.
   const { lerOBlobUmaVezPorUrl } = await import('./lib/leitura-do-blob')
@@ -261,6 +278,8 @@ async function main() {
   // Mídia de post que NÃO é Blob (o slide do passo 20): a arte que o catálogo registra para ela sai pelo resultUrl,
   // e ela nunca vai para o `del` — só URL do Blob criada pela rodada é apagada lá.
   const urlsDeMidiaSemBlob: string[] = []
+  // A pasta do passo 21b (numa semana de 2099): só ela é apagada no cleanup, e só se estiver vazia.
+  const chavesDePastaDaProva: string[] = []
   async function compor(itemId: string, spec: unknown, opcoes: { itemRevisao?: string } = {}) {
     itemIds.push(itemId)
     const r = await enfileirarPeca(spec, { lote: { loteId: LOTE, itemId }, canal: 'claude-code', ...opcoes })
@@ -514,12 +533,137 @@ async function main() {
     conferir('reaproveitado sem aviso, e a 2ª mídia registrada de novo (uma só, post-midia, índice 1)', repetida13.desfecho === 'reaproveitado' && !repetida13.avisos && artesDoSlide.length === 1 && (artesDoSlide[0]?.fieldValues as Record<string, unknown> | null)?.midiaIndice === 1, JSON.stringify({ item: repetida13, artes: artesDoSlide.length }))
     conferir('a capa não foi duplicada e continua vinculada', (await artesDa(capa13)).length === 1 && (await vinculoDoPost13()) === linha13.generationId)
     conferir('só então carimbou', !!(await linhaDo('item-13'))?.efeitosDoAgendamentoEm)
+
+    // ── 21. R12-09: retomadas SIMULTÂNEAS, com a barreira dada pelo BANCO ───
+    // O teste com banco falso prova a ORDEM (uma barreira no JS); a trava só existe contra o Postgres. Duas
+    // conexões reais: o "dono" (conexão direta) segura a trava consultiva da chave, como a primeira execução a
+    // seguraria, e a chamada REAL começa em paralelo. A barreira não é tempo: é o próprio banco dizendo
+    // (`pg_blocking_pids`) que a chamada real está BLOQUEADA pelo dono — e só então o dono cria o que a primeira
+    // execução criaria e commita. Ao acordar com a trava, a chamada real relê (READ COMMITTED) e encontra.
+    // Molde: passo 6v de validar-migracao-da-voz.ts.
+    // 🔴 O que se lê DURANTE o bloqueio vai pelo vigia, nunca pelo `db` da prova: com o pooler ele tem UMA conexão,
+    // e é justamente ela que a transação bloqueada segura.
+    const { userId: donoDoProjeto } = await db.project.findUniqueOrThrow({ where: { id: PROJETO }, select: { userId: true } })
+    const urlDireta = process.env.DIRECT_URL ?? process.env.DATABASE_URL
+    async function corridaNaTrava<T, C, V = null>(
+      chave: string,
+      segunda: () => Promise<T>,
+      criarComoDono: (tx: PrismaTipos.TransactionClient) => Promise<C>,
+      duranteOBloqueio?: (vigia: ClienteDoBanco) => Promise<V>,
+    ) {
+      const dono = new PrismaClient({ datasources: { db: { url: urlDireta } } })
+      const vigia = new PrismaClient({ datasources: { db: { url: urlDireta } } })
+      let bloqueou = false
+      let lidoNoBloqueio: V | null = null
+      let criado: C | null = null
+      try {
+        let avisarTravado!: () => void
+        const travado = new Promise<void>((r) => { avisarTravado = r })
+        let soltar!: () => void
+        const podeCriar = new Promise<void>((r) => { soltar = r })
+        let pidDoDono = 0
+        const primeira = dono.$transaction(async (tx) => {
+          const [linha] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid FROM pg_advisory_xact_lock(hashtext(${chave}))`
+          pidDoDono = linha.pid
+          avisarTravado()
+          await podeCriar
+          criado = await criarComoDono(tx)
+        }, { timeout: 60_000, maxWait: 60_000 })
+        primeira.catch(() => undefined)
+        await travado
+        const resultado = segunda().then((valor) => ({ valor, erro: null as unknown }), (erro: unknown) => ({ valor: null, erro }))
+        for (let i = 0; i < 320 && !bloqueou; i++) {
+          const [{ n }] = await vigia.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM pg_stat_activity a WHERE a.wait_event_type = 'Lock' AND ${pidDoDono} = ANY(pg_blocking_pids(a.pid))`
+          bloqueou = Number(n) > 0
+          if (!bloqueou) await new Promise((r) => setTimeout(r, 25))
+        }
+        if (bloqueou && duranteOBloqueio) lidoNoBloqueio = await duranteOBloqueio(vigia)
+        soltar()
+        await primeira
+        return { bloqueou, criado: criado as C | null, lidoNoBloqueio, ...(await resultado) }
+      } finally {
+        await dono.$disconnect()
+        await vigia.$disconnect()
+      }
+    }
+
+    console.log('21a) R12-09: duas retomadas do catálogo do MESMO post ao mesmo tempo — a segunda espera a trava do post (o banco confirma o bloqueio antes de a primeira criar), relê e não duplica a 2ª mídia; o carimbo só vem depois')
+    // O estado parcial do R12-08: a capa vinculada, a 2ª mídia sem Generation e os efeitos sem carimbo.
+    await db.generation.deleteMany({ where: { projectId: PROJETO, resultUrl: slide2 } })
+    await db.itemDeLote.update({ where: { id: linha13.id }, data: { efeitosDoAgendamentoEm: null } })
+    const templateDoPost13 = (await db.socialPost.findUniqueOrThrow({ where: { id: manual13.postId }, select: { templateId: true } })).templateId
+      ?? (await db.page.findUniqueOrThrow({ where: { id: pagina13 }, select: { templateId: true } })).templateId
+    const c21a = await corridaNaTrava(
+      chaveDasArtesDoPost(manual13.postId),
+      () => agendar([{ itemId: 'item-13' }]),
+      // O que a primeira execução do catálogo cria: a arte da 2ª mídia (post-midia, índice 1).
+      (tx) => tx.generation.create({
+        data: { status: 'COMPLETED', templateId: templateDoPost13, fieldValues: { source: 'post-midia', postId: manual13.postId, midiaIndice: 1 }, resultUrl: slide2, projectId: PROJETO, createdBy: donoDoProjeto, authorName: 'post-midia', completedAt: new Date() },
+        select: { id: true },
+      }),
+      (vigia) => vigia.itemDeLote.findUnique({ where: { id: linha13.id }, select: { efeitosDoAgendamentoEm: true } }),
+    )
+    const r21a = c21a.valor?.itens[0]
+    const artes21a = await artesDa(slide2)
+    conferir('a segunda retomada ficou BLOQUEADA pela primeira (o banco confirmou) antes de a primeira criar, com os efeitos ainda sem carimbo', c21a.bloqueou && c21a.lidoNoBloqueio?.efeitosDoAgendamentoEm === null, JSON.stringify({ bloqueou: c21a.bloqueou, lido: c21a.lidoNoBloqueio }))
+    conferir('reaproveitado sem aviso', !c21a.erro && r21a?.desfecho === 'reaproveitado' && !r21a.avisos, JSON.stringify(c21a.erro ? String(c21a.erro) : r21a))
+    conferir('UMA Generation do slide 2 — a da primeira execução, que a segunda releu', artes21a.length === 1 && artes21a[0]?.id === c21a.criado?.id, JSON.stringify({ artes: artes21a.map((a) => a.id), primeira: c21a.criado?.id }))
+    conferir('a capa não foi duplicada e continua vinculada; um post só', (await artesDa(capa13)).length === 1 && (await vinculoDoPost13()) === linha13.generationId && (await postsDaPagina(pagina13)).length === 1)
+    conferir('carimbado depois de concluído', !!(await linhaDo('item-13'))?.efeitosDoAgendamentoEm)
+
+    console.log('21b) R12-09 (varredura): duas execuções garantindo a MESMA pasta nova — a segunda espera a trava da pasta e devolve a que a primeira criou; a semana não se parte em duas pastas')
+    // Uma semana de 2099 que ninguém usa, para a pasta nascer AQUI (a que já existe não passa pela trava).
+    let quando21b = ''
+    let pasta21b = pastaDaPeca(null, 'story')
+    for (let k = 0; k < 20; k++) {
+      const semana = new Date(Date.UTC(2099, 0, 5 + 7 * ((Math.floor(Date.now() / 1000) + k) % 300)))
+      quando21b = `${semana.toISOString().slice(0, 10)} 19:00`
+      pasta21b = pastaDaPeca(quando21b, 'story')
+      if ((await db.template.count({ where: { projectId: PROJETO, tags: { has: pasta21b.chave } } })) === 0) break
+    }
+    chavesDePastaDaProva.push(pasta21b.chave)
+    const c21b = await corridaNaTrava(
+      chaveDaPasta(PROJETO, pasta21b.chave),
+      () => garantirPasta(PROJETO, donoDoProjeto, quando21b, 'story'),
+      // O que a primeira execução de garantirPasta cria.
+      (tx) => tx.template.create({
+        data: { name: pasta21b.nome, type: pasta21b.tipo, dimensions: pasta21b.dimensoes, designData: {}, category: pasta21b.categoria, tags: pasta21b.tags, projectId: PROJETO, createdBy: donoDoProjeto },
+        select: { id: true },
+      }),
+    )
+    conferir('a segunda execução ficou BLOQUEADA pela primeira (o banco confirmou) antes de ela criar a pasta', c21b.bloqueou)
+    conferir('devolveu a pasta que a primeira criou', !c21b.erro && c21b.valor?.id === c21b.criado?.id, JSON.stringify({ devolvida: c21b.valor?.id ?? String(c21b.erro), primeira: c21b.criado?.id }))
+    conferir('uma pasta só com a tag da semana', (await db.template.count({ where: { projectId: PROJETO, tags: { has: pasta21b.chave } } })) === 1)
+
+    console.log('21c) R12-09: o vínculo da capa (ensurePostGeneration) sob a MESMA trava do post — a segunda espera e devolve o vínculo que a primeira gravou, sem arte órfã')
+    const capa21c = `https://pr12-rascunhos.invalid/capa-21c-${encodeURIComponent(CARIMBO)}.png`
+    urlsDeMidiaSemBlob.push(capa21c)
+    const post21c = await agendarPost({ projectId: PROJETO, pageId: pagina12, scheduledDatetime: `${dia(14)} 19:00`, postType: 'STORY', superficie: 'editor' })
+    await db.socialPost.update({ where: { id: post21c.postId }, data: { mediaUrls: [capa21c], renderStatus: 'NOT_NEEDED', generationId: null } })
+    const templateDaPagina12 = (await db.page.findUniqueOrThrow({ where: { id: pagina12 }, select: { templateId: true } })).templateId
+    const c21c = await corridaNaTrava(
+      chaveDasArtesDoPost(post21c.postId),
+      () => ensurePostGeneration(post21c.postId),
+      // O que a primeira execução de ensurePostGeneration faz: cria a arte da capa e grava o vínculo.
+      async (tx) => {
+        const g = await tx.generation.create({
+          data: { status: 'COMPLETED', templateId: templateDaPagina12, fieldValues: { source: 'post-schedule', postId: post21c.postId, pageId: pagina12 }, resultUrl: capa21c, projectId: PROJETO, createdBy: donoDoProjeto, completedAt: new Date() },
+          select: { id: true },
+        })
+        await tx.socialPost.updateMany({ where: { id: post21c.postId, generationId: null }, data: { generationId: g.id } })
+        return g
+      },
+    )
+    const vinculo21c = (await db.socialPost.findUniqueOrThrow({ where: { id: post21c.postId }, select: { generationId: true } })).generationId
+    conferir('a segunda ficou BLOQUEADA pela primeira (o banco confirmou) antes de ela criar', c21c.bloqueou)
+    conferir('devolveu o vínculo que a primeira gravou', !c21c.erro && c21c.valor === c21c.criado?.id && vinculo21c === c21c.criado?.id, JSON.stringify({ devolvido: c21c.valor ?? String(c21c.erro), primeira: c21c.criado?.id, vinculo: vinculo21c }))
+    conferir('UMA Generation da capa — nenhuma órfã', (await artesDa(capa21c)).length === 1)
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
   } finally {
     console.log('\ncleanup (só o que ESTA rodada criou, no projeto da prova)')
-    const apagados = { posts: 0, sinais: 0, jobs: 0, generations: 0, pages: 0, planos: 0, lotes: 0, blobs: 0 }
+    const apagados = { posts: 0, sinais: 0, jobs: 0, generations: 0, pages: 0, pastas: 0, planos: 0, lotes: 0, blobs: 0 }
     const falhasDoCleanup: string[] = []
     const passo = async (nome: string, fn: () => Promise<void>) => {
       try {
@@ -551,6 +695,11 @@ async function main() {
     // As artes que `registrarArtesDoPost` catalogou a partir dos posts (source post-midia) apontam para os mesmos blobs.
     await passo('generations', async () => { apagados.generations = (await db.generation.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: idsDeGeracao } }, { resultUrl: { in: [...blobs, ...urlsDeMidiaSemBlob] } }] } })).count })
     await passo('páginas', async () => { apagados.pages = (await db.page.deleteMany({ where: { id: { in: idsDePagina } } })).count })
+    // A pasta do passo 21b (semana de 2099): só a VAZIA — Template arrasta Generation por cascade.
+    await passo('pastas da prova', async () => {
+      if (chavesDePastaDaProva.length === 0) return
+      apagados.pastas = (await db.template.deleteMany({ where: { projectId: PROJETO, tags: { hasSome: chavesDePastaDaProva }, Page: { none: {} }, Generation: { none: {} } } })).count
+    })
     // Os itens do plano vão junto (FK com cascade).
     await passo('planos', async () => { apagados.planos = (await db.planoDeConteudo.deleteMany({ where: { projectId: PROJETO, OR: [{ id: { in: planos } }, { titulo: { contains: MARCA } }] } })).count })
     await passo('lotes', async () => { apagados.lotes = (await db.itemDeLote.deleteMany({ where: { projectId: PROJETO, loteId: { startsWith: LOTE } } })).count })
