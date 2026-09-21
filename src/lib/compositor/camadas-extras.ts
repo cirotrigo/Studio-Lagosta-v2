@@ -76,6 +76,17 @@ export interface CamadaExtraDaSpec {
   ordem?: number
 }
 
+/**
+ * A spec tem camada EXTRA em alguma das DUAS representações: `camadasExtras` (o bloco `livre` do contrato com herança)
+ * ou um bloco de `blocos` com `herdaDe` (o extra COM FUNÇÃO — o serviço que herda do apoio). Quem decide comportamento
+ * por "a peça tem extra" pergunta aqui, nunca a uma forma só: a guarda do re-render da recomposição olhava só
+ * `camadasExtras` e deixava o extra com função cair no caminho por papel, que descarta id e herança (PR9-F01, revisão
+ * FINAL do Codex sobre b6980b5b, 21/09/2026).
+ */
+export function specTemExtra(spec: { blocos?: ReadonlyArray<{ herdaDe?: unknown }> | null; camadasExtras?: ReadonlyArray<unknown> | null }): boolean {
+  return (spec.camadasExtras?.length ?? 0) > 0 || (spec.blocos ?? []).some((b) => !!b.herdaDe)
+}
+
 export interface ResolucaoDosExtras {
   blocos: BlocoResolvido[]
   /** Os papéis que a peça pede e a variante não tem, sem herança declarada que os salve — a composição recusa (`PAPEIS_INCOMPATIVEIS`). */

@@ -517,3 +517,115 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
     })
   }
 })
+
+/**
+ * PR9-F01, 2ª metade (revisão FINAL do Codex sobre b6980b5b, 21/09/2026): o extra COM FUNÇÃO — um serviço que herda o
+ * estilo do apoio — não vive em `camadasExtras`: ele fica em `spec.blocos`, com `herdaDe`. A guarda do re-render olhava
+ * só `camadasExtras`, e com o contrato recusando a leitura a recomposição seguia para `specComACopyDaPagina`, que
+ * reconstrói cada bloco como `{ papel, linhas }` e descarta id e herança: com um serviço comum ao lado, dois serviços
+ * comuns → `papel repetido` e o slide antigo; sozinho, o serviço perdia a herança. Os testes anteriores usavam só o
+ * extra `livre` — a guarda tinha sido escrita pelo caso do exemplo, não pela regra.
+ *
+ * Todo caso roda nas duas formas da página: como a preparação grava e LEGADA (sem `bloco`/`linhas`) — a decisão do
+ * re-render é da spec, e a marca não pode mudá-la.
+ */
+describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa peça com extra COM FUNÇÃO', () => {
+  const recusas: Array<[string, string, (c: CopyAutoral) => CopyAutoral]> = [
+    ['histórico cheio (200 revisões)', 'Retirada até 22h', (c) => ({
+      ...c,
+      revisoes: Array.from({ length: 200 }, (_, i) => ({ em: '2026-09-12T13:00:00.000Z', autor: 'equipe' as const, motivo: `revisão ${i}`, blocos: ['h'] })),
+    })],
+    ['leitura inválida (RevisaoDaCopyInvalida)', 'A'.repeat(301), (c) => c],
+  ]
+  const contratos: Array<[string, CopyAutoral['blocos']]> = [
+    ['com serviço comum da mesma função', [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'svc', funcao: 'servico', ordem: 1, linhas: ['11h às 16h'] },
+      { id: 'hora-extra', funcao: 'servico', ordem: 2, linhas: ['Delivery até 22h'], estilo: { herdaDe: 'apoio' } },
+    ]],
+    ['sem serviço comum (só o herdado)', [
+      { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+      { id: 'hora-extra', funcao: 'servico', ordem: 1, linhas: ['Delivery até 22h'], estilo: { herdaDe: 'apoio' } },
+    ]],
+  ]
+  const semVinculo = (l: Layer): Layer => {
+    const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+    return { ...l, metadata: { ...l.metadata, compositor } } as Layer
+  }
+  for (const [nomeDoContrato, blocos] of contratos)
+    for (const [nomeDaRecusa, textoNovo, ajustarContrato] of recusas)
+      for (const forma of ['preparada', 'legada'] as const)
+        it(`${nomeDoContrato} · ${nomeDaRecusa} · página ${forma}: re-renderiza como está; camadas e contrato intactos, só o slide troca`, async () => {
+          estado.page = null
+          estado.generation = null
+          estado.posts.clear()
+          estado.specsCompostas = []
+          estado.paginaGravada = null
+          estado.generationGravada = null
+          estado.comporCamadas = null
+          estado.reRenderizadas = []
+          const assinatura = montarAssinatura({
+            pagina: {
+              id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
+              layers: [
+                texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+                texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 320 }, metadata: { groupId: 'g1' } }),
+                texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2 }, 'Serviço', { position: { x: 92, y: 1650 }, metadata: { groupId: 'g2' } }),
+              ],
+            },
+            formatoDaPagina: 'story',
+            numerosDoProjeto: null,
+          })
+          const copy: CopyAutoral = { versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [], blocos }
+          const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy })
+          expect(v.problemas).toEqual([])
+          const specPersistida = v.spec as SpecDePeca
+          // O extra COM FUNÇÃO está em `blocos`, não em `camadasExtras` — é essa a representação que a guarda não via.
+          expect(specPersistida.camadasExtras ?? []).toEqual([])
+          expect(specPersistida.blocos.some((b) => b.herdaDe === 'apoio' && b.id === 'hora-extra')).toBe(true)
+          const preparadas = prepararBlocos({
+            assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+            medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: specPersistida,
+          }).montados.map((b) => b.layer)
+          const camadasHoje = forma === 'legada' ? preparadas.map(semVinculo) : preparadas
+          const doExtra = camadasHoje.find((l) => l.content === 'Delivery até 22h')!
+          const entrada = entradaDePersistencia({
+            spec: specPersistida, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+            nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: preparadas, fundo: '#000', diagnostico: {}, fotoUrl: null,
+          })
+          const contrato = ajustarContrato(entrada.copyAutoral as CopyAutoral)
+          const camadasEditadas = camadasHoje.map((l) => (l.id === doExtra.id ? { ...l, content: textoNovo } : l))
+          estado.page = {
+            id: 'pg-f01b', name: 'Sex 18/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: camadasEditadas, background: '#000',
+            isTemplate: false, templateId: 't-1', copyAutoral: contrato, updatedAt: new Date('2026-09-18T15:00:00.000Z'),
+            Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
+          }
+          estado.generation = {
+            id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null,
+            fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-f01b' },
+          }
+          estado.camadasDaComposicao = preparadas
+          const capa = 'https://blob.exemplo/capa.png'
+          const slide3 = 'https://blob.exemplo/slide-3.png'
+          estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [capa, URL_ANTIGA, slide3] })
+          estado.posts.set('post-entregue', { id: 'post-entregue', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: 'zernio-1', mediaUrls: [URL_ANTIGA, slide3] })
+
+          const { recomporPaginaDefasada } = await import('../recompor')
+          const r = await recomporPaginaDefasada({ pageId: 'pg-f01b' })
+          const reRenderizadas = estado.reRenderizadas
+          estado.reRenderizadas = null
+
+          // Nada é recomposto: sem contrato legível, a spec antiga não sabe o texto novo do extra, e o caminho por papel
+          // descartaria a herança (e, com o serviço comum, recusaria por papel repetido).
+          expect(estado.specsCompostas).toEqual([])
+          expect(estado.paginaGravada).toBeNull()
+          expect(r.recomposta).toBe(false)
+          expect(reRenderizadas).toHaveLength(1)
+          expect((reRenderizadas[0].layers as Layer[]).find((l) => l.id === doExtra.id)?.content).toBe(textoNovo)
+          expect(r.avisos.some((a) => /camada extra/i.test(a))).toBe(true)
+          expect(estado.page.copyAutoral).toBe(contrato)
+          expect(r.trocados).toEqual([{ postId: 'post-carrossel', indice: 1, total: 3 }])
+          expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_RERENDER, slide3])
+          expect(estado.posts.get('post-entregue')!.mediaUrls).toEqual([URL_ANTIGA, slide3])
+        })
+})

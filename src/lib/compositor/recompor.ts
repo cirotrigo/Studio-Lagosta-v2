@@ -59,6 +59,7 @@ import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
 import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
+import { specTemExtra } from './camadas-extras'
 import {
   medirDefasagem,
   precisaRefazer,
@@ -405,6 +406,10 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
    * por papel — as `camadasExtras` da spec antiga seguem com o texto de ANTES
    * da edição, e recompor gravaria esse texto por cima do que a equipe salvou.
    * Peça com extra e sem contrato legível é re-renderizada como está.
+   * "Com extra" nas DUAS formas (`specTemExtra`): o extra com função vive em
+   * `blocos` com `herdaDe`, e o caminho por papel o reconstruía como
+   * `{ papel, linhas }` — dois serviços comuns (`papel repetido`) ou a herança
+   * perdida (PR9-F01, 2ª metade, 21/09/2026).
    */
   let contratoAtual: CopyAutoral | null = null
   let semContratoComExtras = false
@@ -415,7 +420,7 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
     // Histórico da copy CHEIO (PR2-02): a recomposição não cai por isso — a página mantém o contrato como estava e o motivo entra nos avisos do registro.
     leituraDoContrato = contratoDaPagina ? tentarCopyEfetivaDasCamadas(contratoDaPagina, lerCamadas(page.layers).camadas as unknown as Layer[], { superficie: 'recomposicao' }) : null
     contratoAtual = leituraDoContrato && leituraDoContrato.ok ? leituraDoContrato.leitura.efetiva : null
-    semContratoComExtras = !contratoAtual && (arte.spec!.camadasExtras?.length ?? 0) > 0
+    semContratoComExtras = !contratoAtual && specTemExtra(arte.spec!)
     const motivo = leituraDoContrato && leituraDoContrato.ok === false ? `${leituraDoContrato.aviso} ` : ''
     if (semContratoComExtras) {
       avisos.push(`${motivo}A peça tem camada extra e a página não tem contrato da copy legível: a arte foi re-renderizada como a página está, sem medir a diagramação de novo (recompor gravaria o texto antigo do extra).`)
