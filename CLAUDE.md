@@ -10843,3 +10843,80 @@ aplicada**.
   sem a releitura sob a trava no catálogo, 2; a capa sem trava ou com outra
   chave, 1 cada; a pasta sem a releitura, 1; o catálogo fora da transação, 1;
   REPEATABLE READ, 0 no banco falso e `n: 0` no banco de dev.
+
+**Da revisão FINAL do Codex sobre 7b7e90e1 (BLOQUEADO, R12-10…R12-11, 21/09/2026):**
+
+Os dois achados são no SCRIPT DA PROVA (`validar-lote-ate-rascunhos.ts`,
+passo 21); o código da aplicação (R12-09) foi aprovado.
+
+- 🔴 **Conexão auxiliar de prova passa pela MESMA guarda de destino que o
+  `db`** (R12-10, P1). A guarda conferia só o `DATABASE_URL`, e o dono e o
+  vigia do passo 21 abriam `PrismaClient` com `DIRECT_URL ?? DATABASE_URL` — e
+  o `DIRECT_URL` vinha HERDADO: do `.env` (produção), copiado inteiro para o
+  processo quando o arquivo de dev não o definia, ou do ambiente de quem rodou.
+  Sem `DIRECT_URL` no dev, `criarComoDono` gravaria em PRODUÇÃO, e o cleanup
+  (pelo `db` de dev) não alcançaria. Não aconteceu nas rodadas (o arquivo de
+  dev define as duas no `ep-winter-lake-admt6duq`), mas nada impedia. Hoje
+  `destinoDaProvaDeDev` (`scripts/lib/destino-da-prova.ts`, puro) resolve o
+  destino de TODA conexão antes de qualquer cliente existir: as duas URLs saem
+  SÓ do `.env.development.local` e têm de ser o MESMO banco (compute E nome do
+  banco — PR13-16), fora de qualquer compute de produção; o ambiente aplicado
+  sobrescreve as duas no processo; o dono e o vigia recebem
+  `DESTINO.directUrl`; e depois do import o script confere que o `db` nasceu
+  do `DATABASE_URL` validado.
+- **Sem `DIRECT_URL` no arquivo de dev a prova ABORTA com a instrução, nunca
+  deriva**: é o contrato do runner da casa (`scripts/dev-db.ts` recusa rodar
+  sem as duas; `db:dev:setup` escreve as duas), e derivar seria adivinhar o
+  formato de URL do provedor. Falha fechada.
+- 🔴 **O compute se compara em minúsculas.** `postgresql:` é esquema NÃO
+  especial, o `new URL` preserva a caixa do host, e o DNS não a distingue:
+  `EP-PROD-…` conecta na produção e, comparado como string, passava pela guarda
+  antiga — inclusive no `DATABASE_URL`. É a lição do PR13-49 (identidade do
+  endpoint, nunca a string). ⚠️ **Fora do escopo, registrado**: 22 scripts
+  parseiam o compute do mesmo jeito, sem minúsculas — entre eles
+  `scripts/dev-db.ts`, o runner que guarda `db:migrate`/`db:reset` contra
+  produção, e `setup-dev-db.ts`.
+- 🔴 **O passo 21 nunca autoriza a criação sem o bloqueio confirmado pelo
+  banco** (R12-10): `bloqueou === false` é FALHA do passo
+  (`BloqueioNaoObservado`) e o dono desiste com rollback. Antes, `soltar()`
+  liberava a criação mesmo sem bloqueio, e a prova "provava" uma exclusão que
+  não observou.
+- 🔴 **Barreira de prova precisa terminar também no caminho da falha**
+  (R12-11, P2). `travado` só resolvia por `avisarTravado()`, e
+  `primeira.catch(() => undefined)` engolia a rejeição da transação do dono
+  (conexão, trava, primeira consulta, timeout): `await travado` esperava para
+  sempre, sem erro e sem o cleanup das peças dos passos anteriores. A varredura
+  achou a SEGUNDA barreira da mesma forma: `podeCriar` só era solto no caminho
+  feliz — com a consulta do vigia (ou `duranteOBloqueio`) falhando, o dono
+  ficava esperando até o timeout de 60s da transação, com a chamada real presa
+  na trava. `corridaNaTrava` (`scripts/lib/corrida-na-trava.ts`, puro): a
+  transação do dono que termina (ou rejeita) sem sinalizar faz a barreira
+  REJEITAR; no encerramento o dono é sempre liberado (desiste, se nada
+  autorizou a criação), a chamada real é aguardada — ela termina quando a trava
+  é solta — antes de desconectar, e os dois clientes desconectam. O erro chega
+  ao `catch` da prova e o `finally` do cleanup roda.
+- **Regra**: toda espera por sinal numa prova tem um caminho de rejeição ligado
+  ao lado que sinalizaria, e todo `finally` que espera outra coisa libera antes
+  o que ele próprio segura.
+- **O modo `--producao-somente-leitura` não mudou, e foi conferido**: abre UM
+  cliente (o `db`, no `DATABASE_URL` do `.env`) e toda consulta roda na
+  transação `SET TRANSACTION READ ONLY` — inclusive a simulação do serviço,
+  que lê só pelo `leitor` (as escritas dele existem só fora de `simular`, e
+  `leitor` sem `simular` é recusado). O passo 21 não é alcançável nesse modo.
+- Provas: `destino-da-prova.test.ts` (direta de produção explícita, herdada do
+  `.env` e do processo, ausente nos dois, outro compute, outro banco, caixa
+  trocada e a matriz; controle com a direta e a pooled do mesmo dev; e a fiação:
+  a prova só abre cliente com `DESTINO.directUrl` e aplica o ambiente validado)
+  e `corrida-na-trava-da-prova.test.ts` (rejeição antes da sinalização → falha,
+  desconecta, cleanup alcançado; bloqueio não observado → falha sem criar; vigia
+  falhando e dono falhando ao criar → a chamada real termina antes de
+  desconectar; controle). Vistos falhar contra transcrições FIÉIS do código de
+  7b7e90e1. Mutações (12): herdar a direta, 2 testes caem; direta fora da recusa
+  de produção, 1; sem o mesmo banco, 3; ambiente sem a direta, 2; sem
+  minúsculas, 1; auxiliar com `process.env.DIRECT_URL`, 1; ambiente não
+  aplicado, 1; rejeição engolida, 1 (timeout); criar sem bloqueio, 1; dono não
+  liberado, 2; chamada real não aguardada, 3; clientes não desconectados, 5.
+  🔴 **Herdar a direta, sozinho, não derruba nada** se o teste só afirma "recusou":
+  as outras duas camadas (compute de produção, mesmo banco) recusam do mesmo
+  jeito, com outra mensagem. Os testes da herança afirmam a INSTRUÇÃO — sem
+  isso o mutante sobrevive.
