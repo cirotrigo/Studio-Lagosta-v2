@@ -38,7 +38,11 @@
  *     `compor-leva` de verdade), e o job morto é refeito — antes do conserto,
  *     `superada` e `revisado`;
  * 11. PR11-F02 — peça COMPLETED SEM ARQUIVO não volta como pronta: a repetição
- *     recupera com Generation e job novos, e a seguinte reaproveita.
+ *     recupera com Generation e job novos, e a seguinte reaproveita;
+ * 12. varredura do PR11-F02 — o `ver-plano` DE VERDADE diante da arte COMPLETED
+ *     sem arquivo leva o item a `erro` (não a `pronto`), e a leva repetida com o
+ *     token atual produz a peça nova; controle: a peça composta com arquivo no
+ *     Blob (passo 8) volta a `pronto`.
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
  * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
@@ -140,6 +144,7 @@ async function main() {
   const { CreativeError } = await import('../src/lib/creatives/errors')
   const { atualizarItem, transicionarItem } = await import('../src/lib/planos/plano-service')
   const { toolsDoCompositor } = await import('../src/lib/mcp/catalogo/compositor')
+  const { toolsDePlanos } = await import('../src/lib/mcp/catalogo/planos')
   const { CLIENT_ID_LOCAL } = await import('../src/lib/mcp/tools')
   const { del } = await import('@vercel/blob')
   const { lerOBlobUmaVezPorUrl } = await import('./lib/leitura-do-blob')
@@ -197,6 +202,8 @@ async function main() {
   // ele que separa `superadas` de `pecas` e `falhas` (decisões do Ciro, 13/09/2026).
   const comporLeva = toolsDoCompositor.find((t) => t.nome === 'compor-leva')
   if (!comporLeva) abortar('compor-leva não está no catálogo de tools')
+  const verPlano = toolsDePlanos.find((t) => t.nome === 'ver-plano')
+  if (!verPlano) abortar('ver-plano não está no catálogo de tools')
   const principalLocal = { kind: 'service' as const, clientId: CLIENT_ID_LOCAL }
   type ArteAtual = { generationId?: string; pageId?: string | null; feitaEm?: string | null; feitaEmBrasilia?: string | null; situacao?: string }
   type RespostaDaLeva = {
@@ -429,6 +436,39 @@ async function main() {
     conferir('a linha do lote aponta a peça nova', !!s2.r && linha11?.generationId === s2.r.generationId && linha11.jobId === s2.r.jobId)
     const [s3] = await leva(LOTE_C, [{ itemId: 'sem-arquivo', spec: peca(11) }])
     conferir('a repetição seguinte reaproveita a peça nova, pendente, sem criar nada', !!s3.r && s3.r.generationId === s2.r?.generationId && s3.r.lote?.desfecho === 'reaproveitado' && s3.r.lote.situacao === 'pendente', JSON.stringify(s3.r?.lote ?? String(s3.erro)))
+
+    // ── 12. varredura do PR11-F02: a reconciliação do ver-plano ─────────────
+    console.log('12) ver-plano diante da arte COMPLETED SEM ARQUIVO: o item vai a "erro" (não a "pronto"), e a leva repetida com o token atual produz a peça nova; controle com arquivo: "pronto"')
+    const { plano: plano12 } = await criarPlano({
+      projectId: PROJETO,
+      titulo: `${MARCA} sem arquivo`,
+      inicio: dia,
+      fim: dia,
+      origem: 'chat',
+      itens: [{ quando: `${dia} 17:00`, tema: `${MARCA} sem arquivo`, formato: 'story', via: 'compor', copyProposta: ['Peça sem arquivo'] }],
+    } as never)
+    planos.push(plano12.id)
+    const item12 = await db.itemDePlano.findUniqueOrThrow({ where: { id: plano12.itens[0].id } })
+    const token12 = revisaoDoItem(item12)
+    const spec12 = peca(12, { itemDePlanoId: item12.id, planoId: plano12.id, blocos: [{ papel: 'headline', linhas: ['Peça sem arquivo'] }] })
+    const leva12 = await comporLevaPeloConector(LOTE_C, [itemDaLeva(spec12, 'item-12', { itemRevisao: token12 })])
+    const g12 = leva12.pecas[0]?.generationId
+    conferir('a peça do item nasce na leva', leva12.pecas.length === 1 && leva12.pecas[0].desfecho === 'criado' && !!g12, JSON.stringify(leva12.pecas))
+    const job12 = await db.generationJob.findUniqueOrThrow({ where: { generationId: g12 } })
+    await db.generation.update({ where: { id: g12 }, data: { status: 'COMPLETED', resultUrl: null } })
+    await db.generationJob.update({ where: { id: job12.id }, data: { status: 'DONE' } })
+    const visto12 = (await verPlano!.handler({ projectId: PROJETO, planoId: plano12.id } as never, principalLocal as never)) as { atualizados?: number }
+    const item12Visto = await db.itemDePlano.findUniqueOrThrow({ where: { id: item12.id }, select: { status: true, erro: true, generationId: true } })
+    conferir('ver-plano leva o item a "erro", com o motivo em português — antes do conserto, "pronto"', item12Visto.status === 'erro' && item12Visto.erro === 'A arte terminou sem o arquivo da imagem. Dá para produzir de novo.' && item12Visto.generationId === g12 && visto12.atualizados === 1, JSON.stringify({ item: item12Visto, atualizados: visto12.atualizados }))
+    const repetida12 = await comporLevaPeloConector(LOTE_C, [itemDaLeva(spec12, 'item-12', { itemRevisao: token12 })])
+    const nova12 = repetida12.pecas[0]
+    const item12Depois = await db.itemDePlano.findUniqueOrThrow({ where: { id: item12.id }, select: { status: true, generationId: true } })
+    conferir('a leva repetida com o token atual produz a peça nova: retomada e pendente, o item na fila com ela — antes, recusa avancou', repetida12.pecas.length === 1 && !!nova12 && nova12.generationId !== g12 && nova12.desfecho === 'retomado' && nova12.situacao === 'pendente' && repetida12.falhas.length === 0 && repetida12.superadas.length === 0 && item12Depois.status === 'na-fila' && item12Depois.generationId === nova12.generationId, JSON.stringify({ pecas: repetida12.pecas, falhas: repetida12.falhas, item: item12Depois }))
+    // Controle: a peça COMPOSTA de verdade no passo 8 (arquivo no Blob) volta a "na-fila", como se ninguém tivesse reconciliado.
+    await db.itemDePlano.update({ where: { id: itemDoPlano.id }, data: { status: 'na-fila' } })
+    await verPlano!.handler({ projectId: PROJETO, planoId: plano.id } as never, principalLocal as never)
+    const controle12 = await db.itemDePlano.findUniqueOrThrow({ where: { id: itemDoPlano.id }, select: { status: true, generationId: true } })
+    conferir('controle: arte COMPLETED COM arquivo continua levando o item a "pronto"', controle12.status === 'pronto' && controle12.generationId === pecaNova?.generationId, JSON.stringify(controle12))
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
