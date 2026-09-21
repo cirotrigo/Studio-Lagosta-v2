@@ -8730,6 +8730,11 @@ mesma linha; normalizar para comparar **e** para registrar.
 >   SEM marca com duas vozes 2, a reserva documenta "a PRIMEIRA `headline2` livre
 >   da peça" — a outra vira bloco solto e a recomposição seguinte recusa a spec. O
 >   R28 ficou pulado com esse motivo. Tratar é mudança da leitura da main, à parte.
+>   🔴 **É estado SEM produtor**: a voz 2 com várias linhas só nasceu no #146
+>   (antes, `b.linhas.slice(-1)` dava à segunda voz UMA camada `headline2`), e o
+>   carimbo `bloco`/`linhas` já estava no #144 — toda página com duas vozes 2 tem
+>   marca. Medido em produção em 21/09/2026, somente leitura: nenhuma página com
+>   duas camadas `headline2`, nenhum id `headline2-N`, nenhuma recusa gravada.
 
 "Copy primeiro, campos depois" ganhou o mecanismo que faltava: um texto que
 veste o estilo de um papel da assinatura SEM ser esse papel. Até aqui, papel que
