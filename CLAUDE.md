@@ -10771,3 +10771,75 @@ aplicada**.
   post vencendo a página, página lida antes dos efeitos, post como fallback da
   página apagada) derrubam 4, 4, 2 e 1 testes; o lote sem a opção, 1; o
   catálogo ignorando a opção, 1; o catálogo pulando tudo, 1.
+
+**Da revisão FINAL do Codex sobre 31c4035d (BLOQUEADO, R12-09, 21/09/2026):**
+
+- 🔴 **Efeito pós-commit que a repetição RETOMA precisa de exclusão entre
+  retomadas — idempotência sequencial não basta.** No estado parcial do R12-08
+  (capa vinculada, 2ª mídia sem Generation, efeitos sem carimbo) duas
+  repetições simultâneas do agendar-leva liam as duas a 2ª mídia sem arte e
+  criavam as duas: duas Generations da mesma mídia na galeria, e as duas
+  chamadas carimbavam. O `Set` deduplica dentro de UMA chamada e o schema não
+  tem unicidade em `resultUrl`. O teste do R12-08 era sequencial e o
+  concorrente usava catálogo simulado — nenhum dos dois via a corrida.
+- **`comTravaPorChave(chave, fazer)`** (`src/lib/trava-por-chave.ts`):
+  transação curta que PRIMEIRO pega `pg_advisory_xact_lock(hashtext(chave))` e
+  só então lê o que falta e cria. Trava de TRANSAÇÃO (passa pelo pooler; some no
+  commit e no rollback, então processo morto não prende a chave); READ
+  COMMITTED explícito; dentro dela só `tx` e só banco (com o pooler o pool é de
+  uma conexão, e o `db` raiz esperaria a que ela segura — P2028); a espera pela
+  trava conta no `timeout` de 20s, e o estouro vira "não terminou" para quem
+  chama (o catálogo devolve `falhou`, a repetição completa).
+- 🔴 **Medido no banco de dev: em REPEATABLE READ a transação acorda com a
+  trava na mão e o snapshot de ANTES da espera.** Duas conexões reais, o
+  bloqueio confirmado por `pg_blocking_pids`, uma linha inserida pelo dono
+  antes de soltar: READ COMMITTED leu `n: 1`, REPEATABLE READ leu `n: 0`. É o
+  PR13-51 de novo, agora nesta trava — nunca "suba o isolamento por
+  segurança". **O banco falso não enxerga isso** (a mutação passa nele); é por
+  isso que a prova tem o passo 21.
+- 🔴 **A MESMA chave para quem cria a capa e para o catálogo das outras
+  mídias** (`chaveDasArtesDoPost`, usada por `ensurePostGeneration` e por
+  `registrarArtesDoPost`): chaves diferentes não se excluem, e o catálogo que
+  visse a capa ainda sem arte a registraria de novo.
+- **Leitura sem trava na frente, releitura sob a trava sempre**: o post com o
+  catálogo completo (e o post já vinculado, no `ensurePostGeneration`) não
+  espera ninguém nem abre transação; quem entra decide de novo com o que relê.
+  O coletor "Arte Enviada" é garantido pela transação
+  (`ensureArteTemplate(…, cliente)`).
+- 🔴 **`garantirPasta` era a mesma classe** (varredura pedida): achar-ou-criar
+  sem unicidade em `tags`. Duas retomadas (refilagem, avulsas) ou duas peças da
+  mesma semana nova compostas juntas criavam DUAS pastas, e o `findFirst` sem
+  ordem passava a mandar cada peça nova para uma delas — a semana partida em
+  duas pastas de mesmo nome. Agora sob `chaveDaPasta(projeto, tag-chave)`, com
+  a releitura depois da trava; a pasta que já existe não passa pela trava.
+- **O resto da classe, conferido e descartado**:
+  - sinais do agendamento: idempotentes por construção (upsert pela `chave`
+    única; a corrida vira P2002 → `false` → aviso, nunca linha dupla);
+  - dica de copy, `fecharSugestaoDeSlot`, `registrarDesfecho`: exclusivos por
+    compare-and-set no desfecho (quem perde lê `ja-registrado`);
+  - item do plano → `agendado`: no commit do post, sob a trava do item
+    (C12-1x2); a reconciliação da linha anterior a isso é CAS, e quem perde
+    recebe só um aviso enganoso (linha que só existe no dev);
+  - refilagem e mudança de pasta: a concorrência não piora nada — os dois
+    escritores gravam pasta, nome e ordem da MESMA data (vence o último, com a
+    ordem em `base` ou `base + 1`, a não-idempotência cosmética já registrada
+    no R12-08); o que podia duplicar era a pasta, e ela agora tem trava;
+  - o carimbo (`updateMany` com `efeitosDoAgendamentoEm: null`) e a escrita do
+    post e do vínculo (sob as travas de linha `ItemDeLote` → `ItemDePlano` →
+    `Page`) já eram exclusivos.
+  - ⚠️ Fica como estava: dois posts DIFERENTES sem template registrando artes
+    ao mesmo tempo podem criar dois coletores "Arte Enviada" (chaves de trava
+    diferentes). Anterior ao PR e cosmético — o `findFirst` pega um deles.
+- Provas: `agendar-itens.test.ts` (o estado parcial do R12-08 com duas
+  repetições e uma barreira em que as duas leem a ausência antes de qualquer
+  criação; o mesmo do zero, capa e slide 2) e `garantir-pasta-concorrente.test.ts`
+  (banco falso em que só a trava por chave serializa). Vistos falhar antes do
+  conserto: duas Generations do slide 2, duas da capa, duas pastas. Passo 21
+  da prova de integração: duas conexões reais e a barreira dada pelo BANCO
+  (`pg_blocking_pids` confirma que a chamada real está bloqueada ANTES de a
+  primeira criar) para o catálogo, a pasta e o vínculo da capa — o que se lê
+  durante o bloqueio vai por uma conexão própria, porque a do `db` da prova é
+  a que a transação bloqueada segura. Mutações: sem a trava, 3 testes caem;
+  sem a releitura sob a trava no catálogo, 2; a capa sem trava ou com outra
+  chave, 1 cada; a pasta sem a releitura, 1; o catálogo fora da transação, 1;
+  REPEATABLE READ, 0 no banco falso e `n: 0` no banco de dev.
