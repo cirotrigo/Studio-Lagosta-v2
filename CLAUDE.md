@@ -8403,3 +8403,49 @@ conteúdo mudou" no lugar de "veio conteúdo".
   `semCampo`, avisos); e `COPY_DIVERGE_DO_CONTRATO`, comparação exata entre os
   dois lados limpos pela MESMA função, numa porta em que o contrato vence de
   qualquer forma.
+
+**Da revisão FINAL do Codex sobre fcd79518 (BLOQUEADO, PR5-11-R3, PR5-15, 21/09/2026).**
+As duas na MESMA função (`enviadaNoPrompt`), e a mesma lição da rodada anterior
+um nível abaixo: a regra da unidade foi escrita para os formatos que a casa
+PRODUZ, e a fronteira ENTRE eles ficou sem dono — texto solto **e** citado na
+mesma linha; normalizar para comparar **e** para registrar.
+
+- 🔴 **Linha que MISTURA texto solto e aspas contribui só com o que está entre
+  aspas** (PR5-11-R3). Ao encontrar a aspa, a versão anterior fechava as linhas
+  pendentes e emitia o fragmento externo como unidade: `Venha hoje "mesmo"`
+  comprovava os blocos `Venha hoje` **e** `mesmo`, sem lacuna — uma linha
+  AMPLIADA provando dois blocos que ninguém escreveu separados. Hoje a abertura
+  de aspas não fecha nada (o trecho citado vira um marcador de uma posição, sem
+  quebra) e o texto solto em volta de uma citação é FRAGMENTO, nunca bloco.
+  Mistura que não deixa identificar o bloco vira lacuna, como já era o contrato.
+  Continua valendo o positivo: duas citações em LINHAS separadas são dois blocos.
+- 🔴 **O colapso de espaços LOCALIZA a ocorrência; `enviada` grava o que está
+  ESCRITO no prompt** (PR5-15). Um bloco citado com quebra INTERNA casa pela
+  forma colapsada e gravava a candidata NORMALIZADA — **apagando do registro uma
+  quebra que existe no prompt**, e a comparação escrita × enviada × lida podia
+  cobrar essa diferença do gerador. Hoje a candidata só serve para ACHAR a
+  unidade; o que entra em `enviada` é a unidade encontrada, com as quebras e os
+  espaços dela.
+- 🔴 **UM TESTE EXISTENTE CONSAGRAVA A PERDA, e trocar a expectativa foi parte
+  do conserto.** `revisao-final-pr5.test.ts:105` exigia a forma COLAPSADA
+  (`Venha hoje mesmo`, numa linha só) para um prompt que TEM a quebra; hoje
+  exige as duas linhas como estão lá. Não é "ajustar o teste para passar": a
+  expectativa antiga afirmava como enviado um texto que nunca foi escrito no
+  prompt, que é exatamente o defeito. Quem ler o diff amanhã vê a troca aqui
+  declarada, com o caso da quebra DUPLA interna acrescentado ao lado.
+- 🔴 **A terceira fronteira do arquivo não era lógica, era do FONTE: o sentinela
+  NUL estava escrito LITERAL, e um byte NUL faz o `grep` tratar o arquivo como
+  BINÁRIO.** Medido: `grep -c "" registro-da-arte.ts` saía **vazio, com código
+  1** — toda busca do repositório passava por cima deste módulo em silêncio, e
+  só `grep -a` o enxergava. O sentinela agora é montado por código
+  (`String.fromCharCode(0)`), a semântica é idêntica (NUL não aparece em prompt)
+  e o fonte volta a ser texto. **Caractere de controle em módulo novo se monta,
+  nunca se digita** — some à família de "o método de medição é que estava
+  quebrado".
+- **O que a varredura da família DESCARTOU**: `revisaoDoRefino` já tem
+  exatamente a forma certa (localiza por `normalizeForComparison`, grava o texto
+  REAL do pedido, e declara a ambiguidade em vez de escolher); `revisaoPosicional`
+  grava a linha crua; e `conferenciaDoCheck` corta a lista `lida` em 40 ITENS,
+  mas ela é diagnóstico — `passou` e `faltando` vêm do próprio check, então o
+  corte não muda veredito nenhum (diferente do teto da visão do PR 0, que
+  mudava).
