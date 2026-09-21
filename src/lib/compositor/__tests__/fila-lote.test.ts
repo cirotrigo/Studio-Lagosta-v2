@@ -90,6 +90,9 @@ vi.mock('@/lib/db', () => {
           gravar('generations', where.id, { ...banco.generations.get(where.id), ...data }, naTransacao, diario)
           return { id: where.id }
         },
+        // A reconciliação do plano (`reconciliarPlano`) lê as artes dos itens em voo por id.
+        findMany: async ({ where, select }: { where: { id?: { in?: string[] } }; select?: Record<string, boolean> }) =>
+          [...banco.generations.values()].filter((g) => (where.id?.in ?? []).includes(String(g.id))).map((g) => escolher(g, select)),
       },
       generationJob: {
         create: async ({ data }: { data: Record<string, unknown> }) => novoJob(data),
@@ -136,6 +139,13 @@ vi.mock('@/lib/db', () => {
         },
       },
       itemDePlano: {
+        // A reconciliação do plano busca os itens EM VOO que têm arte (a única consulta de lista do item aqui).
+        findMany: async ({ where, select, take }: { where: { planoId?: string; projectId?: number; status?: { in?: string[] }; OR?: unknown }; select?: Record<string, boolean>; take?: number }) =>
+          [...banco.itensDePlano.values()]
+            .filter((i) => (!where.planoId || i.planoId === where.planoId) && (!where.projectId || i.projectId === where.projectId) && (!where.status?.in || where.status.in.includes(String(i.status))))
+            .filter((i) => !where.OR || i.generationId != null || i.slides != null)
+            .slice(0, take ?? Number.POSITIVE_INFINITY)
+            .map((i) => escolher(i, select)),
         findFirst: async ({ where }: { where: { id: string; projectId: number; planoId?: string } }) => {
           const i = banco.itensDePlano.get(where.id)
           return i && i.projectId === where.projectId && (!where.planoId || i.planoId === where.planoId) ? i : null
@@ -242,6 +252,7 @@ vi.mock('../compor', () => ({
 }))
 
 import { enfileirarPeca, processarComposicaoEmBackground } from '../fila'
+import { reconciliarPlano } from '@/lib/planos/reconciliar'
 import { validarSpec } from '../spec'
 import { fecharJob } from '@/lib/ai/generation-queue'
 import { hashDoPayload, payloadParaHash } from '@/lib/lotes/identidade'
@@ -1506,5 +1517,61 @@ describe('PR11-F01: a revisão gravada pela main ANTES do PR 11 — fixture no f
     legado({ statusDoItem: 'na-fila', geracao: 'PROCESSING', job: 'RUNNING', planoRevisao: LEGADA_14, item: trocadas })
     expect(await enfileirarPeca(specDoPlano)).toMatchObject({ generationId: 'gen-legado', jobId: 'job-legado' })
     nadaNovo()
+  })
+})
+
+/**
+ * A reconciliação do plano (o que o `ver-plano` roda antes de mostrar) diante da
+ * peça COMPLETED SEM ARQUIVO — a varredura do PR11-F02. Sem isto o conserto do
+ * F02 só valia se ninguém abrisse o plano antes de repetir a leva: abriu, o item
+ * virava `pronto`, e o lote recusava com `avancou`.
+ */
+describe('varredura do PR11-F02: a reconciliação leva a peça sem arquivo a "erro", e a leva repetida a produz de novo', () => {
+  const specDoPlano = { ...peca(1), itemDePlanoId: 'item-1', planoId: 'plano-1' }
+  const marcar = (tabela: 'generations' | 'jobs' | 'itensDePlano', id: string, extra: Record<string, unknown>) => banco[tabela].set(id, { ...banco[tabela].get(id), ...extra })
+  const linhaDoLote = () => [...banco.itensDeLote.values()][0]
+  const criarItem = () => {
+    banco.itensDePlano.set('item-1', { id: 'item-1', planoId: 'plano-1', projectId: 6, status: 'proposto', updatedAt: new Date('2026-09-08') })
+    return leitura()
+  }
+
+  it('arte COMPLETED sem arquivo → ver-plano leva o item a "erro" com o motivo → a leva repetida com o token atual produz Generation e job novos', async () => {
+    const lido = criarItem()
+    const primeira = await enfileirarPeca(specDoPlano, lotePlano('seg-19h', lido))
+    marcar('generations', primeira.generationId, { status: 'COMPLETED', resultUrl: null })
+    marcar('jobs', primeira.jobId, { status: 'DONE' })
+
+    const reconciliado = await reconciliarPlano(6, 'plano-1')
+    expect(reconciliado.movidos).toEqual([{ itemId: 'item-1', de: 'na-fila', para: 'erro', erro: 'A arte terminou sem o arquivo da imagem. Dá para produzir de novo.' }])
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'erro', erro: 'A arte terminou sem o arquivo da imagem. Dá para produzir de novo.', generationId: primeira.generationId })
+    // A transição não muda o conteúdo: o token da leva continua sendo o atual.
+    expect(leitura()).toBe(lido)
+
+    const repetida = await enfileirarPeca(specDoPlano, lotePlano('seg-19h', lido))
+    expect(repetida.generationId).not.toBe(primeira.generationId)
+    expect(repetida.lote).toMatchObject({ desfecho: 'retomado', situacao: 'pendente' })
+    expect(banco.jobs.get(repetida.jobId)).toMatchObject({ status: 'PENDING', generationId: repetida.generationId })
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: repetida.generationId, erro: null })
+    expect(linhaDoLote()).toMatchObject({ generationId: repetida.generationId, jobId: repetida.jobId })
+    expect(await rodarComoOCron(repetida.jobId)).toBe('DONE')
+  })
+
+  it('controle: arte COMPLETED COM arquivo continua levando o item a "pronto" (na-fila → gerando → pronto, pela caminhoAte)', async () => {
+    const lido = criarItem()
+    const r = await enfileirarPeca(specDoPlano, lotePlano('seg-19h', lido))
+    marcar('generations', r.generationId, { status: 'COMPLETED', resultUrl: 'https://blob/peca.png' })
+    marcar('jobs', r.jobId, { status: 'DONE' })
+    expect((await reconciliarPlano(6, 'plano-1')).movidos).toEqual([{ itemId: 'item-1', de: 'na-fila', para: 'pronto' }])
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'pronto', generationId: r.generationId })
+  })
+
+  it('item terminal não é tocado: "agendado" com a arte sem arquivo fica como está', async () => {
+    const lido = criarItem()
+    const r = await enfileirarPeca(specDoPlano, lotePlano('seg-19h', lido))
+    marcar('generations', r.generationId, { status: 'COMPLETED', resultUrl: null })
+    marcar('itensDePlano', 'item-1', { status: 'agendado', postId: 'post-1' })
+    const antes = structuredClone(banco.itensDePlano.get('item-1'))
+    expect(await reconciliarPlano(6, 'plano-1')).toEqual({ conferidos: 0, movidos: [] })
+    expect(banco.itensDePlano.get('item-1')).toEqual(antes)
   })
 })
