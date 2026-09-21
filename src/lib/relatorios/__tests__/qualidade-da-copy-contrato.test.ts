@@ -1032,3 +1032,20 @@ describe('PR15-06 · o slide congelado se acha pelo RASTRO de URLs da arte', () 
     expect(montarPecas(carrossel({ recomposicao: null })).map((p) => p.chave).sort()).toEqual(['page:p1', 'page:p3'])
   })
 })
+
+describe('varredura das classes (PR15-07): evento sem instante não entra no snapshot congelado', () => {
+  const original = copiaOriginal()
+  const leva = (vivo: boolean) =>
+    leitura({
+      posts: [post({ id: 'slide', generationId: 'g1', mediaUrls: ['u1'], ...(vivo ? {} : CONGELADO) })],
+      artes: [arte('g1', { resultUrl: 'u1', copyAutoral: peca(original), recomposicao: { estado: 'feita', em: T(20) } })],
+      paginas: [{ id: 'page-1', copyAutoral: original, layers: camadasDa(original) }],
+      // Um sinal sem instante: não dá para dizer se veio antes ou depois do PNG publicado.
+      sinais: [{ tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-1', generationId: null }],
+    })
+
+  it('congelado: o sinal sem createdAt não prova que veio antes do PNG e fica fora; vivo: conta', () => {
+    expect(medirPeca(montarPecas(leva(false))[0]).correcoes.design).toBe(0)
+    expect(medirPeca(montarPecas(leva(true))[0]).correcoes.design).toBe(1)
+  })
+})

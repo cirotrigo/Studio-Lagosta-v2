@@ -663,8 +663,9 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     }
     estados.sort((a, b) => a.em - b.em)
 
-    // Evidências fora da copy.
-    const sinais = (sinaisPorPeca.get(chave) ?? []).filter((s) => corte == null || s.createdAt == null || tempo(s.createdAt) <= corte)
+    // Evidências fora da copy. No snapshot congelado, evento sem instante legível
+    // não prova que veio antes do PNG e fica fora — a mesma regra da recusa (PR15-07).
+    const sinais = (sinaisPorPeca.get(chave) ?? []).filter((s) => corte == null || (s.createdAt != null && tempo(s.createdAt) <= corte))
     const recusasDoCompositor = artes.filter((a) => recusouPorTextoQueNaoCabe(a, corte)).length
     const avisosDoSistema = artes.reduce((t, a) => t + (a.source === 'compositor' && Array.isArray(a.avisos) ? a.avisos.length : 0), 0)
     // Ajuste do revisor que não deixou revisão de copy (mexeu só em corpo,
