@@ -11151,3 +11151,17 @@ A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
   mensagem sem ordem, revisão sem ordem, recusa só no formato antigo, SQL sem a
   chave nova): cada uma derruba ao menos um teste. A medida de partida de
   produção (13/09, 917 peças sem contrato) NÃO foi refeita.
+
+**Do restack sobre a main 0df88981 (21/09/2026): o compute da guarda em minúsculas.**
+
+- 🔴 **A guarda de produção da medida de partida compara o compute EM
+  MINÚSCULAS, dos dois lados** (`bancoDaLeitura`, `scripts/lib/guarda-de-producao.ts`,
+  com o `computeDe` normalizado de `destino-da-prova.ts`). `postgresql:` é esquema
+  NÃO especial, o `new URL` preserva a caixa do host, e o DNS não a distingue: um
+  `DATABASE_URL` com `EP-PROD-…` (ou `…-POOLER`) conectava na produção e passava
+  por "não-produção" sem a flag — a lição da revisão do PR 12 (R12-10). O script
+  abre UM destino só (o `db`, pelo `DATABASE_URL`; o `DIRECT_URL` não é usado em
+  runtime), por isso não há "mesmo banco" a conferir. Teste com as quatro caixas
+  de produção, o `.env` em outra caixa, o dev nas duas caixas, a falha fechada e
+  a fiação do script ao guard (fonte sem `new URL`/`hostname`); mutações: sem as
+  minúsculas, 3 testes caem; o script lendo o host por conta própria, 1.
