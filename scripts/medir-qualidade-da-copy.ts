@@ -13,7 +13,8 @@
  *
  * 🔴 **Recusa a PRODUÇÃO** a menos que venha `--producao-somente-leitura`. A
  * produção é reconhecida pelo COMPUTE do Neon (o primeiro rótulo do host, sem
- * `-pooler`), comparado com o `.env` — nunca pelo nome do branch. E o guard
+ * `-pooler`, EM MINÚSCULAS — o DNS não distingue caixa), comparado com o `.env`
+ * — nunca pelo nome do branch (`scripts/lib/guarda-de-producao.ts`). E o guard
  * FALHA FECHADO: sem `.env` legível (worktree sem o symlink), não há como
  * saber se o banco é a produção, e o script não roda.
  *
@@ -31,6 +32,7 @@
 
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { bancoDaLeitura, type UrlsDoEnv } from './lib/guarda-de-producao'
 
 const args = process.argv.slice(2)
 const flag = (nome: string) => args.includes(nome)
@@ -39,29 +41,15 @@ const valor = (nome: string) => {
   return i >= 0 ? args[i + 1] : undefined
 }
 
-function computeDe(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
-}
-
-function urlsDoEnv(): Record<string, string> | null {
+function urlsDoEnv(): UrlsDoEnv | null {
   const arquivo = resolve(process.cwd(), '.env')
   if (!existsSync(arquivo)) return null
-  const urls: Record<string, string> = {}
+  const urls: UrlsDoEnv = {}
   for (const linha of readFileSync(arquivo, 'utf8').split('\n')) {
     const m = linha.trim().match(/^(DATABASE_URL|DIRECT_URL)=(.*)$/)
-    if (m) urls[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
+    if (m) urls[m[1] as keyof UrlsDoEnv] = m[2].trim().replace(/^["']|["']$/g, '')
   }
   return urls
-}
-
-function computesDaProducao(): Set<string> | null {
-  const computes = new Set(Object.values(urlsDoEnv() ?? {}).map(computeDe).filter((c): c is string => !!c))
-  return computes.size ? computes : null
 }
 
 function sair(mensagem: string): never {
@@ -76,15 +64,20 @@ function meiaNoiteBrt(data: string): Date {
 }
 
 async function main() {
-  const producao = computesDaProducao()
-  if (!producao) sair('não há .env legível: sem ele não dá para saber se o banco é a PRODUÇÃO, e o guard falha fechado. Rode na raiz do repositório (ou com o symlink do .env no worktree).')
-  if (!process.env.DATABASE_URL && flag('--producao-somente-leitura')) {
-    const doEnv = urlsDoEnv() ?? {}
+  const doEnv = urlsDoEnv()
+  if (doEnv && !process.env.DATABASE_URL && flag('--producao-somente-leitura')) {
     for (const chave of ['DATABASE_URL', 'DIRECT_URL'] as const) if (doEnv[chave]) process.env[chave] = doEnv[chave]
   }
-  const compute = computeDe(process.env.DATABASE_URL)
-  if (!compute) sair('DATABASE_URL ausente ou ilegível.')
-  const ehProducao = producao.has(compute)
+  // O compute em minúsculas, dos dois lados: `EP-PROD-…` é a produção (`scripts/lib/guarda-de-producao.ts`).
+  const banco = bancoDaLeitura(doEnv, process.env.DATABASE_URL)
+  if (banco.ok === false) {
+    sair(
+      banco.motivo === 'sem-env'
+        ? 'não há .env legível: sem ele não dá para saber se o banco é a PRODUÇÃO, e o guard falha fechado. Rode na raiz do repositório (ou com o symlink do .env no worktree).'
+        : 'DATABASE_URL ausente ou ilegível.',
+    )
+  }
+  const { compute, ehProducao } = banco
   if (ehProducao && !flag('--producao-somente-leitura')) {
     sair(`o banco resolvido (${compute}) é a PRODUÇÃO. Para medir no branch de dev: npx tsx scripts/dev-db.ts npx tsx scripts/medir-qualidade-da-copy.ts … — para a produção, só com --producao-somente-leitura.`)
   }
