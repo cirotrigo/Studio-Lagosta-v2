@@ -151,7 +151,7 @@ async function main() {
   type FatoACriar = import('./migrar-voz-da-marca').FatoACriar
   const { chaveDoFato, isolamentoDoIndexador, lerManifesto, manifestoEmBranco, previaParaMarkdown, VERSAO_DO_MANIFESTO } = await import('../src/lib/brand/migracao-da-voz')
   const { VOZES_PROPOSTAS } = await import('./lib/vozes-propostas')
-  const { contextoDeVoz, desfazerMigracao, lerRegistroDaVoz } = await import('../src/lib/brand/voz-service')
+  const { contextoDeVoz, desfazerMigracao, lerRegistroDaVoz, migrarParaVoz } = await import('../src/lib/brand/voz-service')
   const { loadBrandContext } = await import('../src/lib/brand/brand-context')
   const { vozParaPrompt } = await import('../src/lib/brand/voz')
   type Manifesto = import('../src/lib/brand/migracao-da-voz').Manifesto
@@ -368,6 +368,71 @@ async function main() {
     const r6d = await aplicarManifesto(db, aprovado.manifesto, { criarFato, estadoDoFato, reindexarFato })
     const reg6d = await lerRegistroDaVoz(PROJETO)
     conferir('com o DNA restaurado migra: voz v4 (CAS sobre a v3), migradaEm gravada, nenhum fato recriado', r6d[0]?.acao === 'migrar' && !r6d[0].erro && r6d[0].vozVersao === 4 && r6d[0].fatosCriados === 0 && reg6d?.versao === 4 && reg6d.migradaEm !== null, JSON.stringify(r6d[0]))
+
+    // ── 6v. a regra é confirmada enquanto a migração ESPERA na trava (PR13-51) ──
+    // O dublê de `voz-trava-do-projeto.test.ts` serializa chamadas, mas NÃO reproduz snapshot MVCC: este caso
+    // só existe contra o Postgres. Duas conexões reais, e a barreira não é tempo — é o próprio banco dizendo
+    // (`pg_blocking_pids`) que a ativação está BLOQUEADA pelo dono da trava antes de a regra ser commitada.
+    console.log('6v) a regra é confirmada ENQUANTO a migração espera na trava do Project: ela acorda enxergando a regra nova (PR13-51)')
+    const d6v = await desfazerMigracao({ projectId: PROJETO })
+    const reg6vAntes = await lerRegistroDaVoz(PROJETO)
+    const MARCA_6V = `- Regra confirmada com a migração esperando na trava [PR13-51 ${sha.slice(0, 8)}]`
+    const urlDireta = process.env.DIRECT_URL ?? process.env.DATABASE_URL
+    async function corridaNaTrava(comDnaEsperado: boolean) {
+      const dono = new PrismaClient({ datasources: { db: { url: urlDireta } } })
+      const vigia = new PrismaClient({ datasources: { db: { url: urlDireta } } })
+      let bloqueouAntesDoCommit = false
+      try {
+        let avisarTravado!: () => void
+        const travado = new Promise<void>((r) => { avisarTravado = r as unknown as () => void })
+        let soltar!: () => void
+        const podeConfirmar = new Promise<void>((r) => { soltar = r as unknown as () => void })
+        let pidDoDono = 0
+        // A: segura a linha do Project — o que `virarRegra` faz — e só confirma a regra quando mandarmos.
+        const confirmacao = dono.$transaction(async (tx) => {
+          const [linha] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid FROM "Project" WHERE "id" = ${PROJETO} FOR UPDATE`
+          pidDoDono = linha.pid
+          avisarTravado()
+          await podeConfirmar
+          await tx.brandDNA.update({ where: { projectId: PROJETO }, data: { toneOfVoice: `${dnaAntes.toneOfVoice ?? ''}\n${MARCA_6V}` } })
+        }, { timeout: 60_000, maxWait: 60_000 })
+        confirmacao.catch(() => undefined)
+        await travado
+        // B: a ativação REAL, que vai esperar na trava de A.
+        const ativacao = migrarParaVoz({
+          projectId: PROJETO,
+          versaoEsperada: reg6vAntes!.versao,
+          ...(comDnaEsperado ? { dnaEsperado: { toneOfVoice: dnaAntes.toneOfVoice, contentRules: dnaAntes.contentRules } } : {}),
+        }).then(() => null, (e: unknown) => e as { code?: string })
+        // a barreira: o Postgres confirmando que alguém está bloqueado POR A
+        for (let i = 0; i < 60 && !bloqueouAntesDoCommit; i++) {
+          const [{ n }] = await vigia.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM pg_stat_activity a WHERE a.wait_event_type = 'Lock' AND ${pidDoDono} = ANY(pg_blocking_pids(a.pid))`
+          bloqueouAntesDoCommit = Number(n) > 0
+          if (!bloqueouAntesDoCommit) await new Promise((r) => setTimeout(r, 25))
+        }
+        soltar()
+        await confirmacao
+        const erro = await ativacao
+        const reg = await lerRegistroDaVoz(PROJETO)
+        return { bloqueouAntesDoCommit, erro, arquivado: JSON.stringify(reg?.dnaArquivado ?? null), migrada: reg?.migradaEm !== null && reg?.migradaEm !== undefined }
+      } finally {
+        await db.brandDNA.update({ where: { projectId: PROJETO }, data: { toneOfVoice: dnaAntes.toneOfVoice ?? null } })
+        await dono.$disconnect()
+        await vigia.$disconnect()
+      }
+    }
+    const c6vA = await corridaNaTrava(true)
+    conferir(
+      'com o dnaEsperado da prévia: a migração esperou na trava (o banco confirmou o bloqueio), acordou vendo a regra nova e RECUSOU com VOZ_DNA_DIVERGENTE; nada foi ativado',
+      d6v.desfeita && c6vA.bloqueouAntesDoCommit && (c6vA.erro as { code?: string })?.code === 'VOZ_DNA_DIVERGENTE' && !c6vA.migrada,
+      JSON.stringify({ bloqueou: c6vA.bloqueouAntesDoCommit, code: (c6vA.erro as { code?: string })?.code, migrada: c6vA.migrada }),
+    )
+    const c6vB = await corridaNaTrava(false)
+    conferir(
+      'sem dnaEsperado: a migração acorda e arquiva o DNA ATUALIZADO (com a regra), nunca o de antes da espera',
+      c6vB.bloqueouAntesDoCommit && c6vB.erro === null && c6vB.migrada && c6vB.arquivado.includes('PR13-51'),
+      JSON.stringify({ bloqueou: c6vB.bloqueouAntesDoCommit, erro: (c6vB.erro as { message?: string })?.message ?? null, arquivouARegra: c6vB.arquivado.includes('PR13-51') }),
+    )
 
     // ── 6e. a trava se PERDE enquanto um fato longo é escrito (PR13-15/18) ──
     // A conexão da trava é de sessão (sem timeout); a perda simulada pela costura acontece NO MEIO de um `criarFato`
