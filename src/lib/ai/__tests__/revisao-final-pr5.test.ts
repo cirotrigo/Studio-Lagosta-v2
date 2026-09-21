@@ -102,7 +102,36 @@ describe('PR5-11 — `enviada` exige o bloco INTEIRO numa ocorrência livre', ()
 
     // o bloco INTEIRO (com a quebra, ou colapsado) continua sendo achado
     expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje\nmesmo']]).enviada).toEqual(['Venha hoje\nmesmo'])
-    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje mesmo']]).enviada).toEqual(['Venha hoje mesmo'])
+    // ⚠️ A expectativa daqui era `['Venha hoje mesmo']` e CONSAGRAVA o defeito do
+    // PR5-15: o prompt TEM a quebra, e gravá-la colapsada tirava do registro uma
+    // diferença que é do prompt, não do gerador. `enviada` é o que está escrito lá.
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje mesmo']]).enviada).toEqual(['Venha hoje\nmesmo'])
+  })
+
+  it('PR5-15 — o colapso LOCALIZA a ocorrência; `enviada` grava o que está escrito no prompt', () => {
+    // quebra DUPLA interna (o respiro do autor, que o contrato permite)
+    const duas = enviadaNoPrompt('[TEXTO EXATO]\n- "Almoço\n\nem família"', [['Almoço em família']])
+    expect(duas.enviada).toEqual(['Almoço\n\nem família'])
+    expect(duas.lacuna).toBeNull()
+
+    // espaço a mais dentro da linha também é do prompt, e fica
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Almoço  executivo"', [['Almoço executivo']]).enviada).toEqual(['Almoço  executivo'])
+
+    // e a forma da MARCA localiza sem se gravar: o registro leva a do prompt
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Almoço executivo"', [['ALMOÇO EXECUTIVO'], ['Almoço executivo']]).enviada).toEqual(['Almoço executivo'])
+  })
+
+  it('PR5-11-R3 — texto solto E citado na mesma linha: o solto é FRAGMENTO, não bloco', () => {
+    // `Venha hoje "mesmo"` é UMA linha ampliada; comprovar dois blocos nela é falso
+    const misto = enviadaNoPrompt('Venha hoje "mesmo"', [['Venha hoje', 'mesmo']])
+    expect(misto.enviada).toBeNull()
+    expect(misto.lacuna).toMatch(/bloco 1 \("Venha hoje"\)/)
+
+    // o bloco citado sozinho continua achável na linha mista (o prompt pronto do chat)
+    expect(enviadaNoPrompt('Manchete: "Almoço executivo", no terço de baixo.', [['Almoço executivo']]).enviada).toEqual(['Almoço executivo'])
+
+    // dois blocos REALMENTE separados continuam determináveis
+    expect(enviadaNoPrompt('"Venha hoje"\n"mesmo"', [['Venha hoje', 'mesmo']]).enviada).toEqual(['Venha hoje', 'mesmo'])
   })
 
   it('PR5-11-R2 — duas LINHAS de um único bloco citado não servem a dois blocos esperados', () => {

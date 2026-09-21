@@ -163,32 +163,51 @@ export const LACUNA_PROMPT_AINDA_NAO_MONTADO = 'o texto enviado ao modelo só é
  * comportamento pedido.
  */
 const ASPAS: Record<string, string> = { '"': '"', '“': '”', '«': '»' }
+// 🔴 Montado por código, NUNCA escrito literal no fonte: um byte NUL no
+// arquivo faz o `grep` tratá-lo como BINÁRIO e devolver ZERO resultados em
+// silêncio — toda busca do repositório passaria por cima deste módulo.
+const CITADO = String.fromCharCode(0)
 
+/**
+ * As unidades do prompt, pelo FATO de o que é uma: **o conteúdo de um trecho
+ * CITADO** (a quebra interna não o encerra — PR5-11-R2), ou **uma LINHA
+ * INTEIRA sem aspas nenhuma** (o bloco sozinho na linha do `prompt-do-manual`).
+ *
+ * 🔴 Linha que MISTURA texto solto e aspas contribui só com o que está entre
+ * aspas (PR5-11-R3 da revisão final do Codex, 21/09/2026). A versão anterior
+ * fechava as linhas pendentes ao ABRIR aspas, e `'Venha hoje "mesmo"'` emitia
+ * `Venha hoje` e `mesmo` como duas unidades: uma linha AMPLIADA comprovava
+ * dois blocos, sem lacuna. O texto solto em volta de uma citação é FRAGMENTO,
+ * não bloco — e quando a mistura não deixa identificar o bloco, a ausência da
+ * unidade vira a lacuna, que é o comportamento pedido.
+ */
 function unidadesDoPrompt(prompt: string): string[] {
-  const unidades: string[] = []
+  const citadas: string[] = []
   let fora = ''
-  const fecharLinhas = () => {
-    for (const linha of fora.split('\n')) {
+  for (let i = 0; i < prompt.length; i++) {
+    const fecha = ASPAS[prompt[i]]
+    const fim = fecha ? prompt.indexOf(fecha, i + 1) : -1
+    if (fim !== -1) {
+      citadas.push(prompt.slice(i + 1, fim))
+      // Uma marca só, sem quebra: a citação multilinha não reparte a linha.
+      fora += CITADO
+      i = fim
+      continue
+    }
+    fora += prompt[i]
+  }
+  const unidades: string[] = []
+  let n = 0
+  for (const linha of fora.split('\n')) {
+    const marcas = linha.split(CITADO).length - 1
+    if (marcas === 0) {
       const t = linha.trim()
       if (t) unidades.push(t)
+      continue
     }
-    fora = ''
+    for (let k = 0; k < marcas; k++) unidades.push(citadas[n + k])
+    n += marcas
   }
-  for (let i = 0; i < prompt.length; i++) {
-    const c = prompt[i]
-    const fecha = ASPAS[c]
-    if (fecha) {
-      const fim = prompt.indexOf(fecha, i + 1)
-      if (fim !== -1) {
-        fecharLinhas()
-        unidades.push(prompt.slice(i + 1, fim))
-        i = fim
-        continue
-      }
-    }
-    fora += c
-  }
-  fecharLinhas()
   return unidades
 }
 
@@ -208,7 +227,12 @@ export function enviadaNoPrompt(prompt: string | null | undefined, formas: strin
       const livre = unidades.findIndex((u, n) => !tomadas.has(n) && (u === c || colapsado(u) === c))
       if (livre !== -1) {
         tomadas.add(livre)
-        achada = c
+        // 🔴 O colapso serve para LOCALIZAR a ocorrência, nunca para gravá-la
+        // (PR5-15): registrar a candidata normalizada apagava do registro uma
+        // quebra que EXISTE no prompt, e a comparação escrita × enviada × lida
+        // punha essa diferença na conta do gerador. `enviada` é o que está
+        // escrito lá — quebras e espaços da unidade encontrada.
+        achada = unidades[livre]
         break
       }
     }
