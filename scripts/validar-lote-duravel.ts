@@ -30,7 +30,15 @@
  *     cria nada — a peça vai para `superadas`, com `arteAtualDoItem` (arte,
  *     página, data e situação) e a nota que manda contar e perguntar; nenhuma
  *     Generation, job ou página nova, e linhas do lote e item do plano
- *     intocados.
+ *     intocados;
+ * 10. PR11-F01 — o estado que a main ANTERIOR ao PR 11 deixa no banco, gravado
+ *     À MÃO: item de plano na fila, Generation da peça e job COMPOR com
+ *     `payload.planoRevisao` no formato dela (a string do json-stable-stringify
+ *     de 15 campos). O mesmo pedido é reaproveitado sem lote e com lote (pelo
+ *     `compor-leva` de verdade), e o job morto é refeito — antes do conserto,
+ *     `superada` e `revisado`;
+ * 11. PR11-F02 — peça COMPLETED SEM ARQUIVO não volta como pronta: a repetição
+ *     recupera com Generation e job novos, e a seguinte reaproveita.
  *
  * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
  * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
@@ -105,6 +113,7 @@ const MARCA = `[PR11-LOTE ${CARIMBO}]`
 const PREFIXO_DO_LOTE = 'pr11-lote-'
 const LOTE_A = `${PREFIXO_DO_LOTE}${CARIMBO}-a`
 const LOTE_B = `${PREFIXO_DO_LOTE}${CARIMBO}-b`
+const LOTE_C = `${PREFIXO_DO_LOTE}${CARIMBO}-c`
 
 let ok = 0
 let mau = 0
@@ -134,6 +143,7 @@ async function main() {
   const { CLIENT_ID_LOCAL } = await import('../src/lib/mcp/tools')
   const { del } = await import('@vercel/blob')
   const { lerOBlobUmaVezPorUrl } = await import('./lib/leitura-do-blob')
+  const { default: stableStringify } = await import('json-stable-stringify')
   await lerOBlobUmaVezPorUrl('validar-lote-duravel')
   type Peca = Awaited<ReturnType<typeof enfileirarPeca>>
 
@@ -358,6 +368,67 @@ async function main() {
     conferir('a nota manda contar à pessoa e perguntar, sem refazer sozinho', repeticao.nota.includes('Superadas') && repeticao.nota.includes('pergunte') && repeticao.nota.includes('Não refaça sem ela pedir'), repeticao.nota.slice(0, 160))
     const depoisDaRepeticao = await retratoDoProjeto()
     conferir('nenhuma Generation, job ou página nova; linhas do lote e item do plano intocados', JSON.stringify(depoisDaRepeticao) === JSON.stringify(antesDaRepeticao), JSON.stringify({ antes: { g: antesDaRepeticao.generations, j: antesDaRepeticao.jobs, p: antesDaRepeticao.paginas }, depois: { g: depoisDaRepeticao.generations, j: depoisDaRepeticao.jobs, p: depoisDaRepeticao.paginas } }))
+
+    // ── 10. PR11-F01: a revisão que a main gravava ANTES do PR 11 ───────────
+    console.log('10) item enfileirado pela main ANTES do PR 11, o estado dela gravado À MÃO (planoRevisao legado no job): o mesmo pedido é reaproveitado com e sem lote, e o job morto é refeito')
+    const { plano: plano10 } = await criarPlano({
+      projectId: PROJETO,
+      titulo: `${MARCA} legado`,
+      inicio: dia,
+      fim: dia,
+      origem: 'chat',
+      itens: [{ quando: `${dia} 16:00`, tema: `${MARCA} legado`, formato: 'story', via: 'compor', copyProposta: ['Peça da main antiga'] }],
+    } as never)
+    planos.push(plano10.id)
+    const item10 = await db.itemDePlano.findUniqueOrThrow({ where: { id: plano10.itens[0].id } })
+    // A string que a main (6405bfd5, enfileirar-composicao.ts:32–38) grava em `payload.planoRevisao`, escrita
+    // À MÃO chave por chave na ordem do json-stable-stringify (`formato` antes de `foto`); da linha real vêm só
+    // os valores. Nunca calculada pelo código novo.
+    const j = (v: unknown) => JSON.stringify(v)
+    const legada = `{"ajuste":${j(item10.ajusteDaFoto)},"campanha":${j(item10.campaignId)},"candidatas":${j(item10.fotoCandidatas)},"cliente":${j(item10.clienteProjectId)},"copy":${j(item10.copyProposta)},"direcao":${j(item10.direcao)},"escopo":${j(item10.escopo)},"formato":${j(item10.formato)},"foto":[${j(item10.fotoDriveId)},${j(item10.fotoUrl)}],"legenda":${j(item10.legenda)},"modelo":${j(item10.sourcePageId)},"quando":${j(item10.quando)},"referencias":${j(item10.referencias)},"tema":${j(item10.tema)},"via":${j(item10.via)}}`
+    // Régua da FIXTURE (não do código): a expressão literal da main sobre a mesma linha.
+    const daMain = stableStringify({ candidatas: item10.fotoCandidatas, copy: item10.copyProposta, foto: [item10.fotoDriveId, item10.fotoUrl], formato: item10.formato, quando: item10.quando, tema: item10.tema, legenda: item10.legenda, via: item10.via, modelo: item10.sourcePageId, direcao: item10.direcao, ajuste: item10.ajusteDaFoto, referencias: item10.referencias, cliente: item10.clienteProjectId, escopo: item10.escopo, campanha: item10.campaignId })
+    conferir('a fixture escrita à mão é, byte a byte, a string que a main gravaria para esta linha', legada === daMain, legada)
+    const spec10 = peca(10, { itemDePlanoId: item10.id, planoId: plano10.id, blocos: [{ papel: 'headline', linhas: ['Peça da main antiga'] }] })
+    const specGravada10 = JSON.parse(JSON.stringify(validarSpec(spec10).spec))
+    const pasta10 = await db.generation.findUniqueOrThrow({ where: { id: primeira[0].r!.generationId }, select: { templateId: true, templateName: true, createdBy: true } })
+    const gen10 = await db.generation.create({
+      data: { status: 'PROCESSING', templateId: pasta10.templateId, templateName: pasta10.templateName, projectId: PROJETO, createdBy: pasta10.createdBy, authorName: 'compositor', fieldValues: { source: 'compositor', spec: specGravada10, fila: 'aguardando' } },
+      select: { id: true },
+    })
+    const job10 = await db.generationJob.create({
+      data: { generationId: gen10.id, projectId: PROJETO, kind: 'COMPOR', status: 'RUNNING', attempts: 1, maxAttempts: 3, payload: { generationId: gen10.id, projectId: PROJETO, spec: specGravada10, decididoPor: null, autor: null, planoRevisao: legada } },
+      select: { id: true },
+    })
+    await db.itemDePlano.update({ where: { id: item10.id }, data: { status: 'na-fila', generationId: gen10.id, pageId: null, erro: null } })
+    const contarDoProjeto = async () => JSON.stringify({ g: await db.generation.count({ where: { projectId: PROJETO } }), j: await db.generationJob.count({ where: { projectId: PROJETO } }) })
+    const antes10 = await contarDoProjeto()
+    const semLote10 = await enfileirarPeca(spec10)
+    conferir('sem lote (a bancada, o executar-plano): o mesmo pedido reaproveita a peça viva legada — antes do conserto, superada', semLote10.generationId === gen10.id && semLote10.jobId === job10.id, JSON.stringify({ generationId: semLote10.generationId }))
+    const itemRelido10 = await db.itemDePlano.findUniqueOrThrow({ where: { id: item10.id } })
+    const comLote10 = await comporLevaPeloConector(LOTE_C, [itemDaLeva(spec10, 'legado-1', { itemRevisao: revisaoDoItem(itemRelido10) })])
+    const peca10 = comLote10.pecas[0]
+    conferir('com lote (compor-leva de verdade): reaproveitada e pendente, a MESMA peça, nada em superadas, falhas ou conflitos — antes do conserto, superada', comLote10.pecas.length === 1 && peca10?.generationId === gen10.id && peca10.desfecho === 'reaproveitado' && peca10.situacao === 'pendente' && comLote10.superadas.length === 0 && comLote10.falhas.length === 0 && comLote10.conflitos.length === 0, JSON.stringify({ pecas: comLote10.pecas, superadas: comLote10.superadas.length, falhas: comLote10.falhas }))
+    const linha10 = (await linhasDoLote(LOTE_C)).find((l) => l.itemId === 'legado-1')
+    conferir('a linha nova do lote adota a peça legada, e nada foi criado no projeto', linha10?.generationId === gen10.id && (await contarDoProjeto()) === antes10, JSON.stringify({ antes: antes10, depois: await contarDoProjeto() }))
+    await db.generationJob.update({ where: { id: job10.id }, data: { status: 'FAILED' } })
+    const refeita10 = await enfileirarPeca(spec10)
+    const jobRefeito10 = await db.generationJob.findUnique({ where: { id: refeita10.jobId }, select: { status: true, generationId: true, payload: true } })
+    const item10Depois = await db.itemDePlano.findUniqueOrThrow({ where: { id: item10.id }, select: { status: true, generationId: true } })
+    conferir('job morto com o item na fila: Generation e job NOVOS e executáveis, o item religado, com a revisão nova no job — antes do conserto, revisado', refeita10.generationId !== gen10.id && jobRefeito10?.status === 'PENDING' && jobRefeito10.generationId === refeita10.generationId && item10Depois.status === 'na-fila' && item10Depois.generationId === refeita10.generationId && (jobRefeito10.payload as { planoRevisao?: string }).planoRevisao === revisaoDoItem(itemRelido10), JSON.stringify({ item: item10Depois, job: jobRefeito10?.status }))
+
+    // ── 11. PR11-F02: peça COMPLETED sem arquivo ────────────────────────────
+    console.log('11) peça COMPLETED SEM ARQUIVO não volta como pronta: a repetição recupera com peça nova, e a seguinte reaproveita')
+    const [s1] = await leva(LOTE_C, [{ itemId: 'sem-arquivo', spec: peca(11) }])
+    await db.generation.update({ where: { id: s1.r!.generationId }, data: { status: 'COMPLETED', resultUrl: null } })
+    await db.generationJob.update({ where: { id: s1.r!.jobId }, data: { status: 'DONE' } })
+    const [s2] = await leva(LOTE_C, [{ itemId: 'sem-arquivo', spec: peca(11) }])
+    const job11 = s2.r ? await db.generationJob.findUnique({ where: { id: s2.r.jobId }, select: { status: true, generationId: true } }) : null
+    conferir('a repetição devolve Generation e job NOVOS, pendentes — antes do conserto, "reaproveitado/pronta" sem imagem', !!s2.r && s2.r.generationId !== s1.r!.generationId && s2.r.lote?.desfecho === 'retomado' && s2.r.lote.situacao === 'pendente' && job11?.status === 'PENDING' && job11.generationId === s2.r.generationId, JSON.stringify(s2.r?.lote ?? String(s2.erro)))
+    const linha11 = (await linhasDoLote(LOTE_C)).find((l) => l.itemId === 'sem-arquivo')
+    conferir('a linha do lote aponta a peça nova', !!s2.r && linha11?.generationId === s2.r.generationId && linha11.jobId === s2.r.jobId)
+    const [s3] = await leva(LOTE_C, [{ itemId: 'sem-arquivo', spec: peca(11) }])
+    conferir('a repetição seguinte reaproveita a peça nova, pendente, sem criar nada', !!s3.r && s3.r.generationId === s2.r?.generationId && s3.r.lote?.desfecho === 'reaproveitado' && s3.r.lote.situacao === 'pendente', JSON.stringify(s3.r?.lote ?? String(s3.erro)))
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
@@ -373,7 +444,7 @@ async function main() {
       }
     }
     const marcas = VARRER_ANTIGAS ? ['[PR11-LOTE '] : [MARCA]
-    const filtroDeLote = VARRER_ANTIGAS ? { loteId: { startsWith: PREFIXO_DO_LOTE } } : { loteId: { in: [LOTE_A, LOTE_B] } }
+    const filtroDeLote = VARRER_ANTIGAS ? { loteId: { startsWith: PREFIXO_DO_LOTE } } : { loteId: { in: [LOTE_A, LOTE_B, LOTE_C] } }
     const blobs = new Set<string>()
     let idsDeGeracao: string[] = []
     let idsDePagina: string[] = []
