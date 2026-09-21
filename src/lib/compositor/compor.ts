@@ -769,10 +769,13 @@ export async function comporPeca(entrada: unknown, opcoes: OpcoesDeComposicao = 
       })
       avisos.push(...r.avisos)
       if (r.recusa) {
-        // Com a família do bloco ausente no servidor, a caixa foi medida no
+        // Com uma família do bloco ausente no servidor, a caixa foi medida no
         // fallback: o orçamento não vale, e a recusa diz o que faltou em vez de
-        // devolver um número (PR4-FINAL-02).
-        const faltando = [...new Set([estilo.fontFamily, destaqueDoBloco?.fontFamily].filter((f): f is string => typeof f === 'string' && semFonte.has(f)))]
+        // devolver um número (PR4-FINAL-02). As famílias vêm da RECUSA — só as
+        // que entraram na medição —, nunca de uma releitura dos colchetes aqui:
+        // fonte de destaque configurada mas não usada (copy sem [colchetes])
+        // invalidava um orçamento bom (PR4-R2-01).
+        const faltando = [...new Set(r.recusa.familiasMedidas.filter((f) => semFonte.has(f)))]
         recusas.push(faltando.length > 0 ? { papel: r.recusa.papel, naoMedido: true, fontesNaoCarregadas: faltando } : { papel: r.recusa.papel, orcamento: r.recusa.orcamento })
         continue
       }

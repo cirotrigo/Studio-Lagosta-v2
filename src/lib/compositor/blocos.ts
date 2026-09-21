@@ -70,6 +70,14 @@ export interface OrcamentoDeLinha {
 export interface RecusaDeBloco {
   papel: Papel
   orcamento: OrcamentoDeLinha[]
+  /**
+   * As famílias que ENTRARAM na medição deste bloco — a do estilo sempre, a do
+   * destaque só quando a copy tem trecho entre [colchetes] E a marca tem estilo
+   * de destaque. Quem decide se o orçamento vale lê daqui, nunca reinterpreta
+   * os colchetes por fora: a divergência entre as duas leituras é como o
+   * defeito volta (PR4-R2-01).
+   */
+  familiasMedidas: string[]
 }
 
 export type ResultadoDoBloco =
@@ -328,7 +336,17 @@ export function montarBloco(args: {
       }
     })
     .filter((o): o is OrcamentoDeLinha => o !== null)
-  return { bloco: null, recusa: { papel: args.papel, orcamento }, avisos }
+  return {
+    bloco: null,
+    recusa: {
+      papel: args.papel,
+      orcamento,
+      familiasMedidas: [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
+        (f): f is string => typeof f === 'string' && f.trim() !== '',
+      ),
+    },
+    avisos,
+  }
 }
 
 /** Vão vertical entre dois papéis consecutivos (o ritmo do `gerar.py`). */

@@ -239,6 +239,21 @@ describe('PR4-FINAL-02 — fonte ausente não vira orçamento de caracteres', ()
     expect(JSON.stringify(erro?.details)).not.toMatch(/caracteresQueCabem/)
   })
 
+  // O par do caso acima, e a razão de os dois viverem no mesmo arquivo: a mesma
+  // marca, a mesma fonte de destaque ausente, só que a copy não tem [colchetes].
+  // Nada foi medido na fonte que falta — o orçamento é da base, que carregou.
+  it('a fonte de destaque não carregou mas a copy NÃO tem [colchetes]: o orçamento medido na base VALE (PR4-R2-01)', async () => {
+    mocks.projeto.mockImplementation(async () => ({ id: 3, name: 'TERO', userId: 'user', assinatura: { destaque: { fontFamily: 'Lato Bold', pesado: false } }, Logo: [] }))
+    mocks.semFonte.mockImplementation(async () => new Set(['Lato Bold']))
+    const erro = await compor(simples())
+    expect(erro?.code).toBe('TEXTO_NAO_CABE_NA_COLUNA')
+    expect(erro?.message).toMatch(/Reescreva com o orçamento devolvido/)
+    expect(erro?.message).not.toMatch(/não está carregada/)
+    expect(erro?.details?.fontesNaoCarregadas).toBeUndefined()
+    expect(JSON.stringify(erro?.details)).toMatch(/caracteresQueCabem/)
+    expect(JSON.stringify(erro?.details)).not.toMatch(/naoMedido/)
+  })
+
   it('controle — todas as fontes carregadas: a recusa continua devolvendo o ORÇAMENTO medido', async () => {
     const erro = await compor(simples())
     expect(erro?.code).toBe('TEXTO_NAO_CABE_NA_COLUNA')

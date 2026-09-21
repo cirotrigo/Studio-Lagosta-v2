@@ -7388,6 +7388,22 @@ papel; a medida de fallback) em vez de pela identidade ou pelo fato já resolvid
   **sem orçamento**, e a mensagem manda cadastrar a fonte. O diagnóstico do fim
   filtra o superconjunto pelo que as camadas FINAIS usam, para o aviso não citar
   fonte de arranjo que não foi escolhido.
+  🔴 **Quais famílias a recusa cita vem da PRÓPRIA recusa (`familiasMedidas`),
+  nunca de uma releitura dos colchetes em quem chama** (PR4-R2-01 da segunda
+  revisão FINAL, 21/09/2026). A 1ª correção somava `destaqueDoBloco?.fontFamily`
+  INCONDICIONALMENTE, mas `montarBloco` só ativa o destaque com trecho entre
+  `[colchetes]` **e** estilo de destaque cadastrado (`blocos.ts`), e só então
+  mede a largura extra: marca configurada com fonte de destaque ausente e copy
+  SEM colchetes teve tudo medido na base — que está carregada — e ainda assim
+  perdia o `caracteresQueCabem`, com a recusa mandando cadastrar uma fonte que
+  aquele bloco não usa. O inverso do defeito que o FINAL-02 veio consertar.
+  `RecusaDeBloco.familiasMedidas` é a resposta de quem MEDIU (estilo sempre;
+  destaque só quando participou), e `compor.ts` a intersecta com `semFonte`.
+  **Não copie a regra dos colchetes para fora de `montarBloco`** — a divergência
+  entre as duas leituras é como o defeito volta. O superconjunto continua largo
+  de propósito: ele é só o cache de "esta família carregou?", e o que a recusa
+  DIZ é sempre a interseção com as famílias daquele bloco — família de outro
+  papel ou de arranjo não escolhido não tem como chegar nela.
 - **Varredura das duas formas** (pedida com os consertos): *escolha por papel em
   vez do id* — os únicos consumidores de `copyAutoral.blocos` no compositor são
   `blocoDoPapel` (filtra `linhas.length > 0`, e `validarSpec` recusa papel
