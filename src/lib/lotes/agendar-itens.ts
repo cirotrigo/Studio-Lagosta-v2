@@ -225,11 +225,14 @@ async function lerArteAtualDoItem(cliente: Cliente, generationId: string, pageId
   return descreverArteAtualDoItem({ generationId, pageIdDoItem, geracao: g ? { ...g, status: String(g.status) } : null })
 }
 
+/** A peça da linha não serve: não existe, sumiu, falhou ou terminou sem o arquivo (PR11-F02). */
+const PECA_QUE_NAO_SERVE = new Set(['PECA_AUSENTE', 'PECA_FALHOU', 'PECA_SEM_ARQUIVO'])
+
 /**
- * A peça desta linha não serve (não existe, sumiu ou falhou): o pedido nasceu de
- * um item de plano que a compor-leva repetida recusaria como SUPERADO? O item
- * vem do PAYLOAD da linha — o pedido desta chamada —, que existe mesmo quando a
- * compor-leva recusou e nenhuma Generation nasceu. Sem isso a resposta mandava
+ * A peça desta linha não serve (não existe, sumiu, falhou ou não tem arquivo):
+ * o pedido nasceu de um item de plano que a compor-leva repetida recusaria como
+ * SUPERADO? O item vem do PAYLOAD da linha — o pedido desta chamada —, que
+ * existe mesmo quando a compor-leva recusou e nenhuma Generation nasceu. Sem isso a resposta mandava
  * "componha com compor-leva", e compor de novo devolvia `superada` de novo.
  */
 async function superadaSemPeca(cliente: Cliente, linhaId: string, projectId: number): Promise<{ falha: FalhaDoItem; arteAtualDoItem: ArteAtualDoItem | null } | null> {
@@ -338,7 +341,7 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
     return { acao: 'recusar', resposta: { itemId, situacao: 'pendente', codigo: decisao.codigo, motivo: decisao.motivo, ...(peca ? { generationId: peca.id } : {}) } }
   }
   if (decisao.acao === 'falhar') {
-    const superada = decisao.codigo === 'PECA_AUSENTE' || decisao.codigo === 'PECA_FALHOU' ? await superadaSemPeca(cliente, linha.id, projectId) : null
+    const superada = PECA_QUE_NAO_SERVE.has(decisao.codigo) ? await superadaSemPeca(cliente, linha.id, projectId) : null
     if (superada) return { acao: 'recusar', resposta: falhou(itemId, superada.falha, { ...vinculos, ...(superada.arteAtualDoItem ? { arteAtualDoItem: superada.arteAtualDoItem } : {}) }) }
     return { acao: 'recusar', resposta: falhou(itemId, decisao, vinculos) }
   }

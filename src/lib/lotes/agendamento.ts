@@ -288,7 +288,8 @@ export function decidirAgendamento(entrada: {
   /** Só conta quando a linha aponta um post: ele ainda existe? */
   postLigadoExiste: boolean
   pedido: { hash: string } | { falha: FalhaDoItem }
-  peca: { status: string | null; pageId: string | null; slide: boolean } | null
+  /** `resultUrl` OBRIGATÓRIO de propósito (PR11-F02): quem esquecer de lê-lo não compila. */
+  peca: { status: string | null; resultUrl: string | null; pageId: string | null; slide: boolean } | null
   pagina: { ehModelo: boolean } | null
   /** A confirmação da pessoa para recriar o rascunho apagado. Só o booleano `true` vale. */
   recriarApagado?: unknown
@@ -315,6 +316,12 @@ export function decidirAgendamento(entrada: {
   }
   if (!peca || !peca.status) return { acao: 'falhar', codigo: 'PECA_AUSENTE', motivo: 'Este item não tem peça composta — componha com compor-leva antes de agendar.' }
   if (peca.status === 'FAILED') return { acao: 'falhar', codigo: 'PECA_FALHOU', motivo: 'A composição desta peça falhou — repita compor-leva com o mesmo item para refazê-la.' }
+  // PR11-F02: COMPLETED sem o arquivo não é peça pronta — a reserva do lote a
+  // RETOMA como retoma a que falhou (Generation nova), então agendar a página
+  // dela deixaria o post numa peça que a compor-leva seguinte substitui.
+  if (peca.status === 'COMPLETED' && !peca.resultUrl) {
+    return { acao: 'falhar', codigo: 'PECA_SEM_ARQUIVO', motivo: 'A peça terminou sem o arquivo da imagem — repita compor-leva com o mesmo item para refazê-la.' }
+  }
   if ('falha' in pedido) return { acao: 'falhar', ...pedido.falha }
   if (peca.status !== 'COMPLETED') return { acao: 'pendente', codigo: 'PECA_EM_ANDAMENTO', motivo: 'A peça ainda está sendo composta — repita esta chamada em alguns minutos.' }
   if (!peca.pageId) return { acao: 'falhar', codigo: 'SEM_PAGINA', motivo: 'A peça pronta não tem página editável.' }
@@ -436,10 +443,11 @@ export function decidirItemDoPlano(entrada: {
 }
 
 /**
- * A peça desta linha NÃO SERVE (não existe, sumiu ou falhou) e o pedido dela
- * nasceu de um item de plano. Se o item está pronto, agendado ou em produção
- * com OUTRA arte viva ou pronta, a compor-leva repetida recusa o pedido como
- * SUPERADO — é a linha 4a da tabela do plano (PR 11), a mesma condição daqui.
+ * A peça desta linha NÃO SERVE (não existe, sumiu, falhou ou terminou sem o
+ * arquivo) e o pedido dela nasceu de um item de plano. Se o item está pronto,
+ * agendado ou em produção com OUTRA arte viva ou pronta, a compor-leva repetida
+ * recusa o pedido como SUPERADO — é a linha 4a da tabela do plano (PR 11), a
+ * mesma condição daqui.
  * Mandar "componha com compor-leva" levaria de volta à mesma recusa; a
  * resposta é a da peça superada (Ciro, 13/09/2026): informa a arte atual e o
  * chat pergunta. Em qualquer outro estado a compor-leva produz, ou a recusa

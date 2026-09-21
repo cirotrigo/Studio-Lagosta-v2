@@ -127,7 +127,8 @@ describe('pedidoDoAgendamento e hash', () => {
 
 describe('decidirAgendamento', () => {
   const registroLivre = { postId: null, hashDoAgendamento: null, efeitosDoAgendamentoEm: null }
-  const pronta = { status: 'COMPLETED', pageId: 'p1', slide: false }
+  // Peça pronta TEM o arquivo (PR11-F02): COMPLETED sem `resultUrl` não é pronta.
+  const pronta = { status: 'COMPLETED', resultUrl: 'https://blob/p1.png', pageId: 'p1', slide: false }
   const pedido = { hash: 'h1' }
 
   it('item já ligado: post apagado nunca é recriado, mesmo pedido reaproveita, outro pedido conflita', () => {
@@ -143,6 +144,10 @@ describe('decidirAgendamento', () => {
       decidirAgendamento({ registro: registroLivre, postLigadoExiste: false, pedido: p, peca, pagina })
     expect(d(null)).toMatchObject({ codigo: 'PECA_AUSENTE' })
     expect(d({ ...pronta, status: 'FAILED' })).toMatchObject({ codigo: 'PECA_FALHOU' })
+    // Sem o arquivo é peça que não serve, como a que falhou — e vem antes do pedido e da página.
+    expect(d({ ...pronta, resultUrl: null })).toMatchObject({ acao: 'falhar', codigo: 'PECA_SEM_ARQUIVO' })
+    expect(d({ ...pronta, resultUrl: null, pageId: null }, null, { falha: { codigo: 'SEM_HORARIO', motivo: 'x' } })).toMatchObject({ codigo: 'PECA_SEM_ARQUIVO' })
+    expect(d({ ...pronta, resultUrl: '' })).toMatchObject({ codigo: 'PECA_SEM_ARQUIVO' })
     expect(d({ ...pronta, status: 'PROCESSING' })).toMatchObject({ acao: 'pendente', codigo: 'PECA_EM_ANDAMENTO' })
     expect(d({ ...pronta, status: 'PROCESSING' }, null, { falha: { codigo: 'SEM_HORARIO', motivo: 'x' } })).toMatchObject({ acao: 'falhar', codigo: 'SEM_HORARIO' })
     expect(d({ ...pronta, pageId: null })).toMatchObject({ codigo: 'SEM_PAGINA' })
@@ -204,7 +209,8 @@ it('resumirAgendamento conta por situação', () => {
 
 describe('decisões do Ciro (13/09/2026): rascunho apagado pela equipe e peça superada no plano', () => {
   const ligado = { postId: 'post-1', hashDoAgendamento: 'h1', efeitosDoAgendamentoEm: new Date() }
-  const pronta = { status: 'COMPLETED', pageId: 'p1', slide: false }
+  // Peça pronta TEM o arquivo (PR11-F02): COMPLETED sem `resultUrl` não é pronta.
+  const pronta = { status: 'COMPLETED', resultUrl: 'https://blob/p1.png', pageId: 'p1', slide: false }
   const apagado = (extra: Partial<Parameters<typeof decidirAgendamento>[0]> = {}) =>
     decidirAgendamento({ registro: ligado, postLigadoExiste: false, pedido: { hash: 'h1' }, peca: pronta, pagina: { ehModelo: false }, ...extra })
 

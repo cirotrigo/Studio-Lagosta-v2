@@ -186,6 +186,7 @@ import { enfileirarPeca } from '@/lib/compositor/fila'
 import { agendarItensDoLote } from '../agendar-itens'
 import { MOTIVO_ARTE_MAIS_NOVA } from '../agendamento'
 import { revisaoDoItem } from '@/lib/planos/revisao-do-item'
+import { situacaoPelaArte } from '@/lib/planos/execucao'
 
 const L = 'semana-2026-09-07'
 const specV1 = {
@@ -376,5 +377,96 @@ describe('os controles: a peça ausente ou falha de verdade continua com a respo
     expect(r.itens[0]).toMatchObject({ codigo: 'PECA_FALHOU', generationId: g1.generationId })
     const refeita = await enfileirarPeca(specV1, chave(t1))
     expect(refeita.lote).toMatchObject({ desfecho: 'retomado' })
+  })
+})
+
+describe('arte COMPLETED SEM ARQUIVO não é peça pronta (PR11-F02 e a reconciliação do 9e908105, alinhados no agendar-leva)', () => {
+  /** A Generation fecha COMPLETED sem o `resultUrl` — o estado do F02 (linha antiga, script, regressão). */
+  const semArquivo = (g: { generationId: string; jobId: string }) => {
+    marcar('generations', g.generationId, { status: 'COMPLETED', resultUrl: null, createdAt: new Date('2026-09-12T13:00:00.000Z') })
+    marcar('jobs', g.jobId, { status: 'DONE' })
+  }
+  /** O que a reconciliação do ver-plano faz com o item em voo cuja arte fechou sem arquivo — pela função REAL dela. */
+  const reconciliar = () => {
+    const item = banco.itensDePlano.get('item-1')!
+    const g = banco.generations.get(String(item.generationId))!
+    const para = situacaoPelaArte(item.status as never, g.status as never, (g.resultUrl as string | null) ?? null)
+    if (para) marcar('itensDePlano', 'item-1', { status: para })
+    return para
+  }
+
+  it('a peça da linha sem arquivo, sem item de plano: PECA_SEM_ARQUIVO, sem post — e a compor-leva repetida a RETOMA (a instrução leva a algum lugar)', async () => {
+    const spec = { ...specV1, itemDePlanoId: undefined, planoId: undefined }
+    const g = await enfileirarPeca(spec, { decididoPor: 'u1', lote: { loteId: L, itemId: 'solta' } })
+    semArquivo(g)
+
+    for (const simular of [true, false]) {
+      const r = await agendar('solta', simular)
+      expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PECA_SEM_ARQUIVO', generationId: g.generationId })
+      expect(r.itens[0].motivo).toContain('repita compor-leva com o mesmo item')
+    }
+    const retomada = await enfileirarPeca(spec, { decididoPor: 'u1', lote: { loteId: L, itemId: 'solta' } })
+    expect(retomada).toMatchObject({ lote: { desfecho: 'retomado' } })
+    expect(retomada.generationId).not.toBe(g.generationId)
+    expect(banco.postsCriados).toBe(0)
+  })
+
+  it('a peça do item de plano sem arquivo: PECA_SEM_ARQUIVO com o item em voo E depois da reconciliação (erro) — nunca "reaberto, agende quando a arte nova estiver pronta"; a compor-leva repetida produz', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g1 = await enfileirarPeca(specV1, chave(t1))
+    semArquivo(g1)
+
+    const emVoo = await agendar('seg')
+    expect(emVoo.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PECA_SEM_ARQUIVO', generationId: g1.generationId })
+
+    expect(reconciliar()).toBe('erro')
+    const depoisDaReconciliacao = await agendar('seg')
+    expect(depoisDaReconciliacao.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PECA_SEM_ARQUIVO' })
+    expect(depoisDaReconciliacao.itens[0].motivo).not.toContain('reaberto')
+    expect(banco.postsCriados).toBe(0)
+
+    // A mesma chamada da compor-leva, com a revisão de agora (a transição não muda o conteúdo): a reserva retoma e o plano produz.
+    expect(leitura()).toBe(t1)
+    const refeita = await enfileirarPeca(specV1, chave(leitura()))
+    expect(refeita).toMatchObject({ lote: { desfecho: 'retomado' } })
+    expect(refeita.generationId).not.toBe(g1.generationId)
+    expect(banco.itensDePlano.get('item-1')).toMatchObject({ status: 'na-fila', generationId: refeita.generationId })
+  })
+
+  it('a checagem de superada NÃO lê "pronta" de uma arte sem arquivo: item pronto com a arte sem arquivo — a compor-leva recusa com avancou, e o agendar-leva da linha sem peça fica em PECA_AUSENTE, sem arteAtualDoItem', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g0 = await enfileirarPeca(specV1, chave(t1))
+    pronta(g0, 'page-v1', 'https://blob/v1.png')
+    marcar('generations', g0.generationId, { resultUrl: null }) // o item ficou pronto, a arte perdeu o arquivo
+
+    await expect(enfileirarPeca(specOutraCopy, chave(t1, 'seg-b'))).rejects.toMatchObject({ code: 'ITEM_EXECUCAO_CONCORRENTE', details: { motivo: 'avancou' } })
+    expect(linha('seg-b')).toMatchObject({ generationId: null })
+    const r = await agendar('seg-b')
+    expect(r.itens[0]).toMatchObject({ situacao: 'falhou', codigo: 'PECA_AUSENTE' })
+    expect(r.itens[0].arteAtualDoItem).toBeUndefined()
+  })
+
+  it('a peça da linha sem arquivo e o item refeito com outra arte pronta: superada (a compor-leva repetida diria superada), com a arte atual', async () => {
+    criarItem()
+    const t1 = leitura()
+    const g1 = await enfileirarPeca(specV1, chave(t1))
+    semArquivo(g1)
+    expect(reconciliar()).toBe('erro')
+    await editar({ copyProposta: ['Costela no bafo', 'Vem pra cá'] })
+    const g2 = await enfileirarPeca(specV2, chave(leitura(), 'seg-v2'))
+    pronta(g2, 'page-v2', 'https://blob/v2.png')
+
+    await expect(enfileirarPeca(specV1, chave(t1))).rejects.toMatchObject(superada)
+    const r = await agendar('seg')
+    expect(r.itens[0]).toMatchObject({
+      situacao: 'falhou',
+      codigo: 'PECA_SUPERADA_NO_PLANO',
+      motivo: MOTIVO_ARTE_MAIS_NOVA,
+      generationId: g1.generationId,
+      arteAtualDoItem: { generationId: g2.generationId, pageId: 'page-v2', situacao: 'pronta' },
+    })
+    expect(banco.postsCriados).toBe(0)
   })
 })
