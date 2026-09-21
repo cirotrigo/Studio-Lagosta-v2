@@ -256,7 +256,7 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
         },
         page: { findMany: (a: { where: { id: { in: string[] } } }) => comando('paginas', async () => comp.paginas.filter((p) => a.where.id.in.includes(p.id))) },
         itemDePlano: { findMany: () => comando('itens', async () => []) },
-        learningSignal: { findMany: (a: { select?: Record<string, boolean> }) => comando('sinais', async () => comp.sinais.map((s) => selecionar(s, a.select))) },
+        learningSignal: { findMany: (a: { select?: Record<string, boolean>; take?: number }) => comando('sinais', async () => comp.sinais.slice(0, a.take ?? Infinity).map((s) => selecionar(s, a.select))) },
         brandVoice: { findUnique: (a: { where: Consulta }) => comando('voz', () => (conta('voz'), comp.vozDe(a.where.projectId))) },
         project: { findMany: () => comando('projetos', async () => []) },
       }
@@ -669,5 +669,18 @@ describe('PR15-06 · a consulta das artes acha a mídia congelada pelo rastro de
     expect(r.medidas.map((m) => m.chave).sort()).toEqual(['page:p1', 'page:p2', 'page:p3'])
     expect(r.medidas.find((m) => m.chave === 'page:p2')).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
     expect(r.qualidade?.foraDoDenominador.congeladaSemProva).toBe(1)
+  })
+})
+
+describe('varredura das classes (PR15-08): o teto dos sinais ligados é declarado, nunca um corte calado', () => {
+  const sinal = (i: number) => ({ tipo: 'geometria', desfecho: 'escolha-propria', postId: null, pageId: 'page-6', generationId: null, createdAt: new Date(Date.parse('2026-09-08T12:00:00Z') + i * 1000) })
+
+  it('no teto de 2000 sinais ligados, a medida diz que olhou só esses; abaixo dele, nada é dito', async () => {
+    estado.banco = criarBanco({ sinais: Array.from({ length: 2001 }, (_, i) => sinal(i)) })
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.avisos.join(' ')).toMatch(/2000 sinais/)
+    estado.banco = criarBanco({ sinais: Array.from({ length: 1999 }, (_, i) => sinal(i)) })
+    const abaixo = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(abaixo.avisos.join(' ')).not.toMatch(/sinais/)
   })
 })

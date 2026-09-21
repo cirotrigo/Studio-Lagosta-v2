@@ -233,9 +233,13 @@ export async function lerSemanaDoCliente(
     leitor.learningSignal.findMany({
       where: { projectId, tipo: { in: ['troca-de-arte', 'geometria', 'foto'] }, ...ligado },
       select: { tipo: true, desfecho: true, postId: true, pageId: true, generationId: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
       take: TETO_DE_SINAIS,
     }),
   )
+  // Os sinais são referência DIRETA da peça (post, página, arte): cortá-los no teto
+  // sem dizer era a medida afirmando que olhou tudo (varredura do PR15-08).
+  if (sinais.length === TETO_DE_SINAIS) avisos.push(`a leitura parou no teto de ${TETO_DE_SINAIS} sinais ligados — pode haver mais, e a medida olhou só os primeiros`)
 
   let versaoDaVoz: number | null = null
   if (esquema.vozDaMarca) {
