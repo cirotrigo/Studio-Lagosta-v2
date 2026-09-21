@@ -407,9 +407,9 @@ function comSegundaVoz(b: BlocoAutoral, naVoz2: number[]): BlocoAutoral {
  * R24 do PR 9):
  *  - o PAPEL que só o id dava (camada `apoio` de nome "Texto 2", sem metadata)
  *    → `metadata.compositor.papel`;
- *  - o vínculo com o BLOCO do contrato cujo id é o id físico (o livre autoral
- *    `nota`; o comum `servico` numa página com dois serviços) →
- *    `metadata.compositor.bloco`, a MESMA marca que `vinculoDaCamada` lê.
+ *  - o vínculo com o bloco LIVRE cujo id é o id físico (o livre autoral
+ *    `nota`) → `metadata.compositor.bloco`, a MESMA marca que `vinculoDaCamada`
+ *    lê. Bloco com função, nunca (ver o corpo: PR9-F02, 2ª metade).
  *
  * 🔴 A PARTE legada (`servico-2` → 2) saiu no rebase sobre a main de
  * 21/09/2026: a ordem das linhas de um bloco repartido é o `linhas` declarado
@@ -426,15 +426,19 @@ export function materializarVinculosDoIdFisico(camadas: unknown[], contrato: Cop
     const papel = papelDaCamada(l)
     const acrescimos: Record<string, unknown> = {}
     if (papel && papelDaCamada({ ...l, id: '' } as Layer) !== papel) acrescimos.papel = papel
-    // O NOME só vincula o bloco livre (`vincularExtras`); o bloco com função reserva só pelo id.
-    // 🔴 No bloco COM função o id só desempata quando o contrato tem MAIS DE UM
-    // bloco daquela função (a página com dois serviços). Com bloco único a
-    // reserva já reúne todas as partes ("bloco único leva TODAS") — e marcar só a
-    // parte cujo id coincide (`servico`, não `servico-2`) deixava o bloco meio
-    // declarado: a parte marcada vencia sozinha e a outra virava `extra-<uuid>`
-    // na cópia. Materializar grava o que o id DIZ, e ali ele não diz nada.
-    const variosDaFuncao = papel ? contrato.blocos.filter((b) => b.funcao === papel).length > 1 : false
-    if (!vinculoDaCamada(l) && contrato.blocos.some((b) => b.id === id && ((b.funcao === 'livre' && l.name !== id) || (b.funcao === papel && variosDaFuncao)))) acrescimos.bloco = id
+    // 🔴 Só o bloco LIVRE ganha `bloco` pelo id: é a regra 1 de `vincularExtras`
+    // (`l.id === b.id`), que a leitura da main aplica de fato — e o UUID da cópia
+    // a perde (o NOME sobrevive, então camada nomeada pelo bloco não precisa).
+    // Bloco COM função (comum ou extra) NUNCA: a leitura da main o atribui pela
+    // marca declarada ou pela reserva por papel e posição, jamais pelo id
+    // físico, e a duplicação preserva papel (acima) e posição — a cópia recebe a
+    // mesma atribuição sem marca nenhuma. Carimbar pela coincidência do id
+    // inventava uma atribuição que a leitura nunca fez: o extra VAZIO de id
+    // `servico-2` recebia a parte do serviço comum cuja camada se chama
+    // `servico-2`, e duplicar virava mudança de copy (PR9-F02, revisão FINAL do
+    // Codex sobre b6980b5b, 21/09/2026). O mesmo ramo, com dois blocos comuns,
+    // podia trocar os textos quando o id e a posição discordavam.
+    if (!vinculoDaCamada(l) && contrato.blocos.some((b) => b.id === id && b.funcao === 'livre' && l.name !== id)) acrescimos.bloco = id
     if (Object.keys(acrescimos).length === 0) return l
     const meta = (l.metadata ?? {}) as Record<string, unknown>
     const compositor = meta.compositor && typeof meta.compositor === 'object' ? (meta.compositor as Record<string, unknown>) : {}

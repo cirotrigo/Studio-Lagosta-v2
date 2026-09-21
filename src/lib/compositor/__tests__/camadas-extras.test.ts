@@ -727,6 +727,57 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     }
   })
 
+  // PR9-F02, 2ª metade (revisão FINAL do Codex sobre b6980b5b, 21/09/2026): o teste acima parte de camadas recém-
+  // PREPARADAS, já carimbadas com `bloco`/`linhas` — com a marca, o materializador da duplicação pula todas, e o ramo que
+  // carimbava pela coincidência do id nunca rodava. Não tinha como falhar. Este parte da forma LEGADA (sem marca): a
+  // leitura mantém o serviço inteiro em `svc`, e a duplicação não pode entregar ao extra vazio a parte cujo id físico
+  // coincide com o dele — isso é inferência pelo id, introduzida ANTES da leitura.
+  it('PR9-F02 (legada): a página SEM marca duplicada não carimba o extra vazio pela coincidência do id — leitura idêntica antes e depois, sem revisão, também ocultando e reexibindo', () => {
+    const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
+    const extraVazio = (id: string) => ({ id, funcao: 'servico' as const, ordem: 2, linhas: [], estilo: { herdaDe: 'apoio' as const } })
+    const comExtra = (id: string): CopyAutoral => ({ ...copy(ENDERECO), blocos: [...copy(ENDERECO).blocos, extraVazio(id)] })
+    const semVinculo = (l: Layer): Layer => {
+      const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      return { ...l, metadata: { ...l.metadata, compositor } } as Layer
+    }
+    const blocoDe = (l: Layer) => (l.metadata?.compositor as { bloco?: string } | undefined)?.bloco
+    const forma = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.linhas])
+    const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
+    const legado = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer).map(semVinculo)
+    expect(legado.map((l) => l.id).sort()).toEqual(['headline', 'servico', 'servico-2'])
+    expect(legado.every((l) => blocoDe(l) === undefined)).toBe(true)
+    for (const id of ['servico-2', 'servico']) {
+      const gravado = comExtra(id)
+      const esperado = [['h', ['Costela']], ['svc', [HORARIO, ENDERECO]], [id, []]]
+      const antes = copyEfetivaDasCamadas(gravado, legado, { superficie: 'editor' })
+      expect(forma(antes.efetiva), `${id} antes`).toEqual(esperado)
+      expect(antes.mudancas, `${id} antes`).toEqual([])
+      let n = 0
+      const dup = duplicarCamadasDaPagina(legado, () => `uuid-f02l-${++n}`, gravado)
+      const copia = dup.camadas as Layer[]
+      // A duplicação não inventa vínculo: nenhuma camada sai declarando o extra.
+      expect(copia.some((l) => blocoDe(l) === id), `${id}: nenhuma camada carimbada com o extra`).toBe(false)
+      const depois = copyEfetivaDasCamadas(dup.contrato!, copia, { superficie: 'editor' })
+      expect(depois.mudancas, `${id} depois`).toEqual([])
+      expect(forma(depois.efetiva), `${id} depois`).toEqual(esperado)
+      expect(revisaoDaPaginaComCamadas(dup.contrato!, copia, equipe).estado, `${id} salvar a cópia`).toBe('sem-mudanca')
+      // Ocultar e reexibir cada parte: a cópia se lê exatamente como a original, nas duas operações.
+      for (const alvo of ['servico', 'servico-2']) {
+        const naCopia = dup.idsDeCamada.get(alvo)!
+        const ocultaOriginal = legado.map((l) => (l.id === alvo ? { ...l, visible: false } : l)) as Layer[]
+        const ocultaCopia = copia.map((l) => (l.id === naCopia ? { ...l, visible: false } : l)) as Layer[]
+        const lidaOriginal = copyEfetivaDasCamadas(gravado, ocultaOriginal, { superficie: 'editor' }).efetiva
+        const lidaCopia = copyEfetivaDasCamadas(dup.contrato!, ocultaCopia, { superficie: 'editor' }).efetiva
+        expect(forma(lidaCopia), `${id}: ocultar ${alvo}`).toEqual(forma(lidaOriginal))
+        expect(lidaCopia.blocos.find((b) => b.id === id)?.linhas, `${id}: ocultar ${alvo} não enche o extra`).toEqual([])
+        const reexibidaOriginal = copyEfetivaDasCamadas(lidaOriginal, legado, { superficie: 'editor' }).efetiva
+        const reexibidaCopia = copyEfetivaDasCamadas(lidaCopia, copia, { superficie: 'editor' }).efetiva
+        expect(forma(reexibidaCopia), `${id}: reexibir ${alvo}`).toEqual(forma(reexibidaOriginal))
+        expect(reexibidaCopia.blocos.find((b) => b.id === id)?.linhas, `${id}: reexibir ${alvo} não enche o extra`).toEqual([])
+      }
+    }
+  })
+
   it('R18: o extra com identidade explícita (serviço herdando a manchete) continua bloco próprio, mesmo com um serviço comum repartido', () => {
     const contrato: CopyAutoral = {
       versao: VERSAO_DO_CONTRATO, origem, revisoes: [],
