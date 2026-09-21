@@ -44,8 +44,11 @@
  *     `garantirPasta` devolve a pasta que a primeira criou; (c)
  *     `ensurePostGeneration` devolve o vínculo que a primeira gravou.
  *
- * Só roda contra o branch de dev (guard por compute, falha fechada; sem `.env`
- * recusa rodar). Sobe PNG ao Blob de produção e apaga no cleanup (declarado).
+ * Só roda contra o branch de dev (guard por compute E nome de banco sobre TODA
+ * conexão que abre — o `db` e as auxiliares do passo 21, as duas URLs lidas SÓ
+ * do `.env.development.local` —, falha fechada; sem `.env`, ou sem `DIRECT_URL`
+ * no arquivo de dev, recusa rodar: R12-10). Sobe PNG ao Blob de produção e apaga
+ * no cleanup (declarado).
  * A pasta da semana criada por `garantirPasta` fica (é reutilizada); a do
  * passo 21b, numa semana de 2099 criada só por esta rodada, é apagada.
  *
@@ -70,11 +73,11 @@
  */
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-// Só tipos (apagados na execução): o cliente de verdade é importado depois de o ambiente apontar para o dev.
-import type { Prisma as PrismaTipos, PrismaClient as ClienteDoBanco } from '../prisma/generated/client'
+// Módulos puros (sem Prisma e sem env): o cliente de verdade é importado depois de o ambiente apontar para o dev.
+import { computeDe, destinoDaProvaDeDev, type DestinoDaProvaDeDev } from './lib/destino-da-prova'
+import { corridaNaTrava } from './lib/corrida-na-trava'
 
 const ROOT = process.cwd()
-const DB_KEYS = ['DATABASE_URL', 'DIRECT_URL'] as const
 const PRODUCAO_SOMENTE_LEITURA = process.argv.includes('--producao-somente-leitura')
 
 function parseEnvFile(caminho: string): Record<string, string> {
@@ -89,40 +92,32 @@ function parseEnvFile(caminho: string): Record<string, string> {
   }
   return out
 }
-function endpointDe(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
-}
 function abortar(titulo: string, linhas: string[] = []): never {
   console.error(`\n✗ ${titulo}\n`)
   for (const l of linhas) console.error(`  ${l}`)
   process.exit(1)
 }
-function apontarParaODev(): string {
-  const prod = parseEnvFile(resolve(ROOT, '.env'))
-  const dev = parseEnvFile(resolve(ROOT, '.env.development.local'))
+/**
+ * O destino de TODA conexão que a prova abre (R12-10): o `db` (DATABASE_URL) e as conexões auxiliares do passo 21
+ * (DIRECT_URL) saem SÓ do arquivo de dev e têm de ser o MESMO banco de dev — nada herdado do `.env` (produção) nem
+ * do processo. Resolvido aqui, antes de qualquer cliente existir.
+ */
+function apontarParaODev(): DestinoDaProvaDeDev {
   if (!existsSync(resolve(ROOT, '.env'))) abortar('não há .env aqui para dizer qual compute é PRODUÇÃO.', ['Worktree não herda o .env (gitignored): rode a partir de um checkout que o tenha.'])
-  if (!dev.DATABASE_URL) abortar('.env.development.local não define DATABASE_URL.', ['Rode  npm run db:dev:setup  antes.'])
-  for (const [k, v] of Object.entries(prod)) if (!(k in process.env)) process.env[k] = v
-  for (const k of DB_KEYS) if (dev[k]) process.env[k] = dev[k]
-  const alvo = endpointDe(process.env.DATABASE_URL)
-  const producao = new Set(DB_KEYS.map((k) => endpointDe(prod[k])).filter((e): e is string => e !== null))
-  if (producao.size === 0) abortar('o .env não tem DATABASE_URL/DIRECT_URL reconhecível: não dá para saber qual compute é PRODUÇÃO.')
-  if (!alvo || producao.has(alvo)) abortar('O banco resolvido é o de PRODUÇÃO.', [`DATABASE_URL aponta para ${alvo ?? '(ilegível)'}.`])
-  return alvo
+  const r = destinoDaProvaDeDev({ prod: parseEnvFile(resolve(ROOT, '.env')), dev: parseEnvFile(resolve(ROOT, '.env.development.local')), processo: process.env })
+  if (r.ok === false) abortar(r.titulo, r.linhas)
+  Object.assign(process.env, r.destino.ambiente)
+  return r.destino
 }
 /** Só no modo de leitura: o banco do `.env`, que é PRODUÇÃO — e nada além de SELECT sob READ ONLY. */
 function apontarParaProducaoSomenteLeitura(): string {
   const prod = parseEnvFile(resolve(ROOT, '.env'))
   if (!prod.DATABASE_URL) abortar('o .env não define DATABASE_URL.')
   for (const [k, v] of Object.entries(prod)) process.env[k] = v
-  return endpointDe(process.env.DATABASE_URL) ?? '(ilegível)'
+  return computeDe(process.env.DATABASE_URL) ?? '(ilegível)'
 }
-const ENDPOINT = PRODUCAO_SOMENTE_LEITURA ? apontarParaProducaoSomenteLeitura() : apontarParaODev()
+const DESTINO = PRODUCAO_SOMENTE_LEITURA ? null : apontarParaODev()
+const ENDPOINT = DESTINO ? DESTINO.compute : apontarParaProducaoSomenteLeitura()
 
 function argumento(nome: string): string | null {
   const i = process.argv.indexOf(nome)
@@ -232,6 +227,8 @@ async function main() {
   mkdirSync(SAIDA, { recursive: true })
 
   const { db } = await import('../src/lib/db')
+  // O `db` nasce do DATABASE_URL no import: tem de ser o que a guarda validou (R12-10).
+  if (process.env.DATABASE_URL !== DESTINO.databaseUrl) abortar('o db da prova não nasceu do DATABASE_URL que a guarda validou.')
   const { enfileirarPeca } = await import('../src/lib/compositor/fila')
   const { dispararJobAgora } = await import('../src/lib/ai/generation-queue-executor')
   const { agendarItensDoLote } = await import('../src/lib/lotes/agendar-itens')
@@ -544,48 +541,10 @@ async function main() {
     // 🔴 O que se lê DURANTE o bloqueio vai pelo vigia, nunca pelo `db` da prova: com o pooler ele tem UMA conexão,
     // e é justamente ela que a transação bloqueada segura.
     const { userId: donoDoProjeto } = await db.project.findUniqueOrThrow({ where: { id: PROJETO }, select: { userId: true } })
-    const urlDireta = process.env.DIRECT_URL ?? process.env.DATABASE_URL
-    async function corridaNaTrava<T, C, V = null>(
-      chave: string,
-      segunda: () => Promise<T>,
-      criarComoDono: (tx: PrismaTipos.TransactionClient) => Promise<C>,
-      duranteOBloqueio?: (vigia: ClienteDoBanco) => Promise<V>,
-    ) {
-      const dono = new PrismaClient({ datasources: { db: { url: urlDireta } } })
-      const vigia = new PrismaClient({ datasources: { db: { url: urlDireta } } })
-      let bloqueou = false
-      let lidoNoBloqueio: V | null = null
-      let criado: C | null = null
-      try {
-        let avisarTravado!: () => void
-        const travado = new Promise<void>((r) => { avisarTravado = r })
-        let soltar!: () => void
-        const podeCriar = new Promise<void>((r) => { soltar = r })
-        let pidDoDono = 0
-        const primeira = dono.$transaction(async (tx) => {
-          const [linha] = await tx.$queryRaw<Array<{ pid: number }>>`SELECT pg_backend_pid()::int AS pid FROM pg_advisory_xact_lock(hashtext(${chave}))`
-          pidDoDono = linha.pid
-          avisarTravado()
-          await podeCriar
-          criado = await criarComoDono(tx)
-        }, { timeout: 60_000, maxWait: 60_000 })
-        primeira.catch(() => undefined)
-        await travado
-        const resultado = segunda().then((valor) => ({ valor, erro: null as unknown }), (erro: unknown) => ({ valor: null, erro }))
-        for (let i = 0; i < 320 && !bloqueou; i++) {
-          const [{ n }] = await vigia.$queryRaw<Array<{ n: number }>>`SELECT count(*)::int AS n FROM pg_stat_activity a WHERE a.wait_event_type = 'Lock' AND ${pidDoDono} = ANY(pg_blocking_pids(a.pid))`
-          bloqueou = Number(n) > 0
-          if (!bloqueou) await new Promise((r) => setTimeout(r, 25))
-        }
-        if (bloqueou && duranteOBloqueio) lidoNoBloqueio = await duranteOBloqueio(vigia)
-        soltar()
-        await primeira
-        return { bloqueou, criado: criado as C | null, lidoNoBloqueio, ...(await resultado) }
-      } finally {
-        await dono.$disconnect()
-        await vigia.$disconnect()
-      }
-    }
+    // Dono e vigia: o MESMO banco de dev que o `db`, pela URL que a guarda validou — nunca `process.env.DIRECT_URL`
+    // (R12-10). A corrida (`scripts/lib/corrida-na-trava.ts`) só deixa o dono criar com o bloqueio CONFIRMADO pelo
+    // banco — sem ele o passo FALHA — e termina também quando a transação do dono falha antes de travar (R12-11).
+    const clienteAuxiliar = () => new PrismaClient({ datasources: { db: { url: DESTINO.directUrl } } })
 
     console.log('21a) R12-09: duas retomadas do catálogo do MESMO post ao mesmo tempo — a segunda espera a trava do post (o banco confirma o bloqueio antes de a primeira criar), relê e não duplica a 2ª mídia; o carimbo só vem depois')
     // O estado parcial do R12-08: a capa vinculada, a 2ª mídia sem Generation e os efeitos sem carimbo.
@@ -593,16 +552,17 @@ async function main() {
     await db.itemDeLote.update({ where: { id: linha13.id }, data: { efeitosDoAgendamentoEm: null } })
     const templateDoPost13 = (await db.socialPost.findUniqueOrThrow({ where: { id: manual13.postId }, select: { templateId: true } })).templateId
       ?? (await db.page.findUniqueOrThrow({ where: { id: pagina13 }, select: { templateId: true } })).templateId
-    const c21a = await corridaNaTrava(
-      chaveDasArtesDoPost(manual13.postId),
-      () => agendar([{ itemId: 'item-13' }]),
+    const c21a = await corridaNaTrava({
+      chave: chaveDasArtesDoPost(manual13.postId),
+      criarCliente: clienteAuxiliar,
+      segunda: () => agendar([{ itemId: 'item-13' }]),
       // O que a primeira execução do catálogo cria: a arte da 2ª mídia (post-midia, índice 1).
-      (tx) => tx.generation.create({
+      criarComoDono: (tx) => tx.generation.create({
         data: { status: 'COMPLETED', templateId: templateDoPost13, fieldValues: { source: 'post-midia', postId: manual13.postId, midiaIndice: 1 }, resultUrl: slide2, projectId: PROJETO, createdBy: donoDoProjeto, authorName: 'post-midia', completedAt: new Date() },
         select: { id: true },
       }),
-      (vigia) => vigia.itemDeLote.findUnique({ where: { id: linha13.id }, select: { efeitosDoAgendamentoEm: true } }),
-    )
+      duranteOBloqueio: (vigia) => vigia.itemDeLote.findUnique({ where: { id: linha13.id }, select: { efeitosDoAgendamentoEm: true } }),
+    })
     const r21a = c21a.valor?.itens[0]
     const artes21a = await artesDa(slide2)
     conferir('a segunda retomada ficou BLOQUEADA pela primeira (o banco confirmou) antes de a primeira criar, com os efeitos ainda sem carimbo', c21a.bloqueou && c21a.lidoNoBloqueio?.efeitosDoAgendamentoEm === null, JSON.stringify({ bloqueou: c21a.bloqueou, lido: c21a.lidoNoBloqueio }))
@@ -622,15 +582,16 @@ async function main() {
       if ((await db.template.count({ where: { projectId: PROJETO, tags: { has: pasta21b.chave } } })) === 0) break
     }
     chavesDePastaDaProva.push(pasta21b.chave)
-    const c21b = await corridaNaTrava(
-      chaveDaPasta(PROJETO, pasta21b.chave),
-      () => garantirPasta(PROJETO, donoDoProjeto, quando21b, 'story'),
+    const c21b = await corridaNaTrava({
+      chave: chaveDaPasta(PROJETO, pasta21b.chave),
+      criarCliente: clienteAuxiliar,
+      segunda: () => garantirPasta(PROJETO, donoDoProjeto, quando21b, 'story'),
       // O que a primeira execução de garantirPasta cria.
-      (tx) => tx.template.create({
+      criarComoDono: (tx) => tx.template.create({
         data: { name: pasta21b.nome, type: pasta21b.tipo, dimensions: pasta21b.dimensoes, designData: {}, category: pasta21b.categoria, tags: pasta21b.tags, projectId: PROJETO, createdBy: donoDoProjeto },
         select: { id: true },
       }),
-    )
+    })
     conferir('a segunda execução ficou BLOQUEADA pela primeira (o banco confirmou) antes de ela criar a pasta', c21b.bloqueou)
     conferir('devolveu a pasta que a primeira criou', !c21b.erro && c21b.valor?.id === c21b.criado?.id, JSON.stringify({ devolvida: c21b.valor?.id ?? String(c21b.erro), primeira: c21b.criado?.id }))
     conferir('uma pasta só com a tag da semana', (await db.template.count({ where: { projectId: PROJETO, tags: { has: pasta21b.chave } } })) === 1)
@@ -641,11 +602,12 @@ async function main() {
     const post21c = await agendarPost({ projectId: PROJETO, pageId: pagina12, scheduledDatetime: `${dia(14)} 19:00`, postType: 'STORY', superficie: 'editor' })
     await db.socialPost.update({ where: { id: post21c.postId }, data: { mediaUrls: [capa21c], renderStatus: 'NOT_NEEDED', generationId: null } })
     const templateDaPagina12 = (await db.page.findUniqueOrThrow({ where: { id: pagina12 }, select: { templateId: true } })).templateId
-    const c21c = await corridaNaTrava(
-      chaveDasArtesDoPost(post21c.postId),
-      () => ensurePostGeneration(post21c.postId),
+    const c21c = await corridaNaTrava({
+      chave: chaveDasArtesDoPost(post21c.postId),
+      criarCliente: clienteAuxiliar,
+      segunda: () => ensurePostGeneration(post21c.postId),
       // O que a primeira execução de ensurePostGeneration faz: cria a arte da capa e grava o vínculo.
-      async (tx) => {
+      criarComoDono: async (tx) => {
         const g = await tx.generation.create({
           data: { status: 'COMPLETED', templateId: templateDaPagina12, fieldValues: { source: 'post-schedule', postId: post21c.postId, pageId: pagina12 }, resultUrl: capa21c, projectId: PROJETO, createdBy: donoDoProjeto, completedAt: new Date() },
           select: { id: true },
@@ -653,7 +615,7 @@ async function main() {
         await tx.socialPost.updateMany({ where: { id: post21c.postId, generationId: null }, data: { generationId: g.id } })
         return g
       },
-    )
+    })
     const vinculo21c = (await db.socialPost.findUniqueOrThrow({ where: { id: post21c.postId }, select: { generationId: true } })).generationId
     conferir('a segunda ficou BLOQUEADA pela primeira (o banco confirmou) antes de ela criar', c21c.bloqueou)
     conferir('devolveu o vínculo que a primeira gravou', !c21c.erro && c21c.valor === c21c.criado?.id && vinculo21c === c21c.criado?.id, JSON.stringify({ devolvido: c21c.valor ?? String(c21c.erro), primeira: c21c.criado?.id, vinculo: vinculo21c }))
