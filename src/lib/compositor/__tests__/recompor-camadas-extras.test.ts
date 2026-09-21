@@ -713,3 +713,99 @@ describe('recomporPaginaDefasada — PR9-F01: contrato recusa a leitura numa pe�
           expect(r.avisos.some((a) => /sem contrato/i.test(a))).toBe(true)
         })
 })
+
+/**
+ * O aviso de ajuste manual nomeia a camada EXTRA pela identidade que ela DECLARA (`metadata.compositor.extra.id`),
+ * nunca pelo formato do id (varredura do PR 10 após o 2º restack, 21/09/2026). `idReservado` só proíbe `<papel>-N`
+ * numérico: o extra `servico-fds` é id aceito, começava por `servico-` e o aviso o chamava de "servico" — numa peça
+ * que também tem o serviço comum, a pessoa não sabia QUAL texto tinha sido mexido.
+ *
+ * O rótulo não decide nada (toda decisão lê a CONTAGEM de `mexidoNaMao`), então o desfecho conferido é o que a pessoa
+ * vê: a decisão (re-render como está, com a página exatamente como a equipe a deixou) e QUEM o aviso aponta como
+ * mexido — os nomes citados, não a frase.
+ */
+describe('recomporPaginaDefasada — o aviso de ajuste manual aponta o extra pela identidade declarada', () => {
+  const casos: Array<[string, string[], string[]]> = [
+    ['só o extra `servico-fds` movido', ['servico-fds'], ['servico-fds']],
+    ['o serviço comum e o extra movidos', ['servico', 'servico-fds'], ['servico', 'servico-fds']],
+  ]
+  for (const [nome, movidas, apontadas] of casos)
+    it(`${nome}: re-renderiza como está e o aviso aponta ${apontadas.join(' e ')} — nunca o extra como "servico"`, async () => {
+      estado.page = null
+      estado.generation = null
+      estado.posts.clear()
+      estado.specsCompostas = []
+      estado.paginaGravada = null
+      estado.generationGravada = null
+      estado.comporCamadas = null
+      estado.reRenderizadas = []
+      const assinatura = montarAssinatura({
+        pagina: {
+          id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
+          layers: [
+            texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+            texto('apoio', { fontFamily: 'Barlow', fontSize: 40, color: '#FFEEDD', lineHeight: 1.2 }, 'Apoio', { position: { x: 92, y: 320 }, metadata: { groupId: 'g1' } }),
+            texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2 }, 'Serviço', { position: { x: 92, y: 1650 }, metadata: { groupId: 'g2' } }),
+          ],
+        },
+        formatoDaPagina: 'story',
+        numerosDoProjeto: null,
+      })
+      const copy: CopyAutoral = {
+        versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+        blocos: [
+          { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+          { id: 'svc', funcao: 'servico', ordem: 1, linhas: ['11h às 16h'] },
+          { id: 'servico-fds', funcao: 'servico', ordem: 2, linhas: ['Sáb e dom, 12h às 16h'], estilo: { herdaDe: 'apoio' } },
+        ],
+      }
+      const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy })
+      expect(v.problemas).toEqual([])
+      const preparadas = prepararBlocos({
+        assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+        medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: v.spec as SpecDePeca,
+      }).montados.map((b) => b.layer)
+      // O cenário do defeito: o serviço comum se chama `servico`, e o extra de função `servico` tem um id que COMEÇA
+      // por `servico-` — o formato do id não separa um do outro; só a identidade declarada separa.
+      const comum = preparadas.find((l) => l.id === 'servico')!
+      const extra = preparadas.find((l) => l.id === 'servico-fds')!
+      expect((comum.metadata?.compositor as Record<string, unknown>).papel).toBe('servico')
+      expect(comum.metadata?.compositor).not.toHaveProperty('extra')
+      expect(extra.metadata?.compositor).toMatchObject({ papel: 'servico', extra: { id: 'servico-fds', funcao: 'servico', herdaDe: 'apoio' } })
+      const entrada = entradaDePersistencia({
+        spec: v.spec as SpecDePeca, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+        nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: preparadas, fundo: '#000', diagnostico: {}, fotoUrl: null,
+      })
+      // A equipe arrasta à mão (sem mudar texto nenhum) as camadas do caso.
+      const camadasEditadas = preparadas.map((l) => (movidas.includes(l.id) ? { ...l, position: { x: l.position.x, y: l.position.y + 40 } } : l))
+      estado.page = {
+        id: 'pg-aviso', name: 'Sáb 19/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: camadasEditadas, background: '#000',
+        isTemplate: false, templateId: 't-1', copyAutoral: entrada.copyAutoral, updatedAt: new Date('2026-09-18T16:00:00.000Z'),
+        Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
+      }
+      estado.generation = {
+        id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null,
+        fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-aviso' },
+      }
+      const capa = 'https://blob.exemplo/capa.png'
+      const slide3 = 'https://blob.exemplo/slide-3.png'
+      estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [capa, URL_ANTIGA, slide3] })
+
+      const { recomporPaginaDefasada } = await import('../recompor')
+      const r = await recomporPaginaDefasada({ pageId: 'pg-aviso' })
+      const reRenderizadas = estado.reRenderizadas
+      estado.reRenderizadas = null
+
+      // A decisão: ajuste à mão → re-render como está, com a página exatamente como a equipe a deixou; só o slide troca.
+      expect(r.recomposta).toBe(false)
+      expect(estado.specsCompostas).toEqual([])
+      expect(reRenderizadas).toHaveLength(1)
+      expect(reRenderizadas[0].layers).toEqual(camadasEditadas)
+      expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_RERENDER, slide3])
+      // QUEM o aviso aponta como mexido: exatamente as camadas movidas, cada uma pelo nome que a separa das outras.
+      const avisoDoAjuste = r.avisos.filter((a) => /ajustada à mão/.test(a))
+      expect(avisoDoAjuste).toHaveLength(1)
+      const apontadasNoAviso = [...avisoDoAjuste[0].matchAll(/"([^"]+)"/g)].map((m) => m[1]).sort()
+      expect(apontadasNoAviso).toEqual([...apontadas].sort())
+    })
+})

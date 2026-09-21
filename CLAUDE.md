@@ -9322,9 +9322,15 @@ herdando do apoio, os dois tipos de post).
   `cropPosition`, `objectFit` da camada de imagem, que o diff de geometria não
   via): recompor escolheria o corte de novo pelo mapa de calma e apagaria o
   acerto. Re-renderiza como está.
-- **O aviso de ajuste manual nomeia o extra pelo id**, não pelo papel da função
-  ("hora foi movida", nunca "servico foi movida" numa peça que também tem o
-  serviço comum).
+- **O aviso de ajuste manual nomeia o extra pelo id que ele DECLARA**
+  (`metadata.compositor.extra.id`), não pelo papel da função ("hora foi movida",
+  nunca "servico foi movida" numa peça que também tem o serviço comum).
+  🔴 Nunca pelo FORMATO do id: `idReservado` só proíbe `<papel>-N` numérico, e o
+  extra `servico-fds` (id aceito) começava por `servico-` — o aviso o chamava de
+  "servico" (varredura do 2º restack, 21/09/2026; a mesma inferência pelo id
+  que o PR9-F02 tirou da duplicação). O rótulo é só texto: toda decisão
+  (`soTexto`, `precisaRefazer`, `paginaMudouDesde`) lê a CONTAGEM de
+  `mexidoNaMao`.
 - **Escritas visuais: nenhuma nova neste PR.** As cinco portas (PATCH da página,
   PUT do template, PATCH de camada, `ajustarArte`, `reverterCamadasDaArte`) já
   chamam `invalidateScheduledRenders` + `pedirRecomposicaoDaArteCongelada`, e os

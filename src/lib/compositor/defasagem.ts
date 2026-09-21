@@ -243,8 +243,13 @@ export interface Defasagem {
  * Tudo o mais (posição, largura, corpo da fonte, alinhamento, visibilidade,
  * camada acrescentada ou removida, e qualquer delta em camada que não é
  * texto) é decisão de gente e desliga a recomposição.
+ *
+ * O rótulo é SÓ texto de aviso: toda decisão (`soTexto`, `precisaRefazer`,
+ * `paginaMudouDesde`) lê a CONTAGEM destes motivos, nunca o nome.
+ * `extraDaCamada` (id da camada → id que ela DECLARA como extra) vem de
+ * `medirDefasagem`; sem ele, nenhuma camada é tratada como extra.
  */
-export function mexeuNaMao(diff: DiffDeGeometria): string[] {
+export function mexeuNaMao(diff: DiffDeGeometria, extraDaCamada: ReadonlyMap<string, string> = new Map()): string[] {
   const motivos: string[] = []
   for (const id of diff.adicionadas) motivos.push(`camada "${id}" acrescentada à mão`)
   for (const id of diff.removidas) motivos.push(`camada "${id}" removida à mão`)
@@ -252,8 +257,15 @@ export function mexeuNaMao(diff: DiffDeGeometria): string[] {
     // A camada EXTRA tem o papel da FUNÇÃO (o serviço que herda do apoio diz
     // `servico`) e um id que não deriva dele: nomeá-la pelo papel diria
     // "servico foi movida" numa peça que também tem o serviço comum (PR 10).
-    const idDoPapel = !!d.papel && (d.id === d.papel || d.id.startsWith(`${d.papel}-`))
-    const quem = d.papel && idDoPapel ? d.papel : d.id
+    // 🔴 Quem diz que a camada é o extra é a identidade DECLARADA
+    // (`metadata.compositor.extra.id`), nunca o formato do id: `idReservado` só
+    // proíbe `<papel>-N` numérico, então o extra `servico-fds` (id aceito)
+    // começava por `servico-` e saía como "servico" — a inferência pelo id que
+    // o PR9-F02 tirou da duplicação, num lugar novo (varredura do 2º restack
+    // do PR 10, 21/09/2026).
+    const extra = extraDaCamada.get(d.id)
+    const idDoPapel = !extra && !!d.papel && (d.id === d.papel || d.id.startsWith(`${d.papel}-`))
+    const quem = extra ?? (d.papel && idDoPapel ? d.papel : d.id)
     if (d.dx || d.dy) {
       motivos.push(`"${quem}" foi movida (${d.dx >= 0 ? '+' : ''}${d.dx}, ${d.dy >= 0 ? '+' : ''}${d.dy}px)`)
     }
@@ -332,9 +344,16 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
     .sort()
 
   const diff = diffDeGeometria(snapshot, camadasDaPagina)
+  // A camada que DECLARA ser extra, nos dois lados (a página vence): é por ela, e não pelo formato do id, que o aviso
+  // de ajuste manual nomeia o extra.
+  const extraDaCamada = new Map<string, string>()
+  for (const l of [...lerCamadas(snapshot).camadas, ...lerCamadas(camadasDaPagina).camadas] as Layer[]) {
+    const extra = l && typeof l.id === 'string' ? idDoExtraDaCamada(l) : null
+    if (extra) extraDaCamada.set(l.id, extra)
+  }
   const motivos = diff.ilegivel
     ? ['não deu para comparar a geometria da página com a da arte']
-    : [...mexeuNaMao(diff), ...mudancasDeTipo(snapshot, camadasDaPagina), ...mudancasDeEnquadramento(snapshot, camadasDaPagina)]
+    : [...mexeuNaMao(diff, extraDaCamada), ...mudancasDeTipo(snapshot, camadasDaPagina), ...mudancasDeEnquadramento(snapshot, camadasDaPagina)]
 
   // A foto trocada é defasagem como o texto editado (PR 10). Só conta quando a
   // foto existe dos dois lados: camada de imagem acrescentada ou removida já
