@@ -42,7 +42,16 @@ function json(corpo: unknown, status = 200): Response {
 }
 
 function servidorDaVoz(inicial: VozCompacta) {
-  const s = { versao: 1, voz: inicial, falharLeitura: false, leiturasQueFalharam: 0, versoesEsperadas: [] as Array<number | null> }
+  const s = {
+    versao: 1,
+    voz: inicial,
+    /** Falha o GET (a releitura da invalidação). */
+    falharLeitura: false,
+    /** Falha a releitura COMPLEMENTAR de dentro do PUT, DEPOIS de a escrita ser confirmada (PR14-16). */
+    falharLeituraNoPut: false,
+    leiturasQueFalharam: 0,
+    versoesEsperadas: [] as Array<number | null>,
+  }
   const leitura = (): VozDaMarca => ({
     contexto: CONTEXTO,
     registro: { versao: s.versao, voz: s.voz, problemas: [], migradaEm: null, dnaArquivado: null, atualizadaEm: `2026-09-18T12:00:0${s.versao}.000Z` },
@@ -58,7 +67,14 @@ function servidorDaVoz(inicial: VozCompacta) {
       if (!lida.voz) return json({ error: 'VOZ_INVALIDA', code: 'VOZ_INVALIDA' }, 400)
       s.versao += 1
       s.voz = lida.voz
-      return json({ ...leitura(), gravada: { versao: s.versao, criada: false } })
+      // Como `salvarVozDaMarca`: a escrita está CONFIRMADA aqui. O recibo sai sempre; a releitura que monta o resto
+      // da resposta é separada e pode faltar (PR14-16) — antes, falhar nela virava 500 sobre uma voz já gravada.
+      const gravada = { versao: s.versao, criada: false, voz: s.voz }
+      if (s.falharLeituraNoPut) {
+        s.leiturasQueFalharam += 1
+        return json({ gravada, leitura: null, leituraFalhou: 'Erro ao carregar a voz da marca' })
+      }
+      return json({ gravada, leitura: leitura() })
     }
     if (s.falharLeitura) {
       s.leiturasQueFalharam += 1
@@ -135,6 +151,87 @@ describe('PR14-15 — a gravação confirmada da voz não se perde quando a rele
     t.efeito()
     expect(t.estado).toMatchObject({ versaoLida: 3, divergente: null })
     expect(formulariosIguais(t.estado.base, t.estado.form)).toBe(true)
+    sair()
+    qc.clear()
+  })
+})
+
+describe('PR14-16 — a releitura de dentro do PUT falha DEPOIS da escrita: o recibo sustenta a tela sozinho', () => {
+  it('a v2 é reconhecida como salva, o rascunho digitado em seguida fica, e a edição seguinte vai com a versão 2', async () => {
+    const servidor = servidorDaVoz(VOZ_V1)
+    vi.stubGlobal('fetch', servidor.fetch)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await qc.fetchQuery(consultaDaVozDaMarca(PROJETO))
+    const sair = new QueryObserver(qc, consultaDaVozDaMarca(PROJETO)).subscribe(() => {})
+    const t = tela(qc)
+    t.efeito()
+    expect(t.estado.versaoLida).toBe(1)
+
+    // O banco pisca: a escrita passa e a releitura complementar do PUT falha — e o GET da invalidação também.
+    t.editar({ descricao: 'A — direta e quente.' })
+    servidor.s.falharLeituraNoPut = true
+    servidor.s.falharLeitura = true
+    const a = await t.salvar()
+    // A mutação NÃO é erro: a escrita foi confirmada e o recibo veio.
+    expect(a.gravada.versao).toBe(2)
+    expect(a.leitura).toBeNull()
+    expect(servidor.s.voz.descricao).toBe('A — direta e quente.')
+
+    // A pessoa continua digitando enquanto a releitura corre (e falha).
+    t.editar({ descricao: 'B — direta, quente e curta.' })
+    t.efeito()
+    // O recibo avançou base e versão; o rascunho B ficou.
+    expect(t.estado).toMatchObject({ versaoLida: 2, divergente: null })
+    expect(t.estado.base.descricao).toBe('A — direta e quente.')
+    expect(t.estado.form.descricao).toBe('B — direta, quente e curta.')
+    // O que a consulta carrega é a voz gravada, nunca "não há voz" — `registroParaFormulario(null)` seria form VAZIO.
+    expect(qc.getQueryData<VozDaMarca>(CHAVE_DA_VOZ)?.registro).toMatchObject({ versao: 2, voz: { descricao: 'A — direta e quente.' } })
+
+    // O banco volta; a edição seguinte vai com a versão que o recibo confirmou, sem conflito provocado pelo próprio salvamento.
+    servidor.s.falharLeituraNoPut = false
+    servidor.s.falharLeitura = false
+    const b = await t.salvar()
+    expect(servidor.s.versoesEsperadas).toEqual([1, 2])
+    expect(b.gravada.versao).toBe(3)
+    expect(b.leitura).not.toBeNull()
+    t.efeito()
+    expect(t.estado).toMatchObject({ versaoLida: 3, divergente: null })
+    expect(formulariosIguais(t.estado.base, t.estado.form)).toBe(true)
+    sair()
+    qc.clear()
+  })
+
+  it('a PRIMEIRA gravação com a releitura falhando: a tela fica na v1 criada, não em "não há voz"', async () => {
+    const servidor = servidorDaVoz(VOZ_V1)
+    // Sem voz nenhuma: a consulta confirma a ausência (registro null, versão 0 para a tela).
+    servidor.s.versao = 0
+    const fetchSemVoz = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'PUT') {
+        const corpo = JSON.parse(String(init.body)) as { voz: unknown; versaoEsperada: number | null }
+        servidor.s.versoesEsperadas.push(corpo.versaoEsperada)
+        const lida = lerVoz(corpo.voz)
+        servidor.s.versao = 1
+        servidor.s.voz = lida.voz as VozCompacta
+        return json({ gravada: { versao: 1, criada: true, voz: lida.voz }, leitura: null, leituraFalhou: 'Erro ao carregar a voz da marca' })
+      }
+      if (servidor.s.versao === 0) return json({ contexto: CONTEXTO, registro: null, legado: { toneOfVoice: null, contentRules: null } })
+      return json({ error: 'Erro ao carregar a voz da marca' }, 500)
+    })
+    vi.stubGlobal('fetch', fetchSemVoz)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    await qc.fetchQuery(consultaDaVozDaMarca(PROJETO))
+    const sair = new QueryObserver(qc, consultaDaVozDaMarca(PROJETO)).subscribe(() => {})
+    const t = tela(qc)
+    t.efeito()
+    expect(t.estado.versaoLida).toBe(0)
+
+    t.editar({ descricao: 'Direta e quente.', exemplos: ['Sexta é dia de costela.'], termos: ['costela no bafo'] })
+    const a = await t.salvar()
+    expect(a.gravada).toMatchObject({ versao: 1, criada: true })
+    t.efeito()
+    // Sem o recibo, a tela ficaria na versão 0: a gravação seguinte mandaria `versaoEsperada: 0` numa voz que já é v1.
+    expect(t.estado.versaoLida).toBe(1)
+    expect(qc.getQueryData<VozDaMarca>(CHAVE_DA_VOZ)?.registro).toMatchObject({ versao: 1, migradaEm: null })
     sair()
     qc.clear()
   })

@@ -5,6 +5,7 @@ import {
   formularioParaVoz,
   formulariosIguais,
   reconciliarComServidor,
+  registroComRecibo,
   registroParaFormulario,
   podeReativar,
   podeRemoverRegra,
@@ -198,5 +199,42 @@ describe('reconciliarComServidor — o que chega do servidor nunca apaga ediçã
     const comRascunho = { ...lida, form: b }
     const depois = reconciliarComServidor(comRascunho, registroParaFormulario({ versao: 2, voz: lerVoz(formularioParaVoz(a)).voz }), { enviado: null, substituindo: false })
     expect(depois).toEqual({ ...comRascunho, divergente: 2 })
+  })
+})
+
+describe('registroComRecibo — a releitura falhou DEPOIS da escrita confirmada (PR14-16)', () => {
+  const recibo = { versao: 3, voz }
+  const anterior = { versao: 2, voz: null, problemas: [{ caminho: 'descricao', mensagem: 'antiga' }], migradaEm: '2026-09-12T10:00:00.000Z', dnaArquivado: { toneOfVoice: 'tom' }, atualizadaEm: '2026-09-12T10:00:00.000Z' }
+  const agora = new Date('2026-09-21T12:00:00.000Z')
+
+  it('o conteúdo e a versão vêm do recibo; a migração e o arquivo do DNA, que a gravação não toca, vêm do que a consulta tinha', () => {
+    expect(registroComRecibo(anterior, recibo, agora)).toEqual({
+      versao: 3,
+      voz,
+      problemas: [],
+      migradaEm: '2026-09-12T10:00:00.000Z',
+      dnaArquivado: { toneOfVoice: 'tom' },
+      atualizadaEm: '2026-09-21T12:00:00.000Z',
+    })
+  })
+
+  it('na PRIMEIRA gravação (sem registro anterior) nasce não migrado e sem arquivo — nunca `null`, que a tela leria como "não há voz"', () => {
+    const r = registroComRecibo(null, { versao: 1, voz }, agora)
+    expect(r).toMatchObject({ versao: 1, voz, migradaEm: null, dnaArquivado: null, problemas: [] })
+    // A prova de que o `null` seria o estrago: ele vira formulário VAZIO na versão 0.
+    expect(registroParaFormulario(r)).toEqual({ form: vozParaFormulario(voz), versao: 1 })
+    expect(registroParaFormulario(null)).toEqual({ form: vozParaFormulario(null), versao: 0 })
+  })
+
+  it('o registro montado só do recibo é o que a reconciliação precisa: a base avança e o rascunho posterior fica', () => {
+    const v1 = registroParaFormulario({ versao: 1, voz })
+    const lida = reconciliarComServidor(ESTADO_INICIAL_DA_VOZ, v1, { enviado: null, substituindo: false })
+    const a = { ...v1.form, descricao: 'A — direta e quente.' }
+    const b = { ...v1.form, descricao: 'B — direta, quente e curta.' }
+    const doRecibo = registroComRecibo({ ...anterior, versao: 1 }, { versao: 2, voz: lerVoz(formularioParaVoz(a)).voz }, agora)
+    const depois = reconciliarComServidor({ ...lida, form: b }, registroParaFormulario(doRecibo), { enviado: a, substituindo: false })
+    expect(depois.form).toBe(b)
+    expect(formulariosIguais(depois.base, a)).toBe(true)
+    expect(depois).toMatchObject({ versaoLida: 2, divergente: null })
   })
 })

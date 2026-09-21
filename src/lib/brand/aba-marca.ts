@@ -43,21 +43,50 @@ export interface SalvarVozArgs {
   versaoEsperada?: number | null
 }
 
+/** O RECIBO da escrita: o que o banco aceitou, com a versão que ele passou a ter. Não depende de nenhuma leitura posterior. */
+export interface ReciboDaGravacaoDaVoz {
+  versao: number
+  criada: boolean
+  /** O conteúdo gravado — é dele que a tela tira a base, sem esperar a releitura. */
+  voz: VozCompacta
+}
+
+export interface RespostaDaGravacaoDaVoz {
+  gravada: ReciboDaGravacaoDaVoz
+  /** A releitura complementar (precedência, registro e legado). `null` quando ela falhou DEPOIS da escrita confirmada. */
+  leitura: VozDaMarca | null
+  /** Só com `leitura: null`: por que a releitura falhou. A escrita ESTÁ gravada. */
+  leituraFalhou?: string
+}
+
 /**
  * Grava a voz editada na tela. `lerVoz` devolve TODOS os problemas antes de
  * qualquer escrita (`VOZ_INVALIDA`, 400); a versão lida protege contra a
  * edição concorrente (`VOZ_DIVERGENTE`, 409 — a tela recarrega e mostra o que
  * mudou por baixo). A precedência NÃO muda aqui: gravar a voz não migra o
  * cliente (isso é o manifesto do PR 13, decisão do Ciro).
+ *
+ * 🔴 PR14-16: depois de `gravarVoz` a escrita está CONFIRMADA, e daqui para
+ * baixo tudo é CONVENIÊNCIA. A releitura montava a resposta e, falhando,
+ * derrubava o PUT inteiro em 500: a tela dizia "erro ao salvar" sobre uma voz
+ * que já estava no banco — e, em cliente migrado, já mandando na copy. Pior,
+ * a tentativa seguinte ia com a versão velha e tomava `VOZ_DIVERGENTE` do
+ * PRÓPRIO salvamento, com a recuperação oferecendo descartar o rascunho. O
+ * recibo sai SEMPRE; a releitura é separada e pode faltar.
  */
-export async function salvarVozDaMarca(args: SalvarVozArgs): Promise<VozDaMarca & { gravada: { versao: number; criada: boolean } }> {
+export async function salvarVozDaMarca(args: SalvarVozArgs): Promise<RespostaDaGravacaoDaVoz> {
   const lida = lerVoz(args.voz)
   if (!lida.voz) {
     throw new CreativeError('VOZ_INVALIDA', `A voz não passa no contrato (${lida.problemas.length} problema${lida.problemas.length === 1 ? '' : 's'}).`, 400, { problemas: lida.problemas })
   }
   const gravada = await gravarVoz({ projectId: args.projectId, voz: lida.voz, ...(args.versaoEsperada != null ? { versaoEsperada: args.versaoEsperada } : {}) })
-  const depois = await lerVozDaMarca(args.projectId)
-  return { ...depois, gravada: { versao: gravada.versao, criada: gravada.criada } }
+  const recibo: ReciboDaGravacaoDaVoz = { versao: gravada.versao, criada: gravada.criada, voz: gravada.voz }
+  try {
+    return { gravada: recibo, leitura: await lerVozDaMarca(args.projectId) }
+  } catch (erro) {
+    console.error('[voz] a gravação foi confirmada e a releitura falhou', erro)
+    return { gravada: recibo, leitura: null, leituraFalhou: erro instanceof Error ? erro.message : 'erro ao reler a voz da marca' }
+  }
 }
 
 export interface ResumoDosFatos {

@@ -2,9 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
-import type { AssinaturaDaMarcaNaTela, ResumoDosFatos, VozDaMarca } from '@/lib/brand/aba-marca'
+import { registroComRecibo } from '@/lib/brand/voz-formulario'
+import type { AssinaturaDaMarcaNaTela, ResumoDosFatos, RespostaDaGravacaoDaVoz, VozDaMarca } from '@/lib/brand/aba-marca'
 
-export type RespostaDaGravacaoDaVoz = VozDaMarca & { gravada: { versao: number; criada: boolean } }
+export type { RespostaDaGravacaoDaVoz }
 
 /** A consulta da voz: exportada para o teste dirigir a MESMA chave e a mesma leitura que a tela. */
 export function consultaDaVozDaMarca(projectId: number) {
@@ -27,7 +28,13 @@ export function gravacaoDaVozDaMarca(queryClient: QueryClient, projectId: number
       // PR14-15: a resposta do PUT É a leitura depois da escrita — vira o dado da consulta ANTES da releitura. Sem
       // isso, uma releitura que falhava deixava a tela na versão anterior: a edição seguinte ia com a versão velha,
       // tomava VOZ_DIVERGENTE de um salvamento que era dela, e a recuperação pedia descartar o rascunho.
-      queryClient.setQueryData<VozDaMarca>(['voz-da-marca', projectId], { contexto: r.contexto, registro: r.registro, legado: r.legado })
+      //
+      // PR14-16: a releitura do PRÓPRIO PUT também pode falhar, e aí só vem o RECIBO. Ele avança versão e conteúdo
+      // sobre o que a consulta já tinha; `contexto` e `legado` ficam como estavam (a gravação não muda quem manda na
+      // copy — `migradaEm` é do manifesto) e a invalidação abaixo os atualiza quando a leitura voltar.
+      queryClient.setQueryData<VozDaMarca>(['voz-da-marca', projectId], (atual) =>
+        r.leitura ?? (atual ? { ...atual, registro: registroComRecibo(atual.registro, r.gravada) } : atual),
+      )
       // A releitura é AGUARDADA: `isPending` cobre gravação + releitura, e a tela mantém os campos desabilitados até a
       // resposta chegar (PR14-02).
       await queryClient.invalidateQueries({ queryKey: ['voz-da-marca', projectId] })

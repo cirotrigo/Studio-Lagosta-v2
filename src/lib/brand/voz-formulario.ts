@@ -199,6 +199,45 @@ export function registroParaFormulario(registro: { versao: number; voz: VozCompa
   return { form: vozParaFormulario(registro?.voz ?? null), versao: registro?.versao ?? 0 }
 }
 
+/** O registro da voz como a CONSULTA da aba o carrega (o que `lerVozDaMarca` devolve em `registro`). */
+export interface RegistroNaConsulta {
+  versao: number
+  voz: VozCompacta | null
+  problemas: Array<{ caminho: string; mensagem: string }>
+  migradaEm: string | null
+  dnaArquivado: unknown
+  atualizadaEm: string
+}
+
+/**
+ * O RECIBO da gravação aplicado ao registro que a consulta tinha — o caminho
+ * de quando a releitura complementar falhou DEPOIS de a escrita ser
+ * confirmada (PR14-16).
+ *
+ * 🔴 Não devolver `null` aqui: `registroParaFormulario(null)` é versão 0 com
+ * formulário VAZIO, e sem edição local a tela adotaria isso — apagando na
+ * tela a voz que o servidor acabou de aceitar. "Não consegui reler" nunca
+ * pode ser lido como "não há voz".
+ *
+ * `migradaEm` e `dnaArquivado` vêm do que a consulta já tinha porque
+ * `gravarVoz` não toca neles: ela escreve `voz` e `versao`, e só. Os
+ * problemas são `[]` porque só se grava voz que passou no contrato.
+ */
+export function registroComRecibo(
+  anterior: RegistroNaConsulta | null | undefined,
+  gravada: { versao: number; voz: VozCompacta },
+  agora: Date = new Date(),
+): RegistroNaConsulta {
+  return {
+    versao: gravada.versao,
+    voz: gravada.voz,
+    problemas: [],
+    migradaEm: anterior?.migradaEm ?? null,
+    dnaArquivado: anterior?.dnaArquivado ?? null,
+    atualizadaEm: agora.toISOString(),
+  }
+}
+
 /**
  * O que chega do servidor — a releitura OU a resposta da própria gravação
  * (PR14-15) — aplicado ao estado da tela, sem nunca apagar edição local não

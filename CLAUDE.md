@@ -6841,6 +6841,54 @@ exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
   verdade, as opções do próprio hook, servidor em memória no `fetch` fazendo o
   CAS) e em `voz-formulario.test.ts`. A amarração do efeito `[data]` e o
   `setCarregado(false)` depois do `await` ficam por inspeção.
+- 🔴 **A releitura de CONVENIÊNCIA nunca decide se a escrita aconteceu**
+  (PR14-16 da revisão FINAL do Codex, 21/09/2026). É o INVERSO do PR14-15 e da
+  família de "o registro afirma mais do que sabe": aqui o sistema NEGA o que já
+  fez. `salvarVozDaMarca` gravava com `gravarVoz` — escrita CONFIRMADA, versão
+  já avançada — e só então chamava `lerVozDaMarca` para montar a resposta;
+  falhando essa leitura, o serviço lançava DEPOIS da escrita e a rota devolvia
+  500. A cascata: a tela dizia "erro ao salvar", não aplicava a versão nova ao
+  cache, limpava o `enviadoRef`, e a tentativa seguinte ia com a versão velha e
+  tomava `VOZ_DIVERGENTE` **do próprio salvamento** — com a recuperação
+  oferecendo descartar o rascunho. Em cliente migrado, a voz já mandava na copy
+  enquanto a tela dizia que falhou. Hoje a resposta é
+  `{ gravada: RECIBO, leitura: VozDaMarca | null, leituraFalhou? }`: o recibo
+  (versão, `criada` e a VOZ gravada) sai sempre; a releitura é separada e pode
+  faltar.
+  🔴 **A forma nested é o conserto, não estilo.** Devolver `registro: null` na
+  falha seria pior que o 500: `registroParaFormulario(null)` é versão 0 com
+  formulário VAZIO, e sem edição local a tela adotaria isso — apagando na tela
+  a voz que o servidor acabou de aceitar. **"Não consegui reler" nunca pode ser
+  lido como "não há voz".**
+  O hook aplica o recibo ao que a consulta JÁ tinha (`registroComRecibo`, puro
+  em `voz-formulario.ts`): versão e conteúdo do recibo, `migradaEm` e
+  `dnaArquivado` do cache (a gravação não os toca — `gravarVoz` escreve `voz` e
+  `versao`, e só), `problemas: []` (só se grava voz que passou no contrato).
+  `contexto` e `legado` ficam como estavam: quem manda na copy não muda ao
+  gravar, e a invalidação os atualiza quando a leitura voltar. A tela diz que
+  salvou E que não conseguiu reler o resto.
+  **Varredura da mesma forma nos outros caminhos desta tela e da rota da voz**:
+  `PATCH /brand-dna` → `updateBrandDNA` devolve a linha do próprio `upsert`, sem
+  leitura posterior; `virarRegraNaVoz` monta `antes`/`depois` do que já tem em
+  memória (`registro.voz`, `resultado.voz`) e o `gravarVoz` é a última coisa que
+  faz; `virarRegra` (DNA) idem, dentro da transação; `fatos` e `assinatura` são
+  só leitura. Nenhum outro ponto lê depois de escrever.
+  ⚠️ **Onde a leitura posterior é GARANTIA, não conveniência**: dentro de
+  `migrarParaVoz`, as leituras do DNA e dos fatos rodam DEPOIS da trava e ANTES
+  de ligar a precedência — elas decidem se a escrita acontece, então falhar ali
+  tem de abortar mesmo (`VOZ_DNA_DIVERGENTE`, `VOZ_FATOS_DIVERGENTES`). A
+  distinção é a posição: leitura que ANTECEDE a escrita pode derrubá-la; leitura
+  que a SUCEDE, nunca.
+  Provas: `src/lib/brand/__tests__/aba-marca-recibo.test.ts` (o serviço com os
+  dois braços da releitura falhando, mais os controles de `VOZ_INVALIDA` e do
+  CAS, que continuam lançando porque a escrita NÃO aconteceu),
+  `use-aba-marca.test.ts` (a releitura interna do PUT e o GET falhando juntos:
+  a v2 é reconhecida, o rascunho digitado em seguida fica e a edição seguinte
+  vai com `versaoEsperada: 2`; e a PRIMEIRA gravação, que sem o recibo deixaria
+  a tela na versão 0) e `voz-formulario.test.ts` (`registroComRecibo`). 5
+  mutações pegas: tirar o try/catch (2), ignorar o recibo no hook (2), registro
+  sem a voz gravada (4), perder `migradaEm`/`dnaArquivado` (1), versão que não
+  avança (3).
 - **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
   as três áreas distinguem erro (mensagem + tentar de novo), carregando e
   resultado vazio — "este cliente não tem página de assinatura" só é dito com a

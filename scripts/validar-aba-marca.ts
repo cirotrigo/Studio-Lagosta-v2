@@ -115,7 +115,7 @@ async function main() {
 
   const { db } = await import('../src/lib/db')
   const { lerVozDaMarca, salvarVozDaMarca, resumoDosFatos, assinaturasDaMarca } = await import('../src/lib/brand/aba-marca')
-  const { vozParaFormulario, formularioParaVoz, substituirRegraNoFormulario, regraEmBranco } = await import('../src/lib/brand/voz-formulario')
+  const { vozParaFormulario, formularioParaVoz, substituirRegraNoFormulario, regraEmBranco, registroComRecibo } = await import('../src/lib/brand/voz-formulario')
   const { loadBrandContext } = await import('../src/lib/brand/brand-context')
   const { vozParaPrompt } = await import('../src/lib/brand/voz')
   const { executarToolLocal } = await import('../src/lib/mcp/catalogo/integracao')
@@ -165,7 +165,7 @@ async function main() {
     conferir('o loader único vê a voz como PRÉVIA (vozPendente) e a copy continua no legado', brand3.voz.vozPendente === true && brand3.voz.fonte !== 'voz', JSON.stringify({ fonte: brand3.voz.fonte, pendente: brand3.voz.vozPendente }))
 
     console.log('4) CAS: a versão lida pela tela protege a edição concorrente')
-    const form4 = vozParaFormulario(g3.registro!.voz)
+    const form4 = vozParaFormulario(g3.leitura!.registro!.voz)
     form4.proibicoes = [...form4.proibicoes, 'emoji na manchete']
     const g4 = await salvarVozDaMarca({ projectId: PROJETO, voz: formularioParaVoz(form4), versaoEsperada: 1 })
     const e4 = await erroDe(salvarVozDaMarca({ projectId: PROJETO, voz: formularioParaVoz({ ...form4, tratamento: 'tu' }), versaoEsperada: 1 }))
@@ -184,23 +184,30 @@ async function main() {
     const regras5 = (c5.voz?.regras ?? []) as Array<{ id: string; ativa: boolean; substitui?: string; texto: string }>
     const antiga = regras5.find((r) => r.id === idAntiga)
     const nova = regras5.find((r) => r.substitui === idAntiga)
-    const prompt5 = vozParaPrompt(g5.registro!.voz!, { escopo: 'copy' })
+    const prompt5 = vozParaPrompt(g5.leitura!.registro!.voz!, { escopo: 'copy' })
     conferir('v3: a antiga está inativa, a nova aponta para ela, e o prompt de copy só carrega a nova', g5.gravada.versao === 3 && antiga?.ativa === false && !!nova && nova.ativa && prompt5.includes('o apoio é livre') && !prompt5.includes('se leem como UMA frase.'), JSON.stringify({ antiga: antiga?.ativa, nova: nova?.id }))
 
     console.log('5b) PR14-01: travessão, seta, marcador e quebra interna atravessam a tela e chegam LITERAIS ao conector; editar só a descrição não mexe no resto')
-    const form5b = vozParaFormulario(g5.registro!.voz!)
+    const form5b = vozParaFormulario(g5.leitura!.registro!.voz!)
     form5b.exemplos = ['Fogo\nna mesa', '- costela, não "costelinha"', 'Vem → hoje']
     form5b.antesDepois = [{ antes: 'Venha', depois: 'Vem — hoje', motivo: 'mais direto' }, { antes: 'a -> b', depois: 'a → b -- c', motivo: 'seta e travessão são conteúdo' }]
     form5b.termos = ['• happy em dobro', 'costela no bafo — a da casa']
     const g5b = await salvarVozDaMarca({ projectId: PROJETO, voz: formularioParaVoz(form5b), versaoEsperada: 3 })
     const c5b = await tool('consultar-voz', { projectId: PROJETO })
     conferir('v4: exemplos, reescritas e termos voltam do conector EXATAMENTE como digitados', g5b.gravada.versao === 4 && JSON.stringify(c5b.voz?.exemplos) === JSON.stringify(form5b.exemplos) && JSON.stringify(c5b.voz?.antesDepois) === JSON.stringify(form5b.antesDepois) && JSON.stringify(c5b.voz?.termos) === JSON.stringify(form5b.termos), JSON.stringify({ depois: (c5b.voz?.antesDepois as Array<{ depois: string }> | undefined)?.map((r) => r.depois), exemplo0: c5b.voz?.exemplos?.[0] }))
-    const form5c = vozParaFormulario(g5b.registro!.voz!)
+    const form5c = vozParaFormulario(g5b.leitura!.registro!.voz!)
     form5c.descricao = `${form5c.descricao} Curta.`
     const g5c = await salvarVozDaMarca({ projectId: PROJETO, voz: formularioParaVoz(form5c), versaoEsperada: 4 })
-    const { descricao: _d1, ...restoAntes } = g5b.registro!.voz!
-    const { descricao: _d2, ...restoDepois } = g5c.registro!.voz!
-    conferir('v5: editar SÓ a descrição pela tela deixa todos os outros campos idênticos (byte a byte)', g5c.gravada.versao === 5 && JSON.stringify(restoAntes) === JSON.stringify(restoDepois) && g5c.registro!.voz!.descricao.endsWith('Curta.'), JSON.stringify({ iguais: JSON.stringify(restoAntes) === JSON.stringify(restoDepois) }))
+    const { descricao: _d1, ...restoAntes } = g5b.leitura!.registro!.voz!
+    const { descricao: _d2, ...restoDepois } = g5c.leitura!.registro!.voz!
+    conferir('v5: editar SÓ a descrição pela tela deixa todos os outros campos idênticos (byte a byte)', g5c.gravada.versao === 5 && JSON.stringify(restoAntes) === JSON.stringify(restoDepois) && g5c.leitura!.registro!.voz!.descricao.endsWith('Curta.'), JSON.stringify({ iguais: JSON.stringify(restoAntes) === JSON.stringify(restoDepois) }))
+
+    console.log('5c) PR14-16: o RECIBO da gravação basta sozinho — é igual, byte a byte, ao que a releitura traz do banco')
+    // A tela cai no recibo quando a releitura falha. Se ele divergisse do que está gravado (conteúdo ou versão), o
+    // conserto do PR14-16 trocaria um defeito por outro: a base da tela passaria a ser algo que o banco não tem.
+    const reciboIgual = JSON.stringify(g5c.gravada.voz) === JSON.stringify(g5c.leitura!.registro!.voz) && g5c.gravada.versao === g5c.leitura!.registro!.versao
+    const reg5c = registroComRecibo(g5c.leitura!.registro, g5c.gravada)
+    conferir('o recibo traz o MESMO conteúdo e a MESMA versão da releitura, e o registro montado só dele preserva a migração', reciboIgual && JSON.stringify(reg5c.voz) === JSON.stringify(g5c.leitura!.registro!.voz) && reg5c.versao === 5 && reg5c.migradaEm === g5c.leitura!.registro!.migradaEm && reg5c.problemas.length === 0, JSON.stringify({ reciboIgual, versao: reg5c.versao, migradaEm: reg5c.migradaEm }))
 
     console.log('6) Fatos da casa: o resumo bate com a base e não copia conteúdo')
     const r6 = await resumoDosFatos(PROJETO)

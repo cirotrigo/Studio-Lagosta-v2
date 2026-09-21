@@ -110,7 +110,14 @@ export function ComoAMarcaFala({ projectId }: { projectId: number }) {
     salvar.mutate(
       { voz: formularioParaVoz(form), versaoEsperada: versaoLida },
       {
-        onSuccess: (r) => toast.success(r.gravada.criada ? 'Voz criada (versão 1). Ela passa a valer na copy quando o cliente for migrado.' : `Voz salva (versão ${r.gravada.versao}).`),
+        onSuccess: (r) => {
+          const salvo = r.gravada.criada ? 'Voz criada (versão 1). Ela passa a valer na copy quando o cliente for migrado.' : `Voz salva (versão ${r.gravada.versao}).`
+          // PR14-16: a escrita está confirmada mesmo quando a releitura que monta o resto da resposta falha — o que
+          // não dá para afirmar é o que está ao redor (quem manda na copy, o legado), e a tela diz isso em vez de
+          // chamar de erro o que foi gravado.
+          if (r.leitura) toast.success(salvo)
+          else toast.success(`${salvo} Não consegui reler para atualizar o resto da tela — o que aparece ao redor pode estar atrasado.`)
+        },
         onError: (e: Error & { code?: string; status?: number }) => {
           enviadoRef.current = null
           if (/VOZ_DIVERGENTE|VOZ_VERSAO_OBRIGATORIA|mudou enquanto/.test(`${e.code ?? ''} ${e.message}`)) {
