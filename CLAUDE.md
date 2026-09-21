@@ -6769,6 +6769,43 @@ com o manifesto em branco, à espera das decisões.
   por `db:deploy` com o OK do Ciro — nunca antes do código do PR 7 e nunca o
   código antes do schema.
 
+Da revisão FINAL do Codex sobre o rebase na main de 21/09 (BLOQUEADO, PR13-51,
+PR13-52) — as duas com a mesma forma de fundo: **um sinal de exclusão que não
+cobre a janela inteira**:
+
+- 🔴 **ESPERAR POR UMA TRAVA NÃO RENOVA O SNAPSHOT.** Em REPEATABLE READ e em
+  SERIALIZABLE o snapshot é congelado no PRIMEIRO comando da transação — que num
+  protocolo "trava primeiro, lê depois" é o próprio `SELECT … FOR UPDATE`. A
+  transação dorme na trava e acorda com ela na mão e o mundo de ANTES nos olhos.
+  Foi o que reabriu o PR7-R9-02 quando `migrarParaVoz` ganhou
+  `isolationLevel: Serializable` no rebase: `virarRegra` commitava a regra no
+  DNA, a migração pegava a trava logo depois e arquivava o DNA VELHO, ativando a
+  voz sem enxergar a regra — e como `virarRegra` só BLOQUEIA a linha de
+  `Project` (não a atualiza) e não pede serializável, não há erro de atualização
+  concorrente para avisar. **O protocolo do PR 7 exige READ COMMITTED**, onde
+  cada comando depois da trava tira snapshot novo. Medido no Postgres de dev, a
+  mesma intercalação: READ COMMITTED enxerga a regra, SERIALIZABLE não.
+  🔴 **E o serializável não substitui a conferência explícita**: ele estava ali
+  para pegar quem NÃO toma a trava (`updateBrandDNA` direto, da aba Marca) e
+  **não pega** — medido no mesmo banco, a edição solta commita no meio e a
+  transação serializável segue e commita, porque um upsert que não LÊ nada não
+  fecha ciclo para o SSI. Quem protege é o `dnaEsperado`. Nível de isolamento
+  não é trava, e trava não é conferência: se o valor importa, releia-o e
+  compare-o sob a trava. A prova é o passo 6v de `validar-migracao-da-voz.ts`,
+  com duas conexões reais e a barreira dada pelo BANCO (`pg_blocking_pids`
+  confirmando o bloqueio antes de a regra ser commitada) — dublê de teste
+  serializa chamadas e **não reproduz snapshot MVCC**.
+- 🔴 **`Promise.all` rejeita no PRIMEIRO erro e deixa os outros EM VOO.** Quando
+  o que vem depois é soltar uma exclusão, a rejeição não significa que o
+  trabalho acabou: em `reindexEntry` um `create` de chunk falhando com erro
+  COMUM não marcava `emVoo` (nada foi abortado), o `finally` LIBERAVA o
+  arrendamento, e outra execução podia reconstruir a entrada enquanto um insert
+  antigo — que não confere o token do ciclo — ainda chegava, deixando chunk
+  velho ou estourando a unicidade de `vectorId`. `Promise.allSettled` espera
+  TODOS encerrarem e só então propaga a falha. O teto por TEMPO continua sendo
+  quem cobre o que trava de vez (`passoArrendado` marca `emVoo` e não libera).
+  Vale para qualquer lote de escritas sob arrendamento, trava ou transação.
+
 Da revisão do Codex sobre o primeiro commit (BLOQUEADO, PR13-01…08, 12/09/2026):
 
 - 🔴 **`--dev` trocava só o SQL; o índice de vetores continuava o de PRODUÇÃO**
