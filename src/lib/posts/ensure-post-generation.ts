@@ -33,6 +33,16 @@ import { db } from '@/lib/db'
  * sem ninguém conferir a headline. A versão compartilhada decodifica fundo.
  */
 import { textosDaPagina } from '@/lib/posts/page-layers'
+import { comTravaPorChave } from '@/lib/trava-por-chave'
+import type { Prisma } from '../../../prisma/generated/client'
+
+/**
+ * A chave da trava das artes de UM post (R12-09) — a mesma para quem cria a
+ * Generation da capa (aqui) e para o catálogo das outras mídias
+ * (`registrarArtesDoPost`). Chaves diferentes não se excluiriam: o catálogo
+ * que visse a capa ainda sem arte a registraria de novo.
+ */
+export const chaveDasArtesDoPost = (postId: string) => `catalogo-do-post:${postId}`
 
 /**
  * Devolve o `generationId` do post — reaproveitando o que existir, criando
@@ -41,110 +51,126 @@ import { textosDaPagina } from '@/lib/posts/page-layers'
  */
 export async function ensurePostGeneration(postId: string): Promise<string | null> {
   try {
-    const post = await db.socialPost.findUnique({
-      where: { id: postId },
-      select: {
-        id: true,
-        projectId: true,
-        templateId: true,
-        pageId: true,
-        generationId: true,
-        mediaUrls: true,
-        renderedImageUrl: true,
-        slotValues: true,
-        Project: { select: { userId: true, name: true } },
-      },
-    })
-
-    if (!post) return null
-    if (post.generationId) return post.generationId
-
-    const arte = post.mediaUrls?.[0] ?? post.renderedImageUrl
-    // Sem arte não há o que registrar. Post de página nasce assim e volta aqui
-    // depois do render (renderPostArt chama de novo).
-    if (!arte) return null
-    // Só arte que veio de uma página: mídia externa (upload, Drive, import do
-    // Zernio) não tem template ao qual amarrar a Generation.
-    if (!post.pageId) return null
-
-    const page = await db.page.findUnique({
-      where: { id: post.pageId },
-      select: { id: true, name: true, layers: true, templateId: true, Template: { select: { name: true } } },
-    })
-    if (!page) return null
-
-    const templateId = post.templateId ?? page.templateId
-
+    // O post que já tem vínculo não espera ninguém: um vínculo não é desfeito por quem cria.
+    const previa = await db.socialPost.findUnique({ where: { id: postId }, select: { generationId: true } })
+    if (!previa) return null
+    if (previa.generationId) return previa.generationId
     /**
-     * Reaproveita a Generation que já descreve esta arte, se existir — é o
-     * mesmo casamento por `resultUrl` que o `agendarPost` faz. Sem isto, um
-     * post criado a partir de uma arte da galeria ganharia uma segunda
-     * Generation apontando para o mesmo arquivo.
+     * R12-09: procurar a arte e criá-la é verificar-e-criar. Duas execuções ao
+     * mesmo tempo (o catálogo de duas retomadas, o render do cron e o
+     * agendamento) liam as duas "nenhuma Generation" e criavam as duas — uma
+     * ficava órfã na galeria. Sob a trava do post, quem chega depois relê e
+     * encontra o vínculo que a primeira gravou.
      */
-    const existente = await db.generation.findFirst({
-      where: { projectId: post.projectId, resultUrl: arte },
-      select: { id: true },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    if (existente) {
-      await db.socialPost.updateMany({
-        where: { id: post.id, generationId: null },
-        data: { generationId: existente.id },
-      })
-      return existente.id
-    }
-
-    const slotValues =
-      post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
-        ? (post.slotValues as Record<string, unknown>)
-        : textosDaPagina(page.layers)
-
-    const generation = await db.generation.create({
-      data: {
-        status: 'COMPLETED' as never,
-        templateId,
-        fieldValues: {
-          source: 'post-schedule',
-          postId: post.id,
-          // pageId sempre: é como conferir-arte localiza as camadas para o
-          // diagnóstico geométrico (sobreposição vs texto faltando).
-          pageId: page.id,
-          slotValues,
-        } as never,
-        resultUrl: arte,
-        projectId: post.projectId,
-        createdBy: post.Project.userId,
-        templateName: page.Template?.name ?? null,
-        projectName: post.Project.name,
-        completedAt: new Date(),
-        fileName: `${page.name}.jpg`,
-      },
-      select: { id: true },
-    })
-
-    // `generationId: null` no where: se outra execução venceu a corrida, a
-    // dela vale e esta fica órfã na galeria — inofensivo, e melhor que
-    // sobrescrever um vínculo já usado por uma melhoria em andamento.
-    const vinculado = await db.socialPost.updateMany({
-      where: { id: post.id, generationId: null },
-      data: { generationId: generation.id },
-    })
-
-    if (vinculado.count === 0) {
-      const atual = await db.socialPost.findUnique({
-        where: { id: post.id },
-        select: { generationId: true },
-      })
-      return atual?.generationId ?? null
-    }
-
-    console.log(`[ensure-post-generation] post ${post.id} vinculado à Generation ${generation.id}`)
-    return generation.id
+    return await comTravaPorChave(chaveDasArtesDoPost(postId), (tx) => vincularSobATrava(tx, postId))
   } catch (error) {
     // Nunca derruba quem chamou: agendar e publicar são mais importantes que
     // o vínculo que habilita a melhoria.
     console.error(`[ensure-post-generation] falhou para o post ${postId}:`, error)
     return null
   }
+}
+
+/** O vínculo, com todas as leituras e escritas pela transação que segura a trava do post. */
+async function vincularSobATrava(tx: Prisma.TransactionClient, postId: string): Promise<string | null> {
+  const post = await tx.socialPost.findUnique({
+    where: { id: postId },
+    select: {
+      id: true,
+      projectId: true,
+      templateId: true,
+      pageId: true,
+      generationId: true,
+      mediaUrls: true,
+      renderedImageUrl: true,
+      slotValues: true,
+      Project: { select: { userId: true, name: true } },
+    },
+  })
+
+  if (!post) return null
+  if (post.generationId) return post.generationId
+
+  const arte = post.mediaUrls?.[0] ?? post.renderedImageUrl
+  // Sem arte não há o que registrar. Post de página nasce assim e volta aqui
+  // depois do render (renderPostArt chama de novo).
+  if (!arte) return null
+  // Só arte que veio de uma página: mídia externa (upload, Drive, import do
+  // Zernio) não tem template ao qual amarrar a Generation.
+  if (!post.pageId) return null
+
+  const page = await tx.page.findUnique({
+    where: { id: post.pageId },
+    select: { id: true, name: true, layers: true, templateId: true, Template: { select: { name: true } } },
+  })
+  if (!page) return null
+
+  const templateId = post.templateId ?? page.templateId
+
+  /**
+   * Reaproveita a Generation que já descreve esta arte, se existir — é o
+   * mesmo casamento por `resultUrl` que o `agendarPost` faz. Sem isto, um
+   * post criado a partir de uma arte da galeria ganharia uma segunda
+   * Generation apontando para o mesmo arquivo.
+   */
+  const existente = await tx.generation.findFirst({
+    where: { projectId: post.projectId, resultUrl: arte },
+    select: { id: true },
+    orderBy: { createdAt: 'desc' },
+  })
+
+  if (existente) {
+    await tx.socialPost.updateMany({
+      where: { id: post.id, generationId: null },
+      data: { generationId: existente.id },
+    })
+    return existente.id
+  }
+
+  const slotValues =
+    post.slotValues && typeof post.slotValues === 'object' && Object.keys(post.slotValues).length > 0
+      ? (post.slotValues as Record<string, unknown>)
+      : textosDaPagina(page.layers)
+
+  const generation = await tx.generation.create({
+    data: {
+      status: 'COMPLETED' as never,
+      templateId,
+      fieldValues: {
+        source: 'post-schedule',
+        postId: post.id,
+        // pageId sempre: é como conferir-arte localiza as camadas para o
+        // diagnóstico geométrico (sobreposição vs texto faltando).
+        pageId: page.id,
+        slotValues,
+      } as never,
+      resultUrl: arte,
+      projectId: post.projectId,
+      createdBy: post.Project.userId,
+      templateName: page.Template?.name ?? null,
+      projectName: post.Project.name,
+      completedAt: new Date(),
+      fileName: `${page.name}.jpg`,
+    },
+    select: { id: true },
+  })
+
+  // `generationId: null` no where: com a trava do post a corrida entre quem
+  // cria não acontece mais, mas outro escritor do vínculo (trocar-arte, a
+  // melhoria) não passa por ela — o vínculo dele vale.
+  const vinculado = await tx.socialPost.updateMany({
+    where: { id: post.id, generationId: null },
+    data: { generationId: generation.id },
+  })
+
+  if (vinculado.count === 0) {
+    const atual = await tx.socialPost.findUnique({
+      where: { id: post.id },
+      select: { generationId: true },
+    })
+    return atual?.generationId ?? null
+  }
+
+  console.log(`[ensure-post-generation] post ${post.id} vinculado à Generation ${generation.id}`)
+  return generation.id
 }

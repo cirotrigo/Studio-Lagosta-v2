@@ -34,7 +34,10 @@
 import { db } from '@/lib/db'
 import { ensureArteTemplate } from '@/lib/creatives/persist'
 import { ARTE_ENVIADA_TEMPLATE_NAMES } from '@/lib/creatives/arte-enviada'
+import { comTravaPorChave } from '@/lib/trava-por-chave'
+import { chaveDasArtesDoPost, ensurePostGeneration } from './ensure-post-generation'
 import type { PostType, TemplateType } from '@prisma/client'
+import type { Prisma } from '../../../prisma/generated/client'
 
 /** Uma mídia do post e a arte que a descreve. */
 export interface ArteDoPost {
@@ -92,9 +95,9 @@ interface PostComArtes {
   pageId: string | null
 }
 
-async function carregarPost(postId: string): Promise<PostComArtes | null> {
+async function carregarPost(cliente: Prisma.TransactionClient, postId: string): Promise<PostComArtes | null> {
   if (!postId) return null
-  const post = await db.socialPost.findUnique({
+  const post = await cliente.socialPost.findUnique({
     where: { id: postId },
     select: {
       id: true,
@@ -117,13 +120,14 @@ async function carregarPost(postId: string): Promise<PostComArtes | null> {
  * regra do casamento de `agendarPost`.
  */
 async function generationsPorUrl(
+  cliente: Prisma.TransactionClient,
   projectId: number,
   urls: string[],
 ): Promise<Map<string, string>> {
   const alvos = Array.from(new Set(urls.filter(catalogavel)))
   if (alvos.length === 0) return new Map()
 
-  const encontradas = await db.generation.findMany({
+  const encontradas = await cliente.generation.findMany({
     where: { projectId, resultUrl: { in: alvos } },
     select: { id: true, resultUrl: true },
     orderBy: { createdAt: 'desc' },
@@ -158,9 +162,9 @@ function montarArtes(post: PostComArtes, porUrl: Map<string, string>): ArteDoPos
  */
 export async function lerArtesDoPost(postId: string): Promise<ArteDoPost[]> {
   try {
-    const post = await carregarPost(postId)
+    const post = await carregarPost(db, postId)
     if (!post || post.mediaUrls.length === 0) return []
-    return montarArtes(post, await generationsPorUrl(post.projectId, post.mediaUrls))
+    return montarArtes(post, await generationsPorUrl(db, post.projectId, post.mediaUrls))
   } catch (erro) {
     console.error(`[artes-do-post] falha ao ler as artes do post ${postId}:`, erro)
     return []
@@ -173,6 +177,24 @@ export interface RegistroDeArtes {
   /** `true` quando a coluna `generationId` do post foi preenchida nesta chamada. */
   colunaVinculada: boolean
   artes: ArteDoPost[]
+  /** O banco falhou no meio: o catálogo pode ter ficado incompleto, e chamar de novo completa. */
+  falhou?: boolean
+}
+
+/**
+ * As mídias que ainda não têm Generation. Única por URL: o mesmo arquivo
+ * repetido em dois slides é uma arte só, e sem o dedupe o segundo passaria
+ * pelo `!porUrl.has` do primeiro (o mapa só é atualizado depois do create) e
+ * nasceria uma Generation duplicada.
+ */
+function oQueFalta(post: PostComArtes, porUrl: Map<string, string>, opcoes: { pularCapaVinculada?: boolean }): string[] {
+  const capaFora = opcoes.pularCapaVinculada && post.generationId ? post.mediaUrls[0] : undefined
+  return Array.from(new Set(post.mediaUrls.filter((url) => catalogavel(url) && !porUrl.has(url) && url !== capaFora)))
+}
+
+/** Há mídia a registrar, ou a capa já registrada a vincular na coluna do post. */
+function haTrabalho(post: PostComArtes, porUrl: Map<string, string>, opcoes: { pularCapaVinculada?: boolean }): boolean {
+  return oQueFalta(post, porUrl, opcoes).length > 0 || (!post.generationId && porUrl.has(post.mediaUrls[0] ?? ''))
 }
 
 /**
@@ -188,11 +210,23 @@ export interface RegistroDeArtes {
  * para no primeiro slide; esta atende a mídia que chegou pronta, de qualquer
  * origem, em todos os índices.
  */
-export async function registrarArtesDoPost(postId: string): Promise<RegistroDeArtes> {
+export async function registrarArtesDoPost(
+  postId: string,
+  /**
+   * `pularCapaVinculada` (o lote, R12-08): post que JÁ tem Generation tem a capa
+   * vinculada, e a mídia do índice 0 pode ser o PNG que o cron desenhou depois,
+   * sem Generation — catalogá-lo criaria uma segunda arte da mesma peça
+   * (C12-1x4). As DEMAIS mídias sem Generation seguem sendo catalogadas: o
+   * vínculo da capa não prova que o resto do catálogo terminou (uma execução
+   * que caiu no meio deixa a capa vinculada e o slide 2 sem registro).
+   * Decidido pelo post relido aqui, nunca por uma leitura de quem chama.
+   */
+  opcoes: { pularCapaVinculada?: boolean } = {},
+): Promise<RegistroDeArtes> {
   const vazio: RegistroDeArtes = { registradas: 0, colunaVinculada: false, artes: [] }
   try {
-    let post = await carregarPost(postId)
-    if (!post || post.mediaUrls.length === 0) return vazio
+    const inicial = await carregarPost(db, postId)
+    if (!inicial || inicial.mediaUrls.length === 0) return vazio
 
     /**
      * Post que nasceu de uma PÁGINA já tem dono: `ensurePostGeneration` registra
@@ -201,105 +235,121 @@ export async function registrarArtesDoPost(postId: string): Promise<RegistroDeAr
      * reconstruir a partir de uma URL. Ele é idempotente (sai cedo quando a
      * coluna já existe), então chamar aqui só cobre o que faltava; os slides
      * 2..N de um carrossel montado a partir de uma página continuam sendo
-     * nossos, porque ele só enxerga o primeiro.
+     * nossos, porque ele só enxerga o primeiro. Ele toma a MESMA trava do post
+     * que o catálogo toma logo abaixo (R12-09).
      */
-    if (post.pageId && !post.generationId) {
-      const { ensurePostGeneration } = await import('./ensure-post-generation')
-      await ensurePostGeneration(post.id)
-      post = (await carregarPost(postId)) ?? post
+    let previo = inicial
+    if (inicial.pageId && !inicial.generationId) {
+      await ensurePostGeneration(inicial.id)
+      previo = (await carregarPost(db, postId)) ?? inicial
     }
 
-    const porUrl = await generationsPorUrl(post.projectId, post.mediaUrls)
-    // Único por URL: o mesmo arquivo repetido em dois slides é uma arte só, e
-    // sem o dedupe o segundo passaria pelo `!porUrl.has` do primeiro (o mapa só
-    // é atualizado depois do create) e nasceria uma Generation duplicada.
-    const faltando = Array.from(
-      new Set(post.mediaUrls.filter((url) => catalogavel(url) && !porUrl.has(url))),
-    )
-
-    let registradas = 0
-    if (faltando.length > 0) {
-      const project = await db.project.findUnique({
-        where: { id: post.projectId },
-        select: { name: true, userId: true },
-      })
-      if (!project) return vazio
-
-      // O coletor "Arte Enviada" já é o balde da arte que chega pronta de fora
-      // (upload-creative). Um coletor novo só multiplicaria template vazio na
-      // conta do cliente para dizer a mesma coisa.
-      const { type, dimensions } = formatoDoPost(post.postType)
-      const template =
-        post.templateId != null
-          ? { id: post.templateId, name: null as string | null }
-          : await ensureArteTemplate(
-              post.projectId,
-              project.userId,
-              type,
-              dimensions,
-              ARTE_ENVIADA_TEMPLATE_NAMES[type],
-            )
-
-      for (const url of faltando) {
-        const indice = post.mediaUrls.indexOf(url)
-        const criada = await db.generation.create({
-          data: {
-            status: 'COMPLETED' as never,
-            templateId: template.id,
-            fieldValues: {
-              source: 'post-midia',
-              postId: post.id,
-              // O índice é o que liga esta arte ao slide — sem ele, um
-              // carrossel vira sete Generations indistinguíveis na galeria.
-              midiaIndice: indice,
-            } as never,
-            resultUrl: url,
-            projectId: post.projectId,
-            createdBy: project.userId,
-            authorName: 'post-midia',
-            templateName: template.name,
-            projectName: project.name,
-            completedAt: new Date(),
-          },
-          select: { id: true },
-        })
-        porUrl.set(url, criada.id)
-        registradas += 1
-      }
+    // Sem trava, só para saber se há o que fazer: o post cujo catálogo está
+    // completo não espera ninguém nem abre transação.
+    const previa = await generationsPorUrl(db, previo.projectId, previo.mediaUrls)
+    if (!haTrabalho(previo, previa, opcoes)) {
+      return { registradas: 0, colunaVinculada: false, artes: montarArtes(previo, previa) }
     }
 
     /**
-     * A coluna continua apontando para o PRIMEIRO slide, que é o contrato que o
-     * resto do sistema já assume (`trocar-arte-do-post` só a troca no índice 0,
-     * e "melhorar com IA" leria o slide errado se ela apontasse para outro).
+     * R12-09: o que falta e a criação vão juntos, sob a trava do post. Duas
+     * retomadas ao mesmo tempo liam as duas o slide 2 sem Generation — a
+     * leitura acima continua podendo dar isso — e criavam as duas: duas artes
+     * da mesma mídia na galeria, e as duas chamadas carimbavam como completo.
+     * Quem chega à trava depois relê AQUI e encontra o que a primeira criou.
      */
-    let colunaVinculada = false
-    const arteDaCapa = porUrl.get(post.mediaUrls[0] ?? '')
-    if (!post.generationId && arteDaCapa) {
-      // `generationId: null` no where: se outra execução venceu a corrida, a
-      // dela vale — mesmo guard de `ensurePostGeneration`.
-      const r = await db.socialPost.updateMany({
-        where: { id: post.id, generationId: null },
-        data: { generationId: arteDaCapa },
-      })
-      colunaVinculada = r.count > 0
-    }
+    return await comTravaPorChave(chaveDasArtesDoPost(postId), async (tx) => {
+      const post = await carregarPost(tx, postId)
+      if (!post || post.mediaUrls.length === 0) return vazio
 
-    if (registradas > 0) {
-      console.log(
-        `[artes-do-post] post ${post.id}: ${registradas} arte(s) registrada(s)` +
-          `${colunaVinculada ? ' e capa vinculada' : ''}`,
-      )
-    }
+      const porUrl = await generationsPorUrl(tx, post.projectId, post.mediaUrls)
+      const faltando = oQueFalta(post, porUrl, opcoes)
 
-    return {
-      registradas,
-      colunaVinculada,
-      artes: montarArtes({ ...post, generationId: post.generationId ?? arteDaCapa ?? null }, porUrl),
-    }
+      let registradas = 0
+      if (faltando.length > 0) {
+        const project = await tx.project.findUnique({
+          where: { id: post.projectId },
+          select: { name: true, userId: true },
+        })
+        if (!project) return vazio
+
+        // O coletor "Arte Enviada" já é o balde da arte que chega pronta de fora
+        // (upload-creative). Um coletor novo só multiplicaria template vazio na
+        // conta do cliente para dizer a mesma coisa.
+        const { type, dimensions } = formatoDoPost(post.postType)
+        const template =
+          post.templateId != null
+            ? { id: post.templateId, name: null as string | null }
+            : await ensureArteTemplate(
+                post.projectId,
+                project.userId,
+                type,
+                dimensions,
+                ARTE_ENVIADA_TEMPLATE_NAMES[type],
+                tx,
+              )
+
+        for (const url of faltando) {
+          const indice = post.mediaUrls.indexOf(url)
+          const criada = await tx.generation.create({
+            data: {
+              status: 'COMPLETED' as never,
+              templateId: template.id,
+              fieldValues: {
+                source: 'post-midia',
+                postId: post.id,
+                // O índice é o que liga esta arte ao slide — sem ele, um
+                // carrossel vira sete Generations indistinguíveis na galeria.
+                midiaIndice: indice,
+              } as never,
+              resultUrl: url,
+              projectId: post.projectId,
+              createdBy: project.userId,
+              authorName: 'post-midia',
+              templateName: template.name,
+              projectName: project.name,
+              completedAt: new Date(),
+            },
+            select: { id: true },
+          })
+          porUrl.set(url, criada.id)
+          registradas += 1
+        }
+      }
+
+      /**
+       * A coluna continua apontando para o PRIMEIRO slide, que é o contrato que o
+       * resto do sistema já assume (`trocar-arte-do-post` só a troca no índice 0,
+       * e "melhorar com IA" leria o slide errado se ela apontasse para outro).
+       */
+      let colunaVinculada = false
+      const arteDaCapa = porUrl.get(post.mediaUrls[0] ?? '')
+      if (!post.generationId && arteDaCapa) {
+        // `generationId: null` no where: outro escritor do vínculo (trocar-arte,
+        // a melhoria) não passa pela trava — o vínculo dele vale.
+        const r = await tx.socialPost.updateMany({
+          where: { id: post.id, generationId: null },
+          data: { generationId: arteDaCapa },
+        })
+        colunaVinculada = r.count > 0
+      }
+
+      if (registradas > 0) {
+        console.log(
+          `[artes-do-post] post ${post.id}: ${registradas} arte(s) registrada(s)` +
+            `${colunaVinculada ? ' e capa vinculada' : ''}`,
+        )
+      }
+
+      return {
+        registradas,
+        colunaVinculada,
+        artes: montarArtes({ ...post, generationId: post.generationId ?? arteDaCapa ?? null }, porUrl),
+      }
+    })
   } catch (erro) {
     // Nunca derruba quem chamou — agendar vale mais que catalogar.
     console.error(`[artes-do-post] falha ao registrar as artes do post ${postId}:`, erro)
-    return vazio
+    return { ...vazio, falhou: true }
   }
 }

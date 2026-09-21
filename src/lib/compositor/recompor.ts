@@ -563,6 +563,9 @@ export async function recomporPaginaDefasada(input: RecomporInput): Promise<Resu
         composicao: composicao.diagnostico,
         layersSnapshot: camadas.camadas,
         thumbnailUrl: blob.url,
+        // A versão visual que este PNG desenhou, junto da URL dele — a mesma que o
+        // `renderPageAndRegister` grava no re-render (R12-01, `thumbnailEhAtual`).
+        versaoRenderizada: versaoGravada,
         ...(efetivaRecomposta && contratoAtual
           ? {
               copyAutoral: {
