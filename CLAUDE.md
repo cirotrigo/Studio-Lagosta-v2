@@ -9266,17 +9266,25 @@ passou a enumerar os casos em vez de escolhê-los à mão
 
 **Da revisão FINAL do Codex sobre a0b2cdcc (BLOQUEADO, PR9-F01…F02, 18/09/2026):**
 
-- 🔴 **PR9-F01 — sem contrato legível, peça com camada extra NÃO se recompõe.**
+- 🔴 **PR9-F01 — ~~sem contrato legível, peça com camada extra NÃO se recompõe.~~**
+  **Superado em 21/09/2026 pelo PR 10 (R1):** sem contrato legível, a peça com
+  camada extra RECOMPÕE pela identidade declarada da camada quando dá (histórico
+  cheio, página sem contrato — `specComACopyDaPagina` lê cada extra pelo
+  `metadata.compositor.extra.id`, com o texto da PÁGINA) e é RE-RENDERIZADA como
+  está quando não dá (`RevisaoDaCopyInvalida`: o texto da página não cabe no
+  contrato e, pelos mesmos limites, nem na spec). "A peça tem extra" é
+  `specTemExtra` — as DUAS formas: `camadasExtras` (o livre) e bloco com
+  `herdaDe` (o extra COM função). Ver "PR9-F01 no PR 10", na seção do ciclo.
   Com o histórico cheio (200 revisões) ou um bloco novo que o contrato não
   comporta, `tentarCopyEfetivaDasCamadas` recusa e a recomposição caía no
   caminho sem contrato — que atualiza só os blocos por papel (`specComACopyDaPagina`)
   e deixa `specDaRecomposicao` conservar as `camadasExtras` da spec ANTIGA. O
   compositor recebia "Hoje" e gravava sobre o "Amanhã" que a equipe tinha
   salvo, e o slide ia junto. A leitura do contrato passou para ANTES da
-  decisão (`recomporPaginaDefasada`): sem contrato legível e com extra na spec
+  decisão (`recomporPaginaDefasada`): ~~sem contrato legível e com extra na spec
   (inclusive página legada sem contrato), a arte é **re-renderizada como a
   página está** — camadas e contrato intactos, aviso no registro, só o slide
-  troca. Regra geral: caminho de fallback que usa dado DERIVADO de outra versão
+  troca.~~ Regra geral: caminho de fallback que usa dado DERIVADO de outra versão
   (a spec antiga) não pode escrever por cima da página; re-renderizar o que está
   gravado é o fallback seguro.
 - 🔴 **PR9-F02 — o extra VAZIO COM FUNÇÃO e herança também disputa o
