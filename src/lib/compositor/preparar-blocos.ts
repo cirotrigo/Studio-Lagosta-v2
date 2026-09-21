@@ -42,7 +42,7 @@ export interface PecaParaBlocos {
   nome?: string | null
   tema?: string | null
   foto?: { driveFileId?: string; url?: string } | null
-  copyAutoral?: { blocos?: Array<{ id?: string; funcao?: string; linhas?: string[]; estilo?: { linhasNaVoz2?: number[] | null } | null }> } | null
+  copyAutoral?: { blocos?: Array<{ id?: string; funcao?: string; linhas?: string[]; estilo?: { linhasNaVoz2?: number[] | null; herdaDe?: string | null } | null }> } | null
   preferencias?: { arranjos?: Array<string | { grupo?: string; arranjo?: string }> } | null
 }
 

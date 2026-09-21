@@ -110,6 +110,17 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
   const { vinculos } = vincularExtras(blocosEmOrdem(copy).filter((b) => b.funcao === 'livre'), camadasOriginais, { incluirOcultas: true })
   const mapa = new Map<string, string>()
   for (const [blocoId, camada] of vinculos) {
+    // 🔴 Só o id que a LEITURA INVENTOU (`extra-<id da camada>`, na forma atual
+    // ou na antiga) acompanha a troca. Com a camada EXTRA da F3 um bloco
+    // `livre` passa a ter id do AUTOR ("nota", "servico", "extra-apoio"), e
+    // renomeá-lo numa operação TÉCNICA deixava o contrato da cópia discordando
+    // da identidade que a própria camada declara — o texto sumia do bloco do
+    // autor e reaparecia num `extra-<uuid>`, com revisão falsa (R14 e R25 do
+    // PR 9, adotados no rebase sobre a main de 21/09/2026; na main o caso não
+    // existia porque `validarSpec` recusava bloco livre com texto).
+    if (vinculoDaCamada(camada)?.bloco === blocoId) continue
+    const inferido = blocoId === idDeExtra(camada) || indiceLegado(blocoId, idDeExtraLegado(camada)) !== null
+    if (!inferido) continue
     const novo = idsDeCamada.get(String(camada.id))
     if (novo) mapa.set(blocoId, idDeExtra(novo))
   }
@@ -368,6 +379,41 @@ function comSegundaVoz(b: BlocoAutoral, naVoz2: number[]): BlocoAutoral {
   return Object.keys(estilo).length > 0 ? { ...semEstilo, estilo } : semEstilo
 }
 
+/**
+ * Tudo o que a leitura reconhece SÓ pelo id FÍSICO da camada, gravado na camada
+ * ANTES de a duplicação trocar esse id por um UUID — com o MESMO valor que a
+ * leitura tiraria do id, para a cópia se ler exatamente como a original (R22 e
+ * R24 do PR 9):
+ *  - o PAPEL que só o id dava (camada `apoio` de nome "Texto 2", sem metadata)
+ *    → `metadata.compositor.papel`;
+ *  - o vínculo com o BLOCO do contrato cujo id é o id físico (o livre autoral
+ *    `nota`; o comum `servico` numa página com dois serviços) →
+ *    `metadata.compositor.bloco`, a MESMA marca que `vinculoDaCamada` lê.
+ *
+ * 🔴 A PARTE legada (`servico-2` → 2) saiu no rebase sobre a main de
+ * 21/09/2026: a ordem das linhas de um bloco repartido é o `linhas` declarado
+ * pelo compositor (PR 3), que é metadata e sobrevive à troca de id sozinho —
+ * não há nada a materializar. Nada é inventado aqui: camada que já declara o
+ * bloco fica como está, e o livre que o NOME vincula (`vincularExtras`, e o
+ * nome sobrevive à duplicação) não precisa de marca. Só vale com contrato:
+ * página sem contrato não é lida, e duplica como sempre duplicou.
+ */
+export function materializarVinculosDoIdFisico(camadas: unknown[], contrato: CopyAutoral): unknown[] {
+  return (camadas as Layer[]).map((l) => {
+    if (!l || (l.type !== 'text' && l.type !== 'rich-text')) return l
+    const id = String(l.id)
+    const papel = papelDaCamada(l)
+    const acrescimos: Record<string, unknown> = {}
+    if (papel && papelDaCamada({ ...l, id: '' } as Layer) !== papel) acrescimos.papel = papel
+    // O NOME só vincula o bloco livre (`vincularExtras`); o bloco com função reserva só pelo id.
+    if (!vinculoDaCamada(l) && contrato.blocos.some((b) => b.id === id && ((b.funcao === 'livre' && l.name !== id) || b.funcao === papel))) acrescimos.bloco = id
+    if (Object.keys(acrescimos).length === 0) return l
+    const meta = (l.metadata ?? {}) as Record<string, unknown>
+    const compositor = meta.compositor && typeof meta.compositor === 'object' ? (meta.compositor as Record<string, unknown>) : {}
+    return { ...l, metadata: { ...meta, compositor: { ...compositor, ...acrescimos } } }
+  })
+}
+
 export interface CopyEfetiva {
   efetiva: CopyAutoral
   mudancas: MudancaDeBloco[]
@@ -447,8 +493,19 @@ export function copyEfetivaDasCamadas(original: CopyAutoral, camadas: Layer[], o
     const papel = papelDaCamada(c)
     // `headline2` é a segunda voz da MANCHETE, não uma função própria; camada
     // que perdeu o papel (`null`) vale pelo que declara.
+    // 🔴 Bloco `livre` não tem FUNÇÃO com que a camada possa ser incompatível —
+    // e quem o desenha é a camada EXTRA da F3, cujo id e nome são o id que o
+    // AUTOR deu ao bloco. Quando esse id coincide com um papel ("servico",
+    // "apoio"), o fallback por id/nome de `papelDaCamada` devolvia esse papel e
+    // o guard DESCARTAVA o vínculo declarado: a camada voltava para a disputa
+    // por função e o serviço COMUM tomava o texto do livre — a mesma colisão de
+    // namespace do R25 do PR 9, agora contra a régua da main. Para o bloco
+    // livre vale só o papel DECLARADO na metadata (a extra livre não tem
+    // nenhum), nunca o inferido do id (rebase sobre a main, 21/09/2026).
+    const declarado = (c.metadata as { compositor?: { papel?: unknown } } | undefined)?.compositor?.papel
+    const paraOGuard = bloco.funcao === 'livre' ? (typeof declarado === 'string' ? declarado : null) : papel
     const daVoz2 = papel === 'headline2' && bloco.funcao === 'headline'
-    if (!daVoz2 && papel !== null && papel !== bloco.funcao) continue
+    if (!daVoz2 && paraOGuard !== null && paraOGuard !== bloco.funcao) continue
     const destino = daVoz2 ? vozesDoBloco : declaradasDoBloco
     destino.set(v!.bloco, [...(destino.get(v!.bloco) ?? []), c])
     usadas.add(c)
