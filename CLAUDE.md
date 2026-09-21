@@ -10704,3 +10704,70 @@ aplicada**.
   arquivo com o item refeito → superada) e os fixtures de `agendamento.test.ts`,
   que davam peça pronta sem arquivo. Mutações: sem a recusa, 4 testes; o gancho
   sem `PECA_SEM_ARQUIVO`, 1.
+
+**Da revisão FINAL do Codex sobre a4f678d4 (BLOQUEADO, R12-07…R12-08, 21/09/2026):**
+
+- 🔴 **R12-07 — o link de edição sai do template ATUAL da página, relido na hora
+  de responder.** `moverPaginaParaSemana` e `refilarPaginasDoPost` mudam
+  `Page.templateId` e NÃO tocam no post, e `concluido` preferia
+  `post.templateId` (e, sem ele, a página lida ANTES dos efeitos): o `editUrl`
+  abria a pasta anterior, o editor não achava o `pageId` ali e caía na
+  primeira página daquele template (`multi-page-context.tsx`) — outra arte. A
+  repetição mantinha o link errado. Hoje `concluido` lê a página pelo
+  `ctx.leitor` (a transação READ ONLY na conta de produção) em TODO caminho que
+  responde concluído: a criação e a adoção depois dos efeitos, o
+  reaproveitamento (com ou sem efeitos pendentes) e a adoção simulada. Página
+  que não existe mais (ou é de outro projeto) sai SEM link — nunca um template
+  que abriria outra página. O post não é reescrito.
+- ⚠️ **O mesmo defeito vive FORA do PR, na main**: o "Editar Template" da
+  agenda (`post-detail-view.tsx:1066` e `:1122`) monta o link com
+  `post.templateId` + `post.pageId`, e os dois efeitos acima deixam o
+  `SocialPost.templateId` para trás — inclusive o do `agendarPost`, que cria o
+  post com a pasta lida antes de mover a página. A arte que o catálogo registra
+  (`post-midia`, e a `post-schedule` de `ensurePostGeneration`) também nasce no
+  balde `post.templateId`. Não consertado aqui: é frente própria.
+- 🔴 **R12-08 — o vínculo da capa não prova que o catálogo terminou.** O lote
+  passava `registrarArtes: !post.generationId`: a execução que caía no meio do
+  catálogo (a capa vinculada por `ensurePostGeneration`, a 2ª mídia sem
+  registro) deixava o post COM `generationId`, e a repetição pulava o catálogo
+  INTEIRO e carimbava `efeitosDoAgendamentoEm` com o slide 2 sem Generation.
+  Hoje a opção é `pularCapaVinculada` (`registrarArtesDoPost` e
+  `efeitosDoAgendamento`): só a mídia do índice 0 de post que JÁ tem
+  Generation fica de fora — é a proteção do C12-1x4 contra recatalogar o PNG
+  que o cron desenhou —, e as demais mídias sem registro seguem sendo
+  catalogadas. Quem decide é o post RELIDO pelo catálogo, nunca a leitura de
+  quem chama: o marcador é exatamente o que ele atesta (a capa). `agendarPost`
+  não passa a opção e segue como sempre.
+- 🔴 **Retomada decidida por um marcador que a execução PARCIAL já deixou**
+  (varredura por classe): o único ponto era este. Nos demais o marcador É o
+  efeito inteiro, gravado numa escrita só — a Generation por mídia (`resultUrl`),
+  o vínculo da capa (`updateMany` com `generationId: null`), a página na pasta
+  (um `update` por página, comparando pasta, nome e ordem), o item do plano
+  (`agendado` com o post e a peça, no commit do post), os sinais (upsert por
+  chave) e o próprio carimbo (escrito por último, só sem falhas).
+- ⚠️ **O inverso da classe, registrado e NÃO mexido (código da main)**: refazer
+  a refilagem não é idempotente. `ordemNaPasta` conta a própria página entre as
+  vizinhas do minuto, então rodar `refilarPaginasDoPost` de novo com o mesmo
+  horário alterna a `order` da página entre `base` e `base + 1` (lido no
+  código, não medido: o banco falso do teste não filtra por faixa de `order`).
+  O lote a refaz quando OUTRO efeito ficou pendente; o efeito é cosmético (a
+  ordem dentro do mesmo minuto) e o nome não muda.
+- 🔴 **Teste que afirma "a função não foi chamada" pode estar consagrando o
+  defeito.** O C12-1x4 e o teste da semana afirmavam `chamadasDeArtes === 0`, e
+  pular o catálogo INTEIRO era justamente o R12-08. Os dois passaram ao
+  catálogo REAL sobre o banco falso e afirmam o que importa: nenhuma arte nova
+  do PNG do cron, nenhuma arte duplicada. A troca de expectativa é declarada.
+- Provas: `agendar-itens.test.ts` — R12-07 com as pastas REAIS (avulsas →
+  semana na primeira resposta e na repetição; remarcação com a primeira chamada
+  caindo antes dos efeitos, que aponta onde a página ainda está e, na
+  repetição, a pasta de destino; post adotado com o `templateId` velho em
+  simular e de verdade; página apagada sem link) e R12-08 pelo catálogo REAL
+  (a capa vincula, a 2ª mídia cai no banco, a repetição registra a que faltou
+  sem duplicar a capa e só então carimba). Passos 19 e 20 da prova de
+  integração: a remarcação para a semana do item-8 (as duas pastas já existem)
+  e a retomada do carrossel adotado — a queda no MEIO do catálogo não é
+  injetável no banco real, então o passo monta o estado que ela deixa. Mutações:
+  as quatro formas de voltar a ler a pasta velha (post antes da página relida,
+  post vencendo a página, página lida antes dos efeitos, post como fallback da
+  página apagada) derrubam 4, 4, 2 e 1 testes; o lote sem a opção, 1; o
+  catálogo ignorando a opção, 1; o catálogo pulando tudo, 1.
