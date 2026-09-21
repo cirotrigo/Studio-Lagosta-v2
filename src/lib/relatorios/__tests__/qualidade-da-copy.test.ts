@@ -8,6 +8,8 @@
  *  - depois de um erro, a transação fica ABORTADA e recusa todo comando.
  * As regras de medida estão no teste do contrato.
  */
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type Consulta = { projectId: number }
@@ -38,6 +40,7 @@ vi.mock('@/lib/db', () => ({
 
 import { lerSemanaDoCliente, medirQualidadeDaCarteira, medirQualidadeDaCopyDoCliente, type EsquemaDaCopy, type LeitorDoBanco } from '../qualidade-da-copy'
 import { aplicarRevisao } from '@/lib/copy-autoral/revisao'
+import { saidaJsonDaMedida } from '../../../../scripts/lib/saida-da-medida-da-copy'
 
 const janela = { inicio: new Date('2026-09-07T03:00:00Z'), fim: new Date('2026-09-14T03:00:00Z') }
 const espeto = { projectId: 6, nome: 'Espeto Gaúcho' }
@@ -747,5 +750,46 @@ describe('varredura das classes (PR15-08): o teto dos sinais ligados é declarad
     estado.banco = criarBanco({ sinais: Array.from({ length: 1999 }, (_, i) => sinal(i)) })
     const abaixo = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
     expect(abaixo.avisos.join(' ')).not.toMatch(/sinais/)
+  })
+})
+
+// ─── FINAL do Codex sobre 9648f441 (21/09/2026) ─────────────────────────────
+
+describe('PR15-13 · a saída --json do script declara quem NÃO foi medido, com o motivo', () => {
+  type Saida = ReturnType<typeof saidaJsonDaMedida>
+  /** O que o script imprime, relido: `JSON.stringify` da função que ele chama. */
+  const impresso = (r: Awaited<ReturnType<typeof medirQualidadeDaCarteira>>): Saida => JSON.parse(JSON.stringify(saidaJsonDaMedida(janela, r)))
+
+  it('falha geral do esquema: ninguém medido, e a saída diz quem e por quê — nunca igual a uma seleção vazia', async () => {
+    estado.banco = { transacao: async () => { throw new Error('banco fora do ar') } }
+    const saida = impresso(await medirQualidadeDaCarteira([espeto, byRock], janela, { prazo: Date.now() + 5_000, tetoPorClienteMs: 1_000 }))
+    expect(saida).toMatchObject({ carteira: null, clientes: [] })
+    expect(saida.indisponiveis).toEqual([
+      { nome: 'Espeto Gaúcho', motivo: expect.stringMatching(/não deu para conferir o esquema: banco fora do ar/) },
+      { nome: 'By Rock', motivo: expect.stringMatching(/não deu para conferir o esquema: banco fora do ar/) },
+    ])
+    expect(saida.foraDoOrcamento).toEqual([])
+
+    // Controle: a seleção vazia não tem ninguém de fora — as duas saídas se distinguem.
+    const vazia = impresso(await medirQualidadeDaCarteira([], janela, { prazo: Date.now() + 5_000 }))
+    expect(vazia).toEqual({ janela: JSON.parse(JSON.stringify(janela)), carteira: null, clientes: [], indisponiveis: [], foraDoOrcamento: [] })
+  })
+
+  it('carteira parcial: quem não coube no orçamento sai com o nome e o motivo, ao lado de quem foi medido', async () => {
+    // A leitura do Espeto consome 25 s do prazo de 30: o By Rock nem começa.
+    let relogio = 0
+    estado.banco = criarBanco({ postsDe: () => [], posts: async () => { relogio += 25_000 } })
+    const saida = impresso(await medirQualidadeDaCarteira([espeto, byRock], janela, { prazo: 30_000, tetoPorClienteMs: 25_000, esquema: ESQUEMA_COMPLETO, agora: () => relogio }))
+    expect(saida.clientes).toEqual([expect.objectContaining({ projectId: 6, nome: 'Espeto Gaúcho', indisponivel: null })])
+    expect(saida.foraDoOrcamento).toEqual([{ nome: 'By Rock', motivo: expect.stringMatching(/orçamento de tempo/) }])
+    expect(saida.indisponiveis).toEqual([])
+  })
+
+  it('o script imprime ESTA saída no --json, e nenhuma montada por conta própria', () => {
+    const fonte = readFileSync(resolve(__dirname, '../../../../scripts/medir-qualidade-da-copy.ts'), 'utf8')
+    const codigo = fonte.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+    expect(codigo).toMatch(/from '\.\/lib\/saida-da-medida-da-copy'/)
+    expect(codigo).toMatch(/JSON\.stringify\(saidaJsonDaMedida\(\{ inicio, fim \}, resultado\)/)
+    expect(codigo).not.toMatch(/clientes:\s*\[/)
   })
 })

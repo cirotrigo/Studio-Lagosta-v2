@@ -21,7 +21,8 @@
  * Uso (branch de dev, pelo runner que recusa produção):
  *   npx tsx scripts/dev-db.ts npx tsx scripts/medir-qualidade-da-copy.ts
  *   npx tsx scripts/dev-db.ts npx tsx scripts/medir-qualidade-da-copy.ts --desde 2026-08-01 --ate 2026-09-12 --projeto 6
- *   … --json            (a medida inteira, por cliente e da carteira)
+ *   … --json            (a medida inteira, por cliente e da carteira, e quem NÃO foi medido,
+ *                        com o motivo: `indisponiveis` e `foraDoOrcamento` — PR15-13)
  *
  * Em produção (só com decisão explícita): com a flag, e sem `DATABASE_URL` no
  * ambiente, o script lê a URL do `.env` (o `tsx` não carrega arquivo nenhum):
@@ -33,6 +34,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { bancoDaLeitura, type UrlsDoEnv } from './lib/guarda-de-producao'
+import { saidaJsonDaMedida } from './lib/saida-da-medida-da-copy'
 
 const args = process.argv.slice(2)
 const flag = (nome: string) => args.includes(nome)
@@ -115,7 +117,7 @@ async function main() {
   )
 
   if (flag('--json')) {
-    console.log(JSON.stringify({ janela: { inicio, fim }, carteira: resultado.carteira, clientes: [...resultado.porCliente.values()].map(({ medidas: _m, ...r }) => r) }, null, 2))
+    console.log(JSON.stringify(saidaJsonDaMedida({ inicio, fim }, resultado), null, 2))
   } else {
     for (const r of resultado.porCliente.values()) {
       const linha = linhaDaCopyDoCliente(r.qualidade)
