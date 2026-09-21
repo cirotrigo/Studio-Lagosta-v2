@@ -23,15 +23,19 @@
  * ícone preso a ela), e toda peça seguinte daquela variante punha horário e
  * endereço no mesmo texto, em silêncio.
  *
- * O resto da metadata (grupo, prefixo, encaixe…) fica. Módulo PURO (só tipos),
- * porque o editor é client — e as funções do editor moram aqui para serem
- * testadas: os callbacks só as chamam.
+ * 🔴 A marca do compositor sai INTEIRA — a regra da main (`camadaClonada`,
+ * PR3-R14-01), alinhada no rebase de 21/09/2026: "chave nova que o desenho grave
+ * amanhã já nasce coberta". Até ali esta função tirava as marcas chave a chave e
+ * deixava o `prefixo` e o `encaixe`: a cópia do CTA ("→ Reserve já") levava
+ * `prefixo: '→ '`, e `linhasDaCamada` descontava da leitura uma seta que agora é
+ * TEXTO DO AUTOR — a transformação fictícia que o PR5-12 fechou. A única exceção
+ * é o `papel` na página SEM contrato (C9-11, acima). O resto da metadata (grupo,
+ * preset, ícone) fica. Módulo PURO (só tipos), porque o editor é client — e as
+ * funções do editor moram aqui para serem testadas: os callbacks só as chamam.
  */
 
 import type { Layer } from '@/types/template'
-
-/** As marcas que só a composição e a duplicação de página gravam: a cópia nunca as leva. */
-export const MARCAS_DA_COMPOSICAO = ['extra', 'bloco', 'parte', 'linhasDoBloco'] as const
+import { semMarcaDoCompositor } from '@/lib/compositor/marca-do-compositor'
 
 export interface OpcoesDaCopia {
   /** A página em que a cópia nasce tem contrato da copy (`Page.copyAutoral`)? Só então o `papel` sai. */
@@ -49,13 +53,10 @@ export function paginaTemContrato(pagina: unknown): boolean {
 }
 
 export function semIdentidadeAutoral<T extends Pick<Layer, 'metadata'>>(camada: T, opcoes: OpcoesDaCopia): T {
-  const metadata = camada.metadata as Record<string, unknown> | undefined
-  const compositor = metadata?.compositor
-  if (!compositor || typeof compositor !== 'object') return camada
-  const marcas: readonly string[] = opcoes.paginaTemContrato ? [...MARCAS_DA_COMPOSICAO, 'papel'] : MARCAS_DA_COMPOSICAO
-  if (!Object.keys(compositor).some((chave) => marcas.includes(chave))) return camada
-  const limpo = Object.fromEntries(Object.entries(compositor as Record<string, unknown>).filter(([chave]) => !marcas.includes(chave)))
-  return { ...camada, metadata: { ...metadata, compositor: limpo } }
+  const papel = (camada.metadata as { compositor?: { papel?: unknown } } | undefined)?.compositor?.papel
+  const limpa = semMarcaDoCompositor(camada as T & { metadata?: Record<string, unknown> })
+  if (opcoes.paginaTemContrato || typeof papel !== 'string') return limpa
+  return { ...limpa, metadata: { ...(limpa.metadata ?? {}), compositor: { papel } } }
 }
 
 /** `duplicateLayer`: id novo, nome "Copy", 16px abaixo e à direita, destravada — sem a identidade da original. */

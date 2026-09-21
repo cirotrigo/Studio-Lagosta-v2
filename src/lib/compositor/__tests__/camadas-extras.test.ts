@@ -178,8 +178,15 @@ describe('correções da revisão do Codex sobre 53ce6340 (R01–R07)', () => {
   const base = { projectId: 8, formato: 'story' as const }
   const coluna = 1080 - 2 * assinatura.numeros.geometria.story.margemH
   const comum = { assinatura, colunaUtil: coluna, escalaDoFormato: 1, mancha: '#000000', medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [] }
-  const camada = (id: string, y: number, content: string, compositor: Record<string, unknown>): Layer =>
-    texto(id, { fontFamily: 'Barlow', fontSize: 40 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor } })
+  // A camada como o compositor a DESENHA. Desde o rebase sobre a main (21/09/2026, decisão (A)), a camada EXTRA sai
+  // carimbada com o vínculo declarado do PR 3 — `bloco` = o id do extra e as posições `linhas` —, e é por ele que a
+  // leitura a reencontra. ANTES estas fixtures levavam só `extra.id`, que era a marca que a leitura do PR 9 lia; montar
+  // o extra sem `bloco` seria modelar um estado que nenhum produtor gera mais. Quem declara `bloco` explicitamente vence.
+  const camada = (id: string, y: number, content: string, compositor: Record<string, unknown>): Layer => {
+    const extraId = (compositor.extra as { id?: string } | undefined)?.id
+    const carimbada = extraId && compositor.bloco === undefined ? { ...compositor, bloco: extraId, linhas: content.split('\n').map((_, i) => i) } : compositor
+    return texto(id, { fontFamily: 'Barlow', fontSize: 40 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor: carimbada } })
+  }
 
   it('R01: dois extras de função servico herdando apoio em bordas opostas — cada id preserva o próprio texto na persistência, sem revisão fictícia', () => {
     const v = validarSpec({ ...base, blocos: [
@@ -303,8 +310,15 @@ describe('correções da revisão do Codex sobre 53ce6340 (R01–R07)', () => {
 
 describe('correções da revisão do Codex sobre 9a03c12c (R08–R11)', () => {
   const base = { projectId: 8, formato: 'story' as const }
-  const camada = (id: string, y: number, content: string, compositor: Record<string, unknown>): Layer =>
-    texto(id, { fontFamily: 'Barlow', fontSize: 40 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor } })
+  // A camada como o compositor a DESENHA. Desde o rebase sobre a main (21/09/2026, decisão (A)), a camada EXTRA sai
+  // carimbada com o vínculo declarado do PR 3 — `bloco` = o id do extra e as posições `linhas` —, e é por ele que a
+  // leitura a reencontra. ANTES estas fixtures levavam só `extra.id`, que era a marca que a leitura do PR 9 lia; montar
+  // o extra sem `bloco` seria modelar um estado que nenhum produtor gera mais. Quem declara `bloco` explicitamente vence.
+  const camada = (id: string, y: number, content: string, compositor: Record<string, unknown>): Layer => {
+    const extraId = (compositor.extra as { id?: string } | undefined)?.id
+    const carimbada = extraId && compositor.bloco === undefined ? { ...compositor, bloco: extraId, linhas: content.split('\n').map((_, i) => i) } : compositor
+    return texto(id, { fontFamily: 'Barlow', fontSize: 40 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor: carimbada } })
+  }
   const persistir = (spec: Parameters<typeof entradaDePersistencia>[0]['spec'], layers: Layer[]) =>
     entradaDePersistencia({ spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers, fundo: '#000', diagnostico: {}, fotoUrl: null })
   const origem = { autor: 'claude' as const, superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }
@@ -432,7 +446,9 @@ describe('correções da revisão do Codex sobre 6ee684c4 (R12–R14)', () => {
   })
 
   it('R14: duplicar a página preserva o id AUTORAL dos extras livres (visível e oculto) e as referências no histórico; só o id inferido `extra-<camada>` acompanha a camada nova, e a releitura da cópia não cria revisão', () => {
-    const doExtra = (id: string) => ({ groupId: 'g', compositor: { extra: { id, funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'principal' } } })
+    // Como o compositor carimba a camada extra: `extra` (a identidade) E o vínculo declarado da main (`bloco` = o id do
+    // extra). Antes (PR 9) só `extra.id` — que era a marca que a leitura do PR 9 lia (rebase sobre a main, 21/09/2026).
+    const doExtra = (id: string) => ({ groupId: 'g', compositor: { extra: { id, funcao: 'livre', herdaDe: 'apoio', grupoVisual: 'principal' }, bloco: id, linhas: [0] } })
     const camadas: Layer[] = [
       texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { groupId: 'g', compositor: { papel: 'headline' } } }),
       texto('nota', { fontFamily: 'Barlow', fontSize: 40 }, 'vale hoje', { name: 'Nota da casa', position: { x: 92, y: 500 }, metadata: doExtra('nota') }),
@@ -530,7 +546,9 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     ],
   })
   // R19: a marca é a posição AUTORAL de cada linha no bloco, não a numeração da montagem.
-  const marcaDe = (l: Layer) => (l.metadata?.compositor as { linhasDoBloco?: number[] } | undefined)?.linhasDoBloco
+  // A posição AUTORAL de cada linha, como a preparação a declara. Rebase sobre a main (21/09/2026), decisão (A): a marca
+  // é o `linhas` do PR 3 (sempre ao lado de `bloco`), não mais o `linhasDoBloco` do PR 9 — a MESMA informação.
+  const marcaDe = (l: Layer) => (l.metadata?.compositor as { linhas?: number[] } | undefined)?.linhas
 
   it('R18: serviço repartido em dois grupos — as partes levam o vínculo; a efetiva reúne as duas no bloco autoral (id e linhas), sem bloco fictício, lacuna nem revisão', () => {
     const v = validarSpec({ ...base, copyAutoral: copy(ENDERECO) })
@@ -540,7 +558,9 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     const porId = Object.fromEntries(camadas.map((l) => [l.id, l]))
     expect(Object.keys(porId).sort()).toEqual(['headline', 'servico', 'servico-2'])
     expect([porId.servico.content, porId['servico-2'].content]).toEqual([HORARIO, ENDERECO])
-    expect([marcaDe(porId.servico), marcaDe(porId['servico-2']), marcaDe(porId.headline)]).toEqual([[0], [1], undefined])
+    // ANTES (PR 9): só as partes do bloco repartido levavam a marca; a manchete saía `undefined`. DEPOIS (main, PR 3): toda
+    // camada que nasce de um bloco é carimbada com as posições que desenha — a manchete de uma linha declara [0].
+    expect([marcaDe(porId.servico), marcaDe(porId['servico-2']), marcaDe(porId.headline)]).toEqual([[0], [1], [0]])
 
     const entrada = persistir(v.spec!, camadas)
     const efetiva = entrada.copyAutoral as CopyAutoral
@@ -584,18 +604,22 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     expect(lidaDuplicada.efetiva.blocos.map((b) => b.id)).toEqual(['h', 'svc'])
 
     const semMarca = camadas.map((l) => {
-      const { parte: _p, linhasDoBloco: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
       return { ...l, metadata: { ...l.metadata, compositor } }
     }) as Layer[]
     const lidaSemMarca = copyEfetivaDasCamadas(efetiva, semMarca, { superficie: 'editor' })
     expect(lidaSemMarca.mudancas).toEqual([])
     expect(lidaSemMarca.efetiva.blocos.find((b) => b.id === 'svc')?.linhas).toEqual([HORARIO, ENDERECO])
 
-    // Controle: sem marca E com id qualquer, a segunda camada de serviço não é parte — é texto a mais.
+    // Controle: sem marca E com id qualquer. A PERGUNTA MUDOU no rebase sobre a main (21/09/2026, decisão (A)).
+    // ANTES (PR 9): o id decidia se a camada é parte — `servico-2` (reservado) era parte, `uuid-solta` era texto a mais.
+    // DEPOIS (main): o id não é fonte de verdade; sem marca decide o PAPEL, e o bloco ÚNICO da função leva todas as
+    // camadas dela ("bloco único leva TODAS", PR3-R8-02) — a camada com papel `servico` é parte de `svc`, seja qual for o
+    // id. Afirmar o contrário seria inferir pertença pelo id, que é justamente o que a decisão recusa.
     const soltas = semMarca.map((l) => (l.id === 'servico-2' ? { ...l, id: 'uuid-solta' } : l)) as Layer[]
     const lidaSolta = copyEfetivaDasCamadas(efetiva, soltas, { superficie: 'editor' })
-    expect(lidaSolta.efetiva.blocos.find((b) => b.id === 'svc')?.linhas).toEqual([HORARIO])
-    expect(lidaSolta.efetiva.blocos.some((b) => b.id === idDeExtra('uuid-solta'))).toBe(true)
+    expect(lidaSolta.efetiva.blocos.find((b) => b.id === 'svc')?.linhas).toEqual([HORARIO, ENDERECO])
+    expect(lidaSolta.efetiva.blocos.some((b) => b.id === idDeExtra('uuid-solta'))).toBe(false)
   })
 
   it('R22: a página LEGADA (partes `servico` e `servico-2` sem marca nenhuma) DUPLICADA — a cópia leva o vínculo que os ids antigos davam: um único `svc` com as mesmas linhas, nenhuma revisão e a spec derivada válida', () => {
@@ -603,7 +627,7 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
     const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
     const legado = camadas.map((l) => {
-      const { parte: _p, linhasDoBloco: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
       return { ...l, metadata: { ...l.metadata, compositor } }
     }) as Layer[]
     // A página original reúne as partes pelos ids reservados.
@@ -622,9 +646,13 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     expect(lida.efetiva.blocos.filter((b) => b.funcao === 'servico')).toHaveLength(1)
     expect(lida.efetiva.blocos.some((b) => b.id.startsWith('extra-'))).toBe(false)
     expect(revisaoDaPaginaComCamadas(copia, duplicadas, { autor: 'equipe', motivo: 'autosave', superficie: 'editor' }).estado).not.toBe('registrada')
-    // O vínculo materializado é a numeração LEGADA (a do id); nenhum índice autoral é inventado.
+    // Nenhum índice autoral é inventado — e, desde o rebase sobre a main (21/09/2026, decisão (A)), nenhuma numeração do
+    // id também. ANTES (PR 9): a duplicação materializava `parte` 1 e 2 a partir dos ids `servico`/`servico-2`, porque a
+    // leitura do PR 9 ordenava as partes por esse número. DEPOIS (main): com UM bloco da função, a reserva por papel já
+    // reúne as partes ("bloco único leva TODAS"), então não há vínculo que só o id carregasse e nada é materializado —
+    // é o que o desfecho acima (uma leitura idêntica, sem revisão) prova sem a marca.
     const servicos = duplicadas.filter((l) => l.content === HORARIO || l.content === ENDERECO)
-    expect(servicos.map((l) => [l.content, (l.metadata?.compositor as { parte?: number }).parte, marcaDe(l)])).toEqual([[HORARIO, 1, undefined], [ENDERECO, 2, undefined]])
+    expect(servicos.map((l) => [l.content, (l.metadata?.compositor as { parte?: number }).parte, marcaDe(l)])).toEqual([[HORARIO, undefined, undefined], [ENDERECO, undefined, undefined]])
 
     const recomposta = validarSpec(specDaRecomposicao(v.spec!, lida.efetiva))
     expect(recomposta.problemas).toEqual([])
@@ -713,7 +741,10 @@ describe('correção da revisão FINAL do Codex sobre 5e6635fa (R18)', () => {
     const camadas = prepararBlocos({ ...comum, spec: v.spec! }).montados.map((b) => b.layer)
     const extra = camadas.find((l) => l.id === 'hora-extra')
     expect(extra?.metadata?.compositor).toMatchObject({ extra: { id: 'hora-extra', funcao: 'servico' } })
-    expect(marcaDe(extra!)).toBeUndefined()
+    // ANTES (PR 9): o extra não levava marca de posição (`linhasDoBloco` só nas partes repartidas). DEPOIS: ele carimba o
+    // vínculo declarado do PR 3 apontando para o PRÓPRIO bloco — `bloco` = o id que o autor deu, nunca o do papel de que
+    // ele só herda o estilo (headline) — com a posição da linha que desenha.
+    expect(extra?.metadata?.compositor).toMatchObject({ bloco: 'hora-extra', linhas: [0] })
     const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
     expect(efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual([['h', ['Costela']], ['svc', [HORARIO, ENDERECO]], ['hora-extra', ['Delivery até 22h']]])
     expect(efetiva.revisoes).toEqual([])
@@ -776,11 +807,15 @@ describe('correção da revisão do commit 10e5d381 (R19)', () => {
       { id: 'svc', funcao: 'servico', ordem: 1, linhas },
     ],
   })
-  const marcaDe = (l: Layer) => (l.metadata?.compositor as { linhasDoBloco?: number[] } | undefined)?.linhasDoBloco
+  // A posição AUTORAL de cada linha, como a preparação a declara. Rebase sobre a main (21/09/2026), decisão (A): a marca
+  // é o `linhas` do PR 3 (sempre ao lado de `bloco`), não mais o `linhasDoBloco` do PR 9 — a MESMA informação.
+  const marcaDe = (l: Layer) => (l.metadata?.compositor as { linhas?: number[] } | undefined)?.linhas
   const servicoDe = (c: CopyAutoral) => c.blocos.find((b) => b.id === 'svc')?.linhas
+  // Página SEM marca = sem o vínculo declarado da main (`bloco` + `linhas`, que andam juntos). Antes (PR 9) tirava
+  // `parte`/`linhasDoBloco`, as marcas que a leitura do PR 9 lia (rebase sobre a main, 21/09/2026).
   const semMarcas = (camadas: Layer[]) =>
     camadas.map((l) => {
-      const { parte: _p, linhasDoBloco: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
       return { ...l, metadata: { ...l.metadata, compositor } }
     }) as Layer[]
 
@@ -794,7 +829,8 @@ describe('correção da revisão do commit 10e5d381 (R19)', () => {
     expect(Object.keys(porId).sort()).toEqual(['headline', 'servico', 'servico-2'])
     // O cenário da revisão: a numeração da montagem é a INVERSA da autoral.
     expect([porId.servico.content, porId['servico-2'].content]).toEqual([ENDERECO, HORARIO])
-    expect([marcaDe(porId.servico), marcaDe(porId['servico-2']), marcaDe(porId.headline)]).toEqual([[1], [0], undefined])
+    // ANTES: a manchete saía sem marca (`undefined`); DEPOIS: carimbada com [0] (ver R18).
+    expect([marcaDe(porId.servico), marcaDe(porId['servico-2']), marcaDe(porId.headline)]).toEqual([[1], [0], [0]])
 
     const efetiva = persistir(v.spec!, camadas).copyAutoral as CopyAutoral
     expect(efetiva.blocos.map((b) => [b.id, b.funcao, b.linhas])).toEqual([['h', 'headline', ['Costela']], ['svc', 'servico', [HORARIO, ENDERECO]]])
@@ -821,7 +857,7 @@ describe('correção da revisão do commit 10e5d381 (R19)', () => {
     expect(recomposta.problemas).toEqual([])
     expect(recomposta.spec!.blocos!.map((b) => [b.papel, b.linhas])).toEqual([['headline', ['Costela']], ['servico', [HORARIO, ENDERECO_NOVO]]])
     const denovo = prepararBlocos({ ...comum, spec: recomposta.spec! }).montados.map((b) => b.layer)
-    expect(Object.fromEntries(denovo.map((l) => [l.id, [l.content, marcaDe(l)]]))).toEqual({ headline: ['Costela', undefined], servico: [ENDERECO_NOVO, [1]], 'servico-2': [HORARIO, [0]] })
+    expect(Object.fromEntries(denovo.map((l) => [l.id, [l.content, marcaDe(l)]]))).toEqual({ headline: ['Costela', [0]], servico: [ENDERECO_NOVO, [1]], 'servico-2': [HORARIO, [0]] })
 
     const lidaRecomposta = copyEfetivaDasCamadas(rev.copy!, denovo, { superficie: 'recomposicao' })
     expect(lidaRecomposta.mudancas).toEqual([])
@@ -852,8 +888,9 @@ describe('correção da revisão do commit 10e5d381 (R19)', () => {
   })
 
   it('R19: a reunião pela marca, com camadas montadas à mão — intercala por linha independente de y e do id; camada cuja contagem de linhas mudou fica INTEIRA no menor índice marcado, sem quebrar a leitura', () => {
-    const doServico = (id: string, content: string, y: number, linhasDoBloco: number[]) =>
-      texto(id, { fontFamily: 'Barlow', fontSize: 30 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor: { papel: 'servico', linhasDoBloco } } })
+    // A marca é o vínculo declarado da main (`bloco` + `linhas`); antes estas camadas levavam `linhasDoBloco` (PR 9).
+    const doServico = (id: string, content: string, y: number, linhas: number[]) =>
+      texto(id, { fontFamily: 'Barlow', fontSize: 30 }, content, { position: { x: 92, y }, metadata: { groupId: 'g', compositor: { papel: 'servico', bloco: 'svc', linhas } } })
     const contrato = copy(['L0', 'L1', 'L2'])
     // A camada de cima (y 900) tem a linha do MEIO; a de baixo tem a primeira e a última.
     const camadas = [texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { metadata: { compositor: { papel: 'headline' } } }), doServico('uuid-b', 'L1', 900, [1]), doServico('uuid-a', 'L0\nL2', 1500, [0, 2])]
@@ -864,7 +901,11 @@ describe('correção da revisão do commit 10e5d381 (R19)', () => {
 
     const comLinhaAMais = camadas.map((l) => (l.id === 'uuid-a' ? { ...l, content: 'L0\nL2\nL3' } : l))
     const aMais = copyEfetivaDasCamadas(contrato, comLinhaAMais, { superficie: 'editor' })
-    expect(servicoDe(aMais.efetiva)).toEqual(['L0', 'L2', 'L3', 'L1'])
+    // A camada ganhou uma linha, então a declaração dela ([0, 2]) já não cobre o desenho e vale a reserva por texto.
+    // ANTES (PR 9): a camada editada entrava INTEIRA no menor índice marcado → ['L0', 'L2', 'L3', 'L1'] — a linha L1,
+    // que ninguém tocou, ia para o fim. DEPOIS (main): cada linha volta à posição da linha IGUAL a ela, e a acrescentada
+    // vai depois do fim → ['L0', 'L1', 'L2', 'L3']. O bloco do autor fica intacto e só o acréscimo aparece.
+    expect(servicoDe(aMais.efetiva)).toEqual(['L0', 'L1', 'L2', 'L3'])
     expect(aMais.efetiva.blocos.some((b) => b.id.startsWith('extra-'))).toBe(false)
 
     const comLinhaAMenos = camadas.map((l) => (l.id === 'uuid-a' ? { ...l, content: 'L0' } : l))
@@ -1157,10 +1198,15 @@ describe('correção da revisão FINAL do Codex sobre 838bde61 (R23–R24): iden
       { id: 'svc-b', funcao: 'servico', ordem: 2, linhas: ['Av. Beira Mar, 100'] },
     ],
   }
+  // Rebase sobre a main (21/09/2026), decisão (A): com DOIS blocos comuns da mesma função, o que diz qual camada é de qual
+  // bloco é o vínculo DECLARADO (`bloco`), gravado pelo compositor e, na página sem ele, pela materialização da
+  // duplicação ("o comum `servico` numa página com dois serviços"). ANTES estas camadas não tinham marca e a leitura do
+  // PR 9 casava pelo id FÍSICO (`servico` ↔ bloco `servico`); sem a marca a main não tem o que arbitrar — é o eixo da
+  // página sem marca, declarado fora do escopo do invariante —, e o que estes testes afirmam vale com ela.
   const camadasDoisComuns: Layer[] = [
-    texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline' } } }),
-    texto('servico', { fontFamily: 'Barlow', fontSize: 30 }, 'Seg a sex, 11h às 15h', { position: { x: 160, y: 1700 }, metadata: { compositor: { papel: 'servico' } } }),
-    texto('uuid-b', { fontFamily: 'Barlow', fontSize: 30 }, 'Av. Beira Mar, 100', { position: { x: 160, y: 1500 }, metadata: { compositor: { papel: 'servico' } } }),
+    texto('headline', { fontFamily: 'Bevan', fontSize: 100 }, 'Costela', { position: { x: 92, y: 300 }, metadata: { compositor: { papel: 'headline', bloco: 'h', linhas: [0] } } }),
+    texto('servico', { fontFamily: 'Barlow', fontSize: 30 }, 'Seg a sex, 11h às 15h', { position: { x: 160, y: 1700 }, metadata: { compositor: { papel: 'servico', bloco: 'servico', linhas: [0] } } }),
+    texto('uuid-b', { fontFamily: 'Barlow', fontSize: 30 }, 'Av. Beira Mar, 100', { position: { x: 160, y: 1500 }, metadata: { compositor: { papel: 'servico', bloco: 'svc-b', linhas: [0] } } }),
   ]
 
   it('R23 (variante): o bloco comum cuja camada do id físico está OCULTA não toma por posição a camada do outro bloco da mesma função; reexibir devolve só a ele', () => {
@@ -1176,7 +1222,13 @@ describe('correção da revisão FINAL do Codex sobre 838bde61 (R23–R24): iden
 
   it('R23 (variante, legado): a parte VISÍVEL do bloco único continua sendo dele quando a camada do id físico está oculta (partes `servico` + `servico-2`)', () => {
     const contrato: CopyAutoral = { ...contratoDoisComuns, blocos: [contratoDoisComuns.blocos[0], { id: 'servico', funcao: 'servico', ordem: 1, linhas: ['Seg a sex, 11h às 15h', 'Av. Beira Mar, 100'] }] }
-    const camadas = [camadasDoisComuns[0], { ...camadasDoisComuns[1], position: { x: 160, y: 1500 } }, { ...camadasDoisComuns[2], id: 'servico-2', position: { x: 160, y: 1700 } }] as Layer[]
+    // A página LEGADA: as camadas reaproveitadas de `camadasDoisComuns` perdem o vínculo declarado (`bloco` + `linhas`),
+    // que é o que a torna legada — aqui não há marca, e as partes se reúnem pela reserva por papel da main.
+    const semVinculo = (l: Layer) => {
+      const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      return { ...l, metadata: { ...l.metadata, compositor } } as Layer
+    }
+    const camadas = [camadasDoisComuns[0], { ...camadasDoisComuns[1], position: { x: 160, y: 1500 } }, { ...camadasDoisComuns[2], id: 'servico-2', position: { x: 160, y: 1700 } }].map(semVinculo) as Layer[]
     expect(copyEfetivaDasCamadas(contrato, camadas, { superficie: 'editor' }).mudancas).toEqual([])
     const oculta = camadas.map((l) => (l.id === 'servico' ? { ...l, visible: false } : l)) as Layer[]
     const lida = copyEfetivaDasCamadas(contrato, oculta, { superficie: 'editor' }).efetiva
@@ -1397,7 +1449,7 @@ describe('correção da revisão FINAL do Codex sobre 5d5d378e (R27): a segunda 
     blocos: [{ id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela', 'na brasa', 'hoje'], estilo: { linhasNaVoz2: [1, 2] } }],
   }
   const manchete = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.linhas, b.estilo?.linhasNaVoz2 ?? null])
-  const marca = (l: Layer | undefined) => (l?.metadata?.compositor as { linhasDoBloco?: number[] } | undefined)?.linhasDoBloco
+  const marca = (l: Layer | undefined) => (l?.metadata?.compositor as { linhas?: number[] } | undefined)?.linhas
 
   it('R27: preparação real → persistência → edição da última parte → recomposição: UM bloco autoral com as três linhas, a voz 2 declarada nas duas últimas', () => {
     const v = validarSpec({ ...base, copyAutoral: contrato })
@@ -1449,11 +1501,19 @@ describe('correção da revisão FINAL do Codex sobre 5d5d378e (R27): a segunda 
     }
   })
 
-  it('R28: a voz 2 LEGADA (sem `linhasDoBloco` nem `parte`) com a altura CONTRÁRIA à numeração dos ids — a leitura original e a da cópia duplicada são idênticas, sem revisão, e a cópia leva `parte` 1 e 2', () => {
+  // 🔴 FORA DO ESCOPO desde o rebase sobre a main (21/09/2026), decisão (A) — pulado DE PROPÓSITO, não apagado.
+  // A pergunta era "a numeração do id (`headline2` = 1, `headline2-2` = 2) ordena a voz 2 da página LEGADA, e a
+  // duplicação a materializa como `parte`". As duas metades tomam o id como fonte de ordem, e a decisão (A) recusa isso:
+  // sem marca, a leitura da main não tem vínculo declarado para arbitrar, e a reserva dela documenta "a PRIMEIRA
+  // `headline2` livre da peça" — com duas vozes 2 a outra vira bloco solto (`extra-headline2`) e a recomposição seguinte
+  // recusa a spec. É limitação da leitura da MAIN, anterior ao PR 9 (o compositor da main já produz duas vozes 2), e está
+  // declarada no invariante ("voz 2 repartida em página sem marca"). Na página COM marca o mesmo cenário é o R27, que
+  // passa. O corpo abaixo fica como o PR 9 o escreveu, para quem for tratar a limitação da main.
+  it.skip('R28: a voz 2 LEGADA (sem `linhasDoBloco` nem `parte`) com a altura CONTRÁRIA à numeração dos ids — a leitura original e a da cópia duplicada são idênticas, sem revisão, e a cópia leva `parte` 1 e 2', () => {
     const v = validarSpec({ ...base, copyAutoral: contrato })
     const alturas: Record<string, number> = { headline: 200, headline2: 500, 'headline2-2': 400 }
     const legado = preparar(v.spec!).map((l) => {
-      const { linhasDoBloco: _l, parte: _p, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
+      const { bloco: _b, linhas: _l, ...compositor } = (l.metadata?.compositor ?? {}) as Record<string, unknown>
       return { ...l, position: { ...l.position, y: alturas[String(l.id)] ?? l.position.y }, metadata: { ...l.metadata, compositor } }
     }) as Layer[]
     const porId = Object.fromEntries(legado.map((l) => [l.id, l]))
@@ -1547,10 +1607,13 @@ describe('pré-revisão do HEAD 980eea2a (C9-02): a camada DUPLICADA ou COLADA n
     roteiro('bloco', gravado, [manchete, nota], 'uuid-n')
   })
 
-  it('C9-02/C9-11: `semIdentidadeAutoral` tira SEMPRE extra, bloco, parte e linhasDoBloco; o papel só na página COM contrato; o resto fica', () => {
+  it('C9-02/C9-11: `semIdentidadeAutoral` tira a marca do compositor INTEIRA (regra da main, PR3-R14-01); só o papel volta, e só na página SEM contrato; o resto da metadata fica', () => {
     const cheia = texto('x', {}, 'a', { metadata: { groupId: 'g1', compositor: { papel: 'cta', extra: { id: 'x' }, bloco: 'x', parte: 2, linhasDoBloco: [1], prefixo: '→ ', encaixe: 12 } } })
-    expect(semIdentidadeAutoral(cheia, { paginaTemContrato: true }).metadata).toEqual({ groupId: 'g1', compositor: { prefixo: '→ ', encaixe: 12 } })
-    expect(semIdentidadeAutoral(cheia, { paginaTemContrato: false }).metadata).toEqual({ groupId: 'g1', compositor: { papel: 'cta', prefixo: '→ ', encaixe: 12 } })
+    // ANTES (PR 9): as marcas saíam chave a chave e `prefixo`/`encaixe` FICAVAM na cópia. DEPOIS (main, alinhado no
+    // rebase de 21/09/2026): a marca sai inteira — com `prefixo: '→ '` a cópia do CTA faria `linhasDaCamada` descontar
+    // da leitura uma seta que agora é TEXTO DO AUTOR, a transformação fictícia que o PR5-12 fechou.
+    expect(semIdentidadeAutoral(cheia, { paginaTemContrato: true }).metadata).toEqual({ groupId: 'g1' })
+    expect(semIdentidadeAutoral(cheia, { paginaTemContrato: false }).metadata).toEqual({ groupId: 'g1', compositor: { papel: 'cta' } })
     expect(cheia.metadata?.compositor).toMatchObject({ papel: 'cta', extra: { id: 'x' } })
     const semNada = texto('y', {}, 'b', { metadata: { groupId: 'g2' } })
     expect(semIdentidadeAutoral(semNada, { paginaTemContrato: true })).toBe(semNada)
@@ -1571,8 +1634,9 @@ describe('pré-revisão do HEAD 980eea2a (C9-02): a camada DUPLICADA ou COLADA n
     let n = 0
     const comContrato = camadasColadasNoEditor(origem, { novoId: () => `c${++n}`, paginaTemContrato: true })
     expect(comContrato.map((l) => [l.id, l.name, l.position, l.order, l.metadata])).toEqual([
-      ['c1', 'a Copy', { x: 34, y: 44 }, 0, { groupId: 'g', compositor: {} }],
-      ['c2', 'b Copy', { x: 46, y: 116 }, 0, { compositor: {} }],
+      // ANTES: sobrava `compositor: {}`; DEPOIS: a chave sai inteira, como na `camadaClonada` da main.
+      ['c1', 'a Copy', { x: 34, y: 44 }, 0, { groupId: 'g' }],
+      ['c2', 'b Copy', { x: 46, y: 116 }, 0, {}],
     ])
     const semContrato = camadasColadasNoEditor(origem, { novoId: () => `d${++n}`, paginaTemContrato: false })
     expect(semContrato.map((l) => l.metadata)).toEqual([{ groupId: 'g', compositor: { papel: 'servico' } }, { compositor: { papel: 'apoio' } }])

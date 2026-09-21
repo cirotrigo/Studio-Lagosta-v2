@@ -341,7 +341,7 @@ describe('recomporPaginaDefasada — R19: endereço no grupo da manchete, montad
     const gravadas = estado.paginaGravada?.layers as Layer[]
     const marca = (id: string) => {
       const l = gravadas.find((c) => c.id === id)
-      return [l?.content, (l?.metadata?.compositor as { linhasDoBloco?: number[] } | undefined)?.linhasDoBloco]
+      return [l?.content, (l?.metadata?.compositor as { linhas?: number[] } | undefined)?.linhas]
     }
     expect([marca('servico'), marca('servico-2')]).toEqual([[ENDERECO_NOVO, [1]], [HORARIO, [0]]])
     const efetiva = estado.paginaGravada?.copyAutoral as CopyAutoral

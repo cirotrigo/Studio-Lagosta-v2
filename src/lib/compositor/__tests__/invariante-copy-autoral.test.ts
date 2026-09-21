@@ -62,6 +62,33 @@ import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, rev
  * validar a spec da recomposição; e duplicar → ocultar → salvar → reler →
  * reexibir → salvar.
  *
+ * O QUE O INVARIANTE NÃO AFIRMA (rebase sobre a main, 21/09/2026, decisão (A)).
+ * A leitura da copy efetiva passou a ser a do PR 3: ela arbitra pelo vínculo
+ * DECLARADO (`metadata.compositor.bloco` + `linhas`), e a inferência pelo id do
+ * PR 9 saiu. Com a marca, TUDO o que está acima continua afirmado e passa (zero
+ * falhas no eixo `preparada`). Sem a marca, a main não tem vínculo para
+ * arbitrar, e o invariante deixou de afirmar o que só a inferência pelo id dava.
+ * Medido antes de declarar (16.406 → 12.281 → 0 falhas duras), e o resíduo
+ * inteiro era página sem marca:
+ *  - ESTADOS fora do escopo — a variante é pulada e CONTADA pelo motivo em
+ *    `foraDoEscopo` (ver `foraDoEscopoSemMarca`): contrato da F3 em página sem
+ *    marca (nenhum produtor gera: a camada extra só nasce do compositor deste
+ *    PR, que sempre carimba); livre sem herança no namespace inferido (`extra-*`),
+ *    que casa pelo id inferido pela regra da main e, sem marca, não se distingue
+ *    de uma parte repartida; e voz 2 repartida, cuja reserva a main documenta
+ *    como "a PRIMEIRA `headline2` livre" — a outra vira bloco solto e a
+ *    recomposição seguinte recusa a spec. Esta última é limitação da leitura da
+ *    MAIN, anterior ao PR 9, registrada para ser tratada à parte.
+ *  - Verificações POSICIONAIS na página sem marca produzível (persistência
+ *    contra o oráculo legado, dono por posição, ocultar e reexibir, excluir e
+ *    desfazer, e o diferencial): rodam e são CONTADAS em `posicaoSemMarca`, sem
+ *    falhar. O oráculo legado (`leituraLegada`) ordena as partes pela numeração
+ *    do id, que é justamente o que a decisão recusa. Validade (contrato, spec
+ *    derivada, spec da recomposição) e estabilidade (releitura, duplicação,
+ *    revisor) continuam DURAS em toda variante que roda.
+ * Os números entram na mensagem do `expect` e no relatório: o que saiu do escopo
+ * fica medido, nunca escondido.
+ *
  * Determinístico (produto enumerado, ids em rodízio por aritmética), limitado a
  * poucos segundos. Com `INVARIANTE_RELATORIO=<arquivo>` grava a lista de casos
  * que falharam — é o que permite dizer quais caíam ANTES de uma correção.
@@ -219,10 +246,31 @@ function tirarMarcas(camadas: Layer[], semPapel: boolean): Layer[] {
   return camadas.map((l) => {
     const c = (l.metadata?.compositor ?? null) as Record<string, unknown> | null
     if (!ehTexto(l) || !c) return l
-    const { linhasDoBloco: _l, parte: _p, bloco: _b, ...resto } = c
+    // As marcas da main andam JUNTAS (o compositor só grava `linhas` com `bloco`):
+    // tirar só o `bloco` deixava um estado que nenhum desenho produz.
+    const { bloco: _b, linhas: _l, ...resto } = c
     const { papel: _papel, ...semOPapel } = resto
     return { ...l, metadata: { ...l.metadata, compositor: semPapel && !resto.extra ? semOPapel : resto } } as Layer
   })
+}
+
+/**
+ * Por que uma variante SEM marca está fora do que o desenho promete — ou `null` quando ela está dentro. Os três estados
+ * foram medidos no rebase sobre a main de 21/09/2026 (decisão (A): a leitura é a do PR 3, que arbitra pelo vínculo
+ * DECLARADO) e são todos página sem marca; com a marca, nenhum deles falha:
+ *  - contrato da F3 (bloco com `estilo.herdaDe`) em página sem marca: estado que nenhum produtor gera — a camada extra
+ *    só nasce do compositor deste PR, que sempre carimba `bloco`;
+ *  - livre SEM herança com id no namespace inferido (`extra-*`) numa página sem marca: pela regra da main ele casa
+ *    pelo id inferido, e sem a marca não há como saber se a camada é dele ou parte de um bloco repartido;
+ *  - voz 2 repartida (dois textos `headline2`) numa página sem marca: a reserva da main documenta "a PRIMEIRA
+ *    `headline2` livre da peça", e a outra vira bloco solto. Limitação da leitura da MAIN, anterior ao PR 9.
+ */
+function foraDoEscopoSemMarca(contrato: CopyAutoral, camadas: Layer[]): string | null {
+  if (contrato.blocos.some((b) => b.estilo?.herdaDe)) return 'contrato da F3 em página sem marca'
+  if (contrato.blocos.some((b) => b.funcao === 'livre' && !b.estilo?.herdaDe && b.id.startsWith('extra-'))) return 'livre no namespace inferido em página sem marca'
+  const vozes2 = camadas.filter((l) => ehTexto(l) && (papelDaCamada(l) === 'headline2' || /^headline2-\d+$/.test(String(l.id)))).length
+  if (vozes2 >= 2) return 'voz 2 repartida em página sem marca'
+  return null
 }
 
 /** As famílias de partes: os textos comuns de cada papel (a voz 2 à parte), na ordem do array. */
@@ -257,12 +305,19 @@ function permutarY(camadas: Layer[], ordem: OrdemY): Layer[] {
   return camadas.map((l, i) => (altura.has(i) ? { ...l, position: { ...l.position, y: altura.get(i)! } } : l)) as Layer[]
 }
 
-const meta = (l: Layer) => (l.metadata?.compositor ?? {}) as { extra?: { id?: string }; linhasDoBloco?: number[] }
+const meta = (l: Layer) => (l.metadata?.compositor ?? {}) as { extra?: { id?: string }; bloco?: string; linhas?: number[] }
 const forma = (c: CopyAutoral) => c.blocos.map((b) => [b.id, b.linhas])
 
 /** O bloco dono de um texto da peça, e as posições das linhas dele no bloco. */
 function donoDoTexto(l: Layer, contrato: CopyAutoral, camadas: Layer[]): { id: string; posicoes: number[] } | null {
   const linhas = String(l.content ?? '').split('\n')
+  // Rebase sobre a main (21/09/2026), decisão (A): o dono da camada é o que ela
+  // DECLARA — `bloco` e as posições `linhas` que o compositor grava (PR 3). Antes
+  // este oráculo lia `linhasDoBloco`, a marca do PR 9 que saiu; sem ela toda
+  // camada de uma linha declarava a posição 0, e o bloco repartido era
+  // "esperado" numa ordem que nenhum desenho produz.
+  const declarado = meta(l).bloco
+  if (declarado) return { id: declarado, posicoes: meta(l).linhas ?? linhas.map((_, k) => k) }
   const extraId = meta(l).extra?.id
   if (extraId) return { id: extraId, posicoes: linhas.map((_, k) => k) }
   const papel = papelDaCamada(l)
@@ -270,8 +325,6 @@ function donoDoTexto(l: Layer, contrato: CopyAutoral, camadas: Layer[]): { id: s
   const comuns = contrato.blocos.filter((b) => b.funcao === funcao && !b.estilo?.herdaDe)
   if (!papel || comuns.length !== 1) return null
   const dono = comuns[0]
-  const marca = meta(l).linhasDoBloco
-  if (marca) return { id: dono.id, posicoes: marca }
   if (papel === 'headline') return { id: dono.id, posicoes: linhas.map((_, k) => k) }
   if (papel === 'headline2') {
     const daVoz1 = camadas.filter((c) => ehTexto(c) && papelDaCamada(c) === 'headline').reduce((s, c) => s + String(c.content ?? '').split('\n').length, 0)
@@ -324,7 +377,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
   it('todo contrato aceito × arranjo × operação mantém ids, linhas e dono', () => {
     const casos = enumerarCasos()
     const falhas: string[] = []
-    const contagem = { casos: casos.length, recusadosPelaSpec: 0, recusadosNaPreparacao: 0, aceitos: 0, variantes: 0, operacoes: 0, encadeadas: 0 }
+    const contagem = { casos: casos.length, recusadosPelaSpec: 0, recusadosNaPreparacao: 0, aceitos: 0, variantes: 0, operacoes: 0, encadeadas: 0, foraDoEscopo: {} as Record<string, number>, posicaoSemMarca: 0 }
     const equipe = { autor: 'equipe' as const, motivo: 'autosave', superficie: 'editor' }
     const cobertura = { r26: false, r27: false, r28: false, f02: false }
 
@@ -375,6 +428,17 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
               const falharV = (onde: string, detalhe: unknown) => falhar(`${rotulo} ${onde}`, detalhe)
               const alturas = permutarY(preparadas, ordem)
               const camadas = reordenarArray(marcas === 'preparada' ? alturas : tirarMarcas(alturas, marcas === 'legada-sem-papel'), ordemDoArray)
+              // ESCOPO na página SEM marca — ver o cabeçalho ("O que o invariante NÃO afirma"). A variante fora do escopo é
+              // CONTADA pelo motivo e pulada; nunca vira acerto em silêncio.
+              const motivoForaDoEscopo = marcas === 'preparada' ? null : foraDoEscopoSemMarca(caso.contrato, camadas)
+              if (motivoForaDoEscopo) {
+                contagem.foraDoEscopo[motivoForaDoEscopo] = (contagem.foraDoEscopo[motivoForaDoEscopo] ?? 0) + 1
+                continue
+              }
+              // As verificações POSICIONAIS (qual linha volta para onde) só valem com a marca: sem ela, a leitura da main não
+              // tem vínculo declarado para arbitrar, e recuperar a posição seria inferir do id — o que a decisão (A) recusa.
+              // Na página sem marca elas rodam e são contadas, sem falhar; validade e estabilidade continuam duras.
+              const falharPosicao = (onde: string, detalhe: unknown) => (marcas === 'preparada' ? falharV(onde, detalhe) : contagem.posicaoSemMarca++)
               // Correção vale na preparada (contrato autoral) e na legada (leitura legada); a sem papel só tem a regra diferencial.
               const absoluta = marcas !== 'legada-sem-papel'
               const oraculo = marcas === 'preparada' ? forma(caso.contrato) : legado.esperado
@@ -382,7 +446,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
               const efetiva = entradaDePersistencia({ spec: v.spec, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'u' }, pasta: { id: 1, name: 'p' }, nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: camadas, fundo: '#000', diagnostico: {}, fotoUrl: null }).copyAutoral as CopyAutoral
               if (absoluta) {
                 // 1. a persistência reproduz o oráculo, sem bloco inventado
-                if (JSON.stringify(forma(efetiva)) !== JSON.stringify(oraculo)) falharV('persistência', { esperado: oraculo, obtido: forma(efetiva) })
+                if (JSON.stringify(forma(efetiva)) !== JSON.stringify(oraculo)) falharPosicao('persistência', { esperado: oraculo, obtido: forma(efetiva) })
                 if (validarCopyAutoral(efetiva).problemas.length > 0) falharV('contrato persistido inválido', validarCopyAutoral(efetiva).problemas)
               }
               // 2. releitura estável
@@ -419,7 +483,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
                 const dono = donoPorId.get(idOriginal)
                 if (!dono) return lida
                 const esperado = base.blocos.map((x) => [x.id, x.id === dono.id ? x.linhas.filter((_, p) => !dono.posicoes.includes(p)) : x.linhas])
-                if (JSON.stringify(forma(lida)) !== JSON.stringify(esperado)) falharV(`${onde} ${idOriginal} (dono ${dono.id})`, { esperado, obtido: forma(lida) })
+                if (JSON.stringify(forma(lida)) !== JSON.stringify(esperado)) falharPosicao(`${onde} ${idOriginal} (dono ${dono.id})`, { esperado, obtido: forma(lida) })
                 if (validarCopyAutoral(lida).problemas.length > 0) falharV(`${onde}: contrato inválido`, validarCopyAutoral(lida).problemas)
                 // Sem bloco COM função e com texto não há o que compor ("pelo menos um bloco"): a recusa é legítima.
                 if (ordem === 'identidade' && ordemDoArray === 'original' && temBlocoParaCompor(lida)) {
@@ -444,10 +508,10 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
                 conferirToque('excluir', efetiva, camadas, k, 'excluir', id)
                 contagem.operacoes++
                 const volta = copyEfetivaDasCamadas(oculta, camadas, { superficie: 'editor' }).efetiva
-                if (!iguais(volta, efetiva)) falharV(`ocultar e reexibir ${id}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })
+                if (!iguais(volta, efetiva)) falharPosicao(`ocultar e reexibir ${id}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })
                 const ocultaNaCopia = conferirToque('duplicar e ocultar', dup.contrato!, camadasDaCopia, k, 'ocultar', id)
                 // DIFERENCIAL: ocultar na cópia dá a mesma leitura que ocultar na original.
-                if (!iguais(ocultaNaCopia, oculta)) falharV(`diferencial: ocultar ${id} na cópia`, { original: formaSemInferidos(oculta), copia: formaSemInferidos(ocultaNaCopia) })
+                if (!iguais(ocultaNaCopia, oculta)) falharPosicao(`diferencial: ocultar ${id} na cópia`, { original: formaSemInferidos(oculta), copia: formaSemInferidos(ocultaNaCopia) })
 
                 // 5. ENCADEADAS (C9-01, sem os passos tautológicos — C9-13)
                 contagem.encadeadas += 3
@@ -469,7 +533,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
                 }
                 contagem.operacoes++
                 const desfeito = salvar(`desfazer a exclusão de ${id}`, salvo, camadas)
-                if (!iguais(desfeito, efetiva)) falharV(`excluir ${id} → salvar → desfazer → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(desfeito) })
+                if (!iguais(desfeito, efetiva)) falharPosicao(`excluir ${id} → salvar → desfazer → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(desfeito) })
                 // 5b. duplicar → ocultar → salvar → reler → reexibir → salvar
                 const ocultaCopia = tocarUm(camadasDaCopia, k, 'ocultar')
                 const salvoCopia = salvar(`duplicar e ocultar ${id}`, dup.contrato!, ocultaCopia)
@@ -478,7 +542,7 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
                 if (relidaCopia.mudancas.length > 0) falharV(`duplicar → ocultar ${id} → salvar → reler`, relidaCopia.mudancas.map((x) => x.id))
                 contagem.operacoes++
                 const reexibidoSalvo = salvar(`duplicar e reexibir ${id}`, salvoCopia, camadasDaCopia)
-                if (!iguais(reexibidoSalvo, efetiva)) falharV(`duplicar → ocultar ${id} → salvar → reexibir → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(reexibidoSalvo) })
+                if (!iguais(reexibidoSalvo, efetiva)) falharPosicao(`duplicar → ocultar ${id} → salvar → reexibir → salvar`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(reexibidoSalvo) })
                 // 5c. o REVISOR esconde o texto (marca do PR 0) → salvar é "sem mudança" (não é remoção autoral); a leitura da
                 // arte diz que o texto não foi desenhado (igual a ocultar); desfazer → salvar continua sem mudança.
                 const peloRevisor = camadas.map((c, j) => (j === k ? comVisibilidadeDoRevisor(c, false, MARCA_DO_REVISOR) : c)) as Layer[]

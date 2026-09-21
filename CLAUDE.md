@@ -8661,6 +8661,53 @@ mesma linha; normalizar para comparar **e** para registrar.
 
 ### A camada EXTRA: função separada de estilo (PR 9 de "Marca simples, copy melhor", 12/09/2026)
 
+> 🔴 **Decisão (A) no rebase sobre a main (21/09/2026): a leitura da copy efetiva
+> é a do PR 3, e a inferência pelo id do PR 9 foi APOSENTADA.** Quem arbitra de
+> qual bloco é uma camada é o vínculo DECLARADO (`metadata.compositor.bloco` +
+> `linhas`), não o id da camada. As notas R08–R28, C9 e F01/F02 abaixo descrevem
+> a leitura por id e ficam como registro; onde contradizem este bloco, vale este.
+>
+> - **Saíram** `parteMarcada`, `linhasDoBloco`, `partesDoBloco`, `ordenarPartes`,
+>   `temIdDoBloco`, `declaraOutroBloco` e `extraComIdentidade`. `parte` e
+>   `linhasDoBloco` eram a MESMA informação do `linhas` do PR 3, deduzida do id da
+>   montagem em vez de declarada — o mesmo movimento que tirou o `blocoDaCopy` do
+>   PR 4. **Não reintroduza nenhuma das duas**: duas marcas para o mesmo fato é a
+>   segunda fonte de verdade que os dois lados fecharam uma por rodada.
+> - **Ficou do PR 9**: a resolução e a medição dos extras; o bloco `livre` com
+>   herança; e o **carimbo do extra apontando para o PRÓPRIO bloco** (`bloco` = o
+>   id que o autor deu, nunca o do papel de que ele só herda o estilo).
+>   `blocoDoPapel` (`preparar-blocos.ts`) pula bloco com `estilo.herdaDe`: com a
+>   F3 a premissa "papel e bloco são um para um" vale só entre os comuns.
+>   `materializarVinculosDoIdFisico` ficou reduzido ao PAPEL que só o id dava e ao
+>   BLOCO cujo id é o id físico — este último só quando o contrato tem MAIS DE UM
+>   bloco daquela função; com bloco único a reserva já reúne as partes, e marcar só
+>   a parte cujo id coincide deixava o bloco meio declarado.
+> - **As guardas que RESTRINGEM a regra da main** (readotadas; nenhuma infere):
+>   `casaPeloIdInferido` (bloco com herança nunca casa pelo id inferido
+>   `extra-<camada>` — R25); `incluirOcultas` na leitura (a camada oculta segue
+>   vinculada ao livre dela, que sai vazio, e não fica livre para o vizinho tomar
+>   — R23); o extra com herança só lê a camada que DECLARA, nunca a reserva por
+>   função (oculta ou excluída, ele sai vazio — R23); e `renomearExtrasDuplicados`
+>   só renomeia o id que a LEITURA inventou, nunca o do autor (R14/R25). Os buracos
+>   que elas fecham só existem porque o PR 9 introduz id autoral e camada extra: na
+>   main o livre só tem id inventado pela leitura.
+> - **Dois defeitos da leitura da MAIN apareceram no invariante e foram
+>   corrigidos com o mecanismo dela** (a marca declarada estava sendo ignorada):
+>   a voz 2 repartida em dois textos era concatenada pela ALTURA (R27), e a única
+>   parte que sobrava visível lia em ordem visual contra a própria declaração
+>   (R20). Os dois passam por `ordemDeclarada`, como a voz 1 já passava.
+> - `semIdentidadeAutoral` segue a regra da main (`camadaClonada`, PR3-R14-01): a
+>   marca do compositor sai INTEIRA — o `prefixo` também (PR5-12) —, e só o
+>   `papel` volta, e só na página SEM contrato (C9-11).
+> - **O invariante declara o escopo da página sem marca**: com a marca ele afirma
+>   tudo e passa; sem ela, estados e verificações posicionais que só a inferência
+>   pelo id sustentava saem da afirmação — medidos e contados, nunca escondidos
+>   (ver o cabeçalho de `invariante-copy-autoral.test.ts`).
+> - ⚠️ **Limitação da main, anterior ao PR 9 e fora do escopo dele**: numa página
+>   SEM marca com duas vozes 2, a reserva documenta "a PRIMEIRA `headline2` livre
+>   da peça" — a outra vira bloco solto e a recomposição seguinte recusa a spec. O
+>   R28 ficou pulado com esse motivo. Tratar é mudança da leitura da main, à parte.
+
 "Copy primeiro, campos depois" ganhou o mecanismo que faltava: um texto que
 veste o estilo de um papel da assinatura SEM ser esse papel. Até aqui, papel que
 a variante não tinha era `PAPEIS_INCOMPATIVEIS`, e bloco `livre` com texto era
