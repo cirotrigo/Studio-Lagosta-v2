@@ -24,7 +24,10 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
+import { ComoAMarcaFala } from '@/components/projects/como-a-marca-fala'
+import { IdentidadeVisual } from '@/components/projects/identidade-visual'
+import { FatosDaCasa } from '@/components/projects/fatos-da-casa'
+import { CrivoArquivado, DirecaoDeArteAvancada } from '@/components/projects/direcao-de-arte-avancada'
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { ModelosTab } from '@/components/projects/modelos-tab'
@@ -33,9 +36,6 @@ import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-fo
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
-import { ArtImprovementPromptConfig } from '@/components/projects/art-improvement-prompt-config'
-import { BrandDnaSection } from '@/components/projects/brand-dna-section'
-import { ContentPillarsSection } from '@/components/projects/content-pillars-section'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
 import { ProjectAnalyticsPanel } from '@/components/analytics/project-analytics-panel'
@@ -348,22 +348,15 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="assets" className="mt-3 md:mt-4">
-          <div className="space-y-6">
-            {/* DNA primeiro: é o que muda o resultado das gerações. Os assets
-                visuais (logos, cores, fontes) vêm em seguida — são a parte da
-                identidade que o sistema injeta sozinho. */}
-            <BrandDnaSection projectId={projectId} />
-            {/* Pilares logo abaixo do DNA porque são a outra metade da mesma
-                coisa: o DNA diz COMO a marca fala, os pilares dizem SOBRE O QUÊ
-                ela fala — e é aqui que a lista passa pelo olho humano. */}
-            <ContentPillarsSection projectId={projectId} />
-            {projectDetails && (
-              <ArtImprovementPromptConfig
-                projectId={projectId}
-                initialPrompt={projectDetails.artImprovementPrompt}
-              />
-            )}
-            <ProjectAssetsPanel projectId={projectId} />
+          {/* A aba Marca em TRÊS áreas (plano "Marca simples, copy melhor", §8):
+              como a marca fala (a voz compacta), identidade visual (logo, cores,
+              fontes e as assinaturas) e fatos da casa (o resumo da base). O que
+              saiu daqui: pilares → planejamento (bancada); direção de arte e
+              prompt de melhoria → Configurações, avançado; crivo → arquivo. */}
+          <div className="space-y-8">
+            <ComoAMarcaFala projectId={projectId} />
+            <IdentidadeVisual projectId={projectId} />
+            <FatosDaCasa projectId={projectId} />
           </div>
         </TabsContent>
 
@@ -389,6 +382,10 @@ export default function ProjectDetailPage() {
 
                 {/* Project Tags Configuration */}
                 <ProjectTagsConfig projectId={projectId} />
+
+                {/* O que saiu da aba Marca: parâmetros avançados de arte e o crivo (arquivo). */}
+                <DirecaoDeArteAvancada projectId={projectId} artImprovementPrompt={projectDetails.artImprovementPrompt} />
+                <CrivoArquivado projectId={projectId} />
 
                 {/* Instagram Account Configuration */}
                 <InstagramAccountConfig

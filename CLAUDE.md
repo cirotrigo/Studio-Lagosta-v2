@@ -6720,6 +6720,195 @@ no branch de dev: `scripts/validar-voz-compacta.ts` (não toca no Blob).
   (mesmo id), a presente volta campo a campo, e a conferência cobre todos os
   campos menos `updatedAt`.
 
+### A aba Marca em três áreas (PR 14 de "Marca simples, copy melhor", 12/09/2026)
+
+A aba Marca (`?tab=assets`) deixou de ser a pilha DNA → pilares → prompt de
+melhoria → assets e virou TRÊS áreas (plano §8): **Como a marca fala** (a voz
+compacta do PR 7, editável), **Identidade visual** (as assinaturas com atalho ao
+editor + logo, cores, fontes e elementos) e **Fatos da casa** (o RESUMO da base,
+com atalhos — nunca uma cópia). Serviço em `src/lib/brand/aba-marca.ts` (a
+única casa com Prisma), rotas finas `GET|PUT /api/projects/[id]/voz`,
+`GET …/fatos`, `GET …/assinatura`, hooks em `src/hooks/use-aba-marca.ts`,
+formulário PURO em `src/lib/brand/voz-formulario.ts` (com teste de ida e volta
+exata). Prova no branch de dev: `scripts/validar-aba-marca.ts`.
+
+- **O que SAIU da aba e para onde foi**: pilares de conteúdo → bancada
+  (planejamento, recolhidos em "Planejamento · pilares"); composição, estilo
+  visual, direção fotográfica e o prompt de melhoria → Configurações,
+  recolhidos em "Avançado · direção de arte"; crivo de aprovação →
+  Configurações, "Arquivo · crivo". `BrandDnaSection` virou parametrizável
+  (`secoes`, `titulo`, `descricao`, `mostrarPrevia`, `somenteLeitura`) e é a
+  MESMA nas quatro casas — não duplique o editor de DNA.
+- 🔴 **A tela grava a voz com a versão que LEU** (`PUT` com `versaoEsperada`;
+  `gravarVoz` faz o CAS): a versão velha volta `VOZ_DIVERGENTE` 409 e a tela
+  recarrega e pede para refazer por cima; sem versão com voz existente é
+  `VOZ_VERSAO_OBRIGATORIA`. Voz que não passa no contrato é recusada ANTES de
+  escrever (`VOZ_INVALIDA`, com TODOS os problemas) — e o formulário mostra os
+  problemas em tempo real (`lerVoz` sobre o formulário) antes de deixar salvar.
+- 🔴 **Gravar a voz NÃO muda quem manda na copy.** A precedência é a de sempre
+  (`precedenciaDaVoz`): o topo da área diz "manda na copy" (migrado), "prévia —
+  o DNA legado ainda manda" (voz gravada, cliente não migrado) ou "sem voz
+  ainda". Migrar é o manifesto do PR 13, decisão do Ciro por cliente. O DNA de
+  texto continua editável na própria área, recolhido, enquanto o cliente não
+  migrou (é o que a copy lê hoje); migrado, aparece só para leitura
+  ("arquivado").
+- **A consulta seguinte do CONECTOR traz a alteração da tela**: `consultar-voz`
+  e o loader único leem `BrandVoice` sem cache — a prova grava pela camada da
+  tela e confere versão e conteúdo em `consultar-voz` e `vozPendente` no
+  `loadBrandContext`. Editar a voz e mandar o DNA inteiro para o modelo era o
+  defeito que o plano queria evitar.
+- **Regra recente com SUBSTITUIÇÃO no formulário** (`substituirRegraNoFormulario`):
+  a antiga fica inativa (histórico, recolhido), a nova nasce com `substitui` e
+  id novo — a mesma semântica de `aplicarRegraNaVoz`, sem o detector de
+  conflito, porque a pessoa está decidindo à vista. `vozParaPrompt` só carrega
+  as ativas. 🔴 **Regra SUBSTITUÍDA não se reativa** (`podeReativar`, PR14-03):
+  com a substituta apontando para ela, o contrato recusa a voz ("a substituída
+  continua ativa") e a tela oferecia uma operação que não podia ser salva;
+  voltar ao texto antigo é uma NOVA substituição da regra atual (o histórico
+  fica) — da regra que vale HOJE (`sucessoraAtiva`: a cadeia A → B → C pode
+  ter mais de um elo, PR14-06). Só regra apenas desativada volta com
+  "reativar". Regra ainda NÃO gravada (não está na base lida) e sem referência
+  pode ser REMOVIDA da lista (`podeRemoverRegra`, PR14-05): sem isso a regra
+  em branco que a pessoa abandonou travava o Salvar do resto da edição — o
+  contrato exige texto e motivo também nas inativas. Regra gravada é
+  histórico: desativa, nunca some.
+- 🔴 **Listas e reescritas são campos ESTRUTURADOS, um item por campo — nunca
+  texto serializado por delimitador** (PR14-01): "uma reescrita por linha,
+  `antes → depois — motivo`" partia um `depois` com travessão, juntava exemplos
+  com quebra interna e tirava um marcador literal "- ", e campos que a pessoa
+  NÃO editou saíam mudados ao salvar. O valor de cada item viaja literal; só o
+  espaço das pontas sai. A prova grava travessão, seta, marcador e quebra pela
+  camada da tela e confere que o conector devolve byte a byte, e que editar só
+  a descrição deixa o resto idêntico.
+- 🔴 **O que chega do servidor NUNCA apaga edição local não salva** (PR14-02):
+  a resposta só substitui o formulário quando ele não tem mudança pendente;
+  quando o nosso salvamento chegou e a pessoa já digitou mais, a base avança e
+  o rascunho fica; quando outra pessoa salvou por baixo, a tela avisa e a pessoa
+  decide recarregar (o CAS recusa a gravação até lá). A releitura é AGUARDADA
+  dentro da mutação e os campos ficam desabilitados durante o ciclo inteiro.
+- 🔴 **Campo cujo contrato aceita quebra de linha é multilinha na tela**
+  (PR14-08): `<input>` de texto DESCARTA a quebra preexistente ao editar —
+  tratamento, motivo da regra e motivo da reescrita são `Textarea` de uma
+  linha; a conversão pura preservava e o controle não.
+- **A leitura que confirmou AUSÊNCIA de voz grava com `versaoEsperada: 0`**
+  (PR14-09; o serviço aceita 0 como "esperava nenhuma"): se outra pessoa
+  criou a v1 no meio, o conflito volta como `VOZ_DIVERGENTE` e cai no caminho
+  tratado (aviso + carregar a versão atual); com `null` vinha
+  `VOZ_VERSAO_OBRIGATORIA` sem saída, e a tela repetia a falha a cada clique.
+  `VOZ_VERSAO_OBRIGATORIA` também é tratado como divergência.
+- **A substituição de regra em andamento é RASCUNHO fora do formulário e conta
+  como edição local** (PR14-12): a releitura não a apaga; se a regra deixou de
+  estar ativa por baixo, o texto reaparece num painel próprio (virar regra nova
+  ou descartar). **`id`, `substitui` e `em` viajam literais** (PR14-13): o
+  contrato aceita id com espaço nas pontas, e aparar o id sem aparar a
+  referência quebrava o vínculo — a voz não salvava mais nem uma edição só na
+  descrição.
+- **Seção recolhível NÃO desmonta o que já abriu** (PR14-10, `Secao` de
+  "Avançado · direção de arte"; PR14-11, o DNA legado recolhido em "Como a
+  marca fala"): os editores movidos guardam rascunho em
+  estado local, e `{aberto && children}` descartava a edição ao recolher;
+  `forceMount` + `hidden`, montando na primeira abertura.
+  **E a releitura que FALHA com dados já carregados não troca a árvore pelo
+  cartão de erro** (PR14-14): salvar a voz invalida a consulta, e um GET que
+  falha depois disso punha `isError` verdadeiro — o retorno exclusivo de erro
+  desmontava o `BrandDnaSection` e o rascunho de Tom de voz e Regras que a
+  pessoa estava escrevendo no DNA legado sumia; "Tentar de novo" voltava com
+  os valores do servidor. O cartão exclusivo é só da carga inicial sem dado;
+  com dado, a falha vira aviso acima do conteúdo, e tudo continua montado.
+- 🔴 **A resposta CONFIRMADA de uma gravação vira o dado da consulta ANTES da
+  releitura** (PR14-15 da revisão final do Codex, 18/09/2026). O PUT da voz
+  devolve a leitura depois da escrita (versão nova incluída), e o hook a
+  descartava: a tela só reconciliava pelo GET da invalidação. Com esse GET
+  falhando, `base` e `versaoLida` ficavam na versão anterior, a edição
+  seguinte ia com a versão velha e tomava `VOZ_DIVERGENTE` de um salvamento que
+  era dela — e, quando a releitura enfim chegava, o próprio salvamento era lido
+  como mudança de terceiros e a saída oferecida era descartar o rascunho. Hoje
+  `gravacaoDaVozDaMarca` põe a resposta no cache (`setQueryData`) e só então
+  relê; a reconciliação mora em `reconciliarComServidor` (puro, em
+  `voz-formulario.ts`), a mesma para a releitura e para a resposta.
+  🔴 **O mesmo defeito, pior, estava no `BrandDnaSection`** (varredura por
+  classe): o `onSuccess` do PATCH invalidava SEM aguardar e reiniciava os campos
+  (`setCarregado(false)`) na mesma hora — do cache ANTERIOR à gravação, mesmo
+  com a releitura dando certo. O texto salvo voltava ao antigo na tela, com o
+  Salvar aceso para regravá-lo por cima; o componente está nas três casas do DNA
+  que o PR 14 criou (DNA legado, DNA visual, crivo). Hoje
+  `confirmarGravacaoDoDna` põe no cache as seções do patch com o valor que o
+  servidor confirmou (só elas: a resposta traz a linha crua, e o `visualStyle`
+  da consulta pode vir do `brandStyleDescription` legado), AGUARDA a releitura,
+  e só então os campos reiniciam. Regra para tela nova: gravação confirmada
+  nunca pode depender da releitura para a tela saber o que foi gravado.
+  Provas em `src/hooks/__tests__/use-aba-marca.test.ts` (QueryClient de
+  verdade, as opções do próprio hook, servidor em memória no `fetch` fazendo o
+  CAS) e em `voz-formulario.test.ts`. A amarração do efeito `[data]` e o
+  `setCarregado(false)` depois do `await` ficam por inspeção.
+- 🔴 **A releitura de CONVENIÊNCIA nunca decide se a escrita aconteceu**
+  (PR14-16 da revisão FINAL do Codex, 21/09/2026). É o INVERSO do PR14-15 e da
+  família de "o registro afirma mais do que sabe": aqui o sistema NEGA o que já
+  fez. `salvarVozDaMarca` gravava com `gravarVoz` — escrita CONFIRMADA, versão
+  já avançada — e só então chamava `lerVozDaMarca` para montar a resposta;
+  falhando essa leitura, o serviço lançava DEPOIS da escrita e a rota devolvia
+  500. A cascata: a tela dizia "erro ao salvar", não aplicava a versão nova ao
+  cache, limpava o `enviadoRef`, e a tentativa seguinte ia com a versão velha e
+  tomava `VOZ_DIVERGENTE` **do próprio salvamento** — com a recuperação
+  oferecendo descartar o rascunho. Em cliente migrado, a voz já mandava na copy
+  enquanto a tela dizia que falhou. Hoje a resposta é
+  `{ gravada: RECIBO, leitura: VozDaMarca | null, leituraFalhou? }`: o recibo
+  (versão, `criada` e a VOZ gravada) sai sempre; a releitura é separada e pode
+  faltar.
+  🔴 **A forma nested é o conserto, não estilo.** Devolver `registro: null` na
+  falha seria pior que o 500: `registroParaFormulario(null)` é versão 0 com
+  formulário VAZIO, e sem edição local a tela adotaria isso — apagando na tela
+  a voz que o servidor acabou de aceitar. **"Não consegui reler" nunca pode ser
+  lido como "não há voz".**
+  O hook aplica o recibo ao que a consulta JÁ tinha (`registroComRecibo`, puro
+  em `voz-formulario.ts`): versão e conteúdo do recibo, `migradaEm` e
+  `dnaArquivado` do cache (a gravação não os toca — `gravarVoz` escreve `voz` e
+  `versao`, e só), `problemas: []` (só se grava voz que passou no contrato).
+  `contexto` e `legado` ficam como estavam: quem manda na copy não muda ao
+  gravar, e a invalidação os atualiza quando a leitura voltar. A tela diz que
+  salvou E que não conseguiu reler o resto.
+  **Varredura da mesma forma nos outros caminhos desta tela e da rota da voz**:
+  `PATCH /brand-dna` → `updateBrandDNA` devolve a linha do próprio `upsert`, sem
+  leitura posterior; `virarRegraNaVoz` monta `antes`/`depois` do que já tem em
+  memória (`registro.voz`, `resultado.voz`) e o `gravarVoz` é a última coisa que
+  faz; `virarRegra` (DNA) idem, dentro da transação; `fatos` e `assinatura` são
+  só leitura. Nenhum outro ponto lê depois de escrever.
+  ⚠️ **Onde a leitura posterior é GARANTIA, não conveniência**: dentro de
+  `migrarParaVoz`, as leituras do DNA e dos fatos rodam DEPOIS da trava e ANTES
+  de ligar a precedência — elas decidem se a escrita acontece, então falhar ali
+  tem de abortar mesmo (`VOZ_DNA_DIVERGENTE`, `VOZ_FATOS_DIVERGENTES`). A
+  distinção é a posição: leitura que ANTECEDE a escrita pode derrubá-la; leitura
+  que a SUCEDE, nunca.
+  Provas: `src/lib/brand/__tests__/aba-marca-recibo.test.ts` (o serviço com os
+  dois braços da releitura falhando, mais os controles de `VOZ_INVALIDA` e do
+  CAS, que continuam lançando porque a escrita NÃO aconteceu),
+  `use-aba-marca.test.ts` (a releitura interna do PUT e o GET falhando juntos:
+  a v2 é reconhecida, o rascunho digitado em seguida fica e a edição seguinte
+  vai com `versaoEsperada: 2`; e a PRIMEIRA gravação, que sem o recibo deixaria
+  a tela na versão 0) e `voz-formulario.test.ts` (`registroComRecibo`). 5
+  mutações pegas: tirar o try/catch (2), ignorar o recibo no hook (2), registro
+  sem a voz gravada (4), perder `migradaEm`/`dnaArquivado` (1), versão que não
+  avança (3).
+- **Erro de leitura é erro, não carregamento eterno nem "base vazia"** (PR14-04):
+  as três áreas distinguem erro (mensagem + tentar de novo), carregando e
+  resultado vazio — "este cliente não tem página de assinatura" só é dito com a
+  consulta respondida.
+- **Os atalhos de categoria de "Fatos da casa" FILTRAM a base** (`/knowledge?projectId=&category=`, PR14-07): a página lia só `projectId` e todo atalho abria a listagem geral; valor fora do vocabulário é ignorado, e o filtro aparece como chip que se tira.
+- **"Fatos da casa" é contagem e prazo, nunca conteúdo** (`resumoDosFatos`:
+  `groupBy` por categoria das ACTIVE, o que vence em 14 dias e o que já venceu e
+  o cron ainda não arquivou, atalhos para `/projects/[id]/base` e `/knowledge`).
+  A prova confere que a resposta não carrega nenhum `content`.
+- **As assinaturas listadas são as páginas do template "Assinatura"**
+  (`paginasDeAssinatura`, a mesma leitura de `ver-assinatura`), com a miniatura
+  só quando ela é publicável — `Page.thumbnail` vira `data:` assim que a página
+  é aberta no editor e fica de fora — e o `editorUrl` com o `pageId`.
+- ⚠️ **A aba nova não tem teste de UI** (o vitest é só node; os Playwright de
+  `tests/e2e/` não a cobrem): a prova cobre a camada que a tela chama e o
+  conector; a tela em si é o critério do Ciro (uma edição feita por ele, plano
+  §11). O `prisma/generated` deste worktree é
+  GERADO LOCALMENTE (não o symlink para o repo principal): o schema daqui tem
+  `BrandVoice` e `copyAutoral` (PRs 7 e 3), e o client do repo principal não.
+
 ### A migração da voz, por manifesto (PR 13 de "Marca simples, copy melhor", 12/09/2026)
 
 A troca do DNA de texto (5–12 mil caracteres por cliente) pela voz compacta
