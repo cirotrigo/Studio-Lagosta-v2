@@ -92,6 +92,28 @@ describe('PR5-11 — `enviada` exige o bloco INTEIRO numa ocorrência livre', ()
     expect(duas.enviada).toEqual(['Vem pra cá', 'Vem pra cá'])
   })
 
+  it('PR5-11-R2 — quebra DENTRO das aspas não encerra o bloco: metade de um bloco citado vira lacuna', () => {
+    const meio = enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje']])
+    expect(meio.enviada).toBeNull()
+    expect(meio.lacuna).toMatch(/bloco 1 \("Venha hoje"\)/)
+
+    // a outra metade também não: a unidade é o bloco entre aspas, inteiro
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['mesmo']]).enviada).toBeNull()
+
+    // o bloco INTEIRO (com a quebra, ou colapsado) continua sendo achado
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje\nmesmo']]).enviada).toEqual(['Venha hoje\nmesmo'])
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje mesmo']]).enviada).toEqual(['Venha hoje mesmo'])
+  })
+
+  it('PR5-11-R2 — duas LINHAS de um único bloco citado não servem a dois blocos esperados', () => {
+    const dois = enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"', [['Venha hoje', 'mesmo']])
+    expect(dois.enviada).toBeNull()
+    expect(dois.lacuna).toMatch(/bloco 1 \("Venha hoje"\)/)
+
+    // com DOIS blocos citados de verdade, os dois são determináveis
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje"\n- "mesmo"', [['Venha hoje', 'mesmo']]).enviada).toEqual(['Venha hoje', 'mesmo'])
+  })
+
   it('os casos VÁLIDOS continuam: caixa da marca, espaços colapsados e o bloco sozinho na linha (molde do manual)', () => {
     // prompt pronto em caixa natural (TERO): vale a forma crua, entre aspas
     expect(enviadaNoPrompt('Manchete: "Almoço executivo", no terço de baixo.', [['ALMOÇO EXECUTIVO'], ['Almoço executivo']]).enviada).toEqual(['Almoço executivo'])

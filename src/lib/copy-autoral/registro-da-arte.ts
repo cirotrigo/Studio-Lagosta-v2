@@ -143,46 +143,77 @@ export const LACUNA_PROMPT_AINDA_NAO_MONTADO = 'o texto enviado ao modelo só é
  */
 
 /**
- * Onde um bloco pode começar e terminar sem ser pedaço de outro texto: a borda
- * do prompt, a quebra de linha ou a aspa. É como TODO caminho da casa escreve
- * a copy — `- "bloco"` (`buildArtePrompt` e o `[TEXTO EXATO]` da melhoria),
- * `"bloco"` por linha (`prompt-da-referencia`) e o bloco sozinho na linha
- * (`prompt-do-manual`). Prompt pronto de quem chamou que embuta o bloco no
- * meio de uma frase corrida não permite dizer o que saiu: vira lacuna, que é o
+ * 🔴 A unidade é o BLOCO COMPLETO, nunca a vizinhança de um pedaço
+ * (PR5-11-R2 da revisão final do Codex, 21/09/2026). A 1ª correção perguntava
+ * "o que vem antes e depois desta ocorrência?" — e `Venha hoje` dentro de
+ * `- "Venha hoje\nmesmo"` começa depois de uma aspa e termina antes de `\n`,
+ * então passava: metade de um bloco citado voltava como `enviada`, e a
+ * amplificação que já estava no prompt ia para a conta do gerador. Pior, as
+ * duas LINHAS de um único bloco entre aspas podiam servir a dois blocos
+ * esperados diferentes.
+ *
+ * Aqui o prompt é partido nas unidades que os caminhos da casa escrevem:
+ * dentro de ASPAS, tudo até a aspa de fechamento é UMA unidade (a quebra
+ * interna não encerra nada) — `- "bloco"` do `buildArtePrompt` e do
+ * `[TEXTO EXATO]` da melhoria, `"bloco"` por linha do `prompt-da-referencia`;
+ * FORA delas, a delimitação é por LINHA — o bloco sozinho na linha do
+ * `prompt-do-manual`. O bloco esperado tem de ser IGUAL a uma unidade inteira
+ * e ainda livre. Prompt pronto de quem chamou que embuta a copy no meio de uma
+ * frase corrida não permite dizer o que saiu: vira lacuna, que é o
  * comportamento pedido.
  */
-const FRONTEIRA_DO_BLOCO = /["“”\n]/
+const ASPAS: Record<string, string> = { '"': '"', '“': '”', '«': '»' }
 
-/** As posições em que `alvo` aparece no prompt como bloco inteiro. */
-function ocorrenciasInteiras(prompt: string, alvo: string): number[] {
-  const posicoes: number[] = []
-  for (let de = prompt.indexOf(alvo); de !== -1; de = prompt.indexOf(alvo, de + 1)) {
-    const antes = de === 0 ? null : prompt[de - 1]
-    const depois = de + alvo.length === prompt.length ? null : prompt[de + alvo.length]
-    if ((antes === null || FRONTEIRA_DO_BLOCO.test(antes)) && (depois === null || FRONTEIRA_DO_BLOCO.test(depois))) posicoes.push(de)
+function unidadesDoPrompt(prompt: string): string[] {
+  const unidades: string[] = []
+  let fora = ''
+  const fecharLinhas = () => {
+    for (const linha of fora.split('\n')) {
+      const t = linha.trim()
+      if (t) unidades.push(t)
+    }
+    fora = ''
   }
-  return posicoes
+  for (let i = 0; i < prompt.length; i++) {
+    const c = prompt[i]
+    const fecha = ASPAS[c]
+    if (fecha) {
+      const fim = prompt.indexOf(fecha, i + 1)
+      if (fim !== -1) {
+        fecharLinhas()
+        unidades.push(prompt.slice(i + 1, fim))
+        i = fim
+        continue
+      }
+    }
+    fora += c
+  }
+  fecharLinhas()
+  return unidades
 }
+
+const colapsado = (s: string) => s.replace(/\s+/g, ' ').trim()
 
 export function enviadaNoPrompt(prompt: string | null | undefined, formas: string[][]): { enviada: string[] | null; lacuna: string | null } {
   if (!prompt) return { enviada: null, lacuna: 'o prompt enviado não foi registrado: o texto enviado ao modelo não é determinável' }
+  const unidades = unidadesDoPrompt(prompt)
   const total = Math.max(0, ...formas.map((f) => f.length))
   const enviada: string[] = []
-  // Cada ocorrência serve a UM bloco: dois blocos iguais precisam de duas aparições.
-  const tomados: Array<[number, number]> = []
+  // Cada unidade serve a UM bloco: dois blocos iguais precisam de duas aparições.
+  const tomadas = new Set<number>()
   for (let i = 0; i < total; i++) {
-    const candidatas = formas.flatMap((f) => (typeof f[i] === 'string' ? [f[i], f[i].replace(/\s+/g, ' ').trim()] : [])).filter((c) => c.length > 0)
+    const candidatas = formas.flatMap((f) => (typeof f[i] === 'string' ? [f[i], colapsado(f[i])] : [])).filter((c) => c.length > 0)
     let achada: string | null = null
     for (const c of candidatas) {
-      const livre = ocorrenciasInteiras(prompt, c).find((de) => !tomados.some(([a, b]) => de < b && de + c.length > a))
-      if (livre !== undefined) {
-        tomados.push([livre, livre + c.length])
+      const livre = unidades.findIndex((u, n) => !tomadas.has(n) && (u === c || colapsado(u) === c))
+      if (livre !== -1) {
+        tomadas.add(livre)
         achada = c
         break
       }
     }
     if (achada === null) {
-      const exemplo = (formas.find((f) => typeof f[i] === 'string')?.[i] ?? '').replace(/\s+/g, ' ').slice(0, 40)
+      const exemplo = colapsado(formas.find((f) => typeof f[i] === 'string')?.[i] ?? '').slice(0, 40)
       return { enviada: null, lacuna: `o bloco ${i + 1} ("${exemplo}") não aparece no prompt enviado como bloco inteiro: o texto enviado ao modelo não é determinável` }
     }
     enviada.push(achada)

@@ -8343,3 +8343,52 @@ transformou, "foi o Claude" quando foi a equipe.
   sobrescreve em toda camada que recebe copy, e a que não recebe fica OCULTA
   (`ehTextoVisivel` a tira da leitura); na via legada não há contrato na página
   para lê-los. Só o `prefixo` alcançava uma leitura.
+
+**Da revisão FINAL do Codex sobre c0e2649b (BLOQUEADO, PR5-11-R2, PR5-12-R2, 21/09/2026).**
+As duas são as correções anteriores ficando curtas na fronteira, e a mesma
+lição: **a guarda tinha sido escrita a partir do caso do exemplo, não da
+regra** — "terminou antes de `\n`" no lugar de "é o bloco inteiro", "o
+conteúdo mudou" no lugar de "veio conteúdo".
+
+- 🔴 **A unidade de `enviada` é o BLOCO COMPLETO, nunca a vizinhança de um
+  pedaço** (PR5-11-R2). `enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"',
+  [['Venha hoje']])` começa depois de uma aspa e termina antes de `\n`, então a
+  fronteira por caractere aceitava: metade de um bloco citado voltava como
+  `enviada` sem lacuna, e a amplificação que já estava no prompt ia para a
+  conta do gerador; e as duas LINHAS de um único bloco entre aspas podiam
+  servir a dois blocos esperados. Hoje `unidadesDoPrompt` parte o prompt nas
+  unidades que os caminhos da casa escrevem — **dentro de ASPAS a quebra
+  interna NÃO encerra o bloco** (`- "bloco"` do `buildArtePrompt` e do
+  `[TEXTO EXATO]`, `"bloco"` por linha do `prompt-da-referencia`); **fora
+  delas a delimitação é por LINHA** (o bloco sozinho na linha do
+  `prompt-do-manual`) —, e o bloco esperado tem de ser IGUAL a uma unidade
+  inteira e ainda livre. Ambiguidade vira lacuna, como já era.
+- 🔴 **A camada que RECEBE conteúdo perde a declaração de prefixo, mesmo que
+  os caracteres coincidam** (PR5-12-R2). Modelo com `content: '→ Reserve já'`
+  e `prefixo: '→ '` recebendo do contrato literalmente `→ Reserve já`: a
+  guarda `novo === layer.content` mantinha a declaração, a arte mostrava a
+  seta que o AUTOR escreveu e `linhasDaCamada` a descontava — a mesma
+  transformação fictícia, agora onde o texto não mudou. O fato é TER VINDO
+  conteúdo; só a camada sem preenchimento continua declarando o prefixo.
+- 🔴 **O terceiro lugar com o mesmo proxy era a herança do contrato na
+  melhoria** (PR5-14, achado na varredura pedida). `contratoDaOrigemDaMelhoria`
+  recebia `outraImagem: !!args.skipTextVerification` — a BANDEIRA da régua de
+  texto, que hoje tem uma causa só e por isso coincidia com o fato. Qualquer
+  motivo NOVO para pular a conferência (peça sem texto, régua indisponível,
+  opt-out) derrubaria o contrato junto **e afirmaria no registro que "a imagem
+  melhorada é outro slide do post"**, que seria falso. O serviço passou a
+  nomear o FATO (`melhoraOutraImagem`, dos mesmos dois pontos que o
+  produziam: o slide com `generationId` próprio e a mídia do post que não é o
+  `resultUrl` da origem) e dele DERIVA `skipTextVerification`; o runner lê o
+  fato, com a bandeira como fallback só para job enfileirado antes do campo,
+  quando ela tinha essa causa única. Sem teste novo: a correção é de fiação —
+  uma atribuição vira dois campos —, e a semântica de `outraImagem` já é
+  provada pelo PR5-08.
+- **O que a varredura DESCARTOU com razão**: `autorDoPedido` (canal é o fato,
+  não sintoma — PR5-13); `revisaoDoRefino`, que localiza o bloco pelo texto
+  normalizado e **declara** a ambiguidade (`candidatos.length !== 1` →
+  `descartado`) em vez de escolher; `mapearContratoParaCampos`, cuja
+  aproximação por NOME de campo é declarada item a item (`por: 'posicao'`,
+  `semCampo`, avisos); e `COPY_DIVERGE_DO_CONTRATO`, comparação exata entre os
+  dois lados limpos pela MESMA função, numa porta em que o contrato vence de
+  qualquer forma.

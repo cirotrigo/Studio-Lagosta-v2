@@ -97,6 +97,16 @@ export interface ImprovementJobArgs {
    */
   skipTextVerification?: boolean
   /**
+   * 🔴 O FATO: a imagem que está sendo melhorada não é a arte da Generation de
+   * origem. `skipTextVerification` é uma CONSEQUÊNCIA dele — hoje a única —, e
+   * decidir a herança do contrato pela bandeira era ler o sintoma no lugar do
+   * fato: qualquer motivo NOVO para pular a conferência de texto derrubaria o
+   * contrato junto e ainda afirmaria no registro que "a imagem é outro slide".
+   * Ausente = job enfileirado antes deste campo, quando a bandeira tinha essa
+   * causa única; aí ela vale.
+   */
+  melhoraOutraImagem?: boolean
+  /**
    * Item da fila da BANCADA que recebe a arte melhorada (F3, 02/09/2026). As
    * duas portas de entrada da arte pronta — fila da bancada e rascunho na
    * agenda — têm a MESMA melhoria: aqui o runner reaponta o item (ou o slide
@@ -313,12 +323,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       // O contrato PROPAGA pela cadeia como a régua: a origem (arte de IA, de
       // modelo, do compositor ou outra melhoria) carrega `copyAutoral.original`.
       // Só quando a imagem melhorada É a arte daquela Generation: o slide 2
-      // do carrossel chega com o `generationId` do slide 1 (`skipTextVerification`),
-      // e o contrato de A não pode virar o de B (PR5-08).
+      // do carrossel chega com o `generationId` do slide 1, e o contrato de A
+      // não pode virar o de B (PR5-08). Quem responde isso é o FATO gravado
+      // pelo serviço (`melhoraOutraImagem`), nunca a bandeira da conferência.
       db.generation
         .findUnique({ where: { id: args.originalGenerationId }, select: { fieldValues: true } })
         .then((g) => {
-          const r = contratoDaOrigemDaMelhoria(g?.fieldValues, { outraImagem: !!args.skipTextVerification })
+          const r = contratoDaOrigemDaMelhoria(g?.fieldValues, { outraImagem: args.melhoraOutraImagem ?? !!args.skipTextVerification })
           if (r.aviso) registroDaRun.copyAutoralNaoHerdada = r.aviso
           return r.contrato
         })

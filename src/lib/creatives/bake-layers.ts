@@ -29,25 +29,29 @@ export function bakeLayers(
     const slot = slotValues[layer.id] ?? slotValues[layer.name]
     const updated = { ...layer }
 
-    // 🔴 Conteúdo NOVO não herda a declaração de prefixo da camada anterior: ela
+    // 🔴 Camada que RECEBE conteúdo não herda a declaração de prefixo: ela
     // descreve o ornamento que o compositor desenhou, e o preenchimento escreve
     // o texto tal e qual. Herdada, a leitura descontava do contrato um "→ " que
     // agora é texto do autor — a arte mostrava "→ Venha hoje" e o contrato
     // gravava "Venha hoje" (PR5-12).
-    const trocouConteudo = (novo: string) => {
-      if (novo === layer.content) return
-      Object.assign(updated, semPrefixoHerdado(updated))
-    }
+    //
+    // 🔴 O fato é TER VINDO conteúdo, nunca "o conteúdo mudou" (PR5-12-R2): com
+    // a guarda por igualdade, o contrato que pedia literalmente "→ Reserve já"
+    // numa camada de mesmo texto mantinha a declaração, e a leitura descontava
+    // do autor a seta que ele escreveu — a mesma transformação fictícia, agora
+    // onde os caracteres coincidem. Só a camada SEM preenchimento continua
+    // declarando o prefixo.
+    const recebeuConteudo = () => Object.assign(updated, semPrefixoHerdado(updated))
 
     if (typeof slot === 'string') {
       updated.content = slot
-      trocouConteudo(slot)
+      recebeuConteudo()
       if (layer.type === 'text') changedTextIds.push(layer.id)
     } else if (slot && typeof slot === 'object') {
       const slotObj = slot as Record<string, unknown>
       if (typeof slotObj.content === 'string') {
         updated.content = slotObj.content
-        trocouConteudo(slotObj.content)
+        recebeuConteudo()
         if (layer.type === 'text') changedTextIds.push(layer.id)
       }
       if (typeof slotObj.fileUrl === 'string') {

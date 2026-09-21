@@ -55,6 +55,23 @@ describe('PR5-12 — a declaração de prefixo não sobrevive ao conteúdo novo'
     expect(copyEfetivaDasCamadas(efetiva.efetiva, layers as never, { superficie: 'editor' }).mudancas).toEqual([])
   })
 
+  it('PR5-12-R2 — CTA autoral IDÊNTICO ao texto da camada: a declaração cai do mesmo jeito', () => {
+    // o contrato pede literalmente o que a camada já mostra, seta inclusive.
+    // A guarda por igualdade (`novo === layer.content`) mantinha o prefixo, e a
+    // leitura descontava do autor a seta que ele escreveu.
+    const contrato = contratoCom('→ Reserve já')
+    const mapa = mapearContratoParaCampos(campos, contrato)
+    const { layers } = bakeLayers(camadaDoModelo(), mapa.slotValues, null)
+
+    expect(layers[0].content).toBe('→ Reserve já')
+    expect((layers[0].metadata as any).compositor.prefixo).toBeUndefined()
+
+    const efetiva = copyEfetivaDasCamadas(contrato, layers as never, { superficie: 'modelo' })
+    expect(efetiva.efetiva.blocos.find((b) => b.id === 'cta')!.linhas).toEqual(['→ Reserve já'])
+    expect(efetiva.efetiva.revisoes).toEqual([])
+    expect(efetiva.mudancas).toEqual([])
+  })
+
   it('CTA autoral SEM seta: o prefixo herdado também sai, e o texto volta inteiro', () => {
     const contrato = contratoCom('Venha hoje')
     const mapa = mapearContratoParaCampos(campos, contrato)
