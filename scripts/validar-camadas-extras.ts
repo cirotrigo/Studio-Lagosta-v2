@@ -33,6 +33,38 @@
  *     peça é RECOMPOSTA com a foto da página, os extras continuam na página;
  *  8. editar a copy de novo e recompor: idem.
  *
+ *  CONCORRÊNCIA, FALHA PARCIAL E O PR9-F01 (exigidos pela revisão FINAL do
+ *  Codex sobre o PR 9, 21/09/2026: a prova sobre a árvore combinada cobre as
+ *  DUAS formas de extra — livre → `camadasExtras`, e o extra COM FUNÇÃO, bloco
+ *  em `spec.blocos` com `herdaDe` —, imagem única, carrossel, concorrência e
+ *  falha parcial):
+ *  9. a equipe edita a página ENTRE o levantamento e a composição: a
+ *     recomposição para antes de compor (PAGINA_MUDOU_DURANTE), nada é gravado
+ *     por cima, e a execução seguinte recompõe com as duas edições;
+ * 10. pelo EXECUTOR (job real): a equipe edita a página DEPOIS de a recomposição
+ *     gravá-la e antes de gravar a arte — o job volta à fila marcado para
+ *     desenhar a página como está, e a execução seguinte entrega a última edição;
+ * 11. pelo executor: a página recomposta é gravada e a escrita da ARTE falha
+ *     (falha parcial) — o job volta à fila, nada se perde, e a execução
+ *     seguinte converge;
+ * 12. PR9-F01 SEM bloco comum da função, nos dois gatilhos: leitura inválida
+ *     (linha que o contrato não comporta no livre) e histórico da copy CHEIO
+ *     (nota livre e horário com função editados) — a arte segue a página, as
+ *     identidades ficam, o contrato fica intocado;
+ * 13. uma variante COM serviço: o serviço COMUM ao lado de um segundo serviço
+ *     que herda do apoio (extra com função, sem livre), num slide de carrossel,
+ *     com um post já entregue ao publicador carregando a mesma arte;
+ * 14. PR9-F01, leitura inválida no extra COM FUNÇÃO: a arte segue a página como
+ *     está — sem recusa, sem virar serviço comum, post congelado intocado;
+ * 15. PR9-F01, histórico cheio COM bloco comum: o serviço comum continua comum,
+ *     o extra continua extra, o contrato fica intocado.
+ *
+ * Os passos 12, 14 e 15 conferem o DESFECHO que a pessoa vê, válido para as
+ * duas saídas corretas do fallback sem contrato — recompor lendo cada extra
+ * pela identidade da camada, ou re-renderizar a página como está — e reprovam
+ * as incorretas (recusa, slide velho, extra fundido no comum, contrato
+ * reescrito).
+ *
  * ⚠️ O passo 6 depende do R15 do PR 9 (`specDaRecomposicao`: a recomposição com
  * contrato NÃO carrega `camadasExtras` da spec antiga). Sem ele o `validarSpec`
  * recusa a spec e o slide fica com a arte velha — é exatamente o que a prova
@@ -116,6 +148,26 @@ function conferir(titulo: string, condicao: boolean, detalhe = '') {
 
 type Camada = Record<string, any>
 
+/**
+ * Espaça as idas ao Blob: o domínio público levanta o "Vercel Security
+ * Checkpoint" (403 para toda URL, por minutos) quando a máquina faz muitas
+ * leituras em pouco tempo — mesmo molde de `validar-revisor-da-arte.ts`.
+ */
+async function pausaParaOBlob(ms: number, porque: string) {
+  console.log(`   (pausa de ${Math.round(ms / 1000)}s: ${porque})`)
+  await new Promise((r) => setTimeout(r, ms))
+}
+type ErroDaTentativa = { code?: string; status?: number; message: string }
+/** Roda e devolve o resultado OU o erro, sem lançar — a prova confere os dois lados. */
+async function tentar<T>(fn: () => Promise<T>): Promise<{ r: T | null; erro: ErroDaTentativa | null }> {
+  try {
+    return { r: await fn(), erro: null }
+  } catch (e) {
+    const x = e as { code?: string; status?: number; message?: string }
+    return { r: null, erro: { code: x.code, status: x.status, message: x.message ?? String(e) } }
+  }
+}
+
 async function main() {
   const { execSync } = await import('node:child_process')
   const sha = execSync('git rev-parse HEAD', { cwd: ROOT }).toString().trim()
@@ -129,7 +181,7 @@ async function main() {
   const { NOME_DO_TEMPLATE_DE_ASSINATURA, formatoDaPagina } = await import('../src/lib/compositor/assinatura')
   const { papelDoNome } = await import('../src/lib/compositor/papel-do-nome')
   const { fotoDaPagina } = await import('../src/lib/compositor/defasagem')
-  const { recomporPaginaDefasada, levantarPagina, pedirRecomposicaoDaArteCongelada } = await import('../src/lib/compositor/recompor')
+  const { recomporPaginaDefasada, levantarPagina, pedirRecomposicaoDaArteCongelada, processarRecomposicaoEmBackground } = await import('../src/lib/compositor/recompor')
   const { lerCamadas } = await import('../src/lib/posts/page-layers')
   const { ajustarArte } = await import('../src/lib/creatives/arte-rapida')
   const { agendarPost } = await import('../src/lib/creatives/agendar')
@@ -137,9 +189,52 @@ async function main() {
   const { invalidateScheduledRenders } = await import('../src/lib/posts/invalidate-renders')
   const { ehCopiaDaPagina } = await import('../src/lib/posts/copy-segue-a-pagina')
   const { registrarRevisaoDaPagina } = await import('../src/lib/copy-autoral/persistir')
-  const { lerCopyAutoral, VERSAO_DO_CONTRATO } = await import('../src/lib/copy-autoral')
+  const { lerCopyAutoral, VERSAO_DO_CONTRATO, MAX_REVISOES_DA_COPY } = await import('../src/lib/copy-autoral')
+  const { reservarJob, fecharJob, falharJob } = await import('../src/lib/ai/generation-queue')
   const { del } = await import('@vercel/blob')
   type CopyAutoral = import('../src/lib/copy-autoral').CopyAutoral
+  type Recomposicao = Awaited<ReturnType<typeof recomporPaginaDefasada>>
+  type Costuras = NonNullable<Parameters<typeof processarRecomposicaoEmBackground>[0]['seams']>
+
+  // Com os passos de concorrência, falha parcial e F01 a prova passa de vinte
+  // renders, e cada um busca a foto e a logo no domínio público do Blob, que
+  // devolve 403 (o desafio anti-bot) quando a máquina faz muitas idas em pouco
+  // tempo. O que se prova aqui é o ciclo da camada extra, não a disponibilidade
+  // do Blob: neste processo, cada imagem do Blob é baixada UMA vez por URL (a
+  // URL do Blob leva sufixo aleatório, o conteúdo dela não muda), com nova
+  // tentativa espaçada em 403/429/5xx — o molde de `validar-revisor-da-arte.ts`.
+  const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
+  const { loadImage } = await import('@napi-rs/canvas')
+  const HOST_DO_BLOB = /^https:\/\/[^/]+\.public\.blob\.vercel-storage\.com\//
+  const bytesDoBlob = new Map<string, Promise<Buffer>>()
+  const esperasDoBlob = [20_000, 45_000, 90_000, 120_000]
+  const baixarDoBlob = async (url: string): Promise<Buffer> => {
+    for (let tentativa = 0; ; tentativa++) {
+      const r = await fetch(url, { headers: { 'user-agent': 'studio-lagosta-prova/1.0 (validar-camadas-extras)' } })
+      if (r.ok) return Buffer.from(await r.arrayBuffer())
+      if (![403, 429, 500, 502, 503, 504].includes(r.status) || tentativa >= esperasDoBlob.length) throw new Error(`o Blob respondeu ${r.status}`)
+      console.log(`  (Blob ${r.status} em ${url.split('/').pop()} — nova tentativa em ${esperasDoBlob[tentativa] / 1000}s)`)
+      await new Promise((pronto) => setTimeout(pronto, esperasDoBlob[tentativa]))
+    }
+  }
+  const prototipo = CanvasRenderer.prototype as unknown as { nodeImageLoader?: (url: string) => Promise<unknown> }
+  const carregarOriginal = prototipo.nodeImageLoader
+  if (typeof carregarOriginal !== 'function') abortar('CanvasRenderer.nodeImageLoader não existe mais: a leitura do Blob desta prova precisa ser refeita.')
+  prototipo.nodeImageLoader = async function (this: unknown, url: string) {
+    if (!HOST_DO_BLOB.test(url)) return carregarOriginal!.call(this, url)
+    let bytes = bytesDoBlob.get(url)
+    if (!bytes) {
+      bytes = baixarDoBlob(url)
+      bytesDoBlob.set(url, bytes)
+      bytes.catch(() => bytesDoBlob.delete(url))
+    }
+    try {
+      return await loadImage(await bytes)
+    } catch (erro) {
+      console.error('[prova] imagem do Blob indisponível:', url, erro)
+      throw new Error(`Failed to load image: ${url}`)
+    }
+  }
 
   const blobs = new Set<string>()
   /** As fotos de entrada são artes existentes do projeto: nunca entram no cleanup. */
@@ -396,6 +491,342 @@ async function main() {
     conferirExtras('slide (copy editada depois da foto)', estado, { hora: 'Ter a dom, 19h às 23h', nota: 'vale só no jantar' })
     conferir('nenhuma revisão fictícia no último passo', novas(antes, estado.copy).filter(tocaExtra).every((r) => r.autor === 'equipe'), JSON.stringify(novas(antes, estado.copy).map((r) => [r.autor, r.blocos])))
     await conferirSpecGravada('recomposição da copy', { hora: 'Ter a dom, 19h às 23h', nota: 'vale só no jantar' })
+
+    // ── CONCORRÊNCIA, FALHA PARCIAL E O PR9-F01 ──────────────────────────────
+    await pausaParaOBlob(30_000, 'os passos 1 a 8 fizeram dez renders; espaça as idas ao Blob')
+    const midiasDo = async (postId: string) => (await db.socialPost.findUnique({ where: { id: postId }, select: { mediaUrls: true } }))?.mediaUrls ?? []
+    const arteDa = async (generationId: string) => {
+      const g = await db.generation.findUnique({ where: { id: generationId }, select: { resultUrl: true, fieldValues: true } })
+      return { url: g?.resultUrl ?? null, fv: (g?.fieldValues ?? {}) as Record<string, any> }
+    }
+    /** Como o executor (`executarJob`): reserva (PENDING → RUNNING, +1 tentativa, payload fresco), roda o runner e fecha pelo desfecho; o que o runner LANÇA vira `falharJob`. */
+    const executarComoOExecutor = async (jobId: string, generationId: string, seams?: Costuras) => {
+      const job = await reservarJob(jobId)
+      if (!job) return { desfecho: 'nao-reservado', erro: 'o job não estava na fila (PENDING)' as string | null }
+      const recompor = (job.payload as Record<string, any>)?.recompor
+      try {
+        await processarRecomposicaoEmBackground({ generationId, projectId: PROJETO, recompor, queueJobId: jobId, ...(seams ? { seams } : {}) })
+        return { desfecho: String(await fecharJob(jobId, generationId)), erro: null as string | null }
+      } catch (e) {
+        const motivo = e instanceof Error ? e.message : String(e)
+        return { desfecho: String(await falharJob(jobId, motivo)), erro: motivo as string | null }
+      }
+    }
+    /** Uma linha maior que o teto do contrato (300 caracteres): é a "leitura inválida" do PR9-F01. */
+    const linhaLonga = (inicio: string) => `${inicio} · ${'reserve pelo WhatsApp da casa · '.repeat(10)}`.trim()
+    /** O histórico da copy no TETO: a leitura da copy efetiva passa a recusar com `HistoricoDaCopyCheio`. Revisões do sistema, válidas no leitor, citando um bloco que existe. */
+    const encherHistorico = async (pageId: string) => {
+      const atual = (await estadoDaPagina(pageId)).copy
+      if (!atual) throw new Error(`a página ${pageId} não tem contrato da copy para encher o histórico`)
+      const citado = atual.blocos[0]?.id
+      if (!citado) throw new Error('o contrato não tem bloco para as revisões citarem')
+      const faltam = Math.max(0, MAX_REVISOES_DA_COPY - atual.revisoes.length)
+      const desde = Date.now() - faltam * 1000
+      const cheio = {
+        ...atual,
+        revisoes: [
+          ...atual.revisoes,
+          ...Array.from({ length: faltam }, (_, i) => ({ em: new Date(desde + i * 1000).toISOString(), autor: 'sistema' as const, motivo: `${MARCA} histórico cheio de propósito`, blocos: [citado], superficie: 'prova' })),
+        ],
+      }
+      const lido = lerCopyAutoral(cheio).copy
+      if (!lido || lido.revisoes.length !== MAX_REVISOES_DA_COPY) throw new Error('o contrato com o histórico cheio não passou no leitor')
+      await db.page.update({ where: { id: pageId }, data: { copyAutoral: lido as never } })
+      return lido
+    }
+    /**
+     * O desfecho que o PR9-F01 exige do fallback SEM contrato legível, dito pelo
+     * que a pessoa vê. Vale para as duas saídas corretas — recompor lendo cada
+     * extra pela IDENTIDADE da camada, ou re-renderizar a página como está — e
+     * reprova as incorretas: recusa (SPEC_INVALIDA, papel repetido), slide velho,
+     * extra que perde id ou herança, serviço extra fundido no comum, contrato
+     * reescrito, post entregue tocado.
+     */
+    const conferirDesfechoSemContrato = async (a: {
+      rotulo: string
+      pageId: string
+      generationId: string
+      postId: string
+      capa: string
+      slideAntes: string | undefined
+      tentativa: { r: Recomposicao | null; erro: ErroDaTentativa | null }
+      contratoAntes: CopyAutoral
+      extras: Array<{ id: string; funcao: string; texto: string }>
+      comuns: Record<string, string>
+      congelado?: { id: string; midias: string[] }
+    }) => {
+      const { r, erro } = a.tentativa
+      if (r?.url) blobs.add(r.url)
+      conferir(`${a.rotulo}: a arte foi refeita SEM recusa (nem SPEC_INVALIDA, nem papel repetido) e o slide trocou`, !erro && !!r && r.trocados.length === 1, erro ? `${erro.code ?? 'ERRO'}: ${erro.message.slice(0, 160)}` : JSON.stringify({ recomposta: r?.recomposta, trocados: r?.trocados.length, avisos: r?.avisos.slice(0, 2) }).slice(0, 260))
+      const midias = await midiasDo(a.postId)
+      conferir(`${a.rotulo}: só o slide da arte trocou; a capa ficou e a contagem não diminuiu`, !!r?.url && midias.length === 2 && midias[0] === a.capa && midias[1] === r.url && midias[1] !== a.slideAntes, JSON.stringify(midias.map((u) => u.slice(-30))))
+      const arte = await arteDa(a.generationId)
+      const estadoDaArte = arte.fv.recomposicao?.estado
+      conferir(`${a.rotulo}: o registro é de arte refeita (recomposta pela identidade ou re-renderizada como está), sem recusa gravada`, (estadoDaArte === 'feita' || estadoDaArte === 're-renderizada') && !arte.fv.recusaDaRecomposicao && !!r?.url && arte.url === r.url, JSON.stringify({ estado: estadoDaArte ?? null, recusa: arte.fv.recusaDaRecomposicao ?? null }).slice(0, 240))
+      const e = await estadoDaPagina(a.pageId)
+      const textos = e.camadas.filter((c) => c.type === 'text' || c.type === 'rich-text')
+      for (const x of a.extras) {
+        const c = textos.find((t) => t.metadata?.compositor?.extra?.id === x.id)
+        const ex = c?.metadata?.compositor?.extra
+        const papelOk = x.funcao === 'livre' ? !c?.metadata?.compositor?.papel : c?.metadata?.compositor?.papel === x.funcao
+        conferir(`${a.rotulo}: o extra "${x.id}" continua na página com id, função (${x.funcao}) e herança do apoio, editável, com o texto da equipe`, editavel(c) && ex?.funcao === x.funcao && ex?.herdaDe === 'apoio' && papelOk && semPrefixo(c) === x.texto, JSON.stringify({ extra: ex ?? null, papel: c?.metadata?.compositor?.papel ?? null, texto: semPrefixo(c).slice(0, 60) }))
+      }
+      for (const [papel, texto] of Object.entries(a.comuns)) {
+        const cs = textos.filter((t) => t.metadata?.compositor?.papel === papel && !t.metadata?.compositor?.extra && t.visible !== false)
+        conferir(`${a.rotulo}: o ${papel} COMUM continua comum (uma camada, sem identidade de extra) e com o texto dele`, cs.length === 1 && semPrefixo(cs[0]) === texto, JSON.stringify(cs.map((c) => [c.id, semPrefixo(c).slice(0, 40)])))
+      }
+      conferir(`${a.rotulo}: o contrato da página ficou INTOCADO (sem contrato legível, ninguém o reescreve)`, JSON.stringify(e.copy) === JSON.stringify(a.contratoAntes), `${e.copy?.revisoes.length ?? 'sem contrato'} revisões`)
+      if (estadoDaArte === 'feita') {
+        const spec = (arte.fv.spec ?? {}) as Record<string, any>
+        const blocos = (spec.blocos ?? []) as Array<Record<string, any>>
+        const extrasDaSpec = (spec.camadasExtras ?? []) as Array<Record<string, any>>
+        for (const x of a.extras) {
+          const b = x.funcao === 'livre' ? extrasDaSpec.find((y) => y.id === x.id) : blocos.find((y) => y.id === x.id)
+          conferir(`${a.rotulo}: recomposta — a spec gravada preserva o extra "${x.id}" (${x.funcao === 'livre' ? 'camadasExtras' : 'bloco com herdaDe'}) com o texto novo`, !!b && b.herdaDe === 'apoio' && (x.funcao === 'livre' || b.papel === x.funcao) && (b.linhas ?? []).join('\n') === x.texto, JSON.stringify(b ?? null).slice(0, 200))
+        }
+        for (const [papel, texto] of Object.entries(a.comuns)) {
+          const bs = blocos.filter((y) => y.papel === papel && !y.herdaDe)
+          conferir(`${a.rotulo}: recomposta — a spec gravada tem UM ${papel} comum, sem herança, com o texto dele`, bs.length === 1 && (bs[0].linhas ?? []).join('\n') === texto, JSON.stringify(bs).slice(0, 200))
+        }
+      }
+      if (a.congelado) {
+        const m = await midiasDo(a.congelado.id)
+        conferir(`${a.rotulo}: o post já entregue ao publicador (congelado) ficou intocado`, JSON.stringify(m) === JSON.stringify(a.congelado.midias) && !!r && r.congelados.includes(a.congelado.id), JSON.stringify({ midias: m.map((u) => u.slice(-30)), congelados: r?.congelados ?? null }))
+      }
+    }
+
+    console.log('9) concorrência antes de compor: a equipe edita a nota; a recomposição começa e, entre o levantamento e a composição, a equipe edita o horário — nada se perde')
+    antes = estado.copy
+    const slideAntes9 = (await midiasDo(carrossel.id))[1]
+    await gravarComoOEditor(slide.pageId, editar(estado.camadas, { nota: { content: 'vale no almoço e no jantar' } }))
+    const t9 = await tentar(() =>
+      recomporPaginaDefasada({
+        pageId: slide.pageId,
+        origem: 'editor',
+        depoisDoLevantamento: async () => {
+          const agora = await estadoDaPagina(slide.pageId)
+          await gravarComoOEditor(slide.pageId, editar(agora.camadas, { hora: { content: 'Ter a dom, 18h às 22h' } }))
+        },
+      }),
+    )
+    if (t9.r?.url) blobs.add(t9.r.url)
+    conferir('a recomposição parou ANTES de compor (PAGINA_MUDOU_DURANTE 409): a decisão do levantamento não vale para a página nova', t9.erro?.code === 'PAGINA_MUDOU_DURANTE' && t9.erro.status === 409, t9.erro ? `${t9.erro.code} ${t9.erro.message.slice(0, 80)}` : 'não lançou')
+    conferir('nada foi gravado por cima: o slide é o anterior', (await midiasDo(carrossel.id))[1] === slideAntes9)
+    estado = await estadoDaPagina(slide.pageId)
+    conferirExtras('slide (edição concorrente)', estado, { hora: 'Ter a dom, 18h às 22h', nota: 'vale no almoço e no jantar' })
+    const novas9 = novas(antes, estado.copy)
+    conferir('as duas edições estão no contrato como revisões da equipe', novas9.filter(tocaExtra).every((r) => r.autor === 'equipe') && novas9.some((r) => r.blocos.includes('nota')) && novas9.some((r) => r.blocos.includes('hora')), JSON.stringify(novas9.map((r) => [r.autor, r.blocos])))
+    const r9 = await recomporPaginaDefasada({ pageId: slide.pageId, origem: 'editor' })
+    if (r9.url) blobs.add(r9.url)
+    conferir('a execução seguinte RECOMPÕE com a página nova e troca o slide', r9.recomposta && r9.trocados.length === 1, JSON.stringify({ recomposta: r9.recomposta, trocados: r9.trocados.length, avisos: r9.avisos.slice(0, 3) }))
+    await conferirSlide('recomposição depois da concorrência', r9.url)
+    estado = await estadoDaPagina(slide.pageId)
+    conferirExtras('slide (recomposto depois da concorrência)', estado, { hora: 'Ter a dom, 18h às 22h', nota: 'vale no almoço e no jantar' })
+    await conferirSpecGravada('recomposição depois da concorrência', { hora: 'Ter a dom, 18h às 22h', nota: 'vale no almoço e no jantar' })
+
+    console.log('10) concorrência pelo executor: a recomposição grava a página e, antes de gravar a arte, a equipe edita a nota de novo — o job volta à fila e a execução seguinte desenha a página como está')
+    await gravarComoOEditor(slide.pageId, editar(estado.camadas, { hora: { content: 'Qua a dom, 18h às 22h' } }))
+    const pedido10 = await pedirRecomposicaoDaArteCongelada([slide.pageId])
+    const job10 = pedido10[0]?.jobId ?? null
+    conferir('a edição põe a arte do slide na fila (job de recomposição da arte do slide)', !!job10 && pedido10[0].generationId === slide.generationId, JSON.stringify(pedido10))
+    if (job10) {
+      const a10 = await executarComoOExecutor(job10, slide.generationId, {
+        entreGravarPaginaEArte: async () => {
+          const agora = await estadoDaPagina(slide.pageId)
+          await gravarComoOEditor(slide.pageId, editar(agora.camadas, { nota: { content: 'vale todo dia' } }))
+        },
+      })
+      const arte10a = await arteDa(slide.generationId)
+      if (arte10a.url) blobs.add(arte10a.url)
+      const job10a = await db.generationJob.findUnique({ where: { id: job10 }, select: { status: true, payload: true, lastError: true } })
+      conferir('1ª execução: recompôs, viu a página mudar DEPOIS de gravá-la e devolveu o job à fila, marcado para desenhar a página COMO ESTÁ', a10.desfecho === 'REENFILEIRADO' && job10a?.status === 'PENDING' && (job10a.payload as Record<string, any>)?.recompor?.renderizarComoEsta === true, JSON.stringify({ desfecho: a10.desfecho, erro: a10.erro, status: job10a?.status, lastError: job10a?.lastError }).slice(0, 260))
+      const b10 = await executarComoOExecutor(job10, slide.generationId)
+      const arte10b = await arteDa(slide.generationId)
+      if (arte10b.url) blobs.add(arte10b.url)
+      conferir('2ª execução: re-renderizou a página como está e fechou DONE, com arte nova', b10.desfecho === 'DONE' && arte10b.fv.recomposicao?.estado === 're-renderizada' && !!arte10b.url && arte10b.url !== arte10a.url, JSON.stringify({ desfecho: b10.desfecho, erro: b10.erro, estado: arte10b.fv.recomposicao?.estado }))
+      await conferirSlide('execução depois da concorrência', arte10b.url)
+      estado = await estadoDaPagina(slide.pageId)
+      conferirExtras('slide (a última edição chegou à arte)', estado, { hora: 'Qua a dom, 18h às 22h', nota: 'vale todo dia' })
+    }
+
+    console.log('11) falha parcial pelo executor: a página recomposta é gravada e a escrita da ARTE falha — o job volta à fila, nada se perde, e a execução seguinte entrega o slide')
+    await gravarComoOEditor(slide.pageId, editar(estado.camadas, { nota: { content: 'vale só hoje' } }))
+    const pedido11 = await pedirRecomposicaoDaArteCongelada([slide.pageId])
+    const job11 = pedido11[0]?.jobId ?? null
+    conferir('a edição reabre o job da arte (terminado) com orçamento novo', !!job11 && job11 === job10, JSON.stringify(pedido11))
+    if (job11) {
+      const slideAntes11 = (await midiasDo(carrossel.id))[1]
+      const arteAntes11 = await arteDa(slide.generationId)
+      const a11 = await executarComoOExecutor(job11, slide.generationId, {
+        entreGravarPaginaEArte: async () => {
+          throw new Error('falha simulada pela prova: o banco caiu entre gravar a página e gravar a arte')
+        },
+      })
+      // O PNG da tentativa que falhou só a página referencia (miniatura): entra no cleanup.
+      const pagina11 = await db.page.findUnique({ where: { id: slide.pageId }, select: { thumbnail: true } })
+      if (pagina11?.thumbnail && pagina11.thumbnail.includes('blob.vercel-storage.com')) blobs.add(pagina11.thumbnail)
+      const job11a = await db.generationJob.findUnique({ where: { id: job11 }, select: { status: true, lastError: true } })
+      conferir('a falha de infraestrutura devolveu o job à fila com o motivo — nova tentativa, não FAILED', a11.desfecho === 'REENFILEIRADO' && job11a?.status === 'PENDING' && /falha simulada/.test(String(job11a.lastError)), JSON.stringify({ desfecho: a11.desfecho, erro: a11.erro, status: job11a?.status, lastError: String(job11a?.lastError ?? '').slice(0, 80) }))
+      const arteMeio11 = await arteDa(slide.generationId)
+      conferir('no meio do caminho a arte e o slide ainda são os anteriores (a arte não foi gravada) e não há recusa', arteMeio11.url === arteAntes11.url && (await midiasDo(carrossel.id))[1] === slideAntes11 && !arteMeio11.fv.recusaDaRecomposicao, JSON.stringify({ arte: arteMeio11.url?.slice(-30), recusa: arteMeio11.fv.recusaDaRecomposicao ?? null }))
+      estado = await estadoDaPagina(slide.pageId)
+      conferirExtras('slide (página gravada, arte não)', estado, { hora: 'Qua a dom, 18h às 22h', nota: 'vale só hoje' })
+      const b11 = await executarComoOExecutor(job11, slide.generationId)
+      const arte11 = await arteDa(slide.generationId)
+      if (arte11.url) blobs.add(arte11.url)
+      conferir('a execução seguinte CONVERGE: DONE, arte nova, sem recusa', b11.desfecho === 'DONE' && !!arte11.url && arte11.url !== arteAntes11.url && ['feita', 're-renderizada'].includes(String(arte11.fv.recomposicao?.estado)) && !arte11.fv.recusaDaRecomposicao, JSON.stringify({ desfecho: b11.desfecho, erro: b11.erro, estado: arte11.fv.recomposicao?.estado ?? null }))
+      await conferirSlide('execução depois da falha parcial', arte11.url)
+      estado = await estadoDaPagina(slide.pageId)
+      conferirExtras('slide (convergido depois da falha parcial)', estado, { hora: 'Qua a dom, 18h às 22h', nota: 'vale só hoje' })
+    }
+
+    await pausaParaOBlob(30_000, 'mais duas composições e quatro refeituras no Blob')
+    console.log('12) PR9-F01 SEM bloco comum da função, num slide novo (variante sem serviço): nota livre e horário com função, os dois herdando do apoio')
+    const contratoC: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'claude', em: new Date().toISOString(), superficie: 'chat' },
+      blocos: [
+        { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Costela de prova'] },
+        { id: 'apoio', funcao: 'apoio', ordem: 1, linhas: ['Peça do F01 do PR 10.'] },
+        { id: 'nota', funcao: 'livre', ordem: 2, linhas: ['vale só no almoço'], estilo: { herdaDe: 'apoio', grupoVisual: 'principal' } },
+        { id: 'hora', funcao: 'servico', ordem: 3, linhas: ['Seg a sex, 11h às 15h'], estilo: { herdaDe: 'apoio', grupoVisual: 'rodape' } },
+      ],
+      revisoes: [],
+    }
+    const slideC = await compor('slide F01 sem comum', { carrossel: { slide: 2, de: 2 }, copyAutoral: contratoC })
+    const carrosselC = await db.socialPost.create({
+      data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} carrossel F01 sem comum — pode apagar`, mediaUrls: [FOTO_1, slideC.url], scheduleType: 'SCHEDULED', scheduledDatetime: daqui7, status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED' },
+      select: { id: true },
+    })
+    posts.push(carrosselC.id)
+    let estadoC = await estadoDaPagina(slideC.pageId)
+    conferirExtras('slide F01 sem comum (composto)', estadoC, { hora: 'Seg a sex, 11h às 15h', nota: 'vale só no almoço' })
+
+    console.log('12a) leitura inválida no extra LIVRE: a equipe escreve na nota uma linha que o contrato não comporta')
+    const notaLonga = linhaLonga('vale só hoje')
+    const contratoAntes12a = estadoC.copy
+    if (!contratoAntes12a) throw new Error('o slide F01 sem comum nasceu sem contrato da copy')
+    const rev12a = await gravarComoOEditor(slideC.pageId, editar(estadoC.camadas, { nota: { content: notaLonga } }))
+    conferir('a linha longa grava as camadas e NÃO revisa o contrato (copy-invalida)', rev12a.estado === 'copy-invalida' && notaLonga.length > 300, `${rev12a.estado}; ${notaLonga.length} caracteres`)
+    await conferirDesfechoSemContrato({
+      rotulo: 'F01 leitura inválida (livre)',
+      pageId: slideC.pageId,
+      generationId: slideC.generationId,
+      postId: carrosselC.id,
+      capa: FOTO_1,
+      slideAntes: (await midiasDo(carrosselC.id))[1],
+      tentativa: await tentar(() => recomporPaginaDefasada({ pageId: slideC.pageId, origem: 'editor' })),
+      contratoAntes: contratoAntes12a,
+      extras: [{ id: 'nota', funcao: 'livre', texto: notaLonga }, { id: 'hora', funcao: 'servico', texto: 'Seg a sex, 11h às 15h' }],
+      comuns: {},
+    })
+
+    console.log('12b) histórico da copy CHEIO: a equipe corrige a nota (livre) e o horário (extra com função) — a arte segue a página, as duas identidades ficam')
+    const contratoCheioC = await encherHistorico(slideC.pageId)
+    estadoC = await estadoDaPagina(slideC.pageId)
+    const rev12b = await gravarComoOEditor(slideC.pageId, editar(estadoC.camadas, { nota: { content: 'vale só no domingo' }, hora: { content: 'Sáb e dom, 12h às 23h' } }))
+    conferir('com o histórico cheio a edição grava as camadas e NÃO revisa o contrato (historico-cheio)', rev12b.estado === 'historico-cheio', rev12b.estado)
+    await conferirDesfechoSemContrato({
+      rotulo: 'F01 histórico cheio (sem bloco comum)',
+      pageId: slideC.pageId,
+      generationId: slideC.generationId,
+      postId: carrosselC.id,
+      capa: FOTO_1,
+      slideAntes: (await midiasDo(carrosselC.id))[1],
+      tentativa: await tentar(() => recomporPaginaDefasada({ pageId: slideC.pageId, origem: 'editor' })),
+      contratoAntes: contratoCheioC,
+      extras: [{ id: 'nota', funcao: 'livre', texto: 'vale só no domingo' }, { id: 'hora', funcao: 'servico', texto: 'Sáb e dom, 12h às 23h' }],
+      comuns: {},
+    })
+
+    console.log('13) PR9-F01 COM bloco comum da função: variante COM serviço; o serviço comum ao lado de um segundo serviço que herda do apoio (extra com função, sem livre)')
+    let varianteComServico: string | null = null
+    for (const p of paginasDeAssinatura) {
+      if (formatoDaPagina(p) !== 'story') continue
+      const a = await carregarAssinatura(PROJETO, 'story', { variante: p.id })
+      if (a.origem.pageId === p.id && a.papeis.headline && a.papeis.apoio && a.papeis.servico) {
+        varianteComServico = p.id
+        break
+      }
+    }
+    if (!varianteComServico) throw new Error(`o projeto ${PROJETO} não tem variante de story com manchete, apoio e serviço — o F01 com bloco comum precisa de uma`)
+    const contratoB: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO,
+      origem: { autor: 'claude', em: new Date().toISOString(), superficie: 'chat' },
+      blocos: [
+        { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Costela no bafo'] },
+        { id: 'apoio', funcao: 'apoio', ordem: 1, linhas: ['Peça do F01 do PR 10.'] },
+        { id: 'servico', funcao: 'servico', ordem: 2, linhas: ['Seg a sex, 11h às 15h'] },
+        { id: 'hora-fds', funcao: 'servico', ordem: 3, linhas: ['Sáb e dom, 12h às 16h'], estilo: { herdaDe: 'apoio', grupoVisual: 'principal' } },
+      ],
+      revisoes: [],
+    }
+    const slideB = await compor('slide F01 com comum', { carrossel: { slide: 2, de: 2 }, copyAutoral: contratoB, preferencias: { variante: varianteComServico } })
+    conferir('F01: composta na variante COM serviço', slideB.diagnostico.assinatura.pageId === varianteComServico, String(slideB.diagnostico.assinatura.pageId))
+    let estadoB = await estadoDaPagina(slideB.pageId)
+    const extraB = estadoB.camadas.find((c) => c.metadata?.compositor?.extra?.id === 'hora-fds')
+    const comunsB = estadoB.camadas.filter((c) => (c.type === 'text' || c.type === 'rich-text') && c.metadata?.compositor?.papel === 'servico' && !c.metadata?.compositor?.extra && c.visible !== false)
+    const porIdB = Object.fromEntries((estadoB.copy?.blocos ?? []).map((b) => [b.id, b.linhas.join('\n')]))
+    conferir(
+      'F01: a página tem o serviço COMUM (sem identidade de extra) e o extra "hora-fds" (função serviço, herança do apoio), e a copy efetiva põe cada texto no bloco do seu id, sem bloco "extra-…"',
+      editavel(extraB) && extraB!.metadata.compositor.extra.funcao === 'servico' && extraB!.metadata.compositor.extra.herdaDe === 'apoio' && extraB!.metadata.compositor.papel === 'servico' &&
+        comunsB.length === 1 && semPrefixo(comunsB[0]) === 'Seg a sex, 11h às 15h' && semPrefixo(extraB) === 'Sáb e dom, 12h às 16h' &&
+        porIdB.servico === 'Seg a sex, 11h às 15h' && porIdB['hora-fds'] === 'Sáb e dom, 12h às 16h' && !(estadoB.copy?.blocos ?? []).some((b) => b.id.startsWith('extra-')),
+      JSON.stringify({ extra: extraB?.metadata?.compositor ?? null, comuns: comunsB.map((c) => c.id), porId: porIdB }).slice(0, 280),
+    )
+    if (!extraB) throw new Error('a camada extra "hora-fds" não nasceu na página — os passos 14 e 15 não teriam o que editar')
+    const carrosselB = await db.socialPost.create({
+      data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} carrossel F01 com comum — pode apagar`, mediaUrls: [FOTO_1, slideB.url], scheduleType: 'SCHEDULED', scheduledDatetime: daqui7, status: 'DRAFT', publishType: 'REMINDER', renderStatus: 'NOT_NEEDED' },
+      select: { id: true },
+    })
+    posts.push(carrosselB.id)
+    // O post já ENTREGUE ao publicador carrega a mesma arte: nenhuma refeitura pode tocá-lo.
+    const midiasCongeladas = [FOTO_2, slideB.url]
+    const congelado = await db.socialPost.create({
+      data: { projectId: PROJETO, userId: projeto.userId, postType: 'CAROUSEL', caption: `${MARCA} carrossel entregue — pode apagar`, mediaUrls: midiasCongeladas, scheduleType: 'SCHEDULED', scheduledDatetime: daqui7, status: 'SCHEDULED', publishType: 'DIRECT', renderStatus: 'NOT_NEEDED', laterPostId: `prova-pr10-congelado-${Date.now()}` },
+      select: { id: true },
+    })
+    posts.push(congelado.id)
+
+    console.log('14) PR9-F01, leitura inválida no extra COM FUNÇÃO: a equipe escreve no serviço extra uma linha que o contrato não comporta')
+    const horaLonga = linhaLonga('Sáb e dom, 12h às 16h')
+    const contratoAntes14 = estadoB.copy
+    if (!contratoAntes14) throw new Error('o slide F01 com comum nasceu sem contrato da copy')
+    const rev14 = await gravarComoOEditor(slideB.pageId, editar(estadoB.camadas, { [String(extraB.id)]: { content: horaLonga } }))
+    conferir('a linha longa grava as camadas e NÃO revisa o contrato (copy-invalida)', rev14.estado === 'copy-invalida' && horaLonga.length > 300, `${rev14.estado}; ${horaLonga.length} caracteres`)
+    await conferirDesfechoSemContrato({
+      rotulo: 'F01 leitura inválida (extra com função)',
+      pageId: slideB.pageId,
+      generationId: slideB.generationId,
+      postId: carrosselB.id,
+      capa: FOTO_1,
+      slideAntes: (await midiasDo(carrosselB.id))[1],
+      tentativa: await tentar(() => recomporPaginaDefasada({ pageId: slideB.pageId, origem: 'editor' })),
+      contratoAntes: contratoAntes14,
+      extras: [{ id: 'hora-fds', funcao: 'servico', texto: horaLonga }],
+      comuns: { servico: 'Seg a sex, 11h às 15h' },
+      congelado: { id: congelado.id, midias: midiasCongeladas },
+    })
+
+    console.log('15) PR9-F01, histórico CHEIO com bloco comum: a equipe corrige o horário do fim de semana com o contrato no teto')
+    const contratoCheioB = await encherHistorico(slideB.pageId)
+    estadoB = await estadoDaPagina(slideB.pageId)
+    const idDoExtraB = String(estadoB.camadas.find((c) => c.metadata?.compositor?.extra?.id === 'hora-fds')?.id ?? extraB.id)
+    const rev15 = await gravarComoOEditor(slideB.pageId, editar(estadoB.camadas, { [idDoExtraB]: { content: 'Sáb e dom, 12h às 17h' } }))
+    conferir('com o histórico cheio a edição grava as camadas e NÃO revisa o contrato (historico-cheio)', rev15.estado === 'historico-cheio', rev15.estado)
+    await conferirDesfechoSemContrato({
+      rotulo: 'F01 histórico cheio (com bloco comum)',
+      pageId: slideB.pageId,
+      generationId: slideB.generationId,
+      postId: carrosselB.id,
+      capa: FOTO_1,
+      slideAntes: (await midiasDo(carrosselB.id))[1],
+      tentativa: await tentar(() => recomporPaginaDefasada({ pageId: slideB.pageId, origem: 'editor' })),
+      contratoAntes: contratoCheioB,
+      extras: [{ id: 'hora-fds', funcao: 'servico', texto: 'Sáb e dom, 12h às 17h' }],
+      comuns: { servico: 'Seg a sex, 11h às 15h' },
+      congelado: { id: congelado.id, midias: midiasCongeladas },
+    })
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++
