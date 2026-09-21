@@ -125,6 +125,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       modo: parsed.data.modo,
       actorClerkId: userId,
       orgId: orgId ?? undefined,
+      // A porta da INTERFACE: quem pede é a pessoa logada no app. É o que faz
+      // o refino que troca texto ser assinado por `equipe`, e não por `claude`
+      // (PR5-13) — o mesmo serviço atende o conector, que manda o canal dele.
+      canal: 'studio',
     })
 
     // O trabalho pesado entra na FILA DURÁVEL (F0.3) e é disparado já, nesta

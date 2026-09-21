@@ -362,6 +362,9 @@ export async function startImprovement(
       projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
       templateName: original.templateName,
       userRequest,
+      // Quem ASSINA a revisão de copy do refino sai daqui (PR5-13): `studio` é
+      // a pessoa na tela; o conector manda o canal do principal.
+      canal: input.canal ?? null,
       instrucaoImagem,
       quality: tier,
       // O runner precisa distinguir tier ESCOLHIDO de tier padrão: só o padrão

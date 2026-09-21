@@ -34,6 +34,7 @@ import type { CopyAutoral } from './contrato'
 import { tentarCopyEfetivaDasCamadas } from './efetiva'
 import { lerCopyAutoral } from './serializar'
 import { normalizeForComparison } from '@/lib/ai/text-comparison'
+import { CANAIS_AUTOMATICOS, type CanalDaArte } from '@/lib/creatives/canal'
 import { blocosEmOrdem, copyComparavel, HistoricoDaCopyCheio, orientacaoDosProblemas, orientacaoEmFrase, tentarAplicarRevisao, type Autor, type BlocoAutoral } from '.'
 
 export interface RegistroDaCopyDaArte {
@@ -129,20 +130,60 @@ export const LACUNA_PROMPT_AINDA_NAO_MONTADO = 'o texto enviado ao modelo só é
  *
  * `formas` são as grafias possíveis de cada bloco, em ordem de preferência
  * (a da caixa da marca, a crua…); cada uma vale também com os espaços
- * colapsados. O primeiro que o prompt CONTÉM é o enviado. Bloco que não
- * aparece em forma nenhuma torna o conjunto indeterminável: `enviada` fica
- * `null` e a lacuna diz qual bloco — nunca se grava um palpite.
+ * colapsados. O primeiro que o prompt CONTÉM como BLOCO INTEIRO é o enviado.
+ * Bloco que não aparece em forma nenhuma torna o conjunto indeterminável:
+ * `enviada` fica `null` e a lacuna diz qual bloco — nunca se grava um palpite.
+ *
+ * 🔴 A ocorrência tem de ser o bloco INTEIRO e ainda LIVRE (PR5-11 da revisão
+ * final do Codex, 21/09/2026). `includes` cru achava `R$ 20` dentro de
+ * `"R$ 200"` e `Venha hoje` dentro de `"Venha hoje mesmo"`, e devolvia
+ * `enviada` como se a copy tivesse saído intacta: a diferença que ENTROU no
+ * prompt ia para a conta do gerador. E a mesma ocorrência servia a vários
+ * blocos — dois blocos iguais com uma aparição só passavam como dois enviados.
  */
+
+/**
+ * Onde um bloco pode começar e terminar sem ser pedaço de outro texto: a borda
+ * do prompt, a quebra de linha ou a aspa. É como TODO caminho da casa escreve
+ * a copy — `- "bloco"` (`buildArtePrompt` e o `[TEXTO EXATO]` da melhoria),
+ * `"bloco"` por linha (`prompt-da-referencia`) e o bloco sozinho na linha
+ * (`prompt-do-manual`). Prompt pronto de quem chamou que embuta o bloco no
+ * meio de uma frase corrida não permite dizer o que saiu: vira lacuna, que é o
+ * comportamento pedido.
+ */
+const FRONTEIRA_DO_BLOCO = /["“”\n]/
+
+/** As posições em que `alvo` aparece no prompt como bloco inteiro. */
+function ocorrenciasInteiras(prompt: string, alvo: string): number[] {
+  const posicoes: number[] = []
+  for (let de = prompt.indexOf(alvo); de !== -1; de = prompt.indexOf(alvo, de + 1)) {
+    const antes = de === 0 ? null : prompt[de - 1]
+    const depois = de + alvo.length === prompt.length ? null : prompt[de + alvo.length]
+    if ((antes === null || FRONTEIRA_DO_BLOCO.test(antes)) && (depois === null || FRONTEIRA_DO_BLOCO.test(depois))) posicoes.push(de)
+  }
+  return posicoes
+}
+
 export function enviadaNoPrompt(prompt: string | null | undefined, formas: string[][]): { enviada: string[] | null; lacuna: string | null } {
   if (!prompt) return { enviada: null, lacuna: 'o prompt enviado não foi registrado: o texto enviado ao modelo não é determinável' }
   const total = Math.max(0, ...formas.map((f) => f.length))
   const enviada: string[] = []
+  // Cada ocorrência serve a UM bloco: dois blocos iguais precisam de duas aparições.
+  const tomados: Array<[number, number]> = []
   for (let i = 0; i < total; i++) {
     const candidatas = formas.flatMap((f) => (typeof f[i] === 'string' ? [f[i], f[i].replace(/\s+/g, ' ').trim()] : [])).filter((c) => c.length > 0)
-    const achada = candidatas.find((c) => prompt.includes(c))
-    if (achada === undefined) {
+    let achada: string | null = null
+    for (const c of candidatas) {
+      const livre = ocorrenciasInteiras(prompt, c).find((de) => !tomados.some(([a, b]) => de < b && de + c.length > a))
+      if (livre !== undefined) {
+        tomados.push([livre, livre + c.length])
+        achada = c
+        break
+      }
+    }
+    if (achada === null) {
       const exemplo = (formas.find((f) => typeof f[i] === 'string')?.[i] ?? '').replace(/\s+/g, ' ').slice(0, 40)
-      return { enviada: null, lacuna: `o bloco ${i + 1} ("${exemplo}") não aparece no prompt enviado como veio: o texto enviado ao modelo não é determinável` }
+      return { enviada: null, lacuna: `o bloco ${i + 1} ("${exemplo}") não aparece no prompt enviado como bloco inteiro: o texto enviado ao modelo não é determinável` }
     }
     enviada.push(achada)
   }
@@ -234,6 +275,27 @@ export type ResultadoDaRevisaoPosicional = { copy: CopyAutoral; mudou: boolean }
  * pré-título). Bloco sem correspondência única é descartado com o motivo, e
  * os blocos que não mudaram mantêm as linhas do autor.
  */
+/**
+ * Quem ASSINA a revisão de copy nascida de um pedido feito por aquele canal.
+ *
+ * 🔴 O refino que troca texto era assinado por `claude` SEMPRE (PR5-13 da
+ * revisão final do Codex, 21/09/2026), e a rota da interface chama o mesmo
+ * serviço do conector: a pessoa pedia a troca pela tela e o histórico dizia
+ * que quem mexeu foi o assistente — a autoria errada seguindo pela cadeia nas
+ * melhorias seguintes. É o oposto do que o contrato existe para fazer.
+ *
+ * A distinção já existe na casa e é o CANAL (`creatives/canal.ts`), decidido
+ * na porta de entrada: `studio` é a pessoa logada no app; os automáticos
+ * (`claude-ai`, `claude-code`, `claudinho`) são o assistente. Canal ausente é
+ * job antigo, enfileirado antes deste código: `desconhecido`, que é o
+ * conservador — atribuir a alguém por palpite é o defeito, não a omissão.
+ */
+export function autorDoPedido(canal: CanalDaArte | null | undefined): Autor {
+  if (canal === 'studio') return 'equipe'
+  if (canal && (CANAIS_AUTOMATICOS as readonly string[]).includes(canal)) return 'claude'
+  return 'desconhecido'
+}
+
 export function revisaoDoRefino(
   contrato: CopyAutoral,
   antes: string[],

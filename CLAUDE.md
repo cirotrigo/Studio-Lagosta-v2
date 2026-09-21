@@ -8290,3 +8290,56 @@ teste: `planos/execucao.ts` (`mapearContratoParaCampos`, `papelDoCampo`),
 - ⚠️ **Carrossel de IA e `criar-arte` (textos livres) continuam sem contrato**:
   o slide vive em `slides[].copy` posicional e a arte livre não passa por
   `startArtGeneration` com contrato. É lacuna declarada, não regressão.
+
+**Da revisão FINAL do Codex sobre 2269eec9 (BLOQUEADO, PR5-11…13, 21/09/2026).**
+Os três são a mesma família: **o registro afirmando mais do que sabe** — "enviei
+o texto" quando só achou um pedaço, "o sistema transformou" quando não
+transformou, "foi o Claude" quando foi a equipe.
+
+- 🔴 **`enviada` exige o bloco INTEIRO numa ocorrência LIVRE** (PR5-11,
+  `enviadaNoPrompt`). O `includes` cru achava `R$ 20` dentro de `"R$ 200"` e
+  `Venha hoje` dentro de `"Venha hoje mesmo"`, e gravava `enviada` sem lacuna:
+  a diferença que ENTROU no prompt ia para a conta do gerador. E a mesma
+  aparição servia a vários blocos — dois blocos iguais com uma ocorrência só
+  passavam como dois enviados. A fronteira é a borda do prompt, a quebra de
+  linha ou a ASPA, que é como TODO caminho da casa escreve a copy: `- "bloco"`
+  (`buildArtePrompt`, `[TEXTO EXATO]` da melhoria), `"bloco"` por linha
+  (`prompt-da-referencia`) e o bloco sozinho na linha (`prompt-do-manual`).
+  Cada ocorrência é consumida por UM bloco. Prompt pronto que embuta a copy no
+  meio de uma frase corrida não permite dizer o que saiu: vira lacuna, que é o
+  comportamento pedido — nunca um palpite.
+- 🔴 **Conteúdo NOVO não herda a DECLARAÇÃO de prefixo da camada anterior**
+  (PR5-12, `semPrefixoHerdado` + `bakeLayers`). `metadata.compositor.prefixo`
+  descreve o ornamento que o COMPOSITOR desenhou (a seta antes do CTA), e quem
+  preenche a camada escreve o texto tal e qual. Herdada, `linhasDaCamada`
+  descontava da leitura um "→ " que agora é TEXTO DO AUTOR: o modelo com
+  `prefixo: '→ '` recebendo um bloco que começa pela mesma seta mostrava
+  "→ Venha hoje" na arte e gravava "Venha hoje" no contrato — uma transformação
+  do sistema que nunca aconteceu, e é assim que isto encosta no PR 4. A camada
+  que NÃO recebe conteúdo novo continua declarando o prefixo; quem preencher
+  ACRESCENTANDO ornamento declara de novo.
+  **`bakeLayers` mudou de casa** (`src/lib/creatives/bake-layers.ts`, PURO):
+  `arte-rapida.ts` importa o Prisma, e esta decisão precisa ser conferida sem
+  banco — é a regra da casa para código testável.
+- 🔴 **O refino é assinado por QUEM PEDIU, nunca sempre por `claude`** (PR5-13,
+  `autorDoPedido`). A rota da interface chama o MESMO serviço do conector, e o
+  runner cravava `autor: 'claude'`: a pessoa pedia a troca de texto pela tela e
+  o histórico dizia que quem mexeu foi o assistente — autoria errada seguindo
+  pela cadeia nas melhorias seguintes, o oposto do que o contrato existe para
+  fazer. A distinção já existe e é o CANAL (`creatives/canal.ts`), decidido na
+  porta de entrada: a rota passa `canal: 'studio'` (→ `equipe`), o conector
+  passa o canal do principal (→ `claude`). O canal viaja em
+  `ImprovementJobArgs`; job enfileirado antes disto não tem canal e fica em
+  `desconhecido` — o conservador. Caminho novo que registre autoria de copy a
+  partir de um pedido usa `autorDoPedido(canal)`, nunca um literal.
+- **Varredura das três formas no PR** (pedida com os consertos): *autor fixo* —
+  os outros dois literais são corretos por construção (`equipe` no PATCH do
+  editor, que é a UI da pessoa logada; `sistema` na reconciliação com as
+  camadas anteriores); *substring numa afirmação do registro* — só
+  `enviadaNoPrompt`; `PAPEIS_DO_MODELO.includes` e `comTexto.indexOf(b)` são
+  pertinência e identidade em ARRAY, não texto. *Herança de metadado* — o único
+  ponto que escreve camada é `bakeLayers`, e ali `papel` e `bloco` também são
+  herdados: **descartado com razão**, porque na via COM contrato o carimbo os
+  sobrescreve em toda camada que recebe copy, e a que não recebe fica OCULTA
+  (`ehTextoVisivel` a tira da leitura); na via legada não há contrato na página
+  para lê-los. Só o `prefixo` alcançava uma leitura.

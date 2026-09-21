@@ -8,9 +8,12 @@ import { buildArtePrompt, copyComCaixaDaMarca } from '../image-prompt-builder'
 import { semColchetes } from '@/lib/compositor/destaques'
 import {
   VERSAO_DO_CONTRATO,
+  autorDoBloco,
+  autorDoPedido,
   comEnviada,
   contratoDaOrigemDaMelhoria,
   enviadaNoPrompt,
+  revisaoDoRefino,
   LACUNA_PROMPT_AINDA_NAO_MONTADO,
   registroParaIA,
   textoEnviadoDoContrato,
@@ -66,6 +69,93 @@ describe('PR5-10 — `enviada` é lida do prompt que saiu', () => {
     expect(lido?.comparadoPor).toBe('visao')
     expect(lido?.comparavel).toBe(true)
     expect(lido?.enviada).toBeUndefined()
+  })
+})
+
+describe('PR5-11 — `enviada` exige o bloco INTEIRO numa ocorrência livre', () => {
+  it('pedaço de um texto maior NÃO conta: preço com dígito a mais e frase ampliada viram lacuna', () => {
+    const preco = enviadaNoPrompt('[TEXTO EXATO]\n- "R$ 200"', [['R$ 20']])
+    expect(preco.enviada).toBeNull()
+    expect(preco.lacuna).toMatch(/bloco 1 \("R\$ 20"\)/)
+
+    const frase = enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje mesmo"', [['Venha hoje']])
+    expect(frase.enviada).toBeNull()
+    expect(frase.lacuna).toMatch(/bloco 1 \("Venha hoje"\)/)
+  })
+
+  it('dois blocos IGUAIS com uma só ocorrência: indeterminável (a ocorrência serve a um bloco só)', () => {
+    const uma = enviadaNoPrompt('[TEXTO EXATO]\n- "Vem pra cá"', [['Vem pra cá', 'Vem pra cá']])
+    expect(uma.enviada).toBeNull()
+    expect(uma.lacuna).toMatch(/bloco 2 \("Vem pra cá"\)/)
+    // com as duas aparições, os dois blocos são determináveis
+    const duas = enviadaNoPrompt('[TEXTO EXATO]\n- "Vem pra cá"\n- "Vem pra cá"', [['Vem pra cá', 'Vem pra cá']])
+    expect(duas.enviada).toEqual(['Vem pra cá', 'Vem pra cá'])
+  })
+
+  it('os casos VÁLIDOS continuam: caixa da marca, espaços colapsados e o bloco sozinho na linha (molde do manual)', () => {
+    // prompt pronto em caixa natural (TERO): vale a forma crua, entre aspas
+    expect(enviadaNoPrompt('Manchete: "Almoço executivo", no terço de baixo.', [['ALMOÇO EXECUTIVO'], ['Almoço executivo']]).enviada).toEqual(['Almoço executivo'])
+    // o prompt montado por código colapsa a quebra do autor
+    expect(enviadaNoPrompt('[TEXTO EXATO]\n- "Almoço executivo"', [['Almoço\nexecutivo']]).enviada).toEqual(['Almoço executivo'])
+    // `prompt-do-manual` lista um bloco por LINHA, sem aspas
+    expect(enviadaNoPrompt('TEXTOS EXATOS — NÃO MODIFICAR:\nAlmoço executivo\nVem pra cá', [['Almoço executivo', 'Vem pra cá']]).enviada).toEqual(['Almoço executivo', 'Vem pra cá'])
+  })
+})
+
+describe('PR5-13 — o refino é assinado por QUEM PEDIU, não sempre por `claude`', () => {
+  const daOrigem: CopyAutoral = {
+    versao: VERSAO_DO_CONTRATO,
+    origem: { autor: 'claude', em: '2026-09-20T10:00:00.000Z' },
+    blocos: [{ id: 'manchete', funcao: 'headline', ordem: 0, linhas: ['Almoço executivo'] }],
+    revisoes: [],
+  }
+  const refinar = (canal: Parameters<typeof autorDoPedido>[0]) =>
+    revisaoDoRefino(
+      daOrigem,
+      ['Almoço executivo'],
+      ['Almoço de domingo'],
+      { autor: autorDoPedido(canal), superficie: 'melhoria' },
+      'pedido de refino: troque a frase',
+    )
+
+  it('o canal diz o autor: a INTERFACE é `equipe`, os automáticos são `claude`, ausente é `desconhecido`', () => {
+    expect(autorDoPedido('studio')).toBe('equipe')
+    expect(autorDoPedido('claude-ai')).toBe('claude')
+    expect(autorDoPedido('claude-code')).toBe('claude')
+    expect(autorDoPedido('claudinho')).toBe('claude')
+    // job antigo, enfileirado antes deste código: conservador, nunca um palpite
+    expect(autorDoPedido(null)).toBe('desconhecido')
+    expect(autorDoPedido(undefined)).toBe('desconhecido')
+  })
+
+  it('pedido pela INTERFACE: a revisão e o bloco ficam com `equipe`', () => {
+    const r = refinar('studio')
+    expect('copy' in r).toBe(true)
+    const copy = (r as { copy: CopyAutoral }).copy
+    expect(copy.revisoes.at(-1)!.autor).toBe('equipe')
+    expect(copy.revisoes.at(-1)!.motivo).toMatch(/pedido de refino/)
+    expect(autorDoBloco(copy, 'manchete').autor).toBe('equipe')
+    expect(copy.blocos[0].linhas).toEqual(['Almoço de domingo'])
+  })
+
+  it('pedido pelo CHAT continua com `claude`; job sem canal fica em `desconhecido`', () => {
+    expect((refinar('claude-ai') as { copy: CopyAutoral }).copy.revisoes.at(-1)!.autor).toBe('claude')
+    expect((refinar(null) as { copy: CopyAutoral }).copy.revisoes.at(-1)!.autor).toBe('desconhecido')
+  })
+
+  it('refino SEM mudança textual não cria revisão, venha de onde vier', () => {
+    for (const canal of ['studio', 'claude-ai', null] as const) {
+      const r = revisaoDoRefino(
+        daOrigem,
+        ['Almoço executivo'],
+        ['Almoço executivo'],
+        { autor: autorDoPedido(canal), superficie: 'melhoria' },
+        'pedido de refino: só a foto',
+      )
+      expect('copy' in r).toBe(true)
+      expect((r as { copy: CopyAutoral }).copy.revisoes).toEqual([])
+      expect(autorDoBloco((r as { copy: CopyAutoral }).copy, 'manchete').autor).toBe('claude')
+    }
   })
 })
 

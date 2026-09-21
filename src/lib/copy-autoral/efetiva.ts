@@ -234,6 +234,29 @@ function linhasDaCamada(l: Layer): string[] {
 }
 
 /**
+ * Tira da camada a DECLARAÇÃO de prefixo (`metadata.compositor.prefixo`).
+ *
+ * 🔴 A declaração descreve o conteúdo que o COMPOSITOR desenhou naquela camada
+ * (a seta que ele põe antes do CTA), e quem preenche a camada com conteúdo
+ * NOVO não acrescenta ornamento nenhum — escreve o texto tal e qual. Herdada,
+ * ela fazia `linhasDaCamada` descontar da leitura um prefixo que agora é TEXTO
+ * DO AUTOR: modelo com `prefixo: '→ '` recebendo um bloco que começa por "→ "
+ * mostrava "→ Venha hoje" na arte e gravava "Venha hoje" no contrato — uma
+ * transformação do sistema que nunca aconteceu (PR5-12 da revisão final do
+ * Codex, 21/09/2026). Quem preencher a camada ACRESCENTANDO ornamento declara
+ * o prefixo de novo; hoje ninguém faz isso fora do compositor.
+ */
+export function semPrefixoHerdado<L extends { metadata?: unknown }>(l: L): L {
+  const meta = l.metadata
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return l
+  const compositor = (meta as { compositor?: unknown }).compositor
+  if (!compositor || typeof compositor !== 'object' || Array.isArray(compositor)) return l
+  if (!('prefixo' in (compositor as Record<string, unknown>))) return l
+  const { prefixo: _fora, ...resto } = compositor as Record<string, unknown>
+  return { ...l, metadata: { ...(meta as Record<string, unknown>), compositor: resto } }
+}
+
+/**
  * O VÍNCULO que o compositor gravou na camada: o bloco do contrato que a
  * originou e as posições (0-based) das linhas dele que ela desenha. É a única
  * fonte de verdade sobre "de quem é esta camada" — texto igual, bloco vazio e

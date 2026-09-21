@@ -52,7 +52,8 @@ import {
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
 import type { TextCheckResult } from '@/lib/ai/creative-text-verification'
-import { comConferencia, comEnviada, conferenciaDoCheck, contratoDaOrigemDaMelhoria, enviadaNoPrompt, LACUNA_PROMPT_AINDA_NAO_MONTADO, registroParaIA, revisaoDoRefino, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
+import { autorDoPedido, comConferencia, comEnviada, conferenciaDoCheck, contratoDaOrigemDaMelhoria, enviadaNoPrompt, LACUNA_PROMPT_AINDA_NAO_MONTADO, registroParaIA, revisaoDoRefino, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
@@ -108,6 +109,14 @@ export interface ImprovementJobArgs {
   applyToSlideOrdem?: number | null
   userId: string
   orgId?: string
+  /**
+   * Por onde a melhoria foi PEDIDA (`creatives/canal.ts`). É o que diz quem
+   * ASSINA a revisão de copy quando o refino troca texto: `studio` é a pessoa
+   * na tela (`equipe`); os automáticos são o assistente (`claude`). Ausente em
+   * job enfileirado antes disto — `autorDoPedido` devolve `desconhecido`, que
+   * é o conservador (PR5-13).
+   */
+  canal?: CanalDaArte | null
   projectId: number
   projectName: string
   projectGoogleDriveFolderId: string | null
@@ -742,7 +751,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       const lacunas = ['melhoria por IA: a régua e o texto enviado são os desta rodada']
       let original = contratoDaOrigem
       if (modo === 'refinar' && copyAntesDoRefino) {
-        const r = revisaoDoRefino(contratoDaOrigem, copyAntesDoRefino, textosParaPrompt, { autor: 'claude', superficie: 'melhoria' }, `pedido de refino: ${args.userRequest.slice(0, 200)}`)
+        const r = revisaoDoRefino(contratoDaOrigem, copyAntesDoRefino, textosParaPrompt, { autor: autorDoPedido(args.canal), superficie: 'melhoria' }, `pedido de refino: ${args.userRequest.slice(0, 200)}`)
         if ('copy' in r) original = r.copy
         else lacunas.push(`o pedido trocou o texto e a revisão não casou com o contrato (${r.descartado}); o texto enviado é o do pedido`)
       }
