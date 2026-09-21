@@ -141,7 +141,7 @@ describe('blocos', () => {
   })
 
   it('empilha com o ritmo da casa (headline perto do pré, CTA mais longe)', () => {
-    const b = (papel: 'pre' | 'headline' | 'cta', height: number) => ({ papel, layer: texto(papel, papel, {}), width: 300, height, escala: 1, cor: '#fff' })
+    const b = (papel: 'pre' | 'headline' | 'cta', height: number) => ({ papel, layer: texto(papel, papel, {}), width: 300, height, escala: 1, cor: '#fff', familiasMedidas: [] })
     const p = empilhar([b('pre', 30), b('headline', 180), b('cta', 34)], 14)
     expect(vaoEntre('pre', 'headline', 14)).toBe(7)
     expect(vaoEntre('headline', 'cta', 14)).toBe(18)
