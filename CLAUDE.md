@@ -7318,14 +7318,21 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   linha por caixa quando o arranjo tem mais de um texto do papel (duas caixas
   de voz 2, Local + Horário), e a efetiva lia só a primeira: a segunda virava
   `extra-…`, com revisão falsa, e o bloco `livre` com texto travava a
-  recomposição em `validarSpec`. Hoje o compositor DECLARA a origem de cada
-  camada (`metadata.compositor.blocoDaCopy` = índice em `spec.blocos`,
-  rastreado LINHA a linha por `juntarNoGrupo`/`distribuirLinhas` e só gravado
-  quando todas as linhas da camada vêm do mesmo bloco), e
-  `copyEfetivaDasCamadas` junta as camadas livres da mesma declaração, em ordem
-  de leitura. Camada sem a marca (posta à mão no editor) continua lida como
-  antes — nada é juntado por palpite. `validarSpec` já recusa papel repetido,
-  então cada função tem no máximo um bloco no compositor.
+  recomposição em `validarSpec`. Quem resolve isso é a marca do VÍNCULO do
+  PR 3 (`metadata.compositor.bloco` = o **id** do bloco do contrato, com as
+  posições em `linhas`, rastreadas por `juntarNoGrupo`/`distribuirLinhas`): a
+  camada volta ao bloco que declara e fica RESERVADA para ele, então as duas
+  caixas do mesmo papel voltam juntas. Camada sem a marca (posta à mão no
+  editor) continua lida como antes — nada é juntado por palpite.
+  🔴 **O PR 4 chegou a ter a sua própria marca** (`blocoDaCopy` = índice em
+  `spec.blocos`, com `continuacoes`/`tomar` em `efetiva.ts`); no rebase sobre a
+  main de 20/09/2026 ela foi RETIRADA em favor da do PR 3, que é a mesma ideia
+  pelo id do contrato — estável através da conversão spec↔contrato — e mais
+  ampla (reserva a camada, trata a voz 2 declarada, a voz 1 escondida e o bloco
+  vazio: PR3-R9-02, R10-01, R11-01/02, R12-01, R13-01). **Não reintroduza
+  `blocoDaCopy`**: duas marcas para o mesmo fato é como a junção `c35c2918` foi
+  necessária da primeira vez. `validarSpec` já recusa papel repetido, então
+  cada função tem no máximo um bloco no compositor.
 - 🔴 **Id de camada é único na PEÇA inteira, nunca por grupo** (varredura do PR
   3, 18/09/2026): o contador de repetição de papel recomeçava a cada grupo, e o
   serviço repartido entre dois grupos (horário junto da oferta, endereço no pé)
