@@ -56,6 +56,11 @@ vi.mock('@/lib/brand/brand-context', () => ({
     fonts: [],
     colors: [],
     dna: { approvalChecklist: 'A arte está sem emoji?\nO preço confere com a base?', toneOfVoice: null, contentRules: null, composition: null, visualStyle: null, photoDirection: null },
+    // O crivo lê a identidade de TEXTO pela precedência (`contexto.voz`), que o
+    // loader preenche SEMPRE. Sem este campo o duble derruba a avaliação e ela
+    // degrada para o crivo manual — o teste passaria a medir outra coisa. Com o
+    // DNA de texto vazio, é isto que `precedenciaDaVoz` devolveria.
+    voz: { fonte: 'nenhuma' as const, texto: null, regrasDaMarca: null, versao: null, migradaEm: null, vozPendente: false, regrasDeArte: null },
   }),
 }))
 
