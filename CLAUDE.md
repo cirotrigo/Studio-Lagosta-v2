@@ -7361,3 +7361,45 @@ variante. Módulos puros com teste: `segunda-voz.ts`, `medidas.ts`;
   mais. `variante` continua sendo o pedido explícito — ausente é recusa.
 - `PAPEIS_INCOMPATIVEIS` continua até a camada extra (F3): papel que a variante
   não tem recusa, nunca some.
+
+**Da revisão FINAL do Codex sobre b5c2bd5b (BLOQUEADO, PR4-FINAL-01…02, 21/09/2026).**
+Os dois são a MESMA forma: uma decisão tomada por PROXY (o primeiro bloco do
+papel; a medida de fallback) em vez de pela identidade ou pelo fato já resolvido.
+
+- 🔴 **A declaração da segunda voz vem do bloco que ORIGINOU a manchete — o id
+  já resolvido em `blocoDoPapel` —, nunca do primeiro `headline` do contrato**
+  (PR4-FINAL-01). O contrato aceita um bloco `headline` VAZIO ao lado do
+  preenchido: `blocosParaOCompositor` omite o vazio (`legado.ts:227`), então
+  `validarSpec` não vê papel repetido e a entrada passa. Pelo primeiro, a busca
+  caía no vazio e recebia `null`: a manchete saía inteira na voz 1 **mesmo com
+  `headline2` na assinatura**, sem o aviso de voz 2 indisponível, e a leitura
+  seguinte registrava a mudança de estilo como decisão do compositor. É a mesma
+  identidade que vincula as camadas (`metadata.compositor.bloco`) — decidir por
+  proxy foi o defeito.
+- 🔴 **As fontes são conferidas ANTES das decisões de encaixe, e a RECUSA diz
+  quando a medida não vale** (PR4-FINAL-02). Família que não carregou faz o
+  medidor cair no FALLBACK, e é dessa medida que saem a escada de encolhimento e
+  o ORÇAMENTO de caracteres. `familiasNaoCarregadas` era consultada só no fim,
+  depois do `throw` de `TEXTO_NAO_CABE_NA_COLUNA`: a recusa mandava reescrever a
+  copy por um número que este mesmo PR declara inválido. Hoje o conjunto é
+  calculado antes do laço (superconjunto: estilo de cada papel da assinatura e de
+  cada arranjo candidato, mais a família do trecho DESTACADO — R02), a recusa do
+  bloco cuja família falta sai com `naoMedido: true` + `fontesNaoCarregadas` e
+  **sem orçamento**, e a mensagem manda cadastrar a fonte. O diagnóstico do fim
+  filtra o superconjunto pelo que as camadas FINAIS usam, para o aviso não citar
+  fonte de arranjo que não foi escolhido.
+- **Varredura das duas formas** (pedida com os consertos): *escolha por papel em
+  vez do id* — os únicos consumidores de `copyAutoral.blocos` no compositor são
+  `blocoDoPapel` (filtra `linhas.length > 0`, e `validarSpec` recusa papel
+  repetido entre os blocos COM texto, então é 1:1) e a linha corrigida;
+  `combinacoes.ts:279` (`find(papel === 'headline') ?? itens[0]`) lê o ARRANJO da
+  página de assinatura para escolher a referência de alinhamento — não há id de
+  contrato ali, é o template; `efetiva.ts:499` (primeira `headline2` livre) é a
+  RESERVA documentada do PR 3, que só roda quando não há marca. *Medida de
+  fallback virando número* — `medidasFinais[]` e `diagnostico.blocos[]` já
+  carregam `naoMedido` (R02); o único número que mandava AGIR era o orçamento da
+  recusa, agora coberto. ⚠️ Fica o aviso "fonte reduzida a N% para caber na
+  coluna", que também nasce da medida de fallback: ele descreve o que a
+  composição FEZ (a escala está mesmo gravada na camada) e não pede ação, e o
+  mesmo bloco já sai com `naoMedido` e com o aviso de que a medida não vale —
+  acrescentar ressalva ali seria ruído.

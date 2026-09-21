@@ -4,17 +4,18 @@
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Layer } from '@/types/template'
-const mocks = vi.hoisted(() => ({ regua: vi.fn(), paginas: vi.fn() }))
+const mocks = vi.hoisted(() => ({ regua: vi.fn(), paginas: vi.fn(), projeto: vi.fn(), semFonte: vi.fn(), medir: vi.fn() }))
 vi.mock('@/lib/db', () => ({ db: {
-  project: { findUnique: vi.fn(async () => ({ id: 3, name: 'TERO', userId: 'user', assinatura: {}, Logo: [] })) },
+  project: { findUnique: mocks.projeto },
   template: { findFirst: vi.fn(async () => ({ id: 1 })) },
   page: { findMany: mocks.paginas },
+  customFont: { findMany: vi.fn(async () => []) },
 } }))
 vi.mock('@/lib/creatives/persist', () => ({ persistAndRenderCreative: vi.fn(), resolveImageUrl: vi.fn() }))
 vi.mock('../pastas', () => ({ garantirPasta: vi.fn(), ordemNaPasta: async () => ({ ordem: 1, repeticao: 0 }) }))
 vi.mock('@/lib/creatives/uso-de-foto', () => ({ registrarUsoDeFoto: vi.fn() }))
-vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: vi.fn(), fetchBuffer: vi.fn(), familiasNaoCarregadas: async () => new Set<string>() }))
-vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextBoxMeasurer: async () => (l: Layer) => ({ width: l.size.width, height: Number(l.style?.fontSize ?? 48), maxLineWidth: 100, lineCount: 1 }) }))
+vi.mock('@/lib/posts/register-project-fonts', () => ({ registerProjectFonts: vi.fn(), fetchBuffer: vi.fn(), familiasNaoCarregadas: mocks.semFonte }))
+vi.mock('@/lib/creatives/server-text-measurer', () => ({ createServerTextBoxMeasurer: async () => mocks.medir }))
 vi.mock('@/lib/creatives/text-autofix', () => ({ aplicarAutofixOuFalhar: async (args: { layers: Layer[] }) => ({ layers: args.layers, avisos: [] }) }))
 vi.mock('../regua', async (original) => ({ ...await original<typeof import('../regua')>(), medirContrasteDaPeca: mocks.regua }))
 import { comporPeca } from '../compor'
@@ -23,6 +24,7 @@ import { vaoEntre } from '../blocos'
 import { escolherVariante } from '../assinatura'
 import { specComAPosicaoOriginal } from '../defasagem'
 import { validarSpec, type SpecDePeca } from '../spec'
+import type { CreativeError } from '@/lib/creatives/errors'
 import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, validarCopyAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
 const texto = (id: string, name: string, y: number, extra: Partial<Layer> = {}): Layer => ({ id, name, type: 'text', content: 'Teste', visible: true, locked: false, order: 1, position: { x: 80, y }, size: { width: 700, height: 100 }, style: { fontFamily: 'Arial', fontSize: 80, color: '#ffffff' }, ...extra })
@@ -32,6 +34,9 @@ const contrato = (blocos: CopyAutoral['blocos']): CopyAutoral => ({ versao: VERS
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.regua.mockImplementation(async (args) => ({ layers: args.layers, medidas: [], avisos: [] }))
+  mocks.projeto.mockImplementation(async () => ({ id: 3, name: 'TERO', userId: 'user', assinatura: {}, Logo: [] }))
+  mocks.semFonte.mockImplementation(async () => new Set<string>())
+  mocks.medir.mockImplementation((l: Layer) => ({ width: l.size.width, height: Number(l.style?.fontSize ?? 48), maxLineWidth: 100, lineCount: 1 }))
 })
 
 describe('PR4-01 — manchete espalhada por várias caixas do mesmo papel', () => {
@@ -154,5 +159,99 @@ describe('ids de camada únicos na peça inteira (varredura do PR 3, 18/09/2026)
     const logos = r.layers.filter((l) => l.type === 'logo' || String(l.id).startsWith('logo'))
     expect(logos.length).toBe(2)
     expect(new Set(r.layers.map((l) => l.id)).size).toBe(r.layers.length)
+  })
+})
+
+const comp = (l: Layer | undefined) => (l?.metadata as { compositor?: { papel?: string; bloco?: string } } | undefined)?.compositor
+const doPapel = (layers: Layer[], papel: string) => layers.find((l) => comp(l)?.papel === papel)
+
+describe('PR4-FINAL-01 — a declaração de voz 2 vem do bloco que ORIGINOU a manchete', () => {
+  // O contrato aceita um `headline` VAZIO ao lado do preenchido: a conversão
+  // para a spec omite o vazio, então `validarSpec` não vê papel repetido.
+  const copyComVazio = () => contrato([
+    { id: 'manchete-vazia', funcao: 'headline', ordem: 0, linhas: [] },
+    { id: 'manchete', funcao: 'headline', ordem: 1, linhas: ['Almoço', 'de domingo'], estilo: { linhasNaVoz2: [1] } },
+  ])
+  it('a entrada é permitida: contrato e spec aceitam o bloco vazio ao lado do preenchido', () => {
+    const copy = copyComVazio()
+    expect(validarCopyAutoral(copy).problemas).toEqual([])
+    expect(validarSpec({ projectId: 3, formato: 'story', copyAutoral: copy }).problemas).toEqual([])
+  })
+  it('com headline2 na assinatura: a voz 2 declarada é honrada, e o vínculo das DUAS camadas aponta o bloco PREENCHIDO', async () => {
+    mocks.paginas.mockResolvedValue([pagina('pg', [texto('headline', 'headline', 230), texto('headline2', 'headline2', 400)])])
+    const copy = copyComVazio()
+    const r = await comporPeca({ projectId: 3, formato: 'story', copyAutoral: copy }, { somenteAvaliar: true })
+    expect(doPapel(r.layers, 'headline')?.content).toBe('Almoço')
+    expect(doPapel(r.layers, 'headline2')?.content).toBe('de domingo')
+    expect(comp(doPapel(r.layers, 'headline'))?.bloco).toBe('manchete')
+    expect(comp(doPapel(r.layers, 'headline2'))?.bloco).toBe('manchete')
+    expect(r.diagnostico.segundaVoz).toBe('contrato')
+    const e = copyEfetivaDasCamadas(copy, r.layers, { superficie: 'compositor' })
+    expect(e.mudancas).toEqual([])
+    expect(e.efetiva.blocos.map((b) => [b.id, b.linhas])).toEqual([['manchete-vazia', []], ['manchete', ['Almoço', 'de domingo']]])
+    expect(e.efetiva.blocos[1].estilo?.linhasNaVoz2).toEqual([1])
+  })
+  it('SEM headline2 na assinatura: a declaração é lida e vira AVISO — nunca some em silêncio', async () => {
+    mocks.paginas.mockResolvedValue([pagina('pg', [texto('headline', 'headline', 230)])])
+    const r = await comporPeca({ projectId: 3, formato: 'story', copyAutoral: copyComVazio() }, { somenteAvaliar: true })
+    expect(r.diagnostico.avisos!.join(' ')).toMatch(/headline: a copy declarou a linha 2 .* não tem "headline2"/)
+    expect(doPapel(r.layers, 'headline')?.content).toBe('Almoço\nde domingo')
+  })
+  it('controle — sem bloco vazio, o desfecho é o mesmo (a correção não muda o caminho normal)', async () => {
+    mocks.paginas.mockResolvedValue([pagina('pg', [texto('headline', 'headline', 230), texto('headline2', 'headline2', 400)])])
+    const copy = contrato([{ id: 'manchete', funcao: 'headline', ordem: 0, linhas: ['Almoço', 'de domingo'], estilo: { linhasNaVoz2: [1] } }])
+    const r = await comporPeca({ projectId: 3, formato: 'story', copyAutoral: copy }, { somenteAvaliar: true })
+    expect(doPapel(r.layers, 'headline2')?.content).toBe('de domingo')
+    expect(comp(doPapel(r.layers, 'headline2'))?.bloco).toBe('manchete')
+  })
+})
+
+describe('PR4-FINAL-02 — fonte ausente não vira orçamento de caracteres', () => {
+  // O medidor devolve uma linha maior que a coluna em QUALQUER corpo: a escada
+  // de encolhimento chega ao piso e o bloco é recusado.
+  const naoCabeNemNoPiso = (l: Layer) => ({ width: l.size.width, height: Number(l.style?.fontSize ?? 48), maxLineWidth: 99999, lineCount: 1 })
+  const compor = (copy: CopyAutoral) => comporPeca({ projectId: 3, formato: 'story', copyAutoral: copy }, { somenteAvaliar: true }).then(() => null, (e) => e as CreativeError)
+  const simples = () => contrato([{ id: 'manchete', funcao: 'headline', ordem: 0, linhas: ['Almoço executivo do dia'] }])
+
+  beforeEach(() => {
+    mocks.paginas.mockResolvedValue([pagina('pg', [texto('headline', 'headline', 230)])])
+    mocks.medir.mockImplementation(naoCabeNemNoPiso)
+  })
+
+  it('a família do PAPEL não carregou: a recusa DIZ que não deu para medir e não devolve orçamento', async () => {
+    mocks.semFonte.mockImplementation(async () => new Set(['Arial']))
+    const erro = await compor(simples())
+    expect(erro?.code).toBe('TEXTO_NAO_CABE_NA_COLUNA')
+    expect(erro?.message).toMatch(/"Arial" não está carregada no servidor/)
+    expect(erro?.message).toMatch(/NÃO há orçamento de caracteres/)
+    expect(erro?.message).not.toMatch(/Reescreva com o orçamento/)
+    expect(erro?.details?.orcamento).toEqual([{ papel: 'headline', naoMedido: true, fontesNaoCarregadas: ['Arial'] }])
+    expect(erro?.details?.fontesNaoCarregadas).toEqual(['Arial'])
+    expect(JSON.stringify(erro?.details)).not.toMatch(/caracteresQueCabem/)
+  })
+
+  it('a família do TRECHO destacado não carregou (a base carregou): idem — a medida da largura extra é do fallback', async () => {
+    mocks.projeto.mockImplementation(async () => ({ id: 3, name: 'TERO', userId: 'user', assinatura: { destaque: { fontFamily: 'Lato Bold', pesado: false } }, Logo: [] }))
+    mocks.semFonte.mockImplementation(async () => new Set(['Lato Bold']))
+    const erro = await compor(contrato([{ id: 'manchete', funcao: 'headline', ordem: 0, linhas: ['Almoço [executivo] do dia'] }]))
+    expect(erro?.code).toBe('TEXTO_NAO_CABE_NA_COLUNA')
+    expect(erro?.details?.orcamento).toEqual([{ papel: 'headline', naoMedido: true, fontesNaoCarregadas: ['Lato Bold'] }])
+    expect(JSON.stringify(erro?.details)).not.toMatch(/caracteresQueCabem/)
+  })
+
+  it('controle — todas as fontes carregadas: a recusa continua devolvendo o ORÇAMENTO medido', async () => {
+    const erro = await compor(simples())
+    expect(erro?.code).toBe('TEXTO_NAO_CABE_NA_COLUNA')
+    expect(erro?.message).toMatch(/Reescreva com o orçamento devolvido/)
+    expect(erro?.message).not.toMatch(/não está carregada/)
+    expect(JSON.stringify(erro?.details)).toMatch(/caracteresQueCabem/)
+  })
+
+  it('a fonte de um arranjo NÃO escolhido não vira aviso na peça que deu certo', async () => {
+    mocks.medir.mockImplementation((l: Layer) => ({ width: l.size.width, height: Number(l.style?.fontSize ?? 48), maxLineWidth: 100, lineCount: 1 }))
+    mocks.semFonte.mockImplementation(async () => new Set(['Fonte Que Ninguem Usa']))
+    const r = await comporPeca({ projectId: 3, formato: 'story', copyAutoral: simples() }, { somenteAvaliar: true })
+    expect(r.diagnostico.fontesNaoCarregadas).toBeUndefined()
+    expect(r.diagnostico.avisos!.join(' ')).not.toMatch(/Fonte Que Ninguem Usa/)
   })
 })
