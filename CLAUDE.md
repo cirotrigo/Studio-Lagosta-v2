@@ -10672,3 +10672,35 @@ aplicada**.
   testes; só pelo vínculo, 5; o item lido da Generation, 1; sem o job, 1; a
   Generation antes do job, 1; reprovado tratado como superado, 1; só
   `PECA_AUSENTE`, 3.
+
+**Do segundo restack sobre o PR 11 (d723110b, 21/09/2026): arte sem arquivo não é peça pronta:**
+
+- 🔴 **Peça COMPLETED sem `resultUrl` não vai à agenda** (`PECA_SEM_ARQUIVO`,
+  alinhado ao PR11-F02). `decidirAgendamento` decidia a peça só pelo status e
+  agendava a página dela como rascunho PENDING — mas a reserva do lote RETOMA
+  essa peça como retoma a que falhou (Generation nova), então o post ficava numa
+  peça que a compor-leva seguinte substitui: a linha com `postId` na página
+  velha e `generationId` na nova. E, com a reconciliação do 9e908105, o item em
+  voo com essa arte vai a `erro` no `ver-plano`, e o agendar-leva caía no "foi
+  reaberto… agende quando a arte nova estiver pronta" sem nada em produção.
+  Hoje o `resultUrl` é OBRIGATÓRIO no tipo da peça (quem esquecer de lê-lo não
+  compila), a recusa vem logo depois de `PECA_FALHOU` — antes do pedido e da
+  página — e o motivo manda repetir a compor-leva com o mesmo item, que a retoma
+  (peça solta: `retomado`; item em voo ou em `erro`: peça nova).
+- **A checagem de superada já não lia "pronta" sem arquivo**
+  (`classificarPecaDoItem` devolve `pronta-sem-arquivo`, e
+  `superadaNoPlanoSemPeca` só aceita viva ou pronta — item pronto com a arte sem
+  arquivo fica em `PECA_AUSENTE`, como a compor-leva, que recusa `avancou`, não
+  `superada`). Agora ela também cobre a peça da LINHA sem arquivo
+  (`PECA_QUE_NAO_SERVE`).
+- ⚠️ **Mudança de comportamento**: antes, a peça sem arquivo virava rascunho
+  PENDING pela página. ⚠️ **Residual**: item `pronto`/`agendado` apontando a
+  própria peça sem arquivo (o que a reconciliação antiga e o "usa esta arte"
+  produziam) — a compor-leva repetida recusa `avancou`. Estado sem produtor no
+  código de hoje (varredura do PR 11).
+- Provas: `agendar-leva-peca-superada.test.ts` (peça solta sem arquivo e a
+  retomada; peça de item de plano sem arquivo em voo e depois da reconciliação
+  REAL por `situacaoPelaArte`; item pronto com a arte sem arquivo; linha sem
+  arquivo com o item refeito → superada) e os fixtures de `agendamento.test.ts`,
+  que davam peça pronta sem arquivo. Mutações: sem a recusa, 4 testes; o gancho
+  sem `PECA_SEM_ARQUIVO`, 1.
