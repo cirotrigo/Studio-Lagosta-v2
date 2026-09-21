@@ -8384,6 +8384,17 @@ conteúdo mudou" no lugar de "veio conteúdo".
   quando ela tinha essa causa única. Sem teste novo: a correção é de fiação —
   uma atribuição vira dois campos —, e a semântica de `outraImagem` já é
   provada pelo PR5-08.
+- 🔴 **A REGRA que as três deixam, e o caso que a mede**: *condição escrita
+  pelo caso do exemplo passa nos testes do exemplo*. As três testam a
+  CONSEQUÊNCIA que o caso em mãos produziu, não o fato — e enquanto a
+  consequência tem uma causa só, as duas leituras são indistinguíveis, que é
+  justamente por que passam em revisão: o exemplo prova as duas. O que as
+  separa é perguntar **"que OUTRA coisa produz este sintoma?"** — e **"hoje,
+  nenhuma" ainda é resposta errada**, porque a condição se quebra sozinha na
+  primeira causa nova, sem barulho. O caso que mede isso é o `skipTextVerification`
+  do PR5-14: motivo novo para pular a conferência derrubaria o contrato junto
+  **e faria o registro afirmar um motivo falso** ("a imagem é outro slide"),
+  que é o oposto do que o contrato existe para fazer.
 - **O que a varredura DESCARTOU com razão**: `autorDoPedido` (canal é o fato,
   não sintoma — PR5-13); `revisaoDoRefino`, que localiza o bloco pelo texto
   normalizado e **declara** a ambiguidade (`candidatos.length !== 1` →
