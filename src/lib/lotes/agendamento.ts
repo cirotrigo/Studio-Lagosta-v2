@@ -33,6 +33,8 @@ import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { ESCOPO_PADRAO, normalizarEscopo, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { ROTULO_DO_STATUS, normalizarStatusDoItem } from '@/lib/planos/vocabulario'
+import { itemExecutavel } from '@/lib/planos/execucao'
+import type { EstadoDaPecaDoItem } from '@/lib/planos/decisao-do-item'
 import { validarIdentidadeDeLote } from './identidade'
 
 /** Mudou a normalização do pedido? Suba a versão — e trate o hash antigo como o PR 11 trata o dele. */
@@ -431,6 +433,30 @@ export function decidirItemDoPlano(entrada: {
     codigo: 'PECA_SUPERADA_NO_PLANO',
     motivo: `O item do plano desta peça foi reaberto depois dela (está "${status ? ROTULO_DO_STATUS[status] : item.status}") — agende quando a arte nova estiver pronta.`,
   }
+}
+
+/**
+ * A peça desta linha NÃO SERVE (não existe, sumiu ou falhou) e o pedido dela
+ * nasceu de um item de plano. Se o item está pronto, agendado ou em produção
+ * com OUTRA arte viva ou pronta, a compor-leva repetida recusa o pedido como
+ * SUPERADO — é a linha 4a da tabela do plano (PR 11), a mesma condição daqui.
+ * Mandar "componha com compor-leva" levaria de volta à mesma recusa; a
+ * resposta é a da peça superada (Ciro, 13/09/2026): informa a arte atual e o
+ * chat pergunta. Em qualquer outro estado a compor-leva produz, ou a recusa
+ * dela diz a saída, e vale a resposta da própria peça (`PECA_AUSENTE`,
+ * `PECA_FALHOU`).
+ *
+ * ponytail: não compara o pedido da linha com o da arte do item (a linha 3 da
+ * tabela reaproveita quando é o MESMO pedido, na mesma revisão). Nesse caso raro
+ * a pergunta é desnecessária, mas "manter a arte atual" é o desfecho certo.
+ */
+export function superadaNoPlanoSemPeca(entrada: { item: ItemDoPlanoDaPeca | null; pecaDoItem: EstadoDaPecaDoItem }): (FalhaDoItem & { superadaPor: string }) | null {
+  const { item } = entrada
+  if (!item?.generationId) return null
+  const status = normalizarStatusDoItem(item.status)
+  if (!status || status === 'reprovado' || itemExecutavel(status)) return null
+  if (entrada.pecaDoItem !== 'viva' && entrada.pecaDoItem !== 'pronta') return null
+  return { codigo: 'PECA_SUPERADA_NO_PLANO', superadaPor: item.generationId, motivo: MOTIVO_ARTE_MAIS_NOVA }
 }
 
 /**

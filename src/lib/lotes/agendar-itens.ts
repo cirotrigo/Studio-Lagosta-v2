@@ -48,7 +48,7 @@ import { formatarBRT, parseBRT } from '@/lib/creatives/data-brt'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { formatoDaPagina, refilarPaginasDoPost } from '@/lib/compositor/pastas'
 import { normalizarStatusDoItem, transicaoPermitida } from '@/lib/planos/vocabulario'
-import { descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
+import { classificarPecaDoItem, descreverArteAtualDoItem, type ArteAtualDoItem } from '@/lib/planos/decisao-do-item'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import type { Prisma } from '../../../prisma/generated/client'
 import {
@@ -63,6 +63,7 @@ import {
   MOTIVO_RECRIAR_COM_OUTRO_PEDIDO,
   pedidoDoAgendamento,
   resumirAgendamento,
+  superadaNoPlanoSemPeca,
   thumbnailEhAtual,
   validarAgendamentoDoLote,
   type DesfechoDoItemAgendado,
@@ -125,7 +126,7 @@ export interface ResultadoDoAgendamentoDoLote {
   itens: ItemAgendadoDoLote[]
 }
 
-type Cliente = Pick<Prisma.TransactionClient, 'project' | 'generation' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano'>
+type Cliente = Pick<Prisma.TransactionClient, 'project' | 'generation' | 'generationJob' | 'page' | 'socialPost' | 'itemDeLote' | 'itemDePlano'>
 
 const SELECAO_DA_LINHA = { id: true, generationId: true, postId: true, hashDoAgendamento: true, efeitosDoAgendamentoEm: true } as const
 const SELECAO_DO_POST = {
@@ -207,7 +208,7 @@ async function lerPagina(cliente: Cliente, pageId: string, projectId: number): P
 
 type ItemDoPlanoLido = { id: string; status: string; generationId: string | null; postId: string | null; pageId: string | null; updatedAt: Date }
 
-async function lerItemDoPlano(cliente: Cliente, peca: Peca, projectId: number): Promise<ItemDoPlanoLido | null> {
+async function lerItemDoPlano(cliente: Cliente, peca: Pick<Peca, 'itemDePlanoId' | 'planoId'>, projectId: number): Promise<ItemDoPlanoLido | null> {
   if (!peca.itemDePlanoId) return null
   return (await cliente.itemDePlano.findFirst({
     where: { id: peca.itemDePlanoId, projectId, ...(peca.planoId ? { planoId: peca.planoId } : {}) },
@@ -222,6 +223,34 @@ async function lerArteAtualDoItem(cliente: Cliente, generationId: string, pageId
     select: { status: true, resultUrl: true, createdAt: true, fieldValues: true },
   })) as { status: string; resultUrl: string | null; createdAt: Date | null; fieldValues: unknown } | null
   return descreverArteAtualDoItem({ generationId, pageIdDoItem, geracao: g ? { ...g, status: String(g.status) } : null })
+}
+
+/**
+ * A peça desta linha não serve (não existe, sumiu ou falhou): o pedido nasceu de
+ * um item de plano que a compor-leva repetida recusaria como SUPERADO? O item
+ * vem do PAYLOAD da linha — o pedido desta chamada —, que existe mesmo quando a
+ * compor-leva recusou e nenhuma Generation nasceu. Sem isso a resposta mandava
+ * "componha com compor-leva", e compor de novo devolvia `superada` de novo.
+ */
+async function superadaSemPeca(cliente: Cliente, linhaId: string, projectId: number): Promise<{ falha: FalhaDoItem; arteAtualDoItem: ArteAtualDoItem | null } | null> {
+  const bruta = await cliente.itemDeLote.findUnique({ where: { id: linhaId }, select: { payload: true } })
+  const payload = (bruta?.payload && typeof bruta.payload === 'object' && !Array.isArray(bruta.payload) ? bruta.payload : {}) as Record<string, unknown>
+  if (typeof payload.itemDePlanoId !== 'string') return null
+  const alvo = { itemDePlanoId: payload.itemDePlanoId, planoId: typeof payload.planoId === 'string' ? payload.planoId : null }
+  const item = await lerItemDoPlano(cliente, alvo, projectId)
+  if (!item?.generationId) return null
+  // O job ANTES da Generation, como a tabela do plano lê: o runner fecha a
+  // Generation e só depois o job (PR 11, C11-1).
+  const job = await cliente.generationJob.findUnique({ where: { generationId: item.generationId }, select: { status: true } })
+  const g = (await cliente.generation.findFirst({
+    where: { id: item.generationId, projectId },
+    select: { status: true, resultUrl: true, createdAt: true, fieldValues: true },
+  })) as { status: string; resultUrl: string | null; createdAt: Date | null; fieldValues: unknown } | null
+  const geracao = g ? { ...g, status: String(g.status) } : null
+  const pecaDoItem = classificarPecaDoItem({ generationId: item.generationId, geracao, job: job ? { status: String(job.status) } : null })
+  const falha = superadaNoPlanoSemPeca({ item, pecaDoItem })
+  if (!falha) return null
+  return { falha, arteAtualDoItem: descreverArteAtualDoItem({ generationId: item.generationId, pageIdDoItem: item.pageId, geracao }) }
 }
 
 function editUrlDe(templateId: number | null | undefined, pageId: string | null | undefined): string | undefined {
@@ -308,7 +337,11 @@ async function decidirEscrita(cliente: Cliente, ctx: Contexto, itemId: string, l
   if (decisao.acao === 'pendente') {
     return { acao: 'recusar', resposta: { itemId, situacao: 'pendente', codigo: decisao.codigo, motivo: decisao.motivo, ...(peca ? { generationId: peca.id } : {}) } }
   }
-  if (decisao.acao === 'falhar') return { acao: 'recusar', resposta: falhou(itemId, decisao, vinculos) }
+  if (decisao.acao === 'falhar') {
+    const superada = decisao.codigo === 'PECA_AUSENTE' || decisao.codigo === 'PECA_FALHOU' ? await superadaSemPeca(cliente, linha.id, projectId) : null
+    if (superada) return { acao: 'recusar', resposta: falhou(itemId, superada.falha, { ...vinculos, ...(superada.arteAtualDoItem ? { arteAtualDoItem: superada.arteAtualDoItem } : {}) }) }
+    return { acao: 'recusar', resposta: falhou(itemId, decisao, vinculos) }
+  }
   if (decisao.acao !== 'agendar' || !peca || !pagina) {
     return { acao: 'recusar', resposta: falhou(itemId, { codigo: 'LOTE_AGENDAMENTO_CONCORRENTE', motivo: 'O item mudou durante o agendamento. Repita a chamada.' }, vinculos) }
   }

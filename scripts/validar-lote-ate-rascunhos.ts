@@ -452,6 +452,21 @@ async function main() {
     const deNovo = (await agendar([{ itemId: 'item-10', recriarRascunhoApagado: true }])).itens[0]
     conferir('reaproveitado, o mesmo post', deNovo.situacao === 'concluido' && deNovo.desfecho === 'reaproveitado' && deNovo.postId === recriada.postId, JSON.stringify(deNovo))
     conferir('continua um post só na página e no projeto, e o item do plano igual', (await postsDaPagina(pagina10)).length === 1 && (await db.socialPost.count({ where: { projectId: PROJETO } })) === postsDoProjetoSemORascunho + 1 && JSON.stringify(await db.itemDePlano.findUnique({ where: { id: itemDoPlano.id }, select: { status: true, postId: true, generationId: true, updatedAt: true } })) === JSON.stringify(itemReapontado))
+
+    // ── 18. peça superada no plano, sem peça na linha ───────────────────────
+    console.log('18) pedido para um item de plano que já tem outra arte: a compor-leva recusa como superada, e o agendar-leva da mesma linha diz qual é a arte atual — sem mandar compor, sem criar post')
+    const itemAtual = await db.itemDePlano.findUniqueOrThrow({ where: { id: itemDoPlano.id } })
+    const recusaDaLeva = await compor('item-11', peca(11, { itemDePlanoId: itemDoPlano.id, planoId: plano.id, blocos: [{ papel: 'headline', linhas: ['Outra manchete do plano'] }] }), { itemRevisao: revisaoDoItem(itemAtual) })
+      .then(() => null, (e: unknown) => e as { code?: string; details?: { motivo?: string } })
+    conferir('a compor-leva recusou como superada', recusaDaLeva?.code === 'ITEM_EXECUCAO_CONCORRENTE' && recusaDaLeva.details?.motivo === 'superada', JSON.stringify(recusaDaLeva))
+    const linha11 = await linhaDo('item-11')
+    conferir('a linha ficou reservada, sem peça', !!linha11 && linha11.generationId === null, JSON.stringify(linha11))
+    const postsAntesDaSuperada = await db.socialPost.count({ where: { projectId: PROJETO } })
+    for (const simular of [true, false]) {
+      const r = (await agendar([{ itemId: 'item-11' }], simular)).itens[0]
+      conferir(`${simular ? 'simulado' : 'de verdade'}: PECA_SUPERADA_NO_PLANO com a arte atual, sem mandar compor`, r.situacao === 'falhou' && r.codigo === 'PECA_SUPERADA_NO_PLANO' && r.arteAtualDoItem?.generationId === linha10.generationId && r.arteAtualDoItem?.situacao === 'pronta' && !r.motivo?.includes('antes de agendar'), JSON.stringify(r))
+    }
+    conferir('nenhum post novo', (await db.socialPost.count({ where: { projectId: PROJETO } })) === postsAntesDaSuperada)
   } catch (erro) {
     console.error('\n✗ a prova parou:', erro)
     mau++

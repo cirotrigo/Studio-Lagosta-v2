@@ -5,6 +5,8 @@
  */
 import { describe, expect, it } from 'vitest'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { CONFRONTOS, CONFRONTOS_DO_PROJETO, decidirNoItemDoPlano, ESTADOS_DA_PECA_DO_ITEM, FICHAS_DO_ITEM, REVISOES_DA_CHAMADA } from '@/lib/planos/decisao-do-item'
+import { STATUS_DO_ITEM } from '@/lib/planos/vocabulario'
 import {
   decidirAgendamento,
   decidirItemDoPlano,
@@ -14,7 +16,9 @@ import {
   hashDoAgendamento,
   mancheteDaSpec,
   pedidoDoAgendamento,
+  MOTIVO_ARTE_MAIS_NOVA,
   resumirAgendamento,
+  superadaNoPlanoSemPeca,
   thumbnailEhAtual,
   validarAgendamentoDoLote,
   type PedidoDeAgendamento,
@@ -258,5 +262,37 @@ describe('decisões do Ciro (13/09/2026): rascunho apagado pela equipe e peça s
     expect(descreverRascunhoApagado({ pedido: outro, hashDoOriginal: original, tema: 'Rodízio', manchete: null })).toEqual({ quando: null, tema: 'Rodízio', manchete: null })
     expect(descreverRascunhoApagado({ pedido: null, hashDoOriginal: original, tema: null, manchete: null })).toEqual({ quando: null, tema: null, manchete: null })
     expect(descreverRascunhoApagado({ pedido, hashDoOriginal: null, tema: '', manchete: null })).toEqual({ quando: null, tema: null, manchete: null })
+  })
+})
+
+describe('peça que não serve, pedido de item de plano já superado (a linha 4a da tabela do plano)', () => {
+  it('é superada EXATAMENTE quando a compor-leva repetida recusaria o pedido como superado — o espaço inteiro da tabela do plano, fora a linha 3', () => {
+    const pares = new Set<string>()
+    let comparadas = 0
+    for (const status of STATUS_DO_ITEM) for (const peca of ESTADOS_DA_PECA_DO_ITEM) for (const ficha of FICHAS_DO_ITEM)
+      for (const pedido of CONFRONTOS) for (const projeto of CONFRONTOS_DO_PROJETO) for (const revisao of CONFRONTOS) for (const chamada of REVISOES_DA_CHAMADA) {
+        const tabela = decidirNoItemDoPlano({ status, ficha, peca, pedido, projeto, revisao, chamada })
+        // A linha 3 é a compor-leva REAPROVEITANDO a arte do item porque ela é este
+        // mesmo pedido: o agendamento não compara pedidos (simplificação declarada
+        // em superadaNoPlanoSemPeca), então esse ramo fica fora da paridade.
+        if (tabela.acao === 'reaproveitar') continue
+        comparadas++
+        const aqui = superadaNoPlanoSemPeca({ item: { status, generationId: 'g-atual', postId: null }, pecaDoItem: peca })
+        const naTabela = tabela.acao === 'recusar' && tabela.motivo === 'superada'
+        expect([status, peca, ficha, pedido, projeto, revisao, chamada, !!aqui]).toEqual([status, peca, ficha, pedido, projeto, revisao, chamada, naTabela])
+        if (aqui) {
+          pares.add(`${status}|${peca}`)
+          expect(aqui).toEqual({ codigo: 'PECA_SUPERADA_NO_PLANO', superadaPor: 'g-atual', motivo: MOTIVO_ARTE_MAIS_NOVA })
+        }
+      }
+    expect(comparadas).toBeGreaterThan(20000)
+    // pronto, agendado, na-fila e gerando × viva e pronta.
+    expect([...pares].sort()).toEqual(['agendado|pronta', 'agendado|viva', 'gerando|pronta', 'gerando|viva', 'na-fila|pronta', 'na-fila|viva', 'pronto|pronta', 'pronto|viva'])
+  })
+
+  it('sem item, sem arte no item, ou com status desconhecido: não é superada (vale a resposta da própria peça)', () => {
+    expect(superadaNoPlanoSemPeca({ item: null, pecaDoItem: 'pronta' })).toBeNull()
+    expect(superadaNoPlanoSemPeca({ item: { status: 'pronto', generationId: null, postId: null }, pecaDoItem: 'pronta' })).toBeNull()
+    expect(superadaNoPlanoSemPeca({ item: { status: 'arquivado', generationId: 'g', postId: null }, pecaDoItem: 'pronta' })).toBeNull()
   })
 })
