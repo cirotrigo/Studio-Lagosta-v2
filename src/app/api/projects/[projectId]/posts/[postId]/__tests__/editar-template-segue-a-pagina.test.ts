@@ -66,38 +66,43 @@ vi.mock('@/lib/db', () => {
     })
   }
   const achar = (mapa: Map<unknown, Linha>, where: Linha) => [...mapa.values()].filter((l) => casa(l, where))
-  return {
-    db: {
-      project: { findUnique: async (a: Linha) => projetar('project', PROJETO, a) },
-      template: {
-        findFirst: async ({ where, ...a }: Linha) => projetar('template', achar(banco.templates, where)[0] ?? null, a),
-        create: async ({ data, ...a }: Linha) => {
-          const linha = { id: ++banco.seq, ...data }
-          banco.templates.set(linha.id, linha)
-          return projetar('template', linha, a)
-        },
-      },
-      page: {
-        findUnique: async ({ where, ...a }: Linha) => projetar('page', banco.pages.get(where.id) ?? null, a),
-        findMany: async ({ where, ...a }: Linha) => achar(banco.pages, where).map((l) => projetar('page', l, a)),
-        update: async ({ where, data }: Linha) => Object.assign(banco.pages.get(where.id)!, data),
-      },
-      generation: { findFirst: async () => null },
-      socialPost: {
-        create: async ({ data, ...a }: Linha) => {
-          const linha = { id: `post-${++banco.seq}`, createdAt: new Date(), updatedAt: new Date(), ...data }
-          banco.posts.set(linha.id, linha)
-          return projetar('socialPost', linha, a)
-        },
-        findUnique: async ({ where, ...a }: Linha) => projetar('socialPost', banco.posts.get(where.id) ?? null, a),
-        findMany: async ({ where, select }: Linha) => achar(banco.posts, where).map((l) => projetar('socialPost', l, { select })),
+  const db: any = {
+    project: { findUnique: async (a: Linha) => projetar('project', PROJETO, a) },
+    template: {
+      findFirst: async ({ where, ...a }: Linha) => projetar('template', achar(banco.templates, where)[0] ?? null, a),
+      create: async ({ data, ...a }: Linha) => {
+        const linha = { id: ++banco.seq, ...data }
+        banco.templates.set(linha.id, linha)
+        return projetar('template', linha, a)
       },
     },
+    page: {
+      findUnique: async ({ where, ...a }: Linha) => projetar('page', banco.pages.get(where.id) ?? null, a),
+      findMany: async ({ where, ...a }: Linha) => achar(banco.pages, where).map((l) => projetar('page', l, a)),
+      update: async ({ where, data }: Linha) => Object.assign(banco.pages.get(where.id)!, data),
+    },
+    generation: { findFirst: async () => null },
+    socialPost: {
+      create: async ({ data, ...a }: Linha) => {
+        const linha = { id: `post-${++banco.seq}`, createdAt: new Date(), updatedAt: new Date(), ...data }
+        banco.posts.set(linha.id, linha)
+        return projetar('socialPost', linha, a)
+      },
+      findUnique: async ({ where, ...a }: Linha) => projetar('socialPost', banco.posts.get(where.id) ?? null, a),
+      findMany: async ({ where, select }: Linha) => achar(banco.posts, where).map((l) => projetar('socialPost', l, { select })),
+    },
   }
+  // `garantirPasta` cria a pasta da semana sob `comTravaPorChave` (R12-09 do PR 12): uma transação
+  // curta que pega a trava consultiva antes de reler. Aqui é uma chamada só, então a trava é no-op.
+  db.$transaction = async (fazer: (tx: unknown) => unknown) => fazer(db)
+  db.$queryRaw = async () => [{ ok: 1 }]
+  return { db }
 })
 vi.mock('@prisma/client', async () => await import('../../../../../../../../prisma/generated/client'))
 vi.mock('@clerk/nextjs/server', () => ({ auth: async () => ({ userId: 'user_1', orgId: null }) }))
 vi.mock('@/lib/projects/access', () => ({
+  // A porta de acesso da rota do calendário (#155) — este teste mede o link, não o acesso.
+  fetchProjectWithShares: async (id: number) => ({ id }),
   hasProjectReadAccess: () => true,
   hasProjectWriteAccess: () => true,
   withProjectOwner: async (p: unknown) => p,
