@@ -174,3 +174,49 @@ describe('PR13-43 — a falha tardia da criação nunca apaga a entrada que outr
     expect(dbFalso.knowledgeBaseEntry.deleteMany).toHaveBeenCalledWith({ where: { id: 'e-nova-1', metadata: { path: ['cicloDeIndexacao'], equals: 'ciclo-A' } } })
   })
 })
+
+describe('PR13-52 — falha de um chunk NÃO solta o arrendamento com inserts ainda em voo', () => {
+  /** Longo o bastante para virar mais de um chunk: é preciso um insert que falhe e outro que continue. */
+  const TEXTO_LONGO = Array.from({ length: 60 }, (_, i) => `Parágrafo ${i} da entrada: a casa abre cedo, o forno acende às seis e o salão enche no fim da tarde.`).join(' ')
+
+  it('um create rejeita e outro fica em voo: outra indexação continua IMPEDIDA até o segundo encerrar, e a retomada não deixa chunk da execução antiga', async () => {
+    base.semear({ id: 'e1', content: TEXTO_LONGO, metadata: { chaveDoFato: FATO.chave, indexadoEm: '2026-09-01T10:00:00.000Z' } })
+    const b = barreira()
+    const criar = vi.mocked(dbFalso.knowledgeChunk.create)
+    const comoEra = criar.getMockImplementation() as unknown as (args: unknown) => Promise<unknown>
+    let emVoo = false
+    criar.mockImplementationOnce(async () => { throw new Error('o chunk 0 não entrou') })
+    criar.mockImplementationOnce((async (args: unknown) => {
+      emVoo = true
+      await b.parar()
+      emVoo = false
+      return comoEra(args)
+    }) as never)
+
+    const execucaoA = reindexEntry('e1', tenant, { ciclo: 'ciclo-A' })
+    execucaoA.catch(() => undefined)
+    await b.chegou
+    // o 1º insert JÁ rejeitou e o 2º continua em voo; damos voltas no laço de eventos para que a versão
+    // com `Promise.all` (que rejeita na hora e cai no `finally`) tivesse tempo de soltar o arrendamento.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 5))
+    expect(emVoo).toBe(true)
+
+    // é ISTO que a correção compra: enquanto houver insert em voo, o arrendamento de A continua VIGENTE
+    expect(base.meta('e1').cicloDeIndexacao).toBe('ciclo-A')
+    expect(typeof base.meta('e1')[EXPIRACAO_DO_CICLO]).toBe('string')
+    await expect(reindexEntry('e1', tenant, { ciclo: 'ciclo-B' })).rejects.toBeInstanceOf(IndexacaoEmAndamento)
+
+    b.liberar()
+    await expect(execucaoA).rejects.toThrow(/o chunk 0 não entrou/)
+    expect(emVoo).toBe(false) // A só propagou a falha depois de TODOS os inserts encerrarem
+    // e só ENTÃO o arrendamento é solto (o token fica como último ciclo, por desenho; o que sai é o prazo)
+    expect(base.meta('e1')[EXPIRACAO_DO_CICLO]).toBeUndefined()
+
+    // a retomada reconstrói a entrada: nenhum chunk sobrou da execução que falhou
+    await reindexEntry('e1', tenant, { ciclo: 'ciclo-B' })
+    const chunks = base.chunks.filter((c) => c.entryId === 'e1')
+    expect(chunks.length).toBeGreaterThan(0)
+    expect(chunks.map((c) => c.content)).not.toContain('antigo')
+    expect(new Set(chunks.map((c) => c.vectorId)).size).toBe(chunks.length) // sem duplicata de vectorId
+  })
+})

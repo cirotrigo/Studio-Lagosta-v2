@@ -262,21 +262,33 @@ export async function reindexEntry(entryId: string, tenant: TenantKey, opcoes: {
     const embeddings = await generateEmbeddings(chunks.map(c => c.content))
 
     // Os embeddings demoram: é AQUI que a posse externa costuma ter se perdido (PR13-20).
-    const createdChunks = await passoArrendado('gravar chunks', arrendamento, signal, controle, () =>
-      Promise.all(
-        chunks.map((chunk) =>
-          db.knowledgeChunk.create({
-            data: {
-              entryId: entry.id,
-              ordinal: chunk.ordinal,
-              content: chunk.content,
-              tokens: chunk.tokens,
-              vectorId: `${entry.id}:${chunk.ordinal}`,
-            },
-          })
-        )
-      ),
-    )
+    const createdChunks = await passoArrendado('gravar chunks', arrendamento, signal, controle, async () => {
+      const inserts = chunks.map((chunk) =>
+        db.knowledgeChunk.create({
+          data: {
+            entryId: entry.id,
+            ordinal: chunk.ordinal,
+            content: chunk.content,
+            tokens: chunk.tokens,
+            vectorId: `${entry.id}:${chunk.ordinal}`,
+          },
+        })
+      )
+      /**
+       * 🔴 `Promise.all` rejeita no PRIMEIRO erro e deixa os outros inserts EM VOO — e um erro
+       * COMUM (não um aborto) não marca `controle.emVoo`, então o `finally` LIBERA o arrendamento
+       * com escritas ainda a caminho. Outra execução pega a entrada, apaga os chunks e recria;
+       * o insert atrasado, que não confere o token do ciclo, chega depois e deixa chunk velho ou
+       * estoura a unicidade de `vectorId` (PR13-52 da revisão final do Codex, 21/09/2026).
+       * `allSettled` espera TODOS encerrarem e só então propaga a falha, então ao liberar o
+       * arrendamento não há mais nada em voo. O prazo continua valendo: quem trava além de
+       * `PRAZO_DO_PASSO_MS` cai no `noPrazo` do `passoArrendado`, que marca `emVoo` e NÃO libera.
+       */
+      const resultados = await Promise.allSettled(inserts)
+      const falha = resultados.find((r) => r.status === 'rejected') as PromiseRejectedResult | undefined
+      if (falha) throw falha.reason
+      return (resultados as PromiseFulfilledResult<Awaited<(typeof inserts)[number]>>[]).map((r) => r.value)
+    })
 
     await passoArrendado('subir vetores', arrendamento, signal, controle, (sinal) =>
       upsertVectors(
