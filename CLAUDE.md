@@ -9527,6 +9527,13 @@ herdando do apoio, os dois tipos de post).
   o texto novo chega à spec. Com `RevisaoDaCopyInvalida` (o texto da página não
   cabe no contrato, e pelos mesmos limites não cabe na spec) a peça com extra é
   re-renderizada como está, como no PR 9.
+  ⚠️ **Peça SEM extra com leitura inválida recompõe e cai em `SPEC_INVALIDA`**
+  (erro determinístico no runner: sem nova tentativa, recusa na arte e no
+  histórico do post, job FAILED, slide com a arte antiga) — a trava só
+  re-renderiza com extra. É igual na regra do PR 9 e na do PR 10 e anterior ao
+  2º restack: comportamento ATUAL, documentado por teste
+  (`recompor-camadas-extras.test.ts`, "COMPORTAMENTO ATUAL"), não defeito novo.
+  "Re-renderizar como está também sem extra?" é pergunta de desenho em aberto.
 - 🔴 **PR10-01 — toda leitura do runner da recomposição mora DENTRO do `try`.**
   `camadasAntes` era lida antes dele: um timeout transitório atravessava o
   dispatch e `falharJob` gravava FAILED com tentativas sobrando, sem recusa no

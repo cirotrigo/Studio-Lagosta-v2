@@ -809,3 +809,85 @@ describe('recomporPaginaDefasada — o aviso de ajuste manual aponta o extra pel
       expect(apontadasNoAviso).toEqual([...apontadas].sort())
     })
 })
+
+/**
+ * 🔴 COMPORTAMENTO ATUAL DOCUMENTADO (21/09/2026) — NÃO é defeito novo, e este teste NÃO é a especificação desejada:
+ * ele fixa o que acontece HOJE para ninguém tomá-lo depois por regressão.
+ *
+ * Peça SEM camada extra cuja página ganhou um texto que o contrato não comporta (`RevisaoDaCopyInvalida`, linha acima
+ * de 300 caracteres): a trava do re-render só vale com extra (`specTemExtra`), então a recomposição segue pelo
+ * caminho sem contrato, e o compositor recusa a spec (`SPEC_INVALIDA`, os limites de linha da spec são os do
+ * contrato). No runner o erro é determinístico: sem nova tentativa, a recusa vai para a arte e para o histórico do
+ * post, e o job termina FAILED — o slide fica com a arte antiga. É IGUAL na regra do PR 9 e na do PR 10 (nenhuma
+ * re-renderiza sem extra) e é anterior ao 2º restack. "Re-renderizar como está também sem extra?" é pergunta de
+ * desenho, declarada no pacote da FINAL do PR 10. Se este teste cair porque o comportamento mudou, a mudança tem de
+ * ser decisão declarada — não conserto silencioso.
+ */
+describe('recomporPaginaDefasada — COMPORTAMENTO ATUAL (documentado): peça SEM extra com leitura inválida', () => {
+  it('recompõe sem contrato e o compositor recusa com SPEC_INVALIDA: nada é gravado nem re-renderizado, e o slide fica com a arte antiga', async () => {
+    estado.page = null
+    estado.generation = null
+    estado.posts.clear()
+    estado.specsCompostas = []
+    estado.paginaGravada = null
+    estado.generationGravada = null
+    estado.comporCamadas = null
+    estado.reRenderizadas = []
+    const assinatura = montarAssinatura({
+      pagina: {
+        id: 'p-assinatura', name: 'Story', width: 1080, height: 1920,
+        layers: [
+          texto('headline', { fontFamily: 'Bevan', fontSize: 100, color: '#FFFFFF', lineHeight: 1 }, 'Título', { metadata: { groupId: 'g1' } }),
+          texto('servico', { fontFamily: 'Barlow', fontSize: 30, color: '#FFFFFF', lineHeight: 1.2 }, 'Serviço', { position: { x: 92, y: 1650 }, metadata: { groupId: 'g2' } }),
+        ],
+      },
+      formatoDaPagina: 'story',
+      numerosDoProjeto: null,
+    })
+    const copy: CopyAutoral = {
+      versao: VERSAO_DO_CONTRATO, origem: { autor: 'claude', superficie: 'chat', em: '2026-09-12T12:00:00.000Z' }, revisoes: [],
+      blocos: [
+        { id: 'h', funcao: 'headline', ordem: 0, linhas: ['Costela'] },
+        { id: 'svc', funcao: 'servico', ordem: 1, linhas: ['11h às 16h'] },
+      ],
+    }
+    const v = validarSpec({ projectId: 8, formato: 'story', copyAutoral: copy })
+    expect(v.problemas).toEqual([])
+    const specPersistida = v.spec as SpecDePeca
+    const preparadas = prepararBlocos({
+      assinatura, colunaUtil: 1080 - 2 * assinatura.numeros.geometria.story.margemH, escalaDoFormato: 1, mancha: '#000000',
+      medir: medirFalso, familias: ['Bevan', 'Barlow'], combinacoesSalvas: [], spec: specPersistida,
+    }).montados.map((b) => b.layer)
+    const entrada = entradaDePersistencia({
+      spec: specPersistida, opcoes: {}, projeto: { id: 8, name: 'Lagosta', userId: 'dono' }, pasta: { id: 1, name: 'p' },
+      nome: 'n', ordem: 0, canvas: { width: 1080, height: 1920 }, layers: preparadas, fundo: '#000', diagnostico: {}, fotoUrl: null,
+    })
+    // A premissa: nenhuma das duas formas de extra (a trava não vale aqui).
+    expect(specPersistida.camadasExtras ?? []).toEqual([])
+    expect(specPersistida.blocos.some((b) => b.herdaDe)).toBe(false)
+    const camadasEditadas = preparadas.map((l) => (l.id === 'servico' ? { ...l, content: 'A'.repeat(301) } : l))
+    estado.page = {
+      id: 'pg-sem-extra', name: 'Dom 20/09 · 19:00 · Lagosta · slide 2/3', width: 1080, height: 1920, layers: camadasEditadas, background: '#000',
+      isTemplate: false, templateId: 't-1', copyAutoral: entrada.copyAutoral, updatedAt: new Date('2026-09-18T17:00:00.000Z'),
+      Template: { id: 't-1', name: 'Stories · Semana', projectId: 8 },
+    }
+    estado.generation = {
+      id: 'gen-1', resultUrl: URL_ANTIGA, authorName: 'compositor', sourcePageId: null,
+      fieldValues: { ...(entrada.fieldValues as Record<string, unknown>), pageId: 'pg-sem-extra' },
+    }
+    const capa = 'https://blob.exemplo/capa.png'
+    const slide3 = 'https://blob.exemplo/slide-3.png'
+    estado.posts.set('post-carrossel', { id: 'post-carrossel', projectId: 8, status: 'SCHEDULED', pageId: null, renderStatus: 'NOT_NEEDED', laterPostId: null, mediaUrls: [capa, URL_ANTIGA, slide3] })
+
+    const { recomporPaginaDefasada } = await import('../recompor')
+    await expect(recomporPaginaDefasada({ pageId: 'pg-sem-extra' })).rejects.toMatchObject({ code: 'SPEC_INVALIDA' })
+    const reRenderizadas = estado.reRenderizadas
+    estado.reRenderizadas = null
+
+    expect(reRenderizadas).toEqual([])
+    expect(estado.specsCompostas).toEqual([])
+    expect(estado.paginaGravada).toBeNull()
+    expect(estado.generationGravada).toBeNull()
+    expect(estado.posts.get('post-carrossel')!.mediaUrls).toEqual([capa, URL_ANTIGA, slide3])
+  })
+})
