@@ -9272,12 +9272,15 @@ passou a enumerar os casos em vez de escolhê-los à mão
 **Da revisão FINAL do Codex sobre a0b2cdcc (BLOQUEADO, PR9-F01…F02, 18/09/2026):**
 
 - 🔴 **PR9-F01 — ~~sem contrato legível, peça com camada extra NÃO se recompõe.~~**
-  **Superado em 21/09/2026 pelo PR 10 (R1):** sem contrato legível, a peça com
-  camada extra RECOMPÕE pela identidade declarada da camada quando dá (histórico
-  cheio, página sem contrato — `specComACopyDaPagina` lê cada extra pelo
-  `metadata.compositor.extra.id`, com o texto da PÁGINA) e é RE-RENDERIZADA como
-  está quando não dá (`RevisaoDaCopyInvalida`: o texto da página não cabe no
-  contrato e, pelos mesmos limites, nem na spec). "A peça tem extra" é
+  **Superado em 21/09/2026 pelo PR 10 (R1, e PR10-04/05):** sem contrato
+  legível, a peça com camada extra RECOMPÕE quando dá e é RE-RENDERIZADA como
+  está quando não dá. Com o HISTÓRICO CHEIO a peça é composta com o contrato
+  COMO A PÁGINA O MOSTRA (`contratoLidoParaRecompor`), e re-renderizada quando
+  ele não representa a página (texto que nenhum bloco originou, conteúdo que não
+  passa em `validarSpec`); na página SEM contrato, `specComACopyDaPagina` lê
+  cada extra pelo `metadata.compositor.extra.id`, com o texto da PÁGINA; com
+  `RevisaoDaCopyInvalida` (o texto da página não cabe no contrato e, pelos
+  mesmos limites, nem na spec), re-render. "A peça tem extra" é
   `specTemExtra` — as DUAS formas: `camadasExtras` (o livre) e bloco com
   `herdaDe` (o extra COM função). Ver "PR9-F01 no PR 10", na seção do ciclo.
   Com o histórico cheio (200 revisões) ou um bloco novo que o contrato não
@@ -9527,18 +9530,23 @@ herdando do apoio, os dois tipos de post).
 
 **Da revisão FINAL do Codex sobre 75301ff0 (BLOQUEADO, PR10-01…03, 18/09/2026):**
 
-- **PR9-F01 no PR 10**: com histórico cheio, a recomposição SEM contrato segue —
-  `specComACopyDaPagina` reconstrói cada extra pela identidade da camada, então
-  o texto novo chega à spec. Com `RevisaoDaCopyInvalida` (o texto da página não
-  cabe no contrato, e pelos mesmos limites não cabe na spec) a peça com extra é
-  re-renderizada como está, como no PR 9.
+- **PR9-F01 no PR 10**: ~~com histórico cheio, a recomposição SEM contrato
+  segue — `specComACopyDaPagina` reconstrói cada extra pela identidade da
+  camada, então o texto novo chega à spec~~ — **superado em 21/09/2026 pelos
+  PR10-04/05** (abaixo): com o histórico cheio a peça é composta com o contrato
+  lido das camadas, nunca pelo caminho sem contrato. Com `RevisaoDaCopyInvalida`
+  (o texto da página não cabe no contrato, e pelos mesmos limites não cabe na
+  spec) a peça com extra é re-renderizada como está, como no PR 9.
   ⚠️ **Peça SEM extra com leitura inválida recompõe e cai em `SPEC_INVALIDA`**
   (erro determinístico no runner: sem nova tentativa, recusa na arte e no
   histórico do post, job FAILED, slide com a arte antiga) — a trava só
   re-renderiza com extra. É igual na regra do PR 9 e na do PR 10 e anterior ao
   2º restack: comportamento ATUAL, documentado por teste
   (`recompor-camadas-extras.test.ts`, "COMPORTAMENTO ATUAL"), não defeito novo.
-  "Re-renderizar como está também sem extra?" é pergunta de desenho em aberto.
+  Vale também para histórico cheio + conteúdo inválido SEM extra (o contrato
+  lido não passa em `validarSpec`, e sem extra a peça segue pelo caminho sem
+  contrato). "Re-renderizar como está também sem extra?" é pergunta de desenho
+  em aberto.
 - 🔴 **PR10-01 — toda leitura do runner da recomposição mora DENTRO do `try`.**
   `camadasAntes` era lida antes dele: um timeout transitório atravessava o
   dispatch e `falharJob` gravava FAILED com tentativas sobrando, sem recusa no
@@ -9558,3 +9566,80 @@ herdando do apoio, os dois tipos de post).
 - PR10-03: as duas passagens deste arquivo que descreviam a recusa em
   `recomposicao.estado = 'recusada'` e o sufixo antigo do histórico foram
   corrigidas para `recusaDaRecomposicao` e "confira a página e salve de novo".
+
+**Da revisão FINAL do Codex sobre 1d18e983 (BLOQUEADO, PR10-04…05, 21/09/2026):**
+
+- 🔴 **PR10-04 — a classe da PRIMEIRA recusa não prova que o conteúdo seja
+  válido.** `tentarAplicarRevisao` recusa o histórico cheio ANTES de validar o
+  conteúdo novo: com 200 revisões e uma linha de 301 caracteres num extra, a
+  leitura devolvia `HistoricoDaCopyCheio`, a guarda do re-render (que exigia
+  `RevisaoDaCopyInvalida`) ficava falsa, a recomposição reconstruía uma spec
+  inválida, o compositor lançava `SPEC_INVALIDA` e o runner, tratando o erro
+  como determinístico, deixava o slide com a arte antiga. Hoje a spec
+  reconstruída passa por `validarSpec` ANTES de liberar a recomposição; não
+  passando, a peça com extra é re-renderizada como está. O estado é alcançável
+  pelo editor de verdade: o PATCH da página devolve `historico-cheio` para a
+  linha longa, pela mesma máscara (passo 16 da prova).
+- 🔴 **PR10-05 — com o histórico cheio a peça é composta com o contrato COMO A
+  PÁGINA O MOSTRA, nunca pelo caminho sem contrato.** O caminho sem contrato
+  perdia o que só o contrato carrega; o caso medido: a regra legada de
+  `dividirManchete` punha "na brasa" na voz 2 de uma manchete que nasceu inteira
+  na voz 1, e a de três linhas com duas declaradas na voz 2 voltava com uma.
+  `contratoLidoParaRecompor` (`spec-da-recomposicao.ts`) aplica ao contrato
+  gravado a MESMA leitura da copy efetiva (`blocosLidosDasCamadas`, a primeira
+  metade de `copyEfetivaDasCamadas`, extraída sem mudar comportamento) — só a
+  revisão que registraria a mudança fica de fora, porque não cabe.
+- 🔴 **Esse contrato vale só para COMPOR.** Nunca é gravado como contrato da
+  copy — nem na página, nem no `copyAutoral` da arte, que segue `efetiva:
+  null` —: os blocos dele mudaram sem revisão, e contrato com mudança sem autor
+  é o que o histórico existe para impedir. A SPEC gravada na arte o leva, porque
+  ela é o registro do que foi composto; tirá-lo a deixaria inválida (o grupo de
+  leitura entre um comum e um extra só existe com contrato) e a arte nunca mais
+  recomporia.
+- **A classe inteira, item por item** — o que o caminho sem contrato fazia com
+  cada decisão autoral, medido com a preparação real sobre as camadas que ela
+  mesma grava. **6 de 16 se perdiam; um mecanismo só cobre as seis**, e o
+  contrato lido reproduz a página nos 16:
+
+  | Decisão do contrato | Caminho sem contrato | Contrato lido |
+  |---|---|---|
+  | validade do conteúdo | **perdida**: a recusa do histórico a mascarava → `SPEC_INVALIDA` | conferida; não cabendo, re-render |
+  | `linhasNaVoz2` | **perdida**: regra legada (sem voz 2 ganha voz 2; duas linhas na voz 2 viram uma) | preservada |
+  | grupo de leitura entre um comum e um extra | **perdida**: a spec sem contrato não o representa → `SPEC_INVALIDA` | preservada |
+  | ordem autoral das linhas de um bloco repartido | **perdida** na spec (ordem visual); o desenho só se salvava pelo casamento tipado horário/endereço | preservada |
+  | marcas `bloco`/`linhas` nas camadas comuns | **perdidas** (a leitura seguinte volta a inferir) | preservadas |
+  | declaração do prefixo (a seta do CTA) | **perdida**: a seta vira texto do autor | preservada |
+  | caixa exata da string | preservada | preservada |
+  | `[colchetes]` desenhados | preservados (os não desenhados já saíram da efetiva) | preservados |
+  | respiros (linhas vazias) | preservados (R03) | preservados |
+  | bloco vazio como afirmação | igual: omitido da composição nos dois | igual |
+  | ordem entre blocos | preservada | preservada |
+  | função | preservada | preservada |
+  | herança e grupo visual dos extras | preservados (identidade da camada) | preservados |
+  | grupo de leitura entre comuns | não é insumo da composição | idem |
+  | fatos | não é insumo da composição; o contrato não é reescrito | idem |
+  | identidade e texto dos extras | preservados | preservados |
+
+- **Página que o contrato lido NÃO representa não é recomposta com decisão
+  inventada**: texto que nenhum bloco originou — o estado LEGADO do extra com
+  função, sem a marca `bloco`, que a leitura criaria como `extra-…` e viraria
+  serviço comum, sem a herança — e spec que não passa em `validarSpec`. Com
+  extra, re-render como está; sem extra, o caminho sem contrato. A atribuição
+  pela ORDEM de leitura (`vincularExtras`, passo 4) não precisa de guarda
+  própria: ela só alcança bloco livre SEM herança, que `validarSpec` recusa
+  quando tem texto.
+- ⚠️ **Mudanças de comportamento declaradas**: (1) a peça SEM extra com o
+  histórico cheio passa a compor pelo contrato lido (antes: caminho sem
+  contrato, com a voz 2 legada); (2) o extra com função em página LEGADA (sem
+  `bloco`) com o histórico cheio passa a ser re-renderizado (antes: recomposto
+  pela identidade da camada).
+- ⚠️ **Residuais**: página SEM contrato nenhum continua no caminho sem contrato
+  (é o único que ela tem, e ali a voz 2 legada vale — C10-02); histórico cheio +
+  conteúdo inválido SEM extra cai em `SPEC_INVALIDA`, como o item documentado
+  acima.
+- Provas: `ciclo-extras-revisao.test.ts` (PR10-04 pelo runner nas duas formas
+  de extra; PR10-05 pelo consumidor real, manchete sem voz 2 e com duas linhas
+  declaradas, nas duas formas e sem extra, comparando o texto POR VOZ) e o
+  passo 16 da prova de integração. Mutações: sem a conferência de
+  `validarSpec` → 2 testes caem; sem o contrato lido → 7; sem a guarda do texto
+  que nenhum bloco originou → 1; com o `recompor.ts` de 1d18e983 → os 8 novos.
