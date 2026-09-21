@@ -11165,3 +11165,67 @@ A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
   de produção, o `.env` em outra caixa, o dev nas duas caixas, a falha fechada e
   a fiação do script ao guard (fonte sem `new URL`/`hostname`); mutações: sem as
   minúsculas, 3 testes caem; o script lendo o host por conta própria, 1.
+
+**Da revisão FINAL do Codex sobre e3486221 (BLOQUEADO, PR15-05…08, 21/09/2026).**
+Os quatro são a família do PR 5 e do PR 13 — **a prova afirmando mais do que
+sabe**: comparação frouxa servindo de prova, identidade achada só pela URL de
+hoje, evento de depois contado no antes, teto cortando referência direta.
+
+- 🔴 **Comparação frouxa não serve de PROVA** (PR15-05). A prova pela cópia do
+  texto desenhado (`_copiaDaPagina`) usava `copyIgual`, que colapsa espaços e
+  compara um mapa: a quebra de linha trocada e a `ordem` dos blocos invertida
+  passavam como "a mídia mostra a mensagem de hoje". `copiaProvaAMensagem`
+  (própria da métrica) compara o texto LITERAL e só prova com UM texto visível
+  e a copy medida de UM bloco com texto: o registro é um mapa por camada (o
+  JSONB não guarda a ordem das chaves) e não tem como provar ordem de leitura —
+  com dois blocos, a exclusão conservadora (`congelada-sem-prova`). O helper
+  compartilhado não mudou (serve à agenda, onde o critério é outro).
+- 🔴 **Identidade de peça não se acha só pela URL de HOJE** (PR15-06). A
+  recomposição troca o `resultUrl` e guarda as anteriores em
+  `recomposicao.urlsAnteriores`; o slide 2 de um carrossel publicado, cuja arte
+  foi recomposta para outro post, sumia da contagem — nem peça, nem
+  `congeladaSemProva`. O serviço pede também as artes cujo rastro contém uma das
+  mídias (`jsonb_array_elements_text` com guarda de tipo: rastro ausente, objeto
+  ou escalar não quebra a consulta), e `montarPecas` resolve pelo rastro DEPOIS
+  da URL atual. 🔴 **O vínculo histórico só CONTA a exclusão**: a ocorrência
+  pelo rastro nunca é `porUrl`, então nunca vira snapshot — a efetiva atual é de
+  OUTRA imagem.
+- 🔴 **Evento depois do corte não entra no snapshot, e se mede pelo instante
+  DELE** (PR15-07). O corte filtrava a criação da Generation, e a recusa gravada
+  depois do PNG entrava em `correcoes.compositor` do congelado.
+  `recusouPorTextoQueNaoCabe(arte, ate)` lê o `em` da recusa nos dois formatos
+  (`recusaDaRecomposicao` e o legado `recomposicao.estado: 'recusada'`), uma por
+  arte; `em` ilegível não prova que veio antes. Pela varredura, o sinal sem
+  `createdAt` também fica fora do congelado.
+- 🔴 **Teto de janela não se aplica a referência DIRETA** (PR15-08). O limite de
+  60 dias do histórico filtrava também `generationId` e URLs do post: post desta
+  semana com arte antiga virava "sem contrato", e slides antigos sumiam. Hoje são
+  duas consultas — as referências diretas (ids, URLs e rastro) SEM data,
+  primeiro, e o histórico das páginas (as dos posts e as trazidas pela arte
+  direta) COM data, no teto de artes que sobrar —, e arte direta anterior ao
+  limite gera aviso de histórico incompleto. A varredura achou o mesmo corte
+  calado nos sinais (`take: 2000`, sem aviso nem ordem): hoje ordenados e
+  declarados no teto.
+- 🔴 **Dublê de banco que IGNORA o filtro não testa o filtro.** O dublê antigo
+  ignorava a data (por isso o PR15-08 passou), e a 1ª versão do novo, que
+  conferia o SQL por formato de regex, deixou sobreviver a mutação que devolvia a
+  data à consulta inteira. O atual avalia o WHERE de verdade (`avaliarOnde`: AND,
+  OR, NOT e parênteses, cada parâmetro pelo texto que o antecede) e LANÇA em
+  condição que não conhece — foi isso que pegou até a mutação "FALSE AND
+  EXISTS". O `learningSignal.findMany` honra o `take`.
+- **A consulta foi validada num PostgreSQL 15 descartável** (socket local, sem
+  rede) com o texto EXATO do fonte: rastro em objeto, escalar, ausente,
+  `fieldValues` nulo e outro projeto não casam nem dão erro; `[null, 7, "u7"]`
+  casa `u7`.
+- **Varredura por classe — o conferido e o descartado**: (a) comparação frouxa
+  como prova: só `copyIgual`; o resto é igualdade literal ou pertinência
+  (`mesmasLinhas`, `mesmaMensagem`, `revisaoMudaLinhas`), `startsWith` de
+  `TEXTO_NAO_CABE` classifica erro e a janela de 2 min é dedupe (C15-01). (b)
+  identidade só pela URL atual: o SQL e `artePorUrl` (corrigidos); snapshot e
+  prova pela arte ficam na URL atual de propósito; sinal e item de plano ligam
+  por página, arte ou post. (c) evento depois do corte: recusa e sinal sem
+  instante (corrigidos); ajuste do revisor (a Generation nova tem o instante do
+  evento), estados (efetiva só muda com PNG novo, que quebra o casamento pela
+  URL) e avisos do sistema conferidos. (d) teto em referência direta: datas das
+  artes (corrigida), sinais (declarados), teto de artes (diretas primeiro, com
+  aviso) e posts (já avisado); itens, páginas e voz não têm teto.
