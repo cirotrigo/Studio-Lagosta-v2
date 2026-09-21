@@ -225,7 +225,8 @@ export async function fecharDicaDeCopyDoItem(entrada: {
     const decisao = decidirDesfechoDaCopy(blocos, entrada.copyFinal)
     if (decisao.acao !== 'fechar') return 'indecisa'
 
-    await registrarDesfecho({
+    // O desfecho que o banco não gravou não é `fechada`: quem chama pode refazer.
+    const gravado = await registrarDesfecho({
       sugestaoId: sinal.id,
       desfecho: decisao.desfecho,
       escolhido: { blocos: entrada.copyFinal },
@@ -237,7 +238,7 @@ export async function fecharDicaDeCopyDoItem(entrada: {
       pageId: item.sourcePageId ?? null,
       campaignId: item.campaignId ?? null,
     })
-    return 'fechada'
+    return gravado === 'erro' ? 'erro' : 'fechada'
   } catch (erro) {
     console.error('[aprendizado] falha ao fechar a dica de copy (seguindo sem ela):', erro)
     return 'erro'

@@ -584,4 +584,96 @@ export const toolsDoCompositor = [
       }
     },
   }),
+
+  definirTool({
+    nome: 'agendar-leva',
+    descricao:
+      'Põe na agenda, como RASCUNHO, as peças de uma leva composta por compor-leva — pela PÁGINA de cada peça (é o que dá "Editar Template" na agenda e faz a arte acompanhar o que a equipe mexer), no horário que a composição previu ou no quando do item. Use quando as peças aparecerem prontas em ver-geracao, com o MESMO loteId e os MESMOS itemId de compor-leva.\n\nIDEMPOTENTE: repetir a chamada (timeout, erro no meio) devolve os rascunhos que já existem e cria só os que faltaram — nunca duplica. Rascunho que a equipe remarcou ou editou depois fica como a equipe deixou. Outro pedido sob o mesmo itemId (horário, tipo, legenda, lembrete, escopo ou campanha diferentes) volta como conflito, sem alterar nada — mude o post na agenda. Uma peça que estava pendente e ficou pronta entra na repetição — é o que faltava, não duplicata.\n\nPLANO: peça que nasceu de item de plano só entra se o item aponta esta arte e está pronto. Item reprovado, reaberto ou refeito volta como PECA_SUPERADA_NO_PLANO, sem criar nada. Quando o item já tem arte mais recente, a resposta traz arteAtualDoItem: conte à pessoa qual é e quando foi feita e pergunte se ela quer manter essa arte (agendá-la pela página dela quando estiver pronta) ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.\n\nRASCUNHO APAGADO PELA EQUIPE: não volta sozinho. O item vem como falhou (POST_REMOVIDO) com rascunhoApagado (dia e horário do pedido original — nulo quando esta chamada pede outro —, tema, manchete): conte à pessoa qual era e pergunte se ela quer de volta. Só com a confirmação dela repita a chamada com recriarRascunhoApagado: true NAQUELE item — o rascunho volta com a mesma arte da leva (desfecho recriado), e repetir a confirmação não cria outro.\n\nAntes, chame com simular: true e mostre a conta à pessoa (quantos entram, quantos ainda estão sendo compostos, quais falharam e por quê); só então chame sem simular. Cada item volta concluido (desfecho criado, adotado — a peça já tinha post na agenda, rascunho ou agendado —, reaproveitado ou recriado, e estadoDoPost diz o que o post é agora: só rascunho espera aprovar-rascunhos), pendente (peça ainda na fila: repita em alguns minutos) ou falhou (codigo e motivo). Nunca publica: virar publicação é aprovar-rascunhos, com confirmação.',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      loteId: z.string().min(1).max(120).describe('O MESMO loteId usado em compor-leva.'),
+      itens: z
+        .array(
+          z.object({
+            itemId: z.string().min(1).max(120).describe('O MESMO itemId da peça em compor-leva.'),
+            quando: z.string().optional().describe('Horário do rascunho: "AAAA-MM-DD HH:mm" (Brasília) ou ISO. Sem ele, vale o horário previsto na composição. Vazio ou ilegível volta como erro DESTE item, sem derrubar a leva.'),
+            postType: z.enum(['STORY', 'POST']).optional().describe('Só para contrariar o formato da peça (story vira STORY; feed e quadrado viram POST). Normalmente omita.'),
+            caption: z.string().optional().describe('Legenda do post, até 2200 caracteres (acima disso o item volta com erro, sem derrubar a leva). Story costuma ir sem.'),
+            lembrete: z.boolean().optional().describe('true = lembrete de publicação manual: o sistema não publica, o grupo do WhatsApp recebe a arte no horário.'),
+            escopo: z.enum(['rotina', 'campanha', 'pontual']).optional().describe('O que o sistema pode aprender com o post — a mesma escolha de colocar-na-agenda (padrão rotina).'),
+            campanhaId: z.string().optional().describe('Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base).'),
+            recriarRascunhoApagado: z
+              .boolean()
+              .optional()
+              .describe('true SÓ depois de a pessoa confirmar que quer de volta o rascunho deste item que a equipe apagou (o item veio como POST_REMOVIDO). Recria o rascunho com a mesma arte da leva e o pedido original; repetir não cria outro. Omita em qualquer outro caso.'),
+          })
+          // `definirTool` fecha só a RAIZ: sem isto o zod DESCARTAVA a chave
+          // desconhecida do item (`horario` no lugar de `quando`) e o rascunho
+          // nascia no horário da composição, sem aviso (R12-03). O JSON Schema
+          // já anunciava `additionalProperties: false` — agora a porta cumpre.
+          .strict(),
+        )
+        .min(1)
+        .max(60)
+        .describe('Um item por peça da leva.'),
+      simular: z.boolean().optional().describe('true = faz a conta (o que entraria, o que ainda está pendente, o que falharia) sem gravar nada. Use antes da chamada de verdade.'),
+    }),
+    // Idempotente por construção: loteId e itemId são obrigatórios, e a mesma
+    // chamada devolve os mesmos rascunhos. Não publica nada (rascunho).
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto', 'local'],
+    handler: async (args, principal) => {
+      const [{ agendarItensDoLote }, { quemDecidiu }] = await Promise.all([import('../../lotes/agendar-itens'), import('../tools')])
+      const projectId = args.projectId as number
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const r = await agendarItensDoLote({
+        projectId,
+        loteId: args.loteId as string,
+        itens: args.itens as unknown[],
+        simular: args.simular === true,
+        // User.id INTERNO — nunca o clerkId. Falha aqui não derruba o agendamento.
+        decididoPor: decididoPor ?? null,
+        superficie: 'chat',
+      })
+      // Decisões do Ciro (13/09/2026): rascunho apagado e peça superada não se
+      // resolvem sozinhos — o chat avisa a pessoa e pergunta, em simulação também.
+      const perguntar = [
+        ...(r.itens.some((i) => i.codigo === 'POST_REMOVIDO')
+          ? ['Rascunho apagado pela equipe (POST_REMOVIDO): nada foi recriado. Conte à pessoa qual era (rascunhoApagado: dia e horário, tema ou manchete) e pergunte se ela quer de volta; só com a confirmação dela repita a chamada com recriarRascunhoApagado: true nesse item.']
+          : []),
+        ...(r.itens.some((i) => i.codigo === 'PECA_SUPERADA_NO_PLANO' && i.arteAtualDoItem)
+          ? ['Peça superada no plano: o item já tem arte mais recente (arteAtualDoItem) — nada foi criado. Conte à pessoa qual é e quando foi feita, e pergunte se ela quer manter essa arte ou refazer com o conteúdo atual do item (ver-plano, compor-leva com outro itemId e a itemRevisao atual). Não agende nem refaça sem ela pedir.']
+          : []),
+      ]
+      // R12-06: "nada publica até aprovar-rascunhos" só vale para o que É rascunho.
+      // O lote adota post agendado, e a repetição devolve o post como a equipe o
+      // deixou (aprovado, publicado) — a nota diz o que cada um é, sem mudar nada.
+      const concluidos = r.itens.filter((i) => i.situacao === 'concluido')
+      const rascunhos = concluidos.filter((i) => i.estadoDoPost === 'rascunho').length
+      const outros = concluidos.filter((i) => i.estadoDoPost && i.estadoDoPost !== 'rascunho').length
+      const estados = [
+        ...(rascunhos > 0
+          ? [`${rascunhos === concluidos.length ? 'Os concluídos estão' : rascunhos === 1 ? '1 dos concluídos está' : `${rascunhos} dos concluídos estão`} na agenda como rascunho — nada publica até aprovar-rascunhos.`]
+          : []),
+        ...(outros > 0
+          ? [`${outros === 1 ? '1 concluído NÃO é rascunho' : `${outros} concluídos NÃO são rascunho`} (estadoDoPost: agendado, publicando, publicado ou falha-na-publicacao) — a equipe já aprovou ou o post já seguiu; a leva não mudou nada nele. Conte à pessoa o estado de cada um.`]
+          : []),
+        ...(concluidos.some((i) => i.entregueParaPublicar)
+          ? ['Os marcados entregueParaPublicar já foram entregues para publicar: vai ao ar a arte entregue, e mexer na página não a muda mais.']
+          : []),
+      ]
+      return {
+        ...r,
+        nota: r.simulado
+          ? ['Simulação: nada foi gravado. Mostre a conta à pessoa e só então chame sem simular.', ...perguntar].join(' ')
+          : [
+              ...estados,
+              ...(r.resumo.pendentes > 0 ? ['Pendentes: a peça ainda está sendo composta; repita a MESMA chamada em alguns minutos.'] : []),
+              ...(r.resumo.falhas > 0 ? ['Falhas: leia o codigo e o motivo de cada item; repetir a mesma chamada não resolve conflito.'] : []),
+              ...perguntar,
+            ].join(' '),
+      }
+    },
+  }),
 ]

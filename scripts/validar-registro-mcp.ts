@@ -2200,6 +2200,41 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
     ],
     "additionalProperties": false
   },
+  // Tool NOVA (12/09/2026, PR 12 — do lote até os rascunhos): o fixture nasce
+  // com ela, como manda a regra do registro. Mudado DE PROPÓSITO na pré-revisão
+  // C12-1c: `caption` perdeu o maxLength público (o limite de 2200 virou erro do
+  // item, sem derrubar a leva) e `quando`/`caption` dizem isso na descrição.
+  "agendar-leva": {
+    "type": "object",
+    "properties": {
+      "projectId": { "type": "number", "description": "ID do cliente." },
+      "loteId": { "type": "string", "minLength": 1, "maxLength": 120, "description": "O MESMO loteId usado em compor-leva." },
+      "itens": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "itemId": { "type": "string", "minLength": 1, "maxLength": 120, "description": "O MESMO itemId da peça em compor-leva." },
+            "quando": { "type": "string", "description": "Horário do rascunho: \"AAAA-MM-DD HH:mm\" (Brasília) ou ISO. Sem ele, vale o horário previsto na composição. Vazio ou ilegível volta como erro DESTE item, sem derrubar a leva." },
+            "postType": { "type": "string", "enum": ["STORY", "POST"], "description": "Só para contrariar o formato da peça (story vira STORY; feed e quadrado viram POST). Normalmente omita." },
+            "caption": { "type": "string", "description": "Legenda do post, até 2200 caracteres (acima disso o item volta com erro, sem derrubar a leva). Story costuma ir sem." },
+            "lembrete": { "type": "boolean", "description": "true = lembrete de publicação manual: o sistema não publica, o grupo do WhatsApp recebe a arte no horário." },
+            "escopo": { "type": "string", "enum": ["rotina", "campanha", "pontual"], "description": "O que o sistema pode aprender com o post — a mesma escolha de colocar-na-agenda (padrão rotina)." },
+            "campanhaId": { "type": "string", "description": "Id da entrada de CAMPANHAS da base a que o post pertence (de consultar-base)." },
+            "recriarRascunhoApagado": { "type": "boolean", "description": "true SÓ depois de a pessoa confirmar que quer de volta o rascunho deste item que a equipe apagou (o item veio como POST_REMOVIDO). Recria o rascunho com a mesma arte da leva e o pedido original; repetir não cria outro. Omita em qualquer outro caso." }
+          },
+          "required": ["itemId"],
+          "additionalProperties": false
+        },
+        "minItems": 1,
+        "maxItems": 60,
+        "description": "Um item por peça da leva."
+      },
+      "simular": { "type": "boolean", "description": "true = faz a conta (o que entraria, o que ainda está pendente, o que falharia) sem gravar nada. Use antes da chamada de verdade." }
+    },
+    "required": ["projectId", "loteId", "itens"],
+    "additionalProperties": false
+  },
 }
 
 for (const [nome, literal] of Object.entries(LITERAIS_COMPOSITOR)) {

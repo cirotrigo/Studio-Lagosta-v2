@@ -55,13 +55,14 @@ export interface LegendaDoPost {
 
 /**
  * Registra a legenda comprometida no agendamento. Post sem legenda não vira
- * linha — não há texto para aprender.
+ * linha — não há texto para aprender (`true`). `false` quando a escrita falhou,
+ * o mesmo contrato de `registrarSlotDoPost`.
  */
-export async function registrarLegendaDoPost(entrada: LegendaDoPost): Promise<void> {
+export async function registrarLegendaDoPost(entrada: LegendaDoPost): Promise<boolean> {
   const legenda = limpar(entrada.legenda)
-  if (!legenda) return
+  if (!legenda) return true
 
-  await registrarDecisaoSemSugestao({
+  const id = await registrarDecisaoSemSugestao({
     projectId: entrada.projectId,
     tipo: 'legenda',
     escolhido: { legenda },
@@ -73,6 +74,7 @@ export async function registrarLegendaDoPost(entrada: LegendaDoPost): Promise<vo
     superficie: entrada.superficie ?? 'chat',
     chave: chaveDaLegenda(entrada.postId),
   })
+  return id !== null
 }
 
 export interface EdicaoDeLegenda {

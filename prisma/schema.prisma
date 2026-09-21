@@ -256,11 +256,24 @@ model ItemDeLote {
   planoRevisao  String?
   /// Quantas Generations este item já criou (a retomada depois de falha cria outra).
   tentativas    Int      @default(0)
+  /// PR 12: o rascunho que o agendamento deste item criou (ou adotou). Sem FK, como os
+  /// outros vínculos frouxos da casa — apagar o post não arrasta o registro, e o post
+  /// apagado NUNCA é recriado por repetição (POST_REMOVIDO).
+  postId                 String?
+  /// `agendamento-v1:<sha256>` do PEDIDO de agendamento como foi feito na primeira vez
+  /// (quando, tipo, legenda, lembrete, escopo, campanha). Outro pedido sob a mesma chave é
+  /// conflito; a edição que a equipe fez depois no post NÃO entra aqui.
+  hashDoAgendamento      String?
+  agendadoEm             DateTime?
+  /// Os efeitos pós-commit (sinais, pasta, item de plano) terminaram. Nulo com `postId`
+  /// preenchido = a chamada caiu entre o commit e os efeitos; a repetição os refaz.
+  efeitosDoAgendamentoEm DateTime?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   @@unique([projectId, loteId, itemId])
   @@index([generationId])
+  @@index([postId])
 }
 
 /**
