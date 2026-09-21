@@ -783,18 +783,52 @@ describe('PR15-02 · a página de hoje só vale para o post que ainda a segue', 
     expect(medirPeca(p)).toMatchObject({ comparavel: true, preservada: false })
   })
 
-  it('story de uma mídia provado pela cópia do texto desenhado (`_copiaDaPagina`); texto divergente não prova', () => {
+  describe('story de uma mídia provado pela cópia do texto desenhado (`_copiaDaPagina`) — PR15-05', () => {
     const slot = (c: CopyAutoral) => ({ ...Object.fromEntries(c.blocos.map((b) => [b.id, b.linhas.join('\n')])), _copiaDaPagina: true })
-    const story = (slotValues: unknown) =>
+    /** O story congelado cuja página hoje é `pagina`: o render do post nomeia pelo POST, a URL não casa com arte nenhuma; a coluna responde pelo slide 1. */
+    const story = (slotValues: unknown, pagina: CopyAutoral, doAutor: CopyAutoral = original) =>
       leitura({
-        // O render do post nomeia pelo POST: a URL não casa com arte nenhuma; a coluna responde pelo slide 1.
         posts: [post({ id: 'story', pageId: 'page-1', generationId: 'g1', mediaUrls: ['story-render.png'], slotValues, ...CONGELADO })],
-        artes: [arte('g1', { resultUrl: 'u1', copyAutoral: peca(original) })],
-        paginas: [{ id: 'page-1', copyAutoral: depois, layers: camadasDa(depois) }],
+        artes: [arte('g1', { resultUrl: 'u1', copyAutoral: peca(doAutor) })],
+        paginas: [{ id: 'page-1', copyAutoral: pagina, layers: camadasDa(pagina) }],
       })
-    expect(medirPeca(montarPecas(story(slot(depois)))[0])).toMatchObject({ comparavel: true, preservada: false })
-    // A cópia é a de A e a página hoje é B: nada prova, e sem URL casada não há snapshot.
-    expect(medirPeca(montarPecas(story(slot(original)))[0])).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    const medir = (l: LeituraDaSemana) => medirPeca(montarPecas(l)[0])
+    // Um bloco só: é o único caso em que o mapa da cópia comprova a mensagem INTEIRA.
+    const umBloco: CopyAutoral = { ...original, blocos: original.blocos.filter((b) => b.id === 'headline') }
+    const umBlocoDepois = revisar(umBloco, { headline: ['Sexta tem', 'churrasco'] }, noEditor(T(50)))
+
+    it('um bloco, a cópia é o texto de hoje (literal): provado, a página vale; a cópia de A com a página B não prova', () => {
+      expect(medir(story(slot(umBlocoDepois), umBlocoDepois, umBloco))).toMatchObject({ comparavel: true, preservada: false })
+      // A cópia é a de A e a página hoje é B: nada prova, e sem URL casada não há snapshot.
+      expect(medir(story(slot(umBloco), umBlocoDepois, umBloco))).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    })
+
+    it('só a QUEBRA mudou (a mídia tem duas linhas, a página hoje uma): a comparação é literal, não prova', () => {
+      const linhaUnica = revisar(umBloco, { headline: ['Sexta é dia de churrasco'] }, noEditor(T(50)))
+      const m = medir(story({ headline: 'Sexta é dia\nde churrasco', _copiaDaPagina: true }, linhaUnica, umBloco))
+      expect(m).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+    })
+
+    it('só a ORDEM mudou (mesmos textos, os blocos trocados de posição): o registro não comprova a ordem, não prova', () => {
+      const invertida = aplicarRevisao(original, original.blocos.map((b) => ({ ...b, ordem: b.id === 'headline' ? 1 : 0 })), noEditor(T(50))).copy
+      expect(validarCopyAutoral(invertida).problemas).toEqual([])
+      expect(medir(story(slot(original), invertida))).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    })
+
+    it('dois blocos com os mesmos textos e a mesma ordem também não: o mapa (e o jsonb) não guarda ordem — a exclusão conservadora fica', () => {
+      expect(medir(story(slot(depois), depois))).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    })
+
+    it('um texto visível, mas o contrato conta o bloco que o revisor escondeu: a cópia não o comprova, não prova', () => {
+      // A equipe reescreveu o CTA escondido DEPOIS de congelar: o registro (só o visível) não enxerga essa mudança.
+      const ctaReescrito = revisar(original, { cta: ['Reserve já'] }, noEditor(T(50)))
+      const l = story({ headline: 'Sexta é dia\nde churrasco', _copiaDaPagina: true }, ctaReescrito)
+      l.paginas[0].layers = JSON.stringify([
+        { id: 'headline', name: 'headline', type: 'text', content: 'Sexta é dia\nde churrasco' },
+        { id: 'cta', name: 'cta', type: 'text', content: 'Reserve já', visible: false, metadata: { revisao: { ocultaPeloRevisor: { em: T(5), ajuste: 0 } } } },
+      ])
+      expect(medir(l)).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    })
   })
 
   it('sem prova nem snapshot confiável (a arte foi refeita depois de congelar): fora do denominador, contada', () => {

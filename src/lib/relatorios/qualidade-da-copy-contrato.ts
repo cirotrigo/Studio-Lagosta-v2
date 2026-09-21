@@ -60,7 +60,7 @@ import { registroDaCopyDaArte } from '@/lib/copy-autoral/registro-da-arte'
 import { lerCopyAutoral } from '@/lib/copy-autoral/serializar'
 import { blocosEmOrdem } from '@/lib/copy-autoral/validar'
 import { lerCamadas, textosDaPagina } from '@/lib/posts/page-layers'
-import { copyIgual, ehCopiaDaPagina, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
+import { ehCopiaDaPagina, textosDoSlot } from '@/lib/posts/copy-segue-a-pagina'
 import { lerCarimboDaVoz, type CarimboDaVoz, type FonteDaVoz } from '@/lib/brand/voz-na-escrita'
 import { ocultaPeloRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
@@ -225,6 +225,25 @@ export function mesmaMensagem(a: CopyAutoral, b: CopyAutoral): boolean {
   const lb = linhasPorBloco(b)
   if (![...new Set([...Object.keys(la), ...Object.keys(lb)])].every((id) => mesmasLinhas(la[id], lb[id]))) return false
   return JSON.stringify(ordemDeLeitura(a)) === JSON.stringify(ordemDeLeitura(b))
+}
+
+/**
+ * A cópia do texto DESENHADO (`_copiaDaPagina`, que o render regrava) prova
+ * que a mídia mostra a mensagem de `medida`? (PR15-05 da revisão final do
+ * Codex, 21/09/2026.) Só com o texto LITERAL — a quebra de linha é mensagem, e
+ * o `copyIgual` do render colapsa espaço — e só quando não há ORDEM a provar:
+ * um texto na página e no máximo um bloco com texto na copy medida. O registro
+ * é um mapa por camada (e o jsonb nem guarda a ordem das chaves): não comprova
+ * a ordem de leitura dos blocos, nem a das linhas de um bloco repartido em
+ * camadas. Com mais que isso, a exclusão conservadora (`congelada-sem-prova`)
+ * fica.
+ */
+function copiaProvaAMensagem(slotValues: unknown, layers: unknown, medida: CopyAutoral | null): boolean {
+  const desenhada = textosDoSlot(slotValues)
+  const hoje = Object.entries(textosDaPagina(layers))
+  if (!desenhada || !medida || hoje.length !== 1 || ordemDeLeitura(medida).length > 1) return false
+  const [[camada, texto]] = hoje
+  return Object.keys(desenhada).length === 1 && desenhada[camada] === texto
 }
 
 /** A revisão mexe só em ESTILO (a segunda voz, a herança de estilo)? */
@@ -442,7 +461,8 @@ interface FinalDaPeca {
  *     registro da arte, `registroDaCopyDaArte`, sobre as camadas CRUAS — o que
  *     o revisor escondeu sai dos dois lados); ou o post de uma mídia só carrega
  *     a cópia do texto DESENHADO (`_copiaDaPagina`, regravada a cada render) e
- *     ela é o texto de hoje.
+ *     ela é, LITERAL, o texto de hoje de uma peça sem ordem a provar
+ *     (`copiaProvaAMensagem`, PR15-05).
  *  3. Sem snapshot nem prova, a peça sai do denominador
  *     (`congelada-sem-prova`) — nunca a página de hoje atribuída a um post que
  *     ela não alcançou.
@@ -479,7 +499,7 @@ function finalDaPeca(ocorrencias: Ocorrencia[], artes: ArteLida[], pagina: Pagin
       o.post.pageId === pagina.id &&
       ehCopiaDaPagina(o.post.slotValues) &&
       lerCamadas(pagina.layers).legivel &&
-      copyIgual(textosDoSlot(o.post.slotValues), textosDaPagina(pagina.layers))
+      copiaProvaAMensagem(o.post.slotValues, pagina.layers, candidato)
     )
   }
   if (congeladas.every(provada)) return semCorte
