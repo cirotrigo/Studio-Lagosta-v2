@@ -40,6 +40,14 @@ const banco = vi.hoisted(() => ({
   dbGlobalBloqueado: false,
   /** R12-08: o próximo `generation.create` desta URL cai no banco (o catálogo REAL engole e devolve `falhou`). */
   falharArteDaUrl: null as string | null,
+  /** R12-09: a barreira das leituras concorrentes da mídia `url` (ver `leuAMidiaDaBarreira`). */
+  barreira: null as null | { url: string; ausencias: number; soltar: () => void; solta: Promise<void> },
+  /** R12-09: transações em andamento ou esperando a trava global. */
+  transacoesPendentes: 0,
+  /** R12-09: a chave do `pg_advisory_xact_lock` que a transação em andamento segura. */
+  travaConsultiva: null as string | null,
+  /** R12-09: o que aconteceu, na ordem — a trava consultiva, a leitura e a criação da mídia da barreira, o carimbo. */
+  eventos: [] as string[],
 }))
 
 const efeitos = vi.hoisted(() => ({
@@ -86,6 +94,28 @@ vi.mock('@/lib/db', () => {
       const copia = structuredClone(linha)
       banco.foraDaTransacao.push(() => banco[tabela].set(id, structuredClone(copia)))
     }
+  }
+  /**
+   * R12-09 — a leitura da mídia da barreira. A PRIMEIRA que não a acha espera
+   * até que a outra chamada também não a ache (sem trava, as duas vão criar)
+   * ou fique presa atrás da trava consultiva que esta segura. Como o banco
+   * falso serializa as transações, "presa" é: entrou numa transação enquanto
+   * esta segura a trava (o `$transaction` solta), ou já estava na fila quando
+   * esta leu. O resultado da leitura é o do momento dela, nunca o de depois
+   * da espera.
+   */
+  const leuAMidiaDaBarreira = async (procurou: unknown[], achou: unknown[], naTransacao: boolean) => {
+    const b = banco.barreira
+    if (!b || !procurou.includes(b.url)) return
+    if (achou.includes(b.url)) {
+      banco.eventos.push('leitura:presente')
+      return
+    }
+    banco.eventos.push('leitura:ausente')
+    b.ausencias++
+    if (b.ausencias >= 2) return b.soltar()
+    if (naTransacao && banco.travaConsultiva && banco.transacoesPendentes > 1) return b.soltar()
+    await b.solta
   }
   const atualizarMuitos = (tabela: Tabela, naTransacao: boolean) => async ({ where, data }: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
     let count = 0
@@ -137,19 +167,25 @@ vi.mock('@/lib/db', () => {
     generation: {
       findFirst: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, unknown> }) => {
         const g = [...banco.generations.values()].find((x) => casa(x, where))
+        // A capa que `ensurePostGeneration` procura pela URL (R12-09).
+        if (typeof where.resultUrl === 'string') await leuAMidiaDaBarreira([where.resultUrl], g ? [g.resultUrl] : [], naTransacao)
         return g ? escolher(g, select) : null
       },
       // Só o catálogo REAL chega aqui (R12-08): a mais recente por URL, como o `orderBy createdAt desc` dele.
-      findMany: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, unknown> }) =>
-        [...banco.generations.values()]
+      findMany: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, unknown> }) => {
+        const achadas = [...banco.generations.values()]
           .filter((g) => casa(g, where))
           .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
-          .map((g) => escolher(g, select)),
+        const alvo = where.resultUrl
+        await leuAMidiaDaBarreira(alvo && typeof alvo === 'object' && 'in' in alvo ? (alvo as { in: unknown[] }).in : [alvo], achadas.map((g) => g.resultUrl), naTransacao)
+        return achadas.map((g) => escolher(g, select))
+      },
       create: async ({ data, select }: { data: Record<string, unknown>; select?: Record<string, unknown> }) => {
         if (banco.falharArteDaUrl && data.resultUrl === banco.falharArteDaUrl) {
           banco.falharArteDaUrl = null
           throw new Error('a conexão com o banco caiu ao registrar a arte da mídia')
         }
+        if (banco.barreira && data.resultUrl === banco.barreira.url) banco.eventos.push('criacao')
         const id = `arte-${++banco.seq}`
         const linha = { id, createdAt: banco.seq, ...data }
         gravar('generations', id, linha, naTransacao)
@@ -185,7 +221,12 @@ vi.mock('@/lib/db', () => {
       },
       findMany: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, unknown> }) =>
         [...banco.itensDeLote.values()].filter((l) => casa(l, where)).map((l) => escolher(l, select)),
-      updateMany: atualizarMuitos('itensDeLote', naTransacao),
+      updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+        const r = await atualizarMuitos('itensDeLote', naTransacao)(args)
+        // R12-09: o carimbo dos efeitos que de fato gravou (o `where … null` da segunda chamada não grava nada).
+        if (r.count > 0 && args.data.efeitosDoAgendamentoEm instanceof Date) banco.eventos.push('carimbo')
+        return r
+      },
     },
     itemDePlano: {
       findFirst: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, unknown> }) => {
@@ -213,6 +254,9 @@ vi.mock('@/lib/db', () => {
   })
 
   const $transaction = async (run: (tx: unknown) => Promise<unknown>) => {
+    banco.transacoesPendentes++
+    // R12-09: entrar enquanto outra transação segura a trava consultiva é ficar preso atrás dela.
+    if (banco.travaConsultiva) banco.barreira?.soltar()
     const anterior = banco.trava
     let liberar!: () => void
     banco.trava = new Promise<void>((r) => {
@@ -225,7 +269,13 @@ vi.mock('@/lib/db', () => {
     try {
       return await run({
         ...delegados(true),
-        $queryRaw: async () => {
+        $queryRaw: async (partes: TemplateStringsArray, ...valores: unknown[]) => {
+          // R12-09: a trava consultiva por chave (`pg_advisory_xact_lock`) — não é a trava de linha que `aoTravar` modela.
+          if (partes.join('').includes('pg_advisory_xact_lock')) {
+            banco.travaConsultiva = String(valores[0])
+            banco.eventos.push(`trava:${valores[0]}`)
+            return [{ ok: 1 }]
+          }
           const gancho = banco.aoTravar
           banco.aoTravar = null
           gancho?.()
@@ -237,6 +287,8 @@ vi.mock('@/lib/db', () => {
       for (const reaplicar of banco.foraDaTransacao) reaplicar()
       throw erro
     } finally {
+      banco.travaConsultiva = null
+      banco.transacoesPendentes--
       banco.emTransacao--
       banco.foraDaTransacao = []
       liberar()
@@ -431,6 +483,10 @@ beforeEach(() => {
   banco.falharPasta = 0
   banco.dbGlobalBloqueado = false
   banco.falharArteDaUrl = null
+  banco.barreira = null
+  banco.transacoesPendentes = 0
+  banco.travaConsultiva = null
+  banco.eventos = []
   efeitos.artesFalham = false
   efeitos.artesReais = false
   vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -1100,6 +1156,84 @@ describe('R12-08 — a capa vinculada não é o catálogo completo', () => {
     const artes = banco.generations.size
     await agendar([item(1)])
     expect(banco.generations.size).toBe(artes)
+  })
+})
+
+describe('R12-09 — retomadas simultâneas do catálogo', () => {
+  const capa = `${BLOB}/capa-da-equipe.png`
+  const slide2 = `${BLOB}/slide-2-da-equipe.png`
+  const chave = 'catalogo-do-post:post-manual'
+  const daUrl = (url: string) => [...banco.generations.values()].filter((g) => g.resultUrl === url)
+  // O carrossel que a equipe montou com a página da peça, sem nenhuma Generation (o post do R12-08).
+  const postDaEquipe = () =>
+    banco.posts.set('post-manual', { id: 'post-manual', projectId: PROJETO, pageId: 'page-1', templateId: 42, generationId: null, status: 'DRAFT', postType: 'POST', scheduledDatetime: new Date('2026-09-11T22:00:00.000Z'), mediaUrls: [capa, slide2], renderStatus: 'NOT_NEEDED', createdAt: 0, caption: '', sugestaoId: null, origem: null })
+  const armarBarreira = (url: string) => {
+    let soltar!: () => void
+    const solta = new Promise<void>((r) => {
+      soltar = r
+    })
+    banco.barreira = { url, ausencias: 0, soltar, solta }
+    banco.eventos = []
+  }
+
+  it('do estado parcial do R12-08, duas repetições ao mesmo tempo com o catálogo REAL: as duas leem a ausência do slide 2, só a que segura a trava o cria, a outra relê DEPOIS dela; capa preservada e carimbo depois', async () => {
+    efeitos.artesReais = true
+    criarPeca(1)
+    postDaEquipe()
+    banco.falharArteDaUrl = slide2
+    const caiu = await agendar([item(1)])
+    // O estado parcial: a capa vinculada, o slide 2 sem registro, os efeitos pendentes.
+    expect(caiu.itens[0].avisos?.join(' ')).toContain('não terminou (as artes do post)')
+    expect(daUrl(capa)).toHaveLength(1)
+    expect(daUrl(slide2)).toHaveLength(0)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
+    const arteDaCapa = daUrl(capa)[0].id
+
+    armarBarreira(slide2)
+    const [a, b] = await Promise.all([agendar([item(1)]), agendar([item(1)])])
+
+    expect(daUrl(slide2)).toHaveLength(1)
+    expect(daUrl(slide2)[0].fieldValues).toMatchObject({ source: 'post-midia', postId: 'post-manual', midiaIndice: 1 })
+    expect(daUrl(capa)).toHaveLength(1)
+    expect(banco.posts.size).toBe(1)
+    expect(banco.posts.get('post-manual')!.generationId).toBe(arteDaCapa)
+    for (const r of [a, b]) {
+      expect(r.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: 'post-manual' })
+      expect(r.itens[0].avisos).toBeUndefined()
+    }
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+    // A ordem: as duas leram a ausência ANTES de qualquer criação (a barreira); cada releitura
+    // veio DEPOIS da trava do post, e a segunda enxergou o slide que a primeira criou.
+    const eventos = banco.eventos.filter((e) => e !== 'carimbo')
+    expect(eventos.slice(0, 2)).toEqual(['leitura:ausente', 'leitura:ausente'])
+    expect(eventos.slice(2)).toEqual([`trava:${chave}`, 'leitura:ausente', 'criacao', `trava:${chave}`, 'leitura:presente'])
+    // O carimbo: um só, e depois de o slide 2 existir.
+    expect(banco.eventos.filter((e) => e === 'carimbo')).toHaveLength(1)
+    expect(banco.eventos.indexOf('carimbo')).toBeGreaterThan(banco.eventos.indexOf('criacao'))
+  })
+
+  it('do zero, duas chamadas ao mesmo tempo no item cuja página tem o carrossel da equipe: a capa (ensurePostGeneration) e o slide 2 (catálogo) nascem UMA vez cada, sob a MESMA trava do post', async () => {
+    efeitos.artesReais = true
+    criarPeca(1)
+    postDaEquipe()
+    armarBarreira(capa)
+    const [a, b] = await Promise.all([agendar([item(1)]), agendar([item(1)])])
+
+    expect(daUrl(capa)).toHaveLength(1)
+    expect(daUrl(capa)[0].fieldValues).toMatchObject({ source: 'post-schedule', postId: 'post-manual', pageId: 'page-1' })
+    expect(daUrl(slide2)).toHaveLength(1)
+    expect(banco.posts.size).toBe(1)
+    expect(banco.posts.get('post-manual')!.generationId).toBe(daUrl(capa)[0].id)
+    expect([a.itens[0].desfecho, b.itens[0].desfecho].sort()).toEqual(['adotado', 'reaproveitado'])
+    for (const r of [a, b]) expect(r.itens[0].avisos).toBeUndefined()
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+    // A capa foi lida ausente UMA vez, por quem segurava a trava — e criada logo em seguida.
+    const ev = banco.eventos
+    expect(ev.filter((e) => e === 'leitura:ausente')).toHaveLength(1)
+    expect(ev.slice(0, ev.indexOf('leitura:ausente'))).toContain(`trava:${chave}`)
+    expect(ev[ev.indexOf('leitura:ausente') + 1]).toBe('criacao')
+    // A capa e o catálogo disputam a MESMA chave: chaves diferentes não se excluiriam.
+    expect(new Set(ev.filter((e) => e.startsWith('trava:')))).toEqual(new Set([`trava:${chave}`]))
   })
 })
 

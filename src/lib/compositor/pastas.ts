@@ -10,6 +10,7 @@
  */
 
 import { db } from '@/lib/db'
+import { comTravaPorChave } from '@/lib/trava-por-chave'
 
 import type { Formato } from './spec'
 import {
@@ -44,28 +45,42 @@ export async function garantirPasta(
   agora: Date = new Date(),
 ): Promise<PastaGarantida> {
   const pasta = pastaDaPeca(quando, formato, agora)
-  const existente = await db.template.findFirst({
-    where: { projectId, tags: { has: pasta.chave } },
-    select: { id: true, name: true },
-  })
+  const achar = (cliente: Pick<typeof db, 'template'>) =>
+    cliente.template.findFirst({ where: { projectId, tags: { has: pasta.chave } }, select: { id: true, name: true } })
+  const existente = await achar(db)
   if (existente) return { ...existente, pasta }
-  const criado = await db.template.create({
-    data: {
-      name: pasta.nome,
-      // Uma pasta, um formato: o `type` e as `dimensions` finalmente dizem a
-      // verdade sobre o que está dentro.
-      type: pasta.tipo,
-      dimensions: pasta.dimensoes,
-      designData: {},
-      category: pasta.categoria,
-      tags: pasta.tags,
-      projectId,
-      createdBy: userId,
-    },
-    select: { id: true, name: true },
+  /**
+   * R12-09 (varredura): achar-ou-criar é verificar-e-criar. Duas execuções que
+   * não achavam a pasta criavam DUAS (sem unicidade em `tags`), e o `findFirst`
+   * sem ordem passava a mandar cada peça nova para uma delas — a semana partida
+   * em duas pastas de mesmo nome. Acontecia com as retomadas simultâneas do
+   * agendar-leva (refilagem, avulsas) e com duas peças da mesma semana nova
+   * compostas ao mesmo tempo. Sob a trava da pasta, quem chega depois relê.
+   */
+  return comTravaPorChave(chaveDaPasta(projectId, pasta.chave), async (tx) => {
+    const jaCriada = await achar(tx)
+    if (jaCriada) return { ...jaCriada, pasta }
+    const criado = await tx.template.create({
+      data: {
+        name: pasta.nome,
+        // Uma pasta, um formato: o `type` e as `dimensions` finalmente dizem a
+        // verdade sobre o que está dentro.
+        type: pasta.tipo,
+        dimensions: pasta.dimensoes,
+        designData: {},
+        category: pasta.categoria,
+        tags: pasta.tags,
+        projectId,
+        createdBy: userId,
+      },
+      select: { id: true, name: true },
+    })
+    return { ...criado, pasta }
   })
-  return { ...criado, pasta }
 }
+
+/** A chave da trava de uma pasta automática: o projeto e a tag-chave dela (período + formato). */
+export const chaveDaPasta = (projectId: number, chave: string) => `pasta-da-semana:${projectId}:${chave}`
 
 /**
  * A ordem de postagem da página na pasta. Sem data (avulsas) não há ordem de

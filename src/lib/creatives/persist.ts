@@ -56,12 +56,14 @@ export async function ensureArteTemplate(
   type: TemplateType,
   dimensions: string,
   templateName?: string,
+  /** Dentro da trava das artes do post (R12-09), o cliente da transação: o `db` raiz esperaria a conexão que ela segura. */
+  cliente: Pick<typeof db, 'template'> = db,
 ) {
   const name = templateName ?? ARTE_TEMPLATE_NAMES[type]
-  const existing = await db.template.findFirst({ where: { projectId, name } })
+  const existing = await cliente.template.findFirst({ where: { projectId, name } })
   if (existing) return existing
 
-  return db.template.create({
+  return cliente.template.create({
     data: {
       name,
       type,
