@@ -10,6 +10,7 @@ import type { UpdateLaterPostPayload } from '@/lib/later/types'
 import { LaterNotFoundError } from '@/lib/later/errors'
 import { registrarEdicaoDeLegenda } from '@/lib/aprendizado/sinal-de-legenda'
 import { refilarPaginasDoPost } from '@/lib/compositor/pastas'
+import { comTemplateDaPagina } from '@/lib/posts/template-do-post'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -73,6 +74,8 @@ export async function GET(
       where: { id: postId },
       include: {
         Generation: true,
+        // O template ATUAL da página, para o "Editar Template" (comTemplateDaPagina).
+        PageRef: { select: { templateId: true } },
       },
     })
 
@@ -80,7 +83,7 @@ export async function GET(
       return NextResponse.json({ error: 'Post not found' }, { status: 404 })
     }
 
-    return NextResponse.json(post)
+    return NextResponse.json(comTemplateDaPagina(post))
   } catch (error) {
     console.error('Error fetching post:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

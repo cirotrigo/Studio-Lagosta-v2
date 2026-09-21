@@ -4538,6 +4538,20 @@ justamente o que a separação por formato veio resolver.
   num rascunho e confere que o estado final é idêntico ao inicial. Ele CRIA a
   pasta da semana de destino (efeito inerente do `garantirPasta`) e não a
   remove.
+- 🔴 **Link de editor para a página de um post sai do template ATUAL da
+  página, nunca de `SocialPost.templateId`** (21/09/2026). As duas mudanças de
+  pasta movem só a página (e `agendarPost` cria o post ANTES de mover), então a
+  coluna fica na pasta antiga; o editor não acha o `pageId` lá e o fallback do
+  `multi-page-context` abre a primeira página daquele template — outra peça.
+  As rotas que servem o post à agenda (`GET posts/[postId]` e
+  `GET posts/calendar`) devolvem `templateId` por `comTemplateDaPagina`
+  (`src/lib/posts/template-do-post.ts`), e o botão usa `editarTemplateHref`.
+  É leitura: conserta todo post antigo sem backfill e nunca toca post
+  congelado. A coluna NÃO é reapontada na mudança de pasta, de propósito —
+  página se move por mais caminhos (scripts de migração inclusive), e uma cópia
+  a manter em dia é a segunda fonte de verdade. A `Generation` que o catálogo
+  registra no agendamento segue indo para a pasta de antes, como a do próprio
+  compositor (quem a procura usa `fieldValues.pageId`).
 
 ### O diretor de arte: quem escreve o prompt do gpt-image OLHA a peça (05/09/2026)
 

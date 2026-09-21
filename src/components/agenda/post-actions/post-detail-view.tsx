@@ -61,7 +61,7 @@ import { ImproveCreativeModal } from '@/components/creatives/improve-creative-mo
 import { toast } from 'sonner'
 import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
 import { descreverJanela } from '@/lib/posts/freeze-window'
-import { publicarLembreteHref } from '@/lib/agenda-routes'
+import { editarTemplateHref, publicarLembreteHref } from '@/lib/agenda-routes'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import Image from 'next/image'
 import { cn, isExternalImage } from '@/lib/utils'
@@ -1063,7 +1063,7 @@ export function PostDetailView({
                 className="hidden flex-1 sm:flex sm:min-w-[9rem] lg:flex-none"
                 asChild
               >
-                <Link href={`/templates/${post.templateId}/editor?pageId=${post.pageId}&from=agenda`}>
+                <Link href={editarTemplateHref(post)}>
                   <Paintbrush className="mr-2 h-4 w-4" />
                   Editar Template
                 </Link>
@@ -1118,9 +1118,7 @@ export function PostDetailView({
                   </DropdownMenuItem>
                 ) : (
                   <DropdownMenuItem className="sm:hidden" asChild>
-                    <Link
-                      href={`/templates/${post.templateId}/editor?pageId=${post.pageId}&from=agenda`}
-                    >
+                    <Link href={editarTemplateHref(post)}>
                       <Paintbrush className="mr-2 h-4 w-4" />
                       Editar Template
                     </Link>
