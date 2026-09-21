@@ -8206,3 +8206,246 @@ que NADA é gravado e que a medida é a da composição).
   revisão de 5d628520): `carregarFotoParaMedir` devolve `{ foto: null, aviso }`
   também quando `fetchBuffer` rejeita (403/503 do lh3, conexão) ou o sharp não
   lê os bytes — a medição segue provisória, como sem foto, sem publicar nada.
+
+### As vias consomem o contrato: modelo por PAPEL, IA com escrita × enviada × lida (PR 5 de "Marca simples, copy melhor", 12/09/2026)
+
+O PR 4 fez o compositor fiel; as OUTRAS vias — o modelo (`createArteRapida`,
+`executar-plano` via template, `criar-arte-de-modelo`), a IA
+(`startArtGeneration`, `gerar-imagem`), a melhoria e a conferência — ainda
+recebiam a copy como lista posicional e não registravam nada. Módulos puros com
+teste: `planos/execucao.ts` (`mapearContratoParaCampos`, `papelDoCampo`),
+`copy-autoral/registro-da-arte.ts`; prova de integração no branch de dev:
+`scripts/validar-vias-da-copy.ts`.
+
+- **Na via de MODELO o bloco casa com o campo do MESMO PAPEL, nunca por
+  posição** (`mapearContratoParaCampos`): o papel do campo é o declarado da
+  camada (`metadata.compositor.papel`) ou o que o NOME diz (Pré-título,
+  Título, Subtítulo, Chamada, Horário); nome que não diz nada é `null`. Bloco
+  sem campo do seu papel vai só para campo SEM papel reconhecido (declarado
+  como `posicao`) — o campo de manchete não recebe o serviço só porque sobrou;
+  o que sobrar fica em `semCampo` e no aviso, nunca perdido em silêncio. Bloco
+  `linhas: []` não ocupa campo; campo sem copy fica oculto, como sempre. Os
+  `[colchetes]` saem (o modelo desenha texto simples) e a quebra do autor fica.
+  Sem contrato, `mapearCopyParaSlots` (posicional) continua para o legado.
+- **O slot deixa de ser só texto**: `{ content, papel, bloco }`, e `bakeLayers`
+  carimba `metadata.compositor.{papel,bloco}` na camada. É o carimbo que faz a
+  leitura da copy efetiva reencontrar o bloco numa camada de id UUID — sem ele
+  a via de modelo relia o contrato como `extra-<uuid>`.
+- **A arte de modelo grava o mesmo registro do compositor**: `Page.copyAutoral =
+  efetiva` (superfície `modelo`) e `fieldValues.copyAutoral = { original,
+  efetiva, comparavel, lacunas }`. `ver-geracao` mostra.
+- 🔴 **Na via de IA não há camada, e o registro DIZ isso em vez de fingir uma
+  efetiva** (`registro-da-arte.ts`): `original` (o contrato), `enviada` (os
+  blocos como FORAM ao modelo de imagem), `conferencia` (o que a visão leu, o
+  que faltou, se passou, a régua) e a lacuna `LACUNA_SEM_CAMADAS`.
+  `ver-geracao` devolve `comparadoPor: 'visao'` e a arte só é `comparavel`
+  quando a conferência RODOU (`passou !== null`).
+  🔴 **`enviada` é LIDA do prompt que saiu, nunca a transformação que o sistema
+  aplicaria** (`enviadaNoPrompt`, PR5-10 da revisão final do Codex, 18/09/2026):
+  o `finalPrompt` de quem chamou vai verbatim, e o prompt montado por código
+  (`buildArtePrompt`, os moldes das portas, o `[TEXTO EXATO]` da melhoria)
+  colapsa espaços — e com eles a quebra. Gravar a caixa da marca como enviada
+  punha na conta do gerador uma diferença nascida no registro. Cada bloco é
+  procurado no prompt (forma da marca, forma crua, cada uma também com espaços
+  colapsados); bloco que não aparece deixa `enviada` AUSENTE com a lacuna
+  dizendo qual. A criação da Generation não conhece o prompt: grava o registro
+  sem `enviada` e com `LACUNA_PROMPT_AINDA_NAO_MONTADO`, que o runner troca
+  (`comEnviada`); na melhoria o prompt exato chega por
+  `improveCreative.aoMontarPrompt`. Sem `enviada`, `ver-geracao` segue
+  comparando por visão quando a conferência rodou.
+- **Com `copyAutoral`, `startArtGeneration` deriva a copy do contrato** (blocos
+  com texto, em ordem, linhas do autor unidas por quebra) e RECUSA `copy` que
+  divirja dele (`COPY_DIVERGE_DO_CONTRATO`). O contrato viaja nos args do
+  runner, que fecha o registro no sucesso; a falha preserva o registro da
+  criação (`fieldValuesPreservando`).
+- 🔴 **`copyComCaixaDaMarca` preserva a QUEBRA do autor**: o colapso de espaços
+  vale dentro de cada linha, nunca sobre o "\n" — antes ele apagava a quebra
+  antes de a copy chegar ao prompt. A linha VAZIA interna ("Almoço", "", "em
+  família" — o contrato permite) também passa: o filtro de linha vazia apagava
+  o respiro do autor antes do diretor de arte (PR5-09). ⚠️ Os caminhos de
+  FALLBACK (`buildArtePrompt`, os moldes das portas, o `[TEXTO EXATO]` da
+  melhoria) continuam colapsando a quebra — o prompt deles não foi mexido; o
+  registro diz isso em `enviada`.
+- **A melhoria PROPAGA o contrato pela cadeia como a régua** (`copyAutoral.original`
+  da arte de origem). Em `refinar`, copy trocada pelo pedido vira REVISÃO
+  EXPLÍCITA de `claude` com o pedido como motivo (`revisaoPosicional`, a mesma
+  regra do item de plano: casou posição a posição, é revisão; não casou, a
+  lacuna diz e o texto enviado é o do pedido). A caixa da origem
+  (`aplicarCaixaDaOrigem`) NÃO conta como revisão: bloco igual ao do contrato a
+  menos de caixa/acento mantém as linhas do autor. Gravado no sucesso, na falha
+  de cobrança e na falha.
+  🔴 **Só quando a imagem melhorada É a arte daquela Generation**
+  (`contratoDaOrigemDaMelhoria`, PR5-08): melhorar o slide 2 pela agenda manda o
+  `generationId` do post (a arte do slide 1) com a URL do slide 2 — o serviço
+  marca `skipTextVerification` e descarta os textos esperados, e o contrato cai
+  junto. Sem isso a melhoria de B gravava a copy autoral de A como a sua e a
+  levava pela cadeia. A ausência é dita (`fieldValues.copyAutoralNaoHerdada`).
+  Tudo que se lê da Generation de origem é de UMA imagem: dado novo que a
+  melhoria herde dela passa pelo mesmo portão.
+- **`conferir-arte` devolve a metade que faltava**: `textoAMais` (com dado é
+  alerta), `grafiaDivergente` e a `copy` da arte quando ela tem contrato —
+  avisa, nunca veta.
+- **Fixtures do registro MCP** (`criar-arte-de-modelo`, `gerar-imagem`)
+  atualizadas nos mesmos commits — mudança deliberada do schema.
+- ⚠️ **Carrossel de IA e `criar-arte` (textos livres) continuam sem contrato**:
+  o slide vive em `slides[].copy` posicional e a arte livre não passa por
+  `startArtGeneration` com contrato. É lacuna declarada, não regressão.
+
+**Da revisão FINAL do Codex sobre 2269eec9 (BLOQUEADO, PR5-11…13, 21/09/2026).**
+Os três são a mesma família: **o registro afirmando mais do que sabe** — "enviei
+o texto" quando só achou um pedaço, "o sistema transformou" quando não
+transformou, "foi o Claude" quando foi a equipe.
+
+- 🔴 **`enviada` exige o bloco INTEIRO numa ocorrência LIVRE** (PR5-11,
+  `enviadaNoPrompt`). O `includes` cru achava `R$ 20` dentro de `"R$ 200"` e
+  `Venha hoje` dentro de `"Venha hoje mesmo"`, e gravava `enviada` sem lacuna:
+  a diferença que ENTROU no prompt ia para a conta do gerador. E a mesma
+  aparição servia a vários blocos — dois blocos iguais com uma ocorrência só
+  passavam como dois enviados. A fronteira é a borda do prompt, a quebra de
+  linha ou a ASPA, que é como TODO caminho da casa escreve a copy: `- "bloco"`
+  (`buildArtePrompt`, `[TEXTO EXATO]` da melhoria), `"bloco"` por linha
+  (`prompt-da-referencia`) e o bloco sozinho na linha (`prompt-do-manual`).
+  Cada ocorrência é consumida por UM bloco. Prompt pronto que embuta a copy no
+  meio de uma frase corrida não permite dizer o que saiu: vira lacuna, que é o
+  comportamento pedido — nunca um palpite.
+- 🔴 **Conteúdo NOVO não herda a DECLARAÇÃO de prefixo da camada anterior**
+  (PR5-12, `semPrefixoHerdado` + `bakeLayers`). `metadata.compositor.prefixo`
+  descreve o ornamento que o COMPOSITOR desenhou (a seta antes do CTA), e quem
+  preenche a camada escreve o texto tal e qual. Herdada, `linhasDaCamada`
+  descontava da leitura um "→ " que agora é TEXTO DO AUTOR: o modelo com
+  `prefixo: '→ '` recebendo um bloco que começa pela mesma seta mostrava
+  "→ Venha hoje" na arte e gravava "Venha hoje" no contrato — uma transformação
+  do sistema que nunca aconteceu, e é assim que isto encosta no PR 4. A camada
+  que NÃO recebe conteúdo novo continua declarando o prefixo; quem preencher
+  ACRESCENTANDO ornamento declara de novo.
+  **`bakeLayers` mudou de casa** (`src/lib/creatives/bake-layers.ts`, PURO):
+  `arte-rapida.ts` importa o Prisma, e esta decisão precisa ser conferida sem
+  banco — é a regra da casa para código testável.
+- 🔴 **O refino é assinado por QUEM PEDIU, nunca sempre por `claude`** (PR5-13,
+  `autorDoPedido`). A rota da interface chama o MESMO serviço do conector, e o
+  runner cravava `autor: 'claude'`: a pessoa pedia a troca de texto pela tela e
+  o histórico dizia que quem mexeu foi o assistente — autoria errada seguindo
+  pela cadeia nas melhorias seguintes, o oposto do que o contrato existe para
+  fazer. A distinção já existe e é o CANAL (`creatives/canal.ts`), decidido na
+  porta de entrada: a rota passa `canal: 'studio'` (→ `equipe`), o conector
+  passa o canal do principal (→ `claude`). O canal viaja em
+  `ImprovementJobArgs`; job enfileirado antes disto não tem canal e fica em
+  `desconhecido` — o conservador. Caminho novo que registre autoria de copy a
+  partir de um pedido usa `autorDoPedido(canal)`, nunca um literal.
+- **Varredura das três formas no PR** (pedida com os consertos): *autor fixo* —
+  os outros dois literais são corretos por construção (`equipe` no PATCH do
+  editor, que é a UI da pessoa logada; `sistema` na reconciliação com as
+  camadas anteriores); *substring numa afirmação do registro* — só
+  `enviadaNoPrompt`; `PAPEIS_DO_MODELO.includes` e `comTexto.indexOf(b)` são
+  pertinência e identidade em ARRAY, não texto. *Herança de metadado* — o único
+  ponto que escreve camada é `bakeLayers`, e ali `papel` e `bloco` também são
+  herdados: **descartado com razão**, porque na via COM contrato o carimbo os
+  sobrescreve em toda camada que recebe copy, e a que não recebe fica OCULTA
+  (`ehTextoVisivel` a tira da leitura); na via legada não há contrato na página
+  para lê-los. Só o `prefixo` alcançava uma leitura.
+
+**Da revisão FINAL do Codex sobre c0e2649b (BLOQUEADO, PR5-11-R2, PR5-12-R2, 21/09/2026).**
+As duas são as correções anteriores ficando curtas na fronteira, e a mesma
+lição: **a guarda tinha sido escrita a partir do caso do exemplo, não da
+regra** — "terminou antes de `\n`" no lugar de "é o bloco inteiro", "o
+conteúdo mudou" no lugar de "veio conteúdo".
+
+- 🔴 **A unidade de `enviada` é o BLOCO COMPLETO, nunca a vizinhança de um
+  pedaço** (PR5-11-R2). `enviadaNoPrompt('[TEXTO EXATO]\n- "Venha hoje\nmesmo"',
+  [['Venha hoje']])` começa depois de uma aspa e termina antes de `\n`, então a
+  fronteira por caractere aceitava: metade de um bloco citado voltava como
+  `enviada` sem lacuna, e a amplificação que já estava no prompt ia para a
+  conta do gerador; e as duas LINHAS de um único bloco entre aspas podiam
+  servir a dois blocos esperados. Hoje `unidadesDoPrompt` parte o prompt nas
+  unidades que os caminhos da casa escrevem — **dentro de ASPAS a quebra
+  interna NÃO encerra o bloco** (`- "bloco"` do `buildArtePrompt` e do
+  `[TEXTO EXATO]`, `"bloco"` por linha do `prompt-da-referencia`); **fora
+  delas a delimitação é por LINHA** (o bloco sozinho na linha do
+  `prompt-do-manual`) —, e o bloco esperado tem de ser IGUAL a uma unidade
+  inteira e ainda livre. Ambiguidade vira lacuna, como já era.
+- 🔴 **A camada que RECEBE conteúdo perde a declaração de prefixo, mesmo que
+  os caracteres coincidam** (PR5-12-R2). Modelo com `content: '→ Reserve já'`
+  e `prefixo: '→ '` recebendo do contrato literalmente `→ Reserve já`: a
+  guarda `novo === layer.content` mantinha a declaração, a arte mostrava a
+  seta que o AUTOR escreveu e `linhasDaCamada` a descontava — a mesma
+  transformação fictícia, agora onde o texto não mudou. O fato é TER VINDO
+  conteúdo; só a camada sem preenchimento continua declarando o prefixo.
+- 🔴 **O terceiro lugar com o mesmo proxy era a herança do contrato na
+  melhoria** (PR5-14, achado na varredura pedida). `contratoDaOrigemDaMelhoria`
+  recebia `outraImagem: !!args.skipTextVerification` — a BANDEIRA da régua de
+  texto, que hoje tem uma causa só e por isso coincidia com o fato. Qualquer
+  motivo NOVO para pular a conferência (peça sem texto, régua indisponível,
+  opt-out) derrubaria o contrato junto **e afirmaria no registro que "a imagem
+  melhorada é outro slide do post"**, que seria falso. O serviço passou a
+  nomear o FATO (`melhoraOutraImagem`, dos mesmos dois pontos que o
+  produziam: o slide com `generationId` próprio e a mídia do post que não é o
+  `resultUrl` da origem) e dele DERIVA `skipTextVerification`; o runner lê o
+  fato, com a bandeira como fallback só para job enfileirado antes do campo,
+  quando ela tinha essa causa única. Sem teste novo: a correção é de fiação —
+  uma atribuição vira dois campos —, e a semântica de `outraImagem` já é
+  provada pelo PR5-08.
+- 🔴 **A REGRA que as três deixam, e o caso que a mede**: *condição escrita
+  pelo caso do exemplo passa nos testes do exemplo*. As três testam a
+  CONSEQUÊNCIA que o caso em mãos produziu, não o fato — e enquanto a
+  consequência tem uma causa só, as duas leituras são indistinguíveis, que é
+  justamente por que passam em revisão: o exemplo prova as duas. O que as
+  separa é perguntar **"que OUTRA coisa produz este sintoma?"** — e **"hoje,
+  nenhuma" ainda é resposta errada**, porque a condição se quebra sozinha na
+  primeira causa nova, sem barulho. O caso que mede isso é o `skipTextVerification`
+  do PR5-14: motivo novo para pular a conferência derrubaria o contrato junto
+  **e faria o registro afirmar um motivo falso** ("a imagem é outro slide"),
+  que é o oposto do que o contrato existe para fazer.
+- **O que a varredura DESCARTOU com razão**: `autorDoPedido` (canal é o fato,
+  não sintoma — PR5-13); `revisaoDoRefino`, que localiza o bloco pelo texto
+  normalizado e **declara** a ambiguidade (`candidatos.length !== 1` →
+  `descartado`) em vez de escolher; `mapearContratoParaCampos`, cuja
+  aproximação por NOME de campo é declarada item a item (`por: 'posicao'`,
+  `semCampo`, avisos); e `COPY_DIVERGE_DO_CONTRATO`, comparação exata entre os
+  dois lados limpos pela MESMA função, numa porta em que o contrato vence de
+  qualquer forma.
+
+**Da revisão FINAL do Codex sobre fcd79518 (BLOQUEADO, PR5-11-R3, PR5-15, 21/09/2026).**
+As duas na MESMA função (`enviadaNoPrompt`), e a mesma lição da rodada anterior
+um nível abaixo: a regra da unidade foi escrita para os formatos que a casa
+PRODUZ, e a fronteira ENTRE eles ficou sem dono — texto solto **e** citado na
+mesma linha; normalizar para comparar **e** para registrar.
+
+- 🔴 **Linha que MISTURA texto solto e aspas contribui só com o que está entre
+  aspas** (PR5-11-R3). Ao encontrar a aspa, a versão anterior fechava as linhas
+  pendentes e emitia o fragmento externo como unidade: `Venha hoje "mesmo"`
+  comprovava os blocos `Venha hoje` **e** `mesmo`, sem lacuna — uma linha
+  AMPLIADA provando dois blocos que ninguém escreveu separados. Hoje a abertura
+  de aspas não fecha nada (o trecho citado vira um marcador de uma posição, sem
+  quebra) e o texto solto em volta de uma citação é FRAGMENTO, nunca bloco.
+  Mistura que não deixa identificar o bloco vira lacuna, como já era o contrato.
+  Continua valendo o positivo: duas citações em LINHAS separadas são dois blocos.
+- 🔴 **O colapso de espaços LOCALIZA a ocorrência; `enviada` grava o que está
+  ESCRITO no prompt** (PR5-15). Um bloco citado com quebra INTERNA casa pela
+  forma colapsada e gravava a candidata NORMALIZADA — **apagando do registro uma
+  quebra que existe no prompt**, e a comparação escrita × enviada × lida podia
+  cobrar essa diferença do gerador. Hoje a candidata só serve para ACHAR a
+  unidade; o que entra em `enviada` é a unidade encontrada, com as quebras e os
+  espaços dela.
+- 🔴 **UM TESTE EXISTENTE CONSAGRAVA A PERDA, e trocar a expectativa foi parte
+  do conserto.** `revisao-final-pr5.test.ts:105` exigia a forma COLAPSADA
+  (`Venha hoje mesmo`, numa linha só) para um prompt que TEM a quebra; hoje
+  exige as duas linhas como estão lá. Não é "ajustar o teste para passar": a
+  expectativa antiga afirmava como enviado um texto que nunca foi escrito no
+  prompt, que é exatamente o defeito. Quem ler o diff amanhã vê a troca aqui
+  declarada, com o caso da quebra DUPLA interna acrescentado ao lado.
+- 🔴 **A terceira fronteira do arquivo não era lógica, era do FONTE: o sentinela
+  NUL estava escrito LITERAL, e um byte NUL faz o `grep` tratar o arquivo como
+  BINÁRIO.** Medido: `grep -c "" registro-da-arte.ts` saía **vazio, com código
+  1** — toda busca do repositório passava por cima deste módulo em silêncio, e
+  só `grep -a` o enxergava. O sentinela agora é montado por código
+  (`String.fromCharCode(0)`), a semântica é idêntica (NUL não aparece em prompt)
+  e o fonte volta a ser texto. **Caractere de controle em módulo novo se monta,
+  nunca se digita** — some à família de "o método de medição é que estava
+  quebrado".
+- **O que a varredura da família DESCARTOU**: `revisaoDoRefino` já tem
+  exatamente a forma certa (localiza por `normalizeForComparison`, grava o texto
+  REAL do pedido, e declara a ambiguidade em vez de escolher); `revisaoPosicional`
+  grava a linha crua; e `conferenciaDoCheck` corta a lista `lida` em 40 ITENS,
+  mas ela é diagnóstico — `passou` e `faltando` vêm do próprio check, então o
+  corte não muda veredito nenhum (diferente do teto da visão do PR 0, que
+  mudava).

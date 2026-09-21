@@ -24,6 +24,17 @@ describe('a copy do item de plano: o contrato manda, a lista é o espelho', () =
     expect(espelhoDoContrato(contrato)).toEqual(r.copyProposta)
   })
 
+  it('bloco de linhas só em branco fica fora do espelho E da edição posicional: a edição vira revisão, não descarte', () => {
+    const comBranco: CopyAutoral = { ...contrato, blocos: contrato.blocos.map((b) => (b.id === 'cta' ? { ...b, linhas: [''] } : b)) }
+    expect(lerCopyAutoral(comBranco).copy).not.toBeNull()
+    const espelho = espelhoDoContrato(comBranco)
+    expect(espelho).toHaveLength(3)
+    const r = copyDoItemNoPatch(comBranco, { copyProposta: ['No sábado o', espelho[1], espelho[2]] }, { autor: 'equipe', superficie: 'bancada' })!
+    expect(r.avisos).toEqual([])
+    expect(r.copyAutoral!.blocos.find((b) => b.id === 'pre')!.linhas).toEqual(['No sábado o'])
+    expect(r.copyAutoral!.blocos.find((b) => b.id === 'cta')!.linhas).toEqual([''])
+  })
+
   it('item novo sem contrato: a lista legada, limpa; sem contrato inventado', () => {
     const r = copyDoItemNovo({ copyProposta: [' Título ', '', 'Apoio'] })
     expect(r).toEqual({ copyAutoral: null, copyProposta: ['Título', 'Apoio'], avisos: [] })

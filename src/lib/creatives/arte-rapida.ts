@@ -56,10 +56,10 @@ import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 import { problemaDoAjuste, type Ajuste } from '@/lib/creatives/revisao/contrato'
 import { copyAutoralDaPagina, recusaDaRevisao, revisaoDaPaginaComCamadas } from '@/lib/copy-autoral/revisar-pagina'
-import { tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral/efetiva'
+import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
+import { bakeLayers } from '@/lib/creatives/bake-layers'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
-import { semMarcaDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -561,6 +561,13 @@ export interface CreateArteRapidaInput {
    * — ver `halo/layout-pela-foto.ts`. Com `true`, a página pedida é a usada.
    */
   layoutFixo?: boolean
+  /**
+   * F1 (PR 5): o CONTRATO da copy autoral desta peça. Os slots já vêm casados
+   * por papel (`mapearContratoParaCampos`); aqui o contrato é validado, a copy
+   * EFETIVA é lida das camadas finais e as duas são gravadas — a efetiva na
+   * página, original+efetiva na Generation — como o compositor faz.
+   */
+  copyAutoral?: unknown
 }
 
 export interface CreateArteRapidaResult {
@@ -591,61 +598,6 @@ export interface CreateArteRapidaResult {
   layoutEscolhido?: { layout: LayoutPelaFoto; motivo: string; pageId: string; pageName: string }
 }
 
-/**
- * Bake slot values and the background image into a copy of the source layers.
- *
- * Image placement: an explicit `fileUrl` slot always wins. Otherwise the photo
- * goes to the first empty dynamic image layer (the common case); if every
- * candidate already carries a static image, it replaces the first one — without
- * that fallback, templates with a hardcoded background silently ignore the photo.
- */
-function bakeLayers(
-  sourceLayers: any[],
-  slotValues: Record<string, unknown>,
-  imageUrl: string | null,
-): { layers: any[]; imageApplied: boolean; changedTextIds: string[] } {
-  const explicitFileUrl = new Set<string>()
-  const changedTextIds: string[] = []
-
-  const layers = sourceLayers.map((layer: any) => {
-    const slot = slotValues[layer.id] ?? slotValues[layer.name]
-    const updated = { ...layer }
-
-    if (typeof slot === 'string') {
-      updated.content = slot
-      if (layer.type === 'text') changedTextIds.push(layer.id)
-    } else if (slot && typeof slot === 'object') {
-      const slotObj = slot as Record<string, unknown>
-      if (typeof slotObj.content === 'string') {
-        updated.content = slotObj.content
-        if (layer.type === 'text') changedTextIds.push(layer.id)
-      }
-      if (typeof slotObj.fileUrl === 'string') {
-        updated.fileUrl = slotObj.fileUrl
-        explicitFileUrl.add(layer.id)
-      }
-      // O render pula `visible === false` — e o editor mostra a camada como
-      // oculta, então quem abrir a arte consegue religá-la. `hidden: true` é
-      // instrução HUMANA explícita: uma marca antiga de "escondida pelo
-      // revisor" não pode encobri-la (REV-8AD-02).
-      if (slotObj.hidden === true) Object.assign(updated, semMarcaDoRevisor({ ...updated, visible: false }))
-    }
-    return updated
-  })
-
-  if (!imageUrl) return { layers, imageApplied: false, changedTextIds }
-
-  const isImageTarget = (layer: any) =>
-    layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
-
-  const target =
-    layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
-
-  if (!target) return { layers, imageApplied: false, changedTextIds }
-
-  target.fileUrl = imageUrl
-  return { layers, imageApplied: true, changedTextIds }
-}
 
 /**
  * Generate a creative from a source template page: bakes copy and image into
@@ -654,6 +606,13 @@ function bakeLayers(
  */
 export async function createArteRapida(input: CreateArteRapidaInput): Promise<CreateArteRapidaResult> {
   const { projectId, sourcePageId, slotValues } = input
+  // F1: contrato inválido recusa antes de qualquer escrita — mesma regra do item de plano.
+  const contratoRecebido = (() => {
+    if (input.copyAutoral == null) return null
+    const lido = lerCopyAutoral(input.copyAutoral)
+    if (!lido.copy) throw new CreativeError('COPY_AUTORAL_INVALIDA', `O contrato da copy é inválido: ${lido.problemas.join('; ')}`, 400, { problemas: lido.problemas })
+    return lido.copy
+  })()
 
   const project = await db.project.findUnique({
     where: { id: projectId },
@@ -761,7 +720,30 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
 
   const pageName = input.name ?? `${modelo.name} — ${new Date().toLocaleString('pt-BR')}`
 
+  /**
+   * F1 (PR 5): a copy EFETIVA lida das camadas finais sobre o contrato
+   * recebido. A página guarda a efetiva (o contrato do que ela MOSTRA); a
+   * Generation guarda original e efetiva, com `comparavel` e as lacunas — a
+   * mesma forma do compositor (`persistencia.ts`). Os [colchetes] que o modelo
+   * não desenha aparecem como revisão do SISTEMA, nunca como edição de alguém.
+   */
+  // Recusa do contrato na copy lida das camadas finais (histórico cheio no contrato recebido, ou a leitura que não cabe):
+  // a arte segue SEM registro de copy, e o aviso vai no retorno.
+  const avisosDaCopyDoModelo: string[] = []
+  const registroDaCopy = contratoRecebido
+    ? (() => {
+        const lida = tentarCopyEfetivaDasCamadas(contratoRecebido, layers as Layer[], { superficie: 'modelo' })
+        if (lida.ok === false) {
+          avisosDaCopyDoModelo.push(`${lida.aviso} A arte foi gravada sem contrato na página.`)
+          return null
+        }
+        const { efetiva, lacunas } = lida.leitura
+        return { efetiva, registro: { original: contratoRecebido, efetiva, comparavel: contratoRecebido.origem.autor !== 'desconhecido', ...(lacunas.length ? { lacunas } : {}) } }
+      })()
+    : null
+
   const persisted = await persistAndRenderCreative({
+    ...(registroDaCopy ? { copyAutoral: registroDaCopy.efetiva } : {}),
     project,
     templateId: arteTemplate.id,
     templateName: arteTemplate.name,
@@ -787,6 +769,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
       slotValues,
+      ...(registroDaCopy ? { copyAutoral: registroDaCopy.registro } : {}),
       autocorrecao: fix.autocorrecao,
       halo: {
         aplicado: halo.aplicado,
@@ -860,7 +843,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
     autocorrecao: fix.autocorrecao,
-    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
+    ...(fix.avisos.length + avisosDaCopyDoModelo.length > 0 ? { avisos: [...fix.avisos, ...avisosDaCopyDoModelo] } : {}),
     halo: { aplicado: halo.aplicado, blocos: halo.blocos, avisos: halo.avisos },
     ...(layoutEscolhido ? { layoutEscolhido } : {}),
   }
@@ -1104,11 +1087,17 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * sem contrato segue sem — nada é inventado.
    */
   const autorDaRevisao = input.canal === 'studio' ? 'equipe' : 'claude'
-  const revisaoDaCopy = revisaoDaPaginaComCamadas(page.copyAutoral, layers, {
-    autor: autorDaRevisao,
-    motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
-    superficie: input.canal ?? 'chat',
-  })
+  const revisaoDaCopy = revisaoDaPaginaComCamadas(
+    page.copyAutoral,
+    layers,
+    {
+      autor: autorDaRevisao,
+      motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
+      superficie: input.canal ?? 'chat',
+    },
+    // As camadas de ANTES do ajuste: o que a leitura corrige nelas é do sistema (PR5-06).
+    { camadasAnteriores: page.layers },
+  )
   /**
    * Recusa do contrato — histórico CHEIO (PR2-02) ou copy lida que não cabe (`RevisaoDaCopyInvalida`): o ajuste não falha por isso — as camadas e a arte seguem, a página mantém o
    * contrato como estava e a arte nasce SEM registro de copy (a efetiva não cabe no histórico), com o aviso no retorno.

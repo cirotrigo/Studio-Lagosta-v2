@@ -25,8 +25,10 @@ const TETO_DO_APOIO = 40
 
 /** Quebra em 2 linhas no espaço mais perto do meio, quando passa do teto. */
 export function quebrarEmDuas(texto: string, teto: number): string[] {
+  // Quebra ESCRITA pelo autor vale como está — a conferência vinha DEPOIS de
+  // colapsar `\s+`, então nunca via o `\n` (defeito da seção 6 do plano).
+  if (texto.includes('\n')) return texto.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean)
   const t = texto.replace(/\s+/g, ' ').trim()
-  if (t.includes('\n')) return t.split('\n').map((l) => l.trim()).filter(Boolean)
   const visivel = semColchetes(t).length
   if (visivel <= teto) return [t]
   const meio = visivel / 2
@@ -87,7 +89,8 @@ const ORDEM_DE_LEITURA: PapelDaSpec[] = ['pre', 'headline', 'apoio', 'cta']
 const PRIORIDADE: PapelDaSpec[] = ['headline', 'apoio', 'cta', 'pre']
 
 export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = {}): Bloco[] {
-  const limpa = copy.map((c) => c.replace(/\s+/g, ' ').trim()).filter(Boolean)
+  // Espaços colapsam DENTRO de cada linha; a quebra que o autor escreveu fica.
+  const limpa = copy.map((c) => c.split('\n').map((l) => l.replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n')).filter(Boolean)
   if (limpa.length === 0) return []
 
   const disponiveis = opcoes.papeis ? new Set(opcoes.papeis) : null
@@ -113,9 +116,9 @@ export function copyParaBlocos(copy: string[], opcoes: OpcoesDeCopyParaBlocos = 
   }
   const blocos: Bloco[] = resto.slice(0, papeis.length).map((texto, i) => {
     const papel = papeis[i]
-    const linhas = papel === 'headline' ? quebrarEmDuas(texto, TETO_DA_HEADLINE) : papel === 'apoio' ? quebrarEmDuas(texto, TETO_DO_APOIO) : [texto]
+    const linhas = papel === 'headline' ? quebrarEmDuas(texto, TETO_DA_HEADLINE) : papel === 'apoio' ? quebrarEmDuas(texto, TETO_DO_APOIO) : texto.split('\n')
     return { papel, linhas }
   })
-  if (servico && (!disponiveis || disponiveis.has('servico'))) blocos.push({ papel: 'servico', linhas: [servico] })
+  if (servico && (!disponiveis || disponiveis.has('servico'))) blocos.push({ papel: 'servico', linhas: servico.split('\n') })
   return blocos
 }

@@ -821,12 +821,24 @@ export function regraDeSafeArea(formato?: 'story' | 'feed' | 'quadrado', alturaP
 export function copyComCaixaDaMarca(copy: string[], brand: BrandContext | null): string[] {
   const caixaDaMarca = brand ? CAIXA_DA_MANCHETE.get(brand.projectId) : undefined
   const nomesDaMarca = brand?.projectName ? [brand.projectName] : []
-  return copy.map((b, i) => {
-    const limpo = b.replace(/\s+/g, ' ').trim()
-    if (caixaDaMarca === 'natural') return paraCaixaNatural(limpo, nomesDaMarca)
-    if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(limpo)
-    return limpo
-  })
+  // A QUEBRA escrita pelo autor é contrato (F1): o colapso de espaços vale
+  // dentro de cada linha, nunca sobre o "\n" — antes ele apagava a quebra
+  // antes de a copy chegar ao prompt. A linha VAZIA interna também é do autor
+  // (o respiro de "Almoço\n\nem família", que o contrato permite): ela passa
+  // intacta (PR5-09 da revisão final do Codex, 18/09/2026). As bordas do bloco
+  // já chegam aparadas por quem monta a copy (`startArtGeneration`).
+  return copy.map((b, i) =>
+    b
+      .split('\n')
+      .map((linha) => linha.replace(/[ \t]+/g, ' ').trim())
+      .map((limpo) => {
+        if (!limpo) return limpo
+        if (caixaDaMarca === 'natural') return paraCaixaNatural(limpo, nomesDaMarca)
+        if (caixaDaMarca === 'alta' && i === 0) return paraCaixaAlta(limpo)
+        return limpo
+      })
+      .join('\n'),
+  )
 }
 
 export function buildArtePrompt(args: BuildArtePromptArgs): string {

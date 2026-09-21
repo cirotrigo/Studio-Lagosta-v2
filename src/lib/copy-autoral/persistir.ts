@@ -36,8 +36,9 @@ export async function registrarRevisaoDaPagina(args: {
   quem: { autor: Autor; motivo: string; superficie: string }
 }): Promise<RevisaoRegistrada> {
   try {
-    const page = await db.page.findUnique({ where: { id: args.pageId }, select: { copyAutoral: true } })
+    const page = await db.page.findUnique({ where: { id: args.pageId }, select: { copyAutoral: true, layers: true } })
     if (!page) return { estado: 'sem-contrato' }
+    // Caminho TARDIO: as camadas já foram gravadas, então `page.layers` são as novas — não há "anteriores" para reconciliar aqui.
     const r = revisaoDaPaginaComCamadas(page.copyAutoral, args.camadas, args.quem)
     if (r.estado !== 'registrada' || !r.copy) return { estado: r.estado, ...(r.copy ? { copy: r.copy } : {}) }
     const gravada = await db.page.updateMany({
@@ -96,6 +97,8 @@ export async function gravarCamadasComRevisao(
     camadas: (base: { layers: unknown }) => string
     quem: { autor: Autor; motivo: string; superficie: string }
     humana?: boolean
+    /** Reconcilia o contrato com as camadas RELIDAS antes da escrita como revisão do sistema (PR5-06). */
+    reconciliarComAnteriores?: boolean
     dados?: Record<string, unknown>
     voltas?: number
   },
@@ -110,7 +113,7 @@ export async function gravarCamadasComRevisao(
         camadas = JSON.stringify(reconciliarMarcasDoRevisor(lerCamadas(base.layers).camadas as Array<{ id: string; visible?: unknown }>, novas.camadas as Array<{ id: string; [chave: string]: unknown }>))
       }
     }
-    const revisao = revisaoDaPaginaComCamadas(base.copyAutoral, camadas, args.quem)
+    const revisao = revisaoDaPaginaComCamadas(base.copyAutoral, camadas, args.quem, args.reconciliarComAnteriores ? { camadasAnteriores: base.layers } : {})
     const gravada = await cliente.page.updateMany({
       where: { id: args.pageId, updatedAt: base.updatedAt },
       data: { ...(args.dados ?? {}), layers: camadas, ...(revisao.estado === 'registrada' && revisao.copy ? { copyAutoral: revisao.copy as never } : {}) },

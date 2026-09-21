@@ -21,7 +21,14 @@
  *    saía vazio numa revisão AUTORAL, e mostrar a camada de novo virava uma
  *    adição autoral. Camada escondida SEM a marca continua sendo remoção de
  *    quem escreveu. A copy EFETIVA da arte (`copyEfetivaDasCamadas` sobre as
- *    camadas cruas) segue dizendo o que foi DESENHADO — revisão do sistema.
+ *    camadas cruas) segue dizendo o que foi DESENHADO — revisão do sistema. Vale para as DUAS
+ *    leituras: a das camadas novas e a reconciliação com as anteriores;
+ *  - 🔴 com as camadas ANTERIORES à edição em mãos (`camadasAnteriores`), o
+ *    contrato é primeiro RECONCILIADO com elas como revisão do SISTEMA, e só a
+ *    diferença entre as camadas anteriores e as novas é da pessoa. Sem isso,
+ *    toda correção do LEITOR (um contrato gravado por uma leitura antiga que
+ *    trocava o conteúdo entre ids, PR5-02) virava alteração autoral de quem só
+ *    moveu uma caixa (PR5-06 da revisão do Codex, 12/09/2026).
  */
 
 import type { Layer } from '@/types/template'
@@ -77,17 +84,44 @@ export function revisaoDaPaginaComCamadas(
   gravado: unknown,
   camadas: unknown,
   quem: { autor: Autor; motivo: string; superficie: string; em?: string },
+  opcoes: { camadasAnteriores?: unknown } = {},
 ): RevisaoDaPagina {
   const atual = copyAutoralDaPagina(gravado)
   if (!atual) return { estado: 'sem-contrato', copy: null, blocos: [], lacunas: [] }
   const lidas = lerCamadasParaAutoria(camadas)
   if (!lidas.legivel) return { estado: 'ilegivel', copy: null, blocos: [], lacunas: [] }
-  const lida = tentarCopyEfetivaDasCamadas(atual, lidas.camadas as unknown as Layer[], { superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
-  if (lida.ok === false) {
-    return { estado: lida.recusa instanceof HistoricoDaCopyCheio ? 'historico-cheio' : 'copy-invalida', copy: null, blocos: lida.recusa.mudancas.map((m) => m.id), lacunas: [], aviso: lida.aviso }
+  const lacunas: string[] = []
+  // 1. reconciliação: o que a leitura de HOJE diz sobre as camadas de ANTES é
+  //    do sistema — a pessoa ainda não tocou em nada.
+  let base = atual
+  if (opcoes.camadasAnteriores !== undefined) {
+    const anteriores = lerCamadasParaAutoria(opcoes.camadasAnteriores)
+    if (anteriores.legivel) {
+      const lidaAntes = tentarCopyEfetivaDasCamadas(atual, anteriores.camadas as unknown as Layer[], { superficie: 'reconciliacao', ...(quem.em ? { em: quem.em } : {}) })
+      // Recusa do contrato já na RECONCILIAÇÃO — histórico cheio, ou a copy lida das camadas anteriores não cabe
+      // (`RevisaoDaCopyInvalida`): nem ela nem a edição cabem no contrato — as camadas seguem, o contrato fica como
+      // estava e o aviso sai (a mesma regra do passo 2).
+      if (lidaAntes.ok === false) {
+        return { estado: lidaAntes.recusa instanceof HistoricoDaCopyCheio ? 'historico-cheio' : 'copy-invalida', copy: null, blocos: lidaAntes.recusa.mudancas.map((m) => m.id), lacunas, aviso: lidaAntes.aviso }
+      }
+      const r = lidaAntes.leitura
+      if (r.mudancas.length > 0) {
+        const ultima = r.efetiva.revisoes[r.efetiva.revisoes.length - 1]
+        base = { ...r.efetiva, revisoes: [...r.efetiva.revisoes.slice(0, -1), { ...ultima, autor: 'sistema', motivo: 'reconciliação da leitura com as camadas anteriores à edição', superficie: quem.superficie }] }
+        lacunas.push(`o contrato gravado não descrevia as camadas anteriores (${r.mudancas.map((m) => m.id).join(', ')}): reconciliado como revisão do sistema antes da edição`)
+      }
+    }
   }
-  const { efetiva, mudancas, lacunas } = lida.leitura
-  if (mudancas.length === 0) return { estado: 'sem-mudanca', copy: atual, blocos: [], lacunas }
+  // 2. a edição: a diferença entre as camadas anteriores (reconciliadas) e as novas é de quem escreveu.
+  const lida = tentarCopyEfetivaDasCamadas(base, lidas.camadas as unknown as Layer[], { superficie: quem.superficie, ...(quem.em ? { em: quem.em } : {}) })
+  if (lida.ok === false) {
+    return { estado: lida.recusa instanceof HistoricoDaCopyCheio ? 'historico-cheio' : 'copy-invalida', copy: null, blocos: lida.recusa.mudancas.map((m) => m.id), lacunas, aviso: lida.aviso }
+  }
+  const { efetiva, mudancas, lacunas: lacunasDaLeitura } = lida.leitura
+  lacunas.push(...lacunasDaLeitura)
+  if (mudancas.length === 0) {
+    return base === atual ? { estado: 'sem-mudanca', copy: atual, blocos: [], lacunas } : { estado: 'registrada', copy: base, blocos: [], lacunas }
+  }
   const ultima = efetiva.revisoes[efetiva.revisoes.length - 1]
   const revisada: CopyAutoral = {
     ...efetiva,

@@ -32,7 +32,7 @@ import {
 } from '@/lib/ai/creative-improvement-format'
 import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
 import { CAIXA_DA_MANCHETE, aplicarCaixaDaOrigem } from '@/lib/ai/caixa-da-copy'
-import { semTextosDaMarca } from '@/lib/ai/text-comparison'
+import { normalizeForComparison, semTextosDaMarca } from '@/lib/ai/text-comparison'
 import {
   finalizarLogoDaMelhoria,
   instrucaoLogoNaMelhoria,
@@ -51,6 +51,9 @@ import {
   transcreverTextosDaArte,
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
+import type { TextCheckResult } from '@/lib/ai/creative-text-verification'
+import { autorDoPedido, comConferencia, comEnviada, conferenciaDoCheck, contratoDaOrigemDaMelhoria, enviadaNoPrompt, LACUNA_PROMPT_AINDA_NAO_MONTADO, registroParaIA, revisaoDoRefino, type RegistroDaCopyNaArte } from '@/lib/copy-autoral'
+import type { CanalDaArte } from '@/lib/creatives/canal'
 import { googleDriveService } from '@/server/google-drive-service'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { qualidadePadraoPara } from '@/lib/ai/qualidade-arte'
@@ -94,6 +97,16 @@ export interface ImprovementJobArgs {
    */
   skipTextVerification?: boolean
   /**
+   * 🔴 O FATO: a imagem que está sendo melhorada não é a arte da Generation de
+   * origem. `skipTextVerification` é uma CONSEQUÊNCIA dele — hoje a única —, e
+   * decidir a herança do contrato pela bandeira era ler o sintoma no lugar do
+   * fato: qualquer motivo NOVO para pular a conferência de texto derrubaria o
+   * contrato junto e ainda afirmaria no registro que "a imagem é outro slide".
+   * Ausente = job enfileirado antes deste campo, quando a bandeira tinha essa
+   * causa única; aí ela vale.
+   */
+  melhoraOutraImagem?: boolean
+  /**
    * Item da fila da BANCADA que recebe a arte melhorada (F3, 02/09/2026). As
    * duas portas de entrada da arte pronta — fila da bancada e rascunho na
    * agenda — têm a MESMA melhoria: aqui o runner reaponta o item (ou o slide
@@ -106,6 +119,14 @@ export interface ImprovementJobArgs {
   applyToSlideOrdem?: number | null
   userId: string
   orgId?: string
+  /**
+   * Por onde a melhoria foi PEDIDA (`creatives/canal.ts`). É o que diz quem
+   * ASSINA a revisão de copy quando o refino troca texto: `studio` é a pessoa
+   * na tela (`equipe`); os automáticos são o assistente (`claude`). Ausente em
+   * job enfileirado antes disto — `autorDoPedido` devolve `desconhecido`, que
+   * é o conservador (PR5-13).
+   */
+  canal?: CanalDaArte | null
   projectId: number
   projectName: string
   projectGoogleDriveFolderId: string | null
@@ -279,6 +300,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
    * mão a partir da transcrição.
    */
   const registroDaRun: Record<string, unknown> = { diretor: controleDiretor.registro }
+  /** O contrato da copy da arte de ORIGEM (F1): original × enviada × conferência nesta melhoria. */
+  let registroDaCopy: RegistroDaCopyNaArte | null = null
+  /** A última conferência por visão desta run. */
+  let ultimoCheck: TextCheckResult | null = null
+  /** O prompt EXATO que foi ao modelo na última tentativa (`improveCreative.aoMontarPrompt`). */
+  let promptEnviado: string | null = null
 
   // O tier vale para as duas tentativas — trocar no meio compararia peras com
   // maçãs quando o texto divergir. Só sobe ANTES da primeira geração, quando o
@@ -287,12 +314,26 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     args.quality ?? qualidadePadraoPara({ temAjusteDeFoto: !!args.instrucaoImagem?.trim() })
 
   try {
-    const [assets, expectedTexts] = await Promise.all([
+    const [assets, expectedTexts, contratoDaOrigem] = await Promise.all([
       loadImprovementAssets(args.projectId, {
         selectedLogoIds: args.selectedLogoIds,
         selectedElementIds: args.selectedElementIds,
       }),
       loadExpectedTextsForGeneration(args.originalGenerationId),
+      // O contrato PROPAGA pela cadeia como a régua: a origem (arte de IA, de
+      // modelo, do compositor ou outra melhoria) carrega `copyAutoral.original`.
+      // Só quando a imagem melhorada É a arte daquela Generation: o slide 2
+      // do carrossel chega com o `generationId` do slide 1, e o contrato de A
+      // não pode virar o de B (PR5-08). Quem responde isso é o FATO gravado
+      // pelo serviço (`melhoraOutraImagem`), nunca a bandeira da conferência.
+      db.generation
+        .findUnique({ where: { id: args.originalGenerationId }, select: { fieldValues: true } })
+        .then((g) => {
+          const r = contratoDaOrigemDaMelhoria(g?.fieldValues, { outraImagem: args.melhoraOutraImagem ?? !!args.skipTextVerification })
+          if (r.aviso) registroDaRun.copyAutoralNaoHerdada = r.aviso
+          return r.contrato
+        })
+        .catch(() => null),
     ])
 
     const downloadTasks: Array<Promise<DownloadResult | null>> = []
@@ -597,6 +638,8 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         transcricaoDaOrigem = []
       }
     }
+    /** A copy como foi ao planejador do refino, quando ele a trocou — o lado "antes" da revisão do contrato. */
+    let copyAntesDoRefino: string[] | null = null
     let textosParaPrompt = aplicarCaixaDaOrigem(
       textosDaRegua,
       transcricaoDaOrigem,
@@ -671,7 +714,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       promptPronto = logoParaCompor ? `${plano.prompt}\n\n${instrucaoLogoNaMelhoria()}` : plano.prompt
       plannerInfo.planejadorTentativas = plano.tentativas
       if (plano.leitura) plannerInfo.leitura = plano.leitura
-      if (modo === 'refinar' && plano.copyFinal.join('\n') !== textosParaPrompt.join('\n')) {
+      // Bloco a bloco, nunca `join('\n')`: mover uma quebra de linha de um bloco
+      // para o outro dá o mesmo texto concatenado e outra divisão em blocos —
+      // e a régua, o `enviada` e a revisão do contrato têm de acompanhar a
+      // divisão nova (PR5-07 da revisão do Codex, 12/09/2026).
+      const copyMudou = plano.copyFinal.length !== textosParaPrompt.length || plano.copyFinal.some((t, i) => t !== textosParaPrompt[i])
+      if (modo === 'refinar' && copyMudou) {
+        copyAntesDoRefino = textosParaPrompt
         plannerInfo.copyAntes = textosParaPrompt
         textosParaPrompt = plano.copyFinal
         textosDaRegua = plano.copyFinal
@@ -696,6 +745,32 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     Object.assign(registroDaRun, plannerInfo, promptPronto ? { prompt: promptPronto } : {}, {
       ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
     })
+
+    /**
+     * F1 (PR 5): a melhoria grava o contrato da copy como a geração grava —
+     * `original` (o contrato da origem, ou a REVISÃO EXPLÍCITA dele quando o
+     * pedido de refino trocou texto), `enviada` (o que foi ao prompt) e, ao
+     * fim, `conferencia`. Pedido de troca de texto vira revisão de `claude`
+     * com o pedido como motivo — nunca mudança silenciosa. O que mudou é
+     * decidido pelo PAR entrada→saída do planejador, EXATO (acento e quebra
+     * contam), e o bloco do contrato é localizado pelo texto enviado, nunca
+     * pela posição — a ordem dos slots da arte não é a do contrato. A caixa da
+     * origem (`aplicarCaixaDaOrigem`) não vira revisão: bloco que o planejador
+     * devolveu igual mantém as linhas do autor (ver `revisaoDoRefino`).
+     */
+    if (contratoDaOrigem) {
+      const lacunas = ['melhoria por IA: a régua e o texto enviado são os desta rodada']
+      let original = contratoDaOrigem
+      if (modo === 'refinar' && copyAntesDoRefino) {
+        const r = revisaoDoRefino(contratoDaOrigem, copyAntesDoRefino, textosParaPrompt, { autor: autorDoPedido(args.canal), superficie: 'melhoria' }, `pedido de refino: ${args.userRequest.slice(0, 200)}`)
+        if ('copy' in r) original = r.copy
+        else lacunas.push(`o pedido trocou o texto e a revisão não casou com o contrato (${r.descartado}); o texto enviado é o do pedido`)
+      }
+      // O `enviada` é lido do prompt que SAIR (PR5-10): o diretor escreve o
+      // dele e o prompt montado por código colapsa espaços na seção de texto.
+      registroDaCopy = registroParaIA(original, null, [...lacunas, LACUNA_PROMPT_AINDA_NAO_MONTADO])
+      registroDaRun.copyAutoral = registroDaCopy
+    }
 
     // Gera e confere. Sem textos esperados (upload externo, export do editor)
     // não há o que comparar: uma geração só, verificação pulada.
@@ -733,6 +808,9 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           arteSemTexto: arteSemTexto || raizSemTexto,
           logoCompor: !!logoParaCompor,
           promptPronto,
+          aoMontarPrompt: (p) => {
+            promptEnviado = p
+          },
           quality: tier,
           timeoutMs: tempoParaGerar(deadlineDaGeracao),
         })
@@ -798,6 +876,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           transcricaoDaOrigem.length > 0 ? transcricaoDaOrigem : primaryBuffer,
         )
         const checkMs = Date.now() - checkStartedAt
+        ultimoCheck = check
         attemptsLog.push({
           attempt,
           generationMs,
@@ -863,6 +942,16 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         }
         break
       }
+    }
+
+    if (registroDaCopy) {
+      // Sem prompt montado (a geração nem chegou ao modelo) a lacuna fica.
+      if (promptEnviado) registroDaCopy = comEnviada(registroDaCopy, enviadaNoPrompt(promptEnviado, [textosParaPrompt]))
+      registroDaCopy = comConferencia(
+        registroDaCopy,
+        conferenciaDoCheck(ultimoCheck, ultimoCheck ? origemDaRegua : `nenhuma (${String(textCheckInfo.textCheckReason ?? 'a conferência não rodou')})`),
+      )
+      registroDaRun.copyAutoral = registroDaCopy
     }
 
     if (!improvedBuffer) {
@@ -968,6 +1057,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           ...plannerInfo,
           ...(promptPronto ? { prompt: promptPronto } : {}),
           ...textCheckInfo,
+          ...(registroDaCopy ? { copyAutoral: registroDaCopy as never } : {}),
         },
       },
     })
@@ -1015,6 +1105,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
               // cadeia nascia sem régua.
               ...(textosDaRegua.length > 0 ? { textos: textosDaRegua } : {}),
               regua: origemDaRegua,
+              ...(registroDaCopy ? { copyAutoral: registroDaCopy as never } : {}),
               inputSize: openaiSize,
               finalSize: `${finalSize.width}x${finalSize.height}`,
               format,

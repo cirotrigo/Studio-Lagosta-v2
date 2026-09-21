@@ -15,7 +15,9 @@ import {
   decidirGeracao,
   ehRecusa,
   itemExecutavel,
+  mapearContratoParaCampos,
   mapearCopyParaSlots,
+  papelDoCampo,
   motivoDeNaoExecutar,
   situacaoPelaArte,
 } from '../execucao'
@@ -143,6 +145,65 @@ describe('mapearCopyParaSlots', () => {
       ['ALMOÇO'],
     )
     expect(slotValues).toEqual({ l9: 'ALMOÇO' })
+  })
+})
+
+describe('mapearContratoParaCampos (F1 — o contrato casa por PAPEL, nunca por posição)', () => {
+  const contrato = {
+    versao: 'copy-autoral-v1' as const,
+    origem: { autor: 'claude' as const, superficie: 'chat' },
+    blocos: [
+      { id: 'headline', funcao: 'headline' as const, ordem: 0, linhas: ['Milk-shake', 'vem [em dobro]'] },
+      { id: 'cta', funcao: 'cta' as const, ordem: 1, linhas: ['Vem pra cá'] },
+      { id: 'servico', funcao: 'servico' as const, ordem: 2, linhas: ['Seg a sáb · 11h às 22h'] },
+    ],
+    revisoes: [],
+  }
+  it('lê o papel do campo pelo declarado ou pelo NOME; nome que não diz nada é null', () => {
+    expect(papelDoCampo({ layerId: 'a', papel: 'servico' })).toBe('servico')
+    expect(papelDoCampo({ layerId: 'a', name: 'Pré-título' })).toBe('pre')
+    expect(papelDoCampo({ layerId: 'a', name: 'Título' })).toBe('headline')
+    expect(papelDoCampo({ layerId: 'a', name: 'Subtítulo' })).toBe('apoio')
+    expect(papelDoCampo({ layerId: 'a', name: 'Chamada' })).toBe('cta')
+    expect(papelDoCampo({ layerId: 'a', name: 'Horário' })).toBe('servico')
+    expect(papelDoCampo({ layerId: 'a', name: 'Texto 3' })).toBeNull()
+  })
+  it('casa por papel mesmo com os campos em OUTRA ordem, tira os [colchetes], preserva a quebra e carimba papel e bloco no slot', () => {
+    const campos = [{ layerId: 'l-cta', name: 'Chamada' }, { layerId: 'l-h', name: 'Título' }, { layerId: 'l-s', papel: 'servico' }]
+    const m = mapearContratoParaCampos(campos, contrato)
+    expect(m.slotValues).toEqual({
+      'l-h': { content: 'Milk-shake\nvem em dobro', bloco: 'headline', papel: 'headline' },
+      'l-cta': { content: 'Vem pra cá', bloco: 'cta', papel: 'cta' },
+      'l-s': { content: 'Seg a sáb · 11h às 22h', bloco: 'servico', papel: 'servico' },
+    })
+    expect(m.vinculos.map((v) => [v.blocoId, v.layerId, v.por])).toEqual([['headline', 'l-h', 'papel'], ['cta', 'l-cta', 'papel'], ['servico', 'l-s', 'papel']])
+    expect(m.ocultar).toEqual([])
+    expect(m.avisos).toEqual([])
+    expect(m.semCampo).toEqual([])
+  })
+  it('bloco sem campo do seu papel vai para um campo SEM papel reconhecido (declarado como posição); campo de outro papel nunca o recebe', () => {
+    const campos = [{ layerId: 'l-h', name: 'Título' }, { layerId: 'l-x', name: 'Texto 2' }, { layerId: 'l-pre', name: 'Pré-título' }]
+    const m = mapearContratoParaCampos(campos, contrato)
+    expect(Object.keys(m.slotValues).sort()).toEqual(['l-h', 'l-x'])
+    expect(m.vinculos.find((v) => v.blocoId === 'cta')).toEqual({ blocoId: 'cta', layerId: 'l-x', por: 'posicao' })
+    // o serviço não tem campo nem vaga sem papel: fica DECLARADO, não some
+    expect(m.semCampo).toEqual(['servico'])
+    expect(m.avisos.some((a) => a.includes('por posição'))).toBe(true)
+    expect(m.avisos.some((a) => a.includes('não tem campo para 1 bloco') && a.includes('Seg a sáb'))).toBe(true)
+    // o Pré-título ficou sem copy: OCULTO, como sempre
+    expect(m.ocultar).toEqual(['l-pre'])
+  })
+  it('bloco VAZIO de propósito não ocupa campo; contrato sem texto deixa o modelo como está, com aviso', () => {
+    const vazio = { ...contrato, blocos: [{ id: 'headline', funcao: 'headline' as const, ordem: 0, linhas: [] }] }
+    const m = mapearContratoParaCampos([{ layerId: 'l-h', name: 'Título' }], vazio)
+    expect(m.slotValues).toEqual({})
+    expect(m.ocultar).toEqual([])
+    expect(m.avisos[0]).toMatch(/não tem texto próprio/)
+  })
+  it('modelo sem campo de texto: tudo em semCampo, com aviso', () => {
+    const m = mapearContratoParaCampos([], contrato)
+    expect(m.semCampo).toEqual(['headline', 'cta', 'servico'])
+    expect(m.avisos[0]).toMatch(/não tem campo de texto/)
   })
 })
 

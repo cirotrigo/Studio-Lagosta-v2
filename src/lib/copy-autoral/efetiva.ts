@@ -150,6 +150,12 @@ export function renomearExtrasDuplicados(copy: CopyAutoral, idsDeCamada: Readonl
  * `incluirOcultas` porque o bloco da camada oculta continua no contrato e o
  * id da cópia precisa acompanhá-lo (R5-02).
  */
+/** O id do bloco carimbado na camada por quem a desenhou (`metadata.compositor.bloco` — a via de modelo, PR 5). */
+function blocoCarimbado(l: Layer): string | null {
+  const meta = l.metadata as { compositor?: { bloco?: unknown } } | undefined
+  return typeof meta?.compositor?.bloco === 'string' ? meta.compositor.bloco : null
+}
+
 export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], opcoes: { incluirOcultas?: boolean } = {}): { vinculos: Map<string, Layer>; ambiguos: string[] } {
   const { porFuncao, voz2, soltas } = camadasPorFuncao(camadas, opcoes)
   const emOrdem = [...soltas, ...[...porFuncao.values()].flat(), ...voz2]
@@ -164,7 +170,7 @@ export function vincularExtras(blocosLivres: BlocoAutoral[], camadas: Layer[], o
   }
   // 1. nomeada pelo bloco
   for (const b of [...pendentes]) {
-    const c = emOrdem.find((l) => !usadas.has(l.id) && (l.id === b.id || l.name === b.id))
+    const c = emOrdem.find((l) => !usadas.has(l.id) && (l.id === b.id || l.name === b.id || blocoCarimbado(l) === b.id))
     if (c) tomar(b, c)
   }
   const candidatasDe = (b: BlocoAutoral) => emOrdem.filter((c) => !usadas.has(c.id) && (idDeExtra(c) === b.id || indiceLegado(b.id, idDeExtraLegado(c)) !== null))
@@ -225,6 +231,29 @@ function linhasDaCamada(l: Layer): string[] {
   const prefixo = (l.metadata as { compositor?: { prefixo?: unknown } } | undefined)?.compositor?.prefixo
   if (typeof prefixo === 'string' && prefixo && linhas[0]?.startsWith(prefixo)) return [linhas[0].slice(prefixo.length), ...linhas.slice(1)]
   return linhas
+}
+
+/**
+ * Tira da camada a DECLARAÇÃO de prefixo (`metadata.compositor.prefixo`).
+ *
+ * 🔴 A declaração descreve o conteúdo que o COMPOSITOR desenhou naquela camada
+ * (a seta que ele põe antes do CTA), e quem preenche a camada com conteúdo
+ * NOVO não acrescenta ornamento nenhum — escreve o texto tal e qual. Herdada,
+ * ela fazia `linhasDaCamada` descontar da leitura um prefixo que agora é TEXTO
+ * DO AUTOR: modelo com `prefixo: '→ '` recebendo um bloco que começa por "→ "
+ * mostrava "→ Venha hoje" na arte e gravava "Venha hoje" no contrato — uma
+ * transformação do sistema que nunca aconteceu (PR5-12 da revisão final do
+ * Codex, 21/09/2026). Quem preencher a camada ACRESCENTANDO ornamento declara
+ * o prefixo de novo; hoje ninguém faz isso fora do compositor.
+ */
+export function semPrefixoHerdado<L extends { metadata?: unknown }>(l: L): L {
+  const meta = l.metadata
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return l
+  const compositor = (meta as { compositor?: unknown }).compositor
+  if (!compositor || typeof compositor !== 'object' || Array.isArray(compositor)) return l
+  if (!('prefixo' in (compositor as Record<string, unknown>))) return l
+  const { prefixo: _fora, ...resto } = compositor as Record<string, unknown>
+  return { ...l, metadata: { ...(meta as Record<string, unknown>), compositor: resto } }
 }
 
 /**
