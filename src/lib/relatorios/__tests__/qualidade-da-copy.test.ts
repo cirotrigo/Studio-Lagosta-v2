@@ -86,13 +86,14 @@ const criadoEm = (g: ArteNoBanco): number => {
  * limite de data deixava passar a referência direta cortada por ele).
  */
 function consultaDeArtes(strings: TemplateStringsArray, valores: unknown[]) {
-  const q = { projectId: 0, ids: [] as string[], urls: [] as string[], desde: new Date(0), paginas: [] as string[], excluir: [] as string[], limite: Infinity }
+  const q = { projectId: 0, ids: [] as string[], urls: [] as string[], urlsAnteriores: [] as string[], desde: new Date(0), paginas: [] as string[], excluir: [] as string[], limite: Infinity }
   valores.forEach((v, i) => {
     const antes = strings[i].replace(/\s+/g, ' ')
     if (antes.endsWith('"projectId" = ')) q.projectId = v as number
     else if (antes.endsWith('NOT (id = ANY(')) q.excluir = v as string[]
     else if (antes.endsWith('id = ANY(')) q.ids = v as string[]
     else if (antes.endsWith('"resultUrl" = ANY(')) q.urls = v as string[]
+    else if (antes.endsWith('anterior.url = ANY(')) q.urlsAnteriores = v as string[]
     else if (antes.endsWith('"createdAt" >= ')) q.desde = v as Date
     else if (antes.endsWith(`->>'pageId' = ANY(`)) q.paginas = v as string[]
     else if (antes.endsWith('LIMIT ')) q.limite = v as number
@@ -156,6 +157,12 @@ function avaliarOnde(expr: string, valores: unknown[], g: ArteNoBanco): boolean 
   if ((m = e.match(/^"resultUrl" = ANY\(\$(\d+)::text\[\]\)$/))) return g.resultUrl != null && (v(m[1]) as string[]).includes(g.resultUrl)
   if ((m = e.match(/^"createdAt" >= \$(\d+)$/))) return criadoEm(g) >= (v(m[1]) as Date).getTime()
   if ((m = e.match(/^"fieldValues"->>'pageId' = ANY\(\$(\d+)::text\[\]\)$/))) return g.pageId != null && (v(m[1]) as string[]).includes(g.pageId)
+  // O rastro de URLs da arte (`recomposicao.urlsAnteriores`), só quando é array (PR15-06).
+  if ((m = e.match(/^EXISTS \(SELECT 1 FROM jsonb_array_elements_text\(CASE WHEN jsonb_typeof\("fieldValues"->'recomposicao'->'urlsAnteriores'\) = 'array' THEN "fieldValues"->'recomposicao'->'urlsAnteriores' ELSE '\[\]'::jsonb END\) AS anterior\(url\) WHERE anterior\.url = ANY\(\$(\d+)::text\[\]\)\)$/))) {
+    const r = (g.fieldValues as Record<string, unknown> | undefined)?.recomposicao ?? g.recomposicao
+    const rastro = r && typeof r === 'object' && Array.isArray((r as { urlsAnteriores?: unknown }).urlsAnteriores) ? ((r as { urlsAnteriores: unknown[] }).urlsAnteriores) : []
+    return rastro.some((u) => typeof u === 'string' && (v(m![1]) as string[]).includes(u))
+  }
   throw new Error(`condição da consulta das artes que o banco falso não conhece: ${e}`)
 }
 
@@ -622,5 +629,45 @@ describe('PR15-08 · a referência DIRETA do post não cai no limite do históri
     const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
     expect(r.avisos).toEqual([])
     expect(r.medidas[0].correcoes.revisor).toBe(1)
+  })
+})
+
+describe('PR15-06 · a consulta das artes acha a mídia congelada pelo rastro de URLs', () => {
+  const original = {
+    versao: 'copy-autoral-v1',
+    origem: { autor: 'claude', em: '2026-09-08T10:00:00.000Z', superficie: 'chat' },
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Sexta é dia', 'de churrasco'] },
+      { id: 'cta', funcao: 'cta', ordem: 1, linhas: ['Vem pra cá'] },
+    ],
+    revisoes: [],
+  }
+  const camadas = JSON.stringify(original.blocos.map((b) => ({ id: b.id, name: b.id, type: 'text', content: b.linhas.join('\n') })))
+  const linha = (id: string, pageId: string, resultUrl: string, fieldValues: Record<string, unknown> = {}): ArteNoBanco => ({
+    id,
+    pageId,
+    resultUrl,
+    createdAt: new Date('2026-09-08T10:00:00Z'),
+    canal: null,
+    fieldValues: { pageId, source: 'compositor', copyAutoral: { original, efetiva: original, comparavel: true }, ...fieldValues },
+  })
+
+  it('carrossel publicado de três páginas com o slide 2 recomposto para outro post: três peças, a segunda sem prova', async () => {
+    const banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'carrossel', generationId: 'g1', mediaUrls: ['u1', 'u2', 'u3'], status: 'POSTED', laterPostId: 'zernio-1' })],
+      generations: [
+        linha('g1', 'p1', 'u1'),
+        // A arte do slide 2 tem hoje OUTRA URL; a da mídia congelada ficou no rastro.
+        linha('g2', 'p2', 'u2-novo', { recomposicao: { estado: 'feita', em: '2026-09-09T10:00:00.000Z', urlsAnteriores: ['u2'] } }),
+        linha('g3', 'p3', 'u3'),
+      ],
+      paginas: ['p1', 'p2', 'p3'].map((id) => ({ id, copyAutoral: original, layers: camadas })),
+    })
+    estado.banco = banco
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.indisponivel).toBeNull()
+    expect(r.medidas.map((m) => m.chave).sort()).toEqual(['page:p1', 'page:p2', 'page:p3'])
+    expect(r.medidas.find((m) => m.chave === 'page:p2')).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+    expect(r.qualidade?.foraDoDenominador.congeladaSemProva).toBe(1)
   })
 })

@@ -992,3 +992,43 @@ describe('PR15-07 · a recusa entra no congelado pelo instante DELA, não pelo d
     expect(peca({ recusaDaRecomposicao: semData }, { vivo: true }).correcoes.compositor).toBe(1)
   })
 })
+
+describe('PR15-06 · o slide congelado se acha pelo RASTRO de URLs da arte', () => {
+  const original = copiaOriginal()
+  const depois = revisar(original, { headline: ['Sexta tem', 'churrasco'] }, noEditor(T(50)))
+  /** Carrossel publicado com três páginas; depois a arte do slide 2 foi recomposta para OUTRO post vivo (a URL antiga ficou no rastro). */
+  const carrossel = (slide2: Partial<ArteLida>) =>
+    leitura({
+      posts: [post({ id: 'carrossel', generationId: 'g1', mediaUrls: ['u1', 'u2', 'u3'], ...CONGELADO })],
+      artes: [
+        arte('g1', { pageId: 'p1', resultUrl: 'u1', copyAutoral: peca(original) }),
+        arte('g2', { pageId: 'p2', resultUrl: 'u2-novo', copyAutoral: peca(depois), recomposicao: { estado: 'feita', em: T(60), urlsAnteriores: ['u2'] }, ...slide2 }),
+        arte('g3', { pageId: 'p3', resultUrl: 'u3', copyAutoral: peca(original) }),
+      ],
+      paginas: [
+        { id: 'p1', copyAutoral: original, layers: camadasDa(original) },
+        { id: 'p2', copyAutoral: depois, layers: camadasDa(depois) },
+        { id: 'p3', copyAutoral: original, layers: camadasDa(original) },
+      ],
+    })
+
+  it('três peças: o slide 2 existe pelo rastro e sai do denominador por falta de prova — a efetiva ATUAL não vira snapshot da imagem antiga', () => {
+    const pecas = montarPecas(carrossel({}))
+    expect(pecas.map((p) => p.chave).sort()).toEqual(['page:p1', 'page:p2', 'page:p3'])
+    const ms = pecas.map(medirPeca)
+    expect(ms.find((m) => m.chave === 'page:p2')).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova', preservada: null })
+    for (const chave of ['page:p1', 'page:p3']) expect(ms.find((m) => m.chave === chave)).toMatchObject({ comparavel: true, preservada: true })
+    expect(medirQualidadeDaCopy(ms, { limiar: 1 }).foraDoDenominador.congeladaSemProva).toBe(1)
+  })
+
+  it('a URL ATUAL de uma arte vence o rastro de outra (e a arte sem rastro, como antes, some com a mídia)', () => {
+    const l = carrossel({})
+    // Uma arte nova passou a ter "u2" como URL atual: é ela que descreve a mídia, pela URL exata.
+    l.artes.push(arte('g2-nova', { pageId: 'p2', resultUrl: 'u2', createdAt: T(70), copyAutoral: peca(depois) }))
+    const p2 = montarPecas(l).find((p) => p.chave === 'page:p2')!
+    expect(p2.final?.blocos.find((b) => b.id === 'headline')?.linhas).toEqual(['Sexta tem', 'churrasco'])
+    expect(medirPeca(p2)).toMatchObject({ comparavel: true })
+    // Controle: sem o rastro, a mídia antiga não acha arte nenhuma — e o slide não vira peça.
+    expect(montarPecas(carrossel({ recomposicao: null })).map((p) => p.chave).sort()).toEqual(['page:p1', 'page:p3'])
+  })
+})

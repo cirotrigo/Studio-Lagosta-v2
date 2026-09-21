@@ -159,9 +159,11 @@ export async function lerSemanaDoCliente(
   // não viajam). A MESMA consulta serve às duas leituras, e o limite de data
   // vale SÓ no histórico (PR15-08 da revisão final do Codex, 21/09/2026):
   //  - as DIRETAS — id da arte (a coluna) e URL da mídia (cada slide acha a
-  //    sua arte pela URL exata, PR15-01) —, sem teto de data. O limite cortava
-  //    até a arte que o post aponta, e a peça com contrato saía "sem
-  //    contrato" (no carrossel, os slides sumiam);
+  //    sua arte pela URL exata, PR15-01), atual OU no rastro da arte
+  //    (`recomposicao.urlsAnteriores`: a recomposição para outro post troca a
+  //    `resultUrl`, e a mídia congelada fica com a antiga — PR15-06) —, sem
+  //    teto de data. O limite cortava até a arte que o post aponta, e a peça
+  //    com contrato saía "sem contrato" (no carrossel, os slides sumiam);
   //  - o HISTÓRICO — as outras artes das páginas, a deduplicação por página —,
   //    limitado a `desde`.
   const lerArtes = (ids: string[], urlsDasMidias: string[], paginas: string[], excluir: string[], limite: number) =>
@@ -183,6 +185,7 @@ export async function lerSemanaDoCliente(
         AND (
           id = ANY(${ids}::text[])
           OR "resultUrl" = ANY(${urlsDasMidias}::text[])
+          OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof("fieldValues"->'recomposicao'->'urlsAnteriores') = 'array' THEN "fieldValues"->'recomposicao'->'urlsAnteriores' ELSE '[]'::jsonb END) AS anterior(url) WHERE anterior.url = ANY(${urlsDasMidias}::text[]))
           OR ("createdAt" >= ${desde} AND "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
         )
         AND NOT (id = ANY(${excluir}::text[]))

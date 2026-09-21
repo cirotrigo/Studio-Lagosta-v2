@@ -532,7 +532,15 @@ function finalDaPeca(ocorrencias: Ocorrencia[], artes: ArteLida[], pagina: Pagin
 export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
   const artePorId = new Map(l.artes.map((a) => [a.id, a]))
   const artePorUrl = new Map<string, ArteLida>()
-  for (const a of [...l.artes].sort((x, y) => tempo(x.createdAt) - tempo(y.createdAt))) if (a.resultUrl) artePorUrl.set(a.resultUrl, a)
+  // O RASTRO: as URLs que a arte já teve (`recomposicao.urlsAnteriores`). A
+  // recomposição para outro post vivo troca a `resultUrl`, e a mídia congelada
+  // continua com a antiga (PR15-06 da revisão final do Codex, 21/09/2026).
+  const artePorUrlAntiga = new Map<string, ArteLida>()
+  for (const a of [...l.artes].sort((x, y) => tempo(x.createdAt) - tempo(y.createdAt))) {
+    if (a.resultUrl) artePorUrl.set(a.resultUrl, a)
+    const rastro = objeto(a.recomposicao)?.urlsAnteriores
+    if (Array.isArray(rastro)) for (const u of rastro) if (typeof u === 'string' && u) artePorUrlAntiga.set(u, a)
+  }
   const paginaPorId = new Map(l.paginas.map((p) => [p.id, p]))
 
   const grupos = new Map<string, { pageId: string | null; ocorrencias: Ocorrencia[]; arteDireta: ArteLida | null }>()
@@ -550,8 +558,12 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     let achou = false
     midias.forEach((url, indice) => {
       const porUrl = url ? (artePorUrl.get(url) ?? null) : null
-      const arte = porUrl ?? (indice === 0 ? daColuna : null)
-      const pageId = porUrl ? porUrl.pageId : indice === 0 ? (post.pageId ?? daColuna?.pageId ?? null) : null
+      // Pelo rastro: a arte e a página são desta mídia, mas a efetiva ATUAL da
+      // arte descreve outra imagem — o vínculo serve para CONTAR a peça (e a
+      // exclusão, sem prova), nunca como snapshot (`porUrl` fica falso).
+      const peloRastro = !porUrl && url ? (artePorUrlAntiga.get(url) ?? null) : null
+      const arte = porUrl ?? peloRastro ?? (indice === 0 ? daColuna : null)
+      const pageId = porUrl ? porUrl.pageId : peloRastro ? peloRastro.pageId : indice === 0 ? (post.pageId ?? daColuna?.pageId ?? null) : null
       if (!arte && !pageId) return
       achou = true
       adicionar(pageId ? `page:${pageId}` : `gen:${arte!.id}`, pageId, { post, indice, arte, porUrl: !!porUrl })
