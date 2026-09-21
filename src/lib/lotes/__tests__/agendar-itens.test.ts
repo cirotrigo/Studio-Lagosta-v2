@@ -38,6 +38,8 @@ const banco = vi.hoisted(() => ({
   falharPasta: 0,
   /** R12-04: a conta pelo leitor não pode tocar o `db` global — tocar lança. */
   dbGlobalBloqueado: false,
+  /** R12-08: o próximo `generation.create` desta URL cai no banco (o catálogo REAL engole e devolve `falhou`). */
+  falharArteDaUrl: null as string | null,
 }))
 
 const efeitos = vi.hoisted(() => ({
@@ -54,6 +56,8 @@ const efeitos = vi.hoisted(() => ({
   pastasReais: false,
   /** R12-02: o catálogo de artes que engoliu a queda do banco (a prova do real mora em `artes-do-post-falha.test.ts`). */
   artesFalham: false,
+  /** R12-08 e C12-1x4: o catálogo de VERDADE (`registrarArtesDoPost` + `ensurePostGeneration`) sobre o banco falso. */
+  artesReais: false,
 }))
 
 vi.mock('@/lib/db', () => {
@@ -135,6 +139,22 @@ vi.mock('@/lib/db', () => {
         const g = [...banco.generations.values()].find((x) => casa(x, where))
         return g ? escolher(g, select) : null
       },
+      // Só o catálogo REAL chega aqui (R12-08): a mais recente por URL, como o `orderBy createdAt desc` dele.
+      findMany: async ({ where, select }: { where: Record<string, unknown>; select?: Record<string, unknown> }) =>
+        [...banco.generations.values()]
+          .filter((g) => casa(g, where))
+          .sort((a, b) => Number(b.createdAt ?? 0) - Number(a.createdAt ?? 0))
+          .map((g) => escolher(g, select)),
+      create: async ({ data, select }: { data: Record<string, unknown>; select?: Record<string, unknown> }) => {
+        if (banco.falharArteDaUrl && data.resultUrl === banco.falharArteDaUrl) {
+          banco.falharArteDaUrl = null
+          throw new Error('a conexão com o banco caiu ao registrar a arte da mídia')
+        }
+        const id = `arte-${++banco.seq}`
+        const linha = { id, createdAt: banco.seq, ...data }
+        gravar('generations', id, linha, naTransacao)
+        return escolher(linha, select)
+      },
     },
     socialPost: {
       create: async ({ data, select }: { data: Record<string, unknown>; select?: Record<string, unknown> }) => {
@@ -146,7 +166,8 @@ vi.mock('@/lib/db', () => {
       },
       findUnique: async ({ where, select }: { where: { id: string }; select?: Record<string, unknown> }) => {
         const p = banco.posts.get(where.id)
-        return p ? escolher(p, select) : null
+        // A relação que `ensurePostGeneration` lê (catálogo REAL, R12-08).
+        return p ? escolher({ Project: { userId: 'dono-interno', name: 'Espeto Gaúcho' }, ...p }, select) : null
       },
       findMany: async ({ where, select, take }: { where: Record<string, unknown>; select?: Record<string, unknown>; take?: number }) =>
         [...banco.posts.values()]
@@ -154,6 +175,8 @@ vi.mock('@/lib/db', () => {
           .sort((a, b) => Number(a.createdAt) - Number(b.createdAt))
           .slice(0, take ?? Infinity)
           .map((p) => escolher(p, select)),
+      // O vínculo da capa (`generationId: null` no where) — catálogo REAL, R12-08.
+      updateMany: atualizarMuitos('posts', naTransacao),
     },
     itemDeLote: {
       findUnique: async ({ where, select }: { where: { id?: string; projectId_loteId_itemId?: Record<string, unknown> }; select?: Record<string, unknown> }) => {
@@ -282,12 +305,17 @@ vi.mock('@/lib/aprendizado/sinal-de-legenda', async (importOriginal) => {
     },
   }
 })
-vi.mock('@/lib/posts/artes-do-post', () => ({
-  registrarArtesDoPost: async () => {
-    efeitos.chamadasDeArtes++
-    return { registradas: 0, colunaVinculada: false, artes: [], ...(efeitos.artesFalham ? { falhou: true } : {}) }
-  },
-}))
+vi.mock('@/lib/posts/artes-do-post', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/posts/artes-do-post')>()
+  return {
+    ...real,
+    registrarArtesDoPost: async (...args: Parameters<typeof real.registrarArtesDoPost>) => {
+      efeitos.chamadasDeArtes++
+      if (efeitos.artesReais) return real.registrarArtesDoPost(...args)
+      return { registradas: 0, colunaVinculada: false, artes: [], ...(efeitos.artesFalham ? { falhou: true } : {}) }
+    },
+  }
+})
 vi.mock('@/lib/compositor/pastas', async (importOriginal) => {
   const real = await importOriginal<typeof import('@/lib/compositor/pastas')>()
   return {
@@ -402,13 +430,16 @@ beforeEach(() => {
   banco.falharEscritaDoItemDoPlano = 0
   banco.falharPasta = 0
   banco.dbGlobalBloqueado = false
+  banco.falharArteDaUrl = null
   efeitos.artesFalham = false
+  efeitos.artesReais = false
   vi.spyOn(console, 'warn').mockImplementation(() => {})
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
 describe('do lote até os rascunhos — a semana', () => {
   it('semana de 5 com falha no meio: exatamente os rascunhos previstos, com página editável e imagem atual; a repetição não duplica', async () => {
+    efeitos.artesReais = true
     for (const n of [1, 2, 4, 5]) criarPeca(n)
     criarPeca(3, { status: 'FAILED' })
     const semana = [1, 2, 3, 4, 5].map((n) => item(n))
@@ -435,7 +466,11 @@ describe('do lote até os rascunhos — a semana', () => {
     expect(repetida.itens.map((i) => i.postId)).toEqual(primeira.itens.map((i) => i.postId))
     expect(banco.posts.size).toBe(4)
     expect(efeitos.chamadasDeSlot).toBe(4) // nenhum efeito refeito: os carimbos estavam gravados
-    expect(efeitos.chamadasDeArtes).toBe(0) // o post do lote já nasce com a Generation da peça (C12-1x4)
+    // O catálogo REAL roda uma vez por post (a repetição não refaz: os carimbos estavam gravados) e não cria
+    // arte nenhuma — a capa de cada post é a própria peça (C12-1x4). Antes do R12-08 o teste afirmava
+    // "catálogo nunca chamado", que era justamente o defeito: pular o catálogo INTEIRO pelo vínculo da capa.
+    expect(efeitos.chamadasDeArtes).toBe(4)
+    expect(banco.generations.size).toBe(5)
 
     // A composição do item 3 foi refeita (PR 11): a próxima repetição completa a semana.
     criarPeca(3)
@@ -945,16 +980,23 @@ describe('o item do plano manda na peça (C12-1)', () => {
     expect(fotoDoBanco()).toEqual(antes)
   })
 
+  // Pelo catálogo REAL (R12-08): o que importa é não nascer arte nova do PNG do cron — não "o catálogo não foi chamado".
   it('C12-1x4: repetição com efeitos pendentes depois de o cron renderizar o post não cataloga o PNG do render como arte nova', async () => {
+    efeitos.artesReais = true
     criarPeca(1)
     efeitos.derrubar = 1
     const caiu = await agendar([item(1)])
     const id = caiu.itens[0].postId!
     // O cron render-stories desenhou o post: a mídia virou o PNG dele, sem Generation.
-    banco.posts.set(id, { ...banco.posts.get(id)!, renderStatus: 'RENDERED', mediaUrls: [`${BLOB}/${id}-1757700099999.png`] })
+    const doCron = `${BLOB}/${id}-1757700099999.png`
+    banco.posts.set(id, { ...banco.posts.get(id)!, renderStatus: 'RENDERED', mediaUrls: [doCron] })
+    const artes = banco.generations.size
     const repetida = await agendar([item(1)])
     expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: id })
-    expect(efeitos.chamadasDeArtes).toBe(0)
+    expect(repetida.itens[0].avisos).toBeUndefined()
+    expect([...banco.generations.values()].filter((g) => g.resultUrl === doCron)).toHaveLength(0)
+    expect(banco.generations.size).toBe(artes)
+    expect(banco.posts.get(id)!.generationId).toBe('gen-1')
     expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
   })
 
@@ -970,6 +1012,94 @@ describe('o item do plano manda na peça (C12-1)', () => {
     expect(r.itens[1].postId).toBeUndefined()
     expect(r.itens[1].motivo).toContain('Nada foi alterado')
     expect(banco.posts.size).toBe(1)
+  })
+})
+
+describe('R12-07 — o link de edição aponta o template onde a página ESTÁ', () => {
+  const editUrl = (templateId: number) => `https://studio.test/templates/${templateId}/editor?pageId=page-1`
+
+  it('página que os efeitos levam das avulsas para a semana: a PRIMEIRA resposta e a repetição apontam o template de destino, e o post não é tocado', async () => {
+    efeitos.pastasReais = true
+    criarPeca(1)
+    banco.pages.set('page-1', { ...banco.pages.get('page-1')!, name: 'Avulsa · Tema 1', order: 0, templateId: 77, Template: { id: 77, name: 'Avulsas · setembro', category: 'avulsas', projectId: PROJETO } })
+    const primeira = await agendar([item(1)])
+    const postId = primeira.itens[0].postId!
+    expect(banco.pages.get('page-1')).toMatchObject({ templateId: 42 })
+    expect(primeira.itens[0]).toMatchObject({ desfecho: 'criado', editUrl: editUrl(42) })
+
+    const repetida = await agendar([item(1)])
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId, editUrl: editUrl(42) })
+    // O post nasceu com o template de antes da mudança (comportamento da main) e continua assim: a leva não reescreve post.
+    expect(banco.posts.get(postId)!.templateId).toBe(77)
+  })
+
+  it('remarcada para outra semana, com a primeira chamada caindo antes dos efeitos: a primeira aponta onde a página ainda está; a repetição, que a refila, aponta o destino', async () => {
+    efeitos.pastasReais = true
+    criarPeca(1) // composta para 11/09
+    banco.pages.set('page-1', { ...banco.pages.get('page-1')!, name: 'Sex 11/09 · 19:00 · Tema 1', order: 0, templateId: 41, Template: { id: 41, category: 'programacao', projectId: PROJETO } })
+    efeitos.derrubar = 1
+    const caiu = await agendar([item(1, { quando: '2026-09-20 12:00' })])
+    expect(banco.pages.get('page-1')).toMatchObject({ templateId: 41 })
+    expect(caiu.itens[0].editUrl).toBe(editUrl(41))
+
+    const repetida = await agendar([item(1, { quando: '2026-09-20 12:00' })])
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', editUrl: editUrl(42) })
+    expect(banco.pages.get('page-1')).toMatchObject({ templateId: 42 })
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+
+    expect((await agendar([item(1, { quando: '2026-09-20 12:00' })])).itens[0].editUrl).toBe(editUrl(42))
+  })
+
+  it('post ADOTADO com o templateId de antes da página mudar de pasta: simular e a chamada de verdade apontam a pasta atual, sem tocar no post', async () => {
+    criarPeca(1)
+    banco.posts.set('post-manual', { id: 'post-manual', projectId: PROJETO, pageId: 'page-1', templateId: 77, generationId: null, status: 'DRAFT', postType: 'STORY', scheduledDatetime: new Date('2026-09-11T22:00:00.000Z'), mediaUrls: [], renderStatus: 'PENDING', createdAt: 0, caption: '', sugestaoId: null, origem: null })
+    const antes = structuredClone(banco.posts.get('post-manual'))
+    expect((await agendar([item(1)], { simular: true })).itens[0]).toMatchObject({ desfecho: 'adotado', editUrl: editUrl(42) })
+    expect((await agendar([item(1)])).itens[0]).toMatchObject({ desfecho: 'adotado', postId: 'post-manual', editUrl: editUrl(42) })
+    expect(banco.posts.get('post-manual')).toEqual(antes)
+  })
+
+  it('página que não existe mais: sem link — nunca um template que abriria outra página', async () => {
+    criarPeca(1)
+    const primeira = await agendar([item(1)])
+    banco.pages.delete('page-1')
+    const repetida = await agendar([item(1)])
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: primeira.itens[0].postId })
+    expect(repetida.itens[0].editUrl).toBeUndefined()
+  })
+})
+
+describe('R12-08 — a capa vinculada não é o catálogo completo', () => {
+  it('catálogo REAL: a capa vincula e a segunda mídia cai; a repetição registra a que faltou sem duplicar a capa, e só então carimba', async () => {
+    efeitos.artesReais = true
+    criarPeca(1)
+    const capa = `${BLOB}/capa-da-equipe.png`
+    const slide2 = `${BLOB}/slide-2-da-equipe.png`
+    banco.posts.set('post-manual', { id: 'post-manual', projectId: PROJETO, pageId: 'page-1', templateId: 42, generationId: null, status: 'DRAFT', postType: 'POST', scheduledDatetime: new Date('2026-09-11T22:00:00.000Z'), mediaUrls: [capa, slide2], renderStatus: 'NOT_NEEDED', createdAt: 0, caption: '', sugestaoId: null, origem: null })
+    const daUrl = (url: string) => [...banco.generations.values()].filter((g) => g.resultUrl === url)
+    banco.falharArteDaUrl = slide2
+
+    const caiu = await agendar([item(1)])
+    expect(caiu.itens[0]).toMatchObject({ desfecho: 'adotado', postId: 'post-manual' })
+    expect(caiu.itens[0].avisos?.join(' ')).toContain('não terminou (as artes do post)')
+    // O vínculo parcial: a capa ganhou a Generation dela e a coluna do post, o slide 2 não.
+    expect(daUrl(capa)).toHaveLength(1)
+    expect(banco.posts.get('post-manual')!.generationId).toBe(daUrl(capa)[0].id)
+    expect(daUrl(slide2)).toHaveLength(0)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeNull()
+
+    const repetida = await agendar([item(1)])
+    expect(repetida.itens[0]).toMatchObject({ desfecho: 'reaproveitado', postId: 'post-manual' })
+    expect(repetida.itens[0].avisos).toBeUndefined()
+    expect(daUrl(slide2)).toHaveLength(1)
+    expect(daUrl(slide2)[0].fieldValues).toMatchObject({ source: 'post-midia', postId: 'post-manual', midiaIndice: 1 })
+    expect(daUrl(capa)).toHaveLength(1)
+    expect(banco.posts.get('post-manual')!.generationId).toBe(daUrl(capa)[0].id)
+    expect(banco.itensDeLote.get('lote-1')!.efeitosDoAgendamentoEm).toBeInstanceOf(Date)
+
+    const artes = banco.generations.size
+    await agendar([item(1)])
+    expect(banco.generations.size).toBe(artes)
   })
 })
 

@@ -190,7 +190,19 @@ export interface RegistroDeArtes {
  * para no primeiro slide; esta atende a mídia que chegou pronta, de qualquer
  * origem, em todos os índices.
  */
-export async function registrarArtesDoPost(postId: string): Promise<RegistroDeArtes> {
+export async function registrarArtesDoPost(
+  postId: string,
+  /**
+   * `pularCapaVinculada` (o lote, R12-08): post que JÁ tem Generation tem a capa
+   * vinculada, e a mídia do índice 0 pode ser o PNG que o cron desenhou depois,
+   * sem Generation — catalogá-lo criaria uma segunda arte da mesma peça
+   * (C12-1x4). As DEMAIS mídias sem Generation seguem sendo catalogadas: o
+   * vínculo da capa não prova que o resto do catálogo terminou (uma execução
+   * que caiu no meio deixa a capa vinculada e o slide 2 sem registro).
+   * Decidido pelo post relido aqui, nunca por uma leitura de quem chama.
+   */
+  opcoes: { pularCapaVinculada?: boolean } = {},
+): Promise<RegistroDeArtes> {
   const vazio: RegistroDeArtes = { registradas: 0, colunaVinculada: false, artes: [] }
   try {
     let post = await carregarPost(postId)
@@ -215,8 +227,9 @@ export async function registrarArtesDoPost(postId: string): Promise<RegistroDeAr
     // Único por URL: o mesmo arquivo repetido em dois slides é uma arte só, e
     // sem o dedupe o segundo passaria pelo `!porUrl.has` do primeiro (o mapa só
     // é atualizado depois do create) e nasceria uma Generation duplicada.
+    const capaFora = opcoes.pularCapaVinculada && post.generationId ? post.mediaUrls[0] : undefined
     const faltando = Array.from(
-      new Set(post.mediaUrls.filter((url) => catalogavel(url) && !porUrl.has(url))),
+      new Set(post.mediaUrls.filter((url) => catalogavel(url) && !porUrl.has(url) && url !== capaFora)),
     )
 
     let registradas = 0

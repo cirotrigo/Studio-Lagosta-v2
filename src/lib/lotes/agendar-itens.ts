@@ -269,9 +269,19 @@ function comAvisos(avisos: string[]): { avisos?: string[] } {
   return avisos.length > 0 ? { avisos: Array.from(new Set(avisos)) } : {}
 }
 
-/** O rascunho, como o retorno individual o mostra. */
-function concluido(itemId: string, desfecho: DesfechoDoItemAgendado, post: Post, peca: Peca | null, pagina: Pagina | null, avisos: string[]): ItemAgendadoDoLote {
+/**
+ * O rascunho, como o retorno individual o mostra.
+ *
+ * O link de edição sai do template ATUAL da página, relido aqui (R12-07): os
+ * efeitos (a pasta da semana, a remarcação) mudam `Page.templateId` e não tocam
+ * no post, então `post.templateId` e a página lida antes deles apontam a pasta
+ * ANTERIOR — onde o editor não acha o `pageId` e abre outra página. Página que
+ * não existe mais fica sem link. O post não é reescrito: é a frente da agenda.
+ */
+async function concluido(ctx: Contexto, itemId: string, desfecho: DesfechoDoItemAgendado, post: Post, peca: Peca | null, pagina: Pagina | null, avisos: string[]): Promise<ItemAgendadoDoLote> {
   const pageId = post.pageId ?? pagina?.id ?? peca?.pageId ?? undefined
+  const atual = pageId ? await lerPagina(ctx.leitor, pageId, ctx.projectId) : null
+  const editUrl = editUrlDe(atual?.templateId, pageId)
   return {
     itemId,
     situacao: 'concluido',
@@ -284,7 +294,7 @@ function concluido(itemId: string, desfecho: DesfechoDoItemAgendado, post: Post,
     renderStatus: post.renderStatus,
     ...(estadoDoPost(post.status) ? { estadoDoPost: estadoDoPost(post.status)! } : {}),
     ...(post.laterPostId && post.status !== 'DRAFT' ? { entregueParaPublicar: true as const } : {}),
-    ...(editUrlDe(post.templateId ?? pagina?.templateId, pageId) ? { editUrl: editUrlDe(post.templateId ?? pagina?.templateId, pageId) } : {}),
+    ...(editUrl ? { editUrl } : {}),
     ...comAvisos(avisos),
   }
 }
@@ -448,9 +458,11 @@ async function executarEfeitos(ctx: Contexto, linhaId: string, post: Post, peca:
       sugestaoId: post.sugestaoId ?? null,
       origem: (post.origem as ContextoDosEfeitos['origem']) ?? null,
     }
-    // Post que já tem Generation não recataloga a mídia: depois do render do cron
-    // ela é o PNG do post, sem Generation, e viraria arte duplicada (C12-1x4).
-    const { falhas } = await efeitosDoAgendamento(post, contexto, { registrarArtes: !post.generationId })
+    // A CAPA de post que já tem Generation não é recatalogada: depois do render do
+    // cron ela é o PNG do post, sem Generation, e viraria arte duplicada (C12-1x4).
+    // As outras mídias, sim — e quem decide é o post relido pelo catálogo, não
+    // este `post`: o vínculo da capa não prova que o catálogo terminou (R12-08).
+    const { falhas } = await efeitosDoAgendamento(post, contexto, { pularCapaVinculada: true })
     // O horário do rascunho não é o que a composição previu: a página vai
     // junto para a pasta (e o nome) do dia certo — a regra da remarcação.
     const doSpec = peca.quandoDaSpec ? instanteDe(peca.quandoDaSpec) : null
@@ -525,7 +537,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       else if (peca && pedido) avisos.push(...(await executarEfeitos(ctx, atual.id, post!, peca, entradaDoPost(projectId, peca, pedido, ctx), null)))
     }
     const fresco = ((await ctx.leitor.socialPost.findUnique({ where: { id: post!.id }, select: SELECAO_DO_POST })) as Post | null) ?? post!
-    return concluido(itemId, 'reaproveitado', fresco, peca, pagina, avisos)
+    return concluido(ctx, itemId, 'reaproveitado', fresco, peca, pagina, avisos)
   }
 
   // A resposta de uma linha que outra chamada ligou: o pedido de recriar não
@@ -552,7 +564,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
     const avisos = [...avisosDoPedido, 'Simulação: nada foi gravado.']
     if (antes.acao === 'adotar') {
       const existente = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
-      if (existente) return concluido(itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
+      if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
     }
     const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, width: true, height: true, background: true } })
     const atual = !!paginaCrua && thumbnailEhAtual({ thumbnail: paginaCrua.thumbnail ?? null, resultUrl: antes.peca.resultUrl, pagina: paginaCrua, versaoRenderizada: antes.peca.versaoRenderizada })
@@ -690,7 +702,7 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
   if (escrita.desfecho === 'adotado' && fresco.scheduledDatetime && fresco.scheduledDatetime.toISOString() !== escrita.pedido.quando) {
     avisos.push(`Já havia ${fresco.status === 'DRAFT' ? 'um rascunho' : 'um post agendado'} desta peça em ${formatarBRT(fresco.scheduledDatetime)} — adotei esse, sem mudar o horário.`)
   }
-  return concluido(itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos)
+  return concluido(ctx, itemId, escrita.desfecho, fresco, escrita.peca, escrita.pagina, avisos)
 }
 
 /**

@@ -565,13 +565,16 @@ export async function efeitosDoAgendamento(
   post: { id: string; postType: PostType | string },
   contexto: ContextoDosEfeitos,
   /**
-   * `registrarArtes: false` pula o catálogo das mídias do post. O padrão é o de
-   * sempre (`agendarPost` não passa nada). O lote passa `false` quando o post já
-   * tem Generation: na repetição que refaz efeitos pendentes, o cron pode já ter
+   * `pularCapaVinculada: true` (o lote) não cataloga a CAPA de post que já tem
+   * Generation: na repetição que refaz efeitos pendentes, o cron pode já ter
    * trocado a mídia pelo PNG do render, que não tem Generation — e registrá-lo
    * criaria uma segunda arte da mesma peça na galeria (pré-revisão C12-1x4).
+   * As outras mídias continuam sendo catalogadas (R12-08): pular o catálogo
+   * INTEIRO pelo vínculo da capa carimbava como completo o carrossel cujo slide
+   * 2 a execução anterior não chegou a registrar. O padrão é o de sempre
+   * (`agendarPost` não passa nada).
    */
-  opcoes: { registrarArtes?: boolean } = {},
+  opcoes: { pularCapaVinculada?: boolean } = {},
 ): Promise<{ generationDoPost: string | null; falhas: string[] }> {
   const falhas: string[] = []
   /**
@@ -590,9 +593,9 @@ export async function efeitosDoAgendamento(
    * precisa ser a URL FINAL, senão o resolvedor por índice não casaria depois.
    * Nunca lança (contrato de `artes-do-post.ts`).
    */
-  const registroDeArtes = opcoes.registrarArtes === false ? null : await registrarArtesDoPost(post.id)
-  if (registroDeArtes?.falhou === true) falhas.push('as artes do post')
-  const generationDoPost = contexto.generationId ?? registroDeArtes?.artes[0]?.generationId ?? null
+  const registroDeArtes = await registrarArtesDoPost(post.id, { pularCapaVinculada: opcoes.pularCapaVinculada === true })
+  if (registroDeArtes.falhou === true) falhas.push('as artes do post')
+  const generationDoPost = contexto.generationId ?? registroDeArtes.artes[0]?.generationId ?? null
 
   /**
    * Sinais do agendamento. Depois do create, de propósito: a chave de
