@@ -411,12 +411,20 @@ export function postVivo(p: Pick<PostLido, 'status' | 'laterPostId'>): boolean {
   return (p.status === 'DRAFT' || p.status === 'SCHEDULED') && !p.laterPostId
 }
 
-/** A recomposição recusou a linha que não cabe — na chave própria desde C6-01, ou no registro antigo. Uma por arte (PR15-04). */
-export function recusouPorTextoQueNaoCabe(a: ArteLida): boolean {
-  const naoCabe = (v: unknown) => typeof v === 'string' && v.startsWith('TEXTO_NAO_CABE')
-  if (naoCabe(objeto(a.recusaDaRecomposicao)?.errorCode)) return true
+/**
+ * A recomposição recusou a linha que não cabe — na chave própria desde C6-01,
+ * ou no registro antigo. Uma por arte (PR15-04). Com `ate` (o instante do PNG
+ * congelado), só a recusa registrada até ele, pelo `em` DELA (PR15-07 da
+ * revisão final do Codex, 21/09/2026): a recusa não troca o PNG, e a de depois
+ * foi a tentativa de levar a outro post uma edição que a mídia congelada nunca
+ * recebeu. Recusa sem `em` legível não prova que veio antes.
+ */
+export function recusouPorTextoQueNaoCabe(a: ArteLida, ate: number | null = null): boolean {
+  const naoCabe = (r: Record<string, unknown> | null) =>
+    !!r && typeof r.errorCode === 'string' && r.errorCode.startsWith('TEXTO_NAO_CABE') && (ate == null || (typeof r.em === 'string' && Date.parse(r.em) <= ate))
+  if (naoCabe(objeto(a.recusaDaRecomposicao))) return true
   const antiga = objeto(a.recomposicao)
-  return antiga?.estado === 'recusada' && naoCabe(antiga.errorCode)
+  return antiga?.estado === 'recusada' && naoCabe(antiga)
 }
 
 /** Uma mídia de um post na peça, e a arte que a descreve. */
@@ -645,7 +653,7 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
 
     // Evidências fora da copy.
     const sinais = (sinaisPorPeca.get(chave) ?? []).filter((s) => corte == null || s.createdAt == null || tempo(s.createdAt) <= corte)
-    const recusasDoCompositor = artes.filter(recusouPorTextoQueNaoCabe).length
+    const recusasDoCompositor = artes.filter((a) => recusouPorTextoQueNaoCabe(a, corte)).length
     const avisosDoSistema = artes.reduce((t, a) => t + (a.source === 'compositor' && Array.isArray(a.avisos) ? a.avisos.length : 0), 0)
     // Ajuste do revisor que não deixou revisão de copy (mexeu só em corpo,
     // posição, gradiente): é correção de classe revisor mesmo assim.

@@ -72,9 +72,10 @@ function arteLida(fv: Record<string, unknown>): ArteLida {
   }
 }
 
-function compositorDa(fv: Record<string, unknown>): number {
+function compositorDa(fv: Record<string, unknown>, congelado = false): number {
+  const situacao = congelado ? { status: 'POSTED', laterPostId: 'zernio-1' } : { status: 'SCHEDULED', laterPostId: null }
   const [peca] = montarPecas({
-    posts: [{ id: 'slide', pageId: null, generationId: 'g1', createdAt: '2026-09-08T12:00:00.000Z', mediaUrls: ['u1'], status: 'SCHEDULED', laterPostId: null, slotValues: null }],
+    posts: [{ id: 'slide', pageId: null, generationId: 'g1', createdAt: '2026-09-08T12:00:00.000Z', mediaUrls: ['u1'], ...situacao, slotValues: null }],
     artes: [arteLida(fv)],
     paginas: [{ id: 'p', copyAutoral: original, layers: '[]' }],
     itens: [],
@@ -102,6 +103,20 @@ describe('PR15-04 · a recusa gravada por `registrarRecusa` entra em correcoes.c
     expect(compositorDa({ copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: legado })).toBe(1)
     const fv = await fieldValuesDepoisDaRecusa({ copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: legado }, 'TEXTO_NAO_CABE_NA_COLUNA')
     expect(compositorDa(fv)).toBe(1)
+  })
+
+  it('PR15-07 · a recusa que o produtor grava DEPOIS do PNG publicado não entra no congelado; no vivo, entra', async () => {
+    // `registrarRecusa` data a recusa com o relógio; o PNG publicado é o do re-render das 10h30.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-08T11:00:00.000Z'))
+    try {
+      const fv = await fieldValuesDepoisDaRecusa({ copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: RE_RENDER }, 'TEXTO_NAO_CABE_NA_COLUNA')
+      expect((fv.recusaDaRecomposicao as { em: string }).em).toBe('2026-09-08T11:00:00.000Z')
+      expect(compositorDa(fv, true)).toBe(0)
+      expect(compositorDa(fv)).toBe(1)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('recusa que não é de texto (a página mudou durante) não é correção do compositor', async () => {

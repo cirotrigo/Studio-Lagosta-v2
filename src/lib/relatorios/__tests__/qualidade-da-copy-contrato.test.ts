@@ -952,3 +952,43 @@ describe('PR15-04 · a recusa do compositor é lida nos dois formatos, uma vez p
     expect(compositor({ recomposicao: { estado: 're-renderizada', em: T(3) }, recusaDaRecomposicao: null })).toBe(0)
   })
 })
+
+// ─── revisão FINAL do Codex sobre e3486221 (21/09/2026) ────────────────────
+
+describe('PR15-07 · a recusa entra no congelado pelo instante DELA, não pelo da arte', () => {
+  const original = copiaOriginal()
+  const recusa = (em: string) => ({ em, erro: 'A linha não cabe na coluna.', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', detalhes: null, arteTrocada: false })
+  /** A arte publicada tem o PNG refeito aos 20 min; `extras` são as outras artes da mesma página. */
+  const peca = (x: Partial<ArteLida>, opts: { vivo?: boolean; extras?: ArteLida[] } = {}) =>
+    medirPeca(
+      montarPecas(
+        leitura({
+          posts: [post({ id: 'slide', generationId: 'g1', mediaUrls: ['u1'], ...(opts.vivo ? {} : CONGELADO) })],
+          artes: [...(opts.extras ?? []), arte('g1', { resultUrl: 'u1', copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: { estado: 'feita', em: T(20) }, ...x })],
+          paginas: [{ id: 'page-1', copyAutoral: original, layers: camadasDa(original) }],
+        }),
+      )[0],
+    )
+
+  it('mesmo PNG: a recusa depois do PNG publicado não conta no congelado; a de antes conta; no vivo, as duas contam', () => {
+    expect(peca({ recusaDaRecomposicao: recusa(T(60)) }).correcoes.compositor).toBe(0)
+    expect(peca({ recusaDaRecomposicao: recusa(T(10)) }).correcoes.compositor).toBe(1)
+    expect(peca({ recusaDaRecomposicao: recusa(T(60)) }, { vivo: true }).correcoes.compositor).toBe(1)
+    expect(peca({ recusaDaRecomposicao: recusa(T(10)) }, { vivo: true }).correcoes.compositor).toBe(1)
+  })
+
+  it('o formato antigo também é cortado pelo `em` dele, e cada arte conta uma vez', () => {
+    // A arte mais velha da página: registro antigo E chave nova, os dois antes do PNG publicado → uma.
+    const velha = arte('g0', { createdAt: T(0), copyAutoral: { original, efetiva: original, comparavel: true }, recomposicao: { estado: 'recusada', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', em: T(0.3) }, recusaDaRecomposicao: recusa(T(0.6)) })
+    // A publicada: a recusa antiga apagou o registro do render (o PNG volta à criação) e veio depois dele.
+    const publicada = { recomposicao: { estado: 'recusada', errorCode: 'TEXTO_NAO_CABE_NA_COLUNA', em: T(60) } }
+    expect(peca(publicada, { extras: [velha] }).correcoes.compositor).toBe(1)
+    expect(peca(publicada, { extras: [velha], vivo: true }).correcoes.compositor).toBe(2)
+  })
+
+  it('recusa sem data legível não prova que veio antes do PNG: fora do congelado, dentro do vivo', () => {
+    const semData = { ...recusa(T(10)), em: 'ontem' }
+    expect(peca({ recusaDaRecomposicao: semData }).correcoes.compositor).toBe(0)
+    expect(peca({ recusaDaRecomposicao: semData }, { vivo: true }).correcoes.compositor).toBe(1)
+  })
+})
