@@ -8,6 +8,8 @@ import { prepararBlocos } from '../preparar-blocos'
 import { validarSpec } from '../spec'
 import { specDaRecomposicao } from '../spec-da-recomposicao'
 import { comVisibilidadeDoRevisor } from '@/lib/creatives/revisao/oculta-pelo-revisor'
+import { camadaDuplicadaNoEditor } from '@/lib/copy-autoral/camada-copiada'
+import { linhasComColchetes } from '../destaques'
 import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, revisaoDaPaginaComCamadas, validarCopyAutoral, type BlocoAutoral, type CopyAutoral } from '@/lib/copy-autoral'
 
 /**
@@ -71,9 +73,10 @@ import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, rev
  * Medido antes de declarar (16.406 → 12.281 → 0 falhas duras), e o resíduo
  * inteiro era página sem marca:
  *  - ESTADOS fora do escopo — a variante é pulada e CONTADA pelo motivo em
- *    `foraDoEscopo` (ver `foraDoEscopoSemMarca`): contrato da F3 em página sem
- *    marca (nenhum produtor gera: a camada extra só nasce do compositor deste
- *    PR, que sempre carimba); livre sem herança no namespace inferido (`extra-*`),
+ *    `foraDoEscopo` (ver `foraDoEscopoSemMarca`): a camada do PRÓPRIO extra sem
+ *    o vínculo declarado (com o `extra` e o id de origem, sem `bloco`) — o
+ *    compositor grava os dois juntos, e toda operação que tira a marca (colar,
+ *    duplicar camada) tira os dois; livre sem herança no namespace inferido (`extra-*`),
  *    que casa pelo id inferido pela regra da main e, sem marca, não se distingue
  *    de uma parte repartida; e voz 2 repartida, cuja reserva a main documenta
  *    como "a PRIMEIRA `headline2` livre" — a outra vira bloco solto e a
@@ -88,6 +91,19 @@ import { VERSAO_DO_CONTRATO, copyEfetivaDasCamadas, duplicarCamadasDaPagina, rev
  *    revisor) continuam DURAS em toda variante que roda.
  * Os números entram na mensagem do `expect` e no relatório: o que saiu do escopo
  * fica medido, nunca escondido.
+ *
+ * 🔴 CORREÇÃO da revisão FINAL do Codex sobre b6980b5b (21/09/2026): a exclusão
+ * era "contrato da F3 em página sem marca", justificada por "nenhum produtor
+ * gera esse estado". Era FALSO e largo demais. Colar ou duplicar um texto e
+ * apagar o original deixa um contrato F3 com blocos vazios e textos novos sem
+ * marca — caminho real do editor. Medido: nele a leitura ACERTA (o dono fica
+ * vazio, a cópia vira UM bloco novo, livre, com o texto dela, e nada mais muda),
+ * então o que faltava era o ORÁCULO — a operação "colar e apagar o original"
+ * roda em toda variante, com a "identidade nova" da cópia como regra dura. A
+ * exclusão ficou restrita ao único estado que ninguém grava (a camada do extra
+ * sem `bloco`). Ao estreitar, 480 variantes voltaram ao escopo — entre elas o
+ * cenário do PR9-F02, que a exclusão larga escondia: desfazer o conserto do
+ * materializador agora derruba 37 variantes aqui.
  *
  * Determinístico (produto enumerado, ids em rodízio por aritmética), limitado a
  * poucos segundos. Com `INVARIANTE_RELATORIO=<arquivo>` grava a lista de casos
@@ -258,15 +274,17 @@ function tirarMarcas(camadas: Layer[], semPapel: boolean): Layer[] {
  * Por que uma variante SEM marca está fora do que o desenho promete — ou `null` quando ela está dentro. Os três estados
  * foram medidos no rebase sobre a main de 21/09/2026 (decisão (A): a leitura é a do PR 3, que arbitra pelo vínculo
  * DECLARADO) e são todos página sem marca; com a marca, nenhum deles falha:
- *  - contrato da F3 (bloco com `estilo.herdaDe`) em página sem marca: estado que nenhum produtor gera — a camada extra
- *    só nasce do compositor deste PR, que sempre carimba `bloco`;
+ *  - a camada do PRÓPRIO extra sem o vínculo declarado (tem `metadata.compositor.extra`, não tem `bloco`): o compositor
+ *    grava os dois juntos, e toda operação que tira a marca tira os dois — `camadaDuplicadaNoEditor` e
+ *    `camadasColadasNoEditor` (via `semIdentidadeAutoral`) e `camadaClonada` tiram a marca inteira. Contrato F3 em
+ *    página sem marca, em si, EXISTE (colar e apagar o original o produz) e está no escopo;
  *  - livre SEM herança com id no namespace inferido (`extra-*`) numa página sem marca: pela regra da main ele casa
  *    pelo id inferido, e sem a marca não há como saber se a camada é dele ou parte de um bloco repartido;
  *  - voz 2 repartida (dois textos `headline2`) numa página sem marca: a reserva da main documenta "a PRIMEIRA
  *    `headline2` livre da peça", e a outra vira bloco solto. Limitação da leitura da MAIN, anterior ao PR 9.
  */
 function foraDoEscopoSemMarca(contrato: CopyAutoral, camadas: Layer[]): string | null {
-  if (contrato.blocos.some((b) => b.estilo?.herdaDe)) return 'contrato da F3 em página sem marca'
+  if (camadas.some((l) => ehTexto(l) && meta(l).extra)) return 'camada do extra sem o vínculo declarado'
   if (contrato.blocos.some((b) => b.funcao === 'livre' && !b.estilo?.herdaDe && b.id.startsWith('extra-'))) return 'livre no namespace inferido em página sem marca'
   const vozes2 = camadas.filter((l) => ehTexto(l) && (papelDaCamada(l) === 'headline2' || /^headline2-\d+$/.test(String(l.id)))).length
   if (vozes2 >= 2) return 'voz 2 repartida em página sem marca'
@@ -506,6 +524,29 @@ describe('INVARIANTE: a copy autoral sobrevive a preparar → persistir → ler,
                 const id = String(l.id)
                 const oculta = conferirToque('ocultar', efetiva, camadas, k, 'ocultar', id)
                 conferirToque('excluir', efetiva, camadas, k, 'excluir', id)
+                // COLAR E APAGAR O ORIGINAL (revisão FINAL do Codex sobre b6980b5b, 21/09/2026): a cópia que o editor faz
+                // tem IDENTIDADE NOVA — `camadaDuplicadaNoEditor` numa página com contrato tira a marca inteira, o papel
+                // junto —, então ela não pode herdar o bloco da original nem ser tomada por outro: vira UM bloco novo,
+                // livre, sem herança, com o texto dela; o dono da original perde as linhas dela (a mesma conta do
+                // "excluir"); o resto fica. É o caminho real que deixa um contrato F3 com blocos vazios e textos sem
+                // marca — e a leitura acerta nele (medido): o que faltava era o oráculo, não o conserto.
+                {
+                  contagem.operacoes++
+                  const colada = camadaDuplicadaNoEditor(l, { novoId: `colada-${id}`, paginaTemContrato: true })
+                  const lida = copyEfetivaDasCamadas(efetiva, [...camadas.filter((_, j) => j !== k), colada], { superficie: 'editor' }).efetiva
+                  const idsAntes = new Set(efetiva.blocos.map((b) => b.id))
+                  const novos = lida.blocos.filter((b) => !idsAntes.has(b.id))
+                  const linhasDaColada = linhasComColchetes(colada) ?? String(colada.content ?? '').split('\n')
+                  const identidadeNova = novos.length === 1 && novos[0].funcao === 'livre' && !novos[0].estilo?.herdaDe && JSON.stringify(novos[0].linhas) === JSON.stringify(linhasDaColada)
+                  if (!identidadeNova) falharV(`colar ${id} e apagar o original: a cópia não nasceu como bloco novo`, { novos: novos.map((b) => [b.id, b.funcao, b.linhas, b.estilo?.herdaDe ?? null]), esperado: linhasDaColada })
+                  if (validarCopyAutoral(lida).problemas.length > 0) falharV(`colar ${id}: contrato inválido`, validarCopyAutoral(lida).problemas)
+                  const dono = donoPorId.get(id)
+                  if (absoluta && dono) {
+                    const esperado = efetiva.blocos.map((x) => [x.id, x.id === dono.id ? x.linhas.filter((_, p) => !dono.posicoes.includes(p)) : x.linhas])
+                    const obtido = lida.blocos.filter((b) => idsAntes.has(b.id)).map((b) => [b.id, b.linhas])
+                    if (JSON.stringify(obtido) !== JSON.stringify(esperado)) falharPosicao(`colar ${id} e apagar o original (dono ${dono.id})`, { esperado, obtido })
+                  }
+                }
                 contagem.operacoes++
                 const volta = copyEfetivaDasCamadas(oculta, camadas, { superficie: 'editor' }).efetiva
                 if (!iguais(volta, efetiva)) falharPosicao(`ocultar e reexibir ${id}`, { esperado: formaSemInferidos(efetiva), obtido: formaSemInferidos(volta) })

@@ -8702,7 +8702,28 @@ mesma linha; normalizar para comparar **e** para registrar.
 > - **O invariante declara o escopo da página sem marca**: com a marca ele afirma
 >   tudo e passa; sem ela, estados e verificações posicionais que só a inferência
 >   pelo id sustentava saem da afirmação — medidos e contados, nunca escondidos
->   (ver o cabeçalho de `invariante-copy-autoral.test.ts`).
+>   (ver o cabeçalho de `invariante-copy-autoral.test.ts`). 🔴 **Contrato F3 em
+>   página sem marca EXISTE** — colar ou duplicar um texto e apagar o original o
+>   produz, com blocos vazios e textos novos sem marca (revisão FINAL do Codex
+>   sobre b6980b5b). A leitura acerta nesse caminho, e o oráculo dele é a regra
+>   dura "a cópia tem identidade nova". Só fica fora a camada do PRÓPRIO extra sem
+>   `bloco`, porque nada a grava: o compositor escreve `extra` e `bloco` juntos, e
+>   toda operação que tira a marca tira as duas.
+> - 🔴 **"A peça tem extra" se pergunta às DUAS formas** (`specTemExtra`,
+>   `camadas-extras.ts`): `camadasExtras` (o livre com herança) E `blocos` com
+>   `herdaDe` (o extra COM função). A guarda do re-render da recomposição olhava só
+>   a primeira; sem contrato legível, o extra com função caía em
+>   `specComACopyDaPagina`, que reconstrói o bloco como `{ papel, linhas }` — dois
+>   serviços comuns (`papel repetido`, slide antigo) ou a herança perdida
+>   (PR9-F01, 21/09/2026).
+> - 🔴 **O materializador da duplicação NUNCA carimba bloco com função pelo id**:
+>   a leitura da main atribui bloco com função pela marca ou pela reserva por papel
+>   e posição, e a duplicação preserva as duas coisas. Carimbar pela coincidência
+>   do id inventava atribuição — o extra vazio `servico-2` recebia a parte do
+>   serviço comum cuja camada se chama `servico-2` (PR9-F02, 21/09/2026). Só o
+>   bloco LIVRE ganha `bloco` pelo id, porque essa é a regra 1 de `vincularExtras`.
+>   Teste de marca começa da forma LEGADA: partir de camadas recém-preparadas (já
+>   carimbadas) é o método que não pode dar outro resultado.
 > - ⚠️ **Limitação da main, anterior ao PR 9 e fora do escopo dele**: numa página
 >   SEM marca com duas vozes 2, a reserva documenta "a PRIMEIRA `headline2` livre
 >   da peça" — a outra vira bloco solto e a recomposição seguinte recusa a spec. O
