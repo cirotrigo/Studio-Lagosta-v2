@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 
 /**
  * GET /api/projects/[projectId]/posts/next-scheduled
@@ -13,12 +14,24 @@ export async function GET(
 ) {
   const { projectId: projectIdParam } = await params
   try {
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const projectId = parseInt(projectIdParam)
+    const projectId = parseInt(projectIdParam, 10)
+    if (isNaN(projectId)) {
+      return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
+    }
+
+    const project = await fetchProjectWithShares(projectId)
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+    if (!hasProjectReadAccess(project, { userId: clerkUserId, orgId })) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
+
     const now = new Date()
 
     // Buscar o próximo post agendado (futuro)
