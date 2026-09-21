@@ -441,13 +441,16 @@ function hashDe(texto: string): number {
  */
 export function escolherArranjo(
   candidatos: ArranjoDeGrupo[],
-  criterios: { papeis: Papel[]; tema?: string | null; chave: string; preferidos?: string[] },
+  criterios: { papeis: Papel[]; tema?: string | null; chave: string; grupo?: string; preferidos?: Array<string | { grupo?: string; arranjo?: string }> },
 ): { arranjo: ArranjoDeGrupo; motivo: string } | null {
   const pedidos = [...new Set(criterios.papeis.filter((p) => p !== 'headline2'))]
   const cobrem = candidatos.filter((a) => pedidos.every((p) => a.papeis.includes(p)))
   if (cobrem.length === 0) return null
 
-  const mantido = cobrem.find((a) => criterios.preferidos?.includes(a.id))
+  // O arranjo fixado DESTE grupo vence; sem entrada para o grupo, vale o legado (id sem grupo, qualquer grupo).
+  const fixadoDoGrupo = criterios.preferidos?.find((p): p is { grupo: string; arranjo: string } => typeof p === 'object' && !!p && p.grupo === criterios.grupo && typeof p.arranjo === 'string')
+  const idsLegados = (criterios.preferidos ?? []).filter((p): p is string => typeof p === 'string')
+  const mantido = (fixadoDoGrupo && cobrem.find((a) => a.id === fixadoDoGrupo.arranjo)) ?? cobrem.find((a) => idsLegados.includes(a.id))
   if (mantido) return { arranjo: mantido, motivo: 'mantido da composição anterior' }
 
   const doTema = tokens(criterios.tema)

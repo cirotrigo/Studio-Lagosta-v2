@@ -191,6 +191,19 @@ describe('escolha do arranjo', () => {
     const r = escolherArranjo([pagina, comCta, doTema], { papeis: ['headline', 'servico'], tema: 'almoço executivo', chave: 'k', preferidos: ['combinacao:a'] })
     expect(r?.arranjo.id).toBe('combinacao:a')
   })
+  it('R15: a fixação guarda o GRUPO — dois grupos com combinações elegíveis distintas recebem cada um o seu arranjo; a string nua (legado) vale para qualquer grupo; grupo sem entrada cai no legado ou no rodízio', () => {
+    const a = { ...comCta, id: 'combinacao:a', nome: 'A' }
+    const b = { ...comCta, id: 'combinacao:b', nome: 'B' }
+    const fixados = [{ grupo: 'g-topo', arranjo: 'combinacao:a' }, { grupo: 'g-rodape', arranjo: 'combinacao:b' }]
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-topo', preferidos: fixados })!.arranjo.id).toBe('combinacao:a')
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-rodape', preferidos: fixados })!.arranjo.id).toBe('combinacao:b')
+    // legado: id nu vale para qualquer grupo
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-rodape', preferidos: ['combinacao:a'] })!.arranjo.id).toBe('combinacao:a')
+    // grupo sem entrada e sem legado: não é "mantido"
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-outro', preferidos: fixados })!.motivo).not.toMatch(/mantido/)
+    // entrada do grupo apontando para arranjo que não cobre os papéis: ignorada, cai no legado
+    expect(escolherArranjo([pagina, a, b], { papeis: ['headline', 'servico'], chave: 'k', grupo: 'g-topo', preferidos: [{ grupo: 'g-topo', arranjo: 'combinacao:inexistente' }, 'combinacao:b'] })!.arranjo.id).toBe('combinacao:b')
+  })
 
   it('empate vira rodízio determinístico entre a página e as combinações', () => {
     const escolhidos = new Set<string>()

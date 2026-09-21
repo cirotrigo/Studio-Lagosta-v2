@@ -8084,3 +8084,125 @@ papel; a medida de fallback) em vez de pela identidade ou pelo fato já resolvid
   composição FEZ (a escala está mesmo gravada na camada) e não pede ação, e o
   mesmo bloco já sai com `naoMedido` e com o aviso de que a medida não vale —
   acrescentar ressalva ali seria ruído.
+
+### Medir antes de compor: `ver-assinatura` por variante e `medir-copy` (PR 8 de "Marca simples, copy melhor", 12/09/2026)
+
+Quem escreve a copy no chat precisava de uma medida VERIFICÁVEL antes de gastar
+uma composição: o único jeito de saber se a manchete cabia era compor e ler a
+recusa, e o orçamento vinha de cabeça nas instruções ("headline até ~18
+caracteres") — igual para toda marca. Módulo PURO com teste:
+`src/lib/compositor/medir-copy.ts`; serviço em `medir-copy-service.ts`. Sem
+migration. Prova no branch de dev: `scripts/validar-medir-copy.ts` (confere
+que NADA é gravado e que a medida é a da composição).
+
+- 🔴 **A MESMA PREPARAÇÃO da composição, nunca uma conta paralela**: a
+  preparação dos blocos — agrupamento pela página de assinatura, escolha do
+  arranjo de cada grupo (página ou combinação salva), distribuição das linhas
+  (horário no texto do horário, endereço no do endereço), segunda voz, estilo
+  de cada texto, ids (`servico`, `servico-2`, `headline2`) e a montagem com a
+  régua — saiu de `comporPeca` para `preparar-blocos.ts` (puro), e `medirCopy`
+  a chama com o medidor do render. Uma medição por `assinatura.papeis[papel]`
+  dizia "cabe" para uma copy que a composição recusava (R01 da revisão do
+  Codex). A prova compara bloco a bloco, pela IDENTIDADE e na ordem: id, papel,
+  escala, largura, altura, "não medido" e os arranjos — IDÊNTICOS.
+- **A escolha da variante é a da composição** (`chaveDaPeca` num lugar só; a
+  foto entra pela luz clara/escura e pela chave do rodízio, como em
+  `comporPeca`). Sem variante pedida e sem a foto, a escolha é declarada
+  PROVISÓRIA (`escolhaProvisoria` + `comoFixar`): quem compõe fixa
+  `preferencias.variante` com o id medido (R02).
+- **As famílias que a montagem PEDE são sabidas antes de montar**
+  (`familiasPedidas`: a do papel e, com [colchetes], a do destaque): valem
+  também no bloco RECUSADO — a recusa medida no fallback é `naoMedido`, com a
+  família ausente declarada e as medidas por linha invalidadas (R03).
+- **A medida é dita pelo que é**: `cabe` (escala 1), `cabe-reduzido` (fonte
+  encolhida até o piso de 80%, com a escala), `nao-cabe` (com o orçamento por
+  linha — os mesmos `caracteresQueCabem` da recusa `TEXTO_NAO_CABE_NA_COLUNA`)
+  e `papel-ausente` (a variante não tem o papel; declarado, nunca some).
+  🔴 **`naoMedido` = a fonte do papel não está carregada no servidor**
+  (`familiasNaoCarregadas`): os números saíram na fonte de fallback e NÃO
+  valem — a tool devolve os números E o aviso, nunca finge que mediu.
+  **`aproximado` = há destaque entre [colchetes]**: o trecho ganha outra
+  família e a largura extra é estimada trecho a trecho (o medidor do servidor
+  não mede rich text).
+- 🔴 **O destaque alarga a linha na MESMA conta da montagem, nos três lugares**
+  (`larguraExtraDoDestaque`, exportada de `blocos.ts`): a montagem, a medida
+  por linha e o orçamento da recusa somam o quanto os trechos entre
+  [colchetes] crescem na família pesada. Sem isso, com destaque em família mais
+  larga e fontes disponíveis, o bloco dizia `nao-cabe` enquanto a única linha
+  dele dizia `cabe` e o orçamento vinha VAZIO (R08 da revisão de fd82505c). O
+  destaque só conta como na montagem: [colchetes] na copy E estilo na marca; o
+  bloco preparado carrega o `destaque` com que foi medido. Teste com régua
+  sensível à família.
+- 🔴 **`ver-assinatura` declara as fontes ausentes de TODOS os textos
+  reconhecidos da variante** (`familiasUsadasNaVariante`, puro): `montarAssinatura`
+  guarda só o PRIMEIRO estilo de cada papel, e a família própria do segundo
+  serviço (o endereço em "Fonte Rara") sumia de `fontesNaoCarregadas` mesmo
+  detectada entre as cadastradas — o texto era medido em fallback sem aviso
+  (R09). Camada oculta e camada sem papel ficam de fora. `descreverVariantes` é
+  testado com o serviço mockado (Prisma, medidor e registro de fontes).
+  🔴 **O destaque AUTOMÁTICO conta** (R11 da revisão de 775f4377): com
+  `destaque.pesado: true` a composição resolve a família pesada do papel entre
+  as CADASTRADAS (`familiaMaisPesada`), e `familiasUsadasNaVariante` faz a
+  mesma conta (`estiloDeDestaqueDoPapel`, a função da preparação dos blocos)
+  — só com as famílias explícitas, `ver-assinatura` dizia "nenhuma ausente"
+  enquanto `medir-copy` com [colchetes] declarava a "Barlow Bold" ausente.
+- 🔴 **`medir-copy` é LEITURA e não escreve no Blob** (R10 da revisão de
+  775f4377): `carregarFoto` do compositor resolve a foto do Drive por
+  `resolveImageUrl`, que PUBLICA `drive-cache/<id>-s1920.jpg` (público,
+  sobrescrevendo) — certo para compor, errado para medir. A medição lê os
+  bytes por `carregarFotoParaMedir` (`foto-para-medir.ts`: a URL dada, ou a
+  miniatura grande do Drive, sem `put`); a luz e a escolha da variante saem
+  iguais. O módulo não importa `@vercel/blob` nem `persist.ts`, e há teste
+  que confere isso no fonte. A prova mede com uma foto real do acervo (Drive
+  só leitura).
+- **O orçamento ANTES do texto** (`orcamentoDaVariante`) é medido com uma
+  amostra em português (`AMOSTRA_DO_ORCAMENTO`) na fonte real de cada papel:
+  caracteres por linha e linhas na altura útil, por variante. É aproximado por
+  construção (a largura de uma linha depende das letras dela) e dito assim.
+  As instruções do conector deixaram de dar o número de cabeça.
+- **`ver-assinatura` descreve CADA variante** (`descreverVariantes`): estilos
+  próprios por papel (fonte, `fonteDisponivel`, tamanho já na escala do
+  formato pedido, cor, caixa, prefixo, destaque, grupo, alinhamento), papéis,
+  `aceitaServico`, `temSegundaVoz`, a área útil do formato (coluna = largura −
+  2·margem; altura = altura − safe topo − safe rodapé; `escalaDoFormato`), o
+  orçamento e as fontes não carregadas. Até aqui os detalhes eram só da
+  variante carregada, e as outras apareciam pelo nome e pelos papéis.
+- **`medir-copy` escolhe a variante como a composição** (`carregarAssinatura`
+  com os mesmos critérios: id/nome/tag pedido, papéis, tema) e mede a copy
+  também contra as OUTRAS variantes do formato (`outrasVariantes`: cabe tudo?
+  falta papel? reduzido?) — é a "capacidade medida" para escolher a variante
+  pela mensagem, sem trocar a escolha da composição.
+- **Nada é gravado**: nem página, nem Generation, nem sinal, nem Blob. A prova
+  conta as tabelas antes e depois; `comporPeca(…, { provar: true })` na prova
+  renderiza em memória e não persiste (é a tool `compor-arte` que sobe a prova
+  ao Blob, não o serviço).
+- 🔴 **Provisório é pela LUZ disponível, e a fixação é variante E arranjos**
+  (R12 e R13 da revisão de 4b326e7c). `escolhaProvisoria` era `!spec.foto`:
+  foto pedida que NÃO carregou (Drive fora do ar, `foto: null` com aviso)
+  passava como contexto suficiente e a tool omitia o `comoFixar` — com a foto
+  carregando na composição seguinte, a luz clara/escura mudava a variante.
+  Hoje a provisoriedade sai de `luzDaFoto === null` (sem foto OU foto não
+  medida), com `motivosDaProvisoriedade` e um aviso. E fixar só a variante
+  não fixava o segundo sorteio: a chave da peça (`chaveDaPeca`) inclui a foto
+  e é a chave do rodízio de ARRANJOS também — medir sem foto e compor com
+  foto podia trocar fonte, tamanho e distribuição das linhas de um arranjo
+  empatado, e uma copy medida como `cabe` ser recusada. A medição devolve
+  `fixacao: { variante, arranjos }`; `comoFixar` manda repetir a medição com a
+  foto definitiva ou passar os DOIS em `preferencias` ao compor (o compositor
+  honra `preferencias.arranjos` como "mantido"). Prova 3c: a medição COM a
+  foto e a fixação da medição sem foto reproduz variante e arranjos.
+- 🔴 **A fixação é POR GRUPO e tem de passar pela porta pública** (R14 e R15 da
+  revisão de 4413e0a1). `preferencias.arranjos` não estava no schema público de
+  `compor-arte`/`compor-leva`: a porta faz `safeParse` e o zod aninhado
+  DESCARTA a chave desconhecida — `comoFixar` mandava um campo que nunca
+  chegava ao compositor. E a lista `[A, B]` sem grupo colapsava dois grupos de
+  serviço com combinações distintas no primeiro id da lista. Hoje o arranjo
+  fixado é `{ grupo, arranjo }` (`arranjoFixadoSchema`; a string nua é legado e
+  vale para qualquer grupo), `escolherArranjo` recebe o `grupo`, a spec gravada
+  e a `fixacao` da medição carregam o par, e o schema público declara o campo
+  (fixture do registro atualizada de propósito). Teste do parse pela porta em
+  `src/lib/mcp/__tests__/compositor-preferencias-arranjos.test.ts`.
+- **Download ou decodificação da foto falhando NÃO aborta a medição** (R16 da
+  revisão de 5d628520): `carregarFotoParaMedir` devolve `{ foto: null, aviso }`
+  também quando `fetchBuffer` rejeita (403/503 do lh3, conexão) ou o sharp não
+  lê os bytes — a medição segue provisória, como sem foto, sem publicar nada.

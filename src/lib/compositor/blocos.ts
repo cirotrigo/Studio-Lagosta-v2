@@ -55,6 +55,8 @@ export interface BlocoMontado {
   elementos?: ElementoDoArranjo[]
   /** A escala dos elementos em relação à base 1080 (a do formato × a da fonte). */
   escalaDosElementos?: number
+  /** As famílias que ENTRARAM na medição (ver `RecusaDeBloco.familiasMedidas`). */
+  familiasMedidas: string[]
 }
 
 export interface OrcamentoDeLinha {
@@ -84,7 +86,8 @@ export type ResultadoDoBloco =
   | { bloco: BlocoMontado; recusa: null; avisos: string[] }
   | { bloco: null; recusa: RecusaDeBloco; avisos: string[] }
 
-function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
+/** O prefixo da assinatura (o "→ " do CTA) na primeira linha, salvo quando o autor já o escreveu. Exportada para o `medir-copy` medir a linha EFETIVA. */
+export function aplicarPrefixo(linhas: string[], prefixo: string | undefined): string[] {
   if (!prefixo || linhas.length === 0) return linhas
   const primeira = linhas[0]
   return primeira.startsWith(prefixo.trim()) ? linhas : [`${prefixo}${primeira}`, ...linhas.slice(1)]
@@ -218,9 +221,10 @@ export function camadaDoPapel(args: {
 
 /**
  * Mede uma linha sozinha, numa caixa larga o bastante para não quebrar.
- * Devolve a largura da tinta e a altura da linha.
+ * Devolve a largura da tinta e a altura da linha. Exportada para o
+ * `medir-copy` (PR 8) medir com a MESMA régua que monta o bloco.
  */
-function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUtil: number) {
+export function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUtil: number) {
   const m = medir({
     ...base,
     content: linha,
@@ -229,8 +233,13 @@ function medirLinha(medir: MeasureTextBox, base: Layer, linha: string, colunaUti
   return m ? { largura: m.maxLineWidth, altura: m.height, linhas: m.lineCount } : null
 }
 
-/** Quanto os trechos destacados alargam a linha quando ganham a família mais pesada. */
-function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: string, trechos: TrechoDestacado[], familia: string | undefined, colunaUtil: number): number {
+/**
+ * Quanto os trechos destacados alargam a linha quando ganham a família mais
+ * pesada. Exportada para o `medir-copy` medir a linha com a MESMA conta da
+ * montagem (R08 da revisão de fd82505c): a medida por linha e o orçamento da
+ * recusa somam este extra, senão o bloco diz "não cabe" e a linha diz "cabe".
+ */
+export function larguraExtraDoDestaque(medir: MeasureTextBox, base: Layer, linha: string, trechos: TrechoDestacado[], familia: string | undefined, colunaUtil: number): number {
   if (!familia || familia === base.style?.fontFamily || trechos.length === 0) return 0
   const pesada: Layer = { ...base, style: { ...(base.style ?? {}), fontFamily: familia, fontWeight: undefined } }
   let extra = 0
@@ -278,6 +287,14 @@ export function montarBloco(args: {
   if (pediuDestaque && !temEstilo) {
     avisos.push(`${args.papel}: a copy marcou destaque, mas a marca não tem estilo de destaque (página de assinatura ou Project.assinatura.destaque) — saiu sem destaque`)
   }
+  // 🔴 As famílias que entraram na medição, calculadas UMA vez e devolvidas
+  // tanto no sucesso quanto na recusa: quem decide se a medida vale (o
+  // `TEXTO_NAO_CABE_NA_COLUNA` de `compor.ts`, o `naoMedido` do `medir-copy`)
+  // lê daqui, nunca reinterpreta os colchetes por fora — a divergência entre
+  // as duas leituras é como o defeito volta (PR4-R2-01).
+  const familiasMedidas = [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
+    (f): f is string => typeof f === 'string' && f.trim() !== '',
+  )
 
   const coluna = Math.floor(args.colunaUtil * (args.estilo.larguraMaxima ?? 1))
   const linhas = aplicarPrefixo(linhasLimpas, args.estilo.prefixo)
@@ -315,6 +332,7 @@ export function montarBloco(args: {
         escala: Number((escala / args.escalaDoFormato).toFixed(3)),
         cor: args.estilo.color,
         destacado: Boolean(destaque),
+        familiasMedidas,
       },
       recusa: null,
       avisos,
@@ -324,15 +342,20 @@ export function montarBloco(args: {
   // Nada coube nem a 80%: devolve o orçamento medido no tamanho de assinatura.
   const base = camadaDoPapel({ ...semDestaque, escala: args.escalaDoFormato, width: coluna + PADDING_DE_DESENHO * 2 })
   const orcamento: OrcamentoDeLinha[] = linhas
-    .map((linha) => {
+    .map((linha, i) => {
       const m = medirLinha(args.medir, base, linha, coluna)
-      if (!m || m.largura <= coluna) return null
+      if (!m) return null
+      // O destaque alarga a linha também aqui: sem o extra, a linha que só
+      // estourou pela família pesada saía do orçamento e a recusa vinha vazia (R08).
+      const extra = destaque ? larguraExtraDoDestaque(args.medir, base, linhasLimpas[i], destaque.trechosPorLinha[i] ?? [], destaque.estilo.fontFamily, coluna) : 0
+      const largura = m.largura + extra
+      if (largura <= coluna) return null
       return {
         papel: args.papel,
         linha,
-        largura: Math.round(m.largura),
+        largura: Math.round(largura),
         coluna,
-        caracteresQueCabem: Math.max(1, Math.floor((linha.length * coluna) / m.largura)),
+        caracteresQueCabem: Math.max(1, Math.floor((linha.length * coluna) / largura)),
       }
     })
     .filter((o): o is OrcamentoDeLinha => o !== null)
@@ -341,9 +364,7 @@ export function montarBloco(args: {
     recusa: {
       papel: args.papel,
       orcamento,
-      familiasMedidas: [args.estilo.fontFamily, ...(destaque ? [destaque.estilo.fontFamily] : [])].filter(
-        (f): f is string => typeof f === 'string' && f.trim() !== '',
-      ),
+      familiasMedidas,
     },
     avisos,
   }

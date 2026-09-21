@@ -1638,6 +1638,37 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
             ],
             "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
           },
+          "arranjos": {
+            "description": "Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como \"cabe\" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.",
+            "items": {
+              "anyOf": [
+                {
+                  "maxLength": 160,
+                  "type": "string"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arranjo": {
+                      "maxLength": 160,
+                      "type": "string"
+                    },
+                    "grupo": {
+                      "maxLength": 80,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "grupo",
+                    "arranjo"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
           "variante": {
             "type": "string",
             "description": "A variante da assinatura, quando o cliente tem mais de uma página no formato: o `id` da página (ver-assinatura lista; vence nome e tag, e é o que fixa a variante sem ambiguidade), ou o nome/tag. Sem isso: foto clara/escura escolhe entre as marcadas, e o rodízio varia entre as demais. A recomposição fixa sozinha a variante com que a peça nasceu."
@@ -1832,6 +1863,37 @@ const LITERAIS_COMPOSITOR: Record<string, unknown> = {
                     "fixo"
                   ],
                   "description": "\"auto\" (default) deixa o compositor deslocar o corte da foto para abrir área livre; \"fixo\" mantém o centro."
+                },
+                "arranjos": {
+                  "description": "Os arranjos de texto a REPETIR, por grupo: a `fixacao.arranjos` que medir-copy devolveu ([{ grupo, arranjo }]). Sem isso o rodízio de arranjos usa a chave da peça (que inclui a foto) e pode escolher outra combinação salva para um grupo — fonte, tamanho e distribuição das linhas mudam, e uma copy medida como \"cabe\" pode ser recusada. Mande junto com preferencias.variante para reproduzir uma medição.",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "maxLength": 160,
+                        "type": "string"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "arranjo": {
+                            "maxLength": 160,
+                            "type": "string"
+                          },
+                          "grupo": {
+                            "maxLength": 80,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "grupo",
+                          "arranjo"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxItems": 8,
+                  "type": "array"
                 },
                 "variante": {
                   "type": "string",
