@@ -1,12 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { VOZES_PROPOSTAS } from '../../../../scripts/lib/vozes-propostas'
 
-const d = vi.hoisted(() => ({ vozFind: vi.fn(), vozCreate: vi.fn(), vozUpdateMany: vi.fn(), dnaFind: vi.fn(), kbFindMany: vi.fn() }))
+const d = vi.hoisted(() => ({ vozFind: vi.fn(), vozCreate: vi.fn(), vozUpdateMany: vi.fn(), dnaFind: vi.fn(), kbFindMany: vi.fn(), travaDoProjeto: vi.fn() }))
 vi.mock('@/lib/db', () => {
   const brandVoice = { findUnique: d.vozFind, create: d.vozCreate, updateMany: d.vozUpdateMany }
   const brandDNA = { findUnique: d.dnaFind }
   const knowledgeBaseEntry = { findMany: d.kbFindMany }
-  const tx = { brandVoice, brandDNA, knowledgeBaseEntry }
+  // `travarProjeto` (PR 7) trava a linha do Project por `$queryRaw` ANTES de qualquer leitura; sem ele no dublê
+  // a transação nem chega às leituras que este teste ordena.
+  const tx = { brandVoice, brandDNA, knowledgeBaseEntry, $queryRaw: d.travaDoProjeto }
   return { db: { brandVoice, brandDNA, knowledgeBaseEntry, $transaction: (fn: (t: typeof tx) => Promise<unknown>) => fn(tx) } }
 })
 
@@ -40,6 +42,7 @@ describe('PR13-38 — a posse de uma trava externa é conferida DENTRO do servi�
   })
 
   it('migrarParaVoz: `antesDeEscrever` roda dentro da transação, DEPOIS das leituras do DNA e dos fatos; lançando, `migradaEm` não é escrito', async () => {
+    d.travaDoProjeto.mockResolvedValue([{ id: 6 }])
     d.vozFind.mockResolvedValue({ voz: VOZ, versao: 4, migradaEm: null })
     d.dnaFind.mockResolvedValue({ toneOfVoice: 'tom', contentRules: 'regras', updatedAt: new Date() })
     d.kbFindMany.mockResolvedValue([{ id: 'f1', content: 'Aniversário só com bolo próprio.', category: 'ESTABELECIMENTO_INFO', status: 'ACTIVE', expiresAt: null, metadata: { indexadoEm: '2026-09-12T10:00:00.000Z' } }])
@@ -56,6 +59,8 @@ describe('PR13-38 — a posse de uma trava externa é conferida DENTRO do servi�
     expect(posse).toHaveBeenCalledTimes(1)
     expect(posse.mock.invocationCallOrder[0]).toBeGreaterThan(d.kbFindMany.mock.invocationCallOrder[0])
     expect(posse.mock.invocationCallOrder[0]).toBeGreaterThan(d.dnaFind.mock.invocationCallOrder[0])
+    // A trava do projeto vem ANTES de tudo (PR7-R9-02): a leitura que decide não pode acontecer fora dela.
+    expect(d.travaDoProjeto.mock.invocationCallOrder[0]).toBeLessThan(d.vozFind.mock.invocationCallOrder[0])
     expect(d.vozUpdateMany).not.toHaveBeenCalled()
   })
 })

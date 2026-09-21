@@ -41,6 +41,9 @@ const estado = vi.hoisted(() => ({
   antesDeGravarODna: null as null | (() => Promise<void> | void),
 }))
 
+// `voz-service` passou a importar o namespace do Prisma (isolamento serializável e o erro P2034 da ativação,
+// PR13-02): o client gerado neste worktree não resolve em teste. Mesmo dublê de `virar-regra-destino.test.ts`.
+vi.mock('@prisma/client', () => ({ Prisma: { TransactionIsolationLevel: { Serializable: 'Serializable' }, PrismaClientKnownRequestError: class PrismaClientKnownRequestError extends Error { code = '' } } }))
 vi.mock('@/lib/knowledge/entries', () => ({ criarEntradaBase: vi.fn() }))
 vi.mock('@/lib/db', () => {
   // Fila de espera da linha do Project: cada transação espera a anterior soltar.
