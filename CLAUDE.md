@@ -11399,3 +11399,92 @@ pela arte casada pela URL); os três achados são as fronteiras dela.
   ser a origem (2 testes caem), sem o filtro de linhas (2), sem `melhoria` →
   refino (1), sem a exclusão do ajuste só do revisor (1), o canal do ajuste
   volta (1), a página volta à última revisão que tocou (1).
+
+**Base fora da janela (proativo, antes da FINAL, 21/09/2026).** O caso ficou
+registrado sem conserto no PR15-14 (o bullet "⚠️ Observado na varredura, FORA
+da classe e não corrigido", acima) e foi corrigido antes da revisão FINAL —
+este bloco o SUPERA; o bullet fica como registro.
+
+- 🔴 **A base da fidelidade é o `original` da arte de CRIAÇÃO, e quem diz se o
+  campo é base é o PRODUTOR** (`ORIGENS_DA_COMPOSICAO`: `compositor`,
+  `arte-rapida`, `arte-ia`). O mesmo `copyAutoral.original` muda de sentido
+  conforme `fieldValues.source`: no ajuste (`ajuste-arte`) é o contrato da
+  página JÁ revisado por ele; na melhoria (`ai_improvement`), o da origem levado
+  pela cadeia, com o refino por cima. A base era o original da PRIMEIRA arte
+  lida: com a de criação fora da janela de 60 dias do histórico e não apontada
+  pelo post, a primeira era o ajuste, a edição da equipe virava o texto do autor
+  e a peça saía "preservada". Lista FECHADA: produtor novo, ou `source` ausente,
+  não vira base até ser conferido e acrescentado.
+- **Sem a arte de criação na leitura, a base é DESCONHECIDA**:
+  `sem-original-da-composicao`, fora do denominador e CONTADA
+  (`foraDoDenominador.semOriginalDaComposicao`, dita no bloco e na linha do
+  cliente) — nunca medida contra uma base revisada, nunca uma base inventada.
+  Cai nela a página duplicada (a arte de criação é da OUTRA página) e a peça sem
+  página cuja única arte é a melhoria.
+  ⚠️ **Mudança só de motivo**: a peça da melhoria sem página era
+  `sem-copy-final` (arte de IA não grava `efetiva`) e agora é
+  `sem-original-da-composicao` — nunca foi medida, antes nem depois. Ler a
+  linhagem (`sourceGenerationId`) até a raiz não a mediria: a peça continuaria
+  sem copy final.
+- **A arte de criação é lida SEM o limite do histórico**, o mesmo caminho que o
+  PR15-08 abriu para a referência direta: um ramo a mais na consulta do
+  histórico — `pageId` da peça + projeto + produtor da lista +
+  `copyAutoral.original` objeto. O ajuste antigo continua fora (o histórico
+  segue limitado a `desde`), e a criação de antes do limite gera aviso ("lidas
+  para dar a base; as outras artes dessas páginas, dessa época, não"). Consulta
+  validada num PostgreSQL 15 descartável com o texto EXATO do fonte:
+  `copyAutoral` ausente, `original` nulo ou escalar e `fieldValues` nulo não
+  casam nem dão erro; ajuste e melhoria com contrato não casam.
+- 🔴 **Ler a criação antiga fazia o TEMPO até o rascunho mentir — a regra é a
+  janela, e a exclusão é contada.** Com a arte de meses atrás na leitura, o
+  repost desta semana saía com meses de "tempo até o rascunho"; e toda peça
+  começada antes da janela pode ter tido o primeiro post fora dela (os posts só
+  são lidos a partir do início). Só a peça que começou DENTRO da janela tem
+  tempo; a outra sai sem tempo e CONTADA (`tempoAteRascunho.antesDaJanela`,
+  dita no bloco: "N peça(s) começaram antes da janela, sem tempo").
+  ⚠️ O preço: peça planejada numa semana e agendada na seguinte nunca tem tempo.
+  A saída é ler o primeiro post de antes da janela (uma consulta a mais), não
+  feita.
+- **Varredura da classe** ("linha de base tomada de um registro que já foi
+  revisado"), ponto a ponto:
+  - o laço da base em `montarPecas`: corrigido (a lista de produtores);
+  - o 1º estado da linha do tempo e o `doOriginal` de `reversoesIndevidas`:
+    derivam da base corrigida;
+  - o estado ANTERIOR (`estados[j-1]`): entre a criação antiga e o histórico
+    lido faltam as artes daquela época — a lacuna do PR15-08, declarada pelo
+    aviso. O que ela esconde está no contrato da PÁGINA: a origem por bloco sai
+    das revisões dele (PR15-14), que acumulam o histórico inteiro, e a volta da
+    equipe continua vista;
+  - o início do tempo (primeira arte ou item): virou a regra da janela;
+  - `arteDaVoz` (`arteDoOriginal`, senão a primeira com carimbo): só produtor
+    de criação grava o carimbo (e a copy reproduzida, que o HERDA, C15-05) —
+    o fallback nunca pega o ajuste;
+  - `final.revisoes` como correções: conta toda revisão registrada, inclusive a
+    do item de plano antes da composição (a equipe corrigindo o Claude na
+    bancada) — é correção do texto do autor, não base; a fidelidade compara as
+    duas pontas, e a revisão anterior à composição está nas duas;
+  - `finalDaPeca`, `artePorUrl`, `instanteDoPng`, `primeiraPecaDoPost`: o
+    final, a prova da mídia e a rota dos sinais — nenhum escolhe base;
+  - quem ESCREVE o `original` (todos varridos): compositor (`persistencia.ts`),
+    `createArteRapida` e `startArtGeneration` gravam o contrato RECEBIDO;
+    `ajustarArte` grava o da página (fora); a melhoria, o da origem + refino
+    (fora); a recomposição mantém o que a arte tinha.
+  ⚠️ **Limite registrado, não guardado**: a recomposição de arte do compositor
+  SEM registro numa página COM contrato grava `original: contratoAtual` (o da
+  página, talvez revisado) com `source: 'compositor'`, e a medida o tomaria por
+  base. Praticamente inalcançável: página só ganha contrato na mesma escrita da
+  arte que o compositor ou a via de modelo gravam, e a duplicação o copia para
+  uma página SEM arte (sem arte, sem recomposição).
+- Provas: `qualidade-da-copy-contrato.test.ts` (a única arte lida é o ajuste →
+  `sem-original-da-composicao`, contada no bloco e na linha; melhoria, registro
+  sem produtor e produtor desconhecido também não dão base; controle com a
+  criação na leitura; as três vias de criação; o tempo pela janela e a
+  contagem) e `qualidade-da-copy.test.ts` (o serviço lê a criação de antes do
+  limite pelo WHERE avaliado de verdade no banco falso, e a peça é medida contra
+  ela — a troca da equipe é redação, não "preservada"; o aviso; a página
+  duplicada). Vistos falhar antes do conserto pelo motivo do caso (o ajuste
+  medido como "preservada"; `['g-ajuste']` lido sem a criação; tempos de 29, 25
+  e 142.680 minutos). Mutações contra o código FINAL: a base de volta à primeira
+  arte (3 testes caem), sem a busca da criação (1), `ajuste-arte` como produtor
+  de criação (4), sem o aviso (1), sem a regra da janela (4), o agregado sem a
+  contagem do tempo (1), o bloco sem dizê-la (1), a medida sem marcá-la (1).
