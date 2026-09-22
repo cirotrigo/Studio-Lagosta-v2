@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { redirect } from 'next/navigation'
 import { findClient, oauthIssuer } from '@/lib/mcp/oauth'
-import { audienciaEsperada, resourceAceito } from '@/lib/mcp/oauth-regras'
+import { audienciaEsperada, redirectUriRegistrada, resourceAceito } from '@/lib/mcp/oauth-regras'
 import { ConsentForm } from './consent-form'
 
 /**
@@ -34,7 +34,9 @@ export default async function AuthorizePage({
   }
 
   const clientId = texto('client_id')
-  const redirectUri = texto('redirect_uri')
+  const redirectUriPedida = texto('redirect_uri')
+  // A registrada, quando confere (ver redirectUriRegistrada): é para ela que o código vai.
+  let redirectUri = redirectUriPedida
   const state = texto('state')
   const codeChallenge = texto('code_challenge')
   const codeChallengeMethod = texto('code_challenge_method')
@@ -42,7 +44,7 @@ export default async function AuthorizePage({
   const resource = texto('resource')
 
   const erro = await (async () => {
-    if (!clientId || !redirectUri) return 'Faltam client_id ou redirect_uri na requisição.'
+    if (!clientId || !redirectUriPedida) return 'Faltam client_id ou redirect_uri na requisição.'
     if (responseType !== 'code') return 'Só o fluxo de authorization code é aceito (response_type=code).'
     if (!codeChallenge || codeChallengeMethod !== 'S256') {
       return 'Este servidor exige PKCE com S256 (code_challenge e code_challenge_method).'
@@ -55,9 +57,11 @@ export default async function AuthorizePage({
     }
     const client = await findClient(clientId)
     if (!client) return 'Cliente não registrado. Refaça a conexão pelo aplicativo.'
-    if (!client.redirectUris.includes(redirectUri)) {
+    const registrada = redirectUriRegistrada(client.redirectUris, redirectUriPedida)
+    if (!registrada) {
       return 'A redirect_uri não confere com a registrada por este cliente.'
     }
+    redirectUri = registrada
     return null
   })()
 
