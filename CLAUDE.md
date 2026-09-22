@@ -11345,3 +11345,57 @@ pela arte casada pela URL); os três achados são as fronteiras dela.
   `metricsJson.copy.indisponivel`. Gravar o porquê do `null` seria escrita a mais
   justamente no caminho em que o banco falhou ou o prazo não comportava o
   cliente, e atrasaria o envio do relatório.
+
+**Da revisão FINAL do Codex sobre 9fba3c68 (BLOQUEADO, PR15-14, 21/09/2026).**
+
+- 🔴 **Quem mudou o texto de um bloco sai da REVISÃO desse bloco, nunca da
+  origem da arte** (PR15-14, `origemPorBloco`). A recomposição grava na arte
+  EXISTENTE do compositor (`recompor.ts`, `registroDaCopyDaArte`) a efetiva lida
+  sobre o contrato da página — com a revisão da EQUIPE dentro.
+  `origemDoEstadoDaArte` chamava de compositor todo estado de arte com
+  `source: 'compositor'`, e a sequência "A do autor → B da equipe (relida pelo
+  render) → A da equipe (por `ajustar-arte`)" virava `equipe-voltou-ao-original`:
+  correção indevida do SISTEMA quando a equipe só desfez a própria redação — até
+  com `sistemaMudouLinhas: false`. Hoje cada estado da linha do tempo (as
+  efetivas das artes e o contrato da página, pela MESMA função) tem a origem POR
+  BLOCO: a da ÚLTIMA revisão que mudou as LINHAS dele (ou o acrescentou ou
+  removeu). Revisão só de estilo ou de ordem não produz as linhas — com "a
+  última que tocou o bloco", o estilo retocado pela recomposição depois da
+  edição da equipe voltava a jogar a mudança dela na conta do sistema. Bloco sem
+  revisão fica sem origem (lido como do autor): nem acusa, nem reverte.
+- **Os três palpites pela arte saíram juntos**: `source: 'compositor'` (o
+  achado), o CANAL do ajuste (`canal: 'studio'` fazia a equipe autora de TODO
+  bloco da arte do ajuste, inclusive o que só a leitura das camadas mudou — que
+  o contrato registra como SISTEMA) e o `modo: 'refinar'` (o refino passa a ser
+  lido pela revisão dele: `superficie: 'melhoria'`, o único produtor, é a origem
+  `refino`). `canal` e `modo` continuam na leitura da arte e não entram mais em
+  conta nenhuma. O que ficou da arte é o que ela REGISTRA sobre a própria
+  chamada: o ajuste só do revisor (`revisao` + `ajustes` vazio) segue fora da
+  linha do tempo — e a exclusão continua necessária: re-renderizada depois, a
+  arte dele relê o bloco escondido como revisão do sistema na superfície da
+  recomposição, que é origem acusável.
+- ⚠️ **O refino, como origem, não conta como a equipe desfazendo** (não está em
+  `HUMANAS`): refino que devolva ao original o texto do compositor não vira
+  `equipe-voltou-ao-original`. Conservador — perde-se uma acusação, nunca se
+  inventa uma. Sem efeito em produção hoje: a arte de IA não grava `efetiva` e a
+  melhoria não escreve no contrato da página.
+- ⚠️ **Observado na varredura, FORA da classe e não corrigido**: o original da
+  peça é o `copyAutoral.original` da PRIMEIRA arte lida, e o `original` da arte
+  de `ajustarArte` é o contrato da página JÁ revisado por aquele ajuste. Se ela
+  for a primeira da peça (a arte de criação fora da janela de 60 dias do
+  histórico e não referenciada pelo post), a base da fidelidade já inclui a
+  edição da equipe e a peça sai "preservada". Não é inferência pela origem: é o
+  campo que muda de sentido conforme o produtor.
+- Provas (`qualidade-da-copy-contrato.test.ts`): o cenário do achado com o meio
+  na efetiva da arte recomposta e a volta por `ajustar-arte` (duas redações,
+  nenhuma indevida, a linha do tempo passando pelo meio); o controle na MESMA
+  arte (a manchete que a recomposição mudou segue indevida; o CTA da equipe, com
+  o estilo retocado depois, não); o ajuste pedido pela equipe com um bloco que
+  só o desenho mudou; o estilo retocado no contrato da página; e a arte do
+  ajuste só do revisor re-renderizada. Antes do conserto, três caem pelo motivo
+  do achado (a falsa `equipe-voltou-ao-original` no CTA) e um pela regra da
+  última revisão que TOCOU (a volta da equipe sumia); o do revisor
+  re-renderizado é guarda da regra nova. Mutações: a arte do compositor volta a
+  ser a origem (2 testes caem), sem o filtro de linhas (2), sem `melhoria` →
+  refino (1), sem a exclusão do ajuste só do revisor (1), o canal do ajuste
+  volta (1), a página volta à última revisão que tocou (1).
