@@ -20,6 +20,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { computeDe } from '../src/lib/compute-do-banco'
 
 const ROOT = process.cwd()
 const PROD_ENV_FILE = resolve(ROOT, '.env')
@@ -40,18 +41,50 @@ function parseEnvFile(path: string): Record<string, string> {
 }
 
 /**
- * Identidade do compute no Neon: o primeiro rótulo do host, sem o sufixo
- * `-pooler`. `ep-foo-123-pooler.c-2.…` e `ep-foo-123.c-2.…` são a MESMA
- * instância (pooled e direta) — comparar o host inteiro deixaria passar a URL
- * direta de produção colada no lugar da pooled.
+ * Por que este par `.env` (PRODUÇÃO) / `.env.development.local` não pode rodar; `null` quando pode. Pura: é o que o
+ * teste da guarda exercita. O compute sai de `computeDe` — em minúsculas, porque `EP-PROD…` também é a produção.
  */
-function endpointIdOf(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
+export function recusaDoBancoDeDev(
+  prod: Record<string, string>,
+  dev: Record<string, string>,
+): { titulo: string; linhas: string[] } | null {
+  const missing = DB_KEYS.filter((key) => !dev[key])
+  if (missing.length > 0) {
+    return {
+      titulo: `.env.development.local não define ${missing.join(' nem ')}.`,
+      linhas: [
+        'O comando cairia no .env (PRODUÇÃO) para essas variáveis.',
+        '',
+        'Rode  npm run db:dev:setup  ou preencha as duas URLs do branch à mão.',
+      ],
+    }
   }
+
+  // Guard: nenhum endpoint de dev pode ser um endpoint de produção.
+  const prodEndpoints = new Set(
+    DB_KEYS.map((key) => computeDe(prod[key])).filter((id): id is string => id !== null),
+  )
+  for (const key of DB_KEYS) {
+    const devEndpoint = computeDe(dev[key])
+    if (!devEndpoint) {
+      return {
+        titulo: `${key} do .env.development.local não é uma URL válida.`,
+        linhas: [`Valor recebido não pôde ser parseado como URL de conexão.`],
+      }
+    }
+    if (prodEndpoints.has(devEndpoint)) {
+      return {
+        titulo: 'O "banco de dev" está apontando para o compute de PRODUÇÃO.',
+        linhas: [
+          `${key} usa o endpoint ${devEndpoint}, que é o mesmo do .env.`,
+          '',
+          'Isto é exatamente o acidente que este runner existe para impedir.',
+          'Confira o .env.development.local: as URLs devem ser as do BRANCH do Neon.',
+        ],
+      }
+    }
+  }
+  return null
 }
 
 function abort(title: string, lines: string[]): never {
@@ -73,35 +106,8 @@ function resolveDevEnv(): { prod: Record<string, string>; dev: Record<string, st
   const prod = parseEnvFile(PROD_ENV_FILE)
   const dev = parseEnvFile(DEV_ENV_FILE)
 
-  const missing = DB_KEYS.filter((key) => !dev[key])
-  if (missing.length > 0) {
-    abort(`.env.development.local não define ${missing.join(' nem ')}.`, [
-      'O comando cairia no .env (PRODUÇÃO) para essas variáveis.',
-      '',
-      'Rode  npm run db:dev:setup  ou preencha as duas URLs do branch à mão.',
-    ])
-  }
-
-  // Guard: nenhum endpoint de dev pode ser um endpoint de produção.
-  const prodEndpoints = new Set(
-    DB_KEYS.map((key) => endpointIdOf(prod[key])).filter((id): id is string => id !== null),
-  )
-  for (const key of DB_KEYS) {
-    const devEndpoint = endpointIdOf(dev[key])
-    if (!devEndpoint) {
-      abort(`${key} do .env.development.local não é uma URL válida.`, [
-        `Valor recebido não pôde ser parseado como URL de conexão.`,
-      ])
-    }
-    if (prodEndpoints.has(devEndpoint)) {
-      abort('O "banco de dev" está apontando para o compute de PRODUÇÃO.', [
-        `${key} usa o endpoint ${devEndpoint}, que é o mesmo do .env.`,
-        '',
-        'Isto é exatamente o acidente que este runner existe para impedir.',
-        'Confira o .env.development.local: as URLs devem ser as do BRANCH do Neon.',
-      ])
-    }
-  }
+  const recusa = recusaDoBancoDeDev(prod, dev)
+  if (recusa) abort(recusa.titulo, recusa.linhas)
 
   return { prod, dev }
 }
@@ -110,8 +116,8 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2)
   const { prod, dev } = resolveDevEnv()
 
-  const devEndpoint = endpointIdOf(dev.DATABASE_URL)
-  const prodEndpoint = endpointIdOf(prod.DATABASE_URL)
+  const devEndpoint = computeDe(dev.DATABASE_URL)
+  const prodEndpoint = computeDe(prod.DATABASE_URL)
 
   /**
    * Há quantos dias o branch de dev parou no tempo.
@@ -175,4 +181,6 @@ async function main(): Promise<void> {
   process.exit(result.status ?? 1)
 }
 
-void main()
+// Só roda como comando: o teste importa `recusaDoBancoDeDev` sem disparar o runner. O `(^|/)` porque
+// `setup-dev-db.ts` também termina em "dev-db.ts".
+if (process.argv[1] && /(^|[\\/])dev-db\.(ts|js)$/.test(process.argv[1])) void main()

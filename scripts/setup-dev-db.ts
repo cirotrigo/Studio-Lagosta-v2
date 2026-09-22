@@ -19,6 +19,7 @@
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { computeDe as endpointIdOf } from '../src/lib/compute-do-banco'
 
 const ROOT = process.cwd()
 const PROD_ENV_FILE = resolve(ROOT, '.env')
@@ -45,14 +46,6 @@ function parseEnvFile(path: string): Record<string, string> {
     if (match) out[match[1]] = match[2].trim().replace(/^["']|["']$/g, '')
   }
   return out
-}
-
-function endpointIdOf(url: string): string | null {
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
 }
 
 /** A URL pooled é a direta com `-pooler` no primeiro rótulo do host. */
