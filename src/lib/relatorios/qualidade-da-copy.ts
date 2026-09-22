@@ -23,8 +23,11 @@
  *   Neon) o Prisma manda `DEALLOCATE ALL` logo depois do BEGIN, e um
  *   `SET TRANSACTION ISOLATION LEVEL …` nosso depois dele é recusado ("must be
  *   called before any query") — a medida de todo cliente cairia. Com
- *   `isolationLevel` o Prisma o manda ANTES do `DEALLOCATE ALL`, nos dois
- *   modos. `READ ONLY` pode vir depois e continua sendo a nossa 1ª instrução.
+ *   `isolationLevel` o Prisma o manda logo depois do BEGIN — no modo pgbouncer,
+ *   antes do `DEALLOCATE ALL`; no direto não há `DEALLOCATE` — e o snapshot
+ *   único valeu nos dois modos (a linha que outra conexão insere entre duas
+ *   leituras não aparece na segunda). `READ ONLY` pode vir depois e continua
+ *   sendo a nossa 1ª instrução.
  * - **O esquema é conferido ANTES** (`lerEsquemaDaCopy`, `information_schema`):
  *   sem `Page.copyAutoral` (PR 3) o cliente sai `indisponivel` dizendo a coluna,
  *   sem emitir a consulta que falharia; sem a tabela `BrandVoice` (PR 7) a

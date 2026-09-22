@@ -4,8 +4,12 @@
  */
 import type { JanelaDeMedida, QualidadeDaCarteira } from '../../src/lib/relatorios/qualidade-da-copy'
 
-/** O bloco guarda só o NOME de quem não coube no prazo; o motivo é o mesmo para todos. */
-export const MOTIVO_FORA_DO_ORCAMENTO = 'fora do orçamento de tempo: o prazo da medida acabou antes de este cliente começar'
+/**
+ * O bloco guarda só o NOME de quem não coube no prazo; o motivo é o mesmo para todos. A carteira não começa um
+ * cliente quando o que resta do prazo é menos de um terço do teto por cliente (`medirQualidadeDaCarteira`): o prazo
+ * pode não ter acabado, e o motivo não diz que acabou.
+ */
+export const MOTIVO_FORA_DO_ORCAMENTO = 'fora do orçamento de tempo: o que restava do prazo da medida não dava para começar este cliente'
 
 /**
  * A medida por cliente e da carteira, e também quem NÃO foi medido, com o motivo (FINAL do Codex sobre 9648f441,

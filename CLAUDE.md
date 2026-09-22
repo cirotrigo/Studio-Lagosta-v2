@@ -11319,25 +11319,29 @@ pela arte casada pela URL); os três achados são as fronteiras dela.
   modo pgbouncer (o do pooler do Neon) o Prisma manda `DEALLOCATE ALL` logo
   depois do BEGIN, e `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`
   escrito à mão foi RECUSADO ("must be called before any query") — a medida de
-  TODO cliente cairia. Com a opção o Prisma manda o isolamento antes do
-  DEALLOCATE, nos dois modos; uma linha inserida por outra conexão entre duas
-  leituras não aparece na segunda (em READ COMMITTED, aparecia). Conferido: nada
-  aqui espera trava de linha (só SELECT), e leitura em RR não recebe erro de
-  serialização. ⚠️ Caveat do Postgres: DDL que REESCREVE tabela no meio da
-  leitura a faz parecer vazia para o snapshot antigo — as migrations da casa são
-  aditivas.
+  TODO cliente cairia. Com a opção o Prisma manda o isolamento logo depois do
+  BEGIN — no pgbouncer, antes do DEALLOCATE; no direto não há DEALLOCATE — e o
+  snapshot único valeu nos dois modos: uma linha inserida por outra conexão
+  entre duas leituras não aparece na segunda (em READ COMMITTED, aparecia).
+  Conferido: nada aqui espera trava de linha (só SELECT), e leitura em RR não
+  recebe erro de serialização. ⚠️ Caveat do Postgres: DDL que REESCREVE tabela
+  no meio da leitura a faz parecer vazia para o snapshot antigo — as migrations
+  da casa são aditivas.
 - **Varredura por classe** — (a) formato legado lido como se tivesse a
   informação do novo: só `instanteDoPng` (corrigido); recusa legada cortada pelo
   `em` dela, contrato adaptado (autoria desconhecida → fora), arte sem registro
-  (sem contrato → fora), carimbo ausente (contado "sem"), `canal` nulo (o rótulo
-  `equipe`/`claude` não entra em conta nenhuma: os dois são HUMANAS). ⚠️ Limite: a
-  recusa legada também apagou `urlsAnteriores`, e a mídia antiga de um slide
-  recomposto nessa janela não se liga a arte nenhuma — fica igual a uma foto do
-  acervo (não é peça), e casar pelo nome do arquivo é proibido pela casa. (b)
+  (sem contrato → fora), carimbo ausente (contado "sem"), `canal` nulo (a
+  distinção `equipe`/`claude` não entra em conta nenhuma: as duas são HUMANAS). ⚠️
+  Limite: a recusa legada também apagou `urlsAnteriores`, e a mídia antiga de um
+  slide recomposto nessa janela não se liga a arte nenhuma — fica igual a uma foto
+  do acervo (não é peça); o slide 1 ainda se liga pela coluna do post e sai
+  `congelada-sem-prova`. Casar pelo nome do arquivo é proibido pela casa. (b)
   vínculo JSON como prova de dono: só a consulta de páginas; artes, itens,
   sinais, voz e as leituras do carimbo (`refazer`, carrossel, item do compositor)
   já filtram pelo projeto. (c) saída que omite o não medido: só o `--json`;
   mensagem de domingo e bloco declaram. ⚠️ `metricsJson.copy: null` por cliente
-  diz "não medida" sem o porquê (ele sai na mensagem da semana): gravar o motivo
-  seria escrita a mais justamente no caminho em que o banco falhou ou o prazo
-  acabou, e atrasaria o envio do relatório.
+  (fora do orçamento, ou a falha geral) diz "não medida" sem o porquê — ele sai na
+  mensagem da semana; o indisponível POR cliente já guarda o motivo em
+  `metricsJson.copy.indisponivel`. Gravar o porquê do `null` seria escrita a mais
+  justamente no caminho em que o banco falhou ou o prazo não comportava o
+  cliente, e atrasaria o envio do relatório.
