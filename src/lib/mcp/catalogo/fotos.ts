@@ -238,6 +238,93 @@ export const toolsDeFotos = [
   }),
 
   definirTool({
+    nome: 'importar-arte',
+    descricao:
+      'Traz para o Studio uma ARTE PRONTA feita fora dele — a imagem que você gerou ou editou aqui na conversa, ou a que a pessoa anexou — e a registra como arte de verdade: entra na galeria do cliente, abre no editor, aceita conferir-arte e melhorar-arte, e vai para a agenda com colocar-na-agenda passando o generationId devolvido. Mande a imagem em `imagem` (o arquivo da conversa). Se o arquivo não chegar (o campo vem vazio ou a ferramenta avisar), use o plano B: pedir-foto, a pessoa envia pelo link, e você chama esta ferramenta de novo com o `uploadId`. Passe `textos` com os blocos de texto que a arte mostra, na ordem: é a régua que a conferência e a melhoria usam. A imagem entra INTOCADA (não é redesenhada); se a proporção não for de story, feed ou quadrado, o retorno avisa. Não use para FOTO de acervo (isso é pedir-foto/ver-foto-enviada + criar-arte).',
+    schema: z.object({
+      projectId: z.number().describe('ID do cliente.'),
+      imagem: z
+        .object({
+          download_url: z.string().describe('Endereço para baixar o arquivo.'),
+          file_id: z.string().describe('Identificador do arquivo na conversa.'),
+          mime_type: z.string().optional(),
+          file_name: z.string().optional(),
+        })
+        .optional()
+        .describe('O arquivo da imagem na conversa (preenchido pelo ChatGPT).'),
+      uploadId: z
+        .string()
+        .optional()
+        .describe('Plano B: o uploadId de pedir-foto, depois que a pessoa enviou a imagem pelo link.'),
+      nome: z.string().optional().describe('Nome da arte na galeria (ex.: "Story Espeto — costela quinta").'),
+      textos: z
+        .array(z.string())
+        .optional()
+        .describe('Os blocos de texto que a arte mostra, exatos e na ordem de leitura.'),
+    }),
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    acesso: { tipo: 'projeto' },
+    superficies: ['remoto'],
+    meta: { 'openai/fileParams': ['imagem'] },
+    handler: async (args, principal) => {
+      const [{ importarArte }, { baixarImagemExterna }, { verFoto }, { avisoDeProporcao }, { quemDecidiu, canalDoPrincipal }, { CreativeError }] =
+        await Promise.all([
+          import('../../creatives/arte-enviada'),
+          import('../../creatives/baixar-imagem-externa'),
+          import('../../creatives/chat-upload'),
+          import('../../creatives/proporcao-da-arte'),
+          import('../tools'),
+          import('../../creatives/errors'),
+        ])
+      const projectId = args.projectId as number
+      const imagem = args.imagem as { download_url: string; file_name?: string } | undefined
+      const uploadId = args.uploadId as string | undefined
+      if (!imagem === !uploadId) {
+        throw new CreativeError(
+          'IMAGEM_AUSENTE',
+          imagem
+            ? 'Mande a imagem por UM caminho só: `imagem` ou `uploadId`.'
+            : 'A imagem não chegou. Use pedir-foto para a pessoa enviar pelo link e chame de novo com o uploadId.',
+          400,
+        )
+      }
+
+      let url: string
+      let fileName: string
+      if (imagem) {
+        url = imagem.download_url
+        fileName = imagem.file_name || 'arte-do-chat.png'
+      } else {
+        const envio = await verFoto({ projectId, uploadId: uploadId! })
+        if (envio.situacao !== 'recebida') {
+          throw new CreativeError('ENVIO_PENDENTE', envio.dica ?? 'A imagem ainda não chegou pelo link.', 409)
+        }
+        url = envio.fotoUrl
+        fileName = envio.fileName || 'arte-enviada.jpg'
+      }
+
+      const { bytes } = await baixarImagemExterna(url)
+      const decididoPor = await quemDecidiu(projectId, principal)
+      const arte = await importarArte({
+        projectId,
+        bytes,
+        fileName,
+        name: args.nome as string | undefined,
+        origem: imagem ? 'conversa (openai/fileParams)' : `link de envio ${uploadId}`,
+        canal: canalDoPrincipal(principal),
+        createdBy: decididoPor ?? null,
+        textos: args.textos as string[] | undefined,
+      })
+      const aviso = avisoDeProporcao(arte.width, arte.height)
+      return {
+        ...arte,
+        ...(aviso ? { avisos: [aviso] } : {}),
+        proximoPasso: `Para agendar: colocar-na-agenda com generationId "${arte.generationId}" (fica como rascunho).`,
+      }
+    },
+  }),
+
+  definirTool({
     nome: 'listar-fotos-da-pasta',
     apelidos: ['list-drive-images'],
     descricao:
