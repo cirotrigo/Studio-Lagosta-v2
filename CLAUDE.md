@@ -181,6 +181,11 @@ Armadilhas registradas:
 - **O guard compara o compute, não o host**: `ep-x-pooler.…` e `ep-x.…` são a
   mesma instância, então colar a URL *direta* de produção no `DATABASE_URL` de
   dev também é recusado.
+- 🔴 **O compute sai SEMPRE de `computeDe` (`src/lib/compute-do-banco.ts`)**,
+  em minúsculas: o `new URL` não baixa a caixa do host em `postgresql:`, e
+  `EP-PROD-…-POOLER` passava pelo runner como dev. Guarda nova não refaz o parse
+  do host — um teste (`compute-do-banco.test.ts`) recusa a cópia. O NOME do
+  banco (`nomeDoBancoDe`) continua com a caixa: no Postgres ela distingue.
 - **`npx prisma migrate dev` cru continua perigoso** — ele lê o `.env`. Use
   sempre `npm run db:migrate`.
 - 🔴 **Branch do Neon é copy-on-write e envelhece**: nasce com os dados do
@@ -10886,10 +10891,10 @@ passo 21); o código da aplicação (R12-09) foi aprovado.
   especial, o `new URL` preserva a caixa do host, e o DNS não a distingue:
   `EP-PROD-…` conecta na produção e, comparado como string, passava pela guarda
   antiga — inclusive no `DATABASE_URL`. É a lição do PR13-49 (identidade do
-  endpoint, nunca a string). ⚠️ **Fora do escopo, registrado**: 22 scripts
-  parseiam o compute do mesmo jeito, sem minúsculas — entre eles
-  `scripts/dev-db.ts`, o runner que guarda `db:migrate`/`db:reset` contra
-  produção, e `setup-dev-db.ts`.
+  endpoint, nunca a string). Os outros 22 parsers (entre eles o de
+  `scripts/dev-db.ts`, que deixava `db:migrate`/`db:reset` rodarem contra a
+  produção escrita em outra caixa) viraram UM só em 21/09/2026: ver a regra da
+  guarda em "Banco de desenvolvimento".
 - 🔴 **O passo 21 nunca autoriza a criação sem o bloqueio confirmado pelo
   banco** (R12-10): `bloqueou === false` é FALHA do passo
   (`BloqueioNaoObservado`) e o dono desiste com rollback. Antes, `soltar()`

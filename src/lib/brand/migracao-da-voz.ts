@@ -30,6 +30,7 @@
 
 import { createHash } from 'node:crypto'
 import { temMarcaDeIndexado } from '../knowledge/marca-de-indexado'
+import { computeDe, nomeDoBancoDe } from '../compute-do-banco'
 import { z } from 'zod'
 import { dadosProibidos, type TipoProibido } from '@/lib/aprendizado/causa-do-diff'
 import { lerVoz, LIMIAR_DE_CONFLITO, semelhancaDeRegras, TETO_DO_PROMPT_DA_VOZ, vozParaPrompt, type ProblemaDaVoz, type VozCompacta } from './voz'
@@ -879,26 +880,8 @@ export function classificarFato(linha: { metadata?: unknown } | null | undefined
   return temMarcaDeIndexado(linha.metadata) ? 'completo' : 'incompleto'
 }
 
-/** O compute de uma URL do Neon (`ep-x-pooler.…` e `ep-x.…` são a mesma instância); `null` quando ilegível. */
-export function computeDe(url: string | null | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
-}
-
-/** O NOME do banco na URL (`/neondb`), sem query; `null` quando ilegível ou ausente. */
-export function nomeDoBancoDe(url: string | null | undefined): string | null {
-  if (!url) return null
-  try {
-    const nome = decodeURIComponent(new URL(url).pathname.replace(/^\//, ''))
-    return nome || null
-  } catch {
-    return null
-  }
-}
+/** A identidade de uma URL de banco mora num módulo só (o compute em minúsculas; o nome do banco com a caixa). */
+export { computeDe, nomeDoBancoDe }
 
 /**
  * A conexão da TRAVA e a das escritas têm de ser o MESMO banco: mesmo compute

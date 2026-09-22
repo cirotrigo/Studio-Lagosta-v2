@@ -29,6 +29,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { computeDe } from '../src/lib/compute-do-banco'
 
 const PROJECT_ID = 8
 
@@ -43,15 +44,6 @@ const PROJECT_ID = 8
  * `-pooler`), nunca pelo host inteiro: `ep-x-pooler.…` e `ep-x.…` são a MESMA
  * instância, e comparar host deixaria passar a URL direta de produção.
  */
-function computeDe(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
-}
-
 function garantirBancoDeDev(): void {
   const atual = computeDe(process.env.DATABASE_URL)
   if (!atual) {

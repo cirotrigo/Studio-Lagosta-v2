@@ -59,6 +59,7 @@ import {
   mesmoBanco,
   type LinhaDoFato,
   nomeDoBancoDe,
+  computeDe as endpointDe,
   trechosRepetidos,
   ehPooler,
 } from '../src/lib/brand/migracao-da-voz'
@@ -80,14 +81,6 @@ function parseEnvFile(caminho: string): Record<string, string> {
     out[m[1]] = m[2].trim().replace(/^["']|["']$/g, '')
   }
   return out
-}
-function endpointDe(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
 }
 function abortar(titulo: string, linhas: string[] = []): never {
   console.error(`\n✗ ${titulo}\n`)

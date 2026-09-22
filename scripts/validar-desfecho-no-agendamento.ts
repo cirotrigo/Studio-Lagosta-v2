@@ -23,17 +23,10 @@
  */
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { computeDe } from '../src/lib/compute-do-banco'
 
 const PROJECT_ID = 8
 
-function computeDe(url: string | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.split('.')[0].replace(/-pooler$/, '')
-  } catch {
-    return null
-  }
-}
 function garantirDev(): void {
   const atual = computeDe(process.env.DATABASE_URL)
   if (!atual) { console.error('DATABASE_URL inválida'); process.exit(1) }

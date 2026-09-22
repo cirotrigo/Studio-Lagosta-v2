@@ -1,6 +1,7 @@
 /**
  * O destino de TODA conexão que uma prova de integração abre no banco de DEV (R12-10, 3ª FINAL do Codex sobre
- * 7b7e90e1). Sem Prisma e sem importar módulo do app: roda ANTES de o ambiente existir.
+ * 7b7e90e1). Sem Prisma e sem módulo do app que leia o ambiente (só `compute-do-banco`, sem dependências): roda
+ * ANTES de o ambiente existir.
  *
  * A guarda antiga conferia só o `DATABASE_URL`, e as conexões auxiliares da prova (o "dono" e o "vigia" do passo
  * 21) usavam o `DIRECT_URL` — que vinha HERDADO do `.env` (produção), ou do ambiente do processo, quando o arquivo
@@ -15,31 +16,11 @@
  *   formato de URL do provedor, e uma prova não adivinha para onde escreve.
  */
 
+import { computeDe, nomeDoBancoDe } from '../../src/lib/compute-do-banco'
+
+export { computeDe, nomeDoBancoDe }
+
 export const CHAVES_DE_BANCO = ['DATABASE_URL', 'DIRECT_URL'] as const
-
-/**
- * O compute de uma URL do Neon (`ep-x-pooler.…` e `ep-x.…` são a mesma instância); `null` quando ilegível. Em
- * minúsculas: `postgresql:` é esquema NÃO especial e o `new URL` preserva a caixa do host, mas o DNS não a
- * distingue — `EP-PROD…` conecta na produção e, comparado como string, passaria por dev (a lição do PR13-49).
- */
-export function computeDe(url: string | null | undefined): string | null {
-  if (!url) return null
-  try {
-    return new URL(url).hostname.toLowerCase().split('.')[0].replace(/-pooler$/, '') || null
-  } catch {
-    return null
-  }
-}
-
-/** O NOME do banco na URL (`/neondb`), sem query; `null` quando ilegível ou ausente. */
-export function nomeDoBancoDe(url: string | null | undefined): string | null {
-  if (!url) return null
-  try {
-    return decodeURIComponent(new URL(url).pathname.replace(/^\//, '')) || null
-  } catch {
-    return null
-  }
-}
 
 export interface DestinoDaProvaDeDev {
   /** O compute de dev (sem `-pooler`). */
