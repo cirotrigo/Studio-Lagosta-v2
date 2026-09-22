@@ -40,6 +40,7 @@ import type {
 import type { TemplateType } from '@prisma/client'
 import { semColchetes } from '@/lib/compositor/destaques'
 import { identidadeDoContrato, LACUNA_PROMPT_AINDA_NAO_MONTADO, lerCopyAutoral, registroParaIA, textoEnviadoDoContrato, type CopyAutoral } from '@/lib/copy-autoral'
+import { carimboDaGeracao } from '@/lib/brand/voz-na-escrita'
 
 /**
  * Coletor próprio, separado do "Arte Rápida" (render de template) e do "Arte
@@ -129,6 +130,19 @@ export interface StartArtGenerationInput {
    * precedente de `carouselGroupId` para carrossel.
    */
   loteId?: string
+  /**
+   * PR 15: quando a copy foi ESCRITA, se antes desta chamada (o `createdAt` do
+   * item de plano em `executar-plano`). É o que deixa o carimbo da voz
+   * (`fieldValues.vozNaEscrita`) dizer a voz daquele instante — ou declarar que
+   * não sabe. Ausente = a copy chegou nesta mesma chamada.
+   */
+  escritaEm?: Date | string | null
+  /**
+   * PR 15 (C15-05): o carimbo HERDADO de quando a copy foi escrita — "Gerar de
+   * novo" e os slides irmãos do carrossel reproduzem copy antiga. Válido, ele
+   * vence o cálculo pela voz de agora (`carimboDaGeracao`).
+   */
+  vozNaEscrita?: unknown
 }
 
 export interface StartArtGenerationResult {
@@ -482,6 +496,13 @@ export async function startArtGeneration(
     ARTE_IA_TEMPLATE_NAMES[fmt.type],
   )
 
+  // PR 15: a voz em vigor quando a copy foi escrita — best-effort, nunca
+  // derruba a geração (sem carimbo, o relatório conta "sem carimbo").
+  // Import dinâmico, como no compositor: `voz-service` puxa o `Prisma` em runtime.
+  const vozNaEscrita = await carimboDaGeracao({ vozNaEscrita: input.vozNaEscrita, escritaEm: input.escritaEm }, (escritaEm) =>
+    import('@/lib/brand/voz-service').then((m) => m.carimboDaVozAgora(project.id, { escritaEm })),
+  )
+
   // Copy vira slotValues: é a forma que extractExpectedTexts lê — a conferência
   // de texto desta geração E de melhorias futuras desta arte dependem disso.
   const slotValues = Object.fromEntries(copy.map((b, i) => [`bloco${i + 1}`, b]))
@@ -518,6 +539,7 @@ export async function startArtGeneration(
         inputSize: input.track === 'arte' ? OPENAI_INPUT_SIZE[fmt.formatKey] : null,
         finalSize: `${FINAL_OUTPUT_SIZE[fmt.formatKey].width}x${FINAL_OUTPUT_SIZE[fmt.formatKey].height}`,
         processingStartedAt: new Date().toISOString(),
+        ...(vozNaEscrita ? { vozNaEscrita } : {}),
       } as any,
       templateName: ARTE_IA_TEMPLATE_NAMES[fmt.type],
       projectName: project.name,

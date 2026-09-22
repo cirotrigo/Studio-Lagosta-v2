@@ -71,6 +71,19 @@ describe('entradaDePersistencia', () => {
     expect(e.templateId).toBe(42)
     expect(e.background).toBe('#111111')
   })
+
+  it('PR 15: o carimbo da voz vai para fieldValues.vozNaEscrita, fora do contrato da copy', () => {
+    const vozNaEscrita = { fonte: 'voz' as const, versao: 3, lidoEm: '2026-09-13T20:00:00.000Z' }
+    const e = entradaDePersistencia({ ...base, opcoes: {}, vozNaEscrita })
+    expect(e.fieldValues.vozNaEscrita).toEqual(vozNaEscrita)
+    // O contrato estrito da copy NÃO ganha a chave (uma chave a mais o recusaria na leitura).
+    expect((e.fieldValues.copyAutoral as { original: Record<string, unknown> }).original).not.toHaveProperty('vozNaEscrita')
+  })
+
+  it('PR 15: sem carimbo (leitura da voz falhou), a peça sai sem a chave', () => {
+    expect(entradaDePersistencia({ ...base, opcoes: {}, vozNaEscrita: null }).fieldValues).not.toHaveProperty('vozNaEscrita')
+    expect(entradaDePersistencia({ ...base, opcoes: {} }).fieldValues).not.toHaveProperty('vozNaEscrita')
+  })
 })
 
 describe('entradaDePersistencia — a copy que não cabe no contrato não derruba a peça composta (restack sobre e3c1f75f)', () => {

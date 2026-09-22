@@ -60,6 +60,7 @@ import { lerCopyAutoral, tentarCopyEfetivaDasCamadas } from '@/lib/copy-autoral'
 import { bakeLayers } from '@/lib/creatives/bake-layers'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
+import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -1092,7 +1093,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     layers,
     {
       autor: autorDaRevisao,
-      motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? 'ajuste de diagramação (revisor)' : 'ajustar-arte',
+      motivo: ajustes.length > 0 && Object.keys(slotValues).length === 0 ? MOTIVO_DO_AJUSTE_DO_REVISOR : 'ajustar-arte',
       superficie: input.canal ?? 'chat',
     },
     // As camadas de ANTES do ajuste: o que a leitura corrige nelas é do sistema (PR5-06).

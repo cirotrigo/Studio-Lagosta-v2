@@ -10934,3 +10934,557 @@ passo 21); o código da aplicação (R12-09) foi aprovado.
   as outras duas camadas (compute de produção, mesmo banco) recusam do mesmo
   jeito, com outra mensagem. Os testes da herança afirmam a INSTRUÇÃO — sem
   isso o mutante sobrevive.
+
+### A qualidade da copy medida (PR 15 de "Marca simples, copy melhor", 12/09/2026)
+
+O relatório de domingo passou a medir a copy: **fidelidade até a agenda**,
+**causa de cada correção**, **correções indevidas**, **tempo até o rascunho** e a
+**voz na escrita**. Contrato PURO em `src/lib/relatorios/qualidade-da-copy-contrato.ts`
+(com teste, e com as provas de mutação dos guardas), serviço só de leitura em
+`qualidade-da-copy.ts`, bloco da carteira + linha por cliente + `metricsJson.copy`
+em `semanal.ts`, carimbo da voz em `src/lib/brand/voz-na-escrita.ts`. Sem migration.
+A medida de partida é `scripts/medir-qualidade-da-copy.ts`.
+
+- 🔴 **A causa NUNCA sai só do autor.** `autor: 'equipe'` tanto é a pessoa
+  reescrevendo quanto o ajuste do REVISOR aplicado pelo app. O que separa é o
+  motivo que `ajustarArte` grava em TODA chamada só de ajustes
+  (`MOTIVO_DO_AJUSTE_DO_REVISOR`, a MESMA constante — não reescreva a string em
+  outro lugar); proximidade no tempo não classifica nada (C15-01, abaixo).
+  `sistema` em `compositor`/`recomposicao` é compositor; em `reverter-arte`,
+  design; mexer só em `estilo` é design, nunca redação.
+- 🔴 **O revisor é classe PRÓPRIA e nunca vira preferência da equipe** — nem
+  redação, nem design. Ajuste do revisor que não deixou revisão de copy (corpo,
+  gradiente) conta como revisor pela arte do ajuste.
+- **Indevidas de TEXTO** saem da LINHA DO TEMPO dos estados da copy (o original,
+  as efetivas das artes da página em ordem — menos a do ajuste só do revisor — e
+  o contrato da página hoje), bloco a bloco: o sistema mudou linhas; equipe ou
+  Claude devolveram ao original o texto que o compositor mudou; um refino foi
+  desfeito. A equipe indo e voltando no próprio texto NÃO é indevida. **O ajuste
+  do revisor desfeito sai das CAMADAS** (C15-02, abaixo), por id de camada.
+- 🔴 **Amostra abaixo do limiar declarado não vira percentual** (`LIMIAR_DE_AMOSTRA`
+  = 5 por cliente, 15 na carteira): a proporção sai `amostraInsuficiente` com
+  `n`/`de`, e o texto do relatório não imprime "%".
+- 🔴 **Legado fica FORA do denominador, e a exclusão é contada**: peça sem
+  contrato, com autoria `desconhecida` (o adaptador do legado) ou sem copy final
+  não é fiel nem infiel. Nenhuma autoria é reconstruída do histórico.
+- **Uma peça por PÁGINA**: todas as artes da página (compositor, cada ajuste) e
+  todos os posts que apontam para ela viram uma peça só; sem página, a arte.
+- **Evidências fora da copy**: `troca-de-arte` e foto `trocada` contam como foto
+  (desenho do plano), `geometria` como design, recusa `TEXTO_NAO_CABE*` da
+  recomposição como compositor. **Avisos do compositor saem À PARTE e nunca como
+  correção** — aviso não é mudança.
+- **Tempo até o rascunho é PROXY declarado** (do item de plano, ou da primeira
+  arte da peça, até o primeiro post; post anterior à arte fica fora) e é medido
+  sobre TODAS as peças, legado incluído — ele não depende do contrato. Mediana e
+  p90 só com amostra acima do limiar.
+- **Esquema ausente degrada, nunca derruba**: conferido ANTES por
+  `information_schema` (`lerEsquemaDaCopy`) — sem `Page.copyAutoral` (PR 3) o
+  cliente sai `indisponivel` DIZENDO a coluna, sem emitir a consulta; sem a
+  tabela `BrandVoice` (PR 7) a consulta da voz nem é feita e só a versão fica de
+  fora. A carteira tem PRAZO (até 180 s e nunca além de 240 s do início do
+  relatório) e teto de 25 s por cliente, cumprido NO SERVIDOR; quem não coube
+  sai em "fora do tempo do relatório".
+- **O carimbo da voz** (`fieldValues.vozNaEscrita = { fonte, versao, lidoEm,
+  escritaEm?, incerto? }`) fica FORA do contrato estrito da copy (uma chave a
+  mais recusaria a copy na leitura) e é gravado por `comporPeca` e
+  `startArtGeneration`, best-effort. 🔴 **O `criar-plano` não tem onde guardá-lo**
+  (`ItemDePlano` não tem `fieldValues`, e o PR 15 é sem migration): quem produz
+  passa `escritaEm` (o `createdAt` do item — `executar-plano` e, no compositor,
+  pelo `itemDePlanoId`) e o carimbo NÃO chuta: voz migrada ou regravada depois da
+  escrita sai com `fonte`/`versao` nulas e o motivo em `incerto`. Copy
+  REPRODUZIDA ("Gerar de novo", slides irmãos do carrossel) HERDA o carimbo da
+  origem (C15-05). Sem o carimbo o relatório só conta.
+- 🔴 **`voz-service` puxa o `Prisma` do client em RUNTIME**: importado
+  estaticamente em `compor.ts`, derrubou o `compor-avaliacao.test.ts` (que só
+  dubla `@/lib/db`) com `Cannot find module '.prisma/client/default'`. O carimbo
+  entra por `await import()` nos dois produtores.
+- **A pilha contém o PR 0** desde o rebase sobre o PR 14 integrado (`003717db`):
+  a marca `ocultaPeloRevisor` é GRAVADA pelo executor dos ajustes e lida pelos
+  helpers do próprio PR 0 (`marcaDoRevisor`/`ocultaPeloRevisor`), nunca por
+  leitura própria. O `refino` é aceito no contrato mas não tem produtor nesta
+  pilha (a melhoria ainda não grava contrato). Nenhum código de `copy-autoral`
+  foi mexido aqui.
+- **A medida de partida** (`scripts/medir-qualidade-da-copy.ts`) é SEMPRE só
+  leitura, com uma transação `READ ONLY` POR CLIENTE; recusa a produção sem
+  `--producao-somente-leitura` (produção reconhecida pelo COMPUTE contra o
+  `.env`; com a flag e sem `DATABASE_URL` no ambiente, ela lê a URL do `.env`,
+  porque o `tsx` não carrega arquivo nenhum) e falha FECHADA sem `.env` legível. Rodada no branch de dev em
+  12/09/2026 (15/08 a 12/09, dev em dia com a produção): **761 peças em 10
+  clientes, todas sem contrato** — o esperado com o PR 3 fora de produção; a
+  primeira medida comparável vem depois do deploy dos PRs 3 e 7.
+
+**Da pré-revisão do HEAD 560292a1 (BLOQUEADO, C15-01…06, 12/09/2026):**
+
+- 🔴 **Proximidade no tempo não classifica revisão** (C15-01). A regra "arte do
+  ajuste do revisor a até 2 min" rotulava como `revisor` a correção de texto que
+  a pessoa ou o Claude fazia numa OUTRA chamada de `ajustar-arte` logo depois
+  (ou antes): redação subcontada, revisor inflado, e a reversão da mudança do
+  revisor ficava invisível. Toda revisão de uma chamada só de ajustes já carrega
+  `MOTIVO_DO_AJUSTE_DO_REVISOR`; o que só a janela alcança é, por construção, de
+  outra chamada. A janela sobrevive só como `JANELA_DO_MESMO_AJUSTE_MS`, para não
+  contar o mesmo ajuste duas vezes. O teste antigo que esperava `revisor` para
+  uma remoção pelo `claude` com "outro motivo" codificava o defeito e saiu.
+- 🔴 **O esconder do revisor não passa pelo contrato — o desfecho se mede nas
+  CAMADAS** (C15-02). Pelo PR 0, a camada escondida com a marca é lida como
+  PRESENTE pela autoria (`camadasParaDecisao`): nem o esconder nem a reexibição
+  pela equipe geram revisão, e a leitura por revisão nunca via o ajuste desfeito
+  (os testes fabricavam uma revisão `{ cta: [] }` que o caminho real não grava).
+  Hoje `ajustesDeVisibilidade` lê `revisao.aplicados` das artes do ajuste e
+  `desfechosDaVisibilidade` compara a ÚLTIMA decisão do revisor por camada com
+  `Page.layers` de hoje: escondida com a marca (`ocultaPeloRevisor`) = aceito;
+  VISÍVEL = desfeito (vira a indevida `ajuste-do-revisor-revertido` com
+  `camada`); escondida sem a marca = a pessoa reescondeu, aceito; camada apagada
+  = nem um nem outro; camadas ilegíveis = sem desfecho. A arte do ajuste só do
+  revisor saiu da linha do tempo de texto — a efetiva dela, lida das camadas
+  cruas, mostrava o bloco escondido como texto apagado. O ramo que casava a
+  marca por FUNÇÃO saiu: zerar o texto de uma camada marcada é redação.
+- 🔴 **Teto que abandona a promessa não é teto** (C15-03). A consulta abandonada
+  seguia no servidor segurando a ÚNICA conexão do pooler (`connection_limit=1`),
+  e o cliente seguinte e a gravação do relatório esperavam por ela até o
+  `pool_timeout`. Hoje, antes de CADA consulta, o que resta do prazo do cliente
+  vira `SET LOCAL statement_timeout` numa transação própria: o Postgres cancela
+  (57014, `cancelamentoPorTempo`) e a conexão volta. E a gravação do
+  `InstagramWeeklyReport` vem ANTES da medida da copy; a medida entra depois,
+  num `update` best-effort do `metricsJson`. O teste usa um banco falso de UMA
+  conexão que honra o `statement_timeout`.
+- 🔴 **Uma transação READ ONLY para a carteira inteira fica ENVENENADA** (C15-04):
+  no Postgres, depois do primeiro erro tolerado (P2021 da `BrandVoice`, P2022 da
+  `Page.copyAutoral`) a transação só aceita rollback, e todo cliente seguinte
+  saía "erro na leitura" — exatamente a medida de partida planejada em produção
+  antes de a pilha chegar. Hoje o esquema é conferido antes (`information_schema`)
+  e cada cliente tem a SUA transação `READ ONLY` (`executarEmLeitura`, o mesmo
+  executor no cron e no script). O teste simula a transação abortada.
+- **Copy reproduzida herda o carimbo** (C15-05): "Gerar de novo" e os slides
+  irmãos do carrossel carimbavam a voz do momento da REPRODUÇÃO, inflando "voz
+  refletida" com copy antiga. `origemDoCarimbo` (o carimbo da origem, senão o
+  instante da escrita — o `escritaEm` que ela registrou ou o `createdAt`) e
+  `carimboDaGeracao` (o herdado vence o cálculo) moram em `voz-na-escrita.ts`,
+  com teste.
+- **O comentário e este arquivo diziam que a marca do PR 0 não estava na pilha**
+  (C15-06): estava, desde o rebase. Comentário e bullet atualizados.
+
+**Da pré-revisão de 560292a1..f813f787 (APTO COM NOTAS, C15-11…13, 12/09/2026):**
+
+- 🔴 **Post agendado por `generationId` nasce SEM `pageId`, e a página só existe
+  no `fieldValues.pageId` da arte** (C15-11). A consulta das artes pedia os ids
+  dos posts e as páginas DOS POSTS; a página resolvida pela arte entrava na
+  peça, mas as OUTRAS artes dela (o ajuste do revisor é uma Generation nova, e
+  `trocarNosPosts` não muda `SocialPost.generationId`) nunca eram lidas — o
+  desfecho da visibilidade e a correção do revisor saíam zerados, em silêncio.
+  Hoje `lerSemanaDoCliente` faz uma segunda leitura, com a MESMA consulta
+  (ids, páginas, ids a excluir, limite), para as páginas vindas pela arte.
+- **Peça sem página lida é CONTADA, nunca um zero calado** (`semPagina` em
+  `PecaParaMedir`/`MedidaDaPeca` e `visibilidadeDoRevisor.semPagina` na
+  carteira): a arte não aponta página (arte-ia), ou a página não veio do banco.
+  O relatório diz "N peça(s) sem página, não medida(s)" na linha do revisor, ao
+  lado das camadas ilegíveis.
+- **Escondida sem marca VÁLIDA é aceito, e o código diz isso** (C15-12): o
+  ternário em `desfechosDaVisibilidade` era morto (`ocultaPeloRevisor` exige a
+  marca, então ali `marcaDoRevisor` é sempre nulo). Reescondida pela pessoa ou
+  marca malformada, o estado é o do ajuste — o que se mede é se a decisão
+  sobreviveu.
+- **P2028 (transação interativa expirada) e P2024 (espera de conexão) são o
+  teto por cliente** (C15-13), como o 57014: `cancelamentoPorTempo` os
+  reconhece, e o relatório diz "passou do teto de tempo por cliente" em vez de
+  "erro na leitura: Transaction API error…".
+- **A fiação do carimbo herdado tem teste de rota** (lacuna da revisão): "Gerar
+  de novo" (`refazer/__tests__/route.test.ts`) e os slides irmãos do carrossel
+  (`carousel-carimbo.test.ts`) passam `origemDoCarimbo` a `startArtGeneration`
+  — com carimbo, o mesmo; sem, `vozNaEscrita: null` e a escrita na criação da
+  origem. Os helpers sozinhos não provavam que os dois pontos os usam.
+
+**Da revisão FINAL do Codex sobre ff2baaf0 (BLOQUEADO, PR15-01…04, 18/09/2026):**
+
+- 🔴 **Cada MÍDIA do post acha a sua peça** (PR15-01). O serviço lia só
+  `pageId` e `generationId` do post, e `SocialPost.generationId` é UM ponteiro
+  que responde pelo slide 1 (a regra de `artes-do-post.ts`): o carrossel de três
+  páginas do compositor virava uma peça só, e o que acontecia nos slides 2 e 3
+  sumia sem exclusão nem aviso. Hoje o serviço seleciona `mediaUrls` e pede
+  também as artes cuja `resultUrl` é uma das mídias (a MESMA consulta, no mesmo
+  prazo e na mesma transação); `montarPecas` casa cada mídia com a sua arte pela
+  URL EXATA (a mais recente vence), a coluna e o `pageId` do post respondem só
+  pelo slide 1, e a deduplicação por página continua. Slide sem arte nem página
+  (a foto do acervo) não é peça de copy. Sinal e item de plano vão a UMA peça —
+  a da página, a da arte, ou a primeira peça do post —, senão o sinal que só diz
+  o post contaria uma vez por slide.
+- 🔴 **A página de hoje só é a copy do post que ainda a SEGUE** (PR15-02).
+  `invalidateScheduledRenders` e a recomposição só alcançam `DRAFT`/`SCHEDULED`
+  com `laterPostId` nulo (`postVivo`); o post congelado (publicado, entregue ao
+  publicador) mantém a mídia antiga, e a medida usava `Page.copyAutoral` de
+  hoje — atribuía ao post uma edição que não chegou à imagem dele. `finalDaPeca`
+  decide: (1) todos congelados mostrando a MESMA arte pela URL → o SNAPSHOT: a
+  `efetiva` dela (quem troca o PNG regrava o registro, PR3-F02), com as
+  evidências cortadas no instante do PNG (`recomposicao.em` quando `feita` ou
+  `re-renderizada`) — arte, geometria e sinal de depois não chegaram à mídia;
+  não vale com ajuste de visibilidade do revisor até ali (a efetiva lida das
+  camadas cruas contaria o bloco escondido como apagado); (2) senão, a página
+  com PROVA, para cada mídia congelada, de que ela mostra a mesma mensagem de
+  hoje — a efetiva da arte casada pela URL contra a que as camadas de hoje
+  dariam (`registroDaCopyDaArte` sobre as camadas CRUAS, o que o revisor
+  escondeu sai dos dois lados), ou o story de uma mídia com `_copiaDaPagina`
+  igual ao texto da página; (3) sem snapshot nem prova, `congelada-sem-prova`:
+  fora do denominador e contada no relatório. Limite declarado: peça com post
+  vivo e post congelado PROVADO segue contando as evidências posteriores ao
+  congelamento (a peça é uma só).
+- 🔴 **A mensagem é linhas E ordem de leitura** (PR15-03). `preservada`
+  comparava um mapa `id → linhas` e descartava a ordem; inverter a `ordem` de
+  dois blocos (revisão válida do contrato) seguia "mensagem preservada".
+  `mesmaMensagem` compara também a sequência dos ids com texto pela `ordem`
+  (`blocosEmOrdem`); reordenar só o ARRAY continua fiel. `revisaoMudaLinhas`
+  passou a contar o campo `ordem` — sem isso a peça que o compositor reordenou
+  saía "não preservada" sem a mudança do sistema que a explicasse.
+- 🔴 **A recusa do compositor é lida onde `registrarRecusa` a grava** (PR15-04).
+  Desde C6-01 a recusa mora em `fieldValues.recusaDaRecomposicao` e
+  `recomposicao` fica com o último render; a medida procurava
+  `recomposicao.estado === 'recusada'`, e a recusa atual nunca entrava em
+  `correcoes.compositor`. `recusouPorTextoQueNaoCabe` lê as duas formas, uma vez
+  por arte, e o serviço projeta a chave nova no SQL. O teste chama a função
+  REAL (`qualidade-da-copy-recusa.test.ts`, com o dublê do harness de
+  `copy-visual-regravada-marcador.test.ts`) em vez de fabricar a estrutura antiga.
+- **O banco falso do teste do serviço honra o `select` e projeta o
+  `fieldValues` pelo SELECT do SQL**: o dublê que devolvia a linha inteira
+  deixava passar campo novo esquecido na consulta. 15 mutações conferidas
+  (mídias ignoradas, URL fora do SQL, sinal em todo slide, URL mais antiga
+  vencendo, congelado lido como vivo, status fora do select, sinal sem
+  `createdAt`, sem corte das evidências, snapshot sem a guarda de visibilidade,
+  prova contra o contrato em vez das camadas, sem a prova pela cópia desenhada,
+  mensagem sem ordem, revisão sem ordem, recusa só no formato antigo, SQL sem a
+  chave nova): cada uma derruba ao menos um teste. A medida de partida de
+  produção (13/09, 917 peças sem contrato) NÃO foi refeita.
+
+**Do restack sobre a main 0df88981 (21/09/2026): o compute da guarda em minúsculas.**
+
+- 🔴 **A guarda de produção da medida de partida compara o compute EM
+  MINÚSCULAS, dos dois lados** (`bancoDaLeitura`, `scripts/lib/guarda-de-producao.ts`,
+  com o `computeDe` normalizado de `destino-da-prova.ts`). `postgresql:` é esquema
+  NÃO especial, o `new URL` preserva a caixa do host, e o DNS não a distingue: um
+  `DATABASE_URL` com `EP-PROD-…` (ou `…-POOLER`) conectava na produção e passava
+  por "não-produção" sem a flag — a lição da revisão do PR 12 (R12-10). O script
+  abre UM destino só (o `db`, pelo `DATABASE_URL`; o `DIRECT_URL` não é usado em
+  runtime), por isso não há "mesmo banco" a conferir. Teste com as quatro caixas
+  de produção, o `.env` em outra caixa, o dev nas duas caixas, a falha fechada e
+  a fiação do script ao guard (fonte sem `new URL`/`hostname`); mutações: sem as
+  minúsculas, 3 testes caem; o script lendo o host por conta própria, 1.
+
+**Da revisão FINAL do Codex sobre e3486221 (BLOQUEADO, PR15-05…08, 21/09/2026).**
+Os quatro são a família do PR 5 e do PR 13 — **a prova afirmando mais do que
+sabe**: comparação frouxa servindo de prova, identidade achada só pela URL de
+hoje, evento de depois contado no antes, teto cortando referência direta.
+
+- 🔴 **Comparação frouxa não serve de PROVA** (PR15-05). A prova pela cópia do
+  texto desenhado (`_copiaDaPagina`) usava `copyIgual`, que colapsa espaços e
+  compara um mapa: a quebra de linha trocada e a `ordem` dos blocos invertida
+  passavam como "a mídia mostra a mensagem de hoje". `copiaProvaAMensagem`
+  (própria da métrica) compara o texto LITERAL e só prova com UM texto visível
+  e a copy medida de UM bloco com texto: o registro é um mapa por camada (o
+  JSONB não guarda a ordem das chaves) e não tem como provar ordem de leitura —
+  com dois blocos, a exclusão conservadora (`congelada-sem-prova`). O helper
+  compartilhado não mudou (serve à agenda, onde o critério é outro).
+- 🔴 **Identidade de peça não se acha só pela URL de HOJE** (PR15-06). A
+  recomposição troca o `resultUrl` e guarda as anteriores em
+  `recomposicao.urlsAnteriores`; o slide 2 de um carrossel publicado, cuja arte
+  foi recomposta para outro post, sumia da contagem — nem peça, nem
+  `congeladaSemProva`. O serviço pede também as artes cujo rastro contém uma das
+  mídias (`jsonb_array_elements_text` com guarda de tipo: rastro ausente, objeto
+  ou escalar não quebra a consulta), e `montarPecas` resolve pelo rastro DEPOIS
+  da URL atual. 🔴 **O vínculo histórico só CONTA a exclusão**: a ocorrência
+  pelo rastro nunca é `porUrl`, então nunca vira snapshot — a efetiva atual é de
+  OUTRA imagem.
+- 🔴 **Evento depois do corte não entra no snapshot, e se mede pelo instante
+  DELE** (PR15-07). O corte filtrava a criação da Generation, e a recusa gravada
+  depois do PNG entrava em `correcoes.compositor` do congelado.
+  `recusouPorTextoQueNaoCabe(arte, ate)` lê o `em` da recusa nos dois formatos
+  (`recusaDaRecomposicao` e o legado `recomposicao.estado: 'recusada'`), uma por
+  arte; `em` ilegível não prova que veio antes. Pela varredura, o sinal sem
+  `createdAt` também fica fora do congelado.
+- 🔴 **Teto de janela não se aplica a referência DIRETA** (PR15-08). O limite de
+  60 dias do histórico filtrava também `generationId` e URLs do post: post desta
+  semana com arte antiga virava "sem contrato", e slides antigos sumiam. Hoje são
+  duas consultas — as referências diretas (ids, URLs e rastro) SEM data,
+  primeiro, e o histórico das páginas (as dos posts e as trazidas pela arte
+  direta) COM data, no teto de artes que sobrar —, e arte direta anterior ao
+  limite gera aviso de histórico incompleto. A varredura achou o mesmo corte
+  calado nos sinais (`take: 2000`, sem aviso nem ordem): hoje ordenados e
+  declarados no teto.
+- 🔴 **Dublê de banco que IGNORA o filtro não testa o filtro.** O dublê antigo
+  ignorava a data (por isso o PR15-08 passou), e a 1ª versão do novo, que
+  conferia o SQL por formato de regex, deixou sobreviver a mutação que devolvia a
+  data à consulta inteira. O atual avalia o WHERE de verdade (`avaliarOnde`: AND,
+  OR, NOT e parênteses, cada parâmetro pelo texto que o antecede) e LANÇA em
+  condição que não conhece — foi isso que pegou até a mutação "FALSE AND
+  EXISTS". O `learningSignal.findMany` honra o `take`.
+- **A consulta foi validada num PostgreSQL 15 descartável** (socket local, sem
+  rede) com o texto EXATO do fonte: rastro em objeto, escalar, ausente,
+  `fieldValues` nulo e outro projeto não casam nem dão erro; `[null, 7, "u7"]`
+  casa `u7`.
+- **Varredura por classe — o conferido e o descartado**: (a) comparação frouxa
+  como prova: só `copyIgual`; o resto é igualdade literal ou pertinência
+  (`mesmasLinhas`, `mesmaMensagem`, `revisaoMudaLinhas`), `startsWith` de
+  `TEXTO_NAO_CABE` classifica erro e a janela de 2 min é dedupe (C15-01). (b)
+  identidade só pela URL atual: o SQL e `artePorUrl` (corrigidos); snapshot e
+  prova pela arte ficam na URL atual de propósito; sinal e item de plano ligam
+  por página, arte ou post. (c) evento depois do corte: recusa e sinal sem
+  instante (corrigidos); ajuste do revisor (a Generation nova tem o instante do
+  evento), estados (efetiva só muda com PNG novo, que quebra o casamento pela
+  URL) e avisos do sistema conferidos. (d) teto em referência direta: datas das
+  artes (corrigida), sinais (declarados), teto de artes (diretas primeiro, com
+  aviso) e posts (já avisado); itens, páginas e voz não têm teto.
+
+**Da 2ª revisão FINAL do Codex sobre ede56191 (BLOQUEADO, PR15-05-R2, 09, 10 e
+11, 21/09/2026).** Cada rodada achava um caso novo num CAMINHO DE PROVA
+diferente da peça congelada — a cópia do post, as camadas visíveis, o snapshot
+—, e a correção foi UMA regra, não mais um remendo por caminho.
+
+- 🔴 **A mídia congelada só entra na medida com prova do TEXTO e prova
+  TEMPORAL, e as duas saem do MESMO registro**: a arte casada pela URL exata
+  (`provaDaMidiaCongelada`). A efetiva dela é o texto daquela imagem, literal
+  (`linhasDaCamada` não apara nada), e `instanteDoPng` é quando ela ficou
+  pronta. Sem essa arte, sem efetiva, sem instante legível ou com ajuste de
+  visibilidade do revisor até o PNG, a peça fica `congelada-sem-prova` —
+  contada e declarada, nunca medida pela página de hoje. Isto supera o item (2)
+  do PR15-02 e o PR15-05 acima.
+- 🔴 **O caminho pela cópia do texto desenhado (`_copiaDaPagina`) SAIU**
+  (PR15-05-R2 e PR15-10). A cópia é ESCRITA por `textosDaPagina`
+  (`story-renderer`), que apara as pontas e pula camada oculta: o registro já
+  nasce sem as linhas literais e sem o que está oculto, e não tem instante.
+  Nenhum leitor da métrica recupera isso — comparar cru, a correção mínima
+  sugerida, fecha as pontas e deixa o PR15-10 aberto (medido por mutação: 2
+  testes caem). `PostLido.slotValues` e a leitura dele no serviço saíram junto.
+- 🔴 **Só congeladas: a medida é a imagem MAIS NOVA, cortada no PNG dela**
+  (PR15-10), e as outras imagens congeladas têm de mostrar a MESMA mensagem.
+  Antes, a peça congelada com imagens diferentes (um repost refeito entre os
+  dois) era medida pela página de hoje, sem corte nenhum.
+- 🔴 **Congelado e vivo na mesma peça: sem corte, e cada imagem congelada tem de
+  mostrar a mensagem INTEIRA que se mede** — o contrato de hoje, com o bloco
+  escondido pelo revisor contando como texto (PR15-09). A comparação antiga com
+  o desenho CRU (o oculto saía dos dois lados) decidia pela parte visível e
+  media o contrato inteiro. A prova temporal da peça mista é o post vivo: o que
+  veio depois do PNG congelado chegou a ele.
+- 🔴 **Bloco escondido pelo revisor até o PNG não tem prova do texto**: a
+  efetiva o lê como apagado e nada registra o texto autoral dele naquele
+  instante. A peça só congelada com esse esconder fica fora, mesmo com a página
+  intacta.
+- **PNG refeito com o instante ilegível não é instante**: `instanteDoPng`
+  devolve `NaN` em vez de cair na criação, que é cedo demais e cortaria o que
+  chegou à mídia.
+- **Os avisos da leitura chegam à mensagem de domingo** (PR15-11): `l.copy.avisos`
+  sai na seção do cliente ("⚠️ copy: …"). E a falha geral da medida DIZ que
+  falhou — sem o bloco, o silêncio leria como "nenhuma peça".
+- **O que mudou na cobertura, contado nos testes**: três casos que eram medidos
+  passam a excluídos, todos por falta de prova do texto — story de um bloco
+  provado só pela cópia; peça só congelada com o CTA escondido pelo revisor
+  antes do PNG, página intacta; e a mesma peça com um post vivo. Um caso passa
+  de excluído a MEDIDO: peça mista cujo esconder veio DEPOIS do congelamento (o
+  contrato confere com a imagem; o desenho cru não conferia). E a peça de duas
+  imagens congeladas da mesma mensagem passa a ser medida com corte.
+- ⚠️ **Limite conhecido**: o esconder do revisor só é visto quando a arte do
+  ajuste está na leitura; ajuste fora da janela de 60 dias do histórico escapa.
+  Impossível antes de ~10/11/2026 (o revisor nasceu em 11/09).
+
+**Da revisão FINAL do Codex sobre 9648f441 (BLOQUEADO, PR15-10-R2, 12 e 13,
+21/09/2026).** A regra do PR15-05-R2/09/10 ficou (prova do texto e do tempo
+pela arte casada pela URL); os três achados são as fronteiras dela.
+
+- 🔴 **Registro de render que não diz quando o PNG ficou pronto NUNCA vira a
+  criação** (PR15-10-R2, `instanteDoPng`). A recusa LEGADA (`recomposicao.estado:
+  'recusada'`, até C6-01) SUBSTITUÍA o registro inteiro e apagava o `em` do
+  render anterior: com o PNG refeito aos 20 min e uma correção de geometria aos
+  10, o corte caía na criação e a correção ficava fora. A criação só vale SEM
+  registro nenhum; `feita`/`re-renderizada` valem pelo `em`; qualquer outra
+  forma — a recusa legada, estado que nenhum escritor grava, não-objeto — é
+  `NaN`, e a peça fica `congelada-sem-prova`. A recusa na chave nova
+  (`recusaDaRecomposicao`) preserva o registro do render e o instante dele. O
+  teste do formato antigo aceitava o retorno à criação — a expectativa virou
+  `congelada-sem-prova`, e o corte da recusa legada pelo `em` dela segue provado
+  numa arte IRMÃ da página.
+- 🔴 **A página só se lê no projeto medido** (PR15-12, `lerSemanaDoCliente`):
+  `Template: { projectId }` na consulta, a régua do R29 do PR 6. O `pageId` do
+  post e o `fieldValues.pageId` da arte não provam dono (o konva-export grava
+  `body.pageId` sem conferir), e a página de outro cliente virava a copy final e
+  as camadas (o desfecho do revisor) da peça daqui. A de fora fica NÃO resolvida,
+  como a apagada (`semPagina`, contada). O banco falso do teste avalia o WHERE
+  das páginas de verdade e lança em condição que não conhece.
+- 🔴 **O `--json` do script declara quem NÃO foi medido** (PR15-13). A montagem
+  mora em `scripts/lib/saida-da-medida-da-copy.ts` (puro, precedente da guarda de
+  produção): `indisponiveis` (nome e motivo, o mesmo do bloco — inclui quem também
+  está em `clientes`) e `foraDoOrcamento` (nome e o motivo do prazo). Antes a
+  falha geral do esquema saía `carteira: null, clientes: []`, igual à seleção
+  vazia. O teste usa a saída REAL do serviço e confere que o script chama a
+  função (sem ela, voltar ao JSON inline passava).
+- 🔴 **Um snapshot só por cliente, e o isolamento vai pela OPÇÃO do Prisma,
+  nunca por SQL cru** (nota da mesma revisão). `executarEmLeitura` passou a
+  `isolationLevel: 'RepeatableRead'` + `SET TRANSACTION READ ONLY` como 1ª
+  instrução: as leituras de um cliente (posts → artes → páginas → sinais) veem o
+  banco do mesmo instante. **Medido num PostgreSQL 15 com o cliente gerado**: no
+  modo pgbouncer (o do pooler do Neon) o Prisma manda `DEALLOCATE ALL` logo
+  depois do BEGIN, e `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`
+  escrito à mão foi RECUSADO ("must be called before any query") — a medida de
+  TODO cliente cairia. Com a opção o Prisma manda o isolamento logo depois do
+  BEGIN — no pgbouncer, antes do DEALLOCATE; no direto não há DEALLOCATE — e o
+  snapshot único valeu nos dois modos: uma linha inserida por outra conexão
+  entre duas leituras não aparece na segunda (em READ COMMITTED, aparecia).
+  Conferido: nada aqui espera trava de linha (só SELECT), e leitura em RR não
+  recebe erro de serialização. ⚠️ Caveat do Postgres: DDL que REESCREVE tabela
+  no meio da leitura a faz parecer vazia para o snapshot antigo — as migrations
+  da casa são aditivas.
+- **Varredura por classe** — (a) formato legado lido como se tivesse a
+  informação do novo: só `instanteDoPng` (corrigido); recusa legada cortada pelo
+  `em` dela, contrato adaptado (autoria desconhecida → fora), arte sem registro
+  (sem contrato → fora), carimbo ausente (contado "sem"), `canal` nulo (a
+  distinção `equipe`/`claude` não entra em conta nenhuma: as duas são HUMANAS). ⚠️
+  Limite: a recusa legada também apagou `urlsAnteriores`, e a mídia antiga de um
+  slide recomposto nessa janela não se liga a arte nenhuma — fica igual a uma foto
+  do acervo (não é peça); o slide 1 ainda se liga pela coluna do post e sai
+  `congelada-sem-prova`. Casar pelo nome do arquivo é proibido pela casa. (b)
+  vínculo JSON como prova de dono: só a consulta de páginas; artes, itens,
+  sinais, voz e as leituras do carimbo (`refazer`, carrossel, item do compositor)
+  já filtram pelo projeto. (c) saída que omite o não medido: só o `--json`;
+  mensagem de domingo e bloco declaram. ⚠️ `metricsJson.copy: null` por cliente
+  (fora do orçamento, ou a falha geral) diz "não medida" sem o porquê — ele sai na
+  mensagem da semana; o indisponível POR cliente já guarda o motivo em
+  `metricsJson.copy.indisponivel`. Gravar o porquê do `null` seria escrita a mais
+  justamente no caminho em que o banco falhou ou o prazo não comportava o
+  cliente, e atrasaria o envio do relatório.
+
+**Da revisão FINAL do Codex sobre 9fba3c68 (BLOQUEADO, PR15-14, 21/09/2026).**
+
+- 🔴 **Quem mudou o texto de um bloco sai da REVISÃO desse bloco, nunca da
+  origem da arte** (PR15-14, `origemPorBloco`). A recomposição grava na arte
+  EXISTENTE do compositor (`recompor.ts`, `registroDaCopyDaArte`) a efetiva lida
+  sobre o contrato da página — com a revisão da EQUIPE dentro.
+  `origemDoEstadoDaArte` chamava de compositor todo estado de arte com
+  `source: 'compositor'`, e a sequência "A do autor → B da equipe (relida pelo
+  render) → A da equipe (por `ajustar-arte`)" virava `equipe-voltou-ao-original`:
+  correção indevida do SISTEMA quando a equipe só desfez a própria redação — até
+  com `sistemaMudouLinhas: false`. Hoje cada estado da linha do tempo (as
+  efetivas das artes e o contrato da página, pela MESMA função) tem a origem POR
+  BLOCO: a da ÚLTIMA revisão que mudou as LINHAS dele (ou o acrescentou ou
+  removeu). Revisão só de estilo ou de ordem não produz as linhas — com "a
+  última que tocou o bloco", o estilo retocado pela recomposição depois da
+  edição da equipe voltava a jogar a mudança dela na conta do sistema. Bloco sem
+  revisão fica sem origem (lido como do autor): nem acusa, nem reverte.
+- **Os três palpites pela arte saíram juntos**: `source: 'compositor'` (o
+  achado), o CANAL do ajuste (`canal: 'studio'` fazia a equipe autora de TODO
+  bloco da arte do ajuste, inclusive o que só a leitura das camadas mudou — que
+  o contrato registra como SISTEMA) e o `modo: 'refinar'` (o refino passa a ser
+  lido pela revisão dele: `superficie: 'melhoria'`, o único produtor, é a origem
+  `refino`). `canal` e `modo` continuam na leitura da arte e não entram mais em
+  conta nenhuma. O que ficou da arte é o que ela REGISTRA sobre a própria
+  chamada: o ajuste só do revisor (`revisao` + `ajustes` vazio) segue fora da
+  linha do tempo — e a exclusão continua necessária: re-renderizada depois, a
+  arte dele relê o bloco escondido como revisão do sistema na superfície da
+  recomposição, que é origem acusável.
+- ⚠️ **O refino, como origem, não conta como a equipe desfazendo** (não está em
+  `HUMANAS`): refino que devolva ao original o texto do compositor não vira
+  `equipe-voltou-ao-original`. Conservador — perde-se uma acusação, nunca se
+  inventa uma. Sem efeito em produção hoje: a arte de IA não grava `efetiva` e a
+  melhoria não escreve no contrato da página.
+- ⚠️ **Observado na varredura, FORA da classe e não corrigido**: o original da
+  peça é o `copyAutoral.original` da PRIMEIRA arte lida, e o `original` da arte
+  de `ajustarArte` é o contrato da página JÁ revisado por aquele ajuste. Se ela
+  for a primeira da peça (a arte de criação fora da janela de 60 dias do
+  histórico e não referenciada pelo post), a base da fidelidade já inclui a
+  edição da equipe e a peça sai "preservada". Não é inferência pela origem: é o
+  campo que muda de sentido conforme o produtor.
+- Provas (`qualidade-da-copy-contrato.test.ts`): o cenário do achado com o meio
+  na efetiva da arte recomposta e a volta por `ajustar-arte` (duas redações,
+  nenhuma indevida, a linha do tempo passando pelo meio); o controle na MESMA
+  arte (a manchete que a recomposição mudou segue indevida; o CTA da equipe, com
+  o estilo retocado depois, não); o ajuste pedido pela equipe com um bloco que
+  só o desenho mudou; o estilo retocado no contrato da página; e a arte do
+  ajuste só do revisor re-renderizada. Antes do conserto, três caem pelo motivo
+  do achado (a falsa `equipe-voltou-ao-original` no CTA) e um pela regra da
+  última revisão que TOCOU (a volta da equipe sumia); o do revisor
+  re-renderizado é guarda da regra nova. Mutações: a arte do compositor volta a
+  ser a origem (2 testes caem), sem o filtro de linhas (2), sem `melhoria` →
+  refino (1), sem a exclusão do ajuste só do revisor (1), o canal do ajuste
+  volta (1), a página volta à última revisão que tocou (1).
+
+**Base fora da janela (proativo, antes da FINAL, 21/09/2026).** O caso ficou
+registrado sem conserto no PR15-14 (o bullet "⚠️ Observado na varredura, FORA
+da classe e não corrigido", acima) e foi corrigido antes da revisão FINAL —
+este bloco o SUPERA; o bullet fica como registro.
+
+- 🔴 **A base da fidelidade é o `original` da arte de CRIAÇÃO, e quem diz se o
+  campo é base é o PRODUTOR** (`ORIGENS_DA_COMPOSICAO`: `compositor`,
+  `arte-rapida`, `arte-ia`). O mesmo `copyAutoral.original` muda de sentido
+  conforme `fieldValues.source`: no ajuste (`ajuste-arte`) é o contrato da
+  página JÁ revisado por ele; na melhoria (`ai_improvement`), o da origem levado
+  pela cadeia, com o refino por cima. A base era o original da PRIMEIRA arte
+  lida: com a de criação fora da janela de 60 dias do histórico e não apontada
+  pelo post, a primeira era o ajuste, a edição da equipe virava o texto do autor
+  e a peça saía "preservada". Lista FECHADA: produtor novo, ou `source` ausente,
+  não vira base até ser conferido e acrescentado.
+- **Sem a arte de criação na leitura, a base é DESCONHECIDA**:
+  `sem-original-da-composicao`, fora do denominador e CONTADA
+  (`foraDoDenominador.semOriginalDaComposicao`, dita no bloco e na linha do
+  cliente) — nunca medida contra uma base revisada, nunca uma base inventada.
+  Cai nela a página duplicada (a arte de criação é da OUTRA página) e a peça sem
+  página cuja única arte é a melhoria.
+  ⚠️ **Mudança só de motivo**: a peça da melhoria sem página era
+  `sem-copy-final` (arte de IA não grava `efetiva`) e agora é
+  `sem-original-da-composicao` — nunca foi medida, antes nem depois. Ler a
+  linhagem (`sourceGenerationId`) até a raiz não a mediria: a peça continuaria
+  sem copy final.
+- **A arte de criação é lida SEM o limite do histórico**, o mesmo caminho que o
+  PR15-08 abriu para a referência direta: um ramo a mais na consulta do
+  histórico — `pageId` da peça + projeto + produtor da lista +
+  `copyAutoral.original` objeto. O ajuste antigo continua fora (o histórico
+  segue limitado a `desde`), e a criação de antes do limite gera aviso ("lidas
+  para dar a base; as outras artes dessas páginas, dessa época, não"). Consulta
+  validada num PostgreSQL 15 descartável com o texto EXATO do fonte:
+  `copyAutoral` ausente, `original` nulo ou escalar e `fieldValues` nulo não
+  casam nem dão erro; ajuste e melhoria com contrato não casam.
+- 🔴 **Ler a criação antiga fazia o TEMPO até o rascunho mentir — a regra é a
+  janela, e a exclusão é contada.** Com a arte de meses atrás na leitura, o
+  repost desta semana saía com meses de "tempo até o rascunho"; e toda peça
+  começada antes da janela pode ter tido o primeiro post fora dela (os posts só
+  são lidos a partir do início). Só a peça que começou DENTRO da janela tem
+  tempo; a outra sai sem tempo e CONTADA (`tempoAteRascunho.antesDaJanela`,
+  dita no bloco: "N peça(s) começaram antes da janela, sem tempo").
+  ⚠️ O preço: peça planejada numa semana e agendada na seguinte nunca tem tempo.
+  A saída é ler o primeiro post de antes da janela (uma consulta a mais), não
+  feita.
+- **Varredura da classe** ("linha de base tomada de um registro que já foi
+  revisado"), ponto a ponto:
+  - o laço da base em `montarPecas`: corrigido (a lista de produtores);
+  - o 1º estado da linha do tempo e o `doOriginal` de `reversoesIndevidas`:
+    derivam da base corrigida;
+  - o estado ANTERIOR (`estados[j-1]`): entre a criação antiga e o histórico
+    lido faltam as artes daquela época — a lacuna do PR15-08, declarada pelo
+    aviso. O que ela esconde está no contrato da PÁGINA: a origem por bloco sai
+    das revisões dele (PR15-14), que acumulam o histórico inteiro, e a volta da
+    equipe continua vista;
+  - o início do tempo (primeira arte ou item): virou a regra da janela;
+  - `arteDaVoz` (`arteDoOriginal`, senão a primeira com carimbo): só produtor
+    de criação grava o carimbo (e a copy reproduzida, que o HERDA, C15-05) —
+    o fallback nunca pega o ajuste;
+  - `final.revisoes` como correções: conta toda revisão registrada, inclusive a
+    do item de plano antes da composição (a equipe corrigindo o Claude na
+    bancada) — é correção do texto do autor, não base; a fidelidade compara as
+    duas pontas, e a revisão anterior à composição está nas duas;
+  - `finalDaPeca`, `artePorUrl`, `instanteDoPng`, `primeiraPecaDoPost`: o
+    final, a prova da mídia e a rota dos sinais — nenhum escolhe base;
+  - quem ESCREVE o `original` (todos varridos): compositor (`persistencia.ts`),
+    `createArteRapida` e `startArtGeneration` gravam o contrato RECEBIDO;
+    `ajustarArte` grava o da página (fora); a melhoria, o da origem + refino
+    (fora); a recomposição mantém o que a arte tinha.
+  ⚠️ **Limite registrado, não guardado**: a recomposição de arte do compositor
+  SEM registro numa página COM contrato grava `original: contratoAtual` (o da
+  página, talvez revisado) com `source: 'compositor'`, e a medida o tomaria por
+  base. Praticamente inalcançável: página só ganha contrato na mesma escrita da
+  arte que o compositor ou a via de modelo gravam, e a duplicação o copia para
+  uma página SEM arte (sem arte, sem recomposição).
+- Provas: `qualidade-da-copy-contrato.test.ts` (a única arte lida é o ajuste →
+  `sem-original-da-composicao`, contada no bloco e na linha; melhoria, registro
+  sem produtor e produtor desconhecido também não dão base; controle com a
+  criação na leitura; as três vias de criação; o tempo pela janela e a
+  contagem) e `qualidade-da-copy.test.ts` (o serviço lê a criação de antes do
+  limite pelo WHERE avaliado de verdade no banco falso, e a peça é medida contra
+  ela — a troca da equipe é redação, não "preservada"; o aviso; a página
+  duplicada). Vistos falhar antes do conserto pelo motivo do caso (o ajuste
+  medido como "preservada"; `['g-ajuste']` lido sem a criação; tempos de 29, 25
+  e 142.680 minutos). Mutações contra o código FINAL: a base de volta à primeira
+  arte (3 testes caem), sem a busca da criação (1), `ajuste-arte` como produtor
+  de criação (4), sem o aviso (1), sem a regra da janela (4), o agregado sem a
+  contagem do tempo (1), o bloco sem dizê-la (1), a medida sem marcá-la (1).

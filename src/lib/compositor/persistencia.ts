@@ -16,6 +16,7 @@ import type { PersistCreativeInput } from '@/lib/creatives/persist'
 
 import type { SpecDePeca } from './spec'
 import { converterSpecSemContrato, orientacaoDosProblemas, orientacaoEmFrase, tentarCopyEfetivaDasCamadas, type BlocoLegado, type CopyAutoral, type SpecSemContrato } from '@/lib/copy-autoral'
+import type { CarimboDaVoz } from '@/lib/brand/voz-na-escrita'
 
 /** Tag que marca a página nascida do compositor (é o que liga o sinal `geometria`). */
 export const TAG_DA_PECA_COMPOSTA = 'compositor'
@@ -40,6 +41,11 @@ export interface InsumosDaPersistencia {
   /** O diagnóstico da composição, gravado em `fieldValues.composicao`. */
   diagnostico: unknown
   fotoUrl: string | null
+  /**
+   * PR 15: a voz em vigor quando a copy foi escrita (`voz-na-escrita.ts`). Fica
+   * FORA do contrato estrito da copy; ausente = a leitura falhou, a peça segue.
+   */
+  vozNaEscrita?: CarimboDaVoz | null
 }
 
 export interface CopyAutoralDaSpec {
@@ -134,6 +140,7 @@ export function entradaDePersistencia(i: InsumosDaPersistencia): PersistCreative
       ...(spec.itemDePlanoId ? { itemDePlanoId: spec.itemDePlanoId } : {}),
       ...(spec.planoId ? { planoId: spec.planoId } : {}),
       ...(opcoes.generationId ? { generationIdDaFila: opcoes.generationId } : {}),
+      ...(i.vozNaEscrita ? { vozNaEscrita: i.vozNaEscrita } : {}),
     },
   }
 }

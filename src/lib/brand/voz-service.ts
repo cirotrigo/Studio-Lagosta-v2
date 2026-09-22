@@ -33,6 +33,7 @@ import {
   type ResultadoDeRegra,
   type VozCompacta,
 } from './voz'
+import { carimboDaVoz, type CarimboDaVoz } from './voz-na-escrita'
 
 export interface RegistroDaVoz {
   id: number
@@ -307,5 +308,39 @@ export async function virarRegraNaVoz(args: VirarRegraNaVozArgs): Promise<VirarR
     antes: texto(registro.voz),
     depois: texto(resultado.voz),
     gravado: !!args.confirmado,
+  }
+}
+
+/**
+ * O CARIMBO da voz em vigor quando a copy de uma peça foi escrita (PR 15,
+ * `voz-na-escrita.ts`). Best-effort de propósito: quem chama é quem produz a
+ * peça (compositor, `startArtGeneration`), e ler a voz nunca derruba a
+ * produção — qualquer falha (tabela `BrandVoice` ausente num banco sem a
+ * migration do PR 7, rede) devolve `null` e a peça sai sem carimbo.
+ *
+ * `escritaEm` é o instante em que a copy foi escrita quando ele é anterior à
+ * produção; `itemDePlanoId` o resolve pelo `createdAt` do item (a copy do
+ * plano é escrita no `criar-plano`, que não tem onde guardar o carimbo).
+ */
+export async function carimboDaVozAgora(
+  projectId: number,
+  opcoes: { escritaEm?: Date | string | null; itemDePlanoId?: string | null } = {},
+): Promise<CarimboDaVoz | null> {
+  try {
+    const [registro, dna, item] = await Promise.all([
+      db.brandVoice.findUnique({ where: { projectId }, select: { voz: true, versao: true, migradaEm: true, updatedAt: true } }),
+      db.brandDNA.findUnique({ where: { projectId }, select: { toneOfVoice: true, contentRules: true } }),
+      opcoes.escritaEm == null && opcoes.itemDePlanoId
+        ? db.itemDePlano.findFirst({ where: { id: opcoes.itemDePlanoId, projectId }, select: { createdAt: true } })
+        : Promise.resolve(null),
+    ])
+    const contexto = precedenciaDaVoz({ registro, dna: { toneOfVoice: dna?.toneOfVoice ?? null, contentRules: dna?.contentRules ?? null } })
+    return carimboDaVoz(
+      { fonte: contexto.fonte, versao: contexto.versao, migradaEm: registro?.migradaEm ?? null, atualizadaEm: registro?.updatedAt ?? null },
+      { escritaEm: opcoes.escritaEm ?? item?.createdAt ?? null },
+    )
+  } catch (erro) {
+    console.warn('[voz] carimbo da voz não lido (a peça segue sem ele):', erro instanceof Error ? erro.message : erro)
+    return null
   }
 }
