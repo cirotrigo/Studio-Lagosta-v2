@@ -45,6 +45,7 @@ import { db } from '@/lib/db'
 import {
   LIMIAR_DE_AMOSTRA,
   LIMIAR_DE_AMOSTRA_DA_CARTEIRA,
+  ORIGENS_DA_COMPOSICAO,
   cancelamentoPorTempo,
   faltaDeEsquema,
   medirPeca,
@@ -90,7 +91,8 @@ export interface EsquemaDaCopy {
  * O HISTÓRICO das páginas (as outras artes delas: ajustes, recomposições) é
  * lido até este teto antes da janela. A arte que o post referencia DIRETAMENTE
  * (a coluna, a URL da mídia) não tem teto nenhum (PR15-08): a peça agendada
- * nesta semana pode reusar arte de meses atrás.
+ * nesta semana pode reusar arte de meses atrás. A arte de CRIAÇÃO de cada
+ * página também não: é dela a base da fidelidade (`ORIGENS_DA_COMPOSICAO`).
  */
 const HISTORICO_DAS_ARTES_MS = 60 * 24 * 3600_000
 const HISTORICO_DAS_ARTES_DIAS = HISTORICO_DAS_ARTES_MS / (24 * 3600_000)
@@ -186,7 +188,13 @@ export async function lerSemanaDoCliente(
   //    teto de data. O limite cortava até a arte que o post aponta, e a peça
   //    com contrato saía "sem contrato" (no carrossel, os slides sumiam);
   //  - o HISTÓRICO — as outras artes das páginas, a deduplicação por página —,
-  //    limitado a `desde`.
+  //    limitado a `desde`;
+  //  - a arte de CRIAÇÃO de cada página (a base da fidelidade), sem data:
+  //    fora da leitura, a primeira arte lida podia ser um ajuste, cujo
+  //    `original` é o contrato da página JÁ revisado — e a edição da equipe
+  //    virava o texto do autor. Só produtor de criação com contrato, então o
+  //    ajuste antigo continua fora (o histórico segue limitado).
+  const origensDaComposicao = [...ORIGENS_DA_COMPOSICAO]
   const lerArtes = (ids: string[], urlsDasMidias: string[], paginas: string[], excluir: string[], limite: number) =>
     comPrazo(
       () => leitor.$queryRaw<Array<Omit<ArteLida, 'createdAt'> & { createdAt: Date }>>`
@@ -208,6 +216,7 @@ export async function lerSemanaDoCliente(
           OR "resultUrl" = ANY(${urlsDasMidias}::text[])
           OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(CASE WHEN jsonb_typeof("fieldValues"->'recomposicao'->'urlsAnteriores') = 'array' THEN "fieldValues"->'recomposicao'->'urlsAnteriores' ELSE '[]'::jsonb END) AS anterior(url) WHERE anterior.url = ANY(${urlsDasMidias}::text[]))
           OR ("createdAt" >= ${desde} AND "fieldValues"->>'pageId' = ANY(${paginas}::text[]))
+          OR ("fieldValues"->>'pageId' = ANY(${paginas}::text[]) AND "fieldValues"->>'source' = ANY(${origensDaComposicao}::text[]) AND jsonb_typeof("fieldValues"->'copyAutoral'->'original') = 'object')
         )
         AND NOT (id = ANY(${excluir}::text[]))
       ORDER BY "createdAt" ASC
@@ -225,9 +234,8 @@ export async function lerSemanaDoCliente(
   // correção do revisor saíam zerados em silêncio.
   const paginasPelaArte = [...new Set(diretas.map((a) => a.pageId).filter((p): p is string => !!p && !pageIdsDosPosts.includes(p)))]
   const paginasDoHistorico = [...pageIdsDosPosts, ...paginasPelaArte]
-  if (paginasDoHistorico.length && artes.length < TETO_DE_ARTES) {
-    artes.push(...(await lerArtes([], [], paginasDoHistorico, artes.map((a) => a.id), TETO_DE_ARTES - artes.length)))
-  }
+  const historico = paginasDoHistorico.length && artes.length < TETO_DE_ARTES ? await lerArtes([], [], paginasDoHistorico, artes.map((a) => a.id), TETO_DE_ARTES - artes.length) : []
+  artes.push(...historico)
   if (artes.length >= TETO_DE_ARTES) avisos.push(`mais de ${TETO_DE_ARTES} artes ligadas — a medida olhou as primeiras`)
   // A arte direta de antes do limite prova que a página dela existia antes
   // dele — e as outras artes dessa época (o original do autor, um ajuste)
@@ -236,6 +244,14 @@ export async function lerSemanaDoCliente(
   if (antigas.length) {
     avisos.push(
       `${antigas.length} arte(s) ligada(s) direto aos posts são de antes do limite de ${HISTORICO_DAS_ARTES_DIAS} dias do histórico: as outras artes das páginas delas, dessa época, não foram lidas — a medida dessas peças pode estar incompleta`,
+    )
+  }
+  // O mesmo para a arte de CRIAÇÃO: no histórico, o que é de antes do limite só
+  // pode ter vindo pela busca da criação (o resto dele é limitado a `desde`).
+  const criacoesAntigas = historico.filter((a) => new Date(a.createdAt).getTime() < desde.getTime())
+  if (criacoesAntigas.length) {
+    avisos.push(
+      `${criacoesAntigas.length} arte(s) de criação de página(s) das peças são de antes do limite de ${HISTORICO_DAS_ARTES_DIAS} dias do histórico: foram lidas para dar a base da comparação, mas as outras artes dessas páginas, dessa época, não — a medida dessas peças pode estar incompleta`,
     )
   }
 
@@ -276,7 +292,7 @@ export async function lerSemanaDoCliente(
     avisos.push('voz sem versão: a tabela BrandVoice não existe neste banco (migration do PR 7)')
   }
 
-  return { leitura: { posts, artes, paginas, itens, sinais }, versaoDaVoz, avisos }
+  return { leitura: { posts, artes, paginas, itens, sinais, inicioDaJanela: janela.inicio }, versaoDaVoz, avisos }
 }
 
 export async function medirQualidadeDaCopyDoCliente(

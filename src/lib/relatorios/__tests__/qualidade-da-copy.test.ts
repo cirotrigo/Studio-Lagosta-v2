@@ -93,7 +93,7 @@ const criadoEm = (g: ArteNoBanco): number => {
  * limite de data deixava passar a referência direta cortada por ele).
  */
 function consultaDeArtes(strings: TemplateStringsArray, valores: unknown[]) {
-  const q = { projectId: 0, ids: [] as string[], urls: [] as string[], urlsAnteriores: [] as string[], desde: new Date(0), paginas: [] as string[], excluir: [] as string[], limite: Infinity }
+  const q = { projectId: 0, ids: [] as string[], urls: [] as string[], urlsAnteriores: [] as string[], desde: new Date(0), paginas: [] as string[], origens: [] as string[], excluir: [] as string[], limite: Infinity }
   valores.forEach((v, i) => {
     const antes = strings[i].replace(/\s+/g, ' ')
     if (antes.endsWith('"projectId" = ')) q.projectId = v as number
@@ -103,6 +103,7 @@ function consultaDeArtes(strings: TemplateStringsArray, valores: unknown[]) {
     else if (antes.endsWith('anterior.url = ANY(')) q.urlsAnteriores = v as string[]
     else if (antes.endsWith('"createdAt" >= ')) q.desde = v as Date
     else if (antes.endsWith(`->>'pageId' = ANY(`)) q.paginas = v as string[]
+    else if (antes.endsWith(`->>'source' = ANY(`)) q.origens = v as string[]
     else if (antes.endsWith('LIMIT ')) q.limite = v as number
     else throw new Error(`parâmetro da consulta das artes sem papel conhecido: …${antes.slice(-40)}`)
   })
@@ -164,6 +165,17 @@ function avaliarOnde(expr: string, valores: unknown[], g: ArteNoBanco): boolean 
   if ((m = e.match(/^"resultUrl" = ANY\(\$(\d+)::text\[\]\)$/))) return g.resultUrl != null && (v(m[1]) as string[]).includes(g.resultUrl)
   if ((m = e.match(/^"createdAt" >= \$(\d+)$/))) return criadoEm(g) >= (v(m[1]) as Date).getTime()
   if ((m = e.match(/^"fieldValues"->>'pageId' = ANY\(\$(\d+)::text\[\]\)$/))) return g.pageId != null && (v(m[1]) as string[]).includes(g.pageId)
+  // O produtor e o contrato da arte de criação (a busca da base sem o limite do histórico).
+  const fv = g.fieldValues as Record<string, unknown> | undefined
+  if ((m = e.match(/^"fieldValues"->>'source' = ANY\(\$(\d+)::text\[\]\)$/))) {
+    const source = fv ? fv.source : g.source
+    return typeof source === 'string' && (v(m[1]) as string[]).includes(source)
+  }
+  if (e === `jsonb_typeof("fieldValues"->'copyAutoral'->'original') = 'object'`) {
+    const registro = (fv ? fv.copyAutoral : g.copyAutoral) as Record<string, unknown> | null | undefined
+    const o = registro && typeof registro === 'object' ? registro.original : undefined
+    return !!o && typeof o === 'object' && !Array.isArray(o)
+  }
   // O rastro de URLs da arte (`recomposicao.urlsAnteriores`), só quando é array (PR15-06).
   if ((m = e.match(/^EXISTS \(SELECT 1 FROM jsonb_array_elements_text\(CASE WHEN jsonb_typeof\("fieldValues"->'recomposicao'->'urlsAnteriores'\) = 'array' THEN "fieldValues"->'recomposicao'->'urlsAnteriores' ELSE '\[\]'::jsonb END\) AS anterior\(url\) WHERE anterior\.url = ANY\(\$(\d+)::text\[\]\)\)$/))) {
     const r = (g.fieldValues as Record<string, unknown> | undefined)?.recomposicao ?? g.recomposicao
@@ -799,5 +811,90 @@ describe('PR15-13 · a saída --json do script declara quem NÃO foi medido, com
     expect(codigo).toMatch(/from '\.\/lib\/saida-da-medida-da-copy'/)
     expect(codigo).toMatch(/JSON\.stringify\(saidaJsonDaMedida\(\{ inicio, fim \}, resultado\)/)
     expect(codigo).not.toMatch(/clientes:\s*\[/)
+  })
+})
+
+// ─── a base fora da janela do histórico (21/09/2026), pelo caminho real ──
+
+describe('a arte de CRIAÇÃO da página é lida sem o limite do histórico — é dela a base da fidelidade', () => {
+  const original = {
+    versao: 'copy-autoral-v1',
+    origem: { autor: 'claude', em: '2026-06-01T10:00:00.000Z', superficie: 'chat' },
+    blocos: [
+      { id: 'headline', funcao: 'headline', ordem: 0, linhas: ['Sexta é dia', 'de churrasco'] },
+      { id: 'cta', funcao: 'cta', ordem: 1, linhas: ['Vem pra cá'] },
+    ],
+    revisoes: [],
+  } as const
+  // A equipe trocou a manchete por ajustar-arte nesta semana: o `original` da arte do ajuste é o contrato da página JÁ revisado.
+  const revisado = aplicarRevisao(
+    original as never,
+    original.blocos.map((b) => ({ ...b, linhas: b.id === 'headline' ? ['Sexta tem', 'churrasco'] : [...b.linhas] })) as never,
+    { autor: 'equipe', motivo: 'ajustar-arte', superficie: 'studio', em: '2026-09-08T10:00:00.000Z' },
+  ).copy
+  const camadas = (c: { blocos: ReadonlyArray<{ id: string; linhas: readonly string[] }> }) =>
+    JSON.stringify(c.blocos.map((b) => ({ id: b.id, name: b.id, type: 'text', content: b.linhas.join('\n') })))
+  // Três meses antes da semana medida: bem antes do limite de 60 dias do histórico.
+  const ANTIGA = new Date('2026-06-01T10:00:00Z')
+  const linha = (id: string, pageId: string, fieldValues: Record<string, unknown>, createdAt: Date): ArteNoBanco => ({
+    id,
+    pageId,
+    resultUrl: null,
+    createdAt,
+    canal: null,
+    fieldValues: { pageId, ...fieldValues },
+  })
+  const criacao = linha('g-criacao', 'p1', { source: 'compositor', copyAutoral: { original, efetiva: original, comparavel: true } }, ANTIGA)
+  // Um ajuste do REVISOR da mesma época: é histórico, e o histórico continua limitado — a busca da criação não o traz.
+  const ajusteAntigo = linha(
+    'g-aj-antigo',
+    'p1',
+    { source: 'ajuste-arte', ajustes: {}, revisao: { aplicados: [{ indice: 0, tipo: 'corpo', camadas: ['headline'] }] }, copyAutoral: { original, efetiva: original, comparavel: true } },
+    new Date('2026-06-02T10:00:00Z'),
+  )
+  const ajuste = linha(
+    'g-ajuste',
+    'p1',
+    { source: 'ajuste-arte', canal: 'studio', ajustes: { headline: 'Sexta tem\nchurrasco' }, copyAutoral: { original: revisado, efetiva: revisado, comparavel: true } },
+    new Date('2026-09-08T10:00:00Z'),
+  )
+  // Composição antiga SEM contrato (anterior ao PR 3), noutra página: não dá base nenhuma, e a busca da criação não a traz.
+  const legado = linha('g-legado', 'p-legado', { source: 'compositor' }, ANTIGA)
+  const paginas = [
+    { id: 'p1', copyAutoral: revisado, layers: camadas(revisado as never) },
+    { id: 'p-legado', copyAutoral: null, layers: '[]' },
+  ]
+
+  it('a de criação passou do limite e o post não a aponta: ela é lida, e a troca da equipe é redação — nunca "preservada"', async () => {
+    const banco = criarBanco({
+      postsDe: () => [postNoBanco({ id: 'story', pageId: 'p1' }), postNoBanco({ id: 'legado', pageId: 'p-legado' })],
+      generations: [criacao, ajusteAntigo, ajuste, legado],
+      paginas,
+    })
+    estado.banco = banco
+    const lida = (await banco.transacao((tx) =>
+      lerSemanaDoCliente(espeto.projectId, janela, { leitor: tx as LeitorDoBanco, esquema: ESQUEMA_COMPLETO, prazo: Date.now() + 1_000 }),
+    )) as Awaited<ReturnType<typeof lerSemanaDoCliente>>
+    expect(lida.leitura.artes.map((a) => a.id).sort()).toEqual(['g-ajuste', 'g-criacao'])
+
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    const m = r.medidas.find((x) => x.chave === 'page:p1')!
+    expect(m).toMatchObject({ comparavel: true, exclusao: null, preservada: false })
+    expect(m.correcoes.redacao).toBe(1)
+    // O ajuste antigo do revisor não foi lido (o histórico segue limitado), e a lacuna é DITA.
+    expect(m.correcoes.revisor).toBe(0)
+    // A peça começou antes da janela (a criação é de junho): o primeiro post dela pode estar fora da leitura — sem tempo.
+    expect(m.minutosAteRascunho).toBeNull()
+    expect(r.medidas.find((x) => x.chave === 'page:p-legado')).toMatchObject({ exclusao: 'sem-contrato' })
+    expect(r.avisos.join(' ')).toMatch(/1 arte\(s\) de criação.*60 dias.*incompleta/)
+  })
+
+  it('sem arte de criação nenhuma (página duplicada: o contrato veio de outra página): contada como sem o original da composição, sem aviso de criação', async () => {
+    estado.banco = criarBanco({ postsDe: () => [postNoBanco({ id: 'story', pageId: 'p1' })], generations: [ajuste], paginas: [paginas[0]] })
+    const r = await medirQualidadeDaCopyDoCliente(espeto, janela, { esquema: ESQUEMA_COMPLETO, tetoMs: 1_000 })
+    expect(r.medidas).toHaveLength(1)
+    expect(r.medidas[0]).toMatchObject({ chave: 'page:p1', comparavel: false, exclusao: 'sem-original-da-composicao', preservada: null })
+    expect(r.qualidade?.foraDoDenominador.semOriginalDaComposicao).toBe(1)
+    expect(r.avisos.join(' ')).not.toMatch(/de criação/)
   })
 })

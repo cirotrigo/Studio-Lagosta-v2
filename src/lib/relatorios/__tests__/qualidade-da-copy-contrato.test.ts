@@ -104,6 +104,7 @@ function medida(over: Partial<MedidaDaPeca>): MedidaDaPeca {
     visibilidadeDoRevisor: { aceitos: 0, desfeitos: 0, removidas: 0 },
     semPagina: false,
     minutosAteRascunho: null,
+    tempoAntesDaJanela: false,
     voz: null,
     avisosDoSistema: 0,
     ...over,
@@ -1292,5 +1293,88 @@ describe('PR15-10 · peça só congelada: a medida é a imagem MAIS NOVA, cortad
   it('o instante do PNG refeito precisa ser legível: recomposição sem `em` não corta nada — sem prova', () => {
     const l = reposts(original, { recomposicao: { estado: 'feita', em: 'ontem' } })
     expect(medirPeca(montarPecas(l)[0])).toMatchObject({ comparavel: false, exclusao: 'congelada-sem-prova' })
+  })
+})
+
+// ─── a base fora da leitura (21/09/2026, proativo antes da FINAL) ────────
+
+describe('a base da fidelidade é o original da arte de CRIAÇÃO — nunca o de um registro já revisado', () => {
+  const original = copiaOriginal()
+  // A equipe trocou a manchete por ajustar-arte: o `original` que a arte do
+  // ajuste grava é o contrato da PÁGINA já revisado por aquele ajuste
+  // (`arte-rapida.ts`, `original: contratoDaPagina`).
+  const revisado = revisar(original, { headline: ['Sexta tem', 'churrasco'] }, { autor: 'equipe', motivo: 'ajustar-arte', superficie: 'studio', em: T(40) })
+  const doAjuste = (over: Partial<ArteLida> = {}) =>
+    arte('gen-aj', { source: 'ajuste-arte', canal: 'studio', createdAt: T(40), ajustes: { headline: 'Sexta tem\nchurrasco' }, copyAutoral: { original: revisado, efetiva: revisado, comparavel: true }, ...over })
+  const pagina = { id: 'page-1', copyAutoral: revisado, layers: '[]' }
+  const daCriacao = (source: string) => arte('gen-1', { source, copyAutoral: { original, efetiva: original, comparavel: true } })
+
+  it('a única arte lida é o ajuste (a de criação ficou fora da leitura): base desconhecida, contada e declarada — nunca "preservada"', () => {
+    const [p] = montarPecas(leitura({ artes: [doAjuste()], paginas: [pagina] }))
+    const m = medirPeca(p)
+    expect(m).toMatchObject({ comparavel: false, exclusao: 'sem-original-da-composicao', preservada: null })
+    const q = medirQualidadeDaCopy([m], { limiar: 1 })
+    expect(q.comparaveis).toBe(0)
+    expect(q.foraDoDenominador).toMatchObject({ semOriginalDaComposicao: 1, semContrato: 0 })
+    expect(blocoDaQualidadeDaCopy({ carteira: q, indisponiveis: [], foraDoOrcamento: [] })).toMatch(/1 fora da medida \(0 sem contrato, 1 sem o original da composição, /)
+    expect(linhaDaCopyDoCliente(q)).toMatch(/todas fora da medida \(.*sem o original da composição/)
+  })
+
+  it('nenhum outro produtor dá a base: a melhoria, o registro sem produtor e o produtor desconhecido', () => {
+    for (const source of ['ai_improvement', null, 'outra-coisa']) {
+      const [p] = montarPecas(leitura({ artes: [doAjuste({ source, ajustes: null })], paginas: [pagina] }))
+      expect(medirPeca(p).exclusao).toBe('sem-original-da-composicao')
+    }
+  })
+
+  it('controle: com a arte de criação na leitura, a medida é a de hoje — a troca da equipe é redação e a mensagem não foi preservada', () => {
+    const [p] = montarPecas(leitura({ artes: [daCriacao('compositor'), doAjuste()], paginas: [pagina] }))
+    const m = medirPeca(p)
+    expect(m).toMatchObject({ comparavel: true, exclusao: null, preservada: false })
+    expect(m.correcoes.redacao).toBe(1)
+  })
+
+  it('as três vias de criação dão a base: compositor, modelo (`arte-rapida`) e IA (`arte-ia`)', () => {
+    for (const source of ['compositor', 'arte-rapida', 'arte-ia']) {
+      const [p] = montarPecas(leitura({ artes: [daCriacao(source), doAjuste()], paginas: [pagina] }))
+      expect(medirPeca(p)).toMatchObject({ comparavel: true, preservada: false })
+    }
+  })
+})
+
+describe('tempo até o rascunho: só a peça que começou DENTRO da janela da leitura dos posts', () => {
+  const original = copiaOriginal()
+  const daCriacao = arte('gen-1', { copyAutoral: { original, efetiva: original, comparavel: true } })
+  const pagina = { id: 'page-1', copyAutoral: original, layers: '[]' }
+  const medidaDe = (over: Partial<LeituraDaSemana>) => medirPeca(montarPecas(leitura({ artes: [daCriacao], paginas: [pagina], ...over }))[0])
+  const minutos = (over: Partial<LeituraDaSemana>) => medidaDe(over).minutosAteRascunho
+
+  it('a primeira arte é de antes do início da janela: o primeiro post pode ter ficado fora da leitura — sem tempo', () => {
+    // A arte em T(1), o post em T(30); a leitura dos posts começa em T(10).
+    expect(minutos({ inicioDaJanela: T(10) })).toBeNull()
+  })
+
+  it('a peça que sai do tempo é CONTADA e dita no relatório, nunca um silêncio', () => {
+    const fora = medidaDe({ inicioDaJanela: T(10) })
+    expect(fora.tempoAntesDaJanela).toBe(true)
+    const q = medirQualidadeDaCopy([fora, medida({ minutosAteRascunho: 30 })], { limiar: 5 })
+    expect(q.tempoAteRascunho).toMatchObject({ estado: 'amostraInsuficiente', n: 1, antesDaJanela: 1 })
+    expect(blocoDaQualidadeDaCopy({ carteira: q, indisponiveis: [], foraDoOrcamento: [] })).toMatch(/até o rascunho \(proxy\): amostra insuficiente \(1, mínimo 5\) · 1 peça\(s\) começaram antes da janela, sem tempo/)
+    const medido = medirQualidadeDaCopy([fora, ...[10, 20, 30, 40, 50].map((min) => medida({ minutosAteRascunho: min }))], { limiar: 5 })
+    expect(medido.tempoAteRascunho).toMatchObject({ estado: 'medida', n: 5, antesDaJanela: 1 })
+    expect(blocoDaQualidadeDaCopy({ carteira: medido, indisponiveis: [], foraDoOrcamento: [] })).toMatch(/p90 .* · 1 peça\(s\) começaram antes da janela, sem tempo/)
+    // Controle: dentro da janela não conta nem diz nada.
+    expect(medidaDe({ inicioDaJanela: T(1) }).tempoAntesDaJanela).toBe(false)
+    expect(blocoDaQualidadeDaCopy({ carteira: medirQualidadeDaCopy([medida({ minutosAteRascunho: 30 })], { limiar: 5 }), indisponiveis: [], foraDoOrcamento: [] })).not.toMatch(/antes da janela/)
+  })
+
+  it('o item de plano de antes da janela também tira a peça do tempo', () => {
+    const itens = [{ id: 'item-1', postId: 'post-1', pageId: null, generationId: null, createdAt: T(5) }]
+    expect(minutos({ itens, inicioDaJanela: T(10) })).toBeNull()
+  })
+
+  it('controle: a peça que começou dentro da janela conta o tempo de sempre', () => {
+    expect(minutos({ inicioDaJanela: T(0) })).toBe(29)
+    expect(minutos({ inicioDaJanela: T(1) })).toBe(29)
   })
 })

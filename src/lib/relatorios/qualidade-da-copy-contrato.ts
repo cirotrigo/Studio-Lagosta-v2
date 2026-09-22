@@ -54,6 +54,12 @@
  *   com prova do TEXTO e prova TEMPORAL, as duas do MESMO registro — a arte
  *   casada pela URL exata (`provaDaMidiaCongelada`); sem elas,
  *   `congelada-sem-prova`, fora do denominador e contada.
+ * - 🔴 **A base é o original da arte de CRIAÇÃO** (21/09/2026): o texto como
+ *   a peça foi composta. O mesmo campo `copyAutoral.original` carrega outra
+ *   coisa em quem não compôs — no ajuste, o contrato da página JÁ revisado —, e
+ *   medir contra ele tomaria a edição da equipe pelo texto do autor
+ *   ("preservada"). Sem a arte de criação na leitura, a base é DESCONHECIDA:
+ *   `sem-original-da-composicao`, fora do denominador e contada.
  * - **A mensagem é linhas E ordem de leitura** (PR15-03): trocar a `ordem` de
  *   dois blocos não é "mensagem preservada".
  *
@@ -91,6 +97,20 @@ export const MOTIVO_DO_AJUSTE_DO_REVISOR = 'ajuste de diagramação (revisor)'
 export const JANELA_DO_MESMO_AJUSTE_MS = 2 * 60_000
 
 const SUPERFICIES_DO_COMPOSITOR = new Set(['compositor', 'recomposicao'])
+
+/**
+ * Os produtores (`fieldValues.source`) cujo `copyAutoral.original` é o contrato
+ * RECEBIDO para compor — a base da fidelidade: o compositor (`persistencia.ts`),
+ * a via de modelo (`createArteRapida`) e a geração por IA
+ * (`startArtGeneration`). A recomposição e o re-render mantêm o original que a
+ * arte já tinha. Nos outros produtores o campo muda de sentido: no ajuste
+ * (`ajuste-arte`) é o contrato da PÁGINA já revisado por ele; na melhoria
+ * (`ai_improvement`), o da origem levado pela cadeia, com o refino por cima.
+ * Lista FECHADA: produtor novo, ou `source` ausente, não vira base até ser
+ * conferido e acrescentado aqui. O serviço usa a mesma lista para ler a arte
+ * de criação sem o limite do histórico.
+ */
+export const ORIGENS_DA_COMPOSICAO: readonly string[] = ['compositor', 'arte-rapida', 'arte-ia']
 
 export const CAUSAS = ['redacao', 'compositor', 'foto', 'design', 'revisor', 'indeterminada'] as const
 export type CausaDaCorrecao = (typeof CAUSAS)[number]
@@ -181,6 +201,12 @@ export interface LeituraDaSemana {
   paginas: PaginaLida[]
   itens: ItemLido[]
   sinais: SinalLido[]
+  /**
+   * O início da janela em que os POSTS foram lidos. O primeiro post da peça só
+   * é conhecido quando ela começou dentro dela: a que começou antes pode ter
+   * tido o primeiro post fora da leitura, e fica sem tempo até o rascunho.
+   */
+  inicioDaJanela?: Instante
 }
 
 // ─── utilitários ──────────────────────────────────────────────────────────
@@ -369,8 +395,11 @@ export interface PecaParaMedir {
   postIds: string[]
   original: CopyAutoral | null
   final: CopyAutoral | null
-  /** `congelada-sem-prova`: há post congelado e nada prova que a mídia dele mostra a copy medida (PR15-02). */
-  exclusao: 'sem-contrato' | 'autoria-desconhecida' | 'congelada-sem-prova' | 'sem-copy-final' | null
+  /**
+   * `congelada-sem-prova`: há post congelado e nada prova que a mídia dele mostra a copy medida (PR15-02).
+   * `sem-original-da-composicao`: há contrato, mas só em arte que não compôs a peça — a base é desconhecida.
+   */
+  exclusao: 'sem-contrato' | 'sem-original-da-composicao' | 'autoria-desconhecida' | 'congelada-sem-prova' | 'sem-copy-final' | null
   estados: EstadoDaCopy[]
   /** O desfecho dos ajustes de visibilidade do revisor, pelas camadas de hoje. `null` = camadas ilegíveis. */
   visibilidade: Array<{ camada: string; desfecho: DesfechoDaVisibilidade }> | null
@@ -381,7 +410,8 @@ export interface PecaParaMedir {
    */
   semPagina: boolean
   evidencias: { trocasDeArte: number; fotosTrocadas: number; geometria: number; recusasDoCompositor: number; avisosDoSistema: number; ajustesDoRevisorSemRevisaoDeCopy: number }
-  tempo: { inicioEm: number | null; rascunhoEm: number | null }
+  /** `comecouAntesDaJanela`: sem tempo, porque o primeiro post pode ter ficado fora da leitura — contado, nunca calado. */
+  tempo: { inicioEm: number | null; rascunhoEm: number | null; comecouAntesDaJanela: boolean }
   voz: CarimboDaVoz | null
 }
 
@@ -628,20 +658,30 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     const posts = [...new Map(g.ocorrencias.map((o) => [o.post.id, o.post])).values()]
     const postIds = posts.map((p) => p.id)
 
-    // O original do AUTOR: o da primeira arte que o gravou.
+    // A BASE: o original da arte de CRIAÇÃO — o texto como a peça foi composta.
+    // A primeira arte lida pode ser um ajuste (a de criação ficou fora da
+    // leitura, ou nunca existiu nesta página: página duplicada), e o original
+    // dele já traz a edição da equipe. Esse não é base: sem a de criação, a
+    // peça sai contada como `sem-original-da-composicao`.
     let original: CopyAutoral | null = null
     let arteDoOriginal: ArteLida | null = null
+    let originalDeOutraArte = false
     for (const a of artes) {
       const c = copyLida(objeto(a.copyAutoral)?.original)
-      if (c) {
-        original = c
-        arteDoOriginal = a
-        break
+      if (!c) continue
+      if (!ORIGENS_DA_COMPOSICAO.includes(a.source ?? '')) {
+        originalDeOutraArte = true
+        continue
       }
+      original = c
+      arteDoOriginal = a
+      break
     }
 
     const exclusao: PecaParaMedir['exclusao'] = !original
-      ? 'sem-contrato'
+      ? originalDeOutraArte
+        ? 'sem-original-da-composicao'
+        : 'sem-contrato'
       : original.origem.autor === 'desconhecido'
         ? 'autoria-desconhecida'
         : congeladaSemProva
@@ -688,6 +728,11 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     const itens = itensPorPeca.get(chave) ?? []
     const inicios = [...itens.map((it) => tempo(it.createdAt)), ...(itens.length ? [] : artes.map((a) => tempo(a.createdAt)))].filter(Number.isFinite)
     const rascunhos = posts.map((p) => tempo(p.createdAt)).filter(Number.isFinite)
+    // A peça que começou antes da janela pode ter tido o primeiro post antes
+    // dela, e os posts só são lidos a partir do início: sem tempo, nunca um
+    // "primeiro post" que talvez não seja o primeiro (o repost de uma arte antiga).
+    const inicioEm = inicios.length ? Math.min(...inicios) : null
+    const comecouAntesDaJanela = inicioEm != null && l.inicioDaJanela != null && inicioEm < tempo(l.inicioDaJanela)
 
     const arteDaVoz = arteDoOriginal ?? artes.find((a) => a.vozNaEscrita != null) ?? null
 
@@ -709,7 +754,7 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
         avisosDoSistema,
         ajustesDoRevisorSemRevisaoDeCopy,
       },
-      tempo: { inicioEm: inicios.length ? Math.min(...inicios) : null, rascunhoEm: rascunhos.length ? Math.min(...rascunhos) : null },
+      tempo: { inicioEm: comecouAntesDaJanela ? null : inicioEm, rascunhoEm: rascunhos.length ? Math.min(...rascunhos) : null, comecouAntesDaJanela },
       voz: arteDaVoz ? lerCarimboDaVoz(arteDaVoz.vozNaEscrita) : null,
     })
   }
@@ -734,6 +779,8 @@ export interface MedidaDaPeca {
   /** Sem página lida: o desfecho da visibilidade do revisor NÃO foi medido (C15-11). */
   semPagina: boolean
   minutosAteRascunho: number | null
+  /** Começou antes da janela dos posts: fora do tempo até o rascunho, e contada. */
+  tempoAntesDaJanela: boolean
   voz: CarimboDaVoz | null
   avisosDoSistema: number
 }
@@ -804,7 +851,7 @@ export function medirPeca(p: PecaParaMedir): MedidaDaPeca {
       }
     : null
 
-  return { chave: p.chave, comparavel, exclusao: p.exclusao, preservada, sistemaMudouLinhas, correcoes, indevidas, visibilidadeDoRevisor, semPagina: p.semPagina, minutosAteRascunho: minutos, voz: p.voz, avisosDoSistema: p.evidencias.avisosDoSistema }
+  return { chave: p.chave, comparavel, exclusao: p.exclusao, preservada, sistemaMudouLinhas, correcoes, indevidas, visibilidadeDoRevisor, semPagina: p.semPagina, minutosAteRascunho: minutos, tempoAntesDaJanela: p.tempo.comecouAntesDaJanela, voz: p.voz, avisosDoSistema: p.evidencias.avisosDoSistema }
 }
 
 // ─── agregação ────────────────────────────────────────────────────────────
@@ -825,15 +872,15 @@ function percentil(ordenados: number[], p: number): number {
 }
 
 export const DEFINICAO_DO_TEMPO =
-  'proxy: do item de plano (ou da primeira arte da peça, sem item) até o primeiro post na agenda — não mede o tempo de escrita nem de revisão'
+  'proxy: do item de plano (ou da primeira arte da peça, sem item) até o primeiro post na agenda, só na peça que começou dentro da janela (a que começou antes pode ter tido o primeiro post fora dela) — não mede o tempo de escrita nem de revisão'
 
 export interface QualidadeDaCopy {
   versao: typeof VERSAO_DA_METRICA
   limiar: number
   pecas: number
   comparaveis: number
-  /** Fora do denominador — legado, peça congelada sem prova da mídia (PR15-02) e peça sem copy final. Nunca some. */
-  foraDoDenominador: { semContrato: number; autoriaDesconhecida: number; congeladaSemProva: number; semCopyFinal: number }
+  /** Fora do denominador — legado, peça sem o original da composição, peça congelada sem prova da mídia (PR15-02) e peça sem copy final. Nunca some. */
+  foraDoDenominador: { semContrato: number; semOriginalDaComposicao: number; autoriaDesconhecida: number; congeladaSemProva: number; semCopyFinal: number }
   fidelidade: { mensagemPreservada: Proporcao; sistemaSemMudarTexto: Proporcao }
   correcoes: { porCausa: Record<CausaDaCorrecao, number>; pecasPorCausa: Record<CausaDaCorrecao, number> }
   indevidas: { pecas: Proporcao; porTipo: Record<TipoDeIndevida, number> }
@@ -844,9 +891,10 @@ export interface QualidadeDaCopy {
    */
   visibilidadeDoRevisor: { aceitos: number; desfeitos: number; removidas: number; ilegiveis: number; semPagina: number }
   avisosDoSistema: number
+  /** `antesDaJanela`: peças fora do tempo por terem começado antes da janela dos posts — contadas, nunca caladas. */
   tempoAteRascunho:
-    | { estado: 'medida'; n: number; medianaMin: number; p90Min: number; proxy: true; definicao: string }
-    | { estado: 'amostraInsuficiente'; n: number; limiar: number; proxy: true; definicao: string }
+    | { estado: 'medida'; n: number; medianaMin: number; p90Min: number; antesDaJanela: number; proxy: true; definicao: string }
+    | { estado: 'amostraInsuficiente'; n: number; limiar: number; antesDaJanela: number; proxy: true; definicao: string }
   voz: { comCarimbo: number; semCarimbo: number; porFonte: Record<FonteDaVoz | 'incerta', number>; naVersaoAtual: number | null }
 }
 
@@ -866,14 +914,16 @@ export function medirQualidadeDaCopy(medidas: MedidaDaPeca[], opcoes: { limiar?:
 
   const minutos = medidas.map((m) => m.minutosAteRascunho).filter((x): x is number => x != null).sort((a, b) => a - b)
   const meio = Math.floor(minutos.length / 2)
+  const antesDaJanela = medidas.filter((m) => m.tempoAntesDaJanela).length
   const tempoAteRascunho: QualidadeDaCopy['tempoAteRascunho'] =
     minutos.length < limiar
-      ? { estado: 'amostraInsuficiente', n: minutos.length, limiar, proxy: true, definicao: DEFINICAO_DO_TEMPO }
+      ? { estado: 'amostraInsuficiente', n: minutos.length, limiar, antesDaJanela, proxy: true, definicao: DEFINICAO_DO_TEMPO }
       : {
           estado: 'medida',
           n: minutos.length,
           medianaMin: Math.round(minutos.length % 2 ? minutos[meio] : (minutos[meio - 1] + minutos[meio]) / 2),
           p90Min: Math.round(percentil(minutos, 0.9)),
+          antesDaJanela,
           proxy: true,
           definicao: DEFINICAO_DO_TEMPO,
         }
@@ -890,6 +940,7 @@ export function medirQualidadeDaCopy(medidas: MedidaDaPeca[], opcoes: { limiar?:
     comparaveis: comparaveis.length,
     foraDoDenominador: {
       semContrato: medidas.filter((m) => m.exclusao === 'sem-contrato').length,
+      semOriginalDaComposicao: medidas.filter((m) => m.exclusao === 'sem-original-da-composicao').length,
       autoriaDesconhecida: medidas.filter((m) => m.exclusao === 'autoria-desconhecida').length,
       congeladaSemProva: medidas.filter((m) => m.exclusao === 'congelada-sem-prova').length,
       semCopyFinal: medidas.filter((m) => m.exclusao === 'sem-copy-final').length,
@@ -984,7 +1035,7 @@ function duracao(min: number): string {
 export function linhaDaCopyDoCliente(q: QualidadeDaCopy | null): string | null {
   if (!q || q.pecas === 0) return null
   const fora = q.pecas - q.comparaveis
-  if (q.comparaveis === 0) return `  copy: ${q.pecas} peça(s), todas fora da medida (legado, congelada sem prova ou sem copy final)`
+  if (q.comparaveis === 0) return `  copy: ${q.pecas} peça(s), todas fora da medida (legado, sem o original da composição, congelada sem prova ou sem copy final)`
   const indevidas = q.indevidas.porTipo
   const nIndevidas = Object.values(indevidas).reduce((t, n) => t + n, 0)
   return `  copy: fidelidade ${textoDaProporcao(q.fidelidade.mensagemPreservada)}${nIndevidas ? ` · ${nIndevidas} indevida(s)` : ''}${fora ? ` · ${fora} fora da medida` : ''}`
@@ -1005,9 +1056,10 @@ export function blocoDaQualidadeDaCopy(b: BlocoDaCopy): string | null {
   const partes = ['\n✍️ *Copy da semana* — fidelidade até a agenda']
   if (q && q.pecas > 0) {
     const fora = q.foraDoDenominador
-    const nFora = fora.semContrato + fora.autoriaDesconhecida + fora.congeladaSemProva + fora.semCopyFinal
+    const nFora = fora.semContrato + fora.semOriginalDaComposicao + fora.autoriaDesconhecida + fora.congeladaSemProva + fora.semCopyFinal
+    const semBase = fora.semOriginalDaComposicao ? `, ${fora.semOriginalDaComposicao} sem o original da composição` : ''
     const congeladas = fora.congeladaSemProva ? `, ${fora.congeladaSemProva} congelada(s) sem prova da mídia` : ''
-    partes.push(`${q.comparaveis} peça(s) comparável(is)${nFora ? ` · ${nFora} fora da medida (${fora.semContrato} sem contrato, ${fora.autoriaDesconhecida} autoria desconhecida${congeladas}, ${fora.semCopyFinal} sem copy final)` : ''}`)
+    partes.push(`${q.comparaveis} peça(s) comparável(is)${nFora ? ` · ${nFora} fora da medida (${fora.semContrato} sem contrato${semBase}, ${fora.autoriaDesconhecida} autoria desconhecida${congeladas}, ${fora.semCopyFinal} sem copy final)` : ''}`)
     if (q.comparaveis > 0) {
       partes.push(`  mensagem preservada: ${textoDaProporcao(q.fidelidade.mensagemPreservada)}`)
       partes.push(`  sistema sem mudar o texto: ${textoDaProporcao(q.fidelidade.sistemaSemMudarTexto)}`)
@@ -1022,7 +1074,8 @@ export function blocoDaQualidadeDaCopy(b: BlocoDaCopy): string | null {
       }
     }
     const t = q.tempoAteRascunho
-    partes.push(t.estado === 'medida' ? `  até o rascunho (proxy): mediana ${duracao(t.medianaMin)} · p90 ${duracao(t.p90Min)}` : `  até o rascunho (proxy): amostra insuficiente (${t.n}, mínimo ${t.limiar})`)
+    const antes = t.antesDaJanela ? ` · ${t.antesDaJanela} peça(s) começaram antes da janela, sem tempo` : ''
+    partes.push(t.estado === 'medida' ? `  até o rascunho (proxy): mediana ${duracao(t.medianaMin)} · p90 ${duracao(t.p90Min)}${antes}` : `  até o rascunho (proxy): amostra insuficiente (${t.n}, mínimo ${t.limiar})${antes}`)
     const v = q.voz
     partes.push(`  voz na escrita: ${v.comCarimbo} com carimbo (voz ${v.porFonte.voz} · legado ${v.porFonte.legado} · incerta ${v.porFonte.incerta}) · ${v.semCarimbo} sem`)
   }
