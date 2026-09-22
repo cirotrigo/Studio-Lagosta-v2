@@ -11280,3 +11280,64 @@ diferente da peça congelada — a cópia do post, as camadas visíveis, o snaps
 - ⚠️ **Limite conhecido**: o esconder do revisor só é visto quando a arte do
   ajuste está na leitura; ajuste fora da janela de 60 dias do histórico escapa.
   Impossível antes de ~10/11/2026 (o revisor nasceu em 11/09).
+
+**Da revisão FINAL do Codex sobre 9648f441 (BLOQUEADO, PR15-10-R2, 12 e 13,
+21/09/2026).** A regra do PR15-05-R2/09/10 ficou (prova do texto e do tempo
+pela arte casada pela URL); os três achados são as fronteiras dela.
+
+- 🔴 **Registro de render que não diz quando o PNG ficou pronto NUNCA vira a
+  criação** (PR15-10-R2, `instanteDoPng`). A recusa LEGADA (`recomposicao.estado:
+  'recusada'`, até C6-01) SUBSTITUÍA o registro inteiro e apagava o `em` do
+  render anterior: com o PNG refeito aos 20 min e uma correção de geometria aos
+  10, o corte caía na criação e a correção ficava fora. A criação só vale SEM
+  registro nenhum; `feita`/`re-renderizada` valem pelo `em`; qualquer outra
+  forma — a recusa legada, estado que nenhum escritor grava, não-objeto — é
+  `NaN`, e a peça fica `congelada-sem-prova`. A recusa na chave nova
+  (`recusaDaRecomposicao`) preserva o registro do render e o instante dele. O
+  teste do formato antigo aceitava o retorno à criação — a expectativa virou
+  `congelada-sem-prova`, e o corte da recusa legada pelo `em` dela segue provado
+  numa arte IRMÃ da página.
+- 🔴 **A página só se lê no projeto medido** (PR15-12, `lerSemanaDoCliente`):
+  `Template: { projectId }` na consulta, a régua do R29 do PR 6. O `pageId` do
+  post e o `fieldValues.pageId` da arte não provam dono (o konva-export grava
+  `body.pageId` sem conferir), e a página de outro cliente virava a copy final e
+  as camadas (o desfecho do revisor) da peça daqui. A de fora fica NÃO resolvida,
+  como a apagada (`semPagina`, contada). O banco falso do teste avalia o WHERE
+  das páginas de verdade e lança em condição que não conhece.
+- 🔴 **O `--json` do script declara quem NÃO foi medido** (PR15-13). A montagem
+  mora em `scripts/lib/saida-da-medida-da-copy.ts` (puro, precedente da guarda de
+  produção): `indisponiveis` (nome e motivo, o mesmo do bloco — inclui quem também
+  está em `clientes`) e `foraDoOrcamento` (nome e o motivo do prazo). Antes a
+  falha geral do esquema saía `carteira: null, clientes: []`, igual à seleção
+  vazia. O teste usa a saída REAL do serviço e confere que o script chama a
+  função (sem ela, voltar ao JSON inline passava).
+- 🔴 **Um snapshot só por cliente, e o isolamento vai pela OPÇÃO do Prisma,
+  nunca por SQL cru** (nota da mesma revisão). `executarEmLeitura` passou a
+  `isolationLevel: 'RepeatableRead'` + `SET TRANSACTION READ ONLY` como 1ª
+  instrução: as leituras de um cliente (posts → artes → páginas → sinais) veem o
+  banco do mesmo instante. **Medido num PostgreSQL 15 com o cliente gerado**: no
+  modo pgbouncer (o do pooler do Neon) o Prisma manda `DEALLOCATE ALL` logo
+  depois do BEGIN, e `SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`
+  escrito à mão foi RECUSADO ("must be called before any query") — a medida de
+  TODO cliente cairia. Com a opção o Prisma manda o isolamento antes do
+  DEALLOCATE, nos dois modos; uma linha inserida por outra conexão entre duas
+  leituras não aparece na segunda (em READ COMMITTED, aparecia). Conferido: nada
+  aqui espera trava de linha (só SELECT), e leitura em RR não recebe erro de
+  serialização. ⚠️ Caveat do Postgres: DDL que REESCREVE tabela no meio da
+  leitura a faz parecer vazia para o snapshot antigo — as migrations da casa são
+  aditivas.
+- **Varredura por classe** — (a) formato legado lido como se tivesse a
+  informação do novo: só `instanteDoPng` (corrigido); recusa legada cortada pelo
+  `em` dela, contrato adaptado (autoria desconhecida → fora), arte sem registro
+  (sem contrato → fora), carimbo ausente (contado "sem"), `canal` nulo (o rótulo
+  `equipe`/`claude` não entra em conta nenhuma: os dois são HUMANAS). ⚠️ Limite: a
+  recusa legada também apagou `urlsAnteriores`, e a mídia antiga de um slide
+  recomposto nessa janela não se liga a arte nenhuma — fica igual a uma foto do
+  acervo (não é peça), e casar pelo nome do arquivo é proibido pela casa. (b)
+  vínculo JSON como prova de dono: só a consulta de páginas; artes, itens,
+  sinais, voz e as leituras do carimbo (`refazer`, carrossel, item do compositor)
+  já filtram pelo projeto. (c) saída que omite o não medido: só o `--json`;
+  mensagem de domingo e bloco declaram. ⚠️ `metricsJson.copy: null` por cliente
+  diz "não medida" sem o porquê (ele sai na mensagem da semana): gravar o motivo
+  seria escrita a mais justamente no caminho em que o banco falhou ou o prazo
+  acabou, e atrasaria o envio do relatório.
