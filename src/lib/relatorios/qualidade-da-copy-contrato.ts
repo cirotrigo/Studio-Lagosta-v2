@@ -25,6 +25,11 @@
  *   (C15-01): a correção de texto numa OUTRA chamada, um minuto depois do
  *   ajuste, é de quem a pediu. `sistema` na superfície do compositor é
  *   compositor; em `reverter-arte` é design.
+ * - 🔴 **Quem mudou o TEXTO sai da revisão do bloco, nunca da arte** (PR15-14):
+ *   em cada estado da linha do tempo, a origem de um bloco é a da última
+ *   revisão que mudou as LINHAS dele (`origemPorBloco`). A arte do compositor
+ *   recomposta guarda a edição da equipe; a origem da Generation, sozinha, não
+ *   prova quem alterou aquele texto.
  * - 🔴 **O esconder do revisor não passa pelo contrato** (C15-02): a camada
  *   escondida com a marca do PR 0 é lida como PRESENTE pela autoria
  *   (`camadasParaDecisao`), então nem o esconder nem a reexibição pela equipe
@@ -324,9 +329,29 @@ export function desfechosDaVisibilidade(ajustes: AjusteDeVisibilidade[], layersD
 function origemDaRevisao(r: RevisaoDaCopy, causa: CausaDaCorrecao): OrigemDaMudanca {
   if (causa === 'revisor') return 'revisor'
   if (causa === 'compositor') return r.superficie === 'recomposicao' ? 'recomposicao' : 'compositor'
+  // O refino é assinado por quem PEDIU (PR5-13); o texto saiu da melhoria, e a superfície registra isso.
+  if (r.superficie === 'melhoria') return 'refino'
   if (r.autor === 'equipe' || r.autor === 'claude') return r.autor
   if (r.autor === 'sistema') return 'sistema'
   return 'desconhecido'
+}
+
+/**
+ * Quem produziu as LINHAS de cada bloco de uma copy: a ÚLTIMA revisão que mudou
+ * as linhas dele (ou o acrescentou ou removeu) — PR15-14 da revisão final do
+ * Codex, 21/09/2026. É a autoria REGISTRADA da mudança de texto. A arte que
+ * guarda a copy não prova quem mudou: a recomposição grava na arte do
+ * compositor a efetiva lida sobre o contrato da página, com a revisão da equipe
+ * dentro. Revisão só de estilo ou de ordem não produz as linhas do bloco.
+ * Bloco sem revisão fica sem origem (`origemNoEstado` o lê como do autor).
+ */
+function origemPorBloco(copy: CopyAutoral): Record<string, OrigemDaMudanca> {
+  const origem: Record<string, OrigemDaMudanca> = {}
+  for (const r of copy.revisoes) {
+    const o = origemDaRevisao(r, causaDaRevisao(r))
+    for (const id of r.blocos) if (!r.campos?.[id] || r.campos[id].includes('linhas')) origem[id] = o
+  }
+  return origem
 }
 
 // ─── a peça ───────────────────────────────────────────────────────────────
@@ -360,19 +385,8 @@ export interface PecaParaMedir {
   voz: CarimboDaVoz | null
 }
 
-function origemDoEstadoDaArte(arte: ArteLida, efetiva: CopyAutoral): OrigemDaMudanca {
-  if (arte.modo === 'refinar') return 'refino'
-  if (arte.source === 'ajuste-arte') {
-    const soDiagramacao = !objeto(arte.ajustes) || Object.keys(objeto(arte.ajustes)!).length === 0
-    if (objeto(arte.revisao) && soDiagramacao) return 'revisor'
-    return arte.canal === 'studio' ? 'equipe' : 'claude'
-  }
-  if (arte.source === 'compositor') {
-    const ultima = efetiva.revisoes[efetiva.revisoes.length - 1]
-    return ultima?.superficie === 'recomposicao' ? 'recomposicao' : 'compositor'
-  }
-  return 'sistema'
-}
+/** A arte de um ajuste SÓ do revisor: a chamada gravou `revisao` e nenhum texto em `ajustes`. */
+const ajusteSoDoRevisor = (a: ArteLida): boolean => a.source === 'ajuste-arte' && !!objeto(a.revisao) && Object.keys(objeto(a.ajustes) ?? {}).length === 0
 
 function origemNoEstado(e: EstadoDaCopy, id: string): OrigemDaMudanca {
   return typeof e.origem === 'string' ? e.origem : (e.origem[id] ?? 'autor')
@@ -647,22 +661,17 @@ export function montarPecas(l: LeituraDaSemana): PecaParaMedir[] {
     for (const a of artes) {
       const efetiva = copyLida(objeto(a.copyAutoral)?.efetiva)
       if (!efetiva) continue
-      const origem = origemDoEstadoDaArte(a, efetiva)
       // A arte do ajuste SÓ do revisor fica fora da linha do tempo: a efetiva
       // dela é lida das camadas cruas, e o bloco que o revisor escondeu sai
       // `linhas: []` — um "texto mudado" que a copy nunca teve. O desfecho do
       // esconder se mede pelas camadas (`visibilidade`, C15-02).
-      if (origem === 'revisor') continue
-      estados.push({ em: tempo(a.createdAt), linhas: linhasPorBloco(efetiva), origem })
+      if (ajusteSoDoRevisor(a)) continue
+      // A origem é POR BLOCO, pelas revisões da efetiva — nunca a da arte (PR15-14).
+      estados.push({ em: tempo(a.createdAt), linhas: linhasPorBloco(efetiva), origem: origemPorBloco(efetiva) })
     }
     if (final && daPagina) {
-      const origem: Record<string, OrigemDaMudanca> = {}
-      for (const r of final.revisoes) {
-        const o = origemDaRevisao(r, causaDaRevisao(r))
-        for (const id of r.blocos) origem[id] = o
-      }
       const ultimaEm = final.revisoes.length ? Math.max(...final.revisoes.map((r) => tempo(r.em)).filter(Number.isFinite)) : -Infinity
-      estados.push({ em: Math.max(ultimaEm, estados.length ? estados[estados.length - 1].em + 1 : 0), linhas: linhasPorBloco(final), origem })
+      estados.push({ em: Math.max(ultimaEm, estados.length ? estados[estados.length - 1].em + 1 : 0), linhas: linhasPorBloco(final), origem: origemPorBloco(final) })
     }
     estados.sort((a, b) => a.em - b.em)
 

@@ -178,6 +178,63 @@ describe('fidelidade até a agenda', () => {
     expect(m.indevidas).toEqual([])
     expect(m.correcoes.redacao).toBe(2)
   })
+
+  // PR15-14: a recomposição grava na arte EXISTENTE (`recompor.ts`) a efetiva
+  // lida sobre o contrato da página — com a revisão da equipe dentro. A arte é
+  // do compositor; a mudança de texto, não.
+  const pelaEquipeNoAjuste = (em: string): Quem => ({ autor: 'equipe', motivo: 'ajustar-arte', superficie: 'studio', em })
+  const ajusteDeTexto = (em: string, copy: CopyAutoral) =>
+    arte('gen-aj', { source: 'ajuste-arte', canal: 'studio', createdAt: em, ajustes: { cta: 'Vem pra cá' }, copyAutoral: { original: copy, efetiva: copy, comparavel: true } })
+
+  it('…e o meio passou pelo render: a arte recomposta guarda a edição da equipe, e voltar por ajustar-arte é redação, não indevida (PR15-14)', () => {
+    const original = copiaOriginal()
+    const meio = revisar(original, { cta: ['Chega mais'] }, noEditor(T(5)))
+    const final = revisar(meio, { cta: ['Vem pra cá'] }, pelaEquipeNoAjuste(T(9)))
+    const { peca, medida: m } = pecaSimples({ original, efetiva: meio, final, artesExtras: [ajusteDeTexto(T(9), final)] })
+    // A linha do tempo passa pelo meio: autor → arte recomposta → ajuste → página.
+    expect(peca.estados.map((e) => e.linhas.cta)).toEqual([['Vem pra cá'], ['Chega mais'], ['Vem pra cá'], ['Vem pra cá']])
+    expect(m.preservada).toBe(true)
+    expect(m.sistemaMudouLinhas).toBe(false)
+    expect(m.correcoes.redacao).toBe(2)
+    expect(m.indevidas).toEqual([])
+  })
+
+  it('controle: na MESMA arte recomposta, o texto que a recomposição mudou segue indevida ao voltar — a origem é por bloco, pela última revisão que mexeu nas LINHAS (PR15-14)', () => {
+    const original = copiaOriginal()
+    const meio = revisar(original, { cta: ['Chega mais'] }, noEditor(T(5)))
+    // A recomposição mudou as linhas da manchete e SÓ o estilo do CTA, depois da equipe.
+    const recomposta = revisar(meio, { headline: ['Sexta é dia de churrasco'] }, { autor: 'sistema', motivo: 'o que foi desenhado (recomposicao)', superficie: 'recomposicao', em: T(6) }, { cta: { herdaDe: 'apoio' } })
+    const final = revisar(recomposta, { headline: ['Sexta é dia', 'de churrasco'], cta: ['Vem pra cá'] }, pelaEquipeNoAjuste(T(9)))
+    const { medida: m } = pecaSimples({ original, efetiva: recomposta, final, artesExtras: [ajusteDeTexto(T(9), final)] })
+    expect(m.sistemaMudouLinhas).toBe(true)
+    expect(m.correcoes).toMatchObject({ redacao: 2, compositor: 1 })
+    expect(m.indevidas).toEqual([
+      { tipo: 'sistema-mudou-linhas', bloco: null },
+      { tipo: 'equipe-voltou-ao-original', bloco: 'headline' },
+    ])
+  })
+
+  it('o ajuste pedido pela equipe não a faz autora de TODO bloco: o que só a leitura das camadas mudou é do sistema (PR15-14)', () => {
+    const original = copiaOriginal()
+    const efetiva = revisar(original, { cta: ['Vem pra cá →'] }, doCompositor())
+    // Ajuste SÓ da manchete; as camadas mostram o CTA sem a seta (trocado por fora do contrato),
+    // e a leitura registra isso como revisão do SISTEMA — não do canal que pediu o ajuste.
+    const final = revisar(efetiva, { headline: ['Sexta tem', 'churrasco'] }, pelaEquipeNoAjuste(T(5)))
+    const desenhada = revisar(final, { cta: ['Vem pra cá'] }, { autor: 'sistema', motivo: 'o que foi desenhado (ajuste-arte)', superficie: 'ajuste-arte', em: T(5) })
+    const ajuste = arte('gen-aj', { source: 'ajuste-arte', canal: 'studio', createdAt: T(5), ajustes: { headline: 'Sexta tem\nchurrasco' }, copyAutoral: { original: final, efetiva: desenhada, comparavel: true } })
+    const { medida: m } = pecaSimples({ original, efetiva, final, artesExtras: [ajuste] })
+    expect(m.indevidas).toEqual([{ tipo: 'sistema-mudou-linhas', bloco: null }])
+  })
+
+  it('no estado da PÁGINA também vale a última revisão que mexeu nas LINHAS: o estilo retocado depois não tira da equipe a volta ao original (PR15-14)', () => {
+    const original = copiaOriginal()
+    const efetiva = revisar(original, { cta: ['Vem pra cá →'] }, doCompositor())
+    const volta = revisar(efetiva, { cta: ['Vem pra cá'] }, noEditor(T(5)))
+    // A recomposição retocou só o ESTILO do CTA depois, e a arte ainda não trazia o registro novo.
+    const final = revisar(volta, {}, { autor: 'sistema', motivo: 'o que foi desenhado (recomposicao)', superficie: 'recomposicao', em: T(6) }, { cta: { herdaDe: 'apoio' } })
+    const { medida: m } = pecaSimples({ original, efetiva, final })
+    expect(m.indevidas.map((i) => i.tipo).sort()).toEqual(['equipe-voltou-ao-original', 'sistema-mudou-linhas'])
+  })
 })
 
 // ─── o revisor é classe própria ───────────────────────────────────────────
@@ -276,6 +333,18 @@ describe('o desfecho do ajuste de visibilidade do revisor, no formato que o PR 0
     expect(m.visibilidadeDoRevisor).toEqual({ aceitos: 0, desfeitos: 1, removidas: 0 })
     expect(m.correcoes).toMatchObject({ revisor: 1, redacao: 0 })
     expect(m.preservada).toBe(true)
+  })
+
+  it('a arte do ajuste só do revisor RE-RENDERIZADA depois segue fora da linha do tempo: o esconder que a recomposição relê não é texto mudado (PR15-14)', () => {
+    // A equipe foi e voltou no CTA; a recomposição re-renderizou a arte do ajuste (a mais recente da
+    // página) lendo as camadas cruas, e o CTA ainda escondido saiu vazio como revisão do SISTEMA.
+    const ida = revisar(original, { cta: ['Chega mais'] }, noEditor(T(6)))
+    const volta = revisar(ida, { cta: ['Vem pra cá'] }, noEditor(T(8)))
+    const reRenderizada = revisar(volta, { cta: [] }, { autor: 'sistema', motivo: 'o que foi desenhado (recomposicao)', superficie: 'recomposicao', em: T(8.5) })
+    const ajuste = { ...visibilidade('gen-aj', T(5), true), copyAutoral: { original, efetiva: reRenderizada, comparavel: true } }
+    const { medida: m } = pecaSimples({ original, final: volta, layers: camadas({ visible: false, metadata: MARCA }), artesExtras: [ajuste] })
+    expect(m.indevidas).toEqual([])
+    expect(m.visibilidadeDoRevisor).toEqual({ aceitos: 1, desfeitos: 0, removidas: 0 })
   })
 
   it('a camada continua escondida com a marca: aceito, e a efetiva vazia do ajuste não vira indevida de texto', () => {
