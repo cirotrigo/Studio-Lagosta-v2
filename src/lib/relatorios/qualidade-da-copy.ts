@@ -4,10 +4,27 @@
  * (`qualidade-da-copy-contrato.ts`); aqui mora só O QUE se lê e o orçamento.
  *
  * - **Só leitura, e o banco garante.** Cada cliente é lido numa transação
- *   PRÓPRIA aberta com `SET TRANSACTION READ ONLY` (`executarEmLeitura`). Uma
+ *   PRÓPRIA, `REPEATABLE READ` e `READ ONLY` (`executarEmLeitura`). Uma
  *   transação só para a carteira inteira ficava ENVENENADA pelo primeiro erro
  *   tolerado — no Postgres, depois de um erro a transação só aceita o rollback,
  *   e todos os clientes seguintes saíam "erro na leitura" (C15-04).
+ * - **Um SNAPSHOT só por cliente** (nota da FINAL sobre 9648f441). Em READ
+ *   COMMITTED cada consulta tira o seu, e o que se publica ou edita ENTRE as
+ *   leituras do mesmo cliente (posts → artes → páginas → sinais) chegava a umas
+ *   e não a outras. Em REPEATABLE READ todas enxergam o banco do instante da
+ *   primeira consulta; transação só de leitura nesse nível não recebe erro de
+ *   serialização. Nada aqui espera por trava de linha (só SELECT): o "esperar
+ *   a trava não renova o snapshot" do PR13-51 é de protocolo trava-depois-lê,
+ *   que não há aqui. Caveat do Postgres: DDL que REESCREVE tabela no meio da
+ *   leitura a faz parecer vazia para o snapshot antigo — as migrations da casa
+ *   são aditivas.
+ *   🔴 **O isolamento vai pela OPÇÃO do Prisma, nunca por SQL cru.** Medido num
+ *   PostgreSQL 15 com o cliente gerado: no modo pgbouncer (o do pooler do
+ *   Neon) o Prisma manda `DEALLOCATE ALL` logo depois do BEGIN, e um
+ *   `SET TRANSACTION ISOLATION LEVEL …` nosso depois dele é recusado ("must be
+ *   called before any query") — a medida de todo cliente cairia. Com
+ *   `isolationLevel` o Prisma o manda ANTES do `DEALLOCATE ALL`, nos dois
+ *   modos. `READ ONLY` pode vir depois e continua sendo a nossa 1ª instrução.
  * - **O esquema é conferido ANTES** (`lerEsquemaDaCopy`, `information_schema`):
  *   sem `Page.copyAutoral` (PR 3) o cliente sai `indisponivel` dizendo a coluna,
  *   sem emitir a consulta que falharia; sem a tabela `BrandVoice` (PR 7) a
@@ -43,7 +60,7 @@ export type LeitorDoBanco = Pick<typeof db, 'socialPost' | 'page' | 'itemDePlano
 /** Roda `fn` numa transação só de leitura própria, com teto. */
 export type ExecutorDeLeitura = <T>(fn: (leitor: LeitorDoBanco) => Promise<T>, opcoes: { tetoMs: number }) => Promise<T>
 
-/** O executor padrão: uma transação por chamada, `READ ONLY` como primeira instrução. */
+/** O executor padrão: uma transação por chamada, um snapshot só (`RepeatableRead`) e `READ ONLY` como primeira instrução. */
 export const executarEmLeitura: ExecutorDeLeitura = (fn, { tetoMs }) =>
   db.$transaction(
     async (tx) => {
@@ -51,7 +68,7 @@ export const executarEmLeitura: ExecutorDeLeitura = (fn, { tetoMs }) =>
       return fn(tx)
     },
     // A folga cobre as idas do `SET LOCAL`; quem corta a consulta é o statement_timeout.
-    { timeout: tetoMs + 5_000, maxWait: 10_000 },
+    { isolationLevel: 'RepeatableRead', timeout: tetoMs + 5_000, maxWait: 10_000 },
   )
 
 export interface JanelaDeMedida {

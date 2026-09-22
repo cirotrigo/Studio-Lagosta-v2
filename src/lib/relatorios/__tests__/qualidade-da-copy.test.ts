@@ -33,9 +33,9 @@ interface Comportamento {
   posts: (projectId: number) => Promise<void>
 }
 
-const estado = vi.hoisted(() => ({ banco: null as null | { transacao: (fn: (tx: unknown) => Promise<unknown>) => Promise<unknown> } }))
+const estado = vi.hoisted(() => ({ banco: null as null | { transacao: (fn: (tx: unknown) => Promise<unknown>, opcoes?: unknown) => Promise<unknown> } }))
 vi.mock('@/lib/db', () => ({
-  db: { $transaction: (fn: (tx: unknown) => Promise<unknown>) => estado.banco!.transacao(fn) },
+  db: { $transaction: (fn: (tx: unknown) => Promise<unknown>, opcoes?: unknown) => estado.banco!.transacao(fn, opcoes) },
 }))
 
 import { lerSemanaDoCliente, medirQualidadeDaCarteira, medirQualidadeDaCopyDoCliente, type EsquemaDaCopy, type LeitorDoBanco } from '../qualidade-da-copy'
@@ -201,6 +201,8 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
     ...parcial,
   }
   const transacoes: string[][] = []
+  /** As opções que o executor passou ao `$transaction` do Prisma, por transação. */
+  const opcoesDasTransacoes: unknown[] = []
   const consultasDeArtes: Array<{ ids: string[]; urls: string[]; paginas: string[]; excluir: string[] }> = []
   const chamadas: Record<string, number> = {}
   const conta = (nome: string) => (chamadas[nome] = (chamadas[nome] ?? 0) + 1)
@@ -219,7 +221,8 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
     }
   }
 
-  function transacao(fn: (tx: unknown) => Promise<unknown>) {
+  function transacao(fn: (tx: unknown) => Promise<unknown>, opcoes?: unknown) {
+    opcoesDasTransacoes.push(opcoes)
     return comConexao(async () => {
       const log: string[] = []
       transacoes.push(log)
@@ -286,7 +289,7 @@ function criarBanco(parcial: Partial<Comportamento> = {}) {
     })
   }
 
-  return { transacao, comConexao, transacoes, chamadas, consultasDeArtes }
+  return { transacao, comConexao, transacoes, opcoesDasTransacoes, chamadas, consultasDeArtes }
 }
 
 beforeEach(() => {
@@ -340,12 +343,17 @@ describe('C15-03 · o teto por cliente é cumprido NO SERVIDOR', () => {
 })
 
 describe('C15-04 · uma transação READ ONLY por cliente, esquema conferido antes', () => {
-  it('toda transação começa por SET TRANSACTION READ ONLY — a do esquema e a de cada cliente', async () => {
+  it('toda transação começa por SET TRANSACTION READ ONLY e pede um snapshot só — a do esquema e a de cada cliente', async () => {
     const banco = criarBanco()
     estado.banco = banco
     await medirQualidadeDaCarteira([espeto, byRock], janela, { prazo: Date.now() + 5_000, tetoPorClienteMs: 1_000 })
     expect(banco.transacoes).toHaveLength(3)
     for (const log of banco.transacoes) expect(log[0]).toBe('SET TRANSACTION READ ONLY')
+    // O isolamento vai pela OPÇÃO do Prisma, nunca por SQL cru: no modo pgbouncer o Prisma manda
+    // `DEALLOCATE ALL` depois do BEGIN, e um SET TRANSACTION ISOLATION LEVEL depois dele é recusado.
+    expect(banco.opcoesDasTransacoes).toHaveLength(3)
+    for (const o of banco.opcoesDasTransacoes) expect(o).toMatchObject({ isolationLevel: 'RepeatableRead' })
+    for (const log of banco.transacoes) expect(log.join('\n')).not.toMatch(/ISOLATION LEVEL/i)
   })
 
   it('sem a tabela BrandVoice, a consulta da voz nem é emitida e os DOIS clientes são medidos', async () => {

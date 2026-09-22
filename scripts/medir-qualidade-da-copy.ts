@@ -5,9 +5,10 @@
  * à F5 sem esperar domingos.
  *
  * SOMENTE LEITURA, SEMPRE: não há modo de escrita. Cada cliente é lido numa
- * transação PRÓPRIA `SET TRANSACTION READ ONLY` (o executor do serviço) — uma
- * escrita acidental é recusada pelo próprio Postgres, e um erro num cliente não
- * envenena a transação dos seguintes (C15-04). O esquema (`Page.copyAutoral`,
+ * transação PRÓPRIA `SET TRANSACTION READ ONLY` em REPEATABLE READ (o executor
+ * do serviço) — uma escrita acidental é recusada pelo próprio Postgres, as
+ * leituras de um cliente veem o banco do mesmo instante, e um erro num cliente
+ * não envenena a transação dos seguintes (C15-04). O esquema (`Page.copyAutoral`,
  * `BrandVoice`) é conferido antes por `information_schema`: rodar antes de a
  * pilha chegar à produção mede o que dá e DIZ o que falta.
  *
