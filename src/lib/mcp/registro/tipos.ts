@@ -63,6 +63,13 @@ export interface ToolDoStudio<S extends z.ZodRawShape = z.ZodRawShape> {
   annotations: AnnotationsDaTool
   acesso: Acesso
   superficies: Superficie[]
+  /**
+   * `_meta` publicado no tools/list. Hoje só `openai/fileParams`: as chaves de
+   * topo que recebem ARQUIVO da conversa do ChatGPT (ele troca o anexo por
+   * `{ download_url, file_id, mime_type?, file_name? }`). Cliente que não
+   * conhece a chave ignora.
+   */
+  meta?: Record<string, unknown>
   handler: (
     args: z.infer<z.ZodObject<S>>,
     principal: McpPrincipal,
@@ -80,6 +87,7 @@ export interface ToolPronta {
   readonly annotations: AnnotationsDaTool
   readonly acesso: Acesso
   readonly superficies: readonly Superficie[]
+  readonly meta?: Readonly<Record<string, unknown>>
   readonly handler: (
     args: Record<string, unknown>,
     principal: McpPrincipal,
@@ -97,6 +105,7 @@ export interface ToolParaLista {
   name: string
   description: string
   inputSchema: Record<string, unknown>
+  _meta?: Record<string, unknown>
   annotations?: {
     readOnlyHint?: boolean
     destructiveHint?: boolean

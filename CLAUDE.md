@@ -11493,3 +11493,28 @@ este bloco o SUPERA; o bullet fica como registro.
   arte (3 testes caem), sem a busca da criação (1), `ajuste-arte` como produtor
   de criação (4), sem o aviso (1), sem a regra da janela (4), o agregado sem a
   contagem do tempo (1), o bloco sem dizê-la (1), a medida sem marcá-la (1).
+
+### Arte feita fora do Studio entra pelo conector: `importar-arte` (22/09/2026)
+
+A ponte de volta da conversa do ChatGPT: a imagem gerada ou editada lá vira
+ARTE de verdade no Studio (galeria, editor, conferir/melhorar, agenda por
+`generationId`), pelo mesmo `importarArte` do `upload-creative` local.
+
+- **O arquivo chega por `openai/fileParams`**: o registro de tools ganhou
+  `meta` (publicado como `_meta` no tools/list), e o ChatGPT troca o anexo por
+  `{ download_url, file_id, mime_type?, file_name? }`. `definirTool` recusa
+  `fileParams` que não seja chave de topo do schema — o campo nunca chegaria.
+  ⚠️ Não medido para imagem GERADA na conversa (o documentado é anexo), e há
+  defeitos abertos na OpenAI (~10% das chamadas sem o arquivo). Por isso o
+  **plano B embutido**: `pedir-foto` → a pessoa envia pelo link → a tool de novo
+  com `uploadId`. É também o caminho do Claude e do Codex, que não têm fileParams.
+- 🔴 **`download_url` é argumento de modelo: fronteira de confiança.**
+  `baixarImagemExterna` só aceita https, recusa host que resolve para rede
+  interna (privada, loopback, link-local/metadado de nuvem, IPv6 interno) em
+  CADA redirect (máx. 3), e corta em 25MB lendo o stream — o Content-Length
+  pode mentir. A checagem de DNS é antes do fetch, não no socket (rebinding
+  ainda passaria; marcado com `ponytail:` no módulo).
+- **Proporção avisa, nunca corta** (`avisoDeProporcao`, mesmos cortes de
+  `classificarFormato`): o ChatGPT entrega 1024x1536 (2:3), que entra como
+  story sem ser 9:16.
+- Só no **remoto**: no local o caminho é `upload-creative` (lê do disco).
