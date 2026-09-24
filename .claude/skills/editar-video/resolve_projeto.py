@@ -84,6 +84,18 @@ for topo in PASTAS_IMPORTADAS:
         if len(itens) < len(novos):
             falhas += [p for p in novos if p not in ja]
 
+# Timecode de cada bruto COMO O RESOLVE O LÊ. O proxy só liga se tiver o mesmo, e a Sony
+# a 120p é lida como 17:28:14;030 (base 60, com ;) enquanto o ffprobe diz 17:28:14:60 —
+# o mesmo instante escrito de outro jeito. proxies.ts grava ESTE texto no proxy.
+import json
+tcs = {}
+for caminho, clip in ja.items():
+    if caminho.startswith(os.path.join(RAIZ, "01_BRUTO") + os.sep):
+        tcs[os.path.relpath(caminho, RAIZ)] = clip.GetClipProperty("Start TC")
+os.makedirs(os.path.join(RAIZ, "04_DAVINCI"), exist_ok=True)
+with open(os.path.join(RAIZ, "04_DAVINCI", "timecodes.json"), "w") as f:
+    json.dump(tcs, f, indent=2, ensure_ascii=False)
+
 # Proxies: 02_PROXIES espelha 01_BRUTO com extensão .mp4
 ligados, sem_proxy = 0, []
 bruto = os.path.join(RAIZ, "01_BRUTO")
@@ -106,6 +118,7 @@ result = {
     "importados_agora": importados,
     "no_media_pool": len(ja),
     "falhas_importacao": [os.path.relpath(p, RAIZ) for p in falhas],
+    "timecodes_gravados": len(tcs),
     "proxies_ligados": ligados,
     "brutos_sem_proxy": sem_proxy,
 }

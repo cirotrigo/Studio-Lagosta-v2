@@ -8,23 +8,31 @@
  * do Gemini devolver quadros que valem no original. O menor lado vai a 1080.
  * Proxy que já existe e confere é pulado; o que não confere é refeito.
  *
+ * TIMECODE: o Resolve só liga proxy com o mesmo timecode do bruto (sem timecode, recusa).
+ * O texto vem de 04_DAVINCI/timecodes.json, gravado pelo resolve_projeto.py com o Start TC
+ * que o PRÓPRIO Resolve leu — por isso o projeto é criado antes dos proxies. A Sony a 120p
+ * é lida como 17:28:14;030 e o ffprobe diz 17:28:14:60: gravar o do ffprobe NÃO liga
+ * (medido em 24/09/2026). Sem o arquivo, cai no timecode do ffprobe, com aviso.
+ *
  * Codificação por hardware (h264_videotoolbox). Bruto com rotação na metadado sai
  * em pé no proxy (o ffmpeg aplica a rotação).
  * ponytail: rotação só conferida em material sem giro; no 1º projeto com Sony girada, confira o proxy no Resolve.
  */
 import { spawn, execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readdirSync, renameSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { dirname, extname, join, relative } from 'node:path'
 import { PASTAS, VIDEO } from './estrutura'
 
-type Info = { quadros: number; fps: string; duracao: number }
+type Info = { quadros: number; fps: string; duracao: number; tc: string | null }
 
 function sondar(arquivo: string): Info | null {
   try {
     const j = JSON.parse(
-      execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=nb_frames,avg_frame_rate,duration', '-of', 'json', arquivo], { encoding: 'utf8' }),
-    ).streams[0]
-    return { quadros: Number(j.nb_frames), fps: j.avg_frame_rate, duracao: Number(j.duration) }
+      execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type,nb_frames,avg_frame_rate,duration:stream_tags=timecode:format_tags=timecode', '-of', 'json', arquivo], { encoding: 'utf8' }),
+    )
+    const v = j.streams.find((s: any) => s.codec_type === 'video')
+    const tc = [...j.streams.map((s: any) => s.tags?.timecode), j.format?.tags?.timecode].find(Boolean) ?? null
+    return { quadros: Number(v.nb_frames), fps: v.avg_frame_rate, duracao: Number(v.duration), tc }
   } catch {
     return null
   }
@@ -35,9 +43,14 @@ export function caminhoDoProxy(raiz: string, bruto: string) {
   return join(raiz, PASTAS.proxies, rel.replace(/\.[^.]+$/, '.mp4'))
 }
 
-/** O proxy vale se tem o mesmo fps e o mesmo número de quadros (tolerância de 1). */
-function confere(b: Info, p: Info | null) {
-  return !!p && p.fps === b.fps && Math.abs(p.quadros - b.quadros) <= 1
+/** O proxy vale se tem o mesmo fps, o mesmo número de quadros (tolerância de 1) e timecode quando o bruto tem. */
+function confere(b: Info, p: Info | null, tcEsperado: string | null) {
+  return !!p && p.fps === b.fps && Math.abs(p.quadros - b.quadros) <= 1 && (!tcEsperado || !!p.tc)
+}
+
+function timecodesDoResolve(raiz: string): Record<string, string> | null {
+  const p = join(raiz, '04_DAVINCI', 'timecodes.json')
+  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null
 }
 
 function brutos(raiz: string) {
@@ -54,7 +67,7 @@ function brutos(raiz: string) {
   return out
 }
 
-function gerar(bruto: string, destino: string, info: Info): Promise<void> {
+function gerar(bruto: string, destino: string, info: Info, tc: string | null): Promise<void> {
   const fps = Number(info.fps.split('/')[0]) / Number(info.fps.split('/')[1] ?? 1)
   const temp = destino.replace(/\.mp4$/, '.parcial.mp4')
   mkdirSync(dirname(destino), { recursive: true })
@@ -65,6 +78,7 @@ function gerar(bruto: string, destino: string, info: Info): Promise<void> {
     '-fps_mode', 'passthrough',
     '-c:v', 'h264_videotoolbox', '-b:v', fps > 60 ? '20M' : '10M', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-b:a', '128k',
+    ...(tc ? ['-timecode', tc] : []),
     '-movflags', '+faststart', temp,
   ]
   return new Promise((ok, falha) => {
@@ -89,6 +103,8 @@ async function main() {
   const j = a.indexOf('--jobs')
   const jobs = j >= 0 ? Number(a[j + 1]) : 2
   const fila = brutos(raiz)
+  const tcs = timecodesDoResolve(raiz)
+  if (!tcs) console.error('⚠️ sem 04_DAVINCI/timecodes.json (rode o resolve_projeto.py antes): usando o timecode do ffprobe, que o Resolve pode recusar')
   const resultado: { bruto: string; proxy: string; situacao: string }[] = []
   let i = 0
   const trabalhador = async () => {
@@ -101,14 +117,15 @@ async function main() {
         resultado.push({ bruto: rel, proxy: '', situacao: 'bruto ilegível' })
         continue
       }
-      if (existsSync(proxy) && confere(b, sondar(proxy))) {
+      const tc = tcs?.[rel] ?? b.tc
+      if (existsSync(proxy) && confere(b, sondar(proxy), tc)) {
         resultado.push({ bruto: rel, proxy: relative(raiz, proxy), situacao: 'já existia' })
         continue
       }
       const t = Date.now()
       try {
-        await gerar(bruto, proxy, b)
-        const ok = confere(b, sondar(proxy))
+        await gerar(bruto, proxy, b, tc)
+        const ok = confere(b, sondar(proxy), tc)
         resultado.push({ bruto: rel, proxy: relative(raiz, proxy), situacao: ok ? 'gerado' : 'gerado, mas NÃO confere quadros/fps' })
         console.error(`✓ ${rel} (${((Date.now() - t) / 1000).toFixed(0)} s)${ok ? '' : ' ⚠️ não confere'}`)
       } catch (e) {
