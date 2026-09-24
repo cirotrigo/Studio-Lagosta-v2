@@ -22,18 +22,32 @@ AJUSTES = {
     "timelineFrameRate": "29.97",
     "timelineOutputResMatchTimelineRes": "1",
     "timelineInputResMismatchBehavior": "scaleToCrop",  # bruto 16:9 preenche o 9:16; o reenquadre é na edição
+    "videoMonitorFormat": "HD 1080p 29.97",
+    "perfRenderCacheMode": "smart",
     "perfProxyMediaMode": "1",  # usa o proxy quando existe
     "transcriptionLanguage": "pt",
 }
 
+# O projeto nasce do MODELO (.drp vazio, ao lado deste script): a TAXA DE REPRODUÇÃO
+# (timelinePlaybackFrameRate) é só leitura na API e todo CreateProject nasce em 24 —
+# com timeline 29,97, o Resolve toca a 24 e a timeline "agarra" (medido 24/09/2026 na
+# Costela do Edd: o visualizador mostrava ● 24). O modelo já vem com reprodução 29,97.
+MODELO = globals().get("MODELO") or os.path.join(os.path.dirname(os.path.abspath(
+    globals().get("__file__") or "/Users/cirotrigo/Documents/Studio-Lagosta-v2/.claude/skills/editar-video/resolve_projeto.py")),
+    "modelo-vertical-2997.drp")
 pm = resolve.GetProjectManager()
 anterior = pm.GetCurrentProject()
 anterior_nome = anterior.GetName() if anterior else None
 criado = False
+avisos = []
 if NOME in (pm.GetProjectListInCurrentFolder() or []):
     proj = pm.LoadProject(NOME)
 else:
-    proj = pm.CreateProject(NOME)
+    if os.path.exists(MODELO) and pm.ImportProject(MODELO, NOME):
+        proj = pm.LoadProject(NOME)
+    else:
+        avisos.append(f"modelo não encontrado/importado ({MODELO}): projeto criado vazio")
+        proj = pm.CreateProject(NOME)
     criado = True
 if not proj:
     raise RuntimeError(f"não consegui abrir nem criar o projeto '{NOME}'")
@@ -109,8 +123,15 @@ for caminho, clip in ja.items():
     else:
         sem_proxy.append(rel)
 
+reproducao = str(proj.GetSetting("timelinePlaybackFrameRate"))
+if reproducao != "29.97":
+    avisos.append(f"o Resolve vai REPRODUZIR a {reproducao} qps (timeline 29,97) e a timeline vai agarrar: "
+                  "ajuste em Configurações do Projeto > Configurações Principais > Taxa de quadro da reprodução = 29.97 "
+                  "(a API não muda esse campo)")
 pm.SaveProject()
 result = {
+    "avisos": avisos,
+    "reproducao_qps": reproducao,
     "projeto": NOME,
     "criado": criado,
     "projeto_anterior": anterior_nome,
