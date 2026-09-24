@@ -109,11 +109,36 @@ Skill `analisar-video`: lê só o `01_BRUTO`, envia o **proxy do projeto** ao Ge
 (nada de cópia temporária) e guarda o inventário em `01_BRUTO/<origem>/_analise/`.
 Pasta já analisada volta do cache. Leve o resumo para `03_DECUPAGEM`.
 
-## 5 em diante — pauta, copy, som, montagem, render
+## 5. Briefing (aprovado em 24/09/2026)
+
+Depois da decupagem, **a skill propõe o briefing** a partir do material analisado.
+Não espera o Ciro escrever. São duas caixas de pergunta:
+
+**Caixa 1: o conceito.** Uma pergunta por vídeo que o material sustenta (até 3) e
+uma sobre a música. Cada pergunta tem 3 ideias, com a recomendada primeiro. Cada
+ideia tem `preview` com o roteiro: formato e duração, áudio (fala ou só música) e
+os planos com arquivo e trecho (ex.: `C0100 0:17–0:38`), incluindo a cobertura
+das falas. O que a análise marcou como problema (palavrão no áudio, tropeço na
+fala, desfoque) aparece no preview com a saída escolhida.
+
+**Caixa 2: detalhes e fatos.** Música por vídeo, os FATOS que faltam na base (data
+do evento, nome do prato, período), estilo da legenda e o que mais bloquear a
+montagem. Antes dela, consulte a base do cliente (`consultar-base`). Fato que a
+base não tem vira pergunta, com "digite em Other" para dado livre. Nunca
+invente data, preço nem nome.
+
+O resultado vai para `00_BRIEFING/briefing.md`: fatos com a fonte, uma seção por
+vídeo com a estrutura aprovada e as pendências. É esse arquivo que as etapas
+seguintes leem. Fato novo dado pelo Ciro (data de evento, prato por tempo
+limitado) é oferecido para entrar na base do cliente, numa caixa de pergunta.
+Nunca grave na base sem ele confirmar.
+
+## 6 em diante — copy, som, montagem, render
 
 | Etapa | Situação |
 |---|---|
-| ⏸ Pauta das peças (tipo, duração, mensagem) | caixa de pergunta; peças: Reel sem texto com logo no fim, Story com texto animado, vídeo com fala, corte curto para anúncio, animação de logo e textos |
+| ⏸ Pauta das peças | é o briefing do passo 5; peças: Reel sem texto com logo no fim, Story com texto animado, vídeo com fala, corte curto para anúncio, animação de logo e textos |
+| Legenda da fala | automática do Resolve (`TranscribeAudio` por palavra); o estilo "palavra a palavra, animada" é Fusion — **a construir** |
 | ⏸ Copy do texto na tela | skill `revisar-copy` |
 | Música: sugerir e baixar da biblioteca do Studio (lagostacriativa.com.br/biblioteca-musicas) → `05_AUDIO/Trilhas` | **a desenhar** com o Ciro (pode precisar de tool no conector) |
 | Grade de batidas com fase conferida | `batidas.py` do TERO — **a portar** |
