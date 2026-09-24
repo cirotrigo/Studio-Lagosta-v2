@@ -4,15 +4,19 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { chaveDoMvsep } from '@/lib/mvsep/mvsep-client'
 import { db } from '@/lib/db'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function GET(req: NextRequest) {
   const logs: string[] = []
 
   try {
+    const MVSEP_API_KEY = chaveDoMvsep()
+    if (!MVSEP_API_KEY) {
+      return NextResponse.json({ error: 'MVSEP_API_KEY não configurada' }, { status: 503 })
+    }
     const { searchParams } = new URL(req.url)
     const musicIdStr = searchParams.get('musicId')
 
@@ -57,8 +61,6 @@ export async function GET(req: NextRequest) {
 
     logs.push('[TEST] Calling MVSEP API...')
     logs.push(`[TEST] Endpoint: ${MVSEP_API_URL}/separation/create`)
-    logs.push(`[TEST] API Key length: ${MVSEP_API_KEY?.length || 0}`)
-    logs.push(`[TEST] API Key starts with: ${MVSEP_API_KEY?.substring(0, 5)}...`)
 
     // Chamar MVSEP
     const response = await fetch(`${MVSEP_API_URL}/separation/create`, {
