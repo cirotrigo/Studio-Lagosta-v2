@@ -80,8 +80,20 @@ npx tsx .claude/skills/editar-video/proxies.ts "<pasta>" --jobs 2      # em segu
 ```
 
 H.264 1080p pelo hardware do Mac, em `02_PROXIES` espelhando `01_BRUTO`. **Mesmo
-fps e mesmos quadros do bruto** — conferido arquivo a arquivo; o que não confere
-aparece no resultado. Depois, rode o passo 2 de novo para ligar os proxies.
+fps, mesmos quadros e mesmo timecode do bruto** — conferido arquivo a arquivo; o que
+não confere aparece no resultado. Depois, rode o passo 2 de novo para ligar os proxies.
+
+**A ordem importa: projeto no Resolve ANTES dos proxies.** O Resolve só liga proxy
+com o mesmo timecode do bruto, e ele lê a Sony a 120p como `17:28:14;030` enquanto o
+ffprobe diz `17:28:14:60` (o mesmo instante, escrito diferente; proxy com o do ffprobe
+é recusado, medido em 24/09/2026). Por isso o passo 2 grava
+`04_DAVINCI/timecodes.json` com o Start TC que o próprio Resolve leu, e os proxies
+nascem com ele.
+
+**Por que não o Resolve gerar os proxies:** a geração de proxy do Resolve 21 e o
+Blackmagic Proxy Generator (instalado) são só interface — a API tem apenas
+`LinkProxyMedia`, e o Proxy Generator não tem linha de comando nem AppleScript
+(conferido em 24/09/2026).
 
 **Câmera lenta continua valendo**: o proxy de um bruto de 119,88 qps também é
 119,88; a timeline é 29,97, e a lenta sai dos quadros que sobram (25% num 120p).
@@ -117,5 +129,7 @@ Pasta já analisada volta do cache. Leve o resumo para `03_DECUPAGEM`.
 - `MediaPool.ImportMedia` no 21.1 só aceita **caminho como texto**; com
   `{"FilePath": ...}` (a forma da documentação) importa zero, sem erro.
 - `ImportMedia` importa no **bin atual**: sempre `SetCurrentFolder` antes.
+- `LinkProxyMedia` devolve `False` sem dizer por quê: rotação diferente é aceita,
+  timecode diferente (ou ausente, quando o bruto tem) não.
 - O resto do MCP (append com fim exclusivo, durações inalcançáveis, Fusion por
   script, recordFrame, 60 s por chamada) está na memória `reference_davinci_resolve_mcp`.
