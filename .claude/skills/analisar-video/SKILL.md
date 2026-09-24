@@ -46,7 +46,10 @@ npx tsx --env-file=.env .claude/skills/analisar-video/analisar.ts "/Volumes/SSD/
 
 ## Onde a análise fica guardada
 
-Ao lado dos vídeos, em `<pasta do vídeo>/_analise/`:
+A skill não guarda endereço nenhum: o Ciro informa a pasta do projeto a cada vez.
+O script entra em todas as subpastas e cria uma `_analise/` **dentro de cada pasta
+que tem vídeo** (ex.: `PROJETO/clip/_analise/`, `PROJETO/drone/_analise/`), sem
+misturar pastas:
 
 - `<arquivo>.json` por vídeo: o inventário e cada pergunta já feita, com modelo,
   fps de amostra e data. É o cache.
@@ -86,7 +89,7 @@ de montar. Analisar não autoriza mexer em projeto do Resolve nem renderizar.
 ## Precisão dos tempos — conferir antes de cortar
 
 O tempo é pedido em `M:SS.d` e convertido no código: pedido em segundos, o Gemini
-escreveu 1:08,8 como `108.8` num vídeo de 72 s (Costela do Edd, 24/09). Clipe fora
+escreveu 1:08,8 como `108.8` num vídeo de 72 s (medido em 24/09/2026). Clipe fora
 da duração vai para `descartados`, nunca é preso à borda.
 
 
