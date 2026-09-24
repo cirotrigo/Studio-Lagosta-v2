@@ -133,15 +133,52 @@ seguintes leem. Fato novo dado pelo Ciro (data de evento, prato por tempo
 limitado) é oferecido para entrar na base do cliente, numa caixa de pergunta.
 Nunca grave na base sem ele confirmar.
 
-## 6 em diante — copy, som, montagem, render
+## 6. Música (aprovado em 24/09/2026)
+
+A fonte é a **biblioteca de músicas do Studio**, porque o Studio separa a faixa e o
+padrão é usar o **instrumental**, inclusive nos vídeos só com música. Tudo pelo
+`trilhas.ts`, com `--env-file=.env`:
+
+1. **Listar** o que já existe:
+   `trilhas.ts listar --projeto <id> --genero samba,pagode`.
+   É só leitura. A ordem é: do cliente antes das globais, menos usada, mais nova.
+2. **Clima que a biblioteca não tem → YouTube.** O Claude procura (`WebSearch`
+   com `allowed_domains: ["youtube.com"]`) e prefere faixa curta (2–4 min) a
+   compilação de 1 hora, e canal "No Copyright" feito para criador quando o
+   Ciro não pedir música específica. Confira título, canal e duração antes de
+   perguntar (oEmbed + `lengthSeconds` da página).
+3. **Caixa de pergunta** com 3 ou 4 faixas, a recomendada primeiro. O preview traz
+   origem (do cliente, global ou YouTube), duração, BPM quando já medido e em que
+   vídeos ela entra.
+4. **Cadastrar** a escolhida:
+   `trilhas.ts cadastrar --url <youtube> --nome … --artista … --genero … --humor … --projeto <id> --confirmar`.
+   Sem `--confirmar` só mostra o que faria, e já confere autor, projeto e
+   duplicata. É o mesmo caminho da tela, com as mesmas recusas: a RapidAPI dá o
+   link, o MP3 é baixado **neste Mac** (o CDN só serve IP residencial), e só então
+   o job é criado e `saveClientDownloadedMp3` sobe ao Blob, cadastra e enfileira
+   a separação. Os casos que ele recusa, sem gravar nada:
+   - vídeo já na biblioteca (faixa ativa) → aponta a faixa, e diz de que projeto ela é;
+   - download do mesmo vídeo em andamento → aponta o job.
+
+   Quem assina é a pessoa do `.studio-autor` (ou `STUDIO_AUTOR`).
+5. **Baixar**: `trilhas.ts baixar --pasta <projeto> --ids 85:instrumental`. Espera a
+   separação (cron de 2 em 2 min; `--esperar` em segundos, padrão 540 — acima disso rode em segundo plano), grava em
+   `05_AUDIO/Trilhas` sem sobrescrever e mede a grade (`batidas.py`) em
+   `04_DAVINCI/batidas.jsonl`. Depois rode o passo 2 de novo para importar no Resolve.
+
+A fase da grade é conferida antes de cortar na batida. A confiança do
+`batidas.py` nas sambas fica em 0,10–0,16, então o BPM serve, mas a fase não
+(memória `reference_grade_de_batidas_fase`).
+
+## 7 em diante — copy, som, montagem, render
 
 | Etapa | Situação |
 |---|---|
 | ⏸ Pauta das peças | é o briefing do passo 5; peças: Reel sem texto com logo no fim, Story com texto animado, vídeo com fala, corte curto para anúncio, animação de logo e textos |
 | Legenda da fala | automática do Resolve (`TranscribeAudio` por palavra); o estilo "palavra a palavra, animada" é Fusion — **a construir** |
 | ⏸ Copy do texto na tela | skill `revisar-copy` |
-| Música: sugerir e baixar da biblioteca do Studio (lagostacriativa.com.br/biblioteca-musicas) → `05_AUDIO/Trilhas` | **a desenhar** com o Ciro (pode precisar de tool no conector) |
-| Grade de batidas com fase conferida | `batidas.py` do TERO — **a portar** |
+| Música | passo 6 (`trilhas.ts` + `batidas.py`) |
+| Fase da grade conferida antes do corte | `desvio.py` — **a portar** |
 | Locução pela ElevenLabs → `05_AUDIO/Locucao` | **a desenhar** |
 | Efeitos sonoros pela Envato → `05_AUDIO/Efeitos Sonoros` | **a desenhar** (o MCP da Envato já busca: `search_sound_effects`) |
 | Plano de montagem `04_DAVINCI/montagem.json` e montagem no Resolve | scripts do Empório (`plano.py`, `montar_resolve.py`, `estabilizar.py`) — **a portar** |
