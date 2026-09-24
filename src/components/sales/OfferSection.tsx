@@ -9,12 +9,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { GlowingEffect } from '@/components/ui/glowing-effect';
 
 // Foto e vídeo são TRABALHO PONTUAL, não mensalidade — por isso a aba
-// "Foto e Vídeo" nunca leva "/mês". A promoção de produção vale até 14/09/2026;
-// no dia 15 entra o valor normal, e para ativar basta trocar esta constante para
-// `false`: os dois cards passam a mostrar só R$ 990 e R$ 1.990, sem preço
-// riscado e sem selo. A troca é manual de propósito — a Home é client component
-// e uma virada por `new Date()` dependeria do relógio de quem abre a página.
-const PROMOCAO_ATIVA = true;
+// "Foto e Vídeo" nunca leva "/mês". A promoção de produção (R$ 890 e R$ 1.490)
+// acabou em 14/09/2026 e foi desligada em 24/09: com `false` os dois cards mostram
+// só R$ 990 e R$ 1.990, sem preço riscado e sem selo. Para uma promoção nova,
+// `true` + preços e selo abaixo. A troca é manual de propósito — a Home é client
+// component e uma virada por `new Date()` dependeria do relógio de quem abre a página.
+const PROMOCAO_ATIVA = false;
 const PROMOCAO_SELO = "Até 14/09";
 
 export function OfferSection() {
