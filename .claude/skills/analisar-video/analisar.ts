@@ -144,12 +144,36 @@ function proxy(m: Midia, pasta: string): string {
   return saida
 }
 
-/** Pastas viram os vídeos de dentro (recursivo), sem os `._` do exFAT e sem a própria _analise. */
+/** Pastas de derivados: nunca são analisadas (proxy, temporário, exportação). */
+const PASTAS_PULADAS = new Set([PASTA_ANALISE, '02_PROXIES', '07_TEMPORARIOS', '08_EXPORTACOES'])
+
+/**
+ * O proxy do bruto, se o projeto segue a estrutura da skill editar-video
+ * (`01_BRUTO/<rel>` → `02_PROXIES/<rel>.mp4`) e ele confere em fps e quadros.
+ */
+function proxyDoProjeto(m: Midia): string | null {
+  const i = m.arquivo.lastIndexOf('/01_BRUTO/')
+  if (i < 0) return null
+  const p = m.arquivo.slice(0, i) + '/02_PROXIES/' + m.arquivo.slice(i + 10).replace(/\.[^.]+$/, '.mp4')
+  if (!existsSync(p)) return null
+  try {
+    const x = sondar(p)
+    return x.fpsTexto === m.fpsTexto && Math.abs(x.quadros - m.quadros) <= 1 ? p : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pastas viram os vídeos de dentro (recursivo), sem os `._` do exFAT e sem derivados.
+ * Pasta de projeto organizado (tem 01_BRUTO) é lida só no 01_BRUTO.
+ */
 function expandir(caminhos: string[]): string[] {
   const out: string[] = []
   const visitar = (p: string) => {
     if (statSync(p).isDirectory()) {
-      if (basename(p) === PASTA_ANALISE) return
+      if (PASTAS_PULADAS.has(basename(p))) return
+      if (existsSync(join(p, '01_BRUTO')) && basename(p) !== '01_BRUTO') return visitar(join(p, '01_BRUTO'))
       for (const n of readdirSync(p).sort()) if (!n.startsWith('.')) visitar(join(p, n))
     } else if (EXTENSOES.has(extname(p).toLowerCase()) && !basename(p).startsWith('._')) out.push(p)
   }
@@ -436,13 +460,14 @@ async function main() {
               ? cache.inventario.analise
               : undefined
         const doCache = !!analise
-        const usarProxy = !o['sem-proxy'] && m.tamanhoMB > PROXY_ACIMA_MB
+        const doProjeto = o['sem-proxy'] ? null : proxyDoProjeto(m)
+        const usarProxy = !o['sem-proxy'] && !doProjeto && m.tamanhoMB > PROXY_ACIMA_MB
         console.error(
           `→ ${basename(arquivo)} · ${m.duracaoS.toFixed(1)} s · ${m.fpsTexto} · ${m.tamanhoMB.toFixed(0)} MB` +
-            (doCache ? ' · do cache' : usarProxy ? ' · proxy 720p' : ''),
+            (doCache ? ' · do cache' : doProjeto ? ' · proxy do projeto' : usarProxy ? ' · proxy 720p' : ''),
         )
         if (!analise) {
-          const enviar = usarProxy ? proxy(m, temp) : arquivo
+          const enviar = doProjeto ?? (usarProxy ? proxy(m, temp) : arquivo)
           const c = await cliente()
           analise = await comTentativas(
             () => perguntarAoGemini(c, modelo, m, enviar, pergunta ?? OBJETIVO_INVENTARIO, fpsAmostra),

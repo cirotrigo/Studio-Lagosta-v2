@@ -62,6 +62,8 @@ para o Google, leia o `CATALOGO.md`: muitas vezes o inventário já responde a
 pergunta nova sem gastar nada.
 
 - Um arquivo por vez; o upload é apagado no fim (sempre, mesmo com erro).
+- **Projeto organizado pela skill `editar-video`** (tem `01_BRUTO`): lê só o bruto e
+  envia o proxy de `02_PROXIES` quando ele confere em fps e quadros — sem cópia temporária.
 - Arquivo > 300 MB sobe como **proxy 720p com o mesmo relógio** (mesmo fps, nenhum
   quadro a mais ou a menos). `--sem-proxy` força o original (texto miúdo na tela).
 - `--fps`: amostragem que o Gemini vê. 1–2 para triagem, 4–8 para achar o
