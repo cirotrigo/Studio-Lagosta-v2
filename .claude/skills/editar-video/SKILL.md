@@ -68,7 +68,12 @@ npx tsx .claude/skills/editar-video/organizar.ts "<pasta>" --aplicar --decisoes 
    RAIZ = "<pasta>"; NOME = "<nome>"
    exec(open("<repo>/.claude/skills/editar-video/resolve_projeto.py").read())
    ```
-   Cria (ou abre) o projeto, timeline **1080x1920 a 29,97**, bruto 16:9 preenche o
+   Projeto novo nasce do **modelo** `modelo-vertical-2997.drp` (desta pasta), porque
+   a **taxa de reprodução** é só leitura na API e todo projeto criado do zero toca
+   a **24 qps**. Com timeline 29,97, a timeline "agarra" mesmo com proxy (medido em
+   24/09/2026: o visualizador mostrava `● 24`). O retorno traz `reproducao_qps`, e
+   o aviso manda ajustar pela interface se não for 29,97. Timeline
+   **1080x1920 a 29,97**, bruto 16:9 preenche o
    9:16 (`scaleToCrop`), proxy ligado quando existe, transcrição em português;
    importa `01_BRUTO`, `05_AUDIO` e `06_ELEMENTOS` em bins com os mesmos nomes das
    pastas. É idempotente: rodar de novo só importa o que falta e religa proxies.
@@ -182,19 +187,48 @@ A fase da grade é conferida antes de cortar na batida. A confiança do
 | Legenda da fala | automática do Resolve (`TranscribeAudio` por palavra); o estilo "palavra a palavra, animada" é Fusion — **a construir** |
 | ⏸ Copy do texto na tela | skill `revisar-copy` |
 | Música | passo 6 (`trilhas.ts` + `batidas.py`) |
-| Fase da grade conferida antes do corte | `desvio.py` — **a portar** |
+| Fase da grade conferida antes do corte | `desvio.py` (corrigido em 24/09/2026) |
 | Locução pela ElevenLabs → `05_AUDIO/Locucao` | **a desenhar** |
 | Efeitos sonoros pela Envato → `05_AUDIO/Efeitos Sonoros` | **a desenhar** (o MCP da Envato já busca: `search_sound_effects`) |
-| Plano de montagem `04_DAVINCI/montagem.json` e montagem no Resolve | scripts do Empório (`plano.py`, `montar_resolve.py`, `estabilizar.py`) — **a portar** |
+| Plano de montagem `04_DAVINCI/montagem.json` e montagem no Resolve | passo 8 (`montar.py`, `estabilizar.py`) |
 | Animação de logo e textos (Fusion no Resolve; Remotion se ficar melhor) → `06_ELEMENTOS/Motion` | **em teste** (`texto_fusion.py` do Empório; skill `human-motion`) |
 | ⏸ Timeline pronta | o Ciro olha no Resolve |
-| Render → `08_EXPORTACOES/01_PREVIAS`; aprovado → `02_APROVADOS` | `render.py` do Empório — **a portar** |
+| Render → `08_EXPORTACOES/01_PREVIAS`; aprovado → `02_APROVADOS` | passo 8 (`render.py`) |
+
+## 8. Montar, estabilizar, render (primeira peça: Costela do Edd, 24/09/2026)
+
+O plano de cada peça fica em `04_DAVINCI/montagem.json` (formato em `montagem.md`):
+música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
+`dur_s` e velocidade, e a logo com entrada e escala.
+
+- **Cortes na batida medida**, não na grade fixa. Em faixa ao vivo o andamento
+  varia (Toda A Hora: 116–122 BPM, confiança 0,16), e a grade escorrega até
+  ±250 ms: rastreie as batidas do trecho usado. A fase se confere com
+  `desvio.py`, **a cópia desta pasta**. O `desvio.py` dos `_pipeline` antigos lia
+  o envelope com passo de 0,9977 ms como se fosse 1 ms: o "viés de +23,5 ms" era
+  esse erro.
+- **Durações alcançáveis:** a duração na timeline a 100% é
+  `floor(n × 29,97/fps_fonte)`. Com fonte de 119,88 a 25%, só saem múltiplos de 4
+  quadros; a 50%, de 2. Escolha as durações pela batida entre as alcançáveis.
+- **Montar:** `run_script_unsafe`:
+  `RAIZ = "<pasta>"; IDS = ["V2a"]; exec(open("<repo>/.claude/skills/editar-video/montar.py").read())`.
+  O retorno traz `dif_q` por plano, música e logo: tem de dar 0.
+  A timeline antiga vira "· anterior", e nada que o Ciro mexeu se perde.
+  Duas variantes de ritmo viram duas peças no mesmo `montagem.json`, para ele comparar.
+- **Estabilizar:** `estabilizar.py`, com as mesmas variáveis, até `pendentes: 0`.
+  Remontar a timeline zera a estabilização.
+- **⏸ Timeline pronta:** o Ciro olha. Só depois vem o `render.py`, que manda para
+  `08_EXPORTACOES/01_PREVIAS`.
 
 ## Armadilhas medidas
 
 - `MediaPool.ImportMedia` no 21.1 só aceita **caminho como texto**; com
   `{"FilePath": ...}` (a forma da documentação) importa zero, sem erro.
 - `ImportMedia` importa no **bin atual**: sempre `SetCurrentFolder` antes.
+- **A taxa de REPRODUÇÃO é outra coisa que a taxa da timeline.** Só leitura na API.
+  Com 24, o visualizador mostra `● 24` durante o play e a timeline agarra. A
+  correção está no modelo do projeto (passo 2); num projeto antigo, ajuste pela
+  interface.
 - `LinkProxyMedia` devolve `False` sem dizer por quê: rotação diferente é aceita,
   timecode diferente (ou ausente, quando o bruto tem) não.
 - O resto do MCP (append com fim exclusivo, durações inalcançáveis, Fusion por
