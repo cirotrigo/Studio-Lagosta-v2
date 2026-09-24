@@ -30,12 +30,33 @@ clipes curtos sem fala, tirar quadros com ffmpeg e olhar é de graça e basta.
 
 ## Rodar
 
+Primeiro o **inventário** da pasta (sem `--pergunta`): todos os planos de cada
+vídeo, descritos, avaliados e com problemas. Depois, se precisar, uma **pergunta**
+com o objetivo da peça.
+
 ```bash
-npx tsx --env-file=.env .claude/skills/analisar-video/analisar.ts \
-  "/Volumes/SSD/SESSAO/C0001.MP4" "/Volumes/SSD/SESSAO/C0002.MP4" \
+# inventário (aceita pasta; entra nas subpastas; pula os ._ do exFAT)
+npx tsx --env-file=.env .claude/skills/analisar-video/analisar.ts "/Volumes/SSD/SESSAO"
+
+# pergunta
+npx tsx --env-file=.env .claude/skills/analisar-video/analisar.ts "/Volumes/SSD/SESSAO" \
   --pergunta "Melhores planos de 2 a 4 s para um Reel do happy hour: chope sendo tirado, brinde, mesa cheia. Evite rosto de cliente em foco." \
-  --fps 2 --saida <pasta-da-edicao>/_pipeline/clipes.json
+  --saida <pasta-da-edicao>/_pipeline/clipes.json
 ```
+
+## Onde a análise fica guardada
+
+Ao lado dos vídeos, em `<pasta do vídeo>/_analise/`:
+
+- `<arquivo>.json` por vídeo: o inventário e cada pergunta já feita, com modelo,
+  fps de amostra e data. É o cache.
+- `CATALOGO.md`: o mesmo em tabela, para o Ciro ler no Finder.
+
+**Rodar de novo na mesma pasta não sobe nada**: o vídeo que tem o mesmo tamanho e
+a mesma data volta do cache (`do_cache: true`), inclusive a mesma pergunta. Se o
+arquivo mudou, a análise dele é refeita sozinha; `--refazer` força. Antes de subir
+para o Google, leia o `CATALOGO.md`: muitas vezes o inventário já responde a
+pergunta nova sem gastar nada.
 
 - Um arquivo por vez; o upload é apagado no fim (sempre, mesmo com erro).
 - Arquivo > 300 MB sobe como **proxy 720p com o mesmo relógio** (mesmo fps, nenhum
@@ -63,6 +84,11 @@ Mostre ao Ciro uma tabela curta (arquivo, trecho, o que é, nota, problema) ante
 de montar. Analisar não autoriza mexer em projeto do Resolve nem renderizar.
 
 ## Precisão dos tempos — conferir antes de cortar
+
+O tempo é pedido em `M:SS.d` e convertido no código: pedido em segundos, o Gemini
+escreveu 1:08,8 como `108.8` num vídeo de 72 s (Costela do Edd, 24/09). Clipe fora
+da duração vai para `descartados`, nunca é preso à borda.
+
 
 O Gemini erra por alguns quadros (medido: no corte vermelho→azul em 4,004 s ele
 disse 4,0 s → 1 quadro de diferença; em material real com fps 2 espere mais).
