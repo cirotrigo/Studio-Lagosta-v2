@@ -143,13 +143,17 @@ padrão é usar o **instrumental**, inclusive nos vídeos só com música. Tudo 
    `trilhas.ts listar --projeto <id> --genero samba,pagode`.
    É só leitura. A ordem é: do cliente antes das globais, menos usada, mais nova.
 2. **Clima que a biblioteca não tem → YouTube.** O Claude procura (`WebSearch`
-   com `allowed_domains: ["youtube.com"]`) e prefere faixa curta (2–4 min) a
-   compilação de 1 hora, e canal "No Copyright" feito para criador quando o
-   Ciro não pedir música específica. Confira título, canal e duração antes de
-   perguntar (oEmbed + `lengthSeconds` da página).
-3. **Caixa de pergunta** com 3 ou 4 faixas, a recomendada primeiro. O preview traz
-   origem (do cliente, global ou YouTube), duração, BPM quando já medido e em que
-   vídeos ela entra.
+   com `allowed_domains: ["youtube.com"]`). **Artista conhecido é bem-vindo**:
+   não priorize música livre de direitos (decisão do Ciro, 24/09/2026; a casa já
+   usa música comercial nos Reels). Prefira a faixa original, de 2 a 5 min, e não
+   compilação de 1 hora. Confira título, canal e duração antes de perguntar
+   (oEmbed + `lengthSeconds` da página).
+3. **Caixa de pergunta** com 3 ou 4 faixas, a recomendada primeiro. **Toda faixa
+   leva o link do YouTube para o Ciro ouvir**, na descrição e no preview, inclusive
+   as da biblioteca (`listar` devolve `link` quando a faixa veio do YouTube; sem
+   link, diga que ela está em `07_TEMPORARIOS/trilhas-candidatas` para ouvir).
+   O preview traz ainda a origem (do cliente, global ou YouTube), a duração, o BPM
+   quando já medido e em que vídeos ela entra.
 4. **Cadastrar** a escolhida:
    `trilhas.ts cadastrar --url <youtube> --nome … --artista … --genero … --humor … --projeto <id> --confirmar`.
    Sem `--confirmar` só mostra o que faria, e já confere autor, projeto e

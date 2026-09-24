@@ -148,7 +148,8 @@ async function listar(o: Opcoes) {
       id: m.id, nome: m.name, artista: m.artist, genero: m.genre, humor: m.mood,
       duracao_s: Math.round(m.duration), origem: m.projectId === projeto ? 'do cliente' : m.projectId ? `projeto ${m.projectId}` : 'global',
       instrumental: m.hasInstrumentalStem ? 'pronto' : m.stemJob?.status ?? 'sem separação',
-      voz: m.hasVocalsStem, youtube: m.youtubeDownloadJob?.youtubeId ?? null, usos: m._count.usedInVideos,
+      voz: m.hasVocalsStem, usos: m._count.usedInVideos,
+      link: m.youtubeDownloadJob?.youtubeId ? `https://www.youtube.com/watch?v=${m.youtubeDownloadJob.youtubeId}` : null,
     })))
 }
 
