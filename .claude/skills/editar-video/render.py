@@ -49,6 +49,9 @@ else:
             continue
         p.SetCurrentTimeline(tl)
         cfg = tl.GetSettings() or {}
+        # Parte de um preset limpo: um render só de áudio anterior deixa o "Export Video" desligado no
+        # projeto, e o ExportVideo=True abaixo não religa (21.1, medido 24/09: o job diz vídeo e sai só áudio).
+        p.LoadRenderPreset("H.264 Master")
         p.SetCurrentRenderFormatAndCodec("mp4", "H264")
         ok = p.SetRenderSettings({
             "SelectAllFrames": True, "TargetDir": DEST, "CustomName": pc.get("saida", pc["timeline"]) + SUF,

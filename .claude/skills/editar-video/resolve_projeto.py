@@ -27,6 +27,14 @@ AJUSTES = {
     "perfProxyMediaMode": "1",  # usa o proxy quando existe
     "transcriptionLanguage": "pt",
 }
+# Cache no MESMO disco do projeto (/Volumes/<HD>/CacheClip): o padrão do Resolve é ~/Movies/CacheClip, e o
+# cache inteligente em ProRes HQ de bruto 4K a 120 qps encheu o disco do Mac em um dia (9,9 GB só na
+# Costela do Edd, 24/09/2026: "Cache de Renderização Desativado", sobrou 913 MB).
+_partes = os.path.abspath(RAIZ).split(os.sep)
+if len(_partes) > 2 and _partes[1] == "Volumes":
+    CACHE = os.path.join(os.sep, "Volumes", _partes[2], "CacheClip")
+    os.makedirs(CACHE, exist_ok=True)
+    AJUSTES["perfCacheClipsLocation"] = CACHE
 
 # O projeto nasce do MODELO (.drp vazio, ao lado deste script): a TAXA DE REPRODUÇÃO
 # (timelinePlaybackFrameRate) é só leitura na API e todo CreateProject nasce em 24 —
