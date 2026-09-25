@@ -52,7 +52,8 @@ for pc in M["pecas"]:
     uid = tl.GetUniqueId()
     itens = sorted(tl.GetItemListInTrack("video", 1) or [], key=lambda x: x.GetStart())
     for i, it in enumerate(itens):
-        pl = pc["planos"][i] if i < len(pc["planos"]) else {}
+        planos = pc.get("planos") or pc.get("segmentos") or []  # peça com fala: 1 segmento = 1 item da V1
+        pl = planos[i] if i < len(planos) else {}
         if pl.get("estabilizar", pc.get("estabilizar", True)) is False:
             continue
         k = f"{uid}|{int(it.GetStart())}"

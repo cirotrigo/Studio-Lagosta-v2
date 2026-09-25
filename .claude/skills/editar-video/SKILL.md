@@ -184,16 +184,16 @@ A fase da grade é conferida antes de cortar na batida. A confiança do
 | Etapa | Situação |
 |---|---|
 | ⏸ Pauta das peças | é o briefing do passo 5; peças: Reel sem texto com logo no fim, Story com texto animado, vídeo com fala, corte curto para anúncio, animação de logo e textos |
-| Legenda da fala | automática do Resolve (`TranscribeAudio` por palavra); o estilo "palavra a palavra, animada" é Fusion — **a construir** |
+| Legenda da fala | passo 9: `transcrever.py` (whisper + energia) → `legenda.py --peca` (palavra a palavra, .mov com alfa; estilo e fontes do cliente via `fontes.ts`) |
 | ⏸ Copy do texto na tela | skill `revisar-copy` |
 | Música | passo 6 (`trilhas.ts` + `batidas.py`) |
 | Fase da grade conferida antes do corte | `desvio.py` (corrigido em 24/09/2026) |
 | Locução pela ElevenLabs → `05_AUDIO/Locucao` | **a desenhar** |
 | Efeitos sonoros pela Envato → `05_AUDIO/Efeitos Sonoros` | **a desenhar** (o MCP da Envato já busca: `search_sound_effects`) |
-| Plano de montagem `04_DAVINCI/montagem.json` e montagem no Resolve | passo 8 (`montar.py`, `estabilizar.py`) |
+| Plano de montagem `04_DAVINCI/montagem.json` e montagem no Resolve | passo 8 (`montar.py`, `estabilizar.py`); peça com fala: passo 9 (`montar_fala.py`) |
 | Animação de logo e textos (Fusion no Resolve; Remotion se ficar melhor) → `06_ELEMENTOS/Motion` | **em teste** (`texto_fusion.py` do Empório; skill `human-motion`) |
 | ⏸ Timeline pronta | o Ciro olha no Resolve |
-| Render → `08_EXPORTACOES/01_PREVIAS`; aprovado → `02_APROVADOS` | passo 8 (`render.py`) |
+| Render → `08_EXPORTACOES/01_PREVIAS`; aprovado → `02_APROVADOS` | passo 8 (`render.py` + `masterizar.py`) |
 
 ## 8. Montar, estabilizar, render (primeira peça: Costela do Edd, 24/09/2026)
 
@@ -218,7 +218,36 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
 - **Estabilizar:** `estabilizar.py`, com as mesmas variáveis, até `pendentes: 0`.
   Remontar a timeline zera a estabilização.
 - **⏸ Timeline pronta:** o Ciro olha. Só depois vem o `render.py`, que manda para
-  `08_EXPORTACOES/01_PREVIAS`.
+  `08_EXPORTACOES/01_PREVIAS` (parte do preset "H.264 Master"), e em seguida
+  `python3 .claude/skills/editar-video/masterizar.py "<pasta>" "<saida>.mp4"`: o render do
+  Resolve sai com true peak acima de 0 dBFS (+4,5 no V1 da Costela); limita em −1,5 dBTP,
+  copia o vídeo sem reprocessar e guarda o bruto em `07_TEMPORARIOS/render-bruto`.
+  Depois do render, tire o job da fila: disparado de novo, ele sobrescreve o masterizado.
+- **Legenda, logo ou motion refeitos com a cor já corrigida:** gere o arquivo novo com
+  outro nome e troque com `trocar_midia.py` (ReplaceClip; o item fica no lugar). **Nunca
+  remonte** uma timeline que o Ciro já mexeu: a correção de cor some.
+
+## 9. Peça com fala (primeira: V1 da Costela do Edd, 24/09/2026)
+
+"segmentos" no `montagem.json` no lugar de "planos"; formato completo em `montagem-fala.md`.
+
+1. **Transcrever** o clipe da fala: `python3 transcrever.py "<bruto>" "03_DECUPAGEM/transcricao-<clipe>.json"
+   --prompt "<nomes e termos>" [--correcoes corr.json]` (tempo da FONTE; falante A = lapela,
+   B = fora do microfone). **Nome próprio se confirma com o Ciro**: "Edd" só apareceu na
+   revisão da timeline.
+2. **Plano de cortes** pela transcrição e pela análise: gancho, cobertura sobre cada salto
+   de fala, sem muletas nem comando de gravação. ⏸ Pauta e ⏸ copy da tela como no passo 7.
+3. **Voz:** `voz` na peça (isolamento + nivelador; ouça: se o volume "respirar", veja a armadilha do
+   nivelador abaixo). Quem está sem microfone não sobe com o
+   nivelador (+1–2 dB medidos): parta o segmento de rosto nas pausas em volta da fala dele
+   (corte invisível, mesma fonte em sincronia) e dê `volume_db` só à parte dele. Meça num
+   render só de áudio (e rode o `render.py` depois: ele religa o vídeo pelo preset).
+4. **Fontes do cliente:** `npx tsx --env-file=.env .claude/skills/editar-video/fontes.ts --projeto <id>
+   --raiz "<pasta>" --baixar` → `06_ELEMENTOS/Assets/fontes/`, para o estilo da legenda.
+5. **Legenda e título:** `python3 legenda.py --peca "<pasta>" <ID> [--quadros 1.0,4.0]` grava o
+   .mov em `06_ELEMENTOS/Motion` (nunca sobrescreve: cria -v2, -v3). Confira os PNGs.
+6. **Montar:** `montar_fala.py` (mesmas variáveis do `montar.py`; `APAGAR = True` só enquanto
+   ninguém mexeu na timeline), depois `estabilizar.py`, ⏸ timeline, render e masterizar.
 
 ## Armadilhas medidas
 
@@ -231,5 +260,27 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
   interface.
 - `LinkProxyMedia` devolve `False` sem dizer por quê: rotação diferente é aceita,
   timecode diferente (ou ausente, quando o bruto tem) não.
+- **Desfazer (Cmd+Z) no Resolve ressuscita timeline apagada pelo script** e tira o nome da
+  atual. Antes de renderizar, identifique a timeline pelo `GetUniqueId`, não pelo nome.
+- **Render só de áudio desliga o "Export Video" do projeto** e o `ExportVideo: True` da API
+  não religa: o job diz vídeo e sai só áudio. O `render.py` carrega o preset "H.264 Master" antes.
+- **A legenda é um .mov pré-renderizado:** o Fusion não edita o texto. Uma composição do
+  Fusion deixada no item da legenda (Background + FastNoise) clareou o vídeo inteiro
+  ("nuvem branca"). `DeleteFusionCompByName` recusa a última comp do item: `AddFusionComp`,
+  `LoadFusionCompByName` da nova e só então apagar (guarde antes com `ExportFusionComp`).
+  `ExportCurrentFrameAsStill` com a trilha ligada e desligada (`SetTrackEnable`) isola o efeito.
+- `AudioDialogueLevelerOutputGain` aceita o Set e fica em 0: o ajuste de saída vai no `AudioVolume`.
+- **O Dialogue Leveler do Resolve piora a fala cortada em pedaços** (V3 da Costela, 25/09: "algumas partes
+  ficou abaixando o volume"). Medido palavra a palavra: bruto com desvio de 2,4 dB, com isolamento +
+  nivelador 4,1 dB (até 10 dB entre palavras fortes e fracas). O isolamento tira o ruído e expõe as palavras
+  fracas; o nivelador não as levanta. O que resolveu: render só da A1 com isolamento e nivelador
+  DESLIGADO (A2 desligada) → ganho palavra a palavra rumo à mediana pela transcrição (força 0,6, teto
+  ±6 dB, suavizado em 60 ms), compressor leve e limitador → WAV numa A3 "VOZ TRATADA", com a A1
+  desligada. Desvio de 1,2 dB e LRA de 5,1 para 2,1 LU, sem subir as pausas, e sincronia de +2 ms (o stem sai da
+  própria timeline). O método está em `montagem.json` → `V3.notas.voz_tratada` e o script (com o mapa do V3 cravado) em
+  `04_DAVINCI/voz-v3-cavalgar.py` do projeto; vira script da skill quando repetir. Remontar apaga a A3.
+- **Cache:** o `resolve_projeto.py` põe o cache no mesmo HD da pasta. O padrão do Resolve
+  (`~/Movies/CacheClip`) encheu o Mac com 9,9 GB de cache de um projeto só.
+- `run_script_unsafe` corta em ~10 s neste servidor: dispare o render e acompanhe em outra chamada.
 - O resto do MCP (append com fim exclusivo, durações inalcançáveis, Fusion por
   script, recordFrame, 60 s por chamada) está na memória `reference_davinci_resolve_mcp`.

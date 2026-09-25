@@ -110,7 +110,7 @@ else:
         """SetProperty chave a chave (medido em 20/09); devolve as chaves que falharam."""
         return [k for k, v in d.items() if not it.SetProperty(k, v)]
 
-    pecas = [pc for pc in M["pecas"] if pc["id"] in IDS]
+    pecas = [pc for pc in M["pecas"] if pc["id"] in IDS and "planos" in pc]  # com "segmentos": montar_fala.py
     idx = indexar()
 
     # Importa o que falta, no bin espelhado da pasta (mesma regra do resolve_projeto.py).
