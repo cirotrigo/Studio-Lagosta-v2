@@ -96,7 +96,7 @@ O script relê o `AudioVolume` depois de gravar: se a API aceitar e não guardar
 | `arquivo` | vídeo com alfa (ProRes 4444, 1080×1920, 29,97) gerado pelo `legenda.py`, do quadro 0 até o fim da V1. Fora do disco = peça sem legenda, com aviso |
 | `alfa` | `Alpha mode` do clipe no Media Pool; padrão `"Premultiplied"` (é como o `legenda.py` grava); `null` não mexe |
 | `estilo` | objeto: aparência da legenda (fonte, cores, contorno, posição…). Lido pelo `legenda.py` ao GERAR o vídeo — os campos estão no cabeçalho dele |
-| `titulo` | objeto: título fixo por cima do começo da peça (texto, até quando fica). Também do `legenda.py` |
+| `titulo` | objeto: título fixo por cima do começo da peça (texto, até quando fica), ou LISTA de títulos (gancho + cartão final; do 2º em diante `ini_s` e `ate_s`/`ate_q`), com `rodape` opcional (3ª linha na voz do contexto). Também do `legenda.py` |
 
 O `montar_fala.py` só usa `arquivo` e `alfa`; mudou `estilo` ou `titulo`, gere o vídeo de novo e
 troque a mídia (ver "Legenda").

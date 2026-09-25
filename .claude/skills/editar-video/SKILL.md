@@ -237,7 +237,8 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
    revisão da timeline.
 2. **Plano de cortes** pela transcrição e pela análise: gancho, cobertura sobre cada salto
    de fala, sem muletas nem comando de gravação. ⏸ Pauta e ⏸ copy da tela como no passo 7.
-3. **Voz:** `voz` na peça (isolamento + nivelador). Quem está sem microfone não sobe com o
+3. **Voz:** `voz` na peça (isolamento + nivelador; ouça: se o volume "respirar", veja a armadilha do
+   nivelador abaixo). Quem está sem microfone não sobe com o
    nivelador (+1–2 dB medidos): parta o segmento de rosto nas pausas em volta da fala dele
    (corte invisível, mesma fonte em sincronia) e dê `volume_db` só à parte dele. Meça num
    render só de áudio (e rode o `render.py` depois: ele religa o vídeo pelo preset).
@@ -269,6 +270,15 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
   `LoadFusionCompByName` da nova e só então apagar (guarde antes com `ExportFusionComp`).
   `ExportCurrentFrameAsStill` com a trilha ligada e desligada (`SetTrackEnable`) isola o efeito.
 - `AudioDialogueLevelerOutputGain` aceita o Set e fica em 0: o ajuste de saída vai no `AudioVolume`.
+- **O Dialogue Leveler do Resolve piora a fala cortada em pedaços** (V3 da Costela, 25/09: "algumas partes
+  ficou abaixando o volume"). Medido palavra a palavra: bruto com desvio de 2,4 dB, com isolamento +
+  nivelador 4,1 dB (até 10 dB entre palavras fortes e fracas). O isolamento tira o ruído e expõe as palavras
+  fracas; o nivelador não as levanta. O que resolveu: render só da A1 com isolamento e nivelador
+  DESLIGADO (A2 desligada) → ganho palavra a palavra rumo à mediana pela transcrição (força 0,6, teto
+  ±6 dB, suavizado em 60 ms), compressor leve e limitador → WAV numa A3 "VOZ TRATADA", com a A1
+  desligada. Desvio de 1,2 dB e LRA de 5,1 para 2,1 LU, sem subir as pausas, e sincronia de +2 ms (o stem sai da
+  própria timeline). O método está em `montagem.json` → `V3.notas.voz_tratada` e o script (com o mapa do V3 cravado) em
+  `04_DAVINCI/voz-v3-cavalgar.py` do projeto; vira script da skill quando repetir. Remontar apaga a A3.
 - **Cache:** o `resolve_projeto.py` põe o cache no mesmo HD da pasta. O padrão do Resolve
   (`~/Movies/CacheClip`) encheu o Mac com 9,9 GB de cache de um projeto só.
 - `run_script_unsafe` corta em ~10 s neste servidor: dispare o render e acompanhe em outra chamada.

@@ -39,8 +39,10 @@ pc.legenda = {                           só estas quatro chaves; outra (ex.: "t
     "contexto": "COSTELA", "acento": "Premiada", "fonte_contexto": …, "fonte_acento": …,
     "ini_s": 0, "ate_s" ou "ate_q": até quando fica (sem os dois: o fim do 1º segmento, o gancho),
     "y": 390, "tam_contexto": 64, "tam_acento": 190, "tracking": 0.28, "traco_contexto": 0,
-    "vao": -14, "gradiente_ate": 900
-  }
+    "vao": -14, "gradiente_ate": 900,
+    "rodape": "SHOPPING VITÓRIA", "vao_rodape": 24   3ª linha opcional, na voz do contexto
+  }                                      ou uma LISTA de títulos (gancho, cartão final…): do 2º em diante
+                                         ini_s e ate_s/ate_q são obrigatórios
 }
 """
 import json, math, os, re, subprocess, sys
@@ -316,6 +318,13 @@ def titulo_quadro(t, tit):
                    stroke_fill=COR_TEXTO + (255,)); x += fc.getlength(ch) + trk
         y_ac = 40 + (cb - ctp) + tit.get('vao', -14) - tp        # a linha do acento encosta na de cima
         d.text((((X0 + X1) - (r - l)) / 2 - l, y_ac), tit['acento'], font=fa, fill=COR_TEXTO + (255,))
+        if tit.get('rodape'):                                     # 3ª linha, na voz do contexto (o cartão final)
+            rod = tit['rodape']
+            wr = sum(fc.getlength(ch) for ch in rod) + trk * (len(rod) - 1)
+            x, y_r = ((X0 + X1) - wr) / 2, y_ac + bt + tit.get('vao_rodape', 24) - ctp
+            for ch in rod:
+                d.text((x, y_r), ch, font=fc, fill=COR_TEXTO + (255,), stroke_width=tit.get('traco_contexto', 0),
+                       stroke_fill=COR_TEXTO + (255,)); x += fc.getlength(ch) + trk
         tit['img'] = im
         g = np.zeros((H, W), np.float32)                          # gradiente de leitura, 45% na borda
         alto = tit.get('gradiente_ate', 900)
@@ -343,12 +352,12 @@ def janelas_de(grupos, total_s):
 def quadro_inteiro(t, grupos, janelas, titulo=None):
     """(RGBA do quadro inteiro, alfa reto; caixas da tinta visível) no instante t, ou (None, [])."""
     im = quadro(t, grupos, janelas)
-    tq = titulo_quadro(t, titulo) if titulo else None
-    if im is None and tq is None:
+    tqs = [x for x in (titulo_quadro(t, tt) for tt in (titulo if isinstance(titulo, list) else [titulo] if titulo else [])) if x]
+    if im is None and not tqs:
         return None, []
     cheio = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     bbs = []
-    if tq:
+    for tq in tqs:
         cheio.alpha_composite(tq[1]); cheio.alpha_composite(tq[0])
         bbs.append(tq[0].getchannel('A').point(lambda v: 255 if v > 8 else 0).getbbox())
     if im is not None:
@@ -427,7 +436,7 @@ def fundir_trechos(mapa):
 
 
 TITULO = {'contexto', 'acento', 'fonte_contexto', 'fonte_acento', 'ini_s', 'ate_s', 'ate_q', 'y', 'tam_contexto',
-          'tam_acento', 'tracking', 'traco_contexto', 'vao', 'gradiente_ate'}
+          'tam_acento', 'tracking', 'traco_contexto', 'vao', 'gradiente_ate', 'rodape', 'vao_rodape'}
 
 
 def titulo_da_peca(t, fim_do_gancho_q, rel=lambda p: p):
@@ -524,11 +533,18 @@ def peca(raiz, pid, montagem=None, saida=None, quadros=None):
     pal = [{'ini': w['ini_s'], 'fim': w['fim_s'], 'texto': w['palavra']} for w in T if publico(w)]
     pt = mf.palavras_na_timeline(mapa, pal)
     dur = total / FPS
-    tit = titulo_da_peca(lg['titulo'], linhas[0]['v1_q'][1], rel) if lg.get('titulo') else None
+    lt = lg.get('titulo')
+    if isinstance(lt, list):                      # vários títulos (gancho, cartão final…): só o 1º pode ficar sem ate_*
+        if any('ate_s' not in x and 'ate_q' not in x for x in lt[1:]):
+            raise ValueError('legenda.titulo: numa lista, do 2º título em diante ate_s ou ate_q é obrigatório')
+        tit = [titulo_da_peca(x, linhas[0]['v1_q'][1], rel) for x in lt]
+    else:
+        tit = titulo_da_peca(lt, linhas[0]['v1_q'][1], rel) if lt else None
     r = {'peca': pid, 'total_q': total, 'total_s': round(dur, 3), 'palavras': len(pt), 'trechos_de_fala': len(mapa),
          'avisos': avisos}
     if tit:
-        r['titulo_s'] = [round(tit['ini_s'], 3), round(tit['fim_s'], 3)]
+        r['titulo_s'] = [[round(x['ini_s'], 3), round(x['fim_s'], 3)] for x in tit] if isinstance(tit, list) \
+            else [round(tit['ini_s'], 3), round(tit['fim_s'], 3)]
 
     if quadros:                                   # conferência: PNGs sobre cinza médio, sem vídeo
         grupos = agrupar(pt, dur); janelas = janelas_de(grupos, dur)
@@ -708,7 +724,10 @@ def _checar_peca(fonte):
                  # o título entra em 0,6 s acima da zona segura: o render falha no meio, com o .parcial já no disco
                  'F': {**leg('F'), 'titulo': {**tit, 'y': 60, 'ini_s': 0.6, 'ate_s': 1.0}},
                  'L': leg('L', tamanho=300),                                 # "Grelhado" não cabe na coluna
-                 'K': {**leg('K'), 'título': {}}, 'S': {**leg('S'), 'alfa': 'Straight'}}
+                 'K': {**leg('K'), 'título': {}}, 'S': {**leg('S'), 'alfa': 'Straight'},
+                 # lista: gancho + cartão final com 3ª linha; do 2º em diante sem ate_* é recusado
+                 'M': {**leg('M'), 'titulo': [tit, {**tit, 'rodape': 'Z', 'ini_s': 0.7, 'ate_s': 1.0}]},
+                 'N': {**leg('N'), 'titulo': [tit, {**tit, 'ini_s': 0.7}]}}
         json.dump({'pecas': [{**base, 'id': k, 'legenda': v} for k, v in pecas.items()]},
                   open(os.path.join(raiz, '04_DAVINCI', 'montagem.json'), 'w'))
 
@@ -717,7 +736,15 @@ def _checar_peca(fonte):
                 peca(raiz, pid, **kw); raise AssertionError(f'devia recusar {pid}')
             except ValueError as e:
                 assert trecho in str(e), e
-        recusa('K', 'título'); recusa('S', 'Straight')
+        recusa('K', 'título'); recusa('S', 'Straight'); recusa('N', 'ate_s ou ate_q é obrigatório')
+        m = peca(raiz, 'M', quadros=[0.2, 0.8])
+        assert m['titulo_s'] == [[0.0, round(15 / FPS, 3)], [0.7, 1.0]], m
+        # tinta do título (acima de y 1000, longe da legenda): o cartão de 0,8 s desce mais, pela 3ª linha
+        fundo = lambda f: np.nonzero((np.abs(np.asarray(Image.open(f)).astype(int)[:1000] - 128).max(axis=2) > 40).any(axis=1))[0]
+        g, c = fundo(m['pngs'][0]), fundo(m['pngs'][1])
+        assert len(g) and len(c) and c.max() > g.max() + 20, ('3ª linha do cartão', g.max() if len(g) else None, c.max() if len(c) else None)
+        for f in m['pngs']:
+            os.remove(f)
         recusa('L', '"Grelhado" em 0.65 s')          # antes do render: nenhum arquivo nasce
         recusa('F', 'zona segura em 0.70 s', quadros=[0.3, 0.7])
         recusa('F', 'zona segura em 0.6')            # para no 1º quadro ruim e apaga o .parcial
