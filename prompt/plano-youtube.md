@@ -1401,7 +1401,7 @@ export default function BibliotecaMusicasPage() {
 ```env
 # Existente
 CRON_SECRET=your-random-secret-here
-MVSEP_API_KEY=BrIkx8zYQbvc4TggAZbsL96Mag9WN5
+MVSEP_API_KEY=<sua-chave-do-mvsep>
 
 # Novo
 VIDEO_DOWNLOAD_API_KEY=your-video-download-api-key-here
