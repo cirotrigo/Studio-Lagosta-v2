@@ -260,6 +260,10 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
   interface.
 - `LinkProxyMedia` devolve `False` sem dizer por quê: rotação diferente é aceita,
   timecode diferente (ou ausente, quando o bruto tem) não.
+- **O iPhone grava VFR:** o `avg_frame_rate` do ProRes sai `992400/33083` (~29,997) e o `r_frame_rate` 30/1; o
+  proxy sai 30/1 com os MESMOS quadros e o Resolve liga (Noite Chilena, 25/09). Comparar o fps como texto dava
+  "não confere" e refazia o proxy a cada rodada (e a análise re-encodava o original de 19 GB). O `proxies.ts` e o
+  `analisar.ts` comparam o fps como número (tolerância de 0,1%), junto com quadros (±1) e timecode.
 - **Desfazer (Cmd+Z) no Resolve ressuscita timeline apagada pelo script** e tira o nome da
   atual. Antes de renderizar, identifique a timeline pelo `GetUniqueId`, não pelo nome.
 - **Render só de áudio desliga o "Export Video" do projeto** e o `ExportVideo: True` da API

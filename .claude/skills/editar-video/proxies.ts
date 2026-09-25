@@ -22,6 +22,7 @@ import { spawn, execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { dirname, extname, join, relative } from 'node:path'
 import { PASTAS, VIDEO } from './estrutura'
+import assert from 'node:assert'
 
 type Info = { quadros: number; fps: string; duracao: number; tc: string | null }
 
@@ -43,9 +44,19 @@ export function caminhoDoProxy(raiz: string, bruto: string) {
   return join(raiz, PASTAS.proxies, rel.replace(/\.[^.]+$/, '.mp4'))
 }
 
+/**
+ * fps em fração do ffprobe comparado como NÚMERO: o iPhone grava VFR e o avg_frame_rate do bruto sai
+ * 992400/33083 (~29,997) com o proxy em 30/1 e os mesmos quadros (Noite Chilena, 25/09/2026).
+ */
+export function mesmoFps(a: string, b: string) {
+  const n = (f: string) => Number(f.split('/')[0]) / Number(f.split('/')[1] ?? 1)
+  return Math.abs(n(a) - n(b)) / n(b) < 0.001
+}
+assert(mesmoFps('30/1', '992400/33083') && mesmoFps('30000/1001', '2997/100') && !mesmoFps('30/1', '30000/1001') && !mesmoFps('25/1', '24/1'))
+
 /** O proxy vale se tem o mesmo fps, o mesmo número de quadros (tolerância de 1) e timecode quando o bruto tem. */
 function confere(b: Info, p: Info | null, tcEsperado: string | null) {
-  return !!p && p.fps === b.fps && Math.abs(p.quadros - b.quadros) <= 1 && (!tcEsperado || !!p.tc)
+  return !!p && mesmoFps(p.fps, b.fps) && Math.abs(p.quadros - b.quadros) <= 1 && (!tcEsperado || !!p.tc)
 }
 
 function timecodesDoResolve(raiz: string): Record<string, string> | null {
