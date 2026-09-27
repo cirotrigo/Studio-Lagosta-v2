@@ -18,5 +18,16 @@
       "/private/tmp/asar-check",
       "/Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/src/pages/bulk-image-generator"
     ]
+  },
+  "enabledPlugins": {
+    "codex@openai-codex": true
+  },
+  "extraKnownMarketplaces": {
+    "openai-codex": {
+      "source": {
+        "source": "github",
+        "repo": "openai/codex-plugin-cc"
+      }
+    }
   }
 }
