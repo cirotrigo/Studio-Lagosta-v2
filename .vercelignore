@@ -50,9 +50,6 @@ Thumbs.db
 # Scripts (development only)
 scripts/
 
-# Prisma migration files (already applied via vercel-build)
-prisma/migrations/
-
 # Other build artifacts
 .eslintcache
 *.tsbuildinfo
