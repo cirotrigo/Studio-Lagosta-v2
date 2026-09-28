@@ -632,6 +632,7 @@ export class LaterPostScheduler {
               name: true,
               laterAccountId: true,
               laterProfileId: true,
+              laterLinkedinAccountId: true,
               instagramAccountId: true,
               instagramUsername: true,
               organizationProjects: {
@@ -733,6 +734,11 @@ export class LaterPostScheduler {
             accountId: post.Project.laterAccountId,
             ...(platformSpecificData ? { platformSpecificData } : {}),
           },
+          // LinkedIn não tem story: só feed e carrossel vão para lá, com a mesma legenda.
+          ...(post.Project.laterLinkedinAccountId &&
+          (post.postType === PostType.POST || post.postType === PostType.CAROUSEL)
+            ? [{ platform: 'linkedin', accountId: post.Project.laterLinkedinAccountId }]
+            : []),
         ],
         ...(isFutureSchedule
           ? { scheduledFor: scheduledTime!.toISOString() }

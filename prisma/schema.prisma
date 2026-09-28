@@ -712,6 +712,9 @@ model Project {
   contentPillars              ContentPillar[]
   laterAccountId              String?
   laterProfileId              String?
+  /// Conta de LinkedIn no Zernio (mesmo perfil). Preenchida → post de feed e
+  /// carrossel saem também no LinkedIn, com a mesma legenda. Story não vai.
+  laterLinkedinAccountId      String?
   postingProvider             PostingProvider?        @default(ZAPIER)
   brandStyleDescription       String?
   brandVisualElements         Json?
