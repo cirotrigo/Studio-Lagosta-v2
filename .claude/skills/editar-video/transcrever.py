@@ -10,7 +10,8 @@ Saída: <saida.json> = [{"palavra", "ini_s", "fim_s", "falante", "confianca", "p
 "corrigido"?, "nota"?}] com o tempo do ARQUIVO de entrada (o --inicio já somado), e <saida>.txt
 ao lado, uma linha por frase. "falante" é A (voz alta: na lapela) ou B (voz baixa: fora do
 microfone), só pelo nível. "publico": false = marcação entre colchetes ou parênteses (risos,
-música), que o whisper às vezes escreve e que não é fala.
+música), que o whisper às vezes escreve e que não é fala. Áudio sem voz (lapela desligada) não é
+erro: sai "sem fala: <motivo>", o JSON vazio ([]) e o motivo no .txt.
 
 --correcoes corr.json = {"trocas": {"errado": "certo", "Barra em": "Barra e"},
                          "silabas": {"Tennessee": 3}}
@@ -60,6 +61,10 @@ TRAVESSAO = re.compile(rb'^(?:-|\xe2\x80[\x93\x94])+')
 # cabeças de alinhamento do DTW (-dtw do whisper-cli). Preset errado não dá erro: dá tempo errado.
 PRESETS_DTW = {'tiny', 'tiny.en', 'base', 'base.en', 'small', 'small.en', 'medium', 'medium.en',
                'large.v1', 'large.v2', 'large.v3', 'large.v3.turbo'}
+
+
+class SemFala(Exception):
+    """Áudio sem voz: o transcrever grava o JSON vazio e o motivo, sem erro (o lote segue)."""
 
 
 def preset_dtw(modelo):
@@ -322,6 +327,12 @@ def alinhar(W, E, V, F, x48, sr48=48000, ref_piso=None):
             M.append(list(p))
     bordas = [0] + [v for p in M for v in p] + [len(Es)]
     R = [[bordas[k] / 100, bordas[k + 1] / 100] for k in range(0, len(bordas), 2) if bordas[k + 1] - bordas[k] > 3]
+    if not R:
+        # nenhum trecho de voz (Noite Chilena C0026/C0052, lapela desligada: só o chiado da entrada, ±7 de
+        # 32768): o que o whisper escreveu é alucinação do silêncio e não tem onde ficar (era IndexError)
+        # ponytail: só o arquivo SEM trecho nenhum; um estalo de 40 ms no mudo ainda recebe as palavras
+        raise SemFala(f'nenhum trecho de voz no áudio (99% dele abaixo de {np.percentile(Es, 99):.0f} dBFS, '
+                      f'ruído de fundo {FLOOR:.0f} dBFS): microfone desligado?')
     # começo de trecho: voz baixa sem palavra do whisper antes da voz alta é ruído (ou oclusão)
     for r in R:
         f, e = int(round(r[0] * 100)), int(round(r[1] * 100))
@@ -547,15 +558,19 @@ def transcrever(arq, destino, corr=None, prompt=None, inicio=0.0, fim=None, mode
             x16 = np.frombuffer(wv.readframes(wv.getnframes()), '<i2').astype(np.float32) / 32768
         x48 = np.fromfile(f'{tmp}/a48.raw', dtype='<f4')
     W = corrigir(palavras_dos_tokens(d['transcription']), corr.get('trocas', {}))
-    if not any(w['publico'] for w in W):
-        raise SystemExit('o whisper não ouviu fala nenhuma')
     for w in W:
         w['syl'] = silabas(w['w'], corr.get('silabas'))
-    E, V, F = medidas(x16)
-    ref, orfaos = alinhar(W, E, V, F, x48, ref_piso=ref_piso)
-    out = saida(sorted(W + orfaos, key=lambda w: w.get('ini', w['de'])), inicio)
+    try:
+        if not any(w['publico'] for w in W):
+            raise SemFala('o whisper não ouviu fala nenhuma')
+        ref, orfaos = alinhar(W, *medidas(x16), x48, ref_piso=ref_piso)
+        out, sem = saida(sorted(W + orfaos, key=lambda w: w.get('ini', w['de'])), inicio), None
+    except SemFala as e:
+        out, ref, sem = [], None, f'sem fala: {e}'
     # com que parâmetros saiu: sem isso a transcrição não se reproduz (o prompt muda a grafia e os tempos)
-    gerado = [f'modelo {os.path.basename(modelo)} (DTW {preset})', f'REF {ref:.1f} dBFS'.replace('.', ',')]
+    gerado = [f'modelo {os.path.basename(modelo)} (DTW {preset})']
+    if ref is not None:
+        gerado.append(f'REF {ref:.1f} dBFS'.replace('.', ','))
     if recorte:
         gerado.append(f'recorte {inicio:g}–{fim:g} s' if fim is not None else f'recorte {inicio:g} s até o fim')
     if prompt:
@@ -565,8 +580,8 @@ def transcrever(arq, destino, corr=None, prompt=None, inicio=0.0, fim=None, mode
     with open(destino, 'w') as fh:
         json.dump(out, fh, ensure_ascii=False, indent=1)
     with open(os.path.splitext(destino)[0] + '.txt', 'w') as fh:
-        fh.write(texto(out, os.path.basename(arq), ' · '.join(gerado)))
-    return out, ref
+        fh.write(texto(out, os.path.basename(arq), ' · '.join(gerado)) + (sem + '\n' if sem else ''))
+    return out, ref, sem
 
 
 def _checar():
@@ -635,6 +650,14 @@ def _checar():
     W6 = [{'w': 'próximo', 'dtw': 0.5, 'syl': 3, 'publico': True}]
     _, orf = alinhar(W6, E, np.zeros(160), np.zeros(160), np.zeros(76800, np.float32))
     assert (W6[0]['ini'], W6[0]['fim']) == (0.2, 0.7) and [(o['ini'], o['fim']) for o in orf] == [(0.85, 0.97)], (W6, orf)
+    # lapela desligada (C0026 da Noite Chilena: chiado a -88 dBFS, sem trecho de voz) e o whisper alucina
+    # palavra no silêncio: sai SemFala (JSON vazio), não IndexError
+    try:
+        alinhar([{'w': 'Obrigado.', 'dtw': 0.5, 'syl': 3, 'publico': True}], np.full(160, -88.0) + np.tile([0.0, -1.0], 80),
+                np.zeros(160), np.zeros(160), np.zeros(76800, np.float32))
+        assert False, 'áudio mudo tem de dar SemFala'
+    except SemFala as e:
+        assert 'nenhum trecho de voz' in str(e), e
     assert oclusiva('Costela') and oclusiva('quero') and oclusiva('Brasil') and not oclusiva('cerveja') and not oclusiva('Ed')
     print('transcrever.py: autoconferência ok')
 
@@ -654,7 +677,10 @@ if __name__ == '__main__':
         corr = json.load(open(a.correcoes)) if a.correcoes else {}
     except (OSError, ValueError) as e:
         raise SystemExit(f'--correcoes {a.correcoes}: {e}')
-    out, ref = transcrever(a.arquivo, a.saida, corr, a.prompt, a.inicio, a.fim, a.modelo)
+    out, ref, sem = transcrever(a.arquivo, a.saida, corr, a.prompt, a.inicio, a.fim, a.modelo)
+    if sem:
+        print(f'{sem} → {a.saida} vazio')
+        sys.exit()
     fala = [o for o in out if o['publico']]
     print(f"{len(fala)} palavras de fala ({sum(o['falante'] == 'B' for o in fala)} em voz baixa), "
           f"{len(out) - len(fala)} marcações; REF {ref:.1f} dBFS → {a.saida}")
