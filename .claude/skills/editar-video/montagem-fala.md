@@ -199,6 +199,12 @@ nas pausas, um corte de cobertura sobre a fala) são fundidos antes**: presa à 
 contíguo, a palavra que o cruza atrasaria (no V1, 7 de 194 palavras, até 75 ms). O `montar_fala.py`
 devolve o mesmo mapa medido em `fala_na_timeline`.
 
+**Quanto cada grupo fica na tela:** entra 0,08 s antes da 1ª palavra e fica até o próximo grupo
+entrar. Se a fala para mais de 1,0 s (`PAUSA_LONGA`) — um plano só de música entre duas falas —, o
+grupo sai 0,6 s (`CAUDA`) depois da última palavra, como no fim da peça, e o plano sem fala fica
+limpo (no B3 da Noite Chilena, o "voltar sempre." ficava por cima do letreiro). Pausa até 1,0 s
+continua emendando um grupo no outro.
+
 **Na timeline:** a legenda entra na V2 com `Alpha mode = Premultiplied` (é como o `legenda.py`
 grava; alfa lido como direto dá borda escura) e `Scaling = Fit` (sem ele herda o `scaleToCrop` do
 projeto). A logo também entra com `Fit`.

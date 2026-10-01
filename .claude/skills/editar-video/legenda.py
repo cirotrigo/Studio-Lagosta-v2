@@ -56,6 +56,8 @@ ESPACO, PAD_X, PAD_Y, RAIO = 0.32, 18, 12, 16   # espaço entre palavras (× tam
 SOMBRA = 26                      # quanto a sombra visível (alfa > 8) passa da pílula
 MAX_PALAVRAS, PAUSA = 3, 0.25
 MINIMO_NA_TELA = 0.5             # grupo que ficaria menos que isso na tela se junta ao vizinho, se couber
+PAUSA_LONGA, CAUDA = 1.0, 0.6     # grupo fica até o próximo; com mais de PAUSA_LONGA s sem fala (ou no fim),
+                                 # sai CAUDA s depois da última palavra: não fica por cima de plano sem fala
 MAX_LINHAS = 2
 CURTAS = {'a', 'o', 'as', 'os', 'e', 'é', 'de', 'do', 'da', 'dos', 'das', 'no', 'na', 'nos', 'nas',
           'em', 'um', 'uma', 'que', 'pra', 'pro', 'por', 'com', 'se', 'lá', 'né'}
@@ -344,7 +346,10 @@ def janelas_de(grupos, total_s):
     js = []
     for i, g in enumerate(grupos):
         a = g[0]['ini'] - 0.08
-        b = grupos[i + 1][0]['ini'] - 0.08 if i + 1 < len(grupos) else min(total_s, g[-1]['fim'] + 0.6)
+        if i + 1 < len(grupos) and grupos[i + 1][0]['ini'] - g[-1]['fim'] <= PAUSA_LONGA:
+            b = grupos[i + 1][0]['ini'] - 0.08
+        else:
+            b = min(total_s, g[-1]['fim'] + CAUDA)
         js.append((a, b))
     return js
 
@@ -612,10 +617,15 @@ def _checar():
     # palavra curta não fecha grupo: passa para o seguinte
     assert txt(agrupar(P(('vamos', 0, .2), ('comer', .22, .4), ('no', .42, .5), ('quintal', .52, .8)))) == \
         ['vamos comer', 'no quintal']
-    # janelas: 0,08 s antes da 1ª palavra; o último grupo fica até 0,6 s depois da fala (ou o fim)
+    # janelas: 0,08 s antes da 1ª palavra; o último grupo fica até 0,6 s (CAUDA) depois da fala (ou o fim)
     gs = agrupar(A)
     assert janelas_de(gs, 10.0)[0] == (-0.08, 0.75 - 0.08) and janelas_de(gs, 10.0)[-1] == (1.95 - 0.08, 2.1 + 0.6)
     assert janelas_de(gs, 2.3)[-1][1] == 2.3
+    # pausa longa (> 1 s): o grupo sai 0,6 s depois da fala, antes do próximo; pausa curta continua emendando
+    B = P(('volte', 0, .3), ('sempre.', .35, .8), ('Saúde!', 2.2, 2.6))        # 1,4 s só de música no meio
+    jb = janelas_de(agrupar(B), 10.0)
+    assert txt(agrupar(B)) == ['volte sempre.', 'Saúde!'] and jb == [(-0.08, .8 + .6), (2.2 - 0.08, 2.6 + .6)], jb
+    assert janelas_de(agrupar(P(('um', 0, .2), ('dois.', .3, .5), ('três', 1.1, 1.3))), 10.0)[0][1] == 1.1 - 0.08
     # grupo curto (< 0,5 s) se junta ao próximo; nunca atravessa fim de frase
     assert txt(agrupar(P(('certo,', 0, .3), ('vamos', .35, .5), ('embora.', .52, .9), ('Agora', 1.5, 1.8)), 3.0)) == \
         ['certo, vamos embora.', 'Agora']
