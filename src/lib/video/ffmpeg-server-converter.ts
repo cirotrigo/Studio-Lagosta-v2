@@ -180,7 +180,7 @@ async function resolveInstallerPath(): Promise<string | null> {
   return null
 }
 
-async function ensureFfmpegPath(): Promise<string> {
+export async function ensureFfmpegPath(): Promise<string> {
   if (cachedFfmpegPath) {
     return cachedFfmpegPath
   }

@@ -4,7 +4,8 @@ import { Badge } from '@/components/ui/badge'
 import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ImageIcon, FileEdit, Lock } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
-import { formatPostTime } from './calendar-utils'
+import { formatPostTime, isVideoUrl } from './calendar-utils'
+import { CapaDeVideo } from './capa-de-video'
 import { memo } from 'react'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
@@ -27,12 +28,6 @@ interface PostMiniCardProps {
 // OPTIMIZED: Memoize component to prevent re-renders
 export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMiniCardProps) {
   const time = formatPostTime(post)
-
-  // Helper para detectar se é vídeo
-  const isVideoUrl = (url: string) => {
-    const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
-    return videoExtensions.some(ext => url.toLowerCase().includes(ext))
-  }
 
   const congelado = post.congelado === true
 
@@ -98,9 +93,18 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
               <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
             </div>
           ) : isVideo ? (
-            <div className="absolute inset-0 w-full h-full bg-muted flex items-center justify-center">
-              <Video className="w-4 h-4 text-muted-foreground" />
-            </div>
+            <>
+              <CapaDeVideo
+                src={firstMediaUrl!}
+                alt={post.caption || 'Capa do vídeo'}
+                sizes="(max-width: 640px) 32px, 40px"
+                iconClassName="w-4 h-4 text-muted-foreground"
+              />
+              {/* Com a capa no lugar do ícone, é isto que diz que a peça é vídeo */}
+              <span className="absolute bottom-0.5 right-0.5 rounded-sm bg-black/70 p-0.5 text-white">
+                <Video className="h-2 w-2 sm:h-2.5 sm:w-2.5" aria-label="Vídeo" />
+              </span>
+            </>
           ) : (
             <Image
               src={firstMediaUrl!}
