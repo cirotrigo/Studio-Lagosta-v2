@@ -50,6 +50,37 @@ export function pareceMotion(nomeOuUrl: string | null | undefined): boolean {
   return /\.webm(\?|#|$)/i.test(nomeOuUrl ?? '')
 }
 
+type Tamanho = { width: number; height: number }
+
+/**
+ * A caixa em que um motion entra na página. Motion na proporção da página
+ * (o texto animado 9:16) cobre a página inteira, como sempre. Motion de OUTRA
+ * proporção — a logo animada 1:1 — é um elemento solto: entra na própria
+ * proporção, com um terço da largura da página, no centro, para a pessoa
+ * posicionar. Cobrir a página com ele (cover) o cortaria e o deixaria gigante.
+ * Sem medida do vídeo, vale a página inteira.
+ */
+export function caixaDoMotion(
+  video: Tamanho | null | undefined,
+  pagina: Tamanho,
+): { size: Tamanho; position: { x: number; y: number } } {
+  const inteira = { size: { width: pagina.width, height: pagina.height }, position: { x: 0, y: 0 } }
+  if (!video?.width || !video?.height) return inteira
+  const proporcao = video.width / video.height
+  if (Math.abs(proporcao - pagina.width / pagina.height) < 0.02) return inteira
+  let width = pagina.width / 3
+  let height = width / proporcao
+  if (height > pagina.height / 3) {
+    height = pagina.height / 3
+    width = height * proporcao
+  }
+  const size = { width: Math.round(width), height: Math.round(height) }
+  return {
+    size,
+    position: { x: Math.round((pagina.width - size.width) / 2), y: Math.round((pagina.height - size.height) / 2) },
+  }
+}
+
 type TrechoLike = { trimStart?: number; trimEnd?: number; duration?: number }
 
 /**

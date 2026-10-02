@@ -11,7 +11,26 @@ import { useToast } from '@/hooks/use-toast'
 import { useProject } from '@/hooks/use-project'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import type { GoogleDriveItem } from '@/types/google-drive'
-import { pareceMotion } from '@/lib/video/camadas-de-video'
+import { caixaDoMotion, pareceMotion } from '@/lib/video/camadas-de-video'
+
+/** Largura e altura do vídeo, pelos metadados. `null` se não der para ler em 8 s. */
+function medirVideo(url: string): Promise<{ width: number; height: number } | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video')
+    const fim = (r: { width: number; height: number } | null) => {
+      clearTimeout(prazo)
+      video.removeAttribute('src')
+      video.load()
+      resolve(r)
+    }
+    const prazo = setTimeout(() => fim(null), 8000)
+    video.preload = 'metadata'
+    video.muted = true
+    video.onloadedmetadata = () => fim(video.videoWidth ? { width: video.videoWidth, height: video.videoHeight } : null)
+    video.onerror = () => fim(null)
+    video.src = url
+  })
+}
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024 // 100MB
@@ -52,17 +71,19 @@ export function VideosPanel() {
   const canvasHeight = design.canvas.height
 
   const insertVideoLayer = React.useCallback(
-    (url: string, name?: string) => {
+    async (url: string, name?: string) => {
       const base = createDefaultLayer('video')
       // WebM com fundo transparente entra como MOTION: por cima da página,
       // tocando uma vez (ver src/lib/video/camadas-de-video.ts)
       const motion = pareceMotion(url) || pareceMotion(name)
+      // Motion fora da proporção da página (a logo animada 1:1) entra solto,
+      // na própria proporção; o vídeo comum sempre cobre a página.
+      const caixa = caixaDoMotion(motion ? await medirVideo(url) : null, { width: canvasWidth, height: canvasHeight })
       addLayer({
         ...base,
         name: `${motion ? 'Motion' : 'Vídeo'}${name ? ` - ${name}` : ''}`,
         fileUrl: url,
-        size: { width: canvasWidth, height: canvasHeight },
-        position: { x: 0, y: 0 },
+        ...caixa,
         videoMetadata: {
           ...base.videoMetadata,
           autoplay: true,
@@ -237,7 +258,7 @@ export function VideosPanel() {
         if (!uploaded.url) {
           throw new Error('Resposta inválida ao importar vídeo do Google Drive')
         }
-        insertVideoLayer(uploaded.url, uploaded.name ?? item.name)
+        await insertVideoLayer(uploaded.url, uploaded.name ?? item.name)
       } catch (_error) {
         console.error('[VideosPanel] Drive import failed', _error)
         toast({
@@ -302,7 +323,7 @@ export function VideosPanel() {
         const videoUrl = await uploadToBlob(file)
 
         const baseName = file.name.replace(/\.[^/.]+$/, '')
-        insertVideoLayer(videoUrl, baseName)
+        await insertVideoLayer(videoUrl, baseName)
 
         toast({
           title: 'Upload concluído',
