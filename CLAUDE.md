@@ -11616,6 +11616,17 @@ vídeo ou de uma foto e exportar o MP4.
 - **Motion fora da proporção da página entra SOLTO** (`caixaDoMotion`): a
   logo animada 1:1 entra na própria proporção, com um terço da largura, no
   centro, para a pessoa posicionar. Na proporção da página, cobre a página.
+- **Motion novo de um cliente = um spec** (`scripts/motions/<slug>.json`; os
+  oito da carteira estão lá, feitos em 02/10/2026 por um agente por cliente:
+  voz + base + assinatura + capas publicadas → spec → `previa.sh` OLHANDO a
+  folha de contato). O gerador cobre o que as marcas pediram: estilo por
+  linha do título (a segunda voz), `alinhamento`, logo parada ou animada,
+  `sombraDura` (Seu Quinto), `gradiente` da marca atrás do texto (Real,
+  Empório, By Rock, TERO: sem ele a manchete não lia sobre a foto típica da
+  casa) e a coluna que encolhe quando a logo divide a linha de cima. Fato só
+  da base, sem preço nem data; os de happy hour e executivo não valem em
+  feriado. Coronel Picanha ficou sem motion: sem fontes, cores, base, voz,
+  assinatura nem pasta de Vídeos cadastradas — cadastrar antes de gerar.
 
 **Da 2ª revisão do Codex sobre a implementação (BLOQUEADO, 7 achados, 02/10/2026):**
 
