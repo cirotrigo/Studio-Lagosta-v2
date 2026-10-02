@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Loader2, Save, AlertCircle, ImageIcon } from 'lucide-react'
+import { Loader2, Save, AlertCircle, ImageIcon, Video } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   AI_INSTRUCTION_PLACEHOLDER,
   AI_IMPROVEMENT_CREDIT_COST,
 } from '@/lib/ai/instruction-field'
+import { videoNaPagina } from '@/lib/video/pagina-com-video'
 import type { Page } from '@/types/template'
 
 interface GenerateCreativesModalProps {
@@ -72,6 +73,14 @@ export function GenerateCreativesModal({
       setSelectedPageIds(new Set([currentPageId]))
     }
   }, [open, currentPageId, isSinglePage, sortedPages])
+
+  // Página com vídeo (ou motion) visível: o criativo daqui é um JPEG — sai um
+  // quadro parado. Avisa, não veta: há uso legítimo (capa parada do vídeo).
+  const pagesWithVideo = React.useMemo(
+    () => new Set(sortedPages.filter((p) => videoNaPagina(p.layers) === 'tem-video').map((p) => p.id)),
+    [sortedPages],
+  )
+  const selectedWithVideo = Array.from(selectedPageIds).filter((id) => pagesWithVideo.has(id)).length
 
   const allSelected = selectedPageIds.size === sortedPages.length
   const noneSelected = selectedPageIds.size === 0
@@ -206,11 +215,31 @@ export function GenerateCreativesModal({
                   <div className="text-center">
                     <p className="text-sm font-medium truncate">{page.name}</p>
                     <p className="text-xs text-muted-foreground">Página {index + 1}</p>
+                    {pagesWithVideo.has(page.id) && (
+                      <p className="mt-0.5 flex items-center justify-center gap-1 text-[11px] font-medium text-amber-600 dark:text-amber-500">
+                        <Video className="h-3 w-3 flex-shrink-0" />
+                        Tem vídeo — sai imagem parada
+                      </p>
+                    )}
                   </div>
                 </div>
               )
             })}
           </div>
+
+          {/* Vídeo selecionado: o criativo é imagem parada */}
+          {selectedWithVideo > 0 && (
+            <Alert>
+              <Video className="h-4 w-4" />
+              <AlertDescription>
+                {isSinglePage
+                  ? 'Esta página tem vídeo'
+                  : `${selectedWithVideo} página${selectedWithVideo > 1 ? 's selecionadas têm' : ' selecionada tem'} vídeo`}
+                : o criativo sai como imagem parada, sem o movimento. Para publicar o vídeo, use
+                &quot;Exportar Vídeo&quot;.
+              </AlertDescription>
+            </Alert>
+          )}
 
           {/* Instrução opcional para a IA */}
           <div className="space-y-2">

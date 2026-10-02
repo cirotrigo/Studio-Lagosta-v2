@@ -43,6 +43,10 @@ describe('pageContainsVideoLayer', () => {
     expect(pageContainsVideoLayer(JSON.stringify(JSON.stringify(CAMADAS)))).toBe(false)
   })
 
+  it('vídeo OCULTO não conta: o render pula a camada, e a página é uma imagem', () => {
+    expect(pageContainsVideoLayer([...CAMADAS, { id: 'v', name: 'clipe', type: 'video', visible: false }])).toBe(false)
+  })
+
   it('ilegível lança em vez de responder "não tem vídeo"', () => {
     expect(() => pageContainsVideoLayer('quebrado')).toThrow(/ilegíveis/)
   })

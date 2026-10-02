@@ -29,6 +29,7 @@ import { cropToInstagramFeed } from '@/lib/images/auto-crop'
 import { handlePublishFailure } from './failure-handler'
 import { isVideoUrl } from '@/lib/media-type'
 import { pageContainsVideoLayer } from './page-to-design-data'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { ensurePostGeneration } from './ensure-post-generation'
 
 interface RecurringConfig {
@@ -249,8 +250,23 @@ export class LaterPostScheduler {
 
     if (isTemplateBased) {
       if (data.mediaUrls.length > 0) {
-        // Image already rendered client-side (Konva export), mark as RENDERED
-        renderStatusValue = RenderStatus.RENDERED
+        // 🔴 Foi por aqui que 5 stories foram ao ar como IMAGEM PARADA: o editor
+        // mandava o JPEG do stage de uma página com vídeo. O botão foi escondido
+        // na tela, mas aba aberta antes do deploy e chamada direta não passam
+        // por ele — a trava de verdade é esta. Mídia de vídeo (o MP4 exportado
+        // dessa mesma página) segue passando.
+        const midiaEVideo = data.mediaUrls.some((url) => isVideoUrl(url))
+        if (!midiaEVideo) {
+          const pagina = await db.page.findUnique({ where: { id: data.pageId! }, select: { layers: true } })
+          if (pagina && videoNaPagina(pagina.layers) === 'tem-video') {
+            throw new Error(MENSAGEM_PAGINA_COM_VIDEO)
+          }
+          // Image already rendered client-side (Konva export), mark as RENDERED
+          renderStatusValue = RenderStatus.RENDERED
+        }
+        // Mídia de vídeo fica NOT_NEEDED (o default): ela não sai do render da
+        // página. RENDERED a deixaria ao alcance da invalidação e do "voltar
+        // para rascunho", que a devolveriam a um render de IMAGEM.
       } else {
         // No image provided, cron will render server-side.
         // Guard: o render server-side é IMAGEM — página com camada de vídeo

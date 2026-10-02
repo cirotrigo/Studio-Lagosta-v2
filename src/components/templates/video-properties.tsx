@@ -11,6 +11,7 @@ import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useToast } from '@/hooks/use-toast'
+import { videoPrincipal } from '@/lib/video/camadas-de-video'
 
 const formatSeconds = (value: number) => {
   const mins = Math.floor(value / 60)
@@ -47,6 +48,12 @@ export function VideoProperties() {
   if (!selectedLayer || selectedLayer.type !== 'video') return null
 
   const metadata = selectedLayer.videoMetadata || {}
+  // Motion: vídeo com fundo transparente por cima da página. Quando não é o
+  // vídeo principal (há um vídeo de fundo, ou outro motion antes dele sobre a
+  // foto), ele só acompanha: play, loop e duração são os do principal.
+  const motion = metadata.overlay === true
+  const principal = videoPrincipal(design.layers)
+  const acompanhaVideoDeFundo = motion && !!principal && principal.id !== selectedLayer.id
   const fullDuration = metadata.duration && metadata.duration > 0 ? metadata.duration : null
   const trimStart = metadata.trimStart ?? 0
   const trimEnd = metadata.trimEnd ?? fullDuration ?? 0
@@ -97,6 +104,18 @@ export function VideoProperties() {
       videoMetadata: {
         ...metadata,
         muted: !metadata.muted,
+      },
+    }))
+  }
+
+  const handleToggleMotion = () => {
+    updateLayer(selectedLayer.id, (layer) => ({
+      ...layer,
+      videoMetadata: {
+        ...metadata,
+        overlay: !motion,
+        // motion toca uma vez e segura o último quadro; vídeo comum repete
+        loop: motion,
       },
     }))
   }
@@ -203,22 +222,22 @@ export function VideoProperties() {
       const ctx = canvas.getContext('2d')
       if (!ctx) throw new Error('Canvas 2D indisponível')
       ctx.drawImage(video, 0, 0)
-      const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, 'image/jpeg', 0.85),
-      )
+      // Motion tem fundo transparente: PNG preserva; JPEG pintaria de preto
+      const tipo = motion ? 'image/png' : 'image/jpeg'
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, tipo, 0.85))
       if (!blob) throw new Error('Falha ao capturar o frame')
-      const file = new File([blob], `poster-${selectedLayer.id}.jpg`, { type: 'image/jpeg' })
+      const file = new File([blob], `poster-${selectedLayer.id}.${motion ? 'png' : 'jpg'}`, { type: tipo })
       const posterUrl = await uploadToBlob(file)
       updateLayer(selectedLayer.id, (layer) => ({
         ...layer,
         videoMetadata: { ...metadata, posterUrl },
       }))
-      toast({ title: 'Capa definida', description: 'O frame atual virou a capa do vídeo.' })
+      toast({ title: 'Prévia definida', description: 'Este quadro aparece quando a página não está aberta.' })
     } catch (error) {
       console.error('[VideoProperties] Falha ao capturar poster:', error)
       toast({
         variant: 'destructive',
-        description: error instanceof Error ? error.message : 'Falha ao capturar a capa.',
+        description: error instanceof Error ? error.message : 'Falha ao capturar o quadro.',
       })
     }
   }
@@ -228,11 +247,29 @@ export function VideoProperties() {
       <div className="flex items-center justify-between">
         <span className="font-semibold">Controles de Vídeo</span>
         <span className="rounded-full bg-primary/10 px-2 py-[2px] text-[10px] font-semibold uppercase text-primary">
-          Video
+          {motion ? 'Motion' : 'Video'}
         </span>
       </div>
 
-      {/* Play/Pause */}
+      {/* Motion */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <Label className="text-[11px] uppercase tracking-wide">Motion (fundo transparente)</Label>
+          <p className="text-[10px] text-muted-foreground">
+            {!motion
+              ? 'Ligue quando o arquivo for uma animação com fundo transparente, para ficar por cima da página'
+              : acompanhaVideoDeFundo
+                ? 'Fica por cima, acompanha o vídeo principal da página, toca uma vez e segura o último quadro'
+                : 'Fica por cima da foto; o vídeo final tem a duração do motion'}
+          </p>
+        </div>
+        <Switch checked={motion} onCheckedChange={handleToggleMotion} />
+      </div>
+
+      <Separator className="my-3" />
+
+      {/* Play/Pause — quem acompanha o vídeo principal não tem play próprio */}
+      {!acompanhaVideoDeFundo && (
       <div className="space-y-2">
         <Label className="text-[11px] uppercase tracking-wide">Reprodução</Label>
         <div className="flex gap-2">
@@ -269,24 +306,34 @@ export function VideoProperties() {
           </Button>
         </div>
       </div>
+      )}
 
-      <Separator className="my-3" />
+      {!acompanhaVideoDeFundo && <Separator className="my-3" />}
 
-      {/* Loop */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-0.5">
-          <Label className="text-[11px] uppercase tracking-wide">Loop Contínuo</Label>
-          <p className="text-[10px] text-muted-foreground">Repetir vídeo automaticamente</p>
-        </div>
-        <Switch
-          checked={metadata.loop ?? true}
-          onCheckedChange={handleToggleLoop}
-        />
-      </div>
+      {/* Loop — o motion que acompanha um vídeo de fundo não repete sozinho */}
+      {!acompanhaVideoDeFundo && (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label className="text-[11px] uppercase tracking-wide">Loop Contínuo</Label>
+              <p className="text-[10px] text-muted-foreground">
+                {motion ? 'Repetir só na prévia do editor' : 'Repetir vídeo automaticamente'}
+              </p>
+            </div>
+            <Switch
+              checked={metadata.loop ?? true}
+              onCheckedChange={handleToggleLoop}
+            />
+          </div>
 
-      <Separator className="my-3" />
+          <Separator className="my-3" />
+        </>
+      )}
 
-      {/* Velocidade */}
+      {/* Velocidade: o vídeo exportado sai sempre em 1x, então o controle só
+          aparece em camada antiga que já foi mexida, para voltar a 1x. */}
+      {(metadata.playbackRate ?? 1) !== 1 && (
+      <>
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label className="text-[11px] uppercase tracking-wide">Velocidade de Reprodução</Label>
@@ -307,9 +354,14 @@ export function VideoProperties() {
           <span>1x</span>
           <span>2x</span>
         </div>
+        <p className="text-[10px] font-medium text-amber-600 dark:text-amber-500">
+          O vídeo exportado não acompanha a velocidade. Volte para 1x.
+        </p>
       </div>
 
       <Separator className="my-3" />
+      </>
+      )}
 
       {/* Trim do vídeo */}
       {fullDuration ? (
@@ -338,7 +390,7 @@ export function VideoProperties() {
       ) : null}
 
       {/* Duração efetiva + limite do Instagram */}
-      {effectiveDuration !== null && (
+      {effectiveDuration !== null && !acompanhaVideoDeFundo && (
         <div className="rounded-md bg-muted/50 p-2 text-[11px]">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Duração do export:</span>
@@ -360,10 +412,10 @@ export function VideoProperties() {
 
       <Separator className="my-3" />
 
-      {/* Posição do preview + capa */}
+      {/* Quadro que representa a página quando ela não está aberta */}
       {fullDuration ? (
         <div className="space-y-2">
-          <Label className="text-[11px] uppercase tracking-wide">Capa do vídeo</Label>
+          <Label className="text-[11px] uppercase tracking-wide">Prévia no editor</Label>
           <Slider
             defaultValue={[trimStart]}
             onValueChange={handleSeekPreview}
@@ -373,7 +425,7 @@ export function VideoProperties() {
             className="w-full"
           />
           <p className="text-[10px] text-muted-foreground">
-            Arraste para escolher o frame e capture como capa
+            Quadro mostrado quando a página não está aberta. Não vai para o Instagram.
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -388,12 +440,12 @@ export function VideoProperties() {
               ) : (
                 <Camera className="h-3.5 w-3.5" />
               )}
-              Usar frame atual como capa
+              Usar o quadro atual
             </Button>
             {metadata.posterUrl && (
               <img
                 src={metadata.posterUrl}
-                alt="Capa do vídeo"
+                alt="Prévia do vídeo"
                 className="h-9 w-9 rounded border border-border/40 object-cover"
               />
             )}
@@ -417,12 +469,16 @@ export function VideoProperties() {
       {/* Object Fit */}
       <div className="space-y-2">
         <Label className="text-[11px] uppercase tracking-wide">Ajuste no Frame</Label>
-        <div className="grid grid-cols-3 gap-2">
+        <div className="flex gap-2 [&>button]:flex-1">
           {[
             { value: 'cover' as const, label: 'Cover', description: 'Preencher' },
             { value: 'contain' as const, label: 'Contain', description: 'Ajustar' },
             { value: 'fill' as const, label: 'Fill', description: 'Esticar' },
-          ].map((fit) => {
+          ]
+            // "Contain" desenha esticado, igual a "Fill": só aparece em camada
+            // antiga que já o usa, para a pessoa poder sair dele.
+            .filter((fit) => fit.value !== 'contain' || metadata.objectFit === 'contain')
+            .map((fit) => {
             const isActive = (metadata.objectFit ?? 'cover') === fit.value
             return (
               <button

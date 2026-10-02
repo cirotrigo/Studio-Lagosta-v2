@@ -1,6 +1,7 @@
 import Konva from 'konva'
 import type { Layer, DesignData } from '@/types/template'
 import type { AudioConfig } from '@/components/audio/audio-selection-modal'
+import { duracaoDoExport, ehMotion, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 
 export interface VideoExportOptions {
   fps?: number // Frames por segundo (padrão: 30)
@@ -177,7 +178,7 @@ export async function exportVideoWithLayers(
   },
   options: VideoExportOptions = {},
   onProgress?: (progress: VideoExportProgress) => void
-): Promise<Blob> {
+): Promise<{ webm: Blob; duracao: number }> {
   const {
     fps: requestedFps = 30,
     duration,
@@ -198,6 +199,11 @@ export async function exportVideoWithLayers(
 
   let baseVideoOriginalMuted = false
   let baseVideoOriginalVolume = 1
+  const outrosVideos: Array<{ el: HTMLVideoElement; inicio: number }> = []
+  // Tudo o que a gravação abre é fechado no `finally`, dê certo ou não: antes,
+  // uma falha depois de o gravador começar deixava recorder e tracks ativos.
+  const encerrar: Array<() => void> = []
+  let baseEstavaTocando = false
 
   try {
     // Preparar stage (remover guides, transformers, normalizar zoom)
@@ -223,6 +229,8 @@ export async function exportVideoWithLayers(
       throw new Error('Elemento de vídeo não encontrado')
     }
     baseVideoOriginalMuted = videoElement.muted
+    // O motion toca uma vez e para; só o vídeo comum volta a tocar depois.
+    baseEstavaTocando = !ehMotion(videoLayer) && !videoElement.paused && !videoElement.ended
     baseVideoOriginalVolume = typeof videoElement.volume === 'number' ? videoElement.volume : 1
 
     // O WebM gravado aqui é SEMPRE mudo — trilha, áudio original e mix são
@@ -236,47 +244,53 @@ export async function exportVideoWithLayers(
       console.warn('[Video Export] Não foi possível mutar o vídeo durante a gravação:', error)
     }
 
-    // Duração efetiva = trim do vídeo ∧ trecho da música (quando houver).
-    // Regra única — o chip de duração do painel de vídeo calcula igual.
-    const videoTrimStart = videoLayer.videoMetadata?.trimStart ?? 0
-    const videoTrimEnd = videoLayer.videoMetadata?.trimEnd
-    const sourceDuration =
-      duration || videoLayer.videoMetadata?.duration || videoElement.duration || 10
-    const trimmedDuration =
-      videoTrimEnd !== undefined && videoTrimEnd > videoTrimStart
-        ? videoTrimEnd - videoTrimStart
-        : Math.max(0.5, sourceDuration - videoTrimStart)
+    // Duração efetiva = trecho do vídeo principal ∧ fatia da música. Regra
+    // ÚNICA (src/lib/video/camadas-de-video.ts): o chip do painel, a aba Músicas
+    // e a fila calculam igual.
+    const trecho = trechoDoVideo(videoLayer.videoMetadata, duration || videoElement.duration)
+    const videoTrimStart = trecho.inicio
+    const videoDuration = duracaoDoExport(trecho.duracao ?? 10, audioConfig) ?? 10
+    console.log(`[Video Export] Duração efetiva: ${videoDuration}s (trecho do vídeo: ${trecho.duracao}s)`)
 
-    let videoDuration = trimmedDuration
-    if (
-      (audioConfig?.source === 'library' || audioConfig?.source === 'mix') &&
-      audioConfig.musicId &&
-      audioConfig.startTime !== undefined &&
-      audioConfig.endTime !== undefined
-    ) {
-      const musicSlice = audioConfig.endTime - audioConfig.startTime
-      if (musicSlice > 0) {
-        videoDuration = Math.min(trimmedDuration, musicSlice)
-      }
-      console.log(
-        `[Video Export] Duração efetiva: ${videoDuration}s (trim ${trimmedDuration}s ∧ trecho da música ${musicSlice}s)`,
-      )
-    } else {
-      console.log(`[Video Export] Duração efetiva (trim): ${videoDuration}s`)
+    // Todo vídeo VISÍVEL da página entra na gravação (o stage inteiro é
+    // copiado), então todos precisam estar carregados e LARGAR JUNTOS — antes o
+    // segundo vídeo tocava de onde estivesse, e um motion que ainda não tivesse
+    // chegado sairia faltando no MP4, sem aviso.
+    const naoCarregou = (nome?: string) =>
+      new Error(`"${nome || 'Vídeo'}" ainda não carregou. Espere ele aparecer na página e exporte de novo.`)
+    if (videoElement.readyState < 2) throw naoCarregou(videoLayer.name)
+    for (const layer of videosDaPagina(design.layers)) {
+      if (layer.id === videoLayer.id) continue
+      const node = stage.findOne(`#${layer.id}`)
+      const el = node instanceof Konva.Image ? node.image() : null
+      if (!(el instanceof HTMLVideoElement) || el.readyState < 2) throw naoCarregou(layer.name)
+      outrosVideos.push({ el, inicio: trechoDoVideo(layer.videoMetadata).inicio })
     }
 
-    // Posicionar vídeo no início do trim e garantir que o frame está renderizado
-    videoElement.currentTime = videoTrimStart
-    await new Promise<void>((resolve) => {
-      const handleSeeked = () => {
-        resolve()
-      }
-      if (videoElement.readyState >= 2 && Math.abs(videoElement.currentTime - videoTrimStart) < 0.05) {
-        resolve()
-      } else {
-        videoElement.addEventListener('seeked', handleSeeked, { once: true })
-      }
-    })
+    // Todos parados no início do próprio trecho, com o quadro já decodificado.
+    // Vídeo que não responde derruba o export com mensagem — nunca segue gravando.
+    const posicionar = (el: HTMLVideoElement, inicio: number) =>
+      new Promise<void>((resolve, reject) => {
+        el.pause()
+        if (!el.seeking && Math.abs(el.currentTime - inicio) < 0.05) return resolve()
+        const limite = setTimeout(
+          () => reject(new Error('Um dos vídeos da página não respondeu. Recarregue a página e exporte de novo.')),
+          5000,
+        )
+        el.addEventListener(
+          'seeked',
+          () => {
+            clearTimeout(limite)
+            resolve()
+          },
+          { once: true },
+        )
+        el.currentTime = inicio
+      })
+    await Promise.all([
+      posicionar(videoElement, videoTrimStart),
+      ...outrosVideos.map(({ el, inicio }) => posicionar(el, inicio)),
+    ])
 
     onProgress?.({ phase: 'preparing', progress: 30 })
 
@@ -378,6 +392,7 @@ export async function exportVideoWithLayers(
     // Isso elimina o clone <video> ressincronizado e o mix WebAudio ao vivo
     // — os pontos mais frágeis do export antigo.
     const stream = canvasStream
+    encerrar.push(() => canvasStream.getTracks().forEach((track) => track.stop()))
 
     // Configurar MediaRecorder
     const targetVideoBitrate = Math.round(
@@ -386,6 +401,10 @@ export async function exportVideoWithLayers(
     const mediaRecorder = new MediaRecorder(stream, {
       mimeType: finalMimeType,
       videoBitsPerSecond: targetVideoBitrate,
+    })
+
+    encerrar.push(() => {
+      if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
     })
 
     const chunks: Blob[] = []
@@ -397,24 +416,45 @@ export async function exportVideoWithLayers(
       }
     }
 
+    // Gravador que falha no meio fica `inactive` sozinho: sem isto o `stop()` do
+    // fim lançava dentro do timer e a promessa nunca terminava (diálogo preso).
+    let aoFalhar: ((erro: Error) => void) | null = null
+    let erroDoGravador: Error | null = null
     mediaRecorder.onerror = (e) => {
       console.error('[Video Export] Erro no MediaRecorder:', e)
+      erroDoGravador = new Error('A gravação do vídeo falhou no navegador. Exporte de novo.')
+      aoFalhar?.(erroDoGravador)
     }
+    // Armado antes de gravar: o `stop` pode chegar antes de alguém esperar por ele.
+    const parou = new Promise<void>((resolve) => {
+      mediaRecorder.onstop = () => resolve()
+    })
 
     onProgress?.({ phase: 'recording', progress: 50 })
 
-    // Iniciar gravação ANTES de reproduzir o vídeo
-    mediaRecorder.start(100) // Capturar chunks a cada 100ms
+    // Gravação e reprodução largam do MESMO ponto: o gravador começa e todos os
+    // vídeos tocam no mesmo instante, já parados no primeiro quadro do trecho.
+    // (Antes: 200 ms de espera e um seek com o vídeo tocando — o som, que o
+    // servidor corta exatamente no início do trecho, saía fora da imagem.)
+    await new Promise<void>((resolve) => {
+      mediaRecorder.onstart = () => resolve()
+      mediaRecorder.start(100) // Capturar chunks a cada 100ms
+      setTimeout(resolve, 500) // navegador que não avisa o início
+    })
 
-    // Aguardar start com timeout
-    await new Promise((resolve) => setTimeout(resolve, 200))
-
-    // Posicionar vídeo no início do trim (novamente após start) e reproduzir
-    videoElement.currentTime = videoTrimStart
-
-    try {
-      await videoElement.play()
-    } catch (error) {
+    // Com prazo: vídeo com o quadro atual carregado pode ficar esperando dados
+    // para tocar, e sem prazo o gravador seguia ligado com o diálogo travado.
+    const tocar = (el: HTMLVideoElement) =>
+      Promise.race([
+        el.play(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('um dos vídeos da página não começou a tocar. Recarregue a página e exporte de novo')), 5000),
+        ),
+      ])
+    const partidas = await Promise.allSettled([videoElement, ...outrosVideos.map(({ el }) => el)].map(tocar))
+    for (const partida of partidas) {
+      if (partida.status === 'fulfilled') continue
+      const error = partida.reason
       const isAbortError =
         error instanceof DOMException && (error.name === 'AbortError' || error.code === DOMException.ABORT_ERR)
       if (isAbortError) {
@@ -429,6 +469,9 @@ export async function exportVideoWithLayers(
 
     // Loop de animação para copiar o stage para o canvas offscreen frame por frame
     let animationId: number | null = null
+    encerrar.push(() => {
+      if (animationId !== null) cancelAnimationFrame(animationId)
+    })
     const startTime = Date.now()
 
     const animationLoop = () => {
@@ -454,13 +497,13 @@ export async function exportVideoWithLayers(
     animationId = requestAnimationFrame(animationLoop)
 
     // Aguardar duração especificada
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const progressInterval = setInterval(() => {
         const currentProgress = ((videoElement.currentTime - videoTrimStart) / videoDuration) * 100
         onProgress?.({ phase: 'recording', progress: 50 + Math.max(0, currentProgress) * 0.35 })
       }, 100)
 
-      setTimeout(() => {
+      const fim = setTimeout(() => {
         clearInterval(progressInterval)
 
         // Parar loop de animação
@@ -469,29 +512,47 @@ export async function exportVideoWithLayers(
         }
 
         videoElement.pause()
+        for (const { el } of outrosVideos) el.pause()
 
         // Aguardar um pouco antes de parar para garantir que último frame foi capturado
         setTimeout(() => {
-          mediaRecorder.stop()
+          if (mediaRecorder.state !== 'inactive') mediaRecorder.stop()
           resolve()
         }, 200)
       }, videoDuration * 1000)
+
+      aoFalhar = (erro) => {
+        clearInterval(progressInterval)
+        clearTimeout(fim)
+        reject(erro)
+      }
+      // Falhou antes de chegar aqui (durante o `play()` dos vídeos)
+      if (erroDoGravador) aoFalhar(erroDoGravador)
     })
+    aoFalhar = null
+    if (erroDoGravador) throw erroDoGravador
 
     onProgress?.({ phase: 'finalizing', progress: 85 })
 
     // Aguardar finalização do MediaRecorder
-    await new Promise<void>((resolve) => {
-      mediaRecorder.onstop = () => resolve()
-    })
+    await parou
 
     // Gerar blob WebM — a conversão para MP4 é da fila server-side
     // (/api/video-processing), nunca do browser.
     const webmBlob = new Blob(chunks, { type: finalMimeType })
 
     onProgress?.({ phase: 'finalizing', progress: 100 })
-    return webmBlob
+    // A duração vai junto: a fila precisa da MESMA que a gravação usou
+    return { webm: webmBlob, duracao: videoDuration }
   } finally {
+    for (const fechar of encerrar) {
+      try {
+        fechar()
+      } catch {
+        // fechar o que der; o resto do finally ainda precisa rodar
+      }
+    }
+
     // Sempre restaurar estado do stage
     if (cleanupState) {
       restoreStageState(
@@ -508,6 +569,9 @@ export async function exportVideoWithLayers(
       if (baseVideo) {
         baseVideo.muted = baseVideoOriginalMuted
         baseVideo.volume = baseVideoOriginalVolume
+        // Quem estava tocando volta a tocar (o motion segue o vídeo sozinho).
+        if (baseEstavaTocando) void baseVideo.play().catch(() => {})
+        else baseVideo.pause()
       }
     } catch {
       // ignore

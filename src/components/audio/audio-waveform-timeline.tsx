@@ -15,8 +15,14 @@ interface AudioWaveformTimelineProps {
   videoDuration: number;
   startTime: number;
   endTime: number;
-  onStartTimeChange: (time: number) => void;
-  onEndTimeChange: (time: number) => void;
+  onStartTimeChange?: (time: number) => void;
+  onEndTimeChange?: (time: number) => void;
+  /**
+   * Início e fim numa chamada SÓ. Quem guarda o trecho num objeto único precisa
+   * dela: avisado em duas chamadas seguidas, o pai monta a segunda a partir do
+   * mesmo estado da primeira e a desfaz. Quando existe, substitui as outras duas.
+   */
+  onRangeChange?: (start: number, end: number) => void;
 }
 
 export function AudioWaveformTimeline({
@@ -27,6 +33,7 @@ export function AudioWaveformTimeline({
   endTime,
   onStartTimeChange,
   onEndTimeChange,
+  onRangeChange,
 }: AudioWaveformTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const waveformWrapperRef = useRef<HTMLDivElement>(null);
@@ -38,6 +45,22 @@ export function AudioWaveformTimeline({
     startTimeSnapshot: number;
     selectionLength: number;
   } | null>(null);
+
+  // O listener da região é registrado uma vez por áudio (recriar a onda a cada
+  // movimento não é opção) e ficaria preso aos callbacks daquela renderização:
+  // todo ponto de emissão lê os ATUAIS daqui.
+  const callbacksRef = useRef({ onStartTimeChange, onEndTimeChange, onRangeChange });
+  callbacksRef.current = { onStartTimeChange, onEndTimeChange, onRangeChange };
+
+  const emitRange = (start: number, end: number) => {
+    const callbacks = callbacksRef.current;
+    if (callbacks.onRangeChange) {
+      callbacks.onRangeChange(start, end);
+      return;
+    }
+    callbacks.onStartTimeChange?.(start);
+    callbacks.onEndTimeChange?.(end);
+  };
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,8 +92,11 @@ export function AudioWaveformTimeline({
 
   // Determinar se a música é maior ou menor que o vídeo
   const selectedDuration = Math.max(endTime - startTime, 0.1);
-  const isMusicLonger = selectedDuration > videoDuration;
-  const isMusicShorter = selectedDuration < videoDuration;
+  // Folga: início e fim são arredondados separados, e um trecho IGUAL ao vídeo
+  // caía em "menor" (ou "maior") por milésimos — com aviso de corte falso.
+  const FOLGA = 0.05;
+  const isMusicLonger = selectedDuration > videoDuration + FOLGA;
+  const isMusicShorter = selectedDuration < videoDuration - FOLGA;
 
   const getActiveRegion = () => {
     const plugin = regionsPluginRef.current as unknown as { regions?: Record<string, any> };
@@ -127,8 +153,7 @@ export function AudioWaveformTimeline({
     const maxStart = Math.max(0, audioDuration - safeLength);
     const clampedStart = Math.min(Math.max(0, start), maxStart);
     const clampedEnd = Math.min(audioDuration, clampedStart + safeLength);
-    onStartTimeChange(Number(clampedStart.toFixed(2)));
-    onEndTimeChange(Number(clampedEnd.toFixed(2)));
+    emitRange(Number(clampedStart.toFixed(2)), Number(clampedEnd.toFixed(2)));
   };
 
   useEffect(() => {
@@ -180,8 +205,7 @@ export function AudioWaveformTimeline({
     wavesurfer.on('timeupdate', (time) => setCurrentTime(time));
 
     regions.on('region-updated', (region) => {
-      onStartTimeChange(region.start);
-      onEndTimeChange(region.end);
+      emitRange(region.start, region.end);
     });
 
     wavesurferRef.current = wavesurfer;
@@ -233,8 +257,7 @@ export function AudioWaveformTimeline({
       resize: true,
     });
 
-    onStartTimeChange(0);
-    onEndTimeChange(newEndTime);
+    emitRange(0, newEndTime);
   };
 
   return (
@@ -353,7 +376,7 @@ export function AudioWaveformTimeline({
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
             <span>
               Trecho selecionado é menor que o vídeo ({formatTime(selectedDuration)} &lt;{' '}
-              {formatTime(videoDuration)}) - vídeo terá silêncio no final
+              {formatTime(videoDuration)}) - o vídeo será cortado em {formatTime(selectedDuration)}
             </span>
           </div>
         )}

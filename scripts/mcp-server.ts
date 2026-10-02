@@ -1258,10 +1258,15 @@ toolEstrita(
       // 1. Fetch post
       const post = await prisma.socialPost.findUnique({
         where: { id: postId },
-        select: { id: true, pageId: true, slotValues: true, renderStatus: true },
+        select: { id: true, pageId: true, slotValues: true, renderStatus: true, mediaUrls: true },
       })
       if (!post) return { content: [{ type: 'text' as const, text: 'Error: Post not found' }], isError: true }
       if (!post.pageId) return { content: [{ type: 'text' as const, text: 'Error: Post has no pageId (not template-based)' }], isError: true }
+      // O render grava `mediaUrls: [png]`: vídeo e carrossel seriam apagados por ele.
+      const { renderDaPaginaCobreAMidia } = await import('../src/lib/posts/render-da-pagina')
+      if (!renderDaPaginaCobreAMidia(post.mediaUrls)) {
+        return { content: [{ type: 'text' as const, text: 'Error: a mídia deste post é um vídeo ou um carrossel — renderizar a página apagaria essa mídia. Nada foi alterado.' }], isError: true }
+      }
 
       // 2. Fetch page with template
       const page = await prisma.page.findUnique({
@@ -1353,9 +1358,10 @@ toolEstrita(
       const blobPath = `posts/rendered/${postId}-${timestamp}.png`
       const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
 
-      // 9. Update post
-      await prisma.socialPost.update({
-        where: { id: postId },
+      // 9. Update post — só se a mídia ainda é a que a guarda leu: trocada no
+      // meio do render (por um vídeo, por exemplo), o PNG não entra por cima.
+      const gravado = await prisma.socialPost.updateMany({
+        where: { id: postId, mediaUrls: { equals: post.mediaUrls } },
         data: {
           renderStatus: 'RENDERED',
           renderedImageUrl: blob.url,
@@ -1364,6 +1370,13 @@ toolEstrita(
           blobPathnames: [blobPath],
         },
       })
+      if (gravado.count === 0) {
+        await prisma.socialPost.updateMany({
+          where: { id: postId, renderStatus: 'RENDERING' },
+          data: { renderStatus: post.renderStatus },
+        })
+        return { content: [{ type: 'text' as const, text: 'Error: a mídia do post mudou durante o render. Nada foi alterado; confira o post e renderize de novo se ainda fizer sentido.' }], isError: true }
+      }
 
       // Build a clickable admin URL for editing this specific post.
       // Uses STUDIO_LAGOSTA_PUBLIC_URL (or NEXT_PUBLIC_APP_URL fallback) so the
