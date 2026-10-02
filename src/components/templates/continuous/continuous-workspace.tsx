@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { CalendarCheck, CalendarPlus, Copy, ImageIcon, Layers, Loader2, Plus, Trash2, Video } from 'lucide-react'
+import { BotaoPlayPause } from '../botao-play-pause'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
@@ -591,6 +592,7 @@ export function ContinuousWorkspace() {
                     agendando={agendandoId === page.id}
                     aoAgendar={() => colocarNaAgenda(page.id, page.name)}
                   />
+                  {isActive && <BotaoPlayPause compacto />}
                   <Button
                     size="sm"
                     variant="ghost"

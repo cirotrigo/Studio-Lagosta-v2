@@ -31,6 +31,7 @@ import { createId } from '@/lib/id'
 import { duracaoDaPagina, paginaEVideo, videoDeBase, videoPrincipal } from '@/lib/video/camadas-de-video'
 import { fonteEfetiva } from '@/lib/video/audio-do-export'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 
 const sanitizeFileName = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video'
@@ -67,6 +68,12 @@ export function VideoExportButton() {
   const paginaVideo = paginaEVideo(design.layers, design.audio)
   const semVideoDeBase = !videoDeBase(design.layers)
   const currentPageId = useMultiPageOpcional()?.currentPageId ?? null
+  // A gravação é sobre UM design parado: editar, desfazer ou trocar de página
+  // no meio cancela com motivo (lidos por ref, no laço do export)
+  const designRef = React.useRef(design)
+  designRef.current = design
+  const currentPageIdRef = React.useRef(currentPageId)
+  currentPageIdRef.current = currentPageId
 
   const [isOpen, setIsOpen] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
@@ -308,11 +315,20 @@ export function VideoExportButton() {
     setIsExporting(true)
     setExportProgress({ phase: 'preparing', progress: 10 })
 
+    // O MESMO objeto vai para a gravação e para a fila (`designData`)
+    const designGravado = design
+    const paginaGravada = currentPageId
+    const cancelado = () => {
+      if (currentPageIdRef.current !== paginaGravada) return 'A página foi trocada durante a gravação. Exporte de novo.'
+      if (designRef.current !== designGravado) return 'A página foi editada durante a gravação. Exporte de novo.'
+      return null
+    }
+
     try {
       const { webm: videoBlob, duracao: exportedDuration } = await exportVideoWithLayers(
         stage,
         videoLayer ?? null,
-        design,
+        designGravado,
         {
           setSelectedLayerIds: selectLayersFn,
           selectedLayerIdsRef,
@@ -323,6 +339,8 @@ export function VideoExportButton() {
           fps: 30,
           quality: 0.8,
           audioConfig: audioEfetivo.config,
+          relogio: relogioDaPagina(paginaGravada),
+          cancelado,
         },
         (progress) => {
           setExportProgress(progress)
@@ -392,7 +410,7 @@ export function VideoExportButton() {
         webmBlobSize: videoBlob.size,
         thumbnailBlobUrl: thumbnailUpload.url,
         thumbnailBlobSize: thumbnailBlob.size,
-        designData: design,
+        designData: designGravado,
         // O WebM acima é MUDO — a fila mixa a trilha via ffmpeg a partir daqui
         audioConfig: audioEfetivo.config,
       }

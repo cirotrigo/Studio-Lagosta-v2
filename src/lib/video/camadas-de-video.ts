@@ -186,39 +186,63 @@ export type EstadoDoMotion = {
 
 export type PassoDoMotion = { irPara?: number; tocar?: boolean; pausar?: boolean }
 
+/** O relógio da PÁGINA (relogio-da-pagina.ts): tempo desde o início da página. */
+export type RelogioDaPeca = { t: number; tocando: boolean }
+
+/** O que o `<video>` diz de si neste quadro. `readyState`/`seeking` são do elemento. */
+export type EstadoDoVideo = EstadoDoMotion & { readyState?: number; seeking?: boolean }
+
+export type PassoDoVideo = PassoDoMotion & {
+  /** Não tem o quadro ainda (readyState < 2) ou está no meio de um seek. */
+  aguardando: boolean
+}
+
 /**
- * O que o motion faz AGORA para acompanhar o vídeo principal. Chamado a cada
- * quadro: não guarda estado, só reconcilia — por isso sobrevive a ordem de
- * carregamento, play/pause, volta do loop, trim e desfazer/refazer.
- *
- * O motion toca UMA vez: passado o fim do próprio trecho, segura o último quadro.
+ * O que um vídeo faz AGORA para acompanhar o relógio da página — todo vídeo,
+ * não só o motion: o instante 0 da página é o início do trecho de cada um.
+ * Chamado a cada quadro, sem estado: sobrevive a ordem de carregamento,
+ * play/pause, volta do loop, trim e desfazer/refazer. Passado o fim do próprio
+ * trecho, segura o último quadro (é o que o export grava).
  */
-export function passoDoMotion(relogio: EstadoDoRelogio, motion: EstadoDoMotion): PassoDoMotion {
-  const decorrido = Math.max(0, relogio.tempo - relogio.inicio)
-  const ultimoQuadro = Math.max(motion.inicio, motion.fim - MARGEM_DO_FIM)
-  const alvo = motion.inicio + decorrido
+export function passoDoVideo(relogio: RelogioDaPeca, video: EstadoDoVideo): PassoDoVideo {
+  const aguardando = (video.readyState ?? 4) < 2 || video.seeking === true
+  const ultimoQuadro = Math.max(video.inicio, video.fim - MARGEM_DO_FIM)
+  const alvo = video.inicio + Math.max(0, relogio.t)
 
   if (alvo >= ultimoQuadro) {
-    const passo: PassoDoMotion = {}
-    if (!motion.pausado) passo.pausar = true
-    if (Math.abs(motion.tempo - ultimoQuadro) > MARGEM_DO_FIM * 2) passo.irPara = ultimoQuadro
+    const passo: PassoDoVideo = { aguardando }
+    if (!video.pausado) passo.pausar = true
+    if (Math.abs(video.tempo - ultimoQuadro) > MARGEM_DO_FIM * 2) passo.irPara = ultimoQuadro
     return passo
   }
 
-  const desvio = Math.abs(motion.tempo - alvo)
-  if (relogio.pausado) {
-    const passo: PassoDoMotion = {}
-    if (!motion.pausado) passo.pausar = true
+  const desvio = Math.abs(video.tempo - alvo)
+  if (!relogio.tocando) {
+    const passo: PassoDoVideo = { aguardando }
+    if (!video.pausado) passo.pausar = true
     // Parado, o quadro tem de ser o do instante do relógio
     if (desvio > MARGEM_DO_FIM) passo.irPara = alvo
     return passo
   }
 
   if (desvio > DESVIO_TOLERADO_DO_MOTION) {
-    return motion.pausado ? { irPara: alvo, tocar: true } : { irPara: alvo }
+    return video.pausado ? { irPara: alvo, tocar: true, aguardando } : { irPara: alvo, aguardando }
   }
   // Adiantado dentro da tolerância e já no fim do trecho: segura ali em vez de
   // passar do corte (ou de ficar alternando tocar/pausar até o relógio chegar)
-  if (motion.tempo >= ultimoQuadro) return motion.pausado ? {} : { pausar: true }
-  return motion.pausado ? { tocar: true } : {}
+  if (video.tempo >= ultimoQuadro) return video.pausado ? { aguardando } : { pausar: true, aguardando }
+  return video.pausado ? { tocar: true, aguardando } : { aguardando }
+}
+
+/**
+ * O motion acompanhando o vídeo PRINCIPAL (a forma antiga): o relógio é o
+ * `currentTime` do principal descontado o início do trecho dele. Hoje é um
+ * caso de `passoDoVideo`; fica pela leitura do harness e dos testes.
+ */
+export function passoDoMotion(relogio: EstadoDoRelogio, motion: EstadoDoMotion): PassoDoMotion {
+  const { aguardando: _aguardando, ...passo } = passoDoVideo(
+    { t: Math.max(0, relogio.tempo - relogio.inicio), tocando: !relogio.pausado },
+    motion,
+  )
+  return passo
 }

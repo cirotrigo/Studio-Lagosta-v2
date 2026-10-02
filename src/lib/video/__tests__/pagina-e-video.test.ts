@@ -116,6 +116,9 @@ describe('quem decide se a página vira post como imagem', () => {
       .sort()
     expect(chamadores).toEqual(
       [
+        // o botão ▶︎/⏸ e o atalho de espaço só existem em página que é vídeo
+        'components/templates/botao-play-pause.tsx',
+        'components/templates/editor-canvas.tsx',
         'components/templates/continuous/continuous-workspace.tsx',
         'components/templates/modals/generate-creatives-modal.tsx',
         'components/templates/template-editor-shell.tsx',

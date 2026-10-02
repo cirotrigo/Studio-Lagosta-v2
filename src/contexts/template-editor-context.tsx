@@ -9,6 +9,8 @@ import { aplicarGradienteSuave, ID_GRADIENTE_SUAVE } from '@/lib/creatives/gradi
 import { createId } from '@/lib/id'
 import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } from '@/lib/copy-autoral/camada-copiada'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { videosProntosEmZero } from '@/lib/video/videos-montados'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
@@ -590,6 +592,14 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         return null
       }
 
+      // A miniatura é o quadro de 0 da página: com vídeo tocando, fora do 0 ou
+      // ainda sem o quadro decodificado, a captura sairia de um instante
+      // qualquer — quem chama já trata `null` (mantém a anterior ou cai no
+      // PagePreviewStage).
+      const relogio = relogioDaPagina(multiPage?.currentPageId).estado()
+      if (relogio.tocando || relogio.t !== 0 || relogio.modo === 'gravacao') return null
+      if (!videosProntosEmZero(design.layers)) return null
+
       const canvasWidth = design.canvas.width
       const canvasHeight = design.canvas.height
       const aspectRatio = canvasWidth / canvasHeight
@@ -676,7 +686,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         }
       }
     },
-    [design.canvas.width, design.canvas.height, design.layers],
+    [design.canvas.width, design.canvas.height, design.layers, multiPage?.currentPageId],
   )
 
   /**

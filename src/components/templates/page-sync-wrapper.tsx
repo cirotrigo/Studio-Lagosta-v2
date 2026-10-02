@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { useMultiPage, type PageStatePatch } from '@/contexts/multi-page-context'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, Page } from '@/types/template'
@@ -173,6 +174,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       // eram descartadas na troca — salvar antes de carregar a nova página
       const previousPageId = lastPageIdRef.current
       if (previousPageId) {
+        // A página que sai deixa de tocar: a próxima abre parada em 0
+        relogioDaPagina(previousPageId).zerar()
         const pending = buildPendingPatch()
         if (pending) {
           void savePageState(previousPageId, pending.patch).catch((error) => {
