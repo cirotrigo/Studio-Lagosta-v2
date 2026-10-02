@@ -11603,6 +11603,19 @@ vídeo ou de uma foto e exportar o MP4.
 - ⚠️ **Limites conhecidos**: motion 9:16 em página de feed é cortado (`cover`);
   foto + motion dura só o tempo do motion; `playbackRate` ≠ 1 não é honrado no
   export (o painel só mostra o controle para quem já tem valor antigo).
+- **Motions da marca saem de `scripts/motions/gerar-motion.mjs`** (02/10/2026):
+  um spec por cliente (`wine-vix.json`: kit com fontes, cores, ícones e logo
+  animada + as peças) vira WebM VP9 com alfa pelo `@napi-rs/canvas` — o
+  gerador do motion do TERO, sem Remotion. Só animação de ENTRADA (o editor
+  segura o último quadro, e o gerador confere que ele tem tinta); texto entre
+  [colchetes] sai em destaque. `enviar-ao-drive.ts` põe os arquivos na
+  subpasta "Motions" da pasta de Vídeos (dry-run por padrão; nome limpo, sem
+  o carimbo de `uploadFileToFolder`) e `conferir-no-chrome.mjs` prova a
+  transparência no Chrome. O "Truncating packet" do ffmpeg no fim do pipe é
+  inofensivo.
+- **Motion fora da proporção da página entra SOLTO** (`caixaDoMotion`): a
+  logo animada 1:1 entra na própria proporção, com um terço da largura, no
+  centro, para a pessoa posicionar. Na proporção da página, cobre a página.
 
 **Da 2ª revisão do Codex sobre a implementação (BLOQUEADO, 7 achados, 02/10/2026):**
 

@@ -118,3 +118,6 @@ design-canvas/**/*.html
 .studio-autor
 .juiz-cache-*.json
 .tmp-diretor/
+
+# saída local do gerador de motions (os .webm vão para o Drive)
+scripts/motions/saida/

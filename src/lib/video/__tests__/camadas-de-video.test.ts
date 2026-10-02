@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  caixaDoMotion,
   DESVIO_TOLERADO_DO_MOTION,
   duracaoDoExport,
   ehMotion,
@@ -160,5 +161,31 @@ describe('o motion acompanha o relógio do vídeo principal', () => {
     expect(passo.irPara).toBeCloseTo(3.96)
     // já parado no último quadro: nada a fazer (não fica dando seek a cada quadro)
     expect(passoDoMotion({ tempo: 9, inicio: 0, pausado: false }, motionDe(3.96, true))).toEqual({})
+  })
+})
+
+describe('a caixa em que o motion entra na página', () => {
+  const story = { width: 1080, height: 1920 }
+
+  it('motion na proporção da página cobre a página inteira', () => {
+    expect(caixaDoMotion({ width: 1080, height: 1920 }, story)).toEqual({ size: story, position: { x: 0, y: 0 } })
+    expect(caixaDoMotion({ width: 720, height: 1280 }, story).size).toEqual(story)
+  })
+
+  it('logo animada 1:1 entra solta, quadrada, com um terço da largura e no centro', () => {
+    expect(caixaDoMotion({ width: 1080, height: 1080 }, story)).toEqual({
+      size: { width: 360, height: 360 },
+      position: { x: 360, y: 780 },
+    })
+  })
+
+  it('motion alto e estreito fora da proporção cabe em um terço da altura', () => {
+    const { size } = caixaDoMotion({ width: 200, height: 1000 }, { width: 1080, height: 1080 })
+    expect(size).toEqual({ width: 72, height: 360 })
+  })
+
+  it('sem medida do vídeo, vale a página inteira', () => {
+    expect(caixaDoMotion(null, story).size).toEqual(story)
+    expect(caixaDoMotion({ width: 0, height: 0 }, story).size).toEqual(story)
   })
 })
