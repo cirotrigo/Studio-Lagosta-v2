@@ -312,6 +312,16 @@ export function VideoExportButton() {
       return
     }
 
+    // Linha do tempo: a fila recusa acima de 180 s; story longo demais avisa
+    if ((videoDuration ?? 0) > 180) {
+      toast({ variant: 'destructive', description: 'O vídeo passa de 3 minutos. Encurte a linha do tempo e exporte de novo.' })
+      return
+    }
+    const tetoDoFormato = design.canvas.height > design.canvas.width ? 60 : 90
+    if ((videoDuration ?? 0) > tetoDoFormato) {
+      toast({ description: `O vídeo tem ${Math.round(videoDuration ?? 0)} s — o Instagram corta story em 60 s e reel fica melhor até 90 s.` })
+    }
+
     setIsExporting(true)
     setExportProgress({ phase: 'preparing', progress: 10 })
 

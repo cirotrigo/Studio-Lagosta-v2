@@ -1350,6 +1350,9 @@ toolEstrita(
 
       // 7. Render
       const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
+      const { camadasNoInstante } = await import('../src/lib/video/linha-do-tempo')
+      // A linha do tempo desenha o quadro de 0 (o guard de vídeo/sequência já rodou acima)
+      designData = { ...designData, layers: camadasNoInstante(designData.layers, 0) }
       const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
       const buffer = await renderer.renderDesign(designData, {})
 

@@ -122,6 +122,7 @@ describe('quem decide se a página vira post como imagem', () => {
         'components/templates/continuous/continuous-workspace.tsx',
         'components/templates/modals/generate-creatives-modal.tsx',
         'components/templates/template-editor-shell.tsx',
+        'components/templates/timeline.tsx',
         'components/templates/video-export-button.tsx',
         'lib/creatives/agendar.ts',
         'lib/lotes/agendar-itens.ts',

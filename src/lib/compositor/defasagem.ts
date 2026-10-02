@@ -35,6 +35,7 @@ import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
 import { diffDeGeometria, type DiffDeGeometria } from '@/lib/aprendizado/diff-geometria'
 import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderDaPaginaCobreAMidia } from '@/lib/posts/render-da-pagina'
+import { ehClipe } from '@/lib/video/camadas-de-video'
 
 import { linhasComColchetes } from './destaques'
 import { PAPEIS, type Papel, type SpecDePeca } from './spec'
@@ -329,6 +330,17 @@ function mudancasDeEnquadramento(antes: unknown, depois: unknown): string[] {
 }
 
 /**
+ * Página com linha do tempo (qualquer camada `clipe`) é ajuste manual: a
+ * recomposição reconstrói todas as camadas e apagaria a sequência; re-render
+ * como está é o caminho seguro.
+ */
+function clipesDaLinhaDoTempo(camadasDaPagina: unknown): string[] {
+  const d = lerCamadas(camadasDaPagina)
+  if (!d.legivel) return []
+  return (d.camadas as Layer[]).some((c) => ehClipe(c)) ? ['a página tem clipes na linha do tempo'] : []
+}
+
+/**
  * A página de hoje contra o SNAPSHOT do que foi composto
  * (`Generation.fieldValues.layersSnapshot`).
  */
@@ -353,7 +365,12 @@ export function medirDefasagem(camadasDaPagina: unknown, snapshot: unknown): Def
   }
   const motivos = diff.ilegivel
     ? ['não deu para comparar a geometria da página com a da arte']
-    : [...mexeuNaMao(diff, extraDaCamada), ...mudancasDeTipo(snapshot, camadasDaPagina), ...mudancasDeEnquadramento(snapshot, camadasDaPagina)]
+    : [
+        ...mexeuNaMao(diff, extraDaCamada),
+        ...mudancasDeTipo(snapshot, camadasDaPagina),
+        ...mudancasDeEnquadramento(snapshot, camadasDaPagina),
+        ...clipesDaLinhaDoTempo(camadasDaPagina),
+      ]
 
   // A foto trocada é defasagem como o texto editado (PR 10). Só conta quando a
   // foto existe dos dois lados: camada de imagem acrescentada ou removida já

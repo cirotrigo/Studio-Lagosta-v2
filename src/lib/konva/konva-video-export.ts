@@ -2,6 +2,7 @@ import Konva from 'konva'
 import type { Layer, DesignData } from '@/types/template'
 import type { AudioConfig } from '@/components/audio/audio-selection-modal'
 import { duracaoDoExport, passoDoVideo, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { clipeAtivoEm, linhaDoTempo, type Clipe } from '@/lib/video/linha-do-tempo'
 import { relogioDaPagina, type RelogioDaPagina } from '@/lib/video/relogio-da-pagina'
 
 export interface VideoExportOptions {
@@ -215,7 +216,7 @@ export async function exportVideoWithLayers(
   let baseVideoOriginalMuted = false
   let baseVideoOriginalVolume = 1
   // Todo vídeo visível da página, o principal incluído (quando há)
-  const outrosVideos: Array<{ el: HTMLVideoElement; inicio: number; fim: number }> = []
+  const outrosVideos: Array<{ el: HTMLVideoElement; inicio: number; fim: number; entrada: number }> = []
   // Tudo o que a gravação abre é fechado no `finally`, dê certo ou não: antes,
   // uma falha depois de o gravador começar deixava recorder e tracks ativos.
   const encerrar: Array<() => void> = []
@@ -274,8 +275,34 @@ export async function exportVideoWithLayers(
     const trecho = videoLayer
       ? trechoDoVideo(videoLayer.videoMetadata, duration || videoElement?.duration)
       : null
-    const videoDuration = duracaoDoExport(trecho ? (trecho.duracao ?? 10) : null, audioConfig) ?? 10
-    console.log(`[Video Export] Duração efetiva: ${videoDuration}s (trecho do vídeo: ${trecho?.duracao ?? 'sem vídeo'})`)
+    // Linha do tempo (Fase 3): com clipes a duração é a soma deles (limitada
+    // pela música), lida com a duração REAL de cada <video> do stage
+    const duracoesDoStage = new Map<string, number>()
+    for (const layer of videosDaPagina(design.layers)) {
+      const node = stage.findOne(`#${layer.id}`)
+      const el = node instanceof Konva.Image ? node.image() : null
+      if (el instanceof HTMLVideoElement && Number.isFinite(el.duration)) duracoesDoStage.set(layer.id, el.duration)
+    }
+    const linha = linhaDoTempo(design.layers, audioConfig, duracoesDoStage)
+    const clipes: Clipe[] = linha.clipes
+    const videoDuration =
+      clipes.length > 0
+        ? linha.duracao || 10
+        : (duracaoDoExport(trecho ? (trecho.duracao ?? 10) : null, audioConfig) ?? 10)
+    console.log(`[Video Export] Duração efetiva: ${videoDuration}s (trecho do vídeo: ${trecho?.duracao ?? 'sem vídeo'}; clipes: ${clipes.length})`)
+    const inicioDoClipe = (id: string) => clipes.find((c) => c.id === id)?.inicio ?? 0
+    // Os nós dos clipes são mostrados/escondidos por quadro, direto no Konva
+    // (o React não participa da gravação); o estado original volta no fim
+    const nosDosClipes = clipes
+      .map((c) => ({ id: c.id, node: stage.findOne(`#${c.id}`) }))
+      .filter((c): c is { id: string; node: Konva.Node } => !!c.node)
+    const visiveisAntes = nosDosClipes.map(({ node }) => node.visible())
+    encerrar.push(() => nosDosClipes.forEach(({ node }, i) => node.visible(visiveisAntes[i])))
+    const mostrarClipe = (t: number) => {
+      const ativo = clipeAtivoEm(clipes, t)
+      for (const { id, node } of nosDosClipes) node.visible(id === ativo?.id)
+    }
+    if (clipes.length > 0) mostrarClipe(0)
 
     // Todo vídeo VISÍVEL da página entra na gravação (o stage inteiro é
     // copiado), então todos precisam estar carregados e LARGAR JUNTOS — antes o
@@ -288,7 +315,12 @@ export async function exportVideoWithLayers(
       const el = node instanceof Konva.Image ? node.image() : null
       if (!(el instanceof HTMLVideoElement) || el.readyState < 2) throw naoCarregou(layer.name)
       const { inicio, duracao: duracaoDoTrecho } = trechoDoVideo(layer.videoMetadata, el.duration)
-      outrosVideos.push({ el, inicio, fim: duracaoDoTrecho === null ? el.duration : inicio + duracaoDoTrecho })
+      outrosVideos.push({
+        el,
+        inicio,
+        fim: duracaoDoTrecho === null ? el.duration : inicio + duracaoDoTrecho,
+        entrada: inicioDoClipe(layer.id),
+      })
     }
 
     // A gravação toma o relógio da página: a prévia para, play/pause e seek
@@ -499,11 +531,13 @@ export async function exportVideoWithLayers(
       tempoDaGravacao = (performance.now() - startTime) / 1000
       relogio.avancarGravacao(tempoDaGravacao)
 
-      // 2. Cada vídeo visível acompanha o relógio
+      // 2. Cada vídeo visível acompanha o relógio (clipe: o relógio local dele)
+      if (clipes.length > 0) mostrarClipe(tempoDaGravacao)
       let algumAguardando = false
-      for (const { el, inicio, fim } of outrosVideos) {
+      for (const { el, inicio, fim, entrada } of outrosVideos) {
+        const tLocal = tempoDaGravacao - entrada
         const passo = passoDoVideo(
-          { t: tempoDaGravacao, tocando: true },
+          { t: Math.max(0, tLocal), tocando: tLocal >= 0 },
           {
             tempo: el.currentTime,
             inicio,

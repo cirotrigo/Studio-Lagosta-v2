@@ -11,6 +11,9 @@ import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } fr
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { videosProntosEmZero } from '@/lib/video/videos-montados'
+import { ehClipe } from '@/lib/video/camadas-de-video'
+import { inserirClipe, normalizarClipes } from '@/lib/video/linha-do-tempo'
+import { consumirInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
 import { useQueryClient } from '@tanstack/react-query'
 import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
@@ -435,8 +438,12 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
   const addLayer = React.useCallback(
     (layer: Layer) => {
+      // O "+" da linha do tempo armou a aba: a foto/vídeo entra como clipe
+      const comoClipe = consumirInsercaoDeClipe() && (layer.type === 'image' || layer.type === 'video')
       applyDesign((prev) => {
-        const nextLayers = normalizeLayerOrder([...prev.layers, layer])
+        const nextLayers = comoClipe
+          ? inserirClipe(prev.layers, layer, prev.canvas)
+          : normalizeLayerOrder([...prev.layers, layer])
         return { ...prev, layers: nextLayers }
       })
       setSelectedLayerIds([layer.id])
@@ -458,9 +465,20 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       if (!source) return
       // C9-02/C9-11: a cópia é texto NOVO — sem a identidade autoral da original (e sem o papel, se a página tem
       // contrato). A transformação é pura e testada em `camada-copiada.ts`.
-      addLayer(camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral }))
+      const copia = camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral })
+      if (ehClipe(source)) {
+        // Clipe duplicado fica no MESMO lugar (tela cheia) e entra logo depois do original na sequência
+        applyDesign((prev) => {
+          const ids = normalizarClipes(prev.layers).filter((l) => ehClipe(l)).map((l) => l.id)
+          ids.splice(ids.indexOf(source.id) + 1, 0, copia.id)
+          return { ...prev, layers: normalizarClipes([...prev.layers, { ...copia, position: source.position }], ids) }
+        })
+        setSelectedLayerIds([copia.id])
+        return
+      }
+      addLayer(copia)
     },
-    [addLayer, design.layers, temCopyAutoral],
+    [addLayer, applyDesign, design.layers, temCopyAutoral],
   )
 
   const removeLayer = React.useCallback(

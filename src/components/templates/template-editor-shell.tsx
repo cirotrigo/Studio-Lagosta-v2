@@ -32,6 +32,7 @@ import { MusicPanel } from './sidebar/music-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportButton } from './video-export-button'
 import { BotaoPlayPause } from './botao-play-pause'
+import { Timeline } from './timeline'
 import { paginaEVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { PageModelButton, PageModelMobileSection } from './page-model-control'
 import { TemplateAIChat } from './template-ai-chat'
@@ -969,6 +970,9 @@ function TemplateEditorContent({
               </div>
             ) : null}
           </div>
+
+          {/* Linha do tempo (Fase 3): só em página que é vídeo */}
+          <Timeline onAdicionar={() => setActivePanel('images')} painelAberto={activePanel === 'images' || activePanel === 'videos'} />
 
           {/* Bottom Pages Bar - Polotno Style */}
           <PagesBar isCollapsed={isPagesBarCollapsed} onToggleCollapse={() => setPagesBarCollapsed(!isPagesBarCollapsed)} />

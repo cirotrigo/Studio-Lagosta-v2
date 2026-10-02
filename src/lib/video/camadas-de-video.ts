@@ -10,13 +10,60 @@
  */
 
 type CamadaLike = {
+  id?: string
   type?: string
   visible?: boolean
+  order?: number
   videoMetadata?: { overlay?: boolean; [campo: string]: unknown } | null
+  /** Fase 3: a camada é um CLIPE da linha do tempo (foto ou vídeo em sequência). */
+  clipe?: { duracao?: number } | null
 }
 
 export function ehMotion(camada: CamadaLike | null | undefined): boolean {
   return camada?.type === 'video' && camada.videoMetadata?.overlay === true
+}
+
+/**
+ * CLIPE = foto ou vídeo marcado com `clipe` (Fase 3, linha do tempo): os
+ * clipes tocam em SEQUÊNCIA, um de cada vez, no fundo da página. Camada oculta
+ * é clipe para a ORDEM (continua no bloco do fundo) mas não para a sequência.
+ */
+export function ehClipe(camada: CamadaLike | null | undefined): boolean {
+  return (
+    (camada?.type === 'image' || camada?.type === 'video') &&
+    !!camada.clipe &&
+    typeof camada.clipe === 'object'
+  )
+}
+
+/** Os clipes que TOCAM, na ordem da página (`order`). */
+export function clipesDaPagina<T extends CamadaLike>(camadas: readonly T[] | null | undefined): T[] {
+  return (camadas ?? [])
+    .filter((c) => ehClipe(c) && c.visible !== false)
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+}
+
+/** Dois ou mais clipes: a página é uma sequência (vira vídeo mesmo só de fotos). */
+export function paginaEhSequencia(camadas: readonly CamadaLike[] | null | undefined): boolean {
+  return clipesDaPagina(camadas).length >= 2
+}
+
+/** Teto de clipes na linha do tempo; o 11º em diante é ignorado com aviso. */
+export const MAX_CLIPES = 10
+export const DURACAO_MIN_DO_CLIPE = 0.5
+export const DURACAO_MAX_DO_CLIPE = 60
+export const DURACAO_PADRAO_DA_FOTO = 3
+
+/**
+ * Quanto tempo um clipe fica na tela: vídeo, o trecho (`trechoDoVideo`); foto,
+ * `clipe.duracao` preso a [0,5; 60] s (padrão 3 s). Vídeo cuja duração ainda
+ * não se sabe devolve `null`.
+ */
+export function duracaoDoClipe(camada: CamadaLike, duracaoCarregada?: number | null): number | null {
+  if (camada.type === 'video') return trechoDoVideo(camada.videoMetadata as TrechoLike, duracaoCarregada).duracao
+  const pedida = camada.clipe?.duracao
+  const d = typeof pedida === 'number' && Number.isFinite(pedida) ? pedida : DURACAO_PADRAO_DA_FOTO
+  return Math.min(DURACAO_MAX_DO_CLIPE, Math.max(DURACAO_MIN_DO_CLIPE, d))
 }
 
 /**
@@ -27,8 +74,13 @@ export function videosDaPagina<T extends CamadaLike>(camadas: readonly T[] | nul
   return (camadas ?? []).filter((c) => c?.type === 'video' && c.visible !== false)
 }
 
-/** O vídeo de fundo da página: o primeiro vídeo visível que não é motion. */
+/**
+ * O vídeo de fundo da página: o primeiro vídeo visível que não é motion.
+ * Numa SEQUÊNCIA (2+ clipes) não há vídeo de base: o som original de um clipe
+ * não cobre a peça, então `fonteEfetiva` cai em só-música / sem som, com aviso.
+ */
 export function videoDeBase<T extends CamadaLike>(camadas: readonly T[] | null | undefined): T | null {
+  if (paginaEhSequencia(camadas)) return null
   return videosDaPagina(camadas).find((c) => !ehMotion(c)) ?? null
 }
 
@@ -139,7 +191,7 @@ export function paginaEVideo(
   camadas: readonly CamadaLike[] | null | undefined,
   trilha: TrilhaLike | null | undefined,
 ): boolean {
-  return temVideoVisivel(camadas) || fatiaDaMusica(trilha) !== null
+  return temVideoVisivel(camadas) || paginaEhSequencia(camadas) || fatiaDaMusica(trilha) !== null
 }
 
 type CamadaComTrecho = CamadaLike & { id?: string; videoMetadata?: (TrechoLike & { overlay?: boolean }) | null }
@@ -156,6 +208,16 @@ export function duracaoDaPagina(
   trilha: TrilhaLike | null | undefined,
   duracoesCarregadas?: ReadonlyMap<string, number> | null,
 ): number | null {
+  // Com clipes a página dura a SOMA deles (linha-do-tempo.ts); vídeo ainda sem
+  // duração conta 0 até carregar. Sem nenhum clipe, a conta de sempre.
+  const clipes = clipesDaPagina(camadas).slice(0, MAX_CLIPES)
+  if (clipes.length > 0) {
+    const total = clipes.reduce(
+      (soma, c) => soma + (duracaoDoClipe(c, c.id ? duracoesCarregadas?.get(c.id) : undefined) ?? 0),
+      0,
+    )
+    return duracaoDoExport(total, trilha)
+  }
   const principal = videoPrincipal(camadas)
   const trecho = principal
     ? trechoDoVideo(principal.videoMetadata, principal.id ? duracoesCarregadas?.get(principal.id) : undefined).duracao

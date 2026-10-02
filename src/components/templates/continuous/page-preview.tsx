@@ -9,6 +9,7 @@ import { KonvaLayerFactory } from '../konva-layer-factory'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { ehMotion, videosDaPagina } from '@/lib/video/camadas-de-video'
+import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
 
 interface PagePreviewProps {
   page: Page
@@ -84,7 +85,8 @@ function PagePreviewStage({ page, width, height, zoom }: { page: Page; width: nu
 
   const layers = React.useMemo(() => {
     const source = Array.isArray(page.layers) ? (page.layers as Layer[]) : []
-    return [...source]
+    // A prévia é o quadro de 0 da linha do tempo: só o primeiro clipe
+    return camadasNoInstante([...source], 0)
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .filter((layer) => layer.visible !== false)
   }, [page.layers])

@@ -12,7 +12,9 @@ import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { cropForResizedBox, resolveImageSourceRect } from '@/lib/image-fit'
 import { escalaDoBlur, folgaDoBlur } from '@/lib/creatives/halo/fundo-de-texto'
-import { ehMotion, passoDoVideo } from '@/lib/video/camadas-de-video'
+import { ehClipe, ehMotion, passoDoVideo } from '@/lib/video/camadas-de-video'
+import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { useClipeAtivo } from '@/lib/video/clipe-ativo'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { registrarVideoMontado } from '@/lib/video/videos-montados'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
@@ -245,6 +247,8 @@ interface CommonProps {
   y: number
   rotation: number
   opacity: number
+  /** Clipe da linha do tempo fora do seu intervalo: montado, mas invisível (e surdo) */
+  visible: boolean
   draggable: boolean
   listening: boolean
   onClick: (event: KonvaEventObject<MouseEvent | TouchEvent>) => void
@@ -265,7 +269,22 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const isLocked = !!layer.locked
   const opacityBase = isVisible ? layer.style?.opacity ?? 1 : 0.25
   const opacity = dimmed ? opacityBase * 0.12 : opacityBase
-  const interactionsDisabled = disableInteractions || !isVisible
+
+  // Linha do tempo: a camada que é clipe só aparece no intervalo dela, segundo
+  // o relógio — quem publica o clipe ativo é o motor da página (prévia) e o
+  // export (gravação) mexe nos nós direto. Só vale para clipe DESTA página
+  // (a prévia de outra página desenha o quadro de 0 por conta própria).
+  const editor = useTemplateEditor()
+  const chave = useMultiPageOpcional()?.currentPageId
+  const publicado = useClipeAtivo(chave)
+  const linha = React.useMemo(
+    () => (ehClipe(layer) ? linhaDoTempo(editor?.design?.layers ?? [], null) : null),
+    [layer, editor?.design?.layers],
+  )
+  const clipeDaPagina = linha?.clipes.find((c) => c.id === layer.id) ?? null
+  const clipeAtivoId = publicado === undefined ? linha?.clipes[0]?.id : publicado
+  const clipeOculto = !!clipeDaPagina && clipeAtivoId !== layer.id
+  const interactionsDisabled = disableInteractions || !isVisible || clipeOculto
 
   const handleSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -419,6 +438,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     y: layer.position?.y ?? 0,
     rotation: layer.rotation ?? 0,
     opacity,
+    visible: !clipeOculto,
     draggable: !isLocked && isVisible && !interactionsDisabled,
     listening: isVisible && !interactionsDisabled,
     onClick: handleSelect,
@@ -463,7 +483,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
 
     case 'video':
-      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} />
+      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} />
 
     case 'gradient':
     case 'gradient2':
@@ -503,9 +523,11 @@ type VideoNodeProps = {
   borderWidth: number
   borderRadius: number
   onChange: (updates: Partial<Layer>) => void
+  /** Instante da página em que este clipe entra (0 fora da linha do tempo) */
+  inicioDoClipe: number
 }
 
-function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange }: VideoNodeProps) {
+function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, inicioDoClipe }: VideoNodeProps) {
   const videoUrl = layer.fileUrl || ''
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   // Nenhum vídeo tem relógio próprio: TODOS se reconciliam, a cada quadro, com
@@ -523,6 +545,10 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // estado atual sem recriar o elemento
   const onChangeRef = React.useRef(onChange)
   const videoMetadataRef = React.useRef(layer.videoMetadata)
+  // O tique lê o início do clipe por ref: o relógio da página vira relógio
+  // LOCAL do clipe (t - inicio), sem recriar a animação quando a sequência muda
+  const inicioDoClipeRef = React.useRef(inicioDoClipe)
+  inicioDoClipeRef.current = inicioDoClipe
   const [videoMetaVersion, setVideoMetaVersion] = React.useState(0)
 
   React.useEffect(() => {
@@ -651,8 +677,10 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       if (!Number.isFinite(video.duration)) return
       const estado = relogio.estado()
       if (estado.modo === 'gravacao') return
+      // Antes do intervalo do clipe: parado no início do trecho
+      const tLocal = relogio.agora() - inicioDoClipeRef.current
       const passo = passoDoVideo(
-        { t: relogio.agora(), tocando: estado.tocando },
+        { t: Math.max(0, tLocal), tocando: estado.tocando && tLocal >= 0 },
         {
           tempo: video.currentTime,
           inicio: trimStartRef.current,

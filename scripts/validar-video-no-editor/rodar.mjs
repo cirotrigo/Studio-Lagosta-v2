@@ -51,6 +51,7 @@ ffmpeg(
   path.join(TMP, 'motion.webm'),
 )
 ffmpeg('-f', 'lavfi', '-i', 'color=c=0x1040a0:s=1080x1920:d=1', '-frames:v', '1', path.join(TMP, 'foto.png'))
+ffmpeg('-f', 'lavfi', '-i', 'color=c=0xa01010:s=1080x1920:d=1', '-frames:v', '1', path.join(TMP, 'foto2.png'))
 
 // ── Bundle da página ─────────────────────────────────────────────────────────
 await esbuild.build({
@@ -125,6 +126,7 @@ const video = (id, arquivo, meta = {}, extra = {}) =>
 const base = (meta, extra) => video('base', 'base.mp4', meta, extra)
 const motion = (meta, extra) => video('motion', 'motion.webm', { loop: false, overlay: true, ...meta }, extra)
 const foto = camada('foto', 'image', 'foto.png')
+const foto2 = camada('foto2', 'image', 'foto2.png')
 
 // ── Página ───────────────────────────────────────────────────────────────────
 const navegador = await chromium.launch({
@@ -199,6 +201,7 @@ function quadrosDo(base64, nome) {
       base: xBarra === null ? null : xBarra / 40, // 160 px/s em 1080 → 40 px/s aqui
       motion: yCaixa === null ? null : (yCaixa - 150) / 75, // 600 + 300·t em 1920 → 150 + 75·t
       fotoAoFundo: fb > 120 && fr < 60,
+      foto2AoFundo: fr > 120 && fb < 60 && fg < 60,
     })
   }
   return quadros
@@ -461,6 +464,47 @@ await prontos(['base', 'motion'])
   })
   await pagina.evaluate(() => { delete document.visibilityState })
   conferir('o export aborta com mensagem', !!recusa && recusa.includes('oculta'), recusa ?? 'exportou')
+}
+
+console.log('\n=== M. linha do tempo: foto 2 s + vídeo com trim (2→4 s) + foto 1 s ===')
+// Os clipes ficam no FUNDO, na ordem da página; o vídeo não é mais "de base"
+// (sequência não tem som original) e o export grava clipe a clipe.
+await montar([
+  { ...foto, order: 0, clipe: { duracao: 2 } },
+  base({ loop: false, trimStart: 2, trimEnd: 4 }, { order: 1, clipe: {} }),
+  { ...foto2, order: 2, clipe: { duracao: 1 } },
+])
+conferir('o vídeo da sequência carregou', await prontos(['base']))
+{
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  conferir('a duração é a soma dos clipes (2 + 2 + 1)', Math.abs(r.duracao - 5) < 0.05, `duração ${r.duracao}`)
+  const q = quadrosDo(r.base64, 'linha-do-tempo.webm')
+  const em = (t) => q.find((x) => Math.abs(x.t - t) < 0.001)
+  const noClipe = (t0, t1) => q.filter((x) => x.t >= t0 && x.t < t1)
+  conferir('0–2 s: a 1ª foto (azul) está na tela', noClipe(0.2, 1.8).length > 5 && noClipe(0.2, 1.8).every((x) => x.fotoAoFundo && !x.foto2AoFundo))
+  const trecho = noClipe(2.3, 3.8)
+  const forrado = trecho.filter((x) => x.base !== null)
+  const pior = forrado.length ? Math.max(...forrado.map((x) => Math.abs(x.base - x.t))) : 99
+  conferir('2–4 s: o vídeo aparece, a partir do início do trecho (barra em t do vídeo = t da página)', trecho.length > 5 && forrado.length >= trecho.length - 2 && pior < 0.3, `${forrado.length}/${trecho.length} quadros com a barra, pior desvio ${pior.toFixed(2)} s`)
+  conferir('4–5 s: a 2ª foto (vermelha) está na tela', noClipe(4.2, 4.9).length > 2 && noClipe(4.2, 4.9).every((x) => x.foto2AoFundo && !x.fotoAoFundo))
+  conferir('nenhum quadro mostra duas fotos', q.every((x) => !(x.fotoAoFundo && x.foto2AoFundo)))
+  void em
+}
+
+console.log('\n=== N. reordenar pela linha do tempo (normalizarClipes) ===')
+{
+  // A mesma página; a ordem passa a ser foto2 (1 s) → foto (2 s) → vídeo (2 s)
+  const ordem = await pagina.evaluate(() => window.validacao.normalizar(['foto2', 'foto', 'base']))
+  conferir('os clipes vão para o fundo, contíguos e renumerados', JSON.stringify(ordem) === JSON.stringify([['foto2', 0], ['foto', 1], ['base', 2]]), JSON.stringify(ordem))
+  await dormir(300)
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  const q = quadrosDo(r.base64, 'linha-do-tempo-reordenada.webm')
+  const noClipe = (t0, t1) => q.filter((x) => x.t >= t0 && x.t < t1)
+  conferir('a duração continua 5 s', Math.abs(r.duracao - 5) < 0.05, `duração ${r.duracao}`)
+  conferir('0–1 s: a foto vermelha vem primeiro', noClipe(0.2, 0.9).length > 2 && noClipe(0.2, 0.9).every((x) => x.foto2AoFundo))
+  conferir('1–3 s: depois a azul', noClipe(1.2, 2.8).length > 5 && noClipe(1.2, 2.8).every((x) => x.fotoAoFundo))
+  const trecho = noClipe(3.3, 4.8)
+  conferir('3–5 s: o vídeo fecha a sequência', trecho.length > 5 && trecho.filter((x) => x.base !== null).length >= trecho.length - 2)
 }
 
 conferir('nenhum erro de JavaScript na página', errosDaPagina.length === 0, errosDaPagina.slice(0, 3).join(' | '))

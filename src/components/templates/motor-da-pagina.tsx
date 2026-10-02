@@ -6,6 +6,8 @@ import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { useMusica } from '@/hooks/use-music-library'
 import { useMusicStemStatus } from '@/hooks/use-music-stem'
 import { duracaoDaPagina } from '@/lib/video/camadas-de-video'
+import { clipeAtivoEm, linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { publicarClipeAtivo } from '@/lib/video/clipe-ativo'
 import { planoDeSom, volumeEm, type PlanoDeSom } from '@/lib/video/plano-de-som'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { duracoesDosVideosMontados } from '@/lib/video/videos-montados'
@@ -25,7 +27,8 @@ import { duracoesDosVideosMontados } from '@/lib/video/videos-montados'
  */
 export function MotorDaPagina() {
   const { design } = useTemplateEditor()
-  const relogio = relogioDaPagina(useMultiPageOpcional()?.currentPageId)
+  const chave = useMultiPageOpcional()?.currentPageId
+  const relogio = relogioDaPagina(chave)
   const trilha = design.audio
   const musicId = trilha?.source === 'library' || trilha?.source === 'mix' ? (trilha.musicId ?? 0) : 0
   const { data: faixa } = useMusica(musicId)
@@ -62,9 +65,13 @@ export function MotorDaPagina() {
       const d = designRef.current
       const t = relogio.agora()
 
+      // A linha do tempo: qual clipe está na tela (publica só quando muda)
+      const linha = linhaDoTempo(d.layers, d.audio, duracoesDosVideosMontados())
+      publicarClipeAtivo(chave, clipeAtivoEm(linha.clipes, t)?.id ?? null)
+
       // A volta
       if (estado.tocando) {
-        const duracao = duracaoDaPagina(d.layers, d.audio, duracoesDosVideosMontados())
+        const duracao = linha.duracao
         if (duracao !== null && t >= duracao) {
           relogio.ir(0)
           return
@@ -102,7 +109,7 @@ export function MotorDaPagina() {
       audio.pause()
       audio.src = ''
     }
-  }, [relogio])
+  }, [relogio, chave])
 
   return null
 }

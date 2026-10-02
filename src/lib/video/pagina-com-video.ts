@@ -12,7 +12,7 @@
  */
 
 import { lerCamadas } from '@/lib/posts/page-layers'
-import { fatiaDaMusica, videosDaPagina } from './camadas-de-video'
+import { fatiaDaMusica, paginaEhSequencia, videosDaPagina } from './camadas-de-video'
 
 export type VideoNaPagina = 'tem-video' | 'sem-video' | 'ilegivel'
 
@@ -31,8 +31,15 @@ export const MENSAGEM_PAGINA_COM_VIDEO =
 export function videoNaPagina(layersCruas: unknown): VideoNaPagina {
   const { camadas, legivel } = lerCamadas(layersCruas)
   if (!legivel) return 'ilegivel'
-  return videosDaPagina(camadas as Array<{ type?: string; visible?: boolean }>).length > 0 ? 'tem-video' : 'sem-video'
+  const lista = camadas as Array<{ type?: string; visible?: boolean; order?: number; clipe?: { duracao?: number } | null }>
+  // Sequência de 2+ clipes (mesmo só de fotos) é vídeo: o render pararia no
+  // primeiro clipe e publicaria uma foto no lugar da sequência.
+  return videosDaPagina(lista).length > 0 || paginaEhSequencia(lista) ? 'tem-video' : 'sem-video'
 }
+
+/** Sequência de fotos sem vídeo nenhum: a mensagem fala de linha do tempo, não de vídeo. */
+export const MENSAGEM_PAGINA_COM_SEQUENCIA =
+  'Esta página tem uma sequência de clipes na linha do tempo: ela vai ao ar como vídeo. Exporte o vídeo (botão "Exportar Vídeo" no editor) e agende o MP4 pela aba Criativos.'
 
 /** Página com música e sem vídeo: ela é um vídeo, e a saída é exportar ou tirar a música. */
 export const MENSAGEM_PAGINA_COM_MUSICA =
@@ -63,7 +70,9 @@ function lerTrilha(audioCru: unknown): Record<string, unknown> | null {
  */
 export function recusaComoImagem(layersCruas: unknown, audioCru: unknown): RecusaComoImagem | null {
   if (videoNaPagina(layersCruas) === 'tem-video') {
-    return { codigo: 'PAGINA_COM_VIDEO', mensagem: MENSAGEM_PAGINA_COM_VIDEO }
+    const camadas = lerCamadas(layersCruas).camadas as Array<{ type?: string; visible?: boolean }>
+    const mensagem = videosDaPagina(camadas).length > 0 ? MENSAGEM_PAGINA_COM_VIDEO : MENSAGEM_PAGINA_COM_SEQUENCIA
+    return { codigo: 'PAGINA_COM_VIDEO', mensagem }
   }
   if (fatiaDaMusica(lerTrilha(audioCru)) !== null) {
     return { codigo: 'PAGINA_COM_MUSICA', mensagem: MENSAGEM_PAGINA_COM_MUSICA }

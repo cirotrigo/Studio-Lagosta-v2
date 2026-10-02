@@ -10,6 +10,7 @@ import { KonvaLayerFactory } from '../../src/components/templates/konva-layer-fa
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { exportVideoWithLayers } from '../../src/lib/konva/konva-video-export'
 import { videoPrincipal } from '../../src/lib/video/camadas-de-video'
+import { normalizarClipes } from '../../src/lib/video/linha-do-tempo'
 import { relogioDaPagina } from '../../src/lib/video/relogio-da-pagina'
 import { MotorDaPagina } from '../../src/components/templates/motor-da-pagina'
 import { ContextoDaValidacao } from './stub-contexto'
@@ -88,6 +89,29 @@ function Pagina() {
           { fps: 30, quality: 0.8, ...extra },
         )
         return { duracao, tamanho: webm.size }
+      },
+      // Linha do tempo (Fase 3): sequência de clipes, sem vídeo principal — a
+      // duração é a soma dos clipes e o export mostra um clipe por vez
+      exportarLinha: async () => {
+        const d = { canvas: { width: W, height: H, backgroundColor: '#000000' }, layers: layersRef.current }
+        if (!stageRef.current) throw new Error('sem stage')
+        const { webm, duracao } = await exportVideoWithLayers(
+          stageRef.current,
+          null,
+          d as unknown as DesignData,
+          { setSelectedLayerIds: () => {}, selectedLayerIdsRef: { current: [] }, zoom: 1, setZoomState: () => {} },
+          { fps: 30, quality: 0.8 },
+        )
+        const bytes = new Uint8Array(await webm.arrayBuffer())
+        let binario = ''
+        for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        return { duracao, base64: btoa(binario) }
+      },
+      // Reordena os clipes como a linha do tempo faz (dnd-kit → normalizarClipes)
+      normalizar: (ids: string[]) => {
+        const novas = normalizarClipes(layersRef.current, ids) as Layer[]
+        setLayers(novas)
+        return novas.filter((l) => (l as { clipe?: unknown }).clipe).map((l) => [l.id, l.order])
       },
       // Página SEM vídeo (foto + música): o stage parado é gravado pela fatia da música
       exportarSemVideo: async (fatia: number) => {
