@@ -2,8 +2,9 @@
  * Envia os motions (.webm) de uma pasta local para a subpasta "Motions" da
  * pasta de Vídeos do cliente no Drive — é de lá que a aba Vídeos do editor lê.
  *
- * uso: npx tsx --env-file=.env scripts/motions/enviar-ao-drive.ts <projectId> <pasta> [--confirmar]
- * Sem --confirmar só lista o que faria. Arquivo com o mesmo nome já na pasta é pulado.
+ * uso: npx tsx --env-file=.env scripts/motions/enviar-ao-drive.ts <projectId> <pasta> [--confirmar] [--substituir]
+ * Sem --confirmar só lista o que faria. Arquivo com o mesmo nome já na pasta é pulado —
+ * com --substituir, o antigo vai para a lixeira do Drive e o novo sobe no lugar.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -13,6 +14,7 @@ import { googleDriveService } from '../../src/server/google-drive-service'
 
 const [projectId, pasta] = process.argv.slice(2)
 const CONFIRMAR = process.argv.includes('--confirmar')
+const SUBSTITUIR = process.argv.includes('--substituir')
 
 async function main() {
   if (!projectId || !pasta) throw new Error('uso: enviar-ao-drive.ts <projectId> <pasta> [--confirmar]')
@@ -28,12 +30,12 @@ async function main() {
   if (!motionsId && CONFIRMAR) motionsId = await googleDriveService.createFolder('Motions', projeto.googleDriveVideosFolderId)
   console.log(motionsId ? `subpasta Motions: ${motionsId}` : 'subpasta Motions: seria criada')
 
-  const jaLa = new Set<string>()
+  const jaLa = new Map<string, string>() // nome → id
   let pageToken: string | undefined
   if (motionsId) {
     do {
       const r = await googleDriveService.listFiles({ folderId: motionsId, mode: 'videos', pageToken })
-      r.items.forEach((i) => jaLa.add(i.name))
+      r.items.forEach((i) => jaLa.set(i.name, i.id))
       pageToken = r.nextPageToken
     } while (pageToken)
   }
@@ -41,15 +43,18 @@ async function main() {
   // `uploadFileToFolder` renomeia com carimbo e sufixo; aqui o nome é o que a equipe lê na aba Vídeos.
   const drive = (googleDriveService as unknown as { drive: import('googleapis').drive_v3.Drive }).drive
   for (const nome of fs.readdirSync(pasta).filter((f) => f.endsWith('.webm')).sort()) {
-    if (jaLa.has(nome)) { console.log(`já está lá  ${nome}`); continue }
-    if (!CONFIRMAR) { console.log(`enviaria    ${nome}`); continue }
+    const antigo = jaLa.get(nome)
+    if (antigo && !SUBSTITUIR) { console.log(`já está lá  ${nome}`); continue }
+    if (!CONFIRMAR) { console.log(`${antigo ? 'substituiria' : 'enviaria    '} ${nome}`); continue }
+    // lixeira, não exclusão: dá para recuperar pelo Drive
+    if (antigo) await drive.files.update({ fileId: antigo, requestBody: { trashed: true }, supportsAllDrives: true })
     const r = await drive.files.create({
       requestBody: { name: nome, parents: [motionsId!], mimeType: 'video/webm' },
       media: { mimeType: 'video/webm', body: Readable.from(fs.readFileSync(path.join(pasta, nome))) },
       fields: 'id',
       supportsAllDrives: true,
     })
-    console.log(`enviado     ${nome}  (${r.data.id})`)
+    console.log(`${antigo ? 'substituído ' : 'enviado     '}${nome}  (${r.data.id})`)
   }
   await db.$disconnect()
 }

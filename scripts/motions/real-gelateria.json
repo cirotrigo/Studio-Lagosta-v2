@@ -1,0 +1,321 @@
+{
+  "saida": "saida/real-gelateria",
+  "kit": {
+    "slug": "real-gelateria",
+    "margem": 80,
+    "topo": 200,
+    "rodape": 1690,
+    "duracao": 8,
+    "sombra": "rgba(14,24,21,0.92)",
+    "cores": {
+      "crema": "#F6F0E4",
+      "menta": "#D7E2D2",
+      "dourado": "#D9B98A",
+      "destaque": "#D9B98A",
+      "spritz": "#EA5328"
+    },
+    "fontes": {
+      "RgTitulo": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/fonts/1759890548061-Branley_GC.otf",
+      "RgBold": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/fonts/1759890566196-StageGrotesk-Bold.otf",
+      "RgRegular": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/fonts/1759890576745-StageGrotesk-Regular.otf",
+      "RgMedium": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/fonts/1759890574523-StageGrotesk-Medium.otf"
+    },
+    "icones": {
+      "praia": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/elements/1789155232900-icone-praia-circulo-menta.png",
+      "shopping": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/elements/1789155229639-icone-sacola-circulo-menta.png",
+      "relogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/elements/1789077867661-icone-relogio.png"
+    },
+    "logo": {
+      "imagem": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/1/logos/1759887429010-Ativo_3real.png",
+      "tamanho": 150,
+      "canto": "superior-direito",
+      "topo": 200
+    },
+    "filete": {
+      "largura": 90,
+      "cor": "dourado",
+      "altura": 2,
+      "ponto": false
+    },
+    "estilos": {
+      "pre": {
+        "fonte": "RgMedium",
+        "tam": 28,
+        "ls": 3,
+        "caixaAlta": true,
+        "cor": "menta"
+      },
+      "titulo": {
+        "fonte": "RgTitulo",
+        "tam": 96,
+        "entrelinha": 0.95,
+        "cor": "crema"
+      },
+      "apoio": {
+        "fonte": "RgRegular",
+        "tam": 40,
+        "entrelinha": 1.25,
+        "cor": "crema",
+        "fonteForte": "RgBold",
+        "corForte": "spritz"
+      },
+      "cta": {
+        "fonte": "RgMedium",
+        "tam": 36,
+        "cor": "crema"
+      },
+      "servico": {
+        "fonte": "RgRegular",
+        "tam": 36,
+        "entrelinha": 1.75,
+        "cor": "crema",
+        "fonteForte": "RgMedium",
+        "corForte": "crema"
+      }
+    },
+    "gradiente": {
+      "cor": "#283D36",
+      "topo": {
+        "altura": 980,
+        "forca": 0.82
+      },
+      "rodape": {
+        "altura": 640,
+        "forca": 0.82
+      }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape-ter-qua-qui-dom",
+      "logo": false,
+      "servico": [
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - [13h às 22h]"
+        },
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-sex-sab",
+      "logo": false,
+      "servico": [
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - [13h à meia-noite]"
+        },
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-rodape-segunda",
+      "logo": false,
+      "servico": [
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        },
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - Fechado"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-sua-pausa",
+      "titulo": [
+        {
+          "texto": "Sua Pausa"
+        },
+        {
+          "texto": "com Sabores Real",
+          "cor": "menta"
+        }
+      ],
+      "servico": [
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - [13h às 22h]"
+        },
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-sabado-doce",
+      "titulo": [
+        {
+          "texto": "Sábado Doce"
+        },
+        {
+          "texto": "com Sabores Real",
+          "cor": "menta"
+        }
+      ],
+      "servico": [
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - [13h à meia-noite]"
+        },
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-domingo-doce",
+      "titulo": [
+        {
+          "texto": "Domingo Doce"
+        },
+        {
+          "texto": "com Il Vero Gelato",
+          "cor": "menta"
+        }
+      ],
+      "servico": [
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - [13h às 22h]"
+        },
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-segunda-sua-semana",
+      "titulo": [
+        {
+          "texto": "Sua Semana"
+        },
+        {
+          "texto": "Começa Aqui",
+          "cor": "menta"
+        }
+      ],
+      "servico": [
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        },
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - Fechado"
+        }
+      ]
+    },
+    {
+      "id": "quarta-do-crepe-1",
+      "pre": "Toda quarta-feira",
+      "titulo": [
+        {
+          "texto": "Quarta"
+        },
+        {
+          "texto": "do Crepe",
+          "cor": "menta"
+        }
+      ],
+      "apoio": [
+        "Na compra do primeiro crepe,",
+        "o segundo sai com [50% OFF]."
+      ],
+      "servico": [
+        {
+          "texto": "O desconto é válido para o crepe de menor valor."
+        }
+      ]
+    },
+    {
+      "id": "quarta-do-crepe-2",
+      "titulo": [
+        {
+          "texto": "Quarta"
+        },
+        {
+          "texto": "do Crepe",
+          "cor": "menta"
+        }
+      ],
+      "apoio": [
+        "Venha aproveitar sua pausa!"
+      ],
+      "servico": [
+        {
+          "icone": "praia",
+          "texto": "Praia do Canto - [13h às 22h]"
+        },
+        {
+          "icone": "shopping",
+          "texto": "Shopping Vitória - [11h às 22h]"
+        }
+      ]
+    },
+    {
+      "id": "frase-desacelere-e-desfrute",
+      "pre": "Seu momento",
+      "titulo": [
+        {
+          "texto": "Desacelere"
+        },
+        {
+          "texto": "e Desfrute",
+          "cor": "menta"
+        }
+      ]
+    },
+    {
+      "id": "frase-viva-o-extraordinario",
+      "pre": "Il vero gelato",
+      "titulo": [
+        {
+          "texto": "Viva o"
+        },
+        {
+          "texto": "Extraordinário",
+          "cor": "menta"
+        }
+      ]
+    },
+    {
+      "id": "frase-il-vero-gelato-onde-voce-estiver",
+      "titulo": [
+        {
+          "texto": "Il Vero Gelato"
+        },
+        {
+          "texto": "Onde Você Estiver",
+          "cor": "menta"
+        }
+      ],
+      "apoio": [
+        "Pote tricolor para levar"
+      ]
+    },
+    {
+      "id": "frase-pausa-para-um-cafe-especial",
+      "titulo": [
+        {
+          "texto": "Pausa para um"
+        },
+        {
+          "texto": "Café Especial",
+          "cor": "menta"
+        }
+      ],
+      "cta": "Desacelere e desfrute"
+    }
+  ]
+}
