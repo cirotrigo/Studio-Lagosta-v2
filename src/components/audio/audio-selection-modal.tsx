@@ -44,8 +44,8 @@ interface AudioSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   videoDuration: number;
-  /** Sem vídeo de base (foto + música, motion sobre foto) não há "som do vídeo" a oferecer. */
-  temVideoDeBase?: boolean;
+  /** Sem vídeo com som (foto + música, motion sobre foto, sequência sem vídeo) não há "som do vídeo" a oferecer. */
+  temSomOriginal?: boolean;
   currentConfig?: AudioConfig;
   onConfirm: (config: AudioConfig) => void;
 }
@@ -116,11 +116,11 @@ function AudioSelectionModalAberto({
   open,
   onOpenChange,
   videoDuration,
-  temVideoDeBase = true,
+  temSomOriginal = true,
   currentConfig,
   onConfirm,
 }: AudioSelectionModalProps) {
-  const opcoesDeFonte = temVideoDeBase
+  const opcoesDeFonte = temSomOriginal
     ? AUDIO_SOURCE_OPTIONS
     : AUDIO_SOURCE_OPTIONS.filter((o) => o.id !== 'original' && o.id !== 'mix');
   const [audioSource, setAudioSource] = useState<AudioConfig['source']>(() => {

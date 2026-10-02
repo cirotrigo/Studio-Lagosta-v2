@@ -76,8 +76,9 @@ export function videosDaPagina<T extends CamadaLike>(camadas: readonly T[] | nul
 
 /**
  * O vídeo de fundo da página: o primeiro vídeo visível que não é motion.
- * Numa SEQUÊNCIA (2+ clipes) não há vídeo de base: o som original de um clipe
- * não cobre a peça, então `fonteEfetiva` cai em só-música / sem som, com aviso.
+ * Numa SEQUÊNCIA (2+ clipes) não há vídeo de base: o som original vem de CADA
+ * clipe, na posição dele (`trechosOriginais`, plano-de-som.ts) — a Fase 4
+ * trocou o "só-música com aviso" de antes pelo som original dos clipes.
  */
 export function videoDeBase<T extends CamadaLike>(camadas: readonly T[] | null | undefined): T | null {
   if (paginaEhSequencia(camadas)) return null

@@ -24,6 +24,12 @@ export type AudioMixOptions = {
   originalTrimStart?: number
   /** Volume do áudio original 0–1 (mix; original puro fica 1) */
   originalVolume?: number
+  /**
+   * Fase 4: o som original de CADA clipe de vídeo da sequência, na posição
+   * dele na linha do tempo. Um só em `inicio` 0 vale como `originalPath` +
+   * `originalTrimStart` (o comando de sempre).
+   */
+  originais?: Array<{ path: string; trimStart: number; inicio: number; duracao: number }>
   /** Música — obrigatório em library/mix */
   musicPath?: string
   /** Início do trecho da música, em segundos */
@@ -61,13 +67,19 @@ export type ConversionOptions = {
  * Todas as cadeias terminam em [aout] com exatamente `duration` segundos
  * (atrim + apad), para o -t do output cortar vídeo e áudio juntos.
  */
-function buildAudioMixArgs(
-  mix: AudioMixOptions,
+export function buildAudioMixArgs(
+  mixPedido: AudioMixOptions,
   duration: number | undefined,
 ): { inputArgs: string[]; filterArgs: string[]; mapArgs: string[] } {
   const inputArgs: string[] = []
   const chains: string[] = []
   let inputIndex = 1 // 0 é o WebM
+
+  // Um clipe só, em 0, é o comando de sempre: paridade com o legado por construção
+  const mix: AudioMixOptions =
+    mixPedido.originais?.length === 1 && mixPedido.originais[0].inicio === 0
+      ? { ...mixPedido, originais: undefined, originalPath: mixPedido.originais[0].path, originalTrimStart: mixPedido.originais[0].trimStart }
+      : mixPedido
 
   const dur = duration && duration > 0 ? duration : undefined
   const trimExpr = (start: number) =>
@@ -84,7 +96,25 @@ function buildAudioMixArgs(
   const fadeExpr = fades.length ? `,${fades.join(',')}` : ''
 
   let originalLabel: string | null = null
-  if ((mix.mode === 'original' || mix.mode === 'mix') && mix.originalPath) {
+  if ((mix.mode === 'original' || mix.mode === 'mix') && mix.originais?.length) {
+    // Sequência: cada clipe cortado no próprio trecho, em estéreo (adelay
+    // atrasa por canal; clipe mono ganharia um canal sem atraso), deslocado
+    // para onde entra na página, e os trechos somados — eles não se sobrepõem.
+    const vol = mix.originalVolume ?? 1
+    const rotulos: string[] = []
+    for (const o of mix.originais) {
+      inputArgs.push('-i', o.path)
+      const ms = Math.round(o.inicio * 1000)
+      chains.push(
+        `[${inputIndex}:a]atrim=start=${o.trimStart.toFixed(3)}:duration=${o.duracao.toFixed(3)},asetpts=PTS-STARTPTS,` +
+          `aformat=sample_rates=48000:channel_layouts=stereo,adelay=${ms}|${ms},volume=${vol.toFixed(3)}[ao${inputIndex}]`,
+      )
+      rotulos.push(`[ao${inputIndex}]`)
+      inputIndex++
+    }
+    chains.push(`${rotulos.join('')}amix=inputs=${rotulos.length}:duration=longest:normalize=0[aorig]`)
+    originalLabel = '[aorig]'
+  } else if ((mix.mode === 'original' || mix.mode === 'mix') && mix.originalPath) {
     inputArgs.push('-i', mix.originalPath)
     const vol = mix.originalVolume ?? 1
     chains.push(
@@ -316,6 +346,21 @@ function runFfmpegCommand(
       reject(error instanceof Error ? error : new Error(String(error)))
     }
   })
+}
+
+/**
+ * O arquivo tem faixa de áudio? É a sondagem ANTES de montar o mix: um clipe
+ * mudo numa sequência não pode derrubar o som dos outros. Só o ffmpeg (sem
+ * ffprobe no bundle): `-map 0:a:0` não casa com nada em arquivo sem áudio e
+ * o processo sai com erro — é essa a resposta.
+ */
+export async function temFaixaDeAudio(path: string): Promise<boolean> {
+  try {
+    await runFfmpegCommand(['-v', 'error', '-i', path, '-map', '0:a:0', '-t', '0.01', '-f', 'null', '-'])
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function convertWebMToMP4ServerSide(

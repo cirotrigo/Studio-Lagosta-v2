@@ -9,7 +9,8 @@
  * faz (a voz é aditiva e nunca derruba a música).
  */
 
-import { fatiaDaMusica } from './camadas-de-video'
+import { ehMotion, fatiaDaMusica, trechoDoVideo, videoDeBase } from './camadas-de-video'
+import { linhaDoTempo } from './linha-do-tempo'
 
 type TrilhaLike = {
   source?: string
@@ -65,6 +66,75 @@ export function planoDeSom(
     fadeIn: trilha.fadeIn ? Math.max(0, trilha.fadeInDuration ?? 0) : 0,
     fadeOut: trilha.fadeOut ? Math.max(0, trilha.fadeOutDuration ?? 0) : 0,
   }
+}
+
+type CamadaComVideo = {
+  id: string
+  type?: string
+  visible?: boolean
+  order?: number
+  fileUrl?: string
+  videoMetadata?: { trimStart?: number; trimEnd?: number; duration?: number; overlay?: boolean; [k: string]: unknown } | null
+  clipe?: { duracao?: number } | null
+  [k: string]: unknown
+}
+
+/** Um trecho de vídeo da página, no relógio DELA: de onde vem o som original. */
+export type TrechoOriginal = {
+  id: string
+  fileUrl: string
+  /** Início do trecho dentro do arquivo */
+  trimStart: number
+  /** Instante da página em que entra */
+  inicio: number
+  /** Quanto toca (0 = ainda não se sabe; quem consome ignora) */
+  duracao: number
+}
+
+/**
+ * Os trechos de vídeo que PODEM carregar som original (Fase 4): numa
+ * sequência, cada clipe de vídeo na posição dele; na página legada, o vídeo de
+ * base em 0 — o comando de hoje. Motion nunca entra (não tem som). Se ter
+ * faixa de áudio de verdade só o servidor sabe (`temFaixaDeAudio`).
+ */
+export function trechosDeVideo(
+  layers: readonly CamadaComVideo[] | null | undefined,
+  duracoesCarregadas?: ReadonlyMap<string, number> | null,
+): TrechoOriginal[] {
+  const linha = linhaDoTempo(layers, null, duracoesCarregadas)
+  if (linha.clipes.length === 0) {
+    const base = videoDeBase(layers)
+    if (!base?.fileUrl) return []
+    const trecho = trechoDoVideo(base.videoMetadata, duracoesCarregadas?.get(base.id))
+    return [{ id: base.id, fileUrl: base.fileUrl, trimStart: trecho.inicio, inicio: 0, duracao: trecho.duracao ?? 0 }]
+  }
+  const porId = new Map((layers ?? []).map((l) => [l.id, l]))
+  const trechos: TrechoOriginal[] = []
+  for (const c of linha.clipes) {
+    const camada = porId.get(c.id)
+    if (c.tipo !== 'video' || c.duracao <= 0 || !camada?.fileUrl || ehMotion(camada)) continue
+    trechos.push({ id: c.id, fileUrl: camada.fileUrl, trimStart: c.trimStart, inicio: c.inicio, duracao: c.duracao })
+  }
+  return trechos
+}
+
+/**
+ * Os trechos cujo som original TOCA, dada a trilha: só com `original` ou
+ * `mix`, e cortados onde a página termina (a música pode encurtá-la). A
+ * prévia (qual `<video>` fica sem mudo) e a fila (os `originais` do ffmpeg)
+ * decidem por aqui.
+ */
+export function trechosOriginais(
+  layers: readonly CamadaComVideo[] | null | undefined,
+  trilha: TrilhaLike | null | undefined,
+  duracoesCarregadas?: ReadonlyMap<string, number> | null,
+): TrechoOriginal[] {
+  if (trilha?.source !== 'original' && trilha?.source !== 'mix') return []
+  const fim = linhaDoTempo(layers, trilha, duracoesCarregadas).duracao
+  return trechosDeVideo(layers, duracoesCarregadas)
+    // duração 0 = legada e ainda desconhecida (fica em 0; o `-t` do export corta)
+    .map((t) => (fim === null || t.duracao === 0 ? t : { ...t, duracao: Math.min(t.duracao, fim - t.inicio) }))
+    .filter((t) => t.inicio === 0 || t.duracao > 0)
 }
 
 /** O volume no instante `t` da página, com os fades do plano. */

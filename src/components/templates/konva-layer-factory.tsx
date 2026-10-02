@@ -14,6 +14,7 @@ import { cropForResizedBox, resolveImageSourceRect } from '@/lib/image-fit'
 import { escalaDoBlur, folgaDoBlur } from '@/lib/creatives/halo/fundo-de-texto'
 import { ehClipe, ehMotion, passoDoVideo } from '@/lib/video/camadas-de-video'
 import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
+import { trechosOriginais } from '@/lib/video/plano-de-som'
 import { useClipeAtivo } from '@/lib/video/clipe-ativo'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { registrarVideoMontado } from '@/lib/video/videos-montados'
@@ -285,6 +286,19 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const clipeAtivoId = publicado === undefined ? linha?.clipes[0]?.id : publicado
   const clipeOculto = !!clipeDaPagina && clipeAtivoId !== layer.id
   const interactionsDisabled = disableInteractions || !isVisible || clipeOculto
+  // Fase 4: o som da prévia é o que o export vai ter — `trechosOriginais`, a
+  // MESMA conta da fila: só com a trilha em original/mix, e só o clipe ATIVO
+  // (fora do intervalo dele o vídeo fica mudo). Miniatura nunca toca som.
+  // ponytail: as durações carregadas não entram nas deps — só o clamp pela
+  // música dependeria delas, e o `[]` no cliente já é a regra do `linha` acima.
+  const audioDaPagina = editor?.design?.audio
+  const somDaTrilha = React.useMemo(
+    () =>
+      layer.type === 'video' &&
+      trechosOriginais(editor?.design?.layers ?? [], audioDaPagina ?? { source: 'original' }).some((t) => t.id === layer.id),
+    [layer.type, layer.id, editor?.design?.layers, audioDaPagina],
+  )
+  const somLigado = somDaTrilha && !clipeOculto && !disableInteractions
 
   const handleSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -483,7 +497,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
 
     case 'video':
-      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} />
+      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} somLigado={somLigado} />
 
     case 'gradient':
     case 'gradient2':
@@ -525,9 +539,11 @@ type VideoNodeProps = {
   onChange: (updates: Partial<Layer>) => void
   /** Instante da página em que este clipe entra (0 fora da linha do tempo) */
   inicioDoClipe: number
+  /** O som deste vídeo toca na prévia (Fase 4: trilha em original/mix E clipe ativo) */
+  somLigado: boolean
 }
 
-function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, inicioDoClipe }: VideoNodeProps) {
+function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, inicioDoClipe, somLigado }: VideoNodeProps) {
   const videoUrl = layer.fileUrl || ''
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   // Nenhum vídeo tem relógio próprio: TODOS se reconciliam, a cada quadro, com
@@ -638,13 +654,15 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     return registrarVideoMontado(layer.id, video)
   }, [videoUrl, layer.id])
 
-  // `muted` é a única propriedade do metadata aplicada ao elemento
+  // `muted` é a única propriedade do metadata aplicada ao elemento — como
+  // OVERRIDE (o interruptor do painel silencia); quem liga o som é a política
+  // da página (`somLigado`), a mesma do export.
   React.useEffect(() => {
     const video = videoRef.current
     if (!video) return
-    const muted = layer.videoMetadata?.muted ?? true
+    const muted = !somLigado || layer.videoMetadata?.muted === true
     if (video.muted !== muted) video.muted = muted
-  }, [layer.videoMetadata?.muted])
+  }, [layer.videoMetadata?.muted, somLigado, videoMetaVersion])
 
   // ✨ Animação EXATAMENTE como exemplo oficial do Konva
   React.useEffect(() => {

@@ -34,17 +34,18 @@ export const MOTIVO_DO_AVISO_DE_AUDIO: Record<AudioAviso, string> = {
 type FonteLike = { source: 'original' | 'library' | 'mute' | 'mix'; musicId?: number | null }
 
 /**
- * A trilha que o export REALMENTE vai ter, dada a página. Sem vídeo de base
- * (foto + música, foto + motion) não existe "som do vídeo": `original` sai
- * mudo e `mix` sai só com a música — com AVISO, porque é diferente do pedido.
- * Com vídeo de base, ou com as outras fontes, a config volta como veio.
- * Puro: usada pela fila (antes de baixar qualquer arquivo) e pelo diálogo.
+ * A trilha que o export REALMENTE vai ter, dada a página. Sem som original
+ * (foto + música, foto + motion, sequência sem vídeo) não existe "som do
+ * vídeo": `original` sai mudo e `mix` sai só com a música — com AVISO, porque
+ * é diferente do pedido. Com som original (o vídeo de base, ou um vídeo na
+ * sequência — `trechosDeVideo`), ou com as outras fontes, a config volta como
+ * veio. Puro: usada pela fila (antes de baixar qualquer arquivo) e pelo diálogo.
  */
 export function fonteEfetiva<T extends FonteLike>(
   cfg: T,
-  temVideoDeBase: boolean,
+  temSomOriginal: boolean,
 ): { config: T; aviso?: AudioAviso } {
-  if (temVideoDeBase) return { config: cfg }
+  if (temSomOriginal) return { config: cfg }
   if (cfg.source === 'original') return { config: { ...cfg, source: 'mute' }, aviso: 'sem-audio' }
   if (cfg.source === 'mix') {
     return cfg.musicId
@@ -71,7 +72,8 @@ export function proximaTentativaDeAudio(
   falhou: AudioMixOptions,
   pedido: AudioMixOptions = falhou,
 ): { mix?: AudioMixOptions; aviso: AudioAviso } {
-  const eraMixCompleto = pedido.mode === 'mix' && !!pedido.originalPath && !!pedido.musicPath
+  const temOriginal = !!pedido.originalPath || !!pedido.originais?.length
+  const eraMixCompleto = pedido.mode === 'mix' && temOriginal && !!pedido.musicPath
   if (!eraMixCompleto) return { aviso: 'sem-audio' }
 
   if (falhou.mode === 'mix') {
@@ -94,6 +96,7 @@ export function proximaTentativaDeAudio(
         originalPath: pedido.originalPath,
         originalTrimStart: pedido.originalTrimStart,
         originalVolume: pedido.originalVolume,
+        originais: pedido.originais,
       },
       aviso: 'so-original',
     }

@@ -315,6 +315,11 @@ export async function exportVideoWithLayers(
       const el = node instanceof Konva.Image ? node.image() : null
       if (!(el instanceof HTMLVideoElement) || el.readyState < 2) throw naoCarregou(layer.name)
       const { inicio, duracao: duracaoDoTrecho } = trechoDoVideo(layer.videoMetadata, el.duration)
+      // Fase 4: na prévia o clipe ativo pode estar com som; o WebM é mudo e a
+      // trilha é do ffmpeg — nenhum vídeo pode vazar som pelas caixas na gravação
+      const mutedAntes = el.muted
+      el.muted = true
+      encerrar.push(() => { el.muted = mutedAntes })
       outrosVideos.push({
         el,
         inicio,

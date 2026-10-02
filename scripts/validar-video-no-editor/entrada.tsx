@@ -48,7 +48,7 @@ function Pagina() {
             .filter((l) => l.type === 'video')
             .map((l) => {
               const v = elemento(l.id)
-              return [l.id, v ? { t: +v.currentTime.toFixed(3), pausado: v.paused, fim: v.ended, pronto: v.readyState } : null]
+              return [l.id, v ? { t: +v.currentTime.toFixed(3), pausado: v.paused, fim: v.ended, pronto: v.readyState, mudo: v.muted } : null]
             }),
         ),
         // Lido no MESMO instante que os currentTime acima: é contra isto que a

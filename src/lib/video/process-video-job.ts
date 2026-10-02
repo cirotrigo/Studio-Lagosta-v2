@@ -17,9 +17,10 @@ import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
   convertWebMToMP4ServerSide,
+  temFaixaDeAudio,
   type AudioMixOptions,
 } from '@/lib/video/ffmpeg-server-converter'
-import { videoDeBase } from '@/lib/video/camadas-de-video'
+import { trechosDeVideo, trechosOriginais } from '@/lib/video/plano-de-som'
 import {
   MOTIVO_DO_AVISO_DE_AUDIO,
   fonteEfetiva,
@@ -64,20 +65,9 @@ function resolveExportAudioConfig(
   return raw
 }
 
-/**
- * O vídeo de onde sai o som original: o de BASE. Motion (fundo transparente,
- * por cima) não tem áudio — numa página só com motion sobre foto devolve null
- * e o export sai sem som original, em vez de falhar no ffmpeg e reconverter.
- */
-function findVideoLayer(designData: Record<string, unknown> | null): {
-  fileUrl?: string
-  videoMetadata?: { trimStart?: number; overlay?: boolean }
-} | null {
+function camadasDaPagina(designData: Record<string, unknown> | null): Parameters<typeof trechosDeVideo>[0] {
   const layers = designData?.layers
-  if (!Array.isArray(layers)) return null
-  return videoDeBase(
-    layers as Array<{ type?: string; fileUrl?: string; videoMetadata?: { trimStart?: number; overlay?: boolean } }>,
-  )
+  return Array.isArray(layers) ? (layers as Parameters<typeof trechosDeVideo>[0]) : null
 }
 
 async function downloadToTmp(url: string, label: string, tempFiles: string[]): Promise<string> {
@@ -102,30 +92,49 @@ async function downloadToTmp(url: string, label: string, tempFiles: string[]): P
 }
 
 /**
- * Baixa os insumos (vídeo fonte e/ou música) e monta o AudioMixOptions.
+ * Baixa os insumos (vídeos da sequência e/ou música) e monta o AudioMixOptions.
  * `mix` ausente = não há o que mixar. `aviso` vem quando o som vai sair
- * diferente do pedido: algo FALHOU, ou a página não tem vídeo de base (foto +
- * música, motion sobre foto) e o pedido contava com o som do vídeo
- * (`fonteEfetiva` decide antes de baixar qualquer arquivo).
+ * diferente do pedido: algo FALHOU, ou a página não tem vídeo com som (foto +
+ * música, motion sobre foto, sequência sem vídeo) e o pedido contava com o som
+ * do vídeo (`fonteEfetiva` decide antes de baixar qualquer arquivo).
+ *
+ * Fase 4: o som original é o de CADA clipe de vídeo, na posição dele na linha
+ * do tempo (`trechosOriginais`, a mesma conta da prévia). Clipe sem faixa de
+ * áudio é pulado (`temFaixaDeAudio`), sem erro; só com nenhum sobrando o som
+ * original conta como falho.
  */
 async function prepareAudioMix(
   pedido: ExportAudioConfig,
   designData: Record<string, unknown> | null,
   tempFiles: string[],
 ): Promise<{ mix?: AudioMixOptions; aviso?: AudioAviso }> {
-  const videoLayer = findVideoLayer(designData)
-  const fileUrl = videoLayer?.fileUrl
-  const temVideoDeBase = typeof fileUrl === 'string' && fileUrl.startsWith('http')
-  const { config: cfg, aviso: avisoDaFonte } = fonteEfetiva(pedido, temVideoDeBase)
+  const layers = camadasDaPagina(designData)
+  const temSomOriginal = trechosDeVideo(layers).some((t) => t.fileUrl.startsWith('http'))
+  const { config: cfg, aviso: avisoDaFonte } = fonteEfetiva(pedido, temSomOriginal)
   if (cfg.source === 'mute') return { aviso: avisoDaFonte }
   const mix: AudioMixOptions = { mode: cfg.source as AudioMixOptions['mode'] }
   let somOriginalFalhou = false
 
   if (cfg.source === 'original' || cfg.source === 'mix') {
-    if (temVideoDeBase) {
+    if (temSomOriginal) {
       try {
-        mix.originalPath = await downloadToTmp(fileUrl as string, 'vídeo fonte', tempFiles)
-        mix.originalTrimStart = videoLayer?.videoMetadata?.trimStart ?? 0
+        const baixados = new Map<string, string>() // o mesmo arquivo duas vezes na sequência baixa uma vez
+        const originais: NonNullable<AudioMixOptions['originais']> = []
+        for (const t of trechosOriginais(layers, cfg)) {
+          if (!t.fileUrl.startsWith('http')) continue
+          let path = baixados.get(t.fileUrl)
+          if (!path) {
+            path = await downloadToTmp(t.fileUrl, 'vídeo fonte', tempFiles)
+            baixados.set(t.fileUrl, path)
+          }
+          if (!(await temFaixaDeAudio(path))) {
+            console.warn(`[Video Processor] Clipe ${t.id} sem faixa de áudio — pulado`)
+            continue
+          }
+          originais.push({ path, trimStart: t.trimStart, inicio: t.inicio, duracao: t.duracao })
+        }
+        if (originais.length === 0) throw new Error('Nenhum vídeo da página tem faixa de áudio')
+        mix.originais = originais
         mix.originalVolume = cfg.source === 'mix' ? (cfg.volumeOriginal ?? 80) / 100 : 1
       } catch (error) {
         // 'original' não tem outra fonte: quem chama registra e segue sem áudio.
@@ -160,7 +169,7 @@ async function prepareAudioMix(
     } catch (error) {
       // Música apagada ou fora do ar: no mix, o som do vídeo que já chegou
       // íntegro não vai embora junto. Sem ele, quem chama segue sem áudio.
-      if (!mix.originalPath) throw error
+      if (!mix.originais?.length) throw error
       console.error('[Video Processor] Música indisponível — mix segue só com o som do vídeo:', error)
       return { mix: { ...mix, mode: 'original' }, aviso: 'so-original' }
     }
@@ -174,7 +183,7 @@ async function prepareAudioMix(
       ? 'so-musica'
       : 'sem-audio'
     : avisoDaFonte
-  if (!mix.originalPath && !mix.musicPath) return { aviso }
+  if (!mix.originais?.length && !mix.musicPath) return { aviso }
   return { mix, aviso }
 }
 

@@ -507,6 +507,34 @@ console.log('\n=== N. reordenar pela linha do tempo (normalizarClipes) ===')
   conferir('3–5 s: o vídeo fecha a sequência', trecho.length > 5 && trecho.filter((x) => x.base !== null).length >= trecho.length - 2)
 }
 
+console.log('\n=== O. som original numa sequência de dois vídeos (Fase 4) ===')
+// Dois clipes de VÍDEO, os dois com o mudo do painel DESLIGADO: na prévia só o
+// clipe ATIVO fica com som (o outro, fora do intervalo dele, mudo); o export
+// continua gravando um WebM sem faixa de áudio (a trilha é do ffmpeg na fila).
+await montar([
+  base({ loop: false, muted: false, trimStart: 0, trimEnd: 2 }, { order: 0, clipe: {} }),
+  video('base2', 'base.mp4', { loop: false, muted: false, trimStart: 2, trimEnd: 4 }, { order: 1, clipe: {} }),
+])
+conferir('os dois vídeos carregaram', await prontos(['base', 'base2']))
+{
+  await pagina.evaluate(() => window.validacao.zerar())
+  await dormir(200)
+  let e = await estado()
+  conferir('em 0 s só o 1º clipe tem som (o 2º fica mudo fora do intervalo dele)', e.base.mudo === false && e.base2.mudo === true, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
+  await pagina.evaluate(() => window.validacao.ir(3))
+  await dormir(300)
+  e = await estado()
+  conferir('em 3 s o som passa para o 2º clipe', e.base.mudo === true && e.base2.mudo === false, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
+  const r = await pagina.evaluate(() => window.validacao.exportarLinha())
+  conferir('a duração é a soma dos clipes (2 + 2)', Math.abs(r.duracao - 4) < 0.05, `duração ${r.duracao}`)
+  const webm = path.join(TMP, 'sequencia-dois-videos.webm')
+  fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+  const faixas = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', webm]).toString().trim().split('\n')
+  conferir('o WebM gravado continua sem faixa de áudio (a trilha é do ffmpeg, na fila)', faixas.length === 1 && faixas[0] === 'video', faixas.join(','))
+  e = await estado()
+  conferir('depois do export o mudo volta ao que era (o clipe ativo com som)', e.base.mudo === false || e.base2.mudo === false, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
+}
+
 conferir('nenhum erro de JavaScript na página', errosDaPagina.length === 0, errosDaPagina.slice(0, 3).join(' | '))
 console.log(`\n${falhas === 0 ? 'TUDO OK' : falhas + ' FALHA(S)'}  (arquivos em ${TMP})`)
 await navegador.close()

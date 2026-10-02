@@ -28,7 +28,8 @@ import {
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
 import { upload } from '@vercel/blob/client'
 import { createId } from '@/lib/id'
-import { duracaoDaPagina, paginaEVideo, videoDeBase, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { duracaoDaPagina, paginaEVideo, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { trechosDeVideo } from '@/lib/video/plano-de-som'
 import { fonteEfetiva } from '@/lib/video/audio-do-export'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
@@ -63,10 +64,11 @@ export function VideoExportButton() {
   // O vídeo de fundo dita duração e som; na página que só tem motion (motion
   // sobre foto) o próprio motion dita a duração e não há som original. Sem
   // vídeo nenhum, a MÚSICA faz a página virar vídeo: o stage parado é gravado
-  // pela fatia dela.
+  // pela fatia dela. Numa sequência, o som original é o de cada clipe de
+  // vídeo (Fase 4) — `trechosDeVideo` é a mesma pergunta que a fila faz.
   const videoLayer = videoPrincipal(design.layers)
   const paginaVideo = paginaEVideo(design.layers, design.audio)
-  const semVideoDeBase = !videoDeBase(design.layers)
+  const semSomOriginal = trechosDeVideo(design.layers).length === 0
   const currentPageId = useMultiPageOpcional()?.currentPageId ?? null
   // A gravação é sobre UM design parado: editar, desfazer ou trocar de página
   // no meio cancela com motivo (lidos por ref, no laço do export)
@@ -129,7 +131,7 @@ export function VideoExportButton() {
 
   // O que o export vai ter de fato: sem vídeo de base, "som do vídeo" vira
   // mudo e "mix" vira só a música — a mesma decisão da fila (`fonteEfetiva`).
-  const audioEfetivo = React.useMemo(() => fonteEfetiva(audioConfig, !semVideoDeBase), [audioConfig, semVideoDeBase])
+  const audioEfetivo = React.useMemo(() => fonteEfetiva(audioConfig, !semSomOriginal), [audioConfig, semSomOriginal])
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
@@ -636,7 +638,7 @@ export function VideoExportButton() {
                           : 'Mix: áudio do vídeo + música'
                         : audioConfig.source === 'mute'
                           ? 'Sem áudio (mudo)'
-                          : semVideoDeBase
+                          : semSomOriginal
                             ? 'Sem som: esta página não tem vídeo com áudio. Escolha uma música.'
                             : 'Usando o áudio do próprio vídeo'}
                   </p>
@@ -705,7 +707,7 @@ export function VideoExportButton() {
         open={isAudioModalOpen}
         onOpenChange={setIsAudioModalOpen}
         videoDuration={videoDuration ?? 10}
-        temVideoDeBase={!semVideoDeBase}
+        temSomOriginal={!semSomOriginal}
         currentConfig={audioConfig}
         onConfirm={(config) => {
           setAudioConfig(config)
