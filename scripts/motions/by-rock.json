@@ -1,0 +1,321 @@
+{
+  "saida": "saida/by-rock",
+  "kit": {
+    "slug": "by-rock",
+    "margem": 80,
+    "topo": 200,
+    "rodape": 1690,
+    "duracao": 8,
+    "sombra": "rgba(0,0,0,0.7)",
+    "cores": {
+      "branco": "#FFFFFF",
+      "vermelho": "#dc0909"
+    },
+    "fontes": {
+      "BrTitulo": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/fonts/1760576481260-MortellaDisplay-ExtraBold.otf",
+      "BrCta": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/fonts/1760576849519-Metrisch-MediumItalic.otf",
+      "BrMedium": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/fonts/1760576848153-Metrisch-Medium.otf",
+      "BrBold": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/fonts/1760576834236-Metrisch-Bold.otf"
+    },
+    "icones": {
+      "relogio": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/elements/1785779593017-relogio-vermelho.png",
+      "local": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/elements/1785779574875-localizacao-vermelho.png",
+      "taca": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/elements/1785779596763-taca-vermelho.png"
+    },
+    "logo": {
+      "imagem": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/7/logos/1760576188203-By_Rock_-_logo.png",
+      "tamanho": 150,
+      "canto": "superior-direito",
+      "topo": 200
+    },
+    "filete": {
+      "largura": 160,
+      "altura": 5,
+      "cor": "vermelho",
+      "ponto": false
+    },
+    "estilos": {
+      "titulo": {
+        "fonte": "BrTitulo",
+        "tam": 100,
+        "entrelinha": 0.94,
+        "caixaAlta": true,
+        "cor": "branco"
+      },
+      "apoio": {
+        "fonte": "BrMedium",
+        "tam": 38,
+        "entrelinha": 1.3,
+        "cor": "branco",
+        "fonteForte": "BrBold",
+        "corForte": "branco"
+      },
+      "cta": {
+        "fonte": "BrCta",
+        "tam": 44,
+        "cor": "branco"
+      },
+      "servico": {
+        "fonte": "BrMedium",
+        "tam": 34,
+        "entrelinha": 1.8,
+        "cor": "branco",
+        "fonteForte": "BrBold",
+        "corForte": "branco"
+      }
+    },
+    "gradiente": {
+      "cor": "#000000",
+      "topo": {
+        "altura": 1000,
+        "forca": 0.6
+      },
+      "rodape": {
+        "altura": 600,
+        "forca": 0.6
+      }
+    }
+  },
+  "pecas": [
+    {
+      "id": "funcionamento-rodape",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Todos os dias das [11h à meia-noite]"
+        },
+        {
+          "icone": "local",
+          "texto": "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+        }
+      ]
+    },
+    {
+      "id": "funcionamento-todos-os-dias",
+      "titulo": [
+        {
+          "texto": "Aberto"
+        },
+        {
+          "texto": "todos os dias"
+        }
+      ],
+      "apoio": [
+        "Almoço, happy hour e jantar",
+        "na Praia do Canto"
+      ],
+      "cta": "Vem pro By Rock",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Todos os dias das [11h à meia-noite]"
+        },
+        {
+          "icone": "local",
+          "texto": "Rua Eugênio Netto, 82, Praia do Canto, Vitória"
+        }
+      ]
+    },
+    {
+      "id": "happy-hour-1",
+      "titulo": [
+        {
+          "texto": "Happy hour"
+        },
+        {
+          "texto": "todo dia"
+        }
+      ],
+      "apoio": [
+        "Até [50% OFF] nos itens",
+        "com o selo HH no cardápio"
+      ],
+      "cta": "Chama a galera",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Todos os dias, das [16h às 20h]"
+        }
+      ]
+    },
+    {
+      "id": "happy-hour-2",
+      "titulo": [
+        {
+          "texto": "Chopp gelado"
+        },
+        {
+          "texto": "com até 50% OFF"
+        }
+      ],
+      "apoio": [
+        "Vale nos itens com o [selo HH]",
+        "no cardápio"
+      ],
+      "cta": "Bora!",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Happy hour todo dia, das [16h às 20h]"
+        }
+      ]
+    },
+    {
+      "id": "almoco-rock-steaks-1",
+      "titulo": [
+        {
+          "texto": "Almoço com"
+        },
+        {
+          "texto": "25% OFF"
+        }
+      ],
+      "apoio": [
+        "Nos [cortes grelhados]",
+        "do Rock Steaks"
+      ],
+      "cta": "Vem almoçar",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Segunda a sexta, das [11h às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "almoco-main-stage-1",
+      "titulo": [
+        {
+          "texto": "Almoço com"
+        },
+        {
+          "texto": "entrada inclusa"
+        }
+      ],
+      "apoio": [
+        "Pedindo um [prato principal]",
+        "do Main Stage"
+      ],
+      "cta": "Vem almoçar",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Segunda a sexta, das [11h às 16h]"
+        }
+      ]
+    },
+    {
+      "id": "quinta-do-vinho-1",
+      "titulo": [
+        {
+          "texto": "Quinta é dia"
+        },
+        {
+          "texto": "de vinho"
+        }
+      ],
+      "apoio": [
+        "[Rolha free] no primeiro vinho"
+      ],
+      "cta": "Garanta sua mesa",
+      "servico": [
+        {
+          "icone": "taca",
+          "texto": "Quinta do Vinho, [toda quinta-feira]"
+        }
+      ]
+    },
+    {
+      "id": "delivery-1",
+      "titulo": [
+        {
+          "texto": "O By Rock"
+        },
+        {
+          "texto": "vai até você"
+        }
+      ],
+      "apoio": [
+        "[Delivery próprio] no jantar"
+      ],
+      "cta": "Peça no delivery",
+      "servico": [
+        {
+          "icone": "relogio",
+          "texto": "Todos os dias, das [18h às 23h30]"
+        }
+      ]
+    },
+    {
+      "id": "domingo-em-familia-1",
+      "titulo": [
+        {
+          "texto": "Domingo é dia"
+        },
+        {
+          "texto": "de mesa cheia"
+        }
+      ],
+      "apoio": [
+        "Almoço em família, com [área kids]",
+        "para as crianças"
+      ],
+      "cta": "Chama a família e vem"
+    },
+    {
+      "id": "frase-cortes-e-chopp",
+      "titulo": [
+        {
+          "texto": "Cortes grelhados"
+        },
+        {
+          "texto": "e chopp gelado"
+        }
+      ],
+      "cta": "No volume máximo"
+    },
+    {
+      "id": "frase-cortes-para-dividir",
+      "titulo": [
+        {
+          "texto": "Cortes para"
+        },
+        {
+          "texto": "dividir"
+        }
+      ],
+      "apoio": [
+        "Chapas para a mesa toda"
+      ],
+      "cta": "Chama a galera"
+    },
+    {
+      "id": "frase-area-kids",
+      "titulo": [
+        {
+          "texto": "Almoço em família"
+        },
+        {
+          "texto": "com área kids"
+        }
+      ],
+      "apoio": [
+        "As crianças brincam",
+        "enquanto a família almoça"
+      ],
+      "cta": "Chama a família e vem"
+    },
+    {
+      "id": "frase-praia-do-canto",
+      "titulo": [
+        {
+          "texto": "Steakhouse"
+        },
+        {
+          "texto": "na Praia do Canto"
+        }
+      ],
+      "cta": "Vem pro By Rock"
+    }
+  ]
+}
