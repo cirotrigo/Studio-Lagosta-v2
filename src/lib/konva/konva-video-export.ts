@@ -160,7 +160,8 @@ function restoreStageState(
  * IMPORTANTE: Requer funções do React Context para limpar seleção e zoom
  *
  * @param stage - Konva Stage contendo o vídeo e layers
- * @param videoLayer - Layer do vídeo base
+ * @param videoLayer - Layer do vídeo principal, ou `null` numa página sem vídeo
+ *   (foto + música): o stage parado é gravado pela fatia da música.
  * @param design - Design data com layers e canvas
  * @param contextFunctions - Funções do template editor context
  * @param options - Opções de exportação
@@ -168,7 +169,7 @@ function restoreStageState(
  */
 export async function exportVideoWithLayers(
   stage: Konva.Stage,
-  videoLayer: Layer,
+  videoLayer: Layer | null,
   design: DesignData,
   contextFunctions: {
     setSelectedLayerIds: (ids: string[]) => void
@@ -199,11 +200,21 @@ export async function exportVideoWithLayers(
 
   let baseVideoOriginalMuted = false
   let baseVideoOriginalVolume = 1
+  // Todo vídeo visível da página, o principal incluído (quando há)
   const outrosVideos: Array<{ el: HTMLVideoElement; inicio: number }> = []
   // Tudo o que a gravação abre é fechado no `finally`, dê certo ou não: antes,
   // uma falha depois de o gravador começar deixava recorder e tracks ativos.
   const encerrar: Array<() => void> = []
   let baseEstavaTocando = false
+  // Qualquer falha durante a gravação (gravador, aba oculta) derruba a espera
+  // — ou, se ainda não chegou nela, é lançada assim que chegar.
+  let aoFalhar: ((erro: Error) => void) | null = null
+  let erroDaGravacao: Error | null = null
+  const falhar = (erro: Error) => {
+    if (erroDaGravacao) return
+    erroDaGravacao = erro
+    aoFalhar?.(erro)
+  }
 
   try {
     // Preparar stage (remover guides, transformers, normalizar zoom)
@@ -218,39 +229,42 @@ export async function exportVideoWithLayers(
 
     onProgress?.({ phase: 'preparing', progress: 20 })
 
-    // Obter o vídeo element
-    const videoNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
-    if (!videoNode) {
-      throw new Error('VideoNode não encontrado no stage')
+    // Obter o vídeo element do principal (página sem vídeo não tem)
+    let videoElement: HTMLVideoElement | null = null
+    if (videoLayer) {
+      const videoNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
+      if (!videoNode) {
+        throw new Error('VideoNode não encontrado no stage')
+      }
+      videoElement = videoNode.image() as HTMLVideoElement
+      if (!videoElement) {
+        throw new Error('Elemento de vídeo não encontrado')
+      }
+      baseVideoOriginalMuted = videoElement.muted
+      // O motion toca uma vez e para; só o vídeo comum volta a tocar depois.
+      baseEstavaTocando = !ehMotion(videoLayer) && !videoElement.paused && !videoElement.ended
+      baseVideoOriginalVolume = typeof videoElement.volume === 'number' ? videoElement.volume : 1
+
+      // O WebM gravado aqui é SEMPRE mudo — trilha, áudio original e mix são
+      // aplicados pelo ffmpeg na fila (/api/video-processing) a partir do
+      // audioConfig. Mutar o elemento evita o som vazar nas caixas durante a
+      // gravação.
+      try {
+        videoElement.muted = true
+        videoElement.volume = 0
+      } catch (error) {
+        console.warn('[Video Export] Não foi possível mutar o vídeo durante a gravação:', error)
+      }
     }
 
-    const videoElement = videoNode.image() as HTMLVideoElement
-    if (!videoElement) {
-      throw new Error('Elemento de vídeo não encontrado')
-    }
-    baseVideoOriginalMuted = videoElement.muted
-    // O motion toca uma vez e para; só o vídeo comum volta a tocar depois.
-    baseEstavaTocando = !ehMotion(videoLayer) && !videoElement.paused && !videoElement.ended
-    baseVideoOriginalVolume = typeof videoElement.volume === 'number' ? videoElement.volume : 1
-
-    // O WebM gravado aqui é SEMPRE mudo — trilha, áudio original e mix são
-    // aplicados pelo ffmpeg na fila (/api/video-processing) a partir do
-    // audioConfig. Mutar o elemento evita o som vazar nas caixas durante a
-    // gravação.
-    try {
-      videoElement.muted = true
-      videoElement.volume = 0
-    } catch (error) {
-      console.warn('[Video Export] Não foi possível mutar o vídeo durante a gravação:', error)
-    }
-
-    // Duração efetiva = trecho do vídeo principal ∧ fatia da música. Regra
-    // ÚNICA (src/lib/video/camadas-de-video.ts): o chip do painel, a aba Músicas
-    // e a fila calculam igual.
-    const trecho = trechoDoVideo(videoLayer.videoMetadata, duration || videoElement.duration)
-    const videoTrimStart = trecho.inicio
-    const videoDuration = duracaoDoExport(trecho.duracao ?? 10, audioConfig) ?? 10
-    console.log(`[Video Export] Duração efetiva: ${videoDuration}s (trecho do vídeo: ${trecho.duracao}s)`)
+    // Duração efetiva = trecho do vídeo principal ∧ fatia da música; sem vídeo,
+    // a fatia da música. Regra ÚNICA (src/lib/video/camadas-de-video.ts): o chip
+    // do painel, a aba Músicas e a fila calculam igual.
+    const trecho = videoLayer
+      ? trechoDoVideo(videoLayer.videoMetadata, duration || videoElement?.duration)
+      : null
+    const videoDuration = duracaoDoExport(trecho ? (trecho.duracao ?? 10) : null, audioConfig) ?? 10
+    console.log(`[Video Export] Duração efetiva: ${videoDuration}s (trecho do vídeo: ${trecho?.duracao ?? 'sem vídeo'})`)
 
     // Todo vídeo VISÍVEL da página entra na gravação (o stage inteiro é
     // copiado), então todos precisam estar carregados e LARGAR JUNTOS — antes o
@@ -258,14 +272,22 @@ export async function exportVideoWithLayers(
     // chegado sairia faltando no MP4, sem aviso.
     const naoCarregou = (nome?: string) =>
       new Error(`"${nome || 'Vídeo'}" ainda não carregou. Espere ele aparecer na página e exporte de novo.`)
-    if (videoElement.readyState < 2) throw naoCarregou(videoLayer.name)
     for (const layer of videosDaPagina(design.layers)) {
-      if (layer.id === videoLayer.id) continue
       const node = stage.findOne(`#${layer.id}`)
       const el = node instanceof Konva.Image ? node.image() : null
       if (!(el instanceof HTMLVideoElement) || el.readyState < 2) throw naoCarregou(layer.name)
       outrosVideos.push({ el, inicio: trechoDoVideo(layer.videoMetadata).inicio })
     }
+
+    // A gravação é em tempo real sobre a aba VISÍVEL: oculta, o navegador para
+    // de pintar o canvas e o WebM sai com quadros congelados ou faltando.
+    const aoOcultarAba = () => {
+      if (document.visibilityState === 'hidden') {
+        falhar(new Error('A aba ficou oculta durante a gravação. Deixe a aba visível e exporte de novo.'))
+      }
+    }
+    document.addEventListener('visibilitychange', aoOcultarAba)
+    encerrar.push(() => document.removeEventListener('visibilitychange', aoOcultarAba))
 
     // Todos parados no início do próprio trecho, com o quadro já decodificado.
     // Vídeo que não responde derruba o export com mensagem — nunca segue gravando.
@@ -287,10 +309,7 @@ export async function exportVideoWithLayers(
         )
         el.currentTime = inicio
       })
-    await Promise.all([
-      posicionar(videoElement, videoTrimStart),
-      ...outrosVideos.map(({ el, inicio }) => posicionar(el, inicio)),
-    ])
+    await Promise.all(outrosVideos.map(({ el, inicio }) => posicionar(el, inicio)))
 
     onProgress?.({ phase: 'preparing', progress: 30 })
 
@@ -321,7 +340,6 @@ export async function exportVideoWithLayers(
     }
 
     // Preencher fundo branco (ou usar cor de fundo do design) com o frame inicial
-    videoNode.getLayer()?.batchDraw()
     stage.batchDraw()
 
     // Verificar se stage tem dimensões corretas (deve ter sido ajustado em prepareStageForExport)
@@ -418,12 +436,9 @@ export async function exportVideoWithLayers(
 
     // Gravador que falha no meio fica `inactive` sozinho: sem isto o `stop()` do
     // fim lançava dentro do timer e a promessa nunca terminava (diálogo preso).
-    let aoFalhar: ((erro: Error) => void) | null = null
-    let erroDoGravador: Error | null = null
     mediaRecorder.onerror = (e) => {
       console.error('[Video Export] Erro no MediaRecorder:', e)
-      erroDoGravador = new Error('A gravação do vídeo falhou no navegador. Exporte de novo.')
-      aoFalhar?.(erroDoGravador)
+      falhar(new Error('A gravação do vídeo falhou no navegador. Exporte de novo.'))
     }
     // Armado antes de gravar: o `stop` pode chegar antes de alguém esperar por ele.
     const parou = new Promise<void>((resolve) => {
@@ -451,7 +466,7 @@ export async function exportVideoWithLayers(
           setTimeout(() => reject(new Error('um dos vídeos da página não começou a tocar. Recarregue a página e exporte de novo')), 5000),
         ),
       ])
-    const partidas = await Promise.allSettled([videoElement, ...outrosVideos.map(({ el }) => el)].map(tocar))
+    const partidas = await Promise.allSettled(outrosVideos.map(({ el }) => tocar(el)))
     for (const partida of partidas) {
       if (partida.status === 'fulfilled') continue
       const error = partida.reason
@@ -476,7 +491,6 @@ export async function exportVideoWithLayers(
 
     const animationLoop = () => {
       // 1. Forçar redraw do stage para atualizar com frame atual do vídeo
-      videoNode.getLayer()?.batchDraw()
       stage.batchDraw()
 
       // 2. Copiar o stage renderizado para o canvas offscreen
@@ -498,9 +512,11 @@ export async function exportVideoWithLayers(
 
     // Aguardar duração especificada
     await new Promise<void>((resolve, reject) => {
+      // Progresso pelo relógio da gravação (o mesmo que decide o fim): numa
+      // página sem vídeo não há currentTime para ler.
       const progressInterval = setInterval(() => {
-        const currentProgress = ((videoElement.currentTime - videoTrimStart) / videoDuration) * 100
-        onProgress?.({ phase: 'recording', progress: 50 + Math.max(0, currentProgress) * 0.35 })
+        const currentProgress = ((Date.now() - startTime) / 1000 / videoDuration) * 100
+        onProgress?.({ phase: 'recording', progress: 50 + Math.min(100, Math.max(0, currentProgress)) * 0.35 })
       }, 100)
 
       const fim = setTimeout(() => {
@@ -511,7 +527,6 @@ export async function exportVideoWithLayers(
           cancelAnimationFrame(animationId)
         }
 
-        videoElement.pause()
         for (const { el } of outrosVideos) el.pause()
 
         // Aguardar um pouco antes de parar para garantir que último frame foi capturado
@@ -527,10 +542,10 @@ export async function exportVideoWithLayers(
         reject(erro)
       }
       // Falhou antes de chegar aqui (durante o `play()` dos vídeos)
-      if (erroDoGravador) aoFalhar(erroDoGravador)
+      if (erroDaGravacao) aoFalhar(erroDaGravacao)
     })
     aoFalhar = null
-    if (erroDoGravador) throw erroDoGravador
+    if (erroDaGravacao) throw erroDaGravacao
 
     onProgress?.({ phase: 'finalizing', progress: 85 })
 
@@ -564,7 +579,7 @@ export async function exportVideoWithLayers(
     }
 
     try {
-      const videoNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
+      const videoNode = videoLayer ? (stage.findOne(`#${videoLayer.id}`) as Konva.Image | null) : null
       const baseVideo = videoNode?.image() as HTMLVideoElement | undefined
       if (baseVideo) {
         baseVideo.muted = baseVideoOriginalMuted
@@ -588,10 +603,16 @@ export async function exportVideoWithLayers(
  */
 export async function generateVideoThumbnail(
   stage: Konva.Stage,
-  videoLayer: Layer
+  videoLayer?: Layer | null
 ): Promise<string> {
   if (!stage) {
     throw new Error('Stage não disponível')
+  }
+
+  // Página sem vídeo (foto + música): a capa é o stage como está
+  if (!videoLayer) {
+    stage.batchDraw()
+    return stage.toDataURL({ pixelRatio: 1, mimeType: 'image/jpeg', quality: 0.8 })
   }
 
   // Encontrar o VideoNode no stage

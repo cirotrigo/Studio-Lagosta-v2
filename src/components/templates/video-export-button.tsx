@@ -28,7 +28,9 @@ import {
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
 import { upload } from '@vercel/blob/client'
 import { createId } from '@/lib/id'
-import { trechoDoVideo, videoDeBase, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { duracaoDaPagina, paginaEVideo, videoDeBase, videoPrincipal } from '@/lib/video/camadas-de-video'
+import { fonteEfetiva } from '@/lib/video/audio-do-export'
+import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 
 const sanitizeFileName = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video'
@@ -58,10 +60,13 @@ export function VideoExportButton() {
   const { canPerformOperation, getCost, credits } = useCredits()
 
   // O vídeo de fundo dita duração e som; na página que só tem motion (motion
-  // sobre foto) o próprio motion dita a duração e não há som original.
+  // sobre foto) o próprio motion dita a duração e não há som original. Sem
+  // vídeo nenhum, a MÚSICA faz a página virar vídeo: o stage parado é gravado
+  // pela fatia dela.
   const videoLayer = videoPrincipal(design.layers)
-  const hasVideo = !!videoLayer
-  const semVideoDeBase = hasVideo && !videoDeBase(design.layers)
+  const paginaVideo = paginaEVideo(design.layers, design.audio)
+  const semVideoDeBase = !videoDeBase(design.layers)
+  const currentPageId = useMultiPageOpcional()?.currentPageId ?? null
 
   const [isOpen, setIsOpen] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
@@ -105,27 +110,32 @@ export function VideoExportButton() {
     selectedLayerIdsRef.current = editorContext.selectedLayerIds
   }, [editorContext.selectedLayerIds])
 
-  // A duração vem da própria camada: o VideoNode grava videoMetadata.duration ao
-  // carregar os metadados. É a do TRECHO (com corte), a mesma que o export usa.
-  // (Antes, um efeito sondava o stage com timers sem cancelamento, e a duração
-  // de uma página sobrevivia à troca para outra.)
-  const videoDuration = trechoDoVideo(videoLayer?.videoMetadata).duracao
+  // A duração é a da PÁGINA como vídeo (a mesma conta do export): o trecho do
+  // vídeo principal limitado pela música, ou só a fatia da música. A do vídeo
+  // vem da própria camada (o VideoNode grava videoMetadata.duration).
+  const videoDuration = duracaoDaPagina(design.layers, design.audio)
   React.useEffect(() => {
     // Trilha salva na página tem trecho escolhido pela pessoa: não sobrescrever
     if (videoDuration === null || hasPersistedAudioRef.current) return
     setAudioConfig((prev) => (prev.endTime === videoDuration ? prev : { ...prev, endTime: videoDuration }))
   }, [videoDuration, design.audio])
 
+  // O que o export vai ter de fato: sem vídeo de base, "som do vídeo" vira
+  // mudo e "mix" vira só a música — a mesma decisão da fila (`fonteEfetiva`).
+  const audioEfetivo = React.useMemo(() => fonteEfetiva(audioConfig, !semVideoDeBase), [audioConfig, semVideoDeBase])
+
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
   const hasSelectedMusic =
     (audioConfig.source === 'library' || audioConfig.source === 'mix') && !!audioConfig.musicId
+  // Fatia de música mais curta que 1 s não dá vídeo (sem vídeo ela É a duração)
+  const fatiaCurta = !videoLayer && hasSelectedMusic && (videoDuration ?? 0) < 1
 
   // Verificar suporte do navegador
   const browserSupport = React.useMemo(() => checkVideoExportSupport(), [])
 
   const pollJobStatus = React.useCallback(
-    (jobId: string, initialGenerationId?: string, projectIdParam?: number) => {
+    (jobId: string, initialGenerationId?: string, projectIdParam?: number, pageId?: string | null) => {
       console.log('[VideoExportQueue] Iniciando polling para job:', jobId)
       let pollCount = 0
       const maxPolls = 60
@@ -173,6 +183,9 @@ export function VideoExportButton() {
             status: job.status,
             mp4ResultUrl: job.mp4ResultUrl,
             thumbnailUrl: job.thumbnailUrl,
+            // A página de onde o vídeo saiu: a aba Criativos abre o agendamento
+            // no horário previsto dela
+            pageId,
           }
 
           window.dispatchEvent(new CustomEvent('video-export-progress', { detail }))
@@ -213,10 +226,17 @@ export function VideoExportButton() {
   )
 
   const handleExport = async () => {
-    if (!hasVideo || !videoLayer) {
+    if (!paginaVideo) {
       toast({
         variant: 'destructive',
-        description: 'Nenhum vídeo encontrado no design',
+        description: 'Esta página não tem vídeo nem música — não há o que exportar como vídeo.',
+      })
+      return
+    }
+    if (fatiaCurta) {
+      toast({
+        variant: 'destructive',
+        description: 'O trecho da música é curto demais: escolha pelo menos 1 segundo na aba Músicas.',
       })
       return
     }
@@ -291,7 +311,7 @@ export function VideoExportButton() {
     try {
       const { webm: videoBlob, duracao: exportedDuration } = await exportVideoWithLayers(
         stage,
-        videoLayer,
+        videoLayer ?? null,
         design,
         {
           setSelectedLayerIds: selectLayersFn,
@@ -302,7 +322,7 @@ export function VideoExportButton() {
         {
           fps: 30,
           quality: 0.8,
-          audioConfig,
+          audioConfig: audioEfetivo.config,
         },
         (progress) => {
           setExportProgress(progress)
@@ -312,9 +332,9 @@ export function VideoExportButton() {
       setExportProgress({ phase: 'preparing', progress: 45 })
 
       // Capa definida no painel de vídeo tem prioridade; sem capa, captura o
-      // primeiro frame do trim
+      // primeiro frame do trim (sem vídeo, o quadro do stage)
       let thumbnailBlob: Blob
-      const posterUrl = videoLayer.videoMetadata?.posterUrl
+      const posterUrl = videoLayer?.videoMetadata?.posterUrl
       if (posterUrl) {
         try {
           const posterResponse = await fetch(posterUrl)
@@ -322,10 +342,10 @@ export function VideoExportButton() {
           thumbnailBlob = await posterResponse.blob()
         } catch (error) {
           console.warn('[Video Export] Falha ao usar posterUrl como capa, capturando frame:', error)
-          thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer))
+          thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer ?? null))
         }
       } else {
-        thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer))
+        thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer ?? null))
       }
 
       const videoUploadPath = generateUploadPath(clerkUserId, designName)
@@ -374,7 +394,7 @@ export function VideoExportButton() {
         thumbnailBlobSize: thumbnailBlob.size,
         designData: design,
         // O WebM acima é MUDO — a fila mixa a trilha via ffmpeg a partir daqui
-        audioConfig,
+        audioConfig: audioEfetivo.config,
       }
 
       console.log('[Video Export] Enviando para fila:', {
@@ -426,7 +446,7 @@ export function VideoExportButton() {
         console.warn('[VideoExportQueue] Falha ao acionar processamento imediato:', error)
       })
 
-      pollJobStatus(jobId, generationId, resolvedProjectId)
+      pollJobStatus(jobId, generationId, resolvedProjectId, currentPageId)
 
       toast({
         title: 'Vídeo na fila de processamento',
@@ -447,7 +467,7 @@ export function VideoExportButton() {
     }
   }
 
-  if (!hasVideo) return null
+  if (!paginaVideo) return null
 
   const getProgressText = () => {
     if (!exportProgress) return ''
@@ -589,7 +609,7 @@ export function VideoExportButton() {
                         : audioConfig.source === 'mute'
                           ? 'Sem áudio (mudo)'
                           : semVideoDeBase
-                            ? 'Sem som: o motion não tem áudio. Escolha uma música.'
+                            ? 'Sem som: esta página não tem vídeo com áudio. Escolha uma música.'
                             : 'Usando o áudio do próprio vídeo'}
                   </p>
                 </div>
@@ -633,7 +653,7 @@ export function VideoExportButton() {
             </Button>
             <Button
               onClick={handleExport}
-              disabled={!hasCredits || isExporting || !browserSupport.supported}
+              disabled={!hasCredits || isExporting || !browserSupport.supported || fatiaCurta}
             >
               {isExporting ? (
                 <>
@@ -657,6 +677,7 @@ export function VideoExportButton() {
         open={isAudioModalOpen}
         onOpenChange={setIsAudioModalOpen}
         videoDuration={videoDuration ?? 10}
+        temVideoDeBase={!semVideoDeBase}
         currentConfig={audioConfig}
         onConfirm={(config) => {
           setAudioConfig(config)

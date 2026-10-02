@@ -356,6 +356,43 @@ await dormir(600)
   conferir('o export recusa em vez de gravar sem ele', !!recusa && recusa.includes('ainda não carregou'), recusa ?? 'exportou')
 }
 
+console.log('\n=== K. foto parada + música (sem vídeo nenhum) ===')
+await montar([foto])
+await dormir(400)
+{
+  const FATIA = 2.5
+  const r = await pagina.evaluate((f) => window.validacao.exportarSemVideo(f), FATIA)
+  conferir('a duração é a fatia da música', Math.abs(r.duracao - FATIA) < 0.01, `duração ${r.duracao}`)
+  const webm = path.join(TMP, 'foto-musica.webm')
+  fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+  // O MediaRecorder precisa RECEBER quadros de um canvas que não muda: conta
+  // decodificando, não supondo (nb_frames do WebM não é confiável; -count_frames é)
+  const info = JSON.parse(
+    execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames,r_frame_rate', '-of', 'json', webm]).toString(),
+  ).streams[0]
+  const quadros = Number(info.nb_read_frames)
+  const esperado = 30 * FATIA
+  conferir('o WebM tem ~fps × duração quadros', quadros >= esperado * 0.8 && quadros <= esperado * 1.3, `${quadros} quadros (esperado ~${esperado})`)
+  const q = quadrosDo(r.base64, 'foto-musica-2.webm')
+  conferir('a foto está em todos os quadros', q.length > 10 && q.every((x) => x.fotoAoFundo), `${q.length} quadros lidos`)
+}
+
+console.log('\n=== L. aba oculta durante a gravação ===')
+await montar([base(), motion()])
+await prontos(['base', 'motion'])
+{
+  const recusa = await pagina.evaluate(() => {
+    const p = window.validacao.exportar().then(() => null, (e) => String(e.message))
+    setTimeout(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    }, 1500)
+    return p
+  })
+  await pagina.evaluate(() => { delete document.visibilityState })
+  conferir('o export aborta com mensagem', !!recusa && recusa.includes('oculta'), recusa ?? 'exportou')
+}
+
 conferir('nenhum erro de JavaScript na página', errosDaPagina.length === 0, errosDaPagina.slice(0, 3).join(' | '))
 console.log(`\n${falhas === 0 ? 'TUDO OK' : falhas + ' FALHA(S)'}  (arquivos em ${TMP})`)
 await navegador.close()

@@ -26,7 +26,7 @@ import {
 import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
 import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
-import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
+import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus, Prisma } from '@prisma/client'
 import { formatarBRT, parseBRT } from './data-brt'
@@ -213,6 +213,8 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
         templateId: true,
         thumbnail: true,
         layers: true,
+        // A trilha: página com música só vai ao ar como vídeo
+        audio: true,
         // A versão visual da página (R12-01): quem aceita o thumbnail confere dimensões e fundo, não só as camadas.
         width: true,
         height: true,
@@ -231,7 +233,7 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
       )
     }
     /**
-     * 🔴 Página com VÍDEO não vira post como imagem. Sem mídia trazida por quem
+     * 🔴 Página com VÍDEO (ou com MÚSICA) não vira post como imagem. Sem mídia trazida por quem
      * chama, a arte sairia da própria página — o `thumbnail` ou o render do
      * cron —, e os dois são um quadro PARADO: o story ia ao ar como imagem, sem
      * aviso (ou, sem thumbnail, o erro só aparecia minutos depois, no cron).
@@ -244,9 +246,8 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
      * Camadas ILEGÍVEIS seguem como sempre (não é esta trava que as recusa):
      * com thumbnail do Blob o post nasce com o PNG; sem ele, o render lança.
      */
-    if (mediaUrls.length === 0 && videoNaPagina(page.layers) === 'tem-video') {
-      throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: input.pageId })
-    }
+    const recusa = mediaUrls.length === 0 ? recusaComoImagem(page.layers, page.audio) : null
+    if (recusa) throw new CreativeError(recusa.codigo, recusa.mensagem, 422, { pageId: input.pageId })
     templateId = page.templateId
     camadasDaPagina = page.layers
     // A arte já foi renderizada na criação; reusar o PNG evita re-render na fila.

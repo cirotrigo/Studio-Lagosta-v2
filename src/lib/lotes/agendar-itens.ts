@@ -34,7 +34,7 @@
  */
 
 import { db } from '@/lib/db'
-import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
+import { recusaComoImagem } from '@/lib/video/pagina-com-video'
 import { CreativeError } from '@/lib/creatives/errors'
 import {
   contextoDosEfeitos,
@@ -567,12 +567,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       const existente = (await ctx.leitor.socialPost.findUnique({ where: { id: antes.postId }, select: SELECAO_DO_POST })) as Post | null
       if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
     }
-    const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, width: true, height: true, background: true } })
-    // A chamada de verdade recusa página com vídeo em resolverAgendamento; a
+    const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, audio: true, width: true, height: true, background: true } })
+    // A chamada de verdade recusa página com vídeo ou música em resolverAgendamento; a
     // simulação tem de dar a mesma resposta.
-    if (paginaCrua && videoNaPagina(paginaCrua.layers) === 'tem-video') {
-      return falhou(itemId, { codigo: 'PAGINA_COM_VIDEO', motivo: MENSAGEM_PAGINA_COM_VIDEO }, { pageId })
-    }
+    const recusa = paginaCrua ? recusaComoImagem(paginaCrua.layers, paginaCrua.audio) : null
+    if (recusa) return falhou(itemId, { codigo: recusa.codigo, motivo: recusa.mensagem }, { pageId })
     const atual = !!paginaCrua && thumbnailEhAtual({ thumbnail: paginaCrua.thumbnail ?? null, resultUrl: antes.peca.resultUrl, pagina: paginaCrua, versaoRenderizada: antes.peca.versaoRenderizada })
     return {
       itemId,

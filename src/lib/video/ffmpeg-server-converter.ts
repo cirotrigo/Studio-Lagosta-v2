@@ -365,8 +365,10 @@ export async function convertWebMToMP4ServerSide(
         ...audioArgs.inputArgs,
         ...audioArgs.filterArgs,
         ...audioArgs.mapArgs,
-        // Corta vídeo e áudio juntos na duração alvo (as cadeias têm apad)
-        ...(audioMix && durationSeconds ? ['-t', durationSeconds.toFixed(3)] : []),
+        // Corta vídeo e áudio juntos na duração alvo (as cadeias têm apad).
+        // Sempre que há duração — também no MP4 mudo: o WebM gravado tem ~0,2 s
+        // de cauda, e sem o corte o arquivo saía mais longo que o pedido.
+        ...(durationSeconds ? ['-t', durationSeconds.toFixed(3)] : []),
         '-c:v',
         'libx264',
         '-preset',

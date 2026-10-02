@@ -122,6 +122,47 @@ export function duracaoDoExport(
   return fatia === null ? duracaoDoTrecho : Math.min(duracaoDoTrecho, fatia)
 }
 
+/**
+ * A página tem vídeo VISÍVEL? É a pergunta do RENDER de servidor, que não
+ * desenha vídeo: a camada sairia como um buraco na imagem.
+ */
+export function temVideoVisivel(camadas: readonly CamadaLike[] | null | undefined): boolean {
+  return videosDaPagina(camadas).length > 0
+}
+
+/**
+ * A página É um vídeo? É a pergunta da PUBLICAÇÃO: página com vídeo visível
+ * ou com música só vai ao ar como MP4 — agendada como imagem, a música (ou o
+ * movimento) ficaria para trás sem aviso. Quem quer a imagem tira a música.
+ */
+export function paginaEVideo(
+  camadas: readonly CamadaLike[] | null | undefined,
+  trilha: TrilhaLike | null | undefined,
+): boolean {
+  return temVideoVisivel(camadas) || fatiaDaMusica(trilha) !== null
+}
+
+type CamadaComTrecho = CamadaLike & { id?: string; videoMetadata?: (TrechoLike & { overlay?: boolean }) | null }
+
+/**
+ * A duração da página como vídeo — a MESMA conta do export, com nome: o trecho
+ * do vídeo principal, limitado pela fatia da música; sem vídeo, a fatia da
+ * música. `duracoesCarregadas` (id da camada → duração do <video> montado)
+ * cobre a camada cuja `duration` ainda não foi gravada. `null` = a página não
+ * tem tempo (ou ainda não dá para saber).
+ */
+export function duracaoDaPagina(
+  camadas: readonly CamadaComTrecho[] | null | undefined,
+  trilha: TrilhaLike | null | undefined,
+  duracoesCarregadas?: ReadonlyMap<string, number> | null,
+): number | null {
+  const principal = videoPrincipal(camadas)
+  const trecho = principal
+    ? trechoDoVideo(principal.videoMetadata, principal.id ? duracoesCarregadas?.get(principal.id) : undefined).duracao
+    : null
+  return duracaoDoExport(trecho, trilha)
+}
+
 /** Acima disto o motion é reposicionado; abaixo, deixa tocar (seek engasga). */
 export const DESVIO_TOLERADO_DO_MOTION = 0.25
 /** Margem para o último quadro: seek exato na duração pode devolver vazio. */

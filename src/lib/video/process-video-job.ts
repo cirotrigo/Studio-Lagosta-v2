@@ -22,6 +22,7 @@ import {
 import { videoDeBase } from '@/lib/video/camadas-de-video'
 import {
   MOTIVO_DO_AVISO_DE_AUDIO,
+  fonteEfetiva,
   proximaTentativaDeAudio,
   type AudioAviso,
 } from '@/lib/video/audio-do-export'
@@ -102,25 +103,28 @@ async function downloadToTmp(url: string, label: string, tempFiles: string[]): P
 
 /**
  * Baixa os insumos (vídeo fonte e/ou música) e monta o AudioMixOptions.
- * `mix` ausente = não há o que mixar (ex.: 'original' sem arquivo). `aviso` só
- * vem quando algo FALHOU e o som vai sair diferente do pedido — página sem
- * vídeo de base (motion sobre foto) não tem som original a perder, e não avisa.
+ * `mix` ausente = não há o que mixar. `aviso` vem quando o som vai sair
+ * diferente do pedido: algo FALHOU, ou a página não tem vídeo de base (foto +
+ * música, motion sobre foto) e o pedido contava com o som do vídeo
+ * (`fonteEfetiva` decide antes de baixar qualquer arquivo).
  */
 async function prepareAudioMix(
-  cfg: ExportAudioConfig,
+  pedido: ExportAudioConfig,
   designData: Record<string, unknown> | null,
   tempFiles: string[],
 ): Promise<{ mix?: AudioMixOptions; aviso?: AudioAviso }> {
-  if (cfg.source === 'mute') return {}
+  const videoLayer = findVideoLayer(designData)
+  const fileUrl = videoLayer?.fileUrl
+  const temVideoDeBase = typeof fileUrl === 'string' && fileUrl.startsWith('http')
+  const { config: cfg, aviso: avisoDaFonte } = fonteEfetiva(pedido, temVideoDeBase)
+  if (cfg.source === 'mute') return { aviso: avisoDaFonte }
   const mix: AudioMixOptions = { mode: cfg.source as AudioMixOptions['mode'] }
   let somOriginalFalhou = false
 
   if (cfg.source === 'original' || cfg.source === 'mix') {
-    const videoLayer = findVideoLayer(designData)
-    const fileUrl = videoLayer?.fileUrl
-    if (typeof fileUrl === 'string' && fileUrl.startsWith('http')) {
+    if (temVideoDeBase) {
       try {
-        mix.originalPath = await downloadToTmp(fileUrl, 'vídeo fonte', tempFiles)
+        mix.originalPath = await downloadToTmp(fileUrl as string, 'vídeo fonte', tempFiles)
         mix.originalTrimStart = videoLayer?.videoMetadata?.trimStart ?? 0
         mix.originalVolume = cfg.source === 'mix' ? (cfg.volumeOriginal ?? 80) / 100 : 1
       } catch (error) {
@@ -130,9 +134,6 @@ async function prepareAudioMix(
         console.error('[Video Processor] Som original indisponível — mix segue só com a música:', error)
         somOriginalFalhou = true
       }
-    } else if (cfg.source === 'original') {
-      console.warn('[Video Processor] Fonte de áudio "original" sem fileUrl — export sem áudio')
-      return {}
     }
   }
 
@@ -172,7 +173,7 @@ async function prepareAudioMix(
     ? mix.musicPath
       ? 'so-musica'
       : 'sem-audio'
-    : undefined
+    : avisoDaFonte
   if (!mix.originalPath && !mix.musicPath) return { aviso }
   return { mix, aviso }
 }

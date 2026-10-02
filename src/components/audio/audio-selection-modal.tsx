@@ -44,6 +44,8 @@ interface AudioSelectionModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   videoDuration: number;
+  /** Sem vídeo de base (foto + música, motion sobre foto) não há "som do vídeo" a oferecer. */
+  temVideoDeBase?: boolean;
   currentConfig?: AudioConfig;
   onConfirm: (config: AudioConfig) => void;
 }
@@ -114,12 +116,17 @@ function AudioSelectionModalAberto({
   open,
   onOpenChange,
   videoDuration,
+  temVideoDeBase = true,
   currentConfig,
   onConfirm,
 }: AudioSelectionModalProps) {
-  const [audioSource, setAudioSource] = useState<AudioConfig['source']>(
-    currentConfig?.source || 'library'
-  );
+  const opcoesDeFonte = temVideoDeBase
+    ? AUDIO_SOURCE_OPTIONS
+    : AUDIO_SOURCE_OPTIONS.filter((o) => o.id !== 'original' && o.id !== 'mix');
+  const [audioSource, setAudioSource] = useState<AudioConfig['source']>(() => {
+    const pedido = currentConfig?.source || 'library';
+    return opcoesDeFonte.some((o) => o.id === pedido) ? pedido : 'library';
+  });
   const [busca, setBusca] = useState('');
   const [generoFiltro, setGeneroFiltro] = useState('Todos');
   const [humorFiltro, setHumorFiltro] = useState('Todos');
@@ -225,7 +232,7 @@ function AudioSelectionModalAberto({
                   onValueChange={(value: AudioConfig['source']) => setAudioSource(value)}
                   className="mt-4 grid gap-3 md:grid-cols-2"
                 >
-                  {AUDIO_SOURCE_OPTIONS.map((option) => (
+                  {opcoesDeFonte.map((option) => (
                     <label
                       key={option.id}
                       htmlFor={`source-${option.id}`}

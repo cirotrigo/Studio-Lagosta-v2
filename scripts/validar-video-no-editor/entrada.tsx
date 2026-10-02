@@ -59,6 +59,22 @@ function Pagina() {
         for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
         return { duracao, principal: principal.id, base64: btoa(binario) }
       },
+      // Página SEM vídeo (foto + música): o stage parado é gravado pela fatia da música
+      exportarSemVideo: async (fatia: number) => {
+        const d = { canvas: { width: W, height: H, backgroundColor: '#000000' }, layers: layersRef.current }
+        if (videoPrincipal(d.layers) || !stageRef.current) throw new Error('página com vídeo')
+        const { webm, duracao } = await exportVideoWithLayers(
+          stageRef.current,
+          null,
+          d as unknown as DesignData,
+          { setSelectedLayerIds: () => {}, selectedLayerIdsRef: { current: [] }, zoom: 1, setZoomState: () => {} },
+          { fps: 30, quality: 0.8, audioConfig: { source: 'library', musicId: 1, startTime: 0, endTime: fatia } as never },
+        )
+        const bytes = new Uint8Array(await webm.arrayBuffer())
+        let binario = ''
+        for (let i = 0; i < bytes.length; i += 0x8000) binario += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+        return { duracao, base64: btoa(binario) }
+      },
     }
     ;(window as unknown as { validacao: typeof controles }).validacao = controles
   }, [])

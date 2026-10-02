@@ -31,6 +31,29 @@ export const MOTIVO_DO_AVISO_DE_AUDIO: Record<AudioAviso, string> = {
     'Não foi possível usar o som escolhido (o vídeo pode não ter som, ou a música não está mais disponível). O vídeo saiu sem som.',
 }
 
+type FonteLike = { source: 'original' | 'library' | 'mute' | 'mix'; musicId?: number | null }
+
+/**
+ * A trilha que o export REALMENTE vai ter, dada a página. Sem vídeo de base
+ * (foto + música, foto + motion) não existe "som do vídeo": `original` sai
+ * mudo e `mix` sai só com a música — com AVISO, porque é diferente do pedido.
+ * Com vídeo de base, ou com as outras fontes, a config volta como veio.
+ * Puro: usada pela fila (antes de baixar qualquer arquivo) e pelo diálogo.
+ */
+export function fonteEfetiva<T extends FonteLike>(
+  cfg: T,
+  temVideoDeBase: boolean,
+): { config: T; aviso?: AudioAviso } {
+  if (temVideoDeBase) return { config: cfg }
+  if (cfg.source === 'original') return { config: { ...cfg, source: 'mute' }, aviso: 'sem-audio' }
+  if (cfg.source === 'mix') {
+    return cfg.musicId
+      ? { config: { ...cfg, source: 'library' }, aviso: 'so-musica' }
+      : { config: { ...cfg, source: 'mute' }, aviso: 'sem-audio' }
+  }
+  return { config: cfg }
+}
+
 /**
  * A próxima tentativa de áudio depois que a conversão com trilha falhou (ex.:
  * mix com vídeo de origem sem faixa de áudio, ou música com arquivo inválido).

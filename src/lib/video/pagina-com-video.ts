@@ -12,7 +12,7 @@
  */
 
 import { lerCamadas } from '@/lib/posts/page-layers'
-import { videosDaPagina } from './camadas-de-video'
+import { fatiaDaMusica, videosDaPagina } from './camadas-de-video'
 
 export type VideoNaPagina = 'tem-video' | 'sem-video' | 'ilegivel'
 
@@ -32,4 +32,41 @@ export function videoNaPagina(layersCruas: unknown): VideoNaPagina {
   const { camadas, legivel } = lerCamadas(layersCruas)
   if (!legivel) return 'ilegivel'
   return videosDaPagina(camadas as Array<{ type?: string; visible?: boolean }>).length > 0 ? 'tem-video' : 'sem-video'
+}
+
+/** Página com música e sem vídeo: ela é um vídeo, e a saída é exportar ou tirar a música. */
+export const MENSAGEM_PAGINA_COM_MUSICA =
+  'Esta página tem música: ela vai ao ar como vídeo. Exporte o vídeo (botão "Exportar Vídeo" no editor) e agende o MP4 — ou tire a música (aba Músicas) para agendar a imagem.'
+
+export type RecusaComoImagem = { codigo: 'PAGINA_COM_VIDEO' | 'PAGINA_COM_MUSICA'; mensagem: string }
+
+/** `Page.audio` como está no banco: objeto, string JSON ou nada. */
+function lerTrilha(audioCru: unknown): Record<string, unknown> | null {
+  let valor = audioCru
+  for (let i = 0; i < 2 && typeof valor === 'string'; i++) {
+    try {
+      valor = JSON.parse(valor)
+    } catch {
+      return null
+    }
+  }
+  return valor && typeof valor === 'object' && !Array.isArray(valor) ? (valor as Record<string, unknown>) : null
+}
+
+/**
+ * A trava de PUBLICAÇÃO: por que esta página não pode virar post como imagem —
+ * ou `null`, quando pode. Vídeo visível OU música: nos dois casos o post
+ * sairia como um quadro parado, sem o movimento ou sem o som, em silêncio.
+ *
+ * Diferente da trava de RENDER (`videoNaPagina`): página com música e sem vídeo
+ * RENDERIZA como imagem (miniatura, ajuste de arte) — só não se PUBLICA assim.
+ */
+export function recusaComoImagem(layersCruas: unknown, audioCru: unknown): RecusaComoImagem | null {
+  if (videoNaPagina(layersCruas) === 'tem-video') {
+    return { codigo: 'PAGINA_COM_VIDEO', mensagem: MENSAGEM_PAGINA_COM_VIDEO }
+  }
+  if (fatiaDaMusica(lerTrilha(audioCru)) !== null) {
+    return { codigo: 'PAGINA_COM_MUSICA', mensagem: MENSAGEM_PAGINA_COM_MUSICA }
+  }
+  return null
 }
