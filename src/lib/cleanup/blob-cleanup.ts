@@ -3,6 +3,7 @@ import { del } from '@vercel/blob'
 import { PostStatus } from '../../../prisma/generated/client'
 import { googleDriveService } from '@/server/google-drive-service'
 import { reapontarMidiasDosPosts } from './reapontar-midias'
+import { ehGeracaoDeVideo } from './geracao-de-video'
 
 interface CleanupStats {
   postsProcessed: number
@@ -16,6 +17,8 @@ export interface GenerationCleanupStats {
   postsReapontados: number
   generationsRecovered: number
   generationsDeleted: number
+  /** Vídeos exportados do editor que a limpeza deixou como estão. */
+  videosPulados: number
   blobsDeleted: number
   errors: number
   budgetExceeded: boolean
@@ -46,6 +49,26 @@ export function extractBlobPathname(url: string | null | undefined): string | nu
 function isVercelBlobUrl(url: string | null | undefined): boolean {
   if (!url) return false
   return url.includes(VERCEL_BLOB_HOST_FRAGMENT)
+}
+
+/**
+ * 🔴 Vídeo exportado do editor NÃO passa pela limpeza de 90 dias. O backup dele
+ * no Drive mora em `fieldValues.driveBackupUrl`, não na coluna
+ * `googleDriveBackupUrl`: o Pass B o lia como "arte sem backup", reenviava o MP4
+ * ao Drive pelo uploader de IMAGEM (PNG) e trocava `resultUrl` e as mídias dos
+ * posts por um link lh3 que responde 404 — e, sem pasta no Drive, apagava o MP4
+ * e a linha. 12 vídeos ficaram assim até 02/10/2026; um story falhou em 12/09.
+ *
+ * O filtro é aqui, no código: filtro Json no `where` do Prisma descarta a linha
+ * que não TEM o campo, e a limpeza deixaria de limpar quase tudo em silêncio.
+ */
+function semVideos<T extends { fieldValues: unknown }>(
+  geracoes: T[],
+  stats: { videosPulados: number },
+): T[] {
+  const resto = geracoes.filter((g) => !ehGeracaoDeVideo(g.fieldValues))
+  stats.videosPulados += geracoes.length - resto.length
+  return resto
 }
 
 async function processInChunks<T>(
@@ -184,6 +207,7 @@ export async function cleanupExpiredBlobs(): Promise<CleanupStats> {
  * - Pass B: gerações > 90 dias SEM Drive backup → tenta retry de backup; se sucesso vira A, senão deleta blob+linha.
  *
  * Idempotente: filtra por resultUrl ainda apontando pra Vercel Blob.
+ * Vídeo exportado do editor fica de fora dos dois passes — ver `semVideos`.
  */
 export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
   const stats: GenerationCleanupStats = {
@@ -191,6 +215,7 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
     postsReapontados: 0,
     generationsRecovered: 0,
     generationsDeleted: 0,
+    videosPulados: 0,
     blobsDeleted: 0,
     errors: 0,
     budgetExceeded: false,
@@ -211,7 +236,7 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
   const cutoff = new Date(Date.now() - GENERATION_RETENTION_DAYS * 24 * 60 * 60 * 1000)
 
   // Pass A: gerações antigas COM Drive backup ainda apontando pra Vercel Blob
-  const repointable = await db.generation.findMany({
+  const antigasComBackup = await db.generation.findMany({
     where: {
       createdAt: { lt: cutoff },
       googleDriveBackupUrl: { not: null },
@@ -222,8 +247,10 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
       resultUrl: true,
       fileName: true,
       googleDriveBackupUrl: true,
+      fieldValues: true,
     },
   })
+  const repointable = semVideos(antigasComBackup, stats)
 
   await processInChunks(
     repointable,
@@ -271,7 +298,7 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
   }
 
   // Pass B: gerações antigas SEM Drive backup
-  const orphans = await db.generation.findMany({
+  const antigasSemBackup = await db.generation.findMany({
     where: {
       createdAt: { lt: cutoff },
       googleDriveBackupUrl: null,
@@ -281,6 +308,7 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
       resultUrl: true,
       fileName: true,
       projectName: true,
+      fieldValues: true,
       Project: {
         select: {
           id: true,
@@ -290,6 +318,7 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
       },
     },
   })
+  const orphans = semVideos(antigasSemBackup, stats)
 
   await processInChunks(
     orphans,
@@ -371,16 +400,18 @@ export async function cleanupGenerations(): Promise<GenerationCleanupStats> {
 /**
  * Cleanup diário e idempotente: repõe URLs Vercel pra Drive em gerações > 90 dias com backup.
  * Mesma lógica do Pass A do cleanupGenerations(), defesa em profundidade caso o cron semanal falhe.
+ * Vídeo exportado do editor também fica de fora — ver `semVideos`.
  */
 export async function cleanupGenerationBlobs(): Promise<{
   generationsRepointed: number
+  videosPulados: number
   blobsDeleted: number
   errors: number
 }> {
-  const stats = { generationsRepointed: 0, blobsDeleted: 0, errors: 0 }
+  const stats = { generationsRepointed: 0, videosPulados: 0, blobsDeleted: 0, errors: 0 }
   const cutoff = new Date(Date.now() - GENERATION_RETENTION_DAYS * 24 * 60 * 60 * 1000)
 
-  const candidates = await db.generation.findMany({
+  const antigasComBackup = await db.generation.findMany({
     where: {
       createdAt: { lt: cutoff },
       googleDriveBackupUrl: { not: null },
@@ -391,8 +422,10 @@ export async function cleanupGenerationBlobs(): Promise<{
       resultUrl: true,
       fileName: true,
       googleDriveBackupUrl: true,
+      fieldValues: true,
     },
   })
+  const candidates = semVideos(antigasComBackup, stats)
 
   for (const gen of candidates) {
     try {

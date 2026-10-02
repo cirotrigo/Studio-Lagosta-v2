@@ -61,6 +61,7 @@ import { bakeLayers } from '@/lib/creatives/bake-layers'
 import { aplicarAjustes, type AjusteAplicado, type AjusteRecusado } from '@/lib/creatives/revisao/aplicar-ajustes'
 import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { MOTIVO_DO_AJUSTE_DO_REVISOR } from '@/lib/relatorios/qualidade-da-copy-contrato'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -1149,6 +1150,13 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
    * cima (REV-D01 da revisão do Codex, 12/09/2026). Se a trava falhar, a
    * página não é gravada: ajuste sem proteção é ajuste que a fila desfaz.
    */
+  // ANTES da primeira escrita: o render de servidor é imagem e recusa página
+  // com vídeo. Recusar só lá deixava as camadas já gravadas, a miniatura
+  // apagada e a agenda invalidada numa operação que respondeu "recusada".
+  if (videoNaPagina(layers) === 'tem-video') {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id, ajusteGravado: false })
+  }
+
   const travar = !!revisao && revisao.aplicados.length > 0
   const { travarRecomposicaoDaArte } = travar ? await import('@/lib/compositor/recompor') : { travarRecomposicaoDaArte: null }
   await db.$transaction(

@@ -116,6 +116,11 @@ export interface Layer {
     /** Trim do vídeo em segundos (editor E export reproduzem só o trecho). */
     trimStart?: number
     trimEnd?: number
+    /**
+     * Motion: vídeo com fundo transparente (WebM com alfa) por cima de uma foto
+     * ou de outro vídeo. Ver src/lib/video/camadas-de-video.ts.
+     */
+    overlay?: boolean
   }
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]

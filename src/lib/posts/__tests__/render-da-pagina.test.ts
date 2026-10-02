@@ -20,4 +20,9 @@ describe('renderDaPaginaCobreAMidia', () => {
       ]),
     ).toBe(false)
   })
+
+  it('mídia de vídeo nunca é coberta: o render da página é imagem e apagaria o MP4', () => {
+    expect(renderDaPaginaCobreAMidia(['https://blob/video-exports/user/1-Sem%20t%C3%ADtulo.mp4'])).toBe(false)
+    expect(renderDaPaginaCobreAMidia(['https://blob/video.MOV?download=1'])).toBe(false)
+  })
 })

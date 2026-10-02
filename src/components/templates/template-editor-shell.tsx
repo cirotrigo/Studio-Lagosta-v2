@@ -31,6 +31,7 @@ import { VideosPanel } from './sidebar/videos-panel'
 import { MusicPanel } from './sidebar/music-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportButton } from './video-export-button'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
 import { PageModelButton, PageModelMobileSection } from './page-model-control'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
@@ -261,7 +262,10 @@ function TemplateEditorContent({
   const [showScheduleModal, setShowScheduleModal] = React.useState(false)
   const [mobileFinishOpen, setMobileFinishOpen] = React.useState(false)
 
-  const canSchedule = templateType === 'STORY' && !!currentPageId
+  // Página com vídeo (ou motion) só vai ao ar pelo "Exportar Vídeo": "Agendar"
+  // manda um JPEG do quadro parado, e o story sai como imagem, sem aviso.
+  const paginaTemVideo = videosDaPagina(design.layers).length > 0 // vídeo oculto não conta
+  const canSchedule = templateType === 'STORY' && !!currentPageId && !paginaTemVideo
 
   // Fecha o drawer de ferramentas assim que um elemento é aplicado no canvas
   const layerCount = design.layers.length
@@ -428,8 +432,14 @@ function TemplateEditorContent({
   // é onde se digita a instrução opcional para a melhoria com IA. Com uma
   // página, o modal esconde a lista e já vem com ela selecionada.
   const handleExport = React.useCallback(async () => {
+    if (paginaTemVideo) {
+      toast({
+        title: 'Esta página tem vídeo',
+        description: 'O criativo sai como imagem parada, sem o movimento. Para o vídeo, use "Exportar Vídeo".',
+      })
+    }
     setShowGenerateModal(true)
-  }, [])
+  }, [paginaTemVideo, toast])
 
   const handleGenerateMultipleCreatives = React.useCallback(async (
     selectedPageIds: string[],
@@ -924,7 +934,7 @@ function TemplateEditorContent({
               </Button>
 
               {/* Video Export Button (if visible) */}
-              {templateType === 'VIDEO' && (
+              {paginaTemVideo && (
                 <div className="shadow-lg rounded-md overflow-hidden">
                   <VideoExportButton />
                 </div>

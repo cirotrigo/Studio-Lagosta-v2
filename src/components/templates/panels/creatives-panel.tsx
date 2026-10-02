@@ -23,6 +23,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { avisoDeAudioDe } from '@/lib/video/audio-do-export'
 
 interface CreativesPanelProps {
   templateId: number
@@ -336,6 +337,9 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
             // 0% ali passaria a impressão de travado.
             const temProgressoReal = !!progressData
             const semArte = !creative.resultUrl
+            // Vídeo cujo som saiu diferente do pedido (a fila grava o aviso):
+            // sem isto a equipe só descobria ouvindo o story já publicado.
+            const avisoDeAudio = isVideo ? avisoDeAudioDe(creative.fieldValues) : null
 
             return (
               <div
@@ -436,6 +440,14 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
                         locale: ptBR,
                       })}
                     </p>
+                    {avisoDeAudio && (
+                      <p
+                        className="text-[10px] font-medium text-amber-600 dark:text-amber-500"
+                        title={avisoDeAudio.motivo}
+                      >
+                        {avisoDeAudio.rotulo}
+                      </p>
+                    )}
                   </div>
 
                   {/* Sem arte pronta não há o que agendar, editar ou baixar —

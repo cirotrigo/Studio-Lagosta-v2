@@ -263,6 +263,10 @@ export class PostExecutor {
                 // o objeto coerente com o que já foi gravado.
                 post.mediaUrls = [render.url]
                 post.renderStatus = RenderStatus.RENDERED
+              } else if (render.motivo === 'midia-propria') {
+                // A mídia do post é vídeo (ou carrossel): não há o que
+                // renderizar, e ela segue para a entrega como está.
+                post.renderStatus = RenderStatus.NOT_NEEDED
               } else if (render.motivo === 'falhou') {
                 // Vencido e sem arte é falha de publicação, não silêncio.
                 if (isOverdue) {

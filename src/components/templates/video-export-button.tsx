@@ -26,9 +26,9 @@ import {
   generateVideoThumbnail,
 } from '@/lib/konva/konva-video-export'
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
-import Konva from 'konva'
 import { upload } from '@vercel/blob/client'
 import { createId } from '@/lib/id'
+import { trechoDoVideo, videoDeBase, videoPrincipal } from '@/lib/video/camadas-de-video'
 
 const sanitizeFileName = (name: string) =>
   name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video'
@@ -57,8 +57,11 @@ export function VideoExportButton() {
   const { userId: clerkUserId } = useAuth()
   const { canPerformOperation, getCost, credits } = useCredits()
 
-  const videoLayer = design.layers.find((layer) => layer.type === 'video')
+  // O vídeo de fundo dita duração e som; na página que só tem motion (motion
+  // sobre foto) o próprio motion dita a duração e não há som original.
+  const videoLayer = videoPrincipal(design.layers)
   const hasVideo = !!videoLayer
+  const semVideoDeBase = hasVideo && !videoDeBase(design.layers)
 
   const [isOpen, setIsOpen] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
@@ -67,7 +70,6 @@ export function VideoExportButton() {
 
   // Estados para configuração de áudio
   const [isAudioModalOpen, setIsAudioModalOpen] = React.useState(false)
-  const [videoDuration, setVideoDuration] = React.useState<number | null>(null)
   const DEFAULT_AUDIO_CONFIG = React.useMemo<AudioConfig>(
     () => ({
       source: 'original',
@@ -103,131 +105,16 @@ export function VideoExportButton() {
     selectedLayerIdsRef.current = editorContext.selectedLayerIds
   }, [editorContext.selectedLayerIds])
 
-  // Obter duração real do vídeo através do Konva Stage
+  // A duração vem da própria camada: o VideoNode grava videoMetadata.duration ao
+  // carregar os metadados. É a do TRECHO (com corte), a mesma que o export usa.
+  // (Antes, um efeito sondava o stage com timers sem cancelamento, e a duração
+  // de uma página sobrevivia à troca para outra.)
+  const videoDuration = trechoDoVideo(videoLayer?.videoMetadata).duracao
   React.useEffect(() => {
-    if (!videoLayer) {
-      console.log('[Video Export] ❌ videoLayer não existe')
-      return
-    }
-
-    console.log('[Video Export] 🔍 Iniciando detecção de duração do vídeo...')
-    console.log('[Video Export] VideoLayer ID:', videoLayer.id)
-    console.log('[Video Export] VideoLayer fileUrl:', videoLayer.fileUrl)
-
-    let attempts = 0
-    const maxAttempts = 30
-    const retryDelay = 300
-
-    const findAndUpdateDuration = () => {
-      attempts++
-      console.log(`[Video Export] 🔎 Tentativa ${attempts}/${maxAttempts}`)
-
-      // Buscar o vídeo através do Konva Stage
-      const findVideoFromKonva = (): HTMLVideoElement | null => {
-        // Tentar encontrar o stage Konva
-        const stages = (Konva as typeof Konva).stages
-        console.log('[Video Export] 📦 Konva.stages disponíveis:', stages?.length || 0)
-
-        if (!stages || stages.length === 0) {
-          console.log('[Video Export] ⚠️ Nenhum Konva Stage encontrado')
-          return null
-        }
-
-        // Procurar em todos os stages
-        for (const stage of stages) {
-          // Buscar o Image node com o ID do videoLayer
-          const node = stage.findOne(`#${videoLayer.id}`)
-
-          if (node) {
-            console.log('[Video Export] 🎯 Konva node encontrado:', videoLayer.id)
-
-            // Verificar se é realmente um Konva.Image antes de chamar .image()
-            if (node instanceof Konva.Image) {
-              console.log('[Video Export] ✅ Node é um Konva.Image')
-
-              // Pegar o elemento de vídeo HTML do Konva Image
-              const videoElement = node.image() as HTMLVideoElement
-
-              if (videoElement && videoElement.tagName === 'VIDEO') {
-                console.log('[Video Export] ✅ Elemento de vídeo obtido do Konva Image:', {
-                  src: videoElement.src?.substring(0, 50) + '...',
-                  duration: videoElement.duration,
-                  readyState: videoElement.readyState,
-                })
-                return videoElement
-              } else {
-                console.log('[Video Export] ⚠️ Image node não contém vídeo válido')
-              }
-            } else {
-              console.log('[Video Export] ⚠️ Node encontrado mas não é um Konva.Image:', node.getType())
-            }
-          }
-        }
-
-        console.log('[Video Export] ❌ Vídeo não encontrado em nenhum Konva Stage')
-        return null
-      }
-
-      const videoElement = findVideoFromKonva()
-
-      if (!videoElement) {
-        if (attempts < maxAttempts) {
-          console.log(`[Video Export] ⏳ Aguardando ${retryDelay}ms antes da próxima tentativa...`)
-          setTimeout(findAndUpdateDuration, retryDelay)
-        } else {
-          console.error('[Video Export] ❌ Elemento de vídeo não encontrado após', maxAttempts, 'tentativas')
-        }
-        return
-      }
-
-      const updateDuration = () => {
-        console.log('[Video Export] 📊 Atualizando duração...')
-        console.log('[Video Export] Duration:', videoElement.duration)
-        console.log('[Video Export] ReadyState:', videoElement.readyState)
-
-        if (videoElement.duration && Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
-          const realDuration = videoElement.duration
-          console.log('[Video Export] ✅✅✅ DURAÇÃO REAL DETECTADA:', realDuration.toFixed(2), 'segundos')
-          setVideoDuration(realDuration)
-
-          setAudioConfig(prev => {
-            // Trilha salva na página tem trecho escolhido pelo usuário — não
-            // sobrescrever com a duração do vídeo
-            if (hasPersistedAudioRef.current) return prev
-            console.log('[Video Export] Atualizando audioConfig.endTime de', prev.endTime, 'para', realDuration)
-            return {
-              ...prev,
-              endTime: realDuration,
-            }
-          })
-        } else if (attempts < maxAttempts) {
-          console.log(`[Video Export] ⚠️ Vídeo sem duração válida (${videoElement.duration}), tentando novamente...`)
-          setTimeout(findAndUpdateDuration, retryDelay)
-        } else {
-          console.error('[Video Export] ❌ Não foi possível obter duração válida após', maxAttempts, 'tentativas')
-        }
-      }
-
-      // Se já está carregado
-      if (videoElement.readyState >= 1) {
-        console.log('[Video Export] 📺 Vídeo já está carregado (readyState >= 1)')
-        updateDuration()
-      } else {
-        console.log('[Video Export] ⏳ Aguardando evento loadedmetadata...')
-        videoElement.addEventListener('loadedmetadata', () => {
-          console.log('[Video Export] 🎬 Evento loadedmetadata disparado!')
-          updateDuration()
-        }, { once: true })
-        setTimeout(findAndUpdateDuration, retryDelay)
-      }
-    }
-
-    // Iniciar busca com delay para dar tempo do Konva renderizar
-    setTimeout(() => {
-      console.log('[Video Export] 🚀 Iniciando busca através do Konva Stage...')
-      findAndUpdateDuration()
-    }, 1000) // 1 segundo de delay inicial para garantir que o Konva renderizou
-  }, [videoLayer])
+    // Trilha salva na página tem trecho escolhido pela pessoa: não sobrescrever
+    if (videoDuration === null || hasPersistedAudioRef.current) return
+    setAudioConfig((prev) => (prev.endTime === videoDuration ? prev : { ...prev, endTime: videoDuration }))
+  }, [videoDuration, design.audio])
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
@@ -402,7 +289,7 @@ export function VideoExportButton() {
     setExportProgress({ phase: 'preparing', progress: 10 })
 
     try {
-      const videoBlob = await exportVideoWithLayers(
+      const { webm: videoBlob, duracao: exportedDuration } = await exportVideoWithLayers(
         stage,
         videoLayer,
         design,
@@ -473,21 +360,6 @@ export function VideoExportButton() {
       })
 
       setExportProgress({ phase: 'uploading', progress: 95 })
-
-      // Mesma regra do export: trim do vídeo ∧ trecho da música
-      const trimStart = videoLayer.videoMetadata?.trimStart ?? 0
-      const trimEnd = videoLayer.videoMetadata?.trimEnd
-      const fullDur = videoDuration || videoLayer.videoMetadata?.duration || 10
-      const trimmedDur =
-        trimEnd !== undefined && trimEnd > trimStart
-          ? trimEnd - trimStart
-          : Math.max(0.5, fullDur - trimStart)
-      const musicSlice =
-        (audioConfig?.source === 'library' || audioConfig?.source === 'mix') && audioConfig.musicId
-          ? audioConfig.endTime - audioConfig.startTime
-          : null
-      const exportedDuration =
-        musicSlice && musicSlice > 0 ? Math.min(trimmedDur, musicSlice) : trimmedDur
 
       const queuePayload = {
         templateId,
@@ -611,13 +483,15 @@ export function VideoExportButton() {
         Exportar Vídeo
       </Button>
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      {/* Gravando, o diálogo não fecha: o canvas voltaria a aceitar clique e a
+          seleção entraria no vídeo. */}
+      <Dialog open={isOpen} onOpenChange={(open) => (isExporting ? undefined : setIsOpen(open))}>
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Exportar vídeo final</DialogTitle>
             <DialogDescription>
-              O MP4 é enviado para a fila de processamento. Você pode continuar editando e será
-              avisado quando ele aparecer na aba Criativos.
+              A gravação leva o tempo do vídeo: deixe esta aba aberta e visível até o vídeo entrar
+              na fila. Depois disso pode continuar editando; o MP4 aparece na aba Criativos.
             </DialogDescription>
           </DialogHeader>
 
@@ -714,7 +588,9 @@ export function VideoExportButton() {
                           : 'Mix: áudio do vídeo + música'
                         : audioConfig.source === 'mute'
                           ? 'Sem áudio (mudo)'
-                          : 'Usando o áudio do próprio vídeo'}
+                          : semVideoDeBase
+                            ? 'Sem som: o motion não tem áudio. Escolha uma música.'
+                            : 'Usando o áudio do próprio vídeo'}
                   </p>
                 </div>
 
@@ -776,10 +652,11 @@ export function VideoExportButton() {
       </Dialog>
 
       {/* Modal de Seleção de Áudio */}
+      {isAudioModalOpen && (
       <AudioSelectionModal
         open={isAudioModalOpen}
         onOpenChange={setIsAudioModalOpen}
-        videoDuration={videoDuration || 10}
+        videoDuration={videoDuration ?? 10}
         currentConfig={audioConfig}
         onConfirm={(config) => {
           setAudioConfig(config)
@@ -792,6 +669,7 @@ export function VideoExportButton() {
           })
         }}
       />
+      )}
     </>
   )
 }

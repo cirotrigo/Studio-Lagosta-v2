@@ -13,6 +13,7 @@ import { slotValuesParaRender } from './copy-segue-a-pagina'
 import { textosDaPagina } from './page-layers'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
 
 export interface RenderStoryResult {
   buffer: Buffer
@@ -79,7 +80,8 @@ export async function renderStoryImage(
   // Guard: o render server-side é imagem estática. Camada de vídeo sairia como
   // buraco transparente em silêncio (render-engine ignora o type 'video') e o
   // post publicaria arte furada com status RENDERED.
-  if (designData.layers.some((layer) => layer?.type === 'video')) {
+  // Camada OCULTA não conta: o render-engine já a pula, e a página é uma imagem.
+  if (videosDaPagina(designData.layers).length > 0) {
     throw new Error(
       `Página ${pageId} contém camada de vídeo — o render server-side gera imagem estática. ` +
         'Exporte o vídeo pelo editor e agende o MP4 pela aba Criativos.',

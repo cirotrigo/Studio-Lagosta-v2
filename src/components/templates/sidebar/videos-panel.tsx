@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useProject } from '@/hooks/use-project'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import type { GoogleDriveItem } from '@/types/google-drive'
+import { pareceMotion } from '@/lib/video/camadas-de-video'
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
 const MAX_VIDEO_SIZE = 100 * 1024 * 1024 // 100MB
@@ -53,25 +54,37 @@ export function VideosPanel() {
   const insertVideoLayer = React.useCallback(
     (url: string, name?: string) => {
       const base = createDefaultLayer('video')
+      // WebM com fundo transparente entra como MOTION: por cima da página,
+      // tocando uma vez (ver src/lib/video/camadas-de-video.ts)
+      const motion = pareceMotion(url) || pareceMotion(name)
       addLayer({
         ...base,
-        name: name ? `Vídeo - ${name}` : 'Vídeo',
+        name: `${motion ? 'Motion' : 'Vídeo'}${name ? ` - ${name}` : ''}`,
         fileUrl: url,
         size: { width: canvasWidth, height: canvasHeight },
         position: { x: 0, y: 0 },
         videoMetadata: {
           ...base.videoMetadata,
           autoplay: true,
-          loop: true,
+          loop: !motion,
           muted: true,
           objectFit: 'cover',
+          ...(motion ? { overlay: true } : {}),
         },
       })
 
-      toast({
-        title: 'Vídeo adicionado',
-        description: 'O vídeo foi ajustado para preencher o canvas.',
-      })
+      toast(
+        motion
+          ? {
+              title: 'Motion adicionado',
+              description:
+                'Entrou por cima da página e toca uma vez no vídeo final. Se for um vídeo comum, desligue "Motion" no painel do vídeo.',
+            }
+          : {
+              title: 'Vídeo adicionado',
+              description: 'O vídeo foi ajustado para preencher o canvas.',
+            },
+      )
     },
     [addLayer, canvasHeight, canvasWidth, toast],
   )

@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { CalendarCheck, CalendarPlus, Copy, Layers, Loader2, Plus, Trash2 } from 'lucide-react'
+import { CalendarCheck, CalendarPlus, Copy, Layers, Loader2, Plus, Trash2, Video } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
@@ -9,6 +9,7 @@ import { useMultiPage } from '@/contexts/multi-page-context'
 import { usePageActions } from '@/hooks/use-page-actions'
 import { useAgendaDasPaginas, useAgendarPagina, type AgendaDaPagina } from '@/hooks/use-agenda-das-paginas'
 import { horarioCurto } from '@/lib/compositor/pasta-da-semana'
+import { videoNaPagina } from '@/lib/video/pagina-com-video'
 import { KonvaEditorStage } from '../konva-editor-stage'
 import { PagePreview } from './page-preview'
 import type { Layer } from '@/types/template'
@@ -28,10 +29,13 @@ import type { Layer } from '@/types/template'
  */
 function ControleDeAgenda({
   agenda,
+  temVideo,
   aoAgendar,
   agendando,
 }: {
   agenda: AgendaDaPagina | undefined
+  /** A página tem vídeo (ou motion) visível: ela não se agenda como imagem. */
+  temVideo: boolean
   aoAgendar: () => void
   agendando: boolean
 }) {
@@ -69,6 +73,26 @@ function ControleDeAgenda({
       >
         <Layers className="h-3 w-3" />
         {agenda.slide ? `slide ${agenda.slide}` : 'slide'}
+      </span>
+    )
+  }
+
+  /**
+   * 🔴 Página com vídeo não ganha botão: "Agendar" manda a página como IMAGEM
+   * (o thumbnail ou o render do servidor) e o story sairia com um quadro
+   * parado. Ela vai ao ar pelo "Exportar Vídeo", e o MP4 é agendado pela aba
+   * Criativos. A tela só orienta — quem recusa de verdade é `agendarPost`
+   * (`PAGINA_COM_VIDEO`). Vem antes do horário: a indicação vale mesmo na
+   * página sem horário previsto, que é a maioria das de vídeo.
+   */
+  if (temVideo) {
+    return (
+      <span
+        className="flex h-6 items-center gap-1 rounded bg-white/5 px-1.5 text-[11px] font-medium text-muted-foreground"
+        title='Esta página tem vídeo: use "Exportar Vídeo" e agende o MP4 pela aba Criativos.'
+      >
+        <Video className="h-3 w-3" />
+        vídeo
       </span>
     )
   }
@@ -542,6 +566,9 @@ export function ContinuousWorkspace() {
                 <div className="flex items-center gap-0.5 opacity-50 transition-opacity hover:opacity-100">
                   <ControleDeAgenda
                     agenda={agendaPorPagina.get(page.id)}
+                    // A ativa lê as camadas vivas do editor: o vídeo recém-inserido
+                    // ainda não chegou à Page (autosave).
+                    temVideo={videoNaPagina(isActive ? design.layers : page.layers) === 'tem-video'}
                     agendando={agendandoId === page.id}
                     aoAgendar={() => colocarNaAgenda(page.id, page.name)}
                   />

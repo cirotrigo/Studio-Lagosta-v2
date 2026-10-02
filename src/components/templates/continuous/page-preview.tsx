@@ -8,6 +8,7 @@ import type { Layer, Page } from '@/types/template'
 import { KonvaLayerFactory } from '../konva-layer-factory'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
+import { ehMotion, videosDaPagina } from '@/lib/video/camadas-de-video'
 
 interface PagePreviewProps {
   page: Page
@@ -36,7 +37,10 @@ interface PagePreviewProps {
  * Clique/ativação são responsabilidade do slot no ContinuousWorkspace.
  */
 export function PagePreview({ page, width, height, zoom, live, capturedUrl, index }: PagePreviewProps) {
-  if (live) {
+  // Página com vídeo: a captura feita enquanto ela estava aberta (vídeo, motion
+  // e arte juntos) mostra mais que o stage de prévia, que não monta <video>.
+  const temVideo = Array.isArray(page.layers) && videosDaPagina(page.layers as Layer[]).length > 0
+  if (live && !(capturedUrl && temVideo)) {
     return <PagePreviewStage page={page} width={width} height={height} zoom={zoom} />
   }
 
@@ -162,6 +166,10 @@ function VideoPosterLayer({ layer }: { layer: Layer }) {
       />
     )
   }
+
+  // Motion sem quadro de prévia não desenha nada: o retângulo de espera taparia
+  // a foto ou o vídeo que está embaixo dele.
+  if (ehMotion(layer)) return null
 
   return (
     <Rect

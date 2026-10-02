@@ -34,6 +34,7 @@
  */
 
 import { db } from '@/lib/db'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { CreativeError } from '@/lib/creatives/errors'
 import {
   contextoDosEfeitos,
@@ -567,6 +568,11 @@ async function agendarItem(ctx: Contexto, item: ItemDoAgendamento): Promise<Item
       if (existente) return concluido(ctx, itemId, 'adotado', existente, antes.peca, antes.pagina, avisos)
     }
     const paginaCrua = await ctx.leitor.page.findUnique({ where: { id: pageId }, select: { thumbnail: true, layers: true, width: true, height: true, background: true } })
+    // A chamada de verdade recusa página com vídeo em resolverAgendamento; a
+    // simulação tem de dar a mesma resposta.
+    if (paginaCrua && videoNaPagina(paginaCrua.layers) === 'tem-video') {
+      return falhou(itemId, { codigo: 'PAGINA_COM_VIDEO', motivo: MENSAGEM_PAGINA_COM_VIDEO }, { pageId })
+    }
     const atual = !!paginaCrua && thumbnailEhAtual({ thumbnail: paginaCrua.thumbnail ?? null, resultUrl: antes.peca.resultUrl, pagina: paginaCrua, versaoRenderizada: antes.peca.versaoRenderizada })
     return {
       itemId,

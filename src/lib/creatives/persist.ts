@@ -15,6 +15,8 @@ import { versaoDaPagina } from '@/lib/creatives/revisao/versao'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import { videosDaPagina } from '@/lib/video/camadas-de-video'
+import { MENSAGEM_PAGINA_COM_VIDEO, videoNaPagina } from '@/lib/video/pagina-com-video'
 import { googleDriveService } from '@/server/google-drive-service'
 import type { TemplateType } from '@prisma/client'
 
@@ -202,6 +204,12 @@ export async function persistAndRenderCreative(
 ): Promise<PersistCreativeResult> {
   const { project, templateId, templateName, pageName, width, height, layers, background } = input
 
+  // Antes de criar a página: recusar só no render deixaria uma página órfã,
+  // sem arte, a cada tentativa (modelo com camada de vídeo).
+  if (videoNaPagina(layers) === 'tem-video') {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422)
+  }
+
   const page = await db.page.create({
     data: {
       name: pageName,
@@ -298,6 +306,13 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
     layers: page.layers,
     background: page.background,
   })
+
+  // O render do servidor é imagem: a camada de vídeo (ou o motion) seria só
+  // pulada, e o PNG sairia sem ela — parecendo arte pronta. Vale para toda
+  // porta que renderiza uma página: troca de arte do post, ajuste, recomposição.
+  if (videosDaPagina(designData.layers).length > 0) {
+    throw new CreativeError('PAGINA_COM_VIDEO', MENSAGEM_PAGINA_COM_VIDEO, 422, { pageId: page.id })
+  }
 
   await registerProjectFonts(project.id)
 
