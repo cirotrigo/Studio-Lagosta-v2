@@ -155,22 +155,35 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   // migração mantêm), então uma consulta por template basta.
   const dados = await dadosPorPagina(templateId, template.projectId)
 
+  const selecaoDoPost = {
+    id: true,
+    pageId: true,
+    status: true,
+    scheduledDatetime: true,
+    mediaUrls: true,
+    videoDaPagina: true,
+    generationId: true,
+    laterPostId: true,
+    createdAt: true,
+  } as const
   const posts = await db.socialPost.findMany({
     where: { pageId: { in: paginas.map((p) => p.id) } },
-    select: {
-      id: true,
-      pageId: true,
-      status: true,
-      scheduledDatetime: true,
-      mediaUrls: true,
-      videoDaPagina: true,
-      generationId: true,
-      laterPostId: true,
-    },
+    select: selecaoDoPost,
     orderBy: { createdAt: 'desc' },
   })
   const postPorPagina = new Map<string, (typeof posts)[number]>()
   for (const p of posts) if (p.pageId && !postPorPagina.has(p.pageId)) postPorPagina.set(p.pageId, p)
+  // O editor aberto PELA AGENDA traz o post exato (`?postId=`): com dois posts da
+  // mesma página, ele vale no lugar do mais recente — desde que seja deste
+  // projeto e de uma página desta pasta. Sem o contexto, o resumo por página.
+  const postIdPedido = new URL(request.url).searchParams.get('postId')
+  if (postIdPedido) {
+    const pedido = await db.socialPost.findFirst({
+      where: { id: postIdPedido, projectId: template.projectId, pageId: { in: paginas.map((p) => p.id) } },
+      select: selecaoDoPost,
+    })
+    if (pedido?.pageId) postPorPagina.set(pedido.pageId, pedido)
+  }
   const deVideo = [...postPorPagina.values()].filter((p) => postDeVideo(p))
   const estadoDoVideo = await estadoDoVideoDosPosts(template.projectId, deVideo)
 

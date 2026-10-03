@@ -8,6 +8,11 @@
  * tomá-las por arte faria a recomposição "refazer" um vídeo como PNG, a trava
  * do revisor marcar a Generation errada e a faixa chamar de slide o próprio
  * post de vídeo.
+ *
+ * Sem `resultUrl` também não é arte: uma Generation mais recente ainda sem
+ * resultado (em produção, ou que falhou sem imagem) escondia a arte válida
+ * anterior — a faixa perdia o horário previsto e o "já em post". Os três
+ * consumidores usam este mesmo critério.
  */
 import { isVideoUrl } from '@/lib/media-type'
 import { ehExportDeVideo } from '@/lib/posts/post-de-video'
@@ -23,7 +28,7 @@ export function ehArteDaPagina(gen: GeracaoCandidata, pageId?: string): boolean 
   if (!fv || typeof fv !== 'object' || Array.isArray(fv)) return false
   if (pageId !== undefined && (fv as Record<string, unknown>).pageId !== pageId) return false
   if (ehExportDeVideo(fv)) return false
-  return !gen.resultUrl || !isVideoUrl(gen.resultUrl)
+  return !!gen.resultUrl && !isVideoUrl(gen.resultUrl)
 }
 
 /** A mais recente entre as que são arte (a lista pode vir em qualquer ordem). */

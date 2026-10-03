@@ -289,7 +289,7 @@ function TemplateEditorContent({
 
   // Vindo da agenda a partir de um post de vídeo desta página: a ação
   // principal é trocar o vídeo dele.
-  const { data: agendaDaPasta, refetch: relerAgenda } = useAgendaDasPaginas(templateId)
+  const { data: agendaDaPasta, refetch: relerAgenda } = useAgendaDasPaginas(templateId, agendaMode ? postId : null)
   const postDaAgenda = agendaDaPasta?.paginas.find((p) => p.pageId === currentPageId)?.post ?? null
   const substituirNaAgenda =
     !!agendaMode &&

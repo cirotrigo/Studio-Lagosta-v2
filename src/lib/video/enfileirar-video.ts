@@ -5,12 +5,14 @@
  *
  * 1. `prepararVideoDaPagina` decide para onde o vídeo vai, ANTES de qualquer
  *    upload ou cobrança: confere a página, o destino e — na substituição — o
- *    post, e monta `videoDaPagina` (a versão do que foi gravado, o post como
- *    estava, os pedidos anteriores do mesmo post ainda sem desfecho).
- * 2. `criarJobDeVideo` cria a Generation da galeria e o job, num commit.
+ *    post, e monta `videoDaPagina` (a versão do que foi gravado).
+ * 2. `criarJobDeVideo` cria a Generation da galeria e o job, num commit. Na
+ *    substituição, é ali, com o post TRAVADO, que o pedido registra o post como
+ *    está e os pedidos anteriores dele ainda sem desfecho.
  */
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
+import { CreativeError } from '@/lib/creatives/errors'
 import { postDeVideo } from '@/lib/posts/post-de-video'
 import {
   lerVideoDaPagina,
@@ -92,30 +94,68 @@ export async function prepararVideoDaPagina(p: {
       pageId: p.pageId,
       ehVideo: post ? postDeVideo(post) : false,
     })
+    // Antes do upload, para recusar cedo; o post como está e os pedidos anteriores são lidos no commit do pedido.
     if (recusa) return { ok: false, status: 409, error: recusa }
-    // As substituições deste post ainda em produção: a troca que elas fizerem não conta como mudança na agenda.
-    const emAndamento = await db.generation.findMany({
-      where: {
-        projectId: p.projectId,
-        status: { not: 'FAILED' },
-        createdAt: { gte: new Date(Date.now() - 14 * 86_400_000) },
-        fieldValues: { path: ['videoDaPagina', 'destino', 'postId'], equals: destino.postId },
-      },
-      select: { id: true, fieldValues: true },
-    })
-    videoDaPagina.esperado = {
-      revisao: post!.updatedAt.toISOString(),
-      mediaUrls: post!.mediaUrls,
-      pageId: p.pageId,
-    }
-    videoDaPagina.predecessoras = emAndamento
+  }
+  return { ok: true, videoDaPagina }
+}
+
+/**
+ * Substituir: o post como está e os pedidos anteriores dele ainda sem
+ * desfecho, lidos com o post TRAVADO, na transação que cria o pedido. Lidos
+ * antes (no preparo), dois envios simultâneos para o mesmo post não se viam: os
+ * dois saíam sem predecessora, e qual vídeo ficava no post dependia da ordem em
+ * que a fila os processava. Travado, o segundo espera o commit do primeiro e o
+ * enxerga — a cadeia termina no mais novo em qualquer ordem.
+ */
+async function comOPostTravado(
+  tx: Prisma.TransactionClient,
+  projectId: number,
+  video: VideoDaPagina,
+): Promise<VideoDaPagina> {
+  if (video.destino.tipo !== 'substituir') return video
+  const postId = video.destino.postId
+  await tx.$queryRaw`SELECT id FROM "SocialPost" WHERE id = ${postId} FOR UPDATE`
+  const post = await tx.socialPost.findUnique({
+    where: { id: postId },
+    select: {
+      id: true,
+      projectId: true,
+      pageId: true,
+      status: true,
+      laterPostId: true,
+      updatedAt: true,
+      createdAt: true,
+      mediaUrls: true,
+      videoDaPagina: true,
+    },
+  })
+  const recusa = validarSubstituicaoNaFila(post, {
+    projectId,
+    pageId: video.pageId,
+    ehVideo: post ? postDeVideo(post) : false,
+  })
+  if (recusa) throw new CreativeError('SUBSTITUICAO_RECUSADA', recusa, 409)
+  // Os pedidos deste post (nenhum é mais velho que ele): a troca que fizerem não conta como mudança na agenda.
+  const anteriores = await tx.generation.findMany({
+    where: {
+      projectId,
+      status: { not: 'FAILED' },
+      createdAt: { gte: post!.createdAt },
+      fieldValues: { path: ['videoDaPagina', 'destino', 'postId'], equals: postId },
+    },
+    select: { id: true, fieldValues: true },
+  })
+  return {
+    ...video,
+    esperado: { revisao: post!.updatedAt.toISOString(), mediaUrls: post!.mediaUrls, pageId: video.pageId },
+    predecessoras: anteriores
       .filter((g) => {
         const v = lerVideoDaPagina(g.fieldValues)
         return v?.destino.tipo === 'substituir' && !v.resultado
       })
-      .map((g) => g.id)
+      .map((g) => g.id),
   }
-  return { ok: true, videoDaPagina }
 }
 
 /** A trilha pedida (o `audioConfig` da fila; com `strict: false` o zod a entrega toda opcional). */
@@ -148,18 +188,7 @@ export async function criarJobDeVideo(p: {
   designData: unknown
   audioConfig: ConfigDeAudio | null
   videoDaPagina: VideoDaPagina | null
-}): Promise<{ jobId: string; generationId: string }> {
-  const baseFieldValues = {
-    videoExport: true,
-    isVideo: true,
-    progress: 0,
-    thumbnailUrl: p.thumbnailUrl,
-    videoDuration: p.videoDuration,
-    videoWidth: p.videoWidth,
-    videoHeight: p.videoHeight,
-    // NUNCA `pageId`: esse campo diz "esta Generation é a arte (imagem) da página" (ver arte-da-pagina.ts).
-    ...(p.videoDaPagina ? { videoDaPagina: p.videoDaPagina as unknown as Prisma.InputJsonObject } : {}),
-  }
+}): Promise<{ jobId: string; generationId: string; videoDaPagina: VideoDaPagina | null }> {
 
   const designDataWithContext =
     typeof p.designData === 'object' && p.designData !== null && !Array.isArray(p.designData)
@@ -187,6 +216,18 @@ export async function criarJobDeVideo(p: {
     : {}
 
   return db.$transaction(async (tx) => {
+    const videoDaPagina = p.videoDaPagina ? await comOPostTravado(tx, p.project.id, p.videoDaPagina) : null
+    const baseFieldValues = {
+      videoExport: true,
+      isVideo: true,
+      progress: 0,
+      thumbnailUrl: p.thumbnailUrl,
+      videoDuration: p.videoDuration,
+      videoWidth: p.videoWidth,
+      videoHeight: p.videoHeight,
+      // NUNCA `pageId`: esse campo diz "esta Generation é a arte (imagem) da página" (ver arte-da-pagina.ts).
+      ...(videoDaPagina ? { videoDaPagina: videoDaPagina as unknown as Prisma.InputJsonObject } : {}),
+    }
     const createdGeneration = await tx.generation.create({
       data: {
         templateId: p.templateId,
@@ -228,6 +269,6 @@ export async function criarJobDeVideo(p: {
       data: { fieldValues: { ...baseFieldValues, originalJobId: createdJob.id, generationId: createdGeneration.id } },
     })
 
-    return { jobId: createdJob.id, generationId: createdGeneration.id }
-  })
+    return { jobId: createdJob.id, generationId: createdGeneration.id, videoDaPagina }
+  }, { maxWait: 10_000, timeout: 20_000 })
 }

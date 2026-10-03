@@ -27,6 +27,12 @@ describe('arteDaPagina', () => {
     const nova = { id: 'nova', resultUrl: 'https://b/pg1-2.png', fieldValues: { pageId: 'pg1' }, createdAt: '2026-10-05T10:00:00Z' }
     expect(arteDaPagina([...geracoes, nova], 'pg1')?.id).toBe('nova')
   })
+
+  it('sem resultado não é arte, e a mais nova sem URL não esconde a válida anterior', () => {
+    const semUrl = { id: 'em-producao', resultUrl: null, fieldValues: { pageId: 'pg1' }, createdAt: '2026-10-06T10:00:00Z' }
+    expect(ehArteDaPagina(semUrl, 'pg1')).toBe(false)
+    expect(arteDaPagina([...geracoes, semUrl], 'pg1')?.id).toBe('arte')
+  })
 })
 
 describe('postDeVideo', () => {

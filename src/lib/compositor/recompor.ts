@@ -176,7 +176,8 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
       ...artes.flatMap((g) => urlsAnterioresDe(g.fieldValues)),
     ]),
   ]
-  const primeira = artes.find((g) => !!g.resultUrl) ?? null
+  // `ehArteDaPagina` já exige o resultado: a primeira da lista é a arte.
+  const primeira = artes[0] ?? null
   const fv =
     primeira?.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)
       ? (primeira.fieldValues as Record<string, unknown>)
@@ -765,7 +766,7 @@ export async function travarRecomposicaoDaArte(
     orderBy: { createdAt: 'desc' },
     take: 20,
   })
-  const primeira = geracoes.find((g) => !!g.resultUrl && ehArteDaPagina(g))
+  const primeira = geracoes.find((g) => ehArteDaPagina(g))
   if (!primeira) return false
   const fv =
     primeira.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)

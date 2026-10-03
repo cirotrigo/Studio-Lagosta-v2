@@ -154,8 +154,10 @@ async function main() {
   const { put, list, del } = await import('@vercel/blob')
   const { canonicalizeLayersForPersistence } = await import('../src/lib/shape-style')
   const { prepararVideoDaPagina, criarJobDeVideo } = await import('../src/lib/video/enfileirar-video')
-  const { processVideoJob, QuedaSimulada } = await import('../src/lib/video/process-video-job')
-  const { decidirRecuperacao, lerVideoDaPagina } = await import('../src/lib/video/destino-do-video')
+  const { processVideoJob, QuedaSimulada, recuperarJobsDeVideoPresos } = await import('../src/lib/video/process-video-job')
+  const { decidirRecuperacao, lerVideoDaPagina, MOTIVO_SUBSTITUICAO_NAO_CONCLUIDA, ARRENDAMENTO_DO_VIDEO_MS } = await import(
+    '../src/lib/video/destino-do-video'
+  )
   const { estadoDoVideoDosPosts } = await import('../src/lib/video/estado-do-video-do-post')
   const { agendarPost } = await import('../src/lib/creatives/agendar')
   const { invalidateScheduledRenders } = await import('../src/lib/posts/invalidate-renders')
@@ -222,19 +224,21 @@ async function main() {
       return { canvas: { width: p.width, height: p.height, backgroundColor: p.background }, layers: p.layers, audio: p.audio }
     }
     /** As duas funções da rota de fila, na mesma ordem (a rota cuida do login, do upload e dos créditos). */
+    let pedidosFeitos = 0
     const enfileirar = async (destino: any, rotulo: string) => {
+      const n = ++pedidosFeitos
       const designData = await designDaPagina()
       const prep = await prepararVideoDaPagina({ projectId: PROJETO, templateId: template.id, pageId: pagina.id, destino, designData, videoWidth: LARGURA, videoHeight: ALTURA })
       if (prep.ok === false) throw new Error(`a fila recusou (${rotulo}): ${prep.status} ${prep.error}`)
       const r = await criarJobDeVideo({
         user: { id: dono.id }, clerkUserId: dono.clerkId, orgId: null, project: { id: PROJETO, name: projeto.name },
-        templateId: template.id, videoName: `${SLUG}-${jobs.length + 1}`, videoDuration: 2, videoWidth: LARGURA, videoHeight: ALTURA,
+        templateId: template.id, videoName: `${SLUG}-${n}`, videoDuration: 2, videoWidth: LARGURA, videoHeight: ALTURA,
         webmBlobUrl: webm.url, webmFileSize: bytesDoWebm.length, thumbnailUrl: thumb.url, designData, audioConfig: AUDIO as any,
         videoDaPagina: prep.videoDaPagina,
       })
       jobs.push(r.jobId)
       gens.push(r.generationId)
-      return { ...r, videoDaPagina: prep.videoDaPagina }
+      return r
     }
     const queda = (onde: string) => () => {
       throw new QuedaSimulada(onde)
@@ -258,8 +262,13 @@ async function main() {
     const doPost = (postId: string) =>
       db.socialPost.findUniqueOrThrow({
         where: { id: postId },
-        select: { id: true, pageId: true, templateId: true, generationId: true, mediaUrls: true, status: true, postType: true, renderStatus: true, videoDaPagina: true, laterPostId: true, updatedAt: true },
+        select: { id: true, pageId: true, templateId: true, generationId: true, mediaUrls: true, status: true, postType: true, renderStatus: true, videoDaPagina: true, laterPostId: true, updatedAt: true, createdAt: true },
       })
+    /** O estado do vídeo do post principal como a agenda o lê. */
+    const estadoDoPrincipal = async (generationId: string) => {
+      const p = await doPost(principalId)
+      return (await estadoDoVideoDosPosts(PROJETO, [{ id: p.id, pageId: pagina.id, generationId, createdAt: p.createdAt }])).get(p.id)
+    }
     const historicoDaTroca = async (postId: string) => {
       const logs = await db.postLog.findMany({ where: { postId }, select: { message: true, metadata: true } })
       const da = (estado: string) => logs.filter((l) => (l.metadata as any)?.substituicaoDeVideo === estado)
@@ -303,6 +312,11 @@ async function main() {
       conferir('a Generation do vídeo está pronta com o MP4', gen.status === 'COMPLETED' && gen.resultUrl === job1.mp4ResultUrl)
       conferir('videoDaPagina.postId aponta o post', lerVideoDaPagina(fv)?.postId === post.id)
       conferir('a Generation de vídeo NÃO grava fieldValues.pageId', fv.pageId === undefined)
+      conferir(
+        'o progresso é gravado sob o arrendamento (o UPDATE condicionado casa no banco real)',
+        fv.processingStartedAt === job1.startedAt?.toISOString() && fv.progress === 100,
+        `${fv.processingStartedAt} × ${job1.startedAt?.toISOString()} · progresso ${fv.progress}`,
+      )
       conferir('um débito', (await debitosDo(j.jobId)).length === 1)
       // O MP4 de verdade: dimensões da página e a trilha da música.
       const mp4Local = join(SAIDA, 'job-1.mp4')
@@ -330,7 +344,7 @@ async function main() {
 
     // ── 2. O vídeo recém-exportado não está desatualizado ───────────────────
     await caso('2. exportar logo depois de salvar não sai "desatualizado"', async () => {
-      const estado = (await estadoDoVideoDosPosts(PROJETO, [{ id: principalId, pageId: pagina.id, generationId: primeiroJob.generationId }])).get(principalId)
+      const estado = await estadoDoPrincipal(primeiroJob.generationId)
       conferir('videoDesatualizado é falso', estado?.videoDesatualizado === false, JSON.stringify(estado))
     })
 
@@ -384,7 +398,7 @@ async function main() {
         }),
       )
       conferir('nenhum job de recomposição', (await db.generationJob.count({ where: { generationId: { in: gens } } })) === 0)
-      const estado = (await estadoDoVideoDosPosts(PROJETO, [{ id: principalId, pageId: pagina.id, generationId: primeiroJob.generationId }])).get(principalId)
+      const estado = await estadoDoPrincipal(primeiroJob.generationId)
       conferir('agora o vídeo da agenda está desatualizado', estado?.videoDesatualizado === true)
     })
 
@@ -410,7 +424,7 @@ async function main() {
       conferir('nem troca nem recusa a mais no histórico', h2.feitas.length === 1 && h2.recusadas.length === 0, `${h2.feitas.length}/${h2.recusadas.length}`)
       conferir('o desfecho é "substituído"', (await resultadoDe(j.generationId))?.ok === true)
       conferir('um débito', (await debitosDo(j.jobId)).length === 1)
-      const estado = (await estadoDoVideoDosPosts(PROJETO, [{ id: principalId, pageId: pagina.id, generationId: depois2.generationId }])).get(principalId)
+      const estado = await estadoDoPrincipal(depois2.generationId)
       conferir('a agenda mostra "feita" e o vídeo em dia', estado?.substituicao?.estado === 'feita' && estado.videoDesatualizado === false, JSON.stringify(estado))
     })
 
@@ -483,6 +497,60 @@ async function main() {
       conferir("ficou o vídeo de B'", depoisB2A2.mediaUrls[0] === mp4B2 && depoisB2A2.generationId === b2.generationId)
     })
 
+    // ── 8b. Dois pedidos de troca AO MESMO TEMPO (achado 4) ─────────────────
+    await caso('8b. dois pedidos de troca ao mesmo tempo: um conhece o outro, e fica o mais novo', async () => {
+      const [x, y] = await Promise.all([
+        enfileirar({ tipo: 'substituir', postId: principalId }, 'simultâneo X'),
+        enfileirar({ tipo: 'substituir', postId: principalId }, 'simultâneo Y'),
+      ])
+      const px = x.videoDaPagina?.predecessoras ?? []
+      const py = y.videoDaPagina?.predecessoras ?? []
+      conferir(
+        'com o post travado no commit do pedido, exatamente um conhece o outro',
+        px.length + py.length === 1 && px.includes(y.generationId) !== py.includes(x.generationId),
+        JSON.stringify({ px, py }),
+      )
+      const [velho, novo] = py.includes(x.generationId) ? [x, y] : [y, x]
+      // A fila processa o mais NOVO primeiro: o velho, chegando depois, não pode desfazer a troca.
+      conferir('o mais novo conclui (chega primeiro)', (await processVideoJob(novo.jobId)).outcome === 'completed')
+      conferir('o mais velho conclui (chega depois)', (await processVideoJob(velho.jobId)).outcome === 'completed')
+      conferir(
+        'o novo trocou e o velho foi recusado',
+        (await resultadoDe(novo.generationId))?.ok === true && (await resultadoDe(velho.generationId))?.ok === false,
+      )
+      conferir('ficou o vídeo do mais novo', (await doPost(principalId)).mediaUrls[0] === (await doJob(novo.jobId)).mp4ResultUrl)
+    })
+
+    // ── 8c. Troca que esgota as tentativas (achado 9) ───────────────────────
+    await caso('8c. troca que esgota as tentativas: a recuperação grava o desfecho E o histórico do post', async () => {
+      const antes = await doPost(principalId)
+      const recusadasAntes = (await historicoDaTroca(principalId)).recusadas.length
+      const j = await enfileirar({ tipo: 'substituir', postId: principalId }, 'troca que esgota')
+      const r1 = await processVideoJob(j.jobId, { depoisDeCobrar: queda('depois de cobrar, antes da troca') })
+      conferir('1ª execução interrompida antes da troca', r1.outcome === 'interrompido', JSON.stringify(r1))
+      // A 2ª tentativa também presa: tentativas esgotadas e o arrendamento vencido. Num passado
+      // remoto, para a varredura da recuperação não alcançar nenhum job de fora da prova.
+      const presoEm = new Date('2000-01-01T00:00:00Z')
+      await db.videoProcessingJob.update({ where: { id: j.jobId }, data: { attempts: 2, startedAt: presoEm } })
+      const placar = await recuperarJobsDeVideoPresos(new Date(presoEm.getTime() + ARRENDAMENTO_DO_VIDEO_MS + 60_000))
+      conferir('a recuperação conclui só este job', placar.concluidos === 1 && placar.devolvidos === 0 && placar.falhados === 0, JSON.stringify(placar))
+      const resultado = await resultadoDe(j.generationId)
+      conferir(
+        'o desfecho é a troca não concluída',
+        resultado?.ok === false && (resultado as any).motivo === MOTIVO_SUBSTITUICAO_NAO_CONCLUIDA,
+        JSON.stringify(resultado),
+      )
+      const h = await historicoDaTroca(principalId)
+      conferir(
+        'o motivo está no histórico do post',
+        h.recusadas.length === recusadasAntes + 1 && h.recusadas.some((l) => l.message.includes(MOTIVO_SUBSTITUICAO_NAO_CONCLUIDA)),
+        `${recusadasAntes} → ${h.recusadas.length}`,
+      )
+      conferir('a mídia do post ficou', JSON.stringify((await doPost(principalId)).mediaUrls) === JSON.stringify(antes.mediaUrls))
+      const job = await doJob(j.jobId)
+      conferir('o job concluiu, cobrado uma vez', job.status === 'COMPLETED' && (await debitosDo(j.jobId)).length === 1, job.status)
+    })
+
     // ── 9. Mídia e Generation limpas: nenhuma porta vira imagem ─────────────
     await caso('9. post de vídeo com mídia e Generation limpas não vira imagem', async () => {
       await db.socialPost.update({ where: { id: principalId }, data: { status: 'DRAFT', mediaUrls: [], generationId: null, renderStatus: 'NOT_NEEDED' } })
@@ -530,6 +598,64 @@ async function main() {
       await devolverAFila(j.jobId)
       conferir('a repetição conclui', (await processVideoJob(j.jobId)).outcome === 'completed')
       conferir('continua um débito só', (await debitosDo(j.jobId)).length === 1)
+    })
+
+    // ── 11. Cobrança ambígua (achado 1) ─────────────────────────────────────
+    await caso('11. cobrança ambígua: o débito confirmado pela marca não falha o job; sem a marca, o job volta à fila', async () => {
+      const j = await enfileirar({ tipo: 'galeria' }, 'galeria, débito com a resposta perdida')
+      const r = await processVideoJob(j.jobId, {
+        cobrar: async (debitar) => {
+          await debitar()
+          throw new Error('a conexão caiu depois do commit do débito (simulada)')
+        },
+      })
+      conferir('o job conclui: a marca relida confirma a cobrança', r.outcome === 'completed', JSON.stringify(r))
+      const job = await doJob(j.jobId)
+      conferir('um débito, com a marca gravada', (await debitosDo(j.jobId)).length === 1 && job.creditsDeducted === true)
+
+      const k = await enfileirar({ tipo: 'galeria' }, 'galeria, cobrança incerta')
+      const saldoAntes = await saldoDe()
+      const r1 = await processVideoJob(k.jobId, {
+        cobrar: async () => {
+          throw new Error('a conexão caiu antes do commit (simulada)')
+        },
+      })
+      conferir('sem a marca, a cobrança é incerta: o job é interrompido, não falha', r1.outcome === 'interrompido', JSON.stringify(r1))
+      const kj = await doJob(k.jobId)
+      conferir(
+        'nada cobrado, e o job segue recuperável',
+        kj.status === 'PROCESSING' && kj.creditsDeducted === false && (await debitosDo(k.jobId)).length === 0 && (await saldoDe()) === saldoAntes,
+        `${kj.status} ${kj.creditsDeducted}`,
+      )
+      await devolverAFila(k.jobId)
+      conferir('a repetição conclui', (await processVideoJob(k.jobId)).outcome === 'completed')
+      conferir('cobrado uma vez', (await debitosDo(k.jobId)).length === 1)
+    })
+
+    // ── 12. Queda entre o post criado e os efeitos (achado 8) ───────────────
+    await caso('12. queda antes dos efeitos do agendamento: a repetição os refaz a partir do post que existe', async () => {
+      const quando = new Date(INICIO.getTime() + 32 * 86_400_000)
+      quando.setUTCSeconds(0, 0)
+      const j = await enfileirar({ tipo: 'agenda', quando: quando.toISOString(), postType: 'STORY', situacao: 'rascunho' }, 'agenda, queda antes dos efeitos')
+      const lerVideo = async () =>
+        lerVideoDaPagina((await db.generation.findUniqueOrThrow({ where: { id: j.generationId }, select: { fieldValues: true } })).fieldValues)
+      const r1 = await processVideoJob(j.jobId, { antesDosEfeitos: queda('antes dos efeitos do agendamento') })
+      conferir('1ª execução interrompida antes dos efeitos', r1.outcome === 'interrompido', JSON.stringify(r1))
+      const v1 = await lerVideo()
+      const postId = v1?.postId ?? ''
+      if (postId) posts.add(postId)
+      conferir('o post existe, sem os efeitos marcados', !!postId && !v1?.efeitosEm, JSON.stringify(v1))
+      const sinaisDoHorario = () => db.learningSignal.count({ where: { chave: `slot:post:${postId}` } })
+      conferir('o sinal do horário ainda não existe', (await sinaisDoHorario()) === 0)
+      await devolverAFila(j.jobId)
+      conferir('a repetição conclui', (await processVideoJob(j.jobId)).outcome === 'completed')
+      const v2 = await lerVideo()
+      conferir('os efeitos foram refeitos e marcados', !!v2?.efeitosEm && v2.postId === postId, JSON.stringify(v2))
+      conferir('o sinal do horário registrado uma vez', (await sinaisDoHorario()) === 1)
+      const doVideo = await db.socialPost.findMany({ where: { projectId: PROJETO, generationId: j.generationId }, select: { id: true } })
+      for (const p of doVideo) posts.add(p.id)
+      conferir('nenhum post a mais', doVideo.length === 1, `${doVideo.length}`)
+      conferir('um débito', (await debitosDo(j.jobId)).length === 1)
     })
 
     casoAtual = 'fecho'

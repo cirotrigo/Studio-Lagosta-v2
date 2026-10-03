@@ -17,11 +17,9 @@ export type Substituicao =
 export interface EstadoDoVideo {
   /** A página de agora não é a que o vídeo gravou. Sem como saber (vídeo antigo), `false`. */
   videoDesatualizado: boolean
-  /** A substituição mais recente deste post (últimos 14 dias), ou nenhuma. */
+  /** A substituição mais recente deste post (desde que ele existe), ou nenhuma. */
   substituicao: Substituicao | null
 }
-
-export const JANELA_DA_SUBSTITUICAO_MS = 14 * 24 * 60 * 60_000
 
 interface LinhaDeSubstituicao {
   id: string
@@ -55,6 +53,8 @@ interface PostDoVideo {
   id: string
   pageId: string | null
   generationId: string | null
+  /** O pedido de troca nunca é mais velho que o post: é o limite da busca, não uma janela fixa. */
+  createdAt: Date
 }
 
 export async function estadoDoVideoDosPosts(
@@ -66,6 +66,8 @@ export async function estadoDoVideoDosPosts(
 
   const pageIds = [...new Set(posts.map((p) => p.pageId).filter((id): id is string => !!id))]
   const genIds = [...new Set(posts.map((p) => p.generationId).filter((id): id is string => !!id))]
+  // Enquanto o post está na agenda, a troca dele aparece — por mais antiga que seja (a janela de 14 dias a escondia).
+  const desde = new Date(Math.min(...posts.map((p) => p.createdAt.getTime())))
 
   const [paginas, geracoes, substituicoes] = await Promise.all([
     pageIds.length
@@ -89,7 +91,7 @@ export async function estadoDoVideoDosPosts(
              g."fieldValues"->'videoDaPagina'->'destino'->>'postId' AS "postId"
       FROM "Generation" g
       WHERE g."projectId" = ${projectId}
-        AND g."createdAt" >= ${new Date(Date.now() - JANELA_DA_SUBSTITUICAO_MS)}
+        AND g."createdAt" >= ${desde}
         AND g."fieldValues"->'videoDaPagina'->'destino'->>'tipo' = 'substituir'
         AND g."fieldValues"->'videoDaPagina'->'destino'->>'postId' = ANY(${posts.map((p) => p.id)})
       ORDER BY g."createdAt" DESC

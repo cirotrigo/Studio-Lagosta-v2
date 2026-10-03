@@ -75,16 +75,7 @@ export async function substituirVideoDoPost(
   let resultado: ResultadoDoDestino
   if (decisao.aceitar === false) {
     resultado = { ok: false, motivo: decisao.motivo, em }
-    if (post) {
-      await tx.postLog.create({
-        data: {
-          postId,
-          event: 'EDITED',
-          message: `O vídeo novo da página não foi colocado neste post: ${decisao.motivo}`,
-          metadata: { generationId: params.generationId, substituicaoDeVideo: 'recusada' },
-        },
-      })
-    }
+    if (post) await registrarRecusaNoHistorico(tx, { postId, generationId: params.generationId, motivo: decisao.motivo })
   } else {
     const anterior = post!.mediaUrls.find((u) => isVideoUrl(u)) ?? null
     const atualizado = await tx.socialPost.update({
@@ -113,4 +104,23 @@ export async function substituirVideoDoPost(
   // O objeto INTEIRO: o merge do banco é raso, e `videoDaPagina` é aninhado.
   await mesclarFieldValuesDaArte(tx, params.generationId, { videoDaPagina: { ...video, resultado } })
   return resultado
+}
+
+/**
+ * A recusa da troca no histórico do post, na transação de quem grava o
+ * `resultado` — a troca recusada aqui e a desistida pela recuperação do job.
+ * Quem chama garante que o post existe (o log tem chave estrangeira para ele).
+ */
+export async function registrarRecusaNoHistorico(
+  tx: Prisma.TransactionClient,
+  p: { postId: string; generationId: string; motivo: string },
+): Promise<void> {
+  await tx.postLog.create({
+    data: {
+      postId: p.postId,
+      event: 'EDITED',
+      message: `O vídeo novo da página não foi colocado neste post: ${p.motivo}`,
+      metadata: { generationId: p.generationId, substituicaoDeVideo: 'recusada' },
+    },
+  })
 }

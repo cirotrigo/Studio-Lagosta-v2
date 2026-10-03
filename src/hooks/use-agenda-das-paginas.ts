@@ -44,12 +44,25 @@ interface AgendaDasPaginas {
   paginas: AgendaDaPagina[]
 }
 
-export function useAgendaDasPaginas(templateId: number | null) {
+/**
+ * `postId`: o editor aberto pela agenda a partir de UM post. A página pode ter
+ * mais de um post, e a rota devolve o mais recente — com o `postId` ela devolve
+ * este, que é o que a pessoa veio editar (o vídeo trocado tem de ser o dele).
+ * A chave começa por `['agenda-das-paginas', templateId]`: quem invalida por
+ * esse prefixo alcança as duas formas.
+ */
+export function useAgendaDasPaginas(templateId: number | null, postId?: string | null) {
   return useQuery<AgendaDasPaginas>({
-    queryKey: ['agenda-das-paginas', templateId],
-    queryFn: () => api.get(`/api/templates/${templateId}/agenda-das-paginas`),
+    queryKey: ['agenda-das-paginas', templateId, postId ?? null],
+    queryFn: () =>
+      api.get(
+        `/api/templates/${templateId}/agenda-das-paginas${postId ? `?postId=${encodeURIComponent(postId)}` : ''}`,
+      ),
     enabled: Boolean(templateId),
     staleTime: 30_000,
+    // A troca de vídeo pedida termina sozinha, no servidor, sem ninguém tocar na tela.
+    refetchInterval: (query) =>
+      query.state.data?.paginas.some((p) => p.post?.substituicao?.estado === 'em-producao') ? 15_000 : false,
   })
 }
 

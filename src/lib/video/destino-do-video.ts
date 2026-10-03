@@ -65,6 +65,12 @@ export interface VideoDaPagina {
   postId?: string
   /** Agenda: o post nasceu rascunho porque o horário passou durante o preparo. */
   aviso?: string
+  /**
+   * Agenda: os efeitos do agendamento (sinais, pasta da semana, catálogo da
+   * arte) terminaram. `postId` sem isto é a execução que caiu entre o commit do
+   * post e os efeitos — a repetição os refaz a partir do post que existe.
+   */
+  efeitosEm?: string
   /** O desfecho do destino (substituir: aceito ou recusado; agenda: só a recusa). */
   resultado?: ResultadoDoDestino
 }
@@ -211,6 +217,9 @@ export function decidirRecuperacao(job: {
 
 export const MOTIVO_DESTINO_NAO_CONCLUIDO =
   'O vídeo ficou pronto e está na galeria, mas não deu para colocá-lo na agenda. Agende pela galeria.'
+/** O mesmo desfecho para o pedido de TROCA do vídeo de um post: "agende pela galeria" criaria outro post. */
+export const MOTIVO_SUBSTITUICAO_NAO_CONCLUIDA =
+  'O vídeo novo ficou pronto e está na galeria, mas não deu para trocá-lo neste post. Gere o vídeo de novo no editor.'
 
 /**
  * A antecedência que a TELA exige antes de gravar: a da fila mais o tempo da

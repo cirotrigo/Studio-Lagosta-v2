@@ -29,3 +29,37 @@ export function ehExportDeVideo(fieldValues: unknown): boolean {
 
 /** O motivo de recusa que as portas de render mostram para o post de vídeo sem a mídia. */
 export const MOTIVO_VIDEO_REMOVIDO = 'O vídeo deste post foi removido — gere de novo no editor.'
+
+/** O status é genérico porque o do Prisma é o enum `PostStatus`, não `string`. */
+interface ClienteDoPost<S extends string> {
+  socialPost: {
+    updateMany(args: {
+      where: {
+        id: string
+        laterPostId: null
+        status: S
+        updatedAt: Date
+        mediaUrls: { isEmpty: true }
+      }
+      data: { status: 'FAILED'; errorMessage: string; failedAt: Date }
+    }): Promise<{ count: number }>
+  }
+}
+
+/**
+ * Marca como FALHA o post de vídeo que o executor leu SEM a mídia — só se ele
+ * ainda está como foi lido: mídia vazia e a mesma revisão (`updatedAt`). A
+ * substituição pode repor o MP4 entre a leitura e esta escrita, e aí o post
+ * segue para publicar. Devolve se a falha foi gravada: sem ela, ninguém avisa.
+ */
+export async function falharPostDeVideoSemMidia<S extends string>(
+  client: ClienteDoPost<NoInfer<S>>,
+  post: { id: string; status: S; updatedAt: Date },
+  agora = new Date(),
+): Promise<boolean> {
+  const r = await client.socialPost.updateMany({
+    where: { id: post.id, laterPostId: null, status: post.status, updatedAt: post.updatedAt, mediaUrls: { isEmpty: true } },
+    data: { status: 'FAILED', errorMessage: MOTIVO_VIDEO_REMOVIDO, failedAt: agora },
+  })
+  return r.count === 1
+}

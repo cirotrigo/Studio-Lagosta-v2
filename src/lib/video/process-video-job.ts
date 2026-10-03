@@ -8,11 +8,15 @@
  * Reserva por compare-and-set (PENDING → PROCESSING, `startedAt` = o token do
  * arrendamento, `attempts + 1`) e etapas com marcador, cada uma pulada na
  * repetição:
- *   1. MP4 convertido e enviado → `job.mp4ResultUrl` (não reconverte);
+ *   1. MP4 convertido e enviado → `job.mp4ResultUrl` (não reconverte), gravado
+ *      LOGO depois do upload; miniatura e backup no Drive vêm depois e são
+ *      acessórios (`etapas-do-video.ts`);
  *   2. cobrança, com a marca `creditsDeducted` NO MESMO commit do débito (não
- *      cobra duas vezes, nem se a confirmação se perder);
+ *      cobra duas vezes, nem se a confirmação se perder: o erro ambíguo é
+ *      decidido pela marca relida — `cobrarUmaVez`);
  *   3. Generation COMPLETED;
- *   4. destino (agenda: o post e o vínculo num commit; substituir: a troca e o
+ *   4. destino (agenda: o post e o vínculo num commit, e os efeitos do
+ *      agendamento até `videoDaPagina.efeitosEm`; substituir: a troca e o
  *      desfecho num commit — `substituirVideoDoPost`);
  *   5. job COMPLETED.
  * Toda escrita a partir da reserva confere que o arrendamento ainda é desta
@@ -28,14 +32,18 @@ import type { Prisma } from '../../../prisma/generated/client'
 import { db } from '@/lib/db'
 import { put, del } from '@vercel/blob'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { googleDriveService } from '@/server/google-drive-service'
 import { CreativeError } from '@/lib/creatives/errors'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
+import type { ContextoDosEfeitos } from '@/lib/creatives/agendar'
 import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
-import { CobrancaRecusada, marcarCobrancaNoMesmoCommit } from '@/lib/video/cobranca-do-video'
+import { CobrancaIncerta, cobrarUmaVez, marcarCobrancaNoMesmoCommit } from '@/lib/video/cobranca-do-video'
+import { etapaDoMp4, finalizarFalhaDoVideo, gravarApontandoPara } from '@/lib/video/etapas-do-video'
 import {
   ARRENDAMENTO_DO_VIDEO_MS,
   MOTIVO_DESTINO_NAO_CONCLUIDO,
+  MOTIVO_SUBSTITUICAO_NAO_CONCLUIDA,
   decidirRecuperacao,
   lerVideoDaPagina,
   situacaoNaHoraDoDestino,
@@ -66,6 +74,10 @@ export type ProcessVideoJobResult =
 export interface CosturasDoVideo {
   depoisDeCobrar?: () => Promise<void> | void
   antesDeConcluir?: () => Promise<void> | void
+  /** Envolve o débito real: a prova o chama e lança DEPOIS dele (a confirmação que se perde com o débito gravado). */
+  cobrar?: (real: () => Promise<unknown>) => Promise<unknown>
+  /** Entre o commit do post da agenda e os efeitos do agendamento. */
+  antesDosEfeitos?: () => Promise<void> | void
 }
 
 export class QuedaSimulada extends Error {
@@ -282,7 +294,7 @@ export async function processVideoJob(
         }
         return fazer(tx)
       },
-      { timeout: 20_000 },
+      { maxWait: 10_000, timeout: 20_000 },
     )
 
   const designData = comoObjeto(job.designData)
@@ -308,12 +320,21 @@ export async function processVideoJob(
       generationId = criada.id
       await noJob({ generationId })
     }
+    /**
+     * Escreve na Generation só se o arrendamento ainda é desta execução, numa
+     * instrução só. Sem a condição, a execução que perdeu o arrendamento seguia
+     * gravando o progresso por cima da que o assumiu. Nunca uma transação: o
+     * progresso do ffmpeg não é aguardado em ordem, e cada chamada seguraria a
+     * única conexão do pooler.
+     */
+    const naArte = (patch: Record<string, unknown>) =>
+      db.$executeRaw`UPDATE "Generation" SET "fieldValues" = (CASE WHEN jsonb_typeof("fieldValues") = 'object' THEN "fieldValues" ELSE '{}'::jsonb END) || ${JSON.stringify(patch)}::jsonb WHERE "id" = ${generationId} AND EXISTS (SELECT 1 FROM "VideoProcessingJob" j WHERE j.id = ${job.id} AND j.status = 'PROCESSING' AND j."startedAt" = ${startedAt.toISOString()}::timestamp)`
     const progresso = async (progress: number) => {
       // Progresso é informativo: escrita condicionada, sem lançar (o callback roda dentro do ffmpeg).
       await db.videoProcessingJob.updateMany({ where: doArrendamento, data: { progress } }).catch(() => {})
-      await mesclarFieldValuesDaArte(db, generationId, { progress }).catch(() => {})
+      await naArte({ progress }).catch(() => {})
     }
-    await mesclarFieldValuesDaArte(db, generationId, {
+    await naArte({
       videoExport: true,
       isVideo: true,
       originalJobId: job.id,
@@ -327,33 +348,57 @@ export async function processVideoJob(
     let audioAviso = (designData?.__audioAviso as AudioAviso | undefined) ?? undefined
     let driveBackupUrl = (designData?.driveBackupUrl as string | undefined) ?? null
     if (!mp4Url) {
-      const convertido = await converterEEnviar(job, designData, progresso)
-      try {
-        driveBackupUrl = convertido.driveBackupUrl
-        audioAviso = convertido.audioAviso
-        finalThumbnailUrl = convertido.thumbnailUrl ?? finalThumbnailUrl
-        await noJob({
-          mp4ResultUrl: convertido.mp4Url,
-          thumbnailUrl: finalThumbnailUrl,
-          progress: 85,
-          designData: {
-            ...(designData ?? {}),
-            ...(driveBackupUrl ? { driveBackupUrl } : {}),
-            ...(audioAviso ? { __audioAviso: audioAviso } : {}),
-          } as Prisma.InputJsonValue,
-        })
-        mp4Url = convertido.mp4Url
-      } catch (error) {
-        // Arrendamento perdido depois do upload: o MP4 desta execução não é de ninguém.
-        await del(convertido.mp4Url).catch(() => {})
-        throw error
-      }
+      const convertido = await converterMp4(job, designData, progresso)
+      audioAviso = convertido.audioAviso
+      const designComAviso = { ...(designData ?? {}), ...(audioAviso ? { __audioAviso: audioAviso } : {}) }
+      const lerDoJob = () =>
+        db.videoProcessingJob.findUnique({ where: { id: job.id }, select: { mp4ResultUrl: true, thumbnailUrl: true } })
+      // O marcador LOGO depois do upload; miniatura e backup vêm depois e são acessórios.
+      mp4Url = await etapaDoMp4({
+        subirMp4: async () =>
+          (
+            await put(`video-exports/${job.clerkUserId}/${Date.now()}-${job.videoName}.mp4`, convertido.mp4Buffer, {
+              access: 'public',
+              contentType: 'video/mp4',
+            })
+          ).url,
+        gravarMarcador: (url) =>
+          noJob({ mp4ResultUrl: url, progress: 85, designData: designComAviso as Prisma.InputJsonValue }),
+        marcadorAtual: async () => (await lerDoJob())?.mp4ResultUrl,
+        apagar: (url) => del(url),
+        auxiliares: async () => {
+          const aux = await enviarAuxiliares(job, convertido.mp4Buffer, convertido.thumbnailBuffer)
+          if (!aux.thumbnailUrl && !aux.driveBackupUrl) return
+          try {
+            await gravarApontandoPara({
+              arquivos: aux.thumbnailUrl ? [aux.thumbnailUrl] : [],
+              gravar: () =>
+                noJob({
+                  ...(aux.thumbnailUrl ? { thumbnailUrl: aux.thumbnailUrl } : {}),
+                  designData: {
+                    ...designComAviso,
+                    ...(aux.driveBackupUrl ? { driveBackupUrl: aux.driveBackupUrl } : {}),
+                  } as Prisma.InputJsonValue,
+                }),
+              apontados: async () => [(await lerDoJob())?.thumbnailUrl],
+              apagar: (url) => del(url),
+            })
+            finalThumbnailUrl = aux.thumbnailUrl ?? finalThumbnailUrl
+            driveBackupUrl = aux.driveBackupUrl ?? driveBackupUrl
+          } catch (erro) {
+            // Só o arrendamento perdido para a execução; sem miniatura nova, o vídeo segue.
+            if (erro instanceof ArrendamentoPerdido) throw erro
+            console.error('[Video Processor] Miniatura e backup não registrados — o vídeo segue:', erro)
+          }
+        },
+      })
     }
 
-    // (2) Cobrança — a marca sai no mesmo commit do débito.
+    // (2) Cobrança — a marca sai no mesmo commit do débito, e o erro AMBÍGUO
+    // (a confirmação que se perde com o débito já gravado) é decidido pela marca relida.
     if (!cobrado) {
-      try {
-        await deductCreditsForFeature({
+      const debitar = () =>
+        deductCreditsForFeature({
           clerkUserId: job.clerkUserId,
           feature: 'video_export',
           details: { jobId: job.id, videoName: job.videoName, duration: job.videoDuration },
@@ -361,18 +406,18 @@ export async function processVideoJob(
           projectId: job.projectId,
           noMesmoCommit: marcarCobrancaNoMesmoCommit(job.id, startedAt),
         })
-      } catch (error) {
-        if (!(error instanceof CobrancaRecusada)) throw error
-        // A marca já estava gravada (uma tentativa anterior cobrou) ou o job mudou de dono.
-        const atual = await db.videoProcessingJob.findUnique({
-          where: { id: job.id },
-          select: { status: true, startedAt: true, creditsDeducted: true },
-        })
-        if (atual?.status !== 'PROCESSING' || atual.startedAt?.getTime() !== startedAt.getTime()) {
-          throw new ArrendamentoPerdido()
-        }
-        if (!atual.creditsDeducted) throw error
-      }
+      const cobranca = await cobrarUmaVez({
+        cobrar: () => (costuras.cobrar ? costuras.cobrar(debitar) : debitar()),
+        reler: () =>
+          db.videoProcessingJob.findUnique({
+            where: { id: job.id },
+            select: { status: true, startedAt: true, creditsDeducted: true },
+          }),
+        startedAt,
+        // Saldo insuficiente é decidido antes do débito: o único erro que prova que nada foi cobrado.
+        definitivo: (erro) => erro instanceof InsufficientCreditsError,
+      })
+      if (cobranca === 'arrendamento-perdido') throw new ArrendamentoPerdido()
       cobrado = true
     }
     await costuras.depoisDeCobrar?.()
@@ -399,7 +444,7 @@ export async function processVideoJob(
     })
 
     // (4) Destino.
-    await levarAoDestino(job, generationId, mp4Url, designData, comArrendamento)
+    await levarAoDestino(job, generationId, mp4Url, designData, comArrendamento, costuras)
 
     // (5) Job COMPLETED.
     await costuras.antesDeConcluir?.()
@@ -414,32 +459,40 @@ export async function processVideoJob(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    // Sem o arrendamento, ou já cobrado: não escreve nada — a recuperação decide.
-    if (error instanceof ArrendamentoPerdido || error instanceof QuedaSimulada || cobrado) {
+    // Sem o arrendamento, cobrança incerta, ou já cobrado: não escreve nada — a recuperação decide.
+    if (
+      error instanceof ArrendamentoPerdido ||
+      error instanceof QuedaSimulada ||
+      error instanceof CobrancaIncerta ||
+      cobrado
+    ) {
       console.warn('[Video Processor] Job interrompido:', job.id, errorMessage)
       return { outcome: 'interrompido', jobId: job.id, motivo: errorMessage }
     }
     console.error('[Video Processor] Erro ao processar job:', error)
-    const r = await db.videoProcessingJob.updateMany({
-      where: doArrendamento,
-      data: { status: 'FAILED', errorMessage },
+    // Job e Generation FAILED no mesmo commit; sem gravar, o job segue para a recuperação.
+    const gravada = await finalizarFalhaDoVideo(db, {
+      onde: doArrendamento,
+      generationId,
+      errorMessage,
+      resultUrl: job.thumbnailUrl ?? null,
+    }).catch((erro) => {
+      console.error('[Video Processor] Falha ao registrar a falha do job:', job.id, erro)
+      return false
     })
-    if (r.count === 1 && generationId) {
-      await mesclarFieldValuesDaArte(db, generationId, { progress: 100, errorMessage })
-      await db.generation.update({ where: { id: generationId }, data: { status: 'FAILED', resultUrl: job.thumbnailUrl ?? null } })
-    }
+    if (!gravada) return { outcome: 'interrompido', jobId: job.id, motivo: errorMessage }
     return { outcome: 'failed', jobId: job.id, error: errorMessage }
   }
 }
 
 type JobDoVideo = NonNullable<Awaited<ReturnType<typeof db.videoProcessingJob.findUnique>>>
 
-/** A etapa 1: baixa o WebM, monta a trilha, converte e envia MP4, miniatura e backup. */
-async function converterEEnviar(
+/** A etapa 1: baixa o WebM, monta a trilha e converte. O envio é de quem chama (o marcador vem logo depois). */
+async function converterMp4(
   job: JobDoVideo,
   designData: Record<string, unknown> | null,
   progresso: (p: number) => Promise<void>,
-): Promise<{ mp4Url: string; thumbnailUrl: string | null; driveBackupUrl: string | null; audioAviso?: AudioAviso }> {
+): Promise<{ mp4Buffer: Buffer; thumbnailBuffer?: Buffer; audioAviso?: AudioAviso }> {
   console.log('[Video Processor] Baixando WebM:', job.webmBlobUrl)
   const webmResponse = await fetch(job.webmBlobUrl)
   const webmBuffer = Buffer.from(await webmResponse.arrayBuffer())
@@ -509,24 +562,32 @@ async function converterEEnviar(
     await Promise.all(audioTempFiles.map((file) => unlink(file).catch(() => {})))
   }
 
-  const { url: mp4Url } = await put(`video-exports/${job.clerkUserId}/${Date.now()}-${job.videoName}.mp4`, mp4Buffer, {
-    access: 'public',
-    contentType: 'video/mp4',
-  })
+  return { mp4Buffer, thumbnailBuffer, audioAviso }
+}
 
+/** Miniatura e backup no Drive: acessórios, depois do marcador do MP4. Nunca lança. */
+async function enviarAuxiliares(
+  job: JobDoVideo,
+  mp4Buffer: Buffer,
+  thumbnailBuffer: Buffer | undefined,
+): Promise<{ thumbnailUrl: string | null; driveBackupUrl: string | null }> {
   let thumbnailUrl: string | null = null
   if (thumbnailBuffer) {
-    const { url } = await put(`video-thumbnails/${job.clerkUserId}/${Date.now()}-${job.videoName}.jpg`, thumbnailBuffer, {
-      access: 'public',
-      contentType: 'image/jpeg',
-    })
-    thumbnailUrl = url
+    try {
+      const { url } = await put(`video-thumbnails/${job.clerkUserId}/${Date.now()}-${job.videoName}.jpg`, thumbnailBuffer, {
+        access: 'public',
+        contentType: 'image/jpeg',
+      })
+      thumbnailUrl = url
+    } catch (error) {
+      console.error('[Video Processor] Falha ao enviar a miniatura — o vídeo segue:', error)
+    }
   }
 
   let driveBackupUrl: string | null = null
-  const project = await db.project.findUnique({ where: { id: job.projectId }, select: { googleDriveFolderId: true } })
-  if (project?.googleDriveFolderId && googleDriveService.isEnabled()) {
-    try {
+  try {
+    const project = await db.project.findUnique({ where: { id: job.projectId }, select: { googleDriveFolderId: true } })
+    if (project?.googleDriveFolderId && googleDriveService.isEnabled()) {
       const driveResult = await googleDriveService.uploadFileToFolder({
         buffer: mp4Buffer,
         folderId: project.googleDriveFolderId,
@@ -534,12 +595,12 @@ async function converterEEnviar(
         fileName: job.videoName,
       })
       driveBackupUrl = driveResult.publicUrl
-    } catch (error) {
-      console.error('[Video Processor] Falha ao fazer backup no Google Drive:', error)
     }
+  } catch (error) {
+    console.error('[Video Processor] Falha ao fazer backup no Google Drive:', error)
   }
 
-  return { mp4Url, thumbnailUrl, driveBackupUrl, audioAviso }
+  return { thumbnailUrl, driveBackupUrl }
 }
 
 type ComArrendamento = <T>(fazer: (tx: Prisma.TransactionClient) => Promise<T>) => Promise<T>
@@ -556,6 +617,7 @@ async function levarAoDestino(
   mp4Url: string,
   designData: Record<string, unknown> | null,
   comArrendamento: ComArrendamento,
+  costuras: CosturasDoVideo,
 ): Promise<void> {
   const gen = await db.generation.findUnique({ where: { id: generationId }, select: { fieldValues: true } })
   const video = lerVideoDaPagina(gen?.fieldValues)
@@ -568,7 +630,7 @@ async function levarAoDestino(
       await comArrendamento((tx) => substituirVideoDoPost(tx, { generationId, mp4Url, copyGravada }))
       return
     }
-    await levarParaAgenda(job, generationId, mp4Url, video, video.destino, copyGravada, comArrendamento)
+    await levarParaAgenda(job, generationId, mp4Url, video, video.destino, copyGravada, comArrendamento, costuras)
   } catch (error) {
     if (!(error instanceof CreativeError)) throw error
     const resultado = { ok: false as const, motivo: error.message, em: new Date().toISOString() }
@@ -591,32 +653,33 @@ async function levarParaAgenda(
   destino: DestinoAgenda,
   copyGravada: Record<string, string> | null,
   comArrendamento: ComArrendamento,
+  costuras: CosturasDoVideo,
 ): Promise<void> {
   const { resolverAgendamento, criarPostDoAgendamento, efeitosDoAgendamento, contextoDosEfeitos } = await import(
     '@/lib/creatives/agendar'
   )
+  const pedido = (situacao: 'agendado' | 'rascunho') => ({
+    projectId: job.projectId,
+    postType: destino.postType,
+    caption: destino.postType === 'REEL' ? destino.legenda : undefined,
+    scheduledDatetime: destino.quando,
+    pageId: video.pageId,
+    mediaUrls: [mp4Url],
+    generationId,
+    situacao,
+    decididoPor: job.userId,
+    superficie: 'editor' as const,
+  })
+  const lerVideo = async (cliente: Pick<Prisma.TransactionClient, 'generation'>) =>
+    lerVideoDaPagina(
+      (await cliente.generation.findUnique({ where: { id: generationId }, select: { fieldValues: true } }))?.fieldValues,
+    )
   const naHora = situacaoNaHoraDoDestino(destino, new Date())
-  const feito = await comArrendamento(async (tx) => {
+  const criado = await comArrendamento(async (tx) => {
     // Repetição depois de uma queda: o post já foi criado por uma tentativa anterior.
-    const atual = lerVideoDaPagina(
-      (await tx.generation.findUnique({ where: { id: generationId }, select: { fieldValues: true } }))?.fieldValues,
-    )
+    const atual = await lerVideo(tx)
     if (!atual || atual.postId || atual.resultado) return null
-    const r = await resolverAgendamento(
-      {
-        projectId: job.projectId,
-        postType: destino.postType,
-        caption: destino.postType === 'REEL' ? destino.legenda : undefined,
-        scheduledDatetime: destino.quando,
-        pageId: video.pageId,
-        mediaUrls: [mp4Url],
-        generationId,
-        situacao: naHora.situacao,
-        decididoPor: job.userId,
-        superficie: 'editor',
-      },
-      { leitor: tx, ingerir: false },
-    )
+    const r = await resolverAgendamento(pedido(naHora.situacao), { leitor: tx, ingerir: false })
     // A cópia de texto é a do que o vídeo GRAVOU, não a da página de agora.
     if (copyGravada) {
       r.copyDaPagina = copyGravada
@@ -626,9 +689,59 @@ async function levarParaAgenda(
     await mesclarFieldValuesDaArte(tx, generationId, {
       videoDaPagina: { ...atual, postId: post.id, ...(naHora.motivo ? { aviso: naHora.motivo } : {}) },
     })
-    return { post, r }
+    return contextoDosEfeitos(r)
   })
-  if (feito) await efeitosDoAgendamento(feito.post, contextoDosEfeitos(feito.r))
+
+  // Os efeitos rodam sobre o post que EXISTE — o recém-criado, ou o de uma
+  // execução que caiu entre o commit dele e os efeitos. `efeitosEm` só é
+  // gravado com todos terminados; o que ficar por fazer volta na repetição.
+  const atual = await lerVideo(db)
+  if (!atual?.postId || atual.efeitosEm) return
+  const post = await db.socialPost.findFirst({
+    where: { id: atual.postId, projectId: job.projectId },
+    select: {
+      id: true,
+      postType: true,
+      status: true,
+      scheduledDatetime: true,
+      caption: true,
+      campaignId: true,
+      sugestaoId: true,
+      origem: true,
+    },
+  })
+  if (!post) return // o post saiu da agenda: não há sobre o que registrar
+  let contexto = criado
+  if (!contexto) {
+    try {
+      // Rascunho de propósito: o horário de um post que já existe pode ter passado.
+      contexto = contextoDosEfeitos(await resolverAgendamento(pedido('rascunho'), { ingerir: false }))
+    } catch (erro) {
+      if (!(erro instanceof CreativeError)) throw erro
+      // A página ou a arte não existem mais: não há o que registrar sobre elas.
+      console.warn('[Video Processor] Efeitos do agendamento abandonados:', job.id, erro.message)
+      return
+    }
+  }
+  await costuras.antesDosEfeitos?.()
+  // Os sinais descrevem o post como ele ESTÁ (a equipe pode tê-lo mexido).
+  const { falhas } = await efeitosDoAgendamento(post, {
+    ...contexto,
+    quando: post.scheduledDatetime ?? contexto.quando,
+    situacao: post.status === 'SCHEDULED' ? 'agendado' : 'rascunho',
+    caption: post.caption ? post.caption : undefined,
+    campaignId: post.campaignId ?? null,
+    sugestaoId: post.sugestaoId ?? null,
+    origem: (post.origem as ContextoDosEfeitos['origem']) ?? null,
+  })
+  // Os efeitos engolem o erro do banco: falha aqui é transitória, e o job fica para a recuperação.
+  if (falhas.length > 0) throw new Error(`O registro do agendamento não terminou (${falhas.join(', ')}).`)
+  await comArrendamento(async (tx) => {
+    const v = await lerVideo(tx)
+    if (v?.postId === post.id && !v.efeitosEm) {
+      await mesclarFieldValuesDaArte(tx, generationId, { videoDaPagina: { ...v, efeitosEm: new Date().toISOString() } })
+    }
+  })
 }
 
 /**
@@ -643,7 +756,16 @@ export async function recuperarJobsDeVideoPresos(
 ): Promise<{ devolvidos: number; falhados: number; concluidos: number }> {
   const presos = await db.videoProcessingJob.findMany({
     where: { status: 'PROCESSING', startedAt: { lt: new Date(agora.getTime() - ARRENDAMENTO_DO_VIDEO_MS) } },
-    select: { id: true, startedAt: true, attempts: true, mp4ResultUrl: true, creditsDeducted: true, generationId: true, thumbnailUrl: true },
+    select: {
+      id: true,
+      projectId: true,
+      startedAt: true,
+      attempts: true,
+      mp4ResultUrl: true,
+      creditsDeducted: true,
+      generationId: true,
+      thumbnailUrl: true,
+    },
   })
   const placar = { devolvidos: 0, falhados: 0, concluidos: 0 }
   for (const job of presos) {
@@ -655,12 +777,12 @@ export async function recuperarJobsDeVideoPresos(
         placar.devolvidos += r.count
       } else if (decisao === 'falhar') {
         const errorMessage = 'O processamento do vídeo foi interrompido duas vezes. Tente exportar o vídeo novamente.'
-        const r = await db.videoProcessingJob.updateMany({ where: lido, data: { status: 'FAILED', errorMessage } })
-        if (r.count === 1 && job.generationId) {
-          await db.generation.update({ where: { id: job.generationId }, data: { status: 'FAILED' } })
+        // Job e Generation no mesmo commit: em dois, uma queda no meio deixava a Generation em produção para sempre.
+        if (await finalizarFalhaDoVideo(db, { onde: lido, generationId: job.generationId, errorMessage })) {
+          placar.falhados += 1
         }
-        placar.falhados += r.count
       } else {
+        const { registrarRecusaNoHistorico } = await import('@/lib/posts/substituir-video-do-post')
         await db.$transaction(async (tx) => {
           const r = await tx.videoProcessingJob.updateMany({
             where: lido,
@@ -669,6 +791,9 @@ export async function recuperarJobsDeVideoPresos(
           if (r.count !== 1 || !job.generationId) return
           const gen = await tx.generation.findUnique({ where: { id: job.generationId }, select: { fieldValues: true } })
           const video = lerVideoDaPagina(gen?.fieldValues)
+          const semDestino = !!video && video.destino.tipo !== 'galeria' && !video.postId && !video.resultado
+          // A troca desistida não diz "agende pela galeria" (criaria outro post), e vai ao histórico do post como a recusada.
+          const motivo = video?.destino.tipo === 'substituir' ? MOTIVO_SUBSTITUICAO_NAO_CONCLUIDA : MOTIVO_DESTINO_NAO_CONCLUIDO
           await mesclarFieldValuesDaArte(
             tx,
             job.generationId,
@@ -676,15 +801,20 @@ export async function recuperarJobsDeVideoPresos(
               progress: 100,
               videoUrl: job.mp4ResultUrl,
               mimeType: 'video/mp4',
-              ...(video && video.destino.tipo !== 'galeria' && !video.postId && !video.resultado
-                ? { videoDaPagina: { ...video, resultado: { ok: false, motivo: MOTIVO_DESTINO_NAO_CONCLUIDO, em: agora.toISOString() } } }
-                : {}),
+              ...(semDestino ? { videoDaPagina: { ...video, resultado: { ok: false, motivo, em: agora.toISOString() } } } : {}),
             },
             { resultUrl: job.mp4ResultUrl! },
           )
+          if (semDestino && video.destino.tipo === 'substituir') {
+            const post = await tx.socialPost.findFirst({
+              where: { id: video.destino.postId, projectId: job.projectId },
+              select: { id: true },
+            })
+            if (post) await registrarRecusaNoHistorico(tx, { postId: post.id, generationId: job.generationId, motivo })
+          }
           await tx.generation.update({ where: { id: job.generationId }, data: { status: 'COMPLETED', completedAt: agora } })
           placar.concluidos += 1
-        })
+        }, { maxWait: 10_000, timeout: 20_000 })
       }
     } catch (error) {
       console.error('[Video Processor] Falha ao recuperar job preso:', job.id, error)

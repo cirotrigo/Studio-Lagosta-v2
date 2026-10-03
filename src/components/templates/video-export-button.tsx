@@ -229,7 +229,8 @@ export function GerarVideoProvider({
   const browserSupport = React.useMemo(() => checkVideoExportSupport(), [])
 
   // ── Destino: "Depois de gerar" ──────────────────────────────────────────
-  const { data: agendaDaPasta } = useAgendaDasPaginas(templateId)
+  // Vindo da agenda, o post é o de onde a pessoa veio, não o mais recente da página.
+  const { data: agendaDaPasta } = useAgendaDasPaginas(templateId, postIdDaAgenda)
   const { data: horarios } = useHorariosTipicos(projectId)
   const agendaDaPagina = agendaDaPasta?.paginas.find((p) => p.pageId === currentPageId)
   // Só o post de VÍDEO ainda trocável desta página pode ter o vídeo substituído

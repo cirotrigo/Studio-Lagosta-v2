@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
+import { CreativeError } from '@/lib/creatives/errors'
 import { put } from '@vercel/blob'
 import { destinoSchema, type DestinoDoVideo } from '@/lib/video/destino-do-video'
 import { criarJobDeVideo, prepararVideoDaPagina } from '@/lib/video/enfileirar-video'
@@ -342,6 +343,11 @@ export async function POST(request: Request) {
         },
         { status: 402 }
       )
+    }
+
+    // A substituição recusada no commit do pedido (o post mudou durante o upload).
+    if (error instanceof CreativeError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
     }
 
     if (error instanceof z.ZodError) {
