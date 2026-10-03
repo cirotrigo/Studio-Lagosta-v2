@@ -281,13 +281,19 @@ fala continua no `legenda.py`.
 Medido em 03/10/2026 (v0.8.114), e é por isso que o `motion.py` existe:
 - O `--format mov` do HyperFrames converte com a matriz **BT.601** e não marca o arquivo. Lido como Rec.709 (o
   padrão do vídeo HD, e o que a logo do Quintal declara), a cor saturada desvia: vermelho puro viraria ~255,25,0.
-  O `motion.py` pede PNG e codifica o ProRes 4444 com BT.709 e marcação completa, igual à logo. Assim não depende
-  de como o Resolve trata arquivo sem marcação (isso não foi conferido no Resolve).
+  O `motion.py` pede PNG e codifica o ProRes 4444 com BT.709 e marcação completa, igual à logo. Conferido no
+  Resolve: um still bateu a cor do texto exata (#F5F0E8 = 245,240,232, desvio zero em 11.666 pixels opacos), com
+  Alpha mode Straight.
 - O alfa do Chrome é **direto** (branco a 50% → RGB 255, A 128): Alpha mode "Straight". O `legenda.py` grava
   premultiplicado. Modo trocado dá borda escura ou clara.
 - Fundo no `html`/`body` o HyperFrames limpa sozinho. No `#root`, ele grava PNG sem alfa e o .mov cobriria o
   vídeo. Fonte fora da pasta da composição sai na fonte de reserva, sem aviso. O `motion.py` recusa os dois.
 - `--fps 30000/1001` é exato (29,97 no ffprobe). A documentação que diz "24, 30 ou 60" está velha.
+- Em **exFAT** (o HD Extreme Pro) o `--format png-sequence` sai quebrado: todo `frame_*.png` vira um cabeçalho
+  AppleDouble de 4096 bytes, sem imagem, ao lado do `._` correspondente. Por isso o `motion.py` grava os PNGs no
+  disco do Mac e só o .mov no `07_TEMPORARIOS`. O `snapshot` (`--quadros`) funciona no HD.
+- `hyperframes add` em exFAT falha com ENOTSUP (link físico): instale o bloco numa pasta do disco do Mac e copie
+  para a composição.
 
 **Instalação (por Mac; feita no Mac do Ciro em 03/10/2026).** Instalar só com o Ciro pedindo:
 

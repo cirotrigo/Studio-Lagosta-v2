@@ -9,13 +9,14 @@ pc.grafismos (peça <ID> de <RAIZ>/04_DAVINCI/montagem.json) = {
   "alfa": "Straight"                                      opcional, lido pelo sobrepor.py (padrão Straight)
 }
 Sempre passa antes pelo `hyperframes check`. Com --quadros não há vídeo: só PNGs sobre cinza médio, nos segundos
-da TIMELINE pedidos, numa pasta nova de <RAIZ>/07_TEMPORARIOS. Sem --quadros: PNGs do HyperFrames em
-07_TEMPORARIOS → ProRes pelo ffmpeg → o nome final só no fim (o resolve_projeto.py nunca vê arquivo pela
-metade) → os PNGs vão para a lixeira.
+da TIMELINE pedidos, numa pasta nova de <RAIZ>/07_TEMPORARIOS. Sem --quadros: PNGs do HyperFrames no disco do
+Mac (em exFAT o png-sequence sai só com o cabeçalho AppleDouble, medido em 03/10/2026) → ProRes pelo ffmpeg em
+07_TEMPORARIOS → o nome final só no fim (o resolve_projeto.py nunca vê arquivo pela metade) → os PNGs vão para
+a lixeira.
 Por que não o `--format mov` do HyperFrames (medido em 03/10/2026, v0.8.114): ele converte RGB→YUV com a matriz
 BT.601 e não marca o arquivo; lido como Rec.709 (o padrão do HD), a cor saturada desvia (vermelho puro → ~255,25,0).
-Aqui a matriz é BT.709, com a marcação BT.709 completa (igual à logo do Quintal): não depende de como o Resolve
-trata arquivo sem marcação, o que não foi conferido nele. O alfa do Chrome é DIRETO
+Aqui a matriz é BT.709, com a marcação BT.709 completa (igual à logo do Quintal): conferido no Resolve em 03/10
+(texto #F5F0E8 sem desvio, Alpha mode Straight). O alfa do Chrome é DIRETO
 (branco a 50% sai RGB 255, A 128): Alpha mode "Straight" no Resolve — o legenda.py grava premultiplicado.
 A versão do HyperFrames é fixa (npm global): HYPERFRAMES_NO_AUTO_INSTALL=1 em toda chamada, senão ele se
 atualiza sozinho em segundo plano.
@@ -96,8 +97,8 @@ def conferir_mov(mov, n):
 def renderizar(pasta, pedido, tmp):
     """(caminho final, quadros, segundos de render, avisos)."""
     t0, avisos = time.time(), []
-    trab = tempfile.mkdtemp(prefix='motion-', dir=tmp)
-    pngs = os.path.join(trab, 'png')
+    local = tempfile.mkdtemp(prefix='motion-')  # disco do Mac: em exFAT os PNGs saem só com cabeçalho, sem imagem
+    pngs = os.path.join(local, 'png')
     hf('render', pasta, '--format', 'png-sequence', '--fps', FPS, '-o', pngs, '--quiet')
     fr = sorted(f for f in os.listdir(pngs) if re.match(r'frame_\d{6}\.png$', f))
     n = len(fr)
@@ -106,7 +107,8 @@ def renderizar(pasta, pedido, tmp):
     if all(alfa_min(os.path.join(pngs, fr[i])) == 255 for i in {0, n // 2, n - 1}):
         raise ValueError(f'fundo pintado: nenhum quadro tem transparência (fundo no #root ou bloco de tela cheia opaco '
                          f'o tempo todo); PNGs em {pngs}')
-    mov = os.path.join(trab, 'saida.mov')
+    trab = tempfile.mkdtemp(prefix='motion-', dir=tmp)
+    mov = os.path.join(trab, 'saida.mov')  # no HD do projeto: o rename para 06_ELEMENTOS fica no mesmo volume
     ff = subprocess.run(['ffmpeg', '-v', 'error', '-y', '-framerate', FPS, '-start_number', '1',
                          '-i', os.path.join(pngs, 'frame_%06d.png'),
                          '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuva444p10le',
@@ -120,8 +122,8 @@ def renderizar(pasta, pedido, tmp):
     saida = saida_livre(pedido)
     os.makedirs(os.path.dirname(saida), exist_ok=True)
     os.rename(mov, saida)  # mesmo HD: o arquivo aparece inteiro
-    if not (LIXEIRA and subprocess.run([LIXEIRA, trab], capture_output=True).returncode == 0):
-        avisos.append(f'os PNGs ficaram em {trab}: mande para a lixeira')
+    if not (LIXEIRA and subprocess.run([LIXEIRA, local, trab], capture_output=True).returncode == 0):
+        avisos.append(f'os PNGs ficaram em {local} (e a pasta vazia {trab}): mande para a lixeira')
     return saida, n, time.time() - t0, avisos
 
 
@@ -165,6 +167,7 @@ def _checar():
         return np.frombuffer(raw, dtype='<u2').reshape(4, 1920, 1080)
 
     with tempfile.TemporaryDirectory() as raiz:
+        tempfile.tempdir = raiz  # os PNGs do render (disco do Mac) somem junto com a raiz de teste
         comp = os.path.join(raiz, '04_DAVINCI', 'motion', 'T')
         os.makedirs(os.path.join(comp, 'fontes'))
         for nome in ('titulo.ttf', 'apoio.ttf'):
@@ -186,6 +189,8 @@ def _checar():
 
         r = peca(raiz, 'T')
         assert r['arquivo'] == g['arquivo'] and abs(r['quadros'] - 4 * 30000 / 1001) < 1 and r['alfa'] == 'Straight', r
+        tmp = os.path.join(raiz, '07_TEMPORARIOS')
+        assert not any(os.path.isdir(os.path.join(tmp, d, 'png')) for d in os.listdir(tmp)), 'PNGs no 07_TEMPORARIOS'
         mov = os.path.join(raiz, r['arquivo'])
         p0, p1 = yuva(mov, 0), yuva(mov, 105)  # 0 s: antes de ENTRA; 3,5 s: cartão inteiro
         assert p0[3].max() == 0, 'o quadro 0 devia ser transparente'
