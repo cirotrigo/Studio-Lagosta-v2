@@ -7,7 +7,9 @@ import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } f
 import { agendarPost } from '@/lib/creatives/agendar'
 import { CreativeError } from '@/lib/creatives/errors'
 import { formatoDaPagina } from '@/lib/compositor/pastas'
-import { isVideoUrl } from '@/lib/media-type'
+import { ehArteDaPagina } from '@/lib/compositor/arte-da-pagina'
+import { postDeVideo } from '@/lib/posts/post-de-video'
+import { estadoDoVideoDosPosts } from '@/lib/video/estado-do-video-do-post'
 import type { Formato } from '@/lib/compositor/spec'
 
 export const runtime = 'nodejs'
@@ -49,11 +51,22 @@ interface DadosDaPagina {
 
 async function dadosPorPagina(templateId: number, projectId: number): Promise<Map<string, DadosDaPagina>> {
   const linhas = await db.$queryRaw<
-    Array<{ pageId: string | null; quando: string | null; slide: number | null; jaEmPost: boolean }>
+    Array<{
+      pageId: string | null
+      quando: string | null
+      slide: number | null
+      jaEmPost: boolean
+      resultUrl: string | null
+      isVideo: unknown
+      videoExport: unknown
+    }>
   >`
     SELECT g."fieldValues"->>'pageId' AS "pageId",
            g."fieldValues"->'spec'->>'quando' AS "quando",
            g."slideOrder" AS "slide",
+           g."resultUrl" AS "resultUrl",
+           g."fieldValues"->'isVideo' AS "isVideo",
+           g."fieldValues"->'videoExport' AS "videoExport",
            EXISTS (
              SELECT 1 FROM "SocialPost" sp
              WHERE sp."projectId" = g."projectId"
@@ -69,6 +82,11 @@ async function dadosPorPagina(templateId: number, projectId: number): Promise<Ma
   const mapa = new Map<string, DadosDaPagina>()
   // DESC + "o primeiro vence" = a geração mais recente da página manda.
   for (const l of linhas) {
+    // Só a ARTE (imagem) da página decide o horário e o "já em post": a
+    // `post-schedule` de um post de vídeo tem o MP4 como `resultUrl`, e lida
+    // como arte faria a faixa chamar o próprio post de vídeo de slide.
+    const geracao = { resultUrl: l.resultUrl, fieldValues: { isVideo: l.isVideo, videoExport: l.videoExport } }
+    if (!ehArteDaPagina(geracao)) continue
     if (l.pageId && !mapa.has(l.pageId)) {
       mapa.set(l.pageId, { quando: l.quando, slide: l.slide, jaEmPost: Boolean(l.jaEmPost) })
     }
@@ -139,11 +157,22 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 
   const posts = await db.socialPost.findMany({
     where: { pageId: { in: paginas.map((p) => p.id) } },
-    select: { id: true, pageId: true, status: true, scheduledDatetime: true, mediaUrls: true },
+    select: {
+      id: true,
+      pageId: true,
+      status: true,
+      scheduledDatetime: true,
+      mediaUrls: true,
+      videoDaPagina: true,
+      generationId: true,
+      laterPostId: true,
+    },
     orderBy: { createdAt: 'desc' },
   })
   const postPorPagina = new Map<string, (typeof posts)[number]>()
   for (const p of posts) if (p.pageId && !postPorPagina.has(p.pageId)) postPorPagina.set(p.pageId, p)
+  const deVideo = [...postPorPagina.values()].filter((p) => postDeVideo(p))
+  const estadoDoVideo = await estadoDoVideoDosPosts(template.projectId, deVideo)
 
   return NextResponse.json({
     projectId: template.projectId,
@@ -163,7 +192,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
               id: post.id,
               status: post.status,
               quando: post.scheduledDatetime?.toISOString() ?? null,
-              comVideo: post.mediaUrls.some((url) => isVideoUrl(url)),
+              comVideo: postDeVideo(post),
+              // Só o post de vídeo ainda editável (rascunho ou agendado, não
+              // entregue) pode ter o vídeo substituído pelo editor.
+              substituivel:
+                postDeVideo(post) && !post.laterPostId && (post.status === 'DRAFT' || post.status === 'SCHEDULED'),
+              videoDesatualizado: estadoDoVideo.get(post.id)?.videoDesatualizado ?? false,
+              substituicao: estadoDoVideo.get(post.id)?.substituicao ?? null,
             }
           : null,
       }

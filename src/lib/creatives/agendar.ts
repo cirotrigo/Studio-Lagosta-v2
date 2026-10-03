@@ -27,6 +27,9 @@ import { registrarLegendaDoPost } from '@/lib/aprendizado/sinal-de-legenda'
 import { registrarArtesDoPost } from '@/lib/posts/artes-do-post'
 import { comoCopiaDaPagina } from '@/lib/posts/copy-segue-a-pagina'
 import { recusaComoImagem } from '@/lib/video/pagina-com-video'
+import { vinculoDoVideo } from '@/lib/video/vinculo-do-video'
+import { ehExportDeVideo } from '@/lib/posts/post-de-video'
+import { isVideoUrl } from '@/lib/media-type'
 import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus, Prisma } from '@prisma/client'
 import { formatarBRT, parseBRT } from './data-brt'
@@ -143,7 +146,14 @@ export interface OpcoesDaResolucao {
 export interface AgendamentoResolvido {
   input: AgendarPostInput
   project: { id: number; name: string; userId: string; instagramAccountId: string | null }
+  /**
+   * A página do post: a pedida, ou — agendando só o VÍDEO da galeria — a página
+   * de onde ele saiu (`vinculoDoVideo`), para o "Editar vídeo" da agenda.
+   */
+  pageId: string | null
   templateId: number | null
+  /** O post é o vídeo da página (`SocialPost.videoDaPagina`): mídia de vídeo ou Generation de export de vídeo. */
+  videoDaPagina: boolean
   mediaUrls: string[]
   midiaVeioDaPagina: boolean
   generationId: string | null
@@ -288,6 +298,8 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
   let copyVisual: Record<string, unknown> | null = null
   let sourcePageId: string | null = null
   let copyInvalidada = false
+  let geracaoEhVideo = false
+  let pageId: string | null = input.pageId ?? null
 
   if (input.generationId) {
     const gen = await leitor.generation.findFirst({
@@ -302,7 +314,12 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
       )
     }
     generationId = gen.id
+    geracaoEhVideo = ehExportDeVideo(gen.fieldValues)
     ;({ copyProposta, copyVisual, sourcePageId, copyInvalidada } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (!pageId) {
+      const vinculo = await vinculoDoVideo(leitor, { projectId: project.id, fieldValues: gen.fieldValues })
+      if (vinculo) ({ pageId, templateId } = vinculo)
+    }
     // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
     // própria Generation — é o caso da arte MELHORADA (que não tem página) e
     // poupa o chat de copiar URL à mão, com os erros que isso traz.
@@ -324,6 +341,11 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
     })
     generationId = gen?.id ?? null
     if (gen) ({ copyProposta, copyVisual, sourcePageId, copyInvalidada } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
+    if (gen) geracaoEhVideo = ehExportDeVideo(gen.fieldValues)
+    if (gen && !pageId) {
+      const vinculo = await vinculoDoVideo(leitor, { projectId: project.id, fieldValues: gen.fieldValues })
+      if (vinculo) ({ pageId, templateId } = vinculo)
+    }
   }
 
   /**
@@ -447,7 +469,9 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
   return {
     input,
     project,
+    pageId,
     templateId,
+    videoDaPagina: geracaoEhVideo || mediaUrls.some((u) => isVideoUrl(u)),
     mediaUrls,
     midiaVeioDaPagina,
     generationId,
@@ -482,9 +506,10 @@ export async function criarPostDoAgendamento(client: EscritorDoAgendamento, r: A
       // lembretes; DIRECT é o default do schema e fica implícito.
       ...(input.lembrete ? { publishType: 'REMINDER' as const } : {}),
       reminderExtraInfo: observacao,
-      pageId: input.pageId ?? null,
+      pageId: r.pageId,
       templateId: r.templateId,
       generationId: r.generationId,
+      videoDaPagina: r.videoDaPagina,
       renderStatus: (mediaUrls.length === 0
         ? 'PENDING'
         : midiaVeioDaPagina
@@ -552,7 +577,7 @@ export function contextoDosEfeitos(r: AgendamentoResolvido): ContextoDosEfeitos 
     userId: r.project.userId,
     quando: r.quando,
     situacao: r.vaiPublicar ? 'agendado' : 'rascunho',
-    pageId: r.input.pageId ?? null,
+    pageId: r.pageId,
     generationId: r.generationId,
     campaignId: r.input.campaignId ?? null,
     sourcePageId: r.sourcePageId,

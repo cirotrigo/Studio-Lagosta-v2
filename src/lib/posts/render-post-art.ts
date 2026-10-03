@@ -17,6 +17,7 @@ import { renderStoryImage } from '@/lib/posts/story-renderer'
 import { ensurePostGeneration } from './ensure-post-generation'
 import { comoCopiaDaPagina, slotValuesSeguindo } from './copy-segue-a-pagina'
 import { renderDaPaginaCobreAMidia } from './render-da-pagina'
+import { MOTIVO_VIDEO_REMOVIDO, postDeVideo } from './post-de-video'
 import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 
 /**
@@ -28,7 +29,7 @@ import { RenderStatus, type Prisma } from '../../../prisma/generated/client'
 export interface RenderPostArtResult {
   ok: boolean
   url?: string
-  motivo?: 'sem-pagina' | 'midia-propria' | 'ocupado' | 'invalidado' | 'falhou'
+  motivo?: 'sem-pagina' | 'midia-propria' | 'video-removido' | 'ocupado' | 'invalidado' | 'falhou'
   erro?: string
 }
 
@@ -64,7 +65,30 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
    * para rascunho pede render de todo post RENDERED com página), então a guarda
    * mora aqui: o post sai da fila de render e a mídia fica.
    */
-  const atual = await db.socialPost.findUnique({ where: { id: post.id }, select: { mediaUrls: true } })
+  const atual = await db.socialPost.findUnique({
+    where: { id: post.id },
+    select: { mediaUrls: true, videoDaPagina: true },
+  })
+  /**
+   * Post de VÍDEO nunca é redesenhado como imagem: o render da página desenha
+   * a miniatura, não o vídeo. Com a mídia limpa (à mão, pela agenda), a única
+   * saída honesta é dizer por quê — o PNG publicaria uma foto parada no lugar
+   * do vídeo. Sai da fila com o motivo, e o executor falha o post sem retry.
+   */
+  if (atual && postDeVideo(atual)) {
+    if ((atual.mediaUrls ?? []).length === 0) {
+      await db.socialPost.updateMany({
+        where: { id: post.id, renderStatus: RenderStatus.PENDING },
+        data: { renderStatus: RenderStatus.RENDER_FAILED, renderError: MOTIVO_VIDEO_REMOVIDO },
+      })
+      return { ok: false, motivo: 'video-removido', erro: MOTIVO_VIDEO_REMOVIDO }
+    }
+    await db.socialPost.updateMany({
+      where: { id: post.id, renderStatus: RenderStatus.PENDING },
+      data: { renderStatus: RenderStatus.NOT_NEEDED, renderError: null },
+    })
+    return { ok: false, motivo: 'midia-propria' }
+  }
   if (atual && !renderDaPaginaCobreAMidia(atual.mediaUrls)) {
     await db.socialPost.updateMany({
       where: { id: post.id, renderStatus: RenderStatus.PENDING },

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { lerVideoDaPagina } from '@/lib/video/destino-do-video'
 
 export async function GET(
   request: Request,
@@ -16,6 +17,7 @@ export async function GET(
   try {
     const job = await db.videoProcessingJob.findUnique({
       where: { id: jobId },
+      include: { generation: { select: { fieldValues: true } } },
     })
 
     if (!job) {
@@ -37,6 +39,11 @@ export async function GET(
       errorMessage: job.errorMessage,
       createdAt: job.createdAt,
       completedAt: job.completedAt,
+      // Para onde o vídeo foi: o post criado na agenda, ou o desfecho da substituição.
+      destino: (() => {
+        const v = lerVideoDaPagina(job.generation?.fieldValues)
+        return v ? { tipo: v.destino.tipo, postId: v.postId ?? null, aviso: v.aviso ?? null, resultado: v.resultado ?? null } : null
+      })(),
     })
   } catch (error) {
     console.error('[Get Job Status] Erro:', error)

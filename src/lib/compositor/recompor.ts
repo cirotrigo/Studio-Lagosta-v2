@@ -56,6 +56,8 @@ import { lerCamadas } from '@/lib/posts/page-layers'
 import { renderPageAndRegister } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { montarNovasMidias } from '@/lib/posts/troca-de-arte'
+import { postDeVideo } from '@/lib/posts/post-de-video'
+import { ehArteDaPagina } from './arte-da-pagina'
 import { PostLogEvent, type Prisma } from '../../../prisma/generated/client'
 
 import { comporPeca } from './compor'
@@ -164,13 +166,17 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
    * invisível para toda varredura seguinte, publicando a arte velha para
    * sempre. Guardar o rastro é o que deixa a próxima passada alcançá-lo.
    */
+  // Só a ARTE da página (imagem): o export de vídeo e a `post-schedule` de um
+  // post de vídeo também podem carregar `pageId`, e tomá-los por arte faria a
+  // recomposição refazer um vídeo como PNG e alcançar o post de vídeo.
+  const artes = geracoes.filter((g) => ehArteDaPagina(g))
   const urlsConhecidas = [
     ...new Set([
-      ...geracoes.map((g) => g.resultUrl).filter((u): u is string => !!u),
-      ...geracoes.flatMap((g) => urlsAnterioresDe(g.fieldValues)),
+      ...artes.map((g) => g.resultUrl).filter((u): u is string => !!u),
+      ...artes.flatMap((g) => urlsAnterioresDe(g.fieldValues)),
     ]),
   ]
-  const primeira = geracoes.find((g) => !!g.resultUrl) ?? null
+  const primeira = artes.find((g) => !!g.resultUrl) ?? null
   const fv =
     primeira?.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)
       ? (primeira.fieldValues as Record<string, unknown>)
@@ -199,8 +205,8 @@ export async function levantarPagina(pageId: string): Promise<LevantamentoDaPagi
             status: { in: [...SITUACOES_ALCANCADAS] as never },
             mediaUrls: { hasSome: urlsConhecidas },
           },
-          select: { id: true, pageId: true, renderStatus: true, mediaUrls: true, laterPostId: true },
-        })
+          select: { id: true, pageId: true, renderStatus: true, mediaUrls: true, laterPostId: true, videoDaPagina: true },
+        }).then((ps) => ps.filter((p) => !postDeVideo(p)))
       : []
 
   return {
@@ -759,7 +765,7 @@ export async function travarRecomposicaoDaArte(
     orderBy: { createdAt: 'desc' },
     take: 20,
   })
-  const primeira = geracoes.find((g) => !!g.resultUrl)
+  const primeira = geracoes.find((g) => !!g.resultUrl && ehArteDaPagina(g))
   if (!primeira) return false
   const fv =
     primeira.fieldValues && typeof primeira.fieldValues === 'object' && !Array.isArray(primeira.fieldValues)

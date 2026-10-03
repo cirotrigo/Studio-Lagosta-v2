@@ -754,6 +754,8 @@ toolEstrita(
           templateId: resolvedTemplateId ?? null,
           slotValues: parsedSlotValues ?? undefined,
           renderStatus: renderStatus as any,
+          // A origem de vídeo fica no post: limpar a mídia depois não o devolve ao render.
+          videoDaPagina: (await import('../src/lib/posts/post-de-video')).postDeVideo({ mediaUrls: mediaUrls ?? [] }),
           // O cron filtra por `nextRenderAt <= agora`, e null não passa nesse
           // filtro: PENDING sem esta data ficava fora da fila para sempre — o
           // post nunca ganhava arte e o executor o pulava indefinidamente.
@@ -799,11 +801,12 @@ toolEstrita(
     try {
       const existing = await prisma.socialPost.findUnique({
         where: { id: postId },
-        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true, projectId: true, scheduledDatetime: true },
+        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true, projectId: true, scheduledDatetime: true, videoDaPagina: true },
       })
       if (!existing) {
         return { content: [{ type: 'text' as const, text: `Error: post ${postId} not found` }], isError: true }
       }
+      const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
 
       const data: any = {}
       if (caption !== undefined) data.caption = caption
@@ -831,6 +834,10 @@ toolEstrita(
           const effectivePageId = pageId ?? existing.pageId
           const effectiveMedia = mediaUrls ?? existing.mediaUrls
           if (effectivePageId && (!effectiveMedia || effectiveMedia.length === 0)) {
+            // Post de vídeo sem a mídia não vira imagem pelo render da página.
+            if (postDeVideo({ videoDaPagina: existing.videoDaPagina, mediaUrls: effectiveMedia })) {
+              return { content: [{ type: 'text' as const, text: `Error: ${MOTIVO_VIDEO_REMOVIDO} Nada foi alterado.` }], isError: true }
+            }
             data.renderStatus = 'PENDING'
           }
         }
@@ -1271,10 +1278,16 @@ toolEstrita(
       // 1. Fetch post
       const post = await prisma.socialPost.findUnique({
         where: { id: postId },
-        select: { id: true, pageId: true, slotValues: true, renderStatus: true, mediaUrls: true },
+        select: { id: true, pageId: true, slotValues: true, renderStatus: true, mediaUrls: true, videoDaPagina: true },
       })
       if (!post) return { content: [{ type: 'text' as const, text: 'Error: Post not found' }], isError: true }
       if (!post.pageId) return { content: [{ type: 'text' as const, text: 'Error: Post has no pageId (not template-based)' }], isError: true }
+      // Post de vídeo nunca é redesenhado como imagem — nem com a mídia limpa.
+      const { postDeVideo, MOTIVO_VIDEO_REMOVIDO } = await import('../src/lib/posts/post-de-video')
+      if (postDeVideo(post)) {
+        const motivo = post.mediaUrls.length === 0 ? MOTIVO_VIDEO_REMOVIDO : 'A mídia deste post é um vídeo — renderizar a página a trocaria por uma imagem.'
+        return { content: [{ type: 'text' as const, text: `Error: ${motivo} Nada foi alterado.` }], isError: true }
+      }
       // O render grava `mediaUrls: [png]`: vídeo e carrossel seriam apagados por ele.
       const { renderDaPaginaCobreAMidia } = await import('../src/lib/posts/render-da-pagina')
       if (!renderDaPaginaCobreAMidia(post.mediaUrls)) {

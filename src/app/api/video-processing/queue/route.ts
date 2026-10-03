@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
@@ -6,8 +6,14 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { put } from '@vercel/blob'
+import { destinoSchema, type DestinoDoVideo } from '@/lib/video/destino-do-video'
+import { criarJobDeVideo, prepararVideoDaPagina } from '@/lib/video/enfileirar-video'
+import { processVideoJob } from '@/lib/video/process-video-job'
 
 export const runtime = 'nodejs'
+// A conversão roda no `after()` desta rota; o teto do Vercel vai inline
+// (o glob do vercel.json não casa `src/app/**`).
+export const maxDuration = 300
 
 const audioConfigSchema = z.object({
   source: z.enum(['original', 'library', 'mute', 'mix']),
@@ -44,6 +50,10 @@ const queueVideoSchema = z
     thumbnailBlobUrl: z.string().url().optional(), // Direct Blob URL for thumbnail
     thumbnailBlobSize: z.coerce.number().int().positive().optional(), // Size in bytes for thumbnail blob URL
     designData: z.any(), // Template design data
+    /** A página gravada: liga o vídeo à página (agenda, "Editar vídeo", substituição). */
+    pageId: z.string().min(1).optional(),
+    /** Para onde vai o vídeo quando ficar pronto (padrão: só a galeria). */
+    destino: destinoSchema.optional(),
   })
   .refine(
     (data) => Boolean(data.webmBlob) || Boolean(data.webmBlobUrl && data.webmBlobSize),
@@ -174,6 +184,18 @@ export async function POST(request: Request) {
       )
     }
 
+    // O destino é validado ANTES de qualquer upload ou cobrança.
+    const preparo = await prepararVideoDaPagina({
+      projectId: body.projectId,
+      templateId: body.templateId,
+      pageId: body.pageId,
+      destino: (body.destino ?? { tipo: 'galeria' }) as DestinoDoVideo,
+      designData: body.designData,
+      videoWidth: body.videoWidth,
+      videoHeight: body.videoHeight,
+    })
+    if (preparo.ok === false) return NextResponse.json({ error: preparo.error }, { status: preparo.status })
+
     let webmBlobUrl = body.webmBlobUrl ?? null
     let webmFileSize = body.webmBlobSize ?? null
     let thumbnailUrl = body.thumbnailBlobUrl ?? null
@@ -269,101 +291,40 @@ export async function POST(request: Request) {
       console.warn('[Queue Video] Thumbnail não fornecida. Será usada imagem padrão.')
     }
 
-    const baseFieldValues = {
-      videoExport: true,
-      isVideo: true,
-      progress: 0,
-      thumbnailUrl,
+    const job = await criarJobDeVideo({
+      user,
+      clerkUserId,
+      orgId: orgId ?? null,
+      project,
+      templateId: body.templateId,
+      videoName: body.videoName,
       videoDuration: body.videoDuration,
       videoWidth: body.videoWidth,
       videoHeight: body.videoHeight,
-    }
-
-    const designDataWithContext =
-      typeof body.designData === 'object' && body.designData !== null && !Array.isArray(body.designData)
-        ? { ...body.designData, __organizationId: orgId ?? null, __exportAudioConfig: body.audioConfig ?? null }
-        : { value: body.designData, __organizationId: orgId ?? null, __exportAudioConfig: body.audioConfig ?? null }
-
-    // Colunas de rastreio da trilha (fonte de verdade do mix é o
-    // __exportAudioConfig no designData; aqui é o que dá vida à relação
-    // MusicLibrary.usedInVideos e a métricas de uso)
-    const audioCfg = body.audioConfig ?? null
-    const usesMusic =
-      audioCfg != null && (audioCfg.source === 'library' || audioCfg.source === 'mix') && audioCfg.musicId
-    const audioTrackingColumns = audioCfg
-      ? {
-          audioSource: audioCfg.source,
-          musicId: usesMusic ? audioCfg.musicId : null,
-          musicStartTime: usesMusic ? audioCfg.startTime : null,
-          musicEndTime: usesMusic ? audioCfg.endTime : null,
-          audioVolume:
-            (audioCfg.source === 'mix' ? audioCfg.volumeMusic ?? audioCfg.volume : audioCfg.volume) / 100,
-          audioFadeIn: audioCfg.fadeIn ? audioCfg.fadeInDuration : null,
-          audioFadeOut: audioCfg.fadeOut ? audioCfg.fadeOutDuration : null,
-          audioLoop: false,
-        }
-      : {}
-
-    const { job, generation } = await db.$transaction(async (tx) => {
-      const createdGeneration = await tx.generation.create({
-        data: {
-          templateId: body.templateId,
-          projectId: body.projectId,
-          createdBy: clerkUserId,
-          status: 'PROCESSING',
-          templateName: body.videoName,
-          projectName: project.name,
-          fieldValues: baseFieldValues,
-          resultUrl: thumbnailUrl,
-        },
-      })
-
-      const createdJob = await tx.videoProcessingJob.create({
-        data: {
-          userId: user.id,
-          clerkUserId,
-          templateId: body.templateId,
-          projectId: body.projectId,
-          status: 'PENDING',
-          webmBlobUrl,
-          webmFileSize,
-          thumbnailUrl: thumbnailUrl ?? undefined,
-          videoName: body.videoName,
-          videoDuration: body.videoDuration,
-          videoWidth: body.videoWidth,
-          videoHeight: body.videoHeight,
-          designData: designDataWithContext,
-          ...audioTrackingColumns,
-          progress: 0,
-          creditsDeducted: false,
-          creditsUsed: 10,
-          generationId: createdGeneration.id,
-        },
-      })
-
-      const updatedFieldValues = {
-        ...baseFieldValues,
-        originalJobId: createdJob.id,
-        generationId: createdGeneration.id,
-      }
-
-      const updatedGeneration = await tx.generation.update({
-        where: { id: createdGeneration.id },
-        data: {
-          fieldValues: updatedFieldValues,
-        },
-      })
-
-      return { job: createdJob, generation: updatedGeneration }
+      webmBlobUrl,
+      webmFileSize,
+      thumbnailUrl,
+      designData: body.designData,
+      audioConfig: body.audioConfig ?? null,
+      videoDaPagina: preparo.videoDaPagina,
     })
 
-    console.log('[Queue Video] Job criado com sucesso:', job.id)
+    console.log('[Queue Video] Job criado com sucesso:', job.jobId)
+
+    // Processa já, nesta invocação; o cron de vídeo é a rede (a aba pode fechar).
+    after(async () => {
+      try {
+        await processVideoJob(job.jobId)
+      } catch (error) {
+        console.error('[Queue Video] Falha no processamento imediato — o cron retoma:', error)
+      }
+    })
 
     // 6. Retornar ID do job para polling
     return NextResponse.json({
       success: true,
-      jobId: job.id,
-      generationId: generation.id,
+      jobId: job.jobId,
+      generationId: job.generationId,
       thumbnailUrl,
       message: 'Vídeo adicionado à fila de processamento',
     })

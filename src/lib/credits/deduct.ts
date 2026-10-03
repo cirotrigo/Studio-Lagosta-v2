@@ -3,6 +3,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { FeatureKey, toPrismaOperationType } from './feature-config'
 import { getFeatureCost, getPlanCredits } from '@/lib/credits/settings'
 import { InsufficientCreditsError } from './errors'
+import type { Prisma } from '@prisma/client'
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
 interface JsonObject { [key: string]: JsonValue }
@@ -17,6 +18,13 @@ interface DeductParams {
   projectId?: number
   /** Ver `creditosADebitar`. */
   creditsTotal?: number
+  /**
+   * Roda DENTRO da transação do débito, depois dele: o que precisa sair no
+   * mesmo commit que a cobrança (a marca "já cobrado" do job de vídeo). Se
+   * lançar, o débito é desfeito junto — é assim que uma repetição do job nunca
+   * cobra duas vezes.
+   */
+  noMesmoCommit?: (tx: Prisma.TransactionClient) => Promise<void>
 }
 
 interface CreditContextOptions {
@@ -90,6 +98,7 @@ async function deductOrganizationCredits({
   organizationId,
   projectId,
   creditsTotal,
+  noMesmoCommit,
 }: DeductParams) {
   const creditsToUse = await creditosADebitar(feature, quantity, creditsTotal)
 
@@ -133,6 +142,8 @@ async function deductOrganizationCredits({
         projectId: projectId ?? undefined,
       },
     })
+
+    if (noMesmoCommit) await noMesmoCommit(tx)
 
     const after = await tx.organizationCreditBalance.findUnique({
       where: { id: balance.id },
@@ -245,6 +256,7 @@ export async function deductCreditsForFeature({
   organizationId,
   projectId,
   creditsTotal,
+  noMesmoCommit,
 }: DeductParams): Promise<{ creditsRemaining: number }> {
   try {
     console.log('[DEDUCT] Starting credit deduction for:', { clerkUserId, feature, quantity, creditsTotal })
@@ -258,6 +270,7 @@ export async function deductCreditsForFeature({
         organizationId,
         projectId,
         creditsTotal,
+        noMesmoCommit,
       })
     }
 
@@ -316,6 +329,8 @@ export async function deductCreditsForFeature({
           console.error('Erro ao atualizar saldo de créditos:', error)
           throw error
         }
+
+        if (noMesmoCommit) await noMesmoCommit(tx)
 
         const after = await tx.creditBalance.findUnique({ where: { id: creditBalance.id } })
         return { creditsRemaining: after!.creditsRemaining }

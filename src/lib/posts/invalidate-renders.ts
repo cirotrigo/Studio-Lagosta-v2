@@ -18,6 +18,7 @@
  */
 import { PostStatus, RenderStatus, type Prisma, type PrismaClient } from '../../../prisma/generated/client'
 import { renderDaPaginaCobreAMidia } from './render-da-pagina'
+import { postDeVideo } from './post-de-video'
 
 /**
  * `normalizeLayersString` mudou de casa para `page-layers.ts` — um módulo SEM
@@ -105,9 +106,13 @@ export async function invalidateScheduledRenders(
    */
   const candidatos = await client.socialPost.findMany({
     where: { ...base, laterPostId: null },
-    select: { id: true, mediaUrls: true },
+    select: { id: true, mediaUrls: true, videoDaPagina: true },
   })
-  const alvos = candidatos.filter((p) => renderDaPaginaCobreAMidia(p.mediaUrls)).map((p) => p.id)
+  // Post de VÍDEO nunca volta à fila de render, nem com a mídia limpa: a marca
+  // persistida (`postDeVideo`) diz que ele é o vídeo da página, não um render dela.
+  const alvos = candidatos
+    .filter((p) => renderDaPaginaCobreAMidia(p.mediaUrls) && !postDeVideo(p))
+    .map((p) => p.id)
   if (alvos.length < candidatos.length) {
     console.warn(
       `[invalidate-renders] ${candidatos.length - alvos.length} post(s) com várias mídias ficaram fora da fila de render`,

@@ -570,7 +570,7 @@ export interface ResultadoRecuperacao {
  * de vídeo cria a Generation PROCESSING e a entrega a OUTRA fila, cujo cron
  * processa um job por vez a cada 2 minutos — ficar mais de 10 minutos em
  * PROCESSING ali é normal, e marcá-la FAILED mataria um vídeo saudável. Aquela
- * fila tem a própria recuperação (`failStuckVideoJobs`).
+ * fila tem a própria recuperação (`recuperarJobsDeVideoPresos`).
  */
 export async function recuperarJobsPerdidos(
   opcoes: {
