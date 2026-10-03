@@ -49,7 +49,7 @@ const updatePageSchema = z.object({
   // visual — mudar música não invalida o render agendado (que é PNG).
   audio: pageAudioSchema.nullable().optional(),
   order: z.number().int().optional(),
-  thumbnail: z.string().optional(),
+  thumbnail: z.string().nullable().optional(),
   tags: z.array(z.string()).optional(),
 })
 

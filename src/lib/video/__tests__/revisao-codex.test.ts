@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { cabemMaisClipes, inserirClipe, problemasDosClipes } from '../linha-do-tempo'
+import { cabemMaisClipes, criarReservaDeClipes, inserirClipe, problemasDosClipes } from '../linha-do-tempo'
 import { trechoDoVideo, MAX_CLIPES } from '../camadas-de-video'
 import { fonteEfetiva } from '../audio-do-export'
 import { volumeDoVideoNaPagina } from '../plano-de-som'
@@ -70,5 +70,33 @@ describe('sequência só de fotos: renderiza, mas não vai ao ar como imagem', (
     expect(recusaPorCamadas(sequencia)?.codigo).toBe('PAGINA_COM_VIDEO')
     expect(recusaComoImagem(sequencia, null)?.codigo).toBe('PAGINA_COM_VIDEO')
     expect(recusaPorCamadas([foto('a', 0)])).toBeNull()
+  })
+})
+
+describe('rodada 2: teto de clipes num lote de duplicações', () => {
+  it('9 clipes + duplicar 2 no mesmo lote: só o primeiro entra', () => {
+    const nove = Array.from({ length: MAX_CLIPES - 1 }, (_, i) => foto(`f${i}`, i, {}))
+    const reserva = criarReservaDeClipes()
+    expect(reserva.reservar(nove)).toBe(true)
+    expect(reserva.reservar(nove)).toBe(false)
+    // a renderização seguinte já conta o que entrou
+    reserva.zerar()
+    expect(reserva.reservar([...nove, foto('nova', 9, {})])).toBe(false)
+    expect(reserva.reservar(nove.slice(1))).toBe(true)
+  })
+})
+
+describe('rodada 2: o trecho lido fica dentro do arquivo', () => {
+  it('início além do fim é preso ao último trecho mínimo; duração ≤ 0 é desconhecida', () => {
+    expect(trechoDoVideo({ duration: 4, trimStart: 90 })).toEqual({ inicio: 3.5, duracao: 0.5 })
+    expect(trechoDoVideo({ duration: 4, trimStart: 90, trimEnd: 95 })).toEqual({ inicio: 3.5, duracao: 0.5 })
+    expect(trechoDoVideo({ duration: -3, trimStart: 1 })).toEqual({ inicio: 1, duracao: null })
+    expect(trechoDoVideo({ trimStart: 1 }, -2)).toEqual({ inicio: 1, duracao: null })
+    expect(trechoDoVideo({ trimStart: 1 }, 6)).toEqual({ inicio: 1, duracao: 5 })
+  })
+
+  it('o validador recusa duração ≤ 0', () => {
+    expect(problemasDosClipes([video('v', 0, { duration: -3 }, {})])).toHaveLength(1)
+    expect(problemasDosClipes([video('v', 0, { duration: 0 }, {})])).toHaveLength(1)
   })
 })

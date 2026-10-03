@@ -12,7 +12,7 @@ import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { videosProntosEmZero } from '@/lib/video/videos-montados'
 import { ehClipe } from '@/lib/video/camadas-de-video'
-import { cabemMaisClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
+import { criarReservaDeClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
 import { toast } from '@/hooks/use-toast'
 import { consumirInsercaoDeClipe } from '@/lib/video/insercao-de-clipe'
 import { useQueryClient } from '@tanstack/react-query'
@@ -48,7 +48,11 @@ export interface TemplateEditorContextValue {
   groupSelectedLayers: () => void
   /** Desfaz o(s) grupo(s) a que as camadas pertencem (sem `ids`, a seleção) — nada é desselecionado */
   ungroupLayers: (ids?: string[]) => void
-  updateLayer: (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => void
+  updateLayer: (
+    id: string,
+    updater: (layer: Layer) => Layer,
+    options?: { coalesceKey?: string; skipHistory?: boolean },
+  ) => void
   updateLayerPartial: (id: string, partial: Partial<Layer>) => void
   updateLayerStyle: (id: string, style: Layer['style']) => void
   moveLayer: (id: string, deltaX: number, deltaY: number) => void
@@ -200,6 +204,9 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   // recriar os callbacks a cada edição
   const designAtualRef = React.useRef(design)
   designAtualRef.current = design
+  // Teto de clipes em lote: o `design` desta renderização já conta o que entrou
+  const reservaDeClipesRef = React.useRef(criarReservaDeClipes())
+  reservaDeClipesRef.current.zerar()
   const [dynamicFields, setDynamicFieldsState] = React.useState<DynamicField[]>(() =>
     Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [],
   )
@@ -386,7 +393,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [applyDesign])
 
   const updateLayer = React.useCallback(
-    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => {
+    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string; skipHistory?: boolean }) => {
       applyDesign(
         (prev) => {
           let changed = false
@@ -402,7 +409,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         // Edições contínuas na mesma camada (digitação, slider) coalescem num
         // undo só; quem precisa agrupar VÁRIAS camadas num gesto (drag em
         // grupo, alinhamento) passa a própria chave
-        { coalesceKey: options?.coalesceKey ?? `layer:${id}` },
+        { coalesceKey: options?.coalesceKey ?? `layer:${id}`, skipHistory: options?.skipHistory },
       )
     },
     [applyDesign],
@@ -447,7 +454,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     (layer: Layer) => {
       // O "+" da linha do tempo armou a aba: a foto/vídeo entra como clipe
       const comoClipe = consumirInsercaoDeClipe() && (layer.type === 'image' || layer.type === 'video')
-      if ((comoClipe || ehClipe(layer)) && !cabemMaisClipes(designAtualRef.current.layers)) {
+      if ((comoClipe || ehClipe(layer)) && !reservaDeClipesRef.current.reservar(designAtualRef.current.layers)) {
         toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
         return
       }
@@ -478,7 +485,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       // contrato). A transformação é pura e testada em `camada-copiada.ts`.
       const copia = camadaDuplicadaNoEditor(source, { novoId: createId(), paginaTemContrato: temCopyAutoral })
       if (ehClipe(source)) {
-        if (!cabemMaisClipes(design.layers)) {
+        if (!reservaDeClipesRef.current.reservar(designAtualRef.current.layers)) {
           toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
           return
         }
@@ -571,7 +578,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
     // C9-02/C9-11: colar é duplicar — a transformação é a mesma, pura e testada em `camada-copiada.ts`.
     const clones = camadasColadasNoEditor(clipboard, { novoId: createId, paginaTemContrato: temCopyAutoral })
-    if (!cabemMaisClipes(designAtualRef.current.layers, clones.filter((l) => ehClipe(l)).length)) {
+    if (!reservaDeClipesRef.current.reservar(designAtualRef.current.layers, clones.filter((l) => ehClipe(l)).length)) {
       toast({ variant: 'destructive', description: MENSAGEM_TETO_DE_CLIPES })
       return
     }

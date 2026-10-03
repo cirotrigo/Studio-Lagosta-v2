@@ -137,10 +137,16 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
                     fracao={c.duracao / total}
                     desabilitado={gravando}
                     onTirar={() => tirar(c.id)}
-                    onAjustar={(patch) =>
-                      // Uma entrada de desfazer por arraste: o vídeo é ajustado
-                      // enquanto a borda anda (para o quadro aparecer) e no soltar
-                      updateLayer(c.id, (l) => ({ ...l, ...patch }), { coalesceKey: `clipe-borda:${c.id}` })
+                    onAjustar={(patch, inicioDoGesto) =>
+                      // Uma entrada de desfazer por arraste, delimitada pelo GESTO
+                      // (não por tempo): a 1ª escrita guarda o estado de antes; as
+                      // seguintes, até soltar, não entram no histórico
+                      // (chave única: nunca funde com a edição anterior na camada)
+                      updateLayer(
+                        c.id,
+                        (l) => ({ ...l, ...patch }),
+                        inicioDoGesto ? { coalesceKey: `clipe-borda:${c.id}:${performance.now()}` } : { skipHistory: true },
+                      )
                     }
                     onMostrar={(t) => relogio.ir(t)}
                   />
@@ -206,7 +212,8 @@ function ClipeNaFaixa({
   fracao: number
   desabilitado: boolean
   onTirar: () => void
-  onAjustar: (patch: Partial<Layer>) => void
+  /** `inicioDoGesto`: a 1ª escrita do arraste (a que entra no histórico). */
+  onAjustar: (patch: Partial<Layer>, inicioDoGesto: boolean) => void
   /** Leva o relógio da página ao instante `t` (o quadro da borda arrastada). */
   onMostrar: (t: number) => void
 }) {
@@ -227,6 +234,11 @@ function ClipeNaFaixa({
     const ts0 = meta.trimStart ?? 0
     const te0 = meta.trimEnd ?? Math.min(duracaoFonte, ts0 + clipe.duracao)
     let ultimo: number | null = null
+    let empilhou = false
+    const aplicar = (patch: Partial<Layer>) => {
+      onAjustar(patch, !empilhou)
+      empilhou = true
+    }
     const mover = (ev: PointerEvent) => {
       const dx = (ev.clientX - x0) / pxPorSeg
       ultimo = arredondar(
@@ -241,10 +253,10 @@ function ClipeNaFaixa({
       // do trecho, ou o último quadro). Foto não tem quadro a mostrar.
       if (clipe.tipo === 'video') {
         if (lado === 'dir') {
-          onAjustar({ videoMetadata: { ...meta, trimEnd: ultimo } })
+          aplicar({ videoMetadata: { ...meta, trimEnd: ultimo } })
           onMostrar(clipe.inicio + Math.max(0, ultimo - ts0 - 0.05))
         } else {
-          onAjustar({ videoMetadata: { ...meta, trimStart: ultimo } })
+          aplicar({ videoMetadata: { ...meta, trimStart: ultimo } })
           onMostrar(clipe.inicio)
         }
       }
@@ -254,9 +266,9 @@ function ClipeNaFaixa({
       window.removeEventListener('pointerup', soltar)
       setRascunho(null)
       if (ultimo === null) return
-      if (clipe.tipo === 'foto') onAjustar({ clipe: { ...camada.clipe, duracao: ultimo } })
-      else if (lado === 'dir') onAjustar({ videoMetadata: { ...meta, trimEnd: ultimo } })
-      else onAjustar({ videoMetadata: { ...meta, trimStart: ultimo } })
+      if (clipe.tipo === 'foto') aplicar({ clipe: { ...camada.clipe, duracao: ultimo } })
+      else if (lado === 'dir') aplicar({ videoMetadata: { ...meta, trimEnd: ultimo } })
+      else aplicar({ videoMetadata: { ...meta, trimStart: ultimo } })
     }
     window.addEventListener('pointermove', mover)
     window.addEventListener('pointerup', soltar)

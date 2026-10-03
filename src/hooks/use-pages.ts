@@ -20,7 +20,8 @@ interface UpdatePageData {
   background?: string
   audio?: PageAudioConfig | null
   order?: number
-  thumbnail?: string
+  /** `null` apaga a miniatura vencida (página editada sem captura nova). */
+  thumbnail?: string | null
 }
 
 interface PageResponse {

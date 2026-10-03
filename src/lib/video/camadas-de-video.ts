@@ -144,16 +144,21 @@ export function trechoDoVideo(
   metadata: TrechoLike | null | undefined,
   duracaoDaFonte?: number | null,
 ): { inicio: number; duracao: number | null } {
-  // Leitura defensiva: dado já gravado pode ter NaN, texto ou fim além do arquivo
-  const inicio = Math.max(0, numeroFinito(metadata?.trimStart) ?? 0)
-  const declarada = numeroFinito(metadata?.duration)
-  const fonte = declarada && declarada > 0 ? declarada : numeroFinito(duracaoDaFonte)
-  const temFonte = !!fonte && fonte > 0
+  // Leitura defensiva: dado já gravado pode ter NaN, texto, duração ≤ 0 ou
+  // corte fora do arquivo. Duração só vale positiva; com ela, início e fim são
+  // presos ao arquivo (o início deixa ao menos o trecho mínimo).
+  const positivo = (v: unknown) => {
+    const n = numeroFinito(v)
+    return n !== undefined && n > 0 ? n : null
+  }
+  const fonte = positivo(metadata?.duration) ?? positivo(duracaoDaFonte)
+  let inicio = Math.max(0, numeroFinito(metadata?.trimStart) ?? 0)
+  if (fonte !== null) inicio = Math.min(inicio, Math.max(0, fonte - DURACAO_MIN_DO_CLIPE))
   let fim = numeroFinito(metadata?.trimEnd)
-  if (fim !== undefined && temFonte) fim = Math.min(fim, fonte!)
+  if (fim !== undefined && fonte !== null) fim = Math.min(fim, fonte)
   if (fim !== undefined && fim > inicio) return { inicio, duracao: fim - inicio }
-  if (!temFonte) return { inicio, duracao: null }
-  return { inicio, duracao: Math.max(0.5, fonte! - inicio) }
+  if (fonte === null) return { inicio, duracao: null }
+  return { inicio, duracao: fonte - inicio }
 }
 
 function numeroFinito(v: unknown): number | undefined {

@@ -166,6 +166,26 @@ export function cabemMaisClipes(layers: readonly CamadaDaLinha[] | null | undefi
   return (layers ?? []).filter((l) => ehClipe(l)).length + n <= MAX_CLIPES
 }
 
+/**
+ * O teto de clipes num lote de ações síncronas (duplicar vários selecionados,
+ * Ctrl+D): cada ação conferia o MESMO `design.layers`, ainda sem as anteriores,
+ * e 9 + 2 passavam. A reserva soma o que já foi aceito até a próxima renderização,
+ * que a `zerar` (o `design` novo já conta os clipes que entraram).
+ */
+export function criarReservaDeClipes() {
+  let pendentes = 0
+  return {
+    zerar() {
+      pendentes = 0
+    },
+    reservar(layers: readonly CamadaDaLinha[] | null | undefined, n = 1): boolean {
+      if (!cabemMaisClipes(layers, pendentes + n)) return false
+      pendentes += n
+      return true
+    },
+  }
+}
+
 export const MENSAGEM_TETO_DE_CLIPES = `A linha do tempo aceita até ${MAX_CLIPES} fotos e vídeos. Tire um clipe antes de pôr outro.`
 
 /**
@@ -206,6 +226,9 @@ function problemasDoTrecho(nome: string, meta: CamadaDaLinha['videoMetadata']): 
   if (problemas.length > 0) return problemas
   const inicio = meta.trimStart ?? 0
   if (inicio < 0) problemas.push(`O vídeo "${nome}" começa antes do início do arquivo (${inicio} s).`)
+  if (meta.duration !== undefined && meta.duration !== null && meta.duration <= 0) {
+    problemas.push(`O vídeo "${nome}" tem uma duração inválida (${meta.duration} s).`)
+  }
   const fonte = meta.duration && meta.duration > 0 ? meta.duration : null
   if (fonte !== null && inicio > fonte - DURACAO_MIN_DO_CLIPE) {
     problemas.push(`O vídeo "${nome}" começa depois do fim do arquivo (${inicio} s de ${fonte} s).`)
