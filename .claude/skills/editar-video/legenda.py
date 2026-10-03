@@ -394,9 +394,15 @@ def renderizar(palavras, saida, total_s, titulo=None):
     janelas = janelas_de(grupos, total_s)
     n = int(round(total_s * FPS))
     tmp = saida + '.parcial'
+    # BT.709 com marcação, igual ao motion.py e à logo: sem isso o ffmpeg converte com a BT.601 e não marca,
+    # e o Resolve lê arquivo sem marcação como Rec.709 (vermelho puro → 255,24,0; medido em 03/10/2026)
     ff = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-s', f'{W}x{H}',
-                           '-r', '30000/1001', '-i', '-', '-c:v', 'prores_ks', '-profile:v', '4444',
-                           '-pix_fmt', 'yuva444p10le', '-vendor', 'apl0', '-f', 'mov', tmp], stdin=subprocess.PIPE)
+                           '-r', '30000/1001', '-i', '-',
+                           '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuva444p10le',
+                           '-c:v', 'prores_ks', '-profile:v', '4444', '-vendor', 'apl0',
+                           '-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709', '-color_range', 'tv',
+                           '-bsf:v', 'prores_metadata=color_primaries=bt709:color_trc=bt709:colorspace=bt709',
+                           '-f', 'mov', tmp], stdin=subprocess.PIPE)
     vazio = bytes(W * H * 4)
     caixa = [W, H, 0, 0]
     try:
@@ -723,8 +729,9 @@ def _checar_peca(fonte):
              {'palavra': 'ahn', 'ini_s': 1.02, 'fim_s': 1.1, 'publico': False},
              {'palavra': 'Grelhado', 'ini_s': 1.15, 'fim_s': 1.45}]
         json.dump(T, open(os.path.join(raiz, '04_DAVINCI', 'transcricao.json'), 'w'))
-        # contorno BRANCO: com alfa reto a borda semitransparente seria RGB 255 sobre alfa baixo
-        estilo = {'fonte': fonte, 'cor_texto': '#FFFFFF', 'cor_contorno': '#FFFFFF'}
+        # contorno BRANCO: com alfa reto a borda semitransparente seria RGB 255 sobre alfa baixo;
+        # texto VERMELHO puro: o Y dele no .mov diz a matriz (BT.709 62,6; BT.601 81,5)
+        estilo = {'fonte': fonte, 'cor_texto': '#FF0000', 'cor_contorno': '#FFFFFF'}
         base = {'segmentos': [{'de_s': 0.0, 'ate_s': 0.5}, {'de_s': 1.0, 'ate_s': 1.5}], 'fala': '01_BRUTO/fala.mov',
                 'transcricao': '04_DAVINCI/transcricao.json'}
         leg = lambda nome, **e: {'arquivo': f'06_ELEMENTOS/Motion/{nome}-legenda.mov', 'alfa': 'Premultiplied',
@@ -778,6 +785,17 @@ def _checar_peca(fonte):
         semi = (px[..., 3] > 0) & (px[..., 3] < 255)
         acima = (px[..., :3].max(axis=2) > px[..., 3] + 10) & semi
         assert semi.sum() > 1000 and acima.sum() < 0.01 * semi.sum(), (int(semi.sum()), int(acima.sum()))
+        # BT.709 na matriz E na marcação
+        s = json.loads(subprocess.run(['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries',
+                                       'stream=color_space,color_primaries,color_transfer', '-of', 'json', r['saida']],
+                                      capture_output=True, check=True).stdout)['streams'][0]
+        assert set(s.values()) == {'bt709'}, s
+        yuv = np.frombuffer(subprocess.run(['ffmpeg', '-v', 'error', '-ss', '0.4', '-i', r['saida'], '-frames:v', '1',
+                                            '-f', 'rawvideo', '-pix_fmt', 'yuva444p12le', '-'], capture_output=True,
+                                           check=True).stdout, '<u2').reshape(4, H, W)
+        vermelho = (yuv[3] == 4095) & (yuv[2] > 3800)            # opaco e Cr alto: o miolo do texto
+        y8 = yuv[0][vermelho].mean() / 16 if vermelho.any() else None
+        assert vermelho.sum() > 500 and abs(y8 - 62.6) < 1, (int(vermelho.sum()), y8)
 
 
 if __name__ == '__main__':

@@ -278,6 +278,13 @@ música com entrada e fade, planos com arquivo, `inicio_q` (quadro da fonte),
   ("nuvem branca"). `DeleteFusionCompByName` recusa a última comp do item: `AddFusionComp`,
   `LoadFusionCompByName` da nova e só então apagar (guarde antes com `ExportFusionComp`).
   `ExportCurrentFrameAsStill` com a trilha ligada e desligada (`SetTrackEnable`) isola o efeito.
+- **ProRes sem marcação de cor é lido como Rec.709** (medido em 03/10/2026, Resolve 21.1, DaVinci YRGB,
+  `ExportCurrentFrameAsStill`). Sem pedir nada, o ffmpeg converte RGB→YUV com a matriz BT.601 e não marca o
+  arquivo: o vermelho puro saiu 255,24,0, o verde 0,215,0, o verde da Costela #547737 82,112,52 e o dourado
+  #FCE77B 255,227,118; branco, preto e cinza não mudam. Marcado, o Resolve segue a marcação (BT.709 marcado e
+  BT.601 marcado como 601 saíram exatos). O `legenda.py` grava BT.709 com marcação completa, igual à logo
+  (`-vf scale=out_color_matrix=bt709…` + `-colorspace`/`-color_*` + `-bsf:v prores_metadata`); script de projeto
+  que grave ProRes a partir de RGB (numpy/PIL → `rawvideo`) precisa dos mesmos argumentos.
 - `AudioDialogueLevelerOutputGain` aceita o Set e fica em 0: o ajuste de saída vai no `AudioVolume`.
 - **O Dialogue Leveler do Resolve piora a fala cortada em pedaços** (V3 da Costela, 25/09: "algumas partes
   ficou abaixando o volume"). Medido palavra a palavra: bruto com desvio de 2,4 dB, com isolamento +
