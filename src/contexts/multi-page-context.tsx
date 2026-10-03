@@ -12,6 +12,8 @@ export interface PageStatePatch {
   background?: string
   /** Trilha sonora da página; null limpa a trilha. Fora do diff visual (não invalida renders). */
   audio?: PageAudioConfig | null
+  /** `null` apaga a miniatura vencida (página-vídeo salva sem captura nova). */
+  thumbnail?: null
 }
 
 interface MultiPageContextValue {

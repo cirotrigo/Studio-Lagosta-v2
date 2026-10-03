@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { paginaEVideo } from '@/lib/video/camadas-de-video'
 import { useMultiPage, type PageStatePatch } from '@/contexts/multi-page-context'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, Page } from '@/types/template'
@@ -108,6 +109,11 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     // Trilha entra no MESMO PATCH (nunca dois writers na mesma página);
     // null explícito limpa a coluna no banco.
     if (audioChanged) patch.audio = design.audio ?? null
+    // Página-vídeo: a miniatura gravada é da versão anterior, e a nova só sai
+    // com o quadro de 0 pronto. Apagá-la NO MESMO PATCH vale para todo
+    // salvamento do PageSync (autosave, flush na troca de página, descarregar);
+    // a nova volta pelo autosave ou pela nova tentativa.
+    if ((layersChanged || canvasChanged) && paginaEVideo(design.layers, design.audio)) patch.thumbnail = null
     return { patch, layersString, canvasString, audioString }
   }, [design.layers, design.canvas.width, design.canvas.height, design.audio, canvasFromDesign, serializeAudio, serializeLayersForPersistence])
 
@@ -320,14 +326,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
         // Gerar thumbnail de forma silenciosa (não invalida cache)
         const thumbnail = await generateThumbnail(150)
-        if (!thumbnail && lastPageIdRef.current === currentPageId && miniaturaPendenteRef.current !== currentPageId) {
-          // A página mudou e a miniatura gravada é da versão anterior: apaga
-          // (a prévia e o agendamento não podem usá-la) até a nova sair
-          miniaturaPendenteRef.current = currentPageId
-          updatePageThumbnail(currentPageId, null).catch((err) =>
-            console.error('[PageSync] Erro ao apagar a miniatura vencida:', err),
-          )
-        }
+        // Recusada: o PATCH acima já apagou a vencida; a nova tentativa a refaz
+        if (!thumbnail && lastPageIdRef.current === currentPageId) miniaturaPendenteRef.current = currentPageId
         if (thumbnail && lastPageIdRef.current === currentPageId) {
           miniaturaPendenteRef.current = null
           // Salvar thumbnail sem aguardar (fire and forget)

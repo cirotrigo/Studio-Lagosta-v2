@@ -137,16 +137,10 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
                     fracao={c.duracao / total}
                     desabilitado={gravando}
                     onTirar={() => tirar(c.id)}
-                    onAjustar={(patch, inicioDoGesto) =>
+                    onAjustar={(patch, gesto) =>
                       // Uma entrada de desfazer por arraste, delimitada pelo GESTO
-                      // (não por tempo): a 1ª escrita guarda o estado de antes; as
-                      // seguintes, até soltar, não entram no histórico
-                      // (chave única: nunca funde com a edição anterior na camada)
-                      updateLayer(
-                        c.id,
-                        (l) => ({ ...l, ...patch }),
-                        inicioDoGesto ? { coalesceKey: `clipe-borda:${c.id}:${performance.now()}` } : { skipHistory: true },
-                      )
+                      // (não por tempo). Desfazer no meio reabre uma entrada nova.
+                      updateLayer(c.id, (l) => ({ ...l, ...patch }), { coalesceKey: gesto, gesto: true })
                     }
                     onMostrar={(t) => relogio.ir(t)}
                   />
@@ -212,8 +206,8 @@ function ClipeNaFaixa({
   fracao: number
   desabilitado: boolean
   onTirar: () => void
-  /** `inicioDoGesto`: a 1ª escrita do arraste (a que entra no histórico). */
-  onAjustar: (patch: Partial<Layer>, inicioDoGesto: boolean) => void
+  /** `gesto`: chave única do arraste — todas as escritas dele são UMA entrada de desfazer. */
+  onAjustar: (patch: Partial<Layer>, gesto: string) => void
   /** Leva o relógio da página ao instante `t` (o quadro da borda arrastada). */
   onMostrar: (t: number) => void
 }) {
@@ -234,11 +228,8 @@ function ClipeNaFaixa({
     const ts0 = meta.trimStart ?? 0
     const te0 = meta.trimEnd ?? Math.min(duracaoFonte, ts0 + clipe.duracao)
     let ultimo: number | null = null
-    let empilhou = false
-    const aplicar = (patch: Partial<Layer>) => {
-      onAjustar(patch, !empilhou)
-      empilhou = true
-    }
+    const gesto = `clipe-borda:${clipe.id}:${performance.now()}`
+    const aplicar = (patch: Partial<Layer>) => onAjustar(patch, gesto)
     const mover = (ev: PointerEvent) => {
       const dx = (ev.clientX - x0) / pxPorSeg
       ultimo = arredondar(

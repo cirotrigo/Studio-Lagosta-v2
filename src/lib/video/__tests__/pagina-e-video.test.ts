@@ -123,6 +123,8 @@ describe('quem decide se a página vira post como imagem', () => {
         'components/templates/modals/generate-creatives-modal.tsx',
         // o motor só toca página que é vídeo (o relógio fica em 0 na estática)
         'components/templates/motor-da-pagina.tsx',
+        // página-vídeo salva sem miniatura nova: o patch apaga a vencida
+        'components/templates/page-sync-wrapper.tsx',
         'components/templates/template-editor-shell.tsx',
         'components/templates/timeline.tsx',
         'components/templates/video-export-button.tsx',

@@ -10,6 +10,7 @@ import { createId } from '@/lib/id'
 import { camadaDuplicadaNoEditor, camadasColadasNoEditor, paginaTemContrato } from '@/lib/copy-autoral/camada-copiada'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { mesmaEntradaDeDesfazer } from '@/lib/historico-do-editor'
 import { videosProntosEmZero } from '@/lib/video/videos-montados'
 import { ehClipe } from '@/lib/video/camadas-de-video'
 import { criarReservaDeClipes, inserirClipe, MENSAGEM_TETO_DE_CLIPES, normalizarClipes } from '@/lib/video/linha-do-tempo'
@@ -51,7 +52,12 @@ export interface TemplateEditorContextValue {
   updateLayer: (
     id: string,
     updater: (layer: Layer) => Layer,
-    options?: { coalesceKey?: string; skipHistory?: boolean },
+    /**
+     * `gesto`: a mesma `coalesceKey` vira UMA entrada de desfazer pelo gesto
+     * inteiro, sem a janela de 800 ms. Desfazer/refazer no meio zera a chave,
+     * então a escrita seguinte abre entrada nova (e descarta o refazer velho).
+     */
+    options?: { coalesceKey?: string; gesto?: boolean },
   ) => void
   updateLayerPartial: (id: string, partial: Partial<Layer>) => void
   updateLayerStyle: (id: string, style: Layer['style']) => void
@@ -291,18 +297,20 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const getStageInstance = React.useCallback(() => stageInstanceRef.current, [])
 
   const applyDesign = React.useCallback(
-    (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean; coalesceKey?: string }) => {
+    (
+      updater: (prev: DesignData) => DesignData,
+      // skipHistory só pula o histórico; `markDirty: false` é a carga de página
+      options?: { skipHistory?: boolean; coalesceKey?: string; gesto?: boolean; markDirty?: boolean },
+    ) => {
       setDesign((prev) => {
         const next = updater(prev)
         if (next === prev) return prev
+        if (options?.markDirty !== false) setDirty(true)
         if (!options?.skipHistory) {
           // Mesma coalesceKey dentro da janela = mesmo gesto: o snapshot
           // pré-gesto já está na pilha, não empilhar de novo
           const now = Date.now()
-          const sameGesture =
-            options?.coalesceKey !== undefined &&
-            lastCoalesceRef.current.key === options.coalesceKey &&
-            now - lastCoalesceRef.current.time < 800
+          const sameGesture = mesmaEntradaDeDesfazer(lastCoalesceRef.current, options, now)
 
           if (!sameGesture) {
             const snapshot = cloneDesign(prev)
@@ -310,7 +318,6 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           }
           lastCoalesceRef.current = { key: options?.coalesceKey ?? null, time: now }
           historyRef.current.future = []
-          setDirty(true)
         }
         updateHistoryMeta()
         return next
@@ -393,7 +400,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [applyDesign])
 
   const updateLayer = React.useCallback(
-    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string; skipHistory?: boolean }) => {
+    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string; gesto?: boolean }) => {
       applyDesign(
         (prev) => {
           let changed = false
@@ -409,7 +416,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         // Edições contínuas na mesma camada (digitação, slider) coalescem num
         // undo só; quem precisa agrupar VÁRIAS camadas num gesto (drag em
         // grupo, alinhamento) passa a própria chave
-        { coalesceKey: options?.coalesceKey ?? `layer:${id}`, skipHistory: options?.skipHistory },
+        { coalesceKey: options?.coalesceKey ?? `layer:${id}`, gesto: options?.gesto },
       )
     },
     [applyDesign],
@@ -1060,7 +1067,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
 
-      applyDesign(() => clonedDesign, { skipHistory: true })
+      applyDesign(() => clonedDesign, { skipHistory: true, markDirty: false })
       if (historyKey) {
         const histories = historiesRef.current
         let entry = histories.get(historyKey)
