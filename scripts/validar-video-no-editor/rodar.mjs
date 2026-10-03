@@ -52,8 +52,23 @@ ffmpeg(
 )
 ffmpeg('-f', 'lavfi', '-i', 'color=c=0x1040a0:s=1080x1920:d=1', '-frames:v', '1', path.join(TMP, 'foto.png'))
 ffmpeg('-f', 'lavfi', '-i', 'color=c=0xa01010:s=1080x1920:d=1', '-frames:v', '1', path.join(TMP, 'foto2.png'))
+// Grade (Fase 2): duas linhas brancas verticais de 8 px, centradas em x = 339,5
+// e 739,5 — 400 px entre elas, simétricas em volta do centro da caixa
+ffmpeg(
+  '-f', 'lavfi', '-i', 'color=c=0x202020:s=1080x1920:d=1',
+  '-vf', 'drawbox=x=336:y=0:w=8:h=1920:color=white:t=fill,drawbox=x=736:y=0:w=8:h=1920:color=white:t=fill',
+  '-frames:v', '1', path.join(TMP, 'grade.png'),
+)
 
 // ── Bundle da página ─────────────────────────────────────────────────────────
+/** `@/…` resolve para src/ (o alias do tsconfig). */
+const doRepo = (args) => {
+  const base = path.join(RAIZ, 'src', args.path.slice(2))
+  for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx', '']) {
+    if (fs.existsSync(base + ext) && fs.statSync(base + ext).isFile()) return { path: base + ext }
+  }
+  return { errors: [{ text: 'não achei ' + args.path }] }
+}
 await esbuild.build({
   entryPoints: [path.join(AQUI, 'entrada.tsx')],
   bundle: true,
@@ -70,13 +85,29 @@ await esbuild.build({
         build.onResolve({ filter: /^@\/contexts\/(template-editor-context|multi-page-context)$/ }, () => ({
           path: path.join(AQUI, 'stub-contexto.tsx'),
         }))
-        build.onResolve({ filter: /^@\// }, (args) => {
-          const base = path.join(RAIZ, 'src', args.path.slice(2))
-          for (const ext of ['.ts', '.tsx', '/index.ts', '/index.tsx', '']) {
-            if (fs.existsSync(base + ext) && fs.statSync(base + ext).isFile()) return { path: base + ext }
-          }
-          return { errors: [{ text: 'não achei ' + args.path }] }
-        })
+        build.onResolve({ filter: /^@\// }, doRepo)
+      },
+    },
+  ],
+})
+// Render de SERVIDOR (Node): a porta real (`renderPageAndRegister`), com banco,
+// Blob, fontes e Drive trocados por stub-servidor.ts
+await esbuild.build({
+  entryPoints: [path.join(AQUI, 'render-servidor.ts')],
+  bundle: true,
+  platform: 'node',
+  format: 'cjs',
+  packages: 'external',
+  outfile: path.join(TMP, 'render-servidor.cjs'),
+  logLevel: 'error',
+  plugins: [
+    {
+      name: 'servidor-da-validacao',
+      setup(build) {
+        build.onResolve({ filter: /^(@vercel\/blob|@\/lib\/db|@\/lib\/posts\/register-project-fonts|@\/server\/google-drive-service)$/ }, () => ({
+          path: path.join(AQUI, 'stub-servidor.ts'),
+        }))
+        build.onResolve({ filter: /^@\// }, doRepo)
       },
     },
   ],
@@ -203,6 +234,35 @@ function quadrosDo(base64, nome) {
       fotoAoFundo: fb > 120 && fr < 60,
       foto2AoFundo: fr > 120 && fb < 60 && fg < 60,
     })
+  }
+  return quadros
+}
+
+/**
+ * Centros (x) das linhas claras da grade na linha de pixels `y`, um array por
+ * quadro, em resolução cheia e com TODOS os quadros (passthrough). Serve ao
+ * WebM gravado e ao PNG do render de servidor.
+ */
+function centrosNaLinha(arquivo, y) {
+  const bruto = execFileSync(
+    'ffmpeg',
+    ['-v', 'error', '-i', arquivo, '-fps_mode', 'passthrough', '-vf', `scale=1080:1920,crop=1080:1:0:${y}`, '-f', 'rawvideo', '-pix_fmt', 'gray', '-'],
+    { maxBuffer: 1 << 28 },
+  )
+  const quadros = []
+  for (let i = 0; (i + 1) * 1080 <= bruto.length; i++) {
+    const linha = bruto.subarray(i * 1080, (i + 1) * 1080)
+    const centros = []
+    let ini = -1
+    for (let x = 0; x <= 1080; x++) {
+      const claro = x < 1080 && linha[x] > 128
+      if (claro && ini < 0) ini = x
+      if (!claro && ini >= 0) {
+        if (x - ini >= 3) centros.push((ini + x - 1) / 2) // ruído do codec não é linha
+        ini = -1
+      }
+    }
+    quadros.push(centros)
   }
   return quadros
 }
@@ -533,6 +593,111 @@ conferir('os dois vídeos carregaram', await prontos(['base', 'base2']))
   conferir('o WebM gravado continua sem faixa de áudio (a trilha é do ffmpeg, na fila)', faixas.length === 1 && faixas[0] === 'video', faixas.join(','))
   e = await estado()
   conferir('depois do export o mudo volta ao que era (o clipe ativo com som)', e.base.mudo === false || e.base2.mudo === false, JSON.stringify({ base: e.base.mudo, base2: e.base2.mudo }))
+}
+
+console.log('\n=== P. movimento nas fotos (Fase 2) ===')
+// A grade tem duas linhas a 400 px, simétricas em volta do centro da caixa: a
+// distância entre elas mede a ESCALA do conteúdo; o ponto médio, o DESLIZE.
+const grade = (id, extra = {}) => camada(id, 'image', 'grade.png', extra)
+const MUSICA = 2.5
+const exportarGrade = async (camadas, nome) => {
+  await montar(camadas)
+  await dormir(900) // as fotos carregam
+  const r = await pagina.evaluate((f) => window.validacao.exportarSemVideo(f), MUSICA)
+  const webm = path.join(TMP, nome)
+  fs.writeFileSync(webm, Buffer.from(r.base64, 'base64'))
+  return webm
+}
+const pares = (quadros) => quadros.filter((c) => c.length === 2).map(([a, b]) => ({ d: b - a, meio: (a + b) / 2 }))
+const perto = (v, alvo, tol) => Math.abs(v - alvo) <= tol
+const ESCALA = 1.15
+const TOL = ESCALA * 0.02
+let primeiroAfastar = null
+{
+  const q = pares(centrosNaLinha(await exportarGrade([grade('g', { movimento: 'aproximar' })], 'mov-aproximar.webm'), 960))
+  const r = q.length > 10 ? q.at(-1).d / q[0].d : 0
+  conferir('aproximar: do primeiro ao último quadro o conteúdo cresce 1,15× (±2%)', perto(r, ESCALA, TOL), `${q.length} quadros · ${q[0]?.d} → ${q.at(-1)?.d} px · ×${r.toFixed(3)}`)
+}
+{
+  const quadros = centrosNaLinha(await exportarGrade([grade('g', { movimento: 'afastar' })], 'mov-afastar.webm'), 960)
+  primeiroAfastar = quadros[0]
+  const q = pares(quadros)
+  const r = q.length > 10 ? q[0].d / q.at(-1).d : 0
+  conferir('afastar: o primeiro quadro é 1,15× o último (±2%)', perto(r, ESCALA, TOL), `${q.length} quadros · ${q[0]?.d} → ${q.at(-1)?.d} px · ×${r.toFixed(3)}`)
+}
+{
+  const q = pares(centrosNaLinha(await exportarGrade([grade('g', { movimento: 'deslizar' })], 'mov-deslizar.webm'), 960))
+  const anda = q.length > 10 ? (q.at(-1).meio - q[0].meio) / 1080 : 0
+  conferir('deslizar: o conteúdo anda ~13% da largura, da esquerda para a direita', perto(anda, 0.13, 0.01), `${q[0]?.meio} → ${q.at(-1)?.meio} px · ${(anda * 100).toFixed(1)}%`)
+  conferir('deslizar: a escala fica em 1,15 o tempo todo', q.length > 10 && q.every((p) => perto(p.d, 400 * ESCALA, 400 * TOL)), `${Math.min(...q.map((p) => p.d))}–${Math.max(...q.map((p) => p.d))} px`)
+}
+{
+  // Três faixas de 1080×640: pura, com filtro (vai para o cache de bitmap) e
+  // com máscara (o Group da máscara) — o movimento tem de ser o mesmo
+  const faixa = (id, y, ordem, style = {}) =>
+    grade(id, { order: ordem, position: { x: 0, y }, size: { width: 1080, height: 640 }, style: { opacity: 1, objectFit: 'cover', ...style }, movimento: 'aproximar' })
+  const webm = await exportarGrade(
+    [
+      faixa('pura', 0, 0),
+      faixa('filtro', 640, 1, { grayscale: true }),
+      faixa('mascara', 1280, 2, { mask: { shapeId: 'retangulo', path: 'M5 5 L95 5 L95 95 L5 95 Z' } }),
+    ],
+    'mov-faixas.webm',
+  )
+  const razoes = [320, 960, 1600].map((y) => {
+    const q = pares(centrosNaLinha(webm, y))
+    return q.length > 10 ? q.at(-1).d / q[0].d : 0
+  })
+  const texto = razoes.map((r) => '×' + r.toFixed(3)).join(' · ')
+  conferir('foto pura, com filtro e com máscara crescem 1,15× (±2%)', razoes.every((r) => perto(r, ESCALA, TOL)), texto)
+  conferir('as três se mexem igual (±1%)', Math.max(...razoes) - Math.min(...razoes) <= ESCALA * 0.01, texto)
+}
+{
+  // Arrastar com a prévia PARADA no meio do movimento: a posição gravada é a
+  // do arraste, sem o efeito (que fica suspenso do toque até soltar)
+  await montar([grade('a', { order: 0, clipe: { duracao: 2 }, movimento: 'aproximar' }), { ...foto2, order: 1, clipe: { duracao: 2 } }])
+  await dormir(900)
+  await ir(1)
+  await dormir(400)
+  const antes = await pagina.evaluate(() => window.validacao.efeito('a'))
+  conferir('parado no meio do clipe, a foto está no meio do movimento (×1,075)', !!antes && perto(antes.escala, 1.075, 0.005) && antes.recortado, JSON.stringify(antes))
+  await pagina.mouse.move(540, 960)
+  await pagina.mouse.down()
+  for (let k = 1; k <= 10; k++) {
+    await pagina.mouse.move(540 + 10 * k, 960 + 5 * k)
+    await dormir(40)
+  }
+  await pagina.mouse.up()
+  await dormir(600)
+  const a = (await pagina.evaluate(() => window.validacao.camadas())).find((l) => l.id === 'a')
+  conferir('arrastar 100×50 com a prévia parada grava a posição sem o efeito', perto(a.position.x, 100, 1) && perto(a.position.y, 50, 1), JSON.stringify(a.position))
+  const depois = await pagina.evaluate(() => window.validacao.efeito('a'))
+  conferir('ao soltar, o movimento volta, na posição nova', !!depois && perto(depois.escala, 1.075, 0.005) && perto(depois.x, 640, 1), JSON.stringify(depois))
+}
+{
+  // Render de SERVIDOR pela porta real (persist → page-to-design-data →
+  // camadasNoInstante → CanvasRenderer): o PNG é o quadro 0 do editor. A
+  // página vem SEM áudio, como chega de quem monta à mão: o persist o lê do
+  // banco (o stub devolve PROVA_AUDIO)
+  const paginaJson = path.join(TMP, 'pagina-servidor.json')
+  const renderizar = (audio, png) => {
+    const camadaDoServidor = { ...grade('g', { movimento: 'afastar' }), fileUrl: path.join(TMP, 'grade.png') }
+    fs.writeFileSync(paginaJson, JSON.stringify({ id: 'prova', name: 'Prova', width: 1080, height: 1920, background: '#000000', layers: [camadaDoServidor] }))
+    execFileSync(process.execPath, [path.join(TMP, 'render-servidor.cjs'), paginaJson], {
+      cwd: RAIZ,
+      env: { ...process.env, NODE_PATH: path.join(RAIZ, 'node_modules'), PROVA_SAIDA: png, PROVA_AUDIO: JSON.stringify(audio) },
+      stdio: ['ignore', 'ignore', 'inherit'],
+    })
+    return centrosNaLinha(png, 960)[0] ?? []
+  }
+  const doServidor = renderizar({ source: 'library', musicId: 1, startTime: 0, endTime: MUSICA }, path.join(TMP, 'servidor.png'))
+  conferir(
+    'render de servidor (afastar) = primeiro quadro do editor (±2 px)',
+    doServidor.length === 2 && primeiroAfastar?.length === 2 && doServidor.every((c, i) => perto(c, primeiroAfastar[i], 2)),
+    `servidor ${JSON.stringify(doServidor)} · editor ${JSON.stringify(primeiroAfastar)}`,
+  )
+  const semMusica = renderizar(null, path.join(TMP, 'servidor-sem-musica.png'))
+  conferir('controle: sem música a página não é vídeo e a foto sai parada', semMusica.length === 2 && perto(semMusica[1] - semMusica[0], 400, 2), JSON.stringify(semMusica))
 }
 
 conferir('nenhum erro de JavaScript na página', errosDaPagina.length === 0, errosDaPagina.slice(0, 3).join(' | '))

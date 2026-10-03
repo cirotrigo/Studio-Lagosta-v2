@@ -4,6 +4,7 @@ import type { AudioConfig } from '@/components/audio/audio-selection-modal'
 import { duracaoDoExport, ehClipe, passoDoVideo, trechoDoVideo, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { clipeAtivoEm, linhaDoTempo, type Clipe } from '@/lib/video/linha-do-tempo'
 import { relogioDaPagina, type RelogioDaPagina } from '@/lib/video/relogio-da-pagina'
+import { aplicarQuadro, restaurarIdentidade } from '@/lib/video/aplicar-quadro'
 
 export interface VideoExportOptions {
   fps?: number // Frames por segundo (padrão: 30)
@@ -98,7 +99,7 @@ async function prepareStageForExport(
     const children = (contentLayer as Konva.Layer).getChildren()
 
     children.forEach((node: Konva.Node) => {
-      const layerId = node.id()
+      const layerId = node.id() || node.getAttr('camadaId')
       const layer = design.layers.find((l) => l.id === layerId)
 
       // Se a camada está marcada como invisível, ocultar completamente para exportação
@@ -338,6 +339,12 @@ export async function exportVideoWithLayers(
     encerrar.push(() => relogio.encerrarGravacao())
     if (cancelado?.()) throw new Error(cancelado() ?? 'A gravação foi cancelada.')
 
+    // O movimento das fotos: o MESMO aplicador da prévia, sem seleção nem
+    // toque (o motor sai de cena no modo `gravacao`). Termina na identidade.
+    const quadroDoDesign = { layers: design.layers, audio: audioConfig ?? null }
+    aplicarQuadro(stage, quadroDoDesign, 0, { gravando: true, duracoes: duracoesDoStage })
+    encerrar.push(() => restaurarIdentidade(stage))
+
     // A gravação é em tempo real sobre a aba VISÍVEL: oculta, o navegador para
     // de pintar o canvas e o WebM sai com quadros congelados ou faltando.
     const aoOcultarAba = () => {
@@ -545,6 +552,7 @@ export async function exportVideoWithLayers(
 
       // 2. Cada vídeo visível acompanha o relógio (clipe: o relógio local dele)
       if (clipes.length > 0) mostrarClipe(tempoDaGravacao)
+      aplicarQuadro(stage, quadroDoDesign, tempoDaGravacao, { gravando: true, duracoes: duracoesDoStage })
       let algumAguardando = false
       for (const { el, inicio, fim, entrada } of outrosVideos) {
         const tLocal = tempoDaGravacao - entrada

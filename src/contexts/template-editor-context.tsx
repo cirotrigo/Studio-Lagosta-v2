@@ -708,7 +708,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         const contentLayer = cloneStage.findOne('.content-layer') as Konva.Layer | undefined
         if (contentLayer) {
           contentLayer.getChildren().forEach((node: Konva.Node) => {
-            const layerId = node.id()
+            const layerId = node.id() || node.getAttr('camadaId')
             const layer = design.layers.find((l) => l.id === layerId)
             if (layer && layer.visible === false) {
               node.visible(false)
@@ -774,7 +774,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
         // Hide invisible layers
         const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
         contentLayer?.getChildren().forEach((node: Konva.Node) => {
-          const layerId = node.id()
+          const layerId = node.id() || node.getAttr('camadaId')
           const layer = design.layers.find((l) => l.id === layerId)
           if (layer && layer.visible === false) {
             invisibleNodes.push({ node, wasVisible: node.visible() })
@@ -861,7 +861,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
           const children = (contentLayer as Konva.Layer).getChildren()
 
           children.forEach((node: Konva.Node) => {
-            const layerId = node.id()
+            const layerId = node.id() || node.getAttr('camadaId')
             const layer = design.layers.find((l) => l.id === layerId)
 
             // Se a camada está marcada como invisível, ocultar completamente para exportação

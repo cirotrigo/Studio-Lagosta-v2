@@ -10,6 +10,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { ehMotion, videosDaPagina } from '@/lib/video/camadas-de-video'
 import { camadasNoInstante } from '@/lib/video/linha-do-tempo'
+import { aplicarQuadro } from '@/lib/video/aplicar-quadro'
 
 interface PagePreviewProps {
   page: Page
@@ -86,10 +87,16 @@ function PagePreviewStage({ page, width, height, zoom }: { page: Page; width: nu
   const layers = React.useMemo(() => {
     const source = Array.isArray(page.layers) ? (page.layers as Layer[]) : []
     // A prévia é o quadro de 0 da linha do tempo: só o primeiro clipe
-    return camadasNoInstante([...source], 0)
+    return camadasNoInstante([...source], 0, { audio: page.audio })
       .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
       .filter((layer) => layer.visible !== false)
-  }, [page.layers])
+  }, [page.layers, page.audio])
+
+  // O quadro de 0 também no movimento da foto: o mesmo aplicador do editor
+  React.useEffect(() => {
+    const source = Array.isArray(page.layers) ? (page.layers as Layer[]) : []
+    aplicarQuadro(stageRef.current, { layers: source, audio: page.audio }, 0, { gravando: true })
+  }, [layers, page.layers, page.audio])
 
   return (
     <div className="h-full w-full cursor-pointer" style={{ width, height }}>

@@ -55,6 +55,20 @@ function Pagina() {
         // sincronia da prévia é medida
         relogio: { t: +relogio.agora().toFixed(3), tocando: relogio.estado().tocando, modo: relogio.estado().modo },
       }),
+      // O grupo de efeito da camada: o que o aplicador do quadro escreveu nele
+      efeito: (id: string) => {
+        const grupo = stageRef.current?.find('.efeito-de-tempo').find((g) => g.getAttr('camadaId') === id) as Konva.Group | undefined
+        const interno = grupo?.getChildren()[0]
+        if (!grupo || !interno) return null
+        return {
+          escala: +interno.scaleX().toFixed(4),
+          x: +interno.x().toFixed(2),
+          recortado: Boolean(grupo.clipFunc()),
+          visivel: grupo.visible(),
+          opacidade: +grupo.opacity().toFixed(3),
+          deslocamento: +grupo.x().toFixed(2),
+        }
+      },
       // Os mesmos comandos do botão ▶︎/⏸, do painel e da tecla de espaço
       tocar: () => relogio.tocar(),
       pausar: () => relogio.pausar(),
@@ -134,7 +148,7 @@ function Pagina() {
   }, [])
 
   return (
-    <ContextoDaValidacao.Provider value={{ design, setCroppingLayerId: () => {} }}>
+    <ContextoDaValidacao.Provider value={{ design, setCroppingLayerId: () => {}, getStageInstance: () => stageRef.current }}>
       <QueryClientProvider client={queryClient}>
         <MotorDaPagina />
       </QueryClientProvider>

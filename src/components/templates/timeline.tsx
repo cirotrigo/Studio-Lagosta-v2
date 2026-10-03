@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
 import { BotaoPlayPause } from './botao-play-pause'
+import { IconeDoMovimento } from './movimento-da-foto'
 import { DURACAO_MAX_DO_CLIPE, DURACAO_MIN_DO_CLIPE, fatiaDaMusica, paginaEVideo } from '@/lib/video/camadas-de-video'
 import { linhaDoTempo, normalizarClipes, type Clipe } from '@/lib/video/linha-do-tempo'
 import { useRelogioDaPagina } from '@/lib/video/relogio-da-pagina'
@@ -29,7 +30,7 @@ const prender = (v: number, min: number, max: number) => Math.min(max, Math.max(
  * fica só play/pause e a duração.
  */
 export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => void; painelAberto: boolean }) {
-  const { design, updateLayer, reorderLayers, setPageAudio } = useTemplateEditor()
+  const { design, updateLayer, reorderLayers, setPageAudio, selectLayer } = useTemplateEditor()
   const { relogio, estado } = useRelogioDaPagina(useMultiPageOpcional()?.currentPageId)
   const ehVideo = paginaEVideo(design.layers, design.audio)
   const linha = React.useMemo(
@@ -137,6 +138,7 @@ export function Timeline({ onAdicionar, painelAberto }: { onAdicionar: () => voi
                     fracao={c.duracao / total}
                     desabilitado={gravando}
                     onTirar={() => tirar(c.id)}
+                    onSelecionar={() => selectLayer(c.id)}
                     onAjustar={(patch, gesto) =>
                       // Uma entrada de desfazer por arraste, delimitada pelo GESTO
                       // (não por tempo). Desfazer no meio reabre uma entrada nova.
@@ -198,6 +200,7 @@ function ClipeNaFaixa({
   fracao,
   desabilitado,
   onTirar,
+  onSelecionar,
   onAjustar,
   onMostrar,
 }: {
@@ -206,6 +209,8 @@ function ClipeNaFaixa({
   fracao: number
   desabilitado: boolean
   onTirar: () => void
+  /** Clique no bloco: seleciona a camada (a barra da foto mostra o Movimento). */
+  onSelecionar: () => void
   /** `gesto`: chave única do arraste — todas as escritas dele são UMA entrada de desfazer. */
   onAjustar: (patch: Partial<Layer>, gesto: string) => void
   /** Leva o relógio da página ao instante `t` (o quadro da borda arrastada). */
@@ -278,7 +283,7 @@ function ClipeNaFaixa({
       className="group relative h-full min-w-[40px] overflow-hidden rounded border border-border/60 bg-muted"
       title={camada?.name ?? clipe.id}
     >
-      <div className="h-full w-full cursor-grab" {...attributes} {...listeners}>
+      <div className="h-full w-full cursor-grab" {...attributes} {...listeners} onClick={onSelecionar}>
         {clipe.tipo === 'foto' ? (
           <img src={url} alt="" className="h-full w-full object-cover" draggable={false} />
         ) : (
@@ -286,6 +291,11 @@ function ClipeNaFaixa({
         )}
       </div>
       <span className="pointer-events-none absolute bottom-0 left-1 text-[10px] font-medium text-white drop-shadow">{rotulo}</span>
+      {camada?.type === 'image' && camada.movimento && (
+        <span className="pointer-events-none absolute left-0.5 top-0.5 rounded bg-background/80 p-0.5" title="Foto com movimento">
+          <IconeDoMovimento movimento={camada.movimento} className="h-3 w-3" />
+        </span>
+      )}
       {clipe.tipo === 'video' && (
         <div
           className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-primary/70 opacity-0 group-hover:opacity-100"

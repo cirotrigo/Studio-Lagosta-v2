@@ -128,6 +128,11 @@ export interface Layer {
    * Ver src/lib/video/linha-do-tempo.ts.
    */
   clipe?: { duracao?: number }
+  /**
+   * Movimento da foto (só `image`, só em página-vídeo): zoom e deslize do
+   * conteúdo dentro da caixa. Ausente = parada. Ver src/lib/video/movimento.ts.
+   */
+  movimento?: 'aproximar' | 'afastar' | 'deslizar'
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]
   [key: string]: unknown

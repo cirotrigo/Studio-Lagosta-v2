@@ -22,8 +22,10 @@ import {
   DURACAO_MAX_DO_CLIPE,
   DURACAO_MIN_DO_CLIPE,
   MAX_CLIPES,
+  paginaEVideo,
   trechoDoVideo,
 } from './camadas-de-video'
+import { ehMovimento, MOVIMENTOS, progressoDoMovimento, QUADRO_ANOTADO, quadroDoMovimento } from './movimento'
 
 type CamadaDaLinha = {
   id: string
@@ -103,11 +105,26 @@ export function clipeAtivoEm(clipes: readonly Clipe[], t: number): Clipe | null 
 /**
  * As camadas que o instante `t` desenha: só o clipe ativo, mais tudo que não é
  * clipe (texto, logo, motion…). Página sem clipe volta inteira.
+ *
+ * Em página-vídeo (a decisão olha a página INTEIRA, antes de a sequência virar
+ * o clipe ativo — por isso o `audio`), cada foto em movimento sai com o quadro
+ * daquele `t` anotado em `QUADRO_ANOTADO`, que o render de servidor desenha.
  */
-export function camadasNoInstante<T extends CamadaDaLinha>(layers: readonly T[], t: number): T[] {
-  const ativo = clipeAtivoEm(linhaDoTempo(layers, null).clipes, t)
-  if (!ativo) return [...layers]
-  return layers.filter((l) => !ehClipe(l) || l.id === ativo.id)
+export function camadasNoInstante<T extends CamadaDaLinha>(
+  layers: readonly T[],
+  t: number,
+  opcoes?: { audio?: TrilhaLike | null },
+): T[] {
+  const audio = opcoes?.audio ?? null
+  const linha = linhaDoTempo(layers, audio)
+  const ativo = clipeAtivoEm(linha.clipes, t)
+  const doInstante = ativo ? layers.filter((l) => !ehClipe(l) || l.id === ativo.id) : [...layers]
+  if (!paginaEVideo(layers, audio)) return doInstante
+  return doInstante.map((l) =>
+    l.type === 'image' && ehMovimento(l.movimento)
+      ? { ...l, [QUADRO_ANOTADO]: quadroDoMovimento(l.movimento, progressoDoMovimento(l, linha, t)) }
+      : l,
+  )
 }
 
 /**
@@ -190,11 +207,21 @@ export const MENSAGEM_TETO_DE_CLIPES = `A linha do tempo aceita até ${MAX_CLIPE
 
 /**
  * O que o servidor recusa em `Page.layers` (PATCH da página, portas MCP):
- * `clipe.duracao` fora de [0,5; 60] s e mais de 10 clipes. Página legada (sem
- * clipe) passa sempre. Mensagens em português, uma por problema.
+ * `clipe.duracao` fora de [0,5; 60] s, mais de 10 clipes e `movimento` fora
+ * da lista. Página legada (sem clipe) passa sempre. Mensagens em português,
+ * uma por problema.
  */
 export function problemasDosClipes(layers: readonly CamadaDaLinha[] | null | undefined): string[] {
   const problemas: string[] = []
+  // Movimento (Fase 2): valor fora da lista é recusado; ausente ou null = parado
+  for (const l of layers ?? []) {
+    const m = l?.movimento
+    if (m !== undefined && m !== null && !ehMovimento(m)) {
+      problemas.push(
+        `A camada "${String(l.name ?? l.id)}" tem um movimento inválido (${String(m)}): vale ${MOVIMENTOS.join(', ')}.`,
+      )
+    }
+  }
   const clipes = (layers ?? []).filter((l) => l && ehClipe(l))
   if (clipes.length > MAX_CLIPES) {
     problemas.push(`A linha do tempo aceita até ${MAX_CLIPES} clipes (recebeu ${clipes.length}).`)

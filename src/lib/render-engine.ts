@@ -28,6 +28,7 @@ import {
 } from './creatives/halo/fundo-de-texto'
 import { papelNoBloco, retanguloDoBloco } from './creatives/halo/bloco-de-fundo'
 import { aplicarCaixa } from './posts/caixa-do-texto'
+import { quadroAnotado } from './video/movimento'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -118,6 +119,19 @@ export class RenderEngine {
     // efeitos por segmento e ignora layer.effects)
 
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
+    // Movimento da foto (movimento.ts, quadro anotado por camadasNoInstante):
+    // recorta pela caixa e desenha o conteúdo escalado em torno do centro e
+    // deslocado no eixo X da caixa — a MESMA geometria do grupo de efeito do
+    // editor (aplicar-quadro.ts).
+    const quadro = finalLayer.type === 'image' ? quadroAnotado(finalLayer) : null
+    if (quadro) {
+      ctx.beginPath()
+      ctx.rect(0, 0, width, height)
+      ctx.clip()
+      ctx.translate(width / 2 + quadro.deslocamentoX * width, height / 2)
+      ctx.scale(quadro.escala, quadro.escala)
+      ctx.translate(-width / 2, -height / 2)
+    }
     this.applyShadow(ctx, finalLayer, scaleFactor)
     this.applyOpacity(ctx, finalLayer.style)
 

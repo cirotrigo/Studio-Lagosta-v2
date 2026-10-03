@@ -16,6 +16,8 @@ import { ehClipe, ehMotion, passoDoVideo } from '@/lib/video/camadas-de-video'
 import { linhaDoTempo } from '@/lib/video/linha-do-tempo'
 import { volumeDoVideoNaPagina } from '@/lib/video/plano-de-som'
 import { useClipeAtivo } from '@/lib/video/clipe-ativo'
+import { GRUPO_DE_EFEITO, GRUPO_DE_MOVIMENTO } from '@/lib/video/aplicar-quadro'
+import { ehMovimento, ESCALA_DO_MOVIMENTO } from '@/lib/video/movimento'
 import { relogioDaPagina } from '@/lib/video/relogio-da-pagina'
 import { registrarVideoMontado } from '@/lib/video/videos-montados'
 import { useMultiPageOpcional } from '@/contexts/multi-page-context'
@@ -496,11 +498,16 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
 
     case 'image':
     case 'logo':
-    case 'element':
-      return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
+    case 'element': {
+      const no = <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
+      return layer.type === 'image' ? comEfeitoDeTempo(layer.id, no) : no
+    }
 
     case 'video':
-      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} somDoVideo={somDoVideo} />
+      return comEfeitoDeTempo(
+        layer.id,
+        <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} inicioDoClipe={clipeDaPagina?.inicio ?? 0} somDoVideo={somDoVideo} />,
+      )
 
     case 'gradient':
     case 'gradient2':
@@ -530,6 +537,20 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     default:
       return null
   }
+}
+
+/**
+ * O grupo de efeito (Decisão 9 do plano de 03/10/2026): o aplicador do quadro
+ * (`aplicar-quadro.ts`) escreve o movimento e a transição AQUI — recorte pela
+ * caixa, escala, deslize —, nunca no nó editável. Sem id: `findOne('#id')` e o
+ * Transformer continuam achando o nó de dentro; `camadaId` liga o grupo à camada.
+ */
+function comEfeitoDeTempo(camadaId: string, no: React.ReactNode) {
+  return (
+    <Group name={GRUPO_DE_EFEITO} camadaId={camadaId}>
+      <Group name={GRUPO_DE_MOVIMENTO}>{no}</Group>
+    </Group>
+  )
 }
 
 type VideoNodeProps = {
@@ -933,6 +954,16 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     return list
   }, [layer.style])
 
+  // Foto em movimento chega a 1,15×: o bitmap do filtro é feito nessa
+  // densidade, senão o zoom amacia a foto (o cache nasce no devicePixelRatio)
+  const opcoesDoCache = React.useMemo(
+    () =>
+      layer.type === 'image' && ehMovimento(layer.movimento)
+        ? { pixelRatio: (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * ESCALA_DO_MOVIMENTO }
+        : undefined,
+    [layer.type, layer.movimento],
+  )
+
   // Cache only when filters are applied (Konva performance best practice)
   React.useEffect(() => {
     if (!imageRef.current) return
@@ -940,11 +971,11 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       imageRef.current.clearCache()
       return
     }
-    imageRef.current.cache()
+    imageRef.current.cache(opcoesDoCache)
     imageRef.current.getLayer()?.batchDraw()
     // objectFit/cropPosition mudam o recorte desenhado — sem eles aqui, imagem
     // com filtro (bitmap cacheado) não redesenha ao mudar o enquadramento
-  }, [filters, image, layer.size?.width, layer.size?.height, layer.style?.objectFit, layer.style?.cropPosition])
+  }, [filters, image, layer.size?.width, layer.size?.height, layer.style?.objectFit, layer.style?.cropPosition, opcoesDoCache])
 
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
@@ -1067,7 +1098,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           imageNode.x(flipH ? newWidth : 0)
           imageNode.y(flipV ? newHeight : 0)
         }
-        if (filters.length > 0) imageNode.cache()
+        if (filters.length > 0) imageNode.cache(opcoesDoCache)
         node.getLayer()?.batchDraw()
 
         onChange({
@@ -1108,7 +1139,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     // ✅ Reaplicar cache após transform
     if (filters.length > 0) {
-      imageNode.cache()
+      imageNode.cache(opcoesDoCache)
     }
 
     // Forçar re-draw
@@ -1136,6 +1167,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     flipV,
     anchorAtual,
     recorteParaCaixa,
+    opcoesDoCache,
   ])
 
   if (!image) {
