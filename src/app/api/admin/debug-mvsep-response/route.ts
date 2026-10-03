@@ -4,12 +4,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { chaveDoMvsep } from '@/lib/mvsep/mvsep-client'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function GET(req: NextRequest) {
   try {
+    const MVSEP_API_KEY = chaveDoMvsep()
+    if (!MVSEP_API_KEY) {
+      return NextResponse.json({ error: 'MVSEP_API_KEY não configurada' }, { status: 503 })
+    }
     const { searchParams } = new URL(req.url)
     const hash = searchParams.get('hash')
 

@@ -222,7 +222,7 @@ export async function POST(req: Request) {
 ```typescript
 // src/lib/mvsep/mvsep-client.ts
 
-const MVSEP_API_KEY = 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
+const MVSEP_API_KEY = '<sua-chave-do-mvsep>'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function startStemSeparation(job: MusicStemJob) {
@@ -772,7 +772,7 @@ async function getMusicUrl(config: AudioConfig): Promise<string> {
 
 ```env
 CRON_SECRET=your-random-secret-here
-MVSEP_API_KEY=BrIkx8zYQbvc4TggAZbsL96Mag9WN5
+MVSEP_API_KEY=<sua-chave-do-mvsep>
 ```
 
 ---
@@ -1046,7 +1046,7 @@ Modal de Seleção de Áudio:
 
 ### Pronto para Começar?
 ✅ Plano revisado e aprovado
-✅ API key configurada: `BrIkx8zYQbvc4TggAZbsL96Mag9WN5`
+✅ API key configurada: `<sua-chave-do-mvsep>`
 ✅ Abordagem simplificada (apenas 2 arquivos)
 ✅ Custo zero para testar
 

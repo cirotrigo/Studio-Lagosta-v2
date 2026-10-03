@@ -3265,6 +3265,15 @@ salvava o instrumental e jogava a voz fora. Colunas `hasVocalsStem` /
   de export, `process-video-job`). Enum de áudio novo precisa passar por todas —
   o `tsc` pega as de tipo, mas não os textos de rótulo.
 
+- 🔴 **A chave do MVSEP mora SÓ em `MVSEP_API_KEY`** (24/09/2026). Até ali o
+  cliente, o script de recuperação e quatro rotas de `/api/admin` tinham uma chave
+  literal como fallback, versionada no git — e a Vercel NÃO tinha a variável em
+  ambiente nenhum, então a produção rodava com o literal. Ele foi removido e a
+  chave, trocada. Sem a variável, `chaveDoMvsep()` loga e a separação fica
+  PENDENTE (o job não muda de status; volta sozinha quando a chave é cadastrada);
+  o upload de música nunca passa pelo MVSEP. Nunca reintroduza fallback literal
+  de chave — o `.env.example` tem só o nome.
+
 ### 🔴 O download do YouTube trava quando a aba fecha (22/08/2026)
 
 A última etapa de um download — baixar o MP3 do CDN e subir para o Blob — roda
