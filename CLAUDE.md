@@ -11721,3 +11721,32 @@ Plano em `docs/PLANO-2026-10-03-VIDEO-NA-AGENDA-MOVIMENTO-E-TRANSICOES.md`
   sessão longa no localhost a sessão do Clerk expira e TODA chamada vira
   `/sign-in?redirect_url=…` (200) — recarregar a página renova; não é defeito
   do código.
+
+### O autosave da página grava por UMA fila (03/10/2026)
+
+O efeito de autosave do `PageSyncWrapper` não tinha trava de gravação em voo:
+enquanto o PATCH não voltava, `lastSavedLayersRef` seguia velho, e todo
+re-render que mexesse nas dependências do efeito agendava OUTRO PATCH com o
+mesmo conteúdo. A identidade de `savePageState`/`updatePageThumbnail` muda com o
+estado da mutação (`useMutation` devolve objeto novo ao sair e ao voltar), então
+o próprio voo reagendava o save. Medido no dev (PATCH de ~5 s): 15 gravações da
+mesma página em 100 s, com a miniatura alternando entre null e o JPEG.
+
+- **Toda escrita da página passa por `criarFila`** (`src/lib/editor/fila-de-gravacao.ts`,
+  puro, com teste): autosave, `descarregar`, o flush de aba escondida/saída, o
+  save da página que sai na troca e a miniatura. Nunca dois PATCHes em voo.
+- **O pendente é lido quando a vez CHEGA** (`criarAutosave`), nunca quando foi
+  pedido: pedidos durante o voo viram UM PATCH seguinte com o estado mais novo,
+  e pedidos antes de a vez começar se fundem nela.
+- **Miniatura velha não é gravada**: ela leva a versão da gravação de estado em
+  que foi capturada (`versaoGravadaRef`) e é pulada se outra gravação veio
+  depois — sem isso a miniatura do estado anterior chegava depois do PATCH que
+  a apagou (`thumbnail: null` da página-vídeo).
+- **Funções do contexto entram nos efeitos por ref** (`atuaisRef`), nunca como
+  dependência: dependência delas é o que reagendava o save a cada voo. A trava
+  da miniatura pendente (efeito 1b) também é ref — local ao efeito, ela zerava
+  quando o efeito re-executava e empilhava gerações.
+- ⚠️ No `beforeunload` com um PATCH em voo, a edição feita depois dele espera a
+  vez e pode não sair antes de a aba fechar (antes saía em paralelo, com risco
+  de o estado velho chegar por último). O "Salvar e Voltar" usa `descarregar`,
+  que espera.
