@@ -37,7 +37,7 @@ import { googleDriveService } from '@/server/google-drive-service'
 import { CreativeError } from '@/lib/creatives/errors'
 import { mesclarFieldValuesDaArte } from '@/lib/creatives/mesclar-field-values'
 import type { ContextoDosEfeitos } from '@/lib/creatives/agendar'
-import { copyDeCamadas } from '@/lib/aprendizado/diff-copy'
+import { copyDeCamadas, copyParaDecisao, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { CobrancaIncerta, cobrarUmaVez, marcarCobrancaNoMesmoCommit } from '@/lib/video/cobranca-do-video'
 import { etapaDoMp4, finalizarFalhaDoVideo, gravarApontandoPara } from '@/lib/video/etapas-do-video'
 import {
@@ -630,7 +630,7 @@ async function levarAoDestino(
       await comArrendamento((tx) => substituirVideoDoPost(tx, { generationId, mp4Url, copyGravada }))
       return
     }
-    await levarParaAgenda(job, generationId, mp4Url, video, video.destino, copyGravada, comArrendamento, costuras)
+    await levarParaAgenda(job, generationId, mp4Url, video, video.destino, copyGravada, copyParaDecisao(designData?.layers ?? null), comArrendamento, costuras)
   } catch (error) {
     if (!(error instanceof CreativeError)) throw error
     const resultado = { ok: false as const, motivo: error.message, em: new Date().toISOString() }
@@ -652,6 +652,7 @@ async function levarParaAgenda(
   video: VideoDaPagina,
   destino: DestinoAgenda,
   copyGravada: Record<string, string> | null,
+  decisaoGravada: Record<string, string> | null,
   comArrendamento: ComArrendamento,
   costuras: CosturasDoVideo,
 ): Promise<void> {
@@ -681,9 +682,15 @@ async function levarParaAgenda(
     if (!atual || atual.postId || atual.resultado) return null
     const r = await resolverAgendamento(pedido(naHora.situacao), { leitor: tx, ingerir: false })
     // A cópia de texto é a do que o vídeo GRAVOU, não a da página de agora.
+    // E o aprendizado lê o mesmo instante: a decisão e o diff saem das camadas
+    // GRAVADAS, não da página editada enquanto o MP4 processava.
     if (copyGravada) {
       r.copyDaPagina = copyGravada
       r.copyFinal = copyGravada
+    }
+    if (decisaoGravada) {
+      r.copyDoCorpus = decisaoGravada
+      r.diffDaCopy = r.copyPropostaTexto ? diffDeCopy(r.copyPropostaTexto, decisaoGravada) : null
     }
     const post = await criarPostDoAgendamento(tx, r)
     await mesclarFieldValuesDaArte(tx, generationId, {

@@ -658,6 +658,25 @@ async function main() {
       conferir('um débito', (await debitosDo(j.jobId)).length === 1)
     })
 
+    // ── 13. A página editada enquanto o MP4 processa: o aprendizado lê o vídeo ─
+    await caso('13. página editada durante o processamento: o sinal de copy registra o texto que o vídeo gravou', async () => {
+      await db.page.update({ where: { id: pagina.id }, data: { layers: camadas('Texto gravado no vídeo') as any } })
+      const quando = new Date(INICIO.getTime() + 33 * 86_400_000)
+      quando.setUTCSeconds(0, 0)
+      const j = await enfileirar({ tipo: 'agenda', quando: quando.toISOString(), postType: 'STORY', situacao: 'rascunho' }, 'agenda, página editada no meio')
+      await db.page.update({ where: { id: pagina.id }, data: { layers: camadas('Texto editado depois') as any } })
+      conferir('o job conclui', (await processVideoJob(j.jobId)).outcome === 'completed')
+      const doVideo = await db.socialPost.findMany({ where: { projectId: PROJETO, generationId: j.generationId }, select: { id: true, slotValues: true } })
+      for (const p of doVideo) posts.add(p.id)
+      conferir('um post', doVideo.length === 1, `${doVideo.length}`)
+      const cop = JSON.stringify(doVideo[0]?.slotValues ?? null)
+      conferir('o post carrega o texto gravado', cop.includes('Texto gravado no vídeo') && !cop.includes('Texto editado depois'), cop)
+      const sinal = await db.learningSignal.findUnique({ where: { chave: `copy:post:${doVideo[0]?.id}` }, select: { escolhido: true } })
+      const esc = JSON.stringify(sinal?.escolhido ?? null)
+      conferir('o sinal de copy registra o texto gravado, não o editado', esc.includes('Texto gravado no vídeo') && !esc.includes('Texto editado depois'), esc)
+      conferir('um débito', (await debitosDo(j.jobId)).length === 1)
+    })
+
     casoAtual = 'fecho'
     const porJob = await Promise.all(jobs.map(debitosDo))
     conferir(`cada um dos ${jobs.length} jobs foi cobrado exatamente uma vez`, porJob.every((d) => d.length === 1), porJob.map((d) => d.length).join(','))

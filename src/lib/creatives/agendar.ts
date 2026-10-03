@@ -174,6 +174,8 @@ export interface AgendamentoResolvido {
    * que os efeitos registram no corpus; nunca é a cópia do post.
    */
   copyDoCorpus: Record<string, string> | null
+  /** A proposta (o lado "antes" do diff) — para quem troca a decisão por outra leitura, como o vídeo gravado. */
+  copyPropostaTexto: Record<string, string> | null
   diffDaCopy: DiffDeCopy | null
 }
 
@@ -485,6 +487,7 @@ export async function resolverAgendamento(input: AgendarPostInput, opcoes: Opcoe
     copyDaPagina,
     copyFinal,
     copyDoCorpus,
+    copyPropostaTexto,
     diffDaCopy,
   }
 }
